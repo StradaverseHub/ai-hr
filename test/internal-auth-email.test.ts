@@ -5,6 +5,8 @@ import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base 
 import { bootstrapInternalOwner } from '../lib/internal-auth/bootstrap';
 import { credentialByLogin } from '../lib/internal-auth/service';
 import { internalEmailRequest, recoveryMailReady } from '../lib/internal-auth/mail';
+import { readActiveRelayTx } from '../lib/internal-auth/active-relay';
+import { client } from '../db/client';
 import type { EmailConfig, EmailSettingsView, IdentityEmailActor } from '../lib/identity/email-model';
 const session = vi.hoisted(() => ({ context: null as SessionContext | null, identity: null as {issuer:string;subject:string;email:string;emailVerified:boolean} | null }));
 vi.mock('../lib/session', () => ({ getSession: async () => session.context }));
@@ -24,6 +26,7 @@ async function draft() {const initial=await view();await internalEmailRequest({o
 describe('HR-owned SMTP settings with actual private storage and authority',()=>{
   it('stores relay secrets only as authenticated ciphertext and never returns them to the settings view',async()=>{
     const saved=await draft();expect(saved.hasPassword).toBe(true);expect(saved.config).toEqual(config);expect(saved.testedAt).toBeNull();expect(await recoveryMailReady()).toBe(false);
+    expect(await readActiveRelayTx(client)).toBeNull();
     expect(JSON.stringify(await view())).not.toContain(secret);
     expect(JSON.stringify(await owner.client`select * from app_internal_auth_record`)).not.toContain(secret);
     expect(JSON.stringify(await owner.client`select * from domain_event`)).not.toContain(secret);
@@ -36,6 +39,7 @@ describe('HR-owned SMTP settings with actual private storage and authority',()=>
     await expect(internalEmailRequest({op:'apply',actor,draftId:saved.id,received:false})).rejects.toMatchObject({code:'needsReceipt'});
     await internalEmailRequest({op:'apply',actor,draftId:saved.id,received:true});
     const active=await view();expect(active.active).toMatchObject({...config,hasPassword:true});expect(active.draft).toBeNull();expect(await recoveryMailReady()).toBe(true);
+    expect(await client.begin(raw=>readActiveRelayTx(raw as unknown as import('../lib/internal-auth/record-store').AuthSql,true))).toEqual({revision:active.revision,relay:{config,password:secret}});
     expect(JSON.stringify(active)).not.toContain(secret);
     await expect(internalEmailRequest({op:'save',actor,revision:'initial',config,password:secret})).rejects.toMatchObject({code:'conflict'});
   });

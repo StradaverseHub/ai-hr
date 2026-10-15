@@ -4,13 +4,14 @@ import { sql } from 'drizzle-orm';
 import { EmailSettingsError, emailConfigSchema, type EmailSettingsRequest, type EmailSettingsView } from '../identity/email-model';
 import { authTransaction, readRecord, writeRecord } from './store';
 import { opaque } from './crypto';
+import { INTERNAL_EMAIL_STATE_KEY } from './active-relay';
 import { sendSmtp, type Relay, type Mail, type MailTransport } from './smtp';
 export { sendSmtp } from './smtp';
 export type { Relay, Mail, MailTransport } from './smtp';
 
 type Draft = Relay & { id: string; revision: string; testedAt: number | null };
 type MailState = { revision: string; active: Relay | null; drafts: Record<string, Draft> };
-const STATE = 'email-state';
+const STATE = INTERNAL_EMAIL_STATE_KEY;
 const emptyState = (): MailState => ({ revision: 'initial', active: null, drafts: {} });
 export async function recoveryMailReady() { return Boolean((await readRecord<MailState>(client, STATE))?.active); }
 export async function internalEmailRequest<T>(request: EmailSettingsRequest, transport: MailTransport = sendSmtp): Promise<T> {

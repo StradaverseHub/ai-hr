@@ -4,13 +4,12 @@ import { client } from '../../db/client';
 import { internalConfig, internalIssuer } from './config';
 import { digest, opaque, validOpaque, passwordHash, passwordMatches, validatePassword, DUMMY_PASSWORD_HASH } from './crypto';
 import { authTransaction, readRecord, writeRecord, deleteRecord, revokeCredentialsSessions, type AuthSql } from './store';
+import { InternalAuthError } from './errors';
+import { assertActiveCredential, type Credential } from './credential';
+export { InternalAuthError } from './errors';
+export { assertActiveCredential } from './credential';
+export type { Credential } from './credential';
 
-export class InternalAuthError extends Error {
-  constructor(public code: 'invalidLogin' | 'invalidChallenge' | 'invalidCode' | 'passwordPolicy' | 'rateLimited' | 'unavailable' | 'conflict') { super(code); }
-}
-export type Credential = { subject: string; tenantId: string; issuer: string; organization: string; username: string; email: string;
-  emailVerified: boolean; enabled: boolean; password: string | null; mustChange: boolean; version: string;
-  totpSecret: string | null; lastStep: number; recoveryHashes: string[]; enrollmentId?: string };
 type Challenge = { subject: string; version: string; phase: 'password' | 'enroll' | 'mfa'; attempts: number; native: boolean; expiresAt: number;
   secret?: string; mfaPassed?: boolean; invitation?: string };
 type Session = { subject: string; version: string; family: string; native: boolean; absoluteExpiry: number };
@@ -36,13 +35,6 @@ export async function takeRate(scope: string, limit: number, window = 15 * 60_00
     await writeRecord(tx, key, { count: count + 1 }, null, start + 2 * window); return true;
   });
   if (!ok) throw new InternalAuthError('rateLimited');
-}
-export async function assertActiveCredential(tx: AuthSql, c: Credential) {
-  if (!c.enabled || !c.password || c.mustChange || !c.totpSecret || !c.emailVerified) throw new InternalAuthError('invalidLogin');
-  const rows = await tx.unsafe('select app_user_id,tenant_id from app.principal_by_identity($1,$2)', [c.issuer, c.subject]);
-  const principal = rows[0];
-  if (!principal || typeof principal.app_user_id !== 'string' || principal.tenant_id !== c.tenantId) throw new InternalAuthError('invalidLogin');
-  return { app_user_id: principal.app_user_id, tenant_id: c.tenantId };
 }
 async function audit(tx: AuthSql, c: Credential, event: string, refused = false) {
   const rows = await tx.unsafe('select app_user_id from app.principal_by_identity($1,$2)', [c.issuer, c.subject]);
