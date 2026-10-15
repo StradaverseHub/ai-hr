@@ -83,3 +83,21 @@ it('imports and re-uploads distinct same-name children without collapsing their 
  const saved=await owner.db.select().from(employeeDependent).where(eq(employeeDependent.personId,subject.id));
  expect(saved.map(row=>row.icOrPassport).sort()).toEqual(['CHILD-A','CHILD-B']);
 });
+
+it('persists Attendance and payment choices through their canonical owners and preserves blank updates',async()=>{
+ const created=await commitEmployeeImport(adminCtx(b),{companyId:b.companyId,records:[{...record(),card_id:'00007',attendance_photo_setting:'optional',payment_method:'bank_transfer'}]});
+ expect(created.failed).toEqual([]);expect(created.imported).toBe(1);
+ const [before]=await owner.db.select().from(employment).where(eq(employment.employeeCode,'CONTRACT01'));
+ expect(before).toMatchObject({cardId:'00007',attendancePhotoSetting:'optional',paymentMethod:'bank_transfer'});
+ const updated=await commitSectionImport(adminCtx(b),{section:'employment',records:[{employee_code:'CONTRACT01',attendance_photo_setting:'required',card_id:''}]});
+ expect(updated.failed).toEqual([]);expect(updated.updated).toBe(1);
+ const [after]=await owner.db.select().from(employment).where(eq(employment.id,before.id));
+ expect(after).toMatchObject({cardId:'00007',attendancePhotoSetting:'required',paymentMethod:'bank_transfer'});
+});
+it('refuses missing Bank Transfer destination and a card colliding with another file employee code',async()=>{
+ const missing=await commitEmployeeImport(adminCtx(b),{companyId:b.companyId,records:[{...record(),bank_name:'',bank_account_no:'',payment_method:'bank_transfer'}]});
+ expect(missing.imported).toBe(0);
+ const card=await commitEmployeeImport(adminCtx(b),{companyId:b.companyId,records:[{...record(),card_id:'OTHER01'},{...record(),employee_code:'OTHER01',email:'other-contract@fixture.test',card_id:''}]});
+ expect(card.imported).toBe(1);expect(card.skipped).toBe(1);
+ expect(await owner.db.select().from(employment).where(eq(employment.employeeCode,'CONTRACT01'))).toEqual([]);
+});

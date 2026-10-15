@@ -1,3 +1,7 @@
+import {personnelOperationalValues,PERSONNEL_OPERATIONAL_FIELDS,type PersonnelOperationalPatch} from '../lib/personnel-operational-import';
+import {applyPersonnelOperationalValuesTx} from './personnel-import-operations';
+import {assertCardIdFree} from './attendance-card';
+import {bankTransferLacksBank} from '../lib/payment-methods';
 import { PersonnelImportCatalog, normalizePersonnelCatalogRecord } from '../lib/personnel-import-catalog';
 import { dependentImportMatch, type DependentIdentity } from '../lib/dependent-identity';
 import { addUniqueImportAlias } from '../lib/personnel-import-lookup';
@@ -138,6 +142,7 @@ type Subject = {
     confirmationDate: string | null;
   };
   /** The statutory row, or null when the employee has none yet (no IC ever saved). */
+  operations:{cardId:string|null;attendancePhotoSetting:string|null;paymentMethod:string|null};
   statutory: Record<string, unknown> | null;
   /** Family already on file, lowercased `name|relationship`, so a re-uploaded family file does not
    *  double somebody's children. */
@@ -192,6 +197,7 @@ type ResolvedSectionRow = {
   taxSupplied?:(keyof TaxPatch)[];
   compliance?: {dateOfBirth?:string;gender?:string;maritalStatus?:string};
   passport?: PassportPatch;
+  operations?:PersonnelOperationalPatch;
   bank?: BankPatch;
   bankSupplied?:(keyof PersonnelBankValues)[];
   registrations?:{epfNumber?:string;socsoNumber?:string};
@@ -347,6 +353,13 @@ async function analyze(
       else buildFamily(rec, cell, subject, row, { catalog, errors, warnings, changes });
     }
 
+    if(subject && (section==='employment'||section==='bank_statutory')) {
+      const operational=personnelOperationalValues(rec);errors.push(...operational.errors);
+      if(Object.keys(operational.values).length)row.operations=operational.values;
+      for(const field of PERSONNEL_OPERATIONAL_FIELDS){const key=field.import.writerField! as keyof PersonnelOperationalPatch;const value=operational.values[key];if(value!==undefined && value!==(subject.operations[key]??''))changes.push(field.import.column!);}
+      if(operational.values.paymentMethod==='bank_transfer' && bankTransferLacksBank(row.bank??{bankName:subject.statutory?.bankName as string|null,bankAccountNo:subject.statutory?.bankAccountNo as string|null}))errors.push('Bank Transfer requires a bank name and account number.');
+    }
+
     // MATCHED, VALID, AND NOTHING TO DO. Reported as its own verdict rather than counted as an update:
     // a preview that says "12 will be updated" when four of them carry no values is a preview that
     // cannot be checked. (Calling the writers with an empty payload would also throw.)
@@ -357,7 +370,7 @@ async function analyze(
     // handful of rows that really do move. `changes` is the truth here — every section pushes a column
     // onto it only when the cell DIFFERS from what is stored.
     const willWrite =
-      row.personPatch || row.compliance || row.ic || row.passport || row.bank || row.registrations || row.tax || row.employmentInfo ||
+      row.operations || row.personPatch || row.compliance || row.ic || row.passport || row.bank || row.registrations || row.tax || row.employmentInfo ||
       row.superiorEmploymentId || row.dependent;
     if (subject && errors.length === 0 && (!willWrite || changes.length === 0)) {
       row.result.verdict = 'skip';
@@ -372,6 +385,13 @@ async function analyze(
     row.result.ok = errors.length === 0 && row.result.verdict === 'update';
     resolved.push(row);
   });
+
+  for(const row of resolved)if(row.result.ok && row.operations?.cardId && resolved.some(other=>other!==row && other.operations?.cardId?.toLowerCase()===row.operations!.cardId!.toLowerCase())) {row.result.ok=false;row.result.errors.push('Duplicate card_id in this file.');}
+
+  for(const row of resolved)if(row.result.ok && row.subject && row.operations?.cardId) {
+    try {await withTenant(ctx,tx=>assertCardIdFree(tx,row.subject!.employmentId,row.operations!.cardId!));}
+    catch {row.result.ok=false;row.result.errors.push('card_id already identifies another employee; choose an unused card ID.');}
+  }
 
   for(const row of resolved)if(row.result.ok && row.dependent) {
     try { await assertDependentsValid(ctx,[row.dependent]); }
@@ -403,6 +423,7 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
         companyId: employment.companyId,
         employeeCode: employment.employeeCode,
         hiredOn: employment.hiredOn,
+        cardId:employment.cardId,attendancePhotoSetting:employment.attendancePhotoSetting,paymentMethod:employment.paymentMethod,
         fullName: person.fullName,
         primaryEmail: person.primaryEmail,
         phone: person.phone,
@@ -518,6 +539,7 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
           resignationNoticeDays: r.resignationNoticeDays,
           confirmationDate: r.confirmationDate == null ? null : String(r.confirmationDate),
         },
+        operations:{cardId:r.cardId,attendancePhotoSetting:r.attendancePhotoSetting,paymentMethod:r.paymentMethod},
         statutory: statByPerson.get(r.personId) ?? null,
         familyMembers: familyByPerson.get(r.personId) ?? [],
       };
@@ -1010,7 +1032,7 @@ function buildFamily(
  * check constraint, a race with somebody editing the same person). The admin still has to be told
  * WHICH part of the row did not go in — and told it without the value that caused it.
  */
-export type WriteStep = 'person' | 'ic' | 'passport' | 'bank' | 'registrations' | 'tax' | 'employmentInfo' | 'superior' | 'dependent';
+export type WriteStep = 'person' | 'ic' | 'passport' | 'bank' | 'registrations' | 'tax' | 'operations' | 'employmentInfo' | 'superior' | 'dependent';
 
 const WRITE_STEP_COLUMNS: Record<WriteStep, string> = {
   person: 'full_name / email / phone / address / emergency contact',
@@ -1019,6 +1041,7 @@ const WRITE_STEP_COLUMNS: Record<WriteStep, string> = {
   bank: 'bank_name / bank_account_no',
   registrations:'epf_number / socso_number',
   tax: 'tax_number / tax_category / num_children',
+  operations:'Card ID, Attendance Photo or Payment Method',
   employmentInfo: 'probation / notice period / confirmation_date',
   superior: 'direct_superior',
   dependent: 'the family member on this row',
@@ -1128,6 +1151,8 @@ export async function commitSectionImport(
         for(const key of Object.keys(tax) as (keyof TaxPatch)[])if(!row.taxSupplied?.includes(key))(tax as unknown as Record<string,unknown>)[key]=freshStat[key];
         await s.pack.statutory.setTax(ctx,{personId:s.personId,...tax},tx);
       }
+      step='operations';
+      if(row.operations)await applyPersonnelOperationalValuesTx(tx,ctx,s.employmentId,row.operations);
       step = 'employmentInfo';
       if (row.employmentInfo) await setEmploymentInfo(ctx, { employmentId: s.employmentId, ...row.employmentInfo }, tx);
       step = 'superior';

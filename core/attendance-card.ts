@@ -133,8 +133,9 @@ export async function assertCardIdFree(tx: Tx, employmentId: string, cardId: str
 export async function setEmploymentCardId(
   ctx: SessionContext,
   p: { employmentId: string; cardId: string | null },
+  outerTx?:Tx,
 ): Promise<void> {
-  await withTenant(ctx, async (tx) => {
+  const run=async(tx:Tx)=>{
     const next = p.cardId == null ? null : normalizeCardId(p.cardId);
     if (next !== null && next !== '') await assertCardIdFree(tx, p.employmentId, next);
 
@@ -157,5 +158,6 @@ export async function setEmploymentCardId(
       actor: actorOf(ctx),
       payload: { from: before?.cardId ?? null, to: next === '' ? null : next },
     });
-  });
+  };
+  await (outerTx?run(outerTx):withTenant(ctx,run));
 }

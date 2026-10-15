@@ -1,3 +1,7 @@
+import { personnelOperationalValues,type PersonnelOperationalPatch } from '../lib/personnel-operational-import';
+import { applyPersonnelOperationalValuesTx } from './personnel-import-operations';
+import { assertCardIdFree } from './attendance-card';
+import { bankTransferLacksBank } from '../lib/payment-methods';
 import { PersonnelImportCatalog, normalizePersonnelCatalogRecord } from '../lib/personnel-import-catalog';
 import { PersonnelImportLookup, addUniqueImportAlias } from '../lib/personnel-import-lookup';
 import { personnelBankValues, type PersonnelBankValues } from '../lib/personnel-bank-import';
@@ -12,11 +16,11 @@ import { isCalendarDate } from '../lib/calendar-date';
  *
  * Two phases:
  *  - analyze(): pure validation against the company catalog + existing records (dry run).
- *  - commitEmployeeImport(): imports the rows that pass, row-by-row, continuing past a row
- *    that fails so one bad record can't strand the rest, then appends a batch event.
+ *  - commitEmployeeImport(): writes the validated subset and its forward reporting links in one
+ *    explicit transaction shared by canonical owners. A write refusal rolls that subset back.
  *
- * Not atomic across rows by design: the per-row services each own their transaction, and a
- * day-one migration wants maximum rows in, not all-or-nothing. The dry run is the gate.
+ * Invalid preview rows remain excluded. Repeated-record orphan errors reject the complete file;
+ * post-commit derived Family refresh failures are warnings and never misreported as rollback.
  */
 import { publicErrorMessage } from '@/lib/public-error';
 import { withTenant, type SessionContext } from '../db/client';
@@ -130,6 +134,7 @@ type ResolvedRow = {
    * existing file's import is unchanged.
    */
   profile?: Record<string, string | null>;
+  operations?:PersonnelOperationalPatch;
   bankExtra?:PersonnelBankValues;
   oldIcNumber?:string;
   compliance?: {dateOfBirth?:string;gender?:string;maritalStatus?:string};
@@ -410,6 +415,8 @@ async function analyze(
   records.forEach((rawRecord, idx) => {
     const {record:rec,errors}=normalizePersonnelCatalogRecord(rawRecord,'employee',catalog);
     const warnings: string[] = [];
+    const operations=personnelOperationalValues(rec);errors.push(...operations.errors);
+    if(operations.values.paymentMethod==='bank_transfer' && bankTransferLacksBank({bankName:rec.bank_name,bankAccountNo:rec.bank_account_no}))errors.push('Bank Transfer requires bank_name and bank_account_no.');
     const fullName = norm(rec.full_name);
     const email = norm(rec.email);
 
@@ -785,6 +792,7 @@ async function analyze(
         grantLeaveTypes: grants,
         provisionalEndOn: probationEnd,
       },
+      operations:Object.keys(operations.values).length?operations.values:undefined,
       profile: Object.keys(profile).length > 0 ? profile : undefined,
       bankExtra:bankExtra.supplied.some(key=>!['bankName','bankAccountNo'].includes(key))?bankExtra.values:undefined,
       oldIcNumber:norm(rec.old_ic_number)||undefined,
@@ -813,6 +821,16 @@ async function analyze(
       effectiveFrom: hiredOn,
     });
   });
+
+  // Operational card assignments resolve against current canonical identities before any employee is written.
+  for(const [index,row] of resolved.entries())if(row.result.ok && row.operations?.cardId) {
+    try {await withTenant(ctx,tx=>assertCardIdFree(tx,'00000000-0000-0000-0000-000000000000',row.operations!.cardId!));}
+    catch {row.result.errors.push('card_id already identifies another employee; choose an unused card ID.');row.result.ok=false;}
+    const wanted=row.operations.cardId.toLowerCase(),digits=wanted.replace(/\D/g,'');
+    if(resolved.some((other,otherIndex)=>otherIndex!==index && (other.operations?.cardId?.toLowerCase()===wanted || other.hire.employeeCode?.toLowerCase()===wanted || Boolean(digits && other.statutory.icNumber?.replace(/\D/g,'')===digits)))) {
+      row.result.errors.push('card_id conflicts with another employee identity in this file.');row.result.ok=false;
+    }
+  }
 
   // ─────────────── PASS 3 (2983802f) — DIRECT SUPERIOR, once every row is staged ───────────────
   //
@@ -1133,6 +1151,7 @@ export async function commitEmployeeImport(
       await pack.statutory.set(ctx, { personId, ...row.statutory }, tx);
       if(row.oldIcNumber)await pack.statutory.setIc(ctx,{personId,icNumber:row.statutory.icNumber??'',oldIcNumber:row.oldIcNumber},tx);
       if(row.bankExtra)await pack.statutory.setBank(ctx,{personId,...row.bankExtra},tx);
+      if(row.operations)await applyPersonnelOperationalValuesTx(tx,ctx,employmentId,row.operations);
       // Feedback b9fd8fd5 — imports behave like manual entry (setIcAction, item 354a500d): a valid IC also
       // persists the derived Date of Birth so the Profile tab's Age never reads "Not Available" for an
       // imported employee. `dobOnlyIfEmpty` guarantees an existing DOB is never overwritten; an IC whose

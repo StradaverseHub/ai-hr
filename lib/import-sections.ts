@@ -128,6 +128,7 @@ const EMPLOYMENT_COLUMNS = [
   'resignation_notice_days',
   'direct_superior',
   ...PERSONNEL_EMPLOYMENT_IMPORT_FIELDS.map(field=>field.import.column!).filter(column=>column!=='confirmation_date'),
+  ...PERSONNEL_FIELDS.filter(field=>field.import.writer==='operational' && field.import.section==='employment').map(field=>field.import.column!),
 ] as const;
 
 /**
@@ -141,7 +142,7 @@ const EMPLOYMENT_COLUMNS = [
  * are fenced out rather than written through an unsafe setter. `setBank` and `setTax` are the two
  * narrow setters that DO exist, and this list is exactly what they cover.
  */
-const BANK_STATUTORY_COLUMNS = ['tax_number', 'tax_category', 'num_children',...PERSONNEL_FIELDS.filter(field=>['statutory-registration','bank'].includes(field.import.writer??'')).map(field=>field.import.column!)] as const;
+const BANK_STATUTORY_COLUMNS = [...PERSONNEL_FIELDS.filter(field=>field.import.writer==='operational' && field.import.section==='bank_statutory').map(field=>field.import.column!),'tax_number', 'tax_category', 'num_children',...PERSONNEL_FIELDS.filter(field=>['statutory-registration','bank'].includes(field.import.writer??'')).map(field=>field.import.column!)] as const;
 
 export const IMPORT_SECTION_DEFS: Record<ImportSection, ImportSectionDef> = {
   profile: { key: 'profile', required: [], optional: PROFILE_COLUMNS, family: false },
@@ -377,7 +378,7 @@ export const SECTION_TEMPLATE_FILENAMES: Record<ImportSection, string> = {
  */
 export const SECTION_TEXT_COLUMN_KEYS: readonly string[] = [
   SECTION_KEY_COLUMN,
-  'ic_number','old_ic_number',
+  'ic_number','old_ic_number','card_id',
   'phone','home_phone','emergency_contact_phone','emergency_contact_home_phone',
   'bank_account_no','custom_holder_id',
   'epf_number','socso_number','tax_number',

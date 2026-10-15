@@ -60,6 +60,7 @@ export const EMPLOYEE_XLSX_HEADERS: readonly string[] = EMPLOYEE_XLSX_COLUMNS.ma
  */
 export const EMPLOYEE_TEXT_COLUMN_KEYS: readonly string[] = [
   'employee_code',
+  'card_id',
   'ic_number',
   'phone',
   'home_phone',

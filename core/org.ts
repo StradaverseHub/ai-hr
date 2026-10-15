@@ -3144,6 +3144,7 @@ export class MissingBankForTransferError extends Error {
 export async function setEmploymentPaymentMethod(
   ctx: SessionContext,
   p: { employmentId: string; paymentMethod: PaymentMethod | null },
+  outerTx?:Tx,
 ) {
   const roles = ctx.roles ?? [];
   if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
@@ -3153,7 +3154,7 @@ export async function setEmploymentPaymentMethod(
   if (next != null && !(PAYMENT_METHODS as readonly string[]).includes(next)) {
     throw new Error('Payment method is invalid.');
   }
-  return withTenant(ctx, async (tx) => {
+  const run=async(tx:Tx)=>{
     const [before] = await tx
       .select({ paymentMethod: employment.paymentMethod, personId: employment.personId })
       .from(employment)
@@ -3193,7 +3194,8 @@ export async function setEmploymentPaymentMethod(
       payload: { before: before.paymentMethod ?? null, after: next },
     });
     return { id: p.employmentId, paymentMethod: next, changed: true as const };
-  });
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /**

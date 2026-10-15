@@ -866,13 +866,16 @@ export function setClockingControl(
  * (core/attendance-clock.ts captureEmployeeClockTx); this writer only changes which rule applies, never
  * enforces it itself.
  */
-export type AttendancePhotoSetting = 'required' | 'optional' | 'not_required';
+import { ATTENDANCE_PHOTO_SETTINGS, type AttendancePhotoSetting } from '../lib/attendance-photo-setting';
+export type {AttendancePhotoSetting} from '../lib/attendance-photo-setting';
 
 export function setAttendancePhotoSetting(
   ctx: SessionContext,
   p: { employmentId: string; setting: AttendancePhotoSetting },
+  outerTx?:Tx,
 ) {
-  return withTenant(ctx, async (tx) => {
+  if(!(ATTENDANCE_PHOTO_SETTINGS as readonly string[]).includes(p.setting))throw new Error('Invalid attendance photo setting.');
+  const run=async(tx:Tx)=>{
     const [before] = await tx
       .select({ attendancePhotoSetting: employment.attendancePhotoSetting })
       .from(employment)
@@ -897,5 +900,6 @@ export function setAttendancePhotoSetting(
       payload: { before: before.attendancePhotoSetting, after: p.setting },
     });
     return { employmentId: p.employmentId, attendancePhotoSetting: p.setting };
-  });
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
