@@ -157,9 +157,10 @@ async function main() {
     if(digest(draft.data)!==digest(expected))throw new Error('Existing fictional captured Draft values changed; preserving them.');
     const visible=await getEmployeeDraft(actor,draft.id);
     if(!visible||visible.reservedEmployeeCode!==draft.reservedEmployeeCode)throw new Error('Canonical scoped Draft reader cannot see its own fictional case.');
-    if(key!=='missingRequired'&&missingForCreation(draft.data).length)throw new Error('Unexpected missing required values in the fictional case.');
+    if(digest(visible.data)!==digest(draft.data))throw new Error('Canonical Draft data differs from the exact fictional captured values; preserving them.');
+    if(key!=='missingRequired'&&missingForCreation(visible.data).length)throw new Error('Unexpected missing required values in the fictional case.');
     const routes=Object.fromEntries(locales.map(locale=>[locale,`/${locale}/admin/personnel/new?draft=${draft!.id}`]));
-    drafts[key]={id:draft.id,employeeCode:draft.reservedEmployeeCode,companyId:companies[companyKey],reservedConfigId:draft.reservedConfigId,reservedNumber:draft.reservedNumber,currentStep,data:draft.data,dataSha256:digest(draft.data),missing:missingByTab(draft.data),purpose,routes};
+    drafts[key]={id:draft.id,employeeCode:draft.reservedEmployeeCode,companyId:companies[companyKey],reservedConfigId:draft.reservedConfigId,reservedNumber:draft.reservedNumber,currentStep,data:visible.data,dataSha256:digest(visible.data),missing:missingByTab(visible.data),purpose,routes};
   }
   for(const key of ['Main','Foreign']) {
     const [config]=await owner.db.select().from(s.employeeIdConfig).where(eq(s.employeeIdConfig.id,configs[key].id));
