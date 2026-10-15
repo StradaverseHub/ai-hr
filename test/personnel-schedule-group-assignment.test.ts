@@ -64,7 +64,7 @@ import {
 // The action layer calls requireAdmin() (a session), which the harness has no request for — hand back the
 // seeded admin ctx so the action's writes still run under RLS. Precedent: the sibling relocation tests.
 let ADMIN: ReturnType<typeof adminCtx>;
-vi.mock('../lib/authz', () => ({ requireAdmin: async () => ADMIN }));
+vi.mock('../lib/authz', async original => ({...(await original<typeof import('../lib/authz')>()), requireAdmin: async () => ADMIN }));
 let LAST_REDIRECT = '';
 vi.mock('next/cache', () => ({ revalidatePath: () => {} }));
 vi.mock('next/navigation', () => ({

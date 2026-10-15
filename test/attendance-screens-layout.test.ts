@@ -268,7 +268,7 @@ describe('af7a8eb4 — Attendance screen layout', () => {
   it.each(REDIRECT_STUBS)('%s renders nothing of its own any more — it redirects to its card (r301)', (file, anchor) => {
     const src = read(file);
     expect(src).toContain('await requireAdmin();');
-    expect(src).toContain(`redirect(\`\${SCHEDULE}#\${${anchor}}\`)`);
+    expect(src).toContain(`redirect(\`\${${anchor==='WORK_SCHEDULE_OVERTIME_ANCHOR'?'WORK_SCHEDULE_OVERTIME':'SCHEDULE'}}#\${${anchor}}\`)`);
     expect(classNameLiterals(src), 'a redirect stub has no markup, so no width to get wrong').toEqual([]);
   });
 
@@ -389,11 +389,11 @@ describe('af7a8eb4 — Attendance screen layout', () => {
       "export const SCHEDULE = '/admin/attendance/schedule';",
     );
     const admin = read('app/admin/actions.ts');
-    expect(admin).toContain("const SCHEDULE_TAB = '/admin/attendance/schedule';");
+    expect(admin).toContain("const SCHEDULE_TAB = '/admin/attendance/settings/company-policy';");
     expect(admin).toContain('const backTo = SCHEDULE_TAB;');
     expect(admin, 'no query string on the policy return path').not.toContain('SCHEDULE_TAB}?tab=');
-    expect(read('app/admin/attendance-policy/device-actions.ts')).toContain('const LIST = SCHEDULE;');
-    expect(read('app/admin/attendance-policy/work-schedule-overtime-card.tsx')).toContain('returnTo={SCHEDULE}');
+    expect(read('app/admin/attendance-policy/device-actions.ts')).toContain('const LIST = REGISTERED_DEVICES;');
+    expect(read('app/admin/attendance-policy/work-schedule-overtime-card.tsx')).toContain('returnTo={WORK_SCHEDULE_OVERTIME}');
   });
 });
 

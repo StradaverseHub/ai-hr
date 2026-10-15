@@ -38,7 +38,7 @@ import { AttendanceSettingsNavigation } from '@/components/attendance-settings-n
 import { ScheduleRotationEditor } from '@/components/schedule-rotation-editor';
 import { getScheduleRotation, workingShiftSchedule } from '@/packs/attendance/service';
 import { todayInKualaLumpur } from '@/lib/hr-date';
-import type { RotationCycle } from '@/core/week-pattern';
+import {rotationVersionOn,type RotationCycle} from '@/core/week-pattern';
 
 /**
  * ─── 665de026 (r331) · ONE SCHEDULE GROUP, ONE SCREEN ────────────────────────────────────────────────
@@ -170,14 +170,14 @@ export async function ScheduleGroupSections({
   const tb=await getTranslations('boardSchedule');
   const controls=await scheduleGroupControls(s,rule.id);
   const pendingException=controls.revisions.reduce<typeof controls.revisions[number]|null>((a,b)=>!a||b.effectiveFrom>a.effectiveFrom?b:a,null);
-  const controlPanel=(kind:'exception'|'duty')=><Card className="space-y-3 p-4"><h3 className="text-sm font-semibold">{tb(kind)}</h3><p className="text-xs text-muted-foreground">{tb(kind==='duty'?'dutyHint':'exceptionHint')}</p>{editing?<form action={saveScheduleGroupControlAction} className="space-y-3"><input type="hidden" name="ruleId" value={rule.id}/><input type="hidden" name="kind" value={kind}/><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="enabled" value="1" defaultChecked={kind==='duty'?controls.dutyRosterControl:pendingException?.enabled??false} className="accent-primary"/>{tb(kind)}</label><button className={btnPrimary}>{tr('save')}</button></form>:<p className="text-sm">{(kind==='duty'?controls.dutyRosterControl:pendingException?.enabled??false)?tb('on'):tb('off')}</p>}{kind==='exception'&&<ul className="space-y-1 text-xs text-muted-foreground">{controls.revisions.map(r=><li key={r.id}>{r.effectiveFrom} · {r.enabled?tb('on'):tb('off')}</li>)}</ul>}</Card>;
+  const controlPanel=(kind:'exception'|'duty')=><Card className="space-y-3 p-4"><h3 className="text-sm font-semibold">{tb(kind)}</h3><p className="text-xs text-muted-foreground">{tb(kind==='duty'?'dutyHint':'exceptionHint')}</p>{editing?<AttendanceSettingsActionForm submitAction={saveScheduleGroupControlAction} data-attendance-save-scope="" data-attendance-saved-receipt={savedReceipt} className="space-y-3"><input type="hidden" name="ruleId" value={rule.id}/><input type="hidden" name="kind" value={kind}/><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="enabled" value="1" defaultChecked={kind==='duty'?controls.dutyRosterControl:pendingException?.enabled??false} className="accent-primary"/>{tb(kind)}</label><AttendanceSettingsSaveButton className={btnPrimary}>{tr('save')}</AttendanceSettingsSaveButton></AttendanceSettingsActionForm>:<p className="text-sm">{(kind==='duty'?controls.dutyRosterControl:pendingException?.enabled??false)?tb('on'):tb('off')}</p>}{kind==='exception'&&<ul className="space-y-1 text-xs text-muted-foreground">{controls.revisions.map(r=><li key={r.id}>{r.effectiveFrom} · {r.enabled?tb('on'):tb('off')}</li>)}</ul>}</Card>;
   const shifts = await listShiftsForTenant(s, { includeArchived: true });
   const rotationState = await getScheduleRotation(s, rule.id);
   const kinds = dayKindsOf(rule, typedWeek);
   const declaresWeek = ISO_DAYS.some((d) => kinds[d] !== 'rest');
   // r429 (f6819e19) · D7 — "Shifts in this group" (shift.rule_id = group; for Standard, rule_id NULL on
   // every shift that never joined one — this filter already reads that correctly, nothing special-cased).
-  const membershipIds=new Set(rotationState.memberships.map(m=>m.shiftId));
+  const membershipIds=new Set(rotationVersionOn(rotationState.versions,todayInKualaLumpur())?.allowedShiftIds??rotationState.memberships.map(m=>m.shiftId));
   const groupShifts = shifts.filter((sh) => membershipIds.has(sh.id));
   const groupEmploymentCount = await countEmploymentsInRule(s, rule.id);
 

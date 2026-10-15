@@ -1354,7 +1354,7 @@ async function replaceShiftOtWindowsTx(tx: Tx, ctx: SessionContext, p: { shiftId
       .select({ id: shift.id, startTime: shift.startTime })
       .from(shift)
       .where(eq(shift.id, p.shiftId))
-      .limit(1);
+      .limit(1).for('update');
     if (!sh) throw new Error('Shift not found (or not visible)');
 
     if(p.windows.length>120)throw new Error('Use at most 120 overtime windows for one shift.');

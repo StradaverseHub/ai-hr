@@ -10,11 +10,12 @@ const { router } = vi.hoisted(() => ({ router: { push: vi.fn() } }));
 vi.mock('next/navigation', () => ({ useRouter: () => router, usePathname: () => '/admin/attendance/schedule/group/edit' }));
 vi.mock('next-intl/server', () => ({ getTranslations: async (namespace: string) => createTranslator({ locale: 'en', messages, namespace: namespace as never, onError: e => { throw e; } }) }));
 vi.mock('../core/attendance-rule', () => ({ countEmploymentsInRule: async () => 0 }));
+vi.mock('../core/schedule-group-controls', () => ({scheduleGroupControls:async()=>({label:null,dutyRosterControl:false,revisions:[]})}));
 vi.mock('../core/roster', () => ({ listShiftsForTenant: async () => [] }));
-vi.mock('../packs/attendance/service', () => ({ getScheduleRotation: async () => ({ versions: [], revision: 'r1' }) }));
+vi.mock('../packs/attendance/service', () => ({ getScheduleRotation: async () => ({ versions: [],memberships:[], revision: 'r1' }) }));
 vi.mock('../app/admin/attendance-policy/rule-actions', () => ({createAttendanceRuleAction:vi.fn(),updateAttendanceRuleAction:vi.fn(),saveScheduleGroupGeneralAction:vi.fn()}));
 vi.mock('../components/schedule-rotation-editor', () => ({ ScheduleRotationEditor: () => null }));
-vi.mock('../app/admin/attendance/schedule/actions', () => ({ saveScheduleGroupAttendanceAction: vi.fn(), saveScheduleGroupOvertimeAction: vi.fn() }));
+vi.mock('../app/admin/attendance/schedule/actions', () => ({ saveScheduleGroupAttendanceAction: vi.fn(), saveScheduleGroupOvertimeAction: vi.fn(),saveScheduleGroupControlAction:vi.fn() }));
 
 import { RuleForm } from '../app/admin/attendance-policy/rules/rule-form';
 import { saveScheduleGroupGeneralAction } from '../app/admin/attendance-policy/rule-actions';

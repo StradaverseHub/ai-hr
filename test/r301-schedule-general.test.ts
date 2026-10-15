@@ -316,7 +316,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
-  ADMIN = adminCtx(b);
+  ADMIN = {...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};
   REFUSE_ADMIN = false;
   const [cb] = await owner.db
     .insert(schema.company)
