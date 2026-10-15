@@ -60,6 +60,10 @@ export async function listEmployeeMasterReports(ctx:SessionContext,scopeIds:read
 }
 export async function duplicateEmployeeMasterReport(ctx:SessionContext,scopeIds:readonly string[],id:string){const source=await getEmployeeMasterReport(ctx,scopeIds,id);return saveEmployeeMasterReport(ctx,scopeIds,{name:source.name+' (copy)',description:source.description,sharedRoleIds:[],spec:source.spec});}
 export async function deleteEmployeeMasterReport(ctx:SessionContext,id:string){return withTenant(ctx,async tx=>{const row=await visibleTx(tx,id);await editableTx(tx,ctx,row);await tx.delete(customReport).where(eq(customReport.id,id));await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'custom-report',aggregateId:id,eventType:'custom-report.deleted',actor:actorOf(ctx),payload:{datasetId:'master'}});});}
+async function masterAccessStampTx(tx:Tx,reportId:string|null,companyIds:readonly string[]){
+ const [row]=await tx.execute(sql`select app.employee_master_access_stamp(${reportId}::uuid,ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) as stamp`) as unknown as {stamp:string}[];
+ if(!row?.stamp||!/^[a-f0-9]{64}$/.test(row.stamp))throw new MasterReportAccessError();return row.stamp;
+}
 export type MasterRun={result:EmployeeMasterResult;spec:EmployeeMasterSpec;reportId:string|null;version:number|null;name:string;catalogue:Awaited<ReturnType<typeof masterReportFieldsTx>>;fingerprint:string;brand?:{content:string;mimeType:string}};
 export async function runEmployeeMasterReport(ctx:SessionContext,scopeIds:readonly string[],input:{id?:string;spec?:unknown;expectedVersion?:number;includeWithoutCompany?:boolean}):Promise<MasterRun>{
   return withTenant(ctx,async tx=>{
@@ -69,15 +73,17 @@ export async function runEmployeeMasterReport(ctx:SessionContext,scopeIds:readon
     const subjects=await employeeMasterSubjectsTx(tx,ctx,spec,fields,catalogue,{includeWithoutCompany:input.includeWithoutCompany});
     const logos=spec.pdf.logo&&spec.companyIds.length===1?await tx.select({content:companyLogo.content,mimeType:companyLogo.mimeType}).from(companyLogo).where(eq(companyLogo.companyId,spec.companyIds[0])).limit(1):[];
     const brand=logos[0]?{content:Buffer.from(logos[0].content).toString('base64'),mimeType:logos[0].mimeType}:undefined;
+    const accessStamp=await masterAccessStampTx(tx,row?.id??null,spec.companyIds);
     const result=runEmployeeMasterProjection(spec,fields,subjects,todayInKualaLumpur());
-    return {result,spec,reportId:row?.id??null,version:row?.version??null,name:row?.name??'Employee Master',catalogue,brand,fingerprint:digest({user:ctx.userId,roles:ctx.roles,grants:ctx.grants,companies:spec.companyIds,fields:catalogue.map(f=>f.id),spec,version:row?.version})};
+    return {result,spec,reportId:row?.id??null,version:row?.version??null,name:row?.name??'Employee Master',catalogue,brand,fingerprint:digest({accessStamp,user:ctx.userId,roles:ctx.roles,grants:ctx.grants,companies:spec.companyIds,fields:catalogue.map(f=>f.id),spec,version:row?.version})};
   },{readOnlySnapshot:true});
 }
 /** Re-authorize after generation before handing bytes/preview to the caller. No row cache crosses users. */
 export async function authorizeEmployeeMasterRun(ctx:SessionContext,scopeIds:readonly string[],run:MasterRun){return withTenant(ctx,async tx=>{
   const row=run.reportId?await visibleTx(tx,run.reportId):null;if(row&&row.version!==run.version)throw new Error('This report changed. Run it again.');
   const {spec,catalogue}=await checkedTx(tx,ctx,run.spec,scopeIds);
-  const fingerprint=digest({user:ctx.userId,roles:ctx.roles,grants:ctx.grants,companies:spec.companyIds,fields:catalogue.map(f=>f.id),spec,version:row?.version});
+  const accessStamp=await masterAccessStampTx(tx,row?.id??null,spec.companyIds);
+  const fingerprint=digest({accessStamp,user:ctx.userId,roles:ctx.roles,grants:ctx.grants,companies:spec.companyIds,fields:catalogue.map(f=>f.id),spec,version:row?.version});
   if(fingerprint!==run.fingerprint)throw new MasterReportAccessError();
 });}
 export async function recordEmployeeMasterRun(ctx:SessionContext,run:MasterRun,kind:'preview'|'run'|'export'|'delivery',format:'xlsx'|'csv'|'pdf'|null,outcome:'success'|'failed'|'skipped'='success'){

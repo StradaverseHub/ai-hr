@@ -40,6 +40,7 @@ export const JOB_KEYS = [
   // why it is registered here rather than left to a crontab line nobody can see from inside the app.
   // A card reading "Never run" on /admin/scheduled-actions is the visible form of "not installed".
   'entitlement.alarm',
+  'reports.employee-master.deliver',
 ] as const;
 export type JobKey = (typeof JOB_KEYS)[number];
 
@@ -67,6 +68,7 @@ export const JOBS: readonly JobDescriptor[] = [
   { key: 'usage.capture', i18nKey: 'usage-capture', schedule: 'Daily — 01:00' },
   { key: 'anomaly.sweep', i18nKey: 'anomaly-sweep', schedule: 'Daily — 02:30' },
   { key: 'entitlement.alarm', i18nKey: 'entitlement-alarm', schedule: 'Daily — 03:30' },
+  { key: 'reports.employee-master.deliver', i18nKey: 'reports-employee-master-deliver', schedule: 'Every minute — due report schedules' },
 ];
 
 /**

@@ -14953,6 +14953,10 @@
       "replacement-holidays-reconcile": {
         "name": "Replacement public holidays",
         "description": "Reconcile queued schedule and calendar changes and retain protected cases for HR review."
+      },
+      "reports-employee-master-deliver": {
+        "name": "Employee Master report delivery",
+        "description": "Checks due weekly and monthly reports, applies current recipient consent and access, and records delivery outcomes."
       }
     }
   },

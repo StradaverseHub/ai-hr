@@ -1,3 +1,4 @@
+import {employeeMasterFieldLabels} from '../lib/employee-master-field-labels';
 /** Report scheduling consumes the existing Notifications owner's explicit report-attachment consent.
  * The browser supplies exact identity pairs, never recipient authority, email addresses or consent.
  */
@@ -44,7 +45,7 @@ export function sameMasterConsentRevision(a:MasterConsentRevision,b:MasterConsen
 /** Managed sender supplies the frozen occurrence identity+revisions and still checks fresh provider
  * emailVerified before SMTP. A changed/withdrawn binding refuses; an uncertain SMTP result is never retried automatically.
  */
-export async function renderEmployeeMasterDelivery(recipientCtx:SessionContext,input:{reportId:string;expectedVersion:number;scopeIds:string[];recipientEmploymentId:string;consentRevision:MasterConsentRevision;scheduleId:string;scheduleRevision:string;reviewedDigest:string}){
+export async function renderEmployeeMasterDelivery(recipientCtx:SessionContext,input:{reportId:string;expectedVersion:number;scopeIds:string[];recipientEmploymentId:string;consentRevision:MasterConsentRevision;scheduleId:string;scheduleRevision:string;reviewedDigest:string;locale?:string}){
  if(!recipientCtx.userId)throw new MasterReportAccessError();
  const checkedRecipient=async()=>{
   const live=await withTenant(recipientCtx,async tx=>{const [schedule]=await tx.select().from(customReportSchedule).where(and(eq(customReportSchedule.id,input.scheduleId),eq(customReportSchedule.reportId,input.reportId))).limit(1);return schedule;});
@@ -56,7 +57,7 @@ export async function renderEmployeeMasterDelivery(recipientCtx:SessionContext,i
  const recipient=await checkedRecipient();
  if(input.scopeIds.some(id=>!recipient.scopeIds.includes(id)))throw new MasterReportAccessError();
  const run=await runEmployeeMasterReport(recipient.context,input.scopeIds,{id:input.reportId,expectedVersion:input.expectedVersion});
- const file=await serializeEmployeeMaster(run.result,run.spec,run.catalogue,run.name,'xlsx',run.brand);
+ const file=await serializeEmployeeMaster(run.result,run.spec,await employeeMasterFieldLabels(run.catalogue,input.locale??'en'),run.name,'xlsx',run.brand);
  const fresh=await checkedRecipient();await authorizeEmployeeMasterRun(fresh.context,input.scopeIds,run);
  // Successful SMTP, rather than generation, is delivery success. Managed worker records the outcome.
  return {...file,rowCount:run.result.totalRows,reportVersion:run.version!,scopeIds:run.spec.companyIds,run,consentRevision:input.consentRevision};

@@ -11,15 +11,13 @@ import { GENDERS, MARITAL_STATUSES, PERSON_GENDER_LABEL_KEYS, PERSON_MARITAL_LAB
 import { PERSONNEL_FIELDS, PERSONNEL_IMPORT_COMPATIBILITY, type PersonnelFieldDescriptor } from './personnel-field-registry';
 import { parseCsv } from './csv';
 
-export type PersonnelLabelResolver = (key: string, fallback: string) => string;
+import {personnelFieldLabel,type PersonnelLabelResolver} from './personnel-field-label';
+export {personnelFieldLabel,type PersonnelLabelResolver} from './personnel-field-label';
 export type PersonnelImportSheet = 'employee' | 'family' | 'qualification' | 'emergency';
 export const PERSONNEL_TEMPLATE_GENERATION = 2;
 /** Compatibility is deliberately version bounded, not a permanent alias accumulator. */
 export const PERSONNEL_LEGACY_HEADER_GENERATION = 1;
 const normalized = (value: string) => value.replace(/^\uFEFF/, '').trim().toLocaleLowerCase().replace(/\s+/g, ' ');
-export function personnelFieldLabel(field: PersonnelFieldDescriptor, resolve?: PersonnelLabelResolver): string {
-  return field.labelKey && resolve ? resolve(field.labelKey, field.label) : field.label;
-}
 export function personnelImportFields(sheet: PersonnelImportSheet): PersonnelFieldDescriptor[] {
   if(sheet==='qualification'||sheet==='emergency')return PERSONNEL_FIELDS.filter(field=>field.import.register?.kind===sheet).map(field=>({...field,import:{...field.import,column:field.import.register!.column,requiredCreate:field.import.register!.requiredCreate,writerField:field.import.register!.writerField,catalog:field.allowedValuesOwner?.startsWith('profile_option:')?field.allowedValuesOwner.slice('profile_option:'.length):field.import.catalog}})).sort((a,b)=>a.import.order-b.import.order);
   return PERSONNEL_FIELDS.filter(f => f.import.column && (sheet === 'family' ? f.import.section === 'family' : f.import.section !== 'family'))
@@ -41,8 +39,7 @@ export function personnelColumnLabel(column: string, sheet: PersonnelImportSheet
   if(column==='record_id')return resolve?.('people.import.registerRecordId','Record ID (existing records only)')??'Record ID (existing records only)';
   const field = personnelImportField(column,sheet);
   if (field) {
-    const base=personnelFieldLabel(field,resolve);
-    const label=field.import.qualifier ? `${base} — ${resolve?.(`people.import.field${field.import.qualifier==='unit'?'Unit':'Value'}`,field.import.qualifier==='unit'?'Unit':'Value')??(field.import.qualifier==='unit'?'Unit':'Value')}` : base;
+    const label=personnelFieldLabel(field,resolve);
     const collisions=personnelImportFields(sheet).filter(other => personnelFieldLabel(other,resolve) === label);
     return collisions.length > 1 ? `${label} (${field.section})` : label;
   }

@@ -14953,6 +14953,10 @@
       "replacement-holidays-reconcile": {
         "name": "Ngày nghỉ lễ bù",
         "description": "Đối chiếu thay đổi lịch làm việc và ngày lễ trong hàng đợi; giữ trường hợp được bảo vệ để nhân sự xem xét."
+      },
+      "reports-employee-master-deliver": {
+        "name": "Gửi báo cáo Hồ sơ nhân viên",
+        "description": "Kiểm tra báo cáo tuần và tháng đến hạn, áp dụng sự đồng ý và quyền truy cập hiện tại của người nhận, rồi ghi nhận kết quả gửi."
       }
     }
   },

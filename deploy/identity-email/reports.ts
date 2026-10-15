@@ -1,15 +1,18 @@
 /** Private report delivery orchestration. Preparation and identity come from server owners, never IPC. */
 import {z} from 'zod';
 import {masterDeliveryRequest,MASTER_EMAIL_ATTACHMENT_MAX_BYTES,type MasterDeliveryOutcome,type MasterDeliveryReason} from '../../lib/employee-master-delivery-model';
+import type {MasterRenderContext} from './render-context';
 import {notificationSmtpFailure} from '../../lib/notification-email-model';
-export type MasterDeliveryTarget={tenantId:string;ownerUserId:string;recipientUserId:string;recipientEmploymentId:string;reportId:string;reportVersion:number;scheduleId:string;scheduleRevision:string;reviewedDigest:string;subject:string;email:string;locale:string;consentAfterSequence:number;policyAfterSequence:number;consentUpdatedAt:string;policyUpdatedAt:string;consentVerifiedAt:string;ownerGrants:unknown;recipientGrants:unknown;ownerPersonId:string|null;recipientPersonId:string|null};
+export type MasterDeliveryTarget=MasterRenderContext&{subject:string;email:string};
 export type MasterPreparedAttachment={bytes:Uint8Array;filename:string;contentType:string;rowCount:number;scopeIds:string[]};
-export class MasterDeliveryPreparationError extends Error {constructor(public readonly reason:'notEligible'|'generationFailed'){super('Report preparation was refused.');}}
+export class MasterDeliveryPreparationError extends Error {constructor(public readonly reason:'notEligible'|'generationFailed'|'attachmentTooLarge'){super('Report preparation was refused.');}}
 export interface MasterDeliveryDependencies {
  ready():Promise<boolean>;
  target(id:string,token:string):Promise<MasterDeliveryTarget|null>;
  verifyRecipient(target:MasterDeliveryTarget):Promise<'verified'|'changed'|'unavailable'>;
- prepare(target:MasterDeliveryTarget):Promise<MasterPreparedAttachment>;
+ prepare(id:string,token:string,target:MasterDeliveryTarget):Promise<MasterPreparedAttachment>;
+ /** Canonical field/company/RLS authorization runs after generation, before the final provider check. */
+ authorize(id:string,token:string,target:MasterDeliveryTarget):Promise<boolean>;
  /** Rechecks the exact durable target, consent/schedule/report versions and both principals at send time. */
  start(id:string,token:string,target:MasterDeliveryTarget):Promise<boolean>;
  finish(id:string,token:string,outcome:MasterDeliveryOutcome,reason:MasterDeliveryReason|null,metadata?:{rowCount:number;scopeIds:string[]}):Promise<boolean>;
@@ -28,9 +31,10 @@ export function createMasterReportDeliveryService(d:MasterDeliveryDependencies) 
   if(!z.email().max(320).regex(/^[\x21-\x7e]+$/).safeParse(target.email).success)return finish('skipped','notEligible');
   const first=await d.verifyRecipient(target);if(first==='unavailable')return {outcome:'unavailable' as const};if(first!=='verified')return finish('skipped','recipientChanged');
   let attachment:MasterPreparedAttachment;
-  try{attachment=await d.prepare(target);}catch(error){return error instanceof MasterDeliveryPreparationError&&error.reason==='notEligible'?finish('skipped','notEligible'):finish('failed','generationFailed');}
+  try{attachment=await d.prepare(id,token,target);}catch(error){return error instanceof MasterDeliveryPreparationError&&error.reason==='notEligible'?finish('skipped','notEligible'):finish('failed',error instanceof MasterDeliveryPreparationError&&error.reason==='attachmentTooLarge'?'attachmentTooLarge':'generationFailed');}
   if(attachment.bytes.byteLength>MASTER_EMAIL_ATTACHMENT_MAX_BYTES)return finish('failed','attachmentTooLarge');
-  if(!attachment.bytes.byteLength||attachment.contentType!=='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'||!/^[-a-zA-Z0-9_.]{1,150}\.xlsx$/.test(attachment.filename)||!Number.isSafeInteger(attachment.rowCount)||attachment.rowCount<0||attachment.rowCount>50000||attachment.scopeIds.length>100||attachment.scopeIds.some(id=>!z.uuid().safeParse(id).success))return finish('failed','generationFailed');
+  if(!attachment.bytes.byteLength||attachment.contentType!=='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'||!/^[-a-zA-Z0-9_.]{1,150}\.xlsx$/.test(attachment.filename)||!Number.isSafeInteger(attachment.rowCount)||attachment.rowCount<0||attachment.rowCount>50000||attachment.scopeIds.length>100||attachment.scopeIds.some(id=>!z.uuid().safeParse(id).success)||JSON.stringify([...attachment.scopeIds].sort())!==JSON.stringify([...target.companyIds].sort()))return finish('failed','generationFailed');
+  if(!await d.authorize(id,token,target))return finish('skipped','notEligible');
   // Recipient verification can change during workbook generation. Check immediately before claiming SMTP.
   const fresh=await d.verifyRecipient(target);if(fresh==='unavailable')return {outcome:'unavailable' as const};if(fresh!=='verified')return finish('skipped','recipientChanged');
   if(!await d.start(id,token,target))return {outcome:'busy' as const};

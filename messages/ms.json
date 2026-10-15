@@ -14953,6 +14953,10 @@
       "replacement-holidays-reconcile": {
         "name": "Cuti umum gantian",
         "description": "Selaraskan perubahan jadual dan kalendar dalam baris gilir serta kekalkan kes dilindungi untuk semakan HR."
+      },
+      "reports-employee-master-deliver": {
+        "name": "Penghantaran laporan Induk Pekerja",
+        "description": "Menyemak laporan mingguan dan bulanan yang tiba masanya, menggunakan persetujuan serta akses semasa penerima, dan merekodkan hasil penghantaran."
       }
     }
   },

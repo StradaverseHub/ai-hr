@@ -14953,6 +14953,10 @@
       "replacement-holidays-reconcile": {
         "name": "补替公共假日",
         "description": "核对排班与日历变更队列，并将受保护情况保留供人事审核。"
+      },
+      "reports-employee-master-deliver": {
+        "name": "员工主档报表发送",
+        "description": "检查到期的每周及每月报表，核验收件人当前同意和权限，并记录发送结果。"
       }
     }
   },

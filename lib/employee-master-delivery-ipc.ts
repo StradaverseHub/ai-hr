@@ -4,7 +4,7 @@ import {masterDeliveryRequest,type MasterDeliveryRequest} from './employee-maste
 export function employeeMasterDeliveryIpc<T>(input:MasterDeliveryRequest):Promise<T> {
  const body=masterDeliveryRequest.parse(input);
  return new Promise((resolve,reject)=>{
-  const req=request({socketPath:process.env.IDENTITY_EMAIL_SOCKET||'/run/aihr-identity-email.sock',path:'/v1/reports',method:'POST',headers:{'content-type':'application/json'},timeout:120_000},res=>{
+  const req=request({socketPath:process.env.IDENTITY_EMAIL_SOCKET||'/run/aihr-identity-email.sock',path:'/v1/reports',method:'POST',headers:{'content-type':'application/json'},timeout:180_000},res=>{
    const chunks:Buffer[]=[];let size=0;
    res.on('data',(chunk:Buffer)=>{size+=chunk.length;if(size>4096)res.destroy(new Error('Report delivery response is invalid.'));else chunks.push(chunk);});
    res.on('error',reject);res.on('end',()=>{try{if(res.statusCode!==200)throw new Error();resolve(JSON.parse(Buffer.concat(chunks).toString()) as T);}catch{reject(new Error('Managed report delivery is unavailable.'));}});
