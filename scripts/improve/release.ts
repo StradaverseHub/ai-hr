@@ -85,6 +85,12 @@ export function deploymentRsyncArgs(source: string, destination = `${USER}@${HOS
     '--exclude', 'node_modules', '--exclude', '.next', '--exclude', '.git', '--exclude', '.env*',
     '--exclude', '.turbo', '--exclude', 'coverage', '--exclude', '.claude', '--exclude', 'graphify-out',
     '--exclude', '.vitest-attachments',
+    // Native builds ship independently. Gradle intermediates can contain signing configuration.
+    '--exclude', '/mobile/android/', '--exclude', '/mobile/ios/',
+    '--exclude', '/mobile/dist/', '--exclude', '/mobile/builds/', '--exclude', '/mobile/.expo/',
+    '--exclude', '/mobile/credentials.json', '--exclude', '/mobile/*.p8',
+    '--exclude', '/mobile/*.key', '--exclude', '/mobile/*.pem', '--exclude', '/mobile/*.p12',
+    '--exclude', '/mobile/*.jks', '--exclude', '/mobile/*.keystore', '--exclude', '/mobile/*.mobileprovision',
     '--exclude', '/docs/HANDOFF-HISTORY.md', '--exclude', '/docs/adr/',
     source.replace(/\/?$/, '/'), destination,
   ];
