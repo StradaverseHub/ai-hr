@@ -1151,6 +1151,7 @@
         "qualification": "Kelayakan"
       },
       "employmentInfo": {
+        "finalConfirmationDate": "Tarikh Pengesahan Akhir",
         "title": "Maklumat Pekerjaan",
         "datesGroup": "Tarikh Pekerjaan",
         "orgGroup": "Organisasi",

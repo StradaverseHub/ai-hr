@@ -34,6 +34,9 @@ import {
   ME_WITHHELD_COLUMNS,
 } from '../app/me/visible-fields';
 
+import { PERSONNEL_FIELDS } from '../lib/personnel-field-registry';
+import { personnelRenderedLabelKeys } from './helpers/personnel-form-source';
+
 const root = path.resolve(__dirname, '..');
 const read = (p: string) => fs.readFileSync(path.join(root, p), 'utf8');
 
@@ -96,6 +99,10 @@ const PERSONNEL_COMPONENTS = [
   'components/address-fields.tsx',
 ];
 const PERSONNEL_SRC = PERSONNEL_PAGE + PERSONNEL_COMPONENTS.map(read).join('\n');
+const PERSONNEL_ADAPTER_LABELS = new Set([
+  ...personnelRenderedLabelKeys('page.tsx',PERSONNEL_PAGE,PERSONNEL_FIELDS),
+  ...PERSONNEL_COMPONENTS.flatMap(file=>[...personnelRenderedLabelKeys(file,read(file),PERSONNEL_FIELDS)]),
+]);
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 const CATALOGS = Object.fromEntries(
@@ -134,7 +141,7 @@ describe('r259 — My Profile carries the Personnel record’s shape', () => {
   });
 
   it('names every tab, section and field with PERSONNEL’S OWN key — not a second wording', () => {
-    const notOnPersonnel = ALL_MANIFEST_KEYS.filter((k) => !renders(PERSONNEL_SRC, k));
+    const notOnPersonnel = ALL_MANIFEST_KEYS.filter((k) => !renders(PERSONNEL_SRC, k) && !PERSONNEL_ADAPTER_LABELS.has(k));
     expect(
       notOnPersonnel,
       `these people.detail keys are named by My Profile but rendered nowhere on the Personnel screen — ` +
@@ -171,7 +178,7 @@ describe('r259 — My Profile carries the Personnel record’s shape', () => {
      * When this fails: put the field on My Profile if the employee may see it, or add it to the map with
      * a sentence saying why not. Do not delete the case.
      */
-    const labelled = new Set<string>();
+    const labelled = new Set<string>(PERSONNEL_ADAPTER_LABELS);
     for (const m of PERSONNEL_SRC.matchAll(/label=\{t\(\s*'([A-Za-z0-9_.]+)'\s*\)\}/g)) labelled.add(m[1]);
     // components/pay-structure-fields.tsx labels its three selects with a bare <span> rather than the
     // shared `Field` component, so the pattern above cannot see them. Named here rather than by widening

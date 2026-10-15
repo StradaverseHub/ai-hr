@@ -1151,6 +1151,7 @@
         "qualification": "学历资历"
       },
       "employmentInfo": {
+        "finalConfirmationDate": "最终转正日期",
         "title": "雇佣信息",
         "datesGroup": "雇佣日期",
         "orgGroup": "组织",

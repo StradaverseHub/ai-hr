@@ -1151,6 +1151,7 @@
         "qualification": "คุณวุฒิ"
       },
       "employmentInfo": {
+        "finalConfirmationDate": "วันที่ยืนยันขั้นสุดท้าย",
         "title": "ข้อมูลการจ้างงาน",
         "datesGroup": "วันที่การจ้างงาน",
         "orgGroup": "องค์กร",

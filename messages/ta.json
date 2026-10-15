@@ -1151,6 +1151,7 @@
         "qualification": "கல்வித் தகுதி"
       },
       "employmentInfo": {
+        "finalConfirmationDate": "இறுதி உறுதிப்படுத்தல் தேதி",
         "title": "வேலைவாய்ப்பு தகவல்",
         "datesGroup": "வேலைவாய்ப்பு தேதிகள்",
         "orgGroup": "அமைப்பு",

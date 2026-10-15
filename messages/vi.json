@@ -1151,6 +1151,7 @@
         "qualification": "Bằng cấp"
       },
       "employmentInfo": {
+        "finalConfirmationDate": "Ngày xác nhận cuối cùng",
         "title": "Thông tin việc làm",
         "datesGroup": "Ngày việc làm",
         "orgGroup": "Tổ chức",

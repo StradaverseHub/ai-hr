@@ -1151,6 +1151,7 @@
         "qualification": "Qualification"
       },
       "employmentInfo": {
+        "finalConfirmationDate": "Final Confirmation Date",
         "title": "Employment Information",
         "datesGroup": "Employment Dates",
         "orgGroup": "Organisation",
