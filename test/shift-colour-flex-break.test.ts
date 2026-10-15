@@ -352,8 +352,9 @@ describe('6340aecb — the shift colour', () => {
     expect((await shiftRow(coloured.id)).color).toBe('blue');
   });
 
-  it('refuses a colour outside the closed palette rather than storing it', async () => {
-    await expect(dayShift({ color: '#ff0000' })).rejects.toThrow(/Invalid shift colour/);
+  it('stores canonical HEX and refuses arbitrary CSS', async () => {
+    const sh=await dayShift({color:'#ff0000'});expect((await shiftRow(sh.id)).color).toBe('#FF0000');
+    await expect(dayShift({color:'url(x)'})).rejects.toThrow(/HEX colour/);
   });
 
   it('a blank colour clears back to none (the “No colour” option is a real choice)', async () => {

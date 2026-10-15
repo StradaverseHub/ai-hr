@@ -3186,7 +3186,8 @@
       "otBreakNoneCliff": "ไม่มีการหักเวลาพัก — ชั่วโมงทำงานของวันนั้นไม่ถึงเกณฑ์พัก {minutes}",
       "otBreakNoneSpanned": "ไม่มีการหักเวลาพัก — ช่วงเวลาที่บันทึกไม่คร่อมช่วงพักของกะ",
       "otBasisShiftWindows": "ล่วงเวลามาจากตารางล่วงเวลาของกะเอง ({count} ช่วง): {minutes}",
-      "otShiftWindowRow": "ช่วง {label}: มี {raw} อยู่ภายใน นับเป็น {minutes}"
+      "otShiftWindowRow": "ช่วง {label}: มี {raw} อยู่ภายใน นับเป็น {minutes}",
+      "exceptionEnabled": "ยกเว้นการตัดสินเข้างานสายและออกก่อนเวลา รวมถึงการหัก ตามฉบับแก้ไขของกลุ่มตารางงานที่มีผล {from} นาทีที่วัดได้ยังคงบันทึกไว้"
     },
     "recompute": {
       "entryLabel": "คำนวณใหม่",
@@ -3518,7 +3519,8 @@
       "noApplications": "ไม่มีคำขอแก้ไขความผิดปกติของพนักงานในวันนี้",
       "detected": "ตรวจพบ: {type} เป็นผลการคำนวณแยกจากคำขอที่ส่ง",
       "saveFailed": "ยืนยันการบันทึกไม่ได้ โปรดโหลดวันนี้ใหม่ก่อนลองอีกครั้ง"
-    }
+    },
+    "statusExempt": "ได้รับยกเว้น"
   },
   "org": {
     "title": "ผังองค์กร",
@@ -15897,7 +15899,9 @@
     "occupation": "ตำแหน่ง",
     "cancel": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "saving": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
-    "attentionCount": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]"
+    "attentionCount": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
+    "status_exempt": "ได้รับยกเว้น",
+    "exemptCode": "EX"
   },
   "lifecycle": {
     "title": "การปฐมนิเทศและไอที",

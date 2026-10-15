@@ -98,8 +98,8 @@ export type ShiftLite = {
   id: string;
   code: string | null;
   name: string;
-  startTime: string;
-  endTime: string;
+  startTime: string | null;
+  endTime: string | null;
   color?: string | null;
 };
 /** a57f0584 rev 2 — `department` and `company` are NOT on this type any more. The grid stopped drawing
@@ -127,7 +127,7 @@ const AUTO_SHIFT_COLORS = [
   'bg-violet-100 text-violet-800 dark:bg-violet-500/20 dark:text-violet-300',
 ];
 
-const hhmm = (t: string) => t.slice(0, 5);
+const hhmm = (t:string|null) => t?.slice(0,5)??'—';
 
 /**
  * The pinned block. Widths are explicit because sticky columns need a known left offset each, and THIS

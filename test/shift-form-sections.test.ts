@@ -29,6 +29,8 @@ const ACTIONS = read('app/admin/attendance/shift-actions.ts');
 const FORM = read('app/admin/attendance/shift-form.tsx');
 const TIME_FIELDS = read('components/shift-time-fields.tsx');
 const OT_FIELDS = read('components/shift-ot-window-fields.tsx');
+const COLOR_FIELDS=read('components/shift-color-picker.tsx');
+const PAY_FORM=read('app/admin/attendance-policy/shift-pay-settings.tsx');
 
 /**
  * ⚠️ COMMENTS STRIPPED, AND A MUTATION IS WHY.
@@ -43,7 +45,7 @@ const stripComments = (src: string) =>
 
 /** Everything the form POSTS from, in one string — Shift Information + the closed details live in FORM,
  *  Working Time + Breaks live in TIME_FIELDS, the Overtime grid in OT_FIELDS. */
-const RENDERED = stripComments(FORM + TIME_FIELDS + OT_FIELDS);
+const RENDERED = stripComments(FORM + TIME_FIELDS + COLOR_FIELDS + OT_FIELDS + PAY_FORM);
 
 /**
  * The form fields shiftFields() reads off the POST. Collected from the call shapes rather than from a
@@ -107,11 +109,13 @@ describe('r429 (f6819e19) — the redesigned Shift form still posts every field 
     expect(TIME_FIELDS, 'the per-row Flexible tick must render').toContain("t('breakFlexibleLabel')");
   });
 
-  it('the overtime schedule stays MOUNTED behind its disclosure (a <details>, never a conditional)', () => {
-    // A conditional render would unmount the grid and the next save would delete every window.
-    expect(FORM).toContain('<details');
-    expect(FORM).not.toMatch(/\{\s*showOtSchedule\s*&&/);
-    expect(OT_FIELDS).toContain('name="otWindows"');
+  it('the pay editor stays mounted at its dedicated destination, while basic shift saves omit pay fields',()=>{
+    expect(stripComments(FORM)).not.toContain('<ShiftOtWindowFields');
+    expect(PAY_FORM).toContain('<ShiftOtWindowFields');expect(PAY_FORM).toContain('saveShiftPayAction');
+    expect(read('app/admin/attendance/settings/work-schedule-overtime/page.tsx')).toContain('<ShiftPaySettings');
+    const start=ACTIONS.indexOf('function shiftFields('),end=ACTIONS.indexOf('const errTarget',start);expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start);
+    const fields=stripComments(ACTIONS.slice(start,end));expect(fields.length).toBeGreaterThan(1000);
+    expect(fields).not.toContain('differential');expect(fields).not.toContain('otWindows');expect(OT_FIELDS).toContain('name="otWindows"');
   });
 });
 
@@ -121,7 +125,7 @@ describe('r429 (f6819e19) — the screen the plan asked for', () => {
     expect(FORM).not.toContain('max-w-3xl');
   });
 
-  it('renders the three numbered sections plus the closed fourth', () => {
+  it('renders three basic sections and links to the separate pay editor', () => {
     expect(FORM).toContain("t('shiftInformationLegend')");
     expect(TIME_FIELDS).toContain("t('workingTimeLegend')");
     expect(TIME_FIELDS).toContain("t('breaksLabel')");
@@ -200,9 +204,11 @@ describe('r429 (f6819e19) — every message key the shift screen asks for exists
   }
 
   for (const [label, src, least] of [
-    ['app/admin/attendance/shift-form.tsx', FORM, 30],
+    ['app/admin/attendance/shift-form.tsx', FORM, 18],
     ['components/shift-time-fields.tsx', TIME_FIELDS, 40],
     ['components/shift-ot-window-fields.tsx', OT_FIELDS, 5],
+    ['components/shift-color-picker.tsx',COLOR_FIELDS,10],
+    ['app/admin/attendance-policy/shift-pay-settings.tsx',PAY_FORM,8],
   ] as const) {
     it(`${label} — every key resolves in the namespace its own translator is bound to`, () => {
       const asked = askedFor(src);

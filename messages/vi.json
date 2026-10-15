@@ -3186,7 +3186,8 @@
       "otBreakNoneCliff": "Không trừ giờ nghỉ — ngày làm chưa đủ dài để đạt mức nghỉ {minutes}.",
       "otBreakNoneSpanned": "Không trừ giờ nghỉ — thời gian chấm công không bắc qua khung giờ nghỉ của ca.",
       "otBasisShiftWindows": "Tăng ca đến từ lịch tăng ca của chính ca làm ({count} khung): {minutes}.",
-      "otShiftWindowRow": "Khung {label}: có {raw} nằm trong đó, được tính là {minutes}."
+      "otShiftWindowRow": "Khung {label}: có {raw} nằm trong đó, được tính là {minutes}.",
+      "exceptionEnabled": "Miễn đánh giá Vào muộn và Ra sớm cùng các khoản khấu trừ theo phiên bản nhóm lịch có hiệu lực từ {from}. Số phút đo được vẫn được ghi nhận."
     },
     "recompute": {
       "entryLabel": "Tính lại",
@@ -3518,7 +3519,8 @@
       "noApplications": "Không có yêu cầu bất thường cho nhân viên và ngày này.",
       "detected": "Phát hiện: {type}. Đây là trạng thái tính toán, tách biệt với yêu cầu đã gửi.",
       "saveFailed": "Không thể xác nhận lưu. Tải lại ngày trước khi thử lại."
-    }
+    },
+    "statusExempt": "Được miễn"
   },
   "org": {
     "title": "Sơ đồ tổ chức",
@@ -15897,7 +15899,9 @@
     "occupation": "Chức danh",
     "cancel": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "saving": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
-    "attentionCount": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]"
+    "attentionCount": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
+    "status_exempt": "Được miễn",
+    "exemptCode": "EX"
   },
   "lifecycle": {
     "title": "Tiếp nhận & IT",

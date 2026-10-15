@@ -14,7 +14,7 @@
  * Substrate: every write appends a DomainEvent (attendance-rule.created / .updated / .deleted). Reads are
  * documented skips.
  */
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 // 07ebd04d (r331) — the group's WORKING WEEK. `weekPatternWorkingDayCount` is the ONE definition of
 // "how many days does this week actually schedule" (core/week-pattern.ts, a leaf module with no imports
 // precisely so this service can use it without a cycle through core/attendance.ts).
@@ -707,7 +707,7 @@ export function createAttendanceRule(ctx: SessionContext, p: AttendanceRuleInput
       eventType: 'attendance-rule.created',
       actor: actorOf(ctx),
       payload: {
-        name: n.name,
+        name: n.name,label:n.label??null,
         status: n.status,
         otRowCount: n.otRows.length,
         applyToEarlyOt: n.applyToEarlyOt,
@@ -874,7 +874,7 @@ async function updateAttendanceRuleTx(ctx: SessionContext, tx: Tx, p: { ruleId: 
     eventType: 'attendance-rule.updated',
     actor: actorOf(ctx),
     payload: {
-      name: n.name,
+      name: n.name,label:n.label,
       status: n.status,
       otRowCount: n.otRows.length,
       applyToEarlyOt: n.applyToEarlyOt,
@@ -1018,8 +1018,6 @@ export function setAttendanceRuleStatus(
   ctx: SessionContext,
   p: { ruleId: string; status: 'active' | 'inactive' },
 ): Promise<{ id: string }> {
-  const label=p.label===undefined?undefined:p.label?.trim()||null;
-  if(label && (label.length>80 || /[\x00-\x1F\x7F]/.test(label)))throw new Error('Schedule Group Label must contain at most 80 readable characters.');
   const status = p.status === 'inactive' ? 'inactive' : 'active';
   return withTenant(ctx, async (tx) => {
     const [rule] = await tx
@@ -1064,6 +1062,10 @@ export function deleteAttendanceRule(ctx: SessionContext, p: { ruleId: string })
     if (rule.isDefault) throw new StandardRuleUndeletableError();
     const [rotation] = await tx.select({id:attendanceRotation.id}).from(attendanceRotation).where(eq(attendanceRotation.ruleId,p.ruleId)).limit(1);
     if (rotation) throw new Error('This Schedule Group has saved rotation history. Mark it inactive instead of deleting it.');
+    const [revision]=await tx.select({id:attendanceExceptionRevision.id}).from(attendanceExceptionRevision).where(eq(attendanceExceptionRevision.ruleId,p.ruleId)).limit(1);
+    if(revision)throw new Error('This Schedule Group has exception history. Mark it inactive instead of deleting it.');
+    const [member]=await tx.select({id:employment.id}).from(employment).where(eq(employment.attendanceRuleId,p.ruleId)).limit(1);
+    if(member)throw new Error('Employees are assigned to this Schedule Group. Reassign them before deleting it.');
     // ad52212d round 2 — the NAMES, not just "is there one". Deliberately UNCAPPED: the message quotes
     // three and counts the rest, and it can only count the rest honestly if the query returned them. The
     // shift library is an admin-authored, tenant-wide template set (tens of rows), and this runs once on a
@@ -1071,7 +1073,7 @@ export function deleteAttendanceRule(ctx: SessionContext, p: { ruleId: string })
     const inUse = await tx
       .select({ name: shift.name })
       .from(shift)
-      .where(eq(shift.ruleId, p.ruleId))
+      .where(or(eq(shift.ruleId,p.ruleId),sql`EXISTS(SELECT 1 FROM attendance_rule_shift m WHERE m.shift_id=${shift.id} AND m.rule_id=${p.ruleId})`))
       .orderBy(asc(shift.name));
     if (inUse.length > 0) throw new AttendanceRuleInUseError(inUse.map((r) => r.name));
     await tx.delete(attendanceRule).where(eq(attendanceRule.id, p.ruleId));

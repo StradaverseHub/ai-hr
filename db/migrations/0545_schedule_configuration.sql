@@ -48,4 +48,4 @@ CREATE TRIGGER attendance_exception_revision_reference BEFORE INSERT OR UPDATE O
 ALTER TABLE shift ALTER COLUMN start_time DROP NOT NULL;--> statement-breakpoint
 ALTER TABLE shift ALTER COLUMN end_time DROP NOT NULL;--> statement-breakpoint
 ALTER TABLE shift ADD CONSTRAINT shift_fixed_anchors_required CHECK(type='full_flexi' OR (start_time IS NOT NULL AND end_time IS NOT NULL));--> statement-breakpoint
-ALTER TABLE shift ADD CONSTRAINT shift_full_flexi_duration_required CHECK(type<>'full_flexi' OR (normal_minutes_override BETWEEN 1 AND 1440));
+ALTER TABLE shift ADD CONSTRAINT shift_full_flexi_duration_required CHECK(type<>'full_flexi' OR (normal_minutes_override IS NOT NULL AND normal_minutes_override BETWEEN 1 AND 1440));

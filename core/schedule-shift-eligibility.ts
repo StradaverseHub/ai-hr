@@ -90,6 +90,7 @@ export async function assertShiftsAllowedForEmploymentsTx(
   if (groupOf.size === 0) return;
 
   const ruleIds = [...new Set(groupOf.values())];
+  await tx.select({id:attendanceRule.id}).from(attendanceRule).where(inArray(attendanceRule.id,ruleIds)).orderBy(asc(attendanceRule.id)).for('update');
   const attemptedShiftIds = [...new Set(real.filter((p) => groupOf.has(p.employmentId)).map((p) => p.shiftId))];
 
   const membership=await tx.select().from(attendanceRuleShift).where(inArray(attendanceRuleShift.ruleId,ruleIds));

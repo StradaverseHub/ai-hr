@@ -136,6 +136,7 @@ export default async function IndividualAttendanceDayPage({
   const statusText: Record<AttendanceStatus, string> = {
     present: t('statusPresent'),
     absent: t('statusAbsent'),
+    exempt: t('statusExempt'),
     rest: t('statusRest'),
     off: t('statusOff'),
     ph: t('statusPh'),

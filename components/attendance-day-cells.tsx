@@ -15,7 +15,7 @@ import { fmtMin } from '@/components/attendance-format';
  * status/flag, and imports nothing from the attendance pack. core/attendance-derive is a declared pack
  * boundary (test/attendance-pack-drift.test.ts); the page derives, this draws.
  */
-export type DayStatus = 'present' | 'absent' | 'rest' | 'off' | 'ph' | 'on_leave';
+export type DayStatus = 'exempt' | 'present' | 'absent' | 'rest' | 'off' | 'ph' | 'on_leave';
 export type DayFlag = 'late' | 'under' | 'odd';
 
 export type DayCellLabels = {
@@ -35,6 +35,7 @@ export function dayCellLabels(translate: (key: never) => string): DayCellLabels 
     statusText: {
       present: t('statusPresent'),
       absent: t('statusAbsent'),
+      exempt: t('statusExempt'),
       rest: t('statusRest'),
       off: t('statusOff'),
       ph: t('statusPh'),

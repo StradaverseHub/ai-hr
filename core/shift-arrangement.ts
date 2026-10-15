@@ -189,7 +189,7 @@ export async function assignEmployeeShiftDated(
     // Shift arrangement form would leave roster generation, the roster brush and the profile backup shift
     // able to put the same employee on a shift their Schedule Group forbids. One definition, four callers
     // — see core/roster.ts assertShiftsAllowedForEmploymentsTx. No group ⇒ no-op.
-    await assertShiftsAllowedForEmploymentsTx(tx, [{ employmentId: p.employmentId, shiftId }]);
+    await assertShiftsAllowedForEmploymentsTx(tx, [{ employmentId: p.employmentId, shiftId, shiftDate:effectiveFrom }]);
 
     const rows = await arrangementsForEmploymentTx(tx, p.employmentId);
     const last: ArrangementPeriod | undefined = rows[rows.length - 1];

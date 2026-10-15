@@ -4,8 +4,9 @@ import type messages from '@/messages/en.json';
 import {formatDays} from '@/lib/day-format';
 export type MyTeamMessageKey=keyof typeof messages.myTeam;
 export type MyTeamTranslate=(key:MyTeamMessageKey,values?:Record<string,string|number>)=>string;
-export type MyTeamCellStatus='present'|'late'|'absent'|'approved_leave'|'off'|'upcoming'|'unavailable';
+export type MyTeamCellStatus='exempt'|'present'|'late'|'absent'|'approved_leave'|'off'|'upcoming'|'unavailable';
 export const STATUS_CLASSES:Record<MyTeamCellStatus,string>={
+ exempt:'bg-muted text-muted-foreground',
  present:'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200',
  late:'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200',
  absent:'bg-rose-50 text-rose-800 dark:bg-rose-950/40 dark:text-rose-200',
@@ -35,6 +36,7 @@ function attendanceText(day:MyTeamDay,locale:string,t:MyTeamTranslate):string|nu
  if(a.checkInAt&&(a.flag==='late'||a.status==='late'))return t('lateIn',{time});
  if(a.checkInAt&&a.checkOutAt)return `${time}–${out}`;
  if(a.status==='absent')return t('status_absent');
+ if(a.status==='exempt')return t('status_exempt');
  if(a.status==='rest')return t('restCode');
  if(a.status==='off')return t('offCode');
  if(a.status==='on_leave')return t('status_approved_leave');
@@ -47,6 +49,7 @@ export function visualStatus(day:MyTeamDay,today:string):MyTeamCellStatus{
  if(day.attendance){
   if(day.attendance.flag==='odd'||day.attendance.flag==='late'||day.attendance.status==='late')return 'late';
   if(day.attendance.status==='absent')return 'absent';
+  if(day.attendance.status==='exempt')return 'exempt';
   if(day.attendance.status==='present'||day.attendance.attendanceId)return 'present';
  }
  if(day.leave.some(leave=>leave.status==='approved'))return 'approved_leave';
@@ -70,7 +73,7 @@ export function formatMyTeamCell(day:MyTeamDay,layers:MyTeamLayers,locale:string
  let compact='';
  if(leaveTexts.length)compact=day.leave.map(leave=>`${leave.code}${leave.status==='pending'?'?':''}`).join('/');
  else if(layers.attendance&&day.date<=options.today&&day.attendance){
-  if(day.attendance.flag==='odd')compact='!';else if(day.attendance.flag==='late'||day.attendance.status==='late')compact=t('lateCode');else if(day.attendance.status==='absent')compact=t('absentCode');
+  if(day.attendance.flag==='odd')compact='!';else if(day.attendance.flag==='late'||day.attendance.status==='late')compact=t('lateCode');else if(day.attendance.status==='absent')compact=t('absentCode');else if(day.attendance.status==='exempt')compact=t('exemptCode');
  }
  if(!compact&&layers.roster&&day.roster)compact=day.roster.kind==='off'?'·':day.roster.isRestDay?t('restCode'):day.roster.code??'—';
  const details=[day.roster?.kind==='off'?t('offCode'):day.roster?.code??(day.roster?.isRestDay?t('restCode'):null),day.date<=options.today?attendanceText(day,locale,t):null,t(`status_${status}`),...day.leave.map(leave=>leaveText(leave,t))].filter(Boolean).join(' · ')||t('status_unavailable');

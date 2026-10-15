@@ -1,12 +1,13 @@
+import { liveArrangementsTx, pickArrangementOn } from './shift-arrangement-resolve';
 /** Canonical group controls. Exception revisions are immutable and forward dated. */
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, lte, inArray, sql } from 'drizzle-orm';
 import { withTenant, type Tx, type SessionContext } from '../db/client';
 import { attendanceExceptionRevision, attendanceRule, employment, shift, rosterAssignment } from '../db/schema';
 import { actorOf, appendEvent } from '../db/events';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { isAdmin } from '../lib/authz';
 import { lockPayrollForAttendanceChange, markPayrollForAttendanceChange } from '../packs/payroll/service';
-export function scheduleGroupDisplayName(group:{name:string;label?:string|null}):string { return group.label?.trim() || group.name; }
+export function scheduleGroupDisplayName(group:{name:string;label?:string|null}):string { return group.label?.trim()&&group.label.trim()!==group.name?`${group.label.trim()} — ${group.name}`:group.name; }
 export async function exceptionLookupTx(tx:Tx) {
  const rows=await tx.select().from(attendanceExceptionRevision).orderBy(asc(attendanceExceptionRevision.ruleId),asc(attendanceExceptionRevision.effectiveFrom));
  return (ruleId:string|null|undefined,date:string)=>{
@@ -14,6 +15,30 @@ export async function exceptionLookupTx(tx:Tx) {
   return {enabled:applicable?.enabled??false,revisionId:applicable?.id??null,effectiveFrom:applicable?.effectiveFrom??null};
  };
 }
+/** Same calculation precedence as scheduleFor: explicit employment group, dated shift default, Standard. */
+export async function scheduleGroupLookupTx(tx:Tx,ids:readonly string[],from:string,to:string){
+ const employees=ids.length?await tx.select({id:employment.id,groupId:employment.attendanceRuleId,defaultShiftId:employment.defaultShiftId}).from(employment).where(inArray(employment.id,[...ids])):[];
+ const roster=ids.length?await tx.select({employmentId:rosterAssignment.employmentId,date:rosterAssignment.shiftDate,shiftId:rosterAssignment.shiftId,isRestDay:rosterAssignment.isRestDay}).from(rosterAssignment).where(and(inArray(rosterAssignment.employmentId,[...ids]),gte(rosterAssignment.shiftDate,from),lte(rosterAssignment.shiftDate,to))):[];
+ const arrangements=await liveArrangementsTx(tx,[...ids]);
+ const shiftIds=[...new Set([...employees.flatMap(e=>e.defaultShiftId?[e.defaultShiftId]:[]),...roster.flatMap(r=>r.shiftId?[r.shiftId]:[]),...[...arrangements.values()].flatMap(rows=>rows.map(r=>r.shiftId))])];
+ const shifts=shiftIds.length?await tx.select({id:shift.id,ruleId:shift.ruleId}).from(shift).where(inArray(shift.id,shiftIds)):[];
+ const [standard]=await tx.select({id:attendanceRule.id}).from(attendanceRule).where(eq(attendanceRule.isDefault,true)).limit(1);
+ return (employmentId:string,date:string)=>{
+  const e=employees.find(e=>e.id===employmentId);if(!e)return null;
+  if(e.groupId)return e.groupId;
+  const assigned=roster.find(r=>r.employmentId===employmentId&&r.date===date);
+  // An explicit rest day has no shift rule and resolves Standard (matching the policy branch).
+  if(assigned)return assigned.shiftId?shifts.find(sh=>sh.id===assigned.shiftId)?.ruleId??standard?.id??null:standard?.id??null;
+  const periods=arrangements.get(employmentId)??[];const dated=pickArrangementOn(periods,date);
+  const shiftId=dated?.shiftId??(periods.length?null:e.defaultShiftId);
+  return shifts.find(sh=>sh.id===shiftId)?.ruleId??standard?.id??null;
+ };
+}
+export async function exceptionDecisionsTx(tx:Tx,ids:readonly string[],from:string,to:string){
+ const groupOn=await scheduleGroupLookupTx(tx,ids,from,to),exceptionOn=await exceptionLookupTx(tx);
+ return (employmentId:string,date:string)=>exceptionOn(groupOn(employmentId,date),date);
+}
+
 export function scheduleGroupControls(ctx:SessionContext,ruleId:string) {
  return withTenant(ctx,async tx=>{
   const [rule]=await tx.select().from(attendanceRule).where(eq(attendanceRule.id,ruleId));
@@ -51,15 +76,14 @@ export async function assertDutyRosterWriteTx(tx:Tx,ctx:SessionContext,changes:r
  const ids=[...new Set(changes.map(c=>c.employmentId))];if(!ids.length)return;
  const employees=await tx.select({id:employment.id,groupId:employment.attendanceRuleId,defaultShiftId:employment.defaultShiftId}).from(employment).where(inArray(employment.id,ids)).orderBy(asc(employment.id)).for('update');
  if(employees.length!==ids.length)throw new Error('An employee is unavailable in your company scope.');
- const rules=await tx.select().from(attendanceRule).orderBy(asc(attendanceRule.id));
- const defaultIds=employees.flatMap(e=>e.defaultShiftId?[e.defaultShiftId]:[]);
- const defaults=defaultIds.length?await tx.select({id:shift.id,ruleId:shift.ruleId}).from(shift).where(inArray(shift.id,defaultIds)):[];
+ const rules=await tx.select().from(attendanceRule).orderBy(asc(attendanceRule.id)).for('update');
+ const allDates=changes.map(c=>c.shiftDate).sort();const groupOn=await scheduleGroupLookupTx(tx,ids,allDates[0],allDates.reduce((a,b)=>a>b?a:b));
  for(const emp of employees){
   const [permission]=await tx.execute(sql`select app.can_admin_employment(${emp.id}::uuid) as allowed`) as unknown as {allowed:boolean}[];
   if(!permission?.allowed)throw new Error('You cannot administer this employee.');
-  const groupId=emp.groupId??defaults.find(sh=>sh.id===emp.defaultShiftId)?.ruleId;
-  const group=groupId?rules.find(r=>r.id===groupId):rules.find(r=>r.isDefault);
-  if(group && !group.dutyRosterControl)throw new Error(`Duty Roster Control is Off for “${scheduleGroupDisplayName(group)}”. Enable it before changing an individual roster.`);
+  const ownGroups=[...new Set(changes.filter(c=>c.employmentId===emp.id).map(c=>groupOn(emp.id,c.shiftDate)))];
+  const group=rules.find(r=>r.id===ownGroups[0]);
+  for(const id of ownGroups){const applicable=rules.find(r=>r.id===id);if(applicable&&!applicable.dutyRosterControl)throw new Error(`Duty Roster Control is Off for “${scheduleGroupDisplayName(applicable)}”. Enable it before changing an individual roster.`);}
   const own=changes.filter(c=>c.employmentId===emp.id);
   const dates=[...new Set(own.map(c=>c.shiftDate))].sort();
   const byBatch=new Map<string,Awaited<ReturnType<typeof lockPayrollForAttendanceChange>>[number]>();

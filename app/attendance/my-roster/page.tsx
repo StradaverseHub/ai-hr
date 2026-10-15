@@ -115,7 +115,7 @@ export default async function MyRosterPage({
   // Hours to one decimal: the tile says "180 hrs", not "180.00". Minutes are the stored unit everywhere
   // else on this screen, so the division happens once, here.
   const fmtHrs = (min: number) => (min / 60).toLocaleString(dl, { maximumFractionDigits: 1 });
-  const hhmm = (t24: string) => t24.slice(0, 5);
+  const hhmm = (t24:string|null) => t24?.slice(0,5)??'—';
 
   const caption =
     w.view === 'month' ? fmtMonth(w.month) : w.view === 'week' ? `${fmtDate(w.from)} – ${fmtDate(w.to)}` : fmtLongDate(w.focus ?? w.from);

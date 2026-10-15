@@ -105,6 +105,7 @@ export function ShiftTimeFields({
 }) {
   const t = useTranslations('roster');
   const ta = useTranslations('admin.attendancePolicy');
+  const tb = useTranslations('boardSchedule');
   const [type, setType] = useState<ShiftFormType>(defaultType);
   const [start, setStart] = useState(defaultStart);
   const [end, setEnd] = useState(defaultEnd);
@@ -339,7 +340,7 @@ export function ShiftTimeFields({
           </Field></>}
         </div>
         <p className="mt-1.5 text-xs text-muted-foreground">
-          {hoursRequired ? t('totalNormalHoursSemiHint') : t('totalNormalHoursNormalHint')}
+          {fullFlexi?tb('fullFlexiHint'):hoursRequired ? t('totalNormalHoursSemiHint') : t('totalNormalHoursNormalHint')}
         </p>
 
         {/* 5 — CLOCKING WINDOW AND DAY CUT-OFF, grouped together because neither is a scheduling column

@@ -3186,7 +3186,8 @@
       "otBreakNoneCliff": "இடைவேளை கழிக்கப்படவில்லை — {minutes} இடைவேளையை எட்டும் அளவுக்கு அன்றைய நேரம் இல்லை.",
       "otBreakNoneSpanned": "இடைவேளை கழிக்கப்படவில்லை — பதிவு செய்யப்பட்ட நேரம் ஷிப்டின் இடைவேளை சாளரத்தைக் கடக்கவில்லை.",
       "otBasisShiftWindows": "கூடுதல் நேரம் ஷிப்டின் சொந்த கூடுதல் நேர அட்டவணையிலிருந்து வந்தது ({count} சாளரங்கள்): {minutes}.",
-      "otShiftWindowRow": "சாளரம் {label}: அதற்குள் {raw} வந்தது, {minutes} எனக் கணக்கிடப்பட்டது."
+      "otShiftWindowRow": "சாளரம் {label}: அதற்குள் {raw} வந்தது, {minutes} எனக் கணக்கிடப்பட்டது.",
+      "exceptionEnabled": "{from} முதல் அமலாகும் அட்டவணைக் குழுத் திருத்தத்தின் கீழ் தாமத வருகை மற்றும் முன்கூட்டிய வெளியேற்றத் தீர்ப்புகளுக்கும் பிடித்தங்களுக்கும் விலக்கு. அளவிடப்பட்ட நிமிடங்கள் தொடர்ந்து பதிவாகும்."
     },
     "recompute": {
       "entryLabel": "மீண்டுக் கணக்கிடு",
@@ -3518,7 +3519,8 @@
       "noApplications": "இந்த ஊழியருக்கும் தேதிக்கும் வருகை முரண்பாட்டுக் கோரிக்கைகள் இல்லை.",
       "detected": "கண்டறியப்பட்டது: {type}. இது கணக்கிடப்பட்ட நிலை; சமர்ப்பித்த கோரிக்கைகளிலிருந்து தனியானது.",
       "saveFailed": "சேமிப்பை உறுதிப்படுத்த முடியவில்லை. மீண்டும் முயலும் முன் நாளைப் புதுப்பிக்கவும்."
-    }
+    },
+    "statusExempt": "விலக்கு"
   },
   "org": {
     "title": "நிறுவன அமைப்பு",
@@ -15897,7 +15899,9 @@
     "occupation": "பணி",
     "cancel": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "saving": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
-    "attentionCount": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]"
+    "attentionCount": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
+    "status_exempt": "விலக்கு",
+    "exemptCode": "EX"
   },
   "lifecycle": {
     "title": "ஆன்போர்டிங் & IT",

@@ -1,4 +1,4 @@
-import { exceptionLookupTx } from './schedule-group-controls';
+import { exceptionDecisionsTx } from './schedule-group-controls';
 /**
  * e2632276 — ABSENCE DAYS, counted once, for the screens AND for the money.
  *
@@ -236,7 +236,7 @@ export async function absenceBreakdownByEmployment(
   const ids = [...new Set(employmentIds)].filter(Boolean);
   if (ids.length === 0) return out;
 
-  const exceptionOn=await exceptionLookupTx(tx);
+  const exceptionOn=await exceptionDecisionsTx(tx,ids,periodStart,periodEnd);
   const scheduled = opts.rules === 'scheduled';
   const rotations = await rotationLookupTx(tx);
   const readSchedule = scheduled || rotations.versions.length > 0;
@@ -391,9 +391,6 @@ export async function absenceBreakdownByEmployment(
         ),
   ]);
 
-  const fallbackShiftIds=emps.flatMap(e=>e.defaultShiftId?[e.defaultShiftId]:[]);
-  const fallbackGroups=fallbackShiftIds.length?await tx.select({id:shift.id,ruleId:shift.ruleId}).from(shift).where(inArray(shift.id,fallbackShiftIds)):[];
-  const [standardGroup]=await tx.select({id:attendanceRule.id}).from(attendanceRule).where(eq(attendanceRule.isDefault,true)).limit(1);
   const daysByCompany = new Map(policies.map((p) => [p.companyId, unionDays(p.workingDays, p.halfWorkingDays)]));
   // b8aa3466 — keep the whole four-way row, not just the Full list, so the scheduled test below can tell a
   // Half day (a WORKING day, so a missing row on it IS an absence) from an Off day (not scheduled).
@@ -521,8 +518,7 @@ export async function absenceBreakdownByEmployment(
       if (dateCorrection ? dateCorrection.dayKind==='holiday' : holidays.has(d)) continue;
 
       const rotated = rotationOn(e.employmentId,d);
-      const judgmentGroup=e.groupId??rotated?.version.ruleId??fallbackGroups.find(sh=>sh.id===e.defaultShiftId)?.ruleId??standardGroup?.id;
-      const absenceExempt=opts.measurement!=='raw'&&exceptionOn(judgmentGroup,d).enabled;
+      const absenceExempt=opts.measurement!=='raw'&&exceptionOn(e.employmentId,d).enabled;
       if (!scheduled) {
         // ── LEGACY: main's loop, transcribed. Company weekday pattern only; ANY attendance row means the
         //    day is spoken for (so an explicitly-Absent row is NOT an absence, and the month roll-up's

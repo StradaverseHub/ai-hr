@@ -111,6 +111,7 @@ const parseOtWindows = (raw: string): ShiftOtWindowInput[] | null => {
     return arr
       .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && 'startTime' in x && 'endTime' in x)
       .map((x) => ({
+        id:x.id==null?undefined:String(x.id),
         label: x.label == null ? null : String(x.label),
         startTime: norm(String(x.startTime)),
         endTime: norm(String(x.endTime)),
@@ -165,6 +166,7 @@ function shiftFields(formData: FormData) {
     //
     // 6340aecb point 8 — relabelled "Earliest clock-in" / "Latest clock-out", still on the form (marked
     // recorded-only), so these three stay a plain post-or-clear.
+    ...(typeRaw==='full_flexi'?{}:{
     earlyIn: optTime(formData, 'earlyIn'),
     lateOut: optTime(formData, 'lateOut'),
     lateOutNextDay: formData.get('lateOutNextDay') != null,
@@ -172,6 +174,7 @@ function shiftFields(formData: FormData) {
     normalHoursRoundingMinutes: optNum(formData, 'normalHoursRoundingMinutes'),
     halfDayFirstOut: optTime(formData, 'halfDayFirstOut'),
     halfDaySecondIn: optTime(formData, 'halfDaySecondIn'),
+    }),
     // 6340aecb — the colour is a RADIO GROUP whose "No colour" option posts an empty string, so blank ⇒
     // null ⇒ the roster keeps its automatic palette for this shift. The service validates the token
     // against the closed palette; anything else is refused rather than stored.

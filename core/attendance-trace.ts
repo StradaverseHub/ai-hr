@@ -157,6 +157,8 @@ export type AttendanceTraceV1 = {
   exemption?:{revisionId:string;effectiveFrom:string;types:readonly ['absent','late','early_out']};
   v: typeof ATTENDANCE_TRACE_VERSION;
   schedule: {
+    fixedClockApplicable?:boolean;
+    fullDayNormalMinutes?:number;
     source: TraceScheduleSource;
     dayType: TraceDayType;
     /** Null on a branch with no resolved start/end (a rest day resolved from company policy). */

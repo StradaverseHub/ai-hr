@@ -22,7 +22,7 @@ const future=()=>add(todayInKualaLumpur(),8);
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();});
 async function fixture(){
   const a=adminCtx(b);
-  const [rule]=await owner.db.insert(schema.attendanceRule).values({tenantId:b.tenantId,name:'Rotating security',weeklyPattern:[1,2,3,4,5]}).returning();
+  const [rule]=await owner.db.insert(schema.attendanceRule).values({tenantId:b.tenantId,name:'Rotating security',dutyRosterControl:true,weeklyPattern:[1,2,3,4,5]}).returning();
   const morning=await createShift(a,{name:'Morning',code:'AM',startTime:'08:00',endTime:'17:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5],ruleId:rule.id});
   const night=await createShift(a,{name:'Night',code:'PM',startTime:'20:00',endTime:'05:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5],ruleId:rule.id});
   const e=await hireEmployee(a,{person:{fullName:'Rotation worker',primaryEmail:'rotation@test.local'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
@@ -126,13 +126,15 @@ describe('approved Schedule Group rotation workflow',()=>{
     expect((await facts(f,add(f.date,8))).shiftId).toBe(f.night.id);
     expect((await getScheduleRotation(f.a,f.rule.id)).versions[1].allowedShiftIds).toEqual([f.night.id]);
   });
-  it('refuses a shift belonging to another group and an ungrouped inherited employee shift',async()=>{
+  it('reuses another group’s shift without moving its default or changing an ungrouped employee',async()=>{
     const f=await fixture();const [other]=await owner.db.insert(schema.attendanceRule).values({tenantId:b.tenantId,name:'Another crew'}).returning();
-    const foreign=await createShift(f.a,{code:'OTHER_CREW',name:'Other crew',startTime:'09:00',endTime:'17:00',ruleId:other.id});
-    await expect(save(f,{...f.cycle,days:f.cycle.days.map(d=>d.kind==='full'?{...d,shiftId:foreign.id}:d)},[foreign.id,f.night.id])).rejects.toThrow(/another Schedule Group/);
+    const shared=await createShift(f.a,{code:'OTHER_CREW',name:'Other crew',startTime:'09:00',endTime:'17:00',ruleId:other.id});
+    await save(f,{...f.cycle,days:f.cycle.days.map(d=>d.kind==='full'?{...d,shiftId:shared.id}:d)},[shared.id,f.night.id]);
+    expect((await owner.db.select().from(schema.shift).where(eq(schema.shift.id,shared.id)))[0].ruleId).toBe(other.id);
     const ungrouped=await createShift(f.a,{code:'UNGROUPED',name:'Ungrouped used',startTime:'09:00',endTime:'17:00',weeklyPattern:[1,2,3,4,5]});
     await owner.db.update(schema.employment).set({attendanceRuleId:null,defaultShiftId:ungrouped.id}).where(eq(schema.employment.id,f.e.employmentId));
-    await expect(save(f,{...f.cycle,days:f.cycle.days.map(d=>d.kind==='full'?{...d,shiftId:ungrouped.id}:d)},[ungrouped.id,f.night.id])).rejects.toThrow(/without an explicit Schedule Group/);
+    const later={...f.cycle,effectiveFrom:add(f.date,8),anchorDate:add(f.date,8),days:f.cycle.days.map(d=>d.kind==='full'?{...d,shiftId:ungrouped.id}:d)};
+    await save(f,later,[ungrouped.id,f.night.id]);
     expect((await owner.db.select().from(schema.shift).where(eq(schema.shift.id,ungrouped.id)))[0].ruleId).toBeNull();
   });
   it('roster rotation inheritance follows the dated arrangement instead of the current cache',async()=>{

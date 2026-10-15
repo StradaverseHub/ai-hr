@@ -884,7 +884,7 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
     // fresh rows. See the header on `flexibleBreakEnabledForRows` above for why the form itself never
     // reaches that combination; this is the backstop for every other caller.
     const [before] = await tx
-      .select({ flexibleBreakEnabled: shift.flexibleBreakEnabled, ruleId:shift.ruleId })
+      .select()
       .from(shift)
       .where(eq(shift.id, p.shiftId))
       .limit(1);
@@ -918,7 +918,7 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
           breakMinutes: n.breakMinutes,
           breakPeriods,
           normalMinutesOverride: n.normalMinutesOverride,
-          crossesMidnight: n.crossesMidnight,
+          ...(n.type==='full_flexi'&&p.startTime===undefined&&p.endTime===undefined?{}:{crossesMidnight:n.crossesMidnight}),
           // 88e94371 + 7c834696 rev 2 — omit when undefined so a form that no longer carries these fields
           // preserves the stored value (drizzle skips undefined keys in .set).
           ...(n.weeklyPattern === undefined ? {} : { weeklyPattern: n.weeklyPattern }),
@@ -935,6 +935,13 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
           ...(n.flexibleBreakMinutes === undefined ? {} : { flexibleBreakMinutes: n.flexibleBreakMinutes }),
           differential: n.differential,
           ...generalColumns(n),
+          ...(n.type==='full_flexi'?{
+           ...(p.earlyIn===undefined?{earlyIn:before.earlyIn}:{}),...(p.lateOut===undefined?{lateOut:before.lateOut}:{}),
+           ...(p.lateOutNextDay===undefined?{lateOutNextDay:before.lateOutNextDay}:{}),
+           ...(p.halfDayFirstOut===undefined?{halfDayFirstOut:before.halfDayFirstOut}:{}),
+           ...(p.halfDaySecondIn===undefined?{halfDaySecondIn:before.halfDaySecondIn}:{}),
+           ...(p.normalHoursRoundingMinutes===undefined?{normalHoursRoundingMinutes:before.normalHoursRoundingMinutes}:{}),
+          }:{}),
           updatedAt: new Date(),
         })
         .where(eq(shift.id, p.shiftId));
@@ -1162,6 +1169,8 @@ export async function deleteShift(ctx: SessionContext, p: { shiftId: string }): 
       .where(eq(shift.id, p.shiftId))
       .limit(1);
     if (!src) throw new Error('Shift not found (or not visible)');
+    const [membership]=await tx.select({ruleId:attendanceRuleShift.ruleId}).from(attendanceRuleShift).where(eq(attendanceRuleShift.shiftId,p.shiftId)).limit(1);
+    if(membership)throw new Error('This shift is allowed by a Schedule Group. Remove it from that group or archive the shift instead.');
     // Referenced by any roster assignment? (RLS scopes visibility, but the count is enough — any hit blocks.)
     const [ra] = await tx
       .select({ id: rosterAssignment.id })
@@ -1308,6 +1317,7 @@ export function listShiftsForTenant(ctx: SessionContext, opts?: { includeArchive
 
 /** One row of the Overtime Schedule tab, as the form posts it. */
 export type ShiftOtWindowInput = {
+  id?:string;
   label?: string | null;
   startTime: string;
   endTime: string;
@@ -1347,6 +1357,7 @@ async function replaceShiftOtWindowsTx(tx: Tx, ctx: SessionContext, p: { shiftId
       .limit(1);
     if (!sh) throw new Error('Shift not found (or not visible)');
 
+    if(p.windows.length>120)throw new Error('Use at most 120 overtime windows for one shift.');
     const rows = p.windows.map((w, i) => {
       const startTime = asShiftTime(w.startTime, 'Overtime window start');
       const endTime = asShiftTime(w.endTime, 'Overtime window end');
@@ -1407,17 +1418,23 @@ async function replaceShiftOtWindowsTx(tx: Tx, ctx: SessionContext, p: { shiftId
     }
 
     const existing = await tx.select().from(shiftOtWindow).where(eq(shiftOtWindow.shiftId, p.shiftId)).orderBy(asc(shiftOtWindow.sortOrder), asc(shiftOtWindow.id));
-    const retained = new Set<string>();
-    for (const row of rows) {
-      const old = existing.find(w => !retained.has(w.id) && w.sortOrder === row.sortOrder && w.label === row.label
-        && w.startTime.slice(0,5) === row.startTime.slice(0,5) && w.endTime.slice(0,5) === row.endTime.slice(0,5)
-        && w.endNextDay === row.endNextDay && w.minMinutes === row.minMinutes && w.maxMinutes === row.maxMinutes
-        && w.adjustAfterMinutes === row.adjustAfterMinutes && w.adjustDeltaMinutes === row.adjustDeltaMinutes);
-      if (old) retained.add(old.id);
+    const retained=new Set<string>();
+    const writes=rows.map((row,i)=>{
+      const postedId=p.windows[i].id;
+      if(postedId&&!existing.some(w=>w.id===postedId))throw new Error('An overtime window is unavailable for this shift. Reopen the editor.');
+      const old=postedId?existing.find(w=>w.id===postedId):existing.find(w=>!retained.has(w.id)&&w.sortOrder===row.sortOrder);
+      if(old){if(retained.has(old.id))throw new Error('Select each overtime window once.');retained.add(old.id);}
+      return {row,old};
+    });
+    const removed=existing.filter(w=>!retained.has(w.id)).map(w=>w.id);
+    if(removed.length)await tx.delete(shiftOtWindow).where(inArray(shiftOtWindow.id,removed));
+    // Reserve distinct temporary positions so a row reorder cannot collide with the unique sort key.
+    const temporaryBase=existing.reduce((n,w)=>Math.max(n,w.sortOrder),0)+rows.length+1;
+    for(const [i,{old}] of writes.entries())if(old)await tx.update(shiftOtWindow).set({sortOrder:temporaryBase+i}).where(eq(shiftOtWindow.id,old.id));
+    for(const {row,old} of writes){
+      if(old){const changed=old.sortOrder!==row.sortOrder||old.label!==row.label||old.startTime.slice(0,5)!==row.startTime.slice(0,5)||old.endTime.slice(0,5)!==row.endTime.slice(0,5)||old.endNextDay!==row.endNextDay||old.minMinutes!==row.minMinutes||old.maxMinutes!==row.maxMinutes||old.adjustAfterMinutes!==row.adjustAfterMinutes||old.adjustDeltaMinutes!==row.adjustDeltaMinutes;await tx.update(shiftOtWindow).set({...row,updatedAt:changed?new Date():old.updatedAt}).where(eq(shiftOtWindow.id,old.id));}
       else await tx.insert(shiftOtWindow).values(row);
     }
-    const removed = existing.filter(w => !retained.has(w.id)).map(w => w.id);
-    if (removed.length) await tx.delete(shiftOtWindow).where(inArray(shiftOtWindow.id, removed));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'shift',
@@ -1560,12 +1577,12 @@ export function employmentScheduleGroupName(
 ): Promise<string | null> {
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
-      .select({ name: attendanceRule.name })
+      .select({ name: attendanceRule.name,label:attendanceRule.label })
       .from(employment)
       .innerJoin(attendanceRule, eq(attendanceRule.id, employment.attendanceRuleId))
       .where(eq(employment.id, employmentId))
       .limit(1);
-    return row?.name ?? null;
+    return row?.label?.trim()||row?.name||null;
   });
 }
 

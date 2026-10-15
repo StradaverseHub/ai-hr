@@ -1,3 +1,5 @@
+import {withTenant} from '../db/client';
+import {absenceBreakdownByEmployment} from '../core/absence-days';
 import {randomUUID} from 'node:crypto';
 import {and,eq} from 'drizzle-orm';
 import {beforeAll,beforeEach,afterAll,describe,expect,it} from 'vitest';
@@ -29,8 +31,12 @@ describe('approved shift configuration behavior',()=>{
   const ctx=adminCtx(b),input=shiftInput(),sh=await createShift(ctx,input);
   const pay={shiftId:sh.id,windows:[{label:'After work',startTime:'18:00',endTime:'20:00'}],differential:{kind:'flat_per_shift' as const,value:20},confirmClear:false};
   await saveShiftPay(ctx,pay);const original=await listShiftOtWindows(ctx,sh.id);await saveShiftPay(ctx,pay);expect(await listShiftOtWindows(ctx,sh.id)).toEqual(original);
+  await saveShiftPay(ctx,{...pay,windows:[{...pay.windows[0],id:original[0].id,endTime:'21:00'}]});
+  const changed=await listShiftOtWindows(ctx,sh.id);expect(changed[0].id).toBe(original[0].id);expect(changed[0].endTime).toBe('21:00:00');
+  await saveShiftPay(ctx,{...pay,windows:[{...pay.windows[0],id:original[0].id}]});
+  const beforeBasic=await listShiftOtWindows(ctx,sh.id);
   await updateShift(ctx,{shiftId:sh.id,...input,name:'Renamed',color:'#0aBcDe'});
-  const [stored]=await owner.db.select().from(schema.shift).where(eq(schema.shift.id,sh.id));expect(stored.differential).toEqual(pay.differential);expect(stored.color).toBe('#0ABCDE');expect(await listShiftOtWindows(ctx,sh.id)).toEqual(original);
+  const [stored]=await owner.db.select().from(schema.shift).where(eq(schema.shift.id,sh.id));expect(stored.differential).toEqual(pay.differential);expect(stored.color).toBe('#0ABCDE');expect(await listShiftOtWindows(ctx,sh.id)).toEqual(beforeBasic);
   await expect(saveShiftPay(ctx,{shiftId:sh.id,windows:[],differential:null,confirmClear:false})).rejects.toThrow('Confirm clearing');
   await saveShiftPay(ctx,{shiftId:sh.id,windows:[],differential:null,confirmClear:true});expect(await listShiftOtWindows(ctx,sh.id)).toEqual([]);
  });
@@ -58,4 +64,26 @@ describe('reusable shifts and controlled roster changes',()=>{
   await expect(saveScheduleRotation(ctx,{ruleId:a.id,expectedRevision:state.revision,allowedShiftIds:[sh.id],cycle:{effectiveFrom:day(3),anchorDate:day(3),unit:'day',length:1,days:[{kind:'full',shiftId:sh.id}]}})).rejects.toThrow('another administrator');
   const other=await getScheduleRotation(ctx,c.id);expect(other.versions).toEqual([]);expect(other.memberships.map(m=>m.shiftId)).toEqual([sh.id]);
  });
+});
+
+describe('dated exemptions preserve observations',()=>{
+ it('keeps late/early measurements while exempting named decisions and deductions from tomorrow',async()=>{
+  const ctx=adminCtx(b),g=await createAttendanceRule(ctx,groupInput()),sh=await createShift(ctx,{...shiftInput(),ruleId:g.id}),e=await hire(sh.id);
+  await setEmploymentScheduleGroup(ctx,{employmentId:e.employmentId,attendanceRuleId:g.id});
+  await checkIn(ctx,{employmentId:e.employmentId,date:day(),time:'10:00'});await checkOut(ctx,{employmentId:e.employmentId,date:day(),time:'17:00'});
+  expect(await attendanceOf(e.employmentId,day())).toMatchObject({status:'late',lateMinutes:60});
+  await saveScheduleGroupControl(ctx,{ruleId:g.id,kind:'exception',enabled:true});
+  await checkIn(ctx,{employmentId:e.employmentId,date:day(1),time:'10:00'});await checkOut(ctx,{employmentId:e.employmentId,date:day(1),time:'17:00'});
+  const after=await attendanceOf(e.employmentId,day(1));expect(after).toMatchObject({status:'present',lateMinutes:60,earlyOutMinutes:59,lateDeductMinutes:0,earlyOutDeductMinutes:0,underMinutes:120});
+  expect(after.calcTrace?.exemption?.effectiveFrom).toBe(day(1));expect((await attendanceOf(e.employmentId,day())).calcTrace?.exemption).toBeUndefined();
+  const measurement=await withTenant(ctx,tx=>absenceBreakdownByEmployment(tx,day(2),day(2),[e.employmentId],{rules:'scheduled',until:day(2),measurement:'raw'}));
+  const decisions=await withTenant(ctx,tx=>absenceBreakdownByEmployment(tx,day(2),day(2),[e.employmentId],{rules:'scheduled',until:day(2)}));
+  expect(measurement.get(e.employmentId)?.absentDays).toBe(1);expect(decisions.get(e.employmentId)?.absentDays).toBe(0);
+ });
+});
+
+it('freezes the full-day normal unit before half-day reduction for future shortfall explanations',async()=>{
+ const ctx=adminCtx(b),sh=await createShift(ctx,{...shiftInput(),weeklyPattern:null,halfPattern:[1,2,3,4,5,6,7],normalMinutesOverride:480}),e=await hire(sh.id);
+ await checkIn(ctx,{employmentId:e.employmentId,date:day(),time:'09:00'});await checkOut(ctx,{employmentId:e.employmentId,date:day(),time:'13:00'});
+ expect((await attendanceOf(e.employmentId,day())).calcTrace?.schedule).toMatchObject({normalMinutesOverride:240,fullDayNormalMinutes:480,fixedClockApplicable:true});
 });

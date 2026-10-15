@@ -44,3 +44,12 @@ describe('validated colour and dated exception decisions',()=>{
   expect(exceptionRevisionOn(rows,'2020-01-01')).toBeNull();expect(exceptionRevisionOn(rows,'2020-01-02')?.enabled).toBe(true);expect(exceptionRevisionOn(rows,'2020-01-04')?.enabled).toBe(false);
  });
 });
+
+import {statusOf,flagOf} from '../core/attendance-derive';
+it('shows a named absence exemption without inventing attendance or hiding short/incomplete evidence',()=>{
+ const absent={attendanceId:null,status:null,context:null,isRosterRest:false,exceptionExempt:true};
+ expect(statusOf(absent)).toBe('exempt');expect(absent.attendanceId).toBeNull();
+ const short={attendanceId:'day',status:'late',checkInAt:'10:00',checkOutAt:'17:00',dayType:'workday' as const,workedMinutes:420,scheduledMinutes:480,underMinutes:60,exceptionExempt:true};
+ expect(flagOf(short)).toBe('under');expect(flagOf({...short,checkOutAt:null})).toBe('odd');
+ expect(statusOf({...absent,context:'rest_day' as const})).toBe('off');
+});
