@@ -1,0 +1,27 @@
+VERDICT: Partly there already   ·   SIZE: Quick
+
+THE SITUATION TODAY
+
+Workflow Email Notifications appears as a separate main-menu entry. Administrators expect configuration screens together under System Settings.
+
+WHAT WE'LL CHANGE
+
+- Move Workflow Email Notifications into the System Settings submenu.
+- Open the same existing page from its new menu location.
+- Keep existing settings, email rules, saved records and who may use the page.
+
+WHAT YOU'LL GET
+
+Administrators find Workflow Email Notifications alongside the other system configuration screens.
+
+GOOD TO KNOW
+
+This changes the menu location only. Existing bookmarks continue to work.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: the current production components/sidebar.tsx contains /admin/settings/notifications as a flat admin-group row, with adminOnly true; SYSTEM_SETTINGS_NODE already exists. Read directly from production source on 2026-10-15; production ref325c614a has healthy state/stale_build0. Browser walkthrough is still required before completion; source is not proof of rendered navigation.
+
+Move the exact existing route/label/icon/adminOnly entry into SYSTEM_SETTINGS_NODE, remove the flat entry and preserve notification operator special visibility semantics and route permission identity. No duplicate module, redirect, permission expansion or email data mutation. Reconcile existing exact-set sidebar tests for the changed hierarchy, retaining nonempty slice checks. Walk System Settings flyout, page opening, active state, reload, keyboard/narrow/collapsed rail and all locales as authorized HR plus unrelated/installation operator roles. Changes from the in-flight AI/SMTP/Email prerequisite must merge centrally before implementation so new nav predicates are retained. Use classifier-required focused verification/build/release. No Personnel import changes.
