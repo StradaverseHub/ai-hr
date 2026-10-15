@@ -3158,7 +3158,7 @@ export async function prefillOvertimeFromAttendanceTx(tx: Tx, ctx: SessionContex
       .from(payrollBatch)
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
       .where(eq(payrollBatch.id, p.batchId))
-      .limit(1).for('update');
+      .limit(1).for('update', { of: payrollBatch });
     if (!batch) throw new Error('batch not found');
     if (batch.status !== 'draft' && !(p.reprocess && batch.status === 'processed')) throw new BatchNotDraftError();
     // ADR-0080 D-14 — payroll is a statutory computation and is refused for a non-statutory company,

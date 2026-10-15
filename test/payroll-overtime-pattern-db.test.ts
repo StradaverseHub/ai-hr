@@ -9,7 +9,7 @@ import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {requirePackFor} from '../localization/registry';
-import {createBatch,createAdditionalRun,createPayComponent,setPayrollInput,prefillOvertimeFromAttendance,generatePayslips,closeBatch,deleteDraftBatch,createPolicy,assignPolicy,overtimePatternTransferOptions,transferOvertimePatternToPayroll,readPayrollOvertimePatternCashTx,readPayrollOvertimeCoverageTx} from '../packs/payroll/service';
+import {createBatch,createAdditionalRun,setPayrollConfig,disburseNetAcrossCycles,createPayComponent,setPayrollInput,prefillOvertimeFromAttendance,generatePayslips,closeBatch,deleteDraftBatch,createPolicy,assignPolicy,overtimePatternTransferOptions,transferOvertimePatternToPayroll,readPayrollOvertimePatternCashTx,readPayrollOvertimeCoverageTx} from '../packs/payroll/service';
 import {checkIn,checkOut,setAttendancePolicy,saveOvertimePatternDraft,validateOvertimePatternActivation,activateOvertimePattern,saveOvertimePatternAssignment,createOvertimeCalculationOwner,canonicalOvertimeInputTx,readOvertimeCalculationTx,readOvertimeSettlementForDayTx} from '../packs/attendance/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {OvertimePattern} from '../lib/overtime-pattern-model';
@@ -44,6 +44,21 @@ describe('formula money is an actual canonical Payroll input',()=>{
   const first=await transferOvertimePatternToPayroll(f.ctx,f.transfer);expect(first.status).toBe('transferred');expect(await transferOvertimePatternToPayroll(f.ctx,f.transfer)).toMatchObject({status:'unchanged',settlementId:first.settlementId});
   const after=(await owner.db.select().from(s.payrollInput).where(eq(s.payrollInput.id,before.id)))[0];expect(after.overtimeAmount).toBe('0.00');
   await generatePayslips(f.ctx,{batchId:f.batch.batchId});expect((await slip(f.batch.batchId)).overtimePay).toBe('60.00');expect((await slip(f.batch.batchId)).statutory).toHaveProperty('overtimePatternCash');expect((await slip(f.batch.batchId)).statutory).toMatchObject({componentLines:expect.arrayContaining([expect.objectContaining({name:'Configured formula overtime',amount:60,buckets:[{bucket:'ot',amount:60}],epf:false})])});
+ });
+ it('pays mixed unassigned legacy and selected formula days once each',async()=>{
+  const f=await fixture();const other=todayInKualaLumpur(new Date(Date.now()-86400000));
+  if(other.slice(0,7)!==day().slice(0,7))await setPayrollConfig(f.ctx,{companyId:b.companyId,overtimeCutOffDay:2});
+  await checkIn(f.ctx,{employmentId:f.e.employmentId,date:other,time:'09:00'});await checkOut(f.ctx,{employmentId:f.e.employmentId,date:other,time:'19:00'});
+  await prefillOvertimeFromAttendance(f.ctx,{batchId:f.batch.batchId});const input=(await owner.db.select().from(s.payrollInput).where(eq(s.payrollInput.batchId,f.batch.batchId)))[0];const legacy=Number(input.overtimeAmount);expect(legacy).toBeGreaterThan(0);
+  await transferOvertimePatternToPayroll(f.ctx,f.transfer);await generatePayslips(f.ctx,{batchId:f.batch.batchId});expect(Number((await slip(f.batch.batchId)).overtimePay)).toBe(Math.round((legacy+60)*100)/100);
+ });
+ it('weights a weekly cycle by the formula source cash date after excluding legacy minutes for that day',async()=>{
+  const f=await fixture();const policy=await createPolicy(f.ctx,{companyId:b.companyId,name:'Weekly formula cash',policyType:'monthly',config:{frequency:'weekly'}});await setPayrollConfig(f.ctx,{companyId:b.companyId,defaultPayrollPolicyId:policy.id});
+  await transferOvertimePatternToPayroll(f.ctx,f.transfer);await generatePayslips(f.ctx,{batchId:f.batch.batchId});const paid=await slip(f.batch.batchId);
+  const schedule=(paid.statutory as {paymentSchedule:{cycles:{seq:number;from:string;to:string;amount:number}[]}}).paymentSchedule.cycles;expect(schedule.length).toBeGreaterThan(1);
+  const days=schedule.map(p=>(Date.parse(p.to+'T00:00:00Z')-Date.parse(p.from+'T00:00:00Z'))/86400000+1);
+  const expected=disburseNetAcrossCycles({net:Number(paid.netPay),recurring:3000,overtime:60,unpaid:0,cycleDays:days,otMinutes:schedule.map(p=>day()>=p.from&&day()<=p.to?6000:0),unpaidDays:schedule.map(()=>0)});
+  expect(schedule.map(p=>p.amount)).toEqual(expected);expect(Math.round(schedule.reduce((sum,p)=>sum+p.amount,0)*100)).toBe(Math.round(Number(paid.netPay)*100));
  });
  it('preserves independent manual OT and bonus while adding formula cash',async()=>{
   const f=await fixture();await setPayrollInput(f.ctx,{batchId:f.batch.batchId,employmentId:f.e.employmentId,overtimeAmount:25,bonusAmount:17});await transferOvertimePatternToPayroll(f.ctx,f.transfer);
