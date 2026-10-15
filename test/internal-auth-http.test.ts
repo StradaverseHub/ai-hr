@@ -41,6 +41,15 @@ describe('embedded auth HTTP trust and credential carriers', () => {
       expect(await response.json()).toEqual({ step, challenge: 'c'.repeat(43) });
     }
   });
+  it('renders authenticator enrollment as a local PNG while keeping it a partial challenge', async () => {
+    service.startLogin.mockResolvedValue({step:'enroll',challenge:'c'.repeat(43),secret:'A'.repeat(32),account:'alpha:owner'});
+    const response=await request('login',{organization:'alpha',username:'owner',password:'secret'},{origin:'https://hr.test'});
+    expect(response.status).toBe(200);
+    const reply=await response.json();expect(reply).toMatchObject({step:'enroll',challenge:'c'.repeat(43),secret:'A'.repeat(32)});
+    expect(reply.qr).toMatch(/^data:image\/png;base64,/);
+    expect(Buffer.from(reply.qr.split(',')[1],'base64').subarray(0,8).toString('hex')).toBe('89504e470d0a1a0a');
+    expect(response.headers.get('set-cookie')).toBeNull();expect(reply).not.toHaveProperty('access_token');
+  });
   it('native login returns opaque handles without setting a browser cookie', async () => {
     service.startLogin.mockResolvedValue({ step: 'complete', access_token: access, refresh_token: refresh, expires_in: 900 });
     const response = await request('login', { organization: 'alpha', username: 'user', password: 'secret' }, { 'x-aihr-client': 'native', cookie: '__Host-aihr_internal=forged' });
