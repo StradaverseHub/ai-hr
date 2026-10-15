@@ -426,7 +426,9 @@ function runDurationStage(rawPattern: OvertimePattern, rawInput: OvertimeInput, 
         fail('currency', 'currency', 'Definition and canonical source currency must agree.');
     const e = new Engine(pattern, input.mode, input.facts, input.source.date);
     observe(e);
-    if (input.facts.employmentId && e.field('employmentId', {}) !== input.source.employmentId)
+    // Manual preview facts are hypothetical (including known null); its source IDs are synthetic.
+    // Only actual calculations may assert that an employee fact identifies the canonical day source.
+    if (input.mode === 'actual' && input.facts.employmentId && e.field('employmentId', {}) !== input.source.employmentId)
         fail('source', 'employmentId', 'Canonical employee facts disagree with the day source.');
     if (input.mode === 'actual' && (input.approval.provenance.basis === 'sample' || input.approval.provenance.owner === 'sample'))
         fail('source', 'approval', 'Actual approval must have canonical provenance.');

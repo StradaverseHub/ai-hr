@@ -57,6 +57,21 @@ describe('Overtime UI server entry points',()=>{
   expect(input.approval.minutes.value).toBe('60');expect(input.segments.map((row:any)=>row.approvedMinutes.value)).toEqual(kind==='overnight'?['120','120']:['120']);
   expect(mocks.calculate).not.toHaveBeenCalled();expect(mocks.transfer).not.toHaveBeenCalled();
  });
+ it.each(['selected','null','unknown','absent'] as const)('preserves %s manual employee facts through the action and real evaluator',async kind=>{
+  const p=fictionalPattern();
+  p.eligibleMinutes={id:'worked_less_required',type:'subtract',unit:'minutes',left:{id:'sample_actual',type:'field',unit:'minutes',field:'actualWorkingMinutes'},right:{id:'sample_required',type:'field',unit:'minutes',field:'requiredWorkingMinutes'}};
+  p.eligibility=kind==='null'?{id:'employee_missing',type:'null',field:'employmentId',isNull:true}:{id:'employee_selected',type:'selection',field:'employmentId',operator:'in',values:[tenantId]};
+  mocks.sample.mockImplementation(async(_ctx:unknown,input:{sample:OvertimeInput})=>evaluateOvertimePattern(p,input.sample));
+  const entered=sample();entered.sessionGranularity='dayAggregate';entered.approvalMinutes='61';entered.segments[0].clockKnown=false;entered.segments[0].rawMinutes='541';
+  entered.facts={companyId:tenantId,actualWorkingMinutes:'541',requiredWorkingMinutes:'480',...(kind==='selected'?{employmentId:tenantId}:kind==='null'?{employmentId:null}:kind==='unknown'?{employmentId:''}:{})};
+  const result=await previewOvertimeSampleAction({patternId:tenantId,versionId,sample:entered});expect(result.ok).toBe(true);if(!result.ok)throw new Error('Expected evaluated sample');
+  expect(result.value.transferable).toBe(false);
+  if(kind==='selected'||kind==='null'){expect(result.value.status).toBe('ready');if(result.value.status==='refused')throw new Error('Expected known employee eligibility');expect(result.value.payableMinutes).toMatchObject({numerator:'61',denominator:'1'});}
+  else{expect(result.value.status).toBe('refused');if(result.value.status!=='refused')throw new Error('Expected missing employee fact refusal');expect(result.value.issues.some(issue=>issue.code==='unknown'&&issue.path==='employmentId')).toBe(true);}
+  const passed=mocks.sample.mock.calls[0][1].sample;
+  if(kind==='null')expect(passed.facts.employmentId).toMatchObject({state:'known',value:null});if(kind==='unknown')expect(passed.facts.employmentId.state).toBe('unknown');if(kind==='absent')expect(passed.facts.employmentId).toBeUndefined();
+  expect(mocks.calculate).not.toHaveBeenCalled();expect(mocks.transfer).not.toHaveBeenCalled();expect(mocks.revalidate).not.toHaveBeenCalled();
+ });
  it('refuses a real sample evaluation when raw quantity is blank despite a known day approval bound',async()=>{
   mocks.sample.mockImplementation(async(_ctx:unknown,input:{sample:OvertimeInput})=>evaluateOvertimePattern(fictionalPattern(),input.sample));
   const entered=sample();entered.sessionGranularity='dayAggregate';entered.approvalMinutes='60';entered.segments[0].clockKnown=false;entered.segments[0].rawMinutes='';
