@@ -5,11 +5,11 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
-import {bulkSaveLabels,createDepartment,createBusinessUnit,listDepartmentsForLabels} from '../core/admin';
+import {bulkSaveLabels,createDepartment,createBusinessUnit,listDepartmentsForLabels,listPositionsForLabels,listCostCentersForLabels,listBusinessUnitsForLabels} from '../core/admin';
 import {companiesForLabel,labelIdsForCompany,setLabelCriteria,setLabelCriteriaBatch,setLabelGlobal,lockLabelCriteriaTx} from '../core/system-labels';
 import {hireEmployee} from '../core/org';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {labelsInCompanyScope} from '../lib/system-label-scope';
+import {labelsInCompanyScope,type CompanyScopedLabel} from '../lib/system-label-scope';
 let b:Base;
 const raw=postgres(process.env.TEST_MIGRATION_DATABASE_URL!,{max:3});
 beforeAll(migrateTestDb);afterAll(async()=>{await raw.end();await closeAll();});beforeEach(async()=>{await resetDb();b=await seedBase();});
@@ -23,8 +23,23 @@ describe('System Labels canonical Criteria and database boundaries',()=>{
   const shared=(await createDepartment(admin,{companyId:b.companyId,name:'Assigned reference'})).id;await setLabelCriteria(admin,{kind:'department',labelId:shared,isGlobal:false,companyIds:[other]});
   const own=(await createDepartment(admin,{companyId:other,name:'Own reference'})).id;
   const rows=await listDepartmentsForLabels(scoped);expect(rows.map(row=>row.id)).toEqual(expect.arrayContaining([global,shared,own]));expect(rows.map(row=>row.id)).not.toContain(hidden);
+  expect(rows.find(row=>row.id===shared)?.assignedCompanyIds).toEqual([other]);
+  expect(rows.find(row=>row.id===own)?.assignedCompanyIds).toEqual([other]);
+  expect(rows.find(row=>row.id===global)?.isGlobal).toBe(true);
   expect(labelsInCompanyScope(rows,new Set([other])).map(row=>row.id)).toEqual(expect.arrayContaining([global,shared,own]));
   expect(await listDepartmentsForLabels(scoped,{companyIds:[]})).toEqual([]);
+ });
+ it('projects exact saved company Criteria from the outer row for all four label kinds',async()=>{
+  const admin=adminCtx(b),other=await company();
+  const readers={department:listDepartmentsForLabels,position:listPositionsForLabels,cost_center:listCostCentersForLabels,business_unit:listBusinessUnitsForLabels};
+  for(const kind of s.LABEL_KINDS) {
+    const saved=await bulkSaveLabels(admin,kind,{creates:[{key:kind,companyId:b.companyId,isGlobal:false,companyIds:[other],name:'Projection '+kind,title:'Projection '+kind,code:'PROJECTION_'+kind}],updates:[]});
+    const id=saved.createdIds[0].id;
+    const rows: (CompanyScopedLabel & {id:string})[]=await readers[kind](admin),row=rows.find(row=>row.id===id);
+    expect(row?.companyId).toBe(b.companyId);expect(row?.assignedCompanyIds).toEqual([other]);
+    expect(labelsInCompanyScope(rows,new Set([other])).map(row=>row.id)).toContain(id);
+    expect(labelsInCompanyScope(rows,new Set([b.companyId])).map(row=>row.id)).not.toContain(id);
+  }
  });
  it('creates a B-only scoped code under B ownership so B administrators can maintain it',async()=>{
   const admin=adminCtx(b),other=await company(),bAdmin=await administrator(other),aAdmin=await administrator(b.companyId);
@@ -82,7 +97,7 @@ describe('System Labels canonical Criteria and database boundaries',()=>{
  });
  it('retains recorded-company assignment references in both service and raw SQL Criteria removal paths',async()=>{
   const admin=adminCtx(b),other=await company(),id=(await createDepartment(admin,{companyId:b.companyId,name:'Recorded-company reference'})).id;await setLabelCriteria(admin,{kind:'department',labelId:id,isGlobal:false,companyIds:[b.companyId,other]});
-  const employee=await hireEmployee(admin,{person:{fullName:'Synthetic recorded assignment'},companyId:b.companyId,departmentId:id,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+  const employee=await hireEmployee(admin,{person:{fullName:'Synthetic recorded assignment',primaryEmail:'recorded-assignment@labels.test'},companyId:b.companyId,departmentId:id,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
   await owner.db.update(s.assignment).set({companyId:other}).where(eq(s.assignment.employmentId,employee.employmentId));
   await expect(setLabelCriteria(admin,{kind:'department',labelId:id,isGlobal:false,companyIds:[b.companyId]})).rejects.toThrow('still uses');
   await expect(withTenant(admin,tx=>tx.delete(s.labelCompanyAssignment).where(and(eq(s.labelCompanyAssignment.labelId,id),eq(s.labelCompanyAssignment.companyId,other))))).rejects.toThrow();expect(await companiesForLabel(admin,'department',id)).toEqual(expect.arrayContaining([b.companyId,other]));

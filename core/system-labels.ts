@@ -2,7 +2,7 @@ import { tenantMutation } from '../db/tenant-mutation';
 /** System Labels criteria owner. Creation company is provenance and write ownership;
  * availability is exclusively Global or an explicit nonempty company assignment set.
  * Legacy company sharing flags are retained for data compatibility, never read as a gate. */
-import { and, asc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, getTableName, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
@@ -127,9 +127,12 @@ export function labelCompanyIdsSql(
   table: typeof department | typeof position | typeof costCenter | typeof businessUnit,
   kind: LabelKind,
 ): SQL<string[]> {
+  // Drizzle unqualifies Column chunks inside a SELECT expression. Explicit SQL identifiers retain
+  // the OUTER label binding; a bare id would bind lca.id and silently erase saved company Criteria.
+  const outer=sql.identifier(getTableName(table));
   return sql<string[]>`array(select lca.company_id::text from label_company_assignment lca
-    where lca.tenant_id = ${table.tenantId} and lca.label_kind = ${kind}
-      and lca.label_id = ${table.id} order by lca.company_id)`;
+    where lca.tenant_id = ${outer}.${sql.identifier('tenant_id')} and lca.label_kind = ${kind}
+      and lca.label_id = ${outer}.${sql.identifier('id')} order by lca.company_id)`;
 }
 
 /** Global automatically includes current and future companies; scoped rows use only saved criteria. */
