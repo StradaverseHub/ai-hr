@@ -3,7 +3,8 @@
  * Do NOT put an outer both-slot wrapper around this entry: it already acquires both slots.
  * Held-lock worker, only for coordinator/debugging: same command with --held-lock-worker.
  * That worker proves all three named lock files are live before any DB/build/server work.
- * STOP: create scratchpad/board16-overtime-browser/browser.stop in this derived worktree.
+ * Optional parent allocation: --attempt=b2 uses its own DB/namespace/scratchpad, fixed port3210.
+ * STOP: create browser.stop inside the selected scratchpad in this derived worktree.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -12,12 +13,13 @@ import net from 'node:net';
 import {fileURLToPath} from 'node:url';
 import {spawn,execFileSync} from 'node:child_process';
 import {DEMO_TENANT_ID,SYSTEM_TENANT_ID,demoSeedRefusal} from '../db/seed-guard.ts';
+import {overtimeBrowserTarget} from './overtime-browser-target.mjs';
 const filename=fileURLToPath(import.meta.url),root=fileURLToPath(new URL('..',import.meta.url));
-const out=path.join(root,'scratchpad/board16-overtime-browser'),stopFile=path.join(out,'browser.stop');
-const database='ai_hr_board16_overtime_browser',port='3210',namespace='board16overtimebrowser';
-const lockNames={a:'board16overtimebrowser-browser-a',b:'board16overtimebrowser-browser-b',db:'board16overtimebrowser-browser-db'};
+const target=overtimeBrowserTarget(process.argv.slice(2),{allowWorker:true});
+const out=path.join(root,target.scratchpad),stopFile=path.join(out,'browser.stop');
+const {database,port,namespace}=target;
+const lockNames={a:namespace+'-browser-a',b:namespace+'-browser-b',db:namespace+'-browser-db'};
 const gateState=path.join(os.homedir(),'.aihr-gate-state');
-if(process.argv.slice(2).some(arg=>arg!=='--held-lock-worker'))throw new Error('Unknown runner argument.');
 const refusal=demoSeedRefusal(process.env);
 if(refusal||process.env.NODE_ENV==='production')throw new Error(refusal??'Development only.');
 if(process.env.AUTH_PROVIDER && process.env.AUTH_PROVIDER!=='workos')throw new Error('Local fictional demo authentication only.');
@@ -31,9 +33,9 @@ const env={...process.env,TOIL_ENABLED:'true',NOTIFICATIONS_ENABLED:'false',IDEN
 // Explicit lock locations/slot count prevent inherited override variables from weakening coordination.
 const lockEnv={...env,AIHR_TEST_SLOTS:'2',AIHR_LOCK_DIR:path.join(gateState,'locks')};
 fs.mkdirSync(out,{recursive:true});
-if(!process.argv.includes('--held-lock-worker')) {
+if(!target.heldLockWorker) {
   if(fs.existsSync(stopFile))fs.unlinkSync(stopFile);
-  const args=[path.join(gateState,'testlock.sh'),lockNames.a,'--','bash',path.join(gateState,'testlock.sh'),lockNames.b,'--','bash',path.join(gateState,'devdb-lock.sh'),lockNames.db,'--',process.execPath,'--import','tsx',filename,'--held-lock-worker'];
+  const args=[path.join(gateState,'testlock.sh'),lockNames.a,'--','bash',path.join(gateState,'testlock.sh'),lockNames.b,'--','bash',path.join(gateState,'devdb-lock.sh'),lockNames.db,'--',process.execPath,'--import','tsx',filename,'--held-lock-worker',...target.childArgs];
   // Isolate lock wrappers from terminal Ctrl-C: only the coordinator receives it and requests a
   // stop-file handoff. A wrapper's own signal trap must not release before owned server cleanup.
   const child=spawn('bash',args,{cwd:root,env:lockEnv,stdio:'inherit',detached:true});
@@ -115,7 +117,7 @@ if(!process.argv.includes('--held-lock-worker')) {
     const {default:postgres}=await import('postgres');
     const adminUrl=new URL(ownerUrl);adminUrl.pathname='/postgres';postgresAdmin=postgres(adminUrl.toString(),{max:1,connect_timeout:10,idle_timeout:5,connection:{statement_timeout:10000}});
     const existing=await postgresAdmin`select datname from pg_database where datname=${database}`;
-    if(!existing.length)await postgresAdmin.unsafe('CREATE DATABASE ai_hr_board16_overtime_browser');
+    if(!existing.length)await postgresAdmin.unsafe('CREATE DATABASE "'+database+'"');
     await postgresAdmin.end();postgresAdmin=undefined;
     postgresTarget=postgres(ownerUrl.toString(),{max:1,connect_timeout:10,idle_timeout:5,connection:{statement_timeout:10000}});
     const [table]=await postgresTarget`select to_regclass('public.tenant')::text as name`;
@@ -134,7 +136,7 @@ if(!process.argv.includes('--held-lock-worker')) {
     await run('pnpm',['exec','drizzle-kit','migrate','--config',migrationConfig],'browser-migrate',180000);
     if(!seeded)await run(process.execPath,['--import','tsx',path.join(root,'db/seed.ts')],'browser-seed',180000);
     else fs.writeFileSync(path.join(out,'browser-seed.log'),'Existing named fictional demo database preserved; seed was not rerun.\n');
-    for(const label of ['browser-fixture-first','browser-fixture-second'])await run(process.execPath,['--import','tsx',path.join(root,'scripts/dev-fixture-overtime-patterns.mts')],label,120000);
+    for(const label of ['browser-fixture-first','browser-fixture-second'])await run(process.execPath,['--import','tsx',path.join(root,'scripts/dev-fixture-overtime-patterns.mts'),...target.childArgs],label,120000);
     const manifests=['browser-fixture-first','browser-fixture-second'].map(manifestFromLog);
     if(JSON.stringify(manifests[0])!==JSON.stringify(manifests[1]))throw new Error('Fixture rerun changed its declared business identities/files; no clean-twice claim.');
     env.DEV_USER_ID=manifests[1].people.HR.userId;

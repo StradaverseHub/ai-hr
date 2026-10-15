@@ -14,8 +14,11 @@ import type {SessionContext} from '../db/client';
 import type {OvertimePattern,OvertimeExpression} from '../lib/overtime-pattern-model';
 import type {OvertimeSampleDraft} from '../lib/overtime-pattern-ui';
 import {DEMO_TENANT_ID,SYSTEM_TENANT_ID,demoSeedRefusal} from '../db/seed-guard';
-const root=fileURLToPath(new URL('..',import.meta.url)),out=path.join(root,'scratchpad/board16-overtime-browser');
-const database='ai_hr_board16_overtime_browser',namespace='board16overtimebrowser';
+import {overtimeBrowserTarget} from './overtime-browser-target.mjs';
+const root=fileURLToPath(new URL('..',import.meta.url));
+// Derive independently from the bounded CLI; environment URLs must then prove this exact target.
+const target=overtimeBrowserTarget(process.argv.slice(2));
+const out=path.join(root,target.scratchpad),{database,namespace}=target;
 const refusal=demoSeedRefusal(process.env);
 if(refusal||process.env.NODE_ENV==='production')throw new Error(refusal??'Development only.');
 if(process.env.AUTH_PROVIDER&&process.env.AUTH_PROVIDER!=='workos')throw new Error('Local fictional demo authentication only.');
@@ -58,9 +61,9 @@ async function context(user:{id:string;tenantId:string;personId:string|null}):Pr
 }
 async function main() {
  // Actual connected roles, not just URL labels. App role must remain subject to RLS.
- const appProbe=createDb(process.env.DATABASE_URL!);
- try {const [role]=await appProbe.client`select current_user as name,rolsuper,rolbypassrls from pg_roles where rolname=current_user`;if(role?.name!=='ai_hr_app'||role.rolsuper||role.rolbypassrls)throw new Error('Application connection is not the restricted ai_hr_app role.');}
- finally {await appProbe.client.end();}
+ // createDb caches by connection string: a second wrapper would share this application pool.
+ // Keep it alive for canonical writers; the outer finally owns its single final cleanup.
+ const [role]=await client`select current_user as name,rolsuper,rolbypassrls from pg_roles where rolname=current_user`;if(role?.name!=='ai_hr_app'||role.rolsuper||role.rolbypassrls)throw new Error('Application connection is not the restricted ai_hr_app role.');
  const [ownerRole]=await owner.client`select current_user as name`;if(ownerRole?.name!==decodeURIComponent(urls.MIGRATION_DATABASE_URL.username))throw new Error('Migration connection role differs from configured target.');
  const previousText=await fs.readFile(path.join(out,'fixture-manifest.json'),'utf8').catch(error=>{if((error as NodeJS.ErrnoException).code==='ENOENT')return null;throw error;});
  const previous=previousText?JSON.parse(previousText) as {root?:unknown;database?:unknown;namespace?:unknown;date?:unknown;tenantId?:unknown;foreignTenant?:{id?:unknown};patterns?:Record<string,unknown>}:null;

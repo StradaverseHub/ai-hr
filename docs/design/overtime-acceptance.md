@@ -1,16 +1,20 @@
 # Overtime Pattern actual-app acceptance
 
-Status: source preparation only. No fixture, migration, server, browser, type, test, build or release outcome has been executed or passed for this runner. This is the actual-app acceptance protocol for approved fcc2ea42 and ADR0123, not a completion receipt.
+Status: actual launch blocked during fixture preparation; the failed baseline is preserved below. No successful fixture twice-run, app startup, browser acceptance or release is claimed. This is the actual-app acceptance protocol for approved fcc2ea42 and ADR0123, not a completion receipt.
 
 ## Isolated target and ownership
 
-Use the clean integrated candidate in the worktree containing these scripts. Parent must first release both test slots and the dev DB lock, provision a real local node_modules directory (no symlink) and the worktree's own .env.local. Do not copy credentials into this document or browser evidence. The coordinator accepts only localhost/127.0.0.1/::1 port 5433, retargets both connections to ai_hr_board16_overtime_browser, requires restricted ai_hr_app plus a distinct migration username, and uses namespace board16overtimebrowser and app port 3210. The fixture checks the actual connected roles before business work. Worktree/migration owner credentials are never given to browser operations.
+Use the clean integrated candidate in the worktree containing these scripts. Parent must first release both test slots and the dev DB lock, provision a real local node_modules directory (no symlink) and the worktree's own .env.local. Do not copy credentials into this document or browser evidence. By default, the coordinator accepts only localhost/127.0.0.1/::1 port 5433, retargets both connections to ai_hr_board16_overtime_browser, requires restricted ai_hr_app plus a distinct migration username, and uses namespace board16overtimebrowser and app port 3210. The fixture checks the actual connected roles before business work. Worktree/migration owner credentials are never given to browser operations.
 
 The integrated candidate is /Users/zenlam/Projects/ai-hr/.claude/worktrees/board-oct15. Its own real node_modules and .env.local must be provisioned after handoff; the isolated records worktree is not a runnable candidate. From mainwt, launch the integrated candidate only after the explicit shared-resource handoff:
 
 ```sh
 node --env-file=/Users/zenlam/Projects/ai-hr/.claude/worktrees/board-oct15/.env.local --import tsx /Users/zenlam/Projects/ai-hr/.claude/worktrees/board-oct15/scripts/dev-browser-overtime-patterns.mjs
 ```
+
+The baseline attempt failed after partial initial provisioning and is preserved: ai_hr_board16_overtime_browser contains the fictional primary tenant 8cafc0d0-2da6-429f-8837-70afbfbc8f0e without a complete fixture receipt. Its existing receipt guard correctly refuses reuse. Do not reset it, fabricate a receipt or loosen that guard.
+
+The parent may explicitly allocate a new attempt by adding --attempt=b2 to the launch command. This selects only ai_hr_board16_ot_b2, namespace board16ot_b2 and scratchpad/board16-overtime-b2, with the same fixed port 3210. The shared selector accepts only one bounded b1 through b99 label; it accepts no arbitrary database, path, port or environment target override. Omitting the option retains the original baseline target. The coordinator passes the exact attempt argument to its held worker and fixture; each independently derives the target and proves matching URL, locks, parent and candidate. There is no automatic retry, deletion or reset. An already populated attempt remains subject to the same exact receipt rules. For b2, stop with scratchpad/board16-overtime-b2/browser.stop and retain evidence there.
 
 The coordinator acquires both named test slots and the dev DB lock itself. Do not nest an outer both-slot wrapper. Its worker proves the live ancestor lock holders, clean candidate pin and unused reserved port. Fixture children also prove all three locks, their exact parent and candidate. A migration or fixture failure prevents Next startup. The runner never installs dependencies, creates an environment file, edits application code, sends mail, resets a populated fixture or kills another process on a port.
 
