@@ -3193,6 +3193,13 @@
       "when": 1791900000030,
       "tag": "0550_system_label_company_criteria",
       "breakpoints": true
+    },
+    {
+      "idx": 551,
+      "version": "7",
+      "when": 1791900000031,
+      "tag": "0551_overtime_patterns",
+      "breakpoints": true
     }
   ]
 }
