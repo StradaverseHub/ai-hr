@@ -180,6 +180,27 @@ export type EmergencyContactInput = {
   priority?: string | null;
 };
 
+/** Same owner validation for manual entry, dry-run imports and actual writes. */
+export async function validateEmergencyContactInputTx(tx:Tx, personId:string|null, input:Partial<EmergencyContactInput>, existing?:{relationship:string|null}) {
+  const patch:Partial<EmergencyContactInput>={};
+  if(input.fullName!==undefined || !existing) {
+    const name=trimOrNull(input.fullName);
+    if(!name)throw new EmergencyContactValidationError('Contact name is required.');
+    patch.fullName=name;
+  }
+  if(input.relationship!==undefined) {
+    const relationship=trimOrNull(input.relationship);
+    if(relationship && relationship!==existing?.relationship &&
+      !(personId && (await storedRelationships(tx,personId)).includes(relationship)))
+      await assertProfileValueAllowed(tx,'relationship',relationship,null);
+    patch.relationship=relationship;
+  }
+  for(const key of ['mobilePhone','homePhone','address','remarks'] as const)
+    if(input[key]!==undefined)patch[key]=trimOrNull(input[key]);
+  if(input.priority!==undefined || !existing)patch.priority=normPriority(input.priority);
+  return patch;
+}
+
 /**
  * Add an emergency contact. Name is the only mandatory field (a contact with no name is not a contact);
  * everything else is optional, exactly as the replaced single form was. Choosing Primary demotes the previous
@@ -191,15 +212,10 @@ export async function addEmergencyContact(
   outerTx?:Tx,
 ): Promise<{ id: string }> {
   const run=async(tx:Tx)=>{
-    const fullName = trimOrNull(p.fullName);
-    if (fullName === null) throw new EmergencyContactValidationError('Contact name is required.');
-    const priority = normPriority(p.priority);
-    const relationship = trimOrNull(p.relationship);
-    // A NEW pick must be an active 'relationship' option — unless the value is already stored on one of this
-    // person's contacts (the tolerance that keeps a deactivated/renamed option re-savable).
-    if (relationship !== null && !(await storedRelationships(tx, p.personId)).includes(relationship)) {
-      await assertProfileValueAllowed(tx, 'relationship', relationship, null);
-    }
+    const validated=await validateEmergencyContactInputTx(tx,p.personId,p);
+    const fullName=validated.fullName!;
+    const priority=validated.priority as EmergencyContactPriority;
+    const relationship=validated.relationship??null;
     const demotedId = priority === 'primary' ? await demoteCurrentPrimary(tx, p.personId, null) : null;
     const [row] = await tx
       .insert(personEmergencyContact)
@@ -260,28 +276,7 @@ export async function updateEmergencyContact(
     if (!existing || existing.archivedAt != null) {
       throw new EmergencyContactValidationError('Emergency contact not found.');
     }
-    const patch: Record<string, unknown> = {};
-    if (p.fullName !== undefined) {
-      const fullName = trimOrNull(p.fullName);
-      if (fullName === null) throw new EmergencyContactValidationError('Contact name is required.');
-      patch.fullName = fullName;
-    }
-    if (p.relationship !== undefined) {
-      const relationship = trimOrNull(p.relationship);
-      // Unchanged value always re-saves; a changed one must be an active option (or already in use here).
-      if (
-        relationship !== null &&
-        relationship !== existing.relationship &&
-        !(await storedRelationships(tx, existing.personId)).includes(relationship)
-      ) {
-        await assertProfileValueAllowed(tx, 'relationship', relationship, null);
-      }
-      patch.relationship = relationship;
-    }
-    if (p.mobilePhone !== undefined) patch.mobilePhone = trimOrNull(p.mobilePhone);
-    if (p.homePhone !== undefined) patch.homePhone = trimOrNull(p.homePhone);
-    if (p.address !== undefined) patch.address = trimOrNull(p.address);
-    if (p.remarks !== undefined) patch.remarks = trimOrNull(p.remarks);
+    const patch:Record<string,unknown>={...await validateEmergencyContactInputTx(tx,existing.personId,p,existing)};
 
     let demotedId: string | null = null;
     if (p.priority !== undefined) {

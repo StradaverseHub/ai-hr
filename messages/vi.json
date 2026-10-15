@@ -1966,7 +1966,23 @@
       "verdictBlocked": "Bị chặn",
       "fieldValue": "Giá trị",
       "fieldUnit": "Đơn vị",
-      "proposedValues": "Giá trị đề xuất"
+      "proposedValues": "Giá trị đề xuất",
+      "sectionQualification": "Bằng cấp",
+      "sectionQualificationHint": "Thêm hoặc cập nhật nhiều bản ghi bằng cấp của nhân viên hiện có.",
+      "sectionEmergency": "Liên hệ khẩn cấp",
+      "sectionEmergencyHint": "Thêm hoặc cập nhật nhiều liên hệ khẩn cấp của nhân viên hiện có.",
+      "registerRecordId": "ID bản ghi (chỉ bản ghi hiện có)",
+      "registerYes": "Có",
+      "registerNo": "Không",
+      "registerCreate": "Tạo bản ghi mới",
+      "registerInstructions": "Mã nhân viên xác định nhân viên. Để trống ID bản ghi để tạo mới; dùng đúng ID đã lưu để cập nhật. Ô trống giữ nguyên giá trị hiện tại. Mỗi nhân viên chỉ được chọn một bằng cấp Cao nhất hoặc liên hệ Chính trong một tệp. Từ tháng và Đến tháng dùng YYYY-MM; Ngày tốt nghiệp dùng YYYY-MM-DD.",
+      "registerFullInstructions": "Mỗi dòng phải tham chiếu mã nhân viên trong trang Employee Import. Bản ghi của nhân viên mới phải để trống ID. Nếu một dòng bị từ chối, toàn bộ sổ làm việc sẽ không được nhập.",
+      "registerSavedCount": "Đã lưu {count} bản ghi",
+      "unexpectedSheet": "Sổ làm việc có trang không xác định hoặc trùng lặp. Hãy dùng mẫu hiện tại và giữ nguyên tên trang dữ liệu để không bỏ qua bảng nào.",
+      "registerExistingEmployeeId": "Mã nhân viên để tải bản ghi hiện tại",
+      "registerDownloadExisting": "Tải CSV bản ghi hiện tại",
+      "registerLimit": "Tối đa 500 dòng mỗi tệp. Bản tải hiện tại có ID đã lưu; hãy kiểm tra từng dòng trước khi áp dụng.",
+      "registerRequiredCreate": "Bắt buộc khi ID bản ghi để trống."
     },
     "wizard": {
       "fields": {

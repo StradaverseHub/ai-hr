@@ -1966,7 +1966,23 @@
       "verdictBlocked": "Disekat",
       "fieldValue": "Nilai",
       "fieldUnit": "Unit",
-      "proposedValues": "Nilai yang dicadangkan"
+      "proposedValues": "Nilai yang dicadangkan",
+      "sectionQualification": "Kelayakan",
+      "sectionQualificationHint": "Tambah atau kemas kini rekod kelayakan berulang untuk pekerja sedia ada.",
+      "sectionEmergency": "Hubungan Kecemasan",
+      "sectionEmergencyHint": "Tambah atau kemas kini hubungan kecemasan berulang untuk pekerja sedia ada.",
+      "registerRecordId": "ID Rekod (rekod sedia ada sahaja)",
+      "registerYes": "Ya",
+      "registerNo": "Tidak",
+      "registerCreate": "Cipta rekod daftar",
+      "registerInstructions": "ID Pekerja mengenal pasti pekerja. Kosongkan ID Rekod untuk mencipta rekod; gunakan ID Rekod tersimpan yang tepat untuk mengemas kini. Sel kosong mengekalkan nilai sedia ada. Pilih paling banyak satu kelayakan Tertinggi atau hubungan Utama bagi setiap pekerja dalam fail. Dari dan Hingga menggunakan YYYY-MM; Tarikh Graduasi menggunakan YYYY-MM-DD.",
+      "registerFullInstructions": "Setiap baris daftar mesti merujuk ID Pekerja pada helaian Employee Import. ID Rekod pekerja baharu mesti kosong. Baris daftar yang ditolak menyebabkan seluruh buku kerja ditolak.",
+      "registerSavedCount": "{count} rekod daftar disimpan",
+      "unexpectedSheet": "Buku kerja mengandungi helaian tidak dijangka atau pendua. Gunakan templat semasa dan kekalkan nama helaian data supaya tiada jadual diabaikan.",
+      "registerExistingEmployeeId": "ID Pekerja untuk rekod semasa",
+      "registerDownloadExisting": "Muat turun CSV rekod semasa",
+      "registerLimit": "Maksimum 500 baris bagi setiap fail daftar. Muat turun rekod semasa menyertakan ID Rekod tersimpan; semak setiap baris sebelum menerapkan.",
+      "registerRequiredCreate": "Wajib apabila ID Rekod kosong."
     },
     "wizard": {
       "fields": {

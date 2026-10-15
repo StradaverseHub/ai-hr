@@ -48,6 +48,8 @@ export function ImportWorkbench({
     employment: { title: t('sectionEmployment'), hint: t('sectionEmploymentHint') },
     bank_statutory: { title: t('sectionBankStatutory'), hint: t('sectionBankStatutoryHint') },
     family: { title: t('sectionFamily'), hint: t('sectionFamilyHint') },
+    qualification:{title:t('sectionQualification'),hint:t('sectionQualificationHint')},
+    emergency:{title:t('sectionEmergency'),hint:t('sectionEmergencyHint')},
   };
 
   return (

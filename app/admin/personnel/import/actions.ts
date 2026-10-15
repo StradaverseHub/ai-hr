@@ -1,5 +1,6 @@
 'use server';
 
+import {PERSONNEL_REGISTER_KINDS,personnelRegisterColumns,type PersonnelRegisterTexts,type PersonnelRegisterRecords} from '@/lib/personnel-register-import';
 import { revalidatePath } from 'next/cache';
 import { requireAdmin } from '@/lib/authz';
 import { parsePersonnelImportCsv } from '@/lib/personnel-import-contract';
@@ -22,15 +23,27 @@ function familyRecords(dependentsCsv?: string) {
   return text === '' ? [] : parseFamily(text).records;
 }
 
+function registerRecords(texts:PersonnelRegisterTexts={}):PersonnelRegisterRecords {
+  if(Object.keys(texts).some(key=>!(PERSONNEL_REGISTER_KINDS as readonly string[]).includes(key)))throw new Error('Unknown register sheet.');
+  const result:PersonnelRegisterRecords={};
+  for(const kind of PERSONNEL_REGISTER_KINDS) {
+    const text=texts[kind]??'';
+    result[kind]=text.trim()?parsePersonnelImportCsv(text,{columns:personnelRegisterColumns(kind),sheet:kind,resolvers:personnelImportLabelResolvers}).records:[];
+  }
+  return result;
+}
+
 /** Dry-run validation. Returns a per-row preview; writes nothing. */
 export async function validateImportAction(
   csv: string,
   companyId: string,
   dependentsCsv?: string,
+  registers?:PersonnelRegisterTexts,
 ): Promise<ImportPreview> {
   const s = await requireAdmin();
+  if(Buffer.byteLength([csv,dependentsCsv??'',...Object.values(registers??{})].join(''),'utf8')>900000)throw new Error('The import is too large. Split the workbook and check each part.');
   const { records, warnings } = parseEmployee(csv);
-  const preview=await validateEmployeeImport(s, { companyId, records, dependentRecords: familyRecords(dependentsCsv) });
+  const preview=await validateEmployeeImport(s, { companyId, records, dependentRecords: familyRecords(dependentsCsv),registerRecords:registerRecords(registers) });
   for(const row of preview.rows) row.warnings.push(...warnings);
   const familyWarnings=(dependentsCsv??'').trim()?parseFamily(dependentsCsv!).warnings:[];
   for(const row of preview.rows) row.warnings.push(...familyWarnings.map(warning=>`Family: ${warning}`));
@@ -46,13 +59,16 @@ export async function commitImportAction(
   companyId: string,
   fileName?: string,
   dependentsCsv?: string,
+  registers?:PersonnelRegisterTexts,
 ): Promise<ImportResult> {
   const s = await requireAdmin();
+  if(Buffer.byteLength([csv,dependentsCsv??'',...Object.values(registers??{})].join(''),'utf8')>900000)throw new Error('The import is too large. Split the workbook and check each part.');
   const { records } = parseEmployee(csv);
   const result = await commitEmployeeImport(s, {
     companyId,
     records,
     dependentRecords: familyRecords(dependentsCsv),
+    registerRecords:registerRecords(registers),
     fileName: fileName ?? '',
   });
   revalidatePath('/admin/personnel');

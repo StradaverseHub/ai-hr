@@ -1966,7 +1966,23 @@
       "verdictBlocked": "Blocked",
       "fieldValue": "Value",
       "fieldUnit": "Unit",
-      "proposedValues": "Proposed values"
+      "proposedValues": "Proposed values",
+      "sectionQualification": "Qualifications",
+      "sectionQualificationHint": "Add or update repeated qualification records for existing employees.",
+      "sectionEmergency": "Emergency Contacts",
+      "sectionEmergencyHint": "Add or update repeated emergency contacts for existing employees.",
+      "registerRecordId": "Record ID (existing records only)",
+      "registerYes": "Yes",
+      "registerNo": "No",
+      "registerCreate": "Create register record",
+      "registerInstructions": "Employee ID identifies the employee. Leave Record ID blank to create a record; use the exact saved Record ID to update. Blank cells retain existing values. Select at most one Highest qualification or Primary contact for each employee in a file. From and To use YYYY-MM; Graduation Date uses YYYY-MM-DD.",
+      "registerFullInstructions": "Each register row must name an Employee ID in the Employee Import sheet. New employee register rows must leave Record ID blank. A refused register row rejects the whole workbook.",
+      "registerSavedCount": "{count, plural, one {# register record saved} other {# register records saved}}",
+      "unexpectedSheet": "This workbook contains an unexpected or duplicate sheet. Use the current template and keep its data sheet names so no table is ignored.",
+      "registerExistingEmployeeId": "Employee ID for current records",
+      "registerDownloadExisting": "Download current records CSV",
+      "registerLimit": "Up to 500 rows per register file. Current-record downloads include saved Record IDs; review every row before applying.",
+      "registerRequiredCreate": "Required when Record ID is blank."
     },
     "wizard": {
       "fields": {

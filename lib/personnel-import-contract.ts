@@ -115,7 +115,7 @@ export function personnelScalarIssue(field:PersonnelFieldDescriptor,value:string
 
 export function personnelColumnGuidance(column:string,sheet:PersonnelImportSheet,mode:'create'|'update',words:{required:string;optional:string;reference:string;blankRetains:string}) {
   const field=personnelImportField(column,sheet);
-  const required=column==='employee_code' && (sheet==='family'||mode==='update') || (mode==='create'?field?.import.requiredCreate:field?.import.requiredUpdate);
+  const required=column==='employee_code' && (sheet!=='employee'||mode==='update') || (mode==='create'?field?.import.requiredCreate:field?.import.requiredUpdate);
   return [required?words.required:words.optional,field?.type==='date'?(field.unit==='month'?'YYYY-MM':'YYYY-MM-DD'):undefined,
     field?.type==='number'||field?.type==='currency'?[field.type,field.unit].filter(Boolean).join(' '):undefined,
     field?.type==='choice'?words.reference:undefined,mode==='update'?words.blankRetains:undefined].filter(Boolean).join(' · ');
@@ -124,6 +124,7 @@ export function personnelColumnGuidance(column:string,sheet:PersonnelImportSheet
 export function personnelFieldChoices(field:PersonnelFieldDescriptor) {
   if(field.allowedValuesOwner==='attendance.photoSetting')return ATTENDANCE_PHOTO_SETTINGS.map(value=>({value,labelKey:ATTENDANCE_PHOTO_LABEL_KEYS[value]}));
   if(field.allowedValuesOwner==='employment.paymentMethod')return PAYMENT_METHODS.map(value=>({value,labelKey:`people.detail.paymentMethod_${value}`}));
+  if(field.import.register && field.type==='boolean')return [{value:'true',labelKey:'people.import.registerYes'},{value:'false',labelKey:'people.import.registerNo'}];
   if(field.allowedValuesOwner==='emergency.priority')return EMERGENCY_CONTACT_PRIORITIES.map(value=>({value,labelKey:`people.detail.emergency.${{primary:'priorityPrimary',secondary:'prioritySecondary',other:'priorityOther'}[value]}`}));
   if(field.allowedValuesOwner==='dependent.relationship')return DEPENDENT_RELATIONSHIPS.map(value=>({value,labelKey:`people.detail.family.rel.${value}`}));
   if(field.allowedValuesOwner==='dependent.childReliefPercentage')return CHILD_RELIEF_PERCENTAGES.map(value=>({value:String(value),labelKey:`people.detail.family.childReliefPct_${value}`}));
