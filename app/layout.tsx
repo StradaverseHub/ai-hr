@@ -188,6 +188,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // the pages it can't enter. The cap ORs isAdmin into every partner capability so a user
               // who is BOTH hr_admin and a partner is never narrower than a plain admin (union rule).
               canConfigureIdentityEmail={await canConfigureIdentityEmail(session)}
+              canPreviewIdentityEmail={isAdmin(session)}
               isAdmin={isAdmin(session) || canManagePayroll(session) || canManagePerfComp(session)}
               canApprove={(session.roles ?? []).includes('manager')}
               canAccessTeam={hasTeamAccess(session)}
