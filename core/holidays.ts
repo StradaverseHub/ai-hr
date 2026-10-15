@@ -278,7 +278,8 @@ export async function warnIfHolidaysIncomplete(
  *  DETERMINING INPUTS, MIRRORED IN TWO MEMO KEYS. This reads exactly THREE employment-level values:
  *  employment.company_id, employment.work_state and employment.holiday_group_id. Two memos key on
  *  precisely those — `holidayDatesByEmployment` below and `holidayKeyOf` in core/absence-days.ts — and
- *  hand every employment sharing them the same answer. Reading a new employment-level input here without
+ *  share only the original calendar between employments. Replacement dates are overlaid per employee.
+ *  Reading a new original-calendar input here without
  *  adding it to BOTH keys silently gives one employee another's calendar.
  *
  *  ADR-0086: there were FOUR until r331. The fourth was the OPEN assignment's `location_id` — plus how

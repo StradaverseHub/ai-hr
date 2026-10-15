@@ -11,6 +11,7 @@ export async function sweepReplacementHolidayQueue(owner:ReturnType<typeof creat
  const startedAt=Date.now(),scope=await loadSweepScope(owner.db),limit=Math.min(100,Math.max(1,Math.trunc(options.limitPerTenant??10)));
  let processed=0,changed=0,review=0,failed=0;const failedTenants=new Set<string>();
  for(const tenant of scope.run){
+  try{
   const ctx:SessionContext={tenantId:tenant.id,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}],entitlements:await owner.db.transaction(tx=>resolveEntitlementsTx(tx,tenant.id))};
   for(let n=0;n<limit;n++){
    // A short committed claim avoids queue->employment lock inversion with input writers.
@@ -30,6 +31,10 @@ export async function sweepReplacementHolidayQueue(owner:ReturnType<typeof creat
     failed++;failedTenants.add(tenant.id);
     await withTenant(ctx,tx=>tx.update(replacementHolidayQueue).set({requestedAt:new Date(Date.now()+15*60_000),claimedAt:null,claimedGeneration:null,lastError:publicErrorMessage(error)}).where(and(eq(replacementHolidayQueue.employmentId,claim.employmentId),eq(replacementHolidayQueue.generation,claim.generation))));
    }
+  }
+  }catch(error){
+   // One tenant's entitlement/claim/error-record failure must not prevent other tenants from running.
+   failed++;failedTenants.add(tenant.id);console.error('Replacement holiday tenant pass failed:',publicErrorMessage(error));
   }
  }
  await recordJobRun(owner.db,{jobKey:'replacement-holidays.reconcile',startedAt,tenantsProcessed:scope.run.length,tenantsFailed:failedTenants.size,tenantsSkipped:scope.skipped.length,result:{processed,changed,review,failed}});

@@ -12,19 +12,24 @@ export function replacementPolicyMatches(regime:ReplacementPolicy['regime'],coun
  const sabah=['SABAH','SBH','MY-12','12'].includes(value),sarawak=['SARAWAK','SWK','MY-13','13'].includes(value);
  return regime==='MY_SABAH_103'?sabah:!sabah&&!sarawak;
 }
-export function allocateReplacementHolidays(p:{sources:readonly OriginalHoliday[];policies:readonly ReplacementPolicy[];days:ReadonlyMap<string,ReplacementDayKind>;reserved:ReadonlySet<string>;existingDates?:ReadonlyMap<string,string>;retained?:ReadonlyMap<string,string>;companyCountry:string;state:string|null;knownState:boolean;employmentFrom:string;employmentTo:string|null}):ReplacementDecision[]{
+export function allocateReplacementHolidays(p:{sources:readonly OriginalHoliday[];policies:readonly ReplacementPolicy[];days:ReadonlyMap<string,ReplacementDayKind>;reserved:ReadonlySet<string>;existingDates?:ReadonlyMap<string,string>;retained?:ReadonlyMap<string,string|null>;companyCountry:string;state:string|null;knownState:boolean;employmentFrom:string;employmentTo:string|null}):ReplacementDecision[]{
  const originals=new Set(p.sources.map(h=>h.date)),occupied=new Set(p.reserved),out:ReplacementDecision[]=[];
+ const publicSourcesByDate=new Map<string,Set<string>>();
+ for(const source of p.sources)if(source.holidayType==='public'){const ids=publicSourcesByDate.get(source.date)??new Set<string>();ids.add(source.id);publicSourcesByDate.set(source.date,ids);}
  for(const source of [...p.sources].sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id))){
   if(source.holidayType!=='public'||source.date<p.employmentFrom||p.employmentTo&&source.date>p.employmentTo)continue;
   const policy=policyOn(p.policies,source.date),kind=p.days.get(source.date)??'unknown';
   const emit=(status:ReplacementDecision['status'],date:string|null,reason:string)=>out.push({source,policyId:policy?.id??null,status,date,reason});
-  const retained=p.retained?.get(source.id);if(retained){occupied.add(retained);emit('allocated',retained,'manual_retained');continue;}
+  if(p.retained?.has(source.id)){const retained=p.retained.get(source.id)??null;if(retained)occupied.add(retained);emit(retained?'allocated':'not_required',retained,retained?'manual_retained':'manual_waived');continue;}
   if(kind==='full'||kind==='half'){emit('not_required',null,'original_working_day');continue;}
   if(kind==='off'){emit('not_required',null,'original_off_day');continue;}
   if(kind==='unknown'){emit('review',null,'unknown_schedule');continue;}
   if(!policy||!policy.confirmed){emit('review',null,'policy_unconfirmed');continue;}
   if(!replacementPolicyMatches(policy.regime,p.companyCountry,p.state,p.knownState)){emit('review',null,'jurisdiction_unclear');continue;}
   if(!source.active||source.tentative){emit('review',null,'source_unconfirmed');continue;}
+  // Distinct gazette rows on one date can describe one occasion or several entitlements. The policy
+  // does not settle that identity, so do not silently issue two replacement days or collapse originals.
+  if((publicSourcesByDate.get(source.date)?.size??0)>1){emit('review',null,'source_collision_unclear');continue;}
   if(policy.restMode==='last_weekly_rest'){
    const dow=new Date(source.date+'T00:00:00Z').getUTCDay()||7;
    let laterRest=false,unknown=false;

@@ -31,6 +31,10 @@ describe('replacement date decisions from original calendar and raw schedule',()
  it('retains manual reservations and allows their original owner to keep the date',()=>{
   const result=plan(['rest','full','full'],{reserved:new Set([day(1)]),retained:new Map([['original',day(1)]]),existingDates:new Map([['original',day(1)]])});expect(result[0].date).toBe(day(1));
  });
+ it('a manual waiver does not occupy a phantom replacement date needed by another source',()=>{
+  const result=plan(['rest','rest','full','full'],{sources:[source('original'),source('later',1)],retained:new Map([['original',null]])});
+  expect(result.map(r=>[r.source.id,r.status,r.date])).toEqual([['original','not_required',null],['later','allocated',day(2)]]);
+ });
  it('does not allocate outside tenure or treat an off day as statutory rest',()=>{
   expect(plan(['rest','full'],{employmentTo:day(0)})[0]).toMatchObject({status:'review',date:null});
   expect(plan(['off','full'])[0]).toMatchObject({status:'not_required',date:null});
@@ -46,6 +50,10 @@ describe('replacement date decisions from original calendar and raw schedule',()
  it('crosses a year boundary without changing the original identity',()=>{
   const originalDate=base.slice(0,4)+'-12-31',next=addHolidayDays(originalDate,1),holiday={...source('year-end'),date:originalDate};
   const result=plan([],{sources:[holiday],days:new Map([[originalDate,'rest'],[next,'full']])});expect(result[0]).toMatchObject({source:{id:'year-end',date:originalDate},date:next});
+ });
+ it('keeps distinct same-date original identities for review instead of guessing duplicate entitlement',()=>{
+  const result=plan(['rest','full','full'],{sources:[source('first gazette'),source('second gazette')]});
+  expect(result).toHaveLength(2);expect(result.every(r=>r.status==='review'&&r.date===null&&r.reason==='source_collision_unclear')).toBe(true);
  });
  it('requires tentative and inactive sources to be reviewed',()=>{
   for(const value of [{tentative:true},{active:false}])expect(plan(['rest','full'],{sources:[{...source('uncertain'),...value}]})[0].reason).toBe('source_unconfirmed');

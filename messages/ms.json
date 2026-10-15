@@ -19192,6 +19192,7 @@
     "originalKept": "Cuti umum asal dan hari rehat berjadual kekal dalam rekod.",
     "calendarReview": "Jenis hari direkodkan berbeza daripada kalendar cuti berkuat kuasa. Semak pembetulan atau pengecualian yang dibenarkan sebelum mengubah kehadiran atau gaji.",
     "reasonSourceDate": "Tarikh cuti asal telah berubah. Semak sejarah yang dikekalkan dan tarikh dicadangkan.",
-    "updatedOriginal": "Tarikh asal semasa"
+    "updatedOriginal": "Tarikh asal semasa",
+    "reasonCollision": "Beberapa cuti umum asal jatuh pada tarikh ini. Sahkan sama ada setiap satunya memberi kelayakan cuti ganti berasingan."
   }
 }

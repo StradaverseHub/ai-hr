@@ -19192,6 +19192,7 @@
     "originalKept": "原公共假日与排定休息日仍保留在记录中。",
     "calendarReview": "已记录的日期类型与当前生效假日日历不同。更改考勤或薪资前，请审核现有更正或获准例外。",
     "reasonSourceDate": "原公共假日日期已变更。请审核保留的历史记录与建议日期。",
-    "updatedOriginal": "当前原假日日期"
+    "updatedOriginal": "当前原假日日期",
+    "reasonCollision": "多个原始公共假期在同一天。请确认是否各自享有独立的补假。"
   }
 }

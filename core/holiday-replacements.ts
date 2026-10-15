@@ -61,12 +61,16 @@ export async function reconcileReplacementHolidaysTx(tx:Tx,ctx:SessionContext,em
  const recordedByDate=new Map(recorded.map(row=>[row.date,row.dayType]));
  const payroll=new Map<string,boolean>();
  const protectedDate=async(date:string)=>{if(!payroll.has(date))payroll.set(date,(await lockPayrollForAttendanceChange(tx,employmentId,date)).length>0);return payroll.get(date)!;};
- const reserved=new Set<string>(),retained=new Map<string,string>(),oldDates=new Map<string,string>();
- for(const old of existing)if(old.replacementDate){oldDates.set(old.sourceHolidayId,old.replacementDate);if(old.manual)retained.set(old.sourceHolidayId,old.replacementDate);if(old.manual||recordedByDate.has(old.replacementDate)||await protectedDate(old.replacementDate))reserved.add(old.replacementDate);}
+ const reserved=new Set<string>(),retained=new Map<string,string|null>(),oldDates=new Map<string,string>();
+ for(const old of existing){
+  if(old.manual)retained.set(old.sourceHolidayId,old.replacementDate);
+  if(old.replacementDate){oldDates.set(old.sourceHolidayId,old.replacementDate);if(old.manual||recordedByDate.has(old.replacementDate)||await protectedDate(old.replacementDate))reserved.add(old.replacementDate);}
+ }
  const decisions=allocateReplacementHolidays({sources,policies,days,reserved,retained,existingDates:oldDates,companyCountry:c.country,state,knownState,employmentFrom:tenureFrom,employmentTo:emp.terminatedOn});
  const selected=new Map(decisions.filter(d=>d.source.date<=to).map(d=>[d.source.id,d]));
  for(const old of existing)if(!selected.has(old.sourceHolidayId))selected.set(old.sourceHolidayId,{source:{id:old.sourceHolidayId,date:old.sourceDate,name:old.sourceName,holidayType:'public',tentative:false,active:true},policyId:old.policyId,status:'not_required',date:null,reason:'source_no_longer_applicable'});
  let changed=0,review=0;
+ const writes:{before:typeof replacementHoliday.$inferSelect|null;values:typeof replacementHoliday.$inferInsert;basis:Record<string,unknown>}[]=[];
  for(const decision of [...selected.values()].sort((a,b)=>a.source.date.localeCompare(b.source.date)||a.source.id.localeCompare(b.source.id))){
   const old=oldBySource.get(decision.source.id);if(old?.manual){if(old.status==='review')review++;continue;}
   if(!old&&decision.status==='not_required')continue;
@@ -86,8 +90,17 @@ export async function reconcileReplacementHolidaysTx(tx:Tx,ctx:SessionContext,em
   const inputDigest=digest({source:decision.source,policy,days:[...days].filter(([day])=>day>=addHolidayDays(decision.source.date,-7)&&day<=end),originals:sources.filter(h=>h.date>=decision.source.date&&h.date<=end),companyId:emp.companyId,tenureFrom,terminatedOn:emp.terminatedOn,state,status,date,reason,proposedDate});
   if(old?.inputDigest===inputDigest)continue;
   const values={tenantId:ctx.tenantId,employmentId,companyId:old?.companyId??emp.companyId,sourceHolidayId:decision.source.id,sourceDate:reason==='source_date_changed'?old!.sourceDate:decision.source.date,sourceName:reason==='source_date_changed'?old!.sourceName:decision.source.name,policyId:old&&(old.companyId!==emp.companyId||reason==='source_date_changed')?old.policyId:decision.policyId,inputDigest,status,replacementDate:date,proposedDate,reason,manual:false,manualReason:null,updatedAt:new Date()};
-  const [row]=old?await tx.update(replacementHoliday).set(values).where(eq(replacementHoliday.id,old.id)).returning():await tx.insert(replacementHoliday).values(values).returning();
-  await saveRevision(tx,ctx,row,old??null,{source:decision.source,policyId:decision.policyId,inputDigest});changed++;
+  writes.push({before:old??null,values,basis:{source:decision.source,policyId:decision.policyId,inputDigest}});
+ }
+ // Several sources can move forward together: A's new date may still be held by B's old projection.
+ // Vacate only dates that this same transaction will change, after every payroll/attendance guard has
+ // decided the final result. Intermediate review rows are invisible outside this transaction; revisions
+ // retain the original before snapshot, and rollback restores the whole allocation if any write fails.
+ for(const write of writes)if(write.before?.replacementDate&&write.before.replacementDate!==write.values.replacementDate)
+  await tx.update(replacementHoliday).set({replacementDate:null,status:'review'}).where(eq(replacementHoliday.id,write.before.id));
+ for(const write of writes){
+  const [row]=write.before?await tx.update(replacementHoliday).set(write.values).where(eq(replacementHoliday.id,write.before.id)).returning():await tx.insert(replacementHoliday).values(write.values).returning();
+  await saveRevision(tx,ctx,row,write.before,write.basis);changed++;
  }
  const effectiveDates=new Set(sources.map(h=>h.date));
  for(const row of await tx.select({date:replacementHoliday.replacementDate}).from(replacementHoliday).where(eq(replacementHoliday.employmentId,employmentId)))if(row.date)effectiveDates.add(row.date);

@@ -258,6 +258,8 @@ export default async function MyRosterPage({
 // ── Pieces ──────────────────────────────────────────────────────────────────────────────────────────
 
 type T = Awaited<ReturnType<typeof getTranslations<'attendance'>>>;
+type CalendarRosterDay=MyRosterDay&{holidayNote?:{label:string;name:string}};
+type CalendarRosterView=Omit<MyRosterView,'days'>&{days:CalendarRosterDay[]};
 
 function Stat({ label, value, unit }: { label: string; value: string; unit?: string }) {
   return (
@@ -289,7 +291,7 @@ function sourceKey(d: MyRosterDay): 'sourceRostered' | 'sourceUsual' | 'sourceRe
  * ONE day, drawn the same way in all three views. A `usual` day is GREY ITALIC — the legend's sentence
  * says what that means — and a rostered day carries its shift's own colour token.
  */
-function DayBody({d,t,hhmm}:{d:MyRosterDay&{holidayNote?:{label:string;name:string}};t:T;hhmm:(v:string|null)=>string}) {
+function DayBody({d,t,hhmm}:{d:CalendarRosterDay;t:T;hhmm:(v:string|null)=>string}) {
  return <div className="space-y-1">{d.holidayNote&&<span className="block text-xs font-medium text-foreground" title={d.holidayNote.name}>{d.holidayNote.label}: {d.holidayNote.name}</span>}<DayBodyContent d={d} t={t} hhmm={hhmm}/></div>;
 }
 
@@ -342,7 +344,7 @@ function MonthGrid({
   fmtWeekday,
   hhmm,
 }: {
-  view: MyRosterView;
+  view: CalendarRosterView;
   w: MyRosterWindow;
   t: T;
   fmtWeekday: (iso: string) => string;
@@ -394,7 +396,7 @@ function WeekCards({
   hhmm,
   fmtHrs,
 }: {
-  view: MyRosterView;
+  view: CalendarRosterView;
   w: MyRosterWindow;
   t: T;
   fmtWeekday: (iso: string) => string;
@@ -442,7 +444,7 @@ function DayPanel({
   fmtHrs,
   fmtLongDate,
 }: {
-  view: MyRosterView;
+  view: CalendarRosterView;
   w: MyRosterWindow;
   t: T;
   fmtWeekday: (iso: string) => string;
@@ -475,6 +477,7 @@ function DayPanel({
         <div>
           <p className="text-sm text-muted-foreground">{t(`myRoster.${sourceKey(day)}`)}</p>
           <h2 className="text-lg font-semibold">{fmtLongDate(day.date)}</h2>
+          {day.holidayNote&&<p className="text-sm font-medium">{day.holidayNote.label}: {day.holidayNote.name}</p>}
           {day.shift && (
             <p className="text-sm text-muted-foreground">
               {day.shift.code} — {day.shift.name}
