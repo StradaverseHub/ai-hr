@@ -827,7 +827,7 @@ export type DependentInput = {
  * copy is the r73 Decision 3 failure mode exactly: one writer falls behind a column the other gained, and
  * a field entered on the draft is silently dropped at Activate.
  */
-async function insertDependentInTx(
+export async function addDependentTx(
   tx: Tx,
   ctx: SessionContext,
   personId: string,
@@ -876,7 +876,7 @@ export async function addDependent(
   ctx: SessionContext,
   p: { personId: string } & DependentInput,
 ): Promise<{ id: string; childReliefSync: ChildReliefSyncResult }> {
-  const res = await withTenant(ctx, (tx) => insertDependentInTx(tx, ctx, p.personId, p));
+  const res = await withTenant(ctx, (tx) => addDependentTx(tx, ctx, p.personId, p));
   // R46 47146ea3 — refresh the PCB child count from the register. Runs after commit, never throws.
   const childReliefSync = await syncChildReliefFromFamily(ctx, p.personId);
   return { ...res, childReliefSync };
@@ -969,7 +969,7 @@ export async function materialiseDependents(
         skipped += 1;
         continue;
       }
-      created.push((await insertDependentInTx(tx, ctx, p.personId, m)).id);
+      created.push((await addDependentTx(tx, ctx, p.personId, m)).id);
     }
     return { created, skipped };
   });

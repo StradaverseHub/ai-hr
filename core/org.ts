@@ -183,8 +183,10 @@ export function resolveProbationMonths(probationMonths: number | null | undefine
   return probationMonths != null && probationMonths > 0 ? probationMonths : 3;
 }
 
-export async function hireEmployee(ctx: SessionContext, p: HireParams) {
-  return withTenant(ctx, async (tx) => {
+export async function hireEmployee(ctx: SessionContext, p: HireParams,
+  /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
+  outerTx?: Tx) {
+  const run = async (tx:Tx) => {
     let personId = p.person.id;
     if (!personId) {
       const [row] = await tx
@@ -466,7 +468,8 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
     const [taxCompany]=await tx.select({country:company.country}).from(company).where(eq(company.id,p.companyId)).limit(1);
     await packFor(taxCompany?.country)?.statutory.initializeHiredTaxSelectionTx?.(tx,ctx,{employmentId:emp.id,companyId:p.companyId,scheme:p.initialTaxScheme??'resident'});
     return { employmentId: emp.id, personId };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
 /**
@@ -1378,8 +1381,10 @@ const CATALOG_BACKED_COLUMNS: Partial<Record<keyof PersonProfileFields, ProfileO
 export async function updatePerson(
   ctx: SessionContext,
   p: { personId: string; fullName: string; primaryEmail: string; phone?: string | null; via?: string } & PersonProfileFields,
+  /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
+  outerTx?: Tx,
 ) {
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx:Tx) => {
     const [before] = await tx
       .select({
         fullName: person.fullName,
@@ -1462,7 +1467,8 @@ export async function updatePerson(
       },
     });
     return { id: p.personId };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
 /**

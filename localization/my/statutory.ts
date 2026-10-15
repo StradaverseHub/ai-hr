@@ -5,7 +5,7 @@ import {saveTaxSelectionMYTx,selectedSchemeOk,TaxSelectionError,taxSelectionCont
  * identity: IC, EPF, SOCSO, tax, EIS eligibility, bank. IC is validated + unique per tenant.
  */
 import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../../db/client';
+import { type Tx, withTenant, type SessionContext } from '../../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../../db/events';
 import { companyStatutoryMy, domainEvent, employeeStatutoryMy, employment, person } from '../../db/schema';
 import { CHILD_RELIEF_CATEGORY_KEYS, DEFAULT_MY_STATUTORY, type HrdfStatus } from './statutory-tables';
@@ -210,7 +210,9 @@ export type StatutoryInput = {
   zakatEffectiveTo?: string | null;
 };
 
-export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInput) {
+export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInput,
+  /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
+  outerTx?: Tx) {
   // Item 35524d1f — the same rule setIcProfileMY has carried since 55865c32: a BLANK IC is accepted and
   // stored as null; any NON-blank value stays strict 12-digit MyKad. This opened with a bare
   // `if (!isValidIC(...)) throw`, which rejected '' as well, so the Create Employee wizard failed at its last
@@ -291,7 +293,7 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
     zakatEffectiveFrom: zakat.zakatEffectiveFrom,
     zakatEffectiveTo: zakat.zakatEffectiveTo,
   };
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx:Tx) => {
     const [existing] = await tx
       .select({
         id: employeeStatutoryMy.id,
@@ -427,7 +429,8 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
       },
     });
     return { id };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
 /** A TP3 partial-save was attempted for a person with no Malaysian statutory row yet. */
@@ -532,7 +535,9 @@ export type BankInput = {
  * throws NoStatutoryProfileError otherwise. Validates require-when-enabled for both custom-holder fields.
  * Appends an `employee.bank.updated` DomainEvent (before/after) per substrate discipline.
  */
-export async function setBankProfileMY(ctx: SessionContext, p: BankInput) {
+export async function setBankProfileMY(ctx: SessionContext, p: BankInput,
+  /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
+  outerTx?: Tx) {
   const enableName = p.enableCustomHolderName ?? false;
   const enableId = p.enableCustomHolderId ?? false;
   const holderName = (p.customHolderName ?? '').trim() || null;
@@ -555,7 +560,7 @@ export async function setBankProfileMY(ctx: SessionContext, p: BankInput) {
     enableCustomHolderId: enableId,
     customHolderId: enableId ? holderId : null,
   };
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx:Tx) => {
     const [existing] = await tx
       .select({
         id: employeeStatutoryMy.id,
@@ -599,7 +604,8 @@ export async function setBankProfileMY(ctx: SessionContext, p: BankInput) {
       },
     });
     return { id: existing.id };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
 // ── Feedback 0df0c635 — Others Statutory card ──────────────────────────────────────────────────────────
@@ -912,6 +918,8 @@ export class NoIcYetError extends Error {
 export async function setIcProfileMY(
   ctx: SessionContext,
   p: { personId: string; icNumber: string; oldIcNumber?: string | null },
+  /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
+  outerTx?: Tx,
 ) {
   const ic = (p.icNumber ?? '').trim() ? normalizeIC(p.icNumber) : null;
   /**
@@ -924,7 +932,7 @@ export async function setIcProfileMY(
   // no MyKad but an old card (or a correction that clears one) still has something to write.
   if (!ic && !oldIc) return { id: null };
   if (ic && !isValidIC(ic)) throw new InvalidICError();
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx:Tx) => {
     const [existing] = await tx
       .select({ id: employeeStatutoryMy.id, icNumber: employeeStatutoryMy.icNumber, oldIcNumber: employeeStatutoryMy.oldIcNumber })
       .from(employeeStatutoryMy)
@@ -961,7 +969,8 @@ export async function setIcProfileMY(
       },
     });
     return { id };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
 /** Item e3ce0d4d — an identity save was missing a mandatory passport field (number / issue / expiry). The
@@ -1004,7 +1013,9 @@ export type PassportInput = {
  *     person has no statutory row yet — nothing to clear, no empty row seeded.
  * Remark and issuing country are optional on every path.
  */
-export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput) {
+export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput,
+  /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
+  outerTx?: Tx) {
   const number = (p.passportNumber ?? '').trim() || null;
   const issue = (p.passportIssueDate ?? '').trim() || null;
   const expiry = (p.passportExpiryDate ?? '').trim() || null;
@@ -1024,7 +1035,7 @@ export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput
     passportIssuingCountry: issuingCountry,
     passportIssuingCountryCode: issuingCountryCode,
   };
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx:Tx) => {
     // Nationality is derived from the person RECORD inside the same RLS tx — never from the caller.
     const [subject] = await tx
       .select({ nationality: person.nationality })
@@ -1091,7 +1102,8 @@ export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput
       },
     });
     return { id: id as string | null };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
 /** Just the tax columns of the Identification & Tax card (item 8b5334db). Used by the dedicated card, which
@@ -1152,7 +1164,9 @@ export type TaxWriteProvenance = 'auto_child_relief';
  * it on the Profile tab) — throws NoIcYetError otherwise. isResident is kept in sync as the legacy source of
  * truth (all resident and approved resident incentive schemes ⇒ true; non-resident ⇒ false). Appends `employee.tax.updated` (before/after).
  */
-export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput) {
+export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput,
+  /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
+  outerTx?: Tx) {
   if(p.taxResidency!=null&&p.taxResidency!=='none'&&!selectedSchemeOk(p.taxResidency))throw new TaxSelectionError('invalid_scheme');
   const residency: TaxResidency =
     p.taxResidency != null && isTaxResidency(String(p.taxResidency)) ? (String(p.taxResidency) as TaxResidency) : 'resident';
@@ -1178,7 +1192,7 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput) {
     disabledSpouse: p.disabledSpouse ?? false,
     childReliefTable: normaliseChildReliefTable(p.childReliefTable),
   };
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx:Tx) => {
     if(p.employmentId)await taxSelectionContextMY(tx,ctx,p.employmentId,true);
     const [existing] = await tx
       .select({
@@ -1256,7 +1270,8 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput) {
       },
     });
     return { id: existing.id };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
 /**

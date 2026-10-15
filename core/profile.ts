@@ -27,7 +27,7 @@ import { isCalendarDate } from '../lib/calendar-date';
  * and the audit rule that the event log records field NAMES and never values.
  */
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { type Tx, withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
 import { employeeStatutoryMy, employment, person, profileChangeRequest } from '../db/schema';
 import { assertCanDecide } from './approvals';
@@ -646,6 +646,8 @@ export async function setPersonComplianceFields(
     // atomically against the live row inside the tx (below).
     dobOnlyIfEmpty?: boolean;
   },
+  /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
+  outerTx?: Tx,
 ) {
   const roles = ctx.roles ?? [];
   if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
@@ -673,7 +675,7 @@ export async function setPersonComplianceFields(
   if (proposed.dateOfBirth !== undefined) personSet.dateOfBirth = proposed.dateOfBirth;
   if (Object.keys(personSet).length === 0) throw new Error('Nothing to change.');
 
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx:Tx) => {
     // Resolve the person from the employment (RLS confines this select to admin scope).
     const [emp] = await tx
       .select({ personId: employment.personId })
@@ -716,7 +718,8 @@ export async function setPersonComplianceFields(
       payload: { via: 'admin-set', fields: Object.keys(writeSet), before, after },
     });
     return { id: personId };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
 /** Admin inbox — RLS trims to scope. Recent first. */

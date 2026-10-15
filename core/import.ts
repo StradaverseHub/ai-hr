@@ -1,6 +1,5 @@
 import { PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS, personnelScalarIssue } from '../lib/personnel-import-contract';
 import { isCalendarDate } from '../lib/calendar-date';
-import { GENDERS, MARITAL_STATUSES } from '../lib/person-vocabulary';
 /**
  * Day-one employee importer (ADR-0008 localization stays in the pack; this is the generic
  * bulk-load path). Parses a validated set of CSV records and reuses the same services the
@@ -35,7 +34,7 @@ import { setCompensation, unpayableSalaryLeg } from './comp';
 import { setPersonComplianceFields } from './profile';
 // Item 2983802f — the family sheet writes through the SAME service the Family card uses, so an imported
 // dependant is indistinguishable from a hand-entered one (events, child-relief resync, catalog rules).
-import { addDependent, DEPENDENT_GENDERS, DEPENDENT_RELATIONSHIPS } from './dependents';
+import { addDependentTx, syncChildReliefFromFamily, DEPENDENT_GENDERS, DEPENDENT_RELATIONSHIPS } from './dependents';
 // Rung 5a (ADR-0080 D1/D6): the statutory writer + IC helpers come from the COMPANY'S country pack
 // (resolved in analyze() from company.country), never from a direct localization/my import. A company
 // whose country resolves no pack fails the import loudly (D3) instead of validating under MY rules.
@@ -1104,21 +1103,18 @@ export async function commitEmployeeImport(
     // own country's. Reading it off the row rather than the batch is what keeps that honest.
     const pack = row.pack;
     try {
-      const { employmentId, personId } = await hireEmployee(ctx, {...row.hire,initialTaxScheme:row.statutory.isResident===false?'non_resident':'resident'});
-      employmentByRow.set(index, employmentId);
-      await pack.statutory.set(ctx, { personId, ...row.statutory });
+      const saved = await withTenant(ctx,async tx=>{
+      const { employmentId, personId } = await hireEmployee(ctx, {...row.hire,initialTaxScheme:row.statutory.isResident===false?'non_resident':'resident'}, tx);
+      let familyCount=0;
+      await pack.statutory.set(ctx, { personId, ...row.statutory }, tx);
       // Feedback b9fd8fd5 — imports behave like manual entry (setIcAction, item 354a500d): a valid IC also
       // persists the derived Date of Birth so the Profile tab's Age never reads "Not Available" for an
       // imported employee. `dobOnlyIfEmpty` guarantees an existing DOB is never overwritten; an IC whose
       // first six digits form no real calendar date derives nothing (null) and is skipped, not failed.
-      // Best-effort: the employee is already hired + statutory-saved, so a failure here must not fail the row.
+      // The complete employee row shares one transaction; a later owner refusal rolls back this autofill too.
       const derivedDob = pack.statutory.dobFromIC(row.statutory.icNumber);
       if (derivedDob) {
-        try {
-          await setPersonComplianceFields(ctx, { employmentId, dateOfBirth: derivedDob, dobOnlyIfEmpty: true });
-        } catch {
-          // non-fatal — the DOB autofill is a convenience (mirrors setIcAction's safety net).
-        }
+        await setPersonComplianceFields(ctx, { employmentId, dateOfBirth: derivedDob, dobOnlyIfEmpty: true }, tx);
       }
       await setCompensation(ctx, {
         employmentId,
@@ -1132,12 +1128,12 @@ export async function commitEmployeeImport(
         // NULL and logs no `remarks` field change, so a file with no such column writes what it always did.
         remarks: row.salaryRemarks,
         effectiveFrom: row.effectiveFrom,
-      });
+      }, tx);
       // ── Item 2983802f — the new blocks, each through the SAME service its Personnel card uses, and
       //    each skipped entirely when the file carried none of its columns. That is what keeps an
       //    existing file's import byte-identical to what it was before this change.
       if (row.passport) {
-        await pack.statutory.setPassport(ctx, { personId, ...row.passport });
+        await pack.statutory.setPassport(ctx, { personId, ...row.passport }, tx);
       }
       if (row.profile) {
         // `updatePerson` re-writes the core trio, so the row's own values are passed through — omitting
@@ -1149,16 +1145,21 @@ export async function commitEmployeeImport(
           phone: row.hire.person.phone ?? null,
           via: 'employee-import',
           ...row.profile,
-        });
+        }, tx);
       }
-      if (row.compliance) await setPersonComplianceFields(ctx,{employmentId,...row.compliance});
+      if (row.compliance) await setPersonComplianceFields(ctx,{employmentId,...row.compliance}, tx);
       if (row.employmentInfo) {
-        await setEmploymentInfo(ctx, { employmentId, ...row.employmentInfo });
+        await setEmploymentInfo(ctx, { employmentId, ...row.employmentInfo }, tx);
       }
       for (const d of familyByRow.get(index) ?? []) {
-        await addDependent(ctx, { personId, ...d.add });
-        dependentsImported++;
+        await addDependentTx(tx,ctx,personId,d.add);
+        familyCount++;
       }
+      return {employmentId,personId,familyCount};
+      });
+      employmentByRow.set(index,saved.employmentId);
+      dependentsImported+=saved.familyCount;
+      if(saved.familyCount)await syncChildReliefFromFamily(ctx,saved.personId);
       imported++;
     } catch (e) {
       failed.push({ rowNum: row.result.rowNum, email: row.result.email, message: publicErrorMessage(e) });

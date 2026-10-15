@@ -1,6 +1,5 @@
 import { PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS, personnelScalarIssue } from '../lib/personnel-import-contract';
 import { isCalendarDate } from '../lib/calendar-date';
-import { GENDERS, MARITAL_STATUSES } from '../lib/person-vocabulary';
 import { setPersonComplianceFields } from './profile';
 /**
  * Item 2983802f — THE PER-SECTION IMPORTER: update people who already exist, one subject area at a time.
@@ -66,7 +65,7 @@ import {
 } from '../db/schema';
 import { setEmploymentInfo, setReportingLine, updatePerson, type PersonProfileFields } from './org';
 import { primaryEmergencyContactSql } from './emergency-contacts';
-import { addDependent, DEPENDENT_GENDERS, DEPENDENT_RELATIONSHIPS } from './dependents';
+import { addDependentTx, syncChildReliefFromFamily, DEPENDENT_GENDERS, DEPENDENT_RELATIONSHIPS } from './dependents';
 import { requirePackFor, type CountryPack } from '../localization/registry';
 import { normalizeEmployeeCode } from '../lib/employee-code';
 // The reporting-line edge below opens "today", and today is a WALL-CLOCK question: this product
@@ -1095,6 +1094,7 @@ export async function commitSectionImport(
     const s = row.subject;
     let step: WriteStep = 'person';
     try {
+      await withTenant(ctx,async tx=>{
       step = 'person';
       if (row.personPatch) {
         await updatePerson(ctx, {
@@ -1104,19 +1104,19 @@ export async function commitSectionImport(
           phone: row.personPatch.phone,
           via: 'section-import',
           ...row.personPatch.fields,
-        });
+        }, tx);
       }
-      if(row.compliance)await setPersonComplianceFields(ctx,{employmentId:s.employmentId,...row.compliance});
+      if(row.compliance)await setPersonComplianceFields(ctx,{employmentId:s.employmentId,...row.compliance}, tx);
       step = 'ic';
-      if (row.ic) await s.pack.statutory.setIc(ctx, { personId: s.personId, ...row.ic });
+      if (row.ic) await s.pack.statutory.setIc(ctx, { personId: s.personId, ...row.ic }, tx);
       step = 'passport';
-      if (row.passport) await s.pack.statutory.setPassport(ctx, { personId: s.personId, ...row.passport });
+      if (row.passport) await s.pack.statutory.setPassport(ctx, { personId: s.personId, ...row.passport }, tx);
       step = 'bank';
-      if (row.bank) await s.pack.statutory.setBank(ctx, { personId: s.personId, ...row.bank });
+      if (row.bank) await s.pack.statutory.setBank(ctx, { personId: s.personId, ...row.bank }, tx);
       step = 'tax';
-      if (row.tax) await s.pack.statutory.setTax(ctx, { personId: s.personId, ...row.tax });
+      if (row.tax) await s.pack.statutory.setTax(ctx, { personId: s.personId, ...row.tax }, tx);
       step = 'employmentInfo';
-      if (row.employmentInfo) await setEmploymentInfo(ctx, { employmentId: s.employmentId, ...row.employmentInfo });
+      if (row.employmentInfo) await setEmploymentInfo(ctx, { employmentId: s.employmentId, ...row.employmentInfo }, tx);
       step = 'superior';
       if (row.superiorEmploymentId) {
         await setReportingLine(ctx, {
@@ -1126,10 +1126,12 @@ export async function commitSectionImport(
           // The edge opens today, not on the hire date: this is a CHANGE of manager on somebody who is
           // already employed, and backdating it to their joining date would rewrite history.
           validFrom: todayInKualaLumpur(),
-        });
+        }, tx);
       }
       step = 'dependent';
-      if (row.dependent) await addDependent(ctx, { personId: s.personId, ...row.dependent });
+      if (row.dependent) await addDependentTx(tx,ctx,s.personId,row.dependent);
+      });
+      if(row.dependent)await syncChildReliefFromFamily(ctx,s.personId);
       updated++;
     } catch (e) {
       // NEVER THE DRIVER'S OWN WORDS. A failed write throws a Drizzle error whose message carries the
