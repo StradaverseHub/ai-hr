@@ -45,6 +45,13 @@ function secondSegment(data: OvertimeInput, minutes = '60', session = 'session_2
     data.segments[0].approvedMinutes = fact('60', 'approval');
     data.segments.push({ id: 'segment_2', sessionId: session, dayType: fact('workday'), clock: missing(), rawMinutes: fact(minutes), approvedMinutes: fact(minutes, 'approval') });
 }
+describe('preview identity is hypothetical; actual identity remains bound',()=>{
+    it('refuses a mismatched actual employee fact while permitting a nontransferable hypothetical preview',()=>{
+        const p=definition(),data=input();data.facts.employmentId=fact(uuid(99),'personnel');
+        const actual=refused(evaluateOvertimePattern(p,data),'source');expect(actual.issues.some(issue=>issue.path==='employmentId')).toBe(true);
+        const preview=ready(evaluateOvertimePattern(p,{...data,mode:'preview'}));expect(preview.transferable).toBe(false);expect(preview.source).toEqual(data.source);
+    });
+});
 describe('OT exact payment and source contract', () => {
     it('calculates an explicit hourly rate/multiplier without choosing a legal or Payroll policy', () => { const r = ready(evaluateOvertimePattern(definition(), input())); expect(r.amountMinorUnits).toBe('3600'); expect(minutes(r.payableMinutes)).toBe('120/1'); expect(r.transferable).toBe(true); expect(r.lines).toHaveLength(1); expect(r.trace.some(t => t.kind === 'rate' && t.id.startsWith('selected-'))).toBe(true); expect(() => JSON.stringify(r)).not.toThrow(); });
     it('retains a repeating rational rate exactly until the declared money rounding stage', () => { const p = definition(); p.rates[0].tiers[0].payment = { method: 'hourly', rate: { id: id(), unit: 'moneyPerHour', type: 'hourlyRate', base: literal('money', '100'), divisorMinutes: literal('minutes', '180') }, multiplier: literal('scalar', '1') }; const r = ready(evaluateOvertimePattern(p, input())); expect(r.lines[0].gross).toEqual({ unit: 'money', numerator: '200', denominator: '3' }); expect(r.amountMinorUnits).toBe('6667'); expect(parseRecordedOvertimeEvaluation(r)).toEqual(r); });
