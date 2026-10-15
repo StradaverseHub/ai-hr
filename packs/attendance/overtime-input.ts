@@ -107,12 +107,10 @@ export async function canonicalOvertimeInputTx(tx: Tx, ctx: SessionContext, p: {
     facts.basicSalary = known(salary.basicSalary, provenance);
     const base = sumRecordedMoney(salary.basicSalary, salary.monthlyAllowance);
     facts.calculationBase = base == null ? unknown('invalidRecordedMoney') : known(base, provenance);
-    facts.hourlyRate = salary.payMode === 'hourly' && salary.rateAmount != null ? known(salary.rateAmount, provenance) : unknown('recordedHourlyRateUnavailable');
   } else {
-    for (const field of ['basicSalary', 'calculationBase', 'hourlyRate'] as const) facts[field] = unknown(salary ? 'recordedCurrencyMismatch' : 'recordedCompensationUnavailable');
+    for (const field of ['basicSalary', 'calculationBase'] as const) facts[field] = unknown(salary ? 'recordedCurrencyMismatch' : 'recordedCompensationUnavailable');
   }
   const work = recordedOvertimeWork({attendanceId: day.id, attendanceDate: p.date, workedMinutes: day.workedMinutes, dayType: day.dayType, intervals: recordedIntervals(day, punches)});
-  facts.rawMinutes = work.rawMinutes;
   // Use the same latest approved OT-bearing decision the canonical landing owner reasserts. A pending
   // later request does not silently revoke a completed decision; its exact state is included in the digest.
   const otDecisions = decisions.filter(row => row.requestedOtMinutes != null);
@@ -125,7 +123,6 @@ export async function canonicalOvertimeInputTx(tx: Tx, ctx: SessionContext, p: {
   // original path still consumes them; a new formula requires deliberate review/clearance first.
   const approvalStatus = legacyManualRows.length ? 'unknown' : approved ? 'approved' : pending ? 'pending' : rejected ? 'rejected' : 'notRequired';
   const approvalMinutes = legacyManualRows.length ? unknown<string>('legacyManualOvertimeNeedsReview') : approved ? minute(approved.approvedOtMinutes, approvalProvenance) : approvalStatus === 'notRequired' ? work.rawMinutes : unknown<string>('approvalNotComplete');
-  facts.approvedMinutes = approvalMinutes;
   const approvalDigest = fingerprint(otDecisions.map(row => ({id: row.id, status: row.status, requested: row.requestedOtMinutes, approved: row.approvedOtMinutes, decidedAt: row.decidedAt, appliedAt: row.appliedAt, method: row.otApprovalMethod})));
   const inputDigest = fingerprint({day: {id: day.id, date: day.attendanceDate, checkIn: day.checkInAt, checkOut: day.checkOutAt, status: day.status, dayType: day.dayType, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, calculation: day.calcTrace ? {v: day.calcTrace.v, schedule: day.calcTrace.schedule, punch: day.calcTrace.punch, lateness: day.calcTrace.lateness, legacyManualRows} : null}, assignment: assigned, salary, context, punches});
   const source = {tenantId: ctx.tenantId, employmentId: p.employmentId, attendanceId: day.id, date: p.date, inputDigest, approvalDigest};

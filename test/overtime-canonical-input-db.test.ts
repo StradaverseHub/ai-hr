@@ -29,7 +29,10 @@ describe('canonical formula inputs consume recorded owners instead of final lega
     const snapshot = await read(p, date);
     expect(snapshot.input.facts.actualWorkingMinutes).toMatchObject({state: 'known', value: '600'});
     expect(snapshot.input.facts.requiredWorkingMinutes).toMatchObject({state: 'known', value: '480'});
-    expect(snapshot.input.facts.rawMinutes).toMatchObject({state: 'known', value: '600'});
+    expect(snapshot.input.layer).toBe('raw');
+    if (snapshot.input.layer === 'raw') expect(snapshot.input.segments[0].rawMinutes).toMatchObject({state: 'known', value: '600'});
+    expect(snapshot.input.facts).not.toHaveProperty('rawMinutes');
+    expect(snapshot.input.facts).not.toHaveProperty('approvedMinutes');
     expect(snapshot.input.approval).toMatchObject({status: 'notRequired', minutes: {state: 'known', value: '600'}});
     expect(snapshot.input.sessionGranularity).toBe('recorded');
     expect(snapshot.input.facts.basicSalary).toMatchObject({state: 'known', value: '3000.00', provenance: {basis: 'effectiveDated'}});
