@@ -10,8 +10,13 @@ function fixture():{definition:OvertimePattern;input:OvertimeInput}{return {
 const proof=(f:ReturnType<typeof fixture>)=>JSON.stringify(overtimeDurationProofInput(f.definition,f.input));
 describe('duration freshness excludes price-only private data',()=>{
  it('keeps duration proof unchanged when salary/full-input digest or a price-only rate changes',()=>{
-  const a=fixture(),before=proof(a);a.input.facts.basicSalary={state:'unknown',reason:'not_visible'};a.input.source.inputDigest='c'.repeat(64);a.definition.rates[0].name='Different price label';
-  expect(proof(a)).toBe(before);expect(before).not.toContain('4000');expect(before).not.toContain('basicSalary');expect(before).not.toContain('9600');expect(before).not.toContain('inputDigest');
+  const a=fixture(),before=overtimeDurationProofInput(a.definition,a.input);
+  // UUIDs legitimately contain "4000": assert the actual dependency owners, not serialized substrings.
+  expect(before.facts).toEqual({});expect(before.source).toEqual({tenantId:id,employmentId:id,attendanceId:id,date,approvalDigest:'b'.repeat(64)});
+  expect(Object.keys(before.stages).sort()).toEqual(['deductions','definitions','durationAllocation','durationCap','durationRounding','eligibility','eligibilityBasis','eligibleMinutes']);expect(before.stages.definitions).toEqual([]);
+  a.input.facts.basicSalary={state:'unknown',reason:'not_visible'};a.input.source.inputDigest='c'.repeat(64);a.definition.rates[0].name='Different price label';
+  const payment=a.definition.rates[0].tiers[0].payment;if(payment.method!=='hourly'||payment.multiplier.type!=='literal')throw new Error('Expected the fixture hourly multiplier');payment.multiplier.value='2';
+  expect(overtimeDurationProofInput(a.definition,a.input)).toEqual(before);
  });
  it('traverses referenced definitions and all nested IF branches used by duration',()=>{
   const a=fixture();a.definition.definitions=[{id:'duration-ref',expression:{id:'duration-if',unit:'minutes',type:'if',when:{id:'department-check',type:'selection',field:'departmentId',operator:'in',values:[id]},then:{id:'actual',unit:'minutes',type:'field',field:'actualWorkingMinutes'},else:{id:'required',unit:'minutes',type:'field',field:'requiredWorkingMinutes'}}}];a.definition.eligibleMinutes={id:'duration-root',type:'ref',unit:'minutes',definitionId:'duration-ref'};
@@ -20,7 +25,8 @@ describe('duration freshness excludes price-only private data',()=>{
  });
  it('includes a salary fact only when HR explicitly made it a duration dependency',()=>{
   const a=fixture();a.definition.eligibility={id:'salary-condition',type:'compare',operator:'gt',left:{id:'salary-eligibility',type:'field',unit:'money',field:'basicSalary'},right:{id:'salary-floor',type:'literal',unit:'money',currency:'MYR',value:'0'}};
-  expect(proof(a)).toContain('4000');const before=proof(a);a.input.facts.basicSalary={state:'unknown',reason:'not_visible'};expect(proof(a)).not.toBe(before);
+  const before=overtimeDurationProofInput(a.definition,a.input);expect(before.facts).toEqual({basicSalary:known('4000')});
+  a.input.facts.basicSalary={state:'unknown',reason:'not_visible'};const after=overtimeDurationProofInput(a.definition,a.input);expect(after.facts).toEqual({basicSalary:{state:'unknown',reason:'not_visible'}});expect(after).not.toEqual(before);
  });
  it.each(['approval','raw','assignment','company','allocation'] as const)('invalidates the exact %s duration dependency',kind=>{
   const a=fixture(),before=proof(a);
