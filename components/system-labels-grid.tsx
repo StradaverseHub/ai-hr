@@ -359,7 +359,7 @@ export function SystemLabelsGrid({
   }
   useEffect(() => {
     if (!focusDraft.current) return;
-    const input = document.querySelector<HTMLInputElement>(`[data-row-key="${focusDraft.current}"] input:not([readonly])`);
+    const input = document.querySelector<HTMLInputElement>(`[data-row-key="${focusDraft.current}"] input[data-cell]:not([readonly]):not([disabled])`);
     if (input) { input.focus(); input.select(); focusDraft.current = null; }
   }, [rowsByKind, kind, pq.page]);
   function addRow() {
