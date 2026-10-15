@@ -92,8 +92,12 @@ describe('formula money is an actual canonical Payroll input',()=>{
   const f=await fixture();const policy=await createPolicy(f.ctx,{companyId:b.companyId,name:'Mixed amount cap',policyType:'monthly',config:{overtime:{maxAmount:50}}});await assignPolicy(f.ctx,{employmentId:f.e.employmentId,policyId:policy.id});await setPayrollInput(f.ctx,{batchId:f.batch.batchId,employmentId:f.e.employmentId,overtimeAmount:25});await transferOvertimePatternToPayroll(f.ctx,f.transfer);await generatePayslips(f.ctx,{batchId:f.batch.batchId});expect((await slip(f.batch.batchId)).overtimePay).toBe('50.00');
  });
  it('refuses nonregular, out-of-period and out-of-scope runs before any cash reservation',async()=>{
+  await setModule(b.tenantId,'multi_cycle_payroll','active');
   const f=await fixture();const off=await createAdditionalRun(f.ctx,{companyId:b.companyId,payPeriod:day().slice(0,7),runType:'off_cycle'});
   await expect(transferOvertimePatternToPayroll(f.ctx,{...f.transfer,batchId:off.batchId})).rejects.toMatchObject({code:'unsupportedRun'});
+  const futureMonth=new Date(day().slice(0,7)+'-01T00:00:00Z');futureMonth.setUTCMonth(futureMonth.getUTCMonth()+2);
+  const future=await createBatch(f.ctx,{companyId:b.companyId,payPeriod:futureMonth.toISOString().slice(0,7)});
+  await expect(transferOvertimePatternToPayroll(f.ctx,{...f.transfer,batchId:future.batchId})).rejects.toMatchObject({code:'coverage'});
   await owner.db.update(s.payrollBatch).set({scope:{employmentIds:[randomUUID()]}}).where(eq(s.payrollBatch.id,f.batch.batchId));
   await expect(transferOvertimePatternToPayroll(f.ctx,f.transfer)).rejects.toMatchObject({code:'coverage'});
   expect((await withTenant(f.ctx,tx=>readOvertimeSettlementForDayTx(tx,f.ctx,f.transfer)))?.settlement).toBeNull();
@@ -113,6 +117,22 @@ describe('formula money is an actual canonical Payroll input',()=>{
  });
  it('releases a draft settlement on canonical deletion and retains its immutable owner reference',async()=>{
   const f=await fixture();const claim=await transferOvertimePatternToPayroll(f.ctx,f.transfer);await deleteDraftBatch(f.ctx,{batchId:f.batch.batchId});const row=(await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.id,claim.settlementId)))[0];expect(row.releasedAt).not.toBeNull();expect(row.payrollBatchId).toBeNull();expect(row.ownerReference).toEqual({type:'payroll_batch',id:f.batch.batchId});
+ });
+ it('rolls back the formula claim release when actual batch deletion fails late',async()=>{
+  const f=await fixture(),claim=await transferOvertimePatternToPayroll(f.ctx,f.transfer);
+  await owner.client.unsafe("create function public.board16_fail_formula_batch_delete() returns trigger language plpgsql as $$begin raise exception 'Controlled late batch delete failure' using errcode='23514';end$$");
+  await owner.client.unsafe('create trigger board16_fail_formula_batch_delete before delete on payroll_batch for each row execute function public.board16_fail_formula_batch_delete()');
+  try{
+   await expect(deleteDraftBatch(f.ctx,{batchId:f.batch.batchId})).rejects.toMatchObject({cause:expect.objectContaining({code:'23514',message:'Controlled late batch delete failure'})});
+   const [retained]=await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.id,claim.settlementId));
+   expect(retained.releasedAt).toBeNull();expect(retained.payrollBatchId).toBe(f.batch.batchId);
+   expect(retained.ownerReference).toEqual({type:'payroll_batch',id:f.batch.batchId});
+   expect((await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,f.batch.batchId)))[0].status).toBe('draft');
+   expect((await transferOvertimePatternToPayroll(f.ctx,f.transfer)).status).toBe('unchanged');
+  }finally{
+   await owner.client.unsafe('drop trigger board16_fail_formula_batch_delete on payroll_batch');
+   await owner.client.unsafe('drop function public.board16_fail_formula_batch_delete()');
+  }
  });
  it('refuses unresolved selected formula days rather than treating their legacy minutes as payable',async()=>{
   const f=await fixture();await withTenant(f.ctx,tx=>tx.update(s.attendance).set({calcTrace:{overtimePattern:{status:'refused',reason:'sourceUnavailable'}} as never}).where(eq(s.attendance.employmentId,f.e.employmentId)));

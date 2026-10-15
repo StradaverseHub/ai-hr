@@ -2340,6 +2340,10 @@ export async function teardownDraftChildren(tx: Tx, ctx: SessionContext, batchId
     });
   }
 
+  // The actual contribution/payslip teardown is complete. Release formula cash claims in this same
+  // transaction before deleting their batch; retained owner references and release events survive.
+  await releaseOvertimeSettlementsForDraftTeardownTx(tx, ctx, { batchId, reason: 'draft-batch-teardown' });
+
   return {
     releasedLoanRepaymentIds: releasedRepayments.map((r) => r.id),
     detachedClaimIds: detachedClaims.map((c) => c.id),

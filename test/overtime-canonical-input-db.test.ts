@@ -80,10 +80,10 @@ describe('canonical formula inputs consume recorded owners instead of final lega
     const p = await employee(), date = todayInKualaLumpur();
     await checkIn(p.ctx, {employmentId:p.employmentId,date,time:'09:00'});
     await checkOut(p.ctx, {employmentId:p.employmentId,date,time:'19:00'});
-    await owner.db.update(attendance).set({calcTrace:null}).where(eq(attendance.employmentId,p.employmentId));
+    await withTenant(p.ctx,tx=>tx.update(attendance).set({calcTrace:null}).where(eq(attendance.employmentId,p.employmentId)));
     const before = await read(p,date);
     const marker = {overtimePattern:{status:'refused',reason:'sourceUnavailable'}};
-    await owner.db.update(attendance).set({calcTrace:sql`${JSON.stringify(marker)}::jsonb`}).where(eq(attendance.employmentId,p.employmentId));
+    await withTenant(p.ctx,tx=>tx.update(attendance).set({calcTrace:sql`${JSON.stringify(marker)}::jsonb`}).where(eq(attendance.employmentId,p.employmentId)));
     const after = await read(p,date);
     expect(after.input.facts.shiftId?.state).toBe('unknown');
     expect(after.input.facts.requiredWorkingMinutes?.state).toBe('unknown');
