@@ -34,8 +34,8 @@ function fixture() {
     }) };
   const crypto = { getRandomValues: (value: Uint8Array) => randomFillSync(value), randomUUID,
     CryptoDigestAlgorithm: { SHA256: 'sha256' }, CryptoEncoding: { BASE64: 'base64', HEX: 'hex' },
-    digestStringAsync: async (_algorithm: string, value: string, options: { encoding: 'base64' | 'hex' }) =>
-      createHash('sha256').update(value).digest(options.encoding) };
+    digestStringAsync: vi.fn(async (_algorithm: string, value: string, options: { encoding: 'base64' | 'hex' }) =>
+      createHash('sha256').update(value).digest(options.encoding)) };
   const invariant = nativeRequire('invariant');
   const sdk = 'mobile/node_modules/expo-auth-session/src/';
   class CodedError extends Error { constructor(public code: string, message: string) { super(message); } }
@@ -53,7 +53,7 @@ function fixture() {
     './Discovery': { resolveDiscoveryAsync: async (value: unknown) => value } });
   let owner = 0;
   const auth = { beginSignIn: vi.fn(() => ++owner), completeSignIn: vi.fn(async () => {}),
-    assertAuthGeneration: vi.fn(),
+    assertAuthGeneration: vi.fn((value:number)=>{if(value!==owner)throw new Error('Sign-in changed');}),
     redirectUri: () => 'aihr://auth/callback', discovery: { authorizationEndpoint: 'https://api.workos.com/user_management/authorize' } };
   const session = { status: 'signedOut', error: false, markSignedIn: vi.fn(async () => {}) };
   const router = { replace: vi.fn() };
@@ -68,7 +68,7 @@ function fixture() {
     '../lib/i18n': { t: (key: string) => key }, '../lib/session': { useSession: () => session },
     '../lib/ui': { colors: {}, Button: ({ title, disabled, onPress }: any) => <button disabled={disabled} onClick={onPress}>{title}</button> },
   });
-  return { View: view.default as React.ComponentType, queued, browser, auth, session, router };
+  return { View: view.default as React.ComponentType, queued, browser, auth, session, router, crypto };
 }
 afterEach(cleanup);
 
@@ -77,6 +77,15 @@ async function readyButton() {
   return screen.getByRole('button', { name: 'signInButton' });
 }
 describe('native sign-in — actual installed AuthRequest, PKCE and return-state parser', () => {
+  it('does not open an old company browser when the installation changes during PKCE preparation',async()=>{
+    const f=fixture(),user=userEvent.setup();let release!:(value:string)=>void;
+    f.crypto.digestStringAsync.mockImplementationOnce(()=>new Promise<string>(r=>{release=r;}));
+    render(<f.View/>);await user.click(await readyButton());
+    await waitFor(()=>expect(f.crypto.digestStringAsync).toHaveBeenCalledTimes(1));
+    f.auth.beginSignIn();release('prepared-challenge');
+    await readyButton();expect(f.browser.openAuthSessionAsync).not.toHaveBeenCalled();
+    expect(f.auth.completeSignIn).not.toHaveBeenCalled();
+  });
   it('uses fresh state and PKCE per attempt and never exchanges a cancelled attempt’s callback on retry', async () => {
     const f = fixture(); const user = userEvent.setup(); render(<f.View />);
     f.queued.push(() => ({ type: 'cancel' }));

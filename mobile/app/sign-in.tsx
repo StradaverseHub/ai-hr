@@ -39,6 +39,7 @@ export default function SignIn() {
       if(company) { try{await verifyCompanyServer(company);}catch{setConnectionError(companyCopy().signInUnavailable);return;} }
       assertAuthGeneration(owner);
       if(configProblem())throw new Error('Company setup is no longer valid.');
+      const pinnedDiscovery={authorizationEndpoint:discovery.authorizationEndpoint,tokenEndpoint:discovery.tokenEndpoint};
       // A hook-held request reuses its state/verifier after cancellation. Each browser attempt
       // must own fresh values so a delayed callback cannot complete a subsequent attempt.
       const request = new AuthSession.AuthRequest({
@@ -50,7 +51,9 @@ export default function SignIn() {
         scopes: config.authProvider === 'keycloak' ? ['openid', 'profile', 'email'] : [],
         extraParams: config.authProvider === 'keycloak' ? { nonce: Crypto.randomUUID() } : { provider: 'authkit' },
       });
-      const r = await request.promptAsync(discovery);
+      await request.makeAuthUrlAsync(pinnedDiscovery);
+      assertAuthGeneration(owner);
+      const r = await request.promptAsync(pinnedDiscovery);
       if (r.type === 'success' && typeof r.params.code === 'string' && request.codeVerifier) {
         await completeSignIn(r.params.code, request.codeVerifier, owner);
         await session.markSignedIn(owner);
