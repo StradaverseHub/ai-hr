@@ -3,7 +3,7 @@ import {composePayrollOvertime,type PayrollOvertimePatternLine} from '../core/pa
 import type {OvertimeLine} from '../lib/overtime-pattern-model';
 const exact=(n:string)=>({unit:'minutes' as const,numerator:n,denominator:'1'});
 function line(id:string,cents:string,minutes:string,dayType:'workday'|'rest_day'|'holiday'='workday'):PayrollOvertimePatternLine {
- return {sourceId:'source-'+id,calculationId:'calc-'+id,sourceRevision:1,settlementId:'claim-'+id,employmentId:'employee',date:'2026-03-02',dayType,lineId:id,earningItemId:'earning',earningItemCode:'OT',earningItemName:'Configured OT',treatment:{epf:false,socso:true,pcb:true,hrdf:false},amountMinorUnits:cents,payableMinutes:exact(minutes),evidence:{} as OvertimeLine};
+ return {sourceId:'source-'+id,calculationId:'calc-'+id,sourceRevision:1,settlementId:'claim-'+id,employmentId:'employee',date:'2026-03-02',dayType,lineId:id,earningItemId:'earning',earningItemCode:'OT',earningItemName:'Configured OT',treatment:{epf:false,socso:true,pcb:true,hrdf:false},floorEvidence:{countryMinimumApplicable:true,minimumMinorUnits:'0',periodEnd:'2026-03-31'},amountMinorUnits:cents,payableMinutes:exact(minutes),evidence:{} as OvertimeLine};
 }
 const legacy=(workday=0,minutes:number|null=0)=>({workday,restDay:0,holiday:0,minutes});
 describe('one mixed-source OT policy composition',()=>{
@@ -31,5 +31,26 @@ describe('one mixed-source OT policy composition',()=>{
  it('assigns the cents residual deterministically while preserving the exact total',()=>{
   const p={config:{overtime:{maxAmount:0.01}},legacy:legacy(),lines:[line('a','1','1'),line('b','1','1')]};
   const result=composePayrollOvertime(p);expect(result.allocations).toEqual([{id:'legacy',amountMinorUnits:'0'},{id:'claim-a:a',amountMinorUnits:'0'},{id:'claim-b:b',amountMinorUnits:'1'}]);expect(composePayrollOvertime(p)).toEqual(result);
+ });
+});
+
+describe('source-invariant hours and capacity-bounded money allocation',()=>{
+ it('keeps canonical ALL-OT-hour cap semantics when excluded workday moves between source representations',()=>{
+  const config={overtime:{eligibleDayTypes:['holiday' as const],maxHoursPerMonth:2}};
+  const legacyWorkday=composePayrollOvertime({config,legacy:{workday:10,restDay:0,holiday:20,minutes:120},lines:[line('holiday','3000','60','holiday')]});
+  const formulaWorkday=composePayrollOvertime({config,legacy:{workday:0,restDay:0,holiday:20,minutes:60},lines:[line('workday','1000','60','workday'),line('holiday','3000','60','holiday')]});
+  expect(legacyWorkday.minutes).toBe(180);expect(formulaWorkday.minutes).toBe(180);expect(legacyWorkday.capped).toBe(33.33);expect(formulaWorkday.capped).toBe(33.33);
+ });
+ it('refuses unknown manual hours even when its MONEY day type is excluded',()=>{
+  expect(()=>composePayrollOvertime({config:{overtime:{eligibleDayTypes:['holiday'],maxHoursPerMonth:2}},legacy:legacy(10,null),lines:[line('holiday','3000','60','holiday')]})).toThrowError(expect.objectContaining({code:'unknownHours'}));
+ });
+ it('never credits a zero-price mapped final line with another line cents residual',()=>{
+  const result=composePayrollOvertime({config:{overtime:{maxAmount:0.01}},legacy:legacy(),lines:[line('a','1','1'),line('b','1','1'),line('zero','0','1')]});
+  expect(result.allocations).toEqual([{id:'legacy',amountMinorUnits:'0'},{id:'claim-a:a',amountMinorUnits:'0'},{id:'claim-b:b',amountMinorUnits:'1'},{id:'claim-zero:zero',amountMinorUnits:'0'}]);
+ });
+ it('preserves every original line capacity and exact total across many tiny lines',()=>{
+  const lines=Array.from({length:99},(_,i)=>line(String(i),'1','1'));lines.push(line('zero','0','1'));
+  const result=composePayrollOvertime({config:{overtime:{maxAmount:0.5}},legacy:legacy(),lines});const values=new Map(result.allocations.map(l=>[l.id,BigInt(l.amountMinorUnits)]));
+  expect([...values.values()].reduce((sum,value)=>sum+value,0n)).toBe(50n);for(const l of lines){const actual=values.get(l.settlementId+':'+l.lineId)!;expect(actual>=0n&&actual<=BigInt(l.amountMinorUnits)).toBe(true);}expect(values.get('claim-zero:zero')).toBe(0n);
  });
 });

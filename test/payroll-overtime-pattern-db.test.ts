@@ -15,10 +15,10 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import type {OvertimePattern} from '../lib/overtime-pattern-model';
 let b:Base;const day=()=>todayInKualaLumpur();
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'attendance','active');await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'typed_pay_components',null);await setSetting(b.tenantId,'payroll.individual_txn_pay_enabled',false);});
-async function fixture(amount='60'){
+async function fixture(amount='60',options:{salary?:number;cappedBase?:boolean}={}){
  const ctx=await entitledCtx(b);
  const e=await hireEmployee(ctx,{person:{fullName:'Fictional formula cash worker'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
- await setCompensation(ctx,{employmentId:e.employmentId,basicSalary:3000,monthlyAllowance:0,effectiveFrom:'2024-01-01'});
+ await setCompensation(ctx,{employmentId:e.employmentId,basicSalary:options.salary??3000,monthlyAllowance:0,effectiveFrom:'2024-01-01'});
  await setStatutoryProfileMY(ctx,{personId:e.personId,icNumber:'900101011234'});
  await setAttendancePolicy(ctx,{companyId:b.companyId,workStart:'09:00',workEnd:'17:00',breakMinutes:0,lateAfter:'09:00',halfDayBefore:'13:00',workingDays:[1,2,3,4,5,6,7]});
  // Clock the legacy day BEFORE a formula assignment; prefill proves the duplicate aggregate existed.
@@ -27,6 +27,7 @@ async function fixture(amount='60'){
  const pack=requirePackFor('MY'),seed=pack.payComponents.defaults.find(x=>x.code===pack.payComponents.backfillCodes.overtime)!;
  const earning=await createPayComponent(ctx,{...seed,code:'FORMULA_'+randomUUID().slice(0,8),name:'Configured formula overtime'});
  const definition:OvertimePattern={v:1,currency:{code:'MYR',minorScale:2},definitions:[],eligibilityBasis:'day',durationAllocation:'latest',eligibility:{id:'eligible',type:'constant',value:true},eligibleMinutes:{id:'minutes',type:'literal',unit:'minutes',value:'120'},durationCap:null,durationRounding:null,deductions:[],rates:[{id:'rate',name:'Fixture flat payment',description:'Fictional configured rate',priority:1,when:{id:'when',type:'constant',value:true},timeBand:null,accumulation:'day',tierMode:'marginal',tiers:[{id:'tier',from:'0',to:null,mapping:{earningItemId:earning.id,currency:'MYR'},payment:{method:'flat',basis:'day',chargeId:'day',amount:{id:'amount',type:'literal',unit:'money',currency:'MYR',value:amount}}}]}],paymentCap:null,moneyRounding:{stage:'dayMapping',mode:'halfUp'}};
+ if(options.cappedBase)definition.rates[0].tiers[0].payment={method:'hourly',rate:{id:'hourly',type:'hourlyRate',unit:'moneyPerHour',base:{id:'selected_base_cap',type:'min',unit:'money',left:{id:'salary',type:'field',unit:'money',field:'basicSalary'},right:{id:'chosen_cap',type:'literal',unit:'money',currency:'MYR',value:'4000'}},divisorMinutes:{id:'divisor',type:'literal',unit:'minutes',value:'12480'}},multiplier:{id:'multiplier',type:'literal',unit:'scalar',value:'1.5'}};
  const saved=await saveOvertimePatternDraft(ctx,{draft:{code:'OT_'+randomUUID().slice(0,8),creationCompanyId:b.companyId,companyIds:[b.companyId],name:'Formula payroll fixture',description:'Fictional',definition}});
  const validation=await validateOvertimePatternActivation(ctx,{versionId:saved.versionId,expectedRevision:saved.revision});expect(validation.issues).toEqual([]);
  await activateOvertimePattern(ctx,{versionId:saved.versionId,expectedRevision:saved.revision,validationDigest:validation.validationDigest!,effectiveFrom:day()});
@@ -67,6 +68,12 @@ describe('formula money is an actual canonical Payroll input',()=>{
  it('consumes retained obligations after Attendance module removal but denies a new transfer',async()=>{
   const f=await fixture();await transferOvertimePatternToPayroll(f.ctx,f.transfer);await setModule(b.tenantId,'attendance','disabled');const ctx=await entitledCtx(b);
   await expect(transferOvertimePatternToPayroll(ctx,f.transfer)).rejects.toThrow();await generatePayslips(ctx,{batchId:f.batch.batchId});expect((await slip(f.batch.batchId)).overtimePay).toBe('60.00');
+ });
+ it('pays an explicit contractual min(salary5000,chosenbase4000) formula without asserting statutory entitlement',async()=>{
+  const f=await fixture('60',{salary:5000,cappedBase:true});const options=await overtimePatternTransferOptions(f.ctx,{employmentId:f.e.employmentId,date:day()});expect(options.calculation).toMatchObject({status:'ready',amountMinorUnits:'5769',transferable:true});
+  await transferOvertimePatternToPayroll(f.ctx,f.transfer);await generatePayslips(f.ctx,{batchId:f.batch.batchId});const paid=await slip(f.batch.batchId);expect(paid.overtimePay).toBe('57.69');
+  const evidence=(paid.statutory as {overtimePatternCash:{sourceLines:{floorEvidence:{countryMinimumApplicable:boolean;minimumMinorUnits:string}}[]}}).overtimePatternCash;
+  expect(evidence.sourceLines[0].floorEvidence).toMatchObject({countryMinimumApplicable:false,minimumMinorUnits:'0'});
  });
  it('rejects a formula below the country owner floor without silently changing its configured amount',async()=>{
   const f=await fixture('0.01');await expect(transferOvertimePatternToPayroll(f.ctx,f.transfer)).rejects.toMatchObject({code:'statutoryFloor'});expect((await withTenant(f.ctx,tx=>readOvertimeSettlementForDayTx(tx,f.ctx,f.transfer)))?.settlement).toBeNull();

@@ -59,7 +59,7 @@ export async function readPayrollOvertimeCoverageTx(tx:Tx,ctx:SessionContext,p:{
  return {keys,days,employmentIds:[...new Set([...covered.filter(r=>r.companyId===p.companyId).map(r=>r.employmentId),...unresolved.map(r=>r.employmentId)])],unresolved};
 }
 
-export type PayrollOvertimePatternLine={sourceId:string;calculationId:string;sourceRevision:number;settlementId:string;employmentId:string;date:string;dayType:'workday'|'rest_day'|'holiday';lineId:string;earningItemId:string;earningItemCode:string;earningItemName:string;treatment:{epf:boolean;socso:boolean;pcb:boolean;hrdf:boolean};amountMinorUnits:string;payableMinutes:OvertimeExact;evidence:OvertimeLine};
+export type PayrollOvertimePatternLine={sourceId:string;calculationId:string;sourceRevision:number;settlementId:string;employmentId:string;date:string;dayType:'workday'|'rest_day'|'holiday';lineId:string;earningItemId:string;earningItemCode:string;earningItemName:string;treatment:{epf:boolean;socso:boolean;pcb:boolean;hrdf:boolean};floorEvidence:{countryMinimumApplicable:boolean;minimumMinorUnits:string;periodEnd:string};amountMinorUnits:string;payableMinutes:OvertimeExact;evidence:OvertimeLine};
 export type PayrollOvertimePatternCash={lines:PayrollOvertimePatternLine[];byEmployment:Map<string,PayrollOvertimePatternLine[]>};
 
 type CalculationRead=NonNullable<Awaited<ReturnType<typeof readOvertimeCalculationTx>>>;
@@ -104,12 +104,14 @@ async function pricedLinesTx(tx:Tx,ctx:SessionContext,r:CalculationRead,batch:ty
  const end=periodEnd(batch.payPeriod);
  const comps=await tx.select().from(compensation).where(and(eq(compensation.employmentId,r.source.employmentId),compensationEffectiveOn(end))).limit(2);if(comps.length!==1||comps[0].currency!==entity.currency)fail('unavailable');
  const rules=await pack.payroll.loadRuleset(tx,{asOf:end});
- const minimum=pack.payroll.overtimePay({monthlyWages:round2(Number(comps[0].basicSalary)+Number(comps[0].monthlyAllowance??0)),days:[{dayType,minutes:exactNumber(evaluation.payableMinutes)}],wageCeiling:rules.ot.wageCeiling,restDayExcessMultiplier:rules.ot.restDayExcessMultiplier,holidayExcessMultiplier:rules.ot.holidayExcessMultiplier});if(!minimum.eligible)fail('wageIneligible');
+ const minimum=pack.payroll.overtimePay({monthlyWages:round2(Number(comps[0].basicSalary)+Number(comps[0].monthlyAllowance??0)),days:[{dayType,minutes:exactNumber(evaluation.payableMinutes)}],wageCeiling:rules.ot.wageCeiling,restDayExcessMultiplier:rules.ot.restDayExcessMultiplier,holidayExcessMultiplier:rules.ot.holidayExcessMultiplier});
  const cfg=(await resolveAssignedPolicy(tx,r.source.employmentId))?.config??null;
- // Country owner provides the floor; policy owner raises it. Caps are NOT a floor and are applied once later.
- const floor=applyOvertimeCapsDetailed({overtime:{multiplier:cfg?.overtime?.multiplier}},{workday:minimum.workday,restDay:minimum.restDay,holiday:minimum.holiday,workedOtHours:0}).capped;
+ // Country eligibility establishes a modelled statutory floor, not a contractual payment ban.
+ // Above its ceiling the explicit activated formula may pay, as existing manual cash may;
+ // no manual-worker exception or positive statutory/policy floor is invented. Legacy prefill is unchanged.
+ const floor=minimum.eligible?applyOvertimeCapsDetailed({overtime:{multiplier:cfg?.overtime?.multiplier}},{workday:minimum.workday,restDay:minimum.restDay,holiday:minimum.holiday,workedOtHours:0}).capped:0;
  if(minorNumber(evaluation.amountMinorUnits)<Math.round(floor*100))fail('statutoryFloor');
- return evaluation.lines.map(line=>({sourceId:r.source.id,calculationId:r.calculation!.id,sourceRevision:r.source.revision,settlementId,employmentId:r.source.employmentId,date:r.source.attendanceDate,dayType,lineId:line.id,earningItemId:line.mapping.earningItemId,earningItemCode:byId.get(line.mapping.earningItemId)!.code,earningItemName:byId.get(line.mapping.earningItemId)!.name,treatment:{epf:seed.includedInEpf,socso:seed.includedInSocsoEis,pcb:seed.includedInPcb,hrdf:seed.includedInHrdfBase},amountMinorUnits:line.amountMinorUnits,payableMinutes:line.payableMinutes,evidence:line}));
+ return evaluation.lines.map(line=>({sourceId:r.source.id,calculationId:r.calculation!.id,sourceRevision:r.source.revision,settlementId,employmentId:r.source.employmentId,date:r.source.attendanceDate,dayType,lineId:line.id,earningItemId:line.mapping.earningItemId,earningItemCode:byId.get(line.mapping.earningItemId)!.code,earningItemName:byId.get(line.mapping.earningItemId)!.name,treatment:{epf:seed.includedInEpf,socso:seed.includedInSocsoEis,pcb:seed.includedInPcb,hrdf:seed.includedInHrdfBase},floorEvidence:{countryMinimumApplicable:minimum.eligible,minimumMinorUnits:String(Math.round(floor*100)),periodEnd:end},amountMinorUnits:line.amountMinorUnits,payableMinutes:line.payableMinutes,evidence:line}));
 }
 
 /** Retained obligations remain readable after Attendance module removal. No employee/source locks here. */
@@ -131,13 +133,20 @@ export function composePayrollOvertime(p:{config:PayrollPolicyConfig|null;legacy
  const eligible=p.lines.filter(l=>!ot?.eligibleDayTypes||ot.eligibleDayTypes.includes(l.dayType));
  const formulaMinor=eligible.reduce((sum,l)=>sum+BigInt(l.amountMinorUnits),0n);if(formulaMinor>BigInt(Number.MAX_SAFE_INTEGER))fail('unavailable');
  const formula=Number(formulaMinor)/100;
- if(ot?.maxHoursPerMonth&&p.legacy.minutes===null&&legacy>0)fail('unknownHours');
- const minutes=(p.legacy.minutes??0)+eligible.reduce((sum,l)=>sum+exactNumber(l.payableMinutes),0);
+ if(ot?.maxHoursPerMonth&&p.legacy.minutes===null&&(p.legacy.workday+p.legacy.restDay+p.legacy.holiday)>0)fail('unknownHours');
+ // Canonical policy filters MONEY but compares ALL evidenced OT hours. Source representation cannot alter this basis.
+ const minutes=(p.legacy.minutes??0)+p.lines.reduce((sum,l)=>sum+exactNumber(l.payableMinutes),0);
  const capped=applyOvertimeCapsDetailed({overtime:{maxHoursPerMonth:ot?.maxHoursPerMonth,maxAmount:ot?.maxAmount}},{workday:round2(legacy+formula),restDay:0,holiday:0,workedOtHours:minutes/60});
  const preMinor=BigInt(Math.round(capped.preCap*100)),totalMinor=BigInt(Math.round(capped.capped*100));
  const ordered=[{id:'legacy',amount:BigInt(Math.round(legacy*100))},...eligible.map(l=>({id:l.settlementId+':'+l.lineId,amount:BigInt(l.amountMinorUnits)}))];
- let remaining=totalMinor;const allocations=ordered.map((l,i)=>{const value=i===ordered.length-1?remaining:preMinor?l.amount*totalMinor/preMinor:0n;remaining-=value;return {id:l.id,amountMinorUnits:value.toString()};});
- return {capped:capped.capped,excess:capped.excess,preCap:capped.preCap,allocations,minutes,evidence:{order:'legacy-policy-then-formula-filter-then-hours-then-amount',allocation:'proportional-minor-floor-stable-residual',sourceLines:p.lines,allocations}};
+ const values=ordered.map(l=>preMinor?l.amount*totalMinor/preMinor:0n);
+ let remaining=totalMinor-values.reduce((sum,value)=>sum+value,0n);
+ // Stable reverse order preserves the existing residual convention, but only ORIGINAL positive
+ // capacity may receive it. Zero-price mappings never become paid merely by being last.
+ for(let i=ordered.length-1;i>=0&&remaining>0n;i--){const capacity=ordered[i].amount-values[i],take=capacity<remaining?capacity:remaining;values[i]+=take;remaining-=take;}
+ if(remaining!==0n||values.some((value,i)=>value<0n||value>ordered[i].amount))fail('unavailable');
+ const allocations=ordered.map((l,i)=>({id:l.id,amountMinorUnits:values[i].toString()}));
+ return {capped:capped.capped,excess:capped.excess,preCap:capped.preCap,allocations,minutes,evidence:{order:'legacy-policy-then-formula-filter-then-hours-then-amount',allocation:'proportional-minor-floor-stable-capacity-residual',hourBasis:'all-evidenced-ot-minutes-before-day-type-money-filter',sourceLines:p.lines,allocations}};
 }
 
 export async function overtimePatternTransferOptions(ctx:SessionContext,p:{employmentId:string;date:string}){
