@@ -1,3 +1,4 @@
+import { internalSelected, internalReady, internalConfig } from './internal-auth/config';
 import { authProviderInvalid, keycloakSelected, keycloakReady, keycloakConfig } from './identity/config';
 /**
  * r390 — IS THIS DEPLOYMENT ON REAL WORKOS SIGN-IN?
@@ -30,6 +31,7 @@ export function missingWorkosSettings(env: Env = process.env): string[] {
 /** True when the demo switcher is off and AuthKit is fully configured. Mirrors demoSwitcherEnabled(). */
 export function realAuthEnabled(env: Env = process.env): boolean {
   if (authProviderInvalid(env)) return false;
+  if (internalSelected(env)) return internalReady(env);
   if (keycloakSelected(env)) return keycloakReady(env);
   const switcherOn = env.NODE_ENV !== 'production' || env.ALLOW_DEMO_SESSION === 'true';
   return !switcherOn && missingWorkosSettings(env).length === 0;
@@ -40,6 +42,7 @@ export function realAuthEnabled(env: Env = process.env): boolean {
  *  for a browser must come from here. Undefined when the redirect URI is unset or not a URL. */
 export function appOrigin(env: Env = process.env): string | undefined {
   try {
+    if (internalSelected(env)) return internalConfig(env).origin;
     if (keycloakSelected(env)) return keycloakConfig(env).origin;
     return new URL(env.NEXT_PUBLIC_WORKOS_REDIRECT_URI ?? '').origin;
   } catch {

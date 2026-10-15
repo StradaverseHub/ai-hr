@@ -1,3 +1,4 @@
+import { internalSelected, internalReady, internalConfig, INTERNAL_SESSION_COOKIE } from '@/lib/internal-auth/config';
 import { readSessionHandle } from '@/lib/identity/cookie';
 import { authProviderInvalid, keycloakSelected, keycloakReady, keycloakConfig, WEB_SESSION_COOKIE } from '@/lib/identity/config';
 import { NextRequest, NextResponse } from 'next/server';
@@ -90,7 +91,7 @@ function safeEqual(a: string, b: string): boolean {
 function withPathname(req: NextRequest): NextResponse {
   // Propagate the pathname to Server Components (the root layout reads it to detect auth routes).
   const requestHeaders = new Headers(req.headers);
-  if (keycloakSelected()) {
+  if (keycloakSelected() || internalSelected()) {
     for (const key of [...requestHeaders.keys()]) if (key.startsWith('x-workos-') || key.startsWith('x-authkit-')) requestHeaders.delete(key);
   }
   requestHeaders.set('x-pathname', req.nextUrl.pathname);
@@ -178,6 +179,16 @@ export function middleware(req: NextRequest): NextResponse | Promise<NextRespons
   // FIRST, above every bypass below, because this is not a question about THIS request — it is a
   // question about whether this deployment is configured to serve anything at all.
   if (authProviderInvalid()) return refuseUnconfigured();
+  if (internalSelected()) {
+    if (!internalReady()) return refuseUnconfigured();
+    const path = req.nextUrl.pathname;
+    if (isAuthRoute(path) || isHealthRoute(path) || isMobileApiRoute(path)) return withPathname(req);
+    if (/^[A-Za-z0-9_-]{43}$/.test(req.cookies.get(INTERNAL_SESSION_COOKIE)?.value || '')) return withPathname(req);
+    if (wantsStatusNotRedirect(req)) return new NextResponse('Authentication required.', { status: 401, headers: { 'cache-control': 'no-store' } });
+    const destination = new URL('/login', internalConfig().origin);
+    destination.searchParams.set('returnTo', path + req.nextUrl.search);
+    return NextResponse.redirect(destination);
+  }
   if (keycloakSelected()) {
     if (!keycloakReady()) return refuseUnconfigured();
     const path = req.nextUrl.pathname;

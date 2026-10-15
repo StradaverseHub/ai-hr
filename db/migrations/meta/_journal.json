@@ -3130,6 +3130,13 @@
       "when": 1791900000020,
       "tag": "0540_performance_journey_parity",
       "breakpoints": true
+    },
+    {
+      "idx": 541,
+      "version": "7",
+      "when": 1792062000000,
+      "tag": "0541_embedded_authentication",
+      "breakpoints": true
     }
   ]
 }

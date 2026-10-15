@@ -1,3 +1,5 @@
+import { internalSelected } from '../internal-auth/config';
+import { internalManualProvider } from '../internal-auth/manual-provider';
 import { keycloakConfig } from './config';
 import { identityFetch } from './oidc';
 import { ManualIdentityError, type ManualIdentityEnrollment } from './manual-model';
@@ -13,6 +15,7 @@ type Account={id:string;username:string;email:string;emailVerified:boolean;enabl
 
 /** Reuses the existing realm-scoped user-management client; never accepts an endpoint from a form. */
 export function manualAccountProvider():ManualAccountProvider {
+  if (internalSelected()) return internalManualProvider();
   const config=keycloakConfig();
   let token:Promise<string>|undefined;
   const adminBase=config.issuer.replace('/realms/','/admin/realms/');

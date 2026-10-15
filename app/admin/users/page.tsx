@@ -1,3 +1,4 @@
+import { internalSelected } from '@/lib/internal-auth/config';
 import { listEmployeeActivationCandidates } from '@/core/employee-user-activation';
 import { keycloakSelected } from '@/lib/identity/config';
 import { listManualIdentityEnrollments } from '@/core/manual-identity';
@@ -79,7 +80,7 @@ export default async function UsersPage({
     groupAdmin ? listCompanies(s) : adminCompanies(s),
     groupAdmin ? listPendingInvitations(s) : Promise.resolve([]),
     groupAdmin ? listEmployees(s) : Promise.resolve([]),
-    groupAdmin && keycloakSelected() ? listManualIdentityEnrollments(s) : Promise.resolve([]),
+    groupAdmin && (keycloakSelected() || internalSelected()) ? listManualIdentityEnrollments(s) : Promise.resolve([]),
     groupAdmin ? listEmployeeActivationCandidates(s) : Promise.resolve([]),
   ]);
   const { users: allUsers } = userList;
@@ -195,7 +196,7 @@ export default async function UsersPage({
         </div>
       </Card>
 
-      {groupAdmin&&<ManualAccountSetup available={keycloakSelected()} people={peopleOptions} companies={companies}
+      {groupAdmin&&<ManualAccountSetup available={keycloakSelected() || internalSelected()} people={peopleOptions} companies={companies}
         roles={ROLES.map(value=>({value,label:t(`role.${value}`)}))} pending={manualEnrollments} selectedPerson={selectedPerson}/>}
 
       {/* Email invitations remain alongside administrator-attested manual setup. Group admins invite an EXISTING employee by

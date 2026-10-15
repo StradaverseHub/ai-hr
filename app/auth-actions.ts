@@ -1,3 +1,4 @@
+import { internalSelected } from '@/lib/internal-auth/config';
 'use server';
 
 import { keycloakSelected } from '@/lib/identity/config';
@@ -16,6 +17,7 @@ import { appOrigin } from '@/lib/real-auth';
  * revoke — just send the user to /login so the action is safe to render everywhere.
  */
 export async function logoutAction() {
+  if (internalSelected()) return (await import('@/lib/internal-auth/web-session')).endInternalSession();
   if (keycloakSelected()) {
     try {
       const current = await getSession();

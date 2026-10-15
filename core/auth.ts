@@ -1,3 +1,4 @@
+import { internalSelected } from '../lib/internal-auth/config';
 import { keycloakSelected } from '../lib/identity/config';
 /**
  * Auth services (ADR-0072). Invitation-only account creation + password-reset + logout, all delegating
@@ -36,11 +37,14 @@ export type AuthProvider = {
  * server component). Tests always inject a fake AuthProvider, so lib/workos is never loaded there.
  */
 const defaultProvider: AuthProvider = {
-  sendInvitation: async (email, activationPath) => keycloakSelected()
+  sendInvitation: async (email, activationPath) => internalSelected()
+    ? (await import('../lib/internal-auth/invitations')).sendInternalInvitation(email, activationPath ?? '')
+    : keycloakSelected()
     ? (await import('../lib/identity/provider')).sendIdentityInvitation(email, activationPath ?? '')
     : (await import('../lib/workos')).sendProviderInvitation(email),
   revokeInvitation: async (id) => (await import('../lib/workos')).revokeProviderInvitation(id),
   sendPasswordReset: async (email) => {
+    if (internalSelected()) throw new Error('Use the embedded recovery flow.');
     if (keycloakSelected()) throw new Error('Use the Keycloak hosted recovery flow.');
     await (await import('../lib/workos')).sendProviderPasswordReset(email);
   },

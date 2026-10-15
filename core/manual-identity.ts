@@ -1,3 +1,4 @@
+import { internalSelected, internalIssuer } from '../lib/internal-auth/config';
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { keycloakConfig, keycloakSelected } from '../lib/identity/config';
@@ -6,8 +7,8 @@ import { manualAccountProvider, type ManualAccountProvider } from '../lib/identi
 import { ROLES } from './auth';
 
 async function authorized(ctx:SessionContext) {
-  if(!keycloakSelected()||!ctx.userId)throw new ManualIdentityError('forbidden');
-  const issuer=keycloakConfig().issuer;
+  if((!keycloakSelected()&&!internalSelected())||!ctx.userId)throw new ManualIdentityError('forbidden');
+  const issuer=internalSelected()?internalIssuer(ctx.tenantId):keycloakConfig().issuer;
   const allowed=await withTenant(ctx,async tx=>{
     const rows=await tx.execute(sql`select app.manual_identity_authorized(${issuer}) allowed`) as unknown as {allowed:boolean}[];
     return rows[0]?.allowed===true;

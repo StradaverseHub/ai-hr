@@ -1,16 +1,20 @@
+import { internalSelected } from '../internal-auth/config';
 import { identityEmailRequest } from './email-ipc';
 import { keycloakConfig, keycloakSelected, safeReturnTo } from './config';
 
 export async function currentProviderSession() {
+  if (internalSelected()) return (await import('../internal-auth/web-session')).currentInternalIdentity();
   if (keycloakSelected()) return (await import('./session')).currentIdentitySession();
   const session = await (await import('../workos')).currentWorkosSession();
   return session ? { ...session, issuer: undefined, emailVerified: false } : null;
 }
 export async function providerSignInUrl(returnTo?: string) {
+  if (internalSelected()) return `/login?returnTo=${encodeURIComponent(safeReturnTo(returnTo))}`;
   if (keycloakSelected()) return `/login/start?returnTo=${encodeURIComponent(safeReturnTo(returnTo))}`;
   return (await import('../workos')).signInUrl(returnTo);
 }
 export async function endProviderSession(returnTo?: string): Promise<void> {
+  if (internalSelected()) return (await import('../internal-auth/web-session')).endInternalSession();
   if (keycloakSelected()) return (await import('./session')).endIdentitySession();
   return (await import('../workos')).endWorkosSession(returnTo);
 }

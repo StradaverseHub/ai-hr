@@ -1,3 +1,5 @@
+import { internalSelected, internalConfig } from '@/lib/internal-auth/config';
+import { InternalAuthForm } from '../login/internal-form';
 import { redirect } from 'next/navigation';
 import { keycloakSelected } from '@/lib/identity/config';
 import { getTranslations } from 'next-intl/server';
@@ -14,6 +16,7 @@ export default async function ResetPasswordPage({
 }: {
   searchParams: Promise<{ sent?: string }>;
 }) {
+  if (internalSelected()) return <InternalAuthForm mode="recovery" organization={internalConfig().organization}/>;
   // Keycloak owns recovery, including its anti-enumeration and brute-force controls.
   if (keycloakSelected()) redirect('/login/start');
   const t = await getTranslations('auth');

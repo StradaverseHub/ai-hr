@@ -1,0 +1,23 @@
+# ADR-0116: First-party authentication inside the HR application
+
+Status: Owner-directed replacement, 2026-10-15. Supersedes ADR-0098's Keycloak implementation direction. The owner explicitly requires username/password, MFA and password recovery inside the HR app for cloud and on-prem, and cancelled Keycloak activation. No claim of completed activation or device acceptance is made by this decision.
+
+## Ownership and graph
+
+The HR server owns the login experience, credentials, challenges, sessions and password recovery. PostgreSQL is its durable state; no separate identity server or cloud directory is required. Cryptographic primitives come from Node crypto and authenticator calculations from maintained otplib; this does not mean inventing cryptographic algorithms or implementing an OAuth/OIDC authorization server.
+
+Organization code → configured tenant → normalized username → exact local credential subject → existing external-identity binding → existing app_user → grants/person/employments. Namespaces are tenant-specific. Email and organization branding never confer HR access. Preserve all existing internal IDs and grants. Employee creation continues to create an activation candidate; an administrator explicitly enrolls credentials or issues an invitation. Installation bootstrap is an audited operator action selecting an exact existing HR user, not email-based adoption or public registration.
+
+Private authentication records are AES-256-GCM encrypted in the application using a deployment key outside PostgreSQL; purpose binds each record to its exact key. Passwords are salted scrypt hashes inside encrypted credential records. Browser and native credentials are random opaque handles stored only as hashes. Database privileges refuse direct application-role access to the private table. Rate limits, MFA challenges, recovery and token rotation are durable and serialized across workers. The same application/database boundary applies on-prem. Compromise of the application process and its key is a trusted-boundary compromise; encryption is not a promise against that attacker.
+
+## User journeys and acceptance
+
+- Web and native: organization, username and password; temporary password change; authenticator enrollment with QR/manual key; actual OTP confirmation; one-time backup codes; subsequent OTP or backup-code login. A partial challenge grants no HR access. Failed, expired and replayed challenges are refused.
+- MFA is required for enrolled accounts. TOTP uses 30-second steps and bounded clock tolerance; successful steps cannot be reused. Recovery codes are independently random, hashed and consumed atomically.
+- Recovery: generic response whether the account exists, per-account limits, single-use short-lived mail link through the installation's tested SMTP settings. Existing MFA remains required; resetting a password does not disable MFA. Successful reset revokes all prior sessions and challenges. No email, raw token, password or OTP enters normal logs/audit.
+- Administration: existing role/company restrictions govern manual enrollment; local provider creates disabled credentials, commits exact identity/HR binding, then enables. Repeat/resume never resets a live password. Preserve pending employee and invitation workflows without adopting identities by email.
+- Deployment isolation: runtime company profiles select only trusted application endpoints. Switching deployment clears session/device/drafts and prevents stale completions. Native tokens are isolated by organization/installation and accepted only by the selected app server.
+- Live revocation: archived/offboarded HR accounts, revoked identity bindings and removed grants apply during each session resolution. Authentication failure never falls back to demo access.
+- Installation: explicit internal provider configuration, operator bootstrap, key backup/restore and rotation procedure, owner MFA enrollment, tested SMTP, TLS and secure cutover/rollback. Certificate renewal remains infrastructure work, independent of the cancelled Keycloak route.
+
+Verification must include actual browser/native journeys, two organizations with colliding usernames, concurrent OTP/recovery/refresh replay, forged/expired records, anonymous refusals, role escalation and cross-tenant invitations. Focused cryptography/state tests do not establish UI or deployment acceptance. Existing Keycloak/WorkOS adapters remain inactive compatibility code until a separately verified cleanup; never activate or automatically fall back to them in internal mode. Enterprise SSO federation/passkeys are separate capabilities, not silently represented as implemented by local passwords and MFA.

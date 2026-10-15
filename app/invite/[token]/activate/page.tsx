@@ -1,3 +1,5 @@
+import { internalSelected } from '@/lib/internal-auth/config';
+import { InternalAuthForm } from '@/app/login/internal-form';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { acceptInvitation } from '@/core/auth';
@@ -34,6 +36,11 @@ export default async function InviteActivatePage({
   const t = await getTranslations('auth');
   const { token } = await params;
 
+  if (internalSelected()) {
+    const { currentInternalIdentity } = await import('@/lib/internal-auth/web-session');
+    const identity = await currentInternalIdentity();
+    return <InternalAuthForm mode={identity ? 'accept' : 'invite'} invitation={token} returnTo="/"/>;
+  }
   // Dev / gated demo: there is no WorkOS to verify against, so activation cannot be completed. Say so
   // plainly rather than throwing an opaque provider error (mirrors how /login handles the same case).
   if (demoSwitcherEnabled()) {

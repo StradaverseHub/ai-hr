@@ -179,7 +179,12 @@ fi
 # gate (SHARE_PASSWORD), or real sign-in fully configured (ALLOW_DEMO_SESSION not `true` AND all four
 # AuthKit settings non-empty — the same rule as lib/real-auth.ts and the middleware). Half a WorkOS
 # configuration still refuses, before anything is installed, built, migrated or restarted.
-if [ "${AUTH_PROVIDER:-}" = "keycloak" ]; then
+if [ "${AUTH_PROVIDER:-}" = "internal" ]; then
+  for setting in AUTH_PUBLIC_ORIGIN AUTH_SESSION_KEY; do
+    if [ -z "${!setting:-}" ]; then echo "Missing embedded authentication setting: $setting" >&2; exit 1; fi
+  done
+  echo "▸ Embedded HR authentication selected; demo identity switching is disabled."
+elif [ "${AUTH_PROVIDER:-}" = "keycloak" ]; then
   for setting in KEYCLOAK_ISSUER KEYCLOAK_WEB_CLIENT_ID KEYCLOAK_WEB_CLIENT_SECRET KEYCLOAK_MOBILE_CLIENT_ID KEYCLOAK_API_AUDIENCE AUTH_PUBLIC_ORIGIN AUTH_SESSION_KEY; do
     if [ -z "${!setting:-}" ]; then echo "Missing identity setting: $setting" >&2; exit 1; fi
   done
@@ -211,7 +216,9 @@ else
   echo "$LOCK_HASH" > "$LOCK_MARKER"
 fi
 
-if [ "${AUTH_PROVIDER:-}" = "keycloak" ]; then
+if [ "${AUTH_PROVIDER:-}" = "internal" ]; then
+  node --import tsx --input-type=module -e 'import { internalConfig } from "./lib/internal-auth/config.ts"; internalConfig();'
+elif [ "${AUTH_PROVIDER:-}" = "keycloak" ]; then
   node --import tsx --input-type=module -e 'import { keycloakConfig } from "./lib/identity/config.ts"; keycloakConfig();'
 fi
 

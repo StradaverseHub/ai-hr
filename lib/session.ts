@@ -1,3 +1,4 @@
+import { internalSelected } from './internal-auth/config';
 import { keycloakSelected } from './identity/config';
 import { cache } from 'react';
 import { cookies, headers } from 'next/headers';
@@ -215,6 +216,12 @@ export async function withEntitlements(session: SessionContext): Promise<Session
 export const getSession = cache(resolveSession);
 
 async function resolveSession(): Promise<SessionContext> {
+  if (internalSelected()) {
+    const identity = await (await import('./internal-auth/web-session')).currentInternalIdentity();
+    if (!identity) throw new AuthRequiredError('No active session.');
+    const lookup = () => client<SubjectPrincipalRow[]>`select * from app.principal_by_identity(${identity.issuer},${identity.subject})`;
+    return withEntitlements(await resolveWorkosPrincipal(lookup, identity.subject));
+  }
   if (keycloakSelected()) {
     const { currentIdentitySession } = await import('./identity/session');
     const identity = await currentIdentitySession();
@@ -288,6 +295,13 @@ export async function getMobileSession(
   opts: { authorization?: string | null; jwks?: JwksSource } = {},
 ): Promise<SessionContext> {
   const header = opts.authorization !== undefined ? opts.authorization : (await headers()).get('authorization');
+  if (internalSelected()) {
+    const token = /^Bearer (aihr_[A-Za-z0-9_-]{43})$/i.exec(header || '')?.[1];
+    const identity = await (await import('./internal-auth/service')).readSession(token, true);
+    if (!identity) throw new AuthRequiredError('A valid mobile session is required.');
+    const lookup = () => client<SubjectPrincipalRow[]>`select * from app.principal_by_identity(${identity.issuer},${identity.subject})`;
+    return withEntitlements(await resolveWorkosPrincipal(lookup, identity.subject));
+  }
   const token = parseBearer(header);
   if (!token) throw new AuthRequiredError('A bearer access token is required.');
   if (keycloakSelected()) {
