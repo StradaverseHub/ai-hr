@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import postgres from 'postgres';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
@@ -37,7 +38,51 @@ async function queued(){
 }
 async function target(job:{id:string;token:string}){return (await raw`select identity_email.report_target(${job.id}::uuid,${job.token}::uuid,${issuer}) target`)[0].target;}
 const start=async(job:{id:string;token:string},expected:postgres.JSONValue)=>(await raw`select identity_email.start_report(${job.id}::uuid,${job.token}::uuid,${issuer},${raw.json(expected)}::jsonb) started`)[0].started;
+/** Actual pending DDL and invocation under an owner without superuser, BYPASSRLS or custom SET ACL. */
+async function restrictedTargetOwner(run:()=>Promise<void>){
+ const role='report_owner_'+randomUUID().replaceAll('-','');
+ const tables=['custom_report_occurrence','custom_report_schedule','custom_report','app_user','employment','person','notification_pref','notification_email_policy','app_external_identity'];
+ const initial=await raw`select c.relname,r.rolname as owner from pg_class c join pg_roles r on r.oid=c.relowner where c.relnamespace='public'::regnamespace and c.relname=any(${tables}::text[])`;
+ const [original]=await raw`select r.rolname as owner from pg_proc p join pg_roles r on r.oid=p.proowner where p.oid='identity_email.report_target(uuid,uuid,text)'::regprocedure`;
+ const quote=(value:string)=>'"'+value.replaceAll('"','""')+'"';
+ await raw.unsafe(`CREATE ROLE ${quote(role)} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS`);
+ try{
+  await raw.unsafe(`GRANT USAGE,CREATE ON SCHEMA public,app,identity_email TO ${quote(role)}`);
+  await raw.unsafe(`GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${quote(role)}`);
+  await raw.unsafe(`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA app,identity_email TO ${quote(role)}`);
+  for(const table of tables)await raw.unsafe(`ALTER TABLE public.${quote(table)} OWNER TO ${quote(role)}`);
+  await raw.unsafe(`ALTER FUNCTION identity_email.report_target(uuid,uuid,text) OWNER TO ${quote(role)}`);
+  const migration=readFileSync(new URL('../db/migrations/0549_employee_master_delivery.sql',import.meta.url),'utf8'),start=migration.indexOf('CREATE FUNCTION identity_email.report_target('),end=migration.indexOf('--> statement-breakpoint',start);
+  expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start);const definition=migration.slice(start,end).replace('CREATE FUNCTION','CREATE OR REPLACE FUNCTION');expect(definition.length).toBeGreaterThan(4000);
+  await raw.begin(async tx=>{await tx.unsafe(`SET LOCAL ROLE ${quote(role)}`);await tx.unsafe(definition);});
+  const [flags]=await raw`select r.rolsuper,r.rolbypassrls,pg_has_role('ai_hr_app',r.oid,'USAGE') as app_member,has_parameter_privilege(r.oid,'app.tenant_id','SET') as custom_set from pg_roles r where r.rolname=${role}`;
+  expect(flags).toEqual({rolsuper:false,rolbypassrls:false,app_member:false,custom_set:false});
+  await run();
+ }finally{
+  await raw.unsafe(`ALTER FUNCTION identity_email.report_target(uuid,uuid,text) OWNER TO ${quote(original.owner)}`);
+  for(const row of initial)await raw.unsafe(`ALTER TABLE public.${quote(row.relname)} OWNER TO ${quote(row.owner)}`);
+  await raw.unsafe(`DROP OWNED BY ${quote(role)}`);await raw.unsafe(`DROP ROLE ${quote(role)}`);
+ }
+}
+
 describe('managed report nonce and durable lifecycle in the actual database',()=>{
+ it('defines and invokes the private target as the restricted owner and restores all caller context on success, refusal and error',async()=>{
+  const job=await queued();
+  await restrictedTargetOwner(async()=>{
+   const values=[randomUUID(),randomUUID(),'employee','[{"role":"employee","companyId":null}]'];
+   const [originalStamp]=await raw`select pg_get_functiondef('identity_email.report_access_stamp(uuid)'::regprocedure) definition`;
+   await raw.begin(async tx=>{
+    const context=async()=>(await tx`select current_setting('app.tenant_id',true) tenant,current_setting('app.user_id',true) actor,current_setting('app.roles',true) roles,current_setting('app.grants',true) grants`)[0];
+    await tx`select set_config('app.tenant_id',${values[0]},true),set_config('app.user_id',${values[1]},true),set_config('app.roles',${values[2]},true),set_config('app.grants',${values[3]},true)`;
+    const prior=await context();
+    expect((await tx`select identity_email.report_target(${job.id}::uuid,${job.token}::uuid,${issuer}) value`)[0].value).not.toBeNull();expect(await context()).toEqual(prior);
+    expect((await tx`select identity_email.report_target(${job.id}::uuid,${randomUUID()}::uuid,${issuer}) value`)[0].value).toBeNull();expect(await context()).toEqual(prior);
+    await tx.unsafe("CREATE OR REPLACE FUNCTION identity_email.report_access_stamp(p_tenant uuid) RETURNS text LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ BEGIN RAISE EXCEPTION 'Synthetic private target failure' USING ERRCODE='22007'; END $$");
+    try{await expect(tx.savepoint(async sub=>sub`select identity_email.report_target(${job.id}::uuid,${job.token}::uuid,${issuer})`)).rejects.toMatchObject({code:'22007'});expect(await context()).toEqual(prior);}
+    finally{await tx.unsafe(originalStamp.definition);}
+   });
+  });
+ });
  it('freezes exact user/employment/version/scope and microsecond consent revisions; the app renderer context has no address or provider subject',async()=>{
   const job=await queued(),value=await target(job);expect(value).toMatchObject({ownerUserId:ctx.userId,recipientUserId:ctx.userId,recipientEmploymentId:e.employmentId,reportVersion:report.version,companyIds:[b.companyId]});expect(value.consentUpdatedAt).toMatch(/\.\d{6}Z$/);
   const [context]=await withTenant(ctx,tx=>tx.execute(sql`select app.employee_master_render_context(${job.id}::uuid,${job.token}::uuid,${issuer}) context`)) as unknown as {context:Record<string,unknown>}[];expect(context.context.recipientEmploymentId).toBe(e.employmentId);expect(context.context).not.toHaveProperty('email');expect(context.context).not.toHaveProperty('subject');

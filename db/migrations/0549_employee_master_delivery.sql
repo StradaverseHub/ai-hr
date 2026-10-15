@@ -26,6 +26,8 @@ REVOKE ALL ON FUNCTION identity_email.report_access_stamp(uuid) FROM PUBLIC,ai_h
 --> statement-breakpoint
 -- Database mirror of core/entitlement-types.ts TENANT_STATUS_GOOD_STANDING, pinned by a contract test.
 -- Private delivery entry points recheck standing, including already queued work after suspension.
+-- Context follows restricted-owner0542: lease-derived temporary settings, normal restoration,
+-- and exception-subtransaction rollback. Never grant custom-parameter SET or app access.
 CREATE FUNCTION identity_email.report_tenant_available(p_tenant uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM tenant t WHERE t.id=p_tenant AND t.status IN ('active','trial'));
@@ -33,14 +35,18 @@ $$;
 REVOKE ALL ON FUNCTION identity_email.report_tenant_available(uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION identity_email.report_target(p_id uuid,p_token uuid,p_issuer text) RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp
-SET app.tenant_id='' SET app.user_id='' SET app.roles='' SET app.grants='[]' AS $$
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE bound_tenant uuid;result jsonb;
+ prior_tenant text:=coalesce(current_setting('app.tenant_id',true),'');
+ prior_user text:=coalesce(current_setting('app.user_id',true),'');
+ prior_roles text:=coalesce(current_setting('app.roles',true),'');
+ prior_grants text:=coalesce(current_setting('app.grants',true),'');
 BEGIN
  SELECT o.tenant_id INTO bound_tenant FROM custom_report_occurrence o
  WHERE o.id=p_id AND o.lease_token=p_token AND o.lease_until>now() AND o.status='pending' AND o.started_at IS NULL;
  IF bound_tenant IS NULL OR NOT identity_email.report_tenant_available(bound_tenant) THEN RETURN NULL;END IF;
- PERFORM set_config('app.tenant_id',bound_tenant::text,true);
+ PERFORM set_config('app.tenant_id',bound_tenant::text,true),set_config('app.user_id','',true),
+  set_config('app.roles','',true),set_config('app.grants','[]',true);
  SELECT jsonb_build_object(
   'tenantId',o.tenant_id,'ownerUserId',o.owner_user_id,'recipientUserId',o.recipient_user_id,'recipientEmploymentId',o.recipient_employment_id,
   'reportId',o.report_id,'reportVersion',o.report_version,'scheduleId',o.schedule_id,'scheduleRevision',o.schedule_revision,'reviewedDigest',o.reviewed_digest,
@@ -75,13 +81,17 @@ BEGIN
  AND i.issuer=p_issuer AND pref.report_consent_address_hash=encode(sha256(convert_to(lower(p.primary_email),'UTF8')),'hex')
  AND pref.email_after_sequence=o.consent_after_sequence AND policy.after_sequence=o.policy_after_sequence
  AND pref.updated_at=o.consent_updated_at AND policy.updated_at=o.policy_updated_at AND pref.report_consent_verified_at=o.consent_verified_at;
+ PERFORM set_config('app.tenant_id',prior_tenant,true),set_config('app.user_id',prior_user,true),
+  set_config('app.roles',prior_roles,true),set_config('app.grants',prior_grants,true);
  RETURN result;
+EXCEPTION WHEN OTHERS THEN
+ RAISE;
 END $$;
 REVOKE ALL ON FUNCTION identity_email.report_target(uuid,uuid,text) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 -- Only nonce holders can resolve render authority. No email, provider subject, password or document is returned.
 CREATE FUNCTION app.employee_master_render_context(p_id uuid,p_token uuid,p_issuer text) RETURNS jsonb
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT identity_email.report_target(p_id,p_token,p_issuer)-ARRAY['email','subject']
 $$;
 REVOKE ALL ON FUNCTION app.employee_master_render_context(uuid,uuid,text) FROM PUBLIC;

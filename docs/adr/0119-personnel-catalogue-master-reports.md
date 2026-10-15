@@ -39,3 +39,23 @@ The mail process keeps its existing192MiB bound. A separate non-login `aihr-repo
 Renderer requests contain a validated occurrence ID, lease nonce and expected opaque permission stamp; no caller path, principal flags, address or workbook enters this boundary. The renderer resolves real principal contexts through the nonce-bound database helper and uses the canonical scoped report owners. It writes a maximum20MB XLSX to a derived UUID/nonce path under its own directory. Mail opens that artifact without following symlinks and has group read/traverse only. Renderer-only remove requests and a10-minute stale cleanup enforce a20-file budget; cleanup failure cannot turn an already recorded send into a retry.
 
 Installation is explicit after migration0549 and the accepted0542 prerequisite: build the hash-reviewed report upgrade under the resource handoff; provide `AIHR_REPORT_RENDER_DATABASE_URL` through the root installation environment; run the reviewed generated upgrade as root; then run the installed `verify-report-isolation.py` as root. The upgrade validates the app role is not a table/schema owner, superuser, bypass-RLS role or member of another role, installs separate environment/identities/units and retains a private rollback snapshot. No opt-in, schedule or mail is created by installation. The installation probe covers peer/DAC/artifact boundaries only. Actual Linux bundle loading, restricted-role fixtures, authorized report generation, revocation,20MB refusal, crash expiry, SMTP uncertainty and memory measurement remain required before completion.
+
+Private helper context follows the accepted restricted-owner0542 mechanism: derive the tenant only
+from a valid live lease, capture the four caller context settings, use transaction-local `set_config`,
+restore all four on a normal return, and let an escaping exception unwind the exception-block
+subtransaction. Custom `app.*` function SET clauses are forbidden: they fail definition under the
+restricted production migration owner. No parameter SET ACL or application EXECUTE grant is added.
+The report regression must execute its actual pending DDL as a non-superuser/non-BYPASSRLS owner,
+then test normal, invalid-lease and actual query-error context restoration. Its execution is pending.
+
+Queue enumeration uses the canonical good-standing scope; private queue/claim/target independently
+recheck the pinned database mirror of that same status set. A lease is claimed immediately before
+processing one report. A second request is refused busy rather than waiting behind rendering with an
+aging lease. Independent minute jobs continue after another job's failure, and delivery history logs
+cross-tenant aggregate counters without identity or document data.
+
+Movement exit fields come from the canonical primary event, with recorded absence distinguished from
+explicit null or zero. A frozen scheduled request retains intent provenance even after its separate
+Movement status changes. Preview/text exports mark intent; Excel preserves numeric values with an
+intent comment and exports include explanatory notes. Today's mutable employment exit fields never
+substitute for missing recorded history. Runtime and export regressions remain pending.
