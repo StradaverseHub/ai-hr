@@ -5,8 +5,8 @@ type Q = {
     n: bigint;
     d: bigint;
 };
-const ZERO: Q = { n: 0n, d: 1n }, SIXTY: Q = { n: 60n, d: 1n };
-const abs = (n: bigint) => n < 0n ? -n : n;
+const ZERO: Q = { n: BigInt('0'), d: BigInt('1') }, SIXTY: Q = { n: BigInt('60'), d: BigInt('1') };
+const abs = (n: bigint) => n < BigInt('0') ? -n : n;
 function gcd(a: bigint, b: bigint): bigint {
     while (b) {
         const c = a % b;
@@ -15,10 +15,10 @@ function gcd(a: bigint, b: bigint): bigint {
     }
     return a;
 }
-function q(n: bigint, d = 1n, path = 'arithmetic'): Q {
+function q(n: bigint, d = BigInt('1'), path = 'arithmetic'): Q {
     if (!d)
         fail('divisionByZero', path, 'Division by zero.');
-    if (d < 0n) {
+    if (d < BigInt('0')) {
         n = -n;
         d = -d;
     }
@@ -33,25 +33,25 @@ const add = (a: Q, b: Q) => q(a.n * b.d + b.n * a.d, a.d * b.d), sub = (a: Q, b:
 const compare = (a: Q, b: Q) => a.n * b.d < b.n * a.d ? -1 : a.n * b.d > b.n * a.d ? 1 : 0;
 const min = (a: Q, b: Q) => compare(a, b) < 0 ? a : b, max = (a: Q, b: Q) => compare(a, b) > 0 ? a : b;
 const sum = (a: Q[]) => a.reduce(add, ZERO);
-function decimal(raw: string, path = 'value') { const value = overtimeDecimal(raw, path); const negative = value.startsWith('-'), [whole, fraction = ''] = value.replace(/^-/, '').split('.'); return q((BigInt(whole + fraction)) * (negative ? -1n : 1n), 10n ** BigInt(fraction.length), path); }
+function decimal(raw: string, path = 'value') { const value = overtimeDecimal(raw, path); const negative = value.startsWith('-'), [whole, fraction = ''] = value.replace(/^-/, '').split('.'); return q((BigInt(whole + fraction)) * (negative ? -BigInt('1') : BigInt('1')), BigInt('10') ** BigInt(fraction.length), path); }
 const exact = (v: Q, unit: OvertimeUnit): OvertimeExact => ({ unit, numerator: v.n.toString(), denominator: v.d.toString() });
 const known = (v: Q, unit: OvertimeUnit): OvertimeValue => ({ state: 'known', value: exact(v, unit) });
 const unknown = (reason: string): OvertimeValue => ({ state: 'unknown', reason });
 function nonnegative(v: Q, path: string) {
-    if (v.n < 0n)
+    if (v.n < BigInt('0'))
         fail('invalid', path, 'This stage requires a nonnegative value.');
     return v;
 }
 function roundInteger(value: Q, mode: OvertimeRoundingMode): bigint {
-    if (value.n < 0n)
+    if (value.n < BigInt('0'))
         fail('invalid', 'rounding', 'Round a nonnegative payable value.');
     const whole = value.n / value.d, remainder = value.n % value.d;
     if (mode === 'down')
         return whole;
     if (mode === 'up')
-        return whole + (remainder ? 1n : 0n);
-    const twice = remainder * 2n;
-    return whole + (twice > value.d || twice === value.d && (mode === 'halfUp' || whole % 2n === 1n) ? 1n : 0n);
+        return whole + (remainder ? BigInt('1') : BigInt('0'));
+    const twice = remainder * BigInt('2');
+    return whole + (twice > value.d || twice === value.d && (mode === 'halfUp' || whole % BigInt('2') === BigInt('1')) ? BigInt('1') : BigInt('0'));
 }
 function provenance(raw: unknown, path: string): OvertimeProvenance {
     const p = overtimeObject(raw, path);
@@ -394,7 +394,7 @@ function allocate(work: Work[], amount: Q, capacity: (w: Work) => Q, write: (w: 
         write(w, value);
         remaining = sub(remaining, value);
     }
-    if (remaining.n > 0n)
+    if (remaining.n > BigInt('0'))
         fail('source', 'allocation', 'Canonical allocation capacity is insufficient.');
 }
 function safeIdentity(input: OvertimeInput) {
@@ -453,7 +453,7 @@ function runDurationStage(rawPattern: OvertimePattern, rawInput: OvertimeInput, 
             const dateDifference = (Date.parse(clock.localDate + 'T00:00:00Z') - Date.parse(input.source.date + 'T00:00:00Z')) / 86400000;
             if (dateDifference < 0 || dateDifference > 2)
                 fail('source', segment.id, 'Recorded local date lies outside the bounded attendance session.');
-            if (original && compare(original, q(BigInt(clock.elapsedSeconds), 60n)) !== 0)
+            if (original && compare(original, q(BigInt(clock.elapsedSeconds), BigInt('60'))) !== 0)
                 fail('source', segment.id, 'Precise placement requires a raw count equal to the recorded interval.');
         }
         return { index, id: segment.id, sessionId: segment.sessionId, raw: original, eligible: input.layer === 'raw' ? ZERO : null, approved, approvalAllocated: ZERO, payable: input.layer === 'raw' ? ZERO : approved, allowed: true, dayType: segment.dayType, clock: segment.clock };
@@ -487,7 +487,7 @@ function runDurationStage(rawPattern: OvertimePattern, rawInput: OvertimeInput, 
             }
             allocate(group, eligible, w => w.raw!, (w, v) => { w.eligible = v; w.payable = min(v, w.approved); }, pattern.durationAllocation);
         }
-        else if (eligible.n === 0n)
+        else if (eligible.n === BigInt('0'))
             for (const w of group)
                 w.payable = ZERO;
         e.emit('duration', 'eligibility-' + group[0].id, { basis: pattern.eligibilityBasis, segmentIds: group.map(w => w.id), eligible: exact(eligible, 'minutes'), raw: raw ? exact(raw, 'minutes') : null });
@@ -529,7 +529,7 @@ function runDurationStage(rawPattern: OvertimePattern, rawInput: OvertimeInput, 
                     delete e.computed.resourceMinutes;
                     delete e.computed.resourceMoney;
                     e.computed[resource.measure.unit === 'minutes' ? 'resourceMinutes' : 'resourceMoney'] = measure;
-                    if (!e.condition(rule.when, over) || measure.n === 0n) {
+                    if (!e.condition(rule.when, over) || measure.n === BigInt('0')) {
                         e.emit('deduction', rule.id, { resourceId: resource.id, applied: false });
                         continue;
                     }
@@ -552,7 +552,7 @@ function runDurationStage(rawPattern: OvertimePattern, rawInput: OvertimeInput, 
                     }
                     else {
                         const selected = lines.filter(l => l.mapping.earningItemId === target && (rule.basis === 'day' || l.sessionId === group[0].sessionId));
-                        if (!selected.length && requested.n > 0n)
+                        if (!selected.length && requested.n > BigInt('0'))
                             fail('uncovered', rule.id, 'The money deduction target has no matched earning line.');
                         const quantities = selected.map(l => q(BigInt(l.adjusted.numerator), BigInt(l.adjusted.denominator))), available = sum(quantities);
                         applied = min(available, requested);
@@ -581,7 +581,7 @@ function runDurationStage(rawPattern: OvertimePattern, rawInput: OvertimeInput, 
     for (const w of work)
         w.approvalAllocated = w.payable;
     let unusedApproval = max(ZERO, sub(dayApproval, sum(work.map(w => w.payable))));
-    for (const w of (pattern.durationAllocation === 'latest' ? [...work].reverse() : work).filter(w => w.payable.n > 0n)) {
+    for (const w of (pattern.durationAllocation === 'latest' ? [...work].reverse() : work).filter(w => w.payable.n > BigInt('0'))) {
         const extra = min(unusedApproval, max(ZERO, sub(min(w.approved, w.raw ?? w.approved), w.payable)));
         w.approvalAllocated = add(w.approvalAllocated, extra);
         unusedApproval = sub(unusedApproval, extra);
@@ -592,7 +592,7 @@ function runDurationStage(rawPattern: OvertimePattern, rawInput: OvertimeInput, 
 function durationAllocations(stage: ReturnType<typeof runDurationStage>): OvertimeDurationAllocation[] {
     return stage.work.map(w => {
         let attribution: OvertimeDurationAllocation['attribution'] = null;
-        if (w.clock.state === 'known' && (stage.input.layer === 'raw' || compare(w.payable, q(BigInt(w.clock.value.elapsedSeconds), 60n)) === 0)) {
+        if (w.clock.state === 'known' && (stage.input.layer === 'raw' || compare(w.payable, q(BigInt(w.clock.value.elapsedSeconds), BigInt('60'))) === 0)) {
             const span = w.clock.value, rawStart = q(BigInt(span.startEpochSeconds)), rawEnd = add(rawStart, q(BigInt(span.elapsedSeconds))), seconds = mul(w.payable, SIXTY);
             const start = stage.pattern.durationAllocation === 'earliest' ? rawStart : sub(rawEnd, seconds);
             attribution = { policy: stage.pattern.durationAllocation, physicalApproval: false, startEpochSeconds: exact(start, 'scalar'), endEpochSeconds: exact(add(start, seconds), 'scalar') };
@@ -609,7 +609,7 @@ export function intersectOvertimeDurationAfter(result: OvertimeDurationEvaluatio
     if (upperBoundaryEpochSeconds !== undefined && (!/^\d{1,12}$/.test(upperBoundaryEpochSeconds) || BigInt(upperBoundaryEpochSeconds) <= BigInt(boundaryEpochSeconds))) return unknown('claimedWindowUnavailable');
     const upper = upperBoundaryEpochSeconds === undefined ? null : q(BigInt(upperBoundaryEpochSeconds)); let seconds = ZERO;
     for (const allocation of result.allocations) {
-        if (BigInt(allocation.payableMinutes.numerator) === 0n) continue;
+        if (BigInt(allocation.payableMinutes.numerator) === BigInt('0')) continue;
         if (!allocation.attribution) return unknown('durationPlacementUnavailable');
         const a = allocation.attribution, start = q(BigInt(a.startEpochSeconds.numerator), BigInt(a.startEpochSeconds.denominator)), end = q(BigInt(a.endEpochSeconds.numerator), BigInt(a.endEpochSeconds.denominator));
         seconds = add(seconds, max(ZERO, sub(upper ? min(end, upper) : end, max(start, boundary))));
@@ -623,7 +623,7 @@ export function evaluateOvertimePatternDuration(pattern: OvertimePattern, rawInp
     try {
         const stage = runDurationStage(pattern, rawInput, e => { engine = e; }), { input, e, work, rawTotal, eligibleTotal, canonicalApproved } = stage;
         const payable = sum(work.map(w => w.payable));
-        const result: OvertimeDurationEvaluation = { status: payable.n > 0n ? 'ready' : 'ineligible', ...stage.identity, mode: input.mode, transferable: input.mode === 'actual' && payable.n > 0n, rawMinutes: rawTotal ? known(rawTotal, 'minutes') : unknown('unrecordedLegacyRaw'), eligibleMinutes: eligibleTotal ? known(eligibleTotal, 'minutes') : unknown('unrecordedLegacyEligibility'), approvedMinutes: known(canonicalApproved, 'minutes'), payableMinutes: exact(payable, 'minutes'), allocations: durationAllocations(stage), trace: e.trace };
+        const result: OvertimeDurationEvaluation = { status: payable.n > BigInt('0') ? 'ready' : 'ineligible', ...stage.identity, mode: input.mode, transferable: input.mode === 'actual' && payable.n > BigInt('0'), rawMinutes: rawTotal ? known(rawTotal, 'minutes') : unknown('unrecordedLegacyRaw'), eligibleMinutes: eligibleTotal ? known(eligibleTotal, 'minutes') : unknown('unrecordedLegacyEligibility'), approvedMinutes: known(canonicalApproved, 'minutes'), payableMinutes: exact(payable, 'minutes'), allocations: durationAllocations(stage), trace: e.trace };
         if (new TextEncoder().encode(JSON.stringify(result)).length > L.evidenceBytes)
             fail('limit', 'evidence', 'Complete duration evidence exceeds its supported size.');
         return result;
@@ -690,7 +690,7 @@ export function evaluateOvertimePattern(rawPattern: OvertimePattern, rawInput: O
             ordinal: number;
         }[] = [];
         for (const w of work) {
-            if (w.payable.n === 0n)
+            if (w.payable.n === BigInt('0'))
                 continue;
             setComputed(work);
             e.computed.payableMinutes = w.payable;
@@ -698,7 +698,7 @@ export function evaluateOvertimePattern(rawPattern: OvertimePattern, rawInput: O
             let elapsed = 0, start: number | null = null;
             if (w.clock.state === 'known') {
                 const c = e.value(w.clock, w.id + '.clock');
-                if (input.layer === 'finalLegacy' && pattern.rates.some(r => r.timeBand) && compare(w.approved, q(BigInt(c.elapsedSeconds), 60n)) !== 0)
+                if (input.layer === 'finalLegacy' && pattern.rates.some(r => r.timeBand) && compare(w.approved, q(BigInt(c.elapsedSeconds), BigInt('60'))) !== 0)
                     fail('legacyLayer', w.id, 'Legacy final counts have no proven precise time-band placement.');
                 elapsed = c.elapsedSeconds;
                 start = c.localStartSecond;
@@ -720,15 +720,15 @@ export function evaluateOvertimePattern(rawPattern: OvertimePattern, rawInput: O
             if (pattern.durationAllocation === 'latest')
                 indexes.reverse();
             for (const i of indexes) {
-                if (remaining.n === 0n)
+                if (remaining.n === BigInt('0'))
                     break;
-                const count = min(remaining, q(BigInt(sorted[i + 1] - sorted[i]), 60n));
-                if (count.n > 0n)
+                const count = min(remaining, q(BigInt(sorted[i + 1] - sorted[i]), BigInt('60')));
+                if (count.n > BigInt('0'))
                     selectedSlices.push({ w, rate: selectRate(w, start + sorted[i]), minutes: count, ordinal: i });
                 remaining = sub(remaining, count);
             }
             slices.push(...selectedSlices.sort((a, b) => a.ordinal - b.ordinal));
-            if (remaining.n > 0n)
+            if (remaining.n > BigInt('0'))
                 fail('source', w.id, 'Payable count exceeds the precisely placed recorded span.');
             e.emit('duration', 'bands-' + w.id, { rawClock: w.clock, allocatedMinutes: exact(w.payable, 'minutes'), policy: pattern.durationAllocation + 'CountAttribution', physicalApproval: false });
         }
@@ -740,12 +740,12 @@ export function evaluateOvertimePattern(rawPattern: OvertimePattern, rawInput: O
         for (const slice of slices) {
             const { w, rate } = slice, key = rate.id + (rate.accumulation === 'session' ? '/' + w.sessionId : '/day');
             let position = counters.get(key) ?? ZERO, remaining = slice.minutes, part = 0;
-            while (remaining.n > 0n) {
+            while (remaining.n > BigInt('0')) {
                 const whole = rateTotals.get(key)!, tier = rate.tiers.find(t => { const from = decimal(t.from), to = t.to === null ? null : decimal(t.to), at = rate.tierMode === 'whole' ? whole : position; return compare(at, from) >= 0 && (to === null || compare(at, to) < 0); });
                 if (!tier)
                     fail('uncovered', rate.id, 'Payable duration exceeds configured tier coverage.');
                 const amountMinutes = rate.tierMode === 'whole' || tier.to === null ? remaining : min(remaining, sub(decimal(tier.to), position));
-                if (amountMinutes.n <= 0n)
+                if (amountMinutes.n <= BigInt('0'))
                     fail('uncovered', tier.id, 'Tier cannot consume this payable range.');
                 setComputed(work);
                 e.computed.payableMinutes = amountMinutes;
@@ -794,10 +794,10 @@ export function evaluateOvertimePattern(rawPattern: OvertimePattern, rawInput: O
             }
             e.emit('cap', 'paymentCap', { before: exact(before, 'money'), ceiling: exact(cap, 'money'), after: exact(sum(lines.map(amountOf)), 'money') });
         }
-        const scale = q(10n ** BigInt(input.currency.minorScale));
+        const scale = q(BigInt('10') ** BigInt(input.currency.minorScale));
         function distribute(group: OvertimeLine[], target: bigint, values: Q[]) {
-            const floors = values.map(v => v.n / v.d), remainder = target - floors.reduce((a, b) => a + b, 0n);
-            if (remainder < 0n || remainder > BigInt(group.length))
+            const floors = values.map(v => v.n / v.d), remainder = target - floors.reduce((a, b) => a + b, BigInt('0'));
+            if (remainder < BigInt('0') || remainder > BigInt(group.length))
                 fail('invalid', 'rounding', 'Rounding allocation is inconsistent.');
             const order = group.map((line, i) => ({ i, id: line.id, fraction: sub(values[i], q(floors[i])) })).sort((a, b) => compare(b.fraction, a.fraction) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
             for (let i = 0; i < Number(remainder); i++)
@@ -814,7 +814,7 @@ export function evaluateOvertimePattern(rawPattern: OvertimePattern, rawInput: O
                 const group = lines.filter(l => l.mapping.earningItemId === mapping), values = group.map(l => mul(amountOf(l), scale));
                 distribute(group, roundInteger(sum(values), pattern.moneyRounding.mode), values);
             }
-        let total = lines.reduce((n, l) => n + BigInt(l.amountMinorUnits), 0n);
+        let total = lines.reduce((n, l) => n + BigInt(l.amountMinorUnits), BigInt('0'));
         if (total.toString(2).length > L.integerBits)
             fail('overflow', 'money', 'The total minor-unit amount exceeds its supported range.');
         if (cap) {
@@ -830,7 +830,7 @@ export function evaluateOvertimePattern(rawPattern: OvertimePattern, rawInput: O
         const payable = sum(work.map(w => w.payable));
         if (compare(payable, dayApproval) > 0)
             fail('approval', 'payableMinutes', 'Payable duration exceeds canonical day approval.');
-        const result: OvertimeEvaluation = { status: payable.n > 0n ? 'ready' : 'ineligible', ...identity, transferable: input.mode === 'actual' && payable.n > 0n, currency: input.currency, rawMinutes: rawTotal ? known(rawTotal, 'minutes') : unknown('unrecordedLegacyRaw'), eligibleMinutes: eligibleTotal ? known(eligibleTotal, 'minutes') : unknown('unrecordedLegacyEligibility'), approvedMinutes: known(canonicalApproved, 'minutes'), payableMinutes: exact(payable, 'minutes'), amountMinorUnits: total.toString(), lines, trace: e.trace };
+        const result: OvertimeEvaluation = { status: payable.n > BigInt('0') ? 'ready' : 'ineligible', ...identity, transferable: input.mode === 'actual' && payable.n > BigInt('0'), currency: input.currency, rawMinutes: rawTotal ? known(rawTotal, 'minutes') : unknown('unrecordedLegacyRaw'), eligibleMinutes: eligibleTotal ? known(eligibleTotal, 'minutes') : unknown('unrecordedLegacyEligibility'), approvedMinutes: known(canonicalApproved, 'minutes'), payableMinutes: exact(payable, 'minutes'), amountMinorUnits: total.toString(), lines, trace: e.trace };
         if (new TextEncoder().encode(JSON.stringify(result)).length > L.evidenceBytes)
             fail('limit', 'evidence', 'Complete calculation evidence exceeds its supported size.');
         return result;

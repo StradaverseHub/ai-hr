@@ -14,14 +14,14 @@ describe('one mixed-source OT policy composition',()=>{
  it('applies the combined hour cap once, followed by one amount ceiling',()=>{
   const result=composePayrollOvertime({config:{overtime:{maxHoursPerMonth:2,maxAmount:50}},legacy:legacy(40,120),lines:[line('a','8000','120')]});
   expect(result.preCap).toBe(120);expect(result.capped).toBe(50);expect(result.excess).toBe(70);
-  expect(result.allocations.reduce((sum,l)=>sum+BigInt(l.amountMinorUnits),0n)).toBe(5000n);
+  expect(result.allocations.reduce((sum,l)=>sum+BigInt(l.amountMinorUnits),BigInt('0'))).toBe(BigInt('5000'));
  });
  it('refuses unknown manual/transaction hours when a monthly hours cap would otherwise guess zero',()=>{
   expect(()=>composePayrollOvertime({config:{overtime:{maxHoursPerMonth:10}},legacy:legacy(10,null),lines:[line('a','2000','60')]})).toThrowError(expect.objectContaining({code:'unknownHours'}));
  });
  it('permits independent manual cash without an hours cap and never changes the immutable formula amount',()=>{
   const lines=[line('a','3001','60')];const result=composePayrollOvertime({config:{overtime:{maxAmount:20}},legacy:legacy(10,null),lines});
-  expect(result.capped).toBe(20);expect(lines[0].amountMinorUnits).toBe('3001');expect(result.allocations.reduce((sum,l)=>sum+BigInt(l.amountMinorUnits),0n)).toBe(2000n);
+  expect(result.capped).toBe(20);expect(lines[0].amountMinorUnits).toBe('3001');expect(result.allocations.reduce((sum,l)=>sum+BigInt(l.amountMinorUnits),BigInt('0'))).toBe(BigInt('2000'));
  });
  it('filters day types before both common caps, with no legacy workday relabeling of formula holidays',()=>{
   const result=composePayrollOvertime({config:{overtime:{eligibleDayTypes:['holiday'],maxAmount:15}},legacy:legacy(100,60),lines:[line('a','2000','60','workday'),line('b','3000','60','holiday')]});
@@ -51,6 +51,6 @@ describe('source-invariant hours and capacity-bounded money allocation',()=>{
  it('preserves every original line capacity and exact total across many tiny lines',()=>{
   const lines=Array.from({length:99},(_,i)=>line(String(i),'1','1'));lines.push(line('zero','0','1'));
   const result=composePayrollOvertime({config:{overtime:{maxAmount:0.5}},legacy:legacy(),lines});const values=new Map(result.allocations.map(l=>[l.id,BigInt(l.amountMinorUnits)]));
-  expect([...values.values()].reduce((sum,value)=>sum+value,0n)).toBe(50n);for(const l of lines){const actual=values.get(l.settlementId+':'+l.lineId)!;expect(actual>=0n&&actual<=BigInt(l.amountMinorUnits)).toBe(true);}expect(values.get('claim-zero:zero')).toBe(0n);
+  expect([...values.values()].reduce((sum,value)=>sum+value,BigInt('0'))).toBe(BigInt('50'));for(const l of lines){const actual=values.get(l.settlementId+':'+l.lineId)!;expect(actual>=BigInt('0')&&actual<=BigInt(l.amountMinorUnits)).toBe(true);}expect(values.get('claim-zero:zero')).toBe(BigInt('0'));
  });
 });

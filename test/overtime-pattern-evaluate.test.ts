@@ -229,7 +229,7 @@ describe('immutable OT result structure', () => {
         if (kind === 'status')
             r.status = 'ineligible';
         if (kind === 'bigint')
-            r.trace[0].data.private = 1n;
+            r.trace[0].data.private = BigInt('1');
         if (kind === 'enumArray')
             r.trace[0].kind = ['field'];
         if (kind === 'unknownKey')
@@ -302,7 +302,7 @@ describe('typed duration count attribution for recorded shift-end TOIL', () => {
         const p=definition(),data=input('600');precise(data,9*3600,10*3600);p.durationAllocation='latest';p.eligibleMinutes=literal('minutes','120');data.facts.basicSalary=missing();
         const duration=evaluateOvertimePatternDuration(p,data);expect(duration.status).toBe('ready');if(duration.status==='refused')throw new Error('duration refused');
         const start=data.segments[0].clock;if(start.state!=='known')throw new Error('fixture clock missing');
-        const boundary=(BigInt(start.value.startEpochSeconds)+8n*3600n).toString();
+        const boundary=(BigInt(start.value.startEpochSeconds)+BigInt('8')*BigInt('3600')).toString();
         expect(intersectOvertimeDurationAfter(duration,boundary)).toEqual({state:'known',value:{unit:'minutes',numerator:'120',denominator:'1'}});
         expect(duration.allocations[0].attribution?.physicalApproval).toBe(false);
         expect(parseRecordedOvertimeDurationEvaluation(duration)).toEqual(duration);
@@ -316,7 +316,7 @@ describe('typed duration count attribution for recorded shift-end TOIL', () => {
     });
     it('rejects forged count placement, extra allocation and mismatched summed duration',()=>{
         const p=definition(),data=input('120');precise(data,18*3600,2*3600);const r=evaluateOvertimePatternDuration(p,data);if(r.status==='refused')throw new Error('duration refused');
-        const bad=copy(r);bad.allocations[0].attribution!.endEpochSeconds.numerator=String(BigInt(bad.allocations[0].attribution!.endEpochSeconds.numerator)+60n);expect(parseRecordedOvertimeDurationEvaluation(bad)).toBeNull();
+        const bad=copy(r);bad.allocations[0].attribution!.endEpochSeconds.numerator=String(BigInt(bad.allocations[0].attribution!.endEpochSeconds.numerator)+BigInt('60'));expect(parseRecordedOvertimeDurationEvaluation(bad)).toBeNull();
         expect(parseRecordedOvertimeDurationEvaluation({...r,allocations:[...r.allocations,...r.allocations]})).toBeNull();
         const amount=copy(r);amount.allocations[0].payableMinutes.numerator='119';expect(parseRecordedOvertimeDurationEvaluation(amount)).toBeNull();
     });
@@ -326,8 +326,8 @@ describe('claimed OT window intersects configured duration count attribution',()
  it('does not qualify a disjoint after-shift claim and validates an explicit upper boundary',()=>{
   const p=definition(),data=input('240');precise(data,18*3600,4*3600);p.durationAllocation='latest';p.eligibleMinutes=literal('minutes','120');const r=evaluateOvertimePatternDuration(p,data);
   const clock=data.segments[0].clock;if(clock.state!=='known')throw new Error('clock required');const lower=BigInt(clock.value.startEpochSeconds);
-  expect(intersectOvertimeDurationAfter(r,lower.toString(),(lower+3600n).toString())).toEqual({state:'known',value:{unit:'minutes',numerator:'0',denominator:'1'}});
-  expect(intersectOvertimeDurationAfter(r,(lower+2n*3600n).toString(),(lower+3n*3600n).toString())).toEqual({state:'known',value:{unit:'minutes',numerator:'60',denominator:'1'}});
+  expect(intersectOvertimeDurationAfter(r,lower.toString(),(lower+BigInt('3600')).toString())).toEqual({state:'known',value:{unit:'minutes',numerator:'0',denominator:'1'}});
+  expect(intersectOvertimeDurationAfter(r,(lower+BigInt('2')*BigInt('3600')).toString(),(lower+BigInt('3')*BigInt('3600')).toString())).toEqual({state:'known',value:{unit:'minutes',numerator:'60',denominator:'1'}});
   expect(intersectOvertimeDurationAfter(r,lower.toString(),lower.toString())).toEqual({state:'unknown',reason:'claimedWindowUnavailable'});
  });
 });
