@@ -17075,8 +17075,25 @@
     "security": "Encryption",
     "tlsSecurity": "SSL/TLS (implicit TLS)",
     "previewTitle": "SMTP setup preview",
-    "demoSetup": "This demo shows the SMTP connection fields for review. Saving credentials, sending test emails and activating delivery require a verified installation administrator login. No mail server details are loaded or saved here.",
-    "restrictedSetup": "Only an enrolled installation administrator can view or change the live SMTP settings. Ask the installation administrator to complete setup. These fields show the supported configuration only."
+    "demoSetup": "Enter SMTP details to check the secure connection and sign-in. This temporary test does not change the active mail server.",
+    "restrictedSetup": "Only an enrolled installation administrator can view or change the live SMTP settings. Ask the installation administrator to complete setup. These fields show the supported configuration only.",
+    "demoTestTitle": "Test SMTP connection",
+    "starttlsSecurity": "TLS (STARTTLS, required)",
+    "testConnection": "Test connection",
+    "testingConnection": "Testing connection…",
+    "demoTestHelp": "Use SSL/TLS (usually port 465) or required STARTTLS (usually port 587) with a public SMTP server. No email is sent. Details are not saved, and the password is cleared after each test.",
+    "demoAuthenticated": "Secure connection and SMTP sign-in succeeded. Email delivery has not been tested.",
+    "demoConnected": "Secure connection succeeded. Authentication was not requested; email delivery has not been tested.",
+    "demoErrors": {
+      "forbidden": "Connection testing is available only to HR administrators in the demo.",
+      "invalid": "Check the SMTP hostname and port. Enter a username and password when password authentication is selected.",
+      "blockedHost": "Demo tests require a public SMTP server. Local, private and special-purpose addresses are unavailable here.",
+      "busy": "Connection tests are busy or the test limit was reached. Wait a minute and try again.",
+      "authenticationFailed": "SMTP sign-in failed. Check the username, password and provider’s SMTP access settings, then re-enter the password and try again.",
+      "tlsFailed": "The secure connection could not be verified. Check the encryption setting and the server’s TLS certificate.",
+      "connectionFailed": "Could not connect to the SMTP server. Check the hostname, port, encryption and provider’s network access rules.",
+      "unavailable": "The connection test could not be completed. Re-enter the password and try again."
+    }
   },
   "workflowEmail": {
     "recipientCode": "Employee code",
