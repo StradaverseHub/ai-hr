@@ -13,7 +13,7 @@ import {randomBytes} from 'node:crypto';
 import type {DraftActivateActionResult,DraftDeleteActionResult} from '@/lib/draft-action-result';
 import { requireAdmin } from '@/lib/authz';
 import {
-  completeEmployeeDraft,
+  saveAndCompleteEmployeeDraft,
   draftActivationValidation,
   createEmployeeDraftWithReservedCode,
   discardEmployeeDraft,
@@ -103,8 +103,7 @@ export async function createEmployeeAction(
 ): Promise<DraftActivateActionResult> {
   const session = await requireAdmin();
   try {
-    const saved = await saveEmployeeDraft(session, {id:id || undefined,data,currentStep});
-    const result = await completeEmployeeDraft(session,saved.id);
+    const result = await saveAndCompleteEmployeeDraft(session,{id:id || undefined,data,currentStep});
     refreshDraftRoutes();
     return {ok:true,...result};
   } catch(error) {

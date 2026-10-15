@@ -13,6 +13,7 @@ import {
 import { createConfig } from '../core/employee-id-config';
 import { hireEmployee } from '../core/org';
 import { setLabelGlobal } from '../core/system-labels';
+import {createProfileOption,setProfileOptionActive} from '../core/profile-options';
 import { createPolicy } from '../packs/payroll/service';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -193,6 +194,14 @@ describe('atomic Draft activation', () => {
     const { id } = await held(data);
     const failure = await rejectedWithoutChanges(ctx, id, field === 'fullName' ? 'required_fields' : 'family_invalid');
     expect(draftActivationValidation(failure)?.fields).toEqual([{ tab: 'family', field: pointer }]);
+  });
+
+  it.each([['correspondenceState','permanentState','state'],['correspondenceCountry','permanentCountry','country']] as const)('names the actual deactivated %s control, preserving the permanent address and reservation',async(field,permanent,category)=>{
+    const ctx=adminCtx(b),good=await createProfileOption(ctx,{category,value:'Permanent valid option',label:'Permanent valid option'}),retired=await createProfileOption(ctx,{category,value:'Correspondence retired option',label:'Correspondence retired option'});
+    const data=input();data.profile={...data.profile,[permanent]:'Permanent valid option',[field]:'Correspondence retired option',sameAsPermanent:'no'};
+    const {id}=await held(data);await setProfileOptionActive(ctx,{id:retired.id,isActive:false});
+    const failure=await rejectedWithoutChanges(ctx,id,'profile_invalid');expect(draftActivationValidation(failure)?.fields).toEqual([{tab:'profile',field}]);
+    expect(JSON.stringify(draftActivationValidation(failure))).not.toContain('Correspondence retired option');expect(good.id).not.toBe(retired.id);
   });
 
   it('revalidates missing required values and provides finite tab/field pointers', async () => {

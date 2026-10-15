@@ -51,6 +51,7 @@ import { appendEvent, actorOf } from '../db/events';
 import {
   hireEmployee,
   MissingBankForTransferError,
+  PersonProfileCatalogError,
   setEmploymentInfo,
   setEmploymentPaymentMethod,
   updatePerson,
@@ -128,6 +129,10 @@ const activationProblem=(code:DraftActivationValidationCode,tab:DraftTabKey,fiel
 /** Normalize existing typed owner refusals; unknown runtime/DB faults use the action's system reference. */
 export function draftActivationValidation(error:unknown):DraftActivationProblem|null {
   if(isDatabaseError(error))return null;
+  if(error instanceof PersonProfileCatalogError){
+    const field=error.field;
+    return (DRAFT_ACTIVATION_FIELDS_BY_TAB.profile as readonly string[]).includes(field)?activationProblem('profile_invalid','profile',field as DraftActivationField):null;
+  }
   if(error instanceof DraftActivationValidationError)return {code:error.code,fields:error.fields.map(field=>({...field}))};
   if(error instanceof DraftPayrollSetupError)return activationProblem('payroll_invalid','payroll',error.reason==='payment_method_invalid'?'paymentMethod':'payrollPolicyId');
   if(error instanceof DraftStatutorySetupError)return activationProblem('statutory_invalid','bankStatutory','taxResidency');
@@ -161,9 +166,6 @@ export function draftActivationValidation(error:unknown):DraftActivationProblem|
     const field=(error as Error&{field?:unknown}).field;
     return activationProblem('statutory_invalid','bankStatutory',typeof field==='string'&&(DRAFT_ACTIVATION_FIELDS_BY_TAB.bankStatutory as readonly string[]).includes(field)?field as DraftActivationField:'epfMode');
   }
-  // Fixed owner suffix. Project only its category, never the value from the sentence.
-  for(const [category,field] of Object.entries({salutation:'salutation',religion:'religion',race:'race',nationality:'nationality',state:'permanentState',country:'permanentCountry'}))
-    if(error.message.endsWith(` is not an active ${category} option`))return activationProblem('profile_invalid','profile',field as DraftActivationField);
   if(error.message.startsWith('Employee ID ') && (error.message.endsWith('already in use')||error.message.endsWith('reserved by a draft employee record')))return activationProblem('employee_code_invalid','profile','employeeCode');
   return null;
 }
@@ -385,21 +387,23 @@ export function getEmployeeDraft(ctx: SessionContext, id: string): Promise<Emplo
 export async function saveEmployeeDraft(
   ctx: SessionContext,
   p: { id?: string; data: EmployeeDraftData; currentStep: number },
+  outerTx?:Tx,
 ): Promise<{ id: string }> {
   assertAdmin(ctx);
   const currentStep = Math.min(Math.max(Math.trunc(p.currentStep) || 1, 1), 20);
-  const existing = p.id ? await getEmployeeDraft(ctx, p.id) : null;
-  const data =
-    existing?.reservedEmployeeCode
-      ? {
-          ...p.data,
-          profile: { ...(p.data.profile ?? {}), employeeCode: existing.reservedEmployeeCode },
-          employment: { ...(p.data.employment ?? {}), companyId: existing.companyId ?? undefined },
-        }
-      : p.data;
-  const label = draftLabel(data);
-  const companyId = str(data.employment?.companyId) ?? null;
-  return withTenant(ctx, async (tx) => {
+  const run=async(tx:Tx)=>{
+    const [existing]=p.id?await tx.select({id:employeeDraft.id,companyId:employeeDraft.companyId,reservedEmployeeCode:employeeDraft.reservedEmployeeCode}).from(employeeDraft).where(and(eq(employeeDraft.id,p.id),eq(employeeDraft.tenantId,ctx.tenantId))).for('update'):[];
+    if(p.id&&!existing)throw new DraftActivationValidationError('draft_unavailable',[]);
+    const data =
+      existing?.reservedEmployeeCode
+        ? {
+            ...p.data,
+            profile: { ...(p.data.profile ?? {}), employeeCode: existing.reservedEmployeeCode },
+            employment: { ...(p.data.employment ?? {}), companyId: existing.companyId ?? undefined },
+          }
+        : p.data;
+    const label = draftLabel(data);
+    const companyId = str(data.employment?.companyId) ?? null;
     let id = p.id;
     if (id) {
       // RLS decides whether this row is even visible; `returning` tells us whether it applied.
@@ -408,7 +412,7 @@ export async function saveEmployeeDraft(
         .set({ label, companyId, data, currentStep, updatedAt: new Date() })
         .where(eq(employeeDraft.id, id))
         .returning({ id: employeeDraft.id });
-      if (updated.length === 0) throw new Error('Draft not found (or not visible).');
+      if (updated.length === 0) throw new DraftActivationValidationError('draft_unavailable',[]);
     } else {
       const [row] = await tx
         .insert(employeeDraft)
@@ -434,7 +438,8 @@ export async function saveEmployeeDraft(
       payload: { currentStep, step: stepKey(currentStep), companyId, hasLabel: label !== '' },
     });
     return { id };
-  });
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /**
@@ -711,6 +716,28 @@ async function releaseReservedNumber(
   return rolled.length > 0;
 }
 
+/** Save exactly this caller's input under the Draft lock, then activate in an inner savepoint.
+ * Business failure rolls back all activation owners while committing the attempted Draft for reopening.
+ * Throw only AFTER the outer save commits; a failed savepoint rollback aborts the outer transaction. */
+export async function saveAndCompleteEmployeeDraft(ctx:SessionContext,p:{id?:string;data:EmployeeDraftData;currentStep:number}):Promise<{employmentId:string}> {
+  if(!(ctx.roles??[]).some(role=>role==='super_admin'||role==='hr_admin'))throw new DraftActivationValidationError('permission',[]);
+  if(p.id&&!UUID_RE.test(p.id))throw new DraftActivationValidationError('draft_unavailable',[]);
+  const outcome=await withTenant(ctx,async tx=>{
+    // saveEmployeeDraft acquires and retains this exact row's lock before pinning or saving input.
+    const saved=await saveEmployeeDraft(ctx,p,tx);
+    try {
+      const value=await tx.transaction(activationTx=>completeEmployeeDraftTx(activationTx,ctx,saved.id));
+      return {ok:true as const,value};
+    } catch(error) {
+      // Drizzle rolls back the activation savepoint before this catch executes. No business write
+      // survives a typed refusal or a late SQL/audit failure; only the saved Draft remains available.
+      return {ok:false as const,error};
+    }
+  });
+  if(!outcome.ok)throw outcome.error;
+  return outcome.value;
+}
+
 /** Activate one locked Draft through canonical owners in a single explicit transaction.
  * A validation/reference/owner/derived-tax/audit failure rolls back every write and keeps the held code.
  * Concurrent or repeated attempts see the removed Draft and refuse rather than creating another employee.
@@ -721,7 +748,10 @@ export async function completeEmployeeDraft(
 ): Promise<{ employmentId: string }> {
   if(!(ctx.roles??[]).some(role=>role==='super_admin'||role==='hr_admin'))throw new DraftActivationValidationError('permission',[]);
   if(!UUID_RE.test(id))throw new DraftActivationValidationError('draft_unavailable',[]);
-  return withTenant(ctx,async tx=>{
+  return withTenant(ctx,tx=>completeEmployeeDraftTx(tx,ctx,id));
+}
+
+async function completeEmployeeDraftTx(tx:Tx,ctx:SessionContext,id:string):Promise<{employmentId:string}> {
   const [draft]=await tx.select().from(employeeDraft).where(and(eq(employeeDraft.id,id),eq(employeeDraft.tenantId,ctx.tenantId))).for('update');
   if(!draft)throw new DraftActivationValidationError('draft_unavailable',[]);
   const data=activationData(draft.data);
@@ -1263,7 +1293,6 @@ export async function completeEmployeeDraft(
       payload: { employmentId, companyId, ...(reservedCode ? { reservedEmployeeCode: reservedCode } : {}) },
     });
   return { employmentId };
-  });
 }
 
 /**

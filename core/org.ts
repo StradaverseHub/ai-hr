@@ -33,7 +33,7 @@ import { terminationTypeForReason } from './termination-reason';
 // module heads). Imported here so the company-change writer re-runs it as its server-side source of truth
 // inside the same transaction. read.ts does not import org.ts, so this adds no import cycle.
 import { employmentCompanyBlockedTx } from './read';
-import { assertProfileValueAllowed, type ProfileOptionCategory } from './profile-options';
+import { assertProfileValueAllowed, ProfileOptionValueError, type ProfileOptionCategory } from './profile-options';
 // 23ad620e — the emergency contact is a per-person register now, not five person columns.
 import { writeSingleEmergencyContactInTx } from './emergency-contacts';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -1110,6 +1110,9 @@ export async function setReportingLine(
     if (p.validTo != null && p.validTo < p.validFrom) {
       throw new DelegationError('The end date must be on or after the start date');
     }
+    // Serialize even an empty structural edge set with all canonical/import writers.
+    const [subordinate]=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,p.subordinateEmploymentId),eq(employment.tenantId,ctx.tenantId))).for('update');
+    if(!subordinate)throw new Error('Employment not found');
     if (p.lineType === 'administrative') {
       if (await wouldCreateAdminCycle(tx, p.subordinateEmploymentId, p.managerEmploymentId, p.validFrom)) {
         throw new ReportingCycleError();
@@ -1354,6 +1357,17 @@ const trimOrNull = (v: string | null | undefined): string | null => {
 
 // 7d309da7 — the profile columns governed by the profile_option catalog, mapped to their category. A save
 // touching any of these validates the NEW value against the tenant's active catalog (legacy value permitted).
+export const PERSON_PROFILE_CATALOG_FIELDS=['salutation','religion','race','nationality','state','country','permanentState','permanentCountry','correspondenceState','correspondenceCountry'] as const;
+export type PersonProfileCatalogField=typeof PERSON_PROFILE_CATALOG_FIELDS[number];
+/** Carries the actual control field without changing the established catalog error message. */
+export class PersonProfileCatalogError extends Error {
+  readonly field:PersonProfileCatalogField;
+  constructor(field:PersonProfileCatalogField,error:ProfileOptionValueError) {
+    super(error.message,{cause:error});this.name='PersonProfileCatalogError';
+    if(!(PERSON_PROFILE_CATALOG_FIELDS as readonly string[]).includes(field))throw new Error('Unknown Personnel profile catalog field.');
+    this.field=field;
+  }
+}
 const CATALOG_BACKED_COLUMNS: Partial<Record<keyof PersonProfileFields, ProfileOptionCategory>> = {
   // 8c284478 — Salutation joins the catalog-governed set (same legacy-value tolerance).
   salutation: 'salutation',
@@ -1433,7 +1447,11 @@ export async function updatePerson(
       ProfileOptionCategory,
     ][]) {
       if (col in profileSet) {
-        await assertProfileValueAllowed(tx, category, profileSet[col], (before as Record<string, string | null>)[col]);
+        try {await assertProfileValueAllowed(tx, category, profileSet[col], (before as Record<string, string | null>)[col]);}
+        catch(error){
+          if(error instanceof ProfileOptionValueError&&(PERSON_PROFILE_CATALOG_FIELDS as readonly string[]).includes(col))throw new PersonProfileCatalogError(col as PersonProfileCatalogField,error);
+          throw error; // Database/network faults remain private system failures, not field validation.
+        }
       }
     }
     await tx.update(person).set({ ...after, ...profileSet }).where(eq(person.id, p.personId));
