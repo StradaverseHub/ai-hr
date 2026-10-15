@@ -294,6 +294,11 @@ DECLARE olddoc jsonb;newdoc jsonb;doc jsonb;tenant_value uuid;emp uuid;on_date d
 BEGIN
  olddoc:=CASE WHEN TG_OP='INSERT' THEN NULL ELSE to_jsonb(OLD) END;newdoc:=CASE WHEN TG_OP='DELETE' THEN NULL ELSE to_jsonb(NEW) END;
  IF TG_OP='UPDATE' THEN
+  IF TG_TABLE_NAME='attendance' THEN
+   -- A referenced canonical day is an immutable source identity, including context-only sources.
+   -- Check BEFORE derived-field/no-op shortcuts and before FK/RLS rejection of the new identity.
+   IF (NEW.id,NEW.tenant_id,NEW.employment_id,NEW.attendance_date) IS DISTINCT FROM(OLD.id,OLD.tenant_id,OLD.employment_id,OLD.attendance_date) AND EXISTS(SELECT 1 FROM public.attendance_overtime_source d WHERE d.attendance_id=OLD.id AND d.tenant_id=OLD.tenant_id) THEN RAISE EXCEPTION 'Referenced overtime Attendance identity is immutable' USING ERRCODE='23514';END IF;
+  END IF;
   IF TG_TABLE_NAME='attendance' AND (olddoc->'check_in_at',olddoc->'check_out_at',olddoc->'status',olddoc->'absence_reason',olddoc->'day_type',olddoc->'worked_minutes',olddoc->'late_minutes',olddoc->'early_out_minutes',olddoc->'under_minutes',CASE WHEN jsonb_typeof(olddoc->'calc_trace')='object' THEN(olddoc->'calc_trace')-'overtime'-'overtimePattern' ELSE '{}'::jsonb END) IS NOT DISTINCT FROM(newdoc->'check_in_at',newdoc->'check_out_at',newdoc->'status',newdoc->'absence_reason',newdoc->'day_type',newdoc->'worked_minutes',newdoc->'late_minutes',newdoc->'early_out_minutes',newdoc->'under_minutes',CASE WHEN jsonb_typeof(newdoc->'calc_trace')='object' THEN(newdoc->'calc_trace')-'overtime'-'overtimePattern' ELSE '{}'::jsonb END) THEN RETURN NEW;END IF;
   IF TG_TABLE_NAME='attendance_punch' AND (olddoc->'employment_id',olddoc->'attendance_date',olddoc->'punch_at',olddoc->'direction',olddoc->'attendance_id',olddoc->'voided_at') IS NOT DISTINCT FROM(newdoc->'employment_id',newdoc->'attendance_date',newdoc->'punch_at',newdoc->'direction',newdoc->'attendance_id',newdoc->'voided_at') THEN RETURN NEW;END IF;
   IF TG_TABLE_NAME='attendance_correction' AND (olddoc-'reason'-'remarks') IS NOT DISTINCT FROM(newdoc-'reason'-'remarks') THEN RETURN NEW;END IF;
