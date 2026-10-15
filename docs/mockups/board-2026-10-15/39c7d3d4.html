@@ -1,0 +1,123 @@
+<!doctype html><html lang="en" data-preview-mode="light"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Add Individual Transaction | Proposed board layout</title><style>:root{
+  /* Floating-shell surfaces: canvas frame the app floats on → content area
+     where cards sit → white card/chrome. Warm, soft, friendly (the pivot). */
+  --canvas: #e6e8f1; /* outer frame */
+  --background: #f5f6fa; /* content area */
+  --foreground: #1a1a22;
+  --card: #ffffff; /* cards + shell chrome */
+  --card-foreground: #1a1a22;
+  --popover: #ffffff;
+  --popover-foreground: #1a1a22;
+  --sidebar: #ffffff; /* nav chrome */
+  --sidebar-foreground: #55555f;
+  --sidebar-border: #ecedf4;
+  --primary: #4f46e5; /* indigo accent — locked, single accent */
+  --primary-foreground: #ffffff;
+  --secondary: #f0f1f7;
+  --secondary-foreground: #1a1a22;
+  --muted: #f0f1f7;
+  --muted-foreground: #63636f; /* AA (>5:1) on white and content bg */
+  --accent: #eceefb; /* soft indigo wash — nav active + hover */
+  --accent-foreground: #312e81;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #e7e8f1;
+  --input: #dbdce7;
+  --ring: #6366f1;
+  --radius: 1rem; /* soft 16px — the pivot's signature roundness */
+  /* Soft, tinted elevation — toward the canvas hue, never pure black. */
+  --shadow-sm: 0 1px 2px rgb(26 26 48 / 0.05);
+  --shadow-card: 0 1px 2px rgb(26 26 48 / 0.04), 0 6px 16px -4px rgb(26 26 48 / 0.07);
+  --shadow-pop: 0 6px 16px -4px rgb(26 26 48 / 0.1), 0 16px 40px -8px rgb(26 26 48 / 0.14);
+  --shadow-shell: 0 1px 3px rgb(26 26 48 / 0.04), 0 16px 40px -12px rgb(26 26 48 / 0.12);}
+@media(prefers-color-scheme:dark){:root{
+  --canvas: #060609; /* darkest frame */
+  --background: #0d0d11; /* content area */
+  --foreground: #f3f3f6;
+  --card: #161619; /* cards lifted off the content area */
+  --card-foreground: #f3f3f6;
+  --popover: #1b1b20;
+  --popover-foreground: #f3f3f6;
+  --sidebar: #100f13; /* chrome a hair above the frame */
+  --sidebar-foreground: #a4a4af;
+  --sidebar-border: #201f25;
+  --primary: #6366f1; /* indigo-500 */
+  --primary-foreground: #ffffff;
+  --secondary: #232329;
+  --secondary-foreground: #f3f3f6;
+  --muted: #1d1d22;
+  --muted-foreground: #9d9da9;
+  --accent: #211f3d; /* soft indigo wash (dark) */
+  --accent-foreground: #c7d2fe;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #242429;
+  --input: #34343c;
+  --ring: #6366f1;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 16px -4px rgb(0 0 0 / 0.45);
+  --shadow-pop: 0 8px 24px -6px rgb(0 0 0 / 0.6);
+  --shadow-shell: 0 16px 48px -12px rgb(0 0 0 / 0.7);}}
+
+*{box-sizing:border-box}body{margin:0;padding:16px;background:var(--canvas);color:var(--foreground);font:14px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}button,input,select{font:inherit;color:inherit}button,.button{border:1px solid var(--input);border-radius:8px;padding:9px 14px;background:var(--card);font-weight:550;white-space:nowrap}button.primary,.primary{background:var(--primary);color:var(--primary-foreground);border-color:var(--primary)}button.subtle{border:0;background:transparent;color:var(--primary)}.shell{display:grid;grid-template-columns:214px minmax(0,1fr);gap:16px;align-items:stretch}.sidebar{padding:22px 16px;background:var(--sidebar);border-radius:18px;color:var(--sidebar-foreground);min-height:650px}.brand{font-size:18px;font-weight:750;color:var(--foreground);margin-bottom:32px}.nav{display:block;padding:10px 12px;border-radius:9px;margin:3px 0}.nav.parent{color:var(--foreground);font-weight:600}.nav.child{margin-left:14px;font-size:13px}.nav.active{background:var(--accent);color:var(--accent-foreground);font-weight:650}.main{min-width:0;background:var(--background);border-radius:18px;padding:0 24px 24px}.topbar{display:flex;align-items:center;justify-content:space-between;gap:18px;background:var(--card);border-radius:15px;padding:16px 20px;margin:0 -24px 25px;box-shadow:var(--shadow-sm)}.topbar .search{border:1px solid var(--input);border-radius:9px;padding:8px 15px;color:var(--muted-foreground);width:32%;font-size:13px}.context{font-size:13px;color:var(--muted-foreground)}h1{font-size:26px;letter-spacing:-.025em;line-height:1.25;margin:8px 0;font-weight:720}h2{font-size:17px;margin:0 0 16px;font-weight:650}h3{font-size:14px;margin:0;font-weight:650}p{margin:6px 0 16px;max-width:76ch;color:var(--muted-foreground)}.sketch{font-size:12px;color:var(--muted-foreground);margin:0 0 20px}.surface{padding:22px;background:var(--card);border:1px solid var(--border);border-radius:15px;margin-top:20px;box-shadow:var(--shadow-sm)}.surface.flat{box-shadow:none}.grid{display:grid;gap:18px}.cols2{grid-template-columns:repeat(2,minmax(0,1fr))}.cols3{grid-template-columns:repeat(3,minmax(0,1fr))}.field{display:flex;flex-direction:column;gap:6px;min-width:0}.field>span{font-size:12px;font-weight:600;color:var(--muted-foreground)}input:not([type=checkbox]):not([type=radio]):not([type=color]),select,.input{display:block;width:100%;height:39px;border:1px solid var(--input);border-radius:7px;background:var(--card);padding:7px 11px;box-shadow:var(--shadow-sm)}input::placeholder{color:var(--muted-foreground);opacity:1}input[type=checkbox],input[type=radio]{accent-color:var(--primary);width:15px;height:15px;vertical-align:middle;margin:0 7px 0 0}input[type=color]{width:58px;height:39px;border:1px solid var(--input);border-radius:7px;background:var(--card);padding:3px}.inline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.spread{justify-content:space-between}.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:22px}.tabs{display:flex;gap:6px;border-bottom:1px solid var(--border);margin:20px 0 0;overflow-x:auto}.tab{padding:12px 16px;white-space:nowrap;color:var(--muted-foreground);border-bottom:2px solid transparent}.tab.selected{color:var(--primary);border-color:var(--primary);font-weight:650}.chip{display:inline-flex;align-items:center;gap:9px;border-radius:7px;padding:4px 9px;background:var(--accent);color:var(--accent-foreground);font-size:12px}.selection{border:1px solid var(--input);border-radius:7px;padding:8px;min-height:42px;display:flex;gap:6px;flex-wrap:wrap}.help{font-size:12px;margin:8px 0 0;color:var(--muted-foreground)}.tablewrap{overflow-x:auto;border:1px solid var(--border);border-radius:9px}table{width:100%;border-collapse:collapse;text-align:left;font-size:12px}th{background:var(--muted);color:var(--muted-foreground);font-size:11px;font-weight:600;padding:12px 11px;vertical-align:top}td{padding:15px 11px;vertical-align:top;border-top:1px solid var(--border)}td small{display:block;color:var(--muted-foreground);margin-top:3px}.badge{display:inline-block;border-radius:6px;background:var(--muted);color:var(--muted-foreground);padding:3px 7px;font-size:11px;font-weight:600;white-space:nowrap}.badge.good{background:#d1fae5;color:#065f46}.badge.warning{background:#fef3c7;color:#92400e}.badge.bad{background:#ffe4e6;color:#9f1239}.pager{display:flex;align-items:center;justify-content:space-between;color:var(--muted-foreground);font-size:12px;margin-top:16px;gap:12px}.pager a{color:var(--primary);padding:0 5px}.note{border:1px solid var(--border);border-radius:9px;background:var(--background);padding:12px 14px;font-size:13px;color:var(--muted-foreground);margin-top:16px}.wide{grid-column:1/-1}.checkgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px}.checkgrid label{display:flex;align-items:center;font-size:13px}.destination{padding:20px;border:1px solid var(--border);border-radius:12px;background:var(--card);display:flex;flex-direction:column;align-items:flex-start;gap:9px}.destination p{font-size:13px;margin:0}.destination a{color:var(--primary);font-weight:600;text-decoration:none}.outline{border:1px solid var(--border);border-radius:10px;padding:16px}.condition{display:grid;grid-template-columns:2fr 1.3fr 1fr auto;gap:10px;align-items:end;margin:14px 0}.group{border:1px solid var(--border);border-radius:11px;padding:16px;margin-top:15px}.group>.group{background:var(--background)}.small{font-size:12px}.unit{padding:0 3px 9px;color:var(--muted-foreground);font-size:12px}.logic{font-family:ui-monospace,monospace;line-height:1.8;font-size:12px;color:var(--foreground);padding:14px;background:var(--background);border-radius:8px}.choice{padding:10px 0}.swatch{display:flex;align-items:center;justify-content:center;padding:10px 16px;border-radius:7px;background:#4f46e5;color:white;font-weight:600}.muted{color:var(--muted-foreground)}.warningtext{color:#92400e;font-size:12px}.footer{display:flex;align-items:center;justify-content:space-between;margin-top:22px;color:var(--muted-foreground);font-size:12px;gap:15px}.dialog{max-width:840px;margin:20px auto 0;padding:26px;border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-pop)}.dialog h2{font-size:20px}.rule{border:0;border-top:1px solid var(--border);margin:20px 0}.sample{font-size:12px;font-weight:500;color:var(--muted-foreground)}
+@media(prefers-color-scheme:dark){.badge.good{background:#064e3b;color:#a7f3d0}.badge.warning{background:#78350f;color:#fde68a}.badge.bad{background:#881337;color:#fecdd3}.warningtext{color:#fde68a}}
+@media(max-width:800px){body{padding:10px}.shell{grid-template-columns:1fr}.sidebar{display:none}.main{padding:0 16px 20px}.topbar{margin:0 -16px 20px;padding:14px}.topbar .search{display:none}.cols2,.cols3{grid-template-columns:1fr}.checkgrid{grid-template-columns:repeat(2,minmax(0,1fr))}.condition{grid-template-columns:1fr 1fr}.wide{grid-column:auto}.pager{align-items:flex-start;flex-direction:column}.dialog{padding:18px}.surface{padding:16px}h1{font-size:23px}.credit-table{min-width:1020px}}
+html[data-preview-mode="light"]{color-scheme:light;
+  /* Floating-shell surfaces: canvas frame the app floats on → content area
+     where cards sit → white card/chrome. Warm, soft, friendly (the pivot). */
+  --canvas: #e6e8f1; /* outer frame */
+  --background: #f5f6fa; /* content area */
+  --foreground: #1a1a22;
+  --card: #ffffff; /* cards + shell chrome */
+  --card-foreground: #1a1a22;
+  --popover: #ffffff;
+  --popover-foreground: #1a1a22;
+  --sidebar: #ffffff; /* nav chrome */
+  --sidebar-foreground: #55555f;
+  --sidebar-border: #ecedf4;
+  --primary: #4f46e5; /* indigo accent — locked, single accent */
+  --primary-foreground: #ffffff;
+  --secondary: #f0f1f7;
+  --secondary-foreground: #1a1a22;
+  --muted: #f0f1f7;
+  --muted-foreground: #63636f; /* AA (>5:1) on white and content bg */
+  --accent: #eceefb; /* soft indigo wash — nav active + hover */
+  --accent-foreground: #312e81;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #e7e8f1;
+  --input: #dbdce7;
+  --ring: #6366f1;
+  --radius: 1rem; /* soft 16px — the pivot's signature roundness */
+  /* Soft, tinted elevation — toward the canvas hue, never pure black. */
+  --shadow-sm: 0 1px 2px rgb(26 26 48 / 0.05);
+  --shadow-card: 0 1px 2px rgb(26 26 48 / 0.04), 0 6px 16px -4px rgb(26 26 48 / 0.07);
+  --shadow-pop: 0 6px 16px -4px rgb(26 26 48 / 0.1), 0 16px 40px -8px rgb(26 26 48 / 0.14);
+  --shadow-shell: 0 1px 3px rgb(26 26 48 / 0.04), 0 16px 40px -12px rgb(26 26 48 / 0.12);}html[data-preview-mode="dark"]{color-scheme:dark;
+  --canvas: #060609; /* darkest frame */
+  --background: #0d0d11; /* content area */
+  --foreground: #f3f3f6;
+  --card: #161619; /* cards lifted off the content area */
+  --card-foreground: #f3f3f6;
+  --popover: #1b1b20;
+  --popover-foreground: #f3f3f6;
+  --sidebar: #100f13; /* chrome a hair above the frame */
+  --sidebar-foreground: #a4a4af;
+  --sidebar-border: #201f25;
+  --primary: #6366f1; /* indigo-500 */
+  --primary-foreground: #ffffff;
+  --secondary: #232329;
+  --secondary-foreground: #f3f3f6;
+  --muted: #1d1d22;
+  --muted-foreground: #9d9da9;
+  --accent: #211f3d; /* soft indigo wash (dark) */
+  --accent-foreground: #c7d2fe;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #242429;
+  --input: #34343c;
+  --ring: #6366f1;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 16px -4px rgb(0 0 0 / 0.45);
+  --shadow-pop: 0 8px 24px -6px rgb(0 0 0 / 0.6);
+  --shadow-shell: 0 16px 48px -12px rgb(0 0 0 / 0.7);}html[data-preview-mode="light"] .badge.good{background:#d1fae5;color:#065f46}html[data-preview-mode="light"] .badge.warning{background:#fef3c7;color:#92400e}html[data-preview-mode="light"] .badge.bad{background:#ffe4e6;color:#9f1239}html[data-preview-mode="light"] .warningtext{color:#92400e}html[data-preview-mode="dark"] .badge.good{background:#064e3b;color:#a7f3d0}html[data-preview-mode="dark"] .badge.warning{background:#78350f;color:#fde68a}html[data-preview-mode="dark"] .badge.bad{background:#881337;color:#fecdd3}html[data-preview-mode="dark"] .warningtext{color:#fde68a} .input{height:auto;min-height:39px}</style><body><div class="shell"><aside class="sidebar"><div class="brand">Kingdee AI HR</div><span class="nav ">Home</span><span class="nav ">Manage</span><span class="nav ">AI Control Tower</span><span class="nav parent">Admin</span><span class="nav ">System Settings</span><span class="nav parent">Attendance</span><span class="nav child">Settings</span><span class="nav active">Payroll</span><span class="nav">Notice Board</span></aside><main class="main"><div class="topbar"><span>Demo Group <span class="chip" style="margin-left:12px">Selected company⌄</span></span><span class="search">Search for an action…</span><span class="context">Language　Appearance　Profile</span></div><div class="context">Payroll / Individual Transaction</div><h1>Add Individual Transaction</h1><div class="sketch">Sketch for review. Illustrative labels only; no live records or figures.</div><section class="surface"><h2>Processing period</h2><div class="grid cols3"><label class="field"><span>Employee</span><div class="input">Selected employee</div></label><label class="field"><span>Payroll Month</span><div class="input">Selected payment month</div></label><label class="field"><span>Pay Cycle</span><div class="input">Monthly</div></label></div><p style="margin-top:14px">This transaction belongs to the selected Payroll Month and Pay Cycle.</p></section><section class="surface"><h2>Transaction details</h2><div class="grid cols3"><label class="field"><span>Payroll item</span><div class="input">Overtime 1.5</div></label><label class="field"><span>Input method</span><div class="input">Day by Day</div></label><label class="field"><span>Effective Date</span><div class="input">Actual work date, including an earlier month</div></label></div><div class="tablewrap"><table><thead><tr><th>Effective Date</th><th>Overtime hours</th><th>Actions</th></tr></thead><tbody><tr><td>Previous-month work date</td><td>Enter hours</td><td>Remove</td></tr></tbody></table></div><button class="subtle">+ Add day</button><p>Effective Date records when the work applies. It does not change the processing month.</p></section><section class="surface"><h2>Review and save</h2><p>The saved transaction retains its work date and the selected processing period.</p><div class="actions"><button class="primary">Save transaction</button><button>Cancel</button></div></section></main></div></body></html>

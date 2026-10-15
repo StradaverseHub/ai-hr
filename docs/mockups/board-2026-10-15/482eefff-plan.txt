@@ -1,0 +1,34 @@
+VERDICT: Not built yet   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+Attendance already resolves each employee's schedule and applicable holiday calendar. It does not yet automatically assign an employee-specific replacement when a public holiday falls on a rest day.
+
+WHAT WE'LL CHANGE
+
+- Detect public holidays that coincide with an employee's scheduled rest day using their effective schedule and applicable holiday policy.
+- Search subsequent dates in order until the policy permits a replacement working day, skipping other holidays, rest days and previously assigned replacements.
+- Retain the original holiday and rest day, and show the replacement date with its original holiday and reason.
+- Apply the same effective holiday result to attendance, calendars, leave and the overtime/payroll calculations that already depend on holiday day types.
+- Make repeat processing safe and keep a history of changes when schedules, calendars or policies are corrected.
+- Send unclear rules, unresolved dates and changes affecting locked payroll history for HR review instead of silently choosing a date or rewriting past pay.
+
+WHAT YOU'LL GET
+
+Straightforward holiday/rest-day clashes are handled automatically for each employee. HR can trace every replacement and review cases that need a policy decision or a protected-period correction.
+
+GOOD TO KNOW
+
+Employees can have different replacement dates because their schedules differ. The configured jurisdiction and company policy determine entitlement; a rule from one region must not be assumed to apply everywhere. Off days and half days follow the applicable policy rather than being treated as normal working days by default.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: core/holidays.ts resolves effective company/group/state/national calendars and employee calendar selection. Attendance's canonical dated schedule resolves roster, rotation, default shifts and day types. There is currently no employee-specific automatic rest-day holiday substitution owner. Authoritative legislation was reviewed: JTKSM Act 265 section 60D and Sabah Amendment Act A1753 are distinct regimes. Do not copy a Peninsular assumption to Sabah/Sarawak or infer missing statutory applicability. Sources: https://jtksm.mohr.gov.my/sites/default/files/2023-11/Akta%20Kerja%201955%20%28Akta%20265%29.pdf and https://www.jtksabah.gov.my/web/images/warta_2025/A1753_-Labour_Ordinance_of_Sabah_Amendment_Act_2025.pdf . Production source matches inspected main; interactive reproduction is unavailable due to its browser access gate.
+
+Graph: Holiday owns original calendar and replacement provenance; Schedule owns the employee's pre-holiday dated work/rest/off/half pattern; jurisdiction/company policy owns entitlement and eligible replacement rules. Introduce a single authorized employee-specific replacement projection/ledger keyed by tenant, employment and original holiday identity, with effective company, source/replacement dates, policy/configuration versions, reason, state, timestamps and audit trail. Derive effective holiday consumers from this owner. Break the schedule/holiday dependency cycle explicitly: replacement selection reads the raw dated schedule and original holiday calendar, never the already holiday-adjusted resolver. Preserve original identities and deterministic ordering for consecutive collisions; check reserved replacements and adjacent period/year windows. Bounded search exhaustion or unknown policy produces a visible review state, not a guessed holiday.
+
+Recalculate through one repeat-safe owner on relevant schedule/calendar/policy changes, with version/provenance digest and concurrency protection. Multiple originals must not allocate the same employee/date unless the actual rule explicitly permits it. Preserve manual authorized overrides with reason and actor. Existing attendance is recalculated only through its correction rules; closed payroll and persisted payslips remain immutable, with explicit reviewed correction paths for later changes. Integrate Leave's canonical holiday/calendar reads and Attendance's day-type/OT/allowance consumers; never create a second holiday rule in each module. Background processing is complete only when the deployed trigger/runner is active and verified, not merely when a script exists.
+
+Acceptance: required scenarios A, B and C using rotating/dated schedules; consecutive original holidays, several rest days, off/half days, replacement collisions, month/year boundaries, later schedule transfer, state/company calendars and employment tenure. Prove original holidays/rest days retained, exactly one allocation per source, repeat and concurrent processing unchanged, recalculation audit preserved, authorized manual correction protected, unknown/exhausted policy flagged and cross-employee/company/tenant access refused. Compare calendar, daily attendance, canonical leave, overtime and payroll integration against the same resolved date. Verify locked history refuses automatic rewriting. Walk actual HR review and employee calendar with populated/empty/error states, all locales, mobile/keyboard and runtime logs. Run classifier-required jurisdiction/financial/security gate, TypeScript/build and fresh/live-baseline migration rehearsals; centrally allocate append-only migrations and verify live triggers/data after official release.

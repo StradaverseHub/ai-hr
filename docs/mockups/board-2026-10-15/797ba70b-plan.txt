@@ -1,0 +1,34 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+Attendance workflows already support several approval stages and employee-group matching. Stage names are entered manually, the available employee criteria are limited, and repeating Direct Superior does not currently walk up the reporting chain.
+
+WHAT WE'LL CHANGE
+
+- Use clean white form surfaces in light mode and readable matching surfaces in dark mode on the company list and View/Edit screens.
+- Generate Level 1, Level 2 and later labels automatically. Add Approval Level adds the next level; removing or moving a level updates the sequence.
+- Add Position, Employment Type, Branch, Region, Line, Section, Team, Base, Category and searchable employee selection, alongside the existing assignment fields.
+- Follow each person's Direct Superior to resolve successive approval levels for Attendance Irregularity and Self Overtime.
+- Refuse submission with a useful message when a required superior is missing, inactive, the applicant, repeated or part of a reporting loop. HR must correct the relationship or use an explicitly configured fallback.
+- Preserve the actual approvers chosen when an application is submitted and keep existing approval history intact.
+
+WHAT YOU'LL GET
+
+HR can configure standard approval levels once, match the intended employees and see how each level follows the reporting hierarchy. Employees receive a clear explanation when the required chain needs correction.
+
+GOOD TO KNOW
+
+Existing applications retain their assigned approvers. New routing applies to new submissions after the updated workflow is saved. Priority determines which matching workflow applies; conflicting equal-priority rules must be corrected before saving.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: the current stage editor requires a custom name and supports direct_manager/hr_admin. lib attendance approval criteria supports department, businessUnit, grade and orgDivision only. The core resolver repeats the applicant's direct manager rather than traversing the preceding approver. Existing workflow selection, snapshots, priority overlap checks and on-submit validation should be retained. Reviewed deployed source matching main; production UI reproduction remains unavailable due to the browser access gate.
+
+Graph: Personnel owns direct-superior employment relationships and profile values. Workflow owns ordered level rules, criteria, priority, type and fallback. Submission resolves a frozen chain of employment/person/user identities; decisions retain actual actor, level, timestamp and audit events. Add a versioned routing mode so old configured flat workflows and in-flight snapshots are not silently reinterpreted. New sequential hierarchy levels resolve nth superior from the applicant, traversing employment references without collapsing person/user/employee. HR-admin fallback remains explicit; default unresolved policy blocks. Validate active eligible approvers, company/tenant boundaries, missing login/permission, cycles, self and duplicate actors. Do not silently skip an invalid level, grant a manager wider Personnel access, or auto-approve at the top of the chain. Preserve authorized delegation/reassignment with actor/reason audit and existing application guards.
+
+Criteria use canonical Personnel/organization owners with searchable employee code plus name and multi-value lists. Within one field values are any-of; distinct configured fields must all match. Validate references against selected company and tenant, archived options, employee identities and precedence/overlap at save and submission. Resolve placement/profile according to the owner's existing effective-date semantics; use the active workflow at submission and snapshot the chosen configuration. Auto-generated labels are display/order data, never rewritten historic decision labels.
+
+Acceptance: D -> A -> Arjun -> Daniel resolves three distinct levels in order for both Attendance Irregularity and Self Overtime. Add/remove/reorder/save/reopen levels and every assignment field; prove combined criteria, single/multiple employees, duplicate names and priority conflicts. Missing first/later superior, inactive/unlinked users, self/cycle/duplicate, cross-company/tenant spoofing and explicitly configured fallback must exercise actionable refusal or the configured fallback. Change hierarchy/configuration after submission and prove the pending chain and audit history stay unchanged; test authorized reassignment and unauthorized attempts. Verify existing legacy workflow behavior until explicit conversion. Walk actual screens, submission/approval/reopen, light/dark, all locales, mobile/keyboard and runtime logs before classifier-required security gate, TypeScript/build/shadow migration rehearsal and official release. Allocate versioned schema changes centrally.

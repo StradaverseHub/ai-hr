@@ -1,0 +1,36 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+Import Employee already offers full and section templates in Excel and CSV. However, the Personnel screens and template columns are maintained separately, so labels, available choices and new fields can drift apart.
+
+WHAT WE'LL CHANGE
+
+- Define Personnel fields in one shared list that supplies their screen labels, sections, value types, required rules and import guidance.
+- Generate the full new-employee template and each relevant section template from that list, including Family fields on the Family sheet.
+- Use the same column labels as the Personnel screens, with required/optional guidance, date formats and current permitted choices by name.
+- Use the same validation when entering a field on screen or importing it, and show the proposed value or specific error in Check and preview.
+- Accept a renamed field's old header for one release with a warning. Removed fields will explain what happened rather than silently write old values.
+- Clearly identify fields that cannot be imported and why, and add a check that catches any Personnel field missing from either the templates or that list.
+
+WHAT YOU'LL GET
+
+Changes to Personnel fields and Import Employee will be delivered together. HR can rely on downloaded templates to match the screens and understand what to enter.
+
+GOOD TO KNOW
+
+Section templates continue to update existing employees; the full template creates new employees. Blank update cells retain existing values. Calculated figures, system history, approval decisions and file attachments need their proper screens rather than a general employee import.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: lib/import-schema.ts owns IMPORT_COLUMNS and DEPENDENT_IMPORT_COLUMNS; lib/import-sections.ts defines four sections and UNSECTIONED_COLUMNS. Personnel currently has eleven tabs. Full import and section updates have distinct writers; lib/import-template.ts and import-template-xlsx.ts use generated technical labels instead of a complete shared UI field registry. Reviewed the Import Employee attachment and both screenshots. Relevant deployed source matches main; interactive production reproduction remains unavailable through the browser access gate.
+
+Graph: introduce a client-safe Personnel field registry with stable key, exact translation label key, screen/tab/section, scalar or repeated-record cardinality, type, required-create/update rules, allowed-value owner, permission/sensitivity, importability reason, import ordering and report capability. Shared validation owns formats and reference resolution; existing domain writers keep authorization and side effects. Forms must consume the registry for field presentation and allowed values, with explicit specialized renderers where required, rather than duplicating field labels/validation in import-only metadata. Reconcile every actual field across Profile, Family, Employment, Employment History, Attendance, Bank and Statutory, Payroll, Leave, Documents, Qualification and Others. Enumerate actual non-importable fields with reasons; do not silently exclude a tab or treat money/approval/audit records as generic editable values.
+
+Generate Excel/CSV full and section outputs from the same registry. Keep repeated Family rows in its sheet and provide a distinct corresponding CSV download; preserve keys linking family records to employee codes. Current scoped dropdown/reference values accept unambiguous names and supported codes; validate at preview/apply against fresh owner data, never trust uploaded references. Include guidance, formats, mandatory/optional and reference sheets plus bounded Excel validation where applicable. Update required-field text from the registry, not a hardcoded six. Validate whole inputs and show per-row/field errors and planned changes. Preserve partial update semantics and transactional domain writers; closed payroll, statutory and employment history restrictions remain intact.
+
+Version aliases explicitly for one released template generation with a visible warning naming the replacement. Remove old names from new downloads immediately; an old removed-field header is accepted only to produce an actionable warning/refusal when values cannot safely map, never ignored or applied to a different field. Reject ambiguous old/new duplicate headers. Add a coverage ratchet comparing actual rendered form field declarations to the registry and requiring import columns or explicit reasons. Metadata alone cannot pass while forms bypass it.
+
+Acceptance: inventory every real field, change one label/type/required/dropdown rule and prove form, full Excel/CSV, section Excel/CSV, guidance and preview change together. Test Family cardinality/keys, new versus existing employees, non-importable explanations, ambiguous names, permissions, legacy aliases/warnings/expiry, duplicate headers, blank-preserving updates and transaction rollback. Round-trip text IDs, dates and optional values using actual downloaded files. Walk download/edit/check/apply/reopen in the app, all locales, keyboard/mobile and errors before classifier-required security/data verification, TypeScript/build and release. Coordinate the same registry with Employee Master custom reports in 5f9c8062. Completion summaries for Personnel changes end with the requested Import template line.
