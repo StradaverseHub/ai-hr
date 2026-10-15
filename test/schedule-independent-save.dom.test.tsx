@@ -20,6 +20,7 @@ vi.mock('../app/admin/attendance/schedule/actions', () => ({ saveScheduleGroupAt
 import { RuleForm } from '../app/admin/attendance-policy/rules/rule-form';
 import { saveScheduleGroupGeneralAction } from '../app/admin/attendance-policy/rule-actions';
 import { ScheduleGroupSections } from '../app/admin/attendance/schedule/group-sections';
+import {ScheduleGroupTabs} from '../components/schedule-group-tabs';
 import { AttendanceSettingsNavigation } from '../components/attendance-settings-navigation';
 import { AttendanceSettingsActionForm } from '../components/attendance-settings-action-form';
 import { saveScheduleGroupAttendanceAction, saveScheduleGroupOvertimeAction } from '../app/admin/attendance/schedule/actions';
@@ -31,14 +32,16 @@ afterEach(() => { cleanup(); __resetUnsavedGuards(); vi.restoreAllMocks(); route
 function findForm(node: ReactNode, section: string): ReactElement | undefined {
   if (Array.isArray(node)) return node.map(child => findForm(child, section)).find(Boolean);
   if (!isValidElement<{ children?: ReactNode; id?: string }>(node)) return;
+  if(node.type===ScheduleGroupTabs){const tabs=(node.props as React.ComponentProps<typeof ScheduleGroupTabs>).tabs;return tabs.filter(t=>section==='form'||t.id===section).map(t=>findForm(t.body,'form')).find(Boolean);}
   if (node.type === 'section' && node.props.id === `section-${section}`) return findForm(node.props.children, 'form');
-  if (section === 'form' && node.type === AttendanceSettingsActionForm) return node;
+  if (section === 'form' && node.type === AttendanceSettingsActionForm && !(node.props as Record<string,unknown>)['data-schedule-control']) return node;
   return findForm(node.props.children, section);
 }
 // Resolve only the known async General server form, never call client components outside React.
 async function resolveGeneral(node:ReactNode):Promise<ReactNode> {
   if(Array.isArray(node))return Promise.all(node.map(resolveGeneral));
   if(!isValidElement<{children?:ReactNode}>(node))return node;
+  if(node.type===ScheduleGroupTabs){const props=node.props as React.ComponentProps<typeof ScheduleGroupTabs>;return cloneElement(node,{...props,tabs:await Promise.all(props.tabs.map(async tab=>({...tab,body:await resolveGeneral(tab.body)})))} as never);}
   if(node.type===RuleForm)return RuleForm(node.props as React.ComponentProps<typeof RuleForm>);
   return cloneElement(node,{children:await resolveGeneral(node.props.children)});
 }

@@ -27,7 +27,7 @@ import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 // 8cd601d0 — the Schedule Group picker's options. The tenant's attendance_rule library IS the Schedule
 // Group library (870b79e2); there is no second table behind the name. Taken from the PACK FACADE, the
 // same import the personnel card uses, so this screen and that card read one list.
-import { listAttendanceRules } from '@/packs/attendance/service';
+import {getScheduleRotation, listAttendanceRules } from '@/packs/attendance/service';
 import {
   removeScheduleArrangementAction,
   saveScheduleAssignmentAction,
@@ -185,6 +185,7 @@ export default async function ShiftArrangementPage({
    * fixes it rather than leaving a broken-looking picker.
    */
   const groupId = row.scheduleGroupId;
+  const groupPool=groupId?await getScheduleRotation(s,groupId):null;
   const shifts = groupId
     ? liveShifts.filter((sh) => sh.allowedRuleIds.includes(groupId) || sh.id === row.shiftId)
     : liveShifts;
@@ -334,7 +335,9 @@ export default async function ShiftArrangementPage({
             defaultType={typedType ?? row.shiftType}
             defaultShiftId={typedShiftId ?? row.shiftId}
             defaultEffectiveFrom={typedEffectiveFrom ?? today}
-            shifts={shifts.map((sh) => ({
+            allowedPool={groupPool?{baseShiftIds:groupPool.memberships.map(m=>m.shiftId),versions:groupPool.versions.map(v=>({effectiveFrom:v.effectiveFrom,allowedShiftIds:v.allowedShiftIds}))}:undefined}
+            shifts={liveShifts.map((sh) => ({
+              archived:!!sh.archivedAt,
               id: sh.id,
               label: `${sh.code ?? '—'} — ${sh.name} (${(sh.startTime?.slice(0, 5)??'—')}–${(sh.endTime?.slice(0, 5)??'—')})`,
             }))}

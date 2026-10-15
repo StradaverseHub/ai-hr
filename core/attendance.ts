@@ -1021,15 +1021,15 @@ async function scheduleBaseFor(tx: Tx, employmentId: string, date: string, memo?
     scheduleDayKind: pol.halfWorkingDays.includes(isoWeekday(date)) ? 'half' : 'full',
   });
 
-  const fullFlexiSchedule=(row:{shiftId:string|null;code:string|null;name:string|null;override:number|null;brk:number|null;periods:BreakPeriod[]|null;cutoffOn:boolean|null;cutoffAt:string|null;flexOn:boolean|null;flexMin:number|null;otRule:ShiftOtRule|null},rule:ResolvedAttendanceRule|null,kind:'full'|'half',source:'roster-shift'|'default-shift'):ResolvedSchedule=>{
+  const fullFlexiSchedule=(row:{shiftId:string|null;code:string|null;name:string|null;override:number|null;brk:number|null;periods:BreakPeriod[]|null;cutoffOn:boolean|null;cutoffAt:string|null;flexOn:boolean|null;flexMin:number|null;otRule:ShiftOtRule|null},rule:ResolvedAttendanceRule|null,kind:'full'|'half'|'off'|'rest',source:'roster-shift'|'default-shift'):ResolvedSchedule=>{
    if(row.override==null||row.override<=0)throw new Error('Full Flexi normal working hours are unavailable. Ask HR to correct the shift.');
-   const required=kind==='half'?Math.floor(row.override/2):row.override;
-   return {dayType:isHoliday?'holiday':'workday',lateAfter:pol.lateAfter,halfDayBefore:pol.halfDayBefore,
+   const required=kind==='half'?Math.floor(row.override/2):kind==='full'?row.override:0;
+   return {dayType:isHoliday?'holiday':isWorkingDayKind(kind)?'workday':'rest_day',lateAfter:pol.lateAfter,halfDayBefore:pol.halfDayBefore,
     scheduledMinutes:required,normalMinutesOverride:required,fullDayNormalMinutes:row.override,breakMinutes:row.brk??0,breakPeriods:row.periods,
     shiftStart:null,shiftEnd:null,scheduledStart:null,scheduledEnd:null,crossesMidnight:false,
     dailyCutoffMinutes:row.cutoffOn&&row.cutoffAt?toMinutes(row.cutoffAt):null,flexibleBreakMinutes:row.flexOn?row.flexMin:null,
     flexiDuration:true,durationOnly:true,otRule:row.otRule,otWindows:null,rule,lateGraceMinutes:0,earlyGraceMinutes:0,
-    source,scheduleDayKind:kind,displayShiftId:row.shiftId,displayShiftCode:row.code,displayShiftName:row.name};
+    source:!isWorkingDayKind(kind)?'default-shift-rest':source,scheduleDayKind:kind,displayShiftId:row.shiftId,displayShiftCode:row.code,displayShiftName:row.name};
   };
   if(ra&&!ra.isRestDay&&ra.shiftType==='full_flexi'){
     const rule=await ruleFor(ra.ruleId);const resolved=fullFlexiSchedule(ra,rule,'full','roster-shift');
@@ -1173,8 +1173,8 @@ async function scheduleBaseFor(tx: Tx, employmentId: string, date: string, memo?
     // A shift written before migration 0429 has empty half/off arrays, so this resolves Full-where-ticked
     // and Rest-otherwise — byte-identically to the two-way test it replaces.
     const kind = rotation?.day.kind ?? shiftDayKindFor(weekPatternFor(rule?.week, ds), date);
-    if (isWorkingDayKind(kind) && ds.shiftType==='full_flexi') {
-      const resolved=fullFlexiSchedule(ds,rule,kind==='half'?'half':'full','default-shift');resolved.otWindows=await otWindowsFor(ds.shiftId);return resolved;
+    if (ds.shiftType==='full_flexi') {
+      const resolved=fullFlexiSchedule(ds,rule,kind,'default-shift');resolved.otWindows=await otWindowsFor(ds.shiftId);return resolved;
     }
     if (isWorkingDayKind(kind) && ds.start && ds.end) {
       // Working day of the default shift — mirror the roster-shift branch byte-for-byte, incl. the
@@ -5844,11 +5844,23 @@ export async function assignPunchBusinessDays(
     }
   }
   for (const arr of windowsByEmp.values()) arr.sort((a, b) => a.startDt - b.startDt);
-  return items.map((m) => {
-    const pDt = dtMinutes(m.date, m.time);
-    const win = (windowsByEmp.get(m.employmentId) ?? []).find((w) => pDt >= w.startDt && pDt <= w.endDt);
-    return win ? win.day : m.date;
-  });
+  const [hasFlexiCutoff]=await tx.select({id:shift.id}).from(shift).where(and(eq(shift.type,'full_flexi'),eq(shift.dailyCutoffEnabled,true))).limit(1);
+  const memo=hasFlexiCutoff?await newScheduleMemo(tx,{employmentIds:empIds,from,to}):undefined;
+  const resolved=new Map<string,ResolvedSchedule>();
+  const schedule=async(id:string,date:string)=>{const key=`${id}|${date}`;let value=resolved.get(key);if(!value){value=await scheduleFor(tx,id,date,memo);resolved.set(key,value);}return value;};
+  const result:string[]=[];
+  for(const m of items){
+    if(memo){
+      const previous=addDays(m.date,-1),prior=await schedule(m.employmentId,previous);
+      if(prior.durationOnly&&prior.dailyCutoffMinutes!=null&&toMinutes(m.time)<prior.dailyCutoffMinutes){result.push(previous);continue;}
+      const current=await schedule(m.employmentId,m.date);
+      if(current.durationOnly){result.push(current.dailyCutoffMinutes!=null&&toMinutes(m.time)<current.dailyCutoffMinutes?previous:m.date);continue;}
+    }
+    const pDt=dtMinutes(m.date,m.time);
+    const win=(windowsByEmp.get(m.employmentId)??[]).find(w=>pDt>=w.startDt&&pDt<=w.endDt);
+    result.push(win?win.day:m.date);
+  }
+  return result;
 }
 
 /** Real-time ordering key of a clocking read on calendar `date` at `time` (cross-midnight safe). */

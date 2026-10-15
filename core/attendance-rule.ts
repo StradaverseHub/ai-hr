@@ -18,7 +18,7 @@ import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 // 07ebd04d (r331) — the group's WORKING WEEK. `weekPatternWorkingDayCount` is the ONE definition of
 // "how many days does this week actually schedule" (core/week-pattern.ts, a leaf module with no imports
 // precisely so this service can use it without a cycle through core/attendance.ts).
-import { weekPatternWorkingDayCount } from './week-pattern';
+import { weekPatternWorkingDayCount,rotationVersionOn } from './week-pattern';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
@@ -910,7 +910,7 @@ async function updateAttendanceRuleTx(ctx: SessionContext, tx: Tx, p: { ruleId: 
  */
 export function copyAttendanceRule(ctx: SessionContext, p: { ruleId: string }): Promise<{ id: string }> {
   return withTenant(ctx, async (tx) => {
-    const [src] = await tx.select().from(attendanceRule).where(eq(attendanceRule.id, p.ruleId)).limit(1);
+    const [src] = await tx.select().from(attendanceRule).where(eq(attendanceRule.id, p.ruleId)).limit(1).for('update');
     if (!src) throw new Error('Rule not found.');
 
     const taken = new Set(
@@ -963,8 +963,25 @@ export function copyAttendanceRule(ctx: SessionContext, p: { ruleId: string }): 
       throw e;
     }
 
-    const pools=await tx.select({shiftId:attendanceRuleShift.shiftId}).from(attendanceRuleShift).innerJoin(shift,eq(shift.id,attendanceRuleShift.shiftId)).where(and(eq(attendanceRuleShift.ruleId,p.ruleId),isNull(shift.archivedAt)));
-    if(pools.length)await tx.insert(attendanceRuleShift).values(pools.map(m=>({tenantId:ctx.tenantId,ruleId,shiftId:m.shiftId})));
+    const versions=await tx.select().from(attendanceRotation).where(eq(attendanceRotation.ruleId,p.ruleId)).orderBy(asc(attendanceRotation.effectiveFrom));
+    const today=todayInKualaLumpur(),tomorrow=new Date(Date.parse(today+'T00:00:00Z')+86400000).toISOString().slice(0,10);
+    const current=rotationVersionOn(versions,today);
+    const basePool=await tx.select({shiftId:attendanceRuleShift.shiftId}).from(attendanceRuleShift).where(eq(attendanceRuleShift.ruleId,p.ruleId));
+    const poolIds=current?.allowedShiftIds??basePool.map(m=>m.shiftId);
+    const active=poolIds.length?await tx.select({id:shift.id}).from(shift).where(and(inArray(shift.id,poolIds),isNull(shift.archivedAt))).orderBy(asc(shift.id)).for('update'):[];
+    if(active.length)await tx.insert(attendanceRuleShift).values(active.map(sh=>({tenantId:ctx.tenantId,ruleId,shiftId:sh.id})));
+    // Copy only applicable and upcoming cycles. The new group has no past; its first copy
+    // starts tomorrow, retaining the source anchor so the cycle phase does not move.
+    const future=versions.filter(v=>v.effectiveFrom>today);
+    const copies=[...(current&&!future.some(v=>v.effectiveFrom===tomorrow)?[{...current,effectiveFrom:tomorrow}]:[]),...future];
+    if(copies.length){
+      const [authority]=await tx.execute(sql`select app.is_group_admin() as allowed`) as unknown as {allowed:boolean}[];
+      if(!authority?.allowed)throw new Error('A group-wide HR administrator is required to copy a Schedule Group with dated rotations.');
+      const ids=[...new Set(copies.flatMap(v=>v.allowedShiftIds))];
+      const sources=await tx.select({id:shift.id,archivedAt:shift.archivedAt}).from(shift).where(inArray(shift.id,ids)).orderBy(asc(shift.id)).for('update');
+      if(ids.some(id=>!sources.some(sh=>sh.id===id&&!sh.archivedAt)))throw new Error('Replace archived shifts in the source group’s upcoming rotation before copying it. Historical versions remain available in the source group.');
+      await tx.insert(attendanceRotation).values(copies.map(v=>({tenantId:ctx.tenantId,ruleId,effectiveFrom:v.effectiveFrom,anchorDate:v.anchorDate,unit:v.unit,length:v.length,allowedShiftIds:v.allowedShiftIds,days:v.days,createdBy:ctx.userId??'system'})));
+    }
 
     // The OT bands ARE the pattern — a copy that lost them would be worse than no copy at all.
     const rows = await tx

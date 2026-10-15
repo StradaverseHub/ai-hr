@@ -11,11 +11,9 @@ import { attendanceRule,attendanceRuleShift,attendanceRotation,employment,shift 
  * 870b79e2 — "refuse an employee being put on a shift that is not in their group's allowed list, with a
  * clear message saying which shifts are allowed".
  *
- * THE ALLOWED LIST IS NOT A NEW TABLE. It is `shift.rule_id` read backwards: a shift points at exactly one
- * attendance_rule, so the set of shifts pointing at a rule IS that rule's allowed list. The employee's
- * group is `employment.attendance_rule_id` (migration 0464). Nothing new is stored to answer this
- * question, and the one-rule-per-shift cardinality that makes the answer single-valued is preserved —
- * which is also why rule resolution in core/attendance.ts can never have two answers.
+ * Allowed membership lives in attendance_rule_shift; a dated rotation freezes its own
+ * allowedShiftIds. shift.rule_id remains a calculation fallback and is never pool membership.
+ * Employment group first, selected shift default second, Standard last remains unchanged.
  *
  * ⚠️ WHY THIS IS A SERVICE REFUSAL AND NOT A DB CHECK OR A FORM CHECK.
  *   · Not a CHECK: the rule spans two tables (employment.attendance_rule_id vs shift.rule_id), so it is
@@ -74,10 +72,16 @@ export async function groupRuleIdTx(tx: Tx, employmentId: string): Promise<strin
 export async function assertShiftsAllowedForEmploymentsTx(
   tx: Tx,
   pairs: readonly { employmentId: string; shiftId: string | null; shiftDate?:string }[],
+  options?:{existingReferences:boolean},
 ): Promise<void> {
   const real = pairs.filter((p): p is { employmentId: string; shiftId: string; shiftDate?:string } => !!p.shiftId);
   if (real.length === 0) return;
   const employmentIds = [...new Set(real.map((p) => p.employmentId))];
+  const attemptedIds=[...new Set(real.map(p=>p.shiftId))];
+  const available=await tx.select({id:shift.id,archivedAt:shift.archivedAt}).from(shift).where(inArray(shift.id,attemptedIds));
+  if(attemptedIds.some(id=>!available.some(sh=>sh.id===id)))throw new Error('A selected shift is unavailable in this tenant.');
+  if(!options?.existingReferences&&available.some(sh=>sh.archivedAt))throw new Error('An archived shift cannot be selected for a new assignment. Select an active shift.');
+
 
   // 1. Which of these employments are in a group at all? None ⇒ nothing to enforce, and this is the
   //    release-day path for every caller.
@@ -117,11 +121,11 @@ export async function assertShiftsAllowedForEmploymentsTx(
     const version=rotationVersionOn(versions.filter(v=>v.ruleId===ruleId),pair.shiftDate??todayInKualaLumpur());
     const pool=version?new Set(version.allowedShiftIds):bucket?.ids;
     const selected=shifts.find(sh=>sh.id===pair.shiftId);
-    if (pool?.has(pair.shiftId) && selected && !selected.archivedAt) continue;
+    if (pool?.has(pair.shiftId) && selected && (!selected.archivedAt||options?.existingReferences)) continue;
     throw new ShiftNotInScheduleGroupError({
       groupName: ruleName.get(ruleId) ?? 'this Schedule Group',
       shiftName: shiftName.get(pair.shiftId) ?? null,
-      allowed: bucket?.names ?? [],
+      allowed: shifts.filter(sh=>pool?.has(sh.id)&&!sh.archivedAt).map(sh=>sh.name),
     });
   }
 }

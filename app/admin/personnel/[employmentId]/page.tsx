@@ -172,7 +172,7 @@ import { listLocations, resolveLocationForBranch, branchChangeDateFor } from '@/
 // library IS the Schedule Group library (870b79e2); there is no second table behind the name. Taken from
 // the PACK FACADE, not core/attendance-rule: the ADR-0080 D9 ratchet (test/attendance-pack-drift.test.ts)
 // refuses a new direct importer of the attendance implementation, and the allowlist only ever shrinks.
-import { listAttendanceRules, listClockingLocations, listEmployeeClockingLocations } from '@/packs/attendance/service';
+import { getScheduleRotation,listAttendanceRules, listClockingLocations, listEmployeeClockingLocations } from '@/packs/attendance/service';
 import { setClockingControlAction } from './actions';
 import { ReviewSection } from './review-section';
 import { DocumentsSection } from './documents-section';
@@ -533,11 +533,8 @@ export default async function EmployeePage({
   // stored shows a placeholder and silently re-poses the question. This is a COURTESY; the guarantee is
   // core/roster.ts assertShiftsAllowedForEmploymentsTx, which the writer behind this card already calls.
   // An employment in NO group (74 of 75 on production) sees the whole library, exactly as before.
-  const assignableShifts = libraryShifts.filter(
-    (sh) =>
-      (!sh.archivedAt || sh.id === emp.defaultShiftId) &&
-      (!scheduleGroupCurrentId || sh.allowedRuleIds.includes(scheduleGroupCurrentId) || sh.id === emp.defaultShiftId),
-  );
+  const groupPool=scheduleGroupCurrentId?await getScheduleRotation(s,scheduleGroupCurrentId):null;
+  const assignableShifts=libraryShifts.filter(sh=>!sh.archivedAt||sh.id===emp.defaultShiftId);
   // 18504ca6 — the dated periods behind the Shift history list, newest first, with the shift CODE and NAME
   // already resolved. Deliberately NOT taken from the Others-tab Change History: that renders the audit
   // payload through lib/audit-format.ts describePayload, which prints defaultShiftId as a raw uuid → uuid pair.
@@ -2362,7 +2359,9 @@ export default async function EmployeePage({
               defaultShiftId={emp.defaultShiftId}
               defaultEffectiveFrom={today}
               dmyDisplay
+              allowedPool={groupPool?{baseShiftIds:groupPool.memberships.map(m=>m.shiftId),versions:groupPool.versions.map(v=>({effectiveFrom:v.effectiveFrom,allowedShiftIds:v.allowedShiftIds}))}:undefined}
               shifts={assignableShifts.map((sh) => ({
+                archived:!!sh.archivedAt,
                 id: sh.id,
                 label: `${sh.code ?? '—'} — ${sh.name} (${(sh.startTime?.slice(0, 5)??'—')}–${(sh.endTime?.slice(0, 5)??'—')})`,
               }))}

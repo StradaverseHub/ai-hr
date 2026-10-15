@@ -1661,6 +1661,7 @@ export async function setEmploymentScheduleGroupTx(
   await assertShiftsAllowedForEmploymentsTx(
     tx,
     shiftIds.map((shiftId) => ({ employmentId: p.employmentId, shiftId })),
+    {existingReferences:true}, // A group edit does not create a new assignment of an archived source.
   );
 
   await appendEvent(tx, {
