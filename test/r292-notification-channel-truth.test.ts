@@ -8,10 +8,22 @@ const sources=walk(root);
 const importsNotifications=/from\s+['"](?:@\/core\/notifications|\.{1,2}(?:\/[\w-]+)*\/notifications)['"]/;
 const notificationPath=[...new Set(['core/notifications.ts','core/notice.ts','components/notice/notice-form.tsx',...sources.filter(f=>importsNotifications.test(read(f)))])];
 describe('r292 — transport and product copy describe the same conditional delivery',()=>{
- it('keeps SMTP imports in the isolated identity service, never a web action or kernel dispatcher',()=>{
+ it('keeps message sending in the isolated service and the demo probe limited to connection/authentication',()=>{
   expect(Object.keys(JSON.parse(read('package.json')).dependencies)).toContain('nodemailer');
-  const importers=sources.filter(f=>/from\s+['"]nodemailer(?:['"]|\/)/.test(read(f)));
-  expect(importers).toEqual(['deploy/identity-email/smtp.ts']);
+  const imports=[...new Set(sources.flatMap(f=>[...read(f).matchAll(/from\s+['"](nodemailer(?:\/[^'"]*)?)['"]/g)].map(match=>`${f}: ${match[1]}`)))].sort();
+  expect(imports).toEqual([
+   'deploy/identity-email/smtp.ts: nodemailer',
+   'lib/demo-smtp-connection.ts: nodemailer/lib/smtp-connection',
+   'lib/demo-smtp-probe.ts: nodemailer/lib/smtp-connection',
+   'test/demo-smtp-probe.test.ts: nodemailer/lib/smtp-connection',
+  ]);
+  expect(read('test/demo-smtp-probe.test.ts')).toMatch(/import type SMTPConnection from ['"]nodemailer\/lib\/smtp-connection['"]/);
+  for(const f of ['lib/demo-smtp-connection.ts','lib/demo-smtp-probe.ts']){
+   const src=read(f);expect(src).toContain("import 'server-only'");
+   expect(src,f).not.toMatch(/\.\s*(?:send|sendMail)\s*\(/);
+  }
+  const probe=read('lib/demo-smtp-probe.ts');
+  expect(probe).toContain('client.connect(');expect(probe).toContain('client.login(');
   expect(read('core/notifications.ts')).toContain('app.notification_email_enqueue(');
   expect(read('core/notifications.ts')).not.toMatch(/sendMail\(/);
  });
