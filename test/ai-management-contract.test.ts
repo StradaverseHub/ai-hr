@@ -26,7 +26,7 @@ describe('complete AI management inventory and boundary',()=>{
   const migration=read('db/migrations/0541_ai_control_centre.sql');
   for(const feature of AI_FEATURES){expect(migration).toContain(`'${feature.id}'`);if(feature.module)expect(MODULE_CATALOG.some(m=>m.code===feature.module)).toBe(true);if(feature.setting)expect(SETTING_CATALOG.some(s=>s.key===feature.setting)).toBe(true);}
   const policies=[...migration.matchAll(/(?:NEW.feature_id|wanted_feature) NOT IN \(([^)]+)\)/g)];expect(policies).toHaveLength(2);
-  for(const match of policies)expect([...match[1].matchAll(/'([^']+)'/g)].map(m=>m[1]).sort()).toEqual(AI_FEATURES.map(f=>f.id).sort());
+  for(const match of policies){const expected=match[0].startsWith('NEW.')?AI_FEATURES.filter(f=>f.setting===null):AI_FEATURES;expect([...match[1].matchAll(/'([^']+)'/g)].map(m=>m[1]).sort()).toEqual(expected.map(f=>f.id).sort());}
  });
  it('has every dynamic key in all six locales and describes reservations and shared attribution',()=>{
   for(const locale of ['en','ms','zh','vi','th','ta']){

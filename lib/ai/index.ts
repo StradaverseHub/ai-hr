@@ -30,7 +30,7 @@ import {
   type ResolvedAiConfig,
 } from './types';
 
-export { AiGatewayError, normaliseStop } from './types';
+export { AiGatewayError, AiAllowanceError, normaliseStop } from './types';
 export type { AiProvider, ResolvedAiConfig, GenerateArgs, ValidateResult } from './types';
 export type {
   AiJsonSchema,
@@ -133,7 +133,7 @@ export async function converse(cfg: ResolvedAiConfig, args: ConverseArgs): Promi
   // Defaults are normalised HERE, not per adapter, so a fourth adapter cannot silently send `undefined`
   // and inherit a server-side default nobody chose.
   const text=args.system.join('')+JSON.stringify(args.tools)+args.turns.map(t=>t.role==='tool'?t.results.map(r=>r.content).join(''):t.content).join('');
-  return governed(cfg,{operation:'conversation',reservedTokens:textReservation(text,args.maxTokens)},async record=>{const result=await adapter.converse!(cfg,{...args,maxTokens:args.maxTokens??2048,timeoutMs:args.timeoutMs??120_000});record(result.usage);return result;});
+  return governed(cfg,{operation:'conversation',reservedTokens:textReservation(text,args.maxTokens)},async record=>{const result=await adapter.converse!(cfg,{...args,maxTokens:args.maxTokens??2048,timeoutMs:args.timeoutMs??120_000});if(result.usageReported??[result.usage.inputTokens,result.usage.outputTokens,result.usage.cachedInputTokens].some(n=>n>0))record(result.usage);return result;});
 }
 
 /**

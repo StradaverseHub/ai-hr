@@ -1,5 +1,5 @@
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import { AiImageReadError,readImage,generateDraft,supportsImageReading,type AiProvider } from '../lib/ai';
+import { AiImageReadError,readImage,generateDraft,supportsImageReading,type AiProvider,type ResolvedAiConfig } from '../lib/ai';
 const png=new Uint8Array(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j8R0AAAAASUVORK5CYII=','base64'));
 const providers:AiProvider[]=['openai','anthropic','google'];
 let transport:ReturnType<typeof vi.fn>;
@@ -47,5 +47,28 @@ describe('shared image-reading gateway with real provider transports',()=>{
  it('bounds transcription length and treats empty readable text as a valid empty result',async()=>{
   const cfg={provider:'openai' as const,model:'fixture',apiKey:'fixture-local-only'};transport.mockResolvedValue(new Response(JSON.stringify(response('openai','🙂'.repeat(7000))),{headers:{'content-type':'application/json'}}));expect(Array.from(await readImage(cfg,{data:png,mimeType:'image/png'}))).toHaveLength(6000);
   transport.mockResolvedValue(new Response(JSON.stringify(response('openai','')),{headers:{'content-type':'application/json'}}));expect(await readImage(cfg,{data:png,mimeType:'image/png'})).toBe('');
+ });
+});
+
+// Exercise the real gateway + SDK adapters: an adapter that forgets its observer must retain capacity,
+// and missing counters must never become a reported zero in the central ledger.
+describe('usage reporting across every real transport operation',()=>{
+ for(const provider of providers)it(`${provider} distinguishes reported, zero, absent and malformed counters`,async()=>{
+  const {converse}=await import('../lib/ai');
+  const cases=['reported','zero','absent','malformed'] as const;
+  for(const kind of cases){
+   const observed:unknown[]=[];
+   const cfg:ResolvedAiConfig={provider,model:'fixture',apiKey:'fixture-local-only',governance:{async run(_request,call){return call(value=>observed.push(value));}}};
+   const result=response(provider,'A bounded answer.');
+   const metadata=kind==='reported'?(provider==='openai'?{prompt_tokens:10,completion_tokens:3,prompt_tokens_details:{cached_tokens:4}}:provider==='anthropic'?{input_tokens:10,output_tokens:3,cache_read_input_tokens:4}:{promptTokenCount:10,candidatesTokenCount:3,cachedContentTokenCount:4}):kind==='zero'?(provider==='openai'?{prompt_tokens:0,completion_tokens:0}:provider==='anthropic'?{input_tokens:0,output_tokens:0}:{promptTokenCount:0,candidatesTokenCount:0}):kind==='malformed'?{}:undefined;
+   const payload={...result,...(provider==='google'?{usageMetadata:metadata}:{usage:metadata})};
+   transport.mockReset().mockImplementation(()=>new Response(JSON.stringify(payload),{headers:{'content-type':'application/json'}}));
+   await generateDraft(cfg,{system:'Only supplied facts.',prompt:'Fictional facts.',timeoutMs:1000});
+   await readImage(cfg,{data:png,mimeType:'image/png'});
+   await converse(cfg,{system:['Only supplied facts.'],turns:[{role:'user',content:'Fictional facts.'}],tools:[]});
+   const expected=kind==='reported'?{inputTokens:provider==='anthropic'?10:6,outputTokens:3,cachedInputTokens:4}:{inputTokens:0,outputTokens:0,cachedInputTokens:0};
+   expect(observed,kind).toEqual(kind==='absent'||kind==='malformed'?[]:[expected,expected,expected]);
+   expect(transport).toHaveBeenCalledTimes(3);
+  }
  });
 });

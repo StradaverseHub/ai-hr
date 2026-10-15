@@ -1,3 +1,4 @@
+import { hasTokenCounts } from '../usage';
 /**
  * Anthropic (Claude) adapter (ADR-0023). Client is constructed PER CALL from the resolved key — never
  * memoized at module scope (a singleton would pin one tenant's key process-wide). Provider errors are
@@ -44,7 +45,7 @@ export const anthropicAdapter: AiAdapter = {
   async readImage(cfg,args){
     try{
       const result=await new Anthropic({apiKey:cfg.apiKey,timeout:args.timeoutMs,maxRetries:0}).messages.create({model:cfg.model,max_tokens:2500,system:imageReadInstruction,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:args.mimeType,data:Buffer.from(args.data).toString('base64')}}]}]},{signal:args.signal});
-      if(result.usage)args.onUsage?.(usageFor(result.usage));
+      if(hasTokenCounts(result.usage,['input_tokens','output_tokens']))args.onUsage?.(usageFor(result.usage));
       if(result.stop_reason==='refusal')throw new AiImageReadError(false);
       return result.content.filter((part):part is Anthropic.TextBlock=>part.type==='text').map(part=>part.text).join('\n');
     }catch(error){throw imageReadError(error);}
@@ -59,7 +60,7 @@ export const anthropicAdapter: AiAdapter = {
         system: args.system,
         messages: [{ role: 'user', content: args.prompt }],
       },args.signal?{signal:args.signal}:undefined);
-      if(message.usage)args.onUsage?.(usageFor(message.usage));
+      if(hasTokenCounts(message.usage,['input_tokens','output_tokens']))args.onUsage?.(usageFor(message.usage));
       if(args.signal&&(message.stop_reason==='max_tokens'||message.stop_reason==='refusal'))throw new AiGatewayError('No complete assessment was produced.');
       return message.content
         .filter((b): b is Anthropic.TextBlock => b.type === 'text')
@@ -206,6 +207,7 @@ function readMessage(message: Anthropic.Message): ConverseResult {
     toolCalls,
     stop,
     usage: usageFor(message.usage),
+    usageReported: hasTokenCounts(message.usage,['input_tokens','output_tokens']),
     // Opaque to everyone above this line. `stop_details.category` is a closed enum and would be safe to
     // record, but `stop_details.explanation` is free provider prose — so NO refusal detail crosses the
     // boundary at all, and the loop renders one localised refusal string for all three providers.

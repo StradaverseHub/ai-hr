@@ -1,13 +1,17 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
+import * as tenantDb from '../db/client';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { governedAiConfig } from '../core/ai-governance';
-import { aiManagementView, parseAiAllowance, setAiAllowance, setAiFeature } from '../core/ai-management';
+import { aiManagementView, parseAiAllowance, setAiAllowance, setAiFeature, setAssistantPermission } from '../core/ai-management';
 import { generateDraft, converse, readImage } from '../lib/ai';
 import { openaiAdapter } from '../lib/ai/providers/openai';
+import { askAssistant } from '../core/assistant';
+import { hireEmployee } from '../core/org';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import { setTenantSetting } from '../core/tenant-settings';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 let base:Base, group:SessionContext;
 const cfg=()=>governedAiConfig(group,{provider:'openai',model:'test-model',apiKey:'never-a-real-key'},'pay_rule_draft');
@@ -64,7 +68,25 @@ describe('central AI allowance admission and durable accounting',()=>{
    const rows=await runs();expect(rows.find(r=>r.state==='completed')?.actualTokens).toBe(14);const failed=rows.find(r=>r.state==='failed')!;expect(failed.actualTokens).toBeNull();expect(failed.reservedTokens).toBeGreaterThan(0);
   }finally{vi.restoreAllMocks();}
  });
+ it('settles only the original actor’s pending admission, exactly once',async()=>{
+  const [request]=await withTenant(group,tx=>tx.execute<{run_id:string}>(sql`select * from app.ai_admit('pay_rule_draft','draft','openai','fixture',100)`));
+  const [other]=await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:'other-fixture-actor'}).returning();
+  const stranger:SessionContext={...group,userId:other.id,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+  await expect(withTenant(stranger,tx=>tx.execute(sql`select app.ai_settle(${request.run_id}::uuid,true,0)`))).rejects.toThrow();
+  expect((await runs())[0].state).toBe('pending');
+  await withTenant(group,tx=>tx.execute(sql`select app.ai_settle(${request.run_id}::uuid,true,10)`));
+  await expect(withTenant(group,tx=>tx.execute(sql`select app.ai_settle(${request.run_id}::uuid,true,0)`))).rejects.toThrow();
+  expect((await runs())[0].actualTokens).toBe(10);
+ });
+ it('distinguishes reported zero tokens from absent usage and preserves an unsettled reservation',async()=>{
+  await call(group,0);expect((await runs())[0].actualTokens).toBe(0);
+  const original=tenantDb.withTenant;
+  const write=vi.spyOn(tenantDb,'withTenant').mockImplementationOnce(original).mockRejectedValueOnce(new Error('private database failure'));
+  try{await expect(call(group,25)).rejects.toThrow('reservation remains held');}finally{write.mockRestore();}
+  const pending=(await runs()).find(r=>r.state==='pending');expect(pending).toBeDefined();expect(pending?.actualTokens).toBeNull();expect(pending?.reservedTokens).toBe(100);
+ });
  it('rechecks canonical switches rather than trusting a stale configuration',async()=>{
+  await expect(withTenant(group,tx=>tx.insert(schema.aiControlPolicy).values({tenantId:base.tenantId,kind:'feature',scopeKey:'feature:performance_pm',featureId:'performance_pm',enabled:false}))).rejects.toThrow();
   await setTenantSetting(group,{key:'performance.ai_pm_enabled',value:true});
   const stale=governedAiConfig(group,{provider:'openai',model:'test-model',apiKey:'never-a-real-key'},'performance_pm');
   await setTenantSetting(group,{key:'performance.ai_pm_enabled',value:false});
@@ -87,6 +109,8 @@ describe('central AI allowance admission and durable accounting',()=>{
   await call();
   await expect(withTenant(group,tx=>tx.delete(schema.aiModelRun))).rejects.toThrow();
   await expect(withTenant(group,tx=>tx.update(schema.aiModelRun).set({actualTokens:0}))).rejects.toThrow();
+  await expect(withTenant(group,tx=>tx.execute(sql`truncate ai_model_run`))).rejects.toThrow();
+  expect((await runs())[0].actualTokens).toBe(10);
  });
 });
 
@@ -99,6 +123,7 @@ describe('scoped administration and inventory',()=>{
   await expect(setAiAllowance(scoped,{kind:'company',subjectId:other.id,dailyRequests:0,monthlyTokens:null,enabled:true})).rejects.toThrow('scope');
   await expect(setAiAllowance(scoped,{kind:'user',subjectId:user.id,dailyRequests:0,monthlyTokens:null,enabled:true})).rejects.toThrow('group');
   await expect(setAiFeature(scoped,'hr_assistant',false)).rejects.toThrow('group');
+  await expect(setAssistantPermission(scoped,user.id,true)).rejects.toThrow('group');
   await call(group,25);await call(scoped,10);
   const groupView=await aiManagementView(group);expect(groupView.companies).toHaveLength(2);expect(groupView.runs).toHaveLength(2);
   const view=await aiManagementView(scoped);expect(view.companies.map(c=>c.id)).toEqual([base.companyId]);expect(view.users).toEqual([]);expect(view.runs).toEqual([]);
@@ -106,10 +131,35 @@ describe('scoped administration and inventory',()=>{
   expect(Number(view.usage[0].daily_requests)).toBe(2);expect(JSON.stringify(view)).not.toContain(other.id);
   await expect(withTenant(scoped,tx=>tx.insert(schema.aiControlPolicy).values({tenantId:base.tenantId,kind:'company',scopeKey:`company:${other.id}`,subjectId:other.id,dailyRequests:0}))).rejects.toThrow();
  });
+ it('charges an employee only for companies they can actually access',async()=>{
+  const [other]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Unrelated Company'}).returning();
+  const employment=await hireEmployee(group,{person:{fullName:'Scoped Employee',primaryEmail:'employee@fixture.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+  const uid=await createAppUser(base.tenantId,employment.personId,'employee');
+  const employee:SessionContext={...group,userId:uid,personId:employment.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+  await limit('company',other.id,0,null);await limit('company',base.companyId,1,null);
+  await expect(call(employee)).resolves.toBe('draft');
+  const [record]=await runs();expect(record.companyIds).toEqual([base.companyId]);expect(record.userId).toBe(uid);
+  await expect(call(employee)).rejects.toThrow('daily');
+ });
+ it('uses the existing Assistant grant owner and reports an allowance refusal accurately',async()=>{
+  expect((await aiManagementView(group)).users.find(u=>u.id===base.adminUserId)?.assistantGranted).toBe(false);
+  await setAssistantPermission(group,base.adminUserId,true);
+  expect((await aiManagementView(group)).users.find(u=>u.id===base.adminUserId)?.assistantGranted).toBe(true);
+  await setModule(base.tenantId,'assistant','active');group={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
+  await limit('user',base.adminUserId,0,null);
+  vi.stubEnv('OPENAI_API_KEY','fixture-never-sent');vi.stubEnv('ANTHROPIC_API_KEY','');vi.stubEnv('GOOGLE_API_KEY','');vi.stubEnv('GEMINI_API_KEY','');
+  const transport=vi.spyOn(openaiAdapter,'converse');
+  try{await expect(askAssistant(group,{question:'What can you help with?'})).rejects.toMatchObject({code:'ai_control'});expect(transport).not.toHaveBeenCalled();}
+  finally{vi.restoreAllMocks();vi.unstubAllEnvs();}
+  await setAssistantPermission(group,base.adminUserId,false);
+  expect((await aiManagementView(group)).users.find(u=>u.id===base.adminUserId)?.assistantGranted).toBe(false);
+  const grants=await owner.db.select().from(schema.assistantGrant).where(eq(schema.assistantGrant.appUserId,base.adminUserId));expect(grants).toHaveLength(1);expect(grants[0].revokedAt).not.toBeNull();
+ });
  it('rejects other tenants and ordinary users, including raw app-role writes',async()=>{
   const foreign=await seedBase();
   await expect(limit('company',foreign.companyId,0,null)).rejects.toThrow('scope');
   await expect(limit('user',foreign.adminUserId,0,null)).rejects.toThrow('scope');
+  await expect(setAssistantPermission(group,foreign.adminUserId,true)).rejects.toThrow('scope');
   const employee:SessionContext={tenantId:base.tenantId,userId:base.adminUserId,roles:['employee'],grants:[{role:'employee',companyId:null}],entitlements:group.entitlements};
   await expect(aiManagementView(employee)).rejects.toThrow('administrators');
   await expect(setAiAllowance(employee,{kind:'company',subjectId:base.companyId,dailyRequests:1,monthlyTokens:null,enabled:true})).rejects.toThrow();

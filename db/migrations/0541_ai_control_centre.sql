@@ -38,16 +38,17 @@ GRANT SELECT,INSERT,UPDATE ON ai_control_policy TO ai_hr_app;
 --> statement-breakpoint
 GRANT SELECT ON ai_model_run TO ai_hr_app;
 --> statement-breakpoint
-REVOKE DELETE ON ai_control_policy FROM ai_hr_app;
+REVOKE DELETE,TRUNCATE ON ai_control_policy FROM ai_hr_app;
 --> statement-breakpoint
-REVOKE INSERT,UPDATE,DELETE ON ai_model_run FROM ai_hr_app;
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE ON ai_model_run FROM ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.ai_control_policy_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $$
 BEGIN
+ PERFORM pg_advisory_xact_lock(hashtext('ai-control'),hashtext(NEW.tenant_id::text));
  IF NEW.kind='feature' AND NEW.feature_id='feedback_planning' THEN RAISE EXCEPTION 'Platform managed feature';END IF;
  IF NEW.kind='company' AND NOT EXISTS(SELECT 1 FROM company WHERE id=NEW.subject_id AND tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Unknown company';END IF;
  IF NEW.kind='user' AND NOT EXISTS(SELECT 1 FROM app_user WHERE id=NEW.subject_id AND tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Unknown user';END IF;
- IF NEW.kind='feature' AND NEW.feature_id NOT IN ('hr_assistant','readiness_reminders','claims_triage','payroll_hypotheses','payroll_explanation','pay_rule_draft','report_insight','performance_360','performance_tc','performance_pm','performance_review','performance_idp','performance_calib','performance_assistant','feedback_planning') THEN RAISE EXCEPTION 'Unknown AI feature';END IF;
+ IF NEW.kind='feature' AND NEW.feature_id NOT IN ('hr_assistant','payroll_explanation','pay_rule_draft','report_insight','performance_assistant') THEN RAISE EXCEPTION 'Unknown AI feature';END IF;
  NEW.updated_by_user_id:=app.current_user_id();NEW.updated_at:=now();
  RETURN NEW;
 END $$;

@@ -15513,7 +15513,8 @@
     "err_budget_monthly": "Organisasi anda telah menggunakan peruntukan AI untuk bulan ini.",
     "err_budget_daily": "Anda telah menggunakan soalan anda untuk hari ini. Sila cuba esok.",
     "err_invalid_question": "Sila tulis soalan, dan pastikan kurang daripada 2000 aksara.",
-    "err_provider_error": "Pembantu tidak dapat dihubungi. Sila cuba lagi."
+    "err_provider_error": "Pembantu tidak dapat dihubungi. Sila cuba lagi.",
+    "err_ai_control": "Bantuan AI dijeda atau telah mencapai had. Hubungi pentadbir anda atau cuba selepas had ditetapkan semula."
   },
   "controlTower": {
     "howTitle": "Cara Menara Kawalan berfungsi",
@@ -18977,7 +18978,7 @@
     "paused": "Dijeda",
     "unlimited": "Tiada had tambahan",
     "save": "Simpan",
-    "userHelp": "Cari log masuk mengikut nama atau pengecam log masuk. Had pengguna terpakai merentas semua syarikat mereka.",
+    "userHelp": "Cari log masuk mengikut nama atau pengecam log masuk. Had pengguna terpakai merentas semua syarikat mereka. Had tidak memberikan kebenaran ciri; akses pembantu HR diurus secara berasingan di bawah.",
     "searchUsers": "Cari pengguna",
     "search": "Cari",
     "noUsers": "Tiada pengguna sepadan.",
@@ -19042,6 +19043,10 @@
       "paused": "Akses AI dijeda",
       "daily_limit": "Had permintaan harian",
       "monthly_limit": "Had token bulanan"
-    }
+    },
+    "assistantGranted": "Akses pembantu HR diberikan",
+    "assistantNotGranted": "Akses pembantu HR belum diberikan",
+    "grantAssistant": "Beri akses pembantu HR",
+    "revokeAssistant": "Tarik balik akses pembantu HR"
   }
 }

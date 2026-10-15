@@ -35,7 +35,7 @@
 import { and, count, eq, gte, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { assistantBudget, assistantExchange, assistantUsage } from '../db/schema';
-import { converse } from '../lib/ai';
+import { converse, AiAllowanceError } from '../lib/ai';
 import type { AiStop, AiToolCall, AiToolResult, AiTurn, AiUsage } from '../lib/ai/types';
 import { resolveActiveAiConfig } from './ai-config';
 import { assertMayUseAssistant } from './assistant-grant';
@@ -69,7 +69,9 @@ export type AssistantErrorCode =
   /** The question was empty or longer than the assistant will accept. */
   | 'invalid_question'
   /** The provider failed. The detail is deliberately NOT carried to the caller. */
-  | 'provider_error';
+  | 'provider_error'
+  /** A shared feature, company or user AI control refused the request. */
+  | 'ai_control';
 
 export class AssistantError extends Error {
   constructor(readonly code: AssistantErrorCode) {
@@ -312,6 +314,10 @@ export async function askAssistant(
       if (i === MAX_TURNS - 1) hitTurnCap = true;
     }
   } catch (e) {
+    if (e instanceof AiAllowanceError) {
+      await persist(ctx, { appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: 'ai_control' });
+      throw new AssistantError('ai_control');
+    }
     if (e instanceof AssistantError) {
       // A budget refusal mid-loop still records what was spent getting there.
       failure = e.code;

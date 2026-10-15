@@ -54,6 +54,14 @@ export class AiGatewayError extends Error {
   }
 }
 
+/** A control refusal is distinct from provider failure; it contains no tenant/company identifiers. */
+export class AiAllowanceError extends AiGatewayError {
+  constructor(readonly reason: 'paused' | 'daily_limit' | 'monthly_limit') {
+    super(reason === 'paused' ? 'This AI feature is paused.' : reason === 'daily_limit' ? 'The daily AI request allowance has been reached.' : 'The monthly AI token allowance has insufficient available capacity.');
+    this.name = 'AiAllowanceError';
+  }
+}
+
 /* ------------------------------------------------------------------------------------------------
  * ADR-0082 slice 1 — the provider-neutral CONVERSATION contract.
  *
@@ -174,6 +182,8 @@ export type ConverseResult = {
   toolCalls: AiToolCall[];
   stop: AiStop;
   usage: AiUsage;
+  /** False when counters were normalized from missing provider metadata. */
+  usageReported?: boolean;
   providerState?: AiProviderState;
 };
 

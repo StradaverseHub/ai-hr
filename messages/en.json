@@ -15513,7 +15513,8 @@
     "err_budget_monthly": "Your organisation has used its AI allowance for this month.",
     "err_budget_daily": "You have used your questions for today. Please try again tomorrow.",
     "err_invalid_question": "Please write a question, and keep it under 2000 characters.",
-    "err_provider_error": "The assistant could not be reached. Please try again."
+    "err_provider_error": "The assistant could not be reached. Please try again.",
+    "err_ai_control": "AI assistance is paused or has reached an allowance. Contact your administrator or try after the allowance resets."
   },
   "controlTower": {
     "howTitle": "How the Control Tower works",
@@ -18977,7 +18978,7 @@
     "paused": "Paused",
     "unlimited": "No extra cap",
     "save": "Save",
-    "userHelp": "Search logins by person name or login identifier. User allowances apply across all their companies.",
+    "userHelp": "Search logins by person name or login identifier. User allowances apply across all their companies. Allowances do not grant feature permissions; HR assistant access is managed separately below.",
     "searchUsers": "Search users",
     "search": "Search",
     "noUsers": "No matching users.",
@@ -19042,6 +19043,10 @@
       "paused": "AI access paused",
       "daily_limit": "Daily request cap",
       "monthly_limit": "Monthly token cap"
-    }
+    },
+    "assistantGranted": "HR assistant access granted",
+    "assistantNotGranted": "HR assistant access not granted",
+    "grantAssistant": "Grant HR assistant",
+    "revokeAssistant": "Revoke HR assistant"
   }
 }

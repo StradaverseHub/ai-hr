@@ -15513,7 +15513,8 @@
     "err_budget_monthly": "贵机构本月的 AI 额度已用完。",
     "err_budget_daily": "您今天的提问次数已用完。请明天再试。",
     "err_invalid_question": "请输入问题，并保持在 2000 字符以内。",
-    "err_provider_error": "无法连接助理。请重试。"
+    "err_provider_error": "无法连接助理。请重试。",
+    "err_ai_control": "AI 辅助已暂停或已达到额度。请联系管理员，或在额度重置后重试。"
   },
   "controlTower": {
     "howTitle": "控制塔的运作方式",
@@ -18977,7 +18978,7 @@
     "paused": "已暂停",
     "unlimited": "无额外上限",
     "save": "保存",
-    "userHelp": "按姓名或登录标识搜索用户。用户额度适用于其所有公司。",
+    "userHelp": "按姓名或登录标识搜索用户。用户额度适用于其所有公司。 额度不会授予功能权限；HR 助手访问权限在下方单独管理。",
     "searchUsers": "搜索用户",
     "search": "搜索",
     "noUsers": "没有匹配的用户。",
@@ -19042,6 +19043,10 @@
       "paused": "AI 访问已暂停",
       "daily_limit": "每日请求上限",
       "monthly_limit": "每月令牌上限"
-    }
+    },
+    "assistantGranted": "已授予 HR 助手访问权限",
+    "assistantNotGranted": "尚未授予 HR 助手访问权限",
+    "grantAssistant": "授予 HR 助手权限",
+    "revokeAssistant": "撤销 HR 助手权限"
   }
 }

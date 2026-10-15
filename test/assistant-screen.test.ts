@@ -64,7 +64,7 @@ describe('ADR-0082 slice 4 — the screen exists and is wired', () => {
       expect(en[`stop_${stop}`], `stop_${stop}`).toBeTruthy();
     }
     expect(en.stop_turn_cap).toBeTruthy();
-    for (const code of ['not_configured', 'budget_monthly', 'budget_daily', 'invalid_question', 'provider_error']) {
+    for (const code of ['not_configured', 'budget_monthly', 'budget_daily', 'invalid_question', 'provider_error', 'ai_control']) {
       expect(en[`err_${code}`], `err_${code}`).toBeTruthy();
     }
   });

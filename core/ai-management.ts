@@ -8,6 +8,7 @@ import { AI_FEATURES, isAiFeature, type AiFeatureId } from '../lib/ai/features';
 import { resolveEntitlementsTx, isModuleEnabled } from './entitlements';
 import { SETTING_CATALOG } from '../packs/catalog';
 import { getAiConfigView, resolveActiveAiConfig } from './ai-config';
+import { grantAssistant, revokeAssistant } from './assistant-grant';
 import { setTenantSetting } from './tenant-settings';
 
 export class AiControlError extends Error {}
@@ -43,7 +44,7 @@ export async function aiManagementView(ctx: SessionContext, search = '') {
     const companyUsage = await tx.execute<AiUsageSummary & {company_id:string}>(sql`select * from app.ai_company_usage() order by company_id,feature_id`);
     const usage = await tx.execute<AiUsageSummary>(sql`select * from app.ai_feature_usage() order by feature_id`);
     const pattern = `%${search.trim().slice(0,100).replace(/[\\%_]/g, '\\$&')}%`;
-    const users = isGroupAdmin(ctx) ? await tx.select({id:appUser.id,label:sql<string>`coalesce(${person.fullName},${appUser.workosUserId})`})
+    const users = isGroupAdmin(ctx) ? await tx.select({id:appUser.id,label:sql<string>`coalesce(${person.fullName},${appUser.workosUserId})`,assistantGranted:sql<boolean>`exists(select 1 from assistant_grant g where g.tenant_id=${ctx.tenantId}::uuid and g.app_user_id=${appUser.id} and g.revoked_at is null)`})
       .from(appUser).leftJoin(person,eq(appUser.personId,person.id))
       .where(and(eq(appUser.tenantId,ctx.tenantId),or(ilike(person.fullName,pattern),ilike(appUser.workosUserId,pattern))))
       .orderBy(asc(person.fullName),asc(appUser.id)).limit(51) : [];
@@ -89,4 +90,14 @@ export async function setAiAllowance(ctx:SessionContext,p:{kind:'company'|'user'
       .onConflictDoUpdate({target:[aiControlPolicy.tenantId,aiControlPolicy.scopeKey],set:values});
     await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'ai-control',aggregateId:p.subjectId,eventType:'ai-control.allowance-changed',actor:actorOf(ctx),payload:{kind:p.kind,enabled:p.enabled,dailyRequests:p.dailyRequests,monthlyTokens:p.monthlyTokens}});
   });
+}
+
+/** Reuses the existing grant owner; allowances themselves never grant a feature permission. */
+export async function setAssistantPermission(ctx:SessionContext,userId:string,enabled:boolean){
+ assertAdmin(ctx);
+ if(!isGroupAdmin(ctx))throw new AiControlError('Only a group administrator may change shared AI permissions.');
+ if(typeof enabled!=='boolean'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId))throw new AiControlError('Unknown user.');
+ const [target]=await withTenant(ctx,tx=>tx.select({id:appUser.id}).from(appUser).where(and(eq(appUser.id,userId),eq(appUser.tenantId,ctx.tenantId))));
+ if(!target)throw new AiControlError('This user is outside your administrative scope.');
+ if(enabled)await grantAssistant(ctx,{appUserId:target.id});else await revokeAssistant(ctx,{appUserId:target.id});
 }

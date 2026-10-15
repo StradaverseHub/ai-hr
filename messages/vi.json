@@ -15513,7 +15513,8 @@
     "err_budget_monthly": "Tổ chức của bạn đã dùng hết hạn mức AI trong tháng này.",
     "err_budget_daily": "Bạn đã dùng hết số câu hỏi hôm nay. Vui lòng thử lại vào ngày mai.",
     "err_invalid_question": "Vui lòng viết câu hỏi và giữ dưới 2000 ký tự.",
-    "err_provider_error": "Không thể kết nối tới trợ lý. Vui lòng thử lại."
+    "err_provider_error": "Không thể kết nối tới trợ lý. Vui lòng thử lại.",
+    "err_ai_control": "Hỗ trợ AI đã tạm dừng hoặc đạt hạn mức. Liên hệ quản trị viên hoặc thử sau khi hạn mức đặt lại."
   },
   "controlTower": {
     "howTitle": "Trung tâm điều hành hoạt động thế nào",
@@ -18977,7 +18978,7 @@
     "paused": "Tạm dừng",
     "unlimited": "Không thêm giới hạn",
     "save": "Lưu",
-    "userHelp": "Tìm tài khoản theo tên hoặc mã đăng nhập. Hạn mức người dùng áp dụng cho tất cả công ty của họ.",
+    "userHelp": "Tìm tài khoản theo tên hoặc mã đăng nhập. Hạn mức người dùng áp dụng cho tất cả công ty của họ. Hạn mức không cấp quyền chức năng; quyền trợ lý HR được quản lý riêng bên dưới.",
     "searchUsers": "Tìm người dùng",
     "search": "Tìm",
     "noUsers": "Không có người dùng phù hợp.",
@@ -19042,6 +19043,10 @@
       "paused": "Truy cập AI tạm dừng",
       "daily_limit": "Giới hạn yêu cầu ngày",
       "monthly_limit": "Giới hạn token tháng"
-    }
+    },
+    "assistantGranted": "Đã cấp quyền trợ lý HR",
+    "assistantNotGranted": "Chưa cấp quyền trợ lý HR",
+    "grantAssistant": "Cấp quyền trợ lý HR",
+    "revokeAssistant": "Thu hồi quyền trợ lý HR"
   }
 }

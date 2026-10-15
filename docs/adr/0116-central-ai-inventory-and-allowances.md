@@ -41,7 +41,10 @@ must explain this; it must not imply precise single-company source attribution. 
 caps apply cumulatively. Changing policies preserves counters and run history. No default caps are
 invented for existing customers. Existing Assistant and Performance business quotas still apply.
 
-Group administrators manage shared features and user allowances. Company administrators can edit
+Group administrators manage shared features, user allowances and the existing per-user Assistant
+grant from this screen. Grant/revoke reuses the canonical grant service and its history; an allowance
+never grants feature access. Assistant control refusals have a distinct translated message rather than
+being described as provider failure. Company administrators can edit
 only their own company allowances. Database RLS enforces scope and rejects out-of-tenant targets.
 Company monitors expose scoped aggregates without other companies, identities or detailed call
 rows. Detailed tenant run history is group-admin-only. Existing approvals and manual workflows
@@ -58,6 +61,7 @@ the template fallback for readiness reminders. Current switches are rechecked on
 | Complete discoverable inventory | All existing model call sites, three agents, central orchestrator, platform tooling | Closed catalogue/caller drift guard and rendered inventory |
 | Effective status and canonical switches | Group admin; company read only for shared features | Save/reopen, missing provider/module, paused admission, existing controls regression |
 | Daily and monthly limits | Company and login, both cumulative | Database integration: concurrent admission, boundary periods, zero/blank, updates preserve usage |
+| Canonical Assistant access | Group admin; ordinary user | Grant/revoke/save/reopen, retained history, typed allowance refusal before transport |
 | Durable accounting | Draft, conversation, image, success/failure/interruption | Gateway transport refusal, actual usage settlement, retained reservations, metadata-only history |
 | Scoped controls/monitoring | Group admin, company admin, employee, other tenant | Non-vacuous service and app-role RLS tests; scoped aggregates; forbidden writes and history |
 | Usable single page | Six locales, desktop/mobile, empty/populated/error | Actual app journey including save, reload, search, pause and logs; visual review |

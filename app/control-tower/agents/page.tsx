@@ -5,7 +5,7 @@ import { aiManagementView, type AiUsageSummary } from '@/core/ai-management';
 import { orchestrationQueue } from '@/core/hr-orchestrator';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, btnGhost, inputCls, pageWideCls } from '@/components/ui';
 import { OrchestrationWorkQueue } from '../work-queue';
-import { setAiAllowanceAction, setAiFeatureAction } from './actions';
+import { setAiAllowanceAction, setAiFeatureAction, setAssistantPermissionAction } from './actions';
 
 export default async function AiManagementPage({searchParams}:{searchParams:Promise<{error?:string;toast?:string;q?:string;refresh?:string}>}) {
   const s = await requireAdmin();
@@ -17,16 +17,22 @@ export default async function AiManagementPage({searchParams}:{searchParams:Prom
   const numbers = (value:unknown) => f.number(Number(value??0));
   const usage = (row?:Partial<AiUsageSummary>) => <span className="text-xs text-muted-foreground">{t('usage',{daily:numbers(row?.daily_requests),tokens:numbers(row?.monthly_tokens),held:numbers(row?.held_tokens)})}</span>;
   const allowance = (kind:'company'|'user',id:string,label:string,row?:Partial<AiUsageSummary>) => {
+    const user = kind==='user'?view.users.find(u=>u.id===id):undefined;
     const policy = view.policies.find(p=>p.scopeKey===`${kind}:${id}`);
     return <li key={id} className="py-4">
-      <form action={setAiAllowanceAction} className="grid items-end gap-3 md:grid-cols-[minmax(12rem,1fr)_10rem_12rem_8rem_auto]">
-        <input type="hidden" name="kind" value={kind}/><input type="hidden" name="subjectId" value={id}/>
-        <div className="min-w-0"><p className="break-words font-medium">{label}</p>{usage(row)}</div>
+      <form action={setAiAllowanceAction} className="grid items-end gap-3 md:grid-cols-2 xl:grid-cols-[minmax(10rem,1fr)_minmax(7rem,10rem)_minmax(8rem,12rem)_minmax(6rem,8rem)_auto]">
+        <input type="hidden" name="q" value={sp.q??''}/><input type="hidden" name="kind" value={kind}/><input type="hidden" name="subjectId" value={id}/>
+        <div className="min-w-0 md:col-span-2 xl:col-span-1"><p className="break-words font-medium">{label}</p>{usage(row)}</div>
         <label className="text-xs">{t('daily')}<input aria-label={`${label} · ${t('daily')}`} className={`${inputCls} mt-1`} type="number" min="0" max="1000000" step="1" name="dailyRequests" defaultValue={policy?.dailyRequests??''} placeholder={t('unlimited')}/></label>
         <label className="text-xs">{t('monthly')}<input aria-label={`${label} · ${t('monthly')}`} className={`${inputCls} mt-1`} type="number" min="0" max="1000000000000" step="1" name="monthlyTokens" defaultValue={policy?.monthlyTokens??''} placeholder={t('unlimited')}/></label>
         <label className="text-xs">{t('access')}<select aria-label={`${label} · ${t('access')}`} name="enabled" defaultValue={String(policy?.enabled!==false)} className={`${inputCls} mt-1`}><option value="true">{t('allowed')}</option><option value="false">{t('paused')}</option></select></label>
         <button className={btnPrimary} type="submit">{t('save')}</button>
       </form>
+      {user&&<form action={setAssistantPermissionAction} className="mt-2 flex flex-wrap items-center gap-3 text-xs">
+        <input type="hidden" name="userId" value={user.id}/><input type="hidden" name="q" value={sp.q??''}/><input type="hidden" name="enabled" value={String(!user.assistantGranted)}/>
+        <span>{t(user.assistantGranted?'assistantGranted':'assistantNotGranted')}</span>
+        <button type="submit" className="font-medium text-primary hover:underline" aria-label={`${label} · ${t(user.assistantGranted?'revokeAssistant':'grantAssistant')}`}>{t(user.assistantGranted?'revokeAssistant':'grantAssistant')}</button>
+      </form>}
     </li>;
   };
   return <div className={pageWideCls}>
@@ -34,7 +40,7 @@ export default async function AiManagementPage({searchParams}:{searchParams:Prom
     <ErrorBanner message={sp.error}/>
     {sp.toast && <p role="status" className="rounded-md border border-border p-3 text-sm">{sp.toast}</p>}
     <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-      <p>{view.provider?t('provider',{provider:view.provider.provider,model:view.provider.model}):t('noProvider')}</p>
+      <p className="min-w-0 break-words">{view.provider?t('provider',{provider:view.provider.provider,model:view.provider.model}):t('noProvider')}</p>
       <div className="flex flex-wrap gap-3"><Link href="/admin/ai" className={btnGhost}>{t('configureProvider')}</Link><Link href="/control-tower/agents" className={btnGhost}>{t('refresh')}</Link></div>
     </div>
     <Card className="overflow-hidden">
