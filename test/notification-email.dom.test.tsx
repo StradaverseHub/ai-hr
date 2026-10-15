@@ -25,6 +25,14 @@ describe('workflow email configuration screens',()=>{
   m.relay.mockResolvedValue({version:1,ready:true});m.deliveries.mockResolvedValue([{id:'delivery',category:'payroll',status:'failed',attempts:1,error:'uncertain',createdAt:new Date(),sentAt:null}]);
   render(await AdminPage({searchParams:Promise.resolve({})}));expect(screen.getByText(en.workflowEmail.deliveriesHelp)).toBeTruthy();const checkbox=screen.getByRole('checkbox',{name:en.workflowEmail.retryAck}) as HTMLInputElement;expect(checkbox.required).toBe(true);expect(checkbox.checked).toBe(false);
  });
+ it('shows missing SMTP as a failed delivery with an individual retry and explains that HR work continues',async()=>{
+  m.relay.mockResolvedValue({version:1,ready:false});m.deliveries.mockResolvedValue([{id:'offline-delivery',category:'performance',status:'failed',attempts:1,error:'relayUnavailable',createdAt:new Date(),sentAt:null}]);
+  render(await AdminPage({searchParams:Promise.resolve({})}));
+  expect(screen.getByText(en.workflowEmail.relayOff)).toBeTruthy();expect(screen.getByText(en.workflowEmail.errors.relayUnavailable)).toBeTruthy();
+  expect(screen.getByText(en.workflowEmail.statuses.failed)).toBeTruthy();expect(screen.getByRole('button',{name:en.workflowEmail.retry})).toBeTruthy();
+  expect((document.querySelector('input[name=deliveryId]') as HTMLInputElement).value).toBe('offline-delivery');
+  expect(screen.getByText(en.workflowEmail.deliveriesHelp)).toBeTruthy();
+ });
  it('does not let a demo login opt in, while leaving consent withdrawal representable',async()=>{
   render(await MyPage({searchParams:Promise.resolve({})}));expect(screen.getByText(en.workflowEmail.identityRequired)).toBeTruthy();expect(screen.getAllByRole('checkbox').every(c=>(c as HTMLInputElement).disabled)).toBe(true);
   cleanup();m.preferences.mockResolvedValue({employments:[{id:'employment',code:'EMP-01'}],preferences:[{recipientEmploymentId:'employment',category:'leave',enabled:true,emailConsentUserId:'user',emailAfterSequence:0,emailLocale:'en'}],policy:[]});

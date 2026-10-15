@@ -17080,8 +17080,8 @@
     "consentHelp": "Pilih kemas kini untuk alamat e-mel yang disahkan dalam profil pekerja anda. Keutamaan berasingan bagi setiap pekerjaan dan hanya untuk peristiwa baharu.",
     "identityRequired": "Log masuk dengan akaun dalaman yang disahkan dan e-melnya sepadan dengan profil pekerja untuk mengaktifkan e-mel. Anda masih boleh mematikan semua e-mel tanpa memberikan persetujuan.",
     "relayReady": "Geganti SMTP terurus aktif. Pemberitahuan yang layak boleh dihantar.",
-    "relayOff": "Geganti SMTP terurus belum aktif. E-mel aliran kerja belum boleh dihantar.",
-    "upgradeRequired": "Perkhidmatan e-mel persendirian memerlukan naik taraf pemberitahuan aliran kerja sebelum penghantaran e-mel.",
+    "relayOff": "SMTP belum dikonfigurasi atau tidak tersedia. Aliran kerja HR diteruskan; cubaan e-mel yang layak direkodkan sebagai gagal. Selepas menyediakan SMTP, pilih e-mel gagal yang mahu dicuba semula.",
+    "upgradeRequired": "Perkhidmatan e-mel tidak tersedia atau memerlukan naik taraf. Aliran kerja HR diteruskan; cubaan e-mel yang layak direkodkan sebagai gagal.",
     "policyTitle": "Kategori yang dibenarkan organisasi",
     "preferencesCategories": "E-mel kepada saya tentang kategori ini",
     "notAllowed": "Kini dimatikan oleh organisasi anda",
@@ -17092,7 +17092,7 @@
     "saved": "Tetapan disimpan.",
     "noEmployment": "Tiada profil pekerja dipautkan kepada log masuk ini.",
     "deliveries": "Penghantaran e-mel terkini",
-    "deliveriesHelp": "Dihantar bermaksud diterima oleh geganti, bukan bukti penerimaan. Senarai ini menunjukkan 50 penghantaran terkini. Penghantaran tidak pasti ditahan untuk mengelakkan pendua automatik.",
+    "deliveriesHelp": "Diterima oleh geganti bukan bukti penerimaan. Senarai ini menunjukkan 50 penghantaran terkini. E-mel gagal kekal sehingga anda memilih untuk mencuba semula; menyediakan SMTP tidak menghantarnya semula secara automatik. Penghantaran tidak pasti ditahan untuk mengelakkan pendua.",
     "noDeliveries": "Tiada e-mel aliran kerja dalam baris gilir.",
     "category": "Kategori",
     "status": "Status",
@@ -17114,7 +17114,7 @@
       "skipped": "Dilangkau"
     },
     "errors": {
-      "relayUnavailable": "Geganti tidak tersedia",
+      "relayUnavailable": "SMTP belum dikonfigurasi atau tidak tersedia. E-mel ini tidak dihantar; sediakan SMTP dan pilih Cuba semula penghantaran apabila perlu.",
       "recipientUnavailable": "Penyedia identiti tidak tersedia",
       "recipientChanged": "E-mel yang disahkan atau akaun berubah",
       "notEligible": "Penerima atau keutamaan tidak lagi layak",

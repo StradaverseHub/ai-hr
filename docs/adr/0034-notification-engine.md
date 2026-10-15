@@ -123,7 +123,22 @@ SMTP. Explicit temporary SMTP rejection may retry with bounded backoff (five att
 Unknown acknowledgements and abandoned started attempts become **uncertain** and are not automatically
 retried: SMTP does not offer exactly-once delivery. A group administrator can explicitly retry after
 acknowledging possible duplicate mail; eligibility is checked again. `sent` means accepted by the relay,
-not received or read by a human. Pre-send unavailability leaves the pending job for a later sweep.
+not received or read by a human.
+
+Missing or unavailable SMTP is a delivery failure, independent of the HR action. The dispatcher still
+projects the notification and resolves current work, then records an eligible unstarted email attempt
+as `failed` with `relayUnavailable`. A definite pre-send refusal from the private service is likewise
+terminal (`recipientUnavailable` when the relay is ready but recipient verification is unavailable).
+The atomic update requires the exact lease token and no started SMTP attempt; it cannot overwrite an
+accepted, in-flight or uncertain send. A lost IPC acknowledgement retains the existing lease/uncertainty
+handling because it does not prove non-delivery.
+
+Activating SMTP does not reopen failed deliveries. A group administrator chooses individual retries
+through the existing delivery log; leaving a failure unchanged sends nothing. Each retry resolves
+current recipient permission, consent, identity and pending Performance work again. Completed or
+ineligible work is skipped rather than sending a stale assessment reminder. Newly due events continue
+through the normal scheduler. No SMTP readiness check is added to an HR business writer, and no
+recipient consent or category permission is inferred from SMTP availability.
 
 ### Scope and activation
 

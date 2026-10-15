@@ -17080,8 +17080,8 @@
     "consentHelp": "选择发送至员工资料中已验证邮箱的更新。偏好按每份雇佣关系分别保存，仅适用于未来事件。",
     "identityRequired": "启用邮件前，请使用已验证的内部账号登录，且邮箱须与员工资料一致。您仍可关闭所有邮件而不提供同意。",
     "relayReady": "托管 SMTP 中继已激活，可发送符合条件的通知。",
-    "relayOff": "托管 SMTP 中继尚未激活，目前无法发送工作流程邮件。",
-    "upgradeRequired": "私人邮件服务须安装工作流程通知升级后才能发送邮件。",
+    "relayOff": "SMTP 尚未配置或不可用。HR 流程仍可继续；符合条件的邮件发送尝试会记录为失败。配置 SMTP 后，可自行选择重试哪些失败邮件。",
+    "upgradeRequired": "邮件服务不可用或需要升级。HR 流程仍可继续；符合条件的邮件发送尝试会记录为失败。",
     "policyTitle": "组织允许的类别",
     "preferencesCategories": "通过邮件通知我以下类别",
     "notAllowed": "您的组织目前已禁用",
@@ -17092,7 +17092,7 @@
     "saved": "设置已保存。",
     "noEmployment": "此登录账号未关联员工资料。",
     "deliveries": "最近邮件发送记录",
-    "deliveriesHelp": "已发送表示中继已接受，并不证明收件人已收到。此处显示最近 50 条记录。发送结果不确定时将暂停，避免自动重复发送。",
+    "deliveriesHelp": "中继接受邮件并不代表收件人已收到。此处显示最近 50 条发送记录。失败邮件会保留，直到您选择重试；配置 SMTP 不会自动重新发送。发送结果不确定时会暂停，以免重复发送。",
     "noDeliveries": "暂无工作流程邮件进入队列。",
     "category": "类别",
     "status": "状态",
@@ -17114,7 +17114,7 @@
       "skipped": "已跳过"
     },
     "errors": {
-      "relayUnavailable": "中继不可用",
+      "relayUnavailable": "SMTP 尚未配置或不可用。此邮件尚未发送；配置 SMTP 后，可按需选择重试发送。",
       "recipientUnavailable": "身份提供方不可用",
       "recipientChanged": "已验证邮箱或账号已变更",
       "notEligible": "收件人或偏好不再符合条件",

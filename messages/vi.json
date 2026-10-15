@@ -17080,8 +17080,8 @@
     "consentHelp": "Chọn cập nhật gửi đến email đã xác minh trong hồ sơ nhân viên. Tùy chọn được lưu riêng theo từng quan hệ việc làm và chỉ áp dụng cho sự kiện mới.",
     "identityRequired": "Đăng nhập bằng tài khoản nội bộ đã xác minh có email khớp hồ sơ nhân viên để bật email. Bạn vẫn có thể tắt mọi email mà không cần đồng ý nhận.",
     "relayReady": "Máy chủ chuyển tiếp SMTP đang hoạt động. Thông báo đủ điều kiện có thể được gửi.",
-    "relayOff": "Máy chủ chuyển tiếp SMTP chưa hoạt động. Chưa thể gửi email quy trình.",
-    "upgradeRequired": "Dịch vụ email riêng cần bản nâng cấp thông báo quy trình trước khi có thể gửi email.",
+    "relayOff": "SMTP chưa được cấu hình hoặc không khả dụng. Quy trình HR vẫn tiếp tục; các lần gửi email đủ điều kiện được ghi nhận là thất bại. Sau khi cấu hình SMTP, chọn email thất bại cần gửi lại.",
+    "upgradeRequired": "Dịch vụ email không khả dụng hoặc cần nâng cấp. Quy trình HR vẫn tiếp tục; các lần gửi email đủ điều kiện được ghi nhận là thất bại.",
     "policyTitle": "Danh mục tổ chức cho phép",
     "preferencesCategories": "Gửi email cho tôi về các danh mục này",
     "notAllowed": "Tổ chức hiện đang tắt",
@@ -17092,7 +17092,7 @@
     "saved": "Đã lưu cài đặt.",
     "noEmployment": "Tài khoản này chưa liên kết hồ sơ nhân viên.",
     "deliveries": "Email gửi gần đây",
-    "deliveriesHelp": "Đã gửi nghĩa là máy chủ chuyển tiếp đã chấp nhận, không chứng minh người nhận đã nhận. Danh sách hiển thị 50 lần gửi gần nhất. Lần gửi chưa rõ kết quả được giữ lại để tránh tự động gửi trùng.",
+    "deliveriesHelp": "Máy chủ chuyển tiếp chấp nhận không có nghĩa người nhận đã nhận. Danh sách hiển thị 50 lần gửi gần nhất. Email thất bại được giữ lại đến khi bạn chọn gửi lại; cấu hình SMTP không tự động gửi lại. Các lần gửi chưa rõ kết quả được giữ để tránh gửi trùng.",
     "noDeliveries": "Chưa có email quy trình trong hàng đợi.",
     "category": "Danh mục",
     "status": "Trạng thái",
@@ -17114,7 +17114,7 @@
       "skipped": "Đã bỏ qua"
     },
     "errors": {
-      "relayUnavailable": "Máy chủ chuyển tiếp không khả dụng",
+      "relayUnavailable": "SMTP chưa được cấu hình hoặc không khả dụng. Email này chưa được gửi; cấu hình SMTP rồi chọn Gửi lại khi cần.",
       "recipientUnavailable": "Nhà cung cấp danh tính không khả dụng",
       "recipientChanged": "Email xác minh hoặc tài khoản đã thay đổi",
       "notEligible": "Người nhận hoặc tùy chọn không còn đủ điều kiện",

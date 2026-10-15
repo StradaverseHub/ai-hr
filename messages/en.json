@@ -17080,8 +17080,8 @@
     "consentHelp": "Choose the updates you want emailed to the verified address on your employee profile. Preferences apply separately to each employment and to future events only.",
     "identityRequired": "Sign in with a verified internal account whose email matches your employee profile to enable email notifications. You can turn all email notifications off without opting in.",
     "relayReady": "The managed SMTP relay is active. Eligible notifications can be delivered.",
-    "relayOff": "The managed SMTP relay is not active. No workflow email can be delivered yet.",
-    "upgradeRequired": "The private email service needs the workflow notification upgrade before email can be delivered.",
+    "relayOff": "SMTP is not configured or available. HR workflows continue; eligible email attempts are recorded as failed. After configuring SMTP, choose which failed emails to retry.",
+    "upgradeRequired": "The email service is unavailable or needs an upgrade. HR workflows continue; eligible email attempts are recorded as failed.",
     "policyTitle": "Categories allowed by your organisation",
     "preferencesCategories": "Email me about these categories",
     "notAllowed": "Currently disabled by your organisation",
@@ -17092,7 +17092,7 @@
     "saved": "Settings saved.",
     "noEmployment": "No employee profile is linked to this login.",
     "deliveries": "Recent email deliveries",
-    "deliveriesHelp": "Sent means accepted by the relay; it does not prove receipt. This list shows the latest 50 deliveries. Uncertain sends are held to avoid automatic duplicates.",
+    "deliveriesHelp": "Accepted by relay does not prove receipt. This list shows the latest 50 deliveries. Failed emails remain here until you choose to retry; configuring SMTP does not resend them automatically. Uncertain sends are held to avoid duplicates.",
     "noDeliveries": "No workflow email has been queued.",
     "category": "Category",
     "status": "Status",
@@ -17114,7 +17114,7 @@
       "skipped": "Skipped"
     },
     "errors": {
-      "relayUnavailable": "Relay unavailable",
+      "relayUnavailable": "SMTP is not configured or available. This email was not sent; configure SMTP and choose Retry delivery when needed.",
       "recipientUnavailable": "Identity provider unavailable",
       "recipientChanged": "Verified email or account changed",
       "notEligible": "Recipient or preferences no longer eligible",
