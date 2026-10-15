@@ -83,6 +83,16 @@ describe('share gate (middleware.ts)', () => {
       expectPassedThrough(middleware(req(basic('sekret'))), '/people');
     });
 
+    it('overwrites a forged protected pathname on a login-flow action request', () => {
+      const request = new NextRequest('http://localhost/login', {method:'POST',headers:{'next-action':'synthetic-action','x-pathname':'/admin/settings/email'}});
+      expectPassedThrough(middleware(request), '/login');
+    });
+
+    it('challenges SMTP settings action requests without the demo password', () => {
+      const request = new NextRequest('http://localhost/admin/settings/email', {method:'POST',headers:{'next-action':'synthetic-action'}});
+      expect(middleware(request).status).toBe(401);
+    });
+
     it('lets the WorkOS login flow past the challenge (ADR-0072), with x-pathname set', () => {
       expectPassedThrough(middleware(req(undefined, '/login')), '/login');
     });

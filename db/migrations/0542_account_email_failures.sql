@@ -147,3 +147,19 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.notification_email_recipient_code(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.notification_email_recipient_code(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Restricted migration-owner reminder invalidation
+-- This derived counter is maintained only by the canonical SECURITY DEFINER trigger. Production's
+-- NOSUPERUSER/NOBYPASSRLS table/function owner cannot write through a SELECT-only FORCE RLS policy;
+-- that made ordinary person/employment writes fail. Keep app RLS and its scoped read policy, restore
+-- the table owner's private maintenance path, and erase bootstrap/default/public write grants.
+REVOKE ALL ON performance_assessment_reminder_epoch FROM PUBLIC,ai_hr_app;
+GRANT SELECT ON performance_assessment_reminder_epoch TO ai_hr_app;
+DO $$ BEGIN
+ IF has_table_privilege('ai_hr_app','performance_assessment_reminder_epoch','INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+  OR has_any_column_privilege('ai_hr_app','performance_assessment_reminder_epoch','INSERT,UPDATE') THEN
+  RAISE EXCEPTION 'Application role retains an inherited reminder-epoch write capability';
+ END IF;
+END $$;
+ALTER TABLE performance_assessment_reminder_epoch NO FORCE ROW LEVEL SECURITY;
