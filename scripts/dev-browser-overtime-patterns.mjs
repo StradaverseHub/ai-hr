@@ -14,7 +14,7 @@ import net from 'node:net';
 import {fileURLToPath} from 'node:url';
 import {spawn,execFileSync} from 'node:child_process';
 import {DEMO_TENANT_ID,SYSTEM_TENANT_ID,demoSeedRefusal} from '../db/seed-guard.ts';
-import {overtimeBrowserTarget} from './overtime-browser-target.mjs';
+import {overtimeBrowserTarget,validateOvertimePayrollPreparation} from './overtime-browser-target.mjs';
 import {overtimeResumeReceiptName,validateOvertimeResumeReceipts} from './overtime-browser-resume.mjs';
 import {todayInKualaLumpur} from '../lib/hr-date.ts';
 const filename=fileURLToPath(import.meta.url),root=fileURLToPath(new URL('..',import.meta.url));
@@ -157,8 +157,9 @@ if(!target.heldLockWorker) {
       await postgresApp.end();postgresApp=undefined;await postgresTarget.end();postgresTarget=undefined;
       preparationCandidate=binding.preparationCandidate;fixtureDate=binding.date;preparedFixture=fixture;
       resumeReceipt='browser-resume-'+candidate+'-'+Date.now()+'.json';devLogName=resumeReceipt.replace(/\.json$/,'-dev.log');
-      fs.writeFileSync(path.join(out,resumeReceipt),JSON.stringify({candidate,preparationCandidate,resumedFromCandidate:binding.resumedFromCandidate,preparationManifest:'browser-manifest.json',priorStoppedReceipt:stopped,root,database,namespace,port:Number(port),date:fixtureDate,fixtureRunsThisCandidate:0,resumedAt:new Date().toISOString(),devLogName,applicationAcceptance:'UNVERIFIED'},null,2)+'\n',{flag:'wx'});
+      fs.writeFileSync(path.join(out,resumeReceipt),JSON.stringify({candidate,preparationCandidate,resumedFromCandidate:binding.resumedFromCandidate,preparationManifest:'browser-manifest.json',priorStoppedReceipt:stopped,...(target.deferPayroll?{payrollPreparation:'deferred'}:{}),root,database,namespace,port:Number(port),date:fixtureDate,fixtureRunsThisCandidate:0,resumedAt:new Date().toISOString(),devLogName,applicationAcceptance:'UNVERIFIED'},null,2)+'\n',{flag:'wx'});
     } else {
+      if(fs.existsSync(path.join(out,'fixture-manifest.json')))validateOvertimePayrollPreparation(readReceipt('fixture-manifest.json'),target);
       const adminUrl=new URL(ownerUrl);adminUrl.pathname='/postgres';postgresAdmin=postgres(adminUrl.toString(),{max:1,connect_timeout:10,idle_timeout:5,connection:{statement_timeout:10000}});
       const existing=await postgresAdmin`select datname from pg_database where datname=${database}`;
       if(!existing.length)await postgresAdmin.unsafe('CREATE DATABASE "'+database+'"');
@@ -183,8 +184,8 @@ if(!target.heldLockWorker) {
       for(const label of ['browser-fixture-first','browser-fixture-second'])await run(process.execPath,['--import','tsx',path.join(root,'scripts/dev-fixture-overtime-patterns.mts'),...target.childArgs],label,120000);
       const manifests=['browser-fixture-first','browser-fixture-second'].map(manifestFromLog);
       if(JSON.stringify(manifests[0])!==JSON.stringify(manifests[1]))throw new Error('Fixture rerun changed its declared business identities/files; no clean-twice claim.');
-      preparedFixture=manifests[1];fixtureDate=preparedFixture.date;
-      fs.writeFileSync(path.join(out,'browser-manifest.json'),JSON.stringify({candidate,root,database,namespace,port:Number(port),fixtureRuns:2,fixture:preparedFixture},null,2)+'\n');
+      preparedFixture=manifests[1];validateOvertimePayrollPreparation(preparedFixture,target);fixtureDate=preparedFixture.date;
+      fs.writeFileSync(path.join(out,'browser-manifest.json'),JSON.stringify({candidate,...(target.deferPayroll?{payrollPreparation:'deferred'}:{}),root,database,namespace,port:Number(port),fixtureRuns:2,fixture:preparedFixture},null,2)+'\n');
     }
     env.DEV_USER_ID=preparedFixture.people.HR.userId;
     // Switching principals in the actual demo UI also permits the receipt-bound foreign tenant.
@@ -213,7 +214,7 @@ if(!target.heldLockWorker) {
     // Publish a CURRENT stop only after every owned group and DB handle has closed. A failed run
     // remains failed; this is cleanup provenance, never a browser or fixture PASS receipt.
     if(Number.isSafeInteger(ownedServerPid)&&ownedServerPid>1) {
-      const receipt={candidate,preparationCandidate,root,database,namespace,date:fixtureDate,port:Number(port),resumeReceipt,devLogName,serverPid:ownedServerPid,ownedServerStopped:true,cleanupSucceeded:true,outcome:runFailed?'failed':'stopped',exitCode:runFailed?1:0,stoppedAt:new Date().toISOString()};
+      const receipt={candidate,preparationCandidate,...(target.deferPayroll?{payrollPreparation:'deferred'}:{}),root,database,namespace,date:fixtureDate,port:Number(port),resumeReceipt,devLogName,serverPid:ownedServerPid,ownedServerStopped:true,cleanupSucceeded:true,outcome:runFailed?'failed':'stopped',exitCode:runFailed?1:0,stoppedAt:new Date().toISOString()};
       const temporary=path.join(out,'browser-stopped.json.tmp-'+process.pid);
       fs.writeFileSync(temporary,JSON.stringify(receipt,null,2)+'\n',{flag:'wx'});
       fs.renameSync(temporary,path.join(out,'browser-stopped.json'));

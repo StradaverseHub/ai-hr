@@ -5,7 +5,7 @@ import {validateOvertimeResumeReceipts} from '../scripts/overtime-browser-resume
 const root='/fictional/worktree/',today='2026-10-16',prepared='a'.repeat(40),prior='b'.repeat(40);
 function receipts(){
  const target=overtimeBrowserTarget(['--attempt=b2','--resume'],{allowResume:true});
- const fixture={root,database:target.database,namespace:target.namespace,port:3210,date:today,setupOnly:true,tenantId:'22222222-2222-4222-8222-222222222222',foreignTenant:{id:'33333333-3333-4333-8333-333333333333',name:'Overtime16 fictional foreign tenant'},people:{HR:{userId:'44444444-4444-4444-8444-444444444444',tenantId:'22222222-2222-4222-8222-222222222222'}}};
+ const fixture={root,database:target.database,namespace:target.namespace,port:3210,date:today,setupOnly:true,batch:{id:'55555555-5555-4555-8555-555555555555',status:'draft',employmentIds:['66666666-6666-4666-8666-666666666666']},tenantId:'22222222-2222-4222-8222-222222222222',foreignTenant:{id:'33333333-3333-4333-8333-333333333333',name:'Overtime16 fictional foreign tenant'},people:{HR:{userId:'44444444-4444-4444-8444-444444444444',tenantId:'22222222-2222-4222-8222-222222222222'}}};
  const browser={root,database:target.database,namespace:target.namespace,port:3210,candidate:prepared,fixtureRuns:2,fixture:structuredClone(fixture)};
  const stopped={candidate:prepared,database:target.database,port:3210,ownedServerStopped:true,stoppedAt:today+'T00:00:00.000Z'};
  return {target,fixture,browser,stopped,root,today};

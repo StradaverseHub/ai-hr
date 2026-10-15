@@ -14,7 +14,7 @@ import type {SessionContext} from '../db/client';
 import type {OvertimePattern,OvertimeExpression} from '../lib/overtime-pattern-model';
 import type {OvertimeSampleDraft} from '../lib/overtime-pattern-ui';
 import {DEMO_TENANT_ID,SYSTEM_TENANT_ID,demoSeedRefusal} from '../db/seed-guard';
-import {overtimeBrowserTarget} from './overtime-browser-target.mjs';
+import {overtimeBrowserTarget,validateOvertimePayrollPreparation} from './overtime-browser-target.mjs';
 const root=fileURLToPath(new URL('..',import.meta.url));
 // Derive independently from the bounded CLI; environment URLs must then prove this exact target.
 const target=overtimeBrowserTarget(process.argv.slice(2));
@@ -66,8 +66,9 @@ async function main() {
  const [role]=await client`select current_user as name,rolsuper,rolbypassrls from pg_roles where rolname=current_user`;if(role?.name!=='ai_hr_app'||role.rolsuper||role.rolbypassrls)throw new Error('Application connection is not the restricted ai_hr_app role.');
  const [ownerRole]=await owner.client`select current_user as name`;if(ownerRole?.name!==decodeURIComponent(urls.MIGRATION_DATABASE_URL.username))throw new Error('Migration connection role differs from configured target.');
  const previousText=await fs.readFile(path.join(out,'fixture-manifest.json'),'utf8').catch(error=>{if((error as NodeJS.ErrnoException).code==='ENOENT')return null;throw error;});
- const previous=previousText?JSON.parse(previousText) as {root?:unknown;database?:unknown;namespace?:unknown;date?:unknown;tenantId?:unknown;foreignTenant?:{id?:unknown};patterns?:Record<string,unknown>}:null;
+ const previous=previousText?JSON.parse(previousText) as {root?:unknown;database?:unknown;namespace?:unknown;date?:unknown;tenantId?:unknown;foreignTenant?:{id?:unknown};patterns?:Record<string,unknown>;payrollPreparation?:unknown;batch?:unknown}:null;
  if(previousText&&(!previous||previous.root!==root||previous.database!==database||previous.namespace!==namespace||typeof previous.date!=='string'||typeof previous.tenantId!=='string'||typeof previous.foreignTenant?.id!=='string'||!previous.patterns))throw new Error('Existing fixture receipt differs from this target; preserve it.');
+ if(previous)validateOvertimePayrollPreparation(previous,target);
  const date=todayInKualaLumpur();if(previous&&previous.date!==date)throw new Error('Current-day context journey crossed a KL date boundary. Preserve it; coordinate a fresh disposable target.');
  const tenants=await owner.db.select().from(s.tenant).orderBy(asc(s.tenant.id));
  if(!tenants.some(row=>row.id===tenantId&&row.name==='Demo Group')||tenants.some(row=>row.id!==tenantId&&row.id!==SYSTEM_TENANT_ID&&!(previous?.foreignTenant?.id===row.id&&row.name===foreignName)&&!(previous?.tenantId===row.id&&row.name===primaryName)))throw new Error('Only the seeded demo and receipt-bound fictional foreign tenant are allowed.');
@@ -178,20 +179,29 @@ async function main() {
  const used=await owner.db.select({id:s.attendance.id}).from(s.attendance).where(eq(s.attendance.employmentId,people.Fractional.employmentId)).limit(1);if(used.length)throw new Error('A Records journey has started; preserve it rather than claiming a fresh fixture.');
  let batch=one(await owner.db.select().from(s.payrollBatch).where(and(eq(s.payrollBatch.companyId,companies.Main),eq(s.payrollBatch.payPeriod,date.slice(0,7)),eq(s.payrollBatch.runType,'regular'))),'draft Payroll run');
  const batchEmployees=['Hourly','Fractional','Ineligible','ToilFirst','CashFirst'].map(key=>people[key].employmentId);
- if(!batch){if(previous)throw new Error('Previously declared Payroll run missing.');const made=await createBatch(hr,{companyId:companies.Main,payPeriod:date.slice(0,7),scope:{employmentIds:batchEmployees}});batch=one(await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,made.batchId)),'created run');}
- if(!batch||batch.status!=='draft')throw new Error('Payroll journey changed; preserve it.');
+ let batchPreparation:{id?:string;employmentIds:string[];status:'draft'|'not-created'};
+ if(target.deferPayroll) {
+  if(batch)throw new Error('Deferred Payroll preparation already has a run; preserve the actual journey and use resume.');
+  batchPreparation={employmentIds:batchEmployees,status:'not-created'};
+ } else {
+  if(!batch){if(previous)throw new Error('Previously declared Payroll run missing.');const made=await createBatch(hr,{companyId:companies.Main,payPeriod:date.slice(0,7),scope:{employmentIds:batchEmployees}});batch=one(await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,made.batchId)),'created run');}
+  if(!batch||batch.status!=='draft')throw new Error('Payroll journey changed; preserve it.');
+  batchPreparation={id:batch.id,employmentIds:batchEmployees,status:'draft'};
+ }
+ const payrollPreparation=target.deferPayroll?{payrollPreparation:'deferred' as const}:{};
  const setup=await overtimePatternSetup(hr,{companyIds:[companies.Main],employeeIds:['Hourly','Fractional','PriceUnknown','ToilFirst','CashFirst','Incomplete','Ineligible','Legacy'].map(key=>people[key].employmentId)});
  const sample:OvertimeSampleDraft={date,currency:{code:'MYR',minorScale:2},sessionGranularity:'dayAggregate',approvalStatus:'approved',approvalMinutes:'61',facts:{companyId:companies.Main,employmentId:people.Hourly.employmentId,actualWorkingMinutes:'541',requiredWorkingMinutes:'480',lateMinutes:'0',basicSalary:'3500',calculationBase:'3500',dayType:'workday'},segments:[{id:'sample_segment',sessionId:'sample_session',date,rawMinutes:'541',dayType:'workday',endDayType:'',clockKnown:false,from:'',to:'',endDayOffset:0}],resources:[]};
  const priceUnknownSample:OvertimeSampleDraft={...sample,facts:{...sample.facts,basicSalary:'',calculationBase:''}};
  const deductionSample:OvertimeSampleDraft={...sample,facts:{...sample.facts,lateMinutes:'15'},resources:[{id:'sample_late',resource:'lateIn',basis:'day',sessionId:'',quantity:'15',unit:'minutes',evidence:'measured'},{id:'sample_break',resource:'postOtBreak',basis:'day',sessionId:'',quantity:'30',unit:'minutes',evidence:'policyCapacity'}]};
  const businessEpoch=digest(await owner.db.select({id:s.domainEvent.id,aggregateId:s.domainEvent.aggregateId,eventType:s.domainEvent.eventType,sequence:s.domainEvent.sequence}).from(s.domainEvent).where(inArray(s.domainEvent.tenantId,[tenantId,foreignTenant.id])).orderBy(asc(s.domainEvent.sequence),asc(s.domainEvent.id)));
- const manifest={businessEpoch,root,database,namespace,port:3210,tenantId,date,month:date.slice(0,7),locales,language:'Routes are unprefixed. Select language in the app; NEXT_LOCALE cookie chooses en/ms/zh/ta/th/vi without changing the route.',companies,departments,people,earningItem,patterns,samples:{base:sample,priceUnknown:priceUnknownSample,deductions:deductionSample},workflow:{id:workflow.id,lineageId:workflow.lineageId,version:workflow.version},batch:{id:batch.id,employmentIds:batchEmployees,status:'draft'},foreignTenant:{id:foreignTenant.id,name:foreignName,userId:foreignUser.id,principalName:foreign.person.fullName,login:foreignUser.workosUserId,companyId:(await owner.db.select().from(s.company).where(eq(s.company.tenantId,foreignTenant.id)))[0]?.id},
+ const manifest={businessEpoch,root,database,namespace,port:3210,tenantId,date,month:date.slice(0,7),locales,language:'Routes are unprefixed. Select language in the app; NEXT_LOCALE cookie chooses en/ms/zh/ta/th/vi without changing the route.',companies,departments,people,earningItem,patterns,samples:{base:sample,priceUnknown:priceUnknownSample,deductions:deductionSample},workflow:{id:workflow.id,lineageId:workflow.lineageId,version:workflow.version},...payrollPreparation,batch:batchPreparation,foreignTenant:{id:foreignTenant.id,name:foreignName,userId:foreignUser.id,principalName:foreign.person.fullName,login:foreignUser.workosUserId,companyId:(await owner.db.select().from(s.company).where(eq(s.company.tenantId,foreignTenant.id)))[0]?.id},
   setup:{employeeIds:setup.employees.map(row=>row.id).sort(),earningItemIds:setup.earningItems.map(row=>row.id).sort(),readerLimitations:setup.readerLimitations},
   routes:{workspace:'/admin/attendance/settings/overtime-patterns',new:'/admin/attendance/settings/overtime-patterns?new=1',emptySearch:'/admin/attendance/settings/overtime-patterns?search=OT16_NO_MATCH',daily:'/attendance/daily?date='+date,individual:'/attendance/individual?emp={employmentId}&from='+date+'&to='+date,myRecords:'/attendance/my-records',approval:'/approvals',payroll:'/payroll',credit:'/leave/credit-details'},
   intendedWindows:{complete:{checkIn:'09:00',checkOut:'19:01',requestMinutes:61},incomplete:{checkIn:'09:00',checkOut:null},legacy:{checkIn:'09:00',checkOut:'19:00'}},
   setupOnly:true,outcomes:'UNRUN: browser must make actual saved changes, previews, activation, assignments, punches, approvals, calculation and transfers. Fixture does not assert these outcomes.',
   emptyState:'EmptyHR company has no formula Draft; tenant-wide legacy compatibility can still be listed. No-match search tests the empty list honestly. New editor tests unconfigured controls.',
   limitations:['No SMTP/provider worker is started; no notification delivery is tested.','No sourceUnavailable marker is forged: incomplete clocks are a real refusal; missing/unreadable-source evidence remains a separate owner regression.','Payroll generation may identify further canonical statutory/profile prerequisites. Correct them through actual UI; do not force a successful payslip or call the fixture again.','After browser changes or a KL date rollover, preserve this database; fixture rerun intentionally refuses.']};
+ validateOvertimePayrollPreparation(manifest,target);
  await fs.mkdir(out,{recursive:true});const text=JSON.stringify(manifest,null,2)+'\n';if(previousText&&previousText!==text)throw new Error('Fixture facts/identity manifest drifted; preserve prior receipt.');await fs.writeFile(path.join(out,'fixture-manifest.json'),text);
  await new Promise<void>((resolve,reject)=>process.stdout.write('OVERTIME16_MANIFEST\n'+text,error=>error?reject(error):resolve()));
 }
