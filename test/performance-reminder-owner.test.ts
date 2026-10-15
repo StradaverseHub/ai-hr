@@ -58,7 +58,7 @@ describe('Performance invalidation under the production owner privilege model',(
    expect(flags).toEqual({relrowsecurity:true,ins:false,upd:false,del:false,trunc:false,public_grant:false,direct_touch:false});
    const own=await withTenant(ctx,tx=>tx.select().from(s.assessmentReminderEpoch).orderBy(s.assessmentReminderEpoch.tenantId,s.assessmentReminderEpoch.scopeId));
    expect(own.length).toBeGreaterThan(0);expect(own.every(row=>row.tenantId===b.tenantId)).toBe(true);expect(own.some(row=>row.tenantId===foreign.tenantId)).toBe(false);
-   expect(await withTenant({...ctx,userId:null,personId:null,roles:[]},tx=>tx.select().from(s.assessmentReminderEpoch).orderBy(s.assessmentReminderEpoch.scopeId))).toEqual([]);
+   expect(await withTenant({...ctx,userId:undefined,personId:undefined,roles:[]},tx=>tx.select().from(s.assessmentReminderEpoch).orderBy(s.assessmentReminderEpoch.scopeId))).toEqual([]);
    await expect(withTenant(ctx,tx=>tx.insert(s.assessmentReminderEpoch).values({tenantId:b.tenantId,scopeId:randomUUID()}))).rejects.toMatchObject({cause:expect.objectContaining({code:'42501'})});
    await expect(withTenant(ctx,tx=>tx.update(s.assessmentReminderEpoch).set({revision:999}))).rejects.toMatchObject({cause:expect.objectContaining({code:'42501'})});
    await expect(withTenant(ctx,tx=>tx.delete(s.assessmentReminderEpoch))).rejects.toMatchObject({cause:expect.objectContaining({code:'42501'})});
