@@ -11,7 +11,7 @@ import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import { toCsvReport, toXlsxReport, type ReportData } from '@/lib/report-export';
 import { parseInquiryQuery, inquirySearchParams, InquiryQueryError } from '@/lib/leave-inquiry-query';
-import { leaveInquiryContext, leaveInquiryRecordsPage, collectInquiryExport } from '@/packs/leave/service';
+import { leaveInquirySnapshot, leaveInquiryRecordsPageTx, collectInquiryExport } from '@/packs/leave/service';
 import { durationLabel } from '@/lib/leave-duration';
 import { formatDays } from '@/lib/day-format';
 import { todayInKualaLumpur } from '@/lib/hr-date';
@@ -26,13 +26,13 @@ export async function GET(req: Request) {
   try {
   const query = parseInquiryQuery(inquirySearchParams(sp), 'records');
   const { format } = query;
-  const inquiry = await leaveInquiryContext(session, scopeIds, query);
-  const selected = inquiry.selected;
 
   const t = await getTranslations('leave');
   const tInq = await getTranslations('leave.inquiry');
 
-  const rows = await collectInquiryExport(window => leaveInquiryRecordsPage(session, inquiry, query, window));
+  const { rows, selected } = await leaveInquirySnapshot(session, scopeIds, query, async (tx, inquiry) => ({
+    rows: await collectInquiryExport(window => leaveInquiryRecordsPageTx(tx, session, inquiry, query, window)), selected: inquiry.selected,
+  }));
 
   // Instants, not date-onlys: route them through the tenant timezone or the exported Applied and
   // Final Approval dates read as YESTERDAY between 00:00 and 08:00 MYT (r85's toISOString class).

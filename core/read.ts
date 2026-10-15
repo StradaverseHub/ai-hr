@@ -175,8 +175,10 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 // etc.). Do NOT swap in the paginated `listEmployeesPage`: the payroll picker needs every active
 // employee, not a page, or the checkbox set would silently drop people past the page boundary.
 export function listEmployees(ctx: SessionContext, companyIds?: string[]) {
-  return withTenant(ctx, (tx) =>
-    tx
+  return withTenant(ctx, tx => listEmployeesTx(tx, companyIds));
+}
+export function listEmployeesTx(tx: Tx, companyIds?: string[]) {
+  return tx
       .select({
         employmentId: employment.id,
         name: person.fullName,
@@ -240,8 +242,7 @@ export function listEmployees(ctx: SessionContext, companyIds?: string[]) {
       .leftJoin(position, eq(position.id, assignment.positionId))
       .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId))
       .where(companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined)
-      .orderBy(person.fullName),
-  );
+      .orderBy(person.fullName);
 }
 
 /**
@@ -1541,9 +1542,7 @@ export function countLeaveRequestsByStatus(ctx: SessionContext, p: Omit<LeaveReq
   });
 }
 
-export function listLeaveRequestsPage(
-  ctx: SessionContext,
-  p: {
+export type LeaveRequestPageOptions = {
     companyIds?: string[]; // scope fence (company switcher) — ALWAYS applied
     q?: string; // name / employeeCode / uuid-prefix reference
     companyId?: string;
@@ -1581,9 +1580,11 @@ export function listLeaveRequestsPage(
     dir?: string; // default: applied desc (today's order)
     limit: number;
     offset: number;
-  },
-): Promise<{ rows: (LeaveRequestRow & { company: string; department: string | null })[]; total: number }> {
-  return withTenant(ctx, async (tx) => {
+  };
+export function listLeaveRequestsPage(ctx: SessionContext, p: LeaveRequestPageOptions): Promise<{ rows: (LeaveRequestRow & { company: string; department: string | null })[]; total: number }> {
+  return withTenant(ctx, tx => listLeaveRequestsPageTx(tx, ctx, p));
+}
+export async function listLeaveRequestsPageTx(tx: Tx, ctx: SessionContext, p: LeaveRequestPageOptions): Promise<{ rows: (LeaveRequestRow & { company: string; department: string | null })[]; total: number }> {
     const { where, currentAssignment } = leaveRequestPageWhere(p);
     // Sort whitelist — NEVER interpolate user input into the ORDER BY.
     const sortCol: Record<string, AnyColumn> = {
@@ -1620,7 +1621,6 @@ export function listLeaveRequestsPage(
       .where(where);
     const withDates = await resolveLeaveWorkingDates(tx, rows);
     return { rows: withDates, total: Number(count) };
-  });
 }
 
 /**
@@ -2688,8 +2688,10 @@ async function earnedRecalcDaysBy(tx: Tx, employmentIds: string[], asOf?: string
  * Matches its includeHidden/includeArchived/includeIneligible HR contract, including zero eligible rows.
  */
 export function leaveBalanceInquiryMembership(ctx: SessionContext, employmentIds: string[], asOf: string, locale: string) {
+  return withTenant(ctx, tx => leaveBalanceInquiryMembershipTx(tx, ctx, employmentIds, asOf, locale));
+}
+export async function leaveBalanceInquiryMembershipTx(tx: Tx, ctx: SessionContext, employmentIds: string[], asOf: string, locale: string) {
   if (employmentIds.length > 100) throw new Error('Inquiry membership chunk exceeds 100 employments');
-  return withTenant(ctx, async (tx) => {
     if (!employmentIds.length) return [];
     const [types, profiles, ledger, pending] = await Promise.all([
       tx.select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, i18n: leaveType.i18n, eligibility: leaveType.eligibility, archivedAt: leaveType.archivedAt }).from(leaveType),
@@ -2699,7 +2701,6 @@ export function leaveBalanceInquiryMembership(ctx: SessionContext, employmentIds
     ]);
     const historical = new Set([...ledger, ...pending].map(r => `${r.employmentId}|${r.leaveTypeId}`));
     return profiles.flatMap(emp => types.filter(lt => historical.has(`${emp.employmentId}|${lt.id}`) || (lt.archivedAt == null && isProfileEligible(lt.eligibility as LeaveEligibility | null, emp, 'exclude'))).map(lt => ({ employmentId: emp.employmentId, leaveTypeId: lt.id, code: lt.code ?? '', leaveType: pickName(lt.name, lt.i18n, locale) })));
-  });
 }
 
 /**
@@ -6370,13 +6371,14 @@ export function allowedCompanies(ctx: SessionContext) {
  * picker when a delegated admin assigns a scoped role. Group admins get every company.
  */
 export function adminCompanies(ctx: SessionContext) {
-  return withTenant(ctx, (tx) =>
-    tx
+  return withTenant(ctx, tx => adminCompaniesTx(tx));
+}
+export function adminCompaniesTx(tx: Tx) {
+  return tx
       .select({ id: company.id, name: company.legalName })
       .from(company)
       .where(sql`app.is_admin_for(company.id)`)
-      .orderBy(company.legalName),
-  );
+      .orderBy(company.legalName);
 }
 
 /** Companies with their parent link — the group tree (ADR-0009). */

@@ -173,11 +173,15 @@ describe('20c699f8: Employee Balances', () => {
     // HR keeps seeing a balance standing under a leave type the employee is not eligible for (the 55
     // wrongly-granted Maternity balances are read from this screen). Same read, same asOf, same helper.
     expect(rowsHelper).toContain(
-      'leaveBalances(ctx, employmentId, locale, { includeHidden: true, includeArchived: true, includeIneligible: true, asOf })',
+      '{ includeHidden: true, includeArchived: true, includeIneligible: true, asOf }',
     );
     // r303 (31492f74) UPDATED THIS PIN, it did not retire it: the SAME read at the SAME asOf and locale, now
     // asking for the per-line working HR's Explain panel prints (`derivation: true`). Still ONE read.
-    expect(rowsHelper).toContain('leaveEntitlementBreakdown(ctx, employmentId, b.leaveTypeId, asOf, locale, { derivation: true })');
+    // Inquiry exports pass an explicit snapshot tx; both branches retain the same options/owners.
+    expect(rowsHelper).toContain('leaveBalances(ctx, employmentId, locale, balanceOptions)');
+    expect(rowsHelper).toContain('leaveBalancesTx(opts.tx, ctx, employmentId, locale, balanceOptions)');
+    expect(rowsHelper).toContain('leaveEntitlementBreakdown(ctx, employmentId, id, asOf, locale, { derivation: true })');
+    expect(rowsHelper).toContain('leaveEntitlementBreakdownTx(opts.tx, employmentId, id, asOf, locale, { derivation: true })');
     expect(rowsHelper).toContain('deriveBalanceRow(');
     // ESS per-component hiding is a self-service rule; HR sees the figure.
     expect(rowsHelper).toContain('essView: {}');

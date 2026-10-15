@@ -12,7 +12,7 @@ import { isAdmin } from '@/lib/authz';
 import { todayInKualaLumpur } from '@/core/leave';
 import { toCsvReport, toXlsxReport, type ReportData } from '@/lib/report-export';
 import { parseInquiryQuery, inquirySearchParams, InquiryQueryError } from '@/lib/leave-inquiry-query';
-import { leaveInquiryContext, collectInquiryExport } from '@/packs/leave/service';
+import { leaveInquirySnapshot, collectInquiryExport } from '@/packs/leave/service';
 import { formatDays } from '@/lib/day-format';
 import { pooledEntitlementCaption, isPoolBorrower, poolBadges } from '@/lib/shared-leave-balance';
 import { ENTITLEMENT_STATUS_LABEL_KEY } from '@/lib/entitlement-status';
@@ -27,8 +27,6 @@ export async function GET(req: Request) {
   try {
   const query = parseInquiryQuery(inquirySearchParams(sp), 'balances');
   const { format, asOf } = query;
-  const inquiry = await leaveInquiryContext(session, scopeIds, query);
-  const selected = inquiry.selected;
 
   const locale = await getLocale();
   const t = await getTranslations('leave');
@@ -40,7 +38,9 @@ export async function GET(req: Request) {
   // same dictionary the screen reads.
   const tf = await getTranslations(LEAVE_FIGURE_NS);
 
-  const rows = await collectInquiryExport(window => inquiryBalancePage(session, inquiry, query, locale, window));
+  const { rows, selected } = await leaveInquirySnapshot(session, scopeIds, query, async (tx, inquiry) => ({
+    rows: await collectInquiryExport(window => inquiryBalancePage(session, inquiry, query, locale, window, tx)), selected: inquiry.selected,
+  }));
 
   // 4a1abc4a: the export prints the same digits as the screen it exports, through the same formatter. The
   // placeholder is the ONE difference and it is deliberate — a spreadsheet cell for a figure nobody
