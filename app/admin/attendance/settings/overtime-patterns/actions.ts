@@ -112,8 +112,9 @@ function makeSampleInput(sample:OvertimeSampleDraft,tenantId:string,versionId:st
   }
   const segments:OvertimeRawSegment[]=[];
   for(const row of sample.segments) {
-    const common={sessionId:row.sessionId,approvedMinutes:unknown};
-    if(!row.clockKnown) {segments.push({...common,id:row.id,rawMinutes:quantity(row.rawMinutes),dayType:row.dayType?known(row.dayType):unknown,clock:unknown});continue;}
+    const common={sessionId:row.sessionId};
+    // This is measured segment capacity, not a physical approval interval. The entered day bound remains independent.
+    if(!row.clockKnown) {const capacity=quantity(row.rawMinutes);segments.push({...common,id:row.id,rawMinutes:capacity,approvedMinutes:capacity,dayType:row.dayType?known(row.dayType):unknown,clock:unknown});continue;}
     // Sample wall-clock values explicitly use Malaysia +08:00, never the browser's local zone.
     if(sample.sessionGranularity!=='recorded'||!isCalendarDate(row.date)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(row.from)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(row.to)||![0,1].includes(row.endDayOffset))invalid();
     const start=Date.parse(`${row.date}T${row.from}:00+08:00`);
@@ -125,7 +126,7 @@ function makeSampleInput(sample:OvertimeSampleDraft,tenantId:string,versionId:st
       const localDate=index===0?row.date:endDate;
       const localStartSecond=index===0?Number(row.from.slice(0,2))*3600+Number(row.from.slice(3))*60:0;
       const elapsedSeconds=Math.min((end-instant)/1000,86400-localStartSecond);
-      segments.push({...common,id:`${row.id}_${index}`,rawMinutes:known(String(elapsedSeconds/60)),dayType:(index===0?row.dayType:row.endDayType)?known(index===0?row.dayType:row.endDayType):unknown,clock:known({startEpochSeconds:String(instant/1000),localDate,localStartSecond,elapsedSeconds})});
+      segments.push({...common,id:`${row.id}_${index}`,rawMinutes:known(String(elapsedSeconds/60)),approvedMinutes:known(String(elapsedSeconds/60)),dayType:(index===0?row.dayType:row.endDayType)?known(index===0?row.dayType:row.endDayType):unknown,clock:known({startEpochSeconds:String(instant/1000),localDate,localStartSecond,elapsedSeconds})});
       instant+=elapsedSeconds*1000;index++;
     }
   }
