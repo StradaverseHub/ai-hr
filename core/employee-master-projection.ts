@@ -110,7 +110,7 @@ export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:Emp
       const scopedRows=rows.filter(row=>{
         if(!['assignment','compensation','payItem','cp38','shiftHistory','movement','movementComparison','leaveRecalc','leaveRequest','hireCorrection'].includes(owner))return true;
         const rawStart=date(row.validFrom??row.effectiveFrom??row.effectiveDate??row.startDate??row.changeEffectiveOn??row.effectiveOn),start=owner==='cp38'&&rawStart?.length===7?rawStart+'-01':rawStart;
-        if(!start)return true;
+        if(!start){if(spec.companyIds.includes(employment.companyId))subject.historyScopeUnavailable=true;return false;}
         const point=['movement','movementComparison','leaveRecalc','hireCorrection'].includes(owner);
         const rawEnd=date(row.reportEffectiveTo??row.validTo??row.endDate);
         const end=point?start:owner==='cp38'&&rawEnd?.length===7?new Date(new Date(nextMonth(rawEnd)!+'T00:00:00Z').getTime()-86_400_000).toISOString().slice(0,10):rawEnd&&['assignment','compensation','payItem'].includes(owner)?new Date(new Date(rawEnd+'T00:00:00Z').getTime()-86_400_000).toISOString().slice(0,10):rawEnd??spec.asAt;
