@@ -1014,6 +1014,8 @@ export async function bankToilCreditTx(
     firstScheduleConsent?: boolean;
     viaAutoApproval?: boolean;
     source: ToilAccrualSource;
+    /** Actual entered claim window; the canonical adapter proves its overlap, never a supplied proof. */
+    formulaClaimWindow?:{start:string;end:string};
     /** 3fb1a611: HR's stated reason and optional remarks on a hand-added credit. */
     note?: string;
     remarks?: string;
@@ -1033,8 +1035,9 @@ export async function bankToilCreditTx(
 ): Promise<AccrueToilResult> {
   // Same lock order as Attendance calculation and Payroll source reservation, before any ledger write.
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+p.employmentId},0))`);
-  const formula=await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate);
+  const formula=await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate,p.formulaClaimWindow);
   if(formula.kind==='formula'&&(p.companyId!==formula.companyId||!Number.isSafeInteger(p.otMinutes)||p.otMinutes<0||p.otMinutes>formula.minutes))throw new ToilNotEligibleError('The Leave Credit must use the proven source company and a reviewed subset of its current formula duration.');
+  if(formula.kind==='formula'&&p.workedDayKind==='workday'&&(formula.afterShiftMinutes===null||p.otMinutes>formula.afterShiftMinutes))throw new ToilNotEligibleError('Extended Leave Credit must be a reviewed subset of the recorded post-shift formula duration.');
   // Counted subsets already passed through the canonical break/grace/tier owner. Never expand them here.
   if(formula.kind==='formula'&&await payrollStartedForDateTx(tx,p.workedDate))throw new ToilNotEligibleError('Payroll for this worked period has already started. Release and remove an unfinalized draft run before electing Leave Credit; closed Payroll cannot be changed.');
 
@@ -1203,6 +1206,7 @@ export async function bankToilCreditTx(
       dayType,
       otMinutes,
       daysCredited,
+      ...(formula.kind==='formula'?{overtimePattern:{...formula.audit,qualificationBasis:p.workedDayKind==='workday'?'postShiftWindow':'workedDayDuration',qualifyingMinutes:p.workedDayKind==='workday'?formula.afterShiftMinutes:formula.minutes,consumedMinutes:otMinutes}}:{}),
       accrualBasis: policy.accrualBasis,
       eligible,
       forcedConvertOnExpiry: eligible,
@@ -1491,6 +1495,7 @@ export async function accrueExtendedWorkdayToilTx(
     requestedOn: p.requestedOn,
     firstScheduleConsent: p.firstScheduleConsent,
     source: 'employee_request',
+    formulaClaimWindow:{start:p.claimStart,end:p.claimEnd},
   });
   return { ...res, eligibleMinutes: countedMinutes, shiftEnd: day.shiftEnd, actualClockOut: day.actualClockOut };
 }
@@ -2676,6 +2681,7 @@ export async function grantLeaveCreditRows(
         requestedOn: d.row.workedDate,
         firstScheduleConsent: p.firstScheduleConsent === true,
         source: 'hr_manual_grant',
+        formulaClaimWindow:d.kind==='workday'?{start:d.row.claimStart!,end:d.row.claimEnd!}:undefined,
         note: reason,
         auditDetail: {
           claimStart: d.row.claimStart!,

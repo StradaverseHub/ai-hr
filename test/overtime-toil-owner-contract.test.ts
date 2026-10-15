@@ -11,6 +11,7 @@ describe('canonical TOIL source lifecycle',()=>{
   expect(lock).toBeGreaterThan(0);expect(proof).toBeGreaterThan(lock);expect(ledger).toBeGreaterThan(proof);expect(accrual).toBeGreaterThan(ledger);expect(reserve).toBeGreaterThan(accrual);
   expect(bank).toContain("mode:'toil',toilAccrualId:acc.id");expect(bank).toContain('if(recordedSource)');expect(bank).not.toContain('lockOvertimeSourceTx');
   expect(bank).toContain('p.otMinutes>formula.minutes');expect(bank).not.toMatch(/p\.otMinutes\s*=\s*formula\.minutes/);
+  expect(bank).toContain('overtimePattern:{...formula.audit,qualificationBasis:');expect(bank).toContain('consumedMinutes:otMinutes');expect(bank).toContain('p.otMinutes>formula.afterShiftMinutes');
  });
  it('releases only the exact active claim after successful canonical reversal, preserving payroll closure',()=>{
   const reverse=section('export async function reverseLeaveCredit(', 'const LEAVE_CREDIT');

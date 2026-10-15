@@ -44,7 +44,7 @@ describe('actual TOIL uses fresh independent formula duration',()=>{
   const trace={v:1,schedule:{endAbs:18*60}};
   expect(await resolveOvertimeToilDurationTx(transaction(trace,'workday'),ctx,request)).toMatchObject({kind:'formula',minutes:120,afterShiftMinutes:120});
   expect(await resolveOvertimeToilDurationTx(transaction(trace,'workday'),ctx,{...request,claimWindow:{start:'18:00',end:'19:00'}})).toMatchObject({afterShiftMinutes:0});
-  expect(await resolveOvertimeToilDurationTx(transaction(trace,'workday'),ctx,{...request,claimWindow:{start:'20:00',end:'21:00'}})).toMatchObject({afterShiftMinutes:60});
+  expect(await resolveOvertimeToilDurationTx(transaction(trace,'workday'),ctx,{...request,claimWindow:{start:'20:00',end:'21:00'}})).toMatchObject({afterShiftMinutes:60,audit:{recordedShiftEndAbs:1080,claimWindow:{start:'20:00',end:'21:00'},qualifyingMinutes:60,calculationId:id,sourceRevision:4,durationInputDigest:f.calculation.durationInputDigest}});
  });
  it.each(['stale','ineligible','refused','fractional','wrongCompany'] as const)('refuses %s formula evidence without legacy fallback',async kind=>{
   const f=fixture();

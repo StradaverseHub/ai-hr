@@ -13,7 +13,7 @@ import {readOvertimeDurationDefinitionTx,readOvertimeSettlementForDayTx} from '.
 export class OvertimeToilEligibilityError extends Error {
   constructor(message='The recorded overtime duration is unavailable or changed. Recalculate and review this day before banking Leave Credit.') {super(message);this.name='OvertimeToilEligibilityError';}
 }
-export type OvertimeToilDuration={kind:'legacy'}|{kind:'formula';companyId:string;country:string|null;dayType:'workday'|'rest_day'|'holiday';minutes:number;afterShiftMinutes:number|null;calculationId:string;sourceRevision:number};
+export type OvertimeToilDuration={kind:'legacy'}|{kind:'formula';companyId:string;country:string|null;dayType:'workday'|'rest_day'|'holiday';minutes:number;afterShiftMinutes:number|null;calculationId:string;sourceRevision:number;audit:{durationInputDigest:string;calculationId:string;sourceRevision:number;recordedShiftEndAbs:number|null;recordedShiftEndEpochSeconds:string|null;claimWindow:{start:string;end:string}|null;qualifyingMinutes:number|null;allocationPolicy:'earliest'|'latest'}};
 const unavailable=():never=>{throw new OvertimeToilEligibilityError();};
 function integerMinutes(value:OvertimeExact):number {
   if(value.unit!=='minutes'||!/^\d{1,80}$/.test(value.numerator)||!/^\d{1,80}$/.test(value.denominator))unavailable();
@@ -45,9 +45,10 @@ export async function resolveOvertimeToilDurationTx(tx:Tx,ctx:SessionContext,p:{
   if(duration.status!=='ready'||!duration.transferable||duration.payableMinutes.numerator!==calculation.payableNumerator||duration.payableMinutes.denominator!==calculation.payableDenominator)unavailable();
   const minutes=integerMinutes(duration.payableMinutes);
   if(minutes<=0||!day?.dayType)unavailable();
-  let afterShiftMinutes:number|null=null;
+  let afterShiftMinutes:number|null=null,recordedShiftEndAbs:number|null=null,recordedShiftEndEpochSeconds:string|null=null;
   if(day!.dayType==='workday'&&object(trace)&&trace.v===1&&object(trace.schedule)&&Number.isSafeInteger(trace.schedule.endAbs)&&Number(trace.schedule.endAbs)>=0&&Number(trace.schedule.endAbs)<=4320) {
     const midnight=Date.parse(p.date+'T00:00:00+08:00')/1000;
+    recordedShiftEndAbs=Number(trace.schedule.endAbs);recordedShiftEndEpochSeconds=String(midnight+recordedShiftEndAbs*60);
     let lower=Number(trace.schedule.endAbs),upper:number|undefined;
     if(p.claimWindow){
       const validClock=(value:string)=>/^([01]\d|2[0-3]):[0-5]\d(?::00)?$/.test(value);
@@ -65,5 +66,5 @@ export async function resolveOvertimeToilDurationTx(tx:Tx,ctx:SessionContext,p:{
   }
   const [entity]=await tx.select({country:company.country}).from(company).where(and(eq(company.tenantId,ctx.tenantId),eq(company.id,source.companyId))).limit(1);
   if(!entity)unavailable();
-  return {kind:'formula',companyId:source.companyId,country:entity!.country,dayType:day!.dayType!,minutes,afterShiftMinutes,calculationId:calculation.id,sourceRevision:source.revision};
+  return {kind:'formula',companyId:source.companyId,country:entity!.country,dayType:day!.dayType!,minutes,afterShiftMinutes,calculationId:calculation.id,sourceRevision:source.revision,audit:{durationInputDigest:digest,calculationId:calculation.id,sourceRevision:source.revision,recordedShiftEndAbs,recordedShiftEndEpochSeconds,claimWindow:p.claimWindow?{start:p.claimWindow.start,end:p.claimWindow.end}:null,qualifyingMinutes:day!.dayType==='workday'?afterShiftMinutes:minutes,allocationPolicy:stored!.definition.durationAllocation}};
 }
