@@ -385,7 +385,11 @@ export type EncashmentSnapshotView = {
 /** The most recent snapshot for an employment (any leave type — currently always ANNUAL), for the
  *  people-page card. Null if none exists (policy off, or no resignation approved yet). */
 export function encashmentSnapshotForEmployment(ctx: SessionContext, employmentId: string) {
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx, tx => encashmentSnapshotForEmploymentTx(tx, ctx, employmentId));
+}
+
+/** Explicit owner read seam for a caller-held scoped report snapshot. */
+export async function encashmentSnapshotForEmploymentTx(tx: Tx, ctx: SessionContext, employmentId: string) {
     const [row] = await tx
       .select()
       .from(leaveEncashmentSnapshot)
@@ -407,8 +411,7 @@ export function encashmentSnapshotForEmployment(ctx: SessionContext, employmentI
       overrideReason: row.overrideReason,
     };
     return view;
-  });
-}
+  }
 
 export type EncashmentForPayroll = {
   leaveTypeId: string;
