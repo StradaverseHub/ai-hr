@@ -205,8 +205,9 @@ export async function addQualification(
     result?: string | null;
     isHighest?: boolean;
   },
+  outerTx?:Tx,
 ): Promise<{ id: string }> {
-  return withTenant(ctx, async (tx) => {
+  const run=async(tx:Tx)=>{
     const qualification = (p.qualification ?? '').trim();
     if (qualification === '') throw new QualificationValidationError('Qualification is required.');
     await assertQualificationAllowed(tx, qualification);
@@ -245,7 +246,8 @@ export async function addQualification(
       payload: { qualification, isHighest, ...(clearedHighestId ? { clearedHighestId } : {}) },
     });
     return { id: row.id };
-  });
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 async function loadQualification(tx: Tx, id: string) {
@@ -287,8 +289,9 @@ export async function updateQualification(
     result?: string | null;
     isHighest?: boolean;
   },
+  outerTx?:Tx,
 ): Promise<{ id: string }> {
-  return withTenant(ctx, async (tx) => {
+  const run=async(tx:Tx)=>{
     const existing = await loadQualification(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new QualificationValidationError('Qualification record not found.');
@@ -341,7 +344,8 @@ export async function updateQualification(
       },
     });
     return { id: p.id };
-  });
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /**

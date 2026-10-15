@@ -1,3 +1,4 @@
+import { EMERGENCY_CONTACT_PRIORITIES } from './emergency-contact-vocabulary';
 import { DEPENDENT_RELATIONSHIPS, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, CHILD_RELIEF_CATEGORIES, CHILD_RELIEF_PERCENTAGES } from './dependent-vocabulary';
 import { EMPLOYMENT_PERIOD_UNITS } from './employment-period';
 import { isCalendarDate } from './calendar-date';
@@ -8,7 +9,7 @@ import { PERSONNEL_FIELDS, PERSONNEL_IMPORT_COMPATIBILITY, type PersonnelFieldDe
 import { parseCsv } from './csv';
 
 export type PersonnelLabelResolver = (key: string, fallback: string) => string;
-export type PersonnelImportSheet = 'employee' | 'family';
+export type PersonnelImportSheet = 'employee' | 'family' | 'qualification' | 'emergency';
 export const PERSONNEL_TEMPLATE_GENERATION = 2;
 /** Compatibility is deliberately version bounded, not a permanent alias accumulator. */
 export const PERSONNEL_LEGACY_HEADER_GENERATION = 1;
@@ -17,6 +18,7 @@ export function personnelFieldLabel(field: PersonnelFieldDescriptor, resolve?: P
   return field.labelKey && resolve ? resolve(field.labelKey, field.label) : field.label;
 }
 export function personnelImportFields(sheet: PersonnelImportSheet): PersonnelFieldDescriptor[] {
+  if(sheet==='qualification'||sheet==='emergency')return PERSONNEL_FIELDS.filter(field=>field.import.register?.kind===sheet).map(field=>({...field,import:{...field.import,column:field.import.register!.column,requiredCreate:field.import.register!.requiredCreate,writerField:field.import.register!.writerField,catalog:field.allowedValuesOwner?.startsWith('profile_option:')?field.allowedValuesOwner.slice('profile_option:'.length):field.import.catalog}})).sort((a,b)=>a.import.order-b.import.order);
   return PERSONNEL_FIELDS.filter(f => f.import.column && (sheet === 'family' ? f.import.section === 'family' : f.import.section !== 'family'))
     .sort((a,b) => a.import.order-b.import.order);
 }
@@ -33,6 +35,7 @@ const LEGACY_COMPOUND_COLUMNS: Record<string,{id:string;unit:string}> = {
   resignation_notice_days:{id:'employment.employment_dates_and_service.noticebeforeconfirmationvalue',unit:'day'},
 };
 export function personnelColumnLabel(column: string, sheet: PersonnelImportSheet = 'employee', resolve?: PersonnelLabelResolver): string {
+  if(column==='record_id')return resolve?.('people.import.registerRecordId','Record ID (existing records only)')??'Record ID (existing records only)';
   const field = personnelImportField(column,sheet);
   if (field) {
     const base=personnelFieldLabel(field,resolve);
@@ -101,7 +104,7 @@ export const PERSONNEL_COMPLIANCE_IMPORT_FIELDS = PERSONNEL_FIELDS.filter(f=>f.i
 export function personnelScalarIssue(field:PersonnelFieldDescriptor,value:string):string|null {
   if(!value.trim())return null;
   if(field.import.writer==='employment-info' && field.type==='number' && (!Number.isSafeInteger(Number(value)) || Number(value)<0))return 'non-negative whole number';
-  if(field.type==='date' && !isCalendarDate(value.trim()))return 'date';
+  if(field.type==='date' && (field.unit==='month'?!/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(value.trim()):!isCalendarDate(value.trim())))return field.unit==='month'?'year and month':'date';
   if(['primaryEmail','personalEmail'].includes(field.ownerField) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()))return 'email';
   const choices=personnelFieldChoices(field);
   if(choices.length && !choices.some(choice=>choice.value===value.trim()))return 'choice';
@@ -111,12 +114,13 @@ export function personnelScalarIssue(field:PersonnelFieldDescriptor,value:string
 export function personnelColumnGuidance(column:string,sheet:PersonnelImportSheet,mode:'create'|'update',words:{required:string;optional:string;reference:string;blankRetains:string}) {
   const field=personnelImportField(column,sheet);
   const required=column==='employee_code' && (sheet==='family'||mode==='update') || (mode==='create'?field?.import.requiredCreate:field?.import.requiredUpdate);
-  return [required?words.required:words.optional,field?.type==='date'?'YYYY-MM-DD':undefined,
+  return [required?words.required:words.optional,field?.type==='date'?(field.unit==='month'?'YYYY-MM':'YYYY-MM-DD'):undefined,
     field?.type==='number'||field?.type==='currency'?[field.type,field.unit].filter(Boolean).join(' '):undefined,
     field?.type==='choice'?words.reference:undefined,mode==='update'?words.blankRetains:undefined].filter(Boolean).join(' · ');
 }
 
 export function personnelFieldChoices(field:PersonnelFieldDescriptor) {
+  if(field.allowedValuesOwner==='emergency.priority')return EMERGENCY_CONTACT_PRIORITIES.map(value=>({value,labelKey:`people.detail.emergency.${{primary:'priorityPrimary',secondary:'prioritySecondary',other:'priorityOther'}[value]}`}));
   if(field.allowedValuesOwner==='dependent.relationship')return DEPENDENT_RELATIONSHIPS.map(value=>({value,labelKey:`people.detail.family.rel.${value}`}));
   if(field.allowedValuesOwner==='dependent.childReliefPercentage')return CHILD_RELIEF_PERCENTAGES.map(value=>({value:String(value),labelKey:`people.detail.family.childReliefPct_${value}`}));
   if(field.allowedValuesOwner==='dependent.gender')return DEPENDENT_GENDERS.map(value=>({value,labelKey:`people.detail.family.gender.${value}`}));
@@ -136,7 +140,7 @@ function normalizePersonnelImportValue(column:string,raw:string,sheet:PersonnelI
 
 export function personnelImportProposedValues(record:Record<string,string>,sheet:PersonnelImportSheet) {
   const known=new Set(personnelImportFields(sheet).map(field=>field.import.column!));
-  if(sheet==='family')known.add('employee_code');
+  if(sheet!=='employee'){known.add('employee_code');known.add('record_id');}
   if(sheet==='employee')for(const adapter of PERSONNEL_IMPORT_COMPATIBILITY)known.add(adapter.column);
   return Object.entries(record).filter(([column,value])=>known.has(column)&&value.trim()!=='').map(([column,value])=>({column,value}));
 }

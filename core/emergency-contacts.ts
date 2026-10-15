@@ -33,8 +33,8 @@ import { personEmergencyContact } from '../db/schema';
 import { assertProfileValueAllowed } from './profile-options';
 
 /** The three priorities the request enumerates. Order matters: it IS the display / resolution order. */
-export const EMERGENCY_CONTACT_PRIORITIES = ['primary', 'secondary', 'other'] as const;
-export type EmergencyContactPriority = (typeof EMERGENCY_CONTACT_PRIORITIES)[number];
+export { EMERGENCY_CONTACT_PRIORITIES, type EmergencyContactPriority } from '../lib/emergency-contact-vocabulary';
+import { EMERGENCY_CONTACT_PRIORITIES, type EmergencyContactPriority } from '../lib/emergency-contact-vocabulary';
 
 export class EmergencyContactValidationError extends Error {
   constructor(message: string) {
@@ -188,8 +188,9 @@ export type EmergencyContactInput = {
 export async function addEmergencyContact(
   ctx: SessionContext,
   p: { personId: string } & EmergencyContactInput,
+  outerTx?:Tx,
 ): Promise<{ id: string }> {
-  return withTenant(ctx, async (tx) => {
+  const run=async(tx:Tx)=>{
     const fullName = trimOrNull(p.fullName);
     if (fullName === null) throw new EmergencyContactValidationError('Contact name is required.');
     const priority = normPriority(p.priority);
@@ -225,7 +226,8 @@ export async function addEmergencyContact(
       payload: { priority, relationship, ...(demotedId ? { demotedId } : {}) },
     });
     return { id: row.id };
-  });
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 async function loadContact(tx: Tx, id: string) {
@@ -251,8 +253,9 @@ async function loadContact(tx: Tx, id: string) {
 export async function updateEmergencyContact(
   ctx: SessionContext,
   p: { id: string } & Partial<EmergencyContactInput>,
+  outerTx?:Tx,
 ): Promise<{ id: string }> {
-  return withTenant(ctx, async (tx) => {
+  const run=async(tx:Tx)=>{
     const existing = await loadContact(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new EmergencyContactValidationError('Emergency contact not found.');
@@ -307,7 +310,8 @@ export async function updateEmergencyContact(
       },
     });
     return { id: p.id };
-  });
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /**

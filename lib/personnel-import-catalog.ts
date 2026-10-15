@@ -1,7 +1,7 @@
 import {PERSONNEL_FIELDS} from './personnel-field-registry';
 import {DEPENDENT_RELATIONSHIPS} from './dependent-vocabulary';
 import {PersonnelImportLookup} from './personnel-import-lookup';
-import type {PersonnelImportSheet} from './personnel-import-contract';
+import {personnelImportFields,type PersonnelImportSheet} from './personnel-import-contract';
 /** Same active owner values as the forms; display names are aliases, never stored instead of codes. */
 export class PersonnelImportCatalog extends Map<string,Set<string>> {
  private lookups=new Map<string,PersonnelImportLookup<string>>();
@@ -15,10 +15,12 @@ export class PersonnelImportCatalog extends Map<string,Set<string>> {
 export function normalizePersonnelCatalogRecord(record:Record<string,string>,sheet:PersonnelImportSheet,catalog:Map<string,Set<string>>) {
  const normalized={...record};const errors:string[]=[];
  if(!(catalog instanceof PersonnelImportCatalog))return {record:normalized,errors};
- const fields=PERSONNEL_FIELDS.filter(field=>field.import.column && (sheet==='family'?field.import.section==='family':field.import.section!=='family'));
+ const fields=personnelImportFields(sheet);
  const columns=new Map(fields.filter(field=>field.import.catalog).map(field=>[field.import.column!,field.import.catalog!]));
  if(sheet==='family')columns.set('relationship','dependentRelationship');
- else columns.set('passport_issuing_country','nationality');
+ else if(sheet==='employee')columns.set('passport_issuing_country','nationality');
+ else if(sheet==='qualification')columns.set('qualification','qualificationLevel');
+ else columns.set('relationship','relationship');
  for(const [column,category] of columns) {
   const raw=(record[column]??'').trim();if(!raw)continue;
   if(column==='relationship' && (DEPENDENT_RELATIONSHIPS as readonly string[]).includes(raw))continue;
