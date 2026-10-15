@@ -18457,6 +18457,41 @@
       "download": "Tải CSV",
       "empty": "Không có câu hỏi chưa được trả lời phù hợp."
     },
+    "overview": {
+      "title": "Tổng quan chu kỳ",
+      "group": "Nhóm kinh doanh / công ty",
+      "people": "Nhân sự",
+      "all": "Tất cả nhóm",
+      "needs": "Cần bạn xử lý",
+      "steps": "Đã hoàn tất {done} trên {total} bước",
+      "standsOut": "Điểm cần chú ý",
+      "notRunning": "Không có chu kỳ đang hoạt động. Mở chu kỳ để bắt đầu theo dõi tiến độ các mô-đun.",
+      "nothingWaiting": "Mọi bước thiết lập đã hoàn tất.",
+      "ordinary": "Không có điểm bất thường.",
+      "opens": "Mở ngày {date}",
+      "notOpen": "Chưa mở",
+      "none": "Chưa thiết lập",
+      "doneOf": "{word}: {done} / {total}",
+      "behind": "{group} đang chậm nhất trong các phần đang mở.",
+      "slowest": "{module} là phần đang mở có tiến độ chậm nhất: {pct}%.",
+      "days": "Còn {days} ngày trước khi đóng.",
+      "complete": "{groups} đã hoàn tất mọi phần đang mở.",
+      "modules": {
+        "pm": "Hiệu suất",
+        "f360": "Phản hồi 360",
+        "competency": "Năng lực",
+        "calibration": "Hiệu chỉnh",
+        "idp": "Kế hoạch phát triển"
+      },
+      "words": {
+        "pm": "đã nộp bảng đánh giá",
+        "checkins": "đã hoàn tất trao đổi tiến độ",
+        "f360": "đã nhận đánh giá",
+        "competency": "đã tự đánh giá",
+        "calibration": "đã khóa đơn vị",
+        "idp": "đã chia sẻ kế hoạch"
+      }
+    },
     "adminAssistant": {
       "title": "Trợ lý quản trị hiệu suất",
       "close": "Đóng",

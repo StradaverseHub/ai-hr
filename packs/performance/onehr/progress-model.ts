@@ -15,6 +15,6 @@ export function assessmentProgress(input:{kpis:KPI[];performanceConfirmed:boolea
   out.feedback=cell(input.panelCount>0&&input.panelSubmitted===input.panelCount?'done':input.panelSubmitted?'active':'pending',input.panelCount>0&&input.panelSubmitted===input.panelCount?'feedback_complete':input.panelCount?'feedback_pending':'panel_missing',input.panelCount,input.panelSubmitted);
  }
  if(policy.kind==='year_end'&&policy.modules.calibration!==false&&(policy.modules.pm||policy.modules.tm))out.calibration=cell(input.calibration==='locked'?'done':input.calibration==='draft'?'active':'pending',input.calibration==='locked'?'calibrated':input.calibration==='draft'?'under_review':'not_started',1,input.calibration==='locked'?1:0);
- if(policy.kind==='year_end'&&policy.modules.idp)out.career=cell(input.planStatus==='closed'?'done':input.planStatus==='shared'?'active':'pending',input.planStatus==='closed'?'plan_closed':input.planStatus==='shared'?'plan_shared':'not_shared',1,input.planStatus==='closed'?1:0);
+ if(policy.modules.idp)out.career=cell(input.planStatus==='closed'?'done':input.planStatus==='shared'?'active':'pending',input.planStatus==='closed'?'plan_closed':input.planStatus==='shared'?'plan_shared':'not_shared',1,input.planStatus==='closed'?1:0);
  return out;
 }

@@ -10,6 +10,10 @@ describe('HR review completion states',()=>{
   expect(assessmentProgress({...base,resultsSubmitted:true,competencyStatus:'submitted',panelSubmitted:2,calibration:'draft',planStatus:'shared'})).toMatchObject({pm:{state:'active'},competency:{state:'active'},feedback:{state:'active',completed:2,count:4},calibration:{state:'active'},career:{state:'active'}});
   expect(assessmentProgress({...base,performanceConfirmed:true,competencyStatus:'reviewed',panelSubmitted:4,calibration:'locked',planStatus:'closed'})).toMatchObject({pm:{state:'done'},competency:{state:'done'},feedback:{state:'done',label:'feedback_complete'},calibration:{state:'done'},career:{state:'done'}});
  });
+ it('tracks the current planning year in a mid-year cycle when development planning is enabled',()=>{
+  const result=assessmentProgress({...base,planStatus:'shared',policy:{...policy,kind:'mid_year'}});
+  expect(result.career).toMatchObject({state:'active',label:'plan_shared'});
+ });
  it('keeps disabled modules absent and quarterly check-ins separate from ratings',()=>{
   const k=kpiSchema.parse({id:randomUUID(),title:'Delivery',description:'',unit:'units',weightBp:10000,scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:null,setting:'approved',settingRemark:'',actual:null,note:'',approvedActual:null,moderationRemark:'',locked:false,checkIn:{answer:'nothing_yet',note:'',at:new Date().toISOString(),userId:randomUUID()}});
   expect(assessmentProgress({...base,kpis:[k],policy:{...policy,kind:'quarterly',modules:{pm:true,tm:false,idp:false,evidence:false}}})).toEqual({pm:{state:'done',label:'checked_in',count:1,completed:1}});

@@ -18457,6 +18457,41 @@
       "download": "下载 CSV",
       "empty": "没有符合筛选条件的未解答问题。"
     },
+    "overview": {
+      "title": "周期概览",
+      "group": "业务组 / 公司",
+      "people": "人数",
+      "all": "所有组",
+      "needs": "需要您处理",
+      "steps": "已完成 {total} 个步骤中的 {done} 个",
+      "standsOut": "重点关注",
+      "notRunning": "目前没有进行中的周期。开启周期后即可追踪各模块进度。",
+      "nothingWaiting": "所有准备步骤均已完成。",
+      "ordinary": "暂无异常情况。",
+      "opens": "{date} 开始",
+      "notOpen": "尚未开始",
+      "none": "尚未设置",
+      "doneOf": "{word}：{done} / {total}",
+      "behind": "{group} 在已开放环节中的进度最落后。",
+      "slowest": "{module} 是进度最慢的开放环节：{pct}%。",
+      "days": "距离结束还有 {days} 天。",
+      "complete": "{groups} 已完成所有开放环节。",
+      "modules": {
+        "pm": "绩效",
+        "f360": "360 度反馈",
+        "competency": "胜任力",
+        "calibration": "校准",
+        "idp": "发展计划"
+      },
+      "words": {
+        "pm": "已提交评分卡",
+        "checkins": "已完成跟进",
+        "f360": "已收到评价",
+        "competency": "已完成自评",
+        "calibration": "已锁定单位",
+        "idp": "已分享计划"
+      }
+    },
     "adminAssistant": {
       "title": "绩效管理助手",
       "close": "关闭",

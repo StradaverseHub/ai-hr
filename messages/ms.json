@@ -18457,6 +18457,41 @@
       "download": "Muat turun CSV",
       "empty": "Tiada soalan tidak terjawab sepadan dengan penapis ini."
     },
+    "overview": {
+      "title": "Gambaran keseluruhan kitaran",
+      "group": "Kumpulan perniagaan / syarikat",
+      "people": "Orang",
+      "all": "Semua kumpulan",
+      "needs": "Perlu tindakan anda",
+      "steps": "{done} daripada {total} langkah selesai",
+      "standsOut": "Perkara yang menonjol",
+      "notRunning": "Tiada kitaran aktif. Buka kitaran untuk menjejak kemajuan modul.",
+      "nothingWaiting": "Semua langkah persediaan selesai.",
+      "ordinary": "Tiada perkara luar biasa.",
+      "opens": "Dibuka pada {date}",
+      "notOpen": "Belum dibuka",
+      "none": "Belum ditetapkan",
+      "doneOf": "{done} daripada {total} {word}",
+      "behind": "{group} paling ketinggalan dalam bahagian yang dibuka.",
+      "slowest": "{module} ialah bahagian terbuka paling perlahan: {pct}%.",
+      "days": "{days} hari sebelum ditutup.",
+      "complete": "{groups} telah melengkapkan semua bahagian yang dibuka.",
+      "modules": {
+        "pm": "Prestasi",
+        "f360": "Maklum balas 360",
+        "competency": "Kompetensi",
+        "calibration": "Kalibrasi",
+        "idp": "Pelan pembangunan"
+      },
+      "words": {
+        "pm": "kad skor dihantar",
+        "checkins": "semakan selesai",
+        "f360": "penilaian diterima",
+        "competency": "penilaian kendiri selesai",
+        "calibration": "unit dikunci",
+        "idp": "pelan dikongsi"
+      }
+    },
     "adminAssistant": {
       "title": "Pembantu pentadbir prestasi",
       "close": "Tutup",

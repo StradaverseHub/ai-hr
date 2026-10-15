@@ -18457,6 +18457,41 @@
       "download": "Download CSV",
       "empty": "No unanswered questions match these filters."
     },
+    "overview": {
+      "title": "Cycle overview",
+      "group": "Business group / company",
+      "people": "People",
+      "all": "All groups",
+      "needs": "Needs you",
+      "steps": "{done} of {total} steps complete",
+      "standsOut": "What stands out",
+      "notRunning": "No cycle is active. Open a cycle to start tracking module progress.",
+      "nothingWaiting": "Every setup step is complete.",
+      "ordinary": "Nothing out of the ordinary.",
+      "opens": "Opens {date}",
+      "notOpen": "Not open yet",
+      "none": "None set",
+      "doneOf": "{done} of {total} {word}",
+      "behind": "{group} is furthest behind across open parts.",
+      "slowest": "{module} is the slowest open part: {pct}%.",
+      "days": "{days} days until it closes.",
+      "complete": "{groups} are complete on every open part.",
+      "modules": {
+        "pm": "Performance",
+        "f360": "360 feedback",
+        "competency": "Competency",
+        "calibration": "Calibration",
+        "idp": "Development plan"
+      },
+      "words": {
+        "pm": "scorecards submitted",
+        "checkins": "check-ins completed",
+        "f360": "ratings in",
+        "competency": "self-assessed",
+        "calibration": "units locked",
+        "idp": "plans shared"
+      }
+    },
     "adminAssistant": {
       "title": "Performance admin assistant",
       "close": "Close",

@@ -50,6 +50,24 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
   });
   afterAll(closeAll);
 
+  it('Performance overview counts submitted work separately from manager approval and uses current cohort scope',async()=>{
+    const id=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Deliver outcomes',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,50,100,150,200]},moderatorEmploymentId:manager.employmentId}],true);
+    await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'Agreed');await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:100,note:'PRIVATE_RESULT_NOTE'}],'PRIVATE_REFLECTION');
+    await perf.submitOnehrCompetencies(self,reviewId,(await view(self)).revision,{'skill-1':{answer:'no',remark:''},'skill-2':{answer:'no',remark:''}},false,'PRIVATE_COMPETENCY_WORDS');
+    await perf.assignOnehrPanel(a,reviewId,(await view(a)).revision,[{employmentId:manager.employmentId,relationship:'line_manager'},{employmentId:peers[0].employmentId,relationship:'peer'}]);
+    const overview=await perf.getAssessmentOverview(a,cycleId),row=overview.overview!.rows[0];
+    expect(row.cells.pm).toMatchObject({done:1,total:1,pct:100});expect(row.cells.competency).toMatchObject({done:1,total:6,pct:16});expect(row.cells.f360).toMatchObject({done:0,total:2,pct:0});expect(row.cells.idp).toMatchObject({done:0,total:6,pct:0});expect(row.cells.calibration).toMatchObject({done:0,total:1,pct:0});
+    expect((await view()).managerPerformance).toBeNull();expect(JSON.stringify(overview)).not.toMatch(/PRIVATE_|salary|answers|managerRemark/);await expect(perf.getAssessmentOverview(self,cycleId)).rejects.toThrow();
+    const cycle=await perf.getOnehrCycle(a,cycleId);await perf.updateAssessmentModules(a,cycleId,cycle!.revision,{...cycle!.policy.modules,pm:false,tm:false,idp:false,calibration:false});expect((await perf.getAssessmentOverview(a,cycleId)).overview!.modules).toEqual([]);
+  });
+  it('Performance overview follows actual BG unit locking and reopening',async()=>{
+    await complete();const sessionId=await perf.createOnehrCalibration(a,cycleId,{name:'Overview BG unit',companyId:b.companyId,tier:'bg',reviewerUserIds:[mgr.userId!],reviewIds:[reviewId],pbtAchievement:100});
+    expect((await perf.getAssessmentOverview(a,cycleId)).overview!.rows[0].cells.calibration).toMatchObject({done:0,total:1});
+    await perf.lockOnehrCalibration(mgr,sessionId,1,'Verified single-person fixture.','both',undefined,b.companyId);
+    expect((await perf.getAssessmentOverview(a,cycleId)).overview!.rows[0].cells.calibration).toMatchObject({done:1,total:1,pct:100});
+    await perf.unlockOnehrCalibration(a,sessionId,2,'Reopen this unfinalized fixture.','both',reviewId);
+    expect((await perf.getAssessmentOverview(a,cycleId)).overview!.rows[0].cells.calibration.done).toBe(0);
+  });
   it('Performance admin reports use scoped canonical participants and audit only parameters',async()=>{
     await expect(perf.getAssessmentAdminReport(self,cycleId,{kind:'participants'})).rejects.toThrow();
     const before=(await owner.db.select().from(schema.onehrCycle))[0];
@@ -116,7 +134,7 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
   it('Performance admin home supports no active cycle and fresh current-cycle selection',async()=>{
     expect((await perf.getAssessmentAdminAssistant(a)).cycle?.id).toBe(cycleId);
     await owner.db.update(schema.reviewCycle).set({status:'closed'}).where(eq(schema.reviewCycle.id,cycleId));
-    const home=await perf.getAssessmentAdminAssistant(a);expect(home.cycle).toBeNull();expect(home.items.some(i=>i.href==='/performance')).toBe(true);expect(home.history).toEqual([]);
+    const home=await perf.getAssessmentAdminAssistant(a);expect(home.cycle).toBeNull();expect((await perf.getAssessmentOverview(a)).overview).toBeNull();expect(home.items.some(i=>i.href==='/performance')).toBe(true);expect(home.history).toEqual([]);
     const ready=await perf.getAssessmentAdminReadiness(a);expect(ready.total).toBe(3);expect(ready.steps.find(s=>s.label==='An active cycle')).toMatchObject({detail:'Nothing yet',done:false});
     await expect(perf.getAssessmentAdminAssistant(self)).rejects.toThrow(/administrator access/);
     await expect(perf.runAssessmentAdminAction(a,undefined,{tool:'build_report',args:{kind:'participants'}})).rejects.toThrow(/Open a cycle/);
@@ -129,7 +147,7 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     const revoked=await perf.getAssessmentAdminReadiness(a,cycleId);expect(revoked.steps.find(s=>s.label==='Reports released')).toMatchObject({detail:'0 of 1 people',done:false});expect(revoked.steps.find(s=>s.label==='Results released')).toMatchObject({detail:'Nothing yet',done:false});
   });
   it('Performance admin readiness uses real denominators and omits switched-off modules',async()=>{
-    const before=await perf.getAssessmentAdminReadiness(a,cycleId);expect(before.steps.find(s=>s.label==='Responses in')).toMatchObject({detail:'Nothing yet',done:false});
+    const before=await perf.getAssessmentAdminReadiness(a,cycleId);expect(before.steps.find(s=>s.label==='Responses in')).toMatchObject({detail:'Nothing yet',done:false,href:expect.stringContaining('progressKind=assessors')});
     const c=await perf.getOnehrCycle(a,cycleId);await perf.updateAssessmentModules(a,cycleId,c!.revision,{...c!.policy.modules,tm:false,pm:false,calibration:false});
     const after=await perf.getAssessmentAdminReadiness(a,cycleId);expect(after.steps.map(s=>s.module)).toEqual(['Foundation','Foundation','Foundation']);
     const index=await perf.getAssessmentAdminIndex(a,cycleId);expect(index.items.filter(i=>i.kind==='page').some(i=>/panels|calibration|kpi-import/.test(i.href))).toBe(false);expect(index.items.filter(i=>i.kind==='report').some(i=>i.href.includes('kind=progress'))).toBe(false);
@@ -1701,6 +1719,7 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     const policy=defaultPolicy(framework);policy.kind='mid_year';await perf.configureOnehrCycle(a,mid,null,policy);await perf.openCycle(a,{cycleId:mid});
     const [current]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,mid),eq(schema.onehrReview.employmentId,subject.employmentId)));
     const currentView=(await perf.getOnehrReview(self,current.reviewId))!;expect(currentView.planYear).toBe(year);expect(currentView.plans[0].id).toBe(plan.id);
+    const progress=await perf.getAssessmentProgress(a,mid,{module:'career'});expect(progress.filter.module).toBe('career');expect(progress.rows.find(r=>r.reviewId===current.reviewId)?.cells.career).toMatchObject({state:'done',label:'plan_closed'});
     await expect(perf.saveOnehrPlan(self,current.reviewId,currentView.plans[0].revision,input)).rejects.toThrow(/year-end/);
     await perf.reviewOnehrPlan(mgr,plan.id,currentView.plans[0].revision,'Agreed','Mid-year career check-in',false,current.reviewId);
     const reviewed=(await perf.getOnehrReview(self,current.reviewId))!.plans[0];expect(reviewed.status).toBe('closed');expect(reviewed.conversation).toBe('Mid-year career check-in');

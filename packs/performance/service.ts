@@ -64,3 +64,5 @@ export {askPerformanceGuide,getPerformanceGuideReport,exportPerformanceGuideRepo
 export {getAssessmentAdminAssistant,askAssessmentAdmin,runAssessmentAdminAction,getAssessmentAdminReadiness,getAssessmentAdminIndex} from './onehr/admin-agent-service';
 export {getAssessmentAdminReport,buildAssessmentAdminReport,getAssessmentAdminReportHistory,exportAssessmentAdminReport,assessmentAdminReportLinks,assessmentAdminReportCsv} from './onehr/admin-report-service';
 export {buildAssessmentAdminWorkbook} from './onehr/admin-report-xlsx';
+
+export {getAssessmentOverview} from './onehr/overview-service';
