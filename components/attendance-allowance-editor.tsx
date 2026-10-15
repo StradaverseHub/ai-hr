@@ -40,7 +40,11 @@ export function AttendanceAllowanceEditor({options,components,policy,action}:{op
     if(field==='status')return ['active','terminated'].map(id=>({id,label:t(`status.${id}`)}));
     return ['full_time','part_time','contract','intern'].map(id=>({id,label:t(`employmentType.${id}`)}));
   };
-  const mutateAttendance=(index:number,patch:Partial<AllowanceRules['attendance']['criteria'][number]>)=>update({...rules,attendance:{...rules.attendance,criteria:rules.attendance.criteria.map((c,i)=>i===index?{...c,...patch}:c)}});
+  const mutateAttendance=(index:number,patch:Partial<AllowanceRules['attendance']['criteria'][number]>)=>{if(rules.v===2)update({...rules,attendance:{...rules.attendance,criteria:rules.attendance.criteria.map((c,i)=>i===index?{...c,...patch}:c)}});};
+  const updateApplicability=(patch:Partial<Pick<AllowanceRules['attendance'],'dayKinds'|'shiftIds'>>)=>{
+    if(rules.v===3)update({...rules,attendance:{...rules.attendance,...patch}});
+    else update({...rules,attendance:{...rules.attendance,...patch}});
+  };
   const component=components.find(c=>c.id===componentId);
   return <form id="attendance-allowance-editor" action={formAction} className="space-y-6" onChange={()=>setReviewed(false)}>
     <AttendanceSettingsNavigation formId="attendance-allowance-editor" savedRevision={policy?.version??0}/>
@@ -60,7 +64,7 @@ export function AttendanceAllowanceEditor({options,components,policy,action}:{op
         <Field label={policyType==='deduction'?t('deductionCode'):t('earningCode')}><select name="payComponentId" className={inputCls} value={componentId} onChange={e=>setComponentId(e.target.value)} required><option value="">{t('chooseCode')}</option>{components.filter(c=>policyType==='deduction'?c.kind==='deduction':c.kind==='allowance').map(c=><option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}</select></Field>
         <Field label={t('effectiveFrom')}><input name="effectiveFrom" type="date" required value={effectiveFrom} onChange={e=>setEffectiveFrom(e.target.value)} className={inputCls}/></Field>
       </div>
-      {policy?.rules?.v===2&&rules.v===2&&<div className="space-y-2 rounded-xl bg-muted p-3 text-sm"><p>{v('versionNotice')}</p><button type="button" className="text-primary" onClick={()=>update(upgradeAllowanceRules(policy.rules! as Extract<AllowanceRules,{v:2}>))}>{v('upgrade')}</button></div>}
+      {policy?.rules?.v===2&&rules.v===2&&<div className="space-y-2 rounded-xl bg-muted p-3 text-sm"><p>{v('versionNotice')}</p><button type="button" className="text-primary" onClick={()=>{if(rules.v===2)update(upgradeAllowanceRules(rules));}}>{v('upgrade')}</button></div>}
       {policy&&!policy.rules&&<div className="space-y-2 rounded-xl bg-muted p-3 text-sm"><p>{t('legacyNotice')}</p><label className="flex gap-2"><input type="checkbox" checked={advanced} onChange={e=>{setAdvanced(e.target.checked);if(!e.target.checked)setMethod('monthly');}}/>{t('convertLegacy')}</label></div>}
       <p className="text-sm text-muted-foreground">{rules.v===3&&advanced?v('fixedRule'):t('fixedRule')}</p>
     </section>
@@ -83,8 +87,8 @@ export function AttendanceAllowanceEditor({options,components,policy,action}:{op
     </section>
     <section className="space-y-4 rounded-2xl border border-border bg-card p-5"><h2 className="font-semibold">{t('sections.attendance')}</h2>
       {advanced?<>
-        <fieldset className="space-y-2"><legend className="text-xs font-medium text-muted-foreground">{t('dayTypes')}</legend><div className="flex flex-wrap gap-4">{ALLOWANCE_DAY_KINDS.map(k=><label key={k} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={rules.attendance.dayKinds.includes(k)} onChange={e=>update({...rules,attendance:{...rules.attendance,dayKinds:e.target.checked?[...rules.attendance.dayKinds,k]:rules.attendance.dayKinds.filter(v=>v!==k)}})}/>{t(`dayKinds.${k}`)}</label>)}</div></fieldset><p className="text-xs text-muted-foreground">{t('allDaysHint')}</p>
-        <AllowanceChoices key={companyId} label={t('shifts')} choices={scoped(options.shifts)} values={rules.attendance.shiftIds} onChange={shiftIds=>update({...rules,attendance:{...rules.attendance,shiftIds}})}/><p className="text-xs text-muted-foreground">{v('allShiftsHint')}</p>
+        <fieldset className="space-y-2"><legend className="text-xs font-medium text-muted-foreground">{t('dayTypes')}</legend><div className="flex flex-wrap gap-4">{ALLOWANCE_DAY_KINDS.map(k=><label key={k} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={rules.attendance.dayKinds.includes(k)} onChange={e=>updateApplicability({dayKinds:e.target.checked?[...rules.attendance.dayKinds,k]:rules.attendance.dayKinds.filter(v=>v!==k)})}/>{t(`dayKinds.${k}`)}</label>)}</div></fieldset><p className="text-xs text-muted-foreground">{t('allDaysHint')}</p>
+        <AllowanceChoices key={companyId} label={t('shifts')} choices={scoped(options.shifts)} values={rules.attendance.shiftIds} onChange={shiftIds=>updateApplicability({shiftIds})}/><p className="text-xs text-muted-foreground">{v('allShiftsHint')}</p>
         {rules.v===3?<AttendanceAllowanceExpressionEditor value={rules.attendance.expression} leaveTypes={options.leaveTypes.filter(type=>type.companyId===companyId)} onChange={expression=>update({...rules,attendance:{...rules.attendance,expression}})}/>:<>
         <Field label={t('attendanceLogic')}><select className={inputCls} value={rules.attendance.logic} onChange={e=>update({...rules,attendance:{...rules.attendance,logic:e.target.value as 'and'|'or'}})}><option value="and">{t('and')}</option><option value="or">{t('or')}</option></select></Field>
         {rules.attendance.criteria.map((c,index)=><div key={index} className="grid gap-3 rounded-xl border border-border p-3 sm:grid-cols-5">

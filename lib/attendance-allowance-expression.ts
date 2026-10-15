@@ -61,7 +61,7 @@ function actualFor(criterion:AllowanceExpressionCriterion,days:AllowanceDay[]):n
    if(facts.leave==null)return null;
    const total=facts.leave.filter(row=>!selected.length||selected.includes(row.typeId)).reduce((sum,row)=>sum+row.days,0);
    if(!Number.isFinite(total)||total<0||total>1.000001)throw new Error('Inconsistent canonical leave fractions.');
-   return field==='leaveCount'?total>0?1:0:total;
+   return total;
   }
   if((field==='lateMinutes'||field==='earlyOutMinutes')&&facts?.fixedClockApplicable===false)return 0;
   return day[field as AllowanceMetric];
