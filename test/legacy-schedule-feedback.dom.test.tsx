@@ -26,7 +26,7 @@ import {ToastFromQuery} from '../components/ui/toast-trigger';
 import OldWorkSchedulePage from '../app/admin/attendance-policy/schedule/page';
 import RegisteredDevicesPage from '../app/admin/attendance/settings/registered-devices/page';
 import {
-  hasPendingLegacyScheduleRedirect, legacyScheduleAnchorRedirect, legacyWorkScheduleRedirect,
+  hasPendingLegacyScheduleRedirect, legacyScheduleAnchorRedirect, legacyWorkScheduleRedirect, legacyScheduleDestinationHash,
 } from '../lib/legacy-schedule-redirect';
 
 function location(path: string, query: string, hash: string) {
@@ -62,6 +62,8 @@ describe('legacy Schedule feedback forwarding', () => {
     expect(redirected.origin).toBe('https://local.example');
     expect(redirected.pathname).toBe(target);
     expect(redirected.hash).toBe(hash);
+    expect(legacyScheduleDestinationHash(target, hash)).toBe(hash);
+    expect(legacyScheduleDestinationHash('/unrelated', hash)).toBe('');
     expect([...redirected.searchParams]).toEqual([['error', '拒绝 & + #?'], ['toast', 'Saved / 已保存']]);
     expect(redirected.href).toContain('%26');
   });
@@ -93,12 +95,14 @@ describe('legacy Schedule feedback forwarding', () => {
     expect(screen.getByText('Device revocation refused & retained')).toBeVisible();
     expect(state.success).toHaveBeenCalledExactlyOnceWith('Saved + checked');
     expect(state.error).toHaveBeenCalledExactlyOnceWith('Device revocation refused & retained');
-    expect(state.router.replace).toHaveBeenLastCalledWith('/admin/attendance/settings/registered-devices', {scroll:false});
+    expect(state.router.replace).toHaveBeenLastCalledWith('/admin/attendance/settings/registered-devices#registered-devices', {scroll:false});
+    expect(state.router.replace).toHaveBeenCalledTimes(2);
     cleanup();
-    location('/admin/attendance/settings/registered-devices', '', '');
+    location('/admin/attendance/settings/registered-devices', '', '#registered-devices');
     render(shell(<ToastFromQuery/>));
     expect(state.error).toHaveBeenCalledTimes(1);
     expect(state.success).toHaveBeenCalledTimes(1);
+    expect(state.router.replace).toHaveBeenCalledTimes(2);
   });
 
   it.each([

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { hasPendingLegacyScheduleRedirect } from '@/lib/legacy-schedule-redirect';
+import { hasPendingLegacyScheduleRedirect, legacyScheduleDestinationHash } from '@/lib/legacy-schedule-redirect';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { useDatabaseErrorText } from '@/components/database-error-text';
@@ -29,7 +29,8 @@ export function ToastFromQuery() {
     next.delete('toast');
     next.delete('error');
     const qs = next.toString();
-    router.replace(`${pathname}${qs ? `?${qs}` : ''}`, { scroll: false });
+    const hash = legacyScheduleDestinationHash(pathname, window.location.hash);
+    router.replace(`${pathname}${qs ? `?${qs}` : ''}${hash}`, { scroll: false });
   }, [params, pathname, router]);
 
   return null;

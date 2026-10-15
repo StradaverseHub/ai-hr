@@ -46,3 +46,8 @@ export function legacyWorkScheduleRedirect(input: LegacyScheduleFeedback = {}): 
 export function hasPendingLegacyScheduleRedirect(pathname: string, anchor: string): boolean {
   return pathname === SCHEDULE && targets.has(anchor);
 }
+
+/** Preserve only a known card fragment at its fixed destination during feedback cleanup. */
+export function legacyScheduleDestinationHash(pathname: string, anchor: string): string {
+  return targets.get(anchor) === pathname ? anchor : '';
+}
