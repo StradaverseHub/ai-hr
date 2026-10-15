@@ -314,6 +314,11 @@ describe('r369 §4 · an existing file with NO salary_remarks column imports eve
       '', '', '',
     ].join(',');
 
+  // Exercise the same versioned Personnel header boundary as the upload screen before owner writes.
+  const legacyRecs = (rows: string[]) => parsePersonnelImportCsv(`${LEGACY_HEADER}\n${rows.join('\n')}`, {
+    columns: [...IMPORT_COLUMNS.required, ...IMPORT_COLUMNS.optional], generation: 2,
+  }).records;
+
   it('the legacy header really does NOT carry the new column (or this whole section proves nothing)', () => {
     expect(LEGACY_HEADER.split(',')).not.toContain(COLUMN);
     // Keep the historical 49-column file literal: c445 expands today's template rather than changing
@@ -327,7 +332,7 @@ describe('r369 §4 · an existing file with NO salary_remarks column imports eve
   });
 
   it('every row of a three-row legacy file validates clean and imports', async () => {
-    const records = recs(LEGACY_HEADER, [
+    const records = legacyRecs([
       legacyRow('Nadia Yusof', 'nadia.legacy@acme.test', 'LEG0001', ic(51), '5200'),
       legacyRow('Ravi Chandran', 'ravi.legacy@acme.test', 'LEG0002', ic(52), '9800', 'Operations'),
       legacyRow('Siti Aminah', 'siti.legacy@acme.test', 'LEG0003', ic(53), '4100', 'Operations'),
@@ -350,8 +355,15 @@ describe('r369 §4 · an existing file with NO salary_remarks column imports eve
   it('the salary records it writes are byte-identical to the pre-r369 write: remarks NULL', async () => {
     // The service stores an omitted remark as NULL and logs no `remarks` field change, so "unchanged"
     // is checkable on the row itself rather than argued from the call site.
-    const records = recs(LEGACY_HEADER, [legacyRow('Nadia Yusof', 'nadia.legacy@acme.test', 'LEG0001', ic(51), '5200')]);
-    await commitEmployeeImport(a, { companyId: b.companyId, records });
+    const cells = legacyRow('Nadia Yusof', 'nadia.legacy@acme.test', 'LEG0001', ic(51), '5200').split(',');
+    cells[LEGACY_HEADER.split(',').indexOf('postcode')] = '00123';
+    const records = legacyRecs([cells.join(',')]);
+    expect(records[0].postcode).toBe('00123');
+    const preview = await validateEmployeeImport(a, { companyId: b.companyId, records });
+    expect(preview.rows[0].errors).toEqual([]);
+    const committed = await commitEmployeeImport(a, { companyId: b.companyId, records });
+    expect(committed.imported).toBe(1);expect(committed.failed).toEqual([]);
+    expect(await personByEmail('nadia.legacy@acme.test')).toMatchObject({ permanentPostcode: '00123' });
     const comp = await openComp('LEG0001');
     expect(comp!.basicSalary).toBe('5200.00');
     expect(comp!.monthlyAllowance).toBe('300.00');
@@ -362,7 +374,7 @@ describe('r369 §4 · an existing file with NO salary_remarks column imports eve
   it('the compensation.set event records NO remarks change for a legacy row', async () => {
     // `fieldsChanged` is what the audit trail shows. A file that never mentioned remarks must not make
     // the log claim somebody set one.
-    const records = recs(LEGACY_HEADER, [legacyRow('Nadia Yusof', 'nadia.legacy@acme.test', 'LEG0001', ic(51), '5200')]);
+    const records = legacyRecs([legacyRow('Nadia Yusof', 'nadia.legacy@acme.test', 'LEG0001', ic(51), '5200')]);
     await commitEmployeeImport(a, { companyId: b.companyId, records });
     const comp = await openComp('LEG0001');
     const [ev] = await owner.db
@@ -377,7 +389,7 @@ describe('r369 §4 · an existing file with NO salary_remarks column imports eve
     // The honest edge of backward compatibility: before r369 such a row imported and then blocked the
     // whole company's payroll run. It is refused now, which is better, and the error tells the operator
     // the one thing they need — which column to add to their file.
-    const records = recs(LEGACY_HEADER, [legacyRow('Old Director', 'olddir@acme.test', 'LEG0004', ic(54), '0')]);
+    const records = legacyRecs([legacyRow('Old Director', 'olddir@acme.test', 'LEG0004', ic(54), '0')]);
     const preview = await validateEmployeeImport(a, { companyId: b.companyId, records });
     expect(preview.rows[0].ok).toBe(false);
     expect(preview.rows[0].errors.join(' | ')).toContain(COLUMN);

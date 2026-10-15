@@ -74,6 +74,15 @@ export function parsePersonnelImportCsv(text:string, options:{columns:readonly s
   const rows=parsePersonnelCsv(text,options.sheet??'employee');
   if(!rows.length)return {headers:[] as string[],records:[] as Record<string,string>[],warnings:[] as string[]};
   const sheet=options.sheet??'employee';
+  // Generation 1 downloads used a complete technical-key header grammar. Recognise that FILE
+  // only during its one-release compatibility window, never by preferring an individual exact key
+  // over ambiguous display aliases (e.g. permanent/correspondence Postcode). An underscore-bearing
+  // key supplies explicit format evidence; every heading must belong to the same exact grammar.
+  const legacyGeneration=(options.generation??PERSONNEL_TEMPLATE_GENERATION)===PERSONNEL_LEGACY_HEADER_GENERATION+1;
+  const technicalKeys=new Set(options.columns);
+  const technicalHeadings=rows[0].map(raw=>raw.replace(/^\uFEFF/,'').trim());
+  const legacyTechnicalFile=legacyGeneration && technicalHeadings.some(raw=>raw.includes('_'))
+    && technicalHeadings.every(raw=>technicalKeys.has(raw));
   const aliases=new Map<string,Set<string>>();
   const register=(label:string,column:string)=> { const key=normalized(label); const values=aliases.get(key)??new Set<string>();values.add(column);aliases.set(key,values); };
   for(const column of options.columns) {
@@ -98,8 +107,8 @@ export function parsePersonnelImportCsv(text:string, options:{columns:readonly s
     }
   }
   const warnings:string[]=[];const seen=new Set<string>();
-  const headers=rows[0].map(raw=>{
-    const matches=aliases.get(normalized(raw));
+  const headers=rows[0].map((raw,index)=>{
+    const matches=legacyTechnicalFile ? new Set([technicalHeadings[index]]) : aliases.get(normalized(raw));
     if(!matches || matches.size!==1)throw new PersonnelImportHeaderError(matches ? `Ambiguous column “${raw}”. Download the current template and use its complete heading.` : `Unrecognized or removed column “${raw}”. Download the current template; this column cannot be applied.`);
     const column=[...matches][0];
     if(seen.has(column))throw new PersonnelImportHeaderError(`Column “${raw}” repeats “${personnelColumnLabel(column,sheet)}”. Keep one column; old and new headings cannot appear together.`);
