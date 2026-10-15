@@ -3,6 +3,7 @@ import { authProviderInvalid, keycloakSelected, keycloakReady, keycloakConfig, W
 import { NextRequest, NextResponse } from 'next/server';
 import { applyResponseHeaders, authkit, handleAuthkitHeaders, partitionAuthkitHeaders } from '@workos-inc/authkit-nextjs';
 import { isAuthRoute } from '@/lib/auth-routes';
+import { isDemoDeployment } from '@/lib/demo-mode';
 import { appOrigin, realAuthEnabled } from '@/lib/real-auth';
 import { isHealthRoute } from '@/lib/health-route';
 import { isMobileApiRoute } from '@/lib/mobile-api/routes';
@@ -211,7 +212,10 @@ export function middleware(req: NextRequest): NextResponse | Promise<NextRespons
   // entirely and left x-pathname unset on exactly the routes whose layout depends on it — see
   // lib/auth-routes.ts. The gate is a hosting protection only — never gate local `next dev`, even if
   // SHARE_PASSWORD is set in .env.local for hosting.
-  if (password && !isAuthRoute(req.nextUrl.pathname) && process.env.NODE_ENV !== 'development' && !basicPasses(req, password)) {
+  // Demo identity selection is public, but action IDs never substitute for the hosting credential.
+  // Challenge here before Next forwards an auth-route action and masks a downstream 401 as {}.
+  const demoAction = isDemoDeployment() && req.headers.has('next-action');
+  if (password && (!isAuthRoute(req.nextUrl.pathname) || demoAction) && process.env.NODE_ENV !== 'development' && !basicPasses(req, password)) {
     return new NextResponse('Authentication required.', {
       status: 401,
       headers: { 'WWW-Authenticate': 'Basic realm="AI HR demo", charset="UTF-8"' },
