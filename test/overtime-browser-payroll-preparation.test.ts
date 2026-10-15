@@ -28,7 +28,7 @@ describe('explicit deferred Payroll preparation',()=>{
   expect(Object.prototype.hasOwnProperty.call(deferred.batch,'id')).toBe(false);
   expect(()=>validateOvertimePayrollPreparation(prepared,target)).toThrow();
   expect(()=>validateOvertimePayrollPreparation(deferred,normal)).toThrow();
-  for(const fixture of [{...deferred,payrollPreparation:'unknown'},{...deferred,batch:{...deferred.batch,id:batch}},{...deferred,batch:{...deferred.batch,id:undefined}},{...deferred,batch:{...deferred.batch,status:'draft'}},{...deferred,batch:{...deferred.batch,employmentIds:[]}},{...deferred,batch:{...deferred.batch,employmentIds:[employee,employee]}},{...deferred,batch:{...deferred.batch,employmentIds:['fabricated']}},{...prepared,batch:{...prepared.batch,id:undefined}}])expect(()=>validateOvertimePayrollPreparation(fixture,fixture.payrollPreparation==='deferred'?target:normal)).toThrow();
+  for(const fixture of [{...deferred,payrollPreparation:'unknown'},{...deferred,batch:{...deferred.batch,id:batch}},{...deferred,batch:{...deferred.batch,id:undefined}},{...deferred,batch:{...deferred.batch,status:'draft'}},{...deferred,batch:{...deferred.batch,employmentIds:[]}},{...deferred,batch:{...deferred.batch,employmentIds:[employee,employee]}},{...deferred,batch:{...deferred.batch,employmentIds:['fabricated']}},{...prepared,batch:{...prepared.batch,id:undefined}}])expect(()=>validateOvertimePayrollPreparation(fixture,'payrollPreparation' in fixture && fixture.payrollPreparation==='deferred'?target:normal)).toThrow();
  });
  it('binds resume to original mode without requiring its later business run to remain absent',()=>{
   const r=deferredReceipts();
