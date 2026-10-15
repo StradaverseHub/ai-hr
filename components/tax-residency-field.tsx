@@ -17,6 +17,7 @@
  * One literal t() per option — a template key is invisible to test/i18n-coverage.test.ts check C.
  */
 import { useTranslations } from 'next-intl';
+import {personnelControl,personnelFormLabel,personnelFormChoices} from '@/lib/personnel-form-contract';
 
 const inputCls =
   'flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20';
@@ -25,11 +26,7 @@ function TaxResidencyOptions() {
   const t = useTranslations('people.detail');
   return (
     <>
-      <option value="resident">{t('taxResidencyResident')}</option>
-      <option value="non_resident">{t('taxResidencyNonResident')}</option>
-      <option value="rep">{t('taxResidencyRep')}</option>
-      <option value="knowledge_worker">{t('taxResidencyKnowledgeWorker')}</option>
-      <option value="c_suite">{t('taxResidencyCSuite')}</option>
+      {personnelFormChoices('bank_statutory.income_tax_pcb.taxresidency').map(({value,labelKey})=><option key={value} value={value}>{t(labelKey.slice(14))}</option>)}
     </>
   );
 }
@@ -41,9 +38,11 @@ export function TaxResidencySelect(
 ) {
   const t = useTranslations('people.detail');
   const { none } = props;
+  const fieldId='bank_statutory.income_tax_pcb.taxresidency';
+  const label=personnelFormLabel(fieldId,(key,fallback)=>key.startsWith('people.detail.')?t(key.slice(14)):fallback);
   if (props.mode === 'form') {
     return (
-      <select id="income-tax-resident" aria-label={t('incomeTaxResident')} name={none?undefined:'taxResidency'} value={none?'none':props.value} onChange={e=>props.onChange(e.target.value)} disabled={none} required={!none} className={inputCls}>
+      <select id="income-tax-resident" aria-label={label} {...personnelControl(fieldId,'edit',{activeTaxSelection:!none})} value={none?'none':props.value} onChange={e=>props.onChange(e.target.value)} disabled={none} className={inputCls}>
         {none&&<option value="none">{t('taxCategoryNone')}</option>}
         <option value="" disabled>{t('taxSelectionChoose')}</option>
         <TaxResidencyOptions />
@@ -51,7 +50,7 @@ export function TaxResidencySelect(
     );
   }
   return (
-    <select aria-label={t('incomeTaxResident')} value={none ? 'none' : (props.value ?? '')} onChange={(e) => props.onChange(e.target.value)} disabled={none} className={inputCls}>
+    <select {...personnelControl(fieldId,'draft')} aria-label={label} value={none ? 'none' : (props.value ?? '')} onChange={(e) => props.onChange(e.target.value)} disabled={none} className={inputCls}>
       {none && <option value="none">{t('taxCategoryNone')}</option>}
       <option value="">{props.notSetLabel}</option>
       <TaxResidencyOptions />

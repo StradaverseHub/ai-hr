@@ -38,7 +38,9 @@
  */
 
 import { useTranslations } from 'next-intl';
-import { Field, inputCls } from '@/components/ui';
+import { inputCls } from '@/components/ui';
+import { PersonnelField } from '@/components/personnel-field';
+import { personnelInput, personnelFormName } from '@/lib/personnel-form-contract';
 import { SameAsPermanentAddressControlled } from '@/components/same-as-permanent-address';
 import { ProfileOptionSelect, ProfileOptionSelectControlled, type ProfileOptionChoice } from '@/components/profile-option-select';
 
@@ -76,16 +78,17 @@ export type AddressBlockFieldsProps = Common &
       }
   );
 
-/** form mode's `name` stem. The columns are `permanentAddressLine1` / `correspondenceAddressLine1`, so
- *  the stem is the long word and the id prefix is the short one; both are declared here rather than
- *  assembled at three call sites. */
-const NAME_STEM = { perm: 'permanent', corr: 'correspondence' } as const;
+const ADDRESS_FIELDS={
+  perm:{addressLine1:'profile.contact_and_permanent_address.permanentaddressline1',addressLine2:'profile.contact_and_permanent_address.permanentaddressline2',addressLine3:'profile.contact_and_permanent_address.permanentaddressline3',postcode:'profile.contact_and_permanent_address.permanentpostcode',city:'profile.contact_and_permanent_address.permanentcity',state:'profile.contact_and_permanent_address.permanentstate',country:'profile.contact_and_permanent_address.permanentcountry'},
+  corr:{addressLine1:'profile.correspondence_address.correspondenceaddressline1',addressLine2:'profile.correspondence_address.correspondenceaddressline2',addressLine3:'profile.correspondence_address.correspondenceaddressline3',postcode:'profile.correspondence_address.correspondencepostcode',city:'profile.correspondence_address.correspondencecity',state:'profile.correspondence_address.correspondencestate',country:'profile.correspondence_address.correspondencecountry'},
+} as const;
 
 export function AddressBlockFields(props: AddressBlockFieldsProps) {
   const t = useTranslations('people.detail');
   const { side, value, stateOptions, countryOptions } = props;
   const id = (suffix: string) => `${side}-${suffix}`;
-  const name = (suffix: string) => `${NAME_STEM[side]}${suffix[0].toUpperCase()}${suffix.slice(1)}`;
+  const mode=props.mode==='controlled' ? 'draft' : 'edit';
+  const name = (suffix: keyof AddressBlockValue) => personnelFormName(ADDRESS_FIELDS[side][suffix]);
   const lineCls = props.lineClassName ?? inputCls;
   const disabled = props.mode === 'controlled' ? props.disabled === true : false;
 
@@ -93,10 +96,11 @@ export function AddressBlockFields(props: AddressBlockFieldsProps) {
    *  rather than two JSX trees that could fall out of step. */
   const text = (suffix: 'addressLine1' | 'addressLine2' | 'addressLine3' | 'postcode' | 'city', cls: string) => (
     <input
+      {...personnelInput(ADDRESS_FIELDS[side][suffix],mode)}
       id={id(suffix)}
       className={cls}
       {...(props.mode === 'form'
-        ? { name: name(suffix), defaultValue: value[suffix] ?? '' }
+        ? { defaultValue: value[suffix] ?? '' }
         : {
             value: value[suffix] ?? '',
             disabled,
@@ -107,18 +111,19 @@ export function AddressBlockFields(props: AddressBlockFieldsProps) {
 
   return (
     <>
-      <Field label={t('addressLine1')}>{text('addressLine1', lineCls)}</Field>
-      <Field label={t('addressLine2')}>{text('addressLine2', lineCls)}</Field>
-      <Field label={t('addressLine3')}>{text('addressLine3', lineCls)}</Field>
-      <Field label={t('postcode')}>{text('postcode', inputCls)}</Field>
-      <Field label={t('city')}>{text('city', inputCls)}</Field>
+      <PersonnelField fieldId={ADDRESS_FIELDS[side].addressLine1} mode={mode}>{text('addressLine1', lineCls)}</PersonnelField>
+      <PersonnelField fieldId={ADDRESS_FIELDS[side].addressLine2} mode={mode}>{text('addressLine2', lineCls)}</PersonnelField>
+      <PersonnelField fieldId={ADDRESS_FIELDS[side].addressLine3} mode={mode}>{text('addressLine3', lineCls)}</PersonnelField>
+      <PersonnelField fieldId={ADDRESS_FIELDS[side].postcode} mode={mode}>{text('postcode', inputCls)}</PersonnelField>
+      <PersonnelField fieldId={ADDRESS_FIELDS[side].city} mode={mode}>{text('city', inputCls)}</PersonnelField>
       {/* State and Country are CATALOG-BACKED on both screens (7d309da7), including the legacy-value
           tolerance that keeps an off-catalog stored value selected so a save can never blank it. The two
           renderings of that rule already exist as one pair of components; this group only chooses between
           them, it does not restate the rule. */}
-      <Field label={t('stateLabel')}>
+      <PersonnelField fieldId={ADDRESS_FIELDS[side].state} mode={mode}>
         {props.mode === 'form' ? (
           <ProfileOptionSelect
+            personnelFieldId={ADDRESS_FIELDS[side].state}
             id={id('state')}
             name={name('state')}
             value={value.state}
@@ -128,6 +133,7 @@ export function AddressBlockFields(props: AddressBlockFieldsProps) {
           />
         ) : (
           <ProfileOptionSelectControlled
+            personnelFieldId={ADDRESS_FIELDS[side].state}
             id={id('state')}
             value={value.state}
             options={stateOptions}
@@ -137,10 +143,11 @@ export function AddressBlockFields(props: AddressBlockFieldsProps) {
             onChange={(v) => props.onChange({ state: v })}
           />
         )}
-      </Field>
-      <Field label={t('country')}>
+      </PersonnelField>
+      <PersonnelField fieldId={ADDRESS_FIELDS[side].country} mode={mode}>
         {props.mode === 'form' ? (
           <ProfileOptionSelect
+            personnelFieldId={ADDRESS_FIELDS[side].country}
             id={id('country')}
             name={name('country')}
             value={value.country}
@@ -150,6 +157,7 @@ export function AddressBlockFields(props: AddressBlockFieldsProps) {
           />
         ) : (
           <ProfileOptionSelectControlled
+            personnelFieldId={ADDRESS_FIELDS[side].country}
             id={id('country')}
             value={value.country}
             options={countryOptions}
@@ -159,7 +167,7 @@ export function AddressBlockFields(props: AddressBlockFieldsProps) {
             onChange={(v) => props.onChange({ country: v })}
           />
         )}
-      </Field>
+      </PersonnelField>
     </>
   );
 }
@@ -224,24 +232,26 @@ export function CorrespondencePhoneFields({
   const t = useTranslations('people.detail');
   return (
     <>
-      <Field label={t('phone')}>
+      <PersonnelField fieldId="profile.correspondence_address.correspondencemobilephone" mode="draft">
         <input
+          {...personnelInput('profile.correspondence_address.correspondencemobilephone','draft')}
           id="corr-mobile-phone"
           className={inputCls}
           value={mobile ?? ''}
           disabled={disabled}
           onChange={(e) => onChange({ correspondenceMobilePhone: e.target.value })}
         />
-      </Field>
-      <Field label={t('homePhone')}>
+      </PersonnelField>
+      <PersonnelField fieldId="profile.correspondence_address.correspondencehomephone" mode="draft">
         <input
+          {...personnelInput('profile.correspondence_address.correspondencehomephone','draft')}
           id="corr-home-phone"
           className={inputCls}
           value={home ?? ''}
           disabled={disabled}
           onChange={(e) => onChange({ correspondenceHomePhone: e.target.value })}
         />
-      </Field>
+      </PersonnelField>
     </>
   );
 }

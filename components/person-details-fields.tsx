@@ -37,7 +37,9 @@
  */
 
 import { useTranslations } from 'next-intl';
-import { Field, inputCls } from '@/components/ui';
+import { inputCls } from '@/components/ui';
+import { PersonnelField } from '@/components/personnel-field';
+import { personnelControl } from '@/lib/personnel-form-contract';
 import { PERSONNEL_FIELDS } from '@/lib/personnel-field-registry';
 import { personnelFieldChoices } from '@/lib/personnel-import-contract';
 
@@ -60,18 +62,19 @@ export type PersonDetailsFieldsProps = Mode & {
 export function PersonDetailsFields(props: PersonDetailsFieldsProps) {
   const t = useTranslations('people.detail');
   const field=(key:string)=>PERSONNEL_FIELDS.find(field=>field.owner==='person' && field.ownerField===key)!;
-  const fieldLabel=(key:string)=>t(field(key).labelKey.replace(/^people\.detail\./,''));
+  const mode=props.mode==='controlled' ? 'draft' : 'edit';
   const gender = props.gender ?? '';
   const maritalStatus = props.maritalStatus ?? '';
 
 
   return (
     <>
-      <Field label={fieldLabel('gender')} className={props.fieldClassName}>
+      <PersonnelField fieldId="profile.personal_details.gender" mode={mode} className={props.fieldClassName}>
         <select
+          {...personnelControl(field('gender').id,mode)}
           className={inputCls}
           {...(props.mode === 'form'
-            ? { name: 'gender', defaultValue: gender }
+            ? { defaultValue: gender }
             : { value: gender, onChange: (e) => props.onGenderChange(e.target.value) })}
         >
           <option value="">{t('genderNotSet')}</option>
@@ -81,12 +84,13 @@ export function PersonDetailsFields(props: PersonDetailsFieldsProps) {
             </option>
           ))}
         </select>
-      </Field>
-      <Field label={fieldLabel('maritalStatus')} className={props.fieldClassName}>
+      </PersonnelField>
+      <PersonnelField fieldId="profile.personal_details.maritalstatus" mode={mode} className={props.fieldClassName}>
         <select
+          {...personnelControl(field('maritalStatus').id,mode)}
           className={inputCls}
           {...(props.mode === 'form'
-            ? { name: 'maritalStatus', defaultValue: maritalStatus }
+            ? { defaultValue: maritalStatus }
             : { value: maritalStatus, onChange: (e) => props.onMaritalStatusChange(e.target.value) })}
         >
           <option value="">{t('maritalNotSet')}</option>
@@ -96,7 +100,7 @@ export function PersonDetailsFields(props: PersonDetailsFieldsProps) {
             </option>
           ))}
         </select>
-      </Field>
+      </PersonnelField>
     </>
   );
 }

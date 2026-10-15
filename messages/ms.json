@@ -1151,6 +1151,7 @@
         "qualification": "Kelayakan"
       },
       "employmentInfo": {
+        "finalConfirmationDate": "Tarikh Pengesahan Akhir",
         "title": "Maklumat Pekerjaan",
         "datesGroup": "Tarikh Pekerjaan",
         "orgGroup": "Organisasi",
@@ -1402,6 +1403,7 @@
       "identityTaxCardTitle": "Pengenalan & Cukai",
       "incomeTaxPcbSection": "Cukai Pendapatan (PCB)",
       "taxInfoLegend": "Maklumat cukai",
+      "taxCategoryNumeric": "Kategori Cukai Lama (angka)",
       "taxCategoryLabel": "Kategori Cukai",
       "taxCategorySingle": "Bujang/Pasangan tidak Menuntut Pelepasan Anak",
       "taxCategoryMarriedSpouseNotWorking": "Berkahwin dan Pasangan Tidak Bekerja",

@@ -1151,6 +1151,7 @@
         "qualification": "学历资历"
       },
       "employmentInfo": {
+        "finalConfirmationDate": "最终转正日期",
         "title": "雇佣信息",
         "datesGroup": "雇佣日期",
         "orgGroup": "组织",
@@ -1402,6 +1403,7 @@
       "identityTaxCardTitle": "身份与税务",
       "incomeTaxPcbSection": "所得税 (PCB)",
       "taxInfoLegend": "税务信息",
+      "taxCategoryNumeric": "旧税务类别（数字）",
       "taxCategoryLabel": "税务类别",
       "taxCategorySingle": "单身/配偶不申报子女减免",
       "taxCategoryMarriedSpouseNotWorking": "已婚且配偶未工作",

@@ -30,7 +30,9 @@
 import { Fragment, type ReactNode } from 'react';
 import { PERSONNEL_FIELDS } from '@/lib/personnel-field-registry';
 import { useTranslations } from 'next-intl';
-import { Field, inputCls } from '@/components/ui';
+import { inputCls } from '@/components/ui';
+import { PersonnelField } from '@/components/personnel-field';
+import { personnelInput, personnelFormName, personnelFormCatalog } from '@/lib/personnel-form-contract';
 import {
   ProfileOptionSelect,
   ProfileOptionSelectControlled,
@@ -82,23 +84,28 @@ export function PersonNameFields(
 ) {
   const t = useTranslations('people.detail');
   const v = props.value;
+  const mode=props.mode==='controlled' ? 'draft' : 'edit';
+
+  const fieldForName=(key:keyof PersonNameValue)=>PERSONNEL_FIELDS.find(field=>field.formGroup==='person-name' && field.ownerField===key)!;
 
   /** One catalog dropdown, in whichever of the two shapes this screen needs. */
   const catalog = (key: 'salutation' | 'religion' | 'race') =>
     props.mode === 'form' ? (
       <ProfileOptionSelect
-        name={key}
+        name={personnelFormName(fieldForName(key).id)}
+        personnelFieldId={fieldForName(key).id}
         value={v[key]}
         // Both renderings take the same narrow shape: the Personnel page passes full catalog rows (which
         // satisfy it), the wizard passes the trimmed rows it ships to the browser.
-        options={props.catalogs[key]}
+        options={personnelFormCatalog(fieldForName(key).id,props.catalogs)}
         placeholder={t('optionNotSet')}
         legacySuffix={t('optionLegacySuffix')}
       />
     ) : (
       <ProfileOptionSelectControlled
+        personnelFieldId={fieldForName(key).id}
         value={v[key]}
-        options={props.catalogs[key]}
+        options={personnelFormCatalog(fieldForName(key).id,props.catalogs)}
         placeholder={t('optionNotSet')}
         legacySuffix={t('optionLegacySuffix')}
         onChange={(value) => props.onChange({ [key]: value })}
@@ -109,18 +116,18 @@ export function PersonNameFields(
   const text = (key: 'firstName' | 'lastName' | 'preferredName') => (
     <input
       className={inputCls}
+      {...personnelInput(fieldForName(key).id,mode)}
       {...(props.mode === 'form'
-        ? { name: key, defaultValue: v[key] ?? '' }
+        ? { defaultValue: v[key] ?? '' }
         : { value: v[key] ?? '', onChange: (e) => props.onChange({ [key]: e.target.value }) })}
     />
   );
 
   return <>{PERSONNEL_FIELDS.filter(field=>field.formGroup==='person-name').map(field=>{
     const key=field.ownerField as keyof PersonNameValue;
-    const label=t(field.labelKey.replace(/^people\.detail\./,''));
-    return <Fragment key={field.id}><Field label={label}>
+    return <Fragment key={field.id}><PersonnelField fieldId={field.id} mode={mode}>
       {field.type==='choice' ? catalog(key as keyof PersonNameCatalogs) : text(key as 'firstName'|'lastName'|'preferredName')}
-    </Field>{key==='salutation' ? props.afterSalutation : null}</Fragment>;
+    </PersonnelField>{key==='salutation' ? props.afterSalutation : null}</Fragment>;
   })}</>;
 
 }
@@ -152,31 +159,32 @@ export function PersonContactExtraFields(
     // second convention.
     | { mode: 'controlled'; value: PersonContactExtraValue; onChange: (patch: PersonContactExtraPatch) => void; homePhoneId?: string },
 ) {
-  const t = useTranslations('people.detail');
   const v = props.value;
+  const mode=props.mode==='controlled' ? 'draft' : 'edit';
   return (
     <>
-      <Field label={t(PERSONNEL_FIELDS.find(field=>field.formGroup==='person-contact-extra' && field.ownerField==='homePhone')!.labelKey.replace(/^people\.detail\./,''))}>
+      <PersonnelField fieldId="profile.contact_and_permanent_address.homephone" mode={mode}>
         <input
+          {...personnelInput("profile.contact_and_permanent_address.homephone",mode)}
           id={props.homePhoneId}
           className={inputCls}
           {...(props.mode === 'form'
-            ? { name: 'homePhone', defaultValue: v.homePhone ?? '' }
+            ? { defaultValue: v.homePhone ?? '' }
             : { value: v.homePhone ?? '', onChange: (e) => props.onChange({ homePhone: e.target.value }) })}
         />
-      </Field>
-      <Field label={t(PERSONNEL_FIELDS.find(field=>field.formGroup==='person-contact-extra' && field.ownerField==='personalEmail')!.labelKey.replace(/^people\.detail\./,''))}>
+      </PersonnelField>
+      <PersonnelField fieldId="profile.contact_and_permanent_address.personalemail" mode={mode}>
         <input
-          type="email"
+          {...personnelInput("profile.contact_and_permanent_address.personalemail",mode)}
           className={inputCls}
           {...(props.mode === 'form'
-            ? { name: 'personalEmail', defaultValue: v.personalEmail ?? '' }
+            ? { defaultValue: v.personalEmail ?? '' }
             : {
                 value: v.personalEmail ?? '',
                 onChange: (e) => props.onChange({ personalEmail: e.target.value }),
               })}
         />
-      </Field>
+      </PersonnelField>
     </>
   );
 }

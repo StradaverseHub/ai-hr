@@ -1151,6 +1151,7 @@
         "qualification": "คุณวุฒิ"
       },
       "employmentInfo": {
+        "finalConfirmationDate": "วันที่ยืนยันขั้นสุดท้าย",
         "title": "ข้อมูลการจ้างงาน",
         "datesGroup": "วันที่การจ้างงาน",
         "orgGroup": "องค์กร",
@@ -1402,6 +1403,7 @@
       "identityTaxCardTitle": "ข้อมูลประจำตัว & ภาษี",
       "incomeTaxPcbSection": "ภาษีเงินได้ (PCB)",
       "taxInfoLegend": "ข้อมูลภาษี",
+      "taxCategoryNumeric": "หมวดภาษีเดิม (ตัวเลข)",
       "taxCategoryLabel": "หมวดภาษี",
       "taxCategorySingle": "โสด/คู่สมรสไม่ขอลดหย่อนบุตร",
       "taxCategoryMarriedSpouseNotWorking": "สมรสและคู่สมรสไม่ทำงาน",

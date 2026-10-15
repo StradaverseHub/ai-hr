@@ -56,6 +56,8 @@ import { useMemo, useRef, useState, useTransition, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Badge, Button, Card, EmployeeCode, Field, SectionHeader, inputCls } from '@/components/ui';
+import { PersonnelField } from '@/components/personnel-field';
+import { personnelInput, personnelControl } from '@/lib/personnel-form-contract';
 // 759dfc7d work item 2 — the SAME tab shell app/admin/personnel/[employmentId] uses, not a copy of it.
 // A second strip would be a second set of tab behaviours to keep in step: the unsaved-changes guard, the
 // `?tab=` written into the address bar on every switch (and read back on load, `openingTab` below), and
@@ -436,13 +438,13 @@ export function EmployeeWizard({
               catalogs={profileOptions}
               onChange={(patch) => set('profile', patch)}
               afterSalutation={
-                <Field label={t('fields.fullName')}>
-                  <input
+                <PersonnelField fieldId={"profile.personal_details.fullname"} mode="draft">
+                  <input {...personnelInput("profile.personal_details.fullname", 'draft')}
                     className={inputCls}
                     value={data.profile?.fullName ?? ''}
                     onChange={(e) => set('profile', { fullName: e.target.value })}
                   />
-                </Field>
+                </PersonnelField>
               }
             />
             {/* 35b7af0a group 8 — Nationality and the Identity No (NRIC) are the SAME field group the
@@ -538,26 +540,26 @@ export function EmployeeWizard({
               under the record's own "Contact & address" heading rather than beside the name, which is
               where the activated record keeps them. */}
           <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
-            <Field label={t('fields.primaryEmail')}>
-              <input
-                type="email"
+            <PersonnelField fieldId={"profile.contact_and_permanent_address.primaryemail"} mode="draft">
+              <input {...personnelInput("profile.contact_and_permanent_address.primaryemail", 'draft')}
+
                 className={inputCls}
                 value={data.profile?.primaryEmail ?? ''}
                 onChange={(e) => set('profile', { primaryEmail: e.target.value })}
               />
-            </Field>
+            </PersonnelField>
             {/* da7463b4 — `perm-mobile-phone`, the id the activated record's Contact & Address card gives
                 this same field. Two fields on this tab are now labelled "Mobile Phone Number" (this one and
                 the Correspondence block's own, exactly as on the record), so the id is what tells them
                 apart — and it is the id the "same as permanent" pairing is declared against. */}
-            <Field label={t('fields.phone')}>
-              <input
+            <PersonnelField fieldId={"profile.contact_and_permanent_address.phone"} mode="draft">
+              <input {...personnelInput("profile.contact_and_permanent_address.phone", 'draft')}
                 id="perm-mobile-phone"
                 className={inputCls}
                 value={data.profile?.phone ?? ''}
                 onChange={(e) => set('profile', { phone: e.target.value })}
               />
-            </Field>
+            </PersonnelField>
             {/* a72610af — Home Phone and Personal E-mail, the SHARED pair the Personnel Contact & Address
                 card renders. The e-mail beside them above is the WORK address (`primaryEmail`, the login);
                 these two are the employee's own, and the record has always kept both. */}
@@ -671,8 +673,8 @@ export function EmployeeWizard({
                 gone entirely now: it is in the header card above, on every step, because since 06f0cb8f it
                 is not merely "chosen elsewhere" but FIXED — the held Employee ID came from this company's
                 numbering rule, so changing it would orphan the number. */}
-            <Field label={t('fields.businessUnit')}>
-              <select
+            <PersonnelField fieldId={"employment.organisation_assignment.businessunitname"} mode="draft">
+              <select {...personnelControl("employment.organisation_assignment.businessunitname", 'draft')}
                 className={inputCls}
                 value={businessUnitId}
                 onChange={(e) => setBusinessUnitId(e.target.value)}
@@ -688,9 +690,9 @@ export function EmployeeWizard({
                 <p className="mt-1 text-xs text-muted-foreground">{t('orgLabelsEmptyForCompany')}</p>
               )}
               <p className="mt-1 text-xs text-muted-foreground">{t('hints.businessUnit')}</p>
-            </Field>
-            <Field label={t('fields.department')}>
-              <select
+            </PersonnelField>
+            <PersonnelField fieldId={"employment.organisation_assignment.departmentname"} mode="draft">
+              <select {...personnelControl("employment.organisation_assignment.departmentname", 'draft')}
                 className={inputCls}
                 value={data.employment?.departmentId ?? ''}
                 onChange={(e) => set('employment', { departmentId: e.target.value })}
@@ -705,9 +707,9 @@ export function EmployeeWizard({
               {orgEmpty(departments) && (
                 <p className="mt-1 text-xs text-muted-foreground">{t('orgLabelsEmptyForCompany')}</p>
               )}
-            </Field>
-            <Field label={t('fields.position')}>
-              <select
+            </PersonnelField>
+            <PersonnelField fieldId={"employment.organisation_assignment.positionname"} mode="draft">
+              <select {...personnelControl("employment.organisation_assignment.positionname", 'draft')}
                 className={inputCls}
                 value={data.employment?.positionId ?? ''}
                 onChange={(e) => set('employment', { positionId: e.target.value })}
@@ -722,9 +724,9 @@ export function EmployeeWizard({
               {orgEmpty(positions) && (
                 <p className="mt-1 text-xs text-muted-foreground">{t('orgLabelsEmptyForCompany')}</p>
               )}
-            </Field>
-            <Field label={t('fields.costCenter')}>
-              <select
+            </PersonnelField>
+            <PersonnelField fieldId={"employment.draft_only_employment_fields.costcenterid"} mode="draft">
+              <select {...personnelControl("employment.draft_only_employment_fields.costcenterid", 'draft')}
                 className={inputCls}
                 value={data.employment?.costCenterId ?? ''}
                 onChange={(e) => set('employment', { costCenterId: e.target.value })}
@@ -739,9 +741,9 @@ export function EmployeeWizard({
               {orgEmpty(costCenters) && (
                 <p className="mt-1 text-xs text-muted-foreground">{t('orgLabelsEmptyForCompany')}</p>
               )}
-            </Field>
-            <Field label={t('fields.jobGrade')}>
-              <select
+            </PersonnelField>
+            <PersonnelField fieldId={"employment.organisation_assignment.gradename"} mode="draft">
+              <select {...personnelControl("employment.organisation_assignment.gradename", 'draft')}
                 className={inputCls}
                 value={data.employment?.gradeId ?? ''}
                 onChange={(e) => set('employment', { gradeId: e.target.value })}
@@ -753,15 +755,15 @@ export function EmployeeWizard({
                   </option>
                 ))}
               </select>
-            </Field>
+            </PersonnelField>
             {/* r392 (685d2380 step 1) — "Direct Superior", the Personnel record's word for it, found by
                 SEARCHING (Employee ID or part of a name) with the same Combobox that record uses. CONTROLLED
                 MODE: no `name`, so nothing is posted by a hidden input — the pick is written into the draft
                 state under the STORED key it has always had (`reportingManagerEmploymentId`), which
                 `completeEmployeeDraft` hands `hireEmployee` unchanged. The people offered are unchanged
                 too: page.tsx still reads `listManagerCandidates(session, { companyIds: scopeIds })`. */}
-            <Field label={t('fields.directSuperior')}>
-              <Combobox
+            <PersonnelField fieldId={"employment.direct_superior_and_history.superioremploymentid"} mode="draft">
+              <Combobox {...personnelControl("employment.direct_superior_and_history.superioremploymentid", 'draft')}
                 value={data.employment?.reportingManagerEmploymentId ?? ''}
                 options={managers.map((m) => ({ value: m.id, label: m.label }))}
                 placeholder={t('directSuperiorNone')}
@@ -770,7 +772,7 @@ export function EmployeeWizard({
                 legacySuffix=""
                 onValueChange={(v) => set('employment', { reportingManagerEmploymentId: v })}
               />
-            </Field>
+            </PersonnelField>
             {/* a72610af — THE `??` BELOW IS NO LONGER A DEFAULT, IT IS A GUARD, and the difference is the
                 whole of the defect this item fixed. It used to be the only statement of "Full Time" on
                 this screen: nobody chose it, nothing wrote it, `missingByTab` correctly reported the
@@ -779,8 +781,8 @@ export function EmployeeWizard({
                 by page.tsx), so what is shown is what is stored and this expression only ever falls back
                 if that seed is somehow skipped. It reads the SHARED constant rather than a second literal
                 so the two can never disagree again. */}
-            <Field label={t('fields.employmentType')}>
-              <select
+            <PersonnelField fieldId={"employment.organisation_assignment.employmenttype"} mode="draft">
+              <select {...personnelControl("employment.organisation_assignment.employmenttype", 'draft')}
                 className={inputCls}
                 value={data.employment?.employmentType ?? DEFAULT_EMPLOYMENT_TYPE}
                 onChange={(e) => set('employment', { employmentType: e.target.value })}
@@ -790,7 +792,7 @@ export function EmployeeWizard({
                 <option value="contract">{t('employmentType.contract')}</option>
                 <option value="intern">{t('employmentType.intern')}</option>
               </select>
-            </Field>
+            </PersonnelField>
           </div>
         </Card>
         <Card>
@@ -803,9 +805,9 @@ export function EmployeeWizard({
                 column this lands in. NOTHING MOVED: `hireEmployee` has always written BOTH hired_on (shown
                 as Group Join Date) and join_date (the Join Date for the current company) from this one
                 value, and the hint says so. The draft key stays `hiredOn`. */}
-            <Field label={t('fields.groupJoinDate')}>
-              <input
-                type="date"
+            <PersonnelField fieldId={"employment.employment_dates_and_service.hiredon"} mode="draft">
+              <input {...personnelInput("employment.employment_dates_and_service.hiredon", 'draft')}
+
                 className={inputCls}
                 value={data.employment?.hiredOn ?? today}
                 onChange={(e) => set('employment', { hiredOn: e.target.value })}
@@ -813,7 +815,7 @@ export function EmployeeWizard({
               {/* 89ea527b — Group Join Date and Join Date are the same day at creation and become
                   movement-only afterwards. The wizard captures the one date, as the ticket asks. */}
               <p className="mt-1 text-xs text-muted-foreground">{t('hints.groupJoinDate')}</p>
-            </Field>
+            </PersonnelField>
             {/* 8590615a — for a CONTRACT hire this one date is the contract end date, so it says so. The
                 field, its state and its draft key are unchanged (`provisionalEndOn`); only the label and the
                 hint switch, and `hireEmployee` copies a contract hire's value into
@@ -824,9 +826,9 @@ export function EmployeeWizard({
                 as a read-only line; Part-Time carries no end date (Activate sends null whatever is stored).
                 Literal `t()` calls per type, never a computed key (test/i18n-coverage.test.ts check C). */}
             {showsEndDateBox && (
-              <Field label={isContractHire ? t('fields.contractEndDate') : t('fields.internshipEndDate')}>
-                <input
-                  type="date"
+              <PersonnelField fieldId={isContractHire ? 'employment.employment_dates_and_service.contractenddate' : 'employment.draft_only_employment_fields.internshipenddate'} mode="draft">
+                <input {...personnelInput(isContractHire ? 'employment.employment_dates_and_service.contractenddate' : 'employment.draft_only_employment_fields.internshipenddate', 'draft')}
+
                   className={inputCls}
                   value={data.employment?.provisionalEndOn ?? ''}
                   onChange={(e) => set('employment', { provisionalEndOn: e.target.value })}
@@ -834,7 +836,7 @@ export function EmployeeWizard({
                 <p className="mt-1 text-xs text-muted-foreground">
                   {isContractHire ? t('hints.contractEndDate') : t('hints.internshipEndDate')}
                 </p>
-              </Field>
+              </PersonnelField>
             )}
             {/* a72610af — PROBATION, EXTENDED PROBATION, THE CONFIRMATION DATE AND THE TWO NOTICE
                 PERIODS, each the SHARED control the Personnel Employment Dates card renders
@@ -1146,15 +1148,15 @@ export function EmployeeWizard({
                   {/* The head count typed on a draft, kept as it was. The figures the record works out from
                       the saved family (the qualifying-children count and the relief amount) appear once the
                       employee exists — the plan's "Good to know" says so. */}
-                  <Field label={t('fields.numChildren')}>
-                    <input
-                      type="number"
-                      min="0"
+                  <PersonnelField fieldId={"bank_statutory.income_tax_pcb.numchildren"} mode="draft">
+                    <input {...personnelInput("bank_statutory.income_tax_pcb.numchildren", 'draft')}
+
+
                       className={inputCls}
                       value={data.statutory?.numChildren ?? ''}
                       onChange={(e) => set('statutory', { numChildren: e.target.value })}
                     />
-                  </Field>
+                  </PersonnelField>
                 </div>
                 {/* 99b2d6c0 (r336) — the same explanation of "Auto (from table)" the Personnel card now
                     carries, on the screen where the mode is FIRST chosen. */}
@@ -1197,27 +1199,27 @@ export function EmployeeWizard({
                 figure. `min="0"` keeps the browser refusing a NEGATIVE amount — which `setCompensation`
                 also refuses now, so the box and the service agree — while leaving blank and zero
                 reachable. The placeholder says so in the box itself. */}
-            <Field label={t('fields.basicSalary')}>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
+            <PersonnelField fieldId={"payroll.basic_salary_and_salary_history.basicsalary"} mode="draft">
+              <input {...personnelInput("payroll.basic_salary_and_salary_history.basicsalary", 'draft')}
+
+
+
                 placeholder={t('fields.basicSalaryBlankPlaceholder')}
                 className={inputCls}
                 value={data.payroll?.basicSalary ?? ''}
                 onChange={(e) => set('payroll', { basicSalary: e.target.value })}
               />
-            </Field>
-            <Field label={t('fields.monthlyAllowance')}>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
+            </PersonnelField>
+            <PersonnelField fieldId={"payroll.draft_initial_monthly_allowance.monthlyallowance"} mode="draft">
+              <input {...personnelInput("payroll.draft_initial_monthly_allowance.monthlyallowance", 'draft')}
+
+
+
                 className={inputCls}
                 value={data.payroll?.monthlyAllowance ?? ''}
                 onChange={(e) => set('payroll', { monthlyAllowance: e.target.value })}
               />
-            </Field>
+            </PersonnelField>
             {/* 35b7af0a group 2 — Pay Mode, Payment Term and Rate are the SAME component the Personnel
                 Payroll tab and the salary-history edit flow already used
                 (components/pay-structure-fields.tsx). The wizard's private copy had drifted in wording
@@ -1255,18 +1257,16 @@ export function EmployeeWizard({
                 refusal they rejected: a mistyped zero and a deliberate one are indistinguishable on the
                 day they are saved, months before any run, and this one sentence tells them apart. The
                 star and the hint below are driven by the SAME predicate `missingByTab` uses. */}
-            <Field
-              label={t('fields.remarks')}
-              required={noBasicSalary}
-              requiredAriaLabel={t('requiredField')}
+            <PersonnelField
+              fieldId={"payroll.basic_salary_and_salary_history.remarks"} mode="draft" context={{noBasicSalary}}
             >
-              <input
+              <input {...personnelInput("payroll.basic_salary_and_salary_history.remarks", 'draft')}
                 className={inputCls}
                 placeholder={noBasicSalary ? t('fields.remarksNoBasicPlaceholder') : undefined}
                 value={data.payroll?.remarks ?? ''}
                 onChange={(e) => set('payroll', { remarks: e.target.value })}
               />
-            </Field>
+            </PersonnelField>
             {/* SAID WHERE IT IS NEEDED, not after a save is refused. The outstanding list above the
                 Activate button names the tab and the field; this names the RULE, on the tab, the moment
                 the amount goes blank or to zero. */}

@@ -33,7 +33,9 @@
  */
 
 import { useTranslations } from 'next-intl';
-import { Field, inputCls } from '@/components/ui';
+import { inputCls } from '@/components/ui';
+import { PersonnelField } from '@/components/personnel-field';
+import { personnelInput, personnelControl } from '@/lib/personnel-form-contract';
 import { clientCountryPacks } from '@/localization/registry.client';
 
 /** Canonical bank names for the picker (item ef720d3a), served by the CLIENT-SAFE pack registry
@@ -56,6 +58,7 @@ export type BankAccountFieldsProps = Mode & {
 
 export function BankAccountFields(props: BankAccountFieldsProps) {
   const t = useTranslations('people.detail');
+  const mode=props.mode==='controlled' ? 'draft' : 'edit';
   const current = props.bankName?.trim() || '';
   const accountNo = props.bankAccountNo ?? '';
   // Preserve a legacy / hand-typed bank name so an existing value isn't silently dropped from the picker.
@@ -63,11 +66,12 @@ export function BankAccountFields(props: BankAccountFieldsProps) {
 
   return (
     <>
-      <Field label={t('bank')} className={props.fieldClassName}>
+      <PersonnelField fieldId="bank_statutory.bank_information.bankname" mode={mode} className={props.fieldClassName}>
         <select
+          {...personnelControl('bank_statutory.bank_information.bankname',mode)}
           className={inputCls}
           {...(props.mode === 'form'
-            ? { name: 'bankName', defaultValue: current }
+            ? { defaultValue: current }
             : {
                 value: current,
                 onChange: (e: React.ChangeEvent<HTMLSelectElement>) =>
@@ -81,12 +85,13 @@ export function BankAccountFields(props: BankAccountFieldsProps) {
             </option>
           ))}
         </select>
-      </Field>
-      <Field label={t('bankAccount')} className={props.fieldClassName}>
+      </PersonnelField>
+      <PersonnelField fieldId="bank_statutory.bank_information.bankaccountno" mode={mode} className={props.fieldClassName}>
         <input
+          {...personnelInput('bank_statutory.bank_information.bankaccountno',mode)}
           className={inputCls}
           {...(props.mode === 'form'
-            ? { name: 'bankAccountNo', defaultValue: accountNo }
+            ? { defaultValue: accountNo }
             : {
                 value: accountNo,
                 onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -94,7 +99,7 @@ export function BankAccountFields(props: BankAccountFieldsProps) {
               })}
         />
         {props.hint && <p className="mt-1 text-xs text-muted-foreground">{props.hint}</p>}
-      </Field>
+      </PersonnelField>
     </>
   );
 }

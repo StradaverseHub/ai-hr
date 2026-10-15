@@ -30,16 +30,43 @@
 import { useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
-import { Badge, Button, Field, inputCls } from '@/components/ui';
+import { Badge, Button, inputCls } from '@/components/ui';
 import {
-  CHILD_RELIEF_CATEGORIES,
-  DEPENDENT_GENDERS,
-  DEPENDENT_MARRIAGE_STATUSES,
   DEPENDENT_RELATIONSHIPS,
   childAgeYears,
   dependentPanelOf,
 } from '@/lib/dependent-vocabulary';
+import { PersonnelField } from '@/components/personnel-field';
+import { personnelInput, personnelControl, personnelDisplay, personnelFormLabel, personnelFormChoices } from '@/lib/personnel-form-contract';
 import type { EmployeeDraftFamilyMember } from '@/lib/employee-draft-schema';
+
+const FAMILY_FORM_IDS = {
+  "fullName": "family.family_and_dependents.fullname",
+  "phone": "family.family_and_dependents.phone",
+  "icOrPassport": "family.family_and_dependents.icorpassport",
+  "remarks": "family.family_and_dependents.remarks",
+  "passportNumber": "family.family_and_dependents.passportnumber",
+  "occupation": "family.family_and_dependents.occupation",
+  "companyName": "family.family_and_dependents.companyname",
+  "schoolName": "family.family_and_dependents.schoolname",
+  "studyLevel": "family.family_and_dependents.studylevel",
+  "dateOfBirth": "family.family_and_dependents.dateofbirth",
+  "marriageDate": "family.family_and_dependents.marriagedate",
+  "residentialAddress": "family.family_and_dependents.residentialaddress",
+  "employerAddress": "family.family_and_dependents.employeraddress",
+  "isBeneficiary": "family.family_and_dependents.isbeneficiary",
+  "isDeceased": "family.family_and_dependents.isdeceased",
+  "isStudent": "family.family_and_dependents.isstudent",
+  "spouseWorking": "family.family_and_dependents.spouseworking",
+  "childTaxRelief": "family.family_and_dependents.childtaxrelief",
+  "gender": "family.family_and_dependents.gender",
+  "relationship": "family.family_and_dependents.relationship",
+  "studyCountry": "family.family_and_dependents.studycountry",
+  "childReliefCategory": "family.family_and_dependents.childreliefcategory",
+  "childReliefPercentage": "family.family_and_dependents.childreliefpercentage",
+  "age": "family.family_and_dependents.age",
+  "marriageStatus": "family.family_and_dependents.marriagestatus"
+} as const;
 
 type Opt = { value: string; label: string };
 
@@ -284,6 +311,9 @@ function MemberFields({
   onChange: (patch: Partial<EmployeeDraftFamilyMember>) => void;
 }) {
   const t = useTranslations('people.detail.family');
+  const tRoot = useTranslations();
+  const familyField = (name:keyof typeof FAMILY_FORM_IDS) => name==='icOrPassport' && value.relationship==='child' ? 'family.family_and_dependents.icorpassport_8' : FAMILY_FORM_IDS[name];
+  const fieldLabel = (name:keyof typeof FAMILY_FORM_IDS) => personnelFormLabel(familyField(name),(key,fallback)=>tRoot.has(key)?tRoot(key):fallback);
   // One key only, and it lives a level up: the legacy-value suffix is shared with every other
   // catalog-backed select on the Personnel screen, so it is NOT re-worded here.
   const tDetail = useTranslations('people.detail');
@@ -308,66 +338,64 @@ function MemberFields({
 
   const text = (
     name: 'fullName' | 'phone' | 'icOrPassport' | 'remarks' | 'passportNumber' | 'occupation' | 'companyName' | 'schoolName' | 'studyLevel',
-    label: string,
-    type = 'text',
   ) => (
-    <Field label={label}>
+    <PersonnelField fieldId={familyField(name)} mode="draft">
       <input
-        type={type}
+        {...personnelInput(familyField(name), 'draft')}
         className={box}
         value={value[name] ?? ''}
         onChange={(e) => onChange({ [name]: e.target.value })}
         {...ro}
       />
-    </Field>
+    </PersonnelField>
   );
-  const date = (name: 'dateOfBirth' | 'marriageDate', label: string) => (
-    <Field label={label}>
+  const date = (name: 'dateOfBirth' | 'marriageDate') => (
+    <PersonnelField fieldId={familyField(name)} mode="draft">
       <input
-        type="date"
+        {...personnelInput(familyField(name), 'draft')}
         className={box}
         value={value[name] ?? ''}
         onChange={(e) => onChange({ [name]: e.target.value })}
         {...ro}
       />
-    </Field>
+    </PersonnelField>
   );
-  const area = (name: 'residentialAddress' | 'employerAddress', label: string) => (
+  const area = (name: 'residentialAddress' | 'employerAddress') => (
     <div className="sm:col-span-2">
-      <Field label={label}>
-        <textarea
+      <PersonnelField fieldId={familyField(name)} mode="draft">
+        <textarea {...personnelControl(familyField(name), 'draft')}
           rows={2}
           className={`${box.replace('h-9', 'min-h-16')} py-2`}
           value={value[name] ?? ''}
           onChange={(e) => onChange({ [name]: e.target.value })}
           {...ro}
         />
-      </Field>
+      </PersonnelField>
     </div>
   );
-  const check = (name: 'isBeneficiary' | 'isDeceased' | 'isStudent' | 'spouseWorking' | 'childTaxRelief', label: string) => (
+  const check = (name: 'isBeneficiary' | 'isDeceased' | 'isStudent' | 'spouseWorking' | 'childTaxRelief') => (
     <label className="flex items-center gap-2 text-sm text-muted-foreground">
       <input
-        type="checkbox"
+        {...personnelInput(familyField(name), 'draft')}
         checked={value[name] ?? false}
         onChange={(e) => onChange({ [name]: e.target.checked })}
         {...ro}
       />
-      {label}
+      {fieldLabel(name)}
     </label>
   );
 
   const genderField = (
-    <Field label={t('genderLabel')}>
-      <select className={box} value={value.gender ?? ''} onChange={(e) => onChange({ gender: e.target.value })} {...ro}>
+    <PersonnelField fieldId={FAMILY_FORM_IDS.gender} mode="draft">
+      <select {...personnelControl(FAMILY_FORM_IDS.gender, 'draft')} className={box} value={value.gender ?? ''} onChange={(e) => onChange({ gender: e.target.value })} {...ro}>
         <option value="">{t('genderUnset')}</option>
-        {DEPENDENT_GENDERS.map((g) => (
-          <option key={g} value={g}>
-            {t(`gender.${g}` as 'gender.male')}
+        {personnelFormChoices(FAMILY_FORM_IDS.gender).map((g) => (
+          <option key={g.value} value={g.value}>
+            {tRoot(g.labelKey)}
           </option>
         ))}
       </select>
-    </Field>
+    </PersonnelField>
   );
 
   const grid = 'grid grid-cols-1 items-end gap-3 sm:grid-cols-2';
@@ -377,8 +405,8 @@ function MemberFields({
   return (
     <div className="space-y-4">
       <div className={grid}>
-        <Field label={t('relationship')}>
-          <select
+        <PersonnelField fieldId={FAMILY_FORM_IDS.relationship} mode="draft">
+          <select {...personnelControl(FAMILY_FORM_IDS.relationship, 'draft')}
             className={box}
             value={rel}
             onChange={(e) => onChange({ relationship: e.target.value })}
@@ -391,7 +419,7 @@ function MemberFields({
               </option>
             ))}
           </select>
-        </Field>
+        </PersonnelField>
       </div>
 
       {panel === 'child' && (
@@ -399,25 +427,25 @@ function MemberFields({
           <fieldset className={fieldsetCls}>
             <legend className={legendCls}>{t('sectionPersonal')}</legend>
             <div className={grid}>
-              {text('fullName', t('name'))}
+              {text('fullName')}
               {genderField}
-              {date('dateOfBirth', t('dateOfBirth'))}
-              {text('phone', t('contactNumber'), 'tel')}
-              {text('icOrPassport', t('icOrBirthCert'))}
-              {text('remarks', t('remarks'))}
+              {date('dateOfBirth')}
+              {text('phone')}
+              {text('icOrPassport')}
+              {text('remarks')}
               <div className="flex flex-wrap items-center gap-x-5 gap-y-2 self-end pb-1 sm:col-span-2">
-                {check('isBeneficiary', t('beneficiary'))}
-                {check('isDeceased', t('deceasedStatus'))}
+                {check('isBeneficiary')}
+                {check('isDeceased')}
               </div>
             </div>
           </fieldset>
           <fieldset className={fieldsetCls}>
             <legend className={legendCls}>{t('sectionEducation')}</legend>
             <div className={grid}>
-              {text('schoolName', t('schoolName'))}
-              {text('studyLevel', t('studyLevel'))}
-              <Field label={t('studyCountry')}>
-                <select
+              {text('schoolName')}
+              {text('studyLevel')}
+              <PersonnelField fieldId={FAMILY_FORM_IDS.studyCountry} mode="draft">
+                <select {...personnelControl(FAMILY_FORM_IDS.studyCountry, 'draft')}
                   className={box}
                   value={value.studyCountry ?? ''}
                   onChange={(e) => onChange({ studyCountry: e.target.value })}
@@ -430,8 +458,8 @@ function MemberFields({
                     </option>
                   ))}
                 </select>
-              </Field>
-              <div className="flex items-end pb-1">{check('isStudent', t('studentStatus'))}</div>
+              </PersonnelField>
+              <div className="flex items-end pb-1">{check('isStudent')}</div>
             </div>
           </fieldset>
           <fieldset className={fieldsetCls}>
@@ -448,37 +476,36 @@ function MemberFields({
               </span>
             </legend>
             <div className={grid}>
-              <Field label={t('childReliefCategory')}>
-                <select
+              <PersonnelField fieldId={FAMILY_FORM_IDS.childReliefCategory} mode="draft">
+                <select {...personnelControl(FAMILY_FORM_IDS.childReliefCategory, 'draft')}
                   className={box}
                   value={value.childReliefCategory ?? ''}
                   onChange={(e) => onChange({ childReliefCategory: e.target.value })}
                   {...ro}
                 >
                   <option value="">{t('childReliefCategoryUnset')}</option>
-                  {CHILD_RELIEF_CATEGORIES.map((c) => (
-                    <option key={c} value={c}>
-                      {t(`childReliefCat_${c}` as 'childReliefCat_under_18')}
+                  {personnelFormChoices(FAMILY_FORM_IDS.childReliefCategory).map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {tRoot(c.labelKey)}
                     </option>
                   ))}
                 </select>
-              </Field>
-              <Field label={t('childReliefPercentage')}>
-                <select
+              </PersonnelField>
+              <PersonnelField fieldId={FAMILY_FORM_IDS.childReliefPercentage} mode="draft">
+                <select {...personnelControl(FAMILY_FORM_IDS.childReliefPercentage, 'draft')}
                   className={box}
                   value={value.childReliefPercentage ?? ''}
                   onChange={(e) => onChange({ childReliefPercentage: e.target.value })}
                   {...ro}
                 >
                   <option value="">{t('childReliefCategoryUnset')}</option>
-                  <option value="100">{t('childReliefPct_100')}</option>
-                  <option value="50">{t('childReliefPct_50')}</option>
+                  {personnelFormChoices(FAMILY_FORM_IDS.childReliefPercentage).map(choice=><option key={choice.value} value={choice.value}>{tRoot(choice.labelKey)}</option>)}
                 </select>
-              </Field>
-              <Field label={t('childAge')}>
-                <input readOnly disabled value={childAgeYears(value.dateOfBirth) ?? '—'} className={`${inputCls} bg-muted/50`} />
-              </Field>
-              <div className="flex items-end pb-1">{check('childTaxRelief', t('childTaxRelief'))}</div>
+              </PersonnelField>
+              <PersonnelField fieldId={FAMILY_FORM_IDS.age} mode="draft">
+                <input {...personnelDisplay(FAMILY_FORM_IDS.age)} readOnly disabled value={childAgeYears(value.dateOfBirth) ?? '—'} className={`${inputCls} bg-muted/50`} />
+              </PersonnelField>
+              <div className="flex items-end pb-1">{check('childTaxRelief')}</div>
             </div>
             <p className="mt-2 text-xs text-muted-foreground">{t('ageHint')}</p>
           </fieldset>
@@ -487,42 +514,42 @@ function MemberFields({
 
       {(panel === 'spouse' || panel === 'other') && (
         <div className={grid}>
-          {text('fullName', t('name'))}
+          {text('fullName')}
           {genderField}
-          {date('dateOfBirth', t('dateOfBirth'))}
-          {text('phone', t('contactNumber'), 'tel')}
-          {text('icOrPassport', t('newIc'))}
-          {text('passportNumber', t('passportNumber'))}
-          {area('residentialAddress', t('residentialAddress'))}
+          {date('dateOfBirth')}
+          {text('phone')}
+          {text('icOrPassport')}
+          {text('passportNumber')}
+          {area('residentialAddress')}
           {panel === 'spouse' && (
             <>
-              {date('marriageDate', t('marriageDate'))}
-              <Field label={t('marriageStatusLabel')}>
-                <select
+              {date('marriageDate')}
+              <PersonnelField fieldId={FAMILY_FORM_IDS.marriageStatus} mode="draft">
+                <select {...personnelControl(FAMILY_FORM_IDS.marriageStatus, 'draft')}
                   className={box}
                   value={value.marriageStatus ?? ''}
                   onChange={(e) => onChange({ marriageStatus: e.target.value })}
                   {...ro}
                 >
                   <option value="">{t('genderUnset')}</option>
-                  {DEPENDENT_MARRIAGE_STATUSES.map((m) => (
-                    <option key={m} value={m}>
-                      {t(`marriageStatus.${m}` as 'marriageStatus.married')}
+                  {personnelFormChoices(FAMILY_FORM_IDS.marriageStatus).map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {tRoot(m.labelKey)}
                     </option>
                   ))}
                 </select>
-              </Field>
-              {text('occupation', t('occupation'))}
-              {text('companyName', t('companyName'))}
-              {area('employerAddress', t('employerAddress'))}
+              </PersonnelField>
+              {text('occupation')}
+              {text('companyName')}
+              {area('employerAddress')}
             </>
           )}
-          {panel === 'other' && text('occupation', t('occupation'))}
-          {text('remarks', t('remarks'))}
+          {panel === 'other' && text('occupation')}
+          {text('remarks')}
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 self-end pb-1 sm:col-span-2">
-            {check('isBeneficiary', t('beneficiary'))}
-            {panel === 'spouse' && check('spouseWorking', t('currentlyWorking'))}
-            {check('isDeceased', t('deceasedStatus'))}
+            {check('isBeneficiary')}
+            {panel === 'spouse' && check('spouseWorking')}
+            {check('isDeceased')}
           </div>
         </div>
       )}

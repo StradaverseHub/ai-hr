@@ -1,6 +1,7 @@
 import { ATTENDANCE_PHOTO_SETTINGS, ATTENDANCE_PHOTO_LABEL_KEYS } from './attendance-photo-setting';
 import { PAYMENT_METHODS } from './payment-methods';
 import { EMERGENCY_CONTACT_PRIORITIES } from './emergency-contact-vocabulary';
+import { PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS,PERSONNEL_SOCSO_CATEGORIES,PERSONNEL_EIS_CATEGORIES,PERSONNEL_CHILD_RELIEF_MODES,PERSONNEL_TAX_RESIDENCIES } from './personnel-choice-vocabulary';
 import { DEPENDENT_RELATIONSHIPS, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, CHILD_RELIEF_CATEGORIES, CHILD_RELIEF_PERCENTAGES } from './dependent-vocabulary';
 import { EMPLOYMENT_PERIOD_UNITS } from './employment-period';
 import { isCalendarDate } from './calendar-date';
@@ -126,6 +127,14 @@ export function personnelFieldChoices(field:PersonnelFieldDescriptor) {
   if(field.allowedValuesOwner==='employment.paymentMethod')return PAYMENT_METHODS.map(value=>({value,labelKey:`people.detail.paymentMethod_${value}`}));
   if(field.import.register && field.type==='boolean')return [{value:'true',labelKey:'people.import.registerYes'},{value:'false',labelKey:'people.import.registerNo'}];
   if(field.allowedValuesOwner==='emergency.priority')return EMERGENCY_CONTACT_PRIORITIES.map(value=>({value,labelKey:`people.detail.emergency.${{primary:'priorityPrimary',secondary:'prioritySecondary',other:'priorityOther'}[value]}`}));
+  if(field.allowedValuesOwner==='statutory.socsoCategory')return PERSONNEL_SOCSO_CATEGORIES.map(value=>({value,labelKey:`people.detail.socsoCategory${value[0].toUpperCase()+value.slice(1)}`}));
+  if(field.allowedValuesOwner==='statutory.eisCategory')return PERSONNEL_EIS_CATEGORIES.map(value=>({value,labelKey:`people.detail.eisCategory${value[0].toUpperCase()+value.slice(1)}`}));
+  if(field.allowedValuesOwner==='statutory.childReliefMode')return PERSONNEL_CHILD_RELIEF_MODES.map(value=>({value,labelKey:`people.detail.${{manual:'childReliefModeManual',auto:'childReliefModeAuto',auto_table:'childReliefModeAutoTable'}[value]}`}));
+  if(field.allowedValuesOwner==='statutory.taxResidency')return PERSONNEL_TAX_RESIDENCIES.map(value=>({value,labelKey:`people.detail.${{resident:'taxResidencyResident',non_resident:'taxResidencyNonResident',rep:'taxResidencyRep',knowledge_worker:'taxResidencyKnowledgeWorker',c_suite:'taxResidencyCSuite'}[value]}`}));
+
+  if(field.allowedValuesOwner==='payroll.payMode')return PERSONNEL_PAY_MODES.map(value=>({value,labelKey:`people.detail.payMode_${value}`}));
+  if(field.allowedValuesOwner==='payroll.paymentTerm')return PERSONNEL_PAYMENT_TERMS.map(value=>({value,labelKey:`people.detail.paymentTerm_${value}`}));
+  if(field.allowedValuesOwner==='statutory.epfCitizenship')return PERSONNEL_EPF_CITIZENSHIPS.map(value=>({value,labelKey:`people.detail.${{citizen:'epfCitizenshipCitizen',pr:'epfCitizenshipPr',non_citizen:'epfCitizenshipNonCitizen'}[value]}`}));
   if(field.allowedValuesOwner==='dependent.relationship')return DEPENDENT_RELATIONSHIPS.map(value=>({value,labelKey:`people.detail.family.rel.${value}`}));
   if(field.allowedValuesOwner==='dependent.childReliefPercentage')return CHILD_RELIEF_PERCENTAGES.map(value=>({value:String(value),labelKey:`people.detail.family.childReliefPct_${value}`}));
   if(field.allowedValuesOwner==='dependent.gender')return DEPENDENT_GENDERS.map(value=>({value,labelKey:`people.detail.family.gender.${value}`}));

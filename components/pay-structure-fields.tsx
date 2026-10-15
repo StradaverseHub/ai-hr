@@ -3,11 +3,13 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { inputCls } from './ui';
+import { PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS } from '@/lib/personnel-choice-vocabulary';
+import { personnelControl,personnelInput,personnelFormLabel,personnelFormChoices } from '@/lib/personnel-form-contract';
 
 /** Client-safe mirrors of the service unions (core/comp.ts PAY_MODES / PAYROLL_FREQUENCIES) — no DB import
  *  from a 'use client' module. The service re-validates, so a drift fails loudly server-side. */
-export const PAY_MODE_OPTIONS = ['monthly', 'daily', 'hourly', 'custom_period'] as const;
-export const PAYMENT_TERM_OPTIONS = ['monthly', 'weekly', 'biweekly'] as const;
+export const PAY_MODE_OPTIONS = PERSONNEL_PAY_MODES;
+export const PAYMENT_TERM_OPTIONS = PERSONNEL_PAYMENT_TERMS;
 export type PayModeOption = (typeof PAY_MODE_OPTIONS)[number];
 export type PaymentTermOption = (typeof PAYMENT_TERM_OPTIONS)[number];
 
@@ -70,6 +72,8 @@ export type PayStructureFieldsProps = RequiredMarkProps &
 export function PayStructureFields(props: PayStructureFieldsProps) {
   const t = useTranslations('people.detail');
   const controlled = props.mode === 'controlled';
+  const mode=controlled?'draft':'edit';
+  const label=(id:string)=>personnelFormLabel(id,(key,fallback)=>key.startsWith('people.detail.')?t(key.slice(14)):fallback);
   // The hook runs unconditionally (rules of hooks); in controlled mode its value is simply never read —
   // the parent owns the pay mode there, because the conditional Rate box has to react to it and so does
   // the draft the parent is holding.
@@ -94,10 +98,11 @@ export function PayStructureFields(props: PayStructureFieldsProps) {
     <>
       <label className="flex flex-col gap-1.5">
         <span className="text-xs font-medium text-muted-foreground">
-          {t('payMode')}
+          {label('payroll.basic_salary_and_salary_history.paymode')}
           {star}
         </span>
         <select
+          {...personnelControl('payroll.basic_salary_and_salary_history.paymode',mode)}
           value={payMode}
           onChange={(e) => {
             const next = e.target.value as PayModeOption;
@@ -106,30 +111,31 @@ export function PayStructureFields(props: PayStructureFieldsProps) {
           }}
           disabled={props.disabled}
           className={inputCls}
-          {...(controlled ? {} : { name: 'payMode' })}
+
         >
-          {PAY_MODE_OPTIONS.map((m) => (
+          {personnelFormChoices('payroll.basic_salary_and_salary_history.paymode').map(({value:m,labelKey}) => (
             <option key={m} value={m}>
-              {t(`payMode_${m}` as 'payMode_monthly')}
+              {t(labelKey.slice(14))}
             </option>
           ))}
         </select>
       </label>
       <label className="flex flex-col gap-1.5">
         <span className="text-xs font-medium text-muted-foreground">
-          {t('paymentTerm')}
+          {label('payroll.basic_salary_and_salary_history.paymentterm')}
           {star}
         </span>
         <select
+          {...personnelControl('payroll.basic_salary_and_salary_history.paymentterm',mode)}
           disabled={props.disabled}
           className={inputCls}
           {...(props.mode === 'controlled'
             ? { value: safePaymentTerm, onChange: (e) => props.onChange({ paymentTerm: e.target.value }) }
-            : { name: 'paymentTerm', defaultValue: safePaymentTerm })}
+            : { defaultValue: safePaymentTerm })}
         >
-          {PAYMENT_TERM_OPTIONS.map((f) => (
+          {personnelFormChoices('payroll.basic_salary_and_salary_history.paymentterm').map(({value:f,labelKey}) => (
             <option key={f} value={f}>
-              {t(`paymentTerm_${f}` as 'paymentTerm_monthly')}
+              {t(labelKey.slice(14))}
             </option>
           ))}
         </select>
@@ -137,20 +143,17 @@ export function PayStructureFields(props: PayStructureFieldsProps) {
       {payMode !== 'monthly' && (
         <label className="flex flex-col gap-1.5">
           <span className="text-xs font-medium text-muted-foreground">
-            {t('rateAmount')}
+            {label('payroll.basic_salary_and_salary_history.rateamount')}
             {payMode === 'daily' && <> ({t('rateUnitDaily')})</>}
             {payMode === 'hourly' && <> ({t('rateUnitHourly')})</>}
           </span>
           <input
-            type="number"
-            min="0.01"
-            step="0.01"
-            required={rateRequired}
+            {...personnelInput('payroll.basic_salary_and_salary_history.rateamount',mode,{payRate:rateRequired})}
             disabled={props.disabled}
             className={inputCls}
             {...(props.mode === 'controlled'
               ? { value: props.rateAmount, onChange: (e) => props.onChange({ rateAmount: e.target.value }) }
-              : { name: 'rateAmount', defaultValue: props.defaultRateAmount ?? '' })}
+              : { defaultValue: props.defaultRateAmount ?? '' })}
           />
         </label>
       )}

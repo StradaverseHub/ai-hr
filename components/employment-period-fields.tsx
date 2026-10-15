@@ -23,9 +23,11 @@
  * instead of after `hireEmployee` has committed. This component only renders.
  */
 import { useTranslations } from 'next-intl';
-import { Field, inputCls } from '@/components/ui';
+import { inputCls } from '@/components/ui';
+import { PersonnelField } from '@/components/personnel-field';
+import { personnelControl, personnelInput, personnelFormChoices, personnelFormLabel, personnelFormName } from '@/lib/personnel-form-contract';
 import { DateField } from '@/components/ui/date-field';
-import { DRAFT_PERIOD_UNITS } from '@/lib/employee-draft-schema';
+
 
 /** `people.detail.employmentInfo.*` label key for the period — the Personnel card's own word for it. */
 export type EmploymentPeriodLabelKey =
@@ -46,56 +48,51 @@ export function EmploymentPeriodField(
     | (Common & { mode: 'controlled'; onChange: (patch: { value?: string; unit?: string }) => void }),
 ) {
   const t = useTranslations('people.detail');
-  // A literal per key rather than a computed `employmentInfo.${labelKey}`: a template key is invisible to
-  // test/i18n-coverage.test.ts check C, and these four are the whole point of sharing the component.
-  const label = {
-    probationPeriod: t('employmentInfo.probationPeriod'),
-    extendedProbationPeriod: t('employmentInfo.extendedProbationPeriod'),
-    noticeBeforeConfirmation: t('employmentInfo.noticeBeforeConfirmation'),
-    noticeAfterConfirmation: t('employmentInfo.noticeAfterConfirmation'),
-  }[props.labelKey];
-  // Same shape: one literal per unit, so every value label is checked by the same guard.
-  const unitLabel: Record<string, string> = {
-    month: t('employmentInfo.unit_month'),
-    week: t('employmentInfo.unit_week'),
-    day: t('employmentInfo.unit_day'),
-  };
+  const fields = {
+    probationPeriod: ['employment.employment_dates_and_service.probationvalue','employment.employment_dates_and_service.probationunit'],
+    extendedProbationPeriod: ['employment.employment_dates_and_service.extendedprobationvalue','employment.employment_dates_and_service.extendedprobationunit'],
+    noticeBeforeConfirmation: ['employment.employment_dates_and_service.noticebeforeconfirmationvalue','employment.employment_dates_and_service.noticebeforeconfirmationunit'],
+    noticeAfterConfirmation: ['employment.employment_dates_and_service.noticeafterconfirmationvalue','employment.employment_dates_and_service.noticeafterconfirmationunit'],
+  } as const;
+  const [valueId,unitId]=fields[props.labelKey];
+  const mode=props.mode==='controlled' ? 'draft' : 'edit';
+  const options=personnelFormChoices(unitId);
+  if(props.mode==='form'){personnelFormName(valueId,props.valueName);personnelFormName(unitId,props.unitName);}
 
   return (
-    <Field label={label}>
+    <PersonnelField fieldId={valueId} mode={mode}>
       <div className="flex gap-2">
         <input
-          type="number"
-          min={0}
-          step={1}
+          {...personnelInput(valueId,mode)}
           placeholder={t('employmentInfo.value')}
           aria-label={t('employmentInfo.value')}
           className={inputCls}
           {...(props.mode === 'form'
-            ? { name: props.valueName, defaultValue: props.value ?? '' }
+            ? { defaultValue: props.value ?? '' }
             : {
                 value: props.value ?? '',
                 onChange: (e) => props.onChange({ value: e.target.value }),
               })}
         />
         <select
+          {...personnelControl(unitId,mode)}
           aria-label={t('employmentInfo.unit')}
           className={inputCls}
           {...(props.mode === 'form'
-            ? { name: props.unitName, defaultValue: props.unit ?? 'month' }
+            ? { defaultValue: props.unit ?? 'month' }
             : {
                 value: props.unit ?? 'month',
                 onChange: (e) => props.onChange({ unit: e.target.value }),
               })}
         >
-          {DRAFT_PERIOD_UNITS.map((u) => (
-            <option key={u} value={u}>
-              {unitLabel[u]}
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {t(option.labelKey.slice(14))}
             </option>
           ))}
         </select>
       </div>
-    </Field>
+    </PersonnelField>
   );
 }
 
@@ -120,27 +117,31 @@ export function ConfirmationDateField(
     | { mode: 'controlled'; value: string | null | undefined; onChange: (value: string) => void },
 ) {
   const t = useTranslations('people.detail');
+  const fieldId='employment.employment_dates_and_service.confirmationdate';
+  const mode=props.mode==='controlled' ? 'draft' : 'edit';
+  const label=personnelFormLabel(fieldId,(key,fallback)=>key.startsWith('people.detail.') ? t(key.slice(14)) : fallback);
+  if(props.mode==='form')personnelFormName(fieldId,props.name);
   if (props.mode === 'form' && props.dmyDisplay) {
     return (
-      <Field label={t('employmentInfo.confirmationDate')}>
+      <PersonnelField fieldId={fieldId} mode={mode}>
         <DateField
-          name={props.name ?? 'confirmationDate'}
+          {...personnelControl(fieldId,mode)}
           defaultValue={props.value ?? ''}
           className={inputCls}
-          label={t('employmentInfo.confirmationDate')}
+          label={label}
         />
-      </Field>
+      </PersonnelField>
     );
   }
   return (
-    <Field label={t('employmentInfo.confirmationDate')}>
+    <PersonnelField fieldId={fieldId} mode={mode}>
       <input
-        type="date"
+        {...personnelInput(fieldId,mode)}
         className={inputCls}
         {...(props.mode === 'form'
-          ? { name: props.name ?? 'confirmationDate', defaultValue: props.value ?? '' }
+          ? { defaultValue: props.value ?? '' }
           : { value: props.value ?? '', onChange: (e) => props.onChange(e.target.value) })}
       />
-    </Field>
+    </PersonnelField>
   );
 }
