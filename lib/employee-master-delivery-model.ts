@@ -7,4 +7,4 @@ export const masterDeliveryRequest=z.discriminatedUnion('op',[
 export type MasterDeliveryRequest=z.infer<typeof masterDeliveryRequest>;
 export type MasterDeliveryOutcome='sent'|'failed'|'skipped'|'uncertain';
 export type MasterDeliveryReason='notEligible'|'recipientChanged'|'generationFailed'|'attachmentTooLarge'|'smtpRejected'|'smtpUnavailable'|'uncertain';
-export const MASTER_EMAIL_ATTACHMENT_MAX_BYTES=20_000_000;
+export {XLSX_EMAIL_ATTACHMENT_MAX_BYTES as MASTER_EMAIL_ATTACHMENT_MAX_BYTES} from './email-attachment';
