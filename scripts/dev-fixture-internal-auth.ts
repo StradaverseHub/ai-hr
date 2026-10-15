@@ -29,6 +29,7 @@ try {
   }
   async function create(code: string, installationOperator: boolean) {
     const base = await seedBase();
+    await owner.client`update company set legal_name=${installationOperator ? 'Cloud Authentication Fixture' : 'Private Authentication Fixture'} where id=${base.companyId}::uuid`;
     await bootstrapInternalOwner(owner.client, { appUserId: base.adminUserId, organization: code, username: 'owner', email: 'owner@example.test', password: temporary, installationOperator });
     const login = await startLogin({ organization: code, username: 'owner', password: temporary, native: false });
     if (login.step !== 'password') throw new Error('Expected initial password requirement.');
