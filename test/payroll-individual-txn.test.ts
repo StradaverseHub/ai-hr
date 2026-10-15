@@ -869,7 +869,7 @@ describe('1.2.2 Individual Transaction', () => {
       createIndividualTxnsBulk(a, { companyId: otherCo.id, payPeriod: '2026-05', employmentIds: [employmentId], rows: row }),
     ).rejects.toBeInstanceOf(CompanyMismatchError);
 
-    expect(await listUnattachedIndividualTxns(a)).toHaveLength(0); // nothing persisted by any failure
+    expect(await listUnattachedIndividualTxns(a)).toHaveLength(1); // only the explicitly accepted independent-date row persisted
   });
 
   it("attach-on-generate: unattached rows are stamped onto the month's REGULAR run — that month only", async () => {

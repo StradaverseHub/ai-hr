@@ -6,6 +6,7 @@ import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from '
 import * as s from '../db/schema';
 import {downloadSystemLabelsWithData,previewSystemLabelImport,applySystemLabelImport} from '../core/system-label-import';
 import {createCompany} from '../core/admin';
+import {setLabelGlobal} from '../core/system-labels';
 import {LABEL_IMPORT_DEFINITIONS} from '../lib/system-label-definition';
 import {createProfileOption,updateProfileOption,setProfileOptionActive} from '../core/profile-options';
 import {buildSystemLabelWorkbook,readSystemLabelWorkbook,systemLabelExportId} from '../lib/system-label-workbook';
@@ -27,10 +28,11 @@ describe('System Labels populated workbook round trip',()=>{
   const co=await createCompany(adminCtx(b),{legalName:'Other label origin'});
   await owner.db.update(s.company).set({sharedSystemLabels:true}).where(eq(s.company.id,b.companyId));
   const rows=await owner.db.insert(s.department).values([
-   {tenantId:b.tenantId,companyId:co.id,name:'GLOBAL_ORIGIN',label:'Global visible',isGlobal:true},
+   {tenantId:b.tenantId,companyId:co.id,name:'GLOBAL_ORIGIN',label:'Global visible'},
    {tenantId:b.tenantId,companyId:co.id,name:'SHARED_ORIGIN',label:'Shared visible'},
    {tenantId:b.tenantId,companyId:co.id,name:'HIDDEN_ORIGIN',label:'Not shared'},
   ]).returning();
+  await setLabelGlobal(adminCtx(b),{kind:'department',labelId:rows.find(row=>row.name==='GLOBAL_ORIGIN')!.id,isGlobal:true});
   const shared=rows.find(row=>row.name==='SHARED_ORIGIN')!;
   await owner.db.insert(s.labelCompanyAssignment).values({tenantId:b.tenantId,labelKind:'department',labelId:shared.id,companyId:b.companyId});
   const [user]=await owner.db.insert(s.appUser).values({tenantId:b.tenantId,workosUserId:'scoped-export-user'}).returning();

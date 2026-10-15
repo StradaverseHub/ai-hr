@@ -1913,7 +1913,7 @@ export function TxnWorkspace({
                 )}
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  <Field label={t('monthLabel')} hint={t('effectiveDateHint')}>
+                  <Field label={t('monthLabel')}>
                     <input
                       type="month"
                       value={form.payPeriod}
@@ -2012,13 +2012,14 @@ export function TxnWorkspace({
                       )}
                     </select>
                   </Field>
-                  <Field label={t('colEffectiveDate')} hint={t('effectiveDateHint')}>
+                  <Field label={t('colEffectiveDate')}>
                     <input
                       type="date"
                       value={form.txnDate}
                       onChange={(e) => patchForm({ txnDate: e.target.value })}
                       className={inputCls}
                     />
+                    <span className="text-xs text-muted-foreground">{t('effectiveDateHint')}</span>
                   </Field>
                   {/* 2da9937a — a calculating item OWNS the Input Type: the quantity has to land in the
                       input its rule reads, so the select is fixed to it rather than left to be got wrong. */}
@@ -2167,7 +2168,7 @@ export function TxnWorkspace({
                 />
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  <Field label={t('monthLabel')} hint={t('effectiveDateHint')}>
+                  <Field label={t('monthLabel')}>
                     <input
                       type="month"
                       value={daily.payPeriod}
@@ -2176,6 +2177,7 @@ export function TxnWorkspace({
                       }
                       className={inputCls}
                     />
+                    <span className="text-xs text-muted-foreground">{t('effectiveDateHint')}</span>
                   </Field>
                   {/* c11e81aa — the same two controls as the single-entry form's, for the same reasons.
                       Both machines share `companyCycles`, `resolvedCycleId` and `resolvedBatchId`, so
