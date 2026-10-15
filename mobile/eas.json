@@ -17,6 +17,14 @@
         "image": "latest"
       }
     },
+    "android-local-signing": {
+      "extends": "preview",
+      "withoutCredentials": true,
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease"
+      }
+    },
     "simulator": {
       "extends": "preview",
       "ios": {
