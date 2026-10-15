@@ -132,7 +132,7 @@ function renderGrid(
     departments = [FINANCE, OPS],
     headByCompany = HEADS,
     writableCompanyIds = [CO],
-    companies = [{ id: CO, name: 'Acme Sdn Bhd', sharedSystemLabels: true }],
+    companies = [{ id: CO, name: 'Acme Sdn Bhd' }],
     locale = 'en',
     messages = en,
   } = opts;
@@ -145,11 +145,10 @@ function renderGrid(
       isGroupAdmin={false}
       actions={{
         save,
-        setGlobal: vi.fn(async () => ({ ok: true as const })),
+        setCriteria: vi.fn(async () => ({ ok: true as const })),
         assign: vi.fn(async () => ({ ok: true as const })),
         unassign: vi.fn(async () => ({ ok: true as const })),
         copyToCompanies: vi.fn(async () => ({ ok: true as const })),
-        setCompanyShared: vi.fn(async () => ({ ok: true as const })),
       }}
     />,
     locale,

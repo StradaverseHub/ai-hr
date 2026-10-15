@@ -136,7 +136,7 @@ describe('f1bbc572 — a Global System Label is in scope for every company', () 
       // Read exactly as the page does — tenant-wide, through a company-B-scoped admin — then apply the
       // page's own narrowing for a scope that contains company B and nothing else.
       const rows = await K.list(await adminFor(coB));
-      const seen = labelsInCompanyScope(rows, new Set([coB]), true).map((r) => r.id);
+      const seen = labelsInCompanyScope(rows, new Set([coB])).map((r) => r.id);
 
       expect(seen).toContain(globalId); // Global: created under A, visible to B.
       expect(seen).toContain(bOwnId); // B's own row: unchanged.
@@ -167,65 +167,56 @@ describe('f1bbc572 — a Global System Label is in scope for every company', () 
         ...rows.filter((r) => r.companyId === coB).map((r) => r.id),
         ...rows.filter((r) => r.isGlobal).map((r) => r.id),
       ]);
-      const got = new Set(labelsInCompanyScope(rows, new Set([coB]), true).map((r) => r.id));
+      const got = new Set(labelsInCompanyScope(rows, new Set([coB])).map((r) => r.id));
 
       expect(got).toEqual(expected);
       // Non-trivial: the set really does span both companies, and really does leave A's private row out.
       expect(rows.some((r) => r.isGlobal && r.companyId === b.companyId)).toBe(true);
       expect(got.size).toBeGreaterThan(rows.filter((r) => r.companyId === coB).length);
-      expect(got.size).toBeLessThan(rows.length);
+      expect(got.size).toBe(rows.length);
     });
   }
 
-  // `globalUsable` carries no default (round 2): a caller that forgets it does not compile, which is the
-  // only reliable guard against a surface silently re-acquiring "true" and drifting from the resolver.
-  it('the Shared System Labels opt-out still wins where the server gates on it (globalUsable = false)', async () => {
-    const globalRow = { companyId: 'company-a', isGlobal: true };
-    const ownRow = { companyId: 'company-b', isGlobal: false };
-    const scope = new Set(['company-b']);
-    // Flag ON — the company shares labels, so the global row is in scope.
-    expect(labelInCompanyScope(globalRow, scope, true)).toBe(true);
-    // Flag OFF: origin-only, exactly as `labelUsableByCompany` resolves it for an opted-out company —
-    // a picker whose save runs through that guard must not offer what the save would refuse.
-    expect(labelInCompanyScope(globalRow, scope, false)).toBe(false);
-    expect(labelInCompanyScope(ownRow, scope, false)).toBe(true);
+  it('client Criteria uses explicit companies and never infers availability from origin or a flag',()=>{
+    const globalRow={companyId:'a',isGlobal:true,assignedCompanyIds:[]};
+    const scopedRow={companyId:'b',isGlobal:false,assignedCompanyIds:['a']};
+    expect(labelInCompanyScope(globalRow,new Set(['b']))).toBe(true);
+    expect(labelInCompanyScope(scopedRow,new Set(['b']))).toBe(false);
+    expect(labelInCompanyScope(scopedRow,new Set(['a']))).toBe(true);
+    expect(labelInCompanyScope(globalRow,new Set())).toBe(false);
   });
 });
 
 describe('f1bbc572 — every surface that narrows a label catalogue to a company reads the one rule', () => {
   const src = (rel: string) => fs.readFileSync(path.resolve(__dirname, '..', rel), 'utf8');
 
-  it('the System Labels page narrows through labelsInCompanyScope, not through the origin company alone', () => {
-    const s = src('app/admin/settings/system-labels/page.tsx');
-    expect(s).toContain("from '@/lib/system-label-scope'");
-    // Flag-gated, because the SERVER resolver's global branch is: an opted-out company must not be
-    // shown a label its own pickers would refuse (the 'visible in the list, unavailable in the picker'
-    // state the plan calls worse than the defect).
-    expect(s).toContain('labelsInCompanyScope(rows, scopedIdSet, globalUsable)');
-    expect(s).toContain('const globalUsable = scopedCompanies.some((c) => c.sharedSystemLabels);');
-    // The exact shape of the defect, which must never come back.
-    expect(s).not.toContain('rows.filter((r) => scopedIdSet.has(r.companyId))');
+  it('the common maintenance page consumes database-scoped reads without a company-switcher filter',()=>{
+    const page=src('app/admin/settings/system-labels/page.tsx'),admin=src('core/admin.ts');
+    expect(page).toContain('labelMaintenanceCompanies(s)');expect(page).not.toMatch(/scopedIdSet|globalUsable|sharedSystemLabels|labelsInCompanyScope/);
+    for(const [fn,table,kind]of [['listDepartmentsForLabels','department','department'],['listPositionsForLabels','position','position'],['listCostCentersForLabels','costCenter','cost_center'],['listBusinessUnitsForLabels','businessUnit','business_unit']]){
+      const start=admin.indexOf('export function '+fn+'('),end=admin.indexOf('\nexport function ',start+1);expect(start).toBeGreaterThanOrEqual(0);const body=admin.slice(start,end<0?admin.length:end);expect(body.length).toBeGreaterThan(500);expect(body).toContain(`labelMaintenanceCondition(${table}, '${kind}')`);expect(body).toContain('.limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1)');
+    }
   });
 
   it('the swept pickers narrow through the same rule', () => {
     // Payroll → Process, step 2 filter catalogs (all four kinds).
     const wizard = src('app/payroll/process/wizard.tsx');
-    expect(wizard).toContain('labelsInCompanyScope(departments, companySet, globalUsable)');
-    expect(wizard).toContain('labelsInCompanyScope(businessUnits, companySet, globalUsable)');
-    expect(wizard).toContain('labelsInCompanyScope(positions, companySet, globalUsable)');
-    expect(wizard).toContain('labelsInCompanyScope(costCenters, companySet, globalUsable)');
-    expect(wizard).toContain('c.sharedSystemLabels');
+    expect(wizard).toContain('labelsInCompanyScope(departments, companySet)');
+    expect(wizard).toContain('labelsInCompanyScope(businessUnits, companySet)');
+    expect(wizard).toContain('labelsInCompanyScope(positions, companySet)');
+    expect(wizard).toContain('labelsInCompanyScope(costCenters, companySet)');
+    expect(wizard).not.toContain('c.sharedSystemLabels');
     expect(wizard).not.toContain('departments.filter((d) => companySet.has(d.companyId))');
 
     // Attendance → Recompute, the department filter for the chosen company.
     const recompute = src('app/attendance/recompute/recompute-client.tsx');
-    expect(recompute).toContain('labelsInCompanyScope(departments, new Set([companyId]), companyShared)');
+    expect(recompute).toContain('labelsInCompanyScope(departments, new Set([companyId]))');
     expect(recompute).not.toContain('departments.filter((d) => d.companyId === companyId)');
 
     // Delegations → coverage picker (flag-gated, because its save runs through labelUsableByCompany).
     const picker = src('components/delegation-org-scope-picker.tsx');
-    expect(picker).toContain('labelsInCompanyScope(masters.businessUnits, scope, companyShared)');
-    expect(picker).toContain('labelInCompanyScope(d, scope, companyShared)');
+    expect(picker).toContain('labelsInCompanyScope(masters.businessUnits, scope)');
+    expect(picker).toContain('labelInCompanyScope(d, scope)');
     expect(picker).not.toContain('masters.businessUnits.filter((b) => b.companyId === companyId)');
   });
 
@@ -288,7 +279,7 @@ describe('f1bbc572 — a refused label write is named, not dumped', () => {
 
     const bAdmin = await adminFor(coB);
     // The row is VISIBLE to B — that is f1bbc572 — so B can reach it and try to rename it.
-    const visible = labelsInCompanyScope(await listDepartmentsForLabels(bAdmin), new Set([coB]), true);
+    const visible = labelsInCompanyScope(await listDepartmentsForLabels(bAdmin), new Set([coB]));
     expect(visible.map((r) => r.id)).toContain(globalId);
 
     const thrown = await bulkSaveLabels(bAdmin, 'department', {

@@ -8590,7 +8590,7 @@
       "pageTitle": "Nhãn hệ thống",
       "pageDescription": "Thiết lập các danh sách dùng chung mà mọi người chọn — phòng ban, chức vụ, trung tâm chi phí và đơn vị kinh doanh theo từng công ty, cùng ngạch bậc dùng chung cho toàn tổ chức.",
       "companies": "Công ty",
-      "noCompaniesInScope": "Không có công ty trong phạm vi.",
+      "noCompaniesInScope": "Không có công ty nào trong phạm vi quyền quản trị của bạn.",
       "countSummary": "{dept} pb · {pos} cv · {cc} ttcp · {bu} đvkd",
       "fieldDescription": "Mô tả",
       "descriptionPlaceholder": "Ghi chú ngắn (tùy chọn)",
@@ -8606,7 +8606,7 @@
       "bulkDeactivate": "Vô hiệu hóa",
       "copyToCompanies": "Sao chép sang công ty",
       "cannotUnassignInUse": "Không thể bỏ gán: một công ty vẫn đang dùng nhãn này. Hãy gán lại nhân viên của công ty đó trước.",
-      "globalGroupAdminOnly": "Chỉ quản trị viên tập đoàn mới có thể đặt nhãn toàn cục.",
+      "globalGroupAdminOnly": "Chỉ quản trị viên tập đoàn được thay đổi tiêu chí Toàn cục.",
       "notAdminForCompany": "Nhãn này thuộc công ty mà bạn không quản trị nên không thể thay đổi tại đây.",
       "readOnlyRow": "Chỉ đọc — nhãn này thuộc công ty mà bạn không quản trị.",
       "unexpectedError": "Đã xảy ra lỗi và không có gì được lưu. Vui lòng thử lại.",
@@ -8700,7 +8700,8 @@
           "skip": "Bỏ qua",
           "error": "Lỗi"
         }
-      }
+      },
+      "criteriaHelp": "Mã Toàn cục áp dụng cho mọi công ty hiện tại và được thêm sau này. Mỗi mã có thể dùng danh sách công ty được chọn. Giới hạn của quản trị viên công ty được giữ nguyên; chỉ quản trị viên tập đoàn được thay đổi tiêu chí Toàn cục."
     },
     "leave": {
       "typesSectionTitle": "Cài đặt loại nghỉ phép",

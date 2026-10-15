@@ -19,7 +19,7 @@ import { pgErrorChain, pgSqlState, isDatabaseError } from '../lib/db-error';
 // f1bbc572 — the tokens a label refusal may travel as, so the client can say it in the reader's language
 // instead of forwarding the driver's SQL. Pure module (the lib/leave-visual precedent above).
 import type { LabelErrorToken } from '../lib/label-error-token';
-import { visibleLabelIdsCondition, labelCompanyIdsSql, assertLabelCriteriaCodeTx, setLabelCriteria } from './system-labels';
+import { visibleLabelIdsCondition, labelCompanyIdsSql, labelMaintenanceCondition, boundedLabelMaintenanceRows, SYSTEM_LABEL_MAINTENANCE_LIMIT, assertLabelCriteriaCodeTx, setLabelCriteria } from './system-labels';
 // 1ae7f3ab + 4fdb69b2 — the ONE declaration of what references a leave type, shared with
 // listLeaveTypes' inUse predicate. Two hand-written lists are what drifted into the reported bug.
 //
@@ -1478,8 +1478,8 @@ export function listDepartmentsForLabels(
   ctx: SessionContext,
   opts: { companyIds?: string[] } = {},
 ) {
-  return withTenant(ctx, (tx) =>
-    tx
+  return withTenant(ctx, async (tx) =>
+    boundedLabelMaintenanceRows(await tx
       .select({
         id: department.id,
         companyId: department.companyId,
@@ -1500,9 +1500,9 @@ export function listDepartmentsForLabels(
       })
       .from(department)
       .where(
-        opts.companyIds && opts.companyIds.length ? inArray(department.companyId, opts.companyIds) : undefined,
+        and(labelMaintenanceCondition(department, 'department'),opts.companyIds ? opts.companyIds.length ? inArray(department.companyId,opts.companyIds) : sql`false` : undefined),
       )
-      .orderBy(department.name),
+      .orderBy(department.name,department.id).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1)),
   );
 }
 
@@ -1510,8 +1510,8 @@ export function listPositionsForLabels(
   ctx: SessionContext,
   opts: { companyIds?: string[] } = {},
 ) {
-  return withTenant(ctx, (tx) =>
-    tx
+  return withTenant(ctx, async (tx) =>
+    boundedLabelMaintenanceRows(await tx
       .select({
         id: position.id,
         companyId: position.companyId,
@@ -1530,9 +1530,9 @@ export function listPositionsForLabels(
       })
       .from(position)
       .where(
-        opts.companyIds && opts.companyIds.length ? inArray(position.companyId, opts.companyIds) : undefined,
+        and(labelMaintenanceCondition(position, 'position'),opts.companyIds ? opts.companyIds.length ? inArray(position.companyId,opts.companyIds) : sql`false` : undefined),
       )
-      .orderBy(position.title),
+      .orderBy(position.title,position.id).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1)),
   );
 }
 
@@ -1540,8 +1540,8 @@ export function listCostCentersForLabels(
   ctx: SessionContext,
   opts: { companyIds?: string[] } = {},
 ) {
-  return withTenant(ctx, (tx) =>
-    tx
+  return withTenant(ctx, async (tx) =>
+    boundedLabelMaintenanceRows(await tx
       .select({
         id: costCenter.id,
         companyId: costCenter.companyId,
@@ -1560,9 +1560,9 @@ export function listCostCentersForLabels(
       })
       .from(costCenter)
       .where(
-        opts.companyIds && opts.companyIds.length ? inArray(costCenter.companyId, opts.companyIds) : undefined,
+        and(labelMaintenanceCondition(costCenter, 'cost_center'),opts.companyIds ? opts.companyIds.length ? inArray(costCenter.companyId,opts.companyIds) : sql`false` : undefined),
       )
-      .orderBy(costCenter.code),
+      .orderBy(costCenter.code,costCenter.id).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1)),
   );
 }
 
@@ -1570,8 +1570,8 @@ export function listBusinessUnitsForLabels(
   ctx: SessionContext,
   opts: { companyIds?: string[] } = {},
 ) {
-  return withTenant(ctx, (tx) =>
-    tx
+  return withTenant(ctx, async (tx) =>
+    boundedLabelMaintenanceRows(await tx
       .select({
         id: businessUnit.id,
         companyId: businessUnit.companyId,
@@ -1592,9 +1592,9 @@ export function listBusinessUnitsForLabels(
       })
       .from(businessUnit)
       .where(
-        opts.companyIds && opts.companyIds.length ? inArray(businessUnit.companyId, opts.companyIds) : undefined,
+        and(labelMaintenanceCondition(businessUnit, 'business_unit'),opts.companyIds ? opts.companyIds.length ? inArray(businessUnit.companyId,opts.companyIds) : sql`false` : undefined),
       )
-      .orderBy(businessUnit.code),
+      .orderBy(businessUnit.code,businessUnit.id).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1)),
   );
 }
 
@@ -2710,6 +2710,7 @@ export type LabelCreateInput = {
 };
 /** One existing row to update. `archived` toggles the soft-archive; scope (isGlobal) is applied too. */
 export type LabelUpdateInput = {
+  criteria?:{isGlobal:boolean;companyIds:string[]};
   key: string;
   id: string;
   isGlobal?: boolean;
@@ -2910,7 +2911,7 @@ export async function bulkSaveLabels(
           const name = clean(u.key, u.name, 'name', 'Department name', true);
           if (!name) continue;
           const set: { name: string; label: string | null; description: string | null; isGlobal?: boolean; businessUnitId?: string | null; headEmploymentId?: string | null; archivedAt?: ReturnType<typeof sql> | null } = { name, label: u.label?.trim() || null, description: u.description?.trim() || null };
-          if (u.isGlobal !== undefined) set.isGlobal = u.isGlobal;
+          if (u.isGlobal !== undefined && !u.criteria) set.isGlobal = u.isGlobal;
           if (u.businessUnitId !== undefined || u.headEmploymentId !== undefined) {
             const [dep] = await tx.select({ companyId: department.companyId }).from(department).where(eq(department.id, u.id)).limit(1);
             if (dep) {
@@ -2926,7 +2927,7 @@ export async function bulkSaveLabels(
           const title = clean(u.key, u.title, 'title', 'Position title', true);
           if (!title) continue;
           const set: { title: string; jobFamily: string | null; label: string | null; description: string | null; isGlobal?: boolean; archivedAt?: ReturnType<typeof sql> | null } = { title, jobFamily: u.jobFamily?.trim() || null, label: u.label?.trim() || null, description: u.description?.trim() || null };
-          if (u.isGlobal !== undefined) set.isGlobal = u.isGlobal;
+          if (u.isGlobal !== undefined && !u.criteria) set.isGlobal = u.isGlobal;
           if (u.archived !== undefined) set.archivedAt = u.archived ? sql`now()` : null;
           await tx.update(position).set(set).where(eq(position.id, u.id));
           await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: u.id, eventType: 'position.updated', actor: actorOf(ctx), payload: { title, isGlobal: u.isGlobal, archived: u.archived } });
@@ -2935,7 +2936,7 @@ export async function bulkSaveLabels(
           const name = clean(u.key, u.name, 'name', 'Cost-center name', true);
           if (!code || !name) continue;
           const set: { code: string; name: string; label: string | null; description: string | null; isGlobal?: boolean; archivedAt?: ReturnType<typeof sql> | null } = { code, name, label: u.label?.trim() || null, description: u.description?.trim() || null };
-          if (u.isGlobal !== undefined) set.isGlobal = u.isGlobal;
+          if (u.isGlobal !== undefined && !u.criteria) set.isGlobal = u.isGlobal;
           if (u.archived !== undefined) set.archivedAt = u.archived ? sql`now()` : null;
           await tx.update(costCenter).set(set).where(eq(costCenter.id, u.id));
           await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: u.id, eventType: 'cost-center.updated', actor: actorOf(ctx), payload: { code, isGlobal: u.isGlobal, archived: u.archived } });
@@ -2944,7 +2945,7 @@ export async function bulkSaveLabels(
           const name = clean(u.key, u.name, 'name', 'Business-unit name', true);
           if (!code || !name) continue;
           const set: { code: string; name: string; label: string | null; description: string | null; isGlobal?: boolean; headEmploymentId?: string | null; archivedAt?: ReturnType<typeof sql> | null } = { code, name, label: u.label?.trim() || null, description: u.description?.trim() || null };
-          if (u.isGlobal !== undefined) set.isGlobal = u.isGlobal;
+          if (u.isGlobal !== undefined && !u.criteria) set.isGlobal = u.isGlobal;
           // 6fadb036: tri-state head — undefined ⇒ untouched; blank ⇒ clear; id ⇒ same-company-validated.
           if (u.headEmploymentId !== undefined) {
             const [bu] = await tx.select({ companyId: businessUnit.companyId }).from(businessUnit).where(eq(businessUnit.id, u.id)).limit(1);
@@ -2954,7 +2955,8 @@ export async function bulkSaveLabels(
           await tx.update(businessUnit).set(set).where(eq(businessUnit.id, u.id));
           await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: u.id, eventType: 'business-unit.updated', actor: actorOf(ctx), payload: { code, isGlobal: u.isGlobal, archived: u.archived } });
         }
-        await assertLabelCriteriaCodeTx(tx, ctx.tenantId, kind, u.id);
+        if(u.criteria)await setLabelCriteria(ctx,{kind,labelId:u.id,...u.criteria},tx);
+        else await assertLabelCriteriaCodeTx(tx, ctx.tenantId, kind, u.id);
         updated++;
       } catch (e) {
         const rowErr = labelRowError(e, u.key, kind === 'department' ? 'name' : kind === 'position' ? 'title' : 'code');

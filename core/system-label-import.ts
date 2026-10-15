@@ -6,7 +6,7 @@ import * as s from '../db/schema';
 import { actorOf, appendEvent } from '../db/events';
 import { bulkSaveLabels, createJobGrade, updateJobGrade, type LabelCreateInput, type LabelUpdateInput } from './admin';
 import { createProfileOption, updateProfileOption } from './profile-options';
-import { setLabelCriteria, visibleLabelIdsCondition } from './system-labels';
+import { setLabelCriteria, visibleLabelIdsCondition, labelMaintenanceCondition, SYSTEM_LABEL_MAINTENANCE_LIMIT, boundedLabelMaintenanceRows } from './system-labels';
 import { createGradeGroup, updateGradeGroup } from '../packs/leave/service';
 import { EMPLOYMENT_LABEL_CATEGORIES, LABEL_IMPORT_DEFINITIONS, ORGANISATION_LABEL_KINDS,
   ORGANISATION_LABEL_COLUMNS, type OrganisationLabelKind, type LabelImportMode,
@@ -32,15 +32,22 @@ async function catalogue(tx: Tx): Promise<Catalogue> {
   if (!permission[0]?.allowed) throw new Error('Only an administrator may import System Labels.');
   const [companies, departments, positions, costs, units, options, grades, groups, members, assignments, employees] = await Promise.all([
     tx.select({ id:s.company.id,name:s.company.legalName, archived:s.company.archivedAt,
-      writable:sql<boolean>`app.is_admin_for(${s.company.id})` }).from(s.company).orderBy(asc(s.company.id)),
-    tx.select().from(s.department).orderBy(asc(s.department.id)), tx.select().from(s.position).orderBy(asc(s.position.id)),
-    tx.select().from(s.costCenter).orderBy(asc(s.costCenter.id)), tx.select().from(s.businessUnit).orderBy(asc(s.businessUnit.id)),
-    tx.select().from(s.profileOption).orderBy(asc(s.profileOption.id)), tx.select().from(s.jobGrade).orderBy(asc(s.jobGrade.id)),
-    tx.select().from(s.gradeGroup).orderBy(asc(s.gradeGroup.id)), tx.select().from(s.gradeGroupMember).orderBy(asc(s.gradeGroupMember.id)),
-    tx.select().from(s.labelCompanyAssignment).orderBy(asc(s.labelCompanyAssignment.id)),
+      writable:sql<boolean>`app.is_admin_for(${s.company.id})` }).from(s.company).where(sql`app.is_admin_for(${s.company.id}) or exists(select 1 from department where department.company_id=${s.company.id} and ${labelMaintenanceCondition(s.department,'department')}) or exists(select 1 from "position" where "position".company_id=${s.company.id} and ${labelMaintenanceCondition(s.position,'position')}) or exists(select 1 from cost_center where cost_center.company_id=${s.company.id} and ${labelMaintenanceCondition(s.costCenter,'cost_center')}) or exists(select 1 from business_unit where business_unit.company_id=${s.company.id} and ${labelMaintenanceCondition(s.businessUnit,'business_unit')}) or exists(select 1 from label_company_assignment lca where lca.company_id=${s.company.id} and (
+   exists(select 1 from department where department.id=lca.label_id and lca.label_kind='department' and ${labelMaintenanceCondition(s.department,'department')}) or
+   exists(select 1 from "position" where "position".id=lca.label_id and lca.label_kind='position' and ${labelMaintenanceCondition(s.position,'position')}) or
+   exists(select 1 from cost_center where cost_center.id=lca.label_id and lca.label_kind='cost_center' and ${labelMaintenanceCondition(s.costCenter,'cost_center')}) or
+   exists(select 1 from business_unit where business_unit.id=lca.label_id and lca.label_kind='business_unit' and ${labelMaintenanceCondition(s.businessUnit,'business_unit')})
+  ))`).orderBy(asc(s.company.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1),
+    tx.select().from(s.department).where(labelMaintenanceCondition(s.department,'department')).orderBy(asc(s.department.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1), tx.select().from(s.position).where(labelMaintenanceCondition(s.position,'position')).orderBy(asc(s.position.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1),
+    tx.select().from(s.costCenter).where(labelMaintenanceCondition(s.costCenter,'cost_center')).orderBy(asc(s.costCenter.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1), tx.select().from(s.businessUnit).where(labelMaintenanceCondition(s.businessUnit,'business_unit')).orderBy(asc(s.businessUnit.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1),
+    tx.select().from(s.profileOption).orderBy(asc(s.profileOption.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1), tx.select().from(s.jobGrade).orderBy(asc(s.jobGrade.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1),
+    tx.select().from(s.gradeGroup).orderBy(asc(s.gradeGroup.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1), tx.select().from(s.gradeGroupMember).orderBy(asc(s.gradeGroupMember.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1),
+    tx.select().from(s.labelCompanyAssignment).where(sql`exists(select 1 from department where department.id=${s.labelCompanyAssignment.labelId} and ${s.labelCompanyAssignment.labelKind}='department' and ${labelMaintenanceCondition(s.department,'department')}) or exists(select 1 from "position" where "position".id=${s.labelCompanyAssignment.labelId} and ${s.labelCompanyAssignment.labelKind}='position' and ${labelMaintenanceCondition(s.position,'position')}) or exists(select 1 from cost_center where cost_center.id=${s.labelCompanyAssignment.labelId} and ${s.labelCompanyAssignment.labelKind}='cost_center' and ${labelMaintenanceCondition(s.costCenter,'cost_center')}) or exists(select 1 from business_unit where business_unit.id=${s.labelCompanyAssignment.labelId} and ${s.labelCompanyAssignment.labelKind}='business_unit' and ${labelMaintenanceCondition(s.businessUnit,'business_unit')})`).orderBy(asc(s.labelCompanyAssignment.id)).limit(50_001),
     tx.select({id:s.employment.id,code:s.employment.employeeCode,companyId:s.employment.companyId,name:s.person.fullName,active:sql<boolean>`(${s.employment.terminatedOn} is null or ${s.employment.terminatedOn} >= ${todayInKualaLumpur()}::date) and ${s.employment.hiredOn} <= ${todayInKualaLumpur()}::date`})
-      .from(s.employment).innerJoin(s.person,eq(s.person.id,s.employment.personId)).orderBy(asc(s.employment.id)),
+      .from(s.employment).innerJoin(s.person,eq(s.person.id,s.employment.personId)).where(sql`app.is_admin_for(${s.employment.companyId})`).orderBy(asc(s.employment.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1),
   ]);
+  for(const rows of [companies,departments,positions,costs,units,options,grades,groups,members,employees])boundedLabelMaintenanceRows(rows);
+  if(assignments.length>50_000)throw new Error('System Labels criteria exceed the supported workbook size.');
   const orgs: Org[] = [];
   const normalise = (kind: OrganisationLabelKind, rows: (typeof departments[number] | typeof positions[number] | typeof costs[number] | typeof units[number])[]) => {
     for (const r of rows) {
@@ -184,7 +191,7 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], mode
         for(const col of ORGANISATION_LABEL_COLUMNS[kind])Object.assign(fields,{[col.field]:v[{code:'Code',label:'Label',description:'Description'}[col.headerKey]]});
         if('Head Employee Code' in v&&(!merge||row.values['Head Employee Code']!==''))fields.headEmploymentId=headMatches[0]?.id??null;
         classify(old?.values??null,async()=>{
-          if(old){const updated=await bulkSaveLabels(ctx,kind,{creates:[],updates:[{...old.original,...fields,key:old.id,id:old.id}]},tx);await setLabelCriteria(ctx,{kind,labelId:old.id,isGlobal:v.Criteria==='global',companyIds:shared},tx);return updated;}
+          if(old){const updated=await bulkSaveLabels(ctx,kind,{creates:[],updates:[{...old.original,...fields,key:old.id,id:old.id,criteria:{isGlobal:v.Criteria==='global',companyIds:shared}}]},tx);return updated;}
           const created=await bulkSaveLabels(ctx,kind,{creates:[{...fields,key:`${row.sheet}:${row.row}`,companyId,isGlobal:v.Criteria==='global',companyIds:shared} as LabelCreateInput],updates:[]},tx);
           const id=created.createdIds[0].id;
           await setLabelCriteria(ctx,{kind,labelId:id,isGlobal:v.Criteria==='global',companyIds:shared},tx);

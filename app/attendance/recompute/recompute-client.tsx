@@ -32,10 +32,7 @@ import { applyRecomputeAction, previewRecomputeAction } from './actions';
  * writes what IT derives.
  */
 
-/** f1bbc572 — `sharedSystemLabels` is the company's Shared System Labels opt-out. It travels with the
- *  company because the global branch of the label rule is gated on it server-side
- *  (core/system-labels.ts visibleLabelIdsCondition), and a filter option this company's own resolver
- *  does not admit would match no rows at all. */
+/** Label availability comes from Global or each record's explicit company Criteria. */
 type Company = { id: string; name: string };
 type Department = { id: string; name: string; companyId: string; isGlobal: boolean; assignedCompanyIds: string[] };
 type Employee = {

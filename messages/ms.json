@@ -8590,7 +8590,7 @@
       "pageTitle": "Label Sistem",
       "pageDescription": "Sediakan senarai kongsi yang dipilih oleh semua orang — jabatan, jawatan, pusat kos dan unit perniagaan mengikut syarikat, serta gred seluruh organisasi.",
       "companies": "Syarikat",
-      "noCompaniesInScope": "Tiada syarikat dalam skop.",
+      "noCompaniesInScope": "Tiada syarikat tersedia dalam akses pentadbir anda.",
       "countSummary": "{dept} jbtn · {pos} jwtn · {cc} pk · {bu} up",
       "fieldDescription": "Keterangan",
       "descriptionPlaceholder": "Nota ringkas (pilihan)",
@@ -8606,7 +8606,7 @@
       "bulkDeactivate": "Nyahaktifkan",
       "copyToCompanies": "Salin ke syarikat",
       "cannotUnassignInUse": "Tidak boleh dinyahtetapkan: sebuah syarikat masih menggunakan label ini. Tetapkan semula pekerjanya dahulu.",
-      "globalGroupAdminOnly": "Hanya pentadbir kumpulan boleh menjadikan label global.",
+      "globalGroupAdminOnly": "Hanya pentadbir kumpulan boleh mengubah kriteria Global.",
       "notAdminForCompany": "Label ini milik syarikat yang anda tidak tadbir, jadi ia tidak boleh diubah di sini.",
       "readOnlyRow": "Baca sahaja — label ini milik syarikat yang anda tidak tadbir.",
       "unexpectedError": "Berlaku masalah dan tiada apa-apa disimpan. Sila cuba lagi.",
@@ -8700,7 +8700,8 @@
           "skip": "Langkau",
           "error": "Ralat"
         }
-      }
+      },
+      "criteriaHelp": "Kod Global tersedia untuk semua syarikat semasa dan baharu. Setiap kod boleh menggunakan senarai syarikat terpilih. Had pentadbir syarikat kekal; hanya pentadbir kumpulan boleh mengubah kriteria Global."
     },
     "leave": {
       "typesSectionTitle": "Tetapan jenis cuti",
