@@ -56,6 +56,33 @@ describe('company-filtered Overtime Pattern listing',()=>{
   for(const companyIds of [[f.other.id],[b.companyId,f.other.id]])await expect(listOvertimePatterns(scoped,{companyIds,search:f.prefix})).rejects.toMatchObject({code:'permission'});
  });
 });
+describe('manual samples retain hypothetical eligibility without source authority',()=>{
+ const zero='00000000-0000-0000-0000-000000000000';
+ async function savedSample(eligibility:OvertimePattern['eligibility']){const definition=pattern();definition.eligibility=eligibility;definition.eligibleMinutes={id:'sample_shortfall',type:'subtract',unit:'minutes',left:{id:'sample_actual',type:'field',unit:'minutes',field:'actualWorkingMinutes'},right:{id:'sample_required',type:'field',unit:'minutes',field:'requiredWorkingMinutes'}};return saveOvertimePatternDraft(adminCtx(b),{draft:draft(definition)});}
+ function hypothetical(){const input={...snapshot().input,mode:'actual' as const,patternVersionId:randomUUID(),assignmentId:randomUUID()};input.source={...input.source,tenantId:randomUUID(),employmentId:randomUUID(),attendanceId:randomUUID()};if(input.layer!=='raw')throw new Error('Expected raw sample fixture');input.facts.actualWorkingMinutes=known('541');input.facts.requiredWorkingMinutes=known('480');input.approval.minutes=known('61');input.segments[0].rawMinutes=known('541');input.segments[0].approvedMinutes=known('541');return input;}
+ async function unchangedFacts(){return {source:await owner.db.select().from(s.attendanceOvertimeSource).orderBy(asc(s.attendanceOvertimeSource.id)),calculations:await owner.db.select().from(s.attendanceOvertimeCalculation).orderBy(asc(s.attendanceOvertimeCalculation.id)),claims:await owner.db.select().from(s.overtimeSourceSettlement).orderBy(asc(s.overtimeSourceSettlement.id)),events:await owner.db.select().from(s.domainEvent).orderBy(asc(s.domainEvent.sequence)),attendance:await owner.db.select().from(s.attendance).where(eq(s.attendance.id,attendanceId))};}
+ it('evaluates selected employee/company facts and ignores caller-supplied source authority without writes',async()=>{
+  const saved=await savedSample({id:'sample_scope',type:'group',logic:'and',children:[{id:'sample_employee',type:'selection',field:'employmentId',operator:'in',values:[employmentId]},{id:'sample_company',type:'selection',field:'companyId',operator:'in',values:[b.companyId]}]}),api=createOvertimeCalculationOwner(async()=>{throw new Error('Manual samples must not read canonical employee facts');}),before=await unchangedFacts();
+  const sample=hypothetical(),result=await api.previewSample(adminCtx(b),{...saved,sample});expect(result.status).toBe('ready');if(result.status==='refused')throw new Error('Expected selected sample eligibility');expect(result.payableMinutes).toMatchObject({numerator:'61',denominator:'1'});expect(result.transferable).toBe(false);expect(result.source).toMatchObject({tenantId:b.tenantId,employmentId:zero,attendanceId:zero});expect(result.patternVersionId).toBe(saved.versionId);expect(result.assignmentId).toBe(zero);
+  for(const field of ['employmentId','companyId'] as const){const changed=structuredClone(sample);changed.facts[field]=known(randomUUID());const negative=await api.previewSample(adminCtx(b),{...saved,sample:changed});expect(negative.status).toBe('ineligible');expect(negative.transferable).toBe(false);}
+  expect(await unchangedFacts()).toEqual(before);
+ });
+ it('distinguishes known-missing null, Unknown and absent employee facts without forcing a synthetic employee value',async()=>{
+  const missing=await savedSample({id:'missing_employee',type:'null',field:'employmentId',isNull:true}),constant=await savedSample(yes('unconditional')),api=createOvertimeCalculationOwner(async()=>{throw new Error('No current Personnel fallback');}),before=await unchangedFacts();
+  for(const kind of ['null','unknown','absent'] as const){const sample=hypothetical();if(kind==='null')sample.facts.employmentId=known(null);else if(kind==='unknown')sample.facts.employmentId={state:'unknown',reason:'sample_not_entered'};else delete sample.facts.employmentId;
+   const dependent=await api.previewSample(adminCtx(b),{...missing,sample});expect(dependent.transferable).toBe(false);
+   if(kind==='null')expect(dependent.status).toBe('ready');else{expect(dependent.status).toBe('refused');if(dependent.status!=='refused')throw new Error('Expected Unknown employee eligibility');expect(dependent.issues.some(issue=>issue.code==='unknown'&&issue.path==='employmentId')).toBe(true);}
+   const independent=await api.previewSample(adminCtx(b),{...constant,sample});expect(independent.status).toBe('ready');expect(independent.transferable).toBe(false);
+  }
+  expect(await unchangedFacts()).toEqual(before);
+ });
+ it('retains real workspace/version authorization before evaluating any hypothetical facts',async()=>{
+  const saved=await savedSample(yes('eligible')),api=createOvertimeCalculationOwner(async()=>{throw new Error('No canonical reader');}),sample=hypothetical();
+  await expect(api.previewSample(adminCtx(b),{...saved,patternId:randomUUID(),sample})).rejects.toMatchObject({code:'invalid'});
+  const [employee]=await owner.db.select({personId:s.employment.personId}).from(s.employment).where(eq(s.employment.id,employmentId)),userId=await createAppUser(b.tenantId,employee.personId,'employee');
+  await expect(api.previewSample({...adminCtx(b),userId,personId:employee.personId,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]},{...saved,sample})).rejects.toMatchObject({code:'permission'});
+ });
+});
 describe('Draft, activation and effective assignment',()=>{
  it('saves and reopens structurally complete unfinished decimal controls, while activation refuses',async()=>{const def=pattern();def.rates[0].tiers[0].payment={method:'flat',basis:'day',chargeId:'day_charge',amount:{id:'amount',type:'literal',unit:'money',currency:'MYR',value:''}};const saved=await saveOvertimePatternDraft(adminCtx(b),{draft:draft(def)});const read=await getOvertimePattern(adminCtx(b),saved.patternId);expect(read!.versions[0].definition).toEqual(def);expect((await validateOvertimePatternActivation(adminCtx(b),{versionId:saved.versionId,expectedRevision:1})).validationDigest).toBeNull();});
  it('rejects malformed drafts instead of promising editor-safe typed arrays',async()=>{for(const malformed of [{},{...pattern(),rates:null}])await expect(saveOvertimePatternDraft(adminCtx(b),{draft:draft(malformed as OvertimePattern)})).rejects.toThrow();});
