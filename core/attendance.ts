@@ -6413,8 +6413,8 @@ export async function rawScheduleDaysTx(tx:Tx,employmentId:string,from:string,to
  const memo=await newScheduleMemo(tx,{employmentIds:[employmentId],from,to});memo.originalSchedule=true;
  const out=new Map<string,'full'|'half'|'off'|'rest'|'unknown'>();
  for(let date=from;date<=to;date=addDays(date,1)){
-  const schedule=await scheduleBaseFor(tx,employmentId,date,memo);
-  out.set(date,schedule.scheduleDayKind??(schedule.dayType==='rest_day'?'rest':schedule.dayType==='workday'?'full':'unknown'));
+  const schedule=await scheduleFor(tx,employmentId,date,memo);
+  out.set(date,schedule.dayType==='rest_day'?(schedule.scheduleDayKind==='off'?'off':'rest'):schedule.dayType==='workday'?(schedule.scheduleDayKind==='half'?'half':'full'):'unknown');
  }
  return out;
 }

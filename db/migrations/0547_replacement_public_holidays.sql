@@ -12,7 +12,7 @@ CREATE TABLE replacement_holiday (
  policy_id uuid REFERENCES replacement_holiday_policy(id),input_digest text NOT NULL,status text NOT NULL CHECK(status IN ('allocated','review','not_required')),
  replacement_date date,proposed_date date,reason text NOT NULL,manual boolean NOT NULL DEFAULT false,manual_reason text,
  created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),UNIQUE(tenant_id,employment_id,source_holiday_id),
- CHECK(replacement_date IS NULL OR replacement_date>source_date),CHECK(proposed_date IS NULL OR proposed_date>source_date),CHECK(NOT manual OR length(trim(manual_reason))>0)
+ CHECK(replacement_date IS NULL OR replacement_date>source_date),CHECK(NOT manual OR (manual_reason IS NOT NULL AND length(trim(manual_reason))>0)),CHECK(status<>'allocated' OR replacement_date IS NOT NULL),CHECK(status<>'not_required' OR replacement_date IS NULL)
 );--> statement-breakpoint
 CREATE UNIQUE INDEX replacement_holiday_employee_date_uq ON replacement_holiday(tenant_id,employment_id,replacement_date) WHERE replacement_date IS NOT NULL;--> statement-breakpoint
 CREATE TABLE replacement_holiday_revision (
@@ -21,7 +21,7 @@ CREATE TABLE replacement_holiday_revision (
 );--> statement-breakpoint
 CREATE TABLE replacement_holiday_queue (
  tenant_id uuid NOT NULL REFERENCES tenant(id),employment_id uuid NOT NULL REFERENCES employment(id) ON DELETE CASCADE,generation bigint NOT NULL DEFAULT 1,
- requested_at timestamptz NOT NULL DEFAULT now(),claimed_at timestamptz,claimed_generation bigint,PRIMARY KEY(tenant_id,employment_id)
+ requested_at timestamptz NOT NULL DEFAULT now(),claimed_at timestamptz,claimed_generation bigint,last_error text,calendar_conflicts jsonb NOT NULL DEFAULT '[]'::jsonb,PRIMARY KEY(tenant_id,employment_id)
 );--> statement-breakpoint
 ALTER TABLE replacement_holiday_policy ENABLE ROW LEVEL SECURITY;ALTER TABLE replacement_holiday_policy FORCE ROW LEVEL SECURITY;
 ALTER TABLE replacement_holiday ENABLE ROW LEVEL SECURITY;ALTER TABLE replacement_holiday FORCE ROW LEVEL SECURITY;
@@ -33,7 +33,10 @@ CREATE POLICY replacement_holiday_read ON replacement_holiday FOR SELECT USING(t
 CREATE POLICY replacement_holiday_write ON replacement_holiday FOR ALL USING(tenant_id=app.current_tenant_id() AND app.can_admin_employment(employment_id) AND app.is_admin_for(company_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND app.can_admin_employment(employment_id) AND app.is_admin_for(company_id));
 CREATE POLICY replacement_holiday_revision_read ON replacement_holiday_revision FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.can_see_employment(employment_id));
 CREATE POLICY replacement_holiday_revision_insert ON replacement_holiday_revision FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND app.can_admin_employment(employment_id) AND app.is_admin_for(company_id));
-CREATE POLICY replacement_holiday_queue_admin ON replacement_holiday_queue FOR ALL USING(tenant_id=app.current_tenant_id() AND app.can_admin_employment(employment_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND app.can_admin_employment(employment_id));--> statement-breakpoint
+CREATE POLICY replacement_holiday_queue_admin ON replacement_holiday_queue FOR ALL USING(tenant_id=app.current_tenant_id() AND app.can_admin_employment(employment_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND app.can_admin_employment(employment_id));
+-- The trusted trigger definer may enqueue other employees in the changed tenant; app clients cannot.
+CREATE POLICY replacement_holiday_queue_definer ON replacement_holiday_queue FOR ALL USING(current_user<>'ai_hr_app') WITH CHECK(current_user<>'ai_hr_app' AND EXISTS(SELECT 1 FROM employment e WHERE e.id=employment_id AND e.tenant_id=replacement_holiday_queue.tenant_id));
+--> statement-breakpoint
 GRANT SELECT,INSERT ON replacement_holiday_policy,replacement_holiday_revision TO ai_hr_app;
 GRANT SELECT,INSERT,UPDATE ON replacement_holiday TO ai_hr_app;
 GRANT SELECT,INSERT,UPDATE,DELETE ON replacement_holiday_queue TO ai_hr_app;--> statement-breakpoint
@@ -49,7 +52,8 @@ BEGIN
   IF NOT EXISTS(SELECT 1 FROM employment WHERE id=NEW.employment_id AND tenant_id=NEW.tenant_id) OR NOT EXISTS(SELECT 1 FROM company WHERE id=NEW.company_id AND tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Employee or company is unavailable in this tenant';END IF;
   IF TG_OP='INSERT' AND NOT EXISTS(SELECT 1 FROM employment WHERE id=NEW.employment_id AND company_id=NEW.company_id) THEN RAISE EXCEPTION 'Allocation company does not match employment';END IF;
   IF NOT EXISTS(SELECT 1 FROM holiday WHERE id=NEW.source_holiday_id AND tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Original holiday is unavailable in this tenant';END IF;
-  IF NEW.policy_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM replacement_holiday_policy WHERE id=NEW.policy_id AND tenant_id=NEW.tenant_id AND company_id=NEW.company_id AND effective_from<=NEW.source_date) THEN RAISE EXCEPTION 'Replacement policy does not apply to this company and source date';END IF;
+  IF NEW.status='allocated' AND NOT EXISTS(SELECT 1 FROM replacement_holiday_policy WHERE id=NEW.policy_id AND confirmed) THEN RAISE EXCEPTION 'An assigned replacement requires a confirmed policy';END IF;
+  IF NEW.policy_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM replacement_holiday_policy WHERE id=NEW.policy_id AND tenant_id=NEW.tenant_id AND company_id=NEW.company_id AND (effective_from<=NEW.source_date OR NEW.manual)) THEN RAISE EXCEPTION 'Replacement policy does not apply to this company and source date';END IF;
  END IF;
  RETURN NEW;
 END $$;--> statement-breakpoint

@@ -801,7 +801,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     guard: 'requireAdmin',
     // 66b8f5a8: Holiday split into two tabs — Holiday master (/admin/holidays) + Holiday Group
     // (/admin/holidays/groups) with dedicated add/edit pages. All requireAdmin (same guard as before).
-    routes: ['/admin/holidays', '/admin/holidays/groups', '/admin/holidays/groups/new', '/admin/holidays/groups/[id]'],
+    routes: ['/admin/holidays', '/admin/holidays/replacements', '/admin/holidays/groups', '/admin/holidays/groups/new', '/admin/holidays/groups/[id]'],
   },
   {
     // R33 f21d6eee: /admin/attendance is now the shared shift library ("Shift settings").

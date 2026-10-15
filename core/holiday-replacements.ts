@@ -3,7 +3,7 @@ import {createHash} from 'node:crypto';
 import {and,asc,eq,inArray,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {actorOf,appendEvent} from '../db/events';
-import {attendance,company,employment,replacementHoliday,replacementHolidayPolicy,replacementHolidayRevision,replacementHolidayQueue} from '../db/schema';
+import {attendance,company,employment,holiday,replacementHoliday,replacementHolidayPolicy,replacementHolidayRevision,replacementHolidayQueue} from '../db/schema';
 import {isAdmin} from '../lib/authz';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {addHolidayDays,allocateReplacementHolidays,policyOn,type ReplacementPolicy,type ReplacementDecision,type OriginalHoliday} from '../lib/holiday-replacement';
@@ -32,8 +32,8 @@ export function saveReplacementHolidayPolicy(ctx:SessionContext,p:{companyId:str
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'company',aggregateId:p.companyId,eventType:'holiday.replacement-policy.published',actor:actorOf(ctx),payload:{policyId:row.id,...p,reason:p.reason.trim()}});return row;
  });
 }
-async function saveRevision(tx:Tx,ctx:SessionContext,row:typeof replacementHoliday.$inferSelect,before:typeof replacementHoliday.$inferSelect|null){
- await tx.insert(replacementHolidayRevision).values({tenantId:ctx.tenantId,allocationId:row.id,employmentId:row.employmentId,companyId:row.companyId,snapshot:{before,after:row},createdBy:ctx.userId??'system'});
+async function saveRevision(tx:Tx,ctx:SessionContext,row:typeof replacementHoliday.$inferSelect,before:typeof replacementHoliday.$inferSelect|null,basis?:Record<string,unknown>){
+ await tx.insert(replacementHolidayRevision).values({tenantId:ctx.tenantId,allocationId:row.id,employmentId:row.employmentId,companyId:row.companyId,snapshot:{before,after:row,basis},createdBy:ctx.userId??'system'});
  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'holiday-replacement',aggregateId:row.id,eventType:row.manual?'holiday.replacement.manually-adjusted':'holiday.replacement.reconciled',subjectEmploymentId:row.employmentId,actor:actorOf(ctx),payload:{sourceHolidayId:row.sourceHolidayId,sourceDate:row.sourceDate,policyId:row.policyId,before:before?{date:before.replacementDate,status:before.status,reason:before.reason}:null,after:{date:row.replacementDate,proposedDate:row.proposedDate,status:row.status,reason:row.reason},manualReason:row.manualReason}});
 }
 export async function reconcileReplacementHolidaysTx(tx:Tx,ctx:SessionContext,employmentId:string){
@@ -41,15 +41,16 @@ export async function reconcileReplacementHolidaysTx(tx:Tx,ctx:SessionContext,em
  const [emp]=await tx.select().from(employment).where(eq(employment.id,employmentId)).for('update');if(!emp)throw new Error('Employee unavailable.');
  const [c]=await tx.select().from(company).where(eq(company.id,emp.companyId));if(!c)throw new Error('Company unavailable.');
  const existing=await tx.select().from(replacementHoliday).where(eq(replacementHoliday.employmentId,employmentId)).orderBy(asc(replacementHoliday.sourceDate),asc(replacementHoliday.sourceHolidayId));
+ const recorded=await tx.select({date:attendance.attendanceDate,dayType:attendance.dayType}).from(attendance).where(eq(attendance.employmentId,employmentId));
  const today=todayInKualaLumpur(),tenureFrom=emp.joinDate??emp.hiredOn;
  const firstYear=`${today.slice(0,4)}-01-01`,prior=existing.reduce((date,row)=>row.sourceDate<date?row.sourceDate:date,firstYear);
- const from=prior<tenureFrom?tenureFrom:prior;
+ const recordedFrom=recorded.reduce((date,row)=>row.date<date?row.date:date,prior);
+ const from=recordedFrom<tenureFrom?tenureFrom:recordedFrom;
  const requestedEnd=`${Number(today.slice(0,4))+1}-12-31`,to=emp.terminatedOn&&emp.terminatedOn<requestedEnd?emp.terminatedOn:requestedEnd;
- if(to<from)return {changed:0,review:0};
+ if(to<from)return {changed:0,review:0,calendarConflicts:[] as {date:string;recorded:string;holiday:boolean}[]};
  const policies=await tx.select().from(replacementHolidayPolicy).where(eq(replacementHolidayPolicy.companyId,emp.companyId)).orderBy(asc(replacementHolidayPolicy.effectiveFrom));
  const horizon=addHolidayDays(to,366),rawFrom=addHolidayDays(from,-7);
  const sources=await originalHolidayCalendarFor(tx,{employmentId,startDate:from,endDate:horizon});
- const sourceWindow=sources.filter(h=>h.date<=to&&h.date>=tenureFrom&&(!emp.terminatedOn||h.date<=emp.terminatedOn));
  const days=await rawScheduleDaysTx(tx,employmentId,rawFrom,horizon);
  const jurisdiction=await effectiveHolidayState(tx,employmentId),states=jurisdiction?.states??[];
  let knownStates:readonly string[]=[];try{knownStates=requirePackFor(c.country).states??[];}catch{/* An unregistered jurisdiction stays review-only. */}
@@ -57,7 +58,6 @@ export async function reconcileReplacementHolidaysTx(tx:Tx,ctx:SessionContext,em
  const regions=new Set(states.map(state=>state==='Sabah'?'Sabah':state==='Sarawak'?'Sarawak':'Peninsular'));
  const state=regions.size===1?jurisdiction?.state??null:null;
  const oldBySource=new Map(existing.map(row=>[row.sourceHolidayId,row]));
- const recorded=await tx.select({date:attendance.attendanceDate,dayType:attendance.dayType}).from(attendance).where(eq(attendance.employmentId,employmentId));
  const recordedByDate=new Map(recorded.map(row=>[row.date,row.dayType]));
  const payroll=new Map<string,boolean>();
  const protectedDate=async(date:string)=>{if(!payroll.has(date))payroll.set(date,(await lockPayrollForAttendanceChange(tx,employmentId,date)).length>0);return payroll.get(date)!;};
@@ -71,8 +71,10 @@ export async function reconcileReplacementHolidaysTx(tx:Tx,ctx:SessionContext,em
   const old=oldBySource.get(decision.source.id);if(old?.manual){if(old.status==='review')review++;continue;}
   if(!old&&decision.status==='not_required')continue;
   let status=decision.status,date=decision.date,reason=decision.reason,proposedDate:string|null=null;
+  if(status==='review'&&old?.replacementDate){proposedDate=date;date=old.replacementDate;}
   const datesChanged=(old?.replacementDate??null)!==date;
-  if(old&&old.companyId!==emp.companyId){status='review';reason='employment_company_changed';proposedDate=date;date=old.replacementDate;}
+  if(old&&old.sourceDate!==decision.source.date){status='review';reason='source_date_changed';proposedDate=date;date=old.replacementDate;}
+  else if(old&&old.companyId!==emp.companyId){status='review';reason='employment_company_changed';proposedDate=date;date=old.replacementDate;}
   else if(datesChanged){
    const involved=[...new Set([decision.source.date,old?.replacementDate,date].filter((d):d is string=>!!d))];
    let locked=false;for(const day of involved)if(await protectedDate(day))locked=true;
@@ -83,14 +85,17 @@ export async function reconcileReplacementHolidaysTx(tx:Tx,ctx:SessionContext,em
   const policy=policyOn(policies,decision.source.date),end=addHolidayDays(decision.source.date,policy?.searchDays??366);
   const inputDigest=digest({source:decision.source,policy,days:[...days].filter(([day])=>day>=addHolidayDays(decision.source.date,-7)&&day<=end),originals:sources.filter(h=>h.date>=decision.source.date&&h.date<=end),companyId:emp.companyId,tenureFrom,terminatedOn:emp.terminatedOn,state,status,date,reason,proposedDate});
   if(old?.inputDigest===inputDigest)continue;
-  const values={tenantId:ctx.tenantId,employmentId,companyId:old?.companyId??emp.companyId,sourceHolidayId:decision.source.id,sourceDate:decision.source.date,sourceName:decision.source.name,policyId:old&&old.companyId!==emp.companyId?old.policyId:decision.policyId,inputDigest,status,replacementDate:date,proposedDate,reason,manual:false,manualReason:null,updatedAt:new Date()};
+  const values={tenantId:ctx.tenantId,employmentId,companyId:old?.companyId??emp.companyId,sourceHolidayId:decision.source.id,sourceDate:reason==='source_date_changed'?old!.sourceDate:decision.source.date,sourceName:reason==='source_date_changed'?old!.sourceName:decision.source.name,policyId:old&&(old.companyId!==emp.companyId||reason==='source_date_changed')?old.policyId:decision.policyId,inputDigest,status,replacementDate:date,proposedDate,reason,manual:false,manualReason:null,updatedAt:new Date()};
   const [row]=old?await tx.update(replacementHoliday).set(values).where(eq(replacementHoliday.id,old.id)).returning():await tx.insert(replacementHoliday).values(values).returning();
-  await saveRevision(tx,ctx,row,old??null);changed++;
+  await saveRevision(tx,ctx,row,old??null,{source:decision.source,policyId:decision.policyId,inputDigest});changed++;
  }
- return {changed,review};
+ const effectiveDates=new Set(sources.map(h=>h.date));
+ for(const row of await tx.select({date:replacementHoliday.replacementDate}).from(replacementHoliday).where(eq(replacementHoliday.employmentId,employmentId)))if(row.date)effectiveDates.add(row.date);
+ const calendarConflicts=recorded.filter(row=>row.date>=from&&row.date<=to&&(row.dayType==='holiday')!==effectiveDates.has(row.date)).map(row=>({date:row.date,recorded:row.dayType,holiday:effectiveDates.has(row.date)}));
+ return {changed,review,calendarConflicts};
 }
 export function reconcileReplacementHolidays(ctx:SessionContext,employmentId:string){if(!isAdmin(ctx))throw new Error('Only an HR administrator can reconcile replacement holidays.');return withTenant(ctx,tx=>reconcileReplacementHolidaysTx(tx,ctx,employmentId));}
-export function adjustReplacementHoliday(ctx:SessionContext,p:{allocationId:string;date:string|null;reason:string;releaseToAutomatic?:boolean}){
+export function adjustReplacementHoliday(ctx:SessionContext,p:{allocationId:string;date:string|null;reason:string;policyId?:string|null;releaseToAutomatic?:boolean}){
  if(!isAdmin(ctx))throw new Error('Only an HR administrator can adjust replacement holidays.');
  if(p.reason.trim().length<3||p.reason.trim().length>2000)throw new Error('Record an adjustment reason in 3 to 2000 characters.');
  if(p.date&&!isoDate(p.date))throw new Error('Choose a valid replacement date.');
@@ -99,23 +104,27 @@ export function adjustReplacementHoliday(ctx:SessionContext,p:{allocationId:stri
   await authority(tx,found.employmentId);
   const [emp]=await tx.select().from(employment).where(eq(employment.id,found.employmentId)).for('update');if(!emp)throw new Error('Employee unavailable.');
   const [old]=await tx.select().from(replacementHoliday).where(eq(replacementHoliday.id,p.allocationId)).for('update');
+  const adjustmentDate=p.releaseToAutomatic?old.replacementDate:p.date;
+  const [original]=await tx.select().from(holiday).where(eq(holiday.id,old.sourceHolidayId));if(!original)throw new Error('Original holiday unavailable.');
   if(emp.companyId!==old.companyId)throw new Error('The employee’s company has changed. Review the historical company assignment before adjusting it.');
-  if(p.date){
-   if(p.date<=old.sourceDate||p.date<(emp.joinDate??emp.hiredOn)||emp.terminatedOn&&p.date>emp.terminatedOn)throw new Error('The replacement must follow its source within this employment’s tenure.');
-   const [policy]=old.policyId?await tx.select().from(replacementHolidayPolicy).where(eq(replacementHolidayPolicy.id,old.policyId)):[];
-   if(!policy?.confirmed)throw new Error('Confirm an applicable policy before assigning a manual replacement.');
-   const raw=await rawScheduleDaysTx(tx,emp.id,p.date,p.date),kind=raw.get(p.date);
+  if(adjustmentDate&&!p.releaseToAutomatic){
+   if(adjustmentDate<=original.holidayDate||adjustmentDate<(emp.joinDate??emp.hiredOn)||emp.terminatedOn&&adjustmentDate>emp.terminatedOn)throw new Error('The replacement must follow its source within this employment’s tenure.');
+   const selectedPolicyId=p.policyId??old.policyId;
+   const [policy]=selectedPolicyId?await tx.select().from(replacementHolidayPolicy).where(and(eq(replacementHolidayPolicy.id,selectedPolicyId),eq(replacementHolidayPolicy.companyId,old.companyId))):[];
+   if(!policy?.confirmed||policy.effectiveFrom>todayInKualaLumpur())throw new Error('Choose a confirmed policy in effect for this company before assigning a manual replacement.');
+   const raw=await rawScheduleDaysTx(tx,emp.id,adjustmentDate,adjustmentDate),kind=raw.get(adjustmentDate);
    if(kind!=='full'&&!(kind==='half'&&policy.halfEligible))throw new Error('Choose an eligible scheduled working day.');
-   const originals=await originalHolidayCalendarFor(tx,{employmentId:emp.id,startDate:p.date,endDate:p.date});if(originals.length)throw new Error('That date is already an original holiday.');
-   const [occupied]=await tx.select({id:replacementHoliday.id}).from(replacementHoliday).where(and(eq(replacementHoliday.employmentId,emp.id),eq(replacementHoliday.replacementDate,p.date)));
+   const originals=await originalHolidayCalendarFor(tx,{employmentId:emp.id,startDate:adjustmentDate,endDate:adjustmentDate});if(originals.length)throw new Error('That date is already an original holiday.');
+   const [occupied]=await tx.select({id:replacementHoliday.id}).from(replacementHoliday).where(and(eq(replacementHoliday.employmentId,emp.id),eq(replacementHoliday.replacementDate,adjustmentDate)));
    if(occupied&&occupied.id!==old.id)throw new Error('That date already replaces another public holiday.');
   }
-  for(const date of new Set([old.sourceDate,old.replacementDate,p.date].filter((d):d is string=>!!d)))if((await lockPayrollForAttendanceChange(tx,emp.id,date)).length)throw new Error('This adjustment affects processed or closed payroll. Use the protected-period review and correction process.');
-  if(old.replacementDate!==p.date){
-   const involved=[old.replacementDate,p.date].filter((d):d is string=>!!d),rows=involved.length?await tx.select().from(attendance).where(and(eq(attendance.employmentId,emp.id),inArray(attendance.attendanceDate,involved))):[];
-   if(rows.some(row=>row.attendanceDate===p.date?row.dayType!=='holiday':row.dayType==='holiday'))throw new Error('Complete the attendance day-type correction first. This operation does not rewrite recorded clocking or pay.');
+  for(const date of new Set([old.sourceDate,old.replacementDate,adjustmentDate].filter((d):d is string=>!!d)))if((await lockPayrollForAttendanceChange(tx,emp.id,date)).length)throw new Error('This adjustment affects processed or closed payroll. Use the protected-period review and correction process.');
+  if(old.replacementDate!==adjustmentDate){
+   const involved=[old.replacementDate,adjustmentDate].filter((d):d is string=>!!d),rows=involved.length?await tx.select().from(attendance).where(and(eq(attendance.employmentId,emp.id),inArray(attendance.attendanceDate,involved))):[];
+   if(rows.some(row=>row.attendanceDate===adjustmentDate?row.dayType!=='holiday':row.dayType==='holiday'))throw new Error('Complete the attendance day-type correction first. This operation does not rewrite recorded clocking or pay.');
   }
-  const [row]=await tx.update(replacementHoliday).set({replacementDate:p.date,proposedDate:null,status:p.date?'allocated':'not_required',manual:!p.releaseToAutomatic,manualReason:p.reason.trim(),reason:p.releaseToAutomatic?'automatic_released':'manual_adjustment',inputDigest:digest({previous:old.inputDigest,date:p.date,reason:p.reason.trim(),release:!!p.releaseToAutomatic}),updatedAt:new Date()}).where(eq(replacementHoliday.id,old.id)).returning();
+  if(old.replacementDate===adjustmentDate&&old.manual===!p.releaseToAutomatic&&old.manualReason===p.reason.trim()&&(!p.policyId||p.policyId===old.policyId))return {id:old.id};
+  const [row]=await tx.update(replacementHoliday).set({sourceDate:p.releaseToAutomatic?old.sourceDate:original.holidayDate,sourceName:p.releaseToAutomatic?old.sourceName:original.name,policyId:p.releaseToAutomatic?null:p.policyId??old.policyId,replacementDate:adjustmentDate,proposedDate:null,status:p.releaseToAutomatic?'review':adjustmentDate?'allocated':'not_required',manual:!p.releaseToAutomatic,manualReason:p.reason.trim(),reason:p.releaseToAutomatic?'automatic_released':'manual_adjustment',inputDigest:digest({previous:old.inputDigest,date:adjustmentDate,reason:p.reason.trim(),release:!!p.releaseToAutomatic}),updatedAt:new Date()}).where(eq(replacementHoliday.id,old.id)).returning();
   await saveRevision(tx,ctx,row,old);
   if(p.releaseToAutomatic)await tx.insert(replacementHolidayQueue).values({tenantId:ctx.tenantId,employmentId:emp.id}).onConflictDoUpdate({target:[replacementHolidayQueue.tenantId,replacementHolidayQueue.employmentId],set:{requestedAt:new Date(),generation:sql`${replacementHolidayQueue.generation}+1`,claimedAt:null,claimedGeneration:null}});
   return {id:row.id};

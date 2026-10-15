@@ -10310,5 +10310,5 @@ export const replacementHolidayRevision=pgTable('replacement_holiday_revision',{
 });
 export const replacementHolidayQueue=pgTable('replacement_holiday_queue',{
  tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id,{onDelete:'cascade'}),generation:bigint('generation',{mode:'number'}).notNull().default(1),
- requestedAt:timestamp('requested_at',{withTimezone:true}).notNull().defaultNow(),claimedAt:timestamp('claimed_at',{withTimezone:true}),claimedGeneration:bigint('claimed_generation',{mode:'number'}),
+ requestedAt:timestamp('requested_at',{withTimezone:true}).notNull().defaultNow(),claimedAt:timestamp('claimed_at',{withTimezone:true}),claimedGeneration:bigint('claimed_generation',{mode:'number'}),lastError:text('last_error'),calendarConflicts:jsonb('calendar_conflicts').$type<{date:string;recorded:string;holiday:boolean}[]>().notNull().default([]),
 },t=>[primaryKey({columns:[t.tenantId,t.employmentId]})]);
