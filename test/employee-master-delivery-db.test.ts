@@ -42,6 +42,11 @@ describe('managed report nonce and durable lifecycle in the actual database',()=
   const [context]=await withTenant(ctx,tx=>tx.execute(sql`select app.employee_master_render_context(${job.id}::uuid,${job.token}::uuid,${issuer}) context`)) as unknown as {context:Record<string,unknown>}[];expect(context.context.recipientEmploymentId).toBe(e.employmentId);expect(context.context).not.toHaveProperty('email');expect(context.context).not.toHaveProperty('subject');
   expect((await raw`select identity_email.report_target(${job.id}::uuid,${randomUUID()}::uuid,${issuer}) target`)[0].target).toBeNull();
  });
+ it('does not expose nonce capabilities through an otherwise visible application audit row',async()=>{
+  const job=await queued();expect(await withTenant(ctx,tx=>tx.select({id:schema.customReportOccurrence.id}).from(schema.customReportOccurrence))).toEqual([{id:job.id}]);
+  await expect(withTenant(ctx,tx=>tx.select({token:schema.customReportOccurrence.leaseToken}).from(schema.customReportOccurrence))).rejects.toThrow(/permission denied/);
+  await expect(withTenant(ctx,tx=>tx.select({until:schema.customReportOccurrence.leaseUntil}).from(schema.customReportOccurrence))).rejects.toThrow(/permission denied/);
+ });
  it('reclaims only unstarted expired leases and invalidates the old nonce',async()=>{
   const job=await queued();expect(await raw`select * from identity_email.claim_reports(10)`).toEqual([]);await owner.db.update(schema.customReportOccurrence).set({leaseUntil:new Date(Date.now()-1000)}).where(eq(schema.customReportOccurrence.id,job.id));
   const [replacement]=await raw`select * from identity_email.claim_reports(10)`;expect(replacement.lease_token).not.toBe(job.token);expect(await target(job)).toBeNull();expect(await target({id:job.id,token:String(replacement.lease_token)})).not.toBeNull();
@@ -62,7 +67,7 @@ describe('managed report nonce and durable lifecycle in the actual database',()=
  });
  it('retains delivery audit after deletion, and will not accept invented export scope in success metadata',async()=>{
   const job=await queued(),expected=await target(job);expect(await start(job,expected)).toBe(true);expect((await raw`select identity_email.finish_report(${job.id}::uuid,${job.token}::uuid,'sent',null,1,${[randomUUID()]}::uuid[]) finished`)[0].finished).toBe(false);
-  await deleteEmployeeMasterReport(ctx,report.id);expect((await raw`select identity_email.finish_report(${job.id}::uuid,${job.token}::uuid,'sent',null,1,${[b.companyId]}::uuid[]) finished`)[0].finished).toBe(true);expect((await withTenant(ctx,tx=>tx.select().from(schema.customReportOccurrence)))[0]).toMatchObject({status:'sent',frozenScopeIds:[b.companyId]});
+  await deleteEmployeeMasterReport(ctx,report.id);expect((await raw`select identity_email.finish_report(${job.id}::uuid,${job.token}::uuid,'sent',null,1,${[b.companyId]}::uuid[]) finished`)[0].finished).toBe(true);expect((await withTenant(ctx,tx=>tx.select({status:schema.customReportOccurrence.status,frozenScopeIds:schema.customReportOccurrence.frozenScopeIds}).from(schema.customReportOccurrence)))[0]).toMatchObject({status:'sent',frozenScopeIds:[b.companyId]});
  });
  it('keeps the installed private role incapable of direct HR reads, queue/claim and app helper access',async()=>{
   const role='report_mail_'+randomUUID().replaceAll('-','');await raw.unsafe(`CREATE ROLE "${role}" NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`);

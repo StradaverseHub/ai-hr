@@ -1,3 +1,4 @@
+import {personnelReportValueKey} from './personnel-report-value';
 /** Client-safe Employee Master specification and pure execution over authorised owner projections.
  * The shared Personnel registry owns fields. This engine owns only selection/row grains/presentation.
  */
@@ -93,8 +94,8 @@ export function runEmployeeMasterProjection(spec:EmployeeMasterSpec,fields:reado
     if(spec.asAt!==today&&(f.history==='current'||f.history==='none'))return {cell:unavailable('historical-unavailable'),source:subject.id+':'+field};
     const available=records(subject,f.owner);
     const record=expanded?.owner===f.owner?expanded.record:f.grain==='many'?available[0]:available.find(r=>!r.effectiveTo||r.effectiveTo>spec.asAt);
-    const value=record?.values[(side==='before'?'before:':'')+f.ownerField]??unavailable(subject.kind==='draft'?'draft-unfinished':'not-recorded');
-    return {cell:{...value,currency:value.currency??record?.currency,sourceRecordId:record?.id},source:f.owner+':'+(record?.id??subject.id+':missing')+':'+side+':'+f.ownerField};
+    const value=record?.values[(side==='before'?'before:':'')+personnelReportValueKey(f)]??unavailable(subject.kind==='draft'?'draft-unfinished':'not-recorded');
+    return {cell:{...value,currency:value.currency??record?.currency,sourceRecordId:record?.id},source:f.owner+':'+(record?.id??subject.id+':missing')+':'+side+':'+personnelReportValueKey(f)};
   };
   type Truth='true'|'false'|'unknown';
   const matches=(expression:MasterExpression,subject:MasterSubject):Truth=>{

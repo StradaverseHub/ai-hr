@@ -1,0 +1,28 @@
+[Unit]
+Description=Isolated Employee Master report renderer
+[Service]
+User=aihr-report-renderer
+Group=aihr-report-files
+EnvironmentFile=/etc/aihr-keycloak/report-renderer.env
+ExecStart=/usr/bin/python3 -I /usr/local/lib/aihr-identity-email/renderer-peer.py
+StandardInput=socket
+StandardOutput=inherit
+StandardError=journal
+Slice=aihrmanagedmail.slice
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectProc=invisible
+InaccessiblePaths=/var/lib/aihr-identity-email /etc/aihr-keycloak /opt/ai-hr
+ReadWritePaths=/var/lib/aihr-report-renderer/render
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+MemoryMax=512M
+MemoryHigh=448M
+TasksMax=32
+LimitFSIZE=20000000
+LimitNOFILE=128
+RuntimeMaxSec=90

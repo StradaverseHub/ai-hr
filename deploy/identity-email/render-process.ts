@@ -1,41 +1,37 @@
-/** Trusted private process adapter. The web endpoint never supplies paths, credentials, scopes or bytes. */
-import {spawn} from 'node:child_process';
-import {lstat,readFile,unlink} from 'node:fs/promises';
+/** Private Unix socket adapter. The renderer runs under a separate UID and proves kernel peer credentials. */
+import {Socket} from 'node:net';
+import {lstat,open} from 'node:fs/promises';
+import {constants} from 'node:fs';
 import {z} from 'zod';
 import {masterRendererRequest} from './render-context';
-import {reportRenderDatabase} from './render-config';
 import {MasterDeliveryPreparationError,type MasterDeliveryTarget,type MasterPreparedAttachment} from './reports';
 import {MASTER_EMAIL_ATTACHMENT_MAX_BYTES} from '../../lib/employee-master-delivery-model';
-const runtime='/usr/local/lib/aihr-identity-email',directory='/var/lib/aihr-identity-email/render';
+const socketPath='/run/aihr-report-renderer.sock',directory='/var/lib/aihr-report-renderer/render';
 const file=(id:string,token:string)=>directory+'/'+z.uuid().parse(id)+'-'+z.uuid().parse(token)+'.xlsx';
-const response=z.discriminatedUnion('ok',[z.object({ok:z.literal(false),reason:z.enum(['notEligible','generationFailed','attachmentTooLarge'])}).strict(),z.object({ok:z.literal(true),accessStamp:z.string().regex(/^[a-f0-9]{64}$/),filename:z.string().max(150).optional(),contentType:z.string().max(100).optional(),rowCount:z.number().int().min(0).max(50000).optional(),scopeIds:z.array(z.uuid()).max(100).optional()}).strict()]);
-export async function reportRendererReady(){
- try{reportRenderDatabase(process.env.REPORT_RENDER_DATABASE_URL??'',process.env.IDENTITY_EMAIL_DATABASE_URL);const [bundle,dir]=await Promise.all([lstat(runtime+'/report-renderer.cjs'),lstat(directory)]);return bundle.isFile()&&bundle.uid===0&&(bundle.mode&0o022)===0&&dir.isDirectory()&&(dir.mode&0o077)===0;}catch{return false;}
-}
-async function child(phase:'render'|'authorize',id:string,token:string,target:MasterDeliveryTarget){
- const request=masterRendererRequest.parse({phase,occurrenceId:id,leaseToken:token,expectedAccessStamp:target.accessStamp});
- if(!await reportRendererReady())throw new MasterDeliveryPreparationError('generationFailed');
+const response=z.discriminatedUnion('ok',[z.object({ok:z.literal(false),reason:z.enum(['notEligible','generationFailed','attachmentTooLarge'])}).strict(),z.object({ok:z.literal(true),accessStamp:z.string().regex(/^[a-f0-9]{64}$/).optional(),filename:z.string().max(150).optional(),contentType:z.string().max(100).optional(),rowCount:z.number().int().min(0).max(50000).optional(),scopeCount:z.number().int().min(1).max(100).optional(),ready:z.boolean().optional(),removed:z.boolean().optional()}).strict()]);
+async function renderer(input:z.infer<typeof masterRendererRequest>){
+ const body=masterRendererRequest.parse(input);
  return new Promise<z.infer<typeof response>>((resolve,reject)=>{
-  const processChild=spawn(process.execPath,['--max-old-space-size=384',runtime+'/report-renderer.cjs'],{cwd:runtime,env:{DATABASE_URL:process.env.REPORT_RENDER_DATABASE_URL!,WORKFLOW_EMAIL_ISSUER:process.env.WORKFLOW_EMAIL_ISSUER!,REPORT_RENDER_OUTPUT_PATH:file(id,token),NODE_ENV:'production',TZ:'UTC'},stdio:['pipe','pipe','ignore']});
-  const chunks:Buffer[]=[];let size=0,settled=false;const finish=(error?:unknown,value?:z.infer<typeof response>)=>{if(settled)return;settled=true;clearTimeout(watchdog);error?reject(error):resolve(value!);};
-  const watchdog=setTimeout(()=>{processChild.kill('SIGKILL');finish(new MasterDeliveryPreparationError('generationFailed'));},phase==='render'?65_000:20_000);
-  processChild.stdout.on('data',(chunk:Buffer)=>{size+=chunk.length;if(size>4096){processChild.kill('SIGKILL');finish(new MasterDeliveryPreparationError('generationFailed'));}else chunks.push(chunk);});
-  processChild.on('error',()=>finish(new MasterDeliveryPreparationError('generationFailed')));
-  processChild.stdin.on('error',()=>finish(new MasterDeliveryPreparationError('generationFailed')));
-  processChild.on('close',()=>{try{const value=response.parse(JSON.parse(Buffer.concat(chunks).toString()));finish(undefined,value);}catch{finish(new MasterDeliveryPreparationError('generationFailed'));}});
-  processChild.stdin.end(JSON.stringify(request));
+  const socket=new Socket({allowHalfOpen:true}),chunks:Buffer[]=[];let size=0,settled=false;
+  const finish=(error?:unknown,value?:z.infer<typeof response>)=>{if(settled)return;settled=true;socket.destroy();error?reject(error):resolve(value!);};
+  socket.setTimeout(body.phase==='render'?85_000:25_000,()=>finish(new MasterDeliveryPreparationError('generationFailed')));
+  socket.on('error',()=>finish(new MasterDeliveryPreparationError('generationFailed')));
+  socket.on('data',(chunk:Buffer)=>{size+=chunk.length;if(size>4096)finish(new MasterDeliveryPreparationError('generationFailed'));else chunks.push(chunk);});
+  socket.on('end',()=>{try{finish(undefined,response.parse(JSON.parse(Buffer.concat(chunks).toString())));}catch{finish(new MasterDeliveryPreparationError('generationFailed'));}});
+  socket.connect(socketPath,()=>socket.end(JSON.stringify(body)));
  });
 }
+export async function reportRendererReady(){
+ try{const [socket,dir]=await Promise.all([lstat(socketPath),lstat(directory)]);if(!socket.isSocket()||socket.uid!==process.getuid?.()||(socket.mode&0o077)!==0||!dir.isDirectory()||dir.uid!==Number(process.env.REPORT_RENDERER_UID)||(dir.mode&0o027)!==0)return false;const result=await renderer({phase:'status'});return result.ok&&result.ready===true;}catch{return false;}
+}
 export async function prepareMasterReportFile(id:string,token:string,target:MasterDeliveryTarget):Promise<MasterPreparedAttachment>{
- const result=await child('render',id,token,target);if(!result.ok)throw new MasterDeliveryPreparationError(result.reason);
- const path=file(id,token),stat=await lstat(path);if(!stat.isFile()||stat.isSymbolicLink()||stat.size>MASTER_EMAIL_ATTACHMENT_MAX_BYTES||(stat.mode&0o077)!==0)throw new MasterDeliveryPreparationError(stat.size>MASTER_EMAIL_ATTACHMENT_MAX_BYTES?'attachmentTooLarge':'generationFailed');
- const bytes=await readFile(path);if(bytes.byteLength!==stat.size||!result.filename||!result.contentType||result.rowCount==null||!result.scopeIds||result.accessStamp!==target.accessStamp)throw new MasterDeliveryPreparationError('generationFailed');
- return {bytes,filename:result.filename,contentType:result.contentType,rowCount:result.rowCount,scopeIds:result.scopeIds};
+ const result=await renderer({phase:'render',occurrenceId:id,leaseToken:token,expectedAccessStamp:target.accessStamp});if(!result.ok)throw new MasterDeliveryPreparationError(result.reason);
+ const handle=await open(file(id,token),constants.O_RDONLY|constants.O_NOFOLLOW);let bytes:Buffer;
+ try{const stat=await handle.stat();if(!stat.isFile()||stat.uid!==Number(process.env.REPORT_RENDERER_UID)||stat.size>MASTER_EMAIL_ATTACHMENT_MAX_BYTES||(stat.mode&0o027)!==0)throw new MasterDeliveryPreparationError(stat.size>MASTER_EMAIL_ATTACHMENT_MAX_BYTES?'attachmentTooLarge':'generationFailed');
+ bytes=await handle.readFile();if(bytes.byteLength!==stat.size||!result.filename||!result.contentType||result.rowCount==null||result.scopeCount!==target.companyIds.length||result.accessStamp!==target.accessStamp)throw new MasterDeliveryPreparationError('generationFailed');
+ }finally{await handle.close();}
+ if(!result.filename||!result.contentType||result.rowCount==null)throw new MasterDeliveryPreparationError('generationFailed');
+ return {bytes,filename:result.filename,contentType:result.contentType,rowCount:result.rowCount,scopeIds:target.companyIds};
 }
-export async function authorizeMasterReportFile(id:string,token:string,target:MasterDeliveryTarget){const result=await child('authorize',id,token,target);return result.ok&&result.accessStamp===target.accessStamp;}
-export async function removeMasterReportFile(id:string,token:string){try{await unlink(file(id,token));}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}}
-/** Startup cleanup covers a killed renderer/service. Paths are always derived from two UUIDs. */
-export async function cleanupMasterReportFiles(){
- const {readdir}=await import('node:fs/promises');
- try{for(const name of await readdir(directory)){if(!/^[0-9a-f-]{36}-[0-9a-f-]{36}\.xlsx$/i.test(name))continue;const path=directory+'/'+name,stat=await lstat(path);if(stat.isFile()&&Date.now()-stat.mtimeMs>600_000)await unlink(path);}}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
-}
+export async function authorizeMasterReportFile(id:string,token:string,target:MasterDeliveryTarget){const result=await renderer({phase:'authorize',occurrenceId:id,leaseToken:token,expectedAccessStamp:target.accessStamp});return result.ok&&result.accessStamp===target.accessStamp;}
+export async function removeMasterReportFile(id:string,token:string){const result=await renderer({phase:'remove',occurrenceId:id,leaseToken:token});if(!result.ok||!result.removed)throw new Error('Private artifact cleanup unavailable.');}

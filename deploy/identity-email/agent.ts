@@ -11,7 +11,7 @@ import {z} from 'zod';
 import {createMasterReportDeliveryService} from './reports';
 import {masterDeliveryRequest} from '../../lib/employee-master-delivery-model';
 import {masterRenderContext} from './render-context';
-import {prepareMasterReportFile,authorizeMasterReportFile,removeMasterReportFile,reportRendererReady,cleanupMasterReportFiles} from './render-process';
+import {prepareMasterReportFile,authorizeMasterReportFile,removeMasterReportFile,reportRendererReady} from './render-process';
 import { recordEmailAudit } from './database';
 const required=(name:string)=>{const value=process.env[name];if(!value) throw new Error('Missing private identity service configuration');return value;};
 const database=postgres(required('IDENTITY_EMAIL_DATABASE_URL'),{max:1,connect_timeout:5,idle_timeout:20});
@@ -87,19 +87,18 @@ const notifications=createNotificationEmailService({
 const reportTarget=masterRenderContext.extend({email:z.email().max(320),subject:z.string().min(1).max(512)}).strict();
 const reports=createMasterReportDeliveryService({
  origin:process.env.WORKFLOW_EMAIL_ORIGIN||'https://unconfigured.invalid',
- ready:async()=>{if(!await reportRendererReady()||!process.env.WORKFLOW_EMAIL_ISSUER||!process.env.WORKFLOW_EMAIL_LOOKUP_CLIENT_SECRET||!process.env.WORKFLOW_EMAIL_ORIGIN)return false;try{return !!await workflowRelay();}catch{return false;}},
+ ready:async()=>{if(!await reportRendererReady())return false;try{return (await notifications({op:'status'})).ready===true;}catch{return false;}},
  target:async(id,token)=>{const [row]=await database`select identity_email.report_target(${id}::uuid,${token}::uuid,${process.env.WORKFLOW_EMAIL_ISSUER||''}) as target`;const parsed=reportTarget.safeParse(row?.target);return parsed.success?parsed.data:null;},
  verifyRecipient:verifyWorkflowRecipient,
- prepare:target=>{const active=activeReportIdentity;if(!active)throw new Error('Missing private occurrence.');return prepareMasterReportFile(active.id,active.token,target);},
+ prepare:prepareMasterReportFile,
  authorize:authorizeMasterReportFile,
  start:async(id,token,target)=>{return (await database`select identity_email.start_report(${id}::uuid,${token}::uuid,${process.env.WORKFLOW_EMAIL_ISSUER||''},${database.json(target)}::jsonb) as started`)[0]?.started===true;},
  finish:async(id,token,outcome,reason,metadata)=>(await database`select identity_email.finish_report(${id}::uuid,${token}::uuid,${outcome},${reason},${metadata?.rowCount??null}::integer,${metadata?.scopeIds??null}::uuid[]) as finished`)[0]?.finished===true,
  send:async(target,attachment,messageId)=>{const relay=await workflowRelay();if(!relay)throw new Error('Managed relay unavailable.');const config=relay.config;if(config.auth&&!/^smtp-[0-9a-f-]{36}$/.test(relay.vaultKey||''))throw new Error('Managed relay unavailable.');const password=config.auth?await readFile('/var/lib/aihr-identity-email/vault/ai-hr_'+relay.vaultKey,'utf8'):undefined;await sendEmployeeMasterSmtp(config,password,target,attachment,messageId);},
 });
 // Report preparation has its own single-worker queue; it cannot block brief workflow status/settings.
-let activeReportIdentity:{id:string;token:string}|null=null,reportQueue:Promise<unknown>=Promise.resolve();
-async function handleReport(input:unknown){const parsed=masterDeliveryRequest.parse(input);if(parsed.op==='status')return reports(parsed);const run=reportQueue.then(async()=>{activeReportIdentity={id:parsed.occurrenceId,token:parsed.leaseToken};try{return await reports(parsed);}finally{activeReportIdentity=null;await removeMasterReportFile(parsed.occurrenceId,parsed.leaseToken);}});reportQueue=run.catch(()=>{});return run;}
-void cleanupMasterReportFiles().catch(()=>{});
+let reportQueue:Promise<unknown>=Promise.resolve();
+async function handleReport(input:unknown){const parsed=masterDeliveryRequest.parse(input);if(parsed.op==='status')return reports(parsed);const run=reportQueue.then(async()=>{try{return await reports(parsed);}finally{try{await removeMasterReportFile(parsed.occurrenceId,parsed.leaseToken);}catch{console.error('Private report artifact cleanup unavailable; renderer expiry remains active.');}}});reportQueue=run.catch(()=>{});return run;}
 let privateQueue:Promise<unknown>=Promise.resolve();
 const handlePrivateRequest=(path:string,input:unknown)=>{
  if(path==='/v1/reports')return handleReport(input);

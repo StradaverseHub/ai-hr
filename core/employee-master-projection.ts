@@ -6,6 +6,7 @@ import { and, asc, eq, getTableColumns, inArray, isNull, lte, or, type SQL } fro
 import type { AnyPgColumn, AnyPgTable } from 'drizzle-orm/pg-core';
 import type { SessionContext, Tx } from '../db/client';
 import * as schema from '../db/schema';
+import {personnelChildReliefCell,personnelChildReliefValue,personnelReportValueKey} from '../lib/personnel-report-value';
 import type { PersonnelFieldDescriptor } from '../lib/personnel-field-registry';
 import type { EmployeeMasterSpec, MasterCell, MasterOwnerRecord, MasterSubject } from '../lib/employee-master-report';
 import { draftFamily, draftProvisionalEndOn, withSameAsPermanent, type EmployeeDraftData } from '../lib/employee-draft-schema';
@@ -123,13 +124,14 @@ export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:Emp
       subject.owners[owner]=scopedRows.map((row,index,all)=>{
         const merged={...row,...overrides(row,index,all)},values:Record<string,MasterCell>={};
         for(const field of ownerFields){
-          const cell=merged[field.ownerField];
+          const childCell=personnelChildReliefCell(field);
+          const cell=childCell?personnelChildReliefValue(merged.childReliefTable,childCell):merged[field.ownerField];
           let result=cell&&typeof cell==='object'&&'value' in cell?cell as MasterCell:scalar(cell);
           if(['number','currency'].includes(field.type)&&result.value!=null&&(typeof result.value!=='number'&&typeof result.value!=='string'||!Number.isFinite(Number(result.value))))result={value:null,unavailable:'not-recorded'};
           const referenceKeys:Record<string,string>={companyName:'companyId',departmentName:'departmentId',businessUnitName:'businessUnitId',positionName:'positionId',gradeName:'gradeId',locationName:'locationId',leaveTypeName:'leaveTypeId',componentName:'componentId'};
           const referenceKey=referenceKeys[field.ownerField];
           if(field.type==='date'&&field.unit==='instant'&&typeof result.value==='string')result={...result,display:new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kuala_Lumpur',dateStyle:'medium',timeStyle:'medium'}).format(new Date(result.value))+' MYT'};
-          values[field.ownerField]={...result,...(!result.unavailable&&['choice','status'].includes(field.type)&&typeof result.value==='string'&&!result.referenceId?{display:result.value.replaceAll('_',' ').replace(/^./,value=>value.toUpperCase())}:{}),...(referenceKey&&merged[referenceKey]?{referenceId:text(merged[referenceKey])}:{}),...(field.type==='currency'?{currency:text(merged.currency)}:{}),...(field.unit?{unit:field.unit}:{}),...(spec.asAt!==today&&['companyName','departmentName','businessUnitName','positionName','gradeName','locationName','componentName','actorName','recordedByName','changedByName','reversedByName','managerName','fullName'].includes(field.ownerField)?{labelIsCurrent:true}:{})};
+          values[personnelReportValueKey(field)]={...result,...(!result.unavailable&&['choice','status'].includes(field.type)&&typeof result.value==='string'&&!result.referenceId?{display:result.value.replaceAll('_',' ').replace(/^./,value=>value.toUpperCase())}:{}),...(referenceKey&&merged[referenceKey]?{referenceId:text(merged[referenceKey])}:{}),...(field.type==='currency'?{currency:text(merged.currency)}:{}),...(field.unit?{unit:field.unit}:{}),...(spec.asAt!==today&&['companyName','departmentName','businessUnitName','positionName','gradeName','locationName','componentName','actorName','recordedByName','changedByName','reversedByName','managerName','fullName'].includes(field.ownerField)?{labelIsCurrent:true}:{})};
         }
         if(owner==='movementComparison')for(const field of ownerFields){
           const value=merged['before:'+field.ownerField];
@@ -154,8 +156,8 @@ export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:Emp
     install('emergencyContact',personOwn(emergency));
     const lines=own(superiors,'subordinateEmploymentId');
     const lineValues=(row:Row)=>{const manager=relatedById.get(String(row.managerEmploymentId));return {employeeCode:manager?.employeeCode,fullName:manager?.fullName,managerName:manager?.fullName,managerEmployeeCode:manager?.employeeCode};};
-    install('directSuperior',lines.filter(row=>row.lineType==='admin'),lineValues);
-    install('superiorHistory',lines.filter(row=>row.lineType==='admin'),lineValues);
+    install('directSuperior',lines.filter(row=>row.lineType==='administrative'),lineValues);
+    install('superiorHistory',lines.filter(row=>row.lineType==='administrative'),lineValues);
     install('delegation',lines.filter(row=>row.lineType==='delegate'),lineValues);
     const shiftPeriod=own(shiftHistory).filter(row=>String(row.validFrom)<=spec.asAt&&(!row.validTo||String(row.validTo)>=spec.asAt)).sort((a,b)=>String(b.validFrom).localeCompare(String(a.validFrom))||String(b.id).localeCompare(String(a.id)))[0];
     install('attendanceProfile',[e],row=>({shiftEffectiveFrom:shiftPeriod?.validFrom,shiftType:shiftPeriod?.shiftType??row.shiftType,holidayGroupName:ref(6,row.holidayGroupId)??row.workState,scheduleGroupName:ref(7,row.attendanceRuleId,'label')??ref(7,row.attendanceRuleId),backupShiftCode:ref(8,shiftPeriod?.shiftId??row.defaultShiftId,'code'),backupShiftName:ref(8,shiftPeriod?.shiftId??row.defaultShiftId)}));
@@ -276,7 +278,7 @@ export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:Emp
         assignment:[{...job,companyName:ref(0,draft.companyId,'legalName'),departmentName:ref(1,job.departmentId),positionName:ref(3,job.positionId,'title'),gradeName:ref(4,job.gradeId)}],
         statutory:[{...profile,...stat}],bank:[{...stat}],compensation:[{...pay}],payrollProfile:[{...pay}],
         dependent:draftFamily(data).map(member=>({...member,age:completedYearsAt(member.dateOfBirth??null,spec.asAt)})),
-        draft:[{sameAsPermanent:profile.sameAsPermanent,costCenterId:job.costCenterId,internshipEndDate:job.employmentType==='intern'?end:null,probationEndDate:job.employmentType==='full_time'?end:null,monthlyAllowance:pay.monthlyAllowance}],
+        draft:[{provisionalEndOn:end,sameAsPermanent:profile.sameAsPermanent,costCenterId:job.costCenterId,internshipEndDate:job.employmentType==='intern'?end:null,probationEndDate:job.employmentType==='full_time'?end:null,monthlyAllowance:pay.monthlyAllowance}],
       };
       const subject:MasterSubject={id:draft.id,kind:'draft',personId:null,companyId:draft.companyId,owners:{}};
       for(const owner of needed){
@@ -284,13 +286,14 @@ export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:Emp
         subject.owners[owner]=(sources[owner]??[{}]).map((row,index)=>{
           const values:Record<string,MasterCell>={};
           for(const field of ownerFields){
-            let raw=row[field.ownerField];
+            const childCell=personnelChildReliefCell(field);
+            let raw=childCell?personnelChildReliefValue(row.childReliefTable,childCell):row[field.ownerField];
             if(raw!=null&&raw!==''){
               if(field.type==='boolean')raw=raw==='yes'?true:raw==='no'?false:raw;
               if(['number','currency'].includes(field.type)&&typeof raw==='string')raw=/^-?\d+(?:\.\d+)?$/.test(raw)?Number(raw):{value:null,unavailable:'draft-unfinished'};
             }
-            values[field.ownerField]=raw==null||raw===''?{value:null,unavailable:'draft-unfinished'}:raw&&typeof raw==='object'&&'value' in raw?raw as MasterCell:scalar(raw);
-            if(field.type==='currency')values[field.ownerField].currency=text(row.currency);
+            values[personnelReportValueKey(field)]=raw==null||raw===''?{value:null,unavailable:'draft-unfinished'}:raw&&typeof raw==='object'&&'value' in raw?raw as MasterCell:scalar(raw);
+            if(field.type==='currency')values[personnelReportValueKey(field)].currency=text(row.currency);
           }
           // A draft owns its own identities; no employment/person ID is manufactured.
           return {id:draft.id+':'+owner+':'+index,createdAt:draft.createdAt.toISOString(),values};

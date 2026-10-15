@@ -183,3 +183,13 @@ CREATE FUNCTION app.custom_report_frozen_scope_guard() RETURNS trigger LANGUAGE 
 END $$;
 REVOKE ALL ON FUNCTION app.custom_report_frozen_scope_guard() FROM PUBLIC;
 CREATE TRIGGER custom_report_frozen_scope_guard BEFORE UPDATE ON custom_report_occurrence FOR EACH ROW EXECUTE FUNCTION app.custom_report_frozen_scope_guard();
+
+--> statement-breakpoint
+-- Delivery history is readable through its existing RLS. A lease nonce is a private transport
+-- capability, never audit content: table-wide SELECT from0546 must not disclose it to app sessions.
+REVOKE SELECT ON custom_report_occurrence FROM ai_hr_app;
+GRANT SELECT(id,tenant_id,schedule_id,report_id,schedule_revision,reviewed_digest,
+ owner_user_id,recipient_user_id,recipient_employment_id,scheduled_for,report_version,
+ consent_after_sequence,policy_after_sequence,consent_updated_at,policy_updated_at,consent_verified_at,
+ status,started_at,finished_at,row_count,reason,created_at,frozen_scope_ids)
+ ON custom_report_occurrence TO ai_hr_app;

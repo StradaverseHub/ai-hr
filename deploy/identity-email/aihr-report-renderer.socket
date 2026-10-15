@@ -1,0 +1,11 @@
+[Unit]
+Description=Private Employee Master renderer socket
+[Socket]
+ListenStream=/run/aihr-report-renderer.sock
+SocketUser=aihr-identity-email
+SocketMode=0600
+Accept=yes
+MaxConnections=1
+RemoveOnStop=yes
+[Install]
+WantedBy=sockets.target
