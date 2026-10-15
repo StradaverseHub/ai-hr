@@ -22,6 +22,8 @@
  * rather than hidden, and `test/existing-txn-context.test.ts` pins it so it cannot drift silently.
  */
 
+import { isTransactionEffectiveDate } from '@/lib/transaction-effective-date';
+
 /** One dated line in the grid. `amount` is only the operator's to fill on a pay item that does NOT
  *  calculate; on one that does it is ignored and the server's figure is used (see `dayLineTotals`). */
 export type DayLine = {
@@ -118,13 +120,11 @@ export function dayLineTotals(
 
 /** What one line is missing, as an i18n key the screen resolves — or null when the line is ready to save.
  *  Mirrors the single-entry form's `formInvalid`, narrowed to the fields a line actually has. The SERVER
- *  re-validates every one of these (assertDateInPeriod, the derived amount, AmountNotPositiveError); this
+ *  re-validates every one of these (assertTransactionDate, the derived amount, AmountNotPositiveError); this
  *  only avoids a round trip and lets the grid mark the offending row. */
 export function dayLineIssue(
   line: DayLine,
   p: {
-    /** The pay month's first and last day, inclusive. */
-    bounds: { min: string; max: string } | null;
     /** The quantity this pay item's rule needs keyed, or null when it needs none. */
     requiredUnit: 'hours' | 'days' | null;
     /** The pay item works its own amount out, so `amount` is not the operator's to fill. */
@@ -134,7 +134,7 @@ export function dayLineIssue(
   },
 ): string | null {
   if (!line.txnDate) return 'rowIncomplete';
-  if (p.bounds && (line.txnDate < p.bounds.min || line.txnDate > p.bounds.max)) return 'dateOutOfPeriod';
+  if (!isTransactionEffectiveDate(line.txnDate)) return 'invalidEffectiveDate';
   if (line.quantity.trim() !== '' && !Number.isFinite(Number(line.quantity))) return 'rowIncomplete';
   if (p.derives) {
     if (p.requiredUnit && !(Number(line.quantity) > 0)) {

@@ -88,7 +88,7 @@ import {
   EmploymentNotInBatchScopeError,
   InvalidTxnComponentError,
   InvalidTxnKindError,
-  TxnDateOutOfPeriodError,
+  InvalidTxnDateError,
   createIndividualTxnsBulk,
   isTxnKind,
   isPayPeriod,
@@ -142,7 +142,7 @@ export function txnImportReason(e: unknown): { reason: string; detail?: Record<s
     return { reason: e.unit === 'hours' ? 'quantityRequiredHours' : 'quantityRequiredDays' };
   }
   if (e instanceof AmountNotPositiveError) return { reason: 'amountNotPositive' };
-  if (e instanceof TxnDateOutOfPeriodError) return { reason: 'dateOutOfPeriod' };
+  if (e instanceof InvalidTxnDateError) return { reason: 'txnDateInvalid', detail: { value: e.txnDate } };
   if (e instanceof DuplicateTxnRowError) return { reason: 'duplicateRow' };
   if (e instanceof ComponentRequiredError) return { reason: 'componentRequired' };
   if (e instanceof InvalidTxnComponentError) return { reason: 'payItemUnsupported' };
@@ -746,9 +746,8 @@ async function analyzeIndividual(
       push(fail(base, 'txnDateInvalid', { value: txnDate }));
       continue;
     }
-    // The month a one-off row belongs to IS its date's month. `assertDateInPeriod` re-checks it against
-    // the resolved target, and the write is period-keyed (unattached) when no run exists yet — which is
-    // f1564110 Phase 2's designed pre-run entry flow, not a fault.
+    // This file format has no separate processing-month column, so its existing default remains
+    // the work date's month. Explicit period-keyed entry keeps its independently selected period.
     const payPeriod = txnDate.slice(0, 7);
     if (!isPayPeriod(payPeriod)) {
       push(fail(base, 'txnDateInvalid', { value: txnDate }));

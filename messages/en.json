@@ -5833,7 +5833,7 @@
         "saved": "Saved.",
         "unsupportedComponent": "That component cannot be used on a batch in this version. Pick a payable component.",
         "txnTitle": "Individual transactions",
-        "txnIntro": "One-time (non-recurring) transactions for this draft batch. Each entry is tied to a transaction date within the pay-period month and applies only to this period.",
+        "txnIntro": "One-time transactions assigned to this payroll period. The Effective Date records when the work or event applies and may be in another month.",
         "txnAdd": "Add transaction",
         "txnEmpty": "No individual transactions for this batch yet.",
         "txnDate": "Transaction date",
@@ -6085,7 +6085,9 @@
         "viewTxnTitle": "Transaction details",
         "close": "Close",
         "inputMethodDailyUnavailable": "This pay item pays one fixed amount for the month, so it cannot be split across dates.",
-        "unsavedBodyClose": "Do you want to save before closing?"
+        "unsavedBodyClose": "Do you want to save before closing?",
+        "invalidEffectiveDate": "Enter a valid Effective Date. It can be outside the Payroll Month.",
+        "effectiveDateHint": "The Effective Date records when this transaction applies. The Payroll Month determines when it is processed."
       },
       "tp1": {
         "title": "TP1 Relief",

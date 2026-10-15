@@ -1073,7 +1073,7 @@ export function approveAndPostBackPay(
     const earningId = await ensureBackPayComponentTx(tx, ctx, 'earning');
     const deductionId = await ensureBackPayComponentTx(tx, ctx, 'deduction');
     // The transaction date is the FIRST day of the target period: the arrears belong to the month they
-    // are paid in, and assertDateInPeriod requires the date to fall inside it.
+    // are paid in. This automatic writer keeps its established date convention.
     const txnDate = `${run.targetPayPeriod}-01`;
 
     const rows = payable.map((n) => ({

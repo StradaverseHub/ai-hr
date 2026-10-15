@@ -5833,7 +5833,7 @@
         "saved": "Disimpan.",
         "unsupportedComponent": "Komponen itu tidak boleh digunakan pada kelompok dalam versi ini. Pilih komponen yang boleh dibayar.",
         "txnTitle": "Transaksi individu",
-        "txnIntro": "Transaksi sekali sahaja (bukan berulang) untuk kelompok draf ini. Setiap entri terikat pada tarikh transaksi dalam bulan tempoh gaji dan hanya terpakai untuk tempoh ini.",
+        "txnIntro": "Transaksi sekali sahaja untuk tempoh gaji ini. Tarikh Berkuat Kuasa merekodkan bila kerja atau peristiwa berkenaan berlaku dan boleh dalam bulan lain.",
         "txnAdd": "Tambah transaksi",
         "txnEmpty": "Tiada transaksi individu untuk kelompok ini lagi.",
         "txnDate": "Tarikh transaksi",
@@ -6085,7 +6085,9 @@
         "viewTxnTitle": "Butiran transaksi",
         "close": "Tutup",
         "inputMethodDailyUnavailable": "Item gaji ini membayar satu jumlah tetap bagi bulan tersebut, jadi ia tidak boleh dipecahkan mengikut tarikh.",
-        "unsavedBodyClose": "Adakah anda mahu menyimpan sebelum menutup?"
+        "unsavedBodyClose": "Adakah anda mahu menyimpan sebelum menutup?",
+        "invalidEffectiveDate": "Masukkan Tarikh Berkuat Kuasa yang sah. Tarikh ini boleh di luar Bulan Gaji.",
+        "effectiveDateHint": "Tarikh Berkuat Kuasa merekodkan bila transaksi ini terpakai. Bulan Gaji menentukan bila transaksi diproses."
       },
       "tp1": {
         "title": "Pelepasan TP1",

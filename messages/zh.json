@@ -5833,7 +5833,7 @@
         "saved": "已保存。",
         "unsupportedComponent": "该组件在此版本中不能用于批次。请选择可支付的组件。",
         "txnTitle": "个人交易",
-        "txnIntro": "此草稿批次的一次性（非经常性）交易。每条记录都与发薪周期所在月份内的交易日期关联，且仅适用于该周期。",
+        "txnIntro": "分配至本工资期间的一次性交易。生效日期记录工作或事项适用的日期，可以在其他月份。",
         "txnAdd": "添加交易",
         "txnEmpty": "此批次暂无个人交易。",
         "txnDate": "交易日期",
@@ -6085,7 +6085,9 @@
         "viewTxnTitle": "交易详情",
         "close": "关闭",
         "inputMethodDailyUnavailable": "此薪资项目每月支付一笔固定金额，因此无法按日期拆分。",
-        "unsavedBodyClose": "关闭前是否要先保存？"
+        "unsavedBodyClose": "关闭前是否要先保存？",
+        "invalidEffectiveDate": "请输入有效的生效日期。该日期可以不在工资月份内。",
+        "effectiveDateHint": "生效日期记录本交易适用的日期。工资月份决定其处理期间。"
       },
       "tp1": {
         "title": "TP1 减免",

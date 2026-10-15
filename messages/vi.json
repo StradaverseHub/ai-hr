@@ -5833,7 +5833,7 @@
         "saved": "Đã lưu.",
         "unsupportedComponent": "Thành phần đó không thể dùng trên đợt trong phiên bản này. Hãy chọn một thành phần có thể chi trả.",
         "txnTitle": "Giao dịch cá nhân",
-        "txnIntro": "Các giao dịch một lần (không lặp lại) cho đợt nháp này. Mỗi mục được gắn với một ngày giao dịch trong tháng của kỳ lương và chỉ áp dụng cho kỳ này.",
+        "txnIntro": "Giao dịch một lần được gán cho kỳ lương này. Ngày hiệu lực ghi nhận ngày công việc hoặc sự kiện có hiệu lực và có thể thuộc tháng khác.",
         "txnAdd": "Thêm giao dịch",
         "txnEmpty": "Chưa có giao dịch cá nhân nào cho đợt này.",
         "txnDate": "Ngày giao dịch",
@@ -6085,7 +6085,9 @@
         "viewTxnTitle": "Chi tiết giao dịch",
         "close": "Đóng",
         "inputMethodDailyUnavailable": "Khoản lương này trả một số tiền cố định cho cả tháng nên không thể tách theo từng ngày.",
-        "unsavedBodyClose": "Bạn có muốn lưu trước khi đóng không?"
+        "unsavedBodyClose": "Bạn có muốn lưu trước khi đóng không?",
+        "invalidEffectiveDate": "Nhập Ngày hiệu lực hợp lệ. Ngày này có thể nằm ngoài Tháng lương.",
+        "effectiveDateHint": "Ngày hiệu lực ghi nhận ngày giao dịch này áp dụng. Tháng lương xác định kỳ xử lý giao dịch."
       },
       "tp1": {
         "title": "Miễn giảm TP1",

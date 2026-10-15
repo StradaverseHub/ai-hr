@@ -49,7 +49,7 @@ import {
   createIndividualTxnsBulk,
   EmploymentNotActiveInPeriodError,
   EmploymentNotInBatchScopeError,
-  TxnDateOutOfPeriodError,
+  InvalidTxnDateError,
 } from '../core/payroll-individual-txn';
 import {
   adminCtx,
@@ -180,15 +180,15 @@ describe('r256 — Continue widens the run, saves the transaction and marks the 
    * asked for. Here the widening and the insert are one transaction, so the failure takes the widening
    * down with it and the operator is left exactly where they started.
    *
-   * The row fails on `assertDateInPeriod`, which runs AFTER the scope loop — i.e. after the point where
+   * The row fails on `assertTransactionDate`, which runs AFTER the scope loop — i.e. after the point where
    * the widening has already happened in this transaction. That ordering is the whole test.
    */
   it('a CONFIRMED save that then fails leaves NOTHING behind — not the row, and not the widening', async () => {
     const { a, batchId, outside } = await processedFinanceRun();
 
     await expect(
-      saveConfirmed(a, batchId, outside.employmentId, [{ kind: 'earning', txnDate: '2026-06-10', amount: 500 }]),
-    ).rejects.toBeInstanceOf(TxnDateOutOfPeriodError);
+      saveConfirmed(a, batchId, outside.employmentId, [{ kind: 'earning', txnDate: '2026-02-30', amount: 500 }]),
+    ).rejects.toBeInstanceOf(InvalidTxnDateError);
 
     const row = await batchRow(batchId);
     expect(row.scope, 'the run was widened by a save that never wrote a row — the two-step window is back').toEqual({
