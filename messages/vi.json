@@ -18982,7 +18982,8 @@
     "title": "Chi tiết tín dụng nghỉ phép",
     "subtitle": "Lịch sử tín dụng nghỉ phép của bạn — số đã tích lũy, đã dùng cho nghỉ bù và số còn lại.",
     "empty": "Không có tín dụng nghỉ phép đã tích lũy phù hợp với bộ lọc.",
-    "invalid": "Bộ lọc không hợp lệ. Trang này chỉ hiển thị tín dụng của bạn."
+    "invalid": "Bộ lọc không hợp lệ. Trang này chỉ hiển thị tín dụng của bạn.",
+    "truncatedHint": "Chọn số dòng mỗi trang để xem các khoản phép còn lại."
   },
   "labelExcelRoundTrip": {
     "blank": "Tải mẫu trống",

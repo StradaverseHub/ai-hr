@@ -513,7 +513,7 @@ async function evaluateAllowancesTx(tx:Tx,ctx:SessionContext,p:{policyId:string;
   const rows:AllowanceEvaluationRow[]=[];
   if(!policy.rules){
     // Null rules is the compatibility switch. Never re-interpret legacy monthly qualification.
-    const summary=await attendanceMonthSummary(ctx,{month:p.month,companyIds:[policy.companyId],today:p.today});
+    const summary=await attendanceMonthSummary(ctx,{month:p.month,companyIds:[policy.companyId],today:p.today,measurement:'raw'});
     const info=await scopeInfoFor(tx,summary.map(s=>s.employmentId));
     for(const row of summary){
       if(!inScope(policy.scope??{},info.get(row.employmentId)))continue;

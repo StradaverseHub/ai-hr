@@ -6,7 +6,8 @@ export function ownCreditRegisterQuery(sp:Record<string,string|string[]|undefine
   const invalid=Object.entries(sp).some(([key,value])=>!allowed.has(key)||Array.isArray(value));
   const scalar=(key:string)=>typeof sp[key]==='string'?sp[key] as string:undefined;
   const status=scalar('status'),from=scalar('from'),to=scalar('to');
-  return { valid:!invalid&&(!status||(CREDIT_REGISTER_STATUSES as readonly string[]).includes(status))&&date(from)&&date(to)&&(!from||!to||from<=to),
+  const query=parsePageQuery({page:scalar('page'),size:scalar('size')});
+  return { valid:!invalid&&Number.isSafeInteger(query.offset)&&(!status||(CREDIT_REGISTER_STATUSES as readonly string[]).includes(status))&&date(from)&&date(to)&&(!from||!to||from<=to),
     filters:{status:(status||undefined) as CreditRegisterStatus|undefined,from:from||undefined,to:to||undefined},
-    query:parsePageQuery({page:scalar('page'),size:scalar('size')}) };
+    query };
 }

@@ -7,11 +7,11 @@ import { withTenant, type SessionContext } from '../db/client';
 import { adminCtx, closeAll, createAppUser, entitledCtx, harnessSnapshot, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { hireEmployee } from '../core/org';
 import { createMovementEvent } from '../core/movement';
-import { assignDefaultShift, createShift } from '../core/roster';
+import { assignDefaultShift, createShift, updateShift } from '../core/roster';
 import { allowanceScheduleFactsTx, checkIn, checkOut, setAttendancePolicy } from '../packs/attendance/service';
 import { createBatch, deleteDraftBatch, seedPayComponentCatalog, AllowancePayrollConflictError } from '../packs/payroll/service';
 import { allowancePeriods, allowanceTransferHistory, createAllowancePolicy, getAllowancePolicy, setAllowancePolicyStatus, emptyAllowanceRules, evaluateAllowancesForPeriod, StaleAllowancePreviewError, transferAllowancesToBatch, updateAllowancePolicy, type AllowanceRules } from '../packs/attendance/service';
-import { upgradeAllowanceRules } from '../lib/attendance-allowance-rules';
+import { emptyAllowanceRulesV3,upgradeAllowanceRules } from '../lib/attendance-allowance-rules';
 import { monthDates } from '../lib/roster-month';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
@@ -61,6 +61,119 @@ async function sources(batchId:string) {
 }
 
 describe('source-owned allowance periods', () => {
+  it('uses approved half-day Leave to explain recorded shortfall without recalculating Attendance',async()=>{
+    const f=await fixture(),date=workedDates[0],employmentId=f.employees[0];
+    await owner.db.delete(schema.attendance).where(eq(schema.attendance.employmentId,employmentId));
+    const sh=await createShift(f.a,{name:'Recorded allowance basis',code:'ALW_BASIS',startTime:'09:00:00',endTime:'18:00:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5]});
+    await assignDefaultShift(f.a,{employmentId,shiftId:sh.id});
+    await checkIn(f.a,{employmentId,date,time:'13:00:00'});await checkOut(f.a,{employmentId,date,time:'17:00:00'});
+    const [record]=await owner.db.select().from(schema.attendance).where(and(eq(schema.attendance.employmentId,employmentId),eq(schema.attendance.attendanceDate,date)));
+    expect(record.underMinutes).toBe(240);
+    const [request]=await owner.db.insert(schema.leaveRequest).values({tenantId:b.tenantId,employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:date,endDate:date,days:'0.50',durationType:'half_day_am',status:'approved'}).returning();
+    await owner.db.insert(schema.leaveRequestDate).values({tenantId:b.tenantId,leaveRequestId:request.id,subjectEmploymentId:employmentId,leaveDate:date,days:'0.50',status:'approved'});
+    const rules=emptyAllowanceRulesV3();rules.employee=f.rules.employee;
+    rules.attendance.expression={id:'root',type:'group',logic:'and',children:[{id:'short',type:'criterion',field:'shortMinutes',operator:'eq',value:'0',unit:'minutes'}]};
+    const p=await f.policy('V3_PARTIAL_SHORT','4.05',{rules});
+    const preview=await evaluateAllowancesForPeriod(f.ctx,{policyId:p.id,month}),period=preview.rows[0].periods.find(period=>period.from===date)!;
+    expect(period).toMatchObject({qualified:true,amount:'4.05'});
+    expect(period.sourceDays[0].v3Facts).toMatchObject({shortMinutes:0,attendanceEvidence:{recordedUnderMinutes:240,fullDayNormalMinutes:480,leaveMinutes:240,reasons:{shortfall:'approved-partial-leave-adjustment'}}});
+    const [after]=await owner.db.select().from(schema.attendance).where(eq(schema.attendance.id,record.id));expect(after).toEqual(record);
+    const trace=record.calcTrace as {schedule:Record<string,unknown>};
+    const legacy=structuredClone(trace);delete legacy.schedule.fullDayNormalMinutes;
+    await owner.db.update(schema.attendance).set({calcTrace:legacy}).where(eq(schema.attendance.id,record.id));
+    const unknown=await evaluateAllowancesForPeriod(f.ctx,{policyId:p.id,month});
+    expect(unknown.rows[0].periods.find(period=>period.from===date)?.reasons).toContain('unknownMeasurements');
+    expect(unknown.rows[0].periods.find(period=>period.from===date)?.sourceDays[0].v3Facts?.attendanceEvidence?.reasons.shortfall).toBe('recorded-full-day-basis-unavailable');
+  });
+
+  it('retains recorded late counts and duration when the live assigned shift becomes Full Flexi',async()=>{
+    const f=await fixture(),date=workedDates[0],employmentId=f.employees[0];
+    await owner.db.delete(schema.attendance).where(eq(schema.attendance.employmentId,employmentId));
+    const base={name:'Historical fixed shift',code:'ALW_HISTORY',startTime:'09:00:00',endTime:'18:00:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5]};
+    const sh=await createShift(f.a,base);await assignDefaultShift(f.a,{employmentId,shiftId:sh.id});
+    await checkIn(f.a,{employmentId,date,time:'10:00:00'});await checkOut(f.a,{employmentId,date,time:'18:00:00'});
+    const rules=emptyAllowanceRulesV3();rules.employee=f.rules.employee;
+    rules.attendance.expression={id:'root',type:'group',logic:'and',children:[{id:'late',type:'criterion',field:'lateCount',operator:'eq',value:'1',unit:'occurrences'},{id:'duration',type:'criterion',field:'lateMinutes',operator:'gt',value:'0',unit:'minutes'}]};
+    const p=await f.policy('V3_RECORDED_LATE','1.05',{rules}),before=await evaluateAllowancesForPeriod(f.ctx,{policyId:p.id,month});
+    const original=before.rows[0].periods.find(period=>period.from===date)!;expect(original.qualified).toBe(true);
+    await updateShift(f.a,{shiftId:sh.id,...base,type:'full_flexi',normalMinutesOverride:480});
+    const after=await evaluateAllowancesForPeriod(f.ctx,{policyId:p.id,month}),period=after.rows[0].periods.find(period=>period.from===date)!;
+    expect(period.qualified).toBe(true);expect(period.expression).toEqual(original.expression);
+    expect(period.sourceDays[0].lateMinutes).toBe(original.sourceDays[0].lateMinutes);
+    expect(period.sourceDays[0].v3Facts?.attendanceEvidence?.fixedClockApplicable).toBe(true);
+  });
+
+  it('never redistributes recorded legacy approvals using a changed weekday or holiday calendar, and marks unrecoverable allocation Unknown',async()=>{
+    const f=await fixture(),monday=monthDates(month).find(date=>new Date(`${date}T00:00:00Z`).getUTCDay()===1)!,tuesday=monthDates(month)[monthDates(month).indexOf(monday)+1],friday=monthDates(month)[monthDates(month).indexOf(monday)+4];
+    const [type]=await owner.db.insert(schema.leaveType).values({tenantId:b.tenantId,code:'V3_LEGACY',name:'Recorded legacy working-day leave',paid:true,counting:'working_days'}).returning();
+    const [request]=await owner.db.insert(schema.leaveRequest).values({tenantId:b.tenantId,employmentId:f.employees[0],leaveTypeId:type.id,startDate:monday,endDate:tuesday,days:'2.00',status:'approved'}).returning();
+    const rules=emptyAllowanceRulesV3();rules.employee=f.rules.employee;
+    rules.attendance.expression={id:'root',type:'group',logic:'and',children:[{id:'leave',type:'criterion',field:'leaveDays',operator:'eq',value:'2',unit:'days',leaveTypeIds:[type.id]}]};
+    const p=await f.policy('V3_LEGACY_HISTORY','3.05',{rules,method:'monthly'});
+    const before=await evaluateAllowancesForPeriod(f.ctx,{policyId:p.id,month});expect(before.rows[0].amount).toBe('3.05');
+    await setAttendancePolicy(f.a,{companyId:b.companyId,workStart:'09:00',workEnd:'18:00',breakMinutes:60,lateAfter:'09:15',halfDayBefore:'13:00',workingDays:[1,3,4,5],halfWorkingDays:[2]});
+    await owner.db.insert(schema.holiday).values({tenantId:b.tenantId,companyId:b.companyId,country:'MY',holidayDate:tuesday,name:'Later calendar correction'});
+    const after=await evaluateAllowancesForPeriod(f.ctx,{policyId:p.id,month});expect(after.rows[0].amount).toBe('3.05');
+    expect((await owner.db.select().from(schema.leaveRequest).where(eq(schema.leaveRequest.id,request.id)))[0].days).toBe('2.00');
+    await owner.db.update(schema.leaveRequest).set({endDate:friday}).where(eq(schema.leaveRequest.id,request.id));
+    const ambiguous=await evaluateAllowancesForPeriod(f.ctx,{policyId:p.id,month});
+    expect(ambiguous.rows[0].periods[0].reasons).toContain('unknownMeasurements');
+    expect(ambiguous.rows[0].periods[0].sourceDays.find(day=>day.date===monday)?.v3Facts).toMatchObject({leave:null,leaveUnknownTypeIds:[type.id],absenceKnown:false,source:'legacy-approved-date-allocation-unknown'});
+  });
+
+  it('uses approved date fractions and type presence without double-counting duplicate or ambiguous leave records',async()=>{
+    const f=await fixture(),workdays=monthDates(month).filter(date=>{const d=new Date(`${date}T00:00:00Z`).getUTCDay();return d>0&&d<6;}).slice(0,4);
+    await owner.db.delete(schema.attendance).where(eq(schema.attendance.employmentId,f.employees[0]));
+    const [unpaid]=await owner.db.insert(schema.leaveType).values({tenantId:b.tenantId,code:'V3_UNPAID',name:'V3 unpaid',paid:false,counting:'calendar_days'}).returning();
+    async function approval(date:string,typeId:string,durationType:string,days:string,status:'approved'|'cancelled'='approved',perDate=true){
+      const [request]=await owner.db.insert(schema.leaveRequest).values({tenantId:b.tenantId,employmentId:f.employees[0],leaveTypeId:typeId,startDate:date,endDate:date,days,durationType,status}).returning();
+      if(perDate)await owner.db.insert(schema.leaveRequestDate).values({tenantId:b.tenantId,leaveRequestId:request.id,subjectEmploymentId:f.employees[0],leaveDate:date,days,status});
+      return request.id;
+    }
+    await approval(workdays[0],b.annualLeaveTypeId,'half_day_am','0.50');
+    await approval(workdays[0],unpaid.id,'half_day_pm','0.50');
+    const duplicates=await Promise.all([1,2].map(()=>approval(workdays[1],b.annualLeaveTypeId,'half_day_am','0.50')));
+    await approval(workdays[2],b.annualLeaveTypeId,'half_day_am','0.50');
+    await approval(workdays[2],unpaid.id,'half_day_am','0.50');
+    await approval(workdays[3],b.annualLeaveTypeId,'full_day','1.00','cancelled');
+    const rules=emptyAllowanceRulesV3();rules.employee=f.rules.employee;
+    rules.attendance.expression={id:'root',type:'group',logic:'and',children:[{id:'leave',type:'criterion',field:'leaveCount',operator:'eq',value:'1',unit:'occurrences',leaveTypeIds:[]}]};
+    const p=await f.policy('V3_APPROVED_LEAVE','1.25',{rules}),preview=await evaluateAllowancesForPeriod(f.ctx,{policyId:p.id,month});
+    expect(preview.rows).toHaveLength(1);
+    expect(preview.rows[0].periods.filter(period=>period.qualified).map(period=>period.from)).toEqual(workdays.slice(0,3));
+    const period=(date:string)=>preview.rows[0].periods.find(period=>period.from===date)!;
+    const first=period(workdays[0]).sourceDays[0].v3Facts!;
+    expect(first.leave?.map(leave=>({typeId:leave.typeId,paid:leave.paid,days:leave.days}))).toEqual(expect.arrayContaining([{typeId:b.annualLeaveTypeId,paid:true,days:0.5},{typeId:unpaid.id,paid:false,days:0.5}]));
+    expect(period(workdays[1]).sourceDays[0].v3Facts?.leave).toMatchObject([{days:0.5,requestIds:[...duplicates].sort()}]);
+    expect(period(workdays[2]).sourceDays[0].v3Facts).toMatchObject({leave:null,source:'approved-leave-overlap-duration-unknown'});
+    rules.attendance.expression={id:'root',type:'group',logic:'and',children:[{id:'duration',type:'criterion',field:'leaveDays',operator:'eq',value:'1',unit:'days',leaveTypeIds:[]}]};
+    await updateAllowancePolicy(f.ctx,{id:p.id,rules});
+    const duration=await evaluateAllowancesForPeriod(f.ctx,{policyId:p.id,month});
+    expect(duration.rows[0].periods.filter(period=>period.qualified).map(period=>period.from)).toEqual([workdays[0]]);
+    expect(duration.rows[0].periods.find(period=>period.from===workdays[2])?.reasons).toContain('unknownMeasurements');
+    rules.attendance.expression={id:'root',type:'group',logic:'and',children:[{id:'duration',type:'criterion',field:'leaveDays',operator:'eq',value:'0.5',unit:'days',leaveTypeIds:[unpaid.id]}]};
+    await updateAllowancePolicy(f.ctx,{id:p.id,rules});
+    const filtered=await evaluateAllowancesForPeriod(f.ctx,{policyId:p.id,month});
+    expect(filtered.rows[0].periods.filter(period=>period.qualified).map(period=>period.from)).toEqual([workdays[0]]);
+  });
+
+  it('preserves a known legacy approval date independently of current weekday rules and excludes cancelled date decisions',async()=>{
+    const f=await fixture(),rest=monthDates(month).find(date=>new Date(`${date}T00:00:00Z`).getUTCDay()===0)!;
+    const [calendar]=await owner.db.insert(schema.leaveType).values({tenantId:b.tenantId,code:'V3_CALENDAR',name:'V3 calendar',paid:true,counting:'calendar_days'}).returning();
+    const [working]=await owner.db.insert(schema.leaveType).values({tenantId:b.tenantId,code:'V3_WORKING',name:'V3 working',paid:true,counting:'working_days'}).returning();
+    for(const type of [calendar,working])await owner.db.insert(schema.leaveRequest).values({tenantId:b.tenantId,employmentId:f.employees[0],leaveTypeId:type.id,startDate:rest,endDate:rest,days:'1.00',status:type.id===calendar.id?'approved':'pending'});
+    const rules=emptyAllowanceRulesV3();rules.employee=f.rules.employee;
+    rules.attendance.expression={id:'root',type:'group',logic:'and',children:[{id:'leave',type:'criterion',field:'leaveDays',operator:'eq',value:'1',unit:'days',leaveTypeIds:[calendar.id]}]};
+    const p=await f.policy('V3_REST_LEAVE','2.05',{rules}),preview=await evaluateAllowancesForPeriod(f.ctx,{policyId:p.id,month});
+    const period=preview.rows[0].periods.find(period=>period.from===rest)!;
+    expect(period).toMatchObject({qualified:true,amount:'2.05'});
+    expect(period.sourceDays[0].v3Facts?.leaveTypesPresent).toEqual([calendar.id]);
+    expect(period.sourceDays[0].v3Facts?.source).toBe('recorded-legacy-approved-amount');
+    const [request]=await owner.db.select().from(schema.leaveRequest).where(and(eq(schema.leaveRequest.employmentId,f.employees[0]),eq(schema.leaveRequest.leaveTypeId,calendar.id)));
+    await owner.db.insert(schema.leaveRequestDate).values({tenantId:b.tenantId,leaveRequestId:request.id,subjectEmploymentId:f.employees[0],leaveDate:rest,days:'1.00',status:'cancelled'});
+    expect((await evaluateAllowancesForPeriod(f.ctx,{policyId:p.id,month})).rows[0].periods.find(period=>period.from===rest)?.qualified).toBe(false);
+  });
+
   it('saves grouped versions inactive, requires a fresh reviewed calculation, and retains prior transferred evidence after editing', async()=>{
     const f=await fixture(),rules=upgradeAllowanceRules(f.rules),p=await f.policy('GROUPED_REVIEW','0.10',{rules});
     expect((await getAllowancePolicy(f.ctx,p.id))?.status).toBe('inactive');

@@ -1,0 +1,2823 @@
+{
+  "scope": "Review draft of all current Personnel Management tabs and their activated/draft record/detail fields. Counts are catalogue entries, not independent stored facts. Proposed permissions and as-of support are not shipped capabilities.",
+  "sourceCommit": "0581bfcfc",
+  "groups": [
+    "Profile",
+    "Family",
+    "Employment",
+    "Employment History",
+    "Attendance",
+    "Bank & Statutory",
+    "Payroll",
+    "Leave",
+    "Documents",
+    "Qualification",
+    "Others"
+  ],
+  "sections": [
+    {
+      "group": "Profile",
+      "section": "Personal details",
+      "owner": "Personnel person and employment owners",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:1108-1207; components/person-name-fields.tsx; components/identity-fields.tsx; components/birth-date-fields.tsx; components/person-details-fields.tsx",
+      "cardinality": "One person value per employment; Employee ID belongs to employment.",
+      "history": "Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.",
+      "plannedAccess": "Personnel report access within permitted companies.",
+      "fields": [
+        {
+          "label": "Employee ID",
+          "labelKey": "people.detail.employeeIdLabel",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Salutation",
+          "labelKey": "people.detail.salutation",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Full name (as per IC/passport)",
+          "labelKey": "people.detail.fullNameIc",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "First name",
+          "labelKey": "people.detail.firstName",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Last name",
+          "labelKey": "people.detail.lastName",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Preferred name",
+          "labelKey": "people.detail.preferredName",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Nationality",
+          "labelKey": "people.detail.nationality",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Religion",
+          "labelKey": "people.detail.religion",
+          "type": "Choice",
+          "note": "Restricted personal information"
+        },
+        {
+          "label": "Race",
+          "labelKey": "people.detail.race",
+          "type": "Choice",
+          "note": "Restricted personal information"
+        },
+        {
+          "label": "Date of birth",
+          "labelKey": "people.detail.birthDate",
+          "type": "Date",
+          "note": "Restricted personal information"
+        },
+        {
+          "label": "Age",
+          "labelKey": "people.detail.age",
+          "type": "Whole number",
+          "note": "Age at report date from the authoritative date of birth; unavailable if date of birth is unavailable"
+        },
+        {
+          "label": "Gender",
+          "labelKey": "people.detail.gender",
+          "type": "Choice",
+          "note": "Restricted personal information"
+        },
+        {
+          "label": "Marital status",
+          "labelKey": "people.detail.maritalStatus",
+          "type": "Choice",
+          "note": "Restricted personal information"
+        },
+        {
+          "label": "Status",
+          "labelKey": "people.detail.headerStatus",
+          "type": "Choice",
+          "note": "Derived employment status; historical availability depends on recorded lifecycle facts"
+        },
+        {
+          "label": "Profile photo",
+          "labelKey": null,
+          "type": "Image",
+          "note": "Catalogue entry; file content excluded from spreadsheet/CSV/PDF exports. Availability only, no public file link."
+        }
+      ]
+    },
+    {
+      "group": "Profile",
+      "section": "Identity and passport",
+      "owner": "Country statutory profile owner, linked to person",
+      "source": "components/personnel-identity.tsx; components/identity-fields.tsx; components/passport-fields.tsx",
+      "cardinality": "One current person record",
+      "history": "Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.",
+      "plannedAccess": "Restricted personal information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.",
+      "fields": [
+        {
+          "label": "Identity No (NRIC)",
+          "labelKey": "people.detail.icNumber",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Old identity card no.",
+          "labelKey": "people.detail.oldIcNumber",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Passport number",
+          "labelKey": "people.detail.passportNumber",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Passport issue date",
+          "labelKey": "people.detail.passportIssueDate",
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Passport expiry date",
+          "labelKey": "people.detail.passportExpiryDate",
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Issuing country",
+          "labelKey": "people.detail.passportIssuingCountry",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Issuing country code",
+          "labelKey": "people.detail.passportIssuingCountryCode",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Passport remark",
+          "labelKey": "people.detail.passportRemark",
+          "type": "Text",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "group": "Profile",
+      "section": "Contact and permanent address",
+      "owner": "Personnel person/contact owner",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:1217-1271; components/person-name-fields.tsx; components/address-fields.tsx",
+      "cardinality": "One current person record",
+      "history": "Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.",
+      "plannedAccess": "Restricted personal information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.",
+      "fields": [
+        {
+          "label": "Work email",
+          "labelKey": "people.detail.workEmail",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Mobile Phone Number",
+          "labelKey": "people.detail.phone",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Home Phone Number",
+          "labelKey": "people.detail.homePhone",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Personal email",
+          "labelKey": "people.detail.personalEmail",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Address line 1",
+          "labelKey": "people.detail.addressLine1",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Address line 2",
+          "labelKey": "people.detail.addressLine2",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Address line 3",
+          "labelKey": "people.detail.addressLine3",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Postcode",
+          "labelKey": "people.detail.postcode",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "City",
+          "labelKey": "people.detail.city",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "State",
+          "labelKey": "people.detail.stateLabel",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Country",
+          "labelKey": "people.detail.country",
+          "type": "Choice",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "group": "Profile",
+      "section": "Correspondence address",
+      "owner": "Personnel person/contact owner",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:1274-1304; components/address-fields.tsx; components/same-as-permanent-address.tsx",
+      "cardinality": "One current person record",
+      "history": "Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.",
+      "plannedAccess": "Restricted personal information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.",
+      "fields": [
+        {
+          "label": "Address line 1",
+          "labelKey": "people.detail.addressLine1",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Address line 2",
+          "labelKey": "people.detail.addressLine2",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Address line 3",
+          "labelKey": "people.detail.addressLine3",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Postcode",
+          "labelKey": "people.detail.postcode",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "City",
+          "labelKey": "people.detail.city",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "State",
+          "labelKey": "people.detail.stateLabel",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Country",
+          "labelKey": "people.detail.country",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Mobile Phone Number",
+          "labelKey": "people.detail.phone",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Home Phone Number",
+          "labelKey": "people.detail.homePhone",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Same as permanent address",
+          "labelKey": "people.detail.sameAsPermanent",
+          "type": "Copy control",
+          "note": "Catalogue entry for completeness, disabled as a report column. Copying an address is not a saved choice and cannot be reported as a historical flag."
+        }
+      ]
+    },
+    {
+      "group": "Profile",
+      "section": "Emergency contact",
+      "owner": "Emergency contact register owner",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:893-1028; core/emergency-contacts.ts",
+      "cardinality": "Many contacts per person. Latest and All records use explicit record ordering; primary priority is a field, not a substitute for latest.",
+      "history": "Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.",
+      "plannedAccess": "Restricted personal information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.",
+      "fields": [
+        {
+          "label": "Contact name",
+          "labelKey": "people.detail.emergency.name",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Relationship",
+          "labelKey": "people.detail.emergency.relationship",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Mobile phone",
+          "labelKey": "people.detail.emergency.mobilePhone",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Home phone",
+          "labelKey": "people.detail.emergency.homePhone",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Priority",
+          "labelKey": "people.detail.emergency.priority",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Address",
+          "labelKey": "people.detail.emergency.address",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Remark",
+          "labelKey": "people.detail.emergency.remarks",
+          "type": "Text",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "group": "Family",
+      "section": "Family and dependents",
+      "owner": "Family/dependent register owner",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:1796-1978,2031-2135; components/family-relationship-fields.tsx; core/dependents.ts",
+      "cardinality": "Many records per person. Conditional fields remain in the catalogue and are blank when not applicable.",
+      "history": "Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.",
+      "plannedAccess": "Restricted personal information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.",
+      "fields": [
+        {
+          "label": "Relationship",
+          "labelKey": "people.detail.family.relationship",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Name",
+          "labelKey": "people.detail.family.name",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Gender",
+          "labelKey": "people.detail.family.genderLabel",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Date of birth",
+          "labelKey": "people.detail.family.dateOfBirth",
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Age (from date of birth)",
+          "labelKey": "people.detail.family.childAge",
+          "type": "Whole number",
+          "note": "Derived at report date, not stored age"
+        },
+        {
+          "label": "Contact number",
+          "labelKey": "people.detail.family.contactNumber",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "New IC number",
+          "labelKey": "people.detail.family.newIc",
+          "type": "Text",
+          "note": "Same stored identity value as IC / birth certificate number; label applies to spouse/other relationships"
+        },
+        {
+          "label": "IC / birth certificate number",
+          "labelKey": "people.detail.family.icOrBirthCert",
+          "type": "Text",
+          "note": "Same stored identity value as New IC number; label applies to children"
+        },
+        {
+          "label": "Passport number",
+          "labelKey": "people.detail.family.passportNumber",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Residential address",
+          "labelKey": "people.detail.family.residentialAddress",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Marriage date",
+          "labelKey": "people.detail.family.marriageDate",
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Marriage status",
+          "labelKey": "people.detail.family.marriageStatusLabel",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Occupation",
+          "labelKey": "people.detail.family.occupation",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Company name",
+          "labelKey": "people.detail.family.companyName",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Employer address",
+          "labelKey": "people.detail.family.employerAddress",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Currently working",
+          "labelKey": "people.detail.family.currentlyWorking",
+          "type": "Yes/no",
+          "note": ""
+        },
+        {
+          "label": "Insurance beneficiary",
+          "labelKey": "people.detail.family.beneficiary",
+          "type": "Yes/no",
+          "note": ""
+        },
+        {
+          "label": "Deceased",
+          "labelKey": "people.detail.family.deceasedStatus",
+          "type": "Yes/no",
+          "note": ""
+        },
+        {
+          "label": "Student",
+          "labelKey": "people.detail.family.studentStatus",
+          "type": "Yes/no",
+          "note": ""
+        },
+        {
+          "label": "School name",
+          "labelKey": "people.detail.family.schoolName",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Study level",
+          "labelKey": "people.detail.family.studyLevel",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Study country",
+          "labelKey": "people.detail.family.studyCountry",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Relief category",
+          "labelKey": "people.detail.family.childReliefCategory",
+          "type": "Choice",
+          "note": "Also requires restricted tax/statutory information permission"
+        },
+        {
+          "label": "Claim tax relief",
+          "labelKey": "people.detail.family.childTaxRelief",
+          "type": "Yes/no",
+          "note": "Also requires restricted tax/statutory information permission"
+        },
+        {
+          "label": "Relief share",
+          "labelKey": "people.detail.family.childReliefPercentage",
+          "type": "Percentage",
+          "note": "Also requires restricted tax/statutory information permission"
+        },
+        {
+          "label": "Counts toward tax relief",
+          "labelKey": "people.detail.family.countsTowardRelief",
+          "type": "Derived yes/no",
+          "note": "Canonical owner eligibility at the report date, with unavailable retained where facts are insufficient"
+        },
+        {
+          "label": "Remarks",
+          "labelKey": "people.detail.family.remarks",
+          "type": "Text",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "group": "Employment",
+      "section": "Organisation assignment",
+      "owner": "Employment/assignment owner; movement owns changes",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:4385-4455; core/org.ts; core/movement.ts",
+      "cardinality": "One assignment valid on the report date",
+      "history": "Dated records exist. Resolve the record valid on the selected date; show unavailable outside recorded coverage. Historical catalogue names require recorded labels; current names must be identified as current.",
+      "plannedAccess": "Personnel report access within permitted companies.",
+      "fields": [
+        {
+          "label": "Company",
+          "labelKey": "people.detail.employmentInfo.company",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Business Unit",
+          "labelKey": "people.detail.employmentInfo.businessUnit",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Department",
+          "labelKey": "people.detail.employmentInfo.department",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Position",
+          "labelKey": "people.detail.employmentInfo.position",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Job Grade",
+          "labelKey": "people.detail.employmentInfo.jobGrade",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Employment Type",
+          "labelKey": "people.detail.employmentInfo.employmentType",
+          "type": "Choice",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "group": "Employment",
+      "section": "Additional organisation labels",
+      "owner": "Employment information owner, with recorded movement changes where present",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:4433-4455; core/movement.ts:219-228",
+      "cardinality": "One current employment value",
+      "history": "Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.",
+      "plannedAccess": "Personnel report access within permitted companies.",
+      "fields": [
+        {
+          "label": "Division",
+          "labelKey": "people.detail.employmentInfo.division",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Branch",
+          "labelKey": "people.detail.employmentInfo.branch",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Region",
+          "labelKey": "people.detail.employmentInfo.region",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Line",
+          "labelKey": "people.detail.employmentInfo.line",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Section",
+          "labelKey": "people.detail.employmentInfo.section",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Team",
+          "labelKey": "people.detail.employmentInfo.team",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Base",
+          "labelKey": "people.detail.employmentInfo.base",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Category",
+          "labelKey": "people.detail.employmentInfo.category",
+          "type": "Choice",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "group": "Employment",
+      "section": "Employment dates and service",
+      "owner": "Employment lifecycle owner; joining-date corrections owned by Movement",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:4507-4668,5376-5411; components/employment-period-fields.tsx; core/leave.ts serviceYearsMonthsDaysAt",
+      "cardinality": "One employment value; period fields contain value and unit, both separately selectable",
+      "history": "Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.",
+      "plannedAccess": "Personnel report access within permitted companies.",
+      "fields": [
+        {
+          "label": "Group Join Date",
+          "labelKey": "people.detail.employmentInfo.groupJoinDate",
+          "type": "Date",
+          "note": "Use recorded joining-date correction history when available"
+        },
+        {
+          "label": "Join Date",
+          "labelKey": "people.detail.employmentInfo.joinDate",
+          "type": "Date",
+          "note": "Use recorded transfer/joining-date history when available"
+        },
+        {
+          "label": "Group Service",
+          "labelKey": "people.detail.employmentInfo.groupService",
+          "type": "Duration",
+          "note": "Years, months and days from authoritative Group Join Date at the report date"
+        },
+        {
+          "label": "Current Company Service",
+          "labelKey": "people.detail.employmentInfo.currentCompanyService",
+          "type": "Duration",
+          "note": "Years, months and days from authoritative Join Date at the report date"
+        },
+        {
+          "label": "Year of Service",
+          "labelKey": "people.detail.employmentInfo.yearOfService",
+          "type": "Duration",
+          "note": "Same authoritative duration as Group Service; alias retained because both labels appear"
+        },
+        {
+          "label": "Probation Period — Value",
+          "labelKey": "people.detail.employmentInfo.probationPeriod",
+          "type": "Number",
+          "note": "Part of the Probation Period control; the value/unit pair is never silently normalised to months."
+        },
+        {
+          "label": "Probation Period — Unit",
+          "labelKey": "people.detail.employmentInfo.probationPeriod",
+          "type": "Choice",
+          "note": "Part of the Probation Period control; the value/unit pair is never silently normalised to months."
+        },
+        {
+          "label": "Extended Probation Period — Value",
+          "labelKey": "people.detail.employmentInfo.extendedProbationPeriod",
+          "type": "Number",
+          "note": "Part of the Extended Probation Period control; the value/unit pair is never silently normalised to months."
+        },
+        {
+          "label": "Extended Probation Period — Unit",
+          "labelKey": "people.detail.employmentInfo.extendedProbationPeriod",
+          "type": "Choice",
+          "note": "Part of the Extended Probation Period control; the value/unit pair is never silently normalised to months."
+        },
+        {
+          "label": "Confirmation Date",
+          "labelKey": "people.detail.employmentInfo.confirmationDate",
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Contract Start Date",
+          "labelKey": "people.detail.employmentInfo.contractStartDate",
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Contract End Date",
+          "labelKey": "people.detail.employmentInfo.contractEndDate",
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Remark",
+          "labelKey": "people.detail.employmentInfo.contractRemark",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Notice Before Confirmation — Value",
+          "labelKey": "people.detail.employmentInfo.noticeBeforeConfirmation",
+          "type": "Number",
+          "note": "Part of the Notice Before Confirmation control; the value/unit pair is never silently normalised to months."
+        },
+        {
+          "label": "Notice Before Confirmation — Unit",
+          "labelKey": "people.detail.employmentInfo.noticeBeforeConfirmation",
+          "type": "Choice",
+          "note": "Part of the Notice Before Confirmation control; the value/unit pair is never silently normalised to months."
+        },
+        {
+          "label": "Notice After Confirmation — Value",
+          "labelKey": "people.detail.employmentInfo.noticeAfterConfirmation",
+          "type": "Number",
+          "note": "Part of the Notice After Confirmation control; the value/unit pair is never silently normalised to months."
+        },
+        {
+          "label": "Notice After Confirmation — Unit",
+          "labelKey": "people.detail.employmentInfo.noticeAfterConfirmation",
+          "type": "Choice",
+          "note": "Part of the Notice After Confirmation control; the value/unit pair is never silently normalised to months."
+        },
+        {
+          "label": "Tender Resignation Date",
+          "labelKey": "people.detail.employmentInfo.tenderResignationDate",
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Resignation Date",
+          "labelKey": "people.detail.employmentInfo.resignationDate",
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Last Working Date",
+          "labelKey": "people.detail.employmentInfo.lastWorkingDate",
+          "type": "Date",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "group": "Employment",
+      "section": "Direct superior and history",
+      "owner": "Reporting-line owner",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:4688-4746; core/read.ts directSuperiorHistoryFor/reportingLinesFor; core/org.ts",
+      "cardinality": "Current superior and many dated previous-superior rows",
+      "history": "Dated records exist. Resolve the record valid on the selected date; show unavailable outside recorded coverage. Historical catalogue names require recorded labels; current names must be identified as current.",
+      "plannedAccess": "Personnel report access within permitted companies.",
+      "fields": [
+        {
+          "label": "Direct Superior — Employee ID",
+          "labelKey": "people.detail.directSuperiorLabel",
+          "type": "Text",
+          "note": "Includes Employee ID and name as separately selectable parts"
+        },
+        {
+          "label": "Direct Superior — Name",
+          "labelKey": "people.detail.directSuperiorLabel",
+          "type": "Text",
+          "note": "Includes Employee ID and name as separately selectable parts"
+        },
+        {
+          "label": "Previous superiors — Employee ID",
+          "labelKey": "people.detail.directSuperiorHistory",
+          "type": "Text",
+          "note": "Previous superior; includes Employee ID and name as separately selectable parts"
+        },
+        {
+          "label": "Previous superiors — Name",
+          "labelKey": "people.detail.directSuperiorHistory",
+          "type": "Text",
+          "note": "Previous superior; includes Employee ID and name as separately selectable parts"
+        },
+        {
+          "label": "From",
+          "labelKey": null,
+          "type": "Date",
+          "note": "Previous-superior valid-from date"
+        },
+        {
+          "label": "Until",
+          "labelKey": null,
+          "type": "Date",
+          "note": "Previous-superior valid-to date"
+        }
+      ]
+    },
+    {
+      "group": "Employment",
+      "section": "Approval delegations",
+      "owner": "Reporting-line/delegation owner",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:4753-4805; core/read.ts delegationsFor; core/org.ts",
+      "cardinality": "Many dated delegation windows",
+      "history": "Dated records exist. Resolve the record valid on the selected date; show unavailable outside recorded coverage. Historical catalogue names require recorded labels; current names must be identified as current.",
+      "plannedAccess": "Personnel report access within permitted companies.",
+      "fields": [
+        {
+          "label": "Delegate to — Employee ID",
+          "labelKey": "people.detail.delegationDelegate",
+          "type": "Text",
+          "note": "Includes Employee ID and name as separately selectable parts"
+        },
+        {
+          "label": "Delegate to — Name",
+          "labelKey": "people.detail.delegationDelegate",
+          "type": "Text",
+          "note": "Includes Employee ID and name as separately selectable parts"
+        },
+        {
+          "label": "From",
+          "labelKey": "people.detail.delegationFrom",
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Until (optional)",
+          "labelKey": "people.detail.delegationTo",
+          "type": "Date",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "group": "Employment History",
+      "section": "Event information",
+      "owner": "Movement projection over employment/assignment/compensation/reporting-line owners and recorded events",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:3537-3977; app/admin/personnel/[employmentId]/movement-new-event.tsx:463-591; core/movement.ts",
+      "cardinality": "Many recorded events. Latest means greatest effective date not after the report date, with deterministic tie ordering; cancelled/reversed rows remain explicit.",
+      "history": "Recorded event/snapshot. Read what the event recorded, including correction state; do not substitute today’s values.",
+      "plannedAccess": "Restricted confidential HR history permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.",
+      "fields": [
+        {
+          "label": "Event Type",
+          "labelKey": null,
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Effective Date",
+          "labelKey": null,
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "End Date",
+          "labelKey": null,
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Last Working Day",
+          "labelKey": null,
+          "type": "Date",
+          "note": "Termination-specific interpretation of the event end date"
+        },
+        {
+          "label": "Recorded by",
+          "labelKey": null,
+          "type": "Employee/user display name",
+          "note": "Unknown remains unknown for system/import/synthesised records"
+        },
+        {
+          "label": "Recorded at",
+          "labelKey": null,
+          "type": "Date and time",
+          "note": ""
+        },
+        {
+          "label": "Remarks",
+          "labelKey": null,
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Movement status",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "Applied, pending, superseded, cancelled, reversed or corrected, as the owner records"
+        },
+        {
+          "label": "Job Title",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "List caption for the Position source; not a second job-title field"
+        },
+        {
+          "label": "Basic",
+          "labelKey": null,
+          "type": "Money",
+          "note": "List caption for the Salary source; requires restricted compensation permission"
+        },
+        {
+          "label": "Termination Reason",
+          "labelKey": null,
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Termination type",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "Derived from the selected termination reason"
+        },
+        {
+          "label": "Resignation Date",
+          "labelKey": null,
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Notice served (days)",
+          "labelKey": null,
+          "type": "Whole number",
+          "note": ""
+        },
+        {
+          "label": "Blacklist Status",
+          "labelKey": null,
+          "type": "Yes/no",
+          "note": ""
+        },
+        {
+          "label": "Reason for correction",
+          "labelKey": null,
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Rolled back by",
+          "labelKey": null,
+          "type": "Employee/user display name",
+          "note": ""
+        },
+        {
+          "label": "Rolled back at",
+          "labelKey": null,
+          "type": "Date and time",
+          "note": ""
+        },
+        {
+          "label": "Reason for rollback or cancellation",
+          "labelKey": null,
+          "type": "Text",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "group": "Employment History",
+      "section": "Before Changes and After Changes",
+      "owner": "Movement owner reconstruction and event-recorded flat changes",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:3795-3820; app/admin/personnel/[employmentId]/movement-new-event.tsx:358-433; core/movement.ts MOVEMENT_FLAT_FIELDS",
+      "cardinality": "Each listed field has Before Changes and After Changes columns. Hired has no Before Changes.",
+      "history": "Recorded event/snapshot. Read what the event recorded, including correction state; do not substitute today’s values.",
+      "plannedAccess": "Restricted confidential HR history permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.",
+      "fields": [
+        {
+          "label": "Company",
+          "labelKey": null,
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Business Unit",
+          "labelKey": null,
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Division",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "Only where this event recorded the change"
+        },
+        {
+          "label": "Department",
+          "labelKey": null,
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Position",
+          "labelKey": null,
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Job Grade",
+          "labelKey": null,
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Employment Type",
+          "labelKey": null,
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Reporting Manager — Employee ID",
+          "labelKey": null,
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Reporting Manager — Name",
+          "labelKey": null,
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Salary",
+          "labelKey": null,
+          "type": "Money",
+          "note": "Also requires restricted compensation permission"
+        },
+        {
+          "label": "Currency",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "Also requires restricted compensation permission"
+        },
+        {
+          "label": "Pay Mode",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "Also requires restricted compensation permission"
+        },
+        {
+          "label": "Payment Term",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "Also requires restricted compensation permission"
+        },
+        {
+          "label": "Category",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "Only where this event recorded the change"
+        },
+        {
+          "label": "Region",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "Only where this event recorded the change"
+        },
+        {
+          "label": "Branch",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "Only where this event recorded the change"
+        },
+        {
+          "label": "Team",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "Only where this event recorded the change"
+        },
+        {
+          "label": "Section",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "Only where this event recorded the change"
+        },
+        {
+          "label": "Line",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "Only where this event recorded the change"
+        },
+        {
+          "label": "Base",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "Only where this event recorded the change"
+        },
+        {
+          "label": "Location",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "Only where owner reconstruction or event snapshot supports it"
+        }
+      ]
+    },
+    {
+      "group": "Employment History",
+      "section": "Original hire details and corrections",
+      "owner": "Hire correction owner and original hire event",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:3503-3535,3650-3688,4020-4130; core/hire-correction.ts",
+      "cardinality": "Many correction traces. Each corrected field exposes original and corrected values, correction actor, date and reason.",
+      "history": "Recorded event/snapshot. Read what the event recorded, including correction state; do not substitute today’s values.",
+      "plannedAccess": "Restricted confidential HR history permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.",
+      "fields": [
+        {
+          "label": "Business Unit",
+          "labelKey": null,
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Department",
+          "labelKey": null,
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Position",
+          "labelKey": null,
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Cost Centre",
+          "labelKey": null,
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Location",
+          "labelKey": null,
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Direct Superior — Employee ID",
+          "labelKey": null,
+          "type": "Text",
+          "note": "Employee ID/name parts when owner has them"
+        },
+        {
+          "label": "Direct Superior — Name",
+          "labelKey": null,
+          "type": "Text",
+          "note": "Employee ID/name parts when owner has them"
+        },
+        {
+          "label": "Originally recorded",
+          "labelKey": null,
+          "type": "Typed value",
+          "note": "Per corrected field; not an arbitrary event payload export"
+        },
+        {
+          "label": "Corrected",
+          "labelKey": null,
+          "type": "Typed value",
+          "note": "Per corrected field"
+        },
+        {
+          "label": "Recorded by",
+          "labelKey": null,
+          "type": "Employee/user display name",
+          "note": ""
+        },
+        {
+          "label": "Recorded at",
+          "labelKey": null,
+          "type": "Date and time",
+          "note": ""
+        },
+        {
+          "label": "Reason for the correction",
+          "labelKey": null,
+          "type": "Text",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "group": "Attendance",
+      "section": "Holiday calendar and schedule",
+      "owner": "Holiday/roster owners",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:4817-4902; core/roster.ts; core/holidays.ts",
+      "cardinality": "One employment selection; holiday group and state alternatives are separate selectable parts",
+      "history": "Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.",
+      "plannedAccess": "Personnel report access within permitted companies.",
+      "fields": [
+        {
+          "label": "Holiday calendar",
+          "labelKey": "people.detail.holidayCalendar",
+          "type": "Choice",
+          "note": "Company default, named holiday group or state; do not invent an employee-specific calendar snapshot"
+        },
+        {
+          "label": "Schedule group",
+          "labelKey": "people.detail.scheduleGroup",
+          "type": "Choice",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "group": "Attendance",
+      "section": "Clocking and attendance photo",
+      "owner": "Attendance clocking-location/control owners",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:2457-2557; components/attendance/location-assignment.tsx",
+      "cardinality": "One geofence/photo setting, many assigned clocking locations",
+      "history": "Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.",
+      "plannedAccess": "Personnel report access within permitted companies.",
+      "fields": [
+        {
+          "label": "Use Geofencing for Clocking",
+          "labelKey": null,
+          "type": "Yes/no",
+          "note": ""
+        },
+        {
+          "label": "Clocking location — Code",
+          "labelKey": null,
+          "type": "Text",
+          "note": "Code and name separately selectable"
+        },
+        {
+          "label": "Clocking location — Name",
+          "labelKey": null,
+          "type": "Text",
+          "note": "Code and name separately selectable"
+        },
+        {
+          "label": "Address",
+          "labelKey": null,
+          "type": "Text",
+          "note": "Assigned clocking location address"
+        },
+        {
+          "label": "Radius",
+          "labelKey": null,
+          "type": "Number (metres)",
+          "note": "Assigned location radius; no retired employee override"
+        },
+        {
+          "label": "Location status",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "Active, inactive or not open to employee company"
+        },
+        {
+          "label": "Card ID",
+          "labelKey": null,
+          "type": "Text",
+          "note": "Preserves leading zeros"
+        },
+        {
+          "label": "Attendance Photo",
+          "labelKey": null,
+          "type": "Choice",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "group": "Attendance",
+      "section": "Work location and shift arrangement",
+      "owner": "Dated work-location assignment and shift-arrangement owners",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:2355-2426,4916-4989; components/employee-shift-fields.tsx; core/shift-arrangement.ts; core/location.ts",
+      "cardinality": "One valid location/shift arrangement; many dated shift-history rows",
+      "history": "Dated records exist. Resolve the record valid on the selected date; show unavailable outside recorded coverage. Historical catalogue names require recorded labels; current names must be identified as current.",
+      "plannedAccess": "Personnel report access within permitted companies.",
+      "fields": [
+        {
+          "label": "Location — Code",
+          "labelKey": "people.detail.locationSelect",
+          "type": "Text",
+          "note": "Location code and name separately selectable"
+        },
+        {
+          "label": "Location — Name",
+          "labelKey": "people.detail.locationSelect",
+          "type": "Text",
+          "note": "Location code and name separately selectable"
+        },
+        {
+          "label": "Effective date",
+          "labelKey": "people.detail.effectiveDate",
+          "type": "Date",
+          "note": "Location assignment effective date"
+        },
+        {
+          "label": "Shift type",
+          "labelKey": "people.detail.shiftTypeLabel",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Backup shift — Code",
+          "labelKey": "people.detail.backupShiftLabel",
+          "type": "Text",
+          "note": "Shift code and name separately selectable"
+        },
+        {
+          "label": "Backup shift — Name",
+          "labelKey": "people.detail.backupShiftLabel",
+          "type": "Text",
+          "note": "Shift code and name separately selectable"
+        },
+        {
+          "label": "Effective date",
+          "labelKey": "people.detail.shiftEffectiveDateLabel",
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Previous shift — Code",
+          "labelKey": "people.detail.shiftHistoryColPrevious",
+          "type": "Text",
+          "note": "History row; shift code and name separately selectable"
+        },
+        {
+          "label": "Previous shift — Name",
+          "labelKey": "people.detail.shiftHistoryColPrevious",
+          "type": "Text",
+          "note": "History row; shift code and name separately selectable"
+        },
+        {
+          "label": "New shift — Code",
+          "labelKey": "people.detail.shiftHistoryColNew",
+          "type": "Text",
+          "note": "History row; shift code and name separately selectable"
+        },
+        {
+          "label": "New shift — Name",
+          "labelKey": "people.detail.shiftHistoryColNew",
+          "type": "Text",
+          "note": "History row; shift code and name separately selectable"
+        },
+        {
+          "label": "Changed by",
+          "labelKey": "people.detail.shiftHistoryColChangedBy",
+          "type": "Employee/user display name",
+          "note": ""
+        },
+        {
+          "label": "Changed on",
+          "labelKey": "people.detail.shiftHistoryColChangedOn",
+          "type": "Date and time",
+          "note": "Recorded-on-release provenance retained if exact legacy date is unknown"
+        }
+      ]
+    },
+    {
+      "group": "Bank & Statutory",
+      "section": "Bank Information",
+      "owner": "Country bank/statutory profile owner",
+      "source": "components/bank-info-card.tsx; components/bank-account-fields.tsx; components/custom-holder-fields.tsx",
+      "cardinality": "One current person profile",
+      "history": "Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.",
+      "plannedAccess": "Restricted bank/payment information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.",
+      "fields": [
+        {
+          "label": "Bank",
+          "labelKey": "people.detail.bank",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Bank account",
+          "labelKey": "people.detail.bankAccount",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Use a custom holder name",
+          "labelKey": "people.detail.enableCustomHolderName",
+          "type": "Yes/no",
+          "note": ""
+        },
+        {
+          "label": "Custom holder name",
+          "labelKey": "people.detail.customHolderName",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Use a custom holder identification",
+          "labelKey": "people.detail.enableCustomHolderId",
+          "type": "Yes/no",
+          "note": ""
+        },
+        {
+          "label": "Custom holder identification",
+          "labelKey": "people.detail.customHolderId",
+          "type": "Text",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "group": "Bank & Statutory",
+      "section": "EPF contribution",
+      "owner": "Country statutory profile and contribution owner",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:3153-3199; components/epf-registration-fields.tsx; components/epf-election.tsx; components/employer-bears-fields.tsx",
+      "cardinality": "One current person profile; election fields conditional on the category",
+      "history": "Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.",
+      "plannedAccess": "Restricted tax/statutory information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.",
+      "fields": [
+        {
+          "label": "EPF number",
+          "labelKey": "people.detail.epfNumber",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "EPF citizenship",
+          "labelKey": "people.detail.epfCitizenship",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "EPF Category",
+          "labelKey": "people.detail.epfMode",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Employee rate %",
+          "labelKey": "people.detail.epfEmployeeRate",
+          "type": "Percentage",
+          "note": ""
+        },
+        {
+          "label": "Employer rate %",
+          "labelKey": "people.detail.epfEmployerRate",
+          "type": "Percentage",
+          "note": ""
+        },
+        {
+          "label": "Employee amount (RM per month)",
+          "labelKey": "people.detail.epfEmployeeAmount",
+          "type": "Money",
+          "note": ""
+        },
+        {
+          "label": "Employer amount (RM per month)",
+          "labelKey": "people.detail.epfEmployerAmount",
+          "type": "Money",
+          "note": ""
+        },
+        {
+          "label": "Reason for the fixed amount",
+          "labelKey": "people.detail.epfManualReason",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Employer bears EPF Contribution",
+          "labelKey": "people.detail.employerBearsEpf",
+          "type": "Yes/no",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "group": "Bank & Statutory",
+      "section": "SOCSO, EIS and Others Statutory",
+      "owner": "Country statutory profile owner",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:3208-3252,3357-3396; components/socso-eis-fields.tsx; components/tax-relief-fields.tsx",
+      "cardinality": "One current person profile",
+      "history": "Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.",
+      "plannedAccess": "Restricted tax/statutory information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.",
+      "fields": [
+        {
+          "label": "SOCSO & EIS number",
+          "labelKey": "people.detail.socsoEisNumber",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "SOCSO category",
+          "labelKey": "people.detail.socsoCategoryLabel",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "EIS category",
+          "labelKey": "people.detail.eisCategoryLabel",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Subject to SKBBK",
+          "labelKey": "people.detail.subjectToSkbbk",
+          "type": "Yes/no",
+          "note": ""
+        },
+        {
+          "label": "Employer bears SOCSO",
+          "labelKey": "people.detail.employerBearsSocso",
+          "type": "Yes/no",
+          "note": ""
+        },
+        {
+          "label": "Employer bears EIS",
+          "labelKey": "people.detail.employerBearsEis",
+          "type": "Yes/no",
+          "note": ""
+        },
+        {
+          "label": "Employer bears SKBBK",
+          "labelKey": "people.detail.employerBearsSkbbk",
+          "type": "Yes/no",
+          "note": ""
+        },
+        {
+          "label": "Subject to HRDF",
+          "labelKey": "people.detail.subjectToHrdf",
+          "type": "Choice",
+          "note": "Follow company default remains distinct from explicit Yes or No"
+        }
+      ]
+    },
+    {
+      "group": "Bank & Statutory",
+      "section": "Income Tax (PCB)",
+      "owner": "Country statutory tax/child-relief owners; employer-scoped tax selection",
+      "source": "components/identity-tax-card.tsx:499-996; components/tax-category-field.tsx; components/tax-relief-fields.tsx; core/dependents.ts qualifyingChildReliefFor",
+      "cardinality": "One person tax record plus employer-scoped selection; many child-relief breakdown rows",
+      "history": "Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.",
+      "plannedAccess": "Restricted tax/statutory information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.",
+      "fields": [
+        {
+          "label": "Tax number",
+          "labelKey": "people.detail.taxNumber",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Tax Category",
+          "labelKey": "people.detail.taxCategoryLabel",
+          "type": "Choice",
+          "note": "Detailed circumstance retained; legacy numeric category not mistaken for it"
+        },
+        {
+          "label": "Income Tax Resident",
+          "labelKey": "people.detail.incomeTaxResident",
+          "type": "Choice",
+          "note": "Employer-scoped scheme; None remains distinct from Resident/Non-Resident"
+        },
+        {
+          "label": "Disabled individual (OKU)",
+          "labelKey": "people.detail.disabledIndividualLabel",
+          "type": "Yes/no",
+          "note": ""
+        },
+        {
+          "label": "Disabled spouse (OKU)",
+          "labelKey": "people.detail.disabledSpouseLabel",
+          "type": "Yes/no",
+          "note": ""
+        },
+        {
+          "label": "Child relief mode",
+          "labelKey": "people.detail.childReliefModeLabel",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Children qualifying for tax relief",
+          "labelKey": "people.detail.childrenPhysical",
+          "type": "Whole number",
+          "note": ""
+        },
+        {
+          "label": "Counted as, for monthly tax (C)",
+          "labelKey": "people.detail.childrenQualifying",
+          "type": "Number",
+          "note": "Weighted monthly-tax figure, not a headcount"
+        },
+        {
+          "label": "Child relief",
+          "labelKey": null,
+          "type": "Money",
+          "note": "Canonical owner amount; no report-local tax formula"
+        },
+        {
+          "label": "Employer bears tax contribution",
+          "labelKey": "people.detail.employerBearsTax",
+          "type": "Yes/no",
+          "note": ""
+        },
+        {
+          "label": "Employer",
+          "labelKey": null,
+          "type": "Company reference",
+          "note": "Owner of the employer-scoped tax scheme"
+        },
+        {
+          "label": "Tax selection confirmation required",
+          "labelKey": null,
+          "type": "Yes/no",
+          "note": "Derived state shown when selection needs confirmation"
+        },
+        {
+          "label": "Item",
+          "labelKey": "people.detail.childQualifyingColItem",
+          "type": "Text",
+          "note": "Breakdown row is a child or a category, depending on the mode"
+        },
+        {
+          "label": "Relief category",
+          "labelKey": "people.detail.childQualifyingColCategory",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Relief share",
+          "labelKey": "people.detail.childQualifyingColShare",
+          "type": "Percentage",
+          "note": ""
+        },
+        {
+          "label": "Qualifying children",
+          "labelKey": "people.detail.childQualifyingColUnits",
+          "type": "Number",
+          "note": ""
+        },
+        {
+          "label": "Relief (RM)",
+          "labelKey": "people.detail.childQualifyingColAmount",
+          "type": "Money",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "group": "Bank & Statutory",
+      "section": "Declared child-relief table",
+      "owner": "Country statutory child-relief owner",
+      "source": "components/identity-tax-card.tsx:692-755; lib/dependent-vocabulary.ts; localization/country-pack.ts",
+      "cardinality": "One declared table; each category has a 100% and a 50% whole-number count",
+      "history": "Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.",
+      "plannedAccess": "Restricted tax/statutory information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.",
+      "fields": [
+        {
+          "label": "Child under 18 — 100%",
+          "labelKey": "people.detail.family.childReliefCat_under_18",
+          "type": "Whole number",
+          "note": "Declared count for this category/share, not a calculated monetary relief."
+        },
+        {
+          "label": "Child under 18 — 50%",
+          "labelKey": "people.detail.family.childReliefCat_under_18",
+          "type": "Whole number",
+          "note": "Declared count for this category/share, not a calculated monetary relief."
+        },
+        {
+          "label": "18+ in full-time pre-university study — 100%",
+          "labelKey": "people.detail.family.childReliefCat_study_preu",
+          "type": "Whole number",
+          "note": "Declared count for this category/share, not a calculated monetary relief."
+        },
+        {
+          "label": "18+ in full-time pre-university study — 50%",
+          "labelKey": "people.detail.family.childReliefCat_study_preu",
+          "type": "Whole number",
+          "note": "Declared count for this category/share, not a calculated monetary relief."
+        },
+        {
+          "label": "18+ in diploma/degree study (and above) — 100%",
+          "labelKey": "people.detail.family.childReliefCat_study_tertiary",
+          "type": "Whole number",
+          "note": "Declared count for this category/share, not a calculated monetary relief."
+        },
+        {
+          "label": "18+ in diploma/degree study (and above) — 50%",
+          "labelKey": "people.detail.family.childReliefCat_study_tertiary",
+          "type": "Whole number",
+          "note": "Declared count for this category/share, not a calculated monetary relief."
+        },
+        {
+          "label": "Disabled child — 100%",
+          "labelKey": "people.detail.family.childReliefCat_disabled",
+          "type": "Whole number",
+          "note": "Declared count for this category/share, not a calculated monetary relief."
+        },
+        {
+          "label": "Disabled child — 50%",
+          "labelKey": "people.detail.family.childReliefCat_disabled",
+          "type": "Whole number",
+          "note": "Declared count for this category/share, not a calculated monetary relief."
+        },
+        {
+          "label": "Disabled child in full-time study — 100%",
+          "labelKey": "people.detail.family.childReliefCat_disabled_study",
+          "type": "Whole number",
+          "note": "Declared count for this category/share, not a calculated monetary relief."
+        },
+        {
+          "label": "Disabled child in full-time study — 50%",
+          "labelKey": "people.detail.family.childReliefCat_disabled_study",
+          "type": "Whole number",
+          "note": "Declared count for this category/share, not a calculated monetary relief."
+        }
+      ]
+    },
+    {
+      "group": "Payroll",
+      "section": "Basic Salary and salary history",
+      "owner": "Compensation owner; display uses its dated revisions",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:2910-3108; components/salary-history-table.tsx; core/comp.ts",
+      "cardinality": "Many dated salary revisions; latest/current selected by valid date, never by array position",
+      "history": "Dated records exist. Resolve the record valid on the selected date; show unavailable outside recorded coverage. Historical catalogue names require recorded labels; current names must be identified as current.",
+      "plannedAccess": "Restricted compensation permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.",
+      "fields": [
+        {
+          "label": "Effective date",
+          "labelKey": "people.detail.effectiveDate",
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Basic salary (MYR)",
+          "labelKey": "people.detail.basicSalaryMyr",
+          "type": "Money",
+          "note": "Source label is MYR; actual currency is included and mixed currencies are never summed together"
+        },
+        {
+          "label": "Currency",
+          "labelKey": "people.detail.salaryCurrency",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Previous salary",
+          "labelKey": "people.detail.salaryColPrevious",
+          "type": "Money",
+          "note": ""
+        },
+        {
+          "label": "Increment (RM)",
+          "labelKey": "people.detail.salaryColIncrement",
+          "type": "Money",
+          "note": ""
+        },
+        {
+          "label": "Increment (%)",
+          "labelKey": "people.detail.salaryColIncrementPct",
+          "type": "Percentage",
+          "note": "Unavailable when prior basic is zero or absent"
+        },
+        {
+          "label": "Pay Mode",
+          "labelKey": "people.detail.payMode",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Payment Term",
+          "labelKey": "people.detail.paymentTerm",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Rate",
+          "labelKey": "people.detail.rateAmount",
+          "type": "Money",
+          "note": "Per day/per hour unit retained"
+        },
+        {
+          "label": "Remarks",
+          "labelKey": "people.detail.salaryColRemarks",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Status",
+          "labelKey": "people.detail.status",
+          "type": "Choice",
+          "note": "Active, Historical, Future effective"
+        }
+      ]
+    },
+    {
+      "group": "Payroll",
+      "section": "Payment method and payroll policy",
+      "owner": "Employment payment method and assigned payroll-policy owners",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:2328-2342,3105-3124; components/payment-method-field.tsx; components/payroll-policy-field.tsx",
+      "cardinality": "One current employment setting",
+      "history": "Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.",
+      "plannedAccess": "Restricted compensation permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.",
+      "fields": [
+        {
+          "label": "Payment Method",
+          "labelKey": "people.detail.paymentMethod",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Applied policy",
+          "labelKey": "payrollPolicy.assignLabel",
+          "type": "Choice",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "group": "Payroll",
+      "section": "Pay items",
+      "owner": "Employment pay-component owner",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:1342-1467; core/pay-components.ts",
+      "cardinality": "Many dated pay-item windows",
+      "history": "Dated records exist. Resolve the record valid on the selected date; show unavailable outside recorded coverage. Historical catalogue names require recorded labels; current names must be identified as current.",
+      "plannedAccess": "Restricted compensation permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.",
+      "fields": [
+        {
+          "label": "Component",
+          "labelKey": "people.detail.payComponent",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Amount",
+          "labelKey": "people.detail.payComponentAmount",
+          "type": "Money",
+          "note": ""
+        },
+        {
+          "label": "Currency",
+          "labelKey": "people.detail.payComponentCurrency",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Effective from",
+          "labelKey": "people.detail.payComponentEffectiveFrom",
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Effective to",
+          "labelKey": "people.detail.payComponentEffectiveTo",
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Prorate",
+          "labelKey": "people.detail.payComponentProrate",
+          "type": "Choice",
+          "note": "Inherit remains distinct from explicit Yes/No"
+        },
+        {
+          "label": "Remarks",
+          "labelKey": "people.detail.payComponentRemarks",
+          "type": "Text",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "group": "Payroll",
+      "section": "CP38 Deduction",
+      "owner": "CP38 owner",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:1489-1635; core/cp38.ts",
+      "cardinality": "Many dated deduction windows",
+      "history": "Dated records exist. Resolve the record valid on the selected date; show unavailable outside recorded coverage. Historical catalogue names require recorded labels; current names must be identified as current.",
+      "plannedAccess": "Restricted compensation permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.",
+      "fields": [
+        {
+          "label": "LHDN reference",
+          "labelKey": "people.detail.cp38Ref",
+          "type": "Text",
+          "note": "Also requires restricted tax/statutory information permission"
+        },
+        {
+          "label": "Monthly amount (RM)",
+          "labelKey": "people.detail.cp38Amount",
+          "type": "Money",
+          "note": ""
+        },
+        {
+          "label": "Effective from",
+          "labelKey": "people.detail.cp38From",
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Effective to",
+          "labelKey": "people.detail.cp38To",
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Remarks",
+          "labelKey": "people.detail.cp38Remarks",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Status",
+          "labelKey": "people.detail.cp38Status",
+          "type": "Choice",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "group": "Payroll",
+      "section": "Leave encashment",
+      "owner": "Leave-encashment snapshot owner",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:1647-1725; core/leave-encashment.ts",
+      "cardinality": "Saved snapshot and recorded adjustment/unfreeze actions; not a freshly invented balance",
+      "history": "Recorded event/snapshot. Read what the event recorded, including correction state; do not substitute today’s values.",
+      "plannedAccess": "Restricted compensation permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.",
+      "fields": [
+        {
+          "label": "Raw balance",
+          "labelKey": "people.detail.encashmentBalance",
+          "type": "Number (days)",
+          "note": ""
+        },
+        {
+          "label": "Auto figure",
+          "labelKey": "people.detail.encashmentAuto",
+          "type": "Number (days)",
+          "note": ""
+        },
+        {
+          "label": "Effective figure",
+          "labelKey": "people.detail.encashmentEffective",
+          "type": "Number (days)",
+          "note": ""
+        },
+        {
+          "label": "Calculated as of",
+          "labelKey": "people.detail.encashmentAsOf",
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Status",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "Frozen/Unfrozen"
+        },
+        {
+          "label": "Adjusted days",
+          "labelKey": "people.detail.encashmentOverrideDaysLabel",
+          "type": "Number (days)",
+          "note": ""
+        },
+        {
+          "label": "Reason",
+          "labelKey": "people.detail.encashmentReasonLabel",
+          "type": "Text",
+          "note": "Recorded action reason; draft form value is not exported"
+        }
+      ]
+    },
+    {
+      "group": "Payroll",
+      "section": "Previous employment this year (TP3 / opening balances)",
+      "owner": "Country statutory opening-balance owner",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:3404-3420",
+      "cardinality": "One current profile for its stated year; full Form TP3 is another screen and is not fabricated here",
+      "history": "Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.",
+      "plannedAccess": "Restricted tax/statutory information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.",
+      "fields": [
+        {
+          "label": "Applies to year",
+          "labelKey": "people.detail.appliesToYear",
+          "type": "Whole number",
+          "note": ""
+        },
+        {
+          "label": "Accumulated net remuneration (Y−K)",
+          "labelKey": "people.detail.tp3NetRemuneration",
+          "type": "Money",
+          "note": ""
+        },
+        {
+          "label": "EPF claimed toward relief (K)",
+          "labelKey": "people.detail.tp3EpfClaimed",
+          "type": "Money",
+          "note": ""
+        },
+        {
+          "label": "PCB already deducted (X)",
+          "labelKey": "people.detail.tp3PcbPaid",
+          "type": "Money",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "group": "Payroll",
+      "section": "Zakat summary",
+      "owner": "Country payroll zakat-election owner",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:3452-3497",
+      "cardinality": "One current election; payroll transaction screen remains the only editor",
+      "history": "Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.",
+      "plannedAccess": "Restricted tax/statutory information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.",
+      "fields": [
+        {
+          "label": "Status",
+          "labelKey": "people.detail.zakatSummaryStatus",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "State authority",
+          "labelKey": "people.detail.zakatSummaryState",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Method",
+          "labelKey": "people.detail.zakatSummaryMethod",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Rate",
+          "labelKey": "people.detail.zakatSummaryRate",
+          "type": "Money or percentage",
+          "note": "Type follows the method; no sum across percentages and ringgit"
+        }
+      ]
+    },
+    {
+      "group": "Leave",
+      "section": "Grade and benefit scheme",
+      "owner": "Employment grade owner and canonical entitlement-scheme owner",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:2573-2757; core/entitlement-scheme-view.ts",
+      "cardinality": "One valid grade; benefit scheme resolution and many leave-type rows",
+      "history": "Dated records exist. Resolve the record valid on the selected date; show unavailable outside recorded coverage. Historical catalogue names require recorded labels; current names must be identified as current.",
+      "plannedAccess": "Personnel report access within permitted companies.",
+      "fields": [
+        {
+          "label": "Grade",
+          "labelKey": "people.detail.grade",
+          "type": "Choice",
+          "note": "Same job-grade source as Employment; label retained, no duplicate fact"
+        },
+        {
+          "label": "Benefit Scheme",
+          "labelKey": "admin.personnel.benefitScheme.title",
+          "type": "Text",
+          "note": "May not resolve to a single scheme; retain that state"
+        },
+        {
+          "label": "Effective From",
+          "labelKey": "admin.personnel.benefitScheme.effectiveFrom",
+          "type": "Date",
+          "note": "Unavailable when no recorded change establishes the date"
+        },
+        {
+          "label": "Years of service",
+          "labelKey": null,
+          "type": "Number",
+          "note": "Canonical service-years input used by entitlement owner"
+        },
+        {
+          "label": "Leave type",
+          "labelKey": "admin.personnel.benefitScheme.colLeaveType",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Picked up by",
+          "labelKey": "admin.personnel.benefitScheme.colPickedUpBy",
+          "type": "Text",
+          "note": "Rule or default/sole entitlement table, accurately distinguished"
+        },
+        {
+          "label": "Days at service years",
+          "labelKey": null,
+          "type": "Number (days)",
+          "note": "Source caption is Days at the selected service-years figure; absent band remains unavailable"
+        },
+        {
+          "label": "Unmatched leave types",
+          "labelKey": null,
+          "type": "Choice list",
+          "note": "Owner says which configured types did not resolve; do not assign zero entitlement"
+        }
+      ]
+    },
+    {
+      "group": "Leave",
+      "section": "Leave balance and breakdown",
+      "owner": "Canonical leave balance and entitlement-breakdown owners",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:2763-2822; components/leave/EntitlementBreakdown.tsx; components/leave/entitlement-panel-config.ts",
+      "cardinality": "One row per employee and leave type/cycle; exact and rounded earned values kept distinct",
+      "history": "Dated records exist. Resolve the record valid on the selected date; show unavailable outside recorded coverage. Historical catalogue names require recorded labels; current names must be identified as current.",
+      "plannedAccess": "Personnel report access within permitted companies.",
+      "fields": [
+        {
+          "label": "Leave type",
+          "labelKey": null,
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "As at date",
+          "labelKey": null,
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Entitlement",
+          "labelKey": "leave.breakdown.field.eligible",
+          "type": "Number (days)",
+          "note": "Prorated/rounded entitlement as shown by the current panel; not a newly calculated annual allowance"
+        },
+        {
+          "label": "Earned to Date",
+          "labelKey": "leave.breakdown.field.ytdEntitled",
+          "type": "Number (days)",
+          "note": "Exact closing arithmetic value"
+        },
+        {
+          "label": "Rounded Earned to Date",
+          "labelKey": null,
+          "type": "Number (days)",
+          "note": "Owner-rounded display value; separately labelled"
+        },
+        {
+          "label": "Brought forward",
+          "labelKey": "leave.breakdown.field.broughtForward",
+          "type": "Number (days)",
+          "note": ""
+        },
+        {
+          "label": "Adjustments",
+          "labelKey": "leave.breakdown.field.adjustments",
+          "type": "Number (days)",
+          "note": ""
+        },
+        {
+          "label": "Total",
+          "labelKey": "leave.breakdown.field.total",
+          "type": "Number (days)",
+          "note": ""
+        },
+        {
+          "label": "Taken",
+          "labelKey": "leave.breakdown.field.taken",
+          "type": "Number (days)",
+          "note": ""
+        },
+        {
+          "label": "Pending approval",
+          "labelKey": "leave.breakdown.field.pendingApproval",
+          "type": "Number (days)",
+          "note": ""
+        },
+        {
+          "label": "Brought forward forfeited",
+          "labelKey": "leave.breakdown.field.broughtForwardForfeited",
+          "type": "Number (days)",
+          "note": ""
+        },
+        {
+          "label": "Expiry date",
+          "labelKey": null,
+          "type": "Date",
+          "note": "Canonical carried-forward expiry date"
+        },
+        {
+          "label": "Available Balance",
+          "labelKey": "leave.breakdown.field.availableBalance",
+          "type": "Number (days)",
+          "note": ""
+        },
+        {
+          "label": "Entitlement status",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "Not generated, not configured, no matching rule and other owner states remain distinct"
+        },
+        {
+          "label": "Entitlement table",
+          "labelKey": null,
+          "type": "Text",
+          "note": "Only an owner-resolved table name"
+        },
+        {
+          "label": "Shared balance source",
+          "labelKey": null,
+          "type": "Leave-type reference",
+          "note": "Borrowing types identify their source pool; totals must not count the same pool twice"
+        }
+      ]
+    },
+    {
+      "group": "Leave",
+      "section": "Entitlement recalculation history",
+      "owner": "Leave entitlement recalculation audit owner",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:2843-2895; core/leave.ts listEntitlementRecalcAudit",
+      "cardinality": "Many recorded recalculation rows",
+      "history": "Recorded event/snapshot. Read what the event recorded, including correction state; do not substitute today’s values.",
+      "plannedAccess": "Personnel report access within permitted companies.",
+      "fields": [
+        {
+          "label": "Took effect",
+          "labelKey": "people.detail.recalcColEffective",
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Leave type",
+          "labelKey": "people.detail.recalcColType",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Previous Job grade",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "Event-recorded previous grade"
+        },
+        {
+          "label": "New Job grade",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "Event-recorded new grade"
+        },
+        {
+          "label": "Reason",
+          "labelKey": "people.detail.recalcColReason",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Previous",
+          "labelKey": "people.detail.recalcColPrevious",
+          "type": "Number (days)",
+          "note": ""
+        },
+        {
+          "label": "New",
+          "labelKey": "people.detail.recalcColNew",
+          "type": "Number (days)",
+          "note": ""
+        },
+        {
+          "label": "Change",
+          "labelKey": "people.detail.recalcColChange",
+          "type": "Number (days)",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "group": "Documents",
+      "section": "Employee documents",
+      "owner": "Employee-document register owner",
+      "source": "app/admin/personnel/[employmentId]/documents-manager.tsx:105-142,208-260; app/admin/personnel/[employmentId]/documents-section.tsx; core/employee-documents.ts",
+      "cardinality": "Many document metadata rows; file content is excluded",
+      "history": "Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.",
+      "plannedAccess": "Restricted confidential HR history permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.",
+      "fields": [
+        {
+          "label": "Document name / title",
+          "labelKey": null,
+          "type": "Text",
+          "note": "Same stored title shown as Document in the list"
+        },
+        {
+          "label": "Category",
+          "labelKey": null,
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Description / remarks",
+          "labelKey": null,
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "File name",
+          "labelKey": null,
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Type",
+          "labelKey": null,
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Size",
+          "labelKey": null,
+          "type": "Whole number (bytes)",
+          "note": ""
+        },
+        {
+          "label": "Uploaded",
+          "labelKey": null,
+          "type": "Date and time",
+          "note": ""
+        },
+        {
+          "label": "Last updated",
+          "labelKey": null,
+          "type": "Date and time",
+          "note": ""
+        },
+        {
+          "label": "Uploaded by",
+          "labelKey": null,
+          "type": "Employee/user display name",
+          "note": "Shown beneath the upload timestamp"
+        },
+        {
+          "label": "Last updated by",
+          "labelKey": null,
+          "type": "Employee/user display name",
+          "note": "Shown beneath the update timestamp"
+        },
+        {
+          "label": "Attachment",
+          "labelKey": null,
+          "type": "File",
+          "note": "Catalogue entry; binary file content and public download links excluded from report export. Use guarded Personnel document access."
+        }
+      ]
+    },
+    {
+      "group": "Qualification",
+      "section": "Academic and professional qualifications",
+      "owner": "Qualification register owner",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:2181-2317; core/qualifications.ts",
+      "cardinality": "Many records per employment; highest is a stored flag, distinct from latest",
+      "history": "Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.",
+      "plannedAccess": "Personnel report access within permitted companies.",
+      "fields": [
+        {
+          "label": "Qualification",
+          "labelKey": "people.detail.qualification.level",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Institute",
+          "labelKey": "people.detail.qualification.institute",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "From (year & month)",
+          "labelKey": "people.detail.qualification.fromYm",
+          "type": "Year and month",
+          "note": ""
+        },
+        {
+          "label": "To (year & month)",
+          "labelKey": "people.detail.qualification.toYm",
+          "type": "Year and month",
+          "note": ""
+        },
+        {
+          "label": "Graduation date",
+          "labelKey": "people.detail.qualification.graduationDate",
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Major / Field of study",
+          "labelKey": "people.detail.qualification.major",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Result / Grade",
+          "labelKey": "people.detail.qualification.result",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Description",
+          "labelKey": "people.detail.qualification.description",
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Highest qualification",
+          "labelKey": "people.detail.qualification.highest",
+          "type": "Yes/no",
+          "note": "Same flag shown as Highest in the list"
+        }
+      ]
+    },
+    {
+      "group": "Others",
+      "section": "Change history",
+      "owner": "Authorised personnel audit projection",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:4136-4140; components/audit-table.tsx; core/read.ts employeeAudit",
+      "cardinality": "Many recorded audit entries; allow-listed typed details only",
+      "history": "Recorded event/snapshot. Read what the event recorded, including correction state; do not substitute today’s values.",
+      "plannedAccess": "Restricted confidential HR history permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.",
+      "fields": [
+        {
+          "label": "Event",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "Human-readable event name"
+        },
+        {
+          "label": "Action",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "Created, updated, deleted, archived, unarchived, superseded or other"
+        },
+        {
+          "label": "High impact",
+          "labelKey": null,
+          "type": "Yes/no",
+          "note": "Canonical audit classification"
+        },
+        {
+          "label": "Actor type",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "User, system or other canonical actor kind"
+        },
+        {
+          "label": "Actor",
+          "labelKey": null,
+          "type": "Employee/user display name",
+          "note": ""
+        },
+        {
+          "label": "Module",
+          "labelKey": null,
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Record type",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "Aggregate type displayed by the audit owner"
+        },
+        {
+          "label": "At",
+          "labelKey": null,
+          "type": "Date and time",
+          "note": ""
+        },
+        {
+          "label": "Sequence",
+          "labelKey": null,
+          "type": "Whole number",
+          "note": ""
+        },
+        {
+          "label": "Changed field",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "Only fields registered in the shared Personnel catalogue; raw unvalidated event payload is not a report column"
+        },
+        {
+          "label": "Previous value",
+          "labelKey": null,
+          "type": "Typed value",
+          "note": "Only the masked/allow-listed value the authorised audit owner exposes; never bypass its masking"
+        },
+        {
+          "label": "New value",
+          "labelKey": null,
+          "type": "Typed value",
+          "note": "Only the masked/allow-listed value the authorised audit owner exposes; never bypass its masking"
+        }
+      ]
+    },
+    {
+      "group": "Others",
+      "section": "Leave requests",
+      "owner": "Leave request owner",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:4995-5027; core/read.ts leaveRequestsFor",
+      "cardinality": "Many leave request records",
+      "history": "Recorded event/snapshot. Read what the event recorded, including correction state; do not substitute today’s values.",
+      "plannedAccess": "Personnel report access within permitted companies.",
+      "fields": [
+        {
+          "label": "Leave type",
+          "labelKey": null,
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Start date",
+          "labelKey": null,
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "End date",
+          "labelKey": null,
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Days",
+          "labelKey": null,
+          "type": "Number (days)",
+          "note": ""
+        },
+        {
+          "label": "Status",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "Partially approved is retained where some dates were rejected"
+        }
+      ]
+    },
+    {
+      "group": "Others",
+      "section": "Probation / Contract / Internship Review",
+      "owner": "Employment-review owner and stored review-document owner",
+      "source": "app/admin/personnel/[employmentId]/review-section.tsx:37-176; core/employment-review.ts",
+      "cardinality": "One current review profile; many completed/pending reviews and document metadata rows",
+      "history": "Recorded event/snapshot. Read what the event recorded, including correction state; do not substitute today’s values.",
+      "plannedAccess": "Restricted confidential HR history permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.",
+      "fields": [
+        {
+          "label": "Employment type",
+          "labelKey": "review.currentType",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Review type",
+          "labelKey": null,
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "End date",
+          "labelKey": "review.endDate",
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Review due",
+          "labelKey": "review.dueDate",
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Review status",
+          "labelKey": null,
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Review decision",
+          "labelKey": null,
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Review document kind",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "System letter or signed letter"
+        },
+        {
+          "label": "Review document file name",
+          "labelKey": null,
+          "type": "Text",
+          "note": ""
+        },
+        {
+          "label": "Upload signed letter",
+          "labelKey": "review.uploadSignedLetter",
+          "type": "File",
+          "note": "Catalogue entry; file content is excluded from exports and continues to require guarded document access"
+        }
+      ]
+    },
+    {
+      "group": "Employment History",
+      "section": "Related values shown during hire correction",
+      "owner": "Hire correction owner read-only related values",
+      "source": "app/admin/personnel/[employmentId]/page.tsx:4080-4118",
+      "cardinality": "One related current value; these controls do not claim to be editable original-hire corrections",
+      "history": "Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.",
+      "plannedAccess": "Personnel report access within permitted companies.",
+      "fields": [
+        {
+          "label": "Company",
+          "labelKey": "people.detail.employmentInfo.company",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Group Join Date",
+          "labelKey": "people.detail.employmentInfo.groupJoinDate",
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Join Date",
+          "labelKey": "people.detail.employmentInfo.joinDate",
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Job Grade",
+          "labelKey": "people.detail.employmentInfo.jobGrade",
+          "type": "Choice",
+          "note": ""
+        },
+        {
+          "label": "Employment Type",
+          "labelKey": "people.detail.employmentInfo.employmentType",
+          "type": "Choice",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "group": "Leave",
+      "section": "Eligibility and explanation details",
+      "owner": "Canonical entitlement explanation and configured formula-explanation owners",
+      "source": "components/leave/LeaveDetailsPanel.tsx:431-478,650-691; lib/entitlement-status.ts:276-360",
+      "cardinality": "Many rule explanations and one explanation per displayed balance line; not new report-local formulas",
+      "history": "Dated records exist. Resolve the record valid on the selected date; show unavailable outside recorded coverage. Historical catalogue names require recorded labels; current names must be identified as current.",
+      "plannedAccess": "Personnel report access within permitted companies.",
+      "fields": [
+        {
+          "label": "Eligibility rule",
+          "labelKey": null,
+          "type": "Text",
+          "note": "Only an owner-returned rule name"
+        },
+        {
+          "label": "Rule state",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "Matched, in force, expired, not yet or table stopped"
+        },
+        {
+          "label": "Rule valid from",
+          "labelKey": null,
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Rule valid to",
+          "labelKey": null,
+          "type": "Date",
+          "note": ""
+        },
+        {
+          "label": "Rule does not match because",
+          "labelKey": null,
+          "type": "Text",
+          "note": "Authorised explanation, not an arbitrary criteria payload"
+        },
+        {
+          "label": "Balance line",
+          "labelKey": null,
+          "type": "Choice",
+          "note": "The displayed entitlement/balance line this explanation belongs to"
+        },
+        {
+          "label": "Explanation",
+          "labelKey": null,
+          "type": "Text",
+          "note": "Canonical generated sentence, if the owner exposes a reusable rendered explanation"
+        },
+        {
+          "label": "Description",
+          "labelKey": null,
+          "type": "Text",
+          "note": "HR-authored explanation for this balance line"
+        },
+        {
+          "label": "Formula",
+          "labelKey": null,
+          "type": "Text",
+          "note": "HR-authored explanatory text; never executed as a report formula"
+        }
+      ]
+    },
+    {
+      "group": "Profile",
+      "section": "Draft-only saved address choice",
+      "owner": "Employee draft owner; active-profile copy gesture is transient",
+      "source": "app/admin/personnel/new/wizard.tsx; lib/employee-draft-schema.ts:135-145",
+      "cardinality": "One draft value; not a persistent activated-profile flag",
+      "history": "Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.",
+      "plannedAccess": "Restricted personal information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.",
+      "fields": [
+        {
+          "label": "Same as permanent address",
+          "labelKey": "people.detail.sameAsPermanent",
+          "type": "Yes/no",
+          "note": "Saved in the draft only. After activation, the active-profile copy control has no stored choice and remains disabled as a report column."
+        }
+      ]
+    },
+    {
+      "group": "Employment",
+      "section": "Draft-only employment fields",
+      "owner": "Employee draft owner, using the hire/assignment lifecycle owners on activation",
+      "source": "app/admin/personnel/new/wizard.tsx:726-742,827-875; lib/employee-draft-schema.ts EmployeeDraftEmployment",
+      "cardinality": "One current draft value. These supplement the shared Employment fields, not a separate Personnel tab.",
+      "history": "Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.",
+      "plannedAccess": "Personnel report access within permitted companies.",
+      "fields": [
+        {
+          "label": "Cost center",
+          "labelKey": "people.wizard.fields.costCenter",
+          "type": "Choice",
+          "note": "The draft captures Cost Centre; hire correction also exposes the real assignment source"
+        },
+        {
+          "label": "Internship End Date",
+          "labelKey": "people.wizard.fields.internshipEndDate",
+          "type": "Date",
+          "note": "The provisional end date is labelled for Internship; contract uses Contract End Date already listed"
+        },
+        {
+          "label": "Probation ends on",
+          "labelKey": null,
+          "type": "Date",
+          "note": "Owner-derived draft date from Group Join Date and Probation Period, or explicitly labelled legacy stored date"
+        }
+      ]
+    },
+    {
+      "group": "Payroll",
+      "section": "Draft initial monthly allowance",
+      "owner": "Employee draft owner, handed to compensation owner at activation",
+      "source": "app/admin/personnel/new/wizard.tsx:1211-1221; core/employee-draft.ts",
+      "cardinality": "One current draft amount; distinct from dated Pay Items",
+      "history": "Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.",
+      "plannedAccess": "Restricted compensation permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.",
+      "fields": [
+        {
+          "label": "Monthly allowance",
+          "labelKey": "people.wizard.fields.monthlyAllowance",
+          "type": "Money",
+          "note": "Existing draft field and legacy compensation/report field. It is not a new active-profile Pay Item or a second allowance calculator."
+        }
+      ]
+    }
+  ],
+  "exclusions": [
+    {
+      "label": "Data privacy (PDPA)",
+      "reason": "This Personnel section contains explanatory text and a link, not a saved Personnel field. Privacy case data belongs to its own screen and is not exposed automatically."
+    },
+    {
+      "label": "Disciplinary",
+      "reason": "No separate disciplinary tab/register is rendered by the current Personnel screen. Existing blacklist status/reasons are included under Employment History. A future registered disciplinary field must opt into the restricted HR category."
+    },
+    {
+      "label": "Contract history",
+      "reason": "Contract start/end/remark currently live under Employment; contract-related movements and review records are included in their actual owners. No independent contract-history register is invented."
+    },
+    {
+      "label": "Full Form TP3 and payroll transaction details",
+      "reason": "The Payroll tab displays four opening-balance fields and a Zakat summary, plus links. Fields on the linked transaction screens are not silently claimed to be Personnel tab fields."
+    },
+    {
+      "label": "Actions, save/discard, buttons, help text, search, paging and confirmation draft values",
+      "reason": "Interface controls are not business data columns."
+    },
+    {
+      "label": "Photo and attachment binary contents",
+      "reason": "Listed for completeness but disabled as report columns. Metadata/availability can be reported; protected files remain accessible only through their existing guarded screen."
+    },
+    {
+      "label": "Arbitrary audit payload properties",
+      "reason": "Only registered, typed, permission-checked Personnel fields may be selected. Generic payload dumping could expose confidential values."
+    }
+  ],
+  "historyCaveat": "As-at date cannot recover a past value which was never retained. Past values without owner history/snapshot must show Unavailable for this date. A current value is never silently labelled historical. Current field labels/catalogue renames and mutable records need coverage decisions before implementation.",
+  "entryCount": 385
+}

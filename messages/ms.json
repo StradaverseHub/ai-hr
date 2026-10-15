@@ -18982,7 +18982,8 @@
     "title": "Butiran Kredit Cuti",
     "subtitle": "Sejarah kredit cuti anda — kredit diperoleh, digunakan untuk Cuti Gantian dan baki yang masih tersedia.",
     "empty": "Tiada kredit cuti diperoleh yang sepadan dengan penapis ini.",
-    "invalid": "Penapis tidak sah. Halaman ini hanya menunjukkan kredit anda sendiri."
+    "invalid": "Penapis tidak sah. Halaman ini hanya menunjukkan kredit anda sendiri.",
+    "truncatedHint": "Pilih bilangan baris setiap halaman untuk melihat baki kredit."
   },
   "labelExcelRoundTrip": {
     "blank": "Muat turun templat kosong",

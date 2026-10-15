@@ -46,24 +46,28 @@ function actualFor(criterion:AllowanceExpressionCriterion,days:AllowanceDay[]):n
  const values=days.map(day=>{
   const facts=day.v3Facts,field=criterion.field;
   if(field==='lateCount'||field==='earlyOutCount'){
-   if(facts?.fixedClockApplicable===false)return 0;
    const minutes=field==='lateCount'?day.lateMinutes:day.earlyOutMinutes;
-   return minutes==null?null:minutes>0?1:0;
+   return minutes==null?(facts?.fixedClockApplicable===false?0:null):minutes>0?1:0;
   }
-  if(field==='absenceCount')return day.absentDays>0?1:0;
+  if(field==='absenceCount')return facts?.absenceKnown===false?null:day.absentDays>0?1:0;
+  if(field==='absentDays'&&facts?.absenceKnown===false)return null;
   if(field==='incompleteCount')return facts?facts.incomplete?1:0:null;
   if(field==='shortHoursCount')return !day.complete?0:facts?.shortMinutes==null?null:facts.shortMinutes>0?1:0;
   if(field==='shortMinutes')return facts?.shortMinutes??null;
   if(field==='leaveCount'||field==='leaveDays'){
    if(!facts)return null;
    const selected=criterion.leaveTypeIds??[];
-   if(field==='leaveCount')return facts.leaveTypesPresent.some(id=>!selected.length||selected.includes(id))?1:0;
+   const present=facts.leaveTypesPresent.some(id=>!selected.length||selected.includes(id));
+   const unknown=(facts.leaveUnknownTypeIds??[]).some(id=>!selected.length||selected.includes(id));
+   if(field==='leaveCount')return present?1:unknown?null:0;
+   if(unknown)return null;
+   if(selected.length&&!present)return 0;
    if(facts.leave==null)return null;
    const total=facts.leave.filter(row=>!selected.length||selected.includes(row.typeId)).reduce((sum,row)=>sum+row.days,0);
    if(!Number.isFinite(total)||total<0||total>1.000001)throw new Error('Inconsistent canonical leave fractions.');
-   return field==='leaveCount'?total>0?1:0:total;
+   return total;
   }
-  if((field==='lateMinutes'||field==='earlyOutMinutes')&&facts?.fixedClockApplicable===false)return 0;
+  if((field==='lateMinutes'||field==='earlyOutMinutes')&&day[field]==null&&facts?.fixedClockApplicable===false)return 0;
   return day[field as AllowanceMetric];
  });
  return values.some(value=>value==null)?null:values.reduce<number>((sum,value)=>sum+(value??0),0);

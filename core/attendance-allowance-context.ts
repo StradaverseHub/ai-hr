@@ -2,7 +2,7 @@
 import { and, asc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client';
 import { assignment, attendance, department, employment, person } from '../db/schema';
-import { allowanceScheduleFactsTx, newScheduleMemo } from '../packs/attendance/service';
+import { allowanceScheduleFactsTx, newScheduleMemo, recordedAllowanceAttendanceFacts } from '../packs/attendance/service';
 import { companySegmentsForPeriodBulk, employedByCompanyDuring } from './employment-company';
 import { datesBetween } from '../lib/roster-month';
 import { absenceBreakdownByEmployment } from './absence-days';
@@ -28,7 +28,7 @@ export async function allowanceInputsTx(tx:Tx,companyId:string,from:string,to:st
   // Per-date reads are bounded to the period window; a shared date-map seam can optimize this later.
   const absenceByDay=new Map<string,Map<string,{absentDays:number;leaveDays:number}>>();
   for(const date of datesBetween(from,to)){
-    if(date<=today)absenceByDay.set(date,await absenceBreakdownByEmployment(tx,date,date,ids,{rules:'scheduled',until:today}));
+    if(date<=today)absenceByDay.set(date,await absenceBreakdownByEmployment(tx,date,date,ids,{rules:'scheduled',until:today,measurement:'raw'}));
   }
   const leave=version===3?await approvedLeaveMeasurementsTx(tx,{employmentIds:ids,from,to,today}):null;
   const recordByDay=new Map(records.map(r=>[`${r.employmentId}:${r.attendanceDate}`,r]));
@@ -41,7 +41,7 @@ export async function allowanceInputsTx(tx:Tx,companyId:string,from:string,to:st
       if(!(segments.get(employee.id)??[]).some(s=>s.companyId===companyId&&s.from<=date&&s.to>=date))continue;
       const placement=assignments.find(a=>a.employmentId===employee.id&&a.validFrom<=date&&(!a.validTo||a.validTo>date));
       factsByDate.set(date,{companyId,departmentId:placement?.departmentId??null,businessUnitId:placement?.businessUnitId??placement?.departmentBusinessUnitId??null,positionId:placement?.positionId??null,gradeId:employee.gradeId,employmentType:placement?.employmentType??null,employmentCategory:employee.employmentCategory,status:employee.terminatedOn&&employee.terminatedOn<=date?'terminated':'active'});
-      const schedule=await allowanceScheduleFactsTx(tx,employee.id,date,memo,version===3?{includeApplicability:true}:undefined);
+      const schedule=await allowanceScheduleFactsTx(tx,employee.id,date,memo);
       const row=recordByDay.get(`${employee.id}:${date}`);
       // The three-way day type is frozen on recorded attendance. Never relabel a recorded holiday or
       // rest day as work merely because the calendar was edited. Full/half/off and shift applicability use
@@ -65,7 +65,11 @@ export async function allowanceInputsTx(tx:Tx,companyId:string,from:string,to:st
       days.push(day);
       if(version===3){
        const approved=leave?.get(employee.id+':'+date);
-       day.v3Facts={shortMinutes:attended?(day.complete?working?row?.underMinutes??null:0:null):0,incomplete:attended&&!day.complete,fixedClockApplicable:schedule.fixedClockApplicable??true,leave:approved?approved.leave:[],leaveTypesPresent:approved?.types??[],source:approved?.source??'canonical-approved-leave-empty'};
+       const evidence=attended?recordedAllowanceAttendanceFacts({record:row,approvedLeave:approved?approved.leave:[]}):undefined;
+       // Recorded time measurements outrank later configuration. Missing historical applicability
+       // stays unknown; it is never inferred from the shift now assigned to this date.
+       if(evidence){day.lateMinutes=evidence.lateMinutes;day.earlyOutMinutes=evidence.earlyOutMinutes;}
+       day.v3Facts={shortMinutes:attended?(day.complete?evidence!.shortMinutes:null):0,incomplete:attended&&!day.complete,fixedClockApplicable:evidence?.fixedClockApplicable??null,attendanceEvidence:evidence,leave:approved?approved.leave:[],leaveTypesPresent:approved?.types??[],leaveUnknownTypeIds:approved?.unknownTypes??[],absenceKnown:!(approved?.unknownTypes.length),source:approved?.source??'canonical-approved-leave-empty'};
       }
     }
     result.push({employmentId:employee.id,name:employee.name,days,factsByDate});

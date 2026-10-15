@@ -18982,7 +18982,8 @@
     "title": "Leave Credit Details",
     "subtitle": "Your leave credit history — credits you earned, how much has been used for Replacement Leave, and what is still available.",
     "empty": "No earned leave credits match these filters.",
-    "invalid": "The filters are invalid. This page can show only your own credits."
+    "invalid": "The filters are invalid. This page can show only your own credits.",
+    "truncatedHint": "Choose a numbered page size to see the remaining credits."
   },
   "labelExcelRoundTrip": {
     "blank": "Download blank template",

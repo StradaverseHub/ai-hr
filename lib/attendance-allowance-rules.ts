@@ -3,6 +3,7 @@ import { addDaysIso, datesBetween, isMonthParam, monthRange, weekRangeOf } from 
 import { ALLOWANCE_METHODS_V2, ALLOWANCE_EMPLOYEE_FIELDS, ALLOWANCE_METRICS, ALLOWANCE_OPERATORS, ALLOWANCE_DAY_KINDS, type AllowancePeriodMethod, type AllowancePolicyType, type AllowanceEmployeeField, type AllowanceMetric, type AllowanceOperator, type AllowanceDayKind } from './attendance-allowance-vocabulary';
 export * from './attendance-allowance-vocabulary';
 import { validateAllowanceExpression, evaluateAllowanceExpression, type AllowanceExpression, type AllowanceExpressionTrace } from './attendance-allowance-expression';
+import type { RecordedAllowanceAttendanceFacts } from '../packs/attendance/service';
 export type AllowanceAttendanceCriterion = { field: AllowanceMetric; operator: AllowanceOperator; value: string; upper?: string; unit: 'minutes' | 'hours' | 'days' };
 export type AllowanceEmployeeCriterion = { field: AllowanceEmployeeField; operator: 'in' | 'notIn'; values: string[] };
 export type AllowanceRulesV2 = {
@@ -124,7 +125,7 @@ export type AllowanceDay = {
   lateMinutes: number | null; earlyOutMinutes: number | null;
   absentDays: number; attendanceDays: number; eligibleWorkingDays: number;
   complete: boolean;
-  v3Facts?: {shortMinutes:number|null;incomplete:boolean;fixedClockApplicable:boolean;leave:{typeId:string;paid:boolean|null;days:number;requestIds:string[]}[]|null;leaveTypesPresent:string[];source:string};
+  v3Facts?: {shortMinutes:number|null;incomplete:boolean;fixedClockApplicable:boolean|null;attendanceEvidence?:RecordedAllowanceAttendanceFacts;absenceKnown?:boolean;leave:{typeId:string;paid:boolean|null;days:number;requestIds:string[]}[]|null;leaveTypesPresent:string[];leaveUnknownTypeIds?:string[];source:string};
   factSources?: { measurements: 'recorded-attendance' | 'canonical-scheduled-absence'; recordedDayType: string | null; dayAndShift: 'canonical-schedule-at-calculation'; canonicalKind: AllowanceDayKind };
 };
 export type AllowanceMetricTrace = { field: AllowanceMetric; actual: number | null; pass: boolean; operator: AllowanceOperator; value: string; upper?: string; unit: AllowanceAttendanceCriterion['unit'] };
@@ -159,7 +160,7 @@ export function evaluateAllowancePeriods(p: { method: AllowancePeriodMethod; mon
 function evaluateAllowancePeriodV3(p:{effectiveFrom:string;today:string;rules:AllowanceRulesV3;days:AllowanceDay[]},period:AllowancePeriod,amount:bigint):AllowancePeriodEvaluation {
  const byDate=new Map<string,AllowanceDay>();
  for(const day of p.days){if(byDate.has(day.date))throw new Error('Duplicate canonical allowance date');byDate.set(day.date,day);}
- const days=[...byDate.values()].filter(d=>d.date>=period.from&&d.date<=period.to&&d.date>=p.effectiveFrom&&d.date<=p.today&&(d.attendanceId!=null||d.absentDays>0||((d.v3Facts?.leaveTypesPresent.length??0)>0))&&(!p.rules.attendance.dayKinds.length||p.rules.attendance.dayKinds.includes(d.kind))&&(!p.rules.attendance.shiftIds.length||d.shiftId!=null&&p.rules.attendance.shiftIds.includes(d.shiftId))).sort((a,b)=>a.date.localeCompare(b.date));
+ const days=[...byDate.values()].filter(d=>d.date>=period.from&&d.date<=period.to&&d.date>=p.effectiveFrom&&d.date<=p.today&&(d.attendanceId!=null||d.absentDays>0||((d.v3Facts?.leaveTypesPresent.length??0)>0)||((d.v3Facts?.leaveUnknownTypeIds?.length??0)>0))&&(!p.rules.attendance.dayKinds.length||p.rules.attendance.dayKinds.includes(d.kind))&&(!p.rules.attendance.shiftIds.length||d.shiftId!=null&&p.rules.attendance.shiftIds.includes(d.shiftId))).sort((a,b)=>a.date.localeCompare(b.date));
  const expression=evaluateAllowanceExpression(p.rules.attendance.expression,days);
  const reasons:string[]=[];
  if(period.to>p.today)reasons.push('unfinishedPeriod');
