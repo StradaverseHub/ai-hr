@@ -1,5 +1,5 @@
 /** Deterministic OT arithmetic only. No database, current profile, jurisdiction or settlement mutation. */
-import { OVERTIME_LIMITS as L, OVERTIME_NUMERIC_FIELDS, OVERTIME_SELECTION_FIELDS, OVERTIME_INPUT_FACT_FIELDS, OvertimePatternError, type OvertimeCandidate, type OvertimeClockSpan, type OvertimeCondition, type OvertimeEvaluation, type OvertimeDurationEvaluation, type OvertimeExact, type OvertimeExpression, type OvertimeFact, type OvertimeFacts, type OvertimeInput, type OvertimeIssue, type OvertimeLine, type OvertimePattern, type OvertimeProvenance, type OvertimeRate, type OvertimeResolution, type OvertimeRoundingMode, type OvertimeSource, type OvertimeTrace, type OvertimeUnit, type OvertimeValue } from './overtime-pattern-model';
+import { OVERTIME_LIMITS as L, OVERTIME_NUMERIC_FIELDS, OVERTIME_SELECTION_FIELDS, OVERTIME_INPUT_FACT_FIELDS, OvertimePatternError, type OvertimeCandidate, type OvertimeClockSpan, type OvertimeCondition, type OvertimeEvaluation, type OvertimeDurationEvaluation, type OvertimeDurationAllocation, type OvertimeExact, type OvertimeExpression, type OvertimeFact, type OvertimeFacts, type OvertimeInput, type OvertimeIssue, type OvertimeLine, type OvertimePattern, type OvertimeProvenance, type OvertimeRate, type OvertimeResolution, type OvertimeRoundingMode, type OvertimeSource, type OvertimeTrace, type OvertimeUnit, type OvertimeValue } from './overtime-pattern-model';
 import { overtimeCurrency, overtimeDate, overtimeDecimal, overtimeId, overtimeInteger, overtimeKeys, overtimeList, overtimeObject, overtimeRefuse as fail, overtimeUuid, overtimeSourceId, validateOvertimeAssignmentTarget, validateOvertimePattern } from './overtime-pattern-schema';
 type Q = {
     n: bigint;
@@ -589,6 +589,31 @@ function runDurationStage(rawPattern: OvertimePattern, rawInput: OvertimeInput, 
     e.emit('duration', 'lineApprovalAllocation', { policy: 'payableBoundFirstThen' + pattern.durationAllocation + 'Remainder', physicalApproval: false, allocation: work.map(w => ({ segmentId: w.id, minutes: exact(w.approvalAllocated, 'minutes') })) });
     return { pattern, input, identity, e, work, rawTotal, eligibleTotal, canonicalApproved, dayApproval, setComputed, deductions };
 }
+function durationAllocations(stage: ReturnType<typeof runDurationStage>): OvertimeDurationAllocation[] {
+    return stage.work.map(w => {
+        let attribution: OvertimeDurationAllocation['attribution'] = null;
+        if (w.clock.state === 'known' && (stage.input.layer === 'raw' || compare(w.payable, q(BigInt(w.clock.value.elapsedSeconds), 60n)) === 0)) {
+            const span = w.clock.value, rawStart = q(BigInt(span.startEpochSeconds)), rawEnd = add(rawStart, q(BigInt(span.elapsedSeconds))), seconds = mul(w.payable, SIXTY);
+            const start = stage.pattern.durationAllocation === 'earliest' ? rawStart : sub(rawEnd, seconds);
+            attribution = { policy: stage.pattern.durationAllocation, physicalApproval: false, startEpochSeconds: exact(start, 'scalar'), endEpochSeconds: exact(add(start, seconds), 'scalar') };
+        }
+        return { segmentId: w.id, sessionId: w.sessionId, payableMinutes: exact(w.payable, 'minutes'), rawClock: w.clock, attribution };
+    });
+}
+/** Intersect already allocated counts with a canonical recorded absolute shift-end boundary.
+ * Unknown placement remains Unknown. No rate evaluation, new allocation or physical-approval claim. */
+export function intersectOvertimeDurationAfter(result: OvertimeDurationEvaluation, boundaryEpochSeconds: string): OvertimeValue {
+    if (result.status === 'refused') return unknown('durationRefused');
+    if (!/^\d{1,12}$/.test(boundaryEpochSeconds)) return unknown('shiftEndUnavailable');
+    const boundary = q(BigInt(boundaryEpochSeconds)); let seconds = ZERO;
+    for (const allocation of result.allocations) {
+        if (BigInt(allocation.payableMinutes.numerator) === 0n) continue;
+        if (!allocation.attribution) return unknown('durationPlacementUnavailable');
+        const a = allocation.attribution, start = q(BigInt(a.startEpochSeconds.numerator), BigInt(a.startEpochSeconds.denominator)), end = q(BigInt(a.endEpochSeconds.numerator), BigInt(a.endEpochSeconds.denominator));
+        seconds = add(seconds, max(ZERO, sub(end, max(start, boundary))));
+    }
+    return known(div(seconds, SIXTY), 'minutes');
+}
 /** Duration evidence cannot be mistaken for a cash result: it has no rate, mapping or amount. */
 export function evaluateOvertimePatternDuration(pattern: OvertimePattern, rawInput: OvertimeInput): OvertimeDurationEvaluation {
     let engine: Engine | undefined;
@@ -596,7 +621,7 @@ export function evaluateOvertimePatternDuration(pattern: OvertimePattern, rawInp
     try {
         const stage = runDurationStage(pattern, rawInput, e => { engine = e; }), { input, e, work, rawTotal, eligibleTotal, canonicalApproved } = stage;
         const payable = sum(work.map(w => w.payable));
-        const result: OvertimeDurationEvaluation = { status: payable.n > 0n ? 'ready' : 'ineligible', ...stage.identity, mode: input.mode, transferable: input.mode === 'actual' && payable.n > 0n, rawMinutes: rawTotal ? known(rawTotal, 'minutes') : unknown('unrecordedLegacyRaw'), eligibleMinutes: eligibleTotal ? known(eligibleTotal, 'minutes') : unknown('unrecordedLegacyEligibility'), approvedMinutes: known(canonicalApproved, 'minutes'), payableMinutes: exact(payable, 'minutes'), trace: e.trace };
+        const result: OvertimeDurationEvaluation = { status: payable.n > 0n ? 'ready' : 'ineligible', ...stage.identity, mode: input.mode, transferable: input.mode === 'actual' && payable.n > 0n, rawMinutes: rawTotal ? known(rawTotal, 'minutes') : unknown('unrecordedLegacyRaw'), eligibleMinutes: eligibleTotal ? known(eligibleTotal, 'minutes') : unknown('unrecordedLegacyEligibility'), approvedMinutes: known(canonicalApproved, 'minutes'), payableMinutes: exact(payable, 'minutes'), allocations: durationAllocations(stage), trace: e.trace };
         if (new TextEncoder().encode(JSON.stringify(result)).length > L.evidenceBytes)
             fail('limit', 'evidence', 'Complete duration evidence exceeds its supported size.');
         return result;

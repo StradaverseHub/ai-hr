@@ -339,6 +339,20 @@ export type OvertimeEvaluation = {
     issues: OvertimeIssue[];
     trace: OvertimeTrace[];
 };
+/** Count attribution under an explicit pattern policy; never a human approved physical interval. */
+export type OvertimeDurationAllocation = {
+    segmentId: string;
+    sessionId: string;
+    payableMinutes: OvertimeExact;
+    rawClock: OvertimeFact<OvertimeClockSpan>;
+    attribution: null | {
+        policy: 'earliest' | 'latest';
+        physicalApproval: false;
+        /** Exact epoch seconds, scalar solely as a serialized rational carrier. */
+        startEpochSeconds: OvertimeExact;
+        endEpochSeconds: OvertimeExact;
+    };
+};
 /** Duration evidence is distinct from a cash result. A canonical TOIL owner still proves authority,
  * freshness, source exclusivity and actual mode before consumption. No pricing/salary access is implied. */
 export type OvertimeDurationEvaluation = {
@@ -352,6 +366,7 @@ export type OvertimeDurationEvaluation = {
     eligibleMinutes: OvertimeValue;
     approvedMinutes: OvertimeValue;
     payableMinutes: OvertimeExact;
+    allocations: OvertimeDurationAllocation[];
     trace: OvertimeTrace[];
 } | {
     status: 'refused';
