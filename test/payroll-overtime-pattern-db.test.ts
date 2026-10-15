@@ -1,8 +1,8 @@
 /** Real canonical source -> cash claim -> Payroll kernel regressions. Written during hold; not executed. */
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
-import {eq} from 'drizzle-orm';
+import {eq,sql} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
-import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
+import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 import {withTenant} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
@@ -12,6 +12,8 @@ import {requirePackFor} from '../localization/registry';
 import {createBatch,createAdditionalRun,setPayrollConfig,disburseNetAcrossCycles,createPayComponent,setPayrollInput,prefillOvertimeFromAttendance,generatePayslips,closeBatch,deleteDraftBatch,createPolicy,assignPolicy,overtimePatternTransferOptions,transferOvertimePatternToPayroll,readPayrollOvertimePatternCashTx,readPayrollOvertimeCoverageTx} from '../packs/payroll/service';
 import {checkIn,checkOut,setAttendancePolicy,saveOvertimePatternDraft,validateOvertimePatternActivation,activateOvertimePattern,saveOvertimePatternAssignment,createOvertimeCalculationOwner,canonicalOvertimeInputTx,readOvertimeCalculationTx,readOvertimeSettlementForDayTx} from '../packs/attendance/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {evaluateOvertimePattern,evaluateOvertimePatternDuration,validateOvertimeInput} from '../lib/overtime-pattern-evaluate';
+import {parseRecordedOvertimeEvaluation} from '../lib/overtime-pattern-result';
 import type {OvertimePattern} from '../lib/overtime-pattern-model';
 let b:Base;const day=()=>todayInKualaLumpur();
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'attendance','active');await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'typed_pay_components',null);await setSetting(b.tenantId,'payroll.individual_txn_pay_enabled',false);});
@@ -83,7 +85,7 @@ describe('formula money is an actual canonical Payroll input',()=>{
   await expect(withTenant(f.ctx,tx=>readPayrollOvertimePatternCashTx(tx,f.ctx,{batchId:f.batch.batchId}))).rejects.toMatchObject({code:'mapping'});
  });
  it('refuses stale source digest and never publishes a partial payslip',async()=>{
-  const f=await fixture();await transferOvertimePatternToPayroll(f.ctx,f.transfer);await owner.db.update(s.attendance).set({workedMinutes:599}).where(eq(s.attendance.employmentId,f.e.employmentId));
+  const f=await fixture();await transferOvertimePatternToPayroll(f.ctx,f.transfer);await withTenant(f.ctx,tx=>tx.update(s.attendance).set({workedMinutes:599}).where(eq(s.attendance.employmentId,f.e.employmentId)));
   await expect(generatePayslips(f.ctx,{batchId:f.batch.batchId})).rejects.toMatchObject({code:'stale'});expect(await slip(f.batch.batchId)).toBeUndefined();
  });
  it('applies a monthly cash cap once across manual and formula inputs',async()=>{
@@ -113,12 +115,66 @@ describe('formula money is an actual canonical Payroll input',()=>{
   const f=await fixture();const claim=await transferOvertimePatternToPayroll(f.ctx,f.transfer);await deleteDraftBatch(f.ctx,{batchId:f.batch.batchId});const row=(await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.id,claim.settlementId)))[0];expect(row.releasedAt).not.toBeNull();expect(row.payrollBatchId).toBeNull();expect(row.ownerReference).toEqual({type:'payroll_batch',id:f.batch.batchId});
  });
  it('refuses unresolved selected formula days rather than treating their legacy minutes as payable',async()=>{
-  const f=await fixture();await owner.db.update(s.attendance).set({calcTrace:{overtimePattern:{status:'refused',reason:'sourceUnavailable'}} as never}).where(eq(s.attendance.employmentId,f.e.employmentId));
+  const f=await fixture();await withTenant(f.ctx,tx=>tx.update(s.attendance).set({calcTrace:{overtimePattern:{status:'refused',reason:'sourceUnavailable'}} as never}).where(eq(s.attendance.employmentId,f.e.employmentId)));
   const coverage=await withTenant(f.ctx,tx=>readPayrollOvertimeCoverageTx(tx,f.ctx,{companyId:b.companyId,from:day(),to:day()}));expect(coverage.keys.has(f.e.employmentId+'|'+day())).toBe(true);
   await expect(generatePayslips(f.ctx,{batchId:f.batch.batchId})).rejects.toMatchObject({code:'unavailable'});
  });
  it('refuses forged expected revisions and cross-tenant sources before reserving any cash',async()=>{
   const f=await fixture();await expect(transferOvertimePatternToPayroll(f.ctx,{...f.transfer,expectedSourceRevision:f.transfer.expectedSourceRevision+1})).rejects.toMatchObject({code:'stale'});
   const other=await seedBase();await setModule(other.tenantId,'attendance','active');await setModule(other.tenantId,'payroll','active');await expect(transferOvertimePatternToPayroll(adminCtx(other),f.transfer)).rejects.toThrow();expect((await withTenant(f.ctx,tx=>readOvertimeSettlementForDayTx(tx,f.ctx,f.transfer)))?.settlement).toBeNull();
+ });
+});
+
+/** Raw SQL is deliberately stronger than the action API: these tests prove the financial consumer
+ * independently rejects tampering, without pretending SQL attests the opaque JS publication path. */
+describe('independent pinned financial verification',()=>{
+ async function forge(f:Awaited<ReturnType<typeof fixture>>,kind:'amount'|'inputs'|'assignment'){
+  const read=await withTenant(f.ctx,tx=>readOvertimeCalculationTx(tx,f.ctx,{employmentId:f.e.employmentId,date:day()}));
+  if(!read?.calculation||!read.evidence)throw new Error('Expected real recorded fixture');
+  const c=read.calculation,inputs=validateOvertimeInput(read.evidence.inputs),payload=structuredClone(read.evidence.evidence) as Record<string,unknown>;
+  let versionId=c.versionId,assignmentId=c.assignmentId;
+  if(kind==='assignment'){
+   const peer=await hireEmployee(f.ctx,{person:{fullName:'Fictional other assignment worker'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
+   const saved=await saveOvertimePatternDraft(f.ctx,{draft:{code:'OTHER_'+randomUUID().slice(0,8),creationCompanyId:b.companyId,companyIds:[b.companyId],name:'Only the other employee',definition:f.definition}});
+   const check=await validateOvertimePatternActivation(f.ctx,{versionId:saved.versionId,expectedRevision:saved.revision});if(!check.validationDigest)throw new Error('Expected valid alternative fixture');
+   await activateOvertimePattern(f.ctx,{versionId:saved.versionId,expectedRevision:saved.revision,validationDigest:check.validationDigest,effectiveFrom:day()});
+   const assigned=await saveOvertimePatternAssignment(f.ctx,{versionId:saved.versionId,target:{type:'individual',employmentIds:[peer.employmentId]},priority:2,from:day(),to:null});versionId=saved.versionId;assignmentId=assigned.assignmentId;
+  }
+  if(!versionId||!assignmentId)throw new Error('Expected immutable formula binding');inputs.patternVersionId=versionId;inputs.assignmentId=assignmentId;
+  if(kind==='inputs'){const actual=inputs.facts.actualWorkingMinutes;if(actual?.state!=='known')throw new Error('Expected measured actual minutes');actual.value='601';}
+  const evaluation=kind==='amount'?parseRecordedOvertimeEvaluation(payload.evaluation):evaluateOvertimePattern(f.definition,inputs);
+  if(!evaluation||evaluation.status!=='ready')throw new Error('Expected ready tampering control');
+  if(kind==='amount'){
+   evaluation.amountMinorUnits=(BigInt(evaluation.amountMinorUnits)+BigInt('10000')).toString();const line=evaluation.lines[0];if(!line)throw new Error('Expected earning line');
+   line.amountMinorUnits=(BigInt(line.amountMinorUnits)+BigInt('10000')).toString();
+   for(const amount of [line.gross,line.adjusted])amount.numerator=(BigInt(amount.numerator)+BigInt(amount.denominator)*BigInt('100')).toString();
+  }
+  payload.evaluation=evaluation;payload.duration=evaluateOvertimePatternDuration(f.definition,inputs);
+  const userId=await createAppUser(b.tenantId,f.e.personId,'employee'),self={...f.ctx,userId,roles:['employee']};
+  const calculationId=randomUUID(),revision=read.source.revision+1;
+  await withTenant(self,async tx=>{
+   const [role]=await tx.execute(sql`select current_user as name,rolsuper,rolbypassrls,app.can_admin_payroll_for(${b.companyId}::uuid) as financial from pg_roles where rolname=current_user`) as unknown as {name:string;rolsuper:boolean;rolbypassrls:boolean;financial:boolean}[];
+   expect(role).toEqual({name:'ai_hr_app',rolsuper:false,rolbypassrls:false,financial:false});
+   await tx.insert(s.attendanceOvertimeCalculation).values({...c,id:calculationId,versionId,assignmentId,ordinal:revision,reason:'Raw self SQL tampering regression'});
+   await tx.insert(s.attendanceOvertimeCalculationEvidence).values({tenantId:b.tenantId,companyId:b.companyId,calculationId,inputs:JSON.parse(JSON.stringify(inputs)),evidence:JSON.parse(JSON.stringify(payload))});
+   await tx.insert(s.attendanceOvertimeLine).values(evaluation.lines.map((line,sequence)=>({tenantId:b.tenantId,companyId:b.companyId,calculationId,lineKey:line.id,sequence,componentId:line.mapping.earningItemId,amountMinorUnits:line.amountMinorUnits,evidence:JSON.parse(JSON.stringify(line))})));
+   await tx.update(s.attendanceOvertimeSource).set({currentCalculationId:calculationId,revision}).where(eq(s.attendanceOvertimeSource.id,read.source.id));
+  });
+  return {read,transfer:{...f.transfer,expectedCalculationId:calculationId,expectedSourceRevision:revision}};
+ }
+ it('verifies the retained definition without repricing to a newer higher-priority assignment',async()=>{
+  const f=await fixture(),definition=structuredClone(f.definition);definition.rates[0].tiers[0].payment={method:'flat',basis:'day',chargeId:'day',amount:{id:'new_amount',type:'literal',unit:'money',currency:'MYR',value:'90'}};
+  const saved=await saveOvertimePatternDraft(f.ctx,{draft:{code:'NEW_'+randomUUID().slice(0,8),creationCompanyId:b.companyId,companyIds:[b.companyId],name:'Later deliberate policy',definition}});
+  const check=await validateOvertimePatternActivation(f.ctx,{versionId:saved.versionId,expectedRevision:saved.revision});if(!check.validationDigest)throw new Error('Expected valid new policy');
+  await activateOvertimePattern(f.ctx,{versionId:saved.versionId,expectedRevision:saved.revision,validationDigest:check.validationDigest,effectiveFrom:day()});
+  await saveOvertimePatternAssignment(f.ctx,{versionId:saved.versionId,target:{type:'individual',employmentIds:[f.e.employmentId]},priority:2,from:day(),to:null});
+  await transferOvertimePatternToPayroll(f.ctx,f.transfer);await generatePayslips(f.ctx,{batchId:f.batch.batchId});expect((await slip(f.batch.batchId)).overtimePay).toBe('60.00');
+ });
+ for(const kind of ['amount','inputs','assignment'] as const)it('refuses raw app-role forged '+kind+' without changing recorded history or paying',async()=>{
+  const f=await fixture(),forged=await forge(f,kind),before=await withTenant(f.ctx,tx=>readOvertimeCalculationTx(tx,f.ctx,{employmentId:f.e.employmentId,date:day()}));
+  await expect(transferOvertimePatternToPayroll(f.ctx,forged.transfer)).rejects.toMatchObject(kind==='assignment'?{code:'unavailable'}:{code:'stale'});
+  expect(await withTenant(f.ctx,tx=>readOvertimeCalculationTx(tx,f.ctx,{employmentId:f.e.employmentId,date:day()}))).toEqual(before);
+  expect((await withTenant(f.ctx,tx=>readOvertimeSettlementForDayTx(tx,f.ctx,f.transfer)))?.settlement).toBeNull();expect(await slip(f.batch.batchId)).toBeUndefined();
+  expect((await owner.db.select().from(s.attendanceOvertimeCalculation).where(eq(s.attendanceOvertimeCalculation.id,forged.read.calculation!.id)))[0]).toEqual(forged.read.calculation);
  });
 });

@@ -50,6 +50,16 @@ Pack-owned storage uses tenant-bearing same-tenant references, scope-first bound
 
 A bound canonical input reader supplies an opaque transaction/principal-bound handle. Recording freshly re-reads its digests, resolves the stored assignment/version and invokes the one evaluator. Client sample facts, calculated amounts, claimed permissions or serialized handles cannot create actual source revisions. Preview is always nontransferable and writes neither final Attendance nor Payroll.
 
+### Calculation publication and independent financial verification
+
+Actual action publication trusts the server-bound canonical reader and its opaque transaction/principal handle; no action accepts caller-supplied calculated results. SQL constraints/RLS enforce subject and lifecycle relationships, but do not attest that arbitrary JavaScript ran. A principal with raw app-role SQL can publish structurally consistent source revisions; neither a caller GUC nor a hash is a signature of trusted computation.
+
+Before transfer, generation or close, Payroll normalizes the complete recorded inputs and requires equality with freshly read canonical inputs using the recorded version/assignment IDs. The shared deterministic engine independently evaluates that exact immutable recorded definition and matched input; the complete evaluation and persisted earning lines must agree. Mismatch refuses consumption without replacing amounts, selecting today's policy, or rewriting historical evidence. The retained assignment must independently match the canonical employee/company facts and date through the shared pure assignment resolver.
+
+The server publication boundary remains the authority for the original winning selection and historical precedence. Membership verification of one retained assignment is not proof that it beat every other historical candidate. No database signature, arbitrary-JavaScript attestation or direct-SQL publication denial is claimed. A compromised server/SQL principal requires a distinct trust-boundary design; this change adds no secret, privileged credential or SQL AST evaluator.
+
+Raw-input guards may prove source absence without app context only when their effective reader is genuinely SUPERUSER/BYPASSRLS and its full matching-source lookup returns none. Existing protected sources still require context and all claim guards. Under FORCE RLS, a NOBYPASS owner cannot infer absence from hidden rows and must supply authorized context. Authorized ordinary legacy writes without a source return before the private overtime Payroll work; existing Attendance/Payroll protections remain responsible for legacy behavior. Only OT-bearing corrections and their workflow decisions enter the formula approval digest and this additional guard. Non-OT request/rejection rows remain filable; applying their clock changes still passes the protected Attendance/punch owners.
+
 ### One day identity through Payroll and TOIL
 
 A canonical source is tenant + employment + attendance date, with exact attendance ID and proven company. Version, revision and tier IDs describe that source; they never create another payout identity. Append-only calculation revisions retain complete inputs, approval digest, rule version, lines and evidence. Controlled replacement switches the current revision with compare-and-set and audit.

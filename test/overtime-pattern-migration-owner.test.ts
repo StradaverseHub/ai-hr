@@ -3,11 +3,17 @@
 import {readFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,expect,it} from 'vitest';
-import {sql} from 'drizzle-orm';
-import {owner,migrateTestDb,closeAll} from './harness';
+import {eq,sql} from 'drizzle-orm';
+import {owner,migrateTestDb,closeAll,seedBase} from './harness';
+import * as s from '../db/schema';
+import {todayInKualaLumpur} from '../lib/hr-date';
 const migration=readFileSync(new URL('../db/migrations/0551_overtime_patterns.sql',import.meta.url),'utf8');
 beforeAll(migrateTestDb);afterAll(closeAll);
 it('installs the OT owner under a restricted migration role with FORCE RLS and private helper boundaries',async()=>{
+ const b=await seedBase(),on=todayInKualaLumpur();
+ const [person]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Restricted-owner absence fixture',primaryEmail:`ot-absence-${randomUUID()}@example.test`}).returning();
+ const [employee]=await owner.db.insert(s.employment).values({tenantId:b.tenantId,companyId:b.companyId,personId:person.id,hiredOn:on}).returning();
+ const [day]=await owner.db.insert(s.attendance).values({tenantId:b.tenantId,employmentId:employee.id,attendanceDate:on,workedMinutes:480}).returning();
  const role='ot_migration_'+randomUUID().replaceAll('-',''),rollback=new Error('rollback-restricted-ot-install');let verified=false;
  try{await owner.db.transaction(async tx=>{
   // Existing 0551 objects belong to the throwaway template. Transaction rollback restores them.
@@ -30,6 +36,13 @@ it('installs the OT owner under a restricted migration role with FORCE RLS and p
   expect(installed).toHaveLength(tables.length);for(const table of installed)expect(table).toMatchObject({owner:role,relrowsecurity:true,relforcerowsecurity:true,trunc:false});
   const helpers=await tx.execute(sql`select p.proname,p.prosecdef,p.proconfig,exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE') as public_exec from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app' and p.proname=any(${functionNames}::text[])`) as unknown as {proname:string;prosecdef:boolean;proconfig:string[];public_exec:boolean}[];
   expect(helpers).toHaveLength(functionNames.length);for(const helper of helpers){expect(helper.public_exec).toBe(false);expect(helper.proconfig).toContain('search_path=pg_catalog, public, pg_temp');}
+  // The caller can see the legacy day, but this trigger's NOBYPASS/FORCE owner cannot prove
+  // source absence without context. An RLS-filtered empty lookup must never authorize a skip.
+  await expect(tx.transaction(async attempt=>{
+   await attempt.execute(sql.raw('RESET ROLE'));
+   await attempt.execute(sql`select set_config('app.tenant_id','',true),set_config('app.user_id','',true)`);
+   await attempt.update(s.attendance).set({workedMinutes:999}).where(eq(s.attendance.id,day.id));
+  })).rejects.toMatchObject({cause:expect.objectContaining({code:'42501',message:'Overtime input tenant mismatch'})});
   verified=true;throw rollback;
  });}catch(error){if(error!==rollback)throw error;}
  expect(verified).toBe(true);
