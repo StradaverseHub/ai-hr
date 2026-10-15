@@ -12,7 +12,7 @@ import {
 } from '../core/employee-draft';
 import { createConfig } from '../core/employee-id-config';
 import { hireEmployee } from '../core/org';
-import { setLabelGlobal } from '../core/system-labels';
+import { setLabelCriteria, setLabelGlobal } from '../core/system-labels';
 import {createProfileOption,setProfileOptionActive} from '../core/profile-options';
 import { createPolicy } from '../packs/payroll/service';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -237,7 +237,7 @@ describe('atomic Draft activation', () => {
   it('refuses a selected Department moved outside the company eligibility rule', async () => {
     const { ctx, id } = await held();
     const [other] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Other Company' }).returning();
-    await owner.db.update(schema.department).set({ companyId: other.id }).where(eq(schema.department.id, b.deptA));
+    await setLabelCriteria(ctx,{kind:'department',labelId:b.deptA,isGlobal:false,companyIds:[other.id]});
     await rejectedWithoutChanges(ctx, id, 'reference_invalid');
   });
 
