@@ -106,7 +106,9 @@ const state: ReturnType<typeof createAuthState> = createAuthState({
   async remove() {
     const endpoint = config.authProvider === 'internal' ? config.apiUrl + '/login/api/logout' : null;
     const namespace = identityNamespace();
-    const stored = endpoint ? await storage.read().catch(() => null) : null;
+    // Read only for remote revocation: the synchronous logout tombstone intentionally blocks
+    // storage.read(), which may also erase the surviving handle during cold-start initialization.
+    const stored = endpoint ? await SecureStore.getItemAsync(REFRESH_KEY, STORE).catch(() => null) : null;
     sessionId = null; idToken = null; await storage.remove();
     // createAuthState invalidates synchronously before entering this serialized cleanup.
     if (!endpoint || !stored) return;

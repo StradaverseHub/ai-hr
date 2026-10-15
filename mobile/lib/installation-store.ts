@@ -24,7 +24,8 @@ export function createInstallationStore(ports: Ports) {
   return {
     async read() { await initialize(); return ports.logoutPending?.() ? null : ports.read(); },
     async write(value: string) { await initialize(); await ports.write(value); },
-    async remove() { await initialize(); await ports.remove(); },
+    // Logout already wrote its tombstone. Initialization must not clear it during cleanup.
+    async remove() { await ports.remove(); },
     markLoggedOut() { ports.markLogoutPending?.(); },
     markSignedIn() { ports.createMarker(); },
   };

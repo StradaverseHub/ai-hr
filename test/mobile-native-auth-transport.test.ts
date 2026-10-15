@@ -91,9 +91,9 @@ describe('native WorkOS exchange — shipped adapter', () => {
     expect(await old).toBeInstanceOf(SessionChangedError);
     expect(f.auth.workosLogoutUrl()).toContain('session_id=new-session');
   });
-  it('explicit and revoked-session logout persist a tombstone even when Keychain deletion fails', async () => {
-    for (const explicit of [true, false]) {
-      const f = fixture(); f.secure.deleteItemAsync.mockRejectedValueOnce(new Error('Keychain unavailable'));
+  it('all providers retain a logout tombstone even when Keychain deletion fails', async () => {
+    for (const provider of [false, true, 'internal'] as const) for (const explicit of [true, false]) {
+      const f = fixture(provider); f.secure.deleteItemAsync.mockRejectedValueOnce(new Error('Keychain unavailable'));
       if (explicit) await expect(f.auth.signOut()).rejects.toThrow('Keychain unavailable');
       else {
         f.response.mockResolvedValueOnce(new Response('', { status: 401 }));
