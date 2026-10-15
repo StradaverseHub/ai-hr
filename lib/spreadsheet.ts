@@ -92,6 +92,7 @@ export async function workbookToCsvTexts(
   buf: ArrayBuffer | Uint8Array,
   extraSheetNames: readonly string[] = [],
   includeFirstNamed=false,
+  allowedSheetNames?:readonly string[],
 ): Promise<{ first: string; extra: Record<string, string> }> {
   const XLSX = await import('xlsx');
   // Normalise to a Uint8Array view: SheetJS accepts either, but being explicit keeps us robust to
@@ -130,6 +131,11 @@ export async function workbookToCsvTexts(
 
   const key = (s: string) => s.trim().toLowerCase();
   const byKey = new Map(wb.SheetNames.map((n) => [key(n), n]));
+  if(allowedSheetNames) {
+    if(byKey.size!==wb.SheetNames.length || !includeFirstNamed && extraSheetNames.some(name=>key(name)===key(firstName)))throw new Error('UNEXPECTED_SHEET');
+    const allowed=new Set(allowedSheetNames.map(key));
+    for(const name of wb.SheetNames)if(name!==firstName && !allowed.has(key(name)) && sheetCsv(name).trim())throw new Error('UNEXPECTED_SHEET');
+  }
   const extra: Record<string, string> = {};
   for (const wanted of extraSheetNames) {
     // By default the first data sheet is not repeated as an extra (employee/Family import).

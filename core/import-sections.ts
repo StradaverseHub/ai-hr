@@ -1,3 +1,5 @@
+import {isPersonnelRegisterKind} from '../lib/personnel-register-import';
+import {validateRegisterSection,commitRegisterSection} from './personnel-register-import';
 import { PersonnelImportCatalog, normalizePersonnelCatalogRecord } from '../lib/personnel-import-catalog';
 import { dependentImportMatch, type DependentIdentity } from '../lib/dependent-identity';
 import { addUniqueImportAlias } from '../lib/personnel-import-lookup';
@@ -1048,6 +1050,7 @@ export async function validateSectionImport(
   ctx: SessionContext,
   p: { section: ImportSection; records: ImportRecord[] },
 ): Promise<SectionImportPreview> {
+  if(isPersonnelRegisterKind(p.section))return validateRegisterSection(ctx,p.section,p.records);
   const { preview } = await analyze(ctx, p.section, p.records);
   return preview;
 }
@@ -1063,6 +1066,11 @@ export async function commitSectionImport(
   ctx: SessionContext,
   p: { section: ImportSection; records: ImportRecord[]; fileName?: string },
 ): Promise<SectionImportResult> {
+  if(isPersonnelRegisterKind(p.section)) {
+    const result=await commitRegisterSection(ctx,p.section,p.records);
+    if(result.updated>0)result.runId=await recordSectionRun(ctx,{companyId:null,fileName:p.fileName??'',totalRows:p.records.length,updated:result.updated,rejected:[],failed:[]});
+    return result;
+  }
   const { preview, resolved } = await analyze(ctx, p.section, p.records);
   if (preview.fileErrors.length > 0) {
     return {

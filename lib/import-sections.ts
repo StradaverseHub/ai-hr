@@ -1,3 +1,4 @@
+import {personnelRegisterColumns} from './personnel-register-import';
 import { PERSONNEL_FIELDS } from './personnel-field-registry';
 import { PERSONNEL_EMPLOYMENT_IMPORT_FIELDS, PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS } from './personnel-import-contract';
 /**
@@ -38,7 +39,7 @@ import { PERSONNEL_EMPLOYMENT_IMPORT_FIELDS, PERSONNEL_PROFILE_IMPORT_FIELDS, PE
 import { DEPENDENT_IMPORT_COLUMNS, IMPORT_COLUMNS, RETIRED_PERSONNEL_TEMPLATE_COLUMNS } from './import-schema';
 
 /** The four sections the reporter named. Ordered as they appear in the chooser. */
-export const IMPORT_SECTION_KEYS = ['profile', 'employment', 'bank_statutory', 'family'] as const;
+export const IMPORT_SECTION_KEYS = ['profile', 'employment', 'bank_statutory', 'family', 'qualification', 'emergency'] as const;
 
 export type ImportSection = (typeof IMPORT_SECTION_KEYS)[number];
 
@@ -144,6 +145,8 @@ const EMPLOYMENT_COLUMNS = [
 const BANK_STATUTORY_COLUMNS = ['tax_number', 'tax_category', 'num_children',...PERSONNEL_FIELDS.filter(field=>['statutory-registration','bank'].includes(field.import.writer??'')).map(field=>field.import.column!)] as const;
 
 export const IMPORT_SECTION_DEFS: Record<ImportSection, ImportSectionDef> = {
+  qualification:{key:'qualification',required:[],optional:personnelRegisterColumns('qualification').filter(c=>c!=='employee_code'),family:false},
+  emergency:{key:'emergency',required:[],optional:personnelRegisterColumns('emergency').filter(c=>c!=='employee_code'),family:false},
   profile: { key: 'profile', required: [], optional: PROFILE_COLUMNS, family: false },
   employment: { key: 'employment', required: [], optional: EMPLOYMENT_COLUMNS, family: false },
   bank_statutory: { key: 'bank_statutory', required: [], optional: BANK_STATUTORY_COLUMNS, family: false },
@@ -210,6 +213,7 @@ export function foreignColumns(section: ImportSection, present: readonly string[
     ...IMPORT_COLUMNS.optional,
     ...DEPENDENT_IMPORT_COLUMNS.required,
     ...DEPENDENT_IMPORT_COLUMNS.optional,
+    ...personnelRegisterColumns('qualification'),...personnelRegisterColumns('emergency'),
   ]);
   const out: string[] = [];
   for (const c of present) {
@@ -244,9 +248,11 @@ export const SECTION_DISPLAY_NAMES: Record<ImportSection, string> = {
   employment: 'Employment',
   bank_statutory: 'Bank and Statutory',
   family: 'Family',
+  qualification:'Qualifications',
+  emergency:'Emergency Contacts',
 };
 
-export function sectionTemplateColumns(section:ImportSection):string[] {return sectionColumns(section).filter(column=>!RETIRED_PERSONNEL_TEMPLATE_COLUMNS.includes(column));}
+
 
 /**
  * THE FENCE, SPLIT INTO THE TWO ANSWERS A REFUSAL HAS TO GIVE.
@@ -296,6 +302,7 @@ export function classifyForeignColumns(
 export type SectionRowVerdict = 'create' | 'update' | 'skip';
 
 export type SectionRowResult = {
+  registerAction?:'create'|'update';
   proposed?:{column:string;value:string}[];
   /** 1-based data row (header excluded). */
   rowNum: number;
@@ -360,6 +367,8 @@ export const SECTION_SHEET_NAMES: Record<ImportSection, string> = {
   employment: 'Employment',
   bank_statutory: 'Bank and Statutory',
   family: 'Family',
+  qualification:'Qualifications',
+  emergency:'Emergency Contacts',
 };
 
 export const SECTION_TEMPLATE_FILENAMES: Record<ImportSection, string> = {
@@ -367,6 +376,8 @@ export const SECTION_TEMPLATE_FILENAMES: Record<ImportSection, string> = {
   employment: 'employment-update-template.xlsx',
   bank_statutory: 'bank-statutory-update-template.xlsx',
   family: 'family-update-template.xlsx',
+  qualification:'qualification-update-template.xlsx',
+  emergency:'emergency-contact-update-template.xlsx',
 };
 
 /**
@@ -376,7 +387,7 @@ export const SECTION_TEMPLATE_FILENAMES: Record<ImportSection, string> = {
  * it because here it is the KEY — mangle it and the row matches nobody.
  */
 export const SECTION_TEXT_COLUMN_KEYS: readonly string[] = [
-  SECTION_KEY_COLUMN,
+  SECTION_KEY_COLUMN,'record_id','from_ym','to_ym','mobile_phone',
   'ic_number','old_ic_number',
   'phone','home_phone','emergency_contact_phone','emergency_contact_home_phone',
   'bank_account_no','custom_holder_id',

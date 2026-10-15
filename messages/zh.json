@@ -1966,7 +1966,22 @@
       "verdictBlocked": "已阻止",
       "fieldValue": "数值",
       "fieldUnit": "单位",
-      "proposedValues": "拟导入值"
+      "proposedValues": "拟导入值",
+      "sectionQualification": "学历资格",
+      "sectionQualificationHint": "为现有员工新增或更新多条学历资格记录。",
+      "sectionEmergency": "紧急联系人",
+      "sectionEmergencyHint": "为现有员工新增或更新多条紧急联系人记录。",
+      "registerRecordId": "记录 ID（仅限现有记录）",
+      "registerYes": "是",
+      "registerNo": "否",
+      "registerCreate": "新增登记记录",
+      "registerInstructions": "员工编号用于识别员工。记录 ID 留空表示新增；更新时请使用已保存的准确记录 ID。空白单元格保留现有值。每份文件中，每名员工最多选择一条最高学历资格或主要联系人。起止月份使用 YYYY-MM；毕业日期使用 YYYY-MM-DD。",
+      "registerFullInstructions": "每条登记记录必须引用 Employee Import 工作表中的员工编号。新员工的记录 ID 必须留空。任一登记行被拒绝时，整个工作簿都不会导入。",
+      "registerSavedCount": "已保存 {count} 条登记记录",
+      "unexpectedSheet": "工作簿包含意外或重复的工作表。请使用当前模板并保留数据工作表名称，避免任何表格被忽略。",
+      "registerExistingEmployeeId": "要下载当前记录的员工编号",
+      "registerDownloadExisting": "下载当前记录 CSV",
+      "registerLimit": "每个登记文件最多 500 行。当前记录下载包含已保存的记录 ID；应用前请逐行核对。"
     },
     "wizard": {
       "fields": {

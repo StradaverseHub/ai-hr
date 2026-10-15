@@ -23,7 +23,7 @@ export function normalizePersonnelCatalogRecord(record:Record<string,string>,she
  else columns.set('relationship','relationship');
  for(const [column,category] of columns) {
   const raw=(record[column]??'').trim();if(!raw)continue;
-  if(column==='relationship' && (DEPENDENT_RELATIONSHIPS as readonly string[]).includes(raw))continue;
+  if(sheet==='family' && column==='relationship' && (DEPENDENT_RELATIONSHIPS as readonly string[]).includes(raw))continue;
   const found=catalog.resolve(category,raw);
   if(found.ambiguous)errors.push(`${column}: ambiguous option name — use its exact saved code from the Reference sheet.`);
   else if(found.value!==undefined)normalized[column]=found.value;

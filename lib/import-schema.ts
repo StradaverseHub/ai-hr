@@ -1,3 +1,4 @@
+import type {RegisterPreview} from './personnel-register-import';
 import { PERSONNEL_FIELDS, PERSONNEL_IMPORT_COMPATIBILITY } from './personnel-field-registry';
 /** Client-safe shape of the employee importer — the column list and result types, with no
  *  server (DB) imports, so both the server service (core/import) and the client UI can use them. */
@@ -19,6 +20,7 @@ export type RowResult = {
 };
 
 export type ImportPreview = {
+  registers?:RegisterPreview[];
   companyId: string;
   total: number;
   validCount: number;
@@ -39,6 +41,7 @@ export type ImportPreview = {
 };
 
 export type ImportResult = {
+  registersImported?:{qualification:number;emergency:number};
   warnings?:string[];
   companyId: string;
   imported: number;

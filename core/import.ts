@@ -1,3 +1,5 @@
+import {PERSONNEL_REGISTER_KINDS,type PersonnelRegisterRecords} from '../lib/personnel-register-import';
+import {validateRegisterImport,writeRegisterRowsTx} from './personnel-register-import';
 import { PersonnelImportCatalog, normalizePersonnelCatalogRecord } from '../lib/personnel-import-catalog';
 import { PersonnelImportLookup, addUniqueImportAlias } from '../lib/personnel-import-lookup';
 import { personnelBankValues, type PersonnelBankValues } from '../lib/personnel-bank-import';
@@ -273,7 +275,9 @@ async function analyze(
   /** Item 2983802f — the FAMILY sheet's records. Empty for every file that has no such sheet, which is
    *  every file that imports today. */
   dependentRecords: ImportRecord[] = [],
-): Promise<{ preview: ImportPreview; resolved: ResolvedRow[]; dependents: ResolvedDependent[] }> {
+  registerRecords:PersonnelRegisterRecords={},
+): Promise<{ preview: ImportPreview; resolved: ResolvedRow[]; dependents: ResolvedDependent[]; registers:Awaited<ReturnType<typeof validateRegisterImport>>[] }> {
+  if(Object.keys(registerRecords).some(key=>!(PERSONNEL_REGISTER_KINDS as readonly string[]).includes(key)))throw new Error('Unknown register sheet.');
   const [allCompanies, leaveTypes] = await Promise.all([listCompanies(ctx), listLeaveTypes(ctx)]);
   // d8471481 — company lookup keys. Legal name is what the reporter's template shows; company label
   // and registration number are accepted because those are what an HR spreadsheet usually carries.
@@ -907,6 +911,15 @@ async function analyze(
   dependentPreview.validCount=dependents.filter(dependent=>dependent.result.ok).length;
   if(dependentPreview.validCount<dependents.length && !fileErrors.length)fileErrors.push('Some Family values were refused by the Personnel owner. Correct those rows before importing; nothing will be written.');
 
+  const subjects=resolved.map(row=>({employeeCode:row.hire.employeeCode??'',employeeName:row.result.fullName,companyId:row.hire.companyId,employmentId:null,personId:null,valid:row.result.ok}));
+  const registers=[] as Awaited<ReturnType<typeof validateRegisterImport>>[];
+  for(const kind of PERSONNEL_REGISTER_KINDS) {
+    if(!registerRecords[kind]?.length)continue;
+    const checked=await validateRegisterImport(ctx,kind,registerRecords[kind]??[],{subjects,newEmployees:true});
+    registers.push(checked);
+    fileErrors.push(...checked.preview.fileErrors.map(error=>`${kind}: ${error}`));
+  }
+
   const preview: ImportPreview = {
     companyId,
     total: records.length,
@@ -915,8 +928,9 @@ async function analyze(
     missingColumns,
     fileErrors,
     dependents: dependentPreview,
+    registers:registers.map(register=>register.preview),
   };
-  return { preview, resolved, dependents };
+  return { preview, resolved, dependents,registers };
 }
 
 /**
@@ -1061,9 +1075,9 @@ function analyzeDependents(
 /** Dry run: validate the records against the company catalog without writing anything. */
 export async function validateEmployeeImport(
   ctx: SessionContext,
-  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[] },
+  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[]; registerRecords?:PersonnelRegisterRecords },
 ): Promise<ImportPreview> {
-  const { preview } = await analyze(ctx, p.companyId, p.records, p.dependentRecords ?? []);
+  const { preview } = await analyze(ctx, p.companyId, p.records, p.dependentRecords ?? [],p.registerRecords);
   return preview;
 }
 
@@ -1072,19 +1086,21 @@ export async function validateEmployeeImport(
  *  batch event so the import itself shows up in the audit trail. */
 export async function commitEmployeeImport(
   ctx: SessionContext,
-  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[]; fileName?: string },
+  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[]; registerRecords?:PersonnelRegisterRecords; fileName?: string },
 ): Promise<ImportResult> {
-  const { preview, resolved, dependents } = await analyze(
+  const { preview, resolved, dependents,registers } = await analyze(
     ctx,
     p.companyId,
     p.records,
     p.dependentRecords ?? [],
+    p.registerRecords,
   );
   const valid = resolved.filter((r) => r.result.ok);
   const failed: ImportResult['failed'] = [];
   const superiorFailed: ImportResult['superiorFailed'] = [];
   let imported = 0;
   let dependentsImported = 0;
+  const registersImported={qualification:0,emergency:0};
 
   // Item 2983802f — A FILE-LEVEL REFUSAL WRITES NOTHING. Re-derived here from the records, never taken
   // from a client-supplied preview, so a tampered payload cannot talk the server into a half-import.
@@ -1113,6 +1129,7 @@ export async function commitEmployeeImport(
   // Item 2983802f — row index → the employment it created, so the Direct Superior pass below can link a
   // subordinate to a manager who was created by the SAME run.
   const employmentByRow = new Map<number, string>();
+  const registerSubjects=new Map<string,{employmentId:string;personId:string}>();
 
   // The validated subset and its forward reporting links form one import operation. Domain
   // writers share this explicit transaction; no failed file can leave a half-created employee.
@@ -1184,6 +1201,7 @@ export async function commitEmployeeImport(
       return {employmentId,personId,familyCount};
       })();
       employmentByRow.set(index,saved.employmentId);
+      if(row.hire.employeeCode)registerSubjects.set(row.hire.employeeCode,{employmentId:saved.employmentId,personId:saved.personId});
       dependentsImported+=saved.familyCount;
       if(saved.familyCount)familySyncPersonIds.add(saved.personId);
       imported++;
@@ -1232,6 +1250,8 @@ export async function commitEmployeeImport(
     }
   }
 
+  for(const register of registers)registersImported[register.preview.kind]=await writeRegisterRowsTx(tx,ctx,register.preview.kind,register.resolved,registerSubjects);
+
   await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employee-import',
@@ -1249,6 +1269,7 @@ export async function commitEmployeeImport(
         companyIds: [...new Set(valid.map((r) => r.hire.companyId))],
         // Item 2983802f — the family sheet's contribution, so the audit trail describes the whole run.
         dependents: dependentsImported,
+        registers:registersImported,
       },
     });
 
@@ -1258,7 +1279,7 @@ export async function commitEmployeeImport(
     const reason=first?.message??publicErrorMessage(error);
     writeFileErrors.push(`No employee rows were written. The import was rolled back${first?` after row ${first.rowNum} was refused`:''}. ${reason}`);
     failed.splice(0,failed.length,...valid.map(row=>({rowNum:row.result.rowNum,email:row.result.email,message:first?.rowNum===row.result.rowNum?reason:'Not written because the import was rolled back.'})));
-    superiorFailed.splice(0);imported=0;dependentsImported=0;employmentByRow.clear();
+    superiorFailed.splice(0);imported=0;dependentsImported=0;registersImported.qualification=0;registersImported.emergency=0;employmentByRow.clear();
   }
 
   // A post-commit refresh failure must never be described as a rolled-back employee import.
@@ -1281,6 +1302,7 @@ export async function commitEmployeeImport(
     failed,
     skipped: resolved.length - valid.length,
     dependentsImported,
+    registersImported,
     superiorFailed,
     fileErrors: writeFileErrors,
     warnings: [...new Set(writeWarnings)],

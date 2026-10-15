@@ -521,13 +521,13 @@ export async function assertProfileValueAllowed(
 ): Promise<void> {
   if (newValue == null || newValue === '') return; // clearing is always allowed
   if (newValue === legacyValue) return; // unchanged legacy value is permitted (tolerance)
-  const active = await tx
-    .select({ value: profileOption.value })
+  const options = await tx
+    .select({ value: profileOption.value,isActive:profileOption.isActive })
     .from(profileOption)
-    .where(and(eq(profileOption.category, category), eq(profileOption.isActive, true)));
+    .where(eq(profileOption.category, category));
   // BACKWARD-COMPAT: a tenant whose catalog for this category is empty (never seeded) keeps today's exact
   // free-text behaviour — the dropdown only constrains input once the tenant actually has options.
-  if (active.length === 0) return;
-  if (active.some((o) => o.value === newValue)) return;
+  if (options.length === 0) return;
+  if (options.some((o) => o.isActive && o.value === newValue)) return;
   throw new Error(`"${newValue}" is not an active ${category} option`);
 }
