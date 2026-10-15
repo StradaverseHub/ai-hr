@@ -60,3 +60,5 @@ export * from '../../core/statutory-authority';
 export * from '../../core/back-pay';
 
 export * from '../../core/payroll-attendance-allowance';
+
+export * from '../../core/payroll-overtime-pattern';
