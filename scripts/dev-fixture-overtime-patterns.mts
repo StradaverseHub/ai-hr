@@ -14,8 +14,11 @@ import type {SessionContext} from '../db/client';
 import type {OvertimePattern,OvertimeExpression} from '../lib/overtime-pattern-model';
 import type {OvertimeSampleDraft} from '../lib/overtime-pattern-ui';
 import {DEMO_TENANT_ID,SYSTEM_TENANT_ID,demoSeedRefusal} from '../db/seed-guard';
-const root=fileURLToPath(new URL('..',import.meta.url)),out=path.join(root,'scratchpad/board16-overtime-browser');
-const database='ai_hr_board16_overtime_browser',namespace='board16overtimebrowser';
+import {overtimeBrowserTarget} from './overtime-browser-target.mjs';
+const root=fileURLToPath(new URL('..',import.meta.url));
+// Derive independently from the bounded CLI; environment URLs must then prove this exact target.
+const target=overtimeBrowserTarget(process.argv.slice(2));
+const out=path.join(root,target.scratchpad),{database,namespace}=target;
 const refusal=demoSeedRefusal(process.env);
 if(refusal||process.env.NODE_ENV==='production')throw new Error(refusal??'Development only.');
 if(process.env.AUTH_PROVIDER&&process.env.AUTH_PROVIDER!=='workos')throw new Error('Local fictional demo authentication only.');
