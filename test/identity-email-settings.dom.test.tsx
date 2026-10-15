@@ -3,10 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
-const m=vi.hoisted(()=>({session:vi.fn(),allowed:vi.fn(),guard:vi.fn(),read:vi.fn(),demo:vi.fn(),accounts:vi.fn(),log:vi.fn(()=>null),test:vi.fn()}));
+const m=vi.hoisted(()=>({session:vi.fn(),allowed:vi.fn(),guard:vi.fn(),read:vi.fn(),demo:vi.fn(),accounts:vi.fn(),project:vi.fn(),log:vi.fn(()=>null),test:vi.fn()}));
 vi.mock('next/navigation',()=>({usePathname:()=>'/admin/settings/email',useSearchParams:()=>new URLSearchParams(),redirect:(path:string)=>{throw new Error('REDIRECT '+path);}}));
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:'identityEmail'|'accountEmail')=>((key:string)=>key.split('.').reduce((v:any,k)=>v?.[k],messages[namespace])??key)}));
 vi.mock('../core/account-email',()=>({readAccountEmailDeliveries:m.accounts}));
+vi.mock('../lib/internal-auth/account-email-view',()=>({withInternalRecoveryLabels:m.project}));
 vi.mock('../components/account-email-deliveries',()=>({AccountEmailDeliveries:m.log}));
 vi.mock('../lib/scope',()=>({scopedSession:m.session}));
 vi.mock('../lib/session',()=>({getSession:vi.fn()}));
@@ -24,6 +25,7 @@ const sidebar=(admin:boolean,operator=false,preview=admin)=>wrap(<Sidebar isAdmi
 beforeEach(()=>{
  cleanup();vi.clearAllMocks();m.session.mockResolvedValue({s:{userId:'admin',roles:['hr_admin']}});m.allowed.mockResolvedValue(false);m.demo.mockReturnValue(true);m.accounts.mockResolvedValue([]);m.guard.mockResolvedValue({session:{userId:'operator'},actor:{subject:'verified'}});
  m.test.mockResolvedValue({status:'success',authenticated:true});
+ m.project.mockImplementation(async(_session,_actor,items)=>items);
  m.read.mockResolvedValue({active:{...defaultEmailConfig,host:'live.smtp.example.test',from:'live@example.test',hasPassword:true},draft:null,revision:'a'.repeat(64),testRecipient:'owner@example.test'});
 });
 describe('SMTP settings discovery and temporary demo testing',()=>{
@@ -85,6 +87,7 @@ describe('SMTP settings discovery and temporary demo testing',()=>{
   expect(m.guard).toHaveBeenCalled();expect(m.read).toHaveBeenCalledWith({subject:'verified'});expect(screen.getByLabelText(messages.identityEmail.host)).toHaveValue('live.smtp.example.test');
   expect(screen.getByLabelText(messages.identityEmail.host)).not.toBeDisabled();expect(screen.getByLabelText(messages.identityEmail.password)).toHaveValue('');expect(screen.getByRole('button',{name:messages.identityEmail.saveDraft})).toBeInTheDocument();
   expect(m.accounts).toHaveBeenLastCalledWith({userId:'operator'},{subject:'verified'});
+  expect(m.project).toHaveBeenLastCalledWith({userId:'operator'},{subject:'verified'},[]);
  });
  it('keeps account retry feedback and the scoped invitation log alongside the temporary SMTP form',async()=>{
   const items=[{id:'held-invitation'}];m.accounts.mockResolvedValue(items);
