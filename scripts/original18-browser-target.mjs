@@ -122,7 +122,9 @@ export function original18FixtureTenants(scenario,fixture){
  return [system,{id:'11111111-1111-1111-1111-111111111111',name:'Demo Group'}];
 }
 export function original18ResumeReceiptName(name,candidate){return sha(candidate)&&typeof name==='string'&&/^browser-resume-[0-9a-f]{40}-[0-9]{13}\.json$/.test(name)&&name.startsWith('browser-resume-'+candidate+'-');}
-/** Receipt validation proves only local preparation/cleanup, never browser acceptance or authorization. */
+/** Receipt validation proves only local preparation/cleanup, never browser acceptance or authorization.
+ * @param {{fixture: Record<string, unknown>, browser: Record<string, unknown>, stopped: Record<string, unknown>, resumeRecords?: Record<string, Record<string, unknown>>, manualCleanup?: Record<string, unknown>, root: string, scenario: string}} input
+ */
 export function validateOriginal18Resume({fixture,browser,stopped,resumeRecords={},manualCleanup=undefined,root,scenario}){
  const target=original18BrowserTarget(['--scenario='+scenario,...(['personnel','integration'].includes(scenario)?['--resume']:[])]);
  const bound=row=>record(row)&&row.root===root&&row.scenario===scenario&&row.database===target.database&&row.namespace===target.namespace&&row.port===target.port;
