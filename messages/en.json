@@ -20281,5 +20281,9 @@
       "attendanceAllowance": "Attendance Allowance"
     },
     "moreCompanies": "+{count} selected companies"
+  },
+  "ownEmployment": {
+    "choose": "Choose your employment",
+    "unavailable": "This employment is not available. Return and select an active employment."
   }
 }

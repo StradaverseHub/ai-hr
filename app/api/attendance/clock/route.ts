@@ -1,3 +1,4 @@
+import {ownEmploymentSelection,OwnEmploymentSelectionError} from '@/lib/own-employment-selection';
 import { LOCATION_CAPTURE_STATUSES, type LocationCaptureStatus } from '@/lib/attendance-removal';
 import { clockApiSession } from '@/lib/attendance-clock-session';
 import { isSameOriginBrowserRequest } from '@/lib/request-origin';
@@ -10,8 +11,8 @@ export async function GET(request: Request) {
   const session = await clockApiSession();
   if (!session) return Response.json({error:'authentication'},{status:401});
   const url = new URL(request.url);
-  if ([...url.searchParams.keys()].some(key => key !== 'requestId') || url.searchParams.getAll('requestId').length !== 1) return Response.json({error:'invalid'},{status:400});
-  const receipt = await ownClockReceipt(session, url.searchParams.get('requestId') ?? '');
+  if ([...url.searchParams.keys()].some(key => !['requestId','employmentId'].includes(key)) || url.searchParams.getAll('requestId').length !== 1 || url.searchParams.getAll('employmentId').length>1 || (url.searchParams.has('employmentId')&&!ownEmploymentSelection.safeParse(url.searchParams.get('employmentId')).success)) return Response.json({error:'invalid'},{status:400});
+  let receipt;try{receipt=await ownClockReceipt(session,url.searchParams.get('requestId')??'',url.searchParams.get('employmentId')??undefined);}catch(error){if(error instanceof OwnEmploymentSelectionError)return Response.json({error:'accountChanged'},{status:409,headers:{'Cache-Control':'private, no-store'}});throw error;}
   return Response.json(receipt ? {receipt} : {error:'notFound'}, {status:receipt ? 200 : 404, headers:{'Cache-Control':'private, no-store'}});
 }
 export async function POST(request: Request) {
@@ -29,10 +30,11 @@ export async function POST(request: Request) {
     // r430 — deviceToken is GONE from the contract entirely (the client no longer sends one); 'photo' is
     // now OPTIONAL (0 or 1) — whether one is required is decided server-side from the employee's own
     // attendance_photo_setting (core/attendance-clock.ts), never from whether the client sent one.
-    const keys=['locationStatus','action','requestId','lat','lng','accuracy','photo','clockContext'];
+    const keys=['locationStatus','action','requestId','lat','lng','accuracy','photo','clockContext','employmentId'];
     if([...data.keys()].some(k=>!keys.includes(k))) throw new InvalidInput('Invalid request');
-    for (const k of keys) { const n=data.getAll(k).length; if (['locationStatus','photo','clockContext','lat','lng','accuracy'].includes(k) ? n>1 : n!==1) throw new InvalidInput('Invalid request'); }
+    for (const k of keys) { const n=data.getAll(k).length; if (['locationStatus','photo','clockContext','employmentId','lat','lng','accuracy'].includes(k) ? n>1 : n!==1) throw new InvalidInput('Invalid request'); }
     if (!['in','out'].includes(String(data.get('action'))) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(data.get('requestId')))) throw new InvalidInput('Invalid intent');
+    const selected=data.get('employmentId');if(selected!==null&&!ownEmploymentSelection.safeParse(selected).success)throw new InvalidInput('Invalid selection');
     const clockContext=data.get('clockContext');
     if(clockContext!=null && (typeof clockContext!=='string' || !/^[0-9a-f]{64}$/.test(clockContext)))throw new InvalidInput('Invalid employee context');
     const photoField=data.get('photo');
@@ -46,11 +48,11 @@ export async function POST(request: Request) {
       : {lat:null,lng:null,accuracy:null};
     const locationStatus=data.get('locationStatus');
     if(locationStatus!=null&&(typeof locationStatus!=='string'||!LOCATION_CAPTURE_STATUSES.includes(locationStatus as LocationCaptureStatus)))throw new InvalidInput('Invalid location status');
-    const receipt=await captureEmployeeClock(session,{action:String(data.get('action')) as 'in'|'out',requestId:String(data.get('requestId')),...location,locationStatus:locationStatus as LocationCaptureStatus|undefined??undefined,clockContext:typeof clockContext==='string'?clockContext:undefined,photo:photo?Buffer.from(await photo.arrayBuffer()):undefined,mime:photo?photo.type:undefined});
+    const receipt=await captureEmployeeClock(session,{employmentId:typeof selected==='string'?selected:undefined,action:String(data.get('action')) as 'in'|'out',requestId:String(data.get('requestId')),...location,locationStatus:locationStatus as LocationCaptureStatus|undefined??undefined,clockContext:typeof clockContext==='string'?clockContext:undefined,photo:photo?Buffer.from(await photo.arrayBuffer()):undefined,mime:photo?photo.type:undefined});
     return Response.json({receipt},{headers:{'Cache-Control':'private, no-store'}});
   } catch(error) {
-    const known=error instanceof InvalidInput || error instanceof ClockContextChangedError || error instanceof ClockPhotoError || error instanceof CorrectedClockConflictError || error instanceof ClockConflictError || error instanceof AttendancePhotoRequiredError || error instanceof OutsideGeofenceError || error instanceof GeolocationRequiredError || error instanceof ClockLocationError;
-    const code=!known?'unconfirmed':error instanceof ClockContextChangedError?'accountChanged':error instanceof InvalidInput?'invalid':error instanceof CorrectedClockConflictError?'correctedDay':error instanceof ClockConflictError?'conflict':error instanceof AttendancePhotoRequiredError?'photoRequired':error instanceof OutsideGeofenceError?'outsideGeofence':error instanceof GeolocationRequiredError || error instanceof ClockLocationError?'locationRequired':'photoInvalid';
+    const known=error instanceof OwnEmploymentSelectionError || error instanceof InvalidInput || error instanceof ClockContextChangedError || error instanceof ClockPhotoError || error instanceof CorrectedClockConflictError || error instanceof ClockConflictError || error instanceof AttendancePhotoRequiredError || error instanceof OutsideGeofenceError || error instanceof GeolocationRequiredError || error instanceof ClockLocationError;
+    const code=!known?'unconfirmed':error instanceof ClockContextChangedError || error instanceof OwnEmploymentSelectionError?'accountChanged':error instanceof InvalidInput?'invalid':error instanceof CorrectedClockConflictError?'correctedDay':error instanceof ClockConflictError?'conflict':error instanceof AttendancePhotoRequiredError?'photoRequired':error instanceof OutsideGeofenceError?'outsideGeofence':error instanceof GeolocationRequiredError || error instanceof ClockLocationError?'locationRequired':'photoInvalid';
     return Response.json({error:code},{status:!known?500:error instanceof ClockConflictError || error instanceof ClockContextChangedError?409:400,headers:{'Cache-Control':'private, no-store'}});
   }
 }

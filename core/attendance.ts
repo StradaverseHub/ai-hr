@@ -1,3 +1,4 @@
+import {ownLiveEmployment,ownLiveEmploymentTx} from './own-employment-selection';
 import {isCalendarDate} from '../lib/calendar-date';
 import {summarizeOvertimeRecords,type FormulaOvertimeRecord,type OvertimeRecordSummary} from '../lib/overtime-records';
 import { exceptionDecisionsTx } from './schedule-group-controls';
@@ -6414,16 +6415,18 @@ async function insertAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,p:{
     return { correctionId: row.id };
 }
 
-/** Own web punch only. The caller never supplies a subject, day, or replacement clock set. */
-export async function requestOwnClockRemoval(ctx:SessionContext,p:{punchId:string;requestId:string;baseline:string;reason:string;clockContext:string}){
+/** Own web punch only. An optional employment selection is intersected with the fresh live own set;
+ * the target punch still determines its day and the replacement clock set. */
+export async function requestOwnClockRemoval(ctx:SessionContext,p:{punchId:string;requestId:string;baseline:string;reason:string;clockContext:string;employmentId?:string}){
   const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
   const reason=typeof p.reason==='string'?p.reason.trim():'';
   if(!uuid.test(p.punchId)||!uuid.test(p.requestId)||!reason||reason.length>500||!/^[0-9a-f]{64}$/.test(p.baseline))throw new Error('Choose a clocking and enter a removal remark of at most 500 characters.');
-  const me=await myEmployment(ctx);if(!me)throw new Error('No active employee profile.');
+  const me=await ownLiveEmployment(ctx,p.employmentId);
   if(p.clockContext!==clockCommandContext(ctx.tenantId,ctx.userId,me.employmentId))throw new Error('Your employee account changed. Reopen Web Clocking.');
   return withTenant(ctx,async tx=>{
     // Same fence as captureEmployeeClock, including a day that has never had a correction.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+me.employmentId},0))`);
+    await ownLiveEmploymentTx(tx,ctx,me.employmentId);
     const [previous]=await tx.select().from(attendanceCorrection).where(eq(attendanceCorrection.id,p.requestId)).limit(1);
     if(previous){if(previous.employmentId!==me.employmentId||previous.removalPunchId!==p.punchId||previous.reason!==reason||previous.clockChanges?.baseline!==p.baseline)throw new Error('This removal identity is already in use.');return {correctionId:previous.id};}
     const [target]=await tx.select({punch:attendancePunch,capture:attendanceClockCapture.id,deviceId:attendanceClockCapture.deviceId}).from(attendancePunch).innerJoin(attendanceClockCapture,eq(attendanceClockCapture.id,attendancePunch.clockCaptureId)).where(and(eq(attendancePunch.id,p.punchId),eq(attendancePunch.employmentId,me.employmentId),eq(attendanceClockCapture.employmentId,me.employmentId))).limit(1);

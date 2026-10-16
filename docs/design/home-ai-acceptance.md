@@ -65,3 +65,13 @@ The Home cards/calendar/WFH/sharing/greeting owners, complete selected-employmen
 editable improvement handoff remain in the next implementation slice. The Profile subject reader
 checkpoint is a required integration dependency. Migrations0555/0556 remain unregistered here; parent
 owns ordered journal integration and the real test/runtime windows.
+
+## Selected clock source checkpoint
+
+Web Clocking now consumes the salary-free live own-subject selector. Multiple live employments require
+an explicit selection; absent/invalid/foreign selections never fall back to another record. The fixed
+selection follows the existing today read, multipart capture, lost-response receipt and removal request.
+Capture/removal recheck it after the existing employee lock. Existing clock context, device/photo,
+geofence, correction and Payroll guards remain authoritative; native capture keeps its existing path.
+The Profile reader is an integration dependency. New actual-owner DB and transport contract tests are
+written but UNRUN. No physical camera/geofence/native/browser acceptance is established by this source.

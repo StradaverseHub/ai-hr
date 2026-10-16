@@ -20281,5 +20281,9 @@
       "attendanceAllowance": "Phụ cấp chấm công"
     },
     "moreCompanies": "+{count} công ty đã chọn"
+  },
+  "ownEmployment": {
+    "choose": "Chọn công việc của bạn",
+    "unavailable": "Công việc này không khả dụng. Hãy quay lại và chọn công việc đang hoạt động."
   }
 }

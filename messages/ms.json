@@ -20281,5 +20281,9 @@
       "attendanceAllowance": "Elaun Kehadiran"
     },
     "moreCompanies": "+{count} syarikat pilihan"
+  },
+  "ownEmployment": {
+    "choose": "Pilih pekerjaan anda",
+    "unavailable": "Pekerjaan ini tidak tersedia. Kembali dan pilih pekerjaan yang aktif."
   }
 }

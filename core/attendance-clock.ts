@@ -6,7 +6,8 @@ import type { SessionContext } from '../db/client';
 import { attendance, attendanceClockCapture, attendancePunch, attendanceCorrection, clockingLocation, employment, domainEvent, employeeDevice } from '../db/schema';
 import { actorOf, appendEvent } from '../db/events';
 import { withAttendanceTenant as withTenant } from './module-gate';
-import { myEmployment, myEmployments } from './read';
+import { myEmployments } from './read';
+import {ownLiveEmployment,ownLiveEmploymentTx} from './own-employment-selection';
 import { ClockConflictError, CorrectedClockConflictError, assertDayNotOwnedByCorrectionTx, appendGeofenceBlockedEvent, checkInTx, checkOutTx, resolveGeofence, clockScheduleForTx, OutsideGeofenceError } from './attendance';
 import { enforceDeviceGateTx, DeviceNotRegisteredError } from './attendance-device';
 import { decodeClockPhoto } from '../lib/attendance-photo';
@@ -26,7 +27,7 @@ export class AttendancePhotoRequiredError extends Error {}
 // r430 — deviceToken is GONE (Web Clocking no longer registers or presents a device); photo/mime are now
 // OPTIONAL — whether one is required, optional or ignored is decided server-side from the employee's own
 // attendance_photo_setting, never from what the client chooses to send.
-export type ClockIntent = { action: 'in' | 'out'; requestId: string; lat: number | null; lng: number | null; accuracy: number | null; photo?: Buffer; mime?: string; clockContext?: string; locationStatus?: LocationCaptureStatus };
+export type ClockIntent = { action: 'in' | 'out'; requestId: string; lat: number | null; lng: number | null; accuracy: number | null; photo?: Buffer; mime?: string; clockContext?: string; locationStatus?: LocationCaptureStatus; employmentId?:string };
 /** Missing location is explicit, never a numeric placeholder or a partial coordinate pair. */
 function clockLocation(p: Pick<ClockIntent, 'lat' | 'lng' | 'accuracy'>) {
   if (p.lat === null && p.lng === null && p.accuracy === null) return null;
@@ -42,12 +43,11 @@ function clockLocation(p: Pick<ClockIntent, 'lat' | 'lng' | 'accuracy'>) {
 // that was never taken as available.
 const publicReceipt = (row: typeof attendanceClockCapture.$inferSelect) => ({ id: row.id, direction: row.direction, recordedAt: row.serverRecordedAt.toISOString(), date: row.attendanceDate, photoAvailable: row.photoDigest != null && row.photoPurgedAt == null });
 
-/** Look up only the current employee's accepted command; no caller-supplied subject is accepted. */
-export async function ownClockReceipt(ctx: SessionContext, requestId: string) {
+/** Recover only a freshly validated live own employment's accepted command. */
+export async function ownClockReceipt(ctx: SessionContext, requestId: string, selectedEmploymentId?:string) {
   if (!UUID.test(requestId)) return null;
-  const me = await myEmployment(ctx);
-  if (!me) return null;
   return withTenant(ctx, async tx => {
+    const me=await ownLiveEmploymentTx(tx,ctx,selectedEmploymentId);
     const [row] = await tx.select().from(attendanceClockCapture).where(and(
       eq(attendanceClockCapture.employmentId, me.employmentId),
       eq(attendanceClockCapture.requestId, requestId),
@@ -78,7 +78,7 @@ export async function captureEmployeeClock(ctx: SessionContext, p: ClockIntent) 
 }
 
 async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, native?: { employmentId: string; deviceToken?: string; sampledAt: number }) {
-  const me = native ? (await myEmployments(ctx)).find(e => e.employmentId === native.employmentId) : await myEmployment(ctx);
+  const me = native ? (await myEmployments(ctx)).find(e => e.employmentId === native.employmentId) : await ownLiveEmployment(ctx,p.employmentId);
   if (!me) throw new Error('No active employee profile');
   if (p.clockContext != null && p.clockContext !== clockCommandContext(ctx.tenantId, ctx.userId, me.employmentId)) throw new ClockContextChangedError('Sign in to the original employee account to recover this clocking.');
   if (!['in', 'out'].includes(p.action) || !UUID.test(p.requestId)) throw new Error('Invalid clock request');
@@ -88,6 +88,7 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
   return withTenant(ctx, async tx => {
     // Lock the subject even before its first attendance row exists. Concurrent tabs serialize here.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + me.employmentId}, 0))`);
+    if(!native)await ownLiveEmploymentTx(tx,ctx,me.employmentId);
     if (native) await enforceDeviceGateTx(tx, { employmentId: me.employmentId, deviceToken: native.deviceToken });
     const [nativeDevice] = native?.deviceToken ? await tx.select({id:employeeDevice.id}).from(employeeDevice).where(and(eq(employeeDevice.employmentId,me.employmentId),eq(employeeDevice.deviceToken,native.deviceToken),isNull(employeeDevice.revokedAt))).limit(1) : [];
     if (native?.deviceToken && !nativeDevice) throw new DeviceNotRegisteredError();

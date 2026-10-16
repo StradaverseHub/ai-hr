@@ -4,16 +4,15 @@ import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm';
 import { attendance, attendancePunch, attendanceClockCapture, attendanceCorrection, clockingLocation, employment } from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { withAttendanceTenant as withTenant } from './module-gate';
-import { myEmployment, myEmployments } from './read';
+import {ownLiveEmploymentTx} from './own-employment-selection';
 import { clockScheduleForTx, resolveGeofence } from './attendance';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { clockCommandContext } from '../lib/clock-command-context';
 
 // r430 — deviceToken is GONE (Web Clocking no longer registers or presents a device).
 export async function ownClockToday(ctx: SessionContext, geo?: { lat: number; lng: number; accuracy: number }, selectedEmploymentId?: string) {
-  const me = selectedEmploymentId ? (await myEmployments(ctx)).find(e => e.employmentId === selectedEmploymentId) : await myEmployment(ctx);
-  if (!me) throw new Error('No active employee profile');
   return withTenant(ctx, async tx => {
+    const me=await ownLiveEmploymentTx(tx,ctx,selectedEmploymentId);
     const now = new Date();
     let date = todayInKualaLumpur(now);
     const [openDay] = await tx.select({ date: attendance.attendanceDate }).from(attendance).where(and(eq(attendance.employmentId, me.employmentId), isNotNull(attendance.checkInAt), isNull(attendance.checkOutAt))).orderBy(desc(attendance.attendanceDate)).limit(1);
@@ -61,6 +60,6 @@ export async function ownClockToday(ctx: SessionContext, geo?: { lat: number; ln
     }
     const allPunches=await punchesForCorrectionTx(tx,me.employmentId,date);
     const [pendingRemoval]=await tx.select({id:attendanceCorrection.id,punchId:attendanceCorrection.removalPunchId}).from(attendanceCorrection).where(and(eq(attendanceCorrection.employmentId,me.employmentId),eq(attendanceCorrection.attendanceDate,date),eq(attendanceCorrection.status,'pending'))).limit(1);
-    return { removalBaseline:clockFingerprint(allPunches),clockContext:clockCommandContext(ctx.tenantId,ctx.userId,me.employmentId),serverNow:now.toISOString(),date,clockedIn:anchor!=null,openSince:anchor==null?null:new Date(anchor).toISOString(),workedSeconds:Math.floor(workedMs/1000),locationValid,locationAvailable,geofencingRequired,attendancePhotoSetting,shift:{code:schedule.code,start:schedule.start,end:schedule.end},captures:captures.filter(c=>live.some(p=>p.captureId===c.id)).map(c=>({...c,date,punchId:allPunches.find(p=>p.clockCaptureId===c.id&&!p.voidedAt)?.id??null,removalRequested:pendingRemoval?.punchId===allPunches.find(p=>p.clockCaptureId===c.id)?.id,removalBlocked:!!pendingRemoval||c.deviceId!=null,recordedAt:c.recordedAt.toISOString(),photoAvailable:c.purgedAt==null&&c.photoDigest!=null,purgedAt:undefined,photoDigest:undefined})),legacy:live.filter(p=>!p.captureId).map(p=>({direction:p.direction,time:p.time})) };
+    return { employmentId:me.employmentId,removalBaseline:clockFingerprint(allPunches),clockContext:clockCommandContext(ctx.tenantId,ctx.userId,me.employmentId),serverNow:now.toISOString(),date,clockedIn:anchor!=null,openSince:anchor==null?null:new Date(anchor).toISOString(),workedSeconds:Math.floor(workedMs/1000),locationValid,locationAvailable,geofencingRequired,attendancePhotoSetting,shift:{code:schedule.code,start:schedule.start,end:schedule.end},captures:captures.filter(c=>live.some(p=>p.captureId===c.id)).map(c=>({...c,date,punchId:allPunches.find(p=>p.clockCaptureId===c.id&&!p.voidedAt)?.id??null,removalRequested:pendingRemoval?.punchId===allPunches.find(p=>p.clockCaptureId===c.id)?.id,removalBlocked:!!pendingRemoval||c.deviceId!=null,recordedAt:c.recordedAt.toISOString(),photoAvailable:c.purgedAt==null&&c.photoDigest!=null,purgedAt:undefined,photoDigest:undefined})),legacy:live.filter(p=>!p.captureId).map(p=>({direction:p.direction,time:p.time})) };
   });
 }

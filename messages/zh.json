@@ -20281,5 +20281,9 @@
       "attendanceAllowance": "考勤津贴"
     },
     "moreCompanies": "另有{count}家所选公司"
+  },
+  "ownEmployment": {
+    "choose": "选择您的雇佣记录",
+    "unavailable": "此雇佣记录不可用。请返回并选择有效的雇佣记录。"
   }
 }
