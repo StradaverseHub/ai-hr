@@ -6,7 +6,7 @@ import * as s from '../db/schema';
 import { setFeedbackPlan, approveFeedbackPlan, startFeedbackBuild, completeFeedbackBuild } from '../core/feedback';
 import { hireEmployee } from '../core/org';
 import { ModuleNotEnabledError } from '../core/entitlements';
-import { listTestingLibrary, getTestingLibraryCase, listTestingTesterOptions, requestTestingRetest, createTestCase, updateTestCase, recordTestRun, addTestingScreenshot, assignTestingCase, beginTestingExecution, getTestingExecution, getTestingScreenshot, listTestingAssignments, publishTestInstruction, raiseTestingExecutionFeedback, saveTestInstructionDraft, saveTestingExecution } from '../core/system-testing';
+import { listTestingLibrary, getTestingLibraryCase, getTestingInstructionVersion, listTestingTesterOptions, requestTestingRetest, createTestCase, updateTestCase, recordTestRun, addTestingScreenshot, assignTestingCase, beginTestingExecution, getTestingExecution, getTestingScreenshot, listTestingAssignments, publishTestInstruction, raiseTestingExecutionFeedback, saveTestInstructionDraft, saveTestingExecution } from '../core/system-testing';
 import { TestingRefusal, type InstructionDefinition } from '../lib/system-testing/model';
 import { pgSqlState } from '../lib/db-error';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -153,12 +153,27 @@ describe('personal System Testing isolation and immutable instructions', () => {
     for (const call of [() => listTestingLibrary(one),() => getTestingLibraryCase(one,f.draft.caseId),() => listTestingTesterOptions(one)]) await expect(call()).rejects.toMatchObject({ code: 'not_assigned' });
     const team = await getTestingExecution(admin,f.execution.executionId,{ team: true }); expect(team.canSave).toBe(false);
   });
+  it('reads immutable assigned instruction versions without exposing another unassigned master case',async()=>{
+    const f=await setup();expect((await getTestingInstructionVersion(one,{caseId:f.draft.caseId,versionId:f.version.versionId})).definition).toEqual(guide);
+    const otherDraft=await saveTestInstructionDraft(admin,{caseId:null,expectedRevision:0,definition:{...guide,title:'Fictional unassigned guide'}});
+    const otherVersion=await publishTestInstruction(admin,{caseId:otherDraft.caseId,expectedDraftRevision:otherDraft.revision,expectedVersionId:null});
+    await expect(getTestingInstructionVersion(one,{caseId:otherDraft.caseId,versionId:otherVersion.versionId})).rejects.toMatchObject({code:'not_found'});
+    await expect(getTestingInstructionVersion(one,{caseId:f.draft.caseId,versionId:otherVersion.versionId})).rejects.toMatchObject({code:'not_found'});
+  });
+  it('pages all case assignments without showing an already-assigned account as a new create option',async()=>{
+    const f=await setup();const extra=await owner.db.insert(s.appUser).values(Array.from({length:51},(_,i)=>({tenantId:b.tenantId,workosUserId:`fictional-paged-tester-${i}`,personId:null}))).returning({id:s.appUser.id});
+    for(const user of extra)await assignTestingCase(admin,{caseId:f.draft.caseId,testerUserId:user.id,expectedVersionId:f.version.versionId,active:true,expectedRevision:null});
+    const first=await getTestingLibraryCase(admin,f.draft.caseId),second=await getTestingLibraryCase(admin,f.draft.caseId,{assignmentPage:2});
+    expect(first.assignmentTotal).toBe(53);expect(first.assignments).toHaveLength(50);expect(second.assignments).toHaveLength(3);expect(new Set([...first.assignments,...second.assignments].map(a=>a.id)).size).toBe(53);
+    const a=await listTestingTesterOptions(admin,{forCaseId:f.draft.caseId}),z=await listTestingTesterOptions(admin,{forCaseId:f.draft.caseId,page:2});
+    expect([...a.rows,...z.rows].find(u=>u.userId===one.userId)?.assignmentId).toBe(f.a.assignmentId);
+  });
   it('gates assigned testers and admins on a fresh canonical module snapshot without deleting stored history', async () => {
     const f = await setup(); await saveTestingExecution(one, observation(f));
     await setModule(b.tenantId, 'system_testing', 'disabled');
     const fresh = { ...await entitledCtx(b, ['employee']), userId: one.userId, personId: one.personId };
     const denied = [
-      () => listTestingLibrary(fresh), () => getTestingLibraryCase(fresh,f.draft.caseId), () => listTestingTesterOptions(fresh),
+      () => listTestingLibrary(fresh), () => getTestingLibraryCase(fresh,f.draft.caseId), () => getTestingInstructionVersion(fresh,{caseId:f.draft.caseId,versionId:f.version.versionId}), () => listTestingTesterOptions(fresh),
       () => requestTestingRetest(fresh,{ assignmentId: f.a.assignmentId,expectedRevision: 0,expectedVersionId: f.version.versionId,feedbackId: f.execution.executionId }),
       () => listTestingAssignments(fresh), () => getTestingExecution(fresh, f.execution.executionId),
       () => beginTestingExecution(fresh, { assignmentId: f.a.assignmentId, expectedVersionId: f.version.versionId, newAttempt: false }),

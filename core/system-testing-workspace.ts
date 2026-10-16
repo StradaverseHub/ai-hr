@@ -239,3 +239,13 @@ export async function getTestingScreenshot(ctx: SessionContext, attachmentId: st
   participant(ctx); testingUuid.parse(attachmentId);
   return withTenant(ctx, async tx => { const [row] = await tx.select().from(testExecutionAttachment).where(eq(testExecutionAttachment.id, attachmentId)); return row ?? null; });
 }
+
+/** Shared immutable definition reader; assigned-case RLS applies without access to another tester's runs. */
+export async function getTestingInstructionVersion(ctx:SessionContext,p:{caseId:string;versionId:string}) {
+  participant(ctx);testingUuid.parse(p.caseId);testingUuid.parse(p.versionId);
+  return withTenant(ctx,async tx=>{
+    const [row]=await tx.select().from(testCaseVersion).where(and(eq(testCaseVersion.id,p.versionId),eq(testCaseVersion.testCaseId,p.caseId),sql`octet_length(${testCaseVersion.definition}::text)<=8388608`)).limit(1);
+    if(!row)throw new TestingRefusal('not_found');
+    return {...row,definition:parsePublishedInstruction(row.definition)};
+  },{readOnlySnapshot:true});
+}
