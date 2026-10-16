@@ -6,7 +6,7 @@ const t=(key:string)=>key.split('.').reduce((v:any,k)=>v?.[k],en.workflowEmail)?
 vi.mock('next-intl/server',()=>({getTranslations:async()=>t,getLocale:async()=>'en'}));
 vi.mock('../lib/scope',()=>({scopedAdmin:async()=>({s:{userId:'user'}}),scopedSession:async()=>({s:{userId:'user'}})}));
 vi.mock('../lib/authz',()=>({requireModule:vi.fn(),isGroupAdmin:m.group}));
-vi.mock('../lib/identity/config',()=>({keycloakSelected:m.internal}));vi.mock('../lib/identity/session',()=>({currentIdentitySession:m.identity}));
+vi.mock('../lib/identity/provider',()=>({currentProviderSession:m.identity}));
 vi.mock('../core/notification-email',()=>({readNotificationEmailPolicy:m.policy,readNotificationEmailDeliveries:m.deliveries,readNotificationEmailPreferences:m.preferences}));
 vi.mock('../core/notification-email-delivery',()=>({readNotificationEmailTransport:m.relay}));
 vi.mock('../core/account-email',()=>({readAccountEmailDeliveries:m.accounts}));
@@ -18,7 +18,7 @@ import MyPage from '../app/me/notifications/page';
 beforeEach(()=>{cleanup();vi.clearAllMocks();m.accounts.mockResolvedValue([]);m.policy.mockResolvedValue([]);m.deliveries.mockResolvedValue([]);m.relay.mockResolvedValue(null);m.group.mockReturnValue(true);m.internal.mockReturnValue(false);m.identity.mockResolvedValue(null);m.preferences.mockResolvedValue({employments:[{id:'employment',code:'EMP-01'}],preferences:[],policy:[]});});
 describe('workflow email configuration screens',()=>{
  it('does not claim mail is active when the root-installed service has not been upgraded',async()=>{
-  render(await AdminPage({searchParams:Promise.resolve({})}));expect(screen.getByText(en.workflowEmail.upgradeRequired)).toBeTruthy();expect(screen.getAllByRole('checkbox')).toHaveLength(13);expect(screen.getAllByRole('checkbox').every(c=>!(c as HTMLInputElement).checked)).toBe(true);
+  render(await AdminPage({searchParams:Promise.resolve({})}));expect(screen.getByText(en.workflowEmail.upgradeRequired)).toBeTruthy();expect(screen.getAllByRole('checkbox')).toHaveLength(14);expect(screen.getByRole('checkbox',{name:en.workflowEmail.categories.employee_master_reports})).not.toBeChecked();expect(screen.getAllByRole('checkbox').every(c=>!(c as HTMLInputElement).checked)).toBe(true);
  });
  it('makes tenant controls read-only for a company administrator',async()=>{
   m.group.mockReturnValue(false);render(await AdminPage({searchParams:Promise.resolve({})}));expect(screen.queryByRole('button',{name:en.workflowEmail.savePolicy})).toBeNull();expect((screen.getByRole('group') as HTMLFieldSetElement).disabled).toBe(true);
@@ -41,7 +41,7 @@ describe('workflow email configuration screens',()=>{
   render(await MyPage({searchParams:Promise.resolve({})}));const consent=screen.getByRole('checkbox',{name:new RegExp('^Leave')}) as HTMLInputElement;expect(consent.disabled).toBe(false);expect(consent.checked).toBe(true);
  });
  it('renders a separate preference form for concurrent employments',async()=>{
-  m.internal.mockReturnValue(true);m.identity.mockResolvedValue({emailVerified:true});m.preferences.mockResolvedValue({employments:[{id:'one',code:'EMP-01'},{id:'two',code:'EMP-02'}],preferences:[],policy:[]});
-  render(await MyPage({searchParams:Promise.resolve({})}));expect(screen.getAllByRole('button',{name:en.workflowEmail.save})).toHaveLength(2);expect(Array.from(document.querySelectorAll<HTMLInputElement>('input[name=employmentId]')).map(i=>i.value)).toEqual(['one','two']);
+  m.identity.mockResolvedValue({emailVerified:true,issuer:'https://fixture.test/auth/tenant',subject:'fixture-user',email:'fictional@demo.test'});m.preferences.mockResolvedValue({employments:[{id:'one',code:'EMP-01'},{id:'two',code:'EMP-02'}],preferences:[],policy:[]});
+  render(await MyPage({searchParams:Promise.resolve({})}));expect(screen.getAllByRole('button',{name:en.workflowEmail.save})).toHaveLength(2);expect(Array.from(document.querySelectorAll<HTMLInputElement>('input[name=employmentId]')).map(i=>i.value)).toEqual(['one','two']);expect(screen.getAllByRole('checkbox').every(c=>!(c as HTMLInputElement).disabled)).toBe(true);
  });
 });
