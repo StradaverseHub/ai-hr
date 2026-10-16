@@ -48,7 +48,7 @@ const {createDb,client}=await import('../db/client');
 const s=await import('../db/schema');
 const {provisionTenant}=await import('../db/provision');
 const {resolveEntitlementsTx}=await import('../core/entitlements');
-const {createCompany,createDepartment,createPosition,createCostCenter,createBusinessUnit,createJobGrade}=await import('../core/admin');
+const {createCompany,createDepartment,createPosition,createCostCenter,createBusinessUnit,createJobGrade,assignRole}=await import('../core/admin');
 const {hireEmployee,setReportingLine,setEmploymentInfo}=await import('../core/org');
 const {createProfileOption,CATEGORY_EMPLOYMENT_COLUMN}=await import('../core/profile-options');
 const {EMPLOYMENT_LABEL_CATEGORIES,LABEL_IMPORT_DEFINITIONS,ORGANISATION_LABEL_KINDS}=await import('../lib/system-label-definition');
@@ -65,8 +65,11 @@ function canonical(value:unknown):string{if(Array.isArray(value))return '['+valu
 const digest=(value:unknown)=>createHash('sha256').update(canonical(value)).digest('hex');
 const byteDigest=(bytes:Uint8Array)=>createHash('sha256').update(bytes).digest('hex');
 const uuid=(value:unknown):value is string=>typeof value==='string'&&/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value);
+async function actualGrants(tenantId:string,userId:string):Promise<Grant[]>{
+ return owner.db.select({role:s.roleAssignment.role,companyId:s.roleAssignment.companyId}).from(s.roleAssignment).where(and(eq(s.roleAssignment.tenantId,tenantId),eq(s.roleAssignment.appUserId,userId))).orderBy(asc(s.roleAssignment.id));
+}
 async function context(p:Principal):Promise<SessionContext>{
- const grants=await owner.db.select({role:s.roleAssignment.role,companyId:s.roleAssignment.companyId}).from(s.roleAssignment).where(and(eq(s.roleAssignment.tenantId,p.tenantId),eq(s.roleAssignment.appUserId,p.userId))).orderBy(asc(s.roleAssignment.id));
+ const grants=await actualGrants(p.tenantId,p.userId);
  return {tenantId:p.tenantId,userId:p.userId,personId:p.personId,grants,roles:[...new Set(grants.map(g=>g.role))],entitlements:await owner.db.transaction(tx=>resolveEntitlementsTx(tx,p.tenantId))};
 }
 // Hash only a closed, bounded table inventory. No invitation/session tokens or credentials are exported.
@@ -96,7 +99,7 @@ async function assertManifestBindings(manifest:FixtureManifest){
   const employed=['Manager','Employee','ScopedHR','BEmployee','HiddenEmployee'].includes(key);
   if(Boolean(p.employmentId)!==employed||Boolean(p.personId)!==(!['Operator','EmptyHR'].includes(key)))throw new Error('Fictional principal person/employment graph changed.');
   if(!['GroupHR','ForeignHR'].includes(key)&&p.login!==`labels18-fixture:${key}`)throw new Error('Fictional login subject changed.');
-  const expectedGrants:Grant[]=key==='GroupHR'||key==='ForeignHR'?[{role:'hr_admin',companyId:null}]:key==='Operator'?[{role:'operator',companyId:null}]:key==='ScopedHR'?['Main','B'].map(k=>({role:'hr_admin',companyId:manifest.companies[k].id})):key==='EmptyHR'?[{role:'hr_admin',companyId:manifest.companies.Empty.id}]:[{role:key==='Manager'?'manager':'employee',companyId:manifest.companies[key==='BEmployee'?'B':key==='HiddenEmployee'?'Hidden':'Main'].id}];
+  const expectedGrants:Grant[]=key==='GroupHR'||key==='ForeignHR'?[{role:'hr_admin',companyId:null}]:key==='Operator'?[{role:'operator',companyId:null}]:key==='ScopedHR'?['Main','B'].map(k=>({role:'hr_admin',companyId:manifest.companies[k].id})):key==='EmptyHR'?[{role:'hr_admin',companyId:manifest.companies.Empty.id}]:[{role:key==='Manager'?'manager':'employee',companyId:null}];
   const [actual]=await owner.db.select().from(s.appUser).where(eq(s.appUser.id,p.userId));
   if(!actual||actual.tenantId!==p.tenantId||actual.personId!==p.personId||actual.workosUserId!==p.login||actual.archivedAt)throw new Error('Fictional login binding changed.');
   if(p.personId){const [person]=await owner.db.select({tenantId:s.person.tenantId}).from(s.person).where(eq(s.person.id,p.personId));if(person?.tenantId!==p.tenantId)throw new Error('Fictional person binding changed.');}
@@ -175,14 +178,17 @@ async function main(){
   const hired=await hireEmployee(admin,{person:{fullName:`Labels18 ${key}`,primaryEmail:`labels18-${key.toLowerCase()}@demo.test`},employeeCode:`LBL18-${key.toUpperCase()}`,companyId:companies[companyKey].id,departmentId:labels.department[companyKey].id,positionId:labels.position[companyKey].id,costCenterId:labels.cost_center[companyKey].id,gradeId:grade.id,employmentType:'full_time',hiredOn:date});
   await setEmploymentInfo(admin,{employmentId:hired.employmentId,...profileValues});
   const login=`labels18-fixture:${key}`,role=key==='Manager'?'manager':key==='ScopedHR'?'hr_admin':'employee';
-  const grants:Grant[]=key==='ScopedHR'?['Main','B'].map(k=>({role:'hr_admin',companyId:companies[k].id})):[{role,companyId:companies[companyKey].id}];
   const [user]=await owner.db.insert(s.appUser).values({tenantId,personId:hired.personId,workosUserId:login,onboardedAt:new Date()}).returning({id:s.appUser.id});
-  await owner.db.insert(s.roleAssignment).values(grants.map(grant=>({tenantId,appUserId:user.id,...grant})));
+  if(key==='ScopedHR')for(const scope of ['Main','B'])await assignRole(admin,{appUserId:user.id,role:'hr_admin',companyId:companies[scope].id});
+  else await assignRole(admin,{appUserId:user.id,role});
+  // The canonical writer normalizes manager/employee companyId to null; actual employment
+  // and reporting-line owners determine their scope. Never manufacture inert company grants.
+  const grants=await actualGrants(tenantId,user.id);
   people[key]={tenantId,userId:user.id,personId:hired.personId,employmentId:hired.employmentId,login,grants};
  }
  const [emptyAdmin]=await owner.db.insert(s.appUser).values({tenantId,personId:null,workosUserId:'labels18-fixture:EmptyHR',onboardedAt:new Date()}).returning({id:s.appUser.id});
- await owner.db.insert(s.roleAssignment).values({tenantId,appUserId:emptyAdmin.id,role:'hr_admin',companyId:companies.Empty.id});
- people.EmptyHR={tenantId,userId:emptyAdmin.id,personId:null,employmentId:null,login:'labels18-fixture:EmptyHR',grants:[{role:'hr_admin',companyId:companies.Empty.id}]};
+ await assignRole(admin,{appUserId:emptyAdmin.id,role:'hr_admin',companyId:companies.Empty.id});
+ people.EmptyHR={tenantId,userId:emptyAdmin.id,personId:null,employmentId:null,login:'labels18-fixture:EmptyHR',grants:await actualGrants(tenantId,emptyAdmin.id)};
  const [operator]=await owner.db.insert(s.appUser).values({tenantId,personId:null,workosUserId:'labels18-fixture:Operator',onboardedAt:new Date()}).returning({id:s.appUser.id});
  await owner.db.insert(s.roleAssignment).values({tenantId,appUserId:operator.id,role:'operator',companyId:null});
  people.Operator={tenantId,userId:operator.id,personId:null,employmentId:null,login:'labels18-fixture:Operator',grants:[{role:'operator',companyId:null}]};
