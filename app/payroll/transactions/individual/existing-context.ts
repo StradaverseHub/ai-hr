@@ -85,6 +85,11 @@ export type TxnPanelInputRow = {
   source?: string | null;
   runType: string | null;
   runSeq: number | null;
+  /** Always supplied by the current read owner; optional for legacy panel callers/fixtures. */
+  batchCycleId?: string | null;
+  batchCycleName?: string | null;
+  intendedCycleId?: string | null;
+  intendedCycleName?: string | null;
   batchStatus: string | null;
   /** Audit provenance, already on the listing row — the request's "View" needs it and nothing else does. */
   createdOn: string;

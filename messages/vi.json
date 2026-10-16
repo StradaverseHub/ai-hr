@@ -5930,6 +5930,7 @@
         "deleteBody": "Thao tác này xóa giao dịch cá nhân khỏi đợt. Không thể hoàn tác.",
         "monthLabel": "Tháng",
         "cycleLabel": "Chu kỳ lương",
+        "cycleUnavailable": "Không có thông tin chu kỳ lương",
         "dateOutOfPeriod": "Ngày giao dịch nằm ngoài tháng của kỳ lương đã chọn.",
         "notDraft": "Kỳ lương này đã đóng nên không thể thay đổi các giao dịch của nó nữa.",
         "kindLabel": {

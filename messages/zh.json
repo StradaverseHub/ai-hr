@@ -5930,6 +5930,7 @@
         "deleteBody": "此操作将从批次中移除该个人交易，且无法撤销。",
         "monthLabel": "月份",
         "cycleLabel": "发薪周期",
+        "cycleUnavailable": "薪资周期不可用",
         "dateOutOfPeriod": "交易日期不在所选发薪周期月份内。",
         "notDraft": "此薪资批次已结账，其交易无法再更改。",
         "kindLabel": {

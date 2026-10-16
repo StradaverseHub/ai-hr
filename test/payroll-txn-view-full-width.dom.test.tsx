@@ -126,6 +126,10 @@ const individualRow: IndividualTxnViewRow = {
   payPeriod: '2026-08',
   runType: 'regular',
   runSeq: 1,
+  batchCycleId: null,
+  batchCycleName: null,
+  intendedCycleId: null,
+  intendedCycleName: null,
   batchStatus: 'processed',
   kind: 'earning',
   // 4e403268 added these to the shared projection; they play no part in the width guard.

@@ -648,6 +648,15 @@ export function TxnWorkspace({
    * lookup that silently returned nothing would close it with no explanation.
    */
   const viewRow = expandedId ? (panel.rows.find((r) => r.id === expandedId) ?? null) : null;
+  // View uses the authorized recorded cycle reference, including archived catalogue entries.
+  // A known-but-unavailable batch name must never fall through to a different intended cycle.
+  const viewCycleName = viewRow?.batchCycleId != null
+    ? viewRow.batchCycleName || t('cycleUnavailable')
+    : viewRow?.intendedCycleId != null
+      ? viewRow.intendedCycleName || t('cycleUnavailable')
+      : viewRow?.runType
+        ? t(`cycle.${viewRow.runType}` as never)
+        : t('pendingRun');
 
   const pageCount = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount - 1);
@@ -2812,9 +2821,7 @@ export function TxnWorkspace({
             <Detail
               label={t('cycleLabel')}
               value={
-                viewRow.runType
-                  ? `${t(`cycle.${viewRow.runType}` as never)}${(viewRow.runSeq ?? 1) > 1 ? ` #${viewRow.runSeq}` : ''}`
-                  : t('pendingRun')
+                `${viewCycleName}${(viewRow.runSeq ?? 1) > 1 ? ` #${viewRow.runSeq}` : ''}`
               }
             />
             <Detail label={t('colStatus')} value={statusLabel(viewRow)} />
