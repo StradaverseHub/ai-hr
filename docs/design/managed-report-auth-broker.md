@@ -62,8 +62,10 @@ passwords/TOTP again, mutate factors, default flags, widen grants or bypass enro
 
 ## Isolated child contract
 
-Entry: `deploy/identity-email/report-auth-broker.ts`; installed invocation uses the existing pinned
-Node20 + tsx runtime. One stdin request, one complete stdout reply, then exit; no listening socket,
+Entry: `deploy/identity-email/report-auth-broker.ts`; installed invocation uses the absolute
+`/usr/local/lib/aihr-identity-email/internal-node` + tsx runtime. That root-installed path must select
+the operator-reviewed compatible Node22.13+ or Node24 course; production Node20 does not satisfy
+the known runtime compatibility prerequisite. The path itself is not runtime acceptance evidence. One stdin request, one complete stdout reply, then exit; no listening socket,
 SMTP, server/session context or imported application singleton. Supervisor must validate socket EOF
 and child exit0 before forwarding any reply. Lost/partial response cannot authorize MIME/SMTP.
 
@@ -104,5 +106,5 @@ private role authority, and does not claim a human enrollment or actual SMTP pro
 
 All new test sources are unrun. Semantic TypeScript, real PostgreSQL owner/concurrency behavior,
 process EOF/UID/DAC/timeout/pool-close behavior, memory budgets, actual renderer RPC, installer grants,
-Linux Node20, real human MFA/consent and SMTP attachment acceptance remain unverified. Existing0552
+Linux compatible Node runtime, real human MFA/consent and SMTP attachment acceptance remain unverified. Existing0552
 SQL tests cover additional row/advisory contention; their runtime result is a separate prerequisite.

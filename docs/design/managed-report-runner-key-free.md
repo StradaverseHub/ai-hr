@@ -6,10 +6,13 @@ It loads the full app env file and can hold Auth keys. **No claim that normal pr
 cron process is key-free is made.** The new smaller installed command is the only key-free path:
 
 ```
-/opt/node20/bin/node --import tsx scripts/provision-runner.ts --installed-internal-reports-only
+/usr/local/lib/aihr-identity-email/internal-node --import tsx scripts/provision-runner.ts --installed-internal-reports-only
 ```
 
-It must execute from the installed app directory with a trusted, separately curated environment.
+The installed `internal-node` must point to the operator-reviewed compatible Node22.13+ or Node24
+runtime required by the transport installation. Production Node20 has a known compatibility gap and
+does not satisfy this prerequisite. The path alone is not runtime acceptance evidence. The command
+must execute from the installed app directory with a trusted, separately curated environment.
 There is no `SKIP_ENV` environment toggle, caller file path, generic bypass or additional owner grant.
 Only the exact CLI flag is accepted; unknown/combined arguments refuse. Before importing any app
 runtime, this branch validates a closed environment and never calls any env-file loader. It runs only
@@ -40,17 +43,20 @@ not remove the privileged owner DB trust: this job is key-free, **not** an unpri
 The same canonical owner authority as the existing report queue/sweep remains required.
 
 The installed root launcher must start with `env -i`, source only this separately curated file with
-export enabled, set the installed cwd and exec the absolute pinned Node20 runtime. It must never source
+export enabled, set the installed cwd and exec the absolute installed `internal-node` path above,
+after its compatible runtime has been reviewed. It must never source
 .env.production/.env.local or export the full web environment. The Node branch itself reads no env
 file at all. Root file ownership/DAC/cron and actual running UID/config proof remain installation work;
 validating names is not proof of who supplied environment values.
 
-The operator must select **one report dispatch scheduling course** and avoid scheduling this dedicated
-tick alongside the existing all-jobs tick's report dispatch. This change deliberately leaves default
-behavior intact; preparing the file/command does not install a second cron, disable provisioning or
-claim duplicate scheduling is reconciled automatically. If normal provisioning must continue on its
-old schedule, its report-dispatch scheduling must be explicitly reconciled before enabling a dedicated
-report cron. No automatic cron mutation or keyless claim for that normal runner is part of this patch.
+**Installation blocker: scheduling is not reconciled by this patch.** The existing all-jobs tick
+always invokes report dispatch. If it must continue for provisioning/holidays, merely choosing a new
+cron expression or adding the dedicated tick cannot eliminate duplicate report dispatch. Before the
+dedicated tick is enabled, a separate reviewed installation change must split/suppress the existing
+report job, or establish that the all-jobs tick will not run and preserve its other required jobs by
+an approved course. Until then the dedicated tick must remain unscheduled. This patch preserves the
+default runner, supplies no report-suppression mechanism and activates no cron. It does not deliver
+that scheduling change or claim the normal runner is key-free.
 
 ## Prepared checks and limits
 
@@ -61,5 +67,6 @@ remains the real owner provisioning regression consumer after dynamic import iso
 
 All tests and semantic types are unrun in this source-only checkpoint. No owner credential was read,
 installed config written, cron activated, DB connected or runtime invoked. Real restricted/owner DB
-permissions, root-owned env/UID proof, Node20 Linux/runtime, IPC/SMTP, schedule reconciliation and actual
+permissions, root-owned env/UID proof, reviewed compatible Node Linux/runtime, IPC/SMTP, schedule
+reconciliation and actual
 key absence in the installed process remain unverified.
