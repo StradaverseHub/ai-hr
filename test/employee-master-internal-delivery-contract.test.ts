@@ -11,7 +11,7 @@ function definition(name:string){
 describe('internal report SQL authority stays nonce-bound and dependency-based',()=>{
  it('requires real543 and adds exactly the3nullable occurrence audit columns without another queue/Auth store',()=>{
   expect(migration).toContain("to_regprocedure('app.internal_auth_read(text,boolean)')");
-  expect([...migration.matchAll(/ADD COLUMN (artifact_[a-z_]+) (text|integer)/g)].map(match=>match[1]).sort()).toEqual(['artifact_byte_length','artifact_content_type','artifact_sha256']);
+  expect([...migration.matchAll(/ADD COLUMN (artifact_[a-z0-9_]+) (text|integer)/g)].map(match=>match[1]).sort()).toEqual(['artifact_byte_length','artifact_content_type','artifact_sha256']);
   expect(migration).not.toMatch(/CREATE TABLE|CREATE ROLE|ALTER ROLE|GRANT.*internal_auth_read|CREATE (?:OR REPLACE )?FUNCTION app\.internal_auth_(?:read|write|delete|revoke)\(/);
   const schema=readFileSync(new URL('../db/schema.ts',import.meta.url),'utf8'),begin=schema.indexOf('export const customReportOccurrence ='),end=schema.indexOf('// ─',begin);
   expect(begin).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(begin);
