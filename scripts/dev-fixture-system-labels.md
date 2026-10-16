@@ -31,9 +31,11 @@ state drift refuses rather than resetting anything. A rerun after browser edits 
 Private receipt: `scratchpad/board18-labels/fixture-manifest.json` (0600), artifacts in `files/`
 (0700 directory/0600 files). Stdout marker is `BOARD18_LABELS_MANIFEST` followed by the same JSON
 plus `reused`. The second clean run preserves every identifier and artifact. It compares a bounded
-read-only snapshot hash; no credentials/invitation tokens are exported. Pools close and the process
-exits naturally under the coordinator watchdog. Stop through the owned coordinator, which stops
-only its recorded child process group and releases its own locks; never kill a port occupant.
+read-only snapshot hash; no credentials/invitation tokens are exported. Both pools are attempted
+independently with bounded closes; the process explicitly exits with the actual setup/cleanup status
+under the coordinator watchdog. Manifest output is awaited before exit. Stop through the owned
+coordinator, which stops only its recorded child process group and releases its own locks; never kill
+a port occupant.
 
 Resume must **not** rerun preparation or compare mutable label state against the setup hash.
 Use the generic coordinator's owned resume controls after independently verifying its saved

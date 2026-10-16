@@ -112,6 +112,9 @@ async function assertManifestBindings(manifest:FixtureManifest){
   if(!actual||actual.tenantId!==company.tenantId||actual.legalName!==company.name||actual.companyLabel!==company.companyLabel)throw new Error('Fictional company binding changed.');
  }
 }
+async function emit(manifest:FixtureManifest,reused:boolean){
+ await new Promise<void>((resolve,reject)=>process.stdout.write('BOARD18_LABELS_MANIFEST\n'+JSON.stringify({...manifest,reused},null,2)+'\n',error=>error?reject(error):resolve()));
+}
 async function main(){
  const [appRole]=await client`select current_user as name,rolsuper,rolbypassrls from pg_roles where rolname=current_user`;
  const [migrationRole]=await owner.client`select current_user as name`;
@@ -131,7 +134,7 @@ async function main(){
   await assertManifestBindings(previous);
   await fileProofsUnchanged(previous.files);
   if(await stateSha256(declared.map(t=>t.id))!==previous.stateSha256)throw new Error('Stored fixture state changed; preserve browser edits and refuse.');
-  frozen();console.log('BOARD18_LABELS_MANIFEST\n'+JSON.stringify({...previous,reused:true},null,2));return;
+  frozen();await emit(previous,true);return;
  }
  if(tenants.some(t=>t.id!==SYSTEM_TENANT_ID||t.name!=='System (auth audit)'))throw new Error('Fresh migrated System-only target required; do not demo-seed or replace unknown tenants.');
  if(fsSync.existsSync(path.join(out,'files')))throw new Error('A previous artifact preparation exists without its completed receipt; preserve it.');
@@ -214,7 +217,15 @@ async function main(){
  const columns=LABEL_IMPORT_DEFINITIONS.find(d=>d.kind==='department')?.columns;if(!columns)throw new Error('Authoritative Department template missing.');const csvRow=row('LBL18_UNSUPPORTED_CSV');await save('unsupported-label-upload.csv',Buffer.from(toCsv([columns,columns.map(column=>csvRow[column as keyof typeof csvRow]??'')])),'Negative control only: System Labels intentionally accepts XLSX, no CSV import owner exists.');
  frozen();const manifest:FixtureManifest={sourceProof:await systemLabelFixtureSourceProof(root),format:1,root,candidate,database,namespace,port,tenantId,date,fixtureTenants,companies,people,labels,files,stateSha256:await stateSha256(ids),gradeId:grade.id,ambiguousOptionIds:ambiguousOptions.map(option=>option.id),longName,routes:{labels:'/admin/settings/system-labels',profileOptions:'/admin/settings/system-labels/profile-options',personnel:'/admin/personnel',newPersonnel:'/admin/personnel/new',companies:'/admin/organization'},preparedOnly:true,importsApplied:0,globalOrMultiCompanyActionsPerformed:false,legacyOverlapExceptionsCreated:0,commercialEntitlementsCreated:0,locales:['en','ms','zh','ta','th','vi'],limitations:['Current owner creates only scoped-origin baseline; genuine pre0550 old-flag and inherited-overlap upgrade evidence remains separate.','No CSV label-import contract exists; CSV file is an explicit unsupported-format refusal control.','Stale export requires a real later UI change; preparation never invents stale metadata.','No actual browser, import preview/apply, tests, types, gate or release is established.']};
  await assertManifestBindings(manifest);
- await fs.writeFile(receiptFile,JSON.stringify(manifest,null,2)+'\n',{flag:'wx',mode:0o600});console.log('BOARD18_LABELS_MANIFEST\n'+JSON.stringify({...manifest,reused:false},null,2));
+ await fs.writeFile(receiptFile,JSON.stringify(manifest,null,2)+'\n',{flag:'wx',mode:0o600});await emit(manifest,false);
 }
-try{await main();}finally{await owner.client.end();await client.end();}
-// Both pools are closed; allow the actual process to exit naturally under the parent watchdog.
+let result=0;
+try{await main();}catch{result=1;console.error('Labels18 fixture refused; preserve the named database and inspect its preparation guards. No acceptance PASS claimed.');}
+finally{
+ // Attempt both independent closes even if one fails; never report a clean exit after a close failure.
+ try{await owner.client.end({timeout:5});}catch{result=1;}
+ try{await client.end({timeout:5});}catch{result=1;}
+}
+// Repository fixture convention: hidden imported handles cannot keep an otherwise completed child alive.
+// emit() awaits stdout first; process status remains authoritative for preparation and cleanup.
+process.exit(result);
