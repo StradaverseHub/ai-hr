@@ -149,7 +149,7 @@ export const PROFILE_REQUESTABLE_FIELDS: readonly RequestableField[] = [
   { key: 'bankAccountNo', labelKey: 'bankAccount', tab: 'bankStatutory', target: 'statutory', column: 'bankAccountNo', input: 'text', masked: true },
   {
     key: 'taxCategory',
-    labelKey: 'taxCategoryLabel',
+    labelKey: 'taxCategoryNumeric',
     tab: 'bankStatutory',
     target: 'statutory',
     column: 'taxCategory',
@@ -312,8 +312,7 @@ export const PROFILE_REQUEST_APPROVER_SETTING_KEY = 'ess.profile_change_approver
  * only ever NARROW who decides. `docs/me-profile-request-settings.md` states the same thing to the
  * reporter, in their words, so the limit is a decision they can act on rather than a silence.
  *
- * Neither value widens what anybody can SEE. Visibility is `profile_change_request_rls`
- * (`app.can_see_employment`, migration 0029) and this round does not touch it.
+ * Neither value widens what anybody can SEE. Profile request visibility is own-subject or scoped-HR access (0554), independently of the approver setting.
  */
 export type ProfileRequestApprover = 'admin' | 'group_admin';
 

@@ -4,10 +4,11 @@ import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {hireEmployee,setReportingLine,updatePersonProfilePartial} from '../core/org';
 import {readOwnProfileWorkspace,submitOwnProfileEdit,applyProfileProposalTx} from '../core/profile-edit';
 import {saveProfileEditPolicy} from '../core/profile-edit-policy';
-import {decideProfileChange,requestProfileChange} from '../core/profile';
+import {decideProfileChange,requestProfileChange,listProfileChangeRequests} from '../core/profile';
 import {addEmergencyContact,listEmergencyContacts} from '../core/emergency-contacts';
+import {addDependent,listDependents,isChildReliefEligible} from '../core/dependents';
 import {addQualification,listQualifications} from '../core/qualifications';
-import {person,employment,profileChangeRequest} from '../db/schema';
+import {person,employment,profileChangeRequest,employeeQualification} from '../db/schema';
 import {withTenant,type SessionContext} from '../db/client';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {EssProfileProposal} from '../lib/personnel-ess-model';
@@ -83,6 +84,29 @@ describe('My Profile canonical transaction and scope',()=>{
   await expect(readOwnProfileWorkspace(manager.ctx,{employmentId:employee.employmentId})).rejects.toMatchObject({code:'permission'});
   await expect(readOwnProfileWorkspace(admin(),{employmentId:employee.employmentId})).rejects.toMatchObject({code:'permission'});
   await expect(withTenant(employee.ctx,tx=>applyProfileProposalTx(tx,employee.ctx,employee.employmentId,empty()))).rejects.toMatchObject({code:'permission'});
+ });
+ it('keeps current register context separate from submitted values and hides subordinate requests from a manager',async()=>{
+  const manager=await subject('manager'),s=await subject();await setReportingLine(admin(),{subordinateEmploymentId:s.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:todayInKualaLumpur()});
+  const contact=await addEmergencyContact(admin(),{personId:s.personId,fullName:'Exact original contact',priority:'primary'});await saveProfileEditPolicy(admin(),{keys:[primary],withdrawnReason:'Field restricted'});
+  const view=await readOwnProfileWorkspace(s.ctx,{employmentId:s.employmentId}),record=view.registers.find(row=>row.id===contact.id)!,proposal=empty();proposal.registers=[{kind:'emergency',id:contact.id,clientId:contact.id,fields:[{fieldId:primary,before:record.baselines[primary],value:'Requested replacement name'}]}];
+  const result=await submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal});
+  const requests=await listProfileChangeRequests(admin(),{status:'pending'}),request=requests.find(row=>row.id===result.requestId)!;expect(request.review[`emergency:${contact.id}:${primary}`]).toEqual({value:'Exact original contact',recordName:'Exact original contact',state:'existing'});expect(request.proposed).toEqual(proposal);
+  expect(await withTenant(manager.ctx,tx=>tx.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,result.requestId!)))).toHaveLength(0);
+  expect(await withTenant(s.ctx,tx=>tx.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,result.requestId!)))).toHaveLength(1);
+ });
+ it('rolls back canonical Highest transfers and keeps the request pending on a late business write failure',async()=>{
+  const s=await subject(),first=await addQualification(admin(),{employmentId:s.employmentId,qualification:'Bachelor',isHighest:true}),second=await addQualification(admin(),{employmentId:s.employmentId,qualification:'Master',isHighest:false});await saveProfileEditPolicy(admin(),{keys:[highest],withdrawnReason:'Field restricted'});
+  const view=await readOwnProfileWorkspace(s.ctx,{employmentId:s.employmentId}),record=view.registers.find(row=>row.id===second.id)!,proposal=empty();proposal.registers=[{kind:'qualification',id:second.id,clientId:second.id,fields:[{fieldId:highest,before:record.baselines[highest],value:true}]}];const result=await submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal});
+  await owner.db.execute(sql.raw("CREATE FUNCTION public.test_profile_qualification_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.is_highest THEN RAISE EXCEPTION 'test late canonical refusal' USING ERRCODE='23514'; END IF; RETURN NEW; END $$; CREATE TRIGGER test_profile_qualification_failure BEFORE UPDATE ON employee_qualification FOR EACH ROW EXECUTE FUNCTION public.test_profile_qualification_failure()"));
+  try{await expect(decideProfileChange(admin(),{requestId:result.requestId!,decision:'approved'})).rejects.toThrow();}finally{await owner.db.execute(sql.raw('DROP TRIGGER test_profile_qualification_failure ON employee_qualification; DROP FUNCTION public.test_profile_qualification_failure()'));}
+  const rows=await owner.db.select().from(employeeQualification).where(eq(employeeQualification.employmentId,s.employmentId));expect(rows.find(row=>row.id===first.id)?.isHighest).toBe(true);expect(rows.find(row=>row.id===second.id)?.isHighest).toBe(false);const [request]=await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,result.requestId!));expect(request.status).toBe('pending');expect(request.proposed).toEqual(proposal);
+ });
+ it('refuses fields the canonical Family owner would ignore on the selected relationship, and applies a real child change through that owner',async()=>{
+  const s=await subject(),parent=await addDependent(admin(),{personId:s.personId,fullName:'Parent fixture',relationship:'parent'}),child=await addDependent(admin(),{personId:s.personId,fullName:'Child fixture',relationship:'child',dateOfBirth:`${Number(todayInKualaLumpur().slice(0,4))-8}-01-01`,childTaxRelief:false});
+  const field='family.family_and_dependents.childtaxrelief';await saveProfileEditPolicy(admin(),{keys:[field],withdrawnReason:'Field restricted'});const view=await readOwnProfileWorkspace(s.ctx,{employmentId:s.employmentId});
+  const proposalFor=(id:string)=>{const row=view.registers.find(row=>row.id===id)!,proposal=empty();proposal.registers=[{kind:'dependent',id,clientId:id,fields:[{fieldId:field,before:row.baselines[field],value:true}]}];return proposal;};
+  await expect(submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal:proposalFor(parent.id)})).rejects.toMatchObject({code:'invalid',fieldIds:[field]});expect(await owner.db.select().from(profileChangeRequest)).toHaveLength(0);
+  const result=await submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal:proposalFor(child.id)});await decideProfileChange(admin(),{requestId:result.requestId!,decision:'approved'});const stored=(await listDependents(admin(),{personId:s.personId})).find(row=>row.id===child.id)!;expect(stored.childTaxRelief).toBe(true);expect(isChildReliefEligible(stored)).toBe(true);
  });
  it('keeps a future final day eligible and rejects an elapsed final day under the same stale client context',async()=>{
   const s=await subject();const today=todayInKualaLumpur(),tomorrow=new Date(Date.parse(today+'T00:00:00Z')+86400000).toISOString().slice(0,10),yesterday=new Date(Date.parse(today+'T00:00:00Z')-86400000).toISOString().slice(0,10);

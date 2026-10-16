@@ -1,4 +1,4 @@
-import {profileProposalLines} from '@/lib/profile-proposal-display';
+import {profileProposalReviewLines} from '@/lib/profile-proposal-display';
 import {LeaveCreditClaimReviewNotice} from '@/components/leave/leave-credit-claim-review';
 import {leaveCreditClaimReviewBlocks} from '@/lib/leave-credit-claim-review';
 import { pendingRewardReviews } from '@/packs/rewards/service';
@@ -1115,8 +1115,8 @@ export default async function ApprovalsPage({
                         scans this file's RAW SOURCE for the retired admin path, and a source-scanning
                         guard does not strip comments — AGENTS 27.) */}
                     <div className="text-xs text-muted-foreground">
-                      {profileProposalLines(r.proposed,(key,fallback)=>profileLabels.has(key)?profileLabels(key):fallback,{mask:false}).map(line=>(
-                        <div key={line.key}>{line.label} → {line.value}</div>
+                      {profileProposalReviewLines(r.proposed,r.review,(key,fallback)=>profileLabels.has(key)?profileLabels(key):fallback,{mask:false}).map(line=>(
+                        <div key={line.key}>{line.recordLabel&&<p className="font-medium">{line.recordLabel}</p>}<p>{line.label}</p><p>{profileLabels('essProfile.currentValue',{value:line.currentValue})}</p><p>{profileLabels('essProfile.proposedValue',{value:line.value})}</p></div>
                       ))}
                     </div>
                   </div>

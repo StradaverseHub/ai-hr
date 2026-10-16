@@ -21,3 +21,26 @@ All outcomes below require implementation and subsequent coordinated verificatio
 
 Source-only phase: no tests/types/DB/dev/installation performed. Migration0554 and ADR0125 reserved
 centrally. Parent reviews SQL and runs combined candidate checks and actual application journeys.
+
+## Source checkpoint, not acceptance
+
+The source implementation includes the shared per-descriptor ESS dispositions, complete v2/legacy policy
+compatibility, own-subject/read projections, atomic immediate/request composition, canonical register
+adapters, fresh approval checks, exact record review context, safe action results, the eleven-tab editor,
+existing released Payroll/document panels, module notices and six-locale copy. The source inventory
+comparison preserved all 405 IDs and existing type/owner/grain/history/form/import/report metadata.
+Visible captions resolved in every catalogue. TypeScript AST parsing only found no syntax errors.
+
+Regression sources cover canonical DB transactions/scope/lifecycle/policy withdrawal/retry/Primary/
+Highest/Family applicability and current review context; DOM sources cover all eleven tabs in six
+locales, touched-only cross-tab payloads, cancel/no-op, safe failure retention, masked replacements,
+pending-click guards and live metadata changes. These tests have NOT executed. Existing guards were
+reconciled to the reversed clocking, six-tab, address and Leave contracts, retaining their surviving
+owner destinations and permissions. A combined type/test run may expose integration diagnostics.
+
+Outstanding evidence: migration journal union/app-role SQL rehearsal (0554 remains unapplied), types,
+focused and broader regression checks, real transaction/concurrency/failure outcomes, exact actual
+all-role journeys, save/reopen/approve/reject, multiple employments/leavers, unsupported country,
+closed Payroll preservation, module-disabled states, six locales, light/dark/Classic/Monolith, narrow
+viewport, keyboard/focus and runtime logs. No actual application, production write, gate or deployment
+has run in this isolated worktree. Root owns coordinated verification, board completion and release.

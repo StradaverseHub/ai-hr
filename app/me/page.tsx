@@ -10,6 +10,8 @@ import {myResignation} from '@/core/offboarding';
 import {serviceYearsMonthsDaysAt} from '@/packs/leave/service';
 import {readOwnProfileWorkspace} from '@/core/profile-edit';
 import {readOwnProfileFacts} from '@/core/profile-view';
+import {personnelField} from '@/lib/personnel-field-registry';
+import {personnelFieldChoices} from '@/lib/personnel-import-contract';
 import {profileProposalLines} from '@/lib/profile-proposal-display';
 import {ProfileEditor} from './profile-editor';
 import {Avatar,Badge,Button,Card,ErrorBanner,Field,PageHeader,SectionHeader,inputCls} from '@/components/ui';
@@ -152,6 +154,7 @@ export default async function MePage({
   };
 
   const {employment:emp,compensation:comp}=record;
+  const compensationChoice=(fieldName:string,value:string|null|undefined)=>{if(value==null)return null;const field=personnelField(`payroll.basic_salary_and_salary_history.${fieldName}`);const choice=field?personnelFieldChoices(field).find(option=>option.value===value):null;return choice?allLabels(choice.labelKey):value;};
 
   const payrollPanel = (
     <>
@@ -164,16 +167,17 @@ export default async function MePage({
             unlabelled figure and have no way to tell which contract it belongs to. The other positions and
             their pay are on the Employment tab's "My positions" card. */}
         <ReadField label={tp('employmentInfo.company')} value={emp.company} notSet={notSet} />
-        <ReadField label={tp('compensation')} value={comp ? Number(comp.basicSalary).toFixed(2) : null} notSet={notSet} />
+        <ReadField label={tp('basicSalaryMyr')} value={comp ? Number(comp.basicSalary).toFixed(2) : null} notSet={notSet} />
         <ReadField label={tp('salaryCurrency')} value={comp?.currency ?? null} notSet={notSet} />
-        <ReadField label={tp('effectiveDate')} value={comp?.validFrom ?? null} notSet={notSet} />
+        <ReadField label={tp('effectiveDate')} value={comp?.validFrom?formatDmy(comp.validFrom):null} notSet={notSet} />
         <ReadField label={tp('paymentMethod')} value={paymentMethodLabel(record.paymentMethod)} notSet={tp('paymentMethodNotSet')} />
-        <ReadField label={tp('payMode')} value={comp?.payMode ?? null} notSet={notSet} />
-        <ReadField label={tp('paymentTerm')} value={comp?.paymentTerm ?? null} notSet={notSet} />
+        <ReadField label={tp('payMode')} value={compensationChoice('paymode',comp?.payMode)} notSet={notSet} />
+        <ReadField label={tp('paymentTerm')} value={compensationChoice('paymentterm',comp?.paymentTerm)} notSet={notSet} />
         {/* Daily / hourly staff are paid from the rate, not the basic — it was already projected in
             app/me/record.ts and simply never put on screen. Blank for a monthly contract, like any other
             field that is not recorded. */}
         <ReadField label={tp('rateAmount')} value={comp?.rateAmount ?? null} notSet={notSet} />
+        <ReadField label={tp('status')} value={comp?tp('salaryStatusActive'):null} notSet={notSet} />
       </ReadCard>
 
       {/* r298 — this card, TP1 and My loans are the Payroll pack's; absent (and unread) without Payroll. */}
@@ -466,12 +470,12 @@ export default async function MePage({
   );
 
   const history=profileRequests.map(request=>({id:request.id,status:request.status,createdAt:request.createdAt.toISOString(),decisionReason:request.decisionReason,lines:profileProposalLines(request.proposed,(key,fallback)=>allLabels.has(key)?allLabels(key):fallback,{mask:true})}));
-  const attendancePanel=<Card className="p-4"><div className="flex flex-wrap gap-4"><Link href="/attendance" className="text-primary underline">{t('viewAttendanceHistory')}</Link><Link href="/attendance/requests" className="text-primary underline">{t('fileAttendanceRequest')}</Link></div></Card>;
+  const attendancePanel=<Card className="p-4" data-tour="me-attendance"><div className="flex flex-wrap gap-4"><Link href="/attendance" className="text-primary underline">{t('viewAttendanceHistory')}</Link><Link href="/attendance/requests" className="text-primary underline">{t('fileAttendanceRequest')}</Link></div></Card>;
   const leavePanel=<Card className="p-4"><Link href="/leave" className="text-primary underline">{allLabels('nav.myAbsence')}</Link></Card>;
   return <div className="mx-auto max-w-[90rem] space-y-5">
     <PageHeader title={t('title')} description={facts.header.company}/><ErrorBanner message={error}/>
-    <Card className="p-4 sm:p-6"><div className="flex flex-wrap items-start gap-4"><Avatar name={facts.header.name} src={facts.header.photo?`/personnel/photo/${workspace.personId}`:null} className="size-20"/><div className="min-w-0 flex-1"><p className="text-xs text-muted-foreground">{facts.header.employeeCode}</p><h2 className="mt-1 text-xl font-semibold">{facts.header.name}</h2><p className="mt-1 text-sm text-muted-foreground">{facts.header.department??'—'} · {facts.header.position??'—'}</p><div className="mt-3 flex flex-wrap items-center gap-3"><Badge>{allLabels(`people.employeeStatus.${facts.header.status}`)}</Badge><span className="text-sm">{tp('directSuperiorTitle')}: {facts.header.superior??'—'}</span><span className="text-sm">{tp('employmentInfo.groupService')}: {fmtServiceYmd(emp.hiredOn)}</span></div></div>{own.length>1&&<form method="get"><Field label={te('chooseEmployment')}><select name="employmentId" defaultValue={employmentId} className={inputCls}>{own.map(row=><option key={row.employmentId} value={row.employmentId}>{row.employeeCode} · {row.company}</option>)}</select></Field><Button type="submit" variant="outline" size="sm" className="mt-2">{te('chooseEmployment')}</Button></form>}</div></Card>
+    <Card className="p-4 sm:p-6"><div className="flex flex-wrap items-start gap-4"><Avatar name={facts.header.name} src={facts.header.photo?`/personnel/photo/${workspace.personId}`:null} className="size-20"/><div className="min-w-0 flex-1"><p className="text-xs text-muted-foreground">{facts.header.employeeCode}</p><h2 className="mt-1 text-xl font-semibold">{facts.header.name}</h2><p className="mt-1 text-sm text-muted-foreground">{facts.header.company}</p><p className="mt-1 text-sm text-muted-foreground">{facts.header.department??'—'} · {facts.header.position??'—'}</p><div className="mt-3 flex flex-wrap items-center gap-3"><Badge>{allLabels(`people.employeeStatus.${facts.header.status}`)}</Badge><span className="text-sm">{tp('directSuperiorTitle')}: {facts.header.superior??'—'}</span><span className="text-sm">{tp('employmentInfo.groupService')}: {fmtServiceYmd(emp.hiredOn)}</span></div></div>{own.length>1&&<form method="get"><Field label={te('chooseEmployment')}><select name="employmentId" defaultValue={employmentId} className={inputCls}>{own.map(row=><option key={row.employmentId} value={row.employmentId}>{row.employeeCode} · {row.company}</option>)}</select></Field><Button type="submit" variant="outline" size="sm" className="mt-2">{te('chooseEmployment')}</Button></form>}</div></Card>
     {!workspace.statutoryAvailable&&<Card className="p-4 text-sm text-muted-foreground">{te('countryUnavailable')}</Card>}
-    <ProfileEditor key={employmentId} workspace={workspace} facts={facts} defaultTab={activeTab} history={history} extraPanels={{payroll:payrollPanel,documents:documentsPanel,attendance:facts.modules.attendance?attendancePanel:null,leave:facts.modules.leave?leavePanel:null}}/>
+    <ProfileEditor key={employmentId} workspace={workspace} facts={facts} defaultTab={activeTab} history={history} extraPanels={{payroll:payrollPanel,documents:documentsPanel,attendance:facts.modules.attendance?attendancePanel:null,leave:facts.modules.leave?leavePanel:null,others:<Card className="p-4"><Link href="/me/performance" className="text-primary underline">{t('myPerformanceLink')}</Link></Card>}}/>
   </div>;
 }

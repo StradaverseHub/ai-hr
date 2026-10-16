@@ -739,7 +739,7 @@
       "compensation": "Basic Salary",
       "compMeta": "basic / mo · since {validFrom}",
       "noCompensation": "No compensation set.",
-      "basicSalaryMyr": "Basic salary (MYR)",
+      "basicSalaryMyr": "Basic salary",
       "updatePay": "Add salary revision",
       "statutoryMalaysia": "Statutory (Malaysia)",
       "icNumber": "Identity No (NRIC)",
@@ -12130,11 +12130,11 @@
         },
         "contact": {
           "title": "Your contact details",
-          "body": "Update your phone, address, date of birth, and emergency contact here. These changes save **immediately**, no approval needed."
+          "body": "Use Request to Edit to change fields permitted by Admin. Contacts may save immediately; other changes need approval. Conflicting addresses stay available for HR review."
         },
         "bank": {
           "title": "Bank and statutory",
-          "body": "Your bank account and PCB tax category live here. Open **Request a change** to submit edits, which go to your admin for approval."
+          "body": "Review recorded bank and statutory details. Use Request to Edit for permitted changes and Save to submit them through the existing approval workflow."
         },
         "payslips": {
           "title": "Your payslips",
@@ -12142,7 +12142,7 @@
         },
         "attendance": {
           "title": "Attendance summary",
-          "body": "Check in and out for today from here. For your full attendance history, open the Attendance page. You can also request a fix for a missed punch."
+          "body": "Clock in and out under My Attendance. The links here open your attendance history and correction requests."
         },
         "leave": {
           "title": "Leave balances and requests",
@@ -20280,6 +20280,15 @@
       "rejected": "Rejected"
     },
     "viewChanges": "View changes",
-    "loadingHistory": "Loading history…"
+    "loadingHistory": "Loading history…",
+    "currentValue": "Current: {value}",
+    "proposedValue": "Requested: {value}",
+    "missingRecord": "The original record is no longer available.",
+    "settingsFailure": "The settings could not be saved. Please try again or contact support.",
+    "savedFields": "Saved now: {fields}",
+    "waitingFields": "Waiting for approval: {fields}",
+    "moduleUnavailable": "The {module} module is unavailable. Existing core employment facts remain visible.",
+    "statutoryUnavailable": "Bank and statutory information is unavailable because this employment has no supported country pack. Other permitted profile fields remain available.",
+    "notApplicable": "This field does not apply to the selected relationship. Undo it or restore the relationship before saving."
   }
 }

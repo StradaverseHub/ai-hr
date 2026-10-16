@@ -175,3 +175,9 @@ export function epfUiModeFrom(
   }
   return 'auto';
 }
+
+/** Stored fractional EPF rate to the percent shown by the existing Personnel election controls. */
+export function epfRateToPercent(value:string|number|null|undefined):number|null {
+ if(value==null||value==='')return null;
+ const amount=Number(value);return Number.isFinite(amount)?amount*100:null;
+}

@@ -423,7 +423,7 @@ export async function decideProfileChange(
      * ── WHO MAY DECIDE, AND THE TWO HALVES OF IT ────────────────────────────────────────────────────
      *
      * `assertCanDecide` is the FLOOR and it is not configurable: it bans the subject from deciding their
-     * own request (the super_admin sole-admin escape hatch is pre-existing and untouched by this round),
+     * own request (this profile course also explicitly refuses administrator self-approval),
      * and it admits only an administrator, the subject's ACTIVE administrative manager, or a one-hop
      * delegate of that manager. Every approval in this product passes through it.
      *
@@ -440,7 +440,7 @@ export async function decideProfileChange(
      * ⚠️ WHAT THIS DELIBERATELY DOES NOT DO. It does not add a second level — the plan sold single-level
      * approval and invited a rejection if the reporter wanted multi-level; they approved it as written,
      * so one decision by one person ends the request either way. It does not widen VISIBILITY by one row:
-     * `profile_change_request_rls` (0029) is `app.can_see_employment`, untouched. And it cannot widen
+     * 0554 restricts request rows to the own subject and scoped HR administrators. And it cannot widen
      * AUTHORITY in any configuration — both branches below only ever refuse.
      */
     if(req.personId===ctx.personId&&p.decision==='approved')throw new EssProfileError('permission');
@@ -705,8 +705,8 @@ export function listProfileChangeRequests(
   ctx: SessionContext,
   opts: { companyIds?: string[]; status?: 'pending' | 'approved' | 'rejected' } = {},
 ) {
-  return withTenant(ctx, (tx) =>
-    tx
+  return withTenant(ctx, async (tx) => {
+    const rows=await tx
       .select({
         id: profileChangeRequest.id,
         employmentId: profileChangeRequest.employmentId,
@@ -731,8 +731,10 @@ export function listProfileChangeRequests(
         ),
       )
       .orderBy(desc(profileChangeRequest.createdAt))
-      .limit(100),
-  );
+      .limit(100);
+    const {currentProfileRequestValuesTx}=await import('./profile-edit');
+    return Promise.all(rows.map(async row=>({...row,review:await currentProfileRequestValuesTx(tx,ctx,row)})));
+  });
 }
 
 /**

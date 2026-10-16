@@ -21,6 +21,19 @@ export function profileProposalLines(raw:unknown,resolve:PersonnelLabelResolver,
  return Object.entries(raw).flatMap(([key,value])=>{
   const field=requestableField(key);if(!field||value!==null&&!['string','number','boolean'].includes(typeof value))return [];
   const descriptor=PERSONNEL_FIELDS.find(item=>item.ess.binding?.legacyKey===key);
-  return [{key,fieldId:descriptor?.id??null,label:resolve(`people.detail.${field.labelKey}`,field.key),value:formatProposedValue(field,value,k=>resolve(`me.${k}`,k),opts),recordKind:null,newRecord:false}];
+  return [{key,fieldId:descriptor?.id??null,label:resolve(`people.detail.${field.labelKey}`,field.key),value:opts.mask&&descriptor?.ess.masked&&value!=null&&value!==''?`•••• ${String(value).slice(-4)}`:formatProposedValue(field,value,k=>resolve(`me.${k}`,k),opts),recordKind:null,newRecord:false}];
+ });
+}
+
+/** Exact current record context is supplied by the scoped canonical owner, never inferred from array position. */
+export type ProfileProposalCurrent=Record<string,{value:string|number|boolean|null|undefined;recordName:string|null;state:'existing'|'missing'|'new'}>;
+export function profileProposalReviewLines(raw:unknown,current:ProfileProposalCurrent,resolve:PersonnelLabelResolver,opts:{mask:boolean}){
+ return profileProposalLines(raw,resolve,opts).map(line=>{
+  const found=current[line.key],field=line.fieldId?personnelField(line.fieldId):undefined,value=found?.value;
+  const legacy=requestableField(line.key),choice=field?personnelFieldChoices(field).find(choice=>choice.value===String(value)):undefined;
+  const display=!found||found.state==='missing'||value===undefined?resolve('essProfile.unavailable','Unavailable'):field?.ess.masked&&opts.mask&&value!=null&&value!==''?`•••• ${String(value).slice(-4)}`:legacy?formatProposedValue(legacy,value,key=>resolve(`me.${key}`,key),opts):value===null||value===''?resolve('essProfile.notRecorded','Not recorded'):field?.ess.masked&&opts.mask?`•••• ${String(value).slice(-4)}`:choice?resolve(choice.labelKey,choice.value):field?.type==='date'?formatDmy(String(value)):typeof value==='boolean'?resolve(value?'people.import.registerYes':'people.import.registerNo',String(value)):String(value);
+  const recordKind=line.recordKind?resolve(`essProfile.register.${line.recordKind}`,line.recordKind):null;
+  const recordLabel=!recordKind?null:found?.state==='new'?resolve('essProfile.newRecord','New record'):found?.state==='missing'?resolve('essProfile.missingRecord','The original record is no longer available.'):found?.recordName?`${recordKind}: ${found.recordName}`:recordKind;
+  return {...line,currentValue:display,recordLabel};
  });
 }

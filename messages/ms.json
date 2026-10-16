@@ -739,7 +739,7 @@
       "compensation": "Gaji Asas",
       "compMeta": "asas / bln · sejak {validFrom}",
       "noCompensation": "Tiada pampasan ditetapkan.",
-      "basicSalaryMyr": "Gaji asas (MYR)",
+      "basicSalaryMyr": "Gaji asas",
       "updatePay": "Tambah semakan gaji",
       "statutoryMalaysia": "Berkanun (Malaysia)",
       "icNumber": "No. Identiti (NRIC)",
@@ -12130,11 +12130,11 @@
         },
         "contact": {
           "title": "Butiran hubungan anda",
-          "body": "Kemas kini telefon, alamat, tarikh lahir dan hubungan kecemasan anda di sini. Perubahan ini disimpan **serta-merta**, tanpa kelulusan."
+          "body": "Gunakan Mohon Sunting untuk mengubah medan yang dibenarkan Admin. Maklumat hubungan mungkin disimpan serta-merta; perubahan lain memerlukan kelulusan. Alamat bercanggah kekal untuk semakan HR."
         },
         "bank": {
           "title": "Bank dan berkanun",
-          "body": "Akaun bank dan kategori cukai PCB anda berada di sini. Buka **Mohon perubahan** untuk menghantar suntingan, yang akan ke pentadbir anda untuk kelulusan."
+          "body": "Semak maklumat bank dan berkanun yang direkodkan. Gunakan Mohon Sunting untuk perubahan yang dibenarkan, kemudian Simpan melalui aliran kelulusan sedia ada."
         },
         "payslips": {
           "title": "Slip gaji anda",
@@ -12142,7 +12142,7 @@
         },
         "attendance": {
           "title": "Ringkasan kehadiran",
-          "body": "Daftar masuk dan keluar untuk hari ini di sini. Untuk sejarah kehadiran penuh anda, buka halaman Kehadiran. Anda juga boleh memohon pembetulan untuk ketukan yang tertinggal."
+          "body": "Rekod masuk dan keluar di Kehadiran Saya. Pautan di sini membuka sejarah kehadiran dan permohonan pembetulan anda."
         },
         "leave": {
           "title": "Baki dan permohonan cuti",
@@ -20280,6 +20280,15 @@
       "rejected": "Ditolak"
     },
     "viewChanges": "Lihat perubahan",
-    "loadingHistory": "Memuatkan sejarah…"
+    "loadingHistory": "Memuatkan sejarah…",
+    "currentValue": "Semasa: {value}",
+    "proposedValue": "Diminta: {value}",
+    "missingRecord": "Rekod asal tidak lagi tersedia.",
+    "settingsFailure": "Tetapan tidak dapat disimpan. Sila cuba lagi atau hubungi sokongan.",
+    "savedFields": "Disimpan sekarang: {fields}",
+    "waitingFields": "Menunggu kelulusan: {fields}",
+    "moduleUnavailable": "Modul {module} tidak tersedia. Maklumat teras pekerjaan sedia ada kekal kelihatan.",
+    "statutoryUnavailable": "Maklumat bank dan berkanun tidak tersedia kerana pekerjaan ini tiada pakej negara yang disokong. Medan profil lain yang dibenarkan masih tersedia.",
+    "notApplicable": "Medan ini tidak terpakai kepada hubungan yang dipilih. Buat asal atau pulihkan hubungan sebelum menyimpan."
   }
 }

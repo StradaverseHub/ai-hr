@@ -59,10 +59,10 @@ export async function readOwnProfileFacts(ctx:SessionContext,employmentId:string
  };
  for(const row of movements){const record=add('movement',row.id,{kind:row.kind,effectiveFrom:row.effectiveDate,endDate:row.endDate,status:row.status,jobTitle:row.jobTitle});if(record)record.detailId=row.id;}
  for(const row of payItems)add('payItem',row.id,{componentName:row.name,amount:row.amount,currency:row.currency,validFrom:row.validFrom,validTo:row.validTo,prorate:row.prorateOverride??row.prorates});
- for(const row of cp38.filter(row=>!row.supersededAt))add('cp38',row.id,{reference:row.cp38Ref,monthlyAmount:row.amount,validFrom:row.validFrom,validTo:row.validTo});
+ for(const row of cp38.filter(row=>!row.supersededAt))add('cp38',row.id,{reference:row.cp38Ref,monthlyAmount:row.amount,validFrom:row.validFrom,validTo:row.validTo,status:row.validTo&&row.validTo.slice(0,7)<today.slice(0,7)?'closed':'active'});
  for(const row of shifts)add('shiftHistory',row.id,{previousShiftCode:row.previousShiftCode,previousShiftName:row.previousShiftName,newShiftCode:row.shiftCode,newShiftName:row.shiftName,changedAt:row.changedAt});
  if(leave){
-  add('benefitScheme','benefitScheme',{gradeName:emp.gradeName,schemeName:leave.scheme.schemeName,effectiveFrom:leave.scheme.effectiveFrom,serviceYears:leave.scheme.serviceYears});
+  add('benefitScheme','benefitScheme',{gradeName:emp.gradeName,schemeName:leave.scheme.schemeName,effectiveFrom:leave.scheme.effectiveFrom,serviceYears:leave.scheme.serviceYears,unmatchedLeaveTypes:leave.scheme.unmatched.filter(type=>leave.balances.some(balance=>balance.leaveTypeId===type.leaveTypeId)).map(type=>type.leaveTypeName).join(', ')});
   for(const row of requests)add('leaveRequest',row.id,{leaveTypeName:row.leaveType,startDate:row.startDate,endDate:row.endDate,days:row.days,status:row.status});
   for(const row of leave.balances){
    const breakdown=leave.breakdowns.find(item=>item?.leaveTypeId===row.leaveTypeId);
@@ -81,7 +81,7 @@ export async function readOwnProfileFacts(ctx:SessionContext,employmentId:string
    }
    add('leaveBalance',row.leaveTypeId,facts);
    const scheme=leave.scheme.perType.find(item=>item.leaveTypeId===row.leaveTypeId);
-   if(scheme)add('benefitScheme',`scheme:${row.leaveTypeId}`,{leaveTypeName:scheme.leaveTypeName,pickedUpBy:scheme.ruleName,...(row.essView.eligible?{days:scheme.daysAtService}:{})});
+   if(scheme)add('benefitScheme',`scheme:${row.leaveTypeId}`,{leaveTypeName:scheme.leaveTypeName,pickedUpBy:scheme.ruleName??scheme.templateName,...(row.essView.eligible?{days:scheme.daysAtService}:{})});
   }
  }
  if(attendanceOn){

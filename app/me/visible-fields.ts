@@ -1,5 +1,5 @@
 import {PERSONNEL_FIELDS} from '@/lib/personnel-field-registry';
-import {ESS_PROFILE_TABS} from '@/lib/personnel-ess-model';
+import {ESS_PROFILE_TABS,PERSONNEL_ESS_SECTION_LABEL_KEYS} from '@/lib/personnel-ess-model';
 /** Compatibility exports for source consumers; ESS authority lives on every shared Personnel descriptor.
  * Import/report scope never grants employee visibility or editing. */
 /** All eleven Personnel tabs, in the approved Personnel order. */
@@ -36,27 +36,15 @@ export const ME_TAB_LABEL_KEY: Record<MeTabKey, string> = {
  * Management has no card for them at all; there is no second name to drift from. They are listed in
  * `ME_SELF_SERVICE_SECTIONS` so the document can account for every card on the screen.
  */
-export const ME_SECTION_TITLE_KEY: Record<MeTabKey, readonly string[]> = {
-  profile: ['personalDetails', 'contactAddressTitle', 'emergencyTitle'],
-  job: ['employmentInfo.title', 'directSuperiorTitle'],
-  bankStatutory: ['bankCardTitle', 'statutoryMalaysia', 'othersStatutoryTitle'],
-  payroll: ['compensation'],
-  family: ['family.title'],
-  documents: [],
-  careerMovement:[],
-  attendance:[],
-  leave:[],
-  qualification:[],
-  others:[],
-};
+export const ME_SECTION_TITLE_KEY:Record<MeTabKey,readonly string[]>=Object.fromEntries(ME_TABS.map((tab,index)=>[tab,[...new Set(PERSONNEL_FIELDS.filter(field=>field.tab===ESS_PROFILE_TABS[index]&&field.ess.visibility==='visible').map(field=>PERSONNEL_ESS_SECTION_LABEL_KEYS[field.section]??ME_TAB_LABEL_KEY[tab]))]])) as Record<MeTabKey,readonly string[]>;
 
 /** Cards that exist only on the employee's own screen — no Personnel counterpart, so `me.*` titles. */
 export const ME_SELF_SERVICE_SECTIONS: Record<MeTabKey, readonly string[]> = {
   // r260 stage two — the Profile tab gained its own "request a change" card, so the control to correct a
   // wrong passport number sits under the wrong passport number rather than on the Bank tab.
-  profile: ['requestChangeProfileHeading'],
+  profile: [],
   job: [],
-  bankStatutory: ['approvalGatedHeading'],
+  bankStatutory: [],
   payroll: ['myPayslips', 'taxReliefTp1', 'myLoans'],
   family: [],
   documents: ['taxStatementEa', 'resignationTitle'],
@@ -68,7 +56,7 @@ export const ME_SELF_SERVICE_SECTIONS: Record<MeTabKey, readonly string[]> = {
 };
 
 export type HiddenField = {
-  /** Which of the six tabs the field would have appeared on, or 'all' for a whole Personnel tab. */
+  /** Which Personnel tab the field would have appeared on, or 'all' for a whole Personnel tab. */
   tab: MeTabKey | 'all';
   /** The field or card, named the way HR would name it on the Personnel screen. */
   field: string;

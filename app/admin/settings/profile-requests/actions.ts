@@ -1,6 +1,5 @@
 'use server';
 
-import { publicErrorMessage } from '@/lib/public-error';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getTranslations } from 'next-intl/server';
@@ -9,14 +8,11 @@ import {saveProfileEditPolicy} from '@/core/profile-edit-policy';
 import {essEditableFields} from '@/lib/personnel-ess-contract';
 import {
   TenantSettingError,
-  profileChangeAllowedKeys,
   setTenantSetting,
 } from '@/core/tenant-settings';
 import {
-  PROFILE_REQUESTABLE_KEYS,
   PROFILE_REQUEST_APPROVERS,
   PROFILE_REQUEST_APPROVER_SETTING_KEY,
-  PROFILE_REQUEST_FIELDS_SETTING_KEY,
   type ProfileRequestApprover,
 } from '@/lib/profile-requestable-fields';
 
@@ -25,7 +21,7 @@ const PAGE = '/admin/settings/profile-requests';
 /** A typed refusal names WHICH condition of 0313's write policy failed; anything else reports itself. */
 async function refuse(e: unknown): Promise<never> {
   const t = await getTranslations('profileRequestSettings');
-  const msg = e instanceof TenantSettingError ? t(`refused.${e.reason}`) : (await getTranslations('essProfile'))('error.system');
+  const msg = e instanceof TenantSettingError ? t(`refused.${e.reason}`) : (await getTranslations('essProfile'))('settingsFailure');
   redirect(`${PAGE}?error=${encodeURIComponent(msg)}`);
 }
 

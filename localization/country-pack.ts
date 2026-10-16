@@ -329,6 +329,7 @@ export interface CountryPackClient {
   payroll: {
     /** The SAME function the server pack exposes (and `childReliefAmountFor` is built on). */
     childReliefFor: (p: ChildReliefInput) => ChildReliefFigure;
+    epfRateToPercent?:typeof import('../lib/epf-mode-map').epfRateToPercent;
     epfUiModeFrom?:typeof import('../lib/epf-mode-map')['epfUiModeFrom'];
     taxCircumstanceOptions?: typeof import('./my/tax-circumstance')['TAX_CIRCUMSTANCE_OPTIONS'];
     taxCircumstanceOf?: typeof import('./my/tax-circumstance')['taxCircumstanceOf'];

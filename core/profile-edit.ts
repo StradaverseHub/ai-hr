@@ -1,25 +1,26 @@
 import {createHash} from 'node:crypto';
 /** Own-profile edits compose canonical owners in ONE authenticated caller transaction. */
-import {and,asc,eq,isNull,lte,sql} from 'drizzle-orm';
-import {myOwnEmploymentSubjectsTx,profileEditEmploymentPredicate,employeeDetail,assignmentHistory} from './read';
+import {and,asc,eq,isNull,sql} from 'drizzle-orm';
+import {myOwnEmploymentSubjectsTx,profileEditEmploymentPredicate} from './read';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {company,employment,person,employeeDependent,employeeQualification,personEmergencyContact} from '../db/schema';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {personnelField,PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
 import {parseEssProfileProposal,sameEssScalar} from '../lib/personnel-ess-contract';
 import {EssProfileError,type EssProfileProposal,type EssFieldChange,type EssScalar,type EssRegisterChange} from '../lib/personnel-ess-model';
+import {isModuleEnabled} from './entitlements';
 import {freshProfileEditPolicyTx} from './profile-edit-policy';
 import {packFor} from '../localization/registry';
 import {updatePersonProfilePartial,type PersonProfileFields} from './org';
 import {setPersonComplianceFields,requestProfileChange,updateOwnContact} from './profile';
-import {addDependent,updateDependent,assertDependentsValid,validateDependentInputTx,childAgeYears,isChildReliefEligible,type DependentInput} from './dependents';
+import {addDependent,updateDependent,validateDependentInputTx,childAgeYears,isChildReliefEligible,type DependentInput} from './dependents';
 import {addQualification,updateQualification,validateQualificationInputTx} from './qualifications';
 import {addEmergencyContact,updateEmergencyContact,validateEmergencyContactInputTx} from './emergency-contacts';
 import {assertProfileValueAllowed} from './profile-options';
 import {customHolderGaps} from '../lib/custom-holder';
 import {personnelChildReliefValue} from '../lib/personnel-report-value';
 import {qualifyingChildReliefFor} from './dependents';
-import {CHILD_RELIEF_PERCENTAGES} from '../lib/dependent-vocabulary';
+import {CHILD_RELIEF_PERCENTAGES,dependentFieldApplies} from '../lib/dependent-vocabulary';
 import {EMERGENCY_CONTACT_PRIORITIES} from '../lib/emergency-contact-vocabulary';
 
 export type EssRecord={kind:EssRegisterChange['kind'];id:string;values:Record<string,EssScalar>;baselines:Record<string,string>;primary:boolean};
@@ -41,14 +42,14 @@ export async function ownProfileSubjectTx(tx:Tx,ctx:SessionContext,selected?:str
  if(!master)throw new EssProfileError('unavailable');
  return {subject,master};
 }
-async function mastersTx(tx:Tx,ctx:SessionContext,subject:Awaited<ReturnType<typeof ownProfileSubjectTx>>['subject']){
+async function mastersTx(tx:Tx,ctx:SessionContext,subject:Awaited<ReturnType<typeof ownProfileSubjectTx>>['subject'],lock=true){
  const pack=packFor(subject.country);
  // Match canonical register writers: Family before statutory sync; Primary/Highest before targets.
  // Locking the statutory row first would invert updateDependent → child-relief sync.
- const dependents=await tx.select().from(employeeDependent).where(and(eq(employeeDependent.personId,subject.personId),isNull(employeeDependent.archivedAt))).orderBy(asc(employeeDependent.createdAt),asc(employeeDependent.id)).limit(501).for('update');
- const qualifications=await tx.select().from(employeeQualification).where(and(eq(employeeQualification.employmentId,subject.id),isNull(employeeQualification.archivedAt))).orderBy(sql`CASE WHEN ${employeeQualification.isHighest} THEN 0 ELSE 1 END`,asc(employeeQualification.createdAt),asc(employeeQualification.id)).limit(501).for('update');
- const emergency=await tx.select().from(personEmergencyContact).where(and(eq(personEmergencyContact.personId,subject.personId),isNull(personEmergencyContact.archivedAt))).orderBy(sql`CASE WHEN ${personEmergencyContact.priority}='primary' THEN 0 ELSE 1 END`,asc(personEmergencyContact.createdAt),asc(personEmergencyContact.id)).limit(501).for('update');
- const stat=await(pack?.statutory.get(ctx,subject.personId,tx,{forUpdate:true})??Promise.resolve(null));
+ const dependentsQuery=tx.select().from(employeeDependent).where(and(eq(employeeDependent.personId,subject.personId),isNull(employeeDependent.archivedAt))).orderBy(asc(employeeDependent.createdAt),asc(employeeDependent.id)).limit(501);const dependents=await(lock?dependentsQuery.for('update'):dependentsQuery);
+ const qualificationsQuery=tx.select().from(employeeQualification).where(and(eq(employeeQualification.employmentId,subject.id),isNull(employeeQualification.archivedAt))).orderBy(sql`CASE WHEN ${employeeQualification.isHighest} THEN 0 ELSE 1 END`,asc(employeeQualification.createdAt),asc(employeeQualification.id)).limit(501);const qualifications=await(lock?qualificationsQuery.for('update'):qualificationsQuery);
+ const emergencyQuery=tx.select().from(personEmergencyContact).where(and(eq(personEmergencyContact.personId,subject.personId),isNull(personEmergencyContact.archivedAt))).orderBy(sql`CASE WHEN ${personEmergencyContact.priority}='primary' THEN 0 ELSE 1 END`,asc(personEmergencyContact.createdAt),asc(personEmergencyContact.id)).limit(501);const emergency=await(lock?emergencyQuery.for('update'):emergencyQuery);
+ const stat=await(pack?.statutory.get(ctx,subject.personId,tx,{forUpdate:lock})??Promise.resolve(null));
  if([dependents,qualifications,emergency].some(rows=>rows.length>500))throw new EssProfileError('unavailable');
  return {pack,stat,dependents,qualifications,emergency};
 }
@@ -87,9 +88,10 @@ export function readOwnProfileWorkspace(ctx:SessionContext,p:{employmentId?:stri
   const values={...readonlyValues('person',master),...registryValues('person',master),...registryValues('compliance',master)};
   const age=PERSONNEL_FIELDS.find(field=>field.owner==='person'&&field.ownerField==='age');if(age)values[age.id]=childAgeYears(master.dateOfBirth);
   if(rows.pack&&!rows.stat)for(const field of PERSONNEL_FIELDS)if(field.ess.visibility==='visible'&&field.ess.binding&&!['person','compliance','dependent','qualification','emergency'].includes(field.ess.binding.owner))values[field.id]=null;
-  if(rows.stat){Object.assign(values,readonlyValues('zakat',{status:rows.stat.zakatActive?'active':'inactive',stateAuthority:rows.stat.zakatState,method:rows.stat.zakatMethod,rate:rows.stat.zakatMethod==='fixed'?rows.stat.zakatFixed:rows.stat.zakatPercent}));Object.assign(values,readonlyValues('statutory',rows.stat));for(const owner of ['bank','identity','passport','registration','taxLegacy'])Object.assign(values,registryValues(owner,rows.stat));}
+  if(rows.stat){if(isModuleEnabled(policy.ctx,'payroll'))Object.assign(values,readonlyValues('zakat',{status:rows.stat.zakatActive?'active':'inactive',stateAuthority:rows.stat.zakatState,method:rows.stat.zakatMethod,rate:rows.stat.zakatMethod==='fixed'?rows.stat.zakatFixed:rows.stat.zakatPercent}));Object.assign(values,readonlyValues('statutory',rows.stat));for(const owner of ['bank','identity','passport','registration','taxLegacy'])Object.assign(values,registryValues(owner,rows.stat));}
   if(rows.stat){
    const epfMode=rows.pack?.client.payroll.epfUiModeFrom;
+   for(const field of PERSONNEL_FIELDS.filter(field=>field.ess.visibility==='visible'&&field.owner==='statutory'&&field.ownerField==='epfEmployeeRate'))values[field.id]=rows.pack?.client.payroll.epfRateToPercent?.(rows.stat.epfEmployeeRate)??null;
    if(epfMode){const stat=rows.stat,numberOrNull=(value:unknown)=>value==null?null:Number(value);for(const field of PERSONNEL_FIELDS.filter(field=>field.ess.visibility==='visible'&&field.owner==='statutory'&&field.ownerField==='epfUiMode'))values[field.id]=epfMode(stat.epfMode,numberOrNull(stat.epfEmployeeRate),numberOrNull(stat.epfEmployerRate),numberOrNull(stat.epfEmployeeAmount),numberOrNull(stat.epfEmployerAmount));}
    for(const field of PERSONNEL_FIELDS)if(field.ess.visibility==='visible'&&field.childReliefCell)values[field.id]=scalar(personnelChildReliefValue(rows.stat.childReliefTable,field.childReliefCell).value);
    const relief=await qualifyingChildReliefFor(policy.ctx,{personId:subject.personId,country:subject.country??'',asOf:todayInKualaLumpur()},tx);
@@ -162,6 +164,7 @@ export async function prepareProfileProposalTx(tx:Tx,ctx:SessionContext,employme
   const merged={...(existing?record(existing):{}),...patch(changed)};
   if(row.kind==='qualification')await validateQualificationInputTx(tx,qualificationInput(merged),existing&&'qualification' in existing?existing:undefined);
   if(row.kind==='emergency')await validateEmergencyContactInputTx(tx,subject.personId,emergencyInput(merged),existing&&'relationship' in existing?existing:undefined);
+  if(row.kind==='dependent'){const ignored=changed.filter(change=>!dependentFieldApplies(typeof merged.relationship==='string'?merged.relationship:null,personnelField(change.fieldId)!.ess.binding!.field));if(ignored.length)throw new EssProfileError('invalid',ignored.map(change=>change.fieldId));}
   if(row.kind==='dependent')await validateDependentInputTx(tx,dependentInput(merged),rows.dependents.find(item=>item.id===row.id));
   const next={...row,fields:changed};
   const legacyFields=legacy?changed.filter(change=>!policy.editable.has(change.fieldId)&&policy.legacyPrimary.has(change.fieldId)):[];
@@ -238,4 +241,28 @@ export function submitOwnProfileEdit(ctx:SessionContext,p:{employmentId:string;p
   const result=waiting.fields.length||waiting.registers.length?await requestProfileChange(prepared.ctx,{employmentId:prepared.subject.id,proposed:waiting},tx):null;
   return {saved:immediate.map(field=>field.fieldId).concat(prepared.immediateRegisters.flatMap(row=>row.fields.map(field=>field.fieldId))),waiting:waiting.fields.map(field=>field.fieldId).concat(waiting.registers.flatMap(row=>row.fields.map(field=>field.fieldId))),requestId:result?.requestId??null};
  });
+}
+
+/** Approver-only review facts for exact submitted identities. This read grants no edit/decision authority. */
+export async function currentProfileRequestValuesTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;personId:string;proposed:unknown}){
+ const out:Record<string,{value:EssScalar|undefined;recordName:string|null;state:'existing'|'missing'|'new'}>={};
+ const [allowed]=await tx.execute(sql`select app.can_admin_employment(${p.employmentId}::uuid) allowed`);
+ if(allowed?.allowed!==true)return out;
+ const [subject]=await tx.select({id:employment.id,personId:employment.personId,companyId:employment.companyId,country:company.country}).from(employment).innerJoin(company,eq(company.id,employment.companyId)).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.id,p.employmentId),eq(employment.personId,p.personId))).limit(1);
+ if(!subject)return out;
+ const [master]=await tx.select().from(person).where(and(eq(person.tenantId,ctx.tenantId),eq(person.id,subject.personId))).limit(1);if(!master)return out;
+ const rows=await mastersTx(tx,ctx,subject,false);
+ const current={...registryValues('person',master),...registryValues('compliance',master)};if(rows.stat)for(const owner of ['bank','identity','passport','registration','taxLegacy'])Object.assign(current,registryValues(owner,rows.stat));
+ if(p.proposed&&typeof p.proposed==='object'&&!Array.isArray(p.proposed)&&'v' in p.proposed&&p.proposed.v===2){
+  let proposal:EssProfileProposal;try{proposal=parseEssProfileProposal(p.proposed);}catch{return out;}
+  for(const field of proposal.fields)out[field.fieldId]={value:current[field.fieldId],recordName:null,state:'existing'};
+  for(const row of proposal.registers){
+   const existing=row.id?(row.kind==='dependent'?rows.dependents:row.kind==='qualification'?rows.qualifications:rows.emergency).find(item=>item.id===row.id):null;
+   const values=existing?registryValues(row.kind,existing):{};
+   for(const field of row.fields)out[`${row.kind}:${row.id??row.clientId}:${field.fieldId}`]={value:row.id?values[field.fieldId]:undefined,recordName:existing&&('fullName' in existing?existing.fullName:'qualification' in existing?existing.qualification:null),state:row.id?existing?'existing':'missing':'new'};
+  }
+ }else if(p.proposed&&typeof p.proposed==='object'&&!Array.isArray(p.proposed)){
+  for(const key of Object.keys(p.proposed)){const field=PERSONNEL_FIELDS.find(field=>field.ess.binding?.legacyKey===key);if(field)out[key]={value:current[field.id],recordName:null,state:'existing'};}
+ }
+ return out;
 }

@@ -739,7 +739,7 @@
       "compensation": "基本薪资",
       "compMeta": "基本工资 / 月 · 自 {validFrom} 起",
       "noCompensation": "未设置薪酬。",
-      "basicSalaryMyr": "基本工资 (MYR)",
+      "basicSalaryMyr": "基本工资",
       "updatePay": "新增薪资调整",
       "statutoryMalaysia": "法定信息（马来西亚）",
       "icNumber": "身份识别号码 (NRIC)",
@@ -12130,11 +12130,11 @@
         },
         "contact": {
           "title": "你的联系方式",
-          "body": "在这里更新电话、地址、出生日期和紧急联系人。这些更改会**立即**保存，无需审批。"
+          "body": "使用“申请编辑”修改管理员允许的字段。联系方式可能直接保存，其他更改需要审批。冲突的地址将保留供人力资源审核。"
         },
         "bank": {
           "title": "银行与法定信息",
-          "body": "你的银行账户和 PCB 税务类别在这里。打开 **请求变更** 提交修改，修改会发送给管理员审批。"
+          "body": "查看已记录的银行及法定资料。使用“申请编辑”修改允许的字段，再点击“保存”按现有流程提交审批。"
         },
         "payslips": {
           "title": "你的工资单",
@@ -12142,7 +12142,7 @@
         },
         "attendance": {
           "title": "考勤摘要",
-          "body": "在此处进行今日的上下班打卡。如需查看完整考勤记录，请打开考勤页面。您也可以申请更正漏打卡。"
+          "body": "请在“我的考勤”打卡。这里的链接可打开考勤记录和考勤更正申请。"
         },
         "leave": {
           "title": "休假余额与申请",
@@ -20280,6 +20280,15 @@
       "rejected": "已拒绝"
     },
     "viewChanges": "查看变更",
-    "loadingHistory": "正在加载历史…"
+    "loadingHistory": "正在加载历史…",
+    "currentValue": "当前：{value}",
+    "proposedValue": "申请更改为：{value}",
+    "missingRecord": "原记录已不可用。",
+    "settingsFailure": "无法保存设置。请重试或联系支持。",
+    "savedFields": "已保存：{fields}",
+    "waitingFields": "等待审批：{fields}",
+    "moduleUnavailable": "{module}模块不可用。现有的核心雇佣资料仍可查看。",
+    "statutoryUnavailable": "此雇佣记录没有受支持的国家包，因此银行及法定资料不可用。其他获准的个人资料字段仍可使用。",
+    "notApplicable": "此字段不适用于所选关系。保存前请撤销此更改或恢复原关系。"
   }
 }

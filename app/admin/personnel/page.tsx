@@ -1,4 +1,4 @@
-import {profileProposalLines} from '@/lib/profile-proposal-display';
+import {profileProposalReviewLines,type ProfileProposalCurrent} from '@/lib/profile-proposal-display';
 import Link from 'next/link';
 import { CurrentLedger } from '@/components/current-ledger';
 import { getTranslations } from 'next-intl/server';
@@ -82,9 +82,9 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
  * It returns one string PER FIELD rather than one joined line, because resolving the labels made the old
  * ' · ' join ambiguous: "2 · Married, spouse not working" is ONE PCB label and read as two fields.
  */
-function describeProposed(p:unknown,t:Awaited<ReturnType<typeof getTranslations>>,labels:Awaited<ReturnType<typeof getTranslations>>):string[]{
- const lines=profileProposalLines(p,(key,fallback)=>labels.has(key)?labels(key):fallback,{mask:false});
- return lines.length?lines.map(line=>`${line.label} → ${line.value}`):[t('noChanges')];
+function describeProposed(p:unknown,review:ProfileProposalCurrent,t:Awaited<ReturnType<typeof getTranslations>>,labels:Awaited<ReturnType<typeof getTranslations>>):string[]{
+ const lines=profileProposalReviewLines(p,review,(key,fallback)=>labels.has(key)?labels(key):fallback,{mask:false});
+ return lines.length?lines.map(line=>`${line.recordLabel?line.recordLabel+' · ':''}${line.label} · ${labels('essProfile.currentValue',{value:line.currentValue})} · ${labels('essProfile.proposedValue',{value:line.value})}`):[t('noChanges')];
 }
 
 /** people.list message key per catalogue column — ONE map, read by the <th> row, the picker and the
@@ -617,7 +617,7 @@ export default async function PeoplePage({
                       themselves "2 · Married, spouse not working", so a joined line read as two fields
                       where there was one. An approver reads a pay-affecting bundle here. */}
                   <div className="text-xs text-muted-foreground">
-                    {describeProposed(r.proposed, t, profileLabels).map((line) => (
+                    {describeProposed(r.proposed, r.review, t, profileLabels).map((line) => (
                       <div key={line}>{line}</div>
                     ))}
                   </div>

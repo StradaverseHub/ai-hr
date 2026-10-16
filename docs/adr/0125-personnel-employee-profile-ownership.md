@@ -49,3 +49,11 @@ Same-transaction policy, employment, Person and register/pack-row locks protect 
 rows precede statutory rows to retain child-relief owner ordering; primary/highest rows lock before
 other register targets to follow canonical transfers. These source contracts still need concurrency,
 actual app-role RLS/privilege and full journey verification.
+
+Family applicability follows the canonical writer's existing spouse/child field sets through the shared
+client-safe vocabulary. Manual/import validate-or-ignore behavior is preserved; the new proposal adapter
+refuses inapplicable changes rather than approving a value the writer would ignore. The editor preserves
+and flags a touched field made inapplicable by a relationship change so it can be undone explicitly.
+EPF storage representation remains protected; the category and employee figures use the existing
+client-safe election interpretation and country-owned percent presentation. Recorded salary currency is
+separate from its common caption, which makes no fixed-MYR assertion.

@@ -1,3 +1,4 @@
+import {dependentFieldApplies} from '../lib/dependent-vocabulary';
 import { dependentNaturalKey } from '../lib/dependent-identity';
 export { dependentNaturalKey } from '../lib/dependent-identity';
 /**
@@ -738,8 +739,8 @@ function normChildReliefPercentage(v: number | null | undefined): number | null 
  * NULL regardless of the input (validate-or-ignore). General fields apply to every relationship.
  */
 function extraColumnsForAdd(relationship: string, x: DependentExtraInput) {
-  const isSpouse = relationship === 'spouse';
-  const isChild = relationship === 'child';
+  const isSpouse = dependentFieldApplies(relationship,'spouseWorking');
+  const isChild = dependentFieldApplies(relationship,'childTaxRelief');
   return {
     passportNumber: trimOrNull(x.passportNumber),
     residentialAddress: trimOrNull(x.residentialAddress),
@@ -1078,8 +1079,8 @@ export async function updateDependent(
     // CHANGED away from spouse/child we NULL the now-irrelevant fields so no stale cross-section data
     // lingers.
     const effRel = (patch.relationship as string | undefined) ?? existing.relationship;
-    const isSpouse = effRel === 'spouse';
-    const isChild = effRel === 'child';
+    const isSpouse = dependentFieldApplies(effRel,'spouseWorking');
+    const isChild = dependentFieldApplies(effRel,'childTaxRelief');
     const relChanged = patch.relationship !== undefined && patch.relationship !== existing.relationship;
 
     if (p.passportNumber !== undefined) patch.passportNumber = trimOrNull(p.passportNumber);

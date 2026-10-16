@@ -739,7 +739,7 @@
       "compensation": "Lương cơ bản",
       "compMeta": "cơ bản / tháng · từ {validFrom}",
       "noCompensation": "Chưa thiết lập lương thưởng.",
-      "basicSalaryMyr": "Lương cơ bản (MYR)",
+      "basicSalaryMyr": "Lương cơ bản",
       "updatePay": "Thêm điều chỉnh lương",
       "statutoryMalaysia": "Pháp lý (Malaysia)",
       "icNumber": "Số định danh (NRIC)",
@@ -12130,11 +12130,11 @@
         },
         "contact": {
           "title": "Thông tin liên hệ của bạn",
-          "body": "Cập nhật số điện thoại, địa chỉ, ngày sinh và liên hệ khẩn cấp tại đây. Những thay đổi này được lưu **ngay lập tức**, không cần phê duyệt."
+          "body": "Dùng Yêu cầu chỉnh sửa để thay đổi các trường được quản trị viên cho phép. Thông tin liên hệ có thể được lưu ngay; các thay đổi khác cần phê duyệt. Địa chỉ mâu thuẫn được giữ lại để HR xem xét."
         },
         "bank": {
           "title": "Ngân hàng và pháp định",
-          "body": "Tài khoản ngân hàng và hạng thuế PCB của bạn nằm ở đây. Mở **Yêu cầu thay đổi** để gửi chỉnh sửa, các thay đổi này sẽ chuyển đến quản trị viên của bạn để phê duyệt."
+          "body": "Xem thông tin ngân hàng và pháp định đã ghi nhận. Dùng Yêu cầu chỉnh sửa cho các trường được phép rồi Lưu để gửi theo quy trình phê duyệt hiện có."
         },
         "payslips": {
           "title": "Phiếu lương của bạn",
@@ -12142,7 +12142,7 @@
         },
         "attendance": {
           "title": "Tóm tắt chấm công",
-          "body": "Chấm công vào/ra cho hôm nay tại đây. Để xem toàn bộ lịch sử chấm công, hãy mở trang Chấm công. Bạn cũng có thể yêu cầu sửa lần chấm công bị thiếu."
+          "body": "Chấm công vào và ra tại Chấm công của tôi. Các liên kết ở đây mở lịch sử chấm công và yêu cầu điều chỉnh của bạn."
         },
         "leave": {
           "title": "Số dư và yêu cầu nghỉ phép",
@@ -20280,6 +20280,15 @@
       "rejected": "Đã từ chối"
     },
     "viewChanges": "Xem thay đổi",
-    "loadingHistory": "Đang tải lịch sử…"
+    "loadingHistory": "Đang tải lịch sử…",
+    "currentValue": "Hiện tại: {value}",
+    "proposedValue": "Đề nghị: {value}",
+    "missingRecord": "Bản ghi gốc không còn khả dụng.",
+    "settingsFailure": "Không thể lưu cài đặt. Vui lòng thử lại hoặc liên hệ bộ phận hỗ trợ.",
+    "savedFields": "Đã lưu: {fields}",
+    "waitingFields": "Đang chờ phê duyệt: {fields}",
+    "moduleUnavailable": "Mô-đun {module} không khả dụng. Các thông tin việc làm cốt lõi hiện có vẫn được hiển thị.",
+    "statutoryUnavailable": "Thông tin ngân hàng và pháp định không khả dụng vì hồ sơ việc làm này không có gói quốc gia được hỗ trợ. Các trường hồ sơ khác được phép vẫn khả dụng.",
+    "notApplicable": "Trường này không áp dụng cho mối quan hệ đã chọn. Hãy hoàn tác hoặc khôi phục mối quan hệ trước khi lưu."
   }
 }
