@@ -28,11 +28,48 @@ an existing seeded fictional DB is preserved. No production identity/data is cop
 
 The runner migrates only its explicit generated target configuration, runs the fixture twice under
 120-second watchdogs, requires both fixture processes to exit with identical declared facts, then
-starts one owned Next server under a 45-minute lifetime watchdog. Both slots + DB remain held through
+starts one owned Next server. A 45-minute worker lifetime watchdog includes setup and startup. Both slots + DB remain held through
 child cleanup. Stop by creating `scratchpad/board15-draft-activation/browser.stop`. Only fresh child
 process groups owned by this invocation receive TERM/KILL, and locks are not released while an owned
 group exists. Inspect `browser-stopped.json` and the coordinator's exit before taking the next slot.
 The runner never treats an HTTP response as a rendered outcome and does not issue a browser PASS.
+
+## Explicit resume of a changed journey
+
+After the parent stops the current owned runner and hands off both slots and the DB, reopen the
+preserved named database with this explicit coordinator command:
+
+```sh
+node --env-file=/absolute/owned/worktree/.env.local --import tsx /absolute/owned/worktree/scripts/dev-browser-draft-activation.mjs --resume
+```
+
+Resume runs **zero migrations, seeds or fixtures**. It keeps the fixed database, namespace and port
+above, and requires the original matching `browser-manifest.json` / `fixture-manifest.json`, the
+current `browser-stopped.json`, and every separate prior resume receipt. The original Draft manifest
+has Main/Foreign companies within Demo, fourteen named Draft cases, and no OT business-date or
+foreign-tenant fields. Its captured Draft values are preparation provenance: activation, later edits
+and an approved deletion must remain changed. Resume does not compare live Draft rows against setup,
+recreate missing Drafts, reset reservations or grant permission for any app action.
+
+The new candidate must be clean. Its migrations, schema and pack catalog must match both original
+preparation and the last stopped candidate. The prior owned process group must be dead, its PID must
+match the current stop when recorded, and port3204 must be free; no existing process is killed. The
+restricted `ai_hr_app` role, distinct full-visibility migration reader, and exact Demo/System tenant
+IDs/names are checked before startup. Filtered tenant absence is not sufficient. An unknown flag,
+duplicate flag, stale/missing receipt, orphan newer resume or mismatched recursive stop chain refuses.
+Only the coordinator/held worker accepts `--resume`; the fixture is never invoked with this flag.
+
+Each resume writes its own candidate-bound receipt and dev log, retains original manifests/logs, and
+records `fixtureRunsThisCandidate:0`, original preparation digests and the actual prior stop. It does
+not claim a clean-twice fixture run for the new candidate. Both slots and DB remain held throughout a
+45-minute worker lifetime including preparation/validation and owned cleanup. Graceful stop, watchdog
+and failure stop only this invocation's children. A new current stopped receipt is atomically published
+**after all owned groups and DB handles close**, including an explicit `failed` outcome when appropriate;
+it is cleanup provenance, never an acceptance PASS. If failure prevents this publication, the orphaned
+resume blocks a later resume instead of silently falling back to an older stop.
+
+This resume path is source-prepared only until the parent runs the boundary tests and actual guarded
+launch. Keep the existing changed journey; do not rerun default setup to perform an approved Yes Delete.
 
 ## Manifest and named cases
 
