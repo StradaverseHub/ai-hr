@@ -6,6 +6,7 @@ import {open} from 'node:fs/promises';
 import {validateInternalReportCa,INTERNAL_REPORT_CA_MAX_BYTES} from './internal-report-ca';
 import {execFileSync} from 'node:child_process';
 import postgres from 'postgres';
+import {withInternalReportGrantOwner} from './internal-report-grant-owner';
 import {installedWebPrincipal,installedInternalConfiguration,internalReportSenderDatabase,internalReportRunnerDatabase,internalReportRunnerEnvironment,internalReportSenderGrants,forbiddenSenderFunctionsSql} from './internal-report-install-model';
 declare const INTERNAL_REPORT_FILES:Record<string,{base64:string;sha256:string;mode:number}>;
 const runtime='/usr/local/lib/aihr-identity-email',config='/etc/aihr-internal-report',units='/etc/systemd/system';
@@ -99,10 +100,9 @@ async function main(){
  const stamp=new Date().toISOString().replace(/[:.]/g,'-'),backup='/var/backups/aihr-internal-report-'+stamp;await mkdir(backup,{mode:0o700});await trusted(backup,true);
  const previous=new Map<string,string|null>();for(let i=0;i<changes.length;i++){const path=changes[i][0],copy=backup+'/'+i;try{await trusted(path);await copyFile(path,copy);await chmod(copy,0o600);previous.set(path,copy);}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;previous.set(path,null);}}
  await writeFile(backup+'/manifest.json',JSON.stringify([...previous]),{mode:0o600});
- const database=decodeURIComponent(senderDb.pathname.slice(1));if(!/^[a-zA-Z0-9_-]+$/.test(database))throw new Error('Invalid database name.');
- const sql=(input:string)=>command('runuser',['-u','postgres','--','psql','-d',database,'-p',senderDb.port||'5432','-v','ON_ERROR_STOP=1','-qAt'],input);
- const oldGrants=sql("select p.proname from pg_proc p join pg_namespace n on n.oid=p.pronamespace cross join lateral aclexplode(p.proacl) a join pg_roles r on r.oid=a.grantee where n.nspname='identity_email' and p.proname in ('report_target','start_report','finish_report') and r.rolname='aihr_identity_email' and a.privilege_type='EXECUTE'").trim().split('\n');
- const oldSchemaUsage=sql("select has_schema_privilege('aihr_identity_email','identity_email','USAGE')").trim()==='t';
+ await withInternalReportGrantOwner(runnerDb.toString(),web.database,async owner=>{
+ const oldGrants=(await owner.unsafe("select p.proname from pg_proc p join pg_namespace n on n.oid=p.pronamespace cross join lateral aclexplode(p.proacl) a join pg_roles r on r.oid=a.grantee where n.nspname='identity_email' and p.proname in ('report_target','start_report','finish_report') and r.rolname='aihr_identity_email' and a.privilege_type='EXECUTE'")).map(row=>String(row.proname));
+ const oldSchemaUsage=(await owner.unsafe("select has_schema_privilege('aihr_identity_email','identity_email','USAGE') as allowed"))[0]?.allowed===true;
  const listedUnits=new Set(systemctl('list-units','--all','--plain','--no-legend').split('\n').map(line=>line.trim().split(/\s+/)[0]));
  const stopWorkers=()=>{const owned=systemctl('list-units','--all','--plain','--no-legend').split('\n').map(line=>line.trim().split(/\s+/)[0]).filter(unit=>['aihr-internal-report.socket','aihr-internal-report.service','aihr-report-auth.socket','aihr-report-renderer.socket'].includes(unit)||((unit.startsWith('aihr-report-auth@')||unit.startsWith('aihr-report-renderer@'))&&unit.endsWith('.service')));if(owned.length)systemctl('stop',...owned);};
  const oldActive=new Map<string,boolean>(),oldEnabled=new Map<string,boolean>();for(const socket of ['aihr-internal-report.socket','aihr-report-auth.socket','aihr-report-renderer.socket']){oldActive.set(socket,listedUnits.has(socket)&&systemctl('show',socket,'--property=ActiveState','--value').trim()==='active');let enabled=false;try{enabled=systemctl('is-enabled',socket).trim()==='enabled';}catch{}oldEnabled.set(socket,enabled);}
@@ -111,9 +111,9 @@ async function main(){
  try{
   // Direct revocation cannot remove inherited/PUBLIC authority. Refuse it rather than silently
   // changing global Auth grants; operator/root review must resolve that installation defect.
-  sql('BEGIN;'+internalReportSenderGrants.join(';')+';COMMIT;');
-  if(sql(forbiddenSenderFunctionsSql).trim())throw new Error('Sender retained forbidden PUBLIC/inherited/direct capabilities.');
-  const tableAccess=sql("select c.oid from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','app') and c.relkind in ('r','p','v','m','f') and (has_table_privilege('aihr_identity_email',c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') or has_any_column_privilege('aihr_identity_email',c.oid,'SELECT,INSERT,UPDATE,REFERENCES'))");if(tableAccess.trim())throw new Error('Sender retained HR/Auth table authority.');
+  await owner.begin(async tx=>{for(const grant of internalReportSenderGrants)await tx.unsafe(grant);});
+  if((await owner.unsafe(forbiddenSenderFunctionsSql)).length)throw new Error('Sender retained forbidden PUBLIC/inherited/direct capabilities.');
+  const tableAccess=await owner.unsafe("select c.oid from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','app') and c.relkind in ('r','p','v','m','f') and (has_table_privilege('aihr_identity_email',c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') or has_any_column_privilege('aihr_identity_email',c.oid,'SELECT,INSERT,UPDATE,REFERENCES'))");if(tableAccess.length)throw new Error('Sender retained HR/Auth table authority.');
   stopWorkers();
   for(const [path,value,mode]of changes)await atomic(path,value,mode);
   systemctl('daemon-reload');systemctl('enable','aihr-report-renderer.socket','aihr-report-auth.socket','aihr-internal-report.socket');systemctl('start','aihr-report-renderer.socket','aihr-report-auth.socket','aihr-internal-report.socket');
@@ -122,10 +122,10 @@ async function main(){
   try{stopWorkers();}catch{}
   for(const [path,,mode]of changes){const copy=previous.get(path);if(copy)await atomic(path,await readFile(copy),mode);else try{await unlink(path);}catch(e){if((e as NodeJS.ErrnoException).code!=='ENOENT')throw e;}}
   // Restore only exact pre-existing direct compatibility grants on rollback, never global grants.
-  if(oldGrants.includes('report_target'))sql('GRANT EXECUTE ON FUNCTION identity_email.report_target(uuid,uuid,text) TO aihr_identity_email');
-  if(oldGrants.includes('start_report'))sql('GRANT EXECUTE ON FUNCTION identity_email.start_report(uuid,uuid,text,jsonb) TO aihr_identity_email');
-  if(!oldGrants.includes('finish_report'))sql('REVOKE EXECUTE ON FUNCTION identity_email.finish_report(uuid,uuid,text,text,integer,uuid[]) FROM aihr_identity_email');
-  if(!oldSchemaUsage)sql('REVOKE USAGE ON SCHEMA identity_email FROM aihr_identity_email');
+  if(oldGrants.includes('report_target'))await owner.unsafe('GRANT EXECUTE ON FUNCTION identity_email.report_target(uuid,uuid,text) TO aihr_identity_email');
+  if(oldGrants.includes('start_report'))await owner.unsafe('GRANT EXECUTE ON FUNCTION identity_email.start_report(uuid,uuid,text,jsonb) TO aihr_identity_email');
+  if(!oldGrants.includes('finish_report'))await owner.unsafe('REVOKE EXECUTE ON FUNCTION identity_email.finish_report(uuid,uuid,text,text,integer,uuid[]) FROM aihr_identity_email');
+  if(!oldSchemaUsage)await owner.unsafe('REVOKE USAGE ON SCHEMA identity_email FROM aihr_identity_email');
   systemctl('daemon-reload');for(const [socket,enabled]of oldEnabled)if(!enabled)try{systemctl('disable',socket);}catch{}
   for(const [socket,active]of oldActive)if(active)systemctl('start',socket);throw error;
  }
@@ -134,5 +134,6 @@ async function main(){
  console.log('Root-private rollback snapshot: '+backup);
  console.log("Review one report scheduling course before activating any cron: env -i /bin/sh -c 'set -a; . /etc/aihr-internal-report/runner.env; set +a; cd /opt/ai-hr; exec /usr/local/lib/aihr-identity-email/internal-node --import tsx scripts/provision-runner.ts --installed-internal-reports-only'");
  console.log('Cron was not changed. Default full provisioning remains key-bearing and still dispatches reports; do not enable duplicate report ticks.');
+ });
 }
 main().catch(()=>{console.error('Internal report installation refused; inspect private service state. No secrets were printed.');process.exitCode=1;});

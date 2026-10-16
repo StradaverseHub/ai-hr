@@ -103,8 +103,10 @@ human enrollment/SMTP setup before it can supply acceptance; do not claim it wor
    Auth bootstrap, password change, actual human TOTP and existing SMTP Save/Test/receipt/Apply are separate
    required setup. This installer creates no Auth credential, approval, consent, schedule or mail.
 3. Provision a separate LOGIN aihr_identity_email with strong private password and CONNECT to the exact
-   application database, no memberships/ownership/HR/Auth privileges. Root installation uses local postgres
-   only to revoke/grant fixed function signatures; it does not take a migration URL from the web env.
+   application database, no memberships/ownership/HR/Auth privileges. All privileged grant checks/mutation/rollback use the separately supplied, authenticated owner URL
+   through one explicit max1 driver pool, never runuser/psql or a default Unix-socket cluster. Before
+   any grant mutation, it proves exact database, report table, identity_email schema and all three
+   touched function owners on that endpoint. No migration URL is taken from the web environment.
 4. Supply a reviewed root-owned supported Node22.13+ or24LTS binary. Builder bundles targetnode22, no
    import.meta or top-level await. Existing external Node binary is not replaced. No download occurs. If the actual running web has NODE_EXTRA_CA_CERTS, installer requires its
    root-owned regular single-link source and every ancestor to be non-writable and non-symlink. A bounded
@@ -162,11 +164,25 @@ controlled actual-provider fixtures and two real cron ticks. No production activ
 
 ## Required verification, all UNRUN here
 
-Full tsc; five focused files employee-master-internal-{transport,broker-client,install}.test.ts and
-employee-master-report-bytes.test.ts and employee-master-internal-ca.test.ts; existing managed-delivery/artifact/single-handler/SMTP tests;
+Full tsc; six focused files employee-master-internal-{transport,broker-client,install}.test.ts and
+employee-master-report-bytes.test.ts, employee-master-internal-ca.test.ts and
+employee-master-internal-grant-owner.test.ts; existing managed-delivery/artifact/single-handler/SMTP tests;
 Credit broker/Auth tests; real0552 restricted role/concurrency/compatibility tests. Source guards are
 cross-file checks, not Linux runtime evidence. Linux acceptance must cover caller spoofing/unknown fields,
 root/self/foreign peers, missing/revoked/stale identities/consent/watermark, relay Apply races, artifact
 hash/length/type mismatch, exact actual attachment, lost/partial start reply, process crash/expired-start
 no-retry, actual effective grants/DAC, cleanup acknowledgement+absence, combined192/outer768 peaks and
 installation rollback. Preserve fixture-vs-human evidence and ARM-vs-production x86 runtime distinction.
+
+## Endpoint regression correction
+
+The first installer source962 used TCP probes but local psql without an explicit host for privileged
+grants/checks. A different default Unix cluster with the same database/port could have been changed,
+leaving the actual sender endpoint unsafe. That implementation is replaced before execution. The
+privileged path now uses the explicit, separately supplied runner-owner URL for proof, mutation,
+effective privilege checks and rollback; no local psql exists. URL equality with the canonical app
+endpoint and exact touched-object ownership are mandatory. This is the reviewed explicit-authenticated-
+endpoint course, not a claim that a normal app role can read PostgreSQL cluster system identifiers.
+Focused injected-connection tests cover wrong endpoint refusal before connect, proof-before-mutation,
+all operations/rollback on the same selected owner and guaranteed pool cleanup. Actual database and
+privileged installation regressions remain UNRUN and required.
