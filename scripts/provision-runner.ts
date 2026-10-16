@@ -17,13 +17,7 @@
  *
  * PER TICK, IN ORDER: stale reclaim → claim one → email pre-check → provision → reissue pass.
  */
-import { createDb, client } from '../db/client';
-import { sweepEmployeeMasterReports } from '../core/employee-master-delivery';
-import { sweepReplacementHolidayQueue } from './replacement-holiday-sweep';
-import { ProvisionStepError, provisionTenant, INVITE_TTL_DAYS } from '../db/provision';
-import { appendEvent } from '../db/events';
-import { appInvitation, appUser, person, tenantProvisionRequest, tenantProvisionRequestModule } from '../db/schema';
-import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import type { createDb } from '../db/client';
 import { createHash, randomBytes } from 'node:crypto';
 
 /** A runner killed mid-flight leaves an eternal 'running' spinner unless something reclaims it. */
@@ -54,6 +48,8 @@ function loadEnv() {
  * should adopt this same claimed_at rule rather than inventing a second mechanism (see the ADR).
  */
 async function reclaimStale(db: ReturnType<typeof createDb>['db']): Promise<number> {
+  const {tenantProvisionRequest}=await import('../db/schema');
+  const {and,eq,sql}=await import('drizzle-orm');
   const rows = await db
     .update(tenantProvisionRequest)
     .set({
@@ -84,6 +80,8 @@ async function reclaimStale(db: ReturnType<typeof createDb>['db']): Promise<numb
 async function claimNext(
   db: ReturnType<typeof createDb>['db'],
 ): Promise<{ id: string; customerName: string; adminEmail: string; country: string; modules: string[] } | null> {
+  const {tenantProvisionRequest,tenantProvisionRequestModule}=await import('../db/schema');
+  const {and,eq,sql}=await import('drizzle-orm');
   const rows = await db
     .update(tenantProvisionRequest)
     .set({ status: 'running', claimedAt: new Date(), updatedAt: new Date() })
@@ -133,6 +131,8 @@ async function emailAlreadyUsed(
   db: ReturnType<typeof createDb>['db'],
   email: string,
 ): Promise<boolean> {
+  const {appUser,person,appInvitation}=await import('../db/schema');
+  const {and,eq,sql}=await import('drizzle-orm');
   const [existingUser] = await db
     .select({ id: appUser.id })
     .from(appUser)
@@ -162,6 +162,8 @@ async function markFailed(
   currentStep: string | null,
   error: string,
 ): Promise<void> {
+  const {tenantProvisionRequest}=await import('../db/schema');
+  const {eq}=await import('drizzle-orm');
   await db
     .update(tenantProvisionRequest)
     .set({ status: 'failed', currentStep, error, updatedAt: new Date() })
@@ -182,6 +184,9 @@ async function provisionOne(
   owner: ReturnType<typeof createDb>,
   req: { id: string; customerName: string; adminEmail: string; country: string; modules: string[] },
 ): Promise<void> {
+  const {ProvisionStepError,provisionTenant}=await import('../db/provision');
+  const {tenantProvisionRequest}=await import('../db/schema');
+  const {eq}=await import('drizzle-orm');
   if (await emailAlreadyUsed(owner.db, req.adminEmail)) {
     await markFailed(
       owner.db,
@@ -234,6 +239,10 @@ async function provisionOne(
  * is sufficient and needs no token knowledge.
  */
 async function reissuePass(owner: ReturnType<typeof createDb>): Promise<number> {
+  const {INVITE_TTL_DAYS}=await import('../db/provision');
+  const {appendEvent}=await import('../db/events');
+  const {appInvitation,appUser,person,tenantProvisionRequest}=await import('../db/schema');
+  const {and,eq,isNotNull,isNull,sql}=await import('drizzle-orm');
   const due = await owner.db
     .select({
       id: tenantProvisionRequest.id,
@@ -326,8 +335,53 @@ export async function runProvisionTick(owner: ReturnType<typeof createDb>): Prom
   return { reclaimed, provisioned: Boolean(claimed), reissued };
 }
 
+/** This exact command selects a smaller job; it never bypasses an authority check for another job. */
+export function provisionRunnerMode(args:readonly string[]):'default'|'installedInternalReportsOnly' {
+  if(args.length===0)return 'default';
+  if(args.length===1&&args[0]==='--installed-internal-reports-only')return 'installedInternalReportsOnly';
+  throw new Error('Unknown provisioning runner command.');
+}
+/** Validate BEFORE any application import or env-file loader. Installer supplies env-i + a separate
+ * root-owned runner.env; this command itself reads no env file, including production/local fallback. */
+export function validateInstalledInternalReportEnvironment(env:NodeJS.ProcessEnv):void {
+  const allowed=new Set(['AUTH_PROVIDER','AUTH_PUBLIC_ORIGIN','DATABASE_URL','MIGRATION_DATABASE_URL',
+    'NODE_ENV','TZ','HOME','PATH','LANG','LC_ALL','LC_CTYPE','TMPDIR','PWD','SHLVL','_']);
+  if(Object.keys(env).some(key=>!allowed.has(key)))throw new Error('Internal report runner environment is not closed.');
+  if(env.AUTH_PROVIDER!=='internal'||!env.DATABASE_URL||!env.MIGRATION_DATABASE_URL)throw new Error('Internal report runner configuration is incomplete.');
+  const origin=new URL(env.AUTH_PUBLIC_ORIGIN??'');
+  if(origin.protocol!=='https:'||origin.username||origin.password||origin.pathname!=='/'||origin.search||origin.hash
+    ||origin.origin!==env.AUTH_PUBLIC_ORIGIN)throw new Error('Internal report runner origin is invalid.');
+  const app=new URL(env.DATABASE_URL),owner=new URL(env.MIGRATION_DATABASE_URL);
+  for(const value of [app,owner]){
+    if(!['postgres:','postgresql:'].includes(value.protocol)||!value.hostname||!value.password||!/^\/[a-zA-Z0-9_-]+$/.test(value.pathname)||value.hash
+      ||[...value.searchParams.keys()].some(key=>['user','username','password','pass','host','hostname','port','database','dbname','role','options','ssl'].includes(key.toLowerCase()))
+      ||!['127.0.0.1','localhost','[::1]'].includes(value.hostname)&&(value.searchParams.getAll('sslmode').length!==1||value.searchParams.get('sslmode')!=='verify-full'))throw new Error('Internal report runner database is invalid.');
+  }
+  if(decodeURIComponent(app.username)!=='ai_hr_app'||!owner.username||owner.username===app.username
+    ||app.hostname!==owner.hostname||(app.port||'5432')!==(owner.port||'5432')||app.pathname!==owner.pathname)throw new Error('Internal report runner database authorities do not match.');
+}
+export async function runInstalledInternalReportTick():Promise<void> {
+  validateInstalledInternalReportEnvironment(process.env);
+  const {createDb,client}=await import('../db/client');
+  const {sweepEmployeeMasterReports}=await import('../core/employee-master-delivery');
+  const owner=createDb(process.env.MIGRATION_DATABASE_URL!,{max:2});
+  try{
+    const reports=await sweepEmployeeMasterReports(owner.db);
+    if(reports.attempted)console.log(`· employee master reports: ${reports.attempted} attempted, ${reports.sent} sent, ${reports.failed} failed, ${reports.uncertain} uncertain`);
+    if(reports.tenantsFailed)process.exitCode=1;
+  }finally{
+    try{await owner.client.end({timeout:5});}
+    finally{await client.end({timeout:5});}
+  }
+}
+
 async function main() {
+  const mode=provisionRunnerMode(process.argv.slice(2));
+  if(mode==='installedInternalReportsOnly'){await runInstalledInternalReportTick();return;}
   loadEnv();
+  const {createDb,client}=await import('../db/client');
+  const {sweepEmployeeMasterReports}=await import('../core/employee-master-delivery');
+  const {sweepReplacementHolidayQueue}=await import('./replacement-holiday-sweep');
   const url = process.env.MIGRATION_DATABASE_URL;
   if (!url) {
     console.error('\n✗ MIGRATION_DATABASE_URL is not set (run this from /opt/ai-hr on the server).\n');
@@ -361,7 +415,8 @@ async function main() {
 // Run only when invoked directly (not when imported by a test).
 if (process.argv[1] && process.argv[1].endsWith('provision-runner.ts')) {
   main().catch((e) => {
-    console.error(e);
+    if(process.argv.slice(2).includes('--installed-internal-reports-only'))console.error('Installed internal report tick failed.');
+    else console.error(e);
     process.exit(1);
   });
 }
