@@ -164,10 +164,10 @@ describe('r343 · adjudicateDayTypes', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
-// (2) THE LAYOUT, AS A SOURCE SHAPE. A second section and a short posted list are both invisible at runtime.
+// (2) THE INPUT LAYOUT, AS A SOURCE SHAPE. Dated review notices are outside the one input table.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
-describe('r343 · ONE table, no sections, and five posted values per row', () => {
-  it('the request form is ONE table and carries no section container of its own', () => {
+describe('r343 · ONE input table, separate dated review notices, and four posted values per row', () => {
+  it('the request form has ONE input table, no obsolete split inputs, and bounded review notices outside it', () => {
     // ⚠️ r364 — COMMENTS ARE STRIPPED FIRST, and that is a correction rather than a convenience. These
     // are source-text counts, and they were run over the RAW file: a comment that merely NAMED the tag
     // it was guarding pushed the count to 2 and failed the case. It happened the first time anyone
@@ -177,8 +177,11 @@ describe('r343 · ONE table, no sections, and five posted values per row', () =>
     // A tag inside a comment is not a tag, exactly as a guard name inside a comment is not a call; the
     // same blind spot in test/function-access.test.ts was fixed for the opposite reason, where a
     // comment made an UNGUARDED page look guarded. Four other helpers in this very file already strip
-    // before matching. Nothing is loosened: a real second <table> or <section> still fails.
-    const src = read(TABLE_TSX).slice(read(TABLE_TSX).indexOf('export function LeaveCreditRequestTable'))
+    // before matching. A second input table or split day-type input section still fails. The dated
+    // canonical formula review introduced later is a notice outside the table, not another input section.
+    const raw = read(TABLE_TSX), componentStart = raw.indexOf('export function LeaveCreditRequestTable');
+    expect(componentStart, 'the actual request component exists').toBeGreaterThanOrEqual(0);
+    const src = raw.slice(componentStart)
       .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/^\s*\/\/.*$/gm, '');
@@ -186,7 +189,23 @@ describe('r343 · ONE table, no sections, and five posted values per row', () =>
     // r336's two sections were `<section data-testid="leave-credit-section-a|b">`. Neither may come back.
     expect(src).not.toContain('leave-credit-section-a');
     expect(src).not.toContain('leave-credit-section-b');
-    expect(src).not.toContain('<section');
+    expect(src).toContain('data-testid="leave-credit-table"');
+    const tableStart = src.indexOf('<table'), tableEnd = src.indexOf('</table>', tableStart);
+    const reviewId = src.indexOf('data-testid="leave-credit-claim-reviews"');
+    expect(tableStart).toBeGreaterThan(0);expect(tableEnd).toBeGreaterThan(tableStart);expect(reviewId).toBeGreaterThan(tableEnd);
+    const reviewStart = src.lastIndexOf('<div', reviewId), reviewEnd = src.indexOf('\n      </div>', reviewId);
+    expect(reviewStart).toBeGreaterThan(tableEnd);expect(reviewEnd).toBeGreaterThan(reviewId);
+    const review = src.slice(reviewStart, reviewEnd);
+    expect(review.length).toBeGreaterThan(300);
+    expect((src.match(/<section\b/g) ?? []).length, 'only the dated review notice is a section').toBe(1);
+    expect((review.match(/<section\b/g) ?? []).length).toBe(1);
+    expect(review).toContain("rows.filter(row=>row.workedDate&&claimReviewForRow(row)?.basis!=='legacy')");
+    expect(review).toContain("<section key={row.key} aria-label={`${t('workedDate')}: ${row.workedDate}`}");
+    expect(review).toContain("<LeaveCreditClaimReviewNotice review={claimReviewAction?claimReviewForRow(row)??null:{basis:'unavailable',reason:'unavailable'}}/>");
+    expect(review).toContain('min-w-0 max-w-full');expect(review).toContain('whitespace-normal');expect(review).toContain('[overflow-wrap:anywhere]');
+    expect(review, 'review notices never inherit the table minimum width').not.toContain('min-w-[');
+    expect(review, 'not a second set of editable/posted inputs').not.toMatch(/<(?:input|select|textarea|table)\b|\bname=/);
+    expect(src.slice(tableStart, tableEnd), 'dated notices must remain outside the scrollable input table').not.toContain('LeaveCreditClaimReviewNotice');
   });
 
   // r358 — FOUR values, not five: `days` is gone with the dropdown that fed it. The old list is quoted in
@@ -697,15 +716,21 @@ describe('r365 · the Attendance column, the shared panel, and what was retired 
    * innocuous name inside it passes any scan of the expression's own text. What cannot be smuggled past
    * is the LIST of things that stop the submit, pinned by name.
    */
-  it('the submit gate is exactly the five refusals it has always been — attendance is not one of them', () => {
+  it('the submit gate preserves the prior refusals plus canonical formula review; informational attendance is not a gate', () => {
     const code = stripped(TABLE);
-    const stmt = code.slice(code.indexOf('const blocked ='), code.indexOf(';', code.indexOf('const blocked =')));
+    const start = code.indexOf('const blocked ='), end = code.indexOf(';', start);
+    expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start);
+    const stmt = code.slice(start, end);expect(stmt.length).toBeGreaterThan(200);
     const operands = [...stmt.matchAll(/([A-Za-z_$][\w$]*)\s*(?:\.length\s*>\s*0|<=\s*0)/g)].map((m) => m[1]).sort();
     // r406 — `alreadyCreditedRows` joined, behind `hr != null &&`: HR mode only, and it is a register fact
     // (an unreversed credit on the date), not attendance. On the employee's mount it is always [].
     expect(operands).toEqual(
-      ['alreadyCreditedRows', 'belowThresholdRows', 'duplicateDates', 'incompleteRows', 'mismatchRows', 'ordinaryUnavailableRows', 'totalCredit'].sort(),
+      ['alreadyCreditedRows', 'belowThresholdRows', 'duplicateDates', 'incompleteRows', 'mismatchRows', 'ordinaryUnavailableRows', 'totalCredit', 'unresolvedClaimRows'].sort(),
     );
+    // The additional refusal is the duration owner's exact subject/date/window review, not the
+    // historical Attendance details panel. Pending/unavailable/refused formula results cannot submit.
+    expect(code).toContain('const unresolvedClaimRows=rows.filter(row=>row.workedDate&&leaveCreditClaimReviewBlocks(claimReviewForRow(row)))');
+    expect(stmt).toContain('unresolvedClaimRows.length>0');
     expect(stmt).toContain('(hr != null && (subjectMissing || hr.blocked || alreadyCreditedRows.length > 0))');
     for (const name of ['attendance', 'Attendance', 'hasClockOut', 'exceedsClockOut', 'actualClock', 'approvedOtPlan'])
       expect(stmt, `${name} must not reach the submit gate`).not.toContain(name);
