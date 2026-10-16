@@ -1960,6 +1960,7 @@
       "sectionNotFoundNotice": "{count, plural, one {# baris menyebut ID Pekerja yang tiada dalam sistem.} other {# baris menyebut ID Pekerja yang tiada dalam sistem.}} Fail bahagian hanya boleh mengemas kini orang yang sudah wujud — ia tidak boleh menambah sesiapa, kerana ia tidak membawa nama, e-mel kerja, jabatan, tarikh mula dan gaji yang diperlukan oleh rekod pekerja baharu. Tambah mereka dengan templat “Semuanya — pekerja baharu” dahulu, kemudian jalankan fail ini semula.",
       "sectionImportButton": "Kemas kini {count}",
       "sectionUpdatedCount": "{count, plural, one {# pekerja dikemas kini} other {# pekerja dikemas kini}}",
+      "familySavedCount": "{count} rekod keluarga disimpan",
       "colEmployee": "Pekerja",
       "colVerdict": "Apa yang berlaku",
       "colChanges": "Apa yang berubah",

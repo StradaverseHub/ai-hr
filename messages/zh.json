@@ -1960,6 +1960,7 @@
       "sectionNotFoundNotice": "{count, plural, one {# 行填写的员工编号在系统中不存在。} other {# 行填写的员工编号在系统中不存在。}} 分项文件只能更新已存在的人员 — 无法新增任何人，因为它不包含新员工记录所需的姓名、工作邮箱、部门、入职日期和薪资。请先用“全部 — 新员工”模板添加这些人，然后重新运行此文件。",
       "sectionImportButton": "更新 {count} 项",
       "sectionUpdatedCount": "{count, plural, one {已更新 # 名员工} other {已更新 # 名员工}}",
+      "familySavedCount": "已保存 {count} 条家庭记录",
       "colEmployee": "员工",
       "colVerdict": "将发生什么",
       "colChanges": "改动内容",
