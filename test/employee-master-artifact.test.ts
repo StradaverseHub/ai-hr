@@ -47,9 +47,13 @@ describe('renderer-owned descriptor proof',()=>{
     try{expect(await fingerprintOwnedReportArtifact(handle,uid)).toEqual(fingerprintReportBytes(bytes,MIME));}finally{await handle.close();}
   });
   it.each([
-    {isFile:()=>false},{uid:BigInt(uid+1)},{mode:BigInt(0o100660)},{mode:BigInt(0o100644)},
-    {size:BigInt('0')},{nlink:BigInt('2')},
-  ])('refuses an untrusted descriptor before reading bytes: %j',async patch=>{
+    {label:'non-regular file',patch:{isFile:()=>false}},
+    {label:'foreign owner',patch:{uid:BigInt(uid+1)}},
+    {label:'group writable',patch:{mode:BigInt(0o100660)}},
+    {label:'world readable',patch:{mode:BigInt(0o100644)}},
+    {label:'empty file',patch:{size:BigInt('0')}},
+    {label:'multiple hard links',patch:{nlink:BigInt('2')}},
+  ])('refuses $label before reading bytes',async ({patch})=>{
     const io=memory(Buffer.from('fixture'),patch);
     await expect(fingerprintOwnedReportArtifact(io.handle,uid)).rejects.toMatchObject({reason:'generationFailed'});
     expect(io.counts().reads).toBe(0);
