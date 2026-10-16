@@ -1,104 +1,121 @@
-# Managed Reports controlled Linux acceptance
+# Isolated internal Report delivery acceptance
 
-This is source preparation for approved5f9c8062 and ADR0119. No VM, installer, bundle, fixture, test, SMTP, memory or cron outcome has run. The normal app/release gate and actual report-builder experience remain separate requirements.
+This staged source replaces the old Keycloak-only fixture. It has **not been executed, built, typechecked or tested** in this checkpoint. It creates no consent, Auth credential, verified-MFA flag, external binding, SMTP configuration or alternative scheduler. The consent-page/action fix is a separate prerequisite. Source checks and canonical readbacks do not replace parent-observed human interactions.
 
-The existing installer uses fixed system paths, real Linux peer credentials, dedicated OS identities and cgroups. This fixture therefore requires a dedicated disposable Linux VM. Docker on a shared host is insufficient for this contract. The presence of Docker, Colima or Lima on the developer Mac does not prove that such a VM or its prerequisites exist. Do not start one during another agent's resource window.
+FACT supplied by the parent: the owned, stopped Lima VM is `board16-report-linux`, `LIMA_HOME=/private/tmp/aihr-b16-lima`, Ubuntu24.04 ARM, with reviewed Node20.20.2 and Node22.23.1. `/opt/ai-hr` was at299; its isolated `ai_hr_report_delivery_acceptance` passed a restricted-owner rehearsal of460 journal entries through0553, including0543 and0552. **460 is a journal length.** These facts do not establish current source, human enrollment, TLS, installed services, SMTP or cron acceptance. The runner rechecks exact candidate and every applied SQL hash/when; do not recreate or reset that VM/database to hide drift. ARM evidence is separate from production x86/runtime/release evidence.
 
-## Required graph and boundaries
+The first Mac manual report course remains `node scripts/dev-browser-original18.mjs --scenario=reports`, local5433 named `ai_hr_board18_reports_browser`, port3197. Its demo identities, absent Notifications entitlement and closed no-mail configuration intentionally cannot supply genuine delivery opt-in. Preserve its reports/receipts separately. Do not convert its demo actors or copy consent/Auth records into Linux.
 
-One named database, ai_hr_report_delivery_acceptance, contains only the receipt-bound fictional tenant. Provisioning, hiring, compensation, Family, notification policy/consent, report and schedule writes use the actual authoritative owners. Direct owner inserts are limited to declared fictional login/grant/external-identity/operator enrollment. No report result, occurrence, authorization flag, consent revision, lease expiry or workbook is forged in SQL. The actual private queue/claim/start/finish functions retain authority over execution.
+## Explicit prerequisites, unavailable until prepared/reviewed
 
-The owner is a real fictional super-admin; the recipient is a distinct real fictional HR admin and employment. Both map to actual verified local-provider accounts. The saved report is shared with the recipient's role. The installed mail UID resolves nonce-bound targets, checks the actual provider and opens only the separate app-role renderer's ID-bound workbook. The renderer has no SMTP/provider/migration credential. The local TLS sink accepts only owner@report-acceptance.invalid and recipient@report-acceptance.invalid and has no relay/upstream capability.
+The isolated Linux candidate must be the exact clean integrated HEAD at `/opt/ai-hr`, root-owned/non-writable, with its actual built app running as a fixed non-root systemd unit **`aihr-report-acceptance.service`**. The runner never starts/installs that web unit. Keep the actual restricted app URL and `AUTH_PROVIDER=internal`, `AUTH_PUBLIC_ORIGIN=https://localhost:3543`, `AUTH_SESSION_KEY` in its private canonical configuration; no migration credential in web. Use the operator-reviewed Node22.23.1 runtime. Node20 remains solely the unchanged legacy provisioning prerequisite.
 
-A root-owned marker, exact database/issuer/relay guards, reviewed bundle hashes, clean root-owned candidate and exclusive owned lock are prerequisites, not substitutes for app authorization. The runner never changes permission semantics, disables RLS, accepts caller-supplied workbooks, initializes a provider mock, creates a VM/database/role, installs CA trust, or invents provider verification.
+Canonical Auth requires HTTPS even for localhost. Use a genuinely trusted isolated certificate and loopback-only VM forward to browser port3543 (check/reserve it first); no HTTP exception, certificate bypass, `rejectUnauthorized:false`, browser insecure flag or production sfm-certificate dependency is introduced. Root must separately review/provide the CA/trust/proxy/forwarding prerequisites. The sink requires a certificate valid for127.0.0.1, implicit TLS24656 and no upstream relay. Actual web and fixture must already trust the same root-owned public bundle at `/usr/local/share/ca-certificates/aihr-report-acceptance.crt` through `NODE_EXTRA_CA_CERTS`. Transport installer alone propagates that public trust to sender. The runner performs no trust changes.
 
-The parent must hand over both test slots and the dev DB/resource window before any build, fixture, VM or Linux execution. Hold those resources around the host-to-VM session using the established testlock/devdb-lock scripts. Inside the dedicated VM, the runner exclusively creates /run/aihr-report-acceptance.lock. Cron is stopped during controlled cases and no other managed timer/user cron is permitted. Only the final case starts the preinstalled existing minute runner. A40-minute watchdog stops owned child groups, test cron/managed units and the local sink, and closes both DB pools. Failure preserves private evidence and the disposable DB; it never resets a started journey.
+Use actual `ai_hr_app` (no ownership/membership/bypass), restricted canonical migration owner and separately prepared `aihr_identity_email` sender role. Exact localhost5432 database only. Sender setup/privileges remain the reviewed internal installer’s responsibility. Root-private `/root/aihr-report-acceptance/owner.json` has exactly `{"databaseUrl":"<operator-authorised existing owner URL>"}`. Never put its value in argv/logs. The app URL/key/origin come only from the **actual running web PID**, with UID/cgroup/PID readbacks, not this file or caller overrides.
 
-## Source readiness sequence
-
-After resource handoff, use the clean integrated board-oct15 candidate with real dependencies:
+Build only under the parent's full resource handoff from the final candidate (commands below are NOT RUN):
 
 ```sh
-pnpm -C /Users/zenlam/Projects/ai-hr/.claude/worktrees/board-oct15 exec vitest run test/employee-master-delivery-config.test.ts test/employee-master-managed-delivery.test.ts test/employee-master-report-handler.test.ts test/employee-master-delivery-standing.test.ts test/employee-master-delivery-db.test.ts test/employee-master-consent.test.ts test/employee-master-schedule.test.ts test/employee-master-attachment-smtp.test.ts test/employee-master-delivery-fixture.test.ts
-pnpm -C /Users/zenlam/Projects/ai-hr/.claude/worktrees/board-oct15 exec tsx scripts/build-report-email-upgrade.ts
-pnpm -C /Users/zenlam/Projects/ai-hr/.claude/worktrees/board-oct15 exec esbuild scripts/dev-managed-report-acceptance.ts --bundle --platform=node --target=node20 --format=cjs --outfile=deploy/identity-email/generated/report-acceptance.cjs
-shasum -a 256 /Users/zenlam/Projects/ai-hr/.claude/worktrees/board-oct15/deploy/identity-email/generated/report-acceptance.cjs /Users/zenlam/Projects/ai-hr/.claude/worktrees/board-oct15/deploy/identity-email/generated/report-upgrade.cjs
+pnpm exec tsx deploy/identity-email/build-internal-reports.ts
+pnpm exec esbuild scripts/dev-managed-report-acceptance.ts --bundle --platform=node --target=node22 --format=cjs --outfile=deploy/identity-email/generated/report-acceptance.cjs
+shasum -a 256 deploy/identity-email/generated/report-acceptance.cjs deploy/identity-email/generated/internal-report-upgrade.cjs
 ```
 
-These are coordinated commands, not permission to run outside the lock handoff. Use the test harness namespace assigned by the parent; its DB test machinery is independent of the fixed Linux VM database. The new attachment regression exercises real implicit-TLS SMTP and parses the emitted XLSX. Existing managed-service tests mock rendering/SMTP; their green result alone cannot demonstrate installed Linux execution.
-
-Before installation, prove the complete migration chain including0542,0546 and0549 is applied on the disposable database under the actual restricted migration owner. The current restricted-owner regression recreates report_target, not the entire pending migration chain. Full restricted-owner DDL rehearsal and grant/FORCE-RLS evidence remain required.
-
-## Dedicated Linux prerequisites
-
-The VM must run the reviewed Node20 runtime and have systemd running, cgroup v2 memory.peak/memory.events, local PostgreSQL5432, the restricted ai_hr_app and aihr_identity_email roles and separate migration credentials. The existing accepted identity/workflow mail installation and real local Keycloak service must already be present. No normal/production installation may be repurposed.
-
-Use a clean, root-owned candidate at /srv/aihr-report-acceptance/candidate, with its own real node_modules and no .env.local/.env.production. Root stages reviewed artifacts at /root/aihr-report-acceptance, files0600 and directory0700:
-
-- fixture.cjs: the report-acceptance.cjs bundle.
-- report-upgrade.cjs: the existing build-report-email-upgrade artifact.
-- ca.pem, server.pem and server.key: disposable TLS certificate chain/key with IP SAN127.0.0.1; Publish the same public CA as root-owned0644 /usr/local/share/ca-certificates/aihr-report-acceptance.crt and configure the mail unit's own NODE_EXTRA_CA_CERTS to that readable path; /root is deliberately inaccessible to the mail UID. The actual provider's separate SMTP-test realm must also trust the CA through its real supported trust store. The fixture itself reads that CA at process startup. Do not disable certificate validation.
-- runner.env: only DATABASE_URL, MIGRATION_DATABASE_URL and optionally IDENTITY_EMAIL_SOCKET=/run/aihr-identity-email.sock. Both DB URLs must use127.0.0.1:5432/ai_hr_report_delivery_acceptance, with ai_hr_app and the separate migration role. No query overrides are allowed. Keep credentials out of shell arguments, logs and this document.
-
-The existing private email-agent.env must point to the same named DB through aihr_identity_email, use IDENTITY_EMAIL_TEST_RECIPIENT=owner@report-acceptance.invalid, WORKFLOW_EMAIL_ISSUER=https://report-acceptance.invalid/identity/realms/ai-hr and WORKFLOW_EMAIL_ORIGIN=https://report-acceptance.invalid. Actual local provider clients/credentials remain private to their accepted owner. No provider secret is put in runner.env or renderer.env.
-
-Create exactly these real fictional local-provider accounts before fixture preparation: usernames report-delivery-owner / report-delivery-recipient, the corresponding fixed addresses above, enabled and emailVerified=true, no federation/service-account identity or outstanding required action. The fixture checks the real provider before creating any application login binding. Provide the dedicated base app's normal Keycloak authentication/UI connection so the operator can use actual Email settings during preparation. Browser routing/DNS/certificate setup for this fictional installation remains a VM provisioning prerequisite.
-
-Root creates /etc/aihr-report-acceptance.json, mode0600, with this reviewed structure (replace placeholders with actual reviewed hashes/UUID/SHA; placeholders cannot pass):
+No import.meta/top-level-await CLI assumption is needed. Stage those exact reviewed bundles root0600 as `/root/aihr-report-acceptance/{fixture.cjs,internal-report-upgrade.cjs}`, plus root0600 `ca.pem`, `server.pem`, `server.key`. Use only the actual reviewed root-owned Node22.23.1 executable. Root0600 `/etc/aihr-report-acceptance.json` is a **strict version2** marker:
 
 ```json
 {
-  "version": 1,
-  "purpose": "disposable-managed-report-acceptance",
+  "version": 2,
+  "purpose": "disposable-internal-report-acceptance",
+  "vm": "board16-report-linux",
   "database": "ai_hr_report_delivery_acceptance",
-  "candidateRoot": "/srv/aihr-report-acceptance/candidate",
-  "candidateSha": "<clean integrated40-character SHA>",
+  "candidateRoot": "/opt/ai-hr",
+  "origin": "https://localhost:3543",
   "runId": "<fresh UUID>",
-  "fixtureSha256": "<reviewed fixture SHA256>",
-  "upgradeSha256": "<reviewed upgrade SHA256>",
-  "caSha256": "<reviewed CA SHA256>"
+  "candidateSha": "<exact clean HEAD>",
+  "machineSha256": "<SHA256 of actual /etc/machine-id bytes>",
+  "fixtureSha256": "<reviewed fixture bundle SHA256>",
+  "installerSha256": "<reviewed internal installer SHA256>",
+  "componentsSha256": "<reviewed private components.json SHA256>",
+  "caSha256": "<reviewed ca.pem SHA256>",
+  "certificateSha256": "<reviewed server.pem SHA256>",
+  "serverKeySha256": "<reviewed private server.key SHA256>",
+  "nodeSha256": "<reviewed executing Node22.23.1 bytes SHA256>",
+  "runtimePath": "<its actual absolute nonsymlink executable path>",
+  "webUnit": "aihr-report-acceptance.service"
 }
 ```
 
-Preinstall exactly one root crontab command on this dedicated VM, leaving cron.service stopped and ubuntu/postgres crontabs empty. It is the existing provisioning/report minute runner, not a new scheduler:
+Root0600 `components.json` in the staging directory contains exactly eight basename→SHA256 pairs from the reviewed builder output: internal-report-agent.cjs, report-auth-broker.cjs, report-renderer.cjs, internal-report-schedule.cjs, internal-report-tick, report-auth-peer.py, renderer-peer.py and verify-internal-report-isolation.py. No paths/extra files. Root reviews these against the same candidate/installer before pinning the sidecar; verify compares every installed byte hash. Canonical installer/probe retain unit substitutions and UID/limit authority; this fixture does not recreate them. Preserve the parent’s actual Linux app build/launch receipt for the candidate separately: a Git SHA/active PID alone cannot prove a Next build’s provenance.
 
-```cron
-* * * * * cd /srv/aihr-report-acceptance/candidate && /usr/local/lib/aihr-identity-email/node --env-file=/root/aihr-report-acceptance/runner.env --import tsx scripts/provision-runner.ts >> /var/lib/aihr-report-acceptance/cron.log 2>&1
-```
+Marker hashes are operator-reviewed pins, not permission to accept untrusted files. Root safe-parent/single-link/descriptor checks still apply. The runner uses one exclusive `/run/aihr-report-acceptance.lock`,40-minute watchdog and bounded child groups/pools; a5-minute cleanup failsafe prevents indefinite cleanup. An interrupted/failed started verification is preserved and cannot be automatically rerun/reset. No productive installation may satisfy this marker.
 
-Read it back with crontab -u root -l. The runner refuses another command, other managed timer or an active cron daemon at startup. It starts this daemon only for the final real two-tick proof and stops it in cleanup. This VM root-cron proof does not assert that a production Ubuntu crontab is installed.
+## Stage1: prepare once
 
-## Preparation and verification commands
-
-On the marked disposable VM only, after root staging/digest review and resource handoff:
+All cron initially stopped. Invoke the **root-staged bundle**, with the reviewed Node executable and already-approved public CA setting, as root:
 
 ```sh
-sudo env NODE_EXTRA_CA_CERTS=/root/aihr-report-acceptance/ca.pem /usr/local/lib/aihr-identity-email/node --env-file=/root/aihr-report-acceptance/runner.env /root/aihr-report-acceptance/fixture.cjs prepare
+NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/aihr-report-acceptance.crt <reviewed-node22> /root/aihr-report-acceptance/fixture.cjs prepare
 ```
 
-Preparation creates only the canonical fictional tenant/employments and explicit fixture identities, then serves the local TLS sink. Use the actual enrolled owner's System Settings → Email delivery controls to Save/Test/confirm receipt/Apply TLS127.0.0.1:24656, authentication off, from owner@report-acceptance.invalid. The provider's test message must actually reach the sink. Create the root-owned /var/lib/aihr-report-acceptance/<runId>/stop file to end preparation cleanly. Preserve fixture.json; do not delete/reset the DB or invent managed state files. Preparation supplies no delivery PASS.
+Fresh System-only target is required. Canonical `provisionTenant` creates one fictional tenant with Notifications and Payroll; canonical Org/hire/Compensation owners create the department, two receiving employments and dated3500MYR source facts. The canonical provisioned owner app_user is reused. Only limited fictional initial login/bootstrap grants use the owner insertion seam; the recipient's actual `hr_admin` group grant uses `assignRole`. No new report or schedule is created. The canonical provisioning invitation is discarded, never used as a mail proof.
 
-Then run:
+Private `/var/lib/aihr-report-acceptance/<runId>/fixture.json` declares distinct user/person/employment UUIDs and actual routes. Preparation exits and closes pools. Existing/partial/unknown state refuses; no Demo seed or reset. Both actors are actual group HR administrators so the real root enrollment helper can select them without broadening its policy.
+
+## Stage2: genuine human configuration and installation pause
+
+Start the same reviewed bundle in `configure` mode; it serves only the local TLS sink:
 
 ```sh
-sudo env NODE_EXTRA_CA_CERTS=/root/aihr-report-acceptance/ca.pem /usr/local/lib/aihr-identity-email/node --env-file=/root/aihr-report-acceptance/runner.env /root/aihr-report-acceptance/fixture.cjs verify
+NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/aihr-report-acceptance.crt <reviewed-node22> /root/aihr-report-acceptance/fixture.cjs configure
 ```
 
-Verification validates the already tested/applied canonical relay and executes the reviewed upgrade with AIHR_REPORT_RENDER_DATABASE_URL derived only from the fixed app-role URL. The equivalent standalone installation and probe commands, for an explicitly approved private installation session, are:
+In a separate trusted root terminal, with the exact installed Auth configuration and migration owner supplied privately, use **existing** `scripts/internal-auth-bootstrap.ts` for each exact private-manifest user UUID. No generated fixture password, OTP or recovery code is accepted as human evidence. Supply temporary passwords privately on stdin, never in argv/environment/chat/logs:
 
 ```sh
-sudo /bin/sh -c '. /root/aihr-report-acceptance/runner.env; export AIHR_REPORT_RENDER_DATABASE_URL="$DATABASE_URL"; exec /usr/local/lib/aihr-identity-email/node /root/aihr-report-acceptance/report-upgrade.cjs'
-sudo /usr/bin/python3 -I /usr/local/lib/aihr-identity-email/verify-report-isolation.py
-sudo curl --fail --silent --show-error --unix-socket /run/aihr-identity-email.sock -H 'content-type: application/json' -d '{"op":"status"}' http://localhost/v1/reports
+<reviewed-node22> --import tsx scripts/internal-auth-bootstrap.ts --app-user-id=<owner UUID> --organization=report-acceptance --username=report-delivery-owner --email=owner@report-acceptance.invalid --password-stdin --installation-owner
+<reviewed-node22> --import tsx scripts/internal-auth-bootstrap.ts --app-user-id=<recipient UUID> --organization=report-acceptance --username=report-delivery-recipient --email=recipient@report-acceptance.invalid --password-stdin
 ```
 
-The probe proves kernel peer/DAC/artifact boundaries and configured memory limits. It does not generate an HR report or send SMTP. The verification fixture additionally checks real selected-recipient MIME/XLSX content, unselected-sensitive-column absence, post-generation consent/compensation/provider/report revocation, rejection and lost ACK, an actual mail-process kill after DATA/start, pending nonce replacement after actual lease expiry, ten-minute actual artifact expiry, twenty-file budget/cleanup with both successful renderer removal acknowledgement and exact owned-path ENOENT proof, actual oversized canonical Family data, and measured mail/renderer/aggregate memory peaks with no cgroup OOM kill. It then lets two actual cron ticks exercise reports.employee-master.deliver and proves a single additional delivery.
+Only the owner gets installation SMTP authority. Both humans use actual `/login`, change their temporary password, enroll/prove their authenticator and retain recovery codes privately. Do not bootstrap scoped Mac HR_B or invent an employment to make enrollment pass.
 
-All recurrence waits use actual future minutes and real lease/expiry time; no consent/due/lease SQL is backdated. The pending-lease test models a runner dying before IPC by abandoning its lease; only the started-mail case kills an actual installed process. A receipt is written only after every required assertion in that sequence and successful owned-resource cleanup. Failure preserves the journey and failure.json; verification-started prevents rerun/reset. The private installer rollback snapshot is retained, and the VM/database/artifacts remain available for diagnosis. Cleanup stops only the validated fixture units/cron/sink/owned child groups and closes fixture DB pools. It identifies an in-flight cron Node process by exact argv/cwd/root UID/start time, terminates only those owned PIDs, and proves they exited before closing the fixture pools; stopping cron alone would not stop an existing tick. Do not call the fixture a production-release receipt.
+Owner `/admin/settings/email`: Save a draft with host127.0.0.1/port24656, implicit TLS, auth off, From owner@report-acceptance.invalid; Test, inspect actual private sink receipt (`configuration-mail-N.eml`), explicitly confirm receipt, Apply. No raw SMTP relay or draft is stored in fixture manifests. Owner `/admin/settings/notifications`: explicitly enable Employee Master reports. Recipient `/me/notifications`: choose exact own receiving employment, opt in and Save through the canonical provider-aware action/page.
 
-## Required outcomes still outside this source runner
+Now use the reviewed **internal** installer and probe, following [transport prerequisites](managed-report-internal-transport.md). Supply its actual web unit, reviewed Node and separately authorised sender/runner URLs privately; no caller key override:
 
-- Provisioning the VM, PostgreSQL roles/database, actual provider/base installation, CA trust, app authentication and guarded root marker has not been done. Missing prerequisites must refuse.
-- Linux bundle loading, TypeScript, regressions and every runtime fixture outcome are UNRUN. The20MB setup deliberately uses bounded canonical Family rows and must actually reach the intended limit; another failure cannot stand in for attachmentTooLarge. Memory sampling must observe both real processes, or verification refuses. The receipt records Linux architecture and Node version; ARM Linux proof cannot stand in for the separate production x86_64/node20 build/migration rehearsal. Start with enough time before the KL date boundary to finish the40-minute window; crossing it refuses instead of substituting current data into a past-date report.
-- Actual weekly/monthly UI save/reopen/off-by-default behavior, owner suspension, employee transfer, cross-tenant/company salary denial, all locales/themes/viewports and full report-builder/export journeys retain the approved acceptance map. This fixture's concrete revocation controls do not replace them.
-- The normal installed production cron must separately be inspected with crontab -l, and Scheduled Actions must show the canonical report job outcome. No production install, real mail or production mutation is authorized by this document.
+```sh
+<reviewed-node22> /root/aihr-report-acceptance/internal-report-upgrade.cjs --install-internal-reports
+/usr/bin/python3 -I /usr/local/lib/aihr-identity-email/verify-internal-report-isolation.py --web-unit aihr-report-acceptance.service
+/usr/local/lib/aihr-identity-email/internal-node /usr/local/lib/aihr-identity-email/internal-report-schedule.cjs --plan aihr-report-acceptance.service
+```
+
+The canonical handoff must see its one exact **existing non-root** provisioning line, fixed Node20 path/bytes and full unchanged scheduler inventory. The VM currently has no cron setup: its separately reviewed owned prerequisite must be prepared first; this fixture never fabricates a cron or changes user crontabs. No unrelated timer/sweep can substitute. Keep cron stopped until verify. Record the actual reviewed inventory SHA256.
+
+Owner creates **two real UI reports**, each shared to HR Admin, saved as-at the fixture date, company only, exactly Code + Full name, no Drafts/extra fields; preview/save/reopen. Enable weekly/current weekday and monthly/current day, exact recipient user+employment, near-future times. Set both next occurrences30seconds–4minutes ahead **after installation/plan** so no fake due timestamp is needed. Record actual report/schedule UUIDs and UI screenshots separately.
+
+Write root0600 `human-ready.json` in the private run directory, strict shape:
+
+```json
+{"version":1,"runId":"<same UUID>","candidateSha":"<same HEAD>","reviewedInventorySha256":"<actual reviewed plan SHA256>","reports":{"weekly":{"reportId":"<UI UUID>","scheduleId":"<UI UUID>"},"monthly":{"reportId":"<different UI UUID>","scheduleId":"<different UI UUID>"}}}
+```
+
+There are no `verified`, consent or MFA booleans. Configure re-reads exact binding tuples through the fixture owner, canonical explicit-Tx Credential/assertActiveCredential and active-relay owners through the app role, and actual recipient opt-in through Notifications. Only safe identity/version/relay-revision/watermark metadata is persisted. This readiness check is not atomic send authority; the broker repeats final authority inside its canonical transaction. Configure exits, closes sink/pools and writes `configured.json`; it establishes no send PASS.
+
+## Stage3: integrate/resume verification once
+
+Immediately restart the same staged bundle in `verify` mode. If timing/candidate/receipt changed, refuse and preserve; do not backdate schedules or delete receipts to retry.
+
+```sh
+NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/aihr-report-acceptance.crt <reviewed-node22> /root/aihr-report-acceptance/fixture.cjs verify
+```
+
+It repeats canonical human/source/relay readbacks and installed probe, re-plans exact inventory, then invokes only installed `--activate` handoff. It never writes a cron/marker itself. Two real minute ticks deliver both declared actual UI weekly/monthly reports. Check exact immutable reportVersion/scheduleRevision/recipient pair, row count, pinned artifact SHA256/length/MIME and parsed real SMTP XLSX containing both fictional employee codes; preserve actual MIME/workbook privately. A further unchanged tick must produce neither extra occurrence nor SMTP. Schedule as-at stays exactly saved, never hidden rolling date.
+
+Cron stops and all actual default/dedicated runners must become idle under the canonical closed classifier; unknown processes refuse. Active admission remains until cleanup, preventing legacy fallback while controlled fault copies run. These copies are canonical owner-created **fixture cases**, not UI completion: permission/report change after generation, real local SMTP rejection/lostACK, unstarted180s lease fresh nonce, actual sender process kill after started then uncertainty/no retry, actual10-minute artifact expiry,20-artifact budget and acknowledgement+path-absence cleanup, actual Family-derived20MB workbook refusal. Recurrence/lease/expiry waits are real time; no due/consent/lease row is backdated. In the final case the recipient must withdraw report email in the actual own form while its pending lease is still live; a private `withdraw-request.json` identifies the exact subject/occurrence. The runner waits for canonical ineligibility and refuses if the lease expires first. It never writes or restores consent.
+
+Measure actual sender+broker **combined192MiB** dispatch slice, sender192/broker192, renderer512 and outer768 peaks, no OOM. A missing peak is Unknown/refusal, not zero/PASS. The40-minute watchdog may expose a feasibility/timing failure; do not raise limits or silently omit a case. Root fixture process is outside these service budgets; no aggregate host-memory claim is made.
+
+Cleanup calls only the canonical exact-installation scheduling rollback, proves unchanged original scheduler inventory, drains private one-shot workers before discovering only its exact occurrence/lease artifacts, requires renderer acknowledgement plus absence, and stops its used sender service/sink/child groups and closes pools. It leaves the web unit, installed sockets/runtime, original cron bytes, Node20 and private evidence intact. A complete `verification.json` is written **only after cleanup succeeds**. Failure retains a finite private failure stage; no private SQL/key/provider error is printed and no automatic retry occurs.
+
+Missing/incomplete prerequisites remain: current exact candidate build/bundles, trusted isolated HTTPS/port forward, actual non-root web unit/config, private sender role/runtime installation, canonical legacy cron prerequisite/inventory, human enrollment/MFA/SMTP/consent/report interactions and all actual executions. Exact pre-SMTP broker exit/EOF timing and hidden process-environment denial need dedicated runtime proof beyond post-call idle/peak checks. Identity disable/rebind/inactive-owner/relay-Apply races, lost broker EOF, hostile peers/grants and installation failure rollback still need their canonical regression and actual interaction receipts; this minimal course does not claim them. Source preparation is not Linux acceptance, human Auth acceptance, production activation or release-gate completion.
