@@ -1,4 +1,9 @@
 /** Root installation input only; never a browser setting or fallback to the migration credential. */
+export function reportRenderOrigin(value:string):string{
+ const url=new URL(value);
+ if(url.protocol!=='https:'||url.username||url.password||url.pathname!=='/'||url.search||url.hash)throw new Error('Invalid internal report origin.');
+ return url.origin;
+}
 export function reportRenderDatabase(value:string,privateDatabase?:string):URL{
  if(/[\r\n\0]/.test(value))throw new Error('Invalid report render database.');
  let url:URL;try{url=new URL(value);}catch{throw new Error('Invalid report render database.');}

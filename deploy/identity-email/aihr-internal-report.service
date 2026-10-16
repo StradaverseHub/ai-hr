@@ -1,0 +1,22 @@
+[Unit]
+Description=Keyless internal Employee Master report sender
+After=postgresql.service
+[Service]
+User=aihr-identity-email
+Group=aihr-report-files
+EnvironmentFile=/etc/aihr-internal-report/sender.env
+ExecStart=/usr/local/lib/aihr-identity-email/internal-node --max-old-space-size=96 /usr/local/lib/aihr-identity-email/internal-report-agent.cjs
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectProc=invisible
+InaccessiblePaths=/etc/aihr-internal-report -/etc/aihr-keycloak /opt/ai-hr
+ReadOnlyPaths=/var/lib/aihr-report-renderer/render
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+Slice=aihrmanagedmail-dispatch.slice
+MemoryMax=192M
+TasksMax=32
+LimitNOFILE=128
+KillMode=control-group

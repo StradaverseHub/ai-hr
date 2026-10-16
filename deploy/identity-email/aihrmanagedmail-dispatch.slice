@@ -1,0 +1,5 @@
+[Unit]
+Description=Combined internal report sender and Auth broker budget
+[Slice]
+MemoryMax=192M
+MemoryHigh=176M
