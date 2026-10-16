@@ -24,7 +24,7 @@ const relay={config:{host:'smtp.example.test',port:465,security:'tls' as const,f
 beforeEach(()=>{vi.stubEnv('AUTH_PROVIDER','internal');vi.stubEnv('AUTH_PUBLIC_ORIGIN',origin);vi.stubEnv('AUTH_SESSION_KEY','9'.repeat(64));});
 afterEach(()=>vi.unstubAllEnvs());
 function fixture(){
- const context=structuredClone(baseContext),credentials=new Map([[ownerSubject,credential(ownerSubject,'owner@example.test')],[recipientSubject,credential(recipientSubject,'recipient@example.test')]]),events:string[]=[];
+ const context=structuredClone(baseContext),credentials=new Map<string,Credential>([[ownerSubject,credential(ownerSubject,'owner@example.test')],[recipientSubject,credential(recipientSubject,'recipient@example.test')]]),events:string[]=[];
  let revision='R'.repeat(43),active:typeof relay|null=relay,lockStatus='ready',startStatus='started',inTransaction=false,started=false,clock=now;
  const unsafe=vi.fn(async(statement:string,args:unknown[]=[])=>{
   if(!inTransaction)throw new Error('Escaped transaction');events.push(statement);

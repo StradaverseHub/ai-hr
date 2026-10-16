@@ -7,7 +7,7 @@ const mocks=vi.hoisted(()=>({createDb:vi.fn(),sweep:vi.fn(),ownerEnd:vi.fn(),app
 vi.mock('../db/client',()=>({createDb:mocks.createDb,client:{end:mocks.appEnd}}));
 vi.mock('../core/employee-master-delivery',()=>({sweepEmployeeMasterReports:mocks.sweep}));
 import {provisionRunnerMode,validateInstalledInternalReportEnvironment,runInstalledInternalReportTick} from '../scripts/provision-runner';
-const valid=()=>({AUTH_PROVIDER:'internal',AUTH_PUBLIC_ORIGIN:'https://hr.example.test',DATABASE_URL:'postgres://ai_hr_app:synthetic-app@localhost:5433/fictional_report',MIGRATION_DATABASE_URL:'postgres://fictional_owner:synthetic-owner@localhost:5433/fictional_report',NODE_ENV:'production',TZ:'Asia/Kuala_Lumpur',PATH:'/usr/bin:/bin'});
+const valid=()=>({AUTH_PROVIDER:'internal',AUTH_PUBLIC_ORIGIN:'https://hr.example.test',DATABASE_URL:'postgres://ai_hr_app:synthetic-app@localhost:5433/fictional_report',MIGRATION_DATABASE_URL:'postgres://fictional_owner:synthetic-owner@localhost:5433/fictional_report',NODE_ENV:'production' as const,TZ:'Asia/Kuala_Lumpur',PATH:'/usr/bin:/bin'});
 beforeEach(()=>{vi.clearAllMocks();mocks.ownerEnd.mockResolvedValue(undefined);mocks.appEnd.mockResolvedValue(undefined);mocks.createDb.mockReturnValue({db:{fictional:true},client:{end:mocks.ownerEnd}});mocks.sweep.mockResolvedValue({attempted:1,sent:1,failed:0,uncertain:0,tenantsFailed:0});});
 describe('closed installed internal report-only command',()=>{
  it('retains default dispatch and accepts only the exact smaller command, never an env skip flag',()=>{
