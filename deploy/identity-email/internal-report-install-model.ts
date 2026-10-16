@@ -24,8 +24,8 @@ export function internalReportRunnerDatabase(value:string,appValue:string){
 }
 export function internalReportRunnerEnvironment(input:{origin:string;appDatabase:string;ownerDatabase:string}){
  const values={AUTH_PROVIDER:'internal',AUTH_PUBLIC_ORIGIN:input.origin,DATABASE_URL:input.appDatabase,MIGRATION_DATABASE_URL:input.ownerDatabase,NODE_ENV:'production',TZ:'UTC',HOME:'/nonexistent',PATH:'/usr/local/lib/aihr-identity-email:/usr/bin:/bin',LANG:'C.UTF-8'};
- // This file is sourced by an env-i shell, unlike systemd EnvironmentFile: quote for shell,
- // including apostrophes/$/backticks, without evaluating an operator-supplied password.
+ // Root launcher parses this canonical quoting as data (never shell eval/source).
+ // Keep apostrophes/$/backticks literal while preserving the existing file format.
  return Object.entries(values).map(([key,value])=>{if(/[\r\n\0]/.test(value))throw new Error('Invalid runner environment.');return key+"='"+value.replaceAll("'","'\\''")+"'\n";}).join('');
 }
 /** Revoke old direct capabilities, then verify effective PUBLIC/inherited authority separately. */

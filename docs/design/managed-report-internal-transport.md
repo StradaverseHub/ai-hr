@@ -123,7 +123,7 @@ human enrollment/SMTP setup before it can supply acceptance; do not claim it wor
    AIHR_INTERNAL_REPORT_SENDER_DATABASE_URL and AIHR_INTERNAL_REPORT_RUNNER_DATABASE_URL from a private
    operator environment; never print their values. Runner URL must be the genuine existing owner of
    public.custom_report_occurrence on that same exact database, supplied separately, never derived
-   from the web configuration. Installer writes root0600 key-free runner.env with shell-safe quoting.
+   from the web configuration. Installer writes root0600 key-free runner.env with canonical quoting parsed as data by the root launcher.
 
    /path/to/reviewed/node /path/to/internal-report-upgrade.cjs --install-internal-reports
 
@@ -143,15 +143,14 @@ Rollback restores captured old files, prior socket activation/enabled state and 
 report target/start grants; newly added finish/schema grants are removed when absent before installation. New dedicated system users/groups and empty state/config directories
 may remain after a refused installation; no existing data is removed. Root must inspect before retry.
 
-6. Installer prints but DOES NOT ACTIVATE this separate canonical report-only tick:
-
-   env -i /bin/sh -c 'set -a; . /etc/aihr-internal-report/runner.env; set +a; cd /opt/ai-hr; exec /usr/local/lib/aihr-identity-email/internal-node --import tsx scripts/provision-runner.ts --installed-internal-reports-only'
-
-Credit owns that exact CLI branch and refuses non-allowlisted environment before application imports.
-It reads no full .env. Default/no-argument provisioning remains unchanged, KEY-BEARING and still dispatches
-reports. Operator/parent must select one report scheduling course and prevent overlapping/double ticks;
-installer changes no cron. Existing default loadEnv means a superficially clean cron env alone does not
-make its no-argument path key-free. This implementation does not claim the old tick is repaired.
+6. Installer prepares, but DOES NOT ACTIVATE, the report-only tick. Use the separate reviewed
+   [scheduling handoff](managed-report-scheduling-handoff.md): prove the deployed default guard,
+   review the full scheduler inventory, pause/drain legacy processes and publish the exact owned cron
+   file before active admission. Existing user crontabs/Node20 remain unchanged. The root launcher
+   parses only the root0600 closed env as data, clears supplementary groups and drops to the existing
+   cron owner's UID/base GID before loading application code. No owner URL enters argv or logs.
+   The default process remains key-bearing for its other jobs; only its report stage is suppressed.
+   No installation, process/cron drain or real Linux acceptance is established by this source.
 
 7. Explicit post-install probe, still no SMTP/report rows:
 

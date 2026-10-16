@@ -3,12 +3,13 @@ import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import ts from 'typescript';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const mocks=vi.hoisted(()=>({createDb:vi.fn(),sweep:vi.fn(),ownerEnd:vi.fn(),appEnd:vi.fn()}));
+const mocks=vi.hoisted(()=>({createDb:vi.fn(),sweep:vi.fn(),ownerEnd:vi.fn(),appEnd:vi.fn(),admission:vi.fn()}));
 vi.mock('../db/client',()=>({createDb:mocks.createDb,client:{end:mocks.appEnd}}));
+vi.mock('../lib/employee-master-dispatch',()=>({installedReportDispatch:mocks.admission}));
 vi.mock('../core/employee-master-delivery',()=>({sweepEmployeeMasterReports:mocks.sweep}));
-import {provisionRunnerMode,validateInstalledInternalReportEnvironment,runInstalledInternalReportTick} from '../scripts/provision-runner';
+import {provisionRunnerMode,validateInstalledInternalReportEnvironment,runInstalledInternalReportTick,runProvisionReportStage} from '../scripts/provision-runner';
 const valid=()=>({AUTH_PROVIDER:'internal',AUTH_PUBLIC_ORIGIN:'https://hr.example.test',DATABASE_URL:'postgres://ai_hr_app:synthetic-app@localhost:5433/fictional_report',MIGRATION_DATABASE_URL:'postgres://fictional_owner:synthetic-owner@localhost:5433/fictional_report',NODE_ENV:'production' as const,TZ:'Asia/Kuala_Lumpur',PATH:'/usr/bin:/bin'});
-beforeEach(()=>{vi.clearAllMocks();mocks.ownerEnd.mockResolvedValue(undefined);mocks.appEnd.mockResolvedValue(undefined);mocks.createDb.mockReturnValue({db:{fictional:true},client:{end:mocks.ownerEnd}});mocks.sweep.mockResolvedValue({attempted:1,sent:1,failed:0,uncertain:0,tenantsFailed:0});});
+beforeEach(()=>{vi.clearAllMocks();mocks.ownerEnd.mockResolvedValue(undefined);mocks.appEnd.mockResolvedValue(undefined);mocks.createDb.mockReturnValue({db:{fictional:true},client:{end:mocks.ownerEnd}});mocks.admission.mockResolvedValue('dedicated');mocks.sweep.mockResolvedValue({attempted:1,sent:1,failed:0,uncertain:0,tenantsFailed:0});});
 describe('closed installed internal report-only command',()=>{
  it('retains default dispatch and accepts only the exact smaller command, never an env skip flag',()=>{
   expect(provisionRunnerMode([])).toBe('default');expect(provisionRunnerMode(['--installed-internal-reports-only'])).toBe('installedInternalReportsOnly');
@@ -29,6 +30,14 @@ describe('closed installed internal report-only command',()=>{
    await runInstalledInternalReportTick();expect(envLoader).not.toHaveBeenCalled();expect(mocks.createDb).toHaveBeenCalledExactlyOnceWith(valid().MIGRATION_DATABASE_URL,{max:2});expect(mocks.sweep).toHaveBeenCalledExactlyOnceWith({fictional:true});expect(mocks.ownerEnd).toHaveBeenCalledWith({timeout:5});expect(mocks.appEnd).toHaveBeenCalledWith({timeout:5});
   }finally{process.env=previous;process.exitCode=exit;envLoader.mockRestore();log.mockRestore();}
  });
+ it('requires ACTIVE trusted scheduling before any dedicated application work',async()=>{
+  const previous=process.env;process.env=valid();mocks.admission.mockRejectedValue(new Error('Paused or untrusted marker'));
+  try{await expect(runInstalledInternalReportTick()).rejects.toThrow('marker');expect(mocks.admission).toHaveBeenCalledWith('dedicated');expect(mocks.createDb).not.toHaveBeenCalled();expect(mocks.sweep).not.toHaveBeenCalled();}finally{process.env=previous;}
+ });
+ it('suppresses only default report stage when installed, and retains canonical legacy sweep when absent',async()=>{
+  const owner={db:{fictional:true}} as never;mocks.admission.mockResolvedValue('suppressed');expect(await runProvisionReportStage(owner)).toBeNull();expect(mocks.sweep).not.toHaveBeenCalled();mocks.admission.mockResolvedValue('legacy');await runProvisionReportStage(owner);expect(mocks.sweep).toHaveBeenCalledExactlyOnceWith({fictional:true});
+ });
+ it('bad installed marker cannot silently restore default report dispatch',async()=>{mocks.admission.mockRejectedValue(new Error('Untrusted marker'));await expect(runProvisionReportStage({db:{}} as never)).rejects.toThrow('Untrusted marker');expect(mocks.sweep).not.toHaveBeenCalled();});
  it('rejects secret-bearing environment before creating/importing the dispatch connection',async()=>{
   const previous=process.env;process.env={...valid(),AUTH_SESSION_KEY:'synthetic-not-allowed'};
   try{await expect(runInstalledInternalReportTick()).rejects.toThrow('environment is not closed');expect(mocks.createDb).not.toHaveBeenCalled();expect(mocks.sweep).not.toHaveBeenCalled();}
@@ -45,7 +54,7 @@ it('keeps pre-import validation and exact branch before the default environment 
  const runtimeImports=tree.statements.filter(ts.isImportDeclaration).filter(node=>!node.importClause?.isTypeOnly).map(node=>(node.moduleSpecifier as ts.StringLiteral).text);
  expect(runtimeImports).toEqual(['node:crypto']);
  const installedStart=source.indexOf('export async function runInstalledInternalReportTick()'),mainStart=source.indexOf('async function main()');expect(installedStart).toBeGreaterThan(0);expect(mainStart).toBeGreaterThan(installedStart);
- const installed=source.slice(installedStart,mainStart);expect(installed.length).toBeGreaterThan(500);expect(installed.indexOf('validateInstalledInternalReportEnvironment(process.env)')).toBeLessThan(installed.indexOf("await import('../db/client')"));expect(installed).not.toContain('loadEnv(');expect(installed).not.toContain('runProvisionTick(');expect(installed).not.toContain('sweepReplacementHolidayQueue(');
- const main=source.slice(mainStart,source.indexOf('// Run only when invoked directly'));expect(main.length).toBeGreaterThan(1000);expect(main.indexOf("mode==='installedInternalReportsOnly'")).toBeLessThan(main.indexOf('loadEnv();'));expect(main).toContain('runProvisionTick(owner)');expect(main).toContain('sweepReplacementHolidayQueue(owner)');expect(main).toContain('sweepEmployeeMasterReports(owner.db)');
+ const installed=source.slice(installedStart,mainStart);expect(installed.length).toBeGreaterThan(500);expect(installed.indexOf('validateInstalledInternalReportEnvironment(process.env)')).toBeLessThan(installed.indexOf("await import('../db/client')"));expect(installed.indexOf("await installedReportDispatch('dedicated')")).toBeLessThan(installed.indexOf("await import('../db/client')"));expect(installed).not.toContain('loadEnv(');expect(installed).not.toContain('runProvisionTick(');expect(installed).not.toContain('sweepReplacementHolidayQueue(');
+ const main=source.slice(mainStart,source.indexOf('// Run only when invoked directly'));expect(main.length).toBeGreaterThan(1000);expect(main.indexOf("mode==='installedInternalReportsOnly'")).toBeLessThan(main.indexOf('loadEnv();'));expect(main).toContain('runProvisionTick(owner)');expect(main).toContain('sweepReplacementHolidayQueue(owner)');expect(main).toContain('runProvisionReportStage(owner)');const reportStage=source.slice(source.indexOf('export async function runProvisionReportStage('),mainStart);expect(reportStage).toContain("await installedReportDispatch('default')");expect(reportStage).toContain('sweepEmployeeMasterReports(owner.db)');
  expect(source).toContain("if(process.argv.slice(2).includes('--installed-internal-reports-only'))console.error('Installed internal report tick failed.')");
 });

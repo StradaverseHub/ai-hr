@@ -79,7 +79,7 @@ async function main(){
  const senderProbe=postgres(senderDb.toString(),{max:1,connect_timeout:5});
  try{const [role]=await senderProbe`select r.rolname from pg_roles r where r.rolname=current_user and r.rolname='aihr_identity_email' and not r.rolsuper and not r.rolbypassrls and not r.rolcreaterole and not r.rolcreatedb and not r.rolreplication and not exists(select 1 from pg_auth_members m where m.member=r.oid) and not exists(select 1 from pg_class c where c.relowner=r.oid) and not exists(select 1 from pg_namespace n where n.nspowner=r.oid) and not exists(select 1 from pg_database d where d.datdba=r.oid)`;if(!role)throw new Error('Sender role is privileged.');}finally{await senderProbe.end();}
  const hash=(bytes:Uint8Array)=>createHash('sha256').update(bytes).digest('hex');
- const requiredNames=['internal-report-agent.cjs','report-auth-broker.cjs','report-renderer.cjs','report-auth-peer.py','renderer-peer.py','verify-internal-report-isolation.py','aihr-report-auth.socket','aihr-report-auth@.service','aihr-internal-report.socket','aihr-internal-report.service','aihr-report-renderer.socket','aihr-report-renderer@.service','aihrmanagedmail.slice','aihrmanagedmail-dispatch.slice'];
+ const requiredNames=['internal-report-schedule.cjs','internal-report-tick','internal-report-agent.cjs','report-auth-broker.cjs','report-renderer.cjs','report-auth-peer.py','renderer-peer.py','verify-internal-report-isolation.py','aihr-report-auth.socket','aihr-report-auth@.service','aihr-internal-report.socket','aihr-internal-report.service','aihr-report-renderer.socket','aihr-report-renderer@.service','aihrmanagedmail.slice','aihrmanagedmail-dispatch.slice'];
  if(JSON.stringify(Object.keys(INTERNAL_REPORT_FILES).sort())!==JSON.stringify(requiredNames.sort()))throw new Error('Incomplete reviewed internal installation bundle.');
  const changes:[string,Uint8Array|string,number][]=[];
  for(const [name,record]of Object.entries(INTERNAL_REPORT_FILES)){
@@ -132,8 +132,8 @@ async function main(){
  console.log('Internal report transport installed; no mail sent, consent changed or schedule enabled.');
  console.log('Relay readiness and actual delivery require their separate canonical setup and acceptance.');
  console.log('Root-private rollback snapshot: '+backup);
- console.log("Review one report scheduling course before activating any cron: env -i /bin/sh -c 'set -a; . /etc/aihr-internal-report/runner.env; set +a; cd /opt/ai-hr; exec /usr/local/lib/aihr-identity-email/internal-node --import tsx scripts/provision-runner.ts --installed-internal-reports-only'");
- console.log('Cron was not changed. Default full provisioning remains key-bearing and still dispatches reports; do not enable duplicate report ticks.');
+ console.log('Scheduling remains inactive. Review separate root scheduling --plan/--activate handoff after deployed guard/source proof and process drain.');
+ console.log('Cron/dispatch marker were not changed. Uninstalled default provisioning remains key-bearing and dispatches reports; only the reviewed scheduling handoff suppresses its report stage.');
  });
 }
 main().catch(()=>{console.error('Internal report installation refused; inspect private service state. No secrets were printed.');process.exitCode=1;});
