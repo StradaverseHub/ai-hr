@@ -39,3 +39,15 @@ inclusion; company authorization; stale cycle refusal. DOM coverage drives the a
 Process buttons, full form payload, pending double-click prevention, additional-cycle explanation and
 six-locale/result-shape contracts. Types, tests, DB and actual app verification remain unrun by the
 builder. Parent must execute those checks and the saved Draft-to-transfer-to-Process journey.
+
+An explicit stale, inactive or unknown selected cycle now refuses INVALID_CYCLE in both Draft and
+Process. The visible wizard and inspected callers always supply a cycle; there is no supported
+empty-cycle caller requiring a Regular fallback, so empty selections refuse too. A cycle's type is
+not invented when its selected row cannot be resolved.
+
+Population reads retain per-company safe failure outcomes. With an untouched whole-company selection,
+a failed company read does not erase successful companies' outcomes. With explicit selected IDs,
+creation proceeds only when their entire ownership/population can be proven; an unreadable company
+that might contain a selected ID makes the selection unproven and prevents partial scope dropping.
+No failed population read becomes an empty whole-company scope. Reader-failure regressions inject a
+bounded owner-read failure and still exercise real canonical creation for the proven company.

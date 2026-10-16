@@ -11,12 +11,13 @@ import { NonCashBenefitConfigurationError } from '../localization/noncash-benefi
 import { TaxSelectionError } from '../localization/my/tax-selection';
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as schema from '../db/schema';
 import { type SessionContext } from '../db/client';
 import { setCompensation } from '../core/comp';
 import { hireEmployee, terminateEmployment } from '../core/org';
-import { seedPayrollCycleCatalog } from '../core/payroll-cycle';
+import { seedPayrollCycleCatalog, listPayrollCycles, setPayrollCycleActive } from '../core/payroll-cycle';
+import * as payrollRead from '../core/read';
 import { createBatch } from '../core/payroll';
 import {
   decodeRunGroupResult,
@@ -228,9 +229,42 @@ describe('multi-company payroll — orchestration (DB)', () => {
     expect(await owner.db.select().from(schema.payrollBatch).orderBy(schema.payrollBatch.id)).toHaveLength(1);expect(await owner.db.select().from(schema.payslip).orderBy(schema.payslip.id)).toHaveLength(0);
   });
 
-  it('draft saving refuses a stale selected cycle rather than substituting another cycle',async()=>{
-    const result=await saveMultiCompanyPayrollDrafts(groupAdmin(),{companyIds:[base.companyId],payPeriod:'2026-05',payrollCycleId:randomUUID(),employmentIds:[]});
-    expect(result.perCompany[0]).toMatchObject({status:'failed',reason:'INVALID_CYCLE'});expect(await owner.db.select().from(schema.payrollBatch).orderBy(schema.payrollBatch.id)).toHaveLength(0);
+  it.each(['draft','process'] as const)('%s refuses unknown, empty and deactivated selected cycles even when Regular remains available',async mode=>{
+    const a=groupAdmin(),action=mode==='draft'?saveMultiCompanyPayrollDrafts:runMultiCompanyPayroll;
+    const bonus=(await listPayrollCycles(a,base.companyId,{activeOnly:true})).find(c=>c.runType==='bonus');expect(bonus).toBeDefined();
+    await setPayrollCycleActive(a,{id:bonus!.id,active:false});
+    for(const payrollCycleId of [randomUUID(),'',bonus!.id]) {
+      const result=await action(a,{companyIds:[base.companyId,companyB],payPeriod:'2026-05',payrollCycleId,employmentIds:[]});
+      expect(result.companiesSucceeded).toBe(0);expect(result.perCompany.every(c=>c.reason==='INVALID_CYCLE')).toBe(true);
+      expect(await owner.db.select().from(schema.payrollBatch).orderBy(schema.payrollBatch.id)).toHaveLength(0);expect(await owner.db.select().from(schema.payslip).orderBy(schema.payslip.id)).toHaveLength(0);
+    }
+  });
+
+  it.each(['draft','process'] as const)('%s retains per-company population failures and safely proceeds only for proven scopes',async mode=>{
+    const a=groupAdmin(),action=mode==='draft'?saveMultiCompanyPayrollDrafts:runMultiCompanyPayroll,read=payrollRead.listEmployeesForPayrollRun;
+    const spy=vi.spyOn(payrollRead,'listEmployeesForPayrollRun').mockImplementation((ctx,ids,period)=>{
+      if((Array.isArray(ids)?ids:[ids]).includes(companyB))return Promise.reject(new Error('PRIVATE reader failure'));
+      return read(ctx,ids,period);
+    });
+    try {
+      const result=await action(a,{companyIds:[base.companyId,companyB],payPeriod:'2026-05',payrollCycleId:await regularCycleId(base.companyId),employmentIds:[]});
+      expect(result.perCompany.find(c=>c.companyId===base.companyId)?.status).toBe('succeeded');expect(result.perCompany.find(c=>c.companyId===companyB)).toMatchObject({status:'failed',reason:'SYSTEM_VALIDATION_ERROR'});
+      expect(JSON.stringify(result)).not.toContain('PRIVATE');const batches=await owner.db.select().from(schema.payrollBatch).orderBy(schema.payrollBatch.id);expect(batches).toHaveLength(1);expect(batches[0].companyId).toBe(base.companyId);
+    } finally {spy.mockRestore();}
+  });
+
+  it.each(['draft','process'] as const)('%s refuses the whole unproven explicit selection when a selected ID may belong to an unreadable company',async mode=>{
+    const a=groupAdmin(),action=mode==='draft'?saveMultiCompanyPayrollDrafts:runMultiCompanyPayroll,read=payrollRead.listEmployeesForPayrollRun;
+    const employees=await owner.db.select().from(schema.employment).orderBy(schema.employment.id);
+    const spy=vi.spyOn(payrollRead,'listEmployeesForPayrollRun').mockImplementation((ctx,ids,period)=>{
+      if((Array.isArray(ids)?ids:[ids]).includes(companyB))return Promise.reject(new Error('PRIVATE reader failure'));
+      return read(ctx,ids,period);
+    });
+    try {
+      const result=await action(a,{companyIds:[base.companyId,companyB],payPeriod:'2026-05',payrollCycleId:await regularCycleId(base.companyId),employmentIds:employees.map(e=>e.id),explicitSelection:true});
+      expect(result.companiesSucceeded).toBe(0);expect(result.perCompany.every(c=>c.reason==='SYSTEM_VALIDATION_ERROR')).toBe(true);
+      expect(await owner.db.select().from(schema.payrollBatch).orderBy(schema.payrollBatch.id)).toHaveLength(0);expect(await owner.db.select().from(schema.payslip).orderBy(schema.payslip.id)).toHaveLength(0);
+    } finally {spy.mockRestore();}
   });
 
   it('draft saving retains per-company authorization and never creates a run outside the grant',async()=>{

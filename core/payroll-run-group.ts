@@ -262,18 +262,27 @@ async function executeRunGroup(ctx:SessionContext,input:RunMultiCompanyInput,mod
   const requested = [...new Set(input.companyIds)].filter(Boolean);
 
   // Determine the INTENDED run type from the Step-1 cycle id (bound to the primary company). Cycle ids are
-  // per-company, so we never reuse this id for another company — only its runType. Default to 'regular'
-  // (the common month-end case) if the id can't be resolved against any authorized company's catalog.
+  // per-company, so we never reuse this id for another company — only its runType. The wizard always
+  // submits a selected active cycle; missing/stale selections must never silently become Regular.
   const primaryId = requested.find((id) => allowedById.has(id));
   const primaryCycle=primaryId&&input.payrollCycleId?await getActivePayrollCycle(ctx,input.payrollCycleId,primaryId):null;
-  const intendedRunType=primaryCycle?.runType??'regular';
+  const intendedRunType=primaryCycle?.runType;
 
   const perCompany: CompanyOutcome[] = [];
   const explicitSelection=input.explicitSelection===true||input.employmentIds.length>0;
   const population=new Map<string,Awaited<ReturnType<typeof listEmployeesForPayrollRun>>>();
-  for(const companyId of requested.filter(id=>allowedById.has(id))) population.set(companyId,await listEmployeesForPayrollRun(ctx,[companyId],input.payPeriod));
+  const populationErrors=new Map<string,RunGroupReasonCode>();
+  for(const companyId of requested.filter(id=>allowedById.has(id))) {
+    try {population.set(companyId,await listEmployeesForPayrollRun(ctx,[companyId],input.payPeriod));}
+    catch(error) {populationErrors.set(companyId,reasonForPayrollError(error));}
+  }
   const validIds=new Set([...population.values()].flat().map(employee=>employee.employmentId));
-  const invalidSelection=explicitSelection&&input.employmentIds.some(id=>!validIds.has(id));
+  const unmatchedSelection=explicitSelection&&input.employmentIds.some(id=>!validIds.has(id));
+  const invalidSelection=unmatchedSelection&&populationErrors.size===0;
+  // If a selected ID may belong to an unreadable company, do not silently drop it or mislabel it
+  // invalid. Refuse the unproven explicit scope; readable companies with fully proven selections may
+  // still proceed, while the unreadable company keeps its own failure outcome.
+  const unprovenSelection=unmatchedSelection&&populationErrors.size>0;
 
   for (const companyId of requested) {
     const companyName = allowedById.get(companyId);
@@ -291,8 +300,17 @@ async function executeRunGroup(ctx:SessionContext,input:RunMultiCompanyInput,mod
     }
 
     try {
-      if(mode==='draft'&&(!primaryCycle||primaryCycle.runType!=='regular')) {
-        perCompany.push({companyId,companyName,status:'failed',employeesSelected:0,employeesSucceeded:0,reason:primaryCycle?'DRAFT_REQUIRES_REGULAR':'INVALID_CYCLE'});
+      if(!primaryCycle) {
+        perCompany.push({companyId,companyName,status:'failed',employeesSelected:0,employeesSucceeded:0,reason:'INVALID_CYCLE'});
+        continue;
+      }
+      if(mode==='draft'&&primaryCycle.runType!=='regular') {
+        perCompany.push({companyId,companyName,status:'failed',employeesSelected:0,employeesSucceeded:0,reason:'DRAFT_REQUIRES_REGULAR'});
+        continue;
+      }
+      const populationError=populationErrors.get(companyId);
+      if(populationError||unprovenSelection) {
+        perCompany.push({companyId,companyName,status:'failed',employeesSelected:0,employeesSucceeded:0,reason:populationError??'SYSTEM_VALIDATION_ERROR'});
         continue;
       }
       // Use the same dated population as the wizard/Generate owner. Never turn an empty explicit
@@ -320,6 +338,12 @@ async function executeRunGroup(ctx:SessionContext,input:RunMultiCompanyInput,mod
       // It stopped being latent the moment a transaction could name a cycle: the run has to record the
       // cycle the operator actually chose, or a row saved as "Mid-Month" is collected by nobody.
       const chosen = input.payrollCycleId ? await getActivePayrollCycle(ctx, input.payrollCycleId, companyId) : null;
+      // Revalidation may observe deactivation after the shared lookup. Never substitute another cycle
+      // for the company's own explicit selected row; secondary companies resolve their own same-type row.
+      if(companyId===primaryId&&!chosen) {
+        perCompany.push({companyId,companyName,status:'failed',employeesSelected,employeesSucceeded:0,reason:'INVALID_CYCLE'});
+        continue;
+      }
       const cycle =
         chosen ?? (await listPayrollCycles(ctx, companyId, { activeOnly: true })).find((c) => c.runType === intendedRunType);
       if (!cycle) {
