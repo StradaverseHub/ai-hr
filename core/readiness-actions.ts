@@ -2,7 +2,7 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import * as schema from '../db/schema';
-import { isAdmin, isGroupAdmin } from '../lib/authz';
+import { isAdmin, isGroupAdmin } from '../lib/authz-model';
 import { readinessSnapshot, type ReadinessGapId } from './record-readiness';
 import { profileChangeAllowedKeys, profileChangeApprover } from './tenant-settings';
 

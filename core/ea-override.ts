@@ -14,7 +14,7 @@ import { and, eq } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { eaOverride } from '../db/schema';
-import { canManagePayroll, isAdmin } from '../lib/authz';
+import { canManagePayroll, isAdmin } from '../lib/authz-model';
 import { employeeEaStatement } from './reporting';
 import { countryPacks } from '../localization/registry';
 import type { EaField, EaStatement } from '../localization/country-pack';

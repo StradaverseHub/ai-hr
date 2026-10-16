@@ -24,7 +24,7 @@ import {
   type SQL,
 } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
-import { isAdmin } from '../lib/authz';
+import { isAdmin } from '../lib/authz-model';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
 // 9cbf5e0d — one Employee Status engine; the dashboard reads it instead of the legacy stored enum.

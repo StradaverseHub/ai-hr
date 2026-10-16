@@ -44,7 +44,7 @@ import { approvedLeaveDates } from './leave';
 import {workingShiftSchedule, rotationLookupTx, assertRotationPoolWriteTx} from '../packs/attendance/service';
 import type { RotationCycle } from './week-pattern';
 import { listEmployees, listEmployeesPage, myEmployment, ownReportingManagersTx } from './read';
-import { isAdmin } from '../lib/authz';
+import { isAdmin } from '../lib/authz-model';
 import {
   ROSTER_MAX_RANGE_DAYS,
   cellKey,

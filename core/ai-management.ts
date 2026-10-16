@@ -2,7 +2,7 @@ import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { aiControlPolicy, aiModelRun, appUser, company, person, assistantBudget } from '../db/schema';
-import { isAdmin, isGroupAdmin } from '../lib/authz';
+import { isAdmin, isGroupAdmin } from '../lib/authz-model';
 import { AI_FEATURES, isAiFeature, type AiFeatureId } from '../lib/ai/features';
 import { resolveEntitlementsTx, isModuleEnabled, getSetting } from './entitlements';
 import { SETTING_CATALOG } from '../packs/catalog';

@@ -2,7 +2,7 @@
 import {and,eq,inArray,isNull,lte,or,sql} from 'drizzle-orm';
 import {type SessionContext,type Tx,withTenant} from '../db/client';
 import {appUser,assignment,company,department,employment,person,position,reportingLine} from '../db/schema';
-import {hasTeamAccess} from '../lib/authz';
+import {hasTeamAccess} from '../lib/authz-model';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {MyTeamQuery} from '../lib/my-team-types';
 import {assertModuleEnabled} from './entitlements';

@@ -39,7 +39,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import * as schema from '../db/schema';
-import { isGroupAdmin } from '../lib/authz';
+import { isGroupAdmin } from '../lib/authz-model';
 import { SETTING_CATALOG } from '../packs/catalog';
 import { getSetting, isModuleEnabled, settingEnabled } from './entitlements';
 // r261 stage three — the two settings' keys, their shapes and the ONE interpretation of each. Declared

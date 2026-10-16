@@ -102,7 +102,7 @@
  */
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
-import { isAdmin } from '../lib/authz';
+import { isAdmin } from '../lib/authz-model';
 // ADR-0080 D7 — through the REGISTRY, never a `localization/my` import. `core/` is scanned by
 // test/country-pack-drift.test.ts and its allowlist only ever shrinks; the MyKad birth-date rule is the
 // pack's (`dobFromIC`), not this module's to restate.

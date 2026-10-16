@@ -7,7 +7,7 @@ import { actorOf,appendEvent } from '../../../db/events';
 import { assessmentReminderEpoch,assessmentReminderRecipient,assessmentReminderRun,domainEvent,onehrCycle,reviewCycle,employment,person } from '../../../db/schema';
 import { getSetting,isModuleEnabled,resolveEntitlementsTx } from '../../../core/entitlements';
 import { setTenantSetting } from '../../../core/tenant-settings';
-import { isGroupAdmin } from '../../../lib/authz';
+import { isGroupAdmin } from '../../../lib/authz-model';
 import { todayInKualaLumpur } from '../../../lib/hr-date';
 import { assessmentReminderDue,assessmentReminderRulesSchema,defaultAssessmentReminderRules,nextAssessmentReminder } from './reminder-model';
 import { assessmentReminderWork,type ReminderWorkGraph,type ReminderWorkRecipient } from './reminder-work';

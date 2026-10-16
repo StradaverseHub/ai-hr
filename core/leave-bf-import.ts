@@ -152,7 +152,7 @@ import {
   leaveLedger,
   person,
 } from '../db/schema';
-import { isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/authz';
+import { isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/authz-model';
 import {
   LEAVE_BF_COLUMNS,
   LEAVE_BF_ENTRY_TYPE,

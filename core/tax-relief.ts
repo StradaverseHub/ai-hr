@@ -73,7 +73,7 @@ import { type SessionContext, type Tx } from '../db/client';
 // (components/tp1-declaration-form.tsx, lib/tp1-form-input.ts). See core/module-gate.ts.
 import { withPayrollTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
-import { isAdmin } from '../lib/authz';
+import { isAdmin } from '../lib/authz-model';
 import {
   appUser,
   company,

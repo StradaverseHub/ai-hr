@@ -21,7 +21,7 @@ import { removalPreservesSequence } from '../lib/attendance-removal';
 import { applyClockChangesTx, clockFingerprint, punchesForCorrectionTx, validateClockEntries, lockAttendancePayrollTx, markAttendancePayrollTx, ClockDataChangedError, AttendancePayrollClosedError, type ClockChanges } from './attendance-punch-change';
 import { rotationLookupTx, rotationScheduleRow } from './attendance-rotation';
 import { isDeepStrictEqual } from 'node:util';
-import { hasGrantFor, withEffectiveGrants } from '../lib/authz';
+import { hasGrantFor, withEffectiveGrants } from '../lib/authz-model';
 import { snapshotAttendanceWorkflowTx, assertCanDecideAttendanceApplicationTx, decideAttendanceWorkflowStageTx, attendanceWorkflowsForTx } from './attendance-workflow';
 import { attendanceApplicationType } from '../lib/attendance-workflow';
 import { plannedOvertimeMinutes } from '../lib/overtime-duration';

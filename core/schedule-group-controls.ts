@@ -5,7 +5,7 @@ import { withTenant, type Tx, type SessionContext } from '../db/client';
 import { attendanceExceptionRevision, attendanceRule, employment, shift, rosterAssignment } from '../db/schema';
 import { actorOf, appendEvent } from '../db/events';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { isAdmin } from '../lib/authz';
+import { isAdmin } from '../lib/authz-model';
 import { lockPayrollForAttendanceChange, markPayrollForAttendanceChange } from '../packs/payroll/service';
 export function scheduleGroupDisplayName(group:{name:string;label?:string|null}):string { return group.label?.trim()&&group.label.trim()!==group.name?`${group.label.trim()} — ${group.name}`:group.name; }
 export async function exceptionLookupTx(tx:Tx) {

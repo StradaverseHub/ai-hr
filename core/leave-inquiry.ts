@@ -1,6 +1,6 @@
 /** Authorized inquiry selection/count/page contract. Leave calculations remain in the Leave owner. */
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { isAdmin } from '../lib/authz';
+import { isAdmin } from '../lib/authz-model';
 import { InquiryQueryError, type InquiryQuery } from '../lib/leave-inquiry-query';
 import { adminCompanies, listEmployees, adminCompaniesTx, listEmployeesTx, leaveBalanceInquiryMembershipTx, listLeaveRequestsPageTx } from './read';
 

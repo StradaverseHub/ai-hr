@@ -80,7 +80,7 @@ import { type SessionContext, type Tx } from '../db/client';
 // `layout.tsx` covers a RENDER and covers no server action, so the module check belongs on the service.
 import { withPayrollTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
-import { isAdmin } from '../lib/authz';
+import { isAdmin } from '../lib/authz-model';
 import {
   employeeStatutoryMy,
   employeeTp3,

@@ -2,7 +2,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { company, payslipInformationSetting } from '../db/schema';
 import { appendEvent, actorOf } from '../db/events';
-import { canManagePayroll } from '../lib/authz';
+import { canManagePayroll } from '../lib/authz-model';
 import { PAYSLIP_INFORMATION_FIELDS, payslipInformationFields } from './payslip-information';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

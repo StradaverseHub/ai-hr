@@ -51,7 +51,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
-import { isAdmin } from '../lib/authz';
+import { isAdmin } from '../lib/authz-model';
 import { assertModuleEnabled } from './entitlements';
 import { MODULE_CATALOG } from '../packs/catalog';
 import { listPacks, type ModulePack } from '../packs/registry';

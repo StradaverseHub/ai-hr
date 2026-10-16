@@ -32,7 +32,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { isAdmin } from '../lib/authz';
+import { isAdmin } from '../lib/authz-model';
 import { MODULE_CATALOG } from '../packs/catalog';
 import { assertModuleEnabled, isModuleEnabled } from './entitlements';
 import { submitFeedback } from './feedback';

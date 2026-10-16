@@ -43,7 +43,7 @@ import {
 // Read from the per-request entitlement snapshot; see core/tenant-settings.ts for why they throw rather
 // than degrade when the snapshot cannot answer.
 import { profileChangeAllowedKeys, profileChangeApprover } from './tenant-settings';
-import { isGroupAdmin } from '../lib/authz';
+import { isGroupAdmin } from '../lib/authz-model';
 // 23ad620e — the emergency contact lives in its own per-person register; /me reads and writes the primary.
 import { primaryEmergencyContactSql, writeSingleEmergencyContactInTx } from './emergency-contacts';
 // 35b7af0a — the person master lists, defined in a CLIENT-SAFE module and re-exported below (see the note

@@ -42,7 +42,7 @@
 import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { isGroupAdmin, withEffectiveGrants } from '../lib/authz';
+import { isGroupAdmin, withEffectiveGrants } from '../lib/authz-model';
 import { validateStateFor } from './state-vocabulary';
 import {
   attendance,

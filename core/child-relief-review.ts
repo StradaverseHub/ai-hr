@@ -54,7 +54,7 @@
  */
 import { and, asc, eq, gt, inArray, isNotNull, isNull, or } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
-import { isAdmin } from '../lib/authz';
+import { isAdmin } from '../lib/authz-model';
 import { packFor } from '../localization/registry';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { company, employeeDependent, employeeStatutoryMy, employment, person } from '../db/schema';

@@ -3,7 +3,7 @@ import { assertModuleEnabled, isModuleEnabled, resolveEntitlementsTx, settingEna
 import { resolveActiveAiConfig } from '../../../core/ai-config';
 import { setTenantSetting } from '../../../core/tenant-settings';
 import { withPerformanceTenant } from '../../../core/module-gate';
-import { isAdmin, isGroupAdmin } from '../../../lib/authz';
+import { isAdmin, isGroupAdmin } from '../../../lib/authz-model';
 
 export const ASSESSMENT_AI_FEATURES = ['360', 'tc', 'pm', 'review', 'idp', 'calib'] as const;
 export type AssessmentAiFeature = typeof ASSESSMENT_AI_FEATURES[number];

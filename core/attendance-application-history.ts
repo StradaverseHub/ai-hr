@@ -10,7 +10,7 @@ import { attendanceApplicationType, type AttendanceApplicationType } from '../li
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { visibleLabelIdsCondition } from './system-labels';
 import { checkedAttendanceHistoryFilter, attendanceHistoryId, type AttendanceHistoryFilter } from '../lib/attendance-history-filter';
-import { hasGrantFor, withEffectiveGrants } from '../lib/authz';
+import { hasGrantFor, withEffectiveGrants } from '../lib/authz-model';
 export type { AttendanceHistoryFilter } from '../lib/attendance-history-filter';
 export type AttendanceHistoryRow = {
     requestKind: string|null;

@@ -45,7 +45,7 @@ import {
 } from '../db/schema';
 import { evaluateAllowancesForPeriod } from './attendance-allowance';
 import { packFor } from '../localization/registry';
-import { isAdmin, canManagePayroll } from '../lib/authz';
+import { isAdmin, canManagePayroll } from '../lib/authz-model';
 // Rung 5a (ADR-0080 D1): report/EA types come from the pack CONTRACT, never from localization/my.
 import type {
   EaStatement,

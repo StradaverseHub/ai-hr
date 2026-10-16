@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { notificationDelivery } from '../db/schema';
-import { isAdmin } from '../lib/authz';
+import { isAdmin } from '../lib/authz-model';
 import { notificationEmailIpc } from '../lib/notification-email-ipc';
 import type { NotificationEmailRequest, NotificationEmailStatus } from '../lib/notification-email-model';
 import { isModuleEnabled } from './entitlements';

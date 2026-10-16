@@ -21,7 +21,7 @@
 import { desc, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { tenantProvisionRequest, tenantProvisionRequestModule } from '../db/schema';
-import { isOperator } from '../lib/authz';
+import { isOperator } from '../lib/authz-model';
 import { isDemoDeployment } from '../lib/demo-mode';
 import { countryPacks } from '../localization/registry';
 import { ALL_MODULE_CODES, CORE_MODULE_CODES, missingModuleDependencies } from '../packs/catalog';

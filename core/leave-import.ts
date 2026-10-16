@@ -48,7 +48,7 @@ import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { employment, person, employeeStatutoryMy, leaveType, leaveLedger } from '../db/schema';
-import { isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/authz';
+import { isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/authz-model';
 import { listLeaveTypes } from './read';
 import { isReplacementLeaveType } from './ess-view';
 import { leaveCreditRegisterLive } from './leave-credit-live';

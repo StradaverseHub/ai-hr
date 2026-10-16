@@ -34,7 +34,7 @@
  */
 import { and, eq, inArray, ne, sql, type SQL } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { isAdmin } from '../lib/authz';
+import { isAdmin } from '../lib/authz-model';
 import { isOvertimeCorrection } from '../lib/approvals-bulk';
 import type { ApprovalCategory } from '../lib/approvals-categories';
 import {

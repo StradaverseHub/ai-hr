@@ -52,7 +52,7 @@ import { packFor } from '../localization/registry';
 import { assertModuleEnabled, isModuleEnabled, ModuleNotEnabledError } from './entitlements';
 import { isAttendanceTrace, type AttendanceTraceV1 } from './attendance-trace';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { isAdmin } from '../lib/authz';
+import { isAdmin } from '../lib/authz-model';
 import { creditRegisterFigures, projectCreditUsage, frozenCreditDates, type CreditRegisterStatus, type CreditUsageDate } from '../lib/leave-credit-register';
 // r406 952129bb — HR's row-grant: the roster adjudication (pure) and the approved-overtime read the employee's
 // form already shows. Neither module imports this file, so both are static.

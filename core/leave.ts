@@ -12,7 +12,7 @@ import { assertCanDecide } from './approvals';
 import {assertMyTeamSubjectTx} from './my-team-scope';
 import type {MyTeamQuery} from '../lib/my-team-types';
 import { scopeOf } from '../lib/delegation-scope';
-import { isAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/authz';
+import { isAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/authz-model';
 // 5206539f — the pure "does this caller hold this key" decision (defaults ∘ tenant overrides ∘ company
 // overrides). Taken from the lib/ leaf rather than from core/payroll.ts's resolvePayrollPermission, which
 // is the same decision wrapped in a query: importing it would pull the whole payroll kernel into every

@@ -3,7 +3,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { mobileDesignDraft, mobileDesignRelease, tenant } from '../db/schema';
-import { isGroupAdmin } from '../lib/authz';
+import { isGroupAdmin } from '../lib/authz-model';
 import { DEFAULT_MOBILE_DESIGN, parseMobileDesign, resolveMobileDesign, type MobileBuilderState, type MobileDesign, type MobileDesignRelease } from '../lib/mobile-design';
 
 export class MobileDesignError extends Error {

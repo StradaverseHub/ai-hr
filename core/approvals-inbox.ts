@@ -16,7 +16,7 @@
  * user who has at least one assigned pending_manager review (resolved via manager_employment_id = the
  * caller's own employment) even without the `manager` role — the exact population this feature targets.
  */
-import { isAdmin } from '../lib/authz';
+import { isAdmin } from '../lib/authz-model';
 import { APPROVAL_SECTION_ID } from '../lib/approvals-focus';
 import type { SessionContext } from '../db/client';
 import { listLeaveRequests, listPendingLeaveCancellations } from './read';

@@ -4,7 +4,7 @@ import { and, asc, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Grant } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { employment, notificationEmailPolicy, notificationPref, notificationDelivery } from '../db/schema';
-import { isAdmin, isGroupAdmin, withEffectiveGrants } from '../lib/authz';
+import { isAdmin, isGroupAdmin, withEffectiveGrants } from '../lib/authz-model';
 import { notificationPreferenceCategories, notificationPreferenceCategory, notificationEmailLocales, type NotificationEmailLocale } from '../lib/notification-email-model';
 import { isModuleEnabled, resolveEntitlementsTx } from './entitlements';
 import { allowedCompanies } from './read';
