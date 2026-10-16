@@ -1,0 +1,23 @@
+# 0128 — Versioned System Testing and personal execution records
+
+Status: accepted implementation direction; verification and release pending.
+
+Board: 9689f5d3. This extends the existing System Testing owner. It does not grant access to any tested business function.
+
+A test case keeps its existing tenant identity and visible TC number. A published instruction version is immutable. Administrators edit a separate draft with a revision check, then publish it. A version records its instruction content, hash, publisher and provenance. The migration may record the definition present at upgrade as an explicitly labelled baseline. Earlier runs have unknown instruction version; assigning them to that baseline would invent history.
+
+An assignment belongs to a real tenant login and a case. It identifies the current target instruction version. An execution belongs to that assignment, tester and version. Each save appends an observed status/result/comments record and advances a revision-checked execution pointer. A newer publication makes existing assignments require retest; it never changes an earlier pass or makes it a pass of the new instructions. Administrators may read team progress and manage assignments but cannot save an execution as another tester. A tester filter is a read filter, never write authority.
+
+The System Testing entitlement is checked by its canonical service first. Database policies separately enforce the actual tenant, assignment, tester and administrator boundaries. Neither assignment nor publication changes Personnel, Payroll, Attendance or other business grants. Missing business authority is an explicit blocked/not-applicable result, not an opportunity to impersonate an administrator. Module removal retains stored history but prevents access through this module's service until restored.
+
+The reviewed catalogue uses stable semantic case and function identifiers. Its guides contain prerequisites, fictional test data, ordered actions with an expected result for each action, overall expectations, business authority and applicable country/configuration constraints. Screen/pack inventory identifies coverage gaps; no gap is automatically called covered. A title match is only a suggestion for explicit one-to-one legacy mapping, never permission to overwrite a case. Catalogue absence cannot archive a case.
+
+Updates compare the exact current library snapshot with the reviewed catalogue. Confirmation re-derives that preview under a tenant library lock, checks its exact hash and selected semantic identifiers, and records a stable update identity in the same transaction as publication. Repeated confirmation is idempotent. Local changes conflict visibly rather than being overwritten. A changed source with no reviewed guide change requires review; automated source comparison is not an author of business instructions.
+
+Build identity uses exact compile-time Next `env` substitutions for nonsecret source ref, build-record UUID, catalogue hash and source-content hash. No web request shells out to Git or trusts a mutable runtime BUILD_ID/environment/file as authority. Missing, malformed or mismatched compiled identity produces review-required. A successful official build is not proof of arrival, service parity or any manual test pass: `activeServiceVerified` remains false until a separate independent arrival observation. Parent release/config integration is required before this identity can be used.
+
+Execution screenshots use their own execution-scoped bounded storage and download authorization, not a borrowed Feedback ownership relationship. Defect and improvement creation use the existing Feedback writer in the same explicit transaction as the execution link. A retry returns the same link. A board item being fixed may request retest, never mark a human execution passed.
+
+Migration 0556, index556 and timestamp1791900000036 are centrally reserved. No placeholder prerequisite migrations or journal rows are created. The parent merges prerequisite migrations and appends the real journal entry in order.
+
+Verification still required: restricted app-role assignment/execution/attachment boundaries; two independent testers; concurrent stale saves and publish; legacy baseline honesty; exact-hash update retry/concurrency/conflict; atomic Feedback retry; module removal; eight-area catalogue coverage; six-locale/mobile/keyboard/theme journeys; official built identity and independent arrival evidence. Source contracts or test counts alone do not establish those outcomes.
