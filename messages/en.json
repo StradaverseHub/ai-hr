@@ -20213,6 +20213,8 @@
     "recordedWorkEnd": "Recorded work end",
     "durationResult": "Duration result",
     "cashResult": "Cash result",
-    "durationAuthorityHelp": "Duration evidence alone does not authorize a cash payment or a TOIL claim."
+    "durationAuthorityHelp": "Duration evidence alone does not authorize a cash payment or a TOIL claim.",
+    "transferStaleHelp": "The saved overtime inputs no longer match the current financial review. Enter a reason and use “{action}”, then review the new saved calculation and select the Payroll run again. Reading options does not recalculate it.",
+    "transferConflictHelp": "This day already has an incompatible cash or time off in lieu settlement. Review the existing settlement before choosing another payment."
   }
 }
