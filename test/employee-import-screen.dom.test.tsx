@@ -174,7 +174,7 @@ describe('2983802f · the rail reports only the steps the screen has evidence fo
     const reference = XLSX.utils
       .sheet_to_json<string[]>(wb.Sheets.Reference, { header: 1, blankrows: true })
       .map((r) => (r[0] ?? '').toString());
-    const at = reference.indexOf('Passport Issuing Country');
+    const at = reference.indexOf('Issuing country');
     expect(at, 'the Reference sheet must carry this column').toBeGreaterThan(-1);
     expect(reference[at + 1], 'the nationality catalog this screen was handed').toBe('Malaysian');
     // …and not the country catalog, whose value the importer refuses for this column.

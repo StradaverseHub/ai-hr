@@ -46,7 +46,7 @@ import { commitSectionAction, validateSectionAction,registerRecordsAction } from
  * list of fields that will move. A row that matches nobody is shown as "Not found" rather than quietly
  * dropped, because a mistyped Employee ID is the single likeliest error in a bulk update.
  */
-export function SectionImport({ section, reference }: { section: ImportSection; reference: ImportReference }) {
+export function SectionImport({ section, reference, onCommitPendingChange }: { section: ImportSection; reference: ImportReference; onCommitPendingChange?: (pending: boolean) => void }) {
   const t = useTranslations('people.import');
   const personnelLabels = useTranslations();
   const employeeColumnLabel=(key:string)=>descriptorColumnLabel(key,isPersonnelRegisterKind(section)?section:section==='family'?'family':'employee',(labelKey,fallback)=>personnelLabels.has(labelKey)?personnelLabels(labelKey):fallback);
@@ -63,6 +63,12 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
   const [reading, setReading] = useState(false);
   const [pending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // A preview belongs to exact input; a slower read/validation cannot restore superseded input.
+  const inputRevision = useRef(0);
+  const fileReadRevision = useRef(0);
+  const commitPending = useRef(false);
+  // Keep the submitted file fixed until the real write reports its outcome; never discard success.
+  const [committing, setCommitting] = useState(false);
 
   // Literal `t()` calls in a map, not a computed key: test/i18n-coverage.test.ts check C only resolves
   // literal keys, and a label that silently falls back to the key is exactly the class of bug it exists
@@ -79,40 +85,55 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
   const columns = sectionTemplateColumns(section);
 
   const reset = () => {
+    inputRevision.current++;
     setPreview(null);
     setResult(null);
     setError(null);
   };
 
-  const runValidate = (text: string) =>
+  const runValidate = (text: string) => {
+    if (commitPending.current) return;
+    reset();
+    const revision = inputRevision.current;
     startTransition(async () => {
       setError(null);
       try {
         const p = await validateSectionAction(section, text);
+        if (revision !== inputRevision.current) return;
         setPreview(p);
         setResult(null);
       } catch (e) {
+        if (revision !== inputRevision.current) return;
         setError((e as Error).message);
       }
     });
+  };
 
   const loadFile = async (file: File) => {
-    setError(null);
+    if (commitPending.current) return;
+    reset();
+    const revision = inputRevision.current;
+    const readRevision = ++fileReadRevision.current;
+    setFileName(null);
     setReading(true);
     try {
       // No extra sheets: a section file is ONE sheet by definition — that is what makes it a section.
       const { name, text } = await readImportFile(file,{allowedSheets:['Reference','Instructions','__PersonnelLists']});
+      if (revision !== inputRevision.current) return;
       setCsv(text);
       setFileName(name);
       setResult(null);
       runValidate(text);
     } catch (e) {
+      if (revision !== inputRevision.current) return;
       setFileName(null);
       reset();
       setError(t(importFileMessageKey(e)));
     } finally {
-      setReading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      if (readRevision === fileReadRevision.current) {
+        setReading(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -202,7 +223,11 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
     URL.revokeObjectURL(url);
   };
 
-  const commit = () =>
+  const commit = () => {
+    if (commitPending.current || pending || reading || !preview) return;
+    commitPending.current = true;
+    setCommitting(true);
+    onCommitPendingChange?.(true);
     startTransition(async () => {
       setError(null);
       try {
@@ -213,13 +238,19 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
         router.refresh();
       } catch (e) {
         setError((e as Error).message);
+      } finally {
+        commitPending.current = false;
+        setCommitting(false);
+        onCommitPendingChange?.(false);
       }
     });
+  };
 
   return (
     <div className="space-y-6">
       {isPersonnelRegisterKind(section) && <Card className="space-y-3 p-5"><p className="text-sm">{t('registerInstructions')}</p><p className="text-xs text-muted-foreground">{t('registerLimit')}</p><div className="flex flex-wrap items-end gap-2"><Field label={t('registerExistingEmployeeId')}><input className={inputCls} value={existingEmployeeCode} onChange={event=>setExistingEmployeeCode(event.target.value)} maxLength={30}/></Field><Button type="button" variant="secondary" disabled={pending||!existingEmployeeCode.trim()} onClick={downloadExistingRegister}>{t('registerDownloadExisting')}</Button></div></Card>}
       <Card className="space-y-4 p-5">
+        <fieldset disabled={committing} className="min-w-0 space-y-4">
         <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
           {t('sectionUpdateOnlyNotice')}
         </div>
@@ -258,12 +289,13 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
         <Field label={t('uploadFile')}>
           <div
             role="button"
-            tabIndex={0}
-            onClick={() => fileInputRef.current?.click()}
+            aria-disabled={committing}
+            tabIndex={committing ? -1 : 0}
+            onClick={() => { if (!commitPending.current) fileInputRef.current?.click(); }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                fileInputRef.current?.click();
+                if (!commitPending.current) fileInputRef.current?.click();
               }
             }}
             onDragOver={(e) => {
@@ -310,6 +342,7 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
                 className={`${inputCls} h-36 resize-y font-mono text-xs leading-relaxed`}
                 value={csv}
                 onChange={(e) => {
+                  if (commitPending.current) return;
                   setCsv(e.target.value);
                   setFileName(null);
                   reset();
@@ -327,6 +360,7 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
           </Button>
           <span className="ml-auto text-xs text-muted-foreground">{t('step4Hint')}</span>
         </div>
+        </fieldset>
       </Card>
 
       {error && (
@@ -412,6 +446,9 @@ function SectionPreview({
   busy: boolean;
 }) {
   const t = useTranslations('people.import');
+  const labels = useTranslations();
+  const sheet = isPersonnelRegisterKind(preview.section) ? preview.section : preview.section === 'family' ? 'family' : 'employee';
+  const fieldLabel = (column: string) => descriptorColumnLabel(column, sheet, (key, fallback) => labels.has(key) ? labels(key) : fallback);
   const withErrors = preview.rows.filter((r) => r.errors.length > 0).length;
   return (
     <Card className="overflow-hidden">
@@ -536,10 +573,4 @@ function SectionPreview({
       </div>
     </Card>
   );
-}
-
-/** `bank_account_no` → `Bank Account No`. The preview's "what changes" column shows the same words the
- *  template's header row does, so a reader can find the cell they are being told about. */
-function fieldLabel(column: string): string {
-  return descriptorColumnLabel(column);
 }

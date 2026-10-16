@@ -1906,7 +1906,7 @@
       "step4": "Semak dan pratonton",
       "step5": "Sahkan import",
       "step6": "Keputusan import",
-      "step2Hint": "Satu baris bagi setiap pekerja pada helaian pertama, satu baris bagi setiap ahli keluarga pada helaian Keluarga. Lajur wajib: {columns}. Sel lain boleh kosong; syarat tambahan terdapat dalam nota pengepala.",
+      "step2Hint": "Satu baris bagi setiap pekerja pada helaian pertama; satu baris bagi setiap rekod berkaitan pada helaian Family, Qualifications dan Emergency Contacts. Lajur pekerja wajib: {columns}. Lihat nota pengepala untuk keperluan tambahan.",
       "step4Hint": "Tiada rekod dicipta sehingga anda mengesahkannya.",
       "step5Hint": "Semak baris di atas, kemudian import. Di sinilah rekod dicipta.",
       "step5Blocked": "Fail ini ditolak sepenuhnya. Betulkan dan muat naik semula — tiada apa-apa boleh diimport sebelum itu.",
@@ -1928,8 +1928,8 @@
       "instructionFamilyWhole": "Jika mana-mana baris pada helaian Keluarga bermasalah, tiada apa-apa akan diimport — termasuk pekerja. Betulkan dan muat naik semula.",
       "sectionChooserStep": "Langkah 1",
       "sectionChooserTitle": "Apakah yang anda import?",
-      "sectionChooserHint": "Setiap pilihan memuat turun templatnya sendiri yang hanya mengandungi lajur bahagian itu. Hanya templat penuh mencipta pekerja baharu; empat templat bahagian mengemas kini orang yang sudah wujud, dipadankan mengikut ID Pekerja.",
-      "sectionChooserUpdateOnly": "Empat templat bahagian hanya boleh mengemas kini orang yang sudah ada dalam sistem — tiada satu pun daripadanya menambah sesiapa. Untuk menambah pekerja baharu, pilih “Semuanya — pekerja baharu” dan gunakan templat penuh, yang meminta nama, e-mel kerja, jabatan, tarikh mula dan gaji yang diperlukan oleh rekod baharu.",
+      "sectionChooserHint": "Setiap bahagian mempunyai templat sendiri. Fail bahagian digunakan untuk pekerja sedia ada, dipadankan mengikut ID Pekerja. Hanya templat penuh mencipta pekerja baharu.",
+      "sectionChooserUpdateOnly": "Fail bahagian boleh mengemas kini pekerja sedia ada dan menambah rekod Keluarga, Kelayakan atau Hubungan Kecemasan. Untuk mencipta pekerja, pilih “Semuanya — pekerja baharu”.",
       "sectionFull": "Semuanya — pekerja baharu",
       "sectionFullHint": "Templat penuh. Satu baris bagi setiap pekerja baharu, semua butiran dalam satu fail.",
       "sectionProfile": "Profil",
@@ -1985,7 +1985,8 @@
       "registerExistingEmployeeId": "ID Pekerja untuk rekod semasa",
       "registerDownloadExisting": "Muat turun CSV rekod semasa",
       "registerLimit": "Maksimum 500 baris bagi setiap fail daftar. Muat turun rekod semasa menyertakan ID Rekod tersimpan; semak setiap baris sebelum menerapkan.",
-      "registerRequiredCreate": "Wajib apabila ID Rekod kosong."
+      "registerRequiredCreate": "Wajib apabila ID Rekod kosong.",
+      "fullUploadHint": "Menerima CSV, XLSX atau XLS. Buku kerja penuh turut membaca helaian Family, Qualifications dan Emergency Contacts."
     },
     "wizard": {
       "deleteRecord": "Padam Rekod",

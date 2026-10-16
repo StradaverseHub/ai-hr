@@ -60,11 +60,13 @@ export function EmployeeImport({
   companies,
   defaultCompanyId,
   reference,
+  onCommitPendingChange,
 }: {
   companies: { id: string; name: string }[];
   defaultCompanyId: string;
   /** Live catalog values for the Excel template's Reference sheet (d8471481). */
   reference: ImportReference;
+  onCommitPendingChange?: (pending: boolean) => void;
 }) {
   const t = useTranslations('people.import');
   const personnelLabels = useTranslations();
@@ -92,9 +94,16 @@ export function EmployeeImport({
   // reported from the click that does it and never inferred from something else being true.
   const [templateDownloaded, setTemplateDownloaded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // A preview belongs to exact input; a slower read/validation cannot restore superseded input.
+  const inputRevision = useRef(0);
+  const fileReadRevision = useRef(0);
+  const commitPending = useRef(false);
+  // Keep the submitted file fixed until the real write reports its outcome; never discard success.
+  const [committing, setCommitting] = useState(false);
 
   // Any edit invalidates a stale preview/result — force a fresh validate before importing.
   const reset = () => {
+    inputRevision.current++;
     setPreview(null);
     setResult(null);
     setPhase('idle');
@@ -103,18 +112,24 @@ export function EmployeeImport({
 
   // Validate an explicit string rather than the `csv` state: after a file read the state update
   // has not flushed yet, so passing the text through avoids validating the previous contents.
-  const runValidate = (text: string, family = dependentsCsv,registers=registerTexts) =>
+  const runValidate = (text: string, family = dependentsCsv,registers=registerTexts) => {
+    if (commitPending.current) return;
+    reset();
+    const revision = inputRevision.current;
     startTransition(async () => {
       setError(null);
       try {
         const p = await validateImportAction(text, companyId, family,registers);
+        if (revision !== inputRevision.current) return;
         setPreview(p);
         setResult(null);
         setPhase('previewed');
       } catch (e) {
+        if (revision !== inputRevision.current) return;
         setError((e as Error).message);
       }
     });
+  };
 
   const validate = () => runValidate(csv);
 
@@ -122,7 +137,11 @@ export function EmployeeImport({
   // text to the SAME validate step the paste box uses. Nothing about parsing, validation or the
   // write path changes — this only replaces "open the file and copy its contents" for the user.
   const loadFile = async (file: File) => {
-    setError(null);
+    if (commitPending.current) return;
+    reset();
+    const revision = inputRevision.current;
+    const readRevision = ++fileReadRevision.current;
+    setFileName(null);
     setReading(true);
     try {
       // Item 2983802f — ask the reader for the Family sheet too. A file without one decodes exactly as
@@ -131,6 +150,7 @@ export function EmployeeImport({
         extraSheets: [EMPLOYEE_XLSX_SHEETS.family,...Object.values(PERSONNEL_REGISTER_SHEETS)],
         allowedSheets:[EMPLOYEE_XLSX_SHEETS.family,EMPLOYEE_XLSX_SHEETS.reference,EMPLOYEE_XLSX_SHEETS.instructions,...Object.values(PERSONNEL_REGISTER_SHEETS),'__PersonnelLists'],
       });
+      if (revision !== inputRevision.current) return;
       setCsv(text);
       setDependentsCsv(dependentsText);
       const registers=Object.fromEntries(PERSONNEL_REGISTER_KINDS.map(kind=>[kind,extraTexts?.[PERSONNEL_REGISTER_SHEETS[kind]]??'']));
@@ -139,6 +159,7 @@ export function EmployeeImport({
       setResult(null);
       runValidate(text, dependentsText,registers);
     } catch (e) {
+      if (revision !== inputRevision.current) return;
       // Drop the file label and any earlier preview so a rejected pick can never leave a stale
       // "ready to import" preview on screen next to an error. Whatever is in the paste box is left
       // alone — the user must press Validate again to get a preview back.
@@ -147,9 +168,11 @@ export function EmployeeImport({
       reset();
       setError(t(importFileMessageKey(e)));
     } finally {
-      setReading(false);
-      // Allow re-picking the same file after fixing it — the change event won't fire otherwise.
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      if (readRevision === fileReadRevision.current) {
+        setReading(false);
+        // Allow re-picking the same file after fixing it — the change event won't fire otherwise.
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -279,7 +302,11 @@ export function EmployeeImport({
     URL.revokeObjectURL(url);
   };
 
-  const commit = () =>
+  const commit = () => {
+    if (commitPending.current || pending || reading || !preview) return;
+    commitPending.current = true;
+    setCommitting(true);
+    onCommitPendingChange?.(true);
     startTransition(async () => {
       setError(null);
       try {
@@ -291,8 +318,13 @@ export function EmployeeImport({
         router.refresh();
       } catch (e) {
         setError((e as Error).message);
+      } finally {
+        commitPending.current = false;
+        setCommitting(false);
+        onCommitPendingChange?.(false);
       }
     });
+  };
 
   const company = companies.find((c) => c.id === companyId);
 
@@ -323,12 +355,14 @@ export function EmployeeImport({
     <div className="space-y-6">
       <StepRail current={currentStep} />
       <Card className="space-y-4 p-5">
+        <fieldset disabled={committing} className="min-w-0 space-y-4">
         <div className="sm:max-w-[260px]">
           <Field label={t('targetCompany')}>
             <select
               className={inputCls}
               value={companyId}
               onChange={(e) => {
+                if (commitPending.current) return;
                 setCompanyId(e.target.value);
                 reset();
               }}
@@ -376,12 +410,13 @@ export function EmployeeImport({
           <Field label={t('uploadFile')}>
             <div
               role="button"
-              tabIndex={0}
-              onClick={() => fileInputRef.current?.click()}
+              aria-disabled={committing}
+              tabIndex={committing ? -1 : 0}
+              onClick={() => { if (!commitPending.current) fileInputRef.current?.click(); }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
-                  fileInputRef.current?.click();
+                  if (!commitPending.current) fileInputRef.current?.click();
                 }
               }}
               onDragOver={(e) => {
@@ -403,7 +438,7 @@ export function EmployeeImport({
             >
               <UploadCloud className="h-6 w-6 text-muted-foreground" aria-hidden />
               <div className="text-sm font-medium">{reading ? t('reading') : t('dropHere')}</div>
-              <p className="text-xs text-muted-foreground">{t('uploadHint')}</p>
+              <p className="text-xs text-muted-foreground">{t('fullUploadHint')}</p>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -436,6 +471,7 @@ export function EmployeeImport({
                 placeholder={t('csvPlaceholder')}
                 value={csv}
                 onChange={(e) => {
+                  if (commitPending.current) return;
                   setCsv(e.target.value);
                   setFileName(null);
                   reset();
@@ -454,6 +490,7 @@ export function EmployeeImport({
           <Button
             variant="outline"
             onClick={() => {
+              if (commitPending.current) return;
               setCsv(SAMPLE);
               setDependentsCsv('');setRegisterTexts({});
               setFileName(null);
@@ -504,6 +541,7 @@ export function EmployeeImport({
             {t('instructionSalaryRemarks', { column: 'salary_remarks' })}
           </p>
         </details>
+        </fieldset>
       </Card>
 
       {error && (

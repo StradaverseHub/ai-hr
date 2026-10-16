@@ -11,7 +11,7 @@ import { SectionImport } from './section-import';
  * Item 2983802f — THE FIRST STEP THE REQUEST ASKED FOR: choose what you are importing.
  *
  * Everything below this chooser already existed or is new; the chooser itself is what turns "one very
- * wide spreadsheet" into "a template per subject area". It offers five things, and the FIRST of them is
+ * wide spreadsheet" into "a template per subject area". The FIRST choice is
  * the import that works today:
  *
  *   · Everything            — the full 49-column template. Creates new employees. UNCHANGED.
@@ -39,6 +39,7 @@ export function ImportWorkbench({
 }) {
   const t = useTranslations('people.import');
   const [choice, setChoice] = useState<'full' | ImportSection>('full');
+  const [committing, setCommitting] = useState(false);
 
   // Literal `t()` calls (see the note in section-import.tsx): a computed key is invisible to
   // test/i18n-coverage.test.ts check C, and a missing label would render the raw key on the screen.
@@ -64,7 +65,7 @@ export function ImportWorkbench({
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">{t('sectionChooserHint')}</p>
         </div>
-        <fieldset>
+        <fieldset disabled={committing}>
           <legend className="sr-only">{t('sectionChooserTitle')}</legend>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {(['full', ...IMPORT_SECTION_KEYS] as const).map((key) => {
@@ -82,10 +83,10 @@ export function ImportWorkbench({
                     className="mt-1"
                     value={key}
                     checked={selected}
-                    onChange={() => setChoice(key)}
+                    onChange={() => { if (!committing) setChoice(key); }}
                   />
                   <span>
-                    <span className="block text-sm font-medium">{LABELS[key].title}</span>
+                    <span className="block text-sm font-medium">{LABELS[key].title}</span>{' '}
                     <span className="block text-xs text-muted-foreground">{LABELS[key].hint}</span>
                   </span>
                 </label>
@@ -93,7 +94,7 @@ export function ImportWorkbench({
             })}
           </div>
         </fieldset>
-        {/* THE DIVERGENCE, STATED BEFORE A FILE IS CHOSEN. A section file cannot create anybody — it
+        {/* THE DIVERGENCE, STATED BEFORE A FILE IS CHOSEN. A section file cannot create an employee — it
             carries no name, work email, department, join date or salary to create them FROM — and the
             place to learn that is here, not in a row-level refusal after an upload has failed. */}
         <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
@@ -102,11 +103,11 @@ export function ImportWorkbench({
       </Card>
 
       {choice === 'full' ? (
-        <EmployeeImport companies={companies} defaultCompanyId={defaultCompanyId} reference={reference} />
+        <EmployeeImport companies={companies} defaultCompanyId={defaultCompanyId} reference={reference} onCommitPendingChange={setCommitting} />
       ) : (
         // Keyed on the choice so switching sections REMOUNTS the island: the loaded file, the preview
         // and the result all belong to one column contract and must not survive a change of contract.
-        <SectionImport key={choice} section={choice} reference={reference} />
+        <SectionImport key={choice} section={choice} reference={reference} onCommitPendingChange={setCommitting} />
       )}
     </div>
   );

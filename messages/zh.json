@@ -1906,7 +1906,7 @@
       "step4": "检查并预览",
       "step5": "确认导入",
       "step6": "导入结果",
-      "step2Hint": "第一个工作表每位员工一行，家属工作表每位家庭成员一行。必填列：{columns}。其他单元格可留空；条件要求见列标题批注。",
+      "step2Hint": "第一张工作表每位员工一行；Family、Qualifications 和 Emergency Contacts 工作表每条关联记录一行。员工必填列：{columns}。其他要求请查看列标题注释。",
       "step4Hint": "在您确认之前不会创建任何记录。",
       "step5Hint": "核对上方各行后再导入。记录在此步骤创建。",
       "step5Blocked": "此文件已被整体拒绝。请更正后重新上传——在此之前无法导入任何内容。",
@@ -1928,8 +1928,8 @@
       "instructionFamilyWhole": "「家属」工作表只要有一行出问题，就不会导入任何内容——员工也不会导入。更正后重新上传。",
       "sectionChooserStep": "第 1 步",
       "sectionChooserTitle": "您要导入什么？",
-      "sectionChooserHint": "每个选项都会下载其专属模板，仅包含该部分的列。只有完整模板才能创建新员工；四个分项模板按员工编号匹配，用于更新已存在的人员。",
-      "sectionChooserUpdateOnly": "四个分项模板只能更新系统中已有的人员 — 它们都无法新增任何人。若要新增员工，请选择“全部 — 新员工”并使用完整模板；该模板会要求填写新记录所必需的姓名、工作邮箱、部门、入职日期和薪资。",
+      "sectionChooserHint": "每个部分都有独立模板。分项文件通过员工编号匹配现有员工；只有完整模板可以创建新员工。",
+      "sectionChooserUpdateOnly": "分项文件可以更新现有员工，并新增家庭成员、学历或紧急联系人记录。要创建员工，请选择“全部 — 新员工”。",
       "sectionFull": "全部 — 新员工",
       "sectionFullHint": "完整模板。每位新员工一行，所有资料集中在一个文件里。",
       "sectionProfile": "个人资料",
@@ -1985,7 +1985,8 @@
       "registerExistingEmployeeId": "要下载当前记录的员工编号",
       "registerDownloadExisting": "下载当前记录 CSV",
       "registerLimit": "每个登记文件最多 500 行。当前记录下载包含已保存的记录 ID；应用前请逐行核对。",
-      "registerRequiredCreate": "记录 ID 为空时必填。"
+      "registerRequiredCreate": "记录 ID 为空时必填。",
+      "fullUploadHint": "支持 CSV、XLSX 或 XLS。完整工作簿也会读取 Family、Qualifications 和 Emergency Contacts 工作表。"
     },
     "wizard": {
       "deleteRecord": "删除记录",

@@ -1906,7 +1906,7 @@
       "step4": "Check and preview",
       "step5": "Confirm the import",
       "step6": "Import result",
-      "step2Hint": "One row per employee on the first sheet, one row per family member on the Family sheet. Required columns: {columns}. Other cells may be blank; conditional rules appear in the header notes.",
+      "step2Hint": "One row per employee on the first sheet; one row per related record on the Family, Qualifications and Emergency Contacts sheets. Required employee columns: {columns}. See header notes for additional requirements.",
       "step4Hint": "Nothing is created until you confirm.",
       "step5Hint": "Check the rows above, then import. This is the point at which records are created.",
       "step5Blocked": "This file was refused as a whole. Correct it and upload it again — nothing can be imported until then.",
@@ -1928,8 +1928,8 @@
       "instructionFamilyWhole": "If any row on the Family sheet has a problem, nothing at all is imported — not the employees either. Correct it and upload again.",
       "sectionChooserStep": "Step 1",
       "sectionChooserTitle": "What are you importing?",
-      "sectionChooserHint": "Each choice downloads its own template carrying only that section’s columns. Only the full template creates new employees; the four section templates update people who already exist, matched by Employee ID.",
-      "sectionChooserUpdateOnly": "The four section templates can only update people who are already in the system — none of them adds anybody. To add a new employee, choose “Everything — new employees” and use the full template, which asks for the name, work email, department, join date and salary a new record needs.",
+      "sectionChooserHint": "Each section has its own template. Section files work with existing employees, matched by Employee ID. Only the full template creates new employees.",
+      "sectionChooserUpdateOnly": "Section files can update existing employees and add related Family, Qualification or Emergency Contact records. To create an employee, choose “Everything — new employees”.",
       "sectionFull": "Everything — new employees",
       "sectionFullHint": "The full template. One row per new employee, every detail in one file.",
       "sectionProfile": "Profile",
@@ -1985,7 +1985,8 @@
       "registerExistingEmployeeId": "Employee ID for current records",
       "registerDownloadExisting": "Download current records CSV",
       "registerLimit": "Up to 500 rows per register file. Current-record downloads include saved Record IDs; review every row before applying.",
-      "registerRequiredCreate": "Required when Record ID is blank."
+      "registerRequiredCreate": "Required when Record ID is blank.",
+      "fullUploadHint": "Accepts CSV, XLSX or XLS. The full workbook also reads the Family, Qualifications and Emergency Contacts sheets."
     },
     "wizard": {
       "deleteRecord": "Delete Record",
