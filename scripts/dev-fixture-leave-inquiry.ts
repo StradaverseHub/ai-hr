@@ -7,7 +7,7 @@ import { createDb, type SessionContext } from '../db/client';
 import * as s from '../db/schema';
 import { DEMO_TENANT_ID, SYSTEM_TENANT_ID, demoSeedRefusal } from '../db/seed-guard';
 import { resolveEntitlementsTx } from '../core/entitlements';
-import { createCompany, createDepartment, createLeaveType } from '../core/admin';
+import { createCompany, createDepartment, createLeaveType, assignRole } from '../core/admin';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { applyLeaveAdjustmentBatch, requestLeave, decideLeave, adminCancelLeave, setLeaveApprovalPolicy } from '../packs/leave/service';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -61,9 +61,9 @@ async function main() {
       let [user] = await owner.db.select().from(s.appUser).where(and(eq(s.appUser.tenantId, tenantId), eq(s.appUser.workosUserId, `inquiry15-fixture:${key}`)));
       if (!user) [user] = await owner.db.insert(s.appUser).values({ tenantId, personId: person.id, workosUserId: `inquiry15-fixture:${key}`, onboardedAt: new Date() }).returning();
       if (user.personId !== person.id || user.archivedAt) throw new Error('Existing fixture login changed; preserving it.');
-      const expected = key === 'hr' ? [{ role: 'hr_admin' as const, companyId: companies.A }, { role: 'hr_admin' as const, companyId: companies.B }, { role: 'hr_admin' as const, companyId: companies.Empty }, { role: 'employee' as const, companyId: companies.Hidden }] : [{ role: key === 'manager' ? 'manager' as const : 'employee' as const, companyId: employment.companyId }];
+      const expected = key === 'hr' ? [{ role: 'hr_admin' as const, companyId: companies.A }, { role: 'hr_admin' as const, companyId: companies.B }, { role: 'hr_admin' as const, companyId: companies.Empty }, { role: 'employee' as const, companyId: null }] : [{ role: key === 'manager' ? 'manager' as const : 'employee' as const, companyId: null }];
       const grants = await owner.db.select().from(s.roleAssignment).where(eq(s.roleAssignment.appUserId, user.id));
-      if (!grants.length) await owner.db.insert(s.roleAssignment).values(expected.map(g => ({ tenantId, appUserId: user.id, ...g })));
+      if (!grants.length) for (const grant of expected) await assignRole(bootstrap, { appUserId: user.id, role: grant.role, ...(grant.companyId ? { companyId: grant.companyId } : {}) });
       else if (grants.length !== expected.length || expected.some(g => !grants.some(existing => existing.role === g.role && existing.companyId === g.companyId))) throw new Error('Existing fixture roles changed; preserving them.');
     }
   }

@@ -7,7 +7,7 @@ import { createDb, type SessionContext } from '../db/client';
 import * as s from '../db/schema';
 import { DEMO_TENANT_ID, SYSTEM_TENANT_ID, demoSeedRefusal } from '../db/seed-guard';
 import { resolveEntitlementsTx } from '../core/entitlements';
-import { createCompany, createDepartment, createPosition, createBusinessUnit, createJobGrade } from '../core/admin';
+import { createCompany, createDepartment, createPosition, createBusinessUnit, createJobGrade, assignRole } from '../core/admin';
 import { hireEmployee, setReportingLine, setEmploymentInfo, setEmploymentAssignment } from '../core/org';
 import { createProfileOption, EMPLOYMENT_PROFILE_CATEGORIES, CATEGORY_EMPLOYMENT_COLUMN } from '../core/profile-options';
 import { checkIn, checkOut, requestAttendanceCorrection, saveAttendanceWorkflow, setAttendanceWorkflowEnabled, type AttendanceWorkflowInput } from '../packs/attendance/service';
@@ -67,9 +67,9 @@ async function main(){
     if(!user)[user]=await owner.db.insert(s.appUser).values({tenantId,personId:person.id,workosUserId:login,onboardedAt:new Date()}).returning();
     if(user.archivedAt||user.personId!==person.id)throw new Error('Existing fixture login changed; preserving it.');
     const role=['HR','OtherHR','ForeignHR'].includes(key)?'hr_admin' as const:applicant?'employee' as const:'manager' as const;
-    const expected=[{role,companyId:companies[companyKey]},...(key==='HR'?[{role:'hr_admin' as const,companyId:companies.Empty}]:[])];
+    const expected=[{role,companyId:role==='hr_admin'?companies[companyKey]:null},...(key==='HR'?[{role:'hr_admin' as const,companyId:companies.Empty}]:[])];
     const grants=await owner.db.select().from(s.roleAssignment).where(eq(s.roleAssignment.appUserId,user.id));
-    if(!grants.length)await owner.db.insert(s.roleAssignment).values(expected.map(g=>({tenantId,appUserId:user.id,...g})));
+    if(!grants.length)for(const grant of expected)await assignRole(bootstrap,{appUserId:user.id,role:grant.role,...(grant.companyId?{companyId:grant.companyId}:{})});
     else if(grants.length!==expected.length||expected.some(g=>!grants.some(r=>r.role===g.role&&r.companyId===g.companyId)))throw new Error('Existing fixture grants changed; preserving them.');
     people[key]={employmentId:employment.id,personId:person.id,userId:user.id,login};
   }
