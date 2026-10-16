@@ -2,8 +2,7 @@ import { createHash } from 'node:crypto';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
-import { keycloakSelected } from '@/lib/identity/config';
-import { currentIdentitySession } from '@/lib/identity/session';
+import { currentProviderSession } from '@/lib/identity/provider';
 import { notificationPreferenceCategories, notificationEmailLocales } from '@/lib/notification-email-model';
 import { readNotificationEmailPreferences } from '@/core/notification-email';
 import { PageHeader, Card, SectionHeader, ErrorBanner, Field, inputCls, btnPrimary } from '@/components/ui';
@@ -12,8 +11,9 @@ const languageNames={en:'English',ms:'Bahasa Melayu',zh:'中文',vi:'Tiếng Vi�
 export default async function MyEmailNotificationsPage({searchParams}:{searchParams:Promise<{saved?:string;error?:string}>}) {
   const {s}=await scopedSession();await requireModule('notifications');
   const t=await getTranslations('workflowEmail'),locale=await getLocale(),query=await searchParams;
-  const view=await readNotificationEmailPreferences(s),identity=keycloakSelected()?await currentIdentitySession():null;
-  const verified=identity?.emailVerified===true,allowed=new Set(view.policy.filter(p=>p.enabled).map(p=>p.category));
+  const view=await readNotificationEmailPreferences(s),identity=await currentProviderSession().catch(()=>null);
+  // The same canonical proof as the action; incomplete/unavailable proof cannot enable new consent.
+  const verified=identity?.emailVerified===true&&Boolean(identity.issuer&&identity.subject&&identity.email),allowed=new Set(view.policy.filter(p=>p.enabled).map(p=>p.category));
   return <div className="max-w-3xl space-y-6"><PageHeader title={t('preferencesTitle')} description={t('preferencesDescription')}/>
     <ErrorBanner message={query.error?t('error'):undefined}/>{query.saved==='1'&&<p role="status" className="text-sm">{t('saved')}</p>}
     <p data-tour="notification-consent" className="text-sm text-muted-foreground">{t('consentHelp')}</p><p className="text-sm text-muted-foreground">{t('reportConsentHelp')}</p>
