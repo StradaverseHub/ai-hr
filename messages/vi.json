@@ -1774,7 +1774,7 @@
       "photoView": "View photo",
       "photoViewClose": "Close",
       "photoViewTitle": "{name} — profile photo",
-      "childrenPhysical": "Số con đủ điều kiện giảm trừ thuế",
+      "childrenPhysical": "Số con thực tế",
       "childrenQualifying": "Được tính là, cho thuế hàng tháng (C)",
       "childProvenanceEntered": "Entered by hand",
       "childProvenanceFromFamily": "Worked out from the Family records",
@@ -1818,7 +1818,19 @@
       "taxSelectionChoose": "Chọn phân loại thuế",
       "taxCategoryLegacy3": "Nhóm 3 — vợ hoặc chồng làm việc, ly hôn, góa hoặc độc thân có con nuôi",
       "taxCategorySingleHint": "Nhóm 1 của LHDN là độc thân. Người đã kết hôn vẫn theo tình trạng làm việc của vợ hoặc chồng, dù không yêu cầu giảm trừ con.",
-      "taxCategoryNoneExplanation": "Nhóm thuế là Không trong lần xử lý lương này. PCB không được tính; các khoản theo luật khác tiếp tục bình thường."
+      "taxCategoryNoneExplanation": "Nhóm thuế là Không trong lần xử lý lương này. PCB không được tính; các khoản theo luật khác tiếp tục bình thường.",
+      "sharedFields": {
+        "photo": "Ảnh hồ sơ",
+        "childReliefAmount": "Số tiền giảm trừ cho con",
+        "serviceYears": "Số năm công tác",
+        "days": "Số ngày theo thâm niên",
+        "unmatchedLeaveTypes": "Loại nghỉ phép chưa khớp",
+        "roundedEarnedToDate": "Quyền lợi đã tích lũy sau làm tròn",
+        "entitlementTable": "Bảng quyền lợi",
+        "sharedBalanceSource": "Nguồn số dư dùng chung",
+        "createdByName": "Người tải lên",
+        "updatedByName": "Người cập nhật gần nhất"
+      }
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -20216,5 +20228,58 @@
     "durationAuthorityHelp": "Chỉ bằng chứng thời lượng không cho phép trả tiền mặt hoặc yêu cầu TOIL.",
     "transferStaleHelp": "Dữ liệu làm thêm đã lưu không còn khớp với kiểm tra tài chính hiện tại. Nhập lý do và dùng “{action}”, sau đó kiểm tra kết quả mới đã lưu và chọn lại đợt lương. Đọc các lựa chọn không tính lại kết quả.",
     "transferConflictHelp": "Ngày này đã có khoản thanh toán tiền hoặc nghỉ bù không tương thích. Kiểm tra khoản đã ghi nhận trước khi chọn thanh toán khác."
+  },
+  "essProfile": {
+    "requestEdit": "Yêu cầu chỉnh sửa",
+    "save": "Lưu thay đổi",
+    "cancel": "Hủy",
+    "saving": "Đang lưu…",
+    "viewOnly": "Chỉ xem",
+    "editable": "Có thể chỉnh sửa",
+    "primaryOnly": "Chỉ liên hệ chính hiện có (quyền cũ)",
+    "workflowOnly": "Sử dụng quy trình chuyên biệt",
+    "unavailable": "Không khả dụng",
+    "notRecorded": "Chưa ghi nhận",
+    "recordedValue": "Giá trị đã ghi nhận",
+    "clear": "Xóa giá trị",
+    "undo": "Hoàn tác thay đổi",
+    "leaveUnsaved": "Rời trang và bỏ các thay đổi chưa lưu?",
+    "viewHelp": "Xem hồ sơ nhân sự của bạn. Yêu cầu chờ duyệt không thay thế dữ liệu chính.",
+    "editHelp": "Chỉnh sửa các trường được phép giữa các tab rồi lưu một lần. Thông tin liên hệ có thể lưu ngay; thay đổi khác chờ duyệt.",
+    "pendingValue": "Giá trị chờ duyệt: {value}",
+    "saved": "Đã lưu ngay: {saved}. Chờ duyệt: {waiting}.",
+    "reference": "Mã tham chiếu: {reference}",
+    "addRecord": "Thêm bản ghi",
+    "noRecords": "Không có bản ghi để hiển thị.",
+    "primaryRecord": "Liên hệ chính hiện tại",
+    "existingRecord": "Bản ghi hiện có",
+    "newRecord": "Bản ghi mới — chưa gửi",
+    "removeNew": "Bỏ bản ghi mới",
+    "legacyAddressTitle": "Địa chỉ cũ được giữ lại",
+    "legacyAddressHelp": "Địa chỉ cũ khác địa chỉ trong hồ sơ nhân sự và được giữ nguyên để đối chiếu. Sửa địa chỉ thường trú hoặc liên hệ không tự sao chép hay xóa địa chỉ cũ.",
+    "requestHistory": "Yêu cầu thay đổi hồ sơ",
+    "chooseEmployment": "Chọn hồ sơ việc làm của bạn",
+    "countryUnavailable": "Chưa hỗ trợ sửa thông tin luật định cho quốc gia của hồ sơ việc làm này. Dữ liệu hiện có được giữ nguyên.",
+    "error": {
+      "invalid": "Kiểm tra các trường được chỉ ra và tổ hợp bắt buộc.",
+      "permission": "Bạn không được sửa hồ sơ việc làm này.",
+      "fieldClosed": "Quản trị viên đã hạn chế một trường được chọn. Thay đổi chưa được gửi.",
+      "stale": "Bản ghi đã thay đổi. Giữ bản sao nội dung đã sửa, tải lại và kiểm tra trước khi lưu lại.",
+      "unavailable": "Bản ghi hoặc dịch vụ quốc gia cần thiết không khả dụng. Chưa gửi thay đổi nào.",
+      "addressReview": "Sử dụng các trường địa chỉ thường trú hoặc liên hệ trong hồ sơ nhân sự. Địa chỉ cũ được giữ lại.",
+      "system": "Không thể lưu thay đổi. Nội dung đã nhập vẫn còn. Hãy thử lại hoặc liên hệ nhân sự kèm mã tham chiếu."
+    },
+    "register": {
+      "dependent": "Gia đình và người phụ thuộc",
+      "qualification": "Trình độ học vấn và chuyên môn",
+      "emergency": "Liên hệ khẩn cấp"
+    },
+    "status": {
+      "pending": "Chờ duyệt",
+      "approved": "Đã duyệt",
+      "rejected": "Đã từ chối"
+    },
+    "viewChanges": "Xem thay đổi",
+    "loadingHistory": "Đang tải lịch sử…"
   }
 }

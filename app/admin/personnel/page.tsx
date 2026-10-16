@@ -1,3 +1,4 @@
+import {profileProposalLines} from '@/lib/profile-proposal-display';
 import Link from 'next/link';
 import { CurrentLedger } from '@/components/current-ledger';
 import { getTranslations } from 'next-intl/server';
@@ -81,20 +82,9 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
  * It returns one string PER FIELD rather than one joined line, because resolving the labels made the old
  * ' · ' join ambiguous: "2 · Married, spouse not working" is ONE PCB label and read as two fields.
  */
-function describeProposed(
-  p: unknown,
-  t: Awaited<ReturnType<typeof getTranslations>>,
-  tp: Awaited<ReturnType<typeof getTranslations>>,
-  tMe: Awaited<ReturnType<typeof getTranslations>>,
-): string[] {
-  const o = (p ?? {}) as Record<string, unknown>;
-  const parts: string[] = [];
-  for (const [key, value] of Object.entries(o)) {
-    const f = requestableField(key);
-    if (!f) continue;
-    parts.push(`${tp(f.labelKey)} → ${formatProposedValue(f, value, tMe, { mask: false })}`);
-  }
-  return parts.length ? parts : [t('noChanges')];
+function describeProposed(p:unknown,t:Awaited<ReturnType<typeof getTranslations>>,labels:Awaited<ReturnType<typeof getTranslations>>):string[]{
+ const lines=profileProposalLines(p,(key,fallback)=>labels.has(key)?labels(key):fallback,{mask:false});
+ return lines.length?lines.map(line=>`${line.label} → ${line.value}`):[t('noChanges')];
 }
 
 /** people.list message key per catalogue column — ONE map, read by the <th> row, the picker and the
@@ -152,6 +142,7 @@ export default async function PeoplePage({
   // r260 — Personnel Management's own field labels, so a proposed profile change is named in this
   // queue exactly as the employee reads it on their record and HR reads it on the Personnel card.
   const tPeopleDetail = await getTranslations('people.detail');
+  const profileLabels=await getTranslations();
   // r260 — and the option WORDS (gender, marital status, PCB category) come from the namespace the
   // employee picked them in, so the approver reads the sentence they chose and not its stored code.
   const tMeOptions = await getTranslations(PROFILE_REQUEST_OPTION_NAMESPACE);
@@ -626,7 +617,7 @@ export default async function PeoplePage({
                       themselves "2 · Married, spouse not working", so a joined line read as two fields
                       where there was one. An approver reads a pay-affecting bundle here. */}
                   <div className="text-xs text-muted-foreground">
-                    {describeProposed(r.proposed, t, tPeopleDetail, tMeOptions).map((line) => (
+                    {describeProposed(r.proposed, t, profileLabels).map((line) => (
                       <div key={line}>{line}</div>
                     ))}
                   </div>

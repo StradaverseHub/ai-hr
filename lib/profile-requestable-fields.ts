@@ -1,4 +1,5 @@
 import {PERSONNEL_FIELDS} from './personnel-field-registry';
+import {isProfileEditPolicyValue} from './profile-edit-policy-value';
 /**
  * THE FIELDS AN EMPLOYEE MAY ASK TO CHANGE — ONE DECLARATION, AND EVERY SURFACE READS IT.
  *
@@ -330,27 +331,16 @@ export function resolveRequestApprover(raw: unknown): ProfileRequestApprover {
   return raw === 'group_admin' ? 'group_admin' : 'admin';
 }
 
-/**
- * The stored allow-list, resolved to the set of keys an employee may ask about.
- *
- * ── THE ONE PLACE THE `'all'` SENTINEL IS INTERPRETED ───────────────────────────────────────────────
- * Not an array (the `'all'` default, an absent row, or a value nothing in this product could have
- * written) → the DECLARED DEFAULT, i.e. every requestable field. That is deliberately the OPEN answer
- * and it is the opposite of the approver rule above, because the two failures are not symmetrical: an
- * unconfigured tenant reading "nothing" would lose a feature they already have and were never told
- * about, silently, on every /me screen in the product. A tenant that HAS configured the setting is
- * holding an array, and an array is honoured exactly.
- *
- * Keys are intersected with the declaration, so a key left in a tenant's row for a field that has since
- * been withdrawn from `PROFILE_REQUESTABLE_FIELDS` cannot resurrect it.
+/** Legacy arrays affect only the original requests. A v2 policy explicitly grants descriptor IDs.
+ * Its empty field list closes every request; unknown shapes fail closed rather than become legacy all.
  */
 export function resolveAllowedRequestKeys(raw: unknown): ReadonlySet<string> {
-  if (!Array.isArray(raw)) return new Set(PROFILE_REQUESTABLE_KEYS);
+  if(raw==='all'||raw==null)return new Set(PROFILE_REQUESTABLE_KEYS);
+  if(Array.isArray(raw))return new Set(raw.filter((key):key is string=>typeof key==='string'&&BY_KEY.has(key)));
+  if(!isProfileEditPolicyValue(raw))return new Set();
   const out=new Set<string>();
-  for(const value of raw){
-    if(typeof value!=='string')continue;
-    if(BY_KEY.has(value)){out.add(value);continue;}
-    const field=PERSONNEL_FIELDS.find(field=>field.id===value&&field.ess.visibility==='visible'&&field.ess.binding&&['immediate','approval'].includes(field.ess.edit));
+  for(const value of raw.fields){
+    const field=PERSONNEL_FIELDS.find(field=>field.id===value&&field.ess.visibility==='visible'&&field.ess.binding&&field.ess.edit==='approval');
     if(field){out.add(field.id);if(field.ess.binding?.legacyKey)out.add(field.ess.binding.legacyKey);}
   }
   return out;

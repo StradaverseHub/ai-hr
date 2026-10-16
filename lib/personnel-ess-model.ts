@@ -4,7 +4,7 @@ export type PersonnelEssMetadata={
  visibility:'visible'|'protected';
  edit:'immediate'|'approval'|'viewOnly'|'specialist';
  reason:string;
- binding?:{owner:PersonnelEssOwner;field:string;legacyKey?:string};
+ binding?:{owner:PersonnelEssOwner;field:string;legacyKey?:string;nullable?:boolean};
  masked?:boolean;
  /** Compatibility defaults are finite; adding a descriptor never adds a default right. */
  legacyImmediate?:boolean;

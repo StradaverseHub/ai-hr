@@ -1,3 +1,4 @@
+import {epfUiModeFrom} from '../../lib/epf-mode-map';
 import {TAX_CIRCUMSTANCE_OPTIONS,taxCircumstanceOf,readSavedTaxCircumstance} from './tax-circumstance';
 import {draftTaxResidencyGap,TAX_SELECTION_SCHEMES} from './tax-selection-codes';
 /**
@@ -48,6 +49,7 @@ export const myClientPack: CountryPackClient = {
     entitlement,
   },
   payroll: {
+    epfUiModeFrom,
     // Item 04b88724 — the qualifying-children COUNT and the ringgit, as one value, from ONE derivation
     // (./child-relief.ts). The card receives the per-category PRICES as plain props from the server and
     // hands them straight back here with the counts on screen, so the statutory rule never leaves the pack

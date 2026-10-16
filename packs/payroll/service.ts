@@ -62,3 +62,7 @@ export * from '../../core/back-pay';
 export * from '../../core/payroll-attendance-allowance';
 
 export * from '../../core/payroll-overtime-pattern';
+
+// Own-profile read surfaces; no administrative mutations are re-exported here.
+export {listEmploymentPayComponents} from '../../core/pay-components';
+export {listCp38} from '../../core/cp38';

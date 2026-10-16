@@ -917,6 +917,13 @@ export class NoIcYetError extends Error {
  * InvalidICError — the NRIC is optional for a non-Malaysian who has none. Any NON-blank value stays
  * strict-MyKad: this field is specifically the Malaysian NRIC, not a free-form "other ID".
  */
+/** Whether the existing IC writer can represent this exact requested change without preservation/no-op.
+ * Clearing MyKad is not supported by that writer; old-card clearing needs a retained MyKad. */
+export function canApplyIcProfileChangeMY(previous:{icNumber?:string|null;oldIcNumber?:string|null},next:{icNumber?:string|null;oldIcNumber?:string|null}):boolean {
+ const ic=next.icNumber?.trim()?normalizeIC(next.icNumber):null,old=next.oldIcNumber?.trim()||null;
+ return (!ic||isValidIC(ic))&&!(previous.icNumber&&!ic)&&Boolean(ic||old);
+}
+
 export async function setIcProfileMY(
   ctx: SessionContext,
   p: { personId: string; icNumber: string; oldIcNumber?: string | null },
@@ -1015,6 +1022,12 @@ export type PassportInput = {
  *     person has no statutory row yet — nothing to clear, no empty row seeded.
  * Remark and issuing country are optional on every path.
  */
+/** Same country-owned passport completeness check for a proposed edit and the actual writer. */
+export function validatePassportProfileMY(p:PassportInput,nationality:string|null|undefined){
+ const values=[p.passportNumber,p.passportIssueDate,p.passportExpiryDate,p.passportRemark,p.passportIssuingCountry,p.passportIssuingCountryCode].map(value=>(value??'').trim());
+ const trioComplete=values.slice(0,3).every(Boolean),anyFieldPresent=values.some(Boolean);
+ return trioComplete||(isMalaysianNationality(nationality)&&!anyFieldPresent);
+}
 export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput,
   /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
   outerTx?: Tx) {
@@ -1044,10 +1057,10 @@ export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput
       .from(person)
       .where(eq(person.id, p.personId))
       .limit(1);
-    const isMY = isMalaysianNationality(subject?.nationality);
+    if(!validatePassportProfileMY(p,subject?.nationality))throw new PassportRequiredError();
     // Non-Malaysian primary identification: the trio is always mandatory. Malaysian: mandatory only when a
     // partial passport was entered (all-or-nothing). No MyKad IC validation runs on this path.
-    if (!trioComplete && (!isMY || anyFieldPresent)) throw new PassportRequiredError();
+
     const [existing] = await tx
       .select({
         id: employeeStatutoryMy.id,
@@ -1326,17 +1339,18 @@ export function taxNumberSharedWithMY(
   });
 }
 
-export function getStatutoryProfileMY(ctx: SessionContext, personId: string, outerTx?: Tx) {
-  return outerTx ? getStatutoryProfileMYTx(outerTx, ctx, personId) : withTenant(ctx, tx => getStatutoryProfileMYTx(tx, ctx, personId));
+export function getStatutoryProfileMY(ctx: SessionContext, personId: string, outerTx?: Tx,opts:{forUpdate?:boolean}={}) {
+  return outerTx ? getStatutoryProfileMYTx(outerTx, ctx, personId,opts) : withTenant(ctx, tx => getStatutoryProfileMYTx(tx, ctx, personId,opts));
 }
 
 /** Explicit owner read seam for a caller-held scoped report snapshot. */
-export async function getStatutoryProfileMYTx(tx: Tx, ctx: SessionContext, personId: string) {
-    const [row] = await tx
+export async function getStatutoryProfileMYTx(tx: Tx, ctx: SessionContext, personId: string,opts:{forUpdate?:boolean}={}) {
+    const query = tx
       .select()
       .from(employeeStatutoryMy)
       .where(eq(employeeStatutoryMy.personId, personId))
       .limit(1);
+    const [row]=await (opts.forUpdate?query.for('update'):query);
     return row ?? null;
   }
 

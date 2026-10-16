@@ -329,6 +329,7 @@ export interface CountryPackClient {
   payroll: {
     /** The SAME function the server pack exposes (and `childReliefAmountFor` is built on). */
     childReliefFor: (p: ChildReliefInput) => ChildReliefFigure;
+    epfUiModeFrom?:typeof import('../lib/epf-mode-map')['epfUiModeFrom'];
     taxCircumstanceOptions?: typeof import('./my/tax-circumstance')['TAX_CIRCUMSTANCE_OPTIONS'];
     taxCircumstanceOf?: typeof import('./my/tax-circumstance')['taxCircumstanceOf'];
     readSavedTaxCircumstance?: typeof import('./my/tax-circumstance')['readSavedTaxCircumstance'];
@@ -388,7 +389,9 @@ export interface CountryPack {
     setBank: MyStatutoryModule['setBankProfileMY'];
     setRegistrationNumbers?: MyStatutoryModule['setRegistrationNumbersMY'];
     setIc: MyStatutoryModule['setIcProfileMY'];
+    canApplyIcChange:MyStatutoryModule['canApplyIcProfileChangeMY'];
     setPassport: MyStatutoryModule['setPassportProfileMY'];
+    validatePassport:MyStatutoryModule['validatePassportProfileMY'];
     setTax: MyStatutoryModule['setTaxProfileMY'];
     getTaxSelection?: MyTaxSelectionModule['getTaxSelectionMY'];
     saveTaxSelection?: MyTaxSelectionModule['saveTaxSelectionMY'];

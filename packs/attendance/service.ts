@@ -58,3 +58,6 @@ export { createOvertimeCalculationOwner, readOvertimeSettlementForDayTx, readOve
 export {resolveOvertimeToilDurationTx, OvertimeToilEligibilityError, type OvertimeToilDuration} from './overtime-toil';
 
 export {formulaOvertimeForRowsTx, formulaOvertimeCashForRowsTx, type FormulaOvertimeCashRecord} from './overtime-records';
+
+// Own-profile read surface; canonical owner and RLS remain unchanged.
+export {shiftArrangementHistory} from '../../core/shift-arrangement';

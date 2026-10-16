@@ -5,7 +5,8 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { withdrawProfileChangesForLockedFields } from '@/core/profile';
+import {saveProfileEditPolicy} from '@/core/profile-edit-policy';
+import {essEditableFields} from '@/lib/personnel-ess-contract';
 import {
   TenantSettingError,
   profileChangeAllowedKeys,
@@ -24,7 +25,7 @@ const PAGE = '/admin/settings/profile-requests';
 /** A typed refusal names WHICH condition of 0313's write policy failed; anything else reports itself. */
 async function refuse(e: unknown): Promise<never> {
   const t = await getTranslations('profileRequestSettings');
-  const msg = e instanceof TenantSettingError ? t(`refused.${e.reason}`) : publicErrorMessage(e);
+  const msg = e instanceof TenantSettingError ? t(`refused.${e.reason}`) : (await getTranslations('essProfile'))('error.system');
   redirect(`${PAGE}?error=${encodeURIComponent(msg)}`);
 }
 
@@ -48,30 +49,16 @@ export async function saveProfileRequestFieldsAction(formData: FormData) {
   const s = await getSession();
   const t = await getTranslations('profileRequestSettings');
 
-  const declared = new Set(PROFILE_REQUESTABLE_KEYS);
-  const posted = formData.getAll('field').map((v) => String(v));
-  // Declaration ORDER, not posted order: the stored array is read by people, and a stable order means a
-  // diff of two tenants' settings is legible.
-  const next = PROFILE_REQUESTABLE_KEYS.filter((k) => posted.includes(k) && declared.has(k));
-
-  const before = profileChangeAllowedKeys(s);
-  const locked = [...before].filter((k) => !next.includes(k));
-
-  try {
-    await setTenantSetting(s, { key: PROFILE_REQUEST_FIELDS_SETTING_KEY, value: next });
-  } catch (e) {
-    await refuse(e);
+  const next:string[]=[];
+  for(const field of essEditableFields()){
+    const value=formData.get(`permission:${field.id}`);
+    if(value==='editable')next.push(field.id);
+    else if(value==='primaryOnly'&&field.ess.legacyPrimaryKey)next.push(field.ess.legacyPrimaryKey);
+    else if(value!=='viewOnly')await refuse(new TenantSettingError('wrong_type'));
   }
-
-  let withdrawn = 0;
-  try {
-    ({ withdrawn } = await withdrawProfileChangesForLockedFields(s, {
-      lockedKeys: locked,
-      reason: t('withdrawnReason'),
-    }));
-  } catch (e) {
-    await refuse(e);
-  }
+  let withdrawn=0;
+  try{({withdrawn}=await saveProfileEditPolicy(s,{keys:next,withdrawnReason:t('withdrawnReason')}));}
+  catch(e){await refuse(e);}
 
   revalidatePath(PAGE);
   revalidatePath('/me');

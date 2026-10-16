@@ -1,3 +1,6 @@
+import {freshProfileEditPolicyTx} from './profile-edit-policy';
+import {EssProfileError,type EssProfileProposal} from '../lib/personnel-ess-model';
+import {personnelField} from '../lib/personnel-field-registry';
 import { isCalendarDate } from '../lib/calendar-date';
 /**
  * Employee self-service profile (ADR-0012). Two paths by risk:
@@ -302,7 +305,7 @@ export function myProfile(ctx: SessionContext) {
  *  date of birth / gender / marital status are compliance-sensitive and go through the approval gate
  *  (requestProfileChange), not here (#24). */
 export async function updateOwnContact(
-  ctx: SessionContext,
+  ctx:SessionContext,
   p: {
     phone?: string | null;
     // b4682879 — the legacy single-line `address` is retired from the UI in favour of the structured
@@ -321,45 +324,20 @@ export async function updateOwnContact(
     emergencyContactPhone2?: string | null;
     emergencyContactAddress?: string | null;
   },
-) {
-  const personId = ctx.personId;
-  if (!personId) throw new Error('This account is not linked to an employee profile.');
-  return withTenant(ctx, async (tx) => {
-    await tx
-      .update(person)
-      .set({
-        phone: clean(p.phone),
-        personalEmail: clean(p.personalEmail),
-        addressLine1: clean(p.addressLine1),
-        addressLine2: clean(p.addressLine2),
-        addressLine3: clean(p.addressLine3),
-        postcode: clean(p.postcode),
-        city: clean(p.city),
-        state: clean(p.state),
-        country: clean(p.country),
-      })
-      .where(eq(person.id, personId));
-    // 23ad620e — the emergency block no longer lives on `person`. /me still edits ONE contact, so the five
-    // field names route into the highest-priority record of the register, in this same transaction. The
-    // RLS write check on person_emergency_contact is is_admin OR is_self_person — the same rule person_rls
-    // applies, so an employee's self-edit reaches exactly as far as it did before.
-    await writeSingleEmergencyContactInTx(tx, ctx, personId, {
-      emergencyContactName: clean(p.emergencyContactName),
-      emergencyContactRelationship: clean(p.emergencyContactRelationship),
-      emergencyContactPhone: clean(p.emergencyContactPhone),
-      emergencyContactPhone2: clean(p.emergencyContactPhone2),
-      emergencyContactAddress: clean(p.emergencyContactAddress),
-    });
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'person',
-      aggregateId: personId,
-      eventType: 'person.self-updated',
-      actor: actorOf(ctx),
-      subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, personId),
-      payload: { fields: Object.keys(p) },
-    });
-  });
+  outerTx?:Tx,
+){
+ if(!ctx.personId)throw new EssProfileError('permission');
+ const run=async(tx:Tx)=>{
+  const policy=await freshProfileEditPolicyTx(tx,ctx);ctx=policy.ctx;
+  if(Object.keys(p).some(key=>!['phone','personalEmail'].includes(key)&&p[key as keyof typeof p]!==undefined))throw new EssProfileError('addressReview');
+  const patch:{phone?:string|null;personalEmail?:string|null}={};
+  if(p.phone!==undefined){if(!policy.editable.has('profile.contact_and_permanent_address.phone'))throw new EssProfileError('fieldClosed');patch.phone=clean(p.phone);}
+  if(p.personalEmail!==undefined){if(!policy.editable.has('profile.contact_and_permanent_address.personalemail'))throw new EssProfileError('fieldClosed');patch.personalEmail=clean(p.personalEmail);}
+  if(!Object.keys(patch).length)return;
+  await tx.update(person).set(patch).where(eq(person.id,ctx.personId!));
+  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'person',aggregateId:ctx.personId!,eventType:'person.self-updated',actor:actorOf(ctx),subjectEmploymentId:await subjectEmploymentForPerson(tx,ctx.tenantId,ctx.personId!),payload:{fields:Object.keys(patch)}});
+ };
+ return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /**
@@ -371,41 +349,36 @@ export async function updateOwnContact(
  * are sanitised to a value or dropped, never to null, so an approval cannot violate the column.
  */
 export async function requestProfileChange(
-  ctx: SessionContext,
-  p: { employmentId: string; proposed: ProfileChangeProposed },
-) {
-  if (!ctx.personId) throw new Error('This account is not linked to an employee profile.');
-  // r261 stage three — the tenant's field-by-field permission, resolved BEFORE anything is stored. A
-  // field switched off has no control on /me (app/me/request-change-card.tsx renders none) and is
-  // dropped here as well, so hiding the control and enforcing the rule are two independent statements of
-  // the same policy rather than one of them dressed as both.
-  const proposed = sanitizeProposed(p.proposed, profileChangeAllowedKeys(ctx));
-  if (Object.keys(proposed).length === 0) throw new Error('Nothing to change.');
-  // A bank change is all-or-nothing: approving an account number against a stale bank name (or
-  // vice versa) is exactly the half-update the approval gate exists to prevent.
-  if ((proposed.bankName != null) !== (proposed.bankAccountNo != null)) {
-    throw new Error('A bank change needs both the bank name and the account number.');
+  ctx:SessionContext,
+  p:{employmentId:string;proposed:ProfileChangeProposed|EssProfileProposal},
+  outerTx?:Tx,
+){
+ if(!ctx.personId)throw new EssProfileError('permission');
+ const run=async(tx:Tx)=>{
+  const policy=await freshProfileEditPolicyTx(tx,ctx);ctx=policy.ctx;
+  const {ownProfileSubjectTx,prepareProfileProposalTx}=await import('./profile-edit');
+  await ownProfileSubjectTx(tx,ctx,p.employmentId);
+  let proposed:ProfileChangeProposed|EssProfileProposal;
+  if('v' in p.proposed&&p.proposed.v===2){
+   const checked=await prepareProfileProposalTx(tx,ctx,p.employmentId,p.proposed);
+   if(checked.immediateRegisters.length||checked.proposal.fields.some(field=>personnelField(field.fieldId)?.ess.edit!=='approval'))throw new EssProfileError('invalid');
+   proposed=checked.proposal;
+   if(!proposed.fields.length&&!proposed.registers.length)throw new EssProfileError('invalid');
+  }else{
+   proposed=sanitizeProposed(p.proposed as ProfileChangeProposed,profileChangeAllowedKeys(ctx));
+   if(!Object.keys(proposed).length)throw new EssProfileError('invalid');
+   if((proposed.bankName!=null)!==(proposed.bankAccountNo!=null))throw new EssProfileError('invalid');
   }
-  const personId = ctx.personId;
-  return withTenant(ctx, async (tx) => {
-    const [row] = await tx
-      .insert(profileChangeRequest)
-      .values({ tenantId: ctx.tenantId, employmentId: p.employmentId, personId, proposed })
-      .returning({ id: profileChangeRequest.id });
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'profile-change',
-      aggregateId: row.id,
-      eventType: 'profile-change.requested',
-      actor: actorOf(ctx),
-      subjectEmploymentId: p.employmentId,
-      // Audit the WHAT, not the values — bank account / dependents are PII and the event log is
-      // append-only (PDPA erasure). The values live in profile_change_request.proposed (RLS-scoped,
-      // consumed on decide); the apply event likewise records only field names.
-      payload: { employmentId: p.employmentId, fields: Object.keys(proposed) },
-    });
-    return { requestId: row.id };
-  });
+  // Policy advisory serializes canonical submissions. Exact retry reuses one pending proposal.
+  const matching=await tx.select({id:profileChangeRequest.id}).from(profileChangeRequest).where(and(eq(profileChangeRequest.personId,ctx.personId!),eq(profileChangeRequest.employmentId,p.employmentId),eq(profileChangeRequest.status,'pending'),sql`${profileChangeRequest.proposed}=${JSON.stringify(proposed)}::jsonb`)).orderBy(profileChangeRequest.createdAt,profileChangeRequest.id).limit(2);
+  if(matching.length>1)throw new EssProfileError('unavailable');
+  if(matching.length===1)return {requestId:matching[0].id};
+  const [row]=await tx.insert(profileChangeRequest).values({tenantId:ctx.tenantId,employmentId:p.employmentId,personId:ctx.personId!,proposed}).returning({id:profileChangeRequest.id});
+  const fields='v' in proposed&&proposed.v===2?[...proposed.fields.map(field=>field.fieldId),...proposed.registers.flatMap(record=>record.fields.map(field=>field.fieldId))]:Object.keys(proposed);
+  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'profile-change',aggregateId:row.id,eventType:'profile-change.requested',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,payload:{employmentId:p.employmentId,fields}});
+  return {requestId:row.id};
+ };
+ return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /**
@@ -437,11 +410,12 @@ export async function decideProfileChange(
   const reason = clean(p.reason);
   if (p.decision === 'rejected' && reason === null) throw new ProfileChangeReasonRequiredError();
   return withTenant(ctx, async (tx) => {
+    ctx=(await freshProfileEditPolicyTx(tx,ctx)).ctx;
     const [req] = await tx
       .select()
       .from(profileChangeRequest)
       .where(eq(profileChangeRequest.id, p.requestId))
-      .limit(1);
+      .limit(1).for('update');
     if (!req) throw new Error('profile change request not found (or not visible)');
     if (req.status !== 'pending') throw new Error(`profile change request is already ${req.status}`);
 
@@ -469,6 +443,7 @@ export async function decideProfileChange(
      * `profile_change_request_rls` (0029) is `app.can_see_employment`, untouched. And it cannot widen
      * AUTHORITY in any configuration — both branches below only ever refuse.
      */
+    if(req.personId===ctx.personId&&p.decision==='approved')throw new EssProfileError('permission');
     await assertCanDecide(tx, ctx, req.employmentId, 'profile change'); // bans self
     const roles = ctx.roles ?? [];
     if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
@@ -478,7 +453,10 @@ export async function decideProfileChange(
       throw new Error('Only a group administrator can approve a profile change');
     }
 
-    if (p.decision === 'approved') {
+    if(p.decision==='approved'&&req.proposed&&typeof req.proposed==='object'&&!Array.isArray(req.proposed)&&'v' in req.proposed&&req.proposed.v===2){
+      const {applyProfileProposalTx}=await import('./profile-edit');
+      await applyProfileProposalTx(tx,ctx,req.employmentId,req.proposed);
+    }else if (p.decision === 'approved') {
       const proposed = (req.proposed ?? {}) as Record<string, unknown>;
       /**
        * ⚠️ THE DECISION IS THE LAST GATE, AND IT RE-ASKS THE PERMISSION (r261 fix pass).
@@ -833,21 +811,18 @@ export function myProfileChangeRequests(ctx: SessionContext, limit = 50) {
  * cap left to outgrow. `jsonb_typeof = 'object'` skips a row whose `proposed` is not an object at all
  * (nothing in this product writes one, and a set-returning function would error rather than skip it).
  */
-export async function pendingProfileChangeCountsByKey(ctx: SessionContext): Promise<Map<string, number>> {
-  const rows = await withTenant(ctx, (tx) =>
-    tx.execute(sql`
-      SELECT k AS key, count(*)::int AS n
-        FROM ${profileChangeRequest} r,
-             LATERAL jsonb_object_keys(r.proposed) AS k
-       WHERE r.status = 'pending' AND jsonb_typeof(r.proposed) = 'object'
-       GROUP BY k`),
-  );
-  const out = new Map<string, number>();
-  for (const r of rows as unknown as { key: string; n: number | string }[]) {
-    if (!requestableField(r.key)) continue;
-    out.set(r.key, Number(r.n));
-  }
-  return out;
+export async function pendingProfileChangeCountsByKey(ctx:SessionContext):Promise<Map<string,number>>{
+ const rows=await withTenant(ctx,tx=>tx.execute(sql`
+  SELECT keys.key,count(DISTINCT r.id)::int n FROM ${profileChangeRequest} r,
+  LATERAL (
+   SELECT jsonb_object_keys(CASE WHEN r.proposed->>'v'='2' THEN '{}'::jsonb WHEN jsonb_typeof(r.proposed)='object' THEN r.proposed ELSE '{}'::jsonb END) key
+   UNION SELECT f->>'fieldId' FROM jsonb_array_elements(CASE WHEN jsonb_typeof(r.proposed->'fields')='array' THEN r.proposed->'fields' ELSE '[]'::jsonb END) f
+   UNION SELECT f->>'fieldId' FROM jsonb_array_elements(CASE WHEN jsonb_typeof(r.proposed->'registers')='array' THEN r.proposed->'registers' ELSE '[]'::jsonb END) x,
+    LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(x->'fields')='array' THEN x->'fields' ELSE '[]'::jsonb END) f
+  ) keys WHERE r.status='pending' GROUP BY keys.key`));
+ const out=new Map<string,number>();
+ for(const row of rows as unknown as {key:string;n:number|string}[])if(requestableField(row.key)||personnelField(row.key)?.ess.binding)out.set(row.key,Number(row.n));
+ return out;
 }
 
 /**
@@ -869,15 +844,16 @@ export async function pendingProfileChangeCountsByKey(ctx: SessionContext): Prom
 export async function withdrawProfileChangesForLockedFields(
   ctx: SessionContext,
   p: { lockedKeys: readonly string[]; reason: string },
+  outerTx?:Tx,
 ): Promise<{ withdrawn: number }> {
   if (!isGroupAdmin(ctx)) throw new Error('Only a group administrator can change profile-request settings.');
-  const locked = new Set(p.lockedKeys.filter((k) => requestableField(k) != null));
+  const locked = new Set(p.lockedKeys.filter((k) => requestableField(k) != null||personnelField(k)?.ess.binding));
   const reason = clean(p.reason);
   if (locked.size === 0 || reason === null) return { withdrawn: 0 };
 
   const lockedKeys = [...locked];
 
-  return withTenant(ctx, async (tx) => {
+  const run=async (tx:Tx) => {
     /**
      * ⚠️ ONE STATEMENT, FILTERED IN SQL, WITH NO CAP — the fix a review forced (r261 fix pass).
      *
@@ -905,10 +881,9 @@ export async function withdrawProfileChangesForLockedFields(
           // ARRAY[$n, $n…], built with `sql.join` rather than by handing drizzle the JS array: a bare
           // array parameter expands to a RECORD `($5, $6)`, which Postgres refuses to cast to text[]
           // ("cannot cast type record to text[]"). Every key is still a bound parameter, never inlined.
-          sql`${profileChangeRequest.proposed} ?| ARRAY[${sql.join(
-            lockedKeys.map((k) => sql`${k}`),
-            sql`, `,
-          )}]::text[]`,
+          sql`(${profileChangeRequest.proposed} ?| ARRAY[${sql.join(lockedKeys.map((k)=>sql`${k}`),sql`, `)}]::text[]
+ OR EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(${profileChangeRequest.proposed}->'fields')='array' THEN ${profileChangeRequest.proposed}->'fields' ELSE '[]'::jsonb END) f WHERE f->>'fieldId'=ANY(ARRAY[${sql.join(lockedKeys.map((k)=>sql`${k}`),sql`, `)}]::text[]))
+ OR EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(${profileChangeRequest.proposed}->'registers')='array' THEN ${profileChangeRequest.proposed}->'registers' ELSE '[]'::jsonb END) x,LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(x->'fields')='array' THEN x->'fields' ELSE '[]'::jsonb END) f WHERE f->>'fieldId'=ANY(ARRAY[${sql.join(lockedKeys.map((k)=>sql`${k}`),sql`, `)}]::text[])))`,
         ),
       )
       .returning({
@@ -919,7 +894,8 @@ export async function withdrawProfileChangesForLockedFields(
 
     let withdrawn = 0;
     for (const req of refused) {
-      const keys = Object.keys((req.proposed ?? {}) as Record<string, unknown>);
+      const {profileProposalKeys}=await import('../lib/personnel-ess-contract');
+      const keys = profileProposalKeys(req.proposed);
       const hit = keys.filter((k) => locked.has(k));
       await appendEvent(tx, {
         tenantId: ctx.tenantId,
@@ -935,5 +911,6 @@ export async function withdrawProfileChangesForLockedFields(
       withdrawn += 1;
     }
     return { withdrawn };
-  });
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }

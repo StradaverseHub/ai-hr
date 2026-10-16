@@ -1,22 +1,25 @@
 /** Shared Personnel descriptors are the only field inventory. These are authority adapters, not SQL. */
 import {z} from 'zod';
+import {isProfileEditPolicyValue,isLegacyProfileEditPolicy} from './profile-edit-policy-value';
 import {PERSONNEL_FIELDS,personnelField} from './personnel-field-registry';
 import {PROFILE_REQUESTABLE_KEYS} from './profile-requestable-fields';
 import {personnelScalarIssue} from './personnel-import-contract';
 import {EssProfileError,type EssProfileProposal,type EssScalar} from './personnel-ess-model';
 export const essVisibleFields=()=>PERSONNEL_FIELDS.filter(field=>field.ess.visibility==='visible');
 export const essEditableFields=()=>essVisibleFields().filter(field=>field.ess.binding&&['immediate','approval'].includes(field.ess.edit));
-/** 'all' is the PREVIOUS request set plus the two existing shared contact rights, never new fields. */
+/** Legacy lists governed requests only; finite direct contacts remain compatible until a v2 save. */
 export function resolveEssEditableIds(raw:unknown):ReadonlySet<string>{
  const fields=essEditableFields();
- if(raw==='all'||raw===undefined||raw===null)return new Set(fields.filter(field=>field.ess.legacyImmediate||field.ess.binding?.legacyKey&&PROFILE_REQUESTABLE_KEYS.includes(field.ess.binding.legacyKey)).map(field=>field.id));
- if(!Array.isArray(raw))return new Set();
- return new Set(fields.filter(field=>raw.includes(field.id)||field.ess.binding?.legacyKey&&raw.includes(field.ess.binding.legacyKey)).map(field=>field.id));
+ if(isProfileEditPolicyValue(raw))return new Set(fields.filter(field=>raw.fields.includes(field.id)).map(field=>field.id));
+ if(!isLegacyProfileEditPolicy(raw))return new Set();
+ const requests=raw==='all'||raw==null?PROFILE_REQUESTABLE_KEYS:raw as readonly string[];
+ return new Set(fields.filter(field=>field.ess.legacyImmediate||field.ess.binding?.legacyKey&&requests.includes(field.ess.binding.legacyKey)).map(field=>field.id));
 }
-/** Finite legacy capability, separate from generic register edit rights. Explicit empty denies it. */
+/** Exactly the old primary-contact fields, never create/other rows. Complete v2 empty closes them. */
 export function resolveEssPrimaryEditableIds(raw:unknown):ReadonlySet<string>{
  const fields=essEditableFields().filter(field=>field.ess.legacyPrimaryKey);
- return new Set(fields.filter(field=>raw==='all'||raw===undefined||raw===null||Array.isArray(raw)&&raw.includes(field.ess.legacyPrimaryKey)).map(field=>field.id));
+ if(isProfileEditPolicyValue(raw))return new Set(fields.filter(field=>raw.fields.includes(field.ess.legacyPrimaryKey!)).map(field=>field.id));
+ return new Set(isLegacyProfileEditPolicy(raw)?fields.map(field=>field.id):[]);
 }
 const scalar=z.union([z.string().max(4000),z.number().finite(),z.boolean(),z.null()]);
 const change=z.object({fieldId:z.string().min(1).max(200),before:scalar,value:scalar}).strict();
@@ -31,10 +34,12 @@ export function parseEssProfileProposal(raw:unknown):EssProfileProposal{
    const field=personnelField(item.fieldId),binding=field?.ess.binding;
    if(!field||field.ess.visibility!=='visible'||!binding||!['immediate','approval'].includes(field.ess.edit))throw new EssProfileError('permission',[item.fieldId]);
    if(kind==='scalar'?['dependent','qualification','emergency'].includes(binding.owner):!kind.startsWith(binding.owner+':'))throw new EssProfileError('invalid',[item.fieldId]);
+   if(item.value===null&&field.type==='boolean'&&!binding.nullable)throw new EssProfileError('invalid',[item.fieldId]);
    if(item.value!==null){
     if(field.type==='boolean'?typeof item.value!=='boolean':field.type==='number'||field.type==='currency'?typeof item.value!=='number':typeof item.value!=='string')throw new EssProfileError('invalid',[item.fieldId]);
     if(personnelScalarIssue(field,String(item.value)))throw new EssProfileError('invalid',[item.fieldId]);
    }
+   if(binding.owner==='taxLegacy'&&(binding.field==='numChildren'&&(!Number.isSafeInteger(item.value)||Number(item.value)<0)||binding.field==='taxCategory'&&![1,2,3].includes(Number(item.value))))throw new EssProfileError('invalid',[item.fieldId]);
    if(field.form?.required?.record&&(item.value===null||item.value===''))throw new EssProfileError('invalid',[item.fieldId]);
   }
  }
@@ -43,3 +48,10 @@ export function parseEssProfileProposal(raw:unknown):EssProfileProposal{
  return parsed.data;
 }
 export function sameEssScalar(a:EssScalar|undefined,b:EssScalar|undefined){return (a??null)===(b??null);}
+
+/** Stable field identities for legacy and v2 history/withdrawal; never proposed values. */
+export function profileProposalKeys(raw:unknown):string[]{
+ if(!raw||typeof raw!=='object'||Array.isArray(raw))return [];
+ if('v' in raw&&raw.v===2){const value=parseEssProfileProposal(raw);return [...new Set([...value.fields,...value.registers.flatMap(row=>row.fields)].map(field=>field.fieldId))];}
+ return Object.keys(raw).filter(key=>PROFILE_REQUESTABLE_KEYS.includes(key));
+}

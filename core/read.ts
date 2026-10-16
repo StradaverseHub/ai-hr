@@ -2609,6 +2609,7 @@ export function assignmentHistory(ctx: SessionContext, employmentId: string) {
         // per version; the Movement tab replaced the old status column in this table back at 78853b97, so
         // nothing rendered it. Current Employee Status is derived, once, from the lifecycle dates.
         employmentType: assignment.employmentType,
+        locationCode:location.code,locationName:location.name,locationEffectiveFrom:assignment.validFrom,
         validFrom: assignment.validFrom,
         validTo: assignment.validTo,
       })
@@ -2616,8 +2617,9 @@ export function assignmentHistory(ctx: SessionContext, employmentId: string) {
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(position, eq(position.id, assignment.positionId))
       .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId))
+      .leftJoin(location,eq(location.id,assignment.locationId))
       .where(and(eq(assignment.employmentId, employmentId), isNull(assignment.supersededAt)))
-      .orderBy(desc(assignment.validFrom)),
+      .orderBy(desc(assignment.validFrom),desc(assignment.id)),
   );
 }
 
@@ -6117,7 +6119,7 @@ export async function myOwnEmploymentSubjectsTx(tx:Tx,ctx:SessionContext,opts:{p
  if(!ctx.personId)return [];
  const date=todayInKualaLumpur();
  const rows=await tx.select({employmentId:employment.id,personId:person.id,personName:person.fullName,employeeCode:employment.employeeCode,
-  currentCompanyId:employment.companyId,company:company.legalName,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,
+  currentCompanyId:employment.companyId,company:company.legalName,country:company.country,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,
   resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate,blacklistedAt:employment.blacklistedAt,status:employmentStatusSql()})
   .from(employment).innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId))
   .where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId),opts.profileEdit?profileEditEmploymentPredicate(ctx):undefined))
@@ -6210,6 +6212,7 @@ export function myPayslips(ctx: SessionContext, employmentIds: string[]) {
     const rows = await tx
       .select({
         id: payslip.id,
+        employmentId:payslip.employmentId,
         company: company.legalName,
         payPeriod: payrollBatch.payPeriod,
         runType: payrollBatch.runType,

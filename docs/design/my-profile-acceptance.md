@@ -19,5 +19,5 @@ All outcomes below require implementation and subsequent coordinated verificatio
 | Module and document safety | existing attendance/leave/payroll/document owners | disabled modules, released docs only, unavailable not zero/current-as-history |
 | Localization / AI / consumers | shared labels/options and master-only facts | six locales, pending proposals labelled, import/report/form guards retained |
 
-Source-only phase: no tests/types/DB/dev/installation performed. Migration0553 and ADR0125 reserved
+Source-only phase: no tests/types/DB/dev/installation performed. Migration0554 and ADR0125 reserved
 centrally. Parent reviews SQL and runs combined candidate checks and actual application journeys.

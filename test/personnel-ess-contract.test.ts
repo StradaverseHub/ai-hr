@@ -1,6 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {PERSONNEL_FIELDS,personnelField} from '../lib/personnel-field-registry';
-import {PROFILE_REQUESTABLE_KEYS} from '../lib/profile-requestable-fields';
+import {resolveAllowedRequestKeys,PROFILE_REQUESTABLE_KEYS} from '../lib/profile-requestable-fields';
 import {essEditableFields,parseEssProfileProposal,resolveEssEditableIds,resolveEssPrimaryEditableIds} from '../lib/personnel-ess-contract';
 import {ESS_PROFILE_TABS} from '../lib/personnel-ess-model';
 const phone='profile.contact_and_permanent_address.phone';
@@ -13,19 +13,30 @@ describe('explicit shared Personnel ESS contract',()=>{
   expect(personnelField('others.change_history.previousvalue')?.ess.visibility).toBe('protected');
   expect(personnelField('profile.personal_details.employeecode')?.ess.edit).toBe('viewOnly');
  });
- it('pins legacy all to the prior requests and finite immediate contacts, with new fields closed',()=>{
+ it('keeps legacy all and request-only lists compatible without granting new fields',()=>{
   const defaults=resolveEssEditableIds('all');
-  expect(defaults.has(phone)).toBe(true);expect(defaults.has(address)).toBe(false);
+  for(const raw of ['all',undefined,null])expect(resolveEssEditableIds(raw)).toEqual(defaults);
   for(const field of essEditableFields())expect(defaults.has(field.id)).toBe(Boolean(field.ess.legacyImmediate||field.ess.binding?.legacyKey&&PROFILE_REQUESTABLE_KEYS.includes(field.ess.binding.legacyKey)));
-  expect(resolveEssEditableIds([]).size).toBe(0);expect(resolveEssEditableIds({all:true}).size).toBe(0);
-  expect(resolveEssEditableIds([address])).toEqual(new Set([address]));
+  const direct=essEditableFields().filter(field=>field.ess.legacyImmediate).map(field=>field.id);
+  expect(resolveEssEditableIds([])).toEqual(new Set(direct));expect(resolveAllowedRequestKeys([]).size).toBe(0);
+  expect(resolveEssEditableIds(['fullName'])).toEqual(new Set([...direct,'profile.personal_details.fullname']));
+  expect(resolveAllowedRequestKeys(['fullName','not-a-field'])).toEqual(new Set(['fullName']));
+  expect(resolveEssEditableIds([address])).toEqual(new Set(direct));expect(defaults.has(address)).toBe(false);
+  expect(defaults.has('family.family_and_dependents.fullname')).toBe(false);expect(defaults.has('family.family_and_dependents.gender')).toBe(false);expect(defaults.has('family.family_and_dependents.dateofbirth')).toBe(false);
+  for(const raw of ['all',[],['fullName']])expect(resolveEssPrimaryEditableIds(raw).size).toBe(5);
  });
- it('keeps primary-only compatibility distinct from generic register permission and honors explicit View Only',()=>{
-  const legacy=resolveEssPrimaryEditableIds('all');expect(legacy.has(primary)).toBe(true);expect(legacy.size).toBe(5);
-  expect(resolveEssEditableIds('all').has(primary)).toBe(false);
-  expect(resolveEssPrimaryEditableIds([]).size).toBe(0);
-  expect(resolveEssPrimaryEditableIds(['legacyPrimaryEmergency.fullName'])).toEqual(new Set([primary]));
-  expect(resolveEssEditableIds([primary])).toEqual(new Set([primary]));expect(resolveEssPrimaryEditableIds([primary]).size).toBe(0);
+ it('makes a complete v2 policy explicit: empty and View Only close legacy rights; each grant stays finite',()=>{
+  const policy=(fields:string[])=>({version:2,fields});
+  expect(resolveEssEditableIds(policy([])).size).toBe(0);expect(resolveEssPrimaryEditableIds(policy([])).size).toBe(0);expect(resolveAllowedRequestKeys(policy([])).size).toBe(0);
+  expect(resolveEssEditableIds(policy([address,phone]))).toEqual(new Set([address,phone]));
+  expect(resolveAllowedRequestKeys(policy([phone])).size).toBe(0);
+  expect(resolveEssPrimaryEditableIds(policy(['legacyPrimaryEmergency.fullName']))).toEqual(new Set([primary]));
+  expect(resolveEssEditableIds(policy(['legacyPrimaryEmergency.fullName'])).size).toBe(0);
+  expect(resolveEssEditableIds(policy([primary]))).toEqual(new Set([primary]));expect(resolveEssPrimaryEditableIds(policy([primary])).size).toBe(0);
+  expect(resolveAllowedRequestKeys(policy(['profile.personal_details.fullname']))).toEqual(new Set(['profile.personal_details.fullname','fullName']));
+  for(const raw of [{all:true},{version:2,fields:null},{version:2,fields:[phone],extra:true},{version:3,fields:[phone]},{version:2,fields:[phone,phone]}]){
+   expect(resolveEssEditableIds(raw).size).toBe(0);expect(resolveEssPrimaryEditableIds(raw).size).toBe(0);expect(resolveAllowedRequestKeys(raw).size).toBe(0);
+  }
  });
  it('preserves touched clearing and rejects hidden fields, forged owner placement and duplicate changes',()=>{
   const valid={v:2,fields:[{fieldId:phone,before:'0123',value:null}],registers:[]};expect(parseEssProfileProposal(valid)).toEqual(valid);

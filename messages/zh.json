@@ -1774,7 +1774,7 @@
       "photoView": "View photo",
       "photoViewClose": "Close",
       "photoViewTitle": "{name} — profile photo",
-      "childrenPhysical": "符合税务减免资格的子女人数",
+      "childrenPhysical": "实际子女人数",
       "childrenQualifying": "月度税务计入权重 (C)",
       "childProvenanceEntered": "Entered by hand",
       "childProvenanceFromFamily": "Worked out from the Family records",
@@ -1818,7 +1818,19 @@
       "taxSelectionChoose": "选择税务类别",
       "taxCategoryLegacy3": "类别 3 — 配偶工作、离婚、丧偶，或有收养子女的单身人士",
       "taxCategorySingleHint": "LHDN 类别 1 指单身。已婚员工的类别仍按配偶工作状态确定，即使未申报子女减免。",
-      "taxCategoryNoneExplanation": "本次工资处理的税务类别为无。未计算 PCB；其他法定计算照常进行。"
+      "taxCategoryNoneExplanation": "本次工资处理的税务类别为无。未计算 PCB；其他法定计算照常进行。",
+      "sharedFields": {
+        "photo": "个人照片",
+        "childReliefAmount": "子女减免金额",
+        "serviceYears": "服务年数",
+        "days": "按服务年数核定的天数",
+        "unmatchedLeaveTypes": "未匹配的假期类型",
+        "roundedEarnedToDate": "截至目前累计所得（已舍入）",
+        "entitlementTable": "权益表",
+        "sharedBalanceSource": "共享余额来源",
+        "createdByName": "上传者",
+        "updatedByName": "最后更新者"
+      }
     },
     "import": {
       "title": "导入员工",
@@ -20216,5 +20228,58 @@
     "durationAuthorityHelp": "仅有时长证据并不授权现金支付或补休申请。",
     "transferStaleHelp": "已保存的加班输入与当前财务审核不再一致。请输入原因并使用“{action}”，然后审核新保存的计算并重新选择工资批次。读取选项不会重新计算。",
     "transferConflictHelp": "当天已有不兼容的现金或补休结算。选择其他付款前，请审核现有结算。"
+  },
+  "essProfile": {
+    "requestEdit": "申请编辑",
+    "save": "保存更改",
+    "cancel": "取消",
+    "saving": "正在保存…",
+    "viewOnly": "仅查看",
+    "editable": "可编辑",
+    "primaryOnly": "仅现有主要联系人（旧版权限）",
+    "workflowOnly": "使用专用流程",
+    "unavailable": "不可用",
+    "notRecorded": "未记录",
+    "recordedValue": "已记录值",
+    "clear": "清空此值",
+    "undo": "撤销更改",
+    "leaveUnsaved": "离开此页面并放弃尚未保存的更改？",
+    "viewHelp": "查看本人的人事记录。待审批申请不会替代主记录。",
+    "editHelp": "可跨标签页编辑获准字段，然后统一保存。联系信息可能立即保存，其他更改等待审批。",
+    "pendingValue": "待审批值：{value}",
+    "saved": "已立即保存：{saved}。待审批：{waiting}。",
+    "reference": "参考编号：{reference}",
+    "addRecord": "添加记录",
+    "noRecords": "暂无可显示的记录。",
+    "primaryRecord": "当前主要联系人",
+    "existingRecord": "现有记录",
+    "newRecord": "新记录——尚未提交",
+    "removeNew": "移除新记录",
+    "legacyAddressTitle": "保留的旧版地址",
+    "legacyAddressHelp": "此旧地址与人事地址不同，现保留以供核对。编辑永久地址或通讯地址不会自动复制或删除旧地址。",
+    "requestHistory": "资料更改申请",
+    "chooseEmployment": "选择本人的任职记录",
+    "countryUnavailable": "此任职所属国家暂无可用的法定资料编辑功能。现有记录保持不变。",
+    "error": {
+      "invalid": "请检查所列字段及其必填组合。",
+      "permission": "您无权编辑此任职记录。",
+      "fieldClosed": "管理员已限制某个所选字段。您的更改尚未提交。",
+      "stale": "已保存记录已更改。请保留您的编辑内容，重新加载并核对后再保存。",
+      "unavailable": "所需记录或国家服务不可用。未提交任何更改。",
+      "addressReview": "请使用人事永久地址或通讯地址字段。旧版地址已保留。",
+      "system": "无法保存更改。您的输入仍保留在此处。请重试，或将参考编号提供给人事部门。"
+    },
+    "register": {
+      "dependent": "家庭及受养人",
+      "qualification": "学历及专业资格",
+      "emergency": "紧急联系人"
+    },
+    "status": {
+      "pending": "待审批",
+      "approved": "已批准",
+      "rejected": "已拒绝"
+    },
+    "viewChanges": "查看变更",
+    "loadingHistory": "正在加载历史…"
   }
 }

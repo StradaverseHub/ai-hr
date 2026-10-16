@@ -1,5 +1,9 @@
 import { getTranslations } from 'next-intl/server';
 import { isGroupAdmin, requireAdmin } from '@/lib/authz';
+import {getSetting} from '@/core/entitlements';
+import {essVisibleFields,resolveEssEditableIds,resolveEssPrimaryEditableIds} from '@/lib/personnel-ess-contract';
+import {ESS_PROFILE_TABS} from '@/lib/personnel-ess-model';
+import {personnelFieldLabel} from '@/lib/personnel-field-label';
 import { pendingProfileChangeCountsByKey } from '@/core/profile';
 import { profileChangeAllowedKeys, profileChangeApprover } from '@/core/tenant-settings';
 import {
@@ -64,15 +68,16 @@ export default async function ProfileRequestSettingsPage({
    * reporting success. So an unreadable snapshot fails loudly on this screen, which is reachable only by
    * an administrator and never by an employee.
    */
-  const allowed = profileChangeAllowedKeys(s);
+  const raw=getSetting(s,'ess.profile_change_fields');
+  const allowed=resolveEssEditableIds(raw),primaryAllowed=resolveEssPrimaryEditableIds(raw);
+  const legacyAllowed=profileChangeAllowedKeys(s);
+  const te=await getTranslations('essProfile');
+  const labels=await getTranslations();
+  const tabKeys=['profile','family','job','careerMovement','attendance','bankStatutory','payroll','leave','documents','qualification','others'];
   const approver = profileChangeApprover(s);
   const pendingByKey = await pendingProfileChangeCountsByKey(s);
   const mayWrite = isGroupAdmin(s);
 
-  const TABS: { tab: RequestableField['tab']; titleKey: string }[] = [
-    { tab: 'profile', titleKey: 'tabProfile' },
-    { tab: 'bankStatutory', titleKey: 'tabBankStatutory' },
-  ];
 
   return (
     <div className={pageWideCls}>
@@ -133,35 +138,24 @@ export default async function ProfileRequestSettingsPage({
           {t('lockWithdrawsNotice')}
         </p>
         <form action={saveProfileRequestFieldsAction} className="mt-4 space-y-5">
-          {TABS.map(({ tab, titleKey }) => (
+          {ESS_PROFILE_TABS.map((tab,index)=>(
             <div key={tab}>
-              <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {t(titleKey)}
-              </h3>
-              <ul className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                {requestableFieldsForTab(tab).map((f) => {
-                  const waiting = pendingByKey.get(f.key) ?? 0;
-                  return (
-                    <li key={f.key}>
-                      <label className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/60">
-                        <input
-                          type="checkbox"
-                          name="field"
-                          value={f.key}
-                          defaultChecked={allowed.has(f.key)}
-                          disabled={!mayWrite}
-                        />
-                        <span className="min-w-0 flex-1 truncate">{tp(f.labelKey)}</span>
-                        {waiting > 0 ? (
-                          <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
-                            {t('waitingCount', { count: waiting })}
-                          </span>
-                        ) : null}
-                      </label>
-                    </li>
-                  );
-                })}
-              </ul>
+              <h3 className="text-sm font-semibold">{tp(`tabs.${tabKeys[index]}`)}</h3>
+              <div className="mt-2 divide-y divide-border">
+              {essVisibleFields().filter(field=>field.tab===tab).map(field=>{
+                const editable=Boolean(field.ess.binding&&['immediate','approval'].includes(field.ess.edit));
+                const waiting=(pendingByKey.get(field.id)??0)+(field.ess.binding?.legacyKey?pendingByKey.get(field.ess.binding.legacyKey)??0:0);
+                return <div key={field.id} className="flex flex-wrap items-center gap-3 py-2">
+                  <label htmlFor={`permission-${field.id}`} className="min-w-0 flex-1 text-sm">{personnelFieldLabel(field,(key,fallback)=>labels.has(key)?labels(key):fallback)}</label>
+                  {waiting>0&&<span className="text-xs text-amber-700 dark:text-amber-300">{t('waitingCount',{count:waiting})}</span>}
+                  {editable?<select id={`permission-${field.id}`} name={`permission:${field.id}`} disabled={!mayWrite} defaultValue={allowed.has(field.id)?'editable':primaryAllowed.has(field.id)?'primaryOnly':'viewOnly'} className="rounded-md border border-border bg-background px-2 py-1 text-sm">
+                    <option value="viewOnly">{te('viewOnly')}</option>
+                    <option value="editable">{te('editable')}</option>
+                    {field.ess.legacyPrimaryKey&&<option value="primaryOnly">{te('primaryOnly')}</option>}
+                  </select>:<span className="text-xs text-muted-foreground">{field.ess.edit==='specialist'?te('workflowOnly'):te('viewOnly')}</span>}
+                </div>;
+              })}
+              </div>
             </div>
           ))}
           {mayWrite ? (

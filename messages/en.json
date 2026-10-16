@@ -1774,7 +1774,7 @@
       "photoView": "View photo",
       "photoViewClose": "Close",
       "photoViewTitle": "{name} — profile photo",
-      "childrenPhysical": "Children qualifying for tax relief",
+      "childrenPhysical": "Physical child count",
       "childrenQualifying": "Counted as, for monthly tax (C)",
       "childProvenanceEntered": "Entered by hand",
       "childProvenanceFromFamily": "Worked out from the Family records",
@@ -1818,7 +1818,19 @@
       "taxSelectionChoose": "Choose a tax category",
       "taxCategoryLegacy3": "Category 3 — spouse working, divorced or widowed, or single with adopted child",
       "taxCategorySingleHint": "LHDN Category 1 means Single. Married employees follow their spouse’s working status, even when no child relief is claimed.",
-      "taxCategoryNoneExplanation": "Tax Category was None for this payroll attempt. PCB was not calculated; other statutory calculations continue normally."
+      "taxCategoryNoneExplanation": "Tax Category was None for this payroll attempt. PCB was not calculated; other statutory calculations continue normally.",
+      "sharedFields": {
+        "photo": "Profile photo",
+        "childReliefAmount": "Child relief amount",
+        "serviceYears": "Years of service",
+        "days": "Days at service years",
+        "unmatchedLeaveTypes": "Unmatched leave types",
+        "roundedEarnedToDate": "Rounded Earned to Date",
+        "entitlementTable": "Entitlement table",
+        "sharedBalanceSource": "Shared balance source",
+        "createdByName": "Uploaded by",
+        "updatedByName": "Last updated by"
+      }
     },
     "import": {
       "title": "Import employees",
@@ -20216,5 +20228,58 @@
     "durationAuthorityHelp": "Duration evidence alone does not authorize a cash payment or a TOIL claim.",
     "transferStaleHelp": "The saved overtime inputs no longer match the current financial review. Enter a reason and use “{action}”, then review the new saved calculation and select the Payroll run again. Reading options does not recalculate it.",
     "transferConflictHelp": "This day already has an incompatible cash or time off in lieu settlement. Review the existing settlement before choosing another payment."
+  },
+  "essProfile": {
+    "requestEdit": "Request to edit",
+    "save": "Save changes",
+    "cancel": "Cancel",
+    "saving": "Saving…",
+    "viewOnly": "View only",
+    "editable": "Editable",
+    "primaryOnly": "Existing primary contact only (legacy)",
+    "workflowOnly": "Use the dedicated workflow",
+    "unavailable": "Unavailable",
+    "notRecorded": "Not recorded",
+    "recordedValue": "Recorded value",
+    "clear": "Clear value",
+    "undo": "Undo change",
+    "leaveUnsaved": "Leave this page and discard your unsaved changes?",
+    "viewHelp": "Review your own Personnel record. Pending requests do not replace the master record.",
+    "editHelp": "Edit permitted fields across tabs, then save once. Contact changes may save immediately; other changes wait for approval.",
+    "pendingValue": "Pending request: {value}",
+    "saved": "Saved immediately: {saved}. Waiting for approval: {waiting}.",
+    "reference": "Reference: {reference}",
+    "addRecord": "Add record",
+    "noRecords": "No records to display.",
+    "primaryRecord": "Current primary contact",
+    "existingRecord": "Existing record",
+    "newRecord": "New record — not yet submitted",
+    "removeNew": "Remove new record",
+    "legacyAddressTitle": "Retained legacy address",
+    "legacyAddressHelp": "This older address differs from the Personnel address. It remains unchanged for reconciliation; editing Permanent or Correspondence address will not silently copy or erase it.",
+    "requestHistory": "Profile change requests",
+    "chooseEmployment": "Choose your employment",
+    "countryUnavailable": "Statutory editing is unavailable for this employment’s country. Existing records remain unchanged.",
+    "error": {
+      "invalid": "Review the highlighted fields and their required combinations.",
+      "permission": "You cannot edit this employment record.",
+      "fieldClosed": "An administrator has restricted a selected field. Your changes have not been submitted.",
+      "stale": "The saved record has changed. Keep a copy of your edits, then reload and review before saving again.",
+      "unavailable": "The required record or country service is unavailable. Nothing was submitted.",
+      "addressReview": "Use the Personnel Permanent or Correspondence address fields. The legacy address has been retained.",
+      "system": "The changes could not be saved. Your input remains here. Please try again or contact HR with the reference."
+    },
+    "register": {
+      "dependent": "Family and dependents",
+      "qualification": "Academic and professional qualifications",
+      "emergency": "Emergency contacts"
+    },
+    "status": {
+      "pending": "Waiting for approval",
+      "approved": "Approved",
+      "rejected": "Rejected"
+    },
+    "viewChanges": "View changes",
+    "loadingHistory": "Loading history…"
   }
 }
