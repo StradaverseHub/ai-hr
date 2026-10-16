@@ -20289,6 +20289,8 @@
     "waitingFields": "Waiting for approval: {fields}",
     "moduleUnavailable": "The {module} module is unavailable. Existing core employment facts remain visible.",
     "statutoryUnavailable": "Bank and statutory information is unavailable because this employment has no supported country pack. Other permitted profile fields remain available.",
-    "notApplicable": "This field does not apply to the selected relationship. Undo it or restore the relationship before saving."
+    "notApplicable": "This field does not apply to the selected relationship. Undo it or restore the relationship before saving.",
+    "bankNotApplicable": "This value applies only when its custom holder option is enabled. Enable that option or undo this change before saving.",
+    "taxNotApplicable": "The numeric compatibility category cannot be changed while the saved tax circumstance is None. Use the tax selection workflow to change that circumstance."
   }
 }

@@ -44,3 +44,20 @@ all-role journeys, save/reopen/approve/reject, multiple employments/leavers, uns
 closed Payroll preservation, module-disabled states, six locales, light/dark/Classic/Monolith, narrow
 viewport, keyboard/focus and runtime logs. No actual application, production write, gate or deployment
 has run in this isolated worktree. Root owns coordinated verification, board completion and release.
+
+## Ignored-proposal repair coverage (source only)
+
+Custom holder name/identification proposals now refuse nonempty edits when the effective matching
+Bank switch is off, at submission and again at approval. The editor keeps the value visible with an
+applicability explanation; a touched value survives turning the switch off and can be undone or
+restored by enabling the switch. The canonical Bank writer remains unchanged. Regression sources
+cover disabled field-only permission, combined enable/value, sparse persisted switch revocation,
+policy withdrawal, exact stored values and pending status after refusal.
+
+Numeric compatibility tax proposals omit an explicit saved circumstance when calling the canonical
+country owner, allowing that owner to retire a conflicting typed detail and save the requested
+integer. A saved None keeps its dormant integer; such numeric proposals refuse rather than being
+approved without effect. Regression sources cover typed and null detail through request/approval,
+None at submission and a None transition while pending, with exact stored category/key assertions.
+The editor uses country-pack applicability and explains the dedicated selection course in six locales.
+All added regression sources and rendered states remain unexecuted pending parent coordination.

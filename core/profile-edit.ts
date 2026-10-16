@@ -17,7 +17,7 @@ import {addDependent,updateDependent,validateDependentInputTx,childAgeYears,isCh
 import {addQualification,updateQualification,validateQualificationInputTx} from './qualifications';
 import {addEmergencyContact,updateEmergencyContact,validateEmergencyContactInputTx} from './emergency-contacts';
 import {assertProfileValueAllowed} from './profile-options';
-import {customHolderGaps} from '../lib/custom-holder';
+import {customHolderGaps,customHolderFieldApplies} from '../lib/custom-holder';
 import {personnelChildReliefValue} from '../lib/personnel-report-value';
 import {qualifyingChildReliefFor} from './dependents';
 import {CHILD_RELIEF_PERCENTAGES,dependentFieldApplies} from '../lib/dependent-vocabulary';
@@ -136,9 +136,19 @@ export async function prepareProfileProposalTx(tx:Tx,ctx:SessionContext,employme
  if(bankChanges.length){
   if(!rows.stat)throw new EssProfileError('unavailable',bankChanges.map(field=>field.fieldId));
   const next={...rows.stat,...patch(bankChanges)};
+  const ignored=bankChanges.filter(change=>!customHolderFieldApplies(next,personnelField(change.fieldId)!.ess.binding!.field)&&typeof change.value==='string'&&change.value.trim());
+  if(ignored.length)throw new EssProfileError('invalid',ignored.map(change=>change.fieldId));
   const bank=bankChanges.find(change=>personnelField(change.fieldId)!.ess.binding!.field==='bankName');
   if(bank&&typeof bank.value==='string'&&bank.value.trim()&&!rows.pack?.client.bankNames.includes(bank.value.trim()))throw new EssProfileError('invalid',[bank.fieldId]);
   if(Boolean(next.bankName)!==Boolean(next.bankAccountNo)||customHolderGaps({enableCustomHolderName:next.enableCustomHolderName,customHolderName:next.customHolderName,enableCustomHolderId:next.enableCustomHolderId,customHolderId:next.customHolderId}).length)throw new EssProfileError('invalid',bankChanges.map(field=>field.fieldId));
+ }
+ // Numeric compatibility edits use the country's canonical numeric-only course. None retains its
+ // dormant integer, so accepting an edit there would approve a change the writer cannot apply.
+ const categoryChange=fields.find(change=>personnelField(change.fieldId)!.ess.binding?.owner==='taxLegacy'&&personnelField(change.fieldId)!.ess.binding!.field==='taxCategory');
+ if(categoryChange){
+  const circumstance=rows.pack?.client.payroll.taxCircumstanceOf;
+  if(!rows.stat||!circumstance)throw new EssProfileError('unavailable',[categoryChange.fieldId]);
+  if(!circumstance(rows.stat.taxCircumstance,rows.stat.taxCategory).applicable)throw new EssProfileError('invalid',[categoryChange.fieldId]);
  }
  const identityChanges=fields.filter(change=>personnelField(change.fieldId)!.ess.binding?.owner==='identity');
  if(identityChanges.length){
@@ -226,7 +236,7 @@ async function applyScalarFieldsTx(tx:Tx,prepared:Awaited<ReturnType<typeof prep
   }else if(owner==='identity')await pack.statutory.setIc(ctx,{personId:master.id,icNumber:(values.icNumber===undefined?stat?.icNumber:text(values,'icNumber'))??'',oldIcNumber:values.oldIcNumber===undefined?stat?.oldIcNumber:text(values,'oldIcNumber')},tx);
   else if(owner==='passport')await pack.statutory.setPassport(ctx,{personId:master.id,passportNumber:values.passportNumber===undefined?stat?.passportNumber:text(values,'passportNumber'),passportIssueDate:values.passportIssueDate===undefined?stat?.passportIssueDate:text(values,'passportIssueDate'),passportExpiryDate:values.passportExpiryDate===undefined?stat?.passportExpiryDate:text(values,'passportExpiryDate'),passportIssuingCountry:values.passportIssuingCountry===undefined?stat?.passportIssuingCountry:text(values,'passportIssuingCountry'),passportIssuingCountryCode:values.passportIssuingCountryCode===undefined?stat?.passportIssuingCountryCode:text(values,'passportIssuingCountryCode'),passportRemark:stat?.passportRemark},tx);
   else if(owner==='registration'){if(!stat)throw new EssProfileError('unavailable',fields.map(field=>field.fieldId));if(!pack.statutory.setRegistrationNumbers)throw new EssProfileError('unavailable',fields.map(field=>field.fieldId));await pack.statutory.setRegistrationNumbers(ctx,{personId:master.id,epfNumber:text(values,'epfNumber'),socsoNumber:text(values,'socsoNumber')},tx);}
-  else {if(!stat)throw new EssProfileError('unavailable',fields.map(field=>field.fieldId));await pack.statutory.setTax(ctx,{personId:master.id,taxNumber:values.taxNumber===undefined?stat.taxNumber:text(values,'taxNumber'),taxCategory:number(values,'taxCategory')??stat.taxCategory,numChildren:number(values,'numChildren')??stat.numChildren,taxCircumstance:stat.taxCircumstance,taxResidency:stat.taxResidency,childReliefMode:stat.childReliefMode,employerBearsTax:stat.employerBearsTax,disabledIndividual:stat.disabledIndividual,disabledSpouse:stat.disabledSpouse,childReliefTable:stat.childReliefTable},tx);}
+  else {if(!stat)throw new EssProfileError('unavailable',fields.map(field=>field.fieldId));await pack.statutory.setTax(ctx,{personId:master.id,taxNumber:values.taxNumber===undefined?stat.taxNumber:text(values,'taxNumber'),taxCategory:number(values,'taxCategory')??stat.taxCategory,numChildren:number(values,'numChildren')??stat.numChildren,taxResidency:stat.taxResidency,childReliefMode:stat.childReliefMode,employerBearsTax:stat.employerBearsTax,disabledIndividual:stat.disabledIndividual,disabledSpouse:stat.disabledSpouse,childReliefTable:stat.childReliefTable},tx);}
  }
 }
 /** No-op/cancel do not call this owner. Omitted facts retain; explicit clears are validated. */

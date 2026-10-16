@@ -20289,6 +20289,8 @@
     "waitingFields": "等待审批：{fields}",
     "moduleUnavailable": "{module}模块不可用。现有的核心雇佣资料仍可查看。",
     "statutoryUnavailable": "此雇佣记录没有受支持的国家包，因此银行及法定资料不可用。其他获准的个人资料字段仍可使用。",
-    "notApplicable": "此字段不适用于所选关系。保存前请撤销此更改或恢复原关系。"
+    "notApplicable": "此字段不适用于所选关系。保存前请撤销此更改或恢复原关系。",
+    "bankNotApplicable": "仅在启用相应自定义收款人选项时，此值才适用。请先启用该选项，或撤销此项更改后再保存。",
+    "taxNotApplicable": "已保存的税务情形为“无”时，无法更改兼容用的数字类别。请通过税务选择流程更改该情形。"
   }
 }

@@ -8,9 +8,10 @@ import {decideProfileChange,requestProfileChange,listProfileChangeRequests} from
 import {addEmergencyContact,listEmergencyContacts} from '../core/emergency-contacts';
 import {addDependent,listDependents,isChildReliefEligible} from '../core/dependents';
 import {addQualification,listQualifications} from '../core/qualifications';
-import {person,employment,profileChangeRequest,employeeQualification} from '../db/schema';
+import {person,employment,profileChangeRequest,employeeQualification,employeeStatutoryMy} from '../db/schema';
 import {withTenant,type SessionContext} from '../db/client';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {requirePackFor} from '../localization/registry';
 import type {EssProfileProposal} from '../lib/personnel-ess-model';
 import {migrateTestDb,resetDb,seedBase,owner,adminCtx,createAppUser,closeAll,type Base} from './harness';
 let b:Base;
@@ -22,6 +23,9 @@ async function subject(role:'employee'|'manager'|'hr_admin'='employee'){
  const ctx:SessionContext={...adminCtx(b),userId,personId:hired.personId,roles:[role],grants:[{role,companyId:role==='hr_admin'?b.companyId:null}]};
  return {...hired,ctx};
 }
+const countryPack=()=>requirePackFor('MY');
+const bankField=(field:string)=>`bank_statutory.bank_information.${field.toLowerCase()}`;
+const taxCategoryField='bank_statutory.income_tax_pcb.taxcategory';
 const empty=():EssProfileProposal=>({v:2,fields:[],registers:[]});
 beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase();});afterAll(closeAll);
 describe('My Profile canonical transaction and scope',()=>{
@@ -107,6 +111,51 @@ describe('My Profile canonical transaction and scope',()=>{
   const proposalFor=(id:string)=>{const row=view.registers.find(row=>row.id===id)!,proposal=empty();proposal.registers=[{kind:'dependent',id,clientId:id,fields:[{fieldId:field,before:row.baselines[field],value:true}]}];return proposal;};
   await expect(submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal:proposalFor(parent.id)})).rejects.toMatchObject({code:'invalid',fieldIds:[field]});expect(await owner.db.select().from(profileChangeRequest)).toHaveLength(0);
   const result=await submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal:proposalFor(child.id)});await decideProfileChange(admin(),{requestId:result.requestId!,decision:'approved'});const stored=(await listDependents(admin(),{personId:s.personId})).find(row=>row.id===child.id)!;expect(stored.childTaxRelief).toBe(true);expect(isChildReliefEligible(stored)).toBe(true);
+ });
+ it.each([['customHolderName','enableCustomHolderName'],['customHolderId','enableCustomHolderId']] as const)('refuses disabled %s edits, but applies explicit enable plus value through request and approval',async(field,flag)=>{
+  const s=await subject(),id=bankField(field),flagId=bankField(flag);await countryPack().statutory.set(admin(),{personId:s.personId,icNumber:'900101015020'});
+  await saveProfileEditPolicy(admin(),{keys:[id],withdrawnReason:'Field restricted'});
+  const view=await readOwnProfileWorkspace(s.ctx,{employmentId:s.employmentId}),proposal=empty();proposal.fields=[{fieldId:id,before:view.baselines[id],value:'Fictional holder'}];
+  await expect(submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal})).rejects.toMatchObject({code:'invalid',fieldIds:[id]});expect(await owner.db.select().from(profileChangeRequest)).toHaveLength(0);
+  await saveProfileEditPolicy(admin(),{keys:[id,flagId],withdrawnReason:'Field restricted'});
+  proposal.fields.unshift({fieldId:flagId,before:view.baselines[flagId],value:true});
+  const result=await submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal});await decideProfileChange(admin(),{requestId:result.requestId!,decision:'approved'});
+  const stored=await countryPack().statutory.get(admin(),s.personId);expect(stored?.[field]).toBe('Fictional holder');expect(stored?.[flag]).toBe(true);
+  const [request]=await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,result.requestId!));expect(request.status).toBe('approved');
+  await saveProfileEditPolicy(admin(),{keys:[id],withdrawnReason:'Field restricted'});const reopened=await readOwnProfileWorkspace(s.ctx,{employmentId:s.employmentId}),edit=empty();edit.fields=[{fieldId:id,before:reopened.baselines[id],value:'Updated enabled holder'}];
+  const second=await submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal:edit});await decideProfileChange(admin(),{requestId:second.requestId!,decision:'approved'});expect((await countryPack().statutory.get(admin(),s.personId))?.[field]).toBe('Updated enabled holder');
+ });
+ it.each([['customHolderName','enableCustomHolderName'],['customHolderId','enableCustomHolderId']] as const)('rechecks effective %s applicability at approval even when its value baseline is unchanged',async(field,flag)=>{
+  const s=await subject(),id=bankField(field);await countryPack().statutory.set(admin(),{personId:s.personId,icNumber:'900101015020'});
+  await countryPack().statutory.setBank(admin(),{personId:s.personId,enableCustomHolderName:true,customHolderName:'Original name',enableCustomHolderId:true,customHolderId:'Original ID'});
+  await saveProfileEditPolicy(admin(),{keys:[id],withdrawnReason:'Field restricted'});const view=await readOwnProfileWorkspace(s.ctx,{employmentId:s.employmentId}),proposal=empty();proposal.fields=[{fieldId:id,before:view.baselines[id],value:'Requested holder'}];
+  const result=await submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal});
+  // Model a sparse persisted switch revocation. The proposed value is deliberately unchanged,
+  // so its baseline alone cannot detect the now-inapplicable edit at the real decision boundary.
+  await withTenant(admin(),tx=>tx.update(employeeStatutoryMy).set(flag==='enableCustomHolderName'?{enableCustomHolderName:false}:{enableCustomHolderId:false}).where(eq(employeeStatutoryMy.personId,s.personId)));
+  await expect(decideProfileChange(admin(),{requestId:result.requestId!,decision:'approved'})).rejects.toMatchObject({code:'invalid',fieldIds:[id]});
+  const stored=await countryPack().statutory.get(admin(),s.personId);expect(stored?.[flag]).toBe(false);expect(stored?.[field]).toBe(field==='customHolderName'?'Original name':'Original ID');
+  const [request]=await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,result.requestId!));expect(request.status).toBe('pending');expect(request.proposed).toEqual(proposal);
+ });
+ it('does not approve a pending holder edit after its field policy is withdrawn',async()=>{
+  const s=await subject(),id=bankField('customHolderName');await countryPack().statutory.set(admin(),{personId:s.personId,icNumber:'900101015020'});await countryPack().statutory.setBank(admin(),{personId:s.personId,enableCustomHolderName:true,customHolderName:'Original name'});
+  await saveProfileEditPolicy(admin(),{keys:[id],withdrawnReason:'Field restricted'});const view=await readOwnProfileWorkspace(s.ctx,{employmentId:s.employmentId}),proposal=empty();proposal.fields=[{fieldId:id,before:view.baselines[id],value:'Requested holder'}];const result=await submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal});
+  await saveProfileEditPolicy(admin(),{keys:[],withdrawnReason:'Field restricted'});await expect(decideProfileChange(admin(),{requestId:result.requestId!,decision:'approved'})).rejects.toThrow();
+  expect((await countryPack().statutory.get(admin(),s.personId))?.customHolderName).toBe('Original name');const [request]=await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,result.requestId!));expect(request.status).toBe('rejected');
+ });
+ it.each(['spouse_not_working',null] as const)('applies a numeric category proposal from saved detail %s without resubmitting that detail as authority',async(key)=>{
+  const s=await subject();await countryPack().statutory.set(admin(),{personId:s.personId,icNumber:'900101015020',taxCategory:2,taxCircumstance:key});
+  await saveProfileEditPolicy(admin(),{keys:[taxCategoryField],withdrawnReason:'Field restricted'});const view=await readOwnProfileWorkspace(s.ctx,{employmentId:s.employmentId}),proposal=empty();proposal.fields=[{fieldId:taxCategoryField,before:view.baselines[taxCategoryField],value:1}];
+  const result=await submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal});await decideProfileChange(admin(),{requestId:result.requestId!,decision:'approved'});
+  expect(await countryPack().statutory.get(admin(),s.personId)).toMatchObject({taxCategory:1,taxCircumstance:null});const [request]=await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,result.requestId!));expect(request.status).toBe('approved');
+ });
+ it('preserves None and its dormant category, refusing both a new numeric edit and a pending edit after None is selected',async()=>{
+  const s=await subject();await countryPack().statutory.set(admin(),{personId:s.personId,icNumber:'900101015020',taxCategory:2,taxCircumstance:'spouse_not_working'});
+  await saveProfileEditPolicy(admin(),{keys:[taxCategoryField],withdrawnReason:'Field restricted'});const view=await readOwnProfileWorkspace(s.ctx,{employmentId:s.employmentId}),proposal=empty();proposal.fields=[{fieldId:taxCategoryField,before:view.baselines[taxCategoryField],value:1}];const result=await submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal});
+  await countryPack().statutory.setTax(admin(),{personId:s.personId,taxCategory:2,taxCircumstance:'none',taxResidency:'none'});
+  await expect(decideProfileChange(admin(),{requestId:result.requestId!,decision:'approved'})).rejects.toMatchObject({code:'invalid',fieldIds:[taxCategoryField]});
+  await expect(submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal})).rejects.toMatchObject({code:'invalid',fieldIds:[taxCategoryField]});
+  expect(await countryPack().statutory.get(admin(),s.personId)).toMatchObject({taxCategory:2,taxCircumstance:'none',taxResidency:'none'});const [request]=await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,result.requestId!));expect(request.status).toBe('pending');
  });
  it('keeps a future final day eligible and rejects an elapsed final day under the same stale client context',async()=>{
   const s=await subject();const today=todayInKualaLumpur(),tomorrow=new Date(Date.parse(today+'T00:00:00Z')+86400000).toISOString().slice(0,10),yesterday=new Date(Date.parse(today+'T00:00:00Z')-86400000).toISOString().slice(0,10);

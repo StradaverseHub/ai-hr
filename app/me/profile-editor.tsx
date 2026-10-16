@@ -12,6 +12,7 @@ import {clientPackFor} from '@/localization/registry.client';
 import {ENTITLEMENT_STATUS_LABEL_KEY,type EntitlementStatus} from '@/lib/entitlement-status';
 import {movementKindLabel} from '@/lib/movement-kind-label';
 import {dependentFieldApplies} from '@/lib/dependent-vocabulary';
+import {customHolderFieldApplies} from '@/lib/custom-holder';
 import {formatDmy} from '@/lib/date-display';
 import type {EssWorkspace,EssRecord} from '@/core/profile-edit';
 import type {EssReadRecord,readOwnProfileFacts} from '@/core/profile-view';
@@ -64,10 +65,15 @@ export function ProfileEditor({workspace,facts,extraPanels,history,defaultTab='p
   const original=source[field.id],key=row?`${row.kind}:${rowIdentity(row)}:${field.id}`:field.id,touched=Object.hasOwn(changes,key),value=touched?changes[key]:original;
   const relationshipField=fields.find(item=>item.ess.binding?.owner==='dependent'&&item.ess.binding.field==='relationship');
   const relationshipKey=row&&relationshipField?`dependent:${rowIdentity(row)}:${relationshipField.id}`:null,relationship=relationshipKey&&Object.hasOwn(changes,relationshipKey)?changes[relationshipKey]:relationshipField?source[relationshipField.id]:null;
-  const applicable=!row||row.kind!=='dependent'||dependentFieldApplies(typeof relationship==='string'?relationship:null,field.ess.binding?.field??field.ownerField);
-  if(!applicable&&!touched)return null;
-  const allowed=applicable&&canEdit(field.id,row),mask=Boolean(field.ess.masked&&!touched&&value);
-  const countryPack=clientPackFor(workspace.country);
+  const dependentApplicable=!row||row.kind!=='dependent'||dependentFieldApplies(typeof relationship==='string'?relationship:null,field.ess.binding?.field??field.ownerField);
+  const bankSwitch=(name:string)=>{const descriptor=fields.find(item=>item.ess.binding?.owner==='bank'&&item.ess.binding.field===name);return descriptor?(Object.hasOwn(changes,descriptor.id)?changes[descriptor.id]:values[descriptor.id])===true:false;};
+  const bankApplicable=field.ess.binding?.owner!=='bank'||customHolderFieldApplies({enableCustomHolderName:bankSwitch('enableCustomHolderName'),enableCustomHolderId:bankSwitch('enableCustomHolderId')},field.ess.binding.field);
+  const countryPack=clientPackFor(workspace.country),circumstance=fields.find(item=>item.owner==='statutory'&&item.ownerField==='taxCircumstance'),category=fields.find(item=>item.ess.binding?.owner==='taxLegacy'&&item.ess.binding.field==='taxCategory');
+  const isNumericTax=field.ess.binding?.owner==='taxLegacy'&&field.ess.binding.field==='taxCategory',taxAvailable=!isNumericTax||Boolean(countryPack?.payroll.taxCircumstanceOf);
+  const taxApplicable=!isNumericTax||!countryPack?.payroll.taxCircumstanceOf||countryPack.payroll.taxCircumstanceOf(circumstance?values[circumstance.id]:null,category?values[category.id]:null).applicable;
+  const applicable=dependentApplicable&&bankApplicable&&taxApplicable;
+  if(!dependentApplicable&&!touched)return null;
+  const allowed=applicable&&taxAvailable&&canEdit(field.id,row),mask=Boolean(field.ess.masked&&!touched&&value);
   const choiceOptions=field.owner==='bank'&&field.ownerField==='bankName'?(countryPack?.bankNames??[]).map(value=>({value,label:value})):field.allowedValuesOwner==='countryPack.taxCircumstanceOptions'?(countryPack?.payroll.taxCircumstanceOptions??[]).map(choice=>({value:choice.value,label:labels(`people.detail.${choice.key}`)})):facts.choices[field.id]??personnelFieldChoices(field).map(choice=>({value:choice.value,label:translate(choice.labelKey,choice.value)}));
   const zakatMethod=fields.find(item=>item.owner==='zakat'&&item.ownerField==='method');
   const displayValue=field.owner==='zakat'&&field.ownerField==='rate'&&value!=null&&zakatMethod&&values[zakatMethod.id]==='percent_of_pcb'&&Number.isFinite(Number(value))?`${(Number(value)*100).toFixed(2)}%`:value===undefined?t('unavailable'):value===null||value===''?t('notRecorded'):choiceOptions.find(option=>option.value===String(value))?.label??(field.owner==='cp38'&&field.ownerField==='status'?labels(value==='closed'?'people.detail.cp38StatusClosed':'people.detail.cp38StatusActive'):field.owner==='zakat'&&field.ownerField==='status'?labels(value==='active'?'people.detail.zakatSummaryActive':'people.detail.zakatSummaryInactive'):field.owner==='zakat'&&field.ownerField==='method'?value==null?t('notRecorded'):labels(value==='fixed'?'people.detail.zakatSummaryMethodFixed':'people.detail.zakatSummaryMethodPercent'):field.owner==='employmentStatus'?translate(`people.employeeStatus.${value}`,t('unavailable')):field.owner==='movement'&&field.ownerField==='kind'?movementKindLabel(String(value),undefined,key=>translate(`people.detail.${key}`,t('unavailable'))):field.owner==='movement'&&field.ownerField==='status'?translate(`people.detail.movement.status.${value}`,t('unavailable')):field.owner==='leaveRequest'&&field.ownerField==='status'?translate(`people.detail.leaveStatus.${value}`,t('unavailable')):field.owner==='leaveBalance'&&field.ownerField==='entitlementStatus'&&Object.hasOwn(ENTITLEMENT_STATUS_LABEL_KEY,String(value))?translate(`me.leaveBalanceTable.${ENTITLEMENT_STATUS_LABEL_KEY[value as EntitlementStatus]}`,t('unavailable')):typeof value==='boolean'?labels(value?'people.import.registerYes':'people.import.registerNo'):field.type==='date'?formatDmy(String(value)):String(value));
@@ -80,7 +86,8 @@ export function ProfileEditor({workspace,facts,extraPanels,history,defaultTab='p
     :<input id={inputId} aria-label={fieldLabel(field.id)} aria-required={Boolean(field.form?.required?.record)} disabled={busy} type={field.type==='date'?(field.unit==='month'?'month':'date'):field.type==='number'||field.type==='currency'?'number':field.form?.widget==='email'?'email':'text'} min={field.form?.min} max={field.form?.max} step={field.form?.step??(field.type==='number'?'any':undefined)} value={mask?'':value==null?'':String(value)} placeholder={mask?String(original):undefined} onChange={event=>update(key,event.target.value===''?null:field.type==='number'||field.type==='currency'?Number(event.target.value):event.target.value,original)} className={inputCls}/>}
     <div className="flex gap-3 text-xs"><button type="button" disabled={busy} onClick={()=>update(key,null,original)} className="text-primary underline">{t('clear')}</button>{touched&&<button type="button" disabled={busy} onClick={()=>setChanges(previous=>{const next={...previous};delete next[key];return next;})} className="text-primary underline">{t('undo')}</button>}</div>
    </div>:<p className="min-h-9 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm break-words">{displayValue}</p>}
-   {!applicable&&touched&&<p className="text-xs text-amber-800 dark:text-amber-300">{t('notApplicable')} <button type="button" disabled={busy} onClick={()=>setChanges(previous=>{const next={...previous};delete next[key];return next;})} className="underline">{t('undo')}</button></p>}
+   {!taxAvailable&&<p className="text-xs text-muted-foreground">{t('statutoryUnavailable')}</p>}
+   {!applicable&&<p className="text-xs text-amber-800 dark:text-amber-300">{t(!bankApplicable?'bankNotApplicable':!taxApplicable?'taxNotApplicable':'notApplicable')} {touched&&<button type="button" disabled={busy} onClick={()=>setChanges(previous=>{const next={...previous};delete next[key];return next;})} className="underline">{t('undo')}</button>}</p>}
    {pendingLines.map(line=><p key={line.key} className="text-xs text-amber-800 dark:text-amber-300">{t('pendingValue',{value:line.value})}</p>)}
   </div>;
  }
