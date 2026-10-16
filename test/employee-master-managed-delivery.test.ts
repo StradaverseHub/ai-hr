@@ -29,7 +29,7 @@ it('does not rewrite successful SMTP as rejection when the durable result cannot
 });
 
 it('does not verify again or start SMTP after canonical access authorization is revoked during generation',async()=>{
- const {run,deps,input}=setup();deps.authorize=vi.fn(async()=>false);expect(await run(input)).toEqual({outcome:'skipped'});expect(deps.verifyRecipient).toHaveBeenCalledTimes(1);expect(deps.start).not.toHaveBeenCalled();expect(deps.send).not.toHaveBeenCalled();expect(deps.finish).toHaveBeenCalledWith(input.occurrenceId,input.leaseToken,'skipped','notEligible');
+ const {run,deps,input}=setup();deps.authorize=vi.fn(async()=>false);expect(await run(input)).toEqual({outcome:'skipped'});expect(deps.verifyRecipient).toHaveBeenCalledTimes(1);expect(deps.start).not.toHaveBeenCalled();expect(deps.send).not.toHaveBeenCalled();expect(deps.finish).toHaveBeenCalledWith(input.occurrenceId,input.leaseToken,'skipped','notEligible',undefined);
 });
 
 it('refuses attachment metadata from a different scope before starting SMTP',async()=>{const {run,deps,input}=setup();vi.mocked(deps.prepare).mockResolvedValue({bytes:new Uint8Array([1]),filename:'Employee-Master.xlsx',contentType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',rowCount:1,scopeIds:[randomUUID()]});expect(await run(input)).toEqual({outcome:'failed'});expect(deps.start).not.toHaveBeenCalled();expect(deps.send).not.toHaveBeenCalled();});
