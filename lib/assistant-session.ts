@@ -1,6 +1,6 @@
 import 'server-only';
 import {cookies} from 'next/headers';
-import {randomBytes} from 'node:crypto';
+import {randomBytes,createHash} from 'node:crypto';
 import {getFreshSession} from './session';
 import {demoSwitcherEnabled} from './demo-mode';
 import {internalSelected,INTERNAL_SESSION_COOKIE} from './internal-auth/config';
@@ -47,6 +47,13 @@ export async function resolveAssistantSession(){
  if(!ctx.userId||before!==await signInFingerprint())throw new AssistantConversationError('sessionUnavailable');
  const companies=await allowedCompanies(ctx),scopeIds=await getScopeIds(companies.map(company=>company.id));
  if(scopeIds.length>100)throw new AssistantConversationError('unavailable');
- return {ctx,signInHash:before,scopeIds:[...new Set(scopeIds)].sort()};
+ const selected=[...new Set(scopeIds)].sort();
+ return {ctx,signInHash:before,scopeIds:selected,companyNames:companies.filter(company=>selected.includes(company.id)).map(company=>company.name).filter((name):name is string=>typeof name==='string')};
 }
 export type AssistantSession=Awaited<ReturnType<typeof resolveAssistantSession>>;
+
+/** Opaque React boundary key drops cached client history after an RSC scope/actor refresh. This key
+ * conveys no authority; every operation still re-resolves the verified provider session and DB stamp. */
+export async function assistantWorkspaceKey(){return (await assistantWorkspaceView()).key;}
+
+export async function assistantWorkspaceView(){const session=await resolveAssistantSession();return {key:createHash('sha256').update(JSON.stringify(['assistant-workspace-v1',session.ctx.tenantId,session.ctx.userId,session.ctx.personId,session.signInHash,session.scopeIds,session.ctx.roles,session.ctx.grants,session.ctx.entitlements])).digest('hex'),companyNames:session.companyNames};}

@@ -69,8 +69,11 @@ export function listDocuments(
     includeArchived?: boolean;
     search?: string;
     locale?: string;
+    limit?:number;
+    kind?:'article'|'file';
   } = {},
 ) {
+  if(opts.limit!==undefined&&(!Number.isInteger(opts.limit)||opts.limit<1||opts.limit>100))throw new Error('Narrow the knowledge selection.');
   const localizedTitle =
     opts.locale && opts.locale !== 'en'
       ? sql<string | null>`${kbDocument.i18n} -> ${opts.locale} ->> 'title'`
@@ -100,11 +103,12 @@ export function listDocuments(
           inArray(kbDocument.audience, visibleAudiencesFor(ctx)),
           opts.includeArchived ? undefined : isNull(kbDocument.archivedAt),
           opts.category ? eq(kbDocument.category, opts.category) : undefined,
+          opts.kind?eq(kbDocument.kind,opts.kind):undefined,
           opts.audience && opts.audience !== 'all' ? eq(kbDocument.audience, opts.audience) : undefined,
           opts.search ? sql`${kbDocument.title} ilike ${'%' + opts.search + '%'}` : undefined,
         ),
       )
-      .orderBy(asc(kbDocument.category), asc(kbDocument.title));
+      .orderBy(asc(kbDocument.category), asc(kbDocument.title),asc(kbDocument.id)).limit(opts.limit??2147483647);
     return rows.map(({ localizedTitle: lt, ...d }) => ({ ...d, title: lt ?? d.title }));
   });
 }

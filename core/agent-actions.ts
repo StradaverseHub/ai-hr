@@ -120,6 +120,8 @@ export type ProposedSubject = {
   /** The gap that caused it, now absent from the record. Shown so the human can check the reasoning. */
   cause: ReadinessGapId;
   companyId:string;
+  companyName:string;
+  employeeCode:string|null;
   /** Opaque version binds verdict and current supported source facts, not a displayed bank/tax value. */
   version:string;
 };
@@ -143,7 +145,7 @@ const SHOW = 50;
  * reason. A stored proposal is a claim about the past that needs its own invalidation story to stop
  * lying; a computed one cannot be stale, and the precondition is re-checked at execution anyway (2).
  */
-type FixedSource={verdictId:string;employmentId:string;companyId:string;name:string;detectorId:string;computedVersion:string;paymentMethod:string|null;bankAccountNo:string|null;taxNumber:string|null};
+type FixedSource={verdictId:string;employmentId:string;companyId:string;name:string;personId:string;companyName:string;employeeCode:string|null;detectorId:string;computedVersion:string;paymentMethod:string|null;bankAccountNo:string|null;taxNumber:string|null};
 export function fixedUpstreamCauses(detectors:readonly string[],facts:{paymentMethod:string|null;bankAccountNo:string|null;taxNumber:string|null}):ReadinessGapId[]|null{
  if(!detectors.length)return null;
  const gaps=gapsForRecord({...facts,hasComp:true,ic:null,passport:null,epfNumber:null,socsoNumber:null});
@@ -154,11 +156,11 @@ export function fixedUpstreamCauses(detectors:readonly string[],facts:{paymentMe
 /** One canonical eligibility predicate for preview and locked execution. Closing a verdict requires
  * EVERY finding to be a supported, corrected record cause, never just one corrected finding. */
 async function fixedSubjectsTx(tx:Tx,companyIds?:string[],ids?:string[]):Promise<ProposedSubject[]>{
- const rows:FixedSource[]=await tx.select({verdictId:schema.payrollAnomalyVerdict.id,employmentId:schema.employment.id,companyId:schema.employment.companyId,name:schema.person.fullName,
+ const rows:FixedSource[]=await tx.select({verdictId:schema.payrollAnomalyVerdict.id,employmentId:schema.employment.id,companyId:schema.employment.companyId,name:schema.person.fullName,personId:schema.person.id,companyName:schema.company.legalName,employeeCode:schema.employment.employeeCode,
   detectorId:schema.payrollAnomalyFinding.detectorId,computedVersion:sql<string>`${schema.payrollAnomalyVerdict.computedAt}::text`,paymentMethod:schema.employment.paymentMethod,
   bankAccountNo:schema.employeeStatutoryMy.bankAccountNo,taxNumber:schema.employeeStatutoryMy.taxNumber})
  .from(schema.payrollAnomalyVerdict).innerJoin(schema.payrollAnomalyFinding,eq(schema.payrollAnomalyFinding.verdictId,schema.payrollAnomalyVerdict.id))
- .innerJoin(schema.employment,eq(schema.employment.id,schema.payrollAnomalyVerdict.employmentId)).innerJoin(schema.person,eq(schema.person.id,schema.employment.personId))
+ .innerJoin(schema.employment,eq(schema.employment.id,schema.payrollAnomalyVerdict.employmentId)).innerJoin(schema.person,eq(schema.person.id,schema.employment.personId)).innerJoin(schema.company,eq(schema.company.id,schema.employment.companyId))
  .leftJoin(schema.employeeStatutoryMy,eq(schema.employeeStatutoryMy.personId,schema.employment.personId))
  .where(and(isNull(schema.payrollAnomalyVerdict.supersededAt),isNull(schema.payrollAnomalyVerdict.resolvedAt),companyIds?inArray(schema.employment.companyId,companyIds):undefined,ids?inArray(schema.payrollAnomalyVerdict.id,ids):undefined))
  .orderBy(schema.employment.id,schema.payrollAnomalyVerdict.id,schema.payrollAnomalyFinding.id);
@@ -166,8 +168,8 @@ async function fixedSubjectsTx(tx:Tx,companyIds?:string[],ids?:string[]):Promise
  const out:ProposedSubject[]=[];
  for(const group of grouped.values()){
   const row=group[0]!,detectors=group.map(item=>item.detectorId).sort(),causes=fixedUpstreamCauses(detectors,row);if(!causes)continue;
-  const version=createHash('sha256').update(JSON.stringify({verdictId:row.verdictId,employmentId:row.employmentId,companyId:row.companyId,computedVersion:row.computedVersion,detectors,paymentMethod:row.paymentMethod,bankAccountNo:row.bankAccountNo,taxNumber:row.taxNumber})).digest('hex');
-  out.push({verdictId:row.verdictId,employmentId:row.employmentId,companyId:row.companyId,name:row.name,detectorId:detectors[0]!,cause:causes[0]!,version});
+  const version=createHash('sha256').update(JSON.stringify({verdictId:row.verdictId,employmentId:row.employmentId,companyId:row.companyId,computedVersion:row.computedVersion,personId:row.personId,detectors,paymentMethod:row.paymentMethod,bankAccountNo:row.bankAccountNo,taxNumber:row.taxNumber})).digest('hex');
+  out.push({verdictId:row.verdictId,employmentId:row.employmentId,companyId:row.companyId,companyName:row.companyName,employeeCode:row.employeeCode,name:row.name,detectorId:detectors[0]!,cause:causes[0]!,version});
  }
  return out;
 }
@@ -175,7 +177,11 @@ export function fixedUpstreamProposalDigest(subjects:readonly ProposedSubject[])
 export async function proposeActions(ctx:SessionContext,options?:{companyIds?:string[]}):Promise<ActionProposal[]>{
  if(!isAdmin(ctx))throw new AgentActionError('not_authorized');
  assertModuleEnabled(ctx,'payroll');
- const subjects=await withTenant(ctx,tx=>fixedSubjectsTx(tx,options?.companyIds));if(!subjects.length)return [];
+ return withTenant(ctx,tx=>proposeActionsTx(tx,ctx,options));
+}
+export async function proposeActionsTx(tx:Tx,ctx:SessionContext,options?:{companyIds?:string[]}):Promise<ActionProposal[]>{
+ if(!isAdmin(ctx))throw new AgentActionError('not_authorized');assertModuleEnabled(ctx,'payroll');
+ const subjects=await fixedSubjectsTx(tx,options?.companyIds);if(!subjects.length)return [];
  return [{type:AGENT_ACTION_TYPES[0]!,subjects:subjects.slice(0,SHOW),count:subjects.length,overCap:subjects.length>AGENT_ACTION_TYPES[0]!.blastRadiusCap}];
 }
 

@@ -37,6 +37,7 @@ import {
 import { hireEmployee, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
+import {createArticle} from '../core/knowledge-base';
 import { closeBatch, createBatch, generatePayslips } from '../core/payroll';
 import {
   adminCtx,
@@ -123,13 +124,11 @@ describe('ADR-0082 §2.3 — the registry cannot do what it must not do', () => 
     const dataImports = [...SOURCE.matchAll(/^import[\s\S]*?from '([^']+)';$/gm)]
       .map((m) => m[1])
       .filter((s) => s.startsWith('.'));
-    // entitlements is the module gate; read is the data; hr-date is the clock; ai/types is the contract.
-    // payslip-earning-lines is the fifth and does NOT weaken the property: it has ZERO imports of its own
-    // and no query surface at all — pure functions that read `statutory.componentLines` by SHAPE. It is
-    // how my_pay_change gets per-item figures without importing core/payroll and dragging the kernel into
-    // every assistant caller. Verify that emptiness before ever adding a sixth.
+    // New read owners are explicit: Attendance facade, audience-filtered KB and minimal company
+    // membership. Pure route/schema/display leaves cannot open a write. The forbidden patterns above
+    // still apply to every registry tool; domain owners keep their own RLS/permission checks.
     expect(dataImports.sort()).toEqual(
-      ['../db/client', '../lib/ai/types', '../lib/hr-date', './entitlements', './payslip-earning-lines', './read'].sort(),
+      ['../db/client','../lib/ai/types','../lib/hr-date','../lib/calendar-date','../lib/overtime-records','../lib/assistant-conversation-model','../packs/attendance/service','./entitlements','./payslip-earning-lines','./read','./assistant-read-context','./knowledge-base','./assistant-guidance'].sort(),
     );
   });
 });
@@ -139,7 +138,7 @@ describe('ADR-0082 §2.3 — the registry cannot do what it must not do', () => 
  * ══════════════════════════════════════════════════════════════════════════════════════════════════ */
 
 describe('ADR-0082 §2.2 mechanic 4 — every tool spec is strict-shaped', () => {
-  it('is exactly the nine tools, IN THIS ORDER', () => {
+  it('keeps the original tool prefix and appends the reviewed read-only tools', () => {
     // ORDER IS PINNED, not just membership. `tools` renders before `system` in the cacheable prefix and
     // caching is a PREFIX match, so a reordering silently multiplies the cost of every request while
     // changing no behaviour and failing no other assertion. New tools are APPENDED to this list.
@@ -155,6 +154,10 @@ describe('ADR-0082 §2.2 mechanic 4 — every tool spec is strict-shaped', () =>
       'my_payslip_summary',
       // ADR-0074 item 5 — APPENDED, never inserted. See the prefix-caching note this list guards.
       'my_pay_change',
+      'my_attendance_records',
+      'search_handbook',
+      'product_guidance',
+      'my_statutory_record',
     ]);
   });
 
@@ -526,6 +529,29 @@ describe('ADR-0082 §5 — a tool cannot see what its caller cannot see', () => 
     expect(seen).toEqual([first.employmentId, second.employmentId].sort());
   });
 
+  it('conversation company selection narrows even own and broadly authorised visible records',async()=>{
+    const first=await hire('Scoped Fictional');const [company]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Fictional Company B'}).returning();
+    const [department]=await owner.db.insert(schema.department).values({tenantId:base.tenantId,companyId:company.id,name:'Fictional B Team'}).returning();
+    const second=await hireEmployee(adminCtx(base),{person:{id:first.personId},companyId:company.id,departmentId:department.id,employmentType:'full_time',hiredOn:'2024-01-01'});
+    const user=await createAppUser(base.tenantId,first.personId,'employee'),own={...(await entitledCtx(base,['employee'])),userId:user,personId:first.personId};
+    const balances=await toolByName('my_leave_balances')!.run(own,{}, {companyIds:[base.companyId]});if(!balances.ok)throw Error('Expected scoped own balances');
+    expect((balances.employments as {employmentId:string}[]).map(row=>row.employmentId)).toEqual([first.employmentId]);
+    expect(refusalOf(await toolByName('employee_profile')!.run(own,{employment_id:second.employmentId},{companyIds:[base.companyId]}))).toBe('not_visible');
+    expect((await toolByName('employee_profile')!.run(own,{employment_id:second.employmentId},{companyIds:[company.id]})).ok).toBe(true);
+  });
+  it('handbook search applies the canonical audience filter before its bound and exposes no private article',async()=>{
+    const employee=await hire('Knowledge Fictional'),user=await createAppUser(base.tenantId,employee.personId,'employee'),own={...(await entitledCtx(base,['employee'])),userId:user,personId:employee.personId};
+    await createArticle(adminCtx(base),{title:'Fictional handbook public',body:'Visible approved guidance',audience:'employee'});
+    await createArticle(adminCtx(base),{title:'Fictional handbook private',body:'PRIVATE-HR-BODY-MUST-NOT-APPEAR',audience:'hr_admin'});
+    const result=await toolByName('search_handbook')!.run(own,{keywords:'Fictional handbook'});expect(result.ok).toBe(true);expect(JSON.stringify(result)).toContain('Visible approved guidance');expect(JSON.stringify(result)).not.toContain('PRIVATE-HR-BODY-MUST-NOT-APPEAR');expect(JSON.stringify(result)).not.toContain('Fictional handbook private');
+  });
+  it('own statutory presence comes from the country owner without registration/bank/identity numbers',async()=>{
+    const employee=await hire('Statutory Fictional');await setStatutoryProfileMY(adminCtx(base),{personId:employee.personId,icNumber:'900101014001',taxNumber:'SG4001',epfNumber:'12345678',socsoNumber:'87654321',bankName:'Fictional Bank',bankAccountNo:'9990001'});
+    const user=await createAppUser(base.tenantId,employee.personId,'employee'),own={...(await entitledCtx(base,['employee'])),userId:user,personId:employee.personId};
+    const result=await toolByName('my_statutory_record')!.run(own,{}, {companyIds:[base.companyId]});expect(result.ok).toBe(true);expect(result).toMatchObject({employments:[{profileAvailable:true,registrationNumbersRecorded:{epf:true,socso:true,incomeTax:true}}]});
+    for(const privateValue of ['900101014001','SG4001','12345678','87654321','9990001','Fictional Bank'])expect(JSON.stringify(result)).not.toContain(privateValue);
+  });
+
   it('my_payslip_summary drops an UNRELEASED payslip and drops the statutory breakdown', async () => {
     const a = adminCtx(base);
     const E = await hire('Payslip Pam');
@@ -595,9 +621,10 @@ describe('ADR-0077 — a tool whose module the tenant does not hold is not offer
   });
 
   it('drops my_payslip_summary when payroll is off, and keeps the other eight', async () => {
+    await setModule(base.tenantId,'attendance','active');
     const withPayroll = await entitledCtx(base);
     expect(toolsFor(withPayroll).map((t) => t.spec.name)).toContain('my_payslip_summary');
-    expect(toolsFor(withPayroll)).toHaveLength(10);
+    expect(toolsFor(withPayroll)).toHaveLength(14);
 
     await setModule(base.tenantId, 'payroll', null);
     const without = await entitledCtx(base);
@@ -605,18 +632,18 @@ describe('ADR-0077 — a tool whose module the tenant does not hold is not offer
     expect(offered).not.toContain('my_payslip_summary');
     // ADR-0074 item 5 is payroll-gated too, so turning payroll off now drops TWO tools, not one.
     expect(offered).not.toContain('my_pay_change');
-    expect(offered).toHaveLength(8);
+    expect(offered).toHaveLength(12);
     // The specs the gateway would send match the tools, and stay in registry order.
     expect(specsFor(without).map((s) => s.name)).toEqual(offered);
   });
 
-  it('payroll is the ONLY axis the offered list varies on today, and that is worth knowing', () => {
+  it('each appended tool declares its canonical module and payroll tools remain gated', () => {
     // Eight of the ten name a CORE module, which answers enabled without consulting any snapshot. So
     // ADR-0082 §2.8's "each tool is gated by its own module" is true of exactly two tools right now. It is
     // not a defect — it is what keeps the cacheable prefix stable per tenant — but a reader who assumes
     // seven live gates will design around one that does not exist.
     const gated = ASSISTANT_TOOLS.filter((t) => t.module !== null).map((t) => t.module);
-    expect(new Set(gated)).toEqual(new Set(['leave', 'org', 'employees', 'payroll']));
+    expect(new Set(gated)).toEqual(new Set(['leave','org','employees','payroll','attendance','knowledge_base']));
     expect(ASSISTANT_TOOLS.filter((t) => t.module === 'payroll')).toHaveLength(2);
   });
 });

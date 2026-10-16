@@ -582,7 +582,7 @@ export const appUser = pgTable(
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
-  (t) => [index('app_user_tenant_idx').on(t.tenantId)],
+  (t) => [index('app_user_tenant_idx').on(t.tenantId),uniqueIndex('assistant_app_user_identity_uq').on(t.id,t.tenantId)],
 );
 
 // Deployment identities are private to SECURITY DEFINER functions; they do not duplicate HR membership.
@@ -9481,6 +9481,7 @@ export const assistantExchange = pgTable(
       .references(() => appUser.id),
     askedAt: timestamp('asked_at', { withTimezone: true }).defaultNow().notNull(),
     question: text('question').notNull(),
+    interactionKind:text('interaction_kind').$type<'question'|'capability'>().notNull().default('question'),
     /** NULL when refused, errored, or still in flight. */
     answer: text('answer'),
     /** [{ name, input, rowCount }] — the tool INPUTS and how many rows came back, never the rows. */
@@ -9503,6 +9504,9 @@ export const assistantExchange = pgTable(
     createdAt: createdAt(),
   },
   (t) => [
+    uniqueIndex('assistant_exchange_identity_uq').on(t.id,t.tenantId,t.appUserId),
+    check('assistant_exchange_interaction_kind_check',sql`${t.interactionKind} IN ('question','capability')`),
+    check('assistant_exchange_capability_no_model',sql`${t.interactionKind}='question' OR (${t.turnCount}=0 AND ${t.provider} IS NULL AND ${t.model} IS NULL AND ${t.inputTokens}=0 AND ${t.outputTokens}=0 AND ${t.cachedInputTokens}=0 AND ${t.toolCalls}='[]'::jsonb)`),
     // `.desc()` mirrors 0451, which creates this index with `asked_at DESC` — it serves a newest-first
     // history list and the per-user daily cap. Declared ASC here it read as a different index from the
     // one the database actually has, which is the drift a later `db:generate` turns into a spurious
@@ -10457,19 +10461,19 @@ export const attendanceOvertimeCalculationEvidence = pgTable('attendance_overtim
 
 // ADR-0127: metadata only. Existing assistant_exchange remains the private question/answer audit.
 export const assistantConversation=pgTable('assistant_conversation',{
- id:id(),tenantId:tenantId(),appUserId:uuid('app_user_id').notNull().references(()=>appUser.id),
+ id:id(),tenantId:tenantId(),appUserId:uuid('app_user_id').notNull(),
  signInHash:text('sign_in_hash').notNull(),authorityStamp:text('authority_stamp').notNull(),
  companyIds:uuid('company_ids').array().notNull().default(sql`'{}'::uuid[]`),revision:integer('revision').notNull().default(1),
  pendingRequestId:uuid('pending_request_id'),busyUntil:timestamp('busy_until',{withTimezone:true}),
  invalidatedAt:timestamp('invalidated_at',{withTimezone:true}),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull().default(sql`now()+interval '8 hours'`),createdAt:createdAt(),
-},t=>[uniqueIndex('assistant_conversation_current_uq').on(t.tenantId,t.appUserId,t.signInHash).where(sql`invalidated_at IS NULL`)]);
+},t=>[uniqueIndex('assistant_conversation_id_tenant_id_app_user_id_key').on(t.id,t.tenantId,t.appUserId),foreignKey({columns:[t.appUserId,t.tenantId],foreignColumns:[appUser.id,appUser.tenantId]}),uniqueIndex('assistant_conversation_current_uq').on(t.tenantId,t.appUserId,t.signInHash).where(sql`invalidated_at IS NULL`)]);
 export const assistantConversationTurn=pgTable('assistant_conversation_turn',{
- id:id(),tenantId:tenantId(),appUserId:uuid('app_user_id').notNull().references(()=>appUser.id),conversationId:uuid('conversation_id').notNull().references(()=>assistantConversation.id),
- requestId:uuid('request_id').notNull(),revision:integer('revision').notNull(),exchangeId:uuid('exchange_id').references(()=>assistantExchange.id),createdAt:createdAt(),
-},t=>[uniqueIndex('assistant_conversation_turn_conversation_id_request_id_key').on(t.conversationId,t.requestId),uniqueIndex('assistant_conversation_turn_conversation_id_revision_key').on(t.conversationId,t.revision)]);
+ id:id(),tenantId:tenantId(),appUserId:uuid('app_user_id').notNull(),conversationId:uuid('conversation_id').notNull(),
+ requestId:uuid('request_id').notNull(),revision:integer('revision').notNull(),exchangeId:uuid('exchange_id'),helpful:boolean('helpful'),feedbackAt:timestamp('feedback_at',{withTimezone:true}),createdAt:createdAt(),
+},t=>[foreignKey({columns:[t.conversationId,t.tenantId,t.appUserId],foreignColumns:[assistantConversation.id,assistantConversation.tenantId,assistantConversation.appUserId]}),foreignKey({columns:[t.exchangeId,t.tenantId,t.appUserId],foreignColumns:[assistantExchange.id,assistantExchange.tenantId,assistantExchange.appUserId]}),uniqueIndex('assistant_conversation_turn_conversation_id_request_id_key').on(t.conversationId,t.requestId),uniqueIndex('assistant_conversation_turn_conversation_id_revision_key').on(t.conversationId,t.revision)]);
 export const assistantConfirmation=pgTable('assistant_confirmation',{
- id:id(),tenantId:tenantId(),appUserId:uuid('app_user_id').notNull().references(()=>appUser.id),conversationId:uuid('conversation_id').notNull().references(()=>assistantConversation.id),
+ id:id(),tenantId:tenantId(),appUserId:uuid('app_user_id').notNull(),conversationId:uuid('conversation_id').notNull(),
  revision:integer('revision').notNull().default(1),authorityStamp:text('authority_stamp').notNull(),payload:jsonb('payload').$type<{typeId:'close_fixed_upstream';verdictIds:string[]}>().notNull(),
  preconditionDigest:text('precondition_digest').notNull(),status:text('status').$type<'awaiting'|'executing'|'completed'|'refused'|'uncertain'>().notNull().default('awaiting'),
  requestId:uuid('request_id'),result:jsonb('result').$type<{closed:number;stale:number}>(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull().default(sql`now()+interval '10 minutes'`),createdAt:createdAt(),
-},t=>[index('assistant_confirmation_conversation_idx').on(t.conversationId,t.createdAt.desc())]);
+},t=>[foreignKey({columns:[t.conversationId,t.tenantId,t.appUserId],foreignColumns:[assistantConversation.id,assistantConversation.tenantId,assistantConversation.appUserId]}),index('assistant_confirmation_conversation_idx').on(t.conversationId,t.createdAt.desc())]);

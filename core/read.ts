@@ -6176,12 +6176,14 @@ export function concurrentEmploymentPersons(ctx: SessionContext) {
 }
 
 /** The current principal's payslips (RLS already restricts to own employment). */
-export function myPayslips(ctx: SessionContext, employmentIds: string[]) {
+export function myPayslips(ctx: SessionContext, employmentIds: string[], opts: {companyIds?:readonly string[];releasedOnly?:boolean;limit?:number} = {}) {
+  if(opts.limit!==undefined&&(!Number.isInteger(opts.limit)||opts.limit<1||opts.limit>10001))throw new Error('Narrow the payslip selection.');
   return withTenant(ctx, async (tx) => {
     if (employmentIds.length === 0) return [];
     const rows = await tx
       .select({
         id: payslip.id,
+        employmentId:payslip.employmentId,
         company: company.legalName,
         payPeriod: payrollBatch.payPeriod,
         runType: payrollBatch.runType,
@@ -6198,8 +6200,8 @@ export function myPayslips(ctx: SessionContext, employmentIds: string[]) {
       .from(payslip)
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
-      .where(inArray(payslip.employmentId, employmentIds))
-      .orderBy(desc(payrollBatch.payPeriod), payrollBatch.runSeq);
+      .where(and(inArray(payslip.employmentId, employmentIds),opts.companyIds?inArray(payrollBatch.companyId,[...opts.companyIds]):undefined,opts.releasedOnly?sql`${payrollBatch.status}='closed' AND (${payrollBatch.releasedAt} IS NULL OR ${payrollBatch.releasedAt}<=now())`:undefined))
+      .orderBy(desc(payrollBatch.payPeriod), payrollBatch.runSeq,payslip.id).limit(opts.limit??2147483647);
     // Step 6 — stamp a `released` flag per row: released once the batch is closed AND its release instant has
     // passed. Non-closed batches are never released. Legacy closed batches carry a backfilled releasedAt so
     // they stay visible. The ESS payslip section filters on `released`.

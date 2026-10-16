@@ -35,3 +35,33 @@ New privacy and WFH policies must be explicitly enabled. Unavailable canonical f
 never fabricated zeros, birthdays, paydays, effort estimates, work locations or statuses. Real provider,
 physical device/geofence/camera, native/mobile, Linux/runtime, performance and authenticated visual
 acceptance remain parent-owned and UNRUN until explicitly demonstrated.
+
+## Conversation source review checkpoint
+
+The shared conversation component now calls the sign-in-bound metadata owner. Actual questions reserve
+and finalize one existing exchange before/after provider work; deterministic proposals and confirmation
+receipts are zero-model capabilities in that same audit. Failed reserved questions remain counted;
+pre-reservation invalid/access/configuration refusals do not acquire a slot. In-flight repeats never
+start another provider call automatically. The existing gateway and monthly usage rules remain.
+
+Read adapters now cover Personnel, Leave, salary-free recorded Attendance, released own Payroll and
+minimal current statutory registration presence. Scoped Payroll reads apply the recorded batch company
+and release condition before a bounded selection; a pay comparison refuses incomplete bounded history
+rather than summing part of a period. Handbook search applies the canonical audience/archive/article
+filter before its bound. Closed links point at actual Personnel management, Attendance Allowance,
+Payroll, personal Payroll/Documents and Feedback workflows. The destination owns its full form and
+confirmation; no link asserts that a request was submitted.
+
+| Before | After | Why |
+|---|---|---|
+| Questions and confirmations could be visually conflated | Question Enter/IME handling and a separate existing confirmation dialog | A keyboard question cannot execute a proposal |
+| A delayed response could retain an obsolete scope's answer | Generation/mount guards and an opaque RSC workspace key; server rechecks remain authoritative | Stale completion cannot overwrite a new actor/scope workspace |
+| Model text could suggest arbitrary navigation | Plain text replies plus only server-reviewed route-key links | No model HTML, script or URL becomes an active navigation control |
+| An unanswered lost request could be retried as a new provider call | Existing claim/revision and Refresh reading its current owner state | Unknown completion is not silently repeated |
+| A company selector could be ignored by an otherwise authorised tool | Explicit company narrowing; dated company proof for historical Attendance | Current company cannot substitute for past membership |
+
+This is a source review, not rendered contrast, keyboard, provider, database or performance evidence.
+The Home cards/calendar/WFH/sharing/greeting owners, complete selected-employment clock propagation and
+editable improvement handoff remain in the next implementation slice. The Profile subject reader
+checkpoint is a required integration dependency. Migrations0555/0556 remain unregistered here; parent
+owns ordered journal integration and the real test/runtime windows.

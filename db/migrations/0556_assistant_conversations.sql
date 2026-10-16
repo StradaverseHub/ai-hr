@@ -1,3 +1,13 @@
+-- Legacy/default/model calls remain questions. Only server-produced zero-model capabilities use
+-- the second classification; the existing usage owner remains the sole metering record.
+ALTER TABLE assistant_exchange ADD COLUMN interaction_kind text NOT NULL DEFAULT 'question' CHECK(interaction_kind IN ('question','capability'));
+--> statement-breakpoint
+ALTER TABLE assistant_exchange ADD CONSTRAINT assistant_exchange_capability_no_model CHECK(interaction_kind='question' OR (turn_count=0 AND provider IS NULL AND model IS NULL AND input_tokens=0 AND output_tokens=0 AND cached_input_tokens=0 AND tool_calls='[]'::jsonb));
+CREATE FUNCTION app.assistant_exchange_kind_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN IF NEW.interaction_kind IS DISTINCT FROM OLD.interaction_kind THEN RAISE EXCEPTION 'Exchange classification is immutable';END IF;RETURN NEW;END $$;
+REVOKE ALL ON FUNCTION app.assistant_exchange_kind_guard() FROM PUBLIC;
+CREATE TRIGGER assistant_exchange_kind_guard BEFORE UPDATE ON assistant_exchange FOR EACH ROW EXECUTE FUNCTION app.assistant_exchange_kind_guard();
+--> statement-breakpoint
 -- One session conversation points at the existing private exchange audit. No second usage/credit store.
 CREATE UNIQUE INDEX assistant_app_user_identity_uq ON app_user(id,tenant_id);
 --> statement-breakpoint
@@ -20,11 +30,34 @@ CREATE UNIQUE INDEX assistant_conversation_current_uq ON assistant_conversation(
 CREATE TABLE assistant_conversation_turn (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL,app_user_id uuid NOT NULL,
  conversation_id uuid NOT NULL,request_id uuid NOT NULL,revision integer NOT NULL,
- exchange_id uuid,created_at timestamptz NOT NULL DEFAULT now(),
+ exchange_id uuid,helpful boolean,feedback_at timestamptz,created_at timestamptz NOT NULL DEFAULT now(),
  FOREIGN KEY(conversation_id,tenant_id,app_user_id) REFERENCES assistant_conversation(id,tenant_id,app_user_id),
  FOREIGN KEY(exchange_id,tenant_id,app_user_id) REFERENCES assistant_exchange(id,tenant_id,app_user_id),
- UNIQUE(conversation_id,request_id),UNIQUE(conversation_id,revision),CHECK(revision>1)
+ UNIQUE(conversation_id,request_id),UNIQUE(conversation_id,revision),CHECK(revision>1),CHECK((helpful IS NULL)=(feedback_at IS NULL)),CHECK(helpful IS NULL OR exchange_id IS NOT NULL)
 );
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_confirmed_payload_valid(p jsonb) RETURNS boolean LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE v jsonb;seen text[]:=ARRAY[]::text[];
+BEGIN
+ IF jsonb_typeof(p) IS DISTINCT FROM 'object' OR (SELECT count(*) FROM jsonb_object_keys(p))<>2 OR p->>'typeId' IS DISTINCT FROM 'close_fixed_upstream' OR jsonb_typeof(p->'verdictIds') IS DISTINCT FROM 'array' THEN RETURN false;END IF;
+ IF jsonb_array_length(p->'verdictIds') NOT BETWEEN 1 AND 50 OR octet_length(p::text)>4096 THEN RETURN false;END IF;
+ FOR v IN SELECT value FROM jsonb_array_elements(p->'verdictIds') LOOP
+  IF jsonb_typeof(v)<>'string' OR (v#>>'{}') !~* '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$' OR lower(v#>>'{}')=ANY(seen) THEN RETURN false;END IF;seen:=array_append(seen,lower(v#>>'{}'));
+ END LOOP;RETURN true;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_confirmed_payload_valid(jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_confirmed_payload_valid(jsonb) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_confirmation_result_valid(p jsonb,n integer) RETURNS boolean LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE closed numeric;stale numeric;
+BEGIN
+ IF p IS NULL THEN RETURN true;END IF;
+ IF jsonb_typeof(p) IS DISTINCT FROM 'object' OR (SELECT count(*) FROM jsonb_object_keys(p))<>2 OR jsonb_typeof(p->'closed') IS DISTINCT FROM 'number' OR jsonb_typeof(p->'stale') IS DISTINCT FROM 'number' THEN RETURN false;END IF;
+ closed:=(p->>'closed')::numeric;stale:=(p->>'stale')::numeric;
+ RETURN closed=trunc(closed) AND stale=trunc(stale) AND closed>=0 AND stale>=0 AND closed+stale=n;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_confirmation_result_valid(jsonb,integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_confirmation_result_valid(jsonb,integer) TO ai_hr_app;
 --> statement-breakpoint
 CREATE TABLE assistant_confirmation (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL,app_user_id uuid NOT NULL,
@@ -35,9 +68,8 @@ CREATE TABLE assistant_confirmation (
  FOREIGN KEY(conversation_id,tenant_id,app_user_id) REFERENCES assistant_conversation(id,tenant_id,app_user_id),
  CHECK(authority_stamp ~ '^[a-f0-9]{64}$' AND precondition_digest ~ '^[a-f0-9]{64}$'),
  CHECK(revision>0),CHECK(status IN ('awaiting','executing','completed','refused','uncertain')),
- CHECK(jsonb_typeof(payload)='object' AND payload->>'typeId'='close_fixed_upstream'
-  AND jsonb_typeof(payload->'verdictIds')='array' AND jsonb_array_length(payload->'verdictIds') BETWEEN 1 AND 50
-  AND octet_length(payload::text)<=4096),CHECK(result IS NULL OR octet_length(result::text)<=4096)
+ CHECK((status='completed')=(result IS NOT NULL)),CHECK(status NOT IN ('executing','completed','uncertain') OR request_id IS NOT NULL),
+ CHECK(app.assistant_confirmed_payload_valid(payload)),CHECK(result IS NULL OR octet_length(result::text)<=4096),CHECK(app.assistant_confirmation_result_valid(result,jsonb_array_length(payload->'verdictIds')))
 );
 CREATE INDEX assistant_confirmation_conversation_idx ON assistant_confirmation(conversation_id,created_at DESC);
 --> statement-breakpoint
@@ -56,11 +88,15 @@ GRANT SELECT,INSERT,UPDATE ON assistant_conversation,assistant_conversation_turn
 --> statement-breakpoint
 CREATE FUNCTION app.assistant_conversation_identity_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
- IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.app_user_id IS DISTINCT FROM OLD.app_user_id OR NEW.id IS DISTINCT FROM OLD.id THEN RAISE EXCEPTION 'Conversation identity is immutable';END IF;
- IF TG_TABLE_NAME='assistant_conversation' THEN IF (NEW.sign_in_hash IS DISTINCT FROM OLD.sign_in_hash OR NEW.authority_stamp IS DISTINCT FROM OLD.authority_stamp OR NEW.company_ids IS DISTINCT FROM OLD.company_ids OR NEW.expires_at IS DISTINCT FROM OLD.expires_at OR OLD.invalidated_at IS NOT NULL AND NEW.invalidated_at IS DISTINCT FROM OLD.invalidated_at) THEN RAISE EXCEPTION 'Conversation binding is immutable';END IF;END IF;
+ IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.app_user_id IS DISTINCT FROM OLD.app_user_id OR NEW.id IS DISTINCT FROM OLD.id OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN RAISE EXCEPTION 'Conversation identity is immutable';END IF;
+ IF TG_TABLE_NAME='assistant_conversation' THEN
+  IF NEW.revision NOT IN (OLD.revision,OLD.revision+1) THEN RAISE EXCEPTION 'Invalid conversation revision';END IF;
+  IF (NEW.sign_in_hash IS DISTINCT FROM OLD.sign_in_hash OR NEW.authority_stamp IS DISTINCT FROM OLD.authority_stamp OR NEW.company_ids IS DISTINCT FROM OLD.company_ids OR NEW.expires_at IS DISTINCT FROM OLD.expires_at OR OLD.invalidated_at IS NOT NULL AND NEW.invalidated_at IS DISTINCT FROM OLD.invalidated_at) THEN RAISE EXCEPTION 'Conversation binding is immutable';END IF;END IF;
  IF TG_TABLE_NAME='assistant_conversation_turn' THEN IF (NEW.conversation_id IS DISTINCT FROM OLD.conversation_id OR NEW.request_id IS DISTINCT FROM OLD.request_id OR NEW.revision IS DISTINCT FROM OLD.revision OR OLD.exchange_id IS NOT NULL AND NEW.exchange_id IS DISTINCT FROM OLD.exchange_id) THEN RAISE EXCEPTION 'Conversation turn is immutable';END IF;END IF;
  IF TG_TABLE_NAME='assistant_confirmation' THEN
   IF NEW.conversation_id IS DISTINCT FROM OLD.conversation_id OR NEW.payload IS DISTINCT FROM OLD.payload OR NEW.precondition_digest IS DISTINCT FROM OLD.precondition_digest OR NEW.authority_stamp IS DISTINCT FROM OLD.authority_stamp OR NEW.expires_at IS DISTINCT FROM OLD.expires_at THEN RAISE EXCEPTION 'Confirmed proposal is immutable';END IF;
+  IF OLD.request_id IS NOT NULL AND NEW.request_id IS DISTINCT FROM OLD.request_id THEN RAISE EXCEPTION 'Confirmation request is immutable';END IF;
+  IF NEW.revision<>OLD.revision+CASE WHEN OLD.status='executing' AND NEW.status IN ('completed','uncertain') THEN 1 ELSE 0 END THEN RAISE EXCEPTION 'Invalid confirmation revision';END IF;
   IF NEW.status IS DISTINCT FROM OLD.status AND NOT(OLD.status='awaiting' AND NEW.status IN ('executing','refused') OR OLD.status='executing' AND NEW.status IN ('completed','uncertain')) THEN RAISE EXCEPTION 'Invalid proposal transition';END IF;
   IF OLD.status IN ('completed','refused','uncertain') AND NEW IS DISTINCT FROM OLD THEN RAISE EXCEPTION 'Final proposal is immutable';END IF;
  END IF;RETURN NEW;
@@ -89,6 +125,8 @@ BEGIN
  RETURN encode(sha256(convert_to(jsonb_build_object('purpose','assistant-authority-v1','actor',app.current_user_id(),
   'person',(SELECT u.person_id FROM app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id()),
   'companies',ARRAY(SELECT DISTINCT id FROM unnest(p_companies) id ORDER BY id),
+  -- Canonical archive/restore cycles must not revive an old conversation with identical current flags.
+  'loginLifecycle',(SELECT jsonb_build_array(e.id,e.event_type,e.occurred_at) FROM domain_event e WHERE e.tenant_id=app.current_tenant_id() AND e.aggregate_type='app-user' AND e.aggregate_id=app.current_user_id() AND e.event_type IN ('app-user.archived','app-user.restored') ORDER BY e.occurred_at DESC,e.id DESC LIMIT 1),
   'source',identity_email.report_access_stamp(app.current_tenant_id()),
   'aiControls',(SELECT coalesce(jsonb_agg(to_jsonb(c) ORDER BY c.id),'[]'::jsonb) FROM ai_control_policy c WHERE c.tenant_id=app.current_tenant_id()),
   'providerRevision',(SELECT coalesce(jsonb_agg(jsonb_build_array(c.id,c.provider,c.model,c.is_active,c.updated_at) ORDER BY c.id),'[]'::jsonb) FROM ai_provider_config c WHERE c.tenant_id=app.current_tenant_id()),

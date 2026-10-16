@@ -1,0 +1,8 @@
+import { getTranslations } from 'next-intl/server';
+import { ASSISTANT_HANDOFFS, type AssistantConversationCopy } from '@/lib/assistant-conversation-model';
+export async function conversationCopy(): Promise<AssistantConversationCopy> {
+    const t = await getTranslations('assistantConversation'), a=await getTranslations('assistant');
+    const routes = Object.fromEntries(ASSISTANT_HANDOFFS.map(route => [route, t(`routes.${route}`)])) as AssistantConversationCopy['routes'];
+    return { failures:{not_configured:a('err_not_configured'),budget_monthly:a('err_budget_monthly'),budget_daily:a('err_budget_daily'),invalid_question:a('err_invalid_question'),provider_error:a('err_provider_error'),ai_control:a('err_ai_control')},unavailable: t('unavailable'), notFinished: t('notFinished'), review: t('review'), noCandidates: t('noCandidates'), overCap: t('overCap'), changed: t('changed'), completed: (closed, stale) => t('completed', { closed, stale }), employeeColumn: t('employeeColumn'), causeColumn: t('causeColumn'), causes: { no_bank_account: t('bankFixed'), no_tax_number: t('taxFixed') }, routes,
+        evidence: { records: t('stateFacts'), payrollExceptions: routes.payrollExceptions, my_leave_balances: routes.ownLeave, my_leave_requests: routes.ownLeave, leave_entitlement_explain: routes.ownLeave, upcoming_holidays: routes.ownAttendance, who_is_away: routes.ownLeave, team_leave_summary: routes.ownLeave, employee_profile: routes.ownProfile, my_reporting_line: routes.ownProfile, my_payslip_summary: routes.ownPayslips, my_pay_change: routes.ownPayslips, my_attendance_records: routes.ownAttendance, search_handbook: t('stateGuide'), product_guidance: t('stateGuide'), my_statutory_record:routes.statutorySetup } };
+}

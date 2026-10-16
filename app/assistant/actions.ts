@@ -1,36 +1,45 @@
 'use server';
-
-import { redirect } from 'next/navigation';
-import { revalidatePath } from 'next/cache';
-import { getSession } from '@/lib/session';
-import { askAssistant, AssistantError } from '@/core/assistant';
-
-/**
- * ADR-0082 slice 4 — ask one question.
- *
- * THE ERROR CODE IS CARRIED, NEVER THE MESSAGE. `AssistantError.code` is a closed set the screen has a
- * localised sentence for; the underlying provider text is deliberately not surfaced (§2.7) — it can carry
- * a model name, a quota detail or a raw SDK string, none of which an employee should read and all of
- * which would arrive untranslated in a six-locale product.
- *
- * Anything that is NOT an AssistantError is a bug rather than a refusal, and is reported as the generic
- * provider failure for the same reason.
- */
-export async function askAssistantAction(formData: FormData) {
-  const s = await getSession();
-  const question = String(formData.get('question') ?? '');
-
-  let exchangeId: string;
-  try {
-    const res = await askAssistant(s, { question });
-    exchangeId = res.exchangeId;
-  } catch (e) {
-    const code = e instanceof AssistantError ? e.code : 'provider_error';
-    redirect(`/assistant?error=${encodeURIComponent(code)}`);
-  }
-
-  revalidatePath('/assistant');
-  // `e` highlights the new exchange in the list; the ANSWER itself is read back from the audit row, so
-  // the screen cannot show a sentence that differs from the one recorded.
-  redirect(`/assistant?e=${encodeURIComponent(exchangeId)}`);
+import { startAssistantConversation, submitAssistantConversationTurn, confirmAssistantConversationProposal, resetAssistantConversation, rateAssistantConversationReply } from '@/core/assistant-conversation';
+import { ensureAssistantDemoNonce } from '@/lib/assistant-session';
+import { AssistantConversationError, type AssistantConversationFailure } from '@/lib/assistant-conversation-model';
+import { conversationCopy } from './copy';
+const failure = (error: unknown): {
+    ok: false;
+    code: AssistantConversationFailure;
+} => ({ ok: false, code: error instanceof AssistantConversationError ? error.code : 'unavailable' });
+export async function loadAssistantConversationAction() { try {
+    await ensureAssistantDemoNonce();
+    return { ok: true as const, view: await startAssistantConversation() };
 }
+catch (error) {
+    return failure(error);
+} }
+export async function submitAssistantConversationAction(raw: unknown) { try {
+    return { ok: true as const, view: await submitAssistantConversationTurn(raw, await conversationCopy()) };
+}
+catch (error) {
+    return failure(error);
+} }
+export async function confirmAssistantProposalAction(raw: unknown) { try {
+    return { ok: true as const, view: await confirmAssistantConversationProposal(raw, await conversationCopy()) };
+}
+catch (error) {
+    return failure(error);
+} }
+export async function newAssistantConversationAction(id: string) { try {
+    return { ok: true as const, view: await resetAssistantConversation(id) };
+}
+catch (error) {
+    return failure(error);
+} }
+export async function rateAssistantReplyAction(raw: {
+    conversationId: string;
+    exchangeId: string;
+    helpful: boolean;
+}) { try {
+    await rateAssistantConversationReply(raw);
+    return { ok: true as const };
+}
+catch (error) {
+    return failure(error);
+} }
