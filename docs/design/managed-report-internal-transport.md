@@ -93,8 +93,8 @@ separate steps. State can change after locks/checks release; no atomic revocatio
 ## Explicit installation prerequisites and commands (NOT RUN)
 
 Use only a reviewed disposable Linux/systemd host for first acceptance, named fictional database and TLS
-SMTP sink. Existing old Linux fixture is Keycloak-specific and must be adapted to genuine internal-mode
-human enrollment/SMTP setup before it can supply acceptance; do not claim it works unchanged.
+SMTP sink. The [staged Linux fixture](managed-report-acceptance.md) now targets genuine internal-mode human
+enrollment/SMTP setup. Its source adaptation supplies no execution or acceptance claim.
 
 1. Parent integrates real Auth0543/e5, broker62c and this transport plus0552 journal union. Run full types,
    focused tests and migration/restricted-role/concurrency rehearsal under coordinated locks. Broker files
