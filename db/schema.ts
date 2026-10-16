@@ -1,3 +1,4 @@
+import type { TestingCatalogueAppliedResult } from '../lib/system-testing/updates';
 import type { InstructionDefinition, PublishedInstruction, ExecutionStatus } from '../lib/system-testing/model';
 import {PERSONNEL_EMPLOYMENT_TYPES,PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS} from '../lib/personnel-choice-vocabulary';
 import type { EmployeeMasterSpec } from '../lib/employee-master-report';
@@ -9771,7 +9772,7 @@ export const testCatalogueUpdate = pgTable('test_catalogue_update', {
   id: id(), tenantId: tenantId(), updateHash: text('update_hash').notNull(), previewHash: text('preview_hash').notNull(),
   catalogueHash: text('catalogue_hash').notNull(), sourceRef: text('source_ref').notNull(), sourceContentHash: text('source_content_hash').notNull(),
   selectedSemanticIds: jsonb('selected_semantic_ids').$type<string[]>().notNull(),
-  result: jsonb('result').$type<{ caseId: string; versionId: string; semanticId: string }[]>().notNull(),
+  result: jsonb('result').$type<TestingCatalogueAppliedResult[]>().notNull(),
   confirmedByUserId: uuid('confirmed_by_user_id').notNull().references(() => appUser.id), createdAt: createdAt(),
 }, t => [uniqueIndex('test_catalogue_update_hash_uq').on(t.tenantId, t.updateHash)]);
 

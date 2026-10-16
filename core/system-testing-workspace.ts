@@ -67,14 +67,14 @@ async function event(tx: Tx, ctx: SessionContext, caseId: string, type: string, 
 }
 /** Shared publication owner used by manual publication and exact-hash catalogue confirmation. */
 export async function publishTestInstructionTx(tx: Tx, ctx: SessionContext, p: {
-  caseId: string; expectedVersionId: string | null; definition: InstructionDefinition;
+  caseId: string; expectedVersionId: string | null; expectedDraftRevision: number; definition: InstructionDefinition;
   provenance: { kind: 'local' } | { kind: 'catalogue'; semanticId: string; sourceRef: string; catalogueHash: string; sourceContentHash: string; guideSourceHash: string };
 }): Promise<{ caseId: string; versionId: string; ordinal: number }> {
   const actor = administrator(ctx), definition = parseInstruction(p.definition);
   if (!isTestableModule(ctx, definition.moduleCode) || definition.screenKeys.some(key => !SCREENS.some(screen => screen.screenKey === key))) throw new TestingRefusal('invalid');
   if (p.provenance.kind === 'catalogue') { testingSemanticId.parse(p.provenance.semanticId); testingSourceRef.parse(p.provenance.sourceRef); testingHash.parse(p.provenance.catalogueHash); testingHash.parse(p.provenance.sourceContentHash); testingHash.parse(p.provenance.guideSourceHash); }
   const c = await caseLock(tx, ctx, p.caseId);
-  if (c.currentVersionId !== p.expectedVersionId) throw new TestingRefusal('stale_instructions');
+  if (c.currentVersionId !== p.expectedVersionId || c.draftRevision !== p.expectedDraftRevision) throw new TestingRefusal('stale_instructions');
   const [count] = await tx.select({ ordinal: sql<number>`coalesce(max(${testCaseVersion.ordinal}),0)` }).from(testCaseVersion).where(eq(testCaseVersion.testCaseId, c.id));
   const ordinal = Number(count.ordinal) + 1, contentHash = testingDigest(definition);
   const [v] = await tx.insert(testCaseVersion).values({ tenantId: ctx.tenantId, testCaseId: c.id, ordinal, definition, contentHash, provenance: p.provenance.kind, publishedByUserId: actor,
@@ -90,7 +90,7 @@ export async function publishTestInstruction(ctx: SessionContext, p: { caseId: s
     await libraryLock(tx, ctx);
     const c = await caseLock(tx, ctx, p.caseId);
     if (c.draftRevision !== p.expectedDraftRevision || !c.draftDefinition) throw new TestingRefusal('stale_instructions');
-    return publishTestInstructionTx(tx, ctx, { caseId: c.id, expectedVersionId: p.expectedVersionId, definition: parseInstruction(c.draftDefinition), provenance: { kind: 'local' } });
+    return publishTestInstructionTx(tx, ctx, { caseId: c.id, expectedVersionId: p.expectedVersionId, expectedDraftRevision: c.draftRevision, definition: parseInstruction(c.draftDefinition), provenance: { kind: 'local' } });
   });
 }
 export async function assignTestingCase(ctx: SessionContext, p: { caseId: string; testerUserId: string; expectedVersionId: string; active: boolean; expectedRevision: number | null }): Promise<{ assignmentId: string; revision: number }> {

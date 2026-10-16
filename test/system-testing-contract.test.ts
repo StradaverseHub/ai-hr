@@ -43,7 +43,7 @@ describe('verified build and reviewed update comparison', () => {
   });
   it('deduplicates exact semantic content, detects local edits and binds confirmation to exact library snapshot', () => {
     const add = preview(); expect(add.entries[0].action).toBe('add');
-    const row: LibraryCaseSnapshot = { caseId: id, caseNo: 17, versionId: version, versionHash: testingDigest(guide), semanticId: catalogue.entries[0].semanticId, origin: 'catalogue', acceptedCatalogueDefinitionHash: testingDigest(guide), acceptedGuideSourceHash: sourceContentDigest(sourceHashRecord), title: guide.title, hasLocalDraft: false, definition: guide };
+    const row: LibraryCaseSnapshot = { caseId: id, caseNo: 17, versionId: version, versionHash: testingDigest(guide), semanticId: catalogue.entries[0].semanticId, origin: 'catalogue', acceptedCatalogueDefinitionHash: testingDigest(guide), acceptedGuideSourceHash: sourceContentDigest(sourceHashRecord), title: guide.title, hasLocalDraft: false, draftRevision: 0, draftDefinition: null, definition: guide };
     expect(preview([row]).entries[0].action).toBe('unchanged');
     const local = { ...guide, objective: 'Locally revised objective.' };
     expect(preview([{ ...row, versionHash: testingDigest(local), definition: local }]).entries[0]).toMatchObject({ action: 'conflict', reason: 'local_override' });
@@ -53,13 +53,13 @@ describe('verified build and reviewed update comparison', () => {
   });
   it('requires source review after code changes and creates retest work for explicitly reviewed source changes', () => {
     const current = preview();
-    const row: LibraryCaseSnapshot = { caseId: id, caseNo: 17, versionId: version, versionHash: testingDigest(guide), semanticId: catalogue.entries[0].semanticId, origin: 'catalogue', acceptedCatalogueDefinitionHash: testingDigest(guide), acceptedGuideSourceHash: 'b'.repeat(64), title: guide.title, hasLocalDraft: false, definition: guide };
+    const row: LibraryCaseSnapshot = { caseId: id, caseNo: 17, versionId: version, versionHash: testingDigest(guide), semanticId: catalogue.entries[0].semanticId, origin: 'catalogue', acceptedCatalogueDefinitionHash: testingDigest(guide), acceptedGuideSourceHash: 'b'.repeat(64), title: guide.title, hasLocalDraft: false, draftRevision: 0, draftDefinition: null, definition: guide };
     expect(preview([row]).entries[0]).toMatchObject({ action: 'revise', reason: 'reviewed_source_changed' });
     const changedRecords = [{ path: 'core/profile.ts', sha256: 'c'.repeat(64) }];
     const changed = previewTestingUpdates({ catalogue, identity: identity(changedRecords), library: [row], enabledModuleCodes: ['employees'], sourceHashRecord: changedRecords });
     expect(changed.entries[0]).toMatchObject({ action: 'review_required', reason: 'unreviewed_source_change' });
     expect(() => selectedTestingUpdateId(changed, [catalogue.entries[0].semanticId])).toThrow();
-    expect(preview([{ ...row, acceptedGuideSourceHash: sourceContentDigest(sourceHashRecord), hasLocalDraft: true }]).entries[0]).toMatchObject({ action: 'conflict', reason: 'local_override' });
+    expect(preview([{ ...row, acceptedGuideSourceHash: sourceContentDigest(sourceHashRecord), hasLocalDraft: true, draftDefinition: { ...guide, objective: 'Unpublished local draft.' } }]).entries[0]).toMatchObject({ action: 'conflict', reason: 'local_override' });
     expect(current.entries[0].guideSourceHash).toBe(sourceContentDigest(sourceHashRecord));
   });
   it('does not turn missing build evidence into a selectable update or absent catalogue cases into removals', () => {
@@ -67,5 +67,28 @@ describe('verified build and reviewed update comparison', () => {
     expect(result.entries[0].action).toBe('review_required');
     expect(() => selectedTestingUpdateId(result, [catalogue.entries[0].semanticId])).toThrow();
     expect(previewTestingUpdates({ catalogue: { ...catalogue, entries: [] }, identity: identity(), library: [], enabledModuleCodes: [], sourceHashRecord: [] }).entries).toEqual([]);
+  });
+});
+
+describe('explicit catalogue conflict decisions', () => {
+  it('preserves an unpublished local draft in the exact before-preview and requires explicit replacement', () => {
+    const draft = { ...guide,title: 'Unpublished local title',objective: '' };
+    const row: LibraryCaseSnapshot = { caseId: id,caseNo: 17,versionId: version,versionHash: testingDigest(guide),semanticId: catalogue.entries[0].semanticId,origin: 'catalogue',acceptedCatalogueDefinitionHash: testingDigest(guide),acceptedGuideSourceHash: sourceContentDigest(sourceHashRecord),title: guide.title,hasLocalDraft: true,draftRevision: 4,draftDefinition: draft,definition: guide };
+    const compared = preview([row]);
+    expect(compared.entries[0]).toMatchObject({ reason: 'local_override',beforeDraft: draft,expectedDraftRevision: 4 });
+    expect(() => selectedTestingUpdateId(compared,[catalogue.entries[0].semanticId])).toThrow();
+    expect(selectedTestingUpdateId(compared,[catalogue.entries[0].semanticId],[catalogue.entries[0].semanticId])).toMatch(/^[a-f0-9]{64}$/);
+    expect(preview([{ ...row,draftDefinition: { ...draft,title: 'Different pending draft' } }]).previewHash).not.toBe(compared.previewHash);
+  });
+  it('never deduplicates legacy identity by title, and binds explicit one-to-one mapping or distinct-case decisions', () => {
+    const row: LibraryCaseSnapshot = { caseId: id,caseNo: 17,versionId: version,versionHash: testingDigest(guide),semanticId: null,origin: 'legacy',acceptedCatalogueDefinitionHash: null,acceptedGuideSourceHash: null,title: 'Different title for the same module',hasLocalDraft: false,draftRevision: 0,draftDefinition: null,definition: guide };
+    const compared = preview([row]),key = catalogue.entries[0].semanticId;
+    expect(compared.entries[0]).toMatchObject({ reason: 'unmapped_legacy',possibleLegacyCaseIds: [id] });
+    expect(() => selectedTestingUpdateId(compared,[key])).toThrow();
+    expect(selectedTestingUpdateId(compared,[key],[],[key])).toMatch(/^[a-f0-9]{64}$/);
+    const mapped = previewTestingUpdates({ catalogue,identity: identity(),sourceHashRecord,library: [row],enabledModuleCodes: ['employees'],legacyMappings: [{ semanticId: key,caseId: id,expectedVersionId: version,expectedVersionHash: row.versionHash! }] });
+    expect(mapped.entries[0]).toMatchObject({ action: 'revise',caseId: id });
+    expect(selectedTestingUpdateId(mapped,[key])).not.toBe(selectedTestingUpdateId(compared,[key],[],[key]));
+    expect(() => selectedTestingUpdateId(compared,[key],[],['unrelated.key'])).toThrow();
   });
 });
