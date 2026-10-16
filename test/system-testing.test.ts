@@ -42,6 +42,7 @@ import {
   recordTestRun,
   summarizeByModule,
   updateTestCase,
+  saveTestInstructionDraft,
 } from '../core/system-testing';
 import { ModuleNotEnabledError } from '../core/entitlements';
 import { getFeedback } from '../core/feedback';
@@ -54,7 +55,8 @@ import {
 } from '../packs/catalog';
 import { MODULE_CODES_WITH_NAV } from '../lib/nav-entitlements';
 import { SCREENS } from '../lib/permissions';
-import { testRun } from '../db/schema';
+import { tenantCounter, testCase, testCaseVersion, testRun } from '../db/schema';
+import { testingDigest } from '../lib/system-testing/hash';
 import {
   closeAll,
   createAppUser,
@@ -100,6 +102,30 @@ async function entitledEmployedAdmin(base: Base): Promise<SessionContext & { emp
   const userId = await createAppUser(base.tenantId, hired.personId, 'hr_admin');
   return { ...s, userId, personId: hired.personId, employmentId: hired.employmentId };
 }
+
+/** Historical snapshot fixtures ONLY. Transaction-local replication mode is restored on commit or
+ * rollback. These never prove write authorization or upgrade execution; separate tests do that. */
+async function seedLegacyCase(ctx: SessionContext, p: Parameters<typeof createTestCase>[1]) {
+  return owner.db.transaction(async tx => {
+    await tx.execute(sql`SET LOCAL session_replication_role=replica`);
+    const [counter] = await tx.insert(tenantCounter).values({ tenantId: ctx.tenantId, kind: 'test_case_no', value: 1 }).onConflictDoUpdate({ target: [tenantCounter.tenantId,tenantCounter.kind], set: { value: sql`${tenantCounter.value}+1` } }).returning();
+    const fields = { title: p.title.trim(), moduleCode: p.moduleCode, precondition: p.precondition?.trim() || null, steps: (p.steps ?? []).map(v => v.trim()).filter(Boolean), testType: p.testType || 'functional', priority: p.priority || 'medium', expectedBehavior: p.expectedBehavior?.trim() || null, expectedFunction: p.expectedFunction?.trim() || null };
+    const [c] = await tx.insert(testCase).values({ tenantId: ctx.tenantId, caseNo: counter.value, ...fields, origin: 'legacy', createdByUserId: ctx.userId }).returning();
+    const definition = { format: 0 as const, history: 'upgrade_baseline' as const, ...fields };
+    const [version] = await tx.insert(testCaseVersion).values({ tenantId: ctx.tenantId, testCaseId: c.id, ordinal: 1, definition, contentHash: testingDigest(definition), provenance: 'upgrade_baseline' }).returning();
+    await tx.update(testCase).set({ currentVersionId: version.id }).where(sql`${testCase.id}=${c.id}::uuid`);
+    return { id: c.id, caseNo: c.caseNo };
+  });
+}
+async function seedLegacyRun(ctx: SessionContext, p: Parameters<typeof recordTestRun>[1], at?: Date) {
+  return owner.db.transaction(async tx => {
+    await tx.execute(sql`SET LOCAL session_replication_role=replica`);
+    const [n] = await tx.execute(sql`SELECT coalesce(max(run_no),0)+1 AS n FROM test_run WHERE test_case_id=${p.caseId}::uuid`) as unknown as { n: number }[];
+    const [r] = await tx.insert(testRun).values({ tenantId: ctx.tenantId, testCaseId: p.caseId, runNo: Number(n.n), outcome: p.outcome, actualResult: p.actualResult?.trim() || null, runByUserId: ctx.userId, ...(at ? { runAt: at } : {}) }).returning();
+    return { id: r.id, runNo: r.runNo };
+  });
+}
+const fixtureGuide = { format: 1 as const, title: 'Fictional navigation', objective: 'Check navigation.', functionKey: 'ess.navigation', area: 'personnel' as const, moduleCode: CROSS_MODULE_CODE, category: 'functional' as const, priority: 'medium' as const, active: true, prerequisites: ['Use a fictional account.'], testData: ['No personal data.'], steps: [{ id: 'open', action: 'Open Home.', expected: 'Authorized Home appears.' }], expectedBehavior: 'Navigation works.', expectedFunction: 'Navigation.', permissions: ['Existing access.'], jurisdiction: null, configuration: null, screenKeys: ['dashboard'] };
 
 /** ONE SET OF HOOKS AT MODULE SCOPE — `closeAll` inside a describe would end the shared clients early. */
 beforeAll(async () => {
@@ -162,8 +188,8 @@ describe('e6be5a3b — THE GATE: the service refuses, not the menu', () => {
     const base = await seedBase();
     const s = await entitledAdmin(base);
     expect(await listTestCases(s)).toEqual([]);
-    const { id } = await createTestCase(s, { moduleCode: CROSS_MODULE_CODE, title: 'Log in' });
-    expect((await getTestCase(s, id))!.testCase.title).toBe('Log in');
+    const draft = await saveTestInstructionDraft(s, { caseId: null, expectedRevision: 0, definition: { ...fixtureGuide, title: 'Log in' } });
+    expect((await getTestCase(s, draft.caseId))!.testCase.title).toBe('Log in');
   });
 
   it('an expired grant is not a grant — the row alone does not open the door', async () => {
@@ -216,12 +242,12 @@ describe('e6be5a3b — THE GATE: the service refuses, not the menu', () => {
       check_expr: string;
       rls_on: boolean;
     }[];
-    expect(rows.map((r) => r.table_name).sort()).toEqual(['test_case', 'test_run']);
+    expect(new Set(rows.map((r) => r.table_name))).toEqual(new Set(['test_case', 'test_run']));
     for (const r of rows) {
       expect(r.rls_on, `${r.table_name} has RLS enabled`).toBe(true);
-      for (const expr of [r.using_expr, r.check_expr]) {
+      for (const expr of [r.using_expr, r.check_expr].filter((value): value is string => value !== null)) {
         expect(expr, `${r.table_name}.${r.policy} is tenant-scoped`).toContain('current_tenant_id');
-        expect(expr, `${r.table_name}.${r.policy} is admin-only`).toContain('is_admin');
+        expect(expr, `${r.table_name}.${r.policy} has explicit authority`).toMatch(/is_admin|testing_owns_execution/);
       }
     }
   });
@@ -235,7 +261,7 @@ describe('e6be5a3b — THE GATE: the service refuses, not the menu', () => {
     `)) as unknown as { table_name: string; privilege_type: string }[];
     for (const t of ['test_case', 'test_run']) {
       const got = rows.filter((r) => r.table_name === t).map((r) => r.privilege_type).sort();
-      expect(got, `${t} grants to ai_hr_app`).toEqual(['DELETE', 'INSERT', 'SELECT', 'UPDATE']);
+      expect(got, `${t} grants to ai_hr_app`).toEqual(['INSERT', 'SELECT', 'UPDATE']);
     }
   });
 });
@@ -264,13 +290,13 @@ describe('e6be5a3b — status belongs to the RUN, not the CASE', () => {
   it('"passed in September, failed in October" is answerable — both runs survive', async () => {
     const base = await seedBase();
     const s = await entitledAdmin(base);
-    const { id } = await createTestCase(s, {
+    const { id } = await seedLegacyCase(s, {
       moduleCode: CROSS_MODULE_CODE,
       title: 'Payslip totals',
       steps: ['Open a payslip', 'Read the net pay'],
     });
-    await recordTestRun(s, { caseId: id, outcome: 'pass', actualResult: 'Net pay matched.' });
-    await recordTestRun(s, { caseId: id, outcome: 'fail', actualResult: 'Net pay was 12.00 short.' });
+    await seedLegacyRun(s, { caseId: id, outcome: 'pass', actualResult: 'Net pay matched.' });
+    await seedLegacyRun(s, { caseId: id, outcome: 'fail', actualResult: 'Net pay was 12.00 short.' });
 
     const { runs } = (await getTestCase(s, id))!;
     // Newest first, by run_no — an invariant of the data, not a position in an unordered result.
@@ -300,7 +326,7 @@ describe('e6be5a3b — status belongs to the RUN, not the CASE', () => {
   it('a case that has never been run derives to not_tested, not to a blank', async () => {
     const base = await seedBase();
     const s = await entitledAdmin(base);
-    await createTestCase(s, { moduleCode: CROSS_MODULE_CODE, title: 'Never run' });
+    await seedLegacyCase(s, { moduleCode: CROSS_MODULE_CODE, title: 'Never run' });
     const [row] = await listTestCases(s);
     expect(row.latestOutcome).toBe('not_tested');
     expect(row.latestRunAt).toBeNull();
@@ -313,12 +339,10 @@ describe('e6be5a3b — status belongs to the RUN, not the CASE', () => {
     // Both observations use the same timestamp under the actual restricted role and real actor.
     const base = await seedBase();
     const s = await entitledAdmin(base);
-    const { id } = await createTestCase(s, { moduleCode: CROSS_MODULE_CODE, title: 'Tie-break' });
+    const { id } = await seedLegacyCase(s, { moduleCode: CROSS_MODULE_CODE, title: 'Tie-break' });
     const sameInstant = new Date('2026-09-20T02:15:00.000Z');
-    await withTenant(s, tx => tx.insert(testRun).values([
-      { tenantId: base.tenantId, testCaseId: id, runNo: 1, outcome: 'fail', runAt: sameInstant, runByUserId: s.userId },
-      { tenantId: base.tenantId, testCaseId: id, runNo: 2, outcome: 'pass', runAt: sameInstant, runByUserId: s.userId },
-    ]));
+    await seedLegacyRun(s, { caseId: id, outcome: 'fail' }, sameInstant);
+    await seedLegacyRun(s, { caseId: id, outcome: 'pass' }, sameInstant);
     const [row] = await listTestCases(s);
     expect(row.latestOutcome, 'run_no decides, not run_at').toBe('pass');
     expect((await getTestCase(s, id))!.runs.map((r) => r.runNo)).toEqual([2, 1]);
@@ -327,12 +351,12 @@ describe('e6be5a3b — status belongs to the RUN, not the CASE', () => {
   it('the list and the per-module tally agree, and "failing" means the LATEST run failed', async () => {
     const base = await seedBase();
     const s = await entitledAdmin(base);
-    const a = await createTestCase(s, { moduleCode: CROSS_MODULE_CODE, title: 'A' });
-    const b = await createTestCase(s, { moduleCode: CROSS_MODULE_CODE, title: 'B' });
-    await createTestCase(s, { moduleCode: CROSS_MODULE_CODE, title: 'C' }); // never run
-    await recordTestRun(s, { caseId: a.id, outcome: 'fail' });
-    await recordTestRun(s, { caseId: a.id, outcome: 'pass' }); // fixed since — no longer failing
-    await recordTestRun(s, { caseId: b.id, outcome: 'fail' });
+    const a = await seedLegacyCase(s, { moduleCode: CROSS_MODULE_CODE, title: 'A' });
+    const b = await seedLegacyCase(s, { moduleCode: CROSS_MODULE_CODE, title: 'B' });
+    await seedLegacyCase(s, { moduleCode: CROSS_MODULE_CODE, title: 'C' }); // never run
+    await seedLegacyRun(s, { caseId: a.id, outcome: 'fail' });
+    await seedLegacyRun(s, { caseId: a.id, outcome: 'pass' }); // fixed since — no longer failing
+    await seedLegacyRun(s, { caseId: b.id, outcome: 'fail' });
 
     const rows = await listTestCases(s);
     expect(rows.map((r) => r.caseNo)).toEqual([1, 2, 3]); // ORDER BY case_no, pinned
@@ -343,37 +367,37 @@ describe('e6be5a3b — status belongs to the RUN, not the CASE', () => {
   it('case numbers are per-tenant, monotonic and unique', async () => {
     const base = await seedBase();
     const s = await entitledAdmin(base);
-    const one = await createTestCase(s, { moduleCode: CROSS_MODULE_CODE, title: 'one' });
-    const two = await createTestCase(s, { moduleCode: CROSS_MODULE_CODE, title: 'two' });
+    const one = await seedLegacyCase(s, { moduleCode: CROSS_MODULE_CODE, title: 'one' });
+    const two = await seedLegacyCase(s, { moduleCode: CROSS_MODULE_CODE, title: 'two' });
     expect([one.caseNo, two.caseNo]).toEqual([1, 2]);
 
     // A SECOND tenant starts at 1 again — the counter is per-tenant, not global.
     const other = await seedBase();
     const s2 = await entitledAdmin(other);
-    expect((await createTestCase(s2, { moduleCode: CROSS_MODULE_CODE, title: 'theirs' })).caseNo).toBe(1);
+    expect((await seedLegacyCase(s2, { moduleCode: CROSS_MODULE_CODE, title: 'theirs' })).caseNo).toBe(1);
   });
 
-  it('steps keep their order and drop blanks; editing the script does not touch the runs', async () => {
+  it('legacy ordered steps and old observations remain unchanged when obsolete editing is refused', async () => {
     const base = await seedBase();
     const s = await entitledAdmin(base);
-    const { id } = await createTestCase(s, {
+    const { id } = await seedLegacyCase(s, {
       moduleCode: CROSS_MODULE_CODE,
       title: 'Ordered',
       steps: ['third'.replace('third', 'one'), '', 'two', '   ', 'three'],
     });
-    await recordTestRun(s, { caseId: id, outcome: 'blocked' });
+    await seedLegacyRun(s, { caseId: id, outcome: 'blocked' });
     expect((await getTestCase(s, id))!.testCase.steps).toEqual(['one', 'two', 'three']);
 
-    await updateTestCase(s, {
+    await expect(updateTestCase(s, {
       caseId: id,
       moduleCode: CROSS_MODULE_CODE,
       title: 'Ordered, revised',
       steps: ['one', 'two'],
       priority: 'high',
-    });
+    })).rejects.toMatchObject({ code: 'versioned_authoring_required' });
     const after = (await getTestCase(s, id))!;
-    expect(after.testCase.title).toBe('Ordered, revised');
-    expect(after.testCase.steps).toEqual(['one', 'two']);
+    expect(after.testCase.title).toBe('Ordered');
+    expect(after.testCase.steps).toEqual(['one', 'two', 'three']);
     expect(after.testCase.caseNo, 'the number a run cites cannot move').toBe(1);
     expect(after.runs).toHaveLength(1);
   });
@@ -443,7 +467,7 @@ describe('e6be5a3b — the defect link is a RAISE, not a typed ID', () => {
   it('a failed run raises a REAL board item through the board own writer, and stores the id as an FK', async () => {
     const base = await seedBase();
     const s = await entitledEmployedAdmin(base);
-    const { id } = await createTestCase(s, {
+    const { id } = await seedLegacyCase(s, {
       moduleCode: CROSS_MODULE_CODE,
       title: 'Leave balance after cancellation',
       precondition: 'One approved leave request exists.',
@@ -451,7 +475,7 @@ describe('e6be5a3b — the defect link is a RAISE, not a typed ID', () => {
       expectedBehavior: 'The balance returns to what it was.',
       expectedFunction: 'Cancelling an approved request gives the days back.',
     });
-    const run = await recordTestRun(s, {
+    const run = await seedLegacyRun(s, {
       caseId: id,
       outcome: 'fail',
       actualResult: 'The balance stayed one day short.',
@@ -491,8 +515,8 @@ describe('e6be5a3b — the defect link is a RAISE, not a typed ID', () => {
     // employment (0348). A person pressing this button IS the author, so stamping it would hide them.
     const base = await seedBase();
     const s = await entitledEmployedAdmin(base);
-    const { id } = await createTestCase(s, { moduleCode: CROSS_MODULE_CODE, title: 'Labelled?' });
-    const run = await recordTestRun(s, { caseId: id, outcome: 'fail', actualResult: 'nope' });
+    const { id } = await seedLegacyCase(s, { moduleCode: CROSS_MODULE_CODE, title: 'Labelled?' });
+    const run = await seedLegacyRun(s, { caseId: id, outcome: 'fail', actualResult: 'nope' });
     const { feedbackId } = await raiseRunAsFeedback(s, { runId: run.id, reporterEmploymentId: s.employmentId });
     const [row] = (await owner.db.execute(
       sql`select reporter_label from feedback_request where id = ${feedbackId}`,
@@ -503,13 +527,13 @@ describe('e6be5a3b — the defect link is a RAISE, not a typed ID', () => {
   it('returns the same canonical link on retry, and refuses a run that passed', async () => {
     const base = await seedBase();
     const s = await entitledEmployedAdmin(base);
-    const { id } = await createTestCase(s, { moduleCode: CROSS_MODULE_CODE, title: 'Twice' });
-    const failed = await recordTestRun(s, { caseId: id, outcome: 'fail', actualResult: 'bad' });
+    const { id } = await seedLegacyCase(s, { moduleCode: CROSS_MODULE_CODE, title: 'Twice' });
+    const failed = await seedLegacyRun(s, { caseId: id, outcome: 'fail', actualResult: 'bad' });
     const first = await raiseRunAsFeedback(s, { runId: failed.id, reporterEmploymentId: s.employmentId });
     const again = await raiseRunAsFeedback(s, { runId: failed.id, reporterEmploymentId: s.employmentId });
     expect(again.feedbackId).toBe(first.feedbackId);
 
-    const passed = await recordTestRun(s, { caseId: id, outcome: 'pass' });
+    const passed = await seedLegacyRun(s, { caseId: id, outcome: 'pass' });
     const refused = await raiseRunAsFeedback(s, { runId: passed.id, reporterEmploymentId: s.employmentId }).then(
       () => null,
       (e: unknown) => e,

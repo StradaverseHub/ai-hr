@@ -5,7 +5,7 @@ import { withTenant, type SessionContext } from '../db/client';
 import * as s from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { ModuleNotEnabledError } from '../core/entitlements';
-import { addTestingScreenshot, assignTestingCase, beginTestingExecution, getTestingExecution, getTestingScreenshot, listTestingAssignments, publishTestInstruction, raiseTestingExecutionFeedback, saveTestInstructionDraft, saveTestingExecution } from '../core/system-testing';
+import { createTestCase, updateTestCase, recordTestRun, addTestingScreenshot, assignTestingCase, beginTestingExecution, getTestingExecution, getTestingScreenshot, listTestingAssignments, publishTestInstruction, raiseTestingExecutionFeedback, saveTestInstructionDraft, saveTestingExecution } from '../core/system-testing';
 import { TestingRefusal, type InstructionDefinition } from '../lib/system-testing/model';
 import { pgSqlState } from '../lib/db-error';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -50,6 +50,25 @@ describe('personal System Testing isolation and immutable instructions', () => {
     await expect(getTestingExecution(one, e2.executionId)).rejects.toMatchObject({ code: 'not_found' });
     await expect(listTestingAssignments(one, { testerUserId: two.userId })).rejects.toMatchObject({ code: 'not_assigned' });
     await expect(listTestingAssignments(one, { team: true })).rejects.toMatchObject({ code: 'not_assigned' });
+  });
+  it('refuses legacy writer shapes and raw bypasses without changing published instructions or inventing versionless observations', async () => {
+    const f = await setup();
+    const [before] = await owner.db.select().from(s.testCase).where(eq(s.testCase.id,f.draft.caseId));
+    await expect(createTestCase(admin,{ moduleCode: 'employees',title: 'Old shape' })).rejects.toMatchObject({ code: 'versioned_authoring_required' });
+    await expect(updateTestCase(admin,{ caseId: f.draft.caseId,moduleCode: 'employees',title: 'Silent edit',steps: ['Changed silently'] })).rejects.toMatchObject({ code: 'versioned_authoring_required' });
+    await expect(recordTestRun(admin,{ caseId: f.draft.caseId,outcome: 'pass' })).rejects.toMatchObject({ code: 'assigned_execution_required' });
+    for (const write of [
+      (tx: import('../db/client').Tx) => tx.update(s.testCase).set({ title: 'Raw silent edit' }).where(eq(s.testCase.id,f.draft.caseId)),
+      (tx: import('../db/client').Tx) => tx.insert(s.testRun).values({ tenantId: b.tenantId,testCaseId: f.draft.caseId,runNo: 1,outcome: 'pass',runByUserId: admin.userId }),
+      (tx: import('../db/client').Tx) => tx.insert(s.testRun).values({ tenantId: b.tenantId,testCaseId: f.draft.caseId,runNo: 1,outcome: 'pass',runByUserId: admin.userId,versionId: f.version.versionId }),
+    ]) {
+      try { await withTenant(admin,async tx => { await write(tx); }); throw new Error('Legacy raw write unexpectedly succeeded.'); } catch (error) { expect(pgSqlState(error)).toBe('23514'); }
+    }
+    expect(await owner.db.select().from(s.testCase).where(eq(s.testCase.id,f.draft.caseId))).toEqual([before]);
+    expect(await owner.db.select().from(s.testRun).where(eq(s.testRun.testCaseId,f.draft.caseId))).toEqual([]);
+    await saveTestingExecution(one,observation(f));
+    const [recorded] = await owner.db.select().from(s.testRun).where(eq(s.testRun.testCaseId,f.draft.caseId));
+    expect(recorded).toMatchObject({ executionId: f.execution.executionId,versionId: f.version.versionId,runByUserId: one.userId,outcome: 'pass' });
   });
   it('retained case/run ACLs refuse TRUNCATE/DELETE/TRIGGER even where ordinary tenant RLS cannot protect them', async () => {
     const f = await setup(); await saveTestingExecution(one, observation(f));

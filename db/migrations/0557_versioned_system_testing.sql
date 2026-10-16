@@ -150,10 +150,7 @@ BEGIN
   IF OLD.feedback_request_id IS NOT NULL AND NEW.feedback_request_id IS DISTINCT FROM OLD.feedback_request_id THEN RAISE EXCEPTION 'Testing feedback link is immutable' USING ERRCODE='23514'; END IF;
   RETURN NEW;
  END IF;
- IF NEW.execution_id IS NULL THEN
-  IF NEW.version_id IS NOT NULL THEN RAISE EXCEPTION 'Versioned observations require a personal execution' USING ERRCODE='23514'; END IF;
-  RETURN NEW;
- END IF;
+ IF NEW.execution_id IS NULL THEN RAISE EXCEPTION 'New observations require an exact assigned execution; legacy history is read-only' USING ERRCODE='23514'; END IF;
  SELECT * INTO c FROM public.test_case WHERE id=NEW.test_case_id AND tenant_id=NEW.tenant_id FOR UPDATE;
  SELECT x.* INTO a FROM public.test_assignment x JOIN public.test_execution y ON y.assignment_id=x.id WHERE y.id=NEW.execution_id AND y.tenant_id=NEW.tenant_id FOR UPDATE OF x;
  SELECT * INTO e FROM public.test_execution WHERE id=NEW.execution_id AND tenant_id=NEW.tenant_id FOR UPDATE;
@@ -212,6 +209,11 @@ DECLARE old_ordinal integer; new_ordinal integer;
 BEGIN
  IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT app.testing_live_principal() OR NOT app.is_admin() THEN RAISE EXCEPTION 'Testing case authority is unavailable' USING ERRCODE='42501'; END IF;
  IF (NEW.id,NEW.tenant_id,NEW.case_no,NEW.created_at) IS DISTINCT FROM (OLD.id,OLD.tenant_id,OLD.case_no,OLD.created_at) OR (OLD.semantic_id IS NOT NULL AND NEW.semantic_id IS DISTINCT FROM OLD.semantic_id) THEN RAISE EXCEPTION 'Testing case identity is immutable' USING ERRCODE='23514'; END IF;
+ IF NEW.current_version_id IS NOT DISTINCT FROM OLD.current_version_id AND
+  (NEW.title,NEW.module_code,NEW.precondition,NEW.steps,NEW.test_type,NEW.priority,NEW.expected_behavior,NEW.expected_function) IS DISTINCT FROM
+  (OLD.title,OLD.module_code,OLD.precondition,OLD.steps,OLD.test_type,OLD.priority,OLD.expected_behavior,OLD.expected_function) THEN
+  RAISE EXCEPTION 'Instruction changes require a new published version' USING ERRCODE='23514';
+ END IF;
  IF NEW.current_version_id IS DISTINCT FROM OLD.current_version_id THEN
   SELECT ordinal INTO old_ordinal FROM public.test_case_version WHERE id=OLD.current_version_id AND tenant_id=OLD.tenant_id AND test_case_id=OLD.id;
   SELECT ordinal INTO new_ordinal FROM public.test_case_version WHERE id=NEW.current_version_id AND tenant_id=NEW.tenant_id AND test_case_id=NEW.id;
