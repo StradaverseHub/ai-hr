@@ -41,3 +41,24 @@ describe('staged runner keeps canonical human and installed authority',()=>{
   expect(source).toContain('confirmOwnedReportArtifactRemoval');expect(source).toContain('assertOwnedReportArtifactAbsent');expect(source).toContain('verification-started');expect(source).toContain("'--signal=KILL','aihr-internal-report.service'");expect(source).toContain("['dispatch',192]");expect(source).toContain('await liveLease(consent)');
  });
 });
+
+/** These contracts fail against 1afb's known lifecycle gaps; runtime regressions follow with the repair. */
+describe('reviewed acceptance lifecycle regressions',()=>{
+ const source=()=>readFileSync(path.join(process.cwd(),'scripts/dev-managed-report-acceptance.ts'),'utf8');
+ it('selects the checked candidate working directory before database imports or writers',()=>{
+  const text=source(),root=text.indexOf("'Trusted source root required.'"),cwd=text.indexOf('process.chdir(ROOT)',root),imports=text.indexOf("await import('../db/client')");
+  expect(root).toBeGreaterThanOrEqual(0);expect(cwd).toBeGreaterThan(root);expect(imports).toBeGreaterThan(cwd);expect(imports-cwd).toBeGreaterThan(100);
+ });
+ it('binds a pre-activation inventory and recovers partial ownership before canonical rollback',()=>{
+  const text=source(),baseline=text.indexOf('activationBaseline=await captureActivationBaseline'),attempt=text.indexOf('activationAttempted=true',baseline),activate=text.indexOf("[SCHEDULE,'--activate'",attempt);
+  expect(baseline).toBeGreaterThanOrEqual(0);expect(attempt).toBeGreaterThan(baseline);expect(activate).toBeGreaterThan(attempt);expect(activate-baseline).toBeGreaterThan(50);
+  const cleanupStart=text.indexOf('async function cleanup()'),recover=text.indexOf('await recoverPartialActivation()',cleanupStart),rollback=text.indexOf("[SCHEDULE,'--rollback'",cleanupStart);
+  expect(cleanupStart).toBeGreaterThanOrEqual(0);expect(recover).toBeGreaterThan(cleanupStart);expect(rollback).toBeGreaterThan(recover);expect(rollback-recover).toBeGreaterThan(30);
+  expect(text).toContain('Cleanup unresolved; owned lock retained.');expect(text).not.toContain('if(child.pid)try{process.kill');
+ });
+ it('awaits child-group absence and successful cleanup before releasing the exact owned lock',()=>{
+  const text=source(),cleanupStart=text.indexOf('async function cleanup()'),drain=text.indexOf('await drainOwnedChildren()',cleanupStart),release=text.indexOf('await releaseOwnedLock()',cleanupStart);
+  expect(cleanupStart).toBeGreaterThanOrEqual(0);expect(drain).toBeGreaterThan(cleanupStart);expect(release).toBeGreaterThan(drain);expect(release-drain).toBeGreaterThan(200);
+  expect(text).toContain('if(!failure)await releaseOwnedLock()');expect(text).toContain('stopOwnedAcceptanceGroup');expect(text).toContain('processGroupGate');
+ });
+});
