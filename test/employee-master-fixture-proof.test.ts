@@ -60,11 +60,16 @@ describe('read-only Reports setup proof',()=>{
 describe('Reports fixture executable safety contract',()=>{
  it('holds fresh-only setup behind the exact coordinator and imports no report/delivery executor',()=>{
   const source=readFileSync(path.join(process.cwd(),'scripts/dev-fixture-employee-master.mts'),'utf8');
-  const imports=source.indexOf("await import('../db/client')");
-  expect(source.indexOf('const sourceCandidate=candidate()')).toBeLessThan(imports);
-  expect(source.slice(0,imports)).toContain('REPORT_FIXTURE_COORDINATOR_PID');
-  for(const name of ['board18reports-browser-a','board18reports-browser-b','board18reports-browser-db'])expect(source.slice(0,imports)).toContain(name);
-  const prior=source.slice(source.indexOf('if(previousText){'),source.indexOf('const tenants='));
+  const imports=source.indexOf("await import('../db/client')"),sourceCandidate=source.indexOf('const sourceCandidate=candidate()');
+  expect(imports).toBeGreaterThanOrEqual(0);expect(sourceCandidate).toBeGreaterThanOrEqual(0);
+  expect(sourceCandidate).toBeLessThan(imports);expect(imports).toBeGreaterThan(1000);
+  const guards=source.slice(0,imports);expect(guards.length).toBeGreaterThan(1000);
+  expect(guards).toContain('REPORT_FIXTURE_COORDINATOR_PID');
+  for(const name of ['board18reports-browser-a','board18reports-browser-b','board18reports-browser-db'])expect(guards).toContain(name);
+  const priorStart=source.indexOf('if(previousText){'),tenantsEnd=source.indexOf('const tenants=');
+  expect(priorStart).toBeGreaterThanOrEqual(0);expect(tenantsEnd).toBeGreaterThanOrEqual(0);
+  expect(tenantsEnd).toBeGreaterThan(priorStart);expect(tenantsEnd-priorStart).toBeGreaterThan(300);
+  const prior=source.slice(priorStart,tenantsEnd);expect(prior.length).toBeGreaterThan(300);
   expect(prior).toContain('await readEmployeeMasterFixtureProof');expect(prior).toContain('return;');
   expect(prior).not.toMatch(/owner\.db\.(insert|update|delete)|provisionTenant|hireEmployee/);
   expect([...source.matchAll(/owner\.db\.insert\(s\.(\w+)\)/g)].map(match=>match[1])).toEqual(['appUser','roleAssignment','appUser']);
