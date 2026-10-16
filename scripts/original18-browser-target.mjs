@@ -123,7 +123,7 @@ export function original18FixtureTenants(scenario,fixture){
 }
 export function original18ResumeReceiptName(name,candidate){return sha(candidate)&&typeof name==='string'&&/^browser-resume-[0-9a-f]{40}-[0-9]{13}\.json$/.test(name)&&name.startsWith('browser-resume-'+candidate+'-');}
 /** Receipt validation proves only local preparation/cleanup, never browser acceptance or authorization. */
-export function validateOriginal18Resume({fixture,browser,stopped,resumeRecords={},manualCleanup,root,scenario}){
+export function validateOriginal18Resume({fixture,browser,stopped,resumeRecords={},manualCleanup=undefined,root,scenario}){
  const target=original18BrowserTarget(['--scenario='+scenario,...(['personnel','integration'].includes(scenario)?['--resume']:[])]);
  const bound=row=>record(row)&&row.root===root&&row.scenario===scenario&&row.database===target.database&&row.namespace===target.namespace&&row.port===target.port;
  const preparationBound=row=>['personnel','integration'].includes(scenario)||target.fresh?record(row)&&row.root===root&&row.database===target.database&&row.namespace===target.namespace&&row.port===target.port:bound(row);
