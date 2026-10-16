@@ -283,9 +283,10 @@ describe('bounded final checks and concurrent canonical writers',()=>{
   });
  });
  it('accepts the complete1000-grant set but refuses1001 instead of truncating principal authority',async()=>{
-  await raw`insert into role_assignment(tenant_id,app_user_id,role,company_id) select ${b.tenantId}::uuid,${ctx.userId}::uuid,'employee'::public.role,null from generate_series(1,999)`;
+  const userId=ctx.userId;if(!userId)throw new Error('Fixture login is required.');
+  await raw`insert into role_assignment(tenant_id,app_user_id,role,company_id) select ${b.tenantId}::uuid,${userId}::uuid,'employee'::public.role,null from generate_series(1,999)`;
   const job=await queue();await client.begin(async tx=>{await bounded(tx);expect(ready(await lock(tx,job)).target.ownerGrants).toHaveLength(1000);});
-  await raw`insert into role_assignment(tenant_id,app_user_id,role,company_id) values(${b.tenantId}::uuid,${ctx.userId}::uuid,'employee',null)`;
+  await raw`insert into role_assignment(tenant_id,app_user_id,role,company_id) values(${b.tenantId}::uuid,${userId}::uuid,'employee',null)`;
   expect(await context(client,job)).toBeNull();await client.begin(async tx=>{await bounded(tx);expect((await lock(tx,job)).status).toBe('notEligible');});
   expect((await state(job)).status).toBe('pending');
  });
