@@ -871,54 +871,10 @@ describe('r343 · the translated keys are translated, and the English ones are n
     return [...out].sort();
   };
 
-  /**
-   * THE ENGLISH DEBT OF THIS SCREEN, NAMED. The keys listed here read the same in all six catalogues, so
-   * the number is a decision rather than an accident — the report for r343 claimed the screen was
-   * "composed from existing translated keys", and for the four day-type LABELS that is true, but these are
-   * English on the ms, ta, th, vi and zh screens and saying so is the honest half.
-   *
-   * ⚠️ THE ARITHMETIC IN THIS COMMENT HAD BEEN WRONG SINCE r358 AND r362 IS CORRECTING IT RATHER THAN
-   * INHERITING IT (CLAUDE.md §8 — prose outlives the kernel). It read: "Nineteen keys … the eight `table.*`
-   * keys r343 added, and eleven this form already rendered in English before it", then "r358 — EIGHTEEN,
-   * not nineteen: `days` was the column header over the 1-or-0.5 dropdown, and both are gone". But the same
-   * round also took `table.help` and `table.windowNotClaimed` out (the note inside the list says so), which
-   * left SIXTEEN entries under a comment claiming eighteen. The LIST was always right and the case title
-   * always matched it; only the running total above drifted. `days` is still NOT retired in the catalogues
-   * — it is a generic label other leave surfaces render — what changed is that this screen stopped
-   * reaching for it.
-   */
-  // r362 5c72039e — FIFTEEN. `table.dayTypeChoose` ("Choose a day type") is RETIRED: it was the read-only
-  // cell's "not known yet" text and it told the employee to make a choice the cell has not permitted since
-  // r360. The key stays in all six catalogues — retired, never deleted — it is simply no longer rendered,
-  // so `renderedKeys()` cannot see it and it may not sit on a list of keys this screen RENDERS in English.
-  const ENGLISH_EVERYWHERE = [
-    'addRow',
-    'cancel',
-    'firstScheduleConsent',
-    'leaveType',
-    'reason',
-    'removeRow',
-    // r358 — `table.help` and `table.windowNotClaimed` LEFT this list, and that is a gain rather than a
-    // loss: both had to be rewritten for the owner's new rule, and both were translated into all six
-    // locales while they were being rewritten. A key leaving the English-everywhere set is the set doing
-    // its job — it exists to make the English-only count a decision rather than an accident.
-    //
-    // r389 — `table.myRequests`, `table.noRequests`, `table.statusHeading` and `table.submittedOn` LEFT this
-    // list too. They were the old submitted-requests list on /leave/credit, which became Leave Credit History
-    // with translated headings of its own; the four keys are RETIRED in place (`[retired r389 — …]` in all
-    // six) because nothing renders them any more.
-    'table.rosterMismatch',
-    'totalDays',
-    'workedDate',
-  ];
-
-  // r362 — the title said "the sixteen … a seventeenth", which was true of the list as it stood. Retiring
-  // `table.dayTypeChoose` takes it to fifteen. The number is in the title on purpose: it is the one place a
-  // reader sees the size of the debt without counting, so it moves with the list.
-  // r389 — NINE: the four `table.*` keys of the old /leave/credit list are retired (see the list's note).
-  // The count was "fifteen" in this title while the list held thirteen; the title now says what the list
-  // holds.
-  it('the keys that ship English are EXACTLY the nine named above — a tenth fails this case', () => {
+  // All rendered Leave Credit copy is now translated. Keep this observable: an English catalogue
+  // value accidentally copied into every locale must fail even when no key is missing.
+  const ENGLISH_EVERYWHERE: string[] = [];
+  it('no rendered Leave Credit key ships English in all five other locales', () => {
     const english = renderedKeys().filter((k) => {
       const en = at('en', k);
       return typeof en === 'string' && LOCALES.slice(1).every((l) => at(l, k) === en);
