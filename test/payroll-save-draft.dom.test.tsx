@@ -2,6 +2,7 @@ import React,{useEffect} from 'react';
 import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {readFileSync} from 'node:fs';
+import {resolve} from 'node:path';
 const calls=vi.hoisted(()=>({save:vi.fn(),process:vi.fn(),resume:vi.fn(),employees:vi.fn()}));
 vi.mock('../app/payroll/process/actions',()=>({savePayrollDraftsAction:calls.save,runMultiCompanyAction:calls.process,resumeRunAction:calls.resume,fetchPayrollRunEmployees:calls.employees}));
 vi.mock('next-intl',()=>({useTranslations:()=>((key:string)=>key)}));
@@ -33,7 +34,7 @@ describe('visible Payroll Save as draft',()=>{
  });
  it('keeps all six localized draft/refusal messages and a truthful draft result branch',()=>{
   const keys=['saveAsDraft','draftSaving','saveDraftHelp','saveDraftRegularOnly','draftResultTitle','draftResultSubtitle','draftCompanySaved'];
-  for(const locale of ['en','ms','zh','ta','th','vi']){const messages=JSON.parse(readFileSync(new URL('../messages/'+locale+'.json',import.meta.url),'utf8')).payroll.process;for(const key of keys)expect(messages[key]).toEqual(expect.any(String));for(const reason of ['EMPTY_SELECTION','INVALID_SELECTION','DRAFT_REQUIRES_REGULAR'])expect(messages.reason[reason]).toEqual(expect.any(String));}
-  const page=readFileSync(new URL('../app/payroll/process/result/page.tsx',import.meta.url),'utf8'),start=page.indexOf("if (result.mode === 'draft')"),end=page.indexOf('// Phase-1 failed-employee table:',start);expect(start).toBeGreaterThan(0);expect(end).toBeGreaterThan(start);const draft=page.slice(start,end);expect(draft.length).toBeGreaterThan(500);expect(draft).toContain('draftResultSubtitle');expect(draft).toContain('draftCompanySaved');expect(draft).not.toContain('totalEmployeesSucceeded');expect(draft).not.toContain('listSkippedEmployees');
+  for(const locale of ['en','ms','zh','ta','th','vi']){const messages=JSON.parse(readFileSync(resolve(process.cwd(),'messages',locale+'.json'),'utf8')).payroll.process;for(const key of keys)expect(messages[key]).toEqual(expect.any(String));for(const reason of ['EMPTY_SELECTION','INVALID_SELECTION','DRAFT_REQUIRES_REGULAR'])expect(messages.reason[reason]).toEqual(expect.any(String));}
+  const page=readFileSync(resolve(process.cwd(),'app/payroll/process/result/page.tsx'),'utf8'),start=page.indexOf("if (result.mode === 'draft')"),end=page.indexOf('// Phase-1 failed-employee table:',start);expect(start).toBeGreaterThan(0);expect(end).toBeGreaterThan(start);const draft=page.slice(start,end);expect(draft.length).toBeGreaterThan(500);expect(draft).toContain('draftResultSubtitle');expect(draft).toContain('draftCompanySaved');expect(draft).not.toContain('totalEmployeesSucceeded');expect(draft).not.toContain('listSkippedEmployees');
  });
 });
