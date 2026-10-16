@@ -42,6 +42,29 @@ async function fixture(amount='60',options:{salary?:number;cappedBase?:boolean}=
 }
 async function slip(batchId:string){return (await owner.db.select().from(s.payslip).where(eq(s.payslip.batchId,batchId)))[0];}
 describe('formula money is an actual canonical Payroll input',()=>{
+ it('explains stale transfer inputs read-only, then permits explicit recalculation without rewriting the retained amount',async()=>{
+  const f=await fixture('60',{salary:5000});
+  await setCompensation(f.ctx,{employmentId:f.e.employmentId,basicSalary:5100,effectiveFrom:day()});
+  const before=await owner.db.select().from(s.attendanceOvertimeCalculation).orderBy(s.attendanceOvertimeCalculation.ordinal);
+  const options=await overtimePatternTransferOptions(f.ctx,{employmentId:f.e.employmentId,date:day()});
+  expect(options.calculation).toMatchObject({status:'ready',amountMinorUnits:'6000',transferable:false});
+  expect(options.runs.find(run=>run.id===f.batch.batchId)).toMatchObject({transferable:false,refusal:'stale'});
+  expect(await owner.db.select().from(s.attendanceOvertimeCalculation).orderBy(s.attendanceOvertimeCalculation.ordinal)).toEqual(before);
+  expect((await withTenant(f.ctx,tx=>readOvertimeSettlementForDayTx(tx,f.ctx,f.transfer)))?.settlement).toBeNull();
+  await expect(transferOvertimePatternToPayroll(f.ctx,f.transfer)).rejects.toMatchObject({code:'stale'});
+  const api=createOvertimeCalculationOwner(canonicalOvertimeInputTx);
+  const updated=await withTenant(f.ctx,async tx=>{
+   const prepared=await api.prepareTx(tx,f.ctx,{employmentId:f.e.employmentId,date:day()});
+   return api.recordTx(tx,f.ctx,{prepared,expectedCurrentRevision:f.transfer.expectedSourceRevision,reason:'Explicit financial source review'});
+  });
+  if(updated.status!=='recorded')throw new Error('Expected recorded recalculation');
+  const after=await overtimePatternTransferOptions(f.ctx,{employmentId:f.e.employmentId,date:day()});
+  expect(after.calculation).toMatchObject({id:updated.calculationId,amountMinorUnits:'6000',transferable:true});
+  expect(after.runs.find(run=>run.id===f.batch.batchId)).toMatchObject({transferable:true,refusal:null});
+  const retained=await owner.db.select().from(s.attendanceOvertimeCalculation).where(eq(s.attendanceOvertimeCalculation.id,f.transfer.expectedCalculationId));
+  expect(retained).toEqual(before.filter(row=>row.id===f.transfer.expectedCalculationId));
+  expect((await withTenant(f.ctx,tx=>readOvertimeSettlementForDayTx(tx,f.ctx,f.transfer)))?.settlement).toBeNull();
+ });
  it('reviews transferred formula cash once with flags off, exact labels/evidence and persisted run scope',async()=>{
   const f=await fixture('91.50');
   const excluded=await hireEmployee(f.ctx,{person:{fullName:'Excluded cash review control',primaryEmail:'excluded-cash-review@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
@@ -108,10 +131,11 @@ describe('formula money is an actual canonical Payroll input',()=>{
   expect(evidence.sourceLines[0].floorEvidence).toMatchObject({countryMinimumApplicable:false,minimumMinorUnits:'0'});
  });
  it('rejects a formula below the country owner floor without silently changing its configured amount',async()=>{
-  const f=await fixture('0.01');await expect(transferOvertimePatternToPayroll(f.ctx,f.transfer)).rejects.toMatchObject({code:'statutoryFloor'});expect((await withTenant(f.ctx,tx=>readOvertimeSettlementForDayTx(tx,f.ctx,f.transfer)))?.settlement).toBeNull();
+  const f=await fixture('0.01');const options=await overtimePatternTransferOptions(f.ctx,{employmentId:f.e.employmentId,date:day()});expect(options.runs.find(run=>run.id===f.batch.batchId)).toMatchObject({transferable:false,refusal:'statutoryFloor'});await expect(transferOvertimePatternToPayroll(f.ctx,f.transfer)).rejects.toMatchObject({code:'statutoryFloor'});expect((await withTenant(f.ctx,tx=>readOvertimeSettlementForDayTx(tx,f.ctx,f.transfer)))?.settlement).toBeNull();
  });
  it('rechecks mapping treatment and source freshness on retained consumption',async()=>{
   const f=await fixture();await transferOvertimePatternToPayroll(f.ctx,f.transfer);await owner.db.update(s.payComponent).set({includedInEpf:true}).where(eq(s.payComponent.id,f.earning.id));
+  const options=await overtimePatternTransferOptions(f.ctx,{employmentId:f.e.employmentId,date:day()});expect(options.runs.find(run=>run.id===f.batch.batchId)).toMatchObject({transferable:false,refusal:'mapping'});
   await expect(withTenant(f.ctx,tx=>readPayrollOvertimePatternCashTx(tx,f.ctx,{batchId:f.batch.batchId}))).rejects.toMatchObject({code:'mapping'});
  });
  it('refuses stale source digest and never publishes a partial payslip',async()=>{
