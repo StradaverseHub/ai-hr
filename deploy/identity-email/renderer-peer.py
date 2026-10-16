@@ -26,12 +26,13 @@ try:
             raise RuntimeError('invalid broker configuration')
     if uid != mail.pw_uid and (broker_uid is None or uid != broker_uid):
         raise RuntimeError('invalid peer')
-    allowed = {key: os.environ[key] for key in ('DATABASE_URL', 'WORKFLOW_EMAIL_ISSUER') if key in os.environ}
+    allowed = {key: os.environ[key] for key in ('DATABASE_URL', 'WORKFLOW_EMAIL_ISSUER', 'AUTH_PROVIDER', 'AUTH_PUBLIC_ORIGIN') if key in os.environ}
     allowed.update(NODE_ENV='production', TZ='UTC', REPORT_RENDERER_UID=str(worker.pw_uid),
                    REPORT_RENDERER_MAIL_UID=str(mail.pw_uid), REPORT_RENDERER_PEER_UID=str(uid))
     if broker_uid is not None:
         allowed['REPORT_RENDERER_AUTH_BROKER_UID'] = str(broker_uid)
-    os.execve('/usr/local/lib/aihr-identity-email/node',
+    node_path = '/usr/local/lib/aihr-identity-email/internal-node' if allowed.get('AUTH_PROVIDER') == 'internal' else '/usr/local/lib/aihr-identity-email/node'
+    os.execve(node_path,
               ['node', '--max-old-space-size=384', '/usr/local/lib/aihr-identity-email/report-renderer.cjs'], allowed)
 except Exception:
     # No private input, environment, address or provider error is reflected to an unauthorized peer.

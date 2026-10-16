@@ -1,0 +1,11 @@
+[Unit]
+Description=Nonce-bound internal report Auth broker socket
+[Socket]
+ListenStream=/run/aihr-report-auth.sock
+SocketUser=aihr-identity-email
+SocketMode=0600
+Accept=yes
+MaxConnections=1
+RemoveOnStop=yes
+[Install]
+WantedBy=sockets.target

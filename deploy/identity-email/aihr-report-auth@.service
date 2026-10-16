@@ -1,0 +1,29 @@
+[Unit]
+Description=One-attempt internal report Auth broker
+After=postgresql.service
+[Service]
+# Installer replaces these exact tokens with the already-key-authorized web principal.
+User=@WEB_USER@
+Group=@WEB_GROUP@
+SupplementaryGroups=aihr-report-clients
+EnvironmentFile=/etc/aihr-internal-report/broker.env
+ExecStart=/usr/bin/python3 -I /usr/local/lib/aihr-identity-email/report-auth-peer.py
+StandardInput=socket
+StandardOutput=inherit
+StandardError=journal
+Slice=aihrmanagedmail-dispatch.slice
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectProc=invisible
+InaccessiblePaths=/etc/aihr-internal-report -/var/lib/aihr-identity-email /var/lib/aihr-report-renderer -/etc/aihr-keycloak /opt/ai-hr
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+MemoryMax=192M
+TasksMax=16
+LimitNOFILE=64
+RuntimeMaxSec=45
+KillMode=control-group

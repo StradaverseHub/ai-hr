@@ -2,7 +2,7 @@
 import {writeFile,readdir,lstat,unlink,open} from 'node:fs/promises';
 import {constants} from 'node:fs';
 import {sql} from 'drizzle-orm';
-import {reportRenderDatabase} from './render-config';
+import {reportRenderDatabase,reportRenderOrigin} from './render-config';
 import {masterRenderContext,masterRendererRequest,type MasterRenderContext} from './render-context';
 import type {SessionContext} from '../../db/client';
 import {MASTER_EMAIL_ATTACHMENT_MAX_BYTES} from '../../lib/employee-master-delivery-model';
@@ -16,7 +16,8 @@ async function main(){
  const peerRole=rendererPeerRole({selfUid:process.getuid?.()??-1,rendererUid:Number(process.env.REPORT_RENDERER_UID),mailUid:Number(process.env.REPORT_RENDERER_MAIL_UID),peerUid:Number(process.env.REPORT_RENDERER_PEER_UID),brokerUid:process.env.REPORT_RENDERER_AUTH_BROKER_UID===undefined?undefined:Number(process.env.REPORT_RENDERER_AUTH_BROKER_UID)});
  if(!peerRole)throw new Error('Private renderer activation refused.');
  reportRenderDatabase(process.env.DATABASE_URL??'');
- if(process.env.MIGRATION_DATABASE_URL||process.env.IDENTITY_EMAIL_DATABASE_URL||process.env.IDENTITY_EMAIL_CLIENT_SECRET||process.env.WORKFLOW_EMAIL_LOOKUP_CLIENT_SECRET)throw new Error('Private renderer environment is not isolated.');
+ const internalOrigin=process.env.AUTH_PROVIDER==='internal'?reportRenderOrigin(process.env.AUTH_PUBLIC_ORIGIN??''):null;
+ if(process.env.MIGRATION_DATABASE_URL||process.env.IDENTITY_EMAIL_DATABASE_URL||process.env.IDENTITY_EMAIL_CLIENT_SECRET||process.env.WORKFLOW_EMAIL_LOOKUP_CLIENT_SECRET||process.env.AUTH_SESSION_KEY)throw new Error('Private renderer environment is not isolated.');
  let size=0;const chunks:Buffer[]=[];for await(const chunk of process.stdin){size+=chunk.length;if(size>4096)throw new Error('Invalid renderer request.');chunks.push(chunk);}
  const request=masterRendererRequest.parse(JSON.parse(Buffer.concat(chunks).toString()));
  if(!rendererPeerMayRequest(peerRole,request.phase))throw new Error('Private renderer operation refused.');
@@ -31,7 +32,9 @@ async function main(){
   if(role?.name!=='ai_hr_app'||role.rolsuper||role.rolbypassrls||role.privileged)throw new Error('Renderer role refused.');
   if(request.phase==='status'){process.stdout.write(JSON.stringify({ok:true,ready:true})+'\n');return;}
   const resolve=async()=>{
-   const [row]=await db.execute(sql`select app.employee_master_render_context(${request.occurrenceId}::uuid,${request.leaseToken}::uuid,${process.env.WORKFLOW_EMAIL_ISSUER??''}) as context`) as unknown as {context:unknown}[];
+   const [row]=await db.execute(process.env.AUTH_PROVIDER==='internal'
+    ?sql`select app.employee_master_internal_render_context(${request.occurrenceId}::uuid,${request.leaseToken}::uuid,${internalOrigin}) as context`
+    :sql`select app.employee_master_render_context(${request.occurrenceId}::uuid,${request.leaseToken}::uuid,${process.env.WORKFLOW_EMAIL_ISSUER??''}) as context`) as unknown as {context:unknown}[];
    const parsed=masterRenderContext.safeParse(row?.context);if(!parsed.success||parsed.data.accessStamp!==request.expectedAccessStamp)throw Object.assign(new Error('Report is no longer eligible.'),{notEligible:true});return parsed.data;
   };
   const {resolveEntitlementsTx}=await import('../../core/entitlements'),{allowedCompanies}=await import('../../core/read'),{getEmployeeMasterReport}=await import('../../core/employee-master-reports');

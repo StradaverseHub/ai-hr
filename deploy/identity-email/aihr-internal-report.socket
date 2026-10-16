@@ -1,0 +1,10 @@
+[Unit]
+Description=Internal Employee Master delivery socket
+[Socket]
+ListenStream=/run/aihr-internal-report.sock
+SocketUser=aihr-identity-email
+SocketGroup=@WEB_GROUP@
+SocketMode=0660
+RemoveOnStop=yes
+[Install]
+WantedBy=sockets.target

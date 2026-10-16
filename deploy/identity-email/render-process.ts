@@ -5,7 +5,7 @@ import {constants} from 'node:fs';
 import {z} from 'zod';
 import {masterRendererRequest} from './render-context';
 import {MasterDeliveryPreparationError,type MasterDeliveryTarget,type MasterPreparedAttachment} from './reports';
-import {MASTER_EMAIL_ATTACHMENT_MAX_BYTES} from '../../lib/employee-master-delivery-model';
+import {readPreparedReportBytes} from './report-bytes';
 import {masterArtifactFingerprint,masterArtifactAuthorization,type MasterArtifactAuthorization} from '../../lib/employee-master-artifact-model';
 const socketPath='/run/aihr-report-renderer.sock',directory='/var/lib/aihr-report-renderer/render';
 const file=(id:string,token:string)=>directory+'/'+z.uuid().parse(id)+'-'+z.uuid().parse(token)+'.xlsx';
@@ -23,13 +23,12 @@ async function renderer(input:z.infer<typeof masterRendererRequest>){
  });
 }
 export async function reportRendererReady(){
- try{const [socket,dir]=await Promise.all([lstat(socketPath),lstat(directory)]);if(!socket.isSocket()||socket.uid!==process.getuid?.()||(socket.mode&0o077)!==0||!dir.isDirectory()||dir.uid!==Number(process.env.REPORT_RENDERER_UID)||(dir.mode&0o027)!==0)return false;const result=await renderer({phase:'status'});return result.ok&&result.ready===true;}catch{return false;}
+ try{const [socket,dir]=await Promise.all([lstat(socketPath),lstat(directory)]);if(!socket.isSocket()||socket.uid!==process.getuid?.()||(process.env.AUTH_PROVIDER==='internal'?(socket.mode&0o777)!==0o660:(socket.mode&0o077)!==0)||!dir.isDirectory()||dir.uid!==Number(process.env.REPORT_RENDERER_UID)||(dir.mode&0o027)!==0)return false;const result=await renderer({phase:'status'});return result.ok&&result.ready===true;}catch{return false;}
 }
 export async function prepareMasterReportFile(id:string,token:string,target:MasterDeliveryTarget):Promise<MasterPreparedAttachment>{
  const result=await renderer({phase:'render',occurrenceId:id,leaseToken:token,expectedAccessStamp:target.accessStamp});if(!result.ok)throw new MasterDeliveryPreparationError(result.reason);
  const handle=await open(file(id,token),constants.O_RDONLY|constants.O_NOFOLLOW);let bytes:Buffer;
- try{const stat=await handle.stat();if(!stat.isFile()||stat.uid!==Number(process.env.REPORT_RENDERER_UID)||stat.size>MASTER_EMAIL_ATTACHMENT_MAX_BYTES||(stat.mode&0o027)!==0)throw new MasterDeliveryPreparationError(stat.size>MASTER_EMAIL_ATTACHMENT_MAX_BYTES?'attachmentTooLarge':'generationFailed');
- bytes=await handle.readFile();if(bytes.byteLength!==stat.size||!result.filename||!result.contentType||result.rowCount==null||result.scopeCount!==target.companyIds.length||result.accessStamp!==target.accessStamp)throw new MasterDeliveryPreparationError('generationFailed');
+ try{bytes=await readPreparedReportBytes(handle,Number(process.env.REPORT_RENDERER_UID));if(!result.filename||!result.contentType||result.rowCount==null||result.scopeCount!==target.companyIds.length||result.accessStamp!==target.accessStamp)throw new MasterDeliveryPreparationError('generationFailed');
  }finally{await handle.close();}
  if(!result.filename||!result.contentType||result.rowCount==null)throw new MasterDeliveryPreparationError('generationFailed');
  return {bytes,filename:result.filename,contentType:result.contentType,rowCount:result.rowCount,scopeIds:target.companyIds};
