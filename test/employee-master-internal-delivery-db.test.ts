@@ -138,10 +138,11 @@ describe('actual app-role nonce context and atomic artifact start',()=>{
   expect((await client`select app.internal_auth_report_context(${job.id}::uuid,${job.token}::uuid,'https://other.test') value`)[0].value).toBeNull();
  });
  it('keeps separate owner and recipient users/subjects/Persons instead of collapsing to the receiving identity',async()=>{
+  const ownerCtx={...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};
   const ownerEnrollment=await bootstrapInternalOwner(owner.client,{appUserId:b.adminUserId,organization:'report-broker',username:'owner',email:'owner@example.test',password:temporary,installationOperator:false});
   const original=await getEmployeeMasterReport(ctx,[b.companyId],report.id);
-  report=await saveEmployeeMasterReport(adminCtx(b),[b.companyId],{name:'Separate fictional owner',description:'',sharedRoleIds:['hr_admin'],spec:original.spec});
-  scheduleId=(await saveEmployeeMasterSchedule(adminCtx(b),[b.companyId],{reportId:report.id,version:report.version,enabled:true,config:{frequency:'weekly',day:1,hour:9,minute:0,timezone:'Asia/Kuala_Lumpur'},recipients:[{userId:ctx.userId!,employmentId:employee.employmentId}]})).id;
+  report=await saveEmployeeMasterReport(ownerCtx,[b.companyId],{name:'Separate fictional owner',description:'',sharedRoleIds:['hr_admin'],spec:original.spec});
+  scheduleId=(await saveEmployeeMasterSchedule(ownerCtx,[b.companyId],{reportId:report.id,version:report.version,enabled:true,config:{frequency:'weekly',day:1,hour:9,minute:0,timezone:'Asia/Kuala_Lumpur'},recipients:[{userId:ctx.userId!,employmentId:employee.employmentId}]})).id;
   const job=await queue(),value=await context(client,job),[ownerUser]=await raw`select person_id from app_user where id=${b.adminUserId}::uuid`;
   expect(value).toMatchObject({bindings:{owner:{userId:b.adminUserId,subject:ownerEnrollment.subject,personId:ownerUser.person_id},recipient:{userId:ctx.userId,subject,personId:employee.personId}}});
   await client.begin(async tx=>{await bounded(tx);expect(ready(await lock(tx,job)).bindings.owner.subject).not.toBe(subject);});
@@ -180,7 +181,7 @@ describe('actual app-role nonce context and atomic artifact start',()=>{
  it('does not expose the nonce in app audit reads or permit direct artifact mutation',async()=>{
   const job=await queue();
   expect(await withTenant(ctx,tx=>tx.select({id:schema.customReportOccurrence.id,hash:schema.customReportOccurrence.artifactSha256}).from(schema.customReportOccurrence))).toEqual([{id:job.id,hash:null}]);
-  await expect(withTenant(ctx,tx=>tx.select({token:schema.customReportOccurrence.leaseToken}).from(schema.customReportOccurrence))).rejects.toThrow(/permission denied/);
+  await expect(withTenant(ctx,tx=>tx.select({token:schema.customReportOccurrence.leaseToken}).from(schema.customReportOccurrence))).rejects.toMatchObject({cause:{code:'42501'}});
   await expect(client`update custom_report_occurrence set artifact_sha256=${artifact.sha256} where id=${job.id}::uuid`).rejects.toThrow(/permission denied/);
   await expect(client`select * from app_internal_auth_record`).rejects.toThrow(/permission denied/);
  });
