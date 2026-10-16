@@ -66,7 +66,7 @@ import {
   setModule,
   type Base,
 } from './harness';
-import type { SessionContext } from '../db/client';
+import { withTenant, type SessionContext } from '../db/client';
 
 const ROOT = path.resolve(__dirname, '..');
 const LIST_PAGE = 'app/admin/system-testing/page.tsx';
@@ -310,15 +310,15 @@ describe('e6be5a3b — status belongs to the RUN, not the CASE', () => {
   it('TWO RUNS WITH AN IDENTICAL run_at still derive ONE latest — this is why run_no exists', async () => {
     // `now()` is the TRANSACTION timestamp, so any two runs written in one transaction share a run_at to
     // the microsecond. Ordering by run_at would make "the newest" whatever the planner returned. The
-    // rows are written as the OWNER so the collision can be constructed exactly, rather than hoped for.
+    // Both observations use the same timestamp under the actual restricted role and real actor.
     const base = await seedBase();
     const s = await entitledAdmin(base);
     const { id } = await createTestCase(s, { moduleCode: CROSS_MODULE_CODE, title: 'Tie-break' });
     const sameInstant = new Date('2026-09-20T02:15:00.000Z');
-    await owner.db.insert(testRun).values([
-      { tenantId: base.tenantId, testCaseId: id, runNo: 1, outcome: 'fail', runAt: sameInstant },
-      { tenantId: base.tenantId, testCaseId: id, runNo: 2, outcome: 'pass', runAt: sameInstant },
-    ]);
+    await withTenant(s, tx => tx.insert(testRun).values([
+      { tenantId: base.tenantId, testCaseId: id, runNo: 1, outcome: 'fail', runAt: sameInstant, runByUserId: s.userId },
+      { tenantId: base.tenantId, testCaseId: id, runNo: 2, outcome: 'pass', runAt: sameInstant, runByUserId: s.userId },
+    ]));
     const [row] = await listTestCases(s);
     expect(row.latestOutcome, 'run_no decides, not run_at').toBe('pass');
     expect((await getTestCase(s, id))!.runs.map((r) => r.runNo)).toEqual([2, 1]);
@@ -500,19 +500,14 @@ describe('e6be5a3b — the defect link is a RAISE, not a typed ID', () => {
     expect(row.reporter_label).toBeNull();
   });
 
-  it('refuses to raise the same run twice, and refuses a run that passed', async () => {
+  it('returns the same canonical link on retry, and refuses a run that passed', async () => {
     const base = await seedBase();
     const s = await entitledEmployedAdmin(base);
     const { id } = await createTestCase(s, { moduleCode: CROSS_MODULE_CODE, title: 'Twice' });
     const failed = await recordTestRun(s, { caseId: id, outcome: 'fail', actualResult: 'bad' });
-    await raiseRunAsFeedback(s, { runId: failed.id, reporterEmploymentId: s.employmentId });
-
-    const again = await raiseRunAsFeedback(s, { runId: failed.id, reporterEmploymentId: s.employmentId }).then(
-      () => null,
-      (e: unknown) => e,
-    );
-    expect(again).toBeInstanceOf(SystemTestingError);
-    expect((again as Error).message).toContain('already');
+    const first = await raiseRunAsFeedback(s, { runId: failed.id, reporterEmploymentId: s.employmentId });
+    const again = await raiseRunAsFeedback(s, { runId: failed.id, reporterEmploymentId: s.employmentId });
+    expect(again.feedbackId).toBe(first.feedbackId);
 
     const passed = await recordTestRun(s, { caseId: id, outcome: 'pass' });
     const refused = await raiseRunAsFeedback(s, { runId: passed.id, reporterEmploymentId: s.employmentId }).then(

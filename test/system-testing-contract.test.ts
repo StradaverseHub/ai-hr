@@ -4,10 +4,10 @@ import { testingBuildReadiness } from '../lib/system-testing/build-identity';
 import { catalogueDigest, sourceContentDigest, testingDigest } from '../lib/system-testing/hash';
 import { previewTestingUpdates, selectedTestingUpdateId, type LibraryCaseSnapshot } from '../lib/system-testing/updates';
 const id = 'a74fce27-2c4c-4dbe-93de-40c438852aa0', version = '455e0338-1ce4-4c53-8d05-fb1905c4078c';
-const guide: InstructionDefinition = { format: 1, title: 'Save and reopen a fictional employee', objective: 'Confirm the saved value is retained.', functionKey: 'personnel.profile', area: 'personnel', moduleCode: 'personnel', category: 'functional', priority: 'high', active: true, prerequisites: ['Use an isolated fictional employee; obtain normal company HR access.'], testData: ['A distinctive fictional preferred name.'], steps: [{ id: 'save', action: 'Save the fictional preferred name.', expected: 'A successful save is shown.' }, { id: 'reopen', action: 'Open the same employee again.', expected: 'The saved preferred name is retained.' }], expectedBehavior: 'The saved value is retained.', expectedFunction: 'Normal Personnel editing and persisted profile reading.', permissions: ['Company-scoped HR access to this fictional employee.'], jurisdiction: null, configuration: null, screenKeys: ['people'] };
+const guide: InstructionDefinition = { format: 1, title: 'Save and reopen a fictional employee', objective: 'Confirm the saved value is retained.', functionKey: 'personnel.profile', area: 'personnel', moduleCode: 'employees', category: 'functional', priority: 'high', active: true, prerequisites: ['Use an isolated fictional employee; obtain normal company HR access.'], testData: ['A distinctive fictional preferred name.'], steps: [{ id: 'save', action: 'Save the fictional preferred name.', expected: 'A successful save is shown.' }, { id: 'reopen', action: 'Open the same employee again.', expected: 'The saved preferred name is retained.' }], expectedBehavior: 'The saved value is retained.', expectedFunction: 'Normal Personnel editing and persisted profile reading.', permissions: ['Company-scoped HR access to this fictional employee.'], jurisdiction: null, configuration: null, screenKeys: ['people'] };
 const catalogue: ReviewedCatalogue = { format: 1, revision: 'baseline.1', entries: [{ semanticId: 'personnel.profile.reopen', definition: guide, sources: ['core/profile.ts'], reviewNote: 'Reviewed canonical save and read journey.' }] };
 function identity() { return testingBuildReadiness({ sourceRef: 'a'.repeat(40), buildRecordId: id, catalogueHash: catalogueDigest(catalogue), contentHash: 'b'.repeat(64) }, { catalogueHash: catalogueDigest(catalogue), contentHash: 'b'.repeat(64) }); }
-function preview(library: LibraryCaseSnapshot[] = []) { return previewTestingUpdates({ catalogue, identity: identity(), library, enabledModuleCodes: ['personnel'] }); }
+function preview(library: LibraryCaseSnapshot[] = []) { return previewTestingUpdates({ catalogue, identity: identity(), library, enabledModuleCodes: ['employees'] }); }
 describe('immutable testing instruction and personal execution contracts', () => {
   it('requires a result for every ordered step and refuses unknown executable properties', () => {
     expect(parseInstruction(guide)).toEqual(guide);
@@ -16,7 +16,7 @@ describe('immutable testing instruction and personal execution contracts', () =>
     expect(() => parseInstruction({ ...guide, steps: [guide.steps[0], guide.steps[0]] })).toThrow();
   });
   it('preserves an honest current upgrade baseline without fabricating earlier step expectations', () => {
-    const baseline = { format: 0, history: 'upgrade_baseline', title: 'Old guide', moduleCode: 'personnel', precondition: null, steps: ['Old action'], testType: 'functional', priority: 'medium', expectedBehavior: null, expectedFunction: null };
+    const baseline = { format: 0, history: 'upgrade_baseline', title: 'Old guide', moduleCode: 'employees', precondition: null, steps: ['Old action'], testType: 'functional', priority: 'medium', expectedBehavior: null, expectedFunction: null };
     expect(parsePublishedInstruction(baseline)).toEqual(baseline);
     expect(() => parsePublishedInstruction({ ...baseline, history: 'original_run_instructions' })).toThrow();
   });
@@ -51,7 +51,7 @@ describe('verified build and reviewed update comparison', () => {
     expect(add.previewHash).not.toBe(preview([row]).previewHash);
   });
   it('does not turn missing build evidence into a selectable update or absent catalogue cases into removals', () => {
-    const result = previewTestingUpdates({ catalogue, identity: { status: 'review_required', reason: 'missing_identity' }, library: [], enabledModuleCodes: ['personnel'] });
+    const result = previewTestingUpdates({ catalogue, identity: { status: 'review_required', reason: 'missing_identity' }, library: [], enabledModuleCodes: ['employees'] });
     expect(result.entries[0].action).toBe('review_required');
     expect(() => selectedTestingUpdateId(result, [catalogue.entries[0].semanticId])).toThrow();
     expect(previewTestingUpdates({ catalogue: { ...catalogue, entries: [] }, identity: identity(), library: [], enabledModuleCodes: [] }).entries).toEqual([]);

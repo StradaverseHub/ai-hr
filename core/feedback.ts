@@ -44,13 +44,14 @@ export async function submitFeedback(
     expectedBehavior?: string | null;
     expectedFunction?: string | null;
   },
+  outerTx?: Tx,
 ): Promise<{ id: string }> {
   if (!CATEGORIES.includes(p.category)) throw new FeedbackError('Unknown feedback category.');
   const title = p.title?.trim();
   const description = p.description?.trim();
   if (!title) throw new FeedbackError('A title is required.');
   if (!description) throw new FeedbackError('A description is required.');
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx: Tx) => {
     const [row] = await tx
       .insert(feedbackRequest)
       .values({
@@ -74,7 +75,8 @@ export async function submitFeedback(
       payload: { category: p.category, title },
     });
     return { id: row.id };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx, run);
 }
 
 // ── Attachments (supporting documents + images) — mirrors claim_attachment ──

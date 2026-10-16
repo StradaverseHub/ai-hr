@@ -28,12 +28,23 @@ export const instructionDefinitionSchema = z.strictObject({
   permissions: z.array(short).min(1).max(16),
   /** Null explicitly means no country/configuration-specific assertion in this guide. */
   jurisdiction: short.nullable(), configuration: text.nullable(),
-  screenKeys: z.array(testingSemanticId).min(1).max(24),
+  screenKeys: z.array(z.string().regex(/^[A-Za-z][A-Za-z0-9]*$/).max(100)).min(1).max(24),
 }).superRefine((d, ctx) => {
   if (new Set(d.steps.map(s => s.id)).size !== d.steps.length) ctx.addIssue({ code: 'custom', path: ['steps'], message: 'Step identifiers must be unique.' });
   if (new Set(d.screenKeys).size !== d.screenKeys.length) ctx.addIssue({ code: 'custom', path: ['screenKeys'], message: 'Screen identifiers must be unique.' });
 });
 export type InstructionDefinition = z.infer<typeof instructionDefinitionSchema>;
+/** Drafts retain unfinished text and empty step/selection lists; publication still uses the full schema. */
+export const instructionDraftSchema = instructionDefinitionSchema.safeExtend({
+  title: z.string().max(240), objective: z.string().max(TESTING_LIMITS.text), functionKey: z.string().max(160), moduleCode: z.string().max(160),
+  prerequisites: z.array(z.string().max(TESTING_LIMITS.text)).max(TESTING_LIMITS.prerequisites),
+  testData: z.array(z.string().max(TESTING_LIMITS.text)).max(TESTING_LIMITS.testData),
+  steps: z.array(z.strictObject({ id: testingSemanticId, action: z.string().max(TESTING_LIMITS.text), expected: z.string().max(TESTING_LIMITS.text) })).max(TESTING_LIMITS.steps),
+  expectedBehavior: z.string().max(TESTING_LIMITS.text), expectedFunction: z.string().max(TESTING_LIMITS.text),
+  permissions: z.array(z.string().max(240)).max(16), screenKeys: z.array(z.string().regex(/^[A-Za-z][A-Za-z0-9]*$/).max(100)).max(24),
+});
+export function parseInstructionDraft(raw: unknown): InstructionDefinition { return instructionDraftSchema.parse(raw); }
+
 /** Upgrade records what exists now; it does not assert what an earlier run was shown. */
 export const legacyInstructionSchema = z.strictObject({
   format: z.literal(0), history: z.literal('upgrade_baseline'), title: short, moduleCode: short,
@@ -89,3 +100,8 @@ export type TestingBuildReadiness = { status: 'review_required'; reason: 'missin
   /** Compiled identity is not proof of service health, arrival parity or a tester pass. */
   activeServiceVerified: false;
 };
+
+export const sourceHashRecordSchema = z.array(z.strictObject({ path: testingSourcePath, sha256: testingHash })).max(32000).superRefine((rows, ctx) => {
+  if (new Set(rows.map(r => r.path)).size !== rows.length) ctx.addIssue({ code: 'custom', message: 'Source paths must be unique.' });
+});
+export type TestingSourceHashRecord = z.infer<typeof sourceHashRecordSchema>;
