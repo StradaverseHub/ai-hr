@@ -25,6 +25,8 @@ import { businessUnit, payslipInformationSetting } from '../db/schema';
  * EMPTY companyIds set fails CLOSED (returns no rows) rather than falling back to "all".
  */
 import { randomUUID } from 'node:crypto';
+import {readPayrollOvertimePatternCashTx, OvertimePayrollError, type OvertimePayrollErrorCode} from './payroll-overtime-pattern';
+import {OvertimeOwnerError} from '../packs/attendance/service';
 import { and, asc, desc, eq, gte, inArray, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { type SessionContext, type Tx } from '../db/client';
@@ -2405,6 +2407,15 @@ export type PendingMoneyDoor =
   | 'tp1'
   | 'zakat';
 
+/** Exact immutable cash evidence; presentation does not create or reprice a contribution. */
+export type PendingOvertimeCashEvidence = {
+  sourceId: string; calculationId: string; sourceRevision: number; settlementId: string;
+  lineId: string; earningItemId: string; date: string; currency: string; minorScale: number; amountMinorUnits: string;
+};
+export type PendingOvertimeReview =
+  | {status: 'available'; lineCount: number}
+  | {status: 'unavailable'; code: OvertimePayrollErrorCode | OvertimeOwnerError['code']};
+
 export type PendingMoneyLine = {
   employmentId: string;
   employeeName: string;
@@ -2417,6 +2428,7 @@ export type PendingMoneyLine = {
   /** Extra provenance the door carries ('attendance'/'manual' for overtime, 'unattached' for a
    *  period-keyed individual txn that has not been stamped onto this run yet). Null where none. */
   note: string | null;
+  overtimeCash?: PendingOvertimeCashEvidence;
 };
 
 export type PendingMoneyDoorTotal = { door: PendingMoneyDoor; count: number; total: number };
@@ -2436,6 +2448,7 @@ export type PendingBatchMoney = {
    * `lines` list is the exact shape of "somebody keyed transactions that are going nowhere".
    */
   inertRows: number;
+  formulaOvertimeReview?: PendingOvertimeReview;
 };
 
 /** The nine doors that can carry a line, in the order the card renders them. */
@@ -2523,6 +2536,32 @@ export function pendingBatchMoney(ctx: SessionContext, p: { batchId: string }): 
       if (!(Math.abs(amount) > 0)) return; // a zero line is not a pending transaction
       lines.push({ ...r, door, itemName, amount, note });
     };
+
+    // Formula settlements are canonical Payroll inputs even when individual/typed pay flags are off.
+    // The existing financial consumer verifies source freshness, approval, mapping and exact evidence.
+    // Expected refusal is visible, never disguised as an empty/basic-only run. Unexpected SQL/errors escape.
+    let formulaOvertimeReview: PendingOvertimeReview;
+    try {
+      const cash = await readPayrollOvertimePatternCashTx(tx, ctx, p);
+      const ids = [...cash.byEmployment.keys()];
+      const people = ids.length ? await tx.select({employmentId: employment.id, employeeName: person.fullName, employeeCode: employment.employeeCode})
+        .from(employment).innerJoin(person, eq(person.id, employment.personId)).where(inArray(employment.id, ids)) : [];
+      const byId = new Map(people.map(row => [row.employmentId, row]));
+      const formulaLines: PendingMoneyLine[] = cash.lines.map(line => {
+        const who = byId.get(line.employmentId);
+        if (!who) throw new OvertimePayrollError('unavailable');
+        return {...who, door: 'overtime', itemName: line.earningItemName, amount: Number(line.amountMinorUnits) / 100,
+          note: null, overtimeCash: {sourceId: line.sourceId, calculationId: line.calculationId,
+            sourceRevision: line.sourceRevision, settlementId: line.settlementId, lineId: line.lineId,
+            earningItemId: line.earningItemId, date: line.date, currency: line.evidence.mapping.currency,
+            minorScale: 2, amountMinorUnits: line.amountMinorUnits}};
+      });
+      lines.push(...formulaLines);
+      formulaOvertimeReview = {status: 'available', lineCount: formulaLines.length};
+    } catch (error) {
+      if (!(error instanceof OvertimePayrollError) && !(error instanceof OvertimeOwnerError)) throw error;
+      formulaOvertimeReview = {status: 'unavailable', code: error.code};
+    }
 
     // ── payroll_input: six doors on one row (7-12). Deductions are pushed NEGATIVE. ──
     const inputs = await tx
@@ -2703,6 +2742,7 @@ export function pendingBatchMoney(ctx: SessionContext, p: { batchId: string }): 
       earnings: round2(lines.filter((l) => l.amount > 0).reduce((n, l) => n + l.amount, 0)),
       deductions: round2(lines.filter((l) => l.amount < 0).reduce((n, l) => n + l.amount, 0)),
       inertRows,
+      formulaOvertimeReview,
     };
   });
 }
@@ -2733,6 +2773,8 @@ export function narrowToNothingPayable<T extends { employmentId: string }>(
   pending: PendingBatchMoney | null,
 ): T[] {
   if (!pending) return [...rows];
+  // An unavailable obligation cannot justify a definite 'will be skipped' notice.
+  if (pending.formulaOvertimeReview?.status === 'unavailable') return [];
   const paid = new Set(pending.lines.filter((l) => l.amount > 0).map((l) => l.employmentId));
   return rows.filter((r) => !paid.has(r.employmentId));
 }

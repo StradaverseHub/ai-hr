@@ -27,10 +27,13 @@
  * LABELS FROM `people.detail.*` — the Personnel card's own keys; no message key is added.
  */
 import { useTranslations } from 'next-intl';
-import { Field, inputCls } from '@/components/ui';
+import { inputCls } from '@/components/ui';
+import {PersonnelField} from '@/components/personnel-field';
+import {personnelControl,personnelFormName,personnelFormChoices} from '@/lib/personnel-form-contract';
+import {PERSONNEL_CHILD_RELIEF_MODES} from '@/lib/personnel-choice-vocabulary';
 
 /** The three child-relief modes, in the order both screens offer them (item d64d0df4 added the third). */
-export const CHILD_RELIEF_MODES = ['manual', 'auto', 'auto_table'] as const;
+export const CHILD_RELIEF_MODES = PERSONNEL_CHILD_RELIEF_MODES;
 
 type YesNoCommon = { field: 'disabledIndividual' | 'disabledSpouse' };
 
@@ -47,13 +50,15 @@ export function DisabledReliefField(
     | (YesNoCommon & { mode: 'controlled'; value: string | undefined; onChange: (value: string) => void }),
 ) {
   const t = useTranslations('people.detail');
-  const label = props.field === 'disabledIndividual' ? t('disabledIndividualLabel') : t('disabledSpouseLabel');
+  const fieldId=props.field==='disabledIndividual'?'bank_statutory.income_tax_pcb.disabledindividual':'bank_statutory.income_tax_pcb.disabledspouse';
+  const mode=props.mode==='controlled'?'draft':'edit';
   return (
-    <Field label={label}>
+    <PersonnelField fieldId={fieldId} mode={mode}>
       <select
+        {...personnelControl(fieldId,mode)}
         className={inputCls}
         {...(props.mode === 'form'
-          ? { name: props.field, defaultValue: props.defaultValue ? 'yes' : 'no' }
+          ? { defaultValue: props.defaultValue ? 'yes' : 'no' }
           : {
               // ABSENT READS AS 'no' — the column default, and the state in which the relief is not
               // claimed. A draft nobody has touched must not claim a relief by omission.
@@ -64,7 +69,7 @@ export function DisabledReliefField(
         <option value="no">{t('disabledIndividualNo')}</option>
         <option value="yes">{t('disabledIndividualYes')}</option>
       </select>
-    </Field>
+    </PersonnelField>
   );
 }
 
@@ -101,20 +106,21 @@ export function ChildReliefModeField(
   };
   const current = CHILD_RELIEF_MODES.includes((props.value ?? '') as 'manual') ? props.value! : 'manual';
   return (
-    <Field label={t('childReliefModeLabel')}>
+    <PersonnelField fieldId="bank_statutory.income_tax_pcb.childreliefmode" mode={props.mode==='controlled'?'draft':'edit'}>
       <select
+        {...personnelControl('bank_statutory.income_tax_pcb.childreliefmode',props.mode==='controlled'?'draft':'edit')}
         className={inputCls}
         value={current}
         onChange={(e) => props.onChange(e.target.value)}
-        {...(props.mode === 'form' ? { name: props.name ?? 'childReliefMode' } : {})}
+        {...(props.mode === 'form' ? { name: personnelFormName('bank_statutory.income_tax_pcb.childreliefmode',props.name) } : {})}
       >
-        {CHILD_RELIEF_MODES.map((m) => (
+        {personnelFormChoices('bank_statutory.income_tax_pcb.childreliefmode').map(({value:m,labelKey}) => (
           <option key={m} value={m}>
-            {label[m]}
+            {t(labelKey.slice(14))}
           </option>
         ))}
       </select>
-    </Field>
+    </PersonnelField>
   );
 }
 
@@ -167,12 +173,13 @@ export function HrdfSubjectField(
         ? props.value
         : '';
   return (
-    <Field label={t('subjectToHrdf')}>
+    <PersonnelField fieldId="bank_statutory.socso_eis_and_others_statutory.hrdfsubject" mode={props.mode==='controlled'?'draft':'edit'}>
       <select
+        {...personnelControl('bank_statutory.socso_eis_and_others_statutory.hrdfsubject',props.mode==='controlled'?'draft':'edit')}
         className={inputCls}
         title={t('subjectToHrdfHint')}
         {...(props.mode === 'form'
-          ? { name: props.name ?? 'subjectToHrdf', defaultValue: current }
+          ? { name: personnelFormName('bank_statutory.socso_eis_and_others_statutory.hrdfsubject',props.name), defaultValue: current }
           : { value: current, onChange: (e) => props.onChange(e.target.value) })}
       >
         <option value="">{t('subjectToHrdfFollowingDefault')}</option>
@@ -182,6 +189,6 @@ export function HrdfSubjectField(
         <option value="yes">{t('prorateYes')}</option>
         <option value="no">{t('prorateNo')}</option>
       </select>
-    </Field>
+    </PersonnelField>
   );
 }

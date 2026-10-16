@@ -9,7 +9,7 @@
  *     read-only cell with its provenance again, after r343 made it a chosen value the roster corrected).
  */
 import { describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 
 import en from '../messages/en.json';
@@ -77,6 +77,7 @@ function renderGrant(locale: Locale, context: LeaveCreditGrantContextView, overt
         replacementType={{ id: 'rl', name: 'Replacement Leave' }}
         submitAction={vi.fn()}
         contextAction={contextAction}
+        claimReviewAction={async()=>({basis:'legacy'})}
         dayFactsAction={dayFactsAction}
       />
     </NextIntlClientProvider>,
@@ -84,7 +85,7 @@ function renderGrant(locale: Locale, context: LeaveCreditGrantContextView, overt
   return { ...utils, contextAction, dayFactsAction };
 }
 
-async function openAndPick(dateInput = '2026-08-09') {
+async function openAndPick(dateInput = '2026-08-09', locale: Locale = 'en') {
   fireEvent.click(screen.getByTestId('leave-credit-add'));
   const trigger = await waitFor(() => {
     const el = screen.getByRole('dialog').querySelector('button[aria-haspopup="listbox"]');
@@ -96,13 +97,26 @@ async function openAndPick(dateInput = '2026-08-09') {
   fireEvent.mouseDown(await screen.findByRole('option', { name: 'EMP-0001 — Aisyah Rahman' }));
   // The rows open once the employee's context has arrived (the table remounts for the picked employee).
   const date = await waitFor(() => {
-    const el = screen.getAllByLabelText(en.replacementRequest.workedDate)[0] as HTMLInputElement;
+    const el = screen.getAllByLabelText(CATALOGUES[locale].replacementRequest.workedDate)[0] as HTMLInputElement;
     if (el.disabled) throw new Error('rows still closed');
     return el;
   });
   await act(async () => {
     fireEvent.change(date, { target: { value: dateInput } });
   });
+}
+
+/** Read actual dialog controls, not merely a translated helper paragraph. */
+function assertSharedControlCopy(locale: Locale, dialog: HTMLElement, hr: boolean) {
+  const copy = CATALOGUES[locale].replacementRequest;
+  expect(within(dialog).getByRole('columnheader', {name:copy.workedDate})).toBeVisible();
+  expect(screen.getByTestId('leave-credit-leave-type')).toHaveTextContent(`${copy.leaveType}: Replacement Leave`);
+  expect(screen.getByTestId('leave-credit-add-row')).toHaveTextContent(copy.addRow);
+  expect(dialog.querySelector('textarea[name="reason"]')?.closest('label')).toHaveTextContent(copy.reason);
+  expect(screen.getByTestId('leave-credit-total')).toHaveTextContent(copy.totalDays.replace('{days}','0.00'));
+  expect(within(dialog).getAllByRole('button',{name:hr?lcAdd(locale).cancel:copy.cancel})).toHaveLength(2);
+  if(locale!=='en')for(const key of ['workedDate','leaveType','addRow','reason','totalDays','cancel','removeRow','firstScheduleConsent'] as const)
+    expect(copy[key],`${locale}: ${key} must not be English`).not.toBe(CATALOGUES.en.replacementRequest[key]);
 }
 
 describe('+ Add Leave Credit — the employee’s form, plus an Employee picker', () => {
@@ -125,10 +139,11 @@ describe('+ Add Leave Credit — the employee’s form, plus an Employee picker'
   for (const locale of LOCALES) {
     it(`[${locale}] after the pick: the day kind from the roster, the per-row overtime warning, HR's consent label`, async () => {
       const { contextAction, dayFactsAction } = renderGrant(locale, CONTEXT);
-      await openAndPick();
+      await openAndPick(undefined,locale);
       expect(contextAction).toHaveBeenCalledWith('emp-1');
       await waitFor(() => expect(dayFactsAction).toHaveBeenCalledWith('2026-08-09', 'emp-1'));
       const dialog = screen.getByRole('dialog');
+      await waitFor(()=>assertSharedControlCopy(locale,dialog,true));
       const copy = CATALOGUES[locale] as unknown as { replacementRequest: { dayKind: Record<string, string> } };
       await waitFor(() =>
         expect((screen.getAllByTestId('leave-credit-day-type')[0].querySelector('span')?.textContent ?? '').trim()).toBe(
@@ -236,7 +251,8 @@ describe('The employee’s Leave Credit request', () => {
             replacementType={{ id: 'rl', name: 'Replacement Leave' }}
             submitAction={vi.fn()}
             today="2026-09-17"
-            dayFactsAction={dayFactsAction}
+            claimReviewAction={async()=>({basis:'legacy'})}
+        dayFactsAction={dayFactsAction}
             // r358 — `extendedHoursTiers={null}` used to mean BOTH "no tier ladder" and "an ordinary
             // day earns nothing here". Those are two facts now: the ladder applies to every day type,
             // and the switch governs the ordinary one alone.
@@ -249,6 +265,7 @@ describe('The employee’s Leave Credit request', () => {
       fireEvent.click(screen.getByText(rr.trigger as string));
       const dialog = screen.getByRole('dialog');
       expect(dialog.textContent).toContain(rr.title as string);
+      assertSharedControlCopy(locale,dialog,false);
       /*
        * The RULE. r299 pinned `eligibleDaysNote` ("Only a rest day, off day or public holiday can earn a
        * credit"); cbfa8b0b made that false by omission (extended hours on an ordinary working day earn a

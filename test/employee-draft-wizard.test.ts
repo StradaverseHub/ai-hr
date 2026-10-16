@@ -521,7 +521,7 @@ describe('§3 a draft creates nothing until it is completed', () => {
     const ctx = adminCtx(b);
     const before = await counts();
     const { id } = await saveEmployeeDraft(ctx, { data: { profile: { fullName: 'Half' } }, currentStep: 1 });
-    await expect(completeEmployeeDraft(ctx, id)).rejects.toThrow(/Cannot create the employee yet/);
+    await expect(completeEmployeeDraft(ctx, id)).rejects.toMatchObject({ code: 'required_fields' });
     expect(await counts()).toEqual(before);
     // The draft survives the refusal — losing the typed work would be the worse failure.
     expect(await getEmployeeDraft(ctx, id)).not.toBeNull();
@@ -624,7 +624,7 @@ describe('§3 a draft creates nothing until it is completed', () => {
   it('a non-admin cannot save, complete or discard', async () => {
     const employee = { ...adminCtx(b), roles: ['employee'] };
     await expect(saveEmployeeDraft(employee, { data: {}, currentStep: 1 })).rejects.toThrow(/Only an admin/);
-    await expect(completeEmployeeDraft(employee, randomUUID())).rejects.toThrow(/Only an admin/);
+    await expect(completeEmployeeDraft(employee, randomUUID())).rejects.toMatchObject({ code: 'permission' });
     await expect(discardEmployeeDraft(employee, randomUUID())).rejects.toThrow(/Only an admin/);
   });
 
@@ -634,7 +634,7 @@ describe('§3 a draft creates nothing until it is completed', () => {
     const data = completeDraft();
     data.profile!.icNumber = '12345'; // not 12 digits
     const { id } = await saveEmployeeDraft(ctx, { data, currentStep: 5 });
-    await expect(completeEmployeeDraft(ctx, id)).rejects.toThrow(/Invalid identity number/);
+    await expect(completeEmployeeDraft(ctx, id)).rejects.toMatchObject({ code: 'profile_invalid', fields: [{ tab: 'profile', field: 'icNumber' }] });
     expect(await counts()).toEqual(before);
   });
 });
@@ -712,7 +712,7 @@ describe('§5 which Employee ID a wizard-created employee gets', () => {
     expect((await employeeIdRuleFor(ctx, b.companyId)).hasConfig).toBe(false);
     const before = await counts();
     const { id } = await saveEmployeeDraft(ctx, { data: autoDraft(), currentStep: 5 });
-    await expect(completeEmployeeDraft(ctx, id)).rejects.toThrow(/Cannot create the employee yet.*employeeCode/);
+    await expect(completeEmployeeDraft(ctx, id)).rejects.toMatchObject({ code: 'required_fields', fields: expect.arrayContaining([{ tab: 'profile', field: 'employeeCode' }]) });
     expect(await counts()).toEqual(before);
     // The typed work survives the refusal.
     expect(await getEmployeeDraft(ctx, id)).not.toBeNull();
@@ -757,7 +757,7 @@ describe('§5 which Employee ID a wizard-created employee gets', () => {
     const data = completeDraft(); // carries a hand-typed ID
     data.profile!.employeeIdMode = 'manual';
     const { id } = await saveEmployeeDraft(ctx, { data, currentStep: 5 });
-    await expect(completeEmployeeDraft(ctx, id)).rejects.toThrow(/does not allow manual entry/);
+    await expect(completeEmployeeDraft(ctx, id)).rejects.toMatchObject({ code: 'employee_code_not_allowed', fields: [{ tab: 'profile', field: 'employeeCode' }] });
     expect(await counts()).toEqual(before);
   });
 
@@ -799,7 +799,7 @@ describe('§5 which Employee ID a wizard-created employee gets', () => {
       companyId: b.companyId, prefix: 'ABC', startNumber: 1, numberLength: 4, increment: 1,
       allowManualOverride: false,
     });
-    await expect(completeEmployeeDraft(ctx, id)).rejects.toThrow(/does not allow manual entry/);
+    await expect(completeEmployeeDraft(ctx, id)).rejects.toMatchObject({ code: 'employee_code_not_allowed', fields: [{ tab: 'profile', field: 'employeeCode' }] });
   });
 
   it('the duplicate look-ahead names a clash, is case-insensitive, and a DRAFT reserves nothing', async () => {

@@ -25,6 +25,7 @@ import { jobRun } from '../db/schema';
  *  never run again. */
 export const JOB_KEYS = [
   'leave.accrue',
+  'replacement-holidays.reconcile',
   'review.sweep',
   'leave.expire-carry',
   // ADR-0077 slice 10 (r113) — the usage meter. Unlike the sweeps above, a MISSED RUN IS A PERMANENT HOLE:
@@ -39,6 +40,7 @@ export const JOB_KEYS = [
   // why it is registered here rather than left to a crontab line nobody can see from inside the app.
   // A card reading "Never run" on /admin/scheduled-actions is the visible form of "not installed".
   'entitlement.alarm',
+  'reports.employee-master.deliver',
 ] as const;
 export type JobKey = (typeof JOB_KEYS)[number];
 
@@ -59,12 +61,14 @@ export type JobOutcome = 'success' | 'partial' | 'failed';
 export type JobDescriptor = { key: JobKey; i18nKey: string; schedule: string };
 
 export const JOBS: readonly JobDescriptor[] = [
+  {key:'replacement-holidays.reconcile',i18nKey:'replacement-holidays-reconcile',schedule:'Every minute — queued changes; daily reconciliation'},
   { key: 'leave.accrue', i18nKey: 'leave-accrue', schedule: 'Monthly — 1st at 02:00' },
   { key: 'review.sweep', i18nKey: 'review-sweep', schedule: 'Daily — 03:00' },
   { key: 'leave.expire-carry', i18nKey: 'leave-expire-carry', schedule: 'Yearly — 1 April at 03:00' },
   { key: 'usage.capture', i18nKey: 'usage-capture', schedule: 'Daily — 01:00' },
   { key: 'anomaly.sweep', i18nKey: 'anomaly-sweep', schedule: 'Daily — 02:30' },
   { key: 'entitlement.alarm', i18nKey: 'entitlement-alarm', schedule: 'Daily — 03:30' },
+  { key: 'reports.employee-master.deliver', i18nKey: 'reports-employee-master-deliver', schedule: 'Every minute — due report schedules' },
 ];
 
 /**

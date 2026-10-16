@@ -62,6 +62,7 @@ export async function RuleForm({
   cancel: { href: string; label: string } | null;
 }) {
   const t = await getTranslations('admin.attendanceRule');
+  const tb=await getTranslations('boardSchedule');
   const editing = !!rule;
   const isDefault = !!rule?.isDefault;
 
@@ -126,7 +127,7 @@ export async function RuleForm({
 
         <Card className="space-y-4 p-4">
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label={t('ruleName')}>
+            <Field label={tb('groupName')}>
               <input
                 name="name"
                 required
@@ -135,6 +136,7 @@ export async function RuleForm({
                 className={`${inputCls} ${isDefault ? 'opacity-70' : ''}`}
               />
             </Field>
+            <Field label={tb('groupLabel')}><input name="label" defaultValue={rule?.label??''} maxLength={80} className={inputCls}/></Field>
             <Field label={t('status')}>
               <select name="status" defaultValue={rule?.status ?? 'active'} className={inputCls}>
                 <option value="active">{t('statusActive')}</option>

@@ -168,8 +168,11 @@ export function createDb(connectionString: string, options?: { max?: number }) {
   const db = drizzle(client, { schema });
   type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-  /** Run `fn` in a transaction scoped to the session's tenant/user/roles. */
-  async function withTenant<T>(ctx: SessionContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  /** Run `fn` in a transaction scoped to the session's tenant/user/roles.
+   * Explicit readOnlySnapshot starts REPEATABLE READ / READ ONLY at BEGIN, before session GUCs.
+   * Owner readers must receive this tx explicitly; nested withTenant calls never auto-join.
+   */
+  async function withTenant<T>(ctx: SessionContext, fn: (tx: Tx) => Promise<T>, options?: { readOnlySnapshot: true }): Promise<T> {
     // Fail fast with a clear, diagnosable error rather than a cryptic "reading 'grants'/'tenantId'"
     // TypeError if a caller ever passes an unresolved session (e.g. a swallowed getSession failure).
     if (!ctx || !ctx.tenantId) {
@@ -252,7 +255,7 @@ export function createDb(connectionString: string, options?: { max?: number }) {
         await tx.execute(sql`SET TRANSACTION READ ONLY`);
       }
       return fn(tx);
-    });
+    }, options?.readOnlySnapshot ? { isolationLevel: 'repeatable read', accessMode: 'read only' } : undefined);
   }
 
   return { db, client, withTenant };

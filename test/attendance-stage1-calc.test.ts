@@ -157,7 +157,7 @@ describe('RELEASE GATE — no bands + deductions off moves NOTHING except normal
         ot30: before.ot30,
       });
       expect(now.ot10, JSON.stringify(m)).toBe(before.ot10 - normalOf(m));
-      expect(now.flat + now.ot00, JSON.stringify(m)).toBe(0);
+      expect(now.flat! + now.ot00!, JSON.stringify(m)).toBe(0);
     }
   });
 
@@ -177,7 +177,7 @@ describe('RELEASE GATE — no bands + deductions off moves NOTHING except normal
       });
       const worked = m.worked ?? 0;
       // OT is clamped to worked: an approved-OT override cannot make the columns exceed the day.
-      expect(now.flat + now.ot00 + now.ot10 + now.ot15 + now.ot20 + now.ot30, JSON.stringify(m)).toBe(
+      expect(now.flat! + now.ot00! + now.ot10! + now.ot15! + now.ot20! + now.ot30!, JSON.stringify(m)).toBe(
         Math.max(0, Math.min(m.ot ?? 0, worked)),
       );
     }

@@ -1,3 +1,5 @@
+import { readPayrollOvertimePatternCashTx, readPayrollOvertimeCoverageTx, composePayrollOvertime, OvertimePayrollError } from './payroll-overtime-pattern';
+import { releaseOvertimeSettlementsForDraftTeardownTx } from '../packs/attendance/service';
 import {readPcbExemptions, type PcbExemptionRow} from './pcb-exemptions';
 import { classifyNonCashBenefit, NonCashBenefitConfigurationError, readPcbNonCash, totalNonCash, taxableNonCash, type NonCashEntry, type NonCashEaEntry, type PcbNonCashSnapshot } from '../localization/noncash-benefits';
 import { businessUnit, payslipInformationSetting } from '../db/schema';
@@ -36,6 +38,7 @@ import { compensationEffectiveOn, unpayableSalaryLeg, type PayMode } from './com
 // the resolver has to be proven on the money before attendance, leave and reporting adopt it, and that
 // adoption is deliberately still outstanding (see core/employment-company.ts's header for where it stands).
 import {
+  provenCompanyDatesTx,
   companySegmentsForPeriodBulk,
   employedByCompanyDuring,
   entityChangedDuring,
@@ -674,7 +677,7 @@ export type PayrollSkipReason =
  * `overtime_amount` is a per-batch aggregate with no per-day attribution. Closing it is an ADR-0033
  * question about payroll-run state, not an entitlement one; test/toil.ts pins the current behaviour.
  */
-const EXCLUDE_TOIL_BANKED_DAYS = sql`not exists (
+export const EXCLUDE_TOIL_BANKED_DAYS = sql`not exists (
   select 1 from toil_accrual ta
    where ta.employment_id = ${attendance.employmentId}
      and ta.worked_date = ${attendance.attendanceDate}
@@ -1200,6 +1203,12 @@ export async function resolveBatchCutOffWindow(
 ): Promise<{ start: string; end: string }> {
   const sched = await loadBatchCutOffSchedule(tx, companyId);
   return batchTypeWindow(sched, type, payPeriod);
+}
+
+/** The canonical employment-specific OT cut-off; shared by transfer and final consumption. */
+export async function resolveEmploymentOvertimeWindowTx(tx: Tx, p: { companyId: string; employmentId: string; payPeriod: string }) {
+  const sched = await loadBatchCutOffSchedule(tx, p.companyId);
+  return employmentTypeWindow(tx, sched, new Map(), p.employmentId, 'overtime', p.payPeriod);
 }
 
 /**
@@ -2331,6 +2340,10 @@ export async function teardownDraftChildren(tx: Tx, ctx: SessionContext, batchId
     });
   }
 
+  // The actual contribution/payslip teardown is complete. Release formula cash claims in this same
+  // transaction before deleting their batch; retained owner references and release events survive.
+  await releaseOvertimeSettlementsForDraftTeardownTx(tx, ctx, { batchId, reason: 'draft-batch-teardown' });
+
   return {
     releasedLoanRepaymentIds: releasedRepayments.map((r) => r.id),
     detachedClaimIds: detachedClaims.map((c) => c.id),
@@ -2376,7 +2389,7 @@ export async function deleteDraftBatch(ctx: SessionContext, p: { batchId: string
       })
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
-      .limit(1);
+      .limit(1).for('update');
     if (!batch) throw new Error('batch not found');
     if (batch.status !== 'draft') throw new BatchNotDraftError();
 
@@ -3131,7 +3144,11 @@ export async function prefillFixedZakat(
  * derivation, so every ringgit is traceable to hours and rates.
  */
 export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { batchId: string }) {
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx, tx => prefillOvertimeFromAttendanceTx(tx, ctx, p));
+}
+
+/** Existing prefill owner, reused inside transfer. Preserve independent manual inputs on that path. */
+export async function prefillOvertimeFromAttendanceTx(tx: Tx, ctx: SessionContext, p: { batchId: string; preserveManual?: boolean; employmentId?: string; reprocess?: boolean }) {
     const [batch] = await tx
       .select({
         id: payrollBatch.id,
@@ -3145,9 +3162,9 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
       .from(payrollBatch)
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
       .where(eq(payrollBatch.id, p.batchId))
-      .limit(1);
+      .limit(1).for('update', { of: payrollBatch });
     if (!batch) throw new Error('batch not found');
-    if (batch.status !== 'draft') throw new BatchNotDraftError();
+    if (batch.status !== 'draft' && !(p.reprocess && batch.status === 'processed')) throw new BatchNotDraftError();
     // ADR-0080 D-14 — payroll is a statutory computation and is refused for a non-statutory company,
     // BY TIER rather than by the pack happening to be missing. The distinction matters to whoever reads
     // the error: "No localization pack for country TH" reads as a bug to be fixed, while "this is a
@@ -3212,7 +3229,8 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
     // 15th to the one they moved to — which is exactly the request's own example. The rows are already
     // fetched per day (the rest-day half/full rule needs per-day granularity), so this is a filter, not a
     // new query. Resolved once per employment, and only for employments the widened predicate returned.
-    const otEmpIds = [...new Set(otRowsRaw.map((r) => r.employmentId))];
+    const coverage = await readPayrollOvertimeCoverageTx(tx, ctx, { companyId: batch.companyId, from: otWindow.start, to: otWindow.end });
+    const otEmpIds = [...new Set([...otRowsRaw.map((r) => r.employmentId), ...coverage.employmentIds])];
     const otCurrentCompany = new Map(
       otEmpIds.length
         ? (
@@ -3234,6 +3252,8 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
     const otRows: typeof otRowsRaw = [];
     for (const r of otRowsRaw) {
       if (!ownsDay(r.employmentId, r.attendanceDate)) continue;
+      if (coverage.keys.has(r.employmentId + '|' + r.attendanceDate)) continue;
+      if (p.employmentId && r.employmentId !== p.employmentId) continue;
       if (!otPerEmployment) {
         otRows.push(r);
         continue;
@@ -3241,8 +3261,9 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
       const w = await employmentTypeWindow(tx, otSched, otWindowCache, r.employmentId, 'overtime', batch.payPeriod);
       if (r.attendanceDate >= w.start && r.attendanceDate <= w.end) otRows.push(r);
     }
-    if (otRows.length === 0) return { applied: 0, ineligible: 0 };
-    const empIds = [...new Set(otRows.map((r) => r.employmentId))];
+    // A newly covered day can remove the LAST legacy day: zero its previous attendance aggregate too.
+    const empIds = [...new Set([...otRows.map(r => r.employmentId), ...coverage.employmentIds])].filter(id => !p.employmentId || id === p.employmentId);
+    if (empIds.length === 0) return { applied: 0, ineligible: 0 };
 
     // Period-effective s.2 wages (basic + fixed allowance) — the ORP basis.
     const comps = await tx
@@ -3268,6 +3289,7 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
         id: payrollInput.id,
         employmentId: payrollInput.employmentId,
         bonus: payrollInput.bonusAmount,
+        otSource: payrollInput.otSource,
       })
       .from(payrollInput)
       .where(eq(payrollInput.batchId, p.batchId));
@@ -3283,6 +3305,15 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
     let applied = 0;
     let ineligible = 0;
     for (const employmentId of empIds) {
+      const prior = existingBy.get(employmentId);
+      if (p.preserveManual && prior && prior.otSource !== 'attendance') continue;
+      if (!(daysBy.get(employmentId)?.length) && prior?.otSource === 'attendance') {
+        await tx.update(payrollInput).set({ overtimeAmount: '0.00', otBreakdown: null, otDerivation: null, updatedAt: sql`now()` }).where(eq(payrollInput.id, prior.id));
+        await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'payroll-batch', aggregateId: p.batchId,
+          eventType: 'payroll-batch.input-set', actor: actorOf(ctx), payload: { employmentId, overtimeAmount: 0,
+            bonusAmount: Number(prior.bonus), source: 'attendance', reason: 'Formula-covered days excluded from legacy aggregate' } });
+        applied += 1; continue;
+      }
       const wages = wagesBy.get(employmentId);
       if (wages == null) continue; // no active compensation — nothing to monetize against
       const result = pack.payroll.overtimePay({
@@ -3296,7 +3327,6 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
         ineligible += 1;
         continue; // > RM4,000 wages: no statutory OT — left for a manual (ex-gratia) entry
       }
-      const prior = existingBy.get(employmentId);
       const bonusAmount = prior ? Number(prior.bonus) : 0;
       // ── a96d320c (migration 0479) — THE DECOMPOSITION, STAMPED WHERE IT HAPPENS ────────────────────
       //
@@ -3365,7 +3395,6 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
       applied += 1;
     }
     return { applied, ineligible };
-  });
 }
 
 /**
@@ -4023,6 +4052,17 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
 
     // Per-employee inputs: manual overtime (entered on the draft batch) + auto-derived unpaid days.
     const dim = daysInMonth(pYear, pMonth);
+    // Formula cash is always a Payroll input, including when individual transaction pay is disabled.
+    // Read under the batch lock without employee/source locks (the inverse would deadlock Attendance writers).
+    const formulaCash = await readPayrollOvertimePatternCashTx(tx, ctx, { batchId: p.batchId });
+    const formulaSchedule = await loadBatchCutOffSchedule(tx, batch.companyId);
+    const formulaWindow = await unionTypeWindow(tx, formulaSchedule, batch.companyId, 'overtime', payPeriod);
+    const formulaCoverage = await readPayrollOvertimeCoverageTx(tx, ctx, { companyId: batch.companyId,
+      from: formulaWindow.start, to: formulaWindow.end, employmentIds: emps.map(e => e.employmentId),
+      refuseUnresolved: true, payPeriod });
+    // Selected ineligible/refused outcomes also remove their old Attendance aggregate; manual inputs survive.
+    if (formulaCoverage.keys.size) await prefillOvertimeFromAttendanceTx(tx, ctx, {
+      batchId: p.batchId, preserveManual: true, reprocess: subset !== null });
     const inputRows = await tx
       .select({
         employmentId: payrollInput.employmentId,
@@ -4333,8 +4373,11 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         if (!segs || segs.length <= 1) return true;
         return segs.some((s) => s.companyId === batch.companyId && date >= s.from && date <= s.to);
       };
+      const cycleFormulaCoverage = await readPayrollOvertimeCoverageTx(tx, ctx, { companyId: batch.companyId,
+        from: wStart, to: wEnd, employmentIds: emps.map(e => e.employmentId) });
       for (const r of otCycleRows) {
         if (!cycleOwnsDay(r.employmentId, r.d)) continue;
+        if (cycleFormulaCoverage.keys.has(r.employmentId + '|' + r.d)) continue;
         const ci = cycleIndexOf(r.d);
         if (ci < 0) continue;
         const arr = cycleOtMinutesByEmp.get(r.employmentId) ?? runSchedule.periods.map(() => 0);
@@ -5988,6 +6031,31 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     // workday-only restriction is a no-op). Default (no OT config) ⇒ returns `total` unchanged.
     // Returns the capped OT figure AND the excess the HOUR/AMOUNT caps removed (Step 4 f3148da1 reroutes the
     // excess onto a pay item when configured). Default (no OT config) ⇒ { capped: total, excess: 0 }.
+    const formulaLegacyByEmp = new Map<string, { workday: number; restDay: number; holiday: number; minutes: number; cycleAmounts: number[] }>();
+    for (const e of emps) {
+      if (!formulaCash.byEmployment.has(e.employmentId) || otSourceByEmp.get(e.employmentId) !== 'attendance') continue;
+      const window = await resolveEmploymentOvertimeWindowTx(tx, { companyId: batch.companyId, employmentId: e.employmentId, payPeriod });
+      const rows = formulaCoverage.days.filter(r => r.employmentId === e.employmentId && r.date >= window.start && r.date <= window.end &&
+        r.cashEligible && !formulaCoverage.keys.has(r.employmentId + '|' + r.date) && (r.minutes ?? 0) > 0);
+      const companies = await provenCompanyDatesTx(tx, rows.map(r => ({ employmentId: r.employmentId, date: r.date })));
+      const facts = { workday: 0, restDay: 0, holiday: 0, minutes: 0, cycleAmounts: runSchedule.periods.map(() => 0) };
+      for (const r of rows) {
+        if (companies.get(r.employmentId + '|' + r.date)?.companyId !== batch.companyId) continue;
+        const calc = pack.payroll.overtimePay({ monthlyWages: round2(Number(e.basic) + Number(e.allowance ?? 0)),
+          days: [{ dayType: r.dayType ?? 'workday', minutes: r.minutes ?? 0 }], wageCeiling: rules.ot.wageCeiling,
+          restDayExcessMultiplier: rules.ot.restDayExcessMultiplier, holidayExcessMultiplier: rules.ot.holidayExcessMultiplier });
+        if (!calc.eligible) continue;
+        facts.workday = round2(facts.workday + calc.workday); facts.restDay = round2(facts.restDay + calc.restDay);
+        facts.holiday = round2(facts.holiday + calc.holiday); facts.minutes += r.minutes ?? 0;
+        const ci = runSchedule.periods.findIndex(pd => r.date >= pd.start && r.date <= pd.end);
+        if (ci >= 0) facts.cycleAmounts[ci] += applyOvertimeCapsDetailed({ overtime: {
+          multiplier: policyConfigByEmp.get(e.employmentId)?.overtime?.multiplier,
+          eligibleDayTypes: policyConfigByEmp.get(e.employmentId)?.overtime?.eligibleDayTypes,
+        } }, { workday: calc.workday, restDay: calc.restDay, holiday: calc.holiday, workedOtHours: 0 }).capped;
+      }
+      // A decomposition that disagrees with the actual legacy input cannot establish its hours.
+      if (round2(facts.workday + facts.restDay + facts.holiday) === round2(overtimeByEmp.get(e.employmentId) ?? 0)) formulaLegacyByEmp.set(e.employmentId, facts);
+    }
     const applyOvertimeCapsForEmp = (cfg: PayrollPolicyConfig | null, employmentId: string, total: number): { capped: number; excess: number } => {
       if (!cfg?.overtime || total <= 0) return { capped: total, excess: 0 };
       const bd = otBreakdownByEmp.get(employmentId) as { flat: number; normal: number; rest: number; holiday: number } | null;
@@ -6325,7 +6393,16 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // is zeroed and its statutory delta reads the regular run's OT), so folding there would distort nothing
       // but is skipped for clarity.
       const txnOt = isAdditionalRun ? 0 : round2(txnOtByEmp.get(e.employmentId) ?? 0);
-      const otCap = applyOvertimeCapsForEmp(cfg, e.employmentId, round2(en.overtime + txnOt));
+      const patternLines = formulaCash.byEmployment.get(e.employmentId) ?? [];
+      const knownLegacy = formulaLegacyByEmp.get(e.employmentId);
+      const bd = otBreakdownByEmp.get(e.employmentId);
+      const legacyAmount = round2(en.overtime + txnOt);
+      const legacyIsKnown = knownLegacy && txnOt === 0 && round2(en.overtime) === round2(overtimeByEmp.get(e.employmentId) ?? 0);
+      const combinedOt = patternLines.length ? composePayrollOvertime({ config: cfg,
+        legacy: legacyIsKnown ? knownLegacy : {
+          workday: bd ? round2(bd.flat + bd.normal + Math.max(0, legacyAmount - bd.flat - bd.normal - bd.rest - bd.holiday)) : legacyAmount,
+          restDay: bd?.rest ?? 0, holiday: bd?.holiday ?? 0, minutes: legacyAmount === 0 ? 0 : null }, lines: patternLines }) : null;
+      const otCap = combinedOt ?? applyOvertimeCapsForEmp(cfg, e.employmentId, legacyAmount);
       const overtime = otCap.capped;
       // Step 4 (f3148da1) — OT exceed handling. When the policy configures "convert excess to pay item" AND a
       // valid component was resolved, the amount the HOUR/AMOUNT caps cut off is redirected to that pay item so
@@ -6828,7 +6905,33 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // an additional run stamps the bonus-bucket subset, which is the only money it actually pays (see
       // `bonusOnlyComponentLines`). Computed here rather than inline in the object below so the stamp and
       // the reconciliation test read the identical expression.
-      const stampComponentLines = isAdditionalRun ? bonusOnlyComponentLines(en.componentLines) : en.componentLines;
+      let stampComponentLines = isAdditionalRun ? bonusOnlyComponentLines(en.componentLines) : en.componentLines;
+      if (combinedOt && !isAdditionalRun) {
+        const allocations = new Map(combinedOt.allocations.map(l => [l.id, Number(l.amountMinorUnits) / 100]));
+        // Replace only the old OT display legs with their actual allocated amounts. Other statutory
+        // buckets stay untouched. Mapping supplies names; money continues through the canonical OT bucket.
+        stampComponentLines = stampComponentLines.flatMap(line => {
+          const buckets = line.buckets.filter(b => b.bucket !== 'ot');
+          return buckets.length ? [{ ...line, amount: round2(buckets.reduce((sum,b) => sum+b.amount,0)), buckets }] : [];
+        });
+        const legacyAllocated = allocations.get('legacy') ?? 0;
+        const legacyNamed = en.componentLines.filter(line => line.buckets.some(b => b.bucket === 'ot'));
+        const oldNamedTotal = legacyNamed.reduce((sum,line) => sum + line.buckets.filter(b => b.bucket === 'ot').reduce((n,b) => n+b.amount,0),0);
+        if (legacyAllocated > 0) {
+          if (oldNamedTotal > 0 && round2(oldNamedTotal) === round2(legacyAmount)) {
+            let residual = legacyAllocated;
+            legacyNamed.forEach((line,i) => { const oldAmount = line.buckets.filter(b => b.bucket === 'ot').reduce((sum,b) => sum+b.amount,0);
+              const amount = i === legacyNamed.length-1 ? residual : round2(legacyAllocated*oldAmount/oldNamedTotal);
+              residual = round2(residual-amount); if(amount>0) stampComponentLines.push({ ...line, amount, buckets:[{bucket:'ot',amount}], detail:undefined }); });
+          } else {
+            const seed = pack.payComponents.defaults.find(row => row.code === pack.payComponents.backfillCodes.overtime);
+            if(!seed) throw new OvertimePayrollError('mapping');
+            stampComponentLines.push({ code:seed.code,name:seed.name,amount:legacyAllocated,buckets:[{bucket:'ot',amount:legacyAllocated}],epf:seed.includedInEpf,socso:seed.includedInSocsoEis,pcb:seed.includedInPcb,hrdf:seed.includedInHrdfBase });
+          }
+        }
+        for(const line of patternLines) { const amount = allocations.get(line.settlementId+':'+line.lineId) ?? 0;
+          if(amount>0) stampComponentLines.push({code:line.earningItemCode,name:line.earningItemName,amount,buckets:[{bucket:'ot',amount}],...line.treatment}); }
+      }
       const nonCashSnapshot:PcbNonCashSnapshot={version:1,current:totalNonCash(cumulativeEntries),ownedCurrent:totalNonCash(ownedEntries),owned:nonCashOwned,cumulative:nonCashCumulative,before:nonCashBefore,
         accumulated:accumulatedNonCashByEmp.get(e.employmentId) ?? {bik:0,vola:0,complete:true},cashNormal:Math.max(0,round2(wagesExOt+statOvertime-en.pcbWageDeduction)),entries:cumulativeEntries,ownedEntries,eaEntries:cumulativeEaEntries,ownedEaEntries};
       if(!readPcbNonCash(nonCashSnapshot))throw new NonCashBenefitConfigurationError('month','month_baseline_unavailable');
@@ -7139,6 +7242,24 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         const periods = runSchedule.periods;
         const otMin = cycleOtMinutesByEmp.get(e.employmentId) ?? periods.map(() => 0);
         const upDays = cycleUnpaidDaysByEmp.get(e.employmentId) ?? periods.map(() => 0);
+        // Mixed formula rates follow their allocated CASH amounts on their actual source dates.
+        // Legacy Attendance uses country/policy-priced day weights; an undated manual amount retains
+        // the existing minutes/day fallback. The helper normalizes these weights; they are not OT clocks.
+        let otWeights = otMin;
+        if (combinedOt) {
+          const weights = periods.map(() => 0);
+          const allocation = new Map(combinedOt.allocations.map(l => [l.id, Number(l.amountMinorUnits)]));
+          for (const line of patternLines) {
+            const ci = periods.findIndex(pd => line.date >= pd.start && line.date <= pd.end);
+            if (ci < 0) throw new OvertimePayrollError('coverage');
+            weights[ci] += allocation.get(line.settlementId + ':' + line.lineId) ?? 0;
+          }
+          const legacyCents = allocation.get('legacy') ?? 0;
+          const base = legacyIsKnown ? knownLegacy.cycleAmounts : otMin.some(n => n > 0) ? otMin : periods.map(pd => (Date.parse(pd.end) - Date.parse(pd.start)) / 86400000 + 1);
+          const denom = base.reduce((sum,n) => sum+n,0);
+          for (let i=0;i<weights.length;i++) weights[i] += denom ? legacyCents * base[i] / denom : 0;
+          otWeights = weights;
+        }
         const cycleDays = periods.map(
           (pd) => Math.round((Date.parse(`${pd.end}T00:00:00Z`) - Date.parse(`${pd.start}T00:00:00Z`)) / 86_400_000) + 1,
         );
@@ -7148,7 +7269,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           overtime: slipOvertime,
           unpaid: slipUnpaid,
           cycleDays,
-          otMinutes: otMin,
+          otMinutes: otWeights,
           unpaidDays: upDays,
         });
         paymentSchedule = periods.map((pd, i) => ({ seq: pd.seq, from: pd.start, to: pd.end, amount: amounts[i] }));
@@ -7275,6 +7396,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           // of those the key is simply absent and the payslip prints the overtime line it prints today —
           // which is the correct answer, not a degraded one. An absent detail asserts nothing; a caption
           // that disagrees with the amount above it asserts something false.
+          ...(combinedOt ? { overtimePatternCash: combinedOt.evidence } : {}),
           ...(slipOvertime > 0 &&
           otDerivationByEmp.get(e.employmentId) != null &&
           round2(Number(otDerivationByEmp.get(e.employmentId)!.total)) === round2(slipOvertime)
@@ -7983,6 +8105,12 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
     if (batch.needsRecalcAt != null) {
       throw new BatchNeedsRecalculationError(asIdArray(batch.recalcEmploymentIds));
     }
+    await readPayrollOvertimePatternCashTx(tx, ctx, { batchId: p.batchId });
+    const closeSchedule = await loadBatchCutOffSchedule(tx, batch.companyId);
+    const closeWindow = await unionTypeWindow(tx, closeSchedule, batch.companyId, 'overtime', batch.payPeriod);
+    const closingEmployees = await tx.select({ id: payslip.employmentId }).from(payslip).where(eq(payslip.batchId, p.batchId));
+    await readPayrollOvertimeCoverageTx(tx, ctx, { companyId: batch.companyId, from: closeWindow.start, to: closeWindow.end,
+      employmentIds: closingEmployees.map(r => r.id), refuseUnresolved: true, payPeriod: batch.payPeriod });
     // ADR-0076 slice 3 — refuse while unresolved BLOCK anomalies stand against this run. Thrown BEFORE any
     // write, for the same reason as the check above: a refused close must change nothing. A batch with no
     // verdict rows returns an empty list here and is unaffected.
@@ -10718,6 +10846,31 @@ export function payslipDetail(ctx: SessionContext, payslipId: string) {
   });
 }
 
+/** Read-only population fence for a persisted run. Compensation is deliberately not part of it. */
+async function batchScopePopulationTx(tx: Tx, batch: {companyId: string; payPeriod: string; scope: unknown}) {
+  const [year, month] = batch.payPeriod.split('-').map(Number);
+  const periodStart = `${batch.payPeriod}-01`;
+  const periodEnd = `${batch.payPeriod}-${String(daysInMonth(year, month)).padStart(2, '0')}`;
+  const {filter: scopeFilter} = await resolveBatchScopeFilter(tx, (batch.scope ?? null) as BatchScope | null);
+  return {periodStart, periodEnd, filter: and(
+    employedByCompanyDuring(batch.companyId, periodStart, periodEnd), scopeFilter,
+    lte(employment.hiredOn, periodEnd),
+    or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
+  )};
+}
+
+/** Selected, period-active headcount includes people whose missing salary blocks processing. */
+export function batchScopeHeadcount(ctx: SessionContext, batchId: string): Promise<number | null> {
+  return withTenant(ctx, async tx => {
+    const [batch] = await tx.select({companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod, scope: payrollBatch.scope})
+      .from(payrollBatch).where(eq(payrollBatch.id, batchId)).limit(1);
+    if (!batch) return null;
+    const population = await batchScopePopulationTx(tx, batch);
+    const [count] = await tx.select({total: sql<number>`count(*)::int`}).from(employment).where(population.filter);
+    return count.total;
+  });
+}
+
 /**
  * Rows for the draft-batch input editor: each active-in-period employee with their current manual
  * overtime and the auto-derived unpaid-leave days (read-only preview of what generation will apply).
@@ -10725,15 +10878,13 @@ export function payslipDetail(ctx: SessionContext, payslipId: string) {
 export function batchInputRows(ctx: SessionContext, batchId: string) {
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx
-      .select({ companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod, country: company.country })
+      .select({ companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod, scope: payrollBatch.scope, country: company.country })
       .from(payrollBatch)
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
       .where(eq(payrollBatch.id, batchId))
       .limit(1);
     if (!batch) return [];
-    const [pYear, pMonth] = batch.payPeriod.split('-').map(Number);
-    const periodStart = `${batch.payPeriod}-01`;
-    const periodEnd = `${batch.payPeriod}-${String(daysInMonth(pYear, pMonth)).padStart(2, '0')}`;
+    const {periodStart, periodEnd, filter: populationFilter} = await batchScopePopulationTx(tx, batch);
     // Fix-5 (#4/#29): resolve the OT engine + statutory ruleset so we can surface each employee's
     // s.60I(1A) ORP (wages/26) + hourly (ORP/8) basis and the RM4,000 eligibility — READ-ONLY, computed
     // from the same overtimePay/compensation source the kernel uses. Pack may be absent (non-MY) ⇒ skip.
@@ -10757,16 +10908,7 @@ export function batchInputRows(ctx: SessionContext, batchId: string) {
           compensationEffectiveOn(periodEnd),
         ),
       )
-      .where(
-        and(
-          // 3c88d593 — the DATED entity question, same as generatePayslips. Reading only the column here
-          // and the history there is exactly the drift this helper exists to prevent: an employee the
-          // kernel pays on the outgoing entity's run, on a screen that cannot see them.
-          employedByCompanyDuring(batch.companyId, periodStart, periodEnd),
-          lte(employment.hiredOn, periodEnd),
-          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
-        ),
-      )
+      .where(populationFilter)
       .orderBy(person.fullName);
     const inputs = await tx
       .select({

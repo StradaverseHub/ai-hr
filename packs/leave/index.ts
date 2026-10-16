@@ -467,6 +467,7 @@ export const LEAVE_SELF_NAV: NavNodeGroupDescriptor = {
     {href:'/leave', labelKey:'leaveOverview', icon:CalendarDays, exactHref:true},
     {href:'/leave/history', labelKey:'leaveHistory', icon:History, exactHref:true},
     {href:'/leave/credit', labelKey:'leaveCreditHistory', icon:CalendarClock, exactHref:true},
+    {href:'/leave/credit-details', labelKey:'leaveCreditDetails', icon:CalendarClock, exactHref:true},
     // r404 (42e55e2b) — My Leave › Leave Details: the employee's own balance for every leave type, laid out
     // like HR's Employee Balances. Fourth, after Leave Credit History, as the plan says. NOT module-gated:
     // leave is core, and the page reads only the signed-in person's own employment (app/leave/details).

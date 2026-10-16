@@ -128,6 +128,7 @@ function mount(
         replacementType={{ id: 'lt-1', name: 'Replacement Leave' }}
         submitAction={() => {}}
         today="2026-09-24"
+        claimReviewAction={async()=>({basis:'legacy'})}
         dayFactsAction={vitestVi.fn(opts.action ?? (async () => (opts.facts === undefined ? REST_DAY : opts.facts)))}
         // r358 — opts.tiers === null used to mean "extended hours off"; it is the SWITCH now, and
         // the ladder is always present because every day type uses it.
@@ -321,16 +322,11 @@ describe('r343 · the same screen, rendered in two locales, DIFFERS where it cla
     expect(other.notFoundText.length, `${locale}: the not-found sentence is empty`).toBeGreaterThan(0);
   });
 
-  it.each(LOCALES.filter((l) => l !== 'en'))('%s — and the one string this screen still ships in English is the same words', async (locale) => {
-    // ⚠️ r362 — the old claim was "the TWO strings this screen ships in English are the same words", and the
-    // two were `table.dayTypeChoose` and `addRow`. `dayTypeChoose` is retired and rendered by nothing, so
-    // one is left. NOT an accident and not hidden: the whole English set is named in
-    // test/r343-leave-credit-single-table.test.ts, and asserting the sameness is what keeps this case
-    // honest — it fails if the debt is paid off without the list being updated.
+  it.each(LOCALES.filter((l) => l !== 'en'))('%s — Add date is translated and the unresolved cell remains blank', async (locale) => {
     const english = await spoken('en');
     const other = await spoken(locale);
-    expect(other.addRow).toBe(english.addRow);
-    // …and the cell that used to carry the second English string is blank on every screen, not English.
+    expect(other.addRow).not.toBe(english.addRow);
+    expect(other.addRow).toBe(copy(locale).addRow);
     expect(other.emptyCell, `${locale}: the unasked cell must claim nothing`).toBe('');
     expect(english.emptyCell).toBe('');
   });
@@ -580,7 +576,8 @@ describe('r343 · the roster adjudicates — and after r360 the screen cannot be
           replacementType={{ id: 'lt-1', name: 'Replacement Leave' }}
           submitAction={() => {}}
           today="2026-09-24"
-          dayFactsAction={vitestVi.fn(async (d: string) => (d === '2026-09-16' ? WORKING_DAY : REST_DAY))}
+          claimReviewAction={async()=>({basis:'legacy'})}
+        dayFactsAction={vitestVi.fn(async (d: string) => (d === '2026-09-16' ? WORKING_DAY : REST_DAY))}
           tiers={TIERS}
           ordinaryDayAllowed
         />

@@ -291,18 +291,17 @@ describe('9da61c86 — the sibling grids page the same way', () => {
     const { container } = wrap(
       <SystemLabelsGrid
         data={{ department: labels, position: [], cost_center: [], business_unit: [] }}
-        companies={[{ id: 'c1', name: 'Acme', sharedSystemLabels: false }]}
+        companies={[{ id: 'c1', name: 'Acme' }]}
         // f1bbc572 — the admin administers c1, so every row here is editable and this test's subject
         // (paging) is unchanged. test/system-labels-readonly.dom.test.tsx covers the other case.
         writableCompanyIds={['c1']}
         isGroupAdmin={false}
         actions={{
           save: vi.fn(async () => ({ ok: true as const, created: 0, updated: 0, createdIds: [] })),
-          setGlobal: vi.fn(async () => ({ ok: true as const })),
+          setCriteria: vi.fn(async () => ({ ok: true as const })),
           assign: vi.fn(async () => ({ ok: true as const })),
           unassign: vi.fn(async () => ({ ok: true as const })),
           copyToCompanies: vi.fn(async () => ({ ok: true as const })),
-          setCompanyShared: vi.fn(async () => ({ ok: true as const })),
         }}
       />,
     );

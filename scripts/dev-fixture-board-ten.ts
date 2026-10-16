@@ -41,6 +41,8 @@ const targets = [process.env.DATABASE_URL, process.env.MIGRATION_DATABASE_URL].m
   return target;
 });
 if (targets[0].pathname !== targets[1].pathname) throw new Error('App and owner connections must target the same database.');
+if(targets.some(target=>target.pathname!=='/ai_hr_board15_browser') || process.env.TEST_DB_NAMESPACE!=='board15integration')throw new Error('Use the named Board integration database and namespace.');
+if(decodeURIComponent(targets[0].username)!=='ai_hr_app'||targets[0].username===targets[1].username)throw new Error('Separate non-owner app and migration roles are required.');
 
 const owner = createDb(process.env.MIGRATION_DATABASE_URL!);
 const tenantId = DEMO_TENANT_ID;
@@ -266,7 +268,7 @@ async function manifest(companyId: string, policyId: string, batchId: string, re
   const [bootstrapUser] = await owner.db.select({id: s.appUser.id, personId: s.appUser.personId}).from(s.appUser)
     .where(and(eq(s.appUser.tenantId, tenantId), eq(s.appUser.workosUserId, 'user_dev_admin'), isNull(s.appUser.archivedAt)));
   const bootstrapContext = bootstrapUser ? await context(bootstrapUser) : null;
-  console.log(JSON.stringify({fixture: 'board-ten', reused, tenantId, companyId, companyCode, policyId, policyVersion: policy.version,
+  console.log('BOARD15_INTEGRATION_MANIFEST\n'+JSON.stringify({fixture: 'board-ten', reused, tenantId, companyId, companyCode, policyId, policyVersion: policy.version,
     payComponentId: policy.payComponentId, batchId, month: batch.payPeriod, batchStatus: batch.status, batchScope: batch.scope,
     shiftId: shift?.id, scheduleGroupId: shift?.ruleId, departmentId: department?.id, businessUnitId: department?.businessUnitId,
     // Rotation writes require a group administrator; company HR is intentionally not widened.

@@ -636,7 +636,7 @@ describe('§4 a family the writer would refuse stops the activation BEFORE anyth
       data: fullDraft({ family: [{ relationship: 'child' }] }),
       currentStep: 5,
     });
-    await expect(completeEmployeeDraft(ctx, id)).rejects.toThrow(/Cannot create the employee yet/);
+    await expect(completeEmployeeDraft(ctx, id)).rejects.toMatchObject({ code: 'required_fields', fields: expect.arrayContaining([{ tab: 'family', field: 'familyMemberName' }]) });
     expect(await counts()).toEqual(before);
   });
 });

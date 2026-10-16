@@ -134,7 +134,7 @@ export function rotationDayOn(cycle: RotationCycle, date: string): RotationDay |
   const offset = Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${cycle.anchorDate}T00:00:00Z`)) / 86_400_000);
   return cycle.days[((offset % cycle.days.length) + cycle.days.length) % cycle.days.length] ?? null;
 }
-export function rotationVersionOn<T extends RotationCycle>(versions: readonly T[], date: string): T | null {
+export function rotationVersionOn<T extends {effectiveFrom:string}>(versions: readonly T[], date: string): T | null {
   return versions.filter(v => v.effectiveFrom <= date)
     .reduce<T | null>((chosen, v) => !chosen || v.effectiveFrom > chosen.effectiveFrom ? v : chosen, null);
 }

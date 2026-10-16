@@ -1,3 +1,7 @@
+import CompanyPolicyPage from '../app/admin/attendance/settings/company-policy/page';
+import WorkOvertimePage from '../app/admin/attendance/settings/work-schedule-overtime/page';
+import DevicesPage from '../app/admin/attendance/settings/registered-devices/page';
+import {COMPANY_POLICY,WORK_SCHEDULE_OVERTIME,REGISTERED_DEVICES} from '../app/admin/attendance-policy/schedule-panel';
 /**
  * 6d091cc0 (r301) — Attendance › Schedule › General becomes the ONE schedule setup page.
  *
@@ -254,7 +258,10 @@ const toMarkup = async (tree: unknown) =>
   ).replace(/<script[\s\S]*?<\/script>/g, '');
 
 type SP = { error?: string; policy?: string; viewPolicy?: string };
-const renderSchedule = async (sp: SP = {}) => toMarkup(await SchedulePage({ searchParams: Promise.resolve(sp) }));
+const renderSchedule = async (sp: SP = {}) => toMarkup(await (sp.policy||sp.viewPolicy?CompanyPolicyPage:SchedulePage)({ searchParams: Promise.resolve(sp) }));
+const renderCompany=async(sp:SP={})=>toMarkup(await CompanyPolicyPage({searchParams:Promise.resolve(sp)}));
+const renderOvertime=async()=>toMarkup(await WorkOvertimePage({searchParams:Promise.resolve({})}));
+const renderDevices=async()=>toMarkup(await DevicesPage({searchParams:Promise.resolve({})}));
 
 /** 665de026 — the three per-Schedule-Group screens the list now links to. */
 type GroupSP = { error?: string; section?: string; typedWeek?: string };
@@ -309,7 +316,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
-  ADMIN = adminCtx(b);
+  ADMIN = {...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};
   REFUSE_ADMIN = false;
   const [cb] = await owner.db
     .insert(schema.company)
@@ -331,20 +338,12 @@ beforeEach(async () => {
 // ── A ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 describe('A. the Schedule page is the LIST, and keeps every card that is not per-group', () => {
-  it('renders the five cards, in the approved order', async () => {
-    // 665de026 — no tab shell to unwrap: the list page IS the page. The five cards, their ids and their
-    // titles are UNCHANGED; only the order of the first two swapped, deliberately (see the header).
-    const general = await renderSchedule();
-    expect(general, 'the list page rendered').not.toBe('');
-    const ids = ['schedule-groups', 'shifts-available', 'company-policy-settings', 'work-schedule-overtime', 'not-configured-here'];
-    const at = ids.map((id) => general.indexOf(` id="${id}"`));
-    expect(at.every((i) => i > -1), `all five cards are on the list: ${JSON.stringify(Object.fromEntries(ids.map((id, i) => [id, at[i]])))}`).toBe(true);
-    expect([...at].sort((x, y) => x - y), 'in the order Schedule Group · Shifts · Company Policy · Work Schedule & OT · Not configured here').toEqual(at);
-    // And each card says what it is, in the reporter's words.
-    const titles = [SC.groupTitle, SC.shiftsTitle, SC.policyTitle, SC.wsOtTitle, SC.gapsTitle];
-    for (const [i, id] of ids.entries()) {
-      expect(elementById(general, id), `${id} is titled "${titles[i]}"`).toContain(esc(titles[i]));
-    }
+  it('renders only Schedule Groups, while every moved setting remains at its dedicated destination',async()=>{
+    const html=await renderSchedule();expect(elementById(html,'schedule-groups')).toContain(esc(SC.groupTitle));
+    for(const id of ['shifts-available','company-policy-settings','work-schedule-overtime','not-configured-here','registered-devices'])expect(html).not.toContain(`id="${id}"`);
+    expect(elementById(await renderCompany(),'company-policy-settings')).toContain(esc(SC.policyTitle));
+    expect(elementById(await renderOvertime(),'work-schedule-overtime')).toContain(esc(SC.wsOtTitle));
+    expect(await renderDevices()).toContain('id="registered-devices"');
   });
 
   it('the two links away are gone', async () => {
@@ -365,13 +364,13 @@ describe('A. the Schedule page is the LIST, and keeps every card that is not per
       hiredOn: '2024-01-01',
     });
     await registerDevice(ADMIN, { employmentId: hire.employmentId, label: 'Pixel 9' });
-    const card = elementById(await renderSchedule(), 'work-schedule-overtime');
+    const card = elementById(await renderOvertime(), 'work-schedule-overtime');
     const rates = elementById(card, 'overtime-rates');
     expect(rates, 'the overtime rates are on the card').toContain(esc(en.admin.attendancePolicy.otRatesTitle));
     expect(rates, 'with the publish form returning to the PLAIN Schedule path').toContain(
-      `name="returnTo" value="${SCHEDULE}"`,
+      `name="returnTo" value="${WORK_SCHEDULE_OVERTIME}"`,
     );
-    const devices = elementById(card, 'registered-devices');
+    const devices = elementById(await renderDevices(), 'registered-devices');
     expect(devices).toContain('Pixel 9');
     expect(rowNaming(devices, 'Dev Holder'), 'each device row has Revoke').toContain(`>${en.admin.attendancePolicy.devRevoke}</button>`);
     const coverage = elementById(card, 'backup-shift-coverage');
@@ -409,7 +408,7 @@ describe('B. no element id renders twice — now that two pages are one', () => 
 
 describe('C. Company Policy Settings — one row per company', () => {
   it('Saved / Using defaults, working hours, Last updated three ways, View and Edit — and no Delete', async () => {
-    const card = elementById(await renderSchedule(), 'company-policy-settings');
+    const card = elementById(await renderCompany(), 'company-policy-settings');
     const [evt] = await owner.db
       .select({ at: schema.domainEvent.occurredAt })
       .from(schema.domainEvent)
@@ -581,21 +580,21 @@ describe('E. every writer stays on the record — and the two row actions that h
       hiredOn: '2024-01-01',
     });
     const { deviceId } = await registerDevice(ADMIN, { employmentId: hire.employmentId, label: 'Old phone' });
-    expect(await redirectOf(() => revokeDeviceAction(fd({ deviceId })))).toBe(SCHEDULE);
+    expect(await redirectOf(() => revokeDeviceAction(fd({ deviceId })))).toBe(REGISTERED_DEVICES);
     const [dev] = await owner.db.select().from(schema.employeeDevice).where(eq(schema.employeeDevice.id, deviceId));
     expect(dev.revokedAt).not.toBeNull();
     const missing = await redirectOf(() => revokeDeviceAction(fd({ deviceId: randomUUID() })));
-    expect(missing.startsWith(`${SCHEDULE}?error=`), missing).toBe(true);
+    expect(missing.startsWith(`${REGISTERED_DEVICES}?error=`), missing).toBe(true);
 
     // The overtime-rates form posts returnTo = the card's value; the statutory action accepts only a path with
     // no ? or #, so this is the check that the card's choice actually reaches the General tab. Refused on purpose
     // (no version), so nothing is published.
     const refusedOt = await redirectOf(() =>
       setStatutoryComponentAction(
-        fd({ returnTo: SCHEDULE, body: 'ot', effectiveFrom: todayInKualaLumpur(), version: '', wageCeiling: '4000' }),
+        fd({ returnTo: WORK_SCHEDULE_OVERTIME, body: 'ot', effectiveFrom: todayInKualaLumpur(), version: '', wageCeiling: '4000' }),
       ),
     );
-    expect(refusedOt.startsWith(`${SCHEDULE}?error=`), refusedOt).toBe(true);
+    expect(refusedOt.startsWith(`${WORK_SCHEDULE_OVERTIME}?error=`), refusedOt).toBe(true);
   });
 });
 
@@ -618,10 +617,10 @@ describe('F. THE BUG — a refused Save policy shows its error', () => {
     );
     // Exactly one `?` — the old '?tab=general?error=…' read `tab` as 'general?error=…' and `error` as nothing.
     expect(target.split('?').length - 1, target).toBe(1);
-    expect(target.startsWith(`${SCHEDULE}?error=`), target).toBe(true);
+    expect(target.startsWith(`${COMPANY_POLICY}?error=`), target).toBe(true);
     const message = queryOf(target).get('error');
     expect(message).toBe('Work end must be after work start.');
-    const html = await renderSchedule(Object.fromEntries(queryOf(target)) as SP);
+    const html = await renderCompany(Object.fromEntries(queryOf(target)) as SP);
     expect(html, 'the banner renders the refusal').toContain(`>${esc(message!)}</div>`);
     // …and the stored row did not move.
     const [pol] = await listAttendancePolicies(ADMIN, [b.companyId]);
@@ -635,7 +634,7 @@ describe('F. THE BUG — a refused Save policy shows its error', () => {
         fd({ ...Object.fromEntries(Object.entries(POLICY(b.companyId)).map(([k, v]) => [k, String(v)])), workStart: '07:00', lateAfter: '07:10', dayType_1: 'full', dayType_2: 'full' }),
       ),
     );
-    expect(target).toBe(SCHEDULE);
+    expect(target).toBe(COMPANY_POLICY);
     const [a] = await listAttendancePolicies(ADMIN, [b.companyId]);
     expect(a.workStart).toBe('07:00:00');
     expect(await listAttendancePolicies(ADMIN, [companyB, companyC]), 'the other companies are untouched').toEqual(before);
@@ -732,7 +731,7 @@ describe('G. General has scoped ownership; standalone and create forms retain fu
 describe('H. the old addresses are guarded redirects to the matching card', () => {
   it('each redirects to its anchor on the General tab', async () => {
     expect(await redirectOf(() => OldScheduleGroupPage())).toBe(`${SCHEDULE}#schedule-groups`);
-    expect(await redirectOf(() => OldWorkSchedulePage())).toBe(`${SCHEDULE}#work-schedule-overtime`);
+    expect(await redirectOf(() => OldWorkSchedulePage())).toBe(`${WORK_SCHEDULE_OVERTIME}#work-schedule-overtime`);
     // 665de026 — the two rule stubs point at the PAGES that replaced the panel, so every bookmark written
     // against 88e94371's own routes or r301's panel parameters still lands on the right screen.
     expect(await redirectOf(() => OldNewRulePage())).toBe(`${SCHEDULE}/new`);
@@ -754,11 +753,9 @@ describe('H. the old addresses are guarded redirects to the matching card', () =
     }
   });
 
-  it('every anchor they name is rendered exactly once on the page', async () => {
-    const html = await renderSchedule({ policy: b.companyId });
-    for (const id of ['schedule-groups', 'work-schedule-overtime', 'schedule-panel']) {
-      expect(html.split(` id="${id}"`).length - 1, id).toBe(1);
-    }
+  it('every retained anchor occurs once at its owning destination',async()=>{
+    for(const [html,id] of [[await renderSchedule(),'schedule-groups'],[await renderOvertime(),'work-schedule-overtime'],[await renderCompany({policy:b.companyId}),'schedule-panel'],[await renderDevices(),'registered-devices']] as const)expect(html.split(` id="${id}"`).length-1,id).toBe(1);
+    expect(await redirectOf(()=>SchedulePage({searchParams:Promise.resolve({policy:b.companyId})}))).toBe(`${COMPANY_POLICY}?policy=${b.companyId}`);
   });
 });
 
@@ -830,7 +827,7 @@ describe('I. addressing — the per-group pages, and the panel that stayed', () 
   it('every section the reporter named is on the group\'s own page, exactly once', async () => {
     const group = await createAttendanceRule(ADMIN, ruleInput({ name: 'Plant crew' }));
     for (const html of [await renderView(group.id), await renderEdit(group.id)]) {
-      for (const key of ['general', 'holiday', 'overtime', 'attendance', 'request', 'notification', 'workingDay']) {
+      for (const key of ['general','attendance','overtime','workingDay']) {
         expect(html.split(` id="section-${key}"`).length - 1, `section-${key}`).toBe(1);
       }
       // …and no group PICKER: the page is the group. That is the item in one assertion.

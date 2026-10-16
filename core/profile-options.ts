@@ -507,6 +507,13 @@ export async function deleteProfileOption(ctx: SessionContext, id: string): Prom
   });
 }
 
+/** Typed owner refusal; message stays compatible, metadata contains only the catalog category. */
+export class ProfileOptionValueError extends Error {
+  constructor(readonly category:ProfileOptionCategory,value:string) {
+    super(`"${value}" is not an active ${category} option`);this.name='ProfileOptionValueError';
+  }
+}
+
 /**
  * Server-side validation for a person-profile save: the new value must be an ACTIVE catalog option — UNLESS
  * it equals the legacy value already stored (legacy-value tolerance: re-saving the profile must never blank
@@ -521,13 +528,13 @@ export async function assertProfileValueAllowed(
 ): Promise<void> {
   if (newValue == null || newValue === '') return; // clearing is always allowed
   if (newValue === legacyValue) return; // unchanged legacy value is permitted (tolerance)
-  const active = await tx
-    .select({ value: profileOption.value })
+  const options = await tx
+    .select({ value: profileOption.value,isActive:profileOption.isActive })
     .from(profileOption)
-    .where(and(eq(profileOption.category, category), eq(profileOption.isActive, true)));
+    .where(eq(profileOption.category, category));
   // BACKWARD-COMPAT: a tenant whose catalog for this category is empty (never seeded) keeps today's exact
   // free-text behaviour — the dropdown only constrains input once the tenant actually has options.
-  if (active.length === 0) return;
-  if (active.some((o) => o.value === newValue)) return;
-  throw new Error(`"${newValue}" is not an active ${category} option`);
+  if (options.length === 0) return;
+  if (options.some((o) => o.isActive && o.value === newValue)) return;
+  throw new ProfileOptionValueError(category,newValue);
 }

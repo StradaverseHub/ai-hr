@@ -1,3 +1,4 @@
+import { lockOvertimeDayForAttendanceWriteTx } from '../packs/attendance/service';
 import { actorOf, appendEvent } from '../db/events';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { type Tx, type SessionContext } from '../db/client';
@@ -73,6 +74,8 @@ export async function closedBatchesCoveringAttendanceDates(
 
 /** Scoped operational facts only: managers cannot read the payslips that establish coverage. */
 export async function lockPayrollForAttendanceChange(tx: Tx, employmentId: string, date: string) {
+  // Match raw Attendance trigger/factory order: Attendance day -> source -> Payroll batch.
+  await lockOvertimeDayForAttendanceWriteTx(tx, { employmentId, date });
   const rows = await tx.execute(sql`select * from app.attendance_payroll_protection(${employmentId}::uuid)`) as unknown as {
     batch_id: string; status: 'processed' | 'closed'; pay_period: string;
     policy_config: PayrollPolicyConfig | null; attendance_cutoff_day: number | null;

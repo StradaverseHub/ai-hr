@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
@@ -49,6 +50,7 @@ export default async function HolidaysPage({
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.holidays');
+  const replacementT=await getTranslations('replacementHoliday');
   const sp = await searchParams;
   const { error, country: countryParam, year: yearParam } = sp;
 
@@ -137,7 +139,7 @@ export default async function HolidaysPage({
 
   return (
     <div className={pageWideCls}>
-      <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
+      <PageHeader title={t('pageTitle')} description={t('pageDescription')} actions={<Link href="/admin/holidays/replacements" className={btnPrimary}>{replacementT('title')}</Link>}/>
       <HolidayTabs active="holidays" />
       <ErrorBanner message={error} />
 

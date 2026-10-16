@@ -1,0 +1,38 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+Schedule Groups already contain identity, attendance, overtime and dated rotation settings, but they appear as scrolling sections. A shift's current default group also acts as its allowed-group membership, which prevents safe reuse. There is no separate Enable Exception or Duty Roster Control setting.
+
+WHAT WE'LL CHANGE
+
+- Organize settings into tabs for General, Attendance, Overtime and Working Day / Schedule Pattern, retaining each section's independent save and unsaved edits.
+- Rename Rule Name to Schedule Group Name and add a separate Schedule Group Label used in relevant group lists, assignments and roster displays.
+- Add Enable Exception, initially Off. When On, exempt the group from Absent, Late In and Early Out exception judgments and their attendance-based deductions from the setting's effective date.
+- Let an active shift be allowed in several groups without moving it out of another group. Keep each group's own working week and rotation.
+- Exclude archived shifts from new choices while retaining saved historical references visibly.
+- Add Duty Roster Control under Working Day / Schedule Pattern. New groups start Off; On permits authorized individual roster overrides, with validation and audit history.
+
+WHAT YOU'LL GET
+
+A clearer setup journey, reusable shifts and explicit control over attendance exemptions and individual roster changes.
+
+GOOD TO KNOW
+
+Enable Exception preserves measured working time, raw clocks, leave, overtime, statutory calculations and existing payroll results. Short-hours and incomplete-entry evidence remains available, and allowance policies still evaluate their configured measured facts. Existing groups will retain their current ability to make manual roster changes during the upgrade; HR can then turn that ability Off explicitly.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: production currently has six Schedule Groups and no saved dated rotation. ScheduleGroupSections shares view/edit and four independent save paths; current seven headings include unconfigured Holiday/Request/Notification placeholders. RuleForm owns identity. shift.rule_id currently conflates one default calculation rule with allowed membership; setRuleShifts moves that pointer and saveScheduleRotation refuses another group's shift. employment.attendance_rule_id already outranks shift.rule_id, then Standard, in core/attendance.ts and weekLookupTx. That precedence supplies an unambiguous calculation owner when a template is reused. No production browser journey is claimed; relevant deployed source matches main.
+
+Graph: keep attendance_rule as group configuration, employment.attendance_rule_id as the person's chosen group, and shift.rule_id as the legacy/default fallback. Introduce one authoritative many-to-many allowed-membership owner, dated where required by rotation versions. Backfill existing memberships without moving any default pointer. Rotation versions keep their frozen allowedShiftIds and independent cycles. All picker, eligibility, rotation, deletion/copy and assignment consumers must use the same membership rule and date semantics; do not leave competing shift-pointer and junction membership truths. Preserve the existing calculation/week resolution from employee group first, shift default second and Standard last and legacy ungrouped employees. Shared shift edits must not rewrite another group's week, rotation or recorded attendance.
+
+Add label validation, fallback-to-name for legacy blanks and consistent display consumers. Tabs show only related real controls; do not fabricate controls for empty placeholder sections. Keep independent section forms, save receipts, dirty baselines, error returns, legacy anchors and unsaved edits while switching tabs. New archived selections refuse at the server; retained archived sources remain visible and usable only for their existing historical versions, with a deliberate replacement path.
+
+The proposed course for Enable Exception is the three named exception types: Absent, Late In and Early Out. It is not a blanket bypass of undefined formulas. Implement an auditable, date-aware exemption policy revision defaulting Off for legacy/new groups, with service-stamped effective activation and no historical recomputation. Preserve raw status/measurements and record exempted decisions separately from their factual observations. The attendance judgment and attendance-based absence/lateness/early-out deduction consumers read the same exemption owner. Leave balances, actual/qualifying work, OT eligibility/rates, statutory logic and independent allowance criteria retain their owners. Existing processed/closed payroll remains frozen; any authorized recalculation obeys the existing locked-period and correction guards. Short/incomplete evidence is not converted into completed work. Cover activation/deactivation/date boundaries and effect traces.
+
+Duty Roster Control defaults Off for new groups and is explicitly backfilled On for existing groups to preserve current behavior, as the business plan discloses. Guard every controlled manual roster writer: brush, bulk changes, copy, rest-day changes and clear/delete, including direct forged calls. Automatic rotation application and editing the group's default pattern are separate authorized operations. Do not let a client-supplied purpose bypass the guard. Preserve existing role/company/date/membership and approval checks; retain actor, employee, before/after, timestamp and applicable remarks in the canonical roster events. Manual overrides must not mutate the default rotation. Backup-shift/personnel setup remains separately governed, not silently relabeled as a roster override.
+
+Requires append-only schema work and a binding architecture decision for membership/default-rule separation and exemption scope. Allocate after reserved migrations and rehearse live watermark/order; never rewrite applied files. Acceptance: two groups share one active shift with different rotations and employee-group judgments; no assignment detaches another group. Test legacy fallback, blank/duplicate/foreign IDs, archived historical vs new selection, empty-group refusal, concurrent pool changes and stable dated versions. Verify Off/On duty-roster writes across every writer and role, unchanged automatic patterns, audit and locked periods. Verify exemption scope/date/history and downstream boundaries without removing raw evidence. Walk tabs, independent dirty edits/save/cancel/error/reopen, labels, mobile, all locales/appearances and keyboard. Complete full verification for schema/attendance/payroll changes, TypeScript, build, shadow/live migration rehearsal and official release.

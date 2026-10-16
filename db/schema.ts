@@ -1,3 +1,5 @@
+import {PERSONNEL_EMPLOYMENT_TYPES,PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS} from '../lib/personnel-choice-vocabulary';
+import type { EmployeeMasterSpec } from '../lib/employee-master-report';
 import type { AttendanceAdminAmendment, AttendanceDayKindOverride, ManualOtRows } from '../lib/attendance-day-adjustment';
 /**
  * Slice 0 schema — "the spine".
@@ -68,12 +70,7 @@ export const roleEnum = pgEnum('role', [
   // Only ai_hr_owner (seed / by hand on a deployment) creates an operator grant.
   'operator',
 ]);
-export const employmentTypeEnum = pgEnum('employment_type', [
-  'full_time',
-  'part_time',
-  'contract',
-  'intern',
-]);
+export const employmentTypeEnum = pgEnum('employment_type', PERSONNEL_EMPLOYMENT_TYPES);
 /**
  * R46 79eb7151 (migration 0270) — how an employee is paid. Distinct from Pay Mode (payroll_policy.policy_type)
  * and Payment Term (PayrollPolicyConfig.frequency), which describe how pay is CALCULATED and how often, not
@@ -142,7 +139,7 @@ export const perfAbcClassEnum = pgEnum('perf_abc_class', ['A', 'B', 'C']);
 // 2.1 Payroll Policy — how an employee's payroll is processed. All four values exist now (no later
 // migration to add one); only `monthly` is wired to calculation in this slice (it is the existing
 // behaviour). daily/hourly/custom_period are reserved for a follow-up gated on the rate-storage decision.
-export const payrollPolicyTypeEnum = pgEnum('payroll_policy_type', ['monthly', 'daily', 'hourly', 'custom_period']);
+export const payrollPolicyTypeEnum = pgEnum('payroll_policy_type', PERSONNEL_PAY_MODES);
 
 // Reusable column fragments.
 const id = () => uuid('id').primaryKey().defaultRandom();
@@ -882,13 +879,8 @@ export const costCenter = pgTable(
   (t) => [index('cost_center_company_idx').on(t.companyId)],
 );
 
-// Shared System Labels junction (ADR-0073, feedback d356dec8) — gives an org label (department / position /
-// cost_center / business_unit) ADDITIONAL companies that may use it, ON TOP OF its origin company_id (which
-// is never touched). `label_kind` + `label_id` is a polymorphic key into one of the four tables; there is no
-// DB FK on label_id (it spans four tables) — the service validates it. Uniqueness on
-// (tenant_id, label_kind, label_id, company_id). "All Companies" is the is_global flag on the label row, NOT
-// N rows here, so adding a company later needs no backfill. Backfilled 1:1 with each existing label's origin,
-// so pre-flag behaviour is identical to today.
+// System Labels criteria (ADR-0122): explicit company availability, independent of creation ownership.
+// is_global supersedes this set. The append-only0550 backfill preserves old implicit origin access.
 export const LABEL_KINDS = ['department', 'position', 'cost_center', 'business_unit'] as const;
 export type LabelKind = (typeof LABEL_KINDS)[number];
 
@@ -910,6 +902,23 @@ export const labelCompanyAssignment = pgTable(
     index('label_company_assignment_label_idx').on(t.labelKind, t.labelId),
   ],
 );
+
+/** Derived concurrency coordination only; not configurable System Label data. */
+export const systemLabelCriteriaEpoch = pgTable('system_label_criteria_epoch', {
+  tenantId: tenantId(), labelKind: text('label_kind').$type<LabelKind>().notNull(),
+  revision: bigint('revision', {mode:'number'}).notNull().default(0),
+}, table => [primaryKey({columns:[table.tenantId,table.labelKind]})]);
+
+/** ADR-0124: migration-observed collision caps. App reads only; private triggers can only shrink/retire. */
+export const systemLabelCollisionBaseline = pgTable('system_label_collision_baseline', {
+  id: id(), tenantId: tenantId(), labelKind: text('label_kind').$type<LabelKind>().notNull(),
+  normalizedCode: text('normalized_code').notNull(), firstLabelId: uuid('first_label_id').notNull(),
+  secondLabelId: uuid('second_label_id').notNull(), allCompanies: boolean('all_companies').notNull(),
+  companyIds: uuid('company_ids').array().notNull().default(sql`'{}'::uuid[]`),
+  retiredAt: timestamp('retired_at', {withTimezone:true}), createdAt: createdAt(),
+  updatedAt: timestamp('updated_at', {withTimezone:true}).notNull().defaultNow(),
+}, table => [uniqueIndex('system_label_collision_baseline_pair_uq').on(table.tenantId,table.labelKind,
+  table.normalizedCode,table.firstLabelId,table.secondLabelId)]);
 
 // Termination classification (Wave 4A) — powers the Terminations + Turnover analytics breakdown.
 // Nullable: legacy/active employments have none; set when an employment is terminated.
@@ -2865,7 +2874,7 @@ export type CutOffType = 'salary' | 'claim' | 'overtime' | 'leave' | 'attendance
 // aggregate into ONE statutory month for EPF/SOCSO/EIS/PCB (Malaysian statutory contributions are computed
 // per calendar month BY LAW — LHDN MTD, PERKESO Act 4 s.6, monthly EPF returns), so the frequency changes the
 // operational cut-off cadence + which transactions fall in each cycle, never the statutory month they contribute in.
-export type PayrollFrequency = 'monthly' | 'weekly' | 'biweekly';
+export type PayrollFrequency = (typeof PERSONNEL_PAYMENT_TERMS)[number];
 // c7fdfcf6 (Payroll Schedule) — the four per-type cut-off anchor days (each 1..28; 'salary' has none, it uses
 // the base/frequency anchorDay). Absent ⇒ inherit the base anchor. Reused by both the base cutOff.perType and
 // the per-frequency override blocks (cutOff.perFrequency.{weekly,biweekly}.perType).
@@ -3226,7 +3235,7 @@ export const epfModeEnum = pgEnum('epf_mode', ['auto', 'voluntary_excess', 'exem
 // EPF citizenship status — selects the contribution rule (Third Schedule). 'citizen'/'pr' < 60 use
 // Part A; 'citizen' 60–<75 uses Part E (0%/4%); 'non_citizen' uses the new mandatory 2%/2% (eff 1 Oct
 // 2025). Source: KWSP Jadual Ketiga (1 Oct 2025) + YiWei Law statutory deck (10 Jun 2026).
-export const epfCitizenshipEnum = pgEnum('epf_citizenship', ['citizen', 'pr', 'non_citizen']);
+export const epfCitizenshipEnum = pgEnum('epf_citizenship', PERSONNEL_EPF_CITIZENSHIPS);
 
 // 1.2.4 Zakat — a per-employee zakat-via-salary election. 'percent_of_pcb' = a fraction of the NORMAL
 // monthly MTD (derived live during payroll, never frozen); 'fixed' = a flat monthly RM amount. Null
@@ -4216,6 +4225,8 @@ export const attendanceRule = pgTable(
     // NULLABLE only so the FK/history survives; every row is NULL and nothing reads it.
     companyId: uuid('company_id').references(() => company.id),
     name: text('name').notNull(),
+    label: text('label'),
+    dutyRosterControl: boolean('duty_roster_control').notNull().default(false),
     description: text('description'),
     // The tenant's un-deletable "Standard" rule. Exactly one per TENANT (partial unique index). A shift with
     // no rule_id — and a day with no shift at all — resolves to this rule.
@@ -4728,8 +4739,8 @@ export const shift = pgTable(
     // f3321963 — Shift Settings Enhancement: shift template type (see ShiftType). DEFAULT 'normal' so every
     // legacy row is byte-identical. CHECK ('normal','semi_flexi','full_flexi') lives in migration 0181.
     type: text('type').notNull().default('normal').$type<ShiftType>(),
-    startTime: time('start_time').notNull(),
-    endTime: time('end_time').notNull(),
+    startTime: time('start_time'),
+    endTime: time('end_time'),
     breakMinutes: integer('break_minutes').notNull().default(0),
     // R7 Multi-Shift Phase 1: multiple break windows. b7b886e2 ended the storage-only phase for the DAY
     // derivation — core/attendance.ts now deducts the break minutes a clocking actually SPANNED (capped at
@@ -5369,6 +5380,11 @@ export const notificationPref = pgTable(
     emailConsentUserId: uuid('email_consent_user_id').references(() => appUser.id),
     emailAfterSequence: bigint('email_after_sequence', { mode: 'number' }),
     emailLocale: text('email_locale').notNull().default('en'),
+    // Report-attachment consent only. Legacy workflow consent keeps its existing semantics.
+    reportConsentIssuer: text('report_consent_issuer'),
+    reportConsentSubject: text('report_consent_subject'),
+    reportConsentAddressHash: text('report_consent_address_hash'),
+    reportConsentVerifiedAt: timestamp('report_consent_verified_at', { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
@@ -7822,6 +7838,7 @@ export const aiProviderConfig = pgTable(
 // the spec only names dataset/field ids the registry exposes, and every underlying read enforces
 // tenant RLS + company scope. RLS + grants live in migration 0163.
 export type CustomReportSpec = {
+  employeeMaster?: EmployeeMasterSpec;
   datasetId: string;
   columns: string[];
   filters?: Record<string, string | number | null>;
@@ -7869,12 +7886,18 @@ export const REPORT_PERMISSION_VERBS = [
 ] as const;
 export type ReportPermissionVerb = (typeof REPORT_PERMISSION_VERBS)[number];
 
+export type CustomReportScheduleConfig = {frequency:'weekly'|'monthly';day:number;hour:number;minute:number;timezone:string};
+
 export const customReport = pgTable(
   'custom_report',
   {
     id: id(),
     tenantId: tenantId(),
     name: text('name').notNull(),
+    description: text('description').notNull().default(''),
+    sharedRoleIds: text('shared_role_ids').array().notNull().default(sql`ARRAY[]::text[]`),
+    lastRunAt: timestamp('last_run_at', {withTimezone:true}),
+    version: integer('version').notNull().default(1),
     category: text('category').notNull(),
     datasetId: text('dataset_id').notNull(),
     spec: jsonb('spec').$type<CustomReportSpec>().notNull(),
@@ -7886,6 +7909,23 @@ export const customReport = pgTable(
   },
   (t) => [index('custom_report_tenant_category_idx').on(t.tenantId, t.category)],
 );
+
+export const customReportRun = pgTable('custom_report_run',{
+  id:id(),tenantId:tenantId(),reportId:uuid('report_id'),actorUserId:uuid('actor_user_id').notNull(),reportVersion:integer('report_version'),
+  kind:text('kind').notNull(),format:text('format'),scopeIds:uuid('scope_ids').array().notNull().default(sql`ARRAY[]::uuid[]`),
+  rowCount:integer('row_count').notNull().default(0),outcome:text('outcome').notNull(),reason:text('reason'),ranAt:timestamp('ran_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[index('custom_report_run_report_idx').on(t.tenantId,t.reportId,t.ranAt)]);
+export const customReportSchedule = pgTable('custom_report_schedule',{
+  id:id(),tenantId:tenantId(),reportId:uuid('report_id').notNull().references(()=>customReport.id,{onDelete:'cascade'}),
+  enabled:boolean('enabled').notNull().default(false),config:jsonb('config').$type<CustomReportScheduleConfig>().notNull(),recipients:jsonb('recipients').$type<{userId:string;employmentId:string}[]>().notNull().default(sql`'[]'::jsonb`),
+  reportVersion:integer('report_version').notNull(),reviewedDigest:text('reviewed_digest').notNull(),reviewedRevision:uuid('reviewed_revision').notNull().defaultRandom(),nextRunAt:timestamp('next_run_at',{withTimezone:true}),createdAt:createdAt(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('custom_report_schedule_report_uq').on(t.reportId),index('custom_report_schedule_due_idx').on(t.enabled,t.nextRunAt)]);
+export const customReportOccurrence = pgTable('custom_report_occurrence',{
+  id:id(),tenantId:tenantId(),scheduleId:uuid('schedule_id').notNull(),reportId:uuid('report_id').notNull(),frozenScopeIds:uuid('frozen_scope_ids').array().notNull().default(sql`ARRAY[]::uuid[]`),scheduleRevision:uuid('schedule_revision').notNull(),reviewedDigest:text('reviewed_digest').notNull(),ownerUserId:uuid('owner_user_id').notNull(),recipientUserId:uuid('recipient_user_id').notNull(),recipientEmploymentId:uuid('recipient_employment_id').notNull(),
+  consentAfterSequence:bigint('consent_after_sequence',{mode:'number'}).notNull(),policyAfterSequence:bigint('policy_after_sequence',{mode:'number'}).notNull(),consentUpdatedAt:timestamp('consent_updated_at',{withTimezone:true}).notNull(),policyUpdatedAt:timestamp('policy_updated_at',{withTimezone:true}).notNull(),consentVerifiedAt:timestamp('consent_verified_at',{withTimezone:true}).notNull(),
+  scheduledFor:timestamp('scheduled_for',{withTimezone:true}).notNull(),reportVersion:integer('report_version').notNull(),status:text('status').notNull().default('pending'),
+  leaseToken:uuid('lease_token'),leaseUntil:timestamp('lease_until',{withTimezone:true}),startedAt:timestamp('started_at',{withTimezone:true}),finishedAt:timestamp('finished_at',{withTimezone:true}),rowCount:integer('row_count'),reason:text('reason'),createdAt:createdAt(),
+},t=>[uniqueIndex('custom_report_occurrence_identity_uq').on(t.scheduleId,t.recipientUserId,t.scheduledFor),index('custom_report_occurrence_work_idx').on(t.status,t.scheduledFor,t.leaseUntil)]);
 
 // ─────────────────────── Knowledge Base (ADR-0017) ───────────────────────
 // A tenant-shared repository of documents. Two content kinds in one table: 'article' = Markdown
@@ -10170,6 +10210,7 @@ export const attendanceWorkflowTemplate = pgTable('attendance_workflow_template'
     id: id(), tenantId: tenantId(), companyId: uuid('company_id').notNull().references(() => company.id),
     code: text('code').notNull(), name: text('name').notNull(), description: text('description'),
     applicationType: text('application_type').notNull().$type<'irregularity' | 'self_overtime'>(),
+    routingVersion: integer('routing_version').notNull().default(1).$type<1 | 2>(),
     priority: integer('priority').notNull(), criteria: jsonb('criteria').notNull().$type<import('../lib/attendance-workflow').AttendanceWorkflowCriteria>(),
     stages: jsonb('stages').notNull().$type<import('../lib/attendance-workflow').AttendanceWorkflowStage[]>(),
     version: integer('version').notNull(), active: boolean('active').notNull().default(false), lineageId: uuid('lineage_id').notNull(),
@@ -10186,6 +10227,7 @@ export const attendanceWorkflowRequest = pgTable('attendance_workflow_request', 
     templateId: uuid('template_id').notNull().references(() => attendanceWorkflowTemplate.id), templateCode: text('template_code').notNull(),
     templateName: text('template_name').notNull(), templateVersion: integer('template_version').notNull(),
     applicationType: text('application_type').notNull().$type<'irregularity' | 'self_overtime'>(),
+    routingVersion: integer('routing_version').notNull().default(1).$type<1 | 2>(),
     stages: jsonb('stages').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedStage[]>(), currentStage: integer('current_stage').notNull().default(0), createdAt: createdAt(),
 }, t => [uniqueIndex('attendance_workflow_request_correction').on(t.correctionId)]);
 export const attendanceWorkflowDecision = pgTable('attendance_workflow_decision', {
@@ -10287,6 +10329,50 @@ export const assessmentGuideUse = pgTable('performance_assessment_guide_use', {
  status:text('status').notNull().default('reserved'),question:text('question'),createdAt:createdAt(),
 },t=>[index('assessment_guide_actor_time').on(t.tenantId,t.actorUserId,t.createdAt)]);
 
+/** Allowed membership is independent of the shift's legacy default calculation group. */
+export const attendanceRuleShift = pgTable('attendance_rule_shift', {
+  tenantId:tenantId(), ruleId:uuid('rule_id').notNull().references(()=>attendanceRule.id,{onDelete:'cascade'}),
+  shiftId:uuid('shift_id').notNull().references(()=>shift.id,{onDelete:'restrict'}), createdAt:createdAt(),
+},t=>[primaryKey({columns:[t.ruleId,t.shiftId]})]);
+/** Immutable service-stamped exception decisions; never rewrites raw observations. */
+export const attendanceExceptionRevision = pgTable('attendance_exception_revision',{
+ id:id(),tenantId:tenantId(),ruleId:uuid('rule_id').notNull().references(()=>attendanceRule.id),
+ effectiveFrom:date('effective_from').notNull(),enabled:boolean('enabled').notNull(),createdBy:text('created_by').notNull(),createdAt:createdAt(),
+},t=>[uniqueIndex('attendance_exception_revision_rule_date_uq').on(t.ruleId,t.effectiveFrom)]);
+
+// ADR-0120: original holidays and employee-specific replacement allocations remain separate.
+export const replacementHolidayPolicy=pgTable('replacement_holiday_policy',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
+ effectiveFrom:date('effective_from').notNull(),regime:text('regime').$type<'MY_EA_60D'|'MY_SABAH_103'|'company_confirmed'>().notNull(),
+ confirmed:boolean('confirmed').notNull().default(false),restMode:text('rest_mode').$type<'scheduled_rest'|'last_weekly_rest'>().notNull(),
+ halfEligible:boolean('half_eligible').notNull().default(false),searchDays:integer('search_days').notNull(),
+ reason:text('reason').notNull(),createdBy:text('created_by').notNull(),createdAt:createdAt(),
+},t=>[uniqueIndex('replacement_holiday_policy_date_uq').on(t.tenantId,t.companyId,t.effectiveFrom)]);
+export const replacementHoliday=pgTable('replacement_holiday',{
+ id:id(),tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),companyId:uuid('company_id').notNull().references(()=>company.id),
+ sourceHolidayId:uuid('source_holiday_id').notNull().references(()=>holiday.id),sourceDate:date('source_date').notNull(),sourceName:text('source_name').notNull(),
+ policyId:uuid('policy_id').references(()=>replacementHolidayPolicy.id),inputDigest:text('input_digest').notNull(),
+ status:text('status').$type<'allocated'|'review'|'not_required'>().notNull(),replacementDate:date('replacement_date'),proposedDate:date('proposed_date'),
+ reason:text('reason').notNull(),manual:boolean('manual').notNull().default(false),manualReason:text('manual_reason'),
+ createdAt:createdAt(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('replacement_holiday_source_uq').on(t.tenantId,t.employmentId,t.sourceHolidayId),uniqueIndex('replacement_holiday_employee_date_uq').on(t.tenantId,t.employmentId,t.replacementDate).where(sql`${t.replacementDate} IS NOT NULL`)]);
+export const replacementHolidayRevision=pgTable('replacement_holiday_revision',{
+ id:id(),tenantId:tenantId(),allocationId:uuid('allocation_id').notNull().references(()=>replacementHoliday.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),companyId:uuid('company_id').notNull().references(()=>company.id),
+ snapshot:jsonb('snapshot').$type<Record<string,unknown>>().notNull(),createdBy:text('created_by').notNull(),createdAt:createdAt(),
+});
+export const replacementHolidayQueue=pgTable('replacement_holiday_queue',{
+ tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id,{onDelete:'cascade'}),generation:bigint('generation',{mode:'number'}).notNull().default(1),
+ requestedAt:timestamp('requested_at',{withTimezone:true}).notNull().defaultNow(),claimedAt:timestamp('claimed_at',{withTimezone:true}),claimedGeneration:bigint('claimed_generation',{mode:'number'}),lastError:text('last_error'),calendarConflicts:jsonb('calendar_conflicts').$type<{date:string;recorded:string|null;holiday:boolean}[]>().notNull().default([]),
+},t=>[primaryKey({columns:[t.tenantId,t.employmentId]})]);
+// Immutable, reasoned overrides keep the original submitted chain and decisions intact.
+export const attendanceWorkflowReassignment = pgTable('attendance_workflow_reassignment', {
+    id: id(), tenantId: tenantId(), requestId: uuid('request_id').notNull().references(() => attendanceWorkflowRequest.id),
+    stageIndex: integer('stage_index').notNull(),
+    previousApprovers: jsonb('previous_approvers').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedApprover[]>(),
+    approvers: jsonb('approvers').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedApprover[]>(),
+    reason: text('reason').notNull(), actualUserId: uuid('actual_user_id').notNull().references(() => appUser.id),
+    actualPersonId: uuid('actual_person_id').references(() => person.id), actualActorName: text('actual_actor_name').notNull().default(''), occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+}, t => [index('attendance_workflow_reassignment_stage').on(t.requestId, t.stageIndex, t.occurredAt, t.id)]);
 /** Governance telemetry contains no prompt, output, image, secret or employee field values. */
 export const aiControlPolicy=pgTable('ai_control_policy',{
  id:id(),tenantId:tenantId(),scopeKey:text('scope_key').notNull(),kind:text('kind').notNull(),subjectId:uuid('subject_id'),featureId:text('feature_id'),
@@ -10299,3 +10385,71 @@ export const aiModelRun=pgTable('ai_model_run',{
  state:text('state').notNull(),reason:text('reason'),reservedTokens:bigint('reserved_tokens',{mode:'number'}).notNull(),
  actualTokens:bigint('actual_tokens',{mode:'number'}),startedAt:timestamp('started_at',{withTimezone:true}).notNull().defaultNow(),finishedAt:timestamp('finished_at',{withTimezone:true}),
 },t=>[index('ai_model_run_period').on(t.tenantId,t.startedAt),index('ai_model_run_user').on(t.tenantId,t.userId,t.startedAt),index('ai_model_run_company').using('gin',t.companyIds)]);
+
+// fcc2ea42 — OT-only version/assignment and immutable source evidence. Schedule Group stays independent.
+export const overtimePatternEpoch = pgTable('overtime_pattern_epoch', {
+  tenantId: tenantId().primaryKey(), revision: bigint('revision',{mode:'number'}).notNull().default(0),
+});
+export const overtimePattern = pgTable('overtime_pattern', {
+  id:id(),tenantId:tenantId(),kind:text('kind').notNull().$type<'formula'|'legacy'>(),
+  code:text('code'),creationCompanyId:uuid('creation_company_id').references(()=>company.id),
+  legacyRuleRef:uuid('legacy_rule_ref'),legacyRuleId:uuid('legacy_rule_id').references(()=>attendanceRule.id,{onDelete:'set null'}),
+  revision:integer('revision').notNull().default(1),archivedAt:timestamp('archived_at',{withTimezone:true}),createdAt:createdAt(),
+},t=>[uniqueIndex('overtime_pattern_code_uq').on(t.tenantId,sql`lower(${t.code})`).where(sql`${t.kind}='formula' AND ${t.archivedAt} is null`),uniqueIndex('overtime_pattern_legacy_uq').on(t.tenantId,t.legacyRuleRef)]);
+export const overtimePatternVersion = pgTable('overtime_pattern_version', {
+  id:id(),tenantId:tenantId(),patternId:uuid('pattern_id').notNull().references(()=>overtimePattern.id,{onDelete:'restrict'}),
+  kind:text('kind').notNull().$type<'formula'|'legacy'>(),creationCompanyId:uuid('creation_company_id').references(()=>company.id),
+  ordinal:integer('ordinal').notNull(),revision:integer('revision').notNull().default(1),name:text('name').notNull(),description:text('description').notNull().default(''),
+  definition:jsonb('definition').notNull().$type<Record<string,unknown>>(),digest:text('digest').notNull(),
+  activatedAt:timestamp('activated_at',{withTimezone:true}),activatedBy:uuid('activated_by').references(()=>appUser.id),createdAt:createdAt(),
+},t=>[uniqueIndex('overtime_pattern_version_ordinal_uq').on(t.patternId,t.ordinal)]);
+export const overtimePatternVersionCompany = pgTable('overtime_pattern_version_company', {
+  tenantId:tenantId(),versionId:uuid('version_id').notNull().references(()=>overtimePatternVersion.id,{onDelete:'restrict'}),companyId:uuid('company_id').notNull().references(()=>company.id,{onDelete:'restrict'}),
+},t=>[primaryKey({columns:[t.versionId,t.companyId]})]);
+export const overtimePatternVersionState = pgTable('overtime_pattern_version_state', {
+  id:id(),tenantId:tenantId(),versionId:uuid('version_id').notNull().references(()=>overtimePatternVersion.id,{onDelete:'restrict'}),
+  sequence:integer('sequence').notNull(),state:text('state').notNull().$type<'active'|'inactive'|'archived'>(),effectiveFrom:date('effective_from').notNull(),reason:text('reason').notNull(),createdBy:uuid('created_by').references(()=>appUser.id),createdAt:createdAt(),
+},t=>[uniqueIndex('overtime_pattern_state_sequence_uq').on(t.versionId,t.sequence)]);
+export const overtimePatternLegacyBinding = pgTable('overtime_pattern_legacy_binding', {
+  id:id(),tenantId:tenantId(),legacyRuleRef:uuid('legacy_rule_ref').notNull(),ruleId:uuid('rule_id').references(()=>attendanceRule.id,{onDelete:'set null'}),
+  versionId:uuid('version_id').notNull().references(()=>overtimePatternVersion.id,{onDelete:'restrict'}),effectiveFrom:date('effective_from').notNull(),createdAt:createdAt(),
+},t=>[uniqueIndex('overtime_pattern_legacy_version_uq').on(t.legacyRuleRef,t.versionId)]);
+export const overtimePatternAssignment = pgTable('overtime_pattern_assignment', {
+  id:id(),tenantId:tenantId(),versionId:uuid('version_id').notNull().references(()=>overtimePatternVersion.id,{onDelete:'restrict'}),
+  target:jsonb('target').notNull().$type<Record<string,unknown>>(),priority:integer('priority').notNull(),validFrom:date('valid_from').notNull(),validTo:date('valid_to'),
+  supersededAt:timestamp('superseded_at',{withTimezone:true}),closeReason:text('close_reason'),revision:integer('revision').notNull().default(1),createdBy:uuid('created_by').references(()=>appUser.id),createdAt:createdAt(),
+},t=>[index('overtime_pattern_assignment_dates_idx').on(t.tenantId,t.validFrom,t.validTo)]);
+export const overtimePatternAssignmentEmployment = pgTable('overtime_pattern_assignment_employment', {
+  tenantId:tenantId(),assignmentId:uuid('assignment_id').notNull().references(()=>overtimePatternAssignment.id,{onDelete:'restrict'}),employmentId:uuid('employment_id').notNull().references(()=>employment.id,{onDelete:'restrict'}),
+},t=>[primaryKey({columns:[t.assignmentId,t.employmentId]})]);
+export const attendanceOvertimeSource = pgTable('attendance_overtime_source', {
+  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id,{onDelete:'restrict'}),employmentId:uuid('employment_id').notNull().references(()=>employment.id,{onDelete:'restrict'}),
+  attendanceId:uuid('attendance_id').notNull().references(()=>attendance.id,{onDelete:'restrict'}),attendanceDate:date('attendance_date').notNull(),currentCalculationId:uuid('current_calculation_id'),revision:integer('revision').notNull().default(0),createdAt:createdAt(),
+},t=>[uniqueIndex('attendance_overtime_day_uq').on(t.tenantId,t.employmentId,t.attendanceDate)]);
+export const attendanceOvertimeCalculation = pgTable('attendance_overtime_calculation', {
+  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id,{onDelete:'restrict'}),sourceId:uuid('source_id').notNull().references(()=>attendanceOvertimeSource.id,{onDelete:'restrict'}),
+  versionId:uuid('version_id').references(()=>overtimePatternVersion.id,{onDelete:'restrict'}),assignmentId:uuid('assignment_id').references(()=>overtimePatternAssignment.id,{onDelete:'restrict'}),
+  ordinal:integer('ordinal').notNull(),inputDigest:text('input_digest').notNull(),approvalDigest:text('approval_digest').notNull(),referenceDigest:text('reference_digest').notNull(),
+  outcome:text('outcome').notNull().$type<'ready'|'ineligible'|'refused'>(),currency:text('currency').notNull(),minorScale:integer('minor_scale').notNull(),
+  durationInputDigest:text('duration_input_digest'),durationOutcome:text('duration_outcome').notNull().$type<'ready'|'ineligible'|'refused'>(),approvalStatus:text('approval_status').notNull(),transferable:boolean('transferable').notNull(),payableNumerator:text('payable_numerator'),payableDenominator:text('payable_denominator'),reason:text('reason').notNull(),createdAt:createdAt(),
+},t=>[uniqueIndex('attendance_overtime_calculation_ordinal_uq').on(t.sourceId,t.ordinal),index('attendance_overtime_calculation_source_idx').on(t.tenantId,t.sourceId)]);
+export const attendanceOvertimeLine = pgTable('attendance_overtime_line', {
+  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id,{onDelete:'restrict'}),calculationId:uuid('calculation_id').notNull().references(()=>attendanceOvertimeCalculation.id,{onDelete:'restrict'}),
+  lineKey:text('line_key').notNull(),sequence:integer('sequence').notNull(),componentId:uuid('component_id').notNull().references(()=>payComponent.id,{onDelete:'restrict'}),
+  amountMinorUnits:text('amount_minor_units').notNull(),evidence:jsonb('evidence').notNull().$type<Record<string,unknown>>(),createdAt:createdAt(),
+},t=>[uniqueIndex('attendance_overtime_line_key_uq').on(t.calculationId,t.lineKey)]);
+export const overtimeSourceSettlement = pgTable('overtime_source_settlement', {
+  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id,{onDelete:'restrict'}),sourceId:uuid('source_id').notNull().references(()=>attendanceOvertimeSource.id,{onDelete:'restrict'}),
+  ownerReference:jsonb('owner_reference').notNull().$type<{type:'payroll_batch'|'toil_accrual';id:string}>(),mode:text('mode').notNull().$type<'cash'|'toil'>(),calculationId:uuid('calculation_id').references(()=>attendanceOvertimeCalculation.id,{onDelete:'restrict'}),
+  payrollBatchId:uuid('payroll_batch_id').references(()=>payrollBatch.id,{onDelete:'set null'}),toilAccrualId:uuid('toil_accrual_id').references(()=>toilAccrual.id,{onDelete:'set null'}),
+  revision:integer('revision').notNull().default(1),releasedAt:timestamp('released_at',{withTimezone:true}),releaseReason:text('release_reason'),createdAt:createdAt(),
+},t=>[uniqueIndex('overtime_source_active_settlement_uq').on(t.sourceId).where(sql`${t.releasedAt} is null`)]);
+export const attendanceOvertimePersonnelContext = pgTable('attendance_overtime_personnel_context', {
+  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id,{onDelete:'restrict'}),sourceId:uuid('source_id').notNull().references(()=>attendanceOvertimeSource.id,{onDelete:'restrict'}),
+  facts:jsonb('facts').notNull().$type<Record<string,unknown>>(),ownerReference:text('owner_reference').notNull(),recordedAt:timestamp('recorded_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('attendance_overtime_context_source_uq').on(t.sourceId)]);
+
+export const attendanceOvertimeCalculationEvidence = pgTable('attendance_overtime_calculation_evidence', {
+  calculationId:uuid('calculation_id').primaryKey().references(()=>attendanceOvertimeCalculation.id,{onDelete:'restrict'}),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
+  inputs:jsonb('inputs').notNull().$type<Record<string,unknown>>(),evidence:jsonb('evidence').notNull().$type<Record<string,unknown>>(),
+});

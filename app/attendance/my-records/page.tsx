@@ -1,3 +1,4 @@
+import {FormulaOvertimeDuration} from '@/components/formula-overtime-record';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
@@ -130,6 +131,7 @@ export default async function MyAttendanceRecordsPage({
   const statusText: Record<AttendanceStatus, string> = {
     present: t('statusPresent'),
     absent: t('statusAbsent'),
+    exempt: t('statusExempt'),
     rest: t('statusRest'),
     off: t('statusOff'),
     ph: t('statusPh'),
@@ -148,6 +150,7 @@ export default async function MyAttendanceRecordsPage({
    */
   const statusChip: Record<AttendanceStatus, string> = {
     present: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
+    exempt:'border-border bg-muted text-muted-foreground',
     absent: 'border-rose-500/30 bg-rose-500/10 font-medium text-rose-700 dark:text-rose-400',
     rest: 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-400',
     off: 'border-border bg-muted text-muted-foreground',
@@ -264,7 +267,7 @@ export default async function MyAttendanceRecordsPage({
                       {/* An em dash where no engine computed the day, never a confident 0.00 — the same
                           distinction fmtMin makes for the hour columns. */}
                       <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">
-                        {r.otMinutes == null ? '—' : fmtHours2(r.otMinutes)}
+                        {r.formulaOvertime?<FormulaOvertimeDuration record={r.formulaOvertime}/>:r.otMinutes==null?'—':fmtHours2(r.otMinutes)}
                       </td>
                       <td className="px-3 py-2.5">
                         <span

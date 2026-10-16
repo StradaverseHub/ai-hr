@@ -40,3 +40,11 @@ describe('System Labels Excel contract',()=>{
     expect(Object.values(wb.Sheets.Errors).some(c=>c?.f)).toBe(false);
   });
 });
+
+it('accepts only the bounded previous header generation and converts legacy own/shared to complete explicit companies',()=>{
+ const definition=LABEL_IMPORT_DEFINITIONS.find(row=>row.kind==='department')!,headers=definition.columns.map(column=>column==='Criteria'?'Scope':column==='Criteria Companies'?'Shared Companies':column);
+ const bytes=workbook('department',[headers,['Origin','shared','Other','CODE','Label','Description','']]);
+ const [row]=readSystemLabelWorkbook(bytes);expect(row.values).toMatchObject({Criteria:'companies','Criteria Companies':'Origin;Other'});expect(row.warnings?.length).toBeGreaterThan(0);
+ expect(()=>readSystemLabelWorkbook(bytes,{generation:3})).toThrow('Headers');
+ expect(()=>readSystemLabelWorkbook(workbook('department',[headers,['Origin','own','Other','CODE','Label','Description','']]))).toThrow('Legacy own');
+});

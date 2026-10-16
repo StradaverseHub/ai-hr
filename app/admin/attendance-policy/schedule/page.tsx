@@ -1,21 +1,12 @@
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
-import { SCHEDULE, WORK_SCHEDULE_OVERTIME_ANCHOR } from '../schedule-panel';
+import {legacyWorkScheduleRedirect,type LegacyScheduleFeedback} from '@/lib/legacy-schedule-redirect';
 
-/**
- * 6d091cc0 (r301) — "Company work schedule & overtime rates" moved onto Attendance › Schedule › General. This
- * address redirects there.
- *
- * What this page still owned after r287 — backup-shift coverage, the tenant overtime rates and the registered
- * clocking devices with Revoke — is the Work Schedule & Overtime Rates card now (../work-schedule-overtime-card.tsx),
- * and each company's working week is a row of Company Policy Settings with its editor in a panel. Same reads,
- * same writers; nothing was copied or reset.
- *
- * A guarded stub for the same reasons as ../page.tsx: `requireAdmin()` keeps the route registered (a screenKey is a
- * permission identity), refuses a non-administrator before revealing anything, and keeps the module gate on the
- * segment; the redirect keeps bookmarks working.
+/** Retired Work Schedule address. Keep its own admin guard and segment module gate, then
+ * carry bounded feedback to the canonical Work Schedule settings page. Fragments are
+ * client-side only, so this server alias retains its established default card anchor.
  */
-export default async function AttendanceSchedulePage() {
+export default async function AttendanceSchedulePage({searchParams}:{searchParams?:Promise<LegacyScheduleFeedback>} = {}) {
   await requireAdmin();
-  redirect(`${SCHEDULE}#${WORK_SCHEDULE_OVERTIME_ANCHOR}`);
+  redirect(legacyWorkScheduleRedirect(await searchParams));
 }

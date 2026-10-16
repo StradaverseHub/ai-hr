@@ -37,7 +37,7 @@ import {
   txnSourceOf,
   InvalidTxnSourceError,
   DuplicateTxnRowError,
-  TxnDateOutOfPeriodError,
+  InvalidTxnDateError,
   TXN_SOURCES,
 } from '../core/payroll-individual-txn';
 import { listIndividualTxnsAcross } from '../core/payroll-view';
@@ -130,8 +130,7 @@ describe('4e403268 · the running totals under the grid', () => {
 });
 
 describe('4e403268 · what one line is missing', () => {
-  const bounds = { min: '2026-08-01', max: '2026-08-31' };
-  const typed = { bounds, requiredUnit: null, derives: false, derivedAmount: null } as const;
+  const typed = { requiredUnit: null, derives: false, derivedAmount: null } as const;
 
   it('accepts a complete typed line', () => {
     expect(dayLineIssue(line({ txnDate: '2026-08-05', amount: '100' }), typed)).toBeNull();
@@ -141,9 +140,10 @@ describe('4e403268 · what one line is missing', () => {
     expect(dayLineIssue(line({ amount: '100' }), typed)).toBe('rowIncomplete');
   });
 
-  it('refuses a date outside the pay month — the request’s point 8, for the calendar month', () => {
-    expect(dayLineIssue(line({ txnDate: '2026-07-15', amount: '100' }), typed)).toBe('dateOutOfPeriod');
-    expect(dayLineIssue(line({ txnDate: '2026-09-01', amount: '100' }), typed)).toBe('dateOutOfPeriod');
+  it('accepts dates outside the payroll month while refusing impossible calendar dates', () => {
+    expect(dayLineIssue(line({ txnDate: '2026-07-15', amount: '100' }), typed)).toBeNull();
+    expect(dayLineIssue(line({ txnDate: '2026-09-01', amount: '100' }), typed)).toBeNull();
+    expect(dayLineIssue(line({ txnDate: '2026-02-30', amount: '100' }), typed)).toBe('invalidEffectiveDate');
   });
 
   it('refuses a zero or negative typed amount', () => {
@@ -154,13 +154,13 @@ describe('4e403268 · what one line is missing', () => {
   /** On a calculating item the operator has NO amount box to be wrong about, so the refusal has to name
    *  the box they can be missing — exactly the narrowing 2da9937a made for the single-entry form. */
   it('names the QUANTITY box, not the amount box, on an item that calculates', () => {
-    const calc = { bounds, requiredUnit: 'hours', derives: true, derivedAmount: null } as const;
+    const calc = { requiredUnit: 'hours', derives: true, derivedAmount: null } as const;
     expect(dayLineIssue(line({ txnDate: '2026-08-05' }), calc)).toBe('quantityRequiredHours');
     expect(dayLineIssue(line({ txnDate: '2026-08-05' }), { ...calc, requiredUnit: 'days' })).toBe('quantityRequiredDays');
   });
 
   it('waits for the server’s figure rather than saving a zero', () => {
-    const calc = { bounds, requiredUnit: 'hours', derives: true, derivedAmount: null } as const;
+    const calc = { requiredUnit: 'hours', derives: true, derivedAmount: null } as const;
     expect(dayLineIssue(line({ txnDate: '2026-08-05', quantity: '2' }), calc)).toBe('derivedAmountPending');
     expect(dayLineIssue(line({ txnDate: '2026-08-05', quantity: '2' }), { ...calc, derivedAmount: '77.88' })).toBeNull();
     expect(dayLineIssue(line({ txnDate: '2026-08-05', quantity: '2' }), { ...calc, derivedAmount: '0.00' })).toBe(
@@ -275,7 +275,7 @@ describe('4e403268 · day-by-day writes', () => {
   /**
    * ALL LINES OR NONE, and it is not this screen's job to make that true — `createIndividualTxnsBulk`
    * validates every row BEFORE inserting any and does the whole set in one transaction. The refusal
-   * asserted here is date-in-period on the FOURTH line: nothing at all persists.
+   * asserted here is invalid calendar date on the FOURTH line: nothing at all persists.
    */
   it('a single bad date rolls back the WHOLE grid — no half-saved month', async () => {
     const { a, employmentId, batchId } = await hireWithBatch();
@@ -287,10 +287,10 @@ describe('4e403268 · day-by-day writes', () => {
           { kind: 'overtime', txnDate: '2026-08-01', amount: 77.88, quantity: 2, unit: 'hours' },
           { kind: 'overtime', txnDate: '2026-08-05', amount: 116.83, quantity: 3, unit: 'hours' },
           { kind: 'overtime', txnDate: '2026-08-12', amount: 97.36, quantity: 2.5, unit: 'hours' },
-          { kind: 'overtime', txnDate: '2026-07-15', amount: 155.77, quantity: 4, unit: 'hours' }, // last month
+          { kind: 'overtime', txnDate: '2026-08-32', amount: 155.77, quantity: 4, unit: 'hours' }, // impossible date
         ],
       }),
-    ).rejects.toBeInstanceOf(TxnDateOutOfPeriodError);
+    ).rejects.toBeInstanceOf(InvalidTxnDateError);
     expect(await listIndividualTxns(a, { batchId })).toHaveLength(0);
   });
 

@@ -37,8 +37,11 @@
  */
 
 import { useTranslations } from 'next-intl';
-import { Field, inputCls } from '@/components/ui';
-import { GENDERS, MARITAL_STATUSES } from '@/lib/person-vocabulary';
+import { inputCls } from '@/components/ui';
+import { PersonnelField } from '@/components/personnel-field';
+import { personnelControl } from '@/lib/personnel-form-contract';
+import { PERSONNEL_FIELDS } from '@/lib/personnel-field-registry';
+import { personnelFieldChoices } from '@/lib/personnel-import-contract';
 
 type Mode =
   | { mode: 'form' }
@@ -58,60 +61,46 @@ export type PersonDetailsFieldsProps = Mode & {
 
 export function PersonDetailsFields(props: PersonDetailsFieldsProps) {
   const t = useTranslations('people.detail');
+  const field=(key:string)=>PERSONNEL_FIELDS.find(field=>field.owner==='person' && field.ownerField===key)!;
+  const mode=props.mode==='controlled' ? 'draft' : 'edit';
   const gender = props.gender ?? '';
   const maritalStatus = props.maritalStatus ?? '';
 
-  // Literal keys, one branch per value — see the namespace note above. The exhaustiveness is enforced by
-  // the Gender / MaritalStatus types: adding a value to lib/person-vocabulary.ts without adding its label
-  // here is a type error, not a raw key on screen.
-  const genderLabel = (g: (typeof GENDERS)[number]): string =>
-    g === 'male' ? t('genderMale') : g === 'female' ? t('genderFemale') : t('genderUndisclosed');
-
-  const maritalLabel = (m: (typeof MARITAL_STATUSES)[number]): string =>
-    m === 'single'
-      ? t('maritalSingle')
-      : m === 'married'
-        ? t('maritalMarried')
-        : m === 'divorced'
-          ? t('maritalDivorced')
-          : m === 'widowed'
-            ? t('maritalWidowed')
-            : m === 'separated'
-              ? t('maritalSeparated')
-              : t('maritalOther');
 
   return (
     <>
-      <Field label={t('gender')} className={props.fieldClassName}>
+      <PersonnelField fieldId="profile.personal_details.gender" mode={mode} className={props.fieldClassName}>
         <select
+          {...personnelControl(field('gender').id,mode)}
           className={inputCls}
           {...(props.mode === 'form'
-            ? { name: 'gender', defaultValue: gender }
+            ? { defaultValue: gender }
             : { value: gender, onChange: (e) => props.onGenderChange(e.target.value) })}
         >
           <option value="">{t('genderNotSet')}</option>
-          {GENDERS.map((g) => (
-            <option key={g} value={g}>
-              {genderLabel(g)}
+          {personnelFieldChoices(field('gender')).map((option) => (
+            <option key={option.value} value={option.value}>
+              {t(option.labelKey.replace(/^people\.detail\./,''))}
             </option>
           ))}
         </select>
-      </Field>
-      <Field label={t('maritalStatus')} className={props.fieldClassName}>
+      </PersonnelField>
+      <PersonnelField fieldId="profile.personal_details.maritalstatus" mode={mode} className={props.fieldClassName}>
         <select
+          {...personnelControl(field('maritalStatus').id,mode)}
           className={inputCls}
           {...(props.mode === 'form'
-            ? { name: 'maritalStatus', defaultValue: maritalStatus }
+            ? { defaultValue: maritalStatus }
             : { value: maritalStatus, onChange: (e) => props.onMaritalStatusChange(e.target.value) })}
         >
           <option value="">{t('maritalNotSet')}</option>
-          {MARITAL_STATUSES.map((m) => (
-            <option key={m} value={m}>
-              {maritalLabel(m)}
+          {personnelFieldChoices(field('maritalStatus')).map((option) => (
+            <option key={option.value} value={option.value}>
+              {t(option.labelKey.replace(/^people\.detail\./,''))}
             </option>
           ))}
         </select>
-      </Field>
+      </PersonnelField>
     </>
   );
 }

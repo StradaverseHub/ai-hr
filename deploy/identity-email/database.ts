@@ -21,3 +21,8 @@ export function workflowEmailDatabaseGrants(role='aihr_identity_email'):string[]
   const quoted='"'+role.replaceAll('"','""')+'"';
   return [`GRANT EXECUTE ON FUNCTION identity_email.delivery_target(uuid,uuid,text),identity_email.start_delivery(uuid,uuid,text,jsonb),identity_email.finish_delivery(uuid,uuid,text,text),identity_email.delivery_summary(uuid,uuid,text) TO ${quoted}`];
 }
+/** Report queue/claim remains migration-owner only. The installed mail login can address only a leased occurrence. */
+export function masterReportDatabaseGrants(role='aihr_identity_email'):string[]{
+ const quoted='"'+role.replaceAll('"','""')+'"';
+ return [`GRANT EXECUTE ON FUNCTION identity_email.report_target(uuid,uuid,text),identity_email.start_report(uuid,uuid,text,jsonb),identity_email.finish_report(uuid,uuid,text,text,integer,uuid[]) TO ${quoted}`];
+}

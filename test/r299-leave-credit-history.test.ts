@@ -29,6 +29,7 @@ import {
   grantLeaveCredit,
   listLeaveCreditMovements,
   listEarnedLeaveCredits,
+  listOwnEarnedLeaveCredits,
   reverseLeaveCredit,
   runToilExpiry,
   setToilPolicy,
@@ -234,6 +235,7 @@ describe('Leave Credit history — derived, classified, and the running total is
     await owner.db.delete(schema.holiday).where(eq(schema.holiday.id,holiday.id));
     await owner.db.insert(schema.holiday).values({tenantId:b.tenantId,companyId:b.companyId,country:'MY',holidayDate:mon,name:'Later calendar edit'});
     const register=await listEarnedLeaveCredits(admin,{employmentId:emp.employmentId,today:TODAY});
+    expect(await listOwnEarnedLeaveCredits(employee,{today:TODAY})).toEqual(register);
     expect(register.rows.find(row=>row.accrualId===lot.accrualId)).toMatchObject({used:2,unattributedUsed:0,usage:[{requestId:leave.leaveRequestId,date:mon,days:1},{requestId:leave.leaveRequestId,date:wed,days:1}]});
   });
   it('projects real split consumption over approved dates and returns the original lots after partial cancellation', async () => {
@@ -252,6 +254,7 @@ describe('Leave Credit history — derived, classified, and the running total is
     const leave=await requestLeave(employee,{employmentId:emp.employmentId,leaveTypeId:typeId,startDate:mon,endDate:tue,today:TODAY});
     await decideLeave(approver,{leaveRequestId:leave.leaveRequestId,decision:'approved'});
     const register=await listEarnedLeaveCredits(admin,{employmentId:emp.employmentId,today:TODAY});
+    expect(await listOwnEarnedLeaveCredits(employee,{today:TODAY})).toEqual(register);
     expect(register.summary).toEqual({earned:2,used:2,expired:0,available:0});
     expect(register.rows.find(row=>row.accrualId===first.accrualId)?.usage).toEqual([{requestId:leave.leaveRequestId,date:mon,days:.75}]);
     expect(register.rows.find(row=>row.accrualId===second.accrualId)?.usage).toEqual([{requestId:leave.leaveRequestId,date:mon,days:.25},{requestId:leave.leaveRequestId,date:tue,days:1}]);
@@ -260,6 +263,7 @@ describe('Leave Credit history — derived, classified, and the running total is
     const cancel=await requestLeaveCancellation(employee,{leaveRequestId:leave.leaveRequestId,cancelDates:[mon],today:TODAY});
     await decideLeaveCancellation(approver,{cancellationRequestId:cancel.cancellationRequestId,decision:'approved'});
     const remaining=await listEarnedLeaveCredits(admin,{employmentId:emp.employmentId,today:TODAY});
+    expect(await listOwnEarnedLeaveCredits(employee,{today:TODAY})).toEqual(remaining);
     expect(remaining.summary).toEqual({earned:2,used:1,expired:0,available:1});
     expect(remaining.rows.find(row=>row.accrualId===first.accrualId)).toMatchObject({used:.75,available:0,usage:[{date:tue,days:.75}]});
     expect(remaining.rows.find(row=>row.accrualId===second.accrualId)).toMatchObject({used:.25,available:1,usage:[{date:tue,days:.25}]});
@@ -267,6 +271,7 @@ describe('Leave Credit history — derived, classified, and the running total is
     const survivor=remaining.rows.flatMap(row=>row.usage).find(usage=>usage.date===tue)!;
     await adminCancelLeave(admin,{leaveRequestId:survivor.requestId,reason:'Cancel remaining date'});
     const restored=await listEarnedLeaveCredits(admin,{employmentId:emp.employmentId,today:TODAY});
+    expect(await listOwnEarnedLeaveCredits(employee,{today:TODAY})).toEqual(restored);
     expect(restored.summary).toEqual({earned:2,used:0,expired:0,available:2});
     expect(restored.rows.find(row=>row.accrualId===first.accrualId)).toMatchObject({available:.75,usage:[]});
     expect(restored.rows.find(row=>row.accrualId===second.accrualId)).toMatchObject({available:1.25,usage:[]});
@@ -363,4 +368,34 @@ describe('Apply form: Expiring soon (gap 9)', () => {
     const annual = await leaveTypeApplySummary(admin, { employmentId: emp.employmentId, leaveTypeId: b.annualLeaveTypeId });
     expect(annual.expiringSoon).toBeNull();
   });
+});
+
+describe('Own earned credits stay personal even for privileged callers',()=>{
+ it('HR sees colleagues in the admin register but only their own lots on the personal page',async()=>{
+  const me=await hire('HR person'),other=await hire('Colleague');
+  const userId=await createAppUser(b.tenantId,me.personId,'hr_admin');
+  const hr:SessionContext={...admin,userId,personId:me.personId,roles:['hr_admin']};
+  for(const e of [me,other]) {
+   const workedDate=`${LAST_MONTH}-08`;
+   await setRestDay(adminCtx(b),{employmentId:e.employmentId,shiftDate:workedDate});
+   await grantLeaveCredit(admin,{employmentId:e.employmentId,workedDate,days:1,reason:'Owned credit',expiresOn:addDays(TODAY,90),today:TODAY});
+  }
+  expect((await listEarnedLeaveCredits(hr,{today:TODAY})).rows).toHaveLength(2);
+  const mine=await listOwnEarnedLeaveCredits(hr,{today:TODAY});
+  expect(mine.rows.map(row=>row.employmentId)).toEqual([me.employmentId]);
+  await expect(listOwnEarnedLeaveCredits(hr,{employmentId:other.employmentId} as never)).rejects.toThrow(/cannot select another employee/);
+  expect((await listOwnEarnedLeaveCredits({...hr,personId:null})).rows).toEqual([]);
+  const otherTenant=await seedBase();
+  expect((await listOwnEarnedLeaveCredits({...hr,tenantId:otherTenant.tenantId})).rows).toEqual([]);
+ });
+ it('pages past 500 without losing credits or lying about the total',async()=>{
+  const me=await hire('Many credits'),userId=await createAppUser(b.tenantId,me.personId,'employee');
+  const employee:SessionContext={...admin,userId,personId:me.personId,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]};
+  await owner.db.insert(schema.toilAccrual).values(Array.from({length:505},(_,i)=>({tenantId:b.tenantId,employmentId:me.employmentId,workedDate:addDays(TODAY,-i-1),otMinutes:0,accrualBasis:'hours_worked' as const,dayType:'rest_day' as const,daysCredited:'0.50',daysTaken:'0.00',expiresOn:addDays(TODAY,90),status:'active' as const})));
+  const first=await listOwnEarnedLeaveCredits(employee,{limit:500,today:TODAY});
+  const next=await listOwnEarnedLeaveCredits(employee,{limit:25,offset:500,today:TODAY});
+  expect(first.matched).toBe(505);expect(first.rows).toHaveLength(500);expect(next.matched).toBe(505);expect(next.rows).toHaveLength(5);
+  expect(new Set([...first.rows,...next.rows].map(r=>r.accrualId)).size).toBe(505);
+  expect(await listOwnEarnedLeaveCredits(employee,{limit:25,offset:500,today:TODAY})).toEqual(next);
+ });
 });

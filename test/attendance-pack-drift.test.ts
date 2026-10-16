@@ -32,6 +32,7 @@ const BOUNDARIES = [
   'core/attendance',
   'core/attendance-allowance',
   'core/attendance-allowance-context',
+  'core/attendance-shortfall',
   // 7c834696 stage 1 — the pure per-day calculation module. Declared as a boundary (not slipped into the
   // debt allowlist) because it IS pack implementation, exactly like attendance-derive beside it.
   'core/attendance-calc',
@@ -57,6 +58,7 @@ const ALWAYS_ALLOWED = [
   'core/attendance.ts', // implementation files import each other freely
   'core/attendance-allowance.ts',
   'core/attendance-allowance-context.ts',
+  'core/attendance-shortfall.ts',
   'core/attendance-calc.ts',
   'core/attendance-derive.ts',
   'core/attendance-device.ts',

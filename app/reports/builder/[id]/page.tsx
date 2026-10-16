@@ -39,11 +39,13 @@ export default async function ReportBuilderPage({
   let dataset: ReportDataset | undefined;
 
   if (id === 'new') {
+    if(sp.dataset==='master')redirect('/reports/employee-master/new');
     dataset = getDataset(sp.dataset ?? '');
     if (!dataset) redirect('/reports');
   } else {
     const r = await getCustomReport(s, id);
     if (!r) notFound();
+    if(r.datasetId==='master')redirect('/reports/employee-master/'+r.id);
     // Opening a saved report in the builder serves both reading and editing it — allowed when the acting
     // role holds 'view' OR 'edit' on the report's permission grid (empty grid ⇒ admin route-guard only).
     try {

@@ -190,3 +190,12 @@ export const CURRENCY_OPTIONS: readonly { value: string; label: string }[] = CUR
   value: c.code,
   label: currencyLabel(c),
 }));
+
+/** Canonical currency precision from the runtime currency data, after validating the shared master.
+ * This describes currency units, not support for Payroll conversion or statutory processing. */
+export function currencyMinorScale(code: string): number {
+  if (!isCurrencyCode(code)) throw new Error('Unknown currency');
+  const scale = new Intl.NumberFormat('en', { style: 'currency', currency: code }).resolvedOptions().maximumFractionDigits;
+  if (typeof scale !== 'number' || !Number.isInteger(scale) || scale < 0 || scale > 6) throw new Error('Unsupported currency precision');
+  return scale;
+}

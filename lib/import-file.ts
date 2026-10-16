@@ -42,7 +42,8 @@ export type ImportFileErrorCode =
   | 'FILE_TOO_LARGE'
   | 'EMPTY_FILE'
   | 'EMPTY_SHEET'
-  | 'FILE_READ_FAILED';
+  | 'FILE_READ_FAILED'
+  | 'UNEXPECTED_SHEET';
 
 /** Thrown by `readImportFile`. Carries a stable code so the UI maps it to a translated message
  *  rather than surfacing a raw browser error string. */
@@ -75,6 +76,7 @@ export type ImportFileRead = {
    * and re-validates it, so no workbook ever reaches the server.
    */
   dependentsText: string;
+  extraTexts?:Record<string,string>;
 };
 
 /** True when the name looks like a CSV. Extension-based on purpose: browsers report wildly
@@ -105,7 +107,7 @@ export async function readImportFile(
   file: File,
   /** Item 2983802f — worksheets to read ALONGSIDE the first one, by name (the employee importer asks
    *  for its Family sheet). Ignored for a .csv upload, which has exactly one sheet. */
-  opts?: { extraSheets?: readonly string[] },
+  opts?: { extraSheets?: readonly string[];allowedSheets?:readonly string[] },
 ): Promise<ImportFileRead> {
   const format = importFileFormat(file.name);
   if (!format) throw new ImportFileError('UNSUPPORTED_FILE_TYPE');
@@ -113,6 +115,7 @@ export async function readImportFile(
 
   let text: string;
   let dependentsText = '';
+  let extraTexts:Record<string,string>|undefined;
   if (format === 'csv') {
     if (file.size > MAX_IMPORT_CSV_BYTES) throw new ImportFileError('FILE_TOO_LARGE');
     try {
@@ -125,24 +128,25 @@ export async function readImportFile(
     const wanted = opts?.extraSheets ?? [];
     let extra: Record<string, string> = {};
     try {
-      const decoded = await workbookToCsvTexts(await file.arrayBuffer(), wanted);
+      const decoded = await workbookToCsvTexts(await file.arrayBuffer(), wanted,false,opts?.allowedSheets);
       text = decoded.first;
       extra = decoded.extra;
     } catch (e) {
       // The decoder's one meaningful failure is a workbook whose first sheet holds nothing; it is a
       // user-fixable mistake and deserves its own message rather than "could not read that file".
-      throw new ImportFileError((e as Error)?.message === 'EMPTY_SHEET' ? 'EMPTY_SHEET' : 'FILE_READ_FAILED');
+      throw new ImportFileError((e as Error)?.message === 'EMPTY_SHEET' ? 'EMPTY_SHEET' : (e as Error)?.message==='UNEXPECTED_SHEET'?'UNEXPECTED_SHEET':'FILE_READ_FAILED');
     }
     dependentsText = wanted.length > 0 ? (extra[wanted[0]] ?? '') : '';
+    if(wanted.length>1)extraTexts=extra;
     // A workbook's CSV projection can be far larger than the compressed file, so the text ceiling is
     // enforced AFTER the decode for this path — that is the size the server action actually receives.
     // BOTH sheets are counted: they travel as two arguments of the same server action, so the ceiling
     // that protects it is the ceiling on their sum.
-    if (new Blob([text, dependentsText]).size > MAX_IMPORT_CSV_BYTES) throw new ImportFileError('FILE_TOO_LARGE');
+    if (new Blob([text,...Object.values(extra)]).size > MAX_IMPORT_CSV_BYTES) throw new ImportFileError('FILE_TOO_LARGE');
   }
   if (text.trim() === '') throw new ImportFileError(format === 'csv' ? 'EMPTY_FILE' : 'EMPTY_SHEET');
 
-  return { name: file.name, format, text, dependentsText };
+  return { name: file.name, format, text, dependentsText,...extraTexts?{extraTexts}:{} };
 }
 
 /** Error code → i18n key under the importer's namespace. Exported (rather than inlined in the
@@ -155,6 +159,7 @@ export const IMPORT_FILE_MESSAGE_KEYS = {
   EMPTY_FILE: 'emptyFile',
   EMPTY_SHEET: 'emptySheet',
   FILE_READ_FAILED: 'fileReadError',
+  UNEXPECTED_SHEET:'unexpectedSheet',
 } as const satisfies Record<ImportFileErrorCode, string>;
 
 /** Map anything thrown while reading to a translation key. An unexpected throw degrades to the

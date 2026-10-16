@@ -1,3 +1,4 @@
+import {FormulaOvertimeDuration} from '@/components/formula-overtime-record';
 import { classifyDay } from '@/packs/attendance/exceptions';
 import { AttendanceDateSchedule, AttendanceDateOvertime } from '@/components/attendance-day-editor';
 import { AttendanceDayApplications } from '@/components/attendance-day-applications';
@@ -14,7 +15,7 @@ import { listEmployees } from '@/core/read';
 import { employmentScheduleGroupName } from '@/core/roster';
 import { attendanceClockData, clockCaptureEvidence, attendanceDayEditor, attendanceIrregularitiesForDate } from '@/packs/attendance/service';
 import { Card, ErrorBanner, PageHeader, SectionHeader, Button, inputCls, pageWideCls } from '@/components/ui';
-import { DayField, DayFieldGrid, DayOvertimeRows } from '@/components/attendance-day-parts';
+import { AttendanceDayTypeField, DayField, DayFieldGrid, DayOvertimeRows } from '@/components/attendance-day-parts';
 import { fmtMin, fmtDayDate, fmtCoord, osmPointHref } from '@/components/attendance-format';
 
 /**
@@ -136,6 +137,7 @@ export default async function IndividualAttendanceDayPage({
   const statusText: Record<AttendanceStatus, string> = {
     present: t('statusPresent'),
     absent: t('statusAbsent'),
+    exempt: t('statusExempt'),
     rest: t('statusRest'),
     off: t('statusOff'),
     ph: t('statusPh'),
@@ -160,7 +162,7 @@ export default async function IndividualAttendanceDayPage({
   // `otByRate` and the row already carried, and a zero is simply not listed. Labels are the existing
   // column-heading keys, written as literals so the key-usage guards still see them.
   const explanation = explainAttendanceDay(row.calcTrace);
-  const otCandidates: { only: 'lateness' | 'earlyOut' | 'flat' | 'ot00' | 'ot10' | 'ot15' | 'ot20' | 'ot30'; label: string; minutes: number }[] = [
+  const otCandidates: { only: 'lateness' | 'earlyOut' | 'flat' | 'ot00' | 'ot10' | 'ot15' | 'ot20' | 'ot30'; label: string; minutes: number|null }[] = [
     { only: 'lateness', label: t('colLateness'), minutes: row.lateMinutes ?? 0 },
     { only: 'earlyOut', label: t('colEarlyOut'), minutes: row.earlyOutMinutes ?? 0 },
     { only: 'flat', label: t('colOtFlat'), minutes: ot.flat },
@@ -170,7 +172,7 @@ export default async function IndividualAttendanceDayPage({
     { only: 'ot20', label: t('colOt20'), minutes: ot.ot20 },
     { only: 'ot30', label: t('colOt30'), minutes: ot.ot30 },
   ];
-  const otItems = otCandidates.filter((c) => c.minutes > 0);
+  const otItems = otCandidates.filter((c) => (c.minutes??0) > 0);
 
   const Field = DayField;
   const DASH = '—';
@@ -230,7 +232,7 @@ export default async function IndividualAttendanceDayPage({
                 : (row.shiftCode ?? DASH)
             }
           />
-          <Field label={t('dayEdit.dayType')} value={dayEditor?.leave.length?`${t('dayEdit.onLeave')} · ${dayEditor.leave.map(l=>l.name).join(', ')}`:dayEditor?t(`dayEdit.kind.${dayEditor.schedule.dayKind}`):statusText[status]} />
+          <AttendanceDayTypeField label={t('dayEdit.dayType')} dayType={row.dayType} format={kind=>t(`dayEdit.kind.${kind}`)} override={dayEditor?.leave.length?`${t('dayEdit.onLeave')} · ${dayEditor.leave.map(l=>l.name).join(', ')}`:dayEditor?t(`dayEdit.kind.${dayEditor.schedule.dayKind}`):undefined} />
           <Field label={t('daySecBreak')} value={fmtMin(breakMinutes)} />
         </DayFieldGrid>
         {!row.shiftCode && <div className="border-t border-border px-4 py-2 text-xs text-muted-foreground">{t('dayNoShift')}</div>}
@@ -315,8 +317,9 @@ export default async function IndividualAttendanceDayPage({
           the SAME working, so this screen and the list can never explain one day two ways. */}
       <Card className="overflow-hidden" data-day-section="overtime">
         <SectionHeader title={t('daySecOt')} />
-        {dayEditor?<AttendanceDateOvertime key={dayEditor.baseline} data={dayEditor} employmentId={selected.employmentId} date={date}/>:otItems.length === 0 ? (
-          <p data-day-ot-none className="px-4 py-3 text-sm text-muted-foreground">{t('dayOtNone')}</p>
+        {row.formulaOvertime&&<div className="p-4 text-sm"><FormulaOvertimeDuration record={row.formulaOvertime}/></div>}
+        {!row.formulaOvertime&&dayEditor?<AttendanceDateOvertime key={dayEditor.baseline} data={dayEditor} employmentId={selected.employmentId} date={date}/>:otItems.length === 0 ? (
+          <p hidden={!!row.formulaOvertime} data-day-ot-none className="px-4 py-3 text-sm text-muted-foreground">{t('dayOtNone')}</p>
         ) : (
           <>
             <DayOvertimeRows

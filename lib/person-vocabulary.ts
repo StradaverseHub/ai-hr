@@ -56,3 +56,7 @@ export const ELIGIBILITY_GENDERS = ['male', 'female'] as const;
  *  real-world set adds divorced/widowed/separated (#12129e77). */
 export const MARITAL_STATUSES = ['single', 'married', 'divorced', 'widowed', 'separated', 'other'] as const;
 export type MaritalStatus = (typeof MARITAL_STATUSES)[number];
+
+/** Personnel display vocabulary shared by the form and spreadsheet name resolver. */
+export const PERSON_GENDER_LABEL_KEYS:Record<Gender,string>={male:'people.detail.genderMale',female:'people.detail.genderFemale',undisclosed:'people.detail.genderUndisclosed'};
+export const PERSON_MARITAL_LABEL_KEYS:Record<MaritalStatus,string>={single:'people.detail.maritalSingle',married:'people.detail.maritalMarried',divorced:'people.detail.maritalDivorced',widowed:'people.detail.maritalWidowed',separated:'people.detail.maritalSeparated',other:'people.detail.maritalOther'};

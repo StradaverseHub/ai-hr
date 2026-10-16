@@ -36,12 +36,15 @@
  */
 
 import { useTranslations } from 'next-intl';
-import { Field, inputCls } from '@/components/ui';
+import { inputCls } from '@/components/ui';
+import { PersonnelField } from '@/components/personnel-field';
+import { PERSONNEL_EPF_CITIZENSHIPS } from '@/lib/personnel-choice-vocabulary';
+import { personnelInput, personnelControl,personnelFormChoices } from '@/lib/personnel-form-contract';
 
 /** Client-safe mirror of the `epf_citizenship` Postgres enum (db/schema.ts) — no DB import from a
  *  'use client' module, the same arrangement components/pay-structure-fields.tsx uses for the pay unions.
  *  The column is NOT NULL DEFAULT 'citizen', which is why there is no blank member here. */
-export const EPF_CITIZENSHIP_OPTIONS = ['citizen', 'pr', 'non_citizen'] as const;
+export const EPF_CITIZENSHIP_OPTIONS = PERSONNEL_EPF_CITIZENSHIPS;
 export type EpfCitizenshipOption = (typeof EPF_CITIZENSHIP_OPTIONS)[number];
 
 type Mode =
@@ -61,6 +64,7 @@ export type EpfRegistrationFieldsProps = Mode & {
 
 export function EpfRegistrationFields(props: EpfRegistrationFieldsProps) {
   const t = useTranslations('people.detail');
+  const mode=props.mode==='controlled' ? 'draft' : 'edit';
   const epfNumber = props.epfNumber ?? '';
   // A stored value that is not one of the three (a legacy or half-written draft) falls back to the column
   // default rather than leaving the select showing an option it is not actually set to.
@@ -81,37 +85,39 @@ export function EpfRegistrationFields(props: EpfRegistrationFieldsProps) {
 
   return (
     <>
-      <Field label={t('epfNumber')} className={props.fieldClassName}>
+      <PersonnelField fieldId="bank_statutory.epf_contribution.epfnumber" mode={mode} className={props.fieldClassName}>
         <input
+          {...personnelInput('bank_statutory.epf_contribution.epfnumber',mode)}
           className={inputCls}
           placeholder="123456789"
           {...(props.mode === 'form'
-            ? { name: 'epfNumber', defaultValue: epfNumber }
+            ? { defaultValue: epfNumber }
             : {
                 value: epfNumber,
                 onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
                   props.onChange({ epfNumber: e.target.value }),
               })}
         />
-      </Field>
-      <Field label={t('epfCitizenship')} className={props.fieldClassName}>
+      </PersonnelField>
+      <PersonnelField fieldId="bank_statutory.epf_contribution.epfcitizenship" mode={mode} className={props.fieldClassName}>
         <select
+          {...personnelControl('bank_statutory.epf_contribution.epfcitizenship',mode)}
           className={inputCls}
           {...(props.mode === 'form'
-            ? { name: 'epfCitizenship', defaultValue: citizenship }
+            ? { defaultValue: citizenship }
             : {
                 value: citizenship,
                 onChange: (e: React.ChangeEvent<HTMLSelectElement>) =>
                   props.onChange({ epfCitizenship: e.target.value }),
               })}
         >
-          {EPF_CITIZENSHIP_OPTIONS.map((c) => (
+          {personnelFormChoices('bank_statutory.epf_contribution.epfcitizenship').map(({value:c,labelKey}) => (
             <option key={c} value={c}>
-              {citizenshipLabel(c)}
+              {t(labelKey.slice(14))}
             </option>
           ))}
         </select>
-      </Field>
+      </PersonnelField>
     </>
   );
 }

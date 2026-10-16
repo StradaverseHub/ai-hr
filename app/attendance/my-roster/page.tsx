@@ -1,3 +1,6 @@
+import {withTenant} from '@/db/client';
+import {originalHolidayCalendarFor} from '@/core/holidays';
+import {replacementHolidayCalendarNotes} from '@/core/holiday-replacement-read';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
@@ -5,7 +8,7 @@ import { requireModule } from '@/lib/authz';
 import { myRosterWindow, type MyRosterDay, type MyRosterView } from '@/core/roster';
 import { Card, PageHeader, pageWideCls } from '@/components/ui';
 import { isoWeekdayOf, rosterDateLocale } from '@/lib/roster-month';
-import { shiftChipClass } from '@/lib/shift-visual';
+import { shiftChipClass, shiftChipStyle } from '@/lib/shift-visual';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import {
   MY_ROSTER_VIEWS,
@@ -106,6 +109,9 @@ export default async function MyRosterPage({
     );
   }
 
+  const replacementT=await getTranslations('replacementHoliday');
+  const [originals,replacements]=await Promise.all([withTenant(s,tx=>originalHolidayCalendarFor(tx,{employmentId:view.employmentId,startDate:w.from,endDate:w.to})),replacementHolidayCalendarNotes(s,{employmentId:view.employmentId,from:w.from,to:w.to})]);
+  view.days=view.days.map(day=>({...day,holidayNote:replacements.some(r=>r.replacementDate===day.date)?{label:replacementT('replacement'),name:replacements.find(r=>r.replacementDate===day.date)!.sourceName}:originals.some(h=>h.date===day.date)?{label:replacementT('original'),name:originals.filter(h=>h.date===day.date).map(h=>h.name).join(', ')}:undefined}));
   const dl = rosterDateLocale(locale);
   const fmtDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(dl, { day: '2-digit', month: 'short', year: 'numeric' });
   const fmtLongDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(dl, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -115,7 +121,7 @@ export default async function MyRosterPage({
   // Hours to one decimal: the tile says "180 hrs", not "180.00". Minutes are the stored unit everywhere
   // else on this screen, so the division happens once, here.
   const fmtHrs = (min: number) => (min / 60).toLocaleString(dl, { maximumFractionDigits: 1 });
-  const hhmm = (t24: string) => t24.slice(0, 5);
+  const hhmm = (t24:string|null) => t24?.slice(0,5)??'—';
 
   const caption =
     w.view === 'month' ? fmtMonth(w.month) : w.view === 'week' ? `${fmtDate(w.from)} – ${fmtDate(w.to)}` : fmtLongDate(w.focus ?? w.from);
@@ -143,6 +149,7 @@ export default async function MyRosterPage({
   return (
     <div className={pageWideCls}>
       <PageHeader title={t('myRoster.title')} description={subtitleParts.join(' · ')} />
+      {replacements.length>0&&<Card className="space-y-2 p-4"><h2 className="text-sm font-medium">{replacementT('calendarHint')}</h2><p className="text-xs text-muted-foreground">{replacementT('originalKept')}</p><ul className="space-y-1 text-sm">{replacements.map(r=><li key={r.id}>{r.replacementDate} · {r.sourceName} ({r.sourceDate}){r.status==='review'&&` · ${replacementT('review')}`}</li>)}</ul></Card>}
 
       {/* View switch on the left, window stepper on the right — the approved picture's control row. */}
       <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
@@ -202,6 +209,7 @@ export default async function MyRosterPage({
           {view.legend.map((sh) => (
             <span
               key={sh.id}
+              style={shiftChipStyle(sh.color)}
               className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs ${
                 shiftChipClass(sh.color) ?? 'border-border bg-muted text-muted-foreground'
               }`}
@@ -250,6 +258,8 @@ export default async function MyRosterPage({
 // ── Pieces ──────────────────────────────────────────────────────────────────────────────────────────
 
 type T = Awaited<ReturnType<typeof getTranslations<'attendance'>>>;
+type CalendarRosterDay=MyRosterDay&{holidayNote?:{label:string;name:string}};
+type CalendarRosterView=Omit<MyRosterView,'days'>&{days:CalendarRosterDay[]};
 
 function Stat({ label, value, unit }: { label: string; value: string; unit?: string }) {
   return (
@@ -281,7 +291,11 @@ function sourceKey(d: MyRosterDay): 'sourceRostered' | 'sourceUsual' | 'sourceRe
  * ONE day, drawn the same way in all three views. A `usual` day is GREY ITALIC — the legend's sentence
  * says what that means — and a rostered day carries its shift's own colour token.
  */
-function DayBody({ d, t, hhmm }: { d: MyRosterDay; t: T; hhmm: (v: string) => string }) {
+function DayBody({d,t,hhmm}:{d:CalendarRosterDay;t:T;hhmm:(v:string|null)=>string}) {
+ return <div className="space-y-1">{d.holidayNote&&<span className="block text-xs font-medium text-foreground" title={d.holidayNote.name}>{d.holidayNote.label}: {d.holidayNote.name}</span>}<DayBodyContent d={d} t={t} hhmm={hhmm}/></div>;
+}
+
+function DayBodyContent({ d, t, hhmm }: { d: MyRosterDay; t: T; hhmm: (v: string | null) => string }) {
   if (d.cell.kind === 'rest') {
     return (
       <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 font-mono text-xs font-medium">
@@ -299,6 +313,7 @@ function DayBody({ d, t, hhmm }: { d: MyRosterDay; t: T; hhmm: (v: string) => st
         <span className="font-mono text-xs italic text-muted-foreground">{d.shift.code}</span>
       ) : (
         <span
+          style={shiftChipStyle(d.shift.color)}
           className={`inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-xs font-medium ${
             shiftChipClass(d.shift.color) ?? 'border-border bg-muted text-foreground'
           }`}
@@ -329,11 +344,11 @@ function MonthGrid({
   fmtWeekday,
   hhmm,
 }: {
-  view: MyRosterView;
+  view: CalendarRosterView;
   w: MyRosterWindow;
   t: T;
   fmtWeekday: (iso: string) => string;
-  hhmm: (v: string) => string;
+  hhmm: (v: string | null) => string;
 }) {
   const pad = isoWeekdayOf(view.days[0]!.date) - 1;
   return (
@@ -381,11 +396,11 @@ function WeekCards({
   hhmm,
   fmtHrs,
 }: {
-  view: MyRosterView;
+  view: CalendarRosterView;
   w: MyRosterWindow;
   t: T;
   fmtWeekday: (iso: string) => string;
-  hhmm: (v: string) => string;
+  hhmm: (v: string | null) => string;
   fmtHrs: (min: number) => string;
 }) {
   return (
@@ -429,11 +444,11 @@ function DayPanel({
   fmtHrs,
   fmtLongDate,
 }: {
-  view: MyRosterView;
+  view: CalendarRosterView;
   w: MyRosterWindow;
   t: T;
   fmtWeekday: (iso: string) => string;
-  hhmm: (v: string) => string;
+  hhmm: (v: string | null) => string;
   fmtHrs: (min: number) => string;
   fmtLongDate: (iso: string) => string;
 }) {
@@ -462,6 +477,7 @@ function DayPanel({
         <div>
           <p className="text-sm text-muted-foreground">{t(`myRoster.${sourceKey(day)}`)}</p>
           <h2 className="text-lg font-semibold">{fmtLongDate(day.date)}</h2>
+          {day.holidayNote&&<p className="text-sm font-medium">{day.holidayNote.label}: {day.holidayNote.name}</p>}
           {day.shift && (
             <p className="text-sm text-muted-foreground">
               {day.shift.code} — {day.shift.name}

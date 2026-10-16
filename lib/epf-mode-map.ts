@@ -51,6 +51,17 @@ export type EpfUiMode =
   | 'manual_both_amount'
   | 'none';
 
+/** Offered election categories and captions. Retired manual_fixed remains accepted only by the mapper. */
+export const EPF_UI_MODE_OPTIONS = [
+  {value:'auto',labelKey:'people.detail.epfModeAuto'},
+  {value:'manual_percentage',labelKey:'people.detail.epfModeManualPercentage'},
+  {value:'semi_auto',labelKey:'people.detail.epfModeSemiAuto'},
+  {value:'manual_employee_amount',labelKey:'people.detail.epfModeManualEmployeeAmount'},
+  {value:'manual_employer_amount',labelKey:'people.detail.epfModeManualEmployerAmount'},
+  {value:'manual_both_amount',labelKey:'people.detail.epfModeManualBothAmount'},
+  {value:'none',labelKey:'people.detail.epfModeExempt'},
+] as const satisfies readonly {value:EpfUiMode;labelKey:string}[];
+
 export type EpfElectionFields = {
   epfMode: EpfMode;
   epfEmployeeRate: number | null;

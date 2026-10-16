@@ -28,6 +28,7 @@ import { fileURLToPath } from 'node:url';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
+import {EMPLOYMENT_PERIOD_UNITS} from '../lib/employment-period';
 import { DRAFT_PERIOD_UNITS, type EmployeeDraftData } from '../lib/employee-draft-schema';
 import { completeEmployeeDraft, saveEmployeeDraft } from '../core/employee-draft';
 import { hireEmployee } from '../core/org';
@@ -438,20 +439,14 @@ describe('§1 every field the draft type declares has a declared destination', (
   }
 
   it('the draft period units are the SAME list the writer accepts (item a72610af)', () => {
-    // `setEmploymentInfo` refuses a unit it does not know ("Period unit must be Month, Week or Day."),
-    // and it refuses it AFTER `hireEmployee` has committed. The draft schema restates the list because it
-    // is shared with the browser and core/org.ts is a server module — so the two must be pinned equal, or
-    // a unit added to the writer and not to the screen becomes a half-created employee.
-    const org = read('core/org.ts');
-    const declared = org.slice(
-      org.indexOf('export const EMPLOYMENT_PERIOD_UNITS'),
-      org.indexOf('\n', org.indexOf('export const EMPLOYMENT_PERIOD_UNITS')),
-    );
-    expect(declared, 'EMPLOYMENT_PERIOD_UNITS not found — has core/org.ts been restructured?')
-      .toContain('EMPLOYMENT_PERIOD_UNITS');
-    const units = [...declared.matchAll(/'([a-z]+)'/g)].map((m) => m[1]);
-    expect(units.length, 'the unit list parsed empty').toBeGreaterThan(0);
-    expect([...DRAFT_PERIOD_UNITS]).toEqual(units);
+    // Browser and writer consume one client-safe vocabulary; neither restates its own unit list.
+    const org=read('core/org.ts'),draft=read('lib/employee-draft-schema.ts');
+    expect(org).toMatch(/import \{[^}]*EMPLOYMENT_PERIOD_UNITS[^}]*\} from '\.\.\/lib\/employment-period'/);
+    expect(org).toContain("export { EMPLOYMENT_PERIOD_UNITS } from '../lib/employment-period'");
+    expect(org).toContain('(EMPLOYMENT_PERIOD_UNITS as readonly string[]).includes(v)');
+    expect(draft).toContain('export const DRAFT_PERIOD_UNITS = EMPLOYMENT_PERIOD_UNITS');
+    expect(DRAFT_PERIOD_UNITS).toBe(EMPLOYMENT_PERIOD_UNITS);
+    expect([...DRAFT_PERIOD_UNITS]).toEqual(['month','week','day']);
   });
 
   it('the family list has its own file, and this one says so rather than half-covering it', () => {

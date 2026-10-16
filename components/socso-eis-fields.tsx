@@ -39,13 +39,16 @@
  * computed t(`fields.${f}`) cannot ask for them.
  */
 import { useTranslations } from 'next-intl';
-import { Field, inputCls } from '@/components/ui';
+import { inputCls } from '@/components/ui';
+import { PersonnelField } from '@/components/personnel-field';
+import { personnelControl,personnelInput,personnelFormChoices,personnelFormLabel } from '@/lib/personnel-form-contract';
+import { PERSONNEL_SOCSO_CATEGORIES,PERSONNEL_EIS_CATEGORIES } from '@/lib/personnel-choice-vocabulary';
 import { clientPackFor } from '@/localization/registry.client';
 
 /** SOCSO contribution categories, in the order both screens show them. */
-export const SOCSO_CATEGORIES = ['auto', 'first', 'second', 'none'] as const;
+export const SOCSO_CATEGORIES = PERSONNEL_SOCSO_CATEGORIES;
 /** EIS has no First/Second split — only automatic derivation or off. */
-export const EIS_CATEGORIES = ['auto', 'none'] as const;
+export const EIS_CATEGORIES = PERSONNEL_EIS_CATEGORIES;
 
 export type SocsoEisValue = {
   socsoNumber?: string | null;
@@ -73,6 +76,8 @@ export function SocsoEisFields(
       }),
 ) {
   const t = useTranslations('people.detail');
+  const mode=props.mode==='controlled'?'draft':'edit';
+  const label=(id:string)=>personnelFormLabel(id,(key,fallback)=>key.startsWith('people.detail.')?t(key.slice(14)):fallback);
   const current = props.mode === 'form' ? props.defaults : props.value;
 
   // The SAME default the Personnel card applies, from the company's own country pack rather than a
@@ -91,70 +96,70 @@ export function SocsoEisFields(
 
   return (
     <>
-      <Field label={t('socsoEisNumber')}>
+      <PersonnelField fieldId="bank_statutory.socso_eis_and_others_statutory.socsonumber" mode={mode}>
         {props.mode === 'form' ? (
-          <input name="socsoNumber" defaultValue={numberDefault} className={inputCls} />
+          <input {...personnelInput('bank_statutory.socso_eis_and_others_statutory.socsonumber',mode)} defaultValue={numberDefault} className={inputCls} />
         ) : (
-          <input
+          <input {...personnelInput('bank_statutory.socso_eis_and_others_statutory.socsonumber',mode)}
             value={numberDefault}
             onChange={(e) => props.onChange({ socsoNumber: e.target.value })}
             className={inputCls}
-            aria-label={t('socsoEisNumber')}
+            aria-label={label('bank_statutory.socso_eis_and_others_statutory.socsonumber')}
           />
         )}
-      </Field>
+      </PersonnelField>
 
-      <Field label={t('socsoCategoryLabel')}>
+      <PersonnelField fieldId="bank_statutory.socso_eis_and_others_statutory.socsocategory" mode={mode}>
         {props.mode === 'form' ? (
-          <select name="socsoCategory" defaultValue={socsoCat} title={t('socsoCategoryHint')} className={inputCls}>
-            {SOCSO_CATEGORIES.map((c) => (
+          <select {...personnelControl('bank_statutory.socso_eis_and_others_statutory.socsocategory',mode)} defaultValue={socsoCat} title={t('socsoCategoryHint')} className={inputCls}>
+            {personnelFormChoices('bank_statutory.socso_eis_and_others_statutory.socsocategory').map(({value:c,labelKey}) => (
               <option key={c} value={c}>
-                {t(`socsoCategory${c[0].toUpperCase()}${c.slice(1)}`)}
+                {t(labelKey.slice(14))}
               </option>
             ))}
           </select>
         ) : (
-          <select
+          <select {...personnelControl('bank_statutory.socso_eis_and_others_statutory.socsocategory',mode)}
             value={socsoCat}
             onChange={(e) => props.onChange({ socsoCategory: e.target.value })}
             title={t('socsoCategoryHint')}
             className={inputCls}
-            aria-label={t('socsoCategoryLabel')}
+            aria-label={label('bank_statutory.socso_eis_and_others_statutory.socsocategory')}
           >
-            {SOCSO_CATEGORIES.map((c) => (
+            {personnelFormChoices('bank_statutory.socso_eis_and_others_statutory.socsocategory').map(({value:c,labelKey}) => (
               <option key={c} value={c}>
-                {t(`socsoCategory${c[0].toUpperCase()}${c.slice(1)}`)}
+                {t(labelKey.slice(14))}
               </option>
             ))}
           </select>
         )}
-      </Field>
+      </PersonnelField>
 
-      <Field label={t('eisCategoryLabel')}>
+      <PersonnelField fieldId="bank_statutory.socso_eis_and_others_statutory.eiscategory" mode={mode}>
         {props.mode === 'form' ? (
-          <select name="eisCategory" defaultValue={eisCat} title={t('eisCategoryHint')} className={inputCls}>
-            {EIS_CATEGORIES.map((c) => (
+          <select {...personnelControl('bank_statutory.socso_eis_and_others_statutory.eiscategory',mode)} defaultValue={eisCat} title={t('eisCategoryHint')} className={inputCls}>
+            {personnelFormChoices('bank_statutory.socso_eis_and_others_statutory.eiscategory').map(({value:c,labelKey}) => (
               <option key={c} value={c}>
-                {t(`eisCategory${c[0].toUpperCase()}${c.slice(1)}`)}
+                {t(labelKey.slice(14))}
               </option>
             ))}
           </select>
         ) : (
-          <select
+          <select {...personnelControl('bank_statutory.socso_eis_and_others_statutory.eiscategory',mode)}
             value={eisCat}
             onChange={(e) => props.onChange({ eisCategory: e.target.value })}
             title={t('eisCategoryHint')}
             className={inputCls}
-            aria-label={t('eisCategoryLabel')}
+            aria-label={label('bank_statutory.socso_eis_and_others_statutory.eiscategory')}
           >
-            {EIS_CATEGORIES.map((c) => (
+            {personnelFormChoices('bank_statutory.socso_eis_and_others_statutory.eiscategory').map(({value:c,labelKey}) => (
               <option key={c} value={c}>
-                {t(`eisCategory${c[0].toUpperCase()}${c.slice(1)}`)}
+                {t(labelKey.slice(14))}
               </option>
             ))}
           </select>
         )}
-      </Field>
+      </PersonnelField>
     </>
   );
 }

@@ -73,14 +73,14 @@ describe('otByRate — the rate buckets are OVERTIME ONLY', () => {
       ot20Minutes: 0,
       ot30Minutes: 0,
     });
-    expect(r.ot10 / 60).toBe(1); // 1.00 on screen. Before this change it was 540/60 = 9.00.
+    expect(r.ot10! / 60).toBe(1); // 1.00 on screen. Before this change it was 540/60 = 9.00.
     expect(r).toEqual({ flat: 0, ot00: 0, ot10: 60, ot15: 0, ot20: 0, ot30: 0 });
   });
 
   it('the same day with the shipped 1.5 bands leaves OT 1.0 empty rather than showing 8 normal hours', () => {
     const r = otByRate({ workedMinutes: 540, otMinutes: 60, dayType: 'workday' });
     expect(r).toEqual({ flat: 0, ot00: 0, ot10: 0, ot15: 60, ot20: 0, ot30: 0 });
-    expect(r.flat + r.ot00 + r.ot10 + r.ot15 + r.ot20 + r.ot30).toBe(60); // = otMinutes, NOT workedMinutes
+    expect(r.flat! + r.ot00! + r.ot10! + r.ot15! + r.ot20! + r.ot30!).toBe(60); // = otMinutes, NOT workedMinutes
   });
   it('rest-day work is all OT → 2.0×', () => {
     const r = otByRate({ workedMinutes: 300, otMinutes: 300, dayType: 'rest_day' });
@@ -114,7 +114,7 @@ describe('otByRate — the rate buckets are OVERTIME ONLY', () => {
     });
     // The stored bands verbatim — NOT 180 dumped into 1.5, and no 480 normal minutes bolted onto 1.0.
     expect(r).toEqual({ flat: 0, ot00: 30, ot10: 0, ot15: 90, ot20: 60, ot30: 0 });
-    expect(r.flat + r.ot00 + r.ot10 + r.ot15 + r.ot20 + r.ot30).toBe(180); // = otMinutes
+    expect(r.flat! + r.ot00! + r.ot10! + r.ot15! + r.ot20! + r.ot30!).toBe(180); // = otMinutes
   });
 
   it('a flat-rate day reports Flat OT and nothing in the premium columns', () => {
@@ -228,7 +228,7 @@ describe('attendanceForDate — shift code + scheduled minutes + OT split', () =
     // NOT in the OT columns. Only the 1.5 bucket carries anything, because that is the only overtime.
     expect(ot).toEqual({ flat: 0, ot00: 0, ot10: 0, ot15: 60, ot20: 0, ot30: 0 });
     // Invariant: the buckets sum back to the day's otMinutes. Worked hours are the Actual Hours column.
-    expect(ot.flat + ot.ot00 + ot.ot10 + ot.ot15 + ot.ot20 + ot.ot30).toBe(row.otMinutes ?? 0);
+    expect(ot.flat! + ot.ot00! + ot.ot10! + ot.ot15! + ot.ot20! + ot.ot30!).toBe(row.otMinutes ?? 0);
     // 7c834696 — and the loader now surfaces the STORED split the engine wrote for the same day.
     expect(row.ot15Minutes).toBe(60);
     expect(row.otFlatMinutes).toBe(0);

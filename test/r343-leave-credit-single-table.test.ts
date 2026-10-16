@@ -164,10 +164,10 @@ describe('r343 · adjudicateDayTypes', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
-// (2) THE LAYOUT, AS A SOURCE SHAPE. A second section and a short posted list are both invisible at runtime.
+// (2) THE INPUT LAYOUT, AS A SOURCE SHAPE. Dated review notices are outside the one input table.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
-describe('r343 · ONE table, no sections, and five posted values per row', () => {
-  it('the request form is ONE table and carries no section container of its own', () => {
+describe('r343 · ONE input table, separate dated review notices, and four posted values per row', () => {
+  it('the request form has ONE input table, no obsolete split inputs, and bounded review notices outside it', () => {
     // ⚠️ r364 — COMMENTS ARE STRIPPED FIRST, and that is a correction rather than a convenience. These
     // are source-text counts, and they were run over the RAW file: a comment that merely NAMED the tag
     // it was guarding pushed the count to 2 and failed the case. It happened the first time anyone
@@ -177,8 +177,11 @@ describe('r343 · ONE table, no sections, and five posted values per row', () =>
     // A tag inside a comment is not a tag, exactly as a guard name inside a comment is not a call; the
     // same blind spot in test/function-access.test.ts was fixed for the opposite reason, where a
     // comment made an UNGUARDED page look guarded. Four other helpers in this very file already strip
-    // before matching. Nothing is loosened: a real second <table> or <section> still fails.
-    const src = read(TABLE_TSX).slice(read(TABLE_TSX).indexOf('export function LeaveCreditRequestTable'))
+    // before matching. A second input table or split day-type input section still fails. The dated
+    // canonical formula review introduced later is a notice outside the table, not another input section.
+    const raw = read(TABLE_TSX), componentStart = raw.indexOf('export function LeaveCreditRequestTable');
+    expect(componentStart, 'the actual request component exists').toBeGreaterThanOrEqual(0);
+    const src = raw.slice(componentStart)
       .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/^\s*\/\/.*$/gm, '');
@@ -186,7 +189,23 @@ describe('r343 · ONE table, no sections, and five posted values per row', () =>
     // r336's two sections were `<section data-testid="leave-credit-section-a|b">`. Neither may come back.
     expect(src).not.toContain('leave-credit-section-a');
     expect(src).not.toContain('leave-credit-section-b');
-    expect(src).not.toContain('<section');
+    expect(src).toContain('data-testid="leave-credit-table"');
+    const tableStart = src.indexOf('<table'), tableEnd = src.indexOf('</table>', tableStart);
+    const reviewId = src.indexOf('data-testid="leave-credit-claim-reviews"');
+    expect(tableStart).toBeGreaterThan(0);expect(tableEnd).toBeGreaterThan(tableStart);expect(reviewId).toBeGreaterThan(tableEnd);
+    const reviewStart = src.lastIndexOf('<div', reviewId), reviewEnd = src.indexOf('\n      </div>', reviewId);
+    expect(reviewStart).toBeGreaterThan(tableEnd);expect(reviewEnd).toBeGreaterThan(reviewId);
+    const review = src.slice(reviewStart, reviewEnd);
+    expect(review.length).toBeGreaterThan(300);
+    expect((src.match(/<section\b/g) ?? []).length, 'only the dated review notice is a section').toBe(1);
+    expect((review.match(/<section\b/g) ?? []).length).toBe(1);
+    expect(review).toContain("rows.filter(row=>row.workedDate&&claimReviewForRow(row)?.basis!=='legacy')");
+    expect(review).toContain("<section key={row.key} aria-label={`${t('workedDate')}: ${row.workedDate}`}");
+    expect(review).toContain("<LeaveCreditClaimReviewNotice review={claimReviewAction?claimReviewForRow(row)??null:{basis:'unavailable',reason:'unavailable'}}/>");
+    expect(review).toContain('min-w-0 max-w-full');expect(review).toContain('whitespace-normal');expect(review).toContain('[overflow-wrap:anywhere]');
+    expect(review, 'review notices never inherit the table minimum width').not.toContain('min-w-[');
+    expect(review, 'not a second set of editable/posted inputs').not.toMatch(/<(?:input|select|textarea|table)\b|\bname=/);
+    expect(src.slice(tableStart, tableEnd), 'dated notices must remain outside the scrollable input table').not.toContain('LeaveCreditClaimReviewNotice');
   });
 
   // r358 — FOUR values, not five: `days` is gone with the dropdown that fed it. The old list is quoted in
@@ -697,15 +716,21 @@ describe('r365 · the Attendance column, the shared panel, and what was retired 
    * innocuous name inside it passes any scan of the expression's own text. What cannot be smuggled past
    * is the LIST of things that stop the submit, pinned by name.
    */
-  it('the submit gate is exactly the five refusals it has always been — attendance is not one of them', () => {
+  it('the submit gate preserves the prior refusals plus canonical formula review; informational attendance is not a gate', () => {
     const code = stripped(TABLE);
-    const stmt = code.slice(code.indexOf('const blocked ='), code.indexOf(';', code.indexOf('const blocked =')));
+    const start = code.indexOf('const blocked ='), end = code.indexOf(';', start);
+    expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start);
+    const stmt = code.slice(start, end);expect(stmt.length).toBeGreaterThan(200);
     const operands = [...stmt.matchAll(/([A-Za-z_$][\w$]*)\s*(?:\.length\s*>\s*0|<=\s*0)/g)].map((m) => m[1]).sort();
     // r406 — `alreadyCreditedRows` joined, behind `hr != null &&`: HR mode only, and it is a register fact
     // (an unreversed credit on the date), not attendance. On the employee's mount it is always [].
     expect(operands).toEqual(
-      ['alreadyCreditedRows', 'belowThresholdRows', 'duplicateDates', 'incompleteRows', 'mismatchRows', 'ordinaryUnavailableRows', 'totalCredit'].sort(),
+      ['alreadyCreditedRows', 'belowThresholdRows', 'duplicateDates', 'incompleteRows', 'mismatchRows', 'ordinaryUnavailableRows', 'totalCredit', 'unresolvedClaimRows'].sort(),
     );
+    // The additional refusal is the duration owner's exact subject/date/window review, not the
+    // historical Attendance details panel. Pending/unavailable/refused formula results cannot submit.
+    expect(code).toContain('const unresolvedClaimRows=rows.filter(row=>row.workedDate&&leaveCreditClaimReviewBlocks(claimReviewForRow(row)))');
+    expect(stmt).toContain('unresolvedClaimRows.length>0');
     expect(stmt).toContain('(hr != null && (subjectMissing || hr.blocked || alreadyCreditedRows.length > 0))');
     for (const name of ['attendance', 'Attendance', 'hasClockOut', 'exceedsClockOut', 'actualClock', 'approvedOtPlan'])
       expect(stmt, `${name} must not reach the submit gate`).not.toContain(name);
@@ -871,54 +896,10 @@ describe('r343 · the translated keys are translated, and the English ones are n
     return [...out].sort();
   };
 
-  /**
-   * THE ENGLISH DEBT OF THIS SCREEN, NAMED. The keys listed here read the same in all six catalogues, so
-   * the number is a decision rather than an accident — the report for r343 claimed the screen was
-   * "composed from existing translated keys", and for the four day-type LABELS that is true, but these are
-   * English on the ms, ta, th, vi and zh screens and saying so is the honest half.
-   *
-   * ⚠️ THE ARITHMETIC IN THIS COMMENT HAD BEEN WRONG SINCE r358 AND r362 IS CORRECTING IT RATHER THAN
-   * INHERITING IT (CLAUDE.md §8 — prose outlives the kernel). It read: "Nineteen keys … the eight `table.*`
-   * keys r343 added, and eleven this form already rendered in English before it", then "r358 — EIGHTEEN,
-   * not nineteen: `days` was the column header over the 1-or-0.5 dropdown, and both are gone". But the same
-   * round also took `table.help` and `table.windowNotClaimed` out (the note inside the list says so), which
-   * left SIXTEEN entries under a comment claiming eighteen. The LIST was always right and the case title
-   * always matched it; only the running total above drifted. `days` is still NOT retired in the catalogues
-   * — it is a generic label other leave surfaces render — what changed is that this screen stopped
-   * reaching for it.
-   */
-  // r362 5c72039e — FIFTEEN. `table.dayTypeChoose` ("Choose a day type") is RETIRED: it was the read-only
-  // cell's "not known yet" text and it told the employee to make a choice the cell has not permitted since
-  // r360. The key stays in all six catalogues — retired, never deleted — it is simply no longer rendered,
-  // so `renderedKeys()` cannot see it and it may not sit on a list of keys this screen RENDERS in English.
-  const ENGLISH_EVERYWHERE = [
-    'addRow',
-    'cancel',
-    'firstScheduleConsent',
-    'leaveType',
-    'reason',
-    'removeRow',
-    // r358 — `table.help` and `table.windowNotClaimed` LEFT this list, and that is a gain rather than a
-    // loss: both had to be rewritten for the owner's new rule, and both were translated into all six
-    // locales while they were being rewritten. A key leaving the English-everywhere set is the set doing
-    // its job — it exists to make the English-only count a decision rather than an accident.
-    //
-    // r389 — `table.myRequests`, `table.noRequests`, `table.statusHeading` and `table.submittedOn` LEFT this
-    // list too. They were the old submitted-requests list on /leave/credit, which became Leave Credit History
-    // with translated headings of its own; the four keys are RETIRED in place (`[retired r389 — …]` in all
-    // six) because nothing renders them any more.
-    'table.rosterMismatch',
-    'totalDays',
-    'workedDate',
-  ];
-
-  // r362 — the title said "the sixteen … a seventeenth", which was true of the list as it stood. Retiring
-  // `table.dayTypeChoose` takes it to fifteen. The number is in the title on purpose: it is the one place a
-  // reader sees the size of the debt without counting, so it moves with the list.
-  // r389 — NINE: the four `table.*` keys of the old /leave/credit list are retired (see the list's note).
-  // The count was "fifteen" in this title while the list held thirteen; the title now says what the list
-  // holds.
-  it('the keys that ship English are EXACTLY the nine named above — a tenth fails this case', () => {
+  // All rendered Leave Credit copy is now translated. Keep this observable: an English catalogue
+  // value accidentally copied into every locale must fail even when no key is missing.
+  const ENGLISH_EVERYWHERE: string[] = [];
+  it('no rendered Leave Credit key ships English in all five other locales', () => {
     const english = renderedKeys().filter((k) => {
       const en = at('en', k);
       return typeof en === 'string' && LOCALES.slice(1).every((l) => at(l, k) === en);

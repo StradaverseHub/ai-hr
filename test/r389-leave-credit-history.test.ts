@@ -59,7 +59,7 @@ import { setCompensation } from '../core/comp';
 import { setRestDay } from '../core/roster';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
 import { adminCancelLeave, decideLeave, requestLeave } from '../core/leave';
-import { reverseLeaveCredit, runToilExpiry, setToilPolicy } from '../core/toil';
+import { listEarnedLeaveCredits, listOwnEarnedLeaveCredits, reverseLeaveCredit, runToilExpiry, setToilPolicy } from '../core/toil';
 import {
   cancelOwnReplacementLeaveRequest,
   decideReplacementLeaveRequest,
@@ -466,6 +466,11 @@ async function statusesWorld() {
 describe('r389 · every credit status, read as the system stored it', () => {
   it('available, used, expired, paid out and reversed — with usage net of give-backs, and days never money', async () => {
     const w = await statusesWorld();
+    // The new personal earned register consumes these same canonical employee-request lots, including
+    // expiry and pay settlement. This compares the whole projection, including actor and usage history.
+    const personal = await listOwnEarnedLeaveCredits(w.empCtx, { today: TODAY });
+    expect(personal).toEqual(await listEarnedLeaveCredits(admin, { employmentId: w.E, today: TODAY }));
+    expect(new Set(personal.rows.map(row => row.status))).toEqual(new Set(['available', 'fully_used', 'expired', 'paid_out', 'reversed']));
     const lines = await listOwnLeaveCreditHistory(w.empCtx);
     const by = (id: string) => lines.find((l) => l.requestId === id)!;
 
@@ -638,6 +643,7 @@ describe('r389 · the My Leave menu, the renamed row, the retired link and the s
       ['/leave', 'leaveOverview'],
       ['/leave/history', 'leaveHistory'],
       ['/leave/credit', 'leaveCreditHistory'],
+      ['/leave/credit-details', 'leaveCreditDetails'],
       // r404 (42e55e2b) — UPDATED, NOT LOOSENED: Leave Details is the fourth row; it is core leave and not
       // toil-gated, which the sidebar assertions below still prove (only leaveCreditHistory is named there).
       ['/leave/details', 'leaveDetails'],

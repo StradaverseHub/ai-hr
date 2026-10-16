@@ -2,8 +2,11 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { batchDetail, listReprocessEmployeeOutcomes, batchInputRows, leaverAdvisory, preProcessAdvisory, type PreProcessAdvisory } from '@/core/payroll';
+import { batchDetail, listReprocessEmployeeOutcomes, leaverAdvisory, preProcessAdvisory, type PreProcessAdvisory, type BatchScope } from '@/core/payroll';
 import { payrollReadiness, type PayrollReadiness } from '@/core/payroll-readiness';
+import {batchScopeHeadcount} from '@/packs/payroll/service';
+import {PendingMoneyStatus,PendingOvertimeCashAmount,PendingOvertimeCashDetails} from './pending-overtime';
+import { payrollPrecheckProfileHref } from '@/lib/payroll-precheck-profile';
 import { statutoryPackStale } from '@/lib/statutory-readiness';
 import { auditEvents } from '@/core/read';
 import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
@@ -81,6 +84,7 @@ export default async function BatchPage({
   const data = await batchDetail(s, batchId);
   if (!data) notFound();
   const { batch, slips } = data;
+  const scope = (batch.scope ?? null) as BatchScope | null;
   const processingOutcomes = batch.status === 'draft' ? [] : await listReprocessEmployeeOutcomes(s, {batchId});
   const processingByEmployment = new Map(processingOutcomes.map(outcome => [outcome.employmentId, outcome]));
   // Feedback ef31d251 — this header used to render the RAW status enum, and "Processed" reads as
@@ -103,7 +107,7 @@ export default async function BatchPage({
     published: t('publishStatePublished'),
   };
   const totals = (batch.totals ?? {}) as Record<string, number>;
-  const inputs = batch.status === 'draft' ? await batchInputRows(s, batchId) : [];
+  const draftHeadcount = batch.status === 'draft' ? await batchScopeHeadcount(s, batchId) : null;
   const leavers = batch.status === 'draft' ? await leaverAdvisory(s, batchId) : [];
   // fc776376 — both per-employee tables on this run are genuine lists that grow with headcount. The
   // payslip BREAKDOWN (one payslip's own lines) is deliberately not paged: it is one record, not a list.
@@ -184,6 +188,7 @@ export default async function BatchPage({
       ? await payrollReadiness(s, {
           companyId: batch.companyId,
           payPeriod: batch.payPeriod,
+          scope,
           statutoryStale: await statutoryPackStale(s),
         })
       : null;
@@ -276,7 +281,6 @@ export default async function BatchPage({
         return { country, state: state || null, year, loaded, required };
       })
     : [];
-  const scope = (batch.scope ?? null) as { departmentIds?: string[]; employmentIds?: string[] } | null;
   const isScoped = !!(scope?.departmentIds?.length || scope?.employmentIds?.length);
 
   // ── Feedback d0d2c9d1 — money entered for this month that has never reached a payslip. ──
@@ -665,7 +669,7 @@ export default async function BatchPage({
             </div>
             <div className="p-3">
               <div className="text-xs text-muted-foreground">{t('summaryHeadcount')}</div>
-              <div className="text-sm font-medium">{inputs.length}</div>
+              <div className="text-sm font-medium">{draftHeadcount ?? '—'}</div>
             </div>
           </div>
         </Card>
@@ -831,7 +835,7 @@ export default async function BatchPage({
                           </span>
                         </span>
                         <Link
-                          href={`/people/${r.employmentId}`}
+                          href={payrollPrecheckProfileHref(r.employmentId, 'nothingPayable')}
                           className="shrink-0 text-xs font-medium text-primary hover:underline"
                         >
                           {t('preChecksOpenProfile')} →
@@ -878,7 +882,7 @@ export default async function BatchPage({
                             <span className="font-medium">{r.name}</span>
                           </span>
                           <Link
-                            href={`/people/${r.employmentId}`}
+                            href={payrollPrecheckProfileHref(r.employmentId, key)}
                             className="text-xs font-medium text-primary hover:underline"
                           >
                             {t('preChecksOpenProfile')} →
@@ -913,9 +917,8 @@ export default async function BatchPage({
               {t('pendingMoney.inert', { n: pendingMoney.inertRows })}
             </div>
           )}
-          {pendingMoney.lines.length === 0 ? (
-            <p className="px-4 py-4 text-sm text-muted-foreground">{t('pendingMoney.empty')}</p>
-          ) : (
+          <PendingMoneyStatus hasLines={pendingMoney.lines.length > 0} review={pendingMoney.formulaOvertimeReview} />
+          {pendingMoney.lines.length > 0 ? (
             <div className="space-y-4 px-4 py-4">
               <div className="flex flex-wrap gap-4 rounded-xl border border-border bg-muted/40 px-3 py-2.5 text-xs">
                 <span>
@@ -988,13 +991,13 @@ export default async function BatchPage({
                             )}
                           </span>
                         </td>
-                        <td className="px-3 py-2 text-muted-foreground">{l.itemName ?? '—'}</td>
+                        <td className="px-3 py-2 text-muted-foreground">{l.itemName ?? '—'}{l.overtimeCash?<PendingOvertimeCashDetails evidence={l.overtimeCash}/>:null}</td>
                         <td
                           className={`px-3 py-2 text-right tabular-nums ${
                             l.amount < 0 ? 'text-red-700 dark:text-red-400' : ''
                           }`}
                         >
-                          {rm(l.amount)}
+                          {l.overtimeCash?<PendingOvertimeCashAmount evidence={l.overtimeCash}/>:rm(l.amount)}
                         </td>
                       </tr>
                     ))}
@@ -1002,7 +1005,7 @@ export default async function BatchPage({
                 </table>
               </div>
             </div>
-          )}
+          ) : null}
         </Card>
       )}
 

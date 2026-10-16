@@ -20,6 +20,7 @@ export type ProfileOptionChoice = { id?: string; value: string; label: string };
  */
 export function ProfileOptionSelect({
   name,
+  personnelFieldId,
   value,
   options,
   placeholder,
@@ -28,6 +29,7 @@ export function ProfileOptionSelect({
   id,
 }: {
   name: string;
+  personnelFieldId?: string;
   value: string | null | undefined;
   // Widened to the narrow shape (a72610af) so the SAME props satisfy both renderings; every existing
   // caller still passes full `ProfileOptionRow`s, which are assignable to it.
@@ -41,7 +43,7 @@ export function ProfileOptionSelect({
 }) {
   const current = value ?? '';
   return (
-    <select id={id} name={name} defaultValue={current} className={className ?? inputCls}>
+    <select data-personnel-field={personnelFieldId} id={id} name={name} defaultValue={current} className={className ?? inputCls}>
       {profileOptionChoices(current, options, placeholder, legacySuffix)}
     </select>
   );
@@ -91,6 +93,7 @@ function profileOptionChoices(
  */
 export function ProfileOptionSelectControlled({
   value,
+  personnelFieldId,
   options,
   placeholder,
   legacySuffix,
@@ -100,6 +103,7 @@ export function ProfileOptionSelectControlled({
   disabled,
 }: {
   value: string | null | undefined;
+  personnelFieldId?: string;
   options: ProfileOptionChoice[];
   placeholder: string;
   legacySuffix: string;
@@ -115,6 +119,7 @@ export function ProfileOptionSelectControlled({
   const current = value ?? '';
   return (
     <select
+      data-personnel-field={personnelFieldId}
       id={id}
       value={current}
       disabled={disabled}

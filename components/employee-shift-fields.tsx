@@ -2,10 +2,14 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Field, inputCls } from '@/components/ui';
+import { inputCls } from '@/components/ui';
+import {PersonnelField} from '@/components/personnel-field';
+import {personnelControl,personnelInput,personnelFormLabel} from '@/lib/personnel-form-contract';
 import { DateField } from '@/components/ui/date-field';
+import {rotationVersionOn} from '@/core/week-pattern';
 
-type ShiftOption = { id: string; label: string };
+type ShiftOption = { id: string; label: string; archived?:boolean };
+type AllowedPool={baseShiftIds:string[];versions:{effectiveFrom:string;allowedShiftIds:string[]}[]};
 
 /**
  * R17 3e8350db — the employee-profile "Shift Type" control (the reporter's explicit ask). A client island
@@ -35,10 +39,12 @@ export function EmployeeShiftFields({
   shifts,
   defaultEffectiveFrom,
   dmyDisplay = false,
+  allowedPool,
 }: {
   defaultType: 'fixed' | 'roster';
   defaultShiftId: string | null;
   shifts: ShiftOption[];
+  allowedPool?:AllowedPool;
   /** Today in the tenant's calendar (todayInKualaLumpur), resolved on the server. */
   defaultEffectiveFrom: string;
   /** r422 — OPT-IN: draw the Effective date as DD-MMM-YYYY (components/ui/date-field.tsx), posting the same
@@ -46,14 +52,19 @@ export function EmployeeShiftFields({
   dmyDisplay?: boolean;
 }) {
   const t = useTranslations('people.detail');
+  const label=(id:string)=>personnelFormLabel(id,(key,fallback)=>key.startsWith('people.detail.')?t(key.slice(14)):fallback);
   const [type, setType] = useState<'fixed' | 'roster'>(defaultType);
+  const [effectiveFrom,setEffectiveFrom]=useState(defaultEffectiveFrom);
+  const [selectedShift,setSelectedShift]=useState(defaultShiftId??'');
+  const allowed=allowedPool?new Set(rotationVersionOn(allowedPool.versions,effectiveFrom)?.allowedShiftIds??allowedPool.baseShiftIds):null;
+  const options=shifts.filter(sh=>(!sh.archived&&(!allowed||allowed.has(sh.id)))||sh.id===selectedShift);
 
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-end gap-3">
-        <Field label={t('shiftTypeLabel')}>
+        <PersonnelField fieldId="attendance.work_location_and_shift_arrangement.shifttype">
           <select
-            name="shiftType"
+            {...personnelControl('attendance.work_location_and_shift_arrangement.shifttype')}
             value={type}
             onChange={(e) => setType(e.target.value as 'fixed' | 'roster')}
             className={inputCls}
@@ -61,43 +72,41 @@ export function EmployeeShiftFields({
             <option value="fixed">{t('shiftTypeFixed')}</option>
             <option value="roster">{t('shiftTypeRoster')}</option>
           </select>
-        </Field>
-        <Field label={t('backupShiftLabel')}>
-          <select name="shiftId" required defaultValue={defaultShiftId ?? ''} className={inputCls}>
+        </PersonnelField>
+        <PersonnelField fieldId="attendance.work_location_and_shift_arrangement.backupshiftid">
+          <select {...personnelControl('attendance.work_location_and_shift_arrangement.backupshiftid')} value={selectedShift} onChange={e=>setSelectedShift(e.target.value)} className={inputCls}>
             <option value="">{t('defaultShiftChoose')}</option>
-            {shifts.map((sh) => (
-              <option key={sh.id} value={sh.id}>
+            {options.map((sh) => (
+              <option key={sh.id} value={sh.id} disabled={!!sh.archived||!!allowed&&!allowed.has(sh.id)}>
                 {sh.label}
               </option>
             ))}
           </select>
-        </Field>
+        </PersonnelField>
         {/* 18504ca6 — pushed to the end of the row (sm:ml-auto) so it lands where the Location card's own
             Effective date lands, which is the symmetry the reporter photographed. */}
-        <Field
-          label={t('shiftEffectiveDateLabel')}
-          required
+        <PersonnelField
+          fieldId="attendance.work_location_and_shift_arrangement.shifteffectivefrom"
           requiredAriaLabel={t('requiredField')}
           className="sm:ml-auto"
         >
           {dmyDisplay ? (
             <DateField
-              name="effectiveFrom"
-              required
-              defaultValue={defaultEffectiveFrom}
+              {...personnelControl('attendance.work_location_and_shift_arrangement.shifteffectivefrom')}
+              value={effectiveFrom}
+              onChange={e=>setEffectiveFrom(e.target.value)}
               className={inputCls}
-              label={t('shiftEffectiveDateLabel')}
+              label={label('attendance.work_location_and_shift_arrangement.shifteffectivefrom')}
             />
           ) : (
             <input
-              name="effectiveFrom"
-              type="date"
-              required
-              defaultValue={defaultEffectiveFrom}
+              {...personnelInput('attendance.work_location_and_shift_arrangement.shifteffectivefrom')}
+              value={effectiveFrom}
+              onChange={e=>setEffectiveFrom(e.target.value)}
               className={inputCls}
             />
           )}
-        </Field>
+        </PersonnelField>
       </div>
       <p className="text-xs text-muted-foreground">
         {type === 'fixed' ? t('backupShiftHintFixed') : t('backupShiftHintRoster')}{' '}

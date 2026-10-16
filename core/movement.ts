@@ -80,6 +80,53 @@ import {
 export { COMPARISON_KINDS, INTERCHANGEABLE_COMPARISON_KINDS, MOVEMENT_KINDS, isComparisonKind };
 export type { ComparisonKind, MovementKind };
 
+/** Recorded absence is distinct from a recorded blank/zero. Never hydrate these from live employment. */
+export type MovementRecordedValue<T> = { known: true; value: T } | { known: false; value: null };
+export type MovementRecordedExit = {
+  source: {
+    eventId: string;
+    occurredAt: string;
+  } & (
+    | { eventType: 'employment.terminated'; role: 'effect' }
+    | { eventType: 'employment.movement.scheduled'; role: 'intent' }
+  );
+  terminationReasonCode: MovementRecordedValue<string | null>;
+  terminationNoticeDays: MovementRecordedValue<number | null>;
+};
+
+/** Pure projection of this row's primary event. A scheduled row continues to describe frozen intent
+ * after application/reversal; its separate status describes the outcome. Do not substitute a companion
+ * event or today's mutable exit columns. Unknown legacy/malformed values remain explicitly unknown.
+ */
+export function movementRecordedExitOf(event: {
+  id: string; eventType: string; payload: unknown; occurredAt: Date;
+}): MovementRecordedExit | null {
+  const object = (value: unknown): Record<string, unknown> =>
+    value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const payload = object(event.payload);
+  let values: Record<string, unknown>;
+  let source: MovementRecordedExit['source'];
+  if (event.eventType === 'employment.terminated') {
+    values = payload;
+    source = { eventId: event.id, occurredAt: event.occurredAt.toISOString(), eventType: 'employment.terminated', role: 'effect' };
+  } else if (event.eventType === 'employment.movement.scheduled' && payload.type === 'termination') {
+    values = object(payload.input);
+    source = { eventId: event.id, occurredAt: event.occurredAt.toISOString(), eventType: 'employment.movement.scheduled', role: 'intent' };
+  } else return null;
+  const reason = values.terminationReasonCode;
+  const notice = values.terminationNoticeDays;
+  return {
+    source,
+    terminationReasonCode: Object.hasOwn(values, 'terminationReasonCode') &&
+      (reason === null || typeof reason === 'string' && reason.trim() !== '')
+      ? { known: true, value: reason as string | null } : { known: false, value: null },
+    // A historical integer is a recorded fact, not a fresh notice-policy judgement. Never coerce text.
+    terminationNoticeDays: Object.hasOwn(values, 'terminationNoticeDays') &&
+      (notice === null || typeof notice === 'number' && Number.isSafeInteger(notice))
+      ? { known: true, value: notice as number | null } : { known: false, value: null },
+  };
+}
+
 /** One row of the Employment History list. `id` is the domain_event id, or the pseudo-id 'hired' when
  *  the Hired row is synthesized from employment.hiredOn (seed/legacy employments with no hired event —
  *  computed each render from the CURRENT hiredOn, so a hire-date correction can never leave a stale row). */
@@ -156,6 +203,9 @@ export type MovementHistoryRow = {
    * other row.
    */
   hireCorrection: HireCorrectionTrace | null;
+  /** Primary recorded exit values and effect/intent provenance. Optional for existing typed consumers;
+   * canonical movementHistoryTx always supplies it, null for rows without a recorded exit event. */
+  recordedExit?: MovementRecordedExit | null;
 };
 
 /**
@@ -209,6 +259,9 @@ export type MovementSnapshot = {
   employmentType: string | null;
   manager: string | null;
   salary: string | null;
+  /** Typed canonical salary for report comparisons; display salary remains unchanged. */
+  salaryAmount?: string | null;
+  currency?: string | null;
 };
 
 /**
@@ -1153,7 +1206,11 @@ export async function lastAppliedPromotionOnTx(tx: Tx, tenantId: string, employm
 
 /** The Employment History list — a Hired-first, date-ascending projection over the event ledger. */
 export function movementHistory(ctx: SessionContext, employmentId: string): Promise<MovementHistoryRow[]> {
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx, tx => movementHistoryTx(tx, ctx, employmentId));
+}
+
+/** Explicit owner read seam for a caller-held scoped report snapshot. */
+export async function movementHistoryTx(tx: Tx, ctx: SessionContext, employmentId: string): Promise<MovementHistoryRow[]> {
     const { emp, events, rows, statusOf } = await projectRows(tx, ctx.tenantId, employmentId);
     // 66a63bd6 — the two payroll period sets come from core/comp.ts, so the per-row affordance runs the
     // SAME rule the service refuses on (the Basic Salary card's precedent).
@@ -1166,7 +1223,9 @@ export function movementHistory(ctx: SessionContext, employmentId: string): Prom
       tx,
       events.filter((e) => e.eventType === HIRE_CORRECTED_EVENT),
     );
+    const eventsById = new Map(events.map(event => [event.id, event]));
     return rows.map((r) => {
+      const primaryEvent = eventsById.get(r.id);
       const g = groupEventsOf(events, r);
       const spanEnd = g.length ? Math.max(...g.map((e) => e.sequence)) : -1;
       const status = statusOf(r);
@@ -1196,10 +1255,10 @@ export function movementHistory(ctx: SessionContext, employmentId: string): Prom
         // owns the row, and bounding on the row's own event alone would show the pre-movement value.
         ...placementAt(r.effectiveDate, spanEnd === -1 ? r.sequence : spanEnd),
         hireCorrection: r.kind === 'hired' ? hireTrace : null,
+        recordedExit: primaryEvent ? movementRecordedExitOf(primaryEvent) : null,
       };
     });
-  });
-}
+  }
 
 /** The grade in force just before/at an event, replayed from employment.grade.changed events (gradeId is
  *  a flat column, so as-of reconstruction must come from the ledger). `bound` is the row's sequence;
@@ -1318,6 +1377,8 @@ async function snapshotAt(
     employmentType: asg?.employmentType ?? null,
     manager: managerName,
     salary: comp ? `${comp.currency} ${comp.basicSalary}` : null,
+    salaryAmount: comp?.basicSalary ?? null,
+    currency: comp?.currency ?? null,
   };
 }
 
@@ -1331,7 +1392,15 @@ export function movementDetail(
   employmentId: string,
   movementId: string,
 ): Promise<MovementDetail | null> {
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx, tx => movementDetailTx(tx, ctx, employmentId, movementId));
+}
+
+/** Explicit owner read seam for a caller-held scoped report snapshot. */
+export async function movementDetailTx(tx: Tx,
+  ctx: SessionContext,
+  employmentId: string,
+  movementId: string,
+): Promise<MovementDetail | null> {
     const { emp, events, rows, statusOf } = await projectRows(tx, ctx.tenantId, employmentId);
     const row = rows.find((r) => r.id === movementId);
     if (!row) return null;
@@ -1388,8 +1457,7 @@ export function movementDetail(
           ? await hireCorrectionTraceTx(tx, events.filter((e) => e.eventType === HIRE_CORRECTED_EVENT))
           : null,
     };
-  });
-}
+  }
 
 /**
  * 08913328 — the employee's CURRENT employment + pay values, as raw ids. This is the read behind the left

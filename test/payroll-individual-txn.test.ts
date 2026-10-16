@@ -40,7 +40,7 @@ import {
   listUnattachedIndividualTxns,
   updateIndividualTxn,
   deleteIndividualTxn,
-  TxnDateOutOfPeriodError,
+  InvalidTxnDateError,
   AmountNotPositiveError,
   CompanyMismatchError,
   EmploymentNotInBatchScopeError,
@@ -65,6 +65,8 @@ import { backfillEmploymentComponentsFromCompensation, seedPayComponentCatalog }
 // that is not something to first exercise on the only copy of the data that matters.
 import { runJanuaryRepair } from '../scripts/repair-january-bonus-double-import';
 import { exportIndividualTxnsCsv } from '../core/payroll-view';
+import { todayInKualaLumpur } from '../lib/hr-date';
+import { addMonths } from '../lib/roster-month';
 import {
   adminCtx,
   closeAll,
@@ -170,24 +172,36 @@ describe('1.2.2 Individual Transaction', () => {
 
   // ───────────────────── date-in-period ─────────────────────
 
-  it('a txnDate outside the batch pay-period month throws TxnDateOutOfPeriodError; in-period succeeds', async () => {
+  it('collects prior-month Day by Day work into the assigned processing month and pays it there',async()=>{
+    const payPeriod=todayInKualaLumpur().slice(0,7),txnDate=addMonths(payPeriod,-1)+'-01';
+    const {a,employmentId,batchId}=await hireWithBatch(payPeriod);
+    const result=await createIndividualTxnsBulk(a,{companyId:base.companyId,payPeriod,employmentIds:[employmentId],rows:[{kind:'overtime',txnDate,amount:200,quantity:4,unit:'hours'},{kind:'unpaid',txnDate,amount:50,quantity:0.5,unit:'days'}]});
+    await setModule(base.tenantId,'typed_pay_components','active');await setSetting(base.tenantId,'payroll.individual_txn_pay_enabled',true);
+    await generatePayslips(await entitledCtx(base),{batchId});
+    const rows=await listIndividualTxns(a,{batchId});expect(rows.map(row=>row.id).sort()).toEqual([...result.ids].sort());
+    expect(rows.every(row=>row.txnDate===txnDate)).toBe(true);
+    const [payslip]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));
+    expect(Number(payslip.overtimePay)).toBe(200);
+    const evidence=payslip.statutory as {recordLines?:{code:string;amount:number}[]};
+    expect(evidence.recordLines).toEqual(expect.arrayContaining([expect.objectContaining({code:'TXN_UNPAID',amount:-50})]));
+    const persisted=await owner.db.select().from(schema.payrollIndividualTxn).where(inArray(schema.payrollIndividualTxn.id,result.ids));
+    expect(persisted.every(row=>row.payPeriod===payPeriod&&row.batchId===batchId&&row.txnDate===txnDate)).toBe(true);
+  });
+
+  it('keeps payroll month independent from earlier/later effective dates across create and edit', async () => {
     const { a, employmentId, batchId } = await hireWithBatch('2026-05');
-
-    // Day before the period and day after the period both rejected.
-    await expect(
-      createIndividualTxn(a, { batchId, employmentId, kind: 'earning', txnDate: '2026-04-30', amount: 1 }),
-    ).rejects.toBeInstanceOf(TxnDateOutOfPeriodError);
-    await expect(
-      createIndividualTxn(a, { batchId, employmentId, kind: 'earning', txnDate: '2026-06-01', amount: 1 }),
-    ).rejects.toBeInstanceOf(TxnDateOutOfPeriodError);
-
-    // Inclusive bounds (first + last calendar day of May) succeed.
-    await expect(createIndividualTxn(a, { batchId, employmentId, kind: 'earning', txnDate: '2026-05-01', amount: 1 })).resolves.toMatchObject({ id: expect.any(String) });
-    await expect(createIndividualTxn(a, { batchId, employmentId, kind: 'earning', txnDate: '2026-05-31', amount: 1 })).resolves.toMatchObject({ id: expect.any(String) });
-
-    // An update that moves the date out of the period is also rejected.
-    const { id } = await createIndividualTxn(a, { batchId, employmentId, kind: 'earning', txnDate: '2026-05-15', amount: 1 });
-    await expect(updateIndividualTxn(a, { id, txnDate: '2026-07-01' })).rejects.toBeInstanceOf(TxnDateOutOfPeriodError);
+    for (const txnDate of ['2026-04-30','2026-06-01','2026-05-01','2026-05-31','2024-02-29']) {
+      await expect(createIndividualTxn(a,{batchId,employmentId,kind:'earning',txnDate,amount:1})).resolves.toMatchObject({id:expect.any(String)});
+    }
+    const {id}=await createIndividualTxn(a,{batchId,employmentId,kind:'earning',txnDate:'2026-05-15',amount:1});
+    await updateIndividualTxn(a,{id,txnDate:'2026-07-01'});
+    const [saved]=await owner.db.select().from(schema.payrollIndividualTxn).where(eq(schema.payrollIndividualTxn.id,id));
+    expect(saved).toMatchObject({batchId,payPeriod:'2026-05',txnDate:'2026-07-01'});
+    for(const txnDate of ['2026-02-30','2026-13-01','2026-5-01','not-a-date','0000-01-01']) {
+      await expect(createIndividualTxn(a,{batchId,employmentId,kind:'earning',txnDate,amount:1})).rejects.toBeInstanceOf(InvalidTxnDateError);
+      await expect(updateIndividualTxn(a,{id,txnDate})).rejects.toBeInstanceOf(InvalidTxnDateError);
+    }
+    expect((await listIndividualTxns(a,{batchId})).find(row=>row.id===id)?.txnDate).toBe('2026-07-01');
   });
 
   it('February leap/non-leap month bounds are derived correctly', async () => {
@@ -195,7 +209,7 @@ describe('1.2.2 Individual Transaction', () => {
     const { a, employmentId, batchId } = await hireWithBatch('2026-02');
     await expect(
       createIndividualTxn(a, { batchId, employmentId, kind: 'earning', txnDate: '2026-02-29', amount: 1 }),
-    ).rejects.toBeInstanceOf(TxnDateOutOfPeriodError);
+    ).rejects.toBeInstanceOf(InvalidTxnDateError);
     await expect(
       createIndividualTxn(a, { batchId, employmentId, kind: 'earning', txnDate: '2026-02-28', amount: 1 }),
     ).resolves.toMatchObject({ id: expect.any(String) });
@@ -755,7 +769,7 @@ describe('1.2.2 Individual Transaction', () => {
     const { a, employmentId, batchId } = await hireWithBatch('2026-02');
     await expect(
       createIndividualTxnsBulk(a, { batchId, employmentIds: [employmentId], rows: [{ kind: 'earning', txnDate: '2026-02-29', amount: 1 }] }),
-    ).rejects.toBeInstanceOf(TxnDateOutOfPeriodError);
+    ).rejects.toBeInstanceOf(InvalidTxnDateError);
     expect(await listIndividualTxns(a, { batchId })).toHaveLength(0);
     await expect(
       createIndividualTxnsBulk(a, { batchId, employmentIds: [employmentId], rows: [{ kind: 'earning', txnDate: '2026-02-28', amount: 1 }] }),
@@ -814,12 +828,10 @@ describe('1.2.2 Individual Transaction', () => {
     expect(raw.companyId).toBe(base.companyId);
     expect(raw.payPeriod).toBe('2026-05');
 
-    // Unattached rows are editable / deletable with NO draft-batch gate; the date is still bounded by
-    // the row's own pay month.
+    // Unattached rows retain their processing month when the effective work date changes.
     await updateIndividualTxn(a, { id: ids[0], amount: 120, txnDate: '2026-05-12' });
-    await expect(updateIndividualTxn(a, { id: ids[0], txnDate: '2026-06-01' })).rejects.toBeInstanceOf(
-      TxnDateOutOfPeriodError,
-    );
+    await updateIndividualTxn(a, { id: ids[0], txnDate: '2026-06-01' });
+    expect((await listUnattachedIndividualTxns(a)).find(row=>row.id===ids[0])).toMatchObject({payPeriod:'2026-05',txnDate:'2026-06-01'});
     await deleteIndividualTxn(a, { id: singleId });
     expect((await listUnattachedIndividualTxns(a)).some((r) => r.id === singleId)).toBe(false);
 
@@ -828,7 +840,7 @@ describe('1.2.2 Individual Transaction', () => {
     expect(events).toContain('payroll.individual-txn.updated');
   });
 
-  it('period-keyed validation: malformed month, missing target, out-of-month date, wrong company', async () => {
+  it('period-keyed validation keeps malformed targets refused while accepting an independent date', async () => {
     const { a, employmentId } = await hireNoBatch();
     const row = [{ kind: 'earning', txnDate: '2026-05-10', amount: 10 }];
 
@@ -845,7 +857,8 @@ describe('1.2.2 Individual Transaction', () => {
         employmentIds: [employmentId],
         rows: row,
       }),
-    ).rejects.toBeInstanceOf(TxnDateOutOfPeriodError);
+    ).resolves.toMatchObject({ids:[expect.any(String)]});
+    expect((await listUnattachedIndividualTxns(a)).find(row=>row.payPeriod==='2026-04')?.txnDate).toBe('2026-05-10');
 
     // C3 on the unattached path: the employment must belong to the target company.
     const [otherCo] = await owner.db
@@ -856,7 +869,7 @@ describe('1.2.2 Individual Transaction', () => {
       createIndividualTxnsBulk(a, { companyId: otherCo.id, payPeriod: '2026-05', employmentIds: [employmentId], rows: row }),
     ).rejects.toBeInstanceOf(CompanyMismatchError);
 
-    expect(await listUnattachedIndividualTxns(a)).toHaveLength(0); // nothing persisted by any failure
+    expect(await listUnattachedIndividualTxns(a)).toHaveLength(1); // only the explicitly accepted independent-date row persisted
   });
 
   it("attach-on-generate: unattached rows are stamped onto the month's REGULAR run — that month only", async () => {

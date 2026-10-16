@@ -126,17 +126,14 @@ describe('e4471e3c (r287) — the Schedule screen ABSORBED Schedule Group and Wo
    */
   it('…and this screen RENDERS what both held; their old addresses are guarded redirects to the matching card', () => {
     const src = read(PAGE_REL);
-    // The three consolidated cards are mounted by this page, in the approved order.
-    const order = ['<ScheduleGroupCard', "t('shiftsTitle')", '<CompanyPolicyCard', '<WorkScheduleOvertimeCard', "t('gapsTitle')"].map((m) =>
-      src.indexOf(m),
-    );
-    expect(order.every((i) => i > -1), 'all three cards and the gaps card are rendered on the list page').toBe(true);
-    // 665de026 — THE ORDER FLIPPED AT THE TOP, DELIBERATELY. "Shifts available" led the General tab in
-    // r301 because the tab was a reference screen. The reporter asked for this page to BE the list of
-    // Schedule Groups, so the Schedule Group card leads it and the tenant- and company-wide cards follow;
-    // a list whose first card is something other than the thing being listed is the crowding complaint in
-    // a different costume. The other four keep their approved relative order.
-    expect([...order].sort((a, b) => a - b), 'in the approved order, Schedule Groups first').toEqual(order);
+    expect(src).toContain('<ScheduleGroupCard');
+    for(const marker of ["t('shiftsTitle')",'<CompanyPolicyCard','<WorkScheduleOvertimeCard',"t('gapsTitle')"])
+      expect(src,`${marker} has its own destination`).not.toContain(marker);
+    for(const [destination,component] of [['company-policy','CompanyPolicyCard'],['work-schedule-overtime','WorkScheduleOvertimeCard'],['registered-devices','RegisteredDevicesCard']] as const){
+      const page=read(`app/admin/attendance/settings/${destination}/page.tsx`);
+      expect(page).toContain('scopedAdmin()');expect(page).toContain(`<${component}`);
+      expect(REGISTERED_ROUTES.has(`/admin/attendance/settings/${destination}`)).toBe(true);
+    }
     // The two links away are GONE — an href to either old page would be a way off the one setup screen.
     expect(src, 'the General tab no longer links to the Work Schedule page').not.toContain(`href="${OLD_WORK_SCHEDULE_ROUTE}"`);
     expect(src, 'nor to the Schedule Group list').not.toContain(`href="${OLD_SCHEDULE_GROUP_ROUTE}"`);
@@ -156,7 +153,8 @@ describe('e4471e3c (r287) — the Schedule screen ABSORBED Schedule Group and Wo
     for (const [route, anchor] of stubs) {
       const stub = read(`app${route}/page.tsx`);
       expect(stub, `${route} still refuses a non-administrator itself`).toMatch(/await requireAdmin\(\);\s*redirect\(/);
-      expect(stub, `${route} redirects to its card on the General tab`).toContain(`redirect(\`\${SCHEDULE}#\${${anchor}}\`)`);
+      if(route===OLD_WORK_SCHEDULE_ROUTE)expect(stub).toContain('redirect(legacyWorkScheduleRedirect(await searchParams))');
+      else expect(stub, `${route} redirects to its owning destination`).toContain(`redirect(\`\${SCHEDULE}#\${${anchor}}\`)`);
     }
     const panel = read('app/admin/attendance-policy/schedule-panel.ts');
     expect(panel).toContain(`export const SCHEDULE = '${NEW_ROUTE}';`);
@@ -445,7 +443,7 @@ describe('1c5602cc — every string on the screen exists in all six locales', ()
     // catalogue is the word it always was.
     expect(keys).toContain('sectionGeneral');
     expect(keys).toContain('sectionWorkingDay');
-    expect(keys).toContain('gapRosterTitle');
+    expect(keys).toContain('listSubtitle');
     // Every one of the four per-group pages is actually swept, not just the list.
     for (const f of SCREEN_FILES) expect(read(f), `${f} resolves admin.scheduleConfig`).toContain("getTranslations('admin.scheduleConfig')");
   });
@@ -501,7 +499,8 @@ describe('1c5602cc — the "Not configured here" card is tied to the absences it
       `A gap entry was added to or removed from the "Not configured here" card without its staleness ` +
         `guard moving with it. Every entry on that card is a claim that something is not stored; each one ` +
         `needs a case below that fails when it becomes stored, or the card silently rots into a lie.`,
-    ).toEqual(['gapDayTypes', 'gapOtCap', 'gapRoster']);
+    ).toEqual([]);
+    expect(read(PAGE)).not.toContain("t('gapsTitle')");
   });
 
   it('rotation storage has replaced its obsolete gap card with an atomic editor', () => {
@@ -518,27 +517,22 @@ describe('1c5602cc — the "Not configured here" card is tied to the absences it
     }
   });
 
-  it('gapRoster — the roster rule is still a pure predicate, not a stored setting', () => {
-    const src = read('core/roster.ts');
-    const decl = src.match(/export const canWriteRosterDate[\s\S]*?;/);
-    expect(
-      decl,
-      `core/roster.ts no longer exports canWriteRosterDate as a single expression. ` +
-        `admin.scheduleConfig.gapRosterBody describes it in words to the reporter ("Only an HR ` +
-        `administrator may change a roster date that is today or earlier"); re-point this guard at ` +
-        `whatever replaced it, or correct the sentence.`,
-    ).not.toBeNull();
-    const body = decl![0];
-    const settingsShaped = /await|\bdb\b|\.select\(|Setting|Config/.test(body);
-    const storedSettings = schemaIdentifiers().filter((n) => /roster/.test(n) && /setting|config|option|rule/.test(n));
-    expect(
-      { settingsShaped, storedSettings },
-      `admin.scheduleConfig.gapRosterTitle/gapRosterBody say the Duty Roster's rules are "Fixed rules, not ` +
-        `settings ... Neither can be turned off from a screen". The predicate now consults something, or a ` +
-        `roster settings row now exists — either way the sentence is false. DELETE gapRosterTitle, ` +
-        `gapRosterBody and rosterLink from all six messages/*.json and drop their <dl> row from ${PAGE}, ` +
-        `and put the real control on this tab instead.`,
-    ).toEqual({ settingsShaped: false, storedSettings: [] });
+  it('Duty Roster Control has a stored owner and guards every manual writer',()=>{
+    expect(schemaIdentifiers()).toContain('duty_roster_control');
+    const controls=read('core/schedule-group-controls.ts');
+    expect(controls).toContain('app.can_admin_employment');
+    expect(controls).toContain('lockPayrollForAttendanceChange');
+    expect(controls).toContain('roster.manual-changes');
+    expect(read('app/admin/attendance/schedule/group-sections.tsx')).toContain("controlPanel('duty')");
+    const roster=read('core/roster.ts');
+    for(const writer of ['assignShift','setRestDay','clearRoster','assignShiftBulk','setRestDayBulk','copyRoster']){
+      const start=roster.indexOf(`export async function ${writer}(`);
+      expect(start,writer).toBeGreaterThanOrEqual(0);
+      const end=roster.indexOf('\nexport ',start+1);
+      const body=roster.slice(start,end<0?undefined:end);
+      expect(body.length,writer).toBeGreaterThan(100);
+      expect(body,writer).toContain('assertDutyRosterWriteTx');
+    }
   });
 
   it('gapDayTypes — the five day types are fixed, and two of them are still inert', () => {
@@ -585,6 +579,6 @@ describe('1c5602cc — the "Not configured here" card is tied to the absences it
         `new one. If it is now edited (or shown) on the schedule, DELETE gapOtCapTitle/gapOtCapBody from ` +
         `all six messages/*.json and render the figure instead — that is the one plan promise this round ` +
         `did not deliver.`,
-    ).toEqual(['app/admin/payroll-policy/actions.ts', 'app/admin/payroll-policy/policy-wizard.tsx', PAGE].sort());
+    ).toEqual(['app/admin/payroll-policy/actions.ts', 'app/admin/payroll-policy/policy-wizard.tsx'].sort());
   });
 });

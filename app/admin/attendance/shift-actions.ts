@@ -9,7 +9,7 @@ import {
   copyShift,
   createShift,
   deleteShift,
-  replaceShiftOtWindows,
+  saveShiftPay,
   unarchiveShift,
   updateShift,
   type ShiftOtWindowInput,
@@ -111,6 +111,7 @@ const parseOtWindows = (raw: string): ShiftOtWindowInput[] | null => {
     return arr
       .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && 'startTime' in x && 'endTime' in x)
       .map((x) => ({
+        id:x.id==null?undefined:String(x.id),
         label: x.label == null ? null : String(x.label),
         startTime: norm(String(x.startTime)),
         endTime: norm(String(x.endTime)),
@@ -127,18 +128,13 @@ const parseOtWindows = (raw: string): ShiftOtWindowInput[] | null => {
 
 /** The fields createShift/updateShift share, read off the posted form. */
 function shiftFields(formData: FormData) {
-  const dk = String(formData.get('differentialKind') ?? '');
-  const dv = Number(formData.get('differentialValue') ?? 0);
-  const differential =
-    DIFF_KINDS.includes(dk as (typeof DIFF_KINDS)[number]) && dv > 0 ? { kind: dk as (typeof DIFF_KINDS)[number], value: dv } : null;
   const overrideRaw = String(formData.get('normalMinutesOverride') ?? '').trim();
   const typeRaw = String(formData.get('shiftTemplateType') ?? '').trim();
   return {
     name: String(formData.get('name') ?? '').trim(),
     code: String(formData.get('code') ?? '').trim(),
     type: (typeRaw === '' ? null : typeRaw) as 'normal' | 'semi_flexi' | 'full_flexi' | null,
-    startTime: norm(String(formData.get('startTime') ?? '')),
-    endTime: norm(String(formData.get('endTime') ?? '')),
+    ...(typeRaw==='full_flexi'?{}:{startTime:norm(String(formData.get('startTime')??'')),endTime:norm(String(formData.get('endTime')??''))}),
     breakMinutes: Number(formData.get('breakMinutes') ?? 0),
     breakPeriods: parseBreakPeriods(String(formData.get('breakPeriods') ?? '')),
     normalMinutesOverride: overrideRaw === '' ? null : Number(overrideRaw),
@@ -160,7 +156,6 @@ function shiftFields(formData: FormData) {
     // could not honour.
     dailyCutoffEnabled: formData.get('dailyCutoffEnabled') != null,
     dailyCutoffTime: optTime(formData, 'dailyCutoffTime'),
-    differential,
     // cf21e554 stage 1 — Description and Category stay on the form (Shift Information); a blank box
     // genuinely means "cleared", so posting null is correct for these two.
     description: optStr(formData, 'description'),
@@ -171,6 +166,7 @@ function shiftFields(formData: FormData) {
     //
     // 6340aecb point 8 — relabelled "Earliest clock-in" / "Latest clock-out", still on the form (marked
     // recorded-only), so these three stay a plain post-or-clear.
+    ...(typeRaw==='full_flexi'?{}:{
     earlyIn: optTime(formData, 'earlyIn'),
     lateOut: optTime(formData, 'lateOut'),
     lateOutNextDay: formData.get('lateOutNextDay') != null,
@@ -178,6 +174,7 @@ function shiftFields(formData: FormData) {
     normalHoursRoundingMinutes: optNum(formData, 'normalHoursRoundingMinutes'),
     halfDayFirstOut: optTime(formData, 'halfDayFirstOut'),
     halfDaySecondIn: optTime(formData, 'halfDaySecondIn'),
+    }),
     // 6340aecb — the colour is a RADIO GROUP whose "No colour" option posts an empty string, so blank ⇒
     // null ⇒ the roster keeps its automatic palette for this shift. The service validates the token
     // against the closed palette; anything else is refused rather than stored.
@@ -204,8 +201,6 @@ export async function createShiftAction(formData: FormData) {
   let created: { id: string };
   try {
     created = await createShift(s, shiftFields(formData));
-    const windows = parseOtWindows(String(formData.get('otWindows') ?? ''));
-    if (windows) await replaceShiftOtWindows(s, { shiftId: created.id, windows });
   } catch (e) {
     redirect(errTarget(e, `${BASE}/new`));
   }
@@ -218,8 +213,6 @@ export async function updateShiftAction(formData: FormData) {
   const shiftId = String(formData.get('shiftId') ?? '');
   try {
     await updateShift(s, { shiftId, ...shiftFields(formData) });
-    const windows = parseOtWindows(String(formData.get('otWindows') ?? ''));
-    if (windows) await replaceShiftOtWindows(s, { shiftId, windows });
   } catch (e) {
     redirect(errTarget(e, `${BASE}/${shiftId}`));
   }
@@ -283,4 +276,20 @@ export async function deleteShiftAction(formData: FormData) {
   }
   revalidatePath(BASE);
   redirect(BASE);
+}
+
+export async function saveShiftPayAction(formData: FormData) {
+  const s = await getSession();
+  const target = '/admin/attendance/settings/work-schedule-overtime';
+  try {
+    const kind = String(formData.get('differentialKind') ?? '');
+    const raw = String(formData.get('differentialValue') ?? '').trim();
+    if (kind && (!DIFF_KINDS.includes(kind as typeof DIFF_KINDS[number]) || raw === '')) throw new Error('Choose a valid shift premium and enter its value.');
+    const windows = parseOtWindows(String(formData.get('otWindows') ?? ''));
+    if (!windows) throw new Error('The overtime windows could not be read. Reopen the editor.');
+    await saveShiftPay(s, {shiftId:String(formData.get('shiftId')??''),windows,
+      differential:kind ? {kind:kind as typeof DIFF_KINDS[number],value:Number(raw)} : null,
+      confirmClear:formData.get('confirmClear')==='1'});
+  } catch(e) { redirect(errTarget(e,target)); }
+  revalidatePath(target); revalidatePath(BASE); redirect(target+'#shift-pay');
 }

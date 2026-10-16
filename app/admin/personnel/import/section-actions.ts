@@ -1,8 +1,18 @@
 'use server';
 
+import {isPersonnelRegisterKind,personnelRegisterColumns} from '@/lib/personnel-register-import';
 import { revalidatePath } from 'next/cache';
 import { requireAdmin } from '@/lib/authz';
-import { parseCsvRecords } from '@/lib/csv';
+import { parsePersonnelImportCsv } from '@/lib/personnel-import-contract';
+import { personnelImportLabelResolvers } from '@/lib/personnel-import-labels.server';
+import { IMPORT_COLUMNS, DEPENDENT_IMPORT_COLUMNS } from '@/lib/import-schema';
+function parseSection(section:string,text:string) {
+  if(Buffer.byteLength(text,'utf8')>900000)throw new Error('The import is too large. Split the file and check each part.');
+  const checked=assertSection(section);
+  const sheet=isPersonnelRegisterKind(checked)?checked:checked==='family'?'family':'employee';
+  return parsePersonnelImportCsv(text,{columns:isPersonnelRegisterKind(checked)?personnelRegisterColumns(checked):sheet==='family'?[...DEPENDENT_IMPORT_COLUMNS.required,...DEPENDENT_IMPORT_COLUMNS.optional]:[...IMPORT_COLUMNS.required,...IMPORT_COLUMNS.optional],sheet,resolvers:personnelImportLabelResolvers});
+}
+import {registerRecordsForEmployee} from '@/core/personnel-register-import';
 import { commitSectionImport, validateSectionImport } from '@/core/import-sections';
 import {
   isImportSection,
@@ -28,8 +38,10 @@ function assertSection(section: string) {
 /** Dry-run validation for one section file. Returns a per-row verdict; writes nothing. */
 export async function validateSectionAction(section: string, csv: string): Promise<SectionImportPreview> {
   const s = await requireAdmin();
-  const { records } = parseCsvRecords(csv);
-  return validateSectionImport(s, { section: assertSection(section), records });
+  const { records,warnings } = parseSection(section,csv);
+  const preview=await validateSectionImport(s, { section: assertSection(section), records });
+  for(const row of preview.rows)row.warnings.push(...warnings);
+  return preview;
 }
 
 /**
@@ -43,7 +55,7 @@ export async function commitSectionAction(
   fileName?: string,
 ): Promise<SectionImportResult> {
   const s = await requireAdmin();
-  const { records } = parseCsvRecords(csv);
+  const { records } = parseSection(section,csv);
   const result = await commitSectionImport(s, {
     section: assertSection(section),
     records,
@@ -52,4 +64,10 @@ export async function commitSectionAction(
   revalidatePath('/admin/personnel');
   revalidatePath('/admin/personnel/import');
   return result;
+}
+
+export async function registerRecordsAction(section:string,employeeCode:string) {
+  const s=await requireAdmin();
+  if(!isPersonnelRegisterKind(section))throw new Error('Choose a register section.');
+  return registerRecordsForEmployee(s,section,employeeCode);
 }

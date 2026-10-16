@@ -1,3 +1,4 @@
+import { isCalendarDate } from '../lib/calendar-date';
 /**
  * Employee self-service profile (ADR-0012). Two paths by risk:
  *  - low-risk contact fields → direct self-edit of `person` (RLS confines it to the caller's
@@ -26,7 +27,7 @@
  * and the audit rule that the event log records field NAMES and never values.
  */
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { type Tx, withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
 import { employeeStatutoryMy, employment, person, profileChangeRequest } from '../db/schema';
 import { assertCanDecide } from './approvals';
@@ -117,11 +118,8 @@ export type ProfileChangeProposed = {
 
 /** ISO calendar date, the only date shape a proposal may carry. */
 const isoDate = (v: unknown): string | null | undefined => {
-  // Accept a clear (null / '') or a well-formed ISO date only; a malformed value is DROPPED (never
-  // written) so a bad DOB can't reach the age-band statutory math (EPF/SOCSO, core/payroll.ts).
-  const d = clean(v);
-  if (d === null) return null;
-  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : undefined;
+  const value=clean(v); if(value===null)return null;
+  return isCalendarDate(value)?value:undefined;
 };
 
 /** The whole declaration, as a set. The HR-direct writer below passes this where the employee path
@@ -648,6 +646,8 @@ export async function setPersonComplianceFields(
     // atomically against the live row inside the tx (below).
     dobOnlyIfEmpty?: boolean;
   },
+  /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
+  outerTx?: Tx,
 ) {
   const roles = ctx.roles ?? [];
   if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
@@ -675,7 +675,7 @@ export async function setPersonComplianceFields(
   if (proposed.dateOfBirth !== undefined) personSet.dateOfBirth = proposed.dateOfBirth;
   if (Object.keys(personSet).length === 0) throw new Error('Nothing to change.');
 
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx:Tx) => {
     // Resolve the person from the employment (RLS confines this select to admin scope).
     const [emp] = await tx
       .select({ personId: employment.personId })
@@ -718,7 +718,8 @@ export async function setPersonComplianceFields(
       payload: { via: 'admin-set', fields: Object.keys(writeSet), before, after },
     });
     return { id: personId };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
 /** Admin inbox — RLS trims to scope. Recent first. */

@@ -16,12 +16,46 @@
 // state. The tab shell injects the hidden `tab` field on submit, so the save lands back on the Movement tab.
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { ProfileOptionSelect } from '@/components/profile-option-select';
+import { personnelWorkflowControl, personnelWorkflowInput, personnelFormLabel, personnelFormCatalog, personnelFormChoices } from '@/lib/personnel-form-contract';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { DateField } from '@/components/ui/date-field';
 import { CurrencySelect } from '@/components/currency-select';
 import { PAY_MODE_OPTIONS, PAYMENT_TERM_OPTIONS } from '@/components/pay-structure-fields';
 import { createMovementEventAction, editMovementEventAction } from './actions';
 
+const MOVEMENT_FORM_IDS = {
+  "companyId": "employment.organisation_assignment.companyname",
+  "businessUnitId": "employment.organisation_assignment.businessunitname",
+  "departmentId": "employment.organisation_assignment.departmentname",
+  "positionId": "employment.organisation_assignment.positionname",
+  "gradeId": "employment.organisation_assignment.gradename",
+  "employmentType": "employment.organisation_assignment.employmenttype",
+  "locationId": "attendance.work_location_and_shift_arrangement.locationid",
+  "managerEmploymentId": "employment.direct_superior_and_history.superioremploymentid",
+  "basicSalary": "payroll.basic_salary_and_salary_history.basicsalary",
+  "currency": "payroll.basic_salary_and_salary_history.currency",
+  "payMode": "payroll.basic_salary_and_salary_history.paymode",
+  "paymentTerm": "payroll.basic_salary_and_salary_history.paymentterm",
+  "orgDivision": "employment.additional_organisation_labels.orgdivision",
+  "employmentCategory": "employment.additional_organisation_labels.employmentcategory",
+  "orgRegion": "employment.additional_organisation_labels.orgregion",
+  "orgBranch": "employment.additional_organisation_labels.orgbranch",
+  "orgTeam": "employment.additional_organisation_labels.orgteam",
+  "orgSection": "employment.additional_organisation_labels.orgsection",
+  "orgLine": "employment.additional_organisation_labels.orgline",
+  "orgBase": "employment.additional_organisation_labels.orgbase",
+  "kind": "employment_history.event_information.kind",
+  "effectiveDate": "employment_history.event_information.effectivefrom",
+  "endDate": "employment_history.event_information.enddate",
+  "terminationReasonCode": "employment_history.event_information.terminationreasoncode",
+  "resignationDate": "employment_history.event_information.resignationdate",
+  "terminationNoticeDays": "employment_history.event_information.noticeserveddays",
+  "blacklisted": "employment_history.event_information.blacklisted",
+  "remarks": "employment_history.event_information.remarks",
+  "reason": "employment_history.event_information.correctionreason"
+} as const;
+const movementField=(name:keyof typeof MOVEMENT_FORM_IDS)=>MOVEMENT_FORM_IDS[name];
 export type MovementOption = { id: string; name: string };
 /** b7b22514 — a Direct Superior candidate, carrying the company that decides whether an Entity Transfer
  *  may leave the employee reporting to them. */
@@ -157,6 +191,7 @@ export function MovementNewEvent({
   locations,
   managers,
   employmentTypes,
+  profileOptions,
   terminationReasons,
   types,
   companies,
@@ -176,6 +211,7 @@ export function MovementNewEvent({
   managers: MovementManagerOption[];
   /** Pre-translated by the server page (reuses the existing people.detail labels). */
   employmentTypes: { value: string; label: string }[];
+  profileOptions:Record<string,{value:string;label:string}[]>;
   /**
    * ae9350f2 — the built-in exit-reason catalogue (core/termination-reason.ts), pre-translated and grouped
    * by category on the server. `typeLabel` is the turnover classification the code derives, shown read-only
@@ -207,6 +243,7 @@ export function MovementNewEvent({
 }) {
   const t = useTranslations('people.detail.movement');
   const tPay = useTranslations('people.detail');
+  const label=(id:string)=>personnelFormLabel(id,(key,fallback)=>key.startsWith('people.detail.')&&tPay.has(key.slice(14))?tPay(key.slice(14)):fallback);
   // 476f23ed — the catalogue, with the built-in list as the fallback for a render that was given none.
   const catalog = types?.length ? types : KINDS.map((k) => ({ code: k, label: null, behaviourKind: k }));
   const byCode = new Map(catalog.map((c) => [c.code, c]));
@@ -321,14 +358,14 @@ export function MovementNewEvent({
    * empty submission is refused by name ("Department is required"), which is the honest outcome.
    */
   const select = (
-    name: string,
+    name: keyof typeof MOVEMENT_FORM_IDS,
     value: string | null,
     options: MovementOption[],
     emptyLabel: string | null,
   ) => {
     const preselect = options.some((o) => o.id === value) ? (value ?? '') : '';
     return (
-      <select key={`${name}-${scopeCompanyId}`} name={name} defaultValue={preselect} className={inputCls}>
+      <select key={`${name}-${scopeCompanyId}`} {...personnelWorkflowControl(movementField(name),'movement')} defaultValue={preselect} className={inputCls}>
         {(emptyLabel != null || preselect === '') && (
           <option value="">{emptyLabel ?? t('form.selectPlaceholder')}</option>
         )}
@@ -341,8 +378,8 @@ export function MovementNewEvent({
     );
   };
 
-  const text = (name: string, value: string | null) => (
-    <input name={name} defaultValue={value ?? ''} maxLength={120} className={inputCls} />
+  const text = (name: 'orgDivision'|'employmentCategory'|'orgRegion'|'orgBranch'|'orgTeam'|'orgSection'|'orgLine'|'orgBase', value: string | null) => (
+    <ProfileOptionSelect key={name} {...personnelWorkflowControl(movementField(name),'movement')} name={personnelWorkflowControl(movementField(name),'movement').name} personnelFieldId={movementField(name)} value={value} options={personnelFormCatalog(movementField(name),profileOptions)} placeholder={tPay('optionNotSet')} legacySuffix={tPay('optionLegacySuffix')} className={inputCls} />
   );
 
   // The requested field order, top to bottom (feedback 08913328).
@@ -356,12 +393,11 @@ export function MovementNewEvent({
      * merely an absent control.
      */
     row(
-      'company',
-      t('field.company'),
+      'company', label(movementField('companyId')),
       current.companyName,
       isEntityTransfer ? (
         <select
-          name="companyId"
+          {...personnelWorkflowControl(movementField('companyId'), 'movement', 'edit')}
           value={destCompanyId}
           onChange={(e) => setDestCompanyId(e.target.value)}
           className={inputCls}
@@ -378,59 +414,56 @@ export function MovementNewEvent({
         <span className="text-sm text-muted-foreground">{t('form.companyReadOnly')}</span>
       ),
     ),
-    row('businessUnit', t('field.businessUnit'), nameOf(businessUnits, current.businessUnitId),
+    row('businessUnit', label(movementField('businessUnitId')), nameOf(businessUnits, current.businessUnitId),
       select('businessUnitId', current.businessUnitId, scoped.businessUnits, t('form.none'))),
-    row('orgDivision', t('field.orgDivision'), current.orgDivision, text('orgDivision', current.orgDivision)),
-    row('department', t('field.department'), nameOf(departments, current.departmentId),
+    row('orgDivision', label(movementField('orgDivision')), current.orgDivision, text('orgDivision', current.orgDivision)),
+    row('department', label(movementField('departmentId')), nameOf(departments, current.departmentId),
       select('departmentId', current.departmentId, scoped.departments, null)),
-    row('position', t('field.position'), nameOf(positions, current.positionId),
+    row('position', label(movementField('positionId')), nameOf(positions, current.positionId),
       select('positionId', current.positionId, scoped.positions, t('form.none'))),
-    row('grade', t('field.grade'), nameOf(grades, current.gradeId),
+    row('grade', label(movementField('gradeId')), nameOf(grades, current.gradeId),
       select('gradeId', current.gradeId, grades, t('form.none'))),
-    row('category', t('field.employmentCategory'), current.employmentCategory,
+    row('category', label(movementField('employmentCategory')), current.employmentCategory,
       text('employmentCategory', current.employmentCategory)),
-    row('orgRegion', t('field.orgRegion'), current.orgRegion, text('orgRegion', current.orgRegion)),
-    row('orgBranch', t('field.orgBranch'), current.orgBranch, text('orgBranch', current.orgBranch)),
-    row('orgTeam', t('field.orgTeam'), current.orgTeam, text('orgTeam', current.orgTeam)),
-    row('orgSection', t('field.orgSection'), current.orgSection, text('orgSection', current.orgSection)),
-    row('orgLine', t('field.orgLine'), current.orgLine, text('orgLine', current.orgLine)),
-    row('orgBase', t('field.orgBase'), current.orgBase, text('orgBase', current.orgBase)),
-    row('location', t('form.location'), nameOf(locations, current.locationId),
+    row('orgRegion', label(movementField('orgRegion')), current.orgRegion, text('orgRegion', current.orgRegion)),
+    row('orgBranch', label(movementField('orgBranch')), current.orgBranch, text('orgBranch', current.orgBranch)),
+    row('orgTeam', label(movementField('orgTeam')), current.orgTeam, text('orgTeam', current.orgTeam)),
+    row('orgSection', label(movementField('orgSection')), current.orgSection, text('orgSection', current.orgSection)),
+    row('orgLine', label(movementField('orgLine')), current.orgLine, text('orgLine', current.orgLine)),
+    row('orgBase', label(movementField('orgBase')), current.orgBase, text('orgBase', current.orgBase)),
+    row('location', label(movementField('locationId')), nameOf(locations, current.locationId),
       select('locationId', current.locationId, scoped.locations, t('form.none'))),
-    row('employmentType', t('field.employmentType'),
+    row('employmentType', label(movementField('employmentType')),
       employmentTypes.find((o) => o.value === current.employmentType)?.label ?? null,
-      <select name="employmentType" defaultValue={current.employmentType ?? ''} className={inputCls}>
+      <select {...personnelWorkflowControl(movementField('employmentType'), 'movement', 'edit')} defaultValue={current.employmentType ?? ''} className={inputCls}>
         {employmentTypes.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
           </option>
         ))}
       </select>),
-    row('manager', t('field.directSuperior'), nameOf(managers, current.managerEmploymentId),
+    row('manager', label(movementField('managerEmploymentId')), nameOf(managers, current.managerEmploymentId),
       select('managerEmploymentId', current.managerEmploymentId, scopedManagers, t('form.none'))),
-    row('basicSalary', t('field.basicSalary'), current.basicSalary,
+    row('basicSalary', label(movementField('basicSalary')), current.basicSalary,
       <input
-        name="basicSalary"
-        type="number"
-        min={0}
-        step="0.01"
+        {...personnelWorkflowInput(movementField('basicSalary'), 'movement', 'edit')}
         defaultValue={current.basicSalary ?? ''}
         className={inputCls}
       />),
-    row('currency', t('field.currency'), current.currency,
-      <CurrencySelect name="currency" value={current.currency} />),
+    row('currency', label(movementField('currency')), current.currency,
+      <CurrencySelect name={personnelWorkflowControl(movementField('currency'), 'movement', 'edit').name} value={current.currency} />),
     // Labels via the KNOWN option lists only — a stored value outside them falls back to itself rather
     // than rendering a raw i18n key (same rule as the event-type label map above).
-    row('payMode', t('field.payMode'), payModeLabel(current.payMode),
-      <select name="payMode" defaultValue={current.payMode ?? 'monthly'} className={inputCls}>
+    row('payMode', label(movementField('payMode')), payModeLabel(current.payMode),
+      <select {...personnelWorkflowControl(movementField('payMode'), 'movement', 'edit')} defaultValue={current.payMode ?? 'monthly'} className={inputCls}>
         {PAY_MODE_OPTIONS.map((m) => (
           <option key={m} value={m}>
             {tPay(`payMode_${m}` as 'payMode_monthly')}
           </option>
         ))}
       </select>),
-    row('paymentTerm', t('field.paymentTerm'), paymentTermLabel(current.paymentTerm),
-      <select name="paymentTerm" defaultValue={current.paymentTerm ?? 'monthly'} className={inputCls}>
+    row('paymentTerm', label(movementField('paymentTerm')), paymentTermLabel(current.paymentTerm),
+      <select {...personnelWorkflowControl(movementField('paymentTerm'), 'movement', 'edit')} defaultValue={current.paymentTerm ?? 'monthly'} className={inputCls}>
         {PAYMENT_TERM_OPTIONS.map((f) => (
           <option key={f} value={f}>
             {tPay(`paymentTerm_${f}` as 'paymentTerm_monthly')}
@@ -460,8 +493,8 @@ export function MovementNewEvent({
 
       <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          {t('form.eventType')}
-          <select name="kind" value={kind} onChange={(e) => setKind(e.target.value)} className={inputCls}>
+          {label(movementField('kind'))}
+          <select {...personnelWorkflowControl(movementField('kind'), 'movement', 'edit')} value={kind} onChange={(e) => setKind(e.target.value)} className={inputCls}>
             {kindOptions.map((k) => (
               <option key={k} value={k}>
                 {kindLabel(k)}
@@ -472,13 +505,13 @@ export function MovementNewEvent({
 
         {showEffectiveDate && (
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            {t('form.effectiveDate')}
+            {label(movementField('effectiveDate'))}
             <DateField
-              name="effectiveDate"
-              required
+              {...personnelWorkflowControl(movementField('effectiveDate'), 'movement', 'record')}
+
               defaultValue={edit?.effectiveDate ?? today}
               className={inputCls}
-              label={t('form.effectiveDate')}
+              label={label(movementField('effectiveDate'))}
             />
             {DATE_VALUE_KINDS.includes(behaviour) && (
               <span className="text-xs text-muted-foreground">
@@ -498,13 +531,13 @@ export function MovementNewEvent({
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             {/* ae9350f2 — for a Termination this slot IS the Last Working Day, and it is mandatory. Same
                 column, same meaning as on a Resignation; only the label differs so it reads as what it is. */}
-            {isTermination ? t('form.lastWorkingDay') : t('form.endDate')}
+            {label(isTermination ? 'employment_history.event_information.lastworkingdate' : movementField('endDate'))}
             <DateField
-              name="endDate"
-              required={behaviour === 'probationExtension' || isTermination}
+              {...personnelWorkflowControl(isTermination ? 'employment_history.event_information.lastworkingdate' : movementField('endDate'), 'movement', 'edit', {movementEndDate:behaviour==='probationExtension'||isTermination})}
+
               defaultValue={edit?.endDate ?? ''}
               className={inputCls}
-              label={isTermination ? t('form.lastWorkingDay') : t('form.endDate')}
+              label={label(isTermination ? 'employment_history.event_information.lastworkingdate' : movementField('endDate'))}
             />
           </label>
         )}
@@ -512,10 +545,10 @@ export function MovementNewEvent({
         {isTermination && (
           <>
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              {t('form.terminationReason')}
+              {label(movementField('terminationReasonCode'))}
               <select
-                name="terminationReasonCode"
-                required
+                {...personnelWorkflowControl(movementField('terminationReasonCode'), 'movement', 'record')}
+
                 value={terminationReason}
                 onChange={(e) => setTerminationReason(e.target.value)}
                 className={inputCls}
@@ -545,18 +578,15 @@ export function MovementNewEvent({
 
             {showResignationDate && (
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                {t('form.resignationDate')}
-                <DateField name="resignationDate" required className={inputCls} label={t('form.resignationDate')} />
+                {label(movementField('resignationDate'))}
+                <DateField {...personnelWorkflowControl(movementField('resignationDate'), 'movement', 'record')} className={inputCls} label={label(movementField('resignationDate'))} />
               </label>
             )}
 
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              {t('form.terminationNoticeDays')}
+              {label(movementField('terminationNoticeDays'))}
               <input
-                name="terminationNoticeDays"
-                type="number"
-                min={0}
-                step={1}
+                {...personnelWorkflowInput(movementField('terminationNoticeDays'), 'movement', 'edit')}
                 className={inputCls}
               />
             </label>
@@ -566,17 +596,16 @@ export function MovementNewEvent({
         {showBlacklist && (
           // The folded-in Blacklist box: Set / Clear map to the same audited service the old card used.
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            {t('form.blacklistStatus')}
-            <select name="blacklisted" defaultValue={isBlacklisted ? 'false' : 'true'} className={inputCls}>
-              <option value="true">{t('form.blacklistSet')}</option>
-              <option value="false">{t('form.blacklistClear')}</option>
+            {label(movementField('blacklisted'))}
+            <select {...personnelWorkflowControl(movementField('blacklisted'), 'movement', 'edit')} defaultValue={isBlacklisted ? 'false' : 'true'} className={inputCls}>
+              {personnelFormChoices(movementField('blacklisted')).map(choice=><option key={choice.value} value={choice.value}>{tPay(choice.labelKey.slice(14))}</option>)}
             </select>
           </label>
         )}
 
         <label className="flex flex-col gap-1 text-xs text-muted-foreground sm:col-span-2">
-          {t('form.remarks')}
-          <input name="remarks" maxLength={200} defaultValue={edit?.remarks ?? ''} className={inputCls} />
+          {label(movementField('remarks'))}
+          <input {...personnelWorkflowInput(movementField('remarks'), 'movement', 'edit')} maxLength={200} defaultValue={edit?.remarks ?? ''} className={inputCls} />
         </label>
 
         {edit && (
@@ -587,8 +616,8 @@ export function MovementNewEvent({
           // reversals on production carried no reason, and that is the audit gap. `required` here only
           // spares the round trip — editMovementEvent refuses a blank reason on its own.
           <label className="flex flex-col gap-1 text-xs text-muted-foreground sm:col-span-2">
-            {t('form.correctionReason')}
-            <input name="reason" required maxLength={200} className={inputCls} />
+            {label(movementField('reason'))}
+            <input {...personnelWorkflowInput(movementField('reason'), 'movement', 'record')} maxLength={200} className={inputCls} />
           </label>
         )}
       </div>

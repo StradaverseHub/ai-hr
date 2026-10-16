@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { LEAVE_FIGURE_LABEL_KEY, LEAVE_FIGURE_NS } from '@/lib/leave-figure-labels';
 import { scopedAdmin } from '@/lib/scope';
-import { listEmployees, listLeaveTypes } from '@/core/read';
+import { listLeaveTypes } from '@/core/read';
 import { todayInKualaLumpur } from '@/core/leave';
 import { Button, Card, EmployeeName, PageHeader, inputCls } from '@/components/ui';
 import {
@@ -15,7 +15,9 @@ import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-
 import { LeaveInquiryNav } from '@/components/leave/leave-inquiry-nav';
 import { InquiryNote } from '@/components/leave/inquiry-note';
 import styles from '@/components/leave/inquiry-table.module.css';
-import { selectInquiryEmployee, sortInquiryEmployees } from '@/lib/leave-inquiry';
+import { sortInquiryEmployees } from '@/lib/leave-inquiry';
+import { parseInquiryQuery, InquiryQueryError } from '@/lib/leave-inquiry-query';
+import { leaveInquiryContext, type LeaveInquiryContext } from '@/packs/leave/service';
 // 4a1abc4a: HR's copy of the employee's own balance grid must print the figures identically to it.
 import { dayPluralCategory, formatDays } from '@/lib/day-format';
 // 31e39d74: HR's grid captions a 0.00 exactly as the employee's own grid does — one mapping, one wording.
@@ -39,7 +41,9 @@ import { ReplacementAvailabilityNotice } from '@/components/leave/replacement-av
 // imports no db client and no server action, so mounting it from this RSC crosses no boundary; every figure
 // it shows arrives as a prop, taken off the row below.
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
-import { employeeBalanceRows } from './rows';
+import { inquiryBalancePage } from './inquiry-data';
+import { Pager, type PagerHrefOver } from '@/components/pager';
+import { pageState } from '@/lib/pagination';
 
 /**
  * 9949f91a (r369) — THIS SCREEN'S OWN PANEL COOKIE. Collapsing the employee list here says nothing about
@@ -91,6 +95,11 @@ export default async function EmployeeBalancesPage({
 }: {
   searchParams: Promise<{
     emp?: string;
+    department?: string | string[];
+    dateMode?: string;
+    sort?: string;
+    page?: string;
+    size?: string;
     pickerQ?: string;
     pickerCompany?: string;
     pickerBusinessUnit?: string;
@@ -110,26 +119,20 @@ export default async function EmployeeBalancesPage({
   const tf = await getTranslations(LEAVE_FIGURE_NS); // 7da0a4e7 — one name per figure; see lib/leave-figure-labels.ts
   const locale = await getLocale();
   const sp = await searchParams;
-  const arr = (v?: string | string[]): string[] => (v == null ? [] : Array.isArray(v) ? v : [v]);
 
-  const employees = sortInquiryEmployees(await listEmployees(session, scopeIds), locale);
+  let query: ReturnType<typeof parseInquiryQuery>;
+  let inquiry: LeaveInquiryContext;
+  try {
+    query = parseInquiryQuery(sp, 'balances');
+    inquiry = await leaveInquiryContext(session, scopeIds, query);
+  } catch (error) {
+    if (!(error instanceof InquiryQueryError)) throw error;
+    return <Card><p role="alert" className="p-6">{tInq('invalidQuery')}</p><Link href="/leave/employee-balances" className="p-6 text-primary">{tInq('resetInquiry')}</Link></Card>;
+  }
+  const employees = sortInquiryEmployees(inquiry.employees, locale);
+  const selected = inquiry.selected;
   /**
-   * 9949f91a (r369) — NO EMPLOYEE PICKED ⇒ NOBODY, AND THE SCREEN SAYS SO.
-   *
-   * THE RETIRED RULE, QUOTED: "No employee picked ⇒ the first by company then name (20c699f8 §1)." With the
-   * employee panel down the left-hand side that is worse than saying nothing — a real person's real leave
-   * position is shown to somebody who did not ask for them, while the panel beside it marks nobody Selected,
-   * so the two halves of the screen disagree about who is being looked at. The reporter asked for
-   * "Select an employee to view their leave balances" instead. SCREENS ONLY: `pickInquiryEmployee` and both
-   * export route handlers keep the fallback (lib/leave-inquiry.ts says why).
-   *
-   * Terminated staff are still NOT filtered out: their leave position is exactly what HR looks up after
-   * someone leaves. And this is the POST-GUARD value — an id outside the fenced list selects nothing — which
-   * is what the panel must be handed, never the raw `sp.emp`.
-   */
-  const selected = selectInquiryEmployee(employees, sp.emp);
-  /**
-   * The panel is fed from the SAME `listEmployees(session, scopeIds)` this page already read — a `.map`, never
+   * The panel is fed from the SAME authorized inquiry employee metadata this page already read — a `.map`, never
    * a second, wider source of employees. `selected` above is re-guarded against this very list, so the list is
    * what is DISPLAYED and never what grants access.
    */
@@ -150,32 +153,14 @@ export default async function EmployeeBalancesPage({
   const panelCookies = await cookies();
   const panelDefaultOpen = !selected || (panelCookies.get(`${PANEL_COOKIE}-selected`)?.value === selected.employmentId && panelCookies.get(PANEL_COOKIE)?.value === '1');
 
-  const asOf = sp.asOf && /^\d{4}-\d{2}-\d{2}$/.test(sp.asOf) ? sp.asOf : todayInKualaLumpur();
-  // r219 — TODAY, kept as its own value rather than folded into the line above. The as-at fallback is a
-  // pinned contract with the export route (test/leave-balance-as-at-date.test.ts: both sides must validate
-  // and fall back identically, or an export link resolves to a different date than the page it was clicked
-  // from), and the availability read below deliberately does NOT use `asOf` — see its own note.
+  const { asOf, q, typeIds, departmentIds, sort, dir, pq } = query;
   const today = todayInKualaLumpur();
-  const q = sp.q?.trim() || undefined;
-  const typeIds = arr(sp.type);
-  const dir: 'asc' | 'desc' = sp.dir === 'desc' ? 'desc' : 'asc';
-
-  const [rows, leaveTypes, replacementRequest] = await Promise.all([
-    selected
-      ? employeeBalanceRows(session, selected.employmentId, asOf, locale, { q, typeIds, dir })
-      : Promise.resolve([]),
+  const [result, leaveTypes, replacementRequest] = await Promise.all([
+    inquiryBalancePage(session, inquiry, query, locale),
     listLeaveTypes(session, { locale }),
-    // r219 — may THIS employee ask to be credited for time they already worked, and if not, why not.
-    //
-    // ⚠️ ASKED AS OF TODAY, NOT AS OF THE AS-AT DATE, and that asymmetry with every figure on this screen
-    // is deliberate. The columns answer "where did this person stand on `asOf`"; this answers "can they
-    // press the button now", which is a question about the present whatever date HR has typed above. An
-    // eligibility verdict resolved against a back-date would be a true sentence about the wrong day, and
-    // the screen has nothing that could tell the reader which of the two it was reading.
-    selected
-      ? replacementRequestAvailability(session, selected.employmentId, today)
-      : Promise.resolve({ allowed: false } as const),
+    selected ? replacementRequestAvailability(session, selected.employmentId, today) : Promise.resolve({ allowed: false } as const),
   ]);
+  const { rows, total } = result;
   // Same scope as the employee's own page: a tenant with no replacement leave type in its catalogue has
   // nothing to explain, so it is shown nothing. Read off the full catalogue by ROLE (`isReplacementLeaveType`),
   // not off `rows` — those are narrowed by the leave-type filter above, and a notice that disappeared
@@ -273,14 +258,23 @@ export default async function EmployeeBalancesPage({
   const params = () => {
     const p = new URLSearchParams();
     if (selected) p.set('emp', selected.employmentId);
+    for (const key of ['pickerQ', 'pickerCompany', 'pickerBusinessUnit', 'pickerDepartment', 'pickerStatus'] as const) if (sp[key]) p.set(key, sp[key]);
     if (sp.asOf) p.set('asOf', asOf);
     if (q) p.set('q', q);
     for (const id of typeIds) p.append('type', id);
+    for (const id of departmentIds) p.append('department', id);
+    p.set('sort', sort);
+    p.set('size', String(pq.size));
     return p;
   };
-  const sortHref = () => {
+  const sortHref = (key = 'type') => {
     const p = params();
-    p.set('dir', dir === 'asc' ? 'desc' : 'asc');
+    p.set('sort', key);
+    p.set('dir', sort === key && dir === 'asc' ? 'desc' : 'asc');
+    return `/leave/employee-balances?${p.toString()}`;
+  };
+  const pagerHref = ({ page, size }: PagerHrefOver) => {
+    const p = params(); p.set('dir', dir); p.set('page', String(page)); p.set('size', String(size ?? pq.size));
     return `/leave/employee-balances?${p.toString()}`;
   };
   const exportHref = (format: 'csv' | 'xlsx') => {
@@ -298,6 +292,10 @@ export default async function EmployeeBalancesPage({
   if (q) panelHiddenParams.q = q;
   if (typeIds.length) panelHiddenParams.type = typeIds;
   panelHiddenParams.dir = dir;
+  panelHiddenParams.sort = sort;
+  panelHiddenParams.size = String(pq.size);
+  if (pq.page) panelHiddenParams.page = String(pq.page);
+  if (departmentIds.length) panelHiddenParams.department = departmentIds;
 
   /**
    * 9949f91a (r369) — what the EMPLOYEE PANEL carries when the reader switches person. Everything this
@@ -313,15 +311,15 @@ export default async function EmployeeBalancesPage({
    * and the filter would survive the switch while matching nothing. That is why the shell's `preserve` takes
    * `string | string[]`.
    */
-  const panelPreserve: Record<string, string | string[]> = { dir };
+  const panelPreserve: Record<string, string | string[]> = { dir, sort, size: String(pq.size), department: departmentIds };
   for (const key of ['pickerQ', 'pickerCompany', 'pickerBusinessUnit', 'pickerDepartment', 'pickerStatus'] as const) { if (sp[key]) panelPreserve[key] = sp[key]; }
   if (sp.asOf) panelPreserve.asOf = asOf;
   if (q) panelPreserve.q = q;
   if (typeIds.length) panelPreserve.type = typeIds;
 
   // A balance row opens that leave type's transactions for the same employee (953be4b0).
-  const recordsHref = (leaveTypeId: string) =>
-    `/leave/employee-records?emp=${selected?.employmentId ?? ''}&type=${leaveTypeId}`;
+  const recordsHref = (leaveTypeId: string, employmentId: string) =>
+    `/leave/employee-records?emp=${employmentId}&type=${leaveTypeId}`;
   /**
    * r367 (073233bb) — THE TAKEN FIGURE OPENS THE RECORDS BEHIND IT, carrying the YEAR as well as the
    * employee and the code. The reporter's own words: "Clicking the Taken figure in Employee Balances
@@ -353,8 +351,8 @@ export default async function EmployeeBalancesPage({
    * `recordsHref` above is deliberately left as it is: the leave CODE cell means "every record of this
    * type", across years and statuses, and narrowing it would remove an answer HR already relies on.
    */
-  const takenRecordsHref = (r: { leaveTypeId: string; cycleStart: string | null; cycleEnd: string | null }) => {
-    const base = `${recordsHref(r.leaveTypeId)}&status=approved`;
+  const takenRecordsHref = (r: { leaveTypeId: string; cycleStart: string | null; cycleEnd: string | null; employee: { employmentId: string } }) => {
+    const base = `${recordsHref(r.leaveTypeId, r.employee.employmentId)}&status=approved`;
     return r.cycleStart && r.cycleEnd ? `${base}&from=${r.cycleStart}&to=${r.cycleEnd}` : base;
   };
 
@@ -382,17 +380,18 @@ export default async function EmployeeBalancesPage({
       removeAriaLabel: t('filters.removeFilter', { label: t('filters.leaveType') }),
     },
   ];
-  const filterValues = { type: typeIds };
+  filterFields.push({ kind: 'multi', name: 'department', label: t('filters.department'), ariaLabel: t('filters.department'), options: [...new Map(employees.filter(e => e.departmentId).map(e => [e.departmentId!, { value: e.departmentId!, label: e.department ?? '—' }])).values()], removeAriaLabel: t('filters.removeFilter', { label: t('filters.department') }) });
+  const filterValues = { type: typeIds, department: departmentIds };
   const filterLabels = {
     filter: t('filters.filter'),
     apply: t('filters.apply'),
     clearAll: t('filters.clearAll'),
-    activeCount: t('filters.activeCount', { count: typeIds.length ? 1 : 0 }),
+    activeCount: t('filters.activeCount', { count: (typeIds.length ? 1 : 0) + (departmentIds.length ? 1 : 0) }),
     selectAll: t('filters.selectAll'),
     deselectAll: t('filters.deselectAll'),
   };
   // Clearing filters must not clear the employee — the chips' base action carries the selection.
-  const chipAction = `/leave/employee-balances${selected ? `?emp=${selected.employmentId}` : ''}`;
+  const chipAction = '/leave/employee-balances';
 
   // Layout (feedback 026e16b9) — presentation only, no figure, rule or setting is touched.
   //
@@ -459,7 +458,7 @@ export default async function EmployeeBalancesPage({
               />
               <span className="text-xs font-normal text-muted-foreground">{selected.company}</span>
             </div>
-          ) : undefined
+          ) : <span className="text-sm font-semibold">{tInq('allEmployeesHeader', { count: employees.length, companies: inquiry.companies.map(c => c.name).join(', ') })}</span>
         }
         panel={
           <Card className="p-4">
@@ -473,6 +472,8 @@ export default async function EmployeeBalancesPage({
                 selectParam="emp"
                 preserve={panelPreserve}
                 preservePicker
+                allowAll
+                resetToAll
               />
             </div>
           </Card>
@@ -488,6 +489,7 @@ export default async function EmployeeBalancesPage({
                 app/attendance/individual/page.tsx uses. The old searchable field is gone rather than kept
                 beside the panel: two pickers for one value is how they come to disagree. */}
             {selected && <input type="hidden" name="emp" value={selected.employmentId} />}
+            {(['pickerQ', 'pickerCompany', 'pickerBusinessUnit', 'pickerDepartment', 'pickerStatus'] as const).map(key => sp[key] ? <input key={key} type="hidden" name={key} value={sp[key]} /> : null)}
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               {tMe('leaveBalanceTable.asAtDate')}
               <input type="date" name="asOf" defaultValue={asOf} className={inputCls} />
@@ -505,6 +507,9 @@ export default async function EmployeeBalancesPage({
             {typeIds.map((id) => (
               <input key={id} type="hidden" name="type" value={id} />
             ))}
+            {departmentIds.map(id => <input key={id} type="hidden" name="department" value={id} />)}
+            <input type="hidden" name="sort" value={sort} />
+            <input type="hidden" name="size" value={String(pq.size)} />
             <input type="hidden" name="dir" value={dir} />
             <Button type="submit" size="sm" variant="secondary">
               {tMe('leaveBalanceTable.apply')}
@@ -522,12 +527,10 @@ export default async function EmployeeBalancesPage({
               fields={filterFields}
               values={filterValues}
               labels={filterLabels}
+              hidden={[...params()].filter(([key]) => !['type', 'status', 'from', 'to', 'department'].includes(key))}
             />
-            {/* 9949f91a — NOT OFFERED WITH NOBODY SELECTED. The export ROUTE keeps 20c699f8's
-                first-employee fallback (it has no screen to prompt on — lib/leave-inquiry.ts says why), so a
-                pill clicked from an unselected screen would hand back a workbook about somebody the reader
-                never chose. The route is untouched; the link simply is not drawn. */}
-            {selected && (
+            {/* 23e87eef: All is an explicit authorized view; empty scope remains distinct. */}
+            {(
               <div className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs">
                 <span className="text-muted-foreground">{t('filters.export')}:</span>
                 <Link href={exportHref('csv')} className="font-medium text-primary hover:underline">
@@ -541,7 +544,7 @@ export default async function EmployeeBalancesPage({
             )}
           </div>
 
-          <FilterChips action={chipAction} fields={filterFields} values={filterValues} labels={filterLabels} />
+          <FilterChips action={chipAction} fields={filterFields} values={filterValues} labels={filterLabels} hidden={[...params()].filter(([key]) => !['type', 'status', 'from', 'to', 'department'].includes(key))} />
 
           {/* d990f14a — THE TAB BAR SITS HERE, under the search bar and its chips and above the table it
               scopes. The chips only render when a filter is active, so the search bar is directly above the
@@ -557,28 +560,29 @@ export default async function EmployeeBalancesPage({
             <ReplacementAvailabilityNotice availability={replacementRequest} audience="admin" />
           )}
 
-          {/* 9949f91a — THE PROMPT THE REPORTER ASKED FOR, in the reference mount's own shape: the filter row
-              and the tab bar stay drawn (a reader with nobody selected still switches tabs), and only the
-              table is replaced. `tInq('noEmployees')` is a DIFFERENT statement — "no employees in the current
-              company scope" — and stays for the scope-is-empty case the panel itself also reports. */}
-          {!selected ? (
+          {/* 23e87eef: All is an explicit authorized view; empty scope remains distinct. */}
+          {employees.length === 0 ? (
             <Card>
               <p className="px-4 py-10 text-center text-sm text-muted-foreground" data-testid="pick-employee">
-                {employees.length === 0 ? tInq('noEmployees') : tInq('pickEmployeeBalances')}
+                {tInq('noEmployees')}
               </p>
             </Card>
           ) : (
           <Card>
-            <div className="overflow-x-auto" data-testid="employee-balances-scroll">
+            <div className="overflow-x-auto" data-testid="employee-balances-scroll" role="region" aria-label={tInq('balancesTitle')} tabIndex={0}>
               <table className={styles.table} data-testid="employee-balances-table">
                 {/* 026e16b9: no `tracking-wide` on these inquiry tables. Measured live, the extra letter-spacing
                       cost this header row 23px across eleven columns — the last of the horizontal overflow.
                       Uppercase small-caps headings read fine without it. */}
                 <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                   <tr>
+                    <th className={th}><Link href={sortHref('employeeCode')}>{t('filters.employeeId')}</Link></th>
+                    <th className={th}><Link href={sortHref('name')}>{t('colEmployee')}</Link></th>
+                    <th className={th}>{t('filters.company')}</th>
+                    <th className={th}>{t('filters.department')}</th>
                     <th
                       className={th}
-                      aria-sort={dir === 'asc' ? 'ascending' : 'descending'}
+                      aria-sort={sort === 'type' ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}
                     >
                       <Link
                         href={sortHref()}
@@ -637,15 +641,19 @@ export default async function EmployeeBalancesPage({
                 <tbody className="divide-y divide-border">
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={16} className="px-4 py-6 text-center text-muted-foreground">
+                      <td colSpan={20} className="px-4 py-6 text-center text-muted-foreground">
                         {tInq('noRows')}
                       </td>
                     </tr>
                   )}
                   {rows.map((r) => (
-                    <tr key={r.leaveTypeId} className="hover:bg-muted/40">
+                    <tr key={`${r.employee.employmentId}|${r.leaveTypeId}`} className="hover:bg-muted/40">
+                      <td className="px-2 py-2 font-mono text-xs">{r.employee.employeeCode ?? '—'}</td>
+                      <td className="px-2 py-2 font-medium">{r.employee.name}</td>
+                      <td className="px-2 py-2">{r.employee.company}</td>
+                      <td className="px-2 py-2">{r.employee.department ?? '—'}</td>
                       <td className="px-2 py-2">
-                        <Link href={recordsHref(r.leaveTypeId)} className="font-medium text-primary hover:underline">
+                        <Link href={recordsHref(r.leaveTypeId, r.employee.employmentId)} className="font-medium text-primary hover:underline">
                           {r.code || r.leaveType}
                         </Link>
                         <span className="ml-1.5 text-xs text-muted-foreground">{r.leaveType}</span>
@@ -785,6 +793,7 @@ export default async function EmployeeBalancesPage({
                 </tbody>
               </table>
             </div>
+            <Pager hrefFor={pagerHref} state={pageState(pq, total, rows.length)} exportHref={exportHref('csv')} />
           </Card>
           )}
         </div>

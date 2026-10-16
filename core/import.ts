@@ -1,3 +1,16 @@
+import {PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS} from '../lib/personnel-choice-vocabulary';
+import { personnelOperationalValues,type PersonnelOperationalPatch } from '../lib/personnel-operational-import';
+import { applyPersonnelOperationalValuesTx } from './personnel-import-operations';
+import { assertCardIdFree } from './attendance-card';
+import { bankTransferLacksBank } from '../lib/payment-methods';
+import {PERSONNEL_REGISTER_KINDS,type PersonnelRegisterRecords} from '../lib/personnel-register-import';
+import {validateRegisterImport,writeRegisterRowsTx} from './personnel-register-import';
+import { PersonnelImportCatalog, normalizePersonnelCatalogRecord } from '../lib/personnel-import-catalog';
+import { PersonnelImportLookup, addUniqueImportAlias } from '../lib/personnel-import-lookup';
+import { personnelBankValues, type PersonnelBankValues } from '../lib/personnel-bank-import';
+import { personnelFamilyValues, personnelFamilyCatalogErrors } from '../lib/personnel-family-import';
+import { personnelImportProposedValues, PERSONNEL_EMPLOYMENT_IMPORT_FIELDS, PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS, personnelScalarIssue } from '../lib/personnel-import-contract';
+import { isCalendarDate } from '../lib/calendar-date';
 /**
  * Day-one employee importer (ADR-0008 localization stays in the pack; this is the generic
  * bulk-load path). Parses a validated set of CSV records and reuses the same services the
@@ -6,11 +19,11 @@
  *
  * Two phases:
  *  - analyze(): pure validation against the company catalog + existing records (dry run).
- *  - commitEmployeeImport(): imports the rows that pass, row-by-row, continuing past a row
- *    that fails so one bad record can't strand the rest, then appends a batch event.
+ *  - commitEmployeeImport(): writes the validated subset and its forward reporting links in one
+ *    explicit transaction shared by canonical owners. A write refusal rolls that subset back.
  *
- * Not atomic across rows by design: the per-row services each own their transaction, and a
- * day-one migration wants maximum rows in, not all-or-nothing. The dry run is the gate.
+ * Invalid preview rows remain excluded. Repeated-record orphan errors reject the complete file;
+ * post-commit derived Family refresh failures are warnings and never misreported as rollback.
  */
 import { publicErrorMessage } from '@/lib/public-error';
 import { withTenant, type SessionContext } from '../db/client';
@@ -32,7 +45,7 @@ import { setCompensation, unpayableSalaryLeg } from './comp';
 import { setPersonComplianceFields } from './profile';
 // Item 2983802f — the family sheet writes through the SAME service the Family card uses, so an imported
 // dependant is indistinguishable from a hand-entered one (events, child-relief resync, catalog rules).
-import { addDependent, DEPENDENT_GENDERS, DEPENDENT_RELATIONSHIPS } from './dependents';
+import { addDependentTx, syncChildReliefFromFamily, assertDependentsValid, type DependentInput, DEPENDENT_GENDERS, DEPENDENT_RELATIONSHIPS } from './dependents';
 // Rung 5a (ADR-0080 D1/D6): the statutory writer + IC helpers come from the COMPANY'S country pack
 // (resolved in analyze() from company.country), never from a direct localization/my import. A company
 // whose country resolves no pack fails the import loudly (D3) instead of validating under MY rules.
@@ -92,9 +105,9 @@ const FALSY = new Set(['false', 'no', 'n', '0']);
 type CompanyContext = {
   id: string;
   name: string;
-  deptByName: Map<string, string>;
-  posByName: Map<string, string>;
-  ccByName: Map<string, string>;
+  deptByName: PersonnelImportLookup<string>;
+  posByName: PersonnelImportLookup<string>;
+  ccByName: PersonnelImportLookup<string>;
   pack: CountryPack;
 };
 
@@ -124,6 +137,10 @@ type ResolvedRow = {
    * existing file's import is unchanged.
    */
   profile?: Record<string, string | null>;
+  operations?:PersonnelOperationalPatch;
+  bankExtra?:PersonnelBankValues;
+  oldIcNumber?:string;
+  compliance?: {dateOfBirth?:string;gender?:string;maritalStatus?:string};
   /** Item 2983802f — the passport block, written through the company pack's `setPassport`. Undefined
    *  unless the row supplied at least one passport cell (an all-blank block must not clear anything). */
   passport?: {
@@ -131,6 +148,7 @@ type ResolvedRow = {
     passportIssueDate: string;
     passportExpiryDate: string;
     passportIssuingCountry?: string;
+    passportIssuingCountryCode?:string;passportRemark?:string;
   };
   /** Item 2983802f — probation + notice-period periods and the confirmation date, written through
    *  `setEmploymentInfo`. Undefined unless the row supplied at least one of them. */
@@ -180,17 +198,7 @@ type ResolvedDependent = {
   result: DependentRowResult;
   /** Index into the employee `resolved` array; -1 when the Employee ID matched nothing on that sheet. */
   employeeIndex: number;
-  add: {
-    fullName: string;
-    relationship: string;
-    dateOfBirth?: string;
-    gender?: string;
-    icOrPassport?: string;
-    passportNumber?: string;
-    phone?: string;
-    isBeneficiary: boolean;
-    remarks?: string;
-  };
+  add: DependentInput;
 };
 
 const norm = (s: string | undefined) => (s ?? '').trim();
@@ -249,17 +257,16 @@ async function loadCompanyContext(
     listPositions(ctx, { companyIds: [co.id] }),
     listCostCenters(ctx, { companyIds: [co.id] }),
   ]);
-  const ccByName = new Map<string, string>();
-  for (const c of costCenters) {
-    if (c.name) ccByName.set(c.name.toLowerCase(), c.id);
-    if (c.code) ccByName.set(c.code.toLowerCase(), c.id);
-  }
+  const deptByName=new PersonnelImportLookup<string>();
+  const posByName=new PersonnelImportLookup<string>();
+  const ccByName=new PersonnelImportLookup<string>();
+  for(const d of departments)deptByName.add(d.id,d.id,{names:[d.name]});
+  for(const p of positions)posByName.add(p.id,p.id,{names:[p.title]});
+  for(const c of costCenters)ccByName.add(c.id,c.id,{codes:[c.code],names:[c.name]});
   return {
     id: co.id,
     name: co.name,
-    deptByName: new Map(departments.map((d) => [d.name.toLowerCase(), d.id])),
-    posByName: new Map(positions.map((p) => [p.title.toLowerCase(), p.id])),
-    ccByName,
+    deptByName,posByName,ccByName,
     // Rung 5a (ADR-0080 D1/D6): IC rules come from the COMPANY'S country pack, fail-loud when the
     // country resolves nothing — so a per-row company change also changes the statutory rules applied.
     pack: requirePackFor(co.country),
@@ -274,20 +281,15 @@ async function analyze(
   /** Item 2983802f — the FAMILY sheet's records. Empty for every file that has no such sheet, which is
    *  every file that imports today. */
   dependentRecords: ImportRecord[] = [],
-): Promise<{ preview: ImportPreview; resolved: ResolvedRow[]; dependents: ResolvedDependent[] }> {
+  registerRecords:PersonnelRegisterRecords={},
+): Promise<{ preview: ImportPreview; resolved: ResolvedRow[]; dependents: ResolvedDependent[]; registers:Awaited<ReturnType<typeof validateRegisterImport>>[] }> {
+  if(Object.keys(registerRecords).some(key=>!(PERSONNEL_REGISTER_KINDS as readonly string[]).includes(key)))throw new Error('Unknown register sheet.');
   const [allCompanies, leaveTypes] = await Promise.all([listCompanies(ctx), listLeaveTypes(ctx)]);
   // d8471481 — company lookup keys. Legal name is what the reporter's template shows; company label
   // and registration number are accepted because those are what an HR spreadsheet usually carries.
   // The id is accepted too so a machine-generated file can be exact. All matched case-insensitively.
-  const companyByKey = new Map<string, (typeof allCompanies)[number]>();
-  const key = (v: string | null | undefined) => (v ?? '').trim().toLowerCase();
-  for (const c of allCompanies) {
-    for (const k of [c.id, c.name, c.companyLabel, c.registrationNo]) {
-      const kk = key(k);
-      // First writer wins: a duplicate label must never silently retarget an unrelated company.
-      if (kk && !companyByKey.has(kk)) companyByKey.set(kk, c);
-    }
-  }
+  const companyByKey=new PersonnelImportLookup<(typeof allCompanies)[number]>();
+  for(const c of allCompanies)companyByKey.add(c.id,c,{codes:[c.registrationNo],names:[c.name,c.companyLabel]});
   const defaultCompany = allCompanies.find((c) => c.id === companyId);
 
   const grants = leaveTypes
@@ -298,9 +300,9 @@ async function analyze(
   // synchronous; the unresolved ones are recorded and surface as a per-row error in pass 2.
   const rowCompanies = records.map((rec) => {
     const raw = norm(rec.company);
-    if (!raw) return { raw, co: defaultCompany, unknown: false };
+    if (!raw) return { raw, co: defaultCompany, unknown: false,ambiguous:false };
     const co = companyByKey.get(raw.toLowerCase());
-    return { raw, co, unknown: !co };
+    return { raw, co, unknown: !co,ambiguous:companyByKey.isAmbiguous(raw) };
   });
   const needed = new Map<string, (typeof allCompanies)[number]>();
   for (const rc of rowCompanies) if (rc.co) needed.set(rc.co.id, rc.co);
@@ -353,9 +355,8 @@ async function analyze(
     // already created. Same rule as `assertProfileValueAllowed`: an EMPTY catalog means the tenant never
     // configured that list and free text is accepted, exactly as it is on the Personnel screens.
     const options = await tx
-      .select({ category: profileOption.category, value: profileOption.value })
-      .from(profileOption)
-      .where(eq(profileOption.isActive, true));
+      .select({ category: profileOption.category, value: profileOption.value,label:profileOption.label,isActive:profileOption.isActive })
+      .from(profileOption);
     // Item 06f0cb8f — an unfinished DRAFT holds an Employee ID too, so an import can collide with a
     // record that has no employment row yet. `hireEmployee` refuses it either way (that is the
     // authority, and it is what makes the rule true for every path at once); reading it here as well
@@ -364,17 +365,13 @@ async function analyze(
       .select({ code: employeeDraft.reservedEmployeeCode })
       .from(employeeDraft)
       .where(isNotNull(employeeDraft.reservedEmployeeCode));
-    const catalog = new Map<string, Set<string>>();
-    for (const o of options) {
-      const set = catalog.get(o.category) ?? new Set<string>();
-      set.add(o.value);
-      catalog.set(o.category, set);
-    }
+    const catalog = new PersonnelImportCatalog();
+    for(const option of options)catalog.addOption(option);
     const superiorByCode = new Map<string, string>();
-    const superiorByEmail = new Map<string, string>();
+    const superiorByEmail = new Map<string, string|null>();
     for (const e of superiorCandidates) {
       if (e.code) superiorByCode.set(normalizeEmployeeCode(e.code), e.id);
-      superiorByEmail.set(e.email.toLowerCase(), e.id);
+      addUniqueImportAlias(superiorByEmail,e.email.toLowerCase(),e.id);
     }
     return {
       catalog,
@@ -415,26 +412,29 @@ async function analyze(
    */
   const catalogAllows = (category: string, value: string): boolean => {
     const active = catalog.get(category);
-    if (!active || active.size === 0) return true;
+    if (!active) return true;
     return active.has(value);
   };
 
-  records.forEach((rec, idx) => {
-    const errors: string[] = [];
+  records.forEach((rawRecord, idx) => {
+    const {record:rec,errors}=normalizePersonnelCatalogRecord(rawRecord,'employee',catalog);
     const warnings: string[] = [];
+    const operations=personnelOperationalValues(rec);errors.push(...operations.errors);
+    if(operations.values.paymentMethod==='bank_transfer' && bankTransferLacksBank({bankName:rec.bank_name,bankAccountNo:rec.bank_account_no}))errors.push('Bank Transfer requires bank_name and bank_account_no.');
     const fullName = norm(rec.full_name);
     const email = norm(rec.email);
 
     // PASS 2 begins with the company: every catalog lookup below is against THIS row's company, which
     // is what makes the reporter's "Department does not belong to selected company" a real check.
     const rc = rowCompanies[idx];
-    if (rc.unknown) errors.push(`Unknown company "${rc.raw}"`);
+    if(rc.ambiguous)errors.push(`Ambiguous company "${rc.raw}" — use its exact company ID or registration number`);
+    else if (rc.unknown) errors.push(`Unknown company "${rc.raw}"`);
     else if (!rc.co) errors.push('Missing company');
     const cctx = rc.co ? contexts.get(rc.co.id) : undefined;
     const { deptByName, posByName, ccByName } = cctx ?? {
-      deptByName: new Map<string, string>(),
-      posByName: new Map<string, string>(),
-      ccByName: new Map<string, string>(),
+      deptByName: new PersonnelImportLookup<string>(),
+      posByName: new PersonnelImportLookup<string>(),
+      ccByName: new PersonnelImportLookup<string>(),
     };
     const pack = cctx?.pack ?? normPack!;
 
@@ -465,6 +465,7 @@ async function analyze(
     const deptName = norm(rec.department);
     const departmentId = deptByName.get(deptName.toLowerCase());
     if (!deptName) errors.push('Missing department');
+    else if (deptByName.isAmbiguous(deptName))errors.push(`Ambiguous department "${deptName}" — use its exact ID`);
     else if (!departmentId) errors.push(`Unknown department "${deptName}"`);
 
     // Position / cost-center (optional, resolved by name; unknown = error so it's never dropped silently)
@@ -472,19 +473,21 @@ async function analyze(
     let positionId: string | undefined;
     if (posName) {
       positionId = posByName.get(posName.toLowerCase());
-      if (!positionId) errors.push(`Unknown position "${posName}"`);
+      if(posByName.isAmbiguous(posName))errors.push(`Ambiguous position "${posName}" — use its exact ID`);
+      else if (!positionId) errors.push(`Unknown position "${posName}"`);
     }
     const ccName = norm(rec.cost_center);
     let costCenterId: string | undefined;
     if (ccName) {
       costCenterId = ccByName.get(ccName.toLowerCase());
-      if (!costCenterId) errors.push(`Unknown cost_center "${ccName}"`);
+      if(ccByName.isAmbiguous(ccName))errors.push(`Ambiguous cost_center "${ccName}" — use its exact ID or code`);
+      else if (!costCenterId) errors.push(`Unknown cost_center "${ccName}"`);
     }
 
     // Hire date
     const hiredOn = norm(rec.hired_on);
     if (!hiredOn) errors.push('Missing hired_on');
-    else if (!DATE_RE.test(hiredOn)) errors.push(`hired_on must be YYYY-MM-DD (got "${hiredOn}")`);
+    else if (!isCalendarDate(hiredOn)) errors.push(`hired_on must be YYYY-MM-DD (got "${hiredOn}")`);
 
     // Employment type
     let employmentType: 'full_time' | 'part_time' | 'contract' | 'intern' = 'full_time';
@@ -497,17 +500,15 @@ async function analyze(
     // IC (required, format + uniqueness — DB enforces tenant-unique IC; rules from the company's pack)
     const icRaw = norm(rec.ic_number);
     const icNorm = pack.statutory.normalizeIC(icRaw);
-    if (!icRaw) errors.push('Missing ic_number');
-    else if (!pack.statutory.validateIC(icRaw)) errors.push(`Invalid IC "${icRaw}" (expected 12 digits)`);
-    else if (seenIcs.has(icNorm)) errors.push('Duplicate ic_number in this file');
-    else if (existingIcs.has(icNorm)) errors.push('An employee with this IC already exists');
+    if (icRaw && !pack.statutory.validateIC(icRaw)) errors.push(`Invalid IC "${icRaw}" (expected 12 digits)`);
+    else if (icRaw && seenIcs.has(icNorm)) errors.push('Duplicate ic_number in this file');
+    else if (icRaw && existingIcs.has(icNorm)) errors.push('An employee with this IC already exists');
     if (icRaw && pack.statutory.validateIC(icRaw)) seenIcs.add(icNorm);
 
     // Salary
     const salaryRaw = norm(rec.basic_salary).replace(/[,_]/g, '');
     const basicSalary = Number(salaryRaw);
-    if (!salaryRaw) errors.push('Missing basic_salary');
-    else if (!Number.isFinite(basicSalary) || basicSalary < 0) errors.push(`Invalid basic_salary "${rec.basic_salary}"`);
+    if (!Number.isFinite(basicSalary) || basicSalary < 0) errors.push(`Invalid basic_salary "${rec.basic_salary}"`);
     const allowanceRaw = norm(rec.monthly_allowance).replace(/[,_]/g, '');
     let monthlyAllowance = 0;
     if (allowanceRaw) {
@@ -547,9 +548,10 @@ async function analyze(
     const epfCitizenship = ((): 'citizen' | 'pr' | 'non_citizen' | undefined => {
       const c = norm(rec.epf_citizenship).toLowerCase().replace(/[\s-]+/g, '_');
       if (!c) return undefined;
-      if (c === 'citizen' || c === 'malaysian') return 'citizen';
-      if (c === 'pr' || c === 'permanent_resident') return 'pr';
-      if (['non_citizen', 'noncitizen', 'foreign', 'foreigner', 'foreign_worker'].includes(c)) return 'non_citizen';
+      if ((PERSONNEL_EPF_CITIZENSHIPS as readonly string[]).includes(c)) return c as (typeof PERSONNEL_EPF_CITIZENSHIPS)[number];
+      if (c === 'malaysian') return 'citizen';
+      if (c === 'permanent_resident') return 'pr';
+      if (['noncitizen', 'foreign', 'foreigner', 'foreign_worker'].includes(c)) return 'non_citizen';
       errors.push(`Invalid epf_citizenship "${rec.epf_citizenship}" (use citizen / pr / non_citizen)`);
       return undefined;
     })();
@@ -565,15 +567,15 @@ async function analyze(
     const payMode = ((): 'monthly' | 'daily' | 'hourly' | 'custom_period' | undefined => {
       const m = lc(rec.pay_mode).replace(/[\s-]+/g, '_');
       if (!m) return undefined;
-      if (['monthly', 'daily', 'hourly', 'custom_period'].includes(m)) return m as 'monthly';
+      if ((PERSONNEL_PAY_MODES as readonly string[]).includes(m)) return m as (typeof PERSONNEL_PAY_MODES)[number];
       errors.push(`Invalid pay_mode "${rec.pay_mode}" (use monthly / daily / hourly / custom_period)`);
       return undefined;
     })();
     const paymentTerm = ((): 'monthly' | 'weekly' | 'biweekly' | undefined => {
       const f = lc(rec.payment_term).replace(/[\s-]+/g, '_');
       if (!f) return undefined;
-      if (f === 'bi_weekly' || f === 'biweekly') return 'biweekly';
-      if (f === 'monthly' || f === 'weekly') return f;
+      if ((PERSONNEL_PAYMENT_TERMS as readonly string[]).includes(f)) return f as (typeof PERSONNEL_PAYMENT_TERMS)[number];
+      if (f === 'bi_weekly') return 'biweekly';
       errors.push(`Invalid payment_term "${rec.payment_term}" (use monthly / weekly / biweekly)`);
       return undefined;
     })();
@@ -609,7 +611,6 @@ async function analyze(
     // basic_salary already carries its own error above, and saying two things about one cell is noise.
     const salaryRemarks = norm(rec.salary_remarks) || undefined;
     if (
-      salaryRaw &&
       Number.isFinite(basicSalary) &&
       basicSalary >= 0 &&
       unpayableSalaryLeg(payMode ?? 'monthly', basicSalary, rateAmount ?? null) === 'no_monthly_basic' &&
@@ -630,7 +631,7 @@ async function analyze(
     const dateField = (raw: string | undefined, label: string): string | undefined => {
       const v = norm(raw);
       if (!v) return undefined;
-      if (!DATE_RE.test(v)) {
+      if (!isCalendarDate(v)) {
         errors.push(`${label} must be YYYY-MM-DD (got "${v}")`);
         return undefined;
       }
@@ -682,7 +683,7 @@ async function analyze(
       Boolean(passportNumber) ||
       norm(rec.passport_issue_date) !== '' ||
       norm(rec.passport_expiry_date) !== '' ||
-      norm(rec.passport_issuing_country) !== '';
+      norm(rec.passport_issuing_country) !== '' || norm(rec.passport_issuing_country_code)!=='' || norm(rec.passport_remark)!=='';
     let passport: ResolvedRow['passport'];
     if (passportTouched) {
       if (!passportNumber || !passportIssue || !passportExpiry) {
@@ -695,10 +696,12 @@ async function analyze(
           passportIssueDate: passportIssue,
           passportExpiryDate: passportExpiry,
           passportIssuingCountry: passportCountry.kind === 'ok' ? passportCountry.value : undefined,
+          passportIssuingCountryCode:norm(rec.passport_issuing_country_code)||undefined,passportRemark:norm(rec.passport_remark)||undefined,
         };
       }
     }
 
+    const bankExtra=personnelBankValues(rec);errors.push(...bankExtra.errors);
     // ADDRESS + EMERGENCY CONTACT — one `updatePerson` payload, because that writer saves the address and
     // routes the emergency block into the register inside ONE transaction. Only the cells the file
     // actually carries are put in the payload: `updatePerson` leaves an omitted field alone, so a
@@ -709,22 +712,18 @@ async function analyze(
       const v = carriedProfileValue(checked, norm(rec[column]));
       if (v !== undefined) profile[field] = v;
     };
-    carry('address_line_1', 'permanentAddressLine1');
-    carry('address_line_2', 'permanentAddressLine2');
-    carry('address_line_3', 'permanentAddressLine3');
-    carry('postcode', 'permanentPostcode');
-    carry('city', 'permanentCity');
-    carry('state', 'permanentState', catalogField(rec.state, 'state', 'state'));
-    carry('country', 'permanentCountry', catalogField(rec.country, 'country', 'country'));
-    carry('emergency_contact_name', 'emergencyContactName');
-    carry(
-      'emergency_contact_relationship',
-      'emergencyContactRelationship',
-      catalogField(rec.emergency_contact_relationship, 'relationship', 'emergency_contact_relationship'),
-    );
-    carry('emergency_contact_phone', 'emergencyContactPhone');
-    carry('emergency_contact_home_phone', 'emergencyContactPhone2');
-    carry('emergency_contact_address', 'emergencyContactAddress');
+    for(const field of PERSONNEL_PROFILE_IMPORT_FIELDS) {
+      const {column,writerField,catalog:category}=field.import;
+      if(column && writerField)carry(column,writerField,category?catalogField(rec[column],category,column):undefined);
+    }
+    const compliance: NonNullable<ResolvedRow['compliance']> = {};
+    for(const field of PERSONNEL_COMPLIANCE_IMPORT_FIELDS) {
+      const column=field.import.column!; const value=norm(rec[column]);if(!value)continue;
+      const issue=personnelScalarIssue(field,value);
+      if(issue)errors.push(`${column}: invalid ${issue} value`);
+      else (compliance as Record<string,string>)[field.ownerField]=value;
+    }
+    if(profile.personalEmail && !EMAIL_RE.test(profile.personalEmail))errors.push('Invalid personal_email');
 
     // PROBATION + NOTICE PERIOD. `probation_end_date` writes the employment's provisional end date, which
     // IS the probation end for a full-time hire — and means the END OF THE CONTRACT for a contract or an
@@ -736,11 +735,11 @@ async function analyze(
         `probation_end_date applies to full_time employees only (this row is ${employmentType}; for a fixed term use the contract dates on the employee's record)`,
       );
     }
-    if (probationEnd && hiredOn && DATE_RE.test(hiredOn) && probationEnd < hiredOn) {
+    if (probationEnd && hiredOn && isCalendarDate(hiredOn) && probationEnd < hiredOn) {
       errors.push('probation_end_date must be on or after hired_on');
     }
     const confirmationDate = dateField(rec.confirmation_date, 'confirmation_date');
-    if (confirmationDate && hiredOn && DATE_RE.test(hiredOn) && confirmationDate < hiredOn) {
+    if (confirmationDate && hiredOn && isCalendarDate(hiredOn) && confirmationDate < hiredOn) {
       errors.push('confirmation_date must be on or after hired_on');
     }
     const employmentInfo: Record<string, string> = {};
@@ -754,6 +753,18 @@ async function analyze(
     period('resignation_notice_days', 'resignationNoticeDays');
     if (confirmationDate) employmentInfo.confirmationDate = confirmationDate;
 
+    for(const field of PERSONNEL_EMPLOYMENT_IMPORT_FIELDS) {
+      const {column,writerField,catalog:category}=field.import;const value=norm(rec[column!]);if(!value)continue;
+      const issue=personnelScalarIssue(field,value);if(issue){errors.push(`${column}: invalid ${issue} value`);continue;}
+      const checked=category?catalogField(value,category,column!):undefined;
+      if(checked?.kind==='refused')continue;
+      employmentInfo[writerField!]=checked?.kind==='ok'?checked.value:value;
+    }
+    for(const [legacyA,legacyB,valueColumn,unitColumn] of [
+      ['probation_months','probation_days','probation_value','probation_unit'],
+      ['resignation_notice_months','resignation_notice_days','notice_before_confirmation_value','notice_before_confirmation_unit'],
+    ]) if((norm(rec[legacyA])||norm(rec[legacyB])) && (norm(rec[valueColumn])||norm(rec[unitColumn])))errors.push(`Use the current ${valueColumn}/${unitColumn} columns or the older month/day columns, not both`);
+
     // DIRECT SUPERIOR — recorded now, RESOLVED LATER (see the pass after this loop). Resolving here would
     // fail a perfectly valid file purely because the manager's row happens to come after the subordinate's.
     superiorRaw.push(norm(rec.direct_superior));
@@ -761,6 +772,7 @@ async function analyze(
 
     const ok = errors.length === 0;
     const result: RowResult = {
+      proposed:personnelImportProposedValues(rec,'employee'),
       rowNum: idx + 1,
       fullName,
       email,
@@ -785,7 +797,11 @@ async function analyze(
         grantLeaveTypes: grants,
         provisionalEndOn: probationEnd,
       },
+      operations:Object.keys(operations.values).length?operations.values:undefined,
       profile: Object.keys(profile).length > 0 ? profile : undefined,
+      bankExtra:bankExtra.supplied.some(key=>!['bankName','bankAccountNo'].includes(key))?bankExtra.values:undefined,
+      oldIcNumber:norm(rec.old_ic_number)||undefined,
+      compliance: Object.keys(compliance).length > 0 ? compliance : undefined,
       passport,
       employmentInfo: Object.keys(employmentInfo).length > 0 ? employmentInfo : undefined,
       statutory: {
@@ -811,6 +827,16 @@ async function analyze(
     });
   });
 
+  // Operational card assignments resolve against current canonical identities before any employee is written.
+  for(const [index,row] of resolved.entries())if(row.result.ok && row.operations?.cardId) {
+    try {await withTenant(ctx,tx=>assertCardIdFree(tx,'00000000-0000-0000-0000-000000000000',row.operations!.cardId!));}
+    catch {row.result.errors.push('card_id already identifies another employee; choose an unused card ID.');row.result.ok=false;}
+    const wanted=row.operations.cardId.toLowerCase(),digits=wanted.replace(/\D/g,'');
+    if(resolved.some((other,otherIndex)=>otherIndex!==index && (other.operations?.cardId?.toLowerCase()===wanted || other.hire.employeeCode?.toLowerCase()===wanted || Boolean(digits && other.statutory.icNumber?.replace(/\D/g,'')===digits)))) {
+      row.result.errors.push('card_id conflicts with another employee identity in this file.');row.result.ok=false;
+    }
+  }
+
   // ─────────────── PASS 3 (2983802f) — DIRECT SUPERIOR, once every row is staged ───────────────
   //
   // This pass exists for exactly one reason: A0002's manager may be A0005, further down the same file.
@@ -823,8 +849,9 @@ async function analyze(
     if (e && !emailToRow.has(e)) emailToRow.set(e, i);
   });
   /** Which row (or existing employment) does this cell name? */
-  const findSuperior = (raw: string): NonNullable<ResolvedRow['superior']> | 'unknown' => {
+  const findSuperior = (raw: string): NonNullable<ResolvedRow['superior']> | 'unknown' | 'ambiguous' => {
     const asCode = normalizeEmployeeCode(raw);
+    if(!superiorByCode.has(asCode) && superiorByEmail.get(raw.toLowerCase())===null)return 'ambiguous';
     const existingById = superiorByCode.get(asCode) ?? superiorByEmail.get(raw.toLowerCase());
     if (existingById) return { kind: 'existing', employmentId: existingById };
     const rowIndex = codeToRow.get(asCode) ?? emailToRow.get(raw.toLowerCase());
@@ -835,7 +862,8 @@ async function analyze(
     if (!raw) return;
     const row = resolved[idx];
     const found = findSuperior(raw);
-    if (found === 'unknown') {
+    if(found==='ambiguous')row.result.errors.push('Ambiguous direct_superior email — use the exact Employee ID for the intended employment');
+    else if (found === 'unknown') {
       row.result.errors.push(`Unknown direct_superior "${raw}" (no employee with that Employee ID or email)`);
     } else if (found.kind === 'row' && found.index === idx) {
       row.result.errors.push('direct_superior cannot be the employee themselves');
@@ -895,6 +923,22 @@ async function analyze(
     catalog,
   });
 
+  for(const dependent of dependents)if(dependent.result.ok) {
+    try { await assertDependentsValid(ctx,[dependent.add]); }
+    catch(error) { dependent.result.ok=false;dependent.result.errors.push(error instanceof Error?error.message:'Invalid Family values'); }
+  }
+  dependentPreview.validCount=dependents.filter(dependent=>dependent.result.ok).length;
+  if(dependentPreview.validCount<dependents.length && !fileErrors.length)fileErrors.push('Some Family values were refused by the Personnel owner. Correct those rows before importing; nothing will be written.');
+
+  const subjects=resolved.map(row=>({employeeCode:row.hire.employeeCode??'',employeeName:row.result.fullName,companyId:row.hire.companyId,employmentId:null,personId:null,valid:row.result.ok}));
+  const registers=[] as Awaited<ReturnType<typeof validateRegisterImport>>[];
+  for(const kind of PERSONNEL_REGISTER_KINDS) {
+    if(!registerRecords[kind]?.length)continue;
+    const checked=await validateRegisterImport(ctx,kind,registerRecords[kind]??[],{subjects,newEmployees:true});
+    registers.push(checked);
+    fileErrors.push(...checked.preview.fileErrors.map(error=>`${kind}: ${error}`));
+  }
+
   const preview: ImportPreview = {
     companyId,
     total: records.length,
@@ -903,8 +947,9 @@ async function analyze(
     missingColumns,
     fileErrors,
     dependents: dependentPreview,
+    registers:registers.map(register=>register.preview),
   };
-  return { preview, resolved, dependents };
+  return { preview, resolved, dependents,registers };
 }
 
 /**
@@ -941,8 +986,8 @@ function analyzeDependents(
   const dependents: ResolvedDependent[] = [];
   const unmatchedCodes: string[] = [];
 
-  records.forEach((rec, idx) => {
-    const errors: string[] = [];
+  records.forEach((rawRecord, idx) => {
+    const {record:rec,errors}=normalizePersonnelCatalogRecord(rawRecord,'family',ctx.catalog);
     const codeRaw = norm(rec.employee_code);
     const fullName = norm(rec.full_name);
     const relationship = norm(rec.relationship);
@@ -957,7 +1002,7 @@ function analyzeDependents(
     }
 
     const dob = norm(rec.date_of_birth);
-    if (dob && !DATE_RE.test(dob)) errors.push(`date_of_birth must be YYYY-MM-DD (got "${dob}")`);
+    if (dob && !isCalendarDate(dob)) errors.push(`date_of_birth must be YYYY-MM-DD (got "${dob}")`);
     const gender = enumCell(rec.gender);
     if (gender && !genders.has(gender)) {
       errors.push(`Unknown gender "${rec.gender}" (use ${[...DEPENDENT_GENDERS].join(' / ')})`);
@@ -972,6 +1017,7 @@ function analyzeDependents(
       else errors.push(`Invalid is_beneficiary "${rec.is_beneficiary}" (use yes/no)`);
     }
 
+    const extra=personnelFamilyValues(rec);errors.push(...extra.errors,...personnelFamilyCatalogErrors(rec,ctx.catalog));
     // The link. An Employee ID that is not on the employee sheet is the case the plan singled out.
     const codeNorm = normalizeEmployeeCode(codeRaw);
     let employeeIndex = -1;
@@ -1010,6 +1056,7 @@ function analyzeDependents(
         phone: norm(rec.phone) || undefined,
         isBeneficiary,
         remarks: norm(rec.remarks) || undefined,
+        ...extra.values,
       },
     });
   });
@@ -1047,9 +1094,9 @@ function analyzeDependents(
 /** Dry run: validate the records against the company catalog without writing anything. */
 export async function validateEmployeeImport(
   ctx: SessionContext,
-  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[] },
+  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[]; registerRecords?:PersonnelRegisterRecords },
 ): Promise<ImportPreview> {
-  const { preview } = await analyze(ctx, p.companyId, p.records, p.dependentRecords ?? []);
+  const { preview } = await analyze(ctx, p.companyId, p.records, p.dependentRecords ?? [],p.registerRecords);
   return preview;
 }
 
@@ -1058,19 +1105,21 @@ export async function validateEmployeeImport(
  *  batch event so the import itself shows up in the audit trail. */
 export async function commitEmployeeImport(
   ctx: SessionContext,
-  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[]; fileName?: string },
+  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[]; registerRecords?:PersonnelRegisterRecords; fileName?: string },
 ): Promise<ImportResult> {
-  const { preview, resolved, dependents } = await analyze(
+  const { preview, resolved, dependents,registers } = await analyze(
     ctx,
     p.companyId,
     p.records,
     p.dependentRecords ?? [],
+    p.registerRecords,
   );
   const valid = resolved.filter((r) => r.result.ok);
   const failed: ImportResult['failed'] = [];
   const superiorFailed: ImportResult['superiorFailed'] = [];
   let imported = 0;
   let dependentsImported = 0;
+  const registersImported={qualification:0,emergency:0};
 
   // Item 2983802f — A FILE-LEVEL REFUSAL WRITES NOTHING. Re-derived here from the records, never taken
   // from a client-supplied preview, so a tampered payload cannot talk the server into a half-import.
@@ -1099,28 +1148,36 @@ export async function commitEmployeeImport(
   // Item 2983802f — row index → the employment it created, so the Direct Superior pass below can link a
   // subordinate to a manager who was created by the SAME run.
   const employmentByRow = new Map<number, string>();
+  const registerSubjects=new Map<string,{employmentId:string;personId:string}>();
 
+  // The validated subset and its forward reporting links form one import operation. Domain
+  // writers share this explicit transaction; no failed file can leave a half-created employee.
+  const familySyncPersonIds=new Set<string>();
+  const writeFileErrors:string[]=[];
+  const writeWarnings:string[]=[];
+  try {
+    await withTenant(ctx,async tx=>{
   for (const [index, row] of resolved.entries()) {
     if (!row.result.ok) continue;
     // Per-ROW pack (d8471481): a file may span companies, and a company's statutory writer is its
     // own country's. Reading it off the row rather than the batch is what keeps that honest.
     const pack = row.pack;
     try {
-      const { employmentId, personId } = await hireEmployee(ctx, {...row.hire,initialTaxScheme:row.statutory.isResident===false?'non_resident':'resident'});
-      employmentByRow.set(index, employmentId);
-      await pack.statutory.set(ctx, { personId, ...row.statutory });
+      const saved = await (async()=>{
+      const { employmentId, personId } = await hireEmployee(ctx, {...row.hire,initialTaxScheme:row.statutory.isResident===false?'non_resident':'resident'}, tx);
+      let familyCount=0;
+      await pack.statutory.set(ctx, { personId, ...row.statutory }, tx);
+      if(row.oldIcNumber)await pack.statutory.setIc(ctx,{personId,icNumber:row.statutory.icNumber??'',oldIcNumber:row.oldIcNumber},tx);
+      if(row.bankExtra)await pack.statutory.setBank(ctx,{personId,...row.bankExtra},tx);
+      if(row.operations)await applyPersonnelOperationalValuesTx(tx,ctx,employmentId,row.operations);
       // Feedback b9fd8fd5 — imports behave like manual entry (setIcAction, item 354a500d): a valid IC also
       // persists the derived Date of Birth so the Profile tab's Age never reads "Not Available" for an
       // imported employee. `dobOnlyIfEmpty` guarantees an existing DOB is never overwritten; an IC whose
       // first six digits form no real calendar date derives nothing (null) and is skipped, not failed.
-      // Best-effort: the employee is already hired + statutory-saved, so a failure here must not fail the row.
+      // The complete employee row shares one transaction; a later owner refusal rolls back this autofill too.
       const derivedDob = pack.statutory.dobFromIC(row.statutory.icNumber);
       if (derivedDob) {
-        try {
-          await setPersonComplianceFields(ctx, { employmentId, dateOfBirth: derivedDob, dobOnlyIfEmpty: true });
-        } catch {
-          // non-fatal — the DOB autofill is a convenience (mirrors setIcAction's safety net).
-        }
+        await setPersonComplianceFields(ctx, { employmentId, dateOfBirth: derivedDob, dobOnlyIfEmpty: true }, tx);
       }
       await setCompensation(ctx, {
         employmentId,
@@ -1134,13 +1191,10 @@ export async function commitEmployeeImport(
         // NULL and logs no `remarks` field change, so a file with no such column writes what it always did.
         remarks: row.salaryRemarks,
         effectiveFrom: row.effectiveFrom,
-      });
+      }, tx);
       // ── Item 2983802f — the new blocks, each through the SAME service its Personnel card uses, and
       //    each skipped entirely when the file carried none of its columns. That is what keeps an
       //    existing file's import byte-identical to what it was before this change.
-      if (row.passport) {
-        await pack.statutory.setPassport(ctx, { personId, ...row.passport });
-      }
       if (row.profile) {
         // `updatePerson` re-writes the core trio, so the row's own values are passed through — omitting
         // `phone` would blank a phone number the file had just supplied.
@@ -1151,18 +1205,29 @@ export async function commitEmployeeImport(
           phone: row.hire.person.phone ?? null,
           via: 'employee-import',
           ...row.profile,
-        });
+        }, tx);
       }
+      if (row.passport) {
+        await pack.statutory.setPassport(ctx, { personId, ...row.passport }, tx);
+      }
+      if (row.compliance) await setPersonComplianceFields(ctx,{employmentId,...row.compliance}, tx);
       if (row.employmentInfo) {
-        await setEmploymentInfo(ctx, { employmentId, ...row.employmentInfo });
+        await setEmploymentInfo(ctx, { employmentId, ...row.employmentInfo }, tx);
       }
       for (const d of familyByRow.get(index) ?? []) {
-        await addDependent(ctx, { personId, ...d.add });
-        dependentsImported++;
+        await addDependentTx(tx,ctx,personId,d.add);
+        familyCount++;
       }
+      return {employmentId,personId,familyCount};
+      })();
+      employmentByRow.set(index,saved.employmentId);
+      if(row.hire.employeeCode)registerSubjects.set(row.hire.employeeCode,{employmentId:saved.employmentId,personId:saved.personId});
+      dependentsImported+=saved.familyCount;
+      if(saved.familyCount)familySyncPersonIds.add(saved.personId);
       imported++;
     } catch (e) {
       failed.push({ rowNum: row.result.rowNum, email: row.result.email, message: publicErrorMessage(e) });
+      throw e;
     }
   }
 
@@ -1185,7 +1250,7 @@ export async function commitEmployeeImport(
         email: row.result.email,
         message: 'the direct superior named on this row was not imported',
       });
-      continue;
+      throw new Error('The direct superior named on this row was not imported.');
     }
     try {
       await setReportingLine(ctx, {
@@ -1193,19 +1258,21 @@ export async function commitEmployeeImport(
         managerEmploymentId: manager,
         lineType: 'administrative',
         validFrom: row.hire.hiredOn,
-      });
+      },tx);
     } catch (e) {
-      // The employee EXISTS — only the link failed. Reported apart from `failed` for exactly that reason.
+      // A reporting-link refusal aborts the enclosing import transaction as well.
       superiorFailed.push({
         rowNum: row.result.rowNum,
         email: row.result.email,
         message: publicErrorMessage(e),
       });
+      throw e;
     }
   }
 
-  await withTenant(ctx, (tx) =>
-    appendEvent(tx, {
+  for(const register of registers)registersImported[register.preview.kind]=await writeRegisterRowsTx(tx,ctx,register.preview.kind,register.resolved,registerSubjects);
+
+  await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employee-import',
       aggregateId: p.companyId,
@@ -1222,10 +1289,24 @@ export async function commitEmployeeImport(
         companyIds: [...new Set(valid.map((r) => r.hire.companyId))],
         // Item 2983802f — the family sheet's contribution, so the audit trail describes the whole run.
         dependents: dependentsImported,
+        registers:registersImported,
       },
-    }),
-  );
+    });
 
+    });
+  } catch(error) {
+    const first=failed[0]??superiorFailed[0];
+    const reason=first?.message??publicErrorMessage(error);
+    writeFileErrors.push(`No employee rows were written. The import was rolled back${first?` after row ${first.rowNum} was refused`:''}. ${reason}`);
+    failed.splice(0,failed.length,...valid.map(row=>({rowNum:row.result.rowNum,email:row.result.email,message:first?.rowNum===row.result.rowNum?reason:'Not written because the import was rolled back.'})));
+    superiorFailed.splice(0);imported=0;dependentsImported=0;registersImported.qualification=0;registersImported.emergency=0;employmentByRow.clear();
+  }
+
+  // A post-commit refresh failure must never be described as a rolled-back employee import.
+  if(!writeFileErrors.length) for(const personId of familySyncPersonIds) {
+    try { const result=await syncChildReliefFromFamily(ctx,personId);if(result.skipped==='error')writeWarnings.push('Family records were saved; review the tax child-relief refresh on the Personnel record.'); }
+    catch { writeWarnings.push('Family records were saved; review the tax child-relief refresh on the Personnel record.'); }
+  }
   const runId = await recordImportRun(ctx, {
     companyId: p.companyId,
     fileName: p.fileName ?? '',
@@ -1241,8 +1322,10 @@ export async function commitEmployeeImport(
     failed,
     skipped: resolved.length - valid.length,
     dependentsImported,
+    registersImported,
     superiorFailed,
-    fileErrors: [],
+    fileErrors: writeFileErrors,
+    warnings: [...new Set(writeWarnings)],
     runId,
   };
 }

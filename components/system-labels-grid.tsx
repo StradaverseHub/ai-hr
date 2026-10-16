@@ -8,8 +8,8 @@
  * selected category. Inline cell editing (no pop-ups), add / duplicate / delete-or-archive rows, multi-row
  * paste from a real spreadsheet, keyboard navigation (Tab / Enter / arrows), client-side search / column
  * sort / status + scope filters, ONE atomic Save (all creates + updates in a single transaction with
- * per-row validation highlighting), a Scope cell (Global / company-specific), a "Copy to companies" bulk
- * action, per-company sharing toggles, and CSV export. Import is deferred (the reporter marked it future).
+ * per-row validation highlighting), a per-code Criteria cell (Global / selected companies), a "Copy to companies" bulk
+ * action and CSV export. The common workspace also supports the canonical Excel import/export workflow.
  *
  * PAGED SINCE 9da61c86, through the shared client pager. Rows are filtered and sorted FIRST and sliced
  * second, so a column header still orders the whole category rather than the twenty-five rows on screen;
@@ -17,8 +17,8 @@
  * neither of them the page. The per-row ticks are the one thing that is page-scoped — see the note beside
  * the selection reset.
  *
- * All writes go through server actions passed in from the page; scope changes (Global / assign / unassign)
- * fire immediately (a saved row must exist first), while text edits + new rows batch into Save.
+ * All writes go through server actions passed in from the page. Criteria is staged in its editor and
+ * committed on Apply for saved rows; text edits and complete new-row criteria batch into Save.
  */
 
 import { refreshEditableRows } from '@/lib/refresh-editable-rows';
@@ -50,7 +50,7 @@ import {
 import { ORGANISATION_LABEL_KINDS, ORGANISATION_LABEL_COLUMNS, type OrganisationLabelKind } from '@/lib/system-label-definition';
 export type GridKind = OrganisationLabelKind;
 
-export type GridCompany = { id: string; name: string; sharedSystemLabels: boolean };
+export type GridCompany = { id: string; name: string; archived?:boolean };
 
 /** A normalized label record — the page maps each kind's rows into this shape. */
 export type GridRecord = {
@@ -92,6 +92,7 @@ export type GridActions = {
       creates: {
         key: string;
         companyId: string;
+        companyIds?: string[];
         isGlobal?: boolean;
         code?: string;
         name?: string;
@@ -118,11 +119,10 @@ export type GridActions = {
       }[];
     },
   ) => Promise<{ ok: true; created: number; updated: number; createdIds: { key: string; id: string }[] } | { ok: false; rowErrors: { key: string; field?: string; message: string; code?: string }[]; message?: string }>;
-  setGlobal: (kind: GridKind, labelId: string, isGlobal: boolean) => Promise<{ ok: true } | { ok: false; message: string }>;
+  setCriteria: (kind: GridKind, labelId: string, criteria: {isGlobal:boolean;companyIds:string[]}) => Promise<{ ok: true } | { ok: false; message: string }>;
   assign: (kind: GridKind, labelId: string, companyIds: string[]) => Promise<{ ok: true } | { ok: false; message: string }>;
   unassign: (kind: GridKind, labelId: string, companyIds: string[]) => Promise<{ ok: true } | { ok: false; message: string }>;
   copyToCompanies: (kind: GridKind, labelIds: string[], companyIds: string[]) => Promise<{ ok: true } | { ok: false; message: string }>;
-  setCompanyShared: (companyId: string, enabled: boolean) => Promise<{ ok: true } | { ok: false; message: string }>;
 };
 
 // 797e3523: the visible category rail. 1001ff61 — Business Unit is RE-EXPOSED here: the Organisation
@@ -165,7 +165,7 @@ function emptyDraft(key: string, companyId: string, isGlobal: boolean): RowState
     isGlobal,
     archived: false,
     inUse: false,
-    assignedCompanyIds: [],
+    assignedCompanyIds: isGlobal ? [] : [companyId],
     createdAt: null,
     lastUpdatedAt: null,
     lastUpdatedBy: null,
@@ -296,12 +296,12 @@ export function SystemLabelsGrid({
   // resolved; success confirmations are the transient corner toast (sonner), same as other admin screens.
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [newRowCompany, setNewRowCompany] = useState(companies[0]?.id ?? '');
+  const newRowCompany = companies.find(company => !company.archived&&writableCompanyIds.includes(company.id))?.id ?? '';
   const [scopePopover, setScopePopover] = useState<string | null>(null);
   const [copyOpen, setCopyOpen] = useState(false);
-  const [showSharing, setShowSharing] = useState(false);
   const [pending, startTransition] = useTransition();
   const draftSeq = useRef(0);
+  const focusDraft = useRef<string | null>(null);
   // Paging rides in the address (?page=&size=), as it does on the server-paged screens — which is what
   // keeps your place across the save round trip and makes the view a shareable link.
   const pq = useClientPageQuery();
@@ -350,18 +350,23 @@ export function SystemLabelsGrid({
   /**
    * Put a new draft in front of the reader (9da61c86).
    *
-   * Appended rows land wherever the current sort puts them, which on a paged list is usually a page
-   * nobody is looking at — Add Row would read as doing nothing. (An active search hides a still-empty
-   * draft, as it always has; findIndex answers -1 and pageOfIndex turns that into page one.)
+   * Drafts precede saved rows independently of sorting and filtering. Follow the stable draft key
+   * to page one and focus its first editable field without clearing any other unsaved row.
    */
-  function followDraft(next: RowState[], key: string) {
-    goToPage(pageOfIndex(applyView(next).findIndex((r) => r.key === key), pq.size));
+  function followDraft(_next: RowState[], key: string) {
+    focusDraft.current = key;
+    goToPage(1);
   }
+  useEffect(() => {
+    if (!focusDraft.current) return;
+    const input = document.querySelector<HTMLInputElement>(`[data-row-key="${focusDraft.current}"] input[data-cell]:not([readonly]):not([disabled])`);
+    if (input) { input.focus(); input.select(); focusDraft.current = null; }
+  }, [rowsByKind, kind, pq.page]);
   function addRow() {
     if (!newRowCompany) return;
     draftSeq.current += 1;
     const draft = emptyDraft(`draft-${draftSeq.current}`, newRowCompany, isGroupAdmin);
-    const next = [...rows, draft];
+    const next = [draft, ...rows];
     patchRows(next);
     followDraft(next, draft.key);
   }
@@ -379,7 +384,7 @@ export function SystemLabelsGrid({
     if (!canWrite(src)) return;
     draftSeq.current += 1;
     const copy = { ...emptyDraft(`draft-${draftSeq.current}`, src.companyId, src.isGlobal && isGroupAdmin), code: src.code, name: src.name, title: src.title, jobFamily: src.jobFamily, label: src.label, businessUnitId: src.businessUnitId, headEmploymentId: src.headEmploymentId, description: src.description };
-    const next = [...rows, copy];
+    const next = [copy, ...rows];
     patchRows(next);
     followDraft(next, copy.key);
   }
@@ -404,7 +409,8 @@ export function SystemLabelsGrid({
     const k = kind; // capture: the async result must reconcile the kind that was saved.
     const creates = drafts.map((r) => ({
       key: r.key,
-      companyId: r.companyId,
+      companyId:r.isGlobal?newRowCompany:r.assignedCompanyIds.find(id=>writableIds.has(id)&&companies.some(company=>company.id===id&&!company.archived))??r.companyId,
+      companyIds: r.assignedCompanyIds,
       isGlobal: r.isGlobal,
       code: r.code,
       name: r.name,
@@ -452,7 +458,7 @@ export function SystemLabelsGrid({
           [k]: prev[k].map((r) => {
             if (r.isNew) {
               const newId = idByKey.get(r.key);
-              return newId ? { ...r, id: newId, key: newId, isNew: false, dirty: false } : r;
+              return newId ? { ...r, companyId:creates.find(create=>create.key===r.key)?.companyId??r.companyId, id: newId, key: newId, isNew: false, dirty: false } : r;
             }
             return updatedKeys.has(r.key) ? { ...r, dirty: false } : r;
           }),
@@ -486,40 +492,20 @@ export function SystemLabelsGrid({
   function patchRowClean(k: GridKind, key: string, fields: Partial<RowState>) {
     setRowsByKind((prev) => ({ ...prev, [k]: prev[k].map((r) => (r.key === key ? { ...r, ...fields } : r)) }));
   }
-  function toggleGlobal(r: RowState) {
+  function applyCriteria(r: RowState, criteria: {isGlobal:boolean;companyIds:string[]}) {
     const k = kind;
-    const next = !r.isGlobal;
+    if (r.isNew) {
+      const owner=criteria.isGlobal?newRowCompany:criteria.companyIds.find(id=>writableIds.has(id)&&companies.some(company=>company.id===id&&!company.archived))??r.companyId;
+      setRowsByKind(previous=>({...previous,[k]:previous[k].map(row=>row.key===r.key?{...row,companyId:owner,headEmploymentId:owner===row.companyId?row.headEmploymentId:null,isGlobal:criteria.isGlobal,assignedCompanyIds:criteria.companyIds,dirty:true}:row)}));
+      setScopePopover(null);
+      return;
+    }
     startTransition(async () => {
-      const res = await actions.setGlobal(k, r.id, next);
-      if (!res.ok) {
-        setError(failureText(res.message));
-        return;
-      }
-      setError(null);
-      // Reflect the new scope locally so the Scope pill updates immediately (revalidatePath does not
-      // re-seed the grid) and a later text-edit Save reads the correct isGlobal.
-      patchRowClean(k, r.key, { isGlobal: next });
-    });
-  }
-  function applyCompanies(r: RowState, nextIds: string[]) {
-    const k = kind;
-    const cur = new Set(r.assignedCompanyIds);
-    const next = new Set(nextIds);
-    const toAssign = nextIds.filter((id) => !cur.has(id));
-    const toRemove = r.assignedCompanyIds.filter((id) => !next.has(id));
-    startTransition(async () => {
-      if (toAssign.length) {
-        const a = await actions.assign(k, r.id, toAssign);
-        if (!a.ok) return setError(failureText(a.message));
-      }
-      if (toRemove.length) {
-        const u = await actions.unassign(k, r.id, toRemove);
-        if (!u.ok) return setError(failureText(u.message));
-      }
+      const result = await actions.setCriteria(k, r.id, criteria);
+      if (!result.ok) { setError(failureText(result.message)); return; }
       setError(null);
       setScopePopover(null);
-      // Reflect the new company assignments locally so the Scope pill updates without a hard reload.
-      patchRowClean(k, r.key, { assignedCompanyIds: nextIds });
+      patchRowClean(k, r.key, {isGlobal: criteria.isGlobal, assignedCompanyIds: criteria.isGlobal ? [] : criteria.companyIds});
     });
   }
 
@@ -554,7 +540,7 @@ export function SystemLabelsGrid({
       news.push(d);
     }
     if (news.length) {
-      const next = [...rows, ...news];
+      const next = [...news, ...rows];
       patchRows(next);
       followDraft(next, news[0].key);
     }
@@ -563,7 +549,9 @@ export function SystemLabelsGrid({
   // ── Derived view: filter + search + sort. A function as well as a memo, because addRow, duplicateRow
   //    and the multi-row paste all need to ask which page their new draft landed on. ──
   const applyView = useCallback((source: RowState[]) => {
+    const drafts = source.filter(row => row.isNew);
     let v = source.filter((r) => {
+      if (r.isNew) return false;
       if (statusFilter === 'active' && r.archived) return false;
       if (statusFilter === 'archived' && !r.archived) return false;
       if (scopeFilter === 'global' && !r.isGlobal) return false;
@@ -581,7 +569,7 @@ export function SystemLabelsGrid({
         return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
       });
     }
-    return v;
+    return [...drafts, ...v];
   }, [statusFilter, scopeFilter, search, sortField, sortDir]);
 
   const view = useMemo(() => applyView(rows), [applyView, rows]);
@@ -612,18 +600,15 @@ export function SystemLabelsGrid({
 
   function scopeLabel(r: RowState): string {
     if (r.isGlobal) return t('scopeGlobal');
-    const extra = r.assignedCompanyIds.filter((id) => id !== r.companyId);
-    if (extra.length === 0) return companyName.get(r.companyId) ?? t('scopeOwn');
-    return t('scopeCompaniesN', { n: extra.length + 1 });
+    const extra = r.assignedCompanyIds;
+    return extra.length === 1 ? companyName.get(extra[0]) ?? t('scopeCompanySpecific') : t('scopeCompaniesN', {n:extra.length});
   }
 
-  /** r285 — the Head cell's text on a READ-ONLY row, where the select is stated rather than offered.
-   *  Falls back to the None label when no head is set, and to the stored id when the row's company is
-   *  outside this admin's employee read (a foreign Global row) — never to an empty cell, which would
-   *  read as "no head" about a unit that has one. */
+  /** Preserve a retained head outside the scoped employee options without claiming it is unset
+   * or presenting an internal identifier as a person's name. No wider employee read is needed. */
   function headLabel(r: RowState): string {
     if (!r.headEmploymentId) return to('headNone');
-    return (headByCompany[r.companyId] ?? []).find((o) => o.id === r.headEmploymentId)?.label ?? r.headEmploymentId;
+    return (headByCompany[r.companyId] ?? []).find((o) => o.id === r.headEmploymentId)?.label ?? t('headUnavailable');
   }
   /** r285 — the options a row's Head select offers. The row's CURRENT head is always among them, even
    *  when it is missing from the company's option list: a `<select>` whose value matches no option
@@ -775,34 +760,7 @@ export function SystemLabelsGrid({
             ))}
           </ul>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowSharing((v) => !v)}
-          className="mt-3 w-full rounded-lg border border-border px-3 py-2 text-left text-xs font-medium text-muted-foreground hover:bg-muted"
-        >
-          {t('sharingSettings')}
-        </button>
-        {showSharing && (
-          <div className="mt-2 rounded-xl border border-border bg-card p-2">
-            <p className="px-1 pb-2 text-[11px] leading-snug text-muted-foreground">{t('sharedLabelsToggleHint')}</p>
-            <ul className="space-y-1">
-              {companies.map((c) => (
-                <li key={c.id} className="flex items-center justify-between gap-2 px-1">
-                  <span className="truncate text-xs text-foreground">{c.name}</span>
-                  <label className="inline-flex cursor-pointer items-center gap-1">
-                    <input
-                      type="checkbox"
-                      defaultChecked={c.sharedSystemLabels}
-                      disabled={pending}
-                      onChange={(e) => runScope(() => actions.setCompanyShared(c.id, e.target.checked))}
-                      className="size-3.5 accent-primary"
-                    />
-                  </label>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+
       </nav>
 
       {/* Main body. b1b81a08: selecting Grades in the rail swaps THIS panel for gradesSlot — the
@@ -839,14 +797,7 @@ export function SystemLabelsGrid({
             {showFilters ? <ChevronUp className="size-3.5" aria-hidden /> : <ChevronDown className="size-3.5" aria-hidden />}
           </button>
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <select value={newRowCompany} onChange={(e) => setNewRowCompany(e.target.value)} className={`${inputCls} h-8 w-auto`} title={t('addToCompany')}>
-              {companies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-            <Button type="button" variant="outline" size="sm" onClick={addRow}>
+            <Button type="button" variant="outline" size="sm" onClick={addRow} disabled={!newRowCompany || pending}>
               {t('addRow')}
             </Button>
             <Button type="button" variant="outline" size="sm" onClick={() => setCopyOpen((v) => !v)} disabled={selected.size === 0}>
@@ -866,7 +817,7 @@ export function SystemLabelsGrid({
 
         {/* 797e3523: collapsible filter panel — search + status + criteria scope. */}
         {showFilters && (
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/20 p-2">
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-2">
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -967,7 +918,7 @@ export function SystemLabelsGrid({
                 // the defect this round fixed.
                 const readOnly = !canWrite(r);
                 return (
-                  <tr key={r.key} className={`${r.archived ? 'opacity-50' : ''} ${err ? 'bg-destructive/5' : ''}`}>
+                  <tr key={r.key} data-row-key={r.key} className={`${r.archived ? 'opacity-50' : ''} ${err ? 'bg-destructive/5' : ''}`}>
                     <td className="px-2 py-1.5 align-middle">
                       {/* Deliberately NOT withheld on a read-only row: the tick feeds "Copy to
                           companies", whose write is a label_company_assignment row gated on the TARGET
@@ -1004,7 +955,7 @@ export function SystemLabelsGrid({
                           // the two when the cell will not take an edit.
                           title={readOnly ? t('readOnlyRow') : String(r[c.field] ?? '')}
                           className={`${cellInput} w-full min-w-0 ${err?.field === c.field ? 'border-destructive' : ''} ${
-                            readOnly ? 'cursor-default bg-muted/40 text-muted-foreground' : ''
+                            readOnly ? 'cursor-default bg-card text-muted-foreground' : ''
                           }`}
                         />
                       </td>
@@ -1044,9 +995,7 @@ export function SystemLabelsGrid({
                     )}
                     {/* Criteria (scope) */}
                     <td className="relative px-3 py-1.5">
-                      {r.isNew ? (
-                        <span className="text-xs text-muted-foreground">{t('saveFirst')}</span>
-                      ) : readOnly ? (
+                      {readOnly || (!isGroupAdmin && (r.isGlobal || r.assignedCompanyIds.some(id => !writableIds.has(id)))) ? (
                         // Criteria is a WRITE (setGlobal / assign / unassign all update RLS-guarded
                         // tables), so on a read-only row it is stated, not offered.
                         <span
@@ -1069,13 +1018,13 @@ export function SystemLabelsGrid({
                           <ChevronDown className="size-3.5 shrink-0" aria-hidden />
                         </button>
                       )}
-                      {scopePopover === r.key && !r.isNew && !readOnly && (
+                      {scopePopover === r.key && !readOnly && (
                         <ScopePopover
                           row={r}
                           companies={companies}
                           isGroupAdmin={isGroupAdmin}
-                          onToggleGlobal={() => toggleGlobal(r)}
-                          onApplyCompanies={(ids) => applyCompanies(r, ids)}
+                          pending={pending}
+                          onApplyCriteria={(criteria) => applyCriteria(r, criteria)}
                           onClose={() => setScopePopover(null)}
                           t={t}
                         />
@@ -1149,74 +1098,26 @@ function RowIconButton({ children, title, onClick, disabled }: { children: React
   );
 }
 
-function ScopePopover({
-  row,
-  companies,
-  isGroupAdmin,
-  onToggleGlobal,
-  onApplyCompanies,
-  onClose,
-  t,
-}: {
-  row: RowState;
-  companies: GridCompany[];
-  isGroupAdmin: boolean;
-  onToggleGlobal: () => void;
-  onApplyCompanies: (ids: string[]) => void;
-  onClose: () => void;
+function ScopePopover({row, companies, isGroupAdmin, pending, onApplyCriteria, onClose, t}: {
+  row: RowState; companies: GridCompany[]; isGroupAdmin: boolean; pending: boolean;
+  onApplyCriteria: (criteria:{isGlobal:boolean;companyIds:string[]})=>void; onClose:()=>void;
   t: ReturnType<typeof useTranslations>;
 }) {
-  // The origin company is always implicitly assigned; the popover edits the ADDITIONAL companies.
-  const [checked, setChecked] = useState<Set<string>>(new Set(row.assignedCompanyIds));
-  return (
-    <div className="absolute right-0 z-20 mt-1 w-64 rounded-lg border border-border bg-popover p-3 shadow-lg">
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={row.isGlobal} disabled={!isGroupAdmin} onChange={onToggleGlobal} className="size-3.5 accent-primary" />
-        <span className={isGroupAdmin ? '' : 'text-muted-foreground'}>{t('scopeGlobal')}</span>
-      </label>
+  const dialog=useRef<HTMLDivElement>(null);
+  useEffect(()=>{const previous=document.activeElement as HTMLElement|null;dialog.current?.querySelector<HTMLInputElement>('input:not([disabled])')?.focus();return()=>{if(previous?.isConnected)previous.focus();};},[]);
+  const [global, setGlobal] = useState(row.isGlobal);
+  const [checked, setChecked] = useState<Set<string>>(new Set(row.assignedCompanyIds.length ? row.assignedCompanyIds : [row.companyId]));
+  return <div ref={dialog} role="dialog" onKeyDown={event=>{if(event.key==='Escape'&&!pending){event.preventDefault();event.stopPropagation();onClose();}}} aria-label={t('col.scope')} className="absolute right-0 z-20 mt-1 w-64 rounded-lg border border-border bg-popover p-3 shadow-lg">
+    <fieldset disabled={pending}>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={global} disabled={!isGroupAdmin} onChange={event=>setGlobal(event.target.checked)} className="size-3.5 accent-primary"/>{t('scopeGlobal')}</label>
       {!isGroupAdmin && <p className="mt-1 text-[11px] text-muted-foreground">{t('globalGroupAdminOnly')}</p>}
-      {!row.isGlobal && (
-        <>
-          <div className="mt-2 max-h-40 space-y-1 overflow-y-auto border-t border-border pt-2">
-            {companies.map((c) => (
-              <label key={c.id} className="flex items-center gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  checked={checked.has(c.id)}
-                  disabled={c.id === row.companyId}
-                  onChange={(e) => {
-                    setChecked((prev) => {
-                      const n = new Set(prev);
-                      if (e.target.checked) n.add(c.id);
-                      else n.delete(c.id);
-                      return n;
-                    });
-                  }}
-                  className="size-3.5 accent-primary"
-                />
-                <span className="truncate">
-                  {c.name}
-                  {c.id === row.companyId ? ` (${t('origin')})` : ''}
-                </span>
-              </label>
-            ))}
-          </div>
-          <div className="mt-2 flex justify-end gap-2">
-            <button type="button" onClick={onClose} className="rounded-md border border-input px-2 py-1 text-xs hover:bg-muted">
-              {t('cancel')}
-            </button>
-            <button
-              type="button"
-              onClick={() => onApplyCompanies(Array.from(checked))}
-              className="rounded-md bg-primary px-2 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-            >
-              {t('apply')}
-            </button>
-          </div>
-        </>
-      )}
-    </div>
-  );
+      {!global && <div className="mt-2 max-h-40 space-y-1 overflow-y-auto border-t border-border pt-2">{companies.map(company=><label key={company.id} className="flex items-center gap-2 text-xs">
+        <input type="checkbox" checked={checked.has(company.id)} disabled={company.archived&&!checked.has(company.id)} onChange={event=>setChecked(previous=>{const next=new Set(previous);if(event.target.checked)next.add(company.id);else next.delete(company.id);return next;})} className="size-3.5 accent-primary"/>{company.name}
+      </label>)}</div>}
+      <div className="mt-3 flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded-md border border-input px-2 py-1 text-xs hover:bg-accent">{t('cancel')}</button>
+        <button type="button" disabled={!global && checked.size===0} onClick={()=>onApplyCriteria({isGlobal:global,companyIds:global?[]:[...checked]})} className="rounded-md bg-primary px-2 py-1 text-xs font-medium text-primary-foreground disabled:opacity-40">{t('apply')}</button></div>
+    </fieldset>
+  </div>;
 }
 
 function CopyToCompaniesBar({

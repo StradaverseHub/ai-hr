@@ -18,8 +18,9 @@ export function DownloadTemplate({
   onDownloaded?: () => void;
 }) {
   const t = useTranslations('components.downloadTemplate');
+  const personnel = useTranslations();
   function download() {
-    const csv = buildTemplateCsv(spec);
+    const csv = buildTemplateCsv(spec,(key,fallback)=>personnel.has(key)?personnel(key):fallback);
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
     const a = document.createElement('a');
     a.href = url;

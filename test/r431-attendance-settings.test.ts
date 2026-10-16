@@ -39,7 +39,7 @@ const litRow = (pathname: string) =>
 
 describe('r431: the Settings page cards', () => {
   it('the five existing cards remain in order and Attendance adds its independent workflow card', () => {
-    expect(ATTENDANCE_SETTINGS_CARDS.map((c) => c.href)).toEqual([...OLD_ROW_HREFS, '/admin/attendance/approval-workflow']);
+    expect(ATTENDANCE_SETTINGS_CARDS.map((c) => c.href)).toEqual([...OLD_ROW_HREFS, '/admin/attendance/settings/company-policy','/admin/attendance/settings/work-schedule-overtime','/admin/attendance/settings/registered-devices','/admin/attendance/approval-workflow','/admin/attendance/settings/overtime-patterns']);
   });
 
   it('every card is a real, registered screen — nothing was renamed, so no redirect is needed', () => {
@@ -92,7 +92,11 @@ describe('r431: the Settings page cards', () => {
       'Schedule',
       'Attendance Allowance',
       'Locations',
+      'Company Policy Settings',
+      'Work Schedule & Overtime Rates',
+      'Registered Clocking Devices',
       'Approval Workflow',
+      'Overtime Patterns',
     ]);
   });
 });

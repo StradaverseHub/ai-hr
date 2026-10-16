@@ -99,7 +99,9 @@ export interface ScreenEntry {
  * payroll surfaces. `routes` collapses parent+child pages that share one guard into a single column.
  */
 export const SCREENS: readonly ScreenEntry[] = [
+  {screenKey:'employeeMasterReports',href:'/reports/employee-master',labelKey:'employeeMasterReports.title',guard:'scopedSession',routes:['/reports/employee-master','/reports/employee-master/[id]']},
   {screenKey:'onehrAssignments',href:'/me/performance',labelKey:'onehr.assignments',guard:'scopedSession',routes:['/performance/workspace','/performance/assessment/feedback/[requestId]','/performance/assessment/calibration/[sessionId]'],hasScopeNote:true},
+  {screenKey:'attendanceConfigurationDestinations',href:'/admin/attendance/settings/company-policy',labelKey:'attendanceSettingsHub.companyPolicy.title',guard:'scopedAdmin',routes:['/admin/attendance/settings/company-policy','/admin/attendance/settings/work-schedule-overtime','/admin/attendance/settings/registered-devices']},
   {screenKey:'attendanceApprovalWorkflow',href:'/admin/attendance/approval-workflow',labelKey:'nav.attendanceApprovalWorkflow',guard:'scopedAdmin',routes:['/admin/attendance/approval-workflow','/admin/attendance/approval-workflow/new','/admin/attendance/approval-workflow/[lineageId]','/admin/attendance/approval-workflow/[lineageId]/edit']},
   {screenKey:'attendanceApplicationHistory',href:'/attendance/application-history',labelKey:'nav.applicationHistory',guard:'scopedAdmin',routes:['/attendance/application-history','/attendance/application-history/[id]']},
   {screenKey:'workflowEmail',href:'/admin/settings/notifications',labelKey:'nav.workflowEmail',guard:'scopedAdmin',routes:['/admin/settings/notifications'],hasScopeNote:true},
@@ -146,7 +148,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     // r404 (42e55e2b) — '/leave/details' (My Leave › Leave Details) rides this column on the same argument:
     // the employee's own leave balances, same audience, same guard (`scopedSession`), self-scoped in the page
     // by `myEmployment(session)`. A second column would repeat the "My Absence" label.
-    routes: ['/leave', '/leave/history', '/leave/credit', '/leave/details'],
+    routes: ['/leave', '/leave/history', '/leave/credit', '/leave/credit-details', '/leave/details'],
     hasScopeNote: true,
   },
   {
@@ -800,7 +802,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     guard: 'requireAdmin',
     // 66b8f5a8: Holiday split into two tabs — Holiday master (/admin/holidays) + Holiday Group
     // (/admin/holidays/groups) with dedicated add/edit pages. All requireAdmin (same guard as before).
-    routes: ['/admin/holidays', '/admin/holidays/groups', '/admin/holidays/groups/new', '/admin/holidays/groups/[id]'],
+    routes: ['/admin/holidays', '/admin/holidays/replacements', '/admin/holidays/groups', '/admin/holidays/groups/new', '/admin/holidays/groups/[id]'],
   },
   {
     // R33 f21d6eee: /admin/attendance is now the shared shift library ("Shift settings").
@@ -938,6 +940,8 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/admin/attendance-policy/schedule',
       '/admin/attendance-policy/rules/new',
       '/admin/attendance-policy/rules/[ruleId]',
+      // fcc2ea42 — independent OT formula workspace; existing permission identity and guard.
+      '/admin/attendance/settings/overtime-patterns',
     ],
   },
   {

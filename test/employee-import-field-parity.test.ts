@@ -5,19 +5,11 @@
  * behind Personnel, please stop it falling behind. Adding the seven columns answers the symptom for one
  * release; this file answers the disease, which is why the plan ordered it FIRST.
  *
- * THE REGISTRY IS THE SCHEMA. There is no hand-written list of "employee fields" in this repo, and
- * inventing one would just be a third list to drift (the template, the validator, and now a registry).
- * The durable registry is the set of COLUMNS on the tables that hold employee information — when
- * Personnel gains a field it gains a column, always, because a field with nowhere to store itself does
- * not exist. So this test enumerates those tables with drizzle's `getTableColumns` and demands that
- * EVERY column is one of two things:
- *
- *   COVERED  — carried by a named import column (employee sheet or family sheet), or
- *   EXCLUDED — deliberately out, with a REASON written down next to it.
- *
- * A field that is neither turns this test red. That is the whole mechanism: a future Personnel change
- * cannot silently widen the gap between the profile and the file, because the person adding the column
- * has to say, in one line, which import column carries it or why none does.
+ * Personnel descriptors are the declaration source shared by forms, templates and reports. This
+ * complementary schema guard accounts for persistence fields, including explicit workflow exclusions.
+ * New descriptor-backed import writers claim their actual schema fields below; old full-import
+ * projections remain explicit because a projection name need not equal a database column name.
+ * The actual mounted-form coverage guard separately detects visible fields missing a descriptor.
  *
  * IT FAILS IN BOTH DIRECTIONS, on purpose:
  *   · a NEW schema column with no entry            → "not covered and not excluded"
@@ -33,6 +25,7 @@ import {
   assignment,
   compensation,
   employeeDependent,
+  employeeQualification,
   employment,
   employeeStatutoryMy,
   person,
@@ -40,6 +33,8 @@ import {
   reportingLine,
 } from '../db/schema';
 import { DEPENDENT_IMPORT_COLUMNS, IMPORT_COLUMNS } from '../lib/import-schema';
+import { PERSONNEL_FIELDS } from '../lib/personnel-field-registry';
+import { personnelImportFields } from '../lib/personnel-import-contract';
 
 /** Every import column the EMPLOYEE sheet offers. */
 const EMPLOYEE_SHEET = new Set<string>([...IMPORT_COLUMNS.required, ...IMPORT_COLUMNS.optional]);
@@ -50,9 +45,13 @@ const FAMILY_SHEET = new Set<string>([
 ]);
 
 /** `employee_code` on the family sheet is the LINK to the employee row, not a dependant field. */
-const FAMILY_LINK_COLUMN = 'employee_code';
 
-type Sheet = 'employee' | 'family';
+type Sheet = 'employee' | 'family' | 'qualification' | 'emergency';
+const SHEETS: Record<Sheet, Set<string>> = {
+  employee: EMPLOYEE_SHEET, family: FAMILY_SHEET,
+  qualification: new Set(['employee_code', 'record_id', ...personnelImportFields('qualification').map(field => field.import.column!)]),
+  emergency: new Set(['employee_code', 'record_id', ...personnelImportFields('emergency').map(field => field.import.column!)]),
+};
 
 /** A table in the registry: its columns, and which sheet's columns may claim them. */
 type RegistryTable = {
@@ -60,6 +59,7 @@ type RegistryTable = {
   sheet: Sheet;
   /** schema field → the import column that carries it. */
   covered: Record<string, string>;
+  registerCovered?: { sheet: 'qualification' | 'emergency'; fields: Record<string, string> };
   /** Fields deliberately absent from the template, each under a named reason. */
   excluded: { reason: string; fields: string[] }[];
 };
@@ -544,6 +544,13 @@ const REGISTRY: Record<string, RegistryTable> = {
     ],
   },
 
+  employeeQualification: {
+    table: employeeQualification,
+    sheet: 'qualification',
+    covered: {},
+    excluded: [{ reason: PLUMBING, fields: ['id', 'tenantId', 'employmentId', 'createdAt', 'updatedAt', 'archivedAt'] }],
+  },
+
   // ──────────────────── reporting_line — the Direct Superior edge ────────────────────
   reportingLine: {
     table: reportingLine,
@@ -577,10 +584,37 @@ const REGISTRY: Record<string, RegistryTable> = {
   },
 };
 
+// Only declared canonical writers claim new fields. Unknown writer fields remain visible failures;
+// they are not silently filtered to match the schema. Legacy emergency projections are mapped above.
+const WRITER_TABLE: Record<string, string> = {
+  'person-profile': 'person', 'person-compliance': 'person', 'employment-info': 'employment',
+  operational: 'employment', dependent: 'employeeDependent', bank: 'employeeStatutoryMy',
+  ic: 'employeeStatutoryMy', passport: 'employeeStatutoryMy', 'statutory-registration': 'employeeStatutoryMy',
+};
+for (const field of PERSONNEL_FIELDS) {
+  const spec = field.import;
+  if (spec.column && spec.writer && field.owner !== 'emergencyContact') {
+    const tableName = WRITER_TABLE[spec.writer];
+    if (!tableName || !spec.writerField) throw new Error(`Unaccounted Personnel writer: ${field.id}`);
+    REGISTRY[tableName].covered[spec.writerField] = spec.column;
+  }
+  if (spec.register) {
+    const tableName = spec.register.kind === 'qualification' ? 'employeeQualification' : 'personEmergencyContact';
+    const entry = REGISTRY[tableName];
+    entry.registerCovered ??= { sheet: spec.register.kind, fields: {} };
+    entry.registerCovered.fields[spec.register.writerField] = spec.register.column;
+  }
+}
+for (const entry of Object.values(REGISTRY)) {
+  const imported = new Set([...Object.keys(entry.covered), ...Object.keys(entry.registerCovered?.fields ?? {})]);
+  entry.excluded = entry.excluded.map(group => ({ ...group, fields: group.fields.filter(field => !imported.has(field)) }))
+    .filter(group => group.fields.length > 0);
+}
+
 describe('2983802f · the import template cannot drift from the employee record', () => {
   describe.each(Object.entries(REGISTRY))('%s', (tableName, entry) => {
     const actual = Object.keys(getTableColumns(entry.table));
-    const covered = Object.keys(entry.covered);
+    const covered = [...new Set([...Object.keys(entry.covered), ...Object.keys(entry.registerCovered?.fields ?? {})])];
     const excluded = entry.excluded.flatMap((g) => g.fields);
 
     it('every field is either carried by an import column or excluded with a named reason', () => {
@@ -607,13 +641,18 @@ describe('2983802f · the import template cannot drift from the employee record'
     });
 
     it('every covered field names an import column the template actually offers', () => {
-      const sheet = entry.sheet === 'family' ? FAMILY_SHEET : EMPLOYEE_SHEET;
+      const sheet = SHEETS[entry.sheet];
       const dangling = Object.entries(entry.covered).filter(([, col]) => !sheet.has(col));
       expect(
         dangling,
         `${tableName}: these fields claim an import column that is not in ` +
           `${entry.sheet === 'family' ? 'DEPENDENT_IMPORT_COLUMNS' : 'IMPORT_COLUMNS'}`,
       ).toEqual([]);
+      if (entry.registerCovered) {
+        const register = entry.registerCovered;
+        expect(Object.entries(register.fields).filter(([, column]) => !SHEETS[register.sheet].has(column)),
+          `${tableName}: register fields must name real register columns`).toEqual([]);
+      }
     });
 
     it('every exclusion carries a real reason, not a placeholder', () => {
@@ -626,14 +665,16 @@ describe('2983802f · the import template cannot drift from the employee record'
   });
 
   it('every import column carries a field — a column with nothing behind it is drift in the other direction', () => {
-    const claimed = new Set<string>();
+    const claimed: Record<Sheet, Set<string>> = { employee: new Set(), family: new Set(), qualification: new Set(), emergency: new Set() };
     for (const entry of Object.values(REGISTRY)) {
-      for (const col of Object.values(entry.covered)) claimed.add(col);
+      for (const col of Object.values(entry.covered)) claimed[entry.sheet].add(col);
+      if (entry.registerCovered) for (const col of Object.values(entry.registerCovered.fields)) claimed[entry.registerCovered.sheet].add(col);
     }
-    const employeeOrphans = [...EMPLOYEE_SHEET].filter((c) => !claimed.has(c));
-    expect(employeeOrphans, 'employee-sheet columns that map to no employee field').toEqual([]);
-    const familyOrphans = [...FAMILY_SHEET].filter((c) => !claimed.has(c) && c !== FAMILY_LINK_COLUMN);
-    expect(familyOrphans, 'family-sheet columns that map to no dependant field').toEqual([]);
+    for (const sheet of Object.keys(SHEETS) as Sheet[]) {
+      const links = sheet === 'employee' ? [] : ['employee_code', 'record_id'];
+      expect([...SHEETS[sheet]].filter(column => !claimed[sheet].has(column) && !links.includes(column)),
+        `${sheet}-sheet columns that map to no persisted Personnel field`).toEqual([]);
+    }
   });
 
   it('the seven fields the reporter named as absent are now carried', () => {

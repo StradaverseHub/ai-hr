@@ -6,7 +6,7 @@ import { MY_EA_REPORTING } from './ea-reporting';
  * holiday calendar, and payroll calculators (EPF/SOCSO/EIS/PCB) join here in later slices.
  */
 import { validateEpfElection } from './epf-election';
-import { correctAccidentalHrdfOptOutsMY, defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, isValidIC, normalizeIC, setBankProfileMY, setIcProfileMY, setOthersStatutoryMY, setPassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY, taxNumberSharedWithMY } from './statutory';
+import { correctAccidentalHrdfOptOutsMY, defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, isValidIC, normalizeIC, setBankProfileMY, setRegistrationNumbersMY, setIcProfileMY, setOthersStatutoryMY, setPassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY, taxNumberSharedWithMY } from './statutory';
 import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
 import { MY_HOLIDAYS_2026, MY_STATES } from './holidays';
 import {
@@ -85,6 +85,7 @@ export const myPack: CountryPack = {
     // Partial save of only the salary-payment bank columns + custom-payment-holder controls (item ef720d3a —
     // Bank Information split out of the statutory form into its own card with its own save).
     setBank: setBankProfileMY,
+    setRegistrationNumbers:setRegistrationNumbersMY,
     // Partial saves for the Identification & Tax card (item 8b5334db): IC relocated to the Profile tab (its own
     // seed setter), and the tax columns split into their own card with a dedicated partial save.
     setIc: setIcProfileMY,

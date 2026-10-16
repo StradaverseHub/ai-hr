@@ -47,6 +47,7 @@ import {
 } from './payroll';
 import { employedByCompanyDuring } from './employment-company';
 import { settingEnabled } from './entitlements';
+import { isTransactionEffectiveDate } from '../lib/transaction-effective-date';
 
 const money = (v: number) => Number(v).toFixed(2);
 
@@ -114,15 +115,11 @@ export class InvalidTxnSourceError extends Error {
   }
 }
 
-/** Thrown when an entry's `txnDate` is outside the batch's pay-period month (calendar-month bounds). */
-export class TxnDateOutOfPeriodError extends Error {
-  constructor(
-    public readonly txnDate: string,
-    public readonly periodStart: string,
-    public readonly periodEnd: string,
-  ) {
-    super(`Transaction date ${txnDate} is outside the pay period ${periodStart}…${periodEnd}.`);
-    this.name = 'TxnDateOutOfPeriodError';
+/** The supplied work date is not a real ISO calendar date. */
+export class InvalidTxnDateError extends Error {
+  constructor(public readonly txnDate: string) {
+    super('Enter a valid Effective Date in YYYY-MM-DD format.');
+    this.name = 'InvalidTxnDateError';
   }
 }
 
@@ -502,14 +499,6 @@ export type IndividualTxnRow = {
   notes: string | null;
 };
 
-/** Derive the inclusive calendar-month bounds of a batch's pay period (same pattern as the kernel). */
-function periodBounds(payPeriod: string): { periodStart: string; periodEnd: string } {
-  const [year, month1] = payPeriod.split('-').map(Number);
-  const periodStart = `${payPeriod}-01`;
-  const periodEnd = `${payPeriod}-${String(daysInMonth(year, month1)).padStart(2, '0')}`;
-  return { periodStart, periodEnd };
-}
-
 /**
  * The batch statuses in which this ledger may still be WRITTEN.
  *
@@ -576,13 +565,9 @@ export async function loadWritableBatch(
   };
 }
 
-/** Validate that txnDate falls within the period; throw TxnDateOutOfPeriodError otherwise. Exported for
- *  the bulk wrapper (C5) so it re-uses the identical calendar-month bounds the single-row path uses. */
-export function assertDateInPeriod(txnDate: string, payPeriod: string): void {
-  const { periodStart, periodEnd } = periodBounds(payPeriod);
-  if (txnDate < periodStart || txnDate > periodEnd) {
-    throw new TxnDateOutOfPeriodError(txnDate, periodStart, periodEnd);
-  }
+/** Every writer validates the work date without deriving or changing the processing month. */
+export function assertTransactionDate(txnDate: string): void {
+  if (!isTransactionEffectiveDate(txnDate)) throw new InvalidTxnDateError(txnDate);
 }
 
 /** List the individual transactions for a batch, joined to person name, ordered by txn date. Read-only. */
@@ -724,7 +709,7 @@ export function createIndividualTxn(
     // payable (earning/deduction) row while INDIVIDUAL_TXN_PAY_ENABLED is on.
     await assertTxnComponents(tx, [{ kind: p.kind, componentId: p.componentId }], individualTxnPayEnabled(ctx));
     const target = await resolveTxnTarget(tx, p);
-    assertDateInPeriod(p.txnDate, target.payPeriod);
+    assertTransactionDate(p.txnDate);
     // C3 backstop on the unattached path too: the employment must belong to the target company (the batch
     // path's bulk wrapper enforces it; this single-row path now always does, both shapes).
     const [emp] = await tx
@@ -1070,7 +1055,7 @@ async function addEmploymentToBatchScopeTx(
  *    between selection and save loses nothing (C8/C10).
  *  - company match PER employee: employment.companyId == batch.companyId (CompanyMismatchError, C3).
  *  - scope membership PER employee: employment ∈ batch.scope (EmploymentNotInBatchScopeError, C4).
- *  - per row: valid kind / unit; date-in-period (assertDateInPeriod); amount > 0 (AmountNotPositiveError, C6).
+ *  - per row: valid kind / unit; valid calendar date (assertTransactionDate); amount > 0 (AmountNotPositiveError, C6).
  *
  * One 'payroll.individual-txn.created' DomainEvent is appended PER inserted row (aggregateId = the new row
  * id, subjectEmploymentId = that row's employee), byte-identical in shape to createIndividualTxn's event,
@@ -1199,7 +1184,7 @@ export function createIndividualTxnsBulk(
       if (r.unit != null && !isTxnUnit(r.unit)) throw new InvalidTxnUnitError(r.unit);
       // 4e403268 — validated with the same shape as `unit` above. Null is legal and means hand-keyed.
       if (r.source != null && !isTxnSource(r.source)) throw new InvalidTxnSourceError(r.source);
-      assertDateInPeriod(r.txnDate, payPeriod);
+      assertTransactionDate(r.txnDate);
       if (!(r.amount > 0)) throw new AmountNotPositiveError(r.amount); // C6 — magnitude semantics, all 5 kinds
       // Duplicate-record validation: reject a byte-for-byte identical row within the same submission (the
       // reporter's "validate duplicate records before submission"). Distinct amounts/remarks pass through; the
@@ -1300,8 +1285,7 @@ export function createIndividualTxnsBulk(
  * The caller owns the guards it needs. Back pay supplies them: the employments come from the run's own
  * lines (so they are company-matched by construction), the component ids are the ones it just seeded,
  * every amount is a positive magnitude with the sign carried by `kind`, and the target run is asserted
- * DRAFT before this is called. `assertDateInPeriod` is still enforced here — a date outside the pay month
- * is the one error no caller can be trusted to have ruled out.
+ * DRAFT before this is called. The work date is validated here independently of the processing month.
  */
 export async function insertIndividualTxnsTx(
   tx: Tx,
@@ -1325,7 +1309,7 @@ export async function insertIndividualTxnsTx(
   const ids: string[] = [];
   for (const r of p.rows) {
     if (!isTxnKind(r.kind)) throw new InvalidTxnKindError(r.kind);
-    assertDateInPeriod(r.txnDate, p.payPeriod);
+    assertTransactionDate(r.txnDate);
     // Magnitude semantics, the same contract every other write path enforces: the KIND carries the sign.
     if (!(r.amount > 0)) throw new AmountNotPositiveError(r.amount);
   }
@@ -1407,15 +1391,15 @@ export function updateIndividualTxn(
       .limit(1);
     if (!existing) throw new TxnNotFoundError(p.id); // distinct from BatchNotDraftError (real non-draft case)
     // Attached ⇒ the owning batch must still be writable — draft or processed, never closed (the batch's
-    // payPeriod is authoritative). Unattached ⇒ no batch gate; the row's own stamped payPeriod (0175 CHECK
-    // guarantees it) bounds the date.
+    // payPeriod is authoritative). Unattached ⇒ no batch gate. Both preserve the processing month
+    // independently of the effective work date.
     const batch = existing.batchId != null ? await loadWritableBatch(tx, existing.batchId) : null;
     const payPeriod = batch != null ? batch.payPeriod : existing.payPeriod!;
     const nextKind = p.kind ?? existing.kind;
     if (!isTxnKind(nextKind)) throw new InvalidTxnKindError(nextKind);
     if (p.unit != null && !isTxnUnit(p.unit)) throw new InvalidTxnUnitError(p.unit);
     const nextDate = p.txnDate ?? existing.txnDate;
-    assertDateInPeriod(nextDate, payPeriod);
+    assertTransactionDate(nextDate);
     // C6 — the retained edit path is the OTHER surviving write surface (the create-form path is removed).
     // Enforce the same amount>0 magnitude rule the bulk save enforces, so both write paths agree.
     if (p.amount !== undefined && !(p.amount > 0)) throw new AmountNotPositiveError(p.amount);

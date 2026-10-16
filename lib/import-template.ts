@@ -26,7 +26,9 @@
  *    still what the other four importers offer; it carries that hazard.
  */
 import { toCsv } from './csv';
-import { IMPORT_COLUMNS } from './import-schema';
+import {buildPersonnelCsv} from './personnel-csv';
+import { personnelColumnLabel, type PersonnelLabelResolver } from './personnel-import-contract';
+import { EMPLOYEE_TEMPLATE_COLUMNS as IMPORT_COLUMNS } from './import-schema';
 import { PAYROLL_HISTORY_COLUMNS, PAYROLL_HISTORY_SAMPLE_ROWS } from './payroll-history-import-schema';
 import { LEAVE_IMPORT_COLUMNS } from './leave-import-schema';
 import { LEAVE_HISTORY_COLUMNS } from './leave-history-import-schema';
@@ -40,8 +42,9 @@ export type TemplateSpec = {
 };
 
 /** Header row (the spec's column keys, in order) + the sample rows, serialised to RFC-4180 CSV. */
-export function buildTemplateCsv(spec: TemplateSpec): string {
-  return toCsv([spec.columns.map((c) => c.key), ...spec.sampleRows]);
+export function buildTemplateCsv(spec: TemplateSpec, resolve?: PersonnelLabelResolver): string {
+  if(spec.id==='employee')return buildPersonnelCsv('employee',[spec.columns.map(c=>personnelColumnLabel(c.key,'employee',resolve)),...spec.sampleRows.map(row=>spec.columns.map((_,i)=>row[i]??''))]);
+  return toCsv([spec.columns.map(c=>c.key),...spec.sampleRows]);
 }
 
 /** Pull the data row(s) out of an existing `header\n<rows>` SAMPLE constant (drops the header line). */
@@ -58,6 +61,113 @@ function sampleDataRows(sample: string): string[][] {
  * `seedBase` (departments Finance / Operations only; a valid 12-digit MyKad not present in the demo
  * seed so an unmodified download→upload doesn't hit a dup-IC error).
  */
+const EMPLOYEE_TEMPLATE_SAMPLES:Record<string,string>[] = [
+  {
+    "full_name": "Aisyah Binti Rahman",
+    "email": "aisyah.template@example.com",
+    "department": "Finance",
+    "hired_on": "2026-01-06",
+    "ic_number": "770214086521",
+    "basic_salary": "5000",
+    "company": "",
+    "employee_code": "TMPL0001",
+    "phone": "+60 12-345 6789",
+    "position": "Executive",
+    "cost_center": "CC1",
+    "employment_type": "full_time",
+    "monthly_allowance": "300",
+    "bank_name": "Maybank",
+    "bank_account_no": "514012345678",
+    "epf_number": "",
+    "socso_number": "",
+    "tax_number": "",
+    "tax_category": "2",
+    "num_children": "0",
+    "eis_eligible": "true",
+    "is_resident": "true",
+    "epf_citizenship": "MALAYSIAN",
+    "pay_mode": "monthly",
+    "payment_term": "monthly",
+    "rate_amount": "",
+    "salary_remarks": "",
+    "passport_number": "",
+    "passport_issue_date": "",
+    "passport_expiry_date": "",
+    "passport_issuing_country": "",
+    "address_line_1": "12 Jalan Ampang",
+    "address_line_2": "Taman Melawati",
+    "address_line_3": "",
+    "postcode": "53100",
+    "city": "Kuala Lumpur",
+    "state": "",
+    "country": "",
+    "emergency_contact_name": "Rahman Bin Hassan",
+    "emergency_contact_relationship": "",
+    "emergency_contact_phone": "+60 12-222 3344",
+    "emergency_contact_home_phone": "",
+    "emergency_contact_address": "",
+    "probation_end_date": "2026-04-06",
+    "probation_value": "3",
+    "probation_unit": "month",
+    "confirmation_date": "2026-04-06",
+    "notice_before_confirmation_value": "1",
+    "notice_before_confirmation_unit": "month",
+    "direct_superior": "TMPL0002"
+  },
+  {
+    "full_name": "Daniel Tan Wei Ming",
+    "email": "daniel.template@example.com",
+    "department": "Operations",
+    "hired_on": "2026-02-03",
+    "ic_number": "880901105533",
+    "basic_salary": "4200",
+    "company": "",
+    "employee_code": "TMPL0002",
+    "phone": "",
+    "position": "",
+    "cost_center": "",
+    "employment_type": "contract",
+    "monthly_allowance": "0",
+    "bank_name": "",
+    "bank_account_no": "",
+    "epf_number": "",
+    "socso_number": "",
+    "tax_number": "",
+    "tax_category": "1",
+    "num_children": "0",
+    "eis_eligible": "true",
+    "is_resident": "true",
+    "epf_citizenship": "MALAYSIAN",
+    "pay_mode": "daily",
+    "payment_term": "monthly",
+    "rate_amount": "180",
+    "salary_remarks": "",
+    "passport_number": "A12345678",
+    "passport_issue_date": "2023-05-10",
+    "passport_expiry_date": "2033-05-09",
+    "passport_issuing_country": "",
+    "address_line_1": "",
+    "address_line_2": "",
+    "address_line_3": "",
+    "postcode": "",
+    "city": "",
+    "state": "",
+    "country": "",
+    "emergency_contact_name": "",
+    "emergency_contact_relationship": "",
+    "emergency_contact_phone": "",
+    "emergency_contact_home_phone": "",
+    "emergency_contact_address": "",
+    "probation_end_date": "",
+    "probation_months": "",
+    "probation_days": "",
+    "confirmation_date": "",
+    "resignation_notice_months": "1",
+    "resignation_notice_days": "",
+    "direct_superior": ""
+  }
+];
+
 export const employeeTemplate: TemplateSpec = {
   id: 'employee',
   filename: 'employee-import-template.csv',
@@ -66,122 +176,7 @@ export const employeeTemplate: TemplateSpec = {
     ...IMPORT_COLUMNS.optional.map((key) => ({ key, required: false })),
   ],
   // Order matches columns above (required ∪ optional). Departments are Finance / Operations only.
-  sampleRows: [
-    [
-      'Aisyah Binti Rahman', // full_name
-      'aisyah.template@example.com', // email
-      'Finance', // department
-      '2026-01-06', // hired_on
-      '770214086521', // ic_number (valid 12-digit MyKad; not in the demo seed)
-      '5000', // basic_salary
-      '', // company (d8471481) — blank = the company selected on the import screen
-      'TMPL0001', // employee_code (optional, HR-suppliable; not in the demo seed so a raw download→upload round-trips)
-      '+60 12-345 6789', // phone
-      'Executive', // position
-      'CC1', // cost_center
-      'full_time', // employment_type
-      '300', // monthly_allowance
-      'Maybank', // bank_name
-      '514012345678', // bank_account_no
-      '', // epf_number
-      '', // socso_number
-      '', // tax_number
-      '2', // tax_category
-      '0', // num_children
-      'true', // eis_eligible
-      'true', // is_resident
-      'MALAYSIAN', // epf_citizenship
-      'monthly', // pay_mode (ADR-0078; blank = monthly)
-      'monthly', // payment_term (blank = monthly)
-      '', // rate_amount (only for daily/hourly pay modes)
-      // r369 — salary_remarks is required ONLY when basic_salary is 0 (see IMPORT_COLUMNS). This row has a
-      // basic salary, so it is blank — which is also the demonstration that the column is optional.
-      '', // salary_remarks
-      // ── 2983802f — the seven new blocks. Every cell here is chosen so an UNMODIFIED download → upload
-      //    still round-trips clean, which is why the catalog-backed cells (state / country / emergency
-      //    contact relationship) are blank: their accepted values are per-tenant and live on the
-      //    Reference sheet, so a sample cannot name one that is certain to exist.
-      '', // passport_number — this row is a MyKad holder; the trio is all-or-nothing
-      '', // passport_issue_date
-      '', // passport_expiry_date
-      '', // passport_issuing_country
-      '12 Jalan Ampang', // address_line_1 (the employee's home address)
-      'Taman Melawati', // address_line_2
-      '', // address_line_3
-      '53100', // postcode
-      'Kuala Lumpur', // city
-      '', // state — catalog-backed; see the Reference sheet
-      '', // country — catalog-backed
-      'Rahman Bin Hassan', // emergency_contact_name
-      '', // emergency_contact_relationship — catalog-backed
-      '+60 12-222 3344', // emergency_contact_phone (mobile)
-      '', // emergency_contact_home_phone
-      '', // emergency_contact_address
-      '2026-04-06', // probation_end_date — full_time only (3 months after the hire date above)
-      '3', // probation_months
-      '0', // probation_days
-      '2026-04-06', // confirmation_date
-      '1', // resignation_notice_months
-      '0', // resignation_notice_days
-      // A FORWARD REFERENCE ON PURPOSE: this employee's manager is the row BELOW. Superiors are
-      // resolved after every row is read, so file order never decides whether a valid file imports.
-      'TMPL0002', // direct_superior
-    ],
-    [
-      'Daniel Tan Wei Ming', // full_name
-      'daniel.template@example.com', // email
-      'Operations', // department
-      '2026-02-03', // hired_on
-      '880901105533', // ic_number
-      '4200', // basic_salary
-      '', // company — blank = the company selected on the import screen
-      'TMPL0002', // employee_code (optional)
-      '', // phone
-      '', // position
-      '', // cost_center
-      'contract', // employment_type
-      '0', // monthly_allowance
-      '', // bank_name
-      '', // bank_account_no
-      '', // epf_number
-      '', // socso_number
-      '', // tax_number
-      '1', // tax_category
-      '0', // num_children
-      'true', // eis_eligible
-      'true', // is_resident
-      'MALAYSIAN', // epf_citizenship
-      'daily', // pay_mode (ADR-0078) — a daily-rated worker; basic_salary above stays the monthly-equivalent
-      'monthly', // payment_term
-      '180', // rate_amount — RM per day (required for daily/hourly)
-      '', // salary_remarks — blank again: this row has a basic salary too
-      'A12345678', // passport_number — the trio is all-or-nothing, so all three are filled
-      '2023-05-10', // passport_issue_date
-      '2033-05-09', // passport_expiry_date
-      '', // passport_issuing_country (optional)
-      '', // address_line_1
-      '', // address_line_2
-      '', // address_line_3
-      '', // postcode
-      '', // city
-      '', // state
-      '', // country
-      '', // emergency_contact_name
-      '', // emergency_contact_relationship
-      '', // emergency_contact_phone
-      '', // emergency_contact_home_phone
-      '', // emergency_contact_address
-      // BLANK ON PURPOSE: this row is a CONTRACT hire, and probation_end_date is refused for anything but
-      // full_time — on a contract the same underlying date means the end of the contract, not of probation.
-      '', // probation_end_date
-      '', // probation_months
-      '', // probation_days
-      '', // confirmation_date
-      '1', // resignation_notice_months
-      '', // resignation_notice_days
-      '', // direct_superior — this row IS the manager named above
-    ],
-  ],
+  sampleRows: EMPLOYEE_TEMPLATE_SAMPLES.map(row => [...IMPORT_COLUMNS.required,...IMPORT_COLUMNS.optional].map(key=>row[key]??'')),
 };
 
 /**

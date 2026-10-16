@@ -1,10 +1,10 @@
 /** Real editor and shared navigation guard. No service imports or mocked policy arithmetic. */
 import { describe, expect, it, vi as vitest } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { AttendanceAllowanceEditor } from '../components/attendance-allowance-editor';
-import { emptyAllowanceRules } from '../lib/attendance-allowance-rules';
+import { emptyAllowanceRules,emptyAllowanceRulesV3 } from '../lib/attendance-allowance-rules';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
 import ta from '../messages/ta.json';
@@ -20,29 +20,76 @@ const earningId = '33333333-3333-4333-8333-333333333333';
 const deductionId = '44444444-4444-4444-8444-444444444444';
 const options = {
   companies:[{id:companyId,label:'Example company',currency:'MYR'}],
-  departments:[{id:'55555555-5555-4555-8555-555555555555',label:'Finance',companyId,isGlobal:false}],
-  businessUnits:[],positions:[],grades:[],categories:[],shifts:[],
+  departments:[{id:'55555555-5555-4555-8555-555555555555',label:'Finance',companyId,isGlobal:false,assignedCompanyIds:[]}],
+  businessUnits:[],positions:[],grades:[],categories:[],shifts:[],leaveTypes:[],
   employees:[{id:employeeId,label:'Example employee',companyId,category:null}],
 };
 const components = [{id:earningId,code:'ATTENDANCE',name:'Attendance earning',kind:'allowance'},{id:deductionId,code:'ATT_DEDUCT',name:'Attendance deduction',kind:'deduction'}];
 const submit = vitest.fn(async () => ({error:'Synthetic validation refusal'}));
-function mount(locale:keyof typeof catalogs='en',policy?:Parameters<typeof AttendanceAllowanceEditor>[0]['policy']) {
+function mount(locale:keyof typeof catalogs='en',policy?:Parameters<typeof AttendanceAllowanceEditor>[0]['policy'],setup:Parameters<typeof AttendanceAllowanceEditor>[0]['options']=options) {
   const errors:unknown[]=[];
-  render(<NextIntlClientProvider locale={locale} messages={catalogs[locale]} onError={error=>errors.push(error)}><AttendanceAllowanceEditor options={options} components={components} policy={policy} action={submit}/></NextIntlClientProvider>);
+  render(<NextIntlClientProvider locale={locale} messages={catalogs[locale]} onError={error=>errors.push(error)}><AttendanceAllowanceEditor options={setup} components={components} policy={policy} action={submit}/></NextIntlClientProvider>);
   return errors;
 }
 const form = () => document.getElementById('attendance-allowance-editor') as HTMLFormElement;
 const submittedRules = () => JSON.parse(String(new FormData(form()).get('rules')));
 
 describe('four-section allowance editor', () => {
+  it('clears the visible leave-type choice when changing to a different leave measure, matching the saved rule',async()=>{
+    const leaveId='77777777-7777-4777-8777-777777777777';
+    mount('en',undefined,{...options,leaveTypes:[{id:leaveId,label:'Annual leave',companyId,archived:false}]});
+    const user=userEvent.setup(),t=en.allowanceV2,v=en.allowanceV3;
+    await user.click(screen.getByRole('button',{name:t.addAttendanceCriterion}));
+    await user.selectOptions(screen.getByLabelText(t.field),'leaveDays');
+    await user.click(screen.getByRole('button',{name:v.leaveTypes}));
+    await user.click(screen.getByRole('checkbox',{name:'Annual leave'}));
+    expect(submittedRules().attendance.expression.children[0].leaveTypeIds).toEqual([leaveId]);
+    expect(screen.getByRole('button',{name:'Remove Annual leave'})).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText(t.field),'leaveCount');
+    expect(submittedRules().attendance.expression.children[0].leaveTypeIds).toEqual([]);
+    expect(screen.queryByRole('button',{name:'Remove Annual leave'})).not.toBeInTheDocument();
+  });
+
+  it('keeps current flat draft edits when explicitly switching to grouped conditions and requires review again',async()=>{
+    const rules=emptyAllowanceRules();rules.attendance.criteria=[{field:'actualMinutes',operator:'gte',value:'8',unit:'hours'}];
+    const policy={id:'66666666-6666-4666-8666-666666666666',tenantId:companyId,companyId,code:'V2',name:'Existing flat policy',method:'daily',amount:'20.00',payComponentId:earningId,effectiveFrom:'2025-01-01',status:'active',policyType:'earning',version:2,rules,criteria:{},scope:{},archivedAt:null,createdAt:new Date('2025-01-01T00:00:00Z')};
+    mount('en',policy);const user=userEvent.setup(),t=en.allowanceV2;
+    expect(submittedRules().v).toBe(2);
+    fireEvent.change(screen.getByLabelText(t.threshold),{target:{value:'9.5'}});
+    await user.click(screen.getByRole('checkbox',{name:t.reviewConfirm}));
+    await user.click(screen.getByRole('button',{name:en.allowanceV3.upgrade}));
+    expect(submittedRules()).toMatchObject({v:3,attendance:{expression:{type:'group',children:[{field:'actualMinutes',value:'9.5',unit:'hours'}]}}});
+    expect(screen.getByRole('checkbox',{name:t.reviewConfirm})).not.toBeChecked();
+    expect(screen.getByRole('button',{name:en.allowanceV3.savePreview})).toBeDisabled();
+    expect(rules.attendance.criteria[0].value).toBe('8');
+  });
+
+  it('serializes nested Any groups, preserves stable condition identities when reordered, and clears review after removal',async()=>{
+    mount();const user=userEvent.setup(),t=en.allowanceV2,v=en.allowanceV3;
+    await user.click(screen.getByRole('button',{name:v.addGroup}));
+    const nested=screen.getByRole('group',{name:v.nestedGroup});
+    await user.selectOptions(within(nested).getByLabelText(v.match),'or');
+    await user.selectOptions(within(nested).getByLabelText(t.field),'lateCount');
+    await user.click(within(nested).getByRole('button',{name:t.addAttendanceCriterion}));
+    const before=submittedRules().attendance.expression.children[0];
+    expect(before).toMatchObject({logic:'or',children:[{field:'lateCount',unit:'occurrences'},{field:'actualMinutes',unit:'hours'}]});
+    await user.click(within(nested).getByRole('button',{name:'Move condition 1 down'}));
+    const moved=submittedRules().attendance.expression.children[0];
+    expect(moved.children.map((child:{id:string})=>child.id)).toEqual([before.children[1].id,before.children[0].id]);
+    await user.click(screen.getByRole('checkbox',{name:t.reviewConfirm}));
+    await user.click(within(nested).getByRole('button',{name:'Remove condition 1'}));
+    expect(submittedRules().attendance.expression.children[0].children.map((child:{id:string})=>child.id)).toEqual([before.children[0].id]);
+    expect(screen.getByRole('checkbox',{name:t.reviewConfirm})).not.toBeChecked();
+  });
+
   it.each(Object.keys(catalogs) as (keyof typeof catalogs)[])('renders real rule controls and review wording in %s without unresolved messages', async locale => {
     const errors=mount(locale), t=catalogs[locale].allowanceV2;
     expect(screen.getByRole('heading',{name:t.sections.information})).toBeInTheDocument();
     expect(screen.getByRole('heading',{name:t.sections.employees})).toBeInTheDocument();
     expect(screen.getByRole('heading',{name:t.sections.attendance})).toBeInTheDocument();
     expect(screen.getByRole('heading',{name:t.sections.review})).toBeInTheDocument();
-    expect(screen.getByText(t.fixedRule)).toBeInTheDocument();
-    expect(screen.getByRole('button',{name:t.save})).toBeDisabled();
+    expect(screen.getByText(catalogs[locale].allowanceV3.fixedRule)).toBeInTheDocument();
+    expect(screen.getByRole('button',{name:catalogs[locale].allowanceV3.savePreview})).toBeDisabled();
     const user=userEvent.setup();
     await user.selectOptions(screen.getByLabelText(t.method),'weekly');
     expect(screen.getByText(t.weeklyRule)).toBeInTheDocument();
@@ -65,8 +112,8 @@ describe('four-section allowance editor', () => {
     await user.click(screen.getByRole('button',{name:t.addAttendanceCriterion}));
     await user.selectOptions(screen.getByLabelText(t.operator),'between');
     fireEvent.change(screen.getByLabelText(t.upper),{target:{value:'9'}});
-    expect(submittedRules()).toMatchObject({v:2,employee:{mode:'selected',employmentIds:[employeeId]},attendance:{criteria:[{field:'actualMinutes',operator:'between',value:'8',upper:'9',unit:'hours'}]}});
-    const review=screen.getByRole('checkbox',{name:t.reviewConfirm}),save=screen.getByRole('button',{name:t.save});
+    expect(submittedRules()).toMatchObject({v:3,employee:{mode:'selected',employmentIds:[employeeId]},attendance:{expression:{type:'group',children:[{field:'actualMinutes',operator:'between',value:'8',upper:'9',unit:'hours'}]}}});
+    const review=screen.getByRole('checkbox',{name:t.reviewConfirm}),save=screen.getByRole('button',{name:en.allowanceV3.savePreview});
     await user.click(review);expect(save).toBeEnabled();
     fireEvent.change(screen.getByLabelText(t.upper),{target:{value:'10'}});
     expect(review).not.toBeChecked();expect(save).toBeDisabled();
@@ -75,7 +122,7 @@ describe('four-section allowance editor', () => {
     await screen.findByText('Synthetic validation refusal');
     expect(screen.getByLabelText(t.name)).toHaveValue('Attendance test');
     expect(screen.getByLabelText(`${t.amount} (MYR)`)).toHaveValue(0.1);
-    expect(submittedRules().attendance.criteria[0].upper).toBe('10');
+    expect(submittedRules().attendance.expression.children[0].upper).toBe('10');
     const leave=new Event('beforeunload',{cancelable:true});window.dispatchEvent(leave);
     expect(leave.defaultPrevented).toBe(true);
   });
@@ -105,7 +152,7 @@ describe('four-section allowance editor', () => {
     expect(screen.getByLabelText(t.method).querySelectorAll('option')).toHaveLength(1);
     expect(screen.getByLabelText(t.legacyCriteria.maxAbsentDays)).toHaveValue(0);
     await user.click(screen.getByRole('checkbox',{name:t.convertLegacy}));
-    expect(submittedRules()).toEqual(emptyAllowanceRules());
+    expect(submittedRules()).toEqual(emptyAllowanceRulesV3());
     expect(screen.getByLabelText(t.method).querySelectorAll('option')).toHaveLength(3);
     await user.selectOptions(screen.getByLabelText(t.policyType),'deduction');
     const code=screen.getByLabelText(t.deductionCode);

@@ -1,0 +1,38 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+Attendance Allowance already supports multiple shifts, comparisons and Monthly, Weekly and Daily methods. Its current shift box is cramped, and Attendance Conditions use one flat AND/OR choice. Several requested event counts, short-hours measures and leave measures are missing from the current condition builder.
+
+WHAT WE'LL CHANGE
+
+- Use clean white form surfaces in light mode and readable matching surfaces in dark mode, with consistent labels and spacing.
+- Replace Applicable Shifts with searchable multi-selection, removable choices and Select all / Clear all. Preserve saved choices for correction if a shift becomes unavailable.
+- Add a visual condition builder with nested All/Any groups, add/remove/reorder controls and a readable bracketed preview.
+- Offer separate counts and durations for late arrival, early departure, absence, short hours, incomplete entries and approved leave, alongside existing measures.
+- Show each measure's unit and the exact calculation period. Validate the complete policy and preview its decision before activation.
+- Preserve existing saved policy behavior until HR explicitly saves a new version using the expanded conditions.
+
+WHAT YOU'LL GET
+
+HR can express grouped attendance conditions clearly and check why an allowance or deduction qualifies before transferring it to payroll.
+
+GOOD TO KNOW
+
+Monthly continues to mean a calendar month. Weekly uses Monday to Sunday, attributed to the month containing Sunday; Daily uses each date. Counts mean distinct qualifying dates, while leave duration uses approved day fractions. Incomplete clocking is counted as incomplete, and unavailable time measurements are never invented as zero.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: components/attendance-allowance-editor.tsx stores selected shift IDs in a multiple select and flat v2 attendance.criteria with one logic value. lib/attendance-allowance-rules.ts already supports seven numeric operators and eight metrics; core/attendance-allowance-context.ts uses canonical dated schedules and absenceBreakdownByEmployment. V2 has no nested expression, late/early occurrence count, short-hours or leave metrics and globally refuses incomplete attendance. Existing period selection is calendar-month, Sunday-owned Monday-Sunday weeks and daily. Preserve those period boundaries rather than inventing payroll-cutoff semantics. Relevant deployed source matches main; production interactive verification remains unperformed.
+
+Graph: versioned attendance_allowance_policy owns configuration, canonical Attendance/Leave owners supply measured facts, evaluation traces own the evidence snapshot, and the existing payroll transfer owns the earning/deduction transaction. No second attendance/leave store, money computation by AI or executable formula. Introduce a strict versioned v3 expression AST with All/Any group and criterion nodes, bounded depth/node count, stable IDs and ordered children. Keep v1/legacy and v2 readers/evaluators byte-compatible. Convert a flat expression only through an explicit new policy version; do not rewrite previously transferred snapshots. Validate nonempty groups, supported fields/operators, compatible units, complete thresholds, ordered Between bounds and selected references at the service as well as UI. Empty root means an explicitly unrestricted condition; an empty nested group is invalid. Preserve the existing empty-shift/day restriction semantics and company scope.
+
+Define counts as distinct dates after policy shift/day/tenure/company/period filters, never duplicate requests or punch events. Late/Early counts require positive canonical applicable minutes. AbsenceCount counts a date with positive canonical absence fraction; AbsentDays remains the summed fraction. ShortHoursCount counts completed scheduled days with positive canonical underMinutes and ShortHoursDuration sums that owner's deficit after applicable breaks/partial-day leave, not elapsed time minus an invented target. IncompleteEntryCount counts a canonical day with unfinished/missing required clock pairs. LeaveCount counts dates with positive approved leave; LeaveDuration sums canonical approved fractions in days, capped/overlap-resolved by the Leave owner. Provide an optional Leave Types selection on LeaveCount and LeaveDuration conditions; empty means all approved types. Validate selected IDs through the Leave owner and distinguish paid/unpaid/type scope in the trace rather than summing unrelated spans. Public holidays, rest/off/half days, partial leave, corrected attendance, transfers and employment dates use existing canonical resolvers. Full Flexi in 25468aa3 must supply applicable duration facts through the shared owner; no fixed-start lateness is invented.
+
+For v3, distinguish known counts from unknown time facts. Use explicit three-state criterion evaluation: a missing required measurement is Unknown, not zero; All/Any follows its documented truth table and only a known true root qualifies. Distinguish missing facts from explicitly inapplicable fixed-clock events on Full Flexi; no such event contributes a count or duration, and that applicability is retained in the trace. An incomplete day can contribute to IncompleteEntryCount without pretending its work duration is known. Retain closed-period/effective-date/no-applicable-days refusals and explain unknown leaves in the trace. Existing v2's stricter incomplete-day refusal stays unchanged. Use exact fixed-point thresholds/units and existing bigint money/transfer calculations. Version and source each result so later corrections require canonical recalculation, not silent rewriting of historical payroll.
+
+UI: use the existing searchable chip control with active choices, unavailable retained chips, scoped Select all and keyboard behavior. A nested group has one All/Any heading, child conditions/groups and move/remove actions. Units are occurrences for counts, minutes/hours for time and days for approved leave/absence. Display grouping and node-level reasons in preview; edits invalidate preview and activation review. Do not hardcode white on dark themes. Keep error feedback, pending guards, dirty cancel and save/reopen reliable.
+
+Acceptance: reproduce the requested mixed AND/OR example with cases distinguishing correct grouping from a flat result; deeply nested and reordered save/reopen; invalid/oversized/empty trees; every operator/unit and exact fractional threshold. Drive canonical late/early/count/duration, partial absences, short hours, incomplete clocks, multi-type/partial/overlapping/cancelled leave, holidays/rest/off/half days, overnight and Full Flexi facts; prove no double counting. Verify Monthly/Weekly/Daily and boundaries, effective/hire/termination/company transfer, approved corrections, unknown data and v1/v2 parity. Test selected-shift scope, archived values, unauthorized/cross-company/cross-tenant access, earning/deduction component compatibility, duplicate/stale transfers and closed payroll snapshots. Walk actual preview/save/reopen/activate/transfer journeys with representative fixtures, all locales/appearances, mobile/keyboard and runtime logs. Complete classifier-required full financial verification, TypeScript, build and official release. Schema migrations only if required by version storage; coordinate append-only reservations.

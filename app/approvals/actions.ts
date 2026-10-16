@@ -154,7 +154,7 @@ export async function approveCorrectionAction(formData: FormData) {
   const decision = String(formData.get('decision')) as 'approved' | 'rejected';
   let outcomeStatus: string = decision;
   try {
-    const outcome = await decideAttendanceCorrection(s, { correctionId: String(formData.get('id')), decision, rejectReason: String(formData.get('rejectReason') ?? ''), expectedStageIndex: formData.get('workflowStage') ? Number(formData.get('workflowStage')) : undefined });
+    const outcome = await decideAttendanceCorrection(s, { correctionId: String(formData.get('id')), decision, remarks: String(formData.get('remarks') ?? ''), rejectReason: String(formData.get('rejectReason') ?? ''), expectedStageIndex: formData.get('workflowStage') ? Number(formData.get('workflowStage')) : undefined });
     outcomeStatus = outcome.status;
   } catch (e) {
     fail(e instanceof MissingAttendanceRejectReasonError ? new Error((await getTranslations('attendance'))('rejectRequired')) : e, nav);

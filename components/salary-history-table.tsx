@@ -5,6 +5,7 @@ import { paginateRows } from '@/lib/pagination';
 import { ClientPager, useClientPageQuery } from '@/components/client-pager';
 
 import { useTranslations } from 'next-intl';
+import { personnelInput, personnelControl, personnelFormName, personnelFormLabel } from '@/lib/personnel-form-contract';
 import { Badge } from './ui/badge';
 import { ConfirmSubmit } from './ui/confirm-submit';
 import { FamilyFormDialog } from './family-form-dialog';
@@ -184,8 +185,8 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
   const salaryFields = (r: SalaryRowView) => (
     <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
       <label className="flex flex-col gap-1.5">
-        <span className="text-xs font-medium text-muted-foreground">{t('effectiveDate')}</span>
-        <DateField name="effectiveFrom" required defaultValue={r.effectiveDate} className={inputCls} label={t('effectiveDate')} />
+        <span className="text-xs font-medium text-muted-foreground">{personnelFormLabel('payroll.basic_salary_and_salary_history.validfrom',(key,fallback)=>t.has(key.slice(14))?t(key.slice(14)):fallback)}</span>
+        <DateField {...personnelControl('payroll.basic_salary_and_salary_history.validfrom','record')} defaultValue={r.effectiveDate} className={inputCls} label={personnelFormLabel('payroll.basic_salary_and_salary_history.validfrom',(key,fallback)=>t.has(key.slice(14))?t(key.slice(14)):fallback)} />
       </label>
       {/* r374 (item 7dbaf677) — `required` DROPPED here too, and the two forms HAD to move together.
           This is the EDIT half of the same screen whose Add half dropped it; leaving one of them is how
@@ -194,14 +195,14 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
           an explicit ZERO rather than "untouched", which is what a blank meant before this round.
           `min="0"` stays: the service refuses a negative amount. */}
       <label className="flex flex-col gap-1.5">
-        <span className="text-xs font-medium text-muted-foreground">{t('basicSalaryMyr')}</span>
-        <input name="basicSalary" type="number" min="0" step="0.01" defaultValue={r.basic} className={inputCls} />
+        <span className="text-xs font-medium text-muted-foreground">{personnelFormLabel('payroll.basic_salary_and_salary_history.basicsalary',(key,fallback)=>t.has(key.slice(14))?t(key.slice(14)):fallback)}</span>
+        <input {...personnelInput('payroll.basic_salary_and_salary_history.basicsalary')} defaultValue={r.basic} className={inputCls} />
       </label>
       {/* 297ae65a — edit the open row's salary currency in place (searchable ISO 4217 select; the service
           validates and records only a real change). */}
       <div className="flex flex-col gap-1.5">
-        <span className="text-xs font-medium text-muted-foreground">{t('salaryCurrency')}</span>
-        <CurrencySelect name="currency" value={r.currency} />
+        <span className="text-xs font-medium text-muted-foreground">{personnelFormLabel('payroll.basic_salary_and_salary_history.currency',(key,fallback)=>t.has(key.slice(14))?t(key.slice(14)):fallback)}</span>
+        <CurrencySelect name={personnelFormName('payroll.basic_salary_and_salary_history.currency')} value={r.currency} />
       </div>
       {/* ADR-0078 — the open row's salary structure, edited in place. The service enforces the
           period-boundary rule and refuses a mode change on a processed period. */}
@@ -211,10 +212,9 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
         defaultRateAmount={r.rateAmount}
       />
       <label className="flex flex-col gap-1.5 sm:col-span-2">
-        <span className="text-xs font-medium text-muted-foreground">{t('salaryColRemarks')}</span>
+        <span className="text-xs font-medium text-muted-foreground">{personnelFormLabel('payroll.basic_salary_and_salary_history.remarks',(key,fallback)=>t.has(key.slice(14))?t(key.slice(14)):fallback)}</span>
         <input
-          name="remarks"
-          type="text"
+          {...personnelInput('payroll.basic_salary_and_salary_history.remarks')}
           defaultValue={r.remarks ?? ''}
           placeholder={t('salaryRemarksPlaceholder')}
           className={inputCls}
@@ -285,13 +285,13 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
             <tr className="border-b border-border text-left text-xs text-muted-foreground">
               <th className="px-4 py-2 font-medium">
                 <button type="button" onClick={() => toggleSort('effectiveDate')} className="hover:text-foreground">
-                  {t('effectiveDate')}
+                  {personnelFormLabel('payroll.basic_salary_and_salary_history.validfrom',(key,fallback)=>t.has(key.slice(14))?t(key.slice(14)):fallback)}
                   {sortMark('effectiveDate')}
                 </button>
               </th>
               <th className="px-4 py-2 text-right font-medium">
                 <button type="button" onClick={() => toggleSort('basic')} className="hover:text-foreground">
-                  {t('basicSalaryMyr')}
+                  {personnelFormLabel('payroll.basic_salary_and_salary_history.basicsalary',(key,fallback)=>t.has(key.slice(14))?t(key.slice(14)):fallback)}
                   {sortMark('basic')}
                 </button>
               </th>
@@ -307,7 +307,7 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
               <th className="px-4 py-2 font-medium">{t('payMode')}</th>
               <th className="px-4 py-2 font-medium">{t('paymentTerm')}</th>
               <th className="px-4 py-2 font-medium">{t('status')}</th>
-              <th className="px-4 py-2 font-medium">{t('salaryColRemarks')}</th>
+              <th className="px-4 py-2 font-medium">{personnelFormLabel('payroll.basic_salary_and_salary_history.remarks',(key,fallback)=>t.has(key.slice(14))?t(key.slice(14)):fallback)}</th>
               <th className="px-4 py-2 font-medium"></th>
             </tr>
           </thead>

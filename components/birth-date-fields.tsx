@@ -51,7 +51,9 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Field, inputCls } from '@/components/ui';
+import { inputCls } from '@/components/ui';
+import { PersonnelField } from '@/components/personnel-field';
+import { personnelControl, personnelInput, personnelFormLabel } from '@/lib/personnel-form-contract';
 import { DateField } from '@/components/ui/date-field';
 import { completedYearsAt } from '@/lib/completed-years';
 
@@ -89,6 +91,9 @@ export type BirthDateFieldsProps = Mode & {
 
 export function BirthDateFields(props: BirthDateFieldsProps) {
   const t = useTranslations('people.detail');
+  const fieldId = 'profile.personal_details.dateofbirth';
+  const mode = props.mode === 'controlled' ? 'draft' : 'edit';
+  const label = personnelFormLabel(fieldId,(key,fallback)=>key.startsWith('people.detail.') ? t(key.slice(14)) : fallback);
   const stored = props.dateOfBirth ?? '';
 
   // Form mode observes its own uncontrolled input so the Age tracks what is on screen. `seen` mirrors the
@@ -108,24 +113,23 @@ export function BirthDateFields(props: BirthDateFieldsProps) {
 
   return (
     <>
-      <Field label={t('birthDate')} className={props.fieldClassName}>
+      <PersonnelField fieldId={fieldId} mode={mode} className={props.fieldClassName}>
         {props.mode === 'form' && props.dmyDisplay ? (
           <DateField
             id={props.inputId}
-            name="dateOfBirth"
+            {...personnelControl(fieldId,mode)}
             defaultValue={stored}
             onChange={(e) => setTyped(e.target.value)}
             className={inputCls}
-            label={t('birthDate')}
+            label={label}
           />
         ) : (
           <input
-            type="date"
+            {...personnelInput(fieldId,mode)}
             className={inputCls}
             {...(props.mode === 'form'
               ? {
                   id: props.inputId,
-                  name: 'dateOfBirth',
                   defaultValue: stored,
                   onChange: (e: React.ChangeEvent<HTMLInputElement>) => setTyped(e.target.value),
                 }
@@ -136,14 +140,14 @@ export function BirthDateFields(props: BirthDateFieldsProps) {
           />
         )}
         {props.hint && <p className="mt-1 text-xs text-muted-foreground">{props.hint}</p>}
-      </Field>
+      </PersonnelField>
       {/* System-calculated, deliberately NOT an input — nothing to type, nothing to save. "Not Available"
           when no DOB is recorded (shares the cc681bd5 fallback key). */}
-      <Field label={t('age')} className={props.fieldClassName}>
+      <PersonnelField fieldId="profile.personal_details.age" className={props.fieldClassName}>
         <p className="flex h-9 items-center text-sm text-muted-foreground">
           {ageLabel ?? t('employmentInfo.notAvailable')}
         </p>
-      </Field>
+      </PersonnelField>
     </>
   );
 }

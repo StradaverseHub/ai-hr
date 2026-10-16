@@ -251,6 +251,7 @@ export function EmployeeScopePanel({
   preserve,
   allowAll = false,
   preservePicker = false,
+  resetToAll = false,
 }: {
   /** The already access-fenced employee set, mapped from the server's `listEmployees`. */
   employees: ScopeEmployee[];
@@ -284,6 +285,7 @@ export function EmployeeScopePanel({
    * removing it would take away the view those tabs open on today.
    */
   allowAll?: boolean;
+  resetToAll?: boolean;
   /** Leave Inquiry only: keep employee-search context separate from leave-code filters. */
   preservePicker?: boolean;
 }) {
@@ -381,7 +383,14 @@ export function EmployeeScopePanel({
    * URL a reader can bookmark should say what it means.
    */
   const clearSelection = () => {
-    const qs = preservedParams(preserve).toString();
+    const params = preservedParams(preserve);
+    params.delete(selectParam); params.delete('page');
+    if (preservePicker) {
+      for (const [key, value] of Object.entries({ pickerQ: query, pickerCompany: companyId, pickerBusinessUnit: businessUnitId, pickerDepartment: departmentId, pickerStatus: status })) {
+        if (value) params.set(key, value); else params.delete(key);
+      }
+    }
+    const qs = params.toString();
     startTransition(() => router.push(qs ? `${basePath}?${qs}` : basePath));
   };
   const resetFilters = () => {
@@ -390,6 +399,11 @@ export function EmployeeScopePanel({
     setBusinessUnitId('');
     setDepartmentId('');
     setStatus('');
+    if (resetToAll) {
+      const qs = preservedParams(preserve);
+      for (const key of ['pickerQ', 'pickerCompany', 'pickerBusinessUnit', 'pickerDepartment', 'pickerStatus', selectParam, 'page']) qs.delete(key);
+      startTransition(() => router.push(qs.size ? `${basePath}?${qs}` : basePath));
+    }
   };
 
   /**

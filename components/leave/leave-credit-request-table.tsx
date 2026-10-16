@@ -1,6 +1,8 @@
 'use client';
+import {leaveCreditClaimReviewBlocks,type LeaveCreditClaimReview,type LeaveCreditClaimReviewAction} from '@/lib/leave-credit-claim-review';
+import {LeaveCreditClaimReviewNotice} from './leave-credit-claim-review';
 
-import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { Trash2 } from 'lucide-react';
 import { useFormStatus } from 'react-dom';
@@ -128,8 +130,8 @@ const dayTypeLabelOf = (t: (k: string) => string, d: LeaveCreditDayType) =>
 
 /**
  * r378 a4c4758c replaces r365's View popup and warning dot with an inline attendance
- * subrow. The same clock-out assessment supplies the warning; it never caps the
- * declared claim or blocks submission. Recorded attendance hours are display-only.
+ * subrow. Legacy clock-out warnings do not cap a self-declared claim. Formula dates
+ * separately use the canonical duration review; these attendance details do not replace that proof.
  * The unnamed toggle posts no row field, preserving the action's index-aligned payload.
  * Explicit attendanceRecordPresent distinguishes an absent row from missing punches.
  */
@@ -267,6 +269,7 @@ export function LeaveCreditRequestTable({
   today,
   requiresFirstScheduleConsent,
   dayFactsAction,
+  claimReviewAction,
   tiers,
   ordinaryDayAllowed,
   onSubmitted,
@@ -279,6 +282,7 @@ export function LeaveCreditRequestTable({
   submitAction: Action;
   /** Resolves one date's roster kind and its two Attendance times, for the signed-in employee. */
   dayFactsAction: (workedDate: string, employmentId?: string) => Promise<LeaveCreditDayFacts | null>;
+  claimReviewAction?:LeaveCreditClaimReviewAction;
   /**
    * The company's tier figures, so the credit shown as the employee types is the one they will get. NULL
    * when the company has not switched extended hours on — which is every company at release. The Ordinary
@@ -490,6 +494,38 @@ export function LeaveCreditRequestTable({
    * FACTS, in both exits below; see the note on it in the assessed exit for why the assessment cannot answer
    * it here.
    */
+  const [claimReviews,setClaimReviews]=useState<Record<string,LeaveCreditClaimReview>>({});
+  const claimKey=(row:Row)=>JSON.stringify([hr?.employmentId??'',row.workedDate,row.claimStart,row.claimEnd]);
+  const claimContext=JSON.stringify(rows.map(row=>[hr?.employmentId??'',row.workedDate,row.claimStart,row.claimEnd]));
+  const claimReviewForRow=(row:Row):LeaveCreditClaimReview|undefined=>{
+    const review=claimReviews[claimKey(row)];
+    return review?.basis==='formula'&&row.dayType!==''&&review.workedDayKind!==row.dayType?{basis:'unavailable',reason:'stale'}:review;
+  };
+  const reviewGeneration=useRef(0),reviewRunning=useRef(false);
+  const reviewQueue=useRef<{key:string;generation:number;row:Row;subject?:string;action:LeaveCreditClaimReviewAction}[]>([]);
+  useEffect(()=>{
+    const generation=++reviewGeneration.current;
+    reviewQueue.current=[];setClaimReviews({});
+    if(!claimReviewAction)return;
+    const unique=new Map(rows.filter(row=>row.workedDate&&(!hr||hr.employmentId)).map(row=>[claimKey(row),row]));
+    reviewQueue.current=[...unique].map(([key,row])=>({key,row,generation,subject:hr?.employmentId,action:claimReviewAction}));
+    // One active server action per mounted form, including across rapidly changing contexts.
+    // Replace queued old work; an in-flight result may finish but cannot update a newer context.
+    if(!reviewRunning.current)void (async()=>{
+      reviewRunning.current=true;
+      try{while(reviewQueue.current.length){
+        const job=reviewQueue.current.shift();if(!job)break;
+        let review:LeaveCreditClaimReview;
+        try{review=await job.action(job.row.workedDate,job.row.claimStart,job.row.claimEnd,job.subject);}
+        catch{review={basis:'unavailable',reason:'unavailable'};}
+        if(job.generation===reviewGeneration.current)setClaimReviews(previous=>({...previous,[job.key]:review}));
+      }}finally{reviewRunning.current=false;}
+    })();
+    return ()=>{reviewGeneration.current++;reviewQueue.current=[];};
+  // Exact subject/date/window keys discard stale async results; no preview is an authority to submit.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[claimContext,claimReviewAction]);
+
   const derive = useCallback(
     (r: Row) => {
       const view = r.workedDate ? (facts[r.workedDate] ?? null) : null;
@@ -506,6 +542,12 @@ export function LeaveCreditRequestTable({
           ? (adjudicateDayTypes([{ workedDate: r.workedDate, dayType: r.dayType }], new Map([[r.workedDate, view.kind]]))[0]?.roster ??
             null)
           : null;
+      const review=claimReviewForRow(r);
+      if(review?.basis!=='legacy')return {
+        view,rosterMismatch,minutes:review?.basis==='formula'?review.eligibleMinutes:null,
+        credit:review?.basis==='formula'&&review.status==='ready'?review.creditDays:null,
+        exceedsClockOut:false,hasClockOut:view?.actualClockOut!=null,
+      };
       if (!wantsWindow || !view || !tiers || !r.claimStart || !r.claimEnd)
         return {
           view,
@@ -551,7 +593,7 @@ export function LeaveCreditRequestTable({
         hasClockOut: view.actualClockOut != null,
       };
     },
-    [facts, tiers],
+    [facts, tiers, claimReviews, claimReviewAction, hr?.employmentId],
   );
 
   const derived = useMemo(() => new Map(rows.map((r) => [r.key, derive(r)])), [rows, derive]);
@@ -594,11 +636,13 @@ export function LeaveCreditRequestTable({
   // header says why), the row says it earns nothing, and the submit waits for the row to go; the service
   // refuses it anyway. r358: this used to catch every row that claimed a window, which after the owner's
   // answer is every row there is.
-  const ordinaryUnavailableRows = rows.filter((r) => r.dayType === 'workday' && ordinaryEarnsNothing);
+  const ordinaryUnavailableRows = rows.filter((r) => r.dayType === 'workday' && ordinaryEarnsNothing && claimReviews[claimKey(r)]?.basis==='legacy');
   const duplicateDates = rows.filter((row) => row.workedDate && rows.filter((other) => other.workedDate === row.workedDate).length > 1);
   // r406 · HR mode: a date that already holds a credit (the grant refuses it too).
   const alreadyCreditedRows = hr ? rows.filter((r) => r.workedDate && facts[r.workedDate]?.alreadyCredited === true) : [];
+  const unresolvedClaimRows=rows.filter(row=>row.workedDate&&leaveCreditClaimReviewBlocks(claimReviewForRow(row)));
   const blocked =
+    unresolvedClaimRows.length>0 ||
     (hr != null && (subjectMissing || hr.blocked || alreadyCreditedRows.length > 0)) ||
     !reason.trim() || duplicateDates.length > 0 ||
     totalCredit <= 0 ||
@@ -634,8 +678,8 @@ export function LeaveCreditRequestTable({
         <input type="hidden" name="leaveTypeId" value={replacementType.id} />
         <p className="mt-2 text-xs text-muted-foreground" data-testid="leave-credit-leave-type">{t('leaveType')}: {replacementType.name}</p>
       </div>
-      <div className={dialog ? 'min-h-0 space-y-4 overflow-y-auto p-4' : 'space-y-4'} data-testid="leave-credit-scroll-body">
-      <div className={tableWrapCls}>
+      <div className={dialog ? 'min-h-0 min-w-0 space-y-4 overflow-y-auto p-4' : 'min-w-0 space-y-4'} data-testid="leave-credit-scroll-body">
+      <div className={`${tableWrapCls} min-w-0 max-w-full`}>
         {/* r378 — SEVEN columns: the Attendance/View column is replaced by an inline details row.
             Previously r365 used eight columns. Scheduled shift end and Actual clock-out left the row for the
             Attendance panel; `min-w` came down with them, which is the other half of the reporter's
@@ -672,7 +716,7 @@ export function LeaveCreditRequestTable({
               // independently: a rostered rest-day shift remains visible while never flooring its claim.
               // Ordinary Day chosen on a company that cannot credit one: the option was still offered, so
               // the row is where that is explained. Its claimed-window cells are dead, not merely empty.
-              const ordinaryUnavailable = chosen === 'workday' && ordinaryEarnsNothing;
+              const ordinaryUnavailable = chosen === 'workday' && ordinaryEarnsNothing && claimReviews[claimKey(r)]?.basis==='legacy';
               const windowLive = wantsWindow && !ordinaryUnavailable;
               const mismatch = d?.rosterMismatch ?? null;
               const below = !!(wantsWindow && r.claimStart && r.claimEnd && d?.view != null && d.credit === 0);
@@ -935,6 +979,16 @@ export function LeaveCreditRequestTable({
         </table>
       </div>
 
+      {/* Review messages follow the scrollable inputs, but never inherit the table's 52rem minimum width. */}
+      <div className="min-w-0 max-w-full space-y-3" data-testid="leave-credit-claim-reviews">
+        {rows.filter(row=>row.workedDate&&claimReviewForRow(row)?.basis!=='legacy').map(row=>(
+          <section key={row.key} aria-label={`${t('workedDate')}: ${row.workedDate}`} className="min-w-0 max-w-full whitespace-normal rounded-md border border-border p-3 text-xs [overflow-wrap:anywhere]">
+            <p className="mb-1 font-medium">{t('workedDate')}: {row.workedDate}</p>
+            <LeaveCreditClaimReviewNotice review={claimReviewAction?claimReviewForRow(row)??null:{basis:'unavailable',reason:'unavailable'}}/>
+          </section>
+        ))}
+      </div>
+
       {subjectMissing && <p className="text-xs text-muted-foreground" data-testid="leave-credit-pick-employee-first">{hr?.pickEmployeeFirst}</p>}
       <Button type="button" size="sm" variant="secondary" onClick={addRow} disabled={subjectMissing || undefined} data-testid="leave-credit-add-row" className="border border-dashed border-primary bg-transparent text-primary">
         {t('addRow')}
@@ -958,7 +1012,7 @@ export function LeaveCreditRequestTable({
           {t('grandTotal')}
         </span>
         <span className="font-semibold tabular-nums text-foreground" data-testid="leave-credit-total">
-          {t('totalDays', { days: formatDays(totalCredit) })}
+          {unresolvedClaimRows.length?t('formulaReview.creditUnavailable'):t('totalDays', { days: formatDays(totalCredit) })}
         </span>
       </div>
 

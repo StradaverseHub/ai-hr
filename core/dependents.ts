@@ -1,3 +1,5 @@
+import { dependentNaturalKey } from '../lib/dependent-identity';
+export { dependentNaturalKey } from '../lib/dependent-identity';
 /**
  * Personnel Information — Family / Dependents (phase 1). A per-PERSON register of a person's family
  * members / dependents (spouse, child, parent, sibling, other) for BENEFITS / INSURANCE records only.
@@ -86,8 +88,12 @@ export type {
  */
 export const DEPENDENT_RELATIONSHIP_CATEGORY = 'dependentRelationship' as const;
 
+/** Canonical register field, independent of any screen's field names. Optional for legacy refusals. */
+export type DependentValidationField =
+  | 'fullName' | 'relationship' | 'gender' | 'marriageStatus'
+  | 'childReliefCategory' | 'childReliefPercentage';
 export class DependentValidationError extends Error {
-  constructor(message: string) {
+  constructor(message: string, readonly field?: DependentValidationField) {
     super(message);
     this.name = 'DependentValidationError';
   }
@@ -180,7 +186,7 @@ async function assertRelationshipAllowed(tx: Tx, v: string): Promise<void> {
       ),
     )
     .limit(1);
-  if (!row) throw new DependentValidationError('Dependent relationship is invalid.');
+  if (!row) throw new DependentValidationError('Dependent relationship is invalid.', 'relationship');
 }
 
 /**
@@ -510,9 +516,10 @@ const NO_SYNC = (skipped: ChildReliefSyncResult['skipped']): ChildReliefSyncResu
 export async function syncChildReliefFromFamily(
   ctx: SessionContext,
   personId: string,
+  outerTx?:Tx,
 ): Promise<ChildReliefSyncResult> {
   try {
-    const state = await withTenant(ctx, async (tx) => {
+    const readState=async(tx:Tx)=>{
       const [statutory] = await tx
         .select({
           numChildren: employeeStatutoryMy.numChildren,
@@ -580,7 +587,8 @@ export async function syncChildReliefFromFamily(
       const asOf = new Date(`${todayInKualaLumpur()}T00:00:00Z`);
       const grid = derivedChildReliefGrid(rows, asOf);
       return { statutory, derived: eligibleChildReliefCount(rows, asOf), grid, gridComplete: grid != null };
-    });
+    };
+    const state=outerTx?await readState(outerTx):await withTenant(ctx,readState);
 
     if (!state) return NO_SYNC('no_statutory_row');
     // Rail (a) — opt-in. A person on 'manual' keeps full human control of their tax figure.
@@ -613,7 +621,7 @@ export async function syncChildReliefFromFamily(
     // HR unable to correct a family record for as long as payroll stays open.
     // Rung 5a (ADR-0080 D1/D6): the same employment read also resolves the person's jurisdiction
     // (employment → company.country) so the tax write below goes through the person's country pack.
-    const { payrollAlert, country } = await withTenant(ctx, async (tx) => {
+    const readPayroll=async(tx:Tx)=>{
       const employments = await tx
         .select({ companyId: employment.companyId, country: company.country })
         .from(employment)
@@ -637,7 +645,8 @@ export async function syncChildReliefFromFamily(
           ),
         );
       return { payrollAlert: open.length > 0 ? { period, batches: open.length } : null, country };
-    });
+    };
+    const {payrollAlert,country}=outerTx?await readPayroll(outerTx):await withTenant(ctx,readPayroll);
 
     // Rail (c) — reuse the single audited tax writer (via the person's country pack — ADR-0080 D1;
     // requirePackFor FAILS LOUDLY for an unknown country / a person with no employment, which the outer
@@ -665,7 +674,7 @@ export async function syncChildReliefFromFamily(
       // the rules price at RM16,000.
       childReliefTable: state.grid,  // null when a category is missing — see the gate above
       provenance: 'auto_child_relief',
-    });
+    },outerTx);
 
     return {
       changed: true,
@@ -674,7 +683,9 @@ export async function syncChildReliefFromFamily(
       payrollAlert,
       skipped: null,
     };
-  } catch {
+  } catch(error) {
+    // An explicit activation transaction must roll back on a derived-tax refusal too.
+    if(outerTx)throw error;
     // Deliberate swallow. The family-record write has ALREADY committed and is what the user asked for;
     // failing it now because a derived tax figure could not be refreshed would be strictly worse. The next
     // dependent write (or a manual Identity & Tax save) re-derives and self-heals.
@@ -685,7 +696,7 @@ export async function syncChildReliefFromFamily(
 function normGender(v: string | null | undefined): string | null {
   if (v == null || v.trim() === '') return null;
   if (!(DEPENDENT_GENDERS as readonly string[]).includes(v)) {
-    throw new DependentValidationError('Dependent gender is invalid.');
+    throw new DependentValidationError('Dependent gender is invalid.', 'gender');
   }
   return v;
 }
@@ -693,7 +704,7 @@ function normGender(v: string | null | undefined): string | null {
 function normMarriageStatus(v: string | null | undefined): string | null {
   if (v == null || v.trim() === '') return null;
   if (!(DEPENDENT_MARRIAGE_STATUSES as readonly string[]).includes(v)) {
-    throw new DependentValidationError('Marriage status is invalid.');
+    throw new DependentValidationError('Marriage status is invalid.', 'marriageStatus');
   }
   return v;
 }
@@ -707,7 +718,7 @@ function trimOrNull(v: string | null | undefined): string | null {
 function normChildReliefCategory(v: string | null | undefined): string | null {
   if (v == null || v.trim() === '') return null;
   if (!(CHILD_RELIEF_CATEGORIES as readonly string[]).includes(v)) {
-    throw new DependentValidationError('Child relief category is invalid.');
+    throw new DependentValidationError('Child relief category is invalid.', 'childReliefCategory');
   }
   return v;
 }
@@ -716,7 +727,7 @@ function normChildReliefCategory(v: string | null | undefined): string | null {
 function normChildReliefPercentage(v: number | null | undefined): number | null {
   if (v == null) return null;
   if (!(CHILD_RELIEF_PERCENTAGES as readonly number[]).includes(v)) {
-    throw new DependentValidationError('Child relief percentage must be 100 or 50.');
+    throw new DependentValidationError('Child relief percentage must be 100 or 50.', 'childReliefPercentage');
   }
   return v;
 }
@@ -827,14 +838,14 @@ export type DependentInput = {
  * copy is the r73 Decision 3 failure mode exactly: one writer falls behind a column the other gained, and
  * a field entered on the draft is silently dropped at Activate.
  */
-async function insertDependentInTx(
+export async function addDependentTx(
   tx: Tx,
   ctx: SessionContext,
   personId: string,
   p: DependentInput,
 ): Promise<{ id: string }> {
   const fullName = (p.fullName ?? '').trim();
-  if (fullName === '') throw new DependentValidationError('Dependent name is required.');
+  if (fullName === '') throw new DependentValidationError('Dependent name is required.', 'fullName');
   // ea36b7fa — built-ins always valid; custom types must be ACTIVE dependentRelationship catalog options.
   await assertRelationshipAllowed(tx, p.relationship);
   const gender = normGender(p.gender);
@@ -876,7 +887,7 @@ export async function addDependent(
   ctx: SessionContext,
   p: { personId: string } & DependentInput,
 ): Promise<{ id: string; childReliefSync: ChildReliefSyncResult }> {
-  const res = await withTenant(ctx, (tx) => insertDependentInTx(tx, ctx, p.personId, p));
+  const res = await withTenant(ctx, (tx) => addDependentTx(tx, ctx, p.personId, p));
   // R46 47146ea3 — refresh the PCB child count from the register. Runs after commit, never throws.
   const childReliefSync = await syncChildReliefFromFamily(ctx, p.personId);
   return { ...res, childReliefSync };
@@ -896,12 +907,12 @@ export async function addDependent(
  * It runs in ONE read-only transaction (the catalog lookup needs the caller's RLS session) and reports
  * the member's POSITION rather than its name: an error message is not a place to put a child's name.
  */
-export async function assertDependentsValid(ctx: SessionContext, members: DependentInput[]): Promise<void> {
+export async function assertDependentsValid(ctx: SessionContext, members: DependentInput[],outerTx?:Tx): Promise<void> {
   if (members.length === 0) return;
-  await withTenant(ctx, async (tx) => {
+  const run=async(tx:Tx)=>{
     for (const [i, m] of members.entries()) {
-      const at = (msg: string) => new DependentValidationError(`Family member ${i + 1}: ${msg}`);
-      if ((m.fullName ?? '').trim() === '') throw at('Dependent name is required.');
+      const at = (msg: string, field?: DependentValidationField) => new DependentValidationError(`Family member ${i + 1}: ${msg}`, field);
+      if ((m.fullName ?? '').trim() === '') throw at('Dependent name is required.', 'fullName');
       try {
         await assertRelationshipAllowed(tx, m.relationship);
         normGender(m.gender);
@@ -914,10 +925,14 @@ export async function assertDependentsValid(ctx: SessionContext, members: Depend
           normChildReliefPercentage(m.childReliefPercentage);
         }
       } catch (e) {
-        throw at(e instanceof Error ? e.message : String(e));
+        // In an enclosing activation, infrastructure faults remain system errors at the safe action
+        // boundary. Canonical typed validation preserves the field through the positional message wrapper.
+        if (outerTx && !(e instanceof DependentValidationError)) throw e;
+        throw at(e instanceof Error ? e.message : String(e), e instanceof DependentValidationError ? e.field : undefined);
       }
     }
-  });
+  };
+  await (outerTx?run(outerTx):withTenant(ctx,run));
 }
 
 /**
@@ -944,9 +959,10 @@ export async function assertDependentsValid(ctx: SessionContext, members: Depend
 export async function materialiseDependents(
   ctx: SessionContext,
   p: { personId: string; members: DependentInput[] },
+  outerTx?:Tx,
 ): Promise<{ created: string[]; skipped: number; childReliefSync: ChildReliefSyncResult }> {
   if (p.members.length === 0) return { created: [], skipped: 0, childReliefSync: NO_SYNC('unchanged') };
-  const res = await withTenant(ctx, async (tx) => {
+  const run=async(tx:Tx)=>{
     const existing = await tx
       .select({
         fullName: employeeDependent.fullName,
@@ -969,20 +985,14 @@ export async function materialiseDependents(
         skipped += 1;
         continue;
       }
-      created.push((await insertDependentInTx(tx, ctx, p.personId, m)).id);
+      created.push((await addDependentTx(tx, ctx, p.personId, m)).id);
     }
     return { created, skipped };
-  });
+  };
+  const res=outerTx?await run(outerTx):await withTenant(ctx,run);
   const childReliefSync =
-    res.created.length > 0 ? await syncChildReliefFromFamily(ctx, p.personId) : NO_SYNC('unchanged');
+    res.created.length > 0 ? await syncChildReliefFromFamily(ctx, p.personId,outerTx) : NO_SYNC('unchanged');
   return { ...res, childReliefSync };
-}
-
-/** The idempotency key described on `materialiseDependents`. Name is compared case- and space-insensitively
- *  because "Aisyah  Binti Ali" and "aisyah binti ali" are the same child typed twice, not two children. */
-function dependentNaturalKey(r: { fullName: string; relationship: string; dateOfBirth?: string | null }): string {
-  const name = (r.fullName ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
-  return `${name}\u0000${(r.relationship ?? '').trim()}\u0000${(r.dateOfBirth ?? '').trim()}`;
 }
 
 async function loadDependent(tx: Tx, id: string) {
@@ -1027,7 +1037,7 @@ export async function updateDependent(
     const patch: Record<string, unknown> = {};
     if (p.fullName !== undefined) {
       const fullName = p.fullName.trim();
-      if (fullName === '') throw new DependentValidationError('Dependent name is required.');
+      if (fullName === '') throw new DependentValidationError('Dependent name is required.', 'fullName');
       patch.fullName = fullName;
     }
     if (p.relationship !== undefined) {
@@ -1367,6 +1377,7 @@ export async function qualifyingChildReliefFor(
     /** Kuala Lumpur "today" the ruleset is resolved as of, and the date child ages are taken against. */
     asOf: string;
   },
+  outerTx?: Tx,
 ): Promise<QualifyingChildRelief | null> {
   const pack = packFor(p.country ?? 'MY');
   // Captured OUT of the optional properties: both are optional on the pack surface (a jurisdiction with no
@@ -1376,7 +1387,7 @@ export async function qualifyingChildReliefFor(
   const childReliefFor = pack?.payroll?.childReliefFor;
   const childReliefPrices = pack?.payroll?.childReliefPrices;
   if (!pack || !childReliefFor || !childReliefPrices) return null;
-  return withTenant(ctx, async (tx) => {
+  const read = async (tx: Tx): Promise<QualifyingChildRelief | null> => {
     const rules = await pack.payroll.loadRuleset(tx, { asOf: p.asOf });
     const reliefs = rules.pcb?.reliefs;
     if (!reliefs) return null;
@@ -1628,5 +1639,6 @@ export async function qualifyingChildReliefFor(
       ruleUnits: rule.units,
       ruleReliefRM: rule.amountRM,
     };
-  });
+  };
+  return outerTx ? read(outerTx) : withTenant(ctx, read);
 }

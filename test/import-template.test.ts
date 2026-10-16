@@ -10,7 +10,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import { parseCsvRecords } from '../lib/csv';
-import { IMPORT_COLUMNS } from '../lib/import-schema';
+import { EMPLOYEE_TEMPLATE_COLUMNS, IMPORT_COLUMNS } from '../lib/import-schema';
+import { parsePersonnelImportCsv } from '../lib/personnel-import-contract';
 import {
   attendancePunchTemplate,
   buildTemplateCsv,
@@ -29,8 +30,8 @@ import { LEAVE_BF_COLUMNS, canonicalBfColumnKey } from '../lib/leave-bf-import-s
 
 describe('import templates', () => {
   describe('employee (the real desync lock)', () => {
-    it('columns exactly equal required ∪ optional from IMPORT_COLUMNS', () => {
-      const expected = [...IMPORT_COLUMNS.required, ...IMPORT_COLUMNS.optional];
+    it('columns exactly equal the current template contract, without retired compatibility columns', () => {
+      const expected = [...EMPLOYEE_TEMPLATE_COLUMNS.required, ...EMPLOYEE_TEMPLATE_COLUMNS.optional];
       const actual = employeeTemplate.columns.map((c) => c.key);
       // Exact set equality — catches a required OR optional column drifting from the template
       // (e.g. epf_citizenship #157 silently dropped).
@@ -141,17 +142,22 @@ describe('import templates', () => {
   ];
 
   describe.each(specs.map((s) => [s.id, s] as const))('all six: %s', (_id, spec) => {
-    it('round-trips through parseCsvRecords to the same headers (toCsv ↔ parseCsvRecords, incl. CRLF)', () => {
+    it('round-trips through its production header parser to the same keys, including CRLF', () => {
       const csv = buildTemplateCsv(spec);
       expect(csv).toContain('\r\n'); // toCsv emits CRLF line endings
       expect(csv.endsWith('\r\n')).toBe(true); // trailing CRLF
-      const { headers, records } = parseCsvRecords(csv);
+      const { headers, records } = spec.id === 'employee'
+        ? parsePersonnelImportCsv(csv, { columns: [...IMPORT_COLUMNS.required, ...IMPORT_COLUMNS.optional] })
+        : parseCsvRecords(csv);
       expect(headers).toEqual(spec.columns.map((c) => c.key));
       expect(records.length).toBe(spec.sampleRows.length);
     });
 
     it('every required column is non-empty in every sample record', () => {
-      const { records } = parseCsvRecords(buildTemplateCsv(spec));
+      const csv = buildTemplateCsv(spec);
+      const { records } = spec.id === 'employee'
+        ? parsePersonnelImportCsv(csv, { columns: [...IMPORT_COLUMNS.required, ...IMPORT_COLUMNS.optional] })
+        : parseCsvRecords(csv);
       const requiredKeys = spec.columns.filter((c) => c.required).map((c) => c.key);
       for (const rec of records) {
         for (const k of requiredKeys) {

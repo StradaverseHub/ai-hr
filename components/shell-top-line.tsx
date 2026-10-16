@@ -73,8 +73,9 @@ export function ShellStatusLine({
   selected: string[];
 }) {
   const monolith = useIsMonolith();
+  const pathname = usePathname();
   const t = useTranslations('topbar');
-  if (!monolith) return null;
+  if (!monolith || pathname === '/leave/credit-details') return null;
   return (
     <footer
       className="monolith-rv flex shrink-0 flex-wrap gap-7 border-t border-ink pt-3 pb-3 font-mono text-[11px] uppercase tracking-[0.14em] text-mid [animation-delay:100ms]"

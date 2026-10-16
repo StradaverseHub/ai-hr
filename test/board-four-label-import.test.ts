@@ -17,7 +17,7 @@ const book=(data:Record<string,Record<string,string>[]>)=>{
   const wb=XLSX.utils.book_new();
   for(const [kind,rows]of Object.entries(data)){
     const d=LABEL_IMPORT_DEFINITIONS.find(x=>x.kind===kind)!;
-    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([d.columns,...rows.map(r=>d.columns.map(c=>r[c]??''))]),kind);
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([d.columns,...rows.map(r=>d.columns.map(c=>(c==='Criteria'?(r.Criteria??(r.Scope==='global'?'global':'companies')):c==='Criteria Companies'?(r['Criteria Companies']??(r.Scope==='global'?'':[r.Company,r['Shared Companies']].filter(Boolean).join(';'))):r[c])??''))]),kind);
   }
   return XLSX.write(wb,{type:'buffer',bookType:'xlsx'}) as Buffer;
 };
@@ -69,7 +69,7 @@ describe('reviewed System Labels imports',()=>{
     await expect(previewSystemLabelImport(other,book({division:[{Code:'FORBIDDEN'}]}),'add')).rejects.toThrow('administrator');
     await expect(downloadSystemLabelTemplate(other)).rejects.toThrow('administrator');
     const original=book({department:[{Company:b.companyId,Scope:'own',Code:'KEEP'}]});await apply(original);
-    expect((await previewSystemLabelImport(adminCtx(b),book({department:[{Company:b.companyId,Scope:'global',Code:'KEEP'}]}),'update')).valid).toBe(false);
+    expect((await previewSystemLabelImport(adminCtx(b),book({department:[{Company:b.companyId,Criteria:'companies','Criteria Companies':'',Code:'KEEP'}]}),'update')).valid).toBe(false);
   });
   it('uses the grade and grade-group services without detaching existing membership',async()=>{
     await apply(book({grades:[{Code:'EXCEL_G1',Label:'Excel grade',Rank:'4'}]}));
@@ -87,13 +87,15 @@ describe('reviewed System Labels imports',()=>{
     expect(await apply(book({division:[row,row]}))).toMatchObject({imported:1,skipped:1});
     expect((await previewSystemLabelImport(adminCtx(b),book({division:[row,{...row,Label:'Different'}]}),'update')).valid).toBe(false);
   });
-  it('shares only into permitted companies, enables sharing, and keeps Global visible through the existing resolver',async()=>{
+  it('applies explicit permitted Criteria without changing legacy sharing flags, and keeps Global visible',async()=>{
     const other=await createCompany(adminCtx(b),{legalName:'Excel second company'});
     const [co]=await owner.db.select().from(s.company).where(eq(s.company.id,b.companyId));
+    const [beforeTarget]=await owner.db.select().from(s.company).where(eq(s.company.id,other.id));
     await apply(book({department:[{Company:co.legalName,Scope:'shared','Shared Companies':'Excel second company',Code:'SHARED'}]}));
     const [dep]=await owner.db.select().from(s.department).where(eq(s.department.name,'SHARED'));
     expect(await labelIdsForCompany(adminCtx(b),'department',other.id)).toContain(dep.id);
-    const [shared]=await owner.db.select().from(s.company).where(eq(s.company.id,other.id));expect(shared.sharedSystemLabels).toBe(true);
+    const [shared]=await owner.db.select().from(s.company).where(eq(s.company.id,other.id));expect(shared.sharedSystemLabels).toBe(beforeTarget.sharedSystemLabels);
+    expect((await owner.db.select({companyId:s.labelCompanyAssignment.companyId}).from(s.labelCompanyAssignment).where(eq(s.labelCompanyAssignment.labelId,dep.id))).map(row=>row.companyId).sort()).toEqual([co.id,other.id].sort());
     await apply(book({department:[{Company:co.legalName,Scope:'global',Code:'GLOBAL'}]}));
     const [global]=await owner.db.select().from(s.department).where(eq(s.department.name,'GLOBAL'));
     expect(await labelIdsForCompany(adminCtx(b),'department',other.id)).toContain(global.id);

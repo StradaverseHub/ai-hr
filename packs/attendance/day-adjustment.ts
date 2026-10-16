@@ -12,6 +12,7 @@ import { assertNoDependentAttendanceCreditTx } from '../leave/service';
 import { batchesCoveringAttendanceDates, closedBatchesCoveringAttendanceDates } from '../payroll/service';
 import { attendanceApplicationType } from '../../lib/attendance-workflow';
 import type { AttendanceDayKindOverride, ManualOtRows } from '../../lib/attendance-day-adjustment';
+import {refreshOvertimePatternDayTx} from './overtime-calculation';
 
 const hash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 function dateValue(date:string){if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Date.parse(date+'T00:00:00Z'))||new Date(date+'T00:00:00Z').toISOString().slice(0,10)!==date)throw new Error('Choose a valid attendance date.');}
@@ -105,6 +106,7 @@ export async function saveAttendanceDayEdit(ctx:SessionContext,p:AttendanceDayEd
       const figures=await recomputeDayFigures(tx,{employmentId:p.employmentId,date:p.date,checkInAt:calculated.day.checkInAt,
         checkOutAt:calculated.day.checkOutAt,approvedOtMinutes:calculated.approvedOtMinutes});
       await tx.update(s.attendance).set(figures.columns).where(eq(s.attendance.id,calculated.day.id));
+      await refreshOvertimePatternDayTx(tx,ctx,{employmentId:p.employmentId,date:p.date,reason:'Corrected attendance day'});
     }
     await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'attendance-day-adjustment',aggregateId:saved.id,eventType:'attendance.day.corrected',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,
       payload:{date:p.date,kind:p.kind,reason,before:current.adjustment,after:saved,scheduleBefore:current.schedule,scheduleAfter:calculated.schedule,calculationBefore:current.rows,calculationAfter:calculated.rows}});

@@ -1,3 +1,5 @@
+import { PERSONNEL_EMPLOYMENT_TYPES } from './personnel-choice-vocabulary';
+import { PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS } from './personnel-choice-vocabulary';
 /**
  * The EMPLOYEE Excel (.xlsx) import template — d8471481.
  *
@@ -42,29 +44,15 @@ import {
   type TxnImportKind,
 } from './payroll-txn-import-schema';
 
-/** Words that must not be title-cased letter-by-letter. Everything else is Capitalised. */
-const ACRONYMS: Record<string, string> = { ic: 'IC', epf: 'EPF', socso: 'SOCSO', eis: 'EIS' };
-
-/**
- * `ic_number` → `IC Number`.
- *
- * The label must LOWERCASE-AND-UNDERSCORE back to its own key, because that is precisely what
- * `parseCsvRecords` does to a header on re-upload (`h.trim().toLowerCase().replace(/\s+/g, '_')`).
- * A prettier label that does not round-trip would silently drop the whole column, so
- * test/employee-import-xlsx.test.ts asserts the round-trip for every key rather than trusting it.
- */
-export function employeeColumnLabel(key: string): string {
-  return key
-    .split('_')
-    .map((w) => ACRONYMS[w] ?? w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
-}
+/** Exact Personnel labels; family has its own person grain. */
+import { personnelColumnLabel } from './personnel-import-contract';
+export function employeeColumnLabel(key:string):string { return personnelColumnLabel(key); }
 
 /** Every column, required first — the same order (and therefore the same sample rows) as the CSV
  *  template, derived from the SAME contract so the two can never disagree. */
 export const EMPLOYEE_XLSX_COLUMNS: readonly string[] = employeeTemplate.columns.map((c) => c.key);
 
-export const EMPLOYEE_XLSX_HEADERS: readonly string[] = EMPLOYEE_XLSX_COLUMNS.map(employeeColumnLabel);
+export const EMPLOYEE_XLSX_HEADERS: readonly string[] = EMPLOYEE_XLSX_COLUMNS.map(key=>employeeColumnLabel(key));
 
 /**
  * The columns that are IDENTIFIERS, not quantities: digits that must survive verbatim, leading
@@ -74,8 +62,17 @@ export const EMPLOYEE_XLSX_HEADERS: readonly string[] = EMPLOYEE_XLSX_COLUMNS.ma
  */
 export const EMPLOYEE_TEXT_COLUMN_KEYS: readonly string[] = [
   'employee_code',
+  'card_id',
   'ic_number',
   'phone',
+  'home_phone',
+  'old_ic_number',
+  'passport_number',
+  'custom_holder_id',
+  'postcode',
+  'correspondence_postcode',
+  'emergency_contact_phone',
+  'emergency_contact_home_phone',
   'bank_account_no',
   'epf_number',
   'socso_number',
@@ -110,10 +107,10 @@ export function buildReferenceRows(heading: string, lists: ReferenceList[]): str
  *  too (core/import.ts) — these are code-level enums, not configuration, so there is no catalog to
  *  read them from and the drift risk is a source change in one file, caught by the test below. */
 export const EMPLOYEE_ENUM_VALUES = {
-  employment_type: ['full_time', 'part_time', 'contract', 'intern'],
-  pay_mode: ['monthly', 'daily', 'hourly', 'custom_period'],
-  payment_term: ['monthly', 'weekly', 'biweekly'],
-  epf_citizenship: ['citizen', 'pr', 'non_citizen'],
+  employment_type: PERSONNEL_EMPLOYMENT_TYPES,
+  pay_mode: PERSONNEL_PAY_MODES,
+  payment_term: PERSONNEL_PAYMENT_TERMS,
+  epf_citizenship: PERSONNEL_EPF_CITIZENSHIPS,
   tax_category: ['1', '2', '3'],
   eis_eligible: ['yes', 'no'],
   is_resident: ['yes', 'no'],
@@ -148,7 +145,7 @@ export const DEPENDENT_XLSX_COLUMNS: readonly string[] = [
   ...DEPENDENT_IMPORT_COLUMNS.optional,
 ];
 
-export const DEPENDENT_XLSX_HEADERS: readonly string[] = DEPENDENT_XLSX_COLUMNS.map(employeeColumnLabel);
+export const DEPENDENT_XLSX_HEADERS: readonly string[] = DEPENDENT_XLSX_COLUMNS.map(key=>personnelColumnLabel(key,'family'));
 
 /**
  * The family sheet's identity columns — same reasoning as the employee sheet's: these are digits that
@@ -172,13 +169,46 @@ export function dependentTextColumnIndexes(): number[] {
  * the flat-columns alternative could not express: ONE employee with THREE family members.
  * Order matches DEPENDENT_XLSX_COLUMNS.
  */
-export const DEPENDENT_SAMPLE_ROWS: readonly (readonly string[])[] = [
-  // employee_code, full_name, relationship, date_of_birth, gender, ic_or_passport, passport_number,
-  // phone, is_beneficiary, remarks
-  ['TMPL0001', 'Nurul Huda Binti Ismail', 'spouse', '1979-08-14', 'female', '790814105566', '', '', 'yes', ''],
-  ['TMPL0001', 'Aiman Bin Faizal', 'child', '2014-03-02', 'male', '', '', '', 'no', ''],
-  ['TMPL0001', 'Alia Binti Faizal', 'child', '2018-11-21', 'female', '', '', '', 'no', ''],
+const DEPENDENT_TEMPLATE_SAMPLES:Record<string,string>[] = [
+  {
+    "employee_code": "TMPL0001",
+    "full_name": "Nurul Huda Binti Ismail",
+    "relationship": "spouse",
+    "date_of_birth": "1979-08-14",
+    "gender": "female",
+    "ic_or_passport": "790814105566",
+    "passport_number": "",
+    "phone": "",
+    "is_beneficiary": "yes",
+    "remarks": ""
+  },
+  {
+    "employee_code": "TMPL0001",
+    "full_name": "Aiman Bin Faizal",
+    "relationship": "child",
+    "date_of_birth": "2014-03-02",
+    "gender": "male",
+    "ic_or_passport": "",
+    "passport_number": "",
+    "phone": "",
+    "is_beneficiary": "no",
+    "remarks": ""
+  },
+  {
+    "employee_code": "TMPL0001",
+    "full_name": "Alia Binti Faizal",
+    "relationship": "child",
+    "date_of_birth": "2018-11-21",
+    "gender": "female",
+    "ic_or_passport": "",
+    "passport_number": "",
+    "phone": "",
+    "is_beneficiary": "no",
+    "remarks": ""
+  }
 ];
+
+export const DEPENDENT_SAMPLE_ROWS: readonly (readonly string[])[] = DEPENDENT_TEMPLATE_SAMPLES.map(row=>DEPENDENT_XLSX_COLUMNS.map(key=>row[key]??''));
 
 /** The fixed enumerations the family sheet accepts (the relationship list also takes any ACTIVE custom
  *  option from the tenant's dependentRelationship catalog — the Reference sheet is generated from the

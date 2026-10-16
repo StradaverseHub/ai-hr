@@ -32,6 +32,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { parseCsvRecords } from '../lib/csv';
+import {parsePersonnelImportCsv} from '../lib/personnel-import-contract';
 import { IMPORT_COLUMNS } from '../lib/import-schema';
 import { buildTemplateCsv, employeeTemplate } from '../lib/import-template';
 import {
@@ -168,12 +169,12 @@ describe('§1 readImportFile — File → CSV text', () => {
 
 // ── §2 download-template → upload round trip ───────────────────────────────────────────────────────
 describe('§2 the downloaded template uploads back in unchanged', () => {
-  it('buildTemplateCsv(employeeTemplate) → File → readImportFile → parseCsvRecords keeps the contract', async () => {
+  it('buildTemplateCsv(employeeTemplate) → File → readImportFile → Personnel parser keeps the contract', async () => {
     // The exact bytes the "Download template" button writes. Fill-in-and-upload is the whole
     // workflow the reporter asked for, so the two ends are asserted against each other.
     const templateCsv = buildTemplateCsv(employeeTemplate);
     const out = await readImportFile(csvFile(templateCsv, 'employee-import-template.csv'));
-    const { headers, records } = parseCsvRecords(out.text);
+    const { headers, records } = parsePersonnelImportCsv(out.text,{columns:[...IMPORT_COLUMNS.required,...IMPORT_COLUMNS.optional]});
     expect(headers).toEqual(employeeTemplate.columns.map((c) => c.key));
     for (const col of IMPORT_COLUMNS.required) expect(headers).toContain(col);
     expect(records.length).toBe(employeeTemplate.sampleRows.length);
@@ -338,8 +339,9 @@ describe('§5 employee-import.tsx wiring (static — no DOM runner in this suite
     expect(src.match(/commitImportAction\(/g) ?? []).toHaveLength(1);
   });
 
-  it('leaves the parse and write path untouched (actions.ts still just parses and delegates)', () => {
-    expect(actions).toMatch(/parseCsvRecords\(csv\)/);
+  it('keeps server parsing on the shared Personnel boundary before canonical writers', () => {
+    expect(actions).toContain('parsePersonnelImportCsv(text,');
+    expect(actions).toContain('parseEmployee(csv)');
     // r253 (2983802f): both payloads gained `dependentRecords` — the Family sheet, parsed by the SAME
     // parser on the same line of the same file — so the object literals are now multi-line. Still the
     // same two delegate calls carrying the same companyId + records; the point of this case is that

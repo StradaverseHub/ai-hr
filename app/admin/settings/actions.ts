@@ -40,6 +40,7 @@ import {
   assignLabelToCompanies,
   LabelInUseError,
   setLabelGlobal,
+  setLabelCriteria,
   unassignLabelFromCompanies,
 } from '@/core/system-labels';
 // r224 — the restore action reads the grade back through the SAME projection the page renders from, so
@@ -308,6 +309,13 @@ export async function saveLabelsGridAction(
 }
 
 export type ScopeActionResult = { ok: true } | { ok: false; message: string };
+
+/** Save the complete per-code Criteria atomically. */
+export async function setLabelCriteriaAction(kind: LabelKindStr, labelId: string, criteria: {isGlobal:boolean;companyIds:string[]}): Promise<ScopeActionResult> {
+  const session = await requireAdmin();
+  try { await setLabelCriteria(session, {kind, labelId, ...criteria}); revalidateLabels(); return {ok:true}; }
+  catch (error) { return {ok:false, message:labelFailureMessage(error)}; }
+}
 
 /** Assign a label to companies (company-specific scope). */
 export async function assignLabelCompaniesAction(

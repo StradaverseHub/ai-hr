@@ -52,10 +52,15 @@
  * `CrossCompanyError` guard in `core/org.ts` remains the last line of defence, exactly as before.
  */
 
-import { useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
+import * as AlertDialog from '@radix-ui/react-alert-dialog';
+import type {DraftActivateActionResult,DraftDeleteActionResult} from '@/lib/draft-action-result';
+import {draftActivationMessageKey,draftActivationFieldLabels,draftFailureReference} from '@/lib/draft-activation-presentation';
 import { useTranslations } from 'next-intl';
-import { Badge, Button, Card, EmployeeCode, Field, SectionHeader, inputCls } from '@/components/ui';
+import { Badge, Button, Card, EmployeeCode, SectionHeader, inputCls } from '@/components/ui';
+import { PersonnelField } from '@/components/personnel-field';
+import { personnelInput, personnelControl, personnelFormChoices } from '@/lib/personnel-form-contract';
 // 759dfc7d work item 2 — the SAME tab shell app/admin/personnel/[employmentId] uses, not a copy of it.
 // A second strip would be a second set of tab behaviours to keep in step: the unsaved-changes guard, the
 // `?tab=` written into the address bar on every switch (and read back on load, `openingTab` below), and
@@ -225,6 +230,7 @@ export function EmployeeWizard({
   payrollPolicies?: AssignablePolicyOption[];
 }) {
   const t = useTranslations('people.wizard');
+  const tRoot=useTranslations();
   const router = useRouter();
   const id = draftId;
   const [data, setData] = useState<EmployeeDraftData>(initialData);
@@ -241,6 +247,23 @@ export function EmployeeWizard({
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [pending, startTransition] = useTransition();
+  const mutationRef=useRef(false);
+  const mountedRef=useRef(true);
+  useEffect(()=>{mountedRef.current=true;return()=>{mountedRef.current=false;};},[]);
+  const deleteTriggerRef=useRef<HTMLButtonElement>(null);
+  const [operation,setOperation]=useState<'save'|'activate'|'delete'|null>(null);
+  const [leaving,setLeaving]=useState(false);
+  const [deleteTarget,setDeleteTarget]=useState<{id:string;name:string;code:string}|null>(null);
+  const [deleteError,setDeleteError]=useState<string|null>(null);
+  const [activationFields,setActivationFields]=useState<{tab:DraftTabKey;label:string}[]>([]);
+  const busy=pending||operation!==null||leaving;
+  const beginMutation=(next:'save'|'activate'|'delete')=>{
+    if(mutationRef.current||leaving)return false;
+    mutationRef.current=true;setOperation(next);setError(null);setActivationFields([]);return true;
+  };
+  const finishMutation=()=>{mutationRef.current=false;setOperation(null);};
+  const withReference=(message:string,value:unknown)=>{const reference=draftFailureReference(value);return reference?`${message} ${t('failureReference',{reference})}`:message;};
+
   // The Business Unit is a FILTER on the department list, not a stored field — the assignment writer
   // takes a department, and the department carries its own BU. Kept in component state, never in the
   // draft, so a saved draft cannot carry a value nothing will ever read.
@@ -260,24 +283,11 @@ export function EmployeeWizard({
   const isContractHire = employmentType === 'contract';
   const showsEndDateBox = draftShowsEndDateBox(employmentType);
   const endDate = draftProvisionalEndOn(data.employment);
-  // The box's name for the outstanding list. Literal `t()` calls rather than a computed key — a template
-  // key is invisible to test/i18n-coverage.test.ts check C. Null for the two types that show no box.
-  const endDateLabel = isContractHire
-    ? t('fields.contractEndDate')
-    : employmentType === 'intern'
-      ? t('fields.internshipEndDate')
-      : null;
-  /**
-   * The outstanding list's label for a field name, in the words the TAB uses. Two names are relabelled by
-   * r392: `hiredOn` is shown on the tab as "Group Join Date" (its key `fields.hiredOn` is retired), and
-   * `provisionalEndOn` takes the box's own type-specific name. Everything else is `fields.<name>` as before
-   * — test/employee-draft-wizard.test.ts §2 sweeps every name either rule can return in all six locales.
-   */
-  const missingFieldLabel = (f: string) => {
-    if (f === 'hiredOn') return t('fields.groupJoinDate');
-    if (f === 'provisionalEndOn') return endDateLabel ?? t('fields.provisionalEndOn');
-    return t(`fields.${f}`);
-  };
+  // Advisory outstanding fields and owner refusals name the same declared controls.
+  const missingFieldLabel=(key:DraftTabKey,field:string)=>
+    draftActivationFieldLabels([{tab:key,field}],(labelKey,fallback)=>tRoot.has(labelKey)?tRoot(labelKey):fallback,employmentType)[0]?.label
+      ?? t('validationFields.details');
+
 
   // r393 (685d2380 step 3b) — the pack's statutory rules (EPF election, income tax residency), so the tab
   // names what Activate would refuse. 'MY' for the same reason SocsoEisFields is handed country="MY" below.
@@ -333,43 +343,57 @@ export function EmployeeWizard({
     companyId !== '' && opts.length > 0 && opts.every((o) => !visible(o, false));
 
   /** SAVE. Deliberately unvalidated, from whichever tab is open — that is the whole of what a draft is. */
-  const saveDraft = () =>
-    startTransition(async () => {
-      setError(null);
+  const saveDraft = () => {
+    if(deleteTarget||!beginMutation('save'))return;
+    startTransition(async()=>{
       try {
-        // `stepNumber`, NOT `indexOf + 1`: the stored number is declared in employee-draft-schema.ts
-        // (5 is the retired `review` slot and stays retired), so counting positions here would write the
-        // wrong number for every tab after it — and would move the drafts already parked on 5.
-        await saveDraftAction(id, data, stepNumber(tab));
-        setSaved(true);
-        router.refresh();
-      } catch (e) {
-        setError((e as Error).message);
-      }
+        await saveDraftAction(id,data,stepNumber(tab));
+        if(!mountedRef.current)return;
+        setSaved(true);router.refresh();
+      } catch {if(mountedRef.current)setError(t('saveFailed'));}
+      finally {if(mountedRef.current)finishMutation();}
     });
-
-  const discard = () =>
-    startTransition(async () => {
-      setError(null);
-      try {
-        await discardDraftAction(id);
-        router.push('/admin/personnel');
-      } catch (e) {
-        setError((e as Error).message);
+  };
+  const openDelete=()=>{
+    if(busy||mutationRef.current)return;
+    setDeleteError(null);
+    setDeleteTarget({id,name:data.profile?.fullName?.trim()||t('untitledDraft'),code:reservedEmployeeCode??''});
+  };
+  const closeDelete=()=>{if(!mutationRef.current){setDeleteTarget(null);setDeleteError(null);}};
+  const confirmDelete=()=>{
+    const target=deleteTarget;
+    if(!target||target.id!==id||!beginMutation('delete'))return;
+    setDeleteError(null);
+    startTransition(async()=>{
+      let result:DraftDeleteActionResult;
+      try {result=await discardDraftAction(target.id);}
+      catch {if(mountedRef.current){setDeleteError(t('deleteFailed'));finishMutation();}return;}
+      if(!mountedRef.current)return;
+      if(result?.ok){
+        setLeaving(true);setDeleteTarget(null);
+        router.push('/admin/personnel');router.refresh();return;
       }
+      setDeleteError(withReference(t('deleteFailed'),result?.reference));finishMutation();
     });
-
-  /** ACTIVATE. The held Employee ID becomes a real employment carrying that same ID. */
-  const activate = () =>
-    startTransition(async () => {
-      setError(null);
-      try {
-        const res = await createEmployeeAction(id, data, stepNumber(tab));
-        router.push(`/admin/personnel/${res.employmentId}?from=personnel`);
-      } catch (e) {
-        setError((e as Error).message);
+  };
+  /** ACTIVATE. Only a confirmed owner result becomes navigation; validation stays on this Draft. */
+  const activate=()=>{
+    if(deleteTarget||!beginMutation('activate'))return;
+    startTransition(async()=>{
+      let result:DraftActivateActionResult;
+      try {result=await createEmployeeAction(id,data,stepNumber(tab));}
+      catch {if(mountedRef.current){setError(t('activationFailed'));finishMutation();}return;}
+      if(!mountedRef.current)return;
+      if(result?.ok){
+        setLeaving(true);router.push(`/admin/personnel/${result.employmentId}?from=personnel`);router.refresh();return;
       }
+      if(result?.kind==='validation'){
+        setError(tRoot(draftActivationMessageKey(result.code)));
+        setActivationFields(draftActivationFieldLabels(result.fields,(key,fallback)=>tRoot.has(key)?tRoot(key):fallback,employmentType));
+      }else setError(withReference(t('activationFailed'),result?.reference));
+      finishMutation();
     });
+  };
 
   /**
    * THE TAB LABELS — one STATIC `t()` per tab, never a computed key built from the tab name.
@@ -436,13 +460,13 @@ export function EmployeeWizard({
               catalogs={profileOptions}
               onChange={(patch) => set('profile', patch)}
               afterSalutation={
-                <Field label={t('fields.fullName')}>
-                  <input
+                <PersonnelField fieldId={"profile.personal_details.fullname"} mode="draft">
+                  <input {...personnelInput("profile.personal_details.fullname", 'draft')}
                     className={inputCls}
                     value={data.profile?.fullName ?? ''}
                     onChange={(e) => set('profile', { fullName: e.target.value })}
                   />
-                </Field>
+                </PersonnelField>
               }
             />
             {/* 35b7af0a group 8 — Nationality and the Identity No (NRIC) are the SAME field group the
@@ -538,26 +562,26 @@ export function EmployeeWizard({
               under the record's own "Contact & address" heading rather than beside the name, which is
               where the activated record keeps them. */}
           <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
-            <Field label={t('fields.primaryEmail')}>
-              <input
-                type="email"
+            <PersonnelField fieldId={"profile.contact_and_permanent_address.primaryemail"} mode="draft">
+              <input {...personnelInput("profile.contact_and_permanent_address.primaryemail", 'draft')}
+
                 className={inputCls}
                 value={data.profile?.primaryEmail ?? ''}
                 onChange={(e) => set('profile', { primaryEmail: e.target.value })}
               />
-            </Field>
+            </PersonnelField>
             {/* da7463b4 — `perm-mobile-phone`, the id the activated record's Contact & Address card gives
                 this same field. Two fields on this tab are now labelled "Mobile Phone Number" (this one and
                 the Correspondence block's own, exactly as on the record), so the id is what tells them
                 apart — and it is the id the "same as permanent" pairing is declared against. */}
-            <Field label={t('fields.phone')}>
-              <input
+            <PersonnelField fieldId={"profile.contact_and_permanent_address.phone"} mode="draft">
+              <input {...personnelInput("profile.contact_and_permanent_address.phone", 'draft')}
                 id="perm-mobile-phone"
                 className={inputCls}
                 value={data.profile?.phone ?? ''}
                 onChange={(e) => set('profile', { phone: e.target.value })}
               />
-            </Field>
+            </PersonnelField>
             {/* a72610af — Home Phone and Personal E-mail, the SHARED pair the Personnel Contact & Address
                 card renders. The e-mail beside them above is the WORK address (`primaryEmail`, the login);
                 these two are the employee's own, and the record has always kept both. */}
@@ -671,8 +695,8 @@ export function EmployeeWizard({
                 gone entirely now: it is in the header card above, on every step, because since 06f0cb8f it
                 is not merely "chosen elsewhere" but FIXED — the held Employee ID came from this company's
                 numbering rule, so changing it would orphan the number. */}
-            <Field label={t('fields.businessUnit')}>
-              <select
+            <PersonnelField fieldId={"employment.organisation_assignment.businessunitname"} mode="draft">
+              <select {...personnelControl("employment.organisation_assignment.businessunitname", 'draft')}
                 className={inputCls}
                 value={businessUnitId}
                 onChange={(e) => setBusinessUnitId(e.target.value)}
@@ -688,9 +712,9 @@ export function EmployeeWizard({
                 <p className="mt-1 text-xs text-muted-foreground">{t('orgLabelsEmptyForCompany')}</p>
               )}
               <p className="mt-1 text-xs text-muted-foreground">{t('hints.businessUnit')}</p>
-            </Field>
-            <Field label={t('fields.department')}>
-              <select
+            </PersonnelField>
+            <PersonnelField fieldId={"employment.organisation_assignment.departmentname"} mode="draft">
+              <select {...personnelControl("employment.organisation_assignment.departmentname", 'draft')}
                 className={inputCls}
                 value={data.employment?.departmentId ?? ''}
                 onChange={(e) => set('employment', { departmentId: e.target.value })}
@@ -705,9 +729,9 @@ export function EmployeeWizard({
               {orgEmpty(departments) && (
                 <p className="mt-1 text-xs text-muted-foreground">{t('orgLabelsEmptyForCompany')}</p>
               )}
-            </Field>
-            <Field label={t('fields.position')}>
-              <select
+            </PersonnelField>
+            <PersonnelField fieldId={"employment.organisation_assignment.positionname"} mode="draft">
+              <select {...personnelControl("employment.organisation_assignment.positionname", 'draft')}
                 className={inputCls}
                 value={data.employment?.positionId ?? ''}
                 onChange={(e) => set('employment', { positionId: e.target.value })}
@@ -722,9 +746,9 @@ export function EmployeeWizard({
               {orgEmpty(positions) && (
                 <p className="mt-1 text-xs text-muted-foreground">{t('orgLabelsEmptyForCompany')}</p>
               )}
-            </Field>
-            <Field label={t('fields.costCenter')}>
-              <select
+            </PersonnelField>
+            <PersonnelField fieldId={"employment.draft_only_employment_fields.costcenterid"} mode="draft">
+              <select {...personnelControl("employment.draft_only_employment_fields.costcenterid", 'draft')}
                 className={inputCls}
                 value={data.employment?.costCenterId ?? ''}
                 onChange={(e) => set('employment', { costCenterId: e.target.value })}
@@ -739,9 +763,9 @@ export function EmployeeWizard({
               {orgEmpty(costCenters) && (
                 <p className="mt-1 text-xs text-muted-foreground">{t('orgLabelsEmptyForCompany')}</p>
               )}
-            </Field>
-            <Field label={t('fields.jobGrade')}>
-              <select
+            </PersonnelField>
+            <PersonnelField fieldId={"employment.organisation_assignment.gradename"} mode="draft">
+              <select {...personnelControl("employment.organisation_assignment.gradename", 'draft')}
                 className={inputCls}
                 value={data.employment?.gradeId ?? ''}
                 onChange={(e) => set('employment', { gradeId: e.target.value })}
@@ -753,15 +777,15 @@ export function EmployeeWizard({
                   </option>
                 ))}
               </select>
-            </Field>
+            </PersonnelField>
             {/* r392 (685d2380 step 1) — "Direct Superior", the Personnel record's word for it, found by
                 SEARCHING (Employee ID or part of a name) with the same Combobox that record uses. CONTROLLED
                 MODE: no `name`, so nothing is posted by a hidden input — the pick is written into the draft
                 state under the STORED key it has always had (`reportingManagerEmploymentId`), which
                 `completeEmployeeDraft` hands `hireEmployee` unchanged. The people offered are unchanged
                 too: page.tsx still reads `listManagerCandidates(session, { companyIds: scopeIds })`. */}
-            <Field label={t('fields.directSuperior')}>
-              <Combobox
+            <PersonnelField fieldId={"employment.direct_superior_and_history.superioremploymentid"} mode="draft">
+              <Combobox {...personnelControl("employment.direct_superior_and_history.superioremploymentid", 'draft')}
                 value={data.employment?.reportingManagerEmploymentId ?? ''}
                 options={managers.map((m) => ({ value: m.id, label: m.label }))}
                 placeholder={t('directSuperiorNone')}
@@ -770,7 +794,7 @@ export function EmployeeWizard({
                 legacySuffix=""
                 onValueChange={(v) => set('employment', { reportingManagerEmploymentId: v })}
               />
-            </Field>
+            </PersonnelField>
             {/* a72610af — THE `??` BELOW IS NO LONGER A DEFAULT, IT IS A GUARD, and the difference is the
                 whole of the defect this item fixed. It used to be the only statement of "Full Time" on
                 this screen: nobody chose it, nothing wrote it, `missingByTab` correctly reported the
@@ -779,18 +803,15 @@ export function EmployeeWizard({
                 by page.tsx), so what is shown is what is stored and this expression only ever falls back
                 if that seed is somehow skipped. It reads the SHARED constant rather than a second literal
                 so the two can never disagree again. */}
-            <Field label={t('fields.employmentType')}>
-              <select
+            <PersonnelField fieldId={"employment.organisation_assignment.employmenttype"} mode="draft">
+              <select {...personnelControl("employment.organisation_assignment.employmenttype", 'draft')}
                 className={inputCls}
                 value={data.employment?.employmentType ?? DEFAULT_EMPLOYMENT_TYPE}
                 onChange={(e) => set('employment', { employmentType: e.target.value })}
               >
-                <option value="full_time">{t('employmentType.full_time')}</option>
-                <option value="part_time">{t('employmentType.part_time')}</option>
-                <option value="contract">{t('employmentType.contract')}</option>
-                <option value="intern">{t('employmentType.intern')}</option>
+                {personnelFormChoices('employment.organisation_assignment.employmenttype').map(choice=><option key={choice.value} value={choice.value}>{tRoot(choice.labelKey)}</option>)}
               </select>
-            </Field>
+            </PersonnelField>
           </div>
         </Card>
         <Card>
@@ -803,9 +824,9 @@ export function EmployeeWizard({
                 column this lands in. NOTHING MOVED: `hireEmployee` has always written BOTH hired_on (shown
                 as Group Join Date) and join_date (the Join Date for the current company) from this one
                 value, and the hint says so. The draft key stays `hiredOn`. */}
-            <Field label={t('fields.groupJoinDate')}>
-              <input
-                type="date"
+            <PersonnelField fieldId={"employment.employment_dates_and_service.hiredon"} mode="draft">
+              <input {...personnelInput("employment.employment_dates_and_service.hiredon", 'draft')}
+
                 className={inputCls}
                 value={data.employment?.hiredOn ?? today}
                 onChange={(e) => set('employment', { hiredOn: e.target.value })}
@@ -813,7 +834,7 @@ export function EmployeeWizard({
               {/* 89ea527b — Group Join Date and Join Date are the same day at creation and become
                   movement-only afterwards. The wizard captures the one date, as the ticket asks. */}
               <p className="mt-1 text-xs text-muted-foreground">{t('hints.groupJoinDate')}</p>
-            </Field>
+            </PersonnelField>
             {/* 8590615a — for a CONTRACT hire this one date is the contract end date, so it says so. The
                 field, its state and its draft key are unchanged (`provisionalEndOn`); only the label and the
                 hint switch, and `hireEmployee` copies a contract hire's value into
@@ -824,9 +845,9 @@ export function EmployeeWizard({
                 as a read-only line; Part-Time carries no end date (Activate sends null whatever is stored).
                 Literal `t()` calls per type, never a computed key (test/i18n-coverage.test.ts check C). */}
             {showsEndDateBox && (
-              <Field label={isContractHire ? t('fields.contractEndDate') : t('fields.internshipEndDate')}>
-                <input
-                  type="date"
+              <PersonnelField fieldId={isContractHire ? 'employment.employment_dates_and_service.contractenddate' : 'employment.draft_only_employment_fields.internshipenddate'} mode="draft">
+                <input {...personnelInput(isContractHire ? 'employment.employment_dates_and_service.contractenddate' : 'employment.draft_only_employment_fields.internshipenddate', 'draft')}
+
                   className={inputCls}
                   value={data.employment?.provisionalEndOn ?? ''}
                   onChange={(e) => set('employment', { provisionalEndOn: e.target.value })}
@@ -834,7 +855,7 @@ export function EmployeeWizard({
                 <p className="mt-1 text-xs text-muted-foreground">
                   {isContractHire ? t('hints.contractEndDate') : t('hints.internshipEndDate')}
                 </p>
-              </Field>
+              </PersonnelField>
             )}
             {/* a72610af — PROBATION, EXTENDED PROBATION, THE CONFIRMATION DATE AND THE TWO NOTICE
                 PERIODS, each the SHARED control the Personnel Employment Dates card renders
@@ -1146,15 +1167,15 @@ export function EmployeeWizard({
                   {/* The head count typed on a draft, kept as it was. The figures the record works out from
                       the saved family (the qualifying-children count and the relief amount) appear once the
                       employee exists — the plan's "Good to know" says so. */}
-                  <Field label={t('fields.numChildren')}>
-                    <input
-                      type="number"
-                      min="0"
+                  <PersonnelField fieldId={"bank_statutory.income_tax_pcb.numchildren"} mode="draft">
+                    <input {...personnelInput("bank_statutory.income_tax_pcb.numchildren", 'draft')}
+
+
                       className={inputCls}
                       value={data.statutory?.numChildren ?? ''}
                       onChange={(e) => set('statutory', { numChildren: e.target.value })}
                     />
-                  </Field>
+                  </PersonnelField>
                 </div>
                 {/* 99b2d6c0 (r336) — the same explanation of "Auto (from table)" the Personnel card now
                     carries, on the screen where the mode is FIRST chosen. */}
@@ -1197,27 +1218,27 @@ export function EmployeeWizard({
                 figure. `min="0"` keeps the browser refusing a NEGATIVE amount — which `setCompensation`
                 also refuses now, so the box and the service agree — while leaving blank and zero
                 reachable. The placeholder says so in the box itself. */}
-            <Field label={t('fields.basicSalary')}>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
+            <PersonnelField fieldId={"payroll.basic_salary_and_salary_history.basicsalary"} mode="draft">
+              <input {...personnelInput("payroll.basic_salary_and_salary_history.basicsalary", 'draft')}
+
+
+
                 placeholder={t('fields.basicSalaryBlankPlaceholder')}
                 className={inputCls}
                 value={data.payroll?.basicSalary ?? ''}
                 onChange={(e) => set('payroll', { basicSalary: e.target.value })}
               />
-            </Field>
-            <Field label={t('fields.monthlyAllowance')}>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
+            </PersonnelField>
+            <PersonnelField fieldId={"payroll.draft_initial_monthly_allowance.monthlyallowance"} mode="draft">
+              <input {...personnelInput("payroll.draft_initial_monthly_allowance.monthlyallowance", 'draft')}
+
+
+
                 className={inputCls}
                 value={data.payroll?.monthlyAllowance ?? ''}
                 onChange={(e) => set('payroll', { monthlyAllowance: e.target.value })}
               />
-            </Field>
+            </PersonnelField>
             {/* 35b7af0a group 2 — Pay Mode, Payment Term and Rate are the SAME component the Personnel
                 Payroll tab and the salary-history edit flow already used
                 (components/pay-structure-fields.tsx). The wizard's private copy had drifted in wording
@@ -1255,18 +1276,16 @@ export function EmployeeWizard({
                 refusal they rejected: a mistyped zero and a deliberate one are indistinguishable on the
                 day they are saved, months before any run, and this one sentence tells them apart. The
                 star and the hint below are driven by the SAME predicate `missingByTab` uses. */}
-            <Field
-              label={t('fields.remarks')}
-              required={noBasicSalary}
-              requiredAriaLabel={t('requiredField')}
+            <PersonnelField
+              fieldId={"payroll.basic_salary_and_salary_history.remarks"} mode="draft" context={{noBasicSalary}}
             >
-              <input
+              <input {...personnelInput("payroll.basic_salary_and_salary_history.remarks", 'draft')}
                 className={inputCls}
                 placeholder={noBasicSalary ? t('fields.remarksNoBasicPlaceholder') : undefined}
                 value={data.payroll?.remarks ?? ''}
                 onChange={(e) => set('payroll', { remarks: e.target.value })}
               />
-            </Field>
+            </PersonnelField>
             {/* SAID WHERE IT IS NEEDED, not after a save is refused. The outstanding list above the
                 Activate button names the tab and the field; this names the RULE, on the tab, the moment
                 the amount goes blank or to zero. */}
@@ -1373,8 +1392,9 @@ export function EmployeeWizard({
       </Card>
 
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
-          {error}
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
+          <p>{error}</p>
+          {activationFields.length>0&&<ul className="mt-2 space-y-1">{activationFields.map(field=><li key={field.tab+field.label}><button type="button" className="text-left underline underline-offset-2" onClick={()=>selectTabRef.current?.(field.tab)}>{tabLabel[field.tab]} — {field.label}</button></li>)}</ul>}
         </div>
       )}
 
@@ -1386,6 +1406,7 @@ export function EmployeeWizard({
           outstanding list below moves the shell, through the shell's OWN guarded switch rather than
           around it. `emptyLabel` can never actually show here (every one of the five tabs has a panel),
           and is passed because the shell requires a real string rather than a placeholder. */}
+      <fieldset disabled={busy} className="min-w-0 border-0 p-0">
       <ClientTabs
         tabs={tabs}
         panels={panels}
@@ -1395,6 +1416,7 @@ export function EmployeeWizard({
         selectRef={selectTabRef}
         onTabChange={setTab}
       />
+      </fieldset>
 
       {/* WHAT ACTIVATE IS STILL WAITING FOR — the plan's "the screen still says what is outstanding".
           Named in place, immediately above the button it governs, and visible from EVERY tab rather than
@@ -1420,7 +1442,7 @@ export function EmployeeWizard({
                   {tabLabel[k]}
                 </button>
                 {' — '}
-                {missing[k].map(missingFieldLabel).join(', ')}
+                {missing[k].map(field=>missingFieldLabel(k,field)).join(', ')}
               </li>
             ))}
           </ul>
@@ -1434,21 +1456,22 @@ export function EmployeeWizard({
       <div className="flex flex-wrap items-center gap-2">
         {/* Deliberately UNVALIDATED: a draft that refused to save until it was complete would not be
             a draft. The reporter's whole ask is "keep what I have and come back to it". */}
-        <Button variant="secondary" onClick={() => saveDraft()} disabled={pending}>
-          {pending ? t('saving') : t('saveDraft')}
+        <Button variant="secondary" onClick={() => saveDraft()} disabled={busy||!!deleteTarget}>
+          {operation==='save' ? t('saving') : t('saveDraft')}
         </Button>
         {saved && <span className="text-xs text-emerald-600 dark:text-emerald-400">{t('draftSaved')}</span>}
         <div className="ml-auto flex items-center gap-2">
           <button
             type="button"
-            onClick={discard}
-            disabled={pending}
+            ref={deleteTriggerRef}
+            onClick={openDelete}
+            disabled={busy}
             className="text-sm text-muted-foreground hover:text-foreground"
           >
-            {t('discardDraft')}
+            {t('deleteRecord')}
           </button>
-          <Button onClick={activate} disabled={pending || outstanding.length > 0}>
-            {pending ? t('activating') : t('activate')}
+          <Button onClick={activate} disabled={busy||!!deleteTarget||outstanding.length>0}>
+            {operation==='activate' ? t('activating') : t('activate')}
           </Button>
         </div>
       </div>
@@ -1456,6 +1479,26 @@ export function EmployeeWizard({
           only returned when it is the last one issued. Discarding after somebody else has been created
           behind this draft leaves a gap in the sequence. */}
       <p className="text-xs text-muted-foreground">{t('discardReleasesTip')}</p>
+      {deleteTarget&&<AlertDialog.Root open onOpenChange={open=>{if(!open)closeDelete();}}>
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay data-draft-delete-backdrop className="fixed inset-0 z-50 bg-black/50" onClick={event=>{if(event.target===event.currentTarget)closeDelete();}} />
+          <AlertDialog.Content
+            aria-busy={operation==='delete'}
+            onEscapeKeyDown={event=>{if(mutationRef.current)event.preventDefault();}}
+            onCloseAutoFocus={event=>{event.preventDefault();deleteTriggerRef.current?.focus();}}
+            className="fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg"
+          >
+            <AlertDialog.Title className="text-base font-semibold">{t('deleteRecordTitle')}</AlertDialog.Title>
+            <AlertDialog.Description className="mt-2 break-words text-sm text-muted-foreground">{t('deleteRecordDescription',{name:deleteTarget.name,code:deleteTarget.code||t('deleteNoHeldCode')})}</AlertDialog.Description>
+            {deleteError&&<p role="alert" className="mt-3 text-sm text-destructive">{deleteError}</p>}
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <AlertDialog.Cancel asChild><Button type="button" variant="outline" disabled={busy}>{t('deleteRecordCancel')}</Button></AlertDialog.Cancel>
+              <Button type="button" variant="destructive" onClick={confirmDelete} disabled={busy}>{operation==='delete'?t('deletingRecord'):t('deleteRecordConfirm')}</Button>
+            </div>
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>}
+
     </div>
   );
 }

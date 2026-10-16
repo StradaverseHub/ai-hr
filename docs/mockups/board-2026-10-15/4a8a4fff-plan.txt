@@ -1,0 +1,27 @@
+VERDICT: Partly there already   ·   SIZE: Quick
+
+THE SITUATION TODAY
+
+Scheduled Actions and Data Privacy & Audit Integrity appear as separate main-menu entries. Their placement separates system configuration and oversight screens from System Settings.
+
+WHAT WE'LL CHANGE
+
+- Move Scheduled Actions and Data Privacy & Audit Integrity into the System Settings submenu.
+- Keep AI in its current main-menu position.
+- Reuse the current pages and preserve their records, settings and who may use them.
+
+WHAT YOU'LL GET
+
+Administrators find both screens under System Settings without changing how either module works.
+
+GOOD TO KNOW
+
+Existing bookmarks continue to work. This changes the menu location only.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: production components/sidebar.tsx lists /admin/scheduled-actions and /admin/privacy as flat admin-group items beside /admin/ai. SYSTEM_SETTINGS_NODE already exists. Source read on 2026-10-15 at healthy325c614a; interactive app journey remains required.
+
+Move the exact Scheduled Actions and Privacy rows into SYSTEM_SETTINGS_NODE and remove their flat copies. Preserve label keys, icons, route identities, group visibility and page-level group-admin/privacy enforcement; menu placement does not grant access. AI stays outside SYSTEM_SETTINGS_NODE. Reconcile sidebar hierarchy/exact-set/access source guards without weakening them. Walk both submenu entries, original bookmarks, active state/reload, HR/company/employee/installation-operator visibility, narrow/collapsed rail and keyboard in six locales. Integrate the in-flight AI prerequisite before editing the shared sidebar, preserving its current final nav/filter contract. Focused checks and classifier-required gate/build/release. No business logic, data model or import changes.

@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { Badge, Button, Card, EmployeeName, Field, inputCls } from '@/components/ui';
 import { CollapsibleEmployeePanel } from '@/components/collapsible-employee-panel';
 import { formatMoney } from '@/lib/money';
+import { isTransactionEffectiveDate } from '@/lib/transaction-effective-date';
 import {
   createIndividualTxnAction,
   createIndividualTxnDayGridAction,
@@ -102,13 +103,6 @@ type ItemOption = {
   variesByDay: boolean;
 };
 const componentIdOf = (value: string): string | null => (value.startsWith('c:') ? value.slice(2) : null);
-
-/** Real days-in-month (leap-year correct) — mirrors core/payroll.ts daysInMonth so the date input's max is
- *  the true month-end, matching what the server's assertDateInPeriod enforces. */
-function daysInMonth(year: number, month1: number): number {
-  if (month1 === 2 && ((year % 4 === 0 && year % 100 !== 0) || year % 400 === 0)) return 29;
-  return [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month1 - 1];
-}
 
 export type TxnEmployee = {
   employmentId: string;
@@ -672,7 +666,7 @@ export function TxnWorkspace({
 
   // ── Form target resolution: which run (if any) a new/edited row lands on ──
   // 4e403268 — one month for whichever entry machine is open. The two are mutually exclusive, so this
-  // reads the open one; everything downstream (eligible runs, the date bounds, the derived figure) is
+  // reads the open one; everything downstream (eligible runs and the derived figure) is
   // written once and serves both modes rather than being duplicated per mode.
   const formPeriod = form?.payPeriod ?? daily?.payPeriod ?? '';
   const eligibleBatches = useMemo(() => {
@@ -837,12 +831,6 @@ export function TxnWorkspace({
     };
   }, [impactKey]);
   const impact = impactState.key === impactKey ? impactState.impact : null;
-
-  const monthBounds = useMemo(() => {
-    if (!isPeriod(formPeriod)) return null;
-    const [y, m] = formPeriod.split('-').map(Number);
-    return { min: `${formPeriod}-01`, max: `${formPeriod}-${String(daysInMonth(y, m)).padStart(2, '0')}` };
-  }, [formPeriod]);
 
   // ── 2da9937a — the amount the PAY ITEM works out, when it is not the operator's to type ──
   const pickedItem = form ? (itemByValue.get(form.item) ?? null) : daily ? (itemByValue.get(daily.item) ?? null) : null;
@@ -1220,7 +1208,7 @@ export function TxnWorkspace({
     const opt = itemByValue.get(f.item);
     if (!opt) return 'rowIncomplete';
     if (!f.txnDate) return 'rowIncomplete';
-    if (monthBounds && (f.txnDate < monthBounds.min || f.txnDate > monthBounds.max)) return 'dateOutOfPeriod';
+    if (!isTransactionEffectiveDate(f.txnDate)) return 'invalidEffectiveDate';
     if (f.quantity.trim() !== '' && !Number.isFinite(Number(f.quantity))) return 'rowIncomplete';
     // 2da9937a — THE MAGNITUDE RULE IS NARROWED, NOT DELETED. On an item that works its own amount out the
     // operator has no Amount box to be wrong about, so "amount must be greater than zero" would be a
@@ -1244,19 +1232,18 @@ export function TxnWorkspace({
    * 4e403268 — the day grid's client-side validity, per line and then for the grid as a whole.
    *
    * `dayLineIssue` (day-lines.ts, pure) is the per-line half and mirrors `formInvalid` above field for
-   * field. The service re-validates every one of them inside the write transaction — `assertDateInPeriod`,
+   * field. The service re-validates every one of them inside the write transaction — `assertTransactionDate`,
    * the derived amount, `AmountNotPositiveError`, `DuplicateTxnRowError` — so this only avoids a round trip
    * and, more usefully, marks WHICH row is at fault instead of failing a grid of twenty at the end.
    */
   const dailyIssueFor = useCallback(
     (line: DayLine): string | null =>
       dayLineIssue(line, {
-        bounds: monthBounds,
         requiredUnit,
         derives,
         derivedAmount: dailyAmountFor(line),
       }),
-    [monthBounds, requiredUnit, derives, dailyAmountFor],
+    [requiredUnit, derives, dailyAmountFor],
   );
   const dailyInvalid = (d: DailyState): string | null => {
     if (!isPeriod(d.payPeriod)) return 'periodInvalid';
@@ -1931,7 +1918,7 @@ export function TxnWorkspace({
                       type="month"
                       value={form.payPeriod}
                       disabled={form.mode === 'edit'}
-                      onChange={(e) => patchForm({ payPeriod: e.target.value, txnDate: '' })}
+                      onChange={(e) => patchForm({ payPeriod: e.target.value })}
                       className={inputCls}
                     />
                   </Field>
@@ -2029,11 +2016,10 @@ export function TxnWorkspace({
                     <input
                       type="date"
                       value={form.txnDate}
-                      min={monthBounds?.min}
-                      max={monthBounds?.max}
                       onChange={(e) => patchForm({ txnDate: e.target.value })}
                       className={inputCls}
                     />
+                    <span className="text-xs text-muted-foreground">{t('effectiveDateHint')}</span>
                   </Field>
                   {/* 2da9937a — a calculating item OWNS the Input Type: the quantity has to land in the
                       input its rule reads, so the select is fixed to it rather than left to be got wrong. */}
@@ -2187,15 +2173,11 @@ export function TxnWorkspace({
                       type="month"
                       value={daily.payPeriod}
                       onChange={(e) =>
-                        // Every line's date belongs to the month; changing the month invalidates all of
-                        // them, so they are cleared rather than left to fail validation one by one.
-                        patchDaily({
-                          payPeriod: e.target.value,
-                          lines: daily.lines.map((l) => ({ ...l, txnDate: '' })),
-                        })
+                        patchDaily({ payPeriod: e.target.value })
                       }
                       className={inputCls}
                     />
+                    <span className="text-xs text-muted-foreground">{t('effectiveDateHint')}</span>
                   </Field>
                   {/* c11e81aa — the same two controls as the single-entry form's, for the same reasons.
                       Both machines share `companyCycles`, `resolvedCycleId` and `resolvedBatchId`, so
@@ -2309,8 +2291,6 @@ export function TxnWorkspace({
                                 type="date"
                                 aria-label={t('colEffectiveDate')}
                                 value={l.txnDate}
-                                min={monthBounds?.min}
-                                max={monthBounds?.max}
                                 onChange={(e) => patchDailyLine(l.key, { txnDate: e.target.value })}
                                 className={inputCls}
                               />

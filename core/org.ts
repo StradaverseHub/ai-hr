@@ -1,3 +1,4 @@
+import { isCalendarDate } from '../lib/calendar-date';
 /**
  * Organizational lifecycle services (ADR-0003). Each mutation runs inside `withTenant`
  * (one transaction, RLS scoped to the session) and appends a domain event before returning.
@@ -32,11 +33,11 @@ import { terminationTypeForReason } from './termination-reason';
 // module heads). Imported here so the company-change writer re-runs it as its server-side source of truth
 // inside the same transaction. read.ts does not import org.ts, so this adds no import cycle.
 import { employmentCompanyBlockedTx } from './read';
-import { assertProfileValueAllowed, type ProfileOptionCategory } from './profile-options';
+import { assertProfileValueAllowed, ProfileOptionValueError, type ProfileOptionCategory } from './profile-options';
 // 23ad620e — the emergency contact is a per-person register now, not five person columns.
 import { writeSingleEmergencyContactInTx } from './emergency-contacts';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { addEmploymentPeriod } from '../lib/employment-period';
+import { addEmploymentPeriod, EMPLOYMENT_PERIOD_UNITS } from '../lib/employment-period';
 import { PAYMENT_METHODS, bankTransferLacksBank, type PaymentMethod } from '../lib/payment-methods';
 import {
   person,
@@ -183,8 +184,10 @@ export function resolveProbationMonths(probationMonths: number | null | undefine
   return probationMonths != null && probationMonths > 0 ? probationMonths : 3;
 }
 
-export async function hireEmployee(ctx: SessionContext, p: HireParams) {
-  return withTenant(ctx, async (tx) => {
+export async function hireEmployee(ctx: SessionContext, p: HireParams,
+  /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
+  outerTx?: Tx) {
+  const run = async (tx:Tx) => {
     let personId = p.person.id;
     if (!personId) {
       const [row] = await tx
@@ -466,7 +469,8 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
     const [taxCompany]=await tx.select({country:company.country}).from(company).where(eq(company.id,p.companyId)).limit(1);
     await packFor(taxCompany?.country)?.statutory.initializeHiredTaxSelectionTx?.(tx,ctx,{employmentId:emp.id,companyId:p.companyId,scheme:p.initialTaxScheme??'resident'});
     return { employmentId: emp.id, personId };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
 /**
@@ -1106,6 +1110,9 @@ export async function setReportingLine(
     if (p.validTo != null && p.validTo < p.validFrom) {
       throw new DelegationError('The end date must be on or after the start date');
     }
+    // Serialize even an empty structural edge set with all canonical/import writers.
+    const [subordinate]=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,p.subordinateEmploymentId),eq(employment.tenantId,ctx.tenantId))).for('update');
+    if(!subordinate)throw new Error('Employment not found');
     if (p.lineType === 'administrative') {
       if (await wouldCreateAdminCycle(tx, p.subordinateEmploymentId, p.managerEmploymentId, p.validFrom)) {
         throw new ReportingCycleError();
@@ -1350,6 +1357,17 @@ const trimOrNull = (v: string | null | undefined): string | null => {
 
 // 7d309da7 — the profile columns governed by the profile_option catalog, mapped to their category. A save
 // touching any of these validates the NEW value against the tenant's active catalog (legacy value permitted).
+export const PERSON_PROFILE_CATALOG_FIELDS=['salutation','religion','race','nationality','state','country','permanentState','permanentCountry','correspondenceState','correspondenceCountry'] as const;
+export type PersonProfileCatalogField=typeof PERSON_PROFILE_CATALOG_FIELDS[number];
+/** Carries the actual control field without changing the established catalog error message. */
+export class PersonProfileCatalogError extends Error {
+  readonly field:PersonProfileCatalogField;
+  constructor(field:PersonProfileCatalogField,error:ProfileOptionValueError) {
+    super(error.message,{cause:error});this.name='PersonProfileCatalogError';
+    if(!(PERSON_PROFILE_CATALOG_FIELDS as readonly string[]).includes(field))throw new Error('Unknown Personnel profile catalog field.');
+    this.field=field;
+  }
+}
 const CATALOG_BACKED_COLUMNS: Partial<Record<keyof PersonProfileFields, ProfileOptionCategory>> = {
   // 8c284478 — Salutation joins the catalog-governed set (same legacy-value tolerance).
   salutation: 'salutation',
@@ -1378,8 +1396,10 @@ const CATALOG_BACKED_COLUMNS: Partial<Record<keyof PersonProfileFields, ProfileO
 export async function updatePerson(
   ctx: SessionContext,
   p: { personId: string; fullName: string; primaryEmail: string; phone?: string | null; via?: string } & PersonProfileFields,
+  /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
+  outerTx?: Tx,
 ) {
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx:Tx) => {
     const [before] = await tx
       .select({
         fullName: person.fullName,
@@ -1427,7 +1447,11 @@ export async function updatePerson(
       ProfileOptionCategory,
     ][]) {
       if (col in profileSet) {
-        await assertProfileValueAllowed(tx, category, profileSet[col], (before as Record<string, string | null>)[col]);
+        try {await assertProfileValueAllowed(tx, category, profileSet[col], (before as Record<string, string | null>)[col]);}
+        catch(error){
+          if(error instanceof ProfileOptionValueError&&(PERSON_PROFILE_CATALOG_FIELDS as readonly string[]).includes(col))throw new PersonProfileCatalogError(col as PersonProfileCatalogField,error);
+          throw error; // Database/network faults remain private system failures, not field validation.
+        }
       }
     }
     await tx.update(person).set({ ...after, ...profileSet }).where(eq(person.id, p.personId));
@@ -1462,7 +1486,8 @@ export async function updatePerson(
       },
     });
     return { id: p.personId };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
 /**
@@ -2573,7 +2598,7 @@ const EMPLOYMENT_INFO_UNIT_FIELDS = [
   'noticeAfterConfirmationUnit',
 ] as const;
 
-export const EMPLOYMENT_PERIOD_UNITS = ['month', 'week', 'day'] as const;
+export { EMPLOYMENT_PERIOD_UNITS } from '../lib/employment-period';
 
 const EMPLOYMENT_INFO_DATE_FIELDS = [
   // 89ea527b — joinDate is NOT in this list any more: it is movement-only (accepted above solely under the
@@ -2714,7 +2739,7 @@ export async function setEmploymentInfo(
   // extendedConfirmationDate) rather than rejected, so a stale/tampered form cannot mutate it either.
   if (p.hiredOn !== undefined && p.movement?.type === 'groupJoinDateCorrection') {
     const v = String(p.hiredOn).trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('Hire date is required and must be a valid date.');
+    if (!isCalendarDate(v)) throw new Error('Hire date is required and must be a valid date.');
     set.hiredOn = v;
   }
   // 89ea527b — the current-company Join Date is MOVEMENT-ONLY too (`joinDateChange`): it is what changes when
@@ -2734,14 +2759,14 @@ export async function setEmploymentInfo(
     (p.movement?.type === 'joinDateChange' || p.movement?.type === 'entityTransfer')
   ) {
     const v = p.joinDate == null ? null : String(p.joinDate).trim();
-    if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('Enter a valid date (YYYY-MM-DD).');
+    if (v && !isCalendarDate(v)) throw new Error('Enter a valid date (YYYY-MM-DD).');
     set.joinDate = v || null;
   }
   for (const f of EMPLOYMENT_INFO_DATE_FIELDS) {
     const raw = p[f];
     if (raw === undefined) continue;
     const v = raw == null ? null : String(raw).trim();
-    if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('Enter a valid date (YYYY-MM-DD).');
+    if (v && !isCalendarDate(v)) throw new Error('Enter a valid date (YYYY-MM-DD).');
     set[f] = v || null;
   }
   // d27961e3 — Extended Confirmation Date left the Employment Dates form: probation extensions are managed
@@ -2750,7 +2775,7 @@ export async function setEmploymentInfo(
   // so the movement writer stays the single mutator. Derivation + ordering guards below are unchanged.
   if (p.extendedConfirmationDate !== undefined && p.movement?.type === 'probationExtension') {
     const v = p.extendedConfirmationDate == null ? null : String(p.extendedConfirmationDate).trim();
-    if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('Enter a valid date (YYYY-MM-DD).');
+    if (v && !isCalendarDate(v)) throw new Error('Enter a valid date (YYYY-MM-DD).');
     set.extendedConfirmationDate = v || null;
   }
   for (const f of EMPLOYMENT_INFO_PERIOD_FIELDS) {
@@ -3137,6 +3162,7 @@ export class MissingBankForTransferError extends Error {
 export async function setEmploymentPaymentMethod(
   ctx: SessionContext,
   p: { employmentId: string; paymentMethod: PaymentMethod | null },
+  outerTx?:Tx,
 ) {
   const roles = ctx.roles ?? [];
   if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
@@ -3146,7 +3172,7 @@ export async function setEmploymentPaymentMethod(
   if (next != null && !(PAYMENT_METHODS as readonly string[]).includes(next)) {
     throw new Error('Payment method is invalid.');
   }
-  return withTenant(ctx, async (tx) => {
+  const run=async(tx:Tx)=>{
     const [before] = await tx
       .select({ paymentMethod: employment.paymentMethod, personId: employment.personId })
       .from(employment)
@@ -3186,7 +3212,8 @@ export async function setEmploymentPaymentMethod(
       payload: { before: before.paymentMethod ?? null, after: next },
     });
     return { id: p.employmentId, paymentMethod: next, changed: true as const };
-  });
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /**

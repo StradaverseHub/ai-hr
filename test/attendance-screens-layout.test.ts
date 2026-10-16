@@ -268,7 +268,7 @@ describe('af7a8eb4 — Attendance screen layout', () => {
   it.each(REDIRECT_STUBS)('%s renders nothing of its own any more — it redirects to its card (r301)', (file, anchor) => {
     const src = read(file);
     expect(src).toContain('await requireAdmin();');
-    expect(src).toContain(`redirect(\`\${SCHEDULE}#\${${anchor}}\`)`);
+    expect(src).toContain(`redirect(\`\${${anchor==='WORK_SCHEDULE_OVERTIME_ANCHOR'?'WORK_SCHEDULE_OVERTIME':'SCHEDULE'}}#\${${anchor}}\`)`);
     expect(classNameLiterals(src), 'a redirect stub has no markup, so no width to get wrong').toEqual([]);
   });
 
@@ -352,44 +352,23 @@ describe('af7a8eb4 — Attendance screen layout', () => {
     expect(src).not.toContain('WorkScheduleForm');
     expect(src).not.toContain('StatutoryComponentForm');
     expect(src).not.toContain('revokeDeviceAction');
-    // …and the screen it sits on renders where they went, in the approved card order.
-    const page = read('app/admin/attendance/schedule/page.tsx');
-    const at = ['<ScheduleGroupCard', '<CompanyPolicyCard', '<WorkScheduleOvertimeCard'].map((m) => page.indexOf(m));
-    expect(at.every((i) => i > -1)).toBe(true);
-    expect([...at].sort((a, b) => a - b)).toEqual(at);
+    const page=read('app/admin/attendance/schedule/page.tsx');
+    expect(page).toContain('<ScheduleGroupCard');
+    expect(page).not.toContain('<CompanyPolicyCard');expect(page).not.toContain('<WorkScheduleOvertimeCard');
   });
 
-  it('the relocated schedule page still carries every moved block — moving is not deleting', () => {
-    /**
-     * 6d091cc0 (r301) — MOVED AGAIN, AND THE ASSERTION FOLLOWED IT AGAIN.
-     *
-     * This case pinned /admin/attendance-policy/schedule/page.tsx. The reporter asked for Work Schedule &
-     * Overtime Configuration to be managed on Attendance › Schedule › General, so that page is a redirect stub
-     * and its blocks are the Work Schedule & Overtime Rates card and the Company Policy Settings card, both
-     * mounted by the Schedule page (which calls requireAdmin() itself). Each block is looked for in the file
-     * that now renders it, and the mount is checked too — a card nobody renders is a deletion.
-     */
-    const page = read('app/admin/attendance/schedule/page.tsx');
-    expect(page).toContain('requireAdmin()');
-    expect(page, 'the Schedule page mounts the overtime/devices/coverage card').toContain('<WorkScheduleOvertimeCard');
-    expect(page, 'and the company policy card').toContain('<CompanyPolicyCard');
-    expect(page, 'and the policy editor panel').toContain('<CompanyPolicyEditPanel');
-    const card = read('app/admin/attendance-policy/work-schedule-overtime-card.tsx');
-    expect(card).toContain('StatutoryComponentForm'); // overtime rates
-    expect(card).toContain('revokeDeviceAction'); // registered devices
-    expect(card).toContain('employmentsWithoutBackupShift'); // backup-shift coverage card
-    /**
-     * e4471e3c (r287) — THE WORK-SCHEDULE FORM MOVED INTO A COMPONENT, SO THE ASSERTION FOLLOWED IT.
-     * r301 — and it is mounted by the Company Policy Settings Edit panel. Both halves are checked: the panel
-     * still renders the editor, and the editor still posts to the same action with the same day-type fields.
-     */
-    expect(
-      read('app/admin/attendance-policy/company-policy-card.tsx'),
-      'the Edit panel renders the company work-schedule editor',
-    ).toContain('<WorkScheduleForm');
-    const form = read('app/admin/attendance-policy/schedule/work-schedule-form.tsx');
-    expect(form, 'and that editor is still the setAttendancePolicyAction form').toContain('setAttendancePolicyAction');
-    expect(form, 'still posting the per-weekday day-type selects the action decodes').toContain('dayType_');
+  it('each relocated block is mounted at its own guarded destination',()=>{
+    for(const [destination,components] of [['company-policy',['CompanyPolicyCard','CompanyPolicyEditPanel','CompanyPolicyViewPanel']],['work-schedule-overtime',['WorkScheduleOvertimeCard','ShiftPaySettings']],['registered-devices',['RegisteredDevicesCard']]] as const){
+      const page=read(`app/admin/attendance/settings/${destination}/page.tsx`);expect(page).toContain('scopedAdmin()');
+      for(const component of components)expect(page).toContain(`<${component}`);
+    }
+    const card=read('app/admin/attendance-policy/work-schedule-overtime-card.tsx');
+    expect(card).toContain('StatutoryComponentForm');expect(card).toContain('employmentsWithoutBackupShift');
+    expect(card).not.toContain('<RegisteredDevicesCard');
+    expect(read('app/admin/attendance-policy/registered-devices-card.tsx')).toContain('revokeDeviceAction');
+    expect(read('app/admin/attendance-policy/company-policy-card.tsx')).toContain('<WorkScheduleForm');
+    const form=read('app/admin/attendance-policy/schedule/work-schedule-form.tsx');
+    expect(form).toContain('setAttendancePolicyAction');expect(form).toContain('dayType_');
   });
 
   it('the write paths return to the screen the operator was on', () => {
@@ -410,11 +389,11 @@ describe('af7a8eb4 — Attendance screen layout', () => {
       "export const SCHEDULE = '/admin/attendance/schedule';",
     );
     const admin = read('app/admin/actions.ts');
-    expect(admin).toContain("const SCHEDULE_TAB = '/admin/attendance/schedule';");
+    expect(admin).toContain("const SCHEDULE_TAB = '/admin/attendance/settings/company-policy';");
     expect(admin).toContain('const backTo = SCHEDULE_TAB;');
     expect(admin, 'no query string on the policy return path').not.toContain('SCHEDULE_TAB}?tab=');
-    expect(read('app/admin/attendance-policy/device-actions.ts')).toContain('const LIST = SCHEDULE;');
-    expect(read('app/admin/attendance-policy/work-schedule-overtime-card.tsx')).toContain('returnTo={SCHEDULE}');
+    expect(read('app/admin/attendance-policy/device-actions.ts')).toContain('const LIST = REGISTERED_DEVICES;');
+    expect(read('app/admin/attendance-policy/work-schedule-overtime-card.tsx')).toContain('returnTo={WORK_SCHEDULE_OVERTIME}');
   });
 });
 

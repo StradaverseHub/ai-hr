@@ -1,0 +1,34 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+Both Employee Leave Inquiry tabs currently choose one employee. Their balance calculations already come from the same leave records used elsewhere, but there is no combined view for everyone in the selected companies.
+
+WHAT WE'LL CHANGE
+
+- Put All employees first in the employee picker on both tabs and select it by default. It stays visible during a search, with the requested subtitle and Selected badge.
+- Reset clears the employee search and returns to All employees. Selecting a person opens that person's view.
+- Show employee, company and department alongside each leave record or employee-and-leave-type balance row.
+- Add the requested record search, leave-type, status and date filters, plus leave-type and department filters for balances.
+- Support sorting, pages of 50 rows by default with a page-size choice, and export of every filtered row.
+- Show a clear combined heading and empty result message while keeping the selected companies and HR's permissions in force.
+
+WHAT YOU'LL GET
+
+HR can review and export leave across the permitted workforce without opening each employee separately. Combined and individual balances use the same figures and labels as My Leave.
+
+GOOD TO KNOW
+
+All employees means everyone HR may see within the companies selected at the top. It does not expand access to other companies or people.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: app/leave/employee-balances and employee-records use scopedAdmin, listEmployees(scopeIds) and lib/leave-inquiry.ts selection which currently falls back to the first employee. employeeBalanceRows consumes canonical leaveBalances and breakdown as-of. Reviewed both attachment slides, including the fixed All employees row and selection style. Deployed source matches inspected main; production interactive verification is unavailable due to its browser access gate.
+
+Graph: authorized employment membership and selected company scope constrain an explicit All/single selection; Leave remains sole balance, entitlement, B/F, taken, pending and available owner. Add an explicit all sentinel/default; invalid or inaccessible employee IDs must refuse rather than broaden to all. Preserve fixed picker row under search, independent right-side result filters, query/reset/back links and employee count. Persist no new balance facts. Add a shared bounded inquiry read contract for filters, sort, count, page and export; validate enums, actual ISO dates, direction and page size on the server. Record ordering defaults newest request then stable ID; Employee ID/name/date sorting includes stable tie breakers. Records include Company and Department with current/dated provenance consistent with existing inquiry. Balances are one employee/type pair with the canonical My Leave labels and as-of semantics, not locally recomputed entitlements.
+
+Server paging must read only the requested result page, not fetch every person/type balance into the page and slice. Add a Leave-owner batch seam and count/eligibility selection where necessary; retain one authoritative eligibility and balance calculation. Exports consume the identical authorized filtered/sorted query in bounded chunks, include all matching rows and clearly refuse unsupported file limits. Recheck scope for downloads; no client-supplied totals or company expansion. Company changes reset stale single selection and pagination safely.
+
+Acceptance: default/reset/search/pinned row/single transitions on BOTH tabs; HR with two permitted companies, one selected company, employee/manager refusals, forged selection and tenant isolation. Compare every displayed balance field with the same employee's My Leave and individual inquiry, including carried credit, pending/cancelled/partial leave and employees with no eligible types. Seed more than a page and duplicate names to prove stable sorting, no duplicate/missing rows, changed page sizes, filter counts and complete export beyond the current page. Cover applied-date versus leave-date filtering, empty/errors, mobile/keyboard and all locales. Walk actual app and runtime logs before final classifier gate, TypeScript, build and official release. No new balance table.

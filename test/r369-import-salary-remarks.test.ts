@@ -27,10 +27,12 @@ import { and, eq, isNull } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { commitEmployeeImport, validateEmployeeImport } from '../core/import';
 import { IMPORT_COLUMNS } from '../lib/import-schema';
+import { missingByTab } from '../lib/employee-draft-schema';
 import { buildTemplateCsv, employeeTemplate } from '../lib/import-template';
 import { UNSECTIONED_COLUMNS, foreignColumns } from '../lib/import-sections';
 import { employeeColumnLabel, EMPLOYEE_XLSX_COLUMNS } from '../lib/import-template-xlsx';
 import { parseCsvRecords } from '../lib/csv';
+import {parsePersonnelImportCsv} from '../lib/personnel-import-contract';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 const COLUMN = 'salary_remarks';
@@ -96,7 +98,7 @@ describe('r369 §1 · the column is in the contract, on the template, and OPTION
   it('the downloadable CSV template carries it, and leaves it BLANK on every sample row', () => {
     // Blank sample cells are the template's own demonstration that a row with a basic salary is not
     // made to carry a reason. A sample row that filled it in would teach the opposite.
-    const { headers, records } = parseCsvRecords(buildTemplateCsv(employeeTemplate));
+    const { headers, records } = parsePersonnelImportCsv(buildTemplateCsv(employeeTemplate),{columns:[...IMPORT_COLUMNS.required,...IMPORT_COLUMNS.optional]});
     expect(headers).toContain(COLUMN);
     expect(records.length).toBeGreaterThan(0);
     for (const r of records) {
@@ -105,13 +107,10 @@ describe('r369 §1 · the column is in the contract, on the template, and OPTION
     }
   });
 
-  it('the .xlsx heading lowercases-and-underscores back to the contract key (the real re-upload trip)', () => {
-    // `parseCsvRecords` does exactly `h.trim().toLowerCase().replace(/\s+/g, '_')` on a header. A label
-    // that did not round-trip would silently DROP the column from the workbook HR actually fills in —
-    // and this column has no punctuation precisely so no canonicalisation step is needed.
-    const label = employeeColumnLabel(COLUMN);
-    expect(label).toBe('Salary Remarks');
-    expect(label.trim().toLowerCase().replace(/\s+/g, '_')).toBe(COLUMN);
+  it('the .xlsx heading resolves through the actual Personnel header contract', () => {
+    const label=employeeColumnLabel(COLUMN);
+    const parsed=parsePersonnelImportCsv('"'+label.replaceAll('"','""')+'"\nReason',{columns:[...IMPORT_COLUMNS.required,...IMPORT_COLUMNS.optional]});
+    expect(parsed.headers).toEqual([COLUMN]);expect(parsed.records[0][COLUMN]).toBe('Reason');
     expect(EMPLOYEE_XLSX_COLUMNS).toContain(COLUMN);
   });
 
@@ -163,16 +162,40 @@ describe('r369 §2 · a zero-basic row WITH a reason imports', () => {
     expect(comp!.remarks).toBe(DIRECTOR_REASON);
   });
 
-  it('a blank basic_salary is still refused — this column relieves a ZERO, not an empty cell', async () => {
-    // `basic_salary` is a REQUIRED column and an empty cell is still a missing figure: NaN reaching
-    // `money()` stores the string "NaN" in a numeric column (NonFiniteSalaryAmountError guards the
-    // service). A reason does not make a blank amount into a stated zero.
-    const preview = await validateEmployeeImport(a, {
-      companyId: b.companyId,
-      records: recs(HEADER, [row({ basic_salary: '', email: 'blank@acme.test', employee_code: 'DIR0009' })]),
-    });
-    expect(preview.rows[0].errors).toContain('Missing basic_salary');
-    expect(preview.validCount).toBe(0);
+  it.each(['', '   '])('a blank basic_salary (%j) with a reason follows the Draft rule and stores an explicit zero', async basic => {
+    // r374/item 7dbaf677 deliberately made the initial amount optional. c445 shares that form rule
+    // with the import; blank is an explicit zero, never a fabricated positive wage or numeric NaN.
+    expect(IMPORT_COLUMNS.required).not.toContain('basic_salary');
+    expect(IMPORT_COLUMNS.optional).toContain('basic_salary');
+    expect(missingByTab({ payroll: { basicSalary: basic, remarks: DIRECTOR_REASON } }).payroll).toEqual([]);
+    const records = recs(HEADER, [row({ basic_salary: basic, email: 'blank@acme.test', employee_code: 'DIR0009' })]);
+    const preview = await validateEmployeeImport(a, { companyId: b.companyId, records });
+    expect(preview.rows[0].errors).toEqual([]);
+    expect(preview.validCount).toBe(1);
+    const result = await commitEmployeeImport(a, { companyId: b.companyId, records });
+    expect(result.imported).toBe(1);expect(result.failed).toEqual([]);
+    expect(await personByEmail('blank@acme.test')).toBeTruthy();
+    expect(await openComp('DIR0009')).toMatchObject({ basicSalary: '0.00', remarks: DIRECTOR_REASON });
+  });
+
+  it('a blank basic_salary without a reason is refused before any employee or salary is written', async () => {
+    expect(missingByTab({ payroll: { basicSalary: '' } }).payroll).toEqual(['remarks']);
+    const records = recs(HEADER, [row({ basic_salary: '', email: 'blank-unconfirmed@acme.test', employee_code: 'DIR0010', [COLUMN]: '' })]);
+    const preview = await validateEmployeeImport(a, { companyId: b.companyId, records });
+    expect(preview.validCount).toBe(0);expect(preview.rows[0].errors.join(' | ')).toContain(COLUMN);
+    const result = await commitEmployeeImport(a, { companyId: b.companyId, records });
+    expect(result.imported).toBe(0);expect(result.skipped).toBe(1);expect(result.failed).toEqual([]);
+    expect(await personByEmail('blank-unconfirmed@acme.test')).toBeNull();
+    expect(await openComp('DIR0010')).toBeNull();
+  });
+
+  it.each(['-1', 'not-a-number'])('a supplied invalid basic_salary %j stays refused even with a reason', async basic => {
+    const records = recs(HEADER, [row({ basic_salary: basic, email: 'invalid-basic@acme.test', employee_code: 'DIR0011' })]);
+    const preview = await validateEmployeeImport(a, { companyId: b.companyId, records });
+    expect(preview.validCount).toBe(0);expect(preview.rows[0].errors.join(' | ')).toContain('Invalid basic_salary');
+    const result = await commitEmployeeImport(a, { companyId: b.companyId, records });
+    expect(result.imported).toBe(0);expect(result.skipped).toBe(1);
+    expect(await personByEmail('invalid-basic@acme.test')).toBeNull();expect(await openComp('DIR0011')).toBeNull();
   });
 
   it('a daily worker with a zero basic and a real RATE needs no reason (the OTHER leg is untouched)', async () => {
@@ -291,17 +314,25 @@ describe('r369 §4 · an existing file with NO salary_remarks column imports eve
       '', '', '',
     ].join(',');
 
+  // Exercise the same versioned Personnel header boundary as the upload screen before owner writes.
+  const legacyRecs = (rows: string[]) => parsePersonnelImportCsv(`${LEGACY_HEADER}\n${rows.join('\n')}`, {
+    columns: [...IMPORT_COLUMNS.required, ...IMPORT_COLUMNS.optional], generation: 2,
+  }).records;
+
   it('the legacy header really does NOT carry the new column (or this whole section proves nothing)', () => {
     expect(LEGACY_HEADER.split(',')).not.toContain(COLUMN);
-    // …and it is otherwise exactly today's contract minus that one column, so the fence is real and not
-    // an accident of a stale list.
-    expect([...LEGACY_HEADER.split(',')].sort()).toEqual(
-      [...IMPORT_COLUMNS.required, ...IMPORT_COLUMNS.optional].filter((c) => c !== COLUMN).slice().sort(),
-    );
+    // Keep the historical 49-column file literal: c445 expands today's template rather than changing
+    // what a previously downloaded file contained. Every old column remains recognised and every
+    // currently mandatory column is present; actual legacy writes are verified below.
+    const legacy = LEGACY_HEADER.split(','), current = [...IMPORT_COLUMNS.required, ...IMPORT_COLUMNS.optional];
+    expect(legacy).toHaveLength(49);
+    expect(legacy.filter(column => !current.includes(column))).toEqual([]);
+    expect(IMPORT_COLUMNS.required.filter(column => !legacy.includes(column))).toEqual([]);
+    expect(parsePersonnelImportCsv(LEGACY_HEADER, { columns: current }).headers).toEqual(legacy);
   });
 
   it('every row of a three-row legacy file validates clean and imports', async () => {
-    const records = recs(LEGACY_HEADER, [
+    const records = legacyRecs([
       legacyRow('Nadia Yusof', 'nadia.legacy@acme.test', 'LEG0001', ic(51), '5200'),
       legacyRow('Ravi Chandran', 'ravi.legacy@acme.test', 'LEG0002', ic(52), '9800', 'Operations'),
       legacyRow('Siti Aminah', 'siti.legacy@acme.test', 'LEG0003', ic(53), '4100', 'Operations'),
@@ -324,8 +355,15 @@ describe('r369 §4 · an existing file with NO salary_remarks column imports eve
   it('the salary records it writes are byte-identical to the pre-r369 write: remarks NULL', async () => {
     // The service stores an omitted remark as NULL and logs no `remarks` field change, so "unchanged"
     // is checkable on the row itself rather than argued from the call site.
-    const records = recs(LEGACY_HEADER, [legacyRow('Nadia Yusof', 'nadia.legacy@acme.test', 'LEG0001', ic(51), '5200')]);
-    await commitEmployeeImport(a, { companyId: b.companyId, records });
+    const cells = legacyRow('Nadia Yusof', 'nadia.legacy@acme.test', 'LEG0001', ic(51), '5200').split(',');
+    cells[LEGACY_HEADER.split(',').indexOf('postcode')] = '00123';
+    const records = legacyRecs([cells.join(',')]);
+    expect(records[0].postcode).toBe('00123');
+    const preview = await validateEmployeeImport(a, { companyId: b.companyId, records });
+    expect(preview.rows[0].errors).toEqual([]);
+    const committed = await commitEmployeeImport(a, { companyId: b.companyId, records });
+    expect(committed.imported).toBe(1);expect(committed.failed).toEqual([]);
+    expect(await personByEmail('nadia.legacy@acme.test')).toMatchObject({ permanentPostcode: '00123' });
     const comp = await openComp('LEG0001');
     expect(comp!.basicSalary).toBe('5200.00');
     expect(comp!.monthlyAllowance).toBe('300.00');
@@ -336,7 +374,7 @@ describe('r369 §4 · an existing file with NO salary_remarks column imports eve
   it('the compensation.set event records NO remarks change for a legacy row', async () => {
     // `fieldsChanged` is what the audit trail shows. A file that never mentioned remarks must not make
     // the log claim somebody set one.
-    const records = recs(LEGACY_HEADER, [legacyRow('Nadia Yusof', 'nadia.legacy@acme.test', 'LEG0001', ic(51), '5200')]);
+    const records = legacyRecs([legacyRow('Nadia Yusof', 'nadia.legacy@acme.test', 'LEG0001', ic(51), '5200')]);
     await commitEmployeeImport(a, { companyId: b.companyId, records });
     const comp = await openComp('LEG0001');
     const [ev] = await owner.db
@@ -351,7 +389,7 @@ describe('r369 §4 · an existing file with NO salary_remarks column imports eve
     // The honest edge of backward compatibility: before r369 such a row imported and then blocked the
     // whole company's payroll run. It is refused now, which is better, and the error tells the operator
     // the one thing they need — which column to add to their file.
-    const records = recs(LEGACY_HEADER, [legacyRow('Old Director', 'olddir@acme.test', 'LEG0004', ic(54), '0')]);
+    const records = legacyRecs([legacyRow('Old Director', 'olddir@acme.test', 'LEG0004', ic(54), '0')]);
     const preview = await validateEmployeeImport(a, { companyId: b.companyId, records });
     expect(preview.rows[0].ok).toBe(false);
     expect(preview.rows[0].errors.join(' | ')).toContain(COLUMN);

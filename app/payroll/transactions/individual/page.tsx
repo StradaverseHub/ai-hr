@@ -141,7 +141,7 @@ export default async function IndividualTransactionPage({
 
   const errorKeys = new Set([
     'unsupportedComponent',
-    'dateOutOfPeriod',
+    'invalidEffectiveDate',
     'notDraft',
     'amountNotPositive',
     'companyMismatch',

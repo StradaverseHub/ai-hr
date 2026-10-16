@@ -154,8 +154,17 @@ export type OvertimeTrace = {
 };
 
 export type AttendanceTraceV1 = {
+  /** Reference only: exact quantities and evidence remain in the immutable OT owner. A refusal
+   * prevents financial consumers from silently using the legacy OT fields for this formula day. */
+  overtimePattern?: {status:'recorded';sourceId:string;calculationId:string;revision:number} | {status:'refused';reason:'sourceUnavailable'};
+  exemption?:{revisionId:string;effectiveFrom:string;types:readonly ['absent','late','early_out']};
   v: typeof ATTENDANCE_TRACE_VERSION;
   schedule: {
+    /** IDs and anchoring inputs captured by this calculation, absent in older traces. */
+    shiftId?: string | null;
+    dailyCutoffMinutes?: number | null;
+    fixedClockApplicable?:boolean;
+    fullDayNormalMinutes?:number;
     source: TraceScheduleSource;
     dayType: TraceDayType;
     /** Null on a branch with no resolved start/end (a rest day resolved from company policy). */
@@ -176,6 +185,10 @@ export type AttendanceTraceV1 = {
     ruleId: string | null;
   };
   punch: {
+    /** Captured calculation inputs, not reconstruction from a current shift. An elapsed envelope is
+     * only precise physical placement when the canonical punch source proves one closed pair. */
+    calculationIntervals?: {inAbs: number; outAbs: number}[];
+    intervalSource?: 'closedPunchPairs' | 'elapsedEnvelope';
     inAbs: number;
     /** Null on an open day (checked in, not yet out) — worked and overtime are unknowable then. */
     outAbs: number | null;

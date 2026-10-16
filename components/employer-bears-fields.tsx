@@ -26,6 +26,7 @@
  * LABELS FROM `people.detail.employerBears*` — the Personnel card's own keys; no message key is added.
  */
 import { useTranslations } from 'next-intl';
+import {personnelInput,personnelFormLabel} from '@/lib/personnel-form-contract';
 
 /** The four schemes, in the order the Personnel card names them within each of its two fieldsets. */
 export const EMPLOYER_BEARS_FIELDS = [
@@ -42,14 +43,10 @@ export function EmployerBearsSwitch(
     | { mode: 'controlled'; field: EmployerBearsField; value: string | undefined; onChange: (value: string) => void },
 ) {
   const t = useTranslations('people.detail');
-  // One literal per field, never a computed key: a template key is invisible to
-  // test/i18n-coverage.test.ts check C, and these four labels are the point of sharing the control.
-  const label = {
-    employerBearsEpf: t('employerBearsEpf'),
-    employerBearsSocso: t('employerBearsSocso'),
-    employerBearsEis: t('employerBearsEis'),
-    employerBearsSkbbk: t('employerBearsSkbbk'),
-  }[props.field];
+  const fields={employerBearsEpf:'bank_statutory.epf_contribution.employerbearsepf',employerBearsSocso:'bank_statutory.socso_eis_and_others_statutory.employerbearssocso',employerBearsEis:'bank_statutory.socso_eis_and_others_statutory.employerbearseis',employerBearsSkbbk:'bank_statutory.socso_eis_and_others_statutory.employerbearsskbbk'} as const;
+  const fieldId=fields[props.field];
+  const mode=props.mode==='controlled'?'draft':'edit';
+  const label=personnelFormLabel(fieldId,(key,fallback)=>key.startsWith('people.detail.')?t(key.slice(14)):fallback);
   // Only EPF has its own hint on the Personnel card; the other three share the fieldset's one. Passing
   // the shared hint as a title on each keeps the draft — which has no fieldset legend — as informative.
   const title = props.field === 'employerBearsEpf' ? t('employerBearsEpfHint') : t('employerBearsHint');
@@ -57,10 +54,10 @@ export function EmployerBearsSwitch(
   return (
     <label className="flex items-center gap-2 text-sm" title={title}>
       <input
-        type="checkbox"
+        {...personnelInput(fieldId,mode)}
         className="size-4 rounded"
         {...(props.mode === 'form'
-          ? { name: props.field, defaultChecked: props.defaultChecked }
+          ? { defaultChecked: props.defaultChecked }
           : {
               checked: props.value === 'yes',
               onChange: (e) => props.onChange(e.target.checked ? 'yes' : 'no'),

@@ -133,14 +133,14 @@ export async function loadDelegationContextAction(history: boolean): Promise<Del
   const masters: OrgScopeMasters = {
     // f1bbc572 — the Criteria fields travel with the masters so the picker can apply the resolver's own
     // origin ∪ global rule (flag-gated, exactly as labelUsableByCompany does at save time).
-    companies: companiesRaw.map((c) => ({ id: c.id, name: c.name, sharedSystemLabels: c.sharedSystemLabels })),
-    businessUnits: businessUnitsRaw.map((b) => ({ id: b.id, name: b.name, companyId: b.companyId, isGlobal: b.isGlobal })),
+    companies: companiesRaw.map((c) => ({ id: c.id, name: c.name })),
+    businessUnits: businessUnitsRaw.map((b) => ({ id: b.id, name: b.name, companyId: b.companyId, isGlobal: b.isGlobal, assignedCompanyIds: b.assignedCompanyIds })),
     departments: departmentsRaw.map((d) => ({
       id: d.id,
       name: d.name,
       companyId: d.companyId,
       businessUnitId: d.businessUnitId,
-      isGlobal: d.isGlobal,
+      isGlobal: d.isGlobal, assignedCompanyIds: d.assignedCompanyIds,
     })),
   };
   if (adminCaller) {

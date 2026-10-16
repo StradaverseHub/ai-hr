@@ -1,6 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
+import { personnelInput, personnelFormName, personnelFormLabel } from '@/lib/personnel-form-contract';
 import { MultiSelectPopover } from '@/components/ui/multi-select-popover';
 
 /**
@@ -96,6 +98,9 @@ export function LocationAssignment({
   };
   disabled?: boolean;
 }) {
+  const t=useTranslations();
+  const fieldLabel=personnelFormLabel('attendance.clocking_and_attendance_photo.clockinglocationids',(key,fallback)=>t.has(key)?t(key):fallback);
+  const switchTitle=personnelFormLabel('attendance.clocking_and_attendance_photo.geofencingenabled',(key,fallback)=>t.has(key)?t(key):fallback);
   const [enabled, setEnabled] = useState(defaultEnabled);
   const [selected, setSelected] = useState<Set<string>>(() => new Set(defaultSelected));
 
@@ -120,7 +125,7 @@ export function LocationAssignment({
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-4 border-b border-border pb-4">
         <div>
-          <p className="text-sm font-medium text-foreground">{labels.switchTitle}</p>
+          <p className="text-sm font-medium text-foreground">{switchTitle}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">{labels.switchDescription}</p>
         </div>
         <label className="flex shrink-0 cursor-pointer items-center gap-2">
@@ -128,12 +133,12 @@ export function LocationAssignment({
             {enabled ? labels.switchOn : labels.switchOff}
           </span>
           <input
-            type="checkbox"
+            {...personnelInput('attendance.clocking_and_attendance_photo.geofencingenabled')}
+            name={personnelFormName('attendance.clocking_and_attendance_photo.geofencingenabled',switchName)}
             role="switch"
-            name={switchName}
             checked={enabled}
             aria-checked={enabled}
-            aria-label={labels.switchTitle}
+            aria-label={switchTitle}
             onChange={(e) => setEnabled(e.target.checked)}
             disabled={disabled}
             className="peer sr-only"
@@ -156,7 +161,7 @@ export function LocationAssignment({
       ) : (
         <div className="space-y-3">
           <p className="text-sm font-medium text-foreground">
-            {labels.fieldLabel}
+            {fieldLabel}
             <span className="ml-0.5 text-destructive" aria-label={labels.requiredMark}>
               *
             </span>
@@ -225,7 +230,7 @@ export function LocationAssignment({
 
           <div className="max-w-md">
             <MultiSelectPopover
-              name={name}
+              name={personnelFormName('attendance.clocking_and_attendance_photo.clockinglocationids',name)}
               label={labels.addLocation}
               allLabel={labels.all}
               options={offered.map((l) => ({

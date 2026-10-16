@@ -241,8 +241,8 @@ describe('026e16b9 · numeric columns compact, the text column gets the room', (
 
   it('the leave-type column takes the recovered slack, with a floor so it cannot collapse', () => {
     const css = read('components/leave/inquiry-table.module.css');
-    expect(css).toMatch(/width:\s*13%/);
-    expect(css).toMatch(/width:\s*150px/);
+    expect(css).toMatch(/th:nth-child\(5\)\s*\{width:\s*200px/);
+    expect(css).toMatch(/min-width:\s*1850px/);
     expect(css).toMatch(/font-size:\s*12px/);
     expect(css).toMatch(/table-layout:\s*fixed/);
   });

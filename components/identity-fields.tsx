@@ -52,7 +52,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { IcDobAutofill, deriveDobFromIcInput, nextAutofilledDob } from '@/components/ic-dob-autofill';
-import { Field, inputCls } from '@/components/ui';
+import { inputCls } from '@/components/ui';
+import { PersonnelField } from '@/components/personnel-field';
+import { personnelControl, personnelInput, personnelFormName } from '@/lib/personnel-form-contract';
 import { clientCountryPacks } from '@/localization/registry.client';
 
 /**
@@ -94,12 +96,13 @@ export function NationalityPicker(
 ) {
   const t = useTranslations('people.detail');
   return (
-    <Field label={t('nationality')} className={props.fieldClassName}>
+    <PersonnelField fieldId="profile.personal_details.nationality" mode={props.mode==='controlled'?'draft':'edit'} className={props.fieldClassName}>
       <Combobox
+        {...personnelControl('profile.personal_details.nationality',props.mode==='controlled'?'draft':'edit')}
         // form mode posts a hidden input under `name`; controlled mode carries NO name at all, so a guard
         // grepping for name="nationality" can never conclude that the wizard's copy posts (the r159 lesson).
         {...(props.mode === 'form'
-          ? { name: props.name, onValueChange: props.onValueChange }
+          ? { ...personnelControl('profile.personal_details.nationality'),name:personnelFormName('profile.personal_details.nationality',props.name), onValueChange: props.onValueChange }
           : { onValueChange: props.onChange })}
         value={props.value}
         options={props.options}
@@ -108,7 +111,7 @@ export function NationalityPicker(
         noResultsLabel={t('nationalityNoResults')}
         legacySuffix={t('optionLegacySuffix')}
       />
-    </Field>
+    </PersonnelField>
   );
 }
 
@@ -166,13 +169,13 @@ export function IdentityNumberField(
 
   return (
     <>
-      <Field label={t('icNumber')} className={props.fieldClassName}>
+      <PersonnelField fieldId="profile.identity_and_passport.icnumber" mode={props.mode==='controlled'?'draft':'edit'} context={{localIdentity:true}} className={props.fieldClassName}>
         {props.mode === 'form' ? (
           // IcDobAutofill derives the DOB from a valid MyKad and writes it into the DOB input of a
           // SEPARATE server-action form, found by DOM id — a coordination only the Personnel page needs.
           <IcDobAutofill
-            name="icNumber"
-            required
+            {...personnelInput('profile.identity_and_passport.icnumber','edit',{localIdentity:true})}
+            name={personnelFormName('profile.identity_and_passport.icnumber')}
             defaultValue={props.icNumber}
             placeholder={IC_PLACEHOLDER}
             className={inputCls}
@@ -192,7 +195,7 @@ export function IdentityNumberField(
             onDateOfBirthChange={props.onDateOfBirthChange}
           />
         )}
-      </Field>
+      </PersonnelField>
       <p className={`text-xs text-muted-foreground ${props.hintClassName ?? ''}`}>{t('icNumberHint')}</p>
     </>
   );
@@ -272,6 +275,7 @@ function ControlledIcNumberInput({
   return (
     <>
       <input
+        {...personnelInput('profile.identity_and_passport.icnumber','draft')}
         value={icNumber ?? ''}
         onChange={(e) => apply(e.target.value)}
         placeholder={IC_PLACEHOLDER}

@@ -51,7 +51,7 @@ describe('570fd56e · the eight calculation columns moved, and did not vanish', 
 
   it('the list keeps the columns it is FOR, and gains the action', () => {
     const list = codeOnly(read(LIST));
-    for (const key of ['colDate', 'colDay', 'colShiftCode', 'colCheckIn', 'colCheckOut', 'colShiftHours', 'colActualHours', 'colStatus', 'colFlag', 'colAction']) {
+    for (const key of ['colDate', 'colDay', 'colShiftCode', 'colCheckIn', 'colCheckOut', 'colShiftHours', 'colActualHours', 'overtimeRecords.duration', 'colStatus', 'colFlag', 'colAction']) {
       expect(list.includes(`t('${key}')`), `the list lost ${key}`).toBe(true);
     }
   });
@@ -66,7 +66,7 @@ describe('570fd56e · the eight calculation columns moved, and did not vanish', 
     const list = read(LIST);
     const thead = list.slice(list.indexOf('<thead'), list.indexOf('</thead>'));
     const columns = (thead.match(/<th\b/g) ?? []).length;
-    expect(columns, 'the list should be ten columns after the eight moved').toBe(10);
+    expect(columns, 'the list includes one stored OT duration column').toBe(11);
     const spans = [...list.matchAll(/colSpan=\{(\d+)\}/g)].map((m) => Number(m[1]));
     expect(spans.length, 'the trail row and the empty state both span the table').toBeGreaterThan(0);
     for (const span of spans) expect(span, 'a colSpan is stale').toBe(columns);

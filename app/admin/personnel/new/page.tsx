@@ -197,6 +197,7 @@ export default async function CreateEmployeePage({
         </div>
       )}
       <EmployeeWizard
+        key={draft.id}
         today={today}
         draftId={draft.id}
         reservedEmployeeCode={draft.reservedEmployeeCode}

@@ -7,6 +7,10 @@ export const notificationEmailCategories = [
 ] as const;
 export type NotificationEmailCategory = typeof notificationEmailCategories[number];
 export const notificationEmailCategory = z.enum(notificationEmailCategories);
+/** Preference/policy categories include report attachments; workflow dispatch remains the tuple above. */
+export const notificationPreferenceCategories = [...notificationEmailCategories, 'employee_master_reports'] as const;
+export const notificationPreferenceCategory = z.enum(notificationPreferenceCategories);
+export type NotificationPreferenceCategory = typeof notificationPreferenceCategories[number];
 export const notificationEmailLocales = ['en', 'ms', 'zh', 'vi', 'ta', 'th'] as const;
 export type NotificationEmailLocale = typeof notificationEmailLocales[number];
 export const notificationEmailRequest = z.discriminatedUnion('op', [

@@ -46,7 +46,7 @@ import { actorOf, appendEvent } from '../db/events';
 // their implementation files. The two import ratchets scan core/ and the allowlist only ever
 // SHRINKS, so a new file reaching into core/attendance or core/payroll directly is a gate failure
 // by design, not an omission to be allowlisted.
-import { recomputeDayFigures, type DayType } from '../packs/attendance/service';
+import { recomputeDayFigures, refreshOvertimePatternDayTx, type DayType } from '../packs/attendance/service';
 import { batchesCoveringAttendanceDates, markBatchNeedsRecalc, lockPayrollForAttendanceChange } from '../packs/payroll/service';
 import { assignment, attendance, attendanceCorrection, employment, person } from '../db/schema';
 
@@ -439,6 +439,7 @@ export async function recomputeAttendance(ctx: SessionContext, p: RecomputeScope
 
     for (const c of changed) {
       await tx.update(attendance).set(c.columns).where(eq(attendance.id, c.attendanceId));
+      await refreshOvertimePatternDayTx(tx,ctx,{employmentId:c.row.employmentId,date:c.row.date,reason:'Recomputed attendance day'});
       await appendEvent(tx, {
         tenantId: ctx.tenantId,
         aggregateType: 'attendance',

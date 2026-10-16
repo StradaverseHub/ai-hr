@@ -1,3 +1,4 @@
+import {PERSONNEL_SOCSO_CATEGORIES,PERSONNEL_EIS_CATEGORIES,PERSONNEL_CHILD_RELIEF_MODES,PERSONNEL_TAX_RESIDENCIES} from '../../lib/personnel-choice-vocabulary';
 import { writeTaxCircumstance, type TaxCircumstance } from './tax-circumstance';
 import {saveTaxSelectionMYTx,selectedSchemeOk,TaxSelectionError,taxSelectionContextMY} from './tax-selection';
 /**
@@ -5,7 +6,7 @@ import {saveTaxSelectionMYTx,selectedSchemeOk,TaxSelectionError,taxSelectionCont
  * identity: IC, EPF, SOCSO, tax, EIS eligibility, bank. IC is validated + unique per tenant.
  */
 import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../../db/client';
+import { withTenant, type SessionContext, type Tx } from '../../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../../db/events';
 import { companyStatutoryMy, domainEvent, employeeStatutoryMy, employment, person } from '../../db/schema';
 import { CHILD_RELIEF_CATEGORY_KEYS, DEFAULT_MY_STATUTORY, type HrdfStatus } from './statutory-tables';
@@ -129,10 +130,10 @@ export { defaultSocsoEisNumber } from './socso-eis';
 
 // SOCSO / EIS contribution-category override (item a7271737). The category is the single per-scheme control on
 // the SOCSO & EIS card; the setter derives the legacy subject_to_socso / eis_eligible booleans from it.
-export const SOCSO_CATEGORIES = ['auto', 'first', 'second', 'none'] as const;
+export const SOCSO_CATEGORIES = PERSONNEL_SOCSO_CATEGORIES;
 export type SocsoCategory = (typeof SOCSO_CATEGORIES)[number];
 export const isSocsoCategory = (v: string): v is SocsoCategory => (SOCSO_CATEGORIES as readonly string[]).includes(v);
-export const EIS_CATEGORIES = ['auto', 'none'] as const;
+export const EIS_CATEGORIES = PERSONNEL_EIS_CATEGORIES;
 export type EisCategory = (typeof EIS_CATEGORIES)[number];
 export const isEisCategory = (v: string): v is EisCategory => (EIS_CATEGORIES as readonly string[]).includes(v);
 
@@ -210,7 +211,9 @@ export type StatutoryInput = {
   zakatEffectiveTo?: string | null;
 };
 
-export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInput) {
+export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInput,
+  /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
+  outerTx?: Tx) {
   // Item 35524d1f — the same rule setIcProfileMY has carried since 55865c32: a BLANK IC is accepted and
   // stored as null; any NON-blank value stays strict 12-digit MyKad. This opened with a bare
   // `if (!isValidIC(...)) throw`, which rejected '' as well, so the Create Employee wizard failed at its last
@@ -291,7 +294,7 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
     zakatEffectiveFrom: zakat.zakatEffectiveFrom,
     zakatEffectiveTo: zakat.zakatEffectiveTo,
   };
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx:Tx) => {
     const [existing] = await tx
       .select({
         id: employeeStatutoryMy.id,
@@ -427,7 +430,8 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
       },
     });
     return { id };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
 /** A TP3 partial-save was attempted for a person with no Malaysian statutory row yet. */
@@ -532,7 +536,9 @@ export type BankInput = {
  * throws NoStatutoryProfileError otherwise. Validates require-when-enabled for both custom-holder fields.
  * Appends an `employee.bank.updated` DomainEvent (before/after) per substrate discipline.
  */
-export async function setBankProfileMY(ctx: SessionContext, p: BankInput) {
+export async function setBankProfileMY(ctx: SessionContext, p: BankInput,
+  /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
+  outerTx?: Tx) {
   const enableName = p.enableCustomHolderName ?? false;
   const enableId = p.enableCustomHolderId ?? false;
   const holderName = (p.customHolderName ?? '').trim() || null;
@@ -555,7 +561,7 @@ export async function setBankProfileMY(ctx: SessionContext, p: BankInput) {
     enableCustomHolderId: enableId,
     customHolderId: enableId ? holderId : null,
   };
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx:Tx) => {
     const [existing] = await tx
       .select({
         id: employeeStatutoryMy.id,
@@ -599,7 +605,8 @@ export async function setBankProfileMY(ctx: SessionContext, p: BankInput) {
       },
     });
     return { id: existing.id };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
 // ── Feedback 0df0c635 — Others Statutory card ──────────────────────────────────────────────────────────
@@ -622,9 +629,9 @@ export type OthersStatutoryInput = {
  * checkbox. Appends an `employee.others-statutory.updated` DomainEvent (before/after) per substrate
  * discipline, so an auditor can reconstruct who toggled HRDF subjectivity and when, from the log alone.
  */
-export async function setOthersStatutoryMY(ctx: SessionContext, p: OthersStatutoryInput) {
+export async function setOthersStatutoryMY(ctx: SessionContext, p: OthersStatutoryInput,outerTx?:Tx) {
   const subjectToHrdf = typeof p.subjectToHrdf === 'boolean' ? p.subjectToHrdf : null;
-  return withTenant(ctx, async (tx) => {
+  const run=async(tx:Tx)=>{
     const [existing] = await tx
       .select({ id: employeeStatutoryMy.id, subjectToHrdf: employeeStatutoryMy.subjectToHrdf })
       .from(employeeStatutoryMy)
@@ -651,7 +658,8 @@ export async function setOthersStatutoryMY(ctx: SessionContext, p: OthersStatuto
       },
     });
     return { id: existing.id };
-  });
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 // ── Feedback 57840a6e — corrective step for accidental HRDF opt-outs ───────────────────────────────────
@@ -818,7 +826,7 @@ export async function correctAccidentalHrdfOptOutsMY(
 // ── Item 8b5334db — Identification & Tax card ──────────────────────────────────────────────────────────
 /** Legacy person tax classification. Approved incentives require a scoped employer-period declaration.
  * C-Suite is declared only on that employment-scoped surface, never as a global person privilege. */
-export const TAX_RESIDENCIES = ['resident', 'non_resident', 'rep', 'knowledge_worker', 'c_suite'] as const;
+export const TAX_RESIDENCIES = PERSONNEL_TAX_RESIDENCIES;
 export type TaxResidency = (typeof TAX_RESIDENCIES)[number];
 export const isTaxResidency = (v: string): v is TaxResidency => (TAX_RESIDENCIES as readonly string[]).includes(v);
 
@@ -845,7 +853,7 @@ export const isTaxResidency = (v: string): v is TaxResidency => (TAX_RESIDENCIES
  *  the EA statement — read num_children as a plain head count, which is why the derived weighting is never
  *  written to that column. The one gate every consumer asks is core/dependents.ts
  *  `pricesChildReliefFromGrid`; no consumer carries its own copy, and a test pins that. */
-export const CHILD_RELIEF_MODES = ['manual', 'auto', 'auto_table'] as const;
+export const CHILD_RELIEF_MODES = PERSONNEL_CHILD_RELIEF_MODES;
 export type ChildReliefMode = (typeof CHILD_RELIEF_MODES)[number];
 export const isChildReliefMode = (v: string): v is ChildReliefMode => (CHILD_RELIEF_MODES as readonly string[]).includes(v);
 
@@ -912,6 +920,8 @@ export class NoIcYetError extends Error {
 export async function setIcProfileMY(
   ctx: SessionContext,
   p: { personId: string; icNumber: string; oldIcNumber?: string | null },
+  /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
+  outerTx?: Tx,
 ) {
   const ic = (p.icNumber ?? '').trim() ? normalizeIC(p.icNumber) : null;
   /**
@@ -924,7 +934,7 @@ export async function setIcProfileMY(
   // no MyKad but an old card (or a correction that clears one) still has something to write.
   if (!ic && !oldIc) return { id: null };
   if (ic && !isValidIC(ic)) throw new InvalidICError();
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx:Tx) => {
     const [existing] = await tx
       .select({ id: employeeStatutoryMy.id, icNumber: employeeStatutoryMy.icNumber, oldIcNumber: employeeStatutoryMy.oldIcNumber })
       .from(employeeStatutoryMy)
@@ -961,7 +971,8 @@ export async function setIcProfileMY(
       },
     });
     return { id };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
 /** Item e3ce0d4d — an identity save was missing a mandatory passport field (number / issue / expiry). The
@@ -1004,7 +1015,9 @@ export type PassportInput = {
  *     person has no statutory row yet — nothing to clear, no empty row seeded.
  * Remark and issuing country are optional on every path.
  */
-export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput) {
+export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput,
+  /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
+  outerTx?: Tx) {
   const number = (p.passportNumber ?? '').trim() || null;
   const issue = (p.passportIssueDate ?? '').trim() || null;
   const expiry = (p.passportExpiryDate ?? '').trim() || null;
@@ -1024,7 +1037,7 @@ export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput
     passportIssuingCountry: issuingCountry,
     passportIssuingCountryCode: issuingCountryCode,
   };
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx:Tx) => {
     // Nationality is derived from the person RECORD inside the same RLS tx — never from the caller.
     const [subject] = await tx
       .select({ nationality: person.nationality })
@@ -1091,7 +1104,8 @@ export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput
       },
     });
     return { id: id as string | null };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
 /** Just the tax columns of the Identification & Tax card (item 8b5334db). Used by the dedicated card, which
@@ -1152,7 +1166,9 @@ export type TaxWriteProvenance = 'auto_child_relief';
  * it on the Profile tab) — throws NoIcYetError otherwise. isResident is kept in sync as the legacy source of
  * truth (all resident and approved resident incentive schemes ⇒ true; non-resident ⇒ false). Appends `employee.tax.updated` (before/after).
  */
-export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput) {
+export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput,
+  /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
+  outerTx?: Tx) {
   if(p.taxResidency!=null&&p.taxResidency!=='none'&&!selectedSchemeOk(p.taxResidency))throw new TaxSelectionError('invalid_scheme');
   const residency: TaxResidency =
     p.taxResidency != null && isTaxResidency(String(p.taxResidency)) ? (String(p.taxResidency) as TaxResidency) : 'resident';
@@ -1178,7 +1194,7 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput) {
     disabledSpouse: p.disabledSpouse ?? false,
     childReliefTable: normaliseChildReliefTable(p.childReliefTable),
   };
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx:Tx) => {
     if(p.employmentId)await taxSelectionContextMY(tx,ctx,p.employmentId,true);
     const [existing] = await tx
       .select({
@@ -1256,7 +1272,8 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput) {
       },
     });
     return { id: existing.id };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
 /**
@@ -1309,13 +1326,34 @@ export function taxNumberSharedWithMY(
   });
 }
 
-export function getStatutoryProfileMY(ctx: SessionContext, personId: string) {
-  return withTenant(ctx, async (tx) => {
+export function getStatutoryProfileMY(ctx: SessionContext, personId: string, outerTx?: Tx) {
+  return outerTx ? getStatutoryProfileMYTx(outerTx, ctx, personId) : withTenant(ctx, tx => getStatutoryProfileMYTx(tx, ctx, personId));
+}
+
+/** Explicit owner read seam for a caller-held scoped report snapshot. */
+export async function getStatutoryProfileMYTx(tx: Tx, ctx: SessionContext, personId: string) {
     const [row] = await tx
       .select()
       .from(employeeStatutoryMy)
       .where(eq(employeeStatutoryMy.personId, personId))
       .limit(1);
     return row ?? null;
-  });
+  }
+
+/** Partial registration-number write. Never routes a narrow import through the full statutory overwrite. */
+export async function setRegistrationNumbersMY(ctx:SessionContext,p:{personId:string;epfNumber?:string|null;socsoNumber?:string|null},outerTx?:Tx) {
+  const values:{epfNumber?:string|null;socsoNumber?:string|null}={};
+  if(p.epfNumber!==undefined)values.epfNumber=p.epfNumber?.trim()||null;
+  if(p.socsoNumber!==undefined)values.socsoNumber=p.socsoNumber?.trim()||null;
+  if(!Object.keys(values).length)throw new Error('Nothing to change.');
+  const run=async(tx:Tx)=>{
+    const [before]=await tx.select({id:employeeStatutoryMy.id,epfNumber:employeeStatutoryMy.epfNumber,socsoNumber:employeeStatutoryMy.socsoNumber}).from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,p.personId)).limit(1).for('update');
+    if(!before)throw new NoStatutoryProfileError();
+    const fields=Object.entries(values).filter(([field,value])=>before[field as 'epfNumber'|'socsoNumber']!==value).map(([field])=>field);
+    if(!fields.length)return {id:before.id};
+    await tx.update(employeeStatutoryMy).set({...values,updatedAt:sql`now()`}).where(eq(employeeStatutoryMy.id,before.id));
+    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employee-statutory',aggregateId:before.id,eventType:'employee.statutory-registration.updated',actor:actorOf(ctx),subjectEmploymentId:await subjectEmploymentForPerson(tx,ctx.tenantId,p.personId),payload:{fields}});
+    return {id:before.id};
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }

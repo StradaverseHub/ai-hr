@@ -1,3 +1,5 @@
+import { assertDutyRosterWriteTx } from './schedule-group-controls';
+import { rotationVersionOn } from './week-pattern';
 import { ShiftNotInScheduleGroupError, groupRuleIdTx, assertShiftsAllowedForEmploymentsTx } from './schedule-shift-eligibility';
 export { ShiftNotInScheduleGroupError, groupRuleIdTx, assertShiftsAllowedForEmploymentsTx } from './schedule-shift-eligibility';
 /**
@@ -13,6 +15,7 @@ import {
   attendance,
   attendanceDayAdjustment,
   attendanceRule,
+  attendanceRuleShift,
   attendanceRotation,
   employment,
   employmentShiftArrangement,
@@ -57,7 +60,7 @@ import {
   type ResolvedCell,
   type UsualShift,
 } from '../lib/roster-month';
-import { isShiftColorToken, type ShiftColorToken } from '../lib/shift-visual';
+import { normalizeShiftColor } from '../lib/shift-visual';
 // f513ec02 — the dated shift ladder, for the reverse check's "which shift is this person on TODAY".
 // core/shift-arrangement-resolve.ts is a declared LEAF (its only value import is db/schema), which is
 // exactly why the resolver lives there and not in core/shift-arrangement.ts: that module imports THIS
@@ -172,11 +175,10 @@ function validateShiftDayType(v: string | null | undefined): ShiftDayType | null
  * the swatches render from, so the screen, the service and the database cannot disagree about what a
  * colour is — the shape lib/leave-visual.ts + migration 0179 already established for leave_type.color.
  */
-function validateShiftColor(v: string | null | undefined): ShiftColorToken | null {
+function validateShiftColor(v: string | null | undefined): string | null {
   const s = optText(v);
   if (s == null) return null;
-  if (!isShiftColorToken(s)) throw new Error(`Invalid shift colour: ${s}`);
-  return s;
+  return normalizeShiftColor(s);
 }
 
 export type ShiftInput = {
@@ -188,8 +190,8 @@ export type ShiftInput = {
   code: string;
   /** f3321963 — shift template type: 'normal' | 'semi_flexi' | 'full_flexi'. Absent ⇒ 'normal' (legacy). */
   type?: ShiftType | null;
-  startTime: string;
-  endTime: string;
+  startTime?: string | null;
+  endTime?: string | null;
   breakMinutes?: number;
   /** R7 Phase 1 — multiple break windows. STORAGE-ONLY this phase: the engine / punch import / hourly clamp
    *  keep reading the canonical breakMinutes scalar, persisted as Σ of these durations. */
@@ -272,8 +274,8 @@ type NormalizedShift = {
   name: string;
   code: string;
   type: ShiftType;
-  startTime: string;
-  endTime: string;
+  startTime: string | null;
+  endTime: string | null;
   crossesMidnight: boolean;
   breakMinutes: number;
   breakPeriods: BreakPeriod[] | null;
@@ -296,7 +298,7 @@ type NormalizedShift = {
   otRule: ShiftOtRule | null | undefined;
   // r429 (f6819e19) · D2 — the Schedule Group picker is removed from the form; UNDEFINED ⇒ preserve.
   ruleId: string | null | undefined;
-  differential: ShiftDifferential | null;
+  differential: ShiftDifferential | null | undefined;
   // cf21e554 stage 1 — plain values: absent ⇒ null (see ShiftInput for why these are not "preserve on
   // undefined" like the three above).
   description: string | null;
@@ -313,7 +315,7 @@ type NormalizedShift = {
   halfDayFirstOut: string | null;
   halfDaySecondIn: string | null;
   // 6340aecb — absent ⇒ null / false, exactly like the General columns above.
-  color: ShiftColorToken | null;
+  color: string | null;
   // r429 (f6819e19) · D4 — THE WHOLE-SHIFT SWITCH IS RETIRED FROM THE FORM. UNDEFINED ⇒ preserve (the one
   // way a shift the migration could not convert keeps deducting its allowance until someone explicitly
   // ticks "Stop using it", which posts an EXPLICIT false). updateShift additionally refuses an explicit
@@ -330,12 +332,13 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
   if (!name) throw new Error('Shift name is required');
   const code = p.code.trim();
   if (!code) throw new Error('Shift code is required');
-  const differential = validateDifferential(p.differential);
+  const differential = p.differential === undefined ? undefined : validateDifferential(p.differential);
   const type = validateShiftType(p.type);
-  const startTime = asShiftTime(p.startTime, 'Shift start');
-  const endTime = asShiftTime(p.endTime, 'Shift end');
-  const crossesMidnight = shiftCrossesMidnight(startTime, endTime);
-  const span = shiftSpan(startTime, endTime, crossesMidnight);
+  const durationOnly=type==='full_flexi';
+  const startTime=p.startTime?asShiftTime(p.startTime,'Shift start'):durationOnly?null:asShiftTime('', 'Shift start');
+  const endTime=p.endTime?asShiftTime(p.endTime,'Shift end'):durationOnly?null:asShiftTime('', 'Shift end');
+  const crossesMidnight=!!startTime&&!!endTime&&shiftCrossesMidnight(startTime,endTime);
+  const span=durationOnly?1440:shiftSpan(startTime!,endTime!,crossesMidnight);
 
   // b7b886e2 — the periods are no longer storage-only: the day derivation deducts the window minutes a
   // clocking actually spanned. The breakMinutes scalar below stays canonical (Σ durations) and is what
@@ -373,7 +376,7 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
     // (neither time typed — what a new shift's first row opens as) saves nothing and is dropped here,
     // before any index is handed to a message, so "Break 2" in a refusal is the row the operator sees as
     // Break 2 even when Break 1 was left blank.
-    const shiftShape = { startTime, endTime, crossesMidnight };
+    const shiftShape = { startTime:startTime??'', endTime:endTime??'', crossesMidnight, durationOnly };
     const rowLabel = (i: number) => `Break ${i + 1}`;
     const posted = p.breakPeriods
       .map((bp, i) => ({ bp, i, start: (bp.start ?? '').trim(), end: (bp.end ?? '').trim() }))
@@ -389,7 +392,7 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
       }
       if (check.kind === 'outside') {
         throw new Error(
-          `${rowLabel(i)} falls outside the shift (${startTime.slice(0, 5)}–${endTime.slice(0, 5)}). A break must fall inside the shift.`,
+          `${rowLabel(i)} falls outside the shift (${startTime?.slice(0, 5)}–${endTime?.slice(0, 5)}). A break must fall inside the shift.`,
         );
       }
     }
@@ -545,7 +548,7 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
    * accrues no overtime until the twelfth hour. The form marks the field required; this is the rule behind
    * it, so the same trap cannot be created through the service or an import.
    */
-  if (type === 'full_flexi' && (p.normalMinutesOverride == null || Math.trunc(p.normalMinutesOverride) <= 0)) {
+  if (type === 'full_flexi' && (p.normalMinutesOverride == null || !Number.isInteger(p.normalMinutesOverride) || p.normalMinutesOverride <= 0 || p.normalMinutesOverride>1440)) {
     throw new Error('A Full Flexi shift needs its total normal working hours: they are what decides whether the day is complete.');
   }
   if (p.normalMinutesOverride != null) {
@@ -650,7 +653,7 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
   // not expressible (there is no early_in_prev_day column, by design — the reference screen has no such
   // marker, only the late-out one).
   const earlyIn = optTime(p.earlyIn, 'Earliest clock-in');
-  if (earlyIn != null && hhmmToMin(earlyIn) > hhmmToMin(startTime)) {
+  if (!durationOnly && earlyIn != null && hhmmToMin(earlyIn) > hhmmToMin(startTime!)) {
     throw new Error('Earliest clock-in must be at or before the shift start time');
   }
 
@@ -661,8 +664,8 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
   const lateOut = optTime(p.lateOut, 'Latest clock-out');
   // A next-day flag with no time is meaningless — drop it rather than store a flag nothing qualifies.
   const lateOutNextDay = lateOut == null ? null : p.lateOutNextDay === true;
-  if (lateOut != null) {
-    const endAbs = hhmmToMin(endTime) + (crossesMidnight ? 1440 : 0);
+  if (!durationOnly && lateOut != null) {
+    const endAbs = hhmmToMin(endTime!) + (crossesMidnight ? 1440 : 0);
     const lateAbs = hhmmToMin(lateOut) + (lateOutNextDay ? 1440 : 0);
     if (lateAbs < endAbs) {
       throw new Error('Latest clock-out must be at or after the shift end time (tick “next day” if it falls after midnight)');
@@ -817,7 +820,7 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
           earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes ?? null,
           otRule: n.otRule ?? null,
           ruleId: n.ruleId ?? null,
-          differential: n.differential,
+          differential: n.differential ?? null,
           dayType,
           fullDayLeaveMinutes,
           fullDayOtMinutes,
@@ -829,6 +832,7 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
     } catch (e) {
       throw shiftUniqueError(e, n);
     }
+    if(n.ruleId)await tx.insert(attendanceRuleShift).values({tenantId:ctx.tenantId,ruleId:n.ruleId,shiftId:row.id}).onConflictDoNothing();
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'shift',
@@ -880,7 +884,7 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
     // fresh rows. See the header on `flexibleBreakEnabledForRows` above for why the form itself never
     // reaches that combination; this is the backstop for every other caller.
     const [before] = await tx
-      .select({ flexibleBreakEnabled: shift.flexibleBreakEnabled, ruleId:shift.ruleId })
+      .select()
       .from(shift)
       .where(eq(shift.id, p.shiftId))
       .limit(1);
@@ -909,12 +913,12 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
           name: n.name,
           code: n.code,
           type: n.type,
-          startTime: n.startTime,
-          endTime: n.endTime,
+          ...(n.type==='full_flexi'&&p.startTime===undefined?{}:{startTime:n.startTime}),
+          ...(n.type==='full_flexi'&&p.endTime===undefined?{}:{endTime:n.endTime}),
           breakMinutes: n.breakMinutes,
           breakPeriods,
           normalMinutesOverride: n.normalMinutesOverride,
-          crossesMidnight: n.crossesMidnight,
+          ...(n.type==='full_flexi'&&p.startTime===undefined&&p.endTime===undefined?{}:{crossesMidnight:n.crossesMidnight}),
           // 88e94371 + 7c834696 rev 2 — omit when undefined so a form that no longer carries these fields
           // preserves the stored value (drizzle skips undefined keys in .set).
           ...(n.weeklyPattern === undefined ? {} : { weeklyPattern: n.weeklyPattern }),
@@ -931,12 +935,20 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
           ...(n.flexibleBreakMinutes === undefined ? {} : { flexibleBreakMinutes: n.flexibleBreakMinutes }),
           differential: n.differential,
           ...generalColumns(n),
+          ...(n.type==='full_flexi'?{
+           ...(p.earlyIn===undefined?{earlyIn:before.earlyIn}:{}),...(p.lateOut===undefined?{lateOut:before.lateOut}:{}),
+           ...(p.lateOutNextDay===undefined?{lateOutNextDay:before.lateOutNextDay}:{}),
+           ...(p.halfDayFirstOut===undefined?{halfDayFirstOut:before.halfDayFirstOut}:{}),
+           ...(p.halfDaySecondIn===undefined?{halfDaySecondIn:before.halfDaySecondIn}:{}),
+           ...(p.normalHoursRoundingMinutes===undefined?{normalHoursRoundingMinutes:before.normalHoursRoundingMinutes}:{}),
+          }:{}),
           updatedAt: new Date(),
         })
         .where(eq(shift.id, p.shiftId));
     } catch (e) {
       throw shiftUniqueError(e, n);
     }
+    if(n.ruleId)await tx.insert(attendanceRuleShift).values({tenantId:ctx.tenantId,ruleId:n.ruleId,shiftId:p.shiftId}).onConflictDoNothing();
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'shift',
@@ -1086,6 +1098,10 @@ export async function copyShift(ctx: SessionContext, p: { shiftId: string }): Pr
       throw shiftUniqueError(e, { name, code });
     }
 
+    const memberships=await tx.select().from(attendanceRuleShift).where(eq(attendanceRuleShift.shiftId,p.shiftId));
+    const copyPools=memberships.filter(m=>m.ruleId!==src.ruleId || !sourceRotation);
+    if(copyPools.length)await tx.insert(attendanceRuleShift).values(copyPools.map(m=>({tenantId:ctx.tenantId,ruleId:m.ruleId,shiftId:row.id})));
+
     // cf21e554 stage 2 — the overtime schedule travels with the copy.
     const windows = await tx.select().from(shiftOtWindow).where(eq(shiftOtWindow.shiftId, p.shiftId));
     if (windows.length > 0) {
@@ -1153,6 +1169,8 @@ export async function deleteShift(ctx: SessionContext, p: { shiftId: string }): 
       .where(eq(shift.id, p.shiftId))
       .limit(1);
     if (!src) throw new Error('Shift not found (or not visible)');
+    const [membership]=await tx.select({ruleId:attendanceRuleShift.ruleId}).from(attendanceRuleShift).where(eq(attendanceRuleShift.shiftId,p.shiftId)).limit(1);
+    if(membership)throw new Error('This shift is allowed by a Schedule Group. Remove it from that group or archive the shift instead.');
     // Referenced by any roster assignment? (RLS scopes visibility, but the count is enough — any hit blocks.)
     const [ra] = await tx
       .select({ id: rosterAssignment.id })
@@ -1284,13 +1302,14 @@ export function listShifts(ctx: SessionContext, companyId: string, opts?: { incl
  *  caller's tenant. This is what the shift-settings page, the roster picker, and the employee-profile
  *  Fixed-shift picker read, so a template authored once is assignable to any employee tenant-wide. */
 export function listShiftsForTenant(ctx: SessionContext, opts?: { includeArchived?: boolean }) {
-  return withTenant(ctx, (tx) => {
-    const conds = opts?.includeArchived ? [] : [isNull(shift.archivedAt)];
-    return tx
-      .select()
-      .from(shift)
-      .where(conds.length ? and(...conds) : undefined)
-      .orderBy(asc(shift.startTime), asc(shift.name));
+  return withTenant(ctx, async tx => {
+    const conds=opts?.includeArchived?[]:[isNull(shift.archivedAt)];
+    const rows=await tx.select().from(shift).where(conds.length?and(...conds):undefined).orderBy(asc(shift.startTime),asc(shift.name));
+    const memberships=await tx.select().from(attendanceRuleShift).orderBy(asc(attendanceRuleShift.ruleId),asc(attendanceRuleShift.shiftId));
+    const versions=await tx.select().from(attendanceRotation).orderBy(asc(attendanceRotation.effectiveFrom));
+    const ruleIds=[...new Set([...memberships.map(m=>m.ruleId),...versions.map(v=>v.ruleId)])];
+    const pools=new Map(ruleIds.map(ruleId=>{const dated=rotationVersionOn(versions.filter(v=>v.ruleId===ruleId),todayInKualaLumpur());return [ruleId,new Set(dated?.allowedShiftIds??memberships.filter(m=>m.ruleId===ruleId).map(m=>m.shiftId))];}));
+    return rows.map(sh=>({...sh,allowedRuleIds:ruleIds.filter(ruleId=>pools.get(ruleId)!.has(sh.id))}));
   });
 }
 
@@ -1298,6 +1317,7 @@ export function listShiftsForTenant(ctx: SessionContext, opts?: { includeArchive
 
 /** One row of the Overtime Schedule tab, as the form posts it. */
 export type ShiftOtWindowInput = {
+  id?:string;
   label?: string | null;
   startTime: string;
   endTime: string;
@@ -1326,14 +1346,18 @@ export async function replaceShiftOtWindows(
   ctx: SessionContext,
   p: { shiftId: string; windows: ShiftOtWindowInput[] },
 ): Promise<{ id: string; windows: number }> {
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx, tx => replaceShiftOtWindowsTx(tx, ctx, p));
+}
+
+async function replaceShiftOtWindowsTx(tx: Tx, ctx: SessionContext, p: { shiftId: string; windows: ShiftOtWindowInput[] }) {
     const [sh] = await tx
       .select({ id: shift.id, startTime: shift.startTime })
       .from(shift)
       .where(eq(shift.id, p.shiftId))
-      .limit(1);
+      .limit(1).for('update');
     if (!sh) throw new Error('Shift not found (or not visible)');
 
+    if(p.windows.length>120)throw new Error('Use at most 120 overtime windows for one shift.');
     const rows = p.windows.map((w, i) => {
       const startTime = asShiftTime(w.startTime, 'Overtime window start');
       const endTime = asShiftTime(w.endTime, 'Overtime window end');
@@ -1382,7 +1406,7 @@ export async function replaceShiftOtWindows(
     // no figure anywhere reading wrong. Refuse it at the only place it can be refused: the write. The check
     // runs on the SHIFT'S OWN timeline, anchored exactly as the engine anchors, so "22:00–02:00 next day"
     // and "01:00–03:00" are correctly seen as overlapping on a night shift.
-    const startAbs = hhmmToMin(sh.startTime);
+    const startAbs = sh.startTime ? hhmmToMin(sh.startTime) : 0;
     const anchored = rows
       .map((r) => {
         const s = hhmmToMin(r.startTime) < startAbs - 720 ? hhmmToMin(r.startTime) + 1440 : hhmmToMin(r.startTime);
@@ -1393,8 +1417,24 @@ export async function replaceShiftOtWindows(
       if (anchored[i].s < anchored[i - 1].e) throw new Error('Overtime windows must not overlap each other');
     }
 
-    await tx.delete(shiftOtWindow).where(eq(shiftOtWindow.shiftId, p.shiftId));
-    if (rows.length > 0) await tx.insert(shiftOtWindow).values(rows);
+    const existing = await tx.select().from(shiftOtWindow).where(eq(shiftOtWindow.shiftId, p.shiftId)).orderBy(asc(shiftOtWindow.sortOrder), asc(shiftOtWindow.id));
+    const retained=new Set<string>();
+    const writes=rows.map((row,i)=>{
+      const postedId=p.windows[i].id;
+      if(postedId&&!existing.some(w=>w.id===postedId))throw new Error('An overtime window is unavailable for this shift. Reopen the editor.');
+      const old=postedId?existing.find(w=>w.id===postedId):existing.find(w=>!retained.has(w.id)&&w.sortOrder===row.sortOrder);
+      if(old){if(retained.has(old.id))throw new Error('Select each overtime window once.');retained.add(old.id);}
+      return {row,old};
+    });
+    const removed=existing.filter(w=>!retained.has(w.id)).map(w=>w.id);
+    if(removed.length)await tx.delete(shiftOtWindow).where(inArray(shiftOtWindow.id,removed));
+    // Reserve distinct temporary positions so a row reorder cannot collide with the unique sort key.
+    const temporaryBase=existing.reduce((n,w)=>Math.max(n,w.sortOrder),0)+rows.length+1;
+    for(const [i,{old}] of writes.entries())if(old)await tx.update(shiftOtWindow).set({sortOrder:temporaryBase+i}).where(eq(shiftOtWindow.id,old.id));
+    for(const {row,old} of writes){
+      if(old){const changed=old.sortOrder!==row.sortOrder||old.label!==row.label||old.startTime.slice(0,5)!==row.startTime.slice(0,5)||old.endTime.slice(0,5)!==row.endTime.slice(0,5)||old.endNextDay!==row.endNextDay||old.minMinutes!==row.minMinutes||old.maxMinutes!==row.maxMinutes||old.adjustAfterMinutes!==row.adjustAfterMinutes||old.adjustDeltaMinutes!==row.adjustDeltaMinutes;await tx.update(shiftOtWindow).set({...row,updatedAt:changed?new Date():old.updatedAt}).where(eq(shiftOtWindow.id,old.id));}
+      else await tx.insert(shiftOtWindow).values(row);
+    }
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'shift',
@@ -1417,10 +1457,7 @@ export async function replaceShiftOtWindows(
       },
     });
     return { id: p.shiftId, windows: rows.length };
-  });
 }
-
-// ── Putting a PERSON in a Schedule Group (f513ec02, r281) ──────────────────────────────────────────
 
 /**
  * f513ec02 — THE WRITER r277 DID NOT SHIP, and with it the REVERSE of the refusal above.
@@ -1540,12 +1577,12 @@ export function employmentScheduleGroupName(
 ): Promise<string | null> {
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
-      .select({ name: attendanceRule.name })
+      .select({ name: attendanceRule.name,label:attendanceRule.label })
       .from(employment)
       .innerJoin(attendanceRule, eq(attendanceRule.id, employment.attendanceRuleId))
       .where(eq(employment.id, employmentId))
       .limit(1);
-    return row?.name ?? null;
+    return row?.label?.trim()||row?.name||null;
   });
 }
 
@@ -1624,6 +1661,7 @@ export async function setEmploymentScheduleGroupTx(
   await assertShiftsAllowedForEmploymentsTx(
     tx,
     shiftIds.map((shiftId) => ({ employmentId: p.employmentId, shiftId })),
+    {existingReferences:true}, // A group edit does not create a new assignment of an archived source.
   );
 
   await appendEvent(tx, {
@@ -1975,7 +2013,7 @@ export async function backfillBackupShift(
   if (matches.length > 1) {
     throw new Error(
       `Shift code "${p.shiftCode}" matches ${matches.length} shifts (${matches
-        .map((sh) => `${sh.name} ${sh.startTime.slice(0, 5)}–${sh.endTime.slice(0, 5)}`)
+        .map((sh) => `${sh.name} ${(sh.startTime?.slice(0, 5)??'—')}–${(sh.endTime?.slice(0, 5)??'—')}`)
         .join(', ')}) — codes are not unique in this tenant, so pick one and re-run.`,
     );
   }
@@ -2015,9 +2053,10 @@ async function rosterRowBefore(
 /** Assign (or re-assign) a shift to an employee on a date. Upsert: one assignment per (employee, date). */
 export async function assignShift(ctx: SessionContext, p: { employmentId: string; shiftDate: string; shiftId: string }) {
   return withTenant(ctx, async (tx) => {
+    await assertDutyRosterWriteTx(tx,ctx,[{...p,isRestDay:false}]);
     // 870b79e2 — the Schedule Group's allowed-shift list, enforced before the upsert. assignRosterRow
     // loops this primitive per date, so the per-date roster brush is covered by this one call.
-    await assertShiftsAllowedForEmploymentsTx(tx, [{ employmentId: p.employmentId, shiftId: p.shiftId }]);
+    await assertShiftsAllowedForEmploymentsTx(tx, [{ employmentId: p.employmentId, shiftId: p.shiftId, shiftDate:p.shiftDate }]);
     const before = await rosterRowBefore(tx, p.employmentId, p.shiftDate);
     const [row] = await tx
       .insert(rosterAssignment)
@@ -2043,6 +2082,7 @@ export async function assignShift(ctx: SessionContext, p: { employmentId: string
 /** Mark a date as an explicit rest day for an employee (vs no row = company-policy fallback). */
 export async function setRestDay(ctx: SessionContext, p: { employmentId: string; shiftDate: string; note?: string }) {
   return withTenant(ctx, async (tx) => {
+    await assertDutyRosterWriteTx(tx,ctx,[{...p,shiftId:null,isRestDay:true}]);
     const before = await rosterRowBefore(tx, p.employmentId, p.shiftDate);
     const [row] = await tx
       .insert(rosterAssignment)
@@ -2097,6 +2137,7 @@ export async function setRestDay(ctx: SessionContext, p: { employmentId: string;
  */
 export async function clearRoster(ctx: SessionContext, p: { employmentId: string; shiftDate: string }) {
   return withTenant(ctx, async (tx) => {
+    await assertDutyRosterWriteTx(tx,ctx,[{...p,clear:true}]);
     // The deleted row IS the "before" — returning it costs nothing and needs no second read.
     const [row] = await tx
       .delete(rosterAssignment)
@@ -2132,12 +2173,13 @@ export async function assignShiftBulk(
     p.shiftDates.map((shiftDate) => ({ tenantId: ctx.tenantId, employmentId, shiftDate, shiftId: p.shiftId, isRestDay: false })),
   );
   return withTenant(ctx, async (tx) => {
+    await assertDutyRosterWriteTx(tx,ctx,values);
     // 870b79e2 — one batched check for the whole grid, BEFORE any row is written, so a generation run that
     // would put somebody on a shift their group forbids fails whole rather than half. This is the
     // roster-generation writer (generateRosterFromTemplate is a thin date-splitter over this primitive).
     await assertShiftsAllowedForEmploymentsTx(
       tx,
-      p.employmentIds.map((employmentId) => ({ employmentId, shiftId: p.shiftId })),
+      p.employmentIds.flatMap((employmentId) => p.shiftDates.map(shiftDate=>({ employmentId, shiftId: p.shiftId, shiftDate }))),
     );
     await tx
       .insert(rosterAssignment)
@@ -2182,6 +2224,7 @@ export async function setRestDayBulk(
     p.shiftDates.map((shiftDate) => ({ tenantId: ctx.tenantId, employmentId, shiftDate, shiftId: null, isRestDay: true })),
   );
   return withTenant(ctx, async (tx) => {
+    await assertDutyRosterWriteTx(tx,ctx,values);
     await tx
       .insert(rosterAssignment)
       .values(values)
@@ -2375,13 +2418,14 @@ export async function copyRoster(
       isRestDay: r.isRestDay,
       note: r.note ?? null,
     }));
+    await assertDutyRosterWriteTx(tx,ctx,values);
     // 870b79e2 — copied rows are NOT pre-validated by having existed once: the copy writes forward in
     // time, and a Schedule Group assigned since the source window was rostered would otherwise be
     // bypassed by the only path whose rows nobody re-examines. Rest-day rows carry a null shiftId and are
     // skipped by the checker.
     await assertShiftsAllowedForEmploymentsTx(
       tx,
-      values.map((v) => ({ employmentId: v.employmentId, shiftId: v.shiftId })),
+      values.map((v) => ({ employmentId: v.employmentId, shiftId: v.shiftId, shiftDate:v.shiftDate })),
     );
     await tx
       .insert(rosterAssignment)
@@ -2455,8 +2499,8 @@ export type UsualShiftRow = {
   shiftId: string;
   code: string | null;
   name: string;
-  startTime: string;
-  endTime: string;
+  startTime: string | null;
+  endTime: string | null;
   /** ISO weekdays the shift works (1=Mon…7=Sun). NULL ⇒ the shift schedules nothing (same as scheduleFor). */
   pattern: number[] | null;
   halfPattern: number[] | null;
@@ -2548,7 +2592,7 @@ export type RosterMonthView = {
   /** Before filtering — what the filter dropdowns are built from, so choosing one never empties them. */
   allEmployees: RosterMonthEmployee[];
   /** 6340aecb — `color` is the shift's DISPLAY-ONLY colour token; NULL keeps the grid's rotating palette. */
-  shifts: { id: string; code: string | null; name: string; startTime: string; endTime: string; color: string | null }[];
+  shifts: { id: string; code: string | null; name: string; startTime: string | null; endTime: string | null; color: string | null }[];
   /** `employmentId|date` → what is STORED (null for the dates nobody rostered). */
   cells: Record<string, AssignedCell>;
   /** employmentId → usual shift, for the grey ghost cells and the OFF markers. */
@@ -2905,7 +2949,8 @@ export type RosterVarianceRow = {
 /**
  * Compare the roster (expected) to attendance (actual) over a date range. For each rostered shift: a
  * no-show (rostered, no attendance, not on leave, date ≤ today), a late check-in, short hours (worked <
- * the shift's scheduled minutes), or on-track. A rostered rest day with an attendance row is rest_worked.
+ * the recorded normal-hours target), or on-track. Recorded attendance owns its target and shortfall;
+ * editing a live shift must not reinterpret its history. A rostered rest day with attendance is rest_worked.
  * RLS scopes which employees are visible. Read-only.
  */
 export function rosterVariance(
@@ -2922,6 +2967,8 @@ export function rosterVariance(
         shiftDate: rosterAssignment.shiftDate,
         isRestDay: rosterAssignment.isRestDay,
         shiftName: shift.name,
+        shiftType: shift.type,
+        normalMinutesOverride: shift.normalMinutesOverride,
         start: shift.startTime,
         end: shift.endTime,
         brk: shift.breakMinutes,
@@ -2954,6 +3001,8 @@ export function rosterVariance(
           checkInAt: attendance.checkInAt,
           checkOutAt: attendance.checkOutAt,
           workedMinutes: attendance.workedMinutes,
+          underMinutes: attendance.underMinutes,
+          calcTrace: attendance.calcTrace,
           status: attendance.status,
         })
         .from(attendance)
@@ -2985,12 +3034,24 @@ export function rosterVariance(
     const out: RosterVarianceRow[] = [];
     for (const r of ras) {
       const att = attBy.get(`${r.employmentId}|${r.shiftDate}`) ?? null;
-      // cf21e554 — one shared helper, never an inlined copy. This was the FIFTH inlined span−break and the
-      // only one rounding never reached, so /roster could call a fully-worked day 'short'.
-      const expectedMinutes =
-        r.isRestDay || !r.start || !r.end ? null : netScheduledMinutes(r.start, r.end, r.crosses ?? false, r.brk ?? 0, r.rounding);
+      // Attendance owns the recorded day's requirement and shortfall, including Full Flexi with no
+      // fixed anchors. A live shift edit must not change a saved result. Older rows without a trace
+      // have an unknown target; their recorded underMinutes can still establish short/satisfied hours.
+      const recordedSchedule = att?.calcTrace?.schedule;
+      const expectedMinutes = r.isRestDay ? null : att
+        ? recordedSchedule?.dayType === 'workday'
+          ? att.calcTrace?.overtime?.normalMinutes ?? recordedSchedule.normalMinutesOverride ?? recordedSchedule.scheduledMinutes
+          : null
+        : r.shiftType === 'full_flexi' ? r.normalMinutesOverride
+          : !r.start || !r.end ? null
+            : netScheduledMinutes(r.start, r.end, r.crosses ?? false, r.brk ?? 0, r.rounding);
+      const short = att?.underMinutes != null
+        ? att.underMinutes > 0
+        : att?.workedMinutes != null && expectedMinutes != null && att.workedMinutes < expectedMinutes;
       let kind: RosterVarianceKind;
       if (r.isRestDay) {
+        // This compares the explicit roster to recorded work. A direct roster edit to rest still
+        // means rest_worked here; it never changes attendance's frozen dayType or pay classification.
         if (!att) continue; // rest day with no work is expected
         kind = 'rest_worked';
       } else if (!att) {
@@ -2999,7 +3060,7 @@ export function rosterVariance(
         kind = 'no_show';
       } else if (att.status === 'late') {
         kind = 'late';
-      } else if (att.workedMinutes != null && expectedMinutes != null && att.workedMinutes < expectedMinutes) {
+      } else if (short) {
         kind = 'short';
       } else {
         kind = 'on_track';
@@ -3035,8 +3096,8 @@ export const isRosterException = (v: RosterVarianceRow): boolean => v.kind !== '
  *
  * ⚠️ THIS IS DELIBERATELY NOT A SECOND, CHEAPER SQL READ, and saying so is the point. What counts as an
  * exception is decided in JavaScript above — approved full-day leave per date (ADR-0068 §4A), half/hourly
- * leave spans, `shiftDate > today`, and `netScheduledMinutes` with the shift's own Normal-Hours Rounding
- * (cf21e554). A `select count(*)` could not ask any of those questions, and a second implementation that
+ * leave spans, `shiftDate > today`, recorded Attendance targets/shortfall and the rounded shift target
+ * for dates without attendance. A `select count(*)` could not ask any of those questions, and a second implementation that
  * approximated them would be a second source of truth for "is this an exception" — exactly the drift that
  * once let /roster call a fully-worked rounded day 'short' while /attendance called it on track. The
  * saving here is the PAYLOAD, not the query; buying the query back means moving the whole rule into SQL,
@@ -3057,8 +3118,8 @@ export type MyRosterShift = {
   /** `shiftCodeOf` — the code, falling back to the name, never blank (a blank chip reads as "not scheduled"). */
   code: string;
   name: string;
-  startTime: string;
-  endTime: string;
+  startTime: string | null;
+  endTime: string | null;
   breakMinutes: number;
   /** Net scheduled minutes: the shift's own override, else span − break with its Normal-Hours Rounding. */
   workingMinutes: number;
@@ -3176,6 +3237,7 @@ export async function myRosterWindow(
             id: shift.id,
             code: shift.code,
             name: shift.name,
+            type:shift.type,
             startTime: shift.startTime,
             endTime: shift.endTime,
             breakMinutes: shift.breakMinutes,
@@ -3189,7 +3251,7 @@ export async function myRosterWindow(
           .orderBy(asc(shift.code), asc(shift.name))
       : [];
 
-    const scheduleInputs=new Map(shiftRows.map(s=>[s.id,{start:s.startTime,end:s.endTime,
+    const scheduleInputs=new Map(shiftRows.map(s=>[s.id,{type:s.type,start:s.startTime,end:s.endTime,
       crosses:s.crossesMidnight,breakMinutes:s.breakMinutes,roundingMinutes:s.roundingMinutes,
       normalMinutesOverride:s.normalMinutesOverride}]));
     const shifts = new Map<string, MyRosterShift>(
@@ -3291,4 +3353,20 @@ async function administrativeManagerNameTx(tx: Tx, employmentId: string): Promis
     .sort((a, b) => a.validFrom.localeCompare(b.validFrom) || a.id.localeCompare(b.id))
     .pop();
   return admin?.name ?? null;
+}
+
+/** Dedicated pay editor: validation and both changes commit together; basic shift saves omit pay fields. */
+export async function saveShiftPay(ctx: SessionContext, p: { shiftId: string; windows: ShiftOtWindowInput[]; differential: ShiftDifferential | null; confirmClear: boolean }) {
+  const differential = validateDifferential(p.differential);
+  return withTenant(ctx, async tx => {
+    const [before] = await tx.select().from(shift).where(eq(shift.id, p.shiftId)).for('update');
+    if (!before) throw new Error('Shift not found (or not visible)');
+    const oldWindows = await tx.select({id:shiftOtWindow.id}).from(shiftOtWindow).where(eq(shiftOtWindow.shiftId, p.shiftId));
+    if (((oldWindows.length > 0 && p.windows.length === 0) || (before.differential && !differential)) && !p.confirmClear)
+      throw new Error('Confirm clearing the saved overtime windows or shift premium before saving.');
+    const result = await replaceShiftOtWindowsTx(tx, ctx, p);
+    await tx.update(shift).set({differential, updatedAt:new Date()}).where(eq(shift.id,p.shiftId));
+    await appendEvent(tx,{tenantId:ctx.tenantId, aggregateType:'shift', aggregateId:p.shiftId, eventType:'shift.pay-settings.saved', actor:actorOf(ctx),payload:{beforeDifferential:before.differential,differential,windowCount:p.windows.length}});
+    return result;
+  });
 }

@@ -3146,10 +3146,66 @@
       "breakpoints": true
     },
     {
+<<<<<<< HEAD
       "idx": 543,
       "version": "7",
       "when": 1791900000023,
       "tag": "0543_embedded_authentication",
+=======
+      "idx": 544,
+      "version": "7",
+      "when": 1791900000024,
+      "tag": "0544_own_earned_credit_actors",
+      "breakpoints": true
+    },
+    {
+      "idx": 545,
+      "version": "7",
+      "when": 1791900000025,
+      "tag": "0545_schedule_configuration",
+      "breakpoints": true
+    },
+    {
+      "idx": 546,
+      "version": "7",
+      "when": 1791900000026,
+      "tag": "0546_employee_master_reports",
+      "breakpoints": true
+    },
+    {
+      "idx": 547,
+      "version": "7",
+      "when": 1791900000027,
+      "tag": "0547_replacement_public_holidays",
+      "breakpoints": true
+    },
+    {
+      "idx": 548,
+      "version": "7",
+      "when": 1791900000028,
+      "tag": "0548_attendance_hierarchy_approval",
+      "breakpoints": true
+    },
+    {
+      "idx": 549,
+      "version": "7",
+      "when": 1791900000029,
+      "tag": "0549_employee_master_delivery",
+      "breakpoints": true
+    },
+    {
+      "idx": 550,
+      "version": "7",
+      "when": 1791900000030,
+      "tag": "0550_system_label_company_criteria",
+      "breakpoints": true
+    },
+    {
+      "idx": 551,
+      "version": "7",
+      "when": 1791900000031,
+      "tag": "0551_overtime_patterns",
+>>>>>>> e83ad5678570064ddb82b2b2910b1ba318a0d341
       "breakpoints": true
     }
   ]

@@ -1,28 +1,8 @@
 import { tenantMutation } from '../db/tenant-mutation';
-/**
- * Shared System Labels — the multi-company assignment resolver + mutations (ADR-0073, feedback d356dec8).
- *
- * PHASE 2 of the phased rollout in the approved plan. The org labels (department / position / cost_center /
- * business_unit) each keep a single ORIGIN company_id; a `label_company_assignment` junction gives a label
- * ADDITIONAL companies that may use it; and an `is_global` flag on each label = "All Companies". This module
- * owns the resolver that every consumer reads through, and the assign/unassign/copy/global mutations.
- *
- * SAFETY — the flag: with company.shared_system_labels OFF for a target company, `labelsForCompany` returns
- * ORIGIN-ONLY rows for that company (junction + global are ignored), so behaviour is byte-identical to today.
- * Only when an admin turns the flag on does a label shared into that company become visible there. This is
- * what keeps Phase 2 shippable ahead of the Phase 4 grid UI: nothing changes for any consumer until the flag
- * is flipped per company.
- *
- * d61f0ff2 UPDATE: the OFF-by-default flag silently swallowed Criteria assignments made while it was off
- * (the reported empty-dropdown bug), so every Criteria write now AUTO-ENABLES the flag for its target
- * companies in the same transaction (assignLabelToCompanies / setLabelGlobal — see autoEnableSharedLabels).
- * The flag remains an explicit per-company OPT-OUT via the Sharing settings UI; migration 0298 backfills it
- * ON for companies with pre-existing junction rows / global-label tenants.
- *
- * SUBSTRATE: every write appends a DomainEvent (ADR-0006). These are company/tenant-level events with no
- * single employee subject, so subjectEmploymentId is left undefined (admin-only reads — correct, fail-closed).
- */
-import { and, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
+/** System Labels criteria owner. Creation company is provenance and write ownership;
+ * availability is exclusively Global or an explicit nonempty company assignment set.
+ * Legacy company sharing flags are retained for data compatibility, never read as a gate. */
+import { and, asc, eq, getTableName, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
@@ -33,6 +13,7 @@ import {
   department,
   employment,
   labelCompanyAssignment,
+  person,
   position,
   LABEL_KINDS,
   type LabelKind,
@@ -69,7 +50,7 @@ const ASSIGNMENT_FK = {
   department: assignment.departmentId,
   position: assignment.positionId,
   cost_center: assignment.costCenterId,
-  business_unit: null, // BUs are used indirectly (department.business_unit_id) — guarded separately below.
+  business_unit: assignment.businessUnitId, // Direct assignment and department-link references are both retained.
 } as const;
 
 /** kebab-case aggregateType for the substrate (matches the existing create/update events' aggregateType). */
@@ -79,6 +60,18 @@ function aggForKind(kind: LabelKind): string {
 
 function assertKind(kind: string): asserts kind is LabelKind {
   if (!(LABEL_KINDS as readonly string[]).includes(kind)) throw new Error(`Unknown system-label kind “${kind}”.`);
+}
+
+/** Acquire the Criteria owner's persistent coordination rows before taking any label row lock.
+ * All four kinds are intentional: an assignment, department link or mixed workbook can touch more
+ * than one kind. Every caller uses the same order as the reference-write database trigger.
+ * This is coordination only, never authorization; the database still checks tenant identity/RLS.
+ * A caller-supplied transaction must invoke this before its first label FOR SHARE/FOR UPDATE.
+ */
+export async function lockLabelCriteriaTx(tx: Tx, tenantId: string): Promise<void> {
+  for (const kind of LABEL_KINDS) {
+    await tx.execute(sql`select app.lock_system_label_criteria(${tenantId}::uuid, ${kind})`);
+  }
 }
 
 /** Load a label row's origin company + is_global, or throw if it does not exist in the tenant. */
@@ -99,7 +92,7 @@ async function loadLabel(
 }
 
 /**
- * Resolve the set of company ids that MAY use a given label = origin ∪ junction ∪ (all-tenant if is_global).
+ * Resolve the saved nonempty company set, or every tenant company for Global.
  * Read path for the assignment editor / grid. Tenant-wide read (RLS-legal for non-admins too).
  */
 export function companiesForLabel(ctx: SessionContext, kind: string, labelId: string): Promise<string[]> {
@@ -120,97 +113,65 @@ export function companiesForLabel(ctx: SessionContext, kind: string, labelId: st
           eq(labelCompanyAssignment.labelId, labelId),
         ),
       );
-    return Array.from(new Set([label.companyId, ...junction.map((j) => j.companyId)]));
+    return Array.from(new Set(junction.map((j) => j.companyId)));
   });
 }
 
-/**
- * Resolve the label ids of a given kind that a company MAY use.
- *
- *   flag OFF for `companyId`  →  ORIGIN-ONLY (labels whose company_id = companyId). Byte-identical to today.
- *   flag ON                   →  origin ∪ junction (labels assigned to the company) ∪ global (is_global).
- *
- * Every consumer that today filters `inArray(<table>.company_id, companyIds)` migrates to this so a shared
- * label surfaces in the companies it was shared into — but only once that company opts in via the flag.
- */
+/** Resolve through the same predicate used by every write and SQL picker. */
 export function labelIdsForCompany(ctx: SessionContext, kind: string, companyId: string): Promise<string[]> {
-  assertKind(kind);
-  const table = KIND_TABLE[kind];
-  return withTenant(ctx, async (tx) => {
-    const [co] = await tx
-      .select({ shared: company.sharedSystemLabels })
-      .from(company)
-      .where(and(eq(company.tenantId, ctx.tenantId), eq(company.id, companyId)))
-      .limit(1);
-
-    // Origin-owned labels (always visible in their own company, flag or not).
-    const origin = await tx
-      .select({ id: table.id })
-      .from(table)
-      .where(and(eq(table.tenantId, ctx.tenantId), eq(table.companyId, companyId)));
-    const ids = new Set(origin.map((r) => r.id));
-
-    if (!co?.shared) return Array.from(ids); // flag off → origin-only, unchanged behaviour.
-
-    // Junction: labels of this kind assigned INTO this company.
-    const assigned = await tx
-      .select({ id: labelCompanyAssignment.labelId })
-      .from(labelCompanyAssignment)
-      .where(
-        and(
-          eq(labelCompanyAssignment.tenantId, ctx.tenantId),
-          eq(labelCompanyAssignment.labelKind, kind),
-          eq(labelCompanyAssignment.companyId, companyId),
-        ),
-      );
-    for (const r of assigned) ids.add(r.id);
-
-    // Global labels: is_global rows of this kind, tenant-wide.
-    const globals = await tx
-      .select({ id: table.id })
-      .from(table)
-      .where(and(eq(table.tenantId, ctx.tenantId), eq(table.isGlobal, true)));
-    for (const r of globals) ids.add(r.id);
-
-    return Array.from(ids);
-  });
+  return labelIdsForCompanies(ctx, kind, [companyId]);
 }
 
-/**
- * The SQL predicate a consumer's list-read ANDs in to filter a label table to the rows a company set
- * MAY use — the resolver expressed as one WHERE fragment so a consumer stays a single query (no extra
- * round-trip). Union of:
- *   • origin      — `company_id IN (companyIds)`  (always; a label is visible in its own company)
- *   • shared-in   — assigned into a companyId whose `shared_system_labels` flag is ON (junction)
- *   • global      — `is_global = true` AND at least one companyId has the flag ON
- *
- * With the flag OFF for every company in the set, the shared-in and global branches are empty, so the
- * predicate collapses to `company_id IN (companyIds)` — byte-identical to the pre-share behaviour. This
- * is why turning the resolver on for a consumer changes nothing until an admin flips a company's flag.
- */
+/** Explicit company criteria carried to client pickers; creation company is not availability. */
+export function labelCompanyIdsSql(
+  table: typeof department | typeof position | typeof costCenter | typeof businessUnit,
+  kind: LabelKind,
+): SQL<string[]> {
+  // Drizzle unqualifies Column chunks inside a SELECT expression. Explicit SQL identifiers retain
+  // the OUTER label binding; a bare id would bind lca.id and silently erase saved company Criteria.
+  const outer=sql.identifier(getTableName(table));
+  return sql<string[]>`array(select lca.company_id::text from label_company_assignment lca
+    where lca.tenant_id = ${outer}.${sql.identifier('tenant_id')} and lca.label_kind = ${kind}
+      and lca.label_id = ${outer}.${sql.identifier('id')} order by lca.company_id)`;
+}
+
+/** Global automatically includes current and future companies; scoped rows use only saved criteria. */
 export function visibleLabelIdsCondition(
   table: typeof department | typeof position | typeof costCenter | typeof businessUnit,
   labelKind: LabelKind,
   companyIds: string[],
 ): SQL {
-  const ids = sql.join(
-    companyIds.map((c) => sql`${c}`),
-    sql`, `,
-  );
-  return sql`(
-    ${table.companyId} in (${ids})
-    or ${table.id} in (
-      select lca.label_id from label_company_assignment lca
-      join company co on co.id = lca.company_id
-      where lca.label_kind = ${labelKind}
-        and lca.company_id in (${ids})
-        and co.shared_system_labels = true
-    )
-    or (${table.isGlobal} = true and exists (
-      select 1 from company co2 where co2.id in (${ids}) and co2.shared_system_labels = true
-    ))
-  )`;
+  if (!companyIds.length) return sql`false`;
+  const ids = sql.join(companyIds.map(id => sql`${id}`), sql`, `);
+  return sql`(exists(select 1 from company requested_company where requested_company.tenant_id=${table.tenantId} and requested_company.id in (${ids})) and (${table.isGlobal} = true or exists (
+    select 1 from label_company_assignment lca
+    where lca.tenant_id = ${table.tenantId} and lca.label_kind = ${labelKind}
+      and lca.label_id = ${table.id} and lca.company_id in (${ids})
+  )))`;
 }
+
+/** Common maintenance is independent of the company switcher. Database administrator scope
+ * is applied to rows before any consumer search, count, page limit or export projection. */
+export function labelMaintenanceCondition(table:typeof department|typeof position|typeof costCenter|typeof businessUnit,kind:LabelKind):SQL{
+ return sql`app.is_admin() and (app.is_admin_for(${table.companyId}) or
+   (${table.isGlobal}=true and exists(select 1 from company scope_co where scope_co.tenant_id=${table.tenantId} and app.is_admin_for(scope_co.id))) or
+   exists(select 1 from label_company_assignment scope_lca join company scope_co on scope_co.id=scope_lca.company_id and scope_co.tenant_id=scope_lca.tenant_id
+     where scope_lca.tenant_id=${table.tenantId} and scope_lca.label_kind=${kind} and scope_lca.label_id=${table.id} and app.is_admin_for(scope_co.id)))`;
+}
+export const SYSTEM_LABEL_MAINTENANCE_LIMIT=5000;
+export function boundedLabelMaintenanceRows<T extends readonly unknown[]>(rows:T):T{if(rows.length>SYSTEM_LABEL_MAINTENANCE_LIMIT)throw new Error('This System Labels list exceeds the supported maintenance size. Use a narrower authorized workbook selection.');return rows;}
+export function labelMaintenanceCompanies(ctx:SessionContext){return withTenant(ctx,async tx=>{
+ const rows=await tx.select({id:company.id,name:company.legalName,archivedAt:company.archivedAt}).from(company)
+  .where(and(eq(company.tenantId,ctx.tenantId),sql`app.is_admin() and app.is_admin_for(${company.id})`)).orderBy(asc(company.legalName),asc(company.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1);
+ return boundedLabelMaintenanceRows(rows);
+});}
+/** Retain stored heads, including ended employments; writes independently validate current eligibility. */
+export function labelMaintenanceHeadOptions(ctx:SessionContext){return withTenant(ctx,async tx=>{
+ const rows=await tx.select({employmentId:employment.id,companyId:employment.companyId,employeeCode:employment.employeeCode,name:person.fullName}).from(employment)
+  .innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId)))
+  .where(and(eq(employment.tenantId,ctx.tenantId),sql`app.is_admin() and app.is_admin_for(${employment.companyId})`)).orderBy(asc(employment.employeeCode),asc(employment.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1);
+ return boundedLabelMaintenanceRows(rows);
+});}
 
 /**
  * Batched read variant of `labelIdsForCompany`: the ids of `kind` any of `companyIds` may use.
@@ -233,9 +194,8 @@ export function labelIdsForCompanies(ctx: SessionContext, kind: string, companyI
 
 /**
  * Guard used by cross-company write paths (hire / transfer): true if `labelId` of `kind` is one this
- * company MAY use under the resolver (origin, shared-in with the flag on, or global with the flag on).
- * Replaces the old strict `label.company_id === company_id` check so a shared label is accepted only
- * where the resolver would surface it — flag OFF keeps the exact old strictness (origin-only).
+ * company MAY use under the same explicit Criteria rule shown by SQL and client pickers.
+ * Neither creation ownership nor retired sharing flags grant implicit availability.
  */
 export async function labelUsableByCompany(
   tx: Tx,
@@ -277,11 +237,12 @@ async function labelInUseByCompanies(
           eq(assignment.tenantId, tenantId),
           eq(fk, labelId),
           isNull(assignment.supersededAt),
-          inArray(employment.companyId, removing),
+          sql`coalesce(${assignment.companyId},${employment.companyId}) in (${sql.join(removing.map(id=>sql`${id}::uuid`),sql`, `)})`,
         ),
       )
       .limit(1);
-    return rows.length > 0;
+    if(rows.length)return true;
+    if(kind!=='business_unit')return false;
   }
   // business_unit: used indirectly — a department in a removing company links to this BU.
   const rows = await tx
@@ -300,7 +261,7 @@ async function labelInUseByCompanies(
 
 /**
  * Batch read for the grid: every (labelId → companyId) assignment of a kind in the tenant. Read-only,
- * no event. The grid pairs this with each row's origin company + is_global to render the Scope cell.
+ * no event. Maintenance consumers use each row's scoped assignment projection directly.
  */
 export function listLabelAssignments(ctx: SessionContext, kind: string): Promise<{ labelId: string; companyId: string }[]> {
   assertKind(kind);
@@ -312,176 +273,146 @@ export function listLabelAssignments(ctx: SessionContext, kind: string): Promise
   );
 }
 
-/**
- * Auto-enable a company set's shared_system_labels flag (d61f0ff2). The resolver gates the junction +
- * global branches behind the flag (OFF by default, 0157), so a Criteria assignment made while it was
- * off used to be silently ignored — the reported empty-dropdown bug. Every Criteria write now enables
- * the flag for its target companies IN THE SAME TRANSACTION; the flag itself stays as an explicit
- * per-company OPT-OUT (System Labels → Sharing settings), so switching it off afterwards still returns
- * that company to origin-only. Appends the same company event the manual toggle does (substrate),
- * only for companies whose flag actually flipped.
- */
-async function autoEnableSharedLabels(
-  tx: Tx,
-  ctx: SessionContext,
-  companyIds: string[] | null, // null = every company of the tenant (the global-label case)
-  via: string,
-): Promise<void> {
-  const conds = [eq(company.tenantId, ctx.tenantId), eq(company.sharedSystemLabels, false)];
-  if (companyIds) {
-    if (companyIds.length === 0) return;
-    conds.push(inArray(company.id, companyIds));
-  }
-  const enabled = await tx
-    .update(company)
-    .set({ sharedSystemLabels: true })
-    .where(and(...conds))
-    .returning({ id: company.id });
-  for (const c of enabled) {
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'company',
-      aggregateId: c.id,
-      eventType: 'company.shared-labels.enabled',
-      actor: actorOf(ctx),
-      payload: { enabled: true, auto: via },
-    });
-  }
+export type LabelCriteriaChange={kind:string;labelId:string;isGlobal:boolean;companyIds:string[]};
+/** One complete owner for a single save or a reviewed batch. No caller can skip final validation. */
+export async function setLabelCriteria(ctx:SessionContext,p:LabelCriteriaChange,existingTx?:Tx):Promise<{isGlobal:boolean;companyIds:string[]}>{
+ const [result]=await setLabelCriteriaBatch(ctx,[p],existingTx);return {isGlobal:result.isGlobal,companyIds:result.companyIds};
 }
-
-/**
- * Assign a label to one or more companies (multi-company). Idempotent per company (ON CONFLICT DO NOTHING).
- * The label's origin company is always implicitly assigned; passing it again is a harmless no-op.
- * d61f0ff2: auto-enables shared_system_labels for each target company (same transaction) so the
- * assignment takes effect immediately — see autoEnableSharedLabels.
- */
-export function assignLabelToCompanies(
-  ctx: SessionContext,
-  p: { kind: string; labelId: string; companyIds: string[] },
-  existingTx?: Tx,
-): Promise<{ assigned: string[] }> {
-  assertKind(p.kind);
-  const kind = p.kind;
-  const companyIds = Array.from(new Set(p.companyIds.filter(Boolean)));
-  return tenantMutation(ctx, existingTx, async (tx) => {
-    await loadLabel(tx, ctx.tenantId, kind, p.labelId); // 404 if the label is not real.
-    if (companyIds.length === 0) return { assigned: [] };
-    await tx
-      .insert(labelCompanyAssignment)
-      .values(companyIds.map((companyId) => ({ tenantId: ctx.tenantId, labelKind: kind, labelId: p.labelId, companyId })))
-      .onConflictDoNothing();
-    await autoEnableSharedLabels(tx, ctx, companyIds, 'label-company-assignment');
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: aggForKind(kind),
-      aggregateId: p.labelId,
-      eventType: `${aggForKind(kind)}.companies.assigned`,
-      actor: actorOf(ctx),
-      payload: { kind, companyIds },
-    });
-    return { assigned: companyIds };
-  });
-}
-
-/**
- * Unassign a label from one or more companies. REFUSES (LabelInUseError) if any company being removed still
- * USES the label via an employee assignment — the "maintain data integrity" requirement. Removing the
- * origin company's self-assignment is allowed (the origin remains resolvable via the label row itself).
- */
-export function unassignLabelFromCompanies(
-  ctx: SessionContext,
-  p: { kind: string; labelId: string; companyIds: string[] },
-): Promise<{ unassigned: string[] }> {
-  assertKind(p.kind);
-  const kind = p.kind;
-  const companyIds = Array.from(new Set(p.companyIds.filter(Boolean)));
-  return withTenant(ctx, async (tx) => {
-    await loadLabel(tx, ctx.tenantId, kind, p.labelId);
-    if (companyIds.length === 0) return { unassigned: [] };
-    if (await labelInUseByCompanies(tx, ctx.tenantId, kind, p.labelId, companyIds)) {
-      throw new LabelInUseError('Cannot unassign: a company still uses this label. Reassign its employees first.');
+export async function setLabelCriteriaBatch(ctx:SessionContext,changes:readonly LabelCriteriaChange[],existingTx?:Tx):Promise<{kind:LabelKind;labelId:string;isGlobal:boolean;companyIds:string[]}[]>{
+ const rawChanges:unknown=changes;
+ if(!Array.isArray(rawChanges)||rawChanges.some(change=>!change||typeof change.kind!=='string'||typeof change.labelId!=='string'||typeof change.isGlobal!=='boolean'||!Array.isArray(change.companyIds)||change.companyIds.some((id:unknown)=>typeof id!=='string')))throw new Error('Choose valid label Criteria.');
+ if(changes.length>1000||new Set(changes.map(change=>change.kind+':'+change.labelId)).size!==changes.length)throw new Error('Choose each label once within the supported batch size.');
+ for(const p of changes){assertKind(p.kind);if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(p.labelId))throw new UnknownLabelError();const ids=[...new Set(p.companyIds)];if(ids.length>1000||ids.some(id=>!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)))throw new Error('Choose valid companies from the available list.');if(!p.isGlobal&&!ids.length)throw new Error('Select at least one company, or choose Global.');}
+ return tenantMutation(ctx,existingTx,async tx=>{
+  await lockLabelCriteriaTx(tx, ctx.tenantId);
+  const plans:{kind:LabelKind;labelId:string;isGlobal:boolean;companyIds:string[]}[]=[],results:typeof plans=[];
+  for(const p of changes){assertKind(p.kind);const kind=p.kind,ids=[...new Set(p.companyIds)];
+    const table = KIND_TABLE[kind];
+    const [label] = await tx.select({ companyId: table.companyId, isGlobal: table.isGlobal })
+      .from(table).where(and(eq(table.tenantId, ctx.tenantId), eq(table.id, p.labelId))).for('update');
+    if (!label) throw new UnknownLabelError();
+    const proof = await tx.execute(sql`select app.is_group_admin() as global,
+      app.is_admin_for(${label.companyId}::uuid) as origin`) as unknown as {global:boolean;origin:boolean}[];
+    if (!proof[0]?.origin) throw new Error('You do not administer this label’s creation company.');
+    const previous = await tx.select({ companyId: labelCompanyAssignment.companyId }).from(labelCompanyAssignment)
+      .where(and(eq(labelCompanyAssignment.tenantId, ctx.tenantId), eq(labelCompanyAssignment.labelKind, kind), eq(labelCompanyAssignment.labelId, p.labelId)));
+    const effective = p.isGlobal ? [] : ids;
+    // Unchanged availability is not a Criteria mutation. Preserve origin-admin text/archive rights,
+    // including retained scoped companies outside their scope and legacy junctions on a Global row.
+    if (label.isGlobal === p.isGlobal && (p.isGlobal || [...previous.map(row => row.companyId)].sort().join(',') === [...effective].sort().join(','))) {
+      results.push({kind,labelId:p.labelId,isGlobal:p.isGlobal,companyIds:effective});continue;
     }
-    await tx
-      .delete(labelCompanyAssignment)
-      .where(
-        and(
-          eq(labelCompanyAssignment.tenantId, ctx.tenantId),
-          eq(labelCompanyAssignment.labelKind, kind),
-          eq(labelCompanyAssignment.labelId, p.labelId),
-          inArray(labelCompanyAssignment.companyId, companyIds),
-        ),
-      );
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: aggForKind(kind),
-      aggregateId: p.labelId,
-      eventType: `${aggForKind(kind)}.companies.unassigned`,
-      actor: actorOf(ctx),
-      payload: { kind, companyIds },
-    });
-    return { unassigned: companyIds };
-  });
+    if ((p.isGlobal || label.isGlobal) && !proof[0]?.global) throw new Error('Only a group administrator may change Global criteria.');
+    const companies = await tx.select({ id: company.id, archivedAt: company.archivedAt,
+      writable: sql<boolean>`app.is_admin_for(${company.id})` }).from(company)
+      .where(and(eq(company.tenantId, ctx.tenantId), ids.length ? inArray(company.id, ids) : sql`false`));
+    if (companies.length !== ids.length || companies.some(row => !row.writable || row.archivedAt))
+      throw new Error('A selected company is unavailable or outside your administrator scope.');
+    const priorIds = label.isGlobal
+      ? (await tx.select({ id: company.id }).from(company).where(eq(company.tenantId, ctx.tenantId))).map(row => row.id)
+      : previous.map(row => row.companyId);
+
+    const losing = p.isGlobal ? [] : priorIds.filter(id => !effective.includes(id));
+    if (losing.length && !proof[0]?.global) {
+      const allowed = await tx.select({ id: company.id }).from(company)
+        .where(and(inArray(company.id, losing), sql`app.is_admin_for(${company.id})`));
+      if (allowed.length !== losing.length) throw new Error('You cannot remove another company’s criteria.');
+    }
+    if (await labelInUseByCompanies(tx, ctx.tenantId, kind, p.labelId, losing))
+      throw new LabelInUseError('A removed company still uses this label. Reassign its records before changing Criteria.');
+
+    const plan={kind,labelId:p.labelId,isGlobal:p.isGlobal,companyIds:effective};plans.push(plan);results.push(plan);
+  }
+  for(const p of plans){const table=KIND_TABLE[p.kind];
+    await tx.update(table).set({isGlobal:p.isGlobal}).where(and(eq(table.tenantId,ctx.tenantId),eq(table.id,p.labelId)));
+    await tx.delete(labelCompanyAssignment).where(and(eq(labelCompanyAssignment.tenantId,ctx.tenantId),eq(labelCompanyAssignment.labelKind,p.kind),eq(labelCompanyAssignment.labelId,p.labelId)));
+    if(p.companyIds.length)await tx.insert(labelCompanyAssignment).values(p.companyIds.map(companyId=>({tenantId:ctx.tenantId,labelKind:p.kind,labelId:p.labelId,companyId})));
+  }
+  // All scopes are now final. Deferred database constraints independently check that same final state.
+  for(const p of plans){await assertLabelCriteriaCodeTx(tx,ctx.tenantId,p.kind,p.labelId);await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:aggForKind(p.kind),aggregateId:p.labelId,eventType:`${aggForKind(p.kind)}.criteria.changed`,actor:actorOf(ctx),payload:{kind:p.kind,isGlobal:p.isGlobal,companyIds:p.companyIds}});}
+  return results;
+ });
 }
 
-/**
- * Set (or clear) the "All Companies" global flag on a label. The DB trigger app.guard_is_global() enforces
- * that only a GROUP admin may set is_global=true; a per-company admin's attempt raises insufficient_privilege.
- * Clearing the flag is guarded like an unassign: refuse if any company outside the label's own junction still
- * uses it (turning off "all companies" must not orphan an employee whose company only had access via global).
- */
-export function setLabelGlobal(
-  ctx: SessionContext,
-  p: { kind: string; labelId: string; isGlobal: boolean },
-  existingTx?: Tx,
-): Promise<{ isGlobal: boolean }> {
-  assertKind(p.kind);
-  const kind = p.kind;
+/** Shared by criteria changes and all label code/name saves. No other label values are exposed. */
+export async function assertLabelCriteriaCodeTx(tx: Tx, tenantId: string, kind: LabelKind, labelId: string) {
   const table = KIND_TABLE[kind];
-  return tenantMutation(ctx, existingTx, async (tx) => {
-    const label = await loadLabel(tx, ctx.tenantId, kind, p.labelId);
-    if (label.isGlobal === p.isGlobal) return { isGlobal: p.isGlobal }; // no-op, no event.
+  const key = kind === 'department' ? department.name : kind === 'position' ? position.title : kind === 'cost_center' ? costCenter.code : businessUnit.code;
+  const [label] = await tx.select({ value: key, global: table.isGlobal, archivedAt: table.archivedAt }).from(table).where(and(eq(table.tenantId, tenantId), eq(table.id, labelId)));
+  if (!label || label.archivedAt) return;
+  const [collision] = await tx.select({ id: table.id }).from(table).where(and(eq(table.tenantId, tenantId),
+    sql`${table.id} <> ${labelId}::uuid`, isNull(table.archivedAt), sql`lower(trim(${key})) = lower(trim(${label.value}))`,
+    sql`not app.system_label_collision_allowed(${tenantId}::uuid,${kind},${label.value},
+      ${labelId}::uuid,${table.id},${label.global},${table.isGlobal},
+      array(select lca.company_id from label_company_assignment lca where lca.tenant_id=${tenantId}::uuid
+        and lca.label_kind=${kind} and lca.label_id=${labelId}::uuid),${labelCompanyIdsSql(table,kind)}::uuid[])`)).limit(1);
+  if (collision) throw new Error('Another active label has the same code or name in the selected Criteria.');
+}
 
-    if (!p.isGlobal) {
-      // Turning global OFF: companies that keep access are origin ∪ junction; refuse if any OTHER company
-      // (that only had access because the label was global) still uses it.
-      const junction = await tx
-        .select({ companyId: labelCompanyAssignment.companyId })
-        .from(labelCompanyAssignment)
-        .where(
-          and(
-            eq(labelCompanyAssignment.tenantId, ctx.tenantId),
-            eq(labelCompanyAssignment.labelKind, kind),
-            eq(labelCompanyAssignment.labelId, p.labelId),
-          ),
-        );
-      const keeps = new Set([label.companyId, ...junction.map((j) => j.companyId)]);
-      const allCompanies = await tx
-        .select({ id: company.id })
-        .from(company)
-        .where(eq(company.tenantId, ctx.tenantId));
-      const losing = allCompanies.map((c) => c.id).filter((id) => !keeps.has(id));
-      if (await labelInUseByCompanies(tx, ctx.tenantId, kind, p.labelId, losing)) {
-        throw new LabelInUseError('Cannot remove global: a company still uses this label only via the global assignment.');
-      }
-    }
+/** Projected final pairs use the same read-only collision predicate as the deferred DB guard.
+ * null identity means a NEW row, derived by the workbook owner, never an exemption flag. This
+ * grants no write permission: actual write guards independently load stored final rows. */
+export type LabelCollisionProposal = {
+  key: string; kind: LabelKind; code: string;
+  first: {id: string|null; global: boolean; companyIds: string[]};
+  second: {id: string|null; global: boolean; companyIds: string[]};
+};
+export const LABEL_COLLISION_PREVIEW_PAIR_LIMIT = 10000;
+export async function refusedLabelCollisionProposalsTx(tx: Tx, tenantId: string,
+  pairs: LabelCollisionProposal[]): Promise<string[]> {
+  if (!pairs.length) return [];
+  if (pairs.length>LABEL_COLLISION_PREVIEW_PAIR_LIMIT) throw new Error('Too many matching label codes. Preview a smaller workbook.');
+  const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const seen=new Set<string>();
+  for(const pair of pairs){
+    if(!pair || typeof pair.key!=='string' || !pair.key || pair.key.length>200 || seen.has(pair.key)
+      || !LABEL_KINDS.includes(pair.kind) || typeof pair.code!=='string' || pair.code.length>1000)
+      throw new Error('Invalid projected label collision identity.');
+    seen.add(pair.key);
+    for(const row of [pair.first,pair.second]) if(!row || (row.id!==null&&!uuid.test(row.id))
+      || typeof row.global!=='boolean' || !Array.isArray(row.companyIds) || row.companyIds.length>1000
+      || row.companyIds.some(id=>typeof id!=='string'||!uuid.test(id))) throw new Error('Invalid projected label Criteria.');
+  }
+  const json=JSON.stringify(pairs);
+  if(json.length>2_000_000) throw new Error('Too many matching label codes. Preview a smaller workbook.');
+  const result=await tx.execute(sql`select p.key from jsonb_to_recordset(${json}::jsonb)
+    as p(key text,kind text,code text,first jsonb,second jsonb)
+    where not app.system_label_collision_allowed(${tenantId}::uuid,p.kind,p.code,
+      (p.first->>'id')::uuid,(p.second->>'id')::uuid,
+      (p.first->>'global')::boolean,(p.second->>'global')::boolean,
+      array(select jsonb_array_elements_text(p.first->'companyIds'))::uuid[],
+      array(select jsonb_array_elements_text(p.second->'companyIds'))::uuid[])`);
+  return (result as unknown as {key:string}[]).map(row=>row.key);
+}
 
-    await tx
-      .update(table)
-      .set({ isGlobal: p.isGlobal })
-      .where(and(eq(table.tenantId, ctx.tenantId), eq(table.id, p.labelId)));
-    // d61f0ff2: "All Companies" is Criteria configuration too — making a label global auto-enables the
-    // sharing flag for every company of the tenant so the label actually surfaces everywhere it was
-    // promised to. Runs AFTER the is_global write so the group-admin trigger guard fires first (a
-    // rejected caller rolls the whole transaction back, flags included). Clearing global changes no flags.
-    if (p.isGlobal) await autoEnableSharedLabels(tx, ctx, null, 'label-global');
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: aggForKind(kind),
-      aggregateId: p.labelId,
-      eventType: p.isGlobal ? `${aggForKind(kind)}.made.global` : `${aggForKind(kind)}.global.cleared`,
-      actor: actorOf(ctx),
-      payload: { kind, isGlobal: p.isGlobal },
-    });
+/** Compatibility entry points delegate to the complete owner; no independent sharing switch exists. */
+export function assignLabelToCompanies(ctx: SessionContext, p: {kind:string;labelId:string;companyIds:string[]}, existingTx?: Tx): Promise<{assigned:string[]}> {
+  assertKind(p.kind);
+  return tenantMutation(ctx, existingTx, async tx => {
+    const label = await loadLabel(tx, ctx.tenantId, p.kind as LabelKind, p.labelId);
+    const existing = await tx.select({ companyId: labelCompanyAssignment.companyId }).from(labelCompanyAssignment)
+      .where(and(eq(labelCompanyAssignment.labelId, p.labelId), eq(labelCompanyAssignment.labelKind, p.kind)));
+    await setLabelCriteria(ctx, { ...p, isGlobal: label.isGlobal, companyIds: [...existing.map(row => row.companyId), ...p.companyIds] }, tx);
+    return { assigned: p.companyIds };
+  });
+}
+export function unassignLabelFromCompanies(ctx: SessionContext, p: {kind:string;labelId:string;companyIds:string[]}, existingTx?: Tx): Promise<{unassigned:string[]}> {
+  assertKind(p.kind);
+  return tenantMutation(ctx, existingTx, async tx => {
+    const label = await loadLabel(tx, ctx.tenantId, p.kind as LabelKind, p.labelId);
+    const existing = await tx.select({ companyId: labelCompanyAssignment.companyId }).from(labelCompanyAssignment)
+      .where(and(eq(labelCompanyAssignment.labelId, p.labelId), eq(labelCompanyAssignment.labelKind, p.kind)));
+    await setLabelCriteria(ctx, { ...p, isGlobal: label.isGlobal, companyIds: existing.map(row => row.companyId).filter(id => !p.companyIds.includes(id)) }, tx);
+    return { unassigned: p.companyIds };
+  });
+}
+export function setLabelGlobal(ctx: SessionContext, p: {kind:string;labelId:string;isGlobal:boolean}, existingTx?: Tx): Promise<{isGlobal:boolean}> {
+  assertKind(p.kind);
+  return tenantMutation(ctx, existingTx, async tx => {
+    const existing = await tx.select({ companyId: labelCompanyAssignment.companyId }).from(labelCompanyAssignment)
+      .where(and(eq(labelCompanyAssignment.labelId, p.labelId), eq(labelCompanyAssignment.labelKind, p.kind)));
+    const label = await loadLabel(tx, ctx.tenantId, p.kind as LabelKind, p.labelId);
+    await setLabelCriteria(ctx, { ...p, companyIds: p.isGlobal ? [] : existing.length ? existing.map(row => row.companyId) : [label.companyId] }, tx);
     return { isGlobal: p.isGlobal };
   });
 }

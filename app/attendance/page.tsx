@@ -1,3 +1,4 @@
+import {OvertimeSummaryValue} from '@/components/formula-overtime-record';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -55,6 +56,7 @@ export default async function AttendancePage({
   }>;
 }) {
   const t = await getTranslations('attendance');
+  const tHistory = await getTranslations('attendanceHistory');
   // ADR-0077 slice 4 — a courtesy redirect when the tenant has not bought this module, so they get
   // an explanation instead of the service error. NOT the control: the reads below refuse on their
   // own (D3), and this guard fails open on an unresolved snapshot. Applied at the module ENTRY
@@ -126,7 +128,7 @@ export default async function AttendancePage({
               <tbody className="divide-y divide-border">
                 {corrPage.rows.map((c) => {
                   // No self-approval (the service enforces it too — this just hides the buttons).
-                  const canAct = s.personId == null || c.personId !== s.personId;
+                  const canAct = (s.personId == null || c.personId !== s.personId) && c.canDecide !== false;
                   // R45 3707cba9 — surface the "Actual vs Approved" OT the decide path already computes:
                   // Actual = the engine's system-calculated OT from the day's real clockings; Approved =
                   // that + the request run through the company's OT-approval rule (previewed pre-decision).
@@ -167,6 +169,7 @@ export default async function AttendancePage({
                               <input type="hidden" name="correctionId" value={c.id} />
                               <input type="hidden" name="workflowStage" value={c.workflow?.currentStage ?? ''} />
                               <input type="hidden" name="decision" value="approved" />
+                              {c.workflow?.routingVersion === 2 && <label className="block text-xs">{tHistory('remarks')}<textarea name="remarks" maxLength={1000} className="block min-h-20 w-full rounded border border-border bg-background p-2" /></label>}
                               <Button type="submit" size="sm">
                                 {t('approve')}
                               </Button>
@@ -182,7 +185,7 @@ export default async function AttendancePage({
                             </form>
                           </div>
                         ) : (
-                          <span className="flex justify-end text-xs text-muted-foreground">{t('yourRequest')}</span>
+                          <span className="flex justify-end text-xs text-muted-foreground">{c.canDecide === false && c.personId !== s.personId ? tHistory('pendingStage') : t('yourRequest')}</span>
                         )}
                       </td>
                     </tr>
@@ -272,23 +275,19 @@ export default async function AttendancePage({
                   </td>
                   <td
                     className="px-4 py-2.5 text-right tabular-nums text-muted-foreground"
-                    title={t('otBreakdown', {
-                      workday: fmtOt(r.otWorkday),
-                      restDay: fmtOt(r.otRestDay),
-                      holiday: fmtOt(r.otHoliday),
-                    })}
                   >
-                    {fmtOt(r.otWorkday + r.otRestDay + r.otHoliday)}
+                    <OvertimeSummaryValue summary={r.overtimeSummary}/>
                   </td>
                   <td className="px-4 py-2.5">
                     <div className="flex flex-wrap gap-1.5">
-                      {r.otCapExceeded && (
+                      {r.overtimeCapState==='exceeded' && (
                         <Pill label={t('flagOtCap')} cls="bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400" />
                       )}
+                      {r.overtimeCapState==='unknown'&&<span className="text-xs text-amber-700 dark:text-amber-300">{t('overtimeRecords.unavailable')}</span>}
                       {r.over45hWeek && (
                         <Pill label={t('flagOver45h')} cls="bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400" />
                       )}
-                      {!r.otCapExceeded && !r.over45hWeek && <span className="text-xs text-muted-foreground">—</span>}
+                      {r.overtimeCapState==='within' && !r.over45hWeek && <span className="text-xs text-muted-foreground">—</span>}
                     </div>
                   </td>
                 </tr>
@@ -309,7 +308,7 @@ export default async function AttendancePage({
           state={summaryPage.state}
         />
         <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
-          {t('summaryNote')}
+          {t('overtimeRecords.summaryNote')}
         </p>
       </Card>
     </div>

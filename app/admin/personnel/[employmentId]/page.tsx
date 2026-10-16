@@ -21,6 +21,8 @@ import {
   listJobGrades,
   reportingLinesFor,
 } from '@/core/read';
+import { PersonnelField } from '@/components/personnel-field';
+import { personnelControl, personnelInput, personnelFormName, personnelFormLabel, personnelFormChoices, personnelDisplay, personnelCarry, personnelPresence, personnelRadio, personnelWorkflowCarry } from '@/lib/personnel-form-contract';
 import { Avatar, Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { LocationAssignment } from '@/components/attendance/location-assignment';
 import { hasPersonPhoto } from '@/core/person-photo';
@@ -172,7 +174,7 @@ import { listLocations, resolveLocationForBranch, branchChangeDateFor } from '@/
 // library IS the Schedule Group library (870b79e2); there is no second table behind the name. Taken from
 // the PACK FACADE, not core/attendance-rule: the ADR-0080 D9 ratchet (test/attendance-pack-drift.test.ts)
 // refuses a new direct importer of the attendance implementation, and the allowlist only ever shrinks.
-import { listAttendanceRules, listClockingLocations, listEmployeeClockingLocations } from '@/packs/attendance/service';
+import { getScheduleRotation,listAttendanceRules, listClockingLocations, listEmployeeClockingLocations } from '@/packs/attendance/service';
 import { setClockingControlAction } from './actions';
 import { ReviewSection } from './review-section';
 import { DocumentsSection } from './documents-section';
@@ -251,6 +253,8 @@ export default async function EmployeePage({
 }) {
   const { s, scopeIds } = await scopedAdmin(); // Admin-only management surface (People→Personnel split). Non-admins redirect home.
   const t = await getTranslations('people.detail');
+  const tPersonnel=await getTranslations();
+  const personnelLabel=(id:string)=>personnelFormLabel(id,(key,fallback)=>tPersonnel.has(key)?tPersonnel(key):fallback);
   // 2f889bae — the Pay items row link reuses Fixed Transactions' OWN labels rather than minting
   // `people.detail` copies, so the two surfaces can never drift into calling the same destination two
   // different things. Both keys already exist and are translated in all six catalogues.
@@ -533,11 +537,8 @@ export default async function EmployeePage({
   // stored shows a placeholder and silently re-poses the question. This is a COURTESY; the guarantee is
   // core/roster.ts assertShiftsAllowedForEmploymentsTx, which the writer behind this card already calls.
   // An employment in NO group (74 of 75 on production) sees the whole library, exactly as before.
-  const assignableShifts = libraryShifts.filter(
-    (sh) =>
-      (!sh.archivedAt || sh.id === emp.defaultShiftId) &&
-      (!scheduleGroupCurrentId || sh.ruleId === scheduleGroupCurrentId || sh.id === emp.defaultShiftId),
-  );
+  const groupPool=scheduleGroupCurrentId?await getScheduleRotation(s,scheduleGroupCurrentId):null;
+  const assignableShifts=libraryShifts.filter(sh=>!sh.archivedAt||sh.id===emp.defaultShiftId);
   // 18504ca6 — the dated periods behind the Shift history list, newest first, with the shift CODE and NAME
   // already resolved. Deliberately NOT taken from the Others-tab Change History: that renders the audit
   // payload through lib/audit-format.ts describePayload, which prints defaultShiftId as a raw uuid → uuid pair.
@@ -890,41 +891,41 @@ export default async function EmployeePage({
   };
   const emergencyFields = (c: EmergencyContactRow | null) => (
     <>
-      <Field label={t('emergency.name')}>
-        <input name="fullName" required defaultValue={c?.fullName ?? ''} className={inputCls} />
-      </Field>
-      <Field label={t('emergency.relationship')}>
-        <ProfileOptionSelect
-          name="relationship"
+      <PersonnelField fieldId="profile.emergency_contact.fullname" mode="record">
+        <input {...personnelInput('profile.emergency_contact.fullname','record')} defaultValue={c?.fullName ?? ''} className={inputCls} />
+      </PersonnelField>
+      <PersonnelField fieldId="profile.emergency_contact.relationship" mode="edit">
+        <ProfileOptionSelect name={personnelFormName('profile.emergency_contact.relationship')} personnelFieldId="profile.emergency_contact.relationship" {...personnelControl('profile.emergency_contact.relationship','edit')}
+
           value={c?.relationship}
           options={profileOptions.relationship}
           placeholder={t('optionNotSet')}
           legacySuffix={t('optionLegacySuffix')}
         />
-      </Field>
-      <Field label={t('emergency.mobilePhone')}>
-        <input name="mobilePhone" defaultValue={c?.mobilePhone ?? ''} className={inputCls} />
-      </Field>
-      <Field label={t('emergency.homePhone')}>
-        <input name="homePhone" defaultValue={c?.homePhone ?? ''} className={inputCls} />
-      </Field>
-      <Field label={t('emergency.priority')}>
-        <select name="priority" defaultValue={c?.priority ?? 'other'} className={inputCls}>
-          {EMERGENCY_CONTACT_PRIORITIES.map((p) => (
-            <option key={p} value={p}>{emergencyPriorityLabel(p)}</option>
+      </PersonnelField>
+      <PersonnelField fieldId="profile.emergency_contact.mobilephone" mode="edit">
+        <input {...personnelInput('profile.emergency_contact.mobilephone','edit')} defaultValue={c?.mobilePhone ?? ''} className={inputCls} />
+      </PersonnelField>
+      <PersonnelField fieldId="profile.emergency_contact.homephone" mode="edit">
+        <input {...personnelInput('profile.emergency_contact.homephone','edit')} defaultValue={c?.homePhone ?? ''} className={inputCls} />
+      </PersonnelField>
+      <PersonnelField fieldId="profile.emergency_contact.priority" mode="edit">
+        <select {...personnelControl('profile.emergency_contact.priority','edit')} defaultValue={c?.priority ?? 'other'} className={inputCls}>
+          {personnelFormChoices('profile.emergency_contact.priority').map(({value,labelKey}) => (
+            <option key={value} value={value}>{tPersonnel(labelKey)}</option>
           ))}
         </select>
-      </Field>
+      </PersonnelField>
       <div className="sm:col-span-2">
-        <Field label={t('emergency.address')}>
+        <PersonnelField fieldId="profile.emergency_contact.address" mode="edit">
           {/* 7d309da7 — address = multi-line long-text (line breaks preserved) instead of a single input. */}
-          <textarea name="address" rows={3} defaultValue={c?.address ?? ''} className={emergencyTaCls} />
-        </Field>
+          <textarea {...personnelControl('profile.emergency_contact.address','edit')} rows={3} defaultValue={c?.address ?? ''} className={emergencyTaCls} />
+        </PersonnelField>
       </div>
       <div className="sm:col-span-2">
-        <Field label={t('emergency.remarks')}>
-          <textarea name="remarks" rows={2} defaultValue={c?.remarks ?? ''} className={emergencyTaCls} />
-        </Field>
+        <PersonnelField fieldId="profile.emergency_contact.remarks" mode="edit">
+          <textarea {...personnelControl('profile.emergency_contact.remarks','edit')} rows={2} defaultValue={c?.remarks ?? ''} className={emergencyTaCls} />
+        </PersonnelField>
       </div>
       <p className="text-xs text-muted-foreground sm:col-span-2">{t('emergency.primaryHint')}</p>
     </>
@@ -1110,18 +1111,18 @@ export default async function EmployeePage({
           <input type="hidden" name="employmentId" value={emp.employmentId} />
           <input type="hidden" name="personId" value={emp.personId} />
           {/* primaryEmail / phone are owned by the Contact card; carried through so this save keeps them. */}
-          <input type="hidden" name="primaryEmail" value={emp.email} />
-          <input type="hidden" name="phone" value={emp.phone ?? ''} />
-          <Field label={t('employeeIdLabel')}>
-            <input
-              name="employeeCode"
-              required
+          <input {...personnelCarry('profile.contact_and_permanent_address.primaryemail')} value={emp.email} />
+          <input {...personnelCarry('profile.contact_and_permanent_address.phone')} value={emp.phone ?? ''} />
+          <PersonnelField fieldId="profile.personal_details.employeecode" mode="record">
+            <input {...personnelInput('profile.personal_details.employeecode','record')}
+
+
               maxLength={30}
               defaultValue={emp.employeeCode ?? ''}
               placeholder={t('employeeIdPlaceholder')}
               className={inputCls}
             />
-          </Field>
+          </PersonnelField>
           {/* a72610af — Salutation, the three name fields and the two demographics are now the SHARED
               group the Create New Employee draft renders too (components/person-name-fields.tsx). The
               markup, the catalog wiring, the legacy-value tolerance and the order (8c284478 — Salutation
@@ -1137,9 +1138,9 @@ export default async function EmployeePage({
               race: profileOptions.race,
             }}
             afterSalutation={
-              <Field label={t('fullNameIc')}>
-                <input name="fullName" required defaultValue={emp.name} className={inputCls} />
-              </Field>
+              <PersonnelField fieldId="profile.personal_details.fullname" mode="record">
+                <input {...personnelInput('profile.personal_details.fullname','record')} defaultValue={emp.name} className={inputCls} />
+              </PersonnelField>
             }
           />
           {/* 59047802 — searchable combobox over the full ISO 3166-1 nationality set; emits the same
@@ -1219,17 +1220,17 @@ export default async function EmployeePage({
           <input type="hidden" name="employmentId" value={emp.employmentId} />
           <input type="hidden" name="personId" value={emp.personId} />
           {/* fullName is owned by the Personal Details card; carried through so this save keeps it. */}
-          <input type="hidden" name="fullName" value={emp.name} />
-          <Field label={t('workEmail')}>
-            <input name="primaryEmail" type="email" required defaultValue={emp.email} className={inputCls} />
-          </Field>
+          <input {...personnelCarry('profile.personal_details.fullname')} value={emp.name} />
+          <PersonnelField fieldId="profile.contact_and_permanent_address.primaryemail" mode="record">
+            <input {...personnelInput('profile.contact_and_permanent_address.primaryemail','record')} defaultValue={emp.email} className={inputCls} />
+          </PersonnelField>
           {/* bf953339 — Phone renamed to Mobile Phone Number (label-only; the stored person.phone value is
               untouched) with an optional Home Phone Number beside it. The Correspondence block below keeps
               its OWN independent pair; the perm-/corr- prefixed ids let the "Same as Permanent Address"
               island copy the pair alongside the seven address fields. */}
-          <Field label={t('phone')}>
-            <input id="perm-mobile-phone" name="phone" defaultValue={emp.phone ?? ''} placeholder="+60…" className={inputCls} />
-          </Field>
+          <PersonnelField fieldId="profile.contact_and_permanent_address.phone" mode="edit">
+            <input {...personnelInput('profile.contact_and_permanent_address.phone','edit')} id="perm-mobile-phone"  defaultValue={emp.phone ?? ''} placeholder="+60…" className={inputCls} />
+          </PersonnelField>
           {/* a72610af — the SHARED pair the Create New Employee draft renders too. `homePhoneId` keeps the
               `perm-home-phone` id this input has carried since 3a25f5ee: the "Same as Permanent Address"
               island copies the pair by id, so the id is a contract, not decoration. Mobile Phone above
@@ -1293,12 +1294,12 @@ export default async function EmployeePage({
             {/* bf953339 — the Correspondence block's OWN Mobile/Home pair, independent of the main pair
                 above so the correspondence contact can differ. Copied by the "Same as Permanent Address"
                 island together with the address fields (perm-/corr- id pairs). */}
-            <Field label={t('phone')}>
-              <input id="corr-mobile-phone" name="correspondenceMobilePhone" defaultValue={emp.correspondenceMobilePhone ?? ''} className={inputCls} />
-            </Field>
-            <Field label={t('homePhone')}>
-              <input id="corr-home-phone" name="correspondenceHomePhone" defaultValue={emp.correspondenceHomePhone ?? ''} className={inputCls} />
-            </Field>
+            <PersonnelField fieldId="profile.correspondence_address.correspondencemobilephone" mode="edit">
+              <input {...personnelInput('profile.correspondence_address.correspondencemobilephone','edit')} id="corr-mobile-phone"  defaultValue={emp.correspondenceMobilePhone ?? ''} className={inputCls} />
+            </PersonnelField>
+            <PersonnelField fieldId="profile.correspondence_address.correspondencehomephone" mode="edit">
+              <input {...personnelInput('profile.correspondence_address.correspondencehomephone','edit')} id="corr-home-phone"  defaultValue={emp.correspondenceHomePhone ?? ''} className={inputCls} />
+            </PersonnelField>
           </div>
         </form>
       </Card>
@@ -1339,38 +1340,38 @@ export default async function EmployeePage({
     <form action={setEmploymentComponentAction} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
       <input type="hidden" name="employmentId" value={emp.employmentId} />
       <input type="hidden" name="tab" value="payroll" data-tab-tracker="" />
-      <Field label={t('payComponent')}>
-        <select name="componentId" required className={inputCls}>
+      <PersonnelField fieldId="payroll.pay_items.componentname" mode="record">
+        <select {...personnelControl('payroll.pay_items.componentname','record')} className={inputCls}>
           {componentCatalog.map((c) => (
             <option key={c.id} value={c.id}>{c.code} — {c.name}</option>
           ))}
         </select>
-      </Field>
-      <Field label={t('payComponentAmount')}>
-        <input name="amount" type="number" min="0" step="0.01" required className={inputCls} />
-      </Field>
-      <Field label={t('payComponentCurrency')}>
-        <select name="currency" defaultValue="MYR" className={inputCls}>
+      </PersonnelField>
+      <PersonnelField fieldId="payroll.pay_items.amount" mode="record">
+        <input {...personnelInput('payroll.pay_items.amount','record')} className={inputCls} />
+      </PersonnelField>
+      <PersonnelField fieldId="payroll.pay_items.currency" mode="edit">
+        <select {...personnelControl('payroll.pay_items.currency','edit')} defaultValue="MYR" className={inputCls}>
           <option value="MYR">MYR</option>
         </select>
-      </Field>
-      <Field label={t('payComponentProrate')}>
-        <select name="prorate" defaultValue="inherit" className={inputCls}>
+      </PersonnelField>
+      <PersonnelField fieldId="payroll.pay_items.prorate" mode="edit">
+        <select {...personnelControl('payroll.pay_items.prorate','edit')} defaultValue="inherit" className={inputCls}>
           <option value="inherit">{t('prorateInherit')}</option>
           <option value="yes">{t('prorateYes')}</option>
           <option value="no">{t('prorateNo')}</option>
         </select>
-      </Field>
-      <Field label={t('payComponentEffectiveFrom')}>
-        <DateField name="effectiveFrom" required defaultValue={emp.hiredOn} className={inputCls} label={t('payComponentEffectiveFrom')} />
-      </Field>
-      <Field label={t('payComponentEffectiveTo')}>
-        <DateField name="effectiveTo" className={inputCls} label={t('payComponentEffectiveTo')} />
-      </Field>
+      </PersonnelField>
+      <PersonnelField fieldId="payroll.pay_items.validfrom" mode="record">
+        <DateField {...personnelControl('payroll.pay_items.validfrom','record')} defaultValue={emp.hiredOn} className={inputCls} label={personnelLabel('payroll.pay_items.validfrom')} />
+      </PersonnelField>
+      <PersonnelField fieldId="payroll.pay_items.validto" mode="edit">
+        <DateField {...personnelControl('payroll.pay_items.validto','edit')} className={inputCls} label={personnelLabel('payroll.pay_items.validto')} />
+      </PersonnelField>
       <div className="sm:col-span-2">
-        <Field label={t('payComponentRemarks')}>
-          <input name="remarks" type="text" placeholder={t('payComponentRemarksPlaceholder')} className={inputCls} />
-        </Field>
+        <PersonnelField fieldId="payroll.pay_items.remarks" mode="edit">
+          <input {...personnelInput('payroll.pay_items.remarks','edit')} placeholder={t('payComponentRemarksPlaceholder')} className={inputCls} />
+        </PersonnelField>
       </div>
       <div className="flex justify-end sm:col-span-2">
         <button className={btnPrimary}>{t('payComponentSave')}</button>
@@ -1486,30 +1487,30 @@ export default async function EmployeePage({
       <input type="hidden" name="employmentId" value={emp.employmentId} />
       {r && <input type="hidden" name="id" value={r.id} />}
       <input type="hidden" name="tab" value="payroll" data-tab-tracker="" />
-      <Field label={t('cp38Ref')}>
-        <input name="cp38Ref" required defaultValue={r?.cp38Ref ?? ''} placeholder={t('cp38RefPlaceholder')} className={inputCls} />
-      </Field>
-      <Field label={t('cp38Amount')}>
-        <input
-          name="amount"
-          type="number"
-          min="0"
-          step="0.01"
-          required
+      <PersonnelField fieldId="payroll.cp38_deduction.reference" mode="record">
+        <input {...personnelInput('payroll.cp38_deduction.reference','record')} defaultValue={r?.cp38Ref ?? ''} placeholder={t('cp38RefPlaceholder')} className={inputCls} />
+      </PersonnelField>
+      <PersonnelField fieldId="payroll.cp38_deduction.monthlyamount" mode="record">
+        <input {...personnelInput('payroll.cp38_deduction.monthlyamount','record')}
+
+
+
+
+
           defaultValue={r ? Number(r.amount).toFixed(2) : ''}
           className={inputCls}
         />
-      </Field>
-      <Field label={t('cp38From')}>
-        <DateField name="validFrom" required defaultValue={r?.validFrom ?? thisMonthStart} className={inputCls} label={t('cp38From')} />
-      </Field>
-      <Field label={t('cp38To')}>
-        <DateField name="validTo" defaultValue={r?.validTo ?? ''} className={inputCls} label={t('cp38To')} />
-      </Field>
+      </PersonnelField>
+      <PersonnelField fieldId="payroll.cp38_deduction.validfrom" mode="record">
+        <DateField {...personnelControl('payroll.cp38_deduction.validfrom','record')} defaultValue={r?.validFrom ?? thisMonthStart} className={inputCls} label={personnelLabel('payroll.cp38_deduction.validfrom')} />
+      </PersonnelField>
+      <PersonnelField fieldId="payroll.cp38_deduction.validto" mode="edit">
+        <DateField {...personnelControl('payroll.cp38_deduction.validto','edit')} defaultValue={r?.validTo ?? ''} className={inputCls} label={personnelLabel('payroll.cp38_deduction.validto')} />
+      </PersonnelField>
       <div className="sm:col-span-2">
-        <Field label={t('cp38Remarks')}>
-          <input name="remarks" type="text" defaultValue={r?.remarks ?? ''} placeholder={t('cp38RemarksPlaceholder')} className={inputCls} />
-        </Field>
+        <PersonnelField fieldId="payroll.cp38_deduction.remarks" mode="edit">
+          <input {...personnelInput('payroll.cp38_deduction.remarks','edit')} defaultValue={r?.remarks ?? ''} placeholder={t('cp38RemarksPlaceholder')} className={inputCls} />
+        </PersonnelField>
       </div>
       <div className="flex justify-end sm:col-span-2">
         <button className={btnPrimary}>{r ? t('cp38Save') : t('cp38Add')}</button>
@@ -1524,22 +1525,22 @@ export default async function EmployeePage({
   const cp38ViewBody = (r: Cp38Record) => (
     <fieldset disabled>
       <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
-        <Field label={t('cp38Ref')}>
-          <input defaultValue={r.cp38Ref} className={inputCls} />
-        </Field>
-        <Field label={t('cp38Amount')}>
-          <input defaultValue={fmtMoney(Number(r.amount))} className={inputCls} />
-        </Field>
-        <Field label={t('cp38From')}>
-          <input defaultValue={r.validFrom} className={inputCls} />
-        </Field>
-        <Field label={t('cp38To')}>
-          <input defaultValue={r.validTo ?? t('cp38Open')} className={inputCls} />
-        </Field>
+        <PersonnelField fieldId="payroll.cp38_deduction.reference" mode="edit">
+          <input {...personnelDisplay("payroll.cp38_deduction.reference")} defaultValue={r.cp38Ref} className={inputCls} />
+        </PersonnelField>
+        <PersonnelField fieldId="payroll.cp38_deduction.monthlyamount" mode="edit">
+          <input {...personnelDisplay("payroll.cp38_deduction.monthlyamount")} defaultValue={fmtMoney(Number(r.amount))} className={inputCls} />
+        </PersonnelField>
+        <PersonnelField fieldId="payroll.cp38_deduction.validfrom" mode="edit">
+          <input {...personnelDisplay("payroll.cp38_deduction.validfrom")} defaultValue={r.validFrom} className={inputCls} />
+        </PersonnelField>
+        <PersonnelField fieldId="payroll.cp38_deduction.validto" mode="edit">
+          <input {...personnelDisplay("payroll.cp38_deduction.validto")} defaultValue={r.validTo ?? t('cp38Open')} className={inputCls} />
+        </PersonnelField>
         <div className="sm:col-span-2">
-          <Field label={t('cp38Remarks')}>
-            <input defaultValue={r.remarks ?? ''} className={inputCls} />
-          </Field>
+          <PersonnelField fieldId="payroll.cp38_deduction.remarks" mode="edit">
+            <input {...personnelDisplay("payroll.cp38_deduction.remarks")} defaultValue={r.remarks ?? ''} className={inputCls} />
+          </PersonnelField>
         </div>
       </div>
     </fieldset>
@@ -1680,9 +1681,9 @@ export default async function EmployeePage({
             <form action={unfreezeEncashmentAction} className="flex flex-wrap items-end gap-2">
               <input type="hidden" name="employmentId" value={employmentId} />
               <input type="hidden" name="snapshotId" value={encashmentSnapshot.id} />
-              <Field label={t('encashmentReasonLabel')}>
-                <input name="reason" required placeholder={t('encashmentReasonPlaceholder')} className={inputCls} />
-              </Field>
+              <PersonnelField fieldId="payroll.leave_encashment.reason" mode="record">
+                <input {...personnelInput('payroll.leave_encashment.reason','record')} placeholder={t('encashmentReasonPlaceholder')} className={inputCls} />
+              </PersonnelField>
               <ConfirmSubmit
                 size="sm"
                 variant="secondary"
@@ -1696,20 +1697,20 @@ export default async function EmployeePage({
             <form action={adjustEncashmentAction} className="flex flex-wrap items-end gap-2">
               <input type="hidden" name="employmentId" value={employmentId} />
               <input type="hidden" name="snapshotId" value={encashmentSnapshot.id} />
-              <Field label={t('encashmentOverrideDaysLabel')}>
-                <input
-                  name="overrideDays"
-                  type="number"
-                  step="0.5"
-                  min="0"
-                  required
+              <PersonnelField fieldId="payroll.leave_encashment.adjusteddays" mode="record">
+                <input {...personnelInput('payroll.leave_encashment.adjusteddays','record')}
+
+
+
+
+
                   defaultValue={encashmentSnapshot.days}
                   className={`${inputCls} w-24`}
                 />
-              </Field>
-              <Field label={t('encashmentReasonLabel')}>
-                <input name="reason" required placeholder={t('encashmentReasonPlaceholder')} className={inputCls} />
-              </Field>
+              </PersonnelField>
+              <PersonnelField fieldId="payroll.leave_encashment.reason" mode="record">
+                <input {...personnelInput('payroll.leave_encashment.reason','record')} placeholder={t('encashmentReasonPlaceholder')} className={inputCls} />
+              </PersonnelField>
               <button className={btnPrimary}>{t('encashmentAdjust')}</button>
             </form>
           </div>
@@ -1767,13 +1768,15 @@ export default async function EmployeePage({
 
   // A tri-state checkbox: a hidden `${name}__present` marker lets the server tell "unticked" (posts
   // nothing) apart from "field absent on this section's form".
-  const familyCheckbox = (name: string, checked: boolean, label: string) => (
-    <label className="flex items-center gap-2 text-sm text-muted-foreground">
-      <input type="hidden" name={`${name}__present`} value="1" />
-      <input type="checkbox" name={name} defaultChecked={checked} />
-      {label}
-    </label>
-  );
+  const familyBooleanFields={isBeneficiary:'family.family_and_dependents.isbeneficiary',isDeceased:'family.family_and_dependents.isdeceased',isStudent:'family.family_and_dependents.isstudent',childTaxRelief:'family.family_and_dependents.childtaxrelief',spouseWorking:'family.family_and_dependents.spouseworking'} as const;
+  const familyCheckbox = (name: keyof typeof familyBooleanFields, checked: boolean, _label: string) => {
+    const fieldId=familyBooleanFields[name];
+    return <label className="flex items-center gap-2 text-sm text-muted-foreground">
+      <input {...personnelPresence(fieldId)} value="1" />
+      <input {...personnelInput(fieldId)} defaultChecked={checked} />
+      {personnelLabel(fieldId)}
+    </label>;
+  };
 
   // Item 5988053a — whole-year age comes from the ONE shared rule in core/dependents.ts (childAgeYears),
   // also used by the isChildReliefEligible predicate, so the form, the table and payroll can never disagree
@@ -1793,37 +1796,37 @@ export default async function EmployeePage({
   // Tax Relief); the spouse and other sections keep the original flat two-column grid untouched.
   const dependentFields = (section: FamilySection, d: DependentRow | null) => {
     const nameField = (
-      <Field label={t('family.name')}>
-        <input name="fullName" required defaultValue={d?.fullName ?? ''} placeholder={t('family.namePlaceholder')} className={inputCls} />
-      </Field>
+      <PersonnelField fieldId="family.family_and_dependents.fullname" mode="record">
+        <input {...personnelInput('family.family_and_dependents.fullname','record')} defaultValue={d?.fullName ?? ''} placeholder={t('family.namePlaceholder')} className={inputCls} />
+      </PersonnelField>
     );
     const genderField = (
-      <Field label={t('family.genderLabel')}>
-        <select name="gender" defaultValue={d?.gender ?? ''} className={inputCls}>
+      <PersonnelField fieldId="family.family_and_dependents.gender" mode="edit">
+        <select {...personnelControl('family.family_and_dependents.gender','edit')} defaultValue={d?.gender ?? ''} className={inputCls}>
           <option value="">{t('family.genderUnset')}</option>
           {DEPENDENT_GENDERS.map((g) => (<option key={g} value={g}>{genderLabel(g)}</option>))}
         </select>
-      </Field>
+      </PersonnelField>
     );
     const dobField = (
-      <Field label={t('family.dateOfBirth')}>
-        <DateField name="dateOfBirth" defaultValue={d?.dateOfBirth ?? ''} className={inputCls} label={t('family.dateOfBirth')} />
-      </Field>
+      <PersonnelField fieldId="family.family_and_dependents.dateofbirth" mode="edit">
+        <DateField {...personnelControl('family.family_and_dependents.dateofbirth','edit')} defaultValue={d?.dateOfBirth ?? ''} className={inputCls} label={personnelLabel('family.family_and_dependents.dateofbirth')} />
+      </PersonnelField>
     );
     const phoneField = (
-      <Field label={t('family.contactNumber')}>
-        <input name="phone" type="tel" defaultValue={d?.phone ?? ''} className={inputCls} />
-      </Field>
+      <PersonnelField fieldId="family.family_and_dependents.phone" mode="edit">
+        <input {...personnelInput('family.family_and_dependents.phone','edit')} defaultValue={d?.phone ?? ''} className={inputCls} />
+      </PersonnelField>
     );
     const icField = (
-      <Field label={section === 'child' ? t('family.icOrBirthCert') : t('family.newIc')}>
-        <input name="icOrPassport" defaultValue={d?.icOrPassport ?? ''} className={inputCls} />
-      </Field>
+      <PersonnelField fieldId={section==='child' ? 'family.family_and_dependents.icorpassport_8' : 'family.family_and_dependents.icorpassport'}>
+        <input {...personnelInput(section==='child' ? 'family.family_and_dependents.icorpassport_8' : 'family.family_and_dependents.icorpassport')} defaultValue={d?.icOrPassport ?? ''} className={inputCls} />
+      </PersonnelField>
     );
     const remarksField = (
-      <Field label={t('family.remarks')}>
-        <input name="remarks" type="text" defaultValue={d?.remarks ?? ''} placeholder={t('family.remarksPlaceholder')} className={inputCls} />
-      </Field>
+      <PersonnelField fieldId="family.family_and_dependents.remarks" mode="edit">
+        <input {...personnelInput('family.family_and_dependents.remarks','edit')} defaultValue={d?.remarks ?? ''} placeholder={t('family.remarksPlaceholder')} className={inputCls} />
+      </PersonnelField>
     );
 
     if (section === 'child') {
@@ -1847,21 +1850,21 @@ export default async function EmployeePage({
           <fieldset className={fieldsetCls}>
             <legend className={legendCls}>{t('family.sectionEducation')}</legend>
             <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
-              <Field label={t('family.schoolName')}>
-                <input name="schoolName" defaultValue={d?.schoolName ?? ''} className={inputCls} />
-              </Field>
-              <Field label={t('family.studyLevel')}>
-                <input name="studyLevel" defaultValue={d?.studyLevel ?? ''} className={inputCls} />
-              </Field>
-              <Field label={t('family.studyCountry')}>
-                <ProfileOptionSelect
-                  name="studyCountry"
+              <PersonnelField fieldId="family.family_and_dependents.schoolname" mode="edit">
+                <input {...personnelInput('family.family_and_dependents.schoolname','edit')} defaultValue={d?.schoolName ?? ''} className={inputCls} />
+              </PersonnelField>
+              <PersonnelField fieldId="family.family_and_dependents.studylevel" mode="edit">
+                <input {...personnelInput('family.family_and_dependents.studylevel','edit')} defaultValue={d?.studyLevel ?? ''} className={inputCls} />
+              </PersonnelField>
+              <PersonnelField fieldId="family.family_and_dependents.studycountry" mode="edit">
+                <ProfileOptionSelect name={personnelFormName('family.family_and_dependents.studycountry')} personnelFieldId="family.family_and_dependents.studycountry" {...personnelControl('family.family_and_dependents.studycountry','edit')}
+
                   value={d?.studyCountry}
                   options={profileOptions.country}
                   placeholder={t('family.genderUnset')}
                   legacySuffix={t('optionLegacySuffix')}
                 />
-              </Field>
+              </PersonnelField>
               <div className="flex items-end pb-1">
                 {familyCheckbox('isStudent', d?.isStudent ?? false, t('family.studentStatus'))}
               </div>
@@ -1889,17 +1892,17 @@ export default async function EmployeePage({
               </span>
             </legend>
             <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
-              <Field label={t('family.childReliefCategory')}>
-                <select name="childReliefCategory" defaultValue={d?.childReliefCategory ?? ''} className={inputCls}>
+              <PersonnelField fieldId="family.family_and_dependents.childreliefcategory" mode="edit">
+                <select {...personnelControl('family.family_and_dependents.childreliefcategory','edit')} defaultValue={d?.childReliefCategory ?? ''} className={inputCls}>
                   <option value="">{t('family.childReliefCategoryUnset')}</option>
                   {CHILD_RELIEF_CATEGORIES.map((c) => (
                     <option key={c} value={c}>{t(`family.childReliefCat_${c}`)}</option>
                   ))}
                 </select>
-              </Field>
-              <Field label={t('family.childReliefPercentage')}>
-                <select
-                  name="childReliefPercentage"
+              </PersonnelField>
+              <PersonnelField fieldId="family.family_and_dependents.childreliefpercentage" mode="edit">
+                <select {...personnelControl('family.family_and_dependents.childreliefpercentage','edit')}
+
                   defaultValue={d?.childReliefPercentage != null ? String(d.childReliefPercentage) : ''}
                   className={inputCls}
                 >
@@ -1907,16 +1910,16 @@ export default async function EmployeePage({
                   <option value="100">{t('family.childReliefPct_100')}</option>
                   <option value="50">{t('family.childReliefPct_50')}</option>
                 </select>
-              </Field>
-              <Field label={t('family.childAge')}>
-                <input
+              </PersonnelField>
+              <PersonnelField fieldId="family.family_and_dependents.age" mode="edit">
+                <input {...personnelDisplay("family.family_and_dependents.age")}
                   readOnly
                   disabled
                   data-child-age=""
                   value={childAgeYears(d?.dateOfBirth) ?? '—'}
                   className={`${inputCls} bg-muted/50`}
                 />
-              </Field>
+              </PersonnelField>
               <div className="flex items-end pb-1">
                 {familyCheckbox('childTaxRelief', d?.childTaxRelief ?? false, t('family.childTaxRelief'))}
               </div>
@@ -1935,42 +1938,42 @@ export default async function EmployeePage({
         {dobField}
         {phoneField}
         {icField}
-        <Field label={t('family.passportNumber')}>
-          <input name="passportNumber" defaultValue={d?.passportNumber ?? ''} className={inputCls} />
-        </Field>
+        <PersonnelField fieldId="family.family_and_dependents.passportnumber" mode="edit">
+          <input {...personnelInput('family.family_and_dependents.passportnumber','edit')} defaultValue={d?.passportNumber ?? ''} className={inputCls} />
+        </PersonnelField>
         <div className="sm:col-span-2">
-          <Field label={t('family.residentialAddress')}>
-            <textarea name="residentialAddress" rows={2} defaultValue={d?.residentialAddress ?? ''} className={taCls} />
-          </Field>
+          <PersonnelField fieldId="family.family_and_dependents.residentialaddress" mode="edit">
+            <textarea {...personnelControl('family.family_and_dependents.residentialaddress','edit')} rows={2} defaultValue={d?.residentialAddress ?? ''} className={taCls} />
+          </PersonnelField>
         </div>
         {section === 'spouse' && (
           <>
-            <Field label={t('family.marriageDate')}>
-              <DateField name="marriageDate" defaultValue={d?.marriageDate ?? ''} className={inputCls} label={t('family.marriageDate')} />
-            </Field>
-            <Field label={t('family.marriageStatusLabel')}>
-              <select name="marriageStatus" defaultValue={d?.marriageStatus ?? ''} className={inputCls}>
+            <PersonnelField fieldId="family.family_and_dependents.marriagedate" mode="edit">
+              <DateField {...personnelControl('family.family_and_dependents.marriagedate','edit')} defaultValue={d?.marriageDate ?? ''} className={inputCls} label={personnelLabel('family.family_and_dependents.marriagedate')} />
+            </PersonnelField>
+            <PersonnelField fieldId="family.family_and_dependents.marriagestatus" mode="edit">
+              <select {...personnelControl('family.family_and_dependents.marriagestatus','edit')} defaultValue={d?.marriageStatus ?? ''} className={inputCls}>
                 <option value="">{t('family.genderUnset')}</option>
                 {DEPENDENT_MARRIAGE_STATUSES.map((m) => (<option key={m} value={m}>{marriageStatusLabel(m)}</option>))}
               </select>
-            </Field>
-            <Field label={t('family.occupation')}>
-              <input name="occupation" defaultValue={d?.occupation ?? ''} className={inputCls} />
-            </Field>
-            <Field label={t('family.companyName')}>
-              <input name="companyName" defaultValue={d?.companyName ?? ''} className={inputCls} />
-            </Field>
+            </PersonnelField>
+            <PersonnelField fieldId="family.family_and_dependents.occupation" mode="edit">
+              <input {...personnelInput('family.family_and_dependents.occupation','edit')} defaultValue={d?.occupation ?? ''} className={inputCls} />
+            </PersonnelField>
+            <PersonnelField fieldId="family.family_and_dependents.companyname" mode="edit">
+              <input {...personnelInput('family.family_and_dependents.companyname','edit')} defaultValue={d?.companyName ?? ''} className={inputCls} />
+            </PersonnelField>
             <div className="sm:col-span-2">
-              <Field label={t('family.employerAddress')}>
-                <textarea name="employerAddress" rows={2} defaultValue={d?.employerAddress ?? ''} className={taCls} />
-              </Field>
+              <PersonnelField fieldId="family.family_and_dependents.employeraddress" mode="edit">
+                <textarea {...personnelControl('family.family_and_dependents.employeraddress','edit')} rows={2} defaultValue={d?.employerAddress ?? ''} className={taCls} />
+              </PersonnelField>
             </div>
           </>
         )}
         {section === 'other' && (
-          <Field label={t('family.occupation')}>
-            <input name="occupation" defaultValue={d?.occupation ?? ''} className={inputCls} />
-          </Field>
+          <PersonnelField fieldId="family.family_and_dependents.occupation" mode="edit">
+            <input {...personnelInput('family.family_and_dependents.occupation','edit')} defaultValue={d?.occupation ?? ''} className={inputCls} />
+          </PersonnelField>
         )}
         {remarksField}
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 self-end pb-1 sm:col-span-2">
@@ -2028,9 +2031,9 @@ export default async function EmployeePage({
     return (
       <fieldset disabled>
         <div className={section === 'child' ? 'space-y-4' : 'grid grid-cols-1 items-end gap-3 sm:grid-cols-2'}>
-          <Field label={t('family.relationship')}>
-            <input readOnly value={familyRelationshipLabel(d.relationship)} className={inputCls} />
-          </Field>
+          <PersonnelField fieldId="family.family_and_dependents.relationship" mode="edit">
+            <input {...personnelDisplay("family.family_and_dependents.relationship")} readOnly value={familyRelationshipLabel(d.relationship)} className={inputCls} />
+          </PersonnelField>
           {dependentFields(section, d)}
         </div>
       </fieldset>
@@ -2180,41 +2183,41 @@ export default async function EmployeePage({
   // Graduation ≥ From) on save.
   const qualificationFields = (q: QualificationRow | null) => (
     <>
-      <Field label={t('qualification.level')}>
-        <select name="qualification" required defaultValue={q?.qualification ?? ''} className={inputCls}>
+      <PersonnelField fieldId="qualification.academic_and_professional_qualifications.level" mode="record">
+        <select {...personnelControl('qualification.academic_and_professional_qualifications.level','record')} defaultValue={q?.qualification ?? ''} className={inputCls}>
           <option value="">{t('qualification.levelPlaceholder')}</option>
           {qualificationOptionsFor(q).map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
-      </Field>
-      <Field label={t('qualification.institute')}>
-        <input name="institute" defaultValue={q?.institute ?? ''} className={inputCls} />
-      </Field>
-      <Field label={t('qualification.fromYm')}>
-        <input name="fromYm" type="month" defaultValue={q?.fromYm ?? ''} className={inputCls} />
-      </Field>
-      <Field label={t('qualification.toYm')}>
-        <input name="toYm" type="month" defaultValue={q?.toYm ?? ''} className={inputCls} />
-      </Field>
-      <Field label={t('qualification.graduationDate')}>
-        <DateField name="graduationDate" defaultValue={q?.graduationDate ?? ''} className={inputCls} label={t('qualification.graduationDate')} />
-      </Field>
-      <Field label={t('qualification.major')}>
-        <input name="major" defaultValue={q?.major ?? ''} className={inputCls} />
-      </Field>
-      <Field label={t('qualification.result')}>
-        <input name="result" defaultValue={q?.result ?? ''} placeholder={t('qualification.resultPlaceholder')} className={inputCls} />
-      </Field>
+      </PersonnelField>
+      <PersonnelField fieldId="qualification.academic_and_professional_qualifications.institute" mode="edit">
+        <input {...personnelInput('qualification.academic_and_professional_qualifications.institute','edit')} defaultValue={q?.institute ?? ''} className={inputCls} />
+      </PersonnelField>
+      <PersonnelField fieldId="qualification.academic_and_professional_qualifications.fromym" mode="edit">
+        <input {...personnelInput('qualification.academic_and_professional_qualifications.fromym','edit')} defaultValue={q?.fromYm ?? ''} className={inputCls} />
+      </PersonnelField>
+      <PersonnelField fieldId="qualification.academic_and_professional_qualifications.toym" mode="edit">
+        <input {...personnelInput('qualification.academic_and_professional_qualifications.toym','edit')} defaultValue={q?.toYm ?? ''} className={inputCls} />
+      </PersonnelField>
+      <PersonnelField fieldId="qualification.academic_and_professional_qualifications.graduationdate" mode="edit">
+        <DateField {...personnelControl('qualification.academic_and_professional_qualifications.graduationdate','edit')} defaultValue={q?.graduationDate ?? ''} className={inputCls} label={personnelLabel('qualification.academic_and_professional_qualifications.graduationdate')} />
+      </PersonnelField>
+      <PersonnelField fieldId="qualification.academic_and_professional_qualifications.major" mode="edit">
+        <input {...personnelInput('qualification.academic_and_professional_qualifications.major','edit')} defaultValue={q?.major ?? ''} className={inputCls} />
+      </PersonnelField>
+      <PersonnelField fieldId="qualification.academic_and_professional_qualifications.result" mode="edit">
+        <input {...personnelInput('qualification.academic_and_professional_qualifications.result','edit')} defaultValue={q?.result ?? ''} placeholder={t('qualification.resultPlaceholder')} className={inputCls} />
+      </PersonnelField>
       <div className="sm:col-span-2">
-        <Field label={t('qualification.description')}>
-          <textarea name="description" rows={2} defaultValue={q?.description ?? ''} className={taCls} />
-        </Field>
+        <PersonnelField fieldId="qualification.academic_and_professional_qualifications.description" mode="edit">
+          <textarea {...personnelControl('qualification.academic_and_professional_qualifications.description','edit')} rows={2} defaultValue={q?.description ?? ''} className={taCls} />
+        </PersonnelField>
       </div>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 self-end pb-1 sm:col-span-2">
         <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          <input type="checkbox" name="isHighest" defaultChecked={q?.isHighest ?? false} />
-          {t('qualification.highest')}
+          <input {...personnelInput('qualification.academic_and_professional_qualifications.highest')} defaultChecked={q?.isHighest ?? false} />
+          {personnelLabel('qualification.academic_and_professional_qualifications.highest')}
         </label>
       </div>
       <p className="text-xs text-muted-foreground sm:col-span-2">{t('qualification.highestHint')}</p>
@@ -2362,9 +2365,11 @@ export default async function EmployeePage({
               defaultShiftId={emp.defaultShiftId}
               defaultEffectiveFrom={today}
               dmyDisplay
+              allowedPool={groupPool?{baseShiftIds:groupPool.memberships.map(m=>m.shiftId),versions:groupPool.versions.map(v=>({effectiveFrom:v.effectiveFrom,allowedShiftIds:v.allowedShiftIds}))}:undefined}
               shifts={assignableShifts.map((sh) => ({
+                archived:!!sh.archivedAt,
                 id: sh.id,
-                label: `${sh.code ?? '—'} — ${sh.name} (${sh.startTime.slice(0, 5)}–${sh.endTime.slice(0, 5)})`,
+                label: `${sh.code ?? '—'} — ${sh.name} (${(sh.startTime?.slice(0, 5)??'—')}–${(sh.endTime?.slice(0, 5)??'—')})`,
               }))}
             />
             <button className={btnPrimary}>{t('defaultShiftSave')}</button>
@@ -2499,16 +2504,16 @@ export default async function EmployeePage({
               ID — which is how device files have always matched and is the normal state. */}
           <form action={saveCardIdFieldAction} data-save-section="card" className="flex flex-wrap items-end gap-3 border-t border-border p-4">
             <input type="hidden" name="employmentId" value={emp.employmentId} />
-            <Field label={ta('cardColCardId')}>
+            <PersonnelField fieldId="attendance.clocking_and_attendance_photo.cardid">
               <input
-                name="cardId"
+                {...personnelInput('attendance.clocking_and_attendance_photo.cardid')}
                 defaultValue={emp.cardId ?? ''}
                 // TEXT, never type="number": a card number carries leading zeros and '007' is not '7'.
                 inputMode="text"
                 autoComplete="off"
                 className={`${inputCls} w-44`}
               />
-            </Field>
+            </PersonnelField>
             <p className="pb-2 text-xs text-muted-foreground">{ta('cardNoneNote')}</p>
           </form>
     </Card>
@@ -2531,21 +2536,20 @@ export default async function EmployeePage({
     <Card id="section-web-clocking">
       <SectionHeader title={tc('webClockingTitle')} />
       <fieldset data-save-section="photo" className="p-4">
-        <legend className="mb-2 text-sm font-medium">{tc('attendancePhotoLabel')}</legend>
-        <div role="radiogroup" aria-label={tc('attendancePhotoLabel')} className="flex flex-wrap gap-1.5">
-          {(['required', 'optional', 'not_required'] as const).map((v) => (
+        <legend className="mb-2 text-sm font-medium">{personnelLabel('attendance.clocking_and_attendance_photo.attendancephotosetting')}</legend>
+        <div role="radiogroup" aria-label={personnelLabel('attendance.clocking_and_attendance_photo.attendancephotosetting')} className="flex flex-wrap gap-1.5">
+          {personnelFormChoices('attendance.clocking_and_attendance_photo.attendancephotosetting').map(({value:v,labelKey}) => (
             <label
               key={v}
               className="min-h-9 cursor-pointer rounded-md border border-input bg-background px-3 py-1.5 text-sm transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground monolith:rounded-none monolith:border-ink monolith:bg-transparent monolith:text-ink has-[:checked]:monolith:bg-ink has-[:checked]:monolith:text-bone"
             >
               <input
-                type="radio"
-                name="attendancePhotoSetting"
+                {...personnelRadio('attendance.clocking_and_attendance_photo.attendancephotosetting')}
                 value={v}
                 defaultChecked={emp.attendancePhotoSetting === v}
                 className="sr-only"
               />
-              {tc(v === 'required' ? 'attendancePhotoRequired' : v === 'optional' ? 'attendancePhotoOptional' : 'attendancePhotoNotRequired')}
+              {tPersonnel(labelKey)}
             </label>
           ))}
         </div>
@@ -2572,15 +2576,15 @@ export default async function EmployeePage({
     <Card id="section-grade">
       <SectionHeader title={t('gradeCardTitle')} />
       <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-3">
-        <Field label={t('grade')}>
-          <input
+        <PersonnelField fieldId="leave.grade_and_benefit_scheme.gradename" mode="edit">
+          <input {...personnelDisplay("leave.grade_and_benefit_scheme.gradename")}
             value={(emp.gradeId ? (grades.find((g) => g.id === emp.gradeId)?.name ?? null) : null) ?? t('gradeNone')}
             disabled
             readOnly
             aria-readonly="true"
             className={inputCls}
           />
-        </Field>
+        </PersonnelField>
         <div className="sm:col-span-3">
           <p className="text-xs text-muted-foreground">
             {t('gradeMovementOnlyNote')}{' '}
@@ -2969,41 +2973,41 @@ export default async function EmployeePage({
       <input type="hidden" name="employmentId" value={emp.employmentId} />
       <input type="hidden" name="tab" value="payroll" data-tab-tracker="" />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label={t('effectiveDate')}>
-          <DateField
-            name="effectiveFrom"
-            required
+        <PersonnelField fieldId="payroll.basic_salary_and_salary_history.validfrom" mode="record">
+          <DateField {...personnelControl("payroll.basic_salary_and_salary_history.validfrom", 'record')}
+
+
             defaultValue={salaryRows.length ? today : emp.hiredOn}
             className={inputCls}
-            label={t('effectiveDate')}
+            label={personnelLabel("payroll.basic_salary_and_salary_history.validfrom")}
           />
           {salaryRows.length === 0 && (
             <p className="mt-1 text-xs text-muted-foreground">{t('salaryInitialEffectiveHint')}</p>
           )}
-        </Field>
+        </PersonnelField>
         {/* r374 (item 7dbaf677) — `required` DROPPED, `min="0"` KEPT. A Director paid Director Fees
             quarterly has no monthly basic; `required` meant HR could type a zero but not leave the box
             empty, and an empty box is the honest answer. A blank POST is read as an explicit zero by
             `setCompensationAction` (`Number(null)` and `Number('')` are both 0), and `setCompensation`
             then makes Remarks compulsory — the hint below says so BEFORE the save rather than after it.
             `min="0"` stays because the service refuses a negative amount. */}
-        <Field label={t('basicSalaryMyr')}>
-          <input name="basicSalary" type="number" min="0" step="0.01" className={inputCls} />
-        </Field>
+        <PersonnelField fieldId="payroll.basic_salary_and_salary_history.basicsalary" mode="edit">
+          <input {...personnelInput('payroll.basic_salary_and_salary_history.basicsalary','edit')} className={inputCls} />
+        </PersonnelField>
         {/* 297ae65a — the record's salary currency, grouped WITH the amount (searchable ISO 4217 list).
             Preselects the open row's currency (carry-forward made visible) or the company default for
             a brand-new first record; the service validates + carries forward server-side. */}
-        <Field label={t('salaryCurrency')}>
-          <CurrencySelect name="currency" value={openSalaryRow?.currency ?? defaultSalaryCurrency} />
-        </Field>
-        <Field label={t('salaryColRemarks')}>
-          <input
-            name="remarks"
-            type="text"
+        <PersonnelField fieldId="payroll.basic_salary_and_salary_history.currency" mode="edit">
+          <CurrencySelect name={personnelFormName("payroll.basic_salary_and_salary_history.currency")} value={openSalaryRow?.currency ?? defaultSalaryCurrency} />
+        </PersonnelField>
+        <PersonnelField fieldId="payroll.basic_salary_and_salary_history.remarks" mode="edit">
+          <input {...personnelInput('payroll.basic_salary_and_salary_history.remarks','edit')}
+
+
             placeholder={t('salaryRemarksPlaceholder')}
             className={inputCls}
           />
-        </Field>
+        </PersonnelField>
         {/* ADR-0078 (642ecc55) — Pay Mode, Payment Term and the conditional Rate box are saved WITH the
             revision (effective-dated, historical rows keep their own settings). Defaults come from the
             open row so an untouched save carries the structure forward. The service enforces the
@@ -3207,7 +3211,7 @@ export default async function EmployeePage({
           <legend className="-ml-1 rounded-md bg-card px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-foreground">
             {t('socsoEisCardTitle')}
           </legend>
-          <input type="hidden" name="nationality" value={emp.nationality ?? ''} />
+          <input {...personnelCarry('profile.personal_details.nationality')} value={emp.nationality ?? ''} />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {/* 35b7af0a group 7 — the SAME group the Create Employee wizard now renders
                 (components/socso-eis-fields.tsx). Names, options and the IC-derived number default are
@@ -3233,8 +3237,8 @@ export default async function EmployeePage({
             <div className="flex flex-col gap-2">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('subjectToLegend')}</p>
               <label className="flex items-center gap-2 text-sm" title={t('subjectToSkbbkHint')}>
-                <input type="checkbox" name="subjectToSkbbk" defaultChecked={statutory ? statutory.subjectToSkbbk : false} className="size-4 rounded" />
-                {t('subjectToSkbbk')}
+                <input {...personnelInput('bank_statutory.socso_eis_and_others_statutory.subjecttoskbbk')} defaultChecked={statutory ? statutory.subjectToSkbbk : false} className="size-4 rounded" />
+                {personnelLabel('bank_statutory.socso_eis_and_others_statutory.subjecttoskbbk')}
               </label>
             </div>
             <div className="flex flex-col gap-2">
@@ -3407,18 +3411,18 @@ export default async function EmployeePage({
         <input type="hidden" name="personId" value={emp.personId} />
         <p className="text-xs text-muted-foreground">{t('tp3SectionDescription')}</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label={t('appliesToYear')}>
-            <input name="tp3Year" type="number" min="2020" max="2100" defaultValue={statutory?.tp3Year ?? ''} placeholder="2026" className={inputCls} />
-          </Field>
-          <Field label={t('tp3NetRemuneration')}>
-            <input name="tp3NetRemuneration" type="number" min="0" step="0.01" defaultValue={statutory?.tp3NetRemuneration ?? ''} className={inputCls} />
-          </Field>
-          <Field label={t('tp3EpfClaimed')}>
-            <input name="tp3EpfClaimed" type="number" min="0" step="0.01" defaultValue={statutory?.tp3EpfClaimed ?? ''} className={inputCls} />
-          </Field>
-          <Field label={t('tp3PcbPaid')}>
-            <input name="tp3PcbPaid" type="number" min="0" step="0.01" defaultValue={statutory?.tp3PcbPaid ?? ''} className={inputCls} />
-          </Field>
+          <PersonnelField fieldId="payroll.previous_employment_this_year_tp3_opening_balances.year" mode="edit">
+            <input {...personnelInput('payroll.previous_employment_this_year_tp3_opening_balances.year','edit')} defaultValue={statutory?.tp3Year ?? ''} placeholder="2026" className={inputCls} />
+          </PersonnelField>
+          <PersonnelField fieldId="payroll.previous_employment_this_year_tp3_opening_balances.netremuneration" mode="edit">
+            <input {...personnelInput('payroll.previous_employment_this_year_tp3_opening_balances.netremuneration','edit')} defaultValue={statutory?.tp3NetRemuneration ?? ''} className={inputCls} />
+          </PersonnelField>
+          <PersonnelField fieldId="payroll.previous_employment_this_year_tp3_opening_balances.epfclaimed" mode="edit">
+            <input {...personnelInput('payroll.previous_employment_this_year_tp3_opening_balances.epfclaimed','edit')} defaultValue={statutory?.tp3EpfClaimed ?? ''} className={inputCls} />
+          </PersonnelField>
+          <PersonnelField fieldId="payroll.previous_employment_this_year_tp3_opening_balances.pcbpaid" mode="edit">
+            <input {...personnelInput('payroll.previous_employment_this_year_tp3_opening_balances.pcbpaid','edit')} defaultValue={statutory?.tp3PcbPaid ?? ''} className={inputCls} />
+          </PersonnelField>
         </div>
       </form>
       {/* df35d60d — THE DOOR TO THE FULL FORM, AND THE SENTENCE THAT SAYS WHY THERE ARE TWO PLACES.
@@ -3522,15 +3526,15 @@ export default async function EmployeePage({
   // itself stays viewable. Rehire is a future, separate piece.
   const canCreateMovement = admin && !emp.terminatedOn;
   /** c063eea9 — the caption of a hire-correction field, shared by the history row and the detail view. */
-  const hireFieldLabel = (f: HireCorrectionField): string =>
-    ({
-      departmentId: t('movement.field.department'),
-      positionId: t('movement.field.position'),
-      businessUnitId: t('movement.field.businessUnit'),
-      costCenterId: t('movement.hireCorrection.fieldCostCenter'),
-      locationId: t('movement.hireCorrection.fieldLocation'),
-      managerEmploymentId: t('movement.hireCorrection.fieldManager'),
-    })[f];
+  const hireFieldIds = {
+  "businessUnitId": "employment.organisation_assignment.businessunitname",
+  "departmentId": "employment.organisation_assignment.departmentname",
+  "positionId": "employment.organisation_assignment.positionname",
+  "costCenterId": "employment_history.original_hire_details_and_corrections.costcenterid",
+  "locationId": "attendance.work_location_and_shift_arrangement.locationid",
+  "managerEmploymentId": "employment.direct_superior_and_history.superioremploymentid"
+} as const;
+  const hireFieldLabel = (f:HireCorrectionField):string => personnelLabel(hireFieldIds[f]);
 
   const employmentHistoryCard = (
     <Card id="section-assignment-history" className="overflow-hidden">
@@ -3963,10 +3967,8 @@ export default async function EmployeePage({
         // b7b22514 — the destinations, and each destination's org lists (see the read above).
         companies: movementCompanies,
         orgByCompany: movementOrgByCompany,
-        employmentTypes: (['full_time', 'part_time', 'contract', 'intern'] as const).map((v) => ({
-          value: v,
-          label: t(`employmentInfo.employmentType_${v}` as 'employmentInfo.employmentType_full_time'),
-        })),
+        profileOptions,
+        employmentTypes: personnelFormChoices('employment.organisation_assignment.employmenttype').map(choice=>({value:choice.value,label:t(choice.labelKey.slice(14))})),
         // ae9350f2 — the built-in exit-reason catalogue, pre-translated here (the island holds no server
         // imports). `typeLabel` reuses the EXISTING termination-type labels, so the classification the
         // reason derives reads the same everywhere it already appears (turnover analytics included).
@@ -4229,8 +4231,8 @@ export default async function EmployeePage({
   // A lowercase helper, not a component: defining a component inside render creates a new component type on
   // every render (react-hooks/static-components), and this needs the request-scoped `t` anyway. Same shape as
   // the `row` helper in movement-new-event.tsx.
-  const readOnlyValue = (value: string | null | undefined, title?: string) => (
-    <input
+  const readOnlyValue = (fieldId:string, value: string | null | undefined, title?: string) => (
+    <input {...personnelDisplay(fieldId)}
       value={value ?? t('optionNotSet')}
       disabled
       readOnly
@@ -4288,14 +4290,14 @@ export default async function EmployeePage({
       {pendingCompany ? (
         <form action={changeEmploymentCompanyAction} className="space-y-3 border-b border-border p-4">
           <input type="hidden" name="employmentId" value={emp.employmentId} />
-          <input type="hidden" name="newCompanyId" value={pendingCompany.id} />
+          <input {...personnelWorkflowCarry('employment.organisation_assignment.companyname','companyCorrection')} value={pendingCompany.id} />
           <input type="hidden" name="tab" value={tab ?? ''} />
           <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground">
             {t('employmentInfo.companyPendingBanner', { company: pendingCompany.name })}
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Field label={t('employmentInfo.department')}>
-              <select name="departmentId" defaultValue="" required className={inputCls}>
+            <PersonnelField fieldId="employment.organisation_assignment.departmentname" mode="record">
+              <select {...personnelControl('employment.organisation_assignment.departmentname','record')} defaultValue=""  className={inputCls}>
                 <option value="">{t('employmentInfo.positionNone')}</option>
                 {orgDepartments.map((d) => (
                   <option key={d.id} value={d.id}>
@@ -4303,9 +4305,9 @@ export default async function EmployeePage({
                   </option>
                 ))}
               </select>
-            </Field>
-            <Field label={t('employmentInfo.businessUnit')}>
-              <select name="businessUnitId" defaultValue="" className={inputCls}>
+            </PersonnelField>
+            <PersonnelField fieldId="employment.organisation_assignment.businessunitname" mode="edit">
+              <select {...personnelControl('employment.organisation_assignment.businessunitname','edit')} defaultValue="" className={inputCls}>
                 <option value="">{t('employmentInfo.positionNone')}</option>
                 {orgBusinessUnits.map((bu) => (
                   <option key={bu.id} value={bu.id}>
@@ -4313,9 +4315,9 @@ export default async function EmployeePage({
                   </option>
                 ))}
               </select>
-            </Field>
-            <Field label={t('employmentInfo.position')}>
-              <select name="positionId" defaultValue="" className={inputCls}>
+            </PersonnelField>
+            <PersonnelField fieldId="employment.organisation_assignment.positionname" mode="edit">
+              <select {...personnelControl('employment.organisation_assignment.positionname','edit')} defaultValue="" className={inputCls}>
                 <option value="">{t('employmentInfo.positionNone')}</option>
                 {orgPositions.map((pos) => (
                   <option key={pos.id} value={pos.id}>
@@ -4323,9 +4325,9 @@ export default async function EmployeePage({
                   </option>
                 ))}
               </select>
-            </Field>
-            <Field label={t('locationSelect')}>
-              <select name="locationId" defaultValue="" className={inputCls}>
+            </PersonnelField>
+            <PersonnelField fieldId="attendance.work_location_and_shift_arrangement.locationid" mode="record">
+              <select {...personnelControl("attendance.work_location_and_shift_arrangement.locationid", 'record')}  defaultValue="" className={inputCls}>
                 <option value="">{t('locationNone')}</option>
                 {orgLocations.map((l) => (
                   <option key={l.id} value={l.id}>
@@ -4333,7 +4335,7 @@ export default async function EmployeePage({
                   </option>
                 ))}
               </select>
-            </Field>
+            </PersonnelField>
           </div>
           <div className="flex items-center gap-3">
             <button className={btnPrimary}>{t('employmentInfo.companyChangeSave')}</button>
@@ -4348,15 +4350,15 @@ export default async function EmployeePage({
       ) : companyEditable ? (
         <form method="get" className="space-y-2 border-b border-border p-4">
           <input type="hidden" name="tab" value={tab ?? ''} />
-          <Field label={t('employmentInfo.company')}>
-            <select name="companyChange" defaultValue={emp.companyId} className={inputCls}>
+          <PersonnelField fieldId="employment.organisation_assignment.companyname" mode="record">
+            <select {...personnelControl("employment.organisation_assignment.companyname", 'record')}  defaultValue={emp.companyId} className={inputCls}>
               {managedCompanies.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
               ))}
             </select>
-          </Field>
+          </PersonnelField>
           <div className="flex items-center gap-3">
             <button className={btnGhost}>{t('employmentInfo.companyChangeContinue')}</button>
           </div>
@@ -4382,10 +4384,10 @@ export default async function EmployeePage({
       <div className="space-y-3 border-b border-border p-4">
         <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('employmentInfo.assignmentGroup')}</div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Field label={t('employmentInfo.company')}>
+          <PersonnelField fieldId="employment.organisation_assignment.companyname" mode="record">
             {/* 9464bd56 — read-only here; the correction (pre-transaction only) lives in the block above. When
                 the employee has activity the field is locked and points HR to Movement / Transfer. */}
-            <input
+            <input {...personnelDisplay("employment.organisation_assignment.companyname")}
               value={emp.company}
               disabled
               className={inputCls}
@@ -4395,26 +4397,26 @@ export default async function EmployeePage({
             {!companyEditable && (
               <p className="text-xs text-muted-foreground">{t('employmentInfo.companyLockedNote')}</p>
             )}
-          </Field>
+          </PersonnelField>
           {/* 8ebabbf2 — Business Unit / Department / Position / Job Grade / Employment Type are shown as
               STORED, resolved through the same `current` assignment projection the editable selects used, so
               a value that is no longer in its company-scoped option list still displays (the 570e3311
               pinned-current problem disappears entirely once nothing is a <select>). */}
-          <Field label={t('employmentInfo.businessUnit')}>
-            {readOnlyValue(current?.businessUnit)}
-          </Field>
-          <Field label={t('employmentInfo.department')}>
-            {readOnlyValue(current?.department)}
-          </Field>
-          <Field label={t('employmentInfo.position')}>
-            {readOnlyValue(current?.position)}
-          </Field>
-          <Field label={t('employmentInfo.jobGrade')}>
-            {readOnlyValue(gradeName)}
-          </Field>
-          <Field label={t('employmentInfo.employmentType')}>
-            {readOnlyValue(employmentTypeLabel)}
-          </Field>
+          <PersonnelField fieldId="employment.organisation_assignment.businessunitname" mode="edit">
+            {readOnlyValue("employment.organisation_assignment.businessunitname", current?.businessUnit)}
+          </PersonnelField>
+          <PersonnelField fieldId="employment.organisation_assignment.departmentname" mode="edit">
+            {readOnlyValue("employment.organisation_assignment.departmentname", current?.department)}
+          </PersonnelField>
+          <PersonnelField fieldId="employment.organisation_assignment.positionname" mode="edit">
+            {readOnlyValue("employment.organisation_assignment.positionname", current?.position)}
+          </PersonnelField>
+          <PersonnelField fieldId="employment.organisation_assignment.gradename" mode="edit">
+            {readOnlyValue("employment.organisation_assignment.gradename", gradeName)}
+          </PersonnelField>
+          <PersonnelField fieldId="employment.organisation_assignment.employmenttype" mode="edit">
+            {readOnlyValue("employment.organisation_assignment.employmenttype", employmentTypeLabel)}
+          </PersonnelField>
           {/* R46 b272ab6b — the duplicate read-only Employee Status badge that used to sit here was removed.
               The same derived value already renders TWICE above the fold: on the PageHeader actions slot and
               on the employee summary Card. A third copy inside the form added noise without adding
@@ -4430,30 +4432,30 @@ export default async function EmployeePage({
             comparison form owns them now (core/movement.ts MOVEMENT_FLAT_FIELDS) and keeps the same
             catalog validation, because it writes through the same setEmploymentInfo. */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-          <Field label={t('employmentInfo.division')}>
-            {readOnlyValue(emp.orgDivision)}
-          </Field>
-          <Field label={t('employmentInfo.branch')}>
-            {readOnlyValue(emp.orgBranch)}
-          </Field>
-          <Field label={t('employmentInfo.region')}>
-            {readOnlyValue(emp.orgRegion)}
-          </Field>
-          <Field label={t('employmentInfo.line')}>
-            {readOnlyValue(emp.orgLine)}
-          </Field>
-          <Field label={t('employmentInfo.section')}>
-            {readOnlyValue(emp.orgSection)}
-          </Field>
-          <Field label={t('employmentInfo.team')}>
-            {readOnlyValue(emp.orgTeam)}
-          </Field>
-          <Field label={t('employmentInfo.base')}>
-            {readOnlyValue(emp.orgBase)}
-          </Field>
-          <Field label={t('employmentInfo.category')}>
-            {readOnlyValue(emp.employmentCategory)}
-          </Field>
+          <PersonnelField fieldId="employment.additional_organisation_labels.orgdivision" mode="edit">
+            {readOnlyValue("employment.additional_organisation_labels.orgdivision", emp.orgDivision)}
+          </PersonnelField>
+          <PersonnelField fieldId="employment.additional_organisation_labels.orgbranch" mode="edit">
+            {readOnlyValue("employment.additional_organisation_labels.orgbranch", emp.orgBranch)}
+          </PersonnelField>
+          <PersonnelField fieldId="employment.additional_organisation_labels.orgregion" mode="edit">
+            {readOnlyValue("employment.additional_organisation_labels.orgregion", emp.orgRegion)}
+          </PersonnelField>
+          <PersonnelField fieldId="employment.additional_organisation_labels.orgline" mode="edit">
+            {readOnlyValue("employment.additional_organisation_labels.orgline", emp.orgLine)}
+          </PersonnelField>
+          <PersonnelField fieldId="employment.additional_organisation_labels.orgsection" mode="edit">
+            {readOnlyValue("employment.additional_organisation_labels.orgsection", emp.orgSection)}
+          </PersonnelField>
+          <PersonnelField fieldId="employment.additional_organisation_labels.orgteam" mode="edit">
+            {readOnlyValue("employment.additional_organisation_labels.orgteam", emp.orgTeam)}
+          </PersonnelField>
+          <PersonnelField fieldId="employment.additional_organisation_labels.orgbase" mode="edit">
+            {readOnlyValue("employment.additional_organisation_labels.orgbase", emp.orgBase)}
+          </PersonnelField>
+          <PersonnelField fieldId="employment.additional_organisation_labels.employmentcategory" mode="edit">
+            {readOnlyValue("employment.additional_organisation_labels.employmentcategory", emp.employmentCategory)}
+          </PersonnelField>
         </div>
 
         {/* The pointer that replaces the Save button: where a field used to be editable, the tab says which
@@ -4504,18 +4506,18 @@ export default async function EmployeePage({
               carries a `name` any more, and setEmploymentInfo ignores both fields without the matching
               movement tag, so a forged submit cannot set them either. */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label={t('employmentInfo.groupJoinDate')}>
-              {readOnlyValue(emp.hiredOn ? formatDmy(emp.hiredOn) : null)}
+            <PersonnelField fieldId="employment.employment_dates_and_service.hiredon" mode="edit">
+              {readOnlyValue("employment.employment_dates_and_service.hiredon", emp.hiredOn ? formatDmy(emp.hiredOn) : null)}
               <p className="text-xs text-muted-foreground">
                 {t('employmentInfo.groupService')}: {groupServiceLabel ?? '—'}
               </p>
-            </Field>
-            <Field label={t('employmentInfo.joinDate')}>
-              {readOnlyValue(emp.joinDate ? formatDmy(emp.joinDate) : null)}
+            </PersonnelField>
+            <PersonnelField fieldId="employment.employment_dates_and_service.joindate" mode="edit">
+              {readOnlyValue("employment.employment_dates_and_service.joindate", emp.joinDate ? formatDmy(emp.joinDate) : null)}
               <p className="text-xs text-muted-foreground">
                 {t('employmentInfo.currentCompanyService')}: {currentServiceLabel ?? '—'}
               </p>
-            </Field>
+            </PersonnelField>
           </div>
           <p className="text-xs text-muted-foreground">
             {t('employmentInfo.joinDatesViewOnlyNote')}{' '}
@@ -4590,36 +4592,36 @@ export default async function EmployeePage({
             <div className="space-y-3">
               <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.contractGroup')}</h4>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Field label={t('employmentInfo.contractStartDate')}>
-                  <DateField
-                    name="contractStartDate"
-                    required
+                <PersonnelField fieldId="employment.employment_dates_and_service.contractstartdate" mode="record">
+                  <DateField {...personnelControl('employment.employment_dates_and_service.contractstartdate','record')}
+
+
                     defaultValue={emp.contractStartDate ?? emp.hiredOn}
                     className={inputCls}
-                    label={t('employmentInfo.contractStartDate')}
+                    label={personnelLabel('employment.employment_dates_and_service.contractstartdate')}
                   />
-                </Field>
-                <Field label={t('employmentInfo.contractEndDate')}>
-                  <DateField
-                    name="contractEndDate"
-                    required
+                </PersonnelField>
+                <PersonnelField fieldId="employment.employment_dates_and_service.contractenddate" mode="record">
+                  <DateField {...personnelControl('employment.employment_dates_and_service.contractenddate','record')}
+
+
                     defaultValue={emp.contractEndDate ?? emp.provisionalEndOn ?? ''}
                     className={inputCls}
-                    label={t('employmentInfo.contractEndDate')}
+                    label={personnelLabel('employment.employment_dates_and_service.contractenddate')}
                   />
-                </Field>
+                </PersonnelField>
               </div>
-              <Field label={t('employmentInfo.contractRemark')}>
+              <PersonnelField fieldId="employment.employment_dates_and_service.contractremark" mode="edit">
                 {/* taCls, not inputCls — inputCls fixes h-9, which collapses a multi-line box to one row.
                     Same constant every other textarea on this page uses. */}
-                <textarea
-                  name="contractRemark"
+                <textarea {...personnelControl('employment.employment_dates_and_service.contractremark','edit')}
+
                   rows={3}
                   defaultValue={emp.contractRemark ?? ''}
                   className={taCls}
                   placeholder={t('employmentInfo.contractRemarkPlaceholder')}
                 />
-              </Field>
+              </PersonnelField>
               <p className="text-xs text-muted-foreground">{t('employmentInfo.contractNote')}</p>
             </div>
           )}
@@ -4651,15 +4653,15 @@ export default async function EmployeePage({
           <div className="space-y-3">
             <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.resignationGroup')}</h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <Field label={t('employmentInfo.tenderResignationDate')}>
-                <DateField name="tenderResignationDate" defaultValue={emp.tenderResignationDate ?? ''} className={inputCls} label={t('employmentInfo.tenderResignationDate')} />
-              </Field>
-              <Field label={t('employmentInfo.resignationDate')}>
-                <DateField name="resignationDate" defaultValue={emp.resignationDate ?? ''} className={inputCls} label={t('employmentInfo.resignationDate')} />
-              </Field>
-              <Field label={t('employmentInfo.lastWorkingDate')}>
-                <DateField name="lastWorkingDate" defaultValue={emp.lastWorkingDate ?? ''} className={inputCls} label={t('employmentInfo.lastWorkingDate')} />
-              </Field>
+              <PersonnelField fieldId="employment.employment_dates_and_service.tenderresignationdate" mode="edit">
+                <DateField {...personnelControl('employment.employment_dates_and_service.tenderresignationdate','edit')} defaultValue={emp.tenderResignationDate ?? ''} className={inputCls} label={personnelLabel('employment.employment_dates_and_service.tenderresignationdate')} />
+              </PersonnelField>
+              <PersonnelField fieldId="employment.employment_dates_and_service.resignationdate" mode="edit">
+                <DateField {...personnelControl('employment.employment_dates_and_service.resignationdate','edit')} defaultValue={emp.resignationDate ?? ''} className={inputCls} label={personnelLabel('employment.employment_dates_and_service.resignationdate')} />
+              </PersonnelField>
+              <PersonnelField fieldId="employment.employment_dates_and_service.lastworkingdate" mode="edit">
+                <DateField {...personnelControl('employment.employment_dates_and_service.lastworkingdate','edit')} defaultValue={emp.lastWorkingDate ?? ''} className={inputCls} label={personnelLabel('employment.employment_dates_and_service.lastworkingdate')} />
+              </PersonnelField>
             </div>
             <p className="text-xs text-muted-foreground">{t('employmentInfo.lifecycleDeferredNote')}</p>
           </div>
@@ -4704,9 +4706,9 @@ export default async function EmployeePage({
             <input type="hidden" name="currentSuperiorEmploymentId" value={currentSuperior?.employmentId ?? ''} />
             <input type="hidden" name="currentLineId" value={currentSuperior?.id ?? ''} />
             <div className="sm:col-span-2">
-              <Field label={t('directSuperiorLabel')}>
-                <Combobox
-                  name="superiorEmploymentId"
+              <PersonnelField fieldId="employment.direct_superior_and_history.superioremploymentid" mode="record">
+                <Combobox {...personnelControl("employment.direct_superior_and_history.superioremploymentid", 'record')}
+
                   value={currentSuperior?.employmentId ?? ''}
                   options={superiorOptions}
                   placeholder={t('directSuperiorNone')}
@@ -4714,7 +4716,7 @@ export default async function EmployeePage({
                   noResultsLabel={t('directSuperiorNoResults')}
                   legacySuffix=""
                 />
-              </Field>
+              </PersonnelField>
             </div>
             <div>
               <button className={btnPrimary}>{t('directSuperiorSave')}</button>
@@ -4769,7 +4771,7 @@ export default async function EmployeePage({
                   <form action={endDelegationAction}>
                     <input type="hidden" name="employmentId" value={emp.employmentId} />
                     <input type="hidden" name="reportingLineId" value={d.id} />
-                    <input type="hidden" name="endDate" value={today} />
+                    <input {...personnelWorkflowCarry('employment.approval_delegations.validto','delegationEnd')} value={today} />
                     <button type="submit" title={t('delegationEnd')} className="text-muted-foreground transition-colors hover:text-red-500">
                       ×
                     </button>
@@ -4785,21 +4787,21 @@ export default async function EmployeePage({
             className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
           >
             <input type="hidden" name="employmentId" value={emp.employmentId} />
-            <Field label={t('delegationDelegate')}>
-              <select name="delegateEmploymentId" required className={inputCls}>
+            <PersonnelField fieldId="employment.approval_delegations.delegateemploymentid" mode="record">
+              <select {...personnelControl("employment.approval_delegations.delegateemploymentid", 'record')}   className={inputCls}>
                 {others.map((o) => (
                   <option key={o.employmentId} value={o.employmentId}>
                     {o.name}
                   </option>
                 ))}
               </select>
-            </Field>
-            <Field label={t('delegationFrom')}>
-              <DateField name="validFrom" required defaultValue={today} className={inputCls} label={t('delegationFrom')} />
-            </Field>
-            <Field label={t('delegationTo')}>
-              <DateField name="validTo" className={inputCls} label={t('delegationTo')} />
-            </Field>
+            </PersonnelField>
+            <PersonnelField fieldId="employment.approval_delegations.validfrom" mode="record">
+              <DateField {...personnelControl('employment.approval_delegations.validfrom','record')} defaultValue={today} className={inputCls} label={personnelLabel('employment.approval_delegations.validfrom')} />
+            </PersonnelField>
+            <PersonnelField fieldId="employment.approval_delegations.validto" mode="edit">
+              <DateField {...personnelControl('employment.approval_delegations.validto','edit')} className={inputCls} label={personnelLabel('employment.approval_delegations.validto')} />
+            </PersonnelField>
             <div>
               <button className={btnPrimary}>{t('delegationAdd')}</button>
             </div>
@@ -4822,8 +4824,8 @@ export default async function EmployeePage({
           implicit submission now that its button has gone. */}
       <form action={setEmploymentHolidayCalendarAction} data-save-section="holiday" className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3">
         <input type="hidden" name="employmentId" value={emp.employmentId} />
-        <Field label={t('holidayCalendar')}>
-          <select name="holidayCalendar" defaultValue={holidayCalendarValue} className={inputCls}>
+        <PersonnelField fieldId="attendance.holiday_calendar_and_schedule.holidaygroupname" mode="edit">
+          <select {...personnelControl('attendance.holiday_calendar_and_schedule.holidaygroupname','edit')} defaultValue={holidayCalendarValue} className={inputCls}>
             <option value="">{t('holidayCalendarDefault')}</option>
             {holidayGroups.length > 0 && (
               <optgroup label={t('holidayCalendarGroupOptgroup')}>
@@ -4842,7 +4844,7 @@ export default async function EmployeePage({
               ))}
             </optgroup>
           </select>
-        </Field>
+        </PersonnelField>
       </form>
     </Card>
   ) : null;
@@ -4879,8 +4881,8 @@ export default async function EmployeePage({
           because a <form> with no action would POST to the current URL. */}
       <form action={setEmploymentScheduleGroupAction} data-save-section="schedule" className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3">
         <input type="hidden" name="employmentId" value={emp.employmentId} />
-        <Field label={t('scheduleGroup')}>
-          <select name="attendanceRuleId" defaultValue={scheduleGroupCurrentId ?? ''} className={inputCls}>
+        <PersonnelField fieldId="attendance.holiday_calendar_and_schedule.schedulegroupname" mode="edit">
+          <select {...personnelControl('attendance.holiday_calendar_and_schedule.schedulegroupname','edit')} defaultValue={scheduleGroupCurrentId ?? ''} className={inputCls}>
             {/* FIRST and always present. Its value is the empty string, which the writer maps to NULL. */}
             <option value="">{t('scheduleGroupNone')}</option>
             {scheduleGroupOptions.map((r) => (
@@ -4889,7 +4891,7 @@ export default async function EmployeePage({
               </option>
             ))}
           </select>
-        </Field>
+        </PersonnelField>
         <p className="text-xs text-muted-foreground sm:col-span-3">{t('scheduleGroupHint')}</p>
         {/* EMPTY STATE. Found by rendering the screen: the seeded tenant has NO attendance_rule rows, so
             the select offers the blank option and nothing else — a control that looks broken rather than
@@ -4928,19 +4930,19 @@ export default async function EmployeePage({
           className="mx-4 mt-3 grid grid-cols-1 items-end gap-3 rounded-lg border border-primary/40 bg-primary/5 p-3 sm:grid-cols-3"
         >
           <input type="hidden" name="employmentId" value={emp.employmentId} />
-          <input type="hidden" name="locationId" value={branchLocationSuggestion.id} />
+          <input {...personnelCarry('attendance.work_location_and_shift_arrangement.locationid')} value={branchLocationSuggestion.id} />
           <input type="hidden" name="source" value="branch_derived" />
           <div className="sm:col-span-3 text-xs font-medium text-primary">
             {t('locationSuggestedFromBranch', { branch: branchLocationSuggestion.branch })}
           </div>
-          <Field label={t('locationSelect')}>
+          <PersonnelField fieldId="attendance.work_location_and_shift_arrangement.locationid" mode="record">
             <div className={`${inputCls} bg-muted`}>
               {branchLocationSuggestion.name} ({branchLocationSuggestion.code})
             </div>
-          </Field>
-          <Field label={t('effectiveDate')}>
-            <DateField name="effectiveDate" required defaultValue={suggestedEffectiveDate} className={inputCls} label={t('effectiveDate')} />
-          </Field>
+          </PersonnelField>
+          <PersonnelField fieldId="attendance.work_location_and_shift_arrangement.locationeffectivefrom" mode="record">
+            <DateField {...personnelControl("attendance.work_location_and_shift_arrangement.locationeffectivefrom", 'record')}   defaultValue={suggestedEffectiveDate} className={inputCls} label={personnelLabel("attendance.work_location_and_shift_arrangement.locationeffectivefrom")} />
+          </PersonnelField>
           <div>
             <button className={btnPrimary}>{t('locationConfirm')}</button>
           </div>
@@ -4966,8 +4968,8 @@ export default async function EmployeePage({
           {/* Anything picked here is a deliberate human choice — stamped `manual` so a later report can
               tell a hand-set location from one taken off the Branch. */}
           <input type="hidden" name="source" value="manual" />
-          <Field label={t('locationSelect')}>
-            <select name="locationId" defaultValue={emp.locationId ?? ''} className={inputCls}>
+          <PersonnelField fieldId="attendance.work_location_and_shift_arrangement.locationid" mode="record">
+            <select {...personnelControl("attendance.work_location_and_shift_arrangement.locationid", 'record')}  defaultValue={emp.locationId ?? ''} className={inputCls}>
               <option value="">{t('locationNone')}</option>
               {locations.map((l) => (
                 <option key={l.id} value={l.id}>
@@ -4975,10 +4977,10 @@ export default async function EmployeePage({
                 </option>
               ))}
             </select>
-          </Field>
-          <Field label={t('effectiveDate')}>
-            <DateField name="effectiveDate" required defaultValue={today} className={inputCls} label={t('effectiveDate')} />
-          </Field>
+          </PersonnelField>
+          <PersonnelField fieldId="attendance.work_location_and_shift_arrangement.locationeffectivefrom" mode="record">
+            <DateField {...personnelControl("attendance.work_location_and_shift_arrangement.locationeffectivefrom", 'record')}   defaultValue={today} className={inputCls} label={personnelLabel("attendance.work_location_and_shift_arrangement.locationeffectivefrom")} />
+          </PersonnelField>
           <div>
             <button className={btnPrimary}>{t('setLocation')}</button>
           </div>
@@ -5311,10 +5313,9 @@ export default async function EmployeePage({
                   <input type="hidden" name="employmentId" value={emp.employmentId} />
                   <input type="hidden" name="personId" value={emp.personId} />
                   <input
-                    type="file"
-                    name="photo"
+
+                    {...personnelInput('profile.personal_details.photo')}
                     accept="image/png,image/jpeg"
-                    required
                     className="w-full text-xs text-muted-foreground file:mr-2 file:rounded-md file:border-0 file:bg-accent file:px-2 file:py-1 file:text-xs file:text-foreground"
                   />
                   {photoExists ? (

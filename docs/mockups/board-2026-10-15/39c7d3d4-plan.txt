@@ -1,0 +1,30 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+Payroll already saves the processing month separately from a transaction's Effective Date. However, its entry screens and saving checks require that date to fall inside the selected month. This prevents entering work from an earlier month for payment in the current run.
+
+WHAT WE'LL CHANGE
+
+- Allow a valid Effective Date outside the selected Payroll Month when adding or editing an Individual Transaction, including Day by Day entries.
+- Keep Payroll Month, Pay Cycle and Effective Date independent. Changing one will not silently change another.
+- Show the saved Effective Date when viewing, editing and reporting the transaction.
+- Continue checking required values, employee access, compatible payroll items, genuine date rules and locked payroll runs.
+
+WHAT YOU'LL GET
+
+HR can enter September work for payment or deduction in October while keeping both the original work date and the intended processing period clear.
+
+GOOD TO KNOW
+
+This does not change payroll formulas, statutory rules or transactions that have already been processed. Automatic Attendance-to-Payroll transfers keep their existing ownership and protection rules.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: core/payroll-individual-txn.ts already stores payPeriod, cycle and txnDate independently. assertDateInPeriod rejects dates outside periodBounds in single, bulk, period-keyed and update writers. app/payroll/transactions/individual/txn-workspace.tsx and day-lines.ts also impose period bounds. Diagnosis is verified in deployed source matching main; interactive production reproduction remains unperformed because the browser access gate refused the site. Do not claim a live visual reproduction.
+
+Graph: payPeriod plus cycle owns processing/run inclusion; txnDate owns the applicable work date; pay component owns supported input method and formula. Remove only the comparison tying txnDate to payPeriod. Retain strict ISO and real-date validation, authorization, employment/item rules, duplicate identity and closed-run protections. Audit every writer, import/bulk path, client min/max, database constraint and payroll consumer; queries must select assigned payPeriod/cycle rather than derive it from txnDate. Do not move records, replace dates, change attendance-source ledgers or introduce a second effective-date column. Verify date-dependent payroll-item calculations still use their documented date source; do not silently broaden genuine rules.
+
+Acceptance: use a clock-derived processing month and the prior month to reproduce old refusal and prove regression. Add, edit, save, reopen and process previous-month Day by Day overtime hours and deductions under the selected month/cycle; verify persisted dates, payroll input inclusion and audit events. Cover dates before/after month, leap days, malformed dates, multiple lines, period/cycle switching, another company's employee, cross-tenant access and closed/processed run behavior. Prove existing formula/statutory outputs and automatic allowance transfers unchanged. Walk the actual app with realistic populated/error states, light/dark, keyboard and narrow viewport; inspect runtime logs. Use classifier-required financial verification, TypeScript, build and official release. Inspect whether a database constraint needs an append-only migration before allocating it centrally.

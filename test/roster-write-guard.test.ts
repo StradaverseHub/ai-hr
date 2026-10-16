@@ -42,7 +42,8 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import type { SessionContext } from '../db/client';
+import {withTenant,type SessionContext} from '../db/client';
+import {rosterAssignment} from '../db/schema';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 import { hireEmployee } from '../core/org';
 import {
@@ -156,7 +157,8 @@ describe('why the guard exists — the database refuses, in its own words', () =
     // measurement that makes the rest of the file necessary, and it must keep passing: where RLS stops
     // refusing, the application guard becomes the only thing standing between a supervisor and the
     // roster. For DELETE that was literally true until 154865f4 (see the note in the header).
-    const err = await assignShift(supervisor, { employmentId, shiftDate: FUTURE, shiftId }).catch((e: unknown) => e);
+    await expect(assignShift(supervisor,{employmentId,shiftDate:FUTURE,shiftId})).rejects.toThrow('Only an HR administrator');
+    const err = await withTenant(supervisor,tx=>tx.insert(rosterAssignment).values({tenantId:supervisor.tenantId,employmentId,shiftDate:FUTURE,shiftId})).catch((e:unknown)=>e);
     expect(err, 'RLS must refuse a supervisor outright').toBeInstanceOf(Error);
     const chain = flatten(err);
     expect(chain, 'this is what used to reach the toast').toMatch(RAW_SQL);

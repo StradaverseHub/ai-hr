@@ -22,6 +22,13 @@
  */
 
 export const PAYROLL_PERMISSION_KEYS = [
+  // Employee Master report categories: configurable within each company; no admin bypass of denial.
+  'report.read.personnel',
+  'report.read.compensation',
+  'report.read.identity',
+  'report.read.bank',
+  'report.read.statutory',
+  'report.read.confidential_hr',
   'payroll.rollback',
   'payroll.unlock',
   'payroll.reprocess.selective',
@@ -97,6 +104,13 @@ export type PayrollPermissionKey = (typeof PAYROLL_PERMISSION_KEYS)[number];
 
 /** Default role→keys map (used when no override row exists). EVERY key defaults to admin roles only. */
 export const PAYROLL_PERMISSION_DEFAULTS: Record<PayrollPermissionKey, readonly string[]> = {
+  // Preserve existing HR readership only; sharing never grants these categories.
+  'report.read.personnel': ['hr_admin', 'super_admin'],
+  'report.read.compensation': ['hr_admin', 'super_admin'],
+  'report.read.identity': ['hr_admin', 'super_admin'],
+  'report.read.bank': ['hr_admin', 'super_admin'],
+  'report.read.statutory': ['hr_admin', 'super_admin'],
+  'report.read.confidential_hr': ['hr_admin', 'super_admin'],
   'payroll.rollback': ['hr_admin', 'super_admin'],
   'payroll.reprocess.selective': ['hr_admin', 'super_admin'],
   'payroll.close': ['hr_admin', 'super_admin'],

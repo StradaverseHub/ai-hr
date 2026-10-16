@@ -1,20 +1,14 @@
 'use client';
 
-import { useState, type ChangeEvent, type ReactNode } from 'react';
+import { useState, type ChangeEvent } from 'react';
 import { useTranslations } from 'next-intl';
+import { PersonnelField } from '@/components/personnel-field';
+import { personnelInput, personnelControl, personnelFormChoices } from '@/lib/personnel-form-contract';
+import { EPF_UI_MODE_OPTIONS } from '@/lib/epf-mode-map';
 
 // Inlined from components/ui (server module) so this stays a clean client island.
 const inputCls =
   'flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20';
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1.5">
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
-      {children}
-    </label>
-  );
-}
 
 /**
  * EPF election (ADR-0035 §4, ADR-0046 #2, ADR-0087) — "EPF Category" on screen. The consultant's named
@@ -145,9 +139,9 @@ export function EpfElection({
           epfEmployerAmount: employerAmount,
           epfManualReason: manualReason,
         }[field];
-        return { name: { name: field }, value: { defaultValue: stored ?? '' } };
+        return { value: { defaultValue: stored ?? '' } };
       }}
-      selectName={{ name: 'epfMode' }}
+      formMode="edit"
     />
   );
 }
@@ -184,27 +178,18 @@ export function EpfElectionControlled({
       m={m}
       onMode={(next) => onChange({ epfMode: next })}
       bind={(field) => ({
-        name: {},
         value: {
           value: value[field] ?? '',
           onChange: (e: ChangeEvent<HTMLInputElement>) => onChange({ [field]: e.target.value }),
         },
       })}
-      selectName={{}}
+      formMode="draft"
     />
   );
 }
 
 /** Every category either branch can show. `manual_fixed` is retired (lib/epf-mode-map.ts) and not offered. */
-const ALL_UI_MODES: readonly UiMode[] = [
-  'auto',
-  'manual_percentage',
-  'semi_auto',
-  'manual_employee_amount',
-  'manual_employer_amount',
-  'manual_both_amount',
-  'none',
-];
+const ALL_UI_MODES: readonly UiMode[] = EPF_UI_MODE_OPTIONS.map(option=>option.value);
 
 /**
  * The one body both branches render. `bind(field)` returns the input's NAME props and its VALUE props
@@ -215,15 +200,14 @@ function EpfElectionBody({
   m,
   onMode,
   bind,
-  selectName,
+  formMode,
 }: {
   m: UiMode;
   onMode: (m: UiMode) => void;
   bind: (field: EpfBoxField) => {
-    name: { name?: string };
     value: { defaultValue?: string | number; value?: string; onChange?: (e: ChangeEvent<HTMLInputElement>) => void };
   };
-  selectName: { name?: string };
+  formMode:'edit'|'draft';
 }) {
   const t = useTranslations('people.detail');
   const showEmployeeRate = m === 'manual_percentage' || m === 'semi_auto';
@@ -236,31 +220,22 @@ function EpfElectionBody({
   const mr = bind('epfManualReason');
   return (
     <>
-      <Field label={t('epfMode')}>
-        <select {...selectName} value={m} onChange={(e) => onMode(e.target.value as UiMode)} className={inputCls}>
-          <option value="auto">{t('epfModeAuto')}</option>
-          <option value="manual_percentage">{t('epfModeManualPercentage')}</option>
-          <option value="semi_auto">{t('epfModeSemiAuto')}</option>
-          {/* Item 70b14723 — the three fixed-amount categories, named exactly as the ticket asked. They
-              replace the disabled `manual_fixed` "coming soon" option that feedback 127dffba removed; that
-              value is retired rather than deleted in `mapEpfUiMode` because a stale tab can still post it. */}
-          <option value="manual_employee_amount">{t('epfModeManualEmployeeAmount')}</option>
-          <option value="manual_employer_amount">{t('epfModeManualEmployerAmount')}</option>
-          <option value="manual_both_amount">{t('epfModeManualBothAmount')}</option>
-          <option value="none">{t('epfModeExempt')}</option>
+      <PersonnelField fieldId="bank_statutory.epf_contribution.epfuimode" mode={formMode}>
+        <select {...personnelControl('bank_statutory.epf_contribution.epfuimode',formMode)} value={m} onChange={(e) => onMode(e.target.value as UiMode)} className={inputCls}>
+          {personnelFormChoices('bank_statutory.epf_contribution.epfuimode').map(choice=><option key={choice.value} value={choice.value}>{t(choice.labelKey.slice(14))}</option>)}
         </select>
-      </Field>
+      </PersonnelField>
       {(showEmployeeRate || showEmployerRate) && (
         <div className="grid grid-cols-2 gap-3 sm:col-span-2">
           {showEmployeeRate && (
-            <Field label={t('epfEmployeeRate')}>
-              <input {...er.name} type="number" min="11" max="100" step="0.01" {...er.value} placeholder="11" className={inputCls} />
-            </Field>
+            <PersonnelField fieldId="bank_statutory.epf_contribution.epfemployeerate" mode={formMode}>
+              <input {...personnelInput('bank_statutory.epf_contribution.epfemployeerate',formMode)} {...er.value} placeholder="11" className={inputCls} />
+            </PersonnelField>
           )}
           {showEmployerRate && (
-            <Field label={t('epfEmployerRate')}>
-              <input {...rr.name} type="number" min="12" max="100" step="0.01" {...rr.value} placeholder="13" className={inputCls} />
-            </Field>
+            <PersonnelField fieldId="bank_statutory.epf_contribution.epfemployerrate" mode={formMode}>
+              <input {...personnelInput('bank_statutory.epf_contribution.epfemployerrate',formMode)} {...rr.value} placeholder="13" className={inputCls} />
+            </PersonnelField>
           )}
           {m === 'semi_auto' ? (
             <p className="text-xs text-muted-foreground sm:col-span-2">{t('epfSemiAutoHint')}</p>
@@ -282,21 +257,21 @@ function EpfElectionBody({
       {amounts && (
         <div className="grid grid-cols-2 gap-3 sm:col-span-2">
           {amounts.employee && (
-            <Field label={t('epfEmployeeAmount')}>
-              <input {...ea.name} type="number" min="0" step="0.01" required {...ea.value} placeholder="0.00" className={inputCls} />
-            </Field>
+            <PersonnelField fieldId="bank_statutory.epf_contribution.epfemployeeamount" mode={formMode}>
+              <input {...personnelInput('bank_statutory.epf_contribution.epfemployeeamount',formMode)} {...ea.value} placeholder="0.00" className={inputCls} />
+            </PersonnelField>
           )}
           {amounts.employer && (
-            <Field label={t('epfEmployerAmount')}>
-              <input {...ra.name} type="number" min="0" step="0.01" required {...ra.value} placeholder="0.00" className={inputCls} />
-            </Field>
+            <PersonnelField fieldId="bank_statutory.epf_contribution.epfemployeramount" mode={formMode}>
+              <input {...personnelInput('bank_statutory.epf_contribution.epfemployeramount',formMode)} {...ra.value} placeholder="0.00" className={inputCls} />
+            </PersonnelField>
           )}
           {/* MANDATORY, like the per-run Statutory Adjustment's reason and for the same purpose: a figure that
               overrules a contribution schedule has to carry somebody's words or an auditor is left with an
               unexplained number. It reaches the payslip stamp and the Statutory Detail screen's banner. */}
-          <Field label={t('epfManualReason')}>
-            <input {...mr.name} type="text" maxLength={500} required {...mr.value} className={inputCls} />
-          </Field>
+          <PersonnelField fieldId="bank_statutory.epf_contribution.epfmanualreason" mode={formMode}>
+            <input {...personnelInput('bank_statutory.epf_contribution.epfmanualreason',formMode)} maxLength={500} {...mr.value} className={inputCls} />
+          </PersonnelField>
           <p className="text-xs text-muted-foreground sm:col-span-2">{t('epfManualAmountHint')}</p>
         </div>
       )}

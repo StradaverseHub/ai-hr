@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
+import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { ChevronDown } from 'lucide-react';
 import { setCompanyScope } from '@/app/scope-actions';
@@ -53,6 +54,9 @@ export function CompanySwitcher({
   companies: { id: string; name: string }[];
   selected: string[];
 }) {
+  const pathname = usePathname();
+  const personalCredits = pathname === '/leave/credit-details';
+  const inquiryReturnPath = pathname === '/leave/employee-balances' || pathname === '/leave/employee-records' ? pathname : undefined;
   const [open, setOpen] = useState(false);
   const [sel, setSel] = useState<Set<string>>(() => new Set(selected));
   const t = useTranslations('topbar');
@@ -67,7 +71,7 @@ export function CompanySwitcher({
     setSel(new Set(selectedKey ? selectedKey.split(',') : []));
   }, [selectedKey]);
 
-  if (companies.length === 0) return null;
+  if (companies.length === 0 || personalCredits) return null;
 
   const label = companyScopeLabel(t, companies, selected);
 
@@ -120,6 +124,7 @@ export function CompanySwitcher({
             action={setCompanyScope}
             className="absolute right-0 z-50 mt-1 w-64 origin-top-right scale-100 rounded-lg border border-border bg-popover p-1.5 text-popover-foreground opacity-100 shadow-lg transition duration-150 ease-snappy starting:scale-95 starting:opacity-0"
           >
+            {inquiryReturnPath && <input type="hidden" name="returnPath" value={inquiryReturnPath} />}
             <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
               {t('companyContext')}
             </div>

@@ -1,0 +1,33 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+Schedule currently combines the Schedule Group list with the shift library, company policies, overtime rates, backup-shift coverage and registered devices. These settings belong to different tasks, which makes the Schedule page crowded.
+
+WHAT WE'LL CHANGE
+
+- Keep Schedule focused on its Schedule Group list and existing group actions.
+- Remove Shifts Available and the four informational labels listed in the request from that page.
+- Add separate entries on Attendance Settings for Company Policy Settings, Work Schedule & Overtime Rates, and Registered Clocking Devices.
+- Open each existing configuration in its own destination, retaining its current view, edit and management functions.
+- Keep old bookmarks working by directing them to the corresponding new destination.
+
+WHAT YOU'LL GET
+
+A focused Schedule page and a central Attendance Settings starting point for the other configuration tasks.
+
+GOOD TO KNOW
+
+The shift library remains available under Shift. Moving these screens preserves their saved settings, permissions and calculations. The Shift Settings request will use Work Schedule & Overtime Rates for the existing shift-specific overtime and pay editor.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: app/admin/attendance/schedule/page.tsx renders ScheduleGroupCard, Shifts Available, CompanyPolicyCard and WorkScheduleOvertimeCard; the latter also contains registered devices and backup-shift coverage. app/admin/attendance/settings/cards.ts defines the current hub entries. The Schedule header documents old scope assumptions, not safe new authority. The relevant deployed application source matches main by checksum; no live browser reproduction is claimed.
+
+Graph: company attendance_policy owns company policy, the existing MY statutory owner owns tenant overtime rates, shift/shift_ot_window own shift-specific overtime/pay, and attendance_device owns registration/revocation. Relocate consumers and return addresses without copying, deleting, recreating or resetting records. Extract device UI from WorkScheduleOvertimeCard into one reusable destination. Keep backup coverage with Work Schedule & Overtime Rates. Register new guarded pages and hub entries, use scopedAdmin/allowedCompanies consistently, and retain existing writer guards. Global rate publication must retain its actual group-admin authority even from a company-scoped page.
+
+Update schedule-panel addresses, company-policy view/edit returns, statutory-component returnTo, device actions, sidebar route ownership and legacy redirect stubs. Preserve supported query parameters and anchors through explicit allowlisted redirects; never forward arbitrary return URLs. Schedule Group actions and section drafts keep their existing destinations. Do not duplicate live configuration forms on Schedule. Remove obsolete imports/queries so the list no longer fetches these configurations. Do not remove their translations while other consumers remain.
+
+Sequence with 25468aa3: provide the centralized overtime destination before removing the shift editor's controls; keep one owner and writer per field. No migration is expected. Verify old/current links, access scope, saved values, refused writes, independent drafts and confirmation returns. Cover group/company HR, group admins, unauthorized roles, empty companies/devices, view/edit/cancel/save/reopen/revoke, all six locales and appearance choices, desktop/narrow/keyboard and runtime logs. Confirm Schedule has none of the removed sections/labels and the shift library still resolves assignments. Run relevant nav/source-reading guards and actual local journeys before the impact gate, TypeScript, build and official release.

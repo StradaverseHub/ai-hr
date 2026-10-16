@@ -1,4 +1,8 @@
 'use client';
+import {buildPersonnelCsv} from '@/lib/personnel-csv';
+import {isPersonnelRegisterKind,buildPersonnelRegisterCsv} from '@/lib/personnel-register-import';
+import type {PersonnelImportSheet} from '@/lib/personnel-import-contract';
+import { PersonnelImportValues } from '@/components/personnel-import-values';
 
 import { useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
@@ -8,15 +12,15 @@ import { UploadCloud } from 'lucide-react';
 import { Button, Card, Field, inputCls } from '@/components/ui';
 import { IMPORT_FILE_ACCEPT, importFileMessageKey, readImportFile } from '@/lib/import-file';
 import { toCsv } from '@/lib/csv';
+import { personnelColumnLabel as descriptorColumnLabel, personnelColumnGuidance, personnelImportField, personnelFieldChoices, personnelImportFields } from '@/lib/personnel-import-contract';
 import {
   buildInstructionRows,
   buildReferenceRows,
-  employeeColumnLabel,
   EMPLOYEE_ENUM_VALUES,
   DEPENDENT_ENUM_VALUES,
 } from '@/lib/import-template-xlsx';
 import {
-  sectionColumns,
+  sectionColumns, sectionTemplateColumns,
   sectionTextColumnIndexes,
   SECTION_SHEET_NAMES,
   SECTION_TEMPLATE_FILENAMES,
@@ -25,7 +29,7 @@ import {
   type SectionImportResult,
 } from '@/lib/import-sections';
 import type { ImportReference } from './employee-import';
-import { commitSectionAction, validateSectionAction } from './section-actions';
+import { commitSectionAction, validateSectionAction,registerRecordsAction } from './section-actions';
 
 /**
  * Item 2983802f — THE PER-SECTION IMPORT SCREEN: one subject area, existing employees only.
@@ -44,8 +48,13 @@ import { commitSectionAction, validateSectionAction } from './section-actions';
  */
 export function SectionImport({ section, reference }: { section: ImportSection; reference: ImportReference }) {
   const t = useTranslations('people.import');
+  const personnelLabels = useTranslations();
+  const employeeColumnLabel=(key:string)=>descriptorColumnLabel(key,isPersonnelRegisterKind(section)?section:section==='family'?'family':'employee',(labelKey,fallback)=>personnelLabels.has(labelKey)?personnelLabels(labelKey):fallback);
+  const guidance=(key:string,sheet:PersonnelImportSheet,mode:'create'|'update')=>personnelColumnGuidance(key,sheet,mode,{required:t('required'),optional:t('optional'),reference:t('instructionReference'),blankRetains:t('sectionInstructionBlank')});
+  const familyChoices=personnelImportFields('family').filter(field=>personnelFieldChoices(field).length).map(field=>({label:descriptorColumnLabel(field.import.column!,'family',(key,fallback)=>personnelLabels.has(key)?personnelLabels(key):fallback),values:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value)}));
   const router = useRouter();
   const [csv, setCsv] = useState('');
+  const [existingEmployeeCode,setExistingEmployeeCode]=useState('');
   const [preview, setPreview] = useState<SectionImportPreview | null>(null);
   const [result, setResult] = useState<SectionImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -63,9 +72,11 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
     employment: t('sectionEmployment'),
     bank_statutory: t('sectionBankStatutory'),
     family: t('sectionFamily'),
+    qualification:t('sectionQualification'),
+    emergency:t('sectionEmergency'),
   };
   const label = SECTION_LABEL[section];
-  const columns = sectionColumns(section);
+  const columns = sectionTemplateColumns(section);
 
   const reset = () => {
     setPreview(null);
@@ -90,7 +101,7 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
     setReading(true);
     try {
       // No extra sheets: a section file is ONE sheet by definition — that is what makes it a section.
-      const { name, text } = await readImportFile(file);
+      const { name, text } = await readImportFile(file,{allowedSheets:['Reference','Instructions','__PersonnelLists']});
       setCsv(text);
       setFileName(name);
       setResult(null);
@@ -111,29 +122,31 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
    * columns and no others, and the identity columns are stamped as text so Excel cannot eat a leading
    * zero out of an Employee ID.
    */
+  const downloadCsvTemplate=()=> {
+    const url=URL.createObjectURL(new Blob([buildPersonnelCsv(isPersonnelRegisterKind(section)?section:section==='family'?'family':'employee',[columns.map(employeeColumnLabel)])],{type:'text/csv;charset=utf-8;'}));
+    const a=document.createElement('a');a.href=url;a.download=SECTION_TEMPLATE_FILENAMES[section].replace(/\.xlsx$/,'.csv');a.click();URL.revokeObjectURL(url);
+  };
+  const downloadExistingRegister=()=>startTransition(async()=>{
+    setError(null);
+    if(!isPersonnelRegisterKind(section))return;
+    try {
+      const records=await registerRecordsAction(section,existingEmployeeCode);
+      const text=buildPersonnelRegisterCsv(section,records,(key,fallback)=>personnelLabels.has(key)?personnelLabels(key):fallback);
+      const url=URL.createObjectURL(new Blob([text],{type:'text/csv;charset=utf-8;'}));
+      const a=document.createElement('a');a.href=url;a.download=SECTION_TEMPLATE_FILENAMES[section].replace(/\.xlsx$/,'-current.csv');a.click();URL.revokeObjectURL(url);
+    }catch(error){setError(error instanceof Error?error.message:t('fileReadError'));}
+  });
   const downloadTemplate = async () => {
     setError(null);
     try {
       const { buildXlsx } = await import('@/lib/spreadsheet');
-      const referenceLists =
-        section === 'profile'
-          ? [
-              { label: employeeColumnLabel('state'), values: reference.states },
-              { label: employeeColumnLabel('country'), values: reference.countries },
-              { label: employeeColumnLabel('passport_issuing_country'), values: reference.nationalities },
-              { label: employeeColumnLabel('emergency_contact_relationship'), values: reference.relationships },
-            ]
-          : section === 'bank_statutory'
-            ? [{ label: employeeColumnLabel('tax_category'), values: [...EMPLOYEE_ENUM_VALUES.tax_category] }]
-            : section === 'family'
-              ? [
-                  { label: t('familyRelationshipLabel'), values: reference.familyRelationships },
-                  { label: t('familyGenderLabel'), values: [...DEPENDENT_ENUM_VALUES.gender] },
-                ]
-              : [];
+      const sheet=isPersonnelRegisterKind(section)?section:section==='family'?'family':'employee';
+      const referenceLists=personnelImportFields(sheet).filter(field=>columns.includes(field.import.column!) && (field.import.catalog || personnelFieldChoices(field).length)).map(field=>({label:employeeColumnLabel(field.import.column!),values:field.import.catalog?reference.catalogs?.[field.import.catalog]??[]:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value)}));
+      if(section==='profile')referenceLists.push({label:employeeColumnLabel('passport_issuing_country'),values:reference.nationalities});
+      if(section==='family')referenceLists.push({label:t('familyRelationshipLabel'),values:reference.familyRelationships});
+      if(section==='bank_statutory')referenceLists.push({label:employeeColumnLabel('tax_category'),values:[...EMPLOYEE_ENUM_VALUES.tax_category]});
       const extraSheets: { name: string; rows: (string | number)[][] }[] = [];
-      // Employment has no catalog-governed column, so it gets no Reference sheet rather than an empty
-      // one: a sheet that lists nothing teaches nothing and invites the reader to look for a list.
+      // Registry-owned choices and fresh catalogs follow the selected section.
       if (referenceLists.length > 0) {
         extraSheets.push({
           name: 'Reference',
@@ -145,7 +158,7 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
         rows: buildInstructionRows(t('instructionsHeading'), [
           t('sectionInstructionKey'),
           t('sectionInstructionBlank'),
-          section === 'family' ? t('sectionInstructionFamilyRow') : t('sectionInstructionOneRow'),
+          isPersonnelRegisterKind(section)?t('registerInstructions'):section === 'family' ? t('sectionInstructionFamilyRow') : t('sectionInstructionOneRow'),
           t('sectionInstructionFence'),
           t('instructionDates'),
           t('instructionIdentityText'),
@@ -154,7 +167,9 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
       const bytes = await buildXlsx(columns.map(employeeColumnLabel), [], {
         sheetName: SECTION_SHEET_NAMES[section],
         textColumns: sectionTextColumnIndexes(section),
+        headerNotes:columns.map(key=>[guidance(key,isPersonnelRegisterKind(section)?section:section==='family'?'family':'employee','update'),isPersonnelRegisterKind(section)&&personnelImportFields(section).find(field=>field.import.column===key)?.import.requiredCreate?t('registerRequiredCreate'):null].filter(Boolean).join(' · ')),
         extraSheets,
+        validationLists:referenceLists.flatMap(list=>{const column=columns.findIndex(key=>employeeColumnLabel(key)===list.label);return column>=0?[{column,values:list.values}]:[];}),
       });
       const url = URL.createObjectURL(
         new Blob([bytes as BlobPart], {
@@ -203,6 +218,7 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
 
   return (
     <div className="space-y-6">
+      {isPersonnelRegisterKind(section) && <Card className="space-y-3 p-5"><p className="text-sm">{t('registerInstructions')}</p><p className="text-xs text-muted-foreground">{t('registerLimit')}</p><div className="flex flex-wrap items-end gap-2"><Field label={t('registerExistingEmployeeId')}><input className={inputCls} value={existingEmployeeCode} onChange={event=>setExistingEmployeeCode(event.target.value)} maxLength={30}/></Field><Button type="button" variant="secondary" disabled={pending||!existingEmployeeCode.trim()} onClick={downloadExistingRegister}>{t('registerDownloadExisting')}</Button></div></Card>}
       <Card className="space-y-4 p-5">
         <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
           {t('sectionUpdateOnlyNotice')}
@@ -217,6 +233,7 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
           >
             {t('sectionDownloadTemplate', { section: label })}
           </button>
+          <button type="button" onClick={downloadCsvTemplate} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">CSV</button>
         </div>
 
         <StepHeading num={2} label={t('sectionStep2')} />
@@ -227,7 +244,7 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
           <ul className="mt-2 grid grid-cols-2 gap-x-3 gap-y-0.5 text-muted-foreground sm:grid-cols-3">
             {columns.map((c) => (
               <li key={c}>
-                <code>{c}</code>
+                <span>{employeeColumnLabel(c)}</span>
               </li>
             ))}
           </ul>
@@ -322,7 +339,7 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
         <Card className="overflow-hidden border-emerald-200 dark:border-emerald-500/30">
           <div className="border-b border-border bg-emerald-50/60 px-4 py-3 dark:bg-emerald-500/10">
             <h2 className="text-sm font-semibold">
-              {t('sectionUpdatedCount', { count: result.updated })}
+              {isPersonnelRegisterKind(section)?t('registerSavedCount',{count:result.updated}):t('sectionUpdatedCount', { count: result.updated })}
               {result.skipped > 0 && ` · ${t('skippedCount', { count: result.skipped })}`}
               {result.failed.length > 0 && ` · ${t('failedCount', { count: result.failed.length })}`}
             </h2>
@@ -337,6 +354,7 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
               </ul>
             </div>
           )}
+          {!!result.warnings?.length && <p role="status" className="px-4 py-3 text-sm text-amber-700 dark:text-amber-300">{result.warnings.join(' ')}</p>}
           {result.failed.length > 0 && (
             <ul className="divide-y divide-border text-sm">
               {result.failed.map((f) => (
@@ -404,7 +422,7 @@ function SectionPreview({
           </span>{' '}
           {t('preview')} ·{' '}
           <span className="text-emerald-600 dark:text-emerald-400">
-            {t('sectionUpdateCount', { count: preview.updateCount })}
+            {isPersonnelRegisterKind(preview.section)?t('readyCount',{count:preview.updateCount}):t('sectionUpdateCount', { count: preview.updateCount })}
           </span>
           {preview.skipCount > 0 && (
             <>
@@ -476,7 +494,7 @@ function SectionPreview({
                 <td className="px-4 py-2">
                   {r.verdict === 'update' && r.ok ? (
                     <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-                      {t('verdictUpdate')}
+                      {r.registerAction==='create'?t('registerCreate'):t('verdictUpdate')}
                     </span>
                   ) : r.verdict === 'skip' ? (
                     <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
@@ -490,6 +508,7 @@ function SectionPreview({
                 </td>
                 <td className="px-4 py-2 text-xs text-muted-foreground">
                   {r.changes.length > 0 ? r.changes.map(fieldLabel).join(', ') : '—'}
+                  <PersonnelImportValues values={r.proposed} sheet={isPersonnelRegisterKind(preview.section)?preview.section:preview.section==='family'?'family':'employee'} />
                 </td>
                 <td className="px-4 py-2 text-xs">
                   {r.errors.length > 0 ? (
@@ -512,7 +531,7 @@ function SectionPreview({
           {preview.fileErrors.length > 0 ? t('step5Blocked') : t('sectionStep5Hint')}
         </span>
         <Button onClick={onImport} disabled={busy || preview.updateCount === 0 || preview.fileErrors.length > 0} size="sm">
-          {busy ? t('importing') : t('sectionImportButton', { count: preview.updateCount })}
+          {busy ? t('importing') : isPersonnelRegisterKind(preview.section)?t('importValid',{count:preview.updateCount}):t('sectionImportButton', { count: preview.updateCount })}
         </Button>
       </div>
     </Card>
@@ -522,5 +541,5 @@ function SectionPreview({
 /** `bank_account_no` → `Bank Account No`. The preview's "what changes" column shows the same words the
  *  template's header row does, so a reader can find the cell they are being told about. */
 function fieldLabel(column: string): string {
-  return employeeColumnLabel(column);
+  return descriptorColumnLabel(column);
 }

@@ -32,12 +32,9 @@ import { applyRecomputeAction, previewRecomputeAction } from './actions';
  * writes what IT derives.
  */
 
-/** f1bbc572 — `sharedSystemLabels` is the company's Shared System Labels opt-out. It travels with the
- *  company because the global branch of the label rule is gated on it server-side
- *  (core/system-labels.ts visibleLabelIdsCondition), and a filter option this company's own resolver
- *  does not admit would match no rows at all. */
-type Company = { id: string; name: string; sharedSystemLabels: boolean };
-type Department = { id: string; name: string; companyId: string; isGlobal: boolean };
+/** Label availability comes from Global or each record's explicit company Criteria. */
+type Company = { id: string; name: string };
+type Department = { id: string; name: string; companyId: string; isGlobal: boolean; assignedCompanyIds: string[] };
 type Employee = {
   employmentId: string;
   name: string;
@@ -90,18 +87,15 @@ export function RecomputeClient({
   // The chosen company's sharing flag — see the Company type. `departments` arrives resolved for the
   // WHOLE admin scope, so one scoped company having the flag on is enough for a global row to be in the
   // list; whether THIS company may use it is a separate question, and this is its answer.
-  const companyShared = useMemo(
-    () => (companyId ? (companies.find((c) => c.id === companyId)?.sharedSystemLabels ?? false) : false),
-    [companies, companyId],
-  );
+
   const deptOptions = useMemo(
     // f1bbc572 — a Global department belongs to EVERY company, so the company narrowing is the union
     // origin ∪ global, not origin alone. Filtering on company_id by itself dropped a global department
     // out of this picker for every company but the one it happened to be created under, while the
     // employees below it kept it — the department filter then matched nothing that was there. No
     // company selected still means no options (the select is disabled), not "the global ones".
-    () => (companyId ? labelsInCompanyScope(departments, new Set([companyId]), companyShared) : []),
-    [departments, companyId, companyShared],
+    () => (companyId ? labelsInCompanyScope(departments, new Set([companyId])) : []),
+    [departments, companyId],
   );
   const empOptions = useMemo(
     () =>

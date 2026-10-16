@@ -253,10 +253,10 @@ describe('3ddae357: the four columns the ticket is about now move with the date'
     const page = read('app/leave/employee-balances/page.tsx');
     // Same validation and same fallback on both sides, so an export link can never resolve to a
     // different date than the page it was clicked from.
-    expect(route).toContain("/^\\d{4}-\\d{2}-\\d{2}$/.test(rawAsOf) ? rawAsOf : todayInKualaLumpur()");
-    expect(page).toContain("/^\\d{4}-\\d{2}-\\d{2}$/.test(sp.asOf) ? sp.asOf : todayInKualaLumpur()");
-    // The same date reaches the rows AND the Date column in the file.
-    expect(route).toContain('employeeBalanceRows(session, selected.employmentId, asOf, locale, {');
+    expect(route).toContain("parseInquiryQuery(inquirySearchParams(sp), 'balances')");
+    expect(page).toContain("parseInquiryQuery(sp, 'balances')");
+    expect(read('lib/leave-inquiry-query.ts')).toContain('inquiryDate(v)');
+    expect(route).toContain('inquiryBalancePage(session, inquiry, query, locale, window)');
     // 31e39d74 UPDATED THIS ASSERTION, IT DID NOT RETIRE IT. The claim — "the Date column is fed the same
     // `asOf` the rows were read at" — is unchanged and still worth pinning. What changed is that the Date
     // column is no longer immediately after Balance: an Entitlement Status column now sits between them

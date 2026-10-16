@@ -262,9 +262,9 @@ export function fixedWindowsOverlap(
   return a.validFrom <= (b.validTo ?? OPEN_END) && b.validFrom <= (a.validTo ?? OPEN_END);
 }
 
-/** 'YYYY-MM-DD'. The same shape `assertDateInPeriod` and the pay-component writer both expect. */
+/** Real ISO calendar dates, shared with Individual Transaction effective-date entry. */
 export const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-export const isIsoDate = (v: string): boolean => ISO_DATE_RE.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`));
+export { isTransactionEffectiveDate as isIsoDate } from './transaction-effective-date';
 
 /**
  * A money / quantity cell as a number, or null when it is not one.

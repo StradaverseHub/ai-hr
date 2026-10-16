@@ -17,16 +17,17 @@ const periodOk=(s:string)=>/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(s);
 export const selectedSchemeOk=(s:unknown):s is PcbCalculationScheme=>typeof s==='string'&&(TAX_SELECTION_SCHEMES as readonly string[]).includes(s);
 function legacyOf(value:string|null|undefined,resident:boolean|null|undefined){return value==='resident'&&resident===false?'non_resident':value??(resident===false?'non_resident':'resident');}
 async function lock(tx:Tx,tenantId:string,employmentId:string){await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${tenantId+employmentId+'tax-scheme'},0))`);}
-export async function taxSelectionContextMY(tx:Tx,ctx:SessionContext,employmentId:string,write=false,payrollBatchId?:string){
+export async function taxSelectionContextMY(tx:Tx,ctx:SessionContext,employmentId:string,write=false,payrollBatchId?:string,readOnlySnapshot=false){
  if(!idOk(employmentId)||payrollBatchId!==undefined&&!idOk(payrollBatchId))throw new TaxSelectionError('not_found');
  let batch:{companyId:string;payPeriod:string}|undefined;
- if(payrollBatchId){const [b]=await tx.select({companyId:payrollBatch.companyId,payPeriod:payrollBatch.payPeriod}).from(payrollBatch).where(and(eq(payrollBatch.id,payrollBatchId),eq(payrollBatch.tenantId,ctx.tenantId))).limit(1).for('share');if(!b||!periodOk(b.payPeriod))throw new TaxSelectionError('not_found');batch=b;}
+ if(payrollBatchId){const query=tx.select({companyId:payrollBatch.companyId,payPeriod:payrollBatch.payPeriod}).from(payrollBatch).where(and(eq(payrollBatch.id,payrollBatchId),eq(payrollBatch.tenantId,ctx.tenantId))).limit(1);const [b]=await (readOnlySnapshot?query:query.for('share'));if(!b||!periodOk(b.payPeriod))throw new TaxSelectionError('not_found');batch=b;}
  // Lock the person before any employment row/advisory lock. Write contexts take UPDATE directly
  // so separate employments cannot deadlock while both upgrade a shared person lock.
  const [identity]=await tx.select({personId:employment.personId}).from(employment).where(and(eq(employment.id,employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1);
  if(!identity)throw new TaxSelectionError('not_found');
- await tx.select({id:employeeStatutoryMy.id}).from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.personId,identity.personId),eq(employeeStatutoryMy.tenantId,ctx.tenantId))).limit(1).for(write?'update':'share');
- const [e]=await tx.select({employmentId:employment.id,personId:employment.personId,employeeCode:employment.employeeCode,currentCompanyId:employment.companyId}).from(employment).where(and(eq(employment.id,employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1).for(write?'no key update':'share');
+ if(!readOnlySnapshot)await tx.select({id:employeeStatutoryMy.id}).from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.personId,identity.personId),eq(employeeStatutoryMy.tenantId,ctx.tenantId))).limit(1).for(write?'update':'share');
+ const query=tx.select({employmentId:employment.id,personId:employment.personId,employeeCode:employment.employeeCode,currentCompanyId:employment.companyId}).from(employment).where(and(eq(employment.id,employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1);
+ const [e]=await (readOnlySnapshot?query:query.for(write?'no key update':'share'));
  if(e&&e.personId!==identity.personId)throw new TaxSelectionError('stale_context');
  if(!e)throw new TaxSelectionError('not_found');
  const companyId=batch?.companyId??e.currentCompanyId;
@@ -50,13 +51,15 @@ async function initialize(tx:Tx,ctx:SessionContext,e:{employmentId:string;person
  if(row)return row;
  const [existing]=await tx.select().from(employmentTaxSelectionMy).where(and(eq(employmentTaxSelectionMy.tenantId,ctx.tenantId),eq(employmentTaxSelectionMy.employmentId,e.employmentId),eq(employmentTaxSelectionMy.companyId,e.companyId))).limit(1);return existing;
 }
-export async function getTaxSelectionMY(ctx:SessionContext,employmentId:string,payrollBatchId?:string){
- return withTenant(ctx,async tx=>{const e=await taxSelectionContextMY(tx,ctx,employmentId,false,payrollBatchId);
- const [profile]=await tx.select({key:employeeStatutoryMy.taxCircumstance,epoch:employeeStatutoryMy.taxApplicabilityEpoch}).from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,e.personId)).limit(1).for('share');
- await lock(tx,ctx.tenantId,e.employmentId);
+export async function getTaxSelectionMY(ctx:SessionContext,employmentId:string,payrollBatchId?:string,options?:{tx:Tx;readOnly:true}){
+ const read=async(tx:Tx)=>{const e=await taxSelectionContextMY(tx,ctx,employmentId,false,payrollBatchId,options?.readOnly===true);
+ const query=tx.select({key:employeeStatutoryMy.taxCircumstance,epoch:employeeStatutoryMy.taxApplicabilityEpoch}).from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,e.personId)).limit(1);
+ const [profile]=await (options?.readOnly?query:query.for('share'));
+ if(!options?.readOnly)await lock(tx,ctx.tenantId,e.employmentId);
  let [selection]=await tx.select().from(employmentTaxSelectionMy).where(and(eq(employmentTaxSelectionMy.tenantId,ctx.tenantId),eq(employmentTaxSelectionMy.employmentId,e.employmentId),eq(employmentTaxSelectionMy.companyId,e.companyId))).limit(1);
- if(!selection){const permission=await tx.execute(sql`SELECT app.is_admin_for(${e.companyId}::uuid) AND app.is_admin_for(${e.currentCompanyId}::uuid) AS ok`);if(permission[0]?.ok===true)selection=await initialize(tx,ctx,e);}
- return {...e,scheme:profile?.key==='none'?'none':selection?.scheme??null,transitionState:profile?.key==='none'?'resolved':selection?.taxApplicabilityEpoch!==(profile?.epoch??0)?'confirmation_required':selection?.transitionState??'confirmation_required',version:selection?.version??0,taxApplicabilityEpoch:profile?.epoch??0};});
+ if(!selection&&!options?.readOnly){const permission=await tx.execute(sql`SELECT app.is_admin_for(${e.companyId}::uuid) AND app.is_admin_for(${e.currentCompanyId}::uuid) AS ok`);if(permission[0]?.ok===true)selection=await initialize(tx,ctx,e);}
+ return {...e,scheme:profile?.key==='none'?'none':selection?.scheme??null,transitionState:profile?.key==='none'?'resolved':selection?.taxApplicabilityEpoch!==(profile?.epoch??0)?'confirmation_required':selection?.transitionState??'confirmation_required',version:selection?.version??0,taxApplicabilityEpoch:profile?.epoch??0};};
+ return options?read(options.tx):withTenant(ctx,read);
 }
 export async function saveTaxSelectionMYTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;personId?:string;scheme:string;expectedCompanyId:string;expectedVersion?:number;payrollBatchId?:string;expectedPayPeriod?:string}){
  if(p.scheme!=='none'&&!selectedSchemeOk(p.scheme))throw new TaxSelectionError('invalid_scheme');

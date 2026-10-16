@@ -604,12 +604,8 @@ describe('§4 Activate, against a real database', () => {
   });
 
   it('A BLANK AMOUNT WITH NO REMARK CREATES NOTHING — not a person, not an employment', async () => {
-    // THE ORDERING TRAP, AND WHY THE FORM RULE IS LOAD-BEARING. `completeEmployeeDraft` is NOT one
-    // transaction (its own header says it cannot be): `hireEmployee` commits, then four writers run,
-    // then `setCompensation`. A `SalaryRemarkRequiredError` arriving THERE would leave an employment
-    // created, the draft still sitting beside it and the wizard showing raw English — the
-    // half-activated state that whole file exists to prevent. So the relief and the requirement had to
-    // land together, and this case is what proves the pre-flight catches it first.
+    // The preflight still identifies Remarks before owner writes. Activation now also encloses the
+    // hire and every later owner in one transaction, so a late refusal cannot strand an employment.
     const a = adminCtx(base);
     const before = await counts();
     const saved = await saveEmployeeDraft(a, { data: draft({ basicSalary: '' }), currentStep: 4 });
@@ -620,8 +616,7 @@ describe('§4 Activate, against a real database', () => {
     );
     expect(err, 'activation must be refused').not.toBeNull();
     // Refused by the PRE-FLIGHT, which names the outstanding field — not by the compensation writer.
-    expect(err!.message).toContain('Cannot create the employee yet');
-    expect(err!.message).toContain('remarks');
+    expect(err).toMatchObject({ code: 'required_fields', fields: expect.arrayContaining([{ tab: 'payroll', field: 'remarks' }]) });
     expect(err!.name).not.toBe('SalaryRemarkRequiredError');
 
     const after = await counts();
@@ -639,7 +634,7 @@ describe('§4 Activate, against a real database', () => {
       data: draft({ basicSalary: '-100', remarks: DIRECTOR_REMARK }),
       currentStep: 4,
     });
-    await expect(completeEmployeeDraft(a, saved.id)).rejects.toThrow(/basicSalary/);
+    await expect(completeEmployeeDraft(a, saved.id)).rejects.toMatchObject({ code: 'required_fields', fields: expect.arrayContaining([{ tab: 'payroll', field: 'basicSalary' }]) });
     const after = await counts();
     expect(after.employments).toBe(before.employments);
     expect(after.people).toBe(before.people);

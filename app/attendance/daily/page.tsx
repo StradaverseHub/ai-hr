@@ -166,6 +166,7 @@ export default async function DailyAttendancePage({
                 <th className="px-3 py-2 font-medium">{t('colCheckOut')}</th>
                 <th className="px-3 py-2 text-right font-medium">{t('colShiftHours')}</th>
                 <th className="px-3 py-2 text-right font-medium">{t('colActualHours')}</th>
+                <th className="px-3 py-2 text-right font-medium">{t('overtimeRecords.duration')}</th>
                 <th className="px-3 py-2 font-medium" data-tour="attendance-status">{t('colStatus')}</th>
                 <th className="px-3 py-2 font-medium">{t('colFlag')}</th>
                 <th className="px-3 py-2 font-medium" data-tour="attendance-action">{t('colAction')}</th>
@@ -198,13 +199,13 @@ export default async function DailyAttendancePage({
                         </Link>
                       </td>
                     </tr>
-                    <AttendanceTrailRow punches={punches} colSpan={10} labels={labels} />
+                    <AttendanceTrailRow punches={punches} colSpan={11} labels={labels} />
                   </Fragment>
                 );
               })}
               {dayPage.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={11} className="px-4 py-8 text-center text-muted-foreground">
                     {t('noEmployees')}
                   </td>
                 </tr>

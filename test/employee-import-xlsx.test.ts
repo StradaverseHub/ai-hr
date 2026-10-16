@@ -20,8 +20,11 @@ import { readFileSync } from 'node:fs';
 import * as XLSX from 'xlsx';
 import { parseCsvRecords } from '../lib/csv';
 import { workbookToCsvText, buildXlsx, numberToPlainString } from '../lib/spreadsheet';
-import { DEPENDENT_IMPORT_COLUMNS, IMPORT_COLUMNS } from '../lib/import-schema';
+import { DEPENDENT_IMPORT_COLUMNS, EMPLOYEE_TEMPLATE_COLUMNS, IMPORT_COLUMNS } from '../lib/import-schema';
 import { employeeTemplate } from '../lib/import-template';
+import { parsePersonnelImportCsv, personnelColumnLabel } from '../lib/personnel-import-contract';
+import { toCsv } from '../lib/csv';
+import {PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS} from '../lib/personnel-choice-vocabulary';
 import {
   employeeColumnLabel,
   employeeTextColumnIndexes,
@@ -202,11 +205,11 @@ describe('§3 the downloaded Excel template', () => {
     }
   });
 
-  it('round-trips: template → workbookToCsvText → parseCsvRecords gives the exact contract keys', async () => {
+  it('round-trips: template → workbookToCsvText → production Personnel parser gives the exact contract keys', async () => {
     const bytes = await buildEmployeeTemplateXlsx();
     const out = await readImportFile(xlsxFile(bytes, 'employee-import-template.xlsx'));
     expect(out.format).toBe('xlsx');
-    const { headers, records } = parseCsvRecords(out.text);
+    const { headers, records } = parsePersonnelImportCsv(out.text, { columns: [...IMPORT_COLUMNS.required, ...IMPORT_COLUMNS.optional] });
     // The human labels must normalise back to the snake_case contract, or the column silently vanishes.
     expect(headers).toEqual([...EMPLOYEE_XLSX_COLUMNS]);
     for (const col of IMPORT_COLUMNS.required) expect(headers).toContain(col);
@@ -218,23 +221,19 @@ describe('§3 the downloaded Excel template', () => {
 
 // ── §4 the label ↔ key round trip, and the drift locks ────────────────────────────────────────────
 describe('§4 labels and contract cannot drift', () => {
-  it('every human label lowercases-and-underscores back to its own column key', () => {
-    // parseCsvRecords does exactly `h.trim().toLowerCase().replace(/\s+/g, '_')` on each header.
-    for (const key of EMPLOYEE_XLSX_COLUMNS) {
-      const label = employeeColumnLabel(key);
-      expect(label.trim().toLowerCase().replace(/\s+/g, '_'), `label "${label}"`).toBe(key);
-    }
-    // And the acronyms actually read as acronyms rather than "Ic Number".
-    expect(employeeColumnLabel('ic_number')).toBe('IC Number');
-    expect(employeeColumnLabel('epf_number')).toBe('EPF Number');
-    expect(employeeColumnLabel('socso_number')).toBe('SOCSO Number');
-    expect(employeeColumnLabel('eis_eligible')).toBe('EIS Eligible');
+  it('every visible human label resolves to its own column through the production parser', () => {
+    const labels = EMPLOYEE_XLSX_COLUMNS.map(key => employeeColumnLabel(key));
+    expect(labels).toEqual([...EMPLOYEE_XLSX_HEADERS]);
+    expect(parsePersonnelImportCsv(toCsv([labels]), {
+      columns: [...IMPORT_COLUMNS.required, ...IMPORT_COLUMNS.optional],
+    }).headers).toEqual([...EMPLOYEE_XLSX_COLUMNS]);
+    for (const key of EMPLOYEE_XLSX_COLUMNS) expect(employeeColumnLabel(key)).toBe(personnelColumnLabel(key));
   });
 
   it('the xlsx columns ARE the enforced contract, in order', () => {
     expect([...EMPLOYEE_XLSX_COLUMNS]).toEqual([
-      ...IMPORT_COLUMNS.required,
-      ...IMPORT_COLUMNS.optional,
+      ...EMPLOYEE_TEMPLATE_COLUMNS.required,
+      ...EMPLOYEE_TEMPLATE_COLUMNS.optional,
     ]);
     expect(EMPLOYEE_XLSX_HEADERS.length).toBe(EMPLOYEE_XLSX_COLUMNS.length);
     // Every text column is a real column.
@@ -242,14 +241,14 @@ describe('§4 labels and contract cannot drift', () => {
   });
 
   it('the Reference sheet enumerations match what core/import actually accepts', () => {
-    // The enums are hardcoded in BOTH files because they are code-level, not configuration. This
-    // reads the validator's source so a change there fails here instead of shipping a template that
-    // advertises a value the importer rejects.
+    // Template and production validation consume the same closed vocabulary. This contract pins the
+    // production consumer as well as the advertised values, rather than accepting a duplicate list.
     const src = readFileSync(new URL('../core/import.ts', import.meta.url), 'utf8');
     for (const v of EMPLOYEE_ENUM_VALUES.employment_type) expect(src).toContain(`'${v}'`);
-    for (const v of EMPLOYEE_ENUM_VALUES.pay_mode) expect(src).toContain(`'${v}'`);
-    for (const v of EMPLOYEE_ENUM_VALUES.epf_citizenship) expect(src).toContain(`'${v}'`);
-    expect(src).toContain("['monthly', 'daily', 'hourly', 'custom_period']");
+    expect(EMPLOYEE_ENUM_VALUES.pay_mode).toEqual(PERSONNEL_PAY_MODES);
+    expect(EMPLOYEE_ENUM_VALUES.payment_term).toEqual(PERSONNEL_PAYMENT_TERMS);
+    expect(EMPLOYEE_ENUM_VALUES.epf_citizenship).toEqual(PERSONNEL_EPF_CITIZENSHIPS);
+    for(const name of ['PERSONNEL_PAY_MODES','PERSONNEL_PAYMENT_TERMS','PERSONNEL_EPF_CITIZENSHIPS']) expect(src).toContain(`${name} as readonly string[]).includes`);
     expect(src).toContain('tax_category must be 1, 2 or 3');
   });
 
@@ -282,12 +281,12 @@ describe('§4b the family sheet', () => {
     expect(deep?.z).toBe('@');
   });
 
-  it('every family header lowercases-and-underscores back to its own column key', () => {
-    // Same round-trip rule the employee sheet lives by: parseCsvRecords normalises a header exactly this
-    // way, so a prettier label that did not round-trip would silently drop the whole column.
-    for (const key of DEPENDENT_XLSX_COLUMNS) {
-      expect(employeeColumnLabel(key).trim().toLowerCase().replace(/\s+/g, '_')).toBe(key);
-    }
+  it('every visible Family heading resolves to its own key through the production parser', () => {
+    const labels = DEPENDENT_XLSX_COLUMNS.map(key => personnelColumnLabel(key, 'family'));
+    expect(labels).toEqual([...DEPENDENT_XLSX_HEADERS]);
+    expect(parsePersonnelImportCsv(toCsv([labels]), {
+      columns: [...DEPENDENT_IMPORT_COLUMNS.required, ...DEPENDENT_IMPORT_COLUMNS.optional], sheet: 'family',
+    }).headers).toEqual([...DEPENDENT_XLSX_COLUMNS]);
   });
 
   it('the family columns ARE the enforced contract, in order', () => {
@@ -366,7 +365,7 @@ describe('§5 readImportFile after the .xlsx widening', () => {
 
   it('reads the FIRST worksheet — the data sheet, not Reference or Instructions', async () => {
     const bytes = await buildEmployeeTemplateXlsx();
-    const { headers } = parseCsvRecords((await readImportFile(xlsxFile(bytes))).text);
+    const { headers } = parsePersonnelImportCsv((await readImportFile(xlsxFile(bytes))).text, { columns: [...IMPORT_COLUMNS.required, ...IMPORT_COLUMNS.optional] });
     expect(headers).toContain('full_name');
     expect(headers).not.toContain('accepted_values');
   });

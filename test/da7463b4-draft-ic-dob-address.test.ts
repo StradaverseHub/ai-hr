@@ -385,7 +385,7 @@ describe('da7463b4 — a draft becomes an employee carrying both addresses', () 
     const ctx = adminCtx(b);
     const saved = await saveEmployeeDraft(ctx, { data: draft({ nationality: 'Malaysian', icNumber: '90010101123' }), currentStep: 1 });
     expect(saved.id, 'a malformed NRIC stopped a draft being saved').toBeTruthy();
-    await expect(completeEmployeeDraft(ctx, saved.id)).rejects.toThrow(/Invalid identity number/);
+    await expect(completeEmployeeDraft(ctx, saved.id)).rejects.toMatchObject({ code: 'profile_invalid', fields: [{ tab: 'profile', field: 'icNumber' }] });
   });
 
   it('§6 THE OTHER HALF OF THE CONFLICT, UNCHANGED: `dobOnlyIfEmpty` never overwrites a stored DOB', async () => {

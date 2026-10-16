@@ -8,7 +8,7 @@ import ta from '../messages/ta.json';
 import th from '../messages/th.json';
 import viLocale from '../messages/vi.json';
 import zh from '../messages/zh.json';
-import type { AttendanceWorkflowInput } from '../lib/attendance-workflow';
+import type { AttendanceWorkflowInput, AttendanceWorkflowOptions } from '../lib/attendance-workflow';
 const { save, preview, router } = vi.hoisted(() => ({ save: vi.fn(), preview: vi.fn(), router: { push: vi.fn(), refresh: vi.fn() } }));
 vi.mock('next/navigation', () => ({ useRouter: () => router, usePathname: () => '/admin/attendance/approval-workflow/new' }));
 vi.mock('../app/admin/attendance/approval-workflow/actions', () => ({ saveAttendanceWorkflowAction: save, previewAttendanceWorkflowAction: preview }));
@@ -17,7 +17,7 @@ import { __resetUnsavedGuards } from '../lib/unsaved-changes';
 const companyId = '00000000-0000-0000-0000-000000000001';
 const options = { companies: [{ id: companyId, name: 'Company A' }], departments: [{ id: 'd1', name: 'Finance' }, { id: 'd2', name: 'People' }], businessUnits: [{ id: 'b1', name: 'Operations' }, { id: 'b2', name: 'Services' }], grades: [{ id: 'g1', name: 'Grade 1' }, { id: 'g2', name: 'Grade 2' }], divisions: [{ id: 'v1', name: 'North' }, { id: 'v2', name: 'South' }] };
 const initial = (): AttendanceWorkflowInput => ({ companyId, applicationType: 'self_overtime', code: 'OVERTIME', name: 'Overtime review', priority: 100, description: '', active: false, criteria: {}, stages: [{ name: 'Manager review', level: { kind: 'direct_manager', employmentId: null, alternates: [] } }, { name: 'Final review', level: { kind: 'hr_admin', employmentId: null, alternates: [] } }] });
-function form(value: AttendanceWorkflowInput | null = initial(), messages = en) { return render(<NextIntlClientProvider locale="en" messages={messages}><WorkflowForm context={{ companyId, applicationType: 'self_overtime' }} initial={value} lineageId={value ? 'lineage' : null} options={options}/></NextIntlClientProvider>); }
+function form(value: AttendanceWorkflowInput | null = initial(), messages = en, catalogues: AttendanceWorkflowOptions = options) { return render(<NextIntlClientProvider locale="en" messages={messages}><WorkflowForm context={{ companyId, applicationType: 'self_overtime' }} initial={value} lineageId={value ? 'lineage' : null} options={catalogues}/></NextIntlClientProvider>); }
 beforeEach(() => { vi.clearAllMocks(); save.mockResolvedValue({ ok: true, lineageId: 'saved-lineage' }); preview.mockResolvedValue({ ok: true, preview: { total: 1, rows: [{ employmentId: 'employee', name: 'Example employee', selectedCode: 'OVERTIME', problem: null }], truncated: false } }); vi.spyOn(window, 'confirm').mockReturnValue(false); });
 afterEach(() => { cleanup(); __resetUnsavedGuards(); vi.restoreAllMocks(); });
 describe('company workflow editor outcomes', () => {
@@ -34,7 +34,8 @@ describe('company workflow editor outcomes', () => {
     }
     fireEvent.change(screen.getByLabelText('Workflow code'), { target: { value: 'NEW' } });
     fireEvent.change(screen.getByLabelText('Workflow name'), { target: { value: 'New review' } });
-    fireEvent.change(screen.getByLabelText('Stage name'), { target: { value: 'Review' } });
+    expect(screen.queryByLabelText('Stage name')).not.toBeInTheDocument();
+    expect(screen.getByText('Level 1')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Save workflow' }));
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
     expect(save.mock.calls[0][1]).toMatchObject({ companyId, applicationType: 'self_overtime', criteria: { departmentIds: ['d1', 'd2'], businessUnitIds: ['b1', 'b2'], gradeIds: ['g1', 'g2'], orgDivision: ['v1', 'v2'] } });
@@ -102,5 +103,43 @@ describe('company workflow editor outcomes', () => {
     expect(screen.getByPlaceholderText(messages.admin.leave.adjustmentsSearchPlaceholder)).toBeVisible();
     expect(screen.getByRole('radio', { name: new RegExp(messages.leaveApproval.modeSequential) })).toBeVisible();
     expect(error).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('797ba70b: auto levels and complete assignment controls', () => {
+  it('adds/removes/reorders standard levels without custom names and saves explicit routing v2', async () => {
+    form(null);
+    fireEvent.click(screen.getByRole('button', { name: 'Add Approval Level' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add Approval Level' }));
+    const levels = () => screen.getAllByRole('listitem');
+    expect(levels().map(li => within(li).getByRole('heading').textContent)).toEqual(['Level 1', 'Level 2', 'Level 3']);
+    fireEvent.change(within(levels()[0]).getByLabelText('Assigned approver'), { target: { value: 'hr_admin' } });
+    fireEvent.click(within(levels()[0]).getByRole('button', { name: 'Move down' }));
+    expect(within(levels()[1]).getByLabelText('Assigned approver')).toHaveValue('hr_admin');
+    fireEvent.click(within(levels()[0]).getByRole('button', { name: 'Remove' }));
+    expect(levels().map(li => within(li).getByRole('heading').textContent)).toEqual(['Level 1', 'Level 2']);
+    expect(screen.queryByLabelText('Stage name')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Save workflow' })); await waitFor(() => expect(save).toHaveBeenCalled());
+    expect(save.mock.calls[0][1].routingVersion).toBe(2);
+    expect(save.mock.calls[0][1].stages.map((s: { name: string }) => s.name)).toEqual(['Level 1', 'Level 2']);
+  });
+  it('keeps legacy behavior until explicit conversion and does not lose configured alternatives', async () => {
+    const value = initial(); value.stages[0].level.alternates = [{ kind: 'hr_admin', employmentId: null }]; form(value);
+    expect(screen.getAllByLabelText('Stage name')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Use sequential hierarchy for new submissions' }));
+    expect(screen.queryByLabelText('Stage name')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Save workflow' })); await waitFor(() => expect(save).toHaveBeenCalled());
+    expect(save.mock.calls[0][1]).toMatchObject({ routingVersion: 2, stages: [{ name: 'Level 1', level: { alternates: [{ kind: 'hr_admin', employmentId: null }] } }, { name: 'Level 2' }] });
+  });
+  it('shows every added Personnel axis and distinguishes selectable employees by code and name', async () => {
+    form(null, en, { ...options, positions: [{ id: 'p1', name: 'Analyst' }], employees: [{ id: 'e1', name: 'Duplicate name', employeeCode: 'D00001' }, { id: 'e2', name: 'Duplicate name', employeeCode: 'A00001' }], profileFields: { orgBranch: [{ id: 'b', name: 'Branch code' }], orgRegion: [], orgLine: [], orgSection: [], orgTeam: [], orgBase: [], employmentCategory: [] } });
+    for (const key of ['position', 'employmentType', 'branch', 'region', 'line', 'section', 'team', 'base', 'category', 'employees'] as const) expect(screen.getByRole('button', { name: en.attendanceWorkflow[key] })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Employee / Employees' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'D00001 · Duplicate name' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'A00001 · Duplicate name' }));
+    fireEvent.keyDown(screen.getByPlaceholderText(en.admin.leave.adjustmentsSearchPlaceholder), { key: 'Escape' });
+    fireEvent.click(screen.getByRole('button', { name: 'Save workflow' })); await waitFor(() => expect(save).toHaveBeenCalled());
+    expect(save.mock.calls[0][1].criteria.employeeIds).toEqual(['e1', 'e2']);
   });
 });

@@ -26,6 +26,8 @@ export type CustomReportRow = {
   updatedAt: string;
 };
 
+function legacySharedRoles(spec:CustomReportSpec,shared:boolean):string[]{return shared?['hr_admin','super_admin'].filter(role=>reportVerbAllowed(spec.layout?.permissions,[role],['view','export','edit'])):[];}
+
 function assertValid(spec: CustomReportSpec): void {
   const v = validateReportSpec(spec);
   if (!v.ok) throw new Error(`Invalid report definition: ${v.reason}`);
@@ -122,6 +124,7 @@ export async function saveCustomReport(
         datasetId: p.datasetId,
         spec,
         shared: p.shared ?? false,
+        sharedRoleIds:legacySharedRoles(spec,p.shared??false),
         createdByUserId: ctx.userId ?? null,
       })
       .returning({ id: customReport.id });
@@ -160,7 +163,8 @@ export async function updateCustomReport(
     enforceReportVerb(ctx, existing.spec, 'edit');
     const [row] = await tx
       .update(customReport)
-      .set({ name, spec, category: ds.category, datasetId: ds.id, shared: p.shared ?? false, updatedAt: new Date() })
+      .set({ name, spec, category: ds.category, datasetId: ds.id, shared: p.shared ?? false,
+        sharedRoleIds:legacySharedRoles(spec,p.shared??false), updatedAt: new Date() })
       .where(eq(customReport.id, p.id))
       .returning({ id: customReport.id });
     if (!row) return;
@@ -262,7 +266,7 @@ export async function setShared(ctx: SessionContext, p: { id: string; shared: bo
     enforceReportVerb(ctx, existing.spec, 'share');
     const [row] = await tx
       .update(customReport)
-      .set({ shared: p.shared, updatedAt: new Date() })
+      .set({ shared: p.shared, sharedRoleIds:legacySharedRoles(existing.spec,p.shared), updatedAt: new Date() })
       .where(eq(customReport.id, p.id))
       .returning({ id: customReport.id });
     if (!row) return;
@@ -295,6 +299,7 @@ export async function saveReportAsTemplate(ctx: SessionContext, id: string): Pro
         datasetId: src.datasetId,
         spec: src.spec,
         shared: true,
+        sharedRoleIds:legacySharedRoles(src.spec,true),
         createdByUserId: ctx.userId ?? null,
       })
       .returning({ id: customReport.id });

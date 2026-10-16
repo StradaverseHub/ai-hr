@@ -168,7 +168,7 @@ export async function leaveCreditRosterKinds(
 ): Promise<Map<string, ToilWorkedDayKind>> {
   // r406 — the loop moved to `leaveCreditRosterKindsTx` (core/toil.ts) so HR's row-grant asks the same
   // question inside its own single transaction; this is that helper in a transaction of its own, unchanged.
-  return withTenant(ctx, (tx) => leaveCreditRosterKindsTx(tx, employmentId, dates));
+  return withTenant(ctx, (tx) => leaveCreditRosterKindsTx(tx, employmentId, dates,ctx));
 }
 
 /**

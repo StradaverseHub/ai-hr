@@ -1,3 +1,18 @@
+import {personnelOperationalValues,PERSONNEL_OPERATIONAL_FIELDS,type PersonnelOperationalPatch} from '../lib/personnel-operational-import';
+import {applyPersonnelOperationalValuesTx} from './personnel-import-operations';
+import {assertCardIdFree} from './attendance-card';
+import {bankTransferLacksBank} from '../lib/payment-methods';
+import {isPersonnelRegisterKind} from '../lib/personnel-register-import';
+import {validateRegisterSection,commitRegisterSection} from './personnel-register-import';
+import { PersonnelImportCatalog, normalizePersonnelCatalogRecord } from '../lib/personnel-import-catalog';
+import { dependentImportMatch, type DependentIdentity } from '../lib/dependent-identity';
+import { addUniqueImportAlias } from '../lib/personnel-import-lookup';
+import { PERSONNEL_FIELDS } from '../lib/personnel-field-registry';
+import { personnelBankValues, type PersonnelBankValues } from '../lib/personnel-bank-import';
+import { personnelFamilyValues, personnelFamilyCatalogErrors } from '../lib/personnel-family-import';
+import { personnelImportProposedValues, PERSONNEL_EMPLOYMENT_IMPORT_FIELDS, PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS, personnelScalarIssue } from '../lib/personnel-import-contract';
+import { isCalendarDate } from '../lib/calendar-date';
+import { setPersonComplianceFields } from './profile';
 /**
  * Item 2983802f — THE PER-SECTION IMPORTER: update people who already exist, one subject area at a time.
  *
@@ -48,8 +63,8 @@
  * when any row is unmatched, and the template chooser + this section's own notice say it BEFORE a
  * file is uploaded. The correction is being put to the reporter in the same words (AGENTS 31).
  */
-import { and, eq, inArray, isNull } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { and, eq, inArray, isNull, gt, or, asc } from 'drizzle-orm';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
   appUser,
   company,
@@ -59,10 +74,11 @@ import {
   employment,
   person,
   profileOption,
+  reportingLine,
 } from '../db/schema';
-import { setEmploymentInfo, setReportingLine, updatePerson, type PersonProfileFields } from './org';
+import { setEmploymentInfo, setReportingLine, updatePerson, type PersonProfileFields, type EmploymentInfoInput } from './org';
 import { primaryEmergencyContactSql } from './emergency-contacts';
-import { addDependent, DEPENDENT_GENDERS, DEPENDENT_RELATIONSHIPS } from './dependents';
+import { addDependentTx, syncChildReliefFromFamily, assertDependentsValid, type DependentInput, DEPENDENT_GENDERS, DEPENDENT_RELATIONSHIPS } from './dependents';
 import { requirePackFor, type CountryPack } from '../localization/registry';
 import { normalizeEmployeeCode } from '../lib/employee-code';
 // The reporting-line edge below opens "today", and today is a WALL-CLOCK question: this product
@@ -88,6 +104,8 @@ export type {
   SectionRowResult,
 } from '../lib/import-sections';
 
+const PERSONNEL_BANK_FIELDS=PERSONNEL_FIELDS.filter(field=>field.import.writer==='bank');
+const PERSONNEL_BANK_COLUMNS=PERSONNEL_BANK_FIELDS.map(field=>field.import.column!);
 const norm = (s: string | undefined) => (s ?? '').trim();
 const lc = (s: string | undefined) => norm(s).toLowerCase();
 const enumCell = (s: string | undefined) => lc(s).replace(/[\s-]+/g, '_');
@@ -107,6 +125,8 @@ type Subject = {
   primaryEmail: string;
   phone: string | null;
   hiredOn: string;
+  currentSuperior: {id:string;managerEmploymentId:string}|'ambiguous'|null;
+  futureSuperior: boolean;
   pack: CountryPack;
   /** The person's stored profile columns this importer can write, for the merge + change diff. EVERY
    *  column in `PROFILE_PERSON_COLUMNS` is loaded here: a field the diff cannot see is a field the
@@ -127,10 +147,11 @@ type Subject = {
     confirmationDate: string | null;
   };
   /** The statutory row, or null when the employee has none yet (no IC ever saved). */
+  operations:{cardId:string|null;attendancePhotoSetting:string|null;paymentMethod:string|null};
   statutory: Record<string, unknown> | null;
   /** Family already on file, lowercased `name|relationship`, so a re-uploaded family file does not
    *  double somebody's children. */
-  familyKeys: Set<string>;
+  familyMembers:DependentIdentity[];
 };
 
 /**
@@ -166,53 +187,27 @@ type TaxPatch = {
   disabledSpouse: boolean;
   childReliefTable: unknown;
 };
-type DependentPatch = {
-  fullName: string;
-  relationship: string;
-  dateOfBirth?: string;
-  gender?: string;
-  icOrPassport?: string;
-  passportNumber?: string;
-  phone?: string;
-  isBeneficiary: boolean;
-  remarks?: string;
-};
-/**
- * Only the periods + confirmation date this section may write. `setEmploymentInfo` leaves anything
- * absent alone, so an omitted key is genuinely untouched — no merge needed on this one.
- *
- * THE VALUE + UNIT PAIR IS THE ONE THE SCREEN READS (migration 0213). The legacy month/day column is
- * written alongside it, from the same cell, so the two can never disagree — and so an import is
- * visible on the Employment tab, which resolves `probationValue ?? probationMonths`. Writing only the
- * legacy column, as this importer first did, produced a run that reported success and changed nothing
- * the user could see for any employee whose Employment tab had been saved once.
- */
-type EmploymentInfoPatch = Partial<
-  Record<
-    | 'probationMonths'
-    | 'probationDays'
-    | 'confirmationDate'
-    | 'resignationNoticeMonths'
-    | 'resignationNoticeDays'
-    | 'probationValue'
-    | 'probationUnit'
-    | 'noticeBeforeConfirmationValue'
-    | 'noticeBeforeConfirmationUnit',
-    string
-  >
->;
+type DependentPatch = DependentInput;
 
 /** Everything one valid row will do at commit. Built in the dry run; applied verbatim afterwards. */
+type EmploymentInfoPatch = Omit<EmploymentInfoInput,'employmentId'|'movement'>;
+
 type ResolvedSectionRow = {
   result: SectionRowResult;
   subject?: Subject;
   /** `updatePerson` payload — the core trio merged with the person's stored values (that writer
    *  rewrites all three from its arguments), plus only the profile fields the file supplied. */
-  personPatch?: { fullName: string; primaryEmail: string; phone: string | null; fields: PersonProfileFields };
+  personPatch?: { fullName?: string; primaryEmail?: string; phone?: string; fields: PersonProfileFields };
   /** The Malaysian NRIC, with the stored `oldIcNumber` carried through so a save cannot clear it. */
-  ic?: { icNumber: string; oldIcNumber: string | null };
+  ic?: { icNumber?: string; oldIcNumber?: string };
+  passportSupplied?:(keyof PassportPatch)[];
+  taxSupplied?:(keyof TaxPatch)[];
+  compliance?: {dateOfBirth?:string;gender?:string;maritalStatus?:string};
   passport?: PassportPatch;
+  operations?:PersonnelOperationalPatch;
   bank?: BankPatch;
+  bankSupplied?:(keyof PersonnelBankValues)[];
+  registrations?:{epfNumber?:string;socsoNumber?:string};
   tax?: TaxPatch;
   employmentInfo?: EmploymentInfoPatch;
   /** The Direct Superior edge to draw. */
@@ -224,30 +219,12 @@ type ResolvedSectionRow = {
 /** Column → the person column it writes. The address block is the PERMANENT one — the block the
  *  Personnel Contact & Address card maintains, matching the wide importer (the flat legacy columns
  *  are rollback history only). */
-const PROFILE_PERSON_COLUMNS: Record<string, keyof PersonProfileFields> = {
-  address_line_1: 'permanentAddressLine1',
-  address_line_2: 'permanentAddressLine2',
-  address_line_3: 'permanentAddressLine3',
-  postcode: 'permanentPostcode',
-  city: 'permanentCity',
-  state: 'permanentState',
-  country: 'permanentCountry',
-  emergency_contact_name: 'emergencyContactName',
-  emergency_contact_relationship: 'emergencyContactRelationship',
-  emergency_contact_phone: 'emergencyContactPhone',
-  emergency_contact_home_phone: 'emergencyContactPhone2',
-  emergency_contact_address: 'emergencyContactAddress',
+const PROFILE_PERSON_COLUMNS = Object.fromEntries(PERSONNEL_PROFILE_IMPORT_FIELDS.map(field=>[field.import.column!,field.import.writerField!])) as Record<string,keyof PersonProfileFields>;
+const PROFILE_CATALOG_CATEGORY: Record<string,string> = {
+  ...Object.fromEntries([...PERSONNEL_PROFILE_IMPORT_FIELDS,...PERSONNEL_EMPLOYMENT_IMPORT_FIELDS].filter(field=>field.import.catalog).map(field=>[field.import.column!,field.import.catalog!])),
+  passport_issuing_country:'nationality',
 };
 
-/** The catalog category each catalog-governed column is checked against. `passport_issuing_country`
- *  is checked against NATIONALITY, not country: the Passport card's picker is fed from the nationality
- *  list, so the value the product stores there is a demonym. Same rule as the wide importer's. */
-const PROFILE_CATALOG_CATEGORY: Record<string, string> = {
-  state: 'state',
-  country: 'country',
-  emergency_contact_relationship: 'relationship',
-  passport_issuing_country: 'nationality',
-};
 
 async function analyze(
   ctx: SessionContext,
@@ -317,8 +294,8 @@ async function analyze(
   const seenIcs = new Map<string, number>();
   const resolved: ResolvedSectionRow[] = [];
 
-  records.forEach((rec, idx) => {
-    const errors: string[] = [];
+  records.forEach((rawRecord, idx) => {
+    const {record:rec,errors}=normalizePersonnelCatalogRecord(rawRecord,section==='family'?'family':'employee',catalog);
     const warnings: string[] = [];
     const changes: string[] = [];
     const codeRaw = norm(rec[SECTION_KEY_COLUMN]);
@@ -353,6 +330,7 @@ async function analyze(
     const row: ResolvedSectionRow = {
       result: {
         rowNum: idx + 1,
+        proposed:personnelImportProposedValues(rec,section==='family'?'family':'employee'),
         employeeCode: codeRaw,
         employeeName: subject?.fullName ?? '',
         verdict: subject ? 'update' : 'create',
@@ -377,9 +355,16 @@ async function analyze(
           changes,
         });
       else if (section === 'employment')
-        buildEmployment(cell, subject, row, { superiorByCode, superiorByEmail, errors, changes });
+        buildEmployment(cell, subject, row, { catalog,superiorByCode, superiorByEmail, errors, changes });
       else if (section === 'bank_statutory') buildBankStatutory(cell, subject, row, { errors, changes });
       else buildFamily(rec, cell, subject, row, { catalog, errors, warnings, changes });
+    }
+
+    if(subject && (section==='employment'||section==='bank_statutory')) {
+      const operational=personnelOperationalValues(rec);errors.push(...operational.errors);
+      if(Object.keys(operational.values).length)row.operations=operational.values;
+      for(const field of PERSONNEL_OPERATIONAL_FIELDS){const key=field.import.writerField! as keyof PersonnelOperationalPatch;const value=operational.values[key];if(value!==undefined && value!==(subject.operations[key]??''))changes.push(field.import.column!);}
+      if(operational.values.paymentMethod==='bank_transfer' && bankTransferLacksBank(row.bank??{bankName:subject.statutory?.bankName as string|null,bankAccountNo:subject.statutory?.bankAccountNo as string|null}))errors.push('Bank Transfer requires a bank name and account number.');
     }
 
     // MATCHED, VALID, AND NOTHING TO DO. Reported as its own verdict rather than counted as an update:
@@ -392,7 +377,7 @@ async function analyze(
     // handful of rows that really do move. `changes` is the truth here — every section pushes a column
     // onto it only when the cell DIFFERS from what is stored.
     const willWrite =
-      row.personPatch || row.ic || row.passport || row.bank || row.tax || row.employmentInfo ||
+      row.operations || row.personPatch || row.compliance || row.ic || row.passport || row.bank || row.registrations || row.tax || row.employmentInfo ||
       row.superiorEmploymentId || row.dependent;
     if (subject && errors.length === 0 && (!willWrite || changes.length === 0)) {
       row.result.verdict = 'skip';
@@ -408,6 +393,18 @@ async function analyze(
     resolved.push(row);
   });
 
+  for(const row of resolved)if(row.result.ok && row.operations?.cardId && resolved.some(other=>other!==row && other.operations?.cardId?.toLowerCase()===row.operations!.cardId!.toLowerCase())) {row.result.ok=false;row.result.errors.push('Duplicate card_id in this file.');}
+
+  for(const row of resolved)if(row.result.ok && row.subject && row.operations?.cardId) {
+    try {await withTenant(ctx,tx=>assertCardIdFree(tx,row.subject!.employmentId,row.operations!.cardId!));}
+    catch {row.result.ok=false;row.result.errors.push('card_id already identifies another employee; choose an unused card ID.');}
+  }
+
+  for(const row of resolved)if(row.result.ok && row.dependent) {
+    try { await assertDependentsValid(ctx,[row.dependent]); }
+    catch(error) { row.result.ok=false;row.result.errors.push(error instanceof Error?error.message:'Invalid Family values'); }
+  }
+
   const preview: SectionImportPreview = {
     section,
     total: records.length,
@@ -419,6 +416,43 @@ async function analyze(
     fileErrors,
   };
   return { preview, resolved };
+}
+
+/** Read actual owner edges, never a cached employee manager field. Half-open effective dates and
+ * ambiguity are explicit; a future open edge is not today's manager. Bounded per selected file. */
+async function currentAdministrativeLinesTx(tx:Tx,tenantId:string,employmentIds:string[],asOf:string,lock=false) {
+  const ids=[...new Set(employmentIds)];
+  const current=new Map<string,Subject['currentSuperior']>();const future=new Set<string>();
+  if(!ids.length)return {current,future};
+  const query=tx.select({id:reportingLine.id,subordinateEmploymentId:reportingLine.subordinateEmploymentId,
+    managerEmploymentId:reportingLine.managerEmploymentId,validFrom:reportingLine.validFrom,validTo:reportingLine.validTo})
+    .from(reportingLine).where(and(eq(reportingLine.tenantId,tenantId),inArray(reportingLine.subordinateEmploymentId,ids),
+      eq(reportingLine.lineType,'administrative'),isNull(reportingLine.supersededAt),
+      or(isNull(reportingLine.validTo),gt(reportingLine.validTo,asOf))))
+    .orderBy(asc(reportingLine.id)).limit(ids.length*3+1);
+  const rows=lock?await query.for('update'):await query;
+  if(rows.length>ids.length*3)throw new Error('Too many current or scheduled Direct Superior edges. Review Personnel before importing.');
+  for(const edge of rows){
+    if(edge.validFrom>asOf){future.add(edge.subordinateEmploymentId);continue;}
+    current.set(edge.subordinateEmploymentId,current.has(edge.subordinateEmploymentId)?'ambiguous':{id:edge.id,managerEmploymentId:edge.managerEmploymentId});
+  }
+  return {current,future};
+}
+/** SAME subordinate PK lock as canonical setReportingLine, then fresh edge locks/read in this Tx.
+ * That shared owner lock serializes even an empty current-edge set; never substitute an import-only lock. */
+async function applySuperiorIfChangedTx(tx:Tx,ctx:SessionContext,subject:Subject,managerEmploymentId:string) {
+  const [locked]=await tx.select({id:employment.id}).from(employment)
+    .where(and(eq(employment.id,subject.employmentId),eq(employment.tenantId,ctx.tenantId))).for('update');
+  if(!locked)throw new Error('Employment is no longer available. Check the file again.');
+  const today=todayInKualaLumpur();
+  const {current,future}=await currentAdministrativeLinesTx(tx,ctx.tenantId,[subject.employmentId],today,true);
+  const edge=current.get(subject.employmentId);
+  if(edge==='ambiguous')throw new Error('More than one Direct Superior is in force. Review Personnel before importing.');
+  if(edge?.managerEmploymentId===managerEmploymentId)return false;
+  if(future.has(subject.employmentId))throw new Error('A future Direct Superior change is already scheduled. Review Personnel before importing.');
+  await setReportingLine(ctx,{subordinateEmploymentId:subject.employmentId,managerEmploymentId,
+    lineType:'administrative',validFrom:today},tx);
+  return true;
 }
 
 /** Read every employee this file names, plus the catalogs and the IC ownership map, in one pass. */
@@ -433,10 +467,15 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
         companyId: employment.companyId,
         employeeCode: employment.employeeCode,
         hiredOn: employment.hiredOn,
+        cardId:employment.cardId,attendancePhotoSetting:employment.attendancePhotoSetting,paymentMethod:employment.paymentMethod,
         fullName: person.fullName,
         primaryEmail: person.primaryEmail,
         phone: person.phone,
         country: company.country,
+        ...Object.fromEntries(PERSONNEL_EMPLOYMENT_IMPORT_FIELDS.map(field=>[field.import.writerField!, employment[field.import.writerField! as keyof typeof employment] as typeof employment.contractStartDate])),
+        salutation:person.salutation,firstName:person.firstName,lastName:person.lastName,preferredName:person.preferredName,nationality:person.nationality,religion:person.religion,race:person.race,homePhone:person.homePhone,personalEmail:person.personalEmail,
+        correspondenceAddressLine1:person.correspondenceAddressLine1,correspondenceAddressLine2:person.correspondenceAddressLine2,correspondenceAddressLine3:person.correspondenceAddressLine3,correspondencePostcode:person.correspondencePostcode,correspondenceCity:person.correspondenceCity,correspondenceState:person.correspondenceState,correspondenceCountry:person.correspondenceCountry,correspondenceMobilePhone:person.correspondenceMobilePhone,correspondenceHomePhone:person.correspondenceHomePhone,
+        dateOfBirth:person.dateOfBirth,gender:person.gender,maritalStatus:person.maritalStatus,
         permanentAddressLine1: person.permanentAddressLine1,
         permanentAddressLine2: person.permanentAddressLine2,
         permanentAddressLine3: person.permanentAddressLine3,
@@ -474,6 +513,7 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
       if (code && codes.has(code)) wanted.push(r);
     }
     const personIds = wanted.map((r) => r.personId);
+    const superiorEdges=section==='employment'?await currentAdministrativeLinesTx(tx,ctx.tenantId,wanted.map(row=>row.employmentId),todayInKualaLumpur()):{current:new Map<string,Subject['currentSuperior']>(),future:new Set<string>()};
 
     // The statutory rows of the employees this file names — the current values every whole-block
     // setter below is merged over. Read here rather than at write time so the DRY RUN can tell an
@@ -485,20 +525,22 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
     }
 
     // Family already on file, so a re-uploaded Family sheet does not add somebody's spouse twice.
-    const familyByPerson = new Map<string, Set<string>>();
+    const familyByPerson = new Map<string, DependentIdentity[]>();
     if (section === 'family' && personIds.length > 0) {
       const deps = await tx
         .select({
           personId: employeeDependent.personId,
           fullName: employeeDependent.fullName,
           relationship: employeeDependent.relationship,
+          dateOfBirth: employeeDependent.dateOfBirth,
+          icOrPassport:employeeDependent.icOrPassport,passportNumber:employeeDependent.passportNumber,
         })
         .from(employeeDependent)
         .where(and(inArray(employeeDependent.personId, personIds), isNull(employeeDependent.archivedAt)));
       for (const d of deps) {
-        const set = familyByPerson.get(d.personId) ?? new Set<string>();
-        set.add(`${d.fullName.trim().toLowerCase()}|${d.relationship.trim().toLowerCase()}`);
-        familyByPerson.set(d.personId, set);
+        const members = familyByPerson.get(d.personId) ?? [];
+        members.push(d);
+        familyByPerson.set(d.personId, members);
       }
     }
 
@@ -512,10 +554,12 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
         primaryEmail: r.primaryEmail,
         phone: r.phone,
         hiredOn: String(r.hiredOn),
+        currentSuperior:superiorEdges.current.get(r.employmentId)??null,futureSuperior:superiorEdges.future.has(r.employmentId),
         // The employee's own company's country pack decides IC rules (ADR-0080 D1/D6) — a section file
         // may name people at several companies, and each is validated under its own jurisdiction.
         pack: requirePackFor(r.country),
         personRow: {
+          ...Object.fromEntries([...PERSONNEL_PROFILE_IMPORT_FIELDS,...PERSONNEL_COMPLIANCE_IMPORT_FIELDS].map(field=>[field.import.writerField!, (r as unknown as Record<string,string|null>)[field.import.writerField!]??null])),
           permanentAddressLine1: r.permanentAddressLine1,
           permanentAddressLine2: r.permanentAddressLine2,
           permanentAddressLine3: r.permanentAddressLine3,
@@ -530,6 +574,7 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
           emergencyContactAddress: r.emergencyContactAddress,
         },
         employmentRow: {
+          ...Object.fromEntries(PERSONNEL_EMPLOYMENT_IMPORT_FIELDS.map(field=>[field.import.writerField!, (r as unknown as Record<string,string|number|null>)[field.import.writerField!]??null])),
           probationValue: r.probationValue,
           probationUnit: r.probationUnit,
           probationMonths: r.probationMonths,
@@ -540,36 +585,29 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
           resignationNoticeDays: r.resignationNoticeDays,
           confirmationDate: r.confirmationDate == null ? null : String(r.confirmationDate),
         },
+        operations:{cardId:r.cardId,attendancePhotoSetting:r.attendancePhotoSetting,paymentMethod:r.paymentMethod},
         statutory: statByPerson.get(r.personId) ?? null,
-        familyKeys: familyByPerson.get(r.personId) ?? new Set<string>(),
+        familyMembers: familyByPerson.get(r.personId) ?? [],
       };
       byCode.set(s.employeeCode, s);
     }
     // The superior lookup spans the WHOLE tenant, not just the rows this file names: a manager who is
     // not being updated is still a legitimate target for the Direct Superior column.
     const superiorByCode = new Map<string, string>();
-    const superiorByEmail = new Map<string, string>();
+    const superiorByEmail = new Map<string, string|null>();
     for (const r of rows) {
       if (r.employeeCode) superiorByCode.set(normalizeEmployeeCode(r.employeeCode), r.employmentId);
-      superiorByEmail.set(r.primaryEmail.toLowerCase(), r.employmentId);
+      addUniqueImportAlias(superiorByEmail,r.primaryEmail.toLowerCase(),r.employmentId);
     }
 
     // Catalog-governed vocabularies, so a typo in State / Country / a relationship is a DRY-RUN error
     // where the spreadsheet can still be fixed. An EMPTY catalog means the tenant never configured that
     // list and free text is accepted — the same rule the Personnel screens apply.
     const options = await tx
-      .select({ category: profileOption.category, value: profileOption.value })
-      .from(profileOption)
-      .where(eq(profileOption.isActive, true));
-    const catalog = new Map<string, Set<string>>();
-    for (const o of options) {
-      const set = catalog.get(o.category) ?? new Set<string>();
-      set.add(o.value);
-      catalog.set(o.category, set);
-    }
-
-    // Who currently owns which IC, so a Profile file that re-keys an NRIC onto the wrong person is
-    // refused in the preview rather than by a raw unique-constraint violation at write.
+      .select({ category: profileOption.category, value: profileOption.value,label:profileOption.label,isActive:profileOption.isActive })
+      .from(profileOption);
+    const catalog = new PersonnelImportCatalog();
+    for(const option of options)catalog.addOption(option);
     const icOwners = new Map<string, string>();
     // …and who owns which WORK EMAIL, which is the login identity and has NO unique index behind it
     // (db/schema.ts: `primaryEmail` carries only `person_tenant_idx`). Without this check a Profile
@@ -602,7 +640,7 @@ function catalogValue(
   const category = PROFILE_CATALOG_CATEGORY[column];
   if (!category) return raw;
   const active = catalog.get(category);
-  if (!active || active.size === 0) return raw; // never configured ⇒ free text, as on the screens
+  if (!active) return raw; // never configured ⇒ free text, as on the screens
   if (active.has(raw)) return raw;
   errors.push(`"${raw}" is not an active ${category} option — column ${column}`);
   return undefined;
@@ -667,12 +705,21 @@ function buildProfile(
     if (v !== (subject.personRow[field] ?? '')) changes.push(column);
   }
 
+  if(patch.personalEmail && !EMAIL_RE.test(patch.personalEmail))errors.push('Invalid personal_email');
+  const compliance:NonNullable<ResolvedSectionRow['compliance']>={};
+  for(const field of PERSONNEL_COMPLIANCE_IMPORT_FIELDS) {
+    const column=field.import.column!;const value=cell(column);if(value===undefined)continue;
+    const issue=personnelScalarIssue(field,value);
+    if(issue)errors.push(`${column}: invalid ${issue} value`);
+    else { (compliance as Record<string,string>)[field.ownerField]=value; if(value!==(subject.personRow[field.ownerField]??''))changes.push(column); }
+  }
+  if(Object.keys(compliance).length)row.compliance=compliance;
   const touchesPerson = fullName !== undefined || email !== undefined || phone !== undefined || Object.keys(patch).length > 0;
   if (touchesPerson) {
     row.personPatch = {
-      fullName: fullName ?? subject.fullName,
-      primaryEmail: email ?? subject.primaryEmail,
-      phone: phone ?? subject.phone ?? null,
+      fullName,
+      primaryEmail: email,
+      phone,
       fields: patch,
     };
   }
@@ -697,14 +744,21 @@ function buildProfile(
         errors.push('Another employee already has this IC');
       } else {
         x.seenIcs.set(icNorm, x.rowNum);
-        row.ic = { icNumber: icNorm, oldIcNumber: (subject.statutory?.oldIcNumber as string | null) ?? null };
+        row.ic = { icNumber: icNorm };
         if (icNorm !== (subject.statutory?.icNumber ?? '')) changes.push('ic_number');
       }
     }
   }
 
+  const oldIc=cell('old_ic_number');
+  if(oldIc!==undefined) {
+    row.ic={...row.ic,oldIcNumber:oldIc};if(oldIc!==(subject.statutory?.oldIcNumber??''))changes.push('old_ic_number');
+  }
+
   // PASSPORT — a whole-block setter, so the file's cells are overlaid on the stored block. That is what
   // makes "correct 400 expiry dates" a legal file: the numbers and issue dates stay as they are.
+  const pCode=cell('passport_issuing_country_code');
+  const pRemark=cell('passport_remark');
   const pNumber = cell('passport_number');
   const pIssue = cell('passport_issue_date');
   const pExpiry = cell('passport_expiry_date');
@@ -713,18 +767,17 @@ function buildProfile(
     [pIssue, 'passport_issue_date'],
     [pExpiry, 'passport_expiry_date'],
   ] as const) {
-    if (v !== undefined && !DATE_RE.test(v)) errors.push(`${label} must be YYYY-MM-DD (got "${v}")`);
+    if (v !== undefined && !isCalendarDate(v)) errors.push(`${label} must be YYYY-MM-DD (got "${v}")`);
   }
-  if (pNumber !== undefined || pIssue !== undefined || pExpiry !== undefined || pCountry !== undefined) {
+  if (pNumber !== undefined || pIssue !== undefined || pExpiry !== undefined || pCountry !== undefined || pCode!==undefined || pRemark!==undefined) {
     const stored = subject.statutory;
     const merged = {
       passportNumber: pNumber ?? ((stored?.passportNumber as string | null) ?? null),
       passportIssueDate: pIssue ?? ((stored?.passportIssueDate as string | null) ?? null),
       passportExpiryDate: pExpiry ?? ((stored?.passportExpiryDate as string | null) ?? null),
-      // Carried through untouched — neither has an import column, and both are rewritten by the setter.
-      passportRemark: (stored?.passportRemark as string | null) ?? null,
+      passportRemark: pRemark ?? (stored?.passportRemark as string | null) ?? null,
       passportIssuingCountry: pCountry ?? ((stored?.passportIssuingCountry as string | null) ?? null),
-      passportIssuingCountryCode: (stored?.passportIssuingCountryCode as string | null) ?? null,
+      passportIssuingCountryCode: pCode ?? (stored?.passportIssuingCountryCode as string | null) ?? null,
     };
     if (!merged.passportNumber || !merged.passportIssueDate || !merged.passportExpiryDate) {
       errors.push(
@@ -734,11 +787,14 @@ function buildProfile(
       errors.push('passport_expiry_date must be on or after passport_issue_date');
     } else {
       row.passport = merged;
+      row.passportSupplied=(Object.entries({passportNumber:pNumber,passportIssueDate:pIssue,passportExpiryDate:pExpiry,passportIssuingCountry:pCountry,passportIssuingCountryCode:pCode,passportRemark:pRemark}).filter(([,value])=>value!==undefined).map(([key])=>key)) as (keyof PassportPatch)[];
       for (const [v, label, was] of [
         [pNumber, 'passport_number', stored?.passportNumber],
         [pIssue, 'passport_issue_date', stored?.passportIssueDate],
         [pExpiry, 'passport_expiry_date', stored?.passportExpiryDate],
         [pCountry, 'passport_issuing_country', stored?.passportIssuingCountry],
+        [pCode,'passport_issuing_country_code',stored?.passportIssuingCountryCode],
+        [pRemark,'passport_remark',stored?.passportRemark],
       ] as const) {
         // Reported as changed only when it actually MOVES. A file that repeats what is already on
         // record is the normal shape of a corrected re-upload, and a preview that calls every repeated
@@ -754,11 +810,23 @@ function buildEmployment(
   cell: (c: string) => string | undefined,
   subject: Subject,
   row: ResolvedSectionRow,
-  x: BuildCtx & { superiorByCode: Map<string, string>; superiorByEmail: Map<string, string> },
+  x: BuildCtx & { catalog:Map<string,Set<string>>;superiorByCode: Map<string, string>; superiorByEmail: Map<string, string|null> },
 ) {
   const { errors, changes } = x;
   const info: EmploymentInfoPatch = {};
   const stored = subject.employmentRow;
+  for(const field of PERSONNEL_EMPLOYMENT_IMPORT_FIELDS) {
+    const column=field.import.column!;const value=cell(column);if(value===undefined)continue;
+    const issue=personnelScalarIssue(field,value);if(issue){errors.push(`${column}: invalid ${issue} value`);continue;}
+    const checked=catalogValue(value,column,x.catalog,errors);if(checked===undefined)continue;
+    (info as Record<string,string>)[field.import.writerField!]=checked;
+    if(checked!==String((stored as Record<string,unknown>)[field.import.writerField!]??''))changes.push(column);
+  }
+  for(const [legacyA,legacyB,valueColumn,unitColumn] of [
+    ['probation_months','probation_days','probation_value','probation_unit'],
+    ['resignation_notice_months','resignation_notice_days','notice_before_confirmation_value','notice_before_confirmation_unit'],
+  ])if((cell(legacyA)!==undefined||cell(legacyB)!==undefined)&&(cell(valueColumn)!==undefined||cell(unitColumn)!==undefined))errors.push(`Use the current ${valueColumn}/${unitColumn} columns or the older month/day columns, not both`);
+
 
   /** A whole number of months or days, or a named error. `undefined` when the cell is blank/absent. */
   const period = (column: string): number | undefined => {
@@ -838,7 +906,7 @@ function buildEmployment(
 
   const confirmation = cell('confirmation_date');
   if (confirmation !== undefined) {
-    if (!DATE_RE.test(confirmation)) errors.push(`confirmation_date must be YYYY-MM-DD (got "${confirmation}")`);
+    if (!isCalendarDate(confirmation)) errors.push(`confirmation_date must be YYYY-MM-DD (got "${confirmation}")`);
     else if (confirmation < subject.hiredOn)
       errors.push(`confirmation_date must be on or after this employee's join date (${subject.hiredOn})`);
     else {
@@ -855,11 +923,16 @@ function buildEmployment(
   if (superior !== undefined) {
     const found =
       x.superiorByCode.get(normalizeEmployeeCode(superior)) ?? x.superiorByEmail.get(superior.toLowerCase());
-    if (!found) errors.push(`Unknown direct_superior "${superior}" (no employee with that Employee ID or email)`);
+    if(!x.superiorByCode.has(normalizeEmployeeCode(superior)) && x.superiorByEmail.get(superior.toLowerCase())===null)errors.push('Ambiguous direct_superior email — use the exact Employee ID for the intended employment');
+    else if (!found) errors.push(`Unknown direct_superior "${superior}" (no employee with that Employee ID or email)`);
     else if (found === subject.employmentId) errors.push('direct_superior cannot be the employee themselves');
+    else if(subject.currentSuperior==='ambiguous')errors.push('More than one Direct Superior is in force. Review Personnel before importing.');
     else {
       row.superiorEmploymentId = found;
-      changes.push('direct_superior');
+      if(subject.currentSuperior?.managerEmploymentId!==found) {
+        if(subject.futureSuperior)errors.push('A future Direct Superior change is already scheduled. Review Personnel before importing.');
+        else changes.push('direct_superior');
+      }
     }
   }
 }
@@ -872,12 +945,18 @@ function buildBankStatutory(
 ) {
   const { errors, changes } = x;
   const stored = subject.statutory;
-  const bankName = cell('bank_name');
-  const bankAccountNo = cell('bank_account_no');
+  const registrations={epfNumber:cell('epf_number'),socsoNumber:cell('socso_number')};
+  const touchesRegistrations=registrations.epfNumber!==undefined||registrations.socsoNumber!==undefined;
+  if(touchesRegistrations) {
+    if(!stored)errors.push('This employee has no statutory record; complete the Personnel statutory setup first.');
+    else if(!subject.pack.statutory.setRegistrationNumbers)errors.push('Registration-number updates are unavailable for this country pack.');
+    else { row.registrations=registrations;for(const [key,value] of Object.entries(registrations))if(value!==undefined && value!==(stored[key]??''))changes.push(key==='epfNumber'?'epf_number':'socso_number'); }
+  }
+  const bank=personnelBankValues(Object.fromEntries(PERSONNEL_BANK_COLUMNS.map(column=>[column,cell(column)??''])),stored?{bankName:stored.bankName as string|null,bankAccountNo:stored.bankAccountNo as string|null,enableCustomHolderName:Boolean(stored.enableCustomHolderName),customHolderName:stored.customHolderName as string|null,enableCustomHolderId:Boolean(stored.enableCustomHolderId),customHolderId:stored.customHolderId as string|null}:{});
   const taxNumber = cell('tax_number');
   const taxCategoryRaw = cell('tax_category');
   const numChildrenRaw = cell('num_children');
-  const touchesBank = bankName !== undefined || bankAccountNo !== undefined;
+  const touchesBank = bank.supplied.length>0;
   const touchesTax = taxNumber !== undefined || taxCategoryRaw !== undefined || numChildrenRaw !== undefined;
   if (!touchesBank && !touchesTax) return;
 
@@ -891,27 +970,9 @@ function buildBankStatutory(
     return;
   }
 
-  if (touchesBank) {
-    const merged = {
-      bankName: bankName ?? ((stored.bankName as string | null) ?? null),
-      bankAccountNo: bankAccountNo ?? ((stored.bankAccountNo as string | null) ?? null),
-      // The custom-payment-holder controls are carried through: `setBank` rewrites all six columns from
-      // its arguments, and nulling a holder the file never mentioned would silently redirect a salary.
-      enableCustomHolderName: Boolean(stored.enableCustomHolderName),
-      customHolderName: (stored.customHolderName as string | null) ?? null,
-      enableCustomHolderId: Boolean(stored.enableCustomHolderId),
-      customHolderId: (stored.customHolderId as string | null) ?? null,
-    };
-    // Same rule the wide importer and the ESS form apply, checked on the MERGED pair: a bank name with
-    // no account (or the reverse) is not a payable instruction.
-    if (!!merged.bankName !== !!merged.bankAccountNo) {
-      errors.push('bank_name and bank_account_no must be provided together');
-    } else {
-      row.bank = merged;
-      if (bankName !== undefined && bankName !== ((stored.bankName as string | null) ?? '')) changes.push('bank_name');
-      if (bankAccountNo !== undefined && bankAccountNo !== ((stored.bankAccountNo as string | null) ?? ''))
-        changes.push('bank_account_no');
-    }
+  if(touchesBank) {
+    errors.push(...bank.errors);row.bank=bank.values;row.bankSupplied=bank.supplied;
+    for(const field of PERSONNEL_BANK_FIELDS)if(bank.supplied.includes(field.import.writerField! as keyof PersonnelBankValues) && bank.values[field.import.writerField! as keyof PersonnelBankValues]!==stored[field.import.writerField!])changes.push(field.import.column!);
   }
 
   if (touchesTax) {
@@ -936,6 +997,7 @@ function buildBankStatutory(
       }
     }
     if (taxNumber !== undefined && taxNumber !== ((stored.taxNumber as string | null) ?? '')) changes.push('tax_number');
+    row.taxSupplied=Object.entries({taxNumber,taxCategory:taxCategoryRaw,numChildren:numChildrenRaw}).filter(([,value])=>value!==undefined).map(([key])=>key) as (keyof TaxPatch)[];
     row.tax = {
       taxNumber: taxNumber ?? ((stored.taxNumber as string | null) ?? null),
       taxCategory,
@@ -975,7 +1037,7 @@ function buildFamily(
     }
   }
   const dob = cell('date_of_birth');
-  if (dob !== undefined && !DATE_RE.test(dob)) errors.push(`date_of_birth must be YYYY-MM-DD (got "${dob}")`);
+  if (dob !== undefined && !isCalendarDate(dob)) errors.push(`date_of_birth must be YYYY-MM-DD (got "${dob}")`);
   const gender = cell('gender') === undefined ? undefined : enumCell(rec.gender);
   if (gender !== undefined && !(DEPENDENT_GENDERS as readonly string[]).includes(gender)) {
     errors.push(`Unknown gender "${rec.gender}" (use ${DEPENDENT_GENDERS.join(' / ')})`);
@@ -989,19 +1051,14 @@ function buildFamily(
     else if (FALSY.has(v)) isBeneficiary = false;
     else errors.push(`Invalid is_beneficiary "${ben}" (use yes/no)`);
   }
+  const extra=personnelFamilyValues(rec);errors.push(...extra.errors,...personnelFamilyCatalogErrors(rec,catalog));
   if (errors.length > 0 || fullName === undefined || relationship === undefined) return;
 
-  // ALREADY ON FILE. A family sheet is the one section file a nervous admin uploads twice, and adding
-  // a second identical spouse is not a recoverable mistake — it is a duplicate on an insurance claim.
-  // Matched on name + relationship, which is what a human would compare.
-  if (subject.familyKeys.has(`${fullName.toLowerCase()}|${relationship.toLowerCase()}`)) {
-    warnings.push('Already on file — this family member will be skipped');
-    return;
-  }
-
-  // …and remember it, so a SECOND identical row LATER IN THIS FILE is skipped too. The stored set is
-  // read once before the loop; without this, one file could add the same spouse twice.
-  subject.familyKeys.add(`${fullName.toLowerCase()}|${relationship.toLowerCase()}`);
+  const identity:DependentIdentity={fullName,relationship,dateOfBirth:dob,icOrPassport:cell('ic_or_passport'),passportNumber:cell('passport_number')};
+  const match=dependentImportMatch(subject.familyMembers,identity);
+  if(match==='ambiguous') {errors.push('Family identity is ambiguous — review the existing record and provide matching identification before importing this member.');return;}
+  if(match==='existing') {warnings.push('Already on file — this family member will be skipped');return;}
+  subject.familyMembers.push(identity);
   row.dependent = {
     fullName,
     relationship,
@@ -1012,6 +1069,7 @@ function buildFamily(
     phone: cell('phone'),
     isBeneficiary,
     remarks: cell('remarks'),
+    ...extra.values,
   };
   changes.push('family_member');
 }
@@ -1023,14 +1081,16 @@ function buildFamily(
  * check constraint, a race with somebody editing the same person). The admin still has to be told
  * WHICH part of the row did not go in — and told it without the value that caused it.
  */
-export type WriteStep = 'person' | 'ic' | 'passport' | 'bank' | 'tax' | 'employmentInfo' | 'superior' | 'dependent';
+export type WriteStep = 'person' | 'ic' | 'passport' | 'bank' | 'registrations' | 'tax' | 'operations' | 'employmentInfo' | 'superior' | 'dependent';
 
 const WRITE_STEP_COLUMNS: Record<WriteStep, string> = {
   person: 'full_name / email / phone / address / emergency contact',
   ic: 'ic_number',
   passport: 'passport_number / passport_issue_date / passport_expiry_date / passport_issuing_country',
   bank: 'bank_name / bank_account_no',
+  registrations:'epf_number / socso_number',
   tax: 'tax_number / tax_category / num_children',
+  operations:'Card ID, Attendance Photo or Payment Method',
   employmentInfo: 'probation / notice period / confirmation_date',
   superior: 'direct_superior',
   dependent: 'the family member on this row',
@@ -1049,11 +1109,10 @@ function isUniqueViolation(e: unknown): boolean {
 
 export function writeFailureMessage(step: WriteStep, e: unknown): string {
   const cols = WRITE_STEP_COLUMNS[step];
-  // "not fully applied" rather than "nothing was changed": the writers run in sequence, so an earlier
-  // one on the same row may already have committed. Overstating the rollback would be its own lie.
+  // All row writers share one explicit transaction; a refused writer rolls the row back.
   return isUniqueViolation(e)
-    ? `Could not save ${cols} — another employee already has one of these values. This row was not fully applied.`
-    : `Could not save ${cols} — the database refused the change. This row was not fully applied.`;
+    ? `Could not save ${cols} — another employee already has one of these values. No changes from this row were saved.`
+    : `Could not save ${cols} — the database refused the change. No changes from this row were saved.`;
 }
 
 /** Dry run — validate and produce the per-row verdict. Writes nothing. */
@@ -1061,6 +1120,7 @@ export async function validateSectionImport(
   ctx: SessionContext,
   p: { section: ImportSection; records: ImportRecord[] },
 ): Promise<SectionImportPreview> {
+  if(isPersonnelRegisterKind(p.section))return validateRegisterSection(ctx,p.section,p.records);
   const { preview } = await analyze(ctx, p.section, p.records);
   return preview;
 }
@@ -1069,13 +1129,18 @@ export async function validateSectionImport(
  * Apply the rows that passed. Re-validates from the records, so a tampered client preview cannot widen
  * what gets written, and refuses the whole file when the fence (or a missing key column) says so.
  *
- * Row by row, not one transaction: each writer owns its own, exactly like the wide importer, and a bulk
- * correction wants the maximum number of rows applied rather than all-or-nothing. The dry run is the gate.
+ * Each valid row is one atomic transaction across its owners. A refused row rolls back while other
+ * independently valid rows can apply. Blank cells are carried from locked current records, not preview data.
  */
 export async function commitSectionImport(
   ctx: SessionContext,
   p: { section: ImportSection; records: ImportRecord[]; fileName?: string },
 ): Promise<SectionImportResult> {
+  if(isPersonnelRegisterKind(p.section)) {
+    const result=await commitRegisterSection(ctx,p.section,p.records);
+    if(result.updated>0)result.runId=await recordSectionRun(ctx,{companyId:null,fileName:p.fileName??'',totalRows:p.records.length,updated:result.updated,rejected:[],failed:[]});
+    return result;
+  }
   const { preview, resolved } = await analyze(ctx, p.section, p.records);
   if (preview.fileErrors.length > 0) {
     return {
@@ -1090,46 +1155,74 @@ export async function commitSectionImport(
 
   const failed: SectionImportResult['failed'] = [];
   let updated = 0;
+  const warnings:string[]=[];
   for (const row of resolved) {
     if (!row.result.ok || !row.subject) continue;
     const s = row.subject;
     let step: WriteStep = 'person';
     try {
+      const wrote=await withTenant(ctx,async tx=>{
+      // A manager-only no-op needs no other owner writes or Person/statutory snapshot carry.
+      if(row.superiorEmploymentId && row.result.changes.every(column=>column==='direct_superior')) {
+        step='superior';return applySuperiorIfChangedTx(tx,ctx,s,row.superiorEmploymentId);
+      }
       step = 'person';
+      // Lock shared records before carrying forward absent cells. Preview snapshots never supply
+      // values for blank columns at apply time; a concurrent unrelated edit must survive.
+      const [freshPerson]=await tx.select().from(person).where(eq(person.id,s.personId)).for('update');
+      if(!freshPerson)throw new Error('Personnel record is no longer available.');
+      const [freshStat]=await tx.select().from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,s.personId)).for('update');
       if (row.personPatch) {
         await updatePerson(ctx, {
           personId: s.personId,
-          fullName: row.personPatch.fullName,
-          primaryEmail: row.personPatch.primaryEmail,
-          phone: row.personPatch.phone,
+          fullName: row.personPatch.fullName ?? freshPerson.fullName,
+          primaryEmail: row.personPatch.primaryEmail ?? freshPerson.primaryEmail,
+          phone: row.personPatch.phone ?? freshPerson.phone,
           via: 'section-import',
           ...row.personPatch.fields,
-        });
+        }, tx);
       }
+      if(row.compliance)await setPersonComplianceFields(ctx,{employmentId:s.employmentId,...row.compliance}, tx);
       step = 'ic';
-      if (row.ic) await s.pack.statutory.setIc(ctx, { personId: s.personId, ...row.ic });
+      if (row.ic) await s.pack.statutory.setIc(ctx, { personId: s.personId, icNumber:row.ic.icNumber??freshStat?.icNumber??'',oldIcNumber:row.ic.oldIcNumber??freshStat?.oldIcNumber??null }, tx);
       step = 'passport';
-      if (row.passport) await s.pack.statutory.setPassport(ctx, { personId: s.personId, ...row.passport });
-      step = 'bank';
-      if (row.bank) await s.pack.statutory.setBank(ctx, { personId: s.personId, ...row.bank });
-      step = 'tax';
-      if (row.tax) await s.pack.statutory.setTax(ctx, { personId: s.personId, ...row.tax });
-      step = 'employmentInfo';
-      if (row.employmentInfo) await setEmploymentInfo(ctx, { employmentId: s.employmentId, ...row.employmentInfo });
-      step = 'superior';
-      if (row.superiorEmploymentId) {
-        await setReportingLine(ctx, {
-          subordinateEmploymentId: s.employmentId,
-          managerEmploymentId: row.superiorEmploymentId,
-          lineType: 'administrative',
-          // The edge opens today, not on the hire date: this is a CHANGE of manager on somebody who is
-          // already employed, and backdating it to their joining date would rewrite history.
-          validFrom: todayInKualaLumpur(),
-        });
+      if (row.passport) {
+        const passport={...row.passport};
+        for(const key of Object.keys(passport) as (keyof PassportPatch)[])if(!row.passportSupplied?.includes(key))passport[key]=freshStat?.[key]??null;
+        await s.pack.statutory.setPassport(ctx,{personId:s.personId,...passport},tx);
       }
+      step = 'bank';
+      if(row.bank) {
+        const latest=freshStat;if(!latest)throw new Error('Statutory setup is unavailable.');
+        const bank={...row.bank};
+        for(const field of PERSONNEL_BANK_FIELDS) {const key=field.import.writerField! as keyof PersonnelBankValues;if(!row.bankSupplied?.includes(key))(bank as unknown as Record<string,unknown>)[key]=(latest as unknown as Record<string,unknown>)[key]??(field.type==='boolean'?false:null);}
+        await s.pack.statutory.setBank(ctx,{personId:s.personId,...bank},tx);
+      }
+      step='registrations';
+      if(row.registrations) {
+        const setter=s.pack.statutory.setRegistrationNumbers;if(!setter)throw new Error('Registration-number updates are unavailable for this country pack.');
+        await setter(ctx,{personId:s.personId,...row.registrations},tx);
+      }
+      step = 'tax';
+      if(row.tax) {
+        if(!freshStat)throw new Error('Statutory setup is unavailable.');
+        const tax={...row.tax};
+        for(const key of Object.keys(tax) as (keyof TaxPatch)[])if(!row.taxSupplied?.includes(key))(tax as unknown as Record<string,unknown>)[key]=freshStat[key];
+        await s.pack.statutory.setTax(ctx,{personId:s.personId,...tax},tx);
+      }
+      step='operations';
+      if(row.operations)await applyPersonnelOperationalValuesTx(tx,ctx,s.employmentId,row.operations);
+      step = 'employmentInfo';
+      if (row.employmentInfo) await setEmploymentInfo(ctx, { employmentId: s.employmentId, ...row.employmentInfo }, tx);
+      step = 'superior';
+      if (row.superiorEmploymentId) await applySuperiorIfChangedTx(tx,ctx,s,row.superiorEmploymentId);
       step = 'dependent';
-      if (row.dependent) await addDependent(ctx, { personId: s.personId, ...row.dependent });
+      if (row.dependent) await addDependentTx(tx,ctx,s.personId,row.dependent);
+      return true;
+      });
+      if(!wrote)continue;
       updated++;
+      if(row.dependent) {try {await syncChildReliefFromFamily(ctx,s.personId);}catch{warnings.push(`Row ${row.result.rowNum} was saved; review the child-relief refresh on Personnel.`);}}
     } catch (e) {
       // NEVER THE DRIVER'S OWN WORDS. A failed write throws a Drizzle error whose message carries the
       // whole statement AND its bound parameters — an NRIC, a bank account, a tax reference. That text
@@ -1163,6 +1256,7 @@ export async function commitSectionImport(
     skipped: resolved.length - updated - failed.length,
     failed,
     fileErrors: [],
+    warnings,
     runId,
   };
 }

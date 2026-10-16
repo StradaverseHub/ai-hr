@@ -15,13 +15,10 @@ import { labelInCompanyScope, labelsInCompanyScope } from '@/lib/system-label-sc
  */
 
 export type OrgScopeMasters = {
-  /** f1bbc572 — `sharedSystemLabels` is the company's Shared System Labels opt-out (core/system-labels.ts).
-   *  It is carried so this picker can offer exactly what `labelUsableByCompany` on the server will ACCEPT:
-   *  a global label counts for a company only while that company's flag is on, and offering an option the
-   *  save then rejects would be worse than not offering it. */
-  companies: { id: string; name: string; sharedSystemLabels: boolean }[];
-  businessUnits: { id: string; name: string; companyId: string; isGlobal: boolean }[];
-  departments: { id: string; name: string; companyId: string; businessUnitId: string | null; isGlobal: boolean }[];
+  /** Label availability comes from Global or each record's explicit company Criteria. */
+  companies: { id: string; name: string }[];
+  businessUnits: { id: string; name: string; companyId: string; isGlobal: boolean; assignedCompanyIds: string[] }[];
+  departments: { id: string; name: string; companyId: string; businessUnitId: string | null; isGlobal: boolean; assignedCompanyIds: string[] }[];
 };
 
 export type OrgScopeSelection = {
@@ -60,14 +57,11 @@ export function DelegationOrgScopePicker({
   // company it happened to be created under). The global branch is gated on that company's
   // `shared_system_labels` flag because `labelUsableByCompany` — the guard this form's save runs through —
   // gates it too: an opted-out company must not be offered an option its own save would refuse.
-  const companyShared = useMemo(
-    () => (companyId ? (masters.companies.find((c) => c.id === companyId)?.sharedSystemLabels ?? false) : false),
-    [masters.companies, companyId],
-  );
+
   const scope = useMemo(() => new Set(companyId ? [companyId] : []), [companyId]);
   const businessUnits = useMemo(
-    () => (companyId ? labelsInCompanyScope(masters.businessUnits, scope, companyShared) : []),
-    [masters.businessUnits, companyId, scope, companyShared],
+    () => (companyId ? labelsInCompanyScope(masters.businessUnits, scope) : []),
+    [masters.businessUnits, companyId, scope],
   );
   // A department with no BU link is usable under every BU of its company (hire-form precedent). A linked BU
   // is NOT degraded to "unassigned" here the way the hire form degrades it: `saveDelegation` rejects a
@@ -78,11 +72,11 @@ export function DelegationOrgScopePicker({
       businessUnitId
         ? masters.departments.filter(
             (d) =>
-              labelInCompanyScope(d, scope, companyShared) &&
+              labelInCompanyScope(d, scope) &&
               (d.businessUnitId === businessUnitId || d.businessUnitId == null),
           )
         : [],
-    [masters.departments, businessUnitId, scope, companyShared],
+    [masters.departments, businessUnitId, scope],
   );
 
   const emit = (next: OrgScopeSelection) => onChange?.(next);

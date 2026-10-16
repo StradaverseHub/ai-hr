@@ -1,3 +1,4 @@
+import type {FormulaOvertimeRecord} from '../lib/overtime-records';
 /**
  * Attendance Records Table Enhancement (feedback bbada39c) — READ-TIME derivations.
  *
@@ -26,6 +27,8 @@ export type DayContext = 'on_leave' | 'holiday' | 'rest_day' | null;
 
 /** The minimal row shape the derivations read — a subset of both loader row types. */
 export type AttendanceDeriveRow = {
+  formulaOvertime?:FormulaOvertimeRecord|null;
+  exceptionExempt?:boolean;
   attendanceId: string | null;
   status: string | null;
   context: DayContext;
@@ -61,12 +64,12 @@ export type AttendanceDeriveRow = {
  * Sum(flat, ot00, ot10, ot15, ot20, ot30) === the day's otMinutes. Normal-within-schedule hours are NOT in
  * here — they are the Actual Working Hours column, which already carries the day's whole worked total.
  */
-export type OtByRate = { flat: number; ot00: number; ot10: number; ot15: number; ot20: number; ot30: number };
+export type OtByRate = { flat: number|null; ot00: number|null; ot10: number|null; ot15: number|null; ot20: number|null; ot30: number|null };
 
 /** The row shape otByRate reads. */
 type OtByRateInput = Pick<
   AttendanceDeriveRow,
-  'workedMinutes' | 'otMinutes' | 'dayType' | 'otFlatMinutes' | 'ot00Minutes' | 'ot10Minutes' | 'ot15Minutes' | 'ot20Minutes' | 'ot30Minutes'
+  'formulaOvertime' | 'workedMinutes' | 'otMinutes' | 'dayType' | 'otFlatMinutes' | 'ot00Minutes' | 'ot10Minutes' | 'ot15Minutes' | 'ot20Minutes' | 'ot30Minutes'
 >;
 
 /**
@@ -94,6 +97,7 @@ type OtByRateInput = Pick<
  * nothing to split → all zero (the caller renders those as "—").
  */
 export function otByRate(row: OtByRateInput): OtByRate {
+  if(row.formulaOvertime)return {flat:null,ot00:null,ot10:null,ot15:null,ot20:null,ot30:null};
   const worked = row.workedMinutes ?? 0;
   const ot = Math.max(0, Math.min(row.otMinutes ?? 0, worked)); // OT can never exceed worked
 
@@ -141,12 +145,12 @@ export type AttendanceFlag = 'late' | 'under' | 'odd' | null;
  *             the displayed schedule. Rest/holiday work has no required-hours shortfall.
  *   • null  — clean day / no attendance row.
  */
-export function flagOf(row: Pick<AttendanceDeriveRow, 'attendanceId' | 'status' | 'checkInAt' | 'checkOutAt' | 'dayType' | 'workedMinutes' | 'scheduledMinutes' | 'underMinutes'>): AttendanceFlag {
+export function flagOf(row: Pick<AttendanceDeriveRow, 'attendanceId' | 'status' | 'checkInAt' | 'checkOutAt' | 'dayType' | 'workedMinutes' | 'scheduledMinutes' | 'underMinutes' | 'exceptionExempt'>): AttendanceFlag {
   if (!row.attendanceId) return null;
   const hasIn = row.checkInAt != null;
   const hasOut = row.checkOutAt != null;
   if (hasIn !== hasOut) return 'odd';
-  if (row.status === 'late') return 'late';
+  if (row.status === 'late' && !row.exceptionExempt) return 'late';
   if (
     row.dayType === 'workday' &&
     (row.underMinutes != null
@@ -159,7 +163,7 @@ export function flagOf(row: Pick<AttendanceDeriveRow, 'attendanceId' | 'status' 
 }
 
 /** The v1 Status set. Sub-codes (AL/ML/EL/RL) and Travel/Training are a documented follow-up. */
-export type AttendanceStatus = 'present' | 'absent' | 'rest' | 'off' | 'ph' | 'on_leave';
+export type AttendanceStatus = 'exempt' | 'present' | 'absent' | 'rest' | 'off' | 'ph' | 'on_leave';
 
 /**
  * The single attendance Status the request wants ALWAYS shown — one clean state per row, with the
@@ -171,14 +175,14 @@ export type AttendanceStatus = 'present' | 'absent' | 'rest' | 'off' | 'ph' | 'o
  *     came from an explicit rostered rest day, else OFF (a policy / default-shift pattern non-working day).
  *   • No row, no context, a working day → Absent.
  */
-export function statusOf(row: Pick<AttendanceDeriveRow, 'attendanceId' | 'status' | 'context' | 'isRosterRest'>): AttendanceStatus {
+export function statusOf(row: Pick<AttendanceDeriveRow, 'attendanceId' | 'status' | 'context' | 'isRosterRest' | 'exceptionExempt'>): AttendanceStatus {
   if (row.attendanceId && row.status) {
-    return row.status === 'absent' ? 'absent' : 'present';
+    return row.status === 'absent' ? row.exceptionExempt?'exempt':'absent' : 'present';
   }
   if (row.context === 'on_leave') return 'on_leave';
   if (row.context === 'holiday') return 'ph';
   if (row.context === 'rest_day') return row.isRosterRest ? 'rest' : 'off';
-  return 'absent';
+  return row.exceptionExempt?'exempt':'absent';
 }
 
 /** Scheduled span less net work, shared by employee and HR day views. */

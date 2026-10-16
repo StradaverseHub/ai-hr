@@ -547,7 +547,11 @@ export type HireCorrectionView = {
 };
 
 export function hireCorrectionView(ctx: SessionContext, employmentId: string): Promise<HireCorrectionView> {
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx, tx => hireCorrectionViewTx(tx, ctx, employmentId));
+}
+
+/** Explicit read seam for a caller-held scoped snapshot; owner projection is unchanged. */
+export async function hireCorrectionViewTx(tx: Tx, ctx: SessionContext, employmentId: string): Promise<HireCorrectionView> {
     const plan = await loadPlanTx(tx, ctx.tenantId, employmentId);
     const original = originalValuesOf(plan);
     const ids: LabelIds = {};
@@ -608,8 +612,8 @@ export function hireCorrectionView(ctx: SessionContext, employmentId: string): P
       employmentType: v1.row.employmentType,
       fields,
     };
-  });
 }
+
 
 // ───────────────────────────── the write ─────────────────────────────
 

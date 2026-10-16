@@ -1,3 +1,5 @@
+import {LeaveCreditClaimReviewNotice} from '@/components/leave/leave-credit-claim-review';
+import {leaveCreditClaimReviewBlocks} from '@/lib/leave-credit-claim-review';
 import { pendingRewardReviews } from '@/packs/rewards/service';
 import { formatMinutesToHM } from '@/lib/overtime-duration';
 import Link from 'next/link';
@@ -104,6 +106,7 @@ function DecideButtons({
   nav,
   rejectReasonLabel,
   workflowStage,
+  remarksLabel,
 }: {
   action: (fd: FormData) => void | Promise<void>;
   id: string;
@@ -112,6 +115,7 @@ function DecideButtons({
   nav: NavParams;
   rejectReasonLabel?: string;
   workflowStage?: number;
+  remarksLabel?: string;
 }) {
   if (disabled) {
     return <span className="text-xs text-muted-foreground">{labels.yourRequest}</span>;
@@ -123,6 +127,7 @@ function DecideButtons({
         <input type="hidden" name="workflowStage" value={workflowStage ?? ''} />
         <input type="hidden" name="decision" value="approved" />
         <NavFields nav={nav} />
+        {remarksLabel && <label className="block text-xs">{remarksLabel}<textarea name="remarks" maxLength={1000} className="block min-h-20 w-full rounded border border-border bg-background p-2" /></label>}
         <Button type="submit" size="sm">
           {labels.approve}
         </Button>
@@ -201,7 +206,9 @@ export default async function ApprovalsPage({
   // non-admin viewer coerce to 'all' (the full inbox — today's page, unchanged).
   const category = parseApprovalCategory(categoryParam, { admin });
   const t = await getTranslations('approvals');
+  const tCreditReview=await getTranslations('replacementRequest.formulaReview');
   const tClock = await getTranslations('attendance.clockData');
+  const tHistory = await getTranslations('attendanceHistory');
   const tLeave = await getTranslations('leave'); // Emergency Leave (0106) — group label for EL child rows
   // r260 — Personnel Management's own field labels, so a proposed profile change is named in the
   // approver's queue exactly as the employee reads it on their record and HR reads it on the card.
@@ -419,7 +426,7 @@ export default async function ApprovalsPage({
       : []),
     ...(visible('corrections')
       ? visibleCorrections
-          .filter((c) => !mine(c.personId))
+          .filter((c) => !mine(c.personId) && c.canDecide !== false)
           .map((c) => ({
             id: c.id,
             type: 'attendance' as const,
@@ -820,7 +827,7 @@ export default async function ApprovalsPage({
                           was never the question. A line written before r336 reads as Section A, which is what
                           it was (core/replacement-request.ts's claimLineView maps NULL to that). */}
                       {r.dates.map((d) => (
-                        <span key={d.workedDate} className="tabular-nums text-xs text-muted-foreground">
+                        <div key={d.workedDate} className="tabular-nums text-xs text-muted-foreground">
                           <span className="font-medium text-foreground/80">{d.workedDate}</span>
                           {' · '}
                           <span data-testid="approval-credit-source">
@@ -879,17 +886,19 @@ export default async function ApprovalsPage({
                             (d.fromTime && d.toTime ? ` · ${d.fromTime.slice(0, 5)} → ${d.toTime.slice(0, 5)}` : '')
                           )}
                           {' · '}
+                          <span>{tCreditReview('requestedCredit')}</span>{' '}
                           {r.unit === 'hour'
                             ? `${(d.hours ?? 0).toFixed(2)} ${tLeave('breakdown.replacement.unitHour')}`
                             : `${(d.days ?? 0).toFixed(2)} ${tLeave('breakdown.replacement.unitDay')}`}
-                        </span>
+                          <LeaveCreditClaimReviewNotice review={d.claimReview??null}/>
+                        </div>
                       ))}
                     </div>
                   </td>
                   {/* The banked figure is ALWAYS days — an Hour request is converted over the standard day by
                       the service — so the hour total rides alongside rather than replacing it. */}
                   <td className="px-4 py-2.5 text-right tabular-nums">
-                    <div className="font-medium">{r.totalDays.toFixed(2)}</div>
+                    <div className="font-medium">{r.dates.some(d=>leaveCreditClaimReviewBlocks(d.claimReview))?tCreditReview('creditUnavailable'):r.dates.some(d=>d.claimReview?.basis==='formula')?`${tCreditReview('requestedCredit')} · ${r.totalDays.toFixed(2)}`:r.totalDays.toFixed(2)}</div>
                     {r.unit === 'hour' && (
                       <div className="text-xs text-muted-foreground">
                         {r.totalHours.toFixed(2)} {tLeave('breakdown.replacement.unitHour')}
@@ -910,7 +919,7 @@ export default async function ApprovalsPage({
                           <input type="hidden" name="decision" value="approved" />
                           <input type="hidden" name="returnTo" value="approvals" />
                           <NavFields nav={nav} />
-                          <Button type="submit" size="sm">
+                          <Button type="submit" size="sm" disabled={r.dates.some(d=>leaveCreditClaimReviewBlocks(d.claimReview))}>
                             {decideLabels.approve}
                           </Button>
                         </form>
@@ -1060,8 +1069,9 @@ export default async function ApprovalsPage({
                       action={approveCorrectionAction}
                       rejectReasonLabel={t('rejectReasonPlaceholder')}
                       id={c.id}
-                      disabled={mine(c.personId)}
-                      labels={decideLabels}
+                      disabled={mine(c.personId) || c.canDecide === false}
+                      remarksLabel={c.workflow?.routingVersion === 2 ? tHistory('remarks') : undefined}
+                      labels={c.canDecide === false && !mine(c.personId) ? {...decideLabels, yourRequest: tHistory('pendingStage')} : decideLabels}
                       nav={nav}
                     />
                   </td>

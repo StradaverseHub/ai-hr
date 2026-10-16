@@ -1,0 +1,5 @@
+[Unit]
+Description=Managed mail and isolated report preparation budget
+[Slice]
+MemoryMax=768M
+MemoryHigh=704M

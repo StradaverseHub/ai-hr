@@ -27,6 +27,7 @@ import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { employeeQualification, profileOption } from '../db/schema';
+import { isCalendarDate } from '../lib/calendar-date';
 
 /**
  * The profile_option category backing the Qualification dropdown (System Settings > System Labels >
@@ -83,7 +84,7 @@ function trimOrNull(v: string | null | undefined): string | null {
 function normYm(v: string | null | undefined, label: string): string | null {
   const s = trimOrNull(v);
   if (s === null) return null;
-  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(s)) {
+  if (!/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(s)) {
     throw new QualificationValidationError(`${label} must be a year and month (YYYY-MM).`);
   }
   return s;
@@ -118,6 +119,40 @@ async function assertQualificationAllowed(tx: Tx, v: string): Promise<void> {
   if (options.length === 0) return; // never-seeded catalog ⇒ no constraint (backward-compat)
   if (options.some((o) => o.value === v && o.isActive)) return;
   throw new QualificationValidationError('Qualification is not an active option.');
+}
+
+export type QualificationInput = {
+  qualification:string; description?:string|null; fromYm?:string|null; toYm?:string|null;
+  institute?:string|null; major?:string|null; graduationDate?:string|null; result?:string|null; isHighest?:boolean;
+};
+/** Validation shared by manual writers and import previews. Existing values supply only omitted fields. */
+export async function validateQualificationInputTx(tx:Tx, input:Partial<QualificationInput>, existing?:{
+  qualification:string;fromYm:string|null;toYm:string|null;graduationDate:string|null;
+}) {
+  const patch:Partial<QualificationInput>={};
+  if(input.qualification!==undefined || !existing) {
+    const qualification=(input.qualification??'').trim();
+    if(!qualification)throw new QualificationValidationError('Qualification is required.');
+    if(qualification!==existing?.qualification)await assertQualificationAllowed(tx,qualification);
+    patch.qualification=qualification;
+  }
+  for(const key of ['description','institute','major','result'] as const)
+    if(input[key]!==undefined)patch[key]=trimOrNull(input[key]);
+  if(input.fromYm!==undefined)patch.fromYm=normYm(input.fromYm,'From');
+  if(input.toYm!==undefined)patch.toYm=normYm(input.toYm,'To');
+  if(input.graduationDate!==undefined) {
+    const date=trimOrNull(input.graduationDate);
+    if(date && !isCalendarDate(date))throw new QualificationValidationError('Graduation date must be a real date (YYYY-MM-DD).');
+    patch.graduationDate=date;
+  }
+  if(input.isHighest!==undefined) {
+    if(typeof input.isHighest!=='boolean')throw new QualificationValidationError('Highest qualification must be Yes or No.');
+    patch.isHighest=input.isHighest;
+  }
+  assertDateRules({fromYm:patch.fromYm!==undefined?patch.fromYm:existing?.fromYm??null,
+    toYm:patch.toYm!==undefined?patch.toYm:existing?.toYm??null,
+    graduationDate:patch.graduationDate!==undefined?patch.graduationDate:existing?.graduationDate??null});
+  return patch;
 }
 
 /**
@@ -205,16 +240,13 @@ export async function addQualification(
     result?: string | null;
     isHighest?: boolean;
   },
+  outerTx?:Tx,
 ): Promise<{ id: string }> {
-  return withTenant(ctx, async (tx) => {
-    const qualification = (p.qualification ?? '').trim();
-    if (qualification === '') throw new QualificationValidationError('Qualification is required.');
-    await assertQualificationAllowed(tx, qualification);
-    const fromYm = normYm(p.fromYm, 'From');
-    const toYm = normYm(p.toYm, 'To');
-    const graduationDate = trimOrNull(p.graduationDate);
-    assertDateRules({ fromYm, toYm, graduationDate });
-    const isHighest = p.isHighest ?? false;
+  const run=async(tx:Tx)=>{
+    const validated=await validateQualificationInputTx(tx,p);
+    const qualification=validated.qualification!;
+    const fromYm=validated.fromYm??null, toYm=validated.toYm??null, graduationDate=validated.graduationDate??null;
+    const isHighest=validated.isHighest??false;
     // Single-highest transfer: clear the previous holder INSIDE this tx, before the insert, so the partial
     // unique index (the concurrency backstop) never trips on the happy path.
     const clearedHighestId = isHighest ? await clearCurrentHighest(tx, p.employmentId, null) : null;
@@ -245,7 +277,8 @@ export async function addQualification(
       payload: { qualification, isHighest, ...(clearedHighestId ? { clearedHighestId } : {}) },
     });
     return { id: row.id };
-  });
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 async function loadQualification(tx: Tx, id: string) {
@@ -287,35 +320,14 @@ export async function updateQualification(
     result?: string | null;
     isHighest?: boolean;
   },
+  outerTx?:Tx,
 ): Promise<{ id: string }> {
-  return withTenant(ctx, async (tx) => {
+  const run=async(tx:Tx)=>{
     const existing = await loadQualification(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new QualificationValidationError('Qualification record not found.');
     }
-    const patch: Record<string, unknown> = {};
-    if (p.qualification !== undefined) {
-      const qualification = p.qualification.trim();
-      if (qualification === '') throw new QualificationValidationError('Qualification is required.');
-      // Unchanged value always accepted (legacy tolerance); a changed one must be an active option.
-      if (qualification !== existing.qualification) await assertQualificationAllowed(tx, qualification);
-      patch.qualification = qualification;
-    }
-    if (p.description !== undefined) patch.description = trimOrNull(p.description);
-    if (p.fromYm !== undefined) patch.fromYm = normYm(p.fromYm, 'From');
-    if (p.toYm !== undefined) patch.toYm = normYm(p.toYm, 'To');
-    if (p.institute !== undefined) patch.institute = trimOrNull(p.institute);
-    if (p.major !== undefined) patch.major = trimOrNull(p.major);
-    if (p.graduationDate !== undefined) patch.graduationDate = trimOrNull(p.graduationDate);
-    if (p.result !== undefined) patch.result = trimOrNull(p.result);
-    if (p.isHighest !== undefined) patch.isHighest = p.isHighest;
-
-    // Cross-field rules against the EFFECTIVE record (patched fields win, stored values fill the rest).
-    assertDateRules({
-      fromYm: (patch.fromYm as string | null | undefined) ?? existing.fromYm,
-      toYm: (patch.toYm as string | null | undefined) ?? existing.toYm,
-      graduationDate: (patch.graduationDate as string | null | undefined) ?? existing.graduationDate,
-    });
+    const patch:Record<string,unknown>={...await validateQualificationInputTx(tx,p,existing)};
 
     // Single-highest transfer: newly ticking Highest clears the previous holder in the same tx.
     let clearedHighestId: string | null = null;
@@ -341,7 +353,8 @@ export async function updateQualification(
       },
     });
     return { id: p.id };
-  });
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /**

@@ -14,7 +14,7 @@ import {
   getIndividualTxn,
   updateIndividualTxn,
   deleteIndividualTxn,
-  TxnDateOutOfPeriodError,
+  InvalidTxnDateError,
   TxnNotFoundError,
   AmountNotPositiveError,
   CompanyMismatchError,
@@ -61,8 +61,8 @@ const txnErrorKey = (e: unknown): string =>
       // different things to be told, and only one of them is about authority.
       e instanceof EmploymentNotActiveInPeriodError
       ? 'addToRunNotEmployed'
-      : e instanceof TxnDateOutOfPeriodError
-    ? 'dateOutOfPeriod'
+      : e instanceof InvalidTxnDateError
+    ? 'invalidEffectiveDate'
     : // 2da9937a — a pay item that works its amount out from a keyed quantity, saved without one. Two keys
       // rather than one interpolated sentence: the screen resolves an error key with no values, and the
       // operator needs to be told WHICH box, not that a box is missing.

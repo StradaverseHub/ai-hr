@@ -1,3 +1,4 @@
+import {exactOvertimeMinutesText,recordedMinorUnitsText} from '../lib/overtime-records';
 /**
  * Custom-report field registry (ADR-0074, feedback c440b365) — the CLOSED catalogue the custom-report
  * builder, the run/export route, AND the AI designer all draw from. There is NO free-form SQL and NO
@@ -15,7 +16,7 @@
 import type { SessionContext } from '../db/client';
 import type { CustomReportSpec } from '../db/schema';
 import type { ReportData } from '../lib/report-export';
-import { masterDataExport, leaveBalancesSummary, type ReportFilter } from './analytics';
+import { leaveBalancesSummary, type ReportFilter } from './analytics';
 import { overtimeReport, attendanceDailyReport, performanceGoalReport, performanceReviewReport } from './reporting';
 import { listProcessedPayslipsAcross, listPayrollRegisterAcross } from './payroll-view';
 import { payslipDisplayEarnings } from './pay-display-category';
@@ -94,25 +95,7 @@ const MASTER: ReportDataset = {
     { id: 'department', label: 'Department contains', kind: 'text' },
   ],
   defaultColumns: ['employeeCode', 'name', 'department', 'position', 'status', 'hiredOn'],
-  run: async (ctx, scopeIds, params) => {
-    const filter: ReportFilter = { q: (str(params.name) ?? undefined) as string | undefined };
-    const rows = await masterDataExport(ctx, scopeIds, { includeComp: true, includeTerminated: true, filter });
-    return rows.map((r) => ({
-      employeeCode: r.employeeCode,
-      name: r.name,
-      email: r.email,
-      company: r.company,
-      department: r.department,
-      position: r.position,
-      status: r.status,
-      employmentType: r.employmentType,
-      hiredOn: r.hiredOn,
-      terminatedOn: r.terminatedOn,
-      basicSalary: numStr(r.basicSalary),
-      monthlyAllowance: numStr(r.monthlyAllowance),
-      currency: r.currency ?? null,
-    }));
-  },
+  run: async () => { throw new Error('Employee Master reports must run through the authorised report service.'); },
 };
 
 // ─────────────────────────────── Attendance (OT) ───────────────────────────────
@@ -125,11 +108,11 @@ const ATTENDANCE_OT: ReportDataset = {
     { id: 'employeeCode', label: 'Employee ID', type: 'text', group: 'Identity' },
     { id: 'normalWorkingHours', label: 'Working Hours', type: 'number', group: 'Hours' },
     { id: 'totalWorkedHours', label: 'Total Worked Hours', type: 'number', group: 'Hours' },
-    { id: 'totalOtHours', label: 'OT Hours', type: 'number', group: 'Overtime' },
-    { id: 'normalDayOtHours', label: 'Normal-day OT Hours', type: 'number', group: 'Overtime' },
-    { id: 'restDayOtHours', label: 'Rest-day OT Hours', type: 'number', group: 'Overtime' },
-    { id: 'publicHolidayOtHours', label: 'Public-holiday OT Hours', type: 'number', group: 'Overtime' },
-    { id: 'otAmount', label: 'OT Amount', type: 'currency', group: 'Overtime' },
+    { id: 'totalOtHours', label: 'Legacy OT Hours', type: 'number', group: 'Overtime' },
+    { id: 'normalDayOtHours', label: 'Legacy Normal-day OT Hours', type: 'number', group: 'Overtime' },
+    { id: 'restDayOtHours', label: 'Legacy Rest-day OT Hours', type: 'number', group: 'Overtime' },
+    { id: 'publicHolidayOtHours', label: 'Legacy Public-holiday OT Hours', type: 'number', group: 'Overtime' },
+    { id: 'otAmount', label: 'Legacy OT Amount', type: 'currency', group: 'Overtime' },
     // ADR-0077 slice 6 — r115 gave `overtimeReport` a per-company currency EXACTLY so a cross-company OT
     // export is visibly mixed rather than silently addable, and this projection then dropped the column
     // on the floor: the field list offered `OT Amount` as a bare number with nothing saying what it is
@@ -137,20 +120,28 @@ const ATTENDANCE_OT: ReportDataset = {
     // see — the one place the label is not decoration. Offered as a field, deliberately NOT added to
     // `defaultColumns`: every saved report keeps its exact column set, so this is additive by
     // construction. See MASTER above, which already carries its own `currency` for the same reason.
+    {id:'recordedOtMinutes',label:'Recorded OT duration (minutes)',type:'text',group:'Overtime'},
+    {id:'formulaAmount',label:'Recorded formula amount by currency',type:'text',group:'Overtime'},
+    {id:'unavailableOtDays',label:'Unavailable OT duration days',type:'number',group:'Overtime'},
+    {id:'unavailableFormulaAmounts',label:'Unavailable formula amount days',type:'number',group:'Overtime'},
     { id: 'currency', label: 'Currency', type: 'text', group: 'Overtime' },
-    { id: 'eligible', label: 'OT Eligible', type: 'status', group: 'Overtime' },
-    { id: 'otApprovalStatus', label: 'Approval Status', type: 'status', group: 'Overtime' },
+    { id: 'eligible', label: 'Legacy OT Eligible', type: 'status', group: 'Overtime' },
+    { id: 'otApprovalStatus', label: 'Legacy OT Approval Status', type: 'status', group: 'Overtime' },
   ],
   filters: [
     { id: 'month', label: 'Month', kind: 'month' },
     { id: 'name', label: 'Employee Name contains', kind: 'text' },
   ],
-  defaultColumns: ['name', 'employeeCode', 'totalOtHours', 'otAmount', 'eligible'],
+  defaultColumns: ['name','employeeCode','recordedOtMinutes','formulaAmount','unavailableOtDays','unavailableFormulaAmounts','otAmount','currency'],
   run: async (ctx, scopeIds, params) => {
     const month = str(params.month) ?? currentMonth();
     const report = await overtimeReport(ctx, { month, companyIds: scopeIds });
     return report.rows.map((r) => ({
       name: r.name,
+      recordedOtMinutes:r.recordedOvertime?r.recordedOvertime.complete?exactOvertimeMinutesText(r.recordedOvertime.knownMinutes):'Incomplete':null,
+      formulaAmount:(r.formulaCash??[]).map(c=>c.currency+' '+recordedMinorUnitsText(c.amountMinorUnits,c.minorScale)).join('; ')+(r.formulaCashUnknownDays?' (incomplete)':''),
+      unavailableOtDays:r.recordedOvertime?.unknownDays??0,
+      unavailableFormulaAmounts:r.formulaCashUnknownDays??0,
       employeeCode: r.employeeCode,
       normalWorkingHours: r.normalWorkingHours,
       totalWorkedHours: r.totalWorkedHours,
@@ -185,7 +176,11 @@ const ATTENDANCE_DAILY: ReportDataset = {
     { id: 'clockIn', label: 'Clock In', type: 'text', group: 'Attendance' },
     { id: 'clockOut', label: 'Clock Out', type: 'text', group: 'Attendance' },
     { id: 'workingHours', label: 'Working Hours', type: 'number', group: 'Hours' },
-    { id: 'otHours', label: 'OT Hours', type: 'number', group: 'Hours' },
+    { id: 'otHours', label: 'Legacy OT Hours', type: 'number', group: 'Hours' },
+    {id:'recordedOtMinutes',label:'Recorded OT duration (minutes)',type:'text',group:'Hours'},
+    {id:'otCalculationStatus',label:'OT calculation status',type:'status',group:'Hours'},
+    {id:'otCalculationReference',label:'OT calculation reference',type:'text',group:'Hours'},
+    {id:'otPatternVersion',label:'OT pattern version',type:'text',group:'Hours'},
     { id: 'lateMinutes', label: 'Late Minutes', type: 'number', group: 'Hours' },
     { id: 'earlyOutMinutes', label: 'Early Out (min)', type: 'number', group: 'Hours' },
     { id: 'attendanceStatus', label: 'Attendance Status', type: 'status', group: 'Attendance' },
@@ -649,6 +644,16 @@ export async function runReportSpec(
   scopeIds: string[],
   spec: CustomReportSpec,
 ): Promise<ReportData> {
+  if(spec.datasetId==='master'){
+    const {runEmployeeMasterReport,authorizeEmployeeMasterRun}=await import('./employee-master-reports');
+    const {legacyEmployeeMasterSpec}=await import('../lib/employee-master-legacy');
+    const {todayInKualaLumpur}=await import('../lib/hr-date');
+    const run=await runEmployeeMasterReport(ctx,scopeIds,{spec:legacyEmployeeMasterSpec(spec,scopeIds,todayInKualaLumpur())});
+    await authorizeEmployeeMasterRun(ctx,scopeIds,run);
+    if(run.result.sections.length!==1)throw new Error('Use the Employee Master export for reports with multiple record registers.');
+    const section=run.result.sections[0];
+    return {filename:'Employee-Master',title:spec.layout?.title??'Employee Master',columns:section.columns.map(column=>column.header??run.catalogue.find(field=>field.id===column.field)?.label??'Unavailable'),rows:section.rows.map(row=>row.cells.map(cell=>cell.unavailable?'Unavailable — '+cell.unavailable.replaceAll('-',' '):typeof cell.value==='boolean'?cell.value?'Yes':'No':cell.value)),layout:{orientation:spec.layout?.orientation,paperSize:spec.layout?.paperSize,margins:spec.layout?.margins}};
+  }
   const ds = REPORT_DATASETS[spec.datasetId];
   if (!ds) throw new Error('unknown-dataset');
   // r292 — THE REPORT AXIS IS ITS OWN DOOR INTO A PACK'S DATA, and it does not pass through the pack's

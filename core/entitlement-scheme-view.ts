@@ -52,7 +52,7 @@ import { employment, jobGrade, leaveType } from '../db/schema';
 // have pushed the violation onto app/admin/personnel and GROWN the audited debt allowlist, which
 // test/leave-pack-drift.test.ts documents as only ever shrinking.
 import { bandFor, type ServiceBand, buildTemplateEntitlementResolver, leaveTypeIdsWithTemplatesAt } from '../packs/leave/service';
-import { movementHistory } from './movement';
+import { movementHistory, movementHistoryTx } from './movement';
 import { serviceYearsAt } from '../lib/completed-years';
 
 /**
@@ -141,9 +141,10 @@ export async function benefitSchemeView(
   ctx: SessionContext,
   employmentId: string,
   asOf: string,
+  outerTx?: Tx,
 ): Promise<BenefitSchemeView> {
   // Read-only — no events (CLAUDE.md skip rule).
-  const perTypeAndService = await withTenant(ctx, async (tx: Tx) => {
+  const readPerType = async (tx: Tx) => {
     const [emp] = await tx
       .select({ hiredOn: employment.hiredOn, gradeId: employment.gradeId })
       .from(employment)
@@ -199,7 +200,8 @@ export async function benefitSchemeView(
     rows.sort((a, b) => a.leaveTypeName.localeCompare(b.leaveTypeName));
     unmatched.sort((a, b) => a.leaveTypeName.localeCompare(b.leaveTypeName));
     return { rows, serviceYears, unmatched, noJobGrade };
-  });
+  };
+  const perTypeAndService = outerTx ? await readPerType(outerTx) : await withTenant(ctx, readPerType);
 
   if (!perTypeAndService) {
     return {
@@ -229,7 +231,7 @@ export async function benefitSchemeView(
   // nothing rule-decided anywhere, and at least one type actually answered by a default.
   const coveredByDefaultOnly = ruleNames.size === 0 && rows.some((r) => r.viaDefaultTemplate);
 
-  const effective = await schemeEffectiveFrom(ctx, employmentId, asOf);
+  const effective = await schemeEffectiveFrom(ctx, employmentId, asOf, outerTx);
 
   return {
     schemeName,
@@ -317,8 +319,9 @@ async function schemeEffectiveFrom(
   ctx: SessionContext,
   employmentId: string,
   asOf: string,
+  outerTx?: Tx,
 ): Promise<{ effectiveDate: string; kind: string } | null> {
-  const history = await movementHistory(ctx, employmentId);
+  const history = outerTx ? await movementHistoryTx(outerTx, ctx, employmentId) : await movementHistory(ctx, employmentId);
   const candidates = history
     .filter((r) => r.status === 'applied' && !r.reversed)
     .filter((r) => SCHEME_AFFECTING_KINDS.has(r.kind))
@@ -326,4 +329,9 @@ async function schemeEffectiveFrom(
   if (candidates.length === 0) return null;
   candidates.sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate));
   return { effectiveDate: candidates[0].effectiveDate, kind: candidates[0].kind };
+}
+
+/** Explicit owner read seam for a caller-held scoped report snapshot. */
+export function benefitSchemeViewTx(tx: Tx, ctx: SessionContext, employmentId: string, asOf: string) {
+  return benefitSchemeView(ctx, employmentId, asOf, tx);
 }

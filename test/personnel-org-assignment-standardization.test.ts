@@ -27,7 +27,7 @@ import {
   type Base,
 } from './harness';
 import { hireEmployee, setEmploymentAssignment, setEmploymentInfo } from '../core/org';
-import { createBusinessUnit, archiveBusinessUnit, setCompanySharedLabels } from '../core/admin';
+import { createBusinessUnit, archiveBusinessUnit } from '../core/admin';
 import { assignLabelToCompanies } from '../core/system-labels';
 import { assignmentHistory } from '../core/read';
 import {
@@ -189,7 +189,7 @@ describe('1001ff61 (A) — Business Unit on the assignment', () => {
     const sharedBu = await createBusinessUnit(adminCtx(b), { companyId: c2.id, code: `BU${randomUUID().slice(0, 8).toUpperCase()}`, name: 'Shared-In BU' });
     await assignLabelToCompanies(adminCtx(b), { kind: 'business_unit', labelId: sharedBu.id, companyIds: [b.companyId] });
     // Flag ON for the employee's company → the resolver surfaces the shared-in BU as a valid option.
-    await setCompanySharedLabels(adminCtx(b), { companyId: b.companyId, enabled: true });
+    await owner.db.update(schema.company).set({sharedSystemLabels:true}).where(eq(schema.company.id,b.companyId));
     try {
       const res = await setEmploymentAssignment(adminCtx(b), {
         employmentId: hire.employmentId,
@@ -202,7 +202,7 @@ describe('1001ff61 (A) — Business Unit on the assignment', () => {
     } finally {
       // Restore the flag: this suite seeds once (beforeAll), so later strict-scope tests must not
       // observe the opt-in.
-      await setCompanySharedLabels(adminCtx(b), { companyId: b.companyId, enabled: false });
+      await owner.db.update(schema.company).set({sharedSystemLabels:false}).where(eq(schema.company.id,b.companyId));
     }
   });
 });
