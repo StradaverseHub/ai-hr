@@ -5930,6 +5930,7 @@
         "deleteBody": "Ini akan mengeluarkan transaksi individu daripada kelompok. Tindakan ini tidak boleh dibatalkan.",
         "monthLabel": "Bulan",
         "cycleLabel": "Kitaran gaji",
+        "cycleUnavailable": "Kitaran gaji tidak tersedia",
         "dateOutOfPeriod": "Tarikh transaksi berada di luar bulan tempoh gaji yang dipilih.",
         "notDraft": "Proses gaji ini telah ditutup, jadi transaksinya tidak boleh diubah lagi.",
         "kindLabel": {

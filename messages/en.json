@@ -5930,6 +5930,7 @@
         "deleteBody": "This removes the individual transaction from the batch. This cannot be undone.",
         "monthLabel": "Month",
         "cycleLabel": "Pay cycle",
+        "cycleUnavailable": "Pay cycle unavailable",
         "dateOutOfPeriod": "The transaction date is outside the selected pay-period month.",
         "notDraft": "This payroll run is closed, so its transactions can no longer be changed.",
         "kindLabel": {

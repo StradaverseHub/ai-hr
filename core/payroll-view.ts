@@ -103,6 +103,8 @@ import {
 /** Second `person` alias — resolves the ACTING user's name for the "Created By" dimension (the txn's
  *  creator lives on the append-only event log, not on the ledger row — ADR-0056). */
 const creatorPerson = alias(person, 'creator_person');
+const individualBatchCycle = alias(payrollCycle, 'individual_batch_cycle');
+const individualIntendedCycle = alias(payrollCycle, 'individual_intended_cycle');
 
 /** The event type appended by createIndividualTxn(sBulk) — the join key for "Created By"/"Created Date". */
 const INDIVIDUAL_TXN_CREATED = 'payroll.individual-txn.created';
@@ -261,6 +263,12 @@ export type IndividualTxnViewRow = {
   // Null on UNATTACHED rows (f1564110 Phase 2): keyed in period-first, no batch stamped yet.
   runType: RunType | null;
   runSeq: number | null;
+  /** Exact configured references, independently of runType. A known ID with null name is unavailable,
+   *  never permission to choose another cycle of the same type. Archived names remain readable. */
+  batchCycleId: string | null;
+  batchCycleName: string | null;
+  intendedCycleId: string | null;
+  intendedCycleName: string | null;
   batchStatus: string | null;
   kind: PayrollTxnKind;
   /** 4e403268 — THE PAY ITEM, on the listing row at last. Until this round the projection deliberately
@@ -365,6 +373,10 @@ async function queryIndividualTxns(tx: Tx, p: IndividualTxnFilter): Promise<Indi
       payPeriod: sql<string>`${payrollIndividualTxn.payPeriod}`,
       runType: payrollBatch.runType,
       runSeq: payrollBatch.runSeq,
+      batchCycleId: payrollBatch.payrollCycleId,
+      batchCycleName: individualBatchCycle.name,
+      intendedCycleId: payrollIndividualTxn.intendedCycleId,
+      intendedCycleName: individualIntendedCycle.name,
       batchStatus: payrollBatch.status,
       kind: payrollIndividualTxn.kind,
       componentId: payrollIndividualTxn.componentId,
@@ -389,6 +401,21 @@ async function queryIndividualTxns(tx: Tx, p: IndividualTxnFilter): Promise<Indi
     })
     .from(payrollIndividualTxn)
     .leftJoin(payrollBatch, eq(payrollBatch.id, payrollIndividualTxn.batchId))
+    // The selected cycle is an ID, not runType. Keep authorized archived names for existing rows.
+    // Both tenant and company must match the transaction; a malformed historical FK keeps its
+    // recorded ID but cannot expose another company's/tenant's name. PK joins cannot multiply rows.
+    .leftJoin(individualBatchCycle, and(
+      eq(individualBatchCycle.id, payrollBatch.payrollCycleId),
+      eq(individualBatchCycle.tenantId, payrollIndividualTxn.tenantId),
+      eq(individualBatchCycle.tenantId, payrollBatch.tenantId),
+      eq(individualBatchCycle.companyId, payrollIndividualTxn.companyId),
+      eq(individualBatchCycle.companyId, payrollBatch.companyId),
+    ))
+    .leftJoin(individualIntendedCycle, and(
+      eq(individualIntendedCycle.id, payrollIndividualTxn.intendedCycleId),
+      eq(individualIntendedCycle.tenantId, payrollIndividualTxn.tenantId),
+      eq(individualIntendedCycle.companyId, payrollIndividualTxn.companyId),
+    ))
     // 510f4bd1 — the employee's payslip ON THIS RUN, for its `created_at` alone. Cannot multiply rows:
     // `payslip_batch_employment_uq` is unique on exactly this pair. LEFT, because "no payslip" is itself
     // one of the two answers the rule needs (and unattached rows have no batch to join through).
