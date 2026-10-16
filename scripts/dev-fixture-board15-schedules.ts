@@ -4,7 +4,7 @@ import {createDb,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {DEMO_TENANT_ID,SYSTEM_TENANT_ID,demoSeedRefusal} from '../db/seed-guard';
 import {resolveEntitlementsTx} from '../core/entitlements';
-import {createCompany,createBusinessUnit,createDepartment} from '../core/admin';
+import {createCompany,createBusinessUnit,createDepartment,assignRole} from '../core/admin';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {createShift,assignDefaultShift,setEmploymentScheduleGroup,saveShiftPay} from '../core/roster';
 import {createAttendanceRule,setRuleShifts,listScheduleGroupMemberships,checkIn,checkOut,type AttendanceRuleInput} from '../packs/attendance/service';
@@ -17,13 +17,14 @@ for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL']){
 }
 const owner=createDb(process.env.MIGRATION_DATABASE_URL!),tenantId=DEMO_TENANT_ID;
 async function context(user:typeof s.appUser.$inferSelect):Promise<SessionContext>{const grants=await owner.db.select({role:s.roleAssignment.role,companyId:s.roleAssignment.companyId}).from(s.roleAssignment).where(eq(s.roleAssignment.appUserId,user.id));return {tenantId,userId:user.id,personId:user.personId,roles:[...new Set(grants.map(g=>g.role))],grants,entitlements:await owner.db.transaction(tx=>resolveEntitlementsTx(tx,tenantId))};}
-async function principal(key:string,personId:string,role:'hr_admin'|'manager'|'employee',companyId:string|null){
+async function principal(writer:SessionContext,key:string,personId:string,role:'hr_admin'|'manager'|'employee',companyId:string|null){
  const workosUserId=`board15-schedules:${key}`;let [user]=await owner.db.select().from(s.appUser).where(and(eq(s.appUser.tenantId,tenantId),eq(s.appUser.workosUserId,workosUserId)));
  if(!user)[user]=await owner.db.insert(s.appUser).values({tenantId,personId,workosUserId,onboardedAt:new Date()}).returning();
  if(user.personId!==personId||user.archivedAt)throw new Error('Fixture principal changed; preserving it.');
+ const expectedCompanyId=role==='hr_admin'?companyId:null;
  const roles=await owner.db.select().from(s.roleAssignment).where(eq(s.roleAssignment.appUserId,user.id));
- if(!roles.length)await owner.db.insert(s.roleAssignment).values({tenantId,appUserId:user.id,role,companyId});
- else if(roles.length!==1||roles[0].role!==role||roles[0].companyId!==companyId)throw new Error('Fixture grants changed; preserving them.');
+ if(!roles.length)await assignRole(writer,{appUserId:user.id,role,...(expectedCompanyId?{companyId:expectedCompanyId}:{})});
+ else if(roles.length!==1||roles[0].role!==role||roles[0].companyId!==expectedCompanyId)throw new Error('Fixture grants changed; preserving them.');
  return user;
 }
 const ruleInput=(name:string,label:string):AttendanceRuleInput=>({name,label,weeklyPattern:[1,2,3,4,5],halfPattern:[],offPattern:[6],lateGracePeriodMinutes:0,lateAfterMinutes:5,lateDeductMinutes:5,includeGraceInLateness:false,earlyGracePeriodMinutes:1,earlyAfterMinutes:5,earlyDeductMinutes:5,includeGraceInEarlyOut:false,applyDeductions:true,applyToEarlyOt:false,otRows:[{fromMinutes:0,toMinutes:120,ratePattern:'flat',rate:1.5,phRate:null,roundingMode:'down',roundToMinutes:15}]});
@@ -35,7 +36,7 @@ async function main(){
  if(!company){const made=await createCompany(bootstrap,{legalName:'Schedule board review (fictional)',companyLabel:'BOARD15-SCHEDULES',country:'MY',currency:'MYR'});[company]=await owner.db.select().from(s.company).where(eq(s.company.id,made.id));}
  let [hrPerson]=await owner.db.select().from(s.person).where(and(eq(s.person.tenantId,tenantId),eq(s.person.primaryEmail,'board15-schedules-hr@demo.test')));
  if(!hrPerson)[hrPerson]=await owner.db.insert(s.person).values({tenantId,fullName:'Schedules fictional HR',primaryEmail:'board15-schedules-hr@demo.test'}).returning();
- const hr=await principal('hr',hrPerson.id,'hr_admin',null),ctx=await context(hr);
+ const hr=await principal(bootstrap,'hr',hrPerson.id,'hr_admin',null),ctx=await context(hr);
  let [bu]=await owner.db.select().from(s.businessUnit).where(and(eq(s.businessUnit.companyId,company.id),eq(s.businessUnit.code,'SCHEDULES')));if(!bu){const made=await createBusinessUnit(ctx,{companyId:company.id,code:'SCHEDULES',name:'Schedules fictional unit'});[bu]=await owner.db.select().from(s.businessUnit).where(eq(s.businessUnit.id,made.id));}
  let [dept]=await owner.db.select().from(s.department).where(and(eq(s.department.companyId,company.id),eq(s.department.name,'Schedules fictional department')));if(!dept){const made=await createDepartment(ctx,{companyId:company.id,businessUnitId:bu.id,name:'Schedules fictional department'});[dept]=await owner.db.select().from(s.department).where(eq(s.department.id,made.id));}
  const groups:{group:typeof s.attendanceRule.$inferSelect;fresh:boolean}[]=[];for(const [name,label] of [['Schedules review Office','OFFICE'],['Schedules review Plant','PLANT']]){let [group]=await owner.db.select().from(s.attendanceRule).where(and(eq(s.attendanceRule.tenantId,tenantId),eq(s.attendanceRule.name,name)));const fresh=!group;if(!group){const made=await createAttendanceRule(ctx,ruleInput(name,label));[group]=await owner.db.select().from(s.attendanceRule).where(eq(s.attendanceRule.id,made.id));}groups.push({group,fresh});}
@@ -45,7 +46,7 @@ async function main(){
  for(const [key,role,shiftId,groupId] of [['manager','manager',shifts[0].id,groups[0].group.id],['fixed','employee',shifts[0].id,groups[1].group.id],['flexi','employee',shifts[1].id,groups[0].group.id]] as const){
   const email=`board15-schedules-${key}@demo.test`;let [person]=await owner.db.select().from(s.person).where(and(eq(s.person.tenantId,tenantId),eq(s.person.primaryEmail,email)));let [emp]=person?await owner.db.select().from(s.employment).where(and(eq(s.employment.personId,person.id),eq(s.employment.companyId,company.id))):[];
   if(!emp){const made=await hireEmployee(ctx,{person:{fullName:`Schedules fictional ${key}`,primaryEmail:email},companyId:company.id,departmentId:dept.id,employmentType:'full_time',hiredOn:date});[emp]=await owner.db.select().from(s.employment).where(eq(s.employment.id,made.employmentId));await assignDefaultShift(ctx,{employmentId:emp.id,shiftId});await setEmploymentScheduleGroup(ctx,{employmentId:emp.id,attendanceRuleId:groupId});if(key==='flexi'){await checkIn(ctx,{employmentId:emp.id,date,time:'09:00'});await checkOut(ctx,{employmentId:emp.id,date,time:'12:00'});await checkIn(ctx,{employmentId:emp.id,date,time:'13:00'});await checkOut(ctx,{employmentId:emp.id,date,time:'18:30'});}}
-  const user=await principal(key,emp.personId,role,company.id);people.push({key,userId:user.id,employmentId:emp.id});
+  const user=await principal(ctx,key,emp.personId,role,company.id);people.push({key,userId:user.id,employmentId:emp.id});
  }
  const manager=people.find(p=>p.key==='manager')!;for(const e of people.filter(p=>p.key!=='manager')){const [line]=await owner.db.select().from(s.reportingLine).where(and(eq(s.reportingLine.subordinateEmploymentId,e.employmentId),eq(s.reportingLine.lineType,'administrative'),isNull(s.reportingLine.validTo)));if(!line)await setReportingLine(ctx,{subordinateEmploymentId:e.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:date});}
  const memberships=await listScheduleGroupMemberships(ctx);

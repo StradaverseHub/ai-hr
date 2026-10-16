@@ -4,7 +4,7 @@ import {createDb,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {DEMO_TENANT_ID,SYSTEM_TENANT_ID,demoSeedRefusal} from '../db/seed-guard';
 import {resolveEntitlementsTx} from '../core/entitlements';
-import {createCompany,createBusinessUnit,createDepartment} from '../core/admin';
+import {createCompany,createBusinessUnit,createDepartment,assignRole} from '../core/admin';
 import {hireEmployee} from '../core/org';
 import {createShift,assignDefaultShift} from '../core/roster';
 import {setAttendancePolicy} from '../packs/attendance/service';
@@ -24,14 +24,15 @@ async function context(user:typeof s.appUser.$inferSelect):Promise<SessionContex
  const grants=await owner.db.select({role:s.roleAssignment.role,companyId:s.roleAssignment.companyId}).from(s.roleAssignment).where(eq(s.roleAssignment.appUserId,user.id));
  return {tenantId,userId:user.id,personId:user.personId,roles:[...new Set(grants.map(g=>g.role))],grants,entitlements:await owner.db.transaction(tx=>resolveEntitlementsTx(tx,tenantId))};
 }
-async function principal(key:string,personId:string,role:'hr_admin'|'employee',companyId:string|null){
+async function principal(writer:SessionContext,key:string,personId:string,role:'hr_admin'|'employee',companyId:string|null){
  const workosUserId=`board15-holidays:${key}`;
  let [user]=await owner.db.select().from(s.appUser).where(and(eq(s.appUser.tenantId,tenantId),eq(s.appUser.workosUserId,workosUserId)));
  if(!user)[user]=await owner.db.insert(s.appUser).values({tenantId,personId,workosUserId,onboardedAt:new Date()}).returning();
  if(user.personId!==personId||user.archivedAt)throw new Error('Existing fixture principal was changed; preserving it.');
+ const expectedCompanyId=role==='hr_admin'?companyId:null;
  const grants=await owner.db.select().from(s.roleAssignment).where(eq(s.roleAssignment.appUserId,user.id));
- if(!grants.length)await owner.db.insert(s.roleAssignment).values({tenantId,appUserId:user.id,role,companyId});
- else if(grants.length!==1||grants[0].role!==role||grants[0].companyId!==companyId)throw new Error('Existing fixture grants were changed; preserving them.');
+ if(!grants.length)await assignRole(writer,{appUserId:user.id,role,...(expectedCompanyId?{companyId:expectedCompanyId}:{})});
+ else if(grants.length!==1||grants[0].role!==role||grants[0].companyId!==expectedCompanyId)throw new Error('Existing fixture grants were changed; preserving them.');
  return user;
 }
 async function main(){
@@ -41,10 +42,10 @@ async function main(){
   if(!row)await owner.db.insert(s.tenantModule).values({tenantId,moduleCode,status:'active'});
   else if(row.status!=='active'||row.expiresAt)throw new Error('Existing commercial grant was changed; preserving it.');
  }
- const [seed]=await owner.db.select().from(s.appUser).where(and(eq(s.appUser.tenantId,tenantId),eq(s.appUser.workosUserId,'user_dev_admin')));if(!seed)throw new Error('Demo seed is required first.');
+ const [seed]=await owner.db.select().from(s.appUser).where(and(eq(s.appUser.tenantId,tenantId),eq(s.appUser.workosUserId,'user_dev_admin')));if(!seed)throw new Error('Demo seed is required first.');const bootstrap=await context(seed);
  let [hrPerson]=await owner.db.select().from(s.person).where(and(eq(s.person.tenantId,tenantId),eq(s.person.primaryEmail,'board15-holidays-hr@demo.test')));
  if(!hrPerson)[hrPerson]=await owner.db.insert(s.person).values({tenantId,fullName:'Holidays fictional HR',primaryEmail:'board15-holidays-hr@demo.test'}).returning();
- const hr=await principal('hr',hrPerson.id,'hr_admin',null),ctx=await context(hr),bootstrap=await context(seed);
+ const hr=await principal(bootstrap,'hr',hrPerson.id,'hr_admin',null),ctx=await context(hr);
  const [already]=await owner.db.select().from(s.company).where(and(eq(s.company.tenantId,tenantId),eq(s.company.companyLabel,'BOARD15-HOLIDAY-A')));
  const scenarios:{key:string;companyId:string;employmentId?:string;userId?:string;sourceDate?:string}[]=[];
  for(const key of ['A','B','C','REVIEW','EMPTY']){
@@ -69,14 +70,14 @@ async function main(){
   let [person]=await owner.db.select().from(s.person).where(and(eq(s.person.tenantId,tenantId),eq(s.person.primaryEmail,email)));
   let [emp]=person?await owner.db.select().from(s.employment).where(and(eq(s.employment.personId,person.id),eq(s.employment.companyId,company.id))):[];
   if(!emp){const made=await hireEmployee(ctx,{person:{fullName:`Holidays fictional ${key}`,primaryEmail:email},companyId:company.id,departmentId:department.id,employmentType:'full_time',hiredOn:addHolidayDays(todayInKualaLumpur(),-90)});[emp]=await owner.db.select().from(s.employment).where(eq(s.employment.id,made.employmentId));await assignDefaultShift(ctx,{employmentId:emp.id,shiftId:shift.id});}
-  const user=await principal(key.toLowerCase(),emp.personId,'employee',company.id);
+  const user=await principal(ctx,key.toLowerCase(),emp.personId,'employee',company.id);
   const policies=await owner.db.select().from(s.replacementHolidayPolicy).where(eq(s.replacementHolidayPolicy.companyId,company.id));
   if(!policies.length&&key!=='REVIEW')await saveReplacementHolidayPolicy(ctx,{companyId:company.id,effectiveFrom:todayInKualaLumpur(),regime:'company_confirmed',confirmed:true,restMode:'scheduled_rest',halfEligible:false,searchDays:30,reason:'Fictional explicit company rule for local verification; no statutory applicability inferred.'});
   const [attendancePolicy]=await owner.db.select().from(s.attendancePolicy).where(eq(s.attendancePolicy.companyId,company.id));
   if(!attendancePolicy)await setAttendancePolicy(ctx,{companyId:company.id,workStart:'09:00',workEnd:'18:00',breakMinutes:60,lateAfter:'09:00',halfDayBefore:'13:00',workingDays:[1,2,3,4,5,6,7]});
   scenarios.push({key,companyId:company.id,employmentId:emp.id,userId:user.id,sourceDate});
  }
- const a=scenarios.find(s=>s.key==='A')!;const scopedHr=await principal('scoped-hr',hrPerson.id,'hr_admin',a.companyId);
+ const a=scenarios.find(s=>s.key==='A')!;const scopedHr=await principal(ctx,'scoped-hr',hrPerson.id,'hr_admin',a.companyId);
  // Invoke the same exported automatic queue pass as the deployed runner, rather than calling allocation
  // manually for each employee. A completed repeat leaves configured policy and manual decisions intact.
  const sweep=await sweepReplacementHolidayQueue(owner,{limitPerTenant:100});if(sweep.failed)throw new Error('Automatic holiday fixture sweep failed.');

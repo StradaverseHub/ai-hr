@@ -147,3 +147,16 @@ node --env-file=.env.local --import tsx scripts/dev-browser-original18.mjs --sce
 
 No runtime or acceptance was executed by the source author; parent must check the manual-receipt
 negative controls, zero-setup execution and actual cleanup under the explicit process permission.
+
+## Untouched legacy target grant preparation
+
+The four new Schedules/Holidays/Approval/Inquiry targets now grant customer roles through canonical
+assignRole. Manager/employee grants are null-scoped as that owner specifies; actual employment company
+identity is checked separately. Existing HR group/company scope is preserved, including Inquiry's
+A/B/Empty HR scopes and separate own employee role. Existing noncanonical grants cause refusal rather
+than repair. No already edited target is migrated by this preparation source. Integration and Personnel
+retain their exact historical resume expectations and receipt/identity pins unchanged.
+
+The contract tests inspect actual fixture owner calls and compare adapter grants/HR scopes plus the
+unchanged legacy resume expectations. They were authored without execution; canonical app-role writes,
+clean-twice fixture behavior and actual app journeys still require parent verification.

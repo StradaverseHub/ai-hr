@@ -65,6 +65,18 @@ describe('original18 closed local browser lifecycle',()=>{
   const r=receipts('approval');const principals=r.fixture.principals as {employment?:{companyId:string;employeeCode:string}}[];const subject=principals.find(row=>row.employment)!;subject.employment!.companyId=id(999);r.browser.fixture=structuredClone(r.fixture);expect(()=>validateOriginal18Resume(r)).toThrow();
   const source=readFileSync(new URL('../scripts/dev-browser-original18.mjs',import.meta.url),'utf8');expect(source).toContain('select app.login_blocked(');expect(source).toContain('original18EmploymentProof(actor,employment,login?.blocked)');expect(source).toContain('company_id as "companyId",employee_code as "employeeCode"');
  });
+ it.each(['schedules','holidays','approval','inquiry'])('uses canonical non-HR grants for untouched %s fixture and pins its actual role writer',scenario=>{
+  const identities=original18FixtureIdentities(scenario,facts(scenario));let nonHr=0;
+  for(const actor of identities.actors)for(const grant of actor.grants)if(grant.role==='manager'||grant.role==='employee'){nonHr++;expect(grant.companyId).toBeNull();expect(actor.companyId).toBeTruthy();}
+  expect(nonHr).toBeGreaterThan(0);
+  const fixtureFiles={schedules:'dev-fixture-board15-schedules.ts',holidays:'dev-fixture-board15-holidays.ts',approval:'dev-fixture-attendance-hierarchy.ts',inquiry:'dev-fixture-leave-inquiry.ts'};
+  const source=readFileSync(new URL('../scripts/'+fixtureFiles[scenario as keyof typeof fixtureFiles],import.meta.url),'utf8');expect(source.length).toBeGreaterThan(3000);expect(source).toMatch(/import[^;]+assignRole[^;]+from ['"]\.\.\/core\/admin['"]/);expect(source).toMatch(/await assignRole\((writer|bootstrap),/);expect(source).not.toMatch(/insert\(s\.roleAssignment\)/);
+  const hrGrants=identities.actors.flatMap((actor:{grants:{role:string;companyId:string|null}[]})=>actor.grants.filter(grant=>grant.role==='hr_admin').map(grant=>grant.companyId));
+  const data=facts(scenario);if(scenario==='schedules')expect(hrGrants).toEqual([null]);else if(scenario==='holidays'){expect(hrGrants).toHaveLength(2);expect(hrGrants).toContain(null);expect(hrGrants).toContain((data.scenarios as {key:string;companyId:string}[]).find(row=>row.key==='A')!.companyId);}else if(scenario==='approval'){const companies=data.companies as Record<string,string>;expect(hrGrants.sort()).toEqual([companies.Main,companies.Main,companies.Foreign,companies.Empty].sort());}else {const companies=data.companies as Record<string,string>;expect(hrGrants.sort()).toEqual([companies.A,companies.B,companies.Empty].sort());}
+ });
+ it.each(['integration','personnel'])('retains the exact existing %s legacy grant expectation',scenario=>{
+  const identities=original18FixtureIdentities(scenario,facts(scenario));const nonHr=identities.actors.flatMap((actor:{grants:{role:string;companyId:string|null}[]})=>actor.grants.filter(grant=>grant.role==='manager'||grant.role==='employee'));expect(nonHr.length).toBeGreaterThan(0);for(const grant of nonHr)expect(grant.companyId).toBeTruthy();
+ });
  it('normalizes only reused/sweep diagnostics and refuses corrupt or ambiguous fixture logs',()=>{
   const value={...facts('schedules'),reused:false,sweep:{changed:3}},again={...value,reused:true,sweep:{changed:0}};expect(original18FixtureFacts(value)).toEqual(original18FixtureFacts(again));
   expect(original18FixtureFromLog('notice\n'+JSON.stringify(value,null,2)+'\n')).toEqual(original18FixtureFacts(value));
