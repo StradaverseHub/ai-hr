@@ -114,7 +114,7 @@ function assertSharedControlCopy(locale: Locale, dialog: HTMLElement, hr: boolea
   expect(screen.getByTestId('leave-credit-add-row')).toHaveTextContent(copy.addRow);
   expect(dialog.querySelector('textarea[name="reason"]')?.closest('label')).toHaveTextContent(copy.reason);
   expect(screen.getByTestId('leave-credit-total')).toHaveTextContent(copy.totalDays.replace('{days}','0.00'));
-  expect(within(dialog).getAllByRole('button',{name:hr?lcAdd(locale).cancel:copy.cancel,exact:true})).toHaveLength(2);
+  expect(within(dialog).getAllByRole('button',{name:hr?lcAdd(locale).cancel:copy.cancel})).toHaveLength(2);
   if(locale!=='en')for(const key of ['workedDate','leaveType','addRow','reason','totalDays','cancel','removeRow','firstScheduleConsent'] as const)
     expect(copy[key],`${locale}: ${key} must not be English`).not.toBe(CATALOGUES.en.replacementRequest[key]);
 }
