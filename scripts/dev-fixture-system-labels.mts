@@ -28,8 +28,9 @@ for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL']){
  urls[key]=url;
 }
 if(decodeURIComponent(urls.DATABASE_URL.username)!=='ai_hr_app'||urls.DATABASE_URL.username===urls.MIGRATION_DATABASE_URL.username)throw new Error('Use restricted ai_hr_app and separate migration credentials.');
-const candidate=process.env.LABELS_FIXTURE_COORDINATOR_CANDIDATE;
-if(!candidate||!/^[a-f0-9]{40}$/.test(candidate)||process.env.LABELS_FIXTURE_COORDINATOR_PID!==String(process.ppid))throw new Error('Fixture must be the declared live coordinator child.');
+const rawCandidate=process.env.LABELS_FIXTURE_COORDINATOR_CANDIDATE;
+if(!rawCandidate||!/^[a-f0-9]{40}$/.test(rawCandidate)||process.env.LABELS_FIXTURE_COORDINATOR_PID!==String(process.ppid))throw new Error('Fixture must be the declared live coordinator child.');
+const candidate=rawCandidate;
 const ancestors=new Set<number>();let ancestor=process.ppid;
 for(let depth=0;ancestor>1&&depth<64;depth++){
  if(ancestors.has(ancestor))throw new Error('Invalid coordinator ancestry.');ancestors.add(ancestor);
