@@ -24,7 +24,8 @@ use a separate actual role on that same named local database. Never print either
 Only an empty migrated target or the reserved `System (auth audit)` tenant is accepted initially.
 Canonical provisioning creates exactly `Labels18 Primary (fictional)` and `Labels18 Foreign
 (fictional)`, country MY, **no commercial modules**. All business rows go through canonical owners;
-direct owner writes are limited to fictional login/grant/onboarding fixtures. Activation links
+direct owner writes are limited to fictional login/onboarding, first-admin bootstrap and installation
+Operator fixtures. All other customer role grants use canonical `assignRole` and are read back. Activation links
 are discarded. A partial setup, unknown tenant, altered receipt/artifact/candidate/date or second-run
 state drift refuses rather than resetting anything. A rerun after browser edits intentionally refuses.
 
@@ -54,8 +55,8 @@ external-authentication or installation-operator proof.
 | GroupHR | Actual provisioned admin Person/login, sole tenant-wide hr_admin grant; no employment | Common library, Global and Main+B criteria, import, future-company behavior |
 | ScopedHR | Main employment, hr_admin grants exactly Main+B | Authorized changes only, Global read-only/creation refusal, Hidden refusal |
 | EmptyHR | User only, hr_admin exactly Empty | Honest empty four-org-list state; tenant-wide catalogues can still exist |
-| Manager / Employee | Main employments, scoped manager/employee respectively; canonical reporting edge | Admin route denial and authorized Personnel/own-profile picker visibility |
-| BEmployee / HiddenEmployee | Real B/Hidden employments, own company employee grant | Distinct company downstream references |
+| Manager / Employee | Main employments, canonical manager/employee grants with null companyId; scope derives from actual employment/reporting edge | Admin route denial and authorized Personnel/own-profile picker visibility |
+| BEmployee / HiddenEmployee | Real B/Hidden employments, canonical employee grant with null companyId | Distinct company downstream references |
 | Operator | User only, operator/null; no HR grant/person/employment | Installation role must not confer System Labels HR access |
 | ForeignHR | Actual foreign tenant provisioned admin | Primary tenant records remain inaccessible |
 
