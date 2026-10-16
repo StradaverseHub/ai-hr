@@ -111,3 +111,37 @@ original directory-root representation. These exact bindings are compared, never
 The new fixture/proof commits must be integrated with this coordinator before those targets can run.
 No execution was performed while authoring this source; fresh provision/twice-run and resume behavior,
 proof/identity refusal controls and real process/lock cleanup remain required parent checks.
+
+## Preserved 3191 integration: explicit resume only
+
+`--scenario=integration --resume` targets only ai_hr_board15_browser /3191 /
+board15integration in scratchpad/board15-integration. It consumes the exact original
+9579b44ac012b43453be91175b18ff230152c562 browser manifest and both clean fixture log byte
+hashes plus the recorded legacy runner source. There was no old fixture-manifest or successful
+browser-stopped receipt. Neither is fabricated: its actual nested fixture remains the preparation.
+
+The first resume additionally requires a parent-created private browser-manual-cleanup.json and
+browser-manual-cleanup-evidence.log. The JSON binds exact root/scenario/candidate/DB/namespace/port,
+serverPid25764, kind independent-cleanup-observation, priorRunnerCleanup unconfirmed,
+pidAbsent/processGroupAbsent/portFree true, applicationAcceptance UNVERIFIED, the pinned original
+browserManifestSha256, actual observedAt and SHA256 of the evidence bytes. The evidence records the
+parent's actual escalated ps/lsof/free-port results. It must not assert ownedServerStopped,
+cleanupSucceeded, outcome or exitCode for the failed old cleanup. New execution independently proves
+PID/PGID absence and port freedom, requires unchanged schema/migrations/catalog and rechecks the
+actual app/owner roles, tenants, principal/company/grants/login lifecycle. EPERM is refusal, never
+absence; parent runs the coordinator with explicit process inspection permission.
+
+All setup branches are forbidden. The three manually created Individual Transactions and saved
+inactive grouped policy remain untouched. No attendance, allowance, payroll or configuration values
+are restored from the preparation. The original manifest does not contain generated employee codes;
+those current identities are captured truthfully on the first resume and compared on subsequent
+resumes, not misrepresented as historical preparation evidence. Each new receipt records zero
+migration/seed/fixture calls and retains the independent observation through recursive provenance.
+New owned cleanup uses current stopped/failed receipts and never rewrites the old runner outcome.
+
+```sh
+node --env-file=.env.local --import tsx scripts/dev-browser-original18.mjs --scenario=integration --resume
+```
+
+No runtime or acceptance was executed by the source author; parent must check the manual-receipt
+negative controls, zero-setup execution and actual cleanup under the explicit process permission.

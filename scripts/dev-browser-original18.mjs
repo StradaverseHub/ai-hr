@@ -1,5 +1,5 @@
 /** Original18 closed browser coordinator. Explicit --scenario=schedules|holidays|approval|inquiry|labels|reports.
- * Personnel is --scenario=personnel --resume ONLY, with its exact reviewed legacy preparation.
+ * Integration and Personnel are --scenario=integration|personnel --resume ONLY, with its exact reviewed legacy preparation.
  * This entry acquires BOTH test slots and the dev DB lock itself; do not wrap it in those locks.
  * Parent provisions real dependencies/private .env.local. No install, reset or automatic retry.
  * STOP: create browser.stop in the scenario scratchpad; 45-minute owned lifetime includes setup.
@@ -12,7 +12,7 @@ import net from 'node:net';
 import {fileURLToPath} from 'node:url';
 import {spawn,execFileSync} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
-import {original18BrowserTarget,original18FixtureFromLog,original18FixtureIdentities,original18FixtureTenants,original18InvocationStopFile,original18EmploymentProof,original18ResumeReceiptName,validateOriginal18Resume,PERSONNEL_PREPARATION} from './original18-browser-target.mjs';
+import {original18BrowserTarget,original18FixtureFromLog,original18FixtureIdentities,original18FixtureTenants,original18InvocationStopFile,original18EmploymentProof,original18ResumeReceiptName,validateOriginal18Resume,PERSONNEL_PREPARATION,INTEGRATION_PREPARATION} from './original18-browser-target.mjs';
 import {todayInKualaLumpur} from '../lib/hr-date.ts';
 import {DEMO_TENANT_ID,SYSTEM_TENANT_ID,demoSeedRefusal} from '../db/seed-guard.ts';
 const filename=fileURLToPath(import.meta.url);
@@ -190,7 +190,18 @@ if(!options.heldLockWorker) {
     const connect=url=>postgres(url,{max:1,connect_timeout:10,idle_timeout:5,connection:{statement_timeout:10000}});
     let preparedFixture,identities;
     if(options.resume) {
-      const fixture=readReceipt('fixture-manifest.json'),browser=readReceipt('browser-manifest.json'),stopped=readReceipt('browser-stopped.json');
+      const browser=readReceipt('browser-manifest.json');
+      const fixture=scenario==='integration'?browser.fixture:readReceipt('fixture-manifest.json');
+      const manualCleanup=scenario==='integration'?readReceipt('browser-manual-cleanup.json'):undefined;
+      const stopReceiptFile=scenario==='integration'&&!fs.existsSync(path.join(out,'browser-stopped.json'))?'browser-manual-cleanup.json':'browser-stopped.json';
+      const stopped=readReceipt(stopReceiptFile);
+      if(scenario==='integration'){
+        for(const [name,expected]of [['browser-manifest.json',INTEGRATION_PREPARATION.browserBytes],['browser-fixture-first.log',INTEGRATION_PREPARATION.firstLogBytes],['browser-fixture-second.log',INTEGRATION_PREPARATION.secondLogBytes]])if(hash(fs.readFileSync(path.join(out,name)))!==expected)throw new Error('Reviewed 3191 preparation bytes changed; preserve target.');
+        const source=execFileSync('git',['-C',root,'show',INTEGRATION_PREPARATION.candidate+':scripts/dev-browser-board-integration.mjs']);
+        if(hash(source)!==INTEGRATION_PREPARATION.runnerBytes)throw new Error('Unproven legacy 3191 runner source.');
+        const evidence=path.join(out,'browser-manual-cleanup-evidence.log'),stat=fs.lstatSync(evidence);
+        if(!stat.isFile()||stat.isSymbolicLink()||stat.size<1||stat.size>1024*1024||hash(fs.readFileSync(evidence))!==manualCleanup.evidenceSha256)throw new Error('Independent cleanup evidence is missing or changed.');
+      }
       if(scenario==='personnel'){
         for(const [name,expected]of [['fixture-manifest.json',PERSONNEL_PREPARATION.fixtureBytes],['browser-manifest.json',PERSONNEL_PREPARATION.browserBytes]])if(hash(fs.readFileSync(path.join(out,name)))!==expected)throw new Error('Reviewed Personnel preparation bytes changed; preserve target.');
         const source=execFileSync('git',['-C',root,'show',PERSONNEL_PREPARATION.candidate+':scripts/dev-browser-personnel-registers.mjs']);
@@ -200,20 +211,21 @@ if(!options.heldLockWorker) {
       const resumeRecords={},resumeNames=fs.readdirSync(out).filter(name=>name.startsWith('browser-resume-')&&name.endsWith('.json'));
       if(resumeNames.length>64)throw new Error('Resume history exceeds bounded proof limit.');
       for(const name of resumeNames){const receipt=readReceipt(name);if(!original18ResumeReceiptName(name,receipt.candidate))throw new Error('Invalid resume receipt identity.');resumeRecords[name]=receipt;}
-      const binding=validateOriginal18Resume({fixture,browser,stopped,resumeRecords,root,scenario});
+      const binding=validateOriginal18Resume({fixture,browser,stopped,resumeRecords,manualCleanup,root,scenario});
       proveStoppedGroup(stopped);
       for(const prior of new Set([binding.preparationCandidate,binding.resumedFromCandidate]))if(git(['rev-parse',prior+'^{commit}'])!==prior||git(['diff','--name-only',prior,candidate,'--','db/migrations','packs/catalog.ts','db/schema.ts']))throw new Error('Resume requires unchanged SQL, journal, schema and pack catalog versus preparation/prior candidate.');
       postgresTarget=connect(ownerUrl.toString());postgresApp=connect(appUrl.toString());await proveRoles();await proveTenants(fixture);await proveFreshSource(fixture);
-      identities=original18FixtureIdentities(scenario,scenario==='personnel'||options.fresh?fixture:fixture.facts);
-      await proveIdentities(identities,scenario==='personnel'||options.fresh?undefined:fixture.principals);
+      identities=original18FixtureIdentities(scenario,['personnel','integration'].includes(scenario)||options.fresh?fixture:fixture.facts);
+      const expectedPrincipals=scenario==='integration'&&stopped.resumeReceipt?resumeRecords[stopped.resumeReceipt].principals:['personnel','integration'].includes(scenario)||options.fresh?undefined:fixture.principals;
+      const resumePrincipals=await proveIdentities(identities,expectedPrincipals);
       await postgresApp.end();postgresApp=undefined;await postgresTarget.end();postgresTarget=undefined;
       preparationCandidate=binding.preparationCandidate;preparedFixture=fixture;
       resumeReceipt='browser-resume-'+runId+'.json';
       // Archive exact previous cleanup bytes before changing the current pointer; never overwrite old evidence.
-      fs.copyFileSync(path.join(out,'browser-stopped.json'),path.join(out,'browser-prior-stop-'+runId+'.json'),fs.constants.COPYFILE_EXCL);
-      writeNew(resumeReceipt,{candidate,...binding,...bound,preparationManifest:'browser-manifest.json',priorStoppedReceipt:stopped,fixtureRunsThisCandidate:0,migrationRunsThisCandidate:0,seedRunsThisCandidate:0,resumedAt:new Date().toISOString(),devLogName,applicationAcceptance:'UNVERIFIED'});
+      fs.copyFileSync(path.join(out,stopReceiptFile),path.join(out,'browser-prior-stop-'+runId+'.json'),fs.constants.COPYFILE_EXCL);
+      writeNew(resumeReceipt,{candidate,...binding,...bound,...(scenario==='integration'?{principals:resumePrincipals}:{}),preparationManifest:'browser-manifest.json',priorStoppedReceipt:stopped,fixtureRunsThisCandidate:0,migrationRunsThisCandidate:0,seedRunsThisCandidate:0,resumedAt:new Date().toISOString(),devLogName,applicationAcceptance:'UNVERIFIED'});
     } else {
-      if(options.resumeOnly)throw new Error('Personnel setup is forbidden.');
+      if(options.resumeOnly)throw new Error('Preserved scenario setup is forbidden.');
       if(['preparation-attempt.json','fixture-manifest.json','browser-manifest.json','browser-stopped.json','browser.pid'].some(name=>fs.existsSync(path.join(out,name))))throw new Error('Existing preparation/partial attempt preserved; use receipt-bound resume only.');
       const adminUrl=new URL(ownerUrl);adminUrl.pathname='/postgres';postgresAdmin=connect(adminUrl.toString());
       const [creator]=await postgresAdmin`select current_user name,rolsuper,rolbypassrls from pg_roles where rolname=current_user`;
@@ -255,7 +267,7 @@ if(!options.heldLockWorker) {
       await postgresApp.end();postgresApp=undefined;await postgresTarget.end();postgresTarget=undefined;
       writeNew('browser-manifest.json',{candidate,...bound,fixtureRuns:2,fixture:preparedFixture,applicationAcceptance:'UNVERIFIED'});
     }
-    const hr=identities.actors.find(actor=>actor.login===({schedules:'board15-schedules:hr',holidays:'board15-holidays:hr',approval:'approval15-fixture:HR',inquiry:'inquiry15-fixture:hr',personnel:'personnel15-fixture:HR',reports:'report18-fixture:HR_A'})[scenario]);
+    const hr=identities.actors.find(actor=>actor.login===({integration:'board-ten-fixture:hr',schedules:'board15-schedules:hr',holidays:'board15-holidays:hr',approval:'approval15-fixture:HR',inquiry:'inquiry15-fixture:hr',personnel:'personnel15-fixture:HR',reports:'report18-fixture:HR_A'})[scenario]);
     const defaultHr=scenario==='labels'?identities.actors.find(actor=>actor.id===preparedFixture.people.GroupHR.userId):hr;
     if(!defaultHr)throw new Error('Exact fictional HR principal missing.');
     env.DEV_USER_ID=defaultHr.id;env.DEV_TENANT_ID=preparedFixture.tenantId;

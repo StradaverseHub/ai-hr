@@ -2,7 +2,9 @@ import {createHash} from 'node:crypto';
 import path from 'node:path';
 /** Closed acceptance targets. No arbitrary DB/path/port/fixture overrides. */
 export const PERSONNEL_PREPARATION=Object.freeze({candidate:'299ccd2d6891de62149f5205cac81522b1076dea',pid:85618,stoppedAt:'2026-10-16T06:47:37.642Z',fixtureBytes:'fb7e3b34ffe6fc52711ee79cfe527056e80ab5146954f93f89d693faa87463af',browserBytes:'ed4d059f72617c7c7c0dfd0f14d36464a72e325c3b978696021ab9d91e8ace40',stopBytes:'b7971ba79002ef1667990ece31a07c0ecb830bb29f90507bb4005e1ce778f7f1',runnerBytes:'d7bc178a2de94d4db3c125625b79c091b3f7d92f16f3d657fdd6fd941498e0d6'});
+export const INTEGRATION_PREPARATION=Object.freeze({candidate:'9579b44ac012b43453be91175b18ff230152c562',pid:25764,browserBytes:'ad069d763b609cc629321b90424edf83e42044ab1591c89d6eb041352626954b',firstLogBytes:'d1548840f6ed98fd1346585601ae9dc8166ea80642c6b2e546b01ec314f7cc74',secondLogBytes:'d79214768d4502071d38a251c3645027b7f4a59d8d428640876664481440a31d',runnerBytes:'b15efce7f286229ce3225a0e7f038b7d2354ba98aa991f831e63f409b2c7e4c4'});
 export const ORIGINAL18_BROWSER_TARGETS=Object.freeze({
+ integration:Object.freeze({database:'ai_hr_board15_browser',port:3191,namespace:'board15integration',fixture:null,route:'/admin/attendance/settings',resumeOnly:true,scratchpad:'scratchpad/board15-integration'}),
  schedules:Object.freeze({database:'ai_hr_board15schedules_browser',port:3192,namespace:'board15schedules',fixture:'dev-fixture-board15-schedules.ts',route:'/admin/attendance/settings'}),
  holidays:Object.freeze({database:'ai_hr_board15holiday_browser',port:3193,namespace:'board15holidays',fixture:'dev-fixture-board15-holidays.ts',route:'/admin/holidays/replacements'}),
  approval:Object.freeze({database:'ai_hr_board15_approval_browser',port:3195,namespace:'board15approval',fixture:'dev-fixture-attendance-hierarchy.ts',route:'/approvals'}),
@@ -17,7 +19,7 @@ export function original18BrowserTarget(args,{allowWorker=false}={}){
  if(selections.length!==1||args.some(arg=>!arg.startsWith('--scenario=')&&arg!=='--resume'&&!(allowWorker&&arg==='--held-lock-worker')))throw new Error('Select exactly one original18 scenario; unknown flags refused.');
  const scenario=selections[0].slice(11);
  if(!Object.hasOwn(ORIGINAL18_BROWSER_TARGETS,scenario))throw new Error('Unknown original18 scenario.');
- if(ORIGINAL18_BROWSER_TARGETS[scenario].resumeOnly&&!args.includes('--resume'))throw new Error('Personnel is resume only; setup is forbidden.');
+ if(ORIGINAL18_BROWSER_TARGETS[scenario].resumeOnly&&!args.includes('--resume'))throw new Error('This preserved scenario is resume only; setup is forbidden.');
  return Object.freeze({...ORIGINAL18_BROWSER_TARGETS[scenario],scenario,scratchpad:ORIGINAL18_BROWSER_TARGETS[scenario].scratchpad??'scratchpad/board18-browser-'+scenario,resume:args.includes('--resume'),heldLockWorker:args.includes('--held-lock-worker')});
 }
 const record=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
@@ -55,7 +57,11 @@ export function original18FixtureIdentities(scenario,facts){
  const company=(id,label,name)=>{if(!uuid(id))fail();return {id,label,name};};
  const grant=(role,companyId)=>({role,companyId});
  const sameGrants=(a,b)=>Array.isArray(a)&&JSON.stringify(a.map(row=>[row.role,row.companyId]).sort())===JSON.stringify(b.map(row=>[row.role,row.companyId]).sort());
- if(scenario==='schedules'){
+ if(scenario==='integration'){
+  if(facts.fixture!=='board-ten'||facts.tenantId!=='11111111-1111-1111-1111-111111111111'||facts.companyCode!=='BOARD10-DEV'||!Array.isArray(facts.logins)||facts.logins.length!==4)fail();
+  companies=[company(facts.companyId,'BOARD10-DEV','Board ten browser (dev fixture)')];
+  actors=facts.logins.map(row=>{if(!record(row)||!['board-ten-fixture:hr','board-ten-fixture:manager','board-ten-fixture:recipient','board-ten-fixture:control'].includes(row.key)||!uuid(row.id)||!uuid(row.personId)||row.key==='board-ten-fixture:hr'&&row.employmentId!==null||row.key!=='board-ten-fixture:hr'&&!uuid(row.employmentId))fail();return {id:row.id,personId:row.personId,employmentId:row.employmentId,companyId:row.employmentId?facts.companyId:null,login:row.key,grants:[grant(row.key.endsWith(':hr')?'hr_admin':row.key.endsWith(':manager')?'manager':'employee',facts.companyId)]};});
+ }else if(scenario==='schedules'){
   companies=[company(facts.companyId,'BOARD15-SCHEDULES','Schedule board review (fictional)')];
   if(!Array.isArray(facts.groups)||facts.groups.length!==2||facts.groups.some(row=>!record(row)||!uuid(row.id))||!Array.isArray(facts.shifts)||facts.shifts.length!==2||facts.shifts.some(row=>!record(row)||!uuid(row.id))||!Array.isArray(facts.logins)||facts.logins.length!==4)fail();
   actors=facts.logins.map(row=>{if(!record(row)||!['hr','manager','fixed','flexi'].includes(row.key)||!uuid(row.id)||row.key!=='hr'&&!uuid(row.employmentId))fail();return {id:row.id,login:'board15-schedules:'+row.key,employmentId:row.employmentId??null,companyId:row.key==='hr'?null:facts.companyId,grants:[grant(row.key==='hr'?'hr_admin':row.key==='manager'?'manager':'employee',row.key==='hr'?null:facts.companyId)]};});
@@ -117,12 +123,13 @@ export function original18FixtureTenants(scenario,fixture){
 }
 export function original18ResumeReceiptName(name,candidate){return sha(candidate)&&typeof name==='string'&&/^browser-resume-[0-9a-f]{40}-[0-9]{13}\.json$/.test(name)&&name.startsWith('browser-resume-'+candidate+'-');}
 /** Receipt validation proves only local preparation/cleanup, never browser acceptance or authorization. */
-export function validateOriginal18Resume({fixture,browser,stopped,resumeRecords={},root,scenario}){
- const target=original18BrowserTarget(['--scenario='+scenario,...(scenario==='personnel'?['--resume']:[])]);
+export function validateOriginal18Resume({fixture,browser,stopped,resumeRecords={},manualCleanup,root,scenario}){
+ const target=original18BrowserTarget(['--scenario='+scenario,...(['personnel','integration'].includes(scenario)?['--resume']:[])]);
  const bound=row=>record(row)&&row.root===root&&row.scenario===scenario&&row.database===target.database&&row.namespace===target.namespace&&row.port===target.port;
- const preparationBound=row=>scenario==='personnel'||target.fresh?record(row)&&row.root===root&&row.database===target.database&&row.namespace===target.namespace&&row.port===target.port:bound(row);
- if(typeof root!=='string'||!root.startsWith('/')||![fixture,browser,stopped,resumeRecords].every(record)||!preparationBound(fixture)||!preparationBound(browser)||!target.fresh&&fixture.tenantId!=='11111111-1111-1111-1111-111111111111'||browser.fixtureRuns!==2||!sha(browser.candidate)||JSON.stringify(browser.fixture)!==JSON.stringify(fixture))fail();
- if(scenario==='personnel'){if(browser.candidate!==PERSONNEL_PREPARATION.candidate)fail();original18FixtureIdentities(scenario,fixture);}
+ const preparationBound=row=>['personnel','integration'].includes(scenario)||target.fresh?record(row)&&row.root===root&&row.database===target.database&&row.namespace===target.namespace&&row.port===target.port:bound(row);
+ if(typeof root!=='string'||!root.startsWith('/')||![fixture,browser,stopped,resumeRecords].every(record)||scenario!=='integration'&&!preparationBound(fixture)||!preparationBound(browser)||!target.fresh&&fixture.tenantId!=='11111111-1111-1111-1111-111111111111'||browser.fixtureRuns!==2||!sha(browser.candidate)||JSON.stringify(browser.fixture)!==JSON.stringify(fixture))fail();
+ if(scenario==='integration'){if(browser.candidate!==INTEGRATION_PREPARATION.candidate)fail();original18FixtureIdentities(scenario,fixture);}
+ else if(scenario==='personnel'){if(browser.candidate!==PERSONNEL_PREPARATION.candidate)fail();original18FixtureIdentities(scenario,fixture);}
  else if(target.fresh){
   if(!bound(browser)||fixture.candidate!==browser.candidate||!/^\d{4}-\d{2}-\d{2}$/.test(fixture.date??''))fail();original18FixtureTenants(scenario,fixture);original18FixtureIdentities(scenario,fixture);
   const proof=scenario==='labels'?fixture.sourceProof:fixture.proof;
@@ -137,6 +144,9 @@ export function validateOriginal18Resume({fixture,browser,stopped,resumeRecords=
  const preparationBrowserDigest=hash(browser),preparationFixtureDigest=hash(fixture),visited=new Set(),names=Object.keys(resumeRecords);
  if(names.length>64)fail();
  const visit=stop=>{
+  if(scenario==='integration'&&stop.kind==='independent-cleanup-observation'){
+   if(!bound(stop)||stop.candidate!==INTEGRATION_PREPARATION.candidate||stop.serverPid!==INTEGRATION_PREPARATION.pid||stop.priorRunnerCleanup!=='unconfirmed'||stop.pidAbsent!==true||stop.processGroupAbsent!==true||stop.portFree!==true||stop.applicationAcceptance!=='UNVERIFIED'||stop.browserManifestSha256!==INTEGRATION_PREPARATION.browserBytes||stop.evidenceFile!=='browser-manual-cleanup-evidence.log'||typeof stop.evidenceSha256!=='string'||!/^[0-9a-f]{64}$/.test(stop.evidenceSha256)||typeof stop.observedAt!=='string'||!Number.isFinite(Date.parse(stop.observedAt))||!record(manualCleanup)||JSON.stringify(stop)!==JSON.stringify(manualCleanup)||'ownedServerStopped'in stop||'cleanupSucceeded'in stop||'outcome'in stop||'exitCode'in stop)fail();return;
+  }
   if(scenario==='personnel'&&Object.keys(stop).sort().join(',')==='candidate,database,ownedServerStopped,port,stoppedAt'){
    if(stop.candidate!==PERSONNEL_PREPARATION.candidate||stop.database!==target.database||stop.port!==target.port||stop.ownedServerStopped!==true||stop.stoppedAt!==PERSONNEL_PREPARATION.stoppedAt)fail();return;
   }
@@ -144,6 +154,7 @@ export function validateOriginal18Resume({fixture,browser,stopped,resumeRecords=
   if(stop.resumeReceipt===undefined){if(stop.candidate!==browser.candidate)fail();return;}
   const name=stop.resumeReceipt,previous=resumeRecords[name];
   if(!original18ResumeReceiptName(name,stop.candidate)||visited.has(name)||!bound(previous)||previous.candidate!==stop.candidate||previous.preparationCandidate!==browser.candidate||previous.preparationBrowserDigest!==preparationBrowserDigest||previous.preparationFixtureDigest!==preparationFixtureDigest||!record(previous.priorStoppedReceipt)||previous.resumedFromCandidate!==previous.priorStoppedReceipt.candidate||previous.fixtureRunsThisCandidate!==0||previous.migrationRunsThisCandidate!==0||previous.seedRunsThisCandidate!==0||previous.preparationManifest!=='browser-manifest.json'||previous.applicationAcceptance!=='UNVERIFIED'||typeof previous.resumedAt!=='string'||!Number.isFinite(Date.parse(previous.resumedAt)))fail();
+  if(scenario==='integration'){const actors=original18FixtureIdentities(scenario,fixture).actors;if(!Array.isArray(previous.principals)||previous.principals.length!==actors.length||actors.some(actor=>!previous.principals.some(row=>record(row)&&row.id===actor.id&&row.personId===actor.personId&&(!actor.employmentId||record(row.employment)&&row.employment.id===actor.employmentId&&row.employment.companyId===actor.companyId&&typeof row.employment.employeeCode==='string'&&row.employment.employeeCode.length>0))))fail();}
   visited.add(name);visit(previous.priorStoppedReceipt);
  };
  visit(stopped);if(names.some(name=>!visited.has(name)))fail();
