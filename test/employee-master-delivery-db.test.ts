@@ -10,6 +10,7 @@ import {saveNotificationEmailPolicy,saveNotificationEmailPreferences} from '../c
 import {saveEmployeeMasterReport,deleteEmployeeMasterReport} from '../core/employee-master-reports';
 import {saveEmployeeMasterSchedule} from '../core/employee-master-schedules';
 import {sweepEmployeeMasterReports} from '../core/employee-master-delivery';
+import {sweepSkipReason} from '../core/sweep-scope';
 import {masterReportDatabaseGrants} from '../deploy/identity-email/database';
 import {defaultMasterColumn} from '../lib/employee-master-report';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
@@ -90,8 +91,8 @@ describe('managed report nonce and durable lifecycle in the actual database',()=
  });
  it('does not expose nonce capabilities through an otherwise visible application audit row',async()=>{
   const job=await queued();expect(await withTenant(ctx,tx=>tx.select({id:schema.customReportOccurrence.id}).from(schema.customReportOccurrence))).toEqual([{id:job.id}]);
-  await expect(withTenant(ctx,tx=>tx.select({token:schema.customReportOccurrence.leaseToken}).from(schema.customReportOccurrence))).rejects.toThrow(/permission denied/);
-  await expect(withTenant(ctx,tx=>tx.select({until:schema.customReportOccurrence.leaseUntil}).from(schema.customReportOccurrence))).rejects.toThrow(/permission denied/);
+  await expect(withTenant(ctx,tx=>tx.select({token:schema.customReportOccurrence.leaseToken}).from(schema.customReportOccurrence))).rejects.toMatchObject({cause:{code:'42501'}});
+  await expect(withTenant(ctx,tx=>tx.select({until:schema.customReportOccurrence.leaseUntil}).from(schema.customReportOccurrence))).rejects.toMatchObject({cause:{code:'42501'}});
  });
  it('reclaims only unstarted expired leases and invalidates the old nonce',async()=>{
   const job=await queued();expect(await raw`select * from identity_email.claim_reports(10)`).toEqual([]);await owner.db.update(schema.customReportOccurrence).set({leaseUntil:new Date(Date.now()-1000)}).where(eq(schema.customReportOccurrence.id,job.id));
@@ -133,7 +134,7 @@ describe('managed report nonce and durable lifecycle in the actual database',()=
   }});
   expect(result).toMatchObject({attempted:2,skipped:2,unavailable:false});expect(attempted).toBe(2);
  });
- it.each(['suspended','closed','unknown-standing'])('leaves schedules and pending leases untouched for %s tenants and refuses a prepared send',async status=>{
+ it.each(['suspended','closed'])('leaves schedules and pending leases untouched for %s tenants and refuses a prepared send',async status=>{
   const job=await queued(),expected=await target(job);
   const due=new Date(Date.now()-1000);
   await owner.db.update(schema.customReportSchedule).set({nextRunAt:due}).where(eq(schema.customReportSchedule.id,scheduleId));
@@ -146,6 +147,11 @@ describe('managed report nonce and durable lifecycle in the actual database',()=
   const transport=async<T>(request:import('../lib/employee-master-delivery-model').MasterDeliveryRequest):Promise<T>=>{expect(request.op).toBe('status');return {version:1,ready:true} as T;};
   expect(await sweepEmployeeMasterReports(owner.db,{transport})).toMatchObject({queued:0,attempted:0,tenantsFailed:0});
   expect((await owner.db.select().from(schema.customReportOccurrence).where(eq(schema.customReportOccurrence.id,job.id)))[0]).toMatchObject({status:'pending',leaseToken:job.token});
+ });
+ it('refuses unknown tenant standing at storage and keeps the shared sweep predicate fail-closed',async()=>{
+  await expect(owner.db.update(schema.tenant).set({status:'unknown-standing'}).where(eq(schema.tenant.id,b.tenantId))).rejects.toMatchObject({cause:{code:'23514',constraint_name:'tenant_status_check'}});
+  expect((await owner.db.select({status:schema.tenant.status}).from(schema.tenant).where(eq(schema.tenant.id,b.tenantId)))[0]).toEqual({status:'active'});
+  expect(sweepSkipReason('unknown-standing')).not.toBeNull();
  });
  it('keeps the installed private role incapable of direct HR reads, queue/claim and app helper access',async()=>{
   const role='report_mail_'+randomUUID().replaceAll('-','');await raw.unsafe(`CREATE ROLE "${role}" NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`);
