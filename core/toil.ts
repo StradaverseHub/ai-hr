@@ -61,6 +61,7 @@ import { approvedOvertimeForDateTx, assertNoPendingClaimForGrantTx, type Approve
 import type { ExtendedHoursTiers } from '../lib/extended-hours';
 import type { LeaveCreditRowInput } from './leave-credit-request';
 import {OvertimePatternError} from '../lib/overtime-pattern-model';
+import type {LeaveCreditDayFactsUnavailable} from '../lib/leave-credit-day-facts-result';
 import type {LeaveCreditClaimReview,LeaveCreditFormulaReason} from '../lib/leave-credit-claim-review';
 
 /** Translate formula evidence refusals into the existing TOIL eligibility contract. */
@@ -93,6 +94,17 @@ export class ToilNotEligibleError extends Error {
   constructor(msg: string,readonly formulaReason?:LeaveCreditFormulaReason) {
     super(msg);
     this.name = 'ToilNotEligibleError';
+  }
+}
+/** Courtesy date-fact actions share this exact owner projection. No message matching or legacy
+ * fallback; unrecognized errors (including module/permission/storage errors) keep their retry path. */
+export function leaveCreditDayFactsUnavailable(error:unknown):LeaveCreditDayFactsUnavailable|null {
+  if(!(error instanceof ToilNotEligibleError))return null;
+  switch(error.formulaReason){
+    case 'cashConflict':case 'stale':case 'fractional':case 'unavailable':
+      return {state:'unavailable',reason:error.formulaReason};
+    case undefined:return {state:'unavailable',reason:'unavailable'};
+    default:return null;
   }
 }
 /**

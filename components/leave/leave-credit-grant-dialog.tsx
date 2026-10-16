@@ -1,4 +1,5 @@
 'use client';
+import type {LeaveCreditDayFactsResult} from '@/lib/leave-credit-day-facts-result';
 import type {LeaveCreditClaimReviewAction} from '@/lib/leave-credit-claim-review';
 
 import { useEffect, useRef, useState } from 'react';
@@ -65,7 +66,7 @@ export function LeaveCreditGrantDialog({
   replacementType: LeaveCreditLeaveTypeView;
   submitAction: Action;
   contextAction: (employmentId: string) => Promise<LeaveCreditGrantContextView | null>;
-  dayFactsAction: (workedDate: string, employmentId?: string) => Promise<LeaveCreditDayFacts | null>;
+  dayFactsAction: (workedDate: string, employmentId?: string) => Promise<LeaveCreditDayFactsResult<LeaveCreditDayFacts>>;
   claimReviewAction?:LeaveCreditClaimReviewAction;
 }) {
   const t = useTranslations('admin.leaveCredit');

@@ -18,12 +18,14 @@
  * addresses were repointed at this page in the same commit.
  */
 
+import type {LeaveCreditDayFactsUnavailable} from '@/lib/leave-credit-day-facts-result';
 import { publicErrorMessage } from '@/lib/public-error';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { requireAdmin } from '@/lib/authz';
 import {
   grantLeaveCreditRows,
+  leaveCreditDayFactsUnavailable,
   isLeaveCreditDayType,
   leaveCreditGrantContext,
   leaveCreditGrantDayFacts,
@@ -59,7 +61,8 @@ export async function leaveCreditGrantContextAction(employmentId: string): Promi
  * One date's facts for the PICKED employee — the employee form's own view, plus the overtime already recorded
  * (⚠️ MONEY: a credit stops it being paid) and whether the date already holds a credit. Listed field by field:
  * this is the server→client boundary (test/server-client-boundary.test.ts). Rejects rather than returning
- * null on a server failure, so the table's retry is offered — the employee action's contract.
+ * null on an unexpected server failure, so retry remains available. Canonical business refusals return
+ * the same finite unavailable variant as the employee action; no private error message crosses.
  */
 export async function leaveCreditGrantClaimReviewAction(workedDate:string,claimStart:string,claimEnd:string,employmentId?:string) {
   const session=await requireAdmin();
@@ -70,7 +73,9 @@ export async function leaveCreditGrantClaimReviewAction(workedDate:string,claimS
 export async function leaveCreditGrantDayFactsAction(workedDate: string, employmentId?: string) {
   const s = await requireAdmin();
   if (!employmentId || !/^\d{4}-\d{2}-\d{2}$/.test(workedDate)) return null;
-  const day = await leaveCreditGrantDayFacts(s, { employmentId, workedDate });
+  let day:Awaited<ReturnType<typeof leaveCreditGrantDayFacts>>;
+  try{day=await leaveCreditGrantDayFacts(s, { employmentId, workedDate });}
+  catch(error){const refusal:LeaveCreditDayFactsUnavailable|null=leaveCreditDayFactsUnavailable(error);if(refusal)return refusal;throw error;}
   return {
     kind: day.kind,
     scheduleName: day.scheduleName,

@@ -1,4 +1,5 @@
 'use client';
+import {isLeaveCreditDayFactsUnavailable,type LeaveCreditDayFactsUnavailable,type LeaveCreditDayFactsResult} from '@/lib/leave-credit-day-facts-result';
 import {leaveCreditClaimReviewBlocks,type LeaveCreditClaimReview,type LeaveCreditClaimReviewAction} from '@/lib/leave-credit-claim-review';
 import {LeaveCreditClaimReviewNotice} from './leave-credit-claim-review';
 
@@ -281,7 +282,7 @@ export function LeaveCreditRequestTable({
   replacementType: LeaveCreditLeaveTypeView;
   submitAction: Action;
   /** Resolves one date's roster kind and its two Attendance times, for the signed-in employee. */
-  dayFactsAction: (workedDate: string, employmentId?: string) => Promise<LeaveCreditDayFacts | null>;
+  dayFactsAction: (workedDate: string, employmentId?: string) => Promise<LeaveCreditDayFactsResult<LeaveCreditDayFacts>>;
   claimReviewAction?:LeaveCreditClaimReviewAction;
   /**
    * The company's tier figures, so the credit shown as the employee types is the one they will get. NULL
@@ -341,6 +342,7 @@ export function LeaveCreditRequestTable({
 
   // One fetch per distinct date, marked as asked (null) at once so a re-render mid-flight does not re-ask.
   const [facts, setFacts] = useState<Record<string, LeaveCreditDayFacts | null>>({});
+  const [factRefusals,setFactRefusals]=useState<Record<string,LeaveCreditDayFactsUnavailable>>({});
   /**
    * ⚠️ r360 cbfa8b0b — THE FAILED LOOKUP USED TO BE SILENT, AND IT IS THE REPORTED FAULT.
    *
@@ -379,7 +381,8 @@ export function LeaveCreditRequestTable({
       setFacts((prev) => (d in prev ? prev : { ...prev, [d]: null }));
       void (hr ? dayFactsAction(d, hr.employmentId) : dayFactsAction(d))
         .then((v) => {
-          setFacts((prev) => ({ ...prev, [d]: v }));
+          setFacts((prev) => ({ ...prev, [d]: isLeaveCreditDayFactsUnavailable(v)?null:v }));
+          setFactRefusals(prev=>{const next={...prev};if(isLeaveCreditDayFactsUnavailable(v))next[d]=v;else delete next[d];return next;});
           setFactError((prev) => {
             if (!(d in prev)) return prev;
             const next = { ...prev };
@@ -498,6 +501,8 @@ export function LeaveCreditRequestTable({
   const claimKey=(row:Row)=>JSON.stringify([hr?.employmentId??'',row.workedDate,row.claimStart,row.claimEnd]);
   const claimContext=JSON.stringify(rows.map(row=>[hr?.employmentId??'',row.workedDate,row.claimStart,row.claimEnd]));
   const claimReviewForRow=(row:Row):LeaveCreditClaimReview|undefined=>{
+    const refused=factRefusals[row.workedDate];
+    if(refused)return {basis:'unavailable',reason:refused.reason};
     const review=claimReviews[claimKey(row)];
     return review?.basis==='formula'&&row.dayType!==''&&review.workedDayKind!==row.dayType?{basis:'unavailable',reason:'stale'}:review;
   };
@@ -717,7 +722,7 @@ export function LeaveCreditRequestTable({
               // Ordinary Day chosen on a company that cannot credit one: the option was still offered, so
               // the row is where that is explained. Its claimed-window cells are dead, not merely empty.
               const ordinaryUnavailable = chosen === 'workday' && ordinaryEarnsNothing && claimReviews[claimKey(r)]?.basis==='legacy';
-              const windowLive = wantsWindow && !ordinaryUnavailable;
+              const windowLive = wantsWindow && !ordinaryUnavailable && !factRefusals[r.workedDate];
               const mismatch = d?.rosterMismatch ?? null;
               const below = !!(wantsWindow && r.claimStart && r.claimEnd && d?.view != null && d.credit === 0);
               const credit = rowCredit(r);
@@ -827,7 +832,9 @@ export function LeaveCreditRequestTable({
                           <span>
                             {!r.workedDate
                               ? ''
-                              : factError[r.workedDate]
+                              : factRefusals[r.workedDate]
+                                ? DAY_DASH
+                                : factError[r.workedDate]
                                 ? t('table.dayTypeLookupFailed')
                                 : factsNotFound
                                   ? t('table.dayTypeNotFound')
@@ -917,8 +924,8 @@ export function LeaveCreditRequestTable({
                       </Button>
                     </td>
                   </tr>
-                  <tr><td colSpan={7} className="px-3 py-1"><button data-testid="leave-credit-details-toggle" type="button" disabled={!r.workedDate} aria-expanded={expandedRows.has(r.key)} className="min-h-11 text-xs font-medium text-primary underline" onClick={() => setExpandedRows((previous) => {const next = new Set(previous);if(next.has(r.key)) next.delete(r.key);else next.add(r.key);return next;})}><span aria-hidden>{expandedRows.has(r.key) ? '▾ ' : '▸ '}</span>{t('table.detailToggle')}</button></td></tr>
-                  {expandedRows.has(r.key) && <tr><td colSpan={7} className="bg-muted/30 px-3 py-2">{factError[r.workedDate] ? <span>{t('table.dayTypeLookupFailed')} <button type="button" onClick={retryFacts}>{t('table.dayTypeRetry')}</button></span> : !factsSettled[r.workedDate] ? <p>{t('table.dayTypeReading')}</p> : !d?.view ? <p>{t('table.dayTypeNotFound')}</p> : <AttendanceFacts workedDate={r.workedDate} view={d.view} alert={attendanceAlert} />}</td></tr>}
+                  <tr><td colSpan={7} className="px-3 py-1"><button data-testid="leave-credit-details-toggle" type="button" disabled={!r.workedDate || Boolean(factRefusals[r.workedDate])} aria-expanded={expandedRows.has(r.key)} className="min-h-11 text-xs font-medium text-primary underline" onClick={() => setExpandedRows((previous) => {const next = new Set(previous);if(next.has(r.key)) next.delete(r.key);else next.add(r.key);return next;})}><span aria-hidden>{expandedRows.has(r.key) ? '▾ ' : '▸ '}</span>{t('table.detailToggle')}</button></td></tr>
+                  {expandedRows.has(r.key) && !factRefusals[r.workedDate] && <tr><td colSpan={7} className="bg-muted/30 px-3 py-2">{factError[r.workedDate] ? <span>{t('table.dayTypeLookupFailed')} <button type="button" onClick={retryFacts}>{t('table.dayTypeRetry')}</button></span> : !factsSettled[r.workedDate] ? <p>{t('table.dayTypeReading')}</p> : !d?.view ? <p>{t('table.dayTypeNotFound')}</p> : <AttendanceFacts workedDate={r.workedDate} view={d.view} alert={attendanceAlert} />}</td></tr>}
                   {/* r406 · HR MODE ONLY. ⚠️ MONEY — the per-row overtime note the plan promises; absent on the
                       employee's mount, whose facts never carry `overtimeMinutes`. */}
                   {hr && (d?.view?.overtimeMinutes ?? 0) > 0 && (
