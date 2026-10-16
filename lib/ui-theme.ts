@@ -13,7 +13,7 @@
  * Client-safe: no imports, so both the server layout and the client switcher share these constants.
  */
 export const UI_THEME_COOKIE = 'ui_theme';
-export const UI_THEMES = ['monolith', 'classic', 'current'] as const;
+export const UI_THEMES = ['monolith', 'classic', 'current', 'ai-responsive'] as const;
 export type UiTheme = (typeof UI_THEMES)[number];
 export const DEFAULT_UI_THEME: UiTheme = 'monolith';
 /** The attribute on <html> that globals.css scopes Monolith's tokens under. */

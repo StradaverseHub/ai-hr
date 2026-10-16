@@ -560,9 +560,12 @@ export function Sidebar({
   // on desktop"), so it offers no collapse and ignores the preference. Classic reads it exactly as before;
   // the `rail_collapsed` cookie is neither read differently nor written by Monolith.
   const monolith = useIsMonolith();
-  const current = useUiTheme() === 'current';
+  const theme=useUiTheme();
+  const current = theme === 'current';
+  const conversation=theme==='ai-responsive'&&pathname==='/assistant';
+  const [conversationExpanded,setConversationExpanded]=useState(false);
   const [workspaceKey, setWorkspaceKey] = useState<string | null>(null);
-  const collapsed = monolith ? false : collapsedPref;
+  const collapsed = conversation?!conversationExpanded:monolith ? false : collapsedPref;
   const locale = useLocale();
   // r398 — Monolith shows a module's children INLINE (no flyout panel). An explicit open/close per module
   // overrides "open while you are inside it"; the default is the active module open, every other closed.
@@ -668,12 +671,14 @@ export function Sidebar({
     .filter((c) => isRowActive(c))
     .sort((a, b) => b.href.split('?')[0].length - a.href.split('?')[0].length)[0]?.href;
 
-  const toggle = () =>
+  const toggle = () => {
+    if(conversation){setConversationExpanded(value=>!value);return;}
     setCollapsed((c) => {
       const next = !c;
       document.cookie = `rail_collapsed=${next ? '1' : '0'}; path=/; max-age=31536000; samesite=lax`;
       return next;
     });
+  };
 
   const rowBase =
     'group flex items-center rounded-2xl transition duration-150 ease-snappy active:scale-[0.98]';

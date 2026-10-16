@@ -7,6 +7,7 @@ import { getLocale } from 'next-intl/server';
 import './globals.css';
 import { Suspense } from 'react';
 import { Providers } from './providers';
+import { AssistantReturnLink } from '@/components/assistant-return-link';
 import { Sidebar } from '@/components/sidebar';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { LanguageSwitcher } from '@/components/language-switcher';
@@ -351,6 +352,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                 </div>
               </header>
               <IntentBar />
+              <AssistantReturnLink />
               {/* `relative` is load-bearing: sr-only helpers are position:absolute, and with no
                   positioned ancestor they escape main's scroll clipping and pile up scrollable
                   overflow on <html> itself. body's overflow-hidden propagates to the viewport, which

@@ -32,6 +32,14 @@ export async function currentWorkosSession(): Promise<WorkosVerifiedSession> {
   return { subject: info.user.id, email: info.user.email ?? null };
 }
 
+/** Conversation binding only: SDK-verified sign-in identity, never a browser-provided user ID.
+ * Preserve currentWorkosSession's public shape/default callers. */
+export async function currentWorkosConversationSession(): Promise<{subject:string;sessionId:string}|null> {
+  const info=await withAuth();
+  if(!info?.user||typeof info.sessionId!=='string'||!info.sessionId||info.sessionId.length>256)return null;
+  return {subject:info.user.id,sessionId:info.sessionId};
+}
+
 /** The hosted AuthKit sign-in URL (used by /login). `returnTo` is where WorkOS sends the user post-login. */
 export async function signInUrl(returnTo?: string): Promise<string> {
   return authkitGetSignInUrl(returnTo ? { returnTo } : undefined);

@@ -12021,7 +12021,10 @@
       "current": "Current",
       "label": "Tema",
       "monolith": "Monolith",
-      "classic": "Klasik"
+      "classic": "Klasik",
+      "ai-responsive": "AI Responsive",
+      "saveFailed": "Tema tidak dapat disimpan. Sila cuba lagi.",
+      "returnConversation": "Kembali ke perbualan"
     },
     "drawer": {
       "close": "Tutup"

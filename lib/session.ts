@@ -215,6 +215,10 @@ export async function withEntitlements(session: SessionContext): Promise<Session
  */
 export const getSession = cache(resolveSession);
 
+/** Long-running governed operations re-resolve the canonical principal/entitlements instead of
+ * reusing the React request cache. This grants no fallback identity or caller scope. */
+export async function getFreshSession(): Promise<SessionContext> { return resolveSession(); }
+
 async function resolveSession(): Promise<SessionContext> {
   if (internalSelected()) {
     const identity = await (await import('./internal-auth/web-session')).currentInternalIdentity();

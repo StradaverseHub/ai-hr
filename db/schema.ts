@@ -10454,3 +10454,22 @@ export const attendanceOvertimeCalculationEvidence = pgTable('attendance_overtim
   calculationId:uuid('calculation_id').primaryKey().references(()=>attendanceOvertimeCalculation.id,{onDelete:'restrict'}),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
   inputs:jsonb('inputs').notNull().$type<Record<string,unknown>>(),evidence:jsonb('evidence').notNull().$type<Record<string,unknown>>(),
 });
+
+// ADR-0127: metadata only. Existing assistant_exchange remains the private question/answer audit.
+export const assistantConversation=pgTable('assistant_conversation',{
+ id:id(),tenantId:tenantId(),appUserId:uuid('app_user_id').notNull().references(()=>appUser.id),
+ signInHash:text('sign_in_hash').notNull(),authorityStamp:text('authority_stamp').notNull(),
+ companyIds:uuid('company_ids').array().notNull().default(sql`'{}'::uuid[]`),revision:integer('revision').notNull().default(1),
+ pendingRequestId:uuid('pending_request_id'),busyUntil:timestamp('busy_until',{withTimezone:true}),
+ invalidatedAt:timestamp('invalidated_at',{withTimezone:true}),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull().default(sql`now()+interval '8 hours'`),createdAt:createdAt(),
+},t=>[uniqueIndex('assistant_conversation_current_uq').on(t.tenantId,t.appUserId,t.signInHash).where(sql`invalidated_at IS NULL`)]);
+export const assistantConversationTurn=pgTable('assistant_conversation_turn',{
+ id:id(),tenantId:tenantId(),appUserId:uuid('app_user_id').notNull().references(()=>appUser.id),conversationId:uuid('conversation_id').notNull().references(()=>assistantConversation.id),
+ requestId:uuid('request_id').notNull(),revision:integer('revision').notNull(),exchangeId:uuid('exchange_id').references(()=>assistantExchange.id),createdAt:createdAt(),
+},t=>[uniqueIndex('assistant_conversation_turn_conversation_id_request_id_key').on(t.conversationId,t.requestId),uniqueIndex('assistant_conversation_turn_conversation_id_revision_key').on(t.conversationId,t.revision)]);
+export const assistantConfirmation=pgTable('assistant_confirmation',{
+ id:id(),tenantId:tenantId(),appUserId:uuid('app_user_id').notNull().references(()=>appUser.id),conversationId:uuid('conversation_id').notNull().references(()=>assistantConversation.id),
+ revision:integer('revision').notNull().default(1),authorityStamp:text('authority_stamp').notNull(),payload:jsonb('payload').$type<{typeId:'close_fixed_upstream';verdictIds:string[]}>().notNull(),
+ preconditionDigest:text('precondition_digest').notNull(),status:text('status').$type<'awaiting'|'executing'|'completed'|'refused'|'uncertain'>().notNull().default('awaiting'),
+ requestId:uuid('request_id'),result:jsonb('result').$type<{closed:number;stale:number}>(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull().default(sql`now()+interval '10 minutes'`),createdAt:createdAt(),
+},t=>[index('assistant_confirmation_conversation_idx').on(t.conversationId,t.createdAt.desc())]);

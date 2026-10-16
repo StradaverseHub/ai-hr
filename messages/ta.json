@@ -12021,7 +12021,10 @@
       "current": "Current",
       "label": "தீம்",
       "monolith": "Monolith",
-      "classic": "கிளாசிக்"
+      "classic": "கிளாசிக்",
+      "ai-responsive": "AI Responsive",
+      "saveFailed": "தீமைச் சேமிக்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
+      "returnConversation": "உரையாடலுக்குத் திரும்பு"
     },
     "drawer": {
       "close": "மூடு"

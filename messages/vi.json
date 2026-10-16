@@ -12021,7 +12021,10 @@
       "current": "Current",
       "label": "Giao diện",
       "monolith": "Monolith",
-      "classic": "Cổ điển"
+      "classic": "Cổ điển",
+      "ai-responsive": "AI Responsive",
+      "saveFailed": "Không thể lưu giao diện. Vui lòng thử lại.",
+      "returnConversation": "Quay lại cuộc trò chuyện"
     },
     "drawer": {
       "close": "Đóng"

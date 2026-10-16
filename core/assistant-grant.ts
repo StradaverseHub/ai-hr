@@ -13,7 +13,7 @@
  * grant state.
  */
 import { and, desc, eq, isNull } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { appUser, assistantGrant, person } from '../db/schema';
 import { assertModuleEnabled, isModuleEnabled } from './entitlements';
@@ -66,24 +66,17 @@ export type AssistantAccess =
  * exists precisely because a previous `return true` silently granted a paid module to every tenant.
  */
 export async function mayUseAssistant(ctx: SessionContext): Promise<AssistantAccess> {
-  if (!isModuleEnabled(ctx, ASSISTANT_MODULE)) return { allowed: false, reason: 'module_off' };
-  // A context with no app_user cannot hold a per-user grant. app.current_user_id() would be NULL in the
-  // transaction below and the self branch of the read policy would match nothing anyway — this is the
-  // same answer, reached without a query and with a reason attached.
-  if (!ctx.userId) return { allowed: false, reason: 'no_user' };
-  const userId = ctx.userId;
-  const live = await withTenant(ctx, async (tx) => {
-    const [row] = await tx
-      .select({ id: assistantGrant.id })
-      .from(assistantGrant)
-      // THE app_user_id PREDICATE IS LOAD-BEARING AND IS NOT REDUNDANT WITH RLS. For an hr_admin the
-      // read policy ORs in an admin branch that matches EVERY row in the tenant, so without this
-      // comparison an admin would resolve `allowed: true` because SOMEBODY holds a grant.
-      .where(and(eq(assistantGrant.appUserId, userId), isNull(assistantGrant.revokedAt)))
-      .limit(1);
-    return Boolean(row);
-  });
-  return live ? { allowed: true } : { allowed: false, reason: 'no_grant' };
+  if(!isModuleEnabled(ctx,ASSISTANT_MODULE))return {allowed:false,reason:'module_off'};
+  if(!ctx.userId)return {allowed:false,reason:'no_user'};
+  return withTenant(ctx, tx=>mayUseAssistantTx(tx,ctx));
+}
+/** Same composed owner inside an existing scoped transaction, with no nested pool acquisition. */
+export async function mayUseAssistantTx(tx:Tx,ctx:SessionContext):Promise<AssistantAccess>{
+  if(!isModuleEnabled(ctx,ASSISTANT_MODULE))return {allowed:false,reason:'module_off'};
+  if(!ctx.userId)return {allowed:false,reason:'no_user'};
+  const [row]=await tx.select({id:assistantGrant.id}).from(assistantGrant)
+    .where(and(eq(assistantGrant.appUserId,ctx.userId),isNull(assistantGrant.revokedAt))).limit(1);
+  return row?{allowed:true}:{allowed:false,reason:'no_grant'};
 }
 
 /** The D3 service-boundary guard. Throws the SAME ModuleNotEnabledError every other module gate throws

@@ -12021,7 +12021,10 @@
       "current": "Current",
       "label": "ธีม",
       "monolith": "Monolith",
-      "classic": "คลาสสิก"
+      "classic": "คลาสสิก",
+      "ai-responsive": "AI Responsive",
+      "saveFailed": "ไม่สามารถบันทึกธีมได้ โปรดลองอีกครั้ง",
+      "returnConversation": "กลับไปยังการสนทนา"
     },
     "drawer": {
       "close": "ปิด"

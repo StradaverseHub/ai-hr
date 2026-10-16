@@ -65,7 +65,7 @@ beforeEach(() => {
 describe('A. resolveUiTheme — the cookie decides, the default is Monolith', () => {
   it('the vocabulary is exactly monolith | classic | current, cookie `ui_theme`, default monolith', () => {
     expect(UI_THEME_COOKIE).toBe('ui_theme');
-    expect([...UI_THEMES]).toEqual(['monolith', 'classic', 'current']);
+    expect([...UI_THEMES]).toEqual(['monolith', 'classic', 'current', 'ai-responsive']);
     expect(DEFAULT_UI_THEME).toBe('monolith');
   });
   it('cookie absent → monolith', () => {
@@ -76,6 +76,7 @@ describe('A. resolveUiTheme — the cookie decides, the default is Monolith', ()
     expect(resolveUiTheme('classic')).toBe('classic');
     expect(resolveUiTheme('current')).toBe('current');
     expect(resolveUiTheme('monolith')).toBe('monolith');
+    expect(resolveUiTheme('ai-responsive')).toBe('ai-responsive');
   });
   it('invalid value → monolith (never a third state)', () => {
     for (const bad of ['', 'Classic', 'CLASSIC', ' classic', 'dark', 'light', 'indigo', 'monolith;classic']) {

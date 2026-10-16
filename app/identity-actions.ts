@@ -2,6 +2,8 @@
 
 import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
+import { randomBytes } from 'node:crypto';
+import { ASSISTANT_DEMO_NONCE_COOKIE } from '@/lib/assistant-signin-model';
 import { demoSwitcherEnabled } from '@/lib/demo-mode';
 
 /** DEV-ONLY: switch the active principal by setting the `dev_user` cookie that getSession reads. */
@@ -11,8 +13,10 @@ export async function actAs(formData: FormData) {
   const cookieStore = await cookies();
   if (userId) {
     cookieStore.set('dev_user', userId, { httpOnly: true, sameSite: 'lax', path: '/' });
+    cookieStore.set(ASSISTANT_DEMO_NONCE_COOKIE,randomBytes(32).toString('base64url'),{httpOnly:true,sameSite:'lax',secure:process.env.NODE_ENV==='production',path:'/'});
   } else {
     cookieStore.delete('dev_user');
+    cookieStore.delete(ASSISTANT_DEMO_NONCE_COOKIE);
   }
   revalidatePath('/', 'layout');
 }
@@ -29,4 +33,5 @@ export async function signOutDemo() {
   if (!demoSwitcherEnabled()) return;
   const cookieStore = await cookies();
   cookieStore.delete('dev_user');
+    cookieStore.delete(ASSISTANT_DEMO_NONCE_COOKIE);
 }

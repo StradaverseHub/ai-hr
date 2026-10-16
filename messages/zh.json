@@ -12021,7 +12021,10 @@
       "current": "Current",
       "label": "主题",
       "monolith": "Monolith",
-      "classic": "经典"
+      "classic": "经典",
+      "ai-responsive": "AI Responsive",
+      "saveFailed": "主题无法保存，请重试。",
+      "returnConversation": "返回对话"
     },
     "drawer": {
       "close": "关闭"

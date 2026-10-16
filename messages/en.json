@@ -12021,7 +12021,10 @@
       "current": "Current",
       "label": "Theme",
       "monolith": "Monolith",
-      "classic": "Classic"
+      "classic": "Classic",
+      "ai-responsive": "AI Responsive",
+      "saveFailed": "The theme could not be saved. Please try again.",
+      "returnConversation": "Return to conversation"
     },
     "drawer": {
       "close": "Close"
