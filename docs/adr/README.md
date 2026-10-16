@@ -65,12 +65,9 @@ See also: [Malaysia localization — spec mapping & gap closure](../architecture
 
 | [0115](0115-native-performance-journey-parity.md) | Native Performance journey parity, retained decisions, reminders and Rewards ownership | Accepted |
 
-<<<<<<< HEAD
 | [0116](0116-central-ai-inventory-and-allowances.md) | Central AI feature inventory, usage governance and company/user allowances | Accepted; release verification pending |
 | [0117](0117-embedded-hr-authentication.md) | HR-owned usernames/passwords, MFA, recovery and browser/native sessions for cloud and on-prem | Owner-directed; implementation and verification pending |
-=======
 | [0118](0118-schedule-membership-and-dated-exceptions.md) | Allowed shift membership separate from calculation defaults, dated exception decisions and controlled manual rosters | Accepted |
 | [0120](0120-employee-replacement-holidays.md) | Stable annual original calendar, explicit replacement policy and employee-specific audited allocations | Direction accepted; verification pending |
 
 | [0123](0123-versioned-overtime-patterns-and-source-settlement.md) | Immutable formula versions, explicit OT-stage assignment, recorded inputs and one cash/TOIL day source | Direction accepted; implementation and verification pending |
->>>>>>> e83ad5678570064ddb82b2b2910b1ba318a0d341

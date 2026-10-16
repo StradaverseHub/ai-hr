@@ -3146,12 +3146,13 @@
       "breakpoints": true
     },
     {
-<<<<<<< HEAD
       "idx": 543,
       "version": "7",
       "when": 1791900000023,
       "tag": "0543_embedded_authentication",
-=======
+      "breakpoints": true
+    },
+    {
       "idx": 544,
       "version": "7",
       "when": 1791900000024,
@@ -3205,7 +3206,6 @@
       "version": "7",
       "when": 1791900000031,
       "tag": "0551_overtime_patterns",
->>>>>>> e83ad5678570064ddb82b2b2910b1ba318a0d341
       "breakpoints": true
     }
   ]

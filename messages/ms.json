@@ -19144,7 +19144,6 @@
     "staleLadder": "Julat masa atau kadar kerja lebih masa telah berubah dalam bahagian Umum. Draf anda masih ada di sini. Muat semula halaman ini sebelum menyimpan tetapan kerja lebih masa. Perubahan yang belum disimpan hanya dibuang selepas pengesahan.",
     "reload": "Muat semula jadual semasa"
   },
-<<<<<<< HEAD
   "internalAuth": {
     "loginTitle": "Log masuk",
     "loginHelp": "Gunakan kod organisasi dan nama pengguna yang diberikan oleh pentadbir anda.",
@@ -19198,7 +19197,152 @@
     "switchAccountTitle": "Gunakan akaun lain",
     "switchAccountHelp": "Jemputan ini adalah untuk organisasi atau e-mel disahkan yang berbeza. Log keluar untuk menyediakan atau log masuk ke akaun yang dijemput. Akaun HR semasa anda kekal berasingan.",
     "switchAccountSubmit": "Log keluar dan buka jemputan"
-=======
+  },
+  "aiManagement": {
+    "title": "Pengurusan AI",
+    "description": "Lihat semua keupayaan AI, pantau aktiviti model dan kawal had pengguna serta syarikat.",
+    "back": "Menara Kawalan",
+    "provider": "Penyedia: {provider} · {model}",
+    "noProvider": "Tiada penyedia AI dikonfigurasi. Aliran kerja manual masih tersedia.",
+    "configureProvider": "Tetapan penyedia",
+    "refresh": "Muat semula aktiviti",
+    "inventory": "Ciri dan ejen",
+    "inventoryHelp": "Jeda atau dayakan keupayaan AI bersama di sini. Keupayaan yang sedia masih memerlukan kebenaran biasa pemanggil dan baki had. Peringatan kesediaan boleh menggunakan templat bertulis tanpa model.",
+    "scopedNotice": "Suis ciri bersama diurus oleh pentadbir kumpulan. Anda boleh mengedit had syarikat di bawah pentadbiran anda.",
+    "feature": "Keupayaan",
+    "state": "Status",
+    "activity": "Penggunaan bulan ini",
+    "control": "Kawalan",
+    "imagesIncluded": "Termasuk pembacaan imej yang disokong",
+    "usage": "{daily} permintaan hari ini · {tokens} token direkodkan · {held} token ditempah",
+    "exceptions": "{blocked} disekat · {failed} gagal bulan ini",
+    "pause": "Jeda",
+    "enable": "Dayakan",
+    "platformManaged": "Diurus platform",
+    "readOnly": "Baca sahaja",
+    "noHistory": "Aktiviti bermula apabila pemantauan ini dipasang; panggilan model lama tidak diisi semula.",
+    "reservationHelp": "Tempahan menganggarkan kapasiti sebelum panggilan. Token direkodkan merangkumi input, input cache dan output yang dilaporkan penyedia. Penggunaan yang tidak dilaporkan atau panggilan terputus mengekalkan tempahan. Panggilan boleh selesai melebihi had; panggilan seterusnya dihentikan apabila penggunaan direkodkan dan ditempah menghabiskannya.",
+    "companyLimits": "Had syarikat",
+    "userLimits": "Had pengguna",
+    "limitHelp": "Had harian ditetapkan semula pada tengah malam dan token bulanan pada hari pertama bulan, waktu Malaysia. Setiap pertukaran model, draf atau bacaan imej dikira satu permintaan, termasuk cubaan gagal. Panggilan disekat tidak menggunakan had. Kosong bermakna tiada had tambahan; sifar menyekat panggilan baharu.",
+    "attribution": "Panggilan bersama dikira terhadap setiap syarikat dalam skop kebenaran pemanggil, termasuk semua syarikat bagi pentadbir kumpulan dan ejen berjadual seluruh penyewa. Had syarikat dan pengguna terpakai; salah satunya boleh menghentikan panggilan. Perubahan had mengekalkan penggunaan yang direkodkan.",
+    "daily": "Permintaan harian",
+    "monthly": "Token bulanan",
+    "access": "Akses AI",
+    "allowed": "Dibenarkan",
+    "paused": "Dijeda",
+    "unlimited": "Tiada had tambahan",
+    "save": "Simpan",
+    "userHelp": "Cari log masuk mengikut nama atau pengecam log masuk. Had pengguna terpakai merentas semua syarikat mereka. Had tidak memberikan kebenaran ciri; akses pembantu HR diurus secara berasingan di bawah.",
+    "searchUsers": "Cari pengguna",
+    "search": "Cari",
+    "noUsers": "Tiada pengguna sepadan.",
+    "moreUsers": "Memaparkan 50 padanan. Perincikan carian untuk mencari pengguna lain.",
+    "noCompanies": "Tiada syarikat dalam skop pentadbiran anda.",
+    "inherited": "Kawalan sedia ada",
+    "businessLimits": "Akses modul, kebenaran ciri dan had Performance sedia ada sebanyak lima draf berjaya setiap medan setiap pengguna sehari masih terpakai.",
+    "legacyAssistant": "Belanjawan Assistant tambahan: {daily} soalan setiap pengguna sehari dan {tokens} token sebulan bagi penyewa. Belanjawan sedia ada ini ditetapkan semula pada 08:00 waktu Malaysia.",
+    "humanDecisions": "AI kekal sebagai penasihat. Kelulusan dan keputusan manusia bagi gaji, penilaian, pengambilan dan akses masih diperlukan.",
+    "orchestrator": "Orkestrator HR pusat",
+    "orchestratorHelp": "Orkestrator menyelaras kesediaan rekod, pemilik, semakan dan pengesahan. Semakan deterministiknya tidak menggunakan token model. Muat semula bukti penyelarasan di bawah; suis di atas mengawal ejen AI.",
+    "recentRuns": "Panggilan model terkini",
+    "runsHelp": "50 panggilan terkini, termasuk cubaan disekat dan gagal. Metadata sahaja; arahan, jawapan, imej dan kelayakan dikecualikan. Muat semula untuk aktiviti baharu.",
+    "runsScoped": "Jumlah syarikat dipaparkan di atas. Sejarah terperinci tersedia kepada pentadbir kumpulan.",
+    "noRuns": "Belum ada panggilan model direkodkan.",
+    "time": "Bermula (waktu Malaysia)",
+    "tokens": "Token",
+    "held": "{tokens} ditempah · belum disahkan",
+    "saved": "Kawalan AI disimpan.",
+    "invalid": "Kawalan AI tidak sah.",
+    "features": {
+      "hr_assistant": "Pembantu HR",
+      "readiness_reminders": "Peringatan kesediaan",
+      "claims_triage": "Triage tuntutan",
+      "payroll_hypotheses": "Hipotesis anomali gaji",
+      "payroll_explanation": "Penjelasan gaji",
+      "pay_rule_draft": "Draf peraturan gaji",
+      "report_insight": "Pereka laporan",
+      "performance_360": "Maklum balas 360°",
+      "performance_tc": "Ulasan kompetensi dan potensi",
+      "performance_pm": "Kad skor prestasi dan bukti",
+      "performance_review": "Ringkasan dan panduan semakan",
+      "performance_idp": "Pelan pembangunan dan kerjaya",
+      "performance_calib": "Bantuan penentukuran",
+      "performance_assistant": "Pembantu perbualan prestasi",
+      "feedback_planning": "Draf pelan penambahbaikan"
+    },
+    "kinds": {
+      "assistant": "Pembantu",
+      "agent": "Ejen berjadual atau berasaskan peristiwa",
+      "feature": "Ciri AI",
+      "platform": "Alat platform"
+    },
+    "states": {
+      "ready": "Sedia",
+      "paused": "Dijeda",
+      "module": "Modul tidak tersedia",
+      "provider": "Penyedia diperlukan",
+      "restricted": "Sekatan platform"
+    },
+    "runStates": {
+      "pending": "Menunggu / belum disahkan",
+      "completed": "Selesai",
+      "failed": "Gagal",
+      "blocked": "Disekat"
+    },
+    "operations": {
+      "draft": "Draf",
+      "conversation": "Pertukaran model",
+      "image": "Bacaan imej"
+    },
+    "reasons": {
+      "paused": "Akses AI dijeda",
+      "daily_limit": "Had permintaan harian",
+      "monthly_limit": "Had token bulanan"
+    },
+    "assistantGranted": "Akses pembantu HR diberikan",
+    "assistantNotGranted": "Akses pembantu HR belum diberikan",
+    "grantAssistant": "Beri akses pembantu HR",
+    "revokeAssistant": "Tarik balik akses pembantu HR",
+    "actor": "Pemanggil",
+    "scheduledActor": "Ejen berjadual",
+    "required": "Memerlukan anggaran {tokens} token",
+    "sections": "Bahagian pengurusan AI"
+  },
+  "accountEmail": {
+    "title": "Penghantaran e-mel akaun",
+    "help": "Jemputan dan permintaan pemulihan disimpan walaupun e-mel gagal. Menyediakan SMTP tidak menghantar semula e-mel gagal secara automatik. Pilih cubaan semula di bawah. Sejarah pemulihan hanya boleh dilihat oleh pentadbir e-mel pemasangan.",
+    "empty": "Belum ada cubaan e-mel akaun.",
+    "attempts": "Cubaan",
+    "reissue": "Keluarkan semula jemputan",
+    "retryRecovery": "Cuba semula e-mel pemulihan",
+    "invitationAck": "Saya faham tindakan ini membatalkan pautan jemputan lama, mengeluarkan jemputan baharu dan mungkin menghantar e-mel pendua.",
+    "recoveryAck": "Saya mahu meminta e-mel pemulihan baharu. Penghantaran terdahulu yang tidak pasti mungkin menyebabkan pendua.",
+    "retryError": "E-mel ini tidak dapat dicuba semula. Semak akses anda dan sama ada ia telah diganti atau jemputan tidak lagi menunggu.",
+    "retryProcessed": "Cubaan semula diproses. Semak status penghantaran terkini.",
+    "kinds": {
+      "invitation": "Jemputan akaun",
+      "recovery": "Pemulihan kata laluan"
+    },
+    "statuses": {
+      "pending": "Cubaan sedang berjalan",
+      "sent": "Diterima oleh penyedia",
+      "failed": "Gagal",
+      "skipped": "Dilangkau"
+    },
+    "errors": {
+      "relayUnavailable": "SMTP belum dikonfigurasi atau tidak tersedia. Permintaan disimpan dan e-mel ini tidak dihantar.",
+      "providerUnavailable": "Penyedia log masuk tidak tersedia atau belum dikonfigurasi. Permintaan disimpan.",
+      "notEligible": "Jemputan atau penerima pemulihan tidak lagi layak.",
+      "uncertain": "Penghantaran tidak pasti. Semak sebelum mencuba semula untuk mengelakkan e-mel pendua."
+    },
+    "reference": "Rujukan penghantaran"
+  },
+  "pageStyleRecovery": {
+    "restoring": "Memulihkan halaman…",
+    "failed": "Halaman tidak dapat dimuatkan sepenuhnya. Semak sambungan anda dan cuba lagi.",
+    "reload": "Muat semula halaman"
+  },
   "leaveCreditDetails": {
     "title": "Butiran Kredit Cuti",
     "subtitle": "Sejarah kredit cuti anda — kredit diperoleh, digunakan untuk Cuti Gantian dan baki yang masih tersedia.",
@@ -19626,155 +19770,6 @@
     "reasonCoverage": "Liputan penempatan syarikat bertarikh tiada atau tidak jelas. Sahkan sejarah syarikat pekerja sebelum menetapkan cuti ganti ini.",
     "reasonTenure": "Tarikh ini di luar tempoh tarikh mula kerja dan penamatan pekerja yang direkodkan.",
     "reasonHistoricalSchedule": "Polisi jadual kerja sejarah tidak tersedia untuk syarikat/tarikh ini. HR mesti mengesahkan jadual; hari kerja majikan semasa tidak boleh digunakan sebagai ganti."
->>>>>>> e83ad5678570064ddb82b2b2910b1ba318a0d341
-  },
-  "aiManagement": {
-    "title": "Pengurusan AI",
-    "description": "Lihat semua keupayaan AI, pantau aktiviti model dan kawal had pengguna serta syarikat.",
-    "back": "Menara Kawalan",
-    "provider": "Penyedia: {provider} · {model}",
-    "noProvider": "Tiada penyedia AI dikonfigurasi. Aliran kerja manual masih tersedia.",
-    "configureProvider": "Tetapan penyedia",
-    "refresh": "Muat semula aktiviti",
-    "inventory": "Ciri dan ejen",
-    "inventoryHelp": "Jeda atau dayakan keupayaan AI bersama di sini. Keupayaan yang sedia masih memerlukan kebenaran biasa pemanggil dan baki had. Peringatan kesediaan boleh menggunakan templat bertulis tanpa model.",
-    "scopedNotice": "Suis ciri bersama diurus oleh pentadbir kumpulan. Anda boleh mengedit had syarikat di bawah pentadbiran anda.",
-    "feature": "Keupayaan",
-    "state": "Status",
-    "activity": "Penggunaan bulan ini",
-    "control": "Kawalan",
-    "imagesIncluded": "Termasuk pembacaan imej yang disokong",
-    "usage": "{daily} permintaan hari ini · {tokens} token direkodkan · {held} token ditempah",
-    "exceptions": "{blocked} disekat · {failed} gagal bulan ini",
-    "pause": "Jeda",
-    "enable": "Dayakan",
-    "platformManaged": "Diurus platform",
-    "readOnly": "Baca sahaja",
-    "noHistory": "Aktiviti bermula apabila pemantauan ini dipasang; panggilan model lama tidak diisi semula.",
-    "reservationHelp": "Tempahan menganggarkan kapasiti sebelum panggilan. Token direkodkan merangkumi input, input cache dan output yang dilaporkan penyedia. Penggunaan yang tidak dilaporkan atau panggilan terputus mengekalkan tempahan. Panggilan boleh selesai melebihi had; panggilan seterusnya dihentikan apabila penggunaan direkodkan dan ditempah menghabiskannya.",
-    "companyLimits": "Had syarikat",
-    "userLimits": "Had pengguna",
-    "limitHelp": "Had harian ditetapkan semula pada tengah malam dan token bulanan pada hari pertama bulan, waktu Malaysia. Setiap pertukaran model, draf atau bacaan imej dikira satu permintaan, termasuk cubaan gagal. Panggilan disekat tidak menggunakan had. Kosong bermakna tiada had tambahan; sifar menyekat panggilan baharu.",
-    "attribution": "Panggilan bersama dikira terhadap setiap syarikat dalam skop kebenaran pemanggil, termasuk semua syarikat bagi pentadbir kumpulan dan ejen berjadual seluruh penyewa. Had syarikat dan pengguna terpakai; salah satunya boleh menghentikan panggilan. Perubahan had mengekalkan penggunaan yang direkodkan.",
-    "daily": "Permintaan harian",
-    "monthly": "Token bulanan",
-    "access": "Akses AI",
-    "allowed": "Dibenarkan",
-    "paused": "Dijeda",
-    "unlimited": "Tiada had tambahan",
-    "save": "Simpan",
-    "userHelp": "Cari log masuk mengikut nama atau pengecam log masuk. Had pengguna terpakai merentas semua syarikat mereka. Had tidak memberikan kebenaran ciri; akses pembantu HR diurus secara berasingan di bawah.",
-    "searchUsers": "Cari pengguna",
-    "search": "Cari",
-    "noUsers": "Tiada pengguna sepadan.",
-    "moreUsers": "Memaparkan 50 padanan. Perincikan carian untuk mencari pengguna lain.",
-    "noCompanies": "Tiada syarikat dalam skop pentadbiran anda.",
-    "inherited": "Kawalan sedia ada",
-    "businessLimits": "Akses modul, kebenaran ciri dan had Performance sedia ada sebanyak lima draf berjaya setiap medan setiap pengguna sehari masih terpakai.",
-    "legacyAssistant": "Belanjawan Assistant tambahan: {daily} soalan setiap pengguna sehari dan {tokens} token sebulan bagi penyewa. Belanjawan sedia ada ini ditetapkan semula pada 08:00 waktu Malaysia.",
-    "humanDecisions": "AI kekal sebagai penasihat. Kelulusan dan keputusan manusia bagi gaji, penilaian, pengambilan dan akses masih diperlukan.",
-    "orchestrator": "Orkestrator HR pusat",
-    "orchestratorHelp": "Orkestrator menyelaras kesediaan rekod, pemilik, semakan dan pengesahan. Semakan deterministiknya tidak menggunakan token model. Muat semula bukti penyelarasan di bawah; suis di atas mengawal ejen AI.",
-    "recentRuns": "Panggilan model terkini",
-    "runsHelp": "50 panggilan terkini, termasuk cubaan disekat dan gagal. Metadata sahaja; arahan, jawapan, imej dan kelayakan dikecualikan. Muat semula untuk aktiviti baharu.",
-    "runsScoped": "Jumlah syarikat dipaparkan di atas. Sejarah terperinci tersedia kepada pentadbir kumpulan.",
-    "noRuns": "Belum ada panggilan model direkodkan.",
-    "time": "Bermula (waktu Malaysia)",
-    "tokens": "Token",
-    "held": "{tokens} ditempah · belum disahkan",
-    "saved": "Kawalan AI disimpan.",
-    "invalid": "Kawalan AI tidak sah.",
-    "features": {
-      "hr_assistant": "Pembantu HR",
-      "readiness_reminders": "Peringatan kesediaan",
-      "claims_triage": "Triage tuntutan",
-      "payroll_hypotheses": "Hipotesis anomali gaji",
-      "payroll_explanation": "Penjelasan gaji",
-      "pay_rule_draft": "Draf peraturan gaji",
-      "report_insight": "Pereka laporan",
-      "performance_360": "Maklum balas 360°",
-      "performance_tc": "Ulasan kompetensi dan potensi",
-      "performance_pm": "Kad skor prestasi dan bukti",
-      "performance_review": "Ringkasan dan panduan semakan",
-      "performance_idp": "Pelan pembangunan dan kerjaya",
-      "performance_calib": "Bantuan penentukuran",
-      "performance_assistant": "Pembantu perbualan prestasi",
-      "feedback_planning": "Draf pelan penambahbaikan"
-    },
-    "kinds": {
-      "assistant": "Pembantu",
-      "agent": "Ejen berjadual atau berasaskan peristiwa",
-      "feature": "Ciri AI",
-      "platform": "Alat platform"
-    },
-    "states": {
-      "ready": "Sedia",
-      "paused": "Dijeda",
-      "module": "Modul tidak tersedia",
-      "provider": "Penyedia diperlukan",
-      "restricted": "Sekatan platform"
-    },
-    "runStates": {
-      "pending": "Menunggu / belum disahkan",
-      "completed": "Selesai",
-      "failed": "Gagal",
-      "blocked": "Disekat"
-    },
-    "operations": {
-      "draft": "Draf",
-      "conversation": "Pertukaran model",
-      "image": "Bacaan imej"
-    },
-    "reasons": {
-      "paused": "Akses AI dijeda",
-      "daily_limit": "Had permintaan harian",
-      "monthly_limit": "Had token bulanan"
-    },
-    "assistantGranted": "Akses pembantu HR diberikan",
-    "assistantNotGranted": "Akses pembantu HR belum diberikan",
-    "grantAssistant": "Beri akses pembantu HR",
-    "revokeAssistant": "Tarik balik akses pembantu HR",
-    "actor": "Pemanggil",
-    "scheduledActor": "Ejen berjadual",
-    "required": "Memerlukan anggaran {tokens} token",
-    "sections": "Bahagian pengurusan AI"
-  },
-  "accountEmail": {
-    "title": "Penghantaran e-mel akaun",
-    "help": "Jemputan dan permintaan pemulihan disimpan walaupun e-mel gagal. Menyediakan SMTP tidak menghantar semula e-mel gagal secara automatik. Pilih cubaan semula di bawah. Sejarah pemulihan hanya boleh dilihat oleh pentadbir e-mel pemasangan.",
-    "empty": "Belum ada cubaan e-mel akaun.",
-    "attempts": "Cubaan",
-    "reissue": "Keluarkan semula jemputan",
-    "retryRecovery": "Cuba semula e-mel pemulihan",
-    "invitationAck": "Saya faham tindakan ini membatalkan pautan jemputan lama, mengeluarkan jemputan baharu dan mungkin menghantar e-mel pendua.",
-    "recoveryAck": "Saya mahu meminta e-mel pemulihan baharu. Penghantaran terdahulu yang tidak pasti mungkin menyebabkan pendua.",
-    "retryError": "E-mel ini tidak dapat dicuba semula. Semak akses anda dan sama ada ia telah diganti atau jemputan tidak lagi menunggu.",
-    "retryProcessed": "Cubaan semula diproses. Semak status penghantaran terkini.",
-    "kinds": {
-      "invitation": "Jemputan akaun",
-      "recovery": "Pemulihan kata laluan"
-    },
-    "statuses": {
-      "pending": "Cubaan sedang berjalan",
-      "sent": "Diterima oleh penyedia",
-      "failed": "Gagal",
-      "skipped": "Dilangkau"
-    },
-    "errors": {
-      "relayUnavailable": "SMTP belum dikonfigurasi atau tidak tersedia. Permintaan disimpan dan e-mel ini tidak dihantar.",
-      "providerUnavailable": "Penyedia log masuk tidak tersedia atau belum dikonfigurasi. Permintaan disimpan.",
-      "notEligible": "Jemputan atau penerima pemulihan tidak lagi layak.",
-      "uncertain": "Penghantaran tidak pasti. Semak sebelum mencuba semula untuk mengelakkan e-mel pendua."
-<<<<<<< HEAD
-    },
-    "reference": "Rujukan penghantaran"
-  },
-  "pageStyleRecovery": {
-    "restoring": "Memulihkan halaman…",
-    "failed": "Halaman tidak dapat dimuatkan sepenuhnya. Semak sambungan anda dan cuba lagi.",
-    "reload": "Muat semula halaman"
-=======
-    }
   },
   "overtimePatterns": {
     "title": "Corak Kerja Lebih Masa",
@@ -20209,6 +20204,5 @@
     "durationResult": "Keputusan tempoh",
     "cashResult": "Keputusan tunai",
     "durationAuthorityHelp": "Bukti tempoh sahaja tidak membenarkan bayaran tunai atau tuntutan TOIL."
->>>>>>> e83ad5678570064ddb82b2b2910b1ba318a0d341
   }
 }

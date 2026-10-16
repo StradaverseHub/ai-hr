@@ -19144,7 +19144,6 @@
     "staleLadder": "“常规”部分的加班时段或费率已更改。您的草稿仍保留在此。保存加班设置前，请重新加载此页面。只有在您确认后，未保存的更改才会被丢弃。",
     "reload": "重新加载当前排班"
   },
-<<<<<<< HEAD
   "internalAuth": {
     "loginTitle": "登录",
     "loginHelp": "使用管理员提供的组织代码和用户名。",
@@ -19198,7 +19197,152 @@
     "switchAccountTitle": "使用其他账户",
     "switchAccountHelp": "此邀请属于其他组织或已验证邮箱。请退出当前账户，再设置或登录受邀账户。您当前的 HR 账户将保持独立。",
     "switchAccountSubmit": "退出并打开邀请"
-=======
+  },
+  "aiManagement": {
+    "title": "AI 管理",
+    "description": "查看所有 AI 功能、监控模型活动，并控制用户和公司的额度。",
+    "back": "控制中心",
+    "provider": "服务商：{provider} · {model}",
+    "noProvider": "尚未配置 AI 服务商，仍可使用手动流程。",
+    "configureProvider": "服务商设置",
+    "refresh": "刷新活动",
+    "inventory": "功能与代理",
+    "inventoryHelp": "在此暂停或启用共享 AI 功能。就绪的功能仍需调用者具备正常权限及可用额度。资料提醒可使用书面模板，无需模型。",
+    "scopedNotice": "共享功能开关由集团管理员管理。您可以编辑所管理公司的额度。",
+    "feature": "功能",
+    "state": "状态",
+    "activity": "本月用量",
+    "control": "控制",
+    "imagesIncluded": "含支持的图像读取",
+    "usage": "今日 {daily} 次请求 · 已记录 {tokens} 个令牌 · 已预留 {held} 个令牌",
+    "exceptions": "本月已拦截 {blocked} 次 · 失败 {failed} 次",
+    "pause": "暂停",
+    "enable": "启用",
+    "platformManaged": "由平台管理",
+    "readOnly": "只读",
+    "noHistory": "活动从安装此监控功能时开始记录；不补录以前的模型调用。",
+    "reservationHelp": "调用前按估算预留容量。已记录的令牌包含服务商报告的输入、缓存输入和输出。用量缺失或调用中断时保留预留量。单次调用完成时可能超出额度；已记录及预留用量耗尽额度后，停止后续调用。",
+    "companyLimits": "公司额度",
+    "userLimits": "用户额度",
+    "limitHelp": "每日请求于马来西亚时间午夜重置，每月令牌于每月首日重置。每次模型交互、草稿或图像读取算一次请求，包括失败的尝试。被拦截的调用不消耗额度。留空表示无额外上限；零表示阻止新调用。",
+    "attribution": "共享调用计入调用者授权范围内的每家公司，包括集团管理员及租户范围定时代理的所有公司。公司和用户上限同时适用，任一上限均可阻止调用。修改上限不会清除已记录用量。",
+    "daily": "每日请求数",
+    "monthly": "每月令牌数",
+    "access": "AI 访问",
+    "allowed": "允许",
+    "paused": "已暂停",
+    "unlimited": "无额外上限",
+    "save": "保存",
+    "userHelp": "按姓名或登录标识搜索用户。用户额度适用于其所有公司。 额度不会授予功能权限；HR 助手访问权限在下方单独管理。",
+    "searchUsers": "搜索用户",
+    "search": "搜索",
+    "noUsers": "没有匹配的用户。",
+    "moreUsers": "显示 50 个匹配项。请缩小搜索范围以查找其他用户。",
+    "noCompanies": "您的管理范围内没有公司。",
+    "inherited": "现有控制",
+    "businessLimits": "模块访问、功能权限以及 Performance 每位用户每日每个字段最多五次成功草稿的现有限制继续适用。",
+    "legacyAssistant": "额外的 Assistant 预算：每位用户每天 {daily} 个问题，租户每月 {tokens} 个令牌。 此现有预算在马来西亚时间 08:00 重置。",
+    "humanDecisions": "AI 仅提供建议。薪酬、评级、招聘和访问权限仍须依照现有审批与人工决策。",
+    "orchestrator": "中央 HR 编排器",
+    "orchestratorHelp": "编排器协调资料准备、责任分配、审核与验证。其确定性检查不消耗模型令牌。在下方刷新协调证据；上方功能开关控制其 AI 代理。",
+    "recentRuns": "最近模型调用",
+    "runsHelp": "最近 50 次调用，包括被拦截和失败的尝试。仅显示元数据，不含提示词、回答、图像或凭证。刷新可查看新活动。",
+    "runsScoped": "上方显示公司合计。详细调用历史仅供集团管理员查看。",
+    "noRuns": "尚未记录模型调用。",
+    "time": "开始时间（马来西亚时间）",
+    "tokens": "令牌",
+    "held": "已预留 {tokens} · 未确认",
+    "saved": "AI 控制已保存。",
+    "invalid": "AI 控制无效。",
+    "features": {
+      "hr_assistant": "HR 助手",
+      "readiness_reminders": "资料准备提醒",
+      "claims_triage": "报销分流",
+      "payroll_hypotheses": "薪资异常假设",
+      "payroll_explanation": "薪资解释",
+      "pay_rule_draft": "薪资规则起草",
+      "report_insight": "报表设计器",
+      "performance_360": "360° 反馈",
+      "performance_tc": "能力与潜力评语",
+      "performance_pm": "绩效记分卡与证据",
+      "performance_review": "评审摘要与指导",
+      "performance_idp": "发展与职业计划",
+      "performance_calib": "校准辅助",
+      "performance_assistant": "绩效对话助手",
+      "feedback_planning": "改进计划起草"
+    },
+    "kinds": {
+      "assistant": "助手",
+      "agent": "定时或事件触发代理",
+      "feature": "AI 功能",
+      "platform": "平台工具"
+    },
+    "states": {
+      "ready": "就绪",
+      "paused": "已暂停",
+      "module": "模块不可用",
+      "provider": "需要服务商",
+      "restricted": "平台限制"
+    },
+    "runStates": {
+      "pending": "待处理／未确认",
+      "completed": "已完成",
+      "failed": "失败",
+      "blocked": "已拦截"
+    },
+    "operations": {
+      "draft": "草稿",
+      "conversation": "模型交互",
+      "image": "图像读取"
+    },
+    "reasons": {
+      "paused": "AI 访问已暂停",
+      "daily_limit": "每日请求上限",
+      "monthly_limit": "每月令牌上限"
+    },
+    "assistantGranted": "已授予 HR 助手访问权限",
+    "assistantNotGranted": "尚未授予 HR 助手访问权限",
+    "grantAssistant": "授予 HR 助手权限",
+    "revokeAssistant": "撤销 HR 助手权限",
+    "actor": "调用者",
+    "scheduledActor": "定时代理",
+    "required": "需要约 {tokens} 个令牌",
+    "sections": "AI 管理栏目"
+  },
+  "accountEmail": {
+    "title": "账户邮件发送记录",
+    "help": "即使邮件发送失败，邀请和恢复请求也会保存。配置 SMTP 不会自动重发失败邮件。可在下方逐条选择重试。 恢复记录仅对系统邮件管理员可见。",
+    "empty": "尚无账户邮件发送尝试。",
+    "attempts": "尝试次数",
+    "reissue": "重新发出邀请",
+    "retryRecovery": "重试恢复邮件",
+    "invitationAck": "我理解此操作会撤销旧邀请链接、发出新邀请，并可能产生重复邮件。",
+    "recoveryAck": "我希望请求一封新的恢复邮件。先前结果不确定的发送可能导致重复邮件。",
+    "retryError": "无法重试此邮件。请检查您的权限，以及邮件是否已被替代或邀请是否仍待处理。",
+    "retryProcessed": "重试已处理。请查看最新发送状态。",
+    "kinds": {
+      "invitation": "账户邀请",
+      "recovery": "密码恢复"
+    },
+    "statuses": {
+      "pending": "正在尝试发送",
+      "sent": "身份服务已接受",
+      "failed": "失败",
+      "skipped": "已跳过"
+    },
+    "errors": {
+      "relayUnavailable": "SMTP 尚未配置或不可用。请求已保存，此邮件尚未发送。",
+      "providerUnavailable": "登录服务不可用或尚未配置。请求已保存。",
+      "notEligible": "邀请或恢复邮件收件人已不再符合条件。",
+      "uncertain": "发送结果不确定。请在重试前检查，以免重复发送。"
+    },
+    "reference": "发送参考编号"
+  },
+  "pageStyleRecovery": {
+    "restoring": "正在恢复页面…",
+    "failed": "页面未能完整加载。请检查网络连接后重试。",
+    "reload": "重新加载页面"
+  },
   "leaveCreditDetails": {
     "title": "假期积分详情",
     "subtitle": "您的假期积分记录：已获得的积分、补假已使用的积分及可用余额。",
@@ -19626,155 +19770,6 @@
     "reasonCoverage": "按日期的公司任职记录缺失或不明确。请先确认员工的公司历史，再安排此补假。",
     "reasonTenure": "此日期超出员工记录的入职和离职日期范围。",
     "reasonHistoricalSchedule": "该公司和日期的历史工作排班政策不可用。人力资源部门须确认当时的排班，不能套用现雇主的工作日。"
->>>>>>> e83ad5678570064ddb82b2b2910b1ba318a0d341
-  },
-  "aiManagement": {
-    "title": "AI 管理",
-    "description": "查看所有 AI 功能、监控模型活动，并控制用户和公司的额度。",
-    "back": "控制中心",
-    "provider": "服务商：{provider} · {model}",
-    "noProvider": "尚未配置 AI 服务商，仍可使用手动流程。",
-    "configureProvider": "服务商设置",
-    "refresh": "刷新活动",
-    "inventory": "功能与代理",
-    "inventoryHelp": "在此暂停或启用共享 AI 功能。就绪的功能仍需调用者具备正常权限及可用额度。资料提醒可使用书面模板，无需模型。",
-    "scopedNotice": "共享功能开关由集团管理员管理。您可以编辑所管理公司的额度。",
-    "feature": "功能",
-    "state": "状态",
-    "activity": "本月用量",
-    "control": "控制",
-    "imagesIncluded": "含支持的图像读取",
-    "usage": "今日 {daily} 次请求 · 已记录 {tokens} 个令牌 · 已预留 {held} 个令牌",
-    "exceptions": "本月已拦截 {blocked} 次 · 失败 {failed} 次",
-    "pause": "暂停",
-    "enable": "启用",
-    "platformManaged": "由平台管理",
-    "readOnly": "只读",
-    "noHistory": "活动从安装此监控功能时开始记录；不补录以前的模型调用。",
-    "reservationHelp": "调用前按估算预留容量。已记录的令牌包含服务商报告的输入、缓存输入和输出。用量缺失或调用中断时保留预留量。单次调用完成时可能超出额度；已记录及预留用量耗尽额度后，停止后续调用。",
-    "companyLimits": "公司额度",
-    "userLimits": "用户额度",
-    "limitHelp": "每日请求于马来西亚时间午夜重置，每月令牌于每月首日重置。每次模型交互、草稿或图像读取算一次请求，包括失败的尝试。被拦截的调用不消耗额度。留空表示无额外上限；零表示阻止新调用。",
-    "attribution": "共享调用计入调用者授权范围内的每家公司，包括集团管理员及租户范围定时代理的所有公司。公司和用户上限同时适用，任一上限均可阻止调用。修改上限不会清除已记录用量。",
-    "daily": "每日请求数",
-    "monthly": "每月令牌数",
-    "access": "AI 访问",
-    "allowed": "允许",
-    "paused": "已暂停",
-    "unlimited": "无额外上限",
-    "save": "保存",
-    "userHelp": "按姓名或登录标识搜索用户。用户额度适用于其所有公司。 额度不会授予功能权限；HR 助手访问权限在下方单独管理。",
-    "searchUsers": "搜索用户",
-    "search": "搜索",
-    "noUsers": "没有匹配的用户。",
-    "moreUsers": "显示 50 个匹配项。请缩小搜索范围以查找其他用户。",
-    "noCompanies": "您的管理范围内没有公司。",
-    "inherited": "现有控制",
-    "businessLimits": "模块访问、功能权限以及 Performance 每位用户每日每个字段最多五次成功草稿的现有限制继续适用。",
-    "legacyAssistant": "额外的 Assistant 预算：每位用户每天 {daily} 个问题，租户每月 {tokens} 个令牌。 此现有预算在马来西亚时间 08:00 重置。",
-    "humanDecisions": "AI 仅提供建议。薪酬、评级、招聘和访问权限仍须依照现有审批与人工决策。",
-    "orchestrator": "中央 HR 编排器",
-    "orchestratorHelp": "编排器协调资料准备、责任分配、审核与验证。其确定性检查不消耗模型令牌。在下方刷新协调证据；上方功能开关控制其 AI 代理。",
-    "recentRuns": "最近模型调用",
-    "runsHelp": "最近 50 次调用，包括被拦截和失败的尝试。仅显示元数据，不含提示词、回答、图像或凭证。刷新可查看新活动。",
-    "runsScoped": "上方显示公司合计。详细调用历史仅供集团管理员查看。",
-    "noRuns": "尚未记录模型调用。",
-    "time": "开始时间（马来西亚时间）",
-    "tokens": "令牌",
-    "held": "已预留 {tokens} · 未确认",
-    "saved": "AI 控制已保存。",
-    "invalid": "AI 控制无效。",
-    "features": {
-      "hr_assistant": "HR 助手",
-      "readiness_reminders": "资料准备提醒",
-      "claims_triage": "报销分流",
-      "payroll_hypotheses": "薪资异常假设",
-      "payroll_explanation": "薪资解释",
-      "pay_rule_draft": "薪资规则起草",
-      "report_insight": "报表设计器",
-      "performance_360": "360° 反馈",
-      "performance_tc": "能力与潜力评语",
-      "performance_pm": "绩效记分卡与证据",
-      "performance_review": "评审摘要与指导",
-      "performance_idp": "发展与职业计划",
-      "performance_calib": "校准辅助",
-      "performance_assistant": "绩效对话助手",
-      "feedback_planning": "改进计划起草"
-    },
-    "kinds": {
-      "assistant": "助手",
-      "agent": "定时或事件触发代理",
-      "feature": "AI 功能",
-      "platform": "平台工具"
-    },
-    "states": {
-      "ready": "就绪",
-      "paused": "已暂停",
-      "module": "模块不可用",
-      "provider": "需要服务商",
-      "restricted": "平台限制"
-    },
-    "runStates": {
-      "pending": "待处理／未确认",
-      "completed": "已完成",
-      "failed": "失败",
-      "blocked": "已拦截"
-    },
-    "operations": {
-      "draft": "草稿",
-      "conversation": "模型交互",
-      "image": "图像读取"
-    },
-    "reasons": {
-      "paused": "AI 访问已暂停",
-      "daily_limit": "每日请求上限",
-      "monthly_limit": "每月令牌上限"
-    },
-    "assistantGranted": "已授予 HR 助手访问权限",
-    "assistantNotGranted": "尚未授予 HR 助手访问权限",
-    "grantAssistant": "授予 HR 助手权限",
-    "revokeAssistant": "撤销 HR 助手权限",
-    "actor": "调用者",
-    "scheduledActor": "定时代理",
-    "required": "需要约 {tokens} 个令牌",
-    "sections": "AI 管理栏目"
-  },
-  "accountEmail": {
-    "title": "账户邮件发送记录",
-    "help": "即使邮件发送失败，邀请和恢复请求也会保存。配置 SMTP 不会自动重发失败邮件。可在下方逐条选择重试。 恢复记录仅对系统邮件管理员可见。",
-    "empty": "尚无账户邮件发送尝试。",
-    "attempts": "尝试次数",
-    "reissue": "重新发出邀请",
-    "retryRecovery": "重试恢复邮件",
-    "invitationAck": "我理解此操作会撤销旧邀请链接、发出新邀请，并可能产生重复邮件。",
-    "recoveryAck": "我希望请求一封新的恢复邮件。先前结果不确定的发送可能导致重复邮件。",
-    "retryError": "无法重试此邮件。请检查您的权限，以及邮件是否已被替代或邀请是否仍待处理。",
-    "retryProcessed": "重试已处理。请查看最新发送状态。",
-    "kinds": {
-      "invitation": "账户邀请",
-      "recovery": "密码恢复"
-    },
-    "statuses": {
-      "pending": "正在尝试发送",
-      "sent": "身份服务已接受",
-      "failed": "失败",
-      "skipped": "已跳过"
-    },
-    "errors": {
-      "relayUnavailable": "SMTP 尚未配置或不可用。请求已保存，此邮件尚未发送。",
-      "providerUnavailable": "登录服务不可用或尚未配置。请求已保存。",
-      "notEligible": "邀请或恢复邮件收件人已不再符合条件。",
-      "uncertain": "发送结果不确定。请在重试前检查，以免重复发送。"
-<<<<<<< HEAD
-    },
-    "reference": "发送参考编号"
-  },
-  "pageStyleRecovery": {
-    "restoring": "正在恢复页面…",
-    "failed": "页面未能完整加载。请检查网络连接后重试。",
-    "reload": "重新加载页面"
-=======
-    }
   },
   "overtimePatterns": {
     "title": "加班模式",
@@ -20209,6 +20204,5 @@
     "durationResult": "时长结果",
     "cashResult": "现金结果",
     "durationAuthorityHelp": "仅有时长证据并不授权现金支付或补休申请。"
->>>>>>> e83ad5678570064ddb82b2b2910b1ba318a0d341
   }
 }
