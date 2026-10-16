@@ -318,12 +318,14 @@ GRANT SELECT,INSERT,UPDATE ON public.feedback_plan_revision,public.feedback_bloc
 --> statement-breakpoint
 -- Existing generic audit read admits scoped administrators. Private account Feedback must not leak
 -- through that independent consumer. This restriction never grants a new raw audit reader.
-CREATE FUNCTION app.feedback_event_readable(feedback_id uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $$
- SELECT coalesce((SELECT CASE WHEN f.reporter_employment_id IS NULL THEN app.can_access_feedback(f.id) ELSE true END
- FROM public.feedback_request f WHERE f.id=feedback_id AND f.tenant_id=app.current_tenant_id()),true)
+CREATE FUNCTION app.feedback_event_readable(feedback_id uuid,event_subject_employment_id uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $$
+ -- An absent parent supplies no reporter identity. Retain only existing group-wide audit authority
+ -- for NULL-subject orphans; recorded employment subjects remain subject to the base audit policy.
+ SELECT app.feedback_live_principal() AND coalesce((SELECT CASE WHEN f.reporter_employment_id IS NULL THEN app.can_access_feedback(f.id) ELSE true END
+ FROM public.feedback_request f WHERE f.id=feedback_id AND f.tenant_id=app.current_tenant_id()),event_subject_employment_id IS NOT NULL OR app.is_group_admin())
 $$;
-REVOKE ALL ON FUNCTION app.feedback_event_readable(uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.feedback_event_readable(uuid) TO ai_hr_app;
+REVOKE ALL ON FUNCTION app.feedback_event_readable(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.feedback_event_readable(uuid,uuid) TO ai_hr_app;
 CREATE POLICY feedback_user_only_audit_read ON public.domain_event AS RESTRICTIVE FOR SELECT USING(
- tenant_id=app.current_tenant_id() AND (aggregate_type<>'feedback' OR app.feedback_event_readable(aggregate_id))
+ tenant_id=app.current_tenant_id() AND (aggregate_type<>'feedback' OR app.feedback_event_readable(aggregate_id,subject_employment_id))
 );

@@ -48,7 +48,7 @@ describe('canonical Feedback user-only reporter graph', () => {
     expect(groupAudit).toHaveLength(1);
     // The ordinary employee gains canonical Feedback history, not a new general raw-audit permission.
     const ownAudit = await withTenant(one, tx => tx.select().from(s.domainEvent).where(eq(s.domainEvent.aggregateId, report.id))); expect(ownAudit).toEqual([]);
-    const [ownPredicate] = await withTenant(one, tx => tx.execute(sql`SELECT app.feedback_event_readable(${report.id}::uuid) AS allowed`)) as unknown as { allowed: boolean }[]; expect(ownPredicate.allowed).toBe(true);
+    const [ownPredicate] = await withTenant(one, tx => tx.execute(sql`SELECT app.feedback_event_readable(${report.id}::uuid,NULL::uuid) AS allowed`)) as unknown as { allowed: boolean }[]; expect(ownPredicate.allowed).toBe(true);
     const [recorded] = await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId, report.id), eq(s.domainEvent.eventType, 'feedback.submitted'))).orderBy(asc(s.domainEvent.sequence));
     expect(recorded).toMatchObject({ actorType: 'user', actorId: one.userId, subjectEmploymentId: null });
   });
@@ -62,6 +62,29 @@ describe('canonical Feedback user-only reporter graph', () => {
     const own = await submitFeedback(scoped, input);
     const ownAudit = await withTenant(scoped, tx => tx.select().from(s.domainEvent).where(eq(s.domainEvent.aggregateId, own.id)).orderBy(asc(s.domainEvent.sequence)));
     expect(ownAudit).toHaveLength(1); expect(ownAudit[0]).toMatchObject({ actorId: scoped.userId,subjectEmploymentId:null });
+  });
+  it('fails closed for scoped-admin NULL-subject orphans while preserving recorded employment and existing group-wide audit authority', async () => {
+    const accountReport = await submitFeedback(one, input);
+    const hired = await hireEmployee(group, { person: { fullName: 'Fictional Orphan Legacy Reporter', primaryEmail: 'orphan@user-only.invalid' }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: todayInKualaLumpur() });
+    const employedReport = await submitFeedback(group, { ...input, reporterEmploymentId: hired.employmentId });
+    const ids = [accountReport.id, employedReport.id];
+    const eventsBefore = await owner.db.select().from(s.domainEvent).where(sql`${s.domainEvent.aggregateId} IN (${accountReport.id}::uuid,${employedReport.id}::uuid)`).orderBy(asc(s.domainEvent.sequence),asc(s.domainEvent.id));
+    expect(eventsBefore).toHaveLength(2);
+    expect(eventsBefore.find(e => e.aggregateId === accountReport.id)?.subjectEmploymentId).toBeNull();
+    expect(eventsBefore.find(e => e.aggregateId === employedReport.id)?.subjectEmploymentId).toBe(hired.employmentId);
+    // Actual migration-owner maintenance removes parents, without changing immutable audit evidence.
+    await owner.db.delete(s.feedbackRequest).where(sql`${s.feedbackRequest.id} IN (${accountReport.id}::uuid,${employedReport.id}::uuid)`);
+    expect(await owner.db.select().from(s.feedbackRequest).where(sql`${s.feedbackRequest.id} IN (${accountReport.id}::uuid,${employedReport.id}::uuid)`)).toEqual([]);
+    const readEvents = (ctx: SessionContext) => withTenant(ctx, tx => tx.select().from(s.domainEvent).where(sql`${s.domainEvent.aggregateId} IN (${accountReport.id}::uuid,${employedReport.id}::uuid)`).orderBy(asc(s.domainEvent.sequence),asc(s.domainEvent.id)));
+    expect((await readEvents(scoped)).map(e => e.aggregateId)).toEqual([employedReport.id]);
+    expect(new Set((await readEvents(group)).map(e => e.aggregateId))).toEqual(new Set(ids));
+    expect(await readEvents(one)).toEqual([]); // Former reporter ownership cannot be reconstructed.
+    const foreign = await seedBase(); expect(await readEvents(await entitledCtx(foreign))).toEqual([]);
+    const eventsAfter = await owner.db.select().from(s.domainEvent).where(sql`${s.domainEvent.aggregateId} IN (${accountReport.id}::uuid,${employedReport.id}::uuid)`).orderBy(asc(s.domainEvent.sequence),asc(s.domainEvent.id));
+    expect(eventsAfter).toEqual(eventsBefore);
+    await owner.db.update(s.appUser).set({ archivedAt: new Date() }).where(eq(s.appUser.id, scoped.userId!));
+    const [inactive] = await withTenant(scoped, tx => tx.execute(sql`SELECT app.feedback_event_readable(${employedReport.id}::uuid,${hired.employmentId}::uuid) AS allowed`)) as unknown as { allowed: boolean }[];
+    expect(inactive.allowed).toBe(false);
   });
   it('keeps attachments, plan revisions and blocking answers attached to the real login owner', async () => {
     const report = await submitFeedback(one, input);
