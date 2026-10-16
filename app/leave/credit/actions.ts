@@ -1,5 +1,6 @@
 'use server';
 
+import type {LeaveCreditDayFactsUnavailable} from '@/lib/leave-credit-day-facts-result';
 import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -9,6 +10,7 @@ import { myEmployment } from '@/core/read';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import {
   leaveCreditClaimReview,
+  leaveCreditDayFactsUnavailable,
   cancelOwnReplacementLeaveRequest,
   extendedHoursDayForEmployment,
   isLeaveCreditDayType,
@@ -42,7 +44,9 @@ export async function leaveCreditDayFactsAction(workedDate: string) {
   const session = await getSession();
   const me = await myEmployment(session);
   if (!me) return null;
-  const day = await extendedHoursDayForEmployment(session, me.employmentId, workedDate);
+  let day:Awaited<ReturnType<typeof extendedHoursDayForEmployment>>;
+  try{day=await extendedHoursDayForEmployment(session, me.employmentId, workedDate);}
+  catch(error){const refusal:LeaveCreditDayFactsUnavailable|null=leaveCreditDayFactsUnavailable(error);if(refusal)return refusal;throw error;}
   // r365 cbfa8b0b — the shift START, the clock-IN and the approved overtime joined the row's facts, for
   // the Attendance panel behind the row's View button. Listed one by one rather than spread, deliberately:
   // this is the server→client boundary and every field crossing it has to be a value somebody chose to

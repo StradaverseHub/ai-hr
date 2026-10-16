@@ -1,4 +1,5 @@
 'use client';
+import type {LeaveCreditDayFactsResult} from '@/lib/leave-credit-day-facts-result';
 import type {LeaveCreditClaimReviewAction} from '@/lib/leave-credit-claim-review';
 
 import { useState } from 'react';
@@ -89,7 +90,7 @@ export function ReplacementLeaveRequestDialog({
    * answers for every row, not only the ordinary-day ones: the roster kind is what the chosen Day Type is
    * adjudicated against, and that adjudication is the contest's new validation.
    */
-  dayFactsAction: (workedDate: string) => Promise<LeaveCreditDayFacts | null>;
+  dayFactsAction: (workedDate: string) => Promise<LeaveCreditDayFactsResult<LeaveCreditDayFacts>>;
   claimReviewAction?:LeaveCreditClaimReviewAction;
   /**
    * The company's tier figures. NULL when extended hours are not switched on — which is every company at
