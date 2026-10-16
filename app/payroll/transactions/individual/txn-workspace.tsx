@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useMemo, useState, useTransition, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useId, useMemo, useState, useTransition, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -306,6 +306,8 @@ export function TxnWorkspace({
   panelCookieKey: string;
 }) {
   const t = useTranslations('payroll.transactions.individual');
+  const effectiveDateHintId = useId();
+  const dailyMonthHintId = useId();
 
   // ── Item picker options (Payroll Item Master + the generic kinds) ──
   const genericKinds = useMemo<readonly TxnKind[]>(
@@ -2021,15 +2023,18 @@ export function TxnWorkspace({
                       )}
                     </select>
                   </Field>
-                  <Field label={t('colEffectiveDate')}>
-                    <input
-                      type="date"
-                      value={form.txnDate}
-                      onChange={(e) => patchForm({ txnDate: e.target.value })}
-                      className={inputCls}
-                    />
-                    <span className="text-xs text-muted-foreground">{t('effectiveDateHint')}</span>
-                  </Field>
+                  <div className="space-y-1.5">
+                    <Field label={t('colEffectiveDate')}>
+                      <input
+                        type="date"
+                        aria-describedby={effectiveDateHintId}
+                        value={form.txnDate}
+                        onChange={(e) => patchForm({ txnDate: e.target.value })}
+                        className={inputCls}
+                      />
+                    </Field>
+                    <p id={effectiveDateHintId} className="text-xs text-muted-foreground">{t('effectiveDateHint')}</p>
+                  </div>
                   {/* 2da9937a — a calculating item OWNS the Input Type: the quantity has to land in the
                       input its rule reads, so the select is fixed to it rather than left to be got wrong. */}
                   <Field label={t('inputType')}>
@@ -2177,17 +2182,18 @@ export function TxnWorkspace({
                 />
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  <Field label={t('monthLabel')}>
-                    <input
-                      type="month"
-                      value={daily.payPeriod}
-                      onChange={(e) =>
-                        patchDaily({ payPeriod: e.target.value })
-                      }
-                      className={inputCls}
-                    />
-                    <span className="text-xs text-muted-foreground">{t('effectiveDateHint')}</span>
-                  </Field>
+                  <div className="space-y-1.5">
+                    <Field label={t('monthLabel')}>
+                      <input
+                        type="month"
+                        aria-describedby={dailyMonthHintId}
+                        value={daily.payPeriod}
+                        onChange={(e) => patchDaily({ payPeriod: e.target.value })}
+                        className={inputCls}
+                      />
+                    </Field>
+                    <p id={dailyMonthHintId} className="text-xs text-muted-foreground">{t('effectiveDateHint')}</p>
+                  </div>
                   {/* c11e81aa — the same two controls as the single-entry form's, for the same reasons.
                       Both machines share `companyCycles`, `resolvedCycleId` and `resolvedBatchId`, so
                       they cannot disagree about which cycles exist or where a save will land — including
