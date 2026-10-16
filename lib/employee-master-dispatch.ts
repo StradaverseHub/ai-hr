@@ -51,7 +51,7 @@ export async function readDispatchSourcePins():Promise<InternalReportDispatchMar
 export function supportedInternalReportRuntime(version:string){const match=version.match(/^(?:v)?(\d+)\.(\d+)\./);return Boolean(match&&(Number(match[1])===22&&Number(match[2])>=13||Number(match[1])===24));}
 /** Dedicated validation happens before any application import. Default reads immediately before
  * report stage; a bad installed marker cannot restore legacy reports or interrupt other jobs. */
-export async function installedReportDispatch(mode:'default'|'dedicated',env:NodeJS.ProcessEnv=process.env):Promise<'legacy'|'suppressed'|'dedicated'>{
+export async function installedReportDispatch(mode:'default'|'dedicated',env:Readonly<Record<string,string|undefined>>=process.env):Promise<'legacy'|'suppressed'|'dedicated'>{
  let bytes:Buffer;try{await lstat(INTERNAL_REPORT_DISPATCH_MARKER);bytes=await readTrustedDispatchFile(INTERNAL_REPORT_DISPATCH_MARKER,4096,0o644);}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT'&&mode==='default')return 'legacy';throw new Error('Installed report scheduling admission refused.');}
  if(await realpath(process.cwd())!==INTERNAL_REPORT_DISPATCH_ROOT)throw new Error('Installed report candidate differs.');
  const value=validateReportDispatchMarker(JSON.parse(bytes.toString('utf8')),{sourcePins:await readDispatchSourcePins(),instanceSha256:reportDispatchInstance(env.AUTH_PROVIDER,env.DATABASE_URL)});
