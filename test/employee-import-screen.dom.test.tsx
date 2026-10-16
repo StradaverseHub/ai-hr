@@ -287,6 +287,8 @@ describe('2983802f · the result names what happened to family and to superiors'
     runId: null,
   };
 
+  // This complete user-event journey exceeded the default 5s budget under load (7.4s), while the
+  // isolated normal-budget run passed in 840ms. Keep every assertion and a bounded journey budget.
   it('reports the family members created and the superior that could not be linked', async () => {
     const user = await previewWith({ ...basePreview, fileErrors: [] });
     commitMock.mockResolvedValue(result);
@@ -299,5 +301,5 @@ describe('2983802f · the result names what happened to family and to superiors'
     ).toBeInTheDocument();
     expect(screen.getByText(/Reporting cycle detected/)).toBeInTheDocument();
     expect(screen.queryByText(/failed/)).toBeNull();
-  });
+  }, 30_000);
 });
