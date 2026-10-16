@@ -11495,7 +11495,7 @@
         "extendedShort": "Ini hari bekerja biasa. Hanya {minutes} minit selepas waktu tamat syif yang dijadualkan dikira untuk pekerja ini, iaitu di bawah ambang setengah hari syarikat, jadi tarikh ini tidak boleh memperoleh Kredit Cuti.",
         "extendedEarned": "Pekerja ini bekerja {minutes} minit yang dikira selepas waktu tamat syif yang dijadualkan, yang memperoleh {days} hari. Jumlah kredit ditetapkan pada angka itu dan tidak boleh diubah di sini.",
         "descriptionRows": "Kreditkan hari yang telah dikerjakan oleh pekerja. Kredit ditambah serta-merta.",
-        "help": "Tambah satu baris bagi setiap tarikh bekerja, berserta masanya. Empat jam yang layak memberi setengah hari, lapan jam sehari penuh, mengikut peraturan syarikat pekerja. Lihat menunjukkan rekod kehadiran. Kredit ditambah serta-merta — tiada langkah pengurus.",
+        "help": "Masukkan tarikh dan waktu bekerja. Semak tempoh dan peraturan syarikat di bawah; had formula yang direkodkan terpakai jika dipaparkan. Pemberian yang berjaya menambah kredit serta-merta, tanpa langkah pengurus.",
         "pickEmployeeFirst": "Pilih pekerja terlebih dahulu.",
         "checkingEmployee": "Menyemak pekerja ini…",
         "ownRecord": "Anda tidak boleh menambah Kredit Cuti pada rekod anda sendiri. Pentadbir HR lain mesti melakukannya."
@@ -15245,7 +15245,7 @@
       "belowThreshold": "Kurang daripada {minutes} minit. Tidak layak mendapat kredit."
     },
     "table": {
-      "help": "Tambah satu baris bagi setiap tarikh anda bekerja, dengan waktunya. Empat jam layak memperoleh setengah hari, lapan jam satu hari penuh. Lihat menunjukkan kehadiran yang direkodkan; ia tidak mengehadkan tuntutan anda. Tiada kredit sehingga pengurus meluluskannya.",
+      "help": "Masukkan tarikh dan waktu bekerja. Lihat memaparkan kehadiran. Semak tempoh dan peraturan syarikat di bawah; had formula yang direkodkan terpakai jika dipaparkan. Tiada kredit sehingga pengurus meluluskannya.",
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
       "windowNotClaimed": "Hari bekerja biasa tidak boleh memperoleh kredit di syarikat ini.",
@@ -15272,8 +15272,8 @@
       "attendanceClockInOut": "Waktu masuk / waktu keluar",
       "attendanceNoShift": "Tiada syif dijadualkan",
       "attendanceNothingRecorded": "Tiada apa-apa direkodkan",
-      "attendanceNoRecordNote": "Tiada waktu masuk atau waktu keluar direkodkan untuk tarikh ini. Anda masih boleh membuat tuntutan.",
-      "attendanceReferenceOnly": "Untuk rujukan sahaja. Ia tidak mengehadkan apa yang boleh anda tuntut.",
+      "attendanceNoRecordNote": "Tiada waktu masuk atau keluar direkodkan. Semak tempoh sebelum menghantar.",
+      "attendanceReferenceOnly": "Butiran kehadiran untuk rujukan. Had tempoh formula yang direkodkan masih terpakai.",
       "attendanceOtPlan": "Rancangan OT yang diluluskan",
       "attendanceOtPlanNone": "Tiada bagi tarikh ini",
       "attendanceOtPlanApproved": "Diluluskan bagi tarikh ini",
@@ -15285,7 +15285,7 @@
       "detailShift": "Syif",
       "detailHours": "Jam selepas syif",
       "noAttendanceRecord": "Tiada rekod kehadiran untuk tarikh ini.",
-      "companyRule": "Peraturan kredit syarikat: {half} = 0.5 hari · {full} = 1 hari",
+      "companyRule": "Peraturan syarikat semasa (rujukan): {half} = 0.5 hari · {full} = 1 hari",
       "duplicateDate": "Tarikh ini sudah ada dalam permohonan.",
       "reasonRequired": "Tambah sebab untuk meneruskan.",
       "completeRows": "Lengkapkan baris yang layak untuk meneruskan.",

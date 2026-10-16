@@ -287,9 +287,11 @@ describe('F · the contract between the form and the server action', () => {
   it('Remarks and Attachment are offered, and the action posts both', () => {
     expect(APPLY).toContain('name="remark"');
     expect(APPLY).toContain('name="attachment"');
-    // A multipart form: a server action parses it either way, but a scripting-off POST would send only
-    // the file NAME without the attribute.
-    expect(APPLY).toContain('encType="multipart/form-data"');
+    // React supplies the function action's POST/multipart encoding. Explicit attributes warn and
+    // are overridden; retaining the function action and file field preserves the upload contract.
+    const form = APPLY.match(/<form\b[^>]*action=\{myRequestOvertime\}[^>]*>/)?.[0];
+    expect(form).toBeDefined();
+    expect(form).not.toMatch(/\b(?:encType|method)=/);
     const fn = ACTIONS.slice(ACTIONS.indexOf('export async function myRequestOvertime'));
     const body = fn.slice(0, fn.indexOf('\n}\n') + 3);
     expect(body).toContain("formData.get('remark')");

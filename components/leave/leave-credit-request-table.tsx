@@ -130,8 +130,8 @@ const dayTypeLabelOf = (t: (k: string) => string, d: LeaveCreditDayType) =>
 
 /**
  * r378 a4c4758c replaces r365's View popup and warning dot with an inline attendance
- * subrow. The same clock-out assessment supplies the warning; it never caps the
- * declared claim or blocks submission. Recorded attendance hours are display-only.
+ * subrow. Legacy clock-out warnings do not cap a self-declared claim. Formula dates
+ * separately use the canonical duration review; these attendance details do not replace that proof.
  * The unnamed toggle posts no row field, preserving the action's index-aligned payload.
  * Explicit attendanceRecordPresent distinguishes an absent row from missing punches.
  */
@@ -678,8 +678,8 @@ export function LeaveCreditRequestTable({
         <input type="hidden" name="leaveTypeId" value={replacementType.id} />
         <p className="mt-2 text-xs text-muted-foreground" data-testid="leave-credit-leave-type">{t('leaveType')}: {replacementType.name}</p>
       </div>
-      <div className={dialog ? 'min-h-0 space-y-4 overflow-y-auto p-4' : 'space-y-4'} data-testid="leave-credit-scroll-body">
-      <div className={tableWrapCls}>
+      <div className={dialog ? 'min-h-0 min-w-0 space-y-4 overflow-y-auto p-4' : 'min-w-0 space-y-4'} data-testid="leave-credit-scroll-body">
+      <div className={`${tableWrapCls} min-w-0 max-w-full`}>
         {/* r378 — SEVEN columns: the Attendance/View column is replaced by an inline details row.
             Previously r365 used eight columns. Scheduled shift end and Actual clock-out left the row for the
             Attendance panel; `min-w` came down with them, which is the other half of the reporter's
@@ -917,7 +917,6 @@ export function LeaveCreditRequestTable({
                       </Button>
                     </td>
                   </tr>
-                  {r.workedDate?<tr><td colSpan={7} className="px-3 py-2"><LeaveCreditClaimReviewNotice review={claimReviewAction?claimReviewForRow(r)??null:{basis:'unavailable',reason:'unavailable'}}/></td></tr>:null}
                   <tr><td colSpan={7} className="px-3 py-1"><button data-testid="leave-credit-details-toggle" type="button" disabled={!r.workedDate} aria-expanded={expandedRows.has(r.key)} className="min-h-11 text-xs font-medium text-primary underline" onClick={() => setExpandedRows((previous) => {const next = new Set(previous);if(next.has(r.key)) next.delete(r.key);else next.add(r.key);return next;})}><span aria-hidden>{expandedRows.has(r.key) ? '▾ ' : '▸ '}</span>{t('table.detailToggle')}</button></td></tr>
                   {expandedRows.has(r.key) && <tr><td colSpan={7} className="bg-muted/30 px-3 py-2">{factError[r.workedDate] ? <span>{t('table.dayTypeLookupFailed')} <button type="button" onClick={retryFacts}>{t('table.dayTypeRetry')}</button></span> : !factsSettled[r.workedDate] ? <p>{t('table.dayTypeReading')}</p> : !d?.view ? <p>{t('table.dayTypeNotFound')}</p> : <AttendanceFacts workedDate={r.workedDate} view={d.view} alert={attendanceAlert} />}</td></tr>}
                   {/* r406 · HR MODE ONLY. ⚠️ MONEY — the per-row overtime note the plan promises; absent on the
@@ -978,6 +977,16 @@ export function LeaveCreditRequestTable({
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* Review messages follow the scrollable inputs, but never inherit the table's 52rem minimum width. */}
+      <div className="min-w-0 max-w-full space-y-3" data-testid="leave-credit-claim-reviews">
+        {rows.filter(row=>row.workedDate&&claimReviewForRow(row)?.basis!=='legacy').map(row=>(
+          <section key={row.key} aria-label={`${t('workedDate')}: ${row.workedDate}`} className="min-w-0 max-w-full whitespace-normal rounded-md border border-border p-3 text-xs [overflow-wrap:anywhere]">
+            <p className="mb-1 font-medium">{t('workedDate')}: {row.workedDate}</p>
+            <LeaveCreditClaimReviewNotice review={claimReviewAction?claimReviewForRow(row)??null:{basis:'unavailable',reason:'unavailable'}}/>
+          </section>
+        ))}
       </div>
 
       {subjectMissing && <p className="text-xs text-muted-foreground" data-testid="leave-credit-pick-employee-first">{hr?.pickEmployeeFirst}</p>}
