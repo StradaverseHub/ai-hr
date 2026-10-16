@@ -284,7 +284,7 @@ describe('r343 · ONE input table, separate dated review notices, and four poste
     expect(lib, 'NULL shift end on the three non-working types').toContain('shiftEnd: p.ordinaryWorkingDay ? p.shiftEnd : null');
     expect(lib).toContain('actualClockOut: p.ordinaryWorkingDay ? p.actualClockOut : null');
     expect(src, 'recorded effective shift identity is display-only').toContain('view?.shiftCode');
-    expect(src).toContain('const windowLive = wantsWindow && !ordinaryUnavailable;');
+    expect(src, 'a settled business refusal must also disable the input window').toContain('const windowLive = wantsWindow && !ordinaryUnavailable && !factRefusals[r.workedDate];');
     expect(src).toContain('claimsTimeWindow');
   });
 

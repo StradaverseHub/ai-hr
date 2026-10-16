@@ -49,7 +49,7 @@ async function applyRelay(){
  await internalEmailRequest({op:'apply',actor,draftId:draft.draft.id,received:true});
 }
 beforeEach(async()=>{
- await resetDb();b=await seedBase();ownerCtx={...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};await setModule(b.tenantId,'notifications','active');
+ await resetDb();b=await seedBase();await setModule(b.tenantId,'notifications','active');ownerCtx={...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};
  vi.stubEnv('AUTH_PROVIDER','internal');vi.stubEnv('AUTH_PUBLIC_ORIGIN',origin);vi.stubEnv('AUTH_SESSION_KEY','6'.repeat(64));
  recipient=await hireEmployee(adminCtx(b),{person:{fullName:'Fictional broker recipient',primaryEmail:'recipient@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
  const userId=await createAppUser(b.tenantId,recipient.personId,'hr_admin');

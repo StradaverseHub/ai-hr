@@ -3214,6 +3214,13 @@
       "when": 1791900000032,
       "tag": "0552_employee_master_internal_delivery",
       "breakpoints": true
+    },
+    {
+      "idx": 553,
+      "version": "7",
+      "when": 1791900000033,
+      "tag": "0553_report_occurrence_write_privileges",
+      "breakpoints": true
     }
   ]
 }

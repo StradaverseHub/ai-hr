@@ -180,9 +180,17 @@ describe('actual app-role nonce context and atomic artifact start',()=>{
  });
  it('does not expose the nonce in app audit reads or permit direct artifact mutation',async()=>{
   const job=await queue();
+  const [privileges]=await client`select has_table_privilege(current_user,'public.custom_report_occurrence','INSERT') as can_insert,
+   has_table_privilege(current_user,'public.custom_report_occurrence','UPDATE') as can_update,
+   has_table_privilege(current_user,'public.custom_report_occurrence','DELETE') as can_delete,
+   has_table_privilege(current_user,'public.custom_report_occurrence','TRUNCATE') as can_truncate,
+   has_column_privilege(current_user,'public.custom_report_occurrence','artifact_sha256','UPDATE') as can_update_artifact`;
+  expect(privileges).toEqual({can_insert:false,can_update:false,can_delete:false,can_truncate:false,can_update_artifact:false});
   expect(await withTenant(ctx,tx=>tx.select({id:schema.customReportOccurrence.id,hash:schema.customReportOccurrence.artifactSha256}).from(schema.customReportOccurrence))).toEqual([{id:job.id,hash:null}]);
   await expect(withTenant(ctx,tx=>tx.select({token:schema.customReportOccurrence.leaseToken}).from(schema.customReportOccurrence))).rejects.toMatchObject({cause:{code:'42501'}});
   await expect(client`update custom_report_occurrence set artifact_sha256=${artifact.sha256} where id=${job.id}::uuid`).rejects.toThrow(/permission denied/);
+  await expect(withTenant(ctx,tx=>tx.execute(sql`update custom_report_occurrence set artifact_sha256=${artifact.sha256} where id=${job.id}::uuid`))).rejects.toMatchObject({cause:{code:'42501'}});
+  expect(await state(job)).toMatchObject({status:'pending',artifact_sha256:null,artifact_byte_length:null,artifact_content_type:null});
   await expect(client`select * from app_internal_auth_record`).rejects.toThrow(/permission denied/);
  });
  it('gives a finish-only transport role no Auth/context/start/common/HR read authority',async()=>{
