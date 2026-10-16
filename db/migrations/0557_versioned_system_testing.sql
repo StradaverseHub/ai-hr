@@ -2,7 +2,7 @@
 -- Entitlement authority remains canonical service assertModuleEnabled; policies below add assignment/actor integrity.
 ALTER TABLE public.test_case ADD COLUMN semantic_id text, ADD COLUMN origin text NOT NULL DEFAULT 'legacy',
  ADD COLUMN current_version_id uuid, ADD COLUMN draft_definition jsonb, ADD COLUMN draft_revision integer NOT NULL DEFAULT 0,
- ADD COLUMN accepted_catalogue_hash text;
+ ADD COLUMN accepted_catalogue_definition_hash text;
 ALTER TABLE public.test_case ADD CONSTRAINT test_case_origin_ck CHECK(origin IN ('legacy','local','catalogue')),
  ADD CONSTRAINT test_case_draft_revision_ck CHECK(draft_revision >= 0), ADD CONSTRAINT test_case_id_tenant_uq UNIQUE(id,tenant_id);
 CREATE UNIQUE INDEX test_case_semantic_uq ON public.test_case(tenant_id,semantic_id) WHERE semantic_id IS NOT NULL;
@@ -11,10 +11,10 @@ CREATE TABLE public.test_case_version (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL REFERENCES public.tenant(id),
  test_case_id uuid NOT NULL, ordinal integer NOT NULL CHECK(ordinal>0), definition jsonb NOT NULL CHECK(jsonb_typeof(definition)='object'),
  content_hash text NOT NULL CHECK(content_hash ~ '^[a-f0-9]{64}$'), provenance text NOT NULL CHECK(provenance IN ('upgrade_baseline','local','catalogue')),
- source_ref text, catalogue_hash text, source_content_hash text, published_by_user_id uuid REFERENCES public.app_user(id), published_at timestamptz NOT NULL DEFAULT now(),
+ source_ref text, catalogue_hash text, source_content_hash text, guide_source_hash text, published_by_user_id uuid REFERENCES public.app_user(id), published_at timestamptz NOT NULL DEFAULT now(),
  UNIQUE(test_case_id,ordinal), UNIQUE(id,tenant_id,test_case_id),
  FOREIGN KEY(test_case_id,tenant_id) REFERENCES public.test_case(id,tenant_id) ON DELETE CASCADE,
- CHECK((provenance='catalogue')=(source_ref IS NOT NULL AND catalogue_hash IS NOT NULL AND source_content_hash IS NOT NULL))
+ CHECK((provenance='catalogue')=(source_ref IS NOT NULL AND catalogue_hash IS NOT NULL AND source_content_hash IS NOT NULL AND guide_source_hash IS NOT NULL))
 );
 -- Honest upgrade baseline ONLY. No old test_run is backfilled to this new version.
 INSERT INTO public.test_case_version(tenant_id,test_case_id,ordinal,definition,content_hash,provenance)
@@ -110,7 +110,16 @@ CREATE POLICY test_catalogue_update_insert ON public.test_catalogue_update FOR I
 REVOKE ALL ON public.test_case_version,public.test_assignment,public.test_execution,public.test_execution_attachment,public.test_catalogue_update FROM PUBLIC,ai_hr_app;
 GRANT SELECT,INSERT ON public.test_case_version,public.test_execution_attachment,public.test_catalogue_update TO ai_hr_app;
 GRANT SELECT,INSERT,UPDATE ON public.test_assignment,public.test_execution TO ai_hr_app;
-REVOKE DELETE ON public.test_case,public.test_run FROM ai_hr_app;
+REVOKE ALL ON public.test_case,public.test_run FROM PUBLIC,ai_hr_app;
+-- Table revocation does not remove independently granted column privileges.
+DO $$ DECLARE relation text; columns text; BEGIN
+ FOREACH relation IN ARRAY ARRAY['test_case','test_run'] LOOP
+  SELECT string_agg(quote_ident(attname),',' ORDER BY attnum) INTO columns FROM pg_catalog.pg_attribute
+   WHERE attrelid=('public.'||relation)::regclass AND attnum>0 AND NOT attisdropped;
+  EXECUTE format('REVOKE ALL PRIVILEGES (%s) ON TABLE public.%I FROM PUBLIC,ai_hr_app',columns,relation);
+ END LOOP;
+END $$;
+GRANT SELECT,INSERT,UPDATE ON public.test_case,public.test_run TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.testing_version_immutable() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog AS $$ BEGIN
  RAISE EXCEPTION 'Published testing instruction versions are immutable' USING ERRCODE='23514';

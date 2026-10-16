@@ -5,9 +5,10 @@ import { catalogueDigest, sourceContentDigest, testingDigest } from '../lib/syst
 import { previewTestingUpdates, selectedTestingUpdateId, type LibraryCaseSnapshot } from '../lib/system-testing/updates';
 const id = 'a74fce27-2c4c-4dbe-93de-40c438852aa0', version = '455e0338-1ce4-4c53-8d05-fb1905c4078c';
 const guide: InstructionDefinition = { format: 1, title: 'Save and reopen a fictional employee', objective: 'Confirm the saved value is retained.', functionKey: 'personnel.profile', area: 'personnel', moduleCode: 'employees', category: 'functional', priority: 'high', active: true, prerequisites: ['Use an isolated fictional employee; obtain normal company HR access.'], testData: ['A distinctive fictional preferred name.'], steps: [{ id: 'save', action: 'Save the fictional preferred name.', expected: 'A successful save is shown.' }, { id: 'reopen', action: 'Open the same employee again.', expected: 'The saved preferred name is retained.' }], expectedBehavior: 'The saved value is retained.', expectedFunction: 'Normal Personnel editing and persisted profile reading.', permissions: ['Company-scoped HR access to this fictional employee.'], jurisdiction: null, configuration: null, screenKeys: ['people'] };
-const catalogue: ReviewedCatalogue = { format: 1, revision: 'baseline.1', entries: [{ semanticId: 'personnel.profile.reopen', definition: guide, sources: ['core/profile.ts'], reviewNote: 'Reviewed canonical save and read journey.' }] };
-function identity() { return testingBuildReadiness({ sourceRef: 'a'.repeat(40), buildRecordId: id, catalogueHash: catalogueDigest(catalogue), contentHash: 'b'.repeat(64) }, { catalogueHash: catalogueDigest(catalogue), contentHash: 'b'.repeat(64) }); }
-function preview(library: LibraryCaseSnapshot[] = []) { return previewTestingUpdates({ catalogue, identity: identity(), library, enabledModuleCodes: ['employees'] }); }
+const sourceHashRecord = [{ path: 'core/profile.ts', sha256: 'a'.repeat(64) }];
+const catalogue: ReviewedCatalogue = { format: 1, revision: 'baseline.1', entries: [{ semanticId: 'personnel.profile.reopen', definition: guide, sources: ['core/profile.ts'], reviewedSourceHash: sourceContentDigest(sourceHashRecord), reviewNote: 'Reviewed canonical save and read journey.' }] };
+function identity(record = sourceHashRecord) { return testingBuildReadiness({ sourceRef: 'a'.repeat(40), buildRecordId: id, catalogueHash: catalogueDigest(catalogue), contentHash: sourceContentDigest(record) }, { catalogueHash: catalogueDigest(catalogue), contentHash: sourceContentDigest(record) }); }
+function preview(library: LibraryCaseSnapshot[] = []) { return previewTestingUpdates({ catalogue, identity: identity(), library, enabledModuleCodes: ['employees'], sourceHashRecord }); }
 describe('immutable testing instruction and personal execution contracts', () => {
   it('requires a result for every ordered step and refuses unknown executable properties', () => {
     expect(parseInstruction(guide)).toEqual(guide);
@@ -42,7 +43,7 @@ describe('verified build and reviewed update comparison', () => {
   });
   it('deduplicates exact semantic content, detects local edits and binds confirmation to exact library snapshot', () => {
     const add = preview(); expect(add.entries[0].action).toBe('add');
-    const row: LibraryCaseSnapshot = { caseId: id, caseNo: 17, versionId: version, versionHash: testingDigest(guide), semanticId: catalogue.entries[0].semanticId, origin: 'catalogue', acceptedCatalogueHash: testingDigest(guide), title: guide.title, definition: guide };
+    const row: LibraryCaseSnapshot = { caseId: id, caseNo: 17, versionId: version, versionHash: testingDigest(guide), semanticId: catalogue.entries[0].semanticId, origin: 'catalogue', acceptedCatalogueDefinitionHash: testingDigest(guide), acceptedGuideSourceHash: sourceContentDigest(sourceHashRecord), title: guide.title, hasLocalDraft: false, definition: guide };
     expect(preview([row]).entries[0].action).toBe('unchanged');
     const local = { ...guide, objective: 'Locally revised objective.' };
     expect(preview([{ ...row, versionHash: testingDigest(local), definition: local }]).entries[0]).toMatchObject({ action: 'conflict', reason: 'local_override' });
@@ -50,10 +51,21 @@ describe('verified build and reviewed update comparison', () => {
     expect(selectedTestingUpdateId(add, [catalogue.entries[0].semanticId])).toMatch(/^[a-f0-9]{64}$/);
     expect(add.previewHash).not.toBe(preview([row]).previewHash);
   });
+  it('requires source review after code changes and creates retest work for explicitly reviewed source changes', () => {
+    const current = preview();
+    const row: LibraryCaseSnapshot = { caseId: id, caseNo: 17, versionId: version, versionHash: testingDigest(guide), semanticId: catalogue.entries[0].semanticId, origin: 'catalogue', acceptedCatalogueDefinitionHash: testingDigest(guide), acceptedGuideSourceHash: 'b'.repeat(64), title: guide.title, hasLocalDraft: false, definition: guide };
+    expect(preview([row]).entries[0]).toMatchObject({ action: 'revise', reason: 'reviewed_source_changed' });
+    const changedRecords = [{ path: 'core/profile.ts', sha256: 'c'.repeat(64) }];
+    const changed = previewTestingUpdates({ catalogue, identity: identity(changedRecords), library: [row], enabledModuleCodes: ['employees'], sourceHashRecord: changedRecords });
+    expect(changed.entries[0]).toMatchObject({ action: 'review_required', reason: 'unreviewed_source_change' });
+    expect(() => selectedTestingUpdateId(changed, [catalogue.entries[0].semanticId])).toThrow();
+    expect(preview([{ ...row, acceptedGuideSourceHash: sourceContentDigest(sourceHashRecord), hasLocalDraft: true }]).entries[0]).toMatchObject({ action: 'conflict', reason: 'local_override' });
+    expect(current.entries[0].guideSourceHash).toBe(sourceContentDigest(sourceHashRecord));
+  });
   it('does not turn missing build evidence into a selectable update or absent catalogue cases into removals', () => {
-    const result = previewTestingUpdates({ catalogue, identity: { status: 'review_required', reason: 'missing_identity' }, library: [], enabledModuleCodes: ['employees'] });
+    const result = previewTestingUpdates({ catalogue, identity: { status: 'review_required', reason: 'missing_identity' }, library: [], enabledModuleCodes: ['employees'], sourceHashRecord });
     expect(result.entries[0].action).toBe('review_required');
     expect(() => selectedTestingUpdateId(result, [catalogue.entries[0].semanticId])).toThrow();
-    expect(previewTestingUpdates({ catalogue: { ...catalogue, entries: [] }, identity: identity(), library: [], enabledModuleCodes: [] }).entries).toEqual([]);
+    expect(previewTestingUpdates({ catalogue: { ...catalogue, entries: [] }, identity: identity(), library: [], enabledModuleCodes: [], sourceHashRecord: [] }).entries).toEqual([]);
   });
 });

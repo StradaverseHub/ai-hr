@@ -1,11 +1,13 @@
 /** Official-release helper only. No web import, tenant data, arbitrary ref checkout or live-arrival claim. */
+import { z } from 'zod';
 import { execFileSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { lstatSync, mkdirSync, openSync, closeSync, writeFileSync, fsyncSync, renameSync, unlinkSync } from 'node:fs';
+import { lstatSync, mkdirSync, openSync, closeSync, writeFileSync, fsyncSync, linkSync, unlinkSync } from 'node:fs';
 import { resolve, join, isAbsolute } from 'node:path';
-import { catalogueSchema, testingSourceRef, testingUuid, type TestingBuildIdentity, type TestingSourceHashRecord } from '../../lib/system-testing/model';
+import { buildIdentitySchema, catalogueSchema, sourceHashRecordSchema, testingSourceRef, testingUuid, type TestingBuildIdentity, type TestingSourceHashRecord } from '../../lib/system-testing/model';
 import { catalogueDigest, sourceContentDigest, stableTestingJson, testingSourcePaths } from '../../lib/system-testing/hash';
 export const SYSTEM_TESTING_CATALOGUE_PATH = 'lib/system-testing/catalogue.json';
+const preparedBuildSchema = z.strictObject({ format: z.literal(1), identity: buildIdentitySchema, sourceHashRecord: sourceHashRecordSchema, activeServiceVerified: z.literal(false) });
 export type PreparedTestingBuild = { format: 1; identity: TestingBuildIdentity; sourceHashRecord: TestingSourceHashRecord; activeServiceVerified: false };
 function git(root: string, args: string[], maxBuffer = 16 * 1024 * 1024): Buffer {
   return execFileSync('git', ['-C', root, ...args], { maxBuffer, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -40,12 +42,13 @@ export function systemTestingCompileEnvironment(record: PreparedTestingBuild): R
   };
 }
 /**
- * Installer/release root process only. Directory is selected by the official release, never a request.
- * Ancestors must already be root-owned, nonsymlink and not group/world writable. No mutable "latest".
+ * Official release principal only. Directory is selected by the release, never a web request.
+ * Caller-owned private selected directory; safe root/caller-owned ancestors. No mutable "latest".
  */
 export function publishSystemTestingBuild(record: PreparedTestingBuild, selectedDirectory: string): string {
-  if (process.getuid?.() !== 0 || !isAbsolute(selectedDirectory)) throw new Error('System Testing build publication requires an absolute private root-owned release directory.');
-  testingUuid.parse(record.identity.buildRecordId); testingSourceRef.parse(record.identity.sourceRef);
+  const uid = process.getuid?.();
+  if (uid === undefined || !isAbsolute(selectedDirectory)) throw new Error('System Testing build publication requires an absolute private release directory.');
+  record = preparedBuildSchema.parse(record);
   if (record.activeServiceVerified !== false || sourceContentDigest(record.sourceHashRecord) !== record.identity.contentHash) throw new Error('Invalid prepared build evidence.');
   const directory = resolve(selectedDirectory);
   const parts = directory.split('/').filter(Boolean);
@@ -53,8 +56,10 @@ export function publishSystemTestingBuild(record: PreparedTestingBuild, selected
   for (const part of parts) {
     cursor = join(cursor, part);
     const st = lstatSync(cursor);
-    if (!st.isDirectory() || st.isSymbolicLink() || st.uid !== 0 || (st.mode & 0o022) !== 0) throw new Error('Release evidence directory ancestry is not private root-owned storage.');
+    if (!st.isDirectory() || st.isSymbolicLink() || (st.uid !== 0 && st.uid !== uid) || (st.mode & 0o022) !== 0) throw new Error('Release evidence directory ancestry is not trusted storage.');
   }
+  const selected = lstatSync(directory);
+  if (selected.uid !== uid || (selected.mode & 0o077) !== 0) throw new Error('Selected release record directory must be private and caller-owned.');
   // Each build has a private immutable directory. mkdir refuses duplicate publication rather than overwrite.
   const buildDirectory = join(directory, record.identity.buildRecordId);
   mkdirSync(buildDirectory, { mode: 0o700 });
@@ -63,7 +68,8 @@ export function publishSystemTestingBuild(record: PreparedTestingBuild, selected
   try {
     fd = openSync(temporary, 'wx', 0o600);
     writeFileSync(fd, stableTestingJson(record) + '\n'); fsyncSync(fd); closeSync(fd); fd = null;
-    renameSync(temporary, destination);
+    // link is atomic and refuses an existing destination; rename could overwrite one.
+    linkSync(temporary, destination); unlinkSync(temporary);
     const dirFd = openSync(buildDirectory, 'r'); try { fsyncSync(dirFd); } finally { closeSync(dirFd); }
     return destination;
   } catch (error) { if (fd !== null) closeSync(fd); try { unlinkSync(temporary); } catch { /* Preserve the original failure. */ } throw error; }

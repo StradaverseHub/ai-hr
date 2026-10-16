@@ -9674,7 +9674,7 @@ export const testCase = pgTable(
     currentVersionId: uuid('current_version_id'),
     draftDefinition: jsonb('draft_definition').$type<InstructionDefinition>(),
     draftRevision: integer('draft_revision').notNull().default(0),
-    acceptedCatalogueHash: text('accepted_catalogue_hash'),
+    acceptedCatalogueDefinitionHash: text('accepted_catalogue_definition_hash'),
     precondition: text('precondition'),
     /** The steps IN ORDER. The order IS the data, so it is an array, not a child table. */
     steps: jsonb('steps').$type<string[]>().notNull().default([]),
@@ -9745,7 +9745,7 @@ export const testCaseVersion = pgTable('test_case_version', {
   id: id(), tenantId: tenantId(), testCaseId: uuid('test_case_id').notNull().references(() => testCase.id, { onDelete: 'cascade' }),
   ordinal: integer('ordinal').notNull(), definition: jsonb('definition').$type<PublishedInstruction>().notNull(),
   contentHash: text('content_hash').notNull(), provenance: text('provenance').$type<'upgrade_baseline' | 'local' | 'catalogue'>().notNull(),
-  sourceRef: text('source_ref'), catalogueHash: text('catalogue_hash'), sourceContentHash: text('source_content_hash'),
+  sourceRef: text('source_ref'), catalogueHash: text('catalogue_hash'), sourceContentHash: text('source_content_hash'), guideSourceHash: text('guide_source_hash'),
   publishedByUserId: uuid('published_by_user_id').references(() => appUser.id), publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
 }, t => [uniqueIndex('test_case_version_ordinal_uq').on(t.testCaseId, t.ordinal), uniqueIndex('test_case_version_identity_uq').on(t.id, t.tenantId, t.testCaseId)]);
 export const testAssignment = pgTable('test_assignment', {

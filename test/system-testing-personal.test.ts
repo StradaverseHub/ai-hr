@@ -7,6 +7,7 @@ import { hireEmployee } from '../core/org';
 import { ModuleNotEnabledError } from '../core/entitlements';
 import { addTestingScreenshot, assignTestingCase, beginTestingExecution, getTestingExecution, getTestingScreenshot, listTestingAssignments, publishTestInstruction, raiseTestingExecutionFeedback, saveTestInstructionDraft, saveTestingExecution } from '../core/system-testing';
 import { TestingRefusal, type InstructionDefinition } from '../lib/system-testing/model';
+import { pgSqlState } from '../lib/db-error';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 let b: Base, admin: SessionContext, one: SessionContext, two: SessionContext;
@@ -50,6 +51,17 @@ describe('personal System Testing isolation and immutable instructions', () => {
     await expect(listTestingAssignments(one, { testerUserId: two.userId })).rejects.toMatchObject({ code: 'not_assigned' });
     await expect(listTestingAssignments(one, { team: true })).rejects.toMatchObject({ code: 'not_assigned' });
   });
+  it('retained case/run ACLs refuse TRUNCATE/DELETE/TRIGGER even where ordinary tenant RLS cannot protect them', async () => {
+    const f = await setup(); await saveTestingExecution(one, observation(f));
+    const rows = await withTenant(admin, tx => tx.execute(sql`SELECT name,has_table_privilege(current_user,name,'SELECT') AS read,has_table_privilege(current_user,name,'INSERT') AS append,has_table_privilege(current_user,name,'UPDATE') AS update,has_table_privilege(current_user,name,'DELETE') AS delete,has_table_privilege(current_user,name,'TRUNCATE') AS truncate,has_table_privilege(current_user,name,'TRIGGER') AS trigger,has_table_privilege(current_user,name,'REFERENCES') AS references FROM unnest(ARRAY['public.test_case','public.test_run']) name ORDER BY name`)) as unknown as { name: string; read: boolean; append: boolean; update: boolean; delete: boolean; truncate: boolean; trigger: boolean; references: boolean }[];
+    expect(rows).toHaveLength(2);
+    for (const row of rows) expect(row).toMatchObject({ read: true, append: true, update: true, delete: false, truncate: false, trigger: false, references: false });
+    for (const statement of [sql`TRUNCATE public.test_case CASCADE`, sql`TRUNCATE public.test_run CASCADE`, sql`DELETE FROM public.test_run WHERE execution_id=${f.execution.executionId}::uuid`]) {
+      try { await withTenant(admin, tx => tx.execute(statement)); throw new Error('Restricted ordinary destructive privilege unexpectedly succeeded.'); }
+      catch (error) { expect(pgSqlState(error)).toBe('42501'); }
+    }
+    expect((await getTestingExecution(one, f.execution.executionId)).history).toHaveLength(1);
+  });
   it('rejects forged tester/assignment/version and direct history rewriting, not merely a hidden UI', async () => {
     const f = await setup(); const saved = await saveTestingExecution(one, observation(f));
     await expect(beginTestingExecution(two, { assignmentId: f.a.assignmentId, expectedVersionId: f.version.versionId, newAttempt: false })).rejects.toMatchObject({ code: 'not_assigned' });
@@ -83,7 +95,18 @@ describe('personal System Testing isolation and immutable instructions', () => {
     const f = await setup(); await saveTestingExecution(one, observation(f));
     await setModule(b.tenantId, 'system_testing', 'disabled');
     const fresh = { ...await entitledCtx(b, ['employee']), userId: one.userId, personId: one.personId };
-    await expect(listTestingAssignments(fresh)).rejects.toBeInstanceOf(ModuleNotEnabledError);
+    const denied = [
+      () => listTestingAssignments(fresh), () => getTestingExecution(fresh, f.execution.executionId),
+      () => beginTestingExecution(fresh, { assignmentId: f.a.assignmentId, expectedVersionId: f.version.versionId, newAttempt: false }),
+      () => saveTestingExecution(fresh, { ...observation(f), expectedRevision: 1 }),
+      () => getTestingScreenshot(fresh, f.execution.executionId),
+      () => addTestingScreenshot(fresh, { executionId: f.execution.executionId, runId: f.execution.executionId, fileName: 'invalid.png', mimeType: 'image/png', content: Buffer.from([1]) }),
+      () => raiseTestingExecutionFeedback(fresh, { executionId: f.execution.executionId, expectedRevision: 1, kind: 'improvement' }),
+      () => saveTestInstructionDraft(fresh, { caseId: null, expectedRevision: 0, definition: guide }),
+      () => publishTestInstruction(fresh, { caseId: f.draft.caseId, expectedDraftRevision: 0, expectedVersionId: f.version.versionId }),
+      () => assignTestingCase(fresh, { caseId: f.draft.caseId, testerUserId: two.userId!, expectedVersionId: f.version.versionId, active: true, expectedRevision: null }),
+    ];
+    for (const call of denied) await expect(call()).rejects.toBeInstanceOf(ModuleNotEnabledError);
     await expect(listTestingAssignments(await entitledCtx(b), { team: true })).rejects.toBeInstanceOf(ModuleNotEnabledError);
     expect(await owner.db.select().from(s.testRun).where(eq(s.testRun.executionId, f.execution.executionId))).toHaveLength(1);
   });

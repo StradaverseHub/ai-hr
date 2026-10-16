@@ -69,18 +69,18 @@ async function event(tx: Tx, ctx: SessionContext, caseId: string, type: string, 
 /** Shared publication owner used by manual publication and exact-hash catalogue confirmation. */
 export async function publishTestInstructionTx(tx: Tx, ctx: SessionContext, p: {
   caseId: string; expectedVersionId: string | null; definition: InstructionDefinition;
-  provenance: { kind: 'local' } | { kind: 'catalogue'; semanticId: string; sourceRef: string; catalogueHash: string; sourceContentHash: string };
+  provenance: { kind: 'local' } | { kind: 'catalogue'; semanticId: string; sourceRef: string; catalogueHash: string; sourceContentHash: string; guideSourceHash: string };
 }): Promise<{ caseId: string; versionId: string; ordinal: number }> {
   const actor = administrator(ctx), definition = parseInstruction(p.definition);
   if (!isTestableModule(ctx, definition.moduleCode) || definition.screenKeys.some(key => !SCREENS.some(screen => screen.screenKey === key))) throw new TestingRefusal('invalid');
-  if (p.provenance.kind === 'catalogue') { testingSemanticId.parse(p.provenance.semanticId); testingSourceRef.parse(p.provenance.sourceRef); testingHash.parse(p.provenance.catalogueHash); testingHash.parse(p.provenance.sourceContentHash); }
+  if (p.provenance.kind === 'catalogue') { testingSemanticId.parse(p.provenance.semanticId); testingSourceRef.parse(p.provenance.sourceRef); testingHash.parse(p.provenance.catalogueHash); testingHash.parse(p.provenance.sourceContentHash); testingHash.parse(p.provenance.guideSourceHash); }
   const c = await caseLock(tx, ctx, p.caseId);
   if (c.currentVersionId !== p.expectedVersionId) throw new TestingRefusal('stale_instructions');
   const [count] = await tx.select({ ordinal: sql<number>`coalesce(max(${testCaseVersion.ordinal}),0)` }).from(testCaseVersion).where(eq(testCaseVersion.testCaseId, c.id));
   const ordinal = Number(count.ordinal) + 1, contentHash = testingDigest(definition);
   const [v] = await tx.insert(testCaseVersion).values({ tenantId: ctx.tenantId, testCaseId: c.id, ordinal, definition, contentHash, provenance: p.provenance.kind, publishedByUserId: actor,
-    ...(p.provenance.kind === 'catalogue' ? { sourceRef: p.provenance.sourceRef, catalogueHash: p.provenance.catalogueHash, sourceContentHash: p.provenance.sourceContentHash } : {}) }).returning({ id: testCaseVersion.id });
-  await tx.update(testCase).set({ currentVersionId: v.id, origin: p.provenance.kind, title: definition.title, moduleCode: definition.moduleCode, precondition: definition.prerequisites.join('\n'), steps: definition.steps.map(s => s.action), testType: definition.category, priority: definition.priority, expectedBehavior: definition.expectedBehavior, expectedFunction: definition.expectedFunction, draftDefinition: null, draftRevision: c.draftRevision + 1, updatedByUserId: actor, updatedAt: new Date(), ...(p.provenance.kind === 'catalogue' ? { semanticId: p.provenance.semanticId, acceptedCatalogueHash: contentHash } : {}) }).where(eq(testCase.id, c.id));
+    ...(p.provenance.kind === 'catalogue' ? { sourceRef: p.provenance.sourceRef, catalogueHash: p.provenance.catalogueHash, sourceContentHash: p.provenance.sourceContentHash, guideSourceHash: p.provenance.guideSourceHash } : {}) }).returning({ id: testCaseVersion.id });
+  await tx.update(testCase).set({ currentVersionId: v.id, origin: p.provenance.kind, title: definition.title, moduleCode: definition.moduleCode, precondition: definition.prerequisites.join('\n'), steps: definition.steps.map(s => s.action), testType: definition.category, priority: definition.priority, expectedBehavior: definition.expectedBehavior, expectedFunction: definition.expectedFunction, draftDefinition: null, draftRevision: c.draftRevision + 1, updatedByUserId: actor, updatedAt: new Date(), ...(p.provenance.kind === 'catalogue' ? { semanticId: p.provenance.semanticId, acceptedCatalogueDefinitionHash: contentHash } : {}) }).where(eq(testCase.id, c.id));
   // The case trigger moves assignment targets/retest markers atomically; old observations are unchanged.
   await event(tx, ctx, c.id, 'test_case.version_published', { versionId: v.id, ordinal, contentHash, provenance: p.provenance.kind });
   return { caseId: c.id, versionId: v.id, ordinal };
@@ -103,6 +103,7 @@ export async function assignTestingCase(ctx: SessionContext, p: { caseId: string
     const [user] = await tx.select({ id: appUser.id }).from(appUser).where(and(eq(appUser.id, p.testerUserId), eq(appUser.tenantId, ctx.tenantId), sql`${appUser.archivedAt} is null AND NOT app.login_blocked(${appUser.id})`)).limit(1);
     if (!user && p.active) throw new TestingRefusal('not_found');
     const [a] = await tx.select().from(testAssignment).where(and(eq(testAssignment.testCaseId, c.id), eq(testAssignment.testerUserId, p.testerUserId))).for('update');
+    if (!user && !a) throw new TestingRefusal('not_found');
     if (a ? a.revision !== p.expectedRevision : p.expectedRevision !== null) throw new TestingRefusal('stale_execution');
     if (a) {
       await tx.update(testAssignment).set({ active: p.active, revision: a.revision + 1, assignedByUserId: actor, updatedAt: new Date() }).where(eq(testAssignment.id, a.id));

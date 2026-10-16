@@ -1,19 +1,19 @@
 /** Deterministic reviewed-catalogue comparison. It proposes changes; only the owner may confirm them. */
-import { catalogueSchema, testingHash, testingUuid, type InstructionDefinition, type ReviewedCatalogue, type TestingBuildReadiness } from './model';
-import { catalogueDigest, testingDigest } from './hash';
+import { catalogueSchema, testingHash, testingUuid, type InstructionDefinition, type ReviewedCatalogue, type TestingBuildReadiness, type TestingSourceHashRecord } from './model';
+import { catalogueDigest, sourceContentDigest, testingDigest } from './hash';
 export type LibraryCaseSnapshot = {
   caseId: string; caseNo: number; versionId: string; versionHash: string;
   semanticId: string | null; origin: 'local' | 'catalogue' | 'legacy';
   /** Last accepted catalogue definition. A local revision differs from this exact digest. */
-  acceptedCatalogueHash: string | null;
-  title: string; definition: InstructionDefinition | null;
+  acceptedCatalogueDefinitionHash: string | null; acceptedGuideSourceHash: string | null;
+  title: string; hasLocalDraft: boolean; definition: InstructionDefinition | null;
 };
 export type LegacyCaseMapping = { semanticId: string; caseId: string; expectedVersionId: string; expectedVersionHash: string };
 export type TestingUpdateEntry = {
   semanticId: string; action: 'add' | 'revise' | 'unchanged' | 'conflict' | 'review_required';
-  reason: 'new_reviewed_guide' | 'instructions_changed' | 'already_current' | 'local_override' | 'ambiguous_identity' | 'unverified_build' | 'unmapped_legacy';
+  reason: 'new_reviewed_guide' | 'instructions_changed' | 'already_current' | 'local_override' | 'ambiguous_identity' | 'unverified_build' | 'unmapped_legacy' | 'unreviewed_source_change' | 'reviewed_source_changed';
   caseId: string | null; expectedVersionId: string | null; expectedVersionHash: string | null;
-  before: InstructionDefinition | null; after: InstructionDefinition; afterHash: string;
+  before: InstructionDefinition | null; after: InstructionDefinition; afterHash: string; guideSourceHash: string | null;
   possibleLegacyCaseIds: string[];
 };
 export type TestingUpdatePreview = {
@@ -21,7 +21,7 @@ export type TestingUpdatePreview = {
   entries: TestingUpdateEntry[]; previewHash: string;
 };
 /** Missing entries do not mean removal. No catalogue comparison can silently archive a local case. */
-export function previewTestingUpdates(p: { catalogue: ReviewedCatalogue; identity: TestingBuildReadiness; library: readonly LibraryCaseSnapshot[]; enabledModuleCodes: readonly string[]; legacyMappings?: readonly LegacyCaseMapping[] }): TestingUpdatePreview {
+export function previewTestingUpdates(p: { catalogue: ReviewedCatalogue; identity: TestingBuildReadiness; library: readonly LibraryCaseSnapshot[]; enabledModuleCodes: readonly string[]; sourceHashRecord: TestingSourceHashRecord; legacyMappings?: readonly LegacyCaseMapping[] }): TestingUpdatePreview {
   const catalogue = catalogueSchema.parse(p.catalogue), catalogueHash = catalogueDigest(catalogue);
   if (p.library.length > 10000 || (p.legacyMappings?.length ?? 0) > 1000) throw new Error('Testing library comparison exceeds its supported bound.');
   const caseIds = new Set<string>();
@@ -39,23 +39,27 @@ export function previewTestingUpdates(p: { catalogue: ReviewedCatalogue; identit
   }
   const library = [...p.library].sort((a, b) => a.caseId < b.caseId ? -1 : a.caseId > b.caseId ? 1 : 0);
   const libraryHash = testingDigest(library), enabled = new Set(p.enabledModuleCodes);
-  const verified = p.identity.status === 'verified_build_identity' && p.identity.identity.catalogueHash === catalogueHash;
+  const verified = p.identity.status === 'verified_build_identity' && p.identity.identity.catalogueHash === catalogueHash && p.identity.identity.contentHash === sourceContentDigest(p.sourceHashRecord);
   const entries = catalogue.entries.filter(e => enabled.has(e.definition.moduleCode) || e.definition.moduleCode === 'cross_module').map(e => {
     const mapping = mappings.find(m => m.semanticId === e.semanticId);
     const matches = library.filter(r => r.semanticId === e.semanticId || mapping?.caseId === r.caseId);
     const match = matches.length === 1 ? matches[0] : null;
     // A title match is an explicit mapping suggestion, never identity or permission to overwrite.
     const possibleLegacyCaseIds = library.filter(r => r.origin === 'legacy' && r.semanticId === null && !mappedCases.has(r.caseId) && r.title.trim().toLocaleLowerCase('en') === e.definition.title.trim().toLocaleLowerCase('en')).map(r => r.caseId);
+    const sourceRecords = p.sourceHashRecord.filter(r => e.sources.includes(r.path));
+    const guideSourceHash = sourceRecords.length === e.sources.length ? sourceContentDigest(sourceRecords) : null;
     const afterHash = testingDigest(e.definition);
     let action: TestingUpdateEntry['action'], reason: TestingUpdateEntry['reason'];
     if (!verified) { action = 'review_required'; reason = 'unverified_build'; }
+    else if (guideSourceHash !== e.reviewedSourceHash) { action = 'review_required'; reason = 'unreviewed_source_change'; }
     else if (matches.length > 1) { action = 'conflict'; reason = 'ambiguous_identity'; }
     else if (!match && possibleLegacyCaseIds.length) { action = 'review_required'; reason = 'unmapped_legacy'; }
     else if (!match) { action = 'add'; reason = 'new_reviewed_guide'; }
-    else if (match.versionHash === afterHash) { action = 'unchanged'; reason = 'already_current'; }
-    else if (match.origin === 'local' || match.origin === 'catalogue' && match.acceptedCatalogueHash !== match.versionHash) { action = 'conflict'; reason = 'local_override'; }
-    else { action = 'revise'; reason = 'instructions_changed'; }
-    return { semanticId: e.semanticId, action, reason, caseId: match?.caseId ?? null, expectedVersionId: match?.versionId ?? null, expectedVersionHash: match?.versionHash ?? null, before: match?.definition ?? null, after: e.definition, afterHash, possibleLegacyCaseIds };
+    else if (match.hasLocalDraft) { action = 'conflict'; reason = 'local_override'; }
+    else if (match.versionHash === afterHash && match.acceptedGuideSourceHash === guideSourceHash) { action = 'unchanged'; reason = 'already_current'; }
+    else if (match.origin === 'local' || match.origin === 'catalogue' && match.acceptedCatalogueDefinitionHash !== match.versionHash) { action = 'conflict'; reason = 'local_override'; }
+    else { action = 'revise'; reason = match.versionHash === afterHash ? 'reviewed_source_changed' : 'instructions_changed'; }
+    return { semanticId: e.semanticId, action, reason, caseId: match?.caseId ?? null, expectedVersionId: match?.versionId ?? null, expectedVersionHash: match?.versionHash ?? null, before: match?.definition ?? null, after: e.definition, afterHash, guideSourceHash, possibleLegacyCaseIds };
   }).sort((a, b) => a.semanticId < b.semanticId ? -1 : a.semanticId > b.semanticId ? 1 : 0);
   const body = { format: 1 as const, catalogueHash, identity: p.identity, libraryHash, entries };
   return { ...body, previewHash: testingDigest(body) };

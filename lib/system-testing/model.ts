@@ -82,6 +82,7 @@ export class TestingRefusal extends Error {
 export const catalogueEntrySchema = z.strictObject({
   semanticId: testingSemanticId, definition: instructionDefinitionSchema,
   sources: z.array(testingSourcePath).min(1).max(TESTING_LIMITS.sources),
+  reviewedSourceHash: testingHash,
   /** Why this reviewed instruction exists; not an automated claim of coverage/pass. */
   reviewNote: text,
 });
