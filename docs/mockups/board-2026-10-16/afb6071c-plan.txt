@@ -1,0 +1,44 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+AIHR has themes and an Assistant with limited information lookups. It does not yet offer a conversation workspace or carry out every task available in the usual screens.
+
+WHAT WE'LL CHANGE
+
+- Add AI Responsive under SIGNED IN AS, keeping all existing themes and access to the usual pages.
+- Provide a simple conversation with Send, Enter to send, Shift+Enter for a new line, session history and clear loading, retry and unavailable states.
+- Give readable steps, tables and working links. Identify the records or guidance used, company, period and limits of each answer.
+- Reuse authorised lookups and connect existing Personnel, Attendance, Payroll, Leave and statutory information. Missing or inaccessible facts remain unavailable.
+- Collect missing information and show supported changes for confirmation. Initially, direct action covers the existing review of payroll exceptions whose missing information has been corrected. Employee creation, allowances, imports and payroll processing use their existing screens and approvals; chat will not claim they are completed.
+- Help prepare forms and Excel imports using current fields and templates. Explain unsupported requests, offer an available alternative and draft an improvement request for review.
+
+WHAT YOU'LL GET
+
+A quieter way to find information and reach the right task, with existing permissions, validations and approvals. Basic use adds no AI credit balance, counter, purchase or allocation step.
+
+GOOD TO KNOW
+
+- A theme grants no extra access. AI needs the organisation's configured connection and existing permission. Operational safeguards can still pause requests.
+- Home and this theme share the same basic conversation policy; there is no second credit system.
+- The sketches contain fictional examples. They show the proposed arrangement, not completed operations or tested live screens.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Source review at board16-report-artifact@436a8e5d4. Root independently verified production SOURCE equality for app/assistant/page.tsx, lib/ui-theme.ts and components/user-menu.tsx against main. Authenticated rendering, provider readiness, grants and live AI outcomes were not checked. No attachments were supplied with this request. Static HTML is unrendered; root will review/render/publish after the shared window.
+
+One owner per fact: extend lib/ui-theme.ts, its cookie/action/provider and account switcher; add an AI Responsive shell on the existing Assistant route. Selecting the new theme navigates there after successful persistence. Visiting a normal route keeps the selected theme and uses a compact conventional workspace with a Return to conversation link. Reuse existing navigation/unsaved-form guards; do not discard input when changing theme. Keep light/dark independent, existing themes byte-compatible where practical, deep links valid and conventional navigation reachable by keyboard and mobile menu.
+
+Reuse core/assistant.ts and assistant-tools.ts, AI gateway/config/grant/governance, assistant_exchange/usage audit and canonical domain reads through pack facades. The current registry has 10 read tools: leave balances/requests/entitlement explanations, holidays, away/team leave, narrowed employee work profile, reporting line and released own payslip summary/change. It has no write tools, Attendance lookup, general HR/payroll transaction query, handbook search or conversational session context today. The global IntentBar/CommandBar is delegation search, not an AI agent. Do not connect model text directly to its commands.
+
+Add a closed, typed capability/result envelope for guide, retrieved facts, draft handoff, awaiting confirmation, completed, refused, unavailable and unsupported. These are adapters to actual owners, not another permission model. Extend the same registry with bounded role/company/date-scoped readers for existing Personnel and Attendance views, authorised Payroll transaction summaries and statutory readiness/report availability. A missing safe reader remains explicit unavailable with the authorised screen link. Use the same field/category/financial restrictions; no administrator salary bypass, unrestricted SQL, page scraping, unknown-as-zero, LLM arithmetic or current-as-historical substitution. Report caps/truncation and provenance; recheck permissions on every turn and action. Links use the shared navigation/route owners and server-validated local destinations, never model-authored URLs.
+
+Guidance consumes audience-filtered Knowledge Base reads and current reviewed product guides. Navigation labels/actions must be reconciled with the actual route/form owners; do not assume old handbook prose is current. Canonical Personnel creation is /admin/personnel/new and import/template workspace is /admin/personnel/import; /people is an alias. New Employee Draft activation remains its existing separate review. EPF changes use the existing Personnel statutory election/confirmation workflow. EA and payroll processing remain existing authorised workflows, not generic chat writes.
+
+Consequential adapter v1 references core/agent-actions.ts close_fixed_upstream only, preserving requireAdmin, exact reviewed verdict IDs, its 50-subject limit, fresh precondition checks, domain events and closed/stale results. Bind confirmation server-side to actor/company/action/exact payload and fresh version. Sending a message with Enter is not confirmation; the separate confirm control remains keyboard-operable. Repeated confirmation cannot duplicate completed work. Proposal telemetry is not a confirmation/transaction ledger. Do not treat every writer as conversation-enabled. Form/Excel assistance is a validated draft or workflow handoff; no invented query-prefill support, arbitrary upload execution or silent imports. Improvement text is not submitted until the user confirms in the existing feedback workflow.
+
+Share the root-owned basic-conversation and session-history owners with Home. No new credit tables, counter or paid-credit check. Preserve actual user/module access, provider credentials, audit, operational time/token/output/concurrency safeguards and other-feature policies. Reconcile assistantBudget and shared AI policy checks through that owner; never bypass governance by a caller theme flag. Company changes invalidate pending proposals and recheck/clear sensitive history. User, tenant or sign-in session changes must not restore another session's messages. Rehydrate only authorised history; never trust browser-stored facts or old answers as current evidence. Resolve ambiguous employees/employments/dates before reading. Rich replies escape untrusted content and permit only validated local links, with friendly source labels instead of raw tool names.
+
+Acceptance: theme selection/return and existing routes/forms; desktop/tablet/mobile, light/dark, six locales, keyboard/IME Enter, loading/retry and readable structured replies; session continuity and logout/isolation; guide paths for employee creation, October payroll, EPF and EA; all 5 information domains with bounded actual owner proof or explicit unsupported result; cross-company/tenant/self/manager/financial denials; prompt injection in user text and retrieved documents; stale scope/version and double-confirm refusal; actual success/partial failure audit; no fabricated import/payroll completion; no separate basic credit requirement. Root must run actual journeys with configured fictional users/provider and confirm each supported capability before release. No implementation, tests, DB, server, browser render or board push was done in this planning task.
