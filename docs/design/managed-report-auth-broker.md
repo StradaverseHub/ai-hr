@@ -62,10 +62,17 @@ passwords/TOTP again, mutate factors, default flags, widen grants or bypass enro
 
 ## Isolated child contract
 
-Entry: `deploy/identity-email/report-auth-broker.ts`; installed invocation uses the absolute
-`/usr/local/lib/aihr-identity-email/internal-node` + tsx runtime. That root-installed path must select
-the operator-reviewed compatible Node22.13+ or Node24 course; production Node20 does not satisfy
-the known runtime compatibility prerequisite. The path itself is not runtime acceptance evidence. One stdin request, one complete stdout reply, then exit; no listening socket,
+Source entry: `deploy/identity-email/report-auth-broker.ts`. The reviewed transport peer invokes its
+installed bundle with this exact command (no tsx loader):
+
+```
+/usr/local/lib/aihr-identity-email/internal-node --max-old-space-size=96 /usr/local/lib/aihr-identity-email/report-auth-broker.cjs
+```
+
+The root-installed runtime must select the operator-reviewed compatible Node22.13+ or Node24 course;
+production Node20 does not satisfy the known compatibility prerequisite. These paths are not runtime
+acceptance evidence. The separate source runner command uses `--import tsx`; it is not this child.
+One stdin request, one complete stdout reply, then exit; no listening socket,
 SMTP, server/session context or imported application singleton. Supervisor must validate socket EOF
 and child exit0 before forwarding any reply. Lost/partial response cannot authorize MIME/SMTP.
 
