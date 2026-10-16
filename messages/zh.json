@@ -6808,7 +6808,7 @@
       "saveDraftHelp": "保存所选公司和员工，不计算工资单。处理前可将已批准的公式加班转入草稿。",
       "saveDraftRegularOnly": "草稿准备仅适用于常规薪资。其他周期请使用处理功能。",
       "draftResultTitle": "薪资草稿",
-      "draftResultSubtitle": "草稿已准备，尚未计算工资单。处理前请打开各个已保存批次，检查交易。",
+      "draftResultSubtitle": "请查看各公司的处理结果。已保存的草稿尚未计算工资单；处理前请打开已保存批次，检查交易。",
       "draftCompanySaved": "草稿已保存",
       "draftSaving": "正在保存草稿…"
     },

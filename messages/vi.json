@@ -6808,7 +6808,7 @@
       "saveDraftHelp": "Lưu các công ty và nhân viên đã chọn mà không tính phiếu lương. Bạn có thể chuyển giờ làm thêm theo công thức đã duyệt vào bản nháp trước khi xử lý.",
       "saveDraftRegularOnly": "Chỉ có thể chuẩn bị bản nháp cho kỳ lương Thông thường. Dùng Xử lý cho các kỳ khác.",
       "draftResultTitle": "Bản nháp bảng lương",
-      "draftResultSubtitle": "Đã chuẩn bị bản nháp mà chưa tính phiếu lương. Mở từng đợt đã lưu để kiểm tra giao dịch trước khi xử lý.",
+      "draftResultSubtitle": "Kiểm tra kết quả của từng công ty. Các bản nháp đã lưu chưa có phiếu lương được tính; mở đợt đã lưu để kiểm tra giao dịch trước khi xử lý.",
       "draftCompanySaved": "Đã lưu bản nháp",
       "draftSaving": "Đang lưu bản nháp…"
     },

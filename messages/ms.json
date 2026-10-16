@@ -6808,7 +6808,7 @@
       "saveDraftHelp": "Simpan syarikat dan pekerja yang dipilih tanpa mengira slip gaji. Anda boleh memindahkan kerja lebih masa formula yang diluluskan ke draf sebelum pemprosesan.",
       "saveDraftRegularOnly": "Penyediaan draf tersedia untuk gaji Biasa. Gunakan Proses untuk kitaran lain.",
       "draftResultTitle": "Draf gaji",
-      "draftResultSubtitle": "Draf disediakan tanpa mengira slip gaji. Buka setiap proses yang disimpan untuk menyemak transaksi sebelum pemprosesan.",
+      "draftResultSubtitle": "Semak hasil bagi setiap syarikat. Draf yang disimpan belum mempunyai slip gaji yang dikira; buka proses yang disimpan untuk menyemak transaksi sebelum pemprosesan.",
       "draftCompanySaved": "Draf disimpan",
       "draftSaving": "Menyimpan draf…"
     },

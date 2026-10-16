@@ -6808,7 +6808,7 @@
       "saveDraftHelp": "Save the selected companies and employees without calculating payslips. You can transfer approved formula overtime into the draft before processing.",
       "saveDraftRegularOnly": "Draft preparation is available for Regular payroll. Use Process for other cycles.",
       "draftResultTitle": "Payroll drafts",
-      "draftResultSubtitle": "Drafts were prepared without calculating payslips. Open each saved run to review transactions before processing.",
+      "draftResultSubtitle": "Review the outcome for each company. Saved drafts have no calculated payslips; open a saved run to review transactions before processing.",
       "draftCompanySaved": "Draft saved",
       "draftSaving": "Saving drafts…"
     },
