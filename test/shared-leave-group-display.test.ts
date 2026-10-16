@@ -462,7 +462,7 @@ describe('46afcc48 · the Leave tab draws the group at its placement', () => {
     // not belong on it. Gating only the JSX would still pay for the query on every admin page load.
     // UPDATED BY r397: the read is made by the page's loader, which the page calls only AFTER the short-page
     // early return every admin takes — so the query is still never paid for on an admin page load.
-    const shortPageAt = leavePage.indexOf('if (me == null || admin) {');
+    const shortPageAt = leavePage.indexOf('if (me == null || (admin && !selectedOwn)) {');
     expect(shortPageAt).toBeGreaterThan(-1);
     expect(leavePage.indexOf('await loadMyLeave(')).toBeGreaterThan(shortPageAt);
     expect(read('../app/leave/my-leave-data.ts')).toMatch(/sharedLeaveGroupBalances\(session, me\.employmentId, \{ locale, asOf \}\)/);

@@ -1,59 +1,18 @@
 import Link from 'next/link';
-import { getTranslations } from 'next-intl/server';
-
-import { getSession } from '@/lib/session';
-import { myEmployment } from '@/core/read';
-import { noticesForEmployment } from '@/core/notice';
-import { todayInKualaLumpur } from '@/lib/hr-date';
-import { Card, PageHeader, SectionHeader } from '@/components/ui';
-
-/**
- * 6e122302 — the employee's own Notice Board ("View All Notices" from the dashboard card).
- *
- * No guard beyond the session: everything here is the viewer's OWN notices, and which those are is decided
- * by the audience snapshot plus the recipient RLS policy — not by a role. A principal with no employment
- * (an admin login not attached to a person) simply has none, which is correct rather than an error.
- *
- * The window test lives in `noticesForEmployment`, against the tenant timezone. This page does no date
- * arithmetic of its own; adding some is how the listing and the dashboard card start disagreeing.
- */
-export default async function MyNoticesPage() {
-  const s = await getSession();
-  const t = await getTranslations('notices');
-  const me = await myEmployment(s);
-  const rows = me ? await noticesForEmployment(s, me.employmentId) : [];
-
-  return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <PageHeader title={t('myTitle')} description={t('myDescription')} />
-      <Card data-tour="notices-mine">
-        <SectionHeader title={t('myListTitle')} count={rows.length} />
-        <ul className="divide-y divide-border">
-          {rows.length === 0 && (
-            <li className="px-4 py-6 text-center text-xs text-muted-foreground">{t('myEmpty')}</li>
-          )}
-          {rows.map((n) => (
-            <li key={n.id} className="px-4 py-3">
-              <Link href={`/notices/${n.id}`} className="flex flex-wrap items-center justify-between gap-3">
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium text-foreground">{n.title}</span>
-                  {/* `publishedAt` is an INSTANT, so the date it names must go through the tenant
-                      timezone — `toISOString().slice(0,10)` would show yesterday's date between 00:00 and
-                      08:00 MYT for anything published that evening. */}
-                  <span className="text-xs text-muted-foreground">
-                    {t('publishedOn', { date: n.publishedAt ? todayInKualaLumpur(n.publishedAt) : '—' })}
-                  </span>
-                </span>
-                {n.firstViewedAt == null && (
-                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
-                    {t('newBadge')}
-                  </span>
-                )}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </Card>
-    </div>
-  );
+import {getTranslations} from 'next-intl/server';
+import {scopedSession} from '@/lib/scope';
+import {myEmployment} from '@/core/read';
+import {ownLiveEmployment} from '@/core/own-employment-selection';
+import {noticesForEmployment} from '@/core/notice';
+import {todayInKualaLumpur} from '@/lib/hr-date';
+import {Card,PageHeader,SectionHeader,Button,inputCls} from '@/components/ui';
+const categories=['general','holiday','benefits','policy'] as const;
+export default async function MyNoticesPage({searchParams}:{searchParams:Promise<{employmentId?:string;q?:string;category?:string}>}){
+ const {s,scopeIds}=await scopedSession(),sp=await searchParams,t=await getTranslations('notices'),h=await getTranslations('homeNotice');
+ const selected=sp.employmentId!==undefined?await ownLiveEmployment(s,sp.employmentId).catch(()=>null):null;
+ if(sp.employmentId!==undefined&&(!selected||!scopeIds.includes(selected.companyProof.companyId!))){const own=await getTranslations('ownEmployment');return <Card className="p-8">{own('unavailable')}</Card>;}
+ const me=selected??await myEmployment(s),q=typeof sp.q==='string'?sp.q.slice(0,200):'',category=categories.find(value=>value===sp.category);
+ const rows=me?await noticesForEmployment(s,me.employmentId,{search:q,category,limit:201}):[];
+ const query=selected?'?employmentId='+encodeURIComponent(selected.employmentId):'';
+ return <div className="mx-auto max-w-3xl space-y-6"><PageHeader title={t('myTitle')} description={t('myDescription')}/><form className="flex flex-wrap items-end gap-3" method="get">{selected&&<input type="hidden" name="employmentId" value={selected.employmentId}/>}<label className="flex-1 text-sm">{h('search')}<input name="q" defaultValue={q} maxLength={200} className={inputCls}/></label><label className="text-sm">{h('category')}<select name="category" defaultValue={category??''} className={inputCls}><option value="">{h('allCategories')}</option>{categories.map(value=><option key={value} value={value}>{h('categories.'+value)}</option>)}</select></label><Button type="submit">{h('filter')}</Button></form><Card data-tour="notices-mine"><SectionHeader title={t('myListTitle')} count={Math.min(rows.length,200)}/><ul className="divide-y divide-border">{!rows.length&&<li className="px-4 py-6 text-sm text-muted-foreground">{t('myEmpty')}</li>}{rows.slice(0,200).map(n=><li key={n.id} className="px-4 py-3"><Link href={'/notices/'+n.id+query} className="flex min-h-11 flex-wrap items-center justify-between gap-3"><span className="min-w-0"><span className="block break-words text-sm font-medium">{n.title}</span><span className="text-xs text-muted-foreground">{h('categories.'+n.category)} · {t('publishedOn',{date:n.publishedAt?todayInKualaLumpur(n.publishedAt):'—'})}</span></span><span className="flex flex-wrap gap-2 text-xs">{n.pinned&&<span>{h('pinned')}</span>}{n.firstViewedAt==null&&<span>{t('newBadge')}</span>}{n.requiresAcknowledgement&&<span>{h(n.acknowledgedAt?'ackDone':'requiresAck')}</span>}</span></Link></li>)}</ul></Card>{rows.length>200&&<p className="text-sm text-muted-foreground">{h('bounded')}</p>}</div>;
 }

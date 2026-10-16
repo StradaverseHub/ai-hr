@@ -187,7 +187,7 @@ describe('§2 r80 hold: the Requests subsection is not a second Approval Items',
     }
     expect(ownHistory).toContain('const selfHistory = historyShown.rows;');
     expect(ownHistory).toContain('employmentIds: historyEmploymentIds');
-    expect(leavePage).toContain('if (me == null || admin) {');
+    expect(leavePage).toContain('if (me == null || (admin && !selectedOwn)) {');
     const guardAt = historyPage.indexOf('if (!me || isAdmin(session))');
     const loadAt = historyPage.indexOf('await loadOwnLeaveHistory(');
     expect(guardAt).toBeGreaterThan(-1);
@@ -196,7 +196,7 @@ describe('§2 r80 hold: the Requests subsection is not a second Approval Items',
     expect(approvalsPage).toContain('const mine = (personId: string | null) => s.personId != null && personId === s.personId;');
     expect(approvalsPage).toContain('{mine(r.personId) ? (');
     expect(approvalsPage).not.toMatch(/<EditLeaveDialog/);
-    expect(leavePage).toContain('const ess = !admin;');
+    expect(leavePage).toContain('const ess = !admin || selectedOwn != null;');
   });
 
   it('ENUMERATION: the per-employee record screen is still per-employee — it did NOT become a replacement', () => {

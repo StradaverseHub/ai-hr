@@ -11633,31 +11633,31 @@ export function actionableLeaveRequests(ctx:SessionContext,{employmentIds}:{empl
 
 
 /** Period and upcoming leave use the owner's deductible-day/session weights and recorded per-date truth. */
-export function myTeamLeaveProjection(ctx:SessionContext,p:{employmentIds:string[];from:string;to:string;today:string}){
+export function myTeamLeaveProjection(ctx:SessionContext,p:{employmentIds:string[];from:string;to:string;today:string;homeWindow?:boolean}){
  return withTenant(ctx,tx=>leaveProjectionTx(tx,p));
 }
 
-async function leaveProjectionTx(tx:Tx,p:{employmentIds:string[];from:string;to:string;today:string;purpose?:'allowance'}){
+async function leaveProjectionTx(tx:Tx,p:{employmentIds:string[];from:string;to:string;today:string;purpose?:'allowance';homeWindow?:boolean}){
   if(!p.employmentIds.length)return [];
   const requests=await tx.select({request:leaveRequest,type:leaveType}).from(leaveRequest)
    .innerJoin(leaveType,eq(leaveType.id,leaveRequest.leaveTypeId))
    .where(and(inArray(leaveRequest.employmentId,p.employmentIds),inArray(leaveRequest.status,['approved','pending']),
-    p.purpose==='allowance'?and(lte(leaveRequest.startDate,p.to),gte(leaveRequest.endDate,p.from)):or(eq(leaveRequest.status,'pending'),and(lte(leaveRequest.startDate,p.to),gte(leaveRequest.endDate,p.from)),gte(leaveRequest.endDate,p.today))))
-   .orderBy(asc(leaveRequest.startDate),...(p.purpose==='allowance'?[asc(leaveRequest.id)]:[]));
+    p.purpose==='allowance'||p.homeWindow?and(lte(leaveRequest.startDate,p.to),gte(leaveRequest.endDate,p.from)):or(eq(leaveRequest.status,'pending'),and(lte(leaveRequest.startDate,p.to),gte(leaveRequest.endDate,p.from)),gte(leaveRequest.endDate,p.today))))
+   .orderBy(asc(leaveRequest.startDate),...((p.purpose==='allowance'||p.homeWindow)?[asc(leaveRequest.id)]:[])).limit(p.homeWindow?1001:2147483647);
   const ids=requests.map(r=>r.request.id);
   const dates=ids.length ? await tx.select().from(leaveRequestDate).where(inArray(leaveRequestDate.leaveRequestId,ids)).orderBy(...(p.purpose==='allowance'?[asc(leaveRequestDate.leaveDate),asc(leaveRequestDate.id)]:[])) : [];
   const result=[];
   for(const employmentId of [...new Set(requests.map(r=>r.request.employmentId))]){
    const own=requests.filter(r=>r.request.employmentId===employmentId);
-   const from=p.purpose==='allowance'?p.from:own.reduce((a,r)=>r.request.startDate<a?r.request.startDate:a,own[0].request.startDate);
-   const to=p.purpose==='allowance'?p.to:own.reduce((a,r)=>r.request.endDate>a?r.request.endDate:a,own[0].request.endDate);
+   const from=p.purpose==='allowance'||p.homeWindow?p.from:own.reduce((a,r)=>r.request.startDate<a?r.request.startDate:a,own[0].request.startDate);
+   const to=p.purpose==='allowance'||p.homeWindow?p.to:own.reduce((a,r)=>r.request.endDate>a?r.request.endDate:a,own[0].request.endDate);
    const sched=await resolveSchedule(tx,employmentId),hols=await resolveHolidaySet(tx,employmentId,from,to);
    for(const {request:req,type} of own){
     const stored=dates.filter(d=>d.leaveRequestId===req.id);
     const inclusion=normalizeDayTypeInclusion(type.dayTypeInclusion);
     const session=req.durationType==='half_day_am' ? 'AM' as const : req.durationType==='half_day_pm' ? 'PM' as const : req.durationType==='hourly' ? 'hourly' as const : 'full_day' as const;
     const legacyDates=()=>{
-      if(p.purpose!=='allowance')return eachDate(req.startDate,req.endDate).filter(date=>isDeductibleDay(date,sched,hols,inclusion)).map(date=>({date,days:session==='full_day'?dayWeight(date,sched,hols,inclusion):Number(req.days),status:req.status as 'approved'|'pending'}));
+      if(p.purpose!=='allowance')return eachDate(p.homeWindow&&req.startDate<p.from?p.from:req.startDate,p.homeWindow&&req.endDate>p.to?p.to:req.endDate).filter(date=>isDeductibleDay(date,sched,hols,inclusion)).map(date=>({date,days:session==='full_day'?dayWeight(date,sched,hols,inclusion):Number(req.days),status:req.status as 'approved'|'pending'}));
       // A financial reader cannot redistribute an old approval using today's company/calendar.
       // One known date or a full one-day-per-calendar-date amount has a recoverable allocation.
       // Otherwise keep each affected date explicitly Unknown rather than inventing charge dates.

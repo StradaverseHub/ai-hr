@@ -238,7 +238,7 @@ describe('56a0deb9 §3: breakdown + history side by side for self-service; admin
     }
     // What an administrator gets instead: the heading and ONE sentence, pointing at where it went. The
     // sentence for a viewer with no employee profile is the one /me already shows — reused, not rewritten.
-    expect(leavePage).toContain('if (me == null || admin) {');
+    expect(leavePage).toContain('if (me == null || (admin && !selectedOwn)) {');
     expect(leavePage).toContain("{me == null ? tMe('notLinked') : t('inquiryMovedToTracker')}");
     expect(leavePage).toContain("<h1 className=\"text-lg font-semibold\">{t('myAbsenceTitle')}</h1>");
   });
@@ -248,7 +248,7 @@ describe('56a0deb9 §3: breakdown + history side by side for self-service; admin
     // `me.employmentId`, so before this an unlinked employee saw empty balance cards, an empty history and
     // a live "+ Request Leave" button that could not work. The guard is `me == null` FIRST, so it catches
     // every viewer and not only administrators, and it is an early return so the reads never run.
-    const guardAt = leavePage.indexOf('if (me == null || admin) {');
+    const guardAt = leavePage.indexOf('if (me == null || (admin && !selectedOwn)) {');
     expect(guardAt, 'the short-page guard').toBeGreaterThan(-1);
     // …and it comes BEFORE the self-service reads it protects.
     // r302: the balance read is the per-year dashboard read now (it calls leaveBalances inside core/my-leave.ts).

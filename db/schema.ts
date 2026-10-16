@@ -5473,6 +5473,9 @@ export const notice = pgTable(
     id: id(),
     tenantId: tenantId(),
     title: text('title').notNull(),
+    pinned:boolean('pinned').notNull().default(false),
+    category:text('category').notNull().default('general'),
+    requiresAcknowledgement:boolean('requires_acknowledgement').notNull().default(false),
     /** Markdown, rendered through components/markdown.tsx — the SAME renderer the Knowledge Base uses,
      *  which passes no raw HTML through (no rehype-raw) and therefore cannot carry stored XSS. */
     body: text('body').notNull(),
@@ -8832,7 +8835,7 @@ export const feedbackRequest = pgTable(
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [index('feedback_request_reporter_idx').on(t.tenantId, t.reporterEmploymentId, t.status)],
+  (t) => [index('feedback_request_reporter_idx').on(t.tenantId, t.reporterEmploymentId, t.status),uniqueIndex('assistant_feedback_result_tenant_uq').on(t.id,t.tenantId)],
 );
 
 /**
@@ -10470,10 +10473,48 @@ export const assistantConversation=pgTable('assistant_conversation',{
 export const assistantConversationTurn=pgTable('assistant_conversation_turn',{
  id:id(),tenantId:tenantId(),appUserId:uuid('app_user_id').notNull(),conversationId:uuid('conversation_id').notNull(),
  requestId:uuid('request_id').notNull(),revision:integer('revision').notNull(),exchangeId:uuid('exchange_id'),helpful:boolean('helpful'),feedbackAt:timestamp('feedback_at',{withTimezone:true}),createdAt:createdAt(),
-},t=>[foreignKey({columns:[t.conversationId,t.tenantId,t.appUserId],foreignColumns:[assistantConversation.id,assistantConversation.tenantId,assistantConversation.appUserId]}),foreignKey({columns:[t.exchangeId,t.tenantId,t.appUserId],foreignColumns:[assistantExchange.id,assistantExchange.tenantId,assistantExchange.appUserId]}),uniqueIndex('assistant_conversation_turn_conversation_id_request_id_key').on(t.conversationId,t.requestId),uniqueIndex('assistant_conversation_turn_conversation_id_revision_key').on(t.conversationId,t.revision)]);
+},t=>[foreignKey({columns:[t.conversationId,t.tenantId,t.appUserId],foreignColumns:[assistantConversation.id,assistantConversation.tenantId,assistantConversation.appUserId]}),foreignKey({columns:[t.exchangeId,t.tenantId,t.appUserId],foreignColumns:[assistantExchange.id,assistantExchange.tenantId,assistantExchange.appUserId]}),uniqueIndex('assistant_conversation_turn_conversation_id_request_id_key').on(t.conversationId,t.requestId),uniqueIndex('assistant_conversation_turn_conversation_id_revision_key').on(t.conversationId,t.revision),uniqueIndex('assistant_turn_exchange_ref_uq').on(t.conversationId,t.exchangeId,t.tenantId,t.appUserId)]);
 export const assistantConfirmation=pgTable('assistant_confirmation',{
  id:id(),tenantId:tenantId(),appUserId:uuid('app_user_id').notNull(),conversationId:uuid('conversation_id').notNull(),
  revision:integer('revision').notNull().default(1),authorityStamp:text('authority_stamp').notNull(),payload:jsonb('payload').$type<{typeId:'close_fixed_upstream';verdictIds:string[]}>().notNull(),
  preconditionDigest:text('precondition_digest').notNull(),status:text('status').$type<'awaiting'|'executing'|'completed'|'refused'|'uncertain'>().notNull().default('awaiting'),
  requestId:uuid('request_id'),result:jsonb('result').$type<{closed:number;stale:number}>(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull().default(sql`now()+interval '10 minutes'`),createdAt:createdAt(),
 },t=>[foreignKey({columns:[t.conversationId,t.tenantId,t.appUserId],foreignColumns:[assistantConversation.id,assistantConversation.tenantId,assistantConversation.appUserId]}),index('assistant_confirmation_conversation_idx').on(t.conversationId,t.createdAt.desc())]);
+
+// Home policies are explicit immutable versions; no row means disabled/private.
+export const homeCompanyPolicy=pgTable('home_company_policy',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),revision:integer('revision').notNull(),
+ wfhEnabled:boolean('wfh_enabled').notNull().default(false),wfhApprovalRequired:boolean('wfh_approval_required').notNull().default(true),
+ availabilityEnabled:boolean('availability_enabled').notNull().default(false),birthdaysEnabled:boolean('birthdays_enabled').notNull().default(false),anniversariesEnabled:boolean('anniversaries_enabled').notNull().default(false),
+ createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),supersededAt:timestamp('superseded_at',{withTimezone:true}),
+},t=>[uniqueIndex('home_policy_version_uq').on(t.companyId,t.revision),uniqueIndex('home_policy_current_uq').on(t.companyId).where(sql`${t.supersededAt} IS NULL`)]);
+export const homeSharing=pgTable('home_sharing',{
+ employmentId:uuid('employment_id').primaryKey().references(()=>employment.id),tenantId:tenantId(),revision:integer('revision').notNull().default(1),
+ availability:boolean('availability').notNull().default(false),birthday:boolean('birthday').notNull().default(false),anniversary:boolean('anniversary').notNull().default(false),weekStartsOn:integer('week_starts_on').notNull().default(1),
+ updatedBy:uuid('updated_by').notNull().references(()=>appUser.id),updatedAt:timestamp('updated_at',{withTimezone:true}).defaultNow().notNull(),
+});
+export const homeWfhRequest=pgTable('home_wfh_request',{
+ id:id(),tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),companyId:uuid('company_id').notNull().references(()=>company.id),policyId:uuid('policy_id').notNull().references(()=>homeCompanyPolicy.id),
+ from:date('from_date').notNull(),to:date('to_date').notNull(),status:text('status').notNull(),revision:integer('revision').notNull().default(1),
+ requestedBy:uuid('requested_by').notNull().references(()=>appUser.id),createdAt:createdAt(),decidedBy:uuid('decided_by').references(()=>appUser.id),decidedAt:timestamp('decided_at',{withTimezone:true}),
+},t=>[index('home_wfh_subject_date_idx').on(t.employmentId,t.from,t.to)]);
+export const homeGreeting=pgTable('home_greeting',{
+ id:id(),tenantId:tenantId(),senderEmploymentId:uuid('sender_employment_id').notNull().references(()=>employment.id),recipientEmploymentId:uuid('recipient_employment_id').notNull().references(()=>employment.id),senderUserId:uuid('sender_user_id').notNull().references(()=>appUser.id),
+ kind:text('kind').notNull(),date:date('moment_date').notNull(),message:text('message'),messageDigest:text('message_digest').notNull().default(''),redactedAt:timestamp('redacted_at',{withTimezone:true}),createdAt:createdAt(),
+},t=>[index('home_greeting_recipient_idx').on(t.recipientEmploymentId,t.createdAt)]);
+export const homeInsightDismissal=pgTable('home_insight_dismissal',{
+ tenantId:tenantId(),appUserId:uuid('app_user_id').notNull().references(()=>appUser.id),sourceKey:text('source_key').notNull(),date:date('business_date').notNull(),createdAt:createdAt(),
+},t=>[primaryKey({columns:[t.tenantId,t.appUserId,t.sourceKey,t.date]})]);
+
+/** Explicit acknowledgement of the exact canonical notice content; a view is never an acknowledgement. */
+export const noticeAcknowledgement=pgTable('notice_acknowledgement',{
+ id:id(),tenantId:tenantId(),noticeId:uuid('notice_id').notNull().references(()=>notice.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),appUserId:uuid('app_user_id').notNull().references(()=>appUser.id),
+ contentDigest:text('content_digest').notNull(),titleSnapshot:text('title_snapshot'),bodySnapshot:text('body_snapshot'),redactedAt:timestamp('redacted_at',{withTimezone:true}),acknowledgedAt:timestamp('acknowledged_at',{withTimezone:true}).defaultNow().notNull(),
+},t=>[uniqueIndex('notice_acknowledgement_content_uq').on(t.noticeId,t.employmentId,t.contentDigest)]);
+
+/** A private editable workflow handoff references the existing audit; it does not copy a transcript. */
+export const assistantFeedbackDraft=pgTable('assistant_feedback_draft',{
+ id:id(),tenantId:tenantId(),appUserId:uuid('app_user_id').notNull(),conversationId:uuid('conversation_id').notNull(),sourceExchangeId:uuid('source_exchange_id').notNull(),handoffExchangeId:uuid('handoff_exchange_id').notNull(),
+ revision:integer('revision').notNull().default(1),feedbackId:uuid('feedback_id').references(()=>feedbackRequest.id),submitDigest:text('submit_digest'),submittedAt:timestamp('submitted_at',{withTimezone:true}),
+ createdAt:createdAt(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull().default(sql`now()+interval '30 minutes'`),
+},t=>[foreignKey({columns:[t.feedbackId,t.tenantId],foreignColumns:[feedbackRequest.id,feedbackRequest.tenantId]}),foreignKey({columns:[t.conversationId,t.sourceExchangeId,t.tenantId,t.appUserId],foreignColumns:[assistantConversationTurn.conversationId,assistantConversationTurn.exchangeId,assistantConversationTurn.tenantId,assistantConversationTurn.appUserId]}),/* Handoff-turn FK is DEFERRABLE INITIALLY DEFERRED in0556; Drizzle does not describe deferral. */foreignKey({columns:[t.conversationId,t.handoffExchangeId,t.tenantId,t.appUserId],foreignColumns:[assistantConversationTurn.conversationId,assistantConversationTurn.exchangeId,assistantConversationTurn.tenantId,assistantConversationTurn.appUserId]}),uniqueIndex('assistant_feedback_draft_source_uq').on(t.conversationId,t.sourceExchangeId),foreignKey({columns:[t.conversationId,t.tenantId,t.appUserId],foreignColumns:[assistantConversation.id,assistantConversation.tenantId,assistantConversation.appUserId]}),foreignKey({columns:[t.sourceExchangeId,t.tenantId,t.appUserId],foreignColumns:[assistantExchange.id,assistantExchange.tenantId,assistantExchange.appUserId]}),foreignKey({columns:[t.handoffExchangeId,t.tenantId,t.appUserId],foreignColumns:[assistantExchange.id,assistantExchange.tenantId,assistantExchange.appUserId]})]);

@@ -19,10 +19,10 @@ import { durationLabel } from '@/lib/leave-duration';
 import { leaveDisplaySplit } from '@/lib/leave-split';
 import { requestLeaveCancellationAction, editLeaveAction, cancelOwnLeaveAction } from '@/app/leave/actions';
 
-export type HistorySearch = { warnHoliday?: string; hTab?: string; hType?: string | string[]; hFrom?: string; hTo?: string; leaveYear?: string; year?: string; state?: string; loaded?: string };
+export type HistorySearch = { employmentId?: string; warnHoliday?: string; hTab?: string; hType?: string | string[]; hFrom?: string; hTo?: string; leaveYear?: string; year?: string; state?: string; loaded?: string };
 
 type OwnSession = Awaited<ReturnType<typeof scopedSession>>['s'];
-type OwnMe = NonNullable<Awaited<ReturnType<typeof myEmployment>>>;
+type OwnMe = { employmentId: string };
 type OwnRequestRow = Awaited<ReturnType<typeof myUpcomingLeave>>[number];
 
 /**
@@ -49,6 +49,7 @@ function ownHistoryFilter(sp: HistorySearch) {
   // Year form posts only `leaveYear`, so without these hidden inputs choosing a year would silently clear the
   // employee's history filter. `hType` REPEATS, which is why this takes an array rather than a single string.
   const historyFilterParams: Record<string, string | string[]> = {
+    ...(sp.employmentId ? { employmentId: sp.employmentId } : {}),
     ...(hTypeIds.length > 0 ? { hType: hTypeIds } : {}),
     ...(hFrom ? { hFrom } : {}),
     ...(hTo ? { hTo } : {}),
@@ -58,7 +59,9 @@ function ownHistoryFilter(sp: HistorySearch) {
 }
 
 /** r397 — WHOSE records: moved verbatim out of loadOwnLeaveHistory, which calls it. */
-async function ownHistoryEmploymentIds(session: OwnSession, me: OwnMe): Promise<string[]> {
+async function ownHistoryEmploymentIds(session: OwnSession, me: OwnMe, selected?: string): Promise<string[]> {
+  // Explicit own entry was freshly validated by its page; keep its history on that exact subject.
+  if (selected) return [me.employmentId];
   // History: the viewer's OWN requests, and only those.
   //
   // This used to be a two-branch destructure of eight names. afd0a87c emptied the admin branch of its
@@ -135,7 +138,7 @@ async function ownUpcomingView(
 export async function loadOwnUpcomingLeave({ session, me, sp }: { session: OwnSession; me: OwnMe; sp: HistorySearch }) {
   const today = todayInKualaLumpur();
   const { historyFilterParams } = ownHistoryFilter(sp);
-  const historyEmploymentIds = await ownHistoryEmploymentIds(session, me);
+  const historyEmploymentIds = await ownHistoryEmploymentIds(session, me, sp.employmentId);
   const upcomingRows = await myUpcomingLeave(session, historyEmploymentIds, today);
   // No rows ⇒ no trail can be read for any of them; ownLeaveApprovalTrails answers an empty Map for an empty list.
   const approvalTrails = upcomingRows.length > 0 ? await ownLeaveApprovalTrails(session, upcomingRows.map((r) => r.id)) : new Map();
@@ -156,7 +159,7 @@ export async function loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, 
   const tMe = await getTranslations('me');
   const today = todayInKualaLumpur();
   const unpaidTypeName = leaveTypes.find((lt) => lt.code === 'UNPAID')?.name;
-  const historyEmploymentIds = await ownHistoryEmploymentIds(session, me);
+  const historyEmploymentIds = await ownHistoryEmploymentIds(session, me, sp.employmentId);
   const { hTypeIds, hFrom, hTo, historyFiltered, historyFilterParams } = ownHistoryFilter(sp);
   // Call A is UNFILTERED and is what the tick-list is built from — options taken from the filtered set would
   // vanish the moment a filter was applied. It also supplies the "of 14" half of the header count.
@@ -510,6 +513,7 @@ export async function loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, 
   // (r302; the as-at date until then), switch the history tab, and drop the holiday warning banner mid-read.
   const historyHiddenParams: [string, string][] = (
     [
+      ['employmentId', sp.employmentId],
       ['leaveYear', sp.leaveYear],
       ['hTab', sp.hTab],
       ['year', sp.year],

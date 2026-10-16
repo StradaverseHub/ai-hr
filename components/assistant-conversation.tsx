@@ -8,15 +8,16 @@ import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { Button } from './ui/button';
 import { ConfirmSubmit } from './ui/confirm-submit';
 import { registerUnsavedGuard } from '@/lib/unsaved-changes';
-import { assistantWorkflowHref } from '@/lib/assistant-routes';
+import { assistantWorkflowHref,assistantFeedbackHref } from '@/lib/assistant-routes';
 import { CONVERSATION_LIMITS, type AssistantConversationFailure, type AssistantCapabilityReply } from '@/lib/assistant-conversation-model';
 import type { ConversationView } from '@/core/assistant-conversation';
-import { loadAssistantConversationAction, submitAssistantConversationAction, confirmAssistantProposalAction, newAssistantConversationAction, rateAssistantReplyAction } from '@/app/assistant/actions';
+import { loadAssistantConversationAction, submitAssistantConversationAction, confirmAssistantProposalAction, newAssistantConversationAction, rateAssistantReplyAction,prepareAssistantFeedbackAction } from '@/app/assistant/actions';
 const STATE_KEY: Record<AssistantCapabilityReply['kind'], string> = { guide: 'stateGuide', facts: 'stateFacts', draftHandoff: 'stateDraftHandoff', awaitingConfirmation: 'stateAwaitingConfirmation', completed: 'stateCompleted', refused: 'stateRefused', unavailable: 'stateUnavailable', unsupported: 'stateUnsupported' };
 /** Home and AI Responsive mount the same private conversation owner. No transcript or source fact is
  * stored in browser storage. Full replies are plain text: model-authored HTML/Markdown URLs never run. */
-export function AssistantConversation({ compact = false, canReviewPayroll=false,scopeNames=[] }: {
+export function AssistantConversation({ compact = false, canReviewPayroll=false,scopeNames=[],suggestions=[] }: {
     compact?: boolean;
+    suggestions?:readonly string[];
     canReviewPayroll?:boolean;
     scopeNames?:readonly string[];
 }) {
@@ -70,11 +71,13 @@ export function AssistantConversation({ compact = false, canReviewPayroll=false,
         document.addEventListener('click', click, true);
         return () => { window.removeEventListener('beforeunload', unload); document.removeEventListener('click', click, true); };
     }, [router]);
-    const send = (intent: 'question' | 'prepareCloseFixed' = 'question') => {
-        if (!view || pending || view.pending || !question.trim() && intent === 'question')
+    const send = (intent: 'question' | 'prepareCloseFixed' = 'question',suggestion?:string) => {
+        const questionText=suggestion??question;
+        if (!view || pending || view.pending || !questionText.trim() && intent === 'question')
             return;
-        const text = intent === 'question' ? question : t('prepareCloseFixed'), stamp = ++generation.current;
+        const text = intent === 'question' ? questionText : t('prepareCloseFixed'), stamp = ++generation.current;
         const input = { conversationId: view.id, revision: view.revision, requestId: crypto.randomUUID(), question: text, intent };
+        if(suggestion!==undefined){questionRef.current=suggestion;setQuestion(suggestion);}
         setNotice('');
         startTransition(async () => { try {
             const result = await submitAssistantConversationAction(input);
@@ -100,6 +103,7 @@ export function AssistantConversation({ compact = false, canReviewPayroll=false,
             if (stamp === generation.current && mounted.current){setError('unavailable');setView(null);}
         } });
     };
+    const feedbackDraft=(exchangeId:string)=>{if(!view||pending||view.pending)return;const stamp=++generation.current;startTransition(async()=>{try{const result=await prepareAssistantFeedbackAction({conversationId:view.id,conversationRevision:view.revision,exchangeId,requestId:crypto.randomUUID()});accept(result,stamp);if(result.ok&&mounted.current&&stamp===generation.current){const navigate=()=>router.push(assistantFeedbackHref(result.id));if(questionRef.current.trim()){continuation.current=navigate;setLeaveOpen(true);}else navigate();}}catch{if(mounted.current&&stamp===generation.current){setError('unavailable');setView(null);}}});};
     const newConversation = () => { if (!view || pending)
         return; const run = () => { const id = view.id, stamp = ++generation.current; startTransition(async () => { try {
         accept(await newAssistantConversationAction(id), stamp);
@@ -135,16 +139,17 @@ export function AssistantConversation({ compact = false, canReviewPayroll=false,
    {error && <p role="alert" className="rounded-md border border-destructive/30 p-3 text-sm text-destructive">{t('error')}</p>}
    {!view && !error && <p role="status" className="text-sm text-muted-foreground">{t('loading')}</p>}
    {view?.messages.length === 0 && <div className="py-8"><p className="max-w-prose text-muted-foreground">{t('empty')}</p><nav aria-label={t('pages')} className="mt-5 flex flex-wrap gap-2">{(['ownProfile', 'ownAttendance', 'ownLeave'] as const).map(route => <Link key={route} className="inline-flex min-h-11 items-center rounded-md border border-input px-3 text-sm hover:bg-accent" href={assistantWorkflowHref(route)}>{t(`routes.${route}`)}</Link>)}</nav></div>}
-   {view?.messages.map(message => <article key={message.id} className="space-y-3"><p className="ml-auto max-w-[90%] whitespace-pre-wrap break-words rounded-xl bg-muted px-4 py-3 text-sm">{message.question}</p><div className="space-y-3"><p className="text-xs font-medium text-muted-foreground">{t(message.proposalStatus==='completed'?'stateCompleted':message.proposalStatus==='refused'?'stateRefused':message.proposalStatus==='expired'?'stateUnavailable':STATE_KEY[message.reply.kind])}</p><p className="max-w-prose whitespace-pre-wrap break-words text-sm leading-relaxed">{message.failure?a(`err_${message.failure}`):message.reply.text||t('unavailable')}</p><time dateTime={message.askedAt} className="text-xs text-muted-foreground">{formatter.dateTime(new Date(message.askedAt),{dateStyle:'medium',timeStyle:'short',timeZone:HR_LOCAL_TZ})}</time>
+   {view?.messages.map(message => <article key={message.id} className="space-y-3"><p className="ml-auto max-w-[90%] whitespace-pre-wrap break-words rounded-xl bg-muted px-4 py-3 text-sm">{message.question}</p><div className="space-y-3"><p className="text-xs font-medium text-muted-foreground">{t(message.handoffStatus==='submitted'?'stateCompleted':message.handoffStatus==='expired'?'stateUnavailable':message.proposalStatus==='completed'?'stateCompleted':message.proposalStatus==='refused'?'stateRefused':message.proposalStatus==='expired'?'stateUnavailable':STATE_KEY[message.reply.kind])}</p><p className="max-w-prose whitespace-pre-wrap break-words text-sm leading-relaxed">{message.failure?a(`err_${message.failure}`):message.reply.text||t('unavailable')}</p><time dateTime={message.askedAt} className="text-xs text-muted-foreground">{formatter.dateTime(new Date(message.askedAt),{dateStyle:'medium',timeStyle:'short',timeZone:HR_LOCAL_TZ})}</time>
     {message.reply.tables.map((table, index) => <div key={index} className="overflow-x-auto rounded-md border border-border"><table className="min-w-full text-left text-sm"><thead className="bg-muted/50"><tr>{table.columns.map((column, col) => <th key={col} scope="col" className="px-3 py-2 font-medium">{column}</th>)}</tr></thead><tbody>{table.rows.map((row, rowIndex) => <tr key={rowIndex} className="border-t border-border">{row.map((cell, col) => <td key={col} className="px-3 py-2">{cell}</td>)}</tr>)}</tbody></table></div>)}
+    {message.reply.kind==='draftHandoff'&&message.handoffStatus!=='expired'&&<Link className="inline-flex min-h-11 items-center rounded-md border border-input px-3 text-sm text-primary" href={message.handoffStatus==='submitted'?'/feedback':assistantFeedbackHref(message.reply.draftId)}>{t(message.handoffStatus==='submitted'?'feedbackSubmitted':'feedbackDraft')}</Link>}
     {!!message.reply.links.length && <nav aria-label={t('pages')} className="flex flex-wrap gap-2">{message.reply.links.map(link => <Link key={link.route} className="inline-flex min-h-11 items-center rounded-md border border-input px-3 text-sm text-primary hover:bg-accent" href={assistantWorkflowHref(link.route)}>{link.label}</Link>)}</nav>}
     {!!message.reply.evidence.length && <details className="text-xs text-muted-foreground"><summary className="min-h-11 cursor-pointer py-3">{t('sources')}</summary><ul className="space-y-2 pb-3">{message.reply.evidence.map((source, index) => <li key={index}>{source.label}{source.asAt && ` · ${source.asAt}`}{source.truncated && ` · ${t('partial')}`}</li>)}</ul></details>}
     {message.reply.kind === 'awaitingConfirmation' && message.proposalStatus==='awaiting' && <form onSubmit={event => { event.preventDefault(); if (message.reply.kind === 'awaitingConfirmation')
             confirm(message.reply); }}><ConfirmSubmit className="min-h-11" variant="default" disabled={pending || view.pending} title={t('confirm')} description={t('review')} confirmLabel={t('confirm')}>{t('confirm')}</ConfirmSubmit></form>}
-    <div className="flex flex-wrap gap-2"><Button type="button" variant="ghost" className="min-h-11" aria-pressed={message.helpful === true} disabled={pending} onClick={() => rate(message.id, true)}>{t('helpful')}</Button><Button type="button" variant="ghost" className="min-h-11" aria-pressed={message.helpful === false} disabled={pending} onClick={() => rate(message.id, false)}>{t('notHelpful')}</Button></div>
+    <div className="flex flex-wrap gap-2"><Button type="button" variant="ghost" className="min-h-11" aria-pressed={message.helpful === true} disabled={pending} onClick={() => rate(message.id, true)}>{t('helpful')}</Button><Button type="button" variant="ghost" className="min-h-11" aria-pressed={message.helpful === false} disabled={pending} onClick={() => rate(message.id, false)}>{t('notHelpful')}</Button>{message.reply.kind!=='draftHandoff'&&<Button type="button" variant="ghost" className="min-h-11" disabled={pending||view.pending} onClick={()=>feedbackDraft(message.id)}>{t('feedbackDraft')}</Button>}</div>
    </div></article>)}<div ref={bottom}/>
   </div>
-  <footer className="border-t border-border p-4 sm:p-6"><form onSubmit={event => { event.preventDefault(); send(); }} className="space-y-3"><label htmlFor={composerId} className="sr-only">{t('title')}</label><textarea id={composerId} value={question} onChange={event => setQuestion(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) {
+  <footer className="border-t border-border p-4 sm:p-6">{!!suggestions.length&&<div className="mb-3 flex flex-wrap gap-2">{suggestions.slice(0,3).map(suggestion=><Button key={suggestion} type="button" variant="outline" className="min-h-11 whitespace-normal text-left text-xs" disabled={!view||pending||view.pending||!!question.trim()} onClick={()=>send('question',suggestion)}>{suggestion}</Button>)}</div>}<form onSubmit={event => { event.preventDefault(); send(); }} className="space-y-3"><label htmlFor={composerId} className="sr-only">{t('title')}</label><textarea id={composerId} value={question} onChange={event => setQuestion(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) {
         event.preventDefault();
         event.currentTarget.form?.requestSubmit();
     } }} rows={compact ? 2 : 3} maxLength={CONVERSATION_LIMITS.questionChars} disabled={pending || view?.pending} placeholder={t('placeholder')} className="block w-full resize-y rounded-lg border border-input bg-background p-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"/><div className="flex flex-wrap items-center justify-between gap-3"><span className="text-xs text-muted-foreground">{t('keyboard')}</span><Button type="submit" className="min-h-11" disabled={!view || pending || view.pending || !question.trim()}>{pending || view?.pending ? t('working') : t('send')}</Button></div></form><p role="status" aria-live="polite" className="mt-2 text-xs text-muted-foreground">{notice || t('questionOnly')}</p><p className="mt-2 text-xs text-muted-foreground">{t('private')}</p>{!compact && canReviewPayroll && <Button type="button" variant="ghost" className="mt-2 min-h-11 text-xs" disabled={!view || pending || view.pending} onClick={() => send('prepareCloseFixed')}>{t('prepareCloseFixed')}</Button>}</footer>

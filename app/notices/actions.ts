@@ -30,8 +30,7 @@ export async function markNoticeViewedAction(formData: FormData) {
 }
 
 /** Dismiss the login popup for this notice. Popup-frequency state only: a 'once' notice stops popping up,
- *  an 'until_acknowledged' one keeps coming back until it expires (there is nothing to acknowledge yet —
- *  see core/notice.ts popupNoticeFor for exactly what release two has to change). */
+ *  an 'until_acknowledged' one keeps coming back until an explicit current-content receipt or expiry. */
 export async function dismissNoticePopupAction(formData: FormData) {
   const s = await getSession();
   const me = await myEmployment(s);
@@ -40,4 +39,11 @@ export async function dismissNoticePopupAction(formData: FormData) {
   if (!noticeId) return;
   await dismissNoticePopup(s, noticeId, me.employmentId);
   revalidatePath('/');
+}
+
+/** Explicit acknowledgement is separate from opening or dismissing the notice. */
+export async function acknowledgeNoticeAction(formData:FormData){
+ const s=await getSession();const {acknowledgeNotice}=await import('@/core/notice');
+ await acknowledgeNotice(s,{noticeId:String(formData.get('noticeId')??''),employmentId:String(formData.get('employmentId')??''),expectedDigest:String(formData.get('expectedDigest')??'')});
+ revalidatePath('/notices');revalidatePath('/notices/'+String(formData.get('noticeId')??''));revalidatePath('/');
 }

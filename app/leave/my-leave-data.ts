@@ -45,7 +45,7 @@ import { leaveCreditOfferForEmployment, listReplacementLeaveRequests, replacemen
 import { loadOwnUpcomingLeave, type HistorySearch } from '@/components/leave/own-leave-history';
 import { isReplacementLeaveType } from '@/core/ess-view';
 
-type Me = NonNullable<Awaited<ReturnType<typeof myEmployment>>>;
+type Me = { employmentId: string };
 
 /** The page's own expression (app/leave/page.tsx before r397), kept as one function so both uses agree. */
 function leaveYearAsOfFor(dashboard: { selectedYear: number; currentYear: number }, today: string): string {
@@ -70,6 +70,7 @@ export async function loadMyLeave(p: {
   sp: HistorySearch & { leaveYear?: string };
   locale: string;
   today: string;
+  selectedOwn?: { companyId: string };
 }) {
   const { session, scopeIds, me, sp, locale, today } = p;
 
@@ -106,7 +107,7 @@ export async function loadMyLeave(p: {
     eligibleLeaveTypes.sort(byName);
     return { employees, leaveTypes, eligibleLeaveTypes };
   });
-  const canApplyOnBehalfP = catalogueP.then(({ employees }) => {
+  const canApplyOnBehalfP = p.selectedOwn ? Promise.resolve(false) : catalogueP.then(({ employees }) => {
     // Company-scoped: the viewer's OWN company, off the employee list (`me` does not carry the id).
     const myCompanyId = employees.filter((e) => !e.terminatedOn).find((e) => e.employmentId === me.employmentId)?.companyId ?? null;
     return canApplyLeaveOnBehalf(session, myCompanyId);

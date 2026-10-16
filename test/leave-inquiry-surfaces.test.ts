@@ -47,7 +47,7 @@ describe('8ec63139: the HR-admin leave page drops the ESS blocks', () => {
     // UPDATED BY r397: the reads moved, unchanged, into ONE loader (app/leave/my-leave-data.ts) that the page calls
     // only AFTER its short-page early return — which every admin takes — so an admin still pays nothing for
     // them. The gate is now that ordering, pinned here, plus the loader holding both reads.
-    const shortPageAt = leavePage.indexOf('if (me == null || admin) {');
+    const shortPageAt = leavePage.indexOf('if (me == null || (admin && !selectedOwn)) {');
     expect(shortPageAt).toBeGreaterThan(-1);
     expect(leavePage.indexOf('await loadMyLeave(')).toBeGreaterThan(shortPageAt);
     const loader = read('app/leave/my-leave-data.ts');

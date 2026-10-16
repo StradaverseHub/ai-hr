@@ -48,6 +48,7 @@ async function inputFrom(s: SessionContext, fd: FormData): Promise<NoticeInput> 
   const audience = targetMode === 'individual' ? await listEmployeePickOptions(s) : [];
   return {
     title: String(fd.get('title') ?? ''),
+    pinned:fd.get('pinned')==='on',requiresAcknowledgement:fd.get('requiresAcknowledgement')==='on',category:['general','holiday','benefits','policy'].includes(String(fd.get('category')))?String(fd.get('category')) as NoticeInput['category']:'general',
     body: String(fd.get('body') ?? ''),
     startOn: String(fd.get('startOn') ?? ''),
     endOn: String(fd.get('endOn') ?? ''),

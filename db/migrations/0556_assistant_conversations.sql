@@ -134,3 +134,32 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.assistant_authority_stamp(uuid[]) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assistant_authority_stamp(uuid[]) TO ai_hr_app;
+--> statement-breakpoint
+-- Private handoff metadata only; editable content is submitted to the canonical Feedback owner.
+CREATE UNIQUE INDEX assistant_turn_exchange_ref_uq ON assistant_conversation_turn(conversation_id,exchange_id,tenant_id,app_user_id);
+CREATE UNIQUE INDEX assistant_feedback_result_tenant_uq ON feedback_request(id,tenant_id);
+CREATE TABLE assistant_feedback_draft(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL,app_user_id uuid NOT NULL,conversation_id uuid NOT NULL,source_exchange_id uuid NOT NULL,handoff_exchange_id uuid NOT NULL,
+ revision integer NOT NULL DEFAULT 1 CHECK(revision IN(1,2)),feedback_id uuid,submit_digest text,submitted_at timestamptz,
+ created_at timestamptz NOT NULL DEFAULT now(),expires_at timestamptz NOT NULL DEFAULT now()+interval '30 minutes',UNIQUE(conversation_id,source_exchange_id),
+ FOREIGN KEY(feedback_id,tenant_id) REFERENCES feedback_request(id,tenant_id),
+ FOREIGN KEY(conversation_id,tenant_id,app_user_id) REFERENCES assistant_conversation(id,tenant_id,app_user_id),
+ FOREIGN KEY(conversation_id,source_exchange_id,tenant_id,app_user_id) REFERENCES assistant_conversation_turn(conversation_id,exchange_id,tenant_id,app_user_id),
+ FOREIGN KEY(conversation_id,handoff_exchange_id,tenant_id,app_user_id) REFERENCES assistant_conversation_turn(conversation_id,exchange_id,tenant_id,app_user_id) DEFERRABLE INITIALLY DEFERRED,
+ FOREIGN KEY(source_exchange_id,tenant_id,app_user_id) REFERENCES assistant_exchange(id,tenant_id,app_user_id),
+ FOREIGN KEY(handoff_exchange_id,tenant_id,app_user_id) REFERENCES assistant_exchange(id,tenant_id,app_user_id),
+ CHECK((feedback_id IS NULL)=(submit_digest IS NULL) AND(feedback_id IS NULL)=(submitted_at IS NULL)),CHECK(submit_digest IS NULL OR submit_digest~'^[0-9a-f]{64}$'),CHECK((feedback_id IS NULL AND revision=1) OR(feedback_id IS NOT NULL AND revision=2)));
+ALTER TABLE assistant_feedback_draft ENABLE ROW LEVEL SECURITY;ALTER TABLE assistant_feedback_draft FORCE ROW LEVEL SECURITY;
+CREATE POLICY assistant_feedback_draft_self ON assistant_feedback_draft FOR ALL USING(tenant_id=app.current_tenant_id() AND app_user_id=app.current_user_id()) WITH CHECK(tenant_id=app.current_tenant_id() AND app_user_id=app.current_user_id());
+REVOKE ALL ON assistant_feedback_draft FROM PUBLIC,ai_hr_app;GRANT SELECT,INSERT,UPDATE ON assistant_feedback_draft TO ai_hr_app;
+CREATE FUNCTION app.assistant_feedback_draft_guard() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Handoff history is retained';END IF;
+ IF TG_OP='INSERT' AND(NEW.feedback_id IS NOT NULL OR NEW.revision<>1) THEN RAISE EXCEPTION 'A handoff starts unsubmitted';END IF;
+ IF TG_OP='UPDATE' THEN
+  IF OLD.feedback_id IS NOT NULL OR (to_jsonb(NEW)-ARRAY['feedback_id','submit_digest','submitted_at','revision'])<>(to_jsonb(OLD)-ARRAY['feedback_id','submit_digest','submitted_at','revision']) OR NEW.feedback_id IS NULL OR NEW.revision<>OLD.revision+1 THEN RAISE EXCEPTION 'Handoff identity/result is immutable';END IF;
+  IF NOT EXISTS(SELECT 1 FROM public.feedback_request f WHERE f.id=NEW.feedback_id AND f.tenant_id=NEW.tenant_id AND f.reporter_user_id=NEW.app_user_id) THEN RAISE EXCEPTION 'Exact own Feedback result required';END IF;
+ END IF;RETURN NEW;
+END;$$;
+REVOKE ALL ON FUNCTION app.assistant_feedback_draft_guard() FROM PUBLIC;
+CREATE TRIGGER assistant_feedback_draft_guard BEFORE INSERT OR UPDATE OR DELETE ON assistant_feedback_draft FOR EACH ROW EXECUTE FUNCTION app.assistant_feedback_draft_guard();

@@ -16,8 +16,9 @@ import { askAssistant } from '../core/assistant';
 import { hireEmployee } from '../core/org';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { startAssistantConversation, submitAssistantConversationTurn, confirmAssistantConversationProposal, rateAssistantConversationReply } from '../core/assistant-conversation';
+import {prepareAssistantFeedbackDraft,readAssistantFeedbackDraft,submitAssistantFeedbackDraft} from '../core/assistant-feedback';
 import { ASSISTANT_HANDOFFS, type AssistantConversationCopy } from '../lib/assistant-conversation-model';
-const copy: AssistantConversationCopy = { failures:{not_configured:'No provider',budget_monthly:'Monthly limit',budget_daily:'Daily limit',invalid_question:'Invalid',provider_error:'Transport failed',ai_control:'Control refused'},unavailable: 'Unavailable', notFinished: 'Incomplete', review: 'Review exact exceptions', noCandidates: 'No candidates', overCap: 'Narrow the review', changed: 'Changed', completed: (closed, stale) => `Closed ${closed}; stale ${stale}`, employeeColumn: 'Employee', causeColumn: 'Cause', causes: { no_bank_account: 'Bank corrected', no_tax_number: 'Tax corrected' }, evidence: { records: 'Records', payrollExceptions: 'Payroll' }, routes: Object.fromEntries(ASSISTANT_HANDOFFS.map(key => [key, key])) as AssistantConversationCopy['routes'] };
+const copy: AssistantConversationCopy = {feedbackDraft:'Suggest improvement',feedbackDraftHelp:'Review and edit before submitting', failures:{not_configured:'No provider',budget_monthly:'Monthly limit',budget_daily:'Daily limit',invalid_question:'Invalid',provider_error:'Transport failed',ai_control:'Control refused'},unavailable: 'Unavailable', notFinished: 'Incomplete', review: 'Review exact exceptions', noCandidates: 'No candidates', overCap: 'Narrow the review', changed: 'Changed', completed: (closed, stale) => `Closed ${closed}; stale ${stale}`, employeeColumn: 'Employee', causeColumn: 'Cause', causes: { no_bank_account: 'Bank corrected', no_tax_number: 'Tax corrected' }, evidence: { records: 'Records', payrollExceptions: 'Payroll' }, routes: Object.fromEntries(ASSISTANT_HANDOFFS.map(key => [key, key])) as AssistantConversationCopy['routes'] };
 const priorConfigSecret=process.env.AI_CONFIG_SECRET;
 let base: Base, ctx: SessionContext, binding: {
     ctx: SessionContext;
@@ -201,4 +202,38 @@ describe('existing question budget and reserved audit', () => {
         await expect(askAssistant(ctx, { question: 'After failed question' })).rejects.toMatchObject({ code: 'budget_daily' });
         expect(fixture.converse).toHaveBeenCalledOnce();
     });
+});
+
+/** Requires the reviewed Credit Feedback user-only + explicit-Tx owner union, never a fake employee. */
+describe('editable confirmed Feedback handoff uses one canonical transaction',()=>{
+ async function draft(){const initial=await startAssistantConversation(),answered=await submitAssistantConversationTurn(question(initial),copy);const result=await prepareAssistantFeedbackDraft({conversationId:answered.id,conversationRevision:answered.revision,exchangeId:answered.messages[0].id,requestId:randomUUID()},copy);return{...result,source:answered.messages[0]};}
+ const edited=(id:string)=>({draftId:id,expectedRevision:1,reporterEmploymentId:null,category:'enhancement',title:'Edited fictional improvement',description:'Explicitly reviewed and edited before submission.',expectedBehavior:'A clearer safe handoff.',expectedFunction:null});
+ it('opens an editable own draft without submitting and consumes concurrent exact confirmations once',async()=>{
+  const prepared=await draft(),view=await readAssistantFeedbackDraft(prepared.id);
+  expect(view).toMatchObject({title:prepared.source.question,description:prepared.source.question,feedbackId:null,subjects:[]});
+  expect(await owner.db.select().from(s.feedbackRequest)).toEqual([]);
+  const results=await Promise.all([submitAssistantFeedbackDraft(edited(prepared.id)),submitAssistantFeedbackDraft(edited(prepared.id))]);
+  expect(new Set(results.map(row=>row.feedbackId)).size).toBe(1);expect(results.filter(row=>row.created)).toHaveLength(1);
+  const rows=await owner.db.select().from(s.feedbackRequest);expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({reporterUserId:ctx.userId,reporterEmploymentId:null,title:'Edited fictional improvement',description:'Explicitly reviewed and edited before submission.'});
+  expect((await readAssistantFeedbackDraft(prepared.id)).feedbackId).toBe(rows[0].id);
+  await expect(submitAssistantFeedbackDraft({...edited(prepared.id),title:'Changed retry'})).rejects.toMatchObject({code:'stale'});
+  expect(fixture.converse).toHaveBeenCalledOnce();expect((await owner.db.select().from(s.assistantUsage))[0].exchangeCount).toBe(1);
+ });
+ it('rolls back the actual Feedback row/event if consumed-link persistence refuses',async()=>{
+  const prepared=await draft(),constraint='fixture_handoff_rollback_'+randomUUID().replaceAll('-','');
+  await owner.client.unsafe('ALTER TABLE assistant_feedback_draft ADD CONSTRAINT '+constraint+' CHECK(feedback_id IS NULL)');
+  try{await expect(submitAssistantFeedbackDraft(edited(prepared.id))).rejects.toThrow();}finally{await owner.client.unsafe('ALTER TABLE assistant_feedback_draft DROP CONSTRAINT '+constraint);}
+  expect(await owner.db.select().from(s.feedbackRequest)).toEqual([]);expect((await owner.db.select().from(s.assistantFeedbackDraft))[0]).toMatchObject({feedbackId:null,revision:1});
+  expect(await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.eventType,'feedback.submitted'))).toEqual([]);
+  expect((await submitAssistantFeedbackDraft(edited(prepared.id))).created).toBe(true);
+ });
+ it('refuses borrowed employment, another actor and changed sign-in/company authority without submitting',async()=>{
+  const prepared=await draft(),peer=await hireEmployee(ctx,{person:{fullName:'Fictional other reporter',primaryEmail:randomUUID()+'@conversation.invalid'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
+  await expect(submitAssistantFeedbackDraft({...edited(prepared.id),reporterEmploymentId:peer.employmentId})).rejects.toThrow();
+  const other=await createAppUser(base.tenantId,null,'hr_admin');await grantAssistant(ctx,{appUserId:other});const original=binding;binding={...binding,ctx:{...ctx,userId:other}};
+  await expect(readAssistantFeedbackDraft(prepared.id)).rejects.toMatchObject({code:'notFound'});expect(await withTenant(binding.ctx,tx=>tx.select().from(s.assistantFeedbackDraft))).toEqual([]);
+  binding={...original,signInHash:'f'.repeat(64)};await expect(submitAssistantFeedbackDraft(edited(prepared.id))).rejects.toMatchObject({code:'scopeChanged'});
+  expect((await owner.db.select().from(s.assistantConversation).where(eq(s.assistantConversation.id,prepared.view.id)))[0].invalidatedAt).not.toBeNull();
+  expect(await owner.db.select().from(s.feedbackRequest)).toEqual([]);
+ });
 });

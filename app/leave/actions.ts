@@ -25,6 +25,8 @@ import {
   LeaveOnBehalfNotAllowedError,
   type LeaveDurationType,
 } from '@/core/leave';
+import { ownLiveEmploymentSubjects } from '@/core/own-employment-selection';
+import { selectedOwnLeaveSubject, validateOwnLeaveReturn } from './own-selection';
 import { resolveEssView } from '@/core/ess-view';
 // 296fc027 — the employee replacement-leave request path, reached through the leave-pack facade.
 import {
@@ -99,11 +101,11 @@ export async function leaveApplySummaryAction(p: { employmentId: string; leaveTy
   const session = await getSession();
   if (!p.leaveTypeId) return null;
   try {
-    const me = await myEmployment(session);
-    const employmentId = p.employmentId || me?.employmentId;
+    const own = await ownLiveEmploymentSubjects(session);
+    const employmentId = p.employmentId || (await myEmployment(session))?.employmentId;
     if (!employmentId) return null;
     const s = await leaveTypeApplySummary(session, { employmentId, leaveTypeId: p.leaveTypeId });
-    if (!me || employmentId !== me.employmentId) {
+    if (!own.some(subject => subject.employmentId === employmentId)) {
       return { pending: s.pending, taken: s.taken, balance: s.balance, available: s.available, expiringSoon: s.expiringSoon };
     }
     const view = resolveEssView(s.essViewConfig);
@@ -124,6 +126,9 @@ export async function leaveApplySummaryAction(p: { employmentId: string; leaveTy
 
 export async function requestLeaveAction(formData: FormData) {
   const session = await getSession();
+  const selectedOwnId = String(formData.get('ownSelectedEmploymentId') ?? '').trim();
+  const selectedOwn = selectedOwnId ? await selectedOwnLeaveSubject(session, selectedOwnId) : null;
+  if (selectedOwn && String(formData.get('employmentId') ?? '') !== selectedOwn.employmentId) throw new Error('Invalid own employment selection.');
   const leaveTypeId = String(formData.get('leaveTypeId'));
   const durationType = (String(formData.get('durationType') || 'full_day') as LeaveDurationType);
   // Hourly-leave time window (0129): the form now posts a From/To window (not a raw hours number) for hourly
@@ -203,13 +208,14 @@ export async function requestLeaveAction(formData: FormData) {
     // localized below). This line is unchanged on purpose: the fallback is what a self-service submit relies
     // on, and re-deriving the employment here would only move the check to the weaker of the two places.
     const postedEmploymentId = String(formData.get('employmentId') ?? '').trim();
-    const ownEmploymentId = (await myEmployment(session))?.employmentId;
+    const ownSubjects = await ownLiveEmploymentSubjects(session);
+    const ownEmploymentId = selectedOwn?.employmentId ?? (await myEmployment(session))?.employmentId;
     const employmentId = postedEmploymentId || ownEmploymentId;
     if (!employmentId) {
       throw new Error('No employment on record for this account.');
     }
     refusedEmploymentId = employmentId;
-    refusedOnBehalf = employmentId !== ownEmploymentId;
+    refusedOnBehalf = !ownSubjects.some(subject => subject.employmentId === employmentId);
     const res = await requestLeave(session, {
       employmentId,
       leaveTypeId,
@@ -253,24 +259,11 @@ export async function requestLeaveAction(formData: FormData) {
     // resort is the raw English service message — which is exactly what a permission refusal must not show.
     if (e instanceof LeaveOnBehalfNotAllowedError) {
       const tErr = await getTranslations('leave.errors');
-      redirect(`/leave?error=${encodeURIComponent(tErr('applyOnBehalfNotAllowed'))}`);
+      redirect(leaveSelfReturnUrl(formData, 'error', tErr('applyOnBehalfNotAllowed')));
     }
-    redirect(
-      `/leave?error=${encodeURIComponent(
-        await localizeLeaveError(
-          e,
-          selected?.name,
-          refusedEmploymentId
-            ? {
-                ctx: session,
-                employmentId: refusedEmploymentId,
-                leaveTypeId,
-                subject: refusedOnBehalf ? 'other' : 'self',
-              }
-            : undefined,
-        ),
-      )}`,
-    );
+    redirect(leaveSelfReturnUrl(formData, 'error', await localizeLeaveError(
+      e, selected?.name, refusedEmploymentId ? {ctx:session,employmentId:refusedEmploymentId,leaveTypeId,subject:refusedOnBehalf?'other':'self'} : undefined,
+    )));
   }
   revalidatePath('/leave');
   revalidatePath('/leave/history');
@@ -288,8 +281,9 @@ export async function requestLeaveAction(formData: FormData) {
   // LOCALISED message, the house convention every other redirect here follows (ToastFromQuery renders the
   // raw query string, so never pass an i18n key), leaving exactly one emitter and the right words in it.
   const tToast = await getTranslations('leave');
-  const done = encodeURIComponent(tToast('submittedToast'));
-  redirect(`/leave${warnQuery}${warnQuery ? '&' : '?'}toast=${done}`);
+  const destination = new URL(leaveSelfReturnUrl(formData, 'toast', tToast('submittedToast')), 'https://navigation.invalid');
+  for (const [key,value] of new URLSearchParams(warnQuery)) destination.searchParams.set(key,value);
+  redirect(destination.pathname + destination.search);
 }
 
 // Partial Leave Cancellation (ADR-0065): an employee gives back a SUBSET of an approved leave's dates. The
@@ -299,6 +293,7 @@ export async function requestLeaveAction(formData: FormData) {
 // and / so the manager's inbox, the Leave Calendar and the dashboard's away count all pick up the new request.
 export async function requestLeaveCancellationAction(formData: FormData) {
   const session = await getSession();
+  await validateOwnLeaveReturn(session, formData);
   const leaveRequestId = String(formData.get('leaveRequestId'));
   const cancelDates = formData.getAll('cancelDate').map((d) => String(d)).filter(Boolean);
   const reason = String(formData.get('reason') ?? '').trim() || undefined;
@@ -365,6 +360,7 @@ export async function adminCancelLeaveAction(formData: FormData) {
 // listLeaveTypes lookup supplies the localized type name for any validation error message.
 export async function editLeaveAction(formData: FormData) {
   const session = await getSession();
+  await validateOwnLeaveReturn(session, formData);
   const leaveTypeId = String(formData.get('leaveTypeId'));
   const durationType = String(formData.get('durationType') || 'full_day') as LeaveDurationType;
   const fromTime = String(formData.get('fromTime') ?? '').trim();
@@ -395,6 +391,7 @@ export async function editLeaveAction(formData: FormData) {
 
 export async function cancelOwnLeaveAction(formData: FormData) {
   const session = await getSession();
+  await validateOwnLeaveReturn(session, formData);
   const leaveRequestId = String(formData.get('leaveRequestId'));
   try {
     await cancelOwnLeave(session, { leaveRequestId });

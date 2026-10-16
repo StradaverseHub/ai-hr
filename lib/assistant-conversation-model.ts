@@ -24,7 +24,7 @@ const replyFields={text:z.string().max(CONVERSATION_LIMITS.replyChars),evidence:
 export const assistantCapabilityReply=z.discriminatedUnion('kind',[
  z.object({kind:z.literal('guide'),...replyFields}).strict(),
  z.object({kind:z.literal('facts'),...replyFields}).strict(),
- z.object({kind:z.literal('draftHandoff'),...replyFields,handoff:assistantHandoff}).strict(),
+ z.object({kind:z.literal('draftHandoff'),...replyFields,handoff:assistantHandoff,draftId:z.uuid(),draftRevision:assistantConversationRevision}).strict(),
  z.object({kind:z.literal('awaitingConfirmation'),...replyFields,proposalId:z.uuid(),proposalRevision:assistantConversationRevision}).strict(),
  z.object({kind:z.literal('completed'),...replyFields,proposalId:z.uuid(),completedCount:z.number().int().min(0).max(CONVERSATION_LIMITS.proposalSubjects),staleCount:z.number().int().min(0).max(CONVERSATION_LIMITS.proposalSubjects)}).strict(),
  z.object({kind:z.enum(['refused','unavailable','unsupported']),...replyFields}).strict(),
@@ -43,4 +43,4 @@ export class AssistantConversationError extends Error {
 }
 
 /** Trusted localized labels supplied by the server action, never a client authorization input. */
-export type AssistantConversationCopy={failures:Record<'not_configured'|'budget_monthly'|'budget_daily'|'invalid_question'|'provider_error'|'ai_control',string>;unavailable:string;notFinished:string;review:string;noCandidates:string;overCap:string;changed:string;completed:(closed:number,stale:number)=>string;employeeColumn:string;causeColumn:string;causes:Record<'no_bank_account'|'no_tax_number',string>;evidence:Record<string,string>;routes:Record<AssistantHandoff,string>};
+export type AssistantConversationCopy={feedbackDraft:string;feedbackDraftHelp:string;failures:Record<'not_configured'|'budget_monthly'|'budget_daily'|'invalid_question'|'provider_error'|'ai_control',string>;unavailable:string;notFinished:string;review:string;noCandidates:string;overCap:string;changed:string;completed:(closed:number,stale:number)=>string;employeeColumn:string;causeColumn:string;causes:Record<'no_bank_account'|'no_tax_number',string>;evidence:Record<string,string>;routes:Record<AssistantHandoff,string>};

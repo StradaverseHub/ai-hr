@@ -124,9 +124,15 @@ export async function erasePersonPii(
       .limit(1);
     if (!emp) throw new Error(`No employment ${p.subjectEmploymentId} for PII erasure`);
 
+    // Serialize exact-subject private copies with greeting/ack inserts before other erasure writes.
+    // No extra statutory hold: unknown free text is redacted conservatively for every requested scope.
+    const [homeText] = await tx.execute(sql`select * from app.home_redact_person_text(${p.subjectEmploymentId}::uuid)`) as unknown as {greetings:number;acknowledgements:number}[];
+
     // (2) retention guard
     const lifted = retentionLifted(emp.terminatedOn, new Date());
     const erased: string[] = [];
+    if(homeText?.greetings)erased.push('homeGreetingText');
+    if(homeText?.acknowledgements)erased.push('noticeAcknowledgementText');
     const withheld: { field: string; reason: string }[] = [];
     for (const f of PII_FIELDS) {
       if (!inScope(f, p.scope)) continue;

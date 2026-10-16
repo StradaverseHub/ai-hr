@@ -1,3 +1,5 @@
+import {PersonalHome} from '@/components/home-shell';
+import {getSession} from '@/lib/session';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -136,7 +138,7 @@ function orderTree(rows: BreakdownRow[]) {
 // silent bounce to the dashboard stops being a rare curiosity and becomes the normal experience of
 // declining a module. The code is resolved against MODULE_CATALOG and DISCARDED if unknown: nothing from
 // the query string is ever rendered, only a catalogue name that was compiled into the build.
-export default async function DashboardPage({
+async function AdministrativeDashboard({
   searchParams,
 }: {
   searchParams?: Promise<{ moduleUnavailable?: string | string[] }>;
@@ -669,4 +671,11 @@ export default async function DashboardPage({
       />
     </div>
   );
+}
+
+/** Personal landing is separate from the retained administrative dashboard reads. */
+export default async function HomePage({searchParams}:{searchParams?:Promise<{moduleUnavailable?:string|string[];workspace?:string|string[];employmentId?:string|string[]}>}){
+ const query=await searchParams??{};
+ if(query.workspace==='operations'&&isAdmin(await getSession()))return <AdministrativeDashboard searchParams={Promise.resolve({moduleUnavailable:query.moduleUnavailable})}/>;
+ return <PersonalHome employmentId={query.employmentId}/>;
 }

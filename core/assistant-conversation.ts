@@ -20,6 +20,7 @@ export type ConversationView = {
         reply: AssistantCapabilityReply;
         helpful: boolean | null;
         failure?:AssistantErrorCode;
+        handoffStatus?:'draft'|'submitted'|'expired';
         proposalStatus?:'awaiting'|'completed'|'refused'|'expired';
     }[];
 };
@@ -61,7 +62,7 @@ export async function readConversationTx(tx: Tx, identity: ConversationIdentity,
     }
     return row;
 }
-async function viewTx(tx: Tx, row: typeof schema.assistantConversation.$inferSelect): Promise<ConversationView> {
+export async function conversationViewTx(tx: Tx, row: typeof schema.assistantConversation.$inferSelect): Promise<ConversationView> {
     const turns = await tx.select({ id: schema.assistantExchange.id, question: schema.assistantExchange.question, askedAt:schema.assistantExchange.askedAt,answer: schema.assistantExchange.answer,error:schema.assistantExchange.error, helpful: schema.assistantConversationTurn.helpful }).from(schema.assistantConversationTurn)
         .innerJoin(schema.assistantExchange, eq(schema.assistantExchange.id, schema.assistantConversationTurn.exchangeId))
         .where(eq(schema.assistantConversationTurn.conversationId, row.id)).orderBy(desc(schema.assistantConversationTurn.revision)).limit(CONVERSATION_LIMITS.historyTurns);
@@ -80,6 +81,9 @@ async function viewTx(tx: Tx, row: typeof schema.assistantConversation.$inferSel
             break;
         messages.push({ id: turn.id, question: turn.question, askedAt:turn.askedAt.toISOString(),reply, helpful: turn.helpful, ...(['not_configured','budget_monthly','budget_daily','invalid_question','provider_error','ai_control'].includes(turn.error??'')?{failure:turn.error as AssistantErrorCode}:{}) });
     }
+    const handoffs=messages.filter(message=>message.reply.kind==='draftHandoff');
+    const drafts=handoffs.length?await tx.select({id:schema.assistantFeedbackDraft.id,exchangeId:schema.assistantFeedbackDraft.handoffExchangeId,feedbackId:schema.assistantFeedbackDraft.feedbackId,expiresAt:schema.assistantFeedbackDraft.expiresAt}).from(schema.assistantFeedbackDraft).where(and(eq(schema.assistantFeedbackDraft.conversationId,row.id),inArray(schema.assistantFeedbackDraft.handoffExchangeId,handoffs.map(message=>message.id)))).limit(CONVERSATION_LIMITS.historyTurns):[];
+    for(const message of handoffs){const draft=drafts.find(draft=>draft.exchangeId===message.id);message.handoffStatus=draft?.feedbackId?'submitted':!draft||draft.expiresAt.getTime()<=Date.now()?'expired':'draft';}
     const proposalIds=messages.flatMap(message=>message.reply.kind==='awaitingConfirmation'?[message.reply.proposalId]:[]);
     const proposals=proposalIds.length?await tx.select({id:schema.assistantConfirmation.id,status:schema.assistantConfirmation.status,expiresAt:schema.assistantConfirmation.expiresAt}).from(schema.assistantConfirmation).where(and(eq(schema.assistantConfirmation.conversationId,row.id),inArray(schema.assistantConfirmation.id,proposalIds))).limit(CONVERSATION_LIMITS.historyTurns):[];
     for(const message of messages)if(message.reply.kind==='awaitingConfirmation'){const proposal=proposals.find(item=>message.reply.kind==='awaitingConfirmation'&&item.id===message.reply.proposalId);message.proposalStatus=proposal?.status==='completed'?'completed':!proposal||proposal.status!=='awaiting'?'refused':proposal.expiresAt.getTime()<=Date.now()?'expired':'awaiting';}
@@ -97,11 +101,11 @@ export async function startAssistantConversation(): Promise<ConversationView> {
                 if (valid.pendingRequestId && valid.busyUntil && valid.busyUntil.getTime() <= Date.now())
                     await invalidateTx(tx, valid.id);
                 else
-                    return viewTx(tx, valid);
+                    return conversationViewTx(tx, valid);
             }
         }
         const [row] = await tx.insert(schema.assistantConversation).values({ tenantId: session.ctx.tenantId, appUserId: session.ctx.userId!, signInHash: session.signInHash, authorityStamp: identity.authorityStamp, companyIds: identity.scopeIds }).returning();
-        return viewTx(tx, row!);
+        return conversationViewTx(tx, row!);
     });
 }
 /** Deterministic capabilities share the existing audit, never a second transcript or usage ledger. */
@@ -152,7 +156,7 @@ export async function submitAssistantConversationTurn(raw: unknown, copy: Assist
             return { kind: 'invalid' as const };
         const [existing] = await tx.select().from(schema.assistantConversationTurn).where(and(eq(schema.assistantConversationTurn.conversationId, row.id), eq(schema.assistantConversationTurn.requestId, input.requestId))).limit(1);
         if (existing?.exchangeId)
-            return { kind: 'replay' as const, view: await viewTx(tx, row) };
+            return { kind: 'replay' as const, view: await conversationViewTx(tx, row) };
         if (existing || row.pendingRequestId) {
             if (row.busyUntil && row.busyUntil.getTime() <= Date.now()) {
                 await invalidateTx(tx, row.id);
@@ -165,7 +169,7 @@ export async function submitAssistantConversationTurn(raw: unknown, copy: Assist
         const revision = row.revision + 1;
         const [turn] = await tx.insert(schema.assistantConversationTurn).values({ tenantId: live.ctx.tenantId, appUserId: live.ctx.userId!, conversationId: row.id, requestId: input.requestId, revision }).returning({ id: schema.assistantConversationTurn.id });
         await tx.update(schema.assistantConversation).set({ revision, pendingRequestId: input.requestId, busyUntil: sql `now()+interval '2 minutes'` }).where(eq(schema.assistantConversation.id, row.id));
-        return { kind: 'claimed' as const, turnId: turn!.id, revision, history: promptHistory((await viewTx(tx, row)).messages) };
+        return { kind: 'claimed' as const, turnId: turn!.id, revision, history: promptHistory((await conversationViewTx(tx, row)).messages) };
     });
     if (claim.kind === 'invalid')
         throw new AssistantConversationError('scopeChanged');
@@ -214,7 +218,7 @@ export async function submitAssistantConversationTurn(raw: unknown, copy: Assist
                 throw new AssistantConversationError('unavailable');
             await tx.update(schema.assistantConversationTurn).set({ exchangeId }).where(and(eq(schema.assistantConversationTurn.id, claim.turnId), isNull(schema.assistantConversationTurn.exchangeId)));
             const [updated] = await tx.update(schema.assistantConversation).set({ pendingRequestId: null, busyUntil: null }).where(eq(schema.assistantConversation.id, row.id)).returning();
-            return viewTx(tx, updated!);
+            return conversationViewTx(tx, updated!);
         });
         if (!result)
             throw new AssistantConversationError('scopeChanged');
@@ -247,7 +251,7 @@ export async function submitAssistantConversationTurn(raw: unknown, copy: Assist
             else failedExchangeId=(await recordConversationReplyTx(tx, live, input.question, plainReply('unavailable', error instanceof AssistantError?copy.failures[error.code]:copy.unavailable))).exchangeId;
             await tx.update(schema.assistantConversationTurn).set({ exchangeId: failedExchangeId }).where(eq(schema.assistantConversationTurn.id, claim.turnId));
             const [updated] = await tx.update(schema.assistantConversation).set({ pendingRequestId: null, busyUntil: null }).where(eq(schema.assistantConversation.id, row.id)).returning();
-            return viewTx(tx, updated!);
+            return conversationViewTx(tx, updated!);
         });
     }
 }
@@ -269,7 +273,7 @@ export async function confirmAssistantConversationProposal(raw: unknown, copy: A
         if (!proposal)
             throw new AssistantConversationError('notFound');
         if (proposal.status === 'completed')
-            return viewTx(tx, row);
+            return conversationViewTx(tx, row);
         if (row.pendingRequestId)
             throw new AssistantConversationError('busy');
         if (row.revision !== input.conversationRevision || proposal.revision !== input.proposalRevision)
@@ -298,7 +302,7 @@ export async function confirmAssistantConversationProposal(raw: unknown, copy: A
         const recorded = await recordConversationReplyTx(tx, live, copy.review, reply), revision = row.revision + 1;
         await tx.insert(schema.assistantConversationTurn).values({ tenantId: live.ctx.tenantId, appUserId: live.ctx.userId!, conversationId: row.id, requestId: input.requestId, revision, exchangeId: recorded.exchangeId });
         const [updated] = await tx.update(schema.assistantConversation).set({ revision }).where(eq(schema.assistantConversation.id, row.id)).returning();
-        return viewTx(tx, updated!);
+        return conversationViewTx(tx, updated!);
     });
     if (!result)
         throw new AssistantConversationError('scopeChanged');

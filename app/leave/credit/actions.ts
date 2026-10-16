@@ -7,6 +7,8 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { getTranslations } from 'next-intl/server';
 import { myEmployment } from '@/core/read';
+import {selectedOwnLeaveSubject} from '../own-selection';
+import {leaveSelfReturnUrl} from '@/lib/leave-return-context';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import {
   leaveCreditClaimReview,
@@ -39,10 +41,10 @@ const HISTORY = '/leave/credit';
  * answers for EVERY row — not only the Ordinary Day ones, which is all r336's equivalent was asked for.
  * Read-only and RLS-scoped (an employee may resolve their own schedule and their own attendance).
  */
-export async function leaveCreditDayFactsAction(workedDate: string) {
+export async function leaveCreditDayFactsAction(workedDate: string, selectedOwnId?:string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(workedDate)) return null;
   const session = await getSession();
-  const me = await myEmployment(session);
+  const me = selectedOwnId ? await selectedOwnLeaveSubject(session,selectedOwnId) : await myEmployment(session);
   if (!me) return null;
   let day:Awaited<ReturnType<typeof extendedHoursDayForEmployment>>;
   try{day=await extendedHoursDayForEmployment(session, me.employmentId, workedDate);}
@@ -67,8 +69,8 @@ export async function leaveCreditDayFactsAction(workedDate: string) {
 }
 
 /** Subject authority is derived from the current account, never a client employment ID. */
-export async function leaveCreditClaimReviewAction(workedDate:string,claimStart:string,claimEnd:string) {
-  const session=await getSession(),me=await myEmployment(session);
+export async function leaveCreditClaimReviewAction(workedDate:string,claimStart:string,claimEnd:string,selectedOwnId?:string) {
+  const session=await getSession(),me=selectedOwnId?await selectedOwnLeaveSubject(session,selectedOwnId):await myEmployment(session);
   if(!me)return {basis:'unavailable' as const,reason:'unavailable' as const};
   return leaveCreditClaimReview(session,{employmentId:me.employmentId,workedDate,claimStart,claimEnd});
 }
@@ -115,7 +117,8 @@ export async function submitLeaveCreditRequestAction(formData: FormData) {
 
   try {
     if (!String(formData.get('reason') ?? '').trim()) throw new Error((await getTranslations('replacementRequest'))('table.reasonRequired'));
-    const employmentId = (await myEmployment(session))?.employmentId;
+    const selectedOwnId=String(formData.get('ownSelectedEmploymentId')??'');
+    const employmentId = selectedOwnId ? (await selectedOwnLeaveSubject(session,selectedOwnId)).employmentId : (await myEmployment(session))?.employmentId;
     if (!employmentId) throw new Error('No employment on record for this account.');
     await submitLeaveCreditRequest(session, {
       employmentId,
@@ -126,7 +129,7 @@ export async function submitLeaveCreditRequestAction(formData: FormData) {
       today: todayInKualaLumpur(),
     });
   } catch (e) {
-    redirect(`${SUBMIT_LANDING}?error=${encodeURIComponent(publicErrorMessage(e))}`);
+    redirect(leaveSelfReturnUrl(formData,'error',publicErrorMessage(e)));
   }
   // Both pages read what was just written: My Leave's card shows the pending figure, and Leave Credit
   // History lists the new request.
@@ -135,7 +138,7 @@ export async function submitLeaveCreditRequestAction(formData: FormData) {
   // The ALREADY-LOCALISED sentence, which the global ToastFromQuery (app/layout.tsx) renders as is — the
   // house convention requestLeaveAction follows (never an i18n key in the address).
   const t = await getTranslations('replacementRequest');
-  redirect(`${SUBMIT_LANDING}?toast=${encodeURIComponent(t('submittedToast'))}`);
+  redirect(leaveSelfReturnUrl(formData,'toast',t('submittedToast')));
 }
 
 /**
@@ -175,4 +178,13 @@ export async function cancelLeaveCreditRequestAction(formData: FormData) {
   revalidatePath(SUBMIT_LANDING);
   revalidatePath('/approvals');
   redirect(there('toast', tHistory('cancelledToast')));
+}
+
+/** Bound server actions for the explicit selected-own entry. Never accepts an on-behalf subject. */
+export async function selectedOwnLeaveCreditDayFactsAction(employmentId:string,workedDate:string){return leaveCreditDayFactsAction(workedDate,employmentId);}
+export async function selectedOwnLeaveCreditClaimReviewAction(employmentId:string,workedDate:string,start:string,end:string){return leaveCreditClaimReviewAction(workedDate,start,end,employmentId);}
+export async function selectedOwnSubmitLeaveCreditAction(employmentId:string,form:FormData){
+ await selectedOwnLeaveSubject(await getSession(),employmentId);
+ form.set('ownSelectedEmploymentId',employmentId);
+ return submitLeaveCreditRequestAction(form);
 }

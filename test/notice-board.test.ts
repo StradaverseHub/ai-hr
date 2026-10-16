@@ -364,11 +364,10 @@ describe('6e122302 · the popup frequency rule', () => {
   });
 
   it("'until_acknowledged' keeps coming back after a dismissal, because nothing has been acknowledged", () => {
-    // RELEASE ONE HONESTY, pinned as a spec: with no acknowledgement record yet this behaves as "every
-    // login until the end date" — which IS the reporter's third option. Release two adds the
-    // acknowledgement term to this one predicate, and this expectation is what will change with it.
+    // Dismissing or viewing is not acknowledgement. Only the exact-content receipt stops this policy.
     const r = row({ popupFrequency: 'until_acknowledged', popupDismissedAt: new Date() });
     expect(popupNoticeFor([r])?.id).toBe('n1');
+    expect(popupNoticeFor([{...r,acknowledgedAt:new Date()}])).toBeNull();
   });
 
   it('AT MOST ONE popup — a stack of modals on the first screen of the day is how a channel gets ignored', () => {
@@ -443,8 +442,8 @@ describe('6e122302 · publishing delivers through core/notifications, and only w
     expect(rows.map((r) => r.r).sort()).toEqual([one, two].sort());
     expect(rows[0].kind).toBe('notice.published');
     expect(rows[0].link).toBe(`/notices/${id}`);
-    // 'info', not 'action': release one has no acknowledgement, so there is nothing the employee must DO,
-    // and 'action' would put it in the bell's Task tab as a to-do that can never be cleared.
+    // Publication remains an informational delivery. Explicit acknowledgement lives on its notice,
+    // rather than introducing another independent bell-task owner.
     expect(rows[0].severity).toBe('info');
   });
 

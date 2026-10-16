@@ -61,8 +61,8 @@ confirmation; no link asserts that a request was submitted.
 | A company selector could be ignored by an otherwise authorised tool | Explicit company narrowing; dated company proof for historical Attendance | Current company cannot substitute for past membership |
 
 This is a source review, not rendered contrast, keyboard, provider, database or performance evidence.
-The Home cards/calendar/WFH/sharing/greeting owners, complete selected-employment clock propagation and
-editable improvement handoff remain in the next implementation slice. The Profile subject reader
+The following source checkpoints implement the Home and selected-employment slices; their outcomes
+still require the parent's coordinated verification. The Profile subject reader
 checkpoint is a required integration dependency. Migrations0555/0556 remain unregistered here; parent
 owns ordered journal integration and the real test/runtime windows.
 
@@ -75,3 +75,50 @@ Capture/removal recheck it after the existing employee lock. Existing clock cont
 geofence, correction and Payroll guards remain authoritative; native capture keeps its existing path.
 The Profile reader is an integration dependency. New actual-owner DB and transport contract tests are
 written but UNRUN. No physical camera/geofence/native/browser acceptance is established by this source.
+
+## Home owner/UI source checkpoint
+
+Personal Home now has independent card reads, selected own employment, a shared Assistant sheet,
+month/week/list calendar, scoped tasks and released-payslip hint, pending-aware balances, targeted notices,
+private team availability, upcoming permitted moments and explicit greeting delivery to the recipient's
+Home inbox. Existing administration is retained separately. Six-locale Home/settings/notice copy is
+written. No payday or task effort estimate is invented. Future confirmed paydays remain unavailable.
+
+Reserved0555 adds versioned policies, sharing, WFH, greeting and dismissal metadata plus canonical Notice
+acknowledgement evidence. Direct app-role guards reject forged approval, identity retarget, non-opted-in
+recipient and mutable history. All definitions and tests remain UNRUN. The subsequent source includes validated selected-own Leave/Leave Credit/history and an editable
+Feedback handoff. Actual outcome verification remains required; this is not a completed board item.
+
+
+## Home/Feedback integration review
+
+The explicit own Leave route preserves no-query HR inquiry behaviour, but selected-own requests, summaries,
+history filters/returns and Leave Credit facts/review/submission use the same freshly validated subject.
+The existing canonical Leave request/cancellation/credit owners remain the mutation authority. Future and
+final-day own company inclusion reuses Profile's verified-login predicate; loose future-date conditions are
+not introduced. Consumer review covered scope/layout, assistant, report/export, notification recipient and
+Payroll grouping uses; all downstream owners retain their own authority.
+
+Feedback preparation stores private metadata referencing the original conversation exchange, pre-fills
+only its question, and opens the existing editable Feedback form. No draft opens a public request. The
+explicit submit binds edited content and consumes the link atomically with canonical submitFeedback in
+the same Tx; exact retry returns its existing request, changed retry refuses. Actual-login user-only
+reporters depend on Credit's reviewed owner/RLS union; no employment is fabricated. Real rollback,
+concurrent retry, privacy and changed-authority regressions are written and UNRUN.
+
+One-way erasure removes exact-person Home greeting and acknowledgement plaintext through erasePersonPii.
+Original digest, identity, actor and time remain. A restricted-owner regression specifically exercises
+FORCE RLS without superuser bypass. Ordinary app table UPDATE remains revoked. No new statutory retention
+claim is made for these free-text copies. Historical team calendars remain private.
+
+Required source union: Profile de47e2a (salary-free own subjects/verified eligibility), Feedback16db5a440
+plus orphanfix2c6b35149 (null-employment actual-login/Tx writer), and parent's journal0555/0556 before
+SystemTesting0557. New reset tables to union centrally: home_company_policy, home_sharing,
+home_wfh_request, home_greeting, home_insight_dismissal, notice_acknowledgement, assistant_conversation,
+assistant_conversation_turn, assistant_confirmation, assistant_feedback_draft.
+
+All type/DB/security/concurrency/DOM tests, actual save/reopen and independent loading journeys,
+provider/session/KB audience verification, six-locale human copy review, desktop/mobile/light/dark/theme
+rendering, keyboard/IME/unsaved-form interactions, physical clock and final impact/build/release remain
+UNRUN in this tree. Confirmed future paydays and recorded task effort have no current canonical owner;
+the interface discloses unavailable information and does not assert invented dates or estimates.

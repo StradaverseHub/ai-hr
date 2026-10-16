@@ -6362,7 +6362,7 @@ export function allowedCompanies(ctx: SessionContext) {
       const emps = await tx
         .select({ c: employment.companyId })
         .from(employment)
-        .where(and(eq(employment.personId, ctx.personId), isNull(employment.terminatedOn)));
+        .where(and(eq(employment.personId, ctx.personId), profileEditEmploymentPredicate(ctx)));
       emps.forEach((e) => ids.add(e.c));
     }
     if (ids.size === 0) return [];

@@ -6,6 +6,7 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import { viewerEmployment } from '@/lib/viewer';
+import { ownLiveEmployment } from '@/core/own-employment-selection';
 import {
   leaveRequestDateBreakdown,
   myEmploymentIdsAll,
@@ -72,7 +73,7 @@ import { ReplacementLeaveRequestDialog } from '@/components/leave/replacement-le
 // and became Leave Credit History. The two actions still live beside it, in ./credit/actions, because the
 // Leave Credit actions (submit, the per-date facts, and the history's Cancel) are one module; the submit
 // lands back HERE with the confirmation.
-import { leaveCreditClaimReviewAction, leaveCreditDayFactsAction, submitLeaveCreditRequestAction } from './credit/actions';
+import { selectedOwnLeaveCreditDayFactsAction,selectedOwnLeaveCreditClaimReviewAction,selectedOwnSubmitLeaveCreditAction, leaveCreditClaimReviewAction, leaveCreditDayFactsAction, submitLeaveCreditRequestAction } from './credit/actions';
 // r219 (7966ee35) — …and, when that availability read says NO, the sentence saying why. The read has always
 // carried a discriminated reason; this page rendered the boolean and dropped it, so the reporter spent a
 // round changing Leave config settings against a cause that sits above Leave config.
@@ -128,6 +129,7 @@ export default async function LeavePage({
     error?: string;
     // Partial Leave Cancellation (ADR-0065): success toast after a cancellation request is submitted.
     toast?: string;
+    employmentId?: string;
     // Phase-B #15: non-blocking holiday-completeness warning surfaced after a request was created.
     warnHoliday?: string;
     loaded?: string;
@@ -195,7 +197,15 @@ export default async function LeavePage({
   // r397 — through `viewerEmployment` (lib/viewer.ts), the React `cache()`d seam over THIS SAME read: the root
   // layout's notice slot asks it with the same per-request session object, so one request now pays for the
   // employment lookup once instead of twice. Same function, same argument, same row.
-  const me = await viewerEmployment(session);
+  let selectedOwn: Awaited<ReturnType<typeof ownLiveEmployment>> | null = null;
+  if (sp.employmentId !== undefined) {
+    selectedOwn = await ownLiveEmployment(session, sp.employmentId).catch(() => null);
+    if (!selectedOwn || !scopeIds.includes(selectedOwn.companyProof.companyId!)) {
+      const tOwn = await getTranslations('ownEmployment');
+      return <Card className="p-8"><p>{tOwn('unavailable')}</p></Card>;
+    }
+  }
+  const me = selectedOwn ? { employmentId: selectedOwn.employmentId } : await viewerEmployment(session);
 
   // ── The short page (feedback 388e53c2) ───────────────────────────────────────────────────────────────
   // TWO viewers get the heading and one sentence instead of the self-service surface, and NONE of the
@@ -211,7 +221,7 @@ export default async function LeavePage({
   //     Request Leave off this page; 388e53c2 takes the employee lookups off it too, because those are
   //     the Team Leave Tracker row now. What is left is the heading, so an administrator who DOES have an
   //     employment record is pointed at where the lookups went rather than shown a blank page.
-  if (me == null || admin) {
+  if (me == null || (admin && !selectedOwn)) {
     return (
       <div className="mx-auto max-w-2xl">
         <Card className="p-8 text-center">
@@ -257,7 +267,7 @@ export default async function LeavePage({
     sharedGroupBalances,
     upcoming,
     historyFilterParams,
-  } = await loadMyLeave({ session, scopeIds, me, sp, locale, today });
+  } = await loadMyLeave({ session, scopeIds, me, sp, locale, today, selectedOwn: selectedOwn ? { companyId: selectedOwn.companyProof.companyId! } : undefined });
   // Sort ONCE, at the source: every consumer on this page maps off one of these two arrays (the
   // request-leave dialog options, the two edit-leave dialog lists), so one sort makes them agree instead of
   // one popup being ordered and another not. NOT pushed into core/read.ts listLeaveTypes — the admin master
@@ -389,7 +399,7 @@ export default async function LeavePage({
   // ── The leave balance dashboard (r302 · 6c9802c9) ─────────────────────────────────────────────────────
   // Feedback 8ec63139: the ESS half of this page is self-service only; `ess` is the single gate and it suppresses
   // the READS as well as the markup. (An administrator never gets here — the short page returns above.)
-  const ess = !admin;
+  const ess = !admin || selectedOwn != null;
   // 296fc027 · may this employee ask for replacement leave? THREE questions in one read: the chargeable
   // add-on, the per-company employee-request switch, and this employee's own eligibility as of today. Only
   // asked on the ESS path — an admin viewing this route sees the employee-inquiry surface, not their own.
@@ -659,7 +669,8 @@ export default async function LeavePage({
                   defaultTypeId={
                     typeof sp.applyType === 'string' && /^[0-9a-f-]{36}$/i.test(sp.applyType) ? sp.applyType : null
                   }
-                  employeeOptions={canApplyOnBehalf ? requestLeaveEmployeeOptions : undefined}
+                  fixedOwnEmploymentId={selectedOwn?.employmentId}
+                  employeeOptions={!selectedOwn && canApplyOnBehalf ? requestLeaveEmployeeOptions : undefined}
                   submitAction={requestLeaveAction}
                   previewAction={previewLeaveDeductionAction}
                   summaryAction={leaveApplySummaryAction}
@@ -698,14 +709,14 @@ export default async function LeavePage({
                   // control it ever did. r389 (ba039150): it redirects back to this page with the
                   // confirmation, as Request Leave does; the request is listed under My Leave › Leave Credit
                   // History.
-                  submitAction={submitLeaveCreditRequestAction}
+                  submitAction={selectedOwn ? selectedOwnSubmitLeaveCreditAction.bind(null,selectedOwn.employmentId) : submitLeaveCreditRequestAction}
                   today={today}
                   requiresFirstScheduleConsent={replacementRequest.requiresFirstScheduleConsent}
                   // r343 — one read per date for EVERY row: what the roster holds (the thing the chosen Day
                   // Type is adjudicated against) plus the scheduled shift end and the actual clock-out. It
                   // replaces r336's pair of actions, one of which answered only for ordinary-day rows.
-                  dayFactsAction={leaveCreditDayFactsAction}
-                  claimReviewAction={leaveCreditClaimReviewAction}
+                  dayFactsAction={selectedOwn ? selectedOwnLeaveCreditDayFactsAction.bind(null,selectedOwn.employmentId) : leaveCreditDayFactsAction}
+                  claimReviewAction={selectedOwn ? selectedOwnLeaveCreditClaimReviewAction.bind(null,selectedOwn.employmentId) : leaveCreditClaimReviewAction}
                   // r358 — the ladder applies to every day type; `ordinaryDayAllowed` is the switch, and
                   // it now decides one thing only: whether an Ordinary Day row can earn a credit here.
                   tiers={leaveCreditOffer?.tiers ?? null}

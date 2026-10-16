@@ -1,11 +1,9 @@
 /**
  * 6e122302 — the Notice Board. HR publishes an announcement to a resolved set of employees.
  *
- * RELEASE ONE OF TWO. This module carries creating, targeting, publishing, archiving and the employee-side
- * reads (dashboard card, listing, reading page, login popup). ACKNOWLEDGEMENT TRACKING IS NOT HERE and is
- * not half-here: there is no acknowledgement row, no agreement text, no "require acknowledgement" flag and
- * no HR acknowledgement report. The approved plan splits the item that way on purpose — publishing is
- * useful on day one, and acknowledgement is EVIDENCE, which is worth getting right rather than fast.
+ * Home adds explicit acknowledgement of exact content alongside the existing view/popup markers.
+ * Acknowledgement stores its own immutable actor, time and content snapshot. Editing the notice never
+ * rewrites that evidence; a changed content digest requires a fresh acknowledgement.
  *
  * ── THREE DECISIONS, ALL LOAD-BEARING ─────────────────────────────────────────────────────────────────
  *
@@ -29,7 +27,7 @@ import { and, asc, desc, eq, inArray, isNull, isNotNull, lte, gte, sql } from 'd
 
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { employment, notice, noticeRecipient } from '../db/schema';
+import { employment, notice, noticeRecipient,noticeAcknowledgement } from '../db/schema';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import {
   isUnrestrictedOrgCriteria,
@@ -44,7 +42,7 @@ export class NoticeError extends Error {
   }
 }
 
-/** Popup behaviour. 'once' = once per notice per employee; 'until_acknowledged' = while the notice is live. */
+/** Popup behaviour: once per employee, or while live until exact-content explicit acknowledgement. */
 export const NOTICE_POPUP_FREQUENCIES = ['once', 'until_acknowledged'] as const;
 export type NoticePopupFrequency = (typeof NOTICE_POPUP_FREQUENCIES)[number];
 
@@ -89,6 +87,9 @@ export function isNoticeLive(
 
 export type NoticeInput = {
   title: string;
+  pinned?:boolean;
+  category?:'general'|'holiday'|'benefits'|'policy';
+  requiresAcknowledgement?:boolean;
   body: string;
   startOn: string;
   endOn: string;
@@ -149,6 +150,7 @@ function cleanNotice(p: NoticeInput): Required<Omit<NoticeInput, 'criteria' | 'e
 
   return {
     title,
+    pinned:p.pinned===true,category:['general','holiday','benefits','policy'].includes(p.category??'')?p.category!:'general',requiresAcknowledgement:p.requiresAcknowledgement===true||popupFrequency==='until_acknowledged',
     body,
     startOn: p.startOn,
     endOn: p.endOn,
@@ -179,6 +181,7 @@ export async function createNotice(ctx: SessionContext, p: NoticeInput): Promise
       .values({
         tenantId: ctx.tenantId,
         title: c.title,
+        pinned:c.pinned,category:c.category,requiresAcknowledgement:c.requiresAcknowledgement,
         body: c.body,
         startOn: c.startOn,
         endOn: c.endOn,
@@ -225,6 +228,7 @@ export async function updateNotice(ctx: SessionContext, id: string, p: NoticeInp
       .update(notice)
       .set({
         title: c.title,
+        pinned:p.pinned===undefined?before.pinned:c.pinned,category:p.category===undefined?before.category:c.category,requiresAcknowledgement:p.requiresAcknowledgement===undefined?before.requiresAcknowledgement||c.popupFrequency==='until_acknowledged':c.requiresAcknowledgement,
         body: c.body,
         startOn: c.startOn,
         endOn: c.endOn,
@@ -423,7 +427,7 @@ export async function duplicateNotice(ctx: SessionContext, id: string): Promise<
       .insert(notice)
       .values({
         tenantId: ctx.tenantId,
-        title: `${row.title} (copy)`.slice(0, 200),
+        title: `${row.title} (copy)`.slice(0, 200),pinned:row.pinned,category:row.category,requiresAcknowledgement:row.requiresAcknowledgement,
         body: row.body,
         startOn: row.startOn,
         endOn: row.endOn,
@@ -452,6 +456,7 @@ export async function duplicateNotice(ctx: SessionContext, id: string): Promise<
 
 export type NoticeRow = {
   id: string;
+  pinned:boolean;category:string;requiresAcknowledgement:boolean;
   title: string;
   body: string;
   startOn: string;
@@ -488,6 +493,8 @@ export async function listNotices(
     const rows = await tx
       .select({
         id: notice.id,
+        pinned:notice.pinned,category:notice.category,requiresAcknowledgement:notice.requiresAcknowledgement,
+        contentDigest:sql<string>`app.notice_content_digest(${notice.title},${notice.body})`,
         title: notice.title,
         body: notice.body,
         startOn: notice.startOn,
@@ -539,6 +546,7 @@ export async function getNotice(ctx: SessionContext, id: string): Promise<Notice
 
 export type EmployeeNoticeRow = {
   id: string;
+  pinned:boolean;category:string;requiresAcknowledgement:boolean;contentDigest:string;acknowledgedAt:Date|null;
   title: string;
   body: string;
   startOn: string;
@@ -565,13 +573,18 @@ export type EmployeeNoticeRow = {
 export async function noticesForEmployment(
   ctx: SessionContext,
   employmentId: string,
-  opts: { today?: string } = {},
+  opts: { today?: string; search?:string; category?:'general'|'holiday'|'benefits'|'policy'; limit?:number } = {},
 ): Promise<EmployeeNoticeRow[]> {
   const today = opts.today ?? todayInKualaLumpur();
+  const search=(opts.search??'').trim();
+  if(search.length>200 || opts.category && !['general','holiday','benefits','policy'].includes(opts.category) || opts.limit!==undefined && (!Number.isInteger(opts.limit)||opts.limit<1||opts.limit>201))throw new NoticeError('Invalid notice filter.');
   return withTenant(ctx, async (tx) => {
     const rows = await tx
       .select({
         id: notice.id,
+        pinned:notice.pinned,category:notice.category,requiresAcknowledgement:notice.requiresAcknowledgement,
+        contentDigest:sql<string>`app.notice_content_digest(${notice.title},${notice.body})`,
+        acknowledgedAt:sql<Date|null>`(select a.acknowledged_at from notice_acknowledgement a where a.notice_id=notice.id and a.employment_id=notice_recipient.employment_id and a.tenant_id=notice.tenant_id and a.content_digest=app.notice_content_digest(notice.title,notice.body) limit 1)`.mapWith({mapFromDriverValue:(value:string|Date|null)=>value==null?null:value instanceof Date?value:new Date(value)}),
         title: notice.title,
         body: notice.body,
         startOn: notice.startOn,
@@ -595,13 +608,16 @@ export async function noticesForEmployment(
       .where(
         and(
           eq(noticeRecipient.employmentId, employmentId),
+          search ? sql`position(lower(${search}) in lower(${notice.title} || ' ' || ${notice.body}))>0` : undefined,
+          opts.category ? eq(notice.category,opts.category) : undefined,
           isNotNull(notice.publishedAt),
           isNull(notice.archivedAt),
           lte(notice.startOn, today),
           gte(notice.endOn, today),
         ),
       )
-      .orderBy(desc(notice.publishedAt), asc(notice.title));
+      .orderBy(desc(notice.pinned),desc(notice.publishedAt), asc(notice.title),asc(notice.id))
+      .limit(opts.limit??2147483647);
     return rows.map((r) => ({ ...r, popupFrequency: r.popupFrequency as NoticePopupFrequency }));
   });
 }
@@ -615,22 +631,20 @@ export function unreadNoticeCount(rows: readonly EmployeeNoticeRow[]): number {
  * Which live notice, if any, should pop up after login — and there is AT MOST ONE.
  *
  * A queue of modals stacked on someone's first screen of the day is how a communication channel becomes a
- * thing people click through without reading. The most recently published eligible notice wins; the rest
+ * thing people click through without reading. The first eligible notice in the pinned/newest order wins; the rest
  * are waiting on the dashboard card, which is where a notice board belongs.
  *
  * The frequency rule:
  *   • 'once'                — show until the employee dismisses it, then never again.
  *   • 'until_acknowledged'  — show every time, while the notice is live.
  *
- * ⚠️ RELEASE ONE HONESTY: with no acknowledgement record yet, "until acknowledged" cannot end, so it
- * behaves as "every login until the end date". That is exactly the reporter's third option ("Display every
- * login until the End Date or acknowledgement is completed"), so the behaviour is right today and release
- * two only has to add the acknowledgement term to this one predicate.
+ * An explicit acknowledgement of the current content digest ends the repeating popup. A view or
+ * dismissal never creates acknowledgement, and editing content makes the current digest unacknowledged.
  */
 export function popupNoticeFor(rows: readonly EmployeeNoticeRow[]): EmployeeNoticeRow | null {
   const due = rows.filter((r) => {
     if (!r.popupEnabled) return false;
-    if (r.popupFrequency === 'until_acknowledged') return true;
+    if (r.popupFrequency === 'until_acknowledged') return r.acknowledgedAt==null;
     return r.popupDismissedAt == null;
   });
   return due[0] ?? null;
@@ -681,4 +695,18 @@ export async function countNoticeAudience(
     (await resolveOrgCriteriaTargets(tx, { criteria: p.criteria ?? {}, asOf })).length,
   );
   return { count, unrestricted: isUnrestrictedOrgCriteria(p.criteria) };
+}
+
+/** Explicit user action against the exact currently visible content, with no view-as-consent shortcut. */
+export async function acknowledgeNotice(ctx:SessionContext,p:{noticeId:string;employmentId:string;expectedDigest:string}){
+ if(!/^[0-9a-f]{64}$/.test(p.expectedDigest)||!ctx.userId)throw new NoticeError('Reopen the notice before acknowledging it.');
+ return withTenant(ctx,async tx=>{
+  const {ownLiveEmploymentTx}=await import('./own-employment-selection');await ownLiveEmploymentTx(tx,ctx,p.employmentId);
+  const [row]=await tx.select({id:notice.id,title:notice.title,body:notice.body,digest:sql<string>`app.notice_content_digest(${notice.title},${notice.body})`}).from(notice).where(eq(notice.id,p.noticeId)).limit(1).for('share');
+  if(!row||row.digest!==p.expectedDigest)throw new NoticeError('The notice changed. Reopen and read its current content.');
+  // The trigger freshly enforces live window, exact targeted recipient and requires-ack policy under locks.
+  const [inserted]=await tx.insert(noticeAcknowledgement).values({tenantId:ctx.tenantId,noticeId:row.id,employmentId:p.employmentId,appUserId:ctx.userId,contentDigest:row.digest,titleSnapshot:row.title,bodySnapshot:row.body}).onConflictDoNothing().returning({id:noticeAcknowledgement.id});
+  if(inserted)await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'notice',aggregateId:row.id,eventType:'notice.acknowledged',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,payload:{acknowledgementId:inserted.id,contentDigest:row.digest}});
+  return {acknowledged:true as const};
+ });
 }

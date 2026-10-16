@@ -2309,10 +2309,11 @@ export async function declinePeerFeedback(ctx: SessionContext, p: { requestId: s
 export type FeedbackRequestRow = { requestId: string; subject: string; cycleName: string };
 
 /** The signed-in peer's pending feedback requests — "give 360 feedback". */
-export function myFeedbackRequests(ctx: SessionContext): Promise<FeedbackRequestRow[]> {
+export function myFeedbackRequests(ctx: SessionContext, opts:{employmentId?:string;limit?:number}={}): Promise<FeedbackRequestRow[]> {
+  if(opts.limit!==undefined&&(!Number.isInteger(opts.limit)||opts.limit<1||opts.limit>1001))throw new PerfError('Narrow the feedback request selection.');
   return withTenant(ctx, async (tx) => {
     if (!ctx.personId) return [];
-    const mine = await tx.select({ id: employment.id }).from(employment).where(eq(employment.personId, ctx.personId));
+    const mine = await tx.select({ id: employment.id }).from(employment).where(and(eq(employment.personId, ctx.personId),opts.employmentId?eq(employment.id,opts.employmentId):undefined));
     const ids = mine.map((m) => m.id);
     if (ids.length === 0) return [];
     // Names are denormalized on the request — the peer can't re-resolve the subject's name via RLS.
@@ -2324,7 +2325,7 @@ export function myFeedbackRequests(ctx: SessionContext): Promise<FeedbackRequest
       })
       .from(peerFeedbackRequest)
       .where(and(inArray(peerFeedbackRequest.peerEmploymentId, ids), eq(peerFeedbackRequest.status, 'pending')))
-      .orderBy(desc(peerFeedbackRequest.createdAt));
+      .orderBy(desc(peerFeedbackRequest.createdAt),peerFeedbackRequest.id).limit(opts.limit===undefined?2147483647:opts.limit);
     return rows.map((r) => ({ requestId: r.requestId, subject: r.subject, cycleName: r.cycleName ?? '' }));
   });
 }

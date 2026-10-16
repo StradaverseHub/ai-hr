@@ -5,11 +5,11 @@ import messages from '../messages/en.json';
 import {AssistantConversation} from '../components/assistant-conversation';
 import {__resetUnsavedGuards,firstDirtyGuard} from '../lib/unsaved-changes';
 import type {ConversationView} from '../core/assistant-conversation';
-const action=vi.hoisted(()=>({load:vi.fn(),submit:vi.fn(),confirm:vi.fn(),reset:vi.fn(),rate:vi.fn(),push:vi.fn()}));
+const action=vi.hoisted(()=>({load:vi.fn(),submit:vi.fn(),confirm:vi.fn(),reset:vi.fn(),rate:vi.fn(),prepareFeedback:vi.fn(),push:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({push:action.push})}));
 vi.mock('next/link',()=>({default:({href,children,...props}:{href:string;children:React.ReactNode})=><a href={href} {...props}>{children}</a>}));
 vi.mock('next-intl',()=>({useFormatter:()=>({dateTime:(value:Date)=>value.toISOString()}),useTranslations:(namespace:string)=>(key:string)=>key.split('.').reduce((value,part)=>(value as Record<string,unknown>)?.[part],namespace.split('.').reduce((value,part)=>(value as Record<string,unknown>)?.[part],messages as unknown))??key}));
-vi.mock('../app/assistant/actions',()=>({loadAssistantConversationAction:action.load,submitAssistantConversationAction:action.submit,confirmAssistantProposalAction:action.confirm,newAssistantConversationAction:action.reset,rateAssistantReplyAction:action.rate}));
+vi.mock('../app/assistant/actions',()=>({loadAssistantConversationAction:action.load,submitAssistantConversationAction:action.submit,confirmAssistantProposalAction:action.confirm,newAssistantConversationAction:action.reset,rateAssistantReplyAction:action.rate,prepareAssistantFeedbackAction:action.prepareFeedback}));
 const cid='123e4567-e89b-42d3-a456-426614174000',eid='123e4567-e89b-42d3-a456-426614174001',pid='123e4567-e89b-42d3-a456-426614174002';
 const initial=():ConversationView=>({id:cid,revision:1,pending:false,messages:[]});
 const answered=():ConversationView=>({id:cid,revision:2,pending:false,messages:[{id:eid,question:'Earlier question',askedAt:'2026-10-16T01:00:00.000Z',helpful:null,reply:{kind:'guide',text:'Private previous answer',tables:[],links:[],evidence:[]}}]});
@@ -42,4 +42,12 @@ describe('shared conversation interaction boundaries',()=>{
  it('does not allow a late response from an unmounted scope to overwrite the new workspace',async()=>{
   let finish!:(value:unknown)=>void;const gate=new Promise(resolve=>finish=resolve);action.submit.mockReturnValue(gate);const mounted=render(<AssistantConversation key="scope-a"/>);await waitFor(()=>expect(screen.getByRole('button',{name:'New conversation'})).toBeEnabled());fireEvent.change(screen.getByRole('textbox'),{target:{value:'Question in A'}});fireEvent.keyDown(screen.getByRole('textbox'),{key:'Enter'});await waitFor(()=>expect(action.submit).toHaveBeenCalledOnce());mounted.rerender(<AssistantConversation key="scope-b"/>);await waitFor(()=>expect(action.load).toHaveBeenCalledTimes(2));finish({ok:true,view:answered()});await waitFor(()=>expect(screen.queryByText('Private previous answer')).not.toBeInTheDocument());
  });
+ it('prepares an editable Feedback handoff from an exact recorded reply without submitting Feedback or another question',async()=>{
+  action.load.mockResolvedValue({ok:true,view:answered()});action.prepareFeedback.mockResolvedValue({ok:true,id:pid,view:answered()});
+  await ready();fireEvent.click(screen.getByRole('button',{name:messages.assistantConversation.feedbackDraft}));
+  await waitFor(()=>expect(action.prepareFeedback).toHaveBeenCalledOnce());
+  expect(action.prepareFeedback.mock.calls[0][0]).toMatchObject({conversationId:cid,conversationRevision:2,exchangeId:eid});
+  expect(action.push).toHaveBeenCalledWith('/feedback?assistantDraft='+pid);expect(action.submit).not.toHaveBeenCalled();expect(action.confirm).not.toHaveBeenCalled();
+ });
+
 });

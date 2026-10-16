@@ -164,7 +164,7 @@ export default async function NoticeDetailPage({
           <NoticeForm
             action={updateNoticeAction}
             values={{
-              title: n.title,
+              title: n.title,pinned:n.pinned,category:n.category as 'general'|'holiday'|'benefits'|'policy',requiresAcknowledgement:n.requiresAcknowledgement,
               body: n.body,
               startOn: n.startOn,
               endOn: n.endOn,

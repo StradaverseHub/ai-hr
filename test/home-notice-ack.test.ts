@@ -1,0 +1,60 @@
+import { eq } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { adminCtx, createAppUser, migrateTestDb, resetDb, seedBase, owner, closeAll, type Base } from './harness';
+import { withTenant, type SessionContext } from '../db/client';
+import * as s from '../db/schema';
+import { hireEmployee } from '../core/org';
+import { createNotice, publishNotice, updateNotice, noticesForEmployment, markNoticeViewed, acknowledgeNotice, popupNoticeFor, duplicateNotice, getNotice } from '../core/notice';
+import { todayInKualaLumpur } from '../lib/hr-date';
+let b: Base;
+beforeAll(migrateTestDb);
+afterAll(closeAll);
+beforeEach(async () => { await resetDb(); b = await seedBase(); });
+async function employee() { const e = await hireEmployee(adminCtx(b), { person: { fullName: 'Fictional notice recipient', primaryEmail: `${randomUUID()}@home.invalid` }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: '2020-01-01' }); const userId = await createAppUser(b.tenantId, e.personId, 'employee'); return { ...e, ctx: { ...adminCtx(b), userId, personId: e.personId, roles: ['employee'], grants: [{ role: 'employee', companyId: null }] } as SessionContext }; }
+const content = (employmentId: string, body = 'Please read this current policy.') => ({ title: 'Fictional policy', body, startOn: todayInKualaLumpur(), endOn: todayInKualaLumpur(), targetMode: 'individual' as const, employmentIds: [employmentId], pinned: true, category: 'policy' as const, requiresAcknowledgement: true, popupEnabled: true, popupFrequency: 'until_acknowledged' as const });
+describe('canonical Notice explicit exact-content acknowledgement', () => {
+    it('keeps opening separate, stores the actual actor/content once, and stops only the acknowledged popup', async () => {
+        const self = await employee(), input = content(self.employmentId), created = await createNotice(adminCtx(b), input);
+        await publishNotice(adminCtx(b), created.id);
+        await markNoticeViewed(self.ctx, created.id, self.employmentId);
+        const read = (await noticesForEmployment(self.ctx, self.employmentId)).find(row => row.id === created.id)!;
+        expect(read.firstViewedAt).not.toBeNull();
+        expect(read.acknowledgedAt).toBeNull();
+        expect(popupNoticeFor([read])?.id).toBe(created.id);
+        const command = { noticeId: created.id, employmentId: self.employmentId, expectedDigest: read.contentDigest };
+        await Promise.all([acknowledgeNotice(self.ctx, command), acknowledgeNotice(self.ctx, command)]);
+        const evidence = await owner.db.select().from(s.noticeAcknowledgement);
+        expect(evidence).toHaveLength(1);
+        expect(evidence[0]).toMatchObject({ appUserId: self.ctx.userId, employmentId: self.employmentId, titleSnapshot: input.title, bodySnapshot: input.body, contentDigest: read.contentDigest });
+        expect((await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.eventType, 'notice.acknowledged')))).toHaveLength(1);
+        const after = (await noticesForEmployment(self.ctx, self.employmentId)).find(row => row.id === created.id)!;
+        expect(after.acknowledgedAt).not.toBeNull();
+        expect(popupNoticeFor([after])).toBeNull();
+    });
+    it('retains earlier content evidence, refuses a stale preview and requires fresh acknowledgement after an edit', async () => {
+        const self = await employee(), created = await createNotice(adminCtx(b), content(self.employmentId));
+        await publishNotice(adminCtx(b), created.id);
+        const before = (await noticesForEmployment(self.ctx, self.employmentId)).find(row => row.id === created.id)!;
+        await acknowledgeNotice(self.ctx, { noticeId: created.id, employmentId: self.employmentId, expectedDigest: before.contentDigest });
+        await updateNotice(adminCtx(b), created.id, content(self.employmentId, 'Revised policy content.'));
+        await expect(acknowledgeNotice(self.ctx, { noticeId: created.id, employmentId: self.employmentId, expectedDigest: before.contentDigest })).rejects.toThrow(/changed/);
+        const current = (await noticesForEmployment(self.ctx, self.employmentId)).find(row => row.id === created.id)!;
+        expect(current.acknowledgedAt).toBeNull();
+        expect(current.contentDigest).not.toBe(before.contentDigest);
+        await acknowledgeNotice(self.ctx, { noticeId: created.id, employmentId: self.employmentId, expectedDigest: current.contentDigest });
+        expect(await owner.db.select().from(s.noticeAcknowledgement)).toHaveLength(2);
+        const copy = await duplicateNotice(adminCtx(b), created.id);
+        expect(await getNotice(adminCtx(b), copy.id)).toMatchObject({ pinned: true, category: 'policy', requiresAcknowledgement: true, status: 'draft' });
+    });
+    it('refuses another recipient and direct app-role forged content or mutation of retained evidence', async () => {
+        const self = await employee(), peer = await employee(), created = await createNotice(adminCtx(b), content(self.employmentId));
+        await publishNotice(adminCtx(b), created.id);
+        const read = (await noticesForEmployment(self.ctx, self.employmentId)).find(row => row.id === created.id)!;
+        await expect(acknowledgeNotice(peer.ctx, { noticeId: created.id, employmentId: peer.employmentId, expectedDigest: read.contentDigest })).rejects.toThrow();
+        await expect(withTenant(self.ctx, tx => tx.insert(s.noticeAcknowledgement).values({ tenantId: b.tenantId, noticeId: created.id, employmentId: self.employmentId, appUserId: self.ctx.userId!, titleSnapshot: read.title, bodySnapshot: 'Not what was shown', contentDigest: read.contentDigest }))).rejects.toThrow();
+        await acknowledgeNotice(self.ctx, { noticeId: created.id, employmentId: self.employmentId, expectedDigest: read.contentDigest });
+        await expect(withTenant(self.ctx, tx => tx.update(s.noticeAcknowledgement).set({ bodySnapshot: 'Changed' }))).rejects.toMatchObject({ cause: expect.objectContaining({ code: '42501' }) });
+        expect((await owner.db.select().from(s.noticeAcknowledgement))[0].bodySnapshot).toBe(read.body);
+    });
+});

@@ -810,7 +810,7 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
   'notice.published': {
     kind: 'notice.published',
     category: 'notice',
-    // 'info', not 'action': release one has no acknowledgement, so there is nothing the employee must DO.
+    // Publication is informational; the notice owner handles any explicit content acknowledgement.
     // Severity 'action' would put it in the bell's Task tab and count toward a to-do list it cannot clear.
     render: (p, ev) => ({
       severity: 'info',

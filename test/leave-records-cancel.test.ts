@@ -212,7 +212,7 @@ describe('§3 the Requests subsection is REMOVED — where each of its six capab
     expect(from).toBeGreaterThan(-1);
     expect(to).toBeGreaterThan(from);
     expect(ownHistory.slice(from,to)).toContain('<EditLeaveDialog');
-    expect(leavePage).toContain('if (me == null || admin) {');
+    expect(leavePage).toContain('if (me == null || (admin && !selectedOwn)) {');
     // 5f2e20fb moved the newest-first ordering into SQL (sort 'start', dir 'desc'), so the JS re-sort it
     // used to need is gone. `selfHistory` is still the viewer's own rows and still what EditLeaveDialog is
     // built from, which is the property this case is about.

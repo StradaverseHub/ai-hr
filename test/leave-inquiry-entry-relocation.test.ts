@@ -177,8 +177,8 @@ describe('388e53c2 · My Leave means your own leave again', () => {
     expect(read('components/leave/own-leave-history.tsx')).toContain('fields={historyFilterFields}');
   });
 
-  it('an HR admin and an UNLINKED viewer both get the heading and one sentence, before any read runs', () => {
-    const guardAt = leavePage.indexOf('if (me == null || admin) {');
+  it('a no-query HR admin and an UNLINKED viewer both get the heading and one sentence, before any read runs', () => {
+    const guardAt = leavePage.indexOf('if (me == null || (admin && !selectedOwn)) {');
     expect(guardAt, 'the short-page guard').toBeGreaterThan(-1);
     expect(leavePage).toContain("{me == null ? tMe('notLinked') : t('inquiryMovedToTracker')}");
     // An EARLY RETURN, so the self-service reads never run for either viewer. `me == null` is checked
@@ -223,7 +223,7 @@ describe('388e53c2 · My Leave means your own leave again', () => {
       '<MyLeaveDashboard',
       // UPDATED BY r397: the own-leave reads are made by the page's loader (app/leave/my-leave-data.ts).
       'await loadMyLeave({ session',
-      'const ess = !admin;',
+      'const ess = !admin || selectedOwn != null;',
     ]) {
       expect(leavePage.includes(kept), kept).toBe(true);
     }

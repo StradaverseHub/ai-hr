@@ -1,3 +1,6 @@
+import {readAssistantFeedbackDraft} from '@/core/assistant-feedback';
+import {submitAssistantFeedbackAction} from './assistant-actions';
+import {ConfirmSubmit} from '@/components/ui/confirm-submit';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
@@ -44,6 +47,7 @@ export default async function FeedbackPage({
   searchParams,
 }: {
   searchParams: Promise<{
+    assistantDraft?:string;draftError?:string;draftAttachments?:string;
     error?: string;
     toast?: string;
     toastKey?: string;
@@ -56,7 +60,9 @@ export default async function FeedbackPage({
 }) {
   const s = await getSession();
   const t = await getTranslations('feedback');
-  const { error, toast, toastKey, count, action, skipped, status, sort } = await searchParams;
+  const { error, toast, toastKey, count, action, skipped, status, sort,assistantDraft,draftError,draftAttachments } = await searchParams;
+  const a=await getTranslations('assistantConversation');
+  const draft=assistantDraft?await readAssistantFeedbackDraft(assistantDraft).catch(()=>null):null;
   const activeStatus = (BOARD_STATUSES as readonly string[]).includes(status ?? '')
     ? (status as FeedbackStatus)
     : undefined;
@@ -142,12 +148,16 @@ export default async function FeedbackPage({
         </div>
       </Card>
 
-      <Card className="p-5">
+      {assistantDraft&&!draft&&<p role="alert" className="rounded-md border border-destructive/30 p-3 text-sm">{a('feedbackDraftUnavailable')}</p>}
+      {draftError&&<p role="alert" className="text-sm text-destructive">{a('feedbackDraftUnavailable')}</p>}
+      {draftAttachments==='failed'&&<p role="alert" className="text-sm text-destructive">{a('feedbackAttachmentsFailed')}</p>}
+      {draft?.feedbackId?<Card className="p-5"><p role="status">{a('feedbackSubmitted')}</p><Link className="inline-flex min-h-11 items-center text-primary underline" href={'/feedback/'+draft.feedbackId}>{a('reviewFeedback')}</Link></Card>:<Card className="p-5">
         <SectionHeader title={t('logTitle')} />
         <p className="px-1 pt-2 text-xs text-muted-foreground">{t('logIntro')}</p>
-        <form action={submitFeedbackAction} className="mt-3 grid gap-3 md:grid-cols-2">
+        <form action={draft?submitAssistantFeedbackAction:submitFeedbackAction} className="mt-3 grid gap-3 md:grid-cols-2">
+          {draft&&<><input type="hidden" name="assistantDraft" value={draft.id}/><input type="hidden" name="draftRevision" value={draft.revision}/><p className="md:col-span-2 text-sm text-muted-foreground">{a('feedbackDraftHelp')}</p><Field label={a('feedbackReporter')}><select name="reporterEmploymentId" className={inputCls} defaultValue={draft.subjects.length===1?draft.subjects[0].id:''}><option value="">{a('feedbackLogin')}</option>{draft.subjects.map(subject=><option key={subject.id} value={subject.id}>{subject.label}</option>)}</select></Field></>}
           <Field label={t('category')}>
-            <select name="category" defaultValue="issue" className={inputCls} required>
+            <select name="category" defaultValue={draft?.category??'issue'} className={inputCls} required>
               {CATEGORIES.map((c) => (
                 <option key={c} value={c}>
                   {t(`category_${c}`)}
@@ -156,11 +166,11 @@ export default async function FeedbackPage({
             </select>
           </Field>
           <Field label={t('titleLabel')}>
-            <input name="title" required className={inputCls} placeholder={t('titlePlaceholder')} />
+            <input name="title" required defaultValue={draft?.title} maxLength={draft?200:undefined} className={inputCls} placeholder={t('titlePlaceholder')} />
           </Field>
           <div className="md:col-span-2">
             <Field label={t('description')}>
-              <textarea name="description" required rows={3} className={inputCls} placeholder={t('descriptionPlaceholder')} />
+              <textarea name="description" required defaultValue={draft?.description} maxLength={draft?8000:undefined} rows={3} className={inputCls} placeholder={t('descriptionPlaceholder')} />
             </Field>
           </div>
           <Field label={t('expectedBehavior')}>
@@ -176,12 +186,10 @@ export default async function FeedbackPage({
             <p className="mt-1 px-1 text-xs text-muted-foreground">{t('attachmentsHint')}</p>
           </div>
           <div className="md:col-span-2">
-            <Button type="submit" size="sm">
-              {t('submit')}
-            </Button>
+            {draft?<ConfirmSubmit className="min-h-11" title={a('confirmFeedback')} description={a('feedbackDraftHelp')} confirmLabel={t('submit')}>{t('submit')}</ConfirmSubmit>:<Button type="submit" size="sm">{t('submit')}</Button>}
           </div>
         </form>
-      </Card>
+      </Card>}
 
       <Card className="overflow-hidden">
         <SectionHeader title={activeStatus ? t(`status_${activeStatus}`) : t('listTitle')} count={rows.length} />

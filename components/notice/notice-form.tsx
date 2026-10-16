@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import {useTranslations} from 'next-intl';
 
 import { ChipMultiSelect } from '@/components/ui/chip-multi-select';
 import { MultiSelectPopover } from '@/components/ui/multi-select-popover';
@@ -15,6 +16,7 @@ type Action = (fd: FormData) => void | Promise<void>;
 
 export type NoticeFormValues = {
   title: string;
+  pinned?:boolean;category?:'general'|'holiday'|'benefits'|'policy';requiresAcknowledgement?:boolean;
   body: string;
   startOn: string;
   endOn: string;
@@ -98,8 +100,8 @@ export type NoticeFormLabels = {
  * publish button that uses it. A number computed by the browser from a half-filled form is not the number
  * the publish will use, and showing it there would be worse than showing none.
  *
- * NOT HERE, ON PURPOSE (release two): the acknowledgement section. No "require acknowledgement" checkbox,
- * no agreement text, no name fields. Half of an evidence feature is worse than none of it.
+ * Home adds optional pinned/category metadata and explicit content acknowledgement. No legal agreement
+ * is implied by acknowledging a notice.
  */
 export function NoticeForm({
   action,
@@ -132,6 +134,7 @@ export function NoticeForm({
   targetingFrozen: boolean;
   labels: NoticeFormLabels;
 }) {
+  const home=useTranslations('homeNotice');
   const [tab, setTab] = useState<'write' | 'preview'>('write');
   const [body, setBody] = useState(values.body);
   const [mode, setMode] = useState<'criteria' | 'individual'>(values.targetMode);
@@ -215,6 +218,7 @@ export function NoticeForm({
 
   return (
     <form action={action} className="space-y-6">
+      <fieldset className="space-y-3 rounded-md border border-border p-3"><legend className="px-1 text-sm font-medium">{home('display')}</legend><label className="flex min-h-11 items-center gap-2"><input type="checkbox" name="pinned" defaultChecked={values.pinned??false}/>{home('pinned')}</label><label className="flex min-h-11 items-center gap-2"><input type="checkbox" name="requiresAcknowledgement" defaultChecked={values.requiresAcknowledgement??false}/>{home('requiresAck')}</label><label className="block text-sm">{home('category')}<select className="mt-1 min-h-11 w-full rounded-md border border-input bg-background px-3" name="category" defaultValue={values.category??'general'}>{['general','holiday','benefits','policy'].map(category=><option key={category} value={category}>{home(`categories.${category}`)}</option>)}</select></label></fieldset>
       {idField && <input type="hidden" name="id" value={idField} />}
       {/* ── Section 1 — basic information ──────────────────────────────────────────────────────────── */}
       <section className="space-y-3">

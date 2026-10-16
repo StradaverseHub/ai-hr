@@ -43,3 +43,5 @@ export async function rateAssistantReplyAction(raw: {
 catch (error) {
     return failure(error);
 } }
+
+export async function prepareAssistantFeedbackAction(raw:unknown){try{const {prepareAssistantFeedbackDraft}=await import('@/core/assistant-feedback');const result=await prepareAssistantFeedbackDraft(raw,await conversationCopy());return {ok:true as const,...result};}catch(error){return failure(error);}}
