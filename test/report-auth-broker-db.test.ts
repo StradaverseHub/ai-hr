@@ -28,7 +28,7 @@ vi.mock('../lib/internal-auth/web-session',()=>({currentInternalIdentity:async()
 vi.mock('../lib/session',()=>({getSession:async()=>session.ctx}));
 const origin='https://broker-db.test',temporary='Fictional enrollment phrase 771!',password='Fictional replacement phrase 883!';
 const artifact=fingerprintReportBytes(Buffer.from('PK fictional test artifact'),XLSX_EMAIL_ATTACHMENT_CONTENT_TYPE);
-let b:Base,recipientCtx:SessionContext,recipient:Awaited<ReturnType<typeof hireEmployee>>,recipientCredential:Credential,ownerCredential:Credential,reportId:string,scheduleId:string,nonce:{occurrenceId:string;leaseToken:string};
+let b:Base,ownerCtx:SessionContext,recipientCtx:SessionContext,recipient:Awaited<ReturnType<typeof hireEmployee>>,recipientCredential:Credential,ownerCredential:Credential,reportId:string,scheduleId:string,nonce:{occurrenceId:string;leaseToken:string};
 beforeAll(migrateTestDb);
 afterEach(()=>{vi.unstubAllEnvs();session.ctx=null;session.identity=null;});afterAll(closeAll);
 async function enroll(appUserId:string,username:string,email:string){
@@ -49,7 +49,7 @@ async function applyRelay(){
  await internalEmailRequest({op:'apply',actor,draftId:draft.draft.id,received:true});
 }
 beforeEach(async()=>{
- await resetDb();b=await seedBase();await setModule(b.tenantId,'notifications','active');
+ await resetDb();b=await seedBase();ownerCtx={...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};await setModule(b.tenantId,'notifications','active');
  vi.stubEnv('AUTH_PROVIDER','internal');vi.stubEnv('AUTH_PUBLIC_ORIGIN',origin);vi.stubEnv('AUTH_SESSION_KEY','6'.repeat(64));
  recipient=await hireEmployee(adminCtx(b),{person:{fullName:'Fictional broker recipient',primaryEmail:'recipient@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
  const userId=await createAppUser(b.tenantId,recipient.personId,'hr_admin');
@@ -58,8 +58,8 @@ beforeEach(async()=>{
  await applyRelay();await saveNotificationEmailPolicy(adminCtx(b),['employee_master_reports']);
  await saveNotificationEmailPreferences(recipientCtx,recipient.employmentId,['employee_master_reports'],'en',{issuer:recipientCredential.issuer,subject:recipientCredential.subject,email:recipientCredential.email,emailVerified:recipientCredential.emailVerified});
  const field=PERSONNEL_FIELDS.find(field=>field.owner==='employment'&&field.ownerField==='employeeCode');if(!field)throw new Error('Missing actual registry field');
- const report=await saveEmployeeMasterReport(adminCtx(b),[b.companyId],{name:'Fictional broker report',description:'',sharedRoleIds:['hr_admin'],spec:{v:2,asAt:todayInKualaLumpur(),companyIds:[b.companyId],includeDrafts:false,columns:[defaultMasterColumn(field)],expression:{id:'root',type:'group',logic:'and',children:[]},sorts:[],groups:[],pdf:{paper:'A4',orientation:'landscape',margins:'normal',logo:false,pageBreakGroups:false}}});reportId=report.id;
- scheduleId=(await saveEmployeeMasterSchedule(adminCtx(b),[b.companyId],{reportId:report.id,version:report.version,enabled:true,config:{frequency:'weekly',day:1,hour:9,minute:0,timezone:'Asia/Kuala_Lumpur'},recipients:[{userId,employmentId:recipient.employmentId}]})).id;
+ const report=await saveEmployeeMasterReport(ownerCtx,[b.companyId],{name:'Fictional broker report',description:'',sharedRoleIds:['hr_admin'],spec:{v:2,asAt:todayInKualaLumpur(),companyIds:[b.companyId],includeDrafts:false,columns:[defaultMasterColumn(field)],expression:{id:'root',type:'group',logic:'and',children:[]},sorts:[],groups:[],pdf:{paper:'A4',orientation:'landscape',margins:'normal',logo:false,pageBreakGroups:false}}});reportId=report.id;
+ scheduleId=(await saveEmployeeMasterSchedule(ownerCtx,[b.companyId],{reportId:report.id,version:report.version,enabled:true,config:{frequency:'weekly',day:1,hour:9,minute:0,timezone:'Asia/Kuala_Lumpur'},recipients:[{userId,employmentId:recipient.employmentId}]})).id;
  const due=new Date(Date.now()-1000),before=new Date(due.getTime()-1000);
  await owner.db.update(schema.notificationPref).set({updatedAt:before,reportConsentVerifiedAt:before}).where(and(eq(schema.notificationPref.tenantId,b.tenantId),eq(schema.notificationPref.category,'employee_master_reports')));
  await owner.db.update(schema.notificationEmailPolicy).set({updatedAt:before}).where(and(eq(schema.notificationEmailPolicy.tenantId,b.tenantId),eq(schema.notificationEmailPolicy.category,'employee_master_reports')));
