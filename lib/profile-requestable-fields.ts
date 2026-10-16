@@ -1,3 +1,4 @@
+import {PERSONNEL_FIELDS} from './personnel-field-registry';
 /**
  * THE FIELDS AN EMPLOYEE MAY ASK TO CHANGE — ONE DECLARATION, AND EVERY SURFACE READS IT.
  *
@@ -345,7 +346,14 @@ export function resolveRequestApprover(raw: unknown): ProfileRequestApprover {
  */
 export function resolveAllowedRequestKeys(raw: unknown): ReadonlySet<string> {
   if (!Array.isArray(raw)) return new Set(PROFILE_REQUESTABLE_KEYS);
-  return new Set(raw.filter((k): k is string => typeof k === 'string' && BY_KEY.has(k)));
+  const out=new Set<string>();
+  for(const value of raw){
+    if(typeof value!=='string')continue;
+    if(BY_KEY.has(value)){out.add(value);continue;}
+    const field=PERSONNEL_FIELDS.find(field=>field.id===value&&field.ess.visibility==='visible'&&field.ess.binding&&['immediate','approval'].includes(field.ess.edit));
+    if(field){out.add(field.id);if(field.ess.binding?.legacyKey)out.add(field.ess.binding.legacyKey);}
+  }
+  return out;
 }
 
 /**
