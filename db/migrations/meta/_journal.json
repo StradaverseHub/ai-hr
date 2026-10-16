@@ -3207,6 +3207,13 @@
       "when": 1791900000031,
       "tag": "0551_overtime_patterns",
       "breakpoints": true
+    },
+    {
+      "idx": 552,
+      "version": "7",
+      "when": 1791900000032,
+      "tag": "0552_employee_master_internal_delivery",
+      "breakpoints": true
     }
   ]
 }

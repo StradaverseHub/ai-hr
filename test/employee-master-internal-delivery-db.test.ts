@@ -279,7 +279,7 @@ describe('bounded final checks and concurrent canonical writers',()=>{
   await client.begin(async tx=>{
    await bounded(tx);ready(await lock(tx,job));
    await expect(raw.begin(async writer=>{await appWriter(writer);await writer.unsafe("set local lock_timeout='50ms'");await writer.unsafe("insert into role_assignment(tenant_id,app_user_id,role,company_id) values($1::uuid,$2::uuid,'employee',null)",[b.tenantId,ctx.userId!]);})).rejects.toMatchObject({code:'55P03'});
-   await expect(withTenant(ctx,async writer=>{await writer.execute(sql`set local lock_timeout='50ms'`);return hireEmployee(ctx,{person:{id:employee.personId},companyId:b.companyId,departmentId:b.deptA,employmentType:'part_time',hiredOn:todayInKualaLumpur()},writer);})).rejects.toMatchObject({code:'55P03'});
+   await expect(withTenant(ctx,async writer=>{await writer.execute(sql`set local lock_timeout='50ms'`);return hireEmployee(ctx,{person:{id:employee.personId},companyId:b.companyId,departmentId:b.deptA,employmentType:'part_time',hiredOn:todayInKualaLumpur()},writer);})).rejects.toMatchObject({cause:{code:'55P03'}});
   });
  });
  it('accepts the complete1000-grant set but refuses1001 instead of truncating principal authority',async()=>{
