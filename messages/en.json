@@ -13404,7 +13404,8 @@
     "sortNewestFirst": "Sort by most recently updated first",
     "sortOldestFirst": "Sort by least recently updated first",
     "detailReported": "Reported",
-    "detailUpdated": "Last updated"
+    "detailUpdated": "Last updated",
+    "accountReporter": "Account reporter"
   },
   "taxRelief": {
     "title": "Personal Tax Relief (TP1)",

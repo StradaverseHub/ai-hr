@@ -13404,7 +13404,8 @@
     "sortNewestFirst": "按最近更新优先排序",
     "sortOldestFirst": "按最久未更新优先排序",
     "detailReported": "提交时间",
-    "detailUpdated": "最近更新"
+    "detailUpdated": "最近更新",
+    "accountReporter": "账号报告者"
   },
   "taxRelief": {
     "title": "个人税务减免 (TP1)",

@@ -13404,7 +13404,8 @@
     "sortNewestFirst": "เรียงจากที่อัปเดตล่าสุดก่อน",
     "sortOldestFirst": "เรียงจากที่ไม่ได้อัปเดตนานที่สุดก่อน",
     "detailReported": "แจ้งเมื่อ",
-    "detailUpdated": "อัปเดตล่าสุด"
+    "detailUpdated": "อัปเดตล่าสุด",
+    "accountReporter": "ผู้รายงานจากบัญชี"
   },
   "taxRelief": {
     "title": "การลดหย่อนภาษีส่วนบุคคล (TP1)",

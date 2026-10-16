@@ -28,9 +28,8 @@ export async function submitFeedbackAction(formData: FormData) {
   const s = await getSession();
   try {
     const me = await myEmployment(s);
-    if (!me) throw new Error('No active employment is linked to your account.');
     const { id } = await submitFeedback(s, {
-      reporterEmploymentId: me.employmentId,
+      reporterEmploymentId: me?.employmentId ?? null,
       category: String(formData.get('category')) as FeedbackCategory,
       title: String(formData.get('title') ?? ''),
       description: String(formData.get('description') ?? ''),

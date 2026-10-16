@@ -2,14 +2,13 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { appUser, employment, testAssignment, testCase, testCaseVersion, testExecution, testExecutionAttachment, testRun } from '../db/schema';
+import { appUser, testAssignment, testCase, testCaseVersion, testExecution, testExecutionAttachment, testRun } from '../db/schema';
 import { isAdmin } from '../lib/authz';
 import { SCREENS } from '../lib/permissions';
 import { executionInputSchema, legacyOutcomeFor, parseInstruction, parseInstructionDraft, parsePublishedInstruction, TestingRefusal, TESTING_LIMITS, testingUuid, testingHash, testingSourceRef, testingSemanticId, type ExecutionInput, type ExecutionStatus, type InstructionDefinition } from '../lib/system-testing/model';
 import { testingDigest } from '../lib/system-testing/hash';
 import { assertModuleEnabled } from './entitlements';
 import { submitFeedback } from './feedback';
-import { myEmployment } from './read';
 import { isTestableModule, nextTestCaseNoTx, SYSTEM_TESTING_MODULE } from './system-testing';
 
 function participant(ctx: SessionContext): string {
@@ -182,10 +181,6 @@ export async function getTestingExecution(ctx: SessionContext, executionId: stri
 export async function raiseTestingExecutionFeedback(ctx: SessionContext, p: { executionId: string; expectedRevision: number; kind: 'defect' | 'improvement' }): Promise<{ feedbackId: string }> {
   const actor = participant(ctx); testingUuid.parse(p.executionId);
   if (p.kind !== 'defect' && p.kind !== 'improvement') throw new TestingRefusal('invalid');
-  const personId = ctx.personId;
-  if (!personId) throw new TestingRefusal('not_found');
-  const me = await myEmployment(ctx);
-  if (!me) throw new TestingRefusal('not_found');
   return withTenant(ctx, async tx => {
     const [e] = await tx.select().from(testExecution).where(and(eq(testExecution.id, p.executionId), eq(testExecution.testerUserId, actor))).for('update');
     if (!e) throw new TestingRefusal('not_found');
@@ -198,11 +193,9 @@ export async function raiseTestingExecutionFeedback(ctx: SessionContext, p: { ex
     if (!r || !v || !a) throw new TestingRefusal('not_found');
     const note = p.kind === 'defect' ? r.defectNotes : r.improvementNotes;
     if (!note?.trim() || p.kind === 'defect' && !['failed', 'blocked', 'partial'].includes(r.executionStatus ?? '')) throw new TestingRefusal('invalid');
-    const [own] = await tx.select({ id: employment.id }).from(employment).where(and(eq(employment.id, me.employmentId), eq(employment.tenantId, ctx.tenantId), eq(employment.personId, personId), sql`${employment.terminatedOn} IS NULL`));
-    if (!own) throw new TestingRefusal('not_found');
     const guide = parsePublishedInstruction(v.definition);
     const description = [`Instruction version ${v.ordinal} (${v.id}); content ${v.contentHash}`, `Execution ${e.id}; observation ${r.id}; tester ${actor}`, note, `Observed: ${r.actualResult ?? ''}`, `Comments: ${r.comments ?? ''}`, 'Instructions:', ...(guide.format === 1 ? guide.steps.map((s, i) => `${i + 1}. ${s.action}\nExpected: ${s.expected}`) : guide.steps)].join('\n\n');
-    const feedback = await submitFeedback(ctx, { reporterEmploymentId: own.id, category: p.kind === 'defect' ? 'issue' : 'enhancement', title: `${guide.title}: ${p.kind}`, description, expectedBehavior: guide.expectedBehavior, expectedFunction: guide.expectedFunction }, tx);
+    const feedback = await submitFeedback(ctx, { reporterEmploymentId: null, category: p.kind === 'defect' ? 'issue' : 'enhancement', title: `${guide.title}: ${p.kind}`, description, expectedBehavior: guide.expectedBehavior, expectedFunction: guide.expectedFunction }, tx);
     await tx.update(testExecution).set(p.kind === 'defect' ? { defectFeedbackId: feedback.id } : { improvementFeedbackId: feedback.id }).where(eq(testExecution.id, e.id));
     await event(tx, ctx, a.testCaseId, 'test_execution.feedback_linked', { executionId: e.id, runId: r.id, versionId: v.id, feedbackId: feedback.id, kind: p.kind });
     return { feedbackId: feedback.id };

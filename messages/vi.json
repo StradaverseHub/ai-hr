@@ -13404,7 +13404,8 @@
     "sortNewestFirst": "Sắp xếp theo cập nhật mới nhất trước",
     "sortOldestFirst": "Sắp xếp theo cập nhật lâu nhất trước",
     "detailReported": "Đã gửi",
-    "detailUpdated": "Cập nhật lần cuối"
+    "detailUpdated": "Cập nhật lần cuối",
+    "accountReporter": "Người báo cáo qua tài khoản"
   },
   "taxRelief": {
     "title": "Giảm trừ thuế cá nhân (TP1)",

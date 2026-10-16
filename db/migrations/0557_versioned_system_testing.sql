@@ -242,3 +242,88 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.testing_next_run_no(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.testing_next_run_no(uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- Canonical Feedback extension: a login is a reporter even when it has no employment.
+-- Existing employment-backed scope/history is retained. No synthetic/borrowed employment or company.
+ALTER TABLE public.feedback_request ALTER COLUMN reporter_employment_id DROP NOT NULL;
+ALTER TABLE public.feedback_attachment ALTER COLUMN employment_id DROP NOT NULL;
+ALTER TABLE public.feedback_request ADD CONSTRAINT feedback_reporter_identity_ck CHECK(reporter_employment_id IS NOT NULL OR reporter_user_id IS NOT NULL);
+CREATE FUNCTION app.feedback_live_principal() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $$
+ SELECT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))
+$$;
+CREATE FUNCTION app.can_access_feedback(feedback_id uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $$
+ SELECT EXISTS(SELECT 1 FROM public.feedback_request f WHERE f.id=feedback_id AND f.tenant_id=app.current_tenant_id() AND
+  CASE WHEN f.reporter_employment_id IS NOT NULL THEN f.reporter_employment_id=ANY((SELECT app.visible_employment_ids())::uuid[])
+   ELSE (SELECT app.feedback_live_principal()) AND (f.reporter_user_id=app.current_user_id() OR app.is_group_admin()) END)
+$$;
+REVOKE ALL ON FUNCTION app.feedback_live_principal(),app.can_access_feedback(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.feedback_live_principal(),app.can_access_feedback(uuid) TO ai_hr_app;
+--> statement-breakpoint
+DROP POLICY feedback_request_rls ON public.feedback_request;
+CREATE POLICY feedback_request_read ON public.feedback_request FOR SELECT USING(tenant_id=app.current_tenant_id() AND
+ CASE WHEN reporter_employment_id IS NOT NULL THEN reporter_employment_id=ANY((SELECT app.visible_employment_ids())::uuid[])
+ ELSE (SELECT app.feedback_live_principal()) AND (reporter_user_id=app.current_user_id() OR app.is_group_admin()) END);
+CREATE POLICY feedback_request_insert ON public.feedback_request FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND
+ CASE WHEN reporter_employment_id IS NOT NULL THEN reporter_employment_id=ANY((SELECT app.visible_employment_ids())::uuid[])
+ ELSE reporter_user_id=app.current_user_id() AND (SELECT app.feedback_live_principal()) END);
+CREATE POLICY feedback_request_update ON public.feedback_request FOR UPDATE USING(app.can_access_feedback(id)) WITH CHECK(tenant_id=app.current_tenant_id() AND
+ CASE WHEN reporter_employment_id IS NOT NULL THEN reporter_employment_id=ANY((SELECT app.visible_employment_ids())::uuid[])
+ ELSE (SELECT app.feedback_live_principal()) AND (reporter_user_id=app.current_user_id() OR app.is_group_admin()) END);
+-- Withdraw remains a status transition. User-only records gain no new ordinary destructive policy.
+CREATE POLICY feedback_request_delete ON public.feedback_request FOR DELETE USING(tenant_id=app.current_tenant_id() AND reporter_employment_id IS NOT NULL AND reporter_employment_id=ANY((SELECT app.visible_employment_ids())::uuid[]));
+DROP POLICY feedback_attachment_rls ON public.feedback_attachment;
+CREATE POLICY feedback_attachment_read ON public.feedback_attachment FOR SELECT USING(tenant_id=app.current_tenant_id() AND CASE WHEN employment_id IS NOT NULL THEN employment_id=ANY((SELECT app.visible_employment_ids())::uuid[]) ELSE app.can_access_feedback(feedback_request_id) END);
+CREATE POLICY feedback_attachment_insert ON public.feedback_attachment FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND CASE WHEN employment_id IS NOT NULL THEN employment_id=ANY((SELECT app.visible_employment_ids())::uuid[]) ELSE app.can_access_feedback(feedback_request_id) AND uploaded_by_user_id=app.current_user_id() AND (SELECT app.feedback_live_principal()) END);
+CREATE POLICY feedback_attachment_update ON public.feedback_attachment FOR UPDATE USING(tenant_id=app.current_tenant_id() AND employment_id IS NOT NULL AND employment_id=ANY((SELECT app.visible_employment_ids())::uuid[])) WITH CHECK(tenant_id=app.current_tenant_id() AND employment_id IS NOT NULL AND employment_id=ANY((SELECT app.visible_employment_ids())::uuid[]));
+CREATE POLICY feedback_attachment_delete ON public.feedback_attachment FOR DELETE USING(tenant_id=app.current_tenant_id() AND employment_id IS NOT NULL AND employment_id=ANY((SELECT app.visible_employment_ids())::uuid[]));
+ALTER POLICY feedback_plan_revision_read ON public.feedback_plan_revision USING(tenant_id=app.current_tenant_id() AND app.can_access_feedback(feedback_request_id));
+ALTER POLICY feedback_plan_revision_append ON public.feedback_plan_revision WITH CHECK(tenant_id=app.current_tenant_id() AND outcome IS NULL AND app.can_access_feedback(feedback_request_id));
+ALTER POLICY feedback_plan_revision_close ON public.feedback_plan_revision USING(tenant_id=app.current_tenant_id() AND outcome IS NULL AND app.can_access_feedback(feedback_request_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND app.can_access_feedback(feedback_request_id));
+ALTER POLICY feedback_block_read ON public.feedback_block USING(tenant_id=app.current_tenant_id() AND app.can_access_feedback(feedback_request_id));
+ALTER POLICY feedback_block_append ON public.feedback_block WITH CHECK(tenant_id=app.current_tenant_id() AND resolved_at IS NULL AND answer IS NULL AND app.can_access_feedback(feedback_request_id));
+ALTER POLICY feedback_block_resolve ON public.feedback_block USING(tenant_id=app.current_tenant_id() AND resolved_at IS NULL AND app.can_access_feedback(feedback_request_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND resolved_at IS NOT NULL AND app.can_access_feedback(feedback_request_id));
+--> statement-breakpoint
+CREATE FUNCTION app.feedback_user_reporter_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog AS $$ BEGIN
+ IF TG_OP='INSERT' AND NEW.reporter_employment_id IS NULL THEN
+  IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.reporter_user_id IS DISTINCT FROM app.current_user_id() OR NOT app.feedback_live_principal() THEN RAISE EXCEPTION 'User-only feedback requires the actual live reporter' USING ERRCODE='42501'; END IF;
+ ELSIF TG_OP='UPDATE' AND (OLD.reporter_employment_id IS NULL OR NEW.reporter_employment_id IS NULL) THEN
+  IF (NEW.id,NEW.tenant_id,NEW.reporter_employment_id,NEW.reporter_user_id) IS DISTINCT FROM (OLD.id,OLD.tenant_id,OLD.reporter_employment_id,OLD.reporter_user_id) THEN RAISE EXCEPTION 'Feedback reporter identity is immutable' USING ERRCODE='23514'; END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+CREATE FUNCTION app.feedback_attachment_binding_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog AS $$
+DECLARE f public.feedback_request;
+BEGIN
+ SELECT * INTO f FROM public.feedback_request WHERE id=NEW.feedback_request_id AND tenant_id=NEW.tenant_id;
+ IF f.id IS NULL OR NEW.employment_id IS DISTINCT FROM f.reporter_employment_id THEN RAISE EXCEPTION 'Feedback attachment parent is unavailable' USING ERRCODE='23514'; END IF;
+ IF TG_OP='UPDATE' AND OLD.employment_id IS NULL AND to_jsonb(NEW) IS DISTINCT FROM to_jsonb(OLD) THEN RAISE EXCEPTION 'User-only feedback evidence is append-only' USING ERRCODE='23514'; END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.feedback_user_reporter_guard(),app.feedback_attachment_binding_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER feedback_user_reporter_guard BEFORE INSERT OR UPDATE ON public.feedback_request FOR EACH ROW EXECUTE FUNCTION app.feedback_user_reporter_guard();
+CREATE TRIGGER feedback_attachment_binding_guard BEFORE INSERT OR UPDATE ON public.feedback_attachment FOR EACH ROW EXECUTE FUNCTION app.feedback_attachment_binding_guard();
+
+--> statement-breakpoint
+-- Reassert only the existing canonical Feedback operations; inherited TRUNCATE/TRIGGER/REFERENCES
+-- grants bypass or undermine ownership, and must not survive on the extended retained tables.
+REVOKE ALL ON public.feedback_request,public.feedback_attachment,public.feedback_plan_revision,public.feedback_block FROM PUBLIC,ai_hr_app;
+DO $$ DECLARE relation text; columns text; BEGIN
+ FOREACH relation IN ARRAY ARRAY['feedback_request','feedback_attachment','feedback_plan_revision','feedback_block'] LOOP
+  SELECT string_agg(quote_ident(attname),',' ORDER BY attnum) INTO columns FROM pg_catalog.pg_attribute WHERE attrelid=('public.'||relation)::regclass AND attnum>0 AND NOT attisdropped;
+  EXECUTE format('REVOKE ALL PRIVILEGES (%s) ON TABLE public.%I FROM PUBLIC,ai_hr_app',columns,relation);
+ END LOOP;
+END $$;
+GRANT SELECT,INSERT,UPDATE,DELETE ON public.feedback_request,public.feedback_attachment TO ai_hr_app;
+GRANT SELECT,INSERT,UPDATE ON public.feedback_plan_revision,public.feedback_block TO ai_hr_app;
+--> statement-breakpoint
+-- Existing generic audit read admits scoped administrators. Private account Feedback must not leak
+-- through that independent consumer. This restriction never grants a new raw audit reader.
+CREATE FUNCTION app.feedback_event_readable(feedback_id uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $$
+ SELECT coalesce((SELECT CASE WHEN f.reporter_employment_id IS NULL THEN app.can_access_feedback(f.id) ELSE true END
+ FROM public.feedback_request f WHERE f.id=feedback_id AND f.tenant_id=app.current_tenant_id()),true)
+$$;
+REVOKE ALL ON FUNCTION app.feedback_event_readable(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.feedback_event_readable(uuid) TO ai_hr_app;
+CREATE POLICY feedback_user_only_audit_read ON public.domain_event AS RESTRICTIVE FOR SELECT USING(
+ tenant_id=app.current_tenant_id() AND (aggregate_type<>'feedback' OR app.feedback_event_readable(aggregate_id))
+);

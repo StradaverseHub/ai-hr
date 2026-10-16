@@ -8793,19 +8793,18 @@ export const feedbackRequest = pgTable(
   {
     id: id(),
     tenantId: tenantId(),
-    // Denormalized for RLS can_see_employment(); the user id is the review gate.
+    // Optional employment context. User-only reports belong to the exact authenticated reporter login.
     reporterEmploymentId: uuid('reporter_employment_id')
-      .notNull()
       .references(() => employment.id),
     reporterUserId: uuid('reporter_user_id').references(() => appUser.id),
     // DISPLAY name to show instead of the reporter's person name (0348). Set to 'CLAUDE AI' on items the
     // improvement loop raises on the reporter's behalf (raiseFeedback), so the board shows who actually
     // wrote the item rather than the human whose employment it had to borrow.
     //
-    // A LABEL, and nothing more. reporter_employment_id stays NOT NULL and keeps driving RLS
-    // can_see_employment() — the alternative (a synthetic "CLAUDE AI" person + employment) would put a
+    // A LABEL, and nothing more. Employment-backed reports keep their employment scope; user-only
+    // reports use their canonical login owner — the alternative (a synthetic "CLAUDE AI" person + employment) would put a
     // fake employee into openLeaveYear, headcount and payroll, which is a far worse trade than a column.
-    // NULL ⇒ show the joined person name, which is every in-app submission.
+    // NULL ⇒ use the authorized joined person name, or an honest account fallback when unavailable.
     reporterLabel: text('reporter_label'),
     category: feedbackCategoryEnum('category').notNull(),
     title: text('title').notNull(),
@@ -8921,9 +8920,8 @@ export const feedbackAttachment = pgTable(
     feedbackRequestId: uuid('feedback_request_id')
       .notNull()
       .references(() => feedbackRequest.id),
-    // Denormalized from the feedback so RLS can use can_see_employment(employment_id) directly.
+    // Mirrors the canonical Feedback employment context; NULL for a real user-only reporter.
     employmentId: uuid('employment_id')
-      .notNull()
       .references(() => employment.id),
     content: bytea('content').notNull(),
     fileName: text('file_name').notNull(),
