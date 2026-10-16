@@ -3,9 +3,10 @@ import { and, asc, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant, type SessionContext } from '../db/client';
 import * as s from '../db/schema';
+import { setFeedbackPlan, approveFeedbackPlan, startFeedbackBuild, completeFeedbackBuild } from '../core/feedback';
 import { hireEmployee } from '../core/org';
 import { ModuleNotEnabledError } from '../core/entitlements';
-import { createTestCase, updateTestCase, recordTestRun, addTestingScreenshot, assignTestingCase, beginTestingExecution, getTestingExecution, getTestingScreenshot, listTestingAssignments, publishTestInstruction, raiseTestingExecutionFeedback, saveTestInstructionDraft, saveTestingExecution } from '../core/system-testing';
+import { listTestingLibrary, getTestingLibraryCase, listTestingTesterOptions, requestTestingRetest, createTestCase, updateTestCase, recordTestRun, addTestingScreenshot, assignTestingCase, beginTestingExecution, getTestingExecution, getTestingScreenshot, listTestingAssignments, publishTestInstruction, raiseTestingExecutionFeedback, saveTestInstructionDraft, saveTestingExecution } from '../core/system-testing';
 import { TestingRefusal, type InstructionDefinition } from '../lib/system-testing/model';
 import { pgSqlState } from '../lib/db-error';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -110,11 +111,43 @@ describe('personal System Testing isolation and immutable instructions', () => {
     const next = await beginTestingExecution(one, { assignmentId: f.a.assignmentId, expectedVersionId: v2.versionId, newAttempt: false });
     expect(next.executionId).not.toBe(f.execution.executionId); expect(next.revision).toBe(0);
   });
+  it('requests retest after a real linked defect is fixed without treating an earlier same-version pass as a new observation', async () => {
+    const f = await setup(); await saveTestingExecution(one,observation(f,'failed'));
+    const linked = await raiseTestingExecutionFeedback(one,{ executionId: f.execution.executionId,expectedRevision: 1,kind: 'defect' });
+    const request = { assignmentId: f.a.assignmentId,expectedRevision: 0,expectedVersionId: f.version.versionId,feedbackId: linked.feedbackId };
+    await expect(requestTestingRetest(admin,request)).rejects.toMatchObject({ code: 'review_required' });
+    await saveTestingExecution(one,{ ...observation(f),expectedRevision: 1 });
+    expect((await listTestingAssignments(one)).rows[0].status).toBe('passed');
+    await setFeedbackPlan(admin,{ feedbackId: linked.feedbackId,plan: 'Fictional reviewed repair.' });
+    await approveFeedbackPlan(one,{ feedbackId: linked.feedbackId });
+    await startFeedbackBuild(admin,{ feedbackId: linked.feedbackId,buildRef: 'fictional-build' });
+    await completeFeedbackBuild(admin,{ feedbackId: linked.feedbackId,buildRef: 'fictional-build' });
+    await requestTestingRetest(admin,request);
+    expect((await listTestingAssignments(one)).rows[0].status).toBe('retest_required');
+    const old = await getTestingExecution(one,f.execution.executionId); expect(old.history.find(r => r.executionRevision===2)?.executionStatus).toBe('passed');
+    await expect(requestTestingRetest(one,{ ...request,expectedRevision: 1 })).rejects.toMatchObject({ code: 'not_assigned' });
+    await saveTestingExecution(one,{ ...observation(f),expectedRevision: 2,status: 'in_progress' });
+    expect((await listTestingAssignments(one)).rows[0].status).toBe('in_progress');
+    await saveTestingExecution(one,{ ...observation(f),expectedRevision: 3 });
+    expect((await listTestingAssignments(one)).rows[0].status).toBe('passed');
+    expect((await getTestingExecution(one,f.execution.executionId)).history).toHaveLength(4);
+  });
+  it('keeps admin library filters/read-only team inspection separate from own assignments and bounded tester options', async () => {
+    const f = await setup();
+    expect((await listTestingLibrary(admin,{ search: 'save/reopen',moduleCode: 'employees',area: 'personnel',category: 'functional',priority: 'high',active: 'active',versionOrdinal: 1 })).rows.map(r => r.id)).toEqual([f.draft.caseId]);
+    expect((await listTestingLibrary(admin,{ area: 'leave' })).total).toBe(0);
+    expect((await getTestingLibraryCase(admin,f.draft.caseId)).versions.map(v => v.id)).toEqual([f.version.versionId]);
+    expect((await listTestingTesterOptions(admin)).rows.map(r => r.userId)).toContain(one.userId);
+    for (const call of [() => listTestingLibrary(one),() => getTestingLibraryCase(one,f.draft.caseId),() => listTestingTesterOptions(one)]) await expect(call()).rejects.toMatchObject({ code: 'not_assigned' });
+    const team = await getTestingExecution(admin,f.execution.executionId,{ team: true }); expect(team.canSave).toBe(false);
+  });
   it('gates assigned testers and admins on a fresh canonical module snapshot without deleting stored history', async () => {
     const f = await setup(); await saveTestingExecution(one, observation(f));
     await setModule(b.tenantId, 'system_testing', 'disabled');
     const fresh = { ...await entitledCtx(b, ['employee']), userId: one.userId, personId: one.personId };
     const denied = [
+      () => listTestingLibrary(fresh), () => getTestingLibraryCase(fresh,f.draft.caseId), () => listTestingTesterOptions(fresh),
+      () => requestTestingRetest(fresh,{ assignmentId: f.a.assignmentId,expectedRevision: 0,expectedVersionId: f.version.versionId,feedbackId: f.execution.executionId }),
       () => listTestingAssignments(fresh), () => getTestingExecution(fresh, f.execution.executionId),
       () => beginTestingExecution(fresh, { assignmentId: f.a.assignmentId, expectedVersionId: f.version.versionId, newAttempt: false }),
       () => saveTestingExecution(fresh, { ...observation(f), expectedRevision: 1 }),

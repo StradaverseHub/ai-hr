@@ -152,7 +152,7 @@ export async function listTestingAssignments(ctx: SessionContext, p: { team?: bo
   if (tester) testingUuid.parse(tester);
   return withTenant(ctx, async tx => {
     const base = sql`WITH rows AS (SELECT a.id AS assignment_id,c.id AS case_id,c.case_no,v.definition->>'title' AS title,v.definition->>'moduleCode' AS module_code,v.id AS version_id,v.ordinal,v.definition,a.tester_user_id,a.revision AS assignment_revision,a.active,e.id AS execution_id,e.revision AS execution_revision,
-      coalesce(r.execution_status,CASE WHEN a.retest_required THEN 'retest_required' ELSE 'not_started' END) AS status
+      CASE WHEN a.retest_required AND (r.run_no IS NULL OR r.run_no<=a.retest_after_run_no) THEN 'retest_required' ELSE coalesce(r.execution_status,'not_started') END AS status
       FROM test_assignment a JOIN test_case c ON c.id=a.test_case_id AND c.tenant_id=a.tenant_id JOIN test_case_version v ON v.id=a.target_version_id AND v.tenant_id=a.tenant_id
       LEFT JOIN LATERAL(SELECT x.* FROM test_execution x WHERE x.assignment_id=a.id AND x.version_id=a.target_version_id ORDER BY x.attempt_no DESC LIMIT 1)e ON true
       LEFT JOIN test_run r ON r.id=e.current_run_id AND r.execution_id=e.id

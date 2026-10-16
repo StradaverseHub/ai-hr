@@ -534,3 +534,4 @@ export async function raiseRunAsFeedback(
 // ADR0128: the versioned/personal extension shares this case identity and counter owner.
 export * from './system-testing-workspace';
 export * from './system-testing-catalogue';
+export * from './system-testing-library';

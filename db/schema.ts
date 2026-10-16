@@ -9750,7 +9750,7 @@ export const testCaseVersion = pgTable('test_case_version', {
 export const testAssignment = pgTable('test_assignment', {
   id: id(), tenantId: tenantId(), testCaseId: uuid('test_case_id').notNull().references(() => testCase.id, { onDelete: 'cascade' }),
   testerUserId: uuid('tester_user_id').notNull().references(() => appUser.id), targetVersionId: uuid('target_version_id').notNull().references(() => testCaseVersion.id),
-  active: boolean('active').notNull().default(true), retestRequired: boolean('retest_required').notNull().default(false),
+  active: boolean('active').notNull().default(true), retestRequired: boolean('retest_required').notNull().default(false), retestAfterRunNo: integer('retest_after_run_no').notNull().default(0),
   revision: integer('revision').notNull().default(0), assignedByUserId: uuid('assigned_by_user_id').notNull().references(() => appUser.id),
   createdAt: createdAt(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, t => [uniqueIndex('test_assignment_tester_uq').on(t.testCaseId, t.testerUserId), index('test_assignment_user_idx').on(t.tenantId, t.testerUserId, t.active)]);

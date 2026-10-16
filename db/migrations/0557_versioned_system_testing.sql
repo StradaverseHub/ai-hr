@@ -28,7 +28,7 @@ ALTER TABLE public.test_case ADD CONSTRAINT test_case_current_version_fk FOREIGN
 CREATE TABLE public.test_assignment (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL REFERENCES public.tenant(id), test_case_id uuid NOT NULL,
  tester_user_id uuid NOT NULL REFERENCES public.app_user(id), target_version_id uuid NOT NULL,
- active boolean NOT NULL DEFAULT true, retest_required boolean NOT NULL DEFAULT false, revision integer NOT NULL DEFAULT 0 CHECK(revision>=0),
+ active boolean NOT NULL DEFAULT true, retest_required boolean NOT NULL DEFAULT false, retest_after_run_no integer NOT NULL DEFAULT 0 CHECK(retest_after_run_no>=0), revision integer NOT NULL DEFAULT 0 CHECK(revision>=0),
  assigned_by_user_id uuid NOT NULL REFERENCES public.app_user(id), created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
  UNIQUE(test_case_id,tester_user_id), UNIQUE(id,tenant_id),
  FOREIGN KEY(test_case_id,tenant_id) REFERENCES public.test_case(id,tenant_id) ON DELETE CASCADE,
@@ -131,6 +131,7 @@ CREATE TRIGGER testing_catalogue_update_immutable BEFORE UPDATE ON public.test_c
 CREATE FUNCTION app.testing_assignment_guard() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $$ BEGIN
  IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT app.testing_live_principal() OR NOT app.is_admin() THEN RAISE EXCEPTION 'Testing assignment authority is unavailable' USING ERRCODE='42501'; END IF;
  IF TG_OP='UPDATE' AND NEW.revision<>OLD.revision+1 THEN RAISE EXCEPTION 'Testing assignment revision must advance' USING ERRCODE='23514'; END IF;
+ IF TG_OP='UPDATE' AND (NEW.retest_after_run_no<OLD.retest_after_run_no OR OLD.retest_required AND NOT NEW.retest_required) THEN RAISE EXCEPTION 'Testing retest evidence cutoff cannot be erased' USING ERRCODE='23514'; END IF;
  IF TG_OP='UPDATE' AND (NEW.id,NEW.tenant_id,NEW.test_case_id,NEW.tester_user_id,NEW.created_at) IS DISTINCT FROM (OLD.id,OLD.tenant_id,OLD.test_case_id,OLD.tester_user_id,OLD.created_at) THEN RAISE EXCEPTION 'Testing assignment identity is immutable' USING ERRCODE='23514'; END IF;
  PERFORM 1 FROM public.test_case c WHERE c.id=NEW.test_case_id AND c.tenant_id=NEW.tenant_id AND c.current_version_id=NEW.target_version_id FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'Testing assignment version is unavailable' USING ERRCODE='23514'; END IF;
@@ -224,7 +225,8 @@ END $$;
 CREATE FUNCTION app.testing_case_retest() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $$ BEGIN
  IF NEW.current_version_id IS DISTINCT FROM OLD.current_version_id THEN
   UPDATE public.test_assignment a SET target_version_id=NEW.current_version_id,revision=revision+1,updated_at=now(),
-   retest_required=EXISTS(SELECT 1 FROM public.test_execution e WHERE e.assignment_id=a.id AND e.revision>0)
+   retest_required=EXISTS(SELECT 1 FROM public.test_execution e WHERE e.assignment_id=a.id AND e.revision>0),
+   retest_after_run_no=coalesce((SELECT max(r.run_no) FROM public.test_run r WHERE r.test_case_id=NEW.id AND r.tenant_id=NEW.tenant_id),0)
    WHERE a.tenant_id=NEW.tenant_id AND a.test_case_id=NEW.id;
  END IF;
  RETURN NEW;
