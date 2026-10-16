@@ -7925,6 +7925,7 @@ export const customReportOccurrence = pgTable('custom_report_occurrence',{
   consentAfterSequence:bigint('consent_after_sequence',{mode:'number'}).notNull(),policyAfterSequence:bigint('policy_after_sequence',{mode:'number'}).notNull(),consentUpdatedAt:timestamp('consent_updated_at',{withTimezone:true}).notNull(),policyUpdatedAt:timestamp('policy_updated_at',{withTimezone:true}).notNull(),consentVerifiedAt:timestamp('consent_verified_at',{withTimezone:true}).notNull(),
   scheduledFor:timestamp('scheduled_for',{withTimezone:true}).notNull(),reportVersion:integer('report_version').notNull(),status:text('status').notNull().default('pending'),
   leaseToken:uuid('lease_token'),leaseUntil:timestamp('lease_until',{withTimezone:true}),startedAt:timestamp('started_at',{withTimezone:true}),finishedAt:timestamp('finished_at',{withTimezone:true}),rowCount:integer('row_count'),reason:text('reason'),createdAt:createdAt(),
+  artifactSha256:text('artifact_sha256'),artifactByteLength:integer('artifact_byte_length'),artifactContentType:text('artifact_content_type'),
 },t=>[uniqueIndex('custom_report_occurrence_identity_uq').on(t.scheduleId,t.recipientUserId,t.scheduledFor),index('custom_report_occurrence_work_idx').on(t.status,t.scheduledFor,t.leaseUntil)]);
 
 // ─────────────────────── Knowledge Base (ADR-0017) ───────────────────────
