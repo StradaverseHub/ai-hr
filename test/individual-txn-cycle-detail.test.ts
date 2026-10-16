@@ -1,5 +1,8 @@
 /** Real restricted-app read regression; canonical writes/generation establish ordinary cycle identity.
  * Owner-only inconsistent-reference controls model bad legacy data, never authorize it or bypass guards.
+ * September work / October 2026 processing are deliberately fixed acceptance facts, not a clock-derived
+ * pay period. The employee predates that whole period, so full-month basic 5000 + explicit earning100
+ * gives gross5100 independently of today's date; no current-day rate/calendar assertion is inferred.
  */
 import {randomUUID} from 'node:crypto';
 import {eq} from 'drizzle-orm';
@@ -43,11 +46,11 @@ describe('39c7 configured cycle labels on the actual Individual Transaction read
  });
  it('retains a known reference but exposes no other-company or other-tenant cycle name; true legacy NULL stays NULL',async()=>{
   const batch=await createBatch(ctx,{companyId:base.companyId,payPeriod:'2026-10'});const txn=await createIndividualTxn(ctx,{batchId:batch.batchId,employmentId,kind:'earning',componentId,txnDate:'2026-09-02',amount:100});
-  const otherCompany=await createCompany(ctx,{legalName:'Fictional other cycle company'});const otherCycle=await cycle('Not this company', 'regular',otherCompany.id);
+  const otherCompany=await createCompany(ctx,{legalName:'Fictional other cycle company'});const otherCycle=await cycle('Not this company', 'off_cycle',otherCompany.id);
   // Narrow owner fixture: a valid FK with inconsistent company/tenant must not become label authority.
   await owner.db.update(s.payrollBatch).set({payrollCycleId:otherCycle.id}).where(eq(s.payrollBatch.id,batch.batchId));
   expect((await rows())[0]).toMatchObject({id:txn.id,batchCycleId:otherCycle.id,batchCycleName:null,intendedCycleId:null,intendedCycleName:null});
-  const foreign=await seedBase();const foreignCycle=await upsertPayrollCycle(adminCtx(foreign),{companyId:foreign.companyId,name:'Other tenant private cycle',runType:'regular'});
+  const foreign=await seedBase();const foreignCycle=await upsertPayrollCycle(adminCtx(foreign),{companyId:foreign.companyId,name:'Other tenant private cycle',runType:'off_cycle'});
   await owner.db.update(s.payrollBatch).set({payrollCycleId:foreignCycle.id}).where(eq(s.payrollBatch.id,batch.batchId));
   expect((await rows())[0]).toMatchObject({batchCycleId:foreignCycle.id,batchCycleName:null});
   await owner.db.update(s.payrollBatch).set({payrollCycleId:null}).where(eq(s.payrollBatch.id,batch.batchId));expect((await rows())[0]).toMatchObject({batchCycleId:null,batchCycleName:null,intendedCycleId:null,intendedCycleName:null,runType:'regular'});
