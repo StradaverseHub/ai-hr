@@ -6746,7 +6746,10 @@
         "INVALID_CYCLE": "Không có chu kỳ lương hợp lệ cho công ty này",
         "PRE_PROCESS_BLOCKED": "Nhân viên trong phạm vi chưa có hồ sơ lương hiện hành",
         "SYSTEM_VALIDATION_ERROR": "Lỗi xác thực hệ thống",
-        "MISSING_SALARY": "Thiếu thông tin lương"
+        "MISSING_SALARY": "Thiếu thông tin lương",
+        "EMPTY_SELECTION": "Không có nhân viên được chọn cụ thể nào thuộc công ty này trong kỳ đã chọn. Không tạo đợt lương cho toàn công ty.",
+        "INVALID_SELECTION": "Lựa chọn nhân viên đã cũ hoặc nằm ngoài các công ty và kỳ đã chọn. Hãy kiểm tra lựa chọn; chưa tạo đợt lương.",
+        "DRAFT_REQUIRES_REGULAR": "Lưu bản nháp yêu cầu kỳ lương Thông thường đang hoạt động."
       },
       "resumeStep1Note": "Bạn đang xem lại bản nháp quy trình tính lương. Công ty, tháng lương và chu kỳ lương của bản nháp này đã được cố định — hãy tiếp tục để xem lại hoặc điều chỉnh danh sách nhân viên. Để thay đổi tháng hoặc công ty, hãy xóa bản nháp này khỏi danh sách Quy trình tính lương và tạo một lần chạy mới.",
       "stepValidation": "Xác thực bảng lương",
@@ -6800,7 +6803,14 @@
       "nonCash_unsupported_kind": "Loại khoản lương này không thể được tính là phúc lợi phi tiền mặt. Hãy kiểm tra cấu hình khoản lương.",
       "nonCash_normal_remuneration_required": "BIK và chỗ ở chịu thuế phải dùng thù lao thông thường để tính PCB. Hãy kiểm tra cấu hình khoản lương.",
       "nonCash_month_baseline_unavailable": "Dữ liệu phúc lợi tháng đã lưu bị thiếu hoặc khác với thiết lập này. Hãy kiểm tra kỳ lương thông thường và cấu hình phúc lợi trước khi tính kỳ bổ sung này.",
-      "nonCash_configuration_invalid": "Hãy kiểm tra cấu hình phúc lợi phi tiền mặt trước khi tính lương."
+      "nonCash_configuration_invalid": "Hãy kiểm tra cấu hình phúc lợi phi tiền mặt trước khi tính lương.",
+      "saveAsDraft": "Lưu bản nháp",
+      "saveDraftHelp": "Lưu các công ty và nhân viên đã chọn mà không tính phiếu lương. Bạn có thể chuyển giờ làm thêm theo công thức đã duyệt vào bản nháp trước khi xử lý.",
+      "saveDraftRegularOnly": "Chỉ có thể chuẩn bị bản nháp cho kỳ lương Thông thường. Dùng Xử lý cho các kỳ khác.",
+      "draftResultTitle": "Bản nháp bảng lương",
+      "draftResultSubtitle": "Kiểm tra kết quả của từng công ty. Các bản nháp đã lưu chưa có phiếu lương được tính; mở đợt đã lưu để kiểm tra giao dịch trước khi xử lý.",
+      "draftCompanySaved": "Đã lưu bản nháp",
+      "draftSaving": "Đang lưu bản nháp…"
     },
     "guide": {
       "title": "Hướng dẫn quy trình bảng lương",

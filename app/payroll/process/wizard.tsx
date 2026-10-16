@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, Card } from '@/components/ui';
 import { labelsInCompanyScope } from '@/lib/system-label-scope';
-import { fetchPayrollRunEmployees, resumeRunAction, runMultiCompanyAction } from './actions';
+import { fetchPayrollRunEmployees, resumeRunAction, runMultiCompanyAction, savePayrollDraftsAction } from './actions';
 import { preferredCycleId, wizardInitialStep } from './selection-logic';
 import { StepPeriod, type Company, type CycleRunType, type CycleOption, type ExistingRun } from './steps/step-period';
 import { StepSelection, type Master, type PayrollRunEmployeeRow } from './steps/step-selection';
@@ -227,13 +227,19 @@ export function Wizard({
   const currentPhase = payrollPhaseIndex(STEPS[step].phase);
   // Continue is a per-step gate now that there are three steps: Step 1 (period) requires a valid selection
   // (resume uses the seeded-identity check); Step 2 (employee selection) never blocks — an empty selection
-  // means "whole company". The final Process button lives on Step 3 (Validation) and has its own gate.
+  // means "whole company" only while untouched; an explicit empty selection is refused. The final Process button lives on Step 3 (Validation) and has its own gate.
   const canContinue = step === 0 ? (isResume ? step2Valid : step1Valid) : true;
   // Process is blocked while the validation check is still running or when it found hard blockers (missing
   // compensation / missing BASIC component) — the operator must fix those before the run can proceed.
   const canProcess = step2Valid && !isPending && !validation.loading && !validation.hasBlockers;
 
-  const submit = () => {
+  const submitting=useRef(false);
+  const [pendingIntent,setPendingIntent]=useState<'draft'|'process'>('process');
+  const regularDraftCycle=cycleOptions.find(c=>c.id===cycleId)?.runType==='regular';
+  const canSaveDraft=!isResume&&step2Valid&&!isPending&&regularDraftCycle;
+  const submit = (mode:'process'|'draft'='process') => {
+    if(submitting.current||isPending||mode==='draft'&&!canSaveDraft)return;
+    submitting.current=true;setPendingIntent(mode);
     const fd = new FormData();
     if (isResume && resumeBatch) {
       // Resume path: re-set the EXISTING draft's scope, then hand off to the same Transaction Key-In
@@ -246,8 +252,8 @@ export function Wizard({
       if (filtersTouched) {
         for (const id of selected) fd.append('employmentIds', id);
       }
-      startTransition(() => {
-        resumeRunAction(fd);
+      startTransition(async () => {
+        try {await resumeRunAction(fd);} finally {submitting.current=false;}
       });
       return;
     }
@@ -256,6 +262,7 @@ export function Wizard({
     // "All my companies" is re-resolved to the admin's grants server-side; explicit ids are re-intersected.
     for (const id of companyIds) fd.append('companyIds', id);
     fd.set('selectAll', String(selectAll));
+    fd.set('filtersTouched',String(filtersTouched));
     fd.set('payPeriod', payPeriod);
     // ADR-0069: submit the chosen cycle's id — the server resolves runType/remarks from the row (it does
     // not trust any client-submitted runType/remarks, same defensive pattern as employmentIds).
@@ -265,8 +272,8 @@ export function Wizard({
     if (filtersTouched) {
       for (const id of selected) fd.append('employmentIds', id);
     }
-    startTransition(() => {
-      runMultiCompanyAction(fd);
+    startTransition(async () => {
+      try {await (mode==='draft'?savePayrollDraftsAction(fd):runMultiCompanyAction(fd));} finally {submitting.current=false;}
     });
   };
 
@@ -403,10 +410,10 @@ export function Wizard({
         )}
       </div>
 
-      <div className="flex items-center justify-between border-t border-border px-4 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-t border-border px-4 py-3">
         {/* Back is enabled from Step 2 in BOTH modes now that resume has a real (read-only) Step 1 to go
             back to (feedback 4f00d8f0). */}
-        <Button type="button" variant="secondary" onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0}>
+        <Button type="button" variant="secondary" onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0 || isPending}>
           {t('back')}
         </Button>
         {step < STEPS.length - 1 ? (
@@ -421,9 +428,15 @@ export function Wizard({
           // 7076f8af — ONE LABEL FOR BOTH MODES. A resumed run used to read "Confirm selection & continue",
           // which was accurate then (it saved the scope and handed you to another screen) and is a lie now:
           // the resume path calculates the run and ends on the result page, exactly as a fresh run does.
-          <Button type="button" onClick={submit} disabled={!canProcess} data-tour="payroll-create-submit">
-            {isPending ? t('creating') : t('processPayroll')}
-          </Button>
+          <div className="flex min-w-0 max-w-xl flex-1 flex-col items-end gap-2">
+            {!isResume?<p className="text-right text-xs text-muted-foreground">{t(regularDraftCycle?'saveDraftHelp':'saveDraftRegularOnly')}</p>:null}
+            <div className="flex flex-wrap justify-end gap-2">
+              {!isResume?<Button type="button" variant="secondary" onClick={()=>submit('draft')} disabled={!canSaveDraft} data-testid="payroll-save-draft">{isPending&&pendingIntent==='draft'?t('draftSaving'):t('saveAsDraft')}</Button>:null}
+              <Button type="button" onClick={()=>submit('process')} disabled={!canProcess} data-tour="payroll-create-submit">
+                {isPending&&pendingIntent==='process' ? t('creating') : t('processPayroll')}
+              </Button>
+            </div>
+          </div>
         )}
       </div>
     </Card>

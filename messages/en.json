@@ -6746,7 +6746,10 @@
         "INVALID_CYCLE": "No valid payroll cycle for this company",
         "PRE_PROCESS_BLOCKED": "Employees in scope have no current salary record",
         "SYSTEM_VALIDATION_ERROR": "System validation error",
-        "MISSING_SALARY": "Missing salary information"
+        "MISSING_SALARY": "Missing salary information",
+        "EMPTY_SELECTION": "No employees from the explicit selection belong to this company for the selected period. No whole-company run was created.",
+        "INVALID_SELECTION": "The employee selection is stale or outside the selected companies and period. Review the selection; no run was created.",
+        "DRAFT_REQUIRES_REGULAR": "Save as draft requires an active Regular payroll cycle."
       },
       "resumeStep1Note": "You are reviewing a draft payroll process. Its company, pay period and payroll cycle are fixed — continue to review or amend the employee selection. To change the period or company, delete this draft from the Payroll Process listing and create a new run.",
       "stepValidation": "Payroll Validation",
@@ -6800,7 +6803,14 @@
       "nonCash_unsupported_kind": "This payroll item type cannot be calculated as a non-cash benefit. Review the payroll item configuration.",
       "nonCash_normal_remuneration_required": "Taxable BIK and living accommodation must use normal remuneration for PCB. Review the payroll item configuration.",
       "nonCash_month_baseline_unavailable": "Saved monthly benefit inputs are missing or differ from this setup. Review the regular run and benefit configuration before calculating this additional run.",
-      "nonCash_configuration_invalid": "Review the non-cash benefit configuration before calculating payroll."
+      "nonCash_configuration_invalid": "Review the non-cash benefit configuration before calculating payroll.",
+      "saveAsDraft": "Save as draft",
+      "saveDraftHelp": "Save the selected companies and employees without calculating payslips. You can transfer approved formula overtime into the draft before processing.",
+      "saveDraftRegularOnly": "Draft preparation is available for Regular payroll. Use Process for other cycles.",
+      "draftResultTitle": "Payroll drafts",
+      "draftResultSubtitle": "Review the outcome for each company. Saved drafts have no calculated payslips; open a saved run to review transactions before processing.",
+      "draftCompanySaved": "Draft saved",
+      "draftSaving": "Saving drafts…"
     },
     "guide": {
       "title": "Payroll Workflow Guide",

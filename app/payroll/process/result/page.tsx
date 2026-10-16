@@ -68,6 +68,52 @@ export default async function PayrollProcessResultPage({
   const overallVariant =
     result.overallStatus === 'succeeded' ? 'success' : result.overallStatus === 'partial' ? 'warning' : 'danger';
 
+  if (result.mode === 'draft') {
+    return (
+      <div className="mx-auto max-w-5xl space-y-6">
+        <PageHeader back={back} title={t('draftResultTitle')} description={t('draftResultSubtitle')} />
+        <Card className="p-4">
+          <p>{t('resultForPeriod', { period: result.payPeriod })}</p>
+          <p className="text-sm text-muted-foreground">
+            {t('companiesSplit', { ok: result.companiesSucceeded, failed: result.companiesFailed })}
+          </p>
+        </Card>
+        <Card className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                <th className="px-4 py-2">{t('colCompany')}</th>
+                <th className="px-4 py-2">{t('colSelected')}</th>
+                <th className="px-4 py-2">{t('colStatus')}</th>
+                <th className="px-4 py-2">{t('colDetail')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {result.perCompany.map(c => (
+                <tr key={c.companyId} className="border-b border-border">
+                  <td className="px-4 py-3">{c.companyName}</td>
+                  <td className="px-4 py-3">{c.employeesSelected}</td>
+                  <td className="px-4 py-3">
+                    <Badge variant={c.status === 'succeeded' ? 'success' : 'danger'}>
+                      {t(c.status === 'succeeded' ? 'draftCompanySaved' : 'companyFailed')}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3">
+                    {c.status === 'failed' && c.reason ? reasonDetail(c) : c.batchId ? (
+                      <Link className="font-medium text-primary hover:underline" href={`/payroll/${c.batchId}`}>
+                        {t('viewBatch')}
+                      </Link>
+                    ) : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      </div>
+    );
+  }
+
   // Phase-1 failed-employee table: the pre-flight "missing salary" employees (no current compensation) who
   // were in scope for a company the run actually attempted (succeeded companies — a wholesale-failed company
   // produced no payslips at all, so its employees are reported at company granularity, not per-employee).

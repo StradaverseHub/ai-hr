@@ -6746,7 +6746,10 @@
         "INVALID_CYCLE": "此公司没有有效的薪资周期",
         "PRE_PROCESS_BLOCKED": "范围内的员工没有当前薪资记录",
         "SYSTEM_VALIDATION_ERROR": "系统验证错误",
-        "MISSING_SALARY": "缺少薪资信息"
+        "MISSING_SALARY": "缺少薪资信息",
+        "EMPTY_SELECTION": "在所选期间，此公司没有明确选择的员工。未创建全公司薪资批次。",
+        "INVALID_SELECTION": "员工选择已过期，或不属于所选公司和期间。请检查选择；未创建批次。",
+        "DRAFT_REQUIRES_REGULAR": "保存为草稿需要有效的常规薪资周期。"
       },
       "resumeStep1Note": "您正在查看薪资流程草稿。此草稿的公司、薪资月份和薪资周期已固定——请继续查看或修改员工选择。如需更改月份或公司，请在薪资流程列表中删除此草稿并创建新的薪资运行。",
       "stepValidation": "薪资验证",
@@ -6800,7 +6803,14 @@
       "nonCash_unsupported_kind": "此薪资项目类型不能作为非现金福利计算。请检查薪资项目配置。",
       "nonCash_normal_remuneration_required": "应税实物福利及住宿福利必须按正常薪酬计算 PCB。请检查薪资项目配置。",
       "nonCash_month_baseline_unavailable": "已保存的每月福利输入缺失或与当前设置不一致。计算此次额外薪资前，请检查常规薪资及福利配置。",
-      "nonCash_configuration_invalid": "计算薪资前，请检查非现金福利配置。"
+      "nonCash_configuration_invalid": "计算薪资前，请检查非现金福利配置。",
+      "saveAsDraft": "保存为草稿",
+      "saveDraftHelp": "保存所选公司和员工，不计算工资单。处理前可将已批准的公式加班转入草稿。",
+      "saveDraftRegularOnly": "草稿准备仅适用于常规薪资。其他周期请使用处理功能。",
+      "draftResultTitle": "薪资草稿",
+      "draftResultSubtitle": "请查看各公司的处理结果。已保存的草稿尚未计算工资单；处理前请打开已保存批次，检查交易。",
+      "draftCompanySaved": "草稿已保存",
+      "draftSaving": "正在保存草稿…"
     },
     "guide": {
       "title": "薪资工作流程指南",

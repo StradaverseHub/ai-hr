@@ -153,7 +153,7 @@ describe('missing-cycle validation (361e3b15)', () => {
     expect(missing[0].companyName).toBe('NoReg Sdn Bhd');
   });
 
-  it('runMultiCompanyPayroll returns an INVALID_CYCLE outcome carrying the missing run type', async () => {
+  it('runMultiCompanyPayroll refuses the deactivated selected cycle without inventing a replacement type', async () => {
     const a = groupAdmin();
     const noReg = await createCompany(a, { legalName: 'Skipco Sdn Bhd' });
     const reg = (await listPayrollCycles(a, noReg.id, { activeOnly: true })).find((c) => c.runType === 'regular')!;
@@ -162,13 +162,13 @@ describe('missing-cycle validation (361e3b15)', () => {
     const result = await runMultiCompanyPayroll(a, {
       companyIds: [noReg.id],
       payPeriod: '2026-05',
-      payrollCycleId: reg.id, // now archived → intended run type defaults to 'regular'
+      payrollCycleId: reg.id, // now inactive: the explicit selection must refuse, never default to Regular
       employmentIds: [],
     });
     const outcome = result.perCompany.find((c) => c.companyId === noReg.id)!;
     expect(outcome.status).toBe('failed');
     expect(outcome.reason).toBe('INVALID_CYCLE');
-    expect(outcome.missingCycleRunType).toBe('regular');
+    expect(outcome.missingCycleRunType).toBeUndefined();
   });
 });
 

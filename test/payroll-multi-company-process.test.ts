@@ -11,12 +11,13 @@ import { NonCashBenefitConfigurationError } from '../localization/noncash-benefi
 import { TaxSelectionError } from '../localization/my/tax-selection';
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as schema from '../db/schema';
 import { type SessionContext } from '../db/client';
 import { setCompensation } from '../core/comp';
-import { hireEmployee } from '../core/org';
-import { seedPayrollCycleCatalog } from '../core/payroll-cycle';
+import { hireEmployee, terminateEmployment } from '../core/org';
+import { seedPayrollCycleCatalog, listPayrollCycles, setPayrollCycleActive } from '../core/payroll-cycle';
+import * as payrollRead from '../core/read';
 import { createBatch } from '../core/payroll';
 import {
   decodeRunGroupResult,
@@ -25,6 +26,7 @@ import {
   reasonForError,
   reasonForPayrollError,
   runMultiCompanyPayroll,
+  saveMultiCompanyPayrollDrafts,
   summarize,
   type CompanyOutcome,
 } from '../core/payroll-run-group';
@@ -182,6 +184,93 @@ describe('multi-company payroll — orchestration (DB)', () => {
   });
   afterAll(async () => {
     await closeAll();
+  });
+
+  it('saves both selected Regular company drafts with exact scope/date/cycle and no generated payslips; repeat refuses duplicate creation',async()=>{
+    const a=groupAdmin(),emps=await owner.db.select().from(schema.employment).orderBy(schema.employment.id);
+    const selected=emps.filter(e=>[base.companyId,companyB].includes(e.companyId)).map(e=>e.id);
+    const input={companyIds:[base.companyId,companyB],payPeriod:'2026-05',payrollCycleId:await regularCycleId(base.companyId),employmentIds:selected,explicitSelection:true,paymentDate:'2026-05-25'};
+    const saved=await saveMultiCompanyPayrollDrafts(a,input);
+    expect(saved.mode).toBe('draft');expect(saved.companiesSucceeded).toBe(2);expect(saved.totalEmployeesSucceeded).toBe(0);expect(saved.totalEmployeesFailed).toBe(0);
+    const batches=await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.payPeriod,input.payPeriod)).orderBy(schema.payrollBatch.id);expect(batches).toHaveLength(2);
+    for(const batch of batches){expect(batch.status).toBe('draft');expect(batch.batchDate).toBe(input.paymentDate);expect(batch.payrollCycleId).toBe(await regularCycleId(batch.companyId));expect(batch.scope).toEqual({employmentIds:emps.filter(e=>e.companyId===batch.companyId).map(e=>e.id)});}
+    expect(await owner.db.select().from(schema.payslip).orderBy(schema.payslip.id)).toHaveLength(0);
+    const repeated=await saveMultiCompanyPayrollDrafts(a,input);expect(repeated.companiesSucceeded).toBe(0);expect(repeated.perCompany.every(c=>c.reason==='PERIOD_ALREADY_PROCESSED')).toBe(true);expect(await owner.db.select().from(schema.payrollBatch).orderBy(schema.payrollBatch.id)).toHaveLength(2);expect(await owner.db.select().from(schema.payslip).orderBy(schema.payslip.id)).toHaveLength(0);
+  });
+
+  it.each(['draft','process'] as const)('%s never widens an explicit company-empty subset to all employees',async mode=>{
+    const a=groupAdmin(),[alice]=await owner.db.select().from(schema.employment).where(eq(schema.employment.companyId,base.companyId)).orderBy(schema.employment.id);
+    const action=mode==='draft'?saveMultiCompanyPayrollDrafts:runMultiCompanyPayroll;
+    const result=await action(a,{companyIds:[base.companyId,companyB],payPeriod:'2026-05',payrollCycleId:await regularCycleId(base.companyId),employmentIds:[alice.id],explicitSelection:true});
+    expect(result.perCompany.find(c=>c.companyId===companyB)).toMatchObject({status:'failed',reason:'EMPTY_SELECTION',employeesSelected:0});
+    const batches=await owner.db.select().from(schema.payrollBatch).orderBy(schema.payrollBatch.id);expect(batches).toHaveLength(1);expect(batches[0].companyId).toBe(base.companyId);expect(batches[0].scope).toEqual({employmentIds:[alice.id]});
+    const slips=await owner.db.select().from(schema.payslip).orderBy(schema.payslip.id);expect(slips.every(slip=>slip.employmentId===alice.id)).toBe(true);
+  });
+
+  it.each(['draft','process'] as const)('%s refuses touched-empty and stale employee selections without creating runs',async mode=>{
+    const a=groupAdmin(),action=mode==='draft'?saveMultiCompanyPayrollDrafts:runMultiCompanyPayroll;
+    for(const employmentIds of [[],[randomUUID()]]) {
+      const result=await action(a,{companyIds:[base.companyId,companyB],payPeriod:'2026-05',payrollCycleId:await regularCycleId(base.companyId),employmentIds,explicitSelection:true});
+      expect(result.companiesSucceeded).toBe(0);expect(result.perCompany.every(c=>c.reason===(employmentIds.length?'INVALID_SELECTION':'EMPTY_SELECTION'))).toBe(true);
+      expect(await owner.db.select().from(schema.payrollBatch).orderBy(schema.payrollBatch.id)).toHaveLength(0);expect(await owner.db.select().from(schema.payslip).orderBy(schema.payslip.id)).toHaveLength(0);
+    }
+  });
+
+  it('draft scope uses the Payroll period population, retaining a mid-period leaver',async()=>{
+    const a=groupAdmin(),employees=await owner.db.select().from(schema.employment).where(eq(schema.employment.companyId,base.companyId)).orderBy(schema.employment.id);expect(employees).toHaveLength(1);const employee=employees[0];
+    await terminateEmployment(a,{employmentId:employee.id,terminationDate:'2026-05-15'});
+    const result=await saveMultiCompanyPayrollDrafts(a,{companyIds:[base.companyId],payPeriod:'2026-05',payrollCycleId:await regularCycleId(base.companyId),employmentIds:[employee.id],explicitSelection:true});
+    expect(result.companiesSucceeded).toBe(1);const batches=await owner.db.select().from(schema.payrollBatch).orderBy(schema.payrollBatch.id);expect(batches).toHaveLength(1);expect(batches[0].scope).toEqual({employmentIds:[employee.id]});expect(batches[0].status).toBe('draft');
+  });
+
+  it('simultaneous Regular draft saves create only one batch and no payslips',async()=>{
+    const a=groupAdmin(),input={companyIds:[base.companyId],payPeriod:'2026-05',payrollCycleId:await regularCycleId(base.companyId),employmentIds:[]};
+    const results=await Promise.all([saveMultiCompanyPayrollDrafts(a,input),saveMultiCompanyPayrollDrafts(a,input)]);expect(results.reduce((n,r)=>n+r.companiesSucceeded,0)).toBe(1);
+    expect(await owner.db.select().from(schema.payrollBatch).orderBy(schema.payrollBatch.id)).toHaveLength(1);expect(await owner.db.select().from(schema.payslip).orderBy(schema.payslip.id)).toHaveLength(0);
+  });
+
+  it.each(['draft','process'] as const)('%s refuses unknown, empty and deactivated selected cycles even when Regular remains available',async mode=>{
+    const a=groupAdmin(),action=mode==='draft'?saveMultiCompanyPayrollDrafts:runMultiCompanyPayroll;
+    const bonus=(await listPayrollCycles(a,base.companyId,{activeOnly:true})).find(c=>c.runType==='bonus');expect(bonus).toBeDefined();
+    await setPayrollCycleActive(a,{id:bonus!.id,active:false});
+    for(const payrollCycleId of [randomUUID(),'',bonus!.id]) {
+      const result=await action(a,{companyIds:[base.companyId,companyB],payPeriod:'2026-05',payrollCycleId,employmentIds:[]});
+      expect(result.companiesSucceeded).toBe(0);expect(result.perCompany.every(c=>c.reason==='INVALID_CYCLE')).toBe(true);
+      expect(await owner.db.select().from(schema.payrollBatch).orderBy(schema.payrollBatch.id)).toHaveLength(0);expect(await owner.db.select().from(schema.payslip).orderBy(schema.payslip.id)).toHaveLength(0);
+    }
+  });
+
+  it.each(['draft','process'] as const)('%s retains per-company population failures and safely proceeds only for proven scopes',async mode=>{
+    const a=groupAdmin(),action=mode==='draft'?saveMultiCompanyPayrollDrafts:runMultiCompanyPayroll,read=payrollRead.listEmployeesForPayrollRun;
+    const spy=vi.spyOn(payrollRead,'listEmployeesForPayrollRun').mockImplementation((ctx,ids,period)=>{
+      if((Array.isArray(ids)?ids:[ids]).includes(companyB))return Promise.reject(new Error('PRIVATE reader failure'));
+      return read(ctx,ids,period);
+    });
+    try {
+      const result=await action(a,{companyIds:[base.companyId,companyB],payPeriod:'2026-05',payrollCycleId:await regularCycleId(base.companyId),employmentIds:[]});
+      expect(result.perCompany.find(c=>c.companyId===base.companyId)?.status).toBe('succeeded');expect(result.perCompany.find(c=>c.companyId===companyB)).toMatchObject({status:'failed',reason:'SYSTEM_VALIDATION_ERROR'});
+      expect(JSON.stringify(result)).not.toContain('PRIVATE');const batches=await owner.db.select().from(schema.payrollBatch).orderBy(schema.payrollBatch.id);expect(batches).toHaveLength(1);expect(batches[0].companyId).toBe(base.companyId);
+    } finally {spy.mockRestore();}
+  });
+
+  it.each(['draft','process'] as const)('%s refuses the whole unproven explicit selection when a selected ID may belong to an unreadable company',async mode=>{
+    const a=groupAdmin(),action=mode==='draft'?saveMultiCompanyPayrollDrafts:runMultiCompanyPayroll,read=payrollRead.listEmployeesForPayrollRun;
+    const employees=await owner.db.select().from(schema.employment).orderBy(schema.employment.id);
+    const spy=vi.spyOn(payrollRead,'listEmployeesForPayrollRun').mockImplementation((ctx,ids,period)=>{
+      if((Array.isArray(ids)?ids:[ids]).includes(companyB))return Promise.reject(new Error('PRIVATE reader failure'));
+      return read(ctx,ids,period);
+    });
+    try {
+      const result=await action(a,{companyIds:[base.companyId,companyB],payPeriod:'2026-05',payrollCycleId:await regularCycleId(base.companyId),employmentIds:employees.map(e=>e.id),explicitSelection:true});
+      expect(result.companiesSucceeded).toBe(0);expect(result.perCompany.every(c=>c.reason==='SYSTEM_VALIDATION_ERROR')).toBe(true);
+      expect(await owner.db.select().from(schema.payrollBatch).orderBy(schema.payrollBatch.id)).toHaveLength(0);expect(await owner.db.select().from(schema.payslip).orderBy(schema.payslip.id)).toHaveLength(0);
+    } finally {spy.mockRestore();}
+  });
+
+  it('draft saving retains per-company authorization and never creates a run outside the grant',async()=>{
+    const scoped=await scopedAdminFor(base.companyId),result=await saveMultiCompanyPayrollDrafts(scoped,{companyIds:[base.companyId,companyB],payPeriod:'2026-05',payrollCycleId:await regularCycleId(base.companyId),employmentIds:[]});
+    expect(result.perCompany.find(c=>c.companyId===companyB)).toMatchObject({status:'failed',reason:'NOT_AUTHORIZED'});
+    const batches=await owner.db.select().from(schema.payrollBatch).orderBy(schema.payrollBatch.id);expect(batches).toHaveLength(1);expect(batches[0].companyId).toBe(base.companyId);expect(batches[0].status).toBe('draft');
   });
 
   it('processes two companies in one run; each gets its own paid payslip', async () => {
