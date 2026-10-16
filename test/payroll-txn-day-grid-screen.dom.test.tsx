@@ -178,6 +178,89 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+describe('39c7 · exact field labels and separate Effective Date guidance', () => {
+  it('keeps the single Effective date label exact and connects visible guidance as a stable description', async () => {
+    const user = userEvent.setup();
+    renderWorkspace();
+    await openAddForm(user);
+    const date = screen.getByLabelText('Effective date', { exact: true });
+    expect(date).toHaveAccessibleName('Effective date');
+    expect(date).toHaveAccessibleDescription(messages.payroll.transactions.individual.effectiveDateHint);
+    const hintId = date.getAttribute('aria-describedby');
+    expect(hintId).toBeTruthy();
+    const hint = document.getElementById(hintId ?? '');
+    expect(hint).toBeVisible();
+    expect(date.closest('label')).not.toContainElement(hint);
+    await user.type(date, '2026-07-31');
+    expect(date.getAttribute('aria-describedby')).toBe(hintId);
+  });
+
+  it('keeps daily Month exact while describing independent work dates outside its label', async () => {
+    const user = userEvent.setup();
+    renderWorkspace();
+    await openAddForm(user);
+    await user.click(screen.getByRole('radio', { name: 'Day by day' }));
+    const month = screen.getByLabelText('Month', { exact: true });
+    expect(month).toHaveAccessibleName('Month');
+    expect(month).toHaveAccessibleDescription(messages.payroll.transactions.individual.effectiveDateHint);
+    const hintId = month.getAttribute('aria-describedby');
+    expect(hintId).toBeTruthy();
+    const hint = document.getElementById(hintId ?? '');
+    expect(hint).toBeVisible();
+    expect(month.closest('label')).not.toContainElement(hint);
+    fireEvent.change(month, { target: { value: '2026-10' } });
+    expect(month.getAttribute('aria-describedby')).toBe(hintId);
+  });
+
+  it('retains a single work date when its processing month changes, without native month bounds', async () => {
+    const user = userEvent.setup();
+    renderWorkspace();
+    await openAddForm(user);
+    const date = screen.getByLabelText('Effective date', { exact: true });
+    await user.type(date, '2026-07-31');
+    fireEvent.change(screen.getByLabelText('Month', { exact: true }), { target: { value: '2026-10' } });
+    expect(date).toHaveValue('2026-07-31');
+    expect(date).not.toHaveAttribute('min');
+    expect(date).not.toHaveAttribute('max');
+    await user.type(screen.getByLabelText('Amount'), '120');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
+    expect(createMock.mock.calls[0][0]).toMatchObject({ payPeriod: '2026-10', txnDate: '2026-07-31', amount: 120 });
+  });
+
+  it('retains every daily work date and quantity when processing month changes, and posts exact calculated lines', async () => {
+    const user = userEvent.setup();
+    renderWorkspace();
+    await openAddForm(user);
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Payroll item' }), 'c:ot15');
+    await user.click(screen.getByRole('radio', { name: 'Day by day' }));
+    await user.click(screen.getByRole('button', { name: 'Add date' }));
+    const dates = screen.getAllByLabelText('Effective date');
+    const quantities = screen.getAllByLabelText('Hours');
+    await user.type(dates[0], '2026-07-31');
+    await user.type(quantities[0], '2');
+    await user.type(dates[1], '2026-09-01');
+    await user.type(quantities[1], '1');
+    fireEvent.change(screen.getByLabelText('Month', { exact: true }), { target: { value: '2026-10' } });
+    expect(dates[0]).toHaveValue('2026-07-31');
+    expect(dates[1]).toHaveValue('2026-09-01');
+    expect(quantities[0]).toHaveValue(2);
+    expect(quantities[1]).toHaveValue(1);
+    for (const date of dates) { expect(date).not.toHaveAttribute('min'); expect(date).not.toHaveAttribute('max'); }
+    await waitFor(() => {
+      const amounts = screen.getAllByLabelText('Calculated amount');
+      expect(amounts[0]).toHaveValue((HOURLY * 2).toFixed(2));
+      expect(amounts[1]).toHaveValue(HOURLY.toFixed(2));
+    });
+    await user.click(screen.getByRole('button', { name: 'Save all dates' }));
+    await waitFor(() => expect(dayGridMock).toHaveBeenCalledTimes(1));
+    expect(dayGridMock.mock.calls[0][0]).toMatchObject({ payPeriod: '2026-10', lines: [
+      { txnDate: '2026-07-31', quantity: 2, amount: Number((HOURLY * 2).toFixed(2)) },
+      { txnDate: '2026-09-01', quantity: 1, amount: Number(HOURLY.toFixed(2)) },
+    ] });
+  });
+});
+
 describe('4e403268 · the Input Method selector', () => {
   it('offers both methods on a new entry, with One total for the month chosen', async () => {
     const user = userEvent.setup();
