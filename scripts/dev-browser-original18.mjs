@@ -1,4 +1,4 @@
-/** Original18 closed browser coordinator. Explicit --scenario=schedules|holidays|approval|inquiry.
+/** Original18 closed browser coordinator. Explicit --scenario=schedules|holidays|approval|inquiry|labels|reports.
  * Personnel is --scenario=personnel --resume ONLY, with its exact reviewed legacy preparation.
  * This entry acquires BOTH test slots and the dev DB lock itself; do not wrap it in those locks.
  * Parent provisions real dependencies/private .env.local. No install, reset or automatic retry.
@@ -11,12 +11,15 @@ import os from 'node:os';
 import net from 'node:net';
 import {fileURLToPath} from 'node:url';
 import {spawn,execFileSync} from 'node:child_process';
-import {createHash} from 'node:crypto';
-import {original18BrowserTarget,original18FixtureFromLog,original18FixtureIdentities,original18ResumeReceiptName,validateOriginal18Resume,PERSONNEL_PREPARATION} from './original18-browser-target.mjs';
+import {createHash,randomUUID} from 'node:crypto';
+import {original18BrowserTarget,original18FixtureFromLog,original18FixtureIdentities,original18FixtureTenants,original18InvocationStopFile,original18EmploymentProof,original18ResumeReceiptName,validateOriginal18Resume,PERSONNEL_PREPARATION} from './original18-browser-target.mjs';
 import {todayInKualaLumpur} from '../lib/hr-date.ts';
 import {DEMO_TENANT_ID,SYSTEM_TENANT_ID,demoSeedRefusal} from '../db/seed-guard.ts';
-const filename=fileURLToPath(import.meta.url),root=fileURLToPath(new URL('..',import.meta.url));
+const filename=fileURLToPath(import.meta.url);
 const options=original18BrowserTarget(process.argv.slice(2),{allowWorker:true});
+// Preserve each fixture's exact root representation, including pinned legacy Personnel bytes.
+const derivedRoot=fileURLToPath(new URL('..',import.meta.url));
+const root=options.scenario==='reports'?path.resolve(derivedRoot):derivedRoot;
 const {database,namespace,scenario}=options,port=String(options.port);
 const out=path.join(root,options.scratchpad),stopFile=path.join(out,'browser.stop');
 const lockNames={a:namespace+'-browser-a',b:namespace+'-browser-b',db:namespace+'-browser-db'};
@@ -38,12 +41,14 @@ const lockEnv={...env,AIHR_TEST_SLOTS:'2',AIHR_LOCK_DIR:path.join(gateState,'loc
 fs.mkdirSync(out,{recursive:true,mode:0o700});
 const outStat=fs.lstatSync(out);if(!outStat.isDirectory()||outStat.isSymbolicLink()||outStat.uid!==process.getuid())throw new Error('An owned ordinary scratchpad directory is required.');
 if(!options.heldLockWorker) {
-  if(fs.existsSync(stopFile))fs.unlinkSync(stopFile);
+  // A queued invocation may cancel only itself, never the active scenario's shared stop pointer.
+  const requestName='browser-request-'+randomUUID().replaceAll('-','')+'.stop';
+  const requestFile=original18InvocationStopFile(out,requestName);
   const args=[path.join(gateState,'testlock.sh'),lockNames.a,'--','bash',path.join(gateState,'testlock.sh'),lockNames.b,'--','bash',path.join(gateState,'devdb-lock.sh'),lockNames.db,'--',process.execPath,'--import','tsx',filename,'--held-lock-worker','--scenario='+scenario,...(options.resume?['--resume']:[])];
   // Isolate lock wrappers from terminal Ctrl-C: only the coordinator receives it and requests a
   // stop-file handoff. A wrapper's own signal trap must not release before owned server cleanup.
-  const child=spawn('bash',args,{cwd:root,env:lockEnv,stdio:'inherit',detached:true});
-  const stop=()=>{fs.writeFileSync(stopFile,'Coordinator requested a graceful stop.\n');};
+  const child=spawn('bash',args,{cwd:root,env:{...lockEnv,ORIGINAL18_BROWSER_STOP_REQUEST:requestName},stdio:'inherit',detached:true});
+  const stop=()=>{fs.writeFileSync(requestFile,'This coordinator invocation requested a graceful stop.\n',{mode:0o600});};
   process.on('SIGTERM',stop);process.on('SIGINT',stop);
   const code=await new Promise((resolve,reject)=>{child.once('error',reject);child.once('exit',(code,signal)=>resolve(code??(signal?1:0)));});
   process.exitCode=code; // wrappers release only after the held worker returns after child cleanup
@@ -64,6 +69,12 @@ if(!options.heldLockWorker) {
     throw new Error(`Required live coordinator lock is missing: ${expected}`);
   }
   proveLock(path.join(gateState,'locks'),lockNames.a);proveLock(path.join(gateState,'locks'),lockNames.b);proveLock(path.join(gateState,'devdb-locks'),lockNames.db);
+  const requestName=process.env.ORIGINAL18_BROWSER_STOP_REQUEST;
+  const requestFile=original18InvocationStopFile(out,requestName);
+  if(fs.existsSync(requestFile))throw new Error('This queued invocation was cancelled; active journey was not touched.');
+  // Shared manual-stop ownership begins only after every required lock is held.
+  if(fs.existsSync(stopFile))fs.unlinkSync(stopFile);
+  const stopRequested=()=>fs.existsSync(requestFile)||fs.existsSync(stopFile);
   const git=(args)=>execFileSync('git',['-C',root,...args],{cwd:root,encoding:'utf8'}).trim();
   if(git(['status','--porcelain']))throw new Error('Freeze a clean owned candidate before the browser runner.');
   const candidate=git(['rev-parse','HEAD']),runId=candidate+'-'+Date.now();
@@ -98,16 +109,16 @@ if(!options.heldLockWorker) {
     await new Promise((resolve,reject)=>{probe.once('error',()=>reject(new Error(`Reserved port ${port} is occupied; no process will be killed.`)));probe.listen({host:'127.0.0.1',port:Number(port),exclusive:true},()=>probe.close(resolve));});
   }
   function checkCandidate(){if(git(['rev-parse','HEAD'])!==candidate || git(['status','--porcelain']))throw new Error('Candidate changed during verification; stop and reassess evidence.');}
-  async function run(command,args,label,limit=120000) {
-    if(stopping||fs.existsSync(stopFile))throw new Error('Browser run stopped before '+label);
+  async function run(command,args,label,limit=120000,childEnv=env) {
+    if(stopping||stopRequested())throw new Error('Browser run stopped before '+label);
     checkCandidate();const fd=fs.openSync(path.join(out,runId+'-'+label+'.log'),'wx',0o600);
     let timedOut=false,forceTimer;
-    const child=spawn(command,args,{cwd:root,env,stdio:['ignore',fd,fd],detached:true});activeJob=child;
+    const child=spawn(command,args,{cwd:root,env:childEnv,stdio:['ignore',fd,fd],detached:true});activeJob=child;
     const timer=setTimeout(()=>{timedOut=true;signalOwned(child,'SIGTERM');forceTimer??=setTimeout(()=>signalOwned(child,'SIGKILL'),5000);},limit);
-    const cancel=setInterval(()=>{if(fs.existsSync(stopFile)){stopping=true;signalOwned(child,'SIGTERM');forceTimer??=setTimeout(()=>signalOwned(child,'SIGKILL'),5000);}},500);
+    const cancel=setInterval(()=>{if(stopRequested()){stopping=true;signalOwned(child,'SIGTERM');forceTimer??=setTimeout(()=>signalOwned(child,'SIGKILL'),5000);}},500);
     try {
       const code=await new Promise((resolve,reject)=>{child.once('error',reject);child.once('exit',(code,signal)=>resolve(code??(signal?1:0)));});
-      if(timedOut||stopping||fs.existsSync(stopFile)||code!==0)throw new Error(`${label} failed or timed out; inspect its named log. No PASS claimed.`);
+      if(timedOut||stopping||stopRequested()||code!==0)throw new Error(`${label} failed or timed out; inspect its named log. No PASS claimed.`);
       checkCandidate();
     }finally {clearTimeout(timer);clearTimeout(forceTimer);clearInterval(cancel);await stopOwned(child);fs.closeSync(fd);activeJob=undefined;}
   }
@@ -131,31 +142,49 @@ if(!options.heldLockWorker) {
     const [owner]=await postgresTarget`select current_user name,current_database() database,rolsuper,rolbypassrls from pg_roles where rolname=current_user`;
     if(owner?.name!==decodeURIComponent(ownerUrl.username)||owner.name===app.name||owner.database!==database||!owner.rolsuper&&!owner.rolbypassrls)throw new Error('Distinct full-visibility local migration reader required; filtered absence cannot prove pristine state.');
   }
-  async function proveTenants(){
+  async function proveTenants(fixture){
     const tenants=await postgresTarget`select id,name from public.tenant order by id`;
-    const expected=new Map([[DEMO_TENANT_ID,'Demo Group'],[SYSTEM_TENANT_ID,'System (auth audit)']]);
+    const expected=new Map(original18FixtureTenants(scenario,fixture).map(row=>[row.id,row.name]));
     if(tenants.length!==expected.size||tenants.some(row=>expected.get(row.id)!==row.name))throw new Error('Exact fictional tenant identities required; preserve target.');
   }
   async function proveIdentities(identities,expectedPrincipals){
     for(const company of identities.companies){
-      const rows=await postgresTarget`select id from public.company where id=${company.id} and tenant_id=${DEMO_TENANT_ID} and company_label=${company.label} and legal_name=${company.name} and archived_at is null`;
+      const rows=await postgresTarget`select id from public.company where id=${company.id} and tenant_id=${company.tenantId??DEMO_TENANT_ID} and company_label is not distinct from ${company.label} and legal_name=${company.name} and archived_at is null`;
       if(rows.length!==1)throw new Error('Declared fictional company identity changed; preserve target.');
     }
     const principals=[];
     for(const actor of identities.actors){
-      const rows=await postgresTarget`select id,person_id from public.app_user where id=${actor.id} and tenant_id=${DEMO_TENANT_ID} and workos_user_id=${actor.login} and archived_at is null`;
-      const user=rows[0];if(rows.length!==1||!user.person_id||actor.personId&&actor.personId!==user.person_id)throw new Error('Declared fictional principal identity changed; preserve target.');
-      if(actor.employmentId){const employments=await postgresTarget`select id from public.employment where id=${actor.employmentId} and person_id=${user.person_id} and tenant_id=${DEMO_TENANT_ID}`;if(employments.length!==1)throw new Error('Declared fictional employment identity changed.');}
-      const grants=await postgresTarget`select role,company_id as "companyId" from public.role_assignment where app_user_id=${actor.id} and tenant_id=${DEMO_TENANT_ID} order by role,company_id nulls first`;
+      const rows=await postgresTarget`select id,person_id from public.app_user where id=${actor.id} and tenant_id=${actor.tenantId??DEMO_TENANT_ID} and workos_user_id=${actor.login} and archived_at is null`;
+      const user=rows[0];if(rows.length!==1||actor.personId===undefined&&!user.person_id||actor.personId!==undefined&&actor.personId!==user.person_id)throw new Error('Declared fictional principal identity changed; preserve target.');
+      let employment;
+      if(actor.employmentId){
+        const employments=await postgresTarget`select id,company_id as "companyId",employee_code as "employeeCode" from public.employment where id=${actor.employmentId} and person_id=${user.person_id} and tenant_id=${actor.tenantId??DEMO_TENANT_ID}`;
+        if(employments.length!==1)throw new Error('Declared fictional employment identity changed.');
+        employment=employments[0];
+      }
+      const [login]=await postgresApp`select app.login_blocked(${actor.id}::uuid) as blocked`;
+      const employmentProof=original18EmploymentProof(actor,employment,login?.blocked);
+      const grants=await postgresTarget`select role,company_id as "companyId" from public.role_assignment where app_user_id=${actor.id} and tenant_id=${actor.tenantId??DEMO_TENANT_ID} order by role,company_id nulls first`;
       const canonical=rows=>JSON.stringify(rows.map(row=>[row.role,row.companyId]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))));
       if(canonical(grants)!==canonical(actor.grants))throw new Error('Declared fictional grants changed; no authority is repaired by this runner.');
-      principals.push({id:actor.id,personId:user.person_id});
+      principals.push({id:actor.id,personId:user.person_id,...(employmentProof?{employment:employmentProof}:{})});
     }
     if(expectedPrincipals&&JSON.stringify(principals)!==JSON.stringify(expectedPrincipals))throw new Error('Prepared principal person binding changed.');
     return principals;
   }
+  async function proveFreshSource(fixture){
+    if(!options.fresh)return;
+    if(scenario==='labels'){
+      const {systemLabelFixtureSourceProof}=await import('./system-label-fixture-contract.mjs');
+      if(JSON.stringify(await systemLabelFixtureSourceProof(root))!==JSON.stringify(fixture.sourceProof))throw new Error('Labels metadata/catalog proof changed; preserve journey.');
+    }else{
+      const {readEmployeeMasterFixtureProof}=await import('./employee-master-fixture-proof.mts');
+      const proof=await readEmployeeMasterFixtureProof({client:postgresTarget},{tenantId:fixture.tenantId,foreignTenantId:fixture.foreignTenant.id});
+      if(JSON.stringify(proof)!==JSON.stringify(fixture.proof))throw new Error('Reports metadata/invariant source proof changed; preserve journey.');
+    }
+  }
   try {
-    if(fs.existsSync(stopFile))throw new Error('Run was stopped while waiting for locks.');
+    if(stopRequested())throw new Error('Run was stopped while waiting for locks.');
     await assertPortFree();
     const {default:postgres}=await import('postgres');
     const connect=url=>postgres(url,{max:1,connect_timeout:10,idle_timeout:5,connection:{statement_timeout:10000}});
@@ -174,9 +203,9 @@ if(!options.heldLockWorker) {
       const binding=validateOriginal18Resume({fixture,browser,stopped,resumeRecords,root,scenario});
       proveStoppedGroup(stopped);
       for(const prior of new Set([binding.preparationCandidate,binding.resumedFromCandidate]))if(git(['rev-parse',prior+'^{commit}'])!==prior||git(['diff','--name-only',prior,candidate,'--','db/migrations','packs/catalog.ts','db/schema.ts']))throw new Error('Resume requires unchanged SQL, journal, schema and pack catalog versus preparation/prior candidate.');
-      postgresTarget=connect(ownerUrl.toString());postgresApp=connect(appUrl.toString());await proveRoles();await proveTenants();
-      identities=original18FixtureIdentities(scenario,scenario==='personnel'?fixture:fixture.facts);
-      await proveIdentities(identities,scenario==='personnel'?undefined:fixture.principals);
+      postgresTarget=connect(ownerUrl.toString());postgresApp=connect(appUrl.toString());await proveRoles();await proveTenants(fixture);await proveFreshSource(fixture);
+      identities=original18FixtureIdentities(scenario,scenario==='personnel'||options.fresh?fixture:fixture.facts);
+      await proveIdentities(identities,scenario==='personnel'||options.fresh?undefined:fixture.principals);
       await postgresApp.end();postgresApp=undefined;await postgresTarget.end();postgresTarget=undefined;
       preparationCandidate=binding.preparationCandidate;preparedFixture=fixture;
       resumeReceipt='browser-resume-'+runId+'.json';
@@ -206,22 +235,31 @@ if(!options.heldLockWorker) {
       const [business]=await postgresTarget`select (select count(*) from public.company)+(select count(*) from public.person)+(select count(*) from public.employment)+(select count(*) from public.app_user) as count`;
       if(Number(business.count)!==0)throw new Error('Post-migration business data exists; seed refused.');
       await postgresTarget.end();postgresTarget=undefined;
-      await run(process.execPath,['--import','tsx',path.join(root,'db/seed.ts')],'browser-seed',180000);
+      if(!options.fresh)await run(process.execPath,['--import','tsx',path.join(root,'db/seed.ts')],'browser-seed',180000);
+      const fixtureEnv={...env};
+      if(options.fresh){delete fixtureEnv.DEV_TENANT_ID;delete fixtureEnv.DEV_USER_ID;const prefix=scenario==='labels'?'LABELS':'REPORT';fixtureEnv[prefix+'_FIXTURE_COORDINATOR_PID']=String(process.pid);fixtureEnv[prefix+'_FIXTURE_COORDINATOR_CANDIDATE']=candidate;}
       const preparationDate=todayInKualaLumpur();
-      for(const label of ['browser-fixture-first','browser-fixture-second'])await run(process.execPath,['--import','tsx',path.join(root,'scripts',options.fixture)],label,120000);
+      for(const label of ['browser-fixture-first','browser-fixture-second'])await run(process.execPath,['--import','tsx',path.join(root,'scripts',options.fixture)],label,120000,fixtureEnv);
       if(todayInKualaLumpur()!==preparationDate)throw new Error('Business date changed during preparation; preserve attempt, no clean-twice claim.');
       const manifests=['browser-fixture-first','browser-fixture-second'].map(manifestFromLog);
       if(JSON.stringify(manifests[0])!==JSON.stringify(manifests[1]))throw new Error('Fixture repeat changed declared business facts; no clean-twice claim.');
-      identities=original18FixtureIdentities(scenario,manifests[1]);postgresTarget=connect(ownerUrl.toString());postgresApp=connect(appUrl.toString());await proveRoles();await proveTenants();
+      identities=original18FixtureIdentities(scenario,manifests[1]);postgresTarget=connect(ownerUrl.toString());postgresApp=connect(appUrl.toString());await proveRoles();await proveTenants(manifests[1]);
       const principals=await proveIdentities(identities);
+      if(options.fresh){
+        preparedFixture=readReceipt('fixture-manifest.json');
+        if(JSON.stringify(preparedFixture)!==JSON.stringify(manifests[1])||preparedFixture.root!==root||preparedFixture.candidate!==candidate||preparedFixture.database!==database||preparedFixture.namespace!==namespace||preparedFixture.port!==Number(port)||preparedFixture.date!==preparationDate)throw new Error('Fresh fixture private/public source binding differs.');
+        await proveFreshSource(preparedFixture);
+      }else{
+        preparedFixture={...bound,tenantId:DEMO_TENANT_ID,date:preparationDate,facts:manifests[1],identities,principals};writeNew('fixture-manifest.json',preparedFixture);
+      }
       await postgresApp.end();postgresApp=undefined;await postgresTarget.end();postgresTarget=undefined;
-      preparedFixture={...bound,tenantId:DEMO_TENANT_ID,date:preparationDate,facts:manifests[1],identities,principals};
-      writeNew('fixture-manifest.json',preparedFixture);writeNew('browser-manifest.json',{candidate,...bound,fixtureRuns:2,fixture:preparedFixture,applicationAcceptance:'UNVERIFIED'});
+      writeNew('browser-manifest.json',{candidate,...bound,fixtureRuns:2,fixture:preparedFixture,applicationAcceptance:'UNVERIFIED'});
     }
-    const hr=identities.actors.find(actor=>actor.login===({schedules:'board15-schedules:hr',holidays:'board15-holidays:hr',approval:'approval15-fixture:HR',inquiry:'inquiry15-fixture:hr',personnel:'personnel15-fixture:HR'})[scenario]);
-    if(!hr)throw new Error('Exact fictional HR principal missing.');
-    env.DEV_USER_ID=hr.id;
-    if(stopping||fs.existsSync(stopFile)||Date.now()>=deadline)throw new Error('Stopped before app startup.');
+    const hr=identities.actors.find(actor=>actor.login===({schedules:'board15-schedules:hr',holidays:'board15-holidays:hr',approval:'approval15-fixture:HR',inquiry:'inquiry15-fixture:hr',personnel:'personnel15-fixture:HR',reports:'report18-fixture:HR_A'})[scenario]);
+    const defaultHr=scenario==='labels'?identities.actors.find(actor=>actor.id===preparedFixture.people.GroupHR.userId):hr;
+    if(!defaultHr)throw new Error('Exact fictional HR principal missing.');
+    env.DEV_USER_ID=defaultHr.id;env.DEV_TENANT_ID=preparedFixture.tenantId;
+    if(stopping||stopRequested()||Date.now()>=deadline)throw new Error('Stopped before app startup.');
     await assertPortFree();checkCandidate();
     serverFd=fs.openSync(path.join(out,devLogName),'wx',0o600);
     server=spawn(process.execPath,[path.join(root,'node_modules/next/dist/bin/next'),'dev','--hostname','127.0.0.1','--port',port],{cwd:root,env,stdio:['ignore',serverFd,serverFd],detached:true});
@@ -231,7 +269,7 @@ if(!options.heldLockWorker) {
     fs.writeFileSync(path.join(out,'browser.pid'),String(server.pid)+'\n',{mode:0o600});
     console.log(options.resume?`Resuming candidate ${candidate} from preparation ${preparationCandidate}; NO migration, seed or fixture ran for this candidate. Local app http://127.0.0.1:${port}; application outcomes remain unverified.`:`Fixture exited cleanly twice with identical declared facts. Owned candidate ${candidate}; local app http://127.0.0.1:${port}; render/application outcomes remain unverified.`);
     console.log(`First route ${options.route}. Stop via ${stopFile}. Only owned process group ${server.pid} will be stopped. Both slots and DB stay held until cleanup.`);
-    while(!stopping && !fs.existsSync(stopFile) && Date.now()<deadline) {
+    while(!stopping && !stopRequested() && Date.now()<deadline) {
       if(server.exitCode!==null||server.signalCode!==null)throw new Error('Owned Next process exited; inspect '+devLogName+'.');
       checkCandidate();await sleep(1000);
     }
