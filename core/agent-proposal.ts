@@ -25,7 +25,7 @@
  *     A ledger outage must not break a payslip narration or a pay-rule draft — **measurement is never
  *     worth breaking the thing it measures.** The cost of that choice is that a silent ledger failure
  *     under-counts rather than alarms, which is the right trade for telemetry and the wrong one for money.
- *  2. **RECORDING RUNS IN ITS OWN TRANSACTION**, never the caller's. A rejected proposal usually happens
+ *  2. **DEFAULT RECORDING RUNS IN ITS OWN TRANSACTION**. A rejected proposal usually happens
  *     inside an operation that then aborts, and a row written in that transaction would roll back with
  *     it — so the ledger would only ever contain successes and the adjudication-pass rate would be
  *     structurally 100%. The rejections ARE the measurement.
@@ -35,7 +35,8 @@
  *     holds TWO connections for the duration of the outer one. That is fine occasionally and is a pool
  *     exhaustion risk under load — and if the outer transaction ever locks a row the inner one needs, it
  *     is a deadlock. All four call sites shipped in this round record OUTSIDE any open transaction, and
- *     a new one must too.
+ *     a new default call must too. The explicit `outerTx` seam uses a savepoint on the caller's
+ *     connection for an atomic confirmed action; its telemetry rolls back with that action.
  *  3. **THE ID IS GENERATED HERE, NOT BY `RETURNING`.** 0452's insert policy is `FOR INSERT` with no
  *     `USING` clause (deliberately, so it cannot widen the admin-only read), and `INSERT ... RETURNING`
  *     needs SELECT. A non-admin session — §2.5's nudge sweep, §2.7's triage in an employee's own session —
@@ -45,7 +46,7 @@
  */
 import { createHash } from 'node:crypto';
 import { eq, gte, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import * as schema from '../db/schema';
 
 /**
@@ -151,11 +152,12 @@ export type RecordProposalInput = {
 export async function recordProposal(
   ctx: SessionContext,
   p: RecordProposalInput,
+  outerTx?: Tx,
 ): Promise<string | null> {
   const id = crypto.randomUUID();
   const decided = p.adjudication.ok ? p.decision : undefined;
   try {
-    await withTenant(ctx, async (tx) => {
+    const write=async (tx:Tx) => {
       await tx.insert(schema.agentProposal).values({
         id,
         tenantId: ctx.tenantId,
@@ -172,7 +174,10 @@ export async function recordProposal(
         provider: p.provider ?? null,
         model: p.model ?? null,
       } as never);
-    });
+    };
+    // Telemetry stays fail-open: a nested savepoint contains its own SQL failure,
+    // without acquiring another pool connection or aborting the actual domain transaction.
+    if(outerTx)await outerTx.transaction(write);else await withTenant(ctx,write);
     return id;
   } catch {
     // Property 1. A ledger failure is a lost data point, not a broken feature.
@@ -184,15 +189,19 @@ export async function recordProposal(
 export async function recordDecision(
   ctx: SessionContext,
   p: { proposalId: string | null; decision: 'approved' | 'declined' },
+  outerTx?: Tx,
 ): Promise<void> {
   if (!p.proposalId) return;
   try {
-    await withTenant(ctx, async (tx) => {
+    const write=async (tx:Tx) => {
       await tx
         .update(schema.agentProposal)
         .set({ decision: p.decision, decidedByUserId: ctx.userId ?? null, decidedAt: new Date() })
         .where(eq(schema.agentProposal.id, p.proposalId!));
-    });
+    };
+    // Telemetry stays fail-open: a nested savepoint contains its own SQL failure,
+    // without acquiring another pool connection or aborting the actual domain transaction.
+    if(outerTx)await outerTx.transaction(write);else await withTenant(ctx,write);
   } catch {
     /* property 1 */
   }

@@ -756,9 +756,10 @@ async function hypothesisProposalsToStamp(tx: Tx, verdictId: string): Promise<st
  */
 export async function resolveAnomalyVerdict(
   ctx: SessionContext,
-  p: { verdictId: string; resolution: 'accepted' | 'fixed_upstream' | 'false_positive'; note?: string },
+  p: { verdictId: string; resolution: 'accepted' | 'fixed_upstream' | 'false_positive'; note?: string; expectedVersion?: string },
+  outerTx?: Tx,
 ): Promise<void> {
-  const toStamp = await withTenant(ctx, async (tx) => {
+  const resolve=async (tx:Tx) => {
     const [row] = await tx
       .select({
         id: schema.payrollAnomalyVerdict.id,
@@ -766,14 +767,18 @@ export async function resolveAnomalyVerdict(
         batchId: schema.payrollAnomalyVerdict.batchId,
         disposition: schema.payrollAnomalyVerdict.disposition,
         supersededAt: schema.payrollAnomalyVerdict.supersededAt,
+        resolvedAt:schema.payrollAnomalyVerdict.resolvedAt,resolution:schema.payrollAnomalyVerdict.resolution,
+        version:sql<string>`${schema.payrollAnomalyVerdict.computedAt}::text`,
       })
       .from(schema.payrollAnomalyVerdict)
       .where(eq(schema.payrollAnomalyVerdict.id, p.verdictId))
-      .limit(1);
+      .limit(1).for('update');
     if (!row) throw new Error('verdict not found');
     if (row.supersededAt) throw new Error('cannot resolve a superseded verdict');
+    if(p.expectedVersion!=null&&p.expectedVersion!==row.version)throw new Error('verdict changed');
+    if(row.resolvedAt){if(row.resolution===p.resolution)return [];throw new Error('verdict already resolved');}
 
-    await tx
+    const changed=await tx
       .update(schema.payrollAnomalyVerdict)
       .set({
         resolution: p.resolution,
@@ -781,7 +786,8 @@ export async function resolveAnomalyVerdict(
         resolvedAt: sql`now()`,
         resolvedByUserId: ctx.userId ?? null,
       })
-      .where(eq(schema.payrollAnomalyVerdict.id, p.verdictId));
+      .where(and(eq(schema.payrollAnomalyVerdict.id,p.verdictId),isNull(schema.payrollAnomalyVerdict.resolvedAt),isNull(schema.payrollAnomalyVerdict.supersededAt),sql`${schema.payrollAnomalyVerdict.computedAt}::text=${row.version}`)).returning({id:schema.payrollAnomalyVerdict.id});
+    if(changed.length!==1)throw new Error('verdict changed');
 
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -794,9 +800,10 @@ export async function resolveAnomalyVerdict(
     });
 
     // ADR-0084 §2.3 — which ledger rows this human just answered. Read INSIDE the transaction (it is a
-    // read of the verdict being resolved) and stamped OUTSIDE it, below.
+    // read of the verdict being resolved) and stamped below, using the explicit Tx when supplied.
     return hypothesisProposalsToStamp(tx, p.verdictId);
-  });
+  };
+  const toStamp=outerTx?await resolve(outerTx):await withTenant(ctx,resolve);
 
   /**
    * ⚠️ **THE ONLY REAL AGREEMENT RATE THE PAYROLL SIDE OF THIS PRODUCT HAS.** `anomaly_narration` has no
@@ -807,11 +814,11 @@ export async function resolveAnomalyVerdict(
    * `false_positive` is the model being WRONG. `accepted` and `fixed_upstream` are both it being right —
    * they differ in what the human then did about it, not in whether there was something to do.
    *
-   * OUTSIDE the transaction above: `recordDecision` opens its own (agent-proposal property 2), and a
-   * nested `withTenant` holds a second pooled connection for the duration of the outer one.
+   * Default callers stamp after the domain commit. An explicit outerTx caller uses the same scoped
+   * connection and a telemetry savepoint; no nested withTenant or second pool connection is opened.
    */
   const decision = p.resolution === 'false_positive' ? 'declined' : 'approved';
-  for (const proposalId of toStamp) await recordDecision(ctx, { proposalId, decision });
+  for (const proposalId of toStamp) await recordDecision(ctx, { proposalId, decision },outerTx);
 }
 
 /**

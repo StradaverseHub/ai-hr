@@ -21,7 +21,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { and,eq,sql } from 'drizzle-orm';
+import {withTenant} from '../db/client';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
@@ -34,6 +35,8 @@ import {
   AgentActionError,
   actionTypeById,
   executeAction,
+  executeActionTx,
+  fixedUpstreamProposalDigest,
   proposeActions,
 } from '../core/agent-actions';
 
@@ -288,19 +291,61 @@ describe('ADR-0083 §2.5 — the action layer', () => {
     expect(r!.agreementRate).toBe(1);
   });
 
-  it('the execution loop catches PER VERDICT, so one refusal cannot discard committed work', () => {
+  it('the execution loop contains each verdict refusal in a savepoint', () => {
     // A SOURCE-SHAPE ASSERTION, and deliberately so: the case above reaches the pre-filter rather than
     // the catch, and the only thing that reaches the catch is a genuine race inside a single call — the
     // service refusing between the re-check and the write. That cannot be staged deterministically, and
     // a behavioural test that silently exercises a different path would claim coverage it does not have.
-    // What matters is checkable here: each resolve is its own transaction, so a throw escaping the loop
-    // would report total failure over verdicts that had already COMMITTED.
+    // Each refused resolve rolls back to a savepoint; successful subjects remain in the same atomic
+    // outer transaction. Real concurrent source and duplicate-resolution cases are exercised below.
     const src = fs.readFileSync(path.resolve(__dirname, '../core/agent-actions.ts'), 'utf8');
     const loop = src.slice(src.indexOf('for (const id of ids)'));
     expect(loop).toContain('try {');
+    expect(loop).toContain('tx.transaction(async subjectTx');
     expect(loop).toContain('await resolveAnomalyVerdict(');
     expect(loop.indexOf('try {')).toBeLessThan(loop.indexOf('await resolveAnomalyVerdict('));
     expect(loop).toMatch(/\}\s*catch\b/);
+  });
+
+  it('does not close an entire verdict while another recorded cause remains or is unsupported',async()=>{
+    const f=await flagged({withBank:true});
+    await owner.db.update(schema.employeeStatutoryMy).set({taxNumber:null}).where(eq(schema.employeeStatutoryMy.personId,f.personId));
+    await owner.db.insert(schema.payrollAnomalyFinding).values({tenantId:base.tenantId,verdictId:f.verdictId,detectorId:'missing-tax-profile',severity:'block',facts:{},sourceEventIds:[],suggestedAction:'fixture'} as never);
+    expect(await proposeActions(adminCtx(base))).toEqual([]);expect(await executeAction(adminCtx(base),{typeId:'close_fixed_upstream',verdictIds:[f.verdictId]})).toEqual({closed:0,stale:1});
+    await owner.db.update(schema.employeeStatutoryMy).set({taxNumber:'SG-fixture'}).where(eq(schema.employeeStatutoryMy.personId,f.personId));
+    expect((await proposeActions(adminCtx(base)))[0]?.count).toBe(1);
+    await owner.db.insert(schema.payrollAnomalyFinding).values({tenantId:base.tenantId,verdictId:f.verdictId,detectorId:'net-swing',severity:'review',facts:{},sourceEventIds:[],suggestedAction:'fixture'} as never);
+    expect(await proposeActions(adminCtx(base))).toEqual([]);expect((await executeAction(adminCtx(base),{typeId:'close_fixed_upstream',verdictIds:[f.verdictId]})).closed).toBe(0);
+  });
+  it('concurrent unchanged approvals resolve once and append exactly one canonical event',async()=>{
+    const f=await flagged({withBank:true}),ctx=adminCtx(base);
+    const results=await Promise.all([executeAction(ctx,{typeId:'close_fixed_upstream',verdictIds:[f.verdictId]}),executeAction(ctx,{typeId:'close_fixed_upstream',verdictIds:[f.verdictId]})]);
+    expect(results.map(result=>result.closed).sort()).toEqual([0,1]);
+    const events=await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,f.verdictId),eq(schema.domainEvent.eventType,'payroll.anomaly.resolved')));expect(events).toHaveLength(1);
+    await resolveAnomalyVerdict(ctx,{verdictId:f.verdictId,resolution:'fixed_upstream'});
+    expect(await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,f.verdictId),eq(schema.domainEvent.eventType,'payroll.anomaly.resolved')))).toHaveLength(1);
+  });
+  it('binds exact reviewed source versions and refuses changed valid bank facts without closing',async()=>{
+    const f=await flagged({withBank:true}),ctx=adminCtx(base),proposal=(await proposeActions(ctx))[0]!;
+    const digest=fixedUpstreamProposalDigest(proposal.subjects);
+    await owner.db.update(schema.employeeStatutoryMy).set({bankAccountNo:'different-valid-fixture'}).where(eq(schema.employeeStatutoryMy.personId,f.personId));
+    await expect(withTenant(ctx,tx=>executeActionTx(tx,ctx,{typeId:'close_fixed_upstream',verdictIds:[f.verdictId],companyIds:[base.companyId],expectedDigest:digest}))).rejects.toMatchObject({code:'stale_proposal'});
+    expect((await owner.db.select({at:schema.payrollAnomalyVerdict.resolvedAt}).from(schema.payrollAnomalyVerdict).where(eq(schema.payrollAnomalyVerdict.id,f.verdictId)))[0].at).toBeNull();
+  });
+  it('holds the actual source row through domain commit so a concurrent cause edit waits',async()=>{
+    const f=await flagged({withBank:true}),ctx=adminCtx(base);
+    let entered!:(value:{closed:number;stale:number})=>void,commit!:()=>void;
+    const enteredPromise=new Promise<{closed:number;stale:number}>(resolve=>{entered=resolve;}),commitPromise=new Promise<void>(resolve=>{commit=resolve;});
+    const action=withTenant(ctx,async tx=>{const result=await executeActionTx(tx,ctx,{typeId:'close_fixed_upstream',verdictIds:[f.verdictId]});entered(result);await commitPromise;return result;});
+    let edit:Promise<void>|undefined;
+    try {
+    expect((await Promise.race([enteredPromise,action.then(()=>{throw new Error('Missing transaction gate');})])).closed).toBe(1);
+    let writerPid!:(pid:number)=>void;const pidPromise=new Promise<number>(resolve=>{writerPid=resolve;});
+    edit=withTenant(ctx,async tx=>{const [pid]=await tx.execute(sql`select pg_backend_pid() pid`);writerPid(Number((pid as {pid:number}).pid));await tx.update(schema.employeeStatutoryMy).set({bankAccountNo:null}).where(eq(schema.employeeStatutoryMy.personId,f.personId));});
+      const pid=await Promise.race([pidPromise,edit.then(()=>{throw new Error('Writer did not reach its PID gate');})]);let observed=false;const deadline=Date.now()+3000;
+      while(Date.now()<deadline){const rows=await owner.db.execute(sql`select exists(select 1 from pg_locks where pid=${pid} and not granted) waiting`);if((rows[0] as {waiting?:boolean})?.waiting===true){observed=true;break;}await new Promise(resolve=>setTimeout(resolve,10));}
+      expect(observed,'actual app-role source writer must wait for the confirmed transaction').toBe(true);
+    }finally{commit();await Promise.allSettled([action,...(edit?[edit]:[])]);}
   });
 
   it('every action type is reversible and propose-only — the invariant, not a description', () => {

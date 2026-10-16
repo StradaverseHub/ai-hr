@@ -40,12 +40,15 @@
  * about a finding; it cannot change a payslip, a rate or a statutory figure. ADR-0074's invariant is
  * untouched: the money is the deterministic kernel's, and an agent may not reach it.
  */
-import { and, eq, inArray, isNull } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { createHash } from 'node:crypto';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import * as schema from '../db/schema';
 import { resolveAnomalyVerdict } from './payroll-anomaly';
 import { gapsForRecord, type ReadinessGapId } from './record-readiness';
 import { recordProposal } from './agent-proposal';
+import {isAdmin} from '../lib/authz-model';
+import {assertModuleEnabled} from './entitlements';
 
 /** Nothing acts on its own. See (3) in the header before widening this. */
 export type AutonomyLevel = 'propose_only';
@@ -116,6 +119,9 @@ export type ProposedSubject = {
   detectorId: string;
   /** The gap that caused it, now absent from the record. Shown so the human can check the reasoning. */
   cause: ReadinessGapId;
+  companyId:string;
+  /** Opaque version binds verdict and current supported source facts, not a displayed bank/tax value. */
+  version:string;
 };
 
 export type ActionProposal = {
@@ -137,77 +143,40 @@ const SHOW = 50;
  * reason. A stored proposal is a claim about the past that needs its own invalidation story to stop
  * lying; a computed one cannot be stale, and the precondition is re-checked at execution anyway (2).
  */
-export async function proposeActions(ctx: SessionContext): Promise<ActionProposal[]> {
-  const type = AGENT_ACTION_TYPES[0]!;
-
-  const subjects = await withTenant(ctx, async (tx) => {
-    // Unresolved, live, flagged verdicts joined to the record as it is NOW.
-    const rows = await tx
-      .select({
-        verdictId: schema.payrollAnomalyVerdict.id,
-        employmentId: schema.payrollAnomalyVerdict.employmentId,
-        detectorId: schema.payrollAnomalyFinding.detectorId,
-        name: schema.person.fullName,
-        paymentMethod: schema.employment.paymentMethod,
-        ic: schema.employeeStatutoryMy.icNumber,
-        passport: schema.employeeStatutoryMy.passportNumber,
-        taxNumber: schema.employeeStatutoryMy.taxNumber,
-        epfNumber: schema.employeeStatutoryMy.epfNumber,
-        socsoNumber: schema.employeeStatutoryMy.socsoNumber,
-        bankAccountNo: schema.employeeStatutoryMy.bankAccountNo,
-      })
-      .from(schema.payrollAnomalyVerdict)
-      .innerJoin(
-        schema.payrollAnomalyFinding,
-        eq(schema.payrollAnomalyFinding.verdictId, schema.payrollAnomalyVerdict.id),
-      )
-      .innerJoin(schema.employment, eq(schema.employment.id, schema.payrollAnomalyVerdict.employmentId))
-      .innerJoin(schema.person, eq(schema.person.id, schema.employment.personId))
-      .leftJoin(
-        schema.employeeStatutoryMy,
-        eq(schema.employeeStatutoryMy.personId, schema.employment.personId),
-      )
-      .where(
-        and(
-          isNull(schema.payrollAnomalyVerdict.supersededAt),
-          isNull(schema.payrollAnomalyVerdict.resolvedAt),
-          inArray(schema.payrollAnomalyFinding.detectorId, Object.keys(CAUSE_OF)),
-        ),
-      );
-
-    const out: ProposedSubject[] = [];
-    const seen = new Set<string>();
-    for (const r of rows) {
-      const cause = CAUSE_OF[r.detectorId];
-      if (!cause) continue;
-      // `hasComp: true` — compensation is irrelevant to these two causes and querying it here would add a
-      // join for a value neither branch reads. Stated rather than left as a bare literal.
-      const gaps = gapsForRecord({ ...r, hasComp: true });
-      // STILL BROKEN ⇒ NOT A PROPOSAL. The whole claim is "the cause is gone".
-      if (gaps.includes(cause)) continue;
-      // One verdict may carry several findings; it is closed once.
-      if (seen.has(r.verdictId)) continue;
-      seen.add(r.verdictId);
-      out.push({
-        verdictId: r.verdictId,
-        employmentId: r.employmentId,
-        name: r.name,
-        detectorId: r.detectorId,
-        cause,
-      });
-    }
-    return out;
-  });
-
-  if (subjects.length === 0) return [];
-  return [
-    {
-      type,
-      subjects: subjects.slice(0, SHOW),
-      count: subjects.length,
-      overCap: subjects.length > type.blastRadiusCap,
-    },
-  ];
+type FixedSource={verdictId:string;employmentId:string;companyId:string;name:string;detectorId:string;computedVersion:string;paymentMethod:string|null;bankAccountNo:string|null;taxNumber:string|null};
+export function fixedUpstreamCauses(detectors:readonly string[],facts:{paymentMethod:string|null;bankAccountNo:string|null;taxNumber:string|null}):ReadinessGapId[]|null{
+ if(!detectors.length)return null;
+ const gaps=gapsForRecord({...facts,hasComp:true,ic:null,passport:null,epfNumber:null,socsoNumber:null});
+ const causes=detectors.map(id=>CAUSE_OF[id]);
+ if(causes.some(cause=>!cause||gaps.includes(cause)))return null;
+ return [...new Set(causes)] as ReadinessGapId[];
+}
+/** One canonical eligibility predicate for preview and locked execution. Closing a verdict requires
+ * EVERY finding to be a supported, corrected record cause, never just one corrected finding. */
+async function fixedSubjectsTx(tx:Tx,companyIds?:string[],ids?:string[]):Promise<ProposedSubject[]>{
+ const rows:FixedSource[]=await tx.select({verdictId:schema.payrollAnomalyVerdict.id,employmentId:schema.employment.id,companyId:schema.employment.companyId,name:schema.person.fullName,
+  detectorId:schema.payrollAnomalyFinding.detectorId,computedVersion:sql<string>`${schema.payrollAnomalyVerdict.computedAt}::text`,paymentMethod:schema.employment.paymentMethod,
+  bankAccountNo:schema.employeeStatutoryMy.bankAccountNo,taxNumber:schema.employeeStatutoryMy.taxNumber})
+ .from(schema.payrollAnomalyVerdict).innerJoin(schema.payrollAnomalyFinding,eq(schema.payrollAnomalyFinding.verdictId,schema.payrollAnomalyVerdict.id))
+ .innerJoin(schema.employment,eq(schema.employment.id,schema.payrollAnomalyVerdict.employmentId)).innerJoin(schema.person,eq(schema.person.id,schema.employment.personId))
+ .leftJoin(schema.employeeStatutoryMy,eq(schema.employeeStatutoryMy.personId,schema.employment.personId))
+ .where(and(isNull(schema.payrollAnomalyVerdict.supersededAt),isNull(schema.payrollAnomalyVerdict.resolvedAt),companyIds?inArray(schema.employment.companyId,companyIds):undefined,ids?inArray(schema.payrollAnomalyVerdict.id,ids):undefined))
+ .orderBy(schema.employment.id,schema.payrollAnomalyVerdict.id,schema.payrollAnomalyFinding.id);
+ const grouped=new Map<string,FixedSource[]>();for(const row of rows){const group=grouped.get(row.verdictId)??[];group.push(row);grouped.set(row.verdictId,group);}
+ const out:ProposedSubject[]=[];
+ for(const group of grouped.values()){
+  const row=group[0]!,detectors=group.map(item=>item.detectorId).sort(),causes=fixedUpstreamCauses(detectors,row);if(!causes)continue;
+  const version=createHash('sha256').update(JSON.stringify({verdictId:row.verdictId,employmentId:row.employmentId,companyId:row.companyId,computedVersion:row.computedVersion,detectors,paymentMethod:row.paymentMethod,bankAccountNo:row.bankAccountNo,taxNumber:row.taxNumber})).digest('hex');
+  out.push({verdictId:row.verdictId,employmentId:row.employmentId,companyId:row.companyId,name:row.name,detectorId:detectors[0]!,cause:causes[0]!,version});
+ }
+ return out;
+}
+export function fixedUpstreamProposalDigest(subjects:readonly ProposedSubject[]){return createHash('sha256').update(JSON.stringify(subjects.map(subject=>({id:subject.verdictId,employmentId:subject.employmentId,companyId:subject.companyId,version:subject.version})).sort((a,b)=>a.id.localeCompare(b.id)))).digest('hex');}
+export async function proposeActions(ctx:SessionContext,options?:{companyIds?:string[]}):Promise<ActionProposal[]>{
+ if(!isAdmin(ctx))throw new AgentActionError('not_authorized');
+ assertModuleEnabled(ctx,'payroll');
+ const subjects=await withTenant(ctx,tx=>fixedSubjectsTx(tx,options?.companyIds));if(!subjects.length)return [];
+ return [{type:AGENT_ACTION_TYPES[0]!,subjects:subjects.slice(0,SHOW),count:subjects.length,overCap:subjects.length>AGENT_ACTION_TYPES[0]!.blastRadiusCap}];
 }
 
 export type ExecuteResult = {
@@ -224,7 +193,7 @@ export type ExecuteResult = {
 };
 
 export class AgentActionError extends Error {
-  constructor(readonly code: 'unknown_type' | 'blast_radius' | 'nothing_to_do') {
+  constructor(readonly code: 'unknown_type' | 'blast_radius' | 'nothing_to_do' | 'not_authorized' | 'stale_proposal') {
     super(`agent-action:${code}`);
     this.name = 'AgentActionError';
   }
@@ -238,116 +207,36 @@ export class AgentActionError extends Error {
  * same predicate before anything is written. A subject whose cause has come back is counted as `stale`
  * and skipped, not closed — the human approved "close the ones that are fixed", not "close these ids".
  */
-export async function executeAction(
-  ctx: SessionContext,
-  p: { typeId: string; verdictIds: string[] },
-): Promise<ExecuteResult> {
-  const type = actionTypeById(p.typeId);
-  if (!type) throw new AgentActionError('unknown_type');
-  const ids = [...new Set(p.verdictIds.filter(Boolean))];
-  if (ids.length === 0) throw new AgentActionError('nothing_to_do');
-  // A GATE, NOT A WARNING (4). Refused outright rather than truncated: silently doing half of what was
-  // approved is worse than refusing, because the operator believes the whole thing happened.
-  if (ids.length > type.blastRadiusCap) throw new AgentActionError('blast_radius');
-
-  const fresh = await proposeActions(ctx);
-  const stillValid = new Set(
-    (fresh[0]?.subjects ?? [])
-      .concat()
-      .map((s) => s.verdictId),
-  );
-  // `proposeActions` caps its display list, so anything beyond SHOW must be re-tested individually rather
-  // than assumed stale. Re-running the predicate is cheap next to writing the wrong thing.
-  const unknown = ids.filter((id) => !stillValid.has(id));
-  if (unknown.length > 0) {
-    const recheck = await withTenant(ctx, async (tx) => {
-      const rows = await tx
-        .select({
-          verdictId: schema.payrollAnomalyVerdict.id,
-          detectorId: schema.payrollAnomalyFinding.detectorId,
-          paymentMethod: schema.employment.paymentMethod,
-          ic: schema.employeeStatutoryMy.icNumber,
-          passport: schema.employeeStatutoryMy.passportNumber,
-          taxNumber: schema.employeeStatutoryMy.taxNumber,
-          epfNumber: schema.employeeStatutoryMy.epfNumber,
-          socsoNumber: schema.employeeStatutoryMy.socsoNumber,
-          bankAccountNo: schema.employeeStatutoryMy.bankAccountNo,
-        })
-        .from(schema.payrollAnomalyVerdict)
-        .innerJoin(
-          schema.payrollAnomalyFinding,
-          eq(schema.payrollAnomalyFinding.verdictId, schema.payrollAnomalyVerdict.id),
-        )
-        .innerJoin(schema.employment, eq(schema.employment.id, schema.payrollAnomalyVerdict.employmentId))
-        .leftJoin(
-          schema.employeeStatutoryMy,
-          eq(schema.employeeStatutoryMy.personId, schema.employment.personId),
-        )
-        .where(
-          and(
-            inArray(schema.payrollAnomalyVerdict.id, unknown),
-            isNull(schema.payrollAnomalyVerdict.supersededAt),
-            isNull(schema.payrollAnomalyVerdict.resolvedAt),
-          ),
-        );
-      const ok = new Set<string>();
-      for (const r of rows) {
-        const cause = CAUSE_OF[r.detectorId];
-        if (cause && !gapsForRecord({ ...r, hasComp: true }).includes(cause)) ok.add(r.verdictId);
-      }
-      return ok;
-    });
-    for (const id of recheck) stillValid.add(id);
-  }
-
-  let closed = 0;
-  for (const id of ids) {
-    const valid = stillValid.has(id);
-
-    // ADR-0084 §2.3 — THE LEDGER'S MOST IMPORTANT TENANT, and the only DETERMINISTIC one: no model is
-    // involved, which is why `provider`/`model` are null and why the table is `agent_proposal` rather
-    // than `ai_proposal`. §2.8's autonomy criterion is measured over ACTION TYPES, and this is the only
-    // action type there is.
-    //
-    // ⚠️ THE RE-CHECK IS THE ADJUDICATION. A subject whose cause came back between render and click is a
-    // REJECTED proposal, not a declined one — a machine refused it, no human ever said no. Recording it
-    // as a decline would put the blame on the operator and corrupt the agreement rate in the flattering
-    // direction.
-    //
-    // ⚠️ AND AGREEMENT IS STRUCTURALLY 1.0 FOR THIS TYPE, SO IT PROVES NOTHING. An operator who simply
-    // does not press the button leaves no trace, so a decline is unobservable on a batch screen. **The
-    // metric that means anything here is the REVERSAL rate** — did the closure stick, or did the finding
-    // re-fire next cycle (§2.4)? Nothing writes that yet; ADR-0084 Phase 3 item 6 does.
-    await recordProposal(ctx, {
-      type: 'close_fixed_upstream',
-      subject: { type: 'payroll_anomaly_verdict', id },
-      facts: { typeId: type.id, verdictId: id, causeAbsent: valid },
-      proposal: { action: type.id, reversibility: type.reversibility, autonomy: type.autonomy },
-      adjudication: valid ? { ok: true } : { ok: false, reason: 'precondition_no_longer_holds' },
-      // The human is already in the loop: they read the list and pressed the button, so the decision is
-      // known at the same instant the proposal is. Only for an ACCEPTED one — a rejected proposal was
-      // never acted on, and 0452's CHECK refuses the combination anyway.
-      ...(valid ? { decision: 'approved' as const } : {}),
-    });
-
-    if (!valid) continue;
-    try {
-      // Through the EXISTING service: its RBAC check, its status guard and its domain event are the ones
-      // already trusted for a human doing this by hand. This layer does not open a second write path.
-      await resolveAnomalyVerdict(ctx, {
-        verdictId: id,
-        resolution: 'fixed_upstream',
-        note: 'Closed by the control plane: the record fact that caused this finding is no longer missing.',
-      });
-      closed++;
-    } catch {
-      // ONE REFUSAL MUST NOT DISCARD THE REST, and it must not report failure over work that COMMITTED.
-      // Each call is its own transaction, so a throw escaping this loop would leave the earlier verdicts
-      // closed while the operator is told the whole thing failed — the mirror of the truncation (4)
-      // refuses, and just as misleading. The realistic cause is a race: somebody resolved this verdict by
-      // hand while the page was open, and the service's status guard correctly refused. Not closed BY US
-      // is the only fact this layer can assert, so it counts as stale and the numbers stay true.
-    }
-  }
-  return { closed, stale: ids.length - closed };
+export async function executeAction(ctx:SessionContext,p:{typeId:string;verdictIds:string[]}):Promise<ExecuteResult>{
+ return withTenant(ctx,tx=>executeActionTx(tx,ctx,p));
+}
+/** Explicit scoped Tx seam for the confirmed-conversation ledger; default callers use the same owner.
+ * Locks: employment -> statutory rows -> verdict -> finding. No extra connection, model result or
+ * client-supplied authorization is accepted. Unsupported causes are never closed. */
+export async function executeActionTx(tx:Tx,ctx:SessionContext,p:{typeId:string;verdictIds:string[];companyIds?:string[];expectedDigest?:string}):Promise<ExecuteResult>{
+ if(!isAdmin(ctx))throw new AgentActionError('not_authorized');assertModuleEnabled(ctx,'payroll');
+ const type=actionTypeById(p.typeId);if(!type)throw new AgentActionError('unknown_type');
+ const ids=[...new Set(p.verdictIds.filter(Boolean))].sort();if(!ids.length)throw new AgentActionError('nothing_to_do');if(ids.length>type.blastRadiusCap)throw new AgentActionError('blast_radius');
+ const visible=await tx.select({id:schema.payrollAnomalyVerdict.id,employmentId:schema.payrollAnomalyVerdict.employmentId}).from(schema.payrollAnomalyVerdict).where(inArray(schema.payrollAnomalyVerdict.id,ids));
+ const employeeIds=[...new Set(visible.map(row=>row.employmentId))].sort();
+ const employees=employeeIds.length?await tx.select({id:schema.employment.id,personId:schema.employment.personId,companyId:schema.employment.companyId}).from(schema.employment).where(inArray(schema.employment.id,employeeIds)).orderBy(schema.employment.id).for('share'):[];
+ const people=[...new Set(employees.map(row=>row.personId))].sort();
+ if(people.length)await tx.select({id:schema.employeeStatutoryMy.id}).from(schema.employeeStatutoryMy).where(inArray(schema.employeeStatutoryMy.personId,people)).orderBy(schema.employeeStatutoryMy.id).for('share');
+ await tx.select({id:schema.payrollAnomalyVerdict.id}).from(schema.payrollAnomalyVerdict).where(inArray(schema.payrollAnomalyVerdict.id,ids)).orderBy(schema.payrollAnomalyVerdict.id).for('update');
+ await tx.select({id:schema.payrollAnomalyFinding.id}).from(schema.payrollAnomalyFinding).where(inArray(schema.payrollAnomalyFinding.verdictId,ids)).orderBy(schema.payrollAnomalyFinding.id).for('share');
+ const subjects=await fixedSubjectsTx(tx,p.companyIds,ids),byId=new Map(subjects.map(subject=>[subject.verdictId,subject]));
+ // A retargeted verdict or newly linked employment cannot use a source row that was never locked.
+ if(subjects.some(subject=>!employees.some(employee=>employee.id===subject.employmentId&&employee.companyId===subject.companyId)))throw new AgentActionError('stale_proposal');
+ if(p.expectedDigest&&(subjects.length!==ids.length||fixedUpstreamProposalDigest(subjects)!==p.expectedDigest))throw new AgentActionError('stale_proposal');
+ let closed=0;
+ for (const id of ids) {const subject=byId.get(id),valid=!!subject;
+  await recordProposal(ctx,{type:'close_fixed_upstream',subject:{type:'payroll_anomaly_verdict',id},facts:{typeId:type.id,verdictId:id,causeAbsent:valid},proposal:{action:type.id,reversibility:type.reversibility,autonomy:type.autonomy},adjudication:valid?{ok:true}:{ok:false,reason:'precondition_no_longer_holds'},...(valid?{decision:'approved' as const}:{})},tx);
+  if(!subject)continue;
+  try {
+   // A refused subject rolls back to its savepoint, never aborting or misreporting the rest.
+   await tx.transaction(async subjectTx=>{await resolveAnomalyVerdict(ctx,{verdictId:id,resolution:'fixed_upstream',note:'Closed by the control plane: every supported record cause is now corrected.'},subjectTx);});
+   closed++;
+  } catch { /* Only actual successful resolutions contribute to the committed result. */ }
+ }
+ return { closed, stale: ids.length - closed };
 }
