@@ -84,7 +84,9 @@ Labels consumes `dev-fixture-system-labels.mts` and the import-safe
 canonically provisions exactly Labels18 Primary (fictional) and Labels18 Foreign (fictional), alongside
 the reserved System tenant. The coordinator checks their exact IDs/names plus real company identities,
 app-user/person/employment/login bindings and exact grants, including the null-person Operator and
-EmptyHR controls. Labels' complete setup state digest proves the two initial runs only. Resume compares
+EmptyHR controls. Canonical manager/employee grants use null companyId; their actual employment
+company remains checked separately (Main, B or Hidden), never inferred from that grant. Scoped HR
+retains Main+B, EmptyHR retains Empty and Operator remains installation-only. Labels' complete setup state digest proves the two initial runs only. Resume compares
 the shared static source proof, not mutable label data, so intended label imports/criteria/edits remain.
 
 Reports consumes `dev-fixture-employee-master.mts` and the import-safe SELECT-only
