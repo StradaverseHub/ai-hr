@@ -1960,6 +1960,7 @@
       "sectionNotFoundNotice": "{count, plural, one {# dòng ghi Mã nhân viên không có trong hệ thống.} other {# dòng ghi Mã nhân viên không có trong hệ thống.}} Tệp theo phần chỉ cập nhật được những người đã có — không thêm được ai, vì tệp không mang tên, email công việc, phòng ban, ngày vào làm và mức lương mà một hồ sơ nhân viên mới cần. Hãy thêm những người đó bằng mẫu “Tất cả — nhân viên mới” trước, rồi chạy lại tệp này.",
       "sectionImportButton": "Cập nhật {count}",
       "sectionUpdatedCount": "{count, plural, one {Đã cập nhật # nhân viên} other {Đã cập nhật # nhân viên}}",
+      "familySavedCount": "Đã lưu {count} bản ghi gia đình",
       "colEmployee": "Nhân viên",
       "colVerdict": "Điều gì xảy ra",
       "colChanges": "Thay đổi gì",

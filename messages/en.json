@@ -1960,6 +1960,7 @@
       "sectionNotFoundNotice": "{count, plural, one {# row names an Employee ID that is not in the system.} other {# rows name an Employee ID that is not in the system.}} A section file can only update people who already exist — it cannot add anyone, because it carries none of the name, work email, department, join date and salary a new employee record needs. Add those people with the “Everything — new employees” template first, then run this file again.",
       "sectionImportButton": "Update {count}",
       "sectionUpdatedCount": "{count, plural, one {# employee updated} other {# employees updated}}",
+      "familySavedCount": "{count, plural, one {# family record saved} other {# family records saved}}",
       "colEmployee": "Employee",
       "colVerdict": "What happens",
       "colChanges": "What changes",

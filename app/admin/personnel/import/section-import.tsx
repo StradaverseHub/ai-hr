@@ -373,7 +373,11 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
         <Card className="overflow-hidden border-emerald-200 dark:border-emerald-500/30">
           <div className="border-b border-border bg-emerald-50/60 px-4 py-3 dark:bg-emerald-500/10">
             <h2 className="text-sm font-semibold">
-              {isPersonnelRegisterKind(section)?t('registerSavedCount',{count:result.updated}):t('sectionUpdatedCount', { count: result.updated })}
+              {result.section === 'family'
+                ? t('familySavedCount', { count: result.updated })
+                : isPersonnelRegisterKind(result.section)
+                  ? t('registerSavedCount', { count: result.updated })
+                  : t('sectionUpdatedCount', { count: result.updated })}
               {result.skipped > 0 && ` · ${t('skippedCount', { count: result.skipped })}`}
               {result.failed.length > 0 && ` · ${t('failedCount', { count: result.failed.length })}`}
             </h2>
