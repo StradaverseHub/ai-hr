@@ -35,7 +35,7 @@ import { randomUUID } from 'node:crypto';
 import { actorOf, appendEvent } from '../db/events';
 import { createAdditionalRun, createBatch, generatePayslips } from './payroll';
 import { getActivePayrollCycle, listPayrollCycles } from './payroll-cycle';
-import { allowedCompanies, listEmployees } from './read';
+import { allowedCompanies, listEmployeesForPayrollRun } from './read';
 
 /** Machine-stable failure reasons the result page renders as friendly, localized text. */
 export type RunGroupReasonCode =
@@ -59,7 +59,10 @@ export type RunGroupReasonCode =
   | 'NON_CASH_NORMAL_REMUNERATION_REQUIRED'
   | 'NON_CASH_MONTH_BASELINE_UNAVAILABLE'
   | 'NON_CASH_CONFIGURATION_INVALID'
-  | 'SYSTEM_VALIDATION_ERROR';
+  | 'SYSTEM_VALIDATION_ERROR'
+  | 'EMPTY_SELECTION'
+  | 'INVALID_SELECTION'
+  | 'DRAFT_REQUIRES_REGULAR';
 
 /** The four fixed behavioural run types a cycle maps to (mirrors payrollRunTypeEnum / PayrollCycleRunType). */
 export type IntendedRunType = 'regular' | 'off_cycle' | 'bonus' | 'adjustment';
@@ -106,6 +109,8 @@ export type CompanyOutcome = {
 
 /** The complete result of a multi-company run — the payload the Step-3 result page renders. */
 export type RunGroupResult = {
+  /** Absent on historical/processed results. Draft means no generation was requested. */
+  mode?: 'draft';
   payPeriod: string;
   startedAt: string;
   endedAt: string;
@@ -225,8 +230,10 @@ export type RunMultiCompanyInput = {
    *  cycle of that type is resolved server-side below — never trusting one company's id for another. */
   payrollCycleId: string;
   paymentDate?: string;
-  /** Explicit employee subset (across the selected companies). Empty ⇒ whole-company default per company. */
+  /** Explicit employee subset across selected companies. Only an untouched selection means whole-company default. */
   employmentIds: string[];
+  /** A touched empty selection is never the implicit whole-company default. */
+  explicitSelection?: boolean;
 };
 
 /**
@@ -239,6 +246,13 @@ export async function runMultiCompanyPayroll(
   ctx: SessionContext,
   input: RunMultiCompanyInput,
 ): Promise<RunGroupResult> {
+  return executeRunGroup(ctx,input,'process');
+}
+/** Regular drafts compose the same creation owner, without any generation or reset capability. */
+export async function saveMultiCompanyPayrollDrafts(ctx:SessionContext,input:RunMultiCompanyInput):Promise<RunGroupResult> {
+  return executeRunGroup(ctx,input,'draft');
+}
+async function executeRunGroup(ctx:SessionContext,input:RunMultiCompanyInput,mode:'draft'|'process'):Promise<RunGroupResult> {
   const startedAt = new Date().toISOString();
 
   // HAZARD 1 — authorize every submitted company id against the admin's ACTUAL grants. The client list is
@@ -251,13 +265,15 @@ export async function runMultiCompanyPayroll(
   // per-company, so we never reuse this id for another company — only its runType. Default to 'regular'
   // (the common month-end case) if the id can't be resolved against any authorized company's catalog.
   const primaryId = requested.find((id) => allowedById.has(id));
-  let intendedRunType: 'regular' | 'off_cycle' | 'bonus' | 'adjustment' = 'regular';
-  if (primaryId && input.payrollCycleId) {
-    const primaryCycle = await getActivePayrollCycle(ctx, input.payrollCycleId, primaryId);
-    if (primaryCycle) intendedRunType = primaryCycle.runType;
-  }
+  const primaryCycle=primaryId&&input.payrollCycleId?await getActivePayrollCycle(ctx,input.payrollCycleId,primaryId):null;
+  const intendedRunType=primaryCycle?.runType??'regular';
 
   const perCompany: CompanyOutcome[] = [];
+  const explicitSelection=input.explicitSelection===true||input.employmentIds.length>0;
+  const population=new Map<string,Awaited<ReturnType<typeof listEmployeesForPayrollRun>>>();
+  for(const companyId of requested.filter(id=>allowedById.has(id))) population.set(companyId,await listEmployeesForPayrollRun(ctx,[companyId],input.payPeriod));
+  const validIds=new Set([...population.values()].flat().map(employee=>employee.employmentId));
+  const invalidSelection=explicitSelection&&input.employmentIds.some(id=>!validIds.has(id));
 
   for (const companyId of requested) {
     const companyName = allowedById.get(companyId);
@@ -275,22 +291,21 @@ export async function runMultiCompanyPayroll(
     }
 
     try {
-      // Resolve this company's scope subset: intersect the submitted employment ids with THIS company's
-      // employees (mirrors createRunAction's guard so a cross-company id can never under/over-set the run).
-      let scope: { employmentIds: string[] } | undefined;
-      let employeesSelected: number;
-      const companyEmps = await listEmployees(ctx, [companyId]);
-      if (input.employmentIds.length) {
-        const valid = new Set(companyEmps.map((e) => e.employmentId));
-        const employmentIds = input.employmentIds.filter((id) => valid.has(id));
-        scope = employmentIds.length ? { employmentIds } : undefined;
-        // With an explicit selection, the count attempted is the resolved subset for this company. If none
-        // of the submitted ids belong to this company, fall back to the whole-company default (no scope).
-        employeesSelected = scope ? scope.employmentIds.length : companyEmps.length;
-      } else {
-        // Whole-company default: the run attempts every employee of the company.
-        employeesSelected = companyEmps.length;
+      if(mode==='draft'&&(!primaryCycle||primaryCycle.runType!=='regular')) {
+        perCompany.push({companyId,companyName,status:'failed',employeesSelected:0,employeesSucceeded:0,reason:primaryCycle?'DRAFT_REQUIRES_REGULAR':'INVALID_CYCLE'});
+        continue;
       }
+      // Use the same dated population as the wizard/Generate owner. Never turn an empty explicit
+      // per-company subset into undefined scope: that would pay the entire company instead.
+      const companyEmps=population.get(companyId)??[];
+      const valid=new Set(companyEmps.map(employee=>employee.employmentId));
+      const selected=[...new Set(input.employmentIds)].filter(id=>valid.has(id));
+      if(invalidSelection||(explicitSelection&&selected.length===0)) {
+        perCompany.push({companyId,companyName,status:'failed',employeesSelected:0,employeesSucceeded:0,reason:invalidSelection?'INVALID_SELECTION':'EMPTY_SELECTION'});
+        continue;
+      }
+      const scope=explicitSelection?{employmentIds:selected}:undefined;
+      const employeesSelected=scope?selected.length:companyEmps.length;
 
       // Resolve THIS company's OWN active cycle of the intended run type (cycle ids are per-company, so we
       // never apply the primary company's id here). A company with no active cycle of that type is an
@@ -321,6 +336,12 @@ export async function runMultiCompanyPayroll(
         continue;
       }
 
+      // Additional cycles intentionally allow new run sequences and have no replay identity. This
+      // draft course is Regular-only, matching formula OT transfer; never silently substitute a cycle.
+      if(mode==='draft'&&cycle.runType!=='regular') {
+        perCompany.push({companyId,companyName,status:'failed',employeesSelected,employeesSucceeded:0,reason:'DRAFT_REQUIRES_REGULAR'});
+        continue;
+      }
       const created =
         cycle.runType === 'regular'
           ? await createBatch(ctx, {
@@ -342,6 +363,10 @@ export async function runMultiCompanyPayroll(
               payrollCycleId: cycle.id,
             });
 
+      if(mode==='draft') {
+        perCompany.push({companyId,companyName,status:'succeeded',batchId:created.batchId,employeesSelected,employeesSucceeded:0});
+        continue;
+      }
       // Full draft→processed generation (never the reprocessSubset path), so `payslips` is present;
       // fall back to 0 to satisfy the union return type of generatePayslips.
       const genResult = await generatePayslips(ctx, { batchId: created.batchId });
@@ -374,6 +399,7 @@ export async function runMultiCompanyPayroll(
 
   const endedAt = new Date().toISOString();
   const result = summarize(input.payPeriod, startedAt, endedAt, perCompany);
+  if(mode==='draft'){result.mode='draft';result.totalEmployeesFailed=perCompany.filter(company=>company.status==='failed').reduce((n,company)=>n+company.employeesSelected,0);}
 
   // Substrate: one run-group-level DomainEvent so the multi-company run itself is auditable. Batch/company
   // level (no single employee subject) ⇒ subjectEmploymentId stays null (admin-only read, fail-closed).
@@ -385,9 +411,10 @@ export async function runMultiCompanyPayroll(
       // event. domain_event.aggregate_id is UUID-typed, so mint a synthetic id for the virtual run-group and
       // carry the human-addressable "<period>:<startedAt>" key in the payload as `runKey`.
       aggregateId: randomUUID(),
-      eventType: 'payroll-run-group.completed',
+      eventType: mode==='draft'?'payroll-run-group.drafts-saved':'payroll-run-group.completed',
       actor: actorOf(ctx),
       payload: {
+        ...(mode==='draft'?{mode:'draft'}:{}),
         runKey: `${input.payPeriod}:${startedAt}`,
         payPeriod: input.payPeriod,
         companyIds: requested,

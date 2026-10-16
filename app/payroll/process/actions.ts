@@ -13,6 +13,7 @@ import {
   encodeRunGroupResult,
   reasonForPayrollError,
   runMultiCompanyPayroll,
+  saveMultiCompanyPayrollDrafts,
   summarize,
   type CompanyOutcome,
   type IntendedRunType,
@@ -313,6 +314,12 @@ export async function resumeRunAction(formData: FormData) {
  * failure handling (hazard 2 — one company failing never aborts the run) lives there too.
  */
 export async function runMultiCompanyAction(formData: FormData) {
+  return submitRunGroup(formData,'process');
+}
+export async function savePayrollDraftsAction(formData:FormData) {
+  return submitRunGroup(formData,'draft');
+}
+async function submitRunGroup(formData:FormData,mode:'draft'|'process') {
   // scopedAdmin() redirects non-admins and returns the session + the active company scope (the same set the
   // page's multi-select is bounded to). Using it here keeps "all" consistent between the UI and the run.
   const { s, scopeIds } = await scopedAdmin();
@@ -337,12 +344,14 @@ export async function runMultiCompanyAction(formData: FormData) {
 
   let encoded: string;
   try {
-    const result = await runMultiCompanyPayroll(s, {
+    const prepare=mode==='draft'?saveMultiCompanyPayrollDrafts:runMultiCompanyPayroll;
+    const result = await prepare(s, {
       companyIds,
       payPeriod,
       payrollCycleId,
       paymentDate,
       employmentIds,
+      explicitSelection:String(formData.get('filtersTouched'))==='true',
     });
     encoded = encodeRunGroupResult(result);
   } catch (e) {

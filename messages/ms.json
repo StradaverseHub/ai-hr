@@ -6746,7 +6746,10 @@
         "INVALID_CYCLE": "Tiada kitaran gaji sah untuk syarikat ini",
         "PRE_PROCESS_BLOCKED": "Pekerja dalam skop tiada rekod gaji semasa",
         "SYSTEM_VALIDATION_ERROR": "Ralat pengesahan sistem",
-        "MISSING_SALARY": "Maklumat gaji tiada"
+        "MISSING_SALARY": "Maklumat gaji tiada",
+        "EMPTY_SELECTION": "Tiada pekerja dalam pilihan khusus tergolong dalam syarikat ini bagi tempoh yang dipilih. Proses seluruh syarikat tidak dicipta.",
+        "INVALID_SELECTION": "Pilihan pekerja sudah lapuk atau di luar syarikat dan tempoh yang dipilih. Semak pilihan; tiada proses dicipta.",
+        "DRAFT_REQUIRES_REGULAR": "Simpan sebagai draf memerlukan kitaran gaji Biasa yang aktif."
       },
       "resumeStep1Note": "Anda sedang menyemak draf proses gaji. Syarikat, bulan gaji dan kitaran gaji adalah tetap untuk draf ini — teruskan untuk menyemak atau meminda pemilihan pekerja. Untuk menukar bulan atau syarikat, padam draf ini daripada senarai Proses Gaji dan cipta larian baharu.",
       "stepValidation": "Pengesahan Gaji",
@@ -6800,7 +6803,14 @@
       "nonCash_unsupported_kind": "Jenis item gaji ini tidak boleh dikira sebagai manfaat bukan tunai. Semak konfigurasi item gaji.",
       "nonCash_normal_remuneration_required": "BIK dan tempat kediaman yang dikenakan cukai mesti menggunakan saraan biasa untuk PCB. Semak konfigurasi item gaji.",
       "nonCash_month_baseline_unavailable": "Input manfaat bulanan tersimpan tiada atau berbeza daripada tetapan ini. Semak larian biasa dan konfigurasi manfaat sebelum mengira larian tambahan ini.",
-      "nonCash_configuration_invalid": "Semak konfigurasi manfaat bukan tunai sebelum mengira gaji."
+      "nonCash_configuration_invalid": "Semak konfigurasi manfaat bukan tunai sebelum mengira gaji.",
+      "saveAsDraft": "Simpan sebagai draf",
+      "saveDraftHelp": "Simpan syarikat dan pekerja yang dipilih tanpa mengira slip gaji. Anda boleh memindahkan kerja lebih masa formula yang diluluskan ke draf sebelum pemprosesan.",
+      "saveDraftRegularOnly": "Penyediaan draf tersedia untuk gaji Biasa. Gunakan Proses untuk kitaran lain.",
+      "draftResultTitle": "Draf gaji",
+      "draftResultSubtitle": "Draf disediakan tanpa mengira slip gaji. Buka setiap proses yang disimpan untuk menyemak transaksi sebelum pemprosesan.",
+      "draftCompanySaved": "Draf disimpan",
+      "draftSaving": "Menyimpan draf…"
     },
     "guide": {
       "title": "Panduan Aliran Kerja Gaji",
