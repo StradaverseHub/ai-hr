@@ -42,21 +42,22 @@ secrets, NODE_OPTIONS and caller-selected socket overrides are forbidden, even w
 not remove the privileged owner DB trust: this job is key-free, **not** an unprivileged report reader.
 The same canonical owner authority as the existing report queue/sweep remains required.
 
-The installed root launcher must start with `env -i`, source only this separately curated file with
-export enabled, set the installed cwd and exec the absolute installed `internal-node` path above,
-after its compatible runtime has been reviewed. It must never source
-.env.production/.env.local or export the full web environment. The Node branch itself reads no env
-file at all. Root file ownership/DAC/cron and actual running UID/config proof remain installation work;
-validating names is not proof of who supplied environment values.
+The root-owned launcher parses only this generated, closed environment format as data: it never
+sources shell text. It verifies the active marker and the existing provisioning cron owner's exact
+name/UID/base GID, clears supplementary groups, drops GID then UID, and execs the separate reviewed
+Node runtime from `/opt/ai-hr`. No web-owned application TypeScript executes as root. A root-owned
+nonblocking lock descriptor survives exec to bound overlapping report ticks; real Linux inheritance
+still needs measurement. Owner URLs travel only in the selected environment, never argv or logs.
 
-**Installation blocker: scheduling is not reconciled by this patch.** The existing all-jobs tick
-always invokes report dispatch. If it must continue for provisioning/holidays, merely choosing a new
-cron expression or adding the dedicated tick cannot eliminate duplicate report dispatch. Before the
-dedicated tick is enabled, a separate reviewed installation change must split/suppress the existing
-report job, or establish that the all-jobs tick will not run and preserve its other required jobs by
-an approved course. Until then the dedicated tick must remain unscheduled. This patch preserves the
-default runner, supplies no report-suppression mechanism and activates no cron. It does not deliver
-that scheduling change or claim the normal runner is key-free.
+The new [scheduling handoff](managed-report-scheduling-handoff.md) supplies source for the missing
+suppression/activation course. An absent marker preserves the old report stage. A trusted paused or
+active marker suppresses only that stage, after provisioning and holiday work; a bad marker refuses
+report dispatch without restoring a fallback. Dedicated admission requires the active marker before
+any application import. The base transport installer still activates no cron. A separate explicit
+root scheduling command must prove the deployed guard, review all scheduler inventory, pause and drain
+old processes before installing its exact owned cron file. User crontab bytes and Node20 remain unchanged.
+The full provisioning process still loads Auth keys for its other jobs: only the dedicated report
+process is key-free. Scheduling implementation is source-only, not installed acceptance evidence.
 
 ## Prepared checks and limits
 
@@ -67,6 +68,5 @@ remains the real owner provisioning regression consumer after dynamic import iso
 
 All tests and semantic types are unrun in this source-only checkpoint. No owner credential was read,
 installed config written, cron activated, DB connected or runtime invoked. Real restricted/owner DB
-permissions, root-owned env/UID proof, reviewed compatible Node Linux/runtime, IPC/SMTP, schedule
-reconciliation and actual
-key absence in the installed process remain unverified.
+permissions, root-owned env/UID proof, reviewed compatible Node Linux/runtime, IPC/SMTP, actual
+scheduling handoff/rollback and key absence in the installed process remain unverified.

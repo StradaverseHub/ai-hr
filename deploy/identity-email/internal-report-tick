@@ -1,0 +1,154 @@
+#!/usr/bin/python3 -I
+"""Root-owned admission/privilege drop only; never load application code as root."""
+import fcntl
+import grp
+import hashlib
+import json
+import os
+import pwd
+import re
+import shlex
+import stat
+import sys
+
+ROOT = "/opt/ai-hr"
+MARKER = "/etc/aihr-internal-report-dispatch.json"
+ENVIRONMENT = "/etc/aihr-internal-report/runner.env"
+RUNTIME = "/usr/local/lib/aihr-identity-email/internal-node"
+LAUNCHER = "/usr/local/lib/aihr-identity-email/internal-report-tick"
+LOCK = "/run/aihr-internal-report-tick.lock"
+CRON_SOURCE = "# AIHR owned internal Employee Master dispatch v1\n* * * * * root " + LAUNCHER + "\n"
+ENV_KEYS = {"AUTH_PROVIDER", "AUTH_PUBLIC_ORIGIN", "DATABASE_URL", "MIGRATION_DATABASE_URL", "NODE_ENV", "TZ", "HOME", "PATH", "LANG"}
+MARKER_KEYS = {"version", "purpose", "state", "installationId", "runnerUser", "runnerGroup", "runnerUid", "runnerGid", "candidateRoot", "sourcePins", "runtimeSha256", "instanceSha256", "cronSha256"}
+
+
+def trusted_parents(path):
+    parent = os.path.dirname(path)
+    while True:
+        item = os.lstat(parent)
+        if not stat.S_ISDIR(item.st_mode) or item.st_uid != 0 or item.st_mode & 0o022:
+            raise ValueError("Untrusted parent")
+        if parent == "/":
+            return
+        parent = os.path.dirname(parent)
+
+
+def trusted_bytes(path, maximum, mode):
+    trusted_parents(path)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode) or before.st_uid != 0 or before.st_nlink != 1 or stat.S_IMODE(before.st_mode) != mode or not 0 < before.st_size <= maximum:
+            raise ValueError("Untrusted file")
+        chunks, count = [], 0
+        while count <= maximum:
+            chunk = os.read(fd, min(65536, maximum + 1 - count))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            count += len(chunk)
+        after = os.fstat(fd)
+        fields = ("st_dev", "st_ino", "st_uid", "st_mode", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns")
+        if count != before.st_size or any(getattr(before, key) != getattr(after, key) for key in fields):
+            raise ValueError("Changed file")
+        return b"".join(chunks)
+    finally:
+        os.close(fd)
+
+
+def parse_environment(raw):
+    if len(raw) > 16384 or b"\0" in raw or b"\r" in raw:
+        raise ValueError("Invalid environment")
+    result = {}
+    for line in raw.decode("utf-8", errors="strict").splitlines():
+        tokens = shlex.split(line, comments=False, posix=True)
+        if len(tokens) != 1 or "=" not in tokens[0]:
+            raise ValueError("Invalid environment line")
+        key, value = tokens[0].split("=", 1)
+        # Canonical shell quoting is parsed as DATA, never sourced/evaluated.
+        quoted = key + "='" + value.replace("'", "'\\''") + "'"
+        if key not in ENV_KEYS or key in result or line != quoted or any(char in value for char in "\0\r\n"):
+            raise ValueError("Unknown environment authority")
+        result[key] = value
+    fixed = {"AUTH_PROVIDER": "internal", "NODE_ENV": "production", "TZ": "UTC", "HOME": "/nonexistent", "PATH": "/usr/local/lib/aihr-identity-email:/usr/bin:/bin", "LANG": "C.UTF-8"}
+    if set(result) != ENV_KEYS or any(result[key] != value for key, value in fixed.items()):
+        raise ValueError("Environment differs")
+    if not all(result[key] for key in ("AUTH_PUBLIC_ORIGIN", "DATABASE_URL", "MIGRATION_DATABASE_URL")):
+        raise ValueError("Missing installed environment")
+    return result
+
+
+def parse_marker(raw):
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("Duplicate marker field")
+            value[key] = item
+        return value
+    value = json.loads(raw, object_pairs_hook=unique)
+    if not isinstance(value, dict) or set(value) != MARKER_KEYS or type(value["version"]) is not int or value["version"] != 1 or value["purpose"] != "aihr-internal-report-dispatch" or value["state"] not in ("paused", "active") or value["candidateRoot"] != ROOT:
+        raise ValueError("Inactive marker")
+    if any(type(value[key]) is not int or not 0 < value[key] <= 2147483647 for key in ("runnerUid", "runnerGid")) or not isinstance(value["runnerUser"], str) or not re.fullmatch(r"[-a-zA-Z0-9_.]{1,64}", value["runnerUser"]):
+        raise ValueError("Invalid runner identity")
+    if not isinstance(value["runnerGroup"], str) or not re.fullmatch(r"[-a-zA-Z0-9_.]{1,64}", value["runnerGroup"]):
+        raise ValueError("Invalid group identity")
+    if not isinstance(value["installationId"], str) or not re.fullmatch(r"[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}", value["installationId"]):
+        raise ValueError("Invalid installation")
+    pins = value["sourcePins"]
+    if not isinstance(pins, dict) or set(pins) != {"lib/employee-master-dispatch.ts", "scripts/provision-runner.ts"}:
+        raise ValueError("Invalid source pins")
+    if any(not isinstance(item, str) or not re.fullmatch(r"[a-f0-9]{64}", item) for item in [*pins.values(), value["runtimeSha256"], value["instanceSha256"], value["cronSha256"]]):
+        raise ValueError("Invalid fingerprint")
+    if value["cronSha256"] != hashlib.sha256(CRON_SOURCE.encode()).hexdigest():
+        raise ValueError("Unknown cron source")
+    return value
+
+
+def main():
+    if sys.platform != "linux" or os.getuid() != 0 or len(sys.argv) != 1 or os.path.realpath(__file__) != LAUNCHER:
+        raise ValueError("Root installed launcher required")
+    trusted_bytes(LAUNCHER, 16384, 0o755)
+    marker = parse_marker(trusted_bytes(MARKER, 4096, 0o644))
+    if marker["state"] == "paused":
+        return
+    named, numeric = pwd.getpwnam(marker["runnerUser"]), pwd.getpwuid(marker["runnerUid"])
+    expected = (marker["runnerUser"], marker["runnerUid"], marker["runnerGid"])
+    if (named.pw_name, named.pw_uid, named.pw_gid) != expected or (numeric.pw_name, numeric.pw_uid, numeric.pw_gid) != expected:
+        raise ValueError("Runner identity changed")
+    group, numeric_group = grp.getgrnam(marker["runnerGroup"]), grp.getgrgid(marker["runnerGid"])
+    if (group.gr_name, group.gr_gid) != (marker["runnerGroup"], marker["runnerGid"]) or (numeric_group.gr_name, numeric_group.gr_gid) != (marker["runnerGroup"], marker["runnerGid"]):
+        raise ValueError("Runner group changed")
+    environment = parse_environment(trusted_bytes(ENVIRONMENT, 16384, 0o600))
+    # Read only trusted executable metadata here. Node verifies bytes/version after UID drop.
+    trusted_parents(RUNTIME)
+    runtime = os.lstat(RUNTIME)
+    if not stat.S_ISREG(runtime.st_mode) or runtime.st_uid != 0 or runtime.st_nlink != 1 or runtime.st_mode & 0o022 or not runtime.st_mode & 0o111:
+        raise ValueError("Untrusted runtime")
+    trusted_parents(LOCK)
+    lock = os.open(LOCK, os.O_RDONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    item = os.fstat(lock)
+    if not stat.S_ISREG(item.st_mode) or item.st_uid != 0 or item.st_nlink != 1 or stat.S_IMODE(item.st_mode) != 0o600:
+        os.close(lock)
+        raise ValueError("Untrusted tick lock")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(lock)
+        return
+    os.set_inheritable(lock, True)
+    os.chdir(ROOT)
+    os.setgroups([])
+    os.setgid(marker["runnerGid"])
+    os.setuid(marker["runnerUid"])
+    # The sole surviving private descriptor is the read-only root lock, not env/config.
+    # It remains open through exec so overlapping ticks cannot dispatch concurrently.
+    os.execve(RUNTIME, [RUNTIME, "--import", "tsx", "scripts/provision-runner.ts", "--installed-internal-reports-only"], environment)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception:
+        print("Installed internal report tick refused.", file=sys.stderr)
+        sys.exit(1)

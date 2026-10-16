@@ -362,6 +362,8 @@ export function validateInstalledInternalReportEnvironment(env:NodeJS.ProcessEnv
 }
 export async function runInstalledInternalReportTick():Promise<void> {
   validateInstalledInternalReportEnvironment(process.env);
+  const {installedReportDispatch}=await import('../lib/employee-master-dispatch');
+  await installedReportDispatch('dedicated');
   const {createDb,client}=await import('../db/client');
   const {sweepEmployeeMasterReports}=await import('../core/employee-master-delivery');
   const owner=createDb(process.env.MIGRATION_DATABASE_URL!,{max:2});
@@ -375,12 +377,19 @@ export async function runInstalledInternalReportTick():Promise<void> {
   }
 }
 
+/** Root marker suppresses ONLY this stage. Existing provisioning/holiday/default runtime stay intact. */
+export async function runProvisionReportStage(owner:ReturnType<typeof createDb>){
+  const {installedReportDispatch}=await import('../lib/employee-master-dispatch');
+  if(await installedReportDispatch('default')==='suppressed')return null;
+  const {sweepEmployeeMasterReports}=await import('../core/employee-master-delivery');
+  return sweepEmployeeMasterReports(owner.db);
+}
+
 async function main() {
   const mode=provisionRunnerMode(process.argv.slice(2));
   if(mode==='installedInternalReportsOnly'){await runInstalledInternalReportTick();return;}
   loadEnv();
   const {createDb,client}=await import('../db/client');
-  const {sweepEmployeeMasterReports}=await import('../core/employee-master-delivery');
   const {sweepReplacementHolidayQueue}=await import('./replacement-holiday-sweep');
   const url = process.env.MIGRATION_DATABASE_URL;
   if (!url) {
@@ -401,10 +410,10 @@ async function main() {
       if(holidays.failed)process.exitCode=1;
     } catch { console.error('Replacement holiday tick failed.'); process.exitCode=1; }
     try {
-      const reports=await sweepEmployeeMasterReports(owner.db);
-      if(reports.attempted)console.log(`· employee master reports: ${reports.attempted} attempted, ${reports.sent} sent, ${reports.failed} failed, ${reports.uncertain} uncertain`);
+      const reports=await runProvisionReportStage(owner);
+      if(reports?.attempted)console.log(`· employee master reports: ${reports.attempted} attempted, ${reports.sent} sent, ${reports.failed} failed, ${reports.uncertain} uncertain`);
       // An uninstalled optional renderer leaves schedules untouched. Transport failures after a claim are failures.
-      if(reports.tenantsFailed)process.exitCode=1;
+      if(reports?.tenantsFailed)process.exitCode=1;
     } catch { console.error('Employee master report tick failed.'); process.exitCode=1; }
   } finally {
     await owner.client.end({ timeout: 5 });

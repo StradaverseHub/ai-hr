@@ -1,0 +1,77 @@
+/** Pure/source scheduling regressions. No cron, process, privileged filesystem or app DB execution. */
+import {describe,it,expect,vi,beforeEach} from 'vitest';
+const filesystem=vi.hoisted(()=>({lstat:vi.fn(),open:vi.fn()}));
+vi.mock('node:fs/promises',async importOriginal=>({...await importOriginal<typeof import('node:fs/promises')>(),lstat:filesystem.lstat,open:filesystem.open}));
+import {readFileSync} from 'node:fs';
+import ts from 'typescript';
+import {execFileSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+import {internalReportRunnerEnvironment} from '../deploy/identity-email/internal-report-install-model';
+import {randomUUID} from 'node:crypto';
+import {internalReportDispatchMarker,validateReportDispatchMarker,dispatchSha256,reportDispatchInstance,supportedInternalReportRuntime,readTrustedDispatchFile,installedReportDispatch,INTERNAL_REPORT_DISPATCH_CRON_SOURCE,INTERNAL_REPORT_DISPATCH_ROOT,INTERNAL_REPORT_DISPATCH_RUNTIME} from '../lib/employee-master-dispatch';
+import {classifyReportProcess,processStartTicks,validateOwnedCron} from '../deploy/identity-email/report-scheduling';
+const pins={'lib/employee-master-dispatch.ts':'a'.repeat(64),'scripts/provision-runner.ts':'b'.repeat(64)};
+const instance=reportDispatchInstance('internal','postgres://ai_hr_app:fixture@127.0.0.1:5432/fictional_report');
+const marker=()=>({version:1 as const,purpose:'aihr-internal-report-dispatch' as const,state:'paused' as const,installationId:randomUUID(),runnerUser:'fictional-runner',runnerGroup:'fictional-runner',runnerUid:1001,runnerGid:1001,candidateRoot:INTERNAL_REPORT_DISPATCH_ROOT,sourcePins:pins,runtimeSha256:'c'.repeat(64),instanceSha256:instance,cronSha256:dispatchSha256(INTERNAL_REPORT_DISPATCH_CRON_SOURCE)});
+const launcherPath=fileURLToPath(new URL('../deploy/identity-email/internal-report-tick',import.meta.url));
+// Import only pure parsing functions; __main__ guards all OS privilege/scheduling work.
+const parseLauncher=(kind:'environment'|'marker',raw:string)=>JSON.parse(execFileSync('python3',['-I','-c',`import importlib.machinery,json,sys
+sys.dont_write_bytecode=True
+m=importlib.machinery.SourceFileLoader('fixture_tick',sys.argv[1]).load_module()
+value=getattr(m,'parse_'+sys.argv[2])(sys.stdin.buffer.read())
+print(json.dumps(value))`,launcherPath,kind],{input:raw,encoding:'utf8',timeout:5000,maxBuffer:16384,stdio:['pipe','pipe','pipe'] }));
+const source=(path:string)=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+beforeEach(()=>{vi.clearAllMocks();filesystem.lstat.mockResolvedValue({isDirectory:()=>true,uid:0,mode:0o755});});
+describe('installed scheduling admission',()=>{
+
+ it('preserves absent-marker default dispatch before parent trust/platform checks, while dedicated fails closed',async()=>{
+  filesystem.lstat.mockRejectedValue(Object.assign(new Error('Missing fixture marker'),{code:'ENOENT'}));expect(await installedReportDispatch('default',{})).toBe('legacy');await expect(installedReportDispatch('dedicated',{})).rejects.toThrow('admission refused');expect(filesystem.open).not.toHaveBeenCalled();
+ });
+ it('reads only stable root-owned single-link regular descriptors, always closing refused files',async()=>{
+  const bytes=Buffer.from('{"fixture":true}'),base={isFile:()=>true,uid:BigInt(0),nlink:BigInt(1),mode:BigInt(0o100644),size:BigInt(bytes.length),dev:BigInt(1),ino:BigInt(2),mtimeNs:BigInt(3),ctimeNs:BigInt(4)};
+  const handle=(patch:object={},changed=false)=>({stat:vi.fn().mockResolvedValueOnce({...base,...patch}).mockResolvedValue({...base,...patch,...(changed?{ctimeNs:BigInt(5)}:{})}),read:vi.fn(async(buffer:Buffer,offset:number,length:number,position:number)=>({bytesRead:bytes.copy(buffer,offset,position,Math.min(bytes.length,position+length))})),close:vi.fn().mockResolvedValue(undefined)});
+  const okay=handle();filesystem.open.mockResolvedValue(okay);expect(await readTrustedDispatchFile('/etc/fixture-marker',4096,0o644)).toEqual(bytes);expect(okay.close).toHaveBeenCalledOnce();
+  for(const patch of [{uid:BigInt(1001)},{nlink:BigInt(2)},{mode:BigInt(0o100664)},{size:BigInt(4097)},{isFile:()=>false}]){const denied=handle(patch);filesystem.open.mockResolvedValue(denied);await expect(readTrustedDispatchFile('/etc/fixture-marker',4096,0o644)).rejects.toThrow('Untrusted');expect(denied.close).toHaveBeenCalledOnce();}
+  const changed=handle({},true);filesystem.open.mockResolvedValue(changed);await expect(readTrustedDispatchFile('/etc/fixture-marker',4096,0o644)).rejects.toThrow('changed');expect(changed.close).toHaveBeenCalledOnce();
+  filesystem.lstat.mockResolvedValue({isDirectory:()=>true,uid:1001,mode:0o755});filesystem.open.mockClear();await expect(readTrustedDispatchFile('/etc/fixture-marker',4096,0o644)).rejects.toThrow('parent');expect(filesystem.open).not.toHaveBeenCalled();
+  filesystem.lstat.mockResolvedValue({isDirectory:()=>true,uid:0,mode:0o775});await expect(readTrustedDispatchFile('/etc/fixture-marker',4096,0o644)).rejects.toThrow('parent');
+  filesystem.lstat.mockResolvedValue({isDirectory:()=>false,uid:0,mode:0o755});await expect(readTrustedDispatchFile('/etc/fixture-marker',4096,0o644)).rejects.toThrow('parent');
+ });
+ it('parses the existing generated env as literal data, including shell metacharacters, without loading app code',()=>{
+  const owner="postgres://fixture-owner:literal'`$value;$(never)@127.0.0.1/fictional_report",raw=internalReportRunnerEnvironment({origin:'https://report-acceptance.invalid',appDatabase:'postgres://ai_hr_app:fixture@127.0.0.1/fictional_report',ownerDatabase:owner});
+  const result=parseLauncher('environment',raw);expect(result.MIGRATION_DATABASE_URL).toBe(owner);expect(Object.keys(result)).toHaveLength(9);expect(result.AUTH_PROVIDER).toBe('internal');
+  for(const invalid of [raw+"AUTH_SESSION_KEY='forbidden'\n",raw+"AUTH_PROVIDER='internal'\n",raw.replace("TZ='UTC'","TZ=$(touch /never)"),raw.replace("HOME='/nonexistent'","HOME='/root'"),raw.replace("LANG='C.UTF-8'",''),'x'.repeat(16385),raw.replace("TZ='UTC'","TZ='UTC' #comment")])expect(()=>parseLauncher('environment',invalid)).toThrow();
+ });
+ it('launcher refuses invented root identities/extra marker authority and retains paused as a no-dispatch state',()=>{
+  expect(parseLauncher('marker',JSON.stringify(marker())).state).toBe('paused');expect(parseLauncher('marker',JSON.stringify({...marker(),state:'active'})).runnerUid).toBe(1001);
+  for(const value of [{...marker(),runnerUid:0},{...marker(),runnerGid:0},{...marker(),runnerUid:true},{...marker(),version:true},{...marker(),target:'/foreign'},{...marker(),sourcePins:{...pins,extra:'a'.repeat(64)}},{...marker(),cronSha256:'0'.repeat(64)}])expect(()=>parseLauncher('marker',JSON.stringify(value))).toThrow();
+  expect(()=>parseLauncher('marker',JSON.stringify(marker()).replace('"version":1','"version":1,"version":1'))).toThrow();
+ });
+ it('root launcher never evaluates a shell or runs web-owned code before UID/GID drop and preserves its lock through exec',()=>{
+  const text=source('deploy/identity-email/internal-report-tick');expect(text.startsWith('#!/usr/bin/python3 -I')).toBe(true);expect(text).toContain('if __name__ == "__main__"');expect(text).toContain('os.O_NOFOLLOW');expect(text).toContain('stat.S_IMODE(before.st_mode) != mode');expect(text).toContain('before.st_nlink != 1');expect(text).toContain('pwd.getpwnam(marker["runnerUser"])');expect(text).toContain('pwd.getpwuid(marker["runnerUid"])');expect(text).toContain('grp.getgrnam(marker["runnerGroup"])');expect(text).toContain('grp.getgrgid(marker["runnerGid"])');expect(text).toContain('os.set_inheritable(lock, True)');expect(text).toContain('fcntl.LOCK_EX | fcntl.LOCK_NB');
+  expect(text.indexOf('os.setgroups([])')).toBeLessThan(text.indexOf('os.setgid('));expect(text.indexOf('os.setgid(')).toBeLessThan(text.indexOf('os.setuid('));expect(text.indexOf('os.setuid(')).toBeLessThan(text.indexOf('os.execve('));expect(text).not.toMatch(/subprocess|os\.system|eval\(|exec\(|\/bin\/sh/);expect(text.match(/os\.execve\(/g)).toHaveLength(1);expect(text).toContain('], environment)');expect(text).not.toContain('os.environ');
+  const manager=source('deploy/identity-email/report-scheduling.ts');expect(manager).toContain('socket.gid!==inventory.legacyGid');expect(manager).toContain("readTrustedDispatchFile(LAUNCHER,16384,0o755)");expect(manager).toContain("const python=await realpath('/usr/bin/python3')");expect(manager).toContain("entries.push(['identity:'+name");expect(manager).toContain("await realpath('/opt/node20/bin/node')!==receipt.node20Path");expect(manager).toContain("boundedProcFile(base+'/cmdline',65536)");
+ });
+
+ it('accepts one exact root-owned marker shape and pinned source/instance/cron course',()=>{const value=marker();expect(validateReportDispatchMarker(value,{sourcePins:pins,instanceSha256:instance})).toEqual(value);expect(validateReportDispatchMarker({...value,state:'active'},{sourcePins:pins,instanceSha256:instance}).state).toBe('active');});
+ it.each([{extra:'unknown'},{skip:true},{candidateRoot:'/other'},{state:'legacy'},{sourcePins:{...pins,arbitrary:'d'.repeat(64)}}])('refuses unknown keys/paths/flags %j',patch=>expect(()=>internalReportDispatchMarker.parse({...marker(),...patch})).toThrow());
+ it('cannot authorize a caller-selected cron merely by supplying its matching hash',()=>{const malicious='* * * * * root arbitrary-command\n';expect(()=>validateReportDispatchMarker({...marker(),cronSha256:dispatchSha256(malicious)},{sourcePins:pins,instanceSha256:instance})).toThrow();expect(()=>validateOwnedCron(Buffer.from(malicious))).toThrow();expect(()=>validateOwnedCron(Buffer.from(INTERNAL_REPORT_DISPATCH_CRON_SOURCE))).not.toThrow();});
+ it('refuses changed source or DB while preserving identity across credentials only',()=>{expect(reportDispatchInstance('internal','postgres://ai_hr_app:changed-password@127.0.0.1:5432/fictional_report')).toBe(instance);for(const expected of [{sourcePins:{...pins,'scripts/provision-runner.ts':'e'.repeat(64)},instanceSha256:instance},{sourcePins:pins,instanceSha256:'f'.repeat(64)}])expect(()=>validateReportDispatchMarker(marker(),expected)).toThrow();expect(()=>reportDispatchInstance('workos','postgres://ai_hr_app:x@127.0.0.1/db')).toThrow();});
+ it('uses the supported separate runtime and never substitutes Node20 for dedicated dispatch',()=>{for(const version of ['v22.13.0','22.23.1','v24.0.0'])expect(supportedInternalReportRuntime(version)).toBe(true);for(const version of ['v20.20.2','v22.12.0','v23.0.0','v25.0.0','invalid'])expect(supportedInternalReportRuntime(version)).toBe(false);});
+ it('recognizes exact default/dedicated processes and refuses every unknown relevant actor/argument/cwd',()=>{
+  const args=['/opt/node20/bin/node','--env-file=.env.production','--import','tsx','scripts/provision-runner.ts'];expect(classifyReportProcess(args,INTERNAL_REPORT_DISPATCH_ROOT,args[0],1001,1001)).toBe('default');expect(classifyReportProcess([INTERNAL_REPORT_DISPATCH_RUNTIME,'--import','tsx','scripts/provision-runner.ts','--installed-internal-reports-only'],INTERNAL_REPORT_DISPATCH_ROOT,INTERNAL_REPORT_DISPATCH_RUNTIME,1001,1001)).toBe('dedicated');
+  for(const input of [{argv:[...args,'--skip-env'],cwd:INTERNAL_REPORT_DISPATCH_ROOT,exe:args[0],uid:1001},{argv:args,cwd:'/foreign',exe:args[0],uid:1001},{argv:args,cwd:INTERNAL_REPORT_DISPATCH_ROOT,exe:args[0],uid:2001}])expect(()=>classifyReportProcess(input.argv,input.cwd,input.exe,input.uid,1001)).toThrow('Unknown report runner');expect(classifyReportProcess(['/bin/sh','-c','/usr/local/lib/aihr-identity-email/internal-report-tick'],'/','/usr/bin/dash',0,1001)).toBe('dedicated');expect(classifyReportProcess(['/usr/bin/python3','-I','/usr/local/lib/aihr-identity-email/internal-report-tick'],'/','/usr/bin/python3.12',0,1001)).toBe('dedicated');expect(classifyReportProcess(args,INTERNAL_REPORT_DISPATCH_ROOT,'/opt/node20-real/bin/node',1001,1001,'/opt/node20-real/bin/node')).toBe('default');expect(classifyReportProcess(['unrelated-job'],INTERNAL_REPORT_DISPATCH_ROOT,'/usr/bin/node',1001,1001)).toBeNull();
+ });
+ it('pins PID lifetime independently of command text, including parentheses in comm',()=>{const fields=['S',...Array.from({length:18},()=> '0'),'12345','0'];expect(processStartTicks('77 (node (worker)) '+fields.join(' '))).toBe('12345');expect(()=>processStartTicks('malformed')).toThrow();});
+ it('publishes paused before process drain/owned cron/active and restores legacy only after bounded drain',()=>{
+  const text=source('deploy/identity-email/report-scheduling.ts'),start=text.indexOf('export async function activateReportScheduling'),end=text.indexOf('export async function rollbackReportScheduling');expect(start).toBeGreaterThan(0);expect(end).toBeGreaterThan(start);const activate=text.slice(start,end);const pause=activate.indexOf('await publishNew(MARKER'),drain=activate.indexOf('await drain('),cron=activate.indexOf('await publishNew(CRON'),active=activate.indexOf("state:'active'");expect(pause).toBeGreaterThan(0);expect(drain).toBeGreaterThan(pause);expect(cron).toBeGreaterThan(drain);expect(active).toBeGreaterThan(cron);
+  const rollback=text.slice(end);expect(rollback.indexOf('await replaceOwned(MARKER')).toBeLessThan(rollback.indexOf('await drain('));expect(rollback.indexOf('await drain(')).toBeLessThan(rollback.indexOf('await removeOwned(MARKER'));expect(text).toContain('INTERNAL_REPORT_DRAIN_MS=15*60*1000');expect(text).not.toContain('process.kill(');expect(text).not.toContain('killpg');
+ });
+ it('never writes/removes any user crontab or Node20 and uses exact own cron source',()=>{
+  const text=source('deploy/identity-email/report-scheduling.ts'),tree=ts.createSourceFile('schedule.ts',text,ts.ScriptTarget.Latest,true),calls:ts.CallExpression[]=[];const walk=(node:ts.Node)=>{if(ts.isCallExpression(node)&&node.expression.getText(tree)==='schedulerCommand'&&node.arguments[0]?.getText(tree)==="'crontab'")calls.push(node);ts.forEachChild(node,walk);};walk(tree);expect(calls).toHaveLength(1);expect(calls[0].arguments[1].getText(tree)).toBe("['-u',name,'-l']");expect(text).toContain('await publishNew(CRON,Buffer.from(CRON_SOURCE)');expect(text).not.toContain("writeFile('/opt/node20");expect(text).not.toContain("rename('/opt/node20");expect(text).toContain('Reviewed scheduler inventory changed.');expect(text).toContain('refusing clobber');
+ });
+ it('marker parent/descriptor trust and active dedicated admission precede app imports',()=>{
+  const leaf=source('lib/employee-master-dispatch.ts');expect(leaf).toContain('stat.uid!==0');expect(leaf).toContain('(stat.mode&0o022)!==0');expect(leaf).toContain('before.nlink!==BigInt(1)');expect(leaf).toContain('constants.O_NOFOLLOW');expect(leaf).toContain('before.mode&BigInt(0o777)');expect(leaf).toContain("mode==='default')return 'legacy'");
+  const runner=source('scripts/provision-runner.ts'),start=runner.indexOf('export async function runInstalledInternalReportTick'),end=runner.indexOf('export async function runProvisionReportStage');expect(start).toBeGreaterThan(0);expect(end).toBeGreaterThan(start);const body=runner.slice(start,end);expect(body.indexOf("await installedReportDispatch('dedicated')")).toBeLessThan(body.indexOf("await import('../db/client')"));
+ });
+});
