@@ -1,6 +1,6 @@
 /** Existing provision runner calls this bounded owner-only orchestration; canonical rendering stays in
  * the separately installed app-role child. No owner database handle crosses the rendering boundary. */
-import {and,asc,inArray,sql} from 'drizzle-orm';
+import {and,asc,eq,inArray,lte,sql} from 'drizzle-orm';
 import type {createDb} from '../db/client';
 import {customReportSchedule} from '../db/schema';
 import {nextMasterScheduleAt} from '../lib/employee-master-schedule';
@@ -17,7 +17,7 @@ export async function sweepEmployeeMasterReports(owner:ReturnType<typeof createD
  // Do not consume occurrences while the reviewed root service/renderer is not installed and ready.
  if(!ready)return {queued:0,attempted:0,sent:0,failed:0,skipped:0,uncertain:0,unavailable:true,cappedOut:false,tenantsFailed:0};
  const startedAt=Date.now(),scope=await loadSweepScope(owner),failedTenants=new Set<string>();
- const now=new Date(),due=scope.run.length===0?[]:await owner.select({id:customReportSchedule.id,tenantId:customReportSchedule.tenantId,config:customReportSchedule.config,scheduled:customReportSchedule.nextRunAt}).from(customReportSchedule).where(and(inArray(customReportSchedule.tenantId,scope.run.map(tenant=>tenant.id)),sql`${customReportSchedule.enabled}=true and ${customReportSchedule.nextRunAt}<=${now}`)).orderBy(asc(customReportSchedule.nextRunAt),asc(customReportSchedule.id)).limit(limit);
+ const now=new Date(),due=scope.run.length===0?[]:await owner.select({id:customReportSchedule.id,tenantId:customReportSchedule.tenantId,config:customReportSchedule.config,scheduled:customReportSchedule.nextRunAt}).from(customReportSchedule).where(and(inArray(customReportSchedule.tenantId,scope.run.map(tenant=>tenant.id)),eq(customReportSchedule.enabled,true),lte(customReportSchedule.nextRunAt,now))).orderBy(asc(customReportSchedule.nextRunAt),asc(customReportSchedule.id)).limit(limit);
  let queued=0;
  for(const schedule of due){
   if(!schedule.scheduled)continue;
