@@ -19,7 +19,7 @@ vi.mock('next-intl/server',()=>({getLocale:async()=> 'en',getTranslations:async(
 vi.mock('../components/ui',async()=>{
  const {createElement}=await import('react');
  const box=({children}:{children?:React.ReactNode})=>createElement('div',null,children);
- return {PageHeader:()=>null,Card:box,SectionHeader:()=>null,ErrorBanner:({message}:{message?:string})=>message?createElement('p',{role:'alert'},message):null,Field:box,inputCls:'test'};
+ return {PageHeader:()=>null,Card:box,SectionHeader:()=>null,ErrorBanner:({message}:{message?:string})=>message?createElement('p',{role:'alert'},message):null,Field:box,inputCls:'test',btnPrimary:'test'};
 });
 import PreferencesPage from '../app/me/notifications/page';
 const userId='user-current',employmentId='own-employment';
