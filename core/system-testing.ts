@@ -484,7 +484,7 @@ export function composeFeedbackDescription(c: TestCaseDetail, run: TestRunRow): 
  */
 export async function raiseRunAsFeedback(
   ctx: SessionContext,
-  p: { runId: string; reporterEmploymentId: string },
+  p: { runId: string; reporterEmploymentId?: string | null },
 ): Promise<{ feedbackId: string }> {
   assertTestingAccess(ctx);
 

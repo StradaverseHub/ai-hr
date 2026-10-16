@@ -44,7 +44,7 @@ export function previewTestingUpdates(p: { catalogue: ReviewedCatalogue; identit
   for (const mapping of mappings) {
     if (mappedCases.has(mapping.caseId) || mappedSemantic.has(mapping.semanticId)) throw new Error('A legacy mapping must be one-to-one.');
     const row = p.library.find(r => r.caseId === mapping.caseId);
-    if (!row || row.origin !== 'legacy' || row.semanticId !== null || row.versionId !== mapping.expectedVersionId || row.versionHash !== mapping.expectedVersionHash || !catalogue.entries.some(e => e.semanticId === mapping.semanticId)) throw new Error('Legacy mapping no longer matches the reviewed record.');
+    if (!row || !['legacy','local'].includes(row.origin) || row.semanticId !== null || row.versionId !== mapping.expectedVersionId || row.versionHash !== mapping.expectedVersionHash || !catalogue.entries.some(e => e.semanticId === mapping.semanticId)) throw new Error('Legacy mapping no longer matches the reviewed record.');
     mappedCases.add(mapping.caseId); mappedSemantic.add(mapping.semanticId);
   }
   const library = [...p.library].sort((a, b) => a.caseId < b.caseId ? -1 : a.caseId > b.caseId ? 1 : 0);
@@ -55,10 +55,10 @@ export function previewTestingUpdates(p: { catalogue: ReviewedCatalogue; identit
     const matches = library.filter(r => r.semanticId === e.semanticId || mapping?.caseId === r.caseId);
     const match = matches.length === 1 ? matches[0] : null;
     // Same-module legacy cases require explicit mapping or a distinct-case decision. Titles never establish identity.
-    const possibleLegacyCaseIds = library.filter(r => r.origin === 'legacy' && r.semanticId === null && !mappedCases.has(r.caseId) && r.definition?.moduleCode === e.definition.moduleCode).map(r => r.caseId);
+    const afterHash = testingDigest(e.definition);
+    const possibleLegacyCaseIds = library.filter(r => r.semanticId === null && !mappedCases.has(r.caseId) && (r.origin === 'legacy' && r.definition?.moduleCode === e.definition.moduleCode || r.origin === 'local' && r.versionHash === afterHash)).map(r => r.caseId);
     const sourceRecords = p.sourceHashRecord.filter(r => e.sources.includes(r.path));
     const guideSourceHash = sourceRecords.length === e.sources.length ? sourceContentDigest(sourceRecords) : null;
-    const afterHash = testingDigest(e.definition);
     let action: TestingUpdateEntry['action'], reason: TestingUpdateEntry['reason'];
     if (!verified) { action = 'review_required'; reason = 'unverified_build'; }
     else if (guideSourceHash !== e.reviewedSourceHash) { action = 'review_required'; reason = 'unreviewed_source_change'; }

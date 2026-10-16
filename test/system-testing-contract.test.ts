@@ -16,6 +16,10 @@ describe('immutable testing instruction and personal execution contracts', () =>
     expect(() => parseInstruction({ ...guide, automaticallyPass: true })).toThrow();
     expect(() => parseInstruction({ ...guide, steps: [guide.steps[0], guide.steps[0]] })).toThrow();
   });
+  it('refuses an instruction whose encoded size exceeds the supported form bound', () => {
+    const large={...guide,steps:Array.from({length:40},(_,i)=>({id:`step${i}`,action:'x'.repeat(8000),expected:'y'.repeat(8000)}))};
+    expect(()=>parseInstruction(large)).toThrow('limit');
+  });
   it('preserves an honest current upgrade baseline without fabricating earlier step expectations', () => {
     const baseline = { format: 0, history: 'upgrade_baseline', title: 'Old guide', moduleCode: 'employees', precondition: null, steps: ['Old action'], testType: 'functional', priority: 'medium', expectedBehavior: null, expectedFunction: null };
     expect(parsePublishedInstruction(baseline)).toEqual(baseline);
@@ -79,6 +83,13 @@ describe('explicit catalogue conflict decisions', () => {
     expect(() => selectedTestingUpdateId(compared,[catalogue.entries[0].semanticId])).toThrow();
     expect(selectedTestingUpdateId(compared,[catalogue.entries[0].semanticId],[catalogue.entries[0].semanticId])).toMatch(/^[a-f0-9]{64}$/);
     expect(preview([{ ...row,draftDefinition: { ...draft,title: 'Different pending draft' } }]).previewHash).not.toBe(compared.previewHash);
+  });
+  it('flags an exact unmapped local definition as a possible duplicate without silently borrowing its identity', () => {
+    const row: LibraryCaseSnapshot = { caseId:id,caseNo:17,versionId:version,versionHash:testingDigest(guide),semanticId:null,origin:'local',acceptedCatalogueDefinitionHash:null,acceptedGuideSourceHash:null,title:guide.title,hasLocalDraft:false,draftRevision:0,draftDefinition:null,definition:guide };
+    expect(preview([row]).entries[0]).toMatchObject({action:'review_required',reason:'unmapped_legacy',caseId:null,possibleLegacyCaseIds:[id]});
+    const mapped=previewTestingUpdates({catalogue,identity:identity(),sourceHashRecord,library:[row],enabledModuleCodes:['employees'],legacyMappings:[{semanticId:catalogue.entries[0].semanticId,caseId:id,expectedVersionId:version,expectedVersionHash:row.versionHash!}]});
+    expect(mapped.entries[0]).toMatchObject({action:'conflict',reason:'local_override',caseId:id});
+    expect(()=>selectedTestingUpdateId(mapped,[catalogue.entries[0].semanticId])).toThrow();
   });
   it('never deduplicates legacy identity by title, and binds explicit one-to-one mapping or distinct-case decisions', () => {
     const row: LibraryCaseSnapshot = { caseId: id,caseNo: 17,versionId: version,versionHash: testingDigest(guide),semanticId: null,origin: 'legacy',acceptedCatalogueDefinitionHash: null,acceptedGuideSourceHash: null,title: 'Different title for the same module',hasLocalDraft: false,draftRevision: 0,draftDefinition: null,definition: guide };

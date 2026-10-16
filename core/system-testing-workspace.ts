@@ -2,7 +2,7 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { appUser, testAssignment, testCase, testCaseVersion, testExecution, testExecutionAttachment, testRun } from '../db/schema';
+import { appUser, feedbackRequest, testAssignment, testCase, testCaseVersion, testExecution, testExecutionAttachment, testRun } from '../db/schema';
 import { isAdmin } from '../lib/authz';
 import { SCREENS } from '../lib/permissions';
 import { executionInputSchema, legacyOutcomeFor, parseInstruction, parseInstructionDraft, parsePublishedInstruction, TestingRefusal, TESTING_LIMITS, testingUuid, testingHash, testingSourceRef, testingSemanticId, type ExecutionInput, type ExecutionStatus, type InstructionDefinition } from '../lib/system-testing/model';
@@ -69,7 +69,7 @@ async function event(tx: Tx, ctx: SessionContext, caseId: string, type: string, 
 export async function publishTestInstructionTx(tx: Tx, ctx: SessionContext, p: {
   caseId: string; expectedVersionId: string | null; expectedDraftRevision: number; definition: InstructionDefinition;
   provenance: { kind: 'local' } | { kind: 'catalogue'; semanticId: string; sourceRef: string; catalogueHash: string; sourceContentHash: string; guideSourceHash: string };
-}): Promise<{ caseId: string; versionId: string; ordinal: number }> {
+}): Promise<{ caseId: string; versionId: string; ordinal: number; draftRevision: number }> {
   const actor = administrator(ctx), definition = parseInstruction(p.definition);
   if (!isTestableModule(ctx, definition.moduleCode) || definition.screenKeys.some(key => !SCREENS.some(screen => screen.screenKey === key))) throw new TestingRefusal('invalid');
   if (p.provenance.kind === 'catalogue') { testingSemanticId.parse(p.provenance.semanticId); testingSourceRef.parse(p.provenance.sourceRef); testingHash.parse(p.provenance.catalogueHash); testingHash.parse(p.provenance.sourceContentHash); testingHash.parse(p.provenance.guideSourceHash); }
@@ -82,9 +82,9 @@ export async function publishTestInstructionTx(tx: Tx, ctx: SessionContext, p: {
   await tx.update(testCase).set({ currentVersionId: v.id, origin: p.provenance.kind, title: definition.title, moduleCode: definition.moduleCode, precondition: definition.prerequisites.join('\n'), steps: definition.steps.map(s => s.action), testType: definition.category, priority: definition.priority, expectedBehavior: definition.expectedBehavior, expectedFunction: definition.expectedFunction, draftDefinition: null, draftRevision: c.draftRevision + 1, updatedByUserId: actor, updatedAt: new Date(), ...(p.provenance.kind === 'catalogue' ? { semanticId: p.provenance.semanticId, acceptedCatalogueDefinitionHash: contentHash } : {}) }).where(eq(testCase.id, c.id));
   // The case trigger moves assignment targets/retest markers atomically; old observations are unchanged.
   await event(tx, ctx, c.id, 'test_case.version_published', { versionId: v.id, ordinal, contentHash, provenance: p.provenance.kind });
-  return { caseId: c.id, versionId: v.id, ordinal };
+  return { caseId: c.id, versionId: v.id, ordinal, draftRevision: c.draftRevision + 1 };
 }
-export async function publishTestInstruction(ctx: SessionContext, p: { caseId: string; expectedDraftRevision: number; expectedVersionId: string | null }): Promise<{ caseId: string; versionId: string; ordinal: number }> {
+export async function publishTestInstruction(ctx: SessionContext, p: { caseId: string; expectedDraftRevision: number; expectedVersionId: string | null }): Promise<{ caseId: string; versionId: string; ordinal: number; draftRevision: number }> {
   administrator(ctx); testingUuid.parse(p.caseId);
   return withTenant(ctx, async tx => {
     await libraryLock(tx, ctx);
@@ -134,6 +134,8 @@ export async function saveTestingExecution(ctx: SessionContext, raw: ExecutionIn
     if (!e) throw new TestingRefusal('not_found');
     if (e.versionId !== p.versionId || a.targetVersionId !== p.versionId) throw new TestingRefusal('stale_instructions');
     if (e.revision !== p.expectedRevision) throw new TestingRefusal('stale_execution');
+    const [later]=await tx.select({id:testExecution.id}).from(testExecution).where(and(eq(testExecution.assignmentId,a.id),eq(testExecution.versionId,e.versionId),sql`${testExecution.attemptNo}>${e.attemptNo}`)).limit(1);
+    if(later)throw new TestingRefusal('stale_execution');
     // Shares the existing case run-number owner lock; the immutable run remains the one observation log.
     const [n] = await tx.execute(sql`select app.testing_next_run_no(${a.testCaseId}::uuid) AS next`) as unknown as { next: number }[];
     const [run] = await tx.insert(testRun).values({ tenantId: ctx.tenantId, testCaseId: a.testCaseId, runNo: Number(n.next), outcome: legacyOutcomeFor(p.status), actualResult: p.actualResult.trim() || null, runByUserId: actor, versionId: p.versionId, executionId: e.id, executionRevision: e.revision + 1, executionStatus: p.status, comments: p.comments.trim() || null, defectNotes: p.defectNotes.trim() || null, improvementNotes: p.improvementNotes.trim() || null }).returning({ id: testRun.id });
@@ -141,41 +143,54 @@ export async function saveTestingExecution(ctx: SessionContext, raw: ExecutionIn
     return { runId: run.id, revision: e.revision + 1 };
   });
 }
-export type TestingAssignmentRow = { assignmentId: string; caseId: string; caseNo: number; title: string; moduleCode: string; versionId: string; ordinal: number; testerUserId: string; assignmentRevision: number; active: boolean; executionId: string | null; executionRevision: number | null; status: ExecutionStatus; definition: ReturnType<typeof parsePublishedInstruction> };
-export async function listTestingAssignments(ctx: SessionContext, p: { team?: boolean; testerUserId?: string; moduleCode?: string; status?: ExecutionStatus; page?: number } = {}): Promise<{ rows: TestingAssignmentRow[]; total: number; page: number }> {
+type AssignmentReadFilter = { moduleCode?: string; functionKey?: string; category?: string; priority?: string };
+function assignmentRowsSql(ctx: SessionContext,p: AssignmentReadFilter,tester: string|null) {
+  return sql`WITH rows AS (SELECT a.id AS assignment_id,c.id AS case_id,c.case_no,v.definition->>'title' AS title,v.definition->>'moduleCode' AS module_code,v.id AS version_id,v.ordinal,v.definition,v.definition->>'functionKey' AS function_key,coalesce(v.definition->>'category',v.definition->>'testType') AS category,v.definition->>'priority' AS priority,a.tester_user_id,p.full_name AS tester_name,a.revision AS assignment_revision,a.active,e.id AS execution_id,e.revision AS execution_revision,
+      CASE WHEN a.retest_required AND (r.run_no IS NULL OR r.run_no<=a.retest_after_run_no) THEN 'retest_required' ELSE coalesce(r.execution_status,'not_started') END AS status,CASE WHEN a.retest_required AND (r.run_no IS NULL OR r.run_no<=a.retest_after_run_no) THEN a.updated_at ELSE coalesce(r.run_at,e.created_at,a.created_at) END AS updated_at
+      FROM test_assignment a JOIN test_case c ON c.id=a.test_case_id AND c.tenant_id=a.tenant_id JOIN test_case_version v ON v.id=a.target_version_id AND v.tenant_id=a.tenant_id
+      LEFT JOIN public.app_user u ON u.id=a.tester_user_id AND u.tenant_id=a.tenant_id LEFT JOIN public.person p ON p.id=u.person_id AND p.tenant_id=a.tenant_id
+      LEFT JOIN LATERAL(SELECT x.* FROM test_execution x WHERE x.assignment_id=a.id AND x.version_id=a.target_version_id ORDER BY x.attempt_no DESC LIMIT 1)e ON true
+      LEFT JOIN test_run r ON r.id=e.current_run_id AND r.execution_id=e.id
+      WHERE a.tenant_id=${ctx.tenantId} AND (${tester}::uuid IS NULL OR a.tester_user_id=${tester}::uuid) AND (${p.moduleCode ?? null}::text IS NULL OR v.definition->>'moduleCode'=${p.moduleCode ?? null}::text) AND (${p.functionKey??null}::text IS NULL OR v.definition->>'functionKey'=${p.functionKey??null}::text) AND (${p.category??null}::text IS NULL OR coalesce(v.definition->>'category',v.definition->>'testType')=${p.category??null}::text) AND (${p.priority??null}::text IS NULL OR v.definition->>'priority'=${p.priority??null}::text))`;
+}
+export type TestingAssignmentRow = { assignmentId: string; caseId: string; caseNo: number; title: string; moduleCode: string; versionId: string; ordinal: number; testerUserId: string; testerName: string | null; updatedAt: Date; functionKey: string | null; category: string | null; priority: string | null; assignmentRevision: number; active: boolean; executionId: string | null; executionRevision: number | null; status: ExecutionStatus; definition: ReturnType<typeof parsePublishedInstruction> };
+export async function listTestingAssignments(ctx: SessionContext, p: { team?: boolean; testerUserId?: string; moduleCode?: string; functionKey?: string; category?: string; priority?: string; status?: ExecutionStatus; page?: number } = {}): Promise<{ rows: TestingAssignmentRow[]; total: number; page: number; summary: {status:ExecutionStatus;n:number}[] }> {
   const actor = participant(ctx);
   if (p.team) administrator(ctx);
   if (!p.team && p.testerUserId && p.testerUserId !== actor) throw new TestingRefusal('not_assigned');
   const page = p.page ?? 1;
-  if (!Number.isInteger(page) || page < 1 || page > 20000) throw new TestingRefusal('invalid');
+  if (!Number.isInteger(page) || page < 1 || page > 20000 || (p.functionKey?.length??0)>160 || (p.category?.length??0)>100 || (p.priority?.length??0)>100) throw new TestingRefusal('invalid');
   const tester = p.team ? p.testerUserId ?? null : actor;
   if (tester) testingUuid.parse(tester);
   return withTenant(ctx, async tx => {
-    const base = sql`WITH rows AS (SELECT a.id AS assignment_id,c.id AS case_id,c.case_no,v.definition->>'title' AS title,v.definition->>'moduleCode' AS module_code,v.id AS version_id,v.ordinal,v.definition,a.tester_user_id,a.revision AS assignment_revision,a.active,e.id AS execution_id,e.revision AS execution_revision,
-      CASE WHEN a.retest_required AND (r.run_no IS NULL OR r.run_no<=a.retest_after_run_no) THEN 'retest_required' ELSE coalesce(r.execution_status,'not_started') END AS status
-      FROM test_assignment a JOIN test_case c ON c.id=a.test_case_id AND c.tenant_id=a.tenant_id JOIN test_case_version v ON v.id=a.target_version_id AND v.tenant_id=a.tenant_id
-      LEFT JOIN LATERAL(SELECT x.* FROM test_execution x WHERE x.assignment_id=a.id AND x.version_id=a.target_version_id ORDER BY x.attempt_no DESC LIMIT 1)e ON true
-      LEFT JOIN test_run r ON r.id=e.current_run_id AND r.execution_id=e.id
-      WHERE a.tenant_id=${ctx.tenantId} AND (${tester}::uuid IS NULL OR a.tester_user_id=${tester}::uuid) AND (${p.moduleCode ?? null}::text IS NULL OR v.definition->>'moduleCode'=${p.moduleCode ?? null}::text))`;
+    const base = assignmentRowsSql(ctx,p,tester);
     const filter = sql`WHERE (${p.status ?? null}::text IS NULL OR status=${p.status ?? null}::text)`;
+    const summary = await tx.execute(sql`${base} SELECT status,count(*)::integer AS n FROM rows GROUP BY status ORDER BY status`) as unknown as { status: ExecutionStatus; n: number }[];
     const counted = await tx.execute(sql`${base} SELECT count(*)::integer AS total FROM rows ${filter}`) as unknown as { total: number }[];
-    const found = await tx.execute(sql`${base} SELECT * FROM rows ${filter} ORDER BY case_no,tester_user_id,assignment_id LIMIT ${TESTING_LIMITS.pageSize} OFFSET ${(page - 1) * TESTING_LIMITS.pageSize}`) as unknown as { assignment_id: string; case_id: string; case_no: number; title: string; module_code: string; version_id: string; ordinal: number; definition: unknown; tester_user_id: string; assignment_revision: number; active: boolean; execution_id: string | null; execution_revision: number | null; status: ExecutionStatus }[];
-    return { total: Number(counted[0].total), page, rows: found.map(r => ({ assignmentId: r.assignment_id, caseId: r.case_id, caseNo: r.case_no, title: r.title, moduleCode: r.module_code, versionId: r.version_id, ordinal: r.ordinal, definition: parsePublishedInstruction(r.definition), testerUserId: r.tester_user_id, assignmentRevision: r.assignment_revision, active: r.active, executionId: r.execution_id, executionRevision: r.execution_revision, status: r.status })) };
+    const found = await tx.execute(sql`${base} SELECT * FROM rows ${filter} ORDER BY case_no,tester_user_id,assignment_id LIMIT ${TESTING_LIMITS.pageSize} OFFSET ${(page - 1) * TESTING_LIMITS.pageSize}`) as unknown as { assignment_id: string; case_id: string; case_no: number; title: string; module_code: string; version_id: string; ordinal: number; definition: unknown; tester_user_id: string; tester_name: string | null; updated_at: Date|string; function_key: string|null; category: string|null; priority: string|null; assignment_revision: number; active: boolean; execution_id: string | null; execution_revision: number | null; status: ExecutionStatus }[];
+    return { total: Number(counted[0].total), page, summary, rows: found.map(r => ({ assignmentId: r.assignment_id, caseId: r.case_id, caseNo: r.case_no, title: r.title, moduleCode: r.module_code, versionId: r.version_id, ordinal: r.ordinal, definition: parsePublishedInstruction(r.definition), testerUserId: r.tester_user_id, testerName: r.tester_name, updatedAt: new Date(r.updated_at), functionKey: r.function_key, category: r.category, priority: r.priority, assignmentRevision: r.assignment_revision, active: r.active, executionId: r.execution_id, executionRevision: r.execution_revision, status: r.status })) };
   }, { readOnlySnapshot: true });
 }
-export async function getTestingExecution(ctx: SessionContext, executionId: string, options: { team?: boolean } = {}) {
+export async function getTestingExecution(ctx: SessionContext, executionId: string, options: { team?: boolean; beforeRevision?: number } = {}) {
   const actor = participant(ctx); testingUuid.parse(executionId);
   if (options.team) administrator(ctx);
+  if(options.beforeRevision!==undefined&&(!Number.isInteger(options.beforeRevision)||options.beforeRevision<1))throw new TestingRefusal('invalid');
   return withTenant(ctx, async tx => {
     const [e] = await tx.select().from(testExecution).where(and(eq(testExecution.id, executionId), options.team ? undefined : eq(testExecution.testerUserId, actor)));
     if (!e) throw new TestingRefusal('not_found');
     const [a] = await tx.select().from(testAssignment).where(eq(testAssignment.id, e.assignmentId));
     const [v] = await tx.select().from(testCaseVersion).where(eq(testCaseVersion.id, e.versionId));
     if (!a || !v) throw new TestingRefusal('not_found');
-    const history = await tx.select().from(testRun).where(eq(testRun.executionId, e.id)).orderBy(desc(testRun.executionRevision)).limit(201);
+    const history = await tx.select().from(testRun).where(and(eq(testRun.executionId, e.id),options.beforeRevision===undefined?undefined:sql`${testRun.executionRevision}<${options.beforeRevision}`)).orderBy(desc(testRun.executionRevision)).limit(201);
     const screenshots = await tx.select({ id: testExecutionAttachment.id, fileName: testExecutionAttachment.fileName, mimeType: testExecutionAttachment.mimeType, runId: testExecutionAttachment.runId }).from(testExecutionAttachment).where(eq(testExecutionAttachment.executionId, e.id)).orderBy(testExecutionAttachment.createdAt, testExecutionAttachment.id);
+    const feedbackRows=await tx.select({id:feedbackRequest.id,status:feedbackRequest.status}).from(feedbackRequest).where(sql`${feedbackRequest.id} IN (${e.defectFeedbackId}::uuid,${e.improvementFeedbackId}::uuid)`);
+    const feedbackStates={defect:feedbackRows.find(f=>f.id===e.defectFeedbackId)?.status??null,improvement:feedbackRows.find(f=>f.id===e.improvementFeedbackId)?.status??null};
+    const [currentObservation]=e.currentRunId?await tx.select().from(testRun).where(and(eq(testRun.id,e.currentRunId),eq(testRun.executionId,e.id))):[];
+    if(e.revision>0&&!currentObservation)throw new TestingRefusal('not_found');
+    const [assignmentState]=await tx.execute(sql`${assignmentRowsSql(ctx,{},e.testerUserId)} SELECT status,execution_id FROM rows WHERE assignment_id=${a.id}::uuid`) as unknown as {status:ExecutionStatus;execution_id:string|null}[];
+    if(!assignmentState)throw new TestingRefusal('not_found');
     const definition = parsePublishedInstruction(v.definition);
-    return { execution: e, assignment: a, version: { ...v, definition }, history: history.slice(0, 200), historyTruncated: history.length > 200, screenshots, canSave: e.testerUserId === actor && a.active && a.targetVersionId === e.versionId && (definition.format === 0 || definition.active) };
+    return { currentObservation:currentObservation??null,assignmentState,nextHistoryBeforeRevision:history.length>200?Math.min(...history.slice(0,200).map(r=>r.executionRevision??0)):null,feedbackStates,execution: e, assignment: a, version: { ...v, definition }, history: history.slice(0, 200), historyTruncated: history.length > 200, screenshots, canSave: e.testerUserId === actor && assignmentState.execution_id===e.id && a.active && a.targetVersionId === e.versionId && (definition.format === 0 || definition.active) };
   }, { readOnlySnapshot: true });
 }
 export async function raiseTestingExecutionFeedback(ctx: SessionContext, p: { executionId: string; expectedRevision: number; kind: 'defect' | 'improvement' }): Promise<{ feedbackId: string }> {

@@ -158,6 +158,7 @@ BEGIN
  IF c.id IS NULL OR a.id IS NULL OR e.id IS NULL OR e.tester_user_id IS DISTINCT FROM app.current_user_id() OR NEW.run_by_user_id IS DISTINCT FROM e.tester_user_id OR a.tester_user_id IS DISTINCT FROM e.tester_user_id OR a.test_case_id IS DISTINCT FROM c.id OR NOT a.active OR NEW.version_id IS DISTINCT FROM e.version_id OR a.target_version_id IS DISTINCT FROM e.version_id OR c.current_version_id IS DISTINCT FROM e.version_id OR NEW.execution_revision IS DISTINCT FROM e.revision+1 THEN
   RAISE EXCEPTION 'Testing execution or instructions changed; reload before saving' USING ERRCODE='40001';
  END IF;
+ IF EXISTS(SELECT 1 FROM public.test_execution newer WHERE newer.tenant_id=e.tenant_id AND newer.assignment_id=e.assignment_id AND newer.version_id=e.version_id AND newer.attempt_no>e.attempt_no) THEN RAISE EXCEPTION 'Testing attempt changed; reload before saving' USING ERRCODE='40001'; END IF;
  expected_outcome := CASE NEW.execution_status WHEN 'passed' THEN 'pass' WHEN 'failed' THEN 'fail' WHEN 'blocked' THEN 'blocked' WHEN 'partial' THEN 'partial' ELSE 'not_tested' END;
  IF NEW.run_no IS DISTINCT FROM app.testing_next_run_no(NEW.test_case_id) THEN RAISE EXCEPTION 'Testing run ordinal must be the next case observation' USING ERRCODE='23514'; END IF;
  IF EXISTS(SELECT 1 FROM public.test_case_version v WHERE v.id=e.version_id AND v.definition->>'format'='1' AND v.definition->>'active'='false') THEN RAISE EXCEPTION 'Testing instructions are inactive' USING ERRCODE='23514'; END IF;

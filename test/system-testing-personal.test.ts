@@ -111,6 +111,16 @@ describe('personal System Testing isolation and immutable instructions', () => {
     const next = await beginTestingExecution(one, { assignmentId: f.a.assignmentId, expectedVersionId: v2.versionId, newAttempt: false });
     expect(next.executionId).not.toBe(f.execution.executionId); expect(next.revision).toBe(0);
   });
+  it('refuses an older attempt after a new one starts, while preserving its pass and bounded historical pages', async () => {
+    const f=await setup();const oldSave=await saveTestingExecution(one,observation(f));
+    const next=await beginTestingExecution(one,{assignmentId:f.a.assignmentId,expectedVersionId:f.version.versionId,newAttempt:true});
+    await expect(saveTestingExecution(one,{...observation(f),expectedRevision:1})).rejects.toMatchObject({code:'stale_execution'});
+    try { await withTenant(one,tx=>tx.insert(s.testRun).values({tenantId:b.tenantId,testCaseId:f.draft.caseId,runNo:2,outcome:'pass',runByUserId:one.userId,versionId:f.version.versionId,executionId:f.execution.executionId,executionRevision:2,executionStatus:'passed'}));throw new Error('Old-attempt raw observation unexpectedly succeeded.'); } catch(error) {expect(pgSqlState(error)).toBe('40001');}
+    const old=await getTestingExecution(one,f.execution.executionId,{beforeRevision:1});expect(old.history).toEqual([]);expect(old.currentObservation?.id).toBe(oldSave.runId);expect(old.canSave).toBe(false);expect(old.assignmentState).toMatchObject({execution_id:next.executionId,status:'not_started'});
+    await saveTestingExecution(one,{...observation(f),executionId:next.executionId});
+    expect((await listTestingAssignments(one)).rows[0].status).toBe('passed');
+    expect((await getTestingExecution(one,f.execution.executionId)).history).toHaveLength(1);
+  });
   it('requests retest after a real linked defect is fixed without treating an earlier same-version pass as a new observation', async () => {
     const f = await setup(); await saveTestingExecution(one,observation(f,'failed'));
     const linked = await raiseTestingExecutionFeedback(one,{ executionId: f.execution.executionId,expectedRevision: 1,kind: 'defect' });
@@ -136,6 +146,8 @@ describe('personal System Testing isolation and immutable instructions', () => {
     const f = await setup();
     expect((await listTestingLibrary(admin,{ search: 'save/reopen',moduleCode: 'employees',area: 'personnel',category: 'functional',priority: 'high',active: 'active',versionOrdinal: 1 })).rows.map(r => r.id)).toEqual([f.draft.caseId]);
     expect((await listTestingLibrary(admin,{ area: 'leave' })).total).toBe(0);
+    const filtered=await listTestingAssignments(admin,{team:true,testerUserId:one.userId!,functionKey:guide.functionKey,category:guide.category,priority:guide.priority});expect(filtered.total).toBe(1);expect(filtered.summary).toEqual([{status:'not_started',n:1}]);expect(filtered.rows[0].updatedAt).toBeInstanceOf(Date);
+    expect((await listTestingAssignments(admin,{team:true,functionKey:'different.function'})).total).toBe(0);
     expect((await getTestingLibraryCase(admin,f.draft.caseId)).versions.map(v => v.id)).toEqual([f.version.versionId]);
     expect((await listTestingTesterOptions(admin)).rows.map(r => r.userId)).toContain(one.userId);
     for (const call of [() => listTestingLibrary(one),() => getTestingLibraryCase(one,f.draft.caseId),() => listTestingTesterOptions(one)]) await expect(call()).rejects.toMatchObject({ code: 'not_assigned' });

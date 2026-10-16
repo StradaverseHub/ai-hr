@@ -39,7 +39,8 @@ export async function getTestingLibraryCase(ctx: SessionContext,caseId: string) 
     if (!row) throw new TestingRefusal('not_found');
     const versions = await tx.select({ id: testCaseVersion.id,ordinal: testCaseVersion.ordinal,contentHash: testCaseVersion.contentHash,provenance: testCaseVersion.provenance,publishedAt: testCaseVersion.publishedAt,publishedByUserId: testCaseVersion.publishedByUserId }).from(testCaseVersion).where(eq(testCaseVersion.testCaseId,caseId)).orderBy(desc(testCaseVersion.ordinal)).limit(201);
     const assignments = await tx.select().from(testAssignment).where(eq(testAssignment.testCaseId,caseId)).orderBy(testAssignment.testerUserId,testAssignment.id).limit(501);
-    return { testCase: row.c,definition: row.v ? parsePublishedInstruction(row.v.definition) : null,draft: row.c.draftDefinition ? parseInstructionDraft(row.c.draftDefinition) : null,versions: versions.slice(0,200),versionsTruncated: versions.length>200,assignments: assignments.slice(0,500),assignmentsTruncated: assignments.length>500 };
+    const legacyHistory=await tx.select({ id:testRun.id,runNo:testRun.runNo,outcome:testRun.outcome,actualResult:testRun.actualResult,runAt:testRun.runAt,feedbackId:testRun.feedbackRequestId }).from(testRun).where(and(eq(testRun.testCaseId,caseId),sql`${testRun.executionId} IS NULL`)).orderBy(desc(testRun.runNo)).limit(201);
+    return { legacyHistory:legacyHistory.slice(0,200),legacyHistoryTruncated:legacyHistory.length>200,testCase: row.c,definition: row.v ? parsePublishedInstruction(row.v.definition) : null,draft: row.c.draftDefinition ? parseInstructionDraft(row.c.draftDefinition) : null,versions: versions.slice(0,200),versionsTruncated: versions.length>200,assignments: assignments.slice(0,500),assignmentsTruncated: assignments.length>500 };
   },{ readOnlySnapshot: true });
 }
 /** Existing app-user and Person RLS still decides which human names are available; no salary/contact

@@ -6,7 +6,7 @@ export const TESTING_CATEGORIES = ['functional', 'validation', 'workflow', 'perm
 export const TESTING_PRIORITIES = ['high', 'medium', 'low'] as const;
 export const EXECUTION_STATUSES = ['not_started', 'in_progress', 'passed', 'failed', 'blocked', 'retest_required', 'not_applicable', 'partial'] as const;
 export type ExecutionStatus = (typeof EXECUTION_STATUSES)[number];
-export const TESTING_LIMITS = { steps: 40, prerequisites: 24, testData: 24, sources: 32, cases: 1000, text: 8000, screenshotBytes: 10 * 1024 * 1024, screenshotsPerExecution: 10, previewSelections: 200, pageSize: 50 } as const;
+export const TESTING_LIMITS = { steps: 40, prerequisites: 24, testData: 24, sources: 32, cases: 1000, text: 8000, screenshotBytes: 10 * 1024 * 1024, screenshotsPerExecution: 10, previewSelections: 200, pageSize: 50, instructionBytes: 512 * 1024 } as const;
 const text = z.string().trim().min(1).max(TESTING_LIMITS.text);
 const short = z.string().trim().min(1).max(240);
 export const testingSemanticId = z.string().regex(/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/).max(160);
@@ -43,7 +43,7 @@ export const instructionDraftSchema = instructionDefinitionSchema.safeExtend({
   expectedBehavior: z.string().max(TESTING_LIMITS.text), expectedFunction: z.string().max(TESTING_LIMITS.text),
   permissions: z.array(z.string().max(240)).max(16), screenKeys: z.array(z.string().regex(/^[A-Za-z][A-Za-z0-9]*$/).max(100)).max(24),
 });
-export function parseInstructionDraft(raw: unknown): InstructionDefinition { return instructionDraftSchema.parse(raw); }
+export function parseInstructionDraft(raw: unknown): InstructionDefinition { const parsed=instructionDraftSchema.parse(raw); assertInstructionBytes(parsed); return parsed; }
 
 /** Upgrade records what exists now; it does not assert what an earlier run was shown. */
 export const legacyInstructionSchema = z.strictObject({
@@ -55,7 +55,8 @@ export const legacyInstructionSchema = z.strictObject({
   expectedFunction: z.string().max(TESTING_LIMITS.text).nullable(),
 });
 export type PublishedInstruction = InstructionDefinition | z.infer<typeof legacyInstructionSchema>;
-export function parseInstruction(raw: unknown): InstructionDefinition { return instructionDefinitionSchema.parse(raw); }
+function assertInstructionBytes(value: InstructionDefinition) { if(new TextEncoder().encode(JSON.stringify(value)).byteLength>TESTING_LIMITS.instructionBytes)throw new TestingRefusal('limit'); }
+export function parseInstruction(raw: unknown): InstructionDefinition { const parsed=instructionDefinitionSchema.parse(raw); assertInstructionBytes(parsed); return parsed; }
 export function parsePublishedInstruction(raw: unknown): PublishedInstruction {
   return z.union([instructionDefinitionSchema, legacyInstructionSchema]).parse(raw);
 }

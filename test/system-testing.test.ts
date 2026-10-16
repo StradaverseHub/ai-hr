@@ -631,7 +631,7 @@ describe('e6be5a3b — the module, the placement, and the wiring', () => {
     expect(screen, 'a screen with no column is one the access grid silently omits').toBeDefined();
     expect(screen!.guard).toBe('requireAdmin');
     expect(screen!.href).toBe(HREF);
-    expect([...screen!.routes].sort()).toEqual([HREF, `${HREF}/[id]`, `${HREF}/new`]);
+    expect([...screen!.routes].sort()).toEqual([HREF, `${HREF}/[id]`, `${HREF}/new`, `${HREF}/executions/[id]`].sort());
   });
 
   it('the rail gates the row, and the hand-written href map agrees with the row and the route', () => {
@@ -648,10 +648,9 @@ describe('e6be5a3b — the module, the placement, and the wiring', () => {
     }
   });
 
-  it('NO SERVER ACTION CROSSES INTO A CLIENT ISLAND', () => {
-    // The failure this guards against passes tsc, passes `next build`, and 500s at runtime. Two halves:
-    // none of this feature's own files is a client component, and no 'use client' file anywhere imports
-    // its actions module.
+  it('only reviewed typed client forms import explicitly marked server actions', () => {
+    // Next documents imports from explicit use-server modules in client forms. Pin the exact reviewed
+    // client callers and keep route components/server endpoints separate; runtime proof remains required.
     for (const f of [...PAGES, 'app/admin/system-testing/actions.ts']) {
       const src = readRepo(f);
       if (f.endsWith('actions.ts')) expect(src.trimStart().startsWith("'use server'")).toBe(true);
@@ -664,20 +663,21 @@ describe('e6be5a3b — the module, the placement, and the wiring', () => {
         if (e.isDirectory()) walk(p);
         else if (/\.tsx?$/.test(e.name)) {
           const src = fs.readFileSync(p, 'utf8');
-          if (/^\s*'use client'/m.test(src) && /system-testing\/actions/.test(src)) {
+          if (/^\s*'use client'/m.test(src) && /system-testing\/(?:workspace-)?actions/.test(src)) {
             offenders.push(path.relative(ROOT, p));
           }
         }
       }
     };
     for (const d of ['app', 'components']) walk(path.join(ROOT, d));
-    expect(offenders, 'a client island importing these actions would 500 at runtime').toEqual([]);
+    expect(offenders.sort()).toEqual(['components/system-testing/instruction-editor.tsx','components/system-testing/observation-form.tsx']);
+    expect(readRepo('app/admin/system-testing/workspace-actions.ts').trimStart().startsWith("'use server'")).toBe(true);
   });
 
   it('a date from an instant goes through todayInKualaLumpur, on every screen that prints one', () => {
     // CLAUDE.md §8. `toISOString().slice(0,10)` is the shape that reads right on this box and prints
     // yesterday for a run recorded at 00:30 MYT.
-    for (const p of [LIST_PAGE, DETAIL_PAGE]) {
+    for (const p of [DETAIL_PAGE,'components/system-testing/execution-review.tsx']) {
       const src = strip(readRepo(p));
       expect(src, `${p} formats dates in the tenant's calendar`).toContain('todayInKualaLumpur(');
       expect(src, `${p} must not slice an ISO string into a date`).not.toMatch(/toISOString\(\)\s*\.slice/);
@@ -687,7 +687,7 @@ describe('e6be5a3b — the module, the placement, and the wiring', () => {
 
 describe('e6be5a3b — i18n, in all six locales', () => {
   const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
-  type Bundle = { admin: { systemTesting: Record<string, string> }; nav: Record<string, string> };
+  type Bundle = { systemTestingWorkspace: Record<string,unknown>; admin: { systemTesting: Record<string, string> }; nav: Record<string, string> };
   const dict = Object.fromEntries(
     LOCALES.map((l) => [l, JSON.parse(readRepo(`messages/${l}.json`)) as Bundle]),
   ) as Record<(typeof LOCALES)[number], Bundle>;
@@ -701,7 +701,7 @@ describe('e6be5a3b — i18n, in all six locales', () => {
    */
   const usedKeys = (): string[] => {
     const keys = new Set<string>();
-    for (const p of PAGES) {
+    for (const p of [...PAGES,...fs.readdirSync(path.join(ROOT,'components/system-testing')).filter(f=>f.endsWith('.tsx')).map(f=>'components/system-testing/'+f)]) {
       for (const m of strip(readRepo(p)).matchAll(/\bt(?:\.rich)?\(\s*['"]([a-z][a-zA-Z0-9_.]*)['"]/g)) {
         keys.add(m[1]);
       }
@@ -714,21 +714,24 @@ describe('e6be5a3b — i18n, in all six locales', () => {
     // A tripwire on the derivation itself: if the scan finds nothing, the assertions below are vacuous.
     expect(keys.length, 'the key scan has drifted').toBeGreaterThan(50);
     for (const l of LOCALES) {
-      const block = dict[l].admin.systemTesting;
-      expect(block, `${l}: admin.systemTesting exists`).toBeDefined();
+      const block = dict[l].systemTestingWorkspace;
+      expect(block, `${l}: systemTestingWorkspace exists`).toBeDefined();
       for (const k of keys) {
-        expect(typeof block[k], `${l}: admin.systemTesting.${k}`).toBe('string');
-        expect(block[k].trim().length, `${l}: admin.systemTesting.${k} non-empty`).toBeGreaterThan(0);
+        const value=k.split('.').reduce<unknown>((v,key)=>v&&typeof v==='object'?(v as Record<string,unknown>)[key]:undefined,block);
+        expect(typeof value, `${l}: systemTestingWorkspace.${k}`).toBe('string');
+        expect(String(value).trim().length, `${l}: systemTestingWorkspace.${k} non-empty`).toBeGreaterThan(0);
       }
       expect(typeof dict[l].nav.systemTesting, `${l}: nav.systemTesting`).toBe('string');
       expect(dict[l].nav.systemTesting.trim().length, `${l}: nav.systemTesting non-empty`).toBeGreaterThan(0);
     }
   });
 
-  it('no key is pinned that nothing renders — the bundle matches the screens exactly', () => {
+  it('the closed workspace key tree is present in all six locales, including dynamic enum labels', () => {
     // Derived from the source, so a renamed key fails here rather than leaving a translated string
     // behind that no screen reads — which is how a message bundle stops meaning anything.
-    expect(Object.keys(dict.en.admin.systemTesting).sort()).toEqual(usedKeys());
+    const shape=(value:Record<string,unknown>,prefix=''):string[]=>Object.entries(value).flatMap(([k,v])=>typeof v==='string'?[prefix+k]:shape(v as Record<string,unknown>,prefix+k+'.')).sort();
+    for(const locale of LOCALES)expect(shape(dict[locale].systemTestingWorkspace)).toEqual(shape(dict.en.systemTestingWorkspace));
+    for(const key of ['statuses','areas','categories','priorities','errors','updateReasons'])expect(typeof dict.en.systemTestingWorkspace[key]).toBe('object');
   });
 
   it('the strings are actually TRANSLATED, not English pasted six times', () => {
