@@ -32,9 +32,9 @@ describe('39c7 configured cycle labels on the actual Individual Transaction read
  const cycle=(name:string,runType:'regular'|'off_cycle'='regular',companyId=base.companyId)=>upsertPayrollCycle(ctx,{companyId,name,runType});
  it('projects the exact selected Monthly cycle after real generation without changing the prior-month date or paid amount',async()=>{
   const monthly=await cycle('Monthly');const batch=await createBatch(ctx,{companyId:base.companyId,payPeriod:'2026-10',payrollCycleId:monthly.id});
-  const txn=await createIndividualTxn(ctx,{batchId:batch.batchId,employmentId,kind:'earning',componentId,txnDate:'2026-09-02',amount:100,intendedCycleId:monthly.id});
+  const created=await createIndividualTxnsBulk(ctx,{companyId:base.companyId,payPeriod:'2026-10',employmentIds:[employmentId],intendedCycleId:monthly.id,rows:[{kind:'earning',componentId,txnDate:'2026-09-02',amount:100}]});expect(created.ids).toHaveLength(1);const txnId=created.ids[0];
   await generatePayslips(ctx,{batchId:batch.batchId});
-  const read=await rows();expect(read).toHaveLength(1);expect(read[0]).toMatchObject({id:txn.id,txnDate:'2026-09-02',payPeriod:'2026-10',batchStatus:'processed',runType:'regular',batchCycleId:monthly.id,batchCycleName:'Monthly',intendedCycleId:monthly.id,intendedCycleName:'Monthly'});
+  const read=await rows();expect(read).toHaveLength(1);expect(read[0]).toMatchObject({id:txnId,txnDate:'2026-09-02',payPeriod:'2026-10',batchStatus:'processed',runType:'regular',batchCycleId:monthly.id,batchCycleName:'Monthly',intendedCycleId:monthly.id,intendedCycleName:'Monthly'});
   const slips=await owner.db.select({gross:s.payslip.grossPay}).from(s.payslip).where(eq(s.payslip.batchId,batch.batchId));expect(slips).toHaveLength(1);expect(Number(slips[0].gross)).toBe(5100);
  });
  it('keeps two distinct off-cycle names on unattached rows even when a selected cycle is later archived',async()=>{
