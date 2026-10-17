@@ -159,7 +159,7 @@ else:raise RuntimeError('non-sender reached Auth socket')
     # Unknown/caller-authority fields are refused before any private material is returned.
     as_user('aihr-identity-email',"""import socket
 s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);s.settimeout(45);s.connect(%r)
-s.sendall(b'{"phase":"status","subject":"caller-authority"}');s.shutdown(socket.SHUT_WR)
+s.sendall(b'{"phase":"status","subject":"caller-authority"}\\n');s.shutdown(socket.SHUT_WR)
 try:b=s.recv(4096)
 except ConnectionResetError:b=b''
 assert b==b''
