@@ -9,15 +9,23 @@ const prepared: PreparedTestingBuild = { format: 1, identity: { sourceRef: 'a'.r
 afterEach(() => vi.unstubAllEnvs());
 function inject() { for (const [key, value] of Object.entries(systemTestingCompileEnvironment(prepared))) vi.stubEnv(key, value); }
 describe('compile-bound System Testing identity contract (not a Next artifact proof)', () => {
-  it('configures exactly the five direct nonsecret substitutions with empty review-required defaults', () => {
+  it('routes every Next phase through the validating boundary and keeps five direct substitutions with explicit empty defaults', () => {
     const config = readFileSync(new URL('../next.config.ts', import.meta.url), 'utf8');
-    const start = config.indexOf('  env: {');
-    expect(start, 'explicit Next compile env block exists').toBeGreaterThanOrEqual(0);
-    const end = config.indexOf('\n  },', start);
-    expect(end, 'compile env block terminates after its declaration').toBeGreaterThan(start);
-    const block = config.slice(start, end);
-    expect(block.trim().length).toBeGreaterThan(20);
-    for (const key of Object.keys(systemTestingCompileEnvironment(prepared))) expect(block).toContain(`${key}: process.env.${key} ?? ''`);
+    expect(config).toContain('export default (phase: string) => withNextIntl({');
+    expect(config).toContain('env: systemTestingNextCompileEnvironment({ phase, worktree: process.cwd() })');
+    expect(config).not.toMatch(/AIHR_SYSTEM_TESTING_[A-Z_]+: process\.env/);
+    const manifest = readFileSync(new URL('../scripts/improve/system-testing-manifest.ts', import.meta.url), 'utf8');
+    const start = manifest.indexOf('export function emptySystemTestingCompileEnvironment()');
+    expect(start, 'empty compile owner exists').toBeGreaterThanOrEqual(0);
+    const end = manifest.indexOf('\n}', start);
+    expect(end, 'empty compile owner terminates').toBeGreaterThan(start);
+    const block = manifest.slice(start, end);
+    expect(block.length).toBeGreaterThan(100);
+    const identity = readFileSync(new URL('../lib/system-testing/build-identity.ts', import.meta.url), 'utf8');
+    for (const key of Object.keys(systemTestingCompileEnvironment(prepared))) {
+      expect(block).toContain(`${key}: ''`);
+      expect(identity).toContain(`process.env.${key}`);
+    }
     expect(block.match(/AIHR_SYSTEM_TESTING_[A-Z_]+:/g)).toHaveLength(5);
     expect(block).not.toContain('...process.env'); expect(block).not.toContain('DATABASE_URL');
   });

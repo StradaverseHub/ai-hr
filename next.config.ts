@@ -1,18 +1,10 @@
 import type { NextConfig } from 'next';
 import createNextIntlPlugin from 'next-intl/plugin';
+import { systemTestingNextCompileEnvironment } from './scripts/improve/system-testing-next-config';
 
 const withNextIntl = createNextIntlPlugin('./i18n/request.ts');
 
 const nextConfig: NextConfig = {
-  // Nonsecret code provenance only. Next embeds each direct expression into the built artifact.
-  // Empty values deliberately leave the Testing catalogue in review-required state.
-  env: {
-    AIHR_SYSTEM_TESTING_SOURCE_REF: process.env.AIHR_SYSTEM_TESTING_SOURCE_REF ?? '',
-    AIHR_SYSTEM_TESTING_BUILD_RECORD_ID: process.env.AIHR_SYSTEM_TESTING_BUILD_RECORD_ID ?? '',
-    AIHR_SYSTEM_TESTING_CATALOGUE_HASH: process.env.AIHR_SYSTEM_TESTING_CATALOGUE_HASH ?? '',
-    AIHR_SYSTEM_TESTING_CONTENT_HASH: process.env.AIHR_SYSTEM_TESTING_CONTENT_HASH ?? '',
-    AIHR_SYSTEM_TESTING_SOURCE_HASH_RECORD: process.env.AIHR_SYSTEM_TESTING_SOURCE_HASH_RECORD ?? '',
-  },
   // The release checks the complete repository first. Next checks all application code
   // again, without loading development-only test/CLI programs into the small server build.
   typescript: { tsconfigPath: process.env.NODE_ENV === 'production' ? 'tsconfig.build.json' : 'tsconfig.json' },
@@ -89,4 +81,9 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default withNextIntl(nextConfig);
+export default (phase: string) => withNextIntl({
+  ...nextConfig,
+  // Both canonical pnpm build and direct Next builds pass this validating boundary.
+  // No selector means five explicit empty substitutions, despite inherited or dotenv values.
+  env: systemTestingNextCompileEnvironment({ phase, worktree: process.cwd() }),
+});

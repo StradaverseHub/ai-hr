@@ -8,7 +8,7 @@ import { testingSourceRef, testingUuid } from '../../lib/system-testing/model';
 import {
   SYSTEM_TESTING_BUILD_RECORD_BYTES, assertTestingBuildNotObserved, ensurePrivateReleaseDirectory,
   parsePreparedTestingBuild, publishSuccessfulTestingBuild, publishSystemTestingBuild, readPublishedTestingBuild,
-  systemTestingBuildDirectory, systemTestingCompileEnvironment, testingNextBuildId, verifyInstalledTestingBuild,
+  systemTestingBuildDirectory, systemTestingBuildContextEnvironment, testingNextBuildId, verifyInstalledTestingBuild,
 } from './system-testing-manifest';
 
 export async function readTestingBuildInput(stream: AsyncIterable<Uint8Array>): Promise<Buffer> {
@@ -42,7 +42,7 @@ export function runTestingProductionBuild(p: {
   verifyInstalledTestingBuild(selected.record, p.worktree);
   assertTestingBuildNotObserved(selected.buildDirectory);
   const previous = buildFingerprint(p.worktree), startedAt = new Date().toISOString();
-  const environment = { ...process.env, ...systemTestingCompileEnvironment(selected.record) };
+  const environment = { ...process.env, ...systemTestingBuildContextEnvironment(selected.record, 'official') };
   const result = p.build ? p.build(environment) : spawnSync('pnpm', ['build'], { cwd: p.worktree, env: environment, stdio: 'inherit' });
   if (result.error || result.status !== 0 || result.signal) throw new TestingProductionBuildError(result.status && result.status > 0 ? result.status : 1, 'Production build failed; no System Testing successful-build observation was published.');
   if (buildFingerprint(p.worktree) === previous) throw new Error('Production build did not write a fresh Next build ID; no successful-build observation.');
