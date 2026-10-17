@@ -26,6 +26,8 @@ export type BreakDisplayRow = {
   end: string;
   minutes: number;
   paid: boolean;
+  /** Configured unpaid per-row allowance, separate from the nominal window's own duration. */
+  flexibleMinutes?: number;
 };
 
 export type BreakDisplay = {
@@ -73,6 +75,8 @@ export function formatBreakDisplay(
       minutes: breakRowMinutes(bp.start, bp.end),
       // Absent means UNPAID — the whole reason the flag is optional (db/schema.ts BreakPeriod).
       paid: bp.paid === true,
+      ...(bp.paid !== true && bp.flexible === true && bp.flexibleMinutes != null
+        ? {flexibleMinutes:bp.flexibleMinutes} : {}),
     }));
     const text = rows.map((r) => `${r.seq}. ${r.start}–${r.end} (${r.minutes}m)`).join(', ');
     // r277 (439565ff) — a row with its OWN flexible allowance contributes that allowance here, because

@@ -211,6 +211,8 @@
     "flexibleBreakHint": "With this on, the allowed minutes come off every worked day whether or not the employee took the break inside the times above — those times stay as guidance. It changes how hours are counted for this shift, so it is off until you turn it on.",
     "breakDeductionSummary": "{deducted} comes off a full day, leaving {net} of normal working time.",
     "breakDeductionSemiHint": "On a Semi Flexi shift the normal working time is the figure set above, not the window, so no total is worked out here.",
+    "breakDeductionFullFlexiSummary": "Complete {required} of qualifying work. Unpaid break settings total {deducted}; applicable break deductions reduce recorded work, not this required duration.",
+    "breakDeductionFullFlexiPending": "Set the required normal working hours above. Applicable unpaid breaks reduce recorded work, not the required duration.",
     "moreSettingsSummary": "More settings",
     "moreSettingsHint": "Description, category, day type, earliest clock-in, latest clock-out, 2nd half-day clock-in, full-day leave, full-day overtime, normal-hours rounding, the overtime schedule and the shift premium — all still saved, all still editable.",
     "allCompanies": "All companies",

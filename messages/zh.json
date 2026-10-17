@@ -211,6 +211,8 @@
     "flexibleBreakHint": "开启后，无论员工是否在上述时间段内休息，允许的分钟数都会从每个工作日中扣除，上面的休息时段仅作为参考。这会改变本班次的工时计算方式，因此默认关闭，需要时才开启。",
     "breakDeductionSummary": "整日将扣除 {deducted}，正常工作时间为 {net}。",
     "breakDeductionSemiHint": "半弹性班次的正常工作时间取自上面填写的数值，而非时间窗口，因此这里不做合计。",
+    "breakDeductionFullFlexiSummary": "须完成 {required} 的合资格工作时间。无薪休息设置合计 {deducted}；适用的休息扣除会减少已记录的工作时间，不会减少此规定时长。",
+    "breakDeductionFullFlexiPending": "请在上方设置规定的正常工作时长。适用的无薪休息会减少已记录的工作时间，不会减少规定时长。",
     "moreSettingsSummary": "更多设置",
     "moreSettingsHint": "描述、类别、日期类型、最早上班时间、最晚下班时间、第二段半日上班时间、全日请假、全日加班、正常时数取整、加班时段表和班次津贴 — 全部仍会保存，仍可编辑。",
     "allCompanies": "所有公司",

@@ -592,7 +592,11 @@ export function ShiftTimeFields({
             )}
 
             <p className="mt-3 text-xs text-muted-foreground">
-              {semiFlexi ? t('breakDeductionSemiHint') : t('breakDeductionSummary', { deducted: hm(breakSum), net: hm(net) })}
+              {fullFlexi
+                ? totalMinutes != null && totalMinutes > 0
+                  ? t('breakDeductionFullFlexiSummary', {required:hm(totalMinutes), deducted:hm(breakSum)})
+                  : t('breakDeductionFullFlexiPending')
+                : semiFlexi ? t('breakDeductionSemiHint') : t('breakDeductionSummary', { deducted: hm(breakSum), net: hm(net) })}
             </p>
             <p className="text-xs text-muted-foreground">{t('breakRowNeedsFixingNote')}</p>
           </>
