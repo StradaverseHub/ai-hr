@@ -260,8 +260,12 @@ describe('r279 §5: Employee Balances renders both columns, and its export canno
     expect(page).toContain('const num = (v: number | null) => formatDays(v)');
   });
 
-  it('the empty-state colSpan spans every header (16 since Available Balance was added)', () => {
-    const thead = page.slice(page.indexOf('<thead'), page.indexOf('</thead>'));
+  it('the empty-state colSpan spans all 20 headers, including the four All-employee identity columns', () => {
+    const from = page.indexOf('<thead');
+    const to = page.indexOf('</thead>', from);
+    expect(from, 'balance table header starts').toBeGreaterThan(-1);
+    expect(to, 'balance table header ends').toBeGreaterThan(from);
+    const thead = page.slice(from, to);
     const headers = thead.match(/<th\b/g) ?? [];
     // 39136455 (r306) took this table from 13 columns to 15: Share and Pending Share landed between
     // Adjustment and Balance. The CLAIM this test makes is unchanged and is the line below — the empty
@@ -270,8 +274,17 @@ describe('r279 §5: Employee Balances renders both columns, and its export canno
     // r355 (4c63b37e) NOTICED IT, WHICH IS WHAT THE SENTENCE ABOVE ASKS FOR: Available Balance landed
     // immediately after Balance and made it 16. The figure was already on the row — this is the column, not
     // a new calculation — so nothing else in this file moved.
-    expect(headers.length).toBe(16);
+    // 23e87eef adds Employee ID, Name, Company and Department for the approved All employees view.
+    // They are identities carried by each canonical balance row, not four new calculated figures.
+    for (const label of ["t('filters.employeeId')", "t('colEmployee')", "t('filters.company')", "t('filters.department')"]) expect(thead).toContain(label);
+    expect(headers.length).toBe(20);
     expect(page).toContain(`colSpan={${headers.length}}`);
+    const rowFrom = page.indexOf('{rows.map((r) => (', to);
+    const rowTo = page.indexOf('</tbody>', rowFrom);
+    expect(rowFrom, 'balance rows start after their headers').toBeGreaterThan(to);
+    expect(rowTo, 'balance rows end').toBeGreaterThan(rowFrom);
+    const cells = page.slice(rowFrom, rowTo).match(/<td\b/g) ?? [];
+    expect(cells).toHaveLength(headers.length);
   });
 
   /**

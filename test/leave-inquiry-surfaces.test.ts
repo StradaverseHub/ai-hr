@@ -26,6 +26,17 @@ const leavePage = read('app/leave/page.tsx');
 const balancesPage = read('app/leave/employee-balances/page.tsx');
 const recordsPage = read('app/leave/employee-records/page.tsx');
 const panel = read('components/filter-panel.tsx');
+/** Keep the empty state aligned with every literal or sortable header; reject missing slice anchors. */
+const assertInquiryColumns = (page: string, expected: number) => {
+  const from = page.indexOf('<thead');
+  const to = page.indexOf('</thead>', from);
+  expect(from, 'inquiry header exists').toBeGreaterThan(-1);
+  expect(to, 'inquiry header closes').toBeGreaterThan(from);
+  const header = page.slice(from, to);
+  const columns = (header.match(/<th\b|\{sortableTh\(/g) ?? []).length;
+  expect(columns).toBe(expected);
+  expect(page).toContain(`colSpan={${columns}}`);
+};
 // 388e53c2 — Employee Details moved to the Team Leave Tracker route. The listing is the same code; only
 // the file holding it and its forms' base path changed, so the assertions below moved with it rather than
 // being dropped. Sliced to the ADMIN branch, because that page also renders the leave calendar.
@@ -187,7 +198,7 @@ describe('20c699f8: Employee Balances', () => {
     expect(rowsHelper).toContain('essView: {}');
   });
 
-  it('renders all eleven requested columns, plus the twelfth r242 added and the thirteenth r279 added', () => {
+  it('retains every balance figure and adds the four approved All-employee identity columns', () => {
     // UPDATED BY r242 AND AGAIN BY r279 (AGENTS rule 18), not rewritten. The eleven the reporter asked for in
     // 20c699f8 are still asserted one by one and none of them moved; what changed is that a TWELFTH column
     // was added on the reporter's approved plan — the Explanation column whose button opens the read-only
@@ -197,6 +208,11 @@ describe('20c699f8: Employee Balances', () => {
     // empty-state colSpan is the one figure that HAD to move with them, because a colSpan that no longer
     // spans the header is a visibly broken empty row.
     for (const col of [
+      // 23e87eef: combined rows identify their employee and company without changing any figure owner.
+      "t('filters.employeeId')",
+      "t('colEmployee')",
+      "t('filters.company')",
+      "t('filters.department')",
       "tInq('colLeaveCode')",
       "tInq('colEntitlementYear')",
       // r279 — the full-year allowance, immediately before the earned-to-date figure it explains.
@@ -208,6 +224,9 @@ describe('20c699f8: Employee Balances', () => {
       "tInq('colBroughtForward')",
       "tMe('leaveBalanceTable.colTaken')",
       "tInq('colPendingApproval')",
+      "tMe('leaveBalanceTable.colAdjustment')",
+      "tMe('leaveBalanceTable.colShare')",
+      "tMe('leaveBalanceTable.colPendingShare')",
       "tMe('leaveBalanceTable.colAdjustment')",
       "tMe('leaveBalanceTable.colOverutilized')",
       "tInq('colForfeitedBf')",
@@ -223,7 +242,7 @@ describe('20c699f8: Employee Balances', () => {
     ]) {
       expect(balancesPage.includes(col), col).toBe(true);
     }
-    expect(balancesPage).toContain('colSpan={16}');
+    assertInquiryColumns(balancesPage, 20);
   });
 
   /**
@@ -340,12 +359,20 @@ describe('20c699f8: Employee Balances', () => {
 });
 
 describe('953be4b0: Employee Leave Record', () => {
-  it('reads the existing projection narrowed to (employment, leave type)', () => {
+  it('reads the canonical transaction projection within the authorized All/single scope and leave-type filter', () => {
+    expect(recordsPage).toContain('await leaveInquiryContext(session, scopeIds, query)');
     expect(recordsPage).toContain('leaveInquiryRecordsPage(session, inquiry, query)');
     const owner = read('core/leave-inquiry.ts');
-    expect(owner).toContain('listLeaveRequestsPage(ctx, {');
-    expect(owner).toContain('employmentIds: scope.selected ? [scope.selected.employmentId] : undefined');
-    expect(owner).toContain('leaveTypeIds: query.typeIds');
+    const from = owner.indexOf('export async function leaveInquiryRecordsPageTx(');
+    const to = owner.indexOf('function checkWindow(', from);
+    expect(from, 'canonical records projection exists').toBeGreaterThan(-1);
+    expect(to, 'canonical records projection closes').toBeGreaterThan(from);
+    const projection = owner.slice(from, to);
+    expect(projection).toContain('scope = authorizedScope(ctx, scope, query)');
+    expect(projection).toContain('if (!scope.companyIds.length) return { rows: [], total: 0 }');
+    expect(projection).toContain('listLeaveRequestsPageTx(tx, ctx, {');
+    expect(projection).toContain('companyIds: scope.companyIds, employmentIds: scope.selected ? [scope.selected.employmentId] : undefined');
+    expect(projection).toContain('leaveTypeIds: query.typeIds');
   });
 
   it('defaults to newest request first', () => {
@@ -353,10 +380,12 @@ describe('953be4b0: Employee Leave Record', () => {
     expect(read('lib/leave-inquiry-query.ts')).toContain("kind === 'records' ? 'desc' : 'asc'");
   });
 
-  it('renders all ten originally requested columns, plus the three fe3eb141 added', () => {
+  it('retains all thirteen record columns and adds Company and Department for All employees', () => {
     for (const col of [
       "t('filters.employeeId')",
       "t('colEmployee')",
+      "t('filters.company')",
+      "t('filters.department')",
       "t('filters.dateFrom')",
       "t('filters.dateTo')",
       "t('colDays')",
@@ -373,7 +402,7 @@ describe('953be4b0: Employee Leave Record', () => {
     ]) {
       expect(recordsPage.includes(col), col).toBe(true);
     }
-    expect(recordsPage).toContain('colSpan={13}');
+    assertInquiryColumns(recordsPage, 15);
   });
 
   it('reuses the existing per-request attachment route and its authorization', () => {

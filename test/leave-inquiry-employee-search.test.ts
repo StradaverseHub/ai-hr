@@ -118,8 +118,15 @@ describe('9949f91a: both Leave Inquiry tabs pick an employee in the SHARED PANEL
   it('23e87eef: BOTH exports use the same explicit All/single authorization and complete filtered query', () => {
     for (const rel of ['app/leave/employee-balances/export/route.ts', 'app/leave/employee-records/export/route.ts']) {
       const src = code(read(rel));
-      expect(src).toContain('await leaveInquiryContext(session, scopeIds, query)');
+      // 934ec5a8c deliberately moved authorization AND every chunk into one read-only snapshot.
+      // Pin the stronger contract, including the Tx handed into each canonical row reader.
+      expect(src).toContain("if (!isAdmin(session)) return new Response('Forbidden', { status: 403 })");
+      expect(src).toContain('await leaveInquirySnapshot(session, scopeIds, query, async (tx, inquiry) => ({');
+      expect(src).toContain('selected: inquiry.selected');
       expect(src).toContain('collectInquiryExport(');
+      expect(src).toContain(rel.includes('employee-balances')
+        ? 'inquiryBalancePage(session, inquiry, query, locale, window, tx)'
+        : 'leaveInquiryRecordsPageTx(tx, session, inquiry, query, window)');
       expect(src).not.toContain('pickInquiryEmployee(');
     }
     for (const rel of REL) {
@@ -127,15 +134,36 @@ describe('9949f91a: both Leave Inquiry tabs pick an employee in the SHARED PANEL
       expect(src).toContain('allowAll'); expect(src).toContain('resetToAll');
       expect(src).not.toMatch(/\{selected && \(\s*<div className="flex items-center gap-1 rounded-md/);
     }
+    const owner = code(read('core/leave-inquiry.ts'));
+    const from = owner.indexOf('export function leaveInquirySnapshot<T>(');
+    const to = owner.indexOf('export function leaveInquiryRecordsPage(', from);
+    expect(from, 'shared snapshot wrapper exists').toBeGreaterThan(-1);
+    expect(to, 'shared snapshot wrapper closes').toBeGreaterThan(from);
+    expect(owner.slice(from, to)).toContain('read(tx, await leaveInquiryContextTx(tx, ctx, companyIds, query))');
+    expect(owner.slice(from, to)).toContain('{ readOnlySnapshot: true }');
   });
 
   it('the panel is fed a `.map` of the page’s OWN employee read, never a second wider one', () => {
     for (const rel of REL) {
       const src = read(rel);
-      // The fence must stay the panel's fence: one `listEmployees` call per page, mapped to ScopeEmployee.
-      // Counted over CODE, not prose — a comment naming the call reads to a plain match as the call itself.
+      // The page and panel consume the same authorized context. The context's one Tx membership read
+      // is bounded by adminCompanies AND the selected-company fence, and [] never means unrestricted.
       expect(code(src)).toContain('const employees = sortInquiryEmployees(inquiry.employees, locale)');
-      expect(code(read('core/leave-inquiry.ts'))).toContain('await listEmployees(ctx, companyIds)');
+      expect(code(src).match(/await leaveInquiryContext\(session, scopeIds, query\)/g)).toHaveLength(1);
+      expect(code(src)).not.toMatch(/\blistEmployees(?:Tx)?\(/);
+      const owner = code(read('core/leave-inquiry.ts'));
+      const from = owner.indexOf('async function leaveInquiryContextTx(');
+      const to = owner.indexOf('function authorizedScope(', from);
+      expect(from, 'canonical membership reader exists').toBeGreaterThan(-1);
+      expect(to, 'canonical membership reader closes').toBeGreaterThan(from);
+      const membership = owner.slice(from, to);
+      expect(membership).toContain("if (!isAdmin(ctx)) throw new InquiryQueryError('Forbidden')");
+      expect(membership).toContain('const companies = (await adminCompaniesTx(tx)).filter(c => selectedCompanyIds.includes(c.id))');
+      expect(membership).toContain('const companyIds = companies.map(c => c.id)');
+      expect(membership).toContain('const employees = companyIds.length ? await listEmployeesTx(tx, companyIds) : []');
+      expect(membership.match(/\blistEmployeesTx\(/g)).toHaveLength(1);
+      expect(membership).toContain('employees.find(e => e.employmentId === query.emp)');
+      expect(membership).toContain("if (query.emp && !selected) throw new InquiryQueryError('Employee is unavailable in the selected companies')");
       expect(src).toContain('const panelEmployees: ScopeEmployee[] = employees.map((e) => ({');
       // The DERIVED status is computed on the SERVER — in the browser it is wrong by a day across MYT midnight.
       expect(src).toContain("status: e.terminatedOn == null ? 'active' : 'ended',");

@@ -157,9 +157,15 @@ describe('the six steps are the reporter’s six, in the reporter’s order', ()
     }
   });
 
-  it('every upload-failure message resolves in all six catalogues (also computed)', () => {
-    // `importFileMessageKey(e)` returns one of these five, relative to THIS screen's namespace.
-    for (const leaf of Object.values(IMPORT_FILE_MESSAGE_KEYS)) {
+  it('every reachable upload-failure message resolves in all six catalogues for the permissive Leave decoder', () => {
+    // Personnel's strict allowedSheets policy owns UNEXPECTED_SHEET. This Leave importer reads the
+    // first sheet permissively, so its reachable failure family remains these five localized messages.
+    expect(read(ISLAND)).toContain('readImportFile(file)');
+    expect(read(ISLAND)).not.toContain('allowedSheets');
+    const codes = ['UNSUPPORTED_FILE_TYPE', 'FILE_TOO_LARGE', 'EMPTY_FILE', 'EMPTY_SHEET', 'FILE_READ_FAILED'] as const;
+    expect(codes).toHaveLength(5);
+    for (const code of codes) {
+      const leaf = IMPORT_FILE_MESSAGE_KEYS[code];
       const key = `admin.leaveHistoryImport.${leaf}`;
       const enValue = getPath(en, key);
       expect(typeof enValue, key).toBe('string');
@@ -169,7 +175,6 @@ describe('the six steps are the reporter’s six, in the reporter’s order', ()
         if (loc !== 'en') expect(v, `${loc} ${key} is the English string copied across`).not.toBe(enValue);
       }
     }
-    expect(Object.keys(IMPORT_FILE_MESSAGE_KEYS)).toHaveLength(5); // non-vacuity: the loop ran
   });
 });
 
