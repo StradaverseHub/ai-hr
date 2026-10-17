@@ -6167,10 +6167,10 @@ export async function addImportedPunchesBatchTx(
 // addImportedPunchesBatchTx) and is deliberately not honoured here, exactly as it is not honoured by the
 // correction path above.
 //
-// WHAT THIS FUNCTION DOES NOT DO: it never looks at attendance_punch and it never returns a check_in_at /
-// check_out_at. Recompute rewrites CALCULATED figures only — the reporter's hard requirement — so the
-// stored clock times are inputs to this function and are never among its outputs. That is also what keeps
-// this path clear of recomputeDayFromPunches' first-in/last-out rewrite.
+// Recompute returns CALCULATED figures only, never check_in_at / check_out_at. Fixed and Semi-Flexi use
+// the stored clock envelope as before. Full Flexi reads active clock evidence through the same closed-pair
+// owner as clock corrections; the envelope alone would turn an unpaid gap into worked/overtime minutes.
+// A legacy day without raw punch evidence retains its established stored-clock fallback.
 //
 // Owned by feedback item 1c1b321a. core/attendance-recompute.ts is its only caller.
 
@@ -6182,7 +6182,7 @@ export async function addImportedPunchesBatchTx(
  * number is kept and only its per-rate split is recut (exactly as decideAttendanceCorrection does), so a
  * recompute can refresh the measured figures beside it without ever overwriting the approved total.
  *
- * Idempotent by construction: the result is a pure function of (stored punch times, current schedule,
+ * Idempotent by construction: the result is a pure function of (stored clock evidence, current schedule,
  * date), so running it twice over the same range produces the same bag the second time.
  */
 export async function recomputeDayFigures(
@@ -6196,7 +6196,7 @@ export async function recomputeDayFigures(
   },
 ) {
   const sched = await scheduleFor(tx, p.employmentId, p.date);
-  const d = deriveAttendance(sched, p.checkInAt, p.checkOutAt, p.date);
+  const d = await deriveStoredAttendanceTx(tx, sched, p);
   const keepOt = p.approvedOtMinutes != null;
   const approvedRows=keepOt?effectiveOvertimeRows(p.approvedOtMinutes!,sched.dayType,sched.rule,sched.manualOtRows):null;
   const otMinutes=approvedRows?.total??d.otMinutes;
@@ -6221,6 +6221,19 @@ export async function recomputeDayFigures(
       ...stage1,
     },
   };
+}
+
+/** Reuse Full Flexi's closed-pair owner for reads/recalculation; other shift types keep their envelope. */
+async function deriveStoredAttendanceTx(tx:Tx,schedule:ResolvedSchedule,p:{employmentId:string;date:string;checkInAt:string;checkOutAt:string|null}){
+  if(schedule.durationOnly){
+    const punches=(await punchesForCorrectionTx(tx,p.employmentId,p.date)).filter(punch=>!punch.voidedAt);
+    if(punches.length){
+      const paired=fullFlexiIntervals(punches,p.checkInAt,schedule.dailyCutoffMinutes);
+      // Malformed/open raw evidence must not regain a complete day through the stored envelope.
+      return deriveAttendance(schedule,paired.checkInAt??p.checkInAt,paired.checkOutAt,p.date,paired.intervals);
+    }
+  }
+  return deriveAttendance(schedule,p.checkInAt,p.checkOutAt,p.date);
 }
 
 /** Presentation/command anchoring only; calculation remains in the existing writer. */
@@ -6316,7 +6329,7 @@ export async function attendanceDayCalculationTx(tx:Tx,employmentId:string,date:
   const [approved]=await tx.select({minutes:attendanceCorrection.approvedOtMinutes}).from(attendanceCorrection)
     .where(and(eq(attendanceCorrection.employmentId,employmentId),eq(attendanceCorrection.attendanceDate,date),eq(attendanceCorrection.status,'approved'),isNotNull(attendanceCorrection.approvedOtMinutes)))
     .orderBy(desc(attendanceCorrection.decidedAt),desc(attendanceCorrection.id)).limit(1);
-  const automatic=day?.checkInAt?deriveAttendance({...schedule,manualOtRows:{}},day.checkInAt,day.checkOutAt,date):null;
+  const automatic=day?.checkInAt?await deriveStoredAttendanceTx(tx,{...schedule,manualOtRows:{}},{employmentId,date,checkInAt:day.checkInAt,checkOutAt:day.checkOutAt}):null;
   const automaticMinutes=automatic?.otMinutes??0;
   return {day:day??null,approvedOtMinutes:approved?.minutes??null,automatic,
     rows:overtimeCalculationRows(automaticMinutes,schedule.dayType,schedule.rule),
