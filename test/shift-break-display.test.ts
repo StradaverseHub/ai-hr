@@ -13,6 +13,19 @@ import { describe, expect, it } from 'vitest';
 import { formatBreakDisplay } from '../core/shift-break-display';
 
 describe('formatBreakDisplay', () => {
+  it('retains a per-row flexible allowance separately from its nominal window duration', () => {
+    const r = formatBreakDisplay([{start:'12:00',end:'13:00',flexible:true,flexibleMinutes:30}],30);
+    expect(r.rows[0]).toMatchObject({minutes:60,flexibleMinutes:30});
+    expect(r.mismatchMinutes).toBeUndefined();
+  });
+
+  it('does not present paid or fixed row metadata as a flexible allowance', () => {
+    for(const bp of [{start:'12:00',end:'13:00',paid:true,flexible:true,flexibleMinutes:30},{start:'12:00',end:'13:00',flexible:false,flexibleMinutes:30}]){
+      const r = formatBreakDisplay([bp],bp.paid?0:30);
+      expect(r.rows[0]).not.toHaveProperty('flexibleMinutes');
+    }
+  });
+
   it('renders a single break window numbered, with its own duration', () => {
     const r = formatBreakDisplay([{ start: '12:00:00', end: '13:00:00' }], 60);
     expect(r.text).toBe('1. 12:00–13:00 (60m)');
