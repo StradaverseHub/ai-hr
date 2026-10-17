@@ -241,8 +241,23 @@ describe('d64d0df4 · the stored grid and its category keys', () => {
 
   it('the Identity & Tax card renders the same five keys, in the same order', () => {
     const src = readFileSync(`${root}components/identity-tax-card.tsx`, 'utf8');
-    const block = src.slice(src.indexOf('const CHILD_RELIEF_CATEGORY_KEYS'));
-    for (const key of CHILD_RELIEF_CATEGORY_KEYS) expect(block).toContain(`'${key}'`);
+    expect(src).toContain("import { CHILD_RELIEF_CATEGORIES } from '@/lib/dependent-vocabulary';");
+    expect(src).toContain('const CHILD_RELIEF_CATEGORY_KEYS = CHILD_RELIEF_CATEGORIES;');
+    const from = src.indexOf('{CHILD_RELIEF_CATEGORY_KEYS.map((key) => (');
+    expect(from, 'the grid renders the canonical list in its declared order').toBeGreaterThan(-1);
+    const end = src.indexOf('</tbody>', from);
+    expect(end).toBeGreaterThan(from);
+    const rows = src.slice(from, end);
+    expect(rows.length).toBeGreaterThan(100);
+    expect(rows).toContain('key={key}');
+    expect(rows).toContain("(['full', 'half'] as const).map((share)");
+    expect(rows).toContain('personnelInput(gridField(key,share))');
+    expect(rows).toContain('value={grid[key][share]}');
+    for (const key of CHILD_RELIEF_CATEGORY_KEYS) {
+      for (const share of ['full', 'half']) {
+        expect(src).toContain(`"bank_statutory.income_tax_pcb.childrelieftable_${key}_${share}"`);
+      }
+    }
   });
 
   it('adds the third mode without disturbing the first two', () => {

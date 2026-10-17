@@ -99,17 +99,18 @@ describe('The menu row is gated on the toil module', () => {
   it('the sidebar maps the Leave Credit row to `toil`, and the resolver offers toil only when the tenant has it', async () => {
     expect(MODULE_CODES_WITH_NAV).toContain('toil');
     // The sidebar picks the row out of the leave pack by label key (no href is hardcoded there).
-    // r389 (bc3e203d) — UPDATED, NOT LOOSENED: the same flatMap now picks TWO rows, Leave Config › Leave
-    // Credit and My Leave › Leave Credit History, both the `toil` add-on's. This read
+    // Approved 2634fa7a adds My Leave › Leave Credit Details to the same guarded family as Leave Config ›
+    // Leave Credit and My Leave › Leave Credit History. This originally read
     // `…filter((c) => c.labelKey === 'leaveCredit')…`; the HR row is still in it, by the same key.
     const sidebar = code(read('components/sidebar.tsx'));
     expect(sidebar).toContain(
-      "n.children.filter((c) => c.labelKey === 'leaveCredit' || c.labelKey === 'leaveCreditHistory').map((c) => [c.href, 'toil'] as const)",
+      "n.children.filter((c) => c.labelKey === 'leaveCredit' || c.labelKey === 'leaveCreditHistory' || c.labelKey === 'leaveCreditDetails').map((c) => [c.href, 'toil'] as const)",
     );
-    // …and both labels name a real row of the leave pack, so neither half of the filter is dead text.
+    // Every guarded label names a real row of the leave pack, so none is dead text.
     const childKeys = (leavePack.navNodes ?? []).flatMap((n) => n.children.map((c) => c.labelKey));
     expect(childKeys).toContain('leaveCredit');
     expect(childKeys).toContain('leaveCreditHistory');
+    expect(childKeys).toContain('leaveCreditDetails');
 
     const off = await entitledCtx(b);
     expect(visibleModuleCodes(off), 'no toil row → the Leave Credit row is hidden').not.toContain('toil');

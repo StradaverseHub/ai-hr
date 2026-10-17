@@ -19,6 +19,7 @@ import { adminCtx, closeAll, eventTypesFor, migrateTestDb, owner, resetDb, seedB
 import { checkIn, checkOut } from '../core/attendance';
 import { assignDefaultShift, assignShift, createShift, updateShift } from '../core/roster';
 import { todayInKualaLumpur } from '../lib/hr-date';
+import { saveScheduleGroupControl } from '../core/schedule-group-controls';
 import {
   applyOtRuleRows,
   createAttendanceRule,
@@ -620,6 +621,7 @@ describe('7c834696 — lateness / early-out are measured, and deductions are for
     // on which weekday the suite happens to run on.
     const future = addDaysIso(today, 30);
     const later = await makeEmp();
+    await saveScheduleGroupControl(a, { ruleId: rule.id, kind: 'duty', enabled: true });
     await assignShift(a, { employmentId: later, shiftDate: future, shiftId: sh.id });
     await checkIn(a, { employmentId: later, date: future, time: '09:40:00' });
     await checkOut(a, { employmentId: later, date: future, time: '18:00:00' });
