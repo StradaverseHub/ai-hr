@@ -133,11 +133,16 @@ def namespace_environment_checks(web_pid, web_pin, mail, renderer):
                 assert time.monotonic()<deadline;time.sleep(0.05)
 
 def resource_configuration_checks():
-    for unit,expected in [('aihr-internal-report.service',192*1024*1024),('aihr-report-auth@.service',192*1024*1024),('aihrmanagedmail-dispatch.slice',192*1024*1024),('aihr-report-renderer@.service',512*1024*1024),('aihrmanagedmail.slice',768*1024*1024)]:
+    broker='aihr-report-auth@aihr-isolation-probe.service';renderer='aihr-report-renderer@aihr-isolation-probe.service'
+    # show loads configuration only; bare template names are not invocable systemd units.
+    for unit,template in [(broker,'aihr-report-auth@.service'),(renderer,'aihr-report-renderer@.service')]:
+        for prop,expected in [('LoadState','loaded'),('ActiveState','inactive'),('MainPID','0'),('FragmentPath','/etc/systemd/system/'+template)]:
+            assert command(['systemctl','show',unit,'--property='+prop,'--value'])==expected
+    for unit,expected in [('aihr-internal-report.service',192*1024*1024),(broker,192*1024*1024),('aihrmanagedmail-dispatch.slice',192*1024*1024),(renderer,512*1024*1024),('aihrmanagedmail.slice',768*1024*1024)]:
         assert int(command(['systemctl','show',unit,'--property=MemoryMax','--value']))==expected
-    for unit in ['aihr-internal-report.service','aihr-report-auth@.service']:
+    for unit in ['aihr-internal-report.service',broker]:
         assert command(['systemctl','show',unit,'--property=Slice','--value'])=='aihrmanagedmail-dispatch.slice'
-    assert 'aihr-report-clients' in command(['systemctl','show','aihr-report-auth@.service','--property=SupplementaryGroups','--value']).split()
+    assert 'aihr-report-clients' in command(['systemctl','show',broker,'--property=SupplementaryGroups','--value']).split()
 
 def main():
     parser = argparse.ArgumentParser();parser.add_argument('--web-unit', required=True);args = parser.parse_args()
