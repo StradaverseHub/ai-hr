@@ -1987,7 +1987,28 @@
       "registerDownloadExisting": "Download current records CSV",
       "registerLimit": "Up to 500 rows per register file. Current-record downloads include saved Record IDs; review every row before applying.",
       "registerRequiredCreate": "Required when Record ID is blank.",
-      "fullUploadHint": "Accepts CSV, XLSX or XLS. The full workbook also reads the Family, Qualifications and Emergency Contacts sheets."
+      "fullUploadHint": "Accepts CSV, XLSX or XLS. The full workbook also reads the Family, Qualifications and Emergency Contacts sheets.",
+      "exclusionsTitle": "Fields managed in Personnel",
+      "exclusionsHint": "These fields are not entered through an employee import. Open the listed Personnel tab to view them or use their available actions.",
+      "exclusionsTab": "Personnel tab",
+      "exclusionsField": "Field",
+      "exclusionsReason": "Why and where to go",
+      "exclusionReasons": {
+        "managed": "This value is calculated, historical, or changed through its own Personnel action. Use its Personnel tab.",
+        "file": "Files and on-screen actions are handled in Personnel; they are not spreadsheet values.",
+        "confirmation": "Calculated from the confirmation date and approved probation extensions. Use Movement for extensions.",
+        "editor": "Use this field’s Personnel editor to change it.",
+        "tax": "Choose the detailed Tax Category in Income Tax. A general import category cannot make this selection.",
+        "superior": "Choose Direct Superior in Personnel so reporting-line access and circular relationships can be checked.",
+        "delegation": "Use Approval Delegations to choose the delegate, dates and scope.",
+        "location": "Assign Work Location in Personnel with an effective date and an authorized location.",
+        "epf": "Choose EPF Category in Bank & Statutory so the contribution rules can be checked.",
+        "clocking": "Choose Clocking Locations in Personnel so permitted locations and assignment history are checked.",
+        "backupShift": "Choose Backup Shift in Attendance so its Schedule Group, dates and available shifts can be checked.",
+        "taxRelief": "Set child-relief categories in Income Tax so the complete tax selection can be checked.",
+        "hireCorrection": "Use Correct Hire Details to change the original Cost Centre and keep its correction history.",
+        "termination": "Use Movement to select a Termination Reason with the required employment dates."
+      }
     },
     "wizard": {
       "deleteRecord": "Delete Record",

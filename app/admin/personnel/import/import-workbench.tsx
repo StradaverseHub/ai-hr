@@ -6,6 +6,7 @@ import { Card } from '@/components/ui';
 import { IMPORT_SECTION_KEYS, type ImportSection } from '@/lib/import-sections';
 import { EmployeeImport, type ImportReference } from './employee-import';
 import { SectionImport } from './section-import';
+import {ImportExplanations} from './import-explanations';
 
 /**
  * Item 2983802f — THE FIRST STEP THE REQUEST ASKED FOR: choose what you are importing.
@@ -102,6 +103,7 @@ export function ImportWorkbench({
         </p>
       </Card>
 
+      <ImportExplanations choice={choice}/>
       {choice === 'full' ? (
         <EmployeeImport companies={companies} defaultCompanyId={defaultCompanyId} reference={reference} onCommitPendingChange={setCommitting} />
       ) : (
