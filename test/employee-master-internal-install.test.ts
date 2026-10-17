@@ -41,9 +41,9 @@ describe('internal report installation boundaries',()=>{
   expect(source('aihrmanagedmail-dispatch.slice')).toContain('MemoryMax=192M');expect(source('aihrmanagedmail.slice')).toContain('MemoryMax=768M');expect(source('aihr-report-renderer@.service')).toContain('MemoryMax=512M');expect(source('aihr-report-renderer@.service')).toContain('Slice=aihrmanagedmail.slice');
   for(const unit of ['aihr-report-auth@.service','aihr-internal-report.service'])expect(source(unit)).toContain('Slice=aihrmanagedmail-dispatch.slice');
  });
- it('supervisor derives peer identity, bounds buffers and child lifetime, and waits exit before forward/EOF',()=>{
+ it('supervisor waits child exit and client pins whole activation retirement before forwarding',()=>{
   const peer=source('report-auth-peer.py');expect(peer).toContain('socket.SO_PEERCRED');expect(peer).toContain('uid != sender.pw_uid');expect(peer).toContain('RESPONSE_MAX = 512 * 1024');expect(peer).toContain('os.killpg(child.pid, signal.SIGKILL)');
-  const wait=peer.indexOf('if child.wait('),send=peer.indexOf('peer.sendall(reply)'),eof=peer.indexOf('peer.shutdown(socket.SHUT_WR)');expect(wait).toBeGreaterThan(0);expect(send).toBeGreaterThan(wait);expect(eof).toBeGreaterThan(send);
+  const wait=peer.indexOf('if child.wait('),send=peer.indexOf('peer.sendmsg('),client=peer.indexOf('def client_main()'),retired=peer.indexOf('wait_retirement(',client),publish=peer.indexOf('sys.stdout.buffer.write(reply)',client);expect(wait).toBeGreaterThan(0);expect(send).toBeGreaterThan(wait);expect(client).toBeGreaterThanOrEqual(0);expect(retired).toBeGreaterThan(client);expect(publish).toBeGreaterThan(retired);expect(publish-client).toBeGreaterThan(100);expect(peer).not.toContain('peer.shutdown(socket.SHUT_WR)');
   expect(peer).toContain('REPORT_AUTH_BROKER_PEER_UID=str(uid)');expect(peer).not.toContain("request['uid']");
  });
  it('renderer internal origin/query is keyless while preserving compatibility query',()=>{

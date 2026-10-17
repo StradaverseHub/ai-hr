@@ -19,14 +19,10 @@ const envLine=(key:string,value:string)=>{
 async function trusted(path:string,directory=false){const s=await lstat(path);if(s.uid!==0||(s.mode&0o022)!==0||(directory?!s.isDirectory():!s.isFile()))throw new Error('Untrusted installation path.');}
 async function rootChain(path:string){let current='';for(const part of path.split('/').filter(Boolean)){current+='/'+part;await trusted(current,current!==path);}}
 async function atomic(path:string,bytes:Uint8Array|string,mode:number){const next=path+'.internal-report-new';await writeFile(next,bytes,{flag:'wx',mode});try{await chown(next,0,0);await chmod(next,mode);await rename(next,path);}finally{try{await unlink(next);}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}}}
-const health=`import socket,json
-s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);s.settimeout(45);s.connect('/run/aihr-report-auth.sock');s.sendall(b'{"phase":"status"}');s.shutdown(socket.SHUT_WR);b=b''
-while True:
- c=s.recv(4096)
- if not c:break
- b+=c
- if len(b)>4096:raise RuntimeError('invalid reply')
-r=json.loads(b);assert set(r)=={'available'} and type(r['available']) is bool
+const health=`import json,subprocess
+r=subprocess.run(['/usr/bin/python3','-I','/usr/local/lib/aihr-identity-email/report-auth-peer.py','--client'],input=b'{"phase":"status"}',stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=45,check=True,env={'PATH':'/usr/bin:/bin','LANG':'C','LC_ALL':'C','TZ':'UTC'})
+assert len(r.stdout)<=4096
+r=json.loads(r.stdout);assert set(r)=={'available'} and type(r['available']) is bool
 `;
 async function main(){
  if(process.getuid?.()!==0||process.platform!=='linux'||process.argv.slice(2).join(' ')!=='--install-internal-reports')throw new Error('Explicit root Linux installation required.');
