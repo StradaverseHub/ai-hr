@@ -84,7 +84,7 @@ if(!options.heldLockWorker) {
   let server,activeJob,stopping=false,serverFd,forceStopTimer;
   let runFailed=false,ownedServerPid;
   let postgresAdmin,postgresTarget,postgresApp;
-  let preparationCandidate=candidate,resumeReceipt,labelsContinuity,reportsRecovery,reportsPrefix,devLogName=runId+'-browser-dev.log';
+  let preparationCandidate=candidate,resumeReceipt,labelsContinuity,reportsRecovery,reportsPrefix,reportsContinuity,devLogName=runId+'-browser-dev.log';
   const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
   function groupExists(child){if(!child?.pid)return false;try{process.kill(-child.pid,0);return true;}catch(error){if(error.code==='ESRCH')return false;throw error;}}
   function signalOwned(child,signal){if(groupExists(child)){try{process.kill(-child.pid,signal);}catch(error){if(error.code!=='ESRCH')throw error;}}}
@@ -191,7 +191,12 @@ if(!options.heldLockWorker) {
     }else{
       const {readEmployeeMasterFixtureProof}=await import('./employee-master-fixture-proof.mts');
       const proof=await readEmployeeMasterFixtureProof({client:postgresTarget},{tenantId:fixture.tenantId,foreignTenantId:fixture.foreignTenant.id});
-      if(JSON.stringify(proof)!==JSON.stringify(fixture.proof))throw new Error('Reports metadata/invariant source proof changed; preserve journey.');
+      const {prepareReportsProjectionContinuity,REPORTS_PROJECTION_CONTINUITY_NAME}=await import('./reports-projection-source-continuity.mjs');
+      const transitioned=fs.existsSync(path.join(out,REPORTS_PROJECTION_CONTINUITY_NAME))||Object.values(resumeRecords??{}).some(record=>record.reportsSourceContinuity!==undefined);
+      if(JSON.stringify(proof)!==JSON.stringify(fixture.proof)||transitioned){
+        if(!options.resume)throw new Error('Reports metadata/invariant source proof changed; preserve journey.');
+        reportsContinuity=await prepareReportsProjectionContinuity({root,candidate,fixture,browser,currentProof:proof,resumeRecords});
+      }
     }
   }
   try {
@@ -232,11 +237,12 @@ if(!options.heldLockWorker) {
       await postgresApp.end();postgresApp=undefined;await postgresTarget.end();postgresTarget=undefined;
       checkCandidate();
       if(labelsContinuity?.create)writeNew(labelsContinuity.name,labelsContinuity.value);
+      if(reportsContinuity?.create)writeNew(reportsContinuity.name,reportsContinuity.value);
       preparationCandidate=binding.preparationCandidate;preparedFixture=fixture;
       resumeReceipt='browser-resume-'+runId+'.json';
       // Archive exact previous cleanup bytes before changing the current pointer; never overwrite old evidence.
       fs.copyFileSync(path.join(out,stopReceiptFile),path.join(out,'browser-prior-stop-'+runId+'.json'),fs.constants.COPYFILE_EXCL);
-      writeNew(resumeReceipt,{candidate,...binding,...bound,...(scenario==='integration'?{principals:resumePrincipals}:{}),...(labelsContinuity?{labelsSourceContinuity:labelsContinuity.reference}:{}),preparationManifest:'browser-manifest.json',priorStoppedReceipt:stopped,fixtureRunsThisCandidate:0,migrationRunsThisCandidate:0,seedRunsThisCandidate:0,resumedAt:new Date().toISOString(),devLogName,applicationAcceptance:'UNVERIFIED'});
+      writeNew(resumeReceipt,{candidate,...binding,...bound,...(scenario==='integration'?{principals:resumePrincipals}:{}),...(labelsContinuity?{labelsSourceContinuity:labelsContinuity.reference}:{}),...(reportsContinuity?{reportsSourceContinuity:reportsContinuity.reference}:{}),preparationManifest:'browser-manifest.json',priorStoppedReceipt:stopped,fixtureRunsThisCandidate:0,migrationRunsThisCandidate:0,seedRunsThisCandidate:0,resumedAt:new Date().toISOString(),devLogName,applicationAcceptance:'UNVERIFIED'});
     } else {
       if(options.resumeOnly)throw new Error('Preserved scenario setup is forbidden.');
       if(options.recoverMigrationOnly){
