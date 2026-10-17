@@ -130,7 +130,7 @@ export async function prepareProfileProposalTx(tx:Tx,ctx:SessionContext,employme
  const fields=cleanFields(proposal.fields,current);
  for(const change of fields){const f=personnelField(change.fieldId)!;
   if(f.ess.binding?.owner!=='person'&&f.ess.binding?.owner!=='compliance'&&!rows.pack)throw new EssProfileError('unavailable',[f.id]);
-  if(f.allowedValuesOwner?.startsWith('profile_option:'))await assertProfileValueAllowed(tx,f.allowedValuesOwner.slice(15) as Parameters<typeof assertProfileValueAllowed>[1],change.value,current[change.fieldId]);
+  if(f.allowedValuesOwner?.startsWith('profile_option:'))await assertProfileValueAllowed(tx,f.allowedValuesOwner.slice(15) as Parameters<typeof assertProfileValueAllowed>[1],text(change,'value')??null,text(current,change.fieldId)??null);
  }
  const bankChanges=fields.filter(change=>personnelField(change.fieldId)!.ess.binding!.owner==='bank');
  if(bankChanges.length){
@@ -153,7 +153,7 @@ export async function prepareProfileProposalTx(tx:Tx,ctx:SessionContext,employme
  const identityChanges=fields.filter(change=>personnelField(change.fieldId)!.ess.binding?.owner==='identity');
  if(identityChanges.length){
   if(!rows.pack)throw new EssProfileError('unavailable',identityChanges.map(field=>field.fieldId));
-  const previous={icNumber:rows.stat?.icNumber,oldIcNumber:rows.stat?.oldIcNumber},next={...previous,...patch(identityChanges)};
+  const previous={icNumber:rows.stat?.icNumber??null,oldIcNumber:rows.stat?.oldIcNumber??null},next={...previous,...patch(identityChanges)};
   if(!rows.pack.statutory.canApplyIcChange(previous,{icNumber:text(next,'icNumber'),oldIcNumber:text(next,'oldIcNumber')}))throw new EssProfileError('invalid',identityChanges.map(field=>field.fieldId));
  }
  const passportChanges=fields.filter(change=>personnelField(change.fieldId)!.ess.binding!.owner==='passport');
@@ -269,7 +269,7 @@ export async function currentProfileRequestValuesTx(tx:Tx,ctx:SessionContext,p:{
   for(const row of proposal.registers){
    const existing=row.id?(row.kind==='dependent'?rows.dependents:row.kind==='qualification'?rows.qualifications:rows.emergency).find(item=>item.id===row.id):null;
    const values=existing?registryValues(row.kind,existing):{};
-   for(const field of row.fields)out[`${row.kind}:${row.id??row.clientId}:${field.fieldId}`]={value:row.id?values[field.fieldId]:undefined,recordName:existing&&('fullName' in existing?existing.fullName:'qualification' in existing?existing.qualification:null),state:row.id?existing?'existing':'missing':'new'};
+   for(const field of row.fields)out[`${row.kind}:${row.id??row.clientId}:${field.fieldId}`]={value:row.id?values[field.fieldId]:undefined,recordName:existing?('fullName' in existing?existing.fullName:'qualification' in existing?existing.qualification:null):null,state:row.id?existing?'existing':'missing':'new'};
   }
  }else if(p.proposed&&typeof p.proposed==='object'&&!Array.isArray(p.proposed)){
   for(const key of Object.keys(p.proposed)){const field=PERSONNEL_FIELDS.find(field=>field.ess.binding?.legacyKey===key);if(field)out[key]={value:current[field.id],recordName:null,state:'existing'};}
