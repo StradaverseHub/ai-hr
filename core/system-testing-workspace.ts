@@ -3,6 +3,7 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { appUser, feedbackRequest, testAssignment, testCase, testCaseVersion, testExecution, testExecutionAttachment, testRun } from '../db/schema';
+import { testingActorNamesTx } from './system-testing-actors';
 import { isAdmin } from '../lib/authz';
 import { SCREENS } from '../lib/permissions';
 import { executionInputSchema, legacyOutcomeFor, parseInstruction, parseInstructionDraft, parsePublishedInstruction, TestingRefusal, TESTING_LIMITS, testingUuid, testingHash, testingSourceRef, testingSemanticId, type ExecutionInput, type ExecutionStatus, type InstructionDefinition } from '../lib/system-testing/model';
@@ -181,6 +182,8 @@ export async function getTestingExecution(ctx: SessionContext, executionId: stri
     const [a] = await tx.select().from(testAssignment).where(eq(testAssignment.id, e.assignmentId));
     const [v] = await tx.select().from(testCaseVersion).where(eq(testCaseVersion.id, e.versionId));
     if (!a || !v) throw new TestingRefusal('not_found');
+    const [caseIdentity] = await tx.select({ id: testCase.id, caseNo: testCase.caseNo }).from(testCase).where(and(eq(testCase.id, a.testCaseId), eq(testCase.tenantId, ctx.tenantId))).limit(1);
+    if (!caseIdentity) throw new TestingRefusal('not_found');
     const history = await tx.select().from(testRun).where(and(eq(testRun.executionId, e.id),options.beforeRevision===undefined?undefined:sql`${testRun.executionRevision}<${options.beforeRevision}`)).orderBy(desc(testRun.executionRevision)).limit(201);
     const screenshots = await tx.select({ id: testExecutionAttachment.id, fileName: testExecutionAttachment.fileName, mimeType: testExecutionAttachment.mimeType, runId: testExecutionAttachment.runId }).from(testExecutionAttachment).where(eq(testExecutionAttachment.executionId, e.id)).orderBy(testExecutionAttachment.createdAt, testExecutionAttachment.id);
     const feedbackRows=await tx.select({id:feedbackRequest.id,status:feedbackRequest.status}).from(feedbackRequest).where(sql`${feedbackRequest.id} IN (${e.defectFeedbackId}::uuid,${e.improvementFeedbackId}::uuid)`);
@@ -190,7 +193,8 @@ export async function getTestingExecution(ctx: SessionContext, executionId: stri
     const [assignmentState]=await tx.execute(sql`${assignmentRowsSql(ctx,{},e.testerUserId)} SELECT status,execution_id FROM rows WHERE assignment_id=${a.id}::uuid`) as unknown as {status:ExecutionStatus;execution_id:string|null}[];
     if(!assignmentState)throw new TestingRefusal('not_found');
     const definition = parsePublishedInstruction(v.definition);
-    return { currentObservation:currentObservation??null,assignmentState,nextHistoryBeforeRevision:history.length>200?Math.min(...history.slice(0,200).map(r=>r.executionRevision??0)):null,feedbackStates,execution: e, assignment: a, version: { ...v, definition }, history: history.slice(0, 200), historyTruncated: history.length > 200, screenshots, canSave: e.testerUserId === actor && assignmentState.execution_id===e.id && a.active && a.targetVersionId === e.versionId && (definition.format === 0 || definition.active) };
+    const actorNames = await testingActorNamesTx(tx, ctx, [e.testerUserId, ...history.map(run => run.runByUserId)]);
+    return { testCase: caseIdentity, moduleName: listTestableModules(ctx).find(module => module.code === definition.moduleCode)?.name ?? definition.moduleCode, testerName: actorNames.get(e.testerUserId) ?? null, updatedAt: currentObservation?.runAt ?? e.createdAt, currentObservation:currentObservation??null,assignmentState,nextHistoryBeforeRevision:history.length>200?Math.min(...history.slice(0,200).map(r=>r.executionRevision??0)):null,feedbackStates,execution: e, assignment: a, version: { ...v, definition }, history: history.slice(0, 200).map(run => ({ ...run, runByName: run.runByUserId ? actorNames.get(run.runByUserId) ?? null : null })), historyTruncated: history.length > 200, screenshots, canSave: e.testerUserId === actor && assignmentState.execution_id===e.id && a.active && a.targetVersionId === e.versionId && (definition.format === 0 || definition.active) };
   }, { readOnlySnapshot: true });
 }
 export async function raiseTestingExecutionFeedback(ctx: SessionContext, p: { executionId: string; expectedRevision: number; kind: 'defect' | 'improvement' }): Promise<{ feedbackId: string }> {
@@ -246,6 +250,7 @@ export async function getTestingInstructionVersion(ctx:SessionContext,p:{caseId:
   return withTenant(ctx,async tx=>{
     const [row]=await tx.select().from(testCaseVersion).where(and(eq(testCaseVersion.id,p.versionId),eq(testCaseVersion.testCaseId,p.caseId),sql`octet_length(${testCaseVersion.definition}::text)<=8388608`)).limit(1);
     if(!row)throw new TestingRefusal('not_found');
-    return {...row,definition:parsePublishedInstruction(row.definition)};
+    const actorNames = await testingActorNamesTx(tx, ctx, [row.publishedByUserId]);
+    return {...row, publishedByName: row.publishedByUserId ? actorNames.get(row.publishedByUserId) ?? null : null, definition:parsePublishedInstruction(row.definition)};
   },{readOnlySnapshot:true});
 }
