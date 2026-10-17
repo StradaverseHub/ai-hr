@@ -32,6 +32,12 @@ describe('Employee Master builder quick conditions use the shared validator',()=
   selectQuick(words.quick.status,[]);const cleared=await preview();expect(()=>validateEmployeeMasterSpec(cleared,fields,today)).not.toThrow();expect(cleared.expression).toMatchObject({type:'group',children:[]});expect(cleared.includeDrafts).toBe(true);
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();expect(screen.getByText('Employed recipient')).toBeInTheDocument();expect(screen.getByText('Draft recipient')).toBeInTheDocument();
  });
+ it('clears an existing quick selection left with the old empty advanced wrapper',async()=>{
+  mount(definition({id:'selection-root',type:'group',logic:'and',children:[{id:'advanced-root',type:'group',logic:'and',children:[]},{id:'quick-status',type:'condition',field:status.id,operator:'in',values:['draft']}]}));
+  await preview();expect(screen.getByRole('alert')).toHaveTextContent('Add a condition or remove the empty group.');
+  selectQuick(words.quick.status,[]);const cleared=await preview();expect(()=>validateEmployeeMasterSpec(cleared,fields,today)).not.toThrow();expect(cleared.expression).toMatchObject({children:[]});
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();expect(screen.getByText('Employed recipient')).toBeInTheDocument();expect(screen.getByText('Draft recipient')).toBeInTheDocument();
+ });
  it.each(['and','or'] as const)('preserves populated %s/nested user groups while quick filters are added and removed',async logic=>{
   const advanced:MasterExpression={id:'root',type:'group',logic,children:[{id:'name-match',type:'condition',field:name.id,operator:'contains',value:'recipient'},{id:'nested',type:'group',logic:'or',children:[{id:'draft-name',type:'condition',field:name.id,operator:'eq',value:'Draft recipient'},{id:'other-name',type:'condition',field:name.id,operator:'eq',value:'Unrelated'}]}]};
   mount(definition(advanced));await preview();
