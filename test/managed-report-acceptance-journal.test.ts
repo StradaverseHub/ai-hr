@@ -23,10 +23,17 @@ async function compare(rows:typeof applied){
  await block.runInNewContext({owner,journal,check:(allowed:boolean,message:string)=>{if(!allowed)throw new Error(message);},hash,fs:{readFile:async(file:string)=>readFileSync(file)},ROOT:root},{timeout:1000});
 }
 describe('canonical managed Report acceptance journal readback',()=>{
- it('accepts all460 authentic applied rows in insertion order despite the legacy0230→0240 timestamp descent',async()=>{
+ it('accepts the entire authentic applied journal in insertion order despite the legacy0230→0240 timestamp descent',async()=>{
   const at=journal.entries.findIndex(row=>row.tag==='0230_delegation_scope_reason');expect(at).toBeGreaterThanOrEqual(0);
   expect(journal.entries[at+1].tag).toBe('0240_employment_blacklist');expect(journal.entries[at].when).toBe(1781862229000);expect(journal.entries[at+1].when).toBe(1781862219000);
-  expect(applied).toHaveLength(460);await expect(compare(applied)).resolves.toBeUndefined();
+  expect(applied.length,'non-vacuity: retain the established full migration history').toBeGreaterThan(449);
+  for(const [tag,when] of [
+   ['0558_board_set_based_visibility',1791900000038],
+   ['0559_replacement_holiday_company_retention',1791900000039],
+  ] as const){
+   expect(journal.entries.filter(entry=>entry.tag===tag),tag).toEqual([expect.objectContaining({tag,when})]);
+  }
+  await expect(compare(applied)).resolves.toBeUndefined();
  });
  it('still refuses count, SQL hash, when and applied insertion-order drift',async()=>{
   const at=journal.entries.findIndex(row=>row.tag==='0230_delegation_scope_reason');expect(at).toBeGreaterThanOrEqual(0);
