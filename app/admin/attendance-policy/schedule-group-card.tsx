@@ -92,7 +92,6 @@ export async function ScheduleGroupCard({ rules }: { rules: readonly AttendanceR
             {t('groupTitle')}
             <span className="ml-2 text-muted-foreground">({rules.length})</span>
           </h2>
-          <p className="mt-1 text-xs text-muted-foreground">{tr('libraryIntro')}</p>
         </div>
         <Link href={scheduleGroupNewPath()} className={btnPrimary}>
           {tr('addNew')}
@@ -102,7 +101,7 @@ export async function ScheduleGroupCard({ rules }: { rules: readonly AttendanceR
         <table className="w-full min-w-[680px] text-sm">
           <thead>
             <tr className="border-b border-border text-left text-xs text-muted-foreground">
-              <th className="px-4 py-2 font-medium">{tr('colName')}</th>
+              <th className="px-4 py-2 font-medium">{tb('groupName')}</th>
               <th className="px-4 py-2 font-medium">{tb('groupLabel')}</th>
               <th className="px-4 py-2 font-medium">{tr('colDescription')}</th>
               <th className="px-4 py-2 font-medium">{t('colWeek')}</th>
