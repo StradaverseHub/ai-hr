@@ -12,8 +12,16 @@ import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase } from './h
 const read = (name: string) => readFileSync(resolve(process.cwd(),'db/migrations',name),'utf8');
 const upgrade = read('0557_versioned_system_testing.sql');
 const legacy = read('0482_system_testing.sql');
-const historicalPolicies = ['0093_feedback_module.sql','0318_feedback_plan_revision.sql','0323_feedback_block_answer.sql'].flatMap(name => [...read(name).matchAll(/CREATE POLICY feedback_(?:request|attachment|plan_revision|block)[\s\S]*?;/g)].map(m => m[0]));
-const visibilityPolicies = [...read('0515_set_based_visibility.sql').matchAll(/ALTER POLICY "feedback_(?:request|attachment|plan_revision|block)[\s\S]*?;/g)].map(m => m[0]);
+/** Use genuine Drizzle statement boundaries: semicolons inside comments/functions are not separators. */
+const migrationStatements=(source:string)=>source.split('--> statement-breakpoint').map(statement=>statement.trim()).filter(Boolean);
+const policyStatements=(source:string,kind:'CREATE'|'ALTER')=>migrationStatements(source).filter(statement=>{
+  // Inspect only the first SQL token; return the original complete chunk, including its comments.
+  const leadingSql=statement.replace(/^(?:\s|--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)*/, '');
+  return kind==='CREATE'?/^CREATE POLICY feedback_(?:request|attachment|plan_revision|block)\w*\s+ON\b/.test(leadingSql)
+    :/^ALTER POLICY "feedback_(?:request|attachment|plan_revision|block)\w*"\s+ON\b/.test(leadingSql);
+});
+const historicalPolicies=['0093_feedback_module.sql','0318_feedback_plan_revision.sql','0323_feedback_block_answer.sql'].flatMap(name=>policyStatements(read(name),'CREATE'));
+const visibilityPolicies=policyStatements(read('0515_set_based_visibility.sql'),'ALTER');
 beforeAll(migrateTestDb); beforeEach(resetDb); afterAll(closeAll);
 it('preserves actual pre-upgrade identity/history, publishes only the current baseline and never backfills prior instruction truth', async () => {
   const b = await seedBase(), caseId = randomUUID(), runId = randomUUID(), rollback = new Error('rollback-only-upgrade-proof');
@@ -33,7 +41,7 @@ it('preserves actual pre-upgrade identity/history, publishes only the current ba
     await tx.execute(sql`ALTER TABLE public.feedback_request DROP CONSTRAINT feedback_reporter_identity_ck,ALTER COLUMN reporter_employment_id SET NOT NULL`);
     await tx.execute(sql`ALTER TABLE public.feedback_attachment ALTER COLUMN employment_id SET NOT NULL`);
     for (const statement of historicalPolicies.concat(visibilityPolicies)) await tx.execute(sql.raw(statement));
-    for (const statement of legacy.split('--> statement-breakpoint').map(s => s.trim()).filter(Boolean)) await tx.execute(sql.raw(statement));
+    for (const statement of migrationStatements(legacy)) await tx.execute(sql.raw(statement));
     await tx.execute(sql`SELECT set_config('app.tenant_id',${b.tenantId},true),set_config('app.user_id',${b.adminUserId},true),set_config('app.roles','hr_admin',true),set_config('app.grants','[{"role":"hr_admin","companyId":null}]',true)`);
     await tx.execute(sql`SET LOCAL ROLE ai_hr_app`);
     const [principal] = await tx.execute(sql`SELECT current_user,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user`) as unknown as { current_user: string; rolsuper: boolean; rolbypassrls: boolean }[];
@@ -52,7 +60,7 @@ it('preserves actual pre-upgrade identity/history, publishes only the current ba
     }
     const [beforeRun] = await tx.execute(sql`SELECT to_jsonb(r) AS value FROM public.test_run r WHERE id=${runId}::uuid`) as unknown as { value: Record<string,unknown> }[];
     await tx.execute(sql`RESET ROLE`);
-    for (const statement of upgrade.split('--> statement-breakpoint').map(s => s.trim()).filter(Boolean)) await tx.execute(sql.raw(statement));
+    for (const statement of migrationStatements(upgrade)) await tx.execute(sql.raw(statement));
     const [caseRow] = await tx.execute(sql`SELECT c.id,c.case_no,c.current_version_id,v.ordinal,v.provenance,v.definition FROM public.test_case c JOIN public.test_case_version v ON v.id=c.current_version_id WHERE c.id=${caseId}::uuid`) as unknown as { id: string; case_no: number; current_version_id: string; ordinal: number; provenance: string; definition: unknown }[];
     expect(caseRow).toMatchObject({ id: caseId,case_no: 7,ordinal: 1,provenance: 'upgrade_baseline',definition: { format: 0,history: 'upgrade_baseline',title: 'Fictional current guide',steps: ['Current step'] } });
     const [afterRun] = await tx.execute(sql`SELECT to_jsonb(r)-ARRAY['version_id','execution_id','execution_revision','execution_status','comments','defect_notes','improvement_notes']::text[] AS value,version_id,execution_id FROM public.test_run r WHERE id=${runId}::uuid`) as unknown as { value: Record<string,unknown>; version_id: string|null; execution_id: string|null }[];
