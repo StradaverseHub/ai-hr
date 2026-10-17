@@ -61,12 +61,11 @@ describe('one reviewed Reports migration-only recovery',()=>{
   expect(source).not.toContain('from drizzle.__drizzle_migrations order by created_at');
   for(const when of [NaN,Infinity,-Infinity,1.5]){const malformed=journal.map(row=>({...row}));malformed[first].when=when;expect(()=>validateReportsMigrationSnapshot(snapshot(),malformed)).toThrow();}
  });
- it('reads actual Git source pins with enough buffer for the real schema',async()=>{
+ it('refuses later fixture changes under the consumed migration-only source policy',async()=>{
   const head=execFileSync('git',['-C',root,'rev-parse','HEAD'],{maxBuffer:16000000}).toString().trim();
-  const proof=await readReportsRecoverySourceProof(root,head);
-  expect(proof.some((row:{path:string})=>row.path==='scripts/report-fixture-connection.mjs')).toBe(true);
-  const schema=proof.find((row:{path:string})=>row.path==='db/schema.ts');expect(schema).toBeDefined();
-  expect(schema!.oldSha256).toBe(schema!.sha256);
+  // Its exact five-blob admission was already exercised before the failed actor hire.
+  // Corrected employee IDs require their own reviewed continuation, never a widened old policy.
+  await expect(readReportsRecoverySourceProof(root,head)).rejects.toThrow();
  });
  it('retains existing fresh refusal and writes one recovery admission before only canonical fixture runs',()=>{
   const source=readFileSync(new URL('../scripts/dev-browser-original18.mjs',import.meta.url),'utf8');

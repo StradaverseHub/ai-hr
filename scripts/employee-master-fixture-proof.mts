@@ -32,6 +32,7 @@ export const REPORT_FIXTURE_METADATA_FILES=[
  'messages/en.json','messages/ms.json','messages/zh.json','messages/ta.json','messages/th.json','messages/vi.json',
  'scripts/employee-master-fixture-proof.mts','scripts/dev-fixture-employee-master.mts',
  'scripts/report-fixture-connection.mjs',
+ 'scripts/report-fixture-employee-codes.mjs','lib/employee-code.ts',
 ] as const;
 export function reportFixtureCanonical(value:unknown):string {
  if(Array.isArray(value))return '['+value.map(reportFixtureCanonical).join(',')+']';

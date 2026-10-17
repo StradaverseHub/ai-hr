@@ -12,6 +12,7 @@ import {and,asc,eq} from 'drizzle-orm';
 import type {SessionContext} from '../db/client';
 import {REPORT_FIXTURE_DATABASE as database,REPORT_FIXTURE_NAMESPACE as namespace,REPORT_FIXTURE_PORT as port,REPORT_FIXTURE_TENANT_NAME,REPORT_FIXTURE_FOREIGN_NAME,reportFixtureUrls,reportFixtureDigest,readEmployeeMasterFixtureProof} from './employee-master-fixture-proof.mjs';
 import {readReportFixtureConnections,assertReportFixtureConnections} from './report-fixture-connection.mjs';
+import {reportFixtureActorCode,preflightReportFixtureEmployeeCodes} from './report-fixture-employee-codes.mjs';
 const root=path.resolve(fileURLToPath(new URL('..',import.meta.url)));
 const out=path.join(root,'scratchpad/board18-reports'),manifestFile=path.join(out,'fixture-manifest.json');
 const SYSTEM='00000000-0000-0000-0000-000000000000';
@@ -37,6 +38,7 @@ function candidate(){
  if(!/^[0-9a-f]{40}$/.test(head)||head!==process.env.REPORT_FIXTURE_COORDINATOR_CANDIDATE||execFileSync('git',['-C',root,'status','--porcelain'],{encoding:'utf8'}).trim())throw new Error('Reports fixture candidate is dirty or changed.');return head;
 }
 const sourceCandidate=candidate();
+const plannedEmployeeCodes=preflightReportFixtureEmployeeCodes();
 // No runtime DB/owner imports until all target/process/source guards have passed.
 const {createDb,client}=await import('../db/client');
 const s=await import('../db/schema');
@@ -117,7 +119,7 @@ async function main(){
  const people:Record<string,Principal>={};
  async function actor(key:string,companyKey:string,role:'hr_admin'|'super_admin'|'employee',scopeKeys:string[]){
   const company=companies[companyKey],ctx=companyKey==='Foreign'?foreign.ctx:primary.ctx;
-  const employeeCode='R18-'+key.toUpperCase(),login='report18-fixture:'+key;
+  const employeeCode=reportFixtureActorCode(key),login='report18-fixture:'+key;
   const hired=await hireEmployee(ctx,{person:{fullName:'Reports18 '+key,primaryEmail:'report18-'+key.toLowerCase()+'@demo.test'},employeeCode,companyId:company.id,departmentId:company.departmentId!,employmentType:'full_time',hiredOn:dates.hiredOn});
   await setCompensation(ctx,{employmentId:hired.employmentId,basicSalary:4000,currency:'MYR',effectiveFrom:dates.hiredOn});
   const [user]=await owner.db.insert(s.appUser).values({tenantId:ctx.tenantId,personId:hired.personId,workosUserId:login,onboardedAt:new Date()}).returning();
@@ -138,7 +140,7 @@ async function main(){
  const subjects:Record<string,Subject>={};
  for(let i=1;i<=56;i++){
   const key='Row'+String(i).padStart(3,'0'),company=companies[i<=28?'MainA':'MainB'];
-  const hiredOn=i===55?dates.recentHire:dates.hiredOn,employeeCode='R18-'+String(i).padStart(6,'0');
+  const hiredOn=i===55?dates.recentHire:dates.hiredOn,employeeCode=plannedEmployeeCodes.subjects[i-1];
   const made=await hireEmployee(primary.ctx,{person:{fullName:i<=2?'Reports18 Same Name':i===3?'=1+1 Reports18 literal text':'Reports18 Employee '+String(i).padStart(3,'0'),primaryEmail:'report18-row'+i+'@demo.test'},companyId:company.id,departmentId:company.departmentId!,employeeCode,employmentType:i===56?'contract':'full_time',hiredOn,...(i===56?{provisionalEndOn:dates.contractEnd}:{})});
   const basicSalary=3000+i;
   await setCompensation(primary.ctx,{employmentId:made.employmentId,basicSalary,currency:'MYR',effectiveFrom:hiredOn});

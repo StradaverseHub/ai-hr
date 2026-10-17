@@ -1,5 +1,6 @@
 import {createHash} from 'node:crypto';
 import path from 'node:path';
+import {reportFixtureActorCode} from './report-fixture-employee-codes.mjs';
 /** Closed acceptance targets. No arbitrary DB/path/port/fixture overrides. */
 export const PERSONNEL_PREPARATION=Object.freeze({candidate:'299ccd2d6891de62149f5205cac81522b1076dea',pid:85618,stoppedAt:'2026-10-16T06:47:37.642Z',fixtureBytes:'fb7e3b34ffe6fc52711ee79cfe527056e80ab5146954f93f89d693faa87463af',browserBytes:'ed4d059f72617c7c7c0dfd0f14d36464a72e325c3b978696021ab9d91e8ace40',stopBytes:'b7971ba79002ef1667990ece31a07c0ecb830bb29f90507bb4005e1ce778f7f1',runnerBytes:'d7bc178a2de94d4db3c125625b79c091b3f7d92f16f3d657fdd6fd941498e0d6'});
 export const INTEGRATION_PREPARATION=Object.freeze({candidate:'9579b44ac012b43453be91175b18ff230152c562',pid:25764,browserBytes:'ad069d763b609cc629321b90424edf83e42044ab1591c89d6eb041352626954b',firstLogBytes:'d1548840f6ed98fd1346585601ae9dc8166ea80642c6b2e546b01ec314f7cc74',secondLogBytes:'d79214768d4502071d38a251c3645027b7f4a59d8d428640876664481440a31d',runnerBytes:'b15efce7f286229ce3225a0e7f038b7d2354ba98aa991f831e63f409b2c7e4c4'});
@@ -94,7 +95,7 @@ export function original18FixtureIdentities(scenario,facts){
   actors=Object.entries(facts.people).map(([key,row])=>{
    const tenantId=key==='ForeignHR'?facts.foreignTenant.id:facts.tenantId,companyKey=key==='ForeignHR'?'Foreign':key==='HR_B'?'MainB':key==='HiddenHR'?'Hidden':'MainA';
    const grants=['HR_A','HR_B'].includes(key)?['MainA','MainB','Empty'].map(name=>grant('hr_admin',facts.companies[name].id)):key==='NoSalary'?[grant('super_admin',null)]:key==='Employee'?[grant('employee',null)]:[grant('hr_admin',facts.companies[companyKey].id)];
-   if(!record(row)||row.tenantId!==tenantId||row.companyId!==facts.companies[companyKey].id||!uuid(row.userId)||!uuid(row.personId)||!uuid(row.employmentId)||row.employeeCode!=='R18-'+key.toUpperCase()||row.login!=='report18-fixture:'+key||!sameGrants(row.grants,grants))fail();
+   if(!record(row)||row.tenantId!==tenantId||row.companyId!==facts.companies[companyKey].id||!uuid(row.userId)||!uuid(row.personId)||!uuid(row.employmentId)||row.employeeCode!==reportFixtureActorCode(key)||row.login!=='report18-fixture:'+key||!sameGrants(row.grants,grants))fail();
    return {id:row.userId,personId:row.personId,employmentId:row.employmentId,companyId:row.companyId,employeeCode:row.employeeCode,tenantId,login:row.login,grants};
   });
  }else if(scenario==='personnel'){
