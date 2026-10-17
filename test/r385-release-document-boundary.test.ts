@@ -40,3 +40,31 @@ it('the actual backend deployment keeps native artifacts and signing inputs loca
   for(const name of privateInputs)expect(existsSync(join(destination,'mobile',name)),name).toBe(false);
  }finally{rmSync(root,{recursive:true,force:true});}
 });
+
+it('the actual deployment excludes only root scratchpad while protecting existing server scratch files from deletion',()=>{
+ const root=mkdtempSync(join(tmpdir(),'aihr-scratchpad-deploy-'));
+ const source=join(root,'source'),destination=join(root,'server');
+ const put=(base:string,name:string,value:string)=>{const path=join(base,name);mkdirSync(dirname(path),{recursive:true});writeFileSync(path,value);};
+ try{
+  put(source,'app/page.tsx','synthetic updated app source');
+  put(destination,'app/page.tsx','synthetic previous app source');
+  put(destination,'app/obsolete.tsx','synthetic removed app source');
+  put(source,'scratchpad/acceptance/database.sql','synthetic private local database dump');
+  put(source,'scratchpad/auth/tls.key','synthetic private local TLS key');
+  put(source,'scratchpad/shared.txt','synthetic local scratch replacement');
+  put(destination,'scratchpad/shared.txt','synthetic existing server scratch');
+  put(destination,'scratchpad/server-only.txt','synthetic server-only scratch');
+  put(source,'app/scratchpad/example.txt','synthetic nested app source');
+  put(destination,'app/scratchpad/obsolete.txt','synthetic obsolete nested app source');
+  // Both endpoints are temporary local paths: the production argv invokes no SSH here.
+  execFileSync('rsync',deploymentRsyncArgs(source,destination+'/'));
+  expect(existsSync(join(destination,'scratchpad','acceptance','database.sql'))).toBe(false);
+  expect(existsSync(join(destination,'scratchpad','auth','tls.key'))).toBe(false);
+  expect(readFileSync(join(destination,'scratchpad','shared.txt'),'utf8')).toBe('synthetic existing server scratch');
+  expect(readFileSync(join(destination,'scratchpad','server-only.txt'),'utf8')).toBe('synthetic server-only scratch');
+  expect(readFileSync(join(destination,'app','page.tsx'),'utf8')).toBe('synthetic updated app source');
+  expect(existsSync(join(destination,'app','obsolete.tsx'))).toBe(false);
+  expect(readFileSync(join(destination,'app','scratchpad','example.txt'),'utf8')).toBe('synthetic nested app source');
+  expect(existsSync(join(destination,'app','scratchpad','obsolete.txt'))).toBe(false);
+ }finally{rmSync(root,{recursive:true,force:true});}
+});
