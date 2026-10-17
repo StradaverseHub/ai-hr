@@ -126,7 +126,11 @@ describe('original18 closed local browser lifecycle',()=>{
   expect(source).toContain("if(!options.fresh)await run(process.execPath,['--import','tsx',path.join(root,'db/seed.ts')]");expect(source).toContain('delete fixtureEnv.DEV_TENANT_ID');expect(source).toContain('String(process.pid)');expect(source).toContain("import('./system-label-fixture-contract.mjs')");expect(source).toContain("import('./employee-master-fixture-proof.mts')");expect(branch).toContain('proveFreshSource(fixture,browser,resumeRecords)');expect(source).toContain("const root=options.scenario==='reports'?path.resolve(derivedRoot):derivedRoot");expect(source).not.toContain('fixture.stateSha256');
   const identities=branch.indexOf('const resumePrincipals=await proveIdentities('),continuityWrite=branch.indexOf('if(labelsContinuity?.create)writeNew(labelsContinuity.name,labelsContinuity.value)');
   expect(identities).toBeGreaterThanOrEqual(0);expect(continuityWrite).toBeGreaterThan(identities);expect(branch).toContain('labelsSourceContinuity:labelsContinuity.reference');
-  expect(source).toContain("fs.existsSync(path.join(out,'labels-source-continuity-886-grid-workbook-v1.json'))||Object.values(resumeRecords??{}).some(record=>record.labelsSourceContinuity!==undefined)");
+  expect(source).toContain("fs.existsSync(path.join(out,'labels-source-continuity-886-grid-workbook-v1.json'))||fs.existsSync(path.join(out,LABELS_READABILITY_CONTINUITY_NAME))||Object.values(resumeRecords??{}).some(record=>record.labelsSourceContinuity!==undefined)");
+  expect(source).toContain('currentProof.sha256===LABELS_READABILITY_SOURCE_SHA256||readabilityTransitioned');
+  expect(source).toContain('fs.existsSync(path.join(out,LABELS_READABILITY_CONTINUITY_NAME))||Object.values(resumeRecords??{}).some(record=>record.labelsSourceContinuity?.fileName===LABELS_READABILITY_CONTINUITY_NAME)');
+  expect(source).toContain('await prepareLabelsReadabilityContinuity({root,candidate,fixture,browser,currentProof,resumeRecords})');
+  expect(source).toContain('await prepareLabelsSourceContinuity({root,candidate,fixture,browser,currentProof,resumeRecords})');
   expect(source).toContain('JSON.stringify(currentProof)!==JSON.stringify(fixture.sourceProof)||transitioned');
   expect(source).toContain('ancestors.has(pid)');expect(source).toContain('watchdog=setTimeout(requestStop,45*60*1000)');expect(source).toContain('for(const pid of [Number(raw),-Number(raw)])');expect(source).toContain('no clean-twice claim');expect(source).not.toMatch(/DROP DATABASE|TRUNCATE|kill.*lsof/);
  });

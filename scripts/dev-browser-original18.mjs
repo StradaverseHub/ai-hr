@@ -177,12 +177,16 @@ if(!options.heldLockWorker) {
     if(scenario==='labels'){
       const {systemLabelFixtureSourceProof}=await import('./system-label-fixture-contract.mjs');
       const currentProof=await systemLabelFixtureSourceProof(root);
+      const {prepareLabelsReadabilityContinuity,LABELS_READABILITY_SOURCE_SHA256,LABELS_READABILITY_CONTINUITY_NAME}=await import('./system-label-readability-continuity.mjs');
       // Once a transition exists, never let returning to the original source bypass its review.
-      const transitioned=fs.existsSync(path.join(out,'labels-source-continuity-886-grid-workbook-v1.json'))||Object.values(resumeRecords??{}).some(record=>record.labelsSourceContinuity!==undefined);
+      const transitioned=fs.existsSync(path.join(out,'labels-source-continuity-886-grid-workbook-v1.json'))||fs.existsSync(path.join(out,LABELS_READABILITY_CONTINUITY_NAME))||Object.values(resumeRecords??{}).some(record=>record.labelsSourceContinuity!==undefined);
       if(JSON.stringify(currentProof)!==JSON.stringify(fixture.sourceProof)||transitioned){
         if(!options.resume)throw new Error('Labels metadata/catalog proof changed; preserve journey.');
         const {prepareLabelsSourceContinuity}=await import('./system-label-source-continuity.mjs');
-        labelsContinuity=await prepareLabelsSourceContinuity({root,candidate,fixture,browser,currentProof,resumeRecords});
+        const readabilityTransitioned=fs.existsSync(path.join(out,LABELS_READABILITY_CONTINUITY_NAME))||Object.values(resumeRecords??{}).some(record=>record.labelsSourceContinuity?.fileName===LABELS_READABILITY_CONTINUITY_NAME);
+        labelsContinuity=currentProof.sha256===LABELS_READABILITY_SOURCE_SHA256||readabilityTransitioned
+          ?await prepareLabelsReadabilityContinuity({root,candidate,fixture,browser,currentProof,resumeRecords})
+          :await prepareLabelsSourceContinuity({root,candidate,fixture,browser,currentProof,resumeRecords});
       }
     }else{
       const {readEmployeeMasterFixtureProof}=await import('./employee-master-fixture-proof.mts');
