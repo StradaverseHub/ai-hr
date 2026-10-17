@@ -33,4 +33,11 @@ describe('closed residual acceptance contract',()=>{
   expect(branch).toContain('await humanReadback()');expect(branch).toContain('familyBefore.length===1000');expect(branch).toContain('runManagedReportResidualCases');expect(branch).toContain('checkpoint:async');expect(branch).toContain('},cleanup,');expect(branch).toContain("path:out+'/residual-verification.json'");expect(branch).toContain('await predecessorFiles()');
   expect(branch).not.toContain('addDependent');expect(branch).not.toContain("'--activate'");expect(branch).not.toContain("['start','cron.service']");expect(branch).not.toContain("path:out+'/verification.json'");expect(branch).not.toMatch(/update\s+custom_report_(?:schedule|occurrence)/i);
  });
+ it('runs the actual installed isolation probe in the owned mode before status and schedule writes, then binds its private receipt',()=>{
+  const source=readFileSync(new URL('../scripts/dev-managed-report-acceptance.ts',import.meta.url),'utf8'),start=source.indexOf(" if(mode==='verify-residual'){"),end=source.indexOf(" const human=reportAcceptanceHumanReady.parse(await privateJson(out+'/human-ready.json')),configured=",start);
+  expect(start).toBeGreaterThan(0);expect(end-start).toBeGreaterThan(1000);const branch=source.slice(start,end);
+  const managed=branch.indexOf('managedUsed=true;'),probe=branch.indexOf("await run('/usr/bin/python3',['-I','/usr/local/lib/aihr-identity-email/verify-internal-report-isolation.py','--web-unit',marker.webUnit],60_000)"),receipt=branch.indexOf("await fs.writeFile(out+'/residual-isolation.json'"),status=branch.indexOf("await delivery({op:'status'})"),schedule=branch.indexOf('await saveEmployeeMasterSchedule(');
+  expect(managed).toBeGreaterThan(0);expect(probe).toBeGreaterThan(managed);expect(receipt).toBeGreaterThan(probe);expect(status).toBeGreaterThan(receipt);expect(schedule).toBeGreaterThan(status);
+  expect(branch.slice(probe,receipt)).toContain("status:'VERIFIED',outputSha256:hash(isolationOutput)");expect(branch.slice(receipt,status)).toContain("{mode:0o600,flag:'wx'}");expect(branch.slice(receipt,status)).toContain('isolationReceiptSha256=hash(isolationBytes)');expect(branch).toContain('runId:marker.runId,isolationReceiptSha256,predecessorObservation:');
+ });
 });

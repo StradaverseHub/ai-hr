@@ -317,7 +317,12 @@ async function main(){
   check(hash(await rootFile(STAGING+'/components.json'))===marker.componentsSha256,'Component manifest differs.');
   for(const [name,expected]of Object.entries(components))check(hash(await readTrustedDispatchFile('/usr/local/lib/aihr-identity-email/'+name,40_000_000,name==='internal-report-tick'?0o755:0o644))===expected,'Installed residual runtime differs.');
   check(await absentFile(INTERNAL_REPORT_DISPATCH_MARKER)&&await absentFile(INTERNAL_REPORT_DISPATCH_CRON)&&await privateWorkersIdle(),'Residual requires inactive scheduling and idle private workers.');
-  managedUsed=true;check((await delivery({op:'status'})).ready===true,'Installed residual transport unavailable.');
+  managedUsed=true;
+  const isolationOutput=await run('/usr/bin/python3',['-I','/usr/local/lib/aihr-identity-email/verify-internal-report-isolation.py','--web-unit',marker.webUnit],60_000);
+  const isolationBytes=JSON.stringify({candidateSha:marker.candidateSha,runId:marker.runId,status:'VERIFIED',outputSha256:hash(isolationOutput)})+'\n';
+  await fs.writeFile(out+'/residual-isolation.json',isolationBytes,{mode:0o600,flag:'wx'});
+  const isolationReceiptSha256=hash(isolationBytes);
+  check((await delivery({op:'status'})).ready===true,'Installed residual transport unavailable.');
   const cgroup='/sys/fs/cgroup'+command('systemctl',['show','aihrmanagedmail.slice','--property=ControlGroup','--value']);
   check(/^\/sys\/fs\/cgroup\/[a-zA-Z0-9_./-]+$/.test(cgroup)&&!cgroup.includes('..'),'Unknown residual cgroup.');
   async function sampleResidualMemory(){
@@ -356,7 +361,7 @@ async function main(){
    checkpoint:async(name,details)=>{await fs.writeFile(out+'/residual-'+name+'.json',JSON.stringify({kind:'Actual residual check only',candidateSha:marker.candidateSha,runId:marker.runId,name,details})+'\n',{mode:0o600,flag:'wx'});},cleanup,
   });
   await predecessorFiles();
-  return {path:out+'/residual-verification.json',receipt:{...result,candidateSha:marker.candidateSha,runId:marker.runId,predecessorObservation:{runId:RESIDUAL_PREDECESSOR,source:RESIDUAL_SOURCE,manifestSha256:hash(JSON.stringify(predecessor)),frontier:'budget20; exact oversized assertion failure after prior sequential stages; lost in-memory result array is not reconstructed'},limitations:['Residual cases only; preserved original failure is not converted to full verification.','Prior result attribution requires separate evidence reconciliation; no production/full release gate claim.']}};
+  return {path:out+'/residual-verification.json',receipt:{...result,candidateSha:marker.candidateSha,runId:marker.runId,isolationReceiptSha256,predecessorObservation:{runId:RESIDUAL_PREDECESSOR,source:RESIDUAL_SOURCE,manifestSha256:hash(JSON.stringify(predecessor)),frontier:'budget20; exact oversized assertion failure after prior sequential stages; lost in-memory result array is not reconstructed'},limitations:['Residual cases only; preserved original failure is not converted to full verification.','Prior result attribution requires separate evidence reconciliation; no production/full release gate claim.']}};
  }
  const human=reportAcceptanceHumanReady.parse(await privateJson(out+'/human-ready.json')),configured=await privateJson(out+'/configured.json');
  check(human.runId===marker.runId&&human.candidateSha===marker.candidateSha&&configured.readinessSha256===hash(JSON.stringify(human))&&configured.runId===marker.runId&&configured.candidateSha===marker.candidateSha,'Exact configuration/readiness receipt required.');
