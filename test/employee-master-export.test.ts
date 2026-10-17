@@ -12,6 +12,28 @@ const spec:EmployeeMasterSpec={v:2,asAt:'2024-06-01',companyIds:['00000000-0000-
 const subjects:MasterSubject[]=Array.from({length:61},(_,index)=>({id:'employment-'+index,personId:'person-'+index,companyId:spec.companyIds[0],kind:'employment',owners:{employment:[{id:'employment-'+index,values:{employeeCode:{value:String(index).padStart(5,'0')},hiredOn:{value:'2024-01-02'}}}],person:[{id:'person-'+index,values:{fullName:{value:index===0?'=HYPERLINK("https://example.test")':index===1?'中文姓名':'Synthetic '+index}}}],compensation:[{id:'salary-'+index,effectiveFrom:'2024-01-01',currency:'MYR',values:{basicSalary:{value:'1200.50',currency:'MYR'}}}]}}));
 const result=()=>runEmployeeMasterProjection(spec,fields,subjects,spec.asAt);
 describe('Employee Master complete typed exports',()=>{
+ it.each([
+  ['left','center','right'],['center','right','left'],['right','left','center'],
+ ] as const)('serializes selected text/date/number alignment %s/%s/%s without losing real Excel formats',async(textAlign,dateAlign,numberAlign)=>{
+  const definition:EmployeeMasterSpec={...spec,columns:[{...defaultMasterColumn(name),align:'right'},{...defaultMasterColumn(code),align:textAlign,freeze:false},{...defaultMasterColumn(hire),align:dateAlign},{...defaultMasterColumn(salary),align:numberAlign,decimals:3,sum:true}],groups:[code.id]};
+  const run=runEmployeeMasterProjection(definition,fields,[subjects[0]],spec.asAt),before=JSON.stringify(run);
+  const output=await serializeEmployeeMaster(run,definition,fields,'Selected alignment','xlsx'),zip=await JSZip.loadAsync(output.bytes);
+  const styles=await zip.file('xl/styles.xml')!.async('string'),xml=await zip.file('xl/worksheets/sheet1.xml')!.async('string');
+  const xfs=styles.match(/<cellXfs\b[^>]*count="(\d+)"[^>]*>([\s\S]*?)<\/cellXfs>/)!;
+  const formats=xfs[2].match(/<xf\b[^>]*?(?:\/>|>[\s\S]*?<\/xf>)/g)??[];expect(formats).toHaveLength(Number(xfs[1]));
+  const cellFormat=(address:string)=>{const tag=xml.match(new RegExp('<c\\b[^>]*\\br="'+address+'"[^>]*>'))?.[0];expect(tag,address).toBeTruthy();return formats[Number(tag!.match(/\bs="(\d+)"/)?.[1]??0)];};
+  // Inspect the real cell -> XF binding: SheetJS CE's reader does not expose horizontal alignment.
+  for(const row of [3,5])for(const [column,alignment] of [['A','right'],['B',textAlign],['C',dateAlign],['D',numberAlign]]){
+   expect(cellFormat(column+row),column+row).toContain('applyAlignment="1"');expect(cellFormat(column+row),column+row).toContain('horizontal="'+alignment+'"');
+  }
+  for(const address of ['D7','D9'])expect(cellFormat(address),address).toContain('horizontal="'+numberAlign+'"');
+  for(const address of ['A1','A2'])expect(cellFormat(address),address).not.toContain('<alignment');
+  const book=XLSX.read(output.bytes,{type:'array',cellDates:true,cellNF:true}),sheet=book.Sheets[book.SheetNames[0]];
+  expect(sheet.A5).toMatchObject({t:'s',v:'=HYPERLINK("https://example.test")'});expect(sheet.A5.f).toBeUndefined();expect(sheet.B5).toMatchObject({t:'s',v:'00000'});
+  expect(sheet.C5.t).toBe('d');expect((sheet.C5.v as Date).toISOString()).toBe('2024-01-02T00:00:00.000Z');expect(sheet.C5.z).toBe('dd/mm/yyyy');
+  for(const address of ['D5','D7','D9'])expect(sheet[address]).toMatchObject({t:'n',v:1200.5,z:'0.000'});
+  expect(JSON.stringify(run)).toBe(before);
+ });
  it.each(['auto','date','text'] as const)('presents full dates consistently while preserving real Excel values and the explicit %s format',async format=>{
   const definition={...spec,columns:spec.columns.map(column=>column.field===hire.id?{...column,format}:column)};
   const run=runEmployeeMasterProjection(definition,fields,[subjects[0]],spec.asAt);
