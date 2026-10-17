@@ -51,6 +51,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
+import { setLabelCriteriaBatch } from '../core/system-labels';
 import { createMovementEvent } from '../core/movement';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { batchInputRows, createBatch, generatePayslips, listPayslipLessEligible } from '../core/payroll';
@@ -493,6 +494,13 @@ describe('the backfill: history for rows written before migration 0440', () => {
   /** Strip the entity history the new writers stamp, leaving exactly the pre-0440 shape. */
   const eraseHistory = () => owner.db.update(schema.assignment).set({ companyId: null });
 
+  // These pre-0440 fixtures temporarily have no recorded entity and therefore resolve against the
+  // destination company. Declare their retained department labels available to both entities before
+  // constructing that history; 0550 correctly refuses a new assignment outside its label Criteria.
+  const allowLegacyCrossEntityDepartments = () => setLabelCriteriaBatch(adminCtx(b), [b.deptA, b.deptB].map(labelId => ({
+    kind: 'department', labelId, isGlobal: false, companyIds: [b.companyId, coB],
+  })));
+
   it('replayTimeline: no transfers ⇒ one company for all of history; a transfer opens a second range', () => {
     expect(replayTimeline([], 'co-x', '2020-01-01')).toEqual([{ from: '2020-01-01', companyId: 'co-x' }]);
     const t = [{ eventId: 'e1', effectiveDate: '2026-08-11', before: 'co-a', after: 'co-b' }];
@@ -555,6 +563,7 @@ describe('the backfill: history for rows written before migration 0440', () => {
       .update(schema.assignment)
       .set({ validTo: null })
       .where(eq(schema.assignment.id, before[before.length - 2].id));
+    await allowLegacyCrossEntityDepartments();
     await eraseHistory();
     const pre = await assignmentsOf(hire.employmentId);
     expect(pre.map((r) => [r.validFrom, r.validTo])).toEqual([
@@ -598,6 +607,7 @@ describe('the backfill: history for rows written before migration 0440', () => {
       companyId: coB,
       departmentId: deptB2,
     });
+    await allowLegacyCrossEntityDepartments();
     await eraseHistory();
     // Pre-backfill the resolver falls back to the column, so August is one segment on the DESTINATION —
     // i.e. exactly the fault, still reproducible, which proves the fallback is what it claims to be.
