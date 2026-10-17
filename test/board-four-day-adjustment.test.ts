@@ -126,7 +126,8 @@ describe('per-configured-row overtime decisions',()=>{
     await expect(save([{key:keys[1],minutes:1.5}])).rejects.toThrow('whole');
     await expect(save([{key:keys[1],minutes:1440}])).rejects.toThrow('exceeds');
     expect((await day(e.employmentId)).otMinutes).toBe(150);
-    await owner.db.delete(s.attendanceRuleOtRow).where(eq(s.attendanceRuleOtRow.id,keys[1]));
+    await updateAttendanceRuleSection(a,{ruleId:rule.id,section:'general',name:'Date overtime bands',description:null,status:'active',applyDeductions:false,
+      otRows:[{fromMinutes:0,toMinutes:60,ratePattern:'variable',rate:1.5}]});
     editor=(await attendanceDayEditor(a,e.employmentId,DATE()))!;expect(editor.rows.find(row=>row.key===keys[1])?.orphan).toBe(true);
     await expect(saveSchedule(e.employmentId,sh.id,'workday')).rejects.toThrow('Return that row to Auto');
     await save([{key:keys[1],minutes:null}]);expect((await attendanceDayEditor(a,e.employmentId,DATE()))?.rows.some(row=>row.orphan)).toBe(false);
