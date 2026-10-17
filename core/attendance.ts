@@ -1418,7 +1418,9 @@ function deriveAttendance(
   if (
     s.dayType === 'workday' &&
     !s.crossesMidnight &&
-    !s.flexiDuration &&
+    // Semi Flexi retains its existing explicit/derived half-day cutoff. Full Flexi has no
+    // clock anchors; a date corrected to Off also has no half-day attendance requirement.
+    (!s.flexiDuration || (!s.durationOnly && s.scheduleDayKind !== 'off')) &&
     status !== 'late' &&
     toMinutes(checkOutAt) < toMinutes(s.halfDayBefore)
   ) {

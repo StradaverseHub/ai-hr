@@ -25,6 +25,7 @@ import { checkIn, checkOut, isWorkingDayKind, shiftDayKindFor } from '../core/at
 import { assignDefaultShift, createShift, updateShift } from '../core/roster';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
+import { attendanceDayEditor, saveAttendanceDayEdit } from '../packs/attendance/day-adjustment';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { createBatch, generatePayslips, prefillOvertimeFromAttendance } from '../core/payroll';
 import {
@@ -203,8 +204,12 @@ describe('b8aa3466 item 8 — the half-day cut-off', () => {
     const shift = await semiFlexiShift(480);
     const early = await punchDay(shift.id, TUE, '07:00:00', '10:30:00', `sf_half_${randomUUID()}@t.local`);
     expect(early.out.status).toBe('half_day');
+    expect(early.out.workedMinutes).toBe(210);
+    expect((await attendanceOf(early.employmentId, TUE)).underMinutes).toBe(270);
     const late = await punchDay(shift.id, TUE, '07:00:00', '11:30:00', `sf_full_${randomUUID()}@t.local`);
-    expect(late.out.status).not.toBe('half_day');
+    expect(late.out.status).toBe('present');
+    expect(late.out.workedMinutes).toBe(270);
+    expect((await attendanceOf(late.employmentId, TUE)).underMinutes).toBe(210);
   });
 
   it('an EXPLICIT half-day cut-off still wins on a Semi Flexi shift', async () => {
@@ -221,9 +226,39 @@ describe('b8aa3466 item 8 — the half-day cut-off', () => {
       weeklyPattern: [1, 2, 3, 4, 5],
       halfDayFirstOut: '09:00:00',
     });
+    const before = await punchDay(shift.id, TUE, '07:00:00', '08:30:00', `sf_expl_before_${randomUUID()}@t.local`);
+    expect(before.out.status).toBe('half_day');
+    expect(before.out.workedMinutes).toBe(90);
     // With the explicit 09:00, a 10:30 clock-out is now AFTER the cut-off and is no longer a half day.
     const d = await punchDay(shift.id, TUE, '07:00:00', '10:30:00', `sf_expl_${randomUUID()}@t.local`);
-    expect(d.out.status).not.toBe('half_day');
+    expect(d.out.status).toBe('present');
+  });
+
+  it('Full Flexi keeps a short morning as present with its actual required-hours shortfall', async () => {
+    const shift = await createShift(adminCtx(b), {
+      name: `Duration_${randomUUID().slice(0, 6)}`, code: `FD_${randomUUID().slice(0, 6)}`,
+      type: 'full_flexi', normalMinutesOverride: 480, breakMinutes: 0, weeklyPattern: [1, 2, 3, 4, 5],
+    });
+    const day = await punchDay(shift.id, TUE, '07:00:00', '08:30:00', `full_short_${randomUUID()}@t.local`);
+    expect(day.out.status).toBe('present');
+    expect(day.out.workedMinutes).toBe(90);
+    expect((await attendanceOf(day.employmentId, TUE)).underMinutes).toBe(390);
+  });
+
+  it('a date corrected to Off does not acquire a half-day status from its underlying Semi Flexi shift', async () => {
+    const shift = await semiFlexiShift(480);
+    const day = await punchDay(shift.id, TUE, '07:00:00', '08:30:00', `off_short_${randomUUID()}@t.local`);
+    expect(day.out.status, 'the underlying workday really exercises the half-day cutoff').toBe('half_day');
+    const editor = (await attendanceDayEditor(day.a, day.employmentId, TUE))!;
+    await saveAttendanceDayEdit(day.a, {
+      employmentId: day.employmentId, date: TUE, baseline: editor.baseline,
+      reason: 'Fictional isolated Off-date correction', confirmPayrollRecalculation: false,
+      kind: 'schedule', shiftId: null, dayKind: 'off_day',
+    });
+    const corrected = await attendanceOf(day.employmentId, TUE);
+    expect(corrected.status).toBe('present');
+    expect(corrected.workedMinutes).toBe(90);
+    expect(corrected.underMinutes).toBe(0);
   });
 
   it('a NORMAL shift keeps exactly the threshold it has today', async () => {
