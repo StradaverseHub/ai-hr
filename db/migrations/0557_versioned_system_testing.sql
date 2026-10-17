@@ -82,6 +82,27 @@ CREATE FUNCTION app.testing_owns_execution(execution_id uuid) RETURNS boolean LA
  SELECT app.testing_live_principal() AND EXISTS(SELECT 1 FROM public.test_execution e JOIN public.test_assignment a ON a.id=e.assignment_id AND a.tenant_id=e.tenant_id
  WHERE e.id=execution_id AND e.tenant_id=app.current_tenant_id() AND e.tester_user_id=app.current_user_id() AND a.tester_user_id=app.current_user_id())
 $$;
+-- SELECT FOR UPDATE also requires UPDATE RLS. Testers must not receive master/assignment write
+-- policies just to serialize their own observations. This fixed owner helper returns IDs only.
+CREATE FUNCTION app.testing_lock_own_assignment(p_assignment_id uuid) RETURNS TABLE(case_id uuid,assignment_id uuid)
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $$
+DECLARE target_case_id uuid;
+BEGIN
+ IF NOT app.testing_live_principal() THEN RETURN; END IF;
+ SELECT a.test_case_id INTO target_case_id FROM public.test_assignment a
+  WHERE a.id=p_assignment_id AND a.tenant_id=app.current_tenant_id() AND a.tester_user_id=app.current_user_id();
+ IF target_case_id IS NULL THEN RETURN; END IF;
+ -- Same case -> assignment order as canonical publication/execution triggers. Recheck ownership
+ -- after each wait; no active/version filter here so the service retains its exact refusal codes.
+ PERFORM 1 FROM public.test_case c WHERE c.id=target_case_id AND c.tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF NOT FOUND OR NOT app.testing_live_principal() THEN RETURN; END IF;
+ PERFORM 1 FROM public.test_assignment a WHERE a.id=p_assignment_id AND a.test_case_id=target_case_id
+  AND a.tenant_id=app.current_tenant_id() AND a.tester_user_id=app.current_user_id() FOR UPDATE;
+ IF NOT FOUND OR NOT app.testing_live_principal() THEN RETURN; END IF;
+ RETURN QUERY SELECT target_case_id,p_assignment_id;
+END $$;
+REVOKE ALL ON FUNCTION app.testing_lock_own_assignment(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.testing_lock_own_assignment(uuid) TO ai_hr_app;
 REVOKE ALL ON FUNCTION app.testing_live_principal(),app.testing_assigned(uuid),app.testing_owns_execution(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.testing_live_principal(),app.testing_assigned(uuid),app.testing_owns_execution(uuid) TO ai_hr_app;
 --> statement-breakpoint

@@ -221,4 +221,27 @@ describe('canonical execution evidence and Feedback transaction', () => {
     await expect(addTestingScreenshot(one, { ...file, content: Buffer.from('<svg/>'), mimeType: 'image/svg+xml' })).rejects.toMatchObject({ code: 'invalid' });
     await expect(addTestingScreenshot(one, { ...file, fileName: '../evidence.png' })).rejects.toMatchObject({ code: 'invalid' });
   });
+  it('locks only the exact live own assignment without granting tester master writes or exposing draft data',async()=>{
+    const f=await setup();
+    const [acl]=await withTenant(one,tx=>tx.execute(sql`SELECT has_function_privilege(current_user,'app.testing_lock_own_assignment(uuid)','EXECUTE') AS app_execute,
+      EXISTS(SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace,
+       LATERAL pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) a
+       WHERE n.nspname='app' AND p.proname='testing_lock_own_assignment' AND a.grantee=0 AND a.privilege_type='EXECUTE') AS public_execute`));
+    expect(acl).toEqual({app_execute:true,public_execute:false});
+    const own=await withTenant(one,tx=>tx.execute(sql`SELECT * FROM app.testing_lock_own_assignment(${f.a.assignmentId}::uuid)`));
+    expect(own).toHaveLength(1);expect(own[0]).toEqual({case_id:f.draft.caseId,assignment_id:f.a.assignmentId});
+    const forged=await withTenant(two,tx=>tx.execute(sql`SELECT * FROM app.testing_lock_own_assignment(${f.a.assignmentId}::uuid)`));expect(forged).toHaveLength(0);
+    const missing=await withTenant(one,tx=>tx.execute(sql`SELECT * FROM app.testing_lock_own_assignment('00000000-0000-4000-8000-000000000099'::uuid)`));expect(missing).toHaveLength(0);
+    const foreign=await seedBase(),foreignCtx=await entitledCtx(foreign,['employee']);
+    const cross=await withTenant(foreignCtx,tx=>tx.execute(sql`SELECT * FROM app.testing_lock_own_assignment(${f.a.assignmentId}::uuid)`));expect(cross).toHaveLength(0);
+    const beforeCase=await owner.db.select().from(s.testCase).where(eq(s.testCase.id,f.draft.caseId));
+    const beforeAssignment=await owner.db.select().from(s.testAssignment).where(eq(s.testAssignment.id,f.a.assignmentId));
+    const changedCase=await withTenant(one,tx=>tx.update(s.testCase).set({title:'Forbidden tester rewrite'}).where(eq(s.testCase.id,f.draft.caseId)).returning({id:s.testCase.id}));expect(changedCase).toEqual([]);
+    const changedAssignment=await withTenant(one,tx=>tx.update(s.testAssignment).set({active:false}).where(eq(s.testAssignment.id,f.a.assignmentId)).returning({id:s.testAssignment.id}));expect(changedAssignment).toEqual([]);
+    expect(await owner.db.select().from(s.testCase).where(eq(s.testCase.id,f.draft.caseId))).toEqual(beforeCase);
+    expect(await owner.db.select().from(s.testAssignment).where(eq(s.testAssignment.id,f.a.assignmentId))).toEqual(beforeAssignment);
+    await owner.db.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,one.userId!));
+    const blocked=await withTenant(one,tx=>tx.execute(sql`SELECT * FROM app.testing_lock_own_assignment(${f.a.assignmentId}::uuid)`));expect(blocked).toHaveLength(0);
+  });
+
 });
