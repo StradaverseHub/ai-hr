@@ -3,7 +3,7 @@
  * Do NOT put an outer both-slot wrapper around this entry: it already acquires both slots.
  * Held-lock worker, only for coordinator/debugging: same command with --held-lock-worker.
  * That worker proves all three named lock files are live before any DB/build/server work.
- * STOP: create scratchpad/board16-system-testing/browser.stop in this derived worktree.
+ * STOP: create scratchpad/board19-profile-testing/browser.stop in this derived worktree.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,7 +16,7 @@ import {SYSTEM_TESTING_BROWSER_TARGET,systemTestingBrowserOptions} from './syste
 import {prepareSystemTestingBuild,systemTestingCompileEnvironment} from './improve/system-testing-manifest.ts';
 import {DEMO_TENANT_ID,SYSTEM_TENANT_ID,demoSeedRefusal} from '../db/seed-guard.ts';
 const filename=fileURLToPath(import.meta.url),root=fileURLToPath(new URL('..',import.meta.url));
-const out=path.join(root,'scratchpad/board16-system-testing'),stopFile=path.join(out,'browser.stop');
+const out=path.join(root,'scratchpad/board19-profile-testing'),stopFile=path.join(out,'browser.stop');
 const {database,port,namespace}=SYSTEM_TESTING_BROWSER_TARGET;
 const lockNames={a:namespace+'-browser-a',b:namespace+'-browser-b',db:namespace+'-browser-db'};
 const gateState=path.join(os.homedir(),'.aihr-gate-state');
@@ -112,7 +112,7 @@ if(!options.heldLockWorker) {
     if(fs.existsSync(stopFile))throw new Error('Run was stopped while waiting for locks.');
     if(fs.existsSync(path.join(out,'browser-manifest.json')))throw new Error('A prior browser target exists; preserve it. This initial runner has no resume/reset path.');
     const journal=JSON.parse(fs.readFileSync(path.join(root,'db/migrations/meta/_journal.json'),'utf8'));
-    if(!journal.entries.some(e=>e.idx===557&&e.when===1791900000037&&e.tag==='0557_versioned_system_testing'))throw new Error('Parent must integrate the real0557 journal after prerequisites before execution.');
+    if(!journal.entries.some(e=>e.idx===561&&e.when===1791900000041&&e.tag==='0561_versioned_system_testing'))throw new Error('Parent must integrate the real0561 journal after prerequisites before execution.');
     const compiled=prepareSystemTestingBuild({worktree:root,candidate,buildRecordId:randomUUID()});
     if(!options.reviewRequired)Object.assign(env,systemTestingCompileEnvironment(compiled));
     else for(const key of Object.keys(systemTestingCompileEnvironment(compiled)))delete env[key];
@@ -123,7 +123,7 @@ if(!options.heldLockWorker) {
     const {default:postgres}=await import('postgres');
     const adminUrl=new URL(ownerUrl);adminUrl.pathname='/postgres';postgresAdmin=postgres(adminUrl.toString(),{max:1,connect_timeout:10,idle_timeout:5,connection:{statement_timeout:10000}});
     const existing=await postgresAdmin`select datname from pg_database where datname=${database}`;
-    if(!existing.length)await postgresAdmin.unsafe('CREATE DATABASE ai_hr_board16_system_testing_browser');
+    if(!existing.length)await postgresAdmin.unsafe('CREATE DATABASE ai_hr_board19_profile_testing_browser');
     await postgresAdmin.end();postgresAdmin=undefined;
     // Prove the actual restricted role on the exact target, not merely the URL username.
     const roleProbeUrl=new URL(appUrl);roleProbeUrl.pathname='/'+database;

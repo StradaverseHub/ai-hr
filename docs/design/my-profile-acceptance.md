@@ -19,7 +19,7 @@ All outcomes below require implementation and subsequent coordinated verificatio
 | Module and document safety | existing attendance/leave/payroll/document owners | disabled modules, released docs only, unavailable not zero/current-as-history |
 | Localization / AI / consumers | shared labels/options and master-only facts | six locales, pending proposals labelled, import/report/form guards retained |
 
-Source-only phase: no tests/types/DB/dev/installation performed. Migration0554 and ADR0125 reserved
+Source-only phase: no tests/types/DB/dev/installation performed. Migration0560 and ADR0125 reserved
 centrally. Parent reviews SQL and runs combined candidate checks and actual application journeys.
 
 ## Source checkpoint, not acceptance
@@ -38,7 +38,7 @@ pending-click guards and live metadata changes. These tests have NOT executed. E
 reconciled to the reversed clocking, six-tab, address and Leave contracts, retaining their surviving
 owner destinations and permissions. A combined type/test run may expose integration diagnostics.
 
-Outstanding evidence: migration journal union/app-role SQL rehearsal (0554 remains unapplied), types,
+Outstanding evidence: migration journal union/app-role SQL rehearsal (0560 remains unapplied), types,
 focused and broader regression checks, real transaction/concurrency/failure outcomes, exact actual
 all-role journeys, save/reopen/approve/reject, multiple employments/leavers, unsupported country,
 closed Payroll preservation, module-disabled states, six locales, light/dark/Classic/Monolith, narrow

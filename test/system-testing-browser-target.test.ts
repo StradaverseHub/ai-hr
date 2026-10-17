@@ -3,7 +3,7 @@ import {SYSTEM_TESTING_BROWSER_TARGET,systemTestingBrowserOptions} from '../scri
 
 describe('closed System Testing browser preparation target',()=>{
  it('has one named isolated target and no caller-selected URL/database',()=>{
-  expect(SYSTEM_TESTING_BROWSER_TARGET).toEqual({database:'ai_hr_board16_system_testing_browser',namespace:'b16systemtesting',port:'3214',scratchpad:'scratchpad/board16-system-testing'});
+  expect(SYSTEM_TESTING_BROWSER_TARGET).toEqual({database:'ai_hr_board19_profile_testing_browser',namespace:'b19profiletesting',port:'3231',scratchpad:'scratchpad/board19-profile-testing'});
   for(const args of [['--database=production'],['--port=3000'],['--reset'],['--resume'],['--attempt=other'],['--review-required','--review-required']])expect(()=>systemTestingBrowserOptions(args)).toThrow();
  });
  it('exposes the held worker only to the coordinator parser and keeps missing-evidence mode explicit',()=>{

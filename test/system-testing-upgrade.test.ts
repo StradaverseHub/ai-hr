@@ -1,4 +1,4 @@
-/** Genuine pre0557 tables/observations -> complete on-disk0557 inside an owner transaction.
+/** Genuine pre0561 tables/observations -> complete on-disk0561 inside an owner transaction.
  * No trigger bypass. Reconstruction and upgrade roll back even on assertion failure. UNRUN. */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -7,7 +7,7 @@ import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { closeAll, migrateTestDb, owner, resetDb, seedBase } from './harness';
 const read = (name: string) => readFileSync(resolve(process.cwd(),'db/migrations',name),'utf8');
-const upgrade = read('0557_versioned_system_testing.sql');
+const upgrade = read('0561_versioned_system_testing.sql');
 const legacy = read('0482_system_testing.sql');
 const historicalPolicies = ['0093_feedback_module.sql','0318_feedback_plan_revision.sql','0323_feedback_block_answer.sql'].flatMap(name => [...read(name).matchAll(/CREATE POLICY feedback_(?:request|attachment|plan_revision|block)[\s\S]*?;/g)].map(m => m[0]));
 const visibilityPolicies = [...read('0515_set_based_visibility.sql').matchAll(/ALTER POLICY "feedback_(?:request|attachment|plan_revision|block)[\s\S]*?;/g)].map(m => m[0]);
@@ -17,7 +17,7 @@ it('preserves actual pre-upgrade identity/history, publishes only the current ba
   let observed = false;
   expect(historicalPolicies).toHaveLength(8); expect(visibilityPolicies.length).toBeGreaterThan(0);
   try { await owner.db.transaction(async tx => {
-    // Remove only0557-owned objects, then recreate the genuine retained0482 tables and pre0557 policies.
+    // Remove only0561-owned objects, then recreate the genuine retained0482 tables and pre0561 policies.
     const names = [...upgrade.matchAll(/CREATE FUNCTION app\.([a-z_]+)\(/g)].map(m => m[1]);
     const functions = await tx.execute(sql`SELECT p.oid::regprocedure::text AS signature FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(ARRAY[${sql.join(names.map(n => sql`${n}`),sql`, `)}]::text[]) ORDER BY p.oid`) as unknown as { signature: string }[];
     expect(functions.length).toBe(names.length);

@@ -4,7 +4,7 @@ This is an unexecuted operator journey for approved9689f5d3. The fixture prepare
 
 ## Prerequisites and exact target
 
-The coordinator must first integrate the real prerequisites and register0557_versioned_system_testing at idx557/when1791900000037. The migration source alone is insufficient. Provision this worktree's own real dependencies and private local environment through the normal coordinated process. No symlinked dependencies, production URLs, production runtime or real identity provider is accepted.
+The coordinator must first integrate the real prerequisites and register0561_versioned_system_testing at idx561/when1791900000041. The migration source alone is insufficient. Provision this worktree's own real dependencies and private local environment through the normal coordinated process. No symlinked dependencies, production URLs, production runtime or real identity provider is accepted.
 
 After union integration, review the instruction/source relationship for each affected bundled guide and freeze its reviewed source fingerprint. Do not regenerate fingerprints merely to make the check green. The current guide fingerprints intentionally become review-required when their source dependencies change. Root owns the five documented static Next compile keys and official release helper invocation. Missing compile evidence, mismatched source/catalogue and unreviewed guide changes remain unavailable for confirmation.
 
@@ -38,7 +38,7 @@ Read actual UUIDs from the receipt, never hardcode them in browser scripts. The 
 | ForeignHR | Separate tenant group HR; cannot see primary guides, attempts, screenshots or Feedback |
 | DisabledHR | Separate unentitled tenant group HR; module refusal before testing access |
 
-The primary tenant also has a second company for scope controls. Shared is a published two-step local guide assigned independently to A, B and UserOnly. History has two canonically published instruction versions and an A assignment to version two, with no observations falsely attached to version one. Unassigned is a published master-only guide. Inactive is assigned to A but the current instructions explicitly disallow execution. Incomplete is a saved unfinished Draft, not a published instruction. The fixture creates no legacy versionless observation or historical baseline; genuine pre0557 upgrade behavior has its own isolated migration regression.
+The primary tenant also has a second company for scope controls. Shared is a published two-step local guide assigned independently to A, B and UserOnly. History has two canonically published instruction versions and an A assignment to version two, with no observations falsely attached to version one. Unassigned is a published master-only guide. Inactive is assigned to A but the current instructions explicitly disallow execution. Incomplete is a saved unfinished Draft, not a published instruction. The fixture creates no legacy versionless observation or historical baseline; genuine pre0561 upgrade behavior has its own isolated migration regression.
 
 Use the actual dev identity chooser at /login (or its existing switcher) to select the exact manifest app-user ID; DEV_USER_ID defaults to HR only. Routes have no invented locale prefix. Use the existing language selector/NEXT_LOCALE for en, ms, zh, ta, th and vi.
 
