@@ -1259,7 +1259,7 @@
           "Company statutory configuration authority."
         ],
         "jurisdiction": "MY",
-        "configuration": "Requires the installed country pack and body-specific fictional fixture fields.",
+        "configuration": "Requires the installed MY statutory capability and body-specific fictional fixture fields.",
         "screenKeys": [
           "organization"
         ]
@@ -1317,7 +1317,7 @@
           "Payroll statutory-reading authority for the fictional company."
         ],
         "jurisdiction": "MY",
-        "configuration": "Requires an isolated processed, unpublished fixture run and applicable installed form.",
+        "configuration": "Requires isolated MY Payroll runs eligible for the installed Borang A preview and the supplied company/month/run selection. Use the fixture runs in their actual stored processed or closed state.",
         "screenKeys": [
           "payroll"
         ]
@@ -1376,7 +1376,7 @@
           "Scoped Payroll submission review and company statutory configuration authority for the dedicated fictional company."
         ],
         "jurisdiction": "MY",
-        "configuration": "Uses a fixture-approved installed bank/payment format; do not invent routing or account rules.",
+        "configuration": "Requires the installed MY EPF Borang A statutory submission capability and fixture-approved statutory setup. Use the file owner’s actual registration and format validation; do not invent account or routing rules.",
         "screenKeys": [
           "payroll"
         ]
