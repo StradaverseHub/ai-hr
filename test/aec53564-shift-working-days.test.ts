@@ -19,6 +19,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { createShift, updateShift, type ShiftInput } from '../core/roster';
+import { createAttendanceRule } from '../core/attendance-rule';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let ADMIN: ReturnType<typeof adminCtx>;
@@ -189,11 +190,13 @@ describe('D1/D2/D4 — the SERVICE contract every caller (the form, a script, a 
     const a = adminCtx(b);
     const group = randomUUID();
     const sh = await createShift(a, shiftInput());
-    // Stamp a ruleId directly (bypassing FK for the sake of a cheap id — use a real rule instead).
-    const [rule] = await owner.db
-      .insert(schema.attendanceRule)
-      .values({ tenantId: b.tenantId, name: `G_${group.slice(0, 8)}`, isDefault: false, status: 'active' })
-      .returning({ id: schema.attendanceRule.id });
+    // Use the administrator writer so the canonical OT snapshot trigger also sees its tenant scope.
+    const rule = await createAttendanceRule(a, {
+      name: `G_${group.slice(0, 8)}`, status: 'active',
+      lateGracePeriodMinutes: 0, lateAfterMinutes: 0, lateDeductMinutes: 0, includeGraceInLateness: false,
+      earlyGracePeriodMinutes: 0, earlyAfterMinutes: 0, earlyDeductMinutes: 0, includeGraceInEarlyOut: false,
+      applyToEarlyOt: false, otRows: [],
+    });
     await owner.db.update(schema.shift).set({ ruleId: rule.id }).where(eq(schema.shift.id, sh.id));
     const row = (await owner.db.select().from(schema.shift).where(eq(schema.shift.id, sh.id)))[0];
 

@@ -713,13 +713,14 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
       const ok = await leaveRender(tab, { emp: mine.employmentId });
       expect(panelSelection(ok)).toBe(mine.employmentId);
 
-      const tampered = await leaveRender(tab, { emp: foreign.employmentId });
-      expect(findByType(tampered, EmployeeScopePanel)).toHaveLength(0);
-      expect(JSON.stringify(tampered)).toContain('invalidQuery');
-
-      const unknown = await leaveRender(tab, { emp: randomUUID() });
-      expect(findByType(unknown, EmployeeScopePanel)).toHaveLength(0);
-      expect(JSON.stringify(unknown)).toContain('invalidQuery');
+      for (const requested of [foreign.employmentId, randomUUID()]) {
+        const refused = await leaveRender(tab, { emp: requested });
+        expect(findByType(refused, EmployeeScopePanel), 'a refused employee exposes no picker or employee data').toHaveLength(0);
+        expect(findByType(refused, 'table'), 'a refused employee exposes no inquiry rows').toHaveLength(0);
+        const alerts = findByType(refused, 'p').filter(el => el.props.role === 'alert');
+        expect(alerts, 'the refusal is visible to the user').toHaveLength(1);
+        expect(alerts[0].props.children).toBe('invalidQuery');
+      }
     },
   );
 
@@ -807,9 +808,9 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
       const panel = findByType(tree, EmployeeScopePanel)[0];
       expect(panel.props.selectParam).toBe('emp');
       expect(panel.props.basePath).toBe(`/leave/employee-${tab === 'balances' ? 'balances' : 'records'}`);
-      // No "All employees" row: `selectInquiryEmployee` has no no-employee destination to land on, and the
-      // screens draw a prompt for that state instead.
-      expect(panel.props.allowAll ?? false, 'the All-employees row stays opt-in and off here').toBe(false);
+      // Approved 23e87eef makes All a real inquiry destination; both selection and reset must offer it.
+      expect(panel.props.allowAll, 'All employees is an explicit destination on both Inquiry tabs').toBe(true);
+      expect(panel.props.resetToAll, 'Reset returns to the same authorized All view').toBe(true);
       // EVERY PROP PLAIN DATA: a closure here is a 500 on every request that tsc and the suite stay green for.
       for (const [k, v] of Object.entries(panel.props as Record<string, unknown>)) {
         expect(typeof v, `EmployeeScopePanel got a function in ${k}`).not.toBe('function');

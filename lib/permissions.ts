@@ -494,7 +494,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     screenKey: 'systemLabels',
     href: '/admin/settings/system-labels',
     labelKey: 'nav.systemLabels',
-    guard: 'scopedAdmin',
+    guard: 'requireAdmin',
     routes: ['/admin/settings/system-labels'],
   },
   {

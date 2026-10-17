@@ -50,6 +50,8 @@ import {
 import { assignEmployeeShiftDated } from '../core/shift-arrangement';
 import { ATTENDANCE_TAB_SECTION_ORDER } from '../lib/personnel-tab-sections';
 import { todayInKualaLumpur } from '../lib/hr-date';
+import { saveScheduleGroupControl } from '../core/schedule-group-controls';
+import { hasPersonnelPostedBinding } from './helpers/personnel-posted-binding';
 import {
   adminCtx,
   closeAll,
@@ -181,10 +183,12 @@ describe('§1 the Schedule Group field on the Personnel Attendance tab', () => {
     const page = PAGE();
     const from = page.indexOf('const scheduleGroupCard');
     expect(from, 'the card exists').toBeGreaterThan(-1);
-    const card = page.slice(from, page.indexOf('const locationCard', from));
-    expect(card, 'a select, never a checkbox — the 57840a6e collapse must stay impossible').toContain(
-      '<select name="attendanceRuleId"',
-    );
+    const end = page.indexOf('const locationCard', from);
+    expect(end, 'the following card bounds this assertion').toBeGreaterThan(from);
+    const card = page.slice(from, end);
+    expect(card.length).toBeGreaterThan(100);
+    expect(card, 'a select, never a checkbox — the 57840a6e collapse must stay impossible').toContain('<select');
+    expect(hasPersonnelPostedBinding(card, 'attendance.holiday_calendar_and_schedule.schedulegroupname', 'attendanceRuleId')).toBe(true);
     expect(card).not.toContain('type="checkbox"');
     expect(card).toContain("defaultValue={scheduleGroupCurrentId ?? ''}");
     const blank = card.indexOf('<option value="">');
@@ -266,6 +270,7 @@ describe('§2 the writer', () => {
     await ensureStandardRule(a);
     const strict = await createAttendanceRule(a, ruleInput('Strict', { lateGracePeriodMinutes: 0 }));
     const lenient = await createAttendanceRule(a, ruleInput('Lenient', { lateGracePeriodMinutes: 30 }));
+    await saveScheduleGroupControl(a, { ruleId: strict.id, kind: 'duty', enabled: true });
     const sh = await createShift(a, workdayShift('Morning', { ruleId: strict.id }));
     const emp = await makeEmp();
     await assignDefaultShift(a, { employmentId: emp, shiftId: sh.id });
@@ -347,11 +352,11 @@ describe('§3 setting a group re-validates the shift the employee is already on'
   /** One group allowing exactly one shift, plus a shift outside it. */
   async function groups() {
     const a = adminCtx(b);
-    await ensureStandardRule(a);
+    const standard = await ensureStandardRule(a);
     const group = await createAttendanceRule(a, ruleInput('A02'));
     const allowed = await createShift(a, workdayShift('Morning', { ruleId: group.id }));
     const forbidden = await createShift(a, workdayShift('Night'));
-    return { a, group, allowed, forbidden };
+    return { a, standard, group, allowed, forbidden };
   }
 
   it('(10) RUNG 3 — the backup shift (employment.default_shift_id)', async () => {
@@ -412,6 +417,7 @@ describe('§3 setting a group re-validates the shift the employee is already on'
 
   it('(12) RUNG 1 — today’s roster row, even when every other source is allowed', async () => {
     const { a, group, allowed, forbidden } = await groups();
+    await saveScheduleGroupControl(a, { ruleId: group.id, kind: 'duty', enabled: true });
     const today = todayInKualaLumpur();
 
     // Backup shift ALLOWED, today's rostered shift FORBIDDEN. Only a check that reads the roster row can
@@ -441,7 +447,9 @@ describe('§3 setting a group re-validates the shift the employee is already on'
    * "no stored pair contradicts the group", so every stored pair is read.
    */
   it('(13) an ALLOWED roster row does not excuse a forbidden backup shift', async () => {
-    const { a, group, allowed, forbidden } = await groups();
+    const { a, standard, group, allowed, forbidden } = await groups();
+    await saveScheduleGroupControl(a, { ruleId: standard.id, kind: 'duty', enabled: true });
+    await saveScheduleGroupControl(a, { ruleId: group.id, kind: 'duty', enabled: true });
     const emp = await makeEmp();
     await assignDefaultShift(a, { employmentId: emp, shiftId: forbidden.id });
     await assignShift(a, { employmentId: emp, shiftDate: todayInKualaLumpur(), shiftId: allowed.id });

@@ -43,6 +43,7 @@ import {
   type EmployeeDraftData,
 } from '../lib/employee-draft-schema';
 import { resolveEmployeeIdMode, type EmployeeIdRule } from '../lib/employee-id-mode';
+import { draftActivationFieldLabels } from '../lib/draft-activation-presentation';
 // r393 (685d2380 step 3b) — the client pack's statutory rules, which the draft screen hands `missingByTab`.
 import { myClientPack } from '../localization/my/client';
 import {
@@ -351,7 +352,7 @@ describe('§2 every computed translation key resolves, in all six locales', () =
     }
   });
 
-  it('t(`fields.${f}`) — every field name either rule can ever return', () => {
+  it('every field name either rule returns resolves through the canonical presentation in all locales', () => {
     // Enumerated from the rules themselves rather than hand-listed: drive them with inputs that trip
     // every branch, so a new required field added without a label fails HERE. BOTH rules are swept
     // (item 06f0cb8f) — the four Create fields are `missingToCreate`'s and are labelled from the same
@@ -408,26 +409,32 @@ describe('§2 every computed translation key resolves, in all six locales', () =
       'employeeCode']) {
       expect(names.has(expected), expected).toBe(true);
     }
-    // r392 (685d2380 step 1) — TWO NAMES ARE RELABELLED BEFORE THE COMPUTED KEY IS REACHED, by the wizard's
-    // `missingFieldLabel`: `hiredOn` → `fields.groupJoinDate` (its old key is retired), and
-    // `provisionalEndOn` → the box's own type-specific name (`fields.contractEndDate` /
-    // `fields.internshipEndDate`, else the still-live `fields.provisionalEndOn`). So the key that must resolve
-    // for those names is the one actually RENDERED, and the retired one must stay retired — a sweep that
-    // only checked `fields.hiredOn` was non-empty would pass on "[retired r392 — …]".
-    const RELABEL: Record<string, string[]> = {
-      hiredOn: ['groupJoinDate'],
-      provisionalEndOn: ['contractEndDate', 'internshipEndDate', 'provisionalEndOn'],
-    };
+    // The outstanding list and owner refusals now share tab/field pointers. Exercise the actual label
+    // resolver, including Contract/Intern end dates, rather than requiring retired wizard-only labels.
+    const pointers = [
+      ...trip.flatMap(data => Object.entries(missingByTab(data))
+        .flatMap(([tab, fields]) => fields.map(field => ({ tab, field })))),
+      ...statutoryTrip.flatMap(data => Object.entries(missingByTab(data, myClientPack.statutory))
+        .flatMap(([tab, fields]) => fields.map(field => ({ tab, field })))),
+      ...[...trip.flatMap(data => missingToCreate(data)), ...missingToCreate({}, { employeeIdRule: null })]
+        .map(field => ({ tab: field === 'company' ? 'job' : 'profile', field })),
+    ];
+    expect(new Set(pointers.map(pointer => pointer.field))).toEqual(names);
     const wizard = read('app/admin/personnel/new/wizard.tsx');
-    expect(wizard, 'the wizard intercepts hiredOn').toContain("if (f === 'hiredOn') return t('fields.groupJoinDate');");
-    expect(wizard, 'the outstanding list goes through the relabeller').toContain('{missing[k].map(missingFieldLabel).join');
+    expect(wizard).toContain('draftActivationFieldLabels([{tab:key,field}]');
+    expect(wizard, 'the outstanding list goes through the shared resolver').toContain('{missing[k].map(field=>missingFieldLabel(k,field)).join');
     for (const loc of LOCALES) {
       const msgs = JSON.parse(read(`messages/${loc}.json`));
-      for (const n of names) {
-        for (const key of RELABEL[n] ?? [n]) {
-          const v = String(msgs.people?.wizard?.fields?.[key] ?? '').trim();
-          expect(v, `${loc} fields.${key}`).not.toBe('');
-          expect(v, `${loc} fields.${key} is a live label, not a retired one`).not.toMatch(/^\[retired/);
+      for (const employmentType of ['full_time', 'contract', 'intern']) {
+        for (const pointer of pointers) {
+          const labels = draftActivationFieldLabels([pointer], key => {
+            const value = key.split('.').reduce((node, part) => node?.[part], msgs);
+            expect(typeof value, `${loc} ${key} exists`).toBe('string');
+            return String(value ?? '');
+          }, employmentType);
+          expect(labels, `${loc} ${pointer.tab}.${pointer.field} has a visible label for ${employmentType}`).toHaveLength(1);
+          expect(labels[0].label.trim()).not.toBe('');
+          expect(labels[0].label).not.toMatch(/^\[retired/);
         }
       }
       expect(String(msgs.people?.wizard?.fields?.hiredOn), `${loc} fields.hiredOn retired, not deleted`).toMatch(

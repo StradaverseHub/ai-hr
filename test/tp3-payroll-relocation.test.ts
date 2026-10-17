@@ -24,6 +24,7 @@ import { hireEmployee } from '../core/org';
 import { getStatutoryProfileMY, setStatutoryProfileMY } from '../localization/my/statutory';
 import { setTp3Action, setStatutoryAction } from '../app/admin/personnel/[employmentId]/actions';
 import { adminCtx, closeAll, latestEventPayload, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import { hasPersonnelPostedBinding } from './helpers/personnel-posted-binding';
 
 // requireAdmin() (Clerk/session) is unavailable in the harness — return the seeded admin ctx.
 let ADMIN: ReturnType<typeof adminCtx>;
@@ -55,9 +56,17 @@ describe('TP3 / Zakat relocation — source layout (a6a47698)', () => {
 
   it('gives TP3 its own dedicated partial-save form (setTp3Action), not the statutory overwrite', () => {
     expect(PAGE.includes('const tp3Card = admin ?')).toBe(true);
-    expect(PAGE.includes('<form action={setTp3Action}')).toBe(true);
-    for (const f of ['tp3Year', 'tp3NetRemuneration', 'tp3EpfClaimed', 'tp3PcbPaid']) {
-      expect(PAGE.includes(`name="${f}"`), `missing TP3 input ${f}`).toBe(true);
+    const from = PAGE.indexOf('<form action={setTp3Action}');
+    expect(from).toBeGreaterThan(-1);
+    const end = PAGE.indexOf('</form>', from);
+    expect(end).toBeGreaterThan(from);
+    const form = PAGE.slice(from, end);
+    expect(form.length).toBeGreaterThan(100);
+    for (const [field, name] of [
+      ['year', 'tp3Year'], ['netremuneration', 'tp3NetRemuneration'],
+      ['epfclaimed', 'tp3EpfClaimed'], ['pcbpaid', 'tp3PcbPaid'],
+    ]) {
+      expect(hasPersonnelPostedBinding(form, `payroll.previous_employment_this_year_tp3_opening_balances.${field}`, name), `missing TP3 input ${name}`).toBe(true);
     }
   });
 

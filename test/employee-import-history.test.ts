@@ -133,32 +133,49 @@ describe('cf43c909 · employee import history', () => {
     expect(row.fileName).toBe('x.csv');
   });
 
-  it('counts a row that FAILED AT WRITE as failed, in the same list as one rejected by validation', async () => {
+  it('records every unwritten row after atomic rollback, alongside a validation rejection', async () => {
     const a = adminCtx(b);
     // A row that passes validation and then cannot be WRITTEN. Reaching that leg needs a failure the dry
     // run cannot foresee, because commitEmployeeImport RE-VALIDATES server-side (it never trusts a client
     // preview) — so anything analyze() checks is re-checked and comes back as a REJECTION, not a write
     // failure. A DB constraint the importer knows nothing about is exactly such a failure, and it stands in
     // for the real ones (a concurrent hire taking the IC, a service throwing) without stubbing a service.
-    const records = csvFor([goodRow(1), `Doomed,doomed@acme.test,Operations,2026-06-01,940101015678,5000,0,,,1`]);
+    const records = csvFor([
+      goodRow(1),
+      'Doomed,doomed@acme.test,Operations,2026-06-01,940101015678,5000,0,,,1',
+      'Rejected,rejected@acme.test,Unknown Department,2026-06-01,940101015679,5000,0,,,1',
+    ]);
     const preview = await validateEmployeeImport(a, { companyId: b.companyId, records });
-    expect(preview.validCount).toBe(2); // both rows are fine on paper
+    expect(preview.validCount).toBe(2); // the first two rows are fine on paper
+    expect(preview.rows[2].errors.join('; ')).toMatch(/unknown department/i);
+    const beforePeople = await owner.db.select({ id: schema.person.id }).from(schema.person).orderBy(schema.person.id);
+    const beforeEmployments = await owner.db.select({ id: schema.employment.id }).from(schema.employment).orderBy(schema.employment.id);
 
     await owner.db.execute(sql`ALTER TABLE person ADD CONSTRAINT test_doomed_ck CHECK (full_name <> 'Doomed')`);
     try {
       const result = await commitEmployeeImport(a, { companyId: b.companyId, records, fileName: 'f.xlsx' });
-      expect(result.imported).toBe(1);
-      expect(result.skipped).toBe(0); // nothing was REJECTED — the second row failed at WRITE
-      expect(result.failed).toHaveLength(1);
+      // The complete validated subset is atomic: row 2's real database refusal must roll row 1 back.
+      expect(result.imported).toBe(0);
+      expect(result.skipped).toBe(1); // row 3 was rejected before the write
+      expect(result.failed.map(row => row.rowNum)).toEqual([1, 2]);
+      expect(result.failed[0].message).toMatch(/Not written because the import was rolled back/);
+      expect(result.fileErrors).toHaveLength(1);
+      expect(result.fileErrors[0]).toMatch(/No employee rows were written.*rolled back.*row 2/);
+      expect(await owner.db.select({ id: schema.person.id }).from(schema.person).orderBy(schema.person.id)).toEqual(beforePeople);
+      expect(await owner.db.select({ id: schema.employment.id }).from(schema.employment).orderBy(schema.employment.id)).toEqual(beforeEmployments);
+      expect(await eventTypesFor(b.tenantId, b.companyId)).not.toContain('employee-import.completed');
 
       const [run] = await listEmployeeImportRuns(a);
-      expect(run.importedRows).toBe(1);
-      // failedRows spans BOTH kinds; here the only failure is a write failure.
-      expect(run.failedRows).toBe(1);
-      expect(run.errors.map((e) => e.rowNum)).toEqual([2]);
-      expect(run.errors[0].email).toBe('doomed@acme.test');
-      expect(run.errors[0].errors[0]).toBeTruthy();
-      expect(importRunOutcome(run)).toBe('partial');
+      expect(run.importedRows).toBe(0);
+      expect(run.totalRows).toBe(3);
+      // Rolled-back rows, the write refusal and the validation rejection share one honest error list.
+      expect(run.failedRows).toBe(3);
+      expect(run.errors.map((e) => e.rowNum)).toEqual([1, 2, 3]);
+      expect(run.errors.map((e) => e.email)).toEqual(['person1@acme.test', 'doomed@acme.test', 'rejected@acme.test']);
+      expect(run.errors[0].errors[0]).toMatch(/rolled back/);
+      expect(run.errors[1].errors[0]).toBeTruthy();
+      expect(run.errors[2].errors.join('; ')).toMatch(/unknown department/i);
+      expect(importRunOutcome(run)).toBe('failed');
     } finally {
       await owner.db.execute(sql`ALTER TABLE person DROP CONSTRAINT test_doomed_ck`);
     }

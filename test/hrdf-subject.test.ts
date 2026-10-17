@@ -77,6 +77,7 @@ import {
   resetProcessedBatch,
 } from '../core/payroll';
 import { hireEmployee } from '../core/org';
+import { personnelFormName } from '../lib/personnel-form-contract';
 import { setOthersStatutoryAction } from '../app/admin/personnel/[employmentId]/actions';
 import {
   adminCtx,
@@ -150,7 +151,8 @@ describe('Others Statutory — source layout + i18n (0df0c635)', () => {
     // and never a checkbox — that collapse WAS the bug (57840a6e).
     const card = read('components/tax-relief-fields.tsx');
     expect(card).toContain('<select');
-    expect(card).toContain("name: props.name ?? 'subjectToHrdf'");
+    expect(card).toContain("name: personnelFormName('bank_statutory.socso_eis_and_others_statutory.hrdfsubject',props.name)");
+    expect(personnelFormName('bank_statutory.socso_eis_and_others_statutory.hrdfsubject')).toBe('subjectToHrdf');
     // "" = follow the company default (persists null) — reuses the existing copy, so no new i18n key.
     expect(card).toContain('<option value="">{t(\'subjectToHrdfFollowingDefault\')}</option>');
     expect(card).toContain('<option value="yes">');

@@ -32,6 +32,7 @@ import { isMalaysianNationality } from '../localization/my/ic-dob';
 import { myPack } from '../localization/my';
 import { setPassportAction } from '../app/admin/personnel/[employmentId]/actions';
 import { adminCtx, closeAll, latestEventPayload, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import { hasPersonnelPostedBinding } from './helpers/personnel-posted-binding';
 
 // requireAdmin() (session) is unavailable in the harness — return the seeded admin ctx.
 let ADMIN: ReturnType<typeof adminCtx>;
@@ -79,7 +80,13 @@ describe('Passport identity — leaf helper + static wiring (e3ce0d4d)', () => {
     // nationality combobox must stay inside the NationalityField client wrapper (the original intent
     // of the blanket "no <Combobox on the page" check written before any other combobox existed).
     expect((PAGE.match(/<Combobox\b/g) ?? []).length).toBe(1);
-    expect(/<Combobox\s+name="superiorEmploymentId"/.test(PAGE)).toBe(true);
+    const from = PAGE.indexOf('<Combobox');
+    const end = PAGE.indexOf('/>', from);
+    expect(from).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(from);
+    const picker = PAGE.slice(from, end + 2);
+    expect(picker.length).toBeGreaterThan(100);
+    expect(hasPersonnelPostedBinding(picker, 'employment.direct_superior_and_history.superioremploymentid', 'superiorEmploymentId')).toBe(true);
   });
 
   it('(ui) Combobox exposes onValueChange and the identity wrapper drives IC vs passport by nationality', () => {

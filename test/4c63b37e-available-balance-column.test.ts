@@ -207,22 +207,22 @@ describe('4c63b37e · (a) the column is on the screen and in the export, immedia
     const rows = code('app/leave/employee-balances/rows.ts');
     const page = code('app/leave/employee-balances/page.tsx');
     const route = code('app/leave/employee-balances/export/route.ts');
+    const inquiry = code('app/leave/employee-balances/inquiry-data.ts');
     for (const [name, src] of [
       ['rows.ts', rows],
       ['page.tsx', page],
       ['export/route.ts', route],
+      ['inquiry-data.ts', inquiry],
     ] as const) {
       expect(src.includes('leaveTypeApplySummary'), `${name} must not call the undated summary`).toBe(false);
     }
-    // ONE balances read PER RUN, still, and still the dated one.
-    // r404 (42e55e2b) UPDATED THIS PIN, it did not loosen it: the builder gained a second AUDIENCE ('self', My
-    // Leave › Leave Details), and the two audiences are two arms of one ternary — each run still performs exactly
-    // one read. So: exactly two call sites, the two arms of `self ? … : …`, and every one of them is DATED.
-    const calls = rows.match(/leaveBalances\(ctx, employmentId, locale, \{[^}]*\}\)/g) ?? [];
-    expect(rows.match(/leaveBalances\(/g) ?? [], 'one leaveBalances call per audience in the row builder').toHaveLength(2);
-    expect(calls, 'both calls are the full, readable expression').toHaveLength(2);
-    for (const c of calls) expect(c, 'every balances read is dated').toMatch(/\basOf \}\)$/);
-    expect(rows, 'the two calls are the arms of ONE audience ternary').toMatch(/const balances = self\s*\?\s*await leaveBalances\([^)]*\)\s*:\s*await leaveBalances\(/);
+    // Approved 23e87eef exports use an existing read-only snapshot. Both transaction paths reach the
+    // same balances owner, with the same dated audience options, and perform exactly one read per run.
+    expect(rows.match(/\bleaveBalances(?:Tx)?\(/g) ?? []).toHaveLength(2);
+    expect(rows).toContain('const balanceOptions = self ? { includeHidden: false, includeArchived: true, includeIneligible: false, asOf } : { includeHidden: true, includeArchived: true, includeIneligible: true, asOf };');
+    expect(rows).toContain('const balances = opts.tx ? await leaveBalancesTx(opts.tx, ctx, employmentId, locale, balanceOptions) : await leaveBalances(ctx, employmentId, locale, balanceOptions);');
+    expect(code('core/read.ts')).toContain('return withTenant(ctx, tx => leaveBalancesTx(tx, ctx, employmentId, locale, opts));');
+    for (const src of [page, route, inquiry]) expect(src, 'presentation adds no separate balance read').not.toMatch(/\bleaveBalances(?:Tx)?\(/);
   });
 });
 

@@ -25,6 +25,9 @@ import { hireEmployee, setEmploymentInfo } from '../core/org';
 import { createMovementEvent, movementHistory } from '../core/movement';
 import { deriveEmploymentStatus } from '../core/employment-status';
 import { employeeDetail } from '../core/read';
+import { personnelControl, personnelFormField } from '../lib/personnel-form-contract';
+import { employeeMasterFieldLabels } from '../lib/employee-master-field-labels';
+import { hasPersonnelPostedBinding } from './helpers/personnel-posted-binding';
 import {
   adminCtx,
   closeAll,
@@ -185,21 +188,33 @@ const PERIOD_FIELDS_SRC = fs.readFileSync(
 function postsFieldNamed(src: string, name: string): boolean {
   // (a) Still a plain named input on the page.
   if (src.includes(`name="${name}"`)) return true;
+  const fieldId = `employment.employment_dates_and_service.${name.toLowerCase()}`;
+  if (hasPersonnelPostedBinding(src, fieldId, name)) return true;
   // (b) Handed to the extracted period control, which emits both halves as real names in form mode.
+  const period = (src.match(/<EmploymentPeriodField\b[\s\S]*?\/>/g) ?? []).find(call => call.includes(`valueName="${name}"`));
+  const label = period?.match(/labelKey="([^"]+)"/)?.[1];
+  const unit = period?.match(/unitName="([^"]+)"/)?.[1];
   if (
-    (src.includes(`valueName="${name}"`) || src.includes(`unitName="${name}"`)) &&
-    PERIOD_FIELDS_SRC.includes('name: props.valueName') &&
-    PERIOD_FIELDS_SRC.includes('name: props.unitName')
+    period?.includes('mode="form"') && label && unit &&
+    PERIOD_FIELDS_SRC.includes(`${label}: ['${fieldId}','employment.employment_dates_and_service.${unit.toLowerCase()}']`) &&
+    PERIOD_FIELDS_SRC.includes('const [valueId,unitId]=fields[props.labelKey];') &&
+    PERIOD_FIELDS_SRC.includes("const mode=props.mode==='controlled' ? 'draft' : 'edit';") &&
+    PERIOD_FIELDS_SRC.includes('personnelFormName(valueId,props.valueName);personnelFormName(unitId,props.unitName);') &&
+    PERIOD_FIELDS_SRC.includes('...personnelInput(valueId,mode)') &&
+    PERIOD_FIELDS_SRC.includes('...personnelControl(unitId,mode)')
   ) {
-    return true;
+    return personnelControl(fieldId, 'edit').name === name;
   }
   // (c) The confirmation-date control, whose form mode defaults to this very name.
   if (
     name === 'confirmationDate' &&
     src.includes('<ConfirmationDateField mode="form"') &&
-    PERIOD_FIELDS_SRC.includes("name: props.name ?? 'confirmationDate'")
+    PERIOD_FIELDS_SRC.includes(`const fieldId='${fieldId}';`) &&
+    PERIOD_FIELDS_SRC.includes('personnelFormName(fieldId,props.name)') &&
+    PERIOD_FIELDS_SRC.includes('...personnelControl(fieldId,mode)') &&
+    PERIOD_FIELDS_SRC.includes('...personnelInput(fieldId,mode)')
   ) {
-    return true;
+    return personnelControl(fieldId, 'edit').name === name;
   }
   return false;
 }
@@ -220,8 +235,11 @@ describe('drift guard — slimmed Employment Dates card (d27961e3)', () => {
     expect(block).not.toContain('name="hiredOn"');
     expect(block).not.toContain('name="joinDate"');
     // The labels stay — the fields are still displayed, just not editable.
-    expect(block).toContain("t('employmentInfo.groupJoinDate')");
-    expect(block).toContain("t('employmentInfo.joinDate')");
+    for (const [id, name, value] of [['hiredon', 'hiredOn', 'emp.hiredOn'], ['joindate', 'joinDate', 'emp.joinDate']]) {
+      const fieldId = `employment.employment_dates_and_service.${id}`;
+      expect(block).toContain(`readOnlyValue("${fieldId}", ${value} ? formatDmy(${value}) : null)`);
+      expect(hasPersonnelPostedBinding(block, fieldId, name), `${name} is displayed without a submitted control`).toBe(false);
+    }
   });
 
   it('keeps the standard Employment Dates fields', () => {
@@ -250,12 +268,20 @@ describe('drift guard — slimmed Employment Dates card (d27961e3)', () => {
     expect(pickerSrc).toContain("'probationExtension'");
   });
 
-  it('removes the orphaned labels from all six locales and keeps the kept keys', () => {
+  it('removes orphaned labels while retaining the derived report label in all six locales', async () => {
+    const finalDate = personnelFormField('employment.employment_dates_and_service.finalconfirmationdate');
+    expect(finalDate.form).toMatchObject({ widget: 'display' });
+    expect(finalDate.form).not.toHaveProperty('name');
+    expect(finalDate.import.disabledReason).toBeTruthy();
+    expect(finalDate.report.enabled).toBe(true);
+    expect(finalDate.labelKey).toBe('people.detail.employmentInfo.finalConfirmationDate');
     for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
       const ei = JSON.parse(fs.readFileSync(path.join(REPO, 'messages', `${loc}.json`), 'utf8')).people
         .detail.employmentInfo as Record<string, unknown>;
       expect(ei.extendedConfirmationDate, `${loc}: extendedConfirmationDate label must be gone`).toBeUndefined();
-      expect(ei.finalConfirmationDate, `${loc}: finalConfirmationDate label must be gone`).toBeUndefined();
+      const [reportField] = await employeeMasterFieldLabels([finalDate], loc);
+      expect(reportField.label, `${loc}: the derived field's report label is resolved`).toBe(ei.finalConfirmationDate);
+      expect(reportField.label.trim()).not.toBe('');
       expect(ei.finalConfirmationNote, `${loc}: finalConfirmationNote must be gone`).toBeUndefined();
       for (const kept of ['groupJoinDate', 'joinDate', 'confirmationDate']) {
         expect(typeof ei[kept], `${loc}: ${kept} label must stay`).toBe('string');

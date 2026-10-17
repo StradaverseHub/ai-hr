@@ -44,6 +44,7 @@ import {
 } from '../localization/my/statutory';
 import { setPassportAction } from '../app/admin/personnel/[employmentId]/actions';
 import { adminCtx, closeAll, latestEventPayload, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import { personnelControl } from '../lib/personnel-form-contract';
 
 // requireAdmin() (session) is unavailable in the harness — return the seeded admin ctx.
 let ADMIN: ReturnType<typeof adminCtx>;
@@ -89,20 +90,32 @@ describe('Identity sections — NRIC gated by nationality, passport always (5586
     expect(IDENTITY.includes('requiredTrio={!isMY}')).toBe(true);
     const PASSPORT = readFileSync(root + 'components/passport-fields.tsx', 'utf8');
     expect(PASSPORT, 'the group applies requiredTrio to the number/issue/expiry trio only')
-      .toContain('const req = props.mode === \'form\' && props.requiredTrio;');
-    expect(PASSPORT.includes(`box('passportNumber', { required: req`), 'passportNumber is in the required trio').toBe(true);
+      .toContain("const context={passportTrio:props.mode==='form'&&props.requiredTrio};");
+    expect(PASSPORT).toContain("const mode=props.mode==='controlled'?'draft':'edit';");
+    expect(PASSPORT.includes("box('passportNumber',"), 'passportNumber is in the required trio').toBe(true);
     // r422 — the two dates go through `dateBox`, which draws the DD-MMM-YYYY DateField where the Personnel
-    // profile opts in and the native box otherwise. The trio's `req` must reach BOTH branches.
+    // profile opts in and the native box otherwise. The trio's context must reach BOTH branches.
     for (const f of ['passportIssueDate', 'passportExpiryDate']) {
       expect(PASSPORT.includes(`dateBox('${f}'`), `${f} is in the required trio`).toBe(true);
     }
-    expect(PASSPORT, 'the DateField branch carries the trio requiredness').toContain('required={req}');
-    expect(PASSPORT, 'the native branch carries the trio requiredness').toContain("box(key, { type: 'date', required: req })");
+    expect(PASSPORT, 'the DateField branch carries the trio requiredness').toContain('...personnelControl(fields[key],mode,context)');
+    expect(PASSPORT, 'the native branch carries the trio requiredness').toContain('...personnelInput(fields[key],mode,context)');
+    expect(PASSPORT).toMatch(/\)\s*:\s*\(\s*box\(key\)\s*\)/);
+    for (const name of ['passportNumber', 'passportIssueDate', 'passportExpiryDate', 'passportIssuingCountry', 'passportIssuingCountryCode', 'passportRemark']) {
+      const fieldId = `profile.identity_and_passport.${name.toLowerCase()}`;
+      expect(PASSPORT).toContain(`${name}:'${fieldId}'`);
+      const required = ['passportNumber', 'passportIssueDate', 'passportExpiryDate'].includes(name);
+      expect(personnelControl(fieldId, 'edit', { passportTrio: true })).toMatchObject({ name, required });
+      expect(personnelControl(fieldId, 'edit', { passportTrio: false })).toMatchObject({ name, required: false });
+      expect(personnelControl(fieldId, 'draft', { passportTrio: true })).not.toHaveProperty('name');
+      expect(personnelControl(fieldId, 'draft', { passportTrio: true }).required).toBe(false);
+    }
     // The Issuing Country picker (searchable Combobox) is part of the passport group.
     expect(PASSPORT.includes("picker('passportIssuingCountry'")).toBe(true);
     expect(PASSPORT.includes('<Combobox')).toBe(true);
     // …and the group posts it under that name in form mode, so the action still reads it.
-    expect(PASSPORT.includes('{ name: key }')).toBe(true);
+    expect(PASSPORT).toContain('...personnelControl(fields[key],mode)');
+    expect(PASSPORT).toContain("defaultValue: v[key] ?? ''");
     // Section headings make NRIC vs Passport visibly separate documents.
     expect(IDENTITY.includes("t('identityNricTitle')")).toBe(true);
     expect(IDENTITY.includes("t('passportInfoTitle')")).toBe(true);

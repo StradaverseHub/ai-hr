@@ -32,6 +32,8 @@ import { createMovementEvent, movementCurrentState, movementHistory } from '../c
 import { employeeDetail } from '../core/read';
 import { withTenant } from '../db/client';
 import * as schema from '../db/schema';
+import { personnelControl } from '../lib/personnel-form-contract';
+import { hasPersonnelPostedBinding } from './helpers/personnel-posted-binding';
 import {
   adminCtx,
   closeAll,
@@ -241,28 +243,6 @@ const PERIOD_FIELDS_SRC = fs.readFileSync(
   'utf8',
 );
 
-function postsFieldNamed(src: string, name: string): boolean {
-  // (a) Still a plain named input on the page.
-  if (src.includes(`name="${name}"`)) return true;
-  // (b) Handed to the extracted period control, which emits both halves as real names in form mode.
-  if (
-    (src.includes(`valueName="${name}"`) || src.includes(`unitName="${name}"`)) &&
-    PERIOD_FIELDS_SRC.includes('name: props.valueName') &&
-    PERIOD_FIELDS_SRC.includes('name: props.unitName')
-  ) {
-    return true;
-  }
-  // (c) The confirmation-date control, whose form mode defaults to this very name.
-  if (
-    name === 'confirmationDate' &&
-    src.includes('<ConfirmationDateField mode="form"') &&
-    PERIOD_FIELDS_SRC.includes("name: props.name ?? 'confirmationDate'")
-  ) {
-    return true;
-  }
-  return false;
-}
-
 describe('(D) the Employment tab has no writer for the fields it displays', () => {
   it('the only forms left on the Employment Information card are the dates save and the company correction', () => {
     // Slice the card, then enumerate its <form action={...}> handlers. A new writer appearing here is the
@@ -290,8 +270,42 @@ describe('(D) the Employment tab has no writer for the fields it displays', () =
     // The item scopes view-only to ORGANISATION ASSIGNMENT (plus the two join dates, item 89ea527b).
     // Probation / notice / resignation are lifecycle facts with no movement kind that owns them; silently
     // freezing them too would remove capability the item never asked to remove.
-    for (const name of ['confirmationDate', 'probationValue', 'tenderResignationDate', 'lastWorkingDate']) {
-      expect(postsFieldNamed(pageSrc, name), `${name} must remain editable`).toBe(true);
+    const from = pageSrc.indexOf('const employmentInfoCard = admin ? (');
+    const end = pageSrc.indexOf('const directSuperiorCard', from);
+    expect(from).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(from);
+    const card = pageSrc.slice(from, end);
+    for (const [field, name] of [['tenderresignationdate', 'tenderResignationDate'], ['lastworkingdate', 'lastWorkingDate']]) {
+      expect(hasPersonnelPostedBinding(card, `employment.employment_dates_and_service.${field}`, name), `${name} must remain editable`).toBe(true);
     }
+    expect(card).toContain('<ConfirmationDateField mode="form" value={emp.confirmationDate} dmyDisplay />');
+    const confirmationAt = PERIOD_FIELDS_SRC.indexOf('export function ConfirmationDateField');
+    expect(confirmationAt).toBeGreaterThan(-1);
+    const confirmation = PERIOD_FIELDS_SRC.slice(confirmationAt);
+    expect(confirmation.length).toBeGreaterThan(100);
+    expect(confirmation).toContain("const fieldId='employment.employment_dates_and_service.confirmationdate';");
+    expect(confirmation).toContain("const mode=props.mode==='controlled' ? 'draft' : 'edit';");
+    expect(confirmation).toContain('...personnelControl(fieldId,mode)');
+    expect(confirmation).toContain('...personnelInput(fieldId,mode)');
+    expect(confirmation).not.toMatch(/\b(disabled|readOnly)\b/);
+    expect(personnelControl('employment.employment_dates_and_service.confirmationdate', 'edit').name).toBe('confirmationDate');
+
+    const periods = (card.match(/<EmploymentPeriodField\b[\s\S]*?\/>/g) ?? []).filter(field => field.includes('labelKey="probationPeriod"'));
+    expect(periods).toHaveLength(1);
+    expect(periods[0]).toContain('mode="form"');
+    expect(periods[0]).toContain('valueName="probationValue"');
+    expect(periods[0]).toContain('unitName="probationUnit"');
+    const periodAt = PERIOD_FIELDS_SRC.indexOf('export function EmploymentPeriodField');
+    expect(periodAt).toBeGreaterThan(-1);
+    expect(confirmationAt).toBeGreaterThan(periodAt);
+    const period = PERIOD_FIELDS_SRC.slice(periodAt, confirmationAt);
+    expect(period).toContain("probationPeriod: ['employment.employment_dates_and_service.probationvalue','employment.employment_dates_and_service.probationunit']");
+    expect(period).toContain("const mode=props.mode==='controlled' ? 'draft' : 'edit';");
+    expect(period).toContain('personnelFormName(valueId,props.valueName);personnelFormName(unitId,props.unitName);');
+    expect(period).toContain('...personnelInput(valueId,mode)');
+    expect(period).toContain('...personnelControl(unitId,mode)');
+    expect(period).not.toMatch(/\b(disabled|readOnly)\b/);
+    expect(personnelControl('employment.employment_dates_and_service.probationvalue', 'edit').name).toBe('probationValue');
+    expect(personnelControl('employment.employment_dates_and_service.probationunit', 'edit').name).toBe('probationUnit');
   });
 });
