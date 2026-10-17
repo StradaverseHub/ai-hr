@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { assertUpgradeEntitlements, type UpgradeEntitlementSnapshot } from '../scripts/upgrade-entitlements.mts';
+import { assertUpgradeEntitlements, type UpgradeEntitlementSnapshot } from '../scripts/upgrade-entitlements.mjs';
 import { SYSTEM_TENANT_ID } from '../db/seed-guard';
 
 const customer = '11111111-1111-1111-1111-111111111111';

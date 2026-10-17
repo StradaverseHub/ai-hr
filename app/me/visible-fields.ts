@@ -36,7 +36,7 @@ export const ME_TAB_LABEL_KEY: Record<MeTabKey, string> = {
  * Management has no card for them at all; there is no second name to drift from. They are listed in
  * `ME_SELF_SERVICE_SECTIONS` so the document can account for every card on the screen.
  */
-export const ME_SECTION_TITLE_KEY:Record<MeTabKey,readonly string[]>=Object.fromEntries(ME_TABS.map((tab,index)=>[tab,[...new Set(PERSONNEL_FIELDS.filter(field=>field.tab===ESS_PROFILE_TABS[index]&&field.ess.visibility==='visible').map(field=>PERSONNEL_ESS_SECTION_LABEL_KEYS[field.section]??ME_TAB_LABEL_KEY[tab]))]])) as Record<MeTabKey,readonly string[]>;
+export const ME_SECTION_TITLE_KEY:Record<MeTabKey,readonly string[]>=Object.fromEntries<readonly string[]>(ME_TABS.map((tab,index)=>[tab,[...new Set(PERSONNEL_FIELDS.filter(field=>field.tab===ESS_PROFILE_TABS[index]&&field.ess.visibility==='visible').map(field=>PERSONNEL_ESS_SECTION_LABEL_KEYS[field.section]??ME_TAB_LABEL_KEY[tab]))]])) as Record<MeTabKey,readonly string[]>;
 
 /** Cards that exist only on the employee's own screen — no Personnel counterpart, so `me.*` titles. */
 export const ME_SELF_SERVICE_SECTIONS: Record<MeTabKey, readonly string[]> = {
@@ -101,7 +101,7 @@ export const ME_HIDDEN_FIELDS:readonly HiddenField[]=PERSONNEL_FIELDS.filter(fie
  columns:PERSONNEL_FIELDS.some(visible=>visible.ess.visibility==='visible'&&visible.ownerField===field.ownerField)?[]:[field.ownerField],
 }));
 
-export const ME_VISIBLE_FIELD_LABEL_KEYS:Record<MeTabKey,readonly string[]>=Object.fromEntries(ME_TABS.map((key,index)=>[key,
+export const ME_VISIBLE_FIELD_LABEL_KEYS:Record<MeTabKey,readonly string[]>=Object.fromEntries<readonly string[]>(ME_TABS.map((key,index)=>[key,
  [...new Set(PERSONNEL_FIELDS.filter(field=>field.tab===ESS_PROFILE_TABS[index]&&field.ess.visibility==='visible'&&field.labelKey.startsWith('people.detail.')).map(field=>field.labelKey.slice('people.detail.'.length)))],
 ])) as Record<MeTabKey,readonly string[]>;
 
