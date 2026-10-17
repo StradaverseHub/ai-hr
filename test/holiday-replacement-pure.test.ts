@@ -19,6 +19,14 @@ describe('replacement date decisions from original calendar and raw schedule',()
   expect(result.map(r=>[r.source.id,r.date])).toEqual([['earlier',day(3)],['later',day(4)]]);
   expect(plan(['rest','rest','full','full','full'],options)).toEqual(result);
  });
+ it('does not let a previous date exemption reuse a date allocated earlier in the same pass',()=>{
+  const result=plan(['rest','rest','rest','full','full'],{
+   sources:[source('later',1),source('earlier')],
+   existingDates:new Map([['earlier',day(2)],['later',day(3)]]),
+  });
+  expect(result.map(r=>[r.source.id,r.date])).toEqual([['earlier',day(3)],['later',day(4)]]);
+  expect(new Set(result.map(r=>r.date)).size).toBe(2);
+ });
  it.each([{policies:[]},{policies:[{...policy,confirmed:false}]}])('flags missing confirmation rather than choosing a date',opts=>expect(plan(['rest','full'],opts)[0]).toMatchObject({status:'review',date:null,reason:'policy_unconfirmed'}));
  it('does not infer an unknown jurisdiction or copy EA rules to Sabah',()=>{
   expect(plan(['rest','full'],{policies:[{...policy,regime:'MY_EA_60D'}],state:'Sabah'})[0].reason).toBe('jurisdiction_unclear');
