@@ -42,6 +42,8 @@ for(const [locale,messages] of [['en',en],['ms',ms],['zh',zh],['ta',ta],['th',th
     window.history.replaceState({},'','/admin/attendance/schedule/view-group');
     const tree=await ScheduleGroupSections({s:{} as SessionContext,rule,rules:[rule],mode:'view'});
     render(<NextIntlClientProvider locale={locale} messages={messages} onError={error=>{throw error;}}>{tree}</NextIntlClientProvider>);
+    expect(screen.getByText(messages.boardSchedule.groupName)).toBeVisible();
+    expect(screen.queryByText(messages.admin.attendanceRule.colName)).toBeNull();
     expect(screen.getByText(messages.admin.rotation.poolHint)).toBeVisible();
     expect(screen.queryByText(messages.admin.attendanceRule.shiftsAllowedHint)).toBeNull();
     expect(screen.getByRole('link',{name:'Shared shift one'})).toBeVisible();
