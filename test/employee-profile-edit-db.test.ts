@@ -125,15 +125,15 @@ describe('My Profile canonical transaction and scope',()=>{
   await saveProfileEditPolicy(admin(),{keys:[id],withdrawnReason:'Field restricted'});const reopened=await readOwnProfileWorkspace(s.ctx,{employmentId:s.employmentId}),edit=empty();edit.fields=[{fieldId:id,before:reopened.baselines[id],value:'Updated enabled holder'}];
   const second=await submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal:edit});await decideProfileChange(admin(),{requestId:second.requestId!,decision:'approved'});expect((await countryPack().statutory.get(admin(),s.personId))?.[field]).toBe('Updated enabled holder');
  });
- it.each([['customHolderName','enableCustomHolderName'],['customHolderId','enableCustomHolderId']] as const)('rechecks effective %s applicability at approval even when its value baseline is unchanged',async(field,flag)=>{
+ it.each([['customHolderName','enableCustomHolderName'],['customHolderId','enableCustomHolderId']] as const)('rechecks effective %s applicability or exact masked-row revision at approval',async(field,flag)=>{
   const s=await subject(),id=bankField(field);await countryPack().statutory.set(admin(),{personId:s.personId,icNumber:'900101015020'});
   await countryPack().statutory.setBank(admin(),{personId:s.personId,enableCustomHolderName:true,customHolderName:'Original name',enableCustomHolderId:true,customHolderId:'Original ID'});
   await saveProfileEditPolicy(admin(),{keys:[id],withdrawnReason:'Field restricted'});const view=await readOwnProfileWorkspace(s.ctx,{employmentId:s.employmentId}),proposal=empty();proposal.fields=[{fieldId:id,before:view.baselines[id],value:'Requested holder'}];
   const result=await submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal});
   // Model a sparse persisted switch revocation. The proposed value is deliberately unchanged,
-  // so its baseline alone cannot detect the now-inapplicable edit at the real decision boundary.
+  // unmasked value evidence needs applicability validation; masked evidence also detects the row revision.
   await withTenant(admin(),tx=>tx.update(employeeStatutoryMy).set(flag==='enableCustomHolderName'?{enableCustomHolderName:false}:{enableCustomHolderId:false}).where(eq(employeeStatutoryMy.personId,s.personId)));
-  await expect(decideProfileChange(admin(),{requestId:result.requestId!,decision:'approved'})).rejects.toMatchObject({code:'invalid',fieldIds:[id]});
+  await expect(decideProfileChange(admin(),{requestId:result.requestId!,decision:'approved'})).rejects.toMatchObject({code:field==='customHolderId'?'stale':'invalid',fieldIds:[id]});
   const stored=await countryPack().statutory.get(admin(),s.personId);expect(stored?.[flag]).toBe(false);expect(stored?.[field]).toBe(field==='customHolderName'?'Original name':'Original ID');
   const [request]=await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,result.requestId!));expect(request.status).toBe('pending');expect(request.proposed).toEqual(proposal);
  });

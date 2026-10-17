@@ -24,7 +24,7 @@ import {CHILD_RELIEF_PERCENTAGES,dependentFieldApplies} from '../lib/dependent-v
 import {EMERGENCY_CONTACT_PRIORITIES} from '../lib/emergency-contact-vocabulary';
 
 export type EssRecord={kind:EssRegisterChange['kind'];id:string;values:Record<string,EssScalar>;baselines:Record<string,string>;primary:boolean};
-export type EssWorkspace={employmentId:string;personId:string;country:string|null;values:Record<string,EssScalar>;baselines:Record<string,string>;registers:EssRecord[];editable:string[];legacyPrimaryEditable:string[];addressReview:boolean;legacyAddress:Record<string,string|null>;statutoryAvailable:boolean};
+export type EssWorkspace={employmentId:string;personId:string;country:string|null;values:Record<string,EssScalar>;baselines:Record<string,string>;registers:EssRecord[];editable:string[];legacyPrimaryEditable:string[];addressReview:boolean;legacyAddress:Record<string,string|null>;statutoryAvailable:boolean;fieldReadOnlyReasons?:Record<string,'derivedChildCount'>};
 const scalar=(value:unknown):EssScalar=>value==null?null:typeof value==='string'||typeof value==='number'||typeof value==='boolean'?value:null;
 const record=(value:object)=>value as Record<string,unknown>; // typed owner rows, used only for explicit descriptor projections
 const text=(values:Record<string,EssScalar>,key:string):string|null|undefined=>{const value=values[key];if(value===undefined||value===null||typeof value==='string')return value;throw new EssProfileError('invalid');};
@@ -46,12 +46,14 @@ async function mastersTx(tx:Tx,ctx:SessionContext,subject:Awaited<ReturnType<typ
  const pack=packFor(subject.country);
  // Match canonical register writers: Family before statutory sync; Primary/Highest before targets.
  // Locking the statutory row first would invert updateDependent → child-relief sync.
- const dependentsQuery=tx.select().from(employeeDependent).where(and(eq(employeeDependent.personId,subject.personId),isNull(employeeDependent.archivedAt))).orderBy(asc(employeeDependent.createdAt),asc(employeeDependent.id)).limit(501);const dependents=await(lock?dependentsQuery.for('update'):dependentsQuery);
+ const dependentsQuery=tx.select({record:employeeDependent,revision:sql<string>`xmin::text`}).from(employeeDependent).where(and(eq(employeeDependent.personId,subject.personId),isNull(employeeDependent.archivedAt))).orderBy(asc(employeeDependent.createdAt),asc(employeeDependent.id)).limit(501);const dependentSnapshots=await(lock?dependentsQuery.for('update'):dependentsQuery);
+ const dependents=dependentSnapshots.map(row=>row.record),dependentRevisions=new Map(dependentSnapshots.map(row=>[row.record.id,row.revision]));
  const qualificationsQuery=tx.select().from(employeeQualification).where(and(eq(employeeQualification.employmentId,subject.id),isNull(employeeQualification.archivedAt))).orderBy(sql`CASE WHEN ${employeeQualification.isHighest} THEN 0 ELSE 1 END`,asc(employeeQualification.createdAt),asc(employeeQualification.id)).limit(501);const qualifications=await(lock?qualificationsQuery.for('update'):qualificationsQuery);
  const emergencyQuery=tx.select().from(personEmergencyContact).where(and(eq(personEmergencyContact.personId,subject.personId),isNull(personEmergencyContact.archivedAt))).orderBy(sql`CASE WHEN ${personEmergencyContact.priority}='primary' THEN 0 ELSE 1 END`,asc(personEmergencyContact.createdAt),asc(personEmergencyContact.id)).limit(501);const emergency=await(lock?emergencyQuery.for('update'):emergencyQuery);
- const stat=await(pack?.statutory.get(ctx,subject.personId,tx,{forUpdate:lock})??Promise.resolve(null));
+ const snapshot=await(pack?.statutory.getEditSnapshot?.(ctx,subject.personId,tx,{forUpdate:lock})??Promise.resolve(null));
+ const stat=pack?.statutory.getEditSnapshot?snapshot?.profile??null:await(pack?.statutory.get(ctx,subject.personId,tx,{forUpdate:lock})??Promise.resolve(null));
  if([dependents,qualifications,emergency].some(rows=>rows.length>500))throw new EssProfileError('unavailable');
- return {pack,stat,dependents,qualifications,emergency};
+ return {pack,stat,snapshot,snapshotSupported:Boolean(pack?.statutory.getEditSnapshot),dependents,dependentRevisions,qualifications,emergency};
 }
 function registryValues(owner:string,row:object){
  const values:Record<string,EssScalar>={};
@@ -67,12 +69,27 @@ function readonlyValues(owner:string,row:object){
  }
  return values;
 }
-function safeValues(values:Record<string,EssScalar>){
+function safeValues(values:Record<string,EssScalar>,maskedToken?:(fieldId:string)=>string|undefined){
  const baselines:Record<string,string>={};const visible:Record<string,EssScalar>={};
- for(const [id,value]of Object.entries(values)){baselines[id]=baseline(value);visible[id]=personnelField(id)?.ess.masked&&typeof value==='string'&&value?`•••• ${value.slice(-4)}`:value;}
+ for(const [id,value]of Object.entries(values)){const masked=personnelField(id)?.ess.masked;const token=masked?maskedToken?.(id):baseline(value);if(token!==undefined)baselines[id]=token;visible[id]=masked&&typeof value==='string'&&value?`•••• ${value.slice(-4)}`:value;}
  return {values:visible,baselines};
 }
 function baseline(value:EssScalar|undefined){return 'sha256:'+createHash('sha256').update(JSON.stringify(value??null)).digest('hex');}
+/** Public CAS evidence contains only target/revision metadata, never a masked value or its digest. */
+function maskedRowBaseline(ctx:SessionContext,subject:Awaited<ReturnType<typeof ownProfileSubjectTx>>['subject'],owner:string,rowId:string|null,revision:string|null,fieldId:string){
+ const target=['profile-row:v1',ctx.tenantId,subject.personId,subject.id,subject.country,owner,rowId,revision,fieldId];
+ return 'profile-row:v1:'+createHash('sha256').update(JSON.stringify(target)).digest('hex');
+}
+function maskedProfileBaseline(ctx:SessionContext,subject:Awaited<ReturnType<typeof ownProfileSubjectTx>>['subject'],rows:Awaited<ReturnType<typeof mastersTx>>,fieldId:string){
+ const owner=personnelField(fieldId)?.ess.binding?.owner;
+ if(!rows.snapshotSupported||!['bank','identity','passport'].includes(owner??''))return undefined;
+ return maskedRowBaseline(ctx,subject,'statutory',rows.snapshot?.rowId??null,rows.snapshot?.revision??null,fieldId);
+}
+function maskedRegisterBaseline(ctx:SessionContext,subject:Awaited<ReturnType<typeof ownProfileSubjectTx>>['subject'],rows:Awaited<ReturnType<typeof mastersTx>>,kind:string,id:string|null,fieldId:string){
+ const revision=id&&kind==='dependent'?rows.dependentRevisions.get(id):undefined;
+ return id&&revision?maskedRowBaseline(ctx,subject,kind,id,revision,fieldId):undefined;
+}
+
 const legacyAddress=(master:typeof person.$inferSelect)=>({addressLine1:master.addressLine1,addressLine2:master.addressLine2,addressLine3:master.addressLine3,postcode:master.postcode,city:master.city,state:master.state,country:master.country});
 function addressNeedsReview(master:typeof person.$inferSelect){
  return ['AddressLine1','AddressLine2','AddressLine3','Postcode','City','State','Country'].some((part,index)=>{
@@ -89,26 +106,33 @@ export function readOwnProfileWorkspace(ctx:SessionContext,p:{employmentId?:stri
   const age=PERSONNEL_FIELDS.find(field=>field.owner==='person'&&field.ownerField==='age');if(age)values[age.id]=childAgeYears(master.dateOfBirth);
   if(rows.pack&&!rows.stat)for(const field of PERSONNEL_FIELDS)if(field.ess.visibility==='visible'&&field.ess.binding&&!['person','compliance','dependent','qualification','emergency'].includes(field.ess.binding.owner))values[field.id]=null;
   if(rows.stat){if(isModuleEnabled(policy.ctx,'payroll'))Object.assign(values,readonlyValues('zakat',{status:rows.stat.zakatActive?'active':'inactive',stateAuthority:rows.stat.zakatState,method:rows.stat.zakatMethod,rate:rows.stat.zakatMethod==='fixed'?rows.stat.zakatFixed:rows.stat.zakatPercent}));Object.assign(values,readonlyValues('statutory',rows.stat));for(const owner of ['bank','identity','passport','registration','taxLegacy'])Object.assign(values,registryValues(owner,rows.stat));}
+  const fieldReadOnlyReasons:NonNullable<EssWorkspace['fieldReadOnlyReasons']>={};
   if(rows.stat){
    const epfMode=rows.pack?.client.payroll.epfUiModeFrom;
    for(const field of PERSONNEL_FIELDS.filter(field=>field.ess.visibility==='visible'&&field.owner==='statutory'&&field.ownerField==='epfEmployeeRate'))values[field.id]=rows.pack?.client.payroll.epfRateToPercent?.(rows.stat.epfEmployeeRate)??null;
    if(epfMode){const stat=rows.stat,numberOrNull=(value:unknown)=>value==null?null:Number(value);for(const field of PERSONNEL_FIELDS.filter(field=>field.ess.visibility==='visible'&&field.owner==='statutory'&&field.ownerField==='epfUiMode'))values[field.id]=epfMode(stat.epfMode,numberOrNull(stat.epfEmployeeRate),numberOrNull(stat.epfEmployerRate),numberOrNull(stat.epfEmployeeAmount),numberOrNull(stat.epfEmployerAmount));}
    for(const field of PERSONNEL_FIELDS)if(field.ess.visibility==='visible'&&field.childReliefCell)values[field.id]=scalar(personnelChildReliefValue(rows.stat.childReliefTable,field.childReliefCell).value);
    const relief=await qualifyingChildReliefFor(policy.ctx,{personId:subject.personId,country:subject.country??'',asOf:todayInKualaLumpur()},tx);
+   if(rows.stat.childReliefMode==='auto'||rows.stat.childReliefMode==='auto_table'){
+    for(const field of PERSONNEL_FIELDS.filter(field=>field.ess.binding?.owner==='taxLegacy'&&field.ess.binding.field==='numChildren')){
+     values[field.id]=rows.stat.childReliefMode==='auto'?relief?.eligibleChildren??null:rows.pack?.payroll.childReliefTableHeadCount?.(rows.stat.childReliefTable)??null;
+     fieldReadOnlyReasons[field.id]='derivedChildCount';
+    }
+   }
    if(relief)for(const field of PERSONNEL_FIELDS.filter(field=>field.ess.visibility==='visible'&&field.owner==='statutory')){
     if(field.ownerField==='qualifyingChildren')values[field.id]=relief.qualifyingChildren;
     if(field.ownerField==='childReliefAmount')values[field.id]=relief.reliefRM;
    }
   }
   const primary=rows.emergency.filter(row=>row.priority==='primary');
-  const registers:EssRecord[]=[...rows.dependents.map(row=>({kind:'dependent' as const,id:row.id,...safeValues({...registryValues('dependent',row),...readonlyValues('dependent',{age:childAgeYears(row.dateOfBirth),countsTowardRelief:isChildReliefEligible(row)})}),primary:false})),...rows.qualifications.map(row=>({kind:'qualification' as const,id:row.id,...safeValues(registryValues('qualification',row)),primary:false})),...rows.emergency.map(row=>({kind:'emergency' as const,id:row.id,...safeValues(registryValues('emergency',row)),primary:primary.length===1&&primary[0].id===row.id}))];
-  return {employmentId:subject.id,personId:subject.personId,country:subject.country,...safeValues(values),registers,editable:mayEdit?[...policy.editable]:[],legacyPrimaryEditable:mayEdit?[...policy.legacyPrimary]:[],addressReview:addressNeedsReview(master),legacyAddress:legacyAddress(master),statutoryAvailable:Boolean(rows.pack)} satisfies EssWorkspace;
+  const registers:EssRecord[]=[...rows.dependents.map(row=>({kind:'dependent' as const,id:row.id,...safeValues({...registryValues('dependent',row),...readonlyValues('dependent',{age:childAgeYears(row.dateOfBirth),countsTowardRelief:isChildReliefEligible(row)})},id=>maskedRegisterBaseline(policy.ctx,subject,rows,'dependent',row.id,id)),primary:false})),...rows.qualifications.map(row=>({kind:'qualification' as const,id:row.id,...safeValues(registryValues('qualification',row)),primary:false})),...rows.emergency.map(row=>({kind:'emergency' as const,id:row.id,...safeValues(registryValues('emergency',row)),primary:primary.length===1&&primary[0].id===row.id}))];
+  return {employmentId:subject.id,personId:subject.personId,country:subject.country,...safeValues(values,id=>maskedProfileBaseline(policy.ctx,subject,rows,id)),registers,editable:mayEdit?[...policy.editable]:[],legacyPrimaryEditable:mayEdit?[...policy.legacyPrimary]:[],addressReview:addressNeedsReview(master),legacyAddress:legacyAddress(master),statutoryAvailable:Boolean(rows.pack),fieldReadOnlyReasons} satisfies EssWorkspace;
  });
 }
 
 /** Validation and baseline comparison run again at approval, never trusting the editor or stored JSON. */
-export async function prepareProfileProposalTx(tx:Tx,ctx:SessionContext,employmentId:string,raw:unknown,approval=false){
- const proposal=parseEssProfileProposal(raw);const policy=await freshProfileEditPolicyTx(tx,ctx);
+export async function prepareProfileProposalTx(tx:Tx,ctx:SessionContext,employmentId:string,raw:unknown,approval=false,storedLegacy=false){
+ let proposal=storedLegacy?null:parseEssProfileProposal(raw);const policy=await freshProfileEditPolicyTx(tx,ctx);
  let subject:Awaited<ReturnType<typeof ownProfileSubjectTx>>['subject'],master:typeof person.$inferSelect;
  if(approval){
   if(!(ctx.roles??[]).some(role=>role==='super_admin'||role==='hr_admin'))throw new EssProfileError('permission');
@@ -121,13 +145,32 @@ export async function prepareProfileProposalTx(tx:Tx,ctx:SessionContext,employme
  const rows=await mastersTx(tx,policy.ctx,subject);
  const current:Record<string,EssScalar>={...registryValues('person',master),...registryValues('compliance',master)};
  if(rows.stat)for(const owner of ['bank','identity','passport','registration','taxLegacy'])Object.assign(current,registryValues(owner,rows.stat));
- const cleanFields=(fields:EssFieldChange[],values:Record<string,EssScalar>,legacy=false,isNew=false)=>fields.filter(change=>{
+ // Stored pre-v2 requests never had CAS evidence. Bind their known fields to this locked snapshot
+ // solely for current validation/application; do not pretend it proves historical values were unchanged.
+ if(storedLegacy){
+  if(!approval||!raw||typeof raw!=='object'||Array.isArray(raw)||'v' in raw)throw new EssProfileError('invalid');
+  const fields=Object.entries(raw).map(([key,value])=>{
+   const field=PERSONNEL_FIELDS.find(field=>field.ess.binding?.legacyKey===key);
+   if(!field)throw new EssProfileError('permission',[key]);
+   const before=field.ess.masked?maskedProfileBaseline(policy.ctx,subject,rows,field.id):baseline(current[field.id]);
+   if(before===undefined)throw new EssProfileError('unavailable',[field.id]);
+   return {fieldId:field.id,before,value};
+  });
+  proposal=parseEssProfileProposal({v:2,fields,registers:[]});
+ }
+ if(!proposal)throw new EssProfileError('invalid');
+ const cleanFields=(fields:EssFieldChange[],values:Record<string,EssScalar>,legacy=false,isNew=false,maskedToken?:(fieldId:string)=>string|undefined)=>fields.filter(change=>{
   const field=personnelField(change.fieldId)!;
   if(!policy.editable.has(field.id)&&!(legacy&&policy.legacyPrimary.has(field.id)))throw new EssProfileError('fieldClosed',[field.id]);
-  if(!(isNew&&change.before===null)&&baseline(values[field.id])!==change.before)throw new EssProfileError('stale',[field.id]);
+  const token=field.ess.masked?(maskedToken?maskedToken(field.id):maskedProfileBaseline(policy.ctx,subject,rows,field.id)):baseline(values[field.id]);
+  if(field.ess.masked&&token===undefined&&!(isNew&&change.before===null))throw new EssProfileError('unavailable',[field.id]);
+  if(!(isNew&&change.before===null)&&token!==change.before)throw new EssProfileError('stale',[field.id]);
   return !sameEssScalar(change.value,values[field.id]);
  });
  const fields=cleanFields(proposal.fields,current);
+ if(storedLegacy&&!fields.length&&!proposal.registers.length)throw new EssProfileError('invalid');
+ const childCount=fields.find(change=>personnelField(change.fieldId)!.ess.binding?.owner==='taxLegacy'&&personnelField(change.fieldId)!.ess.binding!.field==='numChildren');
+ if(childCount&&rows.stat?.childReliefMode&&rows.stat.childReliefMode!=='manual')throw new EssProfileError('invalid',[childCount.fieldId]);
  for(const change of fields){const f=personnelField(change.fieldId)!;
   if(f.ess.binding?.owner!=='person'&&f.ess.binding?.owner!=='compliance'&&!rows.pack)throw new EssProfileError('unavailable',[f.id]);
   if(f.allowedValuesOwner?.startsWith('profile_option:'))await assertProfileValueAllowed(tx,f.allowedValuesOwner.slice(15) as Parameters<typeof assertProfileValueAllowed>[1],text(change,'value')??null,text(current,change.fieldId)??null);
@@ -170,7 +213,7 @@ export async function prepareProfileProposalTx(tx:Tx,ctx:SessionContext,employme
   const primary=rows.emergency.filter(item=>item.priority==='primary');
   const legacy=!approval&&row.kind==='emergency'&&row.id!==null&&primary.length===1&&primary[0].id===row.id;
   const values=existing?registryValues(row.kind,existing):{};
-  const changed=cleanFields(row.fields,values,legacy,row.id===null);if(!changed.length)continue;
+  const changed=cleanFields(row.fields,values,legacy,row.id===null,id=>maskedRegisterBaseline(policy.ctx,subject,rows,row.kind,row.id,id));if(!changed.length)continue;
   const merged={...(existing?record(existing):{}),...patch(changed)};
   if(row.kind==='qualification')await validateQualificationInputTx(tx,qualificationInput(merged),existing&&'qualification' in existing?existing:undefined);
   if(row.kind==='emergency')await validateEmergencyContactInputTx(tx,subject.personId,emergencyInput(merged),existing&&'relationship' in existing?existing:undefined);
@@ -217,6 +260,11 @@ export async function applyProfileProposalTx(tx:Tx,ctx:SessionContext,employment
  await applyScalarFieldsTx(tx,prepared,prepared.proposal.fields);
  for(const row of prepared.proposal.registers)await applyRegisterTx(tx,prepared.ctx,prepared.subject,row);
  return prepared.proposal;
+}
+/** Compatibility for stored rows only; caller has already authorized the decision and legacy keys. */
+export async function applyStoredLegacyProfileProposalTx(tx:Tx,ctx:SessionContext,employmentId:string,raw:unknown){
+ const prepared=await prepareProfileProposalTx(tx,ctx,employmentId,raw,true,true);
+ await applyScalarFieldsTx(tx,prepared,prepared.proposal.fields);
 }
 async function applyScalarFieldsTx(tx:Tx,prepared:Awaited<ReturnType<typeof prepareProfileProposalTx>>,fields:EssFieldChange[]){
  const {ctx,subject,master,rows}=prepared;

@@ -57,3 +57,19 @@ and flags a touched field made inapplicable by a relationship change so it can b
 EPF storage representation remains protected; the category and employee figures use the existing
 client-safe election interpretation and country-owned percent presentation. Recorded salary currency is
 separate from its common caption, which makes no fixed-MYR assertion.
+
+Masked public concurrency evidence binds the tenant, verified subject Person/Employment, country owner
+row identity, exact MVCC revision and field ID. The country owner returns values and `xmin::text` in the
+same SELECT/lock. The core Family owner captures its exact register row revision in the same scoped
+read/lock. Raw-value digests and timestamp-only substitutes are not exposed for masked fields.
+The token is concurrency evidence, never an authorization grant. Missing snapshot support refuses edits.
+New unversioned submissions are retired. Stored legacy requests retain rejection/history and valid
+approval: their known aliases are adapted to the locked current snapshot for canonical validation and
+application, without claiming historical CAS evidence that those requests never recorded. Invalid or
+ignored effects stay pending; no partial master write or approved no-op is accepted. Withdrawal expands
+only declared alias/field-ID counterparts, while counts and events retain actual proposal identities.
+
+The child-count caption retains its canonical qualifying-head-count meaning. Manual mode can propose
+the compatibility count. Automatic modes show the current Family eligibility or canonical recorded-grid
+head count read-only, and refuse forged count edits even when the policy permits that descriptor. Total
+Family records, weighted relief units and money remain distinct facts with their existing owners.

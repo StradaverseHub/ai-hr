@@ -150,55 +150,28 @@ describe('r260 — the requestable-field declaration', () => {
     ).toEqual([]);
   });
 
-  it('the /me form offers exactly the declared set, and the action reads exactly the declared set', () => {
-    // Both are generated FROM the declaration rather than listing names, which is the point — so this
-    // asserts the generation is still in place rather than counting inputs.
-    expect(REQUEST_CARD).toContain('requestableFieldsForTab(tab)');
-    expect(REQUEST_CARD).toContain('name={f.key}');
-    expect(ME_ACTIONS).toContain('for (const field of PROFILE_REQUESTABLE_FIELDS)');
-    expect(ME_ACTIONS).toContain("formData.get(field.key)");
-    // A hard-coded name left behind in the action would be a field read twice or a field read that the
-    // declaration no longer carries.
-    for (const dead of ["formData.get('bankName')", "formData.get('taxCategory')", "formData.get('gender')"]) {
-      expect(ME_ACTIONS.includes(dead), `${dead} survives the declaration-driven read`).toBe(false);
-    }
-    // Legacy endpoint remains declaration driven, while the actual screen is the single shared editor.
-    expect(ME_PAGE).not.toContain('<RequestChangeCard');expect(ME_PAGE).toContain('<ProfileEditor');expect(ESS_EDITOR).toContain('essVisibleFields()');expect(ESS_EDITOR).toContain('canEdit(field.id,row)');
-
+  it('the actual screen uses the shared editor and the retired form action cannot write',()=>{
+    const start=ME_ACTIONS.indexOf('export async function myRequestProfileChange(');
+    expect(start).toBeGreaterThan(0);const next=ME_ACTIONS.indexOf('export async function ',start+1);const retired=ME_ACTIONS.slice(start,next===-1?undefined:next);
+    expect(retired.length).toBeGreaterThan(100);
+    expect(retired).not.toContain('requestProfileChange(');expect(retired).not.toContain('formData.get(');
+    expect(retired).toContain("t('error.invalid')");
+    expect(ME_PAGE).not.toContain('<RequestChangeCard');expect(ME_PAGE).toContain('<ProfileEditor');
+    expect(ESS_EDITOR).toContain('essVisibleFields()');expect(ESS_EDITOR).toContain('canEdit(field.id,row)');
   });
 
-  it('core/profile.ts applies from the declaration, and applies NOTHING on a rejection', () => {
-    // The safety property, asserted at the shape level here and against a live database in
-    // test/me-profile-change-requests.test.ts. There must be exactly one place a master write can
-    // happen, and it must be inside the approved branch.
-    expect(CORE_PROFILE).toContain("if (p.decision === 'approved') {");
-    expect(CORE_PROFILE).toContain('const setFor = (target: ProfileRequestTarget)');
-    expect(CORE_PROFILE).toContain("const statSet = setFor('statutory');");
-    expect(CORE_PROFILE).toContain("const personSet = setFor('person');");
-    // Scoped to decideProfileChange's OWN body. `person` is legitimately written by two other functions
-    // in this file — `updateOwnContact` (ADR-0012 path one, the instant contact self-edit) and
-    // `setPersonComplianceFields` (the HR-direct setter) — and neither is a decision path.
-    const decideBody = CORE_PROFILE.slice(
-      CORE_PROFILE.indexOf('export async function decideProfileChange('),
-      CORE_PROFILE.indexOf('export async function setPersonComplianceFields('),
-    );
-    expect(decideBody.length, 'decideProfileChange could not be located in core/profile.ts').toBeGreaterThan(500);
-    const approvedBranch = decideBody.slice(
-      decideBody.indexOf("if (p.decision === 'approved') {"),
-      decideBody.indexOf('await tx\n      .update(profileChangeRequest)'),
-    );
-    for (const writer of ['.update(employeeStatutoryMy)', '.update(person)']) {
-      expect(
-        decideBody.split(writer).length - 1,
-        `${writer} is written in more than one place inside decideProfileChange`,
-      ).toBe(1);
-      expect(approvedBranch.includes(writer), `${writer} runs outside the approved branch`).toBe(true);
-    }
-    // And the branch that follows a decision writes only the request row itself — never a master table.
-    const afterDecision = decideBody.slice(decideBody.indexOf('await tx\n      .update(profileChangeRequest)'));
-    for (const writer of ['.update(employeeStatutoryMy)', '.update(person)', '.insert(']) {
-      expect(afterDecision.includes(writer), `${writer} runs after the decision is recorded`).toBe(false);
-    }
+  it('both current and stored legacy approvals use the validated owner, with no master writes on rejection',()=>{
+    const decideBody=CORE_PROFILE.slice(CORE_PROFILE.indexOf('export async function decideProfileChange('),CORE_PROFILE.indexOf('export async function setPersonComplianceFields('));
+    expect(decideBody.length).toBeGreaterThan(500);
+    expect(decideBody).toContain("if(p.decision==='approved'&&");
+    expect(decideBody).toContain("}else if (p.decision === 'approved') {");
+    expect(decideBody).toContain('await applyProfileProposalTx(tx,ctx,req.employmentId,req.proposed)');
+    expect(decideBody).toContain('await applyStoredLegacyProfileProposalTx(tx,ctx,req.employmentId,proposed)');
+    for(const write of ['.update(employeeStatutoryMy)','.update(person)'])expect(decideBody).not.toContain(write);
+    const after=decideBody.slice(decideBody.indexOf('await tx\n      .update(profileChangeRequest)'));
+    expect(after.length).toBeGreaterThan(100);expect(after).not.toContain('applyProfileProposalTx(');expect(after).not.toContain('applyStoredLegacyProfileProposalTx(');
+    expect(ESS_OWNER).toContain('prepareProfileProposalTx(tx,ctx,employmentId,raw,true,true)');
+    expect(ESS_OWNER).toContain('await applyScalarFieldsTx(tx,prepared,prepared.proposal.fields)');
   });
 
   it('a rejection cannot be stored without a reason — enforced AT THE DECISION, never as a table CHECK', () => {
@@ -484,9 +457,10 @@ describe('r261 — a switched-off field is ABSENT from the employee\'s screen, n
     expect(offeredRequestableFieldsForTab('profile', new Set())).toEqual([]);
   });
 
-  it('the service drops a disallowed key too — the screen is not the gate', () => {
-    expect(CORE_PROFILE).toContain('sanitizeProposed(p.proposed as ProfileChangeProposed,profileChangeAllowedKeys(ctx))');
-    expect(CORE_PROFILE).toContain('if (!allowed.has(key)) continue;');
+  it('the current writer refuses legacy submissions and validates every current field at the owner', () => {
+    expect(CORE_PROFILE).toContain("p.proposed.v!==2)throw new EssProfileError('invalid')");
+    expect(CORE_PROFILE).toContain('await prepareProfileProposalTx(tx,ctx,p.employmentId,p.proposed)');
+    expect(ESS_OWNER).toContain("throw new EssProfileError('fieldClosed',[field.id])");
     /**
      * ⚠️ AND THE DECISION RE-ASKS (r261 fix pass). The request side and the sweep both run at a
      * different moment from the decision, so neither can be the last word on whether the master record

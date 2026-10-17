@@ -1354,6 +1354,17 @@ export async function getStatutoryProfileMYTx(tx: Tx, ctx: SessionContext, perso
     return row ?? null;
   }
 
+/** Values and their exact MVCC revision come from the same RLS read/lock. A timestamp is not a revision. */
+export function getStatutoryEditSnapshotMY(ctx: SessionContext, personId: string, outerTx?: Tx, opts: { forUpdate?: boolean } = {}) {
+  const run = async (tx: Tx) => {
+    const query = tx.select({ profile: employeeStatutoryMy, revision: sql<string>`xmin::text` })
+      .from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId, personId)).limit(1);
+    const [row] = await (opts.forUpdate ? query.for('update') : query);
+    return row ? { profile: row.profile, rowId: row.profile.id, revision: row.revision } : null;
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx, run);
+}
+
 /** Partial registration-number write. Never routes a narrow import through the full statutory overwrite. */
 export async function setRegistrationNumbersMY(ctx:SessionContext,p:{personId:string;epfNumber?:string|null;socsoNumber?:string|null},outerTx?:Tx) {
   const values:{epfNumber?:string|null;socsoNumber?:string|null}={};
