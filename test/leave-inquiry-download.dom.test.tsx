@@ -6,6 +6,7 @@ import * as jsx from 'react/jsx-runtime';
 import * as ts from 'typescript';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { inquirySearchParams, parseInquiryQuery } from '../lib/leave-inquiry-query';
 
 afterEach(cleanup);
 
@@ -60,7 +61,7 @@ function exportActions(page: 'employee-balances' | 'employee-records', selection
     module: output,
     exports: output.exports,
     params: () => new URLSearchParams(selection),
-    sort: 'employee',
+    sort: 'employeeCode',
     dir: 'desc',
     t: (key: string) => key,
     require: (name: string) => {
@@ -72,13 +73,20 @@ function exportActions(page: 'employee-balances' | 'employee-records', selection
 }
 
 describe.each(['employee-balances', 'employee-records'] as const)('%s browser download actions', page => {
-  it.each(['all', 'employment-selected'])('preserves %s selection and repeated filters for CSV and Excel', employment => {
+  it.each([
+    { label: 'All', employment: undefined },
+    { label: 'selected employee', employment: '10000000-0000-4000-8000-000000000001' },
+  ])('preserves $label selection and repeated filters for CSV and Excel', ({ employment }) => {
     const filters = new URLSearchParams([
-      ['emp', employment], ['q', 'Annual & medical'], ['type', 'annual'], ['type', 'medical'],
-      ['status', 'approved'], ['status', 'pending'], ['department', 'one'], ['department', 'two'],
+      ['q', 'Annual & medical'],
+      ['type', '20000000-0000-4000-8000-000000000001'], ['type', '20000000-0000-4000-8000-000000000002'],
+      ['status', 'approved'], ['status', 'pending'],
+      ['department', '30000000-0000-4000-8000-000000000001'], ['department', '30000000-0000-4000-8000-000000000002'],
       ['from', '2020-01-01'], ['to', '2020-01-31'], ['asOf', '2020-01-31'],
-      ['sort', 'employee'], ['dir', 'desc'], ['size', 'all'],
+      ['sort', 'employeeCode'], ['dir', 'desc'], ['size', 'all'],
     ]);
+    if (employment) filters.set('emp', employment);
+    expect(parseInquiryQuery(inquirySearchParams(filters), page === 'employee-balances' ? 'balances' : 'records').emp).toBe(employment);
     render(exportActions(page, filters.toString()));
     for (const [caption, format] of [['filters.exportCsv', 'csv'], ['filters.exportExcel', 'xlsx']]) {
       const anchor = screen.getByRole('link', { name: caption });
