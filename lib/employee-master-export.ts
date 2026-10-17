@@ -92,7 +92,7 @@ async function excel(result:EmployeeMasterResult,spec:EmployeeMasterSpec,fields:
   }
   const notes=scopeNotes(result);if(notes.length)XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['Report notes'],['As at '+result.asAt],...notes.map(note=>[note])]),'Report notes');
   // SheetJS CE omits freeze panes/alignment. Add only OOXML presentation metadata to its workbook.
-  const zip=await JSZip.loadAsync(XLSX.write(book,{type:'array',bookType:'xlsx',cellDates:true}));
+  const zip=await JSZip.loadAsync(XLSX.write(book,{type:'buffer',bookType:'xlsx',cellDates:true}));
   for(const [index,count]of freezeCounts.entries()){const path=`xl/worksheets/sheet${index+1}.xml`,file=zip.file(path);if(!file)continue;const xml=await file.async('string');const pane=`<sheetViews><sheetView workbookViewId="0"><pane xSplit="${count}" ySplit="3" topLeftCell="${XLSX.utils.encode_col(count)}4" activePane="${count?'bottomRight':'bottomLeft'}" state="frozen"/></sheetView></sheetViews>`;zip.file(path,xml.includes('<sheetViews')?xml.replace(/<sheetViews[\s\S]*?<\/sheetViews>/,pane):xml.replace(/<sheetFormatPr|<cols|<sheetData/,match=>pane+match));}
   await alignMasterSheets(zip,result.sections);
   return zip.generateAsync({type:'uint8array',compression:'DEFLATE'});
