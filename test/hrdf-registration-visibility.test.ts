@@ -1,3 +1,4 @@
+import { personnelFormName } from '../lib/personnel-form-contract';
 /**
  * Feedback efece4ce (re-fix) — "HRDF not calculated and not displayed".
  *
@@ -81,7 +82,8 @@ describe('(a) employee Bank & Statutory — the contradiction is stated, not swa
     const fn = FIELDS.slice(FIELDS.indexOf('export function HrdfSubjectField'), FIELDS.indexOf('export function', FIELDS.indexOf('export function HrdfSubjectField') + 1));
     expect(fn, 'HrdfSubjectField still exists').not.toBe('');
     // (2) Its form mode derives the initial state from its OWN value prop, tri-state, and posts a name.
-    expect(fn).toContain("name: props.name ?? 'subjectToHrdf', defaultValue: current");
+    expect(fn).toContain("name: personnelFormName('bank_statutory.socso_eis_and_others_statutory.hrdfsubject',props.name), defaultValue: current");
+    expect(personnelFormName('bank_statutory.socso_eis_and_others_statutory.hrdfsubject')).toBe('subjectToHrdf');
     expect(fn).toContain("props.value == null");
     expect(fn, 'the control knows nothing about any company band').not.toContain('companyHrdf');
     // (3) Still a three-option select, still not a checkbox — the 57840a6e collapse must stay impossible.

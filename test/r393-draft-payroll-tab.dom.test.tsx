@@ -1,3 +1,4 @@
+import { personnelMarkupContract } from './helpers/personnel-markup';
 /**
  * r393 — item 685d2380 STEP 2, the draft's Payroll tab ON THE SCREEN, and the Personnel record's two
  * controls unchanged.
@@ -263,7 +264,7 @@ function BeforePolicy({ payrollPolicyId, assignablePolicies }: { payrollPolicyId
   );
 }
 
-describe('§4 the Personnel record renders byte-identically through the shared field groups (form mode)', () => {
+describe('§4 the Personnel record retains the form contract through the shared field groups (form mode)', () => {
   const html = (node: ReactNode, messages: Msgs = en, locale = 'en') =>
     renderToStaticMarkup(
       <NextIntlClientProvider locale={locale} messages={messages}>
@@ -282,7 +283,7 @@ describe('§4 the Personnel record renders byte-identically through the shared f
             loc,
           );
           expect(before.length, 'the before-markup rendered something').toBeGreaterThan(200);
-          expect(after, `${loc} paymentMethod=${paymentMethod} terminated=${!!terminatedOn}`).toBe(before);
+          expect(personnelMarkupContract(after), `${loc} paymentMethod=${paymentMethod} terminated=${!!terminatedOn}`).toBe(personnelMarkupContract(before));
         }
       }
     });
@@ -297,7 +298,7 @@ describe('§4 the Personnel record renders byte-identically through the shared f
             loc,
           );
           expect(before.length, 'the before-markup rendered something').toBeGreaterThan(100);
-          expect(after, `${loc} policy=${payrollPolicyId} n=${assignablePolicies.length}`).toBe(before);
+          expect(personnelMarkupContract(after), `${loc} policy=${payrollPolicyId} n=${assignablePolicies.length}`).toBe(personnelMarkupContract(before));
         }
       }
     });

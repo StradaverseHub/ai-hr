@@ -173,7 +173,13 @@ describe('group 2 — the two screens offer the SAME pay modes and payment terms
     );
     // Labelled with its unit and required — the same rule setCompensation enforces server-side.
     expect(screen.getByText(/per hour/i)).toBeInTheDocument();
-    expect(hourly.container.querySelector('input')).toBeRequired();
+    // Drafts must remain saveable while incomplete; activation owns the cross-field rule.
+    expect(hourly.container.querySelector('input')).not.toBeRequired();
+    expect(hourly.container.querySelector('input')).not.toHaveAttribute('name');
+    hourly.unmount();
+    const active = wrap(<PayStructureFields mode="form" defaultPayMode="hourly" defaultPaymentTerm="monthly" defaultRateAmount="" />);
+    expect(active.container.querySelector('input')).toBeRequired();
+    expect(active.container.querySelector('input')).toHaveAttribute('name', 'rateAmount');
   });
 });
 
@@ -467,7 +473,7 @@ describe('group 8 — the two screens ask the SAME identity questions, gated the
       </>,
     );
     const asPersonnel = visibleOf(personnel.container);
-    expect(asPersonnel).toEqual(['Nationality: [Malaysian]', 'Identity No (NRIC): <input text placeholder=900101011234>']);
+    expect(asPersonnel).toEqual(['Nationality: [Malaysian]', 'Identity No (NRIC)*: <input text placeholder=900101011234>']);
     personnel.unmount();
 
     const wizard = wrap(

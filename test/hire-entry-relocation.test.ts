@@ -160,8 +160,8 @@ describe('the dedicated screen carries the whole job', () => {
 
   it('saves a draft WITHOUT validating, and only validates on Activate', () => {
     // A draft that refused to save until it was complete would not be a draft.
-    expect(wizard).toContain('saveDraftAction(id, data');
-    expect(wizard).toContain('disabled={pending || outstanding.length > 0}');
+    expect(wizard).toMatch(/saveDraftAction\(id,\s*data,\s*stepNumber\(tab\)\)/);
+    expect(wizard).toMatch(/disabled=\{busy\|\|!!deleteTarget\|\|outstanding.length>0\}/);
     expect(wizardActions).toContain('completeEmployeeDraft');
   });
 

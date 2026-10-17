@@ -449,6 +449,8 @@ export const ME_VISIBLE_FIELD_LABEL_KEYS: Record<MeTabKey, readonly string[]> = 
     'family.childAge',
     'family.contactNumber',
     'family.countsTowardRelief',
+    // Already rendered as the existing beneficiary Badge, rather than a read-field row.
+    'family.beneficiary',
   ],
   documents: [],
 };
@@ -487,14 +489,39 @@ export const ME_WITHHELD_COLUMNS: readonly string[] = [
  * leave open. Stage two, which makes fields requestable, is where the shared controls become the right
  * tool.
  *
- * A key is on this map for one of three reasons, and the sentence says which:
+ * A key is on this map for one of these explicit dispositions, and the sentence says which:
  *   • WITHHELD — it is on `ME_HIDDEN_FIELDS` above and in the reporter's document;
  *   • NOT A CARD THIS SCREEN CARRIES — it belongs to a Personnel tab My Profile does not mirror
  *     (Qualification, Movement, Attendance, Leave, Documents), or to a screen of its own (/leave);
  *   • AN HR CONTROL, NOT A FACT — a picker, a placeholder, a copy button or a filter, whose VALUE the
  *     employee already reads elsewhere on My Profile.
+ *   • NOT YET MIRRORED — an explicitly recorded pre-existing omission with no established disclosure
+ *     policy. This is a limitation, not permission to withhold future fields without a decision.
  */
 export const ME_UNRENDERED_PERSONNEL_FIELDS: Readonly<Record<string, string>> = {
+  subjectToSkbbk: 'NOT YET MIRRORED — Personnel records this scheme flag, but the existing My Profile read model does not project it. No disclosure-policy decision is established; current behaviour is retained in this 17-item release.',
+  // Registry-backed captions for facts already covered by the existing disclosure list above.
+  // These entries account for existing behaviour; they do not change the read or its permissions.
+  employerBearsEpf: 'WITHHELD — the documented employer-borne contribution flags record the company’s cost arrangement.',
+  employerBearsSocso: 'WITHHELD — the documented employer-borne contribution flags record the company’s cost arrangement.',
+  employerBearsEis: 'WITHHELD — the documented employer-borne contribution flags record the company’s cost arrangement.',
+  employerBearsSkbbk: 'WITHHELD — the documented employer-borne contribution flags record the company’s cost arrangement.',
+  employerBearsTax: 'WITHHELD — the documented employer-borne contribution flags record the company’s cost arrangement.',
+  enableCustomHolderName: 'AN HR CONTROL — enables the third-party bank-holder name, whose identity is already withheld below.',
+  enableCustomHolderId: 'AN HR CONTROL — enables the third-party bank-holder identification, which is already withheld below.',
+  'family.currentlyWorking': 'WITHHELD — the working spouse’s employment details, already listed under Dependant remarks and employer details.',
+  'family.deceasedStatus': 'WITHHELD — the dependant’s status accompanying the deceasedOn detail in the existing dependant-details list.',
+  'family.studentStatus': 'WITHHELD — the dependant’s study details used for relief eligibility; the existing list withholds schooling.',
+  'family.newIc': 'WITHHELD — the dependant’s own identity document, already covered by Dependant identity, address, marriage and study details.',
+  'family.icOrBirthCert': 'WITHHELD — the dependant’s own identity document, already covered by Dependant identity, address, marriage and study details.',
+  'family.childTaxRelief': 'WITHHELD — HR’s per-child relief election and classification; the Family card shows the resulting Counts toward relief.',
+  'family.childReliefCat_under_18': 'WITHHELD — a category heading in the existing withheld child-relief rate table and classification controls.',
+  'family.childReliefCat_disabled': 'WITHHELD — a category heading in the existing withheld child-relief rate table and classification controls.',
+  'family.childReliefCat_disabled_study': 'WITHHELD — a category heading in the existing withheld child-relief rate table and classification controls.',
+  'family.childReliefCat_study_preu': 'WITHHELD — a category heading in the existing withheld child-relief rate table and classification controls.',
+  'family.childReliefCat_study_tertiary': 'WITHHELD — a category heading in the existing withheld child-relief rate table and classification controls.',
+  'clocking.attendancePhotoLabel': 'NOT A CARD HERE — the Attendance tab and its clocking/photo controls are not among My Profile’s six tabs.',
+  'qualification.highest': 'NOT A CARD HERE — the Qualification tab is not among My Profile’s six tabs, as with the other qualification fields below.',
   // ── Withheld — see ME_HIDDEN_FIELDS and docs/me-profile-field-visibility.md ────────────────────────
   'employmentInfo.contractRemark': 'WITHHELD — the HR note on the contract; the contract dates are shown.',
   salaryColRemarks: 'WITHHELD — HR’s reasoning on each salary revision; the current salary is shown.',

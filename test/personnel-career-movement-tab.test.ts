@@ -125,12 +125,9 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
 
   // 08913328 — the New Event screen is now a Current / After comparison for the change kinds.
   it('the New Event island renders the Current / After comparison over the full requested field list', () => {
-    for (const f of [
-      'businessUnit', 'orgDivision', 'department', 'position', 'grade', 'employmentCategory',
-      'orgRegion', 'orgBranch', 'orgTeam', 'orgSection', 'orgLine', 'orgBase', 'employmentType',
-      'directSuperior', 'basicSalary', 'currency', 'payMode', 'paymentTerm',
-    ]) {
-      expect(NEW_EVENT.includes(`t('field.${f}')`), `missing comparison field ${f}`).toBe(true);
+    const fields = {businessUnit:'businessUnitId', orgDivision:'orgDivision', department:'departmentId', position:'positionId', grade:'gradeId', employmentCategory:'employmentCategory', orgRegion:'orgRegion', orgBranch:'orgBranch', orgTeam:'orgTeam', orgSection:'orgSection', orgLine:'orgLine', orgBase:'orgBase', employmentType:'employmentType', directSuperior:'managerEmploymentId', basicSalary:'basicSalary', currency:'currency', payMode:'payMode', paymentTerm:'paymentTerm'};
+    for (const [caption, field] of Object.entries(fields)) {
+      expect(NEW_EVENT.includes("label(movementField('" + field + "'))"), `missing comparison field ${caption}`).toBe(true);
     }
     // Company is displayed but NOT editable here — moving legal entity is its own gated flow.
     expect(NEW_EVENT.includes("t('form.companyReadOnly')")).toBe(true);
@@ -205,7 +202,8 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
     expect(NEW_EVENT.includes('editMovementEventAction')).toBe(true);
     expect(NEW_EVENT.includes("t('form.editHint')")).toBe(true);
     expect(NEW_EVENT.includes("t('form.saveCorrection')")).toBe(true);
-    expect(NEW_EVENT.includes("t('form.correctionReason')")).toBe(true);
+    expect(NEW_EVENT).toContain("label(movementField('reason'))");
+    expect(NEW_EVENT).toContain("personnelWorkflowInput(movementField('reason'), 'movement', 'record')");
     // The processed-payroll notice must reach the user BEFORE they save, never after.
     expect(NEW_EVENT.includes("t('form.payrollWarning')")).toBe(true);
   });

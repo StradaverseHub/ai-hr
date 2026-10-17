@@ -203,6 +203,12 @@ describe('r259 — My Profile carries the Personnel record’s shape', () => {
     expect(labelled.size, 'the Personnel field list came back empty — the extraction pattern is broken')
       .toBeGreaterThan(100);
 
+    // The beneficiary fact has always been rendered as a conditional Badge, not a read-field row.
+    // Record this existing omission honestly; it is not an inferred withholding policy.
+    expect(ME_UNRENDERED_PERSONNEL_FIELDS.subjectToSkbbk).toMatch(/^NOT YET MIRRORED —/);
+    expect(ME_UNRENDERED_PERSONNEL_FIELDS.subjectToSkbbk).toContain('No disclosure-policy decision is established');
+    expect(ME_VISIBLE_FIELD_LABEL_KEYS.family).toContain('family.beneficiary');
+    expect(ME_PAGE).toContain(`{d.isBeneficiary && <Badge variant="success">{tp('family.beneficiary')}</Badge>}`);
     const shown = new Set(Object.values(ME_VISIBLE_FIELD_LABEL_KEYS).flat());
     const unaccounted = [...labelled].filter(
       (k) => !shown.has(k) && !(k in ME_UNRENDERED_PERSONNEL_FIELDS),

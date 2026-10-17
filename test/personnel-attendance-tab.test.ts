@@ -1,3 +1,5 @@
+import { personnelInput } from '../lib/personnel-form-contract';
+import { hasPersonnelPostedBinding } from './helpers/personnel-posted-binding';
 /**
  * Attendance Information tab (feedback 1fbe9891) — the Personnel (Admin) employee-detail page must expose
  * a dedicated "Attendance Information" tab that consolidates the attendance-related master data previously
@@ -113,15 +115,15 @@ describe('Personnel — Attendance Information tab (1fbe9891)', () => {
   it('the Shift arrangement card asks for an Effective date, like the Location card above it', () => {
     expect(PAGE.includes('defaultEffectiveFrom={today}')).toBe(true);
     // The Location card's own effective date is untouched — the symmetry is the point.
-    expect(PAGE.includes("<Field label={t('effectiveDate')}>")).toBe(true);
+    expect(hasPersonnelPostedBinding(PAGE, 'attendance.work_location_and_shift_arrangement.locationeffectivefrom', 'effectiveFrom')).toBe(true);
     const FIELDS = fs.readFileSync(
       path.resolve(__dirname, '../components/employee-shift-fields.tsx'),
       'utf8',
     );
     // Same field name the action reads off the FormData, and required so a blank cannot be posted.
-    expect(FIELDS.includes("name=\"effectiveFrom\"")).toBe(true);
-    expect(FIELDS.includes('type="date"')).toBe(true);
-    expect(FIELDS.includes("t('shiftEffectiveDateLabel')")).toBe(true);
+    expect(hasPersonnelPostedBinding(FIELDS, 'attendance.work_location_and_shift_arrangement.shifteffectivefrom', 'effectiveFrom')).toBe(true);
+    expect(personnelInput('attendance.work_location_and_shift_arrangement.shifteffectivefrom')).toMatchObject({type:'date', required:true});
+    expect(FIELDS).toContain('fieldId="attendance.work_location_and_shift_arrangement.shifteffectivefrom"');
   });
 
   it('renders the Shift history list under the card, with its five columns', () => {

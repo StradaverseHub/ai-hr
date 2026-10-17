@@ -144,7 +144,7 @@ describe('the Create New Employee Payroll tab', () => {
   it('opens on Payroll, and the amount box no longer has a floor above zero', () => {
     wrap(nearlyDone({ basicSalary: '5200' }));
     expect(within(shownPanel()).getByText(wizard.sections.compensation)).toBeTruthy();
-    const amount = field(wizard.fields.basicSalary);
+    const amount = field(detail.basicSalaryMyr);
     // `min="0.01"` was the only such floor on a basic salary in the tree, and it is what held Activate
     // off until somebody invented a figure for a Director paid quarterly fees.
     expect(amount.getAttribute('min')).toBe('0');
@@ -167,7 +167,7 @@ describe('the Create New Employee Payroll tab', () => {
   it('CLEARING the amount asks for the reason, in place, and names Pay Mode and Payment Term', async () => {
     const user = userEvent.setup();
     wrap(nearlyDone({ basicSalary: '5200' }));
-    await user.clear(field(wizard.fields.basicSalary));
+    await user.clear(field(detail.basicSalaryMyr));
 
     // The reporter's own sentence, on the tab, the moment the box goes empty — not after a refused save.
     expect(within(shownPanel()).getByText(wizard.hints.noBasicSalary)).toBeTruthy();
@@ -183,8 +183,8 @@ describe('the Create New Employee Payroll tab', () => {
   it('a typed ZERO is treated as "no basic salary", not as an amount', async () => {
     const user = userEvent.setup();
     wrap(nearlyDone({ basicSalary: '' }));
-    await user.type(field(wizard.fields.basicSalary), '0');
-    expect(field(wizard.fields.basicSalary).value).toBe('0');
+    await user.type(field(detail.basicSalaryMyr), '0');
+    expect(field(detail.basicSalaryMyr).value).toBe('0');
     expect(within(shownPanel()).getByText(wizard.hints.noBasicSalary)).toBeTruthy();
     expect(starred(field(wizard.fields.remarks))).toBe(true);
   });
@@ -200,7 +200,7 @@ describe('the Create New Employee Payroll tab', () => {
     expect(needs.textContent).toContain(wizard.tabs.payroll);
     expect(needs.textContent).toContain(wizard.fields.remarks);
     expect(needs.textContent, 'the amount is no longer outstanding').not.toContain(
-      wizard.fields.basicSalary,
+      detail.basicSalaryMyr,
     );
 
     await user.type(field(wizard.fields.remarks), "Paid by quarterly director's fees");
@@ -222,11 +222,11 @@ describe('the Create New Employee Payroll tab', () => {
     const user = userEvent.setup();
     wrap(nearlyDone({ basicSalary: '', remarks: 'anything at all' }));
     // Typed through the box so this is the screen's own reading, not a hand-built draft.
-    await user.type(field(wizard.fields.basicSalary), '-100');
-    expect(field(wizard.fields.basicSalary).value).toBe('-100');
+    await user.type(field(detail.basicSalaryMyr), '-100');
+    expect(field(detail.basicSalaryMyr).value).toBe('-100');
     expect(activateBtn().disabled, 'a negative wage is never legitimate').toBe(true);
     const needs = outstandingBox();
-    expect(needs.textContent).toContain(wizard.fields.basicSalary);
+    expect(needs.textContent).toContain(detail.basicSalaryMyr);
     // The no-basic affordances must NOT appear: this is a wrong amount, not an absent one, and a remark
     // is no answer to it.
     expect(within(shownPanel()).queryByText(wizard.hints.noBasicSalary)).toBeNull();
