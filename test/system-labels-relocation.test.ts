@@ -4,8 +4,8 @@
  * `description` field (migration 0145). This suite covers, mirroring test/business-unit-master.test.ts:
  *   - description persists on create + update for all four entity types, trims, and stores null when blank;
  *   - the DomainEvent substrate carries description in the .updated payload (and .created);
- *   - RLS/authz unchanged: a company-scoped hr_admin can only WRITE its own company's rows; a non-admin
- *     employee can still READ (list) — the tenant-wide read the hire form + People filters depend on;
+ *   - a company-scoped hr_admin can only WRITE its own company's rows; ordinary label pickers remain
+ *     readable by non-admin employees, while the System Labels maintenance surface is admin-scoped;
  *   - the redirect-target guard: every System Labels server action redirects to the System Labels path
  *     (NOT /admin/organization) on both success and validation-failure — directly guarding the copy-paste
  *     bug the plan flags (both ok()/fail() would otherwise send the admin back to the old page).
@@ -86,6 +86,7 @@ import {
   seedProfileOptionsAction,
 } from '../app/admin/settings/system-labels/profile-options/actions';
 import { listAllProfileOptions } from '../core/profile-options';
+import { listDepartments } from '../core/read';
 
 let b: Base;
 
@@ -231,15 +232,19 @@ describe('System Labels — DomainEvent substrate carries description', () => {
   });
 });
 
-describe('System Labels — RLS/authz unchanged after the move', () => {
-  it('read is tenant-wide (a non-admin employee lists), write is admin-for-company only', async () => {
+describe('System Labels — maintenance and ordinary picker authorization', () => {
+  it('keeps permitted picker reads available while maintenance and writes require authorized administrators', async () => {
     const a = adminCtx(b);
     const { id: dep } = await createDepartment(a, { companyId: b.companyId, name: 'Guarded', description: 'x' });
 
-    // Tenant-wide read: a plain employee can SEE the department via the System-Labels read query.
+    // Ordinary Personnel pickers still use saved Criteria. Maintenance additionally carries update
+    // metadata and is now deliberately administrator-only, before search/count/export (0550).
     const emp = await employeeCtx();
-    const seen = await listDepartmentsForLabels(emp, { companyIds: [b.companyId] });
+    expect(await listDepartmentsForLabels(emp, { companyIds: [b.companyId] })).toEqual([]);
+    const seen = await listDepartments(emp, { companyIds: [b.companyId] });
     expect(seen.map((d) => d.id)).toContain(dep);
+    const originAdmin = await adminFor(b.companyId);
+    expect((await listDepartmentsForLabels(originAdmin, { companyIds: [b.companyId] })).map(d => d.id)).toContain(dep);
 
     // Write scoping: an admin scoped to ANOTHER company cannot update company A's department — the
     // is_admin_for WITH CHECK blocks it (row is visible via tenant-wide read, but the write is a no-op).
@@ -248,6 +253,7 @@ describe('System Labels — RLS/authz unchanged after the move', () => {
       .values({ tenantId: b.tenantId, legalName: 'SL Co B Sdn Bhd', country: 'MY', currency: 'MYR' })
       .returning({ id: schema.company.id });
     const adminB = await adminFor(coB.id);
+    expect(await listDepartmentsForLabels(adminB, { companyIds: [b.companyId] })).toEqual([]);
     await updateDepartment(adminB, { id: dep, name: 'Hacked', description: 'nope' }).catch(() => {});
     const [row] = await owner.db.select().from(schema.department).where(eq(schema.department.id, dep));
     expect(row.name).toBe('Guarded');
