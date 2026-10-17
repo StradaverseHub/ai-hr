@@ -116,12 +116,16 @@ export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:Emp
         const rawStart=date(row.validFrom??row.effectiveFrom??row.effectiveDate??row.startDate??row.changeEffectiveOn??row.effectiveOn),start=owner==='cp38'&&rawStart?.length===7?rawStart+'-01':rawStart;
         if(!start){if(spec.companyIds.includes(employment.companyId))subject.historyScopeUnavailable=true;return false;}
         const point=['movement','movementComparison','leaveRecalc','hireCorrection'].includes(owner);
+        const exitSource=object(object(row.recordedExit).source);
+        // The canonical termination effect closes its own exclusive company interval. Only that
+        // recorded effect uses the subject's strictly proved last day for coverage; its date stays intact.
+        const scopeStart=owner==='movement'&&exitSource.eventType==='employment.terminated'&&exitSource.role==='effect'&&start===employment.terminatedOn&&start<=spec.asAt?scopeDate:start;
         const rawEnd=date(row.reportEffectiveTo??row.validTo??row.endDate);
-        const end=point?start:owner==='cp38'&&rawEnd?.length===7?new Date(new Date(nextMonth(rawEnd)!+'T00:00:00Z').getTime()-86_400_000).toISOString().slice(0,10):rawEnd&&['assignment','compensation','payItem'].includes(owner)?new Date(new Date(rawEnd+'T00:00:00Z').getTime()-86_400_000).toISOString().slice(0,10):rawEnd??spec.asAt;
+        const end=point?scopeStart:owner==='cp38'&&rawEnd?.length===7?new Date(new Date(nextMonth(rawEnd)!+'T00:00:00Z').getTime()-86_400_000).toISOString().slice(0,10):rawEnd&&['assignment','compensation','payItem'].includes(owner)?new Date(new Date(rawEnd+'T00:00:00Z').getTime()-86_400_000).toISOString().slice(0,10):rawEnd??spec.asAt;
         // Current open facts may use the recorded CURRENT employer; this never proves earlier history.
         if(!point&&spec.asAt===today&&spec.companyIds.includes(employment.companyId)&&start<=today&&end>=today)return true;
-        const allowed=(companySegments.get(employment.id)??[]).some(segment=>segment.companyId!=null&&spec.companyIds.includes(segment.companyId)&&segment.from<=end&&segment.to>=start);
-        if(!allowed&&spec.companyIds.includes(employment.companyId)&&(companySegments.get(employment.id)??[]).some(segment=>segment.companyId==null&&segment.from<=end&&segment.to>=start))subject.historyScopeUnavailable=true;
+        const allowed=(companySegments.get(employment.id)??[]).some(segment=>segment.companyId!=null&&spec.companyIds.includes(segment.companyId)&&segment.from<=end&&segment.to>=scopeStart);
+        if(!allowed&&spec.companyIds.includes(employment.companyId)&&(companySegments.get(employment.id)??[]).some(segment=>segment.companyId==null&&segment.from<=end&&segment.to>=scopeStart))subject.historyScopeUnavailable=true;
         return allowed;
       });
       subject.owners[owner]=scopedRows.map((row,index,all)=>{
