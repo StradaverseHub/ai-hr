@@ -84,7 +84,7 @@ if(!options.heldLockWorker) {
   let server,activeJob,stopping=false,serverFd,forceStopTimer;
   let runFailed=false,ownedServerPid;
   let postgresAdmin,postgresTarget,postgresApp;
-  let preparationCandidate=candidate,resumeReceipt,devLogName=runId+'-browser-dev.log';
+  let preparationCandidate=candidate,resumeReceipt,labelsContinuity,devLogName=runId+'-browser-dev.log';
   const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
   function groupExists(child){if(!child?.pid)return false;try{process.kill(-child.pid,0);return true;}catch(error){if(error.code==='ESRCH')return false;throw error;}}
   function signalOwned(child,signal){if(groupExists(child)){try{process.kill(-child.pid,signal);}catch(error){if(error.code!=='ESRCH')throw error;}}}
@@ -172,11 +172,16 @@ if(!options.heldLockWorker) {
     if(expectedPrincipals&&JSON.stringify(principals)!==JSON.stringify(expectedPrincipals))throw new Error('Prepared principal person binding changed.');
     return principals;
   }
-  async function proveFreshSource(fixture){
+  async function proveFreshSource(fixture,browser,resumeRecords){
     if(!options.fresh)return;
     if(scenario==='labels'){
       const {systemLabelFixtureSourceProof}=await import('./system-label-fixture-contract.mjs');
-      if(JSON.stringify(await systemLabelFixtureSourceProof(root))!==JSON.stringify(fixture.sourceProof))throw new Error('Labels metadata/catalog proof changed; preserve journey.');
+      const currentProof=await systemLabelFixtureSourceProof(root);
+      if(JSON.stringify(currentProof)!==JSON.stringify(fixture.sourceProof)){
+        if(!options.resume)throw new Error('Labels metadata/catalog proof changed; preserve journey.');
+        const {prepareLabelsSourceContinuity}=await import('./system-label-source-continuity.mjs');
+        labelsContinuity=await prepareLabelsSourceContinuity({root,candidate,fixture,browser,currentProof,resumeRecords});
+      }
     }else{
       const {readEmployeeMasterFixtureProof}=await import('./employee-master-fixture-proof.mts');
       const proof=await readEmployeeMasterFixtureProof({client:postgresTarget},{tenantId:fixture.tenantId,foreignTenantId:fixture.foreignTenant.id});
@@ -214,16 +219,18 @@ if(!options.heldLockWorker) {
       const binding=validateOriginal18Resume({fixture,browser,stopped,resumeRecords,manualCleanup,root,scenario});
       proveStoppedGroup(stopped);
       for(const prior of new Set([binding.preparationCandidate,binding.resumedFromCandidate]))if(git(['rev-parse',prior+'^{commit}'])!==prior||git(['diff','--name-only',prior,candidate,'--','db/migrations','packs/catalog.ts','db/schema.ts']))throw new Error('Resume requires unchanged SQL, journal, schema and pack catalog versus preparation/prior candidate.');
-      postgresTarget=connect(ownerUrl.toString());postgresApp=connect(appUrl.toString());await proveRoles();await proveTenants(fixture);await proveFreshSource(fixture);
+      postgresTarget=connect(ownerUrl.toString());postgresApp=connect(appUrl.toString());await proveRoles();await proveTenants(fixture);await proveFreshSource(fixture,browser,resumeRecords);
       identities=original18FixtureIdentities(scenario,['personnel','integration'].includes(scenario)||options.fresh?fixture:fixture.facts);
       const expectedPrincipals=scenario==='integration'&&stopped.resumeReceipt?resumeRecords[stopped.resumeReceipt].principals:['personnel','integration'].includes(scenario)||options.fresh?undefined:fixture.principals;
       const resumePrincipals=await proveIdentities(identities,expectedPrincipals);
       await postgresApp.end();postgresApp=undefined;await postgresTarget.end();postgresTarget=undefined;
+      checkCandidate();
+      if(labelsContinuity?.create)writeNew(labelsContinuity.name,labelsContinuity.value);
       preparationCandidate=binding.preparationCandidate;preparedFixture=fixture;
       resumeReceipt='browser-resume-'+runId+'.json';
       // Archive exact previous cleanup bytes before changing the current pointer; never overwrite old evidence.
       fs.copyFileSync(path.join(out,stopReceiptFile),path.join(out,'browser-prior-stop-'+runId+'.json'),fs.constants.COPYFILE_EXCL);
-      writeNew(resumeReceipt,{candidate,...binding,...bound,...(scenario==='integration'?{principals:resumePrincipals}:{}),preparationManifest:'browser-manifest.json',priorStoppedReceipt:stopped,fixtureRunsThisCandidate:0,migrationRunsThisCandidate:0,seedRunsThisCandidate:0,resumedAt:new Date().toISOString(),devLogName,applicationAcceptance:'UNVERIFIED'});
+      writeNew(resumeReceipt,{candidate,...binding,...bound,...(scenario==='integration'?{principals:resumePrincipals}:{}),...(labelsContinuity?{labelsSourceContinuity:labelsContinuity.reference}:{}),preparationManifest:'browser-manifest.json',priorStoppedReceipt:stopped,fixtureRunsThisCandidate:0,migrationRunsThisCandidate:0,seedRunsThisCandidate:0,resumedAt:new Date().toISOString(),devLogName,applicationAcceptance:'UNVERIFIED'});
     } else {
       if(options.resumeOnly)throw new Error('Preserved scenario setup is forbidden.');
       if(['preparation-attempt.json','fixture-manifest.json','browser-manifest.json','browser-stopped.json','browser.pid'].some(name=>fs.existsSync(path.join(out,name))))throw new Error('Existing preparation/partial attempt preserved; use receipt-bound resume only.');
