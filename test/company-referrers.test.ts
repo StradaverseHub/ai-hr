@@ -557,6 +557,56 @@ describe('§2 the panel and the delete guard give the same answer, for every dis
     expect(await used(ADMIN(), otherTenantCompany.id)).toBe(false);
   });
 
+  it('retains another company’s source holiday without exposing its transferred employee allocation', async () => {
+    const allocationCompany = await fresh(), adminScope = await bare(), destination = b.companyId;
+    const sourceCompany = await bare({ parentCompanyId: adminScope });
+    const today = todayInKualaLumpur();
+    const day = (delta: number) => new Date(Date.parse(today + 'T00:00:00Z') + delta * 86_400_000).toISOString().slice(0, 10);
+    const department = await createDepartment(ADMIN(), { companyId: allocationCompany, name: 'Cross-company source origin' });
+    const hired = await hireEmployee(ADMIN(), { companyId: allocationCompany, departmentId: department.id,
+      person: { fullName: 'Hidden cross-company holiday subject', primaryEmail: randomUUID() + '@retention.test' },
+      employmentType: 'full_time', hiredOn: day(-366) });
+    const [holiday] = await owner.db.insert(schema.holiday).values({ tenantId: b.tenantId, companyId: sourceCompany,
+      country: 'MY', holidayDate: day(-2), name: 'Source owned by another company' }).returning();
+    // The allocation owns its dated employment company; the source FK preserves the original holiday.
+    // The real validator permits this same-tenant provenance without requiring company equality.
+    const allocation = await withTenant(ADMIN(), async tx => {
+      const [row] = await tx.insert(schema.replacementHoliday).values({ tenantId: b.tenantId, employmentId: hired.employmentId,
+        companyId: allocationCompany, sourceHolidayId: holiday.id, sourceDate: day(-2), sourceName: holiday.name,
+        inputDigest: 'cross-company-source-retention', status: 'review', reason: 'Preserve cross-company original source.' }).returning();
+      await tx.insert(schema.replacementHolidayRevision).values({ tenantId: b.tenantId, allocationId: row.id,
+        employmentId: hired.employmentId, companyId: allocationCompany, snapshot: { after: row }, createdBy: b.adminUserId });
+      return row;
+    });
+    await createMovementEvent(ADMIN(), { employmentId: hired.employmentId, kind: 'entityTransfer',
+      effectiveDate: today, companyId: destination, departmentId: b.deptA });
+    // Administer B through a separate parent D. A direct role grant to B would itself block B's
+    // deletion and could conceal a missing source-retention check. A and destination C are outside D.
+    await owner.db.update(schema.roleAssignment).set({ companyId: adminScope }).where(eq(schema.roleAssignment.appUserId, b.adminUserId));
+    const context = scopedAdmin(adminScope);
+    expect(await withTenant(context, tx => tx.select().from(schema.replacementHoliday).where(eq(schema.replacementHoliday.id, allocation.id)))).toEqual([]);
+    expect(await withTenant(context, tx => tx.select().from(schema.replacementHolidayRevision).where(eq(schema.replacementHolidayRevision.allocationId, allocation.id)))).toEqual([]);
+    const used = (ctx: SessionContext, id: string) => withTenant(ctx, async tx => {
+      const [row] = await tx.execute(sql`select app.replacement_holiday_company_in_use(${id}::uuid) as own,
+        app.replacement_holiday_source_company_in_use(${id}::uuid) as source`) as unknown as { own: boolean; source: boolean }[];
+      return row;
+    });
+    // This must be the incoming source link, not the direct allocation-company check masking it.
+    expect(await used(context, sourceCompany)).toEqual({ own: false, source: true });
+    expect(await companyDeleteStatus(context, sourceCompany)).toEqual({ canDelete: true, blockedBy: 'other' });
+    expect(await attempt(context, sourceCompany)).toBe('other');
+    expect(await exists(sourceCompany)).toBe(true);
+    expect(await owner.db.select().from(schema.holiday).where(eq(schema.holiday.id, holiday.id))).toEqual([holiday]);
+    expect(await owner.db.select().from(schema.replacementHoliday).where(eq(schema.replacementHoliday.id, allocation.id))).toEqual([allocation]);
+    expect(await owner.db.select().from(schema.replacementHolidayRevision).where(eq(schema.replacementHolidayRevision.allocationId, allocation.id))).toHaveLength(1);
+    for (const denied of [member(), scopedAdmin(destination), { ...context, tenantId: randomUUID() }]) {
+      expect(await used(denied, sourceCompany)).toEqual({ own: false, source: false });
+    }
+    const [otherTenant] = await owner.db.insert(schema.tenant).values({ name: 'Foreign source retention tenant', workosOrgId: randomUUID() }).returning();
+    const [otherTenantCompany] = await owner.db.insert(schema.company).values({ tenantId: otherTenant.id, legalName: 'Foreign source retention company' }).returning();
+    expect(await used(ADMIN(), otherTenantCompany.id)).toEqual({ own: false, source: false });
+  });
+
   it('retains a hidden group-cycle opening-company snapshot after an employee transfers', async () => {
     const original = await bare({ parentCompanyId: b.companyId });
     const destination = await bare();
