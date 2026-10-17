@@ -602,6 +602,11 @@ export function ShiftTimeFields({
           </>
         )}
       </SectionCard>
+      {!fullFlexi && <div className="space-y-1">
+        <p className="text-xs text-muted-foreground">{ta('shiftHint')}</p>
+        <p className="text-xs text-muted-foreground">{ta('shiftTimeSequenceHint')}</p>
+        <p className="text-xs text-muted-foreground">{ta('shiftTypeSemiFlexiNote')}</p>
+      </div>}
     </>
   );
 }

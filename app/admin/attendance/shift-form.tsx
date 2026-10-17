@@ -226,11 +226,7 @@ export async function ShiftForm({
       </form>
 
       <div className="space-y-1">
-        <p className="text-xs text-muted-foreground">{t('shiftHint')}</p>
         <p className="text-xs text-muted-foreground">{t('breakPaidHint')}</p>
-        <p className="text-xs text-muted-foreground">{t('shiftTimeSequenceHint')}</p>
-        <p className="text-xs text-muted-foreground">{t('shiftTypeSemiFlexiNote')}</p>
-        <p className="text-xs text-muted-foreground">{t('shiftTypeFullFlexiNote')}</p>
       </div>
     </div>
   );
