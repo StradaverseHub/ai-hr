@@ -41,7 +41,7 @@ describe('Personnel workbook defects observed in actual Chrome downloads',()=>{
     const sheetXml=await zip.file('xl/worksheets/sheet2.xml')!.async('string');
     const xfs=styles.match(/<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs>/);
     expect(xfs).not.toBeNull();
-    const formats=xfs![1].match(/<xf\b[^>]*(?:\/>|>[\s\S]*?<\/xf>)/g)??[];
+    const formats=xfs![1].match(/<xf\b[^>]*?(?:\/>|>[\s\S]*?<\/xf>)/g)??[];
     for(const cell of ['A2','C2']){
       const tag=sheetXml.match(new RegExp('<c\\b[^>]*\\br="'+cell+'"[^>]*>'))?.[0];
       expect(tag,cell).toBeTruthy();

@@ -73,12 +73,16 @@ class NegativeProbeFraming(unittest.TestCase):
     def test_caller_authority_probe_reaches_strict_keys_after_valid_request_framing(self):
         probe = pathlib.Path(spec.origin).with_name('verify-internal-report-isolation.py')
         tree = ast.parse(probe.read_text())
-        programs = [node.args[1].value for node in ast.walk(tree)
+        programs = [node.args[1] for node in ast.walk(tree)
                     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == 'as_user'
-                    and len(node.args) > 1 and isinstance(node.args[1], ast.Constant)
-                    and isinstance(node.args[1].value, str) and 'caller-authority' in node.args[1].value]
+                    and len(node.args) > 1 and isinstance(node.args[1], ast.BinOp)
+                    and isinstance(node.args[1].op, ast.Mod) and isinstance(node.args[1].left, ast.Constant)
+                    and isinstance(node.args[1].left.value, str) and 'caller-authority' in node.args[1].left.value]
         self.assertEqual(len(programs), 1)
-        calls = [node for node in ast.walk(ast.parse(programs[0]))
+        self.assertIsInstance(programs[0].right, ast.Name)
+        self.assertEqual(programs[0].right.id, 'SOCKET')
+        source = programs[0].left.value % '/run/fictional-probe-only.sock'
+        calls = [node for node in ast.walk(ast.parse(source))
                  if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == 'sendall']
         self.assertEqual(len(calls), 1)
         body = ast.literal_eval(calls[0].args[0])
