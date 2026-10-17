@@ -17,11 +17,15 @@ CREATE TABLE public.test_case_version (
  CHECK((provenance='catalogue')=(source_ref IS NOT NULL AND catalogue_hash IS NOT NULL AND source_content_hash IS NOT NULL AND guide_source_hash IS NOT NULL))
 );
 -- Honest upgrade baseline ONLY. No old test_run is backfilled to this new version.
+WITH baseline AS (
+ SELECT tenant_id,id AS test_case_id,jsonb_build_object('format',0,'history','upgrade_baseline','title',title,'moduleCode',module_code,
+  'precondition',precondition,'steps',steps,'testType',test_type,'priority',priority,'expectedBehavior',expected_behavior,'expectedFunction',expected_function) AS definition
+ FROM public.test_case
+)
 INSERT INTO public.test_case_version(tenant_id,test_case_id,ordinal,definition,content_hash,provenance)
- SELECT tenant_id,id,1,jsonb_build_object('format',0,'history','upgrade_baseline','title',title,'moduleCode',module_code,
- 'precondition',precondition,'steps',steps,'testType',test_type,'priority',priority,'expectedBehavior',expected_behavior,'expectedFunction',expected_function),
- encode(digest(convert_to(jsonb_build_object('title',title,'module',module_code,'steps',steps,'expectedBehavior',expected_behavior,'expectedFunction',expected_function)::text,'UTF8'),'sha256'),'hex'),'upgrade_baseline'
- FROM public.test_case;
+ SELECT tenant_id,test_case_id,1,definition,
+  encode(digest(convert_to(definition::text,'UTF8'),'sha256'),'hex'),'upgrade_baseline'
+ FROM baseline;
 UPDATE public.test_case c SET current_version_id=v.id FROM public.test_case_version v WHERE v.test_case_id=c.id AND v.ordinal=1;
 ALTER TABLE public.test_case ADD CONSTRAINT test_case_current_version_fk FOREIGN KEY(current_version_id,tenant_id,id) REFERENCES public.test_case_version(id,tenant_id,test_case_id) DEFERRABLE INITIALLY DEFERRED;
 --> statement-breakpoint
@@ -144,6 +148,17 @@ CREATE TRIGGER testing_assignment_guard BEFORE INSERT OR UPDATE ON public.test_a
 CREATE FUNCTION app.testing_run_guard() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $$
 DECLARE e public.test_execution; a public.test_assignment; c public.test_case; expected_outcome text;
 BEGIN
+ -- Preserve the retained legacy FK's ON DELETE SET NULL, including owner maintenance without app
+ -- context. Only nested referential cleanup may erase that one pointer. The fixed definer must own
+ -- the non-FORCE parent before absence is consulted, so an RLS-hidden parent never supplies proof.
+ IF TG_OP='UPDATE' AND pg_trigger_depth()>1 AND OLD.execution_id IS NULL
+  AND OLD.feedback_request_id IS NOT NULL AND NEW.feedback_request_id IS NULL
+  AND (to_jsonb(NEW)-'feedback_request_id') IS NOT DISTINCT FROM (to_jsonb(OLD)-'feedback_request_id')
+  AND EXISTS(SELECT 1 FROM pg_catalog.pg_class p JOIN pg_catalog.pg_roles r ON r.oid=p.relowner
+   WHERE p.oid='public.feedback_request'::regclass AND r.rolname=current_user AND NOT p.relforcerowsecurity)
+  AND NOT EXISTS(SELECT 1 FROM public.feedback_request f WHERE f.id=OLD.feedback_request_id) THEN
+  RETURN NEW;
+ END IF;
  IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT app.testing_live_principal() OR NOT (NEW.execution_id IS NULL AND app.is_admin() OR NEW.execution_id IS NOT NULL AND app.testing_owns_execution(NEW.execution_id)) THEN RAISE EXCEPTION 'Testing observation authority is unavailable' USING ERRCODE='42501'; END IF;
  IF TG_OP='UPDATE' THEN
   IF (to_jsonb(NEW)-'feedback_request_id') IS DISTINCT FROM (to_jsonb(OLD)-'feedback_request_id') THEN RAISE EXCEPTION 'Testing observations are append-only' USING ERRCODE='23514'; END IF;
