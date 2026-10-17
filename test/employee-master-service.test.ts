@@ -42,8 +42,39 @@ describe('Employee Master authorization and persistence',()=>{
  it('refuses a selected company outside server scope and a stale principal after its grant is revoked',async()=>{
   const other=await seedBase();await expect(runEmployeeMasterReport(ctx,[b.companyId],{spec:{...basic(),companyIds:[other.companyId]}})).rejects.toThrow();const run=await runEmployeeMasterReport(ctx,[b.companyId],{spec:basic()});await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId,b.adminUserId));await expect(authorizeEmployeeMasterRun(ctx,[b.companyId],run)).rejects.toThrow();
  });
- it('keeps ended employments in the Resigned starter under their last employer',async()=>{
-  const end=new Date(todayInKualaLumpur()+'T00:00:00Z');end.setUTCDate(end.getUTCDate()-1);await owner.db.update(schema.employment).set({terminatedOn:end.toISOString().slice(0,10)}).where(eq(schema.employment.id,employee.employmentId));const fields=await masterReportCatalogue(ctx,[b.companyId]),spec=employeeMasterStarter(fields,[b.companyId],todayInKualaLumpur(),'resigned');const run=await runEmployeeMasterReport(ctx,[b.companyId],{spec});expect(run.result.employeeCount).toBe(1);expect(run.result.sections[0].rows[0].subjectId).toBe(employee.employmentId);
+ it.each([[-1,'today'],[-1,'termination'],[0,'today']] as const)('keeps canonical termination at day offset %i in all-status and Resigned reports as at %s',async(offset,snapshot)=>{
+  const today=todayInKualaLumpur(),end=new Date(Date.parse(today+'T00:00:00Z')+offset*86_400_000).toISOString().slice(0,10),asAt=snapshot==='termination'?end:today;
+  await terminateEmployment(ctx,{employmentId:employee.employmentId,terminationDate:end,terminationReasonCode:'resignation',terminationNoticeDays:0});
+  const assignments=await owner.db.select({validTo:schema.assignment.validTo}).from(schema.assignment).where(eq(schema.assignment.employmentId,employee.employmentId));
+  expect(assignments).toEqual([{validTo:end}]); // The canonical writer closed the exclusive assignment interval.
+  const fields=await masterReportCatalogue(ctx,[b.companyId]);
+  for(const spec of [{...basic(),asAt},employeeMasterStarter(fields,[b.companyId],asAt,'resigned')]){
+   const run=await runEmployeeMasterReport(ctx,[b.companyId],{spec});
+   expect(run.result).toMatchObject({asAt,employeeCount:1,personCount:1,draftCount:0,totalRows:1,unknownScopeCount:0});
+   expect(run.result.sections[0].rows[0].subjectId).toBe(employee.employmentId);
+  }
+ });
+ it.each(['null-company','gap'] as const)('keeps a canonically ended employment with %s history excluded instead of using its mutable current company',async(kind)=>{
+  const end=new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')-86_400_000).toISOString().slice(0,10);
+  await terminateEmployment(ctx,{employmentId:employee.employmentId,terminationDate:end,terminationReasonCode:'resignation'});
+  // Deliberate unavailable-history cases, never a fabricated open termination assignment.
+  await owner.db.update(schema.assignment).set(kind==='null-company'?{companyId:null}:{validTo:new Date(Date.parse(end+'T00:00:00Z')-86_400_000).toISOString().slice(0,10)}).where(eq(schema.assignment.employmentId,employee.employmentId));
+  const fields=await masterReportCatalogue(ctx,[b.companyId]);
+  for(const spec of [basic(),employeeMasterStarter(fields,[b.companyId],todayInKualaLumpur(),'resigned')])expect((await runEmployeeMasterReport(ctx,[b.companyId],{spec})).result).toMatchObject({employeeCount:0,totalRows:0,unknownScopeCount:1});
+ });
+ it('does not invent company proof before hire for a same-day canonical hire and termination',async()=>{
+  const today=todayInKualaLumpur(),sameDay=await hireEmployee(ctx,{person:{fullName:'Synthetic zero-length report tenure',primaryEmail:'zero-'+randomUUID()+'@example.test'},companyId:b.companyId,departmentId:b.deptA,employeeCode:'R18-ZERO',employmentType:'full_time',hiredOn:today});
+  await terminateEmployment(ctx,{employmentId:sameDay.employmentId,terminationDate:today,terminationReasonCode:'resignation'});
+  const spec:EmployeeMasterSpec={...basic(),expression:{id:'root',type:'group',logic:'and',children:[{id:'same-day',type:'condition',field:code.id,operator:'eq',value:'R18-ZERO'}]}};
+  expect((await runEmployeeMasterReport(ctx,[b.companyId],{spec})).result).toMatchObject({employeeCount:0,totalRows:0,unknownScopeCount:1});
+ });
+ it('does not admit a foreign tenant’s canonically ended employment or expose it in unknown scope counts',async()=>{
+  const other=await seedBase(),foreignCtx={...adminCtx(other),grants:[{role:'hr_admin',companyId:null}]},today=todayInKualaLumpur(),end=new Date(Date.parse(today+'T00:00:00Z')-86_400_000).toISOString().slice(0,10);
+  const foreign=await hireEmployee(foreignCtx,{person:{fullName:'Synthetic foreign report leaver',primaryEmail:'foreign-'+randomUUID()+'@example.test'},companyId:other.companyId,departmentId:other.deptA,employmentType:'full_time',hiredOn:new Date(Date.parse(end+'T00:00:00Z')-86_400_000).toISOString().slice(0,10)});
+  await terminateEmployment(foreignCtx,{employmentId:foreign.employmentId,terminationDate:end,terminationReasonCode:'resignation'});
+  const run=await runEmployeeMasterReport(ctx,[b.companyId],{spec:basic()});
+  expect(run.result).toMatchObject({employeeCount:1,totalRows:1,unknownScopeCount:0});expect(run.result.sections[0].rows.map(row=>row.subjectId)).toEqual([employee.employmentId]);
+  await expect(runEmployeeMasterReport(ctx,[b.companyId],{spec:{...basic(),companyIds:[other.companyId]}})).rejects.toThrow();
  });
  it('permits an unchanged generated snapshot but refuses export after the subject moves outside current RLS company scope',async()=>{
   await owner.db.update(schema.roleAssignment).set({companyId:b.companyId}).where(eq(schema.roleAssignment.appUserId,ctx.userId!));const scoped={...ctx,grants:[{role:'hr_admin',companyId:b.companyId}]};
