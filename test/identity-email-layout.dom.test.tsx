@@ -1,7 +1,8 @@
 import React, {isValidElement} from 'react';
 import {describe,expect,it,vi} from 'vitest';
 const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn()}));
-vi.mock('next/font/google',()=>{const font=()=>({variable:'fixture-font'});return {Plus_Jakarta_Sans:font,Geist_Mono:font,Schibsted_Grotesk:font,DM_Mono:font};});
+vi.mock('next/font/google',()=>{const font=()=>({variable:'fixture-font'});return {Plus_Jakarta_Sans:font,Geist_Mono:font,DM_Mono:font};});
+vi.mock('next/font/local',()=>({default:()=>({variable:'fixture-schibsted-font'})}));
 vi.mock('next/headers',()=>({headers:async()=>new Headers({'x-pathname':'/admin/settings/email'}),cookies:async()=>({get:()=>undefined})}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en'}));
 vi.mock('../lib/session',()=>({getSession:m.session}));

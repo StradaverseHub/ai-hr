@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { canConfigureIdentityEmail } from '@/lib/identity/email-settings';
-import { Plus_Jakarta_Sans, Geist_Mono, Schibsted_Grotesk, DM_Mono } from 'next/font/google';
+import { Plus_Jakarta_Sans, Geist_Mono, DM_Mono } from 'next/font/google';
+import localFont from 'next/font/local';
 import { cookies, headers } from 'next/headers';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale } from 'next-intl/server';
@@ -50,11 +51,17 @@ const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin']
 // variables are always on <html>; app/globals.css maps --font-jakarta / --font-geist-mono onto these two
 // only under `:root[data-ui-theme="monolith"]`, so Classic keeps Jakarta + Geist Mono untouched and the
 // CJK / Thai / Tamil fallback chain in --font-sans is shared by both themes.
-const schibsted = Schibsted_Grotesk({
+// Same official face, self-hosted to avoid Next 16.3's extensionless Google-font URL parser failure.
+// The unmodified variable file supplies exactly the three previously requested normal weights.
+const schibsted = localFont({
+  src: [
+    { path: './fonts/schibsted-grotesk/SchibstedGrotesk-Variable.ttf', weight: '400', style: 'normal' },
+    { path: './fonts/schibsted-grotesk/SchibstedGrotesk-Variable.ttf', weight: '500', style: 'normal' },
+    { path: './fonts/schibsted-grotesk/SchibstedGrotesk-Variable.ttf', weight: '600', style: 'normal' },
+  ],
   variable: '--font-schibsted',
-  subsets: ['latin'],
-  weight: ['400', '500', '600'],
   display: 'swap',
+  preload: true,
 });
 const dmMono = DM_Mono({ variable: '--font-dm-mono', subsets: ['latin'], weight: ['400', '500'] });
 const fontVariables = `${jakarta.variable} ${geistMono.variable} ${schibsted.variable} ${dmMono.variable}`;

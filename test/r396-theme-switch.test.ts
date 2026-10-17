@@ -37,7 +37,7 @@ vi.mock('next/headers', () => ({
 }));
 vi.mock('next/cache', () => ({ revalidatePath: (...args: unknown[]) => revalidatePath(...args) }));
 vi.mock('next-intl/server', () => ({ getLocale: async () => 'en' }));
-// next/font/google only works under the Next compiler; record each call's options instead.
+// next/font loaders require the Next compiler; record the real layout call options here.
 const fontCalls: Record<string, Record<string, unknown>> = {};
 vi.mock('next/font/google', () => {
   const font = (name: string) => (opts: Record<string, unknown>) => {
@@ -47,10 +47,14 @@ vi.mock('next/font/google', () => {
   return {
     Plus_Jakarta_Sans: font('Plus_Jakarta_Sans'),
     Geist_Mono: font('Geist_Mono'),
-    Schibsted_Grotesk: font('Schibsted_Grotesk'),
     DM_Mono: font('DM_Mono'),
   };
 });
+
+vi.mock('next/font/local', () => ({default: (opts: Record<string, unknown>) => {
+  fontCalls.Schibsted_Local = opts;
+  return {variable:'v-Schibsted_Local',className:'c-Schibsted_Local',style:{fontFamily:'Schibsted Grotesk'}};
+}}));
 
 import { DEFAULT_UI_THEME, UI_THEME_COOKIE, UI_THEMES, isUiTheme, resolveUiTheme } from '@/lib/ui-theme';
 import { setUiTheme } from '@/app/ui-theme-actions';
@@ -133,8 +137,12 @@ describe('C. app/layout.tsx writes the theme onto <html data-ui-theme>', () => {
   it('every theme\'s fonts are on <html>, and the Monolith faces are loaded as README §2 says', async () => {
     const html = await renderLayout();
     const cls = String(html.props.className);
-    for (const v of ['v-Plus_Jakarta_Sans', 'v-Geist_Mono', 'v-Schibsted_Grotesk', 'v-DM_Mono']) expect(cls).toContain(v);
-    expect(fontCalls.Schibsted_Grotesk).toMatchObject({ variable: '--font-schibsted', weight: ['400', '500', '600'] });
+    for (const v of ['v-Plus_Jakarta_Sans', 'v-Geist_Mono', 'v-Schibsted_Local', 'v-DM_Mono']) expect(cls).toContain(v);
+    expect(fontCalls.Schibsted_Local).toMatchObject({
+      variable: '--font-schibsted', display: 'swap', preload: true,
+      src: ['400','500','600'].map(weight=>({path:'./fonts/schibsted-grotesk/SchibstedGrotesk-Variable.ttf',weight,style:'normal'})),
+    });
+    expect(fontCalls).not.toHaveProperty('Schibsted_Grotesk');
     expect(fontCalls.DM_Mono).toMatchObject({ variable: '--font-dm-mono', weight: ['400', '500'] });
     // Classic's faces are unchanged.
     expect(fontCalls.Plus_Jakarta_Sans).toMatchObject({ variable: '--font-jakarta' });
