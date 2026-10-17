@@ -2,7 +2,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {stableTestingJson} from '../lib/system-testing/hash.ts';
+import * as testingHashNamespace from '../lib/system-testing/hash.ts';
+import {typescriptCliExports} from './typescript-cli-exports.mjs';
+const {stableTestingJson}=typescriptCliExports(testingHashNamespace);
 export const profileTestingDigest=value=>createHash('sha256').update(stableTestingJson(value)).digest('hex');
 export function profileTestingDates(today){
  if(typeof today!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(today)||!Number.isFinite(Date.parse(today+'T00:00:00Z'))||new Date(today+'T00:00:00Z').toISOString().slice(0,10)!==today)throw new Error('Canonical local date required.');
