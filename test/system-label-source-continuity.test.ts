@@ -10,7 +10,7 @@ import {LABELS_REVIEWED_PREPARATION,validateLabelsTransitionEvidence,labelsConti
 
 const root=fileURLToPath(new URL('..',import.meta.url));
 const hash=(bytes:string|Buffer)=>createHash('sha256').update(bytes).digest('hex');
-const git=(args:string[])=>execFileSync('git',['-C',root,...args]);
+const git=(args:string[])=>execFileSync('git',['-C',root,...args],{maxBuffer:16000000});
 const old=LABELS_REVIEWED_PREPARATION.candidate;
 const corrected='4ab1f0c1175992a0c4725cd1165f774dc7938238';
 const proof=(paths:{path:string;sha256:string}[])=>({format:1,paths,sha256:hash(JSON.stringify(paths))});
