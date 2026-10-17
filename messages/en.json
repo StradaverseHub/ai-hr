@@ -2798,7 +2798,7 @@
       "colFinalApproval": "Final Approval Date",
       "viewAttachment": "View",
       "attachmentYes": "Yes",
-      "noRows": "No leave types to show for this employee.",
+      "noRows": "No leave types match this selection.",
       "noRecords": "No leave records to show.",
       "noEmployees": "No employees in the current company scope.",
       "panelHeading": "Employees",
