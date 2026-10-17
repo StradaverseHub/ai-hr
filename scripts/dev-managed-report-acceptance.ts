@@ -9,11 +9,10 @@ import {createHash,randomBytes} from 'node:crypto';
 import {request} from 'node:http';
 import {startReportSmtpSink,reportAttachment} from '../test/fixtures/managed-report-delivery/smtp-sink';
 import {confirmOwnedReportArtifactRemoval,assertOwnedReportArtifactAbsent,ownedReportArtifactPath} from '../test/fixtures/managed-report-delivery/artifact-cleanup';
-import {internalReportAcceptanceMarker,reportAcceptanceHumanReady,reportAcceptanceBase,reportAcceptanceComponents,reportAcceptanceMode,reportAcceptanceDatabase,reportAcceptanceSameEndpoint,REPORT_ACCEPTANCE_DATABASE as DATABASE,REPORT_ACCEPTANCE_ORIGIN as ORIGIN,REPORT_ACCEPTANCE_TENANT as TENANT,REPORT_ACCEPTANCE_EMAILS as EMAILS,REPORT_ACCEPTANCE_ROOT as ROOT,REPORT_ACCEPTANCE_STAGING as STAGING,type ReportAcceptanceBase} from './managed-report-acceptance-model';
+import {internalReportAcceptanceMarker,reportAcceptanceHumanReady,reportAcceptanceBase,reportAcceptanceComponents,reportAcceptanceMode,reportAcceptanceDatabase,reportAcceptanceSameEndpoint,reportAcceptanceEnvironmentProjection,REPORT_ACCEPTANCE_DATABASE as DATABASE,REPORT_ACCEPTANCE_ORIGIN as ORIGIN,REPORT_ACCEPTANCE_TENANT as TENANT,REPORT_ACCEPTANCE_EMAILS as EMAILS,REPORT_ACCEPTANCE_ROOT as ROOT,REPORT_ACCEPTANCE_STAGING as STAGING,type ReportAcceptanceBase} from './managed-report-acceptance-model';
 import {readTrustedDispatchFile,internalReportDispatchMarker,INTERNAL_REPORT_DISPATCH_MARKER,readDispatchSourcePins,reportDispatchInstance,INTERNAL_REPORT_DISPATCH_CRON,INTERNAL_REPORT_DISPATCH_CRON_SOURCE} from '../lib/employee-master-dispatch';
 import {classifyReportProcess,schedulingInventory,INTERNAL_REPORT_SCHEDULE_STATE,INTERNAL_REPORT_SCHEDULE_LOCK} from '../deploy/identity-email/report-scheduling';
 import {captureAcceptanceGroup,acceptanceProcessStat,acceptanceGroupMembers,stopOwnedAcceptanceGroup,bindAcceptanceActivationReceipt,bindAcceptanceActivationMarker,type AcceptanceProcessPin,type AcceptanceActivationBinding} from './managed-report-acceptance-lifecycle';
-import {LEGACY_MODULE_ENV_GATES,LEGACY_SETTING_ENV_GATES} from '../packs/catalog';
 import {reportBrokerResponse} from '../lib/internal-auth/report-broker-model';
 import {assertResidualFailure,residualPredecessorManifest,RESIDUAL_PREDECESSOR,RESIDUAL_SOURCE,RESIDUAL_DATE,RESIDUAL_PINNED_FILES,runManagedReportResidualCases} from './managed-report-residual';
 import {assertManagedReportWorkbook} from './managed-report-workbook-evidence';
@@ -209,10 +208,9 @@ async function main(){
  check(hash(ca)===marker.caSha256&&hash(key)===marker.serverKeySha256&&hash(cert)===marker.certificateSha256,'Reviewed local TLS fixture bytes required.');
  const publicCa='/usr/local/share/ca-certificates/aihr-report-acceptance.crt';const publicStat=await fs.lstat(publicCa);check(publicStat.isFile()&&!publicStat.isSymbolicLink()&&publicStat.uid===0&&(publicStat.mode&0o022)===0&&hash(await fs.readFile(publicCa))===marker.caSha256&&web.NODE_EXTRA_CA_CERTS===publicCa&&process.env.NODE_EXTRA_CA_CERTS===publicCa,'Actual web and fixture must already trust the same root-reviewed public CA.');
  for(const service of ['cron.service','crond.service']){let active='';try{active=command('systemctl',['is-active',service]);}catch{}check(active!=='active','Cron must initially be stopped on this dedicated VM.');}
- for(const name of ['AUTH_PROVIDER','AUTH_PUBLIC_ORIGIN','AUTH_SESSION_KEY','DATABASE_URL']){if(process.env[name]!==undefined)check(process.env[name]===web[name],'Caller cannot override active web Auth/database authority.');process.env[name]=web[name];}
- for(const name of [...new Set([...Object.values(LEGACY_MODULE_ENV_GATES),...Object.values(LEGACY_SETTING_ENV_GATES)])])if(name){delete process.env[name];if(web[name]!==undefined)process.env[name]=web[name];}
- delete process.env.DEV_TENANT_ID;delete process.env.DEV_USER_ID;process.env.ALLOW_DEMO_SESSION='false';
- Object.assign(process.env,{NODE_ENV:web.NODE_ENV??'production'});process.env.MIGRATION_DATABASE_URL=migration.toString();
+ const environment=reportAcceptanceEnvironmentProjection({...process.env},web,migration.toString());
+ for(const name of environment.clear)Reflect.deleteProperty(process.env,name);
+ Object.assign(process.env,environment.assign);
  out='/var/lib/aihr-report-acceptance/'+marker.runId;await fs.mkdir(out,{recursive:true,mode:0o700});const st=await fs.lstat(out);check(st.isDirectory()&&!st.isSymbolicLink()&&st.uid===0&&(st.mode&0o777)===0o700,'Private owned evidence directory required.');
  lock=await fs.open('/run/aihr-report-acceptance.lock',constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY,0o600);await lock.writeFile(String(process.pid));
  const dbModule=await import('../db/client'),s=await import('../db/schema'),q=await import('drizzle-orm');appClient=dbModule.client;owner=dbModule.createDb(migration.toString(),{max:1});

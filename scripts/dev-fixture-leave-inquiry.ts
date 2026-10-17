@@ -13,11 +13,12 @@ import { applyLeaveAdjustmentBatch, requestLeave, decideLeave, adminCancelLeave,
 import { todayInKualaLumpur } from '../lib/hr-date';
 const refusal = demoSeedRefusal(process.env);
 if (refusal || process.env.NODE_ENV === 'production') throw new Error(refusal ?? 'Development only');
-for (const key of ['DATABASE_URL', 'MIGRATION_DATABASE_URL']) {
-  const url = new URL(process.env[key]!);
+const databaseInputs = { app: process.env.DATABASE_URL, owner: process.env.MIGRATION_DATABASE_URL };
+for (const raw of Object.values(databaseInputs)) {
+  const url = new URL(raw!);
   if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.port !== '5433' || url.pathname !== '/ai_hr_board15_inquiry_browser') throw new Error('Only the named disposable inquiry database is allowed.');
 }
-const owner = createDb(process.env.MIGRATION_DATABASE_URL!);
+const owner = createDb(databaseInputs.owner!);
 const tenantId = DEMO_TENANT_ID, today = todayInKualaLumpur();
 async function context(user: { id: string; personId: string | null }): Promise<SessionContext> {
   const grants = await owner.db.select({ role: s.roleAssignment.role, companyId: s.roleAssignment.companyId }).from(s.roleAssignment).where(eq(s.roleAssignment.appUserId, user.id));

@@ -197,6 +197,8 @@ export type CompanyConfigDependent = {
   references: string;
   /** Absent = real foreign key. A retained UUID array is guarded by its owning table's trigger. */
   referenceKind?: 'uuid-array';
+  /** Fixed tenant/target-admin-scoped boolean for retained rows hidden by current employee visibility. */
+  existsFunction?: string;
   /**
    * `part`   — an ON DELETE CASCADE child that is part of the parent row (a shift's OT windows). Goes with it.
    * `blocks` — a row here pointing at one of the company's rows refuses the delete as `other`, unless the row
@@ -207,6 +209,7 @@ export type CompanyConfigDependent = {
 };
 
 export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
+  { table: 'replacement_holiday', column: 'source_holiday_id', references: 'holiday', effect: 'blocks', existsFunction: 'app.replacement_holiday_source_company_in_use', note: 'A retained employee allocation may reference another company’s original holiday. Preserve that source without exposing the employee allocation outside current visibility.' },
   { table: 'attendance_rule_shift', column: 'rule_id', references: 'attendance_rule', effect: 'blocks', note: 'Explicit Schedule Group membership may serve shared shifts; remove it through its owner before deleting company setup.' },
   { table: 'attendance_rule_shift', column: 'shift_id', references: 'shift', effect: 'blocks', note: 'A Schedule Group explicitly retains this shift; company deletion must not silently change its allowed pool.' },
   { table: 'attendance_exception_revision', column: 'rule_id', references: 'attendance_rule', effect: 'blocks', note: 'Immutable exception-policy revisions retain their Schedule Group.' },
@@ -284,6 +287,10 @@ export function companyDeleteBlockSqlText(idExpr: string): string {
   });
   COMPANY_CONFIG_DEPENDENTS.forEach((d, i) => {
     if (d.effect !== 'blocks') return;
+    if (d.existsFunction) {
+      groups.other.push(`${d.existsFunction}(${idExpr})`);
+      return;
+    }
     const dep = `cd${i}`;
     const own = `co${i}`;
     // Our row being referenced, by a row that is not itself one of ours being deleted with us.

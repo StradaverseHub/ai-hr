@@ -1,5 +1,6 @@
 /** Import-safe contract for one owned disposable internal-mode Linux journey. No Auth/DB runtime. */
 import {z} from 'zod';
+import {LEGACY_MODULE_ENV_GATES,LEGACY_SETTING_ENV_GATES} from '../packs/catalog';
 export const REPORT_ACCEPTANCE_DATABASE='ai_hr_report_delivery_acceptance';
 export const REPORT_ACCEPTANCE_ORIGIN='https://localhost:3543';
 export const REPORT_ACCEPTANCE_TENANT='Managed Reports acceptance fictional tenant';
@@ -12,6 +13,21 @@ export type ReportAcceptanceHumanReady=z.infer<typeof reportAcceptanceHumanReady
 export function reportAcceptanceMode(args:readonly string[]):'prepare'|'configure'|'verify'|'verify-residual'{if(args.length!==1||!['prepare','configure','verify','verify-residual'].includes(args[0]))throw new Error('Choose one closed report acceptance stage.');return args[0] as 'prepare'|'configure'|'verify'|'verify-residual';}
 export function reportAcceptanceDatabase(value:string,role?:string){const url=new URL(value);if(!['postgres:','postgresql:'].includes(url.protocol)||url.hostname!=='127.0.0.1'||(url.port||'5432')!=='5432'||url.pathname!=='/'+REPORT_ACCEPTANCE_DATABASE||url.search||url.hash||!url.username||!url.password||role&&decodeURIComponent(url.username)!==role)throw new Error('Only the reviewed disposable database and actual role are permitted.');return url;}
 export function reportAcceptanceSameEndpoint(a:URL,b:URL){if(a.hostname!==b.hostname||(a.port||'5432')!==(b.port||'5432')||a.pathname!==b.pathname||a.username===b.username)throw new Error('Require separate roles on one exact disposable database endpoint.');}
+
+/** Pure projection from a copied caller snapshot and the reviewed active web environment. This does
+ * not decide module availability: it copies the complete catalog inputs for the isolated fixture.
+ * Validate every caller authority value before returning any mutation plan; errors contain no values. */
+export function reportAcceptanceEnvironmentProjection(caller:Readonly<Record<string,string|undefined>>,web:Readonly<Record<string,string>>,migrationUrl:string){
+ for(const name of ['AUTH_PROVIDER','AUTH_PUBLIC_ORIGIN','AUTH_SESSION_KEY','DATABASE_URL'] as const){
+  if(caller[name]!==undefined&&caller[name]!==web[name])throw new Error('Caller cannot override active web Auth/database authority.');
+ }
+ const assign:Record<string,string|undefined>={AUTH_PROVIDER:web.AUTH_PROVIDER,AUTH_PUBLIC_ORIGIN:web.AUTH_PUBLIC_ORIGIN,AUTH_SESSION_KEY:web.AUTH_SESSION_KEY,DATABASE_URL:web.DATABASE_URL};
+ const clear=[...new Set([...Object.values(LEGACY_MODULE_ENV_GATES),...Object.values(LEGACY_SETTING_ENV_GATES)])].filter((name):name is string=>typeof name==='string'&&name.length>0);
+ for(const name of clear)if(web[name]!==undefined)assign[name]=web[name];
+ clear.push('DEV_TENANT_ID','DEV_USER_ID');
+ Object.assign(assign,{ALLOW_DEMO_SESSION:'false',NODE_ENV:web.NODE_ENV??'production',MIGRATION_DATABASE_URL:migrationUrl});
+ return {clear,assign};
+}
 
 const actor=z.object({userId:uuid,personId:uuid,employmentId:uuid}).strict();
 export const reportAcceptanceBase=z.object({version:z.literal(2),candidateSha:z.string().regex(/^[a-f0-9]{40}$/),runId:uuid,tenantId:uuid,companyId:uuid,date:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),owner:actor,recipient:actor,routes:z.object({login:z.string().refine(value=>value===REPORT_ACCEPTANCE_ORIGIN+'/login'),email:z.string().refine(value=>value===REPORT_ACCEPTANCE_ORIGIN+'/admin/settings/email'),policy:z.string().refine(value=>value===REPORT_ACCEPTANCE_ORIGIN+'/admin/settings/notifications'),consent:z.string().refine(value=>value===REPORT_ACCEPTANCE_ORIGIN+'/me/notifications'),newReport:z.string().refine(value=>value===REPORT_ACCEPTANCE_ORIGIN+'/reports/employee-master/new')}).strict()}).strict().refine(value=>value.owner.userId!==value.recipient.userId&&value.owner.personId!==value.recipient.personId&&value.owner.employmentId!==value.recipient.employmentId);
