@@ -44,7 +44,7 @@ if(!options.heldLockWorker) {
   // A queued invocation may cancel only itself, never the active scenario's shared stop pointer.
   const requestName='browser-request-'+randomUUID().replaceAll('-','')+'.stop';
   const requestFile=original18InvocationStopFile(out,requestName);
-  const args=[path.join(gateState,'testlock.sh'),lockNames.a,'--','bash',path.join(gateState,'testlock.sh'),lockNames.b,'--','bash',path.join(gateState,'devdb-lock.sh'),lockNames.db,'--',process.execPath,'--import','tsx',filename,'--held-lock-worker','--scenario='+scenario,...(options.resume?['--resume']:[]),...(options.recoverMigrationOnly?['--recover-migration-only-reports']:[])];
+  const args=[path.join(gateState,'testlock.sh'),lockNames.a,'--','bash',path.join(gateState,'testlock.sh'),lockNames.b,'--','bash',path.join(gateState,'devdb-lock.sh'),lockNames.db,'--',process.execPath,'--import','tsx',filename,'--held-lock-worker','--scenario='+scenario,...(options.resume?['--resume']:[]),...(options.recoverMigrationOnly?['--recover-migration-only-reports']:[]),...(options.continueReportsPrefix?['--continue-reports-prefix']:[])];
   // Isolate lock wrappers from terminal Ctrl-C: only the coordinator receives it and requests a
   // stop-file handoff. A wrapper's own signal trap must not release before owned server cleanup.
   const child=spawn('bash',args,{cwd:root,env:{...lockEnv,ORIGINAL18_BROWSER_STOP_REQUEST:requestName},stdio:'inherit',detached:true});
@@ -84,7 +84,7 @@ if(!options.heldLockWorker) {
   let server,activeJob,stopping=false,serverFd,forceStopTimer;
   let runFailed=false,ownedServerPid;
   let postgresAdmin,postgresTarget,postgresApp;
-  let preparationCandidate=candidate,resumeReceipt,labelsContinuity,reportsRecovery,devLogName=runId+'-browser-dev.log';
+  let preparationCandidate=candidate,resumeReceipt,labelsContinuity,reportsRecovery,reportsPrefix,devLogName=runId+'-browser-dev.log';
   const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
   function groupExists(child){if(!child?.pid)return false;try{process.kill(-child.pid,0);return true;}catch(error){if(error.code==='ESRCH')return false;throw error;}}
   function signalOwned(child,signal){if(groupExists(child)){try{process.kill(-child.pid,signal);}catch(error){if(error.code!=='ESRCH')throw error;}}}
@@ -246,6 +246,13 @@ if(!options.heldLockWorker) {
         const recovery=await prepareReportsMigrationOnlyRecovery({root,candidate,out,owner:postgresTarget,app:postgresApp});
         await postgresApp.end();postgresApp=undefined;await postgresTarget.end();postgresTarget=undefined;
         checkCandidate();writeNew(recovery.name,recovery.value);reportsRecovery=recovery.reference;
+      }else if(options.continueReportsPrefix){
+        if(scenario!=='reports'||!options.fresh)throw new Error('Closed Reports prefix continuation required.');
+        postgresTarget=connect(ownerUrl.toString());postgresApp=connect(appUrl.toString());await proveRoles();
+        const {prepareReportsPrefixContinuation}=await import('./reports-prefix-continuation.mjs');
+        const continuation=await prepareReportsPrefixContinuation({root,candidate,out,owner:postgresTarget,app:postgresApp,coordinatorPid:process.pid});
+        await postgresApp.end();postgresApp=undefined;await postgresTarget.end();postgresTarget=undefined;
+        checkCandidate();writeNew(continuation.name,continuation.value);reportsPrefix=continuation.reference;
       }else{
       if(['preparation-attempt.json','fixture-manifest.json','browser-manifest.json','browser-stopped.json','browser.pid'].some(name=>fs.existsSync(path.join(out,name))))throw new Error('Existing preparation/partial attempt preserved; use receipt-bound resume only.');
       const adminUrl=new URL(ownerUrl);adminUrl.pathname='/postgres';postgresAdmin=connect(adminUrl.toString());
@@ -273,7 +280,7 @@ if(!options.heldLockWorker) {
       const fixtureEnv={...env};
       if(options.fresh){delete fixtureEnv.DEV_TENANT_ID;delete fixtureEnv.DEV_USER_ID;const prefix=scenario==='labels'?'LABELS':'REPORT';fixtureEnv[prefix+'_FIXTURE_COORDINATOR_PID']=String(process.pid);fixtureEnv[prefix+'_FIXTURE_COORDINATOR_CANDIDATE']=candidate;}
       const preparationDate=todayInKualaLumpur();
-      for(const label of ['browser-fixture-first','browser-fixture-second'])await run(process.execPath,['--import','tsx',path.join(root,'scripts',options.fixture)],label,120000,fixtureEnv);
+      for(const label of ['browser-fixture-first','browser-fixture-second'])await run(process.execPath,['--import','tsx',path.join(root,'scripts',options.fixture),...(reportsPrefix&&label==='browser-fixture-first'?['--continue-reviewed-prefix']:[])],label,120000,fixtureEnv);
       if(todayInKualaLumpur()!==preparationDate)throw new Error('Business date changed during preparation; preserve attempt, no clean-twice claim.');
       const manifests=['browser-fixture-first','browser-fixture-second'].map(manifestFromLog);
       if(JSON.stringify(manifests[0])!==JSON.stringify(manifests[1]))throw new Error('Fixture repeat changed declared business facts; no clean-twice claim.');
@@ -287,7 +294,7 @@ if(!options.heldLockWorker) {
         preparedFixture={...bound,tenantId:DEMO_TENANT_ID,date:preparationDate,facts:manifests[1],identities,principals};writeNew('fixture-manifest.json',preparedFixture);
       }
       await postgresApp.end();postgresApp=undefined;await postgresTarget.end();postgresTarget=undefined;
-      writeNew('browser-manifest.json',{candidate,...bound,fixtureRuns:2,...(reportsRecovery?{recoveryAdmission:reportsRecovery,migrationRunsThisCandidate:0,seedRunsThisCandidate:0}:{}),fixture:preparedFixture,applicationAcceptance:'UNVERIFIED'});
+      writeNew('browser-manifest.json',{candidate,...bound,fixtureRuns:2,...(reportsRecovery?{recoveryAdmission:reportsRecovery,migrationRunsThisCandidate:0,seedRunsThisCandidate:0}:{}),...(reportsPrefix?{prefixContinuationAdmission:reportsPrefix,fixtureInvocationKinds:['bounded-prefix-continuation','read-only-completed-fixture-proof'],migrationRunsThisCandidate:0,seedRunsThisCandidate:0,provisioningRunsThisCandidate:0,companyCreationRunsThisCandidate:0}:{}),fixture:preparedFixture,applicationAcceptance:'UNVERIFIED'});
     }
     const hr=identities.actors.find(actor=>actor.login===({integration:'board-ten-fixture:hr',schedules:'board15-schedules:hr',holidays:'board15-holidays:hr',approval:'approval15-fixture:HR',inquiry:'inquiry15-fixture:hr',personnel:'personnel15-fixture:HR',reports:'report18-fixture:HR_A'})[scenario]);
     const defaultHr=scenario==='labels'?identities.actors.find(actor=>actor.id===preparedFixture.people.GroupHR.userId):hr;
@@ -301,7 +308,7 @@ if(!options.heldLockWorker) {
     ownedServerPid=server.pid;
     if(!Number.isSafeInteger(server.pid)||server.pid<=1)throw new Error('Owned server PID unavailable.');
     fs.writeFileSync(path.join(out,'browser.pid'),String(server.pid)+'\n',{mode:0o600});
-    console.log(options.resume?`Resuming candidate ${candidate} from preparation ${preparationCandidate}; NO migration, seed or fixture ran for this candidate. Local app http://127.0.0.1:${port}; application outcomes remain unverified.`:`Fixture exited cleanly twice with identical declared facts. Owned candidate ${candidate}; local app http://127.0.0.1:${port}; render/application outcomes remain unverified.`);
+    console.log(options.resume?`Resuming candidate ${candidate} from preparation ${preparationCandidate}; NO migration, seed or fixture ran for this candidate. Local app http://127.0.0.1:${port}; application outcomes remain unverified.`:`${reportsPrefix?'Bounded prefix continuation and read-only completed fixture proof exited cleanly':'Fixture exited cleanly twice'} with identical declared facts. Owned candidate ${candidate}; local app http://127.0.0.1:${port}; render/application outcomes remain unverified.`);
     console.log(`First route ${options.route}. Stop via ${stopFile}. Only owned process group ${server.pid} will be stopped. Both slots and DB stay held until cleanup.`);
     while(!stopping && !stopRequested() && Date.now()<deadline) {
       if(server.exitCode!==null||server.signalCode!==null)throw new Error('Owned Next process exited; inspect '+devLogName+'.');

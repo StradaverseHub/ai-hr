@@ -1,0 +1,68 @@
+{
+  "bootstrap": {
+    "primary": {
+      "tenantId": "4acfe344-67fe-4575-a744-555257b4a8ac",
+      "companyId": "3689410a-4d58-466c-af06-460c0844071b",
+      "personId": "49432e15-84b9-4fd8-a9f3-068cdbbdba29",
+      "userId": "69b8b464-9195-4cb9-8c1d-a7b4f3172135",
+      "login": "report18-fixture:bootstrap:primary"
+    },
+    "foreign": {
+      "tenantId": "15a23808-6007-4a2b-b793-c26f1a59d200",
+      "companyId": "3d32d08e-785f-4b2d-b470-a0d61277d536",
+      "personId": "99a9e185-dd12-40f7-bea1-534878e83a6b",
+      "userId": "a67a9d6c-8f2b-4af3-9945-4f922ea46f2c",
+      "login": "report18-fixture:bootstrap:foreign"
+    }
+  },
+  "companies": {
+    "MainA": {
+      "id": "eac55110-3427-49d4-aa68-fc5436f5ba6b",
+      "tenantId": "4acfe344-67fe-4575-a744-555257b4a8ac",
+      "name": "Reports18 fictional MainA",
+      "code": "R18-MAINA",
+      "departmentId": "199ed28f-796b-45fd-9868-fa5cc78d2d98",
+      "purpose": "Authorised representative data"
+    },
+    "MainB": {
+      "id": "f950f792-eac5-4d23-938f-2f098f9e334a",
+      "tenantId": "4acfe344-67fe-4575-a744-555257b4a8ac",
+      "name": "Reports18 fictional MainB",
+      "code": "R18-MAINB",
+      "departmentId": "8239c667-9509-4df4-9ee6-9c8b7f9628f1",
+      "purpose": "Authorised representative data"
+    },
+    "Hidden": {
+      "id": "469d4f97-591e-446f-8ab6-7e640942013f",
+      "tenantId": "4acfe344-67fe-4575-a744-555257b4a8ac",
+      "name": "Reports18 fictional Hidden",
+      "code": "R18-HIDDEN",
+      "departmentId": "6fa7a48b-2f43-48bd-ab85-e1a00e1ce1ad",
+      "purpose": "Outside both scoped HR principals"
+    },
+    "Empty": {
+      "id": "d6b07053-9b23-456c-843e-770e63c6e302",
+      "tenantId": "4acfe344-67fe-4575-a744-555257b4a8ac",
+      "name": "Reports18 fictional Empty",
+      "code": "R18-EMPTY",
+      "departmentId": "1fcc3425-c0e1-4653-b5be-6e53aba5302e",
+      "purpose": "Authorised company with no employments"
+    },
+    "Provisioned": {
+      "id": "3689410a-4d58-466c-af06-460c0844071b",
+      "tenantId": "4acfe344-67fe-4575-a744-555257b4a8ac",
+      "name": "Reports18 fictional primary tenant",
+      "code": null,
+      "departmentId": null,
+      "purpose": "Canonical provisioning company; excluded from A/B grants"
+    },
+    "Foreign": {
+      "id": "3d32d08e-785f-4b2d-b470-a0d61277d536",
+      "tenantId": "15a23808-6007-4a2b-b793-c26f1a59d200",
+      "name": "Reports18 fictional foreign tenant",
+      "code": null,
+      "departmentId": "768b3970-42a7-428e-a298-7f44a1c0c74e",
+      "purpose": "Other tenant, never authorised to primary actors"
+    }
+  }
+}

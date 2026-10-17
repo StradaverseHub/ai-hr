@@ -17,12 +17,13 @@ export const ORIGINAL18_BROWSER_TARGETS=Object.freeze({
 export function original18BrowserTarget(args,{allowWorker=false}={}){
  if(!Array.isArray(args)||args.some(arg=>typeof arg!=='string')||new Set(args).size!==args.length)throw new Error('Duplicate or invalid browser arguments.');
  const selections=args.filter(arg=>arg.startsWith('--scenario='));
- if(selections.length!==1||args.some(arg=>!arg.startsWith('--scenario=')&&arg!=='--resume'&&arg!=='--recover-migration-only-reports'&&!(allowWorker&&arg==='--held-lock-worker')))throw new Error('Select exactly one original18 scenario; unknown flags refused.');
+ if(selections.length!==1||args.some(arg=>!arg.startsWith('--scenario=')&&arg!=='--resume'&&arg!=='--recover-migration-only-reports'&&arg!=='--continue-reports-prefix'&&!(allowWorker&&arg==='--held-lock-worker')))throw new Error('Select exactly one original18 scenario; unknown flags refused.');
  const scenario=selections[0].slice(11);
  if(!Object.hasOwn(ORIGINAL18_BROWSER_TARGETS,scenario))throw new Error('Unknown original18 scenario.');
  if(args.includes('--recover-migration-only-reports')&&(scenario!=='reports'||args.includes('--resume')))throw new Error('Migration-only recovery is exclusive to the reviewed Reports preparation, never resume.');
+ if(args.includes('--continue-reports-prefix')&&(scenario!=='reports'||args.includes('--resume')||args.includes('--recover-migration-only-reports')))throw new Error('Reviewed Reports prefix continuation is exclusive to its exact partial setup.');
  if(ORIGINAL18_BROWSER_TARGETS[scenario].resumeOnly&&!args.includes('--resume'))throw new Error('This preserved scenario is resume only; setup is forbidden.');
- return Object.freeze({...ORIGINAL18_BROWSER_TARGETS[scenario],scenario,scratchpad:ORIGINAL18_BROWSER_TARGETS[scenario].scratchpad??'scratchpad/board18-browser-'+scenario,resume:args.includes('--resume'),heldLockWorker:args.includes('--held-lock-worker'),...(args.includes('--recover-migration-only-reports')?{recoverMigrationOnly:true}:{})});
+ return Object.freeze({...ORIGINAL18_BROWSER_TARGETS[scenario],scenario,scratchpad:ORIGINAL18_BROWSER_TARGETS[scenario].scratchpad??'scratchpad/board18-browser-'+scenario,resume:args.includes('--resume'),heldLockWorker:args.includes('--held-lock-worker'),...(args.includes('--recover-migration-only-reports')?{recoverMigrationOnly:true}:{}),...(args.includes('--continue-reports-prefix')?{continueReportsPrefix:true}:{})});
 }
 const record=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const uuid=value=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
