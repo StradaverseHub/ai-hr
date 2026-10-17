@@ -86,8 +86,17 @@ export type EmployeeMasterResult={asAt:string;employeeCount:number;personCount:n
 export function runEmployeeMasterProjection(spec:EmployeeMasterSpec,fields:readonly PersonnelFieldDescriptor[],subjects:readonly MasterSubject[],today:string):EmployeeMasterResult{
   const byId=new Map(fields.map(f=>[f.id,f]));
   const descriptor=(id:string)=>{const f=byId.get(id);if(!f)throw new Error('Report catalogue changed; review the report again.');return f;};
-  const records=(subject:MasterSubject,owner:string)=>[...(subject.owners[owner]??[])].filter(r=>{const date=r.effectiveFrom??(r.createdAt?todayInKualaLumpur(new Date(r.createdAt)):undefined);return !date||date<=spec.asAt;})
-    .sort((a,b)=>(b.effectiveFrom??'').localeCompare(a.effectiveFrom??'')||(b.createdAt??'').localeCompare(a.createdAt??'')||b.id.localeCompare(a.id));
+  // One invocation owns one authorised snapshot and as-at date. Reusing these record references
+  // avoids rescanning/sorting a register (and resolving every created-at date) for each output cell.
+  const ownerRecords=new WeakMap<MasterSubject,Map<string,readonly MasterOwnerRecord[]>>();
+  const records=(subject:MasterSubject,owner:string):readonly MasterOwnerRecord[]=>{
+    let owners=ownerRecords.get(subject);
+    if(!owners){owners=new Map();ownerRecords.set(subject,owners);}
+    const cached=owners.get(owner);if(cached)return cached;
+    const available=[...(subject.owners[owner]??[])].filter(r=>{const date=r.effectiveFrom??(r.createdAt?todayInKualaLumpur(new Date(r.createdAt)):undefined);return !date||date<=spec.asAt;})
+      .sort((a,b)=>(b.effectiveFrom??'').localeCompare(a.effectiveFrom??'')||(b.createdAt??'').localeCompare(a.createdAt??'')||b.id.localeCompare(a.id));
+    owners.set(owner,available);return available;
+  };
   const cell=(subject:MasterSubject,field:string,expanded?:{owner:string;record:MasterOwnerRecord},side:'before'|'after'='after'):{cell:MasterCell;source:string}=>{
     const f=descriptor(field);
     if(subject.kind==='draft'&&f.scope==='employment'||subject.kind==='employment'&&f.scope==='draft')return {cell:unavailable('not-applicable'),source:subject.id+':'+field};
