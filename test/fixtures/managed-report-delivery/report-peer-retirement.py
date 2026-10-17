@@ -45,6 +45,34 @@ class Retirement(unittest.TestCase):
     def test_interrupted_or_unknown_unit_and_descriptor_states_refuse(self):
         for value in ['unknown','deleted-at-receipt']:
             with self.assertRaises(Exception): self.run_wait([value], {'load':'not-found','active':'inactive','invocation':'','pid':0,'cgroup':''})
+class PinnedCgroupReadback(unittest.TestCase):
+    def state(self, *, deleted=False, events=b'populated 0\nfrozen 0\n', device=11, inode=12, path=None):
+        pin=(11,12,'/sys/fs/cgroup'+PATH)
+        actual_path=path if path is not None else pin[2]+(' (deleted)' if deleted else '')
+        with mock.patch.object(peer.os,'fstat',return_value=SimpleNamespace(st_dev=device,st_ino=inode)), \
+             mock.patch.object(peer.os,'readlink',return_value=actual_path), \
+             mock.patch.object(peer.os,'lseek',return_value=0), \
+             mock.patch.object(peer.os,'read',side_effect=events if isinstance(events,OSError) else None,return_value=events):
+            return peer.pinned_group_state(77,88,pin)
+    def test_exact_pinned_deleted_cgroup_with_still_readable_empty_events_is_collected(self):
+        # Linux can retain a readable cgroup.events descriptor after unlinking its directory.
+        self.assertEqual(self.state(deleted=True),'collected')
+    def test_live_pinned_cgroup_still_distinguishes_population(self):
+        self.assertEqual(self.state(),'empty')
+        self.assertEqual(self.state(events=b'populated 1\nfrozen 0\n'),'populated')
+    def test_readable_deleted_cgroup_must_not_claim_collection_while_populated(self):
+        with self.assertRaises(Exception):self.state(deleted=True,events=b'populated 1\nfrozen 0\n')
+    def test_deleted_readable_events_cannot_hide_changed_descriptor_or_foreign_path(self):
+        for change in [{'device':99},{'inode':99},{'path':'/sys/fs/cgroup/foreign (deleted)'},{'path':'/sys/fs/cgroup'+PATH+' (deleted) (deleted)'}]:
+            with self.assertRaises(Exception):self.state(deleted=True,**change)
+    def test_deleted_readable_events_must_still_have_a_valid_population_record(self):
+        for events in [b'frozen 0\n',b'populated 2\n',b'populated 0\nunknown 0\n',b'populated 0\n'+b'x'*512]:
+            with self.assertRaises(Exception):self.state(deleted=True,events=events)
+    def test_only_exact_deleted_descriptor_can_use_kernel_collection_errors(self):
+        self.assertEqual(self.state(deleted=True,events=OSError(peer.errno.ENODEV,'fictional')),'collected')
+        for deleted,error in [(False,peer.errno.ENODEV),(True,peer.errno.EACCES)]:
+            with self.assertRaises(Exception):self.state(deleted=deleted,events=OSError(error,'fictional'))
+
 class AncillaryReceipt(unittest.TestCase):
     def receive(self, descriptors, flags=0, envelope=IDENTITY, reply=b'{"available":true}'):
         closed=[]
