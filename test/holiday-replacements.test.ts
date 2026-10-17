@@ -3,7 +3,7 @@ import {and,asc,eq} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
-import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 import {hireEmployee,transferEmploymentCompanyTx} from '../core/org';
 import {createShift,assignDefaultShift,updateShift,setEmploymentScheduleGroup} from '../core/roster';
 import {createAttendanceRule,setRuleShifts} from '../core/attendance-rule';
@@ -18,7 +18,7 @@ import {addHolidayDays} from '../lib/holiday-replacement';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {setCompensation} from '../core/comp';
 import {sweepReplacementHolidayQueue} from '../scripts/replacement-holiday-sweep';
-import {createBatch,generatePayslips} from '../packs/payroll/service';
+import {BatchNotDraftError,createBatch,generatePayslips,prefillOvertimeFromAttendance} from '../packs/payroll/service';
 let b:Base;
 const day=(n=0)=>addHolidayDays(todayInKualaLumpur(),n),dow=(date:string)=>new Date(date+'T00:00:00Z').getUTCDay()||7;
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();await owner.db.update(schema.company).set({defaultWorkState:'Selangor'}).where(eq(schema.company.id,b.companyId));});
@@ -48,6 +48,57 @@ describe('employee replacement owner and shared calendar',()=>{
   const f=await fixture();await reconcileReplacementHolidays(f.ctx,f.e.employmentId);const [before]=await rows(f.e.employmentId),history=await replacementHolidayHistory(f.ctx,before.id);
   const results=await Promise.all([reconcileReplacementHolidays(f.ctx,f.e.employmentId),reconcileReplacementHolidays(f.ctx,f.e.employmentId)]);expect(results.map(r=>r.changed)).toEqual([0,0]);expect(await rows(f.e.employmentId)).toEqual([before]);expect(await replacementHolidayHistory(f.ctx,before.id)).toEqual(history);
   await expect(owner.db.update(schema.replacementHolidayRevision).set({createdBy:'rewritten'}).where(eq(schema.replacementHolidayRevision.id,history[0].id))).rejects.toThrow('immutable');
+ });
+ it('pays the automatically allocated replacement holiday once through canonical Attendance and Payroll',async()=>{
+  await setModule(b.tenantId,'attendance','active');await setModule(b.tenantId,'payroll','active');
+  await setModule(b.tenantId,'typed_pay_components',null);await setSetting(b.tenantId,'payroll.individual_txn_pay_enabled',false);
+  const f=await fixture(),ctx=await entitledCtx(b),replacement=day(2);
+  await setCompensation(ctx,{employmentId:f.e.employmentId,basicSalary:2600,monthlyAllowance:0,effectiveFrom:day(-366)});
+  expect(await sweepReplacementHolidayQueue(owner)).toMatchObject({processed:1,changed:1,failed:0});
+  const allocations=await rows(f.e.employmentId);expect(allocations).toHaveLength(1);
+  const allocation=allocations[0];
+  expect(allocation).toMatchObject({sourceHolidayId:f.h.id,sourceDate:f.sourceDate,replacementDate:replacement,status:'allocated',manual:false});
+  const history=await replacementHolidayHistory(ctx,allocation.id);expect(history).toHaveLength(1);
+  expect(history[0]).toMatchObject({createdBy:'system',snapshot:{before:null,after:{id:allocation.id,sourceHolidayId:f.h.id,sourceDate:f.sourceDate,replacementDate:replacement}}});
+  await checkIn(ctx,{employmentId:f.e.employmentId,date:replacement,time:'09:00'});
+  await checkOut(ctx,{employmentId:f.e.employmentId,date:replacement,time:'19:00'});
+  const attendance=await owner.db.select().from(schema.attendance)
+   .where(and(eq(schema.attendance.employmentId,f.e.employmentId),eq(schema.attendance.attendanceDate,replacement))).orderBy(asc(schema.attendance.id));
+  expect(attendance).toHaveLength(1);
+  expect(attendance[0]).toMatchObject({dayType:'holiday',workedMinutes:540,otMinutes:540,ot30Minutes:540});
+  // Reprocessing the input queue retains the same allocation and audit; the worked date is not
+  // a second original holiday, and Attendance cannot move or duplicate the entitlement.
+  expect(await sweepReplacementHolidayQueue(owner)).toMatchObject({changed:0,failed:0});
+  expect(await rows(f.e.employmentId)).toEqual(allocations);
+  expect(await replacementHolidayHistory(ctx,allocation.id)).toEqual(history);
+  const {batchId}=await createBatch(ctx,{companyId:b.companyId,payPeriod:replacement.slice(0,7)});
+  await prefillOvertimeFromAttendance(ctx,{batchId});
+  const inputRows=()=>owner.db.select().from(schema.payrollInput)
+   .where(and(eq(schema.payrollInput.batchId,batchId),eq(schema.payrollInput.employmentId,f.e.employmentId))).orderBy(asc(schema.payrollInput.id));
+  const first=await inputRows();expect(first).toHaveLength(1);
+  // Existing MY-pack golden (overtime-rate-config.test.ts): MYR2,600 salary, one normal
+  // holiday span plus one excess hour => MYR237.50. Do not recompute the expected value
+  // through the same calculator under test, or insert a synthetic payable/paid row.
+  expect(first[0]).toMatchObject({otSource:'attendance',overtimeAmount:'237.50',otDerivation:{total:237.5,lines:[
+   {kind:'holiday',qty:2,unit:'days',rate:100,amount:200},
+   {kind:'holiday_excess',qty:1,unit:'hours',rate:37.5,amount:37.5},
+  ]}});
+  await prefillOvertimeFromAttendance(ctx,{batchId});
+  const repeated=await inputRows();expect(repeated).toHaveLength(1);
+  expect(repeated[0]).toMatchObject({id:first[0].id,overtimeAmount:'237.50',otDerivation:first[0].otDerivation});
+  await generatePayslips(ctx,{batchId});
+  const slips=()=>owner.db.select().from(schema.payslip)
+   .where(and(eq(schema.payslip.batchId,batchId),eq(schema.payslip.employmentId,f.e.employmentId))).orderBy(asc(schema.payslip.id));
+  const paid=await slips();expect(paid).toHaveLength(1);
+  expect(paid[0]).toMatchObject({basicSalary:'2600.00',overtimePay:'237.50',grossPay:'2837.50',statutory:{otDetail:first[0].otDerivation}});
+  await expect(generatePayslips(ctx,{batchId})).rejects.toBeInstanceOf(BatchNotDraftError);
+  expect(await slips()).toEqual(paid);expect(await inputRows()).toHaveLength(1);
+  const originals=await owner.db.select().from(schema.holiday).where(eq(schema.holiday.id,f.h.id)).orderBy(asc(schema.holiday.id));
+  expect(originals).toHaveLength(1);expect(originals[0].holidayDate).toBe(f.sourceDate);
+  expect((await withTenant(ctx,tx=>rawScheduleDaysTx(tx,f.e.employmentId,f.sourceDate,f.sourceDate))).get(f.sourceDate)).toBe('rest');
+  expect(await withTenant(ctx,tx=>holidayDatesFor(tx,{employmentId:f.e.employmentId,startDate:f.sourceDate,endDate:replacement}))).toEqual(new Set([f.sourceDate,replacement]));
+  expect(await rows(f.e.employmentId)).toEqual(allocations);
+  expect(await replacementHolidayHistory(ctx,allocation.id)).toEqual(history);
  });
  it('the annual original-calendar winner is identical in day, month and year windows, independently across years',async()=>{
   const f=await fixture(),national=f.sourceDate.slice(0,4)+(f.sourceDate.endsWith('-01-01')?'-01-02':'-01-01');await owner.db.insert(schema.holiday).values({tenantId:b.tenantId,country:'MY',holidayDate:national,name:'National outside company calendar'});
