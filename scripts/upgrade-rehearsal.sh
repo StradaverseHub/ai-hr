@@ -68,6 +68,7 @@ fail() { printf '   FAIL: %s\n' "$1"; FAILED=1; }
 ok()   { printf '   ok: %s\n' "$1"; }
 
 psql_scratch() { psql -h "$PGHOST" -p "$PGPORT" -U "$SUPER" -d "$SCRATCH" -tAc "$1" 2>/dev/null; }
+entitlement_check() { ( cd "$ROOT" && node --import tsx scripts/upgrade-entitlements.mts "$@" ); }
 
 # The baseline worktree: the release we are upgrading FROM. Must already exist — this script does not
 # create worktrees, because guessing which checkout is safe to reuse is how you clobber someone's work.
@@ -150,7 +151,9 @@ psql -h "$PGHOST" -p "$PGPORT" -U "$SUPER" -d "$SCRATCH" -q \
   -c "GRANT CONNECT ON DATABASE \"$SCRATCH\" TO ai_hr_app" 2>/dev/null
 
 ENVFILE="$(mktemp)"
-trap 'rm -f "$ENVFILE"' EXIT
+ENTITLEMENTS_BEFORE="$(mktemp)"
+ENTITLEMENTS_AFTER="$(mktemp)"
+trap 'rm -f "$ENVFILE" "$ENTITLEMENTS_BEFORE" "$ENTITLEMENTS_AFTER"' EXIT
 {
   grep -vE '^(DATABASE_URL|MIGRATION_DATABASE_URL)=' "$ROOT/.env.local" 2>/dev/null
   echo "DATABASE_URL=postgres://$SUPER@$PGHOST:$PGPORT/$SCRATCH"
@@ -185,6 +188,12 @@ BEFORE_LEDGER=$(psql_scratch "SELECT coalesce(sum(days),0) FROM leave_ledger")
 BEFORE_EVENTS=$(psql_scratch "SELECT count(*) FROM domain_event")
 echo "   tenants=$BEFORE_TENANTS employments=$BEFORE_EMPLOYMENTS payslips=$BEFORE_PAYSLIPS leaveDays=$BEFORE_LEDGER events=$BEFORE_EVENTS"
 [ "${BEFORE_TENANTS:-0}" -gt 0 ] || fail "baseline database is empty — the rehearsal would prove nothing"
+# Capture actual licensing BEFORE migration/seed-catalogs. A row count after the upgrade cannot tell
+# whether one of several paid grants vanished, and core-only customers legitimately have no rows.
+if ! entitlement_check snapshot "$SCRATCH" > "$ENTITLEMENTS_BEFORE"; then
+  fail "could not record baseline tenant identities and entitlements; database kept for inspection"
+  exit 1
+fi
 
 # ── 4. THE UPGRADE — the new release's migrations over populated data ────────────────────────────
 say "4/6  applying the new release's migrations"
@@ -212,15 +221,16 @@ AFTER_LEDGER=$(psql_scratch "SELECT coalesce(sum(days),0) FROM leave_ledger")
 if [ "$BEFORE_LEDGER" = "$AFTER_LEDGER" ]; then ok "leave balances unchanged ($BEFORE_LEDGER)"
 else fail "leave balances CHANGED by the upgrade ($BEFORE_LEDGER -> $AFTER_LEDGER)"; fi
 
-# The backfill assertion that matters: ADR-0077 C5 says a backfill guarding an invariant stays in
-# deploy.sh permanently as a per-deploy check. This is that check, run before the deploy rather than
-# during it — every pre-existing tenant must come out the far side entitled, or the release silently
-# switches paid modules off for customers who had them.
+# Preserve the customer's actual licensing. 0151's nil-UUID auth-audit anchor must remain unlicensed;
+# 0313 explicitly excludes it and permits existing core-only customers with no entitlement rows.
+# Only the reviewed 0313 backfill is admitted when upgrading a pre-entitlement baseline.
+if entitlement_check snapshot "$SCRATCH" > "$ENTITLEMENTS_AFTER" \
+  && entitlement_check compare "$ENTITLEMENTS_BEFORE" "$ENTITLEMENTS_AFTER"; then
+  ok "customer tenant identities and licensing survived the upgrade"
+else
+  fail "tenant identity or entitlement preservation check failed"
+fi
 if psql_scratch "SELECT to_regclass('public.tenant_module')" | grep -q tenant_module; then
-  ORPHANS=$(psql_scratch "SELECT count(*) FROM tenant t WHERE NOT EXISTS (SELECT 1 FROM tenant_module m WHERE m.tenant_id = t.id)")
-  if [ "${ORPHANS:-1}" -eq 0 ]; then ok "every pre-existing tenant has entitlement rows"
-  else fail "$ORPHANS tenant(s) came out of the upgrade with NO entitlement rows"; fi
-
   CATALOG=$(psql_scratch "SELECT count(*) FROM module")
   [ "${CATALOG:-0}" -gt 0 ] && ok "module catalog seeded ($CATALOG rows)" || fail "module catalog is EMPTY after upgrade"
 fi
