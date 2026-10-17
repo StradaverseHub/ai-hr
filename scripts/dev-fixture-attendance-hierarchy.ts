@@ -14,11 +14,12 @@ import { checkIn, checkOut, requestAttendanceCorrection, saveAttendanceWorkflow,
 import { todayInKualaLumpur } from '../lib/hr-date';
 const refusal=demoSeedRefusal(process.env);
 if(refusal||process.env.NODE_ENV==='production')throw new Error(refusal??'Development only');
-for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL']){
-  const url=new URL(process.env[key]!);
+const databaseInputs={app:process.env.DATABASE_URL,owner:process.env.MIGRATION_DATABASE_URL};
+for(const raw of Object.values(databaseInputs)){
+  const url=new URL(raw!);
   if(!['localhost','127.0.0.1','[::1]'].includes(url.hostname)||url.port!=='5433'||url.pathname!=='/ai_hr_board15_approval_browser')throw new Error('Only the named disposable approval database is allowed.');
 }
-const owner=createDb(process.env.MIGRATION_DATABASE_URL!),tenantId=DEMO_TENANT_ID,today=todayInKualaLumpur();
+const owner=createDb(databaseInputs.owner!),tenantId=DEMO_TENANT_ID,today=todayInKualaLumpur();
 const addDays=(date:string,n:number)=>new Date(Date.parse(`${date}T00:00:00Z`)+n*86400000).toISOString().slice(0,10);
 async function context(user:{id:string;personId:string|null}):Promise<SessionContext>{
   const grants=await owner.db.select({role:s.roleAssignment.role,companyId:s.roleAssignment.companyId}).from(s.roleAssignment).where(eq(s.roleAssignment.appUserId,user.id));

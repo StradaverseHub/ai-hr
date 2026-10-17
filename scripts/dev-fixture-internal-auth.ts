@@ -2,16 +2,17 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 const output = '/tmp/aihr-auth-experience/fixture.json';
-function checked(name: string) {
-  const url = new URL(process.env[name] || '');
+const databaseInputs = { app: process.env.DATABASE_URL, owner: process.env.MIGRATION_DATABASE_URL };
+function checked(raw: string | undefined) {
+  const url = new URL(raw || '');
   if (!['postgres:', 'postgresql:'].includes(url.protocol) || !['127.0.0.1','localhost'].includes(url.hostname) ||
     url.port !== '5433' || url.pathname !== '/ai_hr_internal_ui' || url.search || url.hash) throw new Error('Only the named disposable local authentication fixture database is allowed.');
   return url;
 }
 if (process.env.NODE_ENV === 'production' || process.env.AUTH_PROVIDER !== 'internal' || process.env.AUTH_PUBLIC_ORIGIN !== 'https://localhost:3543') throw new Error('Only the local HTTPS authentication fixture is allowed.');
-checked('DATABASE_URL'); checked('MIGRATION_DATABASE_URL');
-process.env.TEST_DATABASE_URL = process.env.DATABASE_URL;
-process.env.TEST_MIGRATION_DATABASE_URL = process.env.MIGRATION_DATABASE_URL;
+checked(databaseInputs.app); checked(databaseInputs.owner);
+process.env.TEST_DATABASE_URL = databaseInputs.app;
+process.env.TEST_MIGRATION_DATABASE_URL = databaseInputs.owner;
 async function main() {
 const { seedBase, owner, adminCtx, closeAll } = await import('../test/harness');
 const { bootstrapInternalOwner } = await import('../lib/internal-auth/bootstrap');

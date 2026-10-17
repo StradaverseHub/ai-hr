@@ -15,11 +15,12 @@ import {addHolidayDays} from '../lib/holiday-replacement';
 import {todayInKualaLumpur} from '../lib/hr-date';
 if(demoSeedRefusal(process.env))throw new Error(demoSeedRefusal(process.env)!);
 if(process.env.NODE_ENV==='production')throw new Error('Local development only.');
-for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL']){
- const url=new URL(process.env[key]??'');
+const databaseInputs={app:process.env.DATABASE_URL,owner:process.env.MIGRATION_DATABASE_URL};
+for(const raw of Object.values(databaseInputs)){
+ const url=new URL(raw??'');
  if(!['localhost','127.0.0.1','[::1]'].includes(url.hostname)||url.port!=='5433'||url.pathname!=='/ai_hr_board15holiday_browser')throw new Error('Only the named localhost:5433 disposable holiday database is allowed.');
 }
-const owner=createDb(process.env.MIGRATION_DATABASE_URL!),tenantId=DEMO_TENANT_ID;
+const owner=createDb(databaseInputs.owner!),tenantId=DEMO_TENANT_ID;
 async function context(user:typeof s.appUser.$inferSelect):Promise<SessionContext>{
  const grants=await owner.db.select({role:s.roleAssignment.role,companyId:s.roleAssignment.companyId}).from(s.roleAssignment).where(eq(s.roleAssignment.appUserId,user.id));
  return {tenantId,userId:user.id,personId:user.personId,roles:[...new Set(grants.map(g=>g.role))],grants,entitlements:await owner.db.transaction(tx=>resolveEntitlementsTx(tx,tenantId))};
