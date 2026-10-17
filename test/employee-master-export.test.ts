@@ -74,7 +74,7 @@ describe('Employee Master complete typed exports',()=>{
  });
  it('neutralizes formula-looking CSV strings while keeping actual numeric measures and all rows',async()=>{
   const output=await serializeEmployeeMaster(result(),spec,fields,'Master export','csv'),text=Buffer.from(output.bytes).toString('utf8');
-  expect(text).toContain('"\'=HYPERLINK');expect(text).toContain('"00000"');expect(text).toContain('"1200.5"');expect(text.split('\r\n')).toHaveLength(62);
+  expect(text).toContain('"\'=HYPERLINK');expect(text).toContain('"00000"');expect(text).toContain('"1200.50"');expect(text.split('\r\n')).toHaveLength(62);
  });
  it('keeps unrelated All registers in separate workbook sheets and CSV files',async()=>{
   const dependent=field('dependent','fullName'),document=field('document','title'),definition={...spec,columns:[defaultMasterColumn(code),{...defaultMasterColumn(dependent),records:'all' as const},{...defaultMasterColumn(document),records:'all' as const}]};

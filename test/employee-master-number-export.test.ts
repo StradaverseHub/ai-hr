@@ -47,3 +47,11 @@ it('retains exact numeric group identities instead of rounding keys using a meas
  const run=runEmployeeMasterProjection(spec,fields,[subjects[0],second],today),before=JSON.stringify(run),csv=Buffer.from((await serializeEmployeeMaster(run,spec,fields,'Distinct group facts','csv')).bytes).toString('utf8');
  expect(csv).toContain('0.0004 · 1 employments');expect(csv).toContain('0.00049 · 1 employments');expect(run.sections[0].groups).toHaveLength(2);expect(JSON.stringify(run)).toBe(before);
 });
+it('formats the canonical total instead of recomputing it from rounded row displays',async()=>{
+ const {spec,subjects}=fixture('1.005',2);
+ const second:MasterSubject={...subjects[0],id:'second-employment',personId:'second-person',owners:{...subjects[0].owners,employment:[{id:'second-employment',values:{employeeCode:{value:'000008'}}}],compensation:[{id:'second-increment',currency:'MYR',values:{incrementAmount:{value:'1.005',currency:'MYR'}}}]}};
+ const run=runEmployeeMasterProjection(spec,fields,[subjects[0],second],today),before=JSON.stringify(run);
+ expect(run.sections[0].totals[0].value).toBe('2.010000');
+ const csv=Buffer.from((await serializeEmployeeMaster(run,spec,fields,'Owner total precision','csv')).bytes).toString('utf8');
+ expect(csv).toContain('"1.01"');expect(csv).toContain('"2.01"');expect(csv).not.toContain('"2.02"');expect(JSON.stringify(run)).toBe(before);
+});
