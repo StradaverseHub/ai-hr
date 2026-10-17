@@ -19609,6 +19609,9 @@
     "recent": "Recently run reports",
     "viewAll": "View all saved reports",
     "viewAllCount": "View all ({count, number})",
+    "savedReport": "Saved report: {name}",
+    "runSavedReport": "Run report",
+    "editSavedReport": "Edit report",
     "viewAllCountLabel": "{count, plural, one {View all # saved report} other {View all # saved reports}}",
     "operator": {
       "eq": "Equals",

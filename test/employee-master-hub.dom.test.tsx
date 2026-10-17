@@ -30,9 +30,10 @@ describe.each(['en','ms','zh','ta','th','vi'] as const)('Employee Master visible
   language.current = locale;
   const visible = Array.from({ length: 7 }, (_, index) => ({ id: '00000000-0000-4000-8000-'+String(index+1).padStart(12,'0'), name: 'Visible fictional report '+index, canEdit }));
   list.mockResolvedValue(visible); const saved = visible[6];
-  render(await Page({ searchParams: Promise.resolve({ cat: 'master', saved: saved.id }) }));
+  render(await Page({ searchParams: Promise.resolve({ cat: 'master', saved: saved.id, savedName: 'Forged query title must be ignored' }) }));
   const t = createTranslator({ locale, messages: catalogues[locale], namespace: 'employeeMasterReports', onError: error => { throw error; } });
   const status = screen.getByRole('status'); expect(status).toHaveTextContent(t('savedReport', { name: saved.name }));
+  expect(status).not.toHaveTextContent('Forged query title must be ignored');
   expect(within(status).getByRole('link', { name: t('runSavedReport') })).toHaveAttribute('href', '/reports/employee-master/'+saved.id);
   const edit = within(status).queryByRole('link', { name: t('editSavedReport') });
   if (canEdit) expect(edit).toHaveAttribute('href', '/reports/employee-master/'+saved.id); else expect(edit).not.toBeInTheDocument();

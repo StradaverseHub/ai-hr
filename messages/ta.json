@@ -19609,6 +19609,9 @@
     "recent": "சமீபத்தில் இயக்கிய அறிக்கைகள்",
     "viewAll": "சேமித்த அனைத்து அறிக்கைகளையும் காண்",
     "viewAllCount": "அனைத்தையும் காண் ({count, number})",
+    "savedReport": "சேமித்த அறிக்கை: {name}",
+    "runSavedReport": "அறிக்கையை இயக்கு",
+    "editSavedReport": "அறிக்கையைத் திருத்து",
     "viewAllCountLabel": "{count, plural, one {சேமித்த # அறிக்கையைக் காண்} other {சேமித்த # அறிக்கைகளையும் காண்}}",
     "operator": {
       "eq": "சமம்",
