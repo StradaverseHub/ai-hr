@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
 import { PERSONNEL_FIELDS } from '../lib/personnel-field-registry';
 import { defaultMasterColumn, runEmployeeMasterProjection, type EmployeeMasterSpec, type MasterSubject } from '../lib/employee-master-report';
 import { serializeEmployeeMaster } from '../lib/employee-master-export';
@@ -12,6 +12,24 @@ const spec:EmployeeMasterSpec={v:2,asAt:'2024-06-01',companyIds:['00000000-0000-
 const subjects:MasterSubject[]=Array.from({length:61},(_,index)=>({id:'employment-'+index,personId:'person-'+index,companyId:spec.companyIds[0],kind:'employment',owners:{employment:[{id:'employment-'+index,values:{employeeCode:{value:String(index).padStart(5,'0')},hiredOn:{value:'2024-01-02'}}}],person:[{id:'person-'+index,values:{fullName:{value:index===0?'=HYPERLINK("https://example.test")':index===1?'中文姓名':'Synthetic '+index}}}],compensation:[{id:'salary-'+index,effectiveFrom:'2024-01-01',currency:'MYR',values:{basicSalary:{value:'1200.50',currency:'MYR'}}}]}}));
 const result=()=>runEmployeeMasterProjection(spec,fields,subjects,spec.asAt);
 describe('Employee Master complete typed exports',()=>{
+ it.each(['auto','date','text'] as const)('presents full dates consistently while preserving real Excel values and the explicit %s format',async format=>{
+  const definition={...spec,columns:spec.columns.map(column=>column.field===hire.id?{...column,format}:column)};
+  const run=runEmployeeMasterProjection(definition,fields,[subjects[0]],spec.asAt);
+  const before=JSON.stringify(run);
+  const output=await serializeEmployeeMaster(run,definition,fields,'Date presentation','xlsx');
+  const book=XLSX.read(output.bytes,{type:'array',cellDates:true,cellNF:true}),sheet=book.Sheets[book.SheetNames[0]];
+  const expected=format==='text'?'2024-01-02':'02/01/2024';
+  if(format==='text')expect(sheet.C4).toMatchObject({t:'s',v:'2024-01-02'});
+  else{expect(sheet.C4.t).toBe('d');expect((sheet.C4.v as Date).toISOString()).toBe('2024-01-02T00:00:00.000Z');expect(sheet.C4.z).toBe('dd/mm/yyyy');expect(sheet.C4.w).toBe(expected);}
+  const csv=await serializeEmployeeMaster(run,definition,fields,'Date presentation','csv');
+  const csvText=Buffer.from(csv.bytes).toString('utf8');expect(csvText).toContain('"'+expected+'"');
+  expect(csvText).toContain('"00000"');expect(csvText).toContain('"\'=HYPERLINK');expect(sheet.B4.f).toBeUndefined();expect(sheet.D4).toMatchObject({t:'n',v:1200.5});
+  const pdf=await PDFDocument.load((await serializeEmployeeMaster(run,definition,fields,'Date presentation','pdf')).bytes);
+  const streams=pdf.context.enumerateIndirectObjects().flatMap(([,object])=>object instanceof PDFRawStream?[Buffer.from(decodePDFRawStream(object).decode()).toString('latin1')]:[]).join('\n');
+  // These date digits use the actual Helvetica text drawing operators, not document metadata.
+  expect(streams).toContain('<'+Buffer.from(expected,'latin1').toString('hex').toUpperCase()+'> Tj');
+  expect(JSON.stringify(run)).toBe(before); // Rendering must never rewrite the typed owner snapshot.
+ });
  it('writes every matching row as real XLSX, preserving leading-zero strings, actual dates/numbers and freeze panes',async()=>{
   const definition={...spec,columns:spec.columns.map((column,index)=>({...column,freeze:index===0}))},output=await serializeEmployeeMaster(result(),definition,fields,'Master export','xlsx');
   const book=XLSX.read(output.bytes,{type:'array',cellDates:true}),sheet=book.Sheets[book.SheetNames[0]];
