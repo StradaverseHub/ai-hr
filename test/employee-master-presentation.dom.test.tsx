@@ -13,12 +13,12 @@ import { defaultMasterColumn, runEmployeeMasterProjection, type EmployeeMasterSp
 import { todayInKualaLumpur } from '../lib/hr-date';
 import type { MasterTemplate } from '../core/employee-master-reports';
 
-const { preview, language } = vi.hoisted(() => ({ preview: vi.fn(), language: { current: 'en' as 'en'|'ms'|'zh'|'ta'|'th'|'vi' } }));
+const { preview, save, router, language } = vi.hoisted(() => ({ preview: vi.fn(), save: vi.fn(), router: { push: vi.fn(), refresh: vi.fn() }, language: { current: 'en' as 'en'|'ms'|'zh'|'ta'|'th'|'vi' } }));
 const catalogues = { en, ms, zh, ta, th, vi: viMessages };
 vi.mock('next-intl/server', () => ({ getTranslations: async (namespace: string) => createTranslator({ locale: language.current, messages: catalogues[language.current], namespace: namespace as never, onError: error => { throw error; } }) }));
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
+vi.mock('next/navigation', () => ({ useRouter: () => router }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: React.ComponentProps<'a'>) => <a {...props}>{children}</a> }));
-vi.mock('../app/reports/employee-master/actions', () => ({ previewEmployeeMaster: preview, saveEmployeeMaster: vi.fn() }));
+vi.mock('../app/reports/employee-master/actions', () => ({ previewEmployeeMaster: preview, saveEmployeeMaster: save }));
 vi.mock('../app/reports/employee-master/MasterReportActions', () => ({ MasterReportActions: () => null }));
 import { EmployeeMasterBuilder } from '../app/reports/employee-master/EmployeeMasterBuilder';
 import { MasterReportList } from '../app/reports/employee-master/MasterReportList';
@@ -27,16 +27,30 @@ const code = PERSONNEL_FIELDS.find(field => field.owner === 'employment' && fiel
 const hire = PERSONNEL_FIELDS.find(field => field.owner === 'employment' && field.ownerField === 'hiredOn')!;
 const fields = [code, hire], today = todayInKualaLumpur(), company = '00000000-0000-4000-8000-000000000001';
 const initial: EmployeeMasterSpec = { v: 2, asAt: today, companyIds: [company], includeDrafts: false, columns: fields.map(defaultMasterColumn), expression: { id: 'root', type: 'group', logic: 'and', children: [] }, sorts: [], groups: [], pdf: { paper: 'A4', orientation: 'landscape', margins: 'normal', logo: false, pageBreakGroups: false } };
-function builder(locale: keyof typeof catalogues) {
- return render(<NextIntlClientProvider locale={locale} timeZone="Asia/Kuala_Lumpur" messages={catalogues[locale]} onError={error => { throw error; }}><EmployeeMasterBuilder initial={initial} fields={fields} companies={[{ value: company, label: 'Fictional company' }]} options={{}} roles={[]} reportId={null} version={null} today={today}/></NextIntlClientProvider>);
+function builder(locale: keyof typeof catalogues, reportId: string|null = null, version: number|null = null) {
+ return render(<NextIntlClientProvider locale={locale} timeZone="Asia/Kuala_Lumpur" messages={catalogues[locale]} onError={error => { throw error; }}><EmployeeMasterBuilder initial={initial} fields={fields} companies={[{ value: company, label: 'Fictional company' }]} options={{}} roles={[]} reportId={reportId} version={version} today={today}/></NextIntlClientProvider>);
 }
 beforeEach(() => {
  vi.useFakeTimers(); language.current = 'en';
+ save.mockResolvedValue({ ok: true, id: '00000000-0000-4000-8000-000000000009', version: 2 });
  preview.mockImplementation(async (spec: EmployeeMasterSpec) => ({ ok: true, snapshotToken: 'fictional-preview-token', result: runEmployeeMasterProjection(spec, fields, [{ id: 'employment', kind: 'employment', personId: 'person', companyId: company, owners: { employment: [{ id: 'employment', values: { employeeCode: { value: '000007' }, hiredOn: { value: '2024-01-02' } } }] } }], today) }));
 });
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.clearAllMocks(); });
 
 describe('Employee Master display and optional PDF controls', () => {
+ it.each([[null,null],['00000000-0000-4000-8000-000000000009',1]] as const)('returns a successful new or updated report to its Master card (%s)', async (id, version) => {
+  builder('en', id, version);
+  fireEvent.change(screen.getByLabelText(en.employeeMasterReports.name), { target: { value: 'Fictional saved result' } });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: en.employeeMasterReports.save })); });
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({ id: id??undefined, version: version??undefined, name: 'Fictional saved result' }));
+  expect(router.push).toHaveBeenCalledWith('/reports?cat=master&saved=00000000-0000-4000-8000-000000000009');
+  expect(router.refresh).toHaveBeenCalledTimes(1);
+ });
+ it('keeps a rejected save in the builder without a misleading success destination', async () => {
+  save.mockResolvedValue({ ok: false, error: 'The saved version changed. Reopen the report.' }); builder('en');
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: en.employeeMasterReports.save })); });
+  expect(screen.getByRole('alert')).toHaveTextContent('The saved version changed. Reopen the report.'); expect(router.push).not.toHaveBeenCalled();
+ });
  it.each(['en','ms','zh','ta','th','vi'] as const)('keeps PDF settings collapsed until its native disclosure is opened in %s', locale => {
   builder(locale); const copy = catalogues[locale].employeeMasterReports;
   const summary = screen.getByText(copy.pdfSettings), disclosure = summary.closest('details');

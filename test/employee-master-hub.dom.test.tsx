@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTranslator } from 'next-intl';
 import en from '../messages/en.json';
@@ -26,6 +26,20 @@ beforeEach(() => { vi.clearAllMocks(); scope.mockResolvedValue({ s: principal, s
 // The owner boundary supplies only visible definitions. This tests real hub rendering/counting,
 // not database privacy; canonical Employee Master service/RLS regressions cover that authority.
 describe.each(['en','ms','zh','ta','th','vi'] as const)('Employee Master visible report count in %s', locale => {
+ it.each([true,false])('acknowledges a visible saved report outside the first five without changing recent order (canEdit=%s)', async canEdit => {
+  language.current = locale;
+  const visible = Array.from({ length: 7 }, (_, index) => ({ id: '00000000-0000-4000-8000-'+String(index+1).padStart(12,'0'), name: 'Visible fictional report '+index, canEdit }));
+  list.mockResolvedValue(visible); const saved = visible[6];
+  render(await Page({ searchParams: Promise.resolve({ cat: 'master', saved: saved.id }) }));
+  const t = createTranslator({ locale, messages: catalogues[locale], namespace: 'employeeMasterReports', onError: error => { throw error; } });
+  const status = screen.getByRole('status'); expect(status).toHaveTextContent(t('savedReport', { name: saved.name }));
+  expect(within(status).getByRole('link', { name: t('runSavedReport') })).toHaveAttribute('href', '/reports/employee-master/'+saved.id);
+  const edit = within(status).queryByRole('link', { name: t('editSavedReport') });
+  if (canEdit) expect(edit).toHaveAttribute('href', '/reports/employee-master/'+saved.id); else expect(edit).not.toBeInTheDocument();
+  expect(within(status).getByRole('link', { name: t('viewAll') })).toHaveAttribute('href', '/reports/employee-master');
+  expect(screen.getAllByTestId('visible-master-report').map(row => row.textContent)).toEqual(visible.slice(0,5).map(report => report.name));
+  expect(list).toHaveBeenCalledTimes(1); expect(list).toHaveBeenCalledWith(principal, companies, { all: true });
+ });
  it.each([0,1,7])('shows the authorised total %i while keeping only the five recent rows on the card', async count => {
   language.current = locale;
   const visible = Array.from({ length: count }, (_, index) => ({ id: 'report-'+index, name: 'Visible fictional report '+index }));
@@ -39,4 +53,9 @@ describe.each(['en','ms','zh','ta','th','vi'] as const)('Employee Master visible
   if (count > 5) expect(screen.queryByText(visible[5].name)).not.toBeInTheDocument();
   expect(list).toHaveBeenCalledTimes(1); expect(list).toHaveBeenCalledWith(principal, companies, { all: true });
  });
+});
+it.each([undefined,'unknown-private-report','foreign-report'])('does not acknowledge an unverified saved id (%s) or reflect a supplied name', async saved => {
+ language.current = 'en'; list.mockResolvedValue([]);
+ render(await Page({ searchParams: Promise.resolve({ cat: 'master', saved, savedName: 'Untrusted confidential report title' }) }));
+ expect(screen.queryByRole('status')).not.toBeInTheDocument(); expect(screen.queryByText(/Untrusted confidential report title/)).not.toBeInTheDocument();
 });
