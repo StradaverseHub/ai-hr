@@ -32,6 +32,7 @@ import {
   type AttendanceRuleInput,
 } from '../core/attendance-rule';
 import { assignDefaultShift, assignShift, createShift } from '../core/roster';
+import { saveScheduleGroupControl } from '../core/schedule-group-controls';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 /** A fixed past Wednesday (ISO weekday 3) — inside every shift's Mon–Fri pattern, and never "today". */
@@ -146,6 +147,7 @@ describe('870b79e2 — release day: the column exists, is empty, and changes not
     const { id: stdId } = await ensureStandardRule(a);
     await updateAttendanceRule(a, { ruleId: stdId, ...ruleInput('Standard', { lateGracePeriodMinutes: 30 }) });
     const strict = await createAttendanceRule(a, ruleInput('Strict', { lateGracePeriodMinutes: 0 }));
+    await saveScheduleGroupControl(a, { ruleId: strict.id, kind: 'duty', enabled: true });
     const ruled = await createShift(a, workdayShift({ ruleId: strict.id }));
     const unruled = await createShift(a, workdayShift());
 
@@ -172,6 +174,7 @@ describe('870b79e2 — the group, when set, outranks the shift', () => {
     const a = adminCtx(b);
     await ensureStandardRule(a);
     const strict = await createAttendanceRule(a, ruleInput('Strict', { lateGracePeriodMinutes: 0 }));
+    await saveScheduleGroupControl(a, { ruleId: strict.id, kind: 'duty', enabled: true });
     const lenient = await createAttendanceRule(a, ruleInput('Lenient', { lateGracePeriodMinutes: 30 }));
     const shift = await createShift(a, workdayShift({ ruleId: strict.id }));
 

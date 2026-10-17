@@ -24,13 +24,11 @@
  *      1 open assignment, its employee's work_state already carrying the site's state, `holidays MOVE 0`).
  *   4. A NAMED SITE CALENDAR NO LONGER REACHES ANYBODY THROUGH A SITE — ADR-0067 §(b) retired. The
  *      calendar itself survives (§(a)); it is chosen on the PERSON now.
- *   5. ONE KEY, TWO MEMOS — unchanged in purpose, narrowed to THREE inputs. An input LEAVING the key is
- *      exactly as dangerous as one arriving, so this is the assertion that makes the two memos move with
- *      the resolver.
- *   6. TWO OPEN ASSIGNMENTS CANNOT DIVERGE ANY MORE. Both memos carried an "ambiguous open assignment,
- *      resolve alone" escape hatch, because the resolver joined `assignment` and took one row via
- *      `.limit(1)`. Nothing joins `assignment` now, so the hatch is not merely removed — there is nothing
- *      left for it to disambiguate, and this pins that rather than trusting the reading.
+ *   5. ONE KEY, TWO MEMOS — current company/state/group plus canonical dated company segments.
+ *      ADR-0120 adds dated tenure/company context; employee replacement dates are overlaid AFTER the
+ *      original-calendar memo. Work sites remain excluded from both the key and the resolver.
+ *   6. THE OLD SITE-ASSIGNMENT AMBIGUITY HATCH STAYS RETIRED. Canonical dated company history belongs
+ *      to its entity owner; neither memo reads site assignments or chooses an arbitrary open location.
  *
  * Window is a HISTORICAL year (2025): no hardcoded future dates, and nothing here moves when the clock does.
  */
@@ -228,32 +226,52 @@ describe('ADR-0086 — the site register removed from holiday resolution', () =>
     }
   });
 
-  it('5. ONE KEY, TWO MEMOS: both call sites go through holidayMemoKey, on THREE inputs', () => {
-    // Two hand-written copies of the key made "together" a thing a person had to remember. One exported
-    // function makes it structural: a determining input cannot leave one key and stay in the other,
-    // because there is only one key. ADR-0086 is the case that matters — an input LEFT.
+  it('5. ONE KEY, TWO MEMOS: both use current selection and dated company segments, then overlay employee replacements', () => {
     const stripComments = (src: string) =>
       src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const holidays = stripComments(readFileSync(new URL('../core/holidays.ts', import.meta.url), 'utf8'));
+    const absence = stripComments(readFileSync(new URL('../core/absence-days.ts', import.meta.url), 'utf8'));
+    const keyStart = holidays.indexOf('export function holidayMemoKey(');
+    const keyEnd = holidays.indexOf('\n}', keyStart);
+    expect(keyStart, 'the sole shared key definition exists').toBeGreaterThanOrEqual(0);
+    expect(keyEnd, 'the key definition is bounded').toBeGreaterThan(keyStart);
+    const key = holidays.slice(keyStart, keyEnd + 2);
+    expect(key.length).toBeGreaterThan(180);
+    expect(key).toContain('[i.companyId,i.workState,i.holidayGroupId]');
+    expect(key).toContain('if(i.companySegments)inputs.push(i.companySegments.map(segment=>[segment.companyId,segment.from,segment.to]))');
+    expect(key).toContain('return JSON.stringify(inputs)');
+    expect(holidays.match(/\bholidayMemoKey\s*\(/g) ?? []).toHaveLength(2); // definition + batch caller
+    expect(absence.match(/\bholidayMemoKey\s*\(/g) ?? []).toHaveLength(1);
     const HAND_ROLLED = /JSON\.stringify\(\[[^\]]*companyId|\$\{[\w.]*companyId\}\|/g;
-    const counts: Record<string, number> = {};
-    for (const f of ['../core/holidays.ts', '../core/absence-days.ts']) {
-      const src = stripComments(readFileSync(new URL(f, import.meta.url), 'utf8'));
-      expect(src, `${f} must key its holiday memo through holidayMemoKey`).toContain('holidayMemoKey(');
-      counts[f] = (src.match(HAND_ROLLED) ?? []).length;
-    }
-    expect(counts['../core/holidays.ts'], 'holidayMemoKey is the only place the key is spelled out').toBe(1);
-    expect(counts['../core/absence-days.ts'], 'core/absence-days.ts re-expresses the memo key by hand').toBe(0);
-    // THREE inputs, and no fourth: a key that still carried locationId would be keying on something the
-    // resolver cannot read, so two employees at different sites would be handed separate cache entries
-    // for an answer that is provably identical — harmless today, and a lie about what a calendar depends on.
-    expect(JSON.parse(holidayMemoKey({ companyId: 'c', workState: null, holidayGroupId: null }))).toHaveLength(3);
-    // JSON, so null and '' stay distinct and no value can forge a separator.
+    expect((holidays.slice(0, keyStart) + holidays.slice(keyEnd + 2)).match(HAND_ROLLED) ?? [], 'no second spelling outside the canonical definition').toHaveLength(0);
+    expect(absence.match(HAND_ROLLED) ?? [], 'absence never spells its own holiday key').toHaveLength(0);
+    expect(holidays).toContain('companySegments:segments.get(id)??[]');
+    expect(absence).toContain('companySegments:holidayCompanySegments.get(e.employmentId)??[]');
+    for (const source of [holidays, absence]) expect(source).toContain('companySegmentsForPeriodBulk(tx,');
+
     const base = { companyId: 'c', workState: null, holidayGroupId: null };
+    expect(JSON.parse(holidayMemoKey(base))).toEqual(['c', null, null]);
+    const companySegments = [{ companyId: 'c', from: START, to: END }];
+    const dated = { ...base, companySegments };
+    expect(JSON.parse(holidayMemoKey(dated))).toEqual(['c', null, null, [['c', START, END]]]);
+    for (const change of [{ companyId: 'other' }, { from: '2025-01-02' }, { to: '2025-12-30' }]) {
+      expect(holidayMemoKey(dated), 'each dated company/tenure boundary is a determining input').not.toEqual(
+        holidayMemoKey({ ...base, companySegments: [{ ...companySegments[0], ...change }] }),
+      );
+    }
+    expect(holidayMemoKey({ ...base, companySegments: [] })).not.toEqual(holidayMemoKey(base));
     expect(holidayMemoKey(base)).not.toEqual(holidayMemoKey({ ...base, workState: '' }));
     expect(holidayMemoKey({ ...base, workState: 'a|b' })).not.toEqual(
       holidayMemoKey({ ...base, workState: 'a', holidayGroupId: 'b' }),
     );
-    expect(holidayMemoKey(base)).toEqual(holidayMemoKey({ ...base }));
+    expect(holidayMemoKey(dated)).toEqual(holidayMemoKey({ ...base, companySegments: companySegments.map(segment => ({ ...segment })) }));
+
+    // Only original calendars may be shared. A fresh per-employee Set receives replacement dates.
+    expect(holidays).toContain('dates = await originalHolidayDatesFor(tx, one)');
+    expect(holidays).toContain('out.set(id, new Set(dates))');
+    expect(holidays).toContain('const effective=out.get(id);if(effective)for(const date of dates)effective.add(date)');
+    expect(absence).toContain('holidays = await originalHolidayDatesFor(tx, {');
+    expect(absence).toContain('holidays=new Set([...holidays,...replacementDates.get(e.employmentId)??[]])');
   });
 
   it('6. THE BATCH RESOLVER AGREES with the single one, per employee', async () => {
@@ -267,19 +285,18 @@ describe('ADR-0086 — the site register removed from holiday resolution', () =>
     for (const id of [onSite, carried, onCalendarSite]) {
       expect(sorted(batch.get(id)!), `batch and single resolver disagree for ${id}`).toEqual(sorted(await resolve(id)));
     }
-    // onSite and onCalendarSite share all THREE inputs (same company, no work_state, no group) and are at
-    // DIFFERENT sites — under the old four-input key they were two entries; now they are one, and the
-    // answer is the same either way, which is the evidence that the fourth input was not determining.
+    // These employees share their current company/state/group and dated company segments, with no
+    // replacement dates. Different sites still cannot make their calendars differ.
     expect(sorted(batch.get(onSite)!)).toEqual(sorted(batch.get(onCalendarSite)!));
   });
 
-  it('7. NO ASSIGNMENT-LEVEL INPUT REACHES A CALENDAR: the ambiguity escape hatch has nothing to disambiguate', () => {
+  it('7. NO SITE-LEVEL ASSIGNMENT INPUT REACHES A CALENDAR: the location ambiguity hatch stays retired', () => {
     // Both memos used to refuse to memoize an employment with MORE THAN ONE open assignment, because the
     // resolver joined `assignment` and took an arbitrary row via `.limit(1)`; picking a different row than
     // the resolver would have handed somebody another person's public holidays. The database forbids
     // overlapping open assignments (`assignment_no_overlap`, migration 0001), so the hatch could not be
-    // exercised from a fixture — which is why it is pinned STRUCTURALLY here instead of by data: the only
-    // thing that made two open rows matter was the join, and the join is gone.
+    // exercised from a fixture — which is why the retired site join is pinned STRUCTURALLY. Canonical
+    // dated company segments now come through their separate owner, never the retired site lookup.
     const stripComments = (src: string) =>
       src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     const resolver = stripComments(readFileSync(new URL('../core/holidays.ts', import.meta.url), 'utf8'));

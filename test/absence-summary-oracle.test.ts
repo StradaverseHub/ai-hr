@@ -11,8 +11,9 @@
  * So this file does not check a LIST of expected differences — a list is only ever as good as the reading
  * that produced it, and the reading is exactly what went wrong. It runs MAIN'S OWN ALGORITHM, transcribed
  * verbatim below as `mainMonthSummary`, and the branch's `attendanceMonthSummary`, over the SAME database,
- * and asserts the two arrays are deep-equal — every row, every field. Anything the corrected rules change
- * while the switch is off fails this test, whether or not anybody thought to look for it.
+ * and asserts every original field is deep-equal. The two additive OT Records display fields are expected
+ * independently from these entirely legacy fixtures. Anything the corrected rules change while the switch
+ * is off still fails this test, including any difference in the original fourteen fields.
  *
  * The fixture is built to make that assertion mean something: every one of the four ways the corrected
  * (`scheduled`) rules differ from the legacy ones is present in it, on its own employee, plus the tally
@@ -364,7 +365,22 @@ async function switchOn(a: SessionContext, employmentIds: string[]) {
 
 const summary = (a: SessionContext) =>
   attendanceMonthSummary(a, { month: PERIOD, companyIds: [b.companyId], today: TODAY });
-const oracle = (a: SessionContext) => mainMonthSummary(a, { month: PERIOD, companyIds: [b.companyId], today: TODAY });
+// These fixtures contain only known integer legacy minutes, with no formula or unknown days.
+// The unchanged oracle classifies every raw row exactly once: late, else half_day, else present
+// (including an explicitly absent row), so their sum is the independent recorded-day count.
+const withLegacyOvertimeDisplay = (row: Awaited<ReturnType<typeof mainMonthSummary>>[number]) => ({
+  ...row,
+  overtimeSummary: {
+    knownMinutes: { unit: 'minutes', numerator: String(row.otWorkday + row.otRestDay + row.otHoliday), denominator: '1' },
+    unknownDays: 0,
+    formulaDays: 0,
+    legacyDays: row.present + row.late + row.halfDay,
+    complete: true,
+  },
+  overtimeCapState: row.otCapExceeded ? 'exceeded' : 'within',
+});
+const oracle = async (a: SessionContext) =>
+  (await mainMonthSummary(a, { month: PERIOD, companyIds: [b.companyId], today: TODAY })).map(withLegacyOvertimeDisplay);
 const rowFor = <T extends { employmentId: string }>(rows: T[], id: string) => rows.find((r) => r.employmentId === id)!;
 
 beforeAll(async () => {
@@ -397,12 +413,12 @@ describe('e2632276 — with the switch OFF the month roll-up is main, field for 
     expect(rowFor(rows, cast.halfDayLeave).absent).toBe(20); //    the half-day leave date charged in full
   });
 
-  it('THE DELIVERABLE — attendanceMonthSummary === main, every row, every field', async () => {
+  it('THE DELIVERABLE — all fourteen legacy fields match main, with exact additive OT display metadata', async () => {
     const a = await entitledCtx(b);
     await buildCast();
     const [mine, main] = await Promise.all([summary(a), oracle(a)]);
-    // Deep equality over the whole array: present, late, halfDay, absent, leaveDays, workedMinutes, the
-    // three OT buckets, otCapExceeded, over45hWeek, and the identity columns — in the same order.
+    // Exact whole-array equality retains every original field plus independently expected OT display
+    // metadata; an altered financial/absence field, missing metadata or unexpected key still fails.
     expect(mine).toEqual(main);
   });
 
@@ -410,7 +426,7 @@ describe('e2632276 — with the switch OFF the month roll-up is main, field for 
     const a = await entitledCtx(b);
     await buildCast();
     const mid = { month: PERIOD, companyIds: [b.companyId], today: '2026-05-14' };
-    const [mine, main] = await Promise.all([attendanceMonthSummary(a, mid), mainMonthSummary(a, mid)]);
+    const [mine, main] = await Promise.all([attendanceMonthSummary(a, mid), mainMonthSummary(a, mid).then(rows => rows.map(withLegacyOvertimeDisplay))]);
     expect(mine).toEqual(main);
   });
 

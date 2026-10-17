@@ -1,6 +1,7 @@
 /** Source guard only. Clean-twice fixture, browser outcomes and process cleanup need actual execution. */
 import {readFileSync} from 'node:fs';
 import {describe,expect,it} from 'vitest';
+import {DRAFT_ACTIVATION_BROWSER_TARGET} from '../scripts/draft-activation-browser-resume.mjs';
 const read=(name:string)=>readFileSync(new URL('../'+name,import.meta.url),'utf8');
 describe('local Activation fixture/runner source safety',()=>{
   it('guards exact local demo target and app role before dynamically importing database owners',()=>{
@@ -41,7 +42,16 @@ describe('local Activation fixture/runner source safety',()=>{
     expect(runner).toContain('ancestors.has(pid)');expect(runner).toContain("stdio:'inherit',detached:true");
     for(const name of ['board15activation-browser-a','board15activation-browser-b','board15activation-browser-db'])expect(runner).toContain(name);
     expect(runner).toContain("AIHR_TEST_SLOTS:'2'");expect(runner).toContain("cwd:root,env");
-    expect(runner).toContain("port='3204'");expect(runner).toContain("CREATE DATABASE ai_hr_board15_activation_browser");
+    expect(DRAFT_ACTIVATION_BROWSER_TARGET).toEqual({database:'ai_hr_board15_activation_browser',namespace:'board15activation',port:3204,scratchpad:'scratchpad/board15-draft-activation'});
+    expect(Object.isFrozen(DRAFT_ACTIVATION_BROWSER_TARGET)).toBe(true);
+    expect(runner).toContain("from './draft-activation-browser-resume.mjs'");
+    expect(runner).toContain('const {database,namespace}=DRAFT_ACTIVATION_BROWSER_TARGET,port=String(DRAFT_ACTIVATION_BROWSER_TARGET.port)');
+    expect(runner).toContain("CREATE DATABASE ai_hr_board15_activation_browser");
+    expect(runner).toContain("const args=[path.join(gateState,'testlock.sh'),lockNames.a,'--','bash',path.join(gateState,'testlock.sh'),lockNames.b,'--','bash',path.join(gateState,'devdb-lock.sh'),lockNames.db,'--',process.execPath");
+    const proof=runner.indexOf("proveLock(path.join(gateState,'locks'),lockNames.a);proveLock(path.join(gateState,'locks'),lockNames.b);proveLock(path.join(gateState,'devdb-locks'),lockNames.db)");
+    const databaseImport=runner.indexOf("const {default:postgres}=await import('postgres')");
+    expect(proof, 'the held worker proves all three ancestor-owned locks').toBeGreaterThanOrEqual(0);
+    expect(databaseImport, 'no database preparation begins before lock proof').toBeGreaterThan(proof);
     expect(runner).toContain("['browser-fixture-first','browser-fixture-second']");
     expect(runner).toContain('JSON.stringify(manifests[0])!==JSON.stringify(manifests[1])');
     expect(runner).toContain("'scripts/dev-fixture-draft-activation.mts'");
@@ -51,6 +61,14 @@ describe('local Activation fixture/runner source safety',()=>{
     expect(runner).toContain('Reserved port ${port} is occupied; no process will be killed.');
     expect(runner).not.toMatch(/lsof|pkill|killall|DROP DATABASE|TRUNCATE/i);
     expect(runner).toContain('process.kill(-child.pid,signal)');expect(runner).toContain('while(groupExists(child))');
-    expect(runner).toContain('No browser outcome PASS claimed by runner');
+    const cleanup=runner.indexOf('  finally {\n    clearTimeout(watchdog)');
+    const stopOwned=runner.indexOf('await stopOwned(activeJob);await stopOwned(server);',cleanup);
+    const cleanupReceipt=runner.indexOf("fs.renameSync(temporary,path.join(out,'browser-stopped.json'))",cleanup);
+    expect(cleanup, 'the worker always enters owned cleanup').toBeGreaterThanOrEqual(0);
+    expect(stopOwned, 'cleanup waits for owned groups').toBeGreaterThan(cleanup);
+    expect(cleanupReceipt, 'the stopped receipt follows completed owned cleanup').toBeGreaterThan(stopOwned);
+    expect(runner).toContain("applicationAcceptance:'UNVERIFIED'");
+    expect(runner).toContain('render/application outcomes remain unverified.');
+    expect(runner).toContain('No acceptance PASS claimed.');
   });
 });
