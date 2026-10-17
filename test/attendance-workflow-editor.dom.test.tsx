@@ -110,6 +110,8 @@ describe('company workflow editor outcomes', () => {
 describe('797ba70b: auto levels and complete assignment controls', () => {
   it('adds/removes/reorders standard levels without custom names and saves explicit routing v2', async () => {
     form(null);
+    fireEvent.change(screen.getByLabelText('Workflow code'), { target: { value: 'SEQUENTIAL' } });
+    fireEvent.change(screen.getByLabelText('Workflow name'), { target: { value: 'Sequential review' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add Approval Level' }));
     fireEvent.click(screen.getByRole('button', { name: 'Add Approval Level' }));
     const levels = () => screen.getAllByRole('listitem');
@@ -134,6 +136,8 @@ describe('797ba70b: auto levels and complete assignment controls', () => {
   });
   it('shows every added Personnel axis and distinguishes selectable employees by code and name', async () => {
     form(null, en, { ...options, positions: [{ id: 'p1', name: 'Analyst' }], employees: [{ id: 'e1', name: 'Duplicate name', employeeCode: 'D00001' }, { id: 'e2', name: 'Duplicate name', employeeCode: 'A00001' }], profileFields: { orgBranch: [{ id: 'b', name: 'Branch code' }], orgRegion: [], orgLine: [], orgSection: [], orgTeam: [], orgBase: [], employmentCategory: [] } });
+    fireEvent.change(screen.getByLabelText('Workflow code'), { target: { value: 'PERSONNEL' } });
+    fireEvent.change(screen.getByLabelText('Workflow name'), { target: { value: 'Personnel review' } });
     for (const key of ['position', 'employmentType', 'branch', 'region', 'line', 'section', 'team', 'base', 'category', 'employees'] as const) expect(screen.getByRole('button', { name: en.attendanceWorkflow[key] })).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Employee / Employees' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'D00001 · Duplicate name' }));
