@@ -6,11 +6,11 @@ function fixture(){
  let clock=1_000,messages=0,authority=true,artifactExists=false,row={status:'pending',reason:null as string|null};
  const events:string[]=[],request:ManagedReportAuthorityProof['request']={phase:'start',occurrenceId:'00000000-0000-4000-8000-000000000001',leaseToken:'00000000-0000-4000-8000-000000000002',inspectionProof:'OriginalProof',expectedArtifact:{sha256:'a'.repeat(64),byteLength:123,contentType:XLSX_EMAIL_ATTACHMENT_CONTENT_TYPE}};
  const d={
-  prepare:vi.fn(async()=>{events.push('inspect/render/fingerprint');if(artifactExists)throw new Error('EEXIST');artifactExists=true;return {request,validUntil:61_000};}),
+  prepare:vi.fn(async():Promise<ManagedReportAuthorityProof>=>{events.push('inspect/render/fingerprint');if(artifactExists)throw new Error('EEXIST');artifactExists=true;return {request,validUntil:61_000};}),
   change:vi.fn(async(_deadline:number)=>{events.push('change');authority=false;}),
   liveLease:vi.fn(async()=>{events.push('live lease');if(row.status!=='pending')throw new Error('Lease unavailable');}),
   start:vi.fn(async(value:ManagedReportAuthorityProof['request']):Promise<unknown>=>{events.push('start');expect(value).toBe(request);expect(authority).toBe(false);return {ok:false,reason:'notEligible'};}),
-  deliver:vi.fn(async()=>{events.push('whole sender');try{await d.prepare();}catch{row={status:'failed',reason:'generationFailed'};return {outcome:'failed'};}messages++;row={status:'sent',reason:null};return {outcome:'sent'};}),
+  deliver:vi.fn(async():Promise<{outcome:string}>=>{events.push('whole sender');try{await d.prepare();}catch{row={status:'failed',reason:'generationFailed'};return {outcome:'failed'};}messages++;row={status:'sent',reason:null};return {outcome:'sent'};}),
   finishSkipped:vi.fn(async()=>{events.push('finish skipped');row={status:'skipped',reason:'notEligible'};}),
   outcome:vi.fn(async()=>({...row})),smtpCount:()=>messages,now:()=>clock,
  };

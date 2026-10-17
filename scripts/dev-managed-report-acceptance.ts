@@ -31,6 +31,7 @@ const sleep=(ms:number)=>new Promise<void>(resolve=>setTimeout(resolve,ms));
 type OwnedChild={child:ChildProcess;processGroupGate:Promise<AcceptanceProcessPin>;stop?:Promise<void>};
 const children=new Set<OwnedChild>(),artifacts:{id:string;token:string}[]=[],ownedOccurrences=new Set<string>(),ownedReports=new Set<string>();
 let fixtureTenant:string|undefined;
+let disableOwnedSchedules:(()=>Promise<void>)|undefined;
 const active=()=>check(!stopped&&Date.now()<hardDeadline,'Fixture stopped or deadline expired.');
 function trackArtifact(pair:{id:string;token:string}){ownedReportArtifactPath(pair);ownedOccurrences.add(pair.id);if(!artifacts.some(value=>value.id===pair.id&&value.token===pair.token))artifacts.push(pair);check(artifacts.length<=200,'Owned artifact identity inventory exceeds bound.');}
 let sink:Awaited<ReturnType<typeof startReportSmtpSink>>|undefined,owner:ReturnType<(typeof import('../db/client'))['createDb']>|undefined;
@@ -159,6 +160,8 @@ async function cleanup(){return cleanupPromise??=(async()=>{
    const files=(await fs.readdir('/var/lib/aihr-report-renderer/render')).filter(name=>name.endsWith('.xlsx'));check(files.length<=20,'Artifact budget or ownership inventory changed.');
    for(const file of files){const matched=/^([0-9a-f-]{36})-([0-9a-f-]{36})\.xlsx$/i.exec(file);check(matched&&ownedOccurrences.has(matched[1]),'Unowned artifact remains; refuse rather than unlink it.');trackArtifact({id:matched[1],token:matched[2]});}
   }
+  // These exact reports were captured by this invocation. Never leave due fault copies for a later run.
+  if(disableOwnedSchedules)await disableOwnedSchedules();
   for(const artifact of artifacts)await confirmOwnedReportArtifactRemoval(artifact,renderer);
   if(managedUsed)await cleanupWait(privateWorkersIdle,110_000);
   for(const artifact of artifacts)await assertOwnedReportArtifactAbsent(artifact);
@@ -275,6 +278,16 @@ async function main(){
  await humanReadback();
  check(!await fs.lstat(out+'/verification-started').then(()=>true,()=>false),'A verification already started; preserve it, never replay/reset automatically.');
  const {getEmployeeMasterReport,saveEmployeeMasterReport}=await import('../core/employee-master-reports'),{getEmployeeMasterSchedule,saveEmployeeMasterSchedule}=await import('../core/employee-master-schedules');
+ disableOwnedSchedules=async()=>{
+  check(ownedReports.size<=32&&fixtureTenant===admin.tenantId&&admin.userId===base!.owner.userId,'Owned schedule cleanup scope changed.');
+  for(const reportId of [...ownedReports].sort()){
+   const report=await getEmployeeMasterReport(admin,[base!.companyId],reportId),schedule=await getEmployeeMasterSchedule(admin,reportId);
+   check(report.id===reportId&&report.ownerUserId===admin.userId&&JSON.stringify(report.spec.companyIds)===JSON.stringify([base!.companyId]),'Owned schedule cleanup report changed.');
+   if(!schedule)continue;check(schedule.reportId===reportId&&schedule.tenantId===admin.tenantId,'Owned schedule cleanup identity changed.');
+   if(schedule.enabled){const result=await saveEmployeeMasterSchedule(admin,[base!.companyId],{reportId,version:report.version,enabled:false,config:schedule.config,recipients:schedule.recipients});check(result.id===schedule.id,'Owned schedule cleanup changed identity.');}
+   const after=await getEmployeeMasterSchedule(admin,reportId);check(after?.id===schedule.id&&!after.enabled&&after.nextRunAt===null&&JSON.stringify(after.config)===JSON.stringify(schedule.config)&&JSON.stringify(after.recipients)===JSON.stringify(schedule.recipients),'Owned schedule disable was not acknowledged.');
+  }
+ };
  const {PERSONNEL_FIELDS}=await import('../lib/personnel-field-registry'),{defaultMasterColumn}=await import('../lib/employee-master-report');
  const code=PERSONNEL_FIELDS.find(f=>f.owner==='employment'&&f.ownerField==='employeeCode')!,name=PERSONNEL_FIELDS.find(f=>f.owner==='person'&&f.ownerField==='fullName')!,salary=PERSONNEL_FIELDS.find(f=>f.owner==='compensation'&&f.ownerField==='basicSalary')!;
  const wanted=[code.id,name.id].sort();const ui=[];
@@ -340,22 +353,41 @@ async function main(){
  const deliver=(job:{id:string;token:string})=>delivery({op:'sendReport',occurrenceId:job.id,leaseToken:job.token});
  async function render(job:{id:string;token:string}){const inspected=reportBrokerResponse.parse(await peer(BROKER,{phase:'inspect',occurrenceId:job.id,leaseToken:job.token}));check('ok' in inspected&&inspected.ok&&inspected.phase==='inspect','Canonical broker inspection refused.');const result=await renderer({phase:'render',occurrenceId:job.id,leaseToken:job.token,expectedAccessStamp:inspected.target.accessStamp});if(result.ok===true)trackArtifact(job);return result;}
  async function authorityRefusal(job:{id:string;token:string},change:(validUntil:number)=>Promise<void>){
-  await assertManagedReportAuthorityRefusal({
+  try{await assertManagedReportAuthorityRefusal({
    prepare:async()=>{
     // Start the conservative lifetime before inspect; never count an expired proof as authority evidence.
-    const validUntil=Date.now()+REPORT_INSPECTION_LIFETIME_MS;
+    const lease=await outcome(job);check(lease.status==='pending','Authority-change proof requires pending source.');
+    const validUntil=Math.min(Date.now()+REPORT_INSPECTION_LIFETIME_MS,new Date(lease.lease_until).getTime());
     const inspected=reportBrokerResponse.parse(await peer(BROKER,{phase:'inspect',occurrenceId:job.id,leaseToken:job.token}));
     check('ok' in inspected&&inspected.ok&&inspected.phase==='inspect','Canonical broker inspection refused.');
-    const generated=await renderer({phase:'render',occurrenceId:job.id,leaseToken:job.token,expectedAccessStamp:inspected.target.accessStamp});check(generated.ok===true,'Pre-change actual generation failed.');
+    const generated=await renderer({phase:'render',occurrenceId:job.id,leaseToken:job.token,expectedAccessStamp:inspected.target.accessStamp});check(generated.ok===true&&generated.accessStamp===inspected.target.accessStamp,'Pre-change actual generation failed.');
     const handle=await fs.open(ownedReportArtifactPath(job),constants.O_RDONLY|constants.O_NOFOLLOW);
     try{return {validUntil,request:{phase:'start' as const,occurrenceId:job.id,leaseToken:job.token,inspectionProof:inspected.inspectionProof,expectedArtifact:await fingerprintOwnedReportArtifact(handle,Number(command('id',['-u','aihr-report-renderer'])))}};}finally{await handle.close();}
-   },change,liveLease:()=>liveLease(job),start:body=>peer(BROKER,body),deliver:()=>deliver(job),finishSkipped:()=>finishSkipped(job),
+   },change,liveLease:()=>liveLease(job),start:body=>peer(BROKER,body),finishSkipped:()=>finishSkipped(job),
    outcome:async()=>{const row=await outcome(job);return {status:String(row.status),reason:typeof row.reason==='string'?row.reason:null};},smtpCount:()=>sink!.messages.length,now:Date.now,
-  });
+  });}finally{await confirmOwnedReportArtifactRemoval(job,renderer);}
  }
  async function noResend(job:{id:string}){const before=sink!.messages.length;const claims=await owner!.client`select * from identity_email.claim_reports(1)`;check(claims.length===0&&sink!.messages.length===before,'Terminal/uncertain work was automatically retried.');}
- const {setPayrollPermissionGrant}=await import('../packs/payroll/service');
- for(const key of ['permission','reportChanged'] as const){const job=await queue(key);await authorityRefusal(job,async()=>{if(key==='permission')await setPayrollPermissionGrant(admin,{companyId:base!.companyId,permissionKey:'report.read.compensation',role:'hr_admin',allowed:false});else await saveEmployeeMasterReport(admin,[base!.companyId],{id:cases[key].reportId,version:cases[key].version,name:'Controlled changed after generation',description:'Changed through canonical owner',sharedRoleIds:['hr_admin'],spec:template.spec});});if(key==='permission')await setPayrollPermissionGrant(admin,{companyId:base.companyId,permissionKey:'report.read.compensation',role:'hr_admin',allowed:true});record('controlled-afterGeneration-'+key);}
+ const {setPayrollPermissionGrant,listPayrollPermissionGrants,deletePayrollPermissionGrant}=await import('../packs/payroll/service');
+ const permission={companyId:base.companyId,permissionKey:'report.read.compensation',role:'hr_admin'};
+ const ownPermissionRows=async()=>(await listPayrollPermissionGrants(admin)).filter(row=>row.companyId===permission.companyId&&row.permissionKey===permission.permissionKey&&row.role===permission.role);
+ for(const key of ['permission','reportChanged'] as const){
+  const job=await queue(key),original=key==='permission'?await ownPermissionRows():[];check(original.length<=1,'Ambiguous fixture permission override.');let changedGrant:string|undefined;
+  try{
+   await authorityRefusal(job,async()=>{
+    if(key==='permission')changedGrant=(await setPayrollPermissionGrant(admin,{...permission,allowed:false})).id;
+    else await saveEmployeeMasterReport(admin,[base!.companyId],{id:cases[key].reportId,version:cases[key].version,name:'Controlled changed after generation',description:'Changed through canonical owner',sharedRoleIds:['hr_admin'],spec:template.spec});
+   });
+  }finally{
+   if(key==='permission'&&changedGrant){
+    const current=await ownPermissionRows();check(current.length===1&&current[0].id===changedGrant&&current[0].allowed===false&&(!original.length||original[0].id===changedGrant),'Fixture permission changed outside its owner operation.');
+    if(original.length)check((await setPayrollPermissionGrant(admin,{...permission,allowed:original[0].allowed})).id===changedGrant,'Permission restore changed identity.');
+    else check((await deletePayrollPermissionGrant(admin,{id:changedGrant})).deleted,'Temporary permission override removal refused.');
+    const restored=await ownPermissionRows();check(original.length?restored.length===1&&restored[0].id===original[0].id&&restored[0].allowed===original[0].allowed:restored.length===0,'Original permission state was not restored.');
+   }
+  }
+  record('controlled-afterGeneration-'+key,{boundary:'original-inspection/artifact broker-start refusal; canonical skipped/notEligible; no SMTP'});
+ }
  for(const [key,mode,expected] of [['smtpLost','lost','uncertain'],['smtpTemporary','temporary','failed']] as const){const job=await queue(key);sink.setMode(mode);check((await deliver(job)).outcome===expected&&(await outcome(job)).status===expected,'SMTP terminal classification mismatch.');sink.setMode('accept');await noResend(job);record('controlled-'+key+'NoRetry');}
  const pending=await queue('pendingCrash'),pendingLease=(await outcome(pending)).lease_until;await boundedWait(async()=>Date.now()>new Date(pendingLease).getTime(),Date.now()+190_000);const [reclaimed]=await owner.client`select * from identity_email.claim_reports(1)`;check(String(reclaimed?.id)===pending.id&&reclaimed.lease_token!==pending.token,'Unstarted work did not reclaim exact fresh nonce.');const refusedOld=reportBrokerResponse.parse(await peer(BROKER,{phase:'inspect',occurrenceId:pending.id,leaseToken:pending.token}));check('ok' in refusedOld&&!refusedOld.ok&&refusedOld.reason==='notEligible','Old nonce refusal was not proven.');const freshPending={id:pending.id,token:String(reclaimed.lease_token)};trackArtifact(freshPending);check((await deliver(freshPending)).outcome==='sent','Fresh unstarted nonce did not send.');record('controlled-unstartedLeaseReclaim');
  const crash=await queue('startedCrash');sink.setMode('hold');const beforeCrash=sink.messages.length,attempt=deliver(crash).catch(()=>null);await boundedWait(async()=>sink!.messages.length===beforeCrash+1&&(await outcome(crash)).status==='started',Date.now()+110_000);command('systemctl',['kill','--kill-whom=main','--signal=KILL','aihr-internal-report.service']);sink.disconnect();await attempt;sink.setMode('accept');command('systemctl',['start','aihr-internal-report.service']);const lease=(await outcome(crash)).lease_until;await boundedWait(async()=>Date.now()>new Date(lease).getTime(),Date.now()+190_000);await noResend(crash);check((await outcome(crash)).status==='uncertain','Started crash did not become terminal uncertain.');record('controlled-actualSenderCrashNoRetry');
@@ -366,8 +398,8 @@ async function main(){
  const dependent=PERSONNEL_FIELDS.find(f=>f.owner==='dependent'&&f.ownerField==='remarks')!;const large=cases.oversized,largeSaved=await saveEmployeeMasterReport(admin,[base.companyId],{id:large.reportId,version:large.version,name:'Controlled real oversized register',description:'Canonical Family rows',sharedRoleIds:['hr_admin'],spec:{...template.spec,columns:[{...defaultMasterColumn(dependent),records:'all'}]}});
  const largeDue=new Date(Date.now()+90_000);largeDue.setUTCSeconds(0,0);const largeConfig={frequency:'weekly' as const,day:largeDue.getUTCDay(),hour:largeDue.getUTCHours(),minute:largeDue.getUTCMinutes(),timezone:'UTC'};await saveEmployeeMasterSchedule(admin,[base.companyId],{reportId:large.reportId,version:largeSaved.version,enabled:true,config:largeConfig,recipients:[{userId:base.recipient.userId,employmentId:base.recipient.employmentId}]});await boundedWait(async()=>Date.now()>=largeDue.getTime(),Date.now()+100_000);
  const [largeQueued]=await owner.client`select identity_email.queue_report(${large.scheduleId}::uuid,${largeDue.toISOString()}::timestamptz,${nextMasterScheduleAt(largeConfig,new Date()).toISOString()}::timestamptz) as added`;check(largeQueued.added===1,'Large canonical queue refused.');const [largeClaim]=await owner.client`select * from identity_email.claim_reports(1)`;check(largeClaim?.tenant_id===base.tenantId,'Unexpected oversized claim.');const [largeSource]=await owner.client`select report_id from custom_report_occurrence where id=${largeClaim.id}::uuid`;check(largeSource.report_id===large.reportId,'Wrong oversized source.');const largeJob={id:String(largeClaim.id),token:String(largeClaim.lease_token)},beforeLarge=sink.messages.length;trackArtifact(largeJob);check((await deliver(largeJob)).outcome==='failed'&&(await outcome(largeJob)).reason==='attachmentTooLarge'&&sink.messages.length===beforeLarge,'Actual oversized workbook sent or wrong refusal.');record('controlled-actualOversizedRefusal');
- const consent=await queue('consent');await authorityRefusal(consent,async()=>{await fs.writeFile(out!+'/withdraw-request.json',JSON.stringify({runId:marker.runId,recipientUserId:base!.recipient.userId,employmentId:base!.recipient.employmentId,occurrenceId:consent.id,route:base!.routes.consent})+'\n',{mode:0o600,flag:'wx'});console.log('Human step: recipient withdraws Employee Master report email through own notification form now; runner waits for canonical owner readback, never writes consent.');
- const consentLease=(await outcome(consent)).lease_until;await boundedWait(async()=>(await resolveEmployeeMasterRecipients(admin,{userId:base!.recipient.userId,employmentId:base!.recipient.employmentId})).length===0,Math.min(Date.now()+90_000,new Date(consentLease).getTime()-15_000));});record('afterActualConsentWithdrawalNoSend');
+ const consent=await queue('consent');await authorityRefusal(consent,async validUntil=>{await fs.writeFile(out!+'/withdraw-request.json',JSON.stringify({runId:marker.runId,recipientUserId:base!.recipient.userId,employmentId:base!.recipient.employmentId,occurrenceId:consent.id,route:base!.routes.consent,proofDeadline:new Date(validUntil-15_000).toISOString()})+'\n',{mode:0o600,flag:'wx'});console.log('Human step: recipient withdraws Employee Master report email through own notification form now, within the original proof deadline; runner waits for canonical owner readback, never writes consent.');
+ const consentLease=(await outcome(consent)).lease_until;await boundedWait(async()=>(await resolveEmployeeMasterRecipients(admin,{userId:base!.recipient.userId,employmentId:base!.recipient.employmentId})).length===0,Math.min(validUntil-15_000,new Date(consentLease).getTime()-15_000));});record('afterActualConsentWithdrawalNoSend',{boundary:'original-inspection/artifact broker-start refusal after actual own-form withdrawal; canonical skipped/notEligible; no SMTP'});
  await sampleMemory();for(const [kind,limit] of [['aggregate',768],['dispatch',192],['sender',192],['broker',192],['renderer',512]] as const)check(Number.isSafeInteger(memory[kind])&&memory[kind]>0&&memory[kind]<=limit*1024*1024,'Measured memory proof missing/exceeded.');check(/^oom_kill 0$/m.test(await fs.readFile(cgroup+'/memory.events','utf8')),'Actual managed OOM kill occurred.');record('actualCgroupPeaks',memory);
  stage='ownedCleanup';return {receipt,path:out+'/verification.json'};
 }
