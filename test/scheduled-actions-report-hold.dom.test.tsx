@@ -1,5 +1,6 @@
 import React from 'react';
 import {readFileSync} from 'node:fs';
+import {join} from 'node:path';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,render,screen,within} from '@testing-library/react';
 import {createTranslator} from 'next-intl';
@@ -16,12 +17,12 @@ vi.mock('../core/job-run',async importOriginal=>({
 vi.mock('next/navigation',()=>({redirect:(path:string)=>{throw new Error('REDIRECT '+path);}}));
 vi.mock('next-intl/server',()=>({
  getLocale:async()=>state.locale,
- getTranslations:async(namespace:string)=>createTranslator({locale:state.locale,namespace,messages:JSON.parse(readFileSync(new URL(`../messages/${state.locale}.json`,import.meta.url),'utf8')),onError:error=>{throw error;}}),
+ getTranslations:async(namespace:string)=>createTranslator({locale:state.locale,namespace,messages:JSON.parse(readFileSync(join(process.cwd(),'messages',`${state.locale}.json`),'utf8')),onError:error=>{throw error;}}),
 }));
 import Page from '../app/admin/scheduled-actions/page';
 import {JOBS} from '../core/job-run';
 
-const catalog=(locale:string)=>JSON.parse(readFileSync(new URL(`../messages/${locale}.json`,import.meta.url),'utf8'));
+const catalog=(locale:string)=>JSON.parse(readFileSync(join(process.cwd(),'messages',`${locale}.json`),'utf8'));
 const reportJob=JOBS.find(job=>job.key==='reports.employee-master.deliver')!;
 const admin={tenantId:'fictional-tenant',roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
 const historicalRun:JobRunRow={id:'fictional-run',jobKey:reportJob.key,ranAt:new Date(Date.now()-3600_000),durationMs:1500,outcome:'success',tenantsProcessed:1,tenantsFailed:0,result:{sent:2},error:null};
