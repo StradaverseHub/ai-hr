@@ -91,7 +91,8 @@ async function recoverPartialActivation(){
 async function releaseOwnedLock(){
  if(!lock)return;const held=await lock.stat(),current=await fs.lstat('/run/aihr-report-acceptance.lock');
  check(current.isFile()&&!current.isSymbolicLink()&&current.uid===0&&current.nlink===1&&current.dev===held.dev&&current.ino===held.ino&&(current.mode&0o777)===0o600,'Owned acceptance lock changed.');
- check((await rootFile('/run/aihr-report-acceptance.lock',32)).toString()===String(process.pid),'Owned acceptance lock payload changed.');await fs.unlink('/run/aihr-report-acceptance.lock');await lock.close();lock=undefined;
+ check((await rootFile('/run/aihr-report-acceptance.lock',32)).toString()===String(process.pid),'Owned acceptance lock payload changed.');
+ await lock.close();const fresh=await fs.lstat('/run/aihr-report-acceptance.lock');check(fresh.dev===held.dev&&fresh.ino===held.ino&&!fresh.isSymbolicLink(),'Acceptance lock changed before release.');await fs.unlink('/run/aihr-report-acceptance.lock');lock=undefined;
 }
 async function runnerIdle(){
  check(legacyUid!==undefined,'Missing exact scheduler identity.');const names=(await fs.readdir('/proc')).filter(name=>/^\d+$/.test(name));check(names.length<=10000,'Process inventory too large.');let found=false;
