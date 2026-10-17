@@ -1,6 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {describe,it,expect} from 'vitest';
+import * as ts from 'typescript';
 import {reportFixtureDigest} from '../scripts/employee-master-fixture-proof.mjs';
 import {REPORTS_PROJECTION_CONTINUITY_NAME,REPORTS_PROJECTION_ARTIFACTS,readReportsProjectionGitEvidence,validateReportsProjectionEvidence,reportsProjectionReceipt} from '../scripts/reports-projection-source-continuity.mjs';
 const root=fileURLToPath(new URL('..',import.meta.url)).replace(/\/$/,'');
@@ -52,6 +53,15 @@ describe('closed Reports terminated-scope source continuity',()=>{
   expect(runner).toContain("fs.existsSync(path.join(out,REPORTS_PROJECTION_CONTINUITY_NAME))||Object.values(resumeRecords??{}).some(record=>record.reportsSourceContinuity!==undefined)");
   const identities=runner.indexOf('const resumePrincipals=await proveIdentities('),creation=runner.indexOf('if(reportsContinuity?.create)writeNew(');expect(identities).toBeGreaterThan(0);expect(creation).toBeGreaterThan(identities);
   expect(runner).toContain('reportsSourceContinuity:reportsContinuity.reference');
-  expect(helper).toContain('maxBuffer:16000000');for(const forbidden of ['.insert(','.update(','.delete(','CREATE DATABASE','TRUNCATE','readEmployeeMasterFixtureProof('])expect(helper).not.toContain(forbidden);
+  expect(helper).toContain('maxBuffer:16000000');for(const forbidden of ['.insert(','.delete(','CREATE DATABASE','TRUNCATE','readEmployeeMasterFixtureProof('])expect(helper).not.toContain(forbidden);
+  // Crypto hashing legitimately calls update; database or other mutation receivers do not.
+  const hashReceiver=(expression:ts.Expression):boolean=>ts.isCallExpression(expression)&&(
+   ts.isIdentifier(expression.expression)&&expression.expression.text==='createHash'||
+   ts.isPropertyAccessExpression(expression.expression)&&expression.expression.name.text==='update'&&hashReceiver(expression.expression.expression));
+  const visit=(node:ts.Node)=>{
+   if(ts.isCallExpression(node)&&ts.isPropertyAccessExpression(node.expression)&&node.expression.name.text==='update')expect(hashReceiver(node.expression.expression)).toBe(true);
+   ts.forEachChild(node,visit);
+  };
+  visit(ts.createSourceFile('continuity.mjs',helper,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS));
  });
 });
