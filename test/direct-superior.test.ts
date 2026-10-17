@@ -27,6 +27,7 @@ import * as schema from '../db/schema';
 import { adminCtx, closeAll, eventTypesFor, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 import { hireEmployee, ReportingCycleError, setReportingLine } from '../core/org';
 import { directSuperiorHistoryFor, reportingLinesFor } from '../core/read';
+import { hasPersonnelPostedBinding } from './helpers/personnel-posted-binding';
 
 const PAGE = fs.readFileSync(
   path.resolve(__dirname, '../app/admin/personnel/[employmentId]/page.tsx'),
@@ -73,8 +74,14 @@ describe('Direct Superior — UI drift guards (dce55aff)', () => {
 
   it('the field is the searchable Combobox posting superiorEmploymentId + the current-state hiddens', () => {
     // Shared employee picker (search by Employee ID or name — the label carries "CODE – Name").
-    expect(PAGE.includes('name="superiorEmploymentId"')).toBe(true);
-    expect(/<Combobox\s/.test(PAGE)).toBe(true);
+    expect(PAGE.match(/<Combobox\b/g) ?? []).toHaveLength(1);
+    const from = PAGE.indexOf('<Combobox');
+    const end = PAGE.indexOf('/>', from);
+    expect(from).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(from);
+    const picker = PAGE.slice(from, end + 2);
+    expect(picker.length).toBeGreaterThan(100);
+    expect(hasPersonnelPostedBinding(picker, 'employment.direct_superior_and_history.superioremploymentid', 'superiorEmploymentId')).toBe(true);
     // The action's no-change guard + clear path need the current superior/line posted alongside.
     expect(PAGE.includes('name="currentSuperiorEmploymentId"')).toBe(true);
     expect(PAGE.includes('name="currentLineId"')).toBe(true);

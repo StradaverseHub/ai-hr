@@ -37,6 +37,7 @@ import {
 } from './harness';
 import { hireEmployee, updatePerson } from '../core/org';
 import { expectNoLeakedValue } from './helpers/leaf-values';
+import { hasPersonnelPostedBinding } from './helpers/personnel-posted-binding';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
@@ -222,33 +223,38 @@ describe('bf953339 — copy island + form wiring (source shape)', () => {
   });
 
   it('the page assigns the perm-/corr- phone ids the island copies between', () => {
+    const inputWith = (src: string, attribute: string): string => {
+      const inputs = (src.match(/<input\b[\s\S]*?\/>/g) ?? []).filter(input => input.includes(attribute));
+      expect(inputs, `exactly one input carries ${attribute}`).toHaveLength(1);
+      return inputs[0];
+    };
     // Main Contact & Address pair (the perm- side aliases the main inputs; names are NOT perm-prefixed).
-    expect(page).toMatch(/id="perm-mobile-phone"[^>]*name="phone"/);
+    const mobile = inputWith(page, 'id="perm-mobile-phone"');
+    expect(hasPersonnelPostedBinding(mobile, 'profile.contact_and_permanent_address.phone', 'phone')).toBe(true);
+    expect(mobile).toContain("defaultValue={emp.phone ?? ''}");
     // ITEM a72610af MOVED THE HOME PHONE INPUT, NOT ITS ID. Home Phone and Personal E-mail are now the
     // shared pair components/person-name-fields.tsx renders on this card AND on the Create New Employee
     // draft. The id is a CONTRACT with the copy island, not decoration, so the page still passes it and
     // the group still puts it on the input — both halves asserted, because a group that quietly dropped
     // the prop would leave the tick box copying into nothing.
     expect(page).toMatch(/<PersonContactExtraFields[\s\S]*?homePhoneId="perm-home-phone"/);
+    expect(page).toContain('<PersonContactExtraFields mode="form"');
     const GROUP = read('components/person-name-fields.tsx');
     /*
-     * da7463b4 (r336) — the group gained a CONTROLLED mode for the draft, so the id and the name stopped
-     * sitting in one object literal: the id is always on the input, and `name` is now only in the `form`
-     * branch (a controlled input must not post a name of its own). The contract this asserts is unchanged
-     * — the caller's id and the homePhone name land on the SAME input — so it is asserted as the two
-     * halves of that input instead of as one literal.
+     * The shared descriptor posts homePhone in edit/form mode and no name in controlled/draft mode.
+     * The caller's copy-island id, descriptor and stored value must land on the SAME input.
      */
-    const homePhoneInput = GROUP.slice(GROUP.indexOf('id={props.homePhoneId}'));
-    expect(homePhoneInput, 'the shared group puts the caller’s id on the home-phone input').toMatch(
-      /id=\{props\.homePhoneId\}/,
-    );
-    expect(
-      homePhoneInput.slice(0, homePhoneInput.indexOf('</Field>')),
-      'and that same input carries the homePhone name when it is posting a form',
-    ).toMatch(/name: 'homePhone'/);
+    const homePhoneInput = inputWith(GROUP, 'id={props.homePhoneId}');
+    expect(GROUP).toContain("const mode=props.mode==='controlled' ? 'draft' : 'edit';");
+    expect(hasPersonnelPostedBinding(homePhoneInput, 'profile.contact_and_permanent_address.homephone', 'homePhone')).toBe(true);
+    expect(homePhoneInput).toContain("defaultValue: v.homePhone ?? ''");
     // Correspondence block's own pair.
-    expect(page).toMatch(/id="corr-mobile-phone"[^>]*name="correspondenceMobilePhone"/);
-    expect(page).toMatch(/id="corr-home-phone"[^>]*name="correspondenceHomePhone"/);
+    const corrMobile = inputWith(page, 'id="corr-mobile-phone"');
+    const corrHome = inputWith(page, 'id="corr-home-phone"');
+    expect(hasPersonnelPostedBinding(corrMobile, 'profile.correspondence_address.correspondencemobilephone', 'correspondenceMobilePhone')).toBe(true);
+    expect(hasPersonnelPostedBinding(corrHome, 'profile.correspondence_address.correspondencehomephone', 'correspondenceHomePhone')).toBe(true);
+    expect(corrMobile).toContain("defaultValue={emp.correspondenceMobilePhone ?? ''}");
+    expect(corrHome).toContain("defaultValue={emp.correspondenceHomePhone ?? ''}");
     /*
      * The correspondence pair still renders INSIDE the Correspondence block, but the anchor moved:
      * da7463b4 lifted the seven address inputs into the shared <AddressBlockFields side="corr">, so

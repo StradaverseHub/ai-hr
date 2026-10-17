@@ -59,6 +59,7 @@ import * as schema from '../db/schema';
 import { createGradeGroup, deleteGradeGroup, listGradeGroups } from '../core/benefit-scheme';
 import { createLeaveApprovalRule } from '../core/leave-approval-policy';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { SCREENS, MATRIX_ROLES, canReach } from '../lib/permissions';
 
 const ROOT = path.resolve(__dirname, '..');
 const ENTITLEMENTS = path.join(ROOT, 'app/admin/leave-config/types/page.tsx');
@@ -281,15 +282,18 @@ describe('9a65f808 · …and maintained on System Labels → Organisation, besid
     expect(systemLabelsSrc).not.toMatch(/^import .*core\/benefit-scheme'/m);
   });
 
-  it('the page guard is scopedAdmin — the move must not widen who can maintain a grade group', () => {
+  it('the page and registry use requireAdmin — the move must not widen who can maintain a grade group', () => {
     // The card's previous home was `scopedSession` (all seven roles reach it by URL) and it carried its
     // own `isAdmin(s)` gate for exactly that reason. This page needs no such gate because its OWN guard is
     // admin-only, and lib/permissions.ts must agree — the registry is what drives the users/roles matrix,
     // so a page whose guard and registration disagree misreports who can reach a screen.
-    expect(systemLabelsCode).toContain('scopedAdmin()');
-    const permissions = fs.readFileSync(path.join(ROOT, 'lib/permissions.ts'), 'utf8');
-    const entry = permissions.slice(permissions.indexOf("screenKey: 'systemLabels'"));
-    expect(entry.slice(0, entry.indexOf('}'))).toContain("guard: 'scopedAdmin'");
+    // Approved Labels criteria is owned by label maintenance, not the top-bar company selection.
+    // Grade groups remain tenant-wide; requireAdmin preserves the same two administrator roles.
+    expect(systemLabelsCode).toContain('await requireAdmin()');
+    const entry = SCREENS.find(screen => screen.screenKey === 'systemLabels');
+    expect(entry).toBeDefined();
+    expect(entry!.guard).toBe('requireAdmin');
+    for (const role of MATRIX_ROLES) expect(canReach(role, entry!), role).toBe(role === 'hr_admin' || role === 'super_admin');
   });
 
   it('the three writes RETURN to the System Labels screen — a redirect left behind is a bug', () => {
