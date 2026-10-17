@@ -1,0 +1,294 @@
+{
+  "format": 1,
+  "kind": "reviewed-labels-source-continuity",
+  "root": "/Users/zenlam/Projects/ai-hr/.claude/worktrees/board16-auth-consent/",
+  "scenario": "labels",
+  "database": "ai_hr_board18_labels_browser",
+  "namespace": "board18labels",
+  "port": 3198,
+  "preparationCandidate": "886aca23054f02e4ed2d7a3b3b1bbfc1b1d0b444",
+  "candidate": "e8621e521a9a32ad0cb8e918d440e87a7a403e9f",
+  "preparationProof": {
+    "format": 1,
+    "paths": [
+      {
+        "path": "scripts/system-label-fixture-contract.mjs",
+        "sha256": "e3e77e1d0f84914e0179cf44cea15b368b5abaa93ebb15bb35cd1ac90e12acef"
+      },
+      {
+        "path": "scripts/dev-fixture-system-labels.mts",
+        "sha256": "c2ebf25d88241a78020cf36d8c741bcfaa928c5fce2e74bdb556e8e5866781cb"
+      },
+      {
+        "path": "lib/system-label-definition.ts",
+        "sha256": "7039a5a282ebd96bee3f124124f38862d04b736748f058b6698e0b5abedc95c1"
+      },
+      {
+        "path": "lib/system-label-workbook.ts",
+        "sha256": "fc3b207dd502c7a197798175c27198d02257c283cb103cfbfab3389423f5b256"
+      },
+      {
+        "path": "lib/system-label-scope.ts",
+        "sha256": "ab411c09a9c1e17817023bfa062292d00200e1889260984d97d5d661bcf96403"
+      },
+      {
+        "path": "db/schema.ts",
+        "sha256": "df57d574b030206a4fc9bc9213c08668f93e89d80ad540f929efc677510c9a59"
+      },
+      {
+        "path": "db/migrations/0550_system_label_company_criteria.sql",
+        "sha256": "b1f4e2acc5f6a472c1a7901612f192072ce08c76f6159f3c3437a94ecde9fe19"
+      },
+      {
+        "path": "core/system-labels.ts",
+        "sha256": "42e5b68da9728c74f988bc1534421912936042a0d8748c32dcb9ac5b9ddbcabd"
+      },
+      {
+        "path": "core/system-label-import.ts",
+        "sha256": "70d3a7cfc90b334877dcd17ccfc247e2eb1fa0203ace22d8ccff7b5798bd6396"
+      },
+      {
+        "path": "core/admin.ts",
+        "sha256": "c6dabd8c3afe9bb0246c1a561964fb913e72bdd1ac105e96296f7dbb07725e50"
+      },
+      {
+        "path": "core/profile-options.ts",
+        "sha256": "42c05c1ed78364be4fbd850da38cd4d9d61466cb0c96a17f3575ae8912e9af23"
+      },
+      {
+        "path": "core/org.ts",
+        "sha256": "766e5dde5dfabc7afe760f82bf503b64d70f4236d849579eff5d2aa9b8eae8fd"
+      },
+      {
+        "path": "app/admin/settings/system-labels/page.tsx",
+        "sha256": "69fb27a6fcb65357743c8a57d11d5aa133a922d6bfe165e04553083372ffdb4f"
+      },
+      {
+        "path": "app/admin/settings/system-labels/import-actions.ts",
+        "sha256": "c7908f7571773b4fd6f9f9476ffa89131f44c5a1a5eef4da09079c2927b0c028"
+      },
+      {
+        "path": "components/system-labels-grid.tsx",
+        "sha256": "f75d84a567676551ce66eb7196a6454caaa9d78b120fc4b6b2815df05b536129"
+      },
+      {
+        "path": "messages/en.json",
+        "sha256": "4e193ba7a874dc3d2db055b71b1d9c929e28e4f99f35c4a484466c9ef71f1b52"
+      },
+      {
+        "path": "messages/ms.json",
+        "sha256": "b4c190a48a0b5c94ef086f43759731589a3ebca7eff4c69d488d51c4c86baf1b"
+      },
+      {
+        "path": "messages/zh.json",
+        "sha256": "8812847bf52d64beecc105b00b68d9d65063b8226cc8f1c402755caa5e194933"
+      },
+      {
+        "path": "messages/ta.json",
+        "sha256": "9d38bd6bc73943481adf7a920263127ee75b9b480b98553d1df86af81ceaae16"
+      },
+      {
+        "path": "messages/th.json",
+        "sha256": "2726f2562ff7666051450b88830b8316794f03653180f7d63e116b3dee4c7f10"
+      },
+      {
+        "path": "messages/vi.json",
+        "sha256": "ce8026c36c7e6a19d7e14779ad8aa7f2fae9b378c7b077a0414282ce99f3eadd"
+      }
+    ],
+    "sha256": "9cb9857c1bd8840435fc8bcdf2e5301918ce2498987b924621b29dd1f46795be"
+  },
+  "currentProof": {
+    "format": 1,
+    "paths": [
+      {
+        "path": "scripts/system-label-fixture-contract.mjs",
+        "sha256": "e3e77e1d0f84914e0179cf44cea15b368b5abaa93ebb15bb35cd1ac90e12acef"
+      },
+      {
+        "path": "scripts/dev-fixture-system-labels.mts",
+        "sha256": "c2ebf25d88241a78020cf36d8c741bcfaa928c5fce2e74bdb556e8e5866781cb"
+      },
+      {
+        "path": "lib/system-label-definition.ts",
+        "sha256": "7039a5a282ebd96bee3f124124f38862d04b736748f058b6698e0b5abedc95c1"
+      },
+      {
+        "path": "lib/system-label-workbook.ts",
+        "sha256": "e25226b4da3bb26298c8e6c951edc09c6027bba30071f52f1b86ed379a9115b5"
+      },
+      {
+        "path": "lib/system-label-scope.ts",
+        "sha256": "ab411c09a9c1e17817023bfa062292d00200e1889260984d97d5d661bcf96403"
+      },
+      {
+        "path": "db/schema.ts",
+        "sha256": "df57d574b030206a4fc9bc9213c08668f93e89d80ad540f929efc677510c9a59"
+      },
+      {
+        "path": "db/migrations/0550_system_label_company_criteria.sql",
+        "sha256": "b1f4e2acc5f6a472c1a7901612f192072ce08c76f6159f3c3437a94ecde9fe19"
+      },
+      {
+        "path": "core/system-labels.ts",
+        "sha256": "42e5b68da9728c74f988bc1534421912936042a0d8748c32dcb9ac5b9ddbcabd"
+      },
+      {
+        "path": "core/system-label-import.ts",
+        "sha256": "70d3a7cfc90b334877dcd17ccfc247e2eb1fa0203ace22d8ccff7b5798bd6396"
+      },
+      {
+        "path": "core/admin.ts",
+        "sha256": "c6dabd8c3afe9bb0246c1a561964fb913e72bdd1ac105e96296f7dbb07725e50"
+      },
+      {
+        "path": "core/profile-options.ts",
+        "sha256": "42c05c1ed78364be4fbd850da38cd4d9d61466cb0c96a17f3575ae8912e9af23"
+      },
+      {
+        "path": "core/org.ts",
+        "sha256": "766e5dde5dfabc7afe760f82bf503b64d70f4236d849579eff5d2aa9b8eae8fd"
+      },
+      {
+        "path": "app/admin/settings/system-labels/page.tsx",
+        "sha256": "69fb27a6fcb65357743c8a57d11d5aa133a922d6bfe165e04553083372ffdb4f"
+      },
+      {
+        "path": "app/admin/settings/system-labels/import-actions.ts",
+        "sha256": "c7908f7571773b4fd6f9f9476ffa89131f44c5a1a5eef4da09079c2927b0c028"
+      },
+      {
+        "path": "components/system-labels-grid.tsx",
+        "sha256": "f51956f50828967ac9a0a0728c851eb01be75489a64987b7328345914c100832"
+      },
+      {
+        "path": "messages/en.json",
+        "sha256": "4e193ba7a874dc3d2db055b71b1d9c929e28e4f99f35c4a484466c9ef71f1b52"
+      },
+      {
+        "path": "messages/ms.json",
+        "sha256": "b4c190a48a0b5c94ef086f43759731589a3ebca7eff4c69d488d51c4c86baf1b"
+      },
+      {
+        "path": "messages/zh.json",
+        "sha256": "8812847bf52d64beecc105b00b68d9d65063b8226cc8f1c402755caa5e194933"
+      },
+      {
+        "path": "messages/ta.json",
+        "sha256": "9d38bd6bc73943481adf7a920263127ee75b9b480b98553d1df86af81ceaae16"
+      },
+      {
+        "path": "messages/th.json",
+        "sha256": "2726f2562ff7666051450b88830b8316794f03653180f7d63e116b3dee4c7f10"
+      },
+      {
+        "path": "messages/vi.json",
+        "sha256": "ce8026c36c7e6a19d7e14779ad8aa7f2fae9b378c7b077a0414282ce99f3eadd"
+      }
+    ],
+    "sha256": "2592891cba6a8b5e66cdfa16140b70ef3e81af807f48293af5dbe62e3d33bf91"
+  },
+  "manifests": [
+    {
+      "fileName": "fixture-manifest.json",
+      "bytes": 15521,
+      "sha256": "438c40f044ead1337d6f8ca8270b4951277c0113893948f9fd1b5ccae5358d96"
+    },
+    {
+      "fileName": "browser-manifest.json",
+      "bytes": 16766,
+      "sha256": "fd46e4ac664165268d90a3b923ee6ea7bbd4144e760bec8d3853da068e55c38f"
+    }
+  ],
+  "artifacts": [
+    {
+      "fileName": "blank-current-template.xlsx",
+      "bytes": 111984,
+      "sha256": "224006d4185a9ddcdee9c7c68a28b68e748b166f3adad9a77676bb212f3905ab"
+    },
+    {
+      "fileName": "valid-main-new.xlsx",
+      "bytes": 19902,
+      "sha256": "4dbf2e1061395506005d4ea52b992fa14eb5c61d9107dbbdde26d0fd3d99e6a7"
+    },
+    {
+      "fileName": "valid-multi-new.xlsx",
+      "bytes": 18892,
+      "sha256": "92885892bb62cff34aec75dc26702ef616047f8f09b496aa15dd685b036ba0f4"
+    },
+    {
+      "fileName": "global-group-only.xlsx",
+      "bytes": 19904,
+      "sha256": "51ea1a9fcdc11b59ecf7dfc257d29c12de6eb289f36ea87a5632af5c18fe2e5f"
+    },
+    {
+      "fileName": "empty-company-criteria.xlsx",
+      "bytes": 19901,
+      "sha256": "523fc41b31c3d94276be8c47634fee679aa7d885a56959dce908901db5862569"
+    },
+    {
+      "fileName": "unauthorized-hidden-company.xlsx",
+      "bytes": 19946,
+      "sha256": "6cec69e727436f1f71cca55057fd8e9a0603268e2642fa3216defa8200a0f354"
+    },
+    {
+      "fileName": "foreign-company.xlsx",
+      "bytes": 19908,
+      "sha256": "38e86a6053297deb26d29d779d8686df6a82e4b95dcf18ec252fb21fb436ba59"
+    },
+    {
+      "fileName": "existing-code-global-collision.xlsx",
+      "bytes": 19903,
+      "sha256": "d5502c4a46e30ed4adb7a7fcd290adb5ed190ac62e56641e63eedc9420d8e5e0"
+    },
+    {
+      "fileName": "conflicting-duplicate-rows.xlsx",
+      "bytes": 19947,
+      "sha256": "b6e2c4ba94e7249536826bec4c104559dd828bd5a01fd296bc4dad508dba9f29"
+    },
+    {
+      "fileName": "optional-clear-update.xlsx",
+      "bytes": 19871,
+      "sha256": "fc7d0154bd1348cf1977c96ffc6203950277ed8716be0e031086574cf4232232"
+    },
+    {
+      "fileName": "group-current-before-ui.xlsx",
+      "bytes": 52573,
+      "sha256": "40a0138f61b66c11a9a9343080f16cd88628ecaf8e07bf5e7ebf4f1dd2606911"
+    },
+    {
+      "fileName": "scoped-current-before-ui.xlsx",
+      "bytes": 52352,
+      "sha256": "77aa5a6c6946d5fe4ca472599f0a61472ebc52ccfdfefe3abb1ad4b197dc55fe"
+    },
+    {
+      "fileName": "unsupported-label-upload.csv",
+      "bytes": 259,
+      "sha256": "b5098274789f8766e716abf0d2e5aa718a6e1c94d99f04db7c8b5be9bb86953d"
+    }
+  ],
+  "changes": [
+    {
+      "path": "components/system-labels-grid.tsx",
+      "oldBlob": "d1a3d9c851f6579c45f7849548f0107c38f87852",
+      "newBlob": "79c8ead19a2dc5b6716a0f377495bae2f898be55",
+      "oldSha256": "f75d84a567676551ce66eb7196a6454caaa9d78b120fc4b6b2815df05b536129",
+      "newSha256": "f51956f50828967ac9a0a0728c851eb01be75489a64987b7328345914c100832",
+      "patchSha256": "5084cbeaf632019d93d1213d8952b6f9fd7e61d582e1aef341625b663f50657f",
+      "patch": "diff --git a/components/system-labels-grid.tsx b/components/system-labels-grid.tsx\nindex d1a3d9c851f6579c45f7849548f0107c38f87852..79c8ead19a2dc5b6716a0f377495bae2f898be55 100644\n--- a/components/system-labels-grid.tsx\n+++ b/components/system-labels-grid.tsx\n@@ -355,7 +355,7 @@ export function SystemLabelsGrid({\n    */\n   function followDraft(_next: RowState[], key: string) {\n     focusDraft.current = key;\n-    goToPage(1);\n+    goToPage(0);\n   }\n   useEffect(() => {\n     if (!focusDraft.current) return;\n"
+    },
+    {
+      "path": "lib/system-label-workbook.ts",
+      "oldBlob": "eadd9958f2d2a176e2320641b93c261c7d637e6f",
+      "newBlob": "db9453889558ba724329e3499409c58505774ee6",
+      "oldSha256": "fc3b207dd502c7a197798175c27198d02257c283cb103cfbfab3389423f5b256",
+      "newSha256": "e25226b4da3bb26298c8e6c951edc09c6027bba30071f52f1b86ed379a9115b5",
+      "patchSha256": "c50a2d69238d752c5686d136d10132862bfaba35738507d2fb97f0a3fb12534c",
+      "patch": "diff --git a/lib/system-label-workbook.ts b/lib/system-label-workbook.ts\nindex eadd9958f2d2a176e2320641b93c261c7d637e6f..db9453889558ba724329e3499409c58505774ee6 100644\n--- a/lib/system-label-workbook.ts\n+++ b/lib/system-label-workbook.ts\n@@ -195,7 +195,8 @@ export async function buildSystemLabelWorkbook(p:{references:LabelWorkbookRefere\n         const letter=XLSX.utils.encode_col(at);\n         validations.push(`<dataValidation type=\"list\" allowBlank=\"1\" showErrorMessage=\"0\" sqref=\"${letter}2:${letter}1001\"><formula1>INDIRECT(&quot;${range}&quot;)</formula1></dataValidation>`);\n       }\n-      xml=xml.replace('</sheetData>',`</sheetData><autoFilter ref=\"A1:${XLSX.utils.encode_col(d.columns.length-(p.includeStatus?0:1))}${(p.rows?.[name]?.length??0)+1}\"/><dataValidations count=\"${validations.length}\">${validations.join('')}</dataValidations>`);\n+      const validationXml=validations.length?`<dataValidations count=\"${validations.length}\">${validations.join('')}</dataValidations>`:'';\n+      xml=xml.replace('</sheetData>',`</sheetData><autoFilter ref=\"A1:${XLSX.utils.encode_col(d.columns.length-(p.includeStatus?0:1))}${(p.rows?.[name]?.length??0)+1}\"/>${validationXml}`);\n     }\n     zip.file(path,xml);\n   }\n"
+    }
+  ],
+  "fixtureRunsThisTransition": 0,
+  "migrationRunsThisTransition": 0,
+  "seedRunsThisTransition": 0,
+  "applicationAcceptance": "UNVERIFIED"
+}
