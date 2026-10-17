@@ -6460,7 +6460,8 @@ export async function rawScheduleDayFactsTx(tx:Tx,employmentId:string,from:strin
  for(const date of dates){
   const schedule=await scheduleFor(tx,employmentId,date,memo),company=companies.get(`${employmentId}|${date}`);
   const missingPolicy=schedule.source==='policy'&&company?.companyId&&company.companyId!==employee?.companyId;
-  const kind=missingPolicy?'unknown':schedule.dayType==='rest_day'?(schedule.scheduleDayKind==='off'?'off':'rest'):schedule.dayType==='workday'?(schedule.scheduleDayKind==='half'?'half':'full'):'unknown';
+  // Off days use the workday money rules in Attendance, but remain ineligible replacement dates.
+  const kind=missingPolicy?'unknown':schedule.dayType==='rest_day'?(schedule.scheduleDayKind==='off'?'off':'rest'):schedule.dayType==='workday'?(schedule.scheduleDayKind==='off'?'off':schedule.scheduleDayKind==='half'?'half':'full'):'unknown';
   out.set(date,{kind,reason:missingPolicy?'historical_schedule_policy_unknown':null});
  }
  return out;
