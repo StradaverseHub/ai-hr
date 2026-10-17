@@ -44,7 +44,7 @@ if(!options.heldLockWorker) {
   // A queued invocation may cancel only itself, never the active scenario's shared stop pointer.
   const requestName='browser-request-'+randomUUID().replaceAll('-','')+'.stop';
   const requestFile=original18InvocationStopFile(out,requestName);
-  const args=[path.join(gateState,'testlock.sh'),lockNames.a,'--','bash',path.join(gateState,'testlock.sh'),lockNames.b,'--','bash',path.join(gateState,'devdb-lock.sh'),lockNames.db,'--',process.execPath,'--import','tsx',filename,'--held-lock-worker','--scenario='+scenario,...(options.resume?['--resume']:[])];
+  const args=[path.join(gateState,'testlock.sh'),lockNames.a,'--','bash',path.join(gateState,'testlock.sh'),lockNames.b,'--','bash',path.join(gateState,'devdb-lock.sh'),lockNames.db,'--',process.execPath,'--import','tsx',filename,'--held-lock-worker','--scenario='+scenario,...(options.resume?['--resume']:[]),...(options.recoverMigrationOnly?['--recover-migration-only-reports']:[])];
   // Isolate lock wrappers from terminal Ctrl-C: only the coordinator receives it and requests a
   // stop-file handoff. A wrapper's own signal trap must not release before owned server cleanup.
   const child=spawn('bash',args,{cwd:root,env:{...lockEnv,ORIGINAL18_BROWSER_STOP_REQUEST:requestName},stdio:'inherit',detached:true});
@@ -84,7 +84,7 @@ if(!options.heldLockWorker) {
   let server,activeJob,stopping=false,serverFd,forceStopTimer;
   let runFailed=false,ownedServerPid;
   let postgresAdmin,postgresTarget,postgresApp;
-  let preparationCandidate=candidate,resumeReceipt,labelsContinuity,devLogName=runId+'-browser-dev.log';
+  let preparationCandidate=candidate,resumeReceipt,labelsContinuity,reportsRecovery,devLogName=runId+'-browser-dev.log';
   const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
   function groupExists(child){if(!child?.pid)return false;try{process.kill(-child.pid,0);return true;}catch(error){if(error.code==='ESRCH')return false;throw error;}}
   function signalOwned(child,signal){if(groupExists(child)){try{process.kill(-child.pid,signal);}catch(error){if(error.code!=='ESRCH')throw error;}}}
@@ -239,6 +239,14 @@ if(!options.heldLockWorker) {
       writeNew(resumeReceipt,{candidate,...binding,...bound,...(scenario==='integration'?{principals:resumePrincipals}:{}),...(labelsContinuity?{labelsSourceContinuity:labelsContinuity.reference}:{}),preparationManifest:'browser-manifest.json',priorStoppedReceipt:stopped,fixtureRunsThisCandidate:0,migrationRunsThisCandidate:0,seedRunsThisCandidate:0,resumedAt:new Date().toISOString(),devLogName,applicationAcceptance:'UNVERIFIED'});
     } else {
       if(options.resumeOnly)throw new Error('Preserved scenario setup is forbidden.');
+      if(options.recoverMigrationOnly){
+        if(scenario!=='reports'||!options.fresh)throw new Error('Closed Reports migration-only recovery required.');
+        postgresTarget=connect(ownerUrl.toString());postgresApp=connect(appUrl.toString());await proveRoles();
+        const {prepareReportsMigrationOnlyRecovery}=await import('./reports-migration-only-recovery.mjs');
+        const recovery=await prepareReportsMigrationOnlyRecovery({root,candidate,out,owner:postgresTarget,app:postgresApp});
+        await postgresApp.end();postgresApp=undefined;await postgresTarget.end();postgresTarget=undefined;
+        checkCandidate();writeNew(recovery.name,recovery.value);reportsRecovery=recovery.reference;
+      }else{
       if(['preparation-attempt.json','fixture-manifest.json','browser-manifest.json','browser-stopped.json','browser.pid'].some(name=>fs.existsSync(path.join(out,name))))throw new Error('Existing preparation/partial attempt preserved; use receipt-bound resume only.');
       const adminUrl=new URL(ownerUrl);adminUrl.pathname='/postgres';postgresAdmin=connect(adminUrl.toString());
       const [creator]=await postgresAdmin`select current_user name,rolsuper,rolbypassrls from pg_roles where rolname=current_user`;
@@ -260,6 +268,7 @@ if(!options.heldLockWorker) {
       const [business]=await postgresTarget`select (select count(*) from public.company)+(select count(*) from public.person)+(select count(*) from public.employment)+(select count(*) from public.app_user) as count`;
       if(Number(business.count)!==0)throw new Error('Post-migration business data exists; seed refused.');
       await postgresTarget.end();postgresTarget=undefined;
+      }
       if(!options.fresh)await run(process.execPath,['--import','tsx',path.join(root,'db/seed.ts')],'browser-seed',180000);
       const fixtureEnv={...env};
       if(options.fresh){delete fixtureEnv.DEV_TENANT_ID;delete fixtureEnv.DEV_USER_ID;const prefix=scenario==='labels'?'LABELS':'REPORT';fixtureEnv[prefix+'_FIXTURE_COORDINATOR_PID']=String(process.pid);fixtureEnv[prefix+'_FIXTURE_COORDINATOR_CANDIDATE']=candidate;}
@@ -278,7 +287,7 @@ if(!options.heldLockWorker) {
         preparedFixture={...bound,tenantId:DEMO_TENANT_ID,date:preparationDate,facts:manifests[1],identities,principals};writeNew('fixture-manifest.json',preparedFixture);
       }
       await postgresApp.end();postgresApp=undefined;await postgresTarget.end();postgresTarget=undefined;
-      writeNew('browser-manifest.json',{candidate,...bound,fixtureRuns:2,fixture:preparedFixture,applicationAcceptance:'UNVERIFIED'});
+      writeNew('browser-manifest.json',{candidate,...bound,fixtureRuns:2,...(reportsRecovery?{recoveryAdmission:reportsRecovery,migrationRunsThisCandidate:0,seedRunsThisCandidate:0}:{}),fixture:preparedFixture,applicationAcceptance:'UNVERIFIED'});
     }
     const hr=identities.actors.find(actor=>actor.login===({integration:'board-ten-fixture:hr',schedules:'board15-schedules:hr',holidays:'board15-holidays:hr',approval:'approval15-fixture:HR',inquiry:'inquiry15-fixture:hr',personnel:'personnel15-fixture:HR',reports:'report18-fixture:HR_A'})[scenario]);
     const defaultHr=scenario==='labels'?identities.actors.find(actor=>actor.id===preparedFixture.people.GroupHR.userId):hr;
