@@ -59,9 +59,23 @@ def unit_process(unit, uid):
     assert open('/proc/'+str(pid)+'/cgroup',encoding='ascii').read(4096).strip().endswith('/'+unit)
     return pid,pin
 
-def process_environment_denial(namespace_pid, namespace_pin, target_pid, target_pin, uid, gid):
+def service_credentials(status, expected_uid):
+    rows={}
+    for key in ['Uid:', 'Gid:', 'Groups:']:
+        found=[row.split()[1:] for row in status.splitlines() if row.startswith(key)]
+        assert len(found)==1 and all(value.isdecimal() for value in found[0])
+        rows[key]=[int(value) for value in found[0]]
+    uids,gids,groups=rows['Uid:'],rows['Gid:'],rows['Groups:']
+    # setpriv must reproduce every credential identity, not weaken a process with mixed IDs.
+    assert len(uids)==4 and all(value==expected_uid for value in uids) and expected_uid>0
+    assert len(gids)==4 and len(set(gids))==1 and len(groups)<=32
+    return expected_uid,gids[1],sorted(groups)
+
+def process_environment_denial(namespace_pid, namespace_pin, target_pid, target_pin):
     assert_process_pin(namespace_pid,namespace_pin);assert_process_pin(target_pid,target_pin)
-    assert uid>0 and uid!=target_pin[2]
+    status=open('/proc/'+str(namespace_pid)+'/status',encoding='ascii').read(16384)
+    credentials=service_credentials(status,namespace_pin[2]);uid,gid,groups=credentials
+    assert uid!=target_pin[2]
     with open('/proc/'+str(namespace_pid)+'/environ','rb') as stream:
         own_environment=stream.read(131073)
     assert len(own_environment)<=131072 and not any(part.startswith(b'AUTH_SESSION_KEY=') for part in own_environment.split(b'\0'))
@@ -71,13 +85,12 @@ def process_environment_denial(namespace_pid, namespace_pin, target_pid, target_
         environment=stream.read(131073)
     assert len(environment)<=131072 and any(part.startswith(b'AUTH_SESSION_KEY=') and len(part)>17 for part in environment.split(b'\0'))
     del environment
-    status=open('/proc/'+str(namespace_pid)+'/status',encoding='ascii').read(16384)
-    groups=sorted(int(value) for row in status.splitlines() if row.startswith('Groups:') for value in row.split()[1:]);assert len(groups)<=32
-    source="import os\nassert os.getuid()==%d and os.getgid()==%d and sorted(os.getgroups())==%r\ntry:open('/proc/%d/environ','rb')\nexcept (PermissionError,FileNotFoundError):pass\nelse:raise RuntimeError('foreign process environment readable')" % (uid,gid,groups,target_pid)
+    source="import os\nassert os.getuid()==os.geteuid()==%d and os.getgid()==os.getegid()==%d and sorted(os.getgroups())==%r\ntry:open('/proc/%d/environ','rb')\nexcept (PermissionError,FileNotFoundError):pass\nelse:raise RuntimeError('foreign process environment readable')" % (uid,gid,groups,target_pid)
     # Enter the real installed service's proc mount, then discard root/group authority.
     group_args=['--groups',','.join(str(value) for value in groups)] if groups else ['--clear-groups']
     command(['nsenter','--target',str(namespace_pid),'--mount','--','/usr/bin/setpriv','--reuid',str(uid),'--regid',str(gid)]+group_args+['/usr/bin/python3','-I','-c',source])
     assert_process_pin(namespace_pid,namespace_pin);assert_process_pin(target_pid,target_pin)
+    assert service_credentials(open('/proc/'+str(namespace_pid)+'/status',encoding='ascii').read(16384),namespace_pin[2])==credentials
 
 def active_renderers():
     rows=command(['systemctl','list-units','--no-legend','--plain','--state=active,activating','aihr-report-renderer@*.service']).splitlines()
@@ -88,7 +101,7 @@ def namespace_environment_checks(web_pid, web_pin, mail, renderer):
     # Canonical read-only status starts the actual persistent sender; this creates no report/mail.
     as_user(mail.pw_name,"""import http.client,socket,json\nc=http.client.HTTPConnection('localhost',timeout=45);c.sock=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);c.sock.settimeout(45);c.sock.connect('/run/aihr-internal-report.sock');c.request('POST','/v1/reports',body=b'{"op":"status"}',headers={'Content-Type':'application/json'});r=c.getresponse();assert r.status==200;b=r.read(4097);assert len(b)<=4096 and type(json.loads(b)['ready']) is bool;c.close()""",'aihr-report-files')
     sender_pid,sender_pin=unit_process('aihr-internal-report.service',mail.pw_uid)
-    process_environment_denial(sender_pid,sender_pin,web_pid,web_pin,mail.pw_uid,mail.pw_gid)
+    process_environment_denial(sender_pid,sender_pin,web_pid,web_pin)
     assert not active_renderers()  # Never borrow another request's namespace.
     # Hold only our new empty renderer connection until its real namespace has been inspected.
     source="import socket,sys\ns=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);s.settimeout(15);s.connect(%r);print('ready',flush=True);sys.stdin.buffer.read(1);s.close()" % RENDERER
@@ -106,7 +119,7 @@ def namespace_environment_checks(web_pid, web_pin, mail, renderer):
         while command(['systemctl','show',owned_unit,'--property=ActiveState','--value'])!='active':
             assert time.monotonic()<deadline;time.sleep(0.02)
         pid,pin=unit_process(owned_unit,renderer.pw_uid)
-        process_environment_denial(pid,pin,web_pid,web_pin,renderer.pw_uid,renderer.pw_gid)
+        process_environment_denial(pid,pin,web_pid,web_pin)
     finally:
         if child.stdin:child.stdin.close()
         try:child.wait(timeout=5)
