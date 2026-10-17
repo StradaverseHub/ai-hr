@@ -355,7 +355,7 @@ export function SystemLabelsGrid({
    */
   function followDraft(_next: RowState[], key: string) {
     focusDraft.current = key;
-    goToPage(1);
+    goToPage(0);
   }
   useEffect(() => {
     if (!focusDraft.current) return;
