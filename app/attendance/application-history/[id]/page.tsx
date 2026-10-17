@@ -23,7 +23,7 @@ export default async function AttendanceApplicationDetailPage({ params, searchPa
     const a = detail.application, status = a.status === 'cancelled' ? (a.cancellationKind ?? 'withdrawn') : a.status;
     const eventLabel = (eventType: string) => t(`events.${({
         'attendance-correction.requested': 'submitted', 'attendance-workflow.resolved': 'routingSaved', 'attendance-workflow.stage.decided': 'stageDecided', 'attendance-workflow.stage.reassigned': 'stageReassigned',
-        'attendance-correction.effect.recorded': 'resultApplied', 'attendance.amended': 'resultApplied', 'attendance-correction.approved': 'approved',
+        'attendance-correction.effect.recorded': 'resultRecorded', 'attendance.amended': 'resultApplied', 'attendance-correction.approved': 'approved',
         'attendance-correction.admin-amended':'administratorAmended', 'attendance-correction.rejected': 'rejected', 'attendance-correction.cancelled': 'cancelled', 'attendance.application.reversed': 'resultReversed',
         'attendance.punch.voided': 'clockRemoved', 'attendance.punch.restored': 'clockRestored', 'attendance.punch.added': 'clockAdded',
     } as Record<string, string>)[eventType] ?? 'recorded'}`);
