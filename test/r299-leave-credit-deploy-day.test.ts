@@ -196,14 +196,28 @@ describe('D3 · leaveCreditRegisterLive — the service form, with ONE conversio
     );
   });
 
-  it('no sweep, seed or provisioning path reaches the services that ask it (measured, so a new one is a decision)', () => {
+  it('only the guarded fictional Inquiry fixture reaches these services; no sweep, seed or provisioning consumer', () => {
     const names = /\b(applyLeaveAdjustmentBatch|validateLeaveImport|commitLeaveImport|leaveTypeApplySummary)\b/;
     const walk = (dir: string): string[] =>
       fs.readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap((e) =>
-        e.isDirectory() ? walk(`${dir}/${e.name}`) : /\.(ts|tsx|js|mjs)$/.test(e.name) ? [`${dir}/${e.name}`] : [],
+        e.isDirectory() ? walk(`${dir}/${e.name}`) : /\.(ts|tsx|js|mjs|sh)$/.test(e.name) ? [`${dir}/${e.name}`] : [],
       );
     const offenders = [...walk('scripts'), ...walk('db')].filter((f) => names.test(read(f)));
-    expect(offenders).toEqual([]);
+    const fixturePath = 'scripts/dev-fixture-leave-inquiry.ts';
+    expect(offenders).toEqual([fixturePath]);
+    const fixture = read(fixturePath);
+    expect(fixture).toContain('const refusal = demoSeedRefusal(process.env)');
+    expect(fixture).toContain("if (refusal || process.env.NODE_ENV === 'production') throw new Error");
+    expect(fixture).toContain("for (const key of ['DATABASE_URL', 'MIGRATION_DATABASE_URL'])");
+    expect(fixture).toContain("const url = new URL(process.env[key]!)");
+    expect(fixture).toContain("if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.port !== '5433' || url.pathname !== '/ai_hr_board15_inquiry_browser') throw new Error");
+    expect(fixture).toContain('owner.db.transaction(tx => resolveEntitlementsTx(tx, tenantId))');
+    expect(fixture).toContain('grants, entitlements }');
+    expect(fixture).toContain('roles: [...new Set(grants.map(g => g.role))]');
+    expect(fixture).not.toContain('entitlementsExempt');
+    const callers = [...walk('scripts'), ...walk('db'), ...walk('deploy')].filter(file => read(file).includes('dev-fixture-leave-inquiry'));
+    expect(callers, 'only acceptance-target metadata names the manually invoked fictional fixture').toEqual(['scripts/original18-browser-target.mjs']);
+    expect(read('package.json')).not.toContain('dev-fixture-leave-inquiry');
   });
 });
 

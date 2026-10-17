@@ -333,13 +333,14 @@ describe('r415 · CP22A and the EA did not move — the base commit’s own read
   });
 
   /**
-   * The EA engine is `eaStatement` in localization/my/reports.ts plus the routing, non-cash and reporting
-   * modules and the payroll kernel. reports.ts changed in this round (the catalog), so the engine is held by
-   * its own SLICE, found and long; everything else by its whole file. lib/ea-pdf.ts changed in one comment.
+   * The EA projection is `eaStatement` plus its routing, non-cash, reporting and stored-payslip-line
+   * readers. The payroll calculation owner evolves independently; the preceding real-payroll comparison
+   * pins the legacy CP22A/EA output instead of freezing the entire kernel. reports.ts is held by its
+   * own SLICE, found and long; projection leaves by whole file. lib/ea-pdf.ts changed in one comment.
    */
-  it('the EA engine is byte-identical to the base commit (eaStatement by slice; lib/ea-pdf.ts but for a comment)', () => {
+  it('the EA projection owners are byte-identical to the base commit (eaStatement by slice; PDF code unchanged)', () => {
     const show = (f: string) => execFileSync('git', ['show', `${BASELINE}:${f}`], { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
-    for (const f of ['localization/my/ea-routing.ts', 'localization/my/ea-noncash.ts', 'localization/my/ea-reporting.ts', 'core/payroll.ts']) {
+    for (const f of ['localization/my/ea-routing.ts', 'localization/my/ea-noncash.ts', 'localization/my/ea-reporting.ts', 'core/payslip-earning-lines.ts']) {
       const now = fs.readFileSync(path.join(ROOT, f), 'utf8');
       expect(now.length, f).toBeGreaterThan(1000);
       expect(now === show(f), f).toBe(true);
@@ -351,7 +352,9 @@ describe('r415 · CP22A and the EA did not move — the base commit’s own read
       expect(end).toBeGreaterThan(start);
       return src.slice(start, end);
     };
-    const now = slice(fs.readFileSync(path.join(ROOT, 'localization/my/reports.ts'), 'utf8'));
+    const reports = fs.readFileSync(path.join(ROOT, 'localization/my/reports.ts'), 'utf8');
+    expect(code(reports)).toContain("import { storedComponentLines } from '../../core/payslip-earning-lines';");
+    const now = slice(reports);
     expect(now.length).toBeGreaterThan(3000);
     expect(now).toBe(slice(show('localization/my/reports.ts')));
     const ea = fs.readFileSync(path.join(ROOT, 'lib/ea-pdf.ts'), 'utf8');
