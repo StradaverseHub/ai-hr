@@ -211,6 +211,8 @@
     "flexibleBreakHint": "Khi bật, số phút cho phép sẽ được trừ khỏi mỗi ngày làm việc dù nhân viên có nghỉ trong khung giờ ở trên hay không — khung giờ đó chỉ còn mang tính hướng dẫn. Thiết lập này thay đổi cách tính giờ của ca, nên mặc định tắt cho tới khi bạn bật.",
     "breakDeductionSummary": "Trừ {deducted} khỏi một ngày làm việc đầy đủ, còn lại {net} giờ làm việc bình thường.",
     "breakDeductionSemiHint": "Với ca bán linh hoạt, giờ làm việc bình thường là con số đặt ở trên chứ không phải khung giờ, nên ở đây không tính tổng.",
+    "breakDeductionFullFlexiSummary": "Hoàn thành {required} thời gian làm việc đủ điều kiện. Tổng thời gian nghỉ không lương được cài đặt là {deducted}; khoản trừ nghỉ áp dụng làm giảm thời gian làm việc đã ghi nhận, không làm giảm thời lượng yêu cầu này.",
+    "breakDeductionFullFlexiPending": "Đặt giờ làm việc bình thường yêu cầu ở trên. Thời gian nghỉ không lương áp dụng làm giảm thời gian làm việc đã ghi nhận, không làm giảm thời lượng yêu cầu.",
     "moreSettingsSummary": "Cài đặt khác",
     "moreSettingsHint": "Mô tả, danh mục, loại ngày, giờ vào sớm nhất, giờ ra muộn nhất, giờ vào nửa ngày thứ hai, nghỉ cả ngày, tăng ca cả ngày, làm tròn giờ bình thường, bảng tăng ca và phụ cấp ca — tất cả vẫn được lưu và vẫn sửa được.",
     "allCompanies": "Tất cả công ty",

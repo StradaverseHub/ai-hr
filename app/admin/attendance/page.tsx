@@ -165,6 +165,11 @@ export default async function ShiftSettingsPage({
                                 <span key={r.seq} className="tabular-nums">
                                   {r.seq}. {r.start}–{r.end}{' '}
                                   <span className="text-muted-foreground">({r.minutes}m)</span>
+                                  {r.flexibleMinutes != null && (
+                                    <span className="ml-1 rounded bg-sky-100 px-1.5 py-0.5 text-[11px] font-medium text-sky-700 dark:bg-sky-500/15 dark:text-sky-400">
+                                      {t('breakFlexibleBadge', {minutes:r.flexibleMinutes})}
+                                    </span>
+                                  )}
                                   {r.paid && (
                                     <span className="ml-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
                                       {t('breakPaidBadge')}

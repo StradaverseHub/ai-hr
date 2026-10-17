@@ -211,6 +211,8 @@
     "flexibleBreakHint": "Apabila dihidupkan, minit yang dibenarkan ditolak daripada setiap hari bekerja sama ada pekerja berehat dalam waktu di atas atau tidak — waktu itu kekal sebagai panduan. Ia mengubah cara jam dikira untuk syif ini, jadi ia dimatikan sehingga anda menghidupkannya.",
     "breakDeductionSummary": "{deducted} ditolak daripada satu hari penuh, meninggalkan {net} waktu kerja biasa.",
     "breakDeductionSemiHint": "Pada syif Semi Fleksi, waktu kerja biasa ialah angka yang ditetapkan di atas, bukan tetingkap masa, jadi tiada jumlah dikira di sini.",
+    "breakDeductionFullFlexiSummary": "Lengkapkan {required} masa kerja yang layak. Jumlah tetapan rehat tanpa gaji ialah {deducted}; potongan rehat yang berkenaan mengurangkan masa kerja direkodkan, bukan tempoh wajib ini.",
+    "breakDeductionFullFlexiPending": "Tetapkan waktu kerja normal yang diperlukan di atas. Rehat tanpa gaji yang berkenaan mengurangkan masa kerja direkodkan, bukan tempoh wajib.",
     "moreSettingsSummary": "Tetapan lanjut",
     "moreSettingsHint": "Penerangan, kategori, jenis hari, waktu masuk paling awal, waktu keluar paling lewat, waktu masuk separuh hari kedua, cuti sehari penuh, lebih masa sehari penuh, pembundaran waktu biasa, jadual lebih masa dan premium syif — semuanya masih disimpan dan boleh disunting.",
     "allCompanies": "Semua syarikat",
