@@ -117,9 +117,17 @@ describe('Employee Master authorization and persistence',()=>{
   const run=await runEmployeeMasterReport(ctx,[b.companyId],{spec:{...basic(),asAt,columns:[defaultMasterColumn(reason),defaultMasterColumn(notice)]}});
   expect(run.result.sections[0].rows[0].cells).toEqual([expect.objectContaining({value:'resignation',recordedKind:'effect'}),expect.objectContaining({value:0,recordedKind:'effect'})]);
   const kind=PERSONNEL_FIELDS.find(field=>field.owner==='movement'&&field.ownerField==='kind')!,effective=PERSONNEL_FIELDS.find(field=>field.owner==='movement'&&field.ownerField==='effectiveFrom')!;
-  const expanded=await runEmployeeMasterReport(ctx,[b.companyId],{spec:{...basic(),asAt,columns:[{...defaultMasterColumn(kind),records:'all'},defaultMasterColumn(effective),defaultMasterColumn(reason),defaultMasterColumn(notice)]}});
+  // A coherent movement-history row requires All on every same-register column. A Latest override
+  // deliberately repeats the latest termination facts on other rows; that separate behavior is pinned
+  // by the pure projection suite and the latest-only read above.
+  const expanded=await runEmployeeMasterReport(ctx,[b.companyId],{spec:{...basic(),asAt,columns:[kind,effective,reason,notice].map(field=>({...defaultMasterColumn(field),records:'all' as const}))}});
   expect(expanded.result.sections[0].rows.some(row=>row.cells[0].value==='secondment')).toBe(false);
-  expect(expanded.result.sections[0].rows.find(row=>row.cells[2].recordedKind==='effect')?.cells).toEqual([expect.objectContaining({value:'resignation'}),expect.objectContaining({value:end}),expect.objectContaining({value:'resignation',recordedKind:'effect'}),expect.objectContaining({value:0,recordedKind:'effect'})]);
+  const effects=expanded.result.sections[0].rows.filter(row=>row.cells[2].recordedKind==='effect');
+  expect(effects).toHaveLength(1);
+  const [effect]=effects;
+  expect(effect.cells).toEqual([expect.objectContaining({value:'resignation'}),expect.objectContaining({value:end}),expect.objectContaining({value:'resignation',recordedKind:'effect'}),expect.objectContaining({value:0,recordedKind:'effect'})]);
+  expect(effect.recordId).toEqual(expect.any(String));
+  expect(effect.cells.every(cell=>cell.sourceRecordId===effect.recordId)).toBe(true);
  });
  it('reads a missing legacy tax selection without locks/initialization in the report snapshot and preserves tenant/subject scope',async()=>{
   await owner.db.delete(schema.employmentTaxSelectionMy).where(eq(schema.employmentTaxSelectionMy.employmentId,employee.employmentId));const pack=requirePackFor('MY');const read=await withTenant(ctx,tx=>pack.statutory.getTaxSelection!(ctx,employee.employmentId,undefined,{tx,readOnly:true}),{readOnlySnapshot:true});expect(read).toMatchObject({version:0,transitionState:'confirmation_required'});expect(await owner.db.select().from(schema.employmentTaxSelectionMy).where(eq(schema.employmentTaxSelectionMy.employmentId,employee.employmentId))).toEqual([]);

@@ -90,9 +90,10 @@ async function subjectCtxFor(personId: string): Promise<SessionContext> {
 }
 
 /** Count real query round-trips on the app pool (excludes BEGIN/COMMIT/SAVEPOINT bookkeeping). */
-async function countQueries<T>(fn: () => Promise<T>): Promise<{ result: T; queries: number }> {
+async function countQueries<T>(fn: () => Promise<T>): Promise<{ result: T; queries: number; statements: string[] }> {
   const sqlClient = client as unknown as { options: { debug?: unknown } };
   let n = 0;
+  const statements: string[] = [], previousDebug = sqlClient.options.debug;
   sqlClient.options.debug = (_id: number, str: string) => {
     const s = str.trim().toLowerCase();
     if (
@@ -105,12 +106,13 @@ async function countQueries<T>(fn: () => Promise<T>): Promise<{ result: T; queri
       return;
     }
     n += 1;
+    statements.push(s);
   };
   try {
     const result = await fn();
-    return { result, queries: n };
+    return { result, queries: n, statements };
   } finally {
-    sqlClient.options.debug = undefined;
+    sqlClient.options.debug = previousDebug;
   }
 }
 
@@ -230,12 +232,18 @@ describe('plannedAbsences personIds scope (eae550e9 step 1)', () => {
     const read = () =>
       plannedAbsences(adminCtx(b), [b.companyId], WINDOW, FAKE_TODAY, { personIds: teamIds });
 
-    // Budget breakdown (per call): 1 set_config (r394: withTenant sets its four GUCs in ONE statement; it
-    // was 4) + emps + leaves + per-date rows fetch, then per DISTINCT employment with eligible leave:
-    // 1 roster + 3 holiday-resolution queries (workingDatesForSpans). 3 employments ⇒ 4 + 3×4 = 16. A reintroduced per-LEAVE lookup or a second plannedAbsences call
-    // breaks this exact number — that is the point of pinning it.
+    // Budget per call: set_config + emps + leaves + per-date rows = 4. Each eligible employment
+    // retains its 1 schedule + 3 original-calendar reads. ADR-0120 adds 3 dated-entity reads
+    // (current company, assignment spine, tenure) and 1 replacement-ledger read. This fixture has
+    // no replacement allocations, so no additional allocation-coverage proof is needed.
+    // Three employments therefore mean 4 + 3×8 = 28, still independent of the number of leaves.
+    const calendarReads = (statements: string[]) => ({
+      assignmentHistory: statements.filter(s => /\bfrom\s+"assignment"/.test(s)).length,
+      replacementLedger: statements.filter(s => /\bfrom\s+"replacement_holiday"/.test(s)).length,
+    });
     const first = await countQueries(read);
-    expect(first.queries).toBe(16);
+    expect(first.queries).toBe(28);
+    expect(calendarReads(first.statements)).toEqual({ assignmentHistory: 3, replacementLedger: 3 });
 
     // MORE leaves for the same employments must NOT change the round-trip count (the old code paid
     // 2 round-trips per LEAVE; the fix pays per EMPLOYMENT).
@@ -243,6 +251,7 @@ describe('plannedAbsences personIds scope (eae550e9 step 1)', () => {
     await approvedLeave(ctxA, reportA.employmentId, '2026-08-16', '2026-08-16');
     const second = await countQueries(read);
     expect(second.queries).toBe(first.queries);
+    expect(calendarReads(second.statements)).toEqual({ assignmentHistory: 3, replacementLedger: 3 });
     // Sanity: the extra leaves are really in the result (the equal count is not an empty-read artifact).
     expect(second.result.find((r) => r.id === reportA.personId)!.leaves.length).toBeGreaterThanOrEqual(3);
   });

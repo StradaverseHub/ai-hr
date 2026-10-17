@@ -191,8 +191,21 @@ describe('customer deploy refuses unsafe configuration before any install or dat
   it('does not let --migrate-only bypass customer configuration', () => {
     refused(runDeploy({ ALLOW_DEMO_SESSION: 'true' }, { args: ['--migrate-only'] }), 'ALLOW_DEMO_SESSION');
   });
-  it('refuses the unedited customer template before any external work', () => {
-    refused(runDeploy({}, { template: true }), 'KEYCLOAK_WEB_CLIENT_SECRET');
+  it('refuses the internal-sign-in customer template placeholders before any external work', () => {
+    const template = fs.readFileSync(path.join(REPO, 'deploy/.env.customer.example'), 'utf8');
+    expect(template).toMatch(/^AUTH_PROVIDER=internal$/m);
+    const result = runDeploy({}, { template: true });
+    for (const setting of ['AI_CONFIG_SECRET', 'AUTH_SESSION_KEY', 'AUTH_PUBLIC_ORIGIN', 'DATABASE_URL', 'MIGRATION_DATABASE_URL']) {
+      refused(result, setting);
+    }
+    // The selected provider owns its requirements: a new internal installation needs no federation secret.
+    expect(result.output).not.toMatch(/KEYCLOAK_|WORKOS_/);
+  });
+  it('still refuses a missing federation secret when the customer explicitly selects legacy Keycloak', () => {
+    refused(runDeploy({ AUTH_PROVIDER: 'keycloak', AUTH_SESSION_KEY: 'a'.repeat(64),
+      AUTH_PUBLIC_ORIGIN: 'https://hr.customer.com', KEYCLOAK_ISSUER: 'https://identity.customer.com/realms/customer',
+      KEYCLOAK_WEB_CLIENT_ID: 'aihr-web', KEYCLOAK_MOBILE_CLIENT_ID: 'aihr-mobile', KEYCLOAK_API_AUDIENCE: 'aihr-api',
+      KEYCLOAK_WEB_CLIENT_SECRET: undefined }), 'KEYCLOAK_WEB_CLIENT_SECRET');
   });
 });
 

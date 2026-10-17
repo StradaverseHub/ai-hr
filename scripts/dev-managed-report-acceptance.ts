@@ -211,7 +211,7 @@ async function main(){
  for(const service of ['cron.service','crond.service']){let active='';try{active=command('systemctl',['is-active',service]);}catch{}check(active!=='active','Cron must initially be stopped on this dedicated VM.');}
  for(const name of ['AUTH_PROVIDER','AUTH_PUBLIC_ORIGIN','AUTH_SESSION_KEY','DATABASE_URL']){if(process.env[name]!==undefined)check(process.env[name]===web[name],'Caller cannot override active web Auth/database authority.');process.env[name]=web[name];}
  for(const name of [...new Set([...Object.values(LEGACY_MODULE_ENV_GATES),...Object.values(LEGACY_SETTING_ENV_GATES)])])if(name){delete process.env[name];if(web[name]!==undefined)process.env[name]=web[name];}
- delete process.env.DEV_TENANT_ID;delete process.env.DEV_USER_ID;process.env.ALLOW_DEMO_SESSION='false';if(web.AUDIT_HASH_CHAIN_ENABLED!==undefined)process.env.AUDIT_HASH_CHAIN_ENABLED=web.AUDIT_HASH_CHAIN_ENABLED;else delete process.env.AUDIT_HASH_CHAIN_ENABLED;
+ delete process.env.DEV_TENANT_ID;delete process.env.DEV_USER_ID;process.env.ALLOW_DEMO_SESSION='false';
  Object.assign(process.env,{NODE_ENV:web.NODE_ENV??'production'});process.env.MIGRATION_DATABASE_URL=migration.toString();
  out='/var/lib/aihr-report-acceptance/'+marker.runId;await fs.mkdir(out,{recursive:true,mode:0o700});const st=await fs.lstat(out);check(st.isDirectory()&&!st.isSymbolicLink()&&st.uid===0&&(st.mode&0o777)===0o700,'Private owned evidence directory required.');
  lock=await fs.open('/run/aihr-report-acceptance.lock',constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY,0o600);await lock.writeFile(String(process.pid));

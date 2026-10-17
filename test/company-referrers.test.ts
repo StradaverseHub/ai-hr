@@ -70,6 +70,10 @@ import * as schema from '../db/schema';
 import { defaultPolicy } from '../packs/rewards/service';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { withTenant } from '../db/client';
+import { hireEmployee } from '../core/org';
+import { createMovementEvent } from '../core/movement';
+import { saveReplacementHolidayPolicy } from '../core/holiday-replacements';
+import { saveOvertimePatternDraft } from '../packs/attendance/service';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import {
   COMPANY_CONFIG_DEPENDENTS,
@@ -81,6 +85,7 @@ import {
   CompanyDeleteForbiddenError,
   CompanyInUseError,
   createCompany,
+  createDepartment,
   deleteCompany,
 } from '../core/admin';
 import { companyDeleteStatus } from '../core/read';
@@ -328,6 +333,19 @@ describe('§1 the declared referrer set is the live schema', () => {
 // ── §2 ─────────────────────────────────────────────────────────────────────────────────────────────
 type Case = { name: string; expected: CompanyDeleteBlock | null; setup: (id: string) => Promise<void> };
 const CASES: Case[] = [
+  { name: 'a published replacement holiday policy', expected: 'other', setup: async id => {
+    await saveReplacementHolidayPolicy(ADMIN(), { companyId: id, effectiveFrom: todayInKualaLumpur(),
+      regime: 'company_confirmed', confirmed: true, restMode: 'scheduled_rest', halfEligible: false,
+      searchDays: 30, reason: 'Fictional retained company policy.' });
+  } },
+  ...(['origin', 'scope'] as const).map(kind => ({ name: `retained overtime ${kind} company`, expected: 'payroll' as const, setup: async (id: string) => {
+    await saveOvertimePatternDraft(ADMIN(), { draft: { code: 'RET_' + randomUUID().slice(0, 8),
+      creationCompanyId: kind === 'origin' ? id : b.companyId, companyIds: [id], name: 'Retained draft',
+      definition: { v: 1, currency: { code: 'MYR', minorScale: 2 }, definitions: [], eligibilityBasis: 'day',
+        durationAllocation: 'earliest', eligibility: { id: 'eligible', type: 'constant', value: false },
+        eligibleMinutes: null, durationCap: null, durationRounding: null, deductions: [], rates: [],
+        paymentCap: null, moneyRounding: { stage: 'dayMapping', mode: 'halfUp' } } } });
+  } })),
   {name:'a dated attendance correction retains company-owned shift history',expected:'other',setup:async(id)=>{
     const personId=await newPerson();
     const [employment]=await owner.db.insert(schema.employment).values({tenantId:b.tenantId,personId,companyId:b.companyId,hiredOn:'2020-01-01'}).returning();
@@ -336,7 +354,9 @@ const CASES: Case[] = [
   }},
   ...(['rule','shift'] as const).map(source=>({
     name:`retained schedule rotation ${source}`,expected:'other' as const,setup:async(id:string)=>{
-      const [rule]=await owner.db.insert(schema.attendanceRule).values({tenantId:b.tenantId,companyId:source==='rule'?id:null,name:`Rotation ${source} ${randomUUID()}`}).returning();
+      // This is a retained legacy company-owned group; current creation UI creates global groups.
+      // Supply the real admin transaction so its immutable overtime snapshot owner has authority.
+      const [rule]=await withTenant(ADMIN(),tx=>tx.insert(schema.attendanceRule).values({tenantId:b.tenantId,companyId:source==='rule'?id:null,name:`Rotation ${source} ${randomUUID()}`}).returning());
       const [shift]=await owner.db.insert(schema.shift).values({tenantId:b.tenantId,companyId:source==='shift'?id:null,name:`Rotation source ${randomUUID()}`,startTime:'08:00',endTime:'17:00'}).returning();
       const date=new Date(Date.parse(`${todayInKualaLumpur()}T00:00:00Z`)+86_400_000).toISOString().slice(0,10);
       await owner.db.insert(schema.attendanceRotation).values({tenantId:b.tenantId,ruleId:rule.id,effectiveFrom:date,anchorDate:date,unit:'day',length:1,allowedShiftIds:[shift.id],days:[{kind:'full',shiftId:shift.id}],createdBy:b.adminUserId});
@@ -493,6 +513,49 @@ describe('§2 the panel and the delete guard give the same answer, for every dis
       }
     });
   }
+
+  it('a scoped old-company administrator receives only the retained holiday boolean after an entity transfer', async () => {
+    const original = await fresh(), destination = b.companyId, today = todayInKualaLumpur();
+    const day = (delta: number) => new Date(Date.parse(today + 'T00:00:00Z') + delta * 86_400_000).toISOString().slice(0, 10);
+    const department = await createDepartment(ADMIN(), { companyId: original, name: 'Retained holiday origin' });
+    const hired = await hireEmployee(ADMIN(), { companyId: original, departmentId: department.id,
+      person: { fullName: 'Transferred holiday subject', primaryEmail: randomUUID() + '@retention.test' },
+      employmentType: 'full_time', hiredOn: day(-366) });
+    const [holiday] = await owner.db.insert(schema.holiday).values({ tenantId: b.tenantId, companyId: original,
+      country: 'MY', holidayDate: day(-2), name: 'Retained source holiday' }).returning();
+    const allocation = await withTenant(ADMIN(), async tx => {
+      const [row] = await tx.insert(schema.replacementHoliday).values({ tenantId: b.tenantId, employmentId: hired.employmentId,
+        companyId: original, sourceHolidayId: holiday.id, sourceDate: day(-2), sourceName: holiday.name,
+        inputDigest: 'retention-fixture', status: 'review', reason: 'Retain historical employee allocation.' }).returning();
+      await tx.insert(schema.replacementHolidayRevision).values({ tenantId: b.tenantId, allocationId: row.id,
+        employmentId: hired.employmentId, companyId: original, snapshot: { after: row }, createdBy: b.adminUserId });
+      return row;
+    });
+    await createMovementEvent(ADMIN(), { employmentId: hired.employmentId, kind: 'entityTransfer',
+      effectiveDate: today, companyId: destination, departmentId: b.deptA });
+    // Restrict the actual administrator role as well as the request grants. Old-company data remains
+    // protected by current employment visibility; the helper must expose no employee/holiday payload.
+    await owner.db.update(schema.roleAssignment).set({ companyId: original }).where(eq(schema.roleAssignment.appUserId, b.adminUserId));
+    const context = scopedAdmin(original);
+    expect(await withTenant(context, tx => tx.select().from(schema.replacementHoliday).where(eq(schema.replacementHoliday.id, allocation.id)))).toEqual([]);
+    expect(await withTenant(context, tx => tx.select().from(schema.replacementHolidayRevision).where(eq(schema.replacementHolidayRevision.allocationId, allocation.id)))).toEqual([]);
+    const used = (ctx: SessionContext, id: string) => withTenant(ctx, async tx => {
+      const [row] = await tx.execute(sql`select app.replacement_holiday_company_in_use(${id}::uuid) as used`) as unknown as { used: boolean }[];
+      return row.used;
+    });
+    expect(await used(context, original)).toBe(true);
+    expect(await companyDeleteStatus(context, original)).toEqual({ canDelete: true, blockedBy: 'employees' });
+    expect(await attempt(context, original)).toBe('employees');
+    expect(await exists(original)).toBe(true);
+    expect((await owner.db.select().from(schema.replacementHoliday).where(eq(schema.replacementHoliday.id, allocation.id)))).toEqual([allocation]);
+    expect(await owner.db.select().from(schema.replacementHolidayRevision).where(eq(schema.replacementHolidayRevision.allocationId, allocation.id))).toHaveLength(1);
+    for (const denied of [member(), scopedAdmin(destination), { ...context, tenantId: randomUUID() }]) {
+      expect(await used(denied, original)).toBe(false);
+    }
+    const [otherTenant] = await owner.db.insert(schema.tenant).values({ name: 'Other retention tenant', workosOrgId: randomUUID() }).returning();
+    const [otherTenantCompany] = await owner.db.insert(schema.company).values({ tenantId: otherTenant.id, legalName: 'Foreign retention company' }).returning();
+    expect(await used(ADMIN(), otherTenantCompany.id)).toBe(false);
+  });
 
   it('retains a hidden group-cycle opening-company snapshot after an employee transfers', async () => {
     const original = await bare({ parentCompanyId: b.companyId });

@@ -103,3 +103,57 @@ describe('r395 — per-row visibility functions are gone from every policy USING
     }
   });
 });
+
+// The board's four SELECT policies added after 0515 must preserve their exact read graph.
+// In particular, workflow-v2 participants can retain a request without Personnel visibility,
+// and payroll administrators have a separate overtime-assignment read arm.
+const boardPolicies = [
+  { table: 'replacement_holiday', policy: 'replacement_holiday_read', oldQual:
+    'tenant_id=app.current_tenant_id() AND app.can_see_employment(employment_id)' },
+  { table: 'replacement_holiday_revision', policy: 'replacement_holiday_revision_read', oldQual:
+    'tenant_id=app.current_tenant_id() AND app.can_see_employment(employment_id)' },
+  { table: 'attendance_workflow_reassignment', policy: 'attendance_workflow_reassignment_read', oldQual:
+    'tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.attendance_workflow_request w WHERE w.id=request_id AND (app.can_see_employment(w.employment_id) OR app.attendance_workflow_v2_read(w.correction_id)))' },
+  { table: 'overtime_pattern_assignment_employment', policy: 'overtime_assignment_employment_read', oldQual:
+    'tenant_id=app.current_tenant_id() AND(app.is_admin() OR app.can_see_employment(employment_id) OR app.can_admin_payroll_employment(employment_id))' },
+];
+
+describe('0558 — board policies retain every read arm and statement-scoped visibility', () => {
+  it.each(boardPolicies)('$table.$policy changes only the proven-equivalent visibility predicate', async (p) => {
+    const [live] = await q(`select qual, with_check, cmd from pg_policies where schemaname='public' and tablename=$1 and policyname=$2`, [p.table, p.policy]);
+    expect(live, key(p.table, p.policy)).toBeTruthy();
+    expect(live.cmd).toBe('SELECT');
+    expect(live.with_check).toBeNull();
+    expect([...p.oldQual.matchAll(/app\.can_see_employment\(([a-z_.]+)\)/g)]).toHaveLength(1);
+    const expected = p.oldQual.replace(/app\.can_see_employment\(([a-z_.]+)\)/g,
+      '$1=ANY((SELECT app.visible_employment_ids())::uuid[])');
+    // Let PostgreSQL normalize both expressions. Compare the complete qual, including the tenant
+    // fence, correlated workflow EXISTS, workflow-v2 exception and separate payroll/admin arms.
+    // The transaction always rolls back; a failed assertion cannot leave a test-mutated policy.
+    const rollback = new Error('policy normalization rollback');
+    try {
+      await owner.client.begin(async (tx) => {
+        await tx.unsafe(`alter policy "${p.policy}" on public."${p.table}" using (${expected})`);
+        const [parsed] = await tx.unsafe(`select qual, with_check from pg_policies where schemaname='public' and tablename=$1 and policyname=$2`, [p.table, p.policy]);
+        expect(live.qual, `${key(p.table, p.policy)} exact USING`).toBe(parsed.qual);
+        expect(parsed.with_check, 'SELECT policy remains read-only').toBe(live.with_check);
+        throw rollback;
+      });
+    } catch (error) {
+      if (error !== rollback) throw error;
+    }
+  });
+
+  it.each(boardPolicies)('$table uses an InitPlan, never per-row visibility', async (p) => {
+    let plan = '';
+    await owner.client.begin(async (tx) => {
+      await tx.unsafe(`select set_config('app.tenant_id', gen_random_uuid()::text, true), set_config('app.user_id', gen_random_uuid()::text, true)`);
+      await tx.unsafe('set local role ai_hr_app');
+      const rows = await tx.unsafe(`explain (costs off) select * from public."${p.table}"`);
+      plan = rows.map(r => r['QUERY PLAN']).join('\n');
+    });
+    expect(plan).toMatch(/InitPlan/);
+    expect(plan).toMatch(/ANY \(\$\d+\)|= ANY \(\(InitPlan/);
+    expect(plan).not.toMatch(/can_see_(employment|person)/);
+  });
+});

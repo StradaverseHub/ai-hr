@@ -17,7 +17,8 @@
  * LATENT, NOT LIVE. Production is nine companies, all Malaysian, in one tenant: every bucket is MYR, the
  * single-total path is taken, and the printed number is unchanged. This is for the second country.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import * as reporting from '../core/reporting';
 import type { SessionContext } from '../db/client';
 import { REPORT_DATASETS, getDataset, runReportSpec, type ReportDataset, type ReportRow } from '../core/report-registry';
 
@@ -179,10 +180,38 @@ describe('the real datasets carry the currency the runner needs', () => {
     expect(ds.defaultColumns).not.toContain('currency');
   });
 
-  it('attendance_ot offers Currency — r115 already resolved it per company, the projection dropped it', () => {
+  it('attendance_ot offers Currency beside legacy money in the new evidence-aware defaults', () => {
     const ds = getDataset('attendance_ot')!;
-    expect(ds.fields.some((f) => f.id === 'currency')).toBe(true);
-    expect(ds.defaultColumns).not.toContain('currency');
+    expect(ds.fields.find((f) => f.id === 'currency')).toMatchObject({ type: 'text' });
+    expect(ds.fields.find((f) => f.id === 'otAmount')).toMatchObject({ type: 'currency', label: 'Legacy OT Amount' });
+    expect(ds.defaultColumns).toContain('currency');
+  });
+
+  it('the real attendance_ot projection carries company currency even when a saved report omits it', async () => {
+    const row = (name: string, currency: string, otAmount: number): reporting.OvertimeReportRow => ({
+      employmentId: name, name, employeeCode: name, normalWorkingHours: 8, totalWorkedHours: 10,
+      totalOtHours: 2, normalDayOtHours: 2, restDayOtHours: 0, publicHolidayOtHours: 0,
+      workdayMultiplier: 1.5, restDayExcessMultiplier: 2, holidayExcessMultiplier: 3,
+      otAmount, currency, eligible: true, otSource: 'system', otApprovalStatus: 'approved',
+    });
+    // Mock only the authoritative read. The real dataset projection and the real report runner must
+    // retain its currencies; removing r.currency from the projection makes the mixed total go red.
+    const sourceRows = [row('Aisyah', 'MYR', 1000), row('Wei', 'SGD', 200)];
+    const read = vi.spyOn(reporting, 'overtimeReport').mockResolvedValue({ month: '2026-01', statutoryVersion: null, rows: sourceRows });
+    const attendanceCtx = { ...ctx, entitlements: { ...ctx.entitlements!, enabledModules: ['attendance'] } };
+    const scope = ['company-myr', 'company-sgd'];
+    try {
+      const projected = await getDataset('attendance_ot')!.run(attendanceCtx, scope, { month: '2026-01' });
+      expect(projected.map((r) => [r.currency, r.otAmount])).toEqual([['MYR', 1000], ['SGD', 200]]);
+      const out = await runReportSpec(attendanceCtx, scope, { datasetId: 'attendance_ot', columns: ['name', 'otAmount'],
+        filters: { month: '2026-01' }, layout: { summary: ['otAmount'] } });
+      expect(read).toHaveBeenCalledWith(attendanceCtx, { month: '2026-01', companyIds: scope });
+      expect(out.columns).toEqual(['Employee Name', 'Legacy OT Amount']);
+      expect(out.rows).toEqual([['Aisyah', 1000], ['Wei', 200], ['Total (MYR)', 1000], ['Total (SGD)', 200]]);
+      expect(out.rows.flat()).not.toContain(1200);
+    } finally {
+      read.mockRestore();
+    }
   });
 
   it('payroll_history offers Currency — seven money columns, read across every company in scope', () => {

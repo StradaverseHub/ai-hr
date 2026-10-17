@@ -5,7 +5,7 @@
  *   - transferEmployee now guards department / position / cost-centre CHANGED-ONLY: a newly-supplied
  *     value must be usable by the employment's company under the Shared System Labels resolver
  *     (Global or explicit companies — labelUsableByCompany) AND not archived; re-supplying
- *     the stored current value (even legacy cross-company data) keeps working.
+ *     an eligible stored current value (including archived labels) keeps working.
  *   - setEmploymentAssignment applies the same resolver + archived check to a CHANGED department /
  *     position (the BU check is covered by test/personnel-org-assignment-standardization.test.ts),
  *     and carries an unchanged shared-in value forward even after the sharing flag is flipped OFF —
@@ -131,28 +131,35 @@ describe('570e3311 — transferEmployee changed-only org-label guards', () => {
     ).rejects.toBeInstanceOf(CrossCompanyError);
   });
 
-  it('accepts re-supplying the CURRENT value even when it is legacy cross-company (changed-only semantics)', async () => {
-    const a = adminCtx(b);
-    const hire = await hireOne();
-    const coB = await secondCompany();
-    const foreign = await createDepartment(a, { companyId: coB, name: 'Legacy Foreign Dept' });
-    // Simulate legacy/imported data: the stored current assignment points at a wrong-company label.
-    await owner.db
-      .update(schema.assignment)
-      .set({ departmentId: foreign.id })
-      .where(and(eq(schema.assignment.employmentId, hire.employmentId), isNull(schema.assignment.validTo)));
-    // Re-supplying that same department (as a UI that pins the current value would) passes the guard,
-    // while the transfer still applies the genuinely-changed field.
+  it('refuses a newly injected wrong-company assignment even through the owner connection', async () => {
+    const a = adminCtx(b), hire = await hireOne(), coB = await secondCompany();
+    const foreign = await createDepartment(a, { companyId: coB, name: 'Unavailable Foreign Dept' });
+    await expect(owner.db.update(schema.assignment).set({ departmentId: foreign.id })
+      .where(and(eq(schema.assignment.employmentId, hire.employmentId), isNull(schema.assignment.validTo))))
+      .rejects.toMatchObject({ cause: expect.objectContaining({ code: '23514',
+        message: 'Assignment label Criteria do not include its recorded company' }) });
+    expect((await openAssignment(hire.employmentId)).departmentId).toBe(b.deptA);
+  });
+
+  it('retains an archived CURRENT department with valid Criteria on an unrelated assignment change', async () => {
+    const a = adminCtx(b), hire = await hireOne(), coB = await secondCompany();
+    const held = await createDepartment(a, { companyId: coB, name: 'Held Foreign-Origin Dept' });
+    // Creation-company provenance is distinct from availability. Install a permitted shared-in label
+    // through the real writer, then archive it: it is off the new-choice list but is still held.
+    await assignLabelToCompanies(a, { kind: 'department', labelId: held.id, companyIds: [b.companyId] });
+    await transferEmployee(a, { employmentId: hire.employmentId, effectiveDate: '2026-03-01', departmentId: held.id });
+    await archiveDepartment(a, { id: held.id, archived: true });
     const res = await transferEmployee(a, {
-      employmentId: hire.employmentId,
-      effectiveDate: '2026-06-01',
-      departmentId: foreign.id,
-      positionId: b.positionId,
+      employmentId: hire.employmentId, effectiveDate: '2026-06-01', departmentId: held.id, positionId: b.positionId,
     });
     expect(res.assignmentId).toBeTruthy();
     const open = await openAssignment(hire.employmentId);
-    expect(open.departmentId).toBe(foreign.id); // carried, not blocked, not cleared
+    expect(open.departmentId).toBe(held.id); // carried, not blocked, not cleared
     expect(open.positionId).toBe(b.positionId);
+    // Archiving still refuses NEW selection by another employment; held-value retention grants no access.
+    const other = await hireOne();
+    await expect(transferEmployee(a, { employmentId: other.employmentId, effectiveDate: '2026-06-01', departmentId: held.id }))
+      .rejects.toBeInstanceOf(CrossCompanyError);
   });
 });
 
@@ -239,9 +246,9 @@ describe('570e3311 — employee detail page wiring pins', () => {
   // assignment projection rather than by looking it up in a scoped option list.
   it('displays the stored BU / Department / Position from the assignment projection, not a scoped list', () => {
     for (const expr of [
-      '{readOnlyValue(current?.businessUnit)}',
-      '{readOnlyValue(current?.department)}',
-      '{readOnlyValue(current?.position)}',
+      '{readOnlyValue("employment.organisation_assignment.businessunitname", current?.businessUnit)}',
+      '{readOnlyValue("employment.organisation_assignment.departmentname", current?.department)}',
+      '{readOnlyValue("employment.organisation_assignment.positionname", current?.position)}',
     ]) {
       expect(PAGE, `${expr} must render the stored label directly`).toContain(expr);
     }

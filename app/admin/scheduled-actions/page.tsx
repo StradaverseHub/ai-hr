@@ -2,6 +2,7 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
 import { isGroupAdmin } from '@/lib/authz';
 import { getSession } from '@/lib/session';
+import { employeeMasterScheduledEmailEnabled } from '@/lib/employee-master-scheduled-email';
 import { JOBS, listRecentJobRuns, type JobRunRow } from '@/core/job-run';
 import { Card, PageHeader, SectionHeader } from '@/components/ui';
 import { Badge } from '@/components/ui/badge';
@@ -31,6 +32,8 @@ export default async function ScheduledActionsPage() {
 
   const t = await getTranslations('scheduledActions');
   const locale = await getLocale();
+  const reportEmailEnabled = employeeMasterScheduledEmailEnabled();
+  const reportSchedule = await getTranslations('employeeMasterReports.schedule');
   const runs = await listRecentJobRuns(s, RECENT);
 
   const now = Date.now();
@@ -95,7 +98,9 @@ export default async function ScheduledActionsPage() {
                       <div className="font-medium">{t(`jobs.${job.i18nKey}.name`)}</div>
                       <p className="mt-0.5 text-sm text-muted-foreground">{t(`jobs.${job.i18nKey}.description`)}</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {t('scheduleLabel')}: {job.schedule}
+                        {job.key === 'reports.employee-master.deliver' && !reportEmailEnabled
+                          ? reportSchedule('unavailable')
+                          : <>{t('scheduleLabel')}: {job.schedule}</>}
                       </p>
                     </div>
                     {last ? (

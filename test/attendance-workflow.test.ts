@@ -8,6 +8,7 @@ import { hireEmployee, setReportingLine } from '../core/org';
 import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, cancelAttendanceApplication, cancelOwnAttendanceCorrection, cancelPlannedOvertime, listAttendanceCorrections, allowanceScheduleFactsTx } from '../core/attendance';
 import { createMovementEvent } from '../core/movement';
 import { createShift, assignDefaultShift } from '../core/roster';
+import { createAttendanceRule } from '../packs/attendance/service';
 import { getScheduleRotation, saveScheduleRotation } from '../core/attendance-rotation';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { attendanceClockData } from '../core/attendance-clock-data';
@@ -753,8 +754,12 @@ describe('dated half-night rotation through staged approval and cancellation', (
         const { a, worker, mgr, self } = await fixture();
         const addDays = (value: string, days: number) => new Date(Date.parse(`${value}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
         const anchor = addDays(todayInKualaLumpur(), 8), nightDate = addDays(anchor, 1);
-        const [rule] = await owner.db.insert(schema.attendanceRule).values({ tenantId: b.tenantId,
-            name: 'Staged rotating crew', weeklyPattern: [1, 2, 3, 4, 5] }).returning();
+        // Use the actual administrator owner: rule creation also snapshots its immutable legacy OT
+        // definition. Keep the old fixture's zero/false defaults and its declared working week.
+        const rule = await createAttendanceRule(a, { name: 'Staged rotating crew', weeklyPattern: [1, 2, 3, 4, 5],
+            lateGracePeriodMinutes: 0, lateAfterMinutes: 0, lateDeductMinutes: 0, includeGraceInLateness: false,
+            earlyGracePeriodMinutes: 0, earlyAfterMinutes: 0, earlyDeductMinutes: 0, includeGraceInEarlyOut: false,
+            applyToEarlyOt: false, otRows: [] });
         const morning = await createShift(a, { name: 'Profile morning', code: 'ST-AM', startTime: '08:00', endTime: '17:00',
             breakMinutes: 60, weeklyPattern: [1, 2, 3, 4, 5], ruleId: rule.id });
         const night = await createShift(a, { name: 'Rotated half night', code: 'ST-PM', startTime: '20:00', endTime: '05:00',

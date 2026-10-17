@@ -81,6 +81,9 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'attendance_workflow_template', column: 'company_id', disposition: 'other', note: 'Immutable approval template versions are retained configuration history.' },
   { table: 'attendance_workflow_setting', column: 'company_id', disposition: 'config', note: 'Attendance workflow enablement has no meaning after its company is deleted.' },
   { table: 'attendance_workflow_request', column: 'company_id', disposition: 'employees', note: 'Submitted routing is employee decision history and must be retained.' },
+  { table: 'replacement_holiday_policy', column: 'company_id', disposition: 'other', note: 'Published replacement-holiday policy versions are retained configuration history, not disposable setup.' },
+  { table: 'replacement_holiday', column: 'company_id', disposition: 'employees', existsFunction: 'app.replacement_holiday_company_in_use', note: 'An employee-specific replacement holiday retains its original company after an entity transfer; expose only a scoped retention boolean.' },
+  { table: 'replacement_holiday_revision', column: 'company_id', disposition: 'employees', existsFunction: 'app.replacement_holiday_company_in_use', note: 'Immutable replacement-holiday revisions retain their company independently of current employment visibility.' },
   // ── employees: any row refuses ───────────────────────────────────────────────────────────────────────
   { table: 'employment', column: 'company_id', disposition: 'employees', note: 'The employment itself, terminated ones included: a former employee is still employment history.' },
   { table: 'assignment', column: 'company_id', disposition: 'employees', note: 'An employee\'s placement (department, position) over time. Exists only alongside an employment.' },
@@ -106,6 +109,16 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'attendance_allowance_result_revision', column: 'company_id', disposition: 'payroll', note: 'An immutable prior allowance calculation, retained after corrections and payroll source replacement.' },
   { table: 'payroll_attendance_allowance_source', column: 'company_id', disposition: 'payroll', note: 'An allowance contribution currently owned by a payroll run. Deleting company setup must never remove money inputs.' },
   { table: 'attendance_allowance_transfer', column: 'company_id', disposition: 'payroll', note: 'A successful or failed allowance transfer receipt, including the original run reference after draft teardown.' },
+
+  { table: 'overtime_pattern', column: 'creation_company_id', disposition: 'payroll', note: 'An overtime pattern retains its creation-company provenance; archive it without erasing the calculation basis.' },
+  { table: 'overtime_pattern_version', column: 'creation_company_id', disposition: 'payroll', note: 'An overtime definition version retains its creation company, including historical and unactivated versions.' },
+  { table: 'overtime_pattern_version_company', column: 'company_id', disposition: 'payroll', note: 'The exact company scope of an overtime version is retained financial configuration.' },
+  { table: 'attendance_overtime_source', column: 'company_id', disposition: 'payroll', note: 'A recorded overtime attendance source retains its dated financial company.' },
+  { table: 'attendance_overtime_personnel_context', column: 'company_id', disposition: 'payroll', note: 'Frozen Personnel facts supporting overtime remain attached to their recorded company.' },
+  { table: 'attendance_overtime_calculation', column: 'company_id', disposition: 'payroll', note: 'An immutable overtime calculation retains its financial company even after correction.' },
+  { table: 'attendance_overtime_calculation_evidence', column: 'company_id', disposition: 'payroll', note: 'Private calculation evidence must never be removed with company setup.' },
+  { table: 'attendance_overtime_line', column: 'company_id', disposition: 'payroll', note: 'An exact overtime earning line is retained money evidence.' },
+  { table: 'overtime_source_settlement', column: 'company_id', disposition: 'payroll', note: 'A cash or TOIL settlement receipt retains its company, including released claims.' },
 
   { table: 'reward_unit', column: 'company_id', disposition: 'payroll', note: 'A salary and bonus review with employee snapshots, funding and approval history. Preserve it even before posting.' },
 
@@ -194,6 +207,11 @@ export type CompanyConfigDependent = {
 };
 
 export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
+  { table: 'attendance_rule_shift', column: 'rule_id', references: 'attendance_rule', effect: 'blocks', note: 'Explicit Schedule Group membership may serve shared shifts; remove it through its owner before deleting company setup.' },
+  { table: 'attendance_rule_shift', column: 'shift_id', references: 'shift', effect: 'blocks', note: 'A Schedule Group explicitly retains this shift; company deletion must not silently change its allowed pool.' },
+  { table: 'attendance_exception_revision', column: 'rule_id', references: 'attendance_rule', effect: 'blocks', note: 'Immutable exception-policy revisions retain their Schedule Group.' },
+  { table: 'overtime_pattern', column: 'legacy_rule_id', references: 'attendance_rule', effect: 'blocks', note: 'The live bridge into retained legacy overtime history must be removed through the unused Schedule Group owner, not company cascade.' },
+  { table: 'overtime_pattern_legacy_binding', column: 'rule_id', references: 'attendance_rule', effect: 'blocks', note: 'A retained overtime compatibility binding must not be silently detached by cascading company setup.' },
   { table: 'attendance_day_adjustment', column: 'shift_id', references: 'shift', effect: 'blocks', note: 'An audited date correction retains its selected shift. Company setup deletion must not erase another employment’s dated attendance basis.' },
   { table: 'attendance_rotation', column: 'rule_id', references: 'attendance_rule', effect: 'blocks', note: 'Immutable rotation versions retain their Schedule Group. Deleting company-owned legacy setup must not erase saved calendar history.' },
   { table: 'attendance_rotation', column: 'allowed_shift_ids', references: 'shift', referenceKind: 'uuid-array', effect: 'blocks', note: 'Saved allowed pools retain every source shift, including company-owned legacy templates. The shift retention trigger forbids deletion; refuse it before cascading company setup.' },
