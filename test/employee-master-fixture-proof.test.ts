@@ -74,6 +74,9 @@ describe('Reports fixture executable safety contract',()=>{
   expect(prior).not.toMatch(/owner\.db\.(insert|update|delete)|provisionTenant|hireEmployee/);
   expect([...source.matchAll(/owner\.db\.insert\(s\.(\w+)\)/g)].map(match=>match[1])).toEqual(['appUser','roleAssignment','appUser']);
   expect(source).not.toMatch(/owner\.db\.(update|delete)|TRUNCATE|DROP DATABASE|saveEmployeeMasterReport|runEmployeeMasterReport|internal_auth_record|notification_pref|sendSmtp/);
-  expect(source).toContain('ownerRole.server_addr!==appRole.server_addr');
+  expect(source).toContain('assertReportFixtureConnections(await readReportFixtureConnections(client,owner.client)');
+  const connection=readFileSync(path.join(process.cwd(),'scripts/report-fixture-connection.mjs'),'utf8');
+  expect(connection.match(/host\(inet_server_addr\(\)\) as server_addr/g)).toHaveLength(2);
+  for(const guard of ['owner.server_addr!==app.server_addr','owner.server_port!==app.server_port','owner.database_oid!==app.database_oid',"['127.0.0.1','::1'].includes(app.server_addr)","app?.name!=='ai_hr_app'",'app.rolsuper','app.rolbypassrls'])expect(connection).toContain(guard);
  });
 });

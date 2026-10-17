@@ -11,6 +11,7 @@ import {fileURLToPath} from 'node:url';
 import {and,asc,eq} from 'drizzle-orm';
 import type {SessionContext} from '../db/client';
 import {REPORT_FIXTURE_DATABASE as database,REPORT_FIXTURE_NAMESPACE as namespace,REPORT_FIXTURE_PORT as port,REPORT_FIXTURE_TENANT_NAME,REPORT_FIXTURE_FOREIGN_NAME,reportFixtureUrls,reportFixtureDigest,readEmployeeMasterFixtureProof} from './employee-master-fixture-proof.mjs';
+import {readReportFixtureConnections,assertReportFixtureConnections} from './report-fixture-connection.mjs';
 const root=path.resolve(fileURLToPath(new URL('..',import.meta.url)));
 const out=path.join(root,'scratchpad/board18-reports'),manifestFile=path.join(out,'fixture-manifest.json');
 const SYSTEM='00000000-0000-0000-0000-000000000000';
@@ -39,7 +40,7 @@ const sourceCandidate=candidate();
 // No runtime DB/owner imports until all target/process/source guards have passed.
 const {createDb,client}=await import('../db/client');
 const s=await import('../db/schema');
-const {provisionTenant}=await import('../db/provision');
+const {provisionTenant,ProvisionStepError,PROVISION_STEPS}=await import('../db/provision');
 const {resolveEntitlementsTx,isModuleEnabled}=await import('../core/entitlements');
 const {createCompany,createDepartment,assignRole}=await import('../core/admin');
 const {hireEmployee,terminateEmployment}=await import('../core/org');
@@ -74,10 +75,10 @@ async function previousManifest(){
 async function emit(text:string){await new Promise<void>((resolve,reject)=>process.stdout.write('REPORT18_MANIFEST\n'+text,error=>error?reject(error):resolve()));}
 const shift=(date:string,days:number)=>{const d=new Date(date+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10);};
 const month=(date:string,offset:number)=>{const d=new Date(date+'T00:00:00Z');d.setUTCMonth(d.getUTCMonth()+offset,1);return d.toISOString().slice(0,10);};
+let stage:'connection-proof'|'private-receipts'|'pristine-target'|'provision-primary'|'provision-foreign'|'representative-data'|'write-manifest'='connection-proof';
 async function main(){
- const [appRole]=await client`select current_user as name,current_database() as database,inet_server_addr()::text as server_addr,inet_server_port() as server_port,(select oid::text from pg_database where datname=current_database()) as database_oid,rolsuper,rolbypassrls from pg_roles where rolname=current_user`;
- const [ownerRole]=await owner.client`select current_user as name,current_database() as database,inet_server_addr()::text as server_addr,inet_server_port() as server_port,(select oid::text from pg_database where datname=current_database()) as database_oid`;
- if(appRole?.name!=='ai_hr_app'||appRole.rolsuper||appRole.rolbypassrls||appRole.database!==database||ownerRole?.database!==database||ownerRole.name!==decodeURIComponent(urls.owner.username)||!['127.0.0.1','::1'].includes(appRole.server_addr)||appRole.server_port!==5433||ownerRole.server_addr!==appRole.server_addr||ownerRole.server_port!==appRole.server_port||ownerRole.database_oid!==appRole.database_oid)throw new Error('Actual Reports role/database proof refused.');
+ assertReportFixtureConnections(await readReportFixtureConnections(client,owner.client),{database,ownerName:decodeURIComponent(urls.owner.username)});
+ stage='private-receipts';
  await privateDirectory();const previousText=await previousManifest();const date=todayInKualaLumpur();
  if(previousText){
   const previous=JSON.parse(previousText) as {root:string;candidate:string;database:string;namespace:string;port:number;date:string;tenantId:string;tenantName:string;foreignTenant:{id:string;name:string};proof:unknown};
@@ -86,7 +87,7 @@ async function main(){
   if(reportFixtureDigest(proof)!==reportFixtureDigest(previous.proof))throw new Error('Reports setup drifted; no repair/reseed is permitted.');
   candidate();await emit(previousText);return; // ZERO business writes on complete second invocation
  }
- const tenants=await owner.db.select({id:s.tenant.id}).from(s.tenant).limit(2);
+ stage='pristine-target';const tenants=await owner.db.select({id:s.tenant.id}).from(s.tenant).limit(2);
  if(tenants.length!==1||tenants[0].id!==SYSTEM)throw new Error('Fresh migrated System-only Reports database required; no Demo, repair or reset.');
  const dates={today:date,hiredOn:month(date,-6),salaryChange:month(date,-2),transferOn:shift(month(date,-1),14),recentHire:month(date,0),contractEnd:shift(date,20),resignedOn:shift(date,-1),asAtBefore:shift(month(date,-2),-1),asAtAfter:date};
  async function provision(name:string,email:string,key:string){
@@ -99,8 +100,9 @@ async function main(){
   const ctx=await context(user);for(const module of ['attendance','payroll'])if(!isModuleEnabled(ctx,module))throw new Error('Canonical required module is unavailable.');
   return {made,user,ctx,login};
  }
- const primary=await provision(REPORT_FIXTURE_TENANT_NAME,'report18-bootstrap@demo.test','primary');
- const foreign=await provision(REPORT_FIXTURE_FOREIGN_NAME,'report18-foreign-bootstrap@demo.test','foreign');
+ stage='provision-primary';const primary=await provision(REPORT_FIXTURE_TENANT_NAME,'report18-bootstrap@demo.test','primary');
+ stage='provision-foreign';const foreign=await provision(REPORT_FIXTURE_FOREIGN_NAME,'report18-foreign-bootstrap@demo.test','foreign');
+ stage='representative-data';
  const tenantId=primary.made.tenantId;
  const companies:Record<string,{id:string;name:string;code:string|null;departmentId:string|null;tenantId:string;purpose:string}>={};
  for(const key of ['MainA','MainB','Hidden','Empty']){
@@ -170,10 +172,10 @@ async function main(){
   setupOnly:true,outcomes:'UNRUN: actual browser must create, save, reopen, share, preview and export reports. No report, schedule, consent, SMTP, provider binding or human authentication evidence is fabricated.',
   limits:['No scheduled-delivery acceptance; separate real installed worker/provider journey remains required.','NoSalary is actual super_admin with explicit compensation denial; A/B actual hr_admin compensation remains allowed.','Generic registry future-field propagation and hostile/stale request checks remain canonical regression outcomes, not manufactured fixture UI passes.','No report/model calls are performed by fixture. Resume validates immutable setup and preserves browser-created reports and run history.','Fresh fixture second invocation requires same candidate, KL date and proof; after journey use coordinator receipt-bound resume, never reseed.'],
   language:'Canonical routes have no locale prefix. Change language in the app (NEXT_LOCALE); six locales en/ms/zh/ta/th/vi.'};
- const text=JSON.stringify(manifest,null,2)+'\n';
+ stage='write-manifest';const text=JSON.stringify(manifest,null,2)+'\n';
  await fs.writeFile(manifestFile,text,{mode:0o600,flag:'wx'});await emit(text);
 }
 let result=0;
-try{await main();}catch{result=1;console.error('Reports18 fixture refused; preserve the named database and inspect owned setup/receipt guards. No secret or raw SQL error is logged.');}
+try{await main();}catch(error){result=1;const provisionStep=error instanceof ProvisionStepError&&PROVISION_STEPS.some(step=>step.key===error.step)?error.step:undefined;console.error(JSON.stringify({code:'REPORTS_FIXTURE_REFUSED',stage,class:provisionStep?'ProvisionStepError':error instanceof Error?'Error':'Unknown',...(provisionStep?{provisionStep}:{})}));}
 finally{try{await owner.client.end({timeout:5});}catch{result=1;}try{await client.end({timeout:5});}catch{result=1;}}
 process.exit(result);
