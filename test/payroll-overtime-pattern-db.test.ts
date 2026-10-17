@@ -1,6 +1,6 @@
 /** Real canonical source -> cash claim -> Payroll kernel regressions. Written during hold; not executed. */
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
-import {eq,sql} from 'drizzle-orm';
+import {and,eq,sql} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 import {withTenant} from '../db/client';
@@ -99,6 +99,9 @@ describe('formula money is an actual canonical Payroll input',()=>{
   const f=await fixture();const before=(await owner.db.select().from(s.payrollInput).where(eq(s.payrollInput.batchId,f.batch.batchId)))[0];expect(Number(before.overtimeAmount)).toBeGreaterThan(0);
   const first=await transferOvertimePatternToPayroll(f.ctx,f.transfer);expect(first.status).toBe('transferred');expect(await transferOvertimePatternToPayroll(f.ctx,f.transfer)).toMatchObject({status:'unchanged',settlementId:first.settlementId});
   const after=(await owner.db.select().from(s.payrollInput).where(eq(s.payrollInput.id,before.id)))[0];expect(after.overtimeAmount).toBe('0.00');
+  const audit=(await owner.db.select({payload:s.domainEvent.payload}).from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,f.batch.batchId),eq(s.domainEvent.eventType,'payroll-batch.input-set')))).map(row=>row.payload as Record<string,unknown>).filter(payload=>payload.reason==='Formula-covered days excluded from legacy aggregate');
+  expect(audit.length).toBeGreaterThan(0);
+  for(const payload of audit){expect(payload).toMatchObject({employmentId:f.e.employmentId,payrollInputId:before.id,source:'attendance'});expect(payload).not.toHaveProperty('overtimeAmount');expect(payload).not.toHaveProperty('bonusAmount');}
   await generatePayslips(f.ctx,{batchId:f.batch.batchId});expect((await slip(f.batch.batchId)).overtimePay).toBe('60.00');expect((await slip(f.batch.batchId)).statutory).toHaveProperty('overtimePatternCash');expect((await slip(f.batch.batchId)).statutory).toMatchObject({componentLines:expect.arrayContaining([expect.objectContaining({name:'Configured formula overtime',amount:60,buckets:[{bucket:'ot',amount:60}],epf:false})])});
  });
  it('pays mixed unassigned legacy and selected formula days once each',async()=>{
