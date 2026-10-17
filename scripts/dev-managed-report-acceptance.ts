@@ -21,9 +21,9 @@ const SOCKET='/run/aihr-internal-report.sock',BROKER='/run/aihr-report-auth.sock
 const INTERNAL_NODE='/usr/local/lib/aihr-identity-email/internal-node',SCHEDULE='/usr/local/lib/aihr-identity-email/internal-report-schedule.cjs';
 const hash=(value:Uint8Array|string)=>createHash('sha256').update(value).digest('hex');
 function check(value:unknown,message:string):asserts value{if(!value)throw new Error(message);}
-const mode=reportAcceptanceMode(process.argv.slice(2)),safeEnv={PATH:'/usr/sbin:/usr/bin:/sbin:/bin',LANG:'C',LC_ALL:'C'};
+const mode=reportAcceptanceMode(process.argv.slice(2)),safeEnv={NODE_ENV:'production' as const,PATH:'/usr/sbin:/usr/bin:/sbin:/bin',LANG:'C',LC_ALL:'C'};
 const command=(program:string,args:string[])=>execFileSync(program,args,{encoding:'utf8',timeout:30_000,maxBuffer:1024*1024,env:safeEnv,stdio:['ignore','pipe','pipe']}).trim();
-const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
+const sleep=(ms:number)=>new Promise<void>(resolve=>setTimeout(resolve,ms));
 type OwnedChild={child:ChildProcess;processGroupGate:Promise<AcceptanceProcessPin>;stop?:Promise<void>};
 const children=new Set<OwnedChild>(),artifacts:{id:string;token:string}[]=[],ownedOccurrences=new Set<string>(),ownedReports=new Set<string>();
 let fixtureTenant:string|undefined;
@@ -73,7 +73,7 @@ async function receiptNames(){
  try{const st=await fs.lstat(INTERNAL_REPORT_SCHEDULE_STATE);check(st.isDirectory()&&!st.isSymbolicLink()&&st.uid===0&&(st.mode&0o777)===0o700,'Untrusted scheduling state.');const names=await fs.readdir(INTERNAL_REPORT_SCHEDULE_STATE);check(names.length<=1000&&names.every(name=>/^[0-9a-f-]{36}\.json$/i.test(name)),'Unknown scheduling state inventory.');return new Set(names);}
  catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return new Set<string>();throw error;}
 }
-async function captureActivationBaseline(web:Record<string,string>){
+async function captureActivationBaseline(web:Record<string,string>):Promise<{receipts:Set<string>}&AcceptanceActivationBinding>{
  active();await assertSchedulingLockAbsent();
  check(await absentFile(INTERNAL_REPORT_DISPATCH_MARKER)&&await absentFile(INTERNAL_REPORT_DISPATCH_CRON),'Preexisting scheduling handoff is not owned.');
  const inventory=await schedulingInventory();check(inventory.sha256===inventoryBefore,'Pre-activation inventory changed.');
@@ -187,7 +187,7 @@ async function main(){
  for(const name of ['AUTH_PROVIDER','AUTH_PUBLIC_ORIGIN','AUTH_SESSION_KEY','DATABASE_URL']){if(process.env[name]!==undefined)check(process.env[name]===web[name],'Caller cannot override active web Auth/database authority.');process.env[name]=web[name];}
  for(const name of [...new Set([...Object.values(LEGACY_MODULE_ENV_GATES),...Object.values(LEGACY_SETTING_ENV_GATES)])])if(name){delete process.env[name];if(web[name]!==undefined)process.env[name]=web[name];}
  delete process.env.DEV_TENANT_ID;delete process.env.DEV_USER_ID;process.env.ALLOW_DEMO_SESSION='false';if(web.AUDIT_HASH_CHAIN_ENABLED!==undefined)process.env.AUDIT_HASH_CHAIN_ENABLED=web.AUDIT_HASH_CHAIN_ENABLED;else delete process.env.AUDIT_HASH_CHAIN_ENABLED;
- process.env.NODE_ENV=web.NODE_ENV??'production';process.env.MIGRATION_DATABASE_URL=migration.toString();
+ Object.assign(process.env,{NODE_ENV:web.NODE_ENV??'production'});process.env.MIGRATION_DATABASE_URL=migration.toString();
  out='/var/lib/aihr-report-acceptance/'+marker.runId;await fs.mkdir(out,{recursive:true,mode:0o700});const st=await fs.lstat(out);check(st.isDirectory()&&!st.isSymbolicLink()&&st.uid===0&&(st.mode&0o777)===0o700,'Private owned evidence directory required.');
  lock=await fs.open('/run/aihr-report-acceptance.lock',constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY,0o600);await lock.writeFile(String(process.pid));
  const dbModule=await import('../db/client'),s=await import('../db/schema'),q=await import('drizzle-orm');appClient=dbModule.client;owner=dbModule.createDb(migration.toString(),{max:1});
