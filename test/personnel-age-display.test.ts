@@ -24,6 +24,7 @@ import { createTranslator } from 'next-intl';
 // this door. Keeping this import as it was is what proves the move did not break them.
 import { completedYearsAt, serviceYearsAt } from '../core/leave';
 import * as ageMath from '../lib/completed-years';
+import { personnelFormLabel, personnelFormWidget } from '../lib/personnel-form-contract';
 
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 const read = (rel: string) => fs.readFileSync(path.resolve(__dirname, '..', rel), 'utf8');
@@ -154,13 +155,18 @@ describe('drift guards (source assertions)', () => {
   });
 
   it('the Age renders as a labelled read-only muted element (not an input) beside the DOB field', () => {
-    expect(src).toContain("<Field label={t('age')}");
-    const dobIdx = src.indexOf("<Field label={t('birthDate')}");
-    const ageIdx = src.indexOf("<Field label={t('age')}");
+    expect(src).toContain("const fieldId = 'profile.personal_details.dateofbirth';");
+    const dobIdx = src.indexOf('<PersonnelField fieldId={fieldId}');
+    const ageIdx = src.indexOf('<PersonnelField fieldId="profile.personal_details.age"');
     expect(dobIdx).toBeGreaterThan(-1);
     expect(ageIdx).toBeGreaterThan(dobIdx);
+    expect(personnelFormLabel('profile.personal_details.age', key => key)).toBe('people.detail.age');
+    expect(personnelFormWidget('profile.personal_details.age')).toBe('display');
     // The age cell is a <p>, not an <input> — nothing to type, nothing to save.
-    const ageBlock = src.slice(ageIdx, src.indexOf('</Field>', ageIdx));
+    const end = src.indexOf('</PersonnelField>', ageIdx);
+    expect(end).toBeGreaterThan(ageIdx);
+    const ageBlock = src.slice(ageIdx, end);
+    expect(ageBlock.length).toBeGreaterThan(100);
     expect(ageBlock).toContain('<p className="flex h-9 items-center text-sm text-muted-foreground">');
     expect(ageBlock).not.toContain('<input');
   });
