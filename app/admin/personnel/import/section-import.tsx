@@ -15,7 +15,9 @@ import { IMPORT_FILE_ACCEPT, importFileMessageKey, readImportFile } from '@/lib/
 import { toCsv } from '@/lib/csv';
 import { personnelColumnLabel as descriptorColumnLabel, personnelColumnGuidance, personnelImportField, personnelFieldChoices, personnelImportFields } from '@/lib/personnel-import-contract';
 import {
-  buildInstructionRows,
+  buildPersonnelInstructionRows,
+  personnelTemplateColumnWidths,
+  PERSONNEL_INSTRUCTION_COLUMN_WIDTHS,
   buildReferenceRows,
   EMPLOYEE_ENUM_VALUES,
   DEPENDENT_ENUM_VALUES,
@@ -167,17 +169,19 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
       if(section==='profile')referenceLists.push({label:employeeColumnLabel('passport_issuing_country'),values:reference.nationalities});
       if(section==='family')referenceLists.push({label:t('familyRelationshipLabel'),values:reference.familyRelationships});
       if(section==='bank_statutory')referenceLists.push({label:employeeColumnLabel('tax_category'),values:[...EMPLOYEE_ENUM_VALUES.tax_category]});
-      const extraSheets: { name: string; rows: (string | number)[][] }[] = [];
+      const extraSheets: NonNullable<import('@/lib/spreadsheet').BuildXlsxOptions['extraSheets']> = [];
       // Registry-owned choices and fresh catalogs follow the selected section.
       if (referenceLists.length > 0) {
         extraSheets.push({
           name: 'Reference',
+          columnWidths:[80],wrapText:true,
           rows: buildReferenceRows(t('referenceHeading'), referenceLists),
         });
       }
       extraSheets.push({
         name: 'Instructions',
-        rows: [...buildInstructionRows(t('instructionsHeading'), [
+        columnWidths:PERSONNEL_INSTRUCTION_COLUMN_WIDTHS,wrapText:true,
+        rows: [...buildPersonnelInstructionRows(t('instructionsHeading'), [
           t('sectionInstructionKey'),
           t('sectionInstructionBlank'),
           isPersonnelRegisterKind(section)?t('registerInstructions'):section === 'family' ? t('sectionInstructionFamilyRow') : t('sectionInstructionOneRow'),
@@ -189,6 +193,8 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
       const bytes = await buildXlsx(columns.map(employeeColumnLabel), [], {
         sheetName: SECTION_SHEET_NAMES[section],
         textColumns: sectionTextColumnIndexes(section),
+        columnWidths:personnelTemplateColumnWidths(columns.map(employeeColumnLabel)),
+        wrapText:true,
         headerNotes:columns.map(key=>[guidance(key,isPersonnelRegisterKind(section)?section:section==='family'?'family':'employee','update'),isPersonnelRegisterKind(section)&&personnelImportFields(section).find(field=>field.import.column===key)?.import.requiredCreate?t('registerRequiredCreate'):null].filter(Boolean).join(' · ')),
         extraSheets,
         validationLists:referenceLists.flatMap(list=>{const column=columns.findIndex(key=>employeeColumnLabel(key)===list.label);return column>=0?[{column,values:list.values}]:[];}),

@@ -1955,7 +1955,7 @@
       "sectionInstructionBlank": "留空单元格即保留现有记录。空白绝不会清除数值。",
       "sectionInstructionOneRow": "每位员工一行。两行使用相同员工编号将被拒绝。",
       "sectionInstructionFamilyRow": "每位家属一行。同一员工编号可以出现在多行中。",
-      "sectionInstructionFence": "此文件只能包含本工作表列出的列。属于其他分项的列将被拒绝，且不会导入任何内容。不属于任何分项的列 — 公司、部门、职位、成本中心、雇佣类型、入职日期、薪酬，以及 EPF、SOCSO、EIS 和税务居民身份 — 完全无法按分项导入；请在该员工的人事记录中修改。",
+      "sectionInstructionFence": "仅使用本工作表列出的列。其他部分的列将被拒绝，且不会导入任何数据。请使用相应部分的模板填写其支持的字段；下方说明所列的字段请在人事页面处理。",
       "sectionUpdateCount": "{count, plural, one {# 项待更新} other {# 项待更新}}",
       "sectionSkipCount": "{count, plural, one {# 项无需改动} other {# 项无需改动}}",
       "sectionNotFoundCount": "{count, plural, one {# 项未找到} other {# 项未找到}}",
@@ -2009,8 +2009,12 @@
         "backupShift": "请在考勤中选择备用班次，以便检查排班组、日期及可用班次。",
         "taxRelief": "请在所得税中设置子女减免类别，以便检查完整的税务选择。",
         "hireCorrection": "请使用更正入职资料更改原始成本中心，并保留更正历史。",
-        "termination": "请使用人事异动选择离职原因，并填写所需的任职日期。"
-      }
+        "termination": "请使用人事异动选择离职原因，并填写所需的任职日期。",
+        "superiorName": "姓名随模板中通过员工编号或工作邮箱选择的直属上司显示。请勿另外填写上司姓名。",
+        "superiorRecord": "人事选择器选择任职记录。在模板中，请通过员工编号或工作邮箱选择同一汇报关系，不要填写内部记录编号。"
+      },
+      "exclusionDirectSuperiorName": "直属上司 — 显示姓名",
+      "exclusionDirectSuperiorRecord": "直属上司 — 人事记录选择器"
     },
     "wizard": {
       "deleteRecord": "删除记录",

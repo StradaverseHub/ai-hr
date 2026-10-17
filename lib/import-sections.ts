@@ -392,6 +392,7 @@ export const SECTION_TEXT_COLUMN_KEYS: readonly string[] = [
   SECTION_KEY_COLUMN,'record_id','from_ym','to_ym','mobile_phone',
   'ic_number','old_ic_number','card_id',
   'phone','home_phone','emergency_contact_phone','emergency_contact_home_phone',
+  'correspondence_mobile_phone','correspondence_home_phone','direct_superior',
   'bank_account_no','custom_holder_id',
   'epf_number','socso_number','tax_number',
   'postcode','correspondence_postcode',

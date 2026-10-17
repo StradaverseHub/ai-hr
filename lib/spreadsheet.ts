@@ -162,6 +162,7 @@ export async function buildXlsx(
   const XLSX = await import('xlsx');
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+  applyTextLayout(ws,[header,...rows],opts);
   if (opts?.textColumns?.length) applyTextColumns(XLSX, ws, opts.textColumns, rows.length, opts.textRowFloor ?? TEXT_ROW_FLOOR);
   for(const [index,note] of (opts?.headerNotes??[]).entries()) {
     const cell=ws[XLSX.utils.encode_cell({r:0,c:index})];if(cell && note)cell.c=[{a:'Personnel field guidance',t:note}];
@@ -169,6 +170,7 @@ export async function buildXlsx(
   XLSX.utils.book_append_sheet(wb, ws, opts?.sheetName ?? 'Leave Import');
   for (const extra of opts?.extraSheets ?? []) {
     const sheet = XLSX.utils.aoa_to_sheet(extra.rows);
+    applyTextLayout(sheet,extra.rows,extra);
     // Item 2983802f — an extra sheet may be a FILL-IN sheet too (the employee importer's Family sheet),
     // not just a read-only reference list, so it needs the same leading-zero protection the data sheet
     // gets: an Employee ID typed into a General cell is mangled wherever it is typed.
@@ -203,9 +205,11 @@ export async function buildXlsx(
   // type:'array' → SheetJS returns an ArrayBuffer (despite older typings suggesting Uint8Array);
   // wrap it so callers always get real bytes, safe for a browser Blob or Buffer.from().
   const bytes=new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer);
-  if(!validationLists.length)return bytes;
+  const wrappedSheets=[opts,...(opts?.extraSheets??[])].flatMap((sheet,index)=>sheet?.wrapText?[index]:[]);
+  const wrappedBytes=await wrapGeneratedSheetText(bytes,wrappedSheets);
+  if(!validationLists.length)return wrappedBytes;
   const {addXlsxListValidation}=await import('./xlsx-list-validation');
-  return addXlsxListValidation(bytes,validationLists);
+  return addXlsxListValidation(wrappedBytes,validationLists);
 }
 
 export type BuildXlsxOptions = {
@@ -213,10 +217,14 @@ export type BuildXlsxOptions = {
   sheetName?: string;
   /** 0-based indexes of columns that must be TEXT so leading zeros survive HR's typing. */
   textColumns?: number[];
+  /** Opt-in display widths in Excel character units. Other download consumers keep their layout. */
+  columnWidths?:number[];
+  /** Wrap generated cells and size supplied rows using the declared column widths. */
+  wrapText?:boolean;
   /** Additional sheets appended after the data sheet — reference lists, instructions, and (2983802f)
    *  the employee importer's Family sheet, which is filled in and therefore takes `textColumns` of its
    *  own so its Employee ID and identity columns survive Excel. */
-  extraSheets?: { name: string; rows: (string | number)[][]; textColumns?: number[];headerNotes?:string[];validationLists?:{column:number;values:readonly string[]}[] }[];
+  extraSheets?: { name: string; rows: (string | number)[][]; textColumns?: number[];columnWidths?:number[];wrapText?:boolean;headerNotes?:string[];validationLists?:{column:number;values:readonly string[]}[] }[];
   headerNotes?:string[];
   validationLists?:{column:number;values:readonly string[]}[];
   /** How many rows below the samples get the text format pre-applied. */
@@ -227,6 +235,52 @@ export type BuildXlsxOptions = {
  *  of an identity column is still treated as text by Excel. 500 covers a large day-one load without
  *  bloating the file (a blank string cell is a few bytes). */
 const TEXT_ROW_FLOOR = 500;
+
+function applyTextLayout(ws:import('xlsx').WorkSheet,rows:readonly (readonly (string|number)[])[],opts?:{columnWidths?:number[];wrapText?:boolean}){
+  if(opts?.columnWidths){
+    if(opts.columnWidths.some(width=>!Number.isFinite(width)||width<1||width>255))throw new Error('Invalid spreadsheet column width.');
+    ws['!cols']=opts.columnWidths.map(wch=>({wch}));
+  }
+  if(opts?.wrapText){
+    ws['!rows']=rows.map(row=>({hpt:Math.min(409,Math.max(21,...row.map((value,column)=>{
+      const width=opts.columnWidths?.[column]??16;
+      const lines=String(value).split('\n').reduce((count,line)=>count+Math.max(1,Math.ceil(Array.from(line).reduce((size,char)=>size+(/[\u2e80-\u9fff\uac00-\ud7af]/u.test(char)?2:1),0)*1.15/Math.max(1,width-2))),0);
+      return lines*18+6;
+    })))}));
+  }
+}
+
+/** SheetJS CE omits alignment styles. Add wrapping only to our own opt-in generated sheets,
+ * cloning each existing XF so text/number formats and other styles remain intact. */
+async function wrapGeneratedSheetText(bytes:Uint8Array,sheets:readonly number[]){
+  if(!sheets.length)return bytes;
+  const {default:JSZip}=await import('jszip');const zip=await JSZip.loadAsync(bytes);
+  const entry=zip.file('xl/styles.xml');if(!entry)throw new Error('Generated spreadsheet styles are missing.');
+  const xml=await entry.async('string');const xfs=xml.match(/<cellXfs\b[^>]*count="(\d+)"[^>]*>([\s\S]*?)<\/cellXfs>/);
+  if(!xfs)throw new Error('Generated spreadsheet cell formats are missing.');
+  const formats=xfs[2].match(/<xf\b[^>]*(?:\/>|>[\s\S]*?<\/xf>)/g)??[];
+  if(formats.length!==Number(xfs[1]))throw new Error('Generated spreadsheet cell formats are inconsistent.');
+  const wrapped=new Map<number,number>();
+  const wrap=(index:number)=>{
+    const known=wrapped.get(index);if(known!==undefined)return known;
+    const source=formats[index];if(!source)throw new Error('Generated spreadsheet references an unknown cell format.');
+    let next=source.replace(/\sapplyAlignment="[^"]*"/g,'').replace(/^<xf\b/,'<xf applyAlignment="1"');
+    const alignment='<alignment wrapText="1" vertical="top"/>';
+    if(next.endsWith('/>'))next=next.slice(0,-2)+'>'+alignment+'</xf>';
+    else if(/<alignment\b/.test(next))next=next.replace(/<alignment\b([^>]*?)(?:\/>|>[\s\S]*?<\/alignment>)/,(_all,attributes:string)=>'<alignment'+attributes.replace(/\s(?:wrapText|vertical)="[^"]*"/g,'')+' wrapText="1" vertical="top"/>');
+    else next=next.replace('</xf>',alignment+'</xf>');
+    const id=formats.length;formats.push(next);wrapped.set(index,id);return id;
+  };
+  for(const index of sheets){
+    const path=`xl/worksheets/sheet${index+1}.xml`;const sheet=zip.file(path);if(!sheet)throw new Error('Generated spreadsheet sheet is missing.');
+    const contents=(await sheet.async('string')).replace(/<c\b[^>]*>/g,tag=>{
+      const id=wrap(Number(tag.match(/\bs="(\d+)"/)?.[1]??0));
+      return /\bs="\d+"/.test(tag)?tag.replace(/\bs="\d+"/,`s="${id}"`):tag.replace(/^<c\b/,`<c s="${id}"`);
+    });zip.file(path,contents);
+  }
+  zip.file('xl/styles.xml',xml.replace(xfs[0],`<cellXfs count="${formats.length}">${formats.join('')}</cellXfs>`));
+  return zip.generateAsync({type:'uint8array',compression:'DEFLATE'});
+}
 
 /**
  * Stamp the `@` (text) number format down whole columns.
