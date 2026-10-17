@@ -346,7 +346,7 @@ else
   # allow a previous build's private runtime metadata to masquerade as this nonofficial build.
   AIHR_SYSTEM_TESTING_SOURCE_REF='' AIHR_SYSTEM_TESTING_BUILD_RECORD_ID='' \
   AIHR_SYSTEM_TESTING_CATALOGUE_HASH='' AIHR_SYSTEM_TESTING_CONTENT_HASH='' \
-  AIHR_SYSTEM_TESTING_SOURCE_HASH_RECORD='' \
+  AIHR_SYSTEM_TESTING_SOURCE_HASH_RECORD='' AIHR_SYSTEM_TESTING_BUILD_CONTEXT='' \
   NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=6144" pnpm build
 fi
 # The build id this source produced, recorded the instant the build succeeded and nowhere else.
