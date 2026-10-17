@@ -195,7 +195,8 @@ export async function buildSystemLabelWorkbook(p:{references:LabelWorkbookRefere
         const letter=XLSX.utils.encode_col(at);
         validations.push(`<dataValidation type="list" allowBlank="1" showErrorMessage="0" sqref="${letter}2:${letter}1001"><formula1>INDIRECT(&quot;${range}&quot;)</formula1></dataValidation>`);
       }
-      xml=xml.replace('</sheetData>',`</sheetData><autoFilter ref="A1:${XLSX.utils.encode_col(d.columns.length-(p.includeStatus?0:1))}${(p.rows?.[name]?.length??0)+1}"/><dataValidations count="${validations.length}">${validations.join('')}</dataValidations>`);
+      const validationXml=validations.length?`<dataValidations count="${validations.length}">${validations.join('')}</dataValidations>`:'';
+      xml=xml.replace('</sheetData>',`</sheetData><autoFilter ref="A1:${XLSX.utils.encode_col(d.columns.length-(p.includeStatus?0:1))}${(p.rows?.[name]?.length??0)+1}"/>${validationXml}`);
     }
     zip.file(path,xml);
   }
