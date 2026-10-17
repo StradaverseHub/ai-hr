@@ -37,6 +37,38 @@ function lines(section:MasterSection,fields:readonly PersonnelFieldDescriptor[],
   return result;
 }
 
+/** SheetJS CE omits alignment. Clone its generated XFs so selected horizontal alignment does not
+ * replace date/number formats, fonts or other metadata. Titles and non-report sheets stay untouched. */
+async function alignMasterSheets(zip:JSZip,sections:readonly MasterSection[]){
+  const entry=zip.file('xl/styles.xml');if(!entry)throw new Error('Generated report styles are missing.');
+  const xml=await entry.async('string'),xfs=xml.match(/<cellXfs\b[^>]*count="(\d+)"[^>]*>([\s\S]*?)<\/cellXfs>/);
+  if(!xfs)throw new Error('Generated report cell formats are missing.');
+  const formats=xfs[2].match(/<xf\b[^>]*?(?:\/>|>[\s\S]*?<\/xf>)/g)??[];
+  if(formats.length!==Number(xfs[1]))throw new Error('Generated report cell formats are inconsistent.');
+  const aligned=new Map<string,number>();
+  const style=(index:number,horizontal:MasterColumn['align'])=>{
+    const key=index+':'+horizontal,known=aligned.get(key);if(known!==undefined)return known;
+    const source=formats[index];if(!source)throw new Error('Generated report references an unknown cell format.');
+    if(!['left','center','right'].includes(horizontal))throw new Error('Invalid report alignment.');
+    let next=source.replace(/\sapplyAlignment="[^"]*"/g,'').replace(/^<xf\b/,'<xf applyAlignment="1"');
+    const alignment=`<alignment horizontal="${horizontal}"/>`;
+    if(next.endsWith('/>'))next=next.slice(0,-2)+'>'+alignment+'</xf>';
+    else if(/<alignment\b/.test(next))next=next.replace(/<alignment\b([^>]*?)(?:\/>|>[\s\S]*?<\/alignment>)/,(_all,attributes:string)=>'<alignment'+attributes.replace(/\shorizontal="[^"]*"/g,'')+` horizontal="${horizontal}"/>`);
+    else next=next.replace('</xf>',alignment+'</xf>');
+    const id=formats.length;formats.push(next);aligned.set(key,id);return id;
+  };
+  for(const [index,section]of sections.entries()){
+    const path=`xl/worksheets/sheet${index+1}.xml`,sheet=zip.file(path);if(!sheet)throw new Error('Generated report sheet is missing.');
+    const contents=(await sheet.async('string')).replace(/<c\b[^>]*>/g,tag=>{
+      const address=tag.match(/\br="([A-Z]+)(\d+)"/);if(!address||Number(address[2])<3)return tag;
+      const column=section.columns[XLSX.utils.decode_col(address[1])];if(!column)return tag;
+      const id=style(Number(tag.match(/\bs="(\d+)"/)?.[1]??0),column.align);
+      return /\bs="\d+"/.test(tag)?tag.replace(/\bs="\d+"/,`s="${id}"`):tag.replace(/^<c\b/,`<c s="${id}"`);
+    });zip.file(path,contents);
+  }
+  zip.file('xl/styles.xml',xml.replace(xfs[0],`<cellXfs count="${formats.length}">${formats.join('')}</cellXfs>`));
+}
+
 async function excel(result:EmployeeMasterResult,spec:EmployeeMasterSpec,fields:readonly PersonnelFieldDescriptor[],title:string):Promise<Uint8Array>{
   const book=XLSX.utils.book_new(),freezeCounts:number[]=[];
   for(const [index,section]of result.sections.entries()){
@@ -59,9 +91,10 @@ async function excel(result:EmployeeMasterResult,spec:EmployeeMasterSpec,fields:
     freezeCounts.push(section.columns.findIndex(column=>!column.freeze)<0?section.columns.length:section.columns.findIndex(column=>!column.freeze));
   }
   const notes=scopeNotes(result);if(notes.length)XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['Report notes'],['As at '+result.asAt],...notes.map(note=>[note])]),'Report notes');
-  // SheetJS CE does not serialize freeze panes. Add only OOXML presentation metadata to its workbook.
+  // SheetJS CE omits freeze panes/alignment. Add only OOXML presentation metadata to its workbook.
   const zip=await JSZip.loadAsync(XLSX.write(book,{type:'array',bookType:'xlsx',cellDates:true}));
   for(const [index,count]of freezeCounts.entries()){const path=`xl/worksheets/sheet${index+1}.xml`,file=zip.file(path);if(!file)continue;const xml=await file.async('string');const pane=`<sheetViews><sheetView workbookViewId="0"><pane xSplit="${count}" ySplit="3" topLeftCell="${XLSX.utils.encode_col(count)}4" activePane="${count?'bottomRight':'bottomLeft'}" state="frozen"/></sheetView></sheetViews>`;zip.file(path,xml.includes('<sheetViews')?xml.replace(/<sheetViews[\s\S]*?<\/sheetViews>/,pane):xml.replace(/<sheetFormatPr|<cols|<sheetData/,match=>pane+match));}
+  await alignMasterSheets(zip,result.sections);
   return zip.generateAsync({type:'uint8array',compression:'DEFLATE'});
 }
 async function pdf(result:EmployeeMasterResult,spec:EmployeeMasterSpec,fields:readonly PersonnelFieldDescriptor[],title:string,brand?:{content:string;mimeType:string}):Promise<Uint8Array>{
