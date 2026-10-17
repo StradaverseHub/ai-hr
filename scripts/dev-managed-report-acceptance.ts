@@ -32,6 +32,22 @@ function trackArtifact(pair:{id:string;token:string}){ownedReportArtifactPath(pa
 let sink:Awaited<ReturnType<typeof startReportSmtpSink>>|undefined,owner:ReturnType<(typeof import('../db/client'))['createDb']>|undefined;
 let appClient:{end(options?:{timeout?:number}):Promise<unknown>}|undefined,lock:Awaited<ReturnType<typeof fs.open>>|undefined;
 let out:string|undefined,stage='preflight',stopped=false,scheduleInstallation:string|undefined,legacyUid:number|undefined,inventoryBefore:string|undefined;
+let preservedDeliveryMessages=0;
+async function preserveDeliveryMail(){
+ if(!out||!sink)return;
+ while(preservedDeliveryMessages<sink.messages.length){
+  const index=preservedDeliveryMessages,message=sink.messages[index],sha256=hash(message.raw),name='delivery-mail-'+String(index).padStart(3,'0')+'-'+sha256;
+  await fs.writeFile(out+'/'+name+'.eml',message.raw,{mode:0o600,flag:'wx'});
+  await fs.writeFile(out+'/'+name+'.json',JSON.stringify({index,sha256,byteLength:message.raw.length})+'\n',{mode:0o600,flag:'wx'});
+  preservedDeliveryMessages++;
+ }
+}
+function failureFingerprint(error:unknown){
+ if(!(error instanceof Error))return {name:'NonError'};
+ const message=Buffer.from(error.message.slice(0,4096),'utf8'),bounded=message.subarray(0,4096);
+ const name=['Error','TypeError','RangeError','ReferenceError','SyntaxError','URIError','EvalError','AggregateError'].includes(error.name)?error.name:'OtherError';
+ return {name,messageSha256:hash(bounded),messageBytesHashed:bounded.length,truncated:error.message.length>4096||message.length>4096};
+}
 let cronStarted=false,managedUsed=false,memoryTimer:ReturnType<typeof setInterval>|undefined,cleanupPromise:Promise<void>|undefined;
 let activationAttempted=false,activationBaseline:({receipts:Set<string>}&AcceptanceActivationBinding)|undefined;
 let runtimePath:string|undefined;const memory={aggregate:0,dispatch:0,sender:0,broker:0,renderer:0};
@@ -286,13 +302,15 @@ async function main(){
  const dispatch=internalReportDispatchMarker.parse(JSON.parse((await readTrustedDispatchFile(INTERNAL_REPORT_DISPATCH_MARKER,4096,0o644)).toString()));check(dispatch.state==='active'&&dispatch.runnerUid===legacyUid&&JSON.stringify(dispatch.sourcePins)===JSON.stringify(await readDispatchSourcePins()),'Actual canonical handoff not active.');scheduleInstallation=dispatch.installationId;managedUsed=true;
  active();command('systemctl',['start','cron.service']);cronStarted=true;stage='actualWeeklyMonthlyTicks';
  const occurrence=async(reportId:string)=>owner!.client`select id,status,report_version,schedule_revision,reviewed_digest,recipient_user_id,recipient_employment_id,row_count,artifact_sha256,artifact_byte_length,artifact_content_type,scheduled_for,started_at,finished_at from custom_report_occurrence where tenant_id=${base!.tenantId}::uuid and report_id=${reportId}::uuid order by scheduled_for limit 3`;
- for(const item of ui){await boundedWait(async()=>{const rows=await occurrence(item.report.id);return rows.length===1&&rows[0].status==='sent';},Date.now()+6*60_000);const rows=await occurrence(item.report.id),row=rows[0];ownedOccurrences.add(String(row.id));
+ for(const item of ui){await boundedWait(async()=>{const rows=await occurrence(item.report.id);return rows.length===1&&rows[0].status==='sent';},Date.now()+6*60_000);await preserveDeliveryMail();const rows=await occurrence(item.report.id),row=rows[0];ownedOccurrences.add(String(row.id));
   check(row.report_version===item.report.version&&row.schedule_revision===item.schedule.reviewedRevision&&row.reviewed_digest===item.schedule.reviewedDigest&&row.recipient_user_id===base.recipient.userId&&row.recipient_employment_id===base.recipient.employmentId&&row.row_count===2&&row.started_at&&row.finished_at,'Durable result not bound to exact UI review/recipient.');
   const messages=sink.messages.filter(message=>message.raw.toString('ascii').includes('<employee-master-'+row.id+'@localhost>'));check(messages.length===1&&JSON.stringify(messages[0].recipients)===JSON.stringify([EMAILS.recipient]),'Exact one-recipient SMTP receipt missing.');
-  const bytes=reportAttachment(messages[0].raw),XLSX=await import('xlsx'),book=XLSX.read(bytes,{type:'buffer'}),cells=book.SheetNames.flatMap(sheet=>XLSX.utils.sheet_to_json<unknown[]>(book.Sheets[sheet],{header:1,raw:true}).flatMap(values=>values.map(value=>String(value))));
+  await fs.writeFile(out+'/'+item.kind+'-smtp.eml',messages[0].raw,{mode:0o600,flag:'wx'});
+  const bytes=reportAttachment(messages[0].raw);await fs.writeFile(out+'/'+item.kind+'.xlsx',bytes,{mode:0o600,flag:'wx'});
+  const XLSX=await import('xlsx'),book=XLSX.read(bytes,{type:'buffer'}),cells=book.SheetNames.flatMap(sheet=>XLSX.utils.sheet_to_json<unknown[]>(book.Sheets[sheet],{header:1,raw:true}).flatMap(values=>values.map(value=>String(value))));
   check(cells.includes('REPORT-OWNER')&&cells.includes('REPORT-RECIPIENT')&&!cells.some(cell=>/salary|passport|bank account/i.test(cell)),'Actual workbook contents/selection mismatch.');
   check(hash(bytes)===row.artifact_sha256&&bytes.length===row.artifact_byte_length&&row.artifact_content_type==='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Started artifact pin differs from actual MIME bytes.');
-  await fs.writeFile(out+'/'+item.kind+'-smtp.eml',messages[0].raw,{mode:0o600,flag:'wx'});await fs.writeFile(out+'/'+item.kind+'.xlsx',bytes,{mode:0o600,flag:'wx'});record('actualUI-'+item.kind,{occurrenceId:row.id,reportId:item.report.id,scheduleId:item.schedule.id,rows:2,bytes:bytes.length,sha256:hash(bytes)});
+  record('actualUI-'+item.kind,{occurrenceId:row.id,reportId:item.report.id,scheduleId:item.schedule.id,rows:2,bytes:bytes.length,sha256:hash(bytes)});
  }
  const count=sink.messages.length;
  await boundedWait(async()=>{const [jobs]=await owner!.client`select count(*)::integer n from job_run where job_key='reports.employee-master.deliver' and ran_at>=${new Date(startedAt).toISOString()}::timestamptz`;return jobs.n>=2;},Date.now()+150_000);
@@ -333,4 +351,4 @@ async function main(){
  stage='ownedCleanup';return {receipt,path:out+'/verification.json'};
 }
 async function rootExecutable(path:string){return readTrustedDispatchFile(path,256*1024*1024,0o755);}
-main().then(async completed=>{await cleanup();check(!stopped,'Watchdog interrupted this journey.');if(completed){await fs.writeFile(completed.path,JSON.stringify({...completed.receipt,cleanup:'VERIFIED'},null,2)+'\n',{mode:0o600,flag:'wx'});console.log('Private internal report receipt saved after exact owned cleanup. Fixture evidence is not production or human Auth acceptance.');}}).catch(async()=>{if(out)try{await fs.writeFile(out+'/failure-'+mode+'.json',JSON.stringify({status:'FAILED',stage})+'\n',{mode:0o600,flag:'wx'});}catch{}console.error('Internal report acceptance REFUSED/FAILED. Preserve owned evidence; no completion claim or private error details.');process.exitCode=1;}).finally(async()=>{clearTimeout(watchdog);try{await cleanup();}catch{process.exitCode=1;}if(stopDeadline)clearTimeout(stopDeadline);process.exit(stopped||process.exitCode?1:0);});
+main().then(async completed=>{await cleanup();check(!stopped,'Watchdog interrupted this journey.');if(completed){await fs.writeFile(completed.path,JSON.stringify({...completed.receipt,cleanup:'VERIFIED'},null,2)+'\n',{mode:0o600,flag:'wx'});console.log('Private internal report receipt saved after exact owned cleanup. Fixture evidence is not production or human Auth acceptance.');}}).catch(async(error:unknown)=>{if(out)try{await fs.writeFile(out+'/failure-'+mode+'.json',JSON.stringify({status:'FAILED',stage,error:failureFingerprint(error)})+'\n',{mode:0o600,flag:'wx'});}catch{}try{await preserveDeliveryMail();}catch{}console.error('Internal report acceptance REFUSED/FAILED. Preserve owned evidence; no completion claim or private error details.');process.exitCode=1;}).finally(async()=>{clearTimeout(watchdog);try{await cleanup();}catch{process.exitCode=1;}if(stopDeadline)clearTimeout(stopDeadline);process.exit(stopped||process.exitCode?1:0);});
