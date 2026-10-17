@@ -533,13 +533,13 @@ export default async function EmployeeBalancesPage({
             {(
               <div className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs">
                 <span className="text-muted-foreground">{t('filters.export')}:</span>
-                <Link href={exportHref('csv')} className="font-medium text-primary hover:underline">
+                <a href={exportHref('csv')} download className="font-medium text-primary hover:underline">
                   {t('filters.exportCsv')}
-                </Link>
+                </a>
                 <span className="text-muted-foreground">·</span>
-                <Link href={exportHref('xlsx')} className="font-medium text-primary hover:underline">
+                <a href={exportHref('xlsx')} download className="font-medium text-primary hover:underline">
                   {t('filters.exportExcel')}
-                </Link>
+                </a>
               </div>
             )}
           </div>
