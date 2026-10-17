@@ -7,6 +7,7 @@ import {validateInternalReportCa,INTERNAL_REPORT_CA_MAX_BYTES} from './internal-
 import {execFileSync} from 'node:child_process';
 import postgres from 'postgres';
 import {withInternalReportGrantOwner} from './internal-report-grant-owner';
+import {stopInternalReportWorkers} from './internal-report-stop-workers';
 import {installedWebPrincipal,installedInternalConfiguration,internalReportSenderDatabase,internalReportRunnerDatabase,internalReportRunnerEnvironment,internalReportSenderGrants,forbiddenSenderFunctionsSql} from './internal-report-install-model';
 declare const INTERNAL_REPORT_FILES:Record<string,{base64:string;sha256:string;mode:number}>;
 const runtime='/usr/local/lib/aihr-identity-email',config='/etc/aihr-internal-report',units='/etc/systemd/system';
@@ -100,7 +101,7 @@ async function main(){
  const oldGrants=(await owner.unsafe("select p.proname from pg_proc p join pg_namespace n on n.oid=p.pronamespace cross join lateral aclexplode(p.proacl) a join pg_roles r on r.oid=a.grantee where n.nspname='identity_email' and p.proname in ('report_target','start_report','finish_report') and r.rolname='aihr_identity_email' and a.privilege_type='EXECUTE'")).map(row=>String(row.proname));
  const oldSchemaUsage=(await owner.unsafe("select has_schema_privilege('aihr_identity_email','identity_email','USAGE') as allowed"))[0]?.allowed===true;
  const listedUnits=new Set(systemctl('list-units','--all','--plain','--no-legend').split('\n').map(line=>line.trim().split(/\s+/)[0]));
- const stopWorkers=()=>{const owned=systemctl('list-units','--all','--plain','--no-legend').split('\n').map(line=>line.trim().split(/\s+/)[0]).filter(unit=>['aihr-internal-report.socket','aihr-internal-report.service','aihr-report-auth.socket','aihr-report-renderer.socket'].includes(unit)||((unit.startsWith('aihr-report-auth@')||unit.startsWith('aihr-report-renderer@'))&&unit.endsWith('.service')));if(owned.length)systemctl('stop',...owned);};
+ const stopWorkers=()=>stopInternalReportWorkers(systemctl);
  const oldActive=new Map<string,boolean>(),oldEnabled=new Map<string,boolean>();for(const socket of ['aihr-internal-report.socket','aihr-report-auth.socket','aihr-report-renderer.socket']){oldActive.set(socket,listedUnits.has(socket)&&systemctl('show',socket,'--property=ActiveState','--value').trim()==='active');let enabled=false;try{enabled=systemctl('is-enabled',socket).trim()==='enabled';}catch{}oldEnabled.set(socket,enabled);}
  if(systemctl('list-units','--state=active','--plain','--no-legend','aihr-report-auth@*.service','aihr-report-renderer@*.service').trim())throw new Error('Report requests are active; install only in an idle maintenance window.');
  oldActive.set('aihr-internal-report.service',listedUnits.has('aihr-internal-report.service')&&systemctl('show','aihr-internal-report.service','--property=ActiveState','--value').trim()==='active');
