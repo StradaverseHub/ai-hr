@@ -828,21 +828,31 @@ describe('slice 2 — isModuleEnabled', () => {
     const src = readFileSync(new URL('../lib/session.ts', import.meta.url), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/(^|[^:])\/\/[^\n]*$/gm, '$1');
-    const start = src.indexOf('async function resolveSession(');
-    expect(start, 'resolveSession was renamed — this ratchet must be renamed with it').toBeGreaterThan(-1);
-    const body = src.slice(start);
+    const webStart = src.indexOf('async function resolveSession(');
+    const mobileStart = src.indexOf('export async function getMobileSession(');
+    expect(webStart, 'resolveSession was renamed — update its ratchet').toBeGreaterThan(-1);
+    expect(mobileStart, 'getMobileSession was renamed — update its ratchet').toBeGreaterThan(webStart);
+    const web = src.slice(webStart, mobileStart);
+    const mobile = src.slice(mobileStart);
+    expect(web.length, 'the web resolver slice must not be empty').toBeGreaterThan(500);
+    expect(mobile.length, 'the mobile resolver slice must not be empty').toBeGreaterThan(500);
 
-    // Every call to a principal resolver inside resolveSession must be an argument to withEntitlements.
-    const wrapped = [...body.matchAll(/(\w+)\(\s*await\s+(resolve(?:Dev|Workos)Principal)\(/g)];
-    const all = [...body.matchAll(/resolve(?:Dev|Workos)Principal\(/g)];
-    // FIVE since deployment-owned identity: dev/demo, WorkOS web/mobile, and Keycloak web/mobile.
-    // The provider-neutral principal shaping helper retains its historical WorkOS name; all four
-    // verified provider paths must still attach the same authoritative tenant entitlement snapshot.
-    expect(all.length, 'dev/demo and both web/mobile paths for each provider must be covered').toBe(5);
-    expect(wrapped.length, 'a principal is resolved somewhere that is not wrapped at all').toBe(5);
-    for (const [, wrapper, resolver] of wrapped) {
-      expect(wrapper, `${resolver} must be wrapped in withEntitlements, not ${wrapper}`).toBe('withEntitlements');
+    // Internal sign-in adds one verified path to each carrier. Keep them separate so an omitted
+    // mobile wrapper cannot be hidden by an extra web call (or vice versa): internal, Keycloak and
+    // WorkOS on both carriers, plus the dev/demo switcher on web only.
+    for (const [carrier, body, expectedCalls] of [['web', web, 4], ['mobile', mobile, 3]] as const) {
+      const wrapped = [...body.matchAll(/(\w+)\(\s*await\s+(resolve(?:Dev|Workos)Principal)\(/g)];
+      const all = [...body.matchAll(/resolve(?:Dev|Workos)Principal\(/g)];
+      expect(all.length, `${carrier}: every selected provider path must be covered`).toBe(expectedCalls);
+      expect(wrapped.length, `${carrier}: a principal is resolved without a wrapper`).toBe(expectedCalls);
+      for (const [, wrapper, resolver] of wrapped) {
+        expect(wrapper, `${carrier}: ${resolver} must attach the tenant snapshot`).toBe('withEntitlements');
+      }
+      expect(body, `${carrier}: internal sign-in is part of the verified paths`).toContain('if (internalSelected())');
+      expect(body, `${carrier}: legacy Keycloak remains covered`).toContain('if (keycloakSelected())');
     }
+    expect([...web.matchAll(/resolveDevPrincipal\(/g)]).toHaveLength(1);
+    expect(mobile, 'the bearer-only carrier must never resolve a demo principal').not.toContain('resolveDevPrincipal(');
     // …and the memoisation the "session-scoped means request-CONSISTENT" argument rests on.
     expect(src, 'getSession must stay memoised per request').toContain('export const getSession = cache(resolveSession)');
   });
