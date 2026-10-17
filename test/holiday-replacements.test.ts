@@ -47,7 +47,8 @@ describe('employee replacement owner and shared calendar',()=>{
  it('repeat and concurrent processing preserve one allocation and unchanged revision counts',async()=>{
   const f=await fixture();await reconcileReplacementHolidays(f.ctx,f.e.employmentId);const [before]=await rows(f.e.employmentId),history=await replacementHolidayHistory(f.ctx,before.id);
   const results=await Promise.all([reconcileReplacementHolidays(f.ctx,f.e.employmentId),reconcileReplacementHolidays(f.ctx,f.e.employmentId)]);expect(results.map(r=>r.changed)).toEqual([0,0]);expect(await rows(f.e.employmentId)).toEqual([before]);expect(await replacementHolidayHistory(f.ctx,before.id)).toEqual(history);
-  await expect(owner.db.update(schema.replacementHolidayRevision).set({createdBy:'rewritten'}).where(eq(schema.replacementHolidayRevision.id,history[0].id))).rejects.toThrow('immutable');
+  await expect(owner.db.update(schema.replacementHolidayRevision).set({createdBy:'rewritten'}).where(eq(schema.replacementHolidayRevision.id,history[0].id))).rejects.toMatchObject({cause:{code:'P0001',message:'Replacement holiday history is immutable'}});
+  expect(await replacementHolidayHistory(f.ctx,before.id)).toEqual(history);
  });
  it('pays the automatically allocated replacement holiday once through canonical Attendance and Payroll',async()=>{
   await setModule(b.tenantId,'attendance','active');await setModule(b.tenantId,'payroll','active');
@@ -220,6 +221,8 @@ describe('employee replacement owner and shared calendar',()=>{
  it('does not allow an employee to adjust or read another employee’s replacement',async()=>{
   const f=await fixture();await reconcileReplacementHolidays(f.ctx,f.e.employmentId);const [row]=await rows(f.e.employmentId),other=await hireEmployee(f.ctx,{person:{fullName:'Unrelated',primaryEmail:`${randomUUID()}@test.local`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-366)});
   const user=await createAppUser(b.tenantId,other.personId,'employee');const ctx:SessionContext={...f.ctx,userId:user,personId:other.personId,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]};
-  expect(await listReplacementHolidays(ctx,{employmentId:f.e.employmentId})).toEqual([]);await expect(adjustReplacementHoliday(ctx,{allocationId:row.id,date:day(3),reason:'Forged employee adjustment.'})).rejects.toThrow('HR administrator');
+  const history=await replacementHolidayHistory(f.ctx,row.id);
+  expect(await listReplacementHolidays(ctx,{employmentId:f.e.employmentId})).toEqual([]);expect(()=>adjustReplacementHoliday(ctx,{allocationId:row.id,date:day(3),reason:'Forged employee adjustment.'})).toThrow('Only an HR administrator can adjust replacement holidays.');
+  expect(await rows(f.e.employmentId)).toEqual([row]);expect(await replacementHolidayHistory(f.ctx,row.id)).toEqual(history);
  });
 });
