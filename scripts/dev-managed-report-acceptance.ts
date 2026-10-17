@@ -15,6 +15,7 @@ import {classifyReportProcess,schedulingInventory,INTERNAL_REPORT_SCHEDULE_STATE
 import {captureAcceptanceGroup,acceptanceProcessStat,acceptanceGroupMembers,stopOwnedAcceptanceGroup,bindAcceptanceActivationReceipt,bindAcceptanceActivationMarker,type AcceptanceProcessPin,type AcceptanceActivationBinding} from './managed-report-acceptance-lifecycle';
 import {LEGACY_MODULE_ENV_GATES,LEGACY_SETTING_ENV_GATES} from '../packs/catalog';
 import {reportBrokerResponse} from '../lib/internal-auth/report-broker-model';
+import {assertResidualFailure,residualPredecessorManifest,RESIDUAL_PREDECESSOR,RESIDUAL_SOURCE,RESIDUAL_DATE,RESIDUAL_PINNED_FILES,runManagedReportResidualCases} from './managed-report-residual';
 import {assertManagedReportWorkbook} from './managed-report-workbook-evidence';
 import {assertManagedReportAuthorityRefusal} from './managed-report-authority-evidence';
 import {fingerprintOwnedReportArtifact} from '../deploy/identity-email/report-artifact';
@@ -273,13 +274,9 @@ async function main(){
   const human=reportAcceptanceHumanReady.parse(await privateJson(out+'/human-ready.json'));check(human.runId===marker.runId&&human.candidateSha===marker.candidateSha,'Human receipt belongs to another journey.');
   const proof=await humanReadback();await fs.writeFile(out+'/configured.json',JSON.stringify({version:1,runId:marker.runId,candidateSha:marker.candidateSha,readinessSha256:hash(JSON.stringify(human)),...proof})+'\n',{mode:0o600,flag:'wx'});console.log('Canonical human readiness readback saved. No delivery PASS. Resume once with verify after reviewed internal installation and scheduling plan.');return;
  }
- const human=reportAcceptanceHumanReady.parse(await privateJson(out+'/human-ready.json')),configured=await privateJson(out+'/configured.json');
- check(human.runId===marker.runId&&human.candidateSha===marker.candidateSha&&configured.readinessSha256===hash(JSON.stringify(human))&&configured.runId===marker.runId&&configured.candidateSha===marker.candidateSha,'Exact configuration/readiness receipt required.');
- await humanReadback();
- check(!await fs.lstat(out+'/verification-started').then(()=>true,()=>false),'A verification already started; preserve it, never replay/reset automatically.');
  const {getEmployeeMasterReport,saveEmployeeMasterReport}=await import('../core/employee-master-reports'),{getEmployeeMasterSchedule,saveEmployeeMasterSchedule}=await import('../core/employee-master-schedules');
  disableOwnedSchedules=async()=>{
-  check(ownedReports.size<=32&&fixtureTenant===admin.tenantId&&admin.userId===base!.owner.userId,'Owned schedule cleanup scope changed.');
+  check(ownedReports.size<=(mode==='verify-residual'?2:32)&&fixtureTenant===admin.tenantId&&admin.userId===base!.owner.userId,'Owned schedule cleanup scope changed.');
   for(const reportId of [...ownedReports].sort()){
    const report=await getEmployeeMasterReport(admin,[base!.companyId],reportId),schedule=await getEmployeeMasterSchedule(admin,reportId);
    check(report.id===reportId&&report.ownerUserId===admin.userId&&JSON.stringify(report.spec.companyIds)===JSON.stringify([base!.companyId]),'Owned schedule cleanup report changed.');
@@ -290,6 +287,81 @@ async function main(){
  };
  const {PERSONNEL_FIELDS}=await import('../lib/personnel-field-registry'),{defaultMasterColumn}=await import('../lib/employee-master-report');
  const code=PERSONNEL_FIELDS.find(f=>f.owner==='employment'&&f.ownerField==='employeeCode')!,name=PERSONNEL_FIELDS.find(f=>f.owner==='person'&&f.ownerField==='fullName')!,salary=PERSONNEL_FIELDS.find(f=>f.owner==='compensation'&&f.ownerField==='basicSalary')!;
+ if(mode==='verify-residual'){
+  check(marker.runId!==RESIDUAL_PREDECESSOR&&base.date===RESIDUAL_DATE,'Residual requires a distinct owned run on the closed date.');
+  const predecessor=residualPredecessorManifest.parse(await privateJson(out+'/residual-predecessor.json'));
+  const previous='/var/lib/aihr-report-acceptance/'+RESIDUAL_PREDECESSOR;
+  async function predecessorFiles(){
+   const entries=await fs.readdir(previous,{withFileTypes:true});check(entries.every(entry=>entry.isFile())&&entries.length<=200,'Predecessor inventory changed.');
+   check(JSON.stringify(entries.map(entry=>entry.name).sort())===JSON.stringify(Object.keys(predecessor.files).sort()),'Predecessor file set differs.');
+   let total=0;for(const [name,expected]of Object.entries(predecessor.files)){const bytes=await rootFile(previous+'/'+name,40_000_000);total+=bytes.length;check(total<=100_000_000&&hash(bytes)===expected,'Predecessor bytes changed.');}
+  }
+  await predecessorFiles();assertResidualFailure(await privateJson(previous+'/failure-verify.json'));
+  check((await rootFile(previous+'/verification-started')).toString()===RESIDUAL_SOURCE+'\n','Predecessor start differs.');
+  const oldBase=reportAcceptanceBase.parse(await privateJson(previous+'/fixture.json'));
+  check(oldBase.runId===RESIDUAL_PREDECESSOR&&oldBase.candidateSha===RESIDUAL_SOURCE&&oldBase.date===RESIDUAL_DATE&&oldBase.tenantId===base.tenantId&&oldBase.companyId===base.companyId&&JSON.stringify(oldBase.owner)===JSON.stringify(base.owner)&&JSON.stringify(oldBase.recipient)===JSON.stringify(base.recipient),'Predecessor graph differs.');
+  const oldHuman=reportAcceptanceHumanReady.parse(await privateJson(previous+'/human-ready.json')),oldConfigured=await privateJson(previous+'/configured.json');
+  check(oldHuman.runId===oldBase.runId&&oldHuman.candidateSha===RESIDUAL_SOURCE&&oldConfigured.runId===oldBase.runId&&oldConfigured.candidateSha===RESIDUAL_SOURCE&&oldConfigured.readinessSha256===hash(JSON.stringify(oldHuman)),'Predecessor readiness binding differs.');
+  await humanReadback();
+  check(await absentFile(out+'/residual-started')&&await absentFile(out+'/verification-started')&&await absentFile(out+'/verification.json')&&await absentFile(out+'/residual-verification.json'),'Residual cannot replay prior work.');
+  const [pending]=await owner.client`select count(*)::integer n from custom_report_occurrence where tenant_id=${base.tenantId}::uuid and status in ('pending','started')`;
+  check(pending.n===0,'Outstanding predecessor work must be resolved explicitly.');
+  const oldReports=await owner.client`select r.id from custom_report r join custom_report_schedule s on s.report_id=r.id and s.tenant_id=r.tenant_id where r.tenant_id=${base.tenantId}::uuid and (s.enabled or s.next_run_at is not null)`;
+  check(oldReports.length===0,'Existing schedules must be canonically disabled before residual work.');
+  const template=await getEmployeeMasterReport(admin,[base.companyId],oldHuman.reports.weekly.reportId);
+  check(template.ownerUserId===admin.userId&&template.spec.asAt===base.date&&!template.spec.includeDrafts&&JSON.stringify(template.spec.companyIds)===JSON.stringify([base.companyId])&&JSON.stringify(template.spec.columns.map(column=>column.field).sort())===JSON.stringify([code.id,name.id].sort()),'Predecessor Code/Name definition changed.');
+  const familyBefore=await owner.client`select id,full_name,relationship,remarks from employee_dependent where tenant_id=${base.tenantId}::uuid and person_id=${base.recipient.personId}::uuid order by id`;
+  check(familyBefore.length===1000&&familyBefore.every(row=>/^Fictional large row \d+$/.test(row.full_name)&&row.relationship==='child'&&typeof row.remarks==='string'&&row.remarks.length===30000),'Reuse the exact existing canonical Family rows; never insert more.');
+  const familySha256=hash(JSON.stringify(familyBefore));
+  const components=reportAcceptanceComponents.parse(JSON.parse((await rootFile(STAGING+'/components.json')).toString()));
+  check(hash(await rootFile(STAGING+'/components.json'))===marker.componentsSha256,'Component manifest differs.');
+  for(const [name,expected]of Object.entries(components))check(hash(await readTrustedDispatchFile('/usr/local/lib/aihr-identity-email/'+name,40_000_000,name==='internal-report-tick'?0o755:0o644))===expected,'Installed residual runtime differs.');
+  check(await absentFile(INTERNAL_REPORT_DISPATCH_MARKER)&&await absentFile(INTERNAL_REPORT_DISPATCH_CRON)&&await privateWorkersIdle(),'Residual requires inactive scheduling and idle private workers.');
+  managedUsed=true;check((await delivery({op:'status'})).ready===true,'Installed residual transport unavailable.');
+  const cgroup='/sys/fs/cgroup'+command('systemctl',['show','aihrmanagedmail.slice','--property=ControlGroup','--value']);
+  check(/^\/sys\/fs\/cgroup\/[a-zA-Z0-9_./-]+$/.test(cgroup)&&!cgroup.includes('..'),'Unknown residual cgroup.');
+  async function sampleResidualMemory(){
+   const read=async(path:string)=>Number((await fs.readFile(path,'utf8')).trim());memory.aggregate=Math.max(memory.aggregate,await read(cgroup+'/memory.peak'));
+   const walk=async(dir:string,depth:number)=>{if(depth>3)return;for(const entry of await fs.readdir(dir,{withFileTypes:true})){if(!entry.isDirectory()||!/^[-a-zA-Z0-9_.@\\]+$/.test(entry.name))continue;const child=dir+'/'+entry.name;const kind=entry.name==='aihr-internal-report.service'?'sender':entry.name.startsWith('aihr-report-auth@')?'broker':entry.name.startsWith('aihr-report-renderer@')?'renderer':undefined;if(kind)try{memory[kind]=Math.max(memory[kind],await read(child+'/memory.peak'));}catch{}await walk(child,depth+1);}};await walk(cgroup,0);
+  }
+  let sampling=false;memoryTimer=setInterval(()=>{if(sampling)return;sampling=true;void sampleResidualMemory().catch(()=>{}).finally(()=>{sampling=false;});},100);
+  const {nextMasterScheduleAt}=await import('../lib/employee-master-schedule');
+  const dependent=PERSONNEL_FIELDS.find(field=>field.owner==='dependent'&&field.ownerField==='remarks')!;
+  const cases:{kind:'oversized'|'consent';reportId:string;scheduleId:string;due:Date;config:{frequency:'weekly';day:number;hour:number;minute:number;timezone:string}}[]=[];
+  for(const kind of ['oversized','consent'] as const){
+   const report=await saveEmployeeMasterReport(admin,[base.companyId],{name:'Residual '+kind+' '+marker.runId,description:'Only remaining controlled acceptance case',sharedRoleIds:['hr_admin'],spec:kind==='oversized'?{...template.spec,columns:[{...defaultMasterColumn(dependent),records:'all'}]}:template.spec});ownedReports.add(report.id);
+   const due=new Date(Date.now()+90_000);due.setUTCSeconds(0,0);const config={frequency:'weekly' as const,day:due.getUTCDay(),hour:due.getUTCHours(),minute:due.getUTCMinutes(),timezone:'UTC'};
+   const schedule=await saveEmployeeMasterSchedule(admin,[base.companyId],{reportId:report.id,version:report.version,enabled:true,config,recipients:[{userId:base.recipient.userId,employmentId:base.recipient.employmentId}]});
+   check((await getEmployeeMasterSchedule(admin,report.id))?.nextRunAt===due.toISOString(),'Residual setup crossed its genuine due minute.');cases.push({kind,reportId:report.id,scheduleId:schedule.id,due,config});
+  }
+  await fs.writeFile(out+'/residual-started',JSON.stringify({candidateSha:marker.candidateSha,runId:marker.runId,predecessorManifestSha256:hash(JSON.stringify(predecessor)),cases:cases.map(({kind,reportId,scheduleId})=>({kind,reportId,scheduleId})),familySha256})+'\n',{mode:0o600,flag:'wx'});
+  const outcome=async(id:string)=>(await owner!.client`select status,reason,lease_until from custom_report_occurrence where id=${id}::uuid and tenant_id=${base!.tenantId}::uuid`)[0];
+  async function queueResidual(kind:'oversized'|'consent'){
+   active();stage='residual-'+kind;const item=cases.find(item=>item.kind===kind)!;
+   await boundedWait(async()=>Date.now()>=item.due.getTime(),Date.now()+100_000);
+   const [queued]=await owner!.client`select identity_email.queue_report(${item.scheduleId}::uuid,${item.due.toISOString()}::timestamptz,${nextMasterScheduleAt(item.config,new Date()).toISOString()}::timestamptz) as added`;check(queued.added===1,'Exact residual queue refused.');
+   const [claimed]=await owner!.client`select * from identity_email.claim_reports(1)`;check(claimed?.tenant_id===base!.tenantId,'Unexpected residual claim.');
+   const [source]=await owner!.client`select report_id,schedule_id from custom_report_occurrence where id=${claimed.id}::uuid`;check(source?.report_id===item.reportId&&source.schedule_id===item.scheduleId,'Residual claimed foreign work.');
+   const job={id:String(claimed.id),token:String(claimed.lease_token)};trackArtifact(job);return job;
+  }
+  const result=await runManagedReportResidualCases({cases:cases.map(({kind,reportId,scheduleId})=>({kind,reportId,scheduleId})),
+   oversized:async()=>{const job=await queueResidual('oversized'),before=sink!.messages.length;const sent=await delivery({op:'sendReport',occurrenceId:job.id,leaseToken:job.token}),row=await outcome(job.id);check(sent.outcome==='failed'&&row.status==='failed'&&row.reason==='attachmentTooLarge'&&sink!.messages.length===before,'Residual real oversized refusal not proven.');await assertOwnedReportArtifactAbsent(job);return {occurrenceId:job.id,status:row.status,reason:row.reason,smtpDelta:0,familySha256};},
+   consent:async()=>{const job=await queueResidual('consent');try{await assertManagedReportAuthorityRefusal({
+    prepare:async()=>{const row=await outcome(job.id);check(row.status==='pending','Residual consent requires pending lease.');const validUntil=Math.min(Date.now()+REPORT_INSPECTION_LIFETIME_MS,new Date(row.lease_until).getTime());const inspected=reportBrokerResponse.parse(await peer(BROKER,{phase:'inspect',occurrenceId:job.id,leaseToken:job.token}));check('ok' in inspected&&inspected.ok&&inspected.phase==='inspect','Residual consent inspection refused.');const generated=await renderer({phase:'render',occurrenceId:job.id,leaseToken:job.token,expectedAccessStamp:inspected.target.accessStamp});check(generated.ok===true&&generated.accessStamp===inspected.target.accessStamp,'Residual consent generation refused.');const handle=await fs.open(ownedReportArtifactPath(job),constants.O_RDONLY|constants.O_NOFOLLOW);try{return {validUntil,request:{phase:'start' as const,occurrenceId:job.id,leaseToken:job.token,inspectionProof:inspected.inspectionProof,expectedArtifact:await fingerprintOwnedReportArtifact(handle,Number(command('id',['-u','aihr-report-renderer'])))}};}finally{await handle.close();}},
+    change:async validUntil=>{await fs.writeFile(out!+'/withdraw-request.json',JSON.stringify({runId:marker.runId,recipientUserId:base!.recipient.userId,employmentId:base!.recipient.employmentId,occurrenceId:job.id,route:base!.routes.consent,proofDeadline:new Date(validUntil-15_000).toISOString()})+'\n',{mode:0o600,flag:'wx'});console.log('Human step: withdraw report-email in the recipient own form within the original proof deadline.');await boundedWait(async()=>(await resolveEmployeeMasterRecipients(admin,{userId:base!.recipient.userId,employmentId:base!.recipient.employmentId})).length===0,validUntil-15_000);},
+    liveLease:async()=>{const row=await outcome(job.id);check(row.status==='pending'&&new Date(row.lease_until).getTime()>Date.now()+10_000,'Residual consent lease expired.');},start:body=>peer(BROKER,body),
+    finishSkipped:async()=>{const [finished]=await owner!.client`select identity_email.finish_report(${job.id}::uuid,${job.token}::uuid,'skipped','notEligible') as finished`;check(finished.finished===true,'Residual consent finish refused.');},outcome:async()=>{const row=await outcome(job.id);return {status:String(row.status),reason:typeof row.reason==='string'?row.reason:null};},smtpCount:()=>sink!.messages.length,now:Date.now,
+   });return {occurrenceId:job.id,status:'skipped',reason:'notEligible',smtpDelta:0,boundary:'original inspection/artifact; actual own-form withdrawal'};}finally{await confirmOwnedReportArtifactRemoval(job,renderer);}},
+   memory:async()=>{await sampleResidualMemory();const events=await fs.readFile(cgroup+'/memory.events','utf8');for(const [kind,limit]of [['aggregate',768],['sender',192],['broker',192],['renderer',512]] as const)check(Number.isSafeInteger(memory[kind])&&memory[kind]>0&&memory[kind]<=limit*1024*1024,'Residual memory proof absent/exceeded.');check(/^oom_kill 0$/m.test(events),'Residual managed OOM occurred.');return {peaks:{aggregate:memory.aggregate,sender:memory.sender,broker:memory.broker,renderer:memory.renderer},events,dispatchPredecessorEvidenceSha256:RESIDUAL_PINNED_FILES['post-failure-retained-memory-counters.json']};},
+   checkpoint:async(name,details)=>{await fs.writeFile(out+'/residual-'+name+'.json',JSON.stringify({kind:'Actual residual check only',candidateSha:marker.candidateSha,runId:marker.runId,name,details})+'\n',{mode:0o600,flag:'wx'});},cleanup,
+  });
+  await predecessorFiles();
+  return {path:out+'/residual-verification.json',receipt:{...result,candidateSha:marker.candidateSha,runId:marker.runId,predecessorObservation:{runId:RESIDUAL_PREDECESSOR,source:RESIDUAL_SOURCE,manifestSha256:hash(JSON.stringify(predecessor)),frontier:'budget20; exact oversized assertion failure after prior sequential stages; lost in-memory result array is not reconstructed'},limitations:['Residual cases only; preserved original failure is not converted to full verification.','Prior result attribution requires separate evidence reconciliation; no production/full release gate claim.']}};
+ }
+ const human=reportAcceptanceHumanReady.parse(await privateJson(out+'/human-ready.json')),configured=await privateJson(out+'/configured.json');
+ check(human.runId===marker.runId&&human.candidateSha===marker.candidateSha&&configured.readinessSha256===hash(JSON.stringify(human))&&configured.runId===marker.runId&&configured.candidateSha===marker.candidateSha,'Exact configuration/readiness receipt required.');
+ await humanReadback();
+ check(!await fs.lstat(out+'/verification-started').then(()=>true,()=>false),'A verification already started; preserve it, never replay/reset automatically.');
  const wanted=[code.id,name.id].sort();const ui=[];
  const expectedPeople=await owner.db.select({employmentId:s.employment.id,code:s.employment.employeeCode,fullName:s.person.fullName}).from(s.employment).innerJoin(s.person,q.eq(s.person.id,s.employment.personId)).where(q.and(q.eq(s.employment.tenantId,base.tenantId),q.eq(s.person.tenantId,base.tenantId),q.inArray(s.employment.id,[base.owner.employmentId,base.recipient.employmentId])));
  check(expectedPeople.length===2&&new Set(expectedPeople.map(person=>person.code)).size===2,'Exact fixture report subjects unavailable.');
