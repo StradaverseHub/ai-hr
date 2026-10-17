@@ -19609,6 +19609,9 @@
     "recent": "Laporan dijalankan baru-baru ini",
     "viewAll": "Lihat semua laporan tersimpan",
     "viewAllCount": "Lihat semua ({count, number})",
+    "savedReport": "Laporan disimpan: {name}",
+    "runSavedReport": "Jalankan laporan",
+    "editSavedReport": "Ubah laporan",
     "viewAllCountLabel": "{count, plural, other {Lihat semua # laporan tersimpan}}",
     "operator": {
       "eq": "Sama",

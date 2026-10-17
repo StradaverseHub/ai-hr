@@ -19609,6 +19609,9 @@
     "recent": "最近运行的报表",
     "viewAll": "查看所有已保存报表",
     "viewAllCount": "查看全部（{count, number}）",
+    "savedReport": "已保存报表：{name}",
+    "runSavedReport": "运行报表",
+    "editSavedReport": "编辑报表",
     "viewAllCountLabel": "{count, plural, other {查看全部 # 份已保存报表}}",
     "operator": {
       "eq": "等于",

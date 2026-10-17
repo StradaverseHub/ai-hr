@@ -19609,6 +19609,9 @@
     "recent": "Báo cáo chạy gần đây",
     "viewAll": "Xem tất cả báo cáo đã lưu",
     "viewAllCount": "Xem tất cả ({count, number})",
+    "savedReport": "Báo cáo đã lưu: {name}",
+    "runSavedReport": "Chạy báo cáo",
+    "editSavedReport": "Chỉnh sửa báo cáo",
     "viewAllCountLabel": "{count, plural, other {Xem tất cả # báo cáo đã lưu}}",
     "operator": {
       "eq": "Bằng",

@@ -51,6 +51,7 @@ export default async function ReportsPage({
   const masterReports=visibleMasterReports.slice(0,5);
   const t = await getTranslations('reports');
   const sp = await searchParams;
+  const savedMasterReport=sp.saved?visibleMasterReports.find(report=>report.id===sp.saved):undefined;
   const only = sp.cat as ReportCategory | undefined;
   const categories = only && REPORT_CATEGORIES.includes(only) ? [only] : REPORT_CATEGORIES;
 
@@ -65,6 +66,7 @@ export default async function ReportsPage({
           {sp.toast}
         </div>
       )}
+      {savedMasterReport&&<div role="status" className="space-y-2 rounded-lg border border-border bg-card px-4 py-3 text-sm"><p className="font-medium">{mt('savedReport',{name:savedMasterReport.name})}</p><div className="flex flex-wrap gap-4"><Link className="text-primary hover:underline" href={'/reports/employee-master/'+savedMasterReport.id}>{mt('runSavedReport')}</Link>{savedMasterReport.canEdit&&<Link className="text-primary hover:underline" href={'/reports/employee-master/'+savedMasterReport.id}>{mt('editSavedReport')}</Link>}<Link className="text-primary hover:underline" href="/reports/employee-master">{mt('viewAll')}</Link></div></div>}
 
       <div className="grid gap-5 lg:grid-cols-2">
         {categories.map((cat) => {

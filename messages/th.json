@@ -19609,6 +19609,9 @@
     "recent": "รายงานที่เรียกใช้ล่าสุด",
     "viewAll": "ดูรายงานที่บันทึกไว้ทั้งหมด",
     "viewAllCount": "ดูทั้งหมด ({count, number})",
+    "savedReport": "บันทึกรายงานแล้ว: {name}",
+    "runSavedReport": "เรียกใช้รายงาน",
+    "editSavedReport": "แก้ไขรายงาน",
     "viewAllCountLabel": "{count, plural, other {ดูรายงานที่บันทึกไว้ทั้งหมด # รายการ}}",
     "operator": {
       "eq": "เท่ากับ",
