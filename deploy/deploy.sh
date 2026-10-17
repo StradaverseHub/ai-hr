@@ -89,19 +89,28 @@ RESEED=0
 MIGRATE_ONLY=0
 CUSTOMER=0
 DEMO_FORCED=0
+TESTING_BUILD_RECORD=''
 for arg in "$@"; do
   case "$arg" in
     --reseed) RESEED=1 ;;
     --migrate-only) MIGRATE_ONLY=1 ;;
     --customer) CUSTOMER=1 ;;
     --demo) DEMO_FORCED=1 ;;
-    *) echo "✗ Unknown argument: $arg (expected --reseed, --migrate-only, --customer and/or --demo)"; exit 1 ;;
+    --testing-build-record=*)
+      if [ -n "$TESTING_BUILD_RECORD" ]; then echo 'Duplicate System Testing build record argument' >&2; exit 1; fi
+      TESTING_BUILD_RECORD="${arg#--testing-build-record=}"
+      if ! [[ "$TESTING_BUILD_RECORD" =~ ^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$ ]]; then echo 'Invalid System Testing build record UUID' >&2; exit 1; fi
+      ;;
+    *) echo "✗ Unknown argument: $arg (expected --reseed, --migrate-only, --customer, --demo or --testing-build-record=UUID)"; exit 1 ;;
   esac
 done
 if [ "$CUSTOMER" = "1" ] && [ "$DEMO_FORCED" = "1" ]; then
   echo "✗ --customer and --demo are opposites; pass one or neither."
   exit 1
 fi
+# Arguments and the announcing source ref cannot be replaced by stale private env settings below.
+readonly AIHR_SELECTED_TESTING_BUILD_RECORD="$TESTING_BUILD_RECORD"
+readonly AIHR_SELECTED_DEPLOY_REF="$AIHR_DEPLOY_REF"
 
 # Use the isolated Node toolchain if present (keeps the host's system Node untouched, and means
 # pnpm/node are found even when /opt/node20/bin isn't on the invoking shell's PATH).
@@ -330,7 +339,16 @@ dstate phase build
 # validator was byte-identical in size with and without them (3157 lines), so this is the tree's growth.
 # ⚠️ And a failed build leaves `.next` without a BUILD_ID: restarting the service then has NOTHING to start
 # (r394 took the app down that way, 12:05 MYT). After a failed build, redeploy; never restart.
-NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=6144" pnpm build
+if [ -n "$AIHR_SELECTED_TESTING_BUILD_RECORD" ]; then
+  NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=6144" node --import tsx scripts/improve/system-testing-build-cli.ts build "$AIHR_SELECTED_DEPLOY_REF" "$AIHR_SELECTED_TESTING_BUILD_RECORD"
+else
+  # Explicit empty overrides also defeat Next's later .env.production reload. Unsetting alone would
+  # allow a previous build's private runtime metadata to masquerade as this nonofficial build.
+  AIHR_SYSTEM_TESTING_SOURCE_REF='' AIHR_SYSTEM_TESTING_BUILD_RECORD_ID='' \
+  AIHR_SYSTEM_TESTING_CATALOGUE_HASH='' AIHR_SYSTEM_TESTING_CONTENT_HASH='' \
+  AIHR_SYSTEM_TESTING_SOURCE_HASH_RECORD='' \
+  NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=6144" pnpm build
+fi
 # The build id this source produced, recorded the instant the build succeeded and nowhere else.
 # `deploy-state.sh status` compares it against the .next/BUILD_ID physically on disk, which is how a
 # later deploy that died before finishing its own build is distinguishable from a clean one.
