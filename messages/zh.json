@@ -2772,7 +2772,7 @@
       "colFinalApproval": "最终审批日期",
       "viewAttachment": "查看",
       "attachmentYes": "是",
-      "noRows": "该员工没有可显示的假期类型。",
+      "noRows": "没有符合当前选择的假期类型。",
       "noRecords": "没有可显示的假期记录。",
       "noEmployees": "当前公司范围内没有员工。",
       "panelHeading": "员工",

@@ -2772,7 +2772,7 @@
       "colFinalApproval": "Ngày duyệt cuối",
       "viewAttachment": "Xem",
       "attachmentYes": "Có",
-      "noRows": "Không có loại phép nào để hiển thị cho nhân viên này.",
+      "noRows": "Không có loại phép nào phù hợp với lựa chọn này.",
       "noRecords": "Không có hồ sơ nghỉ phép nào để hiển thị.",
       "noEmployees": "Không có nhân viên nào trong phạm vi công ty hiện tại.",
       "panelHeading": "Nhân viên",
