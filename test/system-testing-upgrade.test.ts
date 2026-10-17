@@ -58,8 +58,8 @@ it('preserves actual pre-upgrade identity/history, publishes only the current ba
     const [afterRun] = await tx.execute(sql`SELECT to_jsonb(r)-ARRAY['version_id','execution_id','execution_revision','execution_status','comments','defect_notes','improvement_notes']::text[] AS value,version_id,execution_id FROM public.test_run r WHERE id=${runId}::uuid`) as unknown as { value: Record<string,unknown>; version_id: string|null; execution_id: string|null }[];
     expect(afterRun).toEqual({ value: beforeRun.value,version_id: null,execution_id: null });
     const [count] = await tx.execute(sql`SELECT count(*)::integer AS n FROM public.test_case_version WHERE test_case_id=${caseId}::uuid`) as unknown as { n: number }[]; expect(count.n).toBe(1);
-    const baselineHashes=await tx.execute(sql`SELECT v.content_hash,encode(digest(convert_to(v.definition::text,'UTF8'),'sha256'),'hex') AS full_hash,
-      encode(digest(convert_to(jsonb_build_object('title',c.title,'module',c.module_code,'steps',c.steps,'expectedBehavior',c.expected_behavior,'expectedFunction',c.expected_function)::text,'UTF8'),'sha256'),'hex') AS old_subset_hash
+    const baselineHashes=await tx.execute(sql`SELECT v.content_hash,pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(v.definition::text,'UTF8')),'hex') AS full_hash,
+      pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(jsonb_build_object('title',c.title,'module',c.module_code,'steps',c.steps,'expectedBehavior',c.expected_behavior,'expectedFunction',c.expected_function)::text,'UTF8')),'hex') AS old_subset_hash
       FROM public.test_case_version v JOIN public.test_case c ON c.id=v.test_case_id WHERE v.tenant_id=${b.tenantId}::uuid ORDER BY c.case_no`) as unknown as {content_hash:string;full_hash:string;old_subset_hash:string}[];
     expect(baselineHashes).toHaveLength(4);expect(new Set(baselineHashes.map(row=>row.old_subset_hash)).size).toBe(1);
     expect(new Set(baselineHashes.map(row=>row.content_hash)).size).toBe(4);for(const row of baselineHashes)expect(row.content_hash).toBe(row.full_hash);

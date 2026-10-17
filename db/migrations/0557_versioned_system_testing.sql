@@ -24,7 +24,7 @@ WITH baseline AS (
 )
 INSERT INTO public.test_case_version(tenant_id,test_case_id,ordinal,definition,content_hash,provenance)
  SELECT tenant_id,test_case_id,1,definition,
-  encode(digest(convert_to(definition::text,'UTF8'),'sha256'),'hex'),'upgrade_baseline'
+  pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(definition::text,'UTF8')),'hex'),'upgrade_baseline'
  FROM baseline;
 UPDATE public.test_case c SET current_version_id=v.id FROM public.test_case_version v WHERE v.test_case_id=c.id AND v.ordinal=1;
 ALTER TABLE public.test_case ADD CONSTRAINT test_case_current_version_fk FOREIGN KEY(current_version_id,tenant_id,id) REFERENCES public.test_case_version(id,tenant_id,test_case_id) DEFERRABLE INITIALLY DEFERRED;
