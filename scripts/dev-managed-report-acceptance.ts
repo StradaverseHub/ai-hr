@@ -3,15 +3,16 @@
  * No Auth/consent writes, provider mock, generated MFA, pasted recipient or alternate scheduler.
  */
 import fs from 'node:fs/promises';
-import {constants} from 'node:fs';
+import {constants,readFileSync} from 'node:fs';
 import {execFileSync,spawn,type ChildProcess} from 'node:child_process';
 import {createHash,randomBytes} from 'node:crypto';
 import {request} from 'node:http';
 import {startReportSmtpSink,reportAttachment} from '../test/fixtures/managed-report-delivery/smtp-sink';
 import {confirmOwnedReportArtifactRemoval,assertOwnedReportArtifactAbsent,ownedReportArtifactPath} from '../test/fixtures/managed-report-delivery/artifact-cleanup';
 import {internalReportAcceptanceMarker,reportAcceptanceHumanReady,reportAcceptanceBase,reportAcceptanceComponents,reportAcceptanceMode,reportAcceptanceDatabase,reportAcceptanceSameEndpoint,REPORT_ACCEPTANCE_DATABASE as DATABASE,REPORT_ACCEPTANCE_ORIGIN as ORIGIN,REPORT_ACCEPTANCE_TENANT as TENANT,REPORT_ACCEPTANCE_EMAILS as EMAILS,REPORT_ACCEPTANCE_ROOT as ROOT,REPORT_ACCEPTANCE_STAGING as STAGING,type ReportAcceptanceBase} from './managed-report-acceptance-model';
-import {readTrustedDispatchFile,internalReportDispatchMarker,INTERNAL_REPORT_DISPATCH_MARKER,readDispatchSourcePins} from '../lib/employee-master-dispatch';
-import {classifyReportProcess,schedulingInventory} from '../deploy/identity-email/report-scheduling';
+import {readTrustedDispatchFile,internalReportDispatchMarker,INTERNAL_REPORT_DISPATCH_MARKER,readDispatchSourcePins,reportDispatchInstance,INTERNAL_REPORT_DISPATCH_CRON,INTERNAL_REPORT_DISPATCH_CRON_SOURCE} from '../lib/employee-master-dispatch';
+import {classifyReportProcess,schedulingInventory,INTERNAL_REPORT_SCHEDULE_STATE} from '../deploy/identity-email/report-scheduling';
+import {captureAcceptanceGroup,acceptanceProcessStat,acceptanceGroupMembers,stopOwnedAcceptanceGroup,bindAcceptanceActivationReceipt,bindAcceptanceActivationMarker,type AcceptanceProcessPin,type AcceptanceActivationBinding} from './managed-report-acceptance-lifecycle';
 import {LEGACY_MODULE_ENV_GATES,LEGACY_SETTING_ENV_GATES} from '../packs/catalog';
 import {reportBrokerResponse} from '../lib/internal-auth/report-broker-model';
 import type {SessionContext} from '../db/client';
@@ -23,7 +24,8 @@ function check(value:unknown,message:string):asserts value{if(!value)throw new E
 const mode=reportAcceptanceMode(process.argv.slice(2)),safeEnv={PATH:'/usr/sbin:/usr/bin:/sbin:/bin',LANG:'C',LC_ALL:'C'};
 const command=(program:string,args:string[])=>execFileSync(program,args,{encoding:'utf8',timeout:30_000,maxBuffer:1024*1024,env:safeEnv,stdio:['ignore','pipe','pipe']}).trim();
 const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
-const children=new Set<ChildProcess>(),artifacts:{id:string;token:string}[]=[],ownedOccurrences=new Set<string>(),ownedReports=new Set<string>();
+type OwnedChild={child:ChildProcess;processGroupGate:Promise<AcceptanceProcessPin>;stop?:Promise<void>};
+const children=new Set<OwnedChild>(),artifacts:{id:string;token:string}[]=[],ownedOccurrences=new Set<string>(),ownedReports=new Set<string>();
 let fixtureTenant:string|undefined;
 const active=()=>check(!stopped&&Date.now()<hardDeadline,'Fixture stopped or deadline expired.');
 function trackArtifact(pair:{id:string;token:string}){ownedReportArtifactPath(pair);ownedOccurrences.add(pair.id);if(!artifacts.some(value=>value.id===pair.id&&value.token===pair.token))artifacts.push(pair);check(artifacts.length<=200,'Owned artifact identity inventory exceeds bound.');}
@@ -31,17 +33,65 @@ let sink:Awaited<ReturnType<typeof startReportSmtpSink>>|undefined,owner:ReturnT
 let appClient:{end(options?:{timeout?:number}):Promise<unknown>}|undefined,lock:Awaited<ReturnType<typeof fs.open>>|undefined;
 let out:string|undefined,stage='preflight',stopped=false,scheduleInstallation:string|undefined,legacyUid:number|undefined,inventoryBefore:string|undefined;
 let cronStarted=false,managedUsed=false,memoryTimer:ReturnType<typeof setInterval>|undefined,cleanupPromise:Promise<void>|undefined;
+let activationAttempted=false,activationBaseline:({receipts:Set<string>}&AcceptanceActivationBinding)|undefined;
 let runtimePath:string|undefined;const memory={aggregate:0,dispatch:0,sender:0,broker:0,renderer:0};
 const startedAt=Date.now(),hardDeadline=startedAt+40*60_000;
-function kill(child:ChildProcess,signal:NodeJS.Signals){if(child.pid)try{process.kill(-child.pid,signal);}catch{}}
+async function groupMembers(pin:AcceptanceProcessPin){
+ const names=(await fs.readdir('/proc')).filter(name=>/^\d+$/.test(name));check(names.length<=10000,'Process inventory exceeds bound.');
+ const stats=[];for(const name of names)try{stats.push(acceptanceProcessStat(await fs.readFile('/proc/'+name+'/stat','utf8')));}catch(error){if(!['ENOENT','ESRCH'].includes((error as NodeJS.ErrnoException).code??''))throw error;}
+ return acceptanceGroupMembers(pin,stats);
+}
+async function stopChild(entry:OwnedChild){return entry.stop??=(async()=>{
+ const pin=await entry.processGroupGate;
+ await stopOwnedAcceptanceGroup({members:()=>groupMembers(pin),signal:signal=>process.kill(-pin.pid,signal),now:Date.now,delay:sleep});children.delete(entry);
+})();}
+async function drainOwnedChildren(){for(const entry of [...children])await stopChild(entry);check(children.size===0,'Owned child group inventory did not drain.');}
 async function boundedWait(probe:()=>Promise<boolean>,deadline:number){while(!await probe()){check(!stopped&&Date.now()<Math.min(deadline,hardDeadline),'Stage stopped or timed out; preserve evidence.');await sleep(250);}}
 async function rootFile(file:string,max=1_000_000){return readTrustedDispatchFile(file,max,0o600);}
 async function privateJson(file:string){return JSON.parse((await rootFile(file)).toString('utf8'));}
 async function run(program:string,args:string[],timeout=30_000,input?:string){
- return new Promise<string>((resolve,reject)=>{const child=spawn(program,args,{detached:true,env:safeEnv,stdio:['pipe','pipe','pipe']});children.add(child);let bytes=0,text='';
-  const timer=setTimeout(()=>kill(child,'SIGKILL'),timeout);child.stdout.on('data',chunk=>{bytes+=chunk.length;if(bytes>1024*1024)kill(child,'SIGKILL');else text+=chunk.toString();});child.stderr.resume();
-  child.on('error',reject);child.on('close',code=>{clearTimeout(timer);children.delete(child);code===0&&bytes<=1024*1024?resolve(text.trim()):reject(new Error('Reviewed child command refused.'));});child.stdin.end(input);
- });
+ check(!stopped||cleanupPromise,'Stopped fixture cannot start a new command.');
+ check(program.startsWith('/'),'Only absolute reviewed child executables are allowed.');
+ // Hold this detached leader at a one-byte stdin handshake until its Linux lifetime is pinned.
+ // exec preserves PID/start ticks/group/session; even an immediately exiting target is owned.
+ const launcher="import os,sys\nif os.read(0,1)!=b'1':raise SystemExit(1)\nos.execv(sys.argv[1],sys.argv[1:])";
+ const child=spawn('/usr/bin/python3',['-I','-c',launcher,program,...args],{detached:true,env:safeEnv,stdio:['pipe','pipe','pipe']});
+ const processGroupGate=new Promise<AcceptanceProcessPin>((resolve,reject)=>{child.once('spawn',()=>{try{check(child.pid,'Missing spawned PID.');const pin=captureAcceptanceGroup(readFileSync('/proc/'+child.pid+'/stat','utf8'),child.pid);resolve(pin);child.stdin.end('1'+(input??''));}catch(error){reject(error);}});child.once('error',reject);});
+ void processGroupGate.catch(()=>{});const entry:OwnedChild={child,processGroupGate};children.add(entry);
+ let timer:ReturnType<typeof setTimeout>|undefined;
+ try{return await new Promise<string>((resolve,reject)=>{let bytes=0,text='';
+  timer=setTimeout(()=>reject(new Error('Reviewed child command timed out.')),timeout);
+  child.stdout.on('data',chunk=>{bytes+=chunk.length;if(bytes>1024*1024)reject(new Error('Reviewed child output exceeds bound.'));else text+=chunk.toString();});child.stderr.resume();
+  child.on('error',reject);child.stdin.on('error',reject);child.on('close',code=>{code===0&&bytes<=1024*1024?resolve(text.trim()):reject(new Error('Reviewed child command refused.'));});
+ });}finally{if(timer)clearTimeout(timer);await stopChild(entry);}
+}
+async function absentFile(file:string){try{await fs.lstat(file);return false;}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return true;throw error;}}
+async function receiptNames(){
+ try{const st=await fs.lstat(INTERNAL_REPORT_SCHEDULE_STATE);check(st.isDirectory()&&!st.isSymbolicLink()&&st.uid===0&&(st.mode&0o777)===0o700,'Untrusted scheduling state.');const names=await fs.readdir(INTERNAL_REPORT_SCHEDULE_STATE);check(names.length<=1000&&names.every(name=>/^[0-9a-f-]{36}\.json$/i.test(name)),'Unknown scheduling state inventory.');return new Set(names);}
+ catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return new Set<string>();throw error;}
+}
+async function captureActivationBaseline(web:Record<string,string>){
+ active();
+ check(await absentFile(INTERNAL_REPORT_DISPATCH_MARKER)&&await absentFile(INTERNAL_REPORT_DISPATCH_CRON),'Preexisting scheduling handoff is not owned.');
+ const inventory=await schedulingInventory();check(inventory.sha256===inventoryBefore,'Pre-activation inventory changed.');
+ const node20Path=await fs.realpath('/opt/node20/bin/node');
+ return {receipts:await receiptNames(),inventorySha256:inventory.sha256,node20Path,node20Sha256:hash(await rootExecutable(node20Path)),marker:{version:1 as const,purpose:'aihr-internal-report-dispatch' as const,runnerUser:inventory.legacyUser,runnerGroup:inventory.legacyGroup,runnerUid:inventory.legacyUid,runnerGid:inventory.legacyGid,candidateRoot:ROOT,sourcePins:await readDispatchSourcePins(),runtimeSha256:hash(await rootExecutable(await fs.realpath(INTERNAL_NODE))),instanceSha256:reportDispatchInstance(web.AUTH_PROVIDER,web.DATABASE_URL),cronSha256:hash(INTERNAL_REPORT_DISPATCH_CRON_SOURCE)}};
+}
+async function recoverPartialActivation(){
+ if(!activationAttempted)return;check(activationBaseline,'Missing exact pre-activation ownership baseline.');
+ const currentReceipts=await receiptNames();check([...activationBaseline.receipts].every(name=>currentReceipts.has(name)),'Preexisting scheduling receipts changed.');
+ const added=[...currentReceipts].filter(name=>!activationBaseline!.receipts.has(name));check(added.length<=1,'Ambiguous partial activation receipts.');
+ const markerAbsent=await absentFile(INTERNAL_REPORT_DISPATCH_MARKER),cronAbsent=await absentFile(INTERNAL_REPORT_DISPATCH_CRON);
+ if(!added.length){check(markerAbsent&&cronAbsent&&!scheduleInstallation,'Unreceipted scheduling files remain.');return;}
+ const id=added[0].slice(0,-5),receiptMarker=bindAcceptanceActivationReceipt(JSON.parse((await rootFile(INTERNAL_REPORT_SCHEDULE_STATE+'/'+added[0],8192)).toString()),id,activationBaseline);
+ if(markerAbsent){check(cronAbsent&&!scheduleInstallation,'Partial scheduling cron exists without marker.');return;} // Receipt only: retain canonical history, never blindly unlink.
+ const marker=bindAcceptanceActivationMarker(JSON.parse((await readTrustedDispatchFile(INTERNAL_REPORT_DISPATCH_MARKER,4096,0o644)).toString()),receiptMarker);
+ check(!scheduleInstallation||scheduleInstallation===marker.installationId,'Successful and discovered installation differ.');scheduleInstallation=marker.installationId;
+}
+async function releaseOwnedLock(){
+ if(!lock)return;const held=await lock.stat(),current=await fs.lstat('/run/aihr-report-acceptance.lock');
+ check(current.isFile()&&!current.isSymbolicLink()&&current.uid===0&&current.nlink===1&&current.dev===held.dev&&current.ino===held.ino&&(current.mode&0o777)===0o600,'Owned acceptance lock changed.');
+ check((await rootFile('/run/aihr-report-acceptance.lock',32)).toString()===String(process.pid),'Owned acceptance lock payload changed.');await fs.unlink('/run/aihr-report-acceptance.lock');await lock.close();lock=undefined;
 }
 async function runnerIdle(){
  check(legacyUid!==undefined,'Missing exact scheduler identity.');const names=(await fs.readdir('/proc')).filter(name=>/^\d+$/.test(name));check(names.length<=10000,'Process inventory too large.');let found=false;
@@ -68,14 +118,15 @@ async function privateWorkersIdle(){
 }
 async function cleanupWait(probe:()=>Promise<boolean>,timeout:number){const deadline=Date.now()+timeout;while(!await probe()){check(Date.now()<deadline,'Owned cleanup drain timed out.');await sleep(250);}}
 async function cleanup(){return cleanupPromise??=(async()=>{
- const force=setTimeout(()=>process.exit(1),5*60_000);
+ const force=setTimeout(()=>process.exit(1),5*60_000);let failure:unknown;
  try{
   if(memoryTimer)clearInterval(memoryTimer);
   if(cronStarted){command('systemctl',['stop','cron.service']);cronStarted=false;await cleanupWait(runnerIdle,120_000);}
+  await drainOwnedChildren();
+  await recoverPartialActivation();
   // Only the canonical handoff may remove its exact marker/cron; all user crontabs stay byte-identical.
   if(scheduleInstallation){check(runtimePath,'Missing reviewed runtime.');await run(INTERNAL_NODE,[SCHEDULE,'--rollback',scheduleInstallation],180_000);scheduleInstallation=undefined;check((await schedulingInventory()).sha256===inventoryBefore,'Scheduler inventory changed during cleanup.');}
   if(managedUsed)command('systemctl',['stop','aihr-internal-report.service']);
-  for(const child of children)kill(child,'SIGTERM');for(const child of children){await Promise.race([new Promise<void>(resolve=>child.once('close',()=>resolve())),sleep(5000)]);kill(child,'SIGKILL');}
   if(managedUsed){
    await cleanupWait(privateWorkersIdle,110_000);
    check(owner&&fixtureTenant,'Missing owned artifact source scope.');const occurrences=await owner.client`select id from custom_report_occurrence where tenant_id=${fixtureTenant}::uuid and report_id=any(${[...ownedReports]}::uuid[]) limit 101`;check(occurrences.length<=100,'Owned occurrence inventory exceeds bound.');for(const occurrence of occurrences)ownedOccurrences.add(String(occurrence.id));
@@ -86,11 +137,24 @@ async function cleanup(){return cleanupPromise??=(async()=>{
   if(managedUsed)await cleanupWait(privateWorkersIdle,110_000);
   for(const artifact of artifacts)await assertOwnedReportArtifactAbsent(artifact);
   if(managedUsed)check(!(await fs.readdir('/var/lib/aihr-report-renderer/render')).some(name=>name.endsWith('.xlsx')),'Artifact appeared after cleanup; no verified receipt.');
-  if(sink)await sink.close();
- }finally{try{if(owner)await owner.client.end({timeout:5});}finally{try{if(appClient)await appClient.end({timeout:5});}finally{try{if(lock){await lock.close();await fs.unlink('/run/aihr-report-acceptance.lock');}}finally{clearTimeout(force);}}}}
+ }catch(error){failure=error;}
+ finally{
+  for(const close of [async()=>{if(sink)await sink.close();},async()=>{if(owner)await owner.client.end({timeout:5});},async()=>{if(appClient)await appClient.end({timeout:5});}])try{await close();}catch(error){failure??=error;}
+  try{if(!failure)await releaseOwnedLock();}catch(error){failure??=error;}finally{clearTimeout(force);}
+ }
+ if(failure){console.error('Cleanup unresolved; owned lock retained.');throw failure;}
 })();}
-const watchdog=setTimeout(()=>{stopped=true;void cleanup().finally(()=>process.exit(1));},40*60_000);
-for(const signal of ['SIGTERM','SIGINT'] as const)process.on(signal,()=>{stopped=true;void cleanup().finally(()=>process.exit(1));});
+let stopDeadline:ReturnType<typeof setTimeout>|undefined;
+function requestStop(){
+ if(stopped)return;stopped=true;
+ // Do not release the lock while main can still resume a canonical writer. Its normal rejection
+ // joins cleanup below; a stuck writer leaves the exact lock/evidence for operator inspection.
+ stopDeadline=setTimeout(()=>{console.error('Stopped writer did not settle; owned lock retained.');process.exit(1);},120_000);
+ if(cronStarted)try{command('systemctl',['stop','cron.service']);}catch{console.error('Cron stop unresolved; owned lock retained.');}
+ void drainOwnedChildren().catch(()=>{console.error('Child stop unresolved; owned lock retained.');});
+}
+const watchdog=setTimeout(requestStop,40*60_000);
+for(const signal of ['SIGTERM','SIGINT'] as const)process.on(signal,requestStop);
 type Base=ReportAcceptanceBase;
 async function main(){
  check(process.platform==='linux'&&process.arch==='arm64'&&process.getuid?.()===0&&process.version==='v22.23.1','Only the reviewed owned ARM Linux Node22.23.1 course is allowed.');
@@ -102,6 +166,7 @@ async function main(){
  check(hash(await rootFile(STAGING+'/internal-report-upgrade.cjs',60_000_000))===marker.installerSha256,'Installer source pin differs.');
  check(await fs.realpath(ROOT)===ROOT&&command('git',['-C',ROOT,'rev-parse','HEAD'])===marker.candidateSha&&!command('git',['-C',ROOT,'status','--porcelain']),'Clean exact integrated candidate required.');
  const rootStat=await fs.lstat(ROOT);check(rootStat.isDirectory()&&rootStat.uid===0&&(rootStat.mode&0o022)===0,'Trusted source root required.');
+ process.chdir(ROOT);
  const show=(name:string)=>command('systemctl',['show',marker.webUnit,'--property='+name,'--value']);
  check(show('LoadState')==='loaded'&&show('ActiveState')==='active'&&show('WorkingDirectory')===ROOT&&show('DynamicUser')!=='yes','Actual fixed web unit required.');
  const pid=Number(show('MainPID')),user=show('User');check(pid>1&&user&&user!=='root','Non-root actual web principal required.');
@@ -211,7 +276,7 @@ async function main(){
  const receipt={version:2,candidate:marker.candidateSha,runId:marker.runId,database:DATABASE,environment:{vm:marker.vm,platform:process.platform,arch:process.arch,node:process.version},results:[] as {name:string;status:'VERIFIED';details:Record<string,unknown>}[],limitations:['Canonical state readback does not replace parent-observed human password/MFA/SMTP receipt/consent interactions.','Controlled fault copies are fixture evidence; only declared weekly/monthly reports were actually created in UI.','No production/x86 deployment or full release gate is established.','Exact pre-SMTP broker process/EOF timing and hidden process environment denial need dedicated runtime proof beyond post-call idle/peak checks.','Identity disable/rebind races, inactive-owner and relay-Apply races require the separately reviewed owner regressions/actual interaction receipts; not claimed here.']};
  const record=(test:string,details:Record<string,unknown>={})=>receipt.results.push({name:test,status:'VERIFIED',details});
  stage='canonicalSchedulingHandoff';
- active();await run(INTERNAL_NODE,[SCHEDULE,'--activate',marker.webUnit,inventoryBefore],16*60_000);
+ active();activationBaseline=await captureActivationBaseline(web);active();activationAttempted=true;await run(INTERNAL_NODE,[SCHEDULE,'--activate',marker.webUnit,inventoryBefore],16*60_000);
  const dispatch=internalReportDispatchMarker.parse(JSON.parse((await readTrustedDispatchFile(INTERNAL_REPORT_DISPATCH_MARKER,4096,0o644)).toString()));check(dispatch.state==='active'&&dispatch.runnerUid===legacyUid&&JSON.stringify(dispatch.sourcePins)===JSON.stringify(await readDispatchSourcePins()),'Actual canonical handoff not active.');scheduleInstallation=dispatch.installationId;managedUsed=true;
  active();command('systemctl',['start','cron.service']);cronStarted=true;stage='actualWeeklyMonthlyTicks';
  const occurrence=async(reportId:string)=>owner!.client`select id,status,report_version,schedule_revision,reviewed_digest,recipient_user_id,recipient_employment_id,row_count,artifact_sha256,artifact_byte_length,artifact_content_type,scheduled_for,started_at,finished_at from custom_report_occurrence where tenant_id=${base!.tenantId}::uuid and report_id=${reportId}::uuid order by scheduled_for limit 3`;
@@ -262,4 +327,4 @@ async function main(){
  stage='ownedCleanup';return {receipt,path:out+'/verification.json'};
 }
 async function rootExecutable(path:string){return readTrustedDispatchFile(path,256*1024*1024,0o755);}
-main().then(async completed=>{await cleanup();check(!stopped,'Watchdog interrupted this journey.');if(completed){await fs.writeFile(completed.path,JSON.stringify({...completed.receipt,cleanup:'VERIFIED'},null,2)+'\n',{mode:0o600,flag:'wx'});console.log('Private internal report receipt saved after exact owned cleanup. Fixture evidence is not production or human Auth acceptance.');}}).catch(async()=>{if(out)try{await fs.writeFile(out+'/failure-'+mode+'.json',JSON.stringify({status:'FAILED',stage})+'\n',{mode:0o600,flag:'wx'});}catch{}console.error('Internal report acceptance REFUSED/FAILED. Preserve owned evidence; no completion claim or private error details.');process.exitCode=1;}).finally(async()=>{clearTimeout(watchdog);try{await cleanup();}catch{process.exitCode=1;}process.exit(stopped||process.exitCode?1:0);});
+main().then(async completed=>{await cleanup();check(!stopped,'Watchdog interrupted this journey.');if(completed){await fs.writeFile(completed.path,JSON.stringify({...completed.receipt,cleanup:'VERIFIED'},null,2)+'\n',{mode:0o600,flag:'wx'});console.log('Private internal report receipt saved after exact owned cleanup. Fixture evidence is not production or human Auth acceptance.');}}).catch(async()=>{if(out)try{await fs.writeFile(out+'/failure-'+mode+'.json',JSON.stringify({status:'FAILED',stage})+'\n',{mode:0o600,flag:'wx'});}catch{}console.error('Internal report acceptance REFUSED/FAILED. Preserve owned evidence; no completion claim or private error details.');process.exitCode=1;}).finally(async()=>{clearTimeout(watchdog);try{await cleanup();}catch{process.exitCode=1;}if(stopDeadline)clearTimeout(stopDeadline);process.exit(stopped||process.exitCode?1:0);});
