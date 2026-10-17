@@ -5,9 +5,12 @@ import grp
 import json
 import os
 import pwd
+import selectors
+import signal
 import socket
 import stat
 import subprocess
+import time
 import uuid
 
 SOCKET = '/run/aihr-report-auth.sock'
@@ -15,7 +18,7 @@ RENDERER = '/run/aihr-report-renderer.sock'
 DIRECTORY = '/var/lib/aihr-report-renderer/render'
 
 def command(args):
-    return subprocess.check_output(args, stderr=subprocess.DEVNULL, timeout=50).decode().strip()
+    return subprocess.check_output(args, stderr=subprocess.DEVNULL, timeout=50, env={'PATH':'/usr/sbin:/usr/bin:/sbin:/bin','LANG':'C','LC_ALL':'C'}).decode().strip()
 
 def as_user(user, source, group=None):
     args = ['/usr/sbin/runuser', '-u', user]
@@ -35,16 +38,86 @@ def denied_root_peer(path, body):
         peer.close()
 
 def request_mail(body):
-    return json.loads(as_user('aihr-identity-email', """import socket
-s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);s.settimeout(45);s.connect(%r)
-s.sendall(%r);s.shutdown(socket.SHUT_WR);b=b''
-while True:
- c=s.recv(4096)
- if not c:break
- b+=c
- if len(b)>524288:raise RuntimeError('invalid response')
-print(b.decode())
-""" % (SOCKET, json.dumps(body).encode()), 'aihr-report-files'))
+    source = "import json,subprocess\nr=subprocess.run(['/usr/bin/python3','-I','/usr/local/lib/aihr-identity-email/report-auth-peer.py','--client'],input=%r,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=45,check=True,env={'PATH':'/usr/bin:/bin','LANG':'C','LC_ALL':'C','TZ':'UTC'})\nassert len(r.stdout)<=524288\nprint(r.stdout.decode())" % json.dumps(body).encode()
+    return json.loads(as_user('aihr-identity-email', source, 'aihr-report-files'))
+
+def process_pin(pid):
+    assert isinstance(pid, int) and pid > 1
+    raw=open('/proc/'+str(pid)+'/stat',encoding='ascii').read(4096)
+    at=raw.rfind(') ');assert at>0
+    ticks=raw[at+2:].split()[19];assert ticks.isdecimal()
+    return (pid,ticks,os.stat('/proc/'+str(pid)).st_uid)
+
+def assert_process_pin(pid, pin):
+    assert process_pin(pid)==pin
+
+def unit_process(unit, uid):
+    assert unit.endswith('.service') and '/' not in unit
+    assert command(['systemctl','show',unit,'--property=ActiveState','--value'])=='active'
+    pid=int(command(['systemctl','show',unit,'--property=MainPID','--value']))
+    pin=process_pin(pid);assert pin[2]==uid
+    assert open('/proc/'+str(pid)+'/cgroup',encoding='ascii').read(4096).strip().endswith('/'+unit)
+    return pid,pin
+
+def process_environment_denial(namespace_pid, namespace_pin, target_pid, target_pin, uid, gid):
+    assert_process_pin(namespace_pid,namespace_pin);assert_process_pin(target_pid,target_pin)
+    assert uid>0 and uid!=target_pin[2]
+    with open('/proc/'+str(namespace_pid)+'/environ','rb') as stream:
+        own_environment=stream.read(131073)
+    assert len(own_environment)<=131072 and not any(part.startswith(b'AUTH_SESSION_KEY=') for part in own_environment.split(b'\0'))
+    del own_environment
+    # Root proves the pinned target really carries a nonempty key; bytes never leave this process.
+    with open('/proc/'+str(target_pid)+'/environ','rb') as stream:
+        environment=stream.read(131073)
+    assert len(environment)<=131072 and any(part.startswith(b'AUTH_SESSION_KEY=') and len(part)>17 for part in environment.split(b'\0'))
+    del environment
+    status=open('/proc/'+str(namespace_pid)+'/status',encoding='ascii').read(16384)
+    groups=sorted(int(value) for row in status.splitlines() if row.startswith('Groups:') for value in row.split()[1:]);assert len(groups)<=32
+    source="import os\nassert os.getuid()==%d and os.getgid()==%d and sorted(os.getgroups())==%r\ntry:open('/proc/%d/environ','rb')\nexcept (PermissionError,FileNotFoundError):pass\nelse:raise RuntimeError('foreign process environment readable')" % (uid,gid,groups,target_pid)
+    # Enter the real installed service's proc mount, then discard root/group authority.
+    group_args=['--groups',','.join(str(value) for value in groups)] if groups else ['--clear-groups']
+    command(['nsenter','--target',str(namespace_pid),'--mount','--','/usr/bin/setpriv','--reuid',str(uid),'--regid',str(gid)]+group_args+['/usr/bin/python3','-I','-c',source])
+    assert_process_pin(namespace_pid,namespace_pin);assert_process_pin(target_pid,target_pin)
+
+def active_renderers():
+    rows=command(['systemctl','list-units','--no-legend','--plain','--state=active,activating','aihr-report-renderer@*.service']).splitlines()
+    units=[row.split()[0] for row in rows];assert len(units)<=1
+    return units
+
+def namespace_environment_checks(web_pid, web_pin, mail, renderer):
+    # Canonical read-only status starts the actual persistent sender; this creates no report/mail.
+    as_user(mail.pw_name,"""import http.client,socket,json\nc=http.client.HTTPConnection('localhost',timeout=45);c.sock=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);c.sock.settimeout(45);c.sock.connect('/run/aihr-internal-report.sock');c.request('POST','/v1/reports',body=b'{"op":"status"}',headers={'Content-Type':'application/json'});r=c.getresponse();assert r.status==200;b=r.read(4097);assert len(b)<=4096 and type(json.loads(b)['ready']) is bool;c.close()""",'aihr-report-files')
+    sender_pid,sender_pin=unit_process('aihr-internal-report.service',mail.pw_uid)
+    process_environment_denial(sender_pid,sender_pin,web_pid,web_pin,mail.pw_uid,mail.pw_gid)
+    assert not active_renderers()  # Never borrow another request's namespace.
+    # Hold only our new empty renderer connection until its real namespace has been inspected.
+    source="import socket,sys\ns=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);s.settimeout(15);s.connect(%r);print('ready',flush=True);sys.stdin.buffer.read(1);s.close()" % RENDERER
+    child=subprocess.Popen(['/usr/sbin/runuser','-u',mail.pw_name,'-g','aihr-report-files','--','/usr/bin/python3','-I','-c',source],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,start_new_session=True)
+    owned_unit=None
+    try:
+        with selectors.DefaultSelector() as selector:
+            selector.register(child.stdout,selectors.EVENT_READ);assert selector.select(5)
+            assert child.stdout.readline(16)==b'ready\n'
+        deadline=time.monotonic()+5
+        while not owned_unit:
+            units=active_renderers()
+            if units:owned_unit=units[0];break
+            assert time.monotonic()<deadline;time.sleep(0.02)
+        while command(['systemctl','show',owned_unit,'--property=ActiveState','--value'])!='active':
+            assert time.monotonic()<deadline;time.sleep(0.02)
+        pid,pin=unit_process(owned_unit,renderer.pw_uid)
+        process_environment_denial(pid,pin,web_pid,web_pin,renderer.pw_uid,renderer.pw_gid)
+    finally:
+        if child.stdin:child.stdin.close()
+        try:child.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            if child.poll() is None:os.killpg(child.pid,signal.SIGKILL)
+            child.wait(timeout=5)
+        if child.stdout:child.stdout.close()
+        if owned_unit:
+            deadline=time.monotonic()+10
+            while owned_unit in active_renderers():
+                assert time.monotonic()<deadline;time.sleep(0.05)
 
 def main():
     parser = argparse.ArgumentParser();parser.add_argument('--web-unit', required=True);args = parser.parse_args()
@@ -54,6 +127,7 @@ def main():
     broker = pwd.getpwuid(int(web)) if web.isdecimal() else pwd.getpwnam(web)
     web = broker.pw_name
     mail = pwd.getpwnam('aihr-identity-email');renderer = pwd.getpwnam('aihr-report-renderer')
+    web_pid,web_pin=unit_process(args.web_unit,broker.pw_uid)
     assert min(broker.pw_uid,mail.pw_uid,renderer.pw_uid)>0 and len({broker.pw_uid,mail.pw_uid,renderer.pw_uid})==3
     config = os.stat('/etc/aihr-internal-report');assert config.st_uid==0 and stat.S_IMODE(config.st_mode)==0o700
     for name in ['broker.env','sender.env','renderer.env','runner.env']:
@@ -65,6 +139,7 @@ try:open('/etc/aihr-internal-report/broker.env','rb')
 except PermissionError:pass
 else:raise RuntimeError('broker key configuration readable')
 """)
+    namespace_environment_checks(web_pid,web_pin,mail,renderer)
     clients = grp.getgrnam('aihr-report-clients');files = grp.getgrnam('aihr-report-files')
     assert files.gr_gid not in os.getgrouplist(web,broker.pw_gid)
     assert clients.gr_gid not in os.getgrouplist(web,broker.pw_gid) # service-only supplementary group

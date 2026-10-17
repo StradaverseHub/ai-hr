@@ -4,6 +4,8 @@ import pathlib
 import importlib.util
 import sys
 import unittest
+from unittest import mock
+from types import SimpleNamespace
 spec = importlib.util.spec_from_file_location('peer_under_test', sys.argv.pop(1))
 peer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(peer)
@@ -15,6 +17,11 @@ class Retirement(unittest.TestCase):
         for path in ['/sys/fs/cgroup/system.slice/' + UNIT, '/sys/fs/cgroup' + PATH + ' (deleted)', '/sys/fs/cgroup' + PATH + '/child']:
             with self.assertRaises(Exception): peer.retirement_identity(IDENTITY, path)
         self.assertEqual(peer.retirement_identity(IDENTITY, '/sys/fs/cgroup' + PATH), IDENTITY)
+    def test_descriptor_requires_root_readonly_directory_on_the_cgroup_mount(self):
+        valid={'st_mode':peer.stat.S_IFDIR|0o755,'st_uid':0,'st_dev':11,'st_ino':12}
+        for change,flags in [({'st_uid':1001},peer.os.O_RDONLY),({'st_dev':99},peer.os.O_RDONLY),({'st_mode':peer.stat.S_IFDIR|0o777},peer.os.O_RDONLY),({},peer.os.O_RDWR)]:
+            with mock.patch.object(peer.os,'fstat',return_value=SimpleNamespace(**dict(valid,**change))),mock.patch.object(peer.os,'stat',return_value=SimpleNamespace(st_dev=11)),mock.patch.object(peer.os,'readlink',return_value='/sys/fs/cgroup'+PATH),mock.patch.object(peer.fcntl,'fcntl',return_value=flags):
+                with self.assertRaises(Exception):peer.cgroup_identity(77,IDENTITY)
     def test_unknown_metadata_or_invocation_is_refused(self):
         for change in [{'key': 'never'}, {'invocationId': 'b'}, {'replyBytes': 524289}, {'unit': '../other.service'}]:
             with self.assertRaises(Exception): peer.retirement_identity(dict(IDENTITY, **change), '/sys/fs/cgroup' + PATH)

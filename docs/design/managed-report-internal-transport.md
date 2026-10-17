@@ -22,8 +22,7 @@ continues to use its existing Auth owner; this sender is report-only.
 ## Exact protocol and finite outcomes
 
 The shared canonical schema is Credit's `lib/internal-auth/report-broker-model.ts`, not a transport fork.
-`employeeMasterBrokerRequest(request)` uses the fixed broker UDS, strict4096-byte request and512KiB reply,
-45-second private deadline, complete JSON and socket EOF. A complete JSON data event without EOF is insufficient.
+`employeeMasterBrokerRequest(request)` launches only the immutable installed `report-auth-peer.py --client` with a key-, database- and CA-free environment. That bounded helper uses the fixed broker UDS, a strict4096-byte newline-framed request and512KiB canonical reply within a45-second sender deadline. Complete JSON or socket EOF alone is insufficient: Node waits for helper exit0 after exact whole-activation retirement.
 Internal public delivery IPC allows240seconds; external retains180seconds.
 Phase mismatch, unknown fields, close/error/timeout/partial/oversize response refuse without material.
 
@@ -72,10 +71,9 @@ is0600/mail owner. Python supervisor reads actual SO_PEERCRED and accepts ONLY t
 never root/self/renderer/unknown/spoofed JSON identity. It allowlists child environment and trusted peer
 fields, caps input/output, kills/waits the child process group on timeout/error and emits no partial reply.
 
-Supervisor buffers the complete reply, waits broker Node exit0 (after canonical pool.end), then forwards
-and shuts down the socket write side. Sender waits EOF before heavy MIME/TLS. The small Python supervisor
-exits immediately afterward; it may overlap that final scheduling interval. We do not claim its process
-has disappeared at the exact EOF instruction. No DB pool/transaction is intended to survive Node exit.
+Supervisor buffers the complete reply and waits broker Node exit0 after canonical pool.end. The supervisor still carries its initial Auth key, so its socket EOF is not sufficient retirement evidence. It sends a strict safe transport envelope plus one read-only cgroup directory descriptor through SCM_RIGHTS; canonical business JSON/schema remain unchanged. The keyless client validates the live descriptor against the cgroup-v2 mount device, root ownership/read-only mode, exact dispatch-slice broker-unit path and its systemd InvocationID/ControlGroup. Already-deleted, foreign, extra, missing or truncated descriptors refuse. An ACK pins the live activation before the supervisor may exit.
+
+After EOF the client requires that same kernel cgroup to become empty and the exact activation to be inactive/failed, or demonstrably collected/not-found. A previously validated inode collected after the ACK qualifies only through its deleted kernel descriptor plus unit not-found; an arbitrary missing path or new invocation cannot qualify. Cgroup events, systemd queries and total retirement wait are bounded; inaccessible/ambiguous state refuses without a timing/PID fallback. Only then does it print canonical JSON, exit0 and allow Node to start MIME/TLS/SMTP. The helper has no Auth/store/relay authority and remains in the sender's existing combined slice. A self-pidfd would miss surviving unit descendants and is not used as whole-unit proof. This is source implementation, not observed Linux retirement or peak-memory evidence.
 
 Sender and broker each have192MiB per-unit caps AND share `aihrmanagedmail-dispatch.slice`192MiB combined.
 That nested slice belongs to existing outer `aihrmanagedmail.slice`768MiB; renderer is512MiB sibling.
@@ -185,3 +183,5 @@ endpoint course, not a claim that a normal app role can read PostgreSQL cluster 
 Focused injected-connection tests cover wrong endpoint refusal before connect, proof-before-mutation,
 all operations/rollback on the same selected owner and guaranteed pool cleanup. Actual database and
 privileged installation regressions remain UNRUN and required.
+
+Retirement acceptance still requires a held real broker activation: complete JSON/EOF while that cgroup is populated must produce no SMTP connection. Record exact invocation/cgroup retirement and the local sink's first TCP accept on one monotonic clock, and prove retirement precedes the first connect. Exercise descriptor/metadata drift, invocation reuse, unavailable systemd/cgroup state, partial/lost start replies, deadlines and no automatic resend. The root isolation probe now checks a pinned, genuinely key-bearing web process from the actual sender and renderer proc-mount namespaces with their real UID/GID/groups; denial must coexist with root-confirmed target lifetime. It emits no key/environment bytes. Actual probe execution remains unrun.

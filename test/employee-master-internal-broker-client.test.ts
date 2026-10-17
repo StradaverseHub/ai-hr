@@ -1,9 +1,9 @@
 import {beforeEach,afterEach,describe,it,expect,vi} from 'vitest';
 const fake=vi.hoisted(()=>{
- class Stream{listeners=new Map<string,((...args:unknown[])=>void)[]>();data='';on(name:string,fn:(...args:unknown[])=>void){this.listeners.set(name,[...(this.listeners.get(name)??[]),fn]);return this;}emit(name:string,...args:unknown[]){for(const fn of this.listeners.get(name)??[])fn(...args);}end(body:string){this.data=body;}}
+ class Stream{listeners=new Map<string,((...args:unknown[])=>void)[]>();data='';on(name:string,fn:(...args:unknown[])=>void){this.listeners.set(name,[...(this.listeners.get(name)??[]),fn]);return this;}emit(name:string,...args:unknown[]){for(const fn of this.listeners.get(name)??[])fn(...args);}end(body:string){this.data=body;}resume(){return this;}}
  const children:{stdout:Stream;stderr:Stream;stdin:Stream;on:Stream['on'];emit:Stream['emit'];pid:number}[]=[];
  const calls:{program:string;args:readonly string[];options:unknown}[]=[];
- const spawn=(program:string,args:readonly string[],options:unknown)=>{const events=new Stream(),child={stdout:new Stream(),stderr:new Stream(),stdin:new Stream(),on:events.on.bind(events),emit:events.emit.bind(events),pid:43210};children.push(child);calls.push({program,args,options});return child;};
+ const spawn=(program:string,args:readonly string[],options:unknown)=>{const events=new Stream(),child={stdout:new Stream(),stderr:new Stream(),stdin:new Stream(),on:events.on.bind(events),emit:events.emit.bind(events),pid:43210,exitCode:null,signalCode:null};children.push(child);calls.push({program,args,options});return child;};
  return {children,calls,spawn};
 });
 vi.mock('node:child_process',async original=>({...await original<typeof import('node:child_process')>(),spawn:fake.spawn}));

@@ -74,7 +74,7 @@ production Node20 does not satisfy the known compatibility prerequisite. These p
 acceptance evidence. The separate source runner command uses `--import tsx`; it is not this child.
 One stdin request, one complete stdout reply, then exit; no listening socket,
 SMTP, server/session context or imported application singleton. Supervisor must validate socket EOF
-and child exit0 before forwarding any reply. Lost/partial response cannot authorize MIME/SMTP.
+and child exit0 before forwarding any reply. The key-bearing Python supervisor must also retire: the keyless installed client pins its whole cgroup/InvocationID before ACK, then withholds the canonical reply from Node until EOF plus exact empty/retired activation are verified. Lost/partial response or unverified retirement cannot authorize MIME/SMTP.
 
 Trusted root supervisor supplies only selected installed app environment: `AUTH_PROVIDER=internal`,
 canonical `AUTH_PUBLIC_ORIGIN`, private `AUTH_SESSION_KEY`, unprivileged `DATABASE_URL`, `NODE_ENV`,

@@ -1,5 +1,5 @@
 /** Sender-side keyless client. A complete EOF is required; a broken start reply proves no outcome. */
-import {Socket} from 'node:net';
+import {spawn} from 'node:child_process';
 import {reportBrokerRequest,reportBrokerResponse,REPORT_BROKER_REQUEST_MAX_BYTES,REPORT_BROKER_REPLY_MAX_BYTES,type ReportBrokerRequest,type ReportBrokerResponse} from './internal-auth/report-broker-model';
 export const REPORT_BROKER_SOCKET='/run/aihr-report-auth.sock';
 export {REPORT_BROKER_REQUEST_MAX_BYTES};
@@ -16,12 +16,16 @@ export function employeeMasterBrokerRequest(input:ReportBrokerRequest):Promise<R
  const body=reportBrokerRequest.parse(input),encoded=JSON.stringify(body);
  if(Buffer.byteLength(encoded)>REPORT_BROKER_REQUEST_MAX_BYTES)throw new ReportBrokerUnavailable();
  return new Promise((resolve,reject)=>{
-  const socket=new Socket({allowHalfOpen:true}),chunks:Buffer[]=[];let size=0,settled=false,ended=false;
-  const fail=()=>{if(settled)return;settled=true;socket.destroy();reject(new ReportBrokerUnavailable());};
-  socket.setTimeout(45_000,fail);socket.on('error',fail);
-  socket.on('data',(chunk:Buffer)=>{size+=chunk.length;if(size>REPORT_BROKER_RESPONSE_MAX_BYTES)fail();else chunks.push(chunk);});
-  socket.on('end',()=>{ended=true;if(settled)return;try{const value=parseReportBrokerReply(Buffer.concat(chunks).toString('utf8'),body.phase);settled=true;socket.destroy();resolve(value);}catch{fail();}});
-  socket.on('close',()=>{if(!ended)fail();});
-  socket.connect(REPORT_BROKER_SOCKET,()=>socket.end(encoded));
+  // The immutable keyless client owns UDS framing, pinned cgroup-FD validation and exact
+  // systemd activation retirement. A JSON chunk or stdout EOF cannot authorize SMTP.
+  const child=spawn('/usr/bin/python3',['-I','/usr/local/lib/aihr-identity-email/report-auth-peer.py','--client'],{
+   detached:true,env:{PATH:'/usr/bin:/bin',LANG:'C',LC_ALL:'C',TZ:'UTC'},stdio:['pipe','pipe','pipe'],
+  });
+  const chunks:Buffer[]=[];let size=0,settled=false,closed=false;
+  const fail=()=>{if(settled)return;settled=true;clearTimeout(timer);if(!closed&&child.pid&&child.exitCode===null&&child.signalCode===null)try{process.kill(-child.pid,'SIGKILL');}catch(error){if((error as NodeJS.ErrnoException).code!=='ESRCH'){reject(new ReportBrokerUnavailable());return;}}reject(new ReportBrokerUnavailable());};
+  const timer=setTimeout(fail,45_000);child.on('error',fail);child.stdin.on('error',fail);child.stderr.resume();
+  child.stdout.on('data',(chunk:Buffer)=>{size+=chunk.length;if(size>REPORT_BROKER_RESPONSE_MAX_BYTES)fail();else chunks.push(chunk);});
+  child.on('close',code=>{closed=true;if(settled)return;if(code!==0){fail();return;}try{const value=parseReportBrokerReply(Buffer.concat(chunks).toString('utf8'),body.phase);settled=true;clearTimeout(timer);resolve(value);}catch{fail();}});
+  child.stdin.end(encoded);
  });
 }
