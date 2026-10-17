@@ -1,8 +1,9 @@
 /** Catalogue updates extend the canonical System Testing case/version owner, never a second library. */
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { testCase, testCaseVersion, testCatalogueUpdate } from '../db/schema';
+import { testingActorNamesTx } from './system-testing-actors';
 import { isAdmin } from '../lib/authz';
 import { MODULE_CATALOG } from '../packs/catalog';
 import { SCREENS } from '../lib/permissions';
@@ -41,8 +42,9 @@ export async function previewTestingCatalogue(ctx: SessionContext, options: { le
   const mappings = canonicalLegacyMappings(options.legacyMappings ?? []);
   return withTenant(ctx, async tx => {
     const library = await librarySnapshotTx(tx, ctx);
-    const history = await tx.select({ id: testCatalogueUpdate.id, updateHash: testCatalogueUpdate.updateHash, previewHash: testCatalogueUpdate.previewHash, catalogueHash: testCatalogueUpdate.catalogueHash, sourceRef: testCatalogueUpdate.sourceRef, sourceContentHash: testCatalogueUpdate.sourceContentHash, createdAt: testCatalogueUpdate.createdAt, confirmedByUserId: testCatalogueUpdate.confirmedByUserId, appliedCount: sql<number>`jsonb_array_length(${testCatalogueUpdate.result})` }).from(testCatalogueUpdate).where(eq(testCatalogueUpdate.tenantId, ctx.tenantId)).orderBy(testCatalogueUpdate.createdAt, testCatalogueUpdate.id).limit(201);
-    return { preview: preview(ctx, library, mappings), library, coverage: testingCoverageInventory(catalogue, SCREENS, MODULE_CATALOG), history: history.slice(0, 200), historyTruncated: history.length > 200 };
+    const history = await tx.select({ id: testCatalogueUpdate.id, updateHash: testCatalogueUpdate.updateHash, previewHash: testCatalogueUpdate.previewHash, catalogueHash: testCatalogueUpdate.catalogueHash, sourceRef: testCatalogueUpdate.sourceRef, sourceContentHash: testCatalogueUpdate.sourceContentHash, createdAt: testCatalogueUpdate.createdAt, confirmedByUserId: testCatalogueUpdate.confirmedByUserId, appliedCount: sql<number>`jsonb_array_length(${testCatalogueUpdate.result})` }).from(testCatalogueUpdate).where(eq(testCatalogueUpdate.tenantId, ctx.tenantId)).orderBy(desc(testCatalogueUpdate.createdAt), desc(testCatalogueUpdate.id)).limit(201);
+    const actorNames = await testingActorNamesTx(tx, ctx, history.map(row => row.confirmedByUserId));
+    return { preview: preview(ctx, library, mappings), library, coverage: testingCoverageInventory(catalogue, SCREENS, MODULE_CATALOG), history: history.slice(0, 200).map(row => ({ ...row, confirmedByName: actorNames.get(row.confirmedByUserId) ?? null })), historyTruncated: history.length > 200 };
   }, { readOnlySnapshot: true });
 }
 export type { ConfirmTestingCatalogueInput } from '../lib/system-testing/updates';

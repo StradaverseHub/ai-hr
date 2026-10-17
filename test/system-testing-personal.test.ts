@@ -56,6 +56,13 @@ describe('personal System Testing isolation and immutable instructions', () => {
     await Promise.all([saveTestingExecution(one, observation(f)), saveTestingExecution(two, { ...observation(f, 'failed'), assignmentId: f.other.assignmentId, executionId: e2.executionId })]);
     expect((await listTestingAssignments(one)).rows.map(r => r.status)).toEqual(['passed']);
     expect((await listTestingAssignments(two)).rows.map(r => r.status)).toEqual(['failed']);
+    const ownDetail = await getTestingExecution(one, f.execution.executionId);
+    expect(ownDetail.testCase).toEqual({ id: f.draft.caseId, caseNo: f.draft.caseNo });
+    expect(ownDetail.version.definition).toMatchObject({ moduleCode: 'employees', functionKey: 'personnel.profile' });
+    expect(ownDetail.testerName).toBe('Fictional Tester One');
+    expect(ownDetail.history).toHaveLength(1);
+    expect(ownDetail.history[0]).toMatchObject({ runByUserId: one.userId, runByName: 'Fictional Tester One' });
+    expect(ownDetail.updatedAt).toEqual(ownDetail.currentObservation?.runAt);
     const team = await listTestingAssignments(admin, { team: true });
     expect(team.rows.map(r => [r.testerUserId, r.status]).sort()).toEqual([[one.userId, 'passed'], [two.userId, 'failed']].sort());
     const rows = await owner.db.select().from(s.testRun).where(eq(s.testRun.testCaseId, f.draft.caseId)).orderBy(asc(s.testRun.runNo));
@@ -171,6 +178,11 @@ describe('personal System Testing isolation and immutable instructions', () => {
     expect((await listTestingTesterOptions(admin)).rows.map(r => r.userId)).toContain(one.userId);
     for (const call of [() => listTestingLibrary(one),() => getTestingLibraryCase(one,f.draft.caseId),() => listTestingTesterOptions(one)]) await expect(call()).rejects.toMatchObject({ code: 'not_assigned' });
     const team = await getTestingExecution(admin,f.execution.executionId,{ team: true }); expect(team.canSave).toBe(false);
+    expect(team.testerName).toBe('Fictional Tester One');
+    expect(team.history.map(run=>run.runByUserId)).toEqual([one.userId]);
+    const library = await getTestingLibraryCase(admin, f.draft.caseId);
+    expect(library.currentVersion?.publishedByUserId).toBe(admin.userId);
+    expect(library.versions.find(version=>version.id===f.version.versionId)?.publishedByUserId).toBe(admin.userId);
   });
   it('reads immutable assigned instruction versions without exposing another unassigned master case',async()=>{
     const f=await setup();expect((await getTestingInstructionVersion(one,{caseId:f.draft.caseId,versionId:f.version.versionId})).definition).toEqual(guide);
