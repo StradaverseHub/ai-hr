@@ -8,7 +8,7 @@ import {randomUUID} from 'node:crypto';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
-import {createCompany} from '../core/admin';
+import {createCompany,createDepartment} from '../core/admin';
 import {hireEmployee} from '../core/org';
 import {myEmployment} from '../core/read';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -119,7 +119,8 @@ describe('canonical Leave Credit day-fact refusals reach both actual action cont
   it('keeps an HR-selected foreign company subject denied and employee lookup bound to the authenticated person',async()=>{
     const f=await fixture(false);
     const otherCompany=await createCompany(f.bootstrap,{legalName:'Fictional outside courtesy scope',country:'MY',currency:'MYR'});
-    const other=await hireEmployee(f.bootstrap,{person:{fullName:'Fictional outside courtesy employee',primaryEmail:'courtesy-outside@example.test'},companyId:otherCompany.id,employmentType:'full_time',hiredOn:f.date});
+    const otherDepartment=await createDepartment(f.bootstrap,{companyId:otherCompany.id,name:'Fictional outside courtesy department'});
+    const other=await hireEmployee(f.bootstrap,{person:{fullName:'Fictional outside courtesy employee',primaryEmail:'courtesy-outside@example.test'},companyId:otherCompany.id,departmentId:otherDepartment.id,employmentType:'full_time',hiredOn:f.date});
     const otherUserId=await createAppUser(b.tenantId,other.personId,'employee');
     const otherCtx:SessionContext={...f.employeeCtx,userId:otherUserId,personId:other.personId};
     const before=await unchangedFacts();
