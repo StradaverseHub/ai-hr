@@ -11397,7 +11397,7 @@
       "sectionNotification": "Notification",
       "sectionWorkingDay": "Working Day / Schedule Pattern",
       "sectionsAria": "Schedule Group settings",
-      "listSubtitle": "Every Schedule Group, and the tenant- and company-wide settings that belong to none of them. Open a group to see and change its own settings.",
+      "listSubtitle": "Open a Schedule Group to view or change its settings.",
       "addTitle": "Add Schedule",
       "viewTitle": "View Schedule",
       "editTitle": "Edit Schedule",

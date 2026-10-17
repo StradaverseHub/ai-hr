@@ -11397,7 +11397,7 @@
       "sectionNotification": "通知",
       "sectionWorkingDay": "工作日 / 排班模式",
       "sectionsAria": "排班组设置",
-      "listSubtitle": "全部排班组，以及不属于任何单个排班组的公司级和租户级设置。打开某个排班组即可查看并修改它自己的设置。",
+      "listSubtitle": "打开排班组以查看或更改其设置。",
       "addTitle": "新增排班",
       "viewTitle": "查看排班",
       "editTitle": "编辑排班",
