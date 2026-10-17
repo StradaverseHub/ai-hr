@@ -7,7 +7,7 @@ import {
 
 /** Inherited metadata alone never authorizes compilation, including direct `next build`. */
 export function systemTestingNextCompileEnvironment(p: {
-  phase: string; worktree: string; environment?: NodeJS.ProcessEnv;
+  phase: string; worktree: string; environment?: Readonly<Record<string, string | undefined>>;
 }): Record<string, string> {
   // Production startup and other phases do no source/private-record filesystem reads.
   if (p.phase !== PHASE_PRODUCTION_BUILD && p.phase !== PHASE_DEVELOPMENT_SERVER) return emptySystemTestingCompileEnvironment();
