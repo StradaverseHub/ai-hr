@@ -22,7 +22,7 @@ export const REPORT_SETUP_TABLES=[
  'employment_tax_scheme_my','leave_type','entitlement_template','leave_ledger',
 ] as const;
 // Source changes invalidate setup receipts; candidate SHA is separately bound by coordinator.
-const metadataFiles=[
+export const REPORT_FIXTURE_METADATA_FILES=[
  'db/schema.ts','db/migrations/meta/_journal.json','db/provision.ts','db/seed-guides.ts',
  'lib/personnel-field-registry.ts','lib/personnel-field-label.ts','lib/employee-master-report.ts',
  'lib/employee-master-starters.ts','core/employee-master-access.ts','core/employee-master-reports.ts',
@@ -31,6 +31,7 @@ const metadataFiles=[
  'localization/my/statutory.ts','lib/payroll-permissions.ts','core/employment-company.ts',
  'messages/en.json','messages/ms.json','messages/zh.json','messages/ta.json','messages/th.json','messages/vi.json',
  'scripts/employee-master-fixture-proof.mts','scripts/dev-fixture-employee-master.mts',
+ 'scripts/report-fixture-connection.mjs',
 ] as const;
 export function reportFixtureCanonical(value:unknown):string {
  if(Array.isArray(value))return '['+value.map(reportFixtureCanonical).join(',')+']';
@@ -53,7 +54,7 @@ export async function readEmployeeMasterFixtureProof(reader:Pick<ReturnType<type
  if(!uuid.test(declared.tenantId)||!uuid.test(declared.foreignTenantId)||declared.tenantId===declared.foreignTenantId||[declared.tenantId,declared.foreignTenantId].includes(SYSTEM))throw new Error('Invalid declared Reports tenants.');
  const root=path.resolve(fileURLToPath(new URL('..',import.meta.url)));
  const metadata=[];
- for(const relative of metadataFiles){const target=path.join(root,relative),stat=await fs.lstat(target);if(!stat.isFile()||stat.isSymbolicLink())throw new Error('Fixture metadata is not a regular source file.');metadata.push({path:relative,sha256:createHash('sha256').update(await fs.readFile(target)).digest('hex')});}
+ for(const relative of REPORT_FIXTURE_METADATA_FILES){const target=path.join(root,relative),stat=await fs.lstat(target);if(!stat.isFile()||stat.isSymbolicLink())throw new Error('Fixture metadata is not a regular source file.');metadata.push({path:relative,sha256:createHash('sha256').update(await fs.readFile(target)).digest('hex')});}
  const tables=await reader.client.begin('isolation level repeatable read read only',async tx=>{
   await tx`select set_config('statement_timeout','10000',true)`;
   const [connection]=await tx`select current_database() as database, current_setting('transaction_read_only') as read_only, current_setting('transaction_isolation') as isolation`;
