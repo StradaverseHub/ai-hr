@@ -32,7 +32,7 @@ export function saveProfileEditPolicy(ctx:SessionContext,p:{keys:readonly string
 }
 
 import {withTenant} from '../db/client';
-import {isGroupAdmin} from '../lib/authz';
+import {isGroupAdmin} from '../lib/authz-model';
 import {essEditableFields} from '../lib/personnel-ess-contract';
 import {resolveAllowedRequestKeys} from '../lib/profile-requestable-fields';
 import {setTenantSetting,TenantSettingError} from './tenant-settings';
