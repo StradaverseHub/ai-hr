@@ -355,7 +355,7 @@ describe('A. the Schedule page is the LIST, and keeps every card that is not per
     expect(html).not.toContain(`>${esc(SC.groupLibraryLink)}<`);
   });
 
-  it('Work Schedule & Overtime Rates carries overtime rates, registered devices with Revoke, and backup-shift coverage', async () => {
+  it('Work Schedule & Overtime Rates retains rates and backup coverage while devices live at their separate destination', async () => {
     const hire = await hireEmployee(ADMIN, {
       person: { fullName: 'Dev Holder', primaryEmail: `dev_${randomUUID().slice(0, 8)}@t.local` },
       companyId: b.companyId,
@@ -365,6 +365,7 @@ describe('A. the Schedule page is the LIST, and keeps every card that is not per
     });
     await registerDevice(ADMIN, { employmentId: hire.employmentId, label: 'Pixel 9' });
     const card = elementById(await renderOvertime(), 'work-schedule-overtime');
+    expect(card, 'the moved devices must not be advertised inside the overtime card').not.toContain(esc(SC.wsOtHint));
     const rates = elementById(card, 'overtime-rates');
     expect(rates, 'the overtime rates are on the card').toContain(esc(en.admin.attendancePolicy.otRatesTitle));
     expect(rates, 'with the publish form returning to the PLAIN Schedule path').toContain(
