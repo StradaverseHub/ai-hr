@@ -3310,8 +3310,8 @@ export async function prefillOvertimeFromAttendanceTx(tx: Tx, ctx: SessionContex
       if (!(daysBy.get(employmentId)?.length) && prior?.otSource === 'attendance') {
         await tx.update(payrollInput).set({ overtimeAmount: '0.00', otBreakdown: null, otDerivation: null, updatedAt: sql`now()` }).where(eq(payrollInput.id, prior.id));
         await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'payroll-batch', aggregateId: p.batchId,
-          eventType: 'payroll-batch.input-set', actor: actorOf(ctx), payload: { employmentId, overtimeAmount: 0,
-            bonusAmount: Number(prior.bonus), source: 'attendance', reason: 'Formula-covered days excluded from legacy aggregate' } });
+          eventType: 'payroll-batch.input-set', actor: actorOf(ctx), payload: { employmentId, payrollInputId: prior.id,
+            source: 'attendance', reason: 'Formula-covered days excluded from legacy aggregate' } });
         applied += 1; continue;
       }
       const wages = wagesBy.get(employmentId);

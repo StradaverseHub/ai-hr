@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { parseInquiryQuery } from '../lib/leave-inquiry-query';
 import {
   ALL_ROW_CEILING,
   DEFAULT_PAGE_SIZE,
@@ -191,7 +192,15 @@ describe('fc776376 — one implementation, not a sixth', () => {
   it.each(converted)('%s accepts ?size= so a shared link opens the same view', (file) => {
     expect(read(searchParamsIn[file] ?? file)).toContain('size?: string;');
     // …and the page still feeds those params to the shared helper, wherever the type is declared.
-    expect(read(file)).toContain('parsePageQuery(sp)');
+    if (file === 'app/leave/employee-records/page.tsx') {
+      expect(read(file)).toContain("query = parseInquiryQuery(sp, 'records')");
+      expect(read('lib/leave-inquiry-query.ts')).toContain("import { parsePageQuery } from './pagination'");
+      expect(read('lib/leave-inquiry-query.ts')).toContain('const pq = parsePageQuery({ size, page })');
+    } else expect(read(file)).toContain('parsePageQuery(sp)');
+  });
+
+  it.each(['25', '50', '100', '200', 'all'])('Leave Inquiry delegates size=%s and page to the shared pagination contract', size => {
+    expect(parseInquiryQuery({ size, page: '2' }, 'records').pq).toEqual(parsePageQuery({ size, page: '2' }));
   });
 
   it('every locale carries the pager strings', () => {

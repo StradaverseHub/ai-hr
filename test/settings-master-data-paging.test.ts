@@ -80,10 +80,18 @@ describe('the master-data grids page in the browser', () => {
     expect(code(read(file))).toContain('useResetPageOnFilterChange(');
   });
 
-  // A draft is appended and then sorted, so it lands wherever the ordering puts it — on a paged list,
-  // usually a page nobody is looking at.
+  // Most grids sort drafts into the current view. System Labels deliberately prepends drafts so
+  // their first-page inputs stay visible while the user types or changes the saved-row filters.
   it.each(GRIDS)('%s follows a newly added row to the page it landed on', (file) => {
-    expect(code(read(file))).toContain('pageOfIndex(');
+    const src = code(read(file));
+    if (file === 'components/system-labels-grid.tsx') {
+      const start = src.indexOf('function followDraft('), end = src.indexOf('useEffect(', start);
+      expect(start).toBeGreaterThanOrEqual(0);
+      expect(end).toBeGreaterThan(start);
+      expect(src.slice(start, end)).toContain('goToPage(0)');
+      expect(src).toContain('const next = [draft, ...rows]');
+      expect(src).toContain('return [...drafts, ...v]');
+    } else expect(src).toContain('pageOfIndex(');
   });
 });
 
