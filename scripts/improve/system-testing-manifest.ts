@@ -49,6 +49,20 @@ export function systemTestingCompileEnvironment(record: PreparedTestingBuild): R
     AIHR_SYSTEM_TESTING_SOURCE_HASH_RECORD: stableTestingJson(record.sourceHashRecord),
   };
 }
+/** Empty compile substitutions are explicit so dotenv cannot revive inherited provenance. */
+export function emptySystemTestingCompileEnvironment(): Record<string, string> {
+  return {
+    AIHR_SYSTEM_TESTING_SOURCE_REF: '',
+    AIHR_SYSTEM_TESTING_BUILD_RECORD_ID: '',
+    AIHR_SYSTEM_TESTING_CATALOGUE_HASH: '',
+    AIHR_SYSTEM_TESTING_CONTENT_HASH: '',
+    AIHR_SYSTEM_TESTING_SOURCE_HASH_RECORD: '',
+  };
+}
+/** A selector only: the Next configuration must reopen and validate the fixed private record. */
+export function systemTestingBuildContextEnvironment(record: PreparedTestingBuild, context: 'official' | 'dev_only'): Record<string, string> {
+  return { ...systemTestingCompileEnvironment(record), AIHR_SYSTEM_TESTING_BUILD_CONTEXT: context };
+}
 /**
  * Official release principal only. Directory is selected by the release, never a web request.
  * Caller-owned private selected directory; safe root/caller-owned ancestors. No mutable "latest".

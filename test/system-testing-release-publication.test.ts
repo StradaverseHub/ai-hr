@@ -109,6 +109,7 @@ describe('actual build exit and separate non-arrival observation', () => {
     for (const key of Object.keys(systemTestingCompileEnvironment(f.record))) vi.stubEnv(key, 'stale-private-runtime-value');
     const observation = runTestingProductionBuild({ ...f, worktree: f.root, sourceRef: f.candidate, build: environment => {
       expect(Object.fromEntries(Object.keys(systemTestingCompileEnvironment(f.record)).map(key => [key, environment[key]]))).toEqual(systemTestingCompileEnvironment(f.record));
+      expect(environment.AIHR_SYSTEM_TESTING_BUILD_CONTEXT).toBe('official');
       expect(existsSync(join(saved.buildDirectory, 'successful-build.json'))).toBe(false);
       buildId(f.root, 'actual-fictional-build'); return { status: 0, signal: null };
     } });
