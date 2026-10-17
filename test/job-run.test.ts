@@ -2,6 +2,7 @@
  * Scheduled-actions run log (0280) — the recorder itself: what it stores, how it classifies an
  * outcome, and the guarantee that a logging failure cannot change a sweep's exit code.
  */
+import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { desc, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
@@ -120,10 +121,15 @@ describe('0280 — job_run recorder', () => {
         'entitlement.alarm',
         'leave.accrue',
         'leave.expire-carry',
+        // Both have real run-log writers and translated operator cards. Keeping Reports registered
+        // preserves its past run history while its separate release capability is held off.
+        'replacement-holidays.reconcile',
+        'reports.employee-master.deliver',
         'review.sweep',
         'usage.capture',
       ].sort(),
     );
+    expect([...JOB_KEYS].sort()).toEqual(JOBS.map((j) => j.key).sort());
     // c459bff9 removed 'leave.expire-aged' — the sweep, its script and the columns it read are gone, so
     // the Scheduled Actions screen must not offer a job that can never run again. Asserted by NAME as well
     // as by the exact list above: the equality alone would pass if a future edit re-added it AND re-added
@@ -133,5 +139,16 @@ describe('0280 — job_run recorder', () => {
     // A dot in a next-intl key is a namespace separator, so 'leave.accrue' would resolve as a nested
     // object rather than a leaf message. The registry swaps it for a dash.
     for (const j of JOBS) expect(j.i18nKey).not.toContain('.');
+    for (const locale of ['en', 'ms', 'zh', 'ta', 'th', 'vi']) {
+      const messages = JSON.parse(readFileSync(new URL(`../messages/${locale}.json`, import.meta.url), 'utf8'));
+      for (const job of JOBS) {
+        const copy = messages.scheduledActions.jobs[job.i18nKey];
+        expect(copy, `${locale}: ${job.key} has operator copy`).toBeDefined();
+        for (const field of ['name', 'description']) {
+          expect(typeof copy?.[field], `${locale}: ${job.key}.${field}`).toBe('string');
+          expect(copy?.[field]?.trim().length).toBeGreaterThan(0);
+        }
+      }
+    }
   });
 });
