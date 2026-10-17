@@ -19608,6 +19608,8 @@
     "neverRun": "Chưa từng chạy",
     "recent": "Báo cáo chạy gần đây",
     "viewAll": "Xem tất cả báo cáo đã lưu",
+    "viewAllCount": "Xem tất cả ({count, number})",
+    "viewAllCountLabel": "{count, plural, other {Xem tất cả # báo cáo đã lưu}}",
     "operator": {
       "eq": "Bằng",
       "ne": "Không bằng",

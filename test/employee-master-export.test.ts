@@ -27,11 +27,11 @@ describe('Employee Master complete typed exports',()=>{
   const pdf=await PDFDocument.load((await serializeEmployeeMaster(run,definition,fields,'Date presentation','pdf')).bytes);
   const streams=pdf.context.enumerateIndirectObjects().flatMap(([,object])=>object instanceof PDFRawStream?[Buffer.from(decodePDFRawStream(object).decode()).toString('latin1')]:[]).join('\n');
   // These date digits use the actual Helvetica text drawing operators, not document metadata.
-  expect(streams).toContain('<'+Buffer.from(expected,'latin1').toString('hex').toUpperCase()+'> Tj');
+  expect(streams.toUpperCase()).toContain('<'+Buffer.from(expected,'latin1').toString('hex').toUpperCase()+'> TJ');
   expect(JSON.stringify(run)).toBe(before); // Rendering must never rewrite the typed owner snapshot.
  });
  it('writes every matching row as real XLSX, preserving leading-zero strings, actual dates/numbers and freeze panes',async()=>{
-  const definition={...spec,columns:spec.columns.map((column,index)=>({...column,freeze:index===0}))},output=await serializeEmployeeMaster(result(),definition,fields,'Master export','xlsx');
+  const definition={...spec,columns:spec.columns.map((column,index)=>({...column,freeze:index===0}))},output=await serializeEmployeeMaster(runEmployeeMasterProjection(definition,fields,subjects,spec.asAt),definition,fields,'Master export','xlsx');
   const book=XLSX.read(output.bytes,{type:'array',cellDates:true}),sheet=book.Sheets[book.SheetNames[0]];
   expect(sheet.A4).toMatchObject({t:'s',v:'00000'});expect(sheet.B4).toMatchObject({t:'s',v:'=HYPERLINK("https://example.test")'});expect(sheet.B4.f).toBeUndefined();
   expect(sheet.C4.t).toBe('d');expect((sheet.C4.v as Date).toISOString().slice(0,10)).toBe('2024-01-02');expect(sheet.D4).toMatchObject({t:'n',v:1200.5});
@@ -43,6 +43,19 @@ describe('Employee Master complete typed exports',()=>{
   const person={...subjects[0],owners:{...subjects[0].owners,qualification:[{id:'qualification-1',values:{fromYm:{value:'2023-09'}}}]}};
   const output=await serializeEmployeeMaster(runEmployeeMasterProjection(definition,[code,month],[person],spec.asAt),definition,[code,month],'Month precision','xlsx');
   const book=XLSX.read(output.bytes,{type:'array',cellDates:true});expect(book.Sheets[book.SheetNames[0]].B4).toMatchObject({t:'s',v:'2023-09'});
+  const csv=await serializeEmployeeMaster(runEmployeeMasterProjection(definition,[code,month],[person],spec.asAt),definition,[code,month],'Month precision','csv');expect(Buffer.from(csv.bytes).toString('utf8')).toContain('"2023-09"');
+ });
+ it('keeps instant precision in Kuala Lumpur and real Excel dates while leaving qualification months as text',async()=>{
+  const stamp=field('document','createdAt'),month=field('qualification','fromYm'),selected=[code,stamp,month],definition={...spec,columns:selected.map(defaultMasterColumn)};
+  const person={...subjects[0],owners:{...subjects[0].owners,document:[{id:'document',values:{createdAt:{value:'2024-01-01T18:03:00.000Z',display:'Legacy presentation must not override the chosen date format'}}}],qualification:[{id:'qualification',values:{fromYm:{value:'2023-09'}}}]}};
+  const run=runEmployeeMasterProjection(definition,selected,[person],spec.asAt),output=await serializeEmployeeMaster(run,definition,selected,'Date precision','xlsx');
+  const book=XLSX.read(output.bytes,{type:'array',cellDates:true,cellNF:true}),sheet=book.Sheets[book.SheetNames[0]];
+  expect(sheet.B4.t).toBe('d');expect((sheet.B4.v as Date).toISOString()).toBe('2024-01-02T02:03:00.000Z');expect(sheet.B4.z).toBe('dd/mm/yyyy hh:mm');
+  expect(sheet.C4).toMatchObject({t:'s',v:'2023-09'});
+  const csv=await serializeEmployeeMaster(run,definition,selected,'Date precision','csv');expect(Buffer.from(csv.bytes).toString('utf8')).toContain('"02/01/2024 02:03 MYT"');
+  const textDefinition={...definition,columns:definition.columns.map(column=>column.field===stamp.id?{...column,format:'text' as const}:column)};
+  const text=await serializeEmployeeMaster(run,textDefinition,selected,'Date precision','xlsx'),textBook=XLSX.read(text.bytes,{type:'array',cellDates:true});
+  expect(textBook.Sheets[textBook.SheetNames[0]].B4).toMatchObject({t:'s',v:'2024-01-01T18:03:00.000Z'});
  });
  it('carries unavailable historical-scope notices in Excel notes and a CSV companion file',async()=>{
   const incomplete={...result(),unknownScopeCount:2,historyScopeUnavailable:true};

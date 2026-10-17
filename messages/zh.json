@@ -19608,6 +19608,8 @@
     "neverRun": "尚未运行",
     "recent": "最近运行的报表",
     "viewAll": "查看所有已保存报表",
+    "viewAllCount": "查看全部（{count, number}）",
+    "viewAllCountLabel": "{count, plural, other {查看全部 # 份已保存报表}}",
     "operator": {
       "eq": "等于",
       "ne": "不等于",
