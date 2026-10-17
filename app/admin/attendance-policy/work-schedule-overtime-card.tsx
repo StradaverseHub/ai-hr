@@ -92,7 +92,6 @@ export async function WorkScheduleOvertimeCard({
     <Card id={WORK_SCHEDULE_OVERTIME_ANCHOR} className="scroll-mt-6 overflow-hidden">
       <div className="border-b border-border px-4 py-3">
         <h2 className="text-sm font-medium text-foreground">{ts('wsOtTitle')}</h2>
-        <p className="mt-1 text-xs text-muted-foreground">{ts('wsOtHint')}</p>
       </div>
 
       <div className="grid gap-4 p-4 2xl:grid-cols-2">
