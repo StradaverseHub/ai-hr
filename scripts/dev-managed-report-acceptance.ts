@@ -11,7 +11,7 @@ import {startReportSmtpSink,reportAttachment} from '../test/fixtures/managed-rep
 import {confirmOwnedReportArtifactRemoval,assertOwnedReportArtifactAbsent,ownedReportArtifactPath} from '../test/fixtures/managed-report-delivery/artifact-cleanup';
 import {internalReportAcceptanceMarker,reportAcceptanceHumanReady,reportAcceptanceBase,reportAcceptanceComponents,reportAcceptanceMode,reportAcceptanceDatabase,reportAcceptanceSameEndpoint,REPORT_ACCEPTANCE_DATABASE as DATABASE,REPORT_ACCEPTANCE_ORIGIN as ORIGIN,REPORT_ACCEPTANCE_TENANT as TENANT,REPORT_ACCEPTANCE_EMAILS as EMAILS,REPORT_ACCEPTANCE_ROOT as ROOT,REPORT_ACCEPTANCE_STAGING as STAGING,type ReportAcceptanceBase} from './managed-report-acceptance-model';
 import {readTrustedDispatchFile,internalReportDispatchMarker,INTERNAL_REPORT_DISPATCH_MARKER,readDispatchSourcePins,reportDispatchInstance,INTERNAL_REPORT_DISPATCH_CRON,INTERNAL_REPORT_DISPATCH_CRON_SOURCE} from '../lib/employee-master-dispatch';
-import {classifyReportProcess,schedulingInventory,INTERNAL_REPORT_SCHEDULE_STATE} from '../deploy/identity-email/report-scheduling';
+import {classifyReportProcess,schedulingInventory,INTERNAL_REPORT_SCHEDULE_STATE,INTERNAL_REPORT_SCHEDULE_LOCK} from '../deploy/identity-email/report-scheduling';
 import {captureAcceptanceGroup,acceptanceProcessStat,acceptanceGroupMembers,stopOwnedAcceptanceGroup,bindAcceptanceActivationReceipt,bindAcceptanceActivationMarker,type AcceptanceProcessPin,type AcceptanceActivationBinding} from './managed-report-acceptance-lifecycle';
 import {LEGACY_MODULE_ENV_GATES,LEGACY_SETTING_ENV_GATES} from '../packs/catalog';
 import {reportBrokerResponse} from '../lib/internal-auth/report-broker-model';
@@ -66,12 +66,15 @@ async function run(program:string,args:string[],timeout=30_000,input?:string){
  });}finally{if(timer)clearTimeout(timer);await stopChild(entry);}
 }
 async function absentFile(file:string){try{await fs.lstat(file);return false;}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return true;throw error;}}
+async function assertSchedulingLockAbsent(){
+ check(await absentFile(INTERNAL_REPORT_SCHEDULE_LOCK),'Canonical scheduling lock remains; owned acceptance lock retained.');
+}
 async function receiptNames(){
  try{const st=await fs.lstat(INTERNAL_REPORT_SCHEDULE_STATE);check(st.isDirectory()&&!st.isSymbolicLink()&&st.uid===0&&(st.mode&0o777)===0o700,'Untrusted scheduling state.');const names=await fs.readdir(INTERNAL_REPORT_SCHEDULE_STATE);check(names.length<=1000&&names.every(name=>/^[0-9a-f-]{36}\.json$/i.test(name)),'Unknown scheduling state inventory.');return new Set(names);}
  catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return new Set<string>();throw error;}
 }
 async function captureActivationBaseline(web:Record<string,string>){
- active();
+ active();await assertSchedulingLockAbsent();
  check(await absentFile(INTERNAL_REPORT_DISPATCH_MARKER)&&await absentFile(INTERNAL_REPORT_DISPATCH_CRON),'Preexisting scheduling handoff is not owned.');
  const inventory=await schedulingInventory();check(inventory.sha256===inventoryBefore,'Pre-activation inventory changed.');
  const node20Path=await fs.realpath('/opt/node20/bin/node');
@@ -89,7 +92,7 @@ async function recoverPartialActivation(){
  check(!scheduleInstallation||scheduleInstallation===marker.installationId,'Successful and discovered installation differ.');scheduleInstallation=marker.installationId;
 }
 async function releaseOwnedLock(){
- if(!lock)return;const held=await lock.stat(),current=await fs.lstat('/run/aihr-report-acceptance.lock');
+ await assertSchedulingLockAbsent();if(!lock)return;const held=await lock.stat(),current=await fs.lstat('/run/aihr-report-acceptance.lock');
  check(current.isFile()&&!current.isSymbolicLink()&&current.uid===0&&current.nlink===1&&current.dev===held.dev&&current.ino===held.ino&&(current.mode&0o777)===0o600,'Owned acceptance lock changed.');
  check((await rootFile('/run/aihr-report-acceptance.lock',32)).toString()===String(process.pid),'Owned acceptance lock payload changed.');
  await lock.close();const fresh=await fs.lstat('/run/aihr-report-acceptance.lock');check(fresh.dev===held.dev&&fresh.ino===held.ino&&!fresh.isSymbolicLink(),'Acceptance lock changed before release.');await fs.unlink('/run/aihr-report-acceptance.lock');lock=undefined;
@@ -124,6 +127,7 @@ async function cleanup(){return cleanupPromise??=(async()=>{
   if(memoryTimer)clearInterval(memoryTimer);
   if(cronStarted){command('systemctl',['stop','cron.service']);cronStarted=false;await cleanupWait(runnerIdle,120_000);}
   await drainOwnedChildren();
+  await assertSchedulingLockAbsent();
   await recoverPartialActivation();
   // Only the canonical handoff may remove its exact marker/cron; all user crontabs stay byte-identical.
   if(scheduleInstallation){check(runtimePath,'Missing reviewed runtime.');await run(INTERNAL_NODE,[SCHEDULE,'--rollback',scheduleInstallation],180_000);scheduleInstallation=undefined;check((await schedulingInventory()).sha256===inventoryBefore,'Scheduler inventory changed during cleanup.');}
