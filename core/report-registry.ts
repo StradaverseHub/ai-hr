@@ -117,9 +117,9 @@ const ATTENDANCE_OT: ReportDataset = {
     // export is visibly mixed rather than silently addable, and this projection then dropped the column
     // on the floor: the field list offered `OT Amount` as a bare number with nothing saying what it is
     // in. This dataset is built with `companyIds: scopeIds`, so it spans every company the operator can
-    // see — the one place the label is not decoration. Offered as a field, deliberately NOT added to
-    // `defaultColumns`: every saved report keeps its exact column set, so this is additive by
-    // construction. See MASTER above, which already carries its own `currency` for the same reason.
+    // see — the one place the label is not decoration. Currency travels on every row whether or not
+    // the author selects it. The current evidence-aware defaults include it beside legacy amounts;
+    // saved reports keep their own chosen columns and the same per-currency summary protection.
     {id:'recordedOtMinutes',label:'Recorded OT duration (minutes)',type:'text',group:'Overtime'},
     {id:'formulaAmount',label:'Recorded formula amount by currency',type:'text',group:'Overtime'},
     {id:'unavailableOtDays',label:'Unavailable OT duration days',type:'number',group:'Overtime'},
