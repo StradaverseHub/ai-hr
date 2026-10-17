@@ -50,7 +50,7 @@ const runMigrationData = async () => {
   // Non-vacuity of the harness itself: if the file ever stops containing the two blocks, this test would
   // silently assert nothing at all.
   expect(blocks).toHaveLength(2);
-  for (const b of blocks) await owner.db.execute(sql.raw(b));
+  for (const block of blocks) await owner.withTenant(adminCtx(b), tx => tx.execute(sql.raw(block)));
 };
 
 /** THE SPLIT BLOCK ON ITS OWN. Drizzle runs each `--> statement-breakpoint` chunk as its own statement,
@@ -60,7 +60,7 @@ const runMigrationData = async () => {
 const runSplitBlockOnly = async () => {
   const blocks = dataBlocks();
   expect(blocks).toHaveLength(2);
-  await owner.db.execute(sql.raw(blocks[0]));
+  await owner.withTenant(adminCtx(b), tx => tx.execute(sql.raw(blocks[0])));
 };
 
 let b: Base;
@@ -85,7 +85,9 @@ type Ids = { standard: string; a02: string; shifts: Record<string, string>; arju
  */
 async function seedProductionShape(): Promise<Ids> {
   const t = b.tenantId;
-  const [standard] = await owner.db
+  // Historical owner writes retain their original shape while providing the real administrator
+  // context required by the later legacy-OT snapshot trigger. No trigger or constraint is bypassed.
+  const [standard] = await owner.withTenant(adminCtx(b), tx => tx
     .insert(schema.attendanceRule)
     .values({
       tenantId: t,
@@ -105,15 +107,15 @@ async function seedProductionShape(): Promise<Ids> {
       includeGraceInEarlyOut: true,
       applyToEarlyOt: true,
     })
-    .returning({ id: schema.attendanceRule.id });
-  await owner.db.insert(schema.attendanceRuleOtRow).values([
+    .returning({ id: schema.attendanceRule.id }));
+  await owner.withTenant(adminCtx(b), tx => tx.insert(schema.attendanceRuleOtRow).values([
     { tenantId: t, ruleId: standard.id, fromMinutes: 1, toMinutes: 59, ratePattern: 'flat', rate: '1.50', phRate: '3.00', roundingMode: 'none', roundToMinutes: null, sortOrder: 0 },
     { tenantId: t, ruleId: standard.id, fromMinutes: 60, toMinutes: 0, ratePattern: 'flat', rate: '2.00', phRate: null, roundingMode: 'down', roundToMinutes: 60, sortOrder: 1 },
-  ]);
-  const [a02] = await owner.db
+  ]));
+  const [a02] = await owner.withTenant(adminCtx(b), tx => tx
     .insert(schema.attendanceRule)
     .values({ tenantId: t, name: 'A02', isDefault: false, status: 'active', lateGracePeriodMinutes: 0 })
-    .returning({ id: schema.attendanceRule.id });
+    .returning({ id: schema.attendanceRule.id }));
 
   const mk = async (code: string, ruleId: string, weekly: number[], half: number[], off: number[]) => {
     const [row] = await owner.db
@@ -402,10 +404,10 @@ describe('migration 0483 — the "Standard" Schedule Group splits into three', (
 
   it('does nothing at all to a group that holds ONE working week', async () => {
     const t = b.tenantId;
-    const [only] = await owner.db
+    const [only] = await owner.withTenant(adminCtx(b), tx => tx
       .insert(schema.attendanceRule)
       .values({ tenantId: t, name: 'Standard', isDefault: true, status: 'active', lateGracePeriodMinutes: 0 })
-      .returning({ id: schema.attendanceRule.id });
+      .returning({ id: schema.attendanceRule.id }));
     await owner.db.insert(schema.shift).values({
       tenantId: t, name: 'ONE', code: 'ONE', startTime: '09:00', endTime: '18:00', breakMinutes: 60,
       weeklyPattern: [1, 2, 3, 4, 5], halfPattern: [], offPattern: [], ruleId: only.id,
@@ -634,11 +636,11 @@ describe('07ebd04d — the Schedule Group’s working week is the one the engine
  */
 describe('07ebd04d — migration 0483’s CHECK constraints exist in the database', () => {
   const raw = (cols: string) =>
-    owner.db.execute(
+    owner.withTenant(adminCtx(b), tx => tx.execute(
       sql.raw(
         `INSERT INTO attendance_rule (tenant_id, name, is_default, status, ${cols.split('|')[0]}) VALUES ('${b.tenantId}', 'Raw ${randomUUID().slice(0, 8)}', false, 'active', ${cols.split('|')[1]})`,
       ),
-    );
+    ));
 
   /** The driver wraps the Postgres error, so the CONSTRAINT NAME is on the cause — and the name is the
    *  whole point: "some insert failed" would pass with the wrong constraint, or with an RLS refusal. */
