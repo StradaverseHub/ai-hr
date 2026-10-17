@@ -164,10 +164,10 @@ describe('My Profile canonical transaction and scope',()=>{
   await owner.db.update(employment).set({terminatedOn:yesterday}).where(eq(employment.id,s.employmentId));
   const proposal=empty();proposal.fields=[{fieldId:phone,before:view.baselines[phone],value:'0110000000'}];await expect(submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal})).rejects.toMatchObject({code:'permission'});
  });
- it('retains a historical null email on unrelated canonical partial updates while still rejecting explicit blanks',async()=>{
-  const s=await subject();await owner.db.update(person).set({primaryEmail:null,phone:'0110000000'}).where(eq(person.id,s.personId));
+ it('retains a historical blank email on unrelated canonical partial updates while still rejecting explicit blanks',async()=>{
+  const s=await subject();await owner.db.update(person).set({primaryEmail:'',phone:'0110000000'}).where(eq(person.id,s.personId));
   await updatePersonProfilePartial(admin(),{personId:s.personId,preferredName:'Recorded fixture'});
-  const [master]=await owner.db.select().from(person).where(eq(person.id,s.personId));expect(master.primaryEmail).toBeNull();expect(master.phone).toBe('0110000000');expect(master.preferredName).toBe('Recorded fixture');
+  const [master]=await owner.db.select().from(person).where(eq(person.id,s.personId));expect(master.primaryEmail).toBe('');expect(master.phone).toBe('0110000000');expect(master.preferredName).toBe('Recorded fixture');
   await expect(updatePersonProfilePartial(admin(),{personId:s.personId,fullName:' '})).rejects.toThrow('Name is required');await expect(updatePersonProfilePartial(admin(),{personId:s.personId,primaryEmail:' '})).rejects.toThrow('Email is required');await expect(updatePersonProfilePartial(admin(),{personId:s.personId,primaryEmail:'invalid-email'})).rejects.toThrow('Email is invalid');
  });
  it('removes non-CRUD and PUBLIC grants while retaining canonical request history and scoped decisions',async()=>{

@@ -1014,6 +1014,7 @@ async function loadDependent(tx: Tx, id: string) {
   const [row] = await tx
     .select({
       id: employeeDependent.id,
+      fullName: employeeDependent.fullName,
       personId: employeeDependent.personId,
       relationship: employeeDependent.relationship,
       isBeneficiary: employeeDependent.isBeneficiary,
