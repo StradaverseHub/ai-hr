@@ -108,6 +108,7 @@ async function runnerIdle(){
 async function peer(socket:typeof BROKER|typeof RENDERER,body:unknown){
  // No root impersonation: the kernel observes the actual installed mail UID. No keys/credentials in env.
  const encoded=JSON.stringify(body);check(Buffer.byteLength(encoded)<=4096,'Peer request exceeds bound.');
+ if(socket===BROKER)return JSON.parse(await run('/usr/sbin/runuser',['-u','aihr-identity-email','--','/usr/bin/env','-i','PATH=/usr/bin:/bin','LANG=C','LC_ALL=C','TZ=UTC','/usr/bin/python3','-I','/usr/local/lib/aihr-identity-email/report-auth-peer.py','--client'],45_000,encoded)) as Record<string,unknown>;
  const program=`import socket,sys\ns=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);s.settimeout(100);s.connect('${socket}');s.sendall(sys.stdin.buffer.read(4097));s.shutdown(socket.SHUT_WR);b=b''\nwhile True:\n c=s.recv(4096)\n if not c:break\n b+=c\n if len(b)>524288:raise RuntimeError('oversized')\nsys.stdout.buffer.write(b)`;
   return JSON.parse(await run('/usr/sbin/runuser',['-u','aihr-identity-email','--','/usr/bin/python3','-I','-c',program],105_000,encoded)) as Record<string,unknown>;
 }
