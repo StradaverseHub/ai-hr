@@ -13,8 +13,9 @@ import {fileURLToPath} from 'node:url';
 import {spawn,execFileSync} from 'node:child_process';
 import {randomUUID,createHash} from 'node:crypto';
 import {SYSTEM_TESTING_BROWSER_TARGET,systemTestingBrowserOptions} from './system-testing-browser-target.mjs';
-import {prepareSystemTestingBuild,systemTestingCompileEnvironment} from './improve/system-testing-manifest.ts';
+import {prepareSystemTestingBuild,emptySystemTestingCompileEnvironment,systemTestingBuildContextEnvironment,ensurePrivateReleaseDirectory,systemTestingBuildDirectory,publishSystemTestingBuild} from './improve/system-testing-manifest.ts';
 import {DEMO_TENANT_ID,SYSTEM_TENANT_ID,demoSeedRefusal} from '../db/seed-guard.ts';
+import {profileTestingInvariant,assertProfileTestingInvariant,assertProfileTestingJournal,verifyOptionalProfileTestingPdf} from './profile-testing-fixture-proof.mjs';
 const filename=fileURLToPath(import.meta.url),root=fileURLToPath(new URL('..',import.meta.url));
 const out=path.join(root,'scratchpad/board19-profile-testing'),stopFile=path.join(out,'browser.stop');
 const {database,port,namespace}=SYSTEM_TESTING_BROWSER_TARGET;
@@ -32,11 +33,10 @@ if(decodeURIComponent(appUrl.username)!=='ai_hr_app' || appUrl.username===ownerU
 appUrl.pathname='/'+database;ownerUrl.pathname='/'+database;
 const env={...process.env,NOTIFICATIONS_ENABLED:'false',IDENTITY_EMAIL_SOCKET:path.join(out,'no-mail.sock'),NEXT_PUBLIC_APP_URL:'http://127.0.0.1:'+port,NODE_ENV:'development',DATABASE_URL:appUrl.toString(),MIGRATION_DATABASE_URL:ownerUrl.toString(),TEST_DB_NAMESPACE:namespace,PORT:port,DEV_TENANT_ID:DEMO_TENANT_ID,ALLOW_DEMO_SESSION:'true',AUTH_PROVIDER:'workos',SEED_MAY_DESTROY_OTHER_TENANTS:''};
 // Explicit lock locations/slot count prevent inherited override variables from weakening coordination.
-const lockEnv={...env,AIHR_TEST_SLOTS:'2',AIHR_LOCK_DIR:path.join(gateState,'locks')};
+const lockEnv={...env,AIHR_TEST_SLOTS:'2',AIHR_LOCK_DIR:path.join(gateState,'locks'),SYSTEM_TESTING_BROWSER_REQUEST_STARTED_AT:String(Date.now())};
 fs.mkdirSync(out,{recursive:true});
 if(!options.heldLockWorker) {
-  if(fs.existsSync(stopFile))fs.unlinkSync(stopFile);
-  const args=[path.join(gateState,'testlock.sh'),lockNames.a,'--','bash',path.join(gateState,'testlock.sh'),lockNames.b,'--','bash',path.join(gateState,'devdb-lock.sh'),lockNames.db,'--',process.execPath,'--import','tsx',filename,'--held-lock-worker',...(options.reviewRequired?['--review-required']:[])];
+  const args=[path.join(gateState,'testlock.sh'),lockNames.a,'--','bash',path.join(gateState,'testlock.sh'),lockNames.b,'--','bash',path.join(gateState,'devdb-lock.sh'),lockNames.db,'--',process.execPath,'--import','tsx',filename,'--held-lock-worker',...(options.reviewRequired?['--review-required']:[]),...(options.continueObservations?['--continue-observations']:[])];
   // Isolate lock wrappers from terminal Ctrl-C: only the coordinator receives it and requests a
   // stop-file handoff. A wrapper's own signal trap must not release before owned server cleanup.
   const child=spawn('bash',args,{cwd:root,env:lockEnv,stdio:'inherit',detached:true});
@@ -65,7 +65,7 @@ if(!options.heldLockWorker) {
   if(git(['status','--porcelain']))throw new Error('Freeze a clean owned candidate before the browser runner.');
   const candidate=git(['rev-parse','HEAD']),attemptDirectory='attempt-'+randomUUID(),attemptOut=path.join(out,attemptDirectory);
   fs.mkdirSync(attemptOut,{mode:0o700});
-  let server,activeJob,stopping=false,serverFd,forceStopTimer;
+  let server,activeJob,stopping=false,serverFd,forceStopTimer,ownedServerPid,runFailed=false;
   const overallDeadline=Date.now()+45*60*1000;
   const overallWatchdog=setTimeout(()=>requestStop(),45*60*1000);overallWatchdog.unref();
   let postgresAdmin,postgresTarget;
@@ -108,19 +108,91 @@ if(!options.heldLockWorker) {
     const content=fs.readFileSync(path.join(attemptOut,name+'.log'),'utf8'),marker='SYSTEM_TESTING16_MANIFEST\n',start=content.indexOf(marker);
     if(start<0)throw new Error('Fixture manifest marker missing.');return JSON.parse(content.slice(start+marker.length));
   }
+  function readReceipt(relative){
+    if(!/^(?:browser-manifest\.json|browser-current\.json|fixture-manifest\.json|dev-source-identity-[a-f0-9-]{36}\.json|attempt-[a-f0-9-]{36}\/browser-stopped\.json)$/.test(relative))throw new Error('Closed browser receipt name required.');
+    const file=path.join(out,relative),stat=fs.lstatSync(file);
+    if(!stat.isFile()||stat.isSymbolicLink()||stat.uid!==process.getuid()||stat.nlink!==1||(stat.mode&0o077)||stat.size<1||stat.size>1048576||fs.realpathSync(file)!==file)throw new Error('Private owned browser receipt required.');
+    return JSON.parse(fs.readFileSync(file,'utf8'));
+  }
+  function provePreviousStopped(previous){
+    if(previous.root!==root||previous.database!==database||previous.port!==Number(port)||!/^attempt-[a-f0-9-]{36}$/.test(previous.attemptDirectory)||!Number.isSafeInteger(previous.serverPid)||previous.serverPid<=1||!/^([a-f0-9]{40})$/.test(previous.candidate))throw new Error('Prior owned browser identity differs.');
+    const stopped=readReceipt(previous.attemptDirectory+'/browser-stopped.json');
+    if(stopped.root!==root||stopped.database!==database||stopped.port!==Number(port)||stopped.candidate!==previous.candidate||stopped.serverPid!==previous.serverPid||stopped.ownedServerStopped!==true)throw new Error('Prior server stop is unproven.');
+    for(const pid of [previous.serverPid,-previous.serverPid]){try{process.kill(pid,0);}catch(error){if(error.code==='ESRCH')continue;throw error;}throw new Error('Prior server PID/group exists or was reused; refuse and never kill it.');}
+    git(['merge-base','--is-ancestor',previous.candidate,candidate]);
+    return stopped;
+  }
+  async function proveRolesAndJournal(postgres,expected){
+    const app=postgres(appUrl.toString(),{max:1,connect_timeout:10,idle_timeout:5,connection:{statement_timeout:10000}});
+    const owner=postgres(ownerUrl.toString(),{max:1,connect_timeout:10,idle_timeout:5,connection:{statement_timeout:10000}});
+    try{
+      const [role]=await app`select current_user as name,rolsuper,rolbypassrls,current_database() as database,host(inet_server_addr()) as address,inet_server_port() as port from pg_roles where rolname=current_user`;
+      if(role?.name!=='ai_hr_app'||role.rolsuper||role.rolbypassrls||role.database!==database||role.port!==5433||!['127.0.0.1','::1'].includes(role.address))throw new Error('Exact local restricted application role proof failed.');
+      await owner.begin('isolation level repeatable read read only',async tx=>{
+        const [role]=await tx`select current_user as name,rolsuper or rolbypassrls as full_visibility,current_database() as database,host(inet_server_addr()) as address,inet_server_port() as port from pg_roles where rolname=current_user`;
+        if(role?.name!==decodeURIComponent(ownerUrl.username)||!role.full_visibility||role.database!==database||role.port!==5433||!['127.0.0.1','::1'].includes(role.address))throw new Error('Exact local full-visibility migration principal required.');
+        const applied=await tx`select hash,created_at::text as created_at from drizzle.__drizzle_migrations order by id`;
+        assertProfileTestingJournal(expected,applied);
+      });
+    }finally{await app.end();await owner.end();}
+  }
+  function recordStopped(){
+    if(!ownedServerPid||fs.existsSync(path.join(attemptOut,'browser-stopped.json')))return;
+    fs.writeFileSync(path.join(attemptOut,'browser-stopped.json'),JSON.stringify({candidate,root,database,port:Number(port),serverPid:ownedServerPid,ownedServerStopped:true,stoppedAt:new Date().toISOString(),result:runFailed?'stopped_after_error':'stopped'},null,2)+'\n',{flag:'wx',mode:0o600});
+  }
   try {
-    if(fs.existsSync(stopFile))throw new Error('Run was stopped while waiting for locks.');
-    if(fs.existsSync(path.join(out,'browser-manifest.json')))throw new Error('A prior browser target exists; preserve it. This initial runner has no resume/reset path.');
+    // Only the lock owner may clear an older stop. A stop requested while queued remains effective.
+    const requestedAt=Number(process.env.SYSTEM_TESTING_BROWSER_REQUEST_STARTED_AT);
+    if(!Number.isSafeInteger(requestedAt)||requestedAt<=0||requestedAt>Date.now())throw new Error('Use the outer coordinator request.');
+    if(fs.existsSync(stopFile)){
+      const stat=fs.lstatSync(stopFile);
+      if(!stat.isFile()||stat.isSymbolicLink()||stat.uid!==process.getuid()||stat.mtimeMs>=requestedAt)throw new Error('Run was stopped while waiting for locks.');
+      fs.unlinkSync(stopFile);
+    }
+    if(fs.existsSync(path.join(out,'browser-manifest.json'))!==options.continueObservations)throw new Error('Initial mode requires no prior target; --continue-observations requires its exact preserved target. No reset or generic resume exists.');
     const journal=JSON.parse(fs.readFileSync(path.join(root,'db/migrations/meta/_journal.json'),'utf8'));
     if(!journal.entries.some(e=>e.idx===561&&e.when===1791900000041&&e.tag==='0561_versioned_system_testing'))throw new Error('Parent must integrate the real0561 journal after prerequisites before execution.');
+<<<<<<< HEAD
+=======
+    const sourceJournal=journal.entries.map(entry=>{
+      if(!/^[a-zA-Z0-9_-]+$/.test(entry.tag))throw new Error('Invalid canonical migration tag.');
+      return {...entry,sha256:createHash('sha256').update(fs.readFileSync(path.join(root,'db/migrations',entry.tag+'.sql'))).digest('hex')};
+    });
+    const journalDigest=createHash('sha256').update(JSON.stringify(sourceJournal)).digest('hex');
+>>>>>>> 2dbe77d44 (test: prepare shared Profile and Testing browser fixture)
     const compiled=prepareSystemTestingBuild({worktree:root,candidate,buildRecordId:randomUUID()});
-    if(!options.reviewRequired)Object.assign(env,systemTestingCompileEnvironment(compiled));
-    else for(const key of Object.keys(systemTestingCompileEnvironment(compiled)))delete env[key];
+    if(!options.reviewRequired){
+      const directory=systemTestingBuildDirectory('local');ensurePrivateReleaseDirectory(directory);
+      publishSystemTestingBuild(compiled,directory);
+      Object.assign(env,systemTestingBuildContextEnvironment(compiled,'dev_only'));
+    }else Object.assign(env,emptySystemTestingCompileEnvironment(),{AIHR_SYSTEM_TESTING_BUILD_CONTEXT:''});
     const identityFile='dev-source-identity-'+compiled.identity.buildRecordId+'.json';
     fs.writeFileSync(path.join(out,identityFile),JSON.stringify({mode:'dev_only_not_production_build',...compiled,reviewRequiredRequested:options.reviewRequired},null,2)+'\n',{flag:'wx',mode:0o600});
     env.SYSTEM_TESTING_FIXTURE_COORDINATOR_PID=String(process.pid);env.SYSTEM_TESTING_FIXTURE_CANDIDATE=candidate;
     await assertPortFree();
     const {default:postgres}=await import('postgres');
+    let fixture,browserRecord;
+    if(options.continueObservations){
+      const original=readReceipt('browser-manifest.json'),prepared=readReceipt('fixture-manifest.json'),previous=readReceipt('browser-current.json');
+      const priorStop=provePreviousStopped(previous);
+      if(original.root!==root||original.database!==database||original.namespace!==namespace||original.port!==Number(port)||original.fixtureRuns!==2||original.journalDigest!==journalDigest||original.fixtureManifestSha256!==createHash('sha256').update(fs.readFileSync(path.join(out,'fixture-manifest.json'))).digest('hex')||prepared.root!==root||prepared.database!==database||prepared.namespace!==namespace||prepared.port!==Number(port)||prepared.candidate!==original.candidate)throw new Error('Initial fixture/source migration binding differs; continuation never migrates or resets it.');
+      if(typeof original.identityFile!=='string'||!/^dev-source-identity-[a-f0-9-]{36}\.json$/.test(original.identityFile))throw new Error('Initial dev identity name differs.');
+      readReceipt(original.identityFile);
+      if(original.identitySha256!==createHash('sha256').update(fs.readFileSync(path.join(out,original.identityFile))).digest('hex'))throw new Error('Original dev-only identity evidence changed; preserve it.');
+      git(['merge-base','--is-ancestor',original.candidate,candidate]);
+      await proveRolesAndJournal(postgres,sourceJournal);
+      postgresTarget=postgres(ownerUrl.toString(),{max:1,connect_timeout:10,idle_timeout:5,connection:{statement_timeout:20000}});
+      const actual=await profileTestingInvariant(postgresTarget,prepared);assertProfileTestingInvariant(prepared.invariants,actual);
+      const pdf=verifyOptionalProfileTestingPdf(out,prepared);
+      if(pdf.status==='parent_observed_download_retained'){
+        git(['merge-base','--is-ancestor',original.candidate,pdf.sourceRef]);
+        git(['merge-base','--is-ancestor',pdf.sourceRef,candidate]);
+      }
+      await postgresTarget.end();postgresTarget=undefined;
+      fixture=prepared;
+      browserRecord={candidate,root,database,namespace,port:Number(port),journalDigest,attemptDirectory,preparationCandidate:original.candidate,previousCandidate:previous.candidate,priorStop,initialManifestSha256:createHash('sha256').update(fs.readFileSync(path.join(out,'browser-manifest.json'))).digest('hex'),identityFile,identitySha256:createHash('sha256').update(fs.readFileSync(path.join(out,identityFile))).digest('hex'),initialInvariantsVerified:actual,pdf,readOnlyContinuation:true,migrationRuns:0,seedRuns:0,fixtureRuns:0,activeServiceVerified:false,applicationAcceptance:'UNVERIFIED'};
+      fs.writeFileSync(path.join(attemptOut,'browser-continuation.json'),JSON.stringify(browserRecord,null,2)+'\n',{flag:'wx',mode:0o600});
+    }else{
     const adminUrl=new URL(ownerUrl);adminUrl.pathname='/postgres';postgresAdmin=postgres(adminUrl.toString(),{max:1,connect_timeout:10,idle_timeout:5,connection:{statement_timeout:10000}});
     const existing=await postgresAdmin`select datname from pg_database where datname=${database}`;
     if(!existing.length)await postgresAdmin.unsafe('CREATE DATABASE ai_hr_board19_profile_testing_browser');
@@ -144,6 +216,7 @@ if(!options.heldLockWorker) {
     const migrationConfig=path.join(attemptOut,'drizzle-system-testing.config.ts');
     fs.writeFileSync(migrationConfig,`import {defineConfig} from 'drizzle-kit';\nconst url=process.env.MIGRATION_DATABASE_URL;\nif(!url||new URL(url).pathname!=='/${database}')throw new Error('Named System Testing migration target required');\nexport default defineConfig({schema:${JSON.stringify(path.join(root,'db/schema.ts'))},out:${JSON.stringify(path.join(root,'db/migrations'))},dialect:'postgresql',dbCredentials:{url},strict:true});\n`);
     await run('pnpm',['exec','drizzle-kit','migrate','--config',migrationConfig],'browser-migrate',180000);
+    await proveRolesAndJournal(postgres,sourceJournal);
     if(!seeded)await run(process.execPath,['--import','tsx',path.join(root,'db/seed.ts')],'browser-seed',180000);
     else fs.writeFileSync(path.join(attemptOut,'browser-seed.log'),'Existing named fictional demo database preserved; seed was not rerun.\n');
     for(const label of ['browser-fixture-first','browser-fixture-second'])await run(process.execPath,['--import','tsx',path.join(root,'scripts/dev-fixture-system-testing.mts')],label,120000);
@@ -153,13 +226,19 @@ if(!options.heldLockWorker) {
     const hr=manifests[1].people?.HR;
     if(!hr?.userId||hr.tenantId!==manifests[1].tenantId)throw new Error('Named fictional HR principal is missing.');
     env.DEV_USER_ID=hr.userId;
-    fs.writeFileSync(path.join(out,'browser-manifest.json'),JSON.stringify({candidate,root,database,namespace,port:Number(port),fixtureRuns:2,attemptDirectory,identityFile,identitySha256:createHash('sha256').update(fs.readFileSync(path.join(out,identityFile))).digest('hex'),fixtureManifestSha256:createHash('sha256').update(fs.readFileSync(path.join(out,'fixture-manifest.json'))).digest('hex'),identityMode:options.reviewRequired?'review_required':'prepared_dev_identity',activeServiceVerified:false,applicationAcceptance:'UNVERIFIED',fixture:manifests[1]},null,2)+'\n',{flag:'wx',mode:0o600});
+    fixture=manifests[1];
+    browserRecord={candidate,root,database,namespace,port:Number(port),journalDigest,fixtureRuns:2,attemptDirectory,identityFile,identitySha256:createHash('sha256').update(fs.readFileSync(path.join(out,identityFile))).digest('hex'),fixtureManifestSha256:createHash('sha256').update(fs.readFileSync(path.join(out,'fixture-manifest.json'))).digest('hex'),identityMode:options.reviewRequired?'review_required':'prepared_dev_identity',activeServiceVerified:false,applicationAcceptance:'UNVERIFIED',fixture};
+    fs.writeFileSync(path.join(out,'browser-manifest.json'),JSON.stringify(browserRecord,null,2)+'\n',{flag:'wx',mode:0o600});
+    }
+    env.DEV_USER_ID=fixture.people.HR.userId;
     await assertPortFree();checkCandidate();
     serverFd=fs.openSync(path.join(attemptOut,'browser-dev.log'),'w',0o600);
     server=spawn(process.execPath,[path.join(root,'node_modules/next/dist/bin/next'),'dev','--hostname','127.0.0.1','--port',port],{cwd:root,env,stdio:['ignore',serverFd,serverFd],detached:true});
     server.once('error',error=>{fs.appendFileSync(path.join(attemptOut,'browser-dev.log'),'\nSpawn failed: '+error.message+'\n');stopping=true;});
+    ownedServerPid=server.pid;
+    fs.writeFileSync(path.join(out,'browser-current.json'),JSON.stringify({candidate,root,database,namespace,port:Number(port),attemptDirectory,serverPid:ownedServerPid},null,2)+'\n',{mode:0o600});
     fs.writeFileSync(path.join(out,'browser.pid'),String(server.pid??'')+'\n');
-    console.log(`Fixture exited cleanly twice with identical declared facts. Owned candidate ${candidate}; local app http://127.0.0.1:${port}; render/application outcomes remain unverified.`);
+    console.log(`${options.continueObservations?'Read-only continuation preserved initial identities/history/released Payroll; no migrate, seed or fixture ran':'Fixture exited cleanly twice with identical declared facts'}. Owned candidate ${candidate}; local app http://127.0.0.1:${port}; render/application outcomes remain unverified.`);
     console.log(`Stop via ${stopFile}. Only owned process group ${server.pid} will be stopped. Both slots and DB stay held until cleanup.`);
     const deadline=overallDeadline;
     while(!stopping && !fs.existsSync(stopFile) && Date.now()<deadline) {
@@ -168,13 +247,14 @@ if(!options.heldLockWorker) {
     }
     if(Date.now()>=deadline)console.log('Browser lifetime watchdog reached; stopping the owned server.');
     await stopOwned(server);server=undefined;fs.closeSync(serverFd);serverFd=undefined;
-    fs.writeFileSync(path.join(out,'browser-stopped.json'),JSON.stringify({candidate,database,port:Number(port),ownedServerStopped:true,stoppedAt:new Date().toISOString()},null,2)+'\n');
+    recordStopped();
     console.log('Owned System Testing server stopped; coordinator may now release both slots + DB. No browser outcome, production build or arrival PASS claimed by runner.');
-  }catch(error){console.error(error instanceof Error?error.message:String(error));process.exitCode=1;}
+  }catch(error){runFailed=true;console.error(error instanceof Error?error.message:String(error));process.exitCode=1;}
   finally {
     clearTimeout(overallWatchdog);clearTimeout(forceStopTimer);
     await stopOwned(activeJob);await stopOwned(server);
     if(serverFd!==undefined)fs.closeSync(serverFd);
     if(postgresAdmin)await postgresAdmin.end();if(postgresTarget)await postgresTarget.end();
+    recordStopped();
   }
 }
