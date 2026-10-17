@@ -12,6 +12,7 @@ vi.mock('next-intl/server', () => ({
 vi.mock('../app/admin/system-testing/workspace-actions', () => ({ confirmTestingCatalogueAction: vi.fn() }));
 vi.mock('../components/system-testing/action-form', () => ({ TestingActionForm: ({children,label}:{children:ReactNode;label:string}) => createElement('section', null, label, children) }));
 vi.mock('../components/system-testing/legacy-mapping-form', () => ({ TestingLegacyMappingForm: () => null }));
+import { TestingGuide } from '../components/system-testing/guide';
 import { TestingRecordedTime } from '../components/system-testing/recorded-time';
 import { TestingCatalogueReview } from '../components/system-testing/catalogue-review';
 
@@ -47,6 +48,16 @@ describe('recorded Testing metadata', () => {
     const messages = JSON.parse(readFileSync(new URL(`../messages/${locale}.json`, import.meta.url), 'utf8')).systemTestingWorkspace;
     for (const key of ['updateLatest','identityNotArrival','activeServiceUnverified','recordedBy']) expect(html.replaceAll('&amp;','&')).toContain(messages[key]);
     expect(html).not.toMatch(/MISSING_MESSAGE|FORMATTING_ERROR/);
+  });
+  it('keeps the frozen title/module/function visible in before-after guides without inventing a legacy function', async () => {
+    state.locale = 'en';
+    const entry = JSON.parse(readFileSync(new URL('../lib/system-testing/catalogue.json', import.meta.url),'utf8')).entries.find((row:{semanticId:string})=>row.semanticId==='personnel.profile.reopen');
+    const html = renderToStaticMarkup(await TestingGuide({ definition: entry.definition }));
+    for (const value of [entry.definition.title,'employees','personnel.profile']) expect(html).toContain(value);
+    const legacy = renderToStaticMarkup(await TestingGuide({ definition: { format:0,history:'upgrade_baseline',title:'Legacy fixture',moduleCode:'employees',precondition:null,steps:[],testType:'functional',priority:'medium',expectedBehavior:null,expectedFunction:null } }));
+    expect(legacy).toContain('Legacy fixture'); expect(legacy).toContain('Not specified');
+    expect(legacy).toContain('Original instructions for earlier observations are unknown.');
+    expect(legacy).not.toContain('personnel.profile');
   });
   it('does not display a verified identity when compiled provenance is unavailable', async () => {
     state.locale = 'en';
