@@ -66,6 +66,9 @@ export const EMPLOYEE_TEXT_COLUMN_KEYS: readonly string[] = [
   'ic_number',
   'phone',
   'home_phone',
+  'correspondence_mobile_phone',
+  'correspondence_home_phone',
+  'direct_superior',
   'old_ic_number',
   'passport_number',
   'custom_holder_id',
@@ -119,6 +122,15 @@ export const EMPLOYEE_ENUM_VALUES = {
 /** The Instructions sheet. Every line is supplied by the caller (translated); this only lays it out. */
 export function buildInstructionRows(title: string, lines: string[]): string[][] {
   return [[title], [], ...lines.map((l) => [l])];
+}
+
+/** Personnel uses A/B for tab/field guidance and a wide C for readable prose. */
+export const PERSONNEL_INSTRUCTION_COLUMN_WIDTHS=[24,52,110];
+export function buildPersonnelInstructionRows(title:string,lines:string[]):string[][]{
+  return [[title],[],...lines.map(line=>['','',line])];
+}
+export function personnelTemplateColumnWidths(headers:readonly string[]):number[]{
+  return headers.map(header=>Math.min(100,Math.max(16,Array.from(header).reduce((width,char)=>width+(/[\u2e80-\u9fff\uac00-\ud7af]/u.test(char)?2:1),0)+2)));
 }
 
 /** Sheet names. Short and stable: `workbookToCsvText` reads the FIRST sheet, so the data sheet must

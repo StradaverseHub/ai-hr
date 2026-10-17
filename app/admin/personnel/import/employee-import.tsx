@@ -18,7 +18,9 @@ import { IMPORT_FILE_ACCEPT, importFileMessageKey, readImportFile } from '@/lib/
 import { toCsv } from '@/lib/csv';
 import { personnelColumnLabel as descriptorColumnLabel, personnelColumnGuidance, personnelImportField, personnelFieldChoices, personnelImportFields } from '@/lib/personnel-import-contract';
 import {
-  buildInstructionRows,
+  buildPersonnelInstructionRows,
+  personnelTemplateColumnWidths,
+  PERSONNEL_INSTRUCTION_COLUMN_WIDTHS,
   buildReferenceRows,
   dependentTextColumnIndexes,
   employeeTextColumnIndexes,
@@ -207,6 +209,8 @@ export function EmployeeImport({
         {
           sheetName: EMPLOYEE_XLSX_SHEETS.data,
           textColumns: employeeTextColumnIndexes(),
+          columnWidths:personnelTemplateColumnWidths(employeeTemplate.columns.map(column=>employeeColumnLabel(column.key))),
+          wrapText:true,
           headerNotes: employeeTemplate.columns.map(column=>guidance(column.key,'employee','create')),
           validationLists:personnelImportFields('employee').flatMap(field=>{const column=employeeTemplate.columns.findIndex(item=>item.key===field.import.column);const values=field.import.catalog?reference.catalogs?.[field.import.catalog]??[]:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value);return column>=0&&values.length?[{column,values}]:[];}),
           extraSheets: [
@@ -216,17 +220,22 @@ export function EmployeeImport({
               name: EMPLOYEE_XLSX_SHEETS.family,
               rows: [DEPENDENT_XLSX_COLUMNS.map(key=>descriptorColumnLabel(key,'family',(labelKey,fallback)=>personnelLabels.has(labelKey)?personnelLabels(labelKey):fallback)), ...DEPENDENT_SAMPLE_ROWS.map((r) => [...r])],
               textColumns: dependentTextColumnIndexes(),
+              columnWidths:personnelTemplateColumnWidths(DEPENDENT_XLSX_COLUMNS.map(key=>descriptorColumnLabel(key,'family',(labelKey,fallback)=>personnelLabels.has(labelKey)?personnelLabels(labelKey):fallback))),
+              wrapText:true,
               headerNotes: DEPENDENT_XLSX_COLUMNS.map(key=>guidance(key,'family','create')),
               validationLists:personnelImportFields('family').flatMap(field=>{const column=DEPENDENT_XLSX_COLUMNS.indexOf(field.import.column!);const values=field.import.catalog?reference.catalogs?.[field.import.catalog]??[]:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value);return column>=0&&values.length?[{column,values}]:[];}),
             },
             ...PERSONNEL_REGISTER_KINDS.map(kind=>({name:PERSONNEL_REGISTER_SHEETS[kind],
               rows:[personnelRegisterColumns(kind).map(key=>registerColumnLabel(kind,key))],
               textColumns:personnelRegisterColumns(kind).map((_,index)=>index),
+              columnWidths:personnelTemplateColumnWidths(personnelRegisterColumns(kind).map(key=>registerColumnLabel(kind,key))),
+              wrapText:true,
               headerNotes:personnelRegisterColumns(kind).map(key=>guidance(key,kind,'create')),
               validationLists:registerChoices(kind).map(list=>({column:personnelRegisterColumns(kind).findIndex(key=>registerColumnLabel(kind,key)===list.label),values:list.values})),
             })),
             {
               name: EMPLOYEE_XLSX_SHEETS.reference,
+              columnWidths:[80],wrapText:true,
               rows: buildReferenceRows(t('referenceHeading'), [
                 { label: employeeColumnLabel('company'), values: companies.map((c) => c.name) },
                 { label: employeeColumnLabel('department'), values: reference.departments },
@@ -247,7 +256,8 @@ export function EmployeeImport({
             },
             {
               name: EMPLOYEE_XLSX_SHEETS.instructions,
-              rows: [...buildInstructionRows(t('instructionsHeading'), [
+              columnWidths:PERSONNEL_INSTRUCTION_COLUMN_WIDTHS,wrapText:true,
+              rows: [...buildPersonnelInstructionRows(t('instructionsHeading'), [
                 t('instructionRequired', { columns: IMPORT_COLUMNS.required.map(employeeColumnLabel).join(', ') }),
                 t('instructionDates'),
                 t('instructionIdentityText'),

@@ -1953,7 +1953,7 @@
       "sectionInstructionBlank": "Để trống ô để giữ nguyên dữ liệu đã ghi nhận. Ô trống không bao giờ xóa giá trị.",
       "sectionInstructionOneRow": "Mỗi nhân viên một dòng. Hai dòng cùng một Mã nhân viên sẽ bị từ chối.",
       "sectionInstructionFamilyRow": "Mỗi thành viên gia đình một dòng. Cùng một Mã nhân viên có thể xuất hiện ở nhiều dòng.",
-      "sectionInstructionFence": "Tệp này chỉ được chứa các cột liệt kê trong trang tính này. Cột thuộc phần khác sẽ bị từ chối và không có gì được nhập. Các cột không thuộc phần nào — công ty, phòng ban, chức danh, trung tâm chi phí, loại hợp đồng, ngày vào làm, lương, cùng EPF, SOCSO, EIS và cư trú thuế — hoàn toàn không thể nhập theo phần; hãy sửa chúng trên hồ sơ Nhân sự của nhân viên.",
+      "sectionInstructionFence": "Chỉ dùng các cột được liệt kê trên trang tính này. Cột thuộc phần khác sẽ bị từ chối và không có dữ liệu nào được nhập. Chọn mẫu của phần tương ứng cho các trường được hỗ trợ; dùng Nhân sự cho các trường trong hướng dẫn bên dưới.",
       "sectionUpdateCount": "{count, plural, one {# sẽ cập nhật} other {# sẽ cập nhật}}",
       "sectionSkipCount": "{count, plural, one {# không có gì thay đổi} other {# không có gì thay đổi}}",
       "sectionNotFoundCount": "{count, plural, one {# không tìm thấy} other {# không tìm thấy}}",
@@ -2007,8 +2007,12 @@
         "backupShift": "Chọn Ca dự phòng trong Chấm công để kiểm tra Nhóm lịch, ngày và các ca khả dụng.",
         "taxRelief": "Đặt các loại giảm trừ con trong Thuế thu nhập để kiểm tra toàn bộ lựa chọn thuế.",
         "hireCorrection": "Dùng Sửa chi tiết tuyển dụng để thay đổi Trung tâm chi phí ban đầu và giữ lịch sử sửa đổi.",
-        "termination": "Dùng Biến động nhân sự để chọn Lý do chấm dứt cùng các ngày làm việc bắt buộc."
-      }
+        "termination": "Dùng Biến động nhân sự để chọn Lý do chấm dứt cùng các ngày làm việc bắt buộc.",
+        "superiorName": "Tên được hiển thị theo Cấp trên trực tiếp đã chọn bằng Mã nhân viên hoặc email công việc trong mẫu. Không nhập riêng tên cấp trên.",
+        "superiorRecord": "Bộ chọn Nhân sự chọn hồ sơ việc làm. Trong mẫu, chọn cùng quan hệ báo cáo bằng Mã nhân viên hoặc email công việc; không nhập mã hồ sơ nội bộ."
+      },
+      "exclusionDirectSuperiorName": "Cấp trên trực tiếp — tên hiển thị",
+      "exclusionDirectSuperiorRecord": "Cấp trên trực tiếp — bộ chọn hồ sơ Nhân sự"
     },
     "wizard": {
       "deleteRecord": "Xóa hồ sơ",

@@ -1953,7 +1953,7 @@
       "sectionInstructionBlank": "Biarkan sel kosong untuk mengekalkan apa yang sudah direkodkan. Sel kosong tidak sekali-kali memadamkan nilai.",
       "sectionInstructionOneRow": "Satu baris bagi setiap pekerja. Dua baris dengan ID Pekerja yang sama akan ditolak.",
       "sectionInstructionFamilyRow": "Satu baris bagi setiap ahli keluarga. ID Pekerja yang sama boleh muncul pada beberapa baris.",
-      "sectionInstructionFence": "Fail ini hanya boleh mengandungi lajur yang disenaraikan pada helaian ini. Lajur milik bahagian lain akan ditolak dan tiada apa-apa yang diimport. Lajur yang tidak dimiliki mana-mana bahagian — syarikat, jabatan, jawatan, pusat kos, jenis pekerjaan, tarikh mula, gaji, serta nombor KWSP, PERKESO, SIP dan status pemastautin cukai — langsung tidak boleh diimport mengikut bahagian; ubah lajur itu pada rekod Personel pekerja berkenaan.",
+      "sectionInstructionFence": "Gunakan hanya lajur yang disenaraikan pada helaian ini. Lajur daripada bahagian lain ditolak dan tiada apa-apa diimport. Pilih templat bahagian tersebut untuk medan yang disokong; gunakan Personel untuk medan dalam panduan di bawah.",
       "sectionUpdateCount": "{count, plural, one {# untuk dikemas kini} other {# untuk dikemas kini}}",
       "sectionSkipCount": "{count, plural, one {# tiada perubahan} other {# tiada perubahan}}",
       "sectionNotFoundCount": "{count, plural, one {# tidak dijumpai} other {# tidak dijumpai}}",
@@ -2007,8 +2007,12 @@
         "backupShift": "Pilih Syif Sandaran dalam Kehadiran supaya Kumpulan Jadual, tarikh dan syif yang tersedia dapat disemak.",
         "taxRelief": "Tetapkan kategori pelepasan anak dalam Cukai Pendapatan supaya pilihan cukai lengkap dapat disemak.",
         "hireCorrection": "Gunakan Betulkan Butiran Pengambilan untuk mengubah Pusat Kos asal dan mengekalkan sejarah pembetulannya.",
-        "termination": "Gunakan Pergerakan untuk memilih Sebab Penamatan bersama tarikh pekerjaan yang diperlukan."
-      }
+        "termination": "Gunakan Pergerakan untuk memilih Sebab Penamatan bersama tarikh pekerjaan yang diperlukan.",
+        "superiorName": "Nama mengikut Penyelia Terus yang dipilih melalui ID Pekerja atau e-mel kerja dalam templat. Jangan masukkan nama penyelia berasingan.",
+        "superiorRecord": "Pemilih Personel memilih rekod pekerjaan. Dalam templat, pilih hubungan pelaporan yang sama melalui ID Pekerja atau e-mel kerja; jangan masukkan ID rekod dalaman."
+      },
+      "exclusionDirectSuperiorName": "Penyelia Terus — nama yang dipaparkan",
+      "exclusionDirectSuperiorRecord": "Penyelia Terus — pemilih rekod Personel"
     },
     "wizard": {
       "deleteRecord": "Padam Rekod",

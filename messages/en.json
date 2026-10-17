@@ -1953,7 +1953,7 @@
       "sectionInstructionBlank": "Leave a cell blank to keep what is already recorded. A blank never clears a value.",
       "sectionInstructionOneRow": "One row per employee. Two rows carrying the same Employee ID are refused.",
       "sectionInstructionFamilyRow": "One row per family member. The same Employee ID may appear on several rows.",
-      "sectionInstructionFence": "This file may carry only the columns listed on this sheet. A column belonging to another section is refused and nothing is imported. Columns that belong to no section — company, department, position, cost centre, employment type, join date, pay, and the EPF, SOCSO, EIS and tax-residency fields — cannot be imported per section at all; change them on the employee’s own Personnel record.",
+      "sectionInstructionFence": "Use only the columns listed on this sheet. A column from another section is refused and nothing is imported. Choose that section’s template for its supported fields; use Personnel for the fields listed in the guidance below.",
       "sectionUpdateCount": "{count, plural, one {# to update} other {# to update}}",
       "sectionSkipCount": "{count, plural, one {# with nothing to change} other {# with nothing to change}}",
       "sectionNotFoundCount": "{count, plural, one {# not found} other {# not found}}",
@@ -2007,8 +2007,12 @@
         "backupShift": "Choose Backup Shift in Attendance so its Schedule Group, dates and available shifts can be checked.",
         "taxRelief": "Set child-relief categories in Income Tax so the complete tax selection can be checked.",
         "hireCorrection": "Use Correct Hire Details to change the original Cost Centre and keep its correction history.",
-        "termination": "Use Movement to select a Termination Reason with the required employment dates."
-      }
+        "termination": "Use Movement to select a Termination Reason with the required employment dates.",
+        "superiorName": "The name follows the Direct Superior chosen by Employee ID or work email in the template. Do not enter a separate superior name.",
+        "superiorRecord": "The Personnel picker selects an employment record. In the template, select the same reporting relationship by Employee ID or work email; do not enter an internal record ID."
+      },
+      "exclusionDirectSuperiorName": "Direct Superior — displayed name",
+      "exclusionDirectSuperiorRecord": "Direct Superior — Personnel record selector"
     },
     "wizard": {
       "deleteRecord": "Delete Record",

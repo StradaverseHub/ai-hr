@@ -1,4 +1,4 @@
-import {PERSONNEL_FIELDS,type PersonnelFieldDescriptor} from './personnel-field-registry';
+import {PERSONNEL_FIELDS,PERSONNEL_IMPORT_COMPATIBILITY,type PersonnelFieldDescriptor} from './personnel-field-registry';
 import {personnelFieldLabel,type PersonnelLabelResolver} from './personnel-field-label';
 import type {ImportSection} from './import-sections';
 
@@ -7,6 +7,8 @@ export type PersonnelImportChoice='full'|ImportSection;
  * Unknown reasons remain visible verbatim; the exact coverage test requires their translation.
  */
 const REASON_KEYS:Readonly<Record<string,string>>={
+  'The displayed name follows the Direct Superior selected through the supported Employee ID or work email import; it is not a separate name entry.':'superiorName',
+  'The Personnel record selector uses an internal employment identity. Imports select the same reporting relationship through the supported Employee ID or work email column.':'superiorRecord',
   "Derived/history field or specialist owner workflow; no section-import writer is declared.": "managed",
   "File content or interface control is not imported.": "file",
   "Derived from the initial confirmation date and any approved probation extension; the Movement workflow owns extensions and this final date is never directly imported.": "confirmation",
@@ -29,18 +31,19 @@ export function personnelImportExclusionReasonKey(field:PersonnelFieldDescriptor
  * Repeated captions for the same saved fact also keep the supported owner's status.
  */
 export function personnelImportExclusions(choice:PersonnelImportChoice,fields:readonly PersonnelFieldDescriptor[]=PERSONNEL_FIELDS){
-  const carried=new Set(fields.filter(field=>field.import.column||field.import.register).map(field=>JSON.stringify([field.owner,field.ownerField,field.grain])));
+  const compatibilityIds=new Set<string>(PERSONNEL_IMPORT_COMPATIBILITY.map(adapter=>adapter.fieldId));
+  const carried=new Set(fields.filter(field=>field.import.column||field.import.register||compatibilityIds.has(field.id)).map(field=>JSON.stringify([field.owner,field.ownerField,field.grain])));
   return fields.filter(field=>!field.import.column&&!field.import.register && !carried.has(JSON.stringify([field.owner,field.ownerField,field.grain])) && (choice==='full'||field.tab===SECTION_TABS[choice] && (choice!=='emergency'||field.owner==='emergencyContact')));
 }
 export function personnelImportExclusionEntries(choice:PersonnelImportChoice,resolve:PersonnelLabelResolver){
   return personnelImportExclusions(choice).map(field=>{
     const reasonKey=personnelImportExclusionReasonKey(field);
-    return {id:field.id,tab:resolve('people.detail.tabs.'+TAB_KEYS[field.tab],field.tab),label:personnelFieldLabel(field,resolve),reason:reasonKey?resolve('people.import.exclusionReasons.'+reasonKey,field.import.disabledReason!):field.import.disabledReason??resolve('people.import.exclusionReasons.editor','Use the Personnel section for this value.')};
+    return {id:field.id,tab:resolve('people.detail.tabs.'+TAB_KEYS[field.tab],field.tab),label:field.import.exclusionLabelKey?resolve(field.import.exclusionLabelKey,field.label):personnelFieldLabel(field,resolve),reason:reasonKey?resolve('people.import.exclusionReasons.'+reasonKey,field.import.disabledReason!):field.import.disabledReason??resolve('people.import.exclusionReasons.editor','Use the Personnel section for this value.')};
   });
 }
 /** Both workbook producers consume the same explanations that HR can read before uploading. */
 export function personnelImportExclusionRows(choice:PersonnelImportChoice,resolve:PersonnelLabelResolver):string[][]{
   const entries=personnelImportExclusionEntries(choice,resolve);
   if(!entries.length)return [];
-  return [[resolve('people.import.exclusionsTitle','Fields managed in Personnel')],[resolve('people.import.exclusionsHint','These fields are not entered through an employee import. Use the listed Personnel tab for their available actions.')],[],[resolve('people.import.exclusionsTab','Personnel tab'),resolve('people.import.exclusionsField','Field'),resolve('people.import.exclusionsReason','Why and where to go')],...entries.map(entry=>[entry.tab,entry.label,entry.reason])];
+  return [[resolve('people.import.exclusionsTitle','Fields managed in Personnel')],['','',resolve('people.import.exclusionsHint','These fields are not entered through an employee import. Use the listed Personnel tab for their available actions.')],[],[resolve('people.import.exclusionsTab','Personnel tab'),resolve('people.import.exclusionsField','Field'),resolve('people.import.exclusionsReason','Why and where to go')],...entries.map(entry=>[entry.tab,entry.label,entry.reason])];
 }
