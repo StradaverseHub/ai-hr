@@ -134,6 +134,50 @@ describe('per-configured-row overtime decisions',()=>{
 });
 
 describe('manual overtime and pre-existing approval/configuration contracts',()=>{
+  async function fullFlexiRecordedDay(){
+    const e=await hire('Full Flexi split sessions'),a=adminCtx(b);
+    const sh=await createShift(a,{code:'FULL_FLEXI_CLOSED_PAIRS',name:'Full Flexi recorded pairs',type:'full_flexi',normalMinutesOverride:480,
+      weeklyPattern:[1,2,3,4,5,6,7],breakPeriods:[{start:'12:00',end:'13:00',flexible:true,flexibleMinutes:30}]});
+    await assignDefaultShift(a,{employmentId:e.employmentId,shiftId:sh.id});
+    await importPunchCsv(a,`staff,time\n${e.code},${DATE()} 09:00:00\n${e.code},${DATE()} 12:00:00\n${e.code},${DATE()} 13:00:00\n${e.code},${DATE()} 18:30:00`);
+    return {e,a};
+  }
+
+  it('reads the Full Flexi editor Auto rows from closed sessions without changing stored attendance',async()=>{
+    const {e,a}=await fullFlexiRecordedDay(),before=await day(e.employmentId);
+    expect(before).toMatchObject({workedMinutes:480,otMinutes:0});
+    const editor=(await attendanceDayEditor(a,e.employmentId,DATE()))!;
+    expect(editor.complete).toBe(true);
+    expect(editor.rows.length).toBeGreaterThan(0);
+    expect(editor.rows.reduce((total,row)=>total+row.calculatedMinutes,0)).toBe(0);
+    expect(editor.rows.reduce((total,row)=>total+row.autoEffectiveMinutes,0)).toBe(0);
+    expect(editor.rows.reduce((total,row)=>total+row.effectiveMinutes,0)).toBe(0);
+    expect(await day(e.employmentId)).toEqual(before);
+  });
+
+  it('preserves Full Flexi closed sessions through a manual OT decision and explicit reset to Auto',async()=>{
+    const {e,a}=await fullFlexiRecordedDay();
+    const save=async(minutes:number|null)=>{
+      const editor=(await attendanceDayEditor(a,e.employmentId,DATE()))!;
+      await saveAttendanceDayEdit(a,{employmentId:e.employmentId,date:DATE(),baseline:editor.baseline,reason:'Review split sessions',confirmPayrollRecalculation:false,
+        kind:'overtime',rows:[{key:editor.rows[0].key,minutes}]});
+    };
+    await save(15);
+    expect(await day(e.employmentId)).toMatchObject({workedMinutes:480,otMinutes:15});
+    await save(null);
+    expect(await day(e.employmentId)).toMatchObject({workedMinutes:480,otMinutes:0});
+    const editor=(await attendanceDayEditor(a,e.employmentId,DATE()))!;
+    expect(editor.rows.reduce((total,row)=>total+row.effectiveMinutes,0)).toBe(0);
+  });
+
+  it('recomputes Full Flexi from the same closed sessions rather than the first-to-last envelope',async()=>{
+    const {e,a}=await fullFlexiRecordedDay();
+    const punches=await owner.db.select().from(s.attendancePunch).where(eq(s.attendancePunch.employmentId,e.employmentId)).orderBy(s.attendancePunch.id);
+    await recomputeAttendance(a,{companyId:b.companyId,employmentIds:[e.employmentId],from:DATE(),to:DATE(),dryRun:false});
+    expect(await day(e.employmentId)).toMatchObject({workedMinutes:480,otMinutes:0,underMinutes:0});
+    expect(await owner.db.select().from(s.attendancePunch).where(eq(s.attendancePunch.employmentId,e.employmentId)).orderBy(s.attendancePunch.id)).toEqual(punches);
+  });
+
   it('keeps the approved Auto baseline and restores it after an explicit manual reset',async()=>{
     const {e}=await fixture(),a=adminCtx(b);
     await owner.db.insert(s.attendanceCorrection).values({tenantId:b.tenantId,employmentId:e.employmentId,attendanceDate:DATE(),reason:'Existing approved overtime',requestedOtMinutes:120,approvedOtMinutes:120,status:'approved',decidedAt:new Date(),appliedAt:new Date()});
