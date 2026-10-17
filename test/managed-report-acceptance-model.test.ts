@@ -38,7 +38,13 @@ describe('staged runner keeps canonical human and installed authority',()=>{
   const source=readFileSync(path.join(process.cwd(),'scripts/dev-managed-report-acceptance.ts'),'utf8');
   const end=source.indexOf('main().then(async completed=>'),cleanup=source.indexOf('await cleanup();',end),receipt=source.indexOf('cleanup:\'VERIFIED\'',end);
   expect(end).toBeGreaterThanOrEqual(0);expect(cleanup).toBeGreaterThan(end);expect(receipt).toBeGreaterThan(cleanup);expect(receipt-cleanup).toBeGreaterThan(30);
-  expect(source).toContain('confirmOwnedReportArtifactRemoval');expect(source).toContain('assertOwnedReportArtifactAbsent');expect(source).toContain('verification-started');expect(source).toContain("'--signal=KILL','aihr-internal-report.service'");expect(source).toContain("['dispatch',192]");expect(source).toContain('await liveLease(consent)');
+  expect(source).toContain('confirmOwnedReportArtifactRemoval');expect(source).toContain('assertOwnedReportArtifactAbsent');expect(source).toContain('verification-started');expect(source).toContain("'--signal=KILL','aihr-internal-report.service'");expect(source).toContain("['dispatch',192]");
+  const consent=source.indexOf("const consent=await queue('consent')"),consentEnd=source.indexOf('await sampleMemory()',consent);
+  expect(consent).toBeGreaterThanOrEqual(0);expect(consentEnd).toBeGreaterThan(consent);expect(consentEnd-consent).toBeGreaterThan(300);
+  const consentBody=source.slice(consent,consentEnd);expect(consentBody).toContain('await authorityRefusal(consent,async validUntil=>');expect(consentBody).toContain('validUntil-15_000');expect(consentBody).not.toContain('deliver(consent)');
+  const common=source.indexOf('async function authorityRefusal('),commonEnd=source.indexOf('async function noResend(',common);expect(common).toBeGreaterThanOrEqual(0);expect(commonEnd-common).toBeGreaterThan(300);expect(source.slice(common,commonEnd)).toContain('liveLease:()=>liveLease(job)');
+  const helper=readFileSync(path.join(process.cwd(),'scripts/managed-report-authority-evidence.ts'),'utf8'),change=helper.indexOf('await d.change(proof.validUntil)'),live=helper.indexOf('await d.liveLease()',change),start=helper.indexOf('await d.start(proof.request)',live);
+  expect(change).toBeGreaterThanOrEqual(0);expect(live).toBeGreaterThan(change);expect(start).toBeGreaterThan(live);expect(helper.slice(live,start)).toContain('d.now()<proof.validUntil-10_000');expect(helper.slice(start)).toContain('d.now()<proof.validUntil');
  });
 });
 
