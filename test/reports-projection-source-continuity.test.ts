@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {describe,it,expect} from 'vitest';
-import {reportFixtureDigest} from '../scripts/employee-master-fixture-proof.mts';
+import {reportFixtureDigest} from '../scripts/employee-master-fixture-proof.mjs';
 import {REPORTS_PROJECTION_CONTINUITY_NAME,REPORTS_PROJECTION_ARTIFACTS,readReportsProjectionGitEvidence,validateReportsProjectionEvidence,reportsProjectionReceipt} from '../scripts/reports-projection-source-continuity.mjs';
 const root=fileURLToPath(new URL('..',import.meta.url)).replace(/\/$/,'');
 const fix='b49e4500d0097d7f620a0e45d01552b979499e84';
