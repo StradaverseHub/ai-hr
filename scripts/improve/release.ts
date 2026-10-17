@@ -85,6 +85,8 @@ export function deploymentRsyncArgs(source: string, destination = `${USER}@${HOS
     '--exclude', 'node_modules', '--exclude', '.next', '--exclude', '.git', '--exclude', '.env*',
     '--exclude', '.turbo', '--exclude', 'coverage', '--exclude', '.claude', '--exclude', 'graphify-out',
     '--exclude', '.vitest-attachments',
+    // Local acceptance dumps/downloads and credentials never ship; protect any existing server copy.
+    '--exclude', '/scratchpad/',
     // Native builds ship independently. Gradle intermediates can contain signing configuration.
     '--exclude', '/mobile/android/', '--exclude', '/mobile/ios/',
     '--exclude', '/mobile/dist/', '--exclude', '/mobile/builds/', '--exclude', '/mobile/.expo/',
