@@ -15,6 +15,7 @@ import {classifyReportProcess,schedulingInventory,INTERNAL_REPORT_SCHEDULE_STATE
 import {captureAcceptanceGroup,acceptanceProcessStat,acceptanceGroupMembers,stopOwnedAcceptanceGroup,bindAcceptanceActivationReceipt,bindAcceptanceActivationMarker,type AcceptanceProcessPin,type AcceptanceActivationBinding} from './managed-report-acceptance-lifecycle';
 import {LEGACY_MODULE_ENV_GATES,LEGACY_SETTING_ENV_GATES} from '../packs/catalog';
 import {reportBrokerResponse} from '../lib/internal-auth/report-broker-model';
+import {assertManagedReportWorkbook} from './managed-report-workbook-evidence';
 import type {SessionContext} from '../db/client';
 const MARKER='/etc/aihr-report-acceptance.json',SMTP_PORT=24656,SYSTEM='00000000-0000-0000-0000-000000000000';
 const SOCKET='/run/aihr-internal-report.sock',BROKER='/run/aihr-report-auth.sock',RENDERER='/run/aihr-report-renderer.sock';
@@ -274,6 +275,9 @@ async function main(){
  const {PERSONNEL_FIELDS}=await import('../lib/personnel-field-registry'),{defaultMasterColumn}=await import('../lib/employee-master-report');
  const code=PERSONNEL_FIELDS.find(f=>f.owner==='employment'&&f.ownerField==='employeeCode')!,name=PERSONNEL_FIELDS.find(f=>f.owner==='person'&&f.ownerField==='fullName')!,salary=PERSONNEL_FIELDS.find(f=>f.owner==='compensation'&&f.ownerField==='basicSalary')!;
  const wanted=[code.id,name.id].sort();const ui=[];
+ const expectedPeople=await owner.db.select({employmentId:s.employment.id,code:s.employment.employeeCode,fullName:s.person.fullName}).from(s.employment).innerJoin(s.person,q.eq(s.person.id,s.employment.personId)).where(q.and(q.eq(s.employment.tenantId,base.tenantId),q.eq(s.person.tenantId,base.tenantId),q.inArray(s.employment.id,[base.owner.employmentId,base.recipient.employmentId])));
+ check(expectedPeople.length===2&&new Set(expectedPeople.map(person=>person.code)).size===2,'Exact fixture report subjects unavailable.');
+ const expectedRows=expectedPeople.map(person=>{check(typeof person.code==='string','Exact fixture report subjects unavailable.');return {code:person.code,fullName:person.fullName};});
  for(const kind of ['weekly','monthly'] as const){const ref=human.reports[kind],report=await getEmployeeMasterReport(admin,[base.companyId],ref.reportId),schedule=await getEmployeeMasterSchedule(admin,ref.reportId);
   check(report.ownerUserId===base.owner.userId&&report.sharedRoleIds.includes('hr_admin')&&report.spec.asAt===base.date&&!report.spec.includeDrafts&&JSON.stringify(report.spec.companyIds)==JSON.stringify([base.companyId])&&JSON.stringify(report.spec.columns.map(c=>c.field).sort())===JSON.stringify(wanted),'UI report must select exactly Code/Name, this company and saved date, shared to HR Admin.');
   check(schedule?.id===ref.scheduleId&&schedule.enabled&&schedule.reportVersion===report.version&&schedule.config.frequency===kind&&schedule.recipients.length===1&&schedule.recipients[0].userId===base.recipient.userId&&schedule.recipients[0].employmentId===base.recipient.employmentId&&schedule.nextRunAt,'Review the exact UI-created weekly/monthly recipient pair.');
@@ -307,8 +311,8 @@ async function main(){
   const messages=sink.messages.filter(message=>message.raw.toString('ascii').includes('<employee-master-'+row.id+'@localhost>'));check(messages.length===1&&JSON.stringify(messages[0].recipients)===JSON.stringify([EMAILS.recipient]),'Exact one-recipient SMTP receipt missing.');
   await fs.writeFile(out+'/'+item.kind+'-smtp.eml',messages[0].raw,{mode:0o600,flag:'wx'});
   const bytes=reportAttachment(messages[0].raw);await fs.writeFile(out+'/'+item.kind+'.xlsx',bytes,{mode:0o600,flag:'wx'});
-  const XLSX=await import('xlsx'),book=XLSX.read(bytes,{type:'buffer'}),cells=book.SheetNames.flatMap(sheet=>XLSX.utils.sheet_to_json<unknown[]>(book.Sheets[sheet],{header:1,raw:true}).flatMap(values=>values.map(value=>String(value))));
-  check(cells.includes('REPORT-OWNER')&&cells.includes('REPORT-RECIPIENT')&&!cells.some(cell=>/salary|passport|bank account/i.test(cell)),'Actual workbook contents/selection mismatch.');
+  const XLSX=await import('xlsx'),book=XLSX.read(bytes,{type:'buffer'});
+  assertManagedReportWorkbook(book,{title:item.report.name,asAt:item.report.spec.asAt,columns:item.report.spec.columns,fields:PERSONNEL_FIELDS,rows:expectedRows});
   check(hash(bytes)===row.artifact_sha256&&bytes.length===row.artifact_byte_length&&row.artifact_content_type==='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Started artifact pin differs from actual MIME bytes.');
   record('actualUI-'+item.kind,{occurrenceId:row.id,reportId:item.report.id,scheduleId:item.schedule.id,rows:2,bytes:bytes.length,sha256:hash(bytes)});
  }

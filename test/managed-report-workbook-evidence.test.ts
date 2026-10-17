@@ -27,7 +27,7 @@ describe('managed report exact selected workbook evidence',()=>{
   const book=await workbook();book.Sheets[book.SheetNames[0]].B4={t:'s',v:value};expect(()=>assertManagedReportWorkbook(book,expected)).toThrow();
  });
  it('refuses unexpected hidden sheets or cells outside the declared report range',async()=>{
-  const extraSheet=await workbook();XLSX.utils.book_append_sheet(extraSheet,XLSX.utils.aoa_to_sheet([['000123456789']]),'Extra');extraSheet.Workbook={Sheets:extraSheet.SheetNames.map((_,index)=>({Hidden:index?2:0}))};expect(()=>assertManagedReportWorkbook(extraSheet,expected)).toThrow();
+  const extraSheet=await workbook();XLSX.utils.book_append_sheet(extraSheet,XLSX.utils.aoa_to_sheet([['000123456789']]),'Extra');extraSheet.Workbook={Sheets:extraSheet.SheetNames.map((_,index)=>({Hidden:(index?2:0) as 0|2}))};expect(()=>assertManagedReportWorkbook(extraSheet,expected)).toThrow();
   const extraCell=await workbook();extraCell.Sheets[extraCell.SheetNames[0]].Z99={t:'s',v:'000123456789'};expect(()=>assertManagedReportWorkbook(extraCell,expected)).toThrow();
  });
  it('refuses a formula, duplicate subject, wrong header or unreviewed metadata',async()=>{
