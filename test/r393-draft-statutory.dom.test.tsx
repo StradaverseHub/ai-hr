@@ -21,7 +21,7 @@ import { personnelMarkupContract, personnelCaption } from './helpers/personnel-m
  * jsdom applies no CSS and computes no layout: rendering and interaction logic only.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { useState, type ReactNode } from 'react';
@@ -103,7 +103,13 @@ const shownPanel = () => {
 };
 const section = (key: string) => shownPanel().querySelector(`[data-draft-section="${key}"]`) as HTMLElement | null;
 const savedData = () => (saveDraftAction.mock.calls.at(-1) as unknown as [string, EmployeeDraftData, number])[1];
-const save = () => userEvent.click(screen.getByRole('button', { name: en.people.wizard.saveDraft }));
+const save = async () => {
+  const button = screen.getByRole('button', { name: en.people.wizard.saveDraft });
+  await userEvent.click(button);
+  // The Draft mutation guard disables the whole editor until Save's transition has settled.
+  // An awaited click is not the completion of that async transition.
+  await waitFor(() => expect(button).toBeEnabled());
+};
 /** The still-needed list's line for the Bank & Statutory tab, or null when the tab owes nothing. */
 const bankStatutoryNeeds = (m: Msgs) =>
   ([...document.querySelectorAll('li')] as HTMLElement[]).find((li) =>
@@ -232,7 +238,11 @@ describe('§2 the EPF boxes appear per category, post nothing, and keep the stri
     expect(s.epfMode, 'data.statutory.epfMode').toBe('manual_percentage');
     expect(s.epfEmployeeRate, 'data.statutory.epfEmployeeRate — percent as typed').toBe('14.5');
     expect(s.epfEmployerRate, 'data.statutory.epfEmployerRate').toBe('16');
-    await userEvent.clear(epf().getByLabelText(d.epfEmployerRate));
+    const employerRate = epf().getByLabelText(d.epfEmployerRate) as HTMLInputElement;
+    expect(employerRate.type).toBe('number');
+    expect(employerRate.readOnly).toBe(false);
+    expect(employerRate).toBeEnabled();
+    await userEvent.clear(employerRate);
     await userEvent.selectOptions(epf().getByLabelText(d.epfMode), 'manual_both_amount');
     await userEvent.type(epf().getByLabelText(d.epfEmployeeAmount), '450.75');
     await userEvent.type(epf().getByLabelText(d.epfManualReason), 'Pre-1998 member');

@@ -162,7 +162,20 @@ describe('the dedicated screen carries the whole job', () => {
     // A draft that refused to save until it was complete would not be a draft.
     expect(wizard).toMatch(/saveDraftAction\(id,\s*data,\s*stepNumber\(tab\)\)/);
     expect(wizard).toMatch(/disabled=\{busy\|\|!!deleteTarget\|\|outstanding.length>0\}/);
-    expect(wizardActions).toContain('completeEmployeeDraft');
+    // The action must hand the exact current screen to the atomic Draft owner. Splitting Save and
+    // Activate into two action-level calls loses the row-lock/activation-savepoint contract.
+    const action = codeOf(wizardActions).split('export async function createEmployeeAction(')[1];
+    expect(action, 'Activate action still exists').toBeTruthy();
+    expect(action).toMatch(/await saveAndCompleteEmployeeDraft\(session,\s*\{id:id \|\| undefined,data,currentStep\}\)/);
+    expect(action).not.toMatch(/\b(?:saveEmployeeDraft|completeEmployeeDraft)\(/);
+    const ownerStart = draftCore.indexOf('export async function saveAndCompleteEmployeeDraft(');
+    const ownerEnd = draftCore.indexOf('export async function completeEmployeeDraft(', ownerStart);
+    expect(ownerStart).toBeGreaterThan(-1);
+    expect(ownerEnd).toBeGreaterThan(ownerStart);
+    const owner = codeOf(draftCore.slice(ownerStart, ownerEnd));
+    expect(owner).toContain('withTenant(ctx,async tx=>');
+    expect(owner).toContain('saveEmployeeDraft(ctx,p,tx)');
+    expect(owner).toContain('tx.transaction(activationTx=>completeEmployeeDraftTx(activationTx,ctx,saved.id))');
   });
 
   it('preserves the org cascade rule rather than reimplementing it', () => {
