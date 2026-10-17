@@ -3,7 +3,7 @@ import JSZip from 'jszip';
 import * as XLSX from 'xlsx';
 import {buildXlsx} from '../lib/spreadsheet';
 it('writes bounded dropdowns on employee and repeated sheets, preserving identifiers and header notes',async()=>{
- const bytes=await buildXlsx(['Employee ID','Choice'],[['000123','Named choice']],{sheetName:'Employees',textColumns:[0],headerNotes:['Required · text','Optional · Reference'],validationLists:[{column:1,values:['Named choice','CODE']}],extraSheets:[{name:'Family',rows:[['Employee ID','Relationship']],textColumns:[0],validationLists:[{column:1,values:['Child','Spouse']}]}]});
+ const bytes=await buildXlsx(['Employee ID','Choice'],[['000123','Named choice']],{sheetName:'Employees',textColumns:[0],columnWidths:[18,35],wrapText:true,headerNotes:['Required · text','Optional · Reference'],validationLists:[{column:1,values:['Named choice','CODE']}],extraSheets:[{name:'Family',rows:[['Employee ID','Relationship']],textColumns:[0],columnWidths:[18,35],wrapText:true,validationLists:[{column:1,values:['Child','Spouse']}]}]});
  const zip=await JSZip.loadAsync(bytes);
  const employeeXml=await zip.file('xl/worksheets/sheet1.xml')!.async('string');
  const familyXml=await zip.file('xl/worksheets/sheet2.xml')!.async('string');

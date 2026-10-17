@@ -36,8 +36,19 @@ describe('Personnel workbook defects observed in actual Chrome downloads',()=>{
     expect(styles).toContain('wrapText="1"');expect(styles).toContain('vertical="top"');
     const ws=XLSX.read(bytes,{type:'array',cellNF:true,cellStyles:true}).Sheets.Instructions;
     expect(ws.A2.v).toBe('000123');expect(ws.A2.z).toBe('@');
-    expect(ws.A2.s?.alignment?.wrapText).toBe(true);
-    expect(ws.C2.s?.alignment?.wrapText).toBe(true);
+    // SheetJS CE reads fill styles but does not expose cell alignment. Inspect the actual
+    // serialized cell-to-XF binding rather than treating its reader limitation as a product fault.
+    const sheetXml=await zip.file('xl/worksheets/sheet2.xml')!.async('string');
+    const xfs=styles.match(/<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs>/);
+    expect(xfs).not.toBeNull();
+    const formats=xfs![1].match(/<xf\b[^>]*(?:\/>|>[\s\S]*?<\/xf>)/g)??[];
+    for(const cell of ['A2','C2']){
+      const tag=sheetXml.match(new RegExp('<c\\b[^>]*\\br="'+cell+'"[^>]*>'))?.[0];
+      expect(tag,cell).toBeTruthy();
+      const index=Number(tag!.match(/\bs="(\d+)"/)?.[1]);expect(Number.isInteger(index),cell).toBe(true);
+      expect(formats[index],cell).toContain('wrapText="1"');
+      expect(formats[index],cell).toContain('vertical="top"');
+    }
   });
   it('does not call an available Employee ID/email relationship import unavailable',()=>{
     const exclusions=personnelImportExclusions('full');
