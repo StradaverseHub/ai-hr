@@ -99,7 +99,7 @@ const DEMO_ENV = [
 // Harness 1 — a throwaway "server": the real deploy scripts, nothing real on PATH.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
-type Box = { dir: string; stateDir: string; bin: string; trace: string };
+type Box = { dir: string; stateDir: string; bin: string; trace: string; sqlTrace: string };
 
 /**
  * `setsid(1)` does not exist on macOS, so the shim is a REAL implementation of it — perl's
@@ -155,12 +155,20 @@ function makeBox(envProduction = DEMO_ENV): Box {
   fs.writeFileSync(path.join(dir, 'pnpm-lock.yaml'), 'lockfile: not a real one\n');
   fs.writeFileSync(path.join(dir, '.env.production'), envProduction);
 
-  const trace = path.join(dir, 'trace.log');
-  for (const cmd of ['node', 'psql', 'sudo', 'systemctl', 'npx', 'rsync']) {
+  const trace = path.join(dir, 'trace.log'), sqlTrace = path.join(dir, 'sql.log');
+  for (const cmd of ['node', 'sudo', 'systemctl', 'npx', 'rsync']) {
     const p = path.join(bin, cmd);
     fs.writeFileSync(p, `#!/bin/sh\nprintf '%s\\n' "${cmd} $*" >> "$DEPLOY_TRACE"\nexit 0\n`);
     fs.chmodSync(p, 0o755);
   }
+  // markDeployed sends its canonical SQL on stdin (`-f -`), not in argv. Other psql reads use -tAc
+  // and must not consume stdin or turn the command trace into a fictitious SQL observation.
+  fs.writeFileSync(path.join(bin, 'psql'), `#!/bin/sh
+printf '%s\\n' "psql $*" >> "$DEPLOY_TRACE"
+case " $* " in *" -f - "*) cat >> "$DEPLOY_SQL_TRACE" ;; esac
+exit 0
+`);
+  fs.chmodSync(path.join(bin, 'psql'), 0o755);
   // sha256sum has to produce something `cut -d' ' -f1` can read, and macOS has no sha256sum at all.
   fs.writeFileSync(
     path.join(bin, 'sha256sum'),
@@ -178,7 +186,7 @@ function makeBox(envProduction = DEMO_ENV): Box {
     `#!/bin/sh\nwhile [ $# -gt 1 ]; do case "$1" in -p|-o|-i) shift 2 ;; *) shift ;; esac; done\nexec /bin/bash -c "$1"\n`,
   );
   fs.chmodSync(path.join(bin, 'ssh'), 0o755);
-  return { dir, stateDir, bin, trace };
+  return { dir, stateDir, bin, trace, sqlTrace };
 }
 
 /** The environment the box's scripts see. Nothing is inherited: deploy.sh sources its own env file. */
@@ -187,6 +195,7 @@ function boxEnv(box: Box, extra: Record<string, string> = {}): NodeJS.ProcessEnv
     PATH: `${box.bin}:/usr/bin:/bin:/usr/sbin:/sbin`,
     HOME: box.dir,
     DEPLOY_TRACE: box.trace,
+    DEPLOY_SQL_TRACE: box.sqlTrace,
     AIHR_DEPLOY_STATE_DIR: box.stateDir,
     ...extra,
   } as unknown as NodeJS.ProcessEnv;
@@ -792,7 +801,7 @@ const UUID_ITEM = '22222222-2222-2222-2222-222222222222';
 const UUID_TENANT = '33333333-3333-3333-3333-333333333333';
 const UUID_EMP = '44444444-4444-4444-4444-444444444444';
 
-type CliRun = { status: number | null; out: string; trace: string };
+type CliRun = { status: number | null; out: string; trace: string; sql: string };
 
 function runReleaseCli(box: Box, extra: Record<string, string> = {}, reporterEmploymentId: string | null = UUID_EMP): CliRun {
   // A real git worktree, because release.ts reads HEAD out of it with real git.
@@ -858,6 +867,7 @@ cp ${quote(path.join(wt, 'lib/system-testing/catalogue.json'))} ${quote(path.joi
         PATH: `${box.bin}:${process.env.PATH ?? ''}`,
         HOME: box.dir,
         DEPLOY_TRACE: box.trace,
+        DEPLOY_SQL_TRACE: box.sqlTrace,
         AIHR_DEPLOY_STATE_DIR: box.stateDir,
         IMPROVE_SSH_HOST: 'shim.invalid',
         IMPROVE_SSH_PORT: '8288',
@@ -871,6 +881,7 @@ cp ${quote(path.join(wt, 'lib/system-testing/catalogue.json'))} ${quote(path.joi
     status: r.status,
     out: `${r.stdout ?? ''}${r.stderr ?? ''}`,
     trace: fs.existsSync(box.trace) ? fs.readFileSync(box.trace, 'utf8') : '',
+    sql: fs.existsSync(box.sqlTrace) ? fs.readFileSync(box.sqlTrace, 'utf8') : '',
   };
 }
 
@@ -902,7 +913,7 @@ describe('pnpm improve:release, end to end against a shim server', () => {
     expect(r.status, r.out).toBe(0);
     expect(r.out).toContain('status → deployed');
     expect(r.trace).toContain('psql'); // markDeployed reached the server
-    expect(r.trace).toContain(`reporter_employment_id IS NOT DISTINCT FROM '${UUID_EMP}'::uuid`);
+    expect(r.sql).toContain(`WHERE id='${UUID_ITEM}'::uuid AND tenant_id='${UUID_TENANT}'::uuid AND reporter_employment_id IS NOT DISTINCT FROM '${UUID_EMP}'::uuid FOR UPDATE`);
     expect(r.trace).toContain('pnpm build');
     expect(r.trace).toContain('systemctl restart aihr');
     expect(askState(box).state).toBe('ok');
@@ -925,8 +936,9 @@ describe('pnpm improve:release, end to end against a shim server', () => {
   it('carries an actual stored NULL reporter into exact canonical mark binding without borrowing an employment', () => {
     const box = makeBox(), result = runReleaseCli(box, {}, null);
     expect(result.status, result.out).toBe(0);
-    expect(result.trace).toContain('reporter_employment_id IS NOT DISTINCT FROM NULL::uuid');
-    expect(result.trace).not.toContain("'null'");
+    expect(result.sql).toContain(`WHERE id='${UUID_ITEM}'::uuid AND tenant_id='${UUID_TENANT}'::uuid AND reporter_employment_id IS NOT DISTINCT FROM NULL::uuid FOR UPDATE`);
+    expect(result.sql).not.toContain("'null'");
+    expect(result.sql).not.toContain(UUID_EMP);
     expect(result.out).toContain('status → deployed');
   }, 180_000);
 

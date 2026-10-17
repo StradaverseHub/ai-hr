@@ -39,7 +39,7 @@ function publish(f: ReturnType<typeof fixture>) {
   const path = publishSystemTestingBuild(f.record, f.directory);
   return { path, buildDirectory: dirname(path), bytes: readFileSync(path) };
 }
-function buildId(root: string, id = randomUUID()) { mkdirSync(join(root, '.next'), { recursive: true }); writeFileSync(join(root, '.next/BUILD_ID'), id + '\n'); }
+function buildId(root: string, id: string = randomUUID()) { mkdirSync(join(root, '.next'), { recursive: true }); writeFileSync(join(root, '.next/BUILD_ID'), id + '\n'); }
 
 describe('selected System Testing release provenance', () => {
   it('prepares exact clean committed source and does not restamp unreviewed guide fingerprints', () => {
