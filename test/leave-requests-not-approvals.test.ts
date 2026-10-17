@@ -199,10 +199,22 @@ describe('§2 r80 hold: the Requests subsection is not a second Approval Items',
     expect(leavePage).toContain('const ess = !admin;');
   });
 
-  it('ENUMERATION: the per-employee record screen is still per-employee — it did NOT become a replacement', () => {
-    // Worth keeping precisely because the removal did not change it: the reporter has said they will
-    // redesign this screen separately, and until they do there is no org-wide view anywhere.
-    expect(recordsPage).toContain('employmentIds: [selected.employmentId]');
+  it('ENUMERATION: 23e87eef explicitly replaces the per-employee restriction with authorized All/single inquiry', () => {
+    // The later approved plan requests All employees on this separate inquiry surface. The removed
+    // /leave Requests subsection stays removed; its former single-employee restriction is no longer policy.
+    expect(recordsPage).toContain('await scopedAdmin()');
+    expect(recordsPage).toContain('await leaveInquiryContext(session, scopeIds, query)');
+    expect(recordsPage).toContain('leaveInquiryRecordsPage(session, inquiry, query)');
+    expect(recordsPage).not.toContain('listLeaveRequestsPage(session,');
+    const owner = read('core/leave-inquiry.ts');
+    const from = owner.indexOf('export async function leaveInquiryRecordsPageTx(');
+    const to = owner.indexOf('function checkWindow(', from);
+    expect(from, 'canonical records page reader exists').toBeGreaterThan(-1);
+    expect(to, 'canonical records page reader has a closing boundary').toBeGreaterThan(from);
+    const recordsRead = owner.slice(from, to);
+    expect(recordsRead).toContain('scope = authorizedScope(ctx, scope, query)');
+    expect(recordsRead).toContain('if (!scope.companyIds.length) return { rows: [], total: 0 }');
+    expect(recordsRead).toContain('companyIds: scope.companyIds, employmentIds: scope.selected ? [scope.selected.employmentId] : undefined');
     expect(recordsPage).toContain('<AdminCancelLeaveDialog');
     // The three subject-only controls remain absent here, which is why an ADMIN editing their own pending
     // request is the one capability with no home left. Disclosed and accepted in the approved plan.

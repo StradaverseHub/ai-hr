@@ -170,28 +170,23 @@ describe('§2 canAdminCancelLeave mirrors adminCancelLeave’s gates', () => {
 
 // ── §3 REMOVED: where each capability went, or that its loss was accepted ─────────────────────────
 describe('§3 the Requests subsection is REMOVED — where each of its six capabilities went', () => {
-  it('1. the ORG-WIDE register is an ACCEPTED LOSS; Employee Leave Records stays one employee at a time', () => {
-    // The destination is unchanged and still per-employee, which is exactly why it is not a replacement.
-    expect(recordsPage).toContain('employmentIds: [selected.employmentId]');
-    /**
-     * ⚠️ 9949f91a (r369) — UPDATED, with the retired call quoted: this read
-     *     expect(recordsPage).toContain('pickInquiryEmployee(employees, sp.emp)');
-     * The property this case is about — "stays one employee at a time" — is unchanged and is carried by the
-     * line above. What moved is only the FALLBACK: `pickInquiryEmployee` opened the screen on the first
-     * employee when `?emp=` was absent, and the reporter asked for "Select an employee to view their leave
-     * records" instead. `selectInquiryEmployee` is the same narrowing with no fallback; the export route still
-     * calls the original (lib/leave-inquiry.ts says why).
-     */
-    expect(recordsPage).toContain('selectInquiryEmployee(employees, sp.emp)');
-    // And /leave no longer runs an UNNARROWED org-wide request read at all.
-    //
-    // UPDATED BY 5f2e20fb (AGENTS rule 18): the accepted loss is the org-wide REGISTER, not the read's
-    // name. The employee's own My Leave History now uses the paginated read for its date/leave-type
-    // filter, narrowed to the viewer's own employments — which is the opposite of a register. Asserted
-    // on the narrowing, which is what made the old call org-wide in the first place.
-    // UPDATED BY r394: the per-tab counts are ONE grouped read (countLeaveRequestsByStatus, same filter
-    // as the list), so the three reads are: unfiltered rows, the tab counts, the active tab's rows. The
-    // narrowing asserted below now covers the count read too.
+  it('1. 23e87eef restores authorized All/single inquiry separately; own History stays self-scoped', () => {
+    // The later approved All employees request supersedes the old per-employee-only inquiry policy.
+    // The /leave Requests subsection remains removed and is not reinstated by this separate surface.
+    expect(recordsPage).toContain('await scopedAdmin()');
+    expect(recordsPage).toContain('await leaveInquiryContext(session, scopeIds, query)');
+    expect(recordsPage).toContain('leaveInquiryRecordsPage(session, inquiry, query)');
+    expect(recordsPage).not.toContain('selectInquiryEmployee(');
+    const owner = read('core/leave-inquiry.ts');
+    const from = owner.indexOf('export async function leaveInquiryRecordsPageTx(');
+    const to = owner.indexOf('function checkWindow(', from);
+    expect(from, 'canonical records reader starts').toBeGreaterThan(-1);
+    expect(to, 'canonical records reader ends').toBeGreaterThan(from);
+    const projection = owner.slice(from, to);
+    expect(projection).toContain('scope = authorizedScope(ctx, scope, query)');
+    expect(projection).toContain('if (!scope.companyIds.length) return { rows: [], total: 0 }');
+    expect(projection).toContain('companyIds: scope.companyIds, employmentIds: scope.selected ? [scope.selected.employmentId] : undefined');
+    // My Leave History remains a subject-only projection: unfiltered rows, tab counts and active rows.
     const calls = ownHistory.match(/(?:listLeaveRequestsPage|countLeaveRequestsByStatus)\(session, \{[\s\S]*?\n\s*\}\)/g) ?? [];
     expect(calls).toHaveLength(3);
     for (const call of calls) {

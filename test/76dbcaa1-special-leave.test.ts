@@ -100,10 +100,15 @@ describe('r355 · the details screen and its route are gone, and nothing points 
     // ⚠️ THE CODE, NOT THE COMMENTARY. lib/permissions.ts explains in prose WHY the entry was removed and
     // names the route while doing so, so a bare `not.toContain` would fail against correct code.
     expect(codeOnly(perms), 'no registered route for the deleted page').not.toContain("'/leave/shared/[groupId]'");
-    expect(codeOnly(perms), 'the existing leave column carries Overview, approved History, and Credit').toContain(
+    expect(codeOnly(perms), 'the existing leave column carries Overview, History, Credit history, Credit details, and Leave details').toContain(
       // r404 (42e55e2b) — '/leave/details' rides the same column; still one My Absence column (asserted below).
-      "routes: ['/leave', '/leave/history', '/leave/credit', '/leave/details']",
+      "routes: ['/leave', '/leave/history', '/leave/credit', '/leave/credit-details', '/leave/details']",
     );
+    // The approved personal earned-credit register shares this self-service column; it is not a
+    // resurrection of the retired pooled-group page or a second function-access label.
+    const creditDetails = read('app/leave/credit-details/page.tsx');
+    expect(creditDetails).toContain('await scopedSession()');
+    expect(creditDetails).toContain('listOwnEarnedLeaveCredits(s,');
     // Unchanged from 76dbcaa1: the point of riding an existing column was that a second one would repeat
     // this label. Removing the sub-route must not have minted one on the way out.
     expect((perms.match(/labelKey: 'nav.myAbsence'/g) ?? []).length, 'one My Absence column').toBe(1);

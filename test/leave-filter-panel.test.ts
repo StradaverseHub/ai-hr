@@ -46,7 +46,12 @@ describe('leave filter panel: surviving inquiry and dedicated own History surfac
     expect(src).toContain('redirect(`/leave/employee-balances');
     expect(balancesPage).toMatch(/<form method="get" action="\/leave\/employee-balances"/);
     expect(balancesPage).toMatch(/<FilterPanel\s+action="\/leave\/employee-balances"/);
-    expect(balancesPage).toContain('const chipAction = `/leave/employee-balances');
+    // 23e87eef represents All by the absence of emp. Foreign hidden parameters carry the
+    // selected person/date/page consistently; the chip action itself is now the fixed page address.
+    expect(balancesPage).toContain("const chipAction = '/leave/employee-balances';");
+    expect(balancesPage).toContain("if (selected) p.set('emp', selected.employmentId)");
+    expect(balancesPage).toContain('const params = () => {');
+    expect(balancesPage).toContain("hidden={[...params()].filter(([key]) => !['type', 'status', 'from', 'to', 'department'].includes(key))}");
     expect(balancesPage).toContain('<FilterChips action={chipAction}');
   });
 
