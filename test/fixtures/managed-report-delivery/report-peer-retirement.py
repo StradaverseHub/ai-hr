@@ -78,4 +78,25 @@ class NegativeProbeFraming(unittest.TestCase):
         self.assertEqual(body, b'{"phase":"status","subject":"caller-authority"}\n')
         self.assertEqual(peer.json.loads(body), {'phase':'status','subject':'caller-authority'})
 
+class EffectiveServiceCredentials(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        source=pathlib.Path(spec.origin).with_name('verify-internal-report-isolation.py')
+        probe_spec=importlib.util.spec_from_file_location('probe_under_test',source)
+        cls.probe=importlib.util.module_from_spec(probe_spec);probe_spec.loader.exec_module(cls.probe)
+    def test_actual_effective_group_overrides_an_unrelated_passwd_default_and_keeps_supplementary_groups(self):
+        status='Name:\tnode\nUid:\t1001 1001 1001 1001\nGid:\t777 777 777 777\nGroups:\t404 777 888\n'
+        self.assertEqual(self.probe.service_credentials(status,1001),(1001,777,[404,777,888]))
+    def test_changed_uid_or_nonreproducible_gid_identity_refuses(self):
+        for uid,gid in [('1002 1002 1002 1002','777 777 777 777'),('1001 1001 0 1001','777 777 777 777'),('1001 1001 1001 1001','777 778 777 777')]:
+            with self.assertRaises(Exception):self.probe.service_credentials('Uid:\t'+uid+'\nGid:\t'+gid+'\nGroups:\t777\n',1001)
+    def test_missing_or_duplicate_status_rows_refuse(self):
+        for status in ['Uid:\t1001 1001 1001 1001\nGroups:\t777\n','Uid:\t1001 1001 1001 1001\nGid:\t777 777 777 777\nGid:\t777 777 777 777\nGroups:\t777\n']:
+            with self.assertRaises(Exception):self.probe.service_credentials(status,1001)
+    def test_namespace_calls_do_not_supply_passwd_group_defaults(self):
+        tree=ast.parse(pathlib.Path(spec.origin).with_name('verify-internal-report-isolation.py').read_text())
+        calls=[node for node in ast.walk(tree) if isinstance(node,ast.Call) and isinstance(node.func,ast.Name) and node.func.id=='process_environment_denial']
+        self.assertEqual(len(calls),2)
+        self.assertTrue(all(len(node.args)==4 for node in calls))
+
 if __name__ == '__main__': unittest.main()
