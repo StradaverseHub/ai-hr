@@ -434,7 +434,10 @@ describe('§3d group 4 — EPF Number + EPF Citizenship is one component, not tw
       'export const EPF_CITIZENSHIP_OPTIONS = PERSONNEL_EPF_CITIZENSHIPS;',
     );
     expect([...PERSONNEL_EPF_CITIZENSHIPS]).toEqual(['citizen', 'pr', 'non_citizen']);
-    expect(schema.epfCitizenshipEnum.enumValues).toBe(PERSONNEL_EPF_CITIZENSHIPS);
+    // pgEnum copies array inputs in the installed Drizzle version. Pin the authoritative binding and
+    // exact stored values, rather than reference identity across that library boundary.
+    expect(read('db/schema.ts')).toContain("pgEnum('epf_citizenship', PERSONNEL_EPF_CITIZENSHIPS)");
+    expect(schema.epfCitizenshipEnum.enumValues).toEqual([...PERSONNEL_EPF_CITIZENSHIPS]);
     expect(read(EPF_FIELDS)).toContain("personnelFormChoices('bank_statutory.epf_contribution.epfcitizenship').map");
     expect(personnelFormChoices('bank_statutory.epf_contribution.epfcitizenship').map(option => option.value)).toEqual([...schema.epfCitizenshipEnum.enumValues]);
     expect(read('db/schema.ts')).toContain("epfCitizenship: epfCitizenshipEnum('epf_citizenship').notNull().default('citizen')");
