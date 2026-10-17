@@ -33,7 +33,7 @@ describe('internal installer owned worker stop',()=>{
   const command=fake({[sender]:loaded,[socket]:state});expect(()=>stopInternalReportWorkers(command)).toThrow();expect(command.mock.calls.some(args=>args[0]==='stop')).toBe(false);
  });
  it('retains a genuine stop command failure for a loaded owned unit',()=>{
-  const command=fake({[sender]:loaded});command.mockImplementationOnce(()=>sender+' loaded active running');
+  const command=fake({[sender]:loaded});
   const original=command.getMockImplementation()!;command.mockImplementation((...args)=>{if(args[0]==='stop')throw new Error('Actual stop failed');return original(...args);});
   expect(()=>stopInternalReportWorkers(command)).toThrow('Actual stop failed');
  });
