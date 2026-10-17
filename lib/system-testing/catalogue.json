@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "revision": "reviewed-baseline.2",
+  "revision": "reviewed-baseline.3",
   "entries": [
     {
       "semanticId": "personnel.profile.reopen",
@@ -56,7 +56,7 @@
         "app/admin/personnel/[employmentId]/actions.ts",
         "core/org.ts"
       ],
-      "reviewedSourceHash": "ced2970cbe56d9c2b32ac7cb88620c16c95ecb8b04d57609bf9603f92881c03c",
+      "reviewedSourceHash": "136c452c1dc95954dbc5462789906a7924664a6523feb1e8cf8ea33467809059",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -115,7 +115,7 @@
         "app/admin/personnel/import/section-import.tsx",
         "lib/import-sections.ts"
       ],
-      "reviewedSourceHash": "cf13d22c2c5d8bada35bdef4c794470ff6b429f6e5890d1e00bc2849c73ac463",
+      "reviewedSourceHash": "b3160ca5daa5d23c7a8b9bd14d49ceb48ce689a2566d741828d414c8a38de845",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -179,7 +179,7 @@
         "lib/dependent-identity.ts",
         "lib/import-sections.ts"
       ],
-      "reviewedSourceHash": "d84a1eaa7909ea683687e2011b82c7a7c5500b6935c80cdfde7feec9f11561d2",
+      "reviewedSourceHash": "413e54af91f3523f7aacbcff6452e65340d4f9720b505a2f3c20b6ef7de2df34",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -235,7 +235,7 @@
         "core/payroll.ts",
         "lib/permissions.ts"
       ],
-      "reviewedSourceHash": "4aa5f9f2668120b19cbee14d6e4f836aeb6ec331fe49719bdc75c2947341eca6",
+      "reviewedSourceHash": "b4179e48681da34579b668fa5bb91797465a1e0b65f6bca07eb8688fa7faf974",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -291,7 +291,7 @@
         "lib/permissions.ts",
         "app/admin/personnel/[employmentId]/actions.ts"
       ],
-      "reviewedSourceHash": "25f3356f51c6743d75e86a8d9c7d8fb95e7277c40a254f9262cd5600b748eed1",
+      "reviewedSourceHash": "0fa1f981c81607725b876483fe8e0298d2ccdc9e7eb5319e3a4c732404990e8a",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -347,7 +347,7 @@
         "lib/permissions.ts",
         "lib/authz.ts"
       ],
-      "reviewedSourceHash": "6f07c50deb38175136c47d8e4e544a755b6505ed8ecf0ad1e9ec529f0bc4103d",
+      "reviewedSourceHash": "cd2d03b58c272f9e9a9cbfb458e6446950e4816e68cd0c3372d4db1caccd0eae",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -404,7 +404,7 @@
         "components/attendance-day-parts.tsx",
         "core/attendance-derive.ts"
       ],
-      "reviewedSourceHash": "6e6376228a8be9d892b88037751d78ad855dcd0f2d2ab34de2d879d056d0870c",
+      "reviewedSourceHash": "ba02f2caa91b9654381ef9cbc9afdd0d806125f72601f5060410ae41862837e9",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -461,7 +461,7 @@
         "lib/permissions.ts",
         "components/attendance-workflow-progress.tsx"
       ],
-      "reviewedSourceHash": "6940ab2ec90111316167735f78d6cf1b487bd59ef84a37a0dac24cc864fb7df7",
+      "reviewedSourceHash": "169b092a9ee53ea849e2b894be4939651f4b0c44968e7efe80ed756809b6e107",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -522,7 +522,7 @@
         "components/overtime-patterns/preview-panel.tsx",
         "app/admin/attendance/settings/overtime-patterns/actions.ts"
       ],
-      "reviewedSourceHash": "c9e7d002d4561fbfa912e1060bf58765590355ee1356c9c42d72b28c5a957b64",
+      "reviewedSourceHash": "f1b517ae061bb04b77ddd37cd91f3b0390a68644f1951f30e31e78297de9149a",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -580,7 +580,7 @@
         "app/leave/page.tsx",
         "components/leave/own-leave-history.tsx"
       ],
-      "reviewedSourceHash": "35ff2b01dac486a757ebd32544cca7a7e862cce8f225d0b058b98698bfdb25c1",
+      "reviewedSourceHash": "fc30db1a216d0948536ceb5845fd4f26f5620d3307b59f98149c19600e39fd5f",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -637,7 +637,7 @@
         "lib/leave-credit-claim-review.ts",
         "components/leave/leave-credit-claim-review.tsx"
       ],
-      "reviewedSourceHash": "cb7492175fef59f618443ca83f85c6402de7d40ea1aca6be2d6c4234057824be",
+      "reviewedSourceHash": "23e0a406d3fd9c2d83f97224769241ce053af7e1fc1823c6456c7bdc0697102e",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -695,7 +695,7 @@
         "app/leave/employee-balances/inquiry-data.ts",
         "lib/leave-inquiry-query.ts"
       ],
-      "reviewedSourceHash": "37d0d29127b131c73f8963acba80eee1e2558d6e07af8ab481e9020c46b06092",
+      "reviewedSourceHash": "6f59c8c9a5e6b3f83d6b1d9d0a42784de09e6e228a6c70ee02dc245acd69b2af",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -752,7 +752,7 @@
         "app/admin/actions.ts",
         "components/company-panel.tsx"
       ],
-      "reviewedSourceHash": "34efd7014e5869f95d8cc895dfd570d49181b6f049dd02bcf06d776846101c37",
+      "reviewedSourceHash": "46b02f2f9a646fcc6edb4b4363ad869b4528c0b5f161568b0f6b91d21d7d77e8",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -811,7 +811,7 @@
         "app/admin/personnel/[employmentId]/actions.ts",
         "core/read.ts"
       ],
-      "reviewedSourceHash": "b880c2940408312bc1a98504a63f29407cef0eead1d9f463f898a4478a769d8f",
+      "reviewedSourceHash": "bfcd83f0bc4aad8a36a2666c987cbd0b59e1033ad5c371aa7e024e13ac059326",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -869,7 +869,7 @@
         "lib/authz.ts",
         "core/system-testing-workspace.ts"
       ],
-      "reviewedSourceHash": "aa7986c5d8723240d19da65fdd44cfe44670d14fac436a7c503d275f3ee9abe6",
+      "reviewedSourceHash": "59ffee65a50e2bdfcd855e2305c49ffc2f6144533539b0f68f2424bf2ef119ee",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -926,7 +926,7 @@
         "lib/permissions.ts",
         "components/system-labels-grid.tsx"
       ],
-      "reviewedSourceHash": "6c964ea5ee80039870e302be90a9ad8b0201ac9f20a559a0d18a9e3b6a30031d",
+      "reviewedSourceHash": "708dcd501c2bcec17675cf644a9d1c9de4baf13068086790eaaf49754c900388",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -982,7 +982,7 @@
         "lib/permissions.ts",
         "components/system-labels-grid.tsx"
       ],
-      "reviewedSourceHash": "a7970661beeee07ac1cf4c1e4c120d95b2a1c0d4737d309330c37853a925e036",
+      "reviewedSourceHash": "a535fa0dbf0fb9cb914624964351d4fc258390e2de868a3a6c7887079b013c35",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -1040,7 +1040,7 @@
         "components/system-label-import.tsx",
         "app/admin/settings/system-labels/current-data/route.ts"
       ],
-      "reviewedSourceHash": "ba0b79dd67112071a5d36b3ddee998e60d86183738ff1f3876504a11d69541fd",
+      "reviewedSourceHash": "425a8c5a898dd27a7168517bcbc9e3dbe7a4d6460b3fee13ed6964e1b6236bd6",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -1098,7 +1098,7 @@
         "lib/authz.ts",
         "core/system-testing-workspace.ts"
       ],
-      "reviewedSourceHash": "0c1d88620634628ddb4e0cf250fdf7e99324d88709b5f09200d16078df58e104",
+      "reviewedSourceHash": "748434be6e96ce6e802dcd31e5d79a13c00cc2e06975a49d3a79ffcedd1cbbde",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -1157,7 +1157,7 @@
         "components/leave/own-leave-history.tsx",
         "core/read.ts"
       ],
-      "reviewedSourceHash": "60149bcc3b9ce7ae4ca4628eed85289a713043aa4823b48c15a6ca09b01a9c56",
+      "reviewedSourceHash": "ed230e904589e4a6071c954ba1b6ce5c0372dae5e59700215b346e0432dc37ea",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -1214,7 +1214,7 @@
         "lib/approvals-categories.ts",
         "lib/authz.ts"
       ],
-      "reviewedSourceHash": "e8c3c783dc297b7caa084f1c885558e1b8b8b08b5d5c9fe477b41fbafe076c79",
+      "reviewedSourceHash": "0e59329e96bdf139cc34cbdf70d5a232e191ba7f581b821f75412d88383763e8",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -1272,7 +1272,7 @@
         "core/statutory-authority.ts",
         "components/statutory-setup-screen.tsx"
       ],
-      "reviewedSourceHash": "a61b5d2eddd107b9dee981683872b175831ec8df505197caeec9d2ddf84896e7",
+      "reviewedSourceHash": "d516ac95e2e788d288fd638ccd113a67616c345b5a802b048503177d26361985",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -1331,7 +1331,7 @@
         "app/payroll/borang-a/shared.ts",
         "core/reporting.ts"
       ],
-      "reviewedSourceHash": "d82b4fbba1b085ef9df074a47a72cbca07451e9a9eb659255e1f2aebed4b4c66",
+      "reviewedSourceHash": "f0ad9cb76723621f62c68c49c59bd8d053c3668d18e64c163f598d63fa05e487",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -1390,7 +1390,7 @@
         "app/payroll/borang-a/shared.ts",
         "app/payroll/payment-submission/download-dialog.tsx"
       ],
-      "reviewedSourceHash": "161bb57c88064d8ce40f566089fd60fbd0062e75f39db8b1736977261c9c5442",
+      "reviewedSourceHash": "777ce2062e0e45a91ac9c2f7e1c76de7022f05ea181e4e594bb69e659a94dedb",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     }
   ]
