@@ -1,4 +1,6 @@
 """Pure dependency-injected lifecycle regressions. No socket, unit, /proc, key or cgroup access."""
+import ast
+import pathlib
 import importlib.util
 import sys
 import unittest
@@ -36,4 +38,44 @@ class Retirement(unittest.TestCase):
     def test_interrupted_or_unknown_unit_and_descriptor_states_refuse(self):
         for value in ['unknown','deleted-at-receipt']:
             with self.assertRaises(Exception): self.run_wait([value], {'load':'not-found','active':'inactive','invocation':'','pid':0,'cgroup':''})
+class AncillaryReceipt(unittest.TestCase):
+    def receive(self, descriptors, flags=0, envelope=IDENTITY, reply=b'{"available":true}'):
+        closed=[]
+        class Socket:
+            def settimeout(self, _): pass
+            def recvmsg(self, *_):
+                ancillary=[] if descriptors is None else [(peer.socket.SOL_SOCKET,peer.socket.SCM_RIGHTS,peer.array.array('i',descriptors).tobytes())]
+                return peer.json.dumps(envelope).encode()+b'\n'+reply,ancillary,flags,None
+        with mock.patch.object(peer.socket,'MSG_CMSG_CLOEXEC',0,create=True),mock.patch.object(peer.os,'close',closed.append):
+            try: result=peer.receive_activation(Socket(),peer.time.monotonic()+1)
+            except Exception: return None,closed
+        return result,closed
+    def test_one_complete_descriptor_is_transferred_not_closed(self):
+        result,closed=self.receive([77]);self.assertEqual(result,(IDENTITY,b'{"available":true}',77));self.assertEqual(closed,[])
+    def test_missing_extra_and_truncated_descriptors_refuse_and_close_every_received_fd(self):
+        for descriptors,flags,expected in [(None,0,[]),([77,88],0,[77,88]),([77],peer.socket.MSG_CTRUNC,[77])]:
+            result,closed=self.receive(descriptors,flags);self.assertIsNone(result);self.assertEqual(closed,expected)
+    def test_wrong_length_or_oversized_reply_closes_received_descriptor(self):
+        for reply in [b'{"available":true}extra',b'x'*(peer.RESPONSE_MAX+1)]:
+            result,closed=self.receive([77],reply=reply);self.assertIsNone(result);self.assertEqual(closed,[77])
+    def test_client_refuses_a_key_bearing_environment_before_any_user_socket_or_unit_read(self):
+        with mock.patch.dict(peer.os.environ,{'AUTH_SESSION_KEY':'fictional-test-only'},clear=True):
+            with self.assertRaises(Exception):peer.client_main()
+
+class NegativeProbeFraming(unittest.TestCase):
+    def test_caller_authority_probe_reaches_strict_keys_after_valid_request_framing(self):
+        probe = pathlib.Path(spec.origin).with_name('verify-internal-report-isolation.py')
+        tree = ast.parse(probe.read_text())
+        programs = [node.args[1].value for node in ast.walk(tree)
+                    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == 'as_user'
+                    and len(node.args) > 1 and isinstance(node.args[1], ast.Constant)
+                    and isinstance(node.args[1].value, str) and 'caller-authority' in node.args[1].value]
+        self.assertEqual(len(programs), 1)
+        calls = [node for node in ast.walk(ast.parse(programs[0]))
+                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == 'sendall']
+        self.assertEqual(len(calls), 1)
+        body = ast.literal_eval(calls[0].args[0])
+        self.assertEqual(body, b'{"phase":"status","subject":"caller-authority"}\n')
+        self.assertEqual(peer.json.loads(body), {'phase':'status','subject':'caller-authority'})
+
 if __name__ == '__main__': unittest.main()
