@@ -35,6 +35,20 @@ function observation(f: Awaited<ReturnType<typeof setup>>, status: 'passed' | 'f
   return { executionId: f.execution.executionId, assignmentId: f.a.assignmentId, versionId: f.version.versionId, expectedRevision: 0, status, actualResult: status === 'failed' ? 'The fictional value was not retained.' : 'The fictional value was retained.', comments: 'Fictional observation', defectNotes: 'Fictional save/reopen failed.', improvementNotes: 'Make the fictional save status clearer.' };
 }
 describe('personal System Testing isolation and immutable instructions', () => {
+  it('returns a newly inserted own execution without accepting an own tester ID on another assignment',async()=>{
+    const f=await setup();
+    const returned=await withTenant(one,tx=>tx.insert(s.testExecution).values({tenantId:b.tenantId,assignmentId:f.a.assignmentId,versionId:f.version.versionId,testerUserId:one.userId!,attemptNo:2})
+      .returning({id:s.testExecution.id,assignmentId:s.testExecution.assignmentId,testerUserId:s.testExecution.testerUserId,attemptNo:s.testExecution.attemptNo}));
+    expect(returned).toHaveLength(1);expect(returned[0]).toMatchObject({assignmentId:f.a.assignmentId,testerUserId:one.userId,attemptNo:2});
+    expect(returned[0].id).not.toBe(f.execution.executionId);
+    const before=await owner.db.select().from(s.testExecution).where(eq(s.testExecution.tenantId,b.tenantId)).orderBy(asc(s.testExecution.id));
+    try {
+      await withTenant(one,tx=>tx.insert(s.testExecution).values({tenantId:b.tenantId,assignmentId:f.other.assignmentId,versionId:f.version.versionId,testerUserId:one.userId!,attemptNo:1}).returning({id:s.testExecution.id}));
+      throw new Error('Own tester ID on a foreign assignment unexpectedly succeeded.');
+    } catch(error) { expect(pgSqlState(error)).toBe('42501'); }
+    expect(await owner.db.select().from(s.testExecution).where(eq(s.testExecution.tenantId,b.tenantId)).orderBy(asc(s.testExecution.id))).toEqual(before);
+    expect(await withTenant(two,tx=>tx.select().from(s.testExecution).where(eq(s.testExecution.id,returned[0].id)))).toEqual([]);
+  });
   it('keeps two independent tester results and case-global run ordinals under actual non-bypass app role', async () => {
     const f = await setup(), e2 = await beginTestingExecution(two, { assignmentId: f.other.assignmentId, expectedVersionId: f.version.versionId, newAttempt: false });
     const [principal] = await withTenant(one, tx => tx.execute(sql`SELECT current_user,r.rolsuper,r.rolbypassrls FROM pg_roles r WHERE r.rolname=current_user`)) as unknown as { current_user: string; rolsuper: boolean; rolbypassrls: boolean }[];
