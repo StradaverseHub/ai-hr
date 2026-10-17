@@ -54,9 +54,13 @@ class PinnedCgroupReadback(unittest.TestCase):
              mock.patch.object(peer.os,'lseek',return_value=0), \
              mock.patch.object(peer.os,'read',side_effect=events if isinstance(events,OSError) else None,return_value=events):
             return peer.pinned_group_state(77,88,pin)
-    def test_exact_pinned_deleted_cgroup_with_still_readable_empty_events_is_collected(self):
-        # Linux can retain a readable cgroup.events descriptor after unlinking its directory.
-        self.assertEqual(self.state(deleted=True),'collected')
+    def test_readable_deleted_events_do_not_supply_collection_authority(self):
+        for path in ['/sys/fs/cgroup'+PATH+' (deleted)',PATH+' (deleted)']:
+            with self.assertRaises(Exception):self.state(path=path)
+    def test_exact_mount_relative_deleted_path_with_kernel_collection_error_is_collected(self):
+        # Actual cgroupfs readlink drops the mount prefix after collection, retaining this inode.
+        for error in [peer.errno.ENODEV,peer.errno.ENOENT]:
+            self.assertEqual(self.state(path=PATH+' (deleted)',events=OSError(error,'fictional')),'collected')
     def test_live_pinned_cgroup_still_distinguishes_population(self):
         self.assertEqual(self.state(),'empty')
         self.assertEqual(self.state(events=b'populated 1\nfrozen 0\n'),'populated')
@@ -72,6 +76,12 @@ class PinnedCgroupReadback(unittest.TestCase):
         self.assertEqual(self.state(deleted=True,events=OSError(peer.errno.ENODEV,'fictional')),'collected')
         for deleted,error in [(False,peer.errno.ENODEV),(True,peer.errno.EACCES)]:
             with self.assertRaises(Exception):self.state(deleted=deleted,events=OSError(error,'fictional'))
+    def test_mount_relative_collection_errors_cannot_hide_wrong_path_descriptor_or_errno(self):
+        for path in [PATH,PATH+' (deleted) (deleted)',PATH+'-other (deleted)',PATH.replace(UNIT,'aihr-report-auth@other.service')+' (deleted)','/foreign/'+UNIT+' (deleted)']:
+            with self.assertRaises(Exception):self.state(path=path,events=OSError(peer.errno.ENODEV,'fictional'))
+        for change in [{'device':99},{'inode':99}]:
+            with self.assertRaises(Exception):self.state(path=PATH+' (deleted)',events=OSError(peer.errno.ENODEV,'fictional'),**change)
+        with self.assertRaises(Exception):self.state(path=PATH+' (deleted)',events=OSError(peer.errno.EACCES,'fictional'))
 
 class AncillaryReceipt(unittest.TestCase):
     def receive(self, descriptors, flags=0, envelope=IDENTITY, reply=b'{"available":true}'):
