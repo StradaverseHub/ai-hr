@@ -6,7 +6,7 @@ import messages from '../messages/en.json';
 import ReplacementHolidayPage from '../app/admin/holidays/replacements/page';
 import {todayInKualaLumpur} from '../lib/hr-date';
 const mocks=vi.hoisted(()=>({review:vi.fn()}));
-vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>createTranslator({locale:'en',messages,namespace})}));
+vi.mock('next-intl/server',()=>({getTranslations:async()=>createTranslator({locale:'en',messages,namespace:'replacementHoliday'})}));
 vi.mock('../lib/scope',()=>({scopedAdmin:async()=>({s:{},scopeIds:['fixture-company']})}));
 vi.mock('../core/read',()=>({allowedCompanies:async()=>[{id:'fixture-company',name:'Fictional company'}]}));
 vi.mock('../core/holiday-replacements',()=>({listReplacementHolidayPolicies:async()=>[]}));
