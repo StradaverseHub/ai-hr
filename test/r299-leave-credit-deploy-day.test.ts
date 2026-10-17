@@ -208,8 +208,14 @@ describe('D3 · leaveCreditRegisterLive — the service form, with ONE conversio
     const fixture = read(fixturePath);
     expect(fixture).toContain('const refusal = demoSeedRefusal(process.env)');
     expect(fixture).toContain("if (refusal || process.env.NODE_ENV === 'production') throw new Error");
-    expect(fixture).toContain("for (const key of ['DATABASE_URL', 'MIGRATION_DATABASE_URL'])");
-    expect(fixture).toContain("const url = new URL(process.env[key]!)");
+    expect(fixture).toContain('const databaseInputs = { app: process.env.DATABASE_URL, owner: process.env.MIGRATION_DATABASE_URL };');
+    expect(fixture).toContain([
+      'for (const raw of Object.values(databaseInputs)) {',
+      '  const url = new URL(raw!);',
+      "  if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.port !== '5433' || url.pathname !== '/ai_hr_board15_inquiry_browser') throw new Error('Only the named disposable inquiry database is allowed.');",
+      '}',
+      'const owner = createDb(databaseInputs.owner!);',
+    ].join('\n'));
     expect(fixture).toContain("if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.port !== '5433' || url.pathname !== '/ai_hr_board15_inquiry_browser') throw new Error");
     expect(fixture).toContain('owner.db.transaction(tx => resolveEntitlementsTx(tx, tenantId))');
     expect(fixture).toContain('grants, entitlements }');
