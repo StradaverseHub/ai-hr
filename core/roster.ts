@@ -1,5 +1,5 @@
 import { assertDutyRosterWriteTx } from './schedule-group-controls';
-import { rotationVersionOn } from './week-pattern';
+import { rotationVersionOn, weekPatternWorkingDayCount } from './week-pattern';
 import { ShiftNotInScheduleGroupError, groupRuleIdTx, assertShiftsAllowedForEmploymentsTx } from './schedule-shift-eligibility';
 export { ShiftNotInScheduleGroupError, groupRuleIdTx, assertShiftsAllowedForEmploymentsTx } from './schedule-shift-eligibility';
 /**
@@ -37,7 +37,6 @@ import {
   shiftDayKindFor,
   shiftSpan,
   weekLookupTx,
-  weekPatternWorkingDayCount,
 } from './attendance';
 import { breakRowMinutes, checkBreakRow, findBreakOverlaps } from './shift-break-rules';
 import { approvedLeaveDates } from './leave';
@@ -119,8 +118,9 @@ export const shiftCrossesMidnight = (startTime: string, endTime: string) => endT
 /** b8aa3466 — how many WORKING weekdays a shift has, Full ∪ Half. Used by the "a backup shift with no
  *  working pattern makes every day a rest day" guards, which must not reject an all-half-days shift.
  *
- *  07ebd04d — the arithmetic moved to core/attendance.ts `weekPatternWorkingDayCount`, beside
- *  `shiftDayKindFor`, because core/shift-arrangement.ts carried a SECOND hand-written copy of this exact
+ *  07ebd04d — the arithmetic lives in the leaf core/week-pattern.ts `weekPatternWorkingDayCount`.
+ *  Importing that owner directly avoids reading an uninitialized re-export during CLI startup.
+ *  The shared function exists because core/shift-arrangement.ts carried a SECOND hand-written copy of this exact
  *  set union guarding the same invariant. Two copies of one rule is how the two guards drift. This alias
  *  stays only so the call sites below keep reading in the shift's own vocabulary. */
 const workingDayCount = weekPatternWorkingDayCount;
