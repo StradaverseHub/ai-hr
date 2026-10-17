@@ -1,15 +1,22 @@
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
+import {fileURLToPath} from 'node:url';
+import {execFileSync} from 'node:child_process';
 import {describe,it,expect} from 'vitest';
 import {original18BrowserTarget} from '../scripts/original18-browser-target.mjs';
 import {REPORTS_PREFIX_ADMISSION,REPORTS_PREFIX_ORIGINAL_FILES,validateReportsPrefixNames,validateReportsPrefixSnapshot,validateReportsPrefixAdmission} from '../scripts/reports-prefix-continuation.mjs';
 const read=(name:string)=>readFileSync(new URL('../'+name,import.meta.url),'utf8');
-const hash=(bytes:string)=>createHash('sha256').update(bytes).digest('hex');
+const hash=(bytes:string|Buffer)=>createHash('sha256').update(bytes).digest('hex');
 const inventory=JSON.parse(read('scripts/reports-prefix-inventory.json')) as {name:string;rows:number;digest:string}[];
-const journal=(JSON.parse(read('db/migrations/meta/_journal.json')).entries as {tag:string;when:number}[]).map(row=>({...row,sha256:hash(read('db/migrations/'+row.tag+'.sql'))}));
+const root=fileURLToPath(new URL('..',import.meta.url)).replace(/\/$/,'');
+const originalCandidate='c260108d3ca8d9ad28954450a5162eeed1c7a1ed';
+// A consumed prefix admission belongs to its captured source, including every original SQL byte.
+const historicalBytes=(relative:string)=>execFileSync('git',['-C',root,'show',originalCandidate+':'+relative],{maxBuffer:16000000});
+const journal=(JSON.parse(historicalBytes('db/migrations/meta/_journal.json').toString('utf8')).entries as {tag:string;when:number}[]).map(row=>({...row,sha256:hash(historicalBytes('db/migrations/'+row.tag+'.sql'))}));
+const currentJournal=(JSON.parse(read('db/migrations/meta/_journal.json')).entries as {tag:string;when:number}[]).map(row=>({...row,sha256:hash(read('db/migrations/'+row.tag+'.sql'))}));
 const bound={root:'/fictional/owned-worktree',candidate:'a'.repeat(40),coordinatorPid:1234};
 function snapshot(){const shared={name:'ai_hr_app',database:'ai_hr_board18_reports_browser',server_addr:'127.0.0.1',server_port:5433,database_oid:'218928'};return {connections:{application:{...shared,rolsuper:false,rolbypassrls:false},migration:{...shared,name:'postgres'}},readOnly:'on',isolation:'repeatable read',fullVisibility:true,inventory:structuredClone(inventory),applied:journal.map(row=>({hash:row.sha256,created_at:String(row.when)}))};}
-function admission(){return {format:1,kind:'reviewed-reports-prefix-continuation',...bound,originalCandidate:'c260108d3ca8d9ad28954450a5162eeed1c7a1ed',database:'ai_hr_board18_reports_browser',databaseOid:'218928',namespace:'board18reports',port:3197,inventorySha256:hash(read('scripts/reports-prefix-inventory.json')),bindingsSha256:hash(read('scripts/reports-prefix-bindings.json')),originalFiles:REPORTS_PREFIX_ORIGINAL_FILES.map(row=>({...row})),migrationRuns:0,seedRuns:0,provisioningRuns:0,companyCreationRuns:0,fixtureOutcome:'UNRUN',applicationAcceptance:'UNVERIFIED'};}
+function admission(){return {format:1,kind:'reviewed-reports-prefix-continuation',...bound,originalCandidate,database:'ai_hr_board18_reports_browser',databaseOid:'218928',namespace:'board18reports',port:3197,inventorySha256:hash(read('scripts/reports-prefix-inventory.json')),bindingsSha256:hash(read('scripts/reports-prefix-bindings.json')),originalFiles:REPORTS_PREFIX_ORIGINAL_FILES.map(row=>({...row})),migrationRuns:0,seedRuns:0,provisioningRuns:0,companyCreationRuns:0,fixtureOutcome:'UNRUN',applicationAcceptance:'UNVERIFIED'};}
 describe('one reviewed Reports provisioned-prefix continuation',()=>{
  it('admits only explicit Reports continuation, preserving ordinary fresh/resume modes',()=>{
   expect(original18BrowserTarget(['--scenario=reports','--continue-reports-prefix'])).toMatchObject({continueReportsPrefix:true,resume:false});
@@ -18,7 +25,7 @@ describe('one reviewed Reports provisioned-prefix continuation',()=>{
   for(const args of [['--scenario=labels','--continue-reports-prefix'],['--scenario=reports','--continue-reports-prefix','--resume'],['--scenario=reports','--continue-reports-prefix','--recover-migration-only-reports'],['--scenario=reports','--continue-reports-prefix','--continue-reports-prefix']])expect(()=>original18BrowserTarget(args)).toThrow();
  });
  it('preserves exact captured bootstrap and organisation rows while requiring every business/actor table unchanged',()=>{
-  expect(inventory).toHaveLength(289);
+  expect(journal).toHaveLength(460);expect(inventory).toHaveLength(289);
   for(const [name,rows] of [['tenant',3],['company',6],['department',5],['person',2],['app_user',4],['role_assignment',2],['employment',0]] as const)expect(inventory.find(row=>row.name===name)?.rows,name).toBe(rows);
   expect(()=>validateReportsPrefixSnapshot(snapshot(),journal)).not.toThrow();
   for(const name of ['tenant','company','department','person','app_user','role_assignment','employment','custom_report','custom_report_run']){
@@ -33,6 +40,14 @@ describe('one reviewed Reports provisioned-prefix continuation',()=>{
    if(mode==='hash')changed.applied[first].hash='f'.repeat(64);if(mode==='count')changed.applied.pop();if(mode==='when')changed.applied[first].created_at='1';
    if(mode==='OID')changed.connections.application.database_oid='1';if(mode==='readOnly')changed.readOnly='off';if(mode==='isolation')changed.isolation='read committed';if(mode==='visibility')changed.fullVisibility=false;if(mode==='role')changed.connections.application.rolbypassrls=true;if(mode==='address')changed.connections.application.server_addr='203.0.113.1';
    expect(()=>validateReportsPrefixSnapshot(changed,journal),mode).toThrow();
+  }
+  // Even a self-consistent newer journal cannot widen this historical 460-entry admission.
+  // Current source has 462 entries; an additional synthetic migration tests the boundary independently.
+  const appended=[...journal,{tag:'fictional_later_migration',when:1791900000034,sha256:'f'.repeat(64)}];
+  for(const later of [currentJournal,appended]){
+   expect(later.length).toBeGreaterThan(460);
+   const changed=snapshot();changed.applied=later.map(row=>({hash:row.sha256,created_at:String(row.when)}));
+   expect(()=>validateReportsPrefixSnapshot(changed,later)).toThrow();
   }
  });
  it('binds one immutable admission to current source, coordinator, preserved evidence and zero setup claims',()=>{
