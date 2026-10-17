@@ -49,6 +49,18 @@ describe('one reviewed Reports migration-only recovery',()=>{
    expect(()=>validateReportsMigrationSnapshot(actual,journal),mode).toThrow();
   }
  });
+ it('preserves the real legacy 0230→0240 journal sequence despite decreasing timestamps and refuses a timestamp-sorted swap',()=>{
+  const first=journal.findIndex(row=>row.tag==='0230_delegation_scope_reason');
+  expect(first).toBeGreaterThanOrEqual(0);expect(journal[first+1].tag).toBe('0240_employment_blacklist');
+  expect(journal[first].when).toBe(1781862229000);expect(journal[first+1].when).toBe(1781862219000);
+  const actual=snapshot();expect(()=>validateReportsMigrationSnapshot(actual,journal)).not.toThrow();
+  [actual.applied[first],actual.applied[first+1]]=[actual.applied[first+1],actual.applied[first]];
+  expect(()=>validateReportsMigrationSnapshot(actual,journal)).toThrow();
+  const source=readFileSync(new URL('../scripts/reports-migration-only-recovery.mjs',import.meta.url),'utf8');
+  expect(source).toContain('from drizzle.__drizzle_migrations order by id');
+  expect(source).not.toContain('from drizzle.__drizzle_migrations order by created_at');
+  for(const when of [NaN,Infinity,-Infinity,1.5]){const malformed=journal.map(row=>({...row}));malformed[first].when=when;expect(()=>validateReportsMigrationSnapshot(snapshot(),malformed)).toThrow();}
+ });
  it('reads actual Git source pins with enough buffer for the real schema',async()=>{
   const head=execFileSync('git',['-C',root,'rev-parse','HEAD'],{maxBuffer:16000000}).toString().trim();
   const proof=await readReportsRecoverySourceProof(root,head);
