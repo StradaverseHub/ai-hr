@@ -68,4 +68,11 @@ describe('My Profile single cross-tab editor',()=>{
   try{Object.assign(field,{label:'Canonical changed label',labelKey:'',type:'number',form:{...field.form,required:{record:true}}});mount();fireEvent.click(screen.getByRole('button',{name:en.essProfile.requestEdit}));const input=within(panel('profile')).getByLabelText('Canonical changed label');expect(input).toHaveAttribute('type','number');expect(input).toHaveAttribute('aria-required','true');cleanup();const view=workspace();view.editable=[];mount('en',view);expect(screen.getByRole('button',{name:en.essProfile.requestEdit})).toBeDisabled();expect(screen.queryByLabelText('Canonical changed label')).toBeNull();}
   finally{Object.assign(field,before);}
  });
+ it('keeps an automatic qualifying-child count read-only even when the administrator permits the field',()=>{
+  const id='bank_statutory.income_tax_pcb.numchildren',view=workspace();view.values[id]=3;view.baselines[id]='stored-count-proof';view.editable.push(id);view.fieldReadOnlyReasons={[id]:'derivedChildCount'};
+  mount('en',view);fireEvent.click(screen.getByRole('button',{name:en.essProfile.requestEdit}));const tab=panel('bankStatutory');
+  expect(within(tab).queryByLabelText(en.people.detail.childrenPhysical)).toBeNull();expect(within(tab).getByText('3')).toBeTruthy();expect(within(tab).getByText(en.essProfile.childCountDerived)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:en.essProfile.save}));expect(mocks.save).not.toHaveBeenCalled();
+ });
+
 });

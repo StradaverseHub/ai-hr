@@ -386,6 +386,8 @@ export interface CountryPack {
   statutory: {
     set: MyStatutoryModule['setStatutoryProfileMY'];
     get: MyStatutoryModule['getStatutoryProfileMY'];
+    /** Exact country-owned row revision for masked ESS concurrency checks; never a value digest. */
+    getEditSnapshot?: MyStatutoryModule['getStatutoryEditSnapshotMY'];
     setTp3: MyStatutoryModule['setTp3ProfileMY'];
     setBank: MyStatutoryModule['setBankProfileMY'];
     setRegistrationNumbers?: MyStatutoryModule['setRegistrationNumbersMY'];
@@ -534,6 +536,8 @@ export interface CountryPack {
      * per-category child relief omits all three and nothing in the kernel asks for them.
      */
     childReliefFor?: (p: ChildReliefInput) => ChildReliefFigure;
+    /** Canonical head count of the recorded grid, separate from weighted qualifying units. */
+    childReliefTableHeadCount?: (table: unknown) => number;
     /**
      * Item 04b88724 — what the resolved ruleset prices each relief category at, in ringgit AND in
      * qualifying children. The ONE place `units = amountRM / perChild` is written; a screen that has to

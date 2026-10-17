@@ -1,3 +1,4 @@
+import {childReliefTableHeadCount} from './statutory-tables';
 import {getTaxSelectionMY,saveTaxSelectionMY,initializeHiredTaxSelectionMYTx,initializeTransferredTaxSelectionMYTx,resolveTaxSelectionMY} from './tax-selection';
 import {listTaxSchemeDeclarationsMY,saveTaxSchemeDeclarationMY,revokeTaxSchemeDeclarationMY,resolveTaxSchemeMY} from './tax-scheme-declarations';
 import { MY_EA_REPORTING } from './ea-reporting';
@@ -6,7 +7,7 @@ import { MY_EA_REPORTING } from './ea-reporting';
  * holiday calendar, and payroll calculators (EPF/SOCSO/EIS/PCB) join here in later slices.
  */
 import { validateEpfElection } from './epf-election';
-import { correctAccidentalHrdfOptOutsMY, defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, isValidIC, normalizeIC, setBankProfileMY, setRegistrationNumbersMY, setIcProfileMY, canApplyIcProfileChangeMY, setOthersStatutoryMY, setPassportProfileMY, validatePassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY, taxNumberSharedWithMY } from './statutory';
+import { correctAccidentalHrdfOptOutsMY, defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, getStatutoryEditSnapshotMY, isValidIC, normalizeIC, setBankProfileMY, setRegistrationNumbersMY, setIcProfileMY, canApplyIcProfileChangeMY, setOthersStatutoryMY, setPassportProfileMY, validatePassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY, taxNumberSharedWithMY } from './statutory';
 import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
 import { MY_HOLIDAYS_2026, MY_STATES } from './holidays';
 import {
@@ -79,6 +80,7 @@ export const myPack: CountryPack = {
   statutory: {
     set: setStatutoryProfileMY,
     get: getStatutoryProfileMY,
+    getEditSnapshot: getStatutoryEditSnapshotMY,
     // Partial save of only the four TP3 opening-balance columns (item a6a47698 — TP3 relocated to the
     // Payroll tab with its own save; the full statutory overwrite no longer carries these).
     setTp3: setTp3ProfileMY,
@@ -167,6 +169,7 @@ export const myPack: CountryPack = {
     // on the one function is what the approved plan asked for, and what stops the screen and the payslip
     // disagreeing about the same child.
     childReliefFor,
+    childReliefTableHeadCount:table=>childReliefTableHeadCount(table as Parameters<typeof childReliefTableHeadCount>[0]),
     childReliefPrices,
     epfReliefCap: MY_RELIEFS.epfReliefCap,
     // Rung 5c (D6) — the built-in HRDF levy rates; the OT/HRDF config + Attendance-policy screens'

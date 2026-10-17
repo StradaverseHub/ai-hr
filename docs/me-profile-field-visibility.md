@@ -24,7 +24,7 @@ metadata is protected; Documents retains only existing released own outputs, rev
 
 This is an implementation inventory, not evidence of verified UI or security acceptance. Types, tests,
 actual roles, six locales, themes, narrow viewport, keyboard, save/reopen and approval remain pending the
-coordinated verification window. SQL0554 is unapplied and not journaled in this isolated branch.
+coordinated verification window. SQL0560 is the centrally reserved unapplied Profile scope migration.
 
 | Stable Personnel field | Tab | ESS visibility | Update route | Reason |
 | --- | --- | --- | --- | --- |
@@ -254,7 +254,7 @@ coordinated verification window. SQL0554 is unapplied and not journaled in this 
 | `bank_statutory.income_tax_pcb.disabledindividual` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
 | `bank_statutory.income_tax_pcb.disabledspouse` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
 | `bank_statutory.income_tax_pcb.childreliefmode` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
-| `bank_statutory.income_tax_pcb.numchildren` | Bank & Statutory | Visible | approval | Legacy physical child-count proposal; the existing tax owner validates and applies after approval. This is not the family-derived qualifying-child count. |
+| `bank_statutory.income_tax_pcb.numchildren` | Bank & Statutory | Visible | approval | Manual-mode qualifying-child head-count proposal uses the tax owner after approval. Automatic modes show the canonical qualifying head count read-only; this is neither total Family records nor weighted relief units. |
 | `bank_statutory.income_tax_pcb.qualifyingchildren` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
 | `bank_statutory.income_tax_pcb.childreliefamount` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
 | `bank_statutory.income_tax_pcb.employerbearstax` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |

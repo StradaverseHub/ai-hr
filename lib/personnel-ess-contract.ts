@@ -40,7 +40,7 @@ export function parseEssProfileProposal(raw:unknown):EssProfileProposal{
     if(personnelScalarIssue(field,String(item.value)))throw new EssProfileError('invalid',[item.fieldId]);
    }
    if(binding.owner==='taxLegacy'&&(binding.field==='numChildren'&&(!Number.isSafeInteger(item.value)||Number(item.value)<0)||binding.field==='taxCategory'&&![1,2,3].includes(Number(item.value))))throw new EssProfileError('invalid',[item.fieldId]);
-   if(field.form?.required?.record&&(item.value===null||item.value===''))throw new EssProfileError('invalid',[item.fieldId]);
+   if(field.form?.required?.record&&(item.value===null||typeof item.value==='string'&&!item.value.trim()))throw new EssProfileError('invalid',[item.fieldId]);
   }
  }
  const registerIds=parsed.data.registers.map(row=>row.kind+':'+(row.id??row.clientId));

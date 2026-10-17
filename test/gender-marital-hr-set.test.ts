@@ -1,3 +1,4 @@
+import {requestCurrentProfileChange as requestProfileChange} from './helpers/profile-requests';
 /**
  * R4 Build #2 — HR/Admin sets gender + marital status on the employee profile so the ALREADY-BUILT
  * leave-eligibility engine (Wave 2A-1) has an admin-set source. Routed through
@@ -18,7 +19,6 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import {
   decideProfileChange,
-  requestProfileChange,
   setPersonComplianceFields,
 } from '../core/profile';
 import { isLeaveEligible, requestLeave, type LeaveEligibility } from '../core/leave';

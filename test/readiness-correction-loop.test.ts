@@ -1,3 +1,5 @@
+import {requirePackFor} from '../localization/registry';
+import {requestCurrentProfileChange as requestProfileChange} from './helpers/profile-requests';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 vi.mock('../lib/ai', async importActual => ({ ...await importActual<typeof import('../lib/ai')>(), generateDraft: vi.fn() }));
@@ -7,7 +9,7 @@ import { resolveActiveAiConfig } from '../core/ai-config';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { requestProfileChange, decideProfileChange } from '../core/profile';
+import {  decideProfileChange } from '../core/profile';
 import { myReadinessActions, loadReadinessActions } from '../core/readiness-actions';
 import { reconcileReadinessCases, orchestrationQueue } from '../core/hr-orchestrator';
 import { sweepReadinessNudges } from '../core/readiness-nudge';
@@ -28,7 +30,7 @@ async function fixture() {
   return { e, employee };
 }
 const bankRequest = (employee: SessionContext, employmentId: string) => requestProfileChange(employee, { employmentId,
-  proposed: { bankName: 'Test bank', bankAccountNo: '12345678' } });
+  proposed: { bankName: requirePackFor('MY').client.bankNames[0], bankAccountNo: '12345678' } });
 const bankCase = async (id: string) => (await owner.db.select().from(schema.hrOrchestrationCase).where(eq(schema.hrOrchestrationCase.employmentId, id))).find(r => r.gap === 'no_bank_account')!;
 async function nudgesOn() { await setModule(b.tenantId, 'notifications', 'active'); await setSetting(b.tenantId, 'notifications.readiness_nudge_enabled', true); return adminCtx(b); }
 

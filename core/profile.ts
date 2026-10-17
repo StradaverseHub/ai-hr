@@ -1,6 +1,6 @@
 import {freshProfileEditPolicyTx} from './profile-edit-policy';
 import {EssProfileError,type EssProfileProposal} from '../lib/personnel-ess-model';
-import {personnelField} from '../lib/personnel-field-registry';
+import {personnelField,PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
 import { isCalendarDate } from '../lib/calendar-date';
 /**
  * Employee self-service profile (ADR-0012). Two paths by risk:
@@ -40,7 +40,6 @@ import {
   PROFILE_REQUESTABLE_FIELDS,
   PROFILE_REQUESTABLE_KEYS,
   requestableField,
-  type ProfileRequestTarget,
 } from '../lib/profile-requestable-fields';
 // r261 stage three — the tenant's own answers to "which fields may be asked about?" and "who decides?".
 // Read from the per-request entitlement snapshot; see core/tenant-settings.ts for why they throw rather
@@ -340,13 +339,8 @@ export async function updateOwnContact(
  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
-/**
- * Propose a change to any field `lib/profile-requestable-fields.ts` declares. RLS confines the insert to
- * the caller's own employment; approval (admin-only) applies it, and nothing before that touches the
- * master record.
- *
- * `numChildren` (num_children) is `NOT NULL DEFAULT 0` and `taxCategory` is `NOT NULL DEFAULT 1`; both
- * are sanitised to a value or dropped, never to null, so an approval cannot violate the column.
+/** New submissions use the versioned owner exclusively; stored legacy requests retain decisions/history.
+ * The current owner validates exact subject, policy, baselines, options and effective writer behavior.
  */
 export async function requestProfileChange(
   ctx:SessionContext,
@@ -358,17 +352,12 @@ export async function requestProfileChange(
   const policy=await freshProfileEditPolicyTx(tx,ctx);ctx=policy.ctx;
   const {ownProfileSubjectTx,prepareProfileProposalTx}=await import('./profile-edit');
   await ownProfileSubjectTx(tx,ctx,p.employmentId);
-  let proposed:ProfileChangeProposed|EssProfileProposal;
-  if('v' in p.proposed&&p.proposed.v===2){
-   const checked=await prepareProfileProposalTx(tx,ctx,p.employmentId,p.proposed);
-   if(checked.immediateRegisters.length||checked.proposal.fields.some(field=>personnelField(field.fieldId)?.ess.edit!=='approval'))throw new EssProfileError('invalid');
-   proposed=checked.proposal;
-   if(!proposed.fields.length&&!proposed.registers.length)throw new EssProfileError('invalid');
-  }else{
-   proposed=sanitizeProposed(p.proposed as ProfileChangeProposed,profileChangeAllowedKeys(ctx));
-   if(!Object.keys(proposed).length)throw new EssProfileError('invalid');
-   if((proposed.bankName!=null)!==(proposed.bankAccountNo!=null))throw new EssProfileError('invalid');
-  }
+  // Legacy rows remain decidable/readable; no new request may bypass the versioned owner.
+  if(!p.proposed||typeof p.proposed!=='object'||Array.isArray(p.proposed)||!('v' in p.proposed)||p.proposed.v!==2)throw new EssProfileError('invalid');
+  const checked=await prepareProfileProposalTx(tx,ctx,p.employmentId,p.proposed);
+  if(checked.immediateRegisters.length||checked.proposal.fields.some(field=>personnelField(field.fieldId)?.ess.edit!=='approval'))throw new EssProfileError('invalid');
+  const proposed=checked.proposal;
+  if(!proposed.fields.length&&!proposed.registers.length)throw new EssProfileError('invalid');
   // Policy advisory serializes canonical submissions. Exact retry reuses one pending proposal.
   const matching=await tx.select({id:profileChangeRequest.id}).from(profileChangeRequest).where(and(eq(profileChangeRequest.personId,ctx.personId!),eq(profileChangeRequest.employmentId,p.employmentId),eq(profileChangeRequest.status,'pending'),sql`${profileChangeRequest.proposed}=${JSON.stringify(proposed)}::jsonb`)).orderBy(profileChangeRequest.createdAt,profileChangeRequest.id).limit(2);
   if(matching.length>1)throw new EssProfileError('unavailable');
@@ -440,7 +429,7 @@ export async function decideProfileChange(
      * ⚠️ WHAT THIS DELIBERATELY DOES NOT DO. It does not add a second level — the plan sold single-level
      * approval and invited a rejection if the reporter wanted multi-level; they approved it as written,
      * so one decision by one person ends the request either way. It does not widen VISIBILITY by one row:
-     * 0554 restricts request rows to the own subject and scoped HR administrators. And it cannot widen
+     * 0560 restricts request rows to the own subject and scoped HR administrators. And it cannot widen
      * AUTHORITY in any configuration — both branches below only ever refuse.
      */
     if(req.personId===ctx.personId&&p.decision==='approved')throw new EssProfileError('permission');
@@ -461,7 +450,7 @@ export async function decideProfileChange(
       /**
        * ⚠️ THE DECISION IS THE LAST GATE, AND IT RE-ASKS THE PERMISSION (r261 fix pass).
        *
-       * `requestProfileChange` already refuses a key the tenant does not allow, and switching a field
+       * The current request owner already refuses a field the tenant does not allow, and switching a field
        * off sweeps every request waiting on it. Neither of those is enough on its own, because both run
        * at a different moment from this one: a request raised in the same second the setting changed, a
        * row written by anything other than the settings action, or a sweep that failed and was reported
@@ -480,94 +469,13 @@ export async function decideProfileChange(
       const allowedNow = profileChangeAllowedKeys(ctx);
       const closedKeys = Object.keys(proposed).filter((k) => !allowedNow.has(k));
       if (closedKeys.length > 0) throw new ProfileChangeFieldClosedError(closedKeys);
-      /**
-       * THE WRITE SETS ARE BUILT FROM THE DECLARATION, one entry per field, so a field added to
-       * lib/profile-requestable-fields.ts is applied on approval without a second edit here. Before
-       * stage two this was an `if` ladder of four names beside another of three, and the two ladders
-       * were the reason "requestable" and "appliable" could quietly become different sets: a key could
-       * be accepted into `proposed`, wait in the queue, be approved — and land nowhere.
-       */
-      const setFor = (target: ProfileRequestTarget): Record<string, unknown> => {
-        const out: Record<string, unknown> = {};
-        for (const f of PROFILE_REQUESTABLE_FIELDS) {
-          if (f.target !== target) continue;
-          if (proposed[f.key] === undefined) continue;
-          out[f.column] = proposed[f.key];
-        }
-        return out;
-      };
-      // Pay-affecting statutory fields → employee_statutory_my (needs a statutory profile to apply to).
-      const statSet = setFor('statutory');
-      if(statSet.taxCategory!==undefined){
-        const proposedCategory=statSet.taxCategory;
-        statSet.taxCircumstance=sql`CASE WHEN ${employeeStatutoryMy.taxCircumstance}='none' OR ${employeeStatutoryMy.taxCategory}=${proposedCategory} THEN ${employeeStatutoryMy.taxCircumstance} ELSE NULL END`;
-        statSet.taxCategory=sql`CASE WHEN ${employeeStatutoryMy.taxCircumstance}='none' THEN ${employeeStatutoryMy.taxCategory} ELSE ${proposedCategory} END`;
+      // Keep the existing finite duplicate-identity refusal before the canonical country writer.
+      if(typeof proposed.icNumber==='string'&&proposed.icNumber){
+        const [clash]=await tx.select({id:employeeStatutoryMy.id}).from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.icNumber,proposed.icNumber),sql`${employeeStatutoryMy.personId} <> ${req.personId}`)).limit(1);
+        if(clash)throw new Error('That identity number is already filed against another employee.');
       }
-      // The IC is uniquely indexed per tenant (employee_statutory_my_ic_uq, partial on NOT NULL). An
-      // approval that collides would surface as a raw Postgres unique violation in a redirect's query
-      // string; checked here instead so the approver is told what is wrong in a sentence. Inside the
-      // transaction and under RLS, so it reads only rows this approver may already see.
-      if (typeof statSet.icNumber === 'string' && statSet.icNumber !== '') {
-        const [clash] = await tx
-          .select({ id: employeeStatutoryMy.id })
-          .from(employeeStatutoryMy)
-          .where(
-            and(
-              eq(employeeStatutoryMy.icNumber, statSet.icNumber),
-              sql`${employeeStatutoryMy.personId} <> ${req.personId}`,
-            ),
-          )
-          .limit(1);
-        if (clash) {
-          throw new Error('That identity number is already filed against another employee.');
-        }
-      }
-      if (Object.keys(statSet).length > 0) {
-        const [existing] = await tx
-          .select({ id: employeeStatutoryMy.id })
-          .from(employeeStatutoryMy)
-          .where(eq(employeeStatutoryMy.personId, req.personId))
-          .limit(1);
-        if (!existing) {
-          throw new Error('No statutory profile to apply to — set the employee’s IC first.');
-        }
-        await tx
-          .update(employeeStatutoryMy)
-          .set({ ...statSet, updatedAt: sql`now()` })
-          .where(eq(employeeStatutoryMy.id, existing.id));
-        await appendEvent(tx, {
-          tenantId: ctx.tenantId,
-          aggregateType: 'employee-statutory-my',
-          aggregateId: existing.id,
-          eventType: 'statutory.my.updated',
-          actor: actorOf(ctx),
-          subjectEmploymentId: req.employmentId,
-          payload: { via: 'profile-change', requestId: req.id, fields: Object.keys(statSet) },
-        });
-      }
-      // #24 + stage two: identity, name and personal particulars → person (no statutory profile
-      // required). `person.full_name` is NOT NULL, so a proposal that would blank it is dropped rather
-      // than written — the request stays approved and the rest of it applies, which is the same
-      // treatment sanitizeProposed gives a malformed date.
-      const personSet = setFor('person');
-      if ('fullName' in personSet && (personSet.fullName == null || personSet.fullName === '')) {
-        delete personSet.fullName;
-      }
-      if (Object.keys(personSet).length > 0) {
-        await tx
-          .update(person)
-          .set({ ...personSet, ...maritalStatusSourceReset(personSet) })
-          .where(eq(person.id, req.personId));
-        await appendEvent(tx, {
-          tenantId: ctx.tenantId,
-          aggregateType: 'person',
-          aggregateId: req.personId,
-          eventType: 'person.updated',
-          actor: actorOf(ctx),
-          subjectEmploymentId: req.employmentId,
-          payload: { via: 'profile-change', requestId: req.id, fields: Object.keys(personSet) },
-        });
-      }
+      const {applyStoredLegacyProfileProposalTx}=await import('./profile-edit');
+      await applyStoredLegacyProfileProposalTx(tx,ctx,req.employmentId,proposed);
     }
 
     await tx
@@ -853,6 +761,11 @@ export async function withdrawProfileChangesForLockedFields(
   const reason = clean(p.reason);
   if (locked.size === 0 || reason === null) return { withdrawn: 0 };
 
+  // Legacy settings and v2 editors name the same descriptor differently. Expand only validated
+  // declaration-owned counterparts; unknown names can never turn into a writable/matching field.
+  for(const field of PERSONNEL_FIELDS){const alias=field.ess.binding?.legacyKey;
+    if(alias&&(locked.has(alias)||locked.has(field.id))){locked.add(alias);locked.add(field.id);}
+  }
   const lockedKeys = [...locked];
 
   const run=async (tx:Tx) => {
