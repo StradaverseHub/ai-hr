@@ -81,22 +81,22 @@ def cgroup_identity(fd, identity):
 def pinned_group_state(directory_fd, events_fd, pin):
     info = os.fstat(directory_fd)
     require((info.st_dev, info.st_ino) == pin[:2])
+    require(pin[2].startswith(CGROUP_ROOT + '/'))
+    # Collected kernfs descriptors may lose only their mount prefix in readlink output.
+    deleted_paths = (pin[2] + ' (deleted)', pin[2][len(CGROUP_ROOT):] + ' (deleted)')
     path = os.readlink('/proc/self/fd/' + str(directory_fd))
     try:
-        require(path in (pin[2], pin[2] + ' (deleted)'))
+        require(path == pin[2] or path in deleted_paths)
         os.lseek(events_fd, 0, os.SEEK_SET)
         content = os.read(events_fd, 512).decode('ascii')
+        require(path == pin[2])
         rows = dict(row.split() for row in content.strip().splitlines())
         require(set(rows) <= {'populated', 'frozen'} and rows.get('populated') in ('0', '1') and len(content) < 512)
-        if path == pin[2] + ' (deleted)':
-            # The same collected kernel directory can retain readable events; only empty qualifies.
-            require(rows['populated'] == '0')
-            return 'collected'
         return 'empty' if rows['populated'] == '0' else 'populated'
     except OSError as error:
         # Only collection of the same previously validated kernel inode may be paired with
         # authoritative unit not-found. Missing arbitrary paths/PIDs never supply proof.
-        require(error.errno in (errno.ENODEV, errno.ENOENT) and path == pin[2] + ' (deleted)')
+        require(error.errno in (errno.ENODEV, errno.ENOENT) and path in deleted_paths)
         return 'collected'
 
 def receive_activation(peer, deadline):
