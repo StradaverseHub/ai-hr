@@ -1,3 +1,5 @@
+import type { TestingCatalogueAppliedResult } from '../lib/system-testing/updates';
+import type { InstructionDefinition, PublishedInstruction, ExecutionStatus } from '../lib/system-testing/model';
 import {PERSONNEL_EMPLOYMENT_TYPES,PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS} from '../lib/personnel-choice-vocabulary';
 import type { EmployeeMasterSpec } from '../lib/employee-master-report';
 import type { AttendanceAdminAmendment, AttendanceDayKindOverride, ManualOtRows } from '../lib/attendance-day-adjustment';
@@ -8792,19 +8794,18 @@ export const feedbackRequest = pgTable(
   {
     id: id(),
     tenantId: tenantId(),
-    // Denormalized for RLS can_see_employment(); the user id is the review gate.
+    // Optional employment context. User-only reports belong to the exact authenticated reporter login.
     reporterEmploymentId: uuid('reporter_employment_id')
-      .notNull()
       .references(() => employment.id),
     reporterUserId: uuid('reporter_user_id').references(() => appUser.id),
     // DISPLAY name to show instead of the reporter's person name (0348). Set to 'CLAUDE AI' on items the
     // improvement loop raises on the reporter's behalf (raiseFeedback), so the board shows who actually
     // wrote the item rather than the human whose employment it had to borrow.
     //
-    // A LABEL, and nothing more. reporter_employment_id stays NOT NULL and keeps driving RLS
-    // can_see_employment() — the alternative (a synthetic "CLAUDE AI" person + employment) would put a
+    // A LABEL, and nothing more. Employment-backed reports keep their employment scope; user-only
+    // reports use their canonical login owner — the alternative (a synthetic "CLAUDE AI" person + employment) would put a
     // fake employee into openLeaveYear, headcount and payroll, which is a far worse trade than a column.
-    // NULL ⇒ show the joined person name, which is every in-app submission.
+    // NULL ⇒ use the authorized joined person name, or an honest account fallback when unavailable.
     reporterLabel: text('reporter_label'),
     category: feedbackCategoryEnum('category').notNull(),
     title: text('title').notNull(),
@@ -8920,9 +8921,8 @@ export const feedbackAttachment = pgTable(
     feedbackRequestId: uuid('feedback_request_id')
       .notNull()
       .references(() => feedbackRequest.id),
-    // Denormalized from the feedback so RLS can use can_see_employment(employment_id) directly.
+    // Mirrors the canonical Feedback employment context; NULL for a real user-only reporter.
     employmentId: uuid('employment_id')
-      .notNull()
       .references(() => employment.id),
     content: bytea('content').notNull(),
     fileName: text('file_name').notNull(),
@@ -9668,6 +9668,12 @@ export const testCase = pgTable(
      */
     moduleCode: text('module_code').notNull(),
     title: text('title').notNull(),
+    semanticId: text('semantic_id'),
+    origin: text('origin').$type<'legacy' | 'local' | 'catalogue'>().notNull().default('legacy'),
+    currentVersionId: uuid('current_version_id'),
+    draftDefinition: jsonb('draft_definition').$type<InstructionDefinition>(),
+    draftRevision: integer('draft_revision').notNull().default(0),
+    acceptedCatalogueDefinitionHash: text('accepted_catalogue_definition_hash'),
     precondition: text('precondition'),
     /** The steps IN ORDER. The order IS the data, so it is an array, not a child table. */
     steps: jsonb('steps').$type<string[]>().notNull().default([]),
@@ -9706,6 +9712,13 @@ export const testRun = pgTable(
      */
     runNo: integer('run_no').notNull(),
     outcome: testRunOutcomeEnum('outcome').notNull(),
+    versionId: uuid('version_id'),
+    executionId: uuid('execution_id'),
+    executionRevision: integer('execution_revision'),
+    executionStatus: text('execution_status').$type<ExecutionStatus>(),
+    comments: text('comments'),
+    defectNotes: text('defect_notes'),
+    improvementNotes: text('improvement_notes'),
     /** What the tester actually saw. NULL where they recorded only an outcome — never a placeholder. */
     actualResult: text('actual_result'),
     runByUserId: uuid('run_by_user_id').references(() => appUser.id),
@@ -9725,6 +9738,43 @@ export const testRun = pgTable(
     index('test_run_case_idx').on(t.tenantId, t.testCaseId, t.runNo.desc()),
   ],
 );
+
+// ADR0128: version, assignment and personal execution extend the existing case/run owner.
+export const testCaseVersion = pgTable('test_case_version', {
+  id: id(), tenantId: tenantId(), testCaseId: uuid('test_case_id').notNull().references(() => testCase.id, { onDelete: 'cascade' }),
+  ordinal: integer('ordinal').notNull(), definition: jsonb('definition').$type<PublishedInstruction>().notNull(),
+  contentHash: text('content_hash').notNull(), provenance: text('provenance').$type<'upgrade_baseline' | 'local' | 'catalogue'>().notNull(),
+  sourceRef: text('source_ref'), catalogueHash: text('catalogue_hash'), sourceContentHash: text('source_content_hash'), guideSourceHash: text('guide_source_hash'),
+  publishedByUserId: uuid('published_by_user_id').references(() => appUser.id), publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
+}, t => [uniqueIndex('test_case_version_ordinal_uq').on(t.testCaseId, t.ordinal), uniqueIndex('test_case_version_identity_uq').on(t.id, t.tenantId, t.testCaseId)]);
+export const testAssignment = pgTable('test_assignment', {
+  id: id(), tenantId: tenantId(), testCaseId: uuid('test_case_id').notNull().references(() => testCase.id, { onDelete: 'cascade' }),
+  testerUserId: uuid('tester_user_id').notNull().references(() => appUser.id), targetVersionId: uuid('target_version_id').notNull().references(() => testCaseVersion.id),
+  active: boolean('active').notNull().default(true), retestRequired: boolean('retest_required').notNull().default(false), retestAfterRunNo: integer('retest_after_run_no').notNull().default(0),
+  revision: integer('revision').notNull().default(0), assignedByUserId: uuid('assigned_by_user_id').notNull().references(() => appUser.id),
+  createdAt: createdAt(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, t => [uniqueIndex('test_assignment_tester_uq').on(t.testCaseId, t.testerUserId), index('test_assignment_user_idx').on(t.tenantId, t.testerUserId, t.active)]);
+export const testExecution = pgTable('test_execution', {
+  id: id(), tenantId: tenantId(), assignmentId: uuid('assignment_id').notNull().references(() => testAssignment.id, { onDelete: 'cascade' }),
+  versionId: uuid('version_id').notNull().references(() => testCaseVersion.id), attemptNo: integer('attempt_no').notNull(),
+  testerUserId: uuid('tester_user_id').notNull().references(() => appUser.id),
+  revision: integer('revision').notNull().default(0), currentRunId: uuid('current_run_id'),
+  defectFeedbackId: uuid('defect_feedback_id').references(() => feedbackRequest.id),
+  improvementFeedbackId: uuid('improvement_feedback_id').references(() => feedbackRequest.id), createdAt: createdAt(),
+}, t => [uniqueIndex('test_execution_attempt_uq').on(t.assignmentId, t.versionId, t.attemptNo)]);
+export const testExecutionAttachment = pgTable('test_execution_attachment', {
+  id: id(), tenantId: tenantId(), executionId: uuid('execution_id').notNull().references(() => testExecution.id, { onDelete: 'cascade' }),
+  runId: uuid('run_id').notNull().references(() => testRun.id, { onDelete: 'cascade' }),
+  fileName: text('file_name').notNull(), mimeType: text('mime_type').notNull(), content: bytea('content').notNull(),
+  uploadedByUserId: uuid('uploaded_by_user_id').notNull().references(() => appUser.id), createdAt: createdAt(),
+}, t => [index('test_execution_attachment_execution_idx').on(t.tenantId, t.executionId)]);
+export const testCatalogueUpdate = pgTable('test_catalogue_update', {
+  id: id(), tenantId: tenantId(), updateHash: text('update_hash').notNull(), previewHash: text('preview_hash').notNull(),
+  catalogueHash: text('catalogue_hash').notNull(), sourceRef: text('source_ref').notNull(), sourceContentHash: text('source_content_hash').notNull(),
+  selectedSemanticIds: jsonb('selected_semantic_ids').$type<string[]>().notNull(),
+  result: jsonb('result').$type<TestingCatalogueAppliedResult[]>().notNull(),
+  confirmedByUserId: uuid('confirmed_by_user_id').notNull().references(() => appUser.id), createdAt: createdAt(),
+}, t => [uniqueIndex('test_catalogue_update_hash_uq').on(t.tenantId, t.updateHash)]);
 
 // Company-owned display choices; independent of payroll scheduling and money.
 export const payslipInformationSetting = pgTable(

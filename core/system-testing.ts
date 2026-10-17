@@ -91,6 +91,16 @@ export class SystemTestingError extends Error {
   }
 }
 
+/** Old request shapes cannot establish instruction or assigned-execution provenance. */
+export class SystemTestingMigrationRequiredError extends SystemTestingError {
+  constructor(readonly code: 'versioned_authoring_required' | 'assigned_execution_required') {
+    super(code === 'versioned_authoring_required'
+      ? 'Use the versioned instruction editor to save and publish this case.'
+      : 'Open your assigned instruction version and save an execution observation.');
+    this.name = 'SystemTestingMigrationRequiredError';
+  }
+}
+
 /** Refused when the caller is authenticated but not an administrator of this tenant. */
 export class NotAdminError extends Error {
   constructor(message = 'Only an administrator can open System Testing.') {
@@ -333,11 +343,6 @@ export async function getTestCase(
   });
 }
 
-/** Trim, drop blanks, and keep the order the author typed. A step list is its order. */
-function cleanSteps(steps: readonly string[] | undefined): string[] {
-  return (steps ?? []).map((s) => s.trim()).filter((s) => s.length > 0);
-}
-
 function validateCaseInput(
   ctx: SessionContext,
   p: { moduleCode: string; title: string; testType?: string; priority?: string },
@@ -368,7 +373,7 @@ function validateCaseInput(
  * handed the same number, and the unique index on (tenant_id, case_no) turns any path that escapes this
  * into a loud error rather than two "TC-0007"s.
  */
-async function nextCaseNo(tx: Tx, tenantId: string): Promise<number> {
+export async function nextTestCaseNoTx(tx: Tx, tenantId: string): Promise<number> {
   const [row] = await tx
     .insert(tenantCounter)
     .values({ tenantId, kind: CASE_COUNTER_KIND, value: 1 })
@@ -394,36 +399,8 @@ export async function createTestCase(
   },
 ): Promise<{ id: string; caseNo: number }> {
   assertTestingAccess(ctx);
-  const v = validateCaseInput(ctx, p);
-  return withTenant(ctx, async (tx) => {
-    const caseNo = await nextCaseNo(tx, ctx.tenantId);
-    const [row] = await tx
-      .insert(testCase)
-      .values({
-        tenantId: ctx.tenantId,
-        caseNo,
-        moduleCode: v.moduleCode,
-        title: v.title,
-        precondition: p.precondition?.trim() || null,
-        steps: cleanSteps(p.steps),
-        testType: v.testType,
-        priority: v.priority,
-        expectedBehavior: p.expectedBehavior?.trim() || null,
-        expectedFunction: p.expectedFunction?.trim() || null,
-        createdByUserId: ctx.userId ?? null,
-        updatedByUserId: ctx.userId ?? null,
-      })
-      .returning({ id: testCase.id });
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'test_case',
-      aggregateId: row.id,
-      eventType: 'test_case.created',
-      actor: actorOf(ctx),
-      payload: { caseNo, moduleCode: v.moduleCode, title: v.title },
-    });
-    return { id: row.id, caseNo };
-  });
+  validateCaseInput(ctx, p);
+  throw new SystemTestingMigrationRequiredError('versioned_authoring_required');
 }
 
 /**
@@ -445,34 +422,8 @@ export async function updateTestCase(
   },
 ): Promise<void> {
   assertTestingAccess(ctx);
-  const v = validateCaseInput(ctx, p);
-  await withTenant(ctx, async (tx) => {
-    const [existing] = await tx.select({ id: testCase.id }).from(testCase).where(eq(testCase.id, p.caseId)).limit(1);
-    if (!existing) throw new SystemTestingError('That test case no longer exists.');
-    await tx
-      .update(testCase)
-      .set({
-        moduleCode: v.moduleCode,
-        title: v.title,
-        precondition: p.precondition?.trim() || null,
-        steps: cleanSteps(p.steps),
-        testType: v.testType,
-        priority: v.priority,
-        expectedBehavior: p.expectedBehavior?.trim() || null,
-        expectedFunction: p.expectedFunction?.trim() || null,
-        updatedByUserId: ctx.userId ?? null,
-        updatedAt: new Date(),
-      })
-      .where(eq(testCase.id, p.caseId));
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'test_case',
-      aggregateId: p.caseId,
-      eventType: 'test_case.updated',
-      actor: actorOf(ctx),
-      payload: { moduleCode: v.moduleCode, title: v.title },
-    });
-  });
+  validateCaseInput(ctx, p);
+  throw new SystemTestingMigrationRequiredError('versioned_authoring_required');
 }
 
 /**
@@ -489,35 +440,7 @@ export async function recordTestRun(
 ): Promise<{ id: string; runNo: number }> {
   assertTestingAccess(ctx);
   if (!OUTCOMES.includes(p.outcome)) throw new SystemTestingError(`Unknown outcome '${p.outcome}'.`);
-  return withTenant(ctx, async (tx) => {
-    const [existing] = await tx.select({ id: testCase.id }).from(testCase).where(eq(testCase.id, p.caseId)).limit(1);
-    if (!existing) throw new SystemTestingError('That test case no longer exists.');
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`test-run:${p.caseId}`}, 0))`);
-    const [{ next }] = (await tx.execute(sql`
-      SELECT COALESCE(max(run_no), 0) + 1 AS next FROM test_run WHERE test_case_id = ${p.caseId}
-    `)) as unknown as { next: number }[];
-    const runNo = Number(next);
-    const [row] = await tx
-      .insert(testRun)
-      .values({
-        tenantId: ctx.tenantId,
-        testCaseId: p.caseId,
-        runNo,
-        outcome: p.outcome,
-        actualResult: p.actualResult?.trim() || null,
-        runByUserId: ctx.userId ?? null,
-      })
-      .returning({ id: testRun.id });
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'test_case',
-      aggregateId: p.caseId,
-      eventType: 'test_run.recorded',
-      actor: actorOf(ctx),
-      payload: { runId: row.id, runNo, outcome: p.outcome },
-    });
-    return { id: row.id, runNo };
-  });
+  throw new SystemTestingMigrationRequiredError('assigned_execution_required');
 }
 
 /**
@@ -550,14 +473,8 @@ export function composeFeedbackDescription(c: TestCaseDetail, run: TestRunRow): 
  * through `submitFeedback` — the same writer app/feedback/actions.ts calls, not a second one — and
  * stores the id it returns as a real foreign key.
  *
- * ⚠️ IT IS THREE STATEMENTS, NOT ONE TRANSACTION, AND THAT IS A DELIBERATE TRADE. `submitFeedback` opens
- * its own `withTenant`, and nesting one inside another takes a SECOND pooled connection that would then
- * wait on locks the outer transaction holds. Reusing the writer therefore costs atomicity: if the link
- * write fails after the item is created, the board carries an item whose run does not cite it. The error
- * below names the created item's id so the link is recoverable by hand, and the alternative — inlining an
- * INSERT into feedback_request here — is the second writer this design exists to avoid, which would put
- * the board's own invariants (category vocabulary, the `feedback.submitted` event, the reporter gate) in
- * two places. A missing link is a visible nuisance; a divergent writer is a silent one.
+ * ADR0128 adds an explicit transaction seam to the canonical Feedback writer. The run lock, Feedback
+ * insert/event and exact link now commit together. A repeated request returns the existing link.
  *
  * NO `reporter_label`. The plan's build notes suggested stamping it "the same mechanism that stamps
  * CLAUDE AI". That mechanism exists to show who actually wrote an item when the improvement loop borrows
@@ -567,81 +484,54 @@ export function composeFeedbackDescription(c: TestCaseDetail, run: TestRunRow): 
  */
 export async function raiseRunAsFeedback(
   ctx: SessionContext,
-  p: { runId: string; reporterEmploymentId: string },
+  p: { runId: string; reporterEmploymentId?: string | null },
 ): Promise<{ feedbackId: string }> {
   assertTestingAccess(ctx);
 
-  const loaded = await withTenant(ctx, async (tx) => {
-    const [run] = await tx.select().from(testRun).where(eq(testRun.id, p.runId)).limit(1);
+  return withTenant(ctx, async (tx) => {
+    const [run] = await tx.select().from(testRun).where(eq(testRun.id, p.runId)).for('update');
     if (!run) throw new SystemTestingError('That test run no longer exists.');
-    if (run.feedbackRequestId) {
-      throw new SystemTestingError('This run has already been raised as a request.');
-    }
-    if (!RAISEABLE_OUTCOMES.includes(run.outcome)) {
-      throw new SystemTestingError(
-        `A run recorded as '${run.outcome}' has nothing to report. Only a failed, blocked or partial run can be raised.`,
-      );
-    }
+    if (run.executionId) throw new SystemTestingError('Raise personal execution feedback from its own execution review.');
+    if (run.feedbackRequestId) return { feedbackId: run.feedbackRequestId };
+    if (!RAISEABLE_OUTCOMES.includes(run.outcome)) throw new SystemTestingError(`A run recorded as '${run.outcome}' has nothing to report. Only a failed, blocked or partial run can be raised.`);
     const [c] = await tx.select().from(testCase).where(eq(testCase.id, run.testCaseId)).limit(1);
     if (!c) throw new SystemTestingError('That test case no longer exists.');
-    return { run, c };
+    const detail: TestCaseDetail = {
+      id: c.id,
+      caseNo: c.caseNo,
+      moduleCode: c.moduleCode,
+      title: c.title,
+      precondition: c.precondition,
+      steps: c.steps ?? [],
+      testType: c.testType,
+      priority: c.priority,
+      expectedBehavior: c.expectedBehavior,
+      expectedFunction: c.expectedFunction,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+    };
+    const runRow: TestRunRow = {
+      id: run.id,
+      runNo: run.runNo,
+      outcome: run.outcome,
+      actualResult: run.actualResult,
+      runAt: run.runAt,
+      feedbackRequestId: run.feedbackRequestId,
+    };
+
+
+    const { id: feedbackId } = await submitFeedback(ctx, {
+      reporterEmploymentId: p.reporterEmploymentId, category: 'issue', title: detail.title,
+      description: 'Original instruction version is unknown for this legacy observation. The following guide is the current library reference.\n\n' + composeFeedbackDescription(detail, runRow),
+      expectedBehavior: detail.expectedBehavior, expectedFunction: detail.expectedFunction,
+    }, tx);
+    await tx.update(testRun).set({ feedbackRequestId: feedbackId }).where(eq(testRun.id, run.id));
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'test_case', aggregateId: c.id, eventType: 'test_run.raised', actor: actorOf(ctx), payload: { runId: run.id, runNo: run.runNo, feedbackRequestId: feedbackId } });
+    return { feedbackId };
   });
-
-  const detail: TestCaseDetail = {
-    id: loaded.c.id,
-    caseNo: loaded.c.caseNo,
-    moduleCode: loaded.c.moduleCode,
-    title: loaded.c.title,
-    precondition: loaded.c.precondition,
-    steps: loaded.c.steps ?? [],
-    testType: loaded.c.testType,
-    priority: loaded.c.priority,
-    expectedBehavior: loaded.c.expectedBehavior,
-    expectedFunction: loaded.c.expectedFunction,
-    createdAt: loaded.c.createdAt,
-    updatedAt: loaded.c.updatedAt,
-  };
-  const runRow: TestRunRow = {
-    id: loaded.run.id,
-    runNo: loaded.run.runNo,
-    outcome: loaded.run.outcome,
-    actualResult: loaded.run.actualResult,
-    runAt: loaded.run.runAt,
-    feedbackRequestId: loaded.run.feedbackRequestId,
-  };
-
-  // 'issue': a script that should pass and did not is a defect, not an enhancement or a new function.
-  const { id: feedbackId } = await submitFeedback(ctx, {
-    reporterEmploymentId: p.reporterEmploymentId,
-    category: 'issue',
-    title: detail.title,
-    description: composeFeedbackDescription(detail, runRow),
-    expectedBehavior: detail.expectedBehavior,
-    expectedFunction: detail.expectedFunction,
-  });
-
-  await withTenant(ctx, async (tx) => {
-    const linked = await tx
-      .update(testRun)
-      .set({ feedbackRequestId: feedbackId })
-      // `IS NULL` in the predicate, not only in the read above: two presses of the button race, and the
-      // loser must fail loudly rather than overwrite the link the winner just wrote.
-      .where(and(eq(testRun.id, p.runId), sql`${testRun.feedbackRequestId} IS NULL`))
-      .returning({ id: testRun.id });
-    if (linked.length === 0) {
-      throw new SystemTestingError(
-        `Request ${feedbackId} was raised, but this run had already been linked to another one. Link it by hand if that is wrong.`,
-      );
-    }
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'test_case',
-      aggregateId: detail.id,
-      eventType: 'test_run.raised',
-      actor: actorOf(ctx),
-      payload: { runId: p.runId, runNo: runRow.runNo, feedbackRequestId: feedbackId },
-    });
-  });
-
-  return { feedbackId };
 }
+
+// ADR0128: the versioned/personal extension shares this case identity and counter owner.
+export * from './system-testing-workspace';
+export * from './system-testing-catalogue';
+export * from './system-testing-library';

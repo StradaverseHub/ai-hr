@@ -12,6 +12,7 @@ import { generateDraft, redactPII } from '../lib/ai';
 import { DEFAULT_FEEDBACK_SORT, type FeedbackSort } from '../lib/feedback-sort';
 import { resolveActiveAiConfig } from './ai-config';
 import {
+  appUser,
   employment,
   feedbackAttachment,
   feedbackBlock,
@@ -32,30 +33,37 @@ export class FeedbackError extends Error {
 
 const CATEGORIES: FeedbackCategory[] = ['issue', 'enhancement', 'new_function'];
 
-/** The reporter logs feedback (status `open`, awaiting a plan). reporterEmploymentId is the caller's own
- *  employment (the action resolves it); reporterUserId is the review gate. */
+/** Canonical Feedback submission. Existing employment context remains optional; a user-only report
+ *  belongs to the exact live authenticated login. Caller cannot supply reporterUserId. */
 export async function submitFeedback(
   ctx: SessionContext,
   p: {
-    reporterEmploymentId: string;
+    reporterEmploymentId?: string | null;
     category: FeedbackCategory;
     title: string;
     description: string;
     expectedBehavior?: string | null;
     expectedFunction?: string | null;
   },
+  outerTx?: Tx,
 ): Promise<{ id: string }> {
   if (!CATEGORIES.includes(p.category)) throw new FeedbackError('Unknown feedback category.');
   const title = p.title?.trim();
   const description = p.description?.trim();
   if (!title) throw new FeedbackError('A title is required.');
   if (!description) throw new FeedbackError('A description is required.');
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx: Tx) => {
+    const reporterEmploymentId = p.reporterEmploymentId ?? null;
+    if (reporterEmploymentId === null) {
+      if (!ctx.userId) throw new FeedbackError('A signed-in reporter is required.');
+      const [reporter] = await tx.select({ id: appUser.id }).from(appUser).where(and(eq(appUser.id, ctx.userId), eq(appUser.tenantId, ctx.tenantId), isNull(appUser.archivedAt), sql`NOT app.login_blocked(${appUser.id})`)).limit(1);
+      if (!reporter) throw new FeedbackError('The signed-in reporter is not available.');
+    }
     const [row] = await tx
       .insert(feedbackRequest)
       .values({
         tenantId: ctx.tenantId,
-        reporterEmploymentId: p.reporterEmploymentId,
+        reporterEmploymentId,
         reporterUserId: ctx.userId ?? null,
         category: p.category,
         title,
@@ -70,11 +78,12 @@ export async function submitFeedback(
       aggregateId: row.id,
       eventType: 'feedback.submitted',
       actor: actorOf(ctx),
-      subjectEmploymentId: p.reporterEmploymentId,
+      subjectEmploymentId: reporterEmploymentId,
       payload: { category: p.category, title },
     });
     return { id: row.id };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx, run);
 }
 
 // ── Attachments (supporting documents + images) — mirrors claim_attachment ──
@@ -774,7 +783,8 @@ export type FeedbackRow = {
   category: FeedbackCategory;
   title: string;
   status: FeedbackStatus;
-  reporter: string;
+  reporter: string | null;
+  reporterUserId?: string | null;
   planRevision: number;
   reopenedCount: number;
   createdAt: Date;
@@ -825,15 +835,17 @@ export function listFeedback(
         // 0348 — the display label wins when set. Operator-raised items carry 'CLAUDE AI'; every in-app
         // submission leaves it NULL and falls through to the joined person name, so the board reads the
         // same as it always did for anything a human wrote.
-        reporter: sql<string>`coalesce(${feedbackRequest.reporterLabel}, ${person.fullName})`,
+        reporter: sql<string | null>`coalesce(${feedbackRequest.reporterLabel}, ${person.fullName})`,
+        reporterUserId: feedbackRequest.reporterUserId,
         planRevision: feedbackRequest.planRevision,
         reopenedCount: feedbackRequest.reopenedCount,
         createdAt: feedbackRequest.createdAt,
         updatedAt: feedbackRequest.updatedAt,
       })
       .from(feedbackRequest)
-      .innerJoin(employment, eq(employment.id, feedbackRequest.reporterEmploymentId))
-      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(employment, eq(employment.id, feedbackRequest.reporterEmploymentId))
+      .leftJoin(appUser, and(eq(appUser.id, feedbackRequest.reporterUserId), eq(appUser.tenantId, feedbackRequest.tenantId)))
+      .leftJoin(person, eq(person.id, sql`coalesce(${employment.personId},${appUser.personId})`))
       .where(filters.length ? (filters.length === 1 ? filters[0] : (and as any)(...filters)) : undefined)
       // Two rows can only share an `updated_at` if they were stamped in the same transaction (Postgres
       // freezes now() per transaction) — every writer here is its own — but the tie-breaks make the page
@@ -929,7 +941,7 @@ export function getFeedback(ctx: SessionContext, id: string): Promise<FeedbackDe
 type DecidableFeedback = {
   id: string;
   status: FeedbackStatus;
-  reporterEmploymentId: string;
+  reporterEmploymentId: string | null;
   reporterUserId: string | null;
   planRevision: number;
   statusBeforeCancel: FeedbackStatus | null;

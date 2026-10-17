@@ -193,7 +193,7 @@ export function BulkTable({
                 )}
               </td>
               <td className="px-4 py-2.5 text-muted-foreground">{t(`category_${r.category}`)}</td>
-              <td className="px-4 py-2.5 text-muted-foreground">{r.reporter}</td>
+              <td className="px-4 py-2.5 text-muted-foreground">{r.reporter ?? t('accountReporter')}{r.reporter === null && r.reporterUserId && <span className="block break-all text-[10px]">{r.reporterUserId}</span>}</td>
               <td className="px-4 py-2.5">
                 <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusTone(r.status)}`}>
                   {t(`status_${r.status}`)}
