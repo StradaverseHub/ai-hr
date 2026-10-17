@@ -24,6 +24,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
+import { withTenant } from '../db/client';
 import { adminCtx, closeAll, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { createShift } from '../core/roster';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -225,15 +226,15 @@ describe('ad52212d round 2 — Activate / Deactivate an overtime pattern', () =>
     // status toggle through the edit path would turn "switch this off" into that refusal — on precisely the
     // rules an administrator most wants to switch off.
     const a = adminCtx(b);
-    const [legacy] = await owner.db
-      .insert(schema.attendanceRule)
-      .values({ tenantId: b.tenantId, name: 'Legacy gap', status: 'active' })
-      .returning({ id: schema.attendanceRule.id });
-    await owner.db.insert(schema.attendanceRuleOtRow).values([
+    const legacy = await createAttendanceRule(a, ruleInput({ name: 'Legacy gap' }));
+    // Deliberately retain a pre-validation ladder, under a real admin context so its canonical
+    // legacy-OT snapshot is authorized. Normal save correctly refuses this historical shape.
+    await withTenant(a, tx => tx.insert(schema.attendanceRuleOtRow).values([
       { tenantId: b.tenantId, ruleId: legacy.id, fromMinutes: 0, toMinutes: 60, rate: '1.50', sortOrder: 0 },
       // Starts at 120 rather than 61 — a hole the ladder validator refuses on save.
       { tenantId: b.tenantId, ruleId: legacy.id, fromMinutes: 120, toMinutes: 0, rate: '2.00', sortOrder: 1 },
-    ]);
+    ]));
+    expect((await getAttendanceRule(a, legacy.id))!.otRows.map(row => row.fromMinutes)).toEqual([0, 120]);
 
     await setAttendanceRuleStatus(a, { ruleId: legacy.id, status: 'inactive' });
     expect((await getAttendanceRule(a, legacy.id))!.status).toBe('inactive');

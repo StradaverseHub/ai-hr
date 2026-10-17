@@ -349,7 +349,7 @@ describe('r397 · the batched per-type reads answer what the single reads answer
 });
 
 describe('r397 · statement budget for one My Leave load', () => {
-  it('one load: 271 statements / 46 transactions before r397, 134 / 18 after', async () => {
+  it('one load with canonical holiday context: 279 statements / 46 transactions before r397, 138 / 18 after', async () => {
     const p = await inputs(CASES[0]);
     const before = await captureQueries(() => loadMyLeaveBefore(p));
     const after = await captureQueries(() => loadMyLeave(p));
@@ -381,10 +381,18 @@ describe('r397 · statement budget for one My Leave load', () => {
     //     (6 statements whatever the card count) → replacementLeaveLedger 1 ∥ listReplacementLeaveRequests 1;
     //   sharedLeaveGroupBalances 2 (groups/members/usage, then leaveBalances);
     //   loadOwnUpcomingLeave 3 (myEmploymentIdsAll, myUpcomingLeave's list + count, the Upcoming rows' trails).
-    // A reintroduced per-card transaction or a history read on this page breaks these exact numbers.
+    // ADR-0120 adds four statements to each holiday calendar read: current company, assignment history,
+    // tenure, and the employee replacement-holiday ledger. The sequential fixture resolves its one
+    // approved request twice (history + Upcoming), while the optimized loader resolves it only once.
+    // No replacement rows exist here, so the ledger's date-coverage proof issues no further queries.
+    // These add eight/four statements to the historical 271/134 budgets, with no added transactions.
+    // A reintroduced per-card transaction or a history read still breaks these exact numbers.
+    const replacementReads = (xs: string[]) => xs.filter(statement => /from "replacement_holiday"(?:\s|$)/.test(statement)).length;
+    expect(replacementReads(before.statements), 'history and Upcoming each resolve the canonical employee calendar').toBe(2);
+    expect(replacementReads(after.statements), 'Upcoming resolves the canonical employee calendar once').toBe(1);
     expect(txCount(before.statements)).toBe(46);
-    expect(before.statements.length).toBe(271);
+    expect(before.statements.length).toBe(279);
     expect(txCount(after.statements), 'transactions').toBe(18);
-    expect(after.statements.length, 'statements').toBe(134);
+    expect(after.statements.length, 'statements').toBe(138);
   }, 60_000);
 });
