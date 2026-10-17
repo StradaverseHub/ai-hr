@@ -62,3 +62,23 @@ describe('reviewed acceptance lifecycle regressions',()=>{
   expect(text).toContain('if(!failure)await releaseOwnedLock()');expect(text).toContain('stopOwnedAcceptanceGroup');expect(text).toContain('processGroupGate');
  });
 });
+
+describe('interrupted canonical scheduler lock remains an unresolved cleanup',()=>{
+ it('checks canonical lock absence before activation and before any outer lock release',()=>{
+  const text=readFileSync(path.join(process.cwd(),'scripts/dev-managed-report-acceptance.ts'),'utf8');
+  const baseline=text.indexOf('async function captureActivationBaseline('),capture=text.indexOf('await assertSchedulingLockAbsent()',baseline),recover=text.indexOf('async function recoverPartialActivation()',baseline);
+  expect(baseline).toBeGreaterThanOrEqual(0);expect(capture).toBeGreaterThan(baseline);expect(recover).toBeGreaterThan(capture);expect(recover-baseline).toBeGreaterThan(100);
+  const cleanup=text.indexOf('async function cleanup()'),drain=text.indexOf('await drainOwnedChildren()',cleanup),closed=text.indexOf('await assertSchedulingLockAbsent()',drain),discovery=text.indexOf('await recoverPartialActivation()',drain);
+  expect(cleanup).toBeGreaterThanOrEqual(0);expect(drain).toBeGreaterThan(cleanup);expect(closed).toBeGreaterThan(drain);expect(discovery).toBeGreaterThan(closed);
+  const release=text.indexOf('async function releaseOwnedLock()'),check=text.indexOf('await assertSchedulingLockAbsent()',release),unlink=text.indexOf("await fs.unlink('/run/aihr-report-acceptance.lock')",release);
+  expect(release).toBeGreaterThanOrEqual(0);expect(check).toBeGreaterThan(release);expect(unlink).toBeGreaterThan(check);expect(unlink-release).toBeGreaterThan(100);
+ });
+ it('uses the canonical lock path and refuses rather than removes an unknown scheduler lock',()=>{
+  const text=readFileSync(path.join(process.cwd(),'scripts/dev-managed-report-acceptance.ts'),'utf8');
+  const helper=text.indexOf('async function assertSchedulingLockAbsent()'),end=text.indexOf('async function receiptNames()',helper);
+  expect(helper).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(helper);expect(end-helper).toBeGreaterThan(100);
+  const body=text.slice(helper,end);expect(body).toContain('absentFile(INTERNAL_REPORT_SCHEDULE_LOCK)');expect(body).toContain('Canonical scheduling lock remains; owned acceptance lock retained.');
+  expect(text).toMatch(/import \{[^\n]*INTERNAL_REPORT_SCHEDULE_LOCK[^\n]*\} from '..\/deploy\/identity-email\/report-scheduling'/);
+  expect(text).not.toMatch(/(?:unlink|rm)\(INTERNAL_REPORT_SCHEDULE_LOCK/);
+ });
+});
