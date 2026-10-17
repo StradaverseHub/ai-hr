@@ -18,8 +18,11 @@ export function employeeMasterBrokerRequest(input:ReportBrokerRequest):Promise<R
  return new Promise((resolve,reject)=>{
   // The immutable keyless client owns UDS framing, pinned cgroup-FD validation and exact
   // systemd activation retirement. A JSON chunk or stdout EOF cannot authorize SMTP.
+  // Next augments ProcessEnv with a required NODE_ENV; this isolated Python client
+  // intentionally accepts only the four keyless variables below. Node permits that env.
+  const clientEnv={PATH:'/usr/bin:/bin',LANG:'C',LC_ALL:'C',TZ:'UTC'} as NodeJS.ProcessEnv;
   const child=spawn('/usr/bin/python3',['-I','/usr/local/lib/aihr-identity-email/report-auth-peer.py','--client'],{
-   detached:true,env:{PATH:'/usr/bin:/bin',LANG:'C',LC_ALL:'C',TZ:'UTC'},stdio:['pipe','pipe','pipe'],
+   detached:true,env:clientEnv,stdio:['pipe','pipe','pipe'],
   });
   const chunks:Buffer[]=[];let size=0,settled=false,closed=false;
   const fail=()=>{if(settled)return;settled=true;clearTimeout(timer);if(!closed&&child.pid&&child.exitCode===null&&child.signalCode===null)try{process.kill(-child.pid,'SIGKILL');}catch(error){if((error as NodeJS.ErrnoException).code!=='ESRCH'){reject(new ReportBrokerUnavailable());return;}}reject(new ReportBrokerUnavailable());};

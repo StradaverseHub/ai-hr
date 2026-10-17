@@ -258,7 +258,7 @@ async function wrapGeneratedSheetText(bytes:Uint8Array,sheets:readonly number[])
   const entry=zip.file('xl/styles.xml');if(!entry)throw new Error('Generated spreadsheet styles are missing.');
   const xml=await entry.async('string');const xfs=xml.match(/<cellXfs\b[^>]*count="(\d+)"[^>]*>([\s\S]*?)<\/cellXfs>/);
   if(!xfs)throw new Error('Generated spreadsheet cell formats are missing.');
-  const formats=xfs[2].match(/<xf\b[^>]*(?:\/>|>[\s\S]*?<\/xf>)/g)??[];
+  const formats:string[]=xfs[2].match(/<xf\b[^>]*(?:\/>|>[\s\S]*?<\/xf>)/g)??[];
   if(formats.length!==Number(xfs[1]))throw new Error('Generated spreadsheet cell formats are inconsistent.');
   const wrapped=new Map<number,number>();
   const wrap=(index:number)=>{
