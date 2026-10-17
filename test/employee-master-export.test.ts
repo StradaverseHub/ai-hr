@@ -54,7 +54,7 @@ describe('Employee Master complete typed exports',()=>{
   expect(sheet.C4).toMatchObject({t:'s',v:'2023-09'});
   const csv=await serializeEmployeeMaster(run,definition,selected,'Date precision','csv');expect(Buffer.from(csv.bytes).toString('utf8')).toContain('"02/01/2024 02:03 MYT"');
   const textDefinition={...definition,columns:definition.columns.map(column=>column.field===stamp.id?{...column,format:'text' as const}:column)};
-  const text=await serializeEmployeeMaster(run,textDefinition,selected,'Date precision','xlsx'),textBook=XLSX.read(text.bytes,{type:'array',cellDates:true});
+  const text=await serializeEmployeeMaster(runEmployeeMasterProjection(textDefinition,selected,[person],spec.asAt),textDefinition,selected,'Date precision','xlsx'),textBook=XLSX.read(text.bytes,{type:'array',cellDates:true});
   expect(textBook.Sheets[textBook.SheetNames[0]].B4).toMatchObject({t:'s',v:'2024-01-01T18:03:00.000Z'});
  });
  it('carries unavailable historical-scope notices in Excel notes and a CSV companion file',async()=>{
