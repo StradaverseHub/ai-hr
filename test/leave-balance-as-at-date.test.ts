@@ -256,7 +256,9 @@ describe('3ddae357: the four columns the ticket is about now move with the date'
     expect(route).toContain("parseInquiryQuery(inquirySearchParams(sp), 'balances')");
     expect(page).toContain("parseInquiryQuery(sp, 'balances')");
     expect(read('lib/leave-inquiry-query.ts')).toContain('inquiryDate(v)');
-    expect(route).toContain('inquiryBalancePage(session, inquiry, query, locale, window)');
+    // Every export page must keep the same dated membership and balances snapshot.
+    expect(route).toContain('leaveInquirySnapshot(session, scopeIds, query, async (tx, inquiry)');
+    expect(route).toContain('inquiryBalancePage(session, inquiry, query, locale, window, tx)');
     // 31e39d74 UPDATED THIS ASSERTION, IT DID NOT RETIRE IT. The claim — "the Date column is fed the same
     // `asOf` the rows were read at" — is unchanged and still worth pinning. What changed is that the Date
     // column is no longer immediately after Balance: an Entitlement Status column now sits between them
@@ -287,10 +289,11 @@ describe('3ddae357: the page comment no longer claims something false', () => {
     // HR keeps seeing a balance standing under a leave type the employee is not eligible for (the 55
     // wrongly-granted Maternity balances are read from this screen). Same read, same asOf, same helper.
     expect(rows).toContain(
-      'leaveBalances(ctx, employmentId, locale, { includeHidden: true, includeArchived: true, includeIneligible: true, asOf })',
+      'const balanceOptions = self ? { includeHidden: false, includeArchived: true, includeIneligible: false, asOf } : { includeHidden: true, includeArchived: true, includeIneligible: true, asOf }',
     );
     // r303 (31492f74): the breakdown read now also asks for HR's per-line working. The decision this guard pins is
     // untouched — the SAME asOf reaches both reads — so the pin is updated to the new call, not loosened.
-    expect(rows).toContain('leaveEntitlementBreakdown(ctx, employmentId, b.leaveTypeId, asOf, locale, { derivation: true })');
+    expect(rows).toContain('opts.tx ? await leaveBalancesTx(opts.tx, ctx, employmentId, locale, balanceOptions) : await leaveBalances(ctx, employmentId, locale, balanceOptions)');
+    expect(rows).toContain('opts.tx ? leaveEntitlementBreakdownTx(opts.tx, employmentId, id, asOf, locale, { derivation: true }) : leaveEntitlementBreakdown(ctx, employmentId, id, asOf, locale, { derivation: true })');
   });
 });
