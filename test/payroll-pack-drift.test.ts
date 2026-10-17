@@ -30,6 +30,9 @@
  * allowlist (same shape as test/leave-pack-drift.test.ts).
  */
 import { fileURLToPath } from 'node:url';
+import {mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { runImportRatchet } from './helpers/import-ratchet';
 import allowlists from './pack-drift-allowlist.json';
@@ -49,6 +52,9 @@ const BOUNDARIES = [
   // out of core/payroll.ts (pinned byte-identical by r415); listed here AND in ALWAYS_ALLOWED like back-pay.
   'core/payroll-closed-runs',
   'core/payroll-attendance-allowance',
+  // The approved formula-OT pricing/transfer implementation is exported by the Payroll facade.
+  // BOTH declarations matter: authorize its sibling imports AND guard outsiders from importing it.
+  'core/payroll-overtime-pattern',
   'core/payroll-cycle',
   'core/payroll-config',
   'core/payroll-policy',
@@ -75,6 +81,7 @@ const ALWAYS_ALLOWED = [
   'packs/payroll/', // the pack itself: wiring (index.ts) + service facade
   'core/payroll.ts', // implementation files import each other freely
   'core/payroll-attendance-allowance.ts',
+  'core/payroll-overtime-pattern.ts',
   'core/back-pay.ts', // 2ef69d1e — Back Pay (Arrears); see the BOUNDARIES note above
   'core/payroll-closed-runs.ts', // r424 — see the BOUNDARIES note above
   'core/payroll-cycle.ts',
@@ -107,6 +114,7 @@ const ALWAYS_ALLOWED = [
   'app/me/payslip/', // employee payslip view + PDF (ESS payroll screen, like app/me/leave)
   'app/me/tax-relief/', // employee TP1 tax-relief declaration (ESS payroll screen)
 ];
+const isPackImporter=(rel:string)=>ALWAYS_ALLOWED.some(a=>a.endsWith('/')?rel.startsWith(a):rel===a);
 
 describe('ADR-0080 D9: payroll pack import ratchet (rung 7 — the money path)', () => {
   const allowlist = allowlists['payroll'];
@@ -115,7 +123,7 @@ describe('ADR-0080 D9: payroll pack import ratchet (rung 7 — the money path)',
       root,
       scan: ['app', 'components', 'core', 'db', 'i18n', 'lib', 'localization', 'middleware.ts', 'packs', 'scripts'],
       boundary,
-      allowedImporters: (rel) => ALWAYS_ALLOWED.some((a) => (a.endsWith('/') ? rel.startsWith(a) : rel === a)),
+      allowedImporters: isPackImporter,
       allowlist,
     }),
   );
@@ -126,6 +134,21 @@ describe('ADR-0080 D9: payroll pack import ratchet (rung 7 — the money path)',
   const allowed = new Set(allowlist);
   const violations = importers.filter((f) => !allowed.has(f));
   const stale = allowlist.filter((f) => !importerSet.has(f));
+
+  it('guards the formula-OT implementation against outsiders while preserving its internal Payroll boundary',()=>{
+    const fixture=mkdtempSync(join(tmpdir(),'aihr-payroll-boundary-'));
+    try{
+      for(const dir of ['app','core','packs/payroll'])mkdirSync(join(fixture,dir),{recursive:true});
+      writeFileSync(join(fixture,'core/payroll-overtime-pattern.ts'),"import {policy} from './payroll-policy'; export const formula=policy;\n");
+      writeFileSync(join(fixture,'core/payroll-policy.ts'),'export const policy=1;\n');
+      writeFileSync(join(fixture,'packs/payroll/service.ts'),"export * from '../../core/payroll-overtime-pattern';\n");
+      const outside=join(fixture,'app/outside.ts');writeFileSync(outside,"import {formula} from '@/core/payroll-overtime-pattern';\n");
+      const scan=()=>[...new Set(BOUNDARIES.flatMap(boundary=>runImportRatchet({root:fixture,scan:['app','core','packs'],boundary,allowedImporters:isPackImporter,allowlist:[]}).violations))].sort();
+      expect(scan()).toEqual(['app/outside.ts']);
+      // The outsider must consume the facade; it is never added to debt or the pack implementation set.
+      writeFileSync(outside,"import {formula} from '@/packs/payroll/service';\n");expect(scan()).toEqual([]);
+    }finally{rmSync(fixture,{recursive:true,force:true});}
+  });
 
   it('no NEW file imports the payroll pack implementation directly (the debt may not grow)', () => {
     expect(
