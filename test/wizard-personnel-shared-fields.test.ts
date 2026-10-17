@@ -26,6 +26,9 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { GENDERS, MARITAL_STATUSES } from '../lib/person-vocabulary';
+import { PERSONNEL_EPF_CITIZENSHIPS, PERSONNEL_SOCSO_CATEGORIES, PERSONNEL_EIS_CATEGORIES } from '../lib/personnel-choice-vocabulary';
+import { personnelControl, personnelFormChoices } from '../lib/personnel-form-contract';
+import { hasPersonnelPostedBinding } from './helpers/personnel-posted-binding';
 import { clientPackFor } from '../localization/registry.client';
 // The db-free leaf the client pack serves as `identity.isLocalNationality` — the gate group 8 shares.
 import { isMalaysianNationality } from '../localization/my/ic-dob';
@@ -265,9 +268,16 @@ describe('§3b group 2 — Pay Mode / Payment Term / Rate is one component, not 
     }
     const shared = read(PAY_STRUCTURE);
     // The named inputs the form mode depends on are still emitted in that mode only.
-    expect(shared).toContain("{ name: 'payMode' }");
-    expect(shared).toContain("name: 'paymentTerm'");
-    expect(shared).toContain("name: 'rateAmount'");
+    expect(shared).toContain("const controlled = props.mode === 'controlled';");
+    expect(shared).toContain("const mode=controlled?'draft':'edit';");
+    for (const name of ['payMode', 'paymentTerm', 'rateAmount']) {
+      const id = `payroll.basic_salary_and_salary_history.${name.toLowerCase()}`;
+      expect(hasPersonnelPostedBinding(shared, id, name), name).toBe(true);
+      expect(personnelControl(id, 'edit').name).toBe(name);
+      expect(personnelControl(id, 'draft')).not.toHaveProperty('name');
+    }
+    expect(shared).toContain('defaultValue: safePaymentTerm');
+    expect(shared).toContain("defaultValue: props.defaultRateAmount ?? ''");
   });
 
   it('the rate box is conditional on the pay mode in BOTH modes (one rule, not a per-screen one)', () => {
@@ -418,14 +428,16 @@ describe('§3d group 4 — EPF Number + EPF Citizenship is one component, not tw
     // `epf_citizenship` is NOT NULL DEFAULT 'citizen'. The wizard's fourth "— Not set —" option therefore
     // promised a state that has never been storable: it produced 'citizen' anyway, and the Personnel screen
     // then read back "Malaysian citizen" for a foreign worker whose recruiter had left it deliberately blank.
-    // Read as source rather than imported: this is a node-project test file and the component is a
-    // 'use client' .tsx (the DOM project renders it for real — see the sibling .dom.test.tsx).
+    // The client component and Postgres enum now consume the same client-safe vocabulary; the actual
+    // rendered options must still be exactly those three stored values, in that order.
     expect(read(EPF_FIELDS)).toContain(
-      "export const EPF_CITIZENSHIP_OPTIONS = ['citizen', 'pr', 'non_citizen'] as const;",
+      'export const EPF_CITIZENSHIP_OPTIONS = PERSONNEL_EPF_CITIZENSHIPS;',
     );
-    const schema = read('db/schema.ts');
-    expect(schema).toContain("pgEnum('epf_citizenship', ['citizen', 'pr', 'non_citizen'])");
-    expect(schema).toContain("epfCitizenship: epfCitizenshipEnum('epf_citizenship').notNull().default('citizen')");
+    expect([...PERSONNEL_EPF_CITIZENSHIPS]).toEqual(['citizen', 'pr', 'non_citizen']);
+    expect(schema.epfCitizenshipEnum.enumValues).toBe(PERSONNEL_EPF_CITIZENSHIPS);
+    expect(read(EPF_FIELDS)).toContain("personnelFormChoices('bank_statutory.epf_contribution.epfcitizenship').map");
+    expect(personnelFormChoices('bank_statutory.epf_contribution.epfcitizenship').map(option => option.value)).toEqual([...schema.epfCitizenshipEnum.enumValues]);
+    expect(read('db/schema.ts')).toContain("epfCitizenship: epfCitizenshipEnum('epf_citizenship').notNull().default('citizen')");
     expect(read(EPF_FIELDS)).not.toContain('<option value="">');
   });
 
@@ -621,8 +633,15 @@ describe('§3g group 7 — SOCSO / EIS is one group, and the wizard catches up a
     expect(wizard, 'the legacy EIS boolean control is gone').not.toContain("t('fields.eisEligible')");
     expect(wizard, 'and its bare SOCSO number box is gone').not.toContain("t('fields.socsoNumber')");
     const src = read(SOCSO_FIELDS);
-    expect(src).toContain("SOCSO_CATEGORIES = ['auto', 'first', 'second', 'none']");
-    expect(src).toContain("EIS_CATEGORIES = ['auto', 'none']");
+    expect(src).toContain('SOCSO_CATEGORIES = PERSONNEL_SOCSO_CATEGORIES;');
+    expect(src).toContain('EIS_CATEGORIES = PERSONNEL_EIS_CATEGORIES;');
+    expect([...PERSONNEL_SOCSO_CATEGORIES]).toEqual(['auto', 'first', 'second', 'none']);
+    expect([...PERSONNEL_EIS_CATEGORIES]).toEqual(['auto', 'none']);
+    for (const [field, values] of [['socsocategory', PERSONNEL_SOCSO_CATEGORIES], ['eiscategory', PERSONNEL_EIS_CATEGORIES]] as const) {
+      const id = `bank_statutory.socso_eis_and_others_statutory.${field}`;
+      expect(src).toContain(`personnelFormChoices('${id}').map`);
+      expect(personnelFormChoices(id).map(option => option.value)).toEqual([...values]);
+    }
   });
 
   it('the IC-derived number default reaches the client WITHOUT dragging the server pack in', () => {
@@ -751,7 +770,10 @@ describe('§3h group 8 — Identity is one group, and the wizard finally asks fo
     const cardIc = read(IDENTITY_CARD).match(/<IdentityNumberField[\s\S]*?\/>/);
     expect(cardIc).not.toBeNull();
     expect(cardIc![0]).toContain('mode="form"');
-    expect(src).toContain('name="icNumber"');
+    expect(src).toContain("name={personnelFormName('profile.identity_and_passport.icnumber')}");
+    expect(hasPersonnelPostedBinding(src, 'profile.identity_and_passport.icnumber', 'icNumber')).toBe(true);
+    expect(src).toContain("...personnelInput('profile.identity_and_passport.icnumber','draft')");
+    expect(personnelControl('profile.identity_and_passport.icnumber', 'draft')).not.toHaveProperty('name');
     const cardNat = read(IDENTITY_CARD).match(/<NationalityPicker[\s\S]*?\/>/);
     expect(cardNat).not.toBeNull();
     expect(cardNat![0]).toContain('mode="form"');
