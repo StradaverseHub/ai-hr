@@ -155,4 +155,41 @@ class EffectiveServiceCredentials(unittest.TestCase):
         self.assertEqual(len(calls),2)
         self.assertTrue(all(len(node.args)==4 for node in calls))
 
+class ResourceConfiguration(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        source=pathlib.Path(spec.origin).with_name('verify-internal-report-isolation.py')
+        probe_spec=importlib.util.spec_from_file_location('resource_probe_under_test',source)
+        cls.probe=importlib.util.module_from_spec(probe_spec);probe_spec.loader.exec_module(cls.probe)
+    def run_checks(self, overrides=None):
+        broker='aihr-report-auth@aihr-isolation-probe.service';renderer='aihr-report-renderer@aihr-isolation-probe.service'
+        caps={'aihr-internal-report.service':192*1024*1024,broker:192*1024*1024,'aihrmanagedmail-dispatch.slice':192*1024*1024,renderer:512*1024*1024,'aihrmanagedmail.slice':768*1024*1024}
+        values={(unit,'MemoryMax'):str(value) for unit,value in caps.items()}
+        for unit,template in [(broker,'aihr-report-auth@.service'),(renderer,'aihr-report-renderer@.service')]:
+            values.update({(unit,'LoadState'):'loaded',(unit,'ActiveState'):'inactive',(unit,'MainPID'):'0',(unit,'FragmentPath'):'/etc/systemd/system/'+template})
+        values.update({('aihr-internal-report.service','Slice'):'aihrmanagedmail-dispatch.slice',(broker,'Slice'):'aihrmanagedmail-dispatch.slice',(broker,'SupplementaryGroups'):'aihr-report-clients'})
+        values.update(overrides or {});calls=[]
+        def command(args):
+            self.assertEqual(args[:2],['systemctl','show']);self.assertEqual(args[-1],'--value');self.assertEqual(len(args),5)
+            unit=args[2];prop=args[3].removeprefix('--property=');calls.append((unit,prop))
+            if unit.endswith('@.service'):raise RuntimeError('Template is not a valid unit name (exit1)')
+            return values[(unit,prop)]
+        with mock.patch.object(self.probe,'command',side_effect=command):self.probe.resource_configuration_checks()
+        return calls,caps,broker,renderer
+    def test_reads_valid_inactive_configuration_instances_and_all_existing_limits(self):
+        calls,caps,broker,renderer=self.run_checks()
+        self.assertCountEqual([(unit,prop) for unit,prop in calls if prop=='MemoryMax'],[(unit,'MemoryMax') for unit in caps])
+        self.assertCountEqual([(unit,prop) for unit,prop in calls if prop=='Slice'],[('aihr-internal-report.service','Slice'),(broker,'Slice')])
+        self.assertIn((broker,'SupplementaryGroups'),calls)
+    def test_each_resource_slice_and_group_mismatch_still_refuses(self):
+        broker='aihr-report-auth@aihr-isolation-probe.service';renderer='aihr-report-renderer@aihr-isolation-probe.service'
+        mismatches=[{(unit,'MemoryMax'):'1'} for unit in ['aihr-internal-report.service',broker,'aihrmanagedmail-dispatch.slice',renderer,'aihrmanagedmail.slice']]
+        mismatches += [{('aihr-internal-report.service','Slice'):'foreign.slice'},{(broker,'Slice'):'foreign.slice'},{(broker,'SupplementaryGroups'):''}]
+        for mismatch in mismatches:
+            with self.assertRaises(Exception):self.run_checks(mismatch)
+    def test_configuration_instances_cannot_be_active_rebound_or_from_a_different_fragment(self):
+        for unit in ['aihr-report-auth@aihr-isolation-probe.service','aihr-report-renderer@aihr-isolation-probe.service']:
+            for prop,value in [('LoadState','not-found'),('ActiveState','active'),('MainPID','123'),('FragmentPath','/etc/systemd/system/foreign.service')]:
+                with self.assertRaises(Exception):self.run_checks({(unit,prop):value})
+
 if __name__ == '__main__': unittest.main()

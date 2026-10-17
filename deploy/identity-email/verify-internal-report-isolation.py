@@ -132,6 +132,13 @@ def namespace_environment_checks(web_pid, web_pin, mail, renderer):
             while owned_unit in active_renderers():
                 assert time.monotonic()<deadline;time.sleep(0.05)
 
+def resource_configuration_checks():
+    for unit,expected in [('aihr-internal-report.service',192*1024*1024),('aihr-report-auth@.service',192*1024*1024),('aihrmanagedmail-dispatch.slice',192*1024*1024),('aihr-report-renderer@.service',512*1024*1024),('aihrmanagedmail.slice',768*1024*1024)]:
+        assert int(command(['systemctl','show',unit,'--property=MemoryMax','--value']))==expected
+    for unit in ['aihr-internal-report.service','aihr-report-auth@.service']:
+        assert command(['systemctl','show',unit,'--property=Slice','--value'])=='aihrmanagedmail-dispatch.slice'
+    assert 'aihr-report-clients' in command(['systemctl','show','aihr-report-auth@.service','--property=SupplementaryGroups','--value']).split()
+
 def main():
     parser = argparse.ArgumentParser();parser.add_argument('--web-unit', required=True);args = parser.parse_args()
     if os.getuid() != 0 or not args.web_unit.endswith('.service') or '/' in args.web_unit:
@@ -194,11 +201,7 @@ else:raise RuntimeError('web principal can read artifact')
 """ % path)
     finally:
         if os.path.lexists(path):os.unlink(path) # root cleanup only this newly owned fixture
-    for unit,expected in [('aihr-internal-report.service',192*1024*1024),('aihr-report-auth@.service',192*1024*1024),('aihrmanagedmail-dispatch.slice',192*1024*1024),('aihr-report-renderer@.service',512*1024*1024),('aihrmanagedmail.slice',768*1024*1024)]:
-        assert int(command(['systemctl','show',unit,'--property=MemoryMax','--value']))==expected
-    for unit in ['aihr-internal-report.service','aihr-report-auth@.service']:
-        assert command(['systemctl','show',unit,'--property=Slice','--value'])=='aihrmanagedmail-dispatch.slice'
-    assert 'aihr-report-clients' in command(['systemctl','show','aihr-report-auth@.service','--property=SupplementaryGroups','--value']).split()
+    resource_configuration_checks()
     print('Configured UID/socket/DAC/budget boundaries demonstrated; no report rows or mail used.')
     print('Actual nonce authorization, process-exit ordering, peak memory, crash and SMTP remain separate acceptance.')
 
