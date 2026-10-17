@@ -81,6 +81,7 @@ import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base 
 import {
   createEmployeeDraftWithReservedCode,
   discardEmployeeDraft,
+  DraftActivationValidationError,
   getEmployeeDraft,
   listEmployeeDrafts,
   saveEmployeeDraft,
@@ -295,16 +296,17 @@ describe('§4 the database fences drafts by company (migration 0510)', () => {
   });
 
   it('an hr_admin scoped to A cannot UPDATE company B\'s draft, and can update A\'s', async () => {
-    await expect(
-      saveEmployeeDraft(adminOfA(), { id: draftB, data: { profile: { fullName: 'Tampered' } }, currentStep: 2 }),
-    ).rejects.toThrow(/not found \(or not visible\)/);
-    expect((await draftRow(draftB)).label).toBe('Bravo Candidate');
+    const before = await draftRow(draftB);
+    const save = saveEmployeeDraft(adminOfA(), { id: draftB, data: { profile: { fullName: 'Tampered' } }, currentStep: 2 });
+    await expect(save).rejects.toBeInstanceOf(DraftActivationValidationError);
+    await expect(save).rejects.toMatchObject({ code: 'draft_unavailable', fields: [] });
+    expect(await draftRow(draftB)).toEqual(before);
     // Raw SQL too: the policy, not the service, is what refuses.
     const raw = await withTenant(adminOfA(), (tx) =>
       tx.execute(sql`update employee_draft set label = 'Tampered' where id = ${draftB}::uuid returning id`),
     );
     expect(raw).toHaveLength(0);
-    expect((await draftRow(draftB)).label).toBe('Bravo Candidate');
+    expect(await draftRow(draftB)).toEqual(before);
 
     await saveEmployeeDraft(adminOfA(), {
       id: draftA,
