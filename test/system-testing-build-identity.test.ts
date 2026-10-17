@@ -11,7 +11,12 @@ function inject() { for (const [key, value] of Object.entries(systemTestingCompi
 describe('compile-bound System Testing identity contract (not a Next artifact proof)', () => {
   it('configures exactly the five direct nonsecret substitutions with empty review-required defaults', () => {
     const config = readFileSync(new URL('../next.config.ts', import.meta.url), 'utf8');
-    const block = config.slice(config.indexOf('  env: {'), config.indexOf('\n  },', config.indexOf('  env: {')));
+    const start = config.indexOf('  env: {');
+    expect(start, 'explicit Next compile env block exists').toBeGreaterThanOrEqual(0);
+    const end = config.indexOf('\n  },', start);
+    expect(end, 'compile env block terminates after its declaration').toBeGreaterThan(start);
+    const block = config.slice(start, end);
+    expect(block.trim().length).toBeGreaterThan(20);
     for (const key of Object.keys(systemTestingCompileEnvironment(prepared))) expect(block).toContain(`${key}: process.env.${key} ?? ''`);
     expect(block.match(/AIHR_SYSTEM_TESTING_[A-Z_]+:/g)).toHaveLength(5);
     expect(block).not.toContain('...process.env'); expect(block).not.toContain('DATABASE_URL');
