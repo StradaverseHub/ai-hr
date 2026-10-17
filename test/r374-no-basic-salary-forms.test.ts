@@ -22,17 +22,14 @@
  *      remark at all, and a merit enact on a zero basic threw a salary-remark error at an appraiser who
  *      has no Remarks field to answer it with.
  *   §4 ACTIVATION, AGAINST A REAL DATABASE. A blank basic with a remark activates and stores `0.00`, not
- *      `NaN`. A blank basic with NO remark creates NOTHING — `completeEmployeeDraft` is not one
- *      transaction, so a refusal that arrived at `setCompensation` would leave an employment behind.
+ *      `NaN`. A blank basic with NO remark creates NOTHING — every activation owner now shares one
+ *      explicit transaction, and both preflight and later owner failures preserve that guarantee.
  *   §5 THE SENTENCES, in all six locales.
  *
  * ── WHY §4's "NOTHING WAS CREATED" CASE IS THE LOAD-BEARING ONE ─────────────────────────────────────
- * `completeEmployeeDraft` calls `hireEmployee` (commit), then four more writers, then `setCompensation`,
- * then deletes the draft. Its own header says it cannot be one transaction. So the relief in §1 and the
- * remark requirement are not two independent changes: if the form rule let a blank amount through while
- * the service still refused it, Activate would create a person and an employment and THEN fail, leaving
- * the half-activated state that whole file exists to prevent. That is why the pre-flight is asserted by
- * counting rows after a refusal, not merely by the error type.
+ * The historical failure was a hire committed before a later salary refusal. Activation now wraps its
+ * canonical owners in one transaction; the observable promise remains zero new people or employments
+ * after any refusal. Count rows rather than merely checking the error type.
  */
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -51,6 +48,9 @@ import {
 import { completeEmployeeDraft, saveEmployeeDraft } from '../core/employee-draft';
 import { createCycle, openCycle, submitManagerReview, enactCompAction } from '../core/performance';
 import { createMovementEvent } from '../core/movement';
+import { personnelInput, personnelFormRequired, personnelFormField, personnelWorkflowInput } from '../lib/personnel-form-contract';
+import { hasPersonnelPostedBinding } from './helpers/personnel-posted-binding';
+import { draftActivationFieldLabels } from '../lib/draft-activation-presentation';
 import { withTenant } from '../db/client';
 import {
   missingByTab,
@@ -79,6 +79,9 @@ const SALARY_HISTORY = 'components/salary-history-table.tsx';
 const PERSONNEL_ACTIONS = 'app/admin/personnel/[employmentId]/actions.ts';
 const PAY_STRUCTURE = 'components/pay-structure-fields.tsx';
 const MOVEMENT_FORM = 'app/admin/personnel/[employmentId]/movement-new-event.tsx';
+const BASIC_SALARY_FIELD = 'payroll.basic_salary_and_salary_history.basicsalary';
+const RATE_FIELD = 'payroll.basic_salary_and_salary_history.rateamount';
+const REMARKS_FIELD = 'payroll.basic_salary_and_salary_history.remarks';
 
 const DIRECTOR_REMARK = "No monthly basic — paid by quarterly director's fees";
 
@@ -208,38 +211,34 @@ describe('§1 the Create New Employee Payroll tab: blank or zero is legitimate, 
 // ── §2 the three inputs and the two actions ──────────────────────────────────────────────────────
 describe('§2 the forms, read from source', () => {
   /**
-   * THE WHOLE `<input>` TAG that carries the basic salary, cut from its own `<input` to its own `/>`.
-   *
-   * EVERY BOUND IS PROVEN BEFORE THE SLICE IS TAKEN (CLAUDE.md §8). `indexOf` returns −1 for a marker
-   * that was renamed, −1 is truthy, and `String.prototype.slice` reads a negative start as
-   * `length + start` — so an unguarded version of this helper would hand back the tail of the file, or
-   * the empty string, and every `not.toContain` on it would report green over a reinstated `required`.
-   * `test/r219-ea-cp8a-form.test.ts` asserted nothing at all for 27 rounds through exactly that.
-   * `type="number"` is the positive control: it says the slice really is the amount box.
+   * Bind exactly one actual basic-salary input to its canonical adapter. Inspect its native metadata
+   * without stripping requirements, values or constraints, and refuse source-level overrides.
    */
-  function basicSalaryInput(file: string, marker: string): string {
-    const src = read(file);
-    const at = src.indexOf(marker);
-    expect(at, `${file}: the basic-salary marker "${marker}" was not found`).toBeGreaterThanOrEqual(0);
-    const open = src.lastIndexOf('<input', at);
-    expect(open, `${file}: no <input> opens before "${marker}"`).toBeGreaterThanOrEqual(0);
-    const close = src.indexOf('/>', at);
-    expect(close, `${file}: the input around "${marker}" is never closed`).toBeGreaterThan(at);
-    const tag = src.slice(open, close + 2);
+  function basicSalaryInput(file: string) {
+    const src = read(file).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const inputs = (src.match(/<input\b[\s\S]*?\/>/g) ?? []).filter(tag => tag.includes(BASIC_SALARY_FIELD) && tag.includes('personnelInput('));
+    expect(inputs, `${file}: exactly one actual basic salary input`).toHaveLength(1);
+    const tag = inputs[0];
     expect(tag.length, `${file}: the matched input tag is implausibly short`).toBeGreaterThan(40);
-    expect(tag, `${file}: the slice is not the amount box`).toContain('type="number"');
-    return tag;
+    const mode = file === WIZARD ? 'draft' : 'edit';
+    if (mode === 'draft') expect(tag).toContain("'draft'");
+    else expect(hasPersonnelPostedBinding(tag, BASIC_SALARY_FIELD, 'basicSalary')).toBe(true);
+    // The descriptor supplies native constraints; an override on this input must not hide behind it.
+    expect(tag).not.toMatch(/\b(type|min|step|required)\s*=/);
+    expect(tag).not.toMatch(/\brequired\b/);
+    const attributes = personnelInput(BASIC_SALARY_FIELD, mode);
+    expect(attributes).toMatchObject({ type: 'number', min: 0, step: 0.01, required: false });
+    return { tag, attributes };
   }
 
   it('the wizard floor is ZERO, not one sen — it was the only min="0.01" on a basic anywhere', () => {
-    const tag = basicSalaryInput(WIZARD, 'value={data.payroll?.basicSalary ?? \'\'}');
-    expect(tag).toContain('min="0"');
-    expect(tag, 'min="0.01" kept Activate switched off until somebody invented a figure').not.toContain(
-      'min="0.01"',
-    );
+    const { tag, attributes } = basicSalaryInput(WIZARD);
+    expect(attributes.min).toBe(0);
+    expect(tag).toContain("value={data.payroll?.basicSalary ?? ''}");
+    expect(tag).toContain("set('payroll', { basicSalary: e.target.value })");
     // `min="0"` is kept rather than dropped: the browser refuses a negative amount first, and the
     // service refuses it behind that (§3).
-    expect(tag).not.toContain('required');
+    expect(attributes.required).toBe(false);
   });
 
   /**
@@ -258,32 +257,24 @@ describe('§2 the forms, read from source', () => {
    * the case below asserts they match.
    */
   it('the Personnel ADD form no longer requires an amount, and keeps its zero floor', () => {
-    const tag = basicSalaryInput(PERSONNEL_PAGE, 'name="basicSalary"');
-    expect(tag).toContain('min="0"');
-    expect(tag, 'required meant HR could type a zero but not leave the box empty').not.toContain('required');
+    const { attributes } = basicSalaryInput(PERSONNEL_PAGE);
+    expect(attributes).toMatchObject({ name: 'basicSalary', min: 0, required: false });
   });
 
   it('the ADD and EDIT amount boxes agree, attribute for attribute — neither may drift alone', () => {
     // The add form cannot be rendered in a test (see the note above), so what stands in for it is this:
     // whatever is true of the box that IS driven on screen must be true of the one that is not.
-    const add = basicSalaryInput(PERSONNEL_PAGE, 'name="basicSalary"');
-    const edit = basicSalaryInput(SALARY_HISTORY, 'name="basicSalary"');
-    for (const attr of ['type="number"', 'min="0"', 'step="0.01"']) {
-      expect(add, `add form missing ${attr}`).toContain(attr);
-      expect(edit, `edit form missing ${attr}`).toContain(attr);
-    }
-    expect(add.includes('required'), 'the two halves disagree about `required`').toBe(
-      edit.includes('required'),
-    );
+    const add = basicSalaryInput(PERSONNEL_PAGE);
+    const edit = basicSalaryInput(SALARY_HISTORY);
+    expect(add.attributes).toEqual(edit.attributes);
   });
 
   it('the salary-history EDIT form moved WITH it — one screen, two halves', () => {
     // THE GUARD THAT CATCHES THIS BEING FORGOTTEN. The add form and the in-place edit form are the two
     // halves of the Payroll tab's Basic Salary section; relieving one and not the other is how they
     // drift, and the edit form was not even named by the item's first plan.
-    const tag = basicSalaryInput(SALARY_HISTORY, 'name="basicSalary"');
-    expect(tag).toContain('min="0"');
-    expect(tag).not.toContain('required');
+    const { tag, attributes } = basicSalaryInput(SALARY_HISTORY);
+    expect(attributes).toMatchObject({ min: 0, required: false });
     // It still posts its stored amount, which is what makes a blank from it a DELIBERATE clear.
     expect(tag).toContain('defaultValue={r.basic}');
   });
@@ -298,8 +289,7 @@ describe('§2 the forms, read from source', () => {
     const actions = read(PERSONNEL_ACTIONS);
     expect(actions).not.toContain("rawBasicStr !== '' ? Number(rawBasicStr) : undefined");
     expect(actions).toContain('basicSalary: rawBasic !== null ? Number(rawBasicStr) : undefined');
-    expect(read(SALARY_HISTORY), 'the edit input must keep posting, or presence stops being readable')
-      .toContain('name="basicSalary"');
+    expect(hasPersonnelPostedBinding(read(SALARY_HISTORY), BASIC_SALARY_FIELD, 'basicSalary'), 'the edit input must keep posting, or presence stops being readable').toBe(true);
   });
 
   it('the wizard marks Remarks, Pay Mode and Payment Term required ON SCREEN from the shared predicate', () => {
@@ -307,7 +297,11 @@ describe('§2 the forms, read from source', () => {
     expect(src).toContain('noBasicSalaryAmount');
     expect(src).toContain('const noBasicSalary = noBasicSalaryAmount(data.payroll?.basicSalary)');
     expect(src).toContain('markRequired={noBasicSalary}');
-    expect(src).toContain('required={noBasicSalary}');
+    expect(src).toContain('fieldId={"payroll.basic_salary_and_salary_history.remarks"} mode="draft" context={{noBasicSalary}}');
+    expect(personnelFormRequired(REMARKS_FIELD, 'draft', { noBasicSalary: true })).toBe(true);
+    expect(personnelFormRequired(REMARKS_FIELD, 'draft', { noBasicSalary: false })).toBe(false);
+    // Save Draft stays unvalidated; the label and Activate preflight carry the outstanding requirement.
+    expect(personnelInput(REMARKS_FIELD, 'draft', { noBasicSalary: true }).required).toBe(false);
     expect(src).toContain("t('hints.noBasicSalary')");
   });
 
@@ -347,13 +341,15 @@ describe('§2 the forms, read from source', () => {
     // 1. THE RATE BOX keeps min="0.01" AND required for daily/hourly. `missing_rate` is still a blocker
     //    and this is the input that answers it.
     const shared = read(PAY_STRUCTURE);
-    expect(shared).toContain('min="0.01"');
+    expect(shared).toContain("personnelInput('payroll.basic_salary_and_salary_history.rateamount',mode,{payRate:rateRequired})");
     expect(shared).toContain("const rateRequired = payMode === 'daily' || payMode === 'hourly';");
-    expect(shared).toContain('required={rateRequired}');
+    expect(personnelInput(RATE_FIELD, 'edit', { payRate: true })).toMatchObject({ min: 0.01, required: true });
+    expect(personnelInput(RATE_FIELD, 'edit', { payRate: false }).required).toBe(false);
     // 2. THE MOVEMENT FORM was already permissive, and a blank there means "leave the salary alone" —
     //    a delta, not an amount. It must keep meaning that.
     const movement = read(MOVEMENT_FORM);
-    expect(movement).toContain('min={0}');
+    expect(movement).toContain("...personnelWorkflowInput(movementField('basicSalary'), 'movement', 'edit')");
+    expect(personnelWorkflowInput(BASIC_SALARY_FIELD, 'movement', 'edit')).toMatchObject({ min: 0, required: false });
     expect(read(PERSONNEL_ACTIONS)).toContain('parseMovementForm');
     // 3. Every OTHER min="0.01" in the tree is on something that is not a basic salary. Counted rather
     //    than listed, so a new one has to be looked at.
@@ -714,12 +710,16 @@ describe('§5 every sentence this round added, in all six locales', () => {
     expect(wizard).toContain("t('hints.noBasicSalary')");
     expect(wizard).toContain("t('fields.basicSalaryBlankPlaceholder')");
     expect(wizard).toContain("t('fields.remarksNoBasicPlaceholder')");
-    // `fields.remarks` is reached by the OUTSTANDING LIST's computed key — `t(`fields.${f}`)` — now that
-    // the rule can return 'remarks'. A grep for a literal would never see it.
-    expect(wizard).toContain('t(`fields.${f}`)');
+    // Outstanding fields resolve through the same descriptor labels as their actual controls.
+    expect(wizard).toContain('draftActivationFieldLabels([{tab:key,field}]');
+    expect(wizard).toContain('missing[k].map(field=>missingFieldLabel(k,field))');
     for (const loc of LOCALES) {
-      const w = CATALOGUES[loc].people.wizard as unknown as { fields: Record<string, string> };
-      expect(String(w.fields.remarks ?? '').trim(), `${loc} people.wizard.fields.remarks`).not.toBe('');
+      const labels = draftActivationFieldLabels([{ tab: 'payroll', field: 'remarks' }], key => {
+        let value: unknown = CATALOGUES[loc];
+        for (const part of key.split('.')) value = value && typeof value === 'object' ? (value as Record<string, unknown>)[part] : undefined;
+        return typeof value === 'string' ? value : '';
+      }, 'full_time');
+      expect(labels, `${loc} visible Remarks label`).toEqual([{ tab: 'payroll', label: CATALOGUES[loc].people.detail.salaryColRemarks }]);
     }
   });
 
@@ -889,7 +889,10 @@ describe('§6 the Movement screen reaches the same refusal, and it is now legibl
   it("the movement form's own Remarks field is the field the sentence names — hence no new key", () => {
     // If the movement screen called that field something else, the shared sentence would point HR at a
     // control that is not on their screen and a movement-specific string would be owed.
-    expect(read('app/admin/personnel/[employmentId]/movement-new-event.tsx')).toContain("t('form.remarks')");
+    const movement = read(MOVEMENT_FORM);
+    expect(movement).toContain('"remarks": "employment_history.event_information.remarks"');
+    expect(movement).toContain("label(movementField('remarks'))");
+    expect(personnelFormField('employment_history.event_information.remarks').labelKey).toBe('people.detail.movement.form.remarks');
     for (const loc of LOCALES) {
       const f = (CATALOGUES[loc].people.detail as unknown as {
         movement: { form: Record<string, string> };
@@ -911,15 +914,17 @@ describe('§6 the Movement screen reaches the same refusal, and it is now legibl
     // for a Director with no basic is zero, which is what reaches `setCompensation`.
     const src = read(PERSONNEL_ACTIONS);
     expect(src).toContain("basicSalary: rawSalary === '' ? undefined : Number(rawSalary)");
-    // And the form posts that blank by default: no `required`, floor at zero.
+    // The form keeps the stored value (blank when absent), with no requirement and a zero floor.
     const mv = read(MOVEMENT_FORM);
-    const at = mv.indexOf('name="basicSalary"');
+    expect(mv).toContain('"basicSalary": "payroll.basic_salary_and_salary_history.basicsalary"');
+    const at = mv.indexOf("...personnelWorkflowInput(movementField('basicSalary'), 'movement', 'edit')");
     expect(at).toBeGreaterThanOrEqual(0);
     const open = mv.lastIndexOf('<input', at);
     expect(open).toBeGreaterThanOrEqual(0);
     const tag = mv.slice(open, mv.indexOf('/>', at) + 2);
     expect(tag.length).toBeGreaterThan(40);
-    expect(tag).toContain('min={0}');
-    expect(tag).not.toContain('required');
+    expect(tag).not.toMatch(/\b(min|required)\s*=/);
+    expect(personnelWorkflowInput(BASIC_SALARY_FIELD, 'movement', 'edit')).toMatchObject({ name: 'basicSalary', min: 0, required: false });
+    expect(tag).toContain("defaultValue={current.basicSalary ?? ''}");
   });
 });
