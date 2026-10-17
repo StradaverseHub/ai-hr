@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "revision": "reviewed-baseline.1",
+  "revision": "reviewed-baseline.2",
   "entries": [
     {
       "semanticId": "personnel.profile.reopen",
@@ -52,10 +52,12 @@
       "sources": [
         "app/admin/personnel/[employmentId]/page.tsx",
         "core/profile.ts",
-        "lib/permissions.ts"
+        "lib/permissions.ts",
+        "app/admin/personnel/[employmentId]/actions.ts",
+        "core/org.ts"
       ],
       "reviewedSourceHash": "ced2970cbe56d9c2b32ac7cb88620c16c95ecb8b04d57609bf9603f92881c03c",
-      "reviewNote": "Source-reviewed baseline guide. Manual execution is still required; this entry asserts neither runtime success nor complete function coverage."
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
       "semanticId": "personnel.import.invalid",
@@ -108,17 +110,20 @@
         "app/admin/personnel/import/page.tsx",
         "core/import-sections.ts",
         "core/import.ts",
-        "lib/permissions.ts"
+        "lib/permissions.ts",
+        "app/admin/personnel/import/section-actions.ts",
+        "app/admin/personnel/import/section-import.tsx",
+        "lib/import-sections.ts"
       ],
       "reviewedSourceHash": "cf13d22c2c5d8bada35bdef4c794470ff6b429f6e5890d1e00bc2849c73ac463",
-      "reviewNote": "Source-reviewed baseline guide. Manual execution is still required; this entry asserts neither runtime success nor complete function coverage."
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
       "semanticId": "personnel.family.roundtrip",
       "definition": {
         "format": 1,
-        "title": "Preserve distinct Family register records",
-        "objective": "Check repeated Family rows retain their own record identities.",
+        "title": "Re-import unchanged same-name Family members with distinct birth dates",
+        "objective": "Verify Family identity matching preserves two distinct recorded members without adding duplicates.",
         "functionKey": "personnel.family",
         "area": "personnel",
         "moduleCode": "employees",
@@ -127,30 +132,35 @@
         "active": true,
         "prerequisites": [
           "Use an isolated test tenant and fictional records only. Do not use production personal data.",
-          "A fictional employee has two distinct Family records."
+          "A dedicated fictional employee already has two Family members with the same name and relationship but different recorded dates of birth; the fixture coordinator supplies their exact unchanged names, relationship, dates and any recorded identifiers."
         ],
         "testData": [
-          "Two fictional Family names and their exported record IDs."
+          "The fictional employee code and both unchanged Family identities, including the distinct birth dates and matching recorded government identifiers where applicable. Do not rename either member in this import."
         ],
         "steps": [
           {
             "id": "step1",
-            "action": "Open the employee Family section and note both distinct records.",
-            "expected": "Both records are visible separately."
+            "action": "Open /admin/personnel, open the dedicated fictional employee Family section and note both same-name members and their distinct dates of birth.",
+            "expected": "Two separate existing Family records are visible with the supplied unchanged facts."
           },
           {
             "id": "step2",
-            "action": "Download the existing-data Family import file, keep its record IDs, and change only one name.",
-            "expected": "The file has separate repeated register rows rather than one flattened employee row."
+            "action": "Open /admin/personnel/import, select Family and download its current template. Enter one row for each unchanged member using the same fictional employee code, original name, relationship, distinct birth date and any exact recorded identifiers. Do not invent a Record ID or change a name.",
+            "expected": "The Family template uses the supported Family columns. Each row identifies its existing member by the canonical matching facts; qualification/emergency Record ID update behavior is not claimed."
           },
           {
             "id": "step3",
-            "action": "Upload, Check and apply the valid file, then reopen Family.",
-            "expected": "Only the intended record name changed; the other record and both identities remain intact."
+            "action": "Upload and Check the two unchanged rows. Inspect the result and do not force an Apply when all rows are already-on-file skips.",
+            "expected": "Each exact existing identity is reported as already on file/skipped, not as a new name update. An ambiguity is a refusal to review, not permission to create a substitute identity."
+          },
+          {
+            "id": "step4",
+            "action": "Reopen the same employee Family section and compare both recorded members with the original facts.",
+            "expected": "Both distinct birth-date records and their original fields remain unchanged, with no additional duplicate Family member."
           }
         ],
-        "expectedBehavior": "Only the intended record name changed; the other record and both identities remain intact.",
-        "expectedFunction": "Check repeated Family rows retain their own record identities.",
+        "expectedBehavior": "Unchanged exact Family identities are skipped without duplicate creation; same-name members with distinct recorded birth dates remain separate and unchanged.",
+        "expectedFunction": "Verify Family identity matching preserves two distinct recorded members without adding duplicates.",
         "permissions": [
           "Normal company-scoped HR access to the fictional employee."
         ],
@@ -163,11 +173,14 @@
       "sources": [
         "app/admin/personnel/import/section-import.tsx",
         "core/dependents.ts",
-        "core/personnel-register-import.ts",
-        "lib/permissions.ts"
+        "lib/permissions.ts",
+        "app/admin/personnel/import/section-actions.ts",
+        "core/import-sections.ts",
+        "lib/dependent-identity.ts",
+        "lib/import-sections.ts"
       ],
       "reviewedSourceHash": "d84a1eaa7909ea683687e2011b82c7a7c5500b6935c80cdfde7feec9f11561d2",
-      "reviewNote": "Source-reviewed baseline guide. Manual execution is still required; this entry asserts neither runtime success nor complete function coverage."
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
       "semanticId": "payroll.scope.review",
@@ -196,8 +209,8 @@
           },
           {
             "id": "step2",
-            "action": "Compare Headcount, readiness rows and editable input rows against the included codes.",
-            "expected": "All three use the persisted subset; the excluded control is absent."
+            "action": "Compare Headcount and salary-readiness membership with the period-active included codes. Compare editable input rows with included employees who have applicable compensation. Check the excluded control in each surface.",
+            "expected": "Headcount includes the selected period-active employee whose salary is missing, and readiness reports that gap. Editable inputs use the same persisted scope fence but omit employees without applicable compensation. The excluded control is absent from all three."
           },
           {
             "id": "step3",
@@ -206,7 +219,7 @@
           }
         ],
         "expectedBehavior": "The included employee receives the applicable readiness issue; an excluded employee does not inflate the blocker count.",
-        "expectedFunction": "Check headcount, readiness and editable input rows use the same persisted run population.",
+        "expectedFunction": "Check persisted run scope fences headcount, readiness and compensation-backed input rows while preserving missing-salary blockers.",
         "permissions": [
           "Payroll authority for the fictional company and run."
         ],
@@ -223,7 +236,7 @@
         "lib/permissions.ts"
       ],
       "reviewedSourceHash": "4aa5f9f2668120b19cbee14d6e4f836aeb6ec331fe49719bdc75c2947341eca6",
-      "reviewNote": "Source-reviewed baseline guide. Manual execution is still required; this entry asserts neither runtime success nor complete function coverage."
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
       "semanticId": "payroll.salary.effective",
@@ -275,10 +288,11 @@
       "sources": [
         "app/admin/personnel/[employmentId]/page.tsx",
         "core/comp.ts",
-        "lib/permissions.ts"
+        "lib/permissions.ts",
+        "app/admin/personnel/[employmentId]/actions.ts"
       ],
       "reviewedSourceHash": "25f3356f51c6743d75e86a8d9c7d8fb95e7277c40a254f9262cd5600b748eed1",
-      "reviewNote": "Source-reviewed baseline guide. Manual execution is still required; this entry asserts neither runtime success nor complete function coverage."
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
       "semanticId": "payroll.run.closed",
@@ -294,7 +308,7 @@
         "active": true,
         "prerequisites": [
           "Use an isolated test tenant and fictional records only. Do not use production personal data.",
-          "An administrator supplies a fictional out-of-scope run URL without supplying its Payroll data."
+          "An administrator supplies a fictional control run URL for a company outside every read and Payroll scope of this tester. The tester has no visible control employment or payslip and receives none of its Payroll data."
         ],
         "testData": [
           "One fictional out-of-scope run identifier."
@@ -319,7 +333,7 @@
         "expectedBehavior": "Normal authorized navigation remains usable.",
         "expectedFunction": "Check Payroll company authority on direct navigation.",
         "permissions": [
-          "A tester who lacks Payroll authority for the control company."
+          "A tester with no control-company Payroll authority and no alternative legitimate read path to this run."
         ],
         "jurisdiction": null,
         "configuration": null,
@@ -330,10 +344,11 @@
       "sources": [
         "app/payroll/[batchId]/page.tsx",
         "core/payroll.ts",
-        "lib/permissions.ts"
+        "lib/permissions.ts",
+        "lib/authz.ts"
       ],
       "reviewedSourceHash": "6f07c50deb38175136c47d8e4e544a755b6505ed8ecf0ad1e9ec529f0bc4103d",
-      "reviewNote": "Source-reviewed baseline guide. Manual execution is still required; this entry asserts neither runtime success nor complete function coverage."
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
       "semanticId": "attendance.day.classification",
@@ -357,7 +372,7 @@
         "steps": [
           {
             "id": "step1",
-            "action": "Open the fictional date in the authorized Attendance detail.",
+            "action": "Open the fictional date in the authorized /attendance/individual day detail for the intended employee.",
             "expected": "The correct employee and date are shown."
           },
           {
@@ -374,7 +389,7 @@
         "expectedBehavior": "The same recorded classification remains visible.",
         "expectedFunction": "Check authorized day classification is distinct from an attendance status.",
         "permissions": [
-          "Normal self or managerial Attendance reading authority."
+          "Managerial or HR Attendance individual-detail reading authority for the fictional employee."
         ],
         "jurisdiction": null,
         "configuration": null,
@@ -385,10 +400,12 @@
       "sources": [
         "app/attendance/individual/[date]/page.tsx",
         "core/attendance-explain.ts",
-        "lib/permissions.ts"
+        "lib/permissions.ts",
+        "components/attendance-day-parts.tsx",
+        "core/attendance-derive.ts"
       ],
       "reviewedSourceHash": "6e6376228a8be9d892b88037751d78ad855dcd0f2d2ab34de2d879d056d0870c",
-      "reviewNote": "Source-reviewed baseline guide. Manual execution is still required; this entry asserts neither runtime success nor complete function coverage."
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
       "semanticId": "attendance.correction.chain",
@@ -418,7 +435,7 @@
           {
             "id": "step2",
             "action": "As the assigned approver, review the exact request and record the permitted decision.",
-            "expected": "Only the assigned or canonically delegated actor can decide; the decision records the real actor."
+            "expected": "The canonical current-stage authority accepts the assigned approver, a valid delegate, or an eligible scoped HR administrator under the configured workflow. Subject self-decision and stale stages are refused; the saved decision identifies the real actor."
           },
           {
             "id": "step3",
@@ -441,10 +458,11 @@
         "app/attendance/requests/page.tsx",
         "core/attendance-workflow.ts",
         "core/attendance.ts",
-        "lib/permissions.ts"
+        "lib/permissions.ts",
+        "components/attendance-workflow-progress.tsx"
       ],
       "reviewedSourceHash": "6940ab2ec90111316167735f78d6cf1b487bd59ef84a37a0dac24cc864fb7df7",
-      "reviewNote": "Source-reviewed baseline guide. Manual execution is still required; this entry asserts neither runtime success nor complete function coverage."
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
       "semanticId": "attendance.formula.private",
@@ -460,46 +478,52 @@
         "active": true,
         "prerequisites": [
           "Use an isolated test tenant and fictional records only. Do not use production personal data.",
-          "A fictional formula day has a known approved duration and a price expression requiring a private salary input."
+          "The fixture coordinator supplies an approved formula day with a ready, exact stored duration and a persisted refused cash result due to an unavailable salary-based input. No later ready cash calculation or settlement exists for this day."
         ],
         "testData": [
-          "The fictional day and known duration from its canonical record."
+          "The fictional employee/date, exact known duration, original calculation/source reference, and verified absence of a cash settlement supplied by the fixture coordinator."
         ],
         "steps": [
           {
             "id": "step1",
-            "action": "Open the authorized day or request as the manager.",
+            "action": "Open the supplied fictional employee/date in the authorized individual Attendance day detail as the manager.",
             "expected": "The relevant attendance and approval facts are visible."
           },
           {
             "id": "step2",
-            "action": "Review the formula duration and cash result.",
-            "expected": "Known duration is displayed; unavailable cash pricing remains explicitly unresolved without salary or invented money."
+            "action": "Expand the formula duration reference/details and inspect its stored duration and cash-availability notice.",
+            "expected": "The exact stored duration is visible. The fixture cash-refused record says cash is unavailable; no salary value or invented money is disclosed."
           },
           {
             "id": "step3",
-            "action": "Open the same day as authorized Payroll HR and review before any transfer.",
-            "expected": "Cash actions still require fresh canonical input and financial authority; the manager read did not settle money."
+            "action": "As the separate authorized HR account, open the same employee/date in the overtime pattern actual Payroll review. Use Review actual only; do not Calculate actual or Transfer.",
+            "expected": "The persisted calculation/source reference still matches the original fixture and manager disclosure. Cash remains refused, transfer is unavailable, and no cash settlement is reported. Neither this manager display nor Review actual is a Calculate/Transfer action."
           }
         ],
-        "expectedBehavior": "Cash actions still require fresh canonical input and financial authority; the manager read did not settle money.",
+        "expectedBehavior": "Known stored duration remains visible without salary disclosure; its refused cash result is not presented as transferable money.",
         "expectedFunction": "Check duration evidence can remain known when cash-only facts are private.",
         "permissions": [
-          "A manager with Attendance approval authority but no salary reading authority."
+          "A manager with authorized individual-day Attendance reading access and no salary reading authority; a separate authorized HR account with overtime setup and Payroll review access."
         ],
         "jurisdiction": null,
         "configuration": null,
         "screenKeys": [
-          "attendance"
+          "attendance",
+          "attendancePolicyConfig"
         ]
       },
       "sources": [
         "core/payroll-overtime-pattern.ts",
         "lib/permissions.ts",
-        "packs/attendance/overtime-input.ts"
+        "packs/attendance/overtime-input.ts",
+        "app/attendance/individual/[date]/page.tsx",
+        "components/formula-overtime-record.tsx",
+        "lib/overtime-records.ts",
+        "components/overtime-patterns/preview-panel.tsx",
+        "app/admin/attendance/settings/overtime-patterns/actions.ts"
       ],
       "reviewedSourceHash": "c9e7d002d4561fbfa912e1060bf58765590355ee1356c9c42d72b28c5a957b64",
-      "reviewNote": "Source-reviewed baseline guide. Manual execution is still required; this entry asserts neither runtime success nor complete function coverage."
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
       "semanticId": "leave.request.pending",
@@ -552,10 +576,12 @@
         "app/leave/actions.ts",
         "app/leave/history/page.tsx",
         "core/leave.ts",
-        "lib/permissions.ts"
+        "lib/permissions.ts",
+        "app/leave/page.tsx",
+        "components/leave/own-leave-history.tsx"
       ],
       "reviewedSourceHash": "35ff2b01dac486a757ebd32544cca7a7e862cce8f225d0b058b98698bfdb25c1",
-      "reviewNote": "Source-reviewed baseline guide. Manual execution is still required; this entry asserts neither runtime success nor complete function coverage."
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
       "semanticId": "leave.credit.bound",
@@ -607,10 +633,12 @@
       "sources": [
         "components/leave/leave-credit-request-table.tsx",
         "core/toil.ts",
-        "lib/permissions.ts"
+        "lib/permissions.ts",
+        "lib/leave-credit-claim-review.ts",
+        "components/leave/leave-credit-claim-review.tsx"
       ],
       "reviewedSourceHash": "cb7492175fef59f618443ca83f85c6402de7d40ea1aca6be2d6c4234057824be",
-      "reviewNote": "Source-reviewed baseline guide. Manual execution is still required; this entry asserts neither runtime success nor complete function coverage."
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
       "semanticId": "leave.inquiry.sort",
@@ -662,10 +690,13 @@
       "sources": [
         "app/leave/employee-balances/page.tsx",
         "core/leave-inquiry.ts",
-        "lib/permissions.ts"
+        "lib/permissions.ts",
+        "app/leave/employee-balances/export/route.ts",
+        "app/leave/employee-balances/inquiry-data.ts",
+        "lib/leave-inquiry-query.ts"
       ],
       "reviewedSourceHash": "37d0d29127b131c73f8963acba80eee1e2558d6e07af8ab481e9020c46b06092",
-      "reviewNote": "Source-reviewed baseline guide. Manual execution is still required; this entry asserts neither runtime success nor complete function coverage."
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
       "semanticId": "organization.company.reopen",
@@ -717,10 +748,12 @@
       "sources": [
         "app/admin/organization/[companyId]/page.tsx",
         "core/admin.ts",
-        "lib/permissions.ts"
+        "lib/permissions.ts",
+        "app/admin/actions.ts",
+        "components/company-panel.tsx"
       ],
       "reviewedSourceHash": "34efd7014e5869f95d8cc895dfd570d49181b6f049dd02bcf06d776846101c37",
-      "reviewNote": "Source-reviewed baseline guide. Manual execution is still required; this entry asserts neither runtime success nor complete function coverage."
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
       "semanticId": "organization.reporting.history",
@@ -739,7 +772,7 @@
           "Fictional subordinate, old manager and new manager exist within permitted scope."
         ],
         "testData": [
-          "The exact fictional employment codes and intended effective date."
+          "The exact fictional subordinate, old superior and new superior employment codes, and today in the app HR calendar."
         ],
         "steps": [
           {
@@ -749,16 +782,16 @@
           },
           {
             "id": "step2",
-            "action": "Set the intended fictional new direct superior with its effective date through the normal editor.",
-            "expected": "The canonical writer accepts the valid relationship and refuses a cycle or invalid scope."
+            "action": "Select the intended fictional new Direct Superior through the normal Employment editor and save; this editor makes the change effective today.",
+            "expected": "The canonical writer accepts the valid relationship effective today. The guide does not claim to have exercised a separate cycle or invalid-scope attempt."
           },
           {
             "id": "step3",
             "action": "Reopen the subordinate and authorized /org view.",
-            "expected": "The dated relationship is reflected through the canonical owner; prior history is preserved rather than overwritten."
+            "expected": "The new administrative superior is reflected for today in the employee and authorized /org view. The former superior remains in read-only history with its closed interval."
           }
         ],
-        "expectedBehavior": "The dated relationship is reflected through the canonical owner; prior history is preserved rather than overwritten.",
+        "expectedBehavior": "The new superior is effective today, and the former superior remains in retained history.",
         "expectedFunction": "Check canonical reporting history and authorized chart consumption.",
         "permissions": [
           "HR reporting-line maintenance authority and authorized Org Chart reading access."
@@ -773,10 +806,13 @@
         "app/org/page.tsx",
         "core/movement.ts",
         "core/org.ts",
-        "lib/permissions.ts"
+        "lib/permissions.ts",
+        "app/admin/personnel/[employmentId]/page.tsx",
+        "app/admin/personnel/[employmentId]/actions.ts",
+        "core/read.ts"
       ],
       "reviewedSourceHash": "b880c2940408312bc1a98504a63f29407cef0eead1d9f463f898a4478a769d8f",
-      "reviewNote": "Source-reviewed baseline guide. Manual execution is still required; this entry asserts neither runtime success nor complete function coverage."
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
       "semanticId": "organization.scope.refusal",
@@ -828,10 +864,13 @@
       "sources": [
         "app/admin/organization/[companyId]/page.tsx",
         "app/org/page.tsx",
-        "lib/permissions.ts"
+        "lib/permissions.ts",
+        "lib/scope.ts",
+        "lib/authz.ts",
+        "core/system-testing-workspace.ts"
       ],
       "reviewedSourceHash": "aa7986c5d8723240d19da65fdd44cfe44670d14fac436a7c503d275f3ee9abe6",
-      "reviewNote": "Source-reviewed baseline guide. Manual execution is still required; this entry asserts neither runtime success nor complete function coverage."
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
       "semanticId": "settings.labels.metadata",
@@ -884,10 +923,11 @@
         "app/admin/settings/system-labels/page.tsx",
         "core/admin.ts",
         "core/system-labels.ts",
-        "lib/permissions.ts"
+        "lib/permissions.ts",
+        "components/system-labels-grid.tsx"
       ],
       "reviewedSourceHash": "6c964ea5ee80039870e302be90a9ad8b0201ac9f20a559a0d18a9e3b6a30031d",
-      "reviewNote": "Source-reviewed baseline guide. Manual execution is still required; this entry asserts neither runtime success nor complete function coverage."
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
       "semanticId": "settings.labels.collision",
@@ -903,15 +943,15 @@
         "active": true,
         "prerequisites": [
           "Use an isolated test tenant and fictional records only. Do not use production personal data.",
-          "A dedicated active fictional label already exists for the intended company Criteria."
+          "A dedicated active fictional Cost Center already exists for known company Criteria."
         ],
         "testData": [
-          "A new fictional row using the same normalized code and overlapping Criteria."
+          "A new fictional Cost Center draft using the same code after trim/case normalization and overlapping company Criteria; preserve the existing row."
         ],
         "steps": [
           {
             "id": "step1",
-            "action": "Create the new conflicting row through System Labels without renaming the existing row.",
+            "action": "In the Cost Centers category of System Labels, add the conflicting fictional draft without changing the existing row.",
             "expected": "The existing row remains visible with its own identity."
           },
           {
@@ -939,10 +979,11 @@
       "sources": [
         "core/admin.ts",
         "core/system-labels.ts",
-        "lib/permissions.ts"
+        "lib/permissions.ts",
+        "components/system-labels-grid.tsx"
       ],
       "reviewedSourceHash": "a7970661beeee07ac1cf4c1e4c120d95b2a1c0d4737d309330c37853a925e036",
-      "reviewNote": "Source-reviewed baseline guide. Manual execution is still required; this entry asserts neither runtime success nor complete function coverage."
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
       "semanticId": "settings.labels.workbook",
@@ -976,11 +1017,11 @@
           },
           {
             "id": "step3",
-            "action": "Apply and reopen the label.",
-            "expected": "The saved description matches the preview; unauthorized or ambiguous rows are refused by the same canonical owner."
+            "action": "Confirm the selected current and proposed update values, Apply, then reopen the fictional label.",
+            "expected": "The saved description matches the confirmed preview. Original identifier spelling and Criteria remain unchanged; this valid round trip does not itself establish a separate unauthorized/ambiguous-row negative test."
           }
         ],
-        "expectedBehavior": "The saved description matches the preview; unauthorized or ambiguous rows are refused by the same canonical owner.",
+        "expectedBehavior": "The selected confirmed description update persists while identifier and Criteria remain unchanged.",
         "expectedFunction": "Check the workbook uses the same Criteria and collision owner.",
         "permissions": [
           "Label import and origin/company maintenance authority."
@@ -995,10 +1036,12 @@
         "app/admin/settings/system-labels/import-actions.ts",
         "core/system-label-import.ts",
         "core/system-labels.ts",
-        "lib/permissions.ts"
+        "lib/permissions.ts",
+        "components/system-label-import.tsx",
+        "app/admin/settings/system-labels/current-data/route.ts"
       ],
       "reviewedSourceHash": "ba0b79dd67112071a5d36b3ddee998e60d86183738ff1f3876504a11d69541fd",
-      "reviewNote": "Source-reviewed baseline guide. Manual execution is still required; this entry asserts neither runtime success nor complete function coverage."
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
       "semanticId": "workflow.approvals.own",
@@ -1050,10 +1093,13 @@
       "sources": [
         "app/approvals/page.tsx",
         "core/leave.ts",
-        "lib/permissions.ts"
+        "lib/permissions.ts",
+        "components/leave/own-leave-history.tsx",
+        "lib/authz.ts",
+        "core/system-testing-workspace.ts"
       ],
       "reviewedSourceHash": "0c1d88620634628ddb4e0cf250fdf7e99324d88709b5f09200d16078df58e104",
-      "reviewNote": "Source-reviewed baseline guide. Manual execution is still required; this entry asserts neither runtime success nor complete function coverage."
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
       "semanticId": "workflow.approvals.history",
@@ -1069,7 +1115,7 @@
         "active": true,
         "prerequisites": [
           "Use an isolated test tenant and fictional records only. Do not use production personal data.",
-          "A pending fictional request is actionable by the approver."
+          "A pending fictional Leave request is currently actionable by an approver with normal /approvals and /approvals/history access. The fixture records whether the current stage is final."
         ],
         "testData": [
           "A fictional decision reason."
@@ -1087,11 +1133,11 @@
           },
           {
             "id": "step3",
-            "action": "Reopen /approvals/history and the employee request history.",
-            "expected": "The decided request retains its real actor and outcome; a repeated or stale decision does not create a second effect."
+            "action": "Reopen /approvals/history as the eligible approver and the same request in the employee own history.",
+            "expected": "If accepted, history records the real actor and stage decision; the employee shows the resulting next pending stage or final outcome. If refused, record the specific refusal and unchanged request, not a decision pass. Reopening shows no invented second decision; no repeated-submission regression result is claimed by this guide."
           }
         ],
-        "expectedBehavior": "The decided request retains its real actor and outcome; a repeated or stale decision does not create a second effect.",
+        "expectedBehavior": "Accepted stage decisions retain actual attribution and the correct pending/final outcome; a refusal is recorded honestly without an invented decision.",
         "expectedFunction": "Check actual decision attribution and retained history.",
         "permissions": [
           "The actual configured approver and the request owner accounts."
@@ -1106,10 +1152,13 @@
         "app/approvals/history/page.tsx",
         "app/approvals/page.tsx",
         "core/leave.ts",
-        "lib/permissions.ts"
+        "lib/permissions.ts",
+        "app/approvals/actions.ts",
+        "components/leave/own-leave-history.tsx",
+        "core/read.ts"
       ],
       "reviewedSourceHash": "60149bcc3b9ce7ae4ca4628eed85289a713043aa4823b48c15a6ca09b01a9c56",
-      "reviewNote": "Source-reviewed baseline guide. Manual execution is still required; this entry asserts neither runtime success nor complete function coverage."
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
       "semanticId": "workflow.approvals.empty",
@@ -1125,7 +1174,7 @@
         "active": true,
         "prerequisites": [
           "Use an isolated test tenant and fictional records only. Do not use production personal data.",
-          "Use a fictional account whose pending request population is known empty."
+          "Use a fictional HR administrator or manager whose supported selected category has a known empty actionable queue, independently of Testing assignments."
         ],
         "testData": [
           "The account identity only."
@@ -1150,7 +1199,7 @@
         "expectedBehavior": "History remains a separate authorized read and the empty queue remains usable.",
         "expectedFunction": "Check the empty state is honest and navigable.",
         "permissions": [
-          "An authenticated tester with no pending assigned fixture requests."
+          "Normal scoped HR administrator or manager access to both Approvals and Approval History. A Testing assignment grants no business access."
         ],
         "jurisdiction": null,
         "configuration": null,
@@ -1161,10 +1210,12 @@
       "sources": [
         "app/approvals/history/page.tsx",
         "app/approvals/page.tsx",
-        "lib/permissions.ts"
+        "lib/permissions.ts",
+        "lib/approvals-categories.ts",
+        "lib/authz.ts"
       ],
       "reviewedSourceHash": "e8c3c783dc297b7caa084f1c885558e1b8b8b08b5d5c9fe477b41fbafe076c79",
-      "reviewNote": "Source-reviewed baseline guide. Manual execution is still required; this entry asserts neither runtime success nor complete function coverage."
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
       "semanticId": "statutory.company.reopen",
@@ -1180,7 +1231,7 @@
         "active": true,
         "prerequisites": [
           "Use an isolated test tenant and fictional records only. Do not use production personal data.",
-          "The company country has an installed supported statutory pack; use a dedicated fictional company."
+          "Use a dedicated fictional MY company with the installed MY statutory capability and a fixture-approved supported body."
         ],
         "testData": [
           "Fixture-approved fictional registration values appropriate for the configured body."
@@ -1193,13 +1244,13 @@
           },
           {
             "id": "step2",
-            "action": "Save the approved fictional registration fields through the normal form.",
-            "expected": "Canonical validation accepts valid fixture fields or explains a specific refusal."
+            "action": "Edit only the fixture-approved registration fields for the intended body and Save all changes.",
+            "expected": "The result names the saved body or a specific refusal/partial failure; untouched bodies are not newly configured."
           },
           {
             "id": "step3",
-            "action": "Reopen the same statutory setup.",
-            "expected": "The saved values are retained for the intended company; this test does not certify registration or legal eligibility."
+            "action": "If the intended body saved successfully, reopen the same company statutory setup and compare its values; otherwise record the refusal without claiming save success.",
+            "expected": "Successfully saved fixture values persist for that company and body. This test certifies neither legal registration nor eligibility."
           }
         ],
         "expectedBehavior": "The saved values are retained for the intended company; this test does not certify registration or legal eligibility.",
@@ -1207,7 +1258,7 @@
         "permissions": [
           "Company statutory configuration authority."
         ],
-        "jurisdiction": "Use the fictional company country; do not infer rates or legal eligibility.",
+        "jurisdiction": "MY",
         "configuration": "Requires the installed country pack and body-specific fictional fixture fields.",
         "screenKeys": [
           "organization"
@@ -1217,10 +1268,12 @@
         "app/admin/organization/[companyId]/statutory/page.tsx",
         "app/admin/organization/statutory-tab-actions.ts",
         "lib/permissions.ts",
-        "packs/payroll/service.ts"
+        "packs/payroll/service.ts",
+        "core/statutory-authority.ts",
+        "components/statutory-setup-screen.tsx"
       ],
       "reviewedSourceHash": "a61b5d2eddd107b9dee981683872b175831ec8df505197caeec9d2ddf84896e7",
-      "reviewNote": "Source-reviewed baseline guide. Manual execution is still required; this entry asserts neither runtime success nor complete function coverage."
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
       "semanticId": "statutory.forms.scope",
@@ -1236,26 +1289,26 @@
         "active": true,
         "prerequisites": [
           "Use an isolated test tenant and fictional records only. Do not use production personal data.",
-          "An authorized fictional processed run exists; a separate control company is out of scope."
+          "A fictional MY company has processed EPF Payroll contributions and a fixture-supported Borang A preview. Its exact company, month and eligible run selection are known; a separate control company is outside all tester read scope."
         ],
         "testData": [
-          "The fictional period/run identifiers and the authorized employee codes."
+          "Fictional MY company, payroll month, exact selected processed run identities, expected authorized employee codes and an out-of-scope control company URL."
         ],
         "steps": [
           {
             "id": "step1",
-            "action": "Open /payroll/statutory-forms and select the authorized fictional company and period.",
-            "expected": "Only applicable configured forms and authorized criteria are offered."
+            "action": "Open /payroll/statutory-forms, choose the supported Borang A form, then complete its authorized company, period and Payroll cycle criteria.",
+            "expected": "The form is chosen before its declared criteria. Company and cycle choices are scoped to the intended fictional data."
           },
           {
             "id": "step2",
-            "action": "Open a supported form preview using the fictional run.",
-            "expected": "The displayed employees and figures come from the selected authorized run; no fixed amount is assumed by this guide."
+            "action": "Continue to the Borang A preview with the supplied eligible run selection.",
+            "expected": "Employee membership and displayed stored figures match the authorized company/month and selected runs; this guide assumes no fixed monetary amount."
           },
           {
             "id": "step3",
-            "action": "Attempt the supplied out-of-scope fictional control selection.",
-            "expected": "Control-company statutory data is refused or unavailable rather than merged into the authorized preview."
+            "action": "Open the fixture coordinator-supplied out-of-scope control-company Borang A preview URL.",
+            "expected": "The control preview is refused or unavailable before showing its statutory data. Returning to the authorized preview does not merge control employees or amounts."
           }
         ],
         "expectedBehavior": "Control-company statutory data is refused or unavailable rather than merged into the authorized preview.",
@@ -1263,7 +1316,7 @@
         "permissions": [
           "Payroll statutory-reading authority for the fictional company."
         ],
-        "jurisdiction": "Country-specific form rules remain authoritative; this guide supplies no legal figures.",
+        "jurisdiction": "MY",
         "configuration": "Requires an isolated processed, unpublished fixture run and applicable installed form.",
         "screenKeys": [
           "payroll"
@@ -1273,17 +1326,20 @@
         "app/payroll/statutory-forms/open/page.tsx",
         "app/payroll/statutory-forms/page.tsx",
         "lib/permissions.ts",
-        "packs/payroll/service.ts"
+        "packs/payroll/service.ts",
+        "app/payroll/statutory-forms/criteria.ts",
+        "app/payroll/borang-a/shared.ts",
+        "core/reporting.ts"
       ],
       "reviewedSourceHash": "d82b4fbba1b085ef9df074a47a72cbca07451e9a9eb659255e1f2aebed4b4c66",
-      "reviewNote": "Source-reviewed baseline guide. Manual execution is still required; this entry asserts neither runtime success nor complete function coverage."
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
       "semanticId": "payment.submission.review",
       "definition": {
         "format": 1,
-        "title": "Review a fictional payment submission before download",
-        "objective": "Check payment setup/criteria refusal and avoid claiming a bank payment.",
+        "title": "Review a fictional statutory submission before download",
+        "objective": "Check statutory submission criteria and setup refusal without claiming filing or payment.",
         "functionKey": "payment.submission",
         "area": "statutory_payment",
         "moduleCode": "payroll",
@@ -1292,34 +1348,34 @@
         "active": true,
         "prerequisites": [
           "Use an isolated test tenant and fictional records only. Do not use production personal data.",
-          "Use an isolated fixture run and fixture-approved bank format; never send a real bank payment."
+          "Use a dedicated fictional MY company and processed EPF run with fixture-approved Borang A upload data. A coordinator has left its required EPF employer reference missing and supplies the valid fictional restoration value. No salary bank format or real submission is involved."
         ],
         "testData": [
-          "Fictional company/run/format and fixture-approved bank details."
+          "Fictional company, payroll month, exact eligible run selection and approved EPF employer reference."
         ],
         "steps": [
           {
             "id": "step1",
-            "action": "Open /payroll/payment-submission and choose the intended fictional company, period and supported format.",
-            "expected": "The available selection is authorized and belongs to the installed payment capability."
+            "action": "Open /payroll/payment-submission, select the available KWSP Borang A upload format and open its Download dialog. Choose the fictional company, month and supplied eligible Payroll runs.",
+            "expected": "The selected format is an installed statutory submission capability. The salary bank file shelf does not pretend to provide a format."
           },
           {
             "id": "step2",
-            "action": "Review the run and required setup; deliberately leave one fixture-required setup value missing.",
-            "expected": "The owner gives a specific missing-setup/validation refusal rather than a successful invented file."
+            "action": "Attempt the fictional download with the coordinator-supplied missing EPF employer reference fixture.",
+            "expected": "The normal builder refuses the missing required registration before returning a successful upload file. Record the specific refusal."
           },
           {
             "id": "step3",
-            "action": "Restore the fixture value and preview/download only when all normal owner checks permit it.",
-            "expected": "The authorized file reflects the selected fictional run; downloading does not assert bank acceptance or payment."
+            "action": "Restore only the approved fictional EPF employer reference through that company statutory setup, then reopen the same Download dialog and download only when normal checks permit it.",
+            "expected": "The file identifies the intended fictional company/month and selected runs with the approved reference. Downloading neither transmits a filing nor asserts agency or bank acceptance or payment."
           }
         ],
-        "expectedBehavior": "The authorized file reflects the selected fictional run; downloading does not assert bank acceptance or payment.",
-        "expectedFunction": "Check payment setup/criteria refusal and avoid claiming a bank payment.",
+        "expectedBehavior": "Missing required statutory setup refuses file generation; after approved fixture repair, an authorized download still makes no filing, acceptance or payment claim.",
+        "expectedFunction": "Check statutory submission criteria and setup refusal without claiming filing or payment.",
         "permissions": [
-          "Payroll payment-submission authority for the fictional company."
+          "Scoped Payroll submission review and company statutory configuration authority for the dedicated fictional company."
         ],
-        "jurisdiction": "Applicable country/payment owner validation remains authoritative.",
+        "jurisdiction": "MY",
         "configuration": "Uses a fixture-approved installed bank/payment format; do not invent routing or account rules.",
         "screenKeys": [
           "payroll"
@@ -1329,10 +1385,13 @@
         "app/payroll/payment-submission/download/route.ts",
         "app/payroll/payment-submission/page.tsx",
         "lib/permissions.ts",
-        "packs/payroll/service.ts"
+        "packs/payroll/service.ts",
+        "app/payroll/payment-submission/registry.ts",
+        "app/payroll/borang-a/shared.ts",
+        "app/payroll/payment-submission/download-dialog.tsx"
       ],
       "reviewedSourceHash": "161bb57c88064d8ce40f566089fd60fbd0062e75f39db8b1736977261c9c5442",
-      "reviewNote": "Source-reviewed baseline guide. Manual execution is still required; this entry asserts neither runtime success nor complete function coverage."
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     }
   ]
 }
