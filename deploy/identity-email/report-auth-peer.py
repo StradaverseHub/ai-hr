@@ -68,6 +68,9 @@ def wait_retirement(identity, group_state, read_unit, monotonic=time.monotonic, 
                     return
                 if group == 'collected' and unit['load'] == 'not-found' and unit['invocation'] == '':
                     return
+                # A retained/reloaded definition is not a live activation; require every live field empty.
+                if group == 'collected' and unit['load'] == 'loaded' and unit['active'] == 'inactive' and unit['invocation'] == '' and unit['cgroup'] == '':
+                    return
         sleep(min(0.05, max(0, deadline-monotonic())))
 
 def cgroup_identity(fd, identity):
@@ -95,7 +98,7 @@ def pinned_group_state(directory_fd, events_fd, pin):
         return 'empty' if rows['populated'] == '0' else 'populated'
     except OSError as error:
         # Only collection of the same previously validated kernel inode may be paired with
-        # authoritative unit not-found. Missing arbitrary paths/PIDs never supply proof.
+        # authoritative retired-unit state. Missing arbitrary paths/PIDs never supply proof.
         require(error.errno in (errno.ENODEV, errno.ENOENT) and path in deleted_paths)
         return 'collected'
 
