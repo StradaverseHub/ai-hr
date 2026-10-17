@@ -38,6 +38,9 @@ import {
   setProfileOptionActive,
 } from '../core/profile-options';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { PERSONNEL_FIELDS } from '../lib/personnel-field-registry';
+import { personnelControl, personnelFormField } from '../lib/personnel-form-contract';
+import { hasPersonnelPostedBinding } from './helpers/personnel-posted-binding';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
@@ -195,22 +198,24 @@ describe('8c284478 — Salutation on Personal Details', () => {
     expect(grp, 'the shared person-name group is rendered on the Personal Details form').toBeGreaterThan(-1);
     expect(form, 'and it is fed this page\'s catalogs').toContain('salutation: profileOptions.salutation');
     const slot = form.indexOf('afterSalutation=', grp);
-    const full = form.indexOf('name="fullName"', grp);
+    const full = form.indexOf("personnelInput('profile.personal_details.fullname','record')", grp);
     expect(slot, 'Full Name goes in the group\'s after-Salutation slot').toBeGreaterThan(grp);
     expect(full, 'fullName field present on the Personal Details form').toBeGreaterThan(slot);
+    expect(hasPersonnelPostedBinding(form, 'profile.personal_details.fullname', 'fullName')).toBe(true);
+    expect(personnelControl('profile.personal_details.fullname', 'record')).toMatchObject({ name: 'fullName', required: true });
 
     // The order itself is pinned WHERE IT NOW LIVES: inside the shared group, Salutation is rendered
     // first and the slot immediately after it, so Salutation still precedes Full Name on this form.
     const GROUP = read('components/person-name-fields.tsx');
-    const gSal = GROUP.indexOf("<Field label={t('salutation')}>");
-    const gSlot = GROUP.indexOf('{props.afterSalutation}');
-    const gFirst = GROUP.indexOf("<Field label={t('firstName')}>");
-    expect(gSal, 'the group renders Salutation').toBeGreaterThan(-1);
-    expect(gSlot).toBeGreaterThan(gSal);
-    expect(gFirst).toBeGreaterThan(gSlot);
+    expect(GROUP).toContain("PERSONNEL_FIELDS.filter(field=>field.formGroup==='person-name').map");
+    expect(PERSONNEL_FIELDS.filter(field => field.formGroup === 'person-name').map(field => field.ownerField))
+      .toEqual(['salutation', 'firstName', 'lastName', 'preferredName', 'religion', 'race']);
+    expect(GROUP).toContain("</PersonnelField>{key==='salutation' ? props.afterSalutation : null}");
     // Catalog-backed via ProfileOptionSelect (legacy-value tolerance) with the i18n label.
     expect(GROUP).toContain('ProfileOptionSelect');
-    expect(GROUP).toContain("t('salutation')");
+    expect(GROUP).toContain('options={personnelFormCatalog(fieldForName(key).id,props.catalogs)}');
+    expect(GROUP).toContain('name={personnelFormName(fieldForName(key).id)}');
+    expect(personnelFormField('profile.personal_details.salutation')).toMatchObject({ labelKey: 'people.detail.salutation', allowedValuesOwner: 'profile_option:salutation', form: { name: 'salutation' } });
   });
 
   // ── (i18n) labels in all six locales ─────────────────────────────────────

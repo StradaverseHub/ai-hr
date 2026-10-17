@@ -33,6 +33,8 @@ import { BNM_BANKS } from '../localization/my/bank-files/bnm-codes';
 import { myClientPack } from '../localization/my/client';
 import { setBankAction, setStatutoryAction } from '../app/admin/personnel/[employmentId]/actions';
 import { adminCtx, closeAll, latestEventPayload, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import { personnelInput } from '../lib/personnel-form-contract';
+import { hasPersonnelPostedBinding } from './helpers/personnel-posted-binding';
 
 // requireAdmin() (Clerk/session) is unavailable in the harness — return the seeded admin ctx.
 let ADMIN: ReturnType<typeof adminCtx>;
@@ -77,18 +79,28 @@ describe('Bank card — source layout (ef720d3a)', () => {
     // switches; what it now composes rather than builds is the pair of employee bank fields.
     expect(CARD.includes('<BankAccountFields')).toBe(true);
     expect(CARD.includes('mode="form"')).toBe(true);
-    expect(FIELDS.includes("name: 'bankName'")).toBe(true);
-    expect(FIELDS.includes("name: 'bankAccountNo'")).toBe(true);
+    expect(hasPersonnelPostedBinding(FIELDS, 'bank_statutory.bank_information.bankname', 'bankName')).toBe(true);
+    expect(hasPersonnelPostedBinding(FIELDS, 'bank_statutory.bank_information.bankaccountno', 'bankAccountNo')).toBe(true);
+    expect(FIELDS).toContain("const mode=props.mode==='controlled' ? 'draft' : 'edit';");
+    expect(FIELDS).toContain('defaultValue: accountNo');
+    expect(FIELDS).toContain('defaultValue: current');
+    expect(personnelInput('bank_statutory.bank_information.bankaccountno', 'edit')).toMatchObject({ name: 'bankAccountNo', type: 'text' });
     expect(FIELDS.includes('<select')).toBe(true);
     // r393 (685d2380 step 3a) — the four custom-holder inputs moved one file further, into
     // components/custom-holder-fields.tsx, so the draft employee's Bank & Statutory tab renders the same
     // ticks and boxes. The card composes the group in FORM mode, which is what still posts these names;
     // test/r393-draft-custom-holder.dom.test.tsx pins the rendered markup byte for byte.
     expect(CARD.includes('<CustomHolderFields')).toBe(true);
+    expect(HOLDER).toContain("const mode=props.mode==='controlled'?'draft':'edit';");
     for (const f of ['enableCustomHolderName', 'customHolderName', 'enableCustomHolderId', 'customHolderId']) {
-      expect(HOLDER.includes(`'${f}'`), `missing holder input ${f}`).toBe(true);
+      const fieldId = `bank_statutory.bank_information.${f.toLowerCase()}`;
+      expect(HOLDER).toContain(`${f}:'${fieldId}'`);
+      expect(HOLDER).toContain(`...personnelInput(fields.${f},mode)`);
+      expect(personnelInput(fieldId, 'edit')).toMatchObject({ name: f, type: f.startsWith('enable') ? 'checkbox' : 'text', required: !f.startsWith('enable') });
     }
-    expect(HOLDER.includes('name: key')).toBe(true);
+    expect(HOLDER).toContain("{enableName && (");
+    expect(HOLDER).toContain("{enableId && (");
+    expect(HOLDER).toContain("defaultValue: props.defaults[key] ?? ''");
   });
 
   it('(b) sources the bank dropdown from the BNM catalog (29 canonical names incl. Maybank/CIMB)', () => {
