@@ -869,15 +869,15 @@ export function SystemLabelsGrid({
         {error && <ErrorBanner message={error} />}
         {hasChanges && <p className="text-xs text-amber-600 dark:text-amber-400">{t('unsavedChanges')}</p>}
 
-        {/* 797e3523: responsive full-width grid — no forced min-width so it fits the container without
-            excessive horizontal scrolling; long values wrap / tooltip instead. */}
+        {/* Keep text columns readable beside Criteria and Head. The full-width grid scrolls inside
+            its wrapper when these column minima exceed the available space. */}
         <div className={tableWrapCls}>
           <table className="w-full text-sm" onPaste={onGridPaste}>
             <thead className={theadCls}>
               <tr>
                 <th className="w-8 px-2 py-2"></th>
                 {TEXT_COLS[kind].map((c) => (
-                  <th key={String(c.field)} className={sortableThCls} onClick={() => toggleSort(c.field)}>
+                  <th key={String(c.field)} className={`${sortableThCls} ${c.headerKey === 'description' ? 'min-w-56' : 'min-w-40'}`} onClick={() => toggleSort(c.field)}>
                     {t(`col.${c.headerKey}`)}
                     {c.required ? ' *' : ''}
                     {sortField === c.field &&
