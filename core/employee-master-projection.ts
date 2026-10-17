@@ -12,7 +12,7 @@ import type { EmployeeMasterSpec, MasterCell, MasterOwnerRecord, MasterSubject }
 import { draftFamily, draftProvisionalEndOn, withSameAsPermanent, type EmployeeDraftData } from '../lib/employee-draft-schema';
 import { completedYearsAt } from '../lib/completed-years';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { companyOnDate, provenCompanySegmentsForPeriodBulkTx, employedByCompanyDuring, provenCompanyDatesTx } from './employment-company';
+import { companyOnDate, dayBefore, provenCompanySegmentsForPeriodBulkTx, employedByCompanyDuring, provenCompanyDatesTx } from './employment-company';
 import { deriveEmploymentStatus } from './employment-status';
 import { hireCorrectionViewTx } from './hire-correction';
 import { movementHistoryTx, movementDetailTx } from './movement';
@@ -46,7 +46,10 @@ export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:Emp
   const needed=new Set(fields.filter(f=>spec.asAt===today||f.history!=='current'&&f.history!=='none').map(f=>f.owner));
   const candidates=await tx.select().from(schema.employment).where(and(lte(schema.employment.hiredOn,spec.asAt),or(...spec.companyIds.map(id=>employedByCompanyDuring(id,spec.asAt,spec.asAt))))).orderBy(asc(schema.employment.id)).limit(SUBJECT_LIMIT+1);
   if(candidates.length>SUBJECT_LIMIT)throw new Error('This report matches more than 2,000 employments. Narrow its company/employee conditions.');
-  const scopeDates=new Map(candidates.map(row=>[row.id,row.terminatedOn&&row.terminatedOn<spec.asAt?row.terminatedOn:spec.asAt]));
+  // Canonical termination closes assignment.validTo at terminatedOn (exclusive). An ended report
+  // subject needs strict proof of its last effective company day, never today's mutable employer.
+  // If that day precedes hire or has missing history, the shared proof resolver still refuses it.
+  const scopeDates=new Map(candidates.map(row=>[row.id,row.terminatedOn&&row.terminatedOn<=spec.asAt?dayBefore(row.terminatedOn):spec.asAt]));
   const proofs=await provenCompanyDatesTx(tx,candidates.map(row=>({employmentId:row.id,date:scopeDates.get(row.id)!})));
   const unknownScope:MasterSubject[]=[];
   const employments=candidates.filter(row=>{
