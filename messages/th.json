@@ -19608,6 +19608,8 @@
     "neverRun": "ยังไม่เคยเรียกใช้",
     "recent": "รายงานที่เรียกใช้ล่าสุด",
     "viewAll": "ดูรายงานที่บันทึกไว้ทั้งหมด",
+    "viewAllCount": "ดูทั้งหมด ({count, number})",
+    "viewAllCountLabel": "{count, plural, other {ดูรายงานที่บันทึกไว้ทั้งหมด # รายการ}}",
     "operator": {
       "eq": "เท่ากับ",
       "ne": "ไม่เท่ากับ",

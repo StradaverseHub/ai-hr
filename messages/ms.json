@@ -19608,6 +19608,8 @@
     "neverRun": "Belum dijalankan",
     "recent": "Laporan dijalankan baru-baru ini",
     "viewAll": "Lihat semua laporan tersimpan",
+    "viewAllCount": "Lihat semua ({count, number})",
+    "viewAllCountLabel": "{count, plural, other {Lihat semua # laporan tersimpan}}",
     "operator": {
       "eq": "Sama",
       "ne": "Tidak sama",

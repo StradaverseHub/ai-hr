@@ -19608,6 +19608,8 @@
     "neverRun": "Not run yet",
     "recent": "Recently run reports",
     "viewAll": "View all saved reports",
+    "viewAllCount": "View all ({count, number})",
+    "viewAllCountLabel": "{count, plural, one {View all # saved report} other {View all # saved reports}}",
     "operator": {
       "eq": "Equals",
       "ne": "Does not equal",
