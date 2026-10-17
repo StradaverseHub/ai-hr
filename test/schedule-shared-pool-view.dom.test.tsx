@@ -10,7 +10,7 @@ import ta from '../messages/ta.json';
 import th from '../messages/th.json';
 import viMessages from '../messages/vi.json';
 
-const catalog=vi.hoisted(()=>({locale:'en',messages:{} as Record<string,unknown>}));
+const catalog=vi.hoisted(()=>({locale:'en',messages:{} as typeof en}));
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>createTranslator({locale:catalog.locale,messages:catalog.messages,namespace:namespace as never,onError:error=>{throw error;}})}));
 vi.mock('../core/attendance-rule',()=>({countEmploymentsInRule:async()=>0}));
 vi.mock('../core/schedule-group-controls',()=>({scheduleGroupControls:async()=>({label:null,dutyRosterControl:false,revisions:[]})}));
@@ -38,7 +38,7 @@ const rule={
 
 for(const [locale,messages] of [['en',en],['ms',ms],['zh',zh],['ta',ta],['th',th],['vi',viMessages]] as const){
   it(`${locale}: explains shared pool membership without claiming it moves the shift's default group`,async()=>{
-    catalog.locale=locale;catalog.messages=messages;
+    catalog.locale=locale;catalog.messages=messages as typeof en;
     window.history.replaceState({},'','/admin/attendance/schedule/view-group');
     const tree=await ScheduleGroupSections({s:{} as SessionContext,rule,rules:[rule],mode:'view'});
     render(<NextIntlClientProvider locale={locale} messages={messages} onError={error=>{throw error;}}>{tree}</NextIntlClientProvider>);
