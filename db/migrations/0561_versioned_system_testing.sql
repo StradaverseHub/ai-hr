@@ -119,7 +119,11 @@ CREATE POLICY test_version_read ON public.test_case_version FOR SELECT USING(ten
 CREATE POLICY test_version_insert ON public.test_case_version FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND app.is_admin() AND app.testing_live_principal() AND published_by_user_id=app.current_user_id() AND provenance<>'upgrade_baseline');
 CREATE POLICY test_assignment_read ON public.test_assignment FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.testing_live_principal() AND (app.is_admin() OR tester_user_id=app.current_user_id()));
 CREATE POLICY test_assignment_write ON public.test_assignment FOR ALL USING(tenant_id=app.current_tenant_id() AND app.is_admin() AND app.testing_live_principal()) WITH CHECK(tenant_id=app.current_tenant_id() AND app.is_admin() AND app.testing_live_principal());
-CREATE POLICY test_execution_read ON public.test_execution FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.testing_live_principal() AND (app.is_admin() OR app.testing_owns_execution(id)));
+-- RETURNING checks SELECT authority before a STABLE lookup can rediscover this new execution.
+-- Derive own-read authority from the row and its existing assignment; retain historical attempts.
+CREATE POLICY test_execution_read ON public.test_execution FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.testing_live_principal() AND
+ (app.is_admin() OR (tester_user_id=app.current_user_id() AND EXISTS(SELECT 1 FROM public.test_assignment a
+  WHERE a.id=test_execution.assignment_id AND a.tenant_id=test_execution.tenant_id AND a.tester_user_id=app.current_user_id()))));
 CREATE POLICY test_execution_insert ON public.test_execution FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND tester_user_id=app.current_user_id() AND app.testing_live_principal() AND EXISTS(SELECT 1 FROM public.test_assignment a WHERE a.id=assignment_id AND a.tenant_id=test_execution.tenant_id AND a.tester_user_id=app.current_user_id() AND a.active AND a.target_version_id=version_id));
 -- Updates only link canonical own Feedback; head changes are made by the private run trigger below.
 CREATE POLICY test_execution_update ON public.test_execution FOR UPDATE USING(tenant_id=app.current_tenant_id() AND app.testing_owns_execution(id)) WITH CHECK(tenant_id=app.current_tenant_id() AND app.testing_owns_execution(id));
