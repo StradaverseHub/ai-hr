@@ -1989,7 +1989,28 @@
       "registerDownloadExisting": "Muat turun CSV rekod semasa",
       "registerLimit": "Maksimum 500 baris bagi setiap fail daftar. Muat turun rekod semasa menyertakan ID Rekod tersimpan; semak setiap baris sebelum menerapkan.",
       "registerRequiredCreate": "Wajib apabila ID Rekod kosong.",
-      "fullUploadHint": "Menerima CSV, XLSX atau XLS. Buku kerja penuh turut membaca helaian Family, Qualifications dan Emergency Contacts."
+      "fullUploadHint": "Menerima CSV, XLSX atau XLS. Buku kerja penuh turut membaca helaian Family, Qualifications dan Emergency Contacts.",
+      "exclusionsTitle": "Medan yang diurus dalam Personel",
+      "exclusionsHint": "Medan ini tidak diisi melalui import pekerja. Buka tab Personel yang disenaraikan untuk melihatnya atau menggunakan tindakan yang tersedia.",
+      "exclusionsTab": "Tab Personel",
+      "exclusionsField": "Medan",
+      "exclusionsReason": "Sebab dan tempat untuk menguruskannya",
+      "exclusionReasons": {
+        "managed": "Nilai ini dikira, merupakan sejarah, atau diubah melalui tindakan Personel tersendiri. Gunakan tab Personelnya.",
+        "file": "Fail dan tindakan pada skrin diurus dalam Personel; ia bukan nilai hamparan.",
+        "confirmation": "Dikira daripada tarikh pengesahan dan lanjutan percubaan yang diluluskan. Gunakan Pergerakan untuk lanjutan.",
+        "editor": "Gunakan editor medan ini dalam Personel untuk mengubahnya.",
+        "tax": "Pilih Kategori Cukai terperinci dalam Cukai Pendapatan. Kategori import umum tidak dapat membuat pilihan ini.",
+        "superior": "Pilih Penyelia Terus dalam Personel supaya akses dan hubungan pelaporan berulang dapat disemak.",
+        "delegation": "Gunakan Perwakilan Kelulusan untuk memilih wakil, tarikh dan skop.",
+        "location": "Tetapkan Lokasi Kerja dalam Personel dengan tarikh kuat kuasa dan lokasi yang dibenarkan.",
+        "epf": "Pilih Kategori KWSP dalam Bank & Berkanun supaya peraturan caruman dapat disemak.",
+        "clocking": "Pilih Lokasi Rekod Masa dalam Personel supaya lokasi yang dibenarkan dan sejarah penetapan disemak.",
+        "backupShift": "Pilih Syif Sandaran dalam Kehadiran supaya Kumpulan Jadual, tarikh dan syif yang tersedia dapat disemak.",
+        "taxRelief": "Tetapkan kategori pelepasan anak dalam Cukai Pendapatan supaya pilihan cukai lengkap dapat disemak.",
+        "hireCorrection": "Gunakan Betulkan Butiran Pengambilan untuk mengubah Pusat Kos asal dan mengekalkan sejarah pembetulannya.",
+        "termination": "Gunakan Pergerakan untuk memilih Sebab Penamatan bersama tarikh pekerjaan yang diperlukan."
+      }
     },
     "wizard": {
       "deleteRecord": "Padam Rekod",

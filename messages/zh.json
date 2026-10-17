@@ -1989,7 +1989,28 @@
       "registerDownloadExisting": "下载当前记录 CSV",
       "registerLimit": "每个登记文件最多 500 行。当前记录下载包含已保存的记录 ID；应用前请逐行核对。",
       "registerRequiredCreate": "记录 ID 为空时必填。",
-      "fullUploadHint": "支持 CSV、XLSX 或 XLS。完整工作簿也会读取 Family、Qualifications 和 Emergency Contacts 工作表。"
+      "fullUploadHint": "支持 CSV、XLSX 或 XLS。完整工作簿也会读取 Family、Qualifications 和 Emergency Contacts 工作表。",
+      "exclusionsTitle": "在人事页面管理的字段",
+      "exclusionsHint": "这些字段不通过员工导入填写。请打开所列的人事选项卡查看字段或使用其可用操作。",
+      "exclusionsTab": "人事选项卡",
+      "exclusionsField": "字段",
+      "exclusionsReason": "原因与处理位置",
+      "exclusionReasons": {
+        "managed": "此值由系统计算、属于历史记录，或需通过专属人事操作更改。请使用其人事选项卡。",
+        "file": "文件和页面操作在人事页面处理，不属于电子表格中的值。",
+        "confirmation": "根据转正日期及已批准的试用期延长计算。延长试用期请使用人事异动。",
+        "editor": "请在人事页面中使用此字段的编辑功能进行更改。",
+        "tax": "请在所得税中选择详细的税务类别。通用导入类别无法代替此选择。",
+        "superior": "请在人事页面选择直属上司，以便检查权限及循环汇报关系。",
+        "delegation": "请使用审批委托选择受托人、日期和范围。",
+        "location": "请在人事页面设置获授权的工作地点及生效日期。",
+        "epf": "请在银行与法定资料中选择公积金类别，以便检查缴费规则。",
+        "clocking": "请在人事页面选择打卡地点，以便检查允许的地点及分配历史。",
+        "backupShift": "请在考勤中选择备用班次，以便检查排班组、日期及可用班次。",
+        "taxRelief": "请在所得税中设置子女减免类别，以便检查完整的税务选择。",
+        "hireCorrection": "请使用更正入职资料更改原始成本中心，并保留更正历史。",
+        "termination": "请使用人事异动选择离职原因，并填写所需的任职日期。"
+      }
     },
     "wizard": {
       "deleteRecord": "删除记录",

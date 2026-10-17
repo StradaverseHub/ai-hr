@@ -1,4 +1,5 @@
 'use client';
+import {personnelImportExclusionRows} from '@/lib/personnel-import-exclusions';
 import {buildPersonnelCsv} from '@/lib/personnel-csv';
 import {isPersonnelRegisterKind,buildPersonnelRegisterCsv} from '@/lib/personnel-register-import';
 import type {PersonnelImportSheet} from '@/lib/personnel-import-contract';
@@ -176,14 +177,14 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
       }
       extraSheets.push({
         name: 'Instructions',
-        rows: buildInstructionRows(t('instructionsHeading'), [
+        rows: [...buildInstructionRows(t('instructionsHeading'), [
           t('sectionInstructionKey'),
           t('sectionInstructionBlank'),
           isPersonnelRegisterKind(section)?t('registerInstructions'):section === 'family' ? t('sectionInstructionFamilyRow') : t('sectionInstructionOneRow'),
           t('sectionInstructionFence'),
           t('instructionDates'),
           t('instructionIdentityText'),
-        ]),
+        ]),[],...personnelImportExclusionRows(section,(key,fallback)=>personnelLabels.has(key)?personnelLabels(key):fallback)],
       });
       const bytes = await buildXlsx(columns.map(employeeColumnLabel), [], {
         sheetName: SECTION_SHEET_NAMES[section],

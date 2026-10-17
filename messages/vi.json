@@ -1989,7 +1989,28 @@
       "registerDownloadExisting": "Tải CSV bản ghi hiện tại",
       "registerLimit": "Tối đa 500 dòng mỗi tệp. Bản tải hiện tại có ID đã lưu; hãy kiểm tra từng dòng trước khi áp dụng.",
       "registerRequiredCreate": "Bắt buộc khi ID bản ghi để trống.",
-      "fullUploadHint": "Chấp nhận CSV, XLSX hoặc XLS. Sổ tính đầy đủ cũng đọc các trang Family, Qualifications và Emergency Contacts."
+      "fullUploadHint": "Chấp nhận CSV, XLSX hoặc XLS. Sổ tính đầy đủ cũng đọc các trang Family, Qualifications và Emergency Contacts.",
+      "exclusionsTitle": "Các trường được quản lý trong Nhân sự",
+      "exclusionsHint": "Không điền các trường này qua chức năng nhập nhân viên. Mở thẻ Nhân sự được liệt kê để xem hoặc sử dụng các thao tác có sẵn.",
+      "exclusionsTab": "Thẻ Nhân sự",
+      "exclusionsField": "Trường",
+      "exclusionsReason": "Lý do và nơi xử lý",
+      "exclusionReasons": {
+        "managed": "Giá trị này được tính toán, thuộc lịch sử hoặc được thay đổi qua thao tác Nhân sự riêng. Hãy dùng thẻ Nhân sự tương ứng.",
+        "file": "Tệp và thao tác trên màn hình được xử lý trong Nhân sự; chúng không phải giá trị bảng tính.",
+        "confirmation": "Được tính từ ngày xác nhận và các lần gia hạn thử việc đã duyệt. Dùng Biến động nhân sự để gia hạn.",
+        "editor": "Dùng trình chỉnh sửa của trường này trong Nhân sự để thay đổi.",
+        "tax": "Chọn Loại thuế chi tiết trong Thuế thu nhập. Loại nhập chung không thể thay cho lựa chọn này.",
+        "superior": "Chọn Cấp trên trực tiếp trong Nhân sự để kiểm tra quyền và quan hệ báo cáo vòng lặp.",
+        "delegation": "Dùng Ủy quyền phê duyệt để chọn người nhận, ngày và phạm vi.",
+        "location": "Gán Địa điểm làm việc được phép cùng ngày hiệu lực trong Nhân sự.",
+        "epf": "Chọn Loại EPF trong Ngân hàng và Pháp định để kiểm tra quy tắc đóng góp.",
+        "clocking": "Chọn Địa điểm chấm công trong Nhân sự để kiểm tra địa điểm được phép và lịch sử phân công.",
+        "backupShift": "Chọn Ca dự phòng trong Chấm công để kiểm tra Nhóm lịch, ngày và các ca khả dụng.",
+        "taxRelief": "Đặt các loại giảm trừ con trong Thuế thu nhập để kiểm tra toàn bộ lựa chọn thuế.",
+        "hireCorrection": "Dùng Sửa chi tiết tuyển dụng để thay đổi Trung tâm chi phí ban đầu và giữ lịch sử sửa đổi.",
+        "termination": "Dùng Biến động nhân sự để chọn Lý do chấm dứt cùng các ngày làm việc bắt buộc."
+      }
     },
     "wizard": {
       "deleteRecord": "Xóa hồ sơ",

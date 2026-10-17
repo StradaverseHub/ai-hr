@@ -1,5 +1,6 @@
 'use client';
 import {buildPersonnelCsv} from '@/lib/personnel-csv';
+import {personnelImportExclusionRows} from '@/lib/personnel-import-exclusions';
 import {PERSONNEL_REGISTER_KINDS,PERSONNEL_REGISTER_SHEETS,personnelRegisterColumns,type PersonnelRegisterTexts,type PersonnelRegisterKind} from '@/lib/personnel-register-import';
 import type {PersonnelImportSheet} from '@/lib/personnel-import-contract';
 import { PersonnelImportValues } from '@/components/personnel-import-values';
@@ -246,7 +247,7 @@ export function EmployeeImport({
             },
             {
               name: EMPLOYEE_XLSX_SHEETS.instructions,
-              rows: buildInstructionRows(t('instructionsHeading'), [
+              rows: [...buildInstructionRows(t('instructionsHeading'), [
                 t('instructionRequired', { columns: IMPORT_COLUMNS.required.map(employeeColumnLabel).join(', ') }),
                 t('instructionDates'),
                 t('instructionIdentityText'),
@@ -265,7 +266,7 @@ export function EmployeeImport({
                 t('registerInstructions'),
                 t('registerFullInstructions'),
                 t('instructionSamples'),
-              ]),
+              ]),[],...personnelImportExclusionRows('full',(key,fallback)=>personnelLabels.has(key)?personnelLabels(key):fallback)],
             },
           ],
         },
