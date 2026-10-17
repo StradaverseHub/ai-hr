@@ -115,7 +115,7 @@ describe('Personnel — Attendance Information tab (1fbe9891)', () => {
   it('the Shift arrangement card asks for an Effective date, like the Location card above it', () => {
     expect(PAGE.includes('defaultEffectiveFrom={today}')).toBe(true);
     // The Location card's own effective date is untouched — the symmetry is the point.
-    expect(hasPersonnelPostedBinding(PAGE, 'attendance.work_location_and_shift_arrangement.locationeffectivefrom', 'effectiveFrom')).toBe(true);
+    expect(hasPersonnelPostedBinding(PAGE, 'attendance.work_location_and_shift_arrangement.locationeffectivefrom', 'effectiveDate')).toBe(true);
     const FIELDS = fs.readFileSync(
       path.resolve(__dirname, '../components/employee-shift-fields.tsx'),
       'utf8',
