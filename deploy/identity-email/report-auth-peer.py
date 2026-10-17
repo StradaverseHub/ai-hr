@@ -86,9 +86,12 @@ def pinned_group_state(directory_fd, events_fd, pin):
         require(path in (pin[2], pin[2] + ' (deleted)'))
         os.lseek(events_fd, 0, os.SEEK_SET)
         content = os.read(events_fd, 512).decode('ascii')
-        require(path == pin[2])
         rows = dict(row.split() for row in content.strip().splitlines())
         require(set(rows) <= {'populated', 'frozen'} and rows.get('populated') in ('0', '1') and len(content) < 512)
+        if path == pin[2] + ' (deleted)':
+            # The same collected kernel directory can retain readable events; only empty qualifies.
+            require(rows['populated'] == '0')
+            return 'collected'
         return 'empty' if rows['populated'] == '0' else 'populated'
     except OSError as error:
         # Only collection of the same previously validated kernel inode may be paired with
