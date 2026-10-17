@@ -6,7 +6,8 @@ import { hireEmployee } from '../core/org';
 import { createShift,assignDefaultShift,assignShift,setRestDay,usualShiftsFor,updateShift,deleteShift } from '../core/roster';
 import { getScheduleRotation,saveScheduleRotation } from '../core/attendance-rotation';
 import { allowanceScheduleFactsTx,attendanceForEmploymentRange,otPlanCalendarMonth,checkIn,checkOut,workingShiftSchedule } from '../core/attendance';
-import { setRuleShifts } from '../core/attendance-rule';
+import { createAttendanceRule,setRuleShifts,type AttendanceRuleInput } from '../core/attendance-rule';
+import { saveScheduleGroupControl } from '../core/schedule-group-controls';
 import { previewLeaveDeduction,workingDatesForSpan,leaveWorkingDaysCounterTx } from '../core/leave';
 import { absenceBreakdownByEmployment } from '../core/absence-days';
 import { createBatch,generatePayslips } from '../packs/payroll/service';
@@ -19,10 +20,17 @@ import { adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,ty
 let b:Base;
 const add=(date:string,n:number)=>new Date(Date.parse(`${date}T00:00:00Z`)+n*86_400_000).toISOString().slice(0,10);
 const future=()=>add(todayInKualaLumpur(),8);
+const ruleInput=(name:string):AttendanceRuleInput=>({
+  name,lateGracePeriodMinutes:0,lateAfterMinutes:0,lateDeductMinutes:0,includeGraceInLateness:false,
+  earlyGracePeriodMinutes:0,earlyAfterMinutes:0,earlyDeductMinutes:0,includeGraceInEarlyOut:false,
+  applyToEarlyOt:false,otRows:[],
+});
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();});
 async function fixture(){
   const a=adminCtx(b);
-  const [rule]=await owner.db.insert(schema.attendanceRule).values({tenantId:b.tenantId,name:'Rotating security',dutyRosterControl:true,weeklyPattern:[1,2,3,4,5]}).returning();
+  // Creation also records the canonical legacy-OT snapshot under this administrator's context.
+  const rule=await createAttendanceRule(a,{...ruleInput('Rotating security'),weeklyPattern:[1,2,3,4,5]});
+  await saveScheduleGroupControl(a,{ruleId:rule.id,kind:'duty',enabled:true});
   const morning=await createShift(a,{name:'Morning',code:'AM',startTime:'08:00',endTime:'17:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5],ruleId:rule.id});
   const night=await createShift(a,{name:'Night',code:'PM',startTime:'20:00',endTime:'05:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5],ruleId:rule.id});
   const e=await hireEmployee(a,{person:{fullName:'Rotation worker',primaryEmail:'rotation@test.local'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
@@ -127,7 +135,7 @@ describe('approved Schedule Group rotation workflow',()=>{
     expect((await getScheduleRotation(f.a,f.rule.id)).versions[1].allowedShiftIds).toEqual([f.night.id]);
   });
   it('reuses another group’s shift without moving its default or changing an ungrouped employee',async()=>{
-    const f=await fixture();const [other]=await owner.db.insert(schema.attendanceRule).values({tenantId:b.tenantId,name:'Another crew'}).returning();
+    const f=await fixture();const other=await createAttendanceRule(f.a,ruleInput('Another crew'));
     const shared=await createShift(f.a,{code:'OTHER_CREW',name:'Other crew',startTime:'09:00',endTime:'17:00',ruleId:other.id});
     await save(f,{...f.cycle,days:f.cycle.days.map(d=>d.kind==='full'?{...d,shiftId:shared.id}:d)},[shared.id,f.night.id]);
     expect((await owner.db.select().from(schema.shift).where(eq(schema.shift.id,shared.id)))[0].ruleId).toBe(other.id);
