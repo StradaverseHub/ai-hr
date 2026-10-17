@@ -50,6 +50,14 @@ const copy={
   th:{balances:'ยอดวันลาตามพนักงานและประเภทการลา ณ วันที่ที่คุณเลือก',hint:'ดูพนักงานทั้งหมด หรือค้นหาด้วยชื่อหรือรหัสพนักงานเพื่อเลือกพนักงานหนึ่งคน'},
   vi:{balances:'Số dư phép theo nhân viên và loại phép, tính đến ngày bạn chọn.',hint:'Xem tất cả nhân viên, hoặc tìm theo tên hay mã nhân viên để chọn một người.'},
 };
+const emptyBalances={
+  en:'No leave types match this selection.',
+  ms:'Tiada jenis cuti yang sepadan dengan pilihan ini.',
+  zh:'没有符合当前选择的假期类型。',
+  ta:'இந்தத் தேர்விற்குப் பொருந்தும் விடுப்பு வகைகள் இல்லை.',
+  th:'ไม่มีประเภทการลาที่ตรงกับการเลือกนี้',
+  vi:'Không có loại phép nào phù hợp với lựa chọn này.',
+};
 
 for(const [locale,messages] of [['en',en],['ms',ms],['zh',zh],['ta',ta],['th',th],['vi',viMessages]] as const){
   for(const [tab,Page] of [['balances',BalancesPage],['records',RecordsPage]] as const){
@@ -71,6 +79,21 @@ for(const [locale,messages] of [['en',en],['ms',ms],['zh',zh],['ta',ta],['th',th
           expect(all).not.toHaveAttribute('aria-current');
           expect(screen.getAllByText(people[0].employeeCode).length).toBeGreaterThan(0);
         }
+      });
+    }
+  }
+  for(const selection of ['all','single'] as const){
+    for(const search of ['', 'NO-SUCH-FICTIONAL-LEAVE']){
+      it(`${locale}: empty balances use scope-neutral copy for ${selection}, ${search?'unmatched search':'no eligible rows'}`,async()=>{
+        catalog.locale=locale;catalog.messages=messages as typeof en;
+        const params={...(selection==='single'?{emp:people[0].employmentId}:{}),...(search?{q:search}:{})};
+        render(<NextIntlClientProvider locale={locale} messages={messages} onError={error=>{throw error;}}>{await BalancesPage({searchParams:Promise.resolve(params)})}</NextIntlClientProvider>);
+        expect(screen.getByRole('cell',{name:emptyBalances[locale]})).toBeVisible();
+        expect(screen.getByPlaceholderText(messages.leave.inquiry.searchPlaceholder)).toHaveValue(search);
+        const all=screen.getByText(messages.employeePanel.allEmployees).closest('button');
+        expect(all).not.toBeNull();
+        if(selection==='all')expect(all).toHaveAttribute('aria-current','true');
+        else expect(all).not.toHaveAttribute('aria-current');
       });
     }
   }
