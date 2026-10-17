@@ -46,11 +46,12 @@ describe('reviewed Labels source continuity',()=>{
   expect(()=>validateLabelsTransitionEvidence(input)).toThrow(/continuity/);
  });
  it('refuses arbitrary new bytes on an allowed path, partial fixes, reordered paths and source/Git drift',()=>{
-  for(const mode of ['new bytes','partial','reorder','git']){
+  for(const mode of ['new bytes','partial','reorder','git','downgrade']){
    const input=evidence();
    if(mode==='new bytes')input.currentProof.paths.find(row=>row.path===input.changes[0].path)!.sha256='f'.repeat(64);
    if(mode==='partial')input.currentProof.paths.find(row=>row.path===input.changes[0].path)!.sha256=input.changes[0].oldSha256;
    if(mode==='reorder')input.currentProof.paths.reverse();
+   if(mode==='downgrade')input.currentProof=structuredClone(input.preparationProof);
    if(mode==='git')input.currentGitProof=structuredClone(input.preparationProof);
    else{input.currentProof=proof(input.currentProof.paths);input.currentGitProof=structuredClone(input.currentProof);}
    expect(()=>validateLabelsTransitionEvidence(input),mode).toThrow(/continuity/);
