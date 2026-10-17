@@ -67,6 +67,57 @@ async function page(bandId: string, receipt?: string, savedSection: 'general'|'a
 }
 
 describe('independent Schedule Group forms after a server refresh', () => {
+  it('keeps the real General form and its dirty label while moving tabs by keyboard',async()=>{
+    window.history.replaceState({},'', '/admin/attendance/schedule/group/edit');
+    const tree=await resolveGeneral(await ScheduleGroupSections({s:{} as SessionContext,rule,rules:[rule],mode:'edit'}));
+    render(<NextIntlClientProvider locale="en" messages={messages}><AttendanceSettingsNavigation/>{tree}</NextIntlClientProvider>);
+    const panels=screen.getAllByRole('tabpanel',{hidden:true});
+    expect(panels).toHaveLength(4);
+    const general=screen.getByRole('tabpanel');
+    const label=general.querySelector<HTMLInputElement>('input[name="label"]')!;
+    expect(label).not.toBeNull();
+    fireEvent.change(label,{target:{value:'OFFICE-UNSAVED'}});
+    expect(hasUnsavedChanges()).toBe(true);
+    const generalTab=screen.getByRole('tab',{name:messages.admin.scheduleConfig.sectionGeneral});
+    fireEvent.keyDown(generalTab,{key:'ArrowRight'});
+    expect(general).not.toBeVisible();
+    expect(label.isConnected).toBe(true);
+    expect(screen.getAllByRole('tabpanel',{hidden:true})).toEqual(panels);
+    const attendanceTab=screen.getByRole('tab',{selected:true});
+    fireEvent.keyDown(attendanceTab,{key:'ArrowLeft'});
+    expect(screen.getByRole('tabpanel')).toBe(general);
+    expect(general.querySelector('input[name="label"]')).toBe(label);
+    expect(label.value).toBe('OFFICE-UNSAVED');
+    expect(hasUnsavedChanges()).toBe(true);
+    expect(saveScheduleGroupGeneralAction).not.toHaveBeenCalled();
+  });
+
+  it('retains independent edits across mouse tab changes and an unchanged server tree refresh',async()=>{
+    window.history.replaceState({},'', '/admin/attendance/schedule/group/edit');
+    const renderTree=async()=>{
+      const resolved=await resolveGeneral(await ScheduleGroupSections({s:{} as SessionContext,rule,rules:[rule],mode:'edit'}));
+      return <NextIntlClientProvider locale="en" messages={messages}><AttendanceSettingsNavigation/>{resolved}</NextIntlClientProvider>;
+    };
+    const view=render(await renderTree());
+    const general=screen.getByRole('tabpanel');
+    const label=general.querySelector<HTMLInputElement>('input[name="label"]')!;
+    fireEvent.change(label,{target:{value:'OFFICE-DRAFT'}});
+    fireEvent.click(screen.getByRole('tab',{name:messages.admin.scheduleConfig.sectionAttendance}));
+    const attendance=screen.getByRole('tabpanel');
+    const grace=attendance.querySelector<HTMLInputElement>('input[name="lateGracePeriodMinutes"]')!;
+    fireEvent.change(grace,{target:{value:'9'}});
+    view.rerender(await renderTree());
+    fireEvent.click(screen.getByRole('tab',{name:messages.admin.scheduleConfig.sectionGeneral}));
+    expect(general.querySelector('input[name="label"]')).toBe(label);
+    expect(label.value).toBe('OFFICE-DRAFT');
+    fireEvent.click(screen.getByRole('tab',{name:messages.admin.scheduleConfig.sectionAttendance}));
+    expect(attendance.querySelector('input[name="lateGracePeriodMinutes"]')).toBe(grace);
+    expect(grace.value).toBe('9');
+    expect(hasUnsavedChanges()).toBe(true);
+    expect(saveScheduleGroupGeneralAction).not.toHaveBeenCalled();
+    expect(saveScheduleGroupAttendanceAction).not.toHaveBeenCalled();
+  });
+
   it('General posts only its owned fields after a saved Overtime refresh',async()=>{
     vi.spyOn(window,'confirm').mockReturnValue(true);
     const view=render(await page('original-band-id'));
