@@ -8,7 +8,11 @@ import {REPORTS_MIGRATION_ATTEMPT,REPORTS_RECOVERY_NAME,validateReportsRecoveryF
 const hash=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
 const root=fileURLToPath(new URL('..',import.meta.url)).replace(/\/$/,'');
 const inventory=JSON.parse(readFileSync(new URL('../scripts/reports-migration-only-inventory.json',import.meta.url),'utf8'));
-const journal=(JSON.parse(readFileSync(new URL('../db/migrations/meta/_journal.json',import.meta.url),'utf8')).entries as {tag:string;when:number}[]).map(row=>({...row,sha256:hash(readFileSync(new URL('../db/migrations/'+row.tag+'.sql',import.meta.url)))}));
+// This consumed admission describes one historical database, not today's migration graph. Read both
+// the journal order and its exact SQL bytes from the original immutable attempt.
+const historicalBytes=(relative:string)=>execFileSync('git',['-C',root,'show',REPORTS_MIGRATION_ATTEMPT.candidate+':'+relative],{maxBuffer:16000000});
+const journal=(JSON.parse(historicalBytes('db/migrations/meta/_journal.json').toString('utf8')).entries as {tag:string;when:number}[]).map(row=>({...row,sha256:hash(historicalBytes('db/migrations/'+row.tag+'.sql'))}));
+const currentJournal=(JSON.parse(readFileSync(new URL('../db/migrations/meta/_journal.json',import.meta.url),'utf8')).entries as {tag:string;when:number}[]).map(row=>({...row,sha256:hash(readFileSync(new URL('../db/migrations/'+row.tag+'.sql',import.meta.url)))}));
 function snapshot(){
  const shared={name:'ai_hr_app',database:REPORTS_MIGRATION_ATTEMPT.database,server_addr:'127.0.0.1',server_port:5433,database_oid:String(REPORTS_MIGRATION_ATTEMPT.databaseOid)};
  return {connections:{application:{...shared,rolsuper:false,rolbypassrls:false},migration:{...shared,name:'postgres'}},readOnly:'on',isolation:'repeatable read',tenants:[{id:'00000000-0000-0000-0000-000000000000',name:'System (auth audit)',workosOrgId:'org_system_auth_audit'}],applied:journal.map(row=>({hash:row.sha256,created_at:String(row.when)})),inventory:structuredClone(inventory)};
@@ -30,7 +34,7 @@ describe('one reviewed Reports migration-only recovery',()=>{
   for(const forbidden of ['fixture-manifest.json','browser-manifest.json','browser.pid','browser-stopped.json',REPORTS_RECOVERY_NAME,'browser-resume-unknown.json','other-browser-fixture-second.log','other-browser-fixture-first.log','other-browser-migrate.log'])expect(()=>validateReportsRecoveryNames([...original,forbidden]),forbidden).toThrow();
  });
  it('requires the exact whole 289-table migration-only snapshot, preserving six seeded reference tables',()=>{
-  const actual=snapshot();expect(actual.inventory).toHaveLength(289);
+  const actual=snapshot();expect(journal).toHaveLength(460);expect(actual.inventory).toHaveLength(289);
   expect(actual.inventory.filter((row:{rows:number})=>row.rows).map((row:{name:string})=>row.name)).toEqual(['dashboard_card_config','module','payroll_import_code','profile_option','setting_definition','tenant']);
   expect(()=>validateReportsMigrationSnapshot(actual,journal)).not.toThrow();
   for(const table of ['app_user','app_internal_auth_record','company','person','employment','custom_report','custom_report_run']){const changed=snapshot();const row=changed.inventory.find((item:{name:string})=>item.name===table);expect(row,table).toBeDefined();row.rows=1;expect(()=>validateReportsMigrationSnapshot(changed,journal)).toThrow();}
@@ -47,6 +51,14 @@ describe('one reviewed Reports migration-only recovery',()=>{
    if(mode==='OID')actual.connections.application.database_oid='1';
    if(mode==='read-only')actual.readOnly='off';
    expect(()=>validateReportsMigrationSnapshot(actual,journal),mode).toThrow();
+  }
+  // A matching newer applied journal must not expand this consumed 460-migration admission.
+  // The current release has 462 entries; this also remains a refusal as later migrations arrive.
+  const appended=[...journal,{tag:'fictional_later_migration',when:1791900000034,sha256:'f'.repeat(64)}];
+  for(const later of [currentJournal,appended]){
+   expect(later.length).toBeGreaterThan(460);
+   const actual=snapshot();actual.applied=later.map(row=>({hash:row.sha256,created_at:String(row.when)}));
+   expect(()=>validateReportsMigrationSnapshot(actual,later)).toThrow();
   }
  });
  it('preserves the real legacy 0230→0240 journal sequence despite decreasing timestamps and refuses a timestamp-sorted swap',()=>{
