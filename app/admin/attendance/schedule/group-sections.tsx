@@ -220,7 +220,7 @@ export async function ScheduleGroupSections({
         <SectionHeader title={SECTION_LABEL.general} subtitle={t('generalViewHint')} />
         <dl className="divide-y divide-border">
           <div className="flex items-start justify-between gap-4 px-4 py-3">
-            <dt className="text-sm font-medium">{tr('colName')}</dt>
+            <dt className="text-sm font-medium">{tb('groupName')}</dt>
             <dd className="text-right text-sm">
               {rule.name}
               {rule.isDefault && (
