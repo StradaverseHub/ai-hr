@@ -30,10 +30,14 @@ async function caseLock(tx: Tx, ctx: SessionContext, caseId: string) {
   return row;
 }
 async function ownAssignmentLock(tx: Tx, ctx: SessionContext, assignmentId: string) {
-  const [visible] = await tx.select().from(testAssignment).where(and(eq(testAssignment.id, assignmentId), eq(testAssignment.tenantId, ctx.tenantId), eq(testAssignment.testerUserId, participant(ctx))));
-  if (!visible) throw new TestingRefusal('not_assigned');
-  const c = await caseLock(tx, ctx, visible.testCaseId);
-  const [a] = await tx.select().from(testAssignment).where(and(eq(testAssignment.id, assignmentId), eq(testAssignment.testerUserId, participant(ctx)))).for('update');
+  const actor=participant(ctx);
+  const locked=await tx.execute(sql`SELECT case_id,assignment_id FROM app.testing_lock_own_assignment(${assignmentId}::uuid)`);
+  const identity=locked[0];
+  if(locked.length!==1||!identity||typeof identity.case_id!=='string'||identity.assignment_id!==assignmentId)throw new TestingRefusal('not_assigned');
+  // Rows are already locked by the bounded own-assignment helper; ordinary reads retain RLS.
+  const [c]=await tx.select().from(testCase).where(and(eq(testCase.id,identity.case_id),eq(testCase.tenantId,ctx.tenantId)));
+  const [a]=await tx.select().from(testAssignment).where(and(eq(testAssignment.id,assignmentId),eq(testAssignment.tenantId,ctx.tenantId),eq(testAssignment.testerUserId,actor)));
+  if(!c)throw new TestingRefusal('not_assigned');
   if (!a || !a.active) throw new TestingRefusal('inactive');
   if (a.targetVersionId !== c.currentVersionId) throw new TestingRefusal('stale_instructions');
   const [version] = await tx.select({ definition: testCaseVersion.definition }).from(testCaseVersion).where(eq(testCaseVersion.id, a.targetVersionId));
