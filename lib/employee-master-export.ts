@@ -43,7 +43,7 @@ async function alignMasterSheets(zip:JSZip,sections:readonly MasterSection[]){
   const entry=zip.file('xl/styles.xml');if(!entry)throw new Error('Generated report styles are missing.');
   const xml=await entry.async('string'),xfs=xml.match(/<cellXfs\b[^>]*count="(\d+)"[^>]*>([\s\S]*?)<\/cellXfs>/);
   if(!xfs)throw new Error('Generated report cell formats are missing.');
-  const formats=xfs[2].match(/<xf\b[^>]*?(?:\/>|>[\s\S]*?<\/xf>)/g)??[];
+  const formats:string[]=xfs[2].match(/<xf\b[^>]*?(?:\/>|>[\s\S]*?<\/xf>)/g)??[];
   if(formats.length!==Number(xfs[1]))throw new Error('Generated report cell formats are inconsistent.');
   const aligned=new Map<string,number>();
   const style=(index:number,horizontal:MasterColumn['align'])=>{
