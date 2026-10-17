@@ -20522,6 +20522,7 @@
     "statutoryUnavailable": "Maklumat bank dan berkanun tidak tersedia kerana pekerjaan ini tiada pakej negara yang disokong. Medan profil lain yang dibenarkan masih tersedia.",
     "notApplicable": "Medan ini tidak terpakai kepada hubungan yang dipilih. Buat asal atau pulihkan hubungan sebelum menyimpan.",
     "bankNotApplicable": "Nilai ini hanya terpakai apabila pilihan pemegang tersuai diaktifkan. Aktifkan pilihan itu atau buat asal perubahan ini sebelum menyimpan.",
-    "taxNotApplicable": "Kategori keserasian angka tidak boleh diubah apabila keadaan cukai yang disimpan ialah Tiada. Gunakan aliran kerja pemilihan cukai untuk mengubah keadaan itu."
+    "taxNotApplicable": "Kategori keserasian angka tidak boleh diubah apabila keadaan cukai yang disimpan ialah Tiada. Gunakan aliran kerja pemilihan cukai untuk mengubah keadaan itu.",
+    "childCountDerived": "Bilangan anak yang layak ini diperoleh daripada rekod Keluarga atau jadual pelepasan anak yang direkodkan. HR menyelenggara mod pelepasan dan rekod sumber."
   }
 }
