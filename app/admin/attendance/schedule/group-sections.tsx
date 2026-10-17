@@ -252,7 +252,7 @@ export async function ScheduleGroupSections({
         <SectionHeader
           title={tr('shiftsAllowedTitle')}
           count={groupShifts.length}
-          subtitle={tr('shiftsAllowedHint')}
+          subtitle={rotationT('poolHint')}
         />
         {groupShifts.length === 0 ? (
           <p className="p-4 text-sm text-muted-foreground">{tr('shiftsAllowedEmpty')}</p>
