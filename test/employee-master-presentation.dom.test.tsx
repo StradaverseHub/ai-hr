@@ -25,7 +25,8 @@ import { MasterReportList } from '../app/reports/employee-master/MasterReportLis
 
 const code = PERSONNEL_FIELDS.find(field => field.owner === 'employment' && field.ownerField === 'employeeCode')!;
 const hire = PERSONNEL_FIELDS.find(field => field.owner === 'employment' && field.ownerField === 'hiredOn')!;
-const fields = [code, hire], today = todayInKualaLumpur(), company = '00000000-0000-4000-8000-000000000001';
+const salary = PERSONNEL_FIELDS.find(field => field.owner === 'compensation' && field.ownerField === 'basicSalary')!;
+const fields = [code, hire, salary], today = todayInKualaLumpur(), company = '00000000-0000-4000-8000-000000000001';
 const initial: EmployeeMasterSpec = { v: 2, asAt: today, companyIds: [company], includeDrafts: false, columns: fields.map(defaultMasterColumn), expression: { id: 'root', type: 'group', logic: 'and', children: [] }, sorts: [], groups: [], pdf: { paper: 'A4', orientation: 'landscape', margins: 'normal', logo: false, pageBreakGroups: false } };
 function builder(locale: keyof typeof catalogues, reportId: string|null = null, version: number|null = null) {
  return render(<NextIntlClientProvider locale={locale} timeZone="Asia/Kuala_Lumpur" messages={catalogues[locale]} onError={error => { throw error; }}><EmployeeMasterBuilder initial={initial} fields={fields} companies={[{ value: company, label: 'Fictional company' }]} options={{}} roles={[]} reportId={reportId} version={version} today={today}/></NextIntlClientProvider>);
@@ -33,11 +34,23 @@ function builder(locale: keyof typeof catalogues, reportId: string|null = null, 
 beforeEach(() => {
  vi.useFakeTimers(); language.current = 'en';
  save.mockResolvedValue({ ok: true, id: '00000000-0000-4000-8000-000000000009', version: 2 });
- preview.mockImplementation(async (spec: EmployeeMasterSpec) => ({ ok: true, snapshotToken: 'fictional-preview-token', result: runEmployeeMasterProjection(spec, fields, [{ id: 'employment', kind: 'employment', personId: 'person', companyId: company, owners: { employment: [{ id: 'employment', values: { employeeCode: { value: '000007' }, hiredOn: { value: '2024-01-02' } } }] } }], today) }));
+ preview.mockImplementation(async (spec: EmployeeMasterSpec) => ({ ok: true, snapshotToken: 'fictional-preview-token', result: runEmployeeMasterProjection(spec, fields, [{ id: 'employment', kind: 'employment', personId: 'person', companyId: company, owners: { employment: [{ id: 'employment', values: { employeeCode: { value: '000007' }, hiredOn: { value: '2024-01-02' } } }], compensation: [{ id: 'salary', currency: 'MYR', values: { basicSalary: { value: '4321.25', currency: 'MYR' } } }] } }], today) }));
 });
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.clearAllMocks(); });
 
 describe('Employee Master display and optional PDF controls', () => {
+ it('uses selected decimals for actual preview cells, subtotal and grand total while Text remains raw', async () => {
+  builder('en'); fireEvent.click(screen.getByRole('button', { name: /^3.*Basic salary/ }));
+  fireEvent.change(screen.getByLabelText(en.employeeMasterReports.decimals), { target: { value: '3' } });
+  fireEvent.click(screen.getByLabelText(en.employeeMasterReports.sum));
+  fireEvent.change(screen.getByLabelText('Group 1'), { target: { value: code.id } });
+  await act(async () => { await vi.advanceTimersByTimeAsync(550); });
+  expect(screen.getByRole('cell', { name: '4321.250' })).toBeVisible();
+  expect(screen.getAllByText(/MYR 4321\.250$/)).toHaveLength(2);
+  fireEvent.change(screen.getByLabelText(en.employeeMasterReports.format), { target: { value: 'text' } });
+  await act(async () => { await vi.advanceTimersByTimeAsync(550); });
+  expect(screen.getByRole('cell', { name: '4321.25' })).toBeVisible();
+ });
  it.each([[null,null],['00000000-0000-4000-8000-000000000009',1]] as const)('returns a successful new or updated report to its Master card (%s)', async (id, version) => {
   builder('en', id, version);
   fireEvent.change(screen.getByLabelText(en.employeeMasterReports.name), { target: { value: 'Fictional saved result' } });
