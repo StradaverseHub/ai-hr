@@ -1,4 +1,5 @@
 import { attendanceApplicationType } from '../lib/attendance-workflow';
+import { legacyWorkScheduleRedirect } from '../lib/legacy-schedule-redirect';
 /**
  * af7a8eb4 — Attendance module: full-width list screens, and the shift form on its own page.
  *
@@ -268,7 +269,12 @@ describe('af7a8eb4 — Attendance screen layout', () => {
   it.each(REDIRECT_STUBS)('%s renders nothing of its own any more — it redirects to its card (r301)', (file, anchor) => {
     const src = read(file);
     expect(src).toContain('await requireAdmin();');
-    expect(src).toContain(`redirect(\`\${${anchor==='WORK_SCHEDULE_OVERTIME_ANCHOR'?'WORK_SCHEDULE_OVERTIME':'SCHEDULE'}}#\${${anchor}}\`)`);
+    if (anchor === 'WORK_SCHEDULE_OVERTIME_ANCHOR') {
+      expect(src).toContain('redirect(legacyWorkScheduleRedirect(await searchParams))');
+      expect(legacyWorkScheduleRedirect()).toBe('/admin/attendance/settings/work-schedule-overtime#work-schedule-overtime');
+    } else {
+      expect(src).toContain(`redirect(\`\${SCHEDULE}#\${${anchor}}\`)`);
+    }
     expect(classNameLiterals(src), 'a redirect stub has no markup, so no width to get wrong').toEqual([]);
   });
 

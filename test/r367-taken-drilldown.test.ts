@@ -83,7 +83,10 @@ describe('the link the Taken figure carries', () => {
     expect(src).toContain('&status=approved');
     // The leave CODE cell keeps its own, unnarrowed link: "every record of this type", across years, is a
     // different and still-wanted answer.
-    expect(src).toContain('recordsHref(r.leaveTypeId)');
+    // All-employees Inquiry rows must use their own employment, not a page-level selection.
+    expect(src).toContain('recordsHref(r.leaveTypeId, r.employee.employmentId)');
+    expect(src).toContain('`/leave/employee-records?emp=${employmentId}&type=${leaveTypeId}`');
+    expect(src).toContain('href={takenRecordsHref(r)}');
     // The figure is a link, and the caption that says what clicking it does resolves in all six locales.
     expect(src).toContain("tInq('takenRecordsLink')");
     for (const [loc, cat] of Object.entries(CATALOGUES)) {

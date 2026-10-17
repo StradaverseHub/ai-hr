@@ -23,10 +23,9 @@
  *      the four SHIFT writers and the single-employment group writer, none of which a bulk loop touches.
  *   §2 THERE IS STILL ONLY ONE WRITER of employment.attendance_rule_id. That is not a property of any one
  *      file, so it is asserted over the source tree: two doors, one service.
- *   §3 THE NARROWED SHIFT LIST IS READ FROM THE DATA, not written down. Item 07ebd04d splits "Standard"
- *      into three groups; a screen holding a group name or a membership list would keep rendering the
- *      pre-split answer while tsc, the suite and `next build` all stayed green. Asserted by MOVING a shift
- *      between groups and re-rendering, which no source scan can fake.
+ *   §3 THE NARROWED SHIFT LIST IS READ FROM THE DATA, not written down. Shifts Allowed now has an
+ *      independent membership pool and dated rotation versions; shift.rule_id remains the shift's default
+ *      group. Asserted by changing the canonical pool and re-rendering, which no source scan can fake.
  *   §4 THE LABELS resolve in all six locales with their ICU arguments.
  *
  * ⚠️ THE MOCKS ARE FILE-LEVEL (the same caveat test/schedule-assignment.test.ts carries): `requireAdmin`
@@ -43,6 +42,7 @@ import * as schema from '../db/schema';
 import {
   createAttendanceRule,
   ensureStandardRule,
+  setRuleShifts,
   type AttendanceRuleInput,
 } from '../core/attendance-rule';
 import {
@@ -500,11 +500,10 @@ describe('§3 the Schedule Assignment screens', () => {
   });
 
   /**
-   * ⚠️ THE 07ebd04d TEST. The allowed list is read from `shift.rule_id` at render time, so MOVING a shift
-   * from one group to another changes what the screen offers with no code change. A screen that had the
-   * membership written down would render identically both times and pass every static check.
+   * The allowed list is read from the canonical membership pool at render time. Changing that pool
+   * changes what the screen offers without moving the shared shift's default group or changing code.
    */
-  it('(14) the DETAIL page offers only the group’s shifts, and follows the data when they move', async () => {
+  it('(14) the DETAIL page offers only allowed shifts, and follows canonical pool changes', async () => {
     const { a, group, other, allowed, forbidden } = await scenario();
     const emp = await makeEmp('Ann');
     await assignDefaultShift(a, { employmentId: emp, shiftId: allowed.id });
@@ -523,32 +522,33 @@ describe('§3 the Schedule Assignment screens', () => {
     expect(narrowed).toContain('<select name="attendanceRuleId"');
     expect(narrowed).toContain('A02');
 
-    // ⚠️ NOW MOVE A SHIFT BETWEEN THE GROUPS. Not one byte of source changes; the offered list must.
-    // This is the 07ebd04d rehearsal: the split will do exactly this to five shifts at once.
-    expect(other.id).toBeTruthy();
-    await owner.db.update(schema.shift).set({ ruleId: group.id }).where(eq(schema.shift.id, forbidden.id));
+    // Permit a shared shift without moving its default group; the rendered options must follow.
+    await setRuleShifts(a, { ruleId: group.id, shiftIds: [allowed.id, forbidden.id] });
+    const [shared] = await owner.db.select({ ruleId: schema.shift.ruleId }).from(schema.shift).where(eq(schema.shift.id, forbidden.id));
+    expect(shared.ruleId).toBe(other.id);
     const afterMove = await renderDetail(emp);
-    expect(afterMove, 'the shift that joined the group is now offered').toContain('ZzForbiddenShift');
+    expect(afterMove, 'the shift added to the allowed pool is now offered').toContain('ZzForbiddenShift');
     expect(afterMove).toContain('ZzAllowedShift');
   });
 
   /**
-   * THE SHIFT ON FILE IS ALWAYS OFFERED, even when the group forbids it — the same rule that keeps an
-   * archived-but-assigned shift in the list. A select that cannot render what is stored shows a
-   * placeholder and silently re-poses "which shift is this person on" as "choose one". Saving it again is
-   * refused by the service, which is the honest outcome.
+   * THE SHIFT ON FILE IS ALWAYS DISPLAYED, even when the group forbids it, and its retained option is
+   * disabled. A select that cannot render what is stored shows a placeholder and silently re-poses
+   * "which shift is this person on" as "choose one". Saving it again is refused by the service.
    */
   it('(15) a stored shift outside the group is still rendered, and the note says one is hidden', async () => {
-    const { a, group, other, allowed, forbidden } = await scenario();
+    const { a, group, allowed } = await scenario();
     const emp = await makeEmp('Ann');
     await assignDefaultShift(a, { employmentId: emp, shiftId: allowed.id });
     await setEmploymentScheduleGroup(a, { employmentId: emp, attendanceRuleId: group.id });
-    // The shift leaves the group behind the employee's back (setRuleShifts does not re-examine members).
-    await owner.db.update(schema.shift).set({ ruleId: other.id }).where(eq(schema.shift.id, allowed.id));
+    // Remove the actual allowed membership; the shift's default group is a separate fact.
+    await setRuleShifts(a, { ruleId: group.id, shiftIds: [] });
 
     const html = await renderDetail(emp);
-    expect(html, 'what is on file is still selectable').toContain('ZzAllowedShift');
+    expect(html, 'what is on file is still displayed').toContain('ZzAllowedShift');
     expect(html).not.toContain('ZzForbiddenShift');
+    const retainedOption = html.match(new RegExp(`<option(?=[^>]*value="${allowed.id}")[^>]*>`))?.[0];
+    expect(retainedOption, 'the stored shift remains visible but is not an allowed new choice').toContain('disabled=""');
     expect(html).toContain('narrowedByGroup');
   });
 
@@ -621,21 +621,32 @@ describe('§3 the Schedule Assignment screens', () => {
    * they share the courtesy too — a picker that offers a different list at each door is how an
    * administrator learns to trust one screen and distrust the other.
    */
-  it('(19) the PERSONNEL card narrows to the same group, by the same rule', async () => {
-    const { a, group, allowed, forbidden } = await scenario();
+  it('(19) BOTH doors pass the canonical dated pool into the same shared shift picker', async () => {
+    const { a, group, allowed } = await scenario();
     const emp = await makeEmp('Ann');
     await assignDefaultShift(a, { employmentId: emp, shiftId: allowed.id });
+    await setEmploymentScheduleGroup(a, { employmentId: emp, attendanceRuleId: group.id });
     const card = read('app/admin/personnel/[employmentId]/page.tsx');
-    const line = card.slice(card.indexOf('const assignableShifts'), card.indexOf(');', card.indexOf('const assignableShifts')));
-    expect(line, 'it reads shift.rule_id, not a written-down membership').toContain('sh.ruleId === scheduleGroupCurrentId');
-    expect(line, 'and keeps the shift on file, as it already does for an archived one').toContain(
-      'sh.id === emp.defaultShiftId',
-    );
-    // …and it is the SAME rule the Attendance page applies, written once each but stated identically.
     const detail = read('app/admin/attendance/schedule-assignment/[employmentId]/page.tsx');
-    expect(detail).toContain('sh.ruleId === groupId || sh.id === row.shiftId');
-    expect(forbidden.id).toBeTruthy();
-    expect(group.id).toBeTruthy();
+    const poolProjection = 'allowedPool={groupPool?{baseShiftIds:groupPool.memberships.map(m=>m.shiftId),versions:groupPool.versions.map(v=>({effectiveFrom:v.effectiveFrom,allowedShiftIds:v.allowedShiftIds}))}:undefined}';
+    for (const source of [card, detail]) {
+      const start = source.indexOf('<EmployeeShiftFields');
+      const end = source.indexOf('/>', start);
+      expect(start, 'the shared picker is present').toBeGreaterThanOrEqual(0);
+      expect(end, 'the shared picker is bounded').toBeGreaterThan(start);
+      const picker = source.slice(start, end);
+      expect(picker.length).toBeGreaterThan(250);
+      expect(picker, 'both doors pass memberships and dated versions, not legacy shift.rule_id').toContain(poolProjection);
+      expect(picker, 'the effective date selects the applicable pool').toMatch(/defaultEffectiveFrom=\{(?:typedEffectiveFrom \?\? )?today\}/);
+    }
+    expect(card).toContain('getScheduleRotation(s,scheduleGroupCurrentId)');
+    expect(detail).toContain('getScheduleRotation(s,groupId)');
+    expect(card).toContain('defaultShiftId={emp.defaultShiftId}');
+    expect(detail).toContain('defaultShiftId={typedShiftId ?? row.shiftId}');
+    const picker = read('components/employee-shift-fields.tsx');
+    expect(picker).toContain('rotationVersionOn(allowedPool.versions,effectiveFrom)?.allowedShiftIds??allowedPool.baseShiftIds');
+    expect(picker).toContain('(!sh.archived&&(!allowed||allowed.has(sh.id)))||sh.id===selectedShift');
+    expect(picker, 'a retained assigned shift outside the allowed pool cannot be selected again').toContain('disabled={!!sh.archived||!!allowed&&!allowed.has(sh.id)}');
   });
 
   it('(20) no screen writes a group NAME, a group COUNT or a shift’s membership into its source', () => {
