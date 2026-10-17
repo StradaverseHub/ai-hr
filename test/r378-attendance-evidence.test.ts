@@ -10,7 +10,7 @@ import { createClockingLocation,setClockingControl,setAttendancePhotoSetting } f
 import { registerDevice,revokeDevice } from '../core/attendance-device';
 import { captureEmployeeClock,clockCapturePhoto,purgeClockPhoto,ClockConflictError,AttendancePhotoRequiredError,type ClockIntent } from '../core/attendance-clock';
 import { ownClockToday } from '../core/attendance-clock-read';
-import { checkIn,decideAttendanceCorrection,requestAttendanceCorrection,myAttendanceCorrections,MissingAttendanceRejectReasonError,OutsideGeofenceError } from '../core/attendance';
+import { checkIn,checkOut,decideAttendanceCorrection,requestAttendanceCorrection,myAttendanceCorrections,MissingAttendanceRejectReasonError,OutsideGeofenceError } from '../core/attendance';
 import { decodeClockPhoto,CLOCK_PHOTO_MAX_BYTES } from '../lib/attendance-photo';
 import { formatMinutesToHM,plannedOvertimeMinutes } from '../lib/overtime-duration';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -120,8 +120,9 @@ describe('r378 private capture command integrity',()=>{
   await expect(captureEmployeeClock(x.ctx,{...x.intent,action:'out'})).rejects.toThrow();
   expect(await owner.db.select().from(schema.attendanceClockCapture)).toHaveLength(0);
   const [day]=await owner.db.select().from(schema.attendance);expect(day.checkInAt).toBe('09:00:00');expect(day.checkOutAt).toBeNull();
-  await owner.db.update(schema.attendancePunch).set({punchAt:'10:00:00'}).where(eq(schema.attendancePunch.attendanceId,day.id));
-  await expect(captureEmployeeClock(x.ctx,{...x.intent,action:'out',requestId:randomUUID()})).rejects.toThrow('previous attendance punch');
+  // A second legitimate manual day supplies the future anchor; referenced raw punches are protected.
+  const future=await subject();await checkIn(future.admin,{employmentId:future.h.employmentId,date,time:'10:00',manual:true});
+  await expect(captureEmployeeClock(future.ctx,{...future.intent,action:'out',requestId:randomUUID()})).rejects.toThrow('previous attendance punch');
   expect(await owner.db.select().from(schema.attendanceClockCapture)).toHaveLength(0);
  });
  it('direct app-role insert rejects foreign-tenant employment, independently of service checks',async()=>{
@@ -146,13 +147,13 @@ describe('r378 correction originals and rejection facts',()=>{
   const [before]=await owner.db.select().from(schema.attendanceCorrection).where(eq(schema.attendanceCorrection.id,request.correctionId));
   expect(before.originalClockSnapshot).toMatchObject({version:1,originalCheckIn:'09:00:00',originalCheckOut:null});
   const requested=await latestEventPayload(b.tenantId,request.correctionId,'attendance-correction.requested');expect(requested?.originalClockSnapshot).toEqual(before.originalClockSnapshot);
-  await owner.db.update(schema.attendance).set({checkInAt:'10:00'}).where(eq(schema.attendance.employmentId,x.h.employmentId));
+  await checkOut(x.admin,{employmentId:x.h.employmentId,date,time:'10:00',manual:true});
   await expect(decideAttendanceCorrection(x.admin,{correctionId:request.correctionId,decision:'rejected',rejectReason:'   '})).rejects.toBeInstanceOf(MissingAttendanceRejectReasonError);
   await expect(decideAttendanceCorrection(x.admin,{correctionId:request.correctionId,decision:'rejected',rejectReason:'x'.repeat(1001)})).rejects.toBeInstanceOf(MissingAttendanceRejectReasonError);
   await decideAttendanceCorrection(x.admin,{correctionId:request.correctionId,decision:'rejected',rejectReason:'  Please correct the date  '});
   const [row]=await myAttendanceCorrections(x.ctx,x.h.employmentId,{date,limit:20});expect(row.rejectReason).toBe('Please correct the date');expect(row.originalClockSnapshot).toEqual(before.originalClockSnapshot);expect(row.decidedAt).toBeInstanceOf(Date);
   const rejected=await latestEventPayload(b.tenantId,request.correctionId,'attendance-correction.rejected');expect(rejected?.rejectReason).toBe(row.rejectReason);
-  const [day]=await owner.db.select().from(schema.attendance);expect(day.checkInAt).toBe('10:00:00');
+  const [day]=await owner.db.select().from(schema.attendance);expect(day.checkInAt).toBe('09:00:00');expect(day.checkOutAt).toBe('10:00:00');
   await expect(owner.db.update(schema.attendanceCorrection).set({originalClockSnapshot:null}).where(eq(schema.attendanceCorrection.id,request.correctionId))).rejects.toThrow();
  });
  it('observes genuinely missing attendance distinctly from legacy NULL and keeps OT-only NULL',async()=>{
