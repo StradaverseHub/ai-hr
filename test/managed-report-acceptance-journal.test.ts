@@ -13,7 +13,7 @@ const applied=journal.entries.map((entry,index)=>({id:index+1,created_at:entry.w
 // no DB endpoint, role, identity, fixture writer or acceptance outcome is mocked as authorised.
 async function compare(rows:typeof applied){
  const start=source.indexOf(' const applied=await owner.client`'),end=source.indexOf(" for(const name of ['app.employee_master_internal_render_context",start);
- expect(start).toBeGreaterThan(0);expect(end).toBeGreaterThan(start);
+ expect(start).toBeGreaterThan(0);expect(end).toBeGreaterThan(start);expect(end-start).toBeGreaterThan(300);
  const owner={client:async(parts:TemplateStringsArray)=>{const sql=parts.join('?');
   if(sql==='select hash,created_at from drizzle.__drizzle_migrations order by id')return [...rows].sort((a,b)=>a.id-b.id);
   if(sql==='select hash,created_at from drizzle.__drizzle_migrations order by created_at')return [...rows].sort((a,b)=>a.created_at-b.created_at);
