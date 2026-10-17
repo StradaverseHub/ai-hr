@@ -13,7 +13,7 @@ export function replacementPolicyMatches(regime:ReplacementPolicy['regime'],coun
  return regime==='MY_SABAH_103'?sabah:!sabah&&!sarawak;
 }
 export function allocateReplacementHolidays(p:{sources:readonly OriginalHoliday[];policies:readonly ReplacementPolicy[];days:ReadonlyMap<string,ReplacementDayKind>;reserved:ReadonlySet<string>;existingDates?:ReadonlyMap<string,string>;retained?:ReadonlyMap<string,string|null>;companyCountry:string;state:string|null;knownState:boolean;companyContexts?:ReadonlyMap<string,{country:string;state:string|null;knownState:boolean}>;companyCoverage?:ReadonlyMap<string,{companyId:string|null;reason:string|null}>;scheduleUnknownReasons?:ReadonlyMap<string,string>;employmentFrom:string;employmentTo:string|null}):ReplacementDecision[]{
- const originals=new Set(p.sources.map(h=>h.date)),occupied=new Set(p.reserved),out:ReplacementDecision[]=[];
+ const originals=new Set(p.sources.map(h=>h.date)),occupied=new Set(p.reserved),assigned=new Set<string>(),out:ReplacementDecision[]=[];
  const publicSourcesByDate=new Map<string,Set<string>>();
  for(const source of p.sources)if(source.holidayType==='public'){const ids=publicSourcesByDate.get(source.date)??new Set<string>();ids.add(source.id);publicSourcesByDate.set(source.date,ids);}
  for(const source of [...p.sources].sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id))){
@@ -21,7 +21,7 @@ export function allocateReplacementHolidays(p:{sources:readonly OriginalHoliday[
   const policy=policyOn(p.policies,source.date,source.companyId),kind=p.days.get(source.date)??'unknown';
   const context=source.companyId?p.companyContexts?.get(source.companyId):null;
   const emit=(status:ReplacementDecision['status'],date:string|null,reason:string)=>out.push({source,policyId:policy?.id??null,status,date,reason});
-  if(p.retained?.has(source.id)){const retained=p.retained.get(source.id)??null;if(retained)occupied.add(retained);emit(retained?'allocated':'not_required',retained,retained?'manual_retained':'manual_waived');continue;}
+  if(p.retained?.has(source.id)){const retained=p.retained.get(source.id)??null;if(retained){occupied.add(retained);assigned.add(retained);}emit(retained?'allocated':'not_required',retained,retained?'manual_retained':'manual_waived');continue;}
   if(kind==='full'||kind==='half'){emit('not_required',null,'original_working_day');continue;}
   if(kind==='off'){emit('not_required',null,'original_off_day');continue;}
   if(kind==='unknown'){emit('review',null,p.scheduleUnknownReasons?.get(source.date)??'unknown_schedule');continue;}
@@ -46,10 +46,12 @@ export function allocateReplacementHolidays(p:{sources:readonly OriginalHoliday[
    if(p.companyCoverage){const coverage=p.companyCoverage.get(date);if(!coverage||coverage.reason||coverage.companyId!==source.companyId){unknown=true;coverageUnknown=true;break;}}
    const candidate=p.days.get(date)??'unknown';
    if(candidate==='unknown'){unknown=true;unknownReason=p.scheduleUnknownReasons?.get(date)??'unknown_schedule';break;}
-   if(originals.has(date)||occupied.has(date)&&p.existingDates?.get(source.id)!==date)continue;
+   // An owner can retain its protected old date, but cannot reclaim that date after an earlier
+   // source has selected it in this pass. Old projections may move together after a schedule change.
+   if(originals.has(date)||assigned.has(date)||occupied.has(date)&&p.existingDates?.get(source.id)!==date)continue;
    if(candidate==='full'||candidate==='half'&&policy.halfEligible){chosen=date;break;}
   }
-  if(chosen){occupied.add(chosen);emit('allocated',chosen,'public_holiday_on_rest');}
+  if(chosen){occupied.add(chosen);assigned.add(chosen);emit('allocated',chosen,'public_holiday_on_rest');}
   else emit('review',null,coverageUnknown?'company_coverage_unknown':unknown?unknownReason:'search_exhausted');
  }
  return out;
