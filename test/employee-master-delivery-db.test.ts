@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import postgres from 'postgres';
-import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
+import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {withTenant,type SessionContext} from '../db/client';
@@ -19,7 +19,7 @@ import * as schema from '../db/schema';
 const raw=postgres(process.env.TEST_MIGRATION_DATABASE_URL!,{max:2}),issuer='https://hr.test/identity/realms/ai-hr';
 let b:Base,ctx:SessionContext,e:Awaited<ReturnType<typeof hireEmployee>>,report:{id:string;version:number},scheduleId:string;
 beforeAll(migrateTestDb);afterAll(async()=>{await raw.end();await closeAll();});
-beforeEach(async()=>{
+beforeEach(async()=>{vi.stubEnv('EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED','true');
  await resetDb();b=await seedBase();await setModule(b.tenantId,'notifications','active');const admin={...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};
  e=await hireEmployee(admin,{person:{fullName:'Synthetic managed recipient',primaryEmail:'fixture@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
  const userId=await createAppUser(b.tenantId,e.personId,'hr_admin'),subject=randomUUID();await owner.db.insert(schema.appExternalIdentity).values({issuer,subject,appUserId:userId});
@@ -162,3 +162,6 @@ describe('managed report nonce and durable lifecycle in the actual database',()=
   }finally{await raw.unsafe(`DROP OWNED BY "${role}"`);await raw.unsafe(`DROP ROLE "${role}"`);}
  });
 });
+
+// This suite exercises the explicitly enabled delivery owner, never the release default.
+afterEach(()=>vi.unstubAllEnvs());

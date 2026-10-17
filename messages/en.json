@@ -19716,6 +19716,7 @@
       "save": "Save schedule",
       "next": "Next delivery: {date}",
       "off": "Scheduled delivery is off",
+      "unavailable": "Scheduled email is unavailable on this installation. You can turn off saved schedules. Manual reports and downloads remain available.",
       "history": "Delivery history",
       "rows": "{count} rows",
       "deliveryStopped": "Delivery stopped after an eligibility or generation check.",

@@ -1,3 +1,4 @@
+import {employeeMasterScheduledEmailEnabled} from '../lib/employee-master-scheduled-email';
 import {employeeMasterFieldLabels} from '../lib/employee-master-field-labels';
 /** Report scheduling consumes the existing Notifications owner's explicit report-attachment consent.
  * The browser supplies exact identity pairs, never recipient authority, email addresses or consent.
@@ -25,6 +26,7 @@ export async function employeeMasterRecipientOptions(ctx:SessionContext,scopeIds
  return options;
 }
 export async function saveEmployeeMasterSchedule(ctx:SessionContext,scopeIds:readonly string[],input:{reportId:string;version:number;enabled:boolean;config:unknown;recipients:MasterRecipientIdentity[]},policy:MasterRecipientPolicy=resolveEmployeeMasterRecipients){
+ if(input.enabled&&!employeeMasterScheduledEmailEnabled())throw new Error('Scheduled report emails are unavailable on this installation.');
  const report=await getEmployeeMasterReport(ctx,scopeIds,input.reportId);if(!report.canEdit)throw new MasterReportAccessError();if(report.version!==input.version)throw new Error('Review the changed report before scheduling it.');
  const config=validateMasterSchedule(input.config),recipients=z.array(pairSchema).max(100).parse(input.recipients);
  // A user must have one explicit receiving employment. Never infer one from an email or array order.

@@ -39,7 +39,7 @@ beforeAll(async()=>{
  expect(prerequisite,'Real Auth543 and parent-journalled0552 union is required; no test fallback migration exists.').toEqual({auth:true,report:true});
  expect(readFileSync(new URL('./harness.ts',import.meta.url),'utf8')).toContain("'app_internal_auth_record'");
 });
-beforeEach(async()=>{
+beforeEach(async()=>{vi.stubEnv('EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED','true');
  await resetDb();b=await seedBase();await setModule(b.tenantId,'notifications','active');
  vi.stubEnv('AUTH_PROVIDER','internal');vi.stubEnv('AUTH_PUBLIC_ORIGIN',origin);vi.stubEnv('AUTH_SESSION_KEY','8'.repeat(64));
  employee=await hireEmployee(adminCtx(b),{person:{fullName:'Fictional broker recipient',primaryEmail:'recipient@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});

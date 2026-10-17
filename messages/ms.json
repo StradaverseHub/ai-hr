@@ -19716,6 +19716,7 @@
       "save": "Simpan jadual",
       "next": "Penghantaran seterusnya: {date}",
       "off": "Penghantaran berjadual dimatikan",
+      "unavailable": "E-mel berjadual tidak tersedia pada pemasangan ini. Anda boleh mematikan jadual yang disimpan. Laporan manual dan muat turun masih tersedia.",
       "history": "Sejarah penghantaran",
       "rows": "{count} baris",
       "deliveryStopped": "Penghantaran dihentikan selepas semakan kelayakan atau penjanaan.",

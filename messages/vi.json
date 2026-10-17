@@ -19716,6 +19716,7 @@
       "save": "Lưu lịch",
       "next": "Lần gửi tiếp theo: {date}",
       "off": "Đã tắt gửi theo lịch",
+      "unavailable": "Email theo lịch hiện chưa khả dụng trên hệ thống này. Bạn có thể tắt lịch đã lưu. Báo cáo và tải xuống thủ công vẫn khả dụng.",
       "history": "Lịch sử gửi",
       "rows": "{count} dòng",
       "deliveryStopped": "Đã dừng gửi sau khi kiểm tra điều kiện hoặc tạo báo cáo.",

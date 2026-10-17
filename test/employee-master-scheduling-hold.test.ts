@@ -1,5 +1,6 @@
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {SessionContext} from '../db/client';
+import type {MasterRecipient} from '../core/employee-master-recipient-types';
 const m=vi.hoisted(()=>({report:vi.fn(),write:vi.fn(),event:vi.fn(),scope:vi.fn(),job:vi.fn(),ipc:vi.fn()}));
 vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,fn:(tx:unknown)=>unknown)=>fn({insert:()=>({values:(value:unknown)=>{m.write(value);return {onConflictDoUpdate:()=>({returning:async()=>[{id:'saved-schedule'}]})};}})})}));
 vi.mock('../db/events',()=>({appendEvent:m.event,actorOf:()=>({kind:'user'})}));
@@ -17,7 +18,7 @@ const id=(n:number)=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0');
 const ctx={tenantId:id(1),userId:id(2),personId:id(3),roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]} as SessionContext;
 const config={frequency:'weekly' as const,day:1,hour:9,minute:0,timezone:'Asia/Kuala_Lumpur'},pair={userId:id(4),employmentId:id(5)};
 const input={reportId:id(6),version:1,enabled:true,config,recipients:[pair]};
-const policy=vi.fn(async()=>[{...pair,context:ctx,scopeIds:[id(7)],label:'Fictional recipient'}]);
+const policy=vi.fn(async()=>[{...pair,context:ctx,scopeIds:[id(7)],label:'Fictional recipient'}] as unknown as MasterRecipient[]);
 beforeEach(()=>{vi.clearAllMocks();m.report.mockResolvedValue({id:input.reportId,canEdit:true,version:1,spec:{companyIds:[id(7)]},sharedRoleIds:['hr_admin'],shared:true});m.scope.mockResolvedValue({run:[],skipped:[]});});
 afterEach(()=>vi.unstubAllEnvs());
 describe('default-off scheduled Employee Master release capability',()=>{

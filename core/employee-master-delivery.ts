@@ -1,3 +1,4 @@
+import {employeeMasterScheduledEmailEnabled} from '../lib/employee-master-scheduled-email';
 /** Existing provision runner calls this bounded owner-only orchestration; canonical rendering stays in
  * the separately installed app-role child. No owner database handle crosses the rendering boundary. */
 import {and,asc,eq,inArray,lte,sql} from 'drizzle-orm';
@@ -11,6 +12,8 @@ import type {MasterDeliveryRequest} from '../lib/employee-master-delivery-model'
 export type MasterReportTransport=<T>(request:MasterDeliveryRequest)=>Promise<T>;
 export const MASTER_REPORT_DELIVERY_JOB='reports.employee-master.deliver' as const;
 export async function sweepEmployeeMasterReports(owner:ReturnType<typeof createDb>['db'],options:{limit?:number;transport?:MasterReportTransport}={}){
+ // The release hold applies before transport readiness, scope reads or queue/claim work.
+ if(!employeeMasterScheduledEmailEnabled())return {queued:0,attempted:0,sent:0,failed:0,skipped:0,uncertain:0,unavailable:true,cappedOut:false,tenantsFailed:0};
  const limit=options.limit??10;if(!Number.isInteger(limit)||limit<1||limit>50)throw new Error('Report sweep limit must be between one and 50.');
  const transport=options.transport??employeeMasterDeliveryIpc;
  let ready=false;try{const status=await transport<{version:number;ready:boolean}>({op:'status'});ready=status?.version===1&&status.ready===true;}catch{}

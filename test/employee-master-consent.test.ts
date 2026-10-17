@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { afterAll,beforeAll,beforeEach,describe,expect,it } from 'vitest';
+import { afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi } from 'vitest';
 import { eq,sql } from 'drizzle-orm';
 import { adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,setModule,type Base } from './harness';
 import { withTenant,type SessionContext } from '../db/client';
@@ -15,7 +15,7 @@ import { PERSONNEL_FIELDS } from '../lib/personnel-field-registry';
 import * as schema from '../db/schema';
 let b:Base,ctx:SessionContext;
 const issuer='https://hr.test/identity/realms/ai-hr';
-beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'notifications','active');ctx={...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};});
+beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{vi.stubEnv('EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED','true');await resetDb();b=await seedBase();await setModule(b.tenantId,'notifications','active');ctx={...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};});
 async function recipient(email='report@example.test',companyId=b.companyId,departmentId=b.deptA){
  const e=await hireEmployee(ctx,{person:{fullName:'Synthetic report recipient',primaryEmail:email},companyId,departmentId,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
  const userId=await createAppUser(b.tenantId,e.personId,'hr_admin'),subject=randomUUID();await owner.db.insert(schema.appExternalIdentity).values({issuer,subject,appUserId:userId});
@@ -50,3 +50,6 @@ describe('Employee Master separate consent, identity and reviewed scheduling',()
  });
  it('does not allow a forged exact pair or direct schedule identity mutation',async()=>{const e=await recipient(),other=await recipient('other@example.test');await optIn(e);const saved=await report(e);await expect(saveEmployeeMasterSchedule(e.context,[b.companyId],{reportId:saved.id,version:saved.version,enabled:true,config,recipients:[{userId:e.context.userId!,employmentId:other.employmentId}]})).rejects.toThrow();await expect(withTenant(e.context,tx=>tx.execute(sql`insert into custom_report_schedule(tenant_id,report_id,config,recipients,report_version,reviewed_digest) values(${b.tenantId}::uuid,${saved.id}::uuid,${JSON.stringify(config)}::jsonb,${JSON.stringify([{userId:e.context.userId,employmentId:other.employmentId}])}::jsonb,${saved.version},${'c'.repeat(64)})`))).rejects.toThrow();});
 });
+
+// This suite exercises the explicitly enabled delivery owner, never the release default.
+afterEach(()=>vi.unstubAllEnvs());
