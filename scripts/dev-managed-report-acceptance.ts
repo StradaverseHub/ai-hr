@@ -284,7 +284,7 @@ async function main(){
    const report=await getEmployeeMasterReport(admin,[base!.companyId],reportId),schedule=await getEmployeeMasterSchedule(admin,reportId);
    check(report.id===reportId&&report.ownerUserId===admin.userId&&JSON.stringify(report.spec.companyIds)===JSON.stringify([base!.companyId]),'Owned schedule cleanup report changed.');
    if(!schedule)continue;check(schedule.reportId===reportId&&schedule.tenantId===admin.tenantId,'Owned schedule cleanup identity changed.');
-   if(schedule.enabled){const result=await saveEmployeeMasterSchedule(admin,[base!.companyId],{reportId,version:report.version,enabled:false,config:schedule.config,recipients:schedule.recipients});check(result.id===schedule.id,'Owned schedule cleanup changed identity.');}
+   if(schedule.enabled||schedule.nextRunAt!==null){const result=await saveEmployeeMasterSchedule(admin,[base!.companyId],{reportId,version:report.version,enabled:false,config:schedule.config,recipients:schedule.recipients});check(result.id===schedule.id,'Owned schedule cleanup changed identity.');}
    const after=await getEmployeeMasterSchedule(admin,reportId);check(after?.id===schedule.id&&!after.enabled&&after.nextRunAt===null&&JSON.stringify(after.config)===JSON.stringify(schedule.config)&&JSON.stringify(after.recipients)===JSON.stringify(schedule.recipients),'Owned schedule disable was not acknowledged.');
   }
  };

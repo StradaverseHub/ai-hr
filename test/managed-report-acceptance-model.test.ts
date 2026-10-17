@@ -28,6 +28,12 @@ describe('one closed internal report acceptance course',()=>{
  it.each(['postgres://ai_hr_app:private@remote.test:5432/ai_hr_report_delivery_acceptance','postgres://ai_hr_app:private@127.0.0.1:5433/ai_hr_report_delivery_acceptance','postgres://ai_hr_app:private@127.0.0.1:5432/ai_hr','postgres://ai_hr_app@127.0.0.1:5432/ai_hr_report_delivery_acceptance','postgres://ai_hr_app:private@127.0.0.1:5432/ai_hr_report_delivery_acceptance?options=x'])('refuses endpoint override %s',url=>expect(()=>reportAcceptanceDatabase(url,'ai_hr_app')).toThrow());
 });
 describe('staged runner keeps canonical human and installed authority',()=>{
+ it('clears the retained due time even when a definition edit already disabled its owned schedule',()=>{
+  const owner=readFileSync(path.join(process.cwd(),'core/employee-master-reports.ts'),'utf8');expect(owner).toContain('set({enabled:false,updatedAt:new Date()})');
+  const source=readFileSync(path.join(process.cwd(),'scripts/dev-managed-report-acceptance.ts'),'utf8'),begin=source.indexOf('disableOwnedSchedules=async()=>'),end=source.indexOf("const {PERSONNEL_FIELDS}",begin);
+  expect(begin).toBeGreaterThanOrEqual(0);expect(end-begin).toBeGreaterThan(300);const cleanup=source.slice(begin,end);
+  expect(cleanup).toContain('schedule.enabled||schedule.nextRunAt!==null');expect(cleanup).toContain('await saveEmployeeMasterSchedule(');expect(cleanup).toContain('enabled:false');expect(cleanup).toContain('after.nextRunAt===null');
+ });
  it('does not manufacture Auth/binding/consent or write an alternative cron',()=>{
   const source=readFileSync(path.join(process.cwd(),'scripts/dev-managed-report-acceptance.ts'),'utf8');
   expect(source).not.toMatch(/saveNotificationEmailPreferences|saveNotificationEmailPolicy|writeRecord\(|bootstrapInternalOwner\(|insert\(s\.(appExternalIdentity|deploymentIdentityOperator|notificationPref|appInternalAuthRecord)\)|emailVerified\s*:\s*true|totpSecret\s*:/);
