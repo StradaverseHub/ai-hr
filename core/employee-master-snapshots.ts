@@ -5,7 +5,12 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { SessionContext } from '../db/client';
 import { authorizeEmployeeMasterRun, type MasterRun } from './employee-master-reports';
 import { MasterReportAccessError } from './employee-master-access';
-const snapshots=new Map<string,{actor:string;scope:string;expires:number;bytes:number;run:MasterRun}>();
+type MasterSnapshot={actor:string;scope:string;expires:number;bytes:number;run:MasterRun};
+// Server actions (app-rsc) and download handlers (app-route) have distinct bundled module identities.
+// Share only this bounded, versioned registry within one server process, including across dev reloads.
+// A different/restarted process still has no token; reuse must fail closed rather than regenerate data.
+const globalForSnapshots=globalThis as unknown as {__aihrMasterSnapshotsV1?:Map<string,MasterSnapshot>};
+const snapshots=(globalForSnapshots.__aihrMasterSnapshotsV1??=new Map<string,MasterSnapshot>());
 const TTL=120_000,MAX_BYTES=32_000_000,MAX_ENTRIES=8;
 const actor=(ctx:SessionContext)=>ctx.tenantId+':'+ctx.userId;
 const scope=(ids:readonly string[])=>[...ids].sort().join(',');
