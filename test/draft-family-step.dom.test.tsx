@@ -1,3 +1,4 @@
+import { personnelCaption } from './helpers/personnel-markup';
 /**
  * THE DRAFT'S FAMILY FORM, RENDERED — item 759dfc7d, work item 1.
  *
@@ -183,7 +184,7 @@ describe('the draft Family step renders the same record the Personnel Family tab
     // for and the one the Personnel dialog already uses.
     expect(within(dlg).queryByText(messages.people.detail.family.name)).toBeNull();
     await userEvent.selectOptions(within(dlg).getByRole('combobox'), 'parent');
-    await userEvent.type(within(dlg).getByLabelText(messages.people.detail.family.name), 'Zainab Ismail');
+    await userEvent.type(within(dlg).getByLabelText(personnelCaption(messages.people.detail.family.name)), 'Zainab Ismail');
     await userEvent.click(within(dlg).getByRole('button', { name: messages.people.detail.family.add }));
     expect(onChange).toHaveBeenCalledTimes(1);
     const [next] = onChange.mock.calls[0] as [EmployeeDraftFamilyMember[]];

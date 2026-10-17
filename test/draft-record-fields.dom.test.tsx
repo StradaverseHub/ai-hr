@@ -237,7 +237,9 @@ describe('Employment — probation, confirmation and the two notice periods', ()
       detail.employmentInfo.noticeBeforeConfirmation,
       detail.employmentInfo.noticeAfterConfirmation,
     ]) {
-      expect(within(shownPanel()).getAllByLabelText(label).length, label).toBeGreaterThan(0);
+      // The shared registry distinguishes the compound period's Value and Unit captions.
+      if (label === detail.employmentInfo.confirmationDate) expect(within(shownPanel()).getByLabelText(label)).toBeTruthy();
+      else expect(within(shownPanel()).getByText(label + ' — ' + messages.people.import.fieldValue)).toBeTruthy();
     }
 
     // A period is a value AND a unit; both halves are driven, because a control that stored the number

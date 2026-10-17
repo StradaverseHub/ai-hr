@@ -1,3 +1,5 @@
+import { hasPersonnelPostedBinding } from './helpers/personnel-posted-binding';
+import { personnelControl, personnelFormChoices, personnelCarry } from '../lib/personnel-form-contract';
 /**
  * Personnel (Admin) → Statutory (Malaysia) screen layout redesign (feedback 7524eda1),
  * updated for R24 40ef71a0: the Statutory (Malaysia) card was relocated into its own dedicated
@@ -114,10 +116,24 @@ describe('Statutory (Malaysia) layout: every statutory input stays mounted (full
    */
   const isMounted = (attr: string): boolean => {
     const field = attr.slice('name="'.length, -1);
-    return (
-      statutoryFormSources.includes(`name="${field}"`) ||
-      statutoryFormSources.includes(`name: '${field}'`)
-    );
+    const bindings: Record<string, string> = {
+      epfNumber:'bank_statutory.epf_contribution.epfnumber',
+      epfCitizenship:'bank_statutory.epf_contribution.epfcitizenship',
+      socsoNumber:'bank_statutory.socso_eis_and_others_statutory.socsonumber',
+      socsoCategory:'bank_statutory.socso_eis_and_others_statutory.socsocategory',
+      eisCategory:'bank_statutory.socso_eis_and_others_statutory.eiscategory',
+      tp3Year:'payroll.previous_employment_this_year_tp3_opening_balances.year',
+      tp3NetRemuneration:'payroll.previous_employment_this_year_tp3_opening_balances.netremuneration',
+      tp3EpfClaimed:'payroll.previous_employment_this_year_tp3_opening_balances.epfclaimed',
+      tp3PcbPaid:'payroll.previous_employment_this_year_tp3_opening_balances.pcbpaid',
+    };
+    if (bindings[field]) {
+      // TP3 has its own partial writer; it must remain INSIDE that form after extraction.
+      const start = page.indexOf('<form action={setTp3Action}');
+      const source = field.startsWith('tp3') ? page.slice(start, page.indexOf('</form>', start)) : statutoryFormSources;
+      return hasPersonnelPostedBinding(source, bindings[field], field);
+    }
+    return statutoryFormSources.includes(`name="${field}"`);
   };
 
   for (const input of requiredInputs) {
@@ -175,7 +191,7 @@ describe('Identification & Tax card (item 8b5334db): IC relocated to Profile, ta
     // so the three facts that keep this form posting are checked where each of them now lives: the named
     // input exists in the shared component, this form renders that component, and it renders it in the
     // mode that posts. Dropping any one of them silently turns a Save into a no-op.
-    expect(read('components/identity-fields.tsx').includes('name="icNumber"')).toBe(true);
+    expect(hasPersonnelPostedBinding(read('components/identity-fields.tsx'), 'profile.identity_and_passport.icnumber', 'icNumber')).toBe(true);
     expect(identity.includes('<IdentityNumberField')).toBe(true);
     expect(identity.match(/<IdentityNumberField[\s\S]*?\/>/)![0].includes('mode="form"')).toBe(true);
   });
@@ -184,9 +200,12 @@ describe('Identification & Tax card (item 8b5334db): IC relocated to Profile, ta
     expect(page.includes('action={setTaxAction}') || identityTaxCard.includes('action={action}')).toBe(true);
     // taxCategory is NOT in this list any more — 35b7af0a group 6 extracted it into a shared component so
     // the Create Employee wizard renders the identical control. It is asserted separately below.
-    for (const input of ['name="taxNumber"', 'name="taxResidency"', 'name="numChildren"', 'name="employerBearsTax"']) {
-      expect(identityTaxCard.includes(input), `${input} should exist in identity-tax-card.tsx`).toBe(true);
-    }
+    expect(hasPersonnelPostedBinding(identityTaxCard, 'bank_statutory.income_tax_pcb.taxnumber', 'taxNumber')).toBe(true);
+    expect(hasPersonnelPostedBinding(identityTaxCard, 'bank_statutory.income_tax_pcb.numchildren', 'numChildren')).toBe(true);
+    expect(hasPersonnelPostedBinding(identityTaxCard, 'bank_statutory.income_tax_pcb.employerbearstax', 'employerBearsTax')).toBe(true);
+    expect(read('components/tax-residency-field.tsx')).toContain("personnelControl(fieldId,'edit',{activeTaxSelection:!none})");
+    expect(personnelControl('bank_statutory.income_tax_pcb.taxresidency').name).toBe('taxResidency');
+    expect(identityTaxCard).toContain('<TaxResidencySelect key={taxContextKey} mode="form"');
     // childReliefMode is NOT in the list above any more — item a72610af extracted it, with the two OKU
     // selects, into components/tax-relief-fields.tsx so the Create New Employee draft renders the
     // identical controls. THE CARD STILL POSTS ALL THREE, which is what is asserted here: the card
@@ -196,9 +215,13 @@ describe('Identification & Tax card (item 8b5334db): IC relocated to Profile, ta
     expect(identityTaxCard).toContain('<ChildReliefModeField mode="form"');
     expect(identityTaxCard).toContain('<DisabledReliefField mode="form" field="disabledIndividual"');
     expect(identityTaxCard).toContain('<DisabledReliefField mode="form" field="disabledSpouse"');
-    expect(reliefGroup, 'the shared group posts childReliefMode in form mode')
-      .toContain("name: props.name ?? 'childReliefMode'");
-    expect(reliefGroup, 'and posts each OKU claim under its own field name').toContain('name: props.field');
+    expect(hasPersonnelPostedBinding(reliefGroup, 'bank_statutory.income_tax_pcb.childreliefmode', 'childReliefMode')).toBe(true);
+    expect(reliefGroup).toContain('<select\n        {...personnelControl(fieldId,mode)}');
+    for (const field of ['disabledIndividual', 'disabledSpouse']) {
+      const id = 'bank_statutory.income_tax_pcb.' + field.toLowerCase();
+      expect(reliefGroup).toContain("'" + id + "'");
+      expect(personnelControl(id).name).toBe(field);
+    }
   });
 
   /**
@@ -218,11 +241,12 @@ describe('Identification & Tax card (item 8b5334db): IC relocated to Profile, ta
    */
   it('the extracted Tax Category still POSTS from this card (all three facts, per r159)', () => {
     const field = read('components/tax-category-field.tsx');
-    expect(field.replace(/\s/g, '').includes("name={props.name??'taxCategory'}"), '① the field exists in the component').toBe(
-      true,
-    );
-    expect(field, 'the mapped integer posts through a hidden input').toMatch(/<input\b[^>]*type="hidden"[^>]*name=\{props\.name\s*\?\?\s*'taxCategory'\}[^>]*value=\{numeric\}/);
-    expect(field, 'the detailed circumstance also posts in form mode').toMatch(/name=\{props\.mode\s*===\s*'form'\s*\?\s*'taxCircumstance'\s*:\s*undefined\}/);
+    expect(hasPersonnelPostedBinding(field, 'bank_statutory.income_tax_pcb.taxcategory', 'taxCategory'), '① numeric category is carried by a real hidden input').toBe(true);
+    expect(personnelCarry('bank_statutory.income_tax_pcb.taxcategory')).toMatchObject({name:'taxCategory', type:'hidden'});
+    expect(field).toContain("props.mode==='form'&&<input {...personnelCarry('bank_statutory.income_tax_pcb.taxcategory')} value={numeric}");
+    expect(field).toContain("const fieldId='bank_statutory.income_tax_pcb.taxcircumstance'");
+    expect(field).toContain('<select {...personnelControl(fieldId,mode)}');
+    expect(personnelControl('bank_statutory.income_tax_pcb.taxcircumstance').name).toBe('taxCircumstance');
     expect(identityTaxCard.includes('<TaxCategoryField'), '② the card renders the component').toBe(true);
     const call = identityTaxCard.match(/<TaxCategoryField[\s\S]*?\/>/);
     expect(call, 'the card must render TaxCategoryField').not.toBeNull();
@@ -235,10 +259,14 @@ describe('Identification & Tax card (item 8b5334db): IC relocated to Profile, ta
     // (test/r393-draft-statutory.dom.test.tsx §5 pins the markup byte for byte). Asserted where each now lives.
     const residency = read('components/tax-residency-field.tsx');
     expect(identityTaxCard).toContain('<TaxResidencySelect key={taxContextKey} mode="form"');
-    for (const v of ['value="resident"', 'value="non_resident"', 'value="rep"', 'value="knowledge_worker"']) {
-      expect(residency.includes(v), `${v} should exist in the residency select`).toBe(true);
-    }
-    expect(residency).toContain("name={none?undefined:'taxResidency'}");
+    expect(residency).toContain("personnelFormChoices('bank_statutory.income_tax_pcb.taxresidency').map");
+    expect(residency).toContain('<option key={value} value={value}>');
+    expect(personnelFormChoices('bank_statutory.income_tax_pcb.taxresidency').map(choice=>choice.value)).toEqual(['resident','non_resident','rep','knowledge_worker','c_suite']);
+    expect(residency).toContain("const fieldId='bank_statutory.income_tax_pcb.taxresidency'");
+    expect(residency).toContain("personnelControl(fieldId,'edit',{activeTaxSelection:!none})");
+    expect(residency).toContain('disabled={none}');
+    expect(personnelControl('bank_statutory.income_tax_pcb.taxresidency','edit',{activeTaxSelection:true})).toMatchObject({name:'taxResidency',required:true});
+
   });
 });
 

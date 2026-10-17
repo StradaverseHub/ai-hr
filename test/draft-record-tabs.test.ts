@@ -214,10 +214,10 @@ describe('§3 "Draft — pending activation" is a LABEL on the record, not a dif
     const src = read(WIZARD);
     // SAVE DOES NOT VALIDATE — the action is called with the data as it stands, from whichever tab is
     // open, and nothing gates it on `outstanding`.
-    expect(src).toContain('await saveDraftAction(id, data, stepNumber(tab));');
-    expect(src).toContain("<Button variant=\"secondary\" onClick={() => saveDraft()} disabled={pending}>");
+    expect(src).toMatch(/await saveDraftAction\(id,\s*data,\s*stepNumber\(tab\)\)/);
+    expect(src).toMatch(/<Button variant="secondary" onClick=\{\(\) => saveDraft\(\)\} disabled=\{busy\|\|!!deleteTarget\}/);
     // ONLY ACTIVATE VALIDATES.
-    expect(src).toContain('disabled={pending || outstanding.length > 0}');
+    expect(src).toMatch(/disabled=\{busy\|\|!!deleteTarget\|\|outstanding.length>0\}/);
     // THE SCREEN STILL SAYS WHAT IS OUTSTANDING, by tab, and each name reaches its tab.
     expect(src).toContain("t('activateNeeds')");
     expect(src).toContain('DRAFT_TABS.filter((k) => missing[k].length > 0)');
@@ -227,7 +227,7 @@ describe('§3 "Draft — pending activation" is a LABEL on the record, not a dif
     expect(src).not.toContain("set('employment', { companyId");
     expect(src).not.toContain("set('profile', { employeeCode");
     // DISCARD is still here, and still says what it costs.
-    expect(src).toContain("t('discardDraft')");
+    expect(src).toContain("t('deleteRecord')");
     expect(src).toContain("t('discardReleasesTip')");
   });
 });

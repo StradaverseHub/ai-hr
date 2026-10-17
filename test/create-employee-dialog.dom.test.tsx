@@ -210,7 +210,7 @@ describe('the Employee ID is a read-only field, not a sentence', () => {
   it('THE PREVIEW IS NOT SENT AS A HAND-KEYED ID — the auto branch posts an empty employeeCode', async () => {
     const { user, dialog } = await openWith('Acme Sdn Bhd');
     await user.type(within(dialog).getByLabelText(/Full name/), 'Nur Aisyah');
-    await user.type(within(dialog).getByLabelText(/Email/), 'nur@acme.test');
+    await user.type(within(dialog).getByLabelText(/^Work email/), 'nur@acme.test');
     expect(autoField()!.value).toBe('ACME000007X');
     await user.click(within(dialog).getByRole('button', { name: w.createDraft }));
 
@@ -231,7 +231,7 @@ describe('the confirmation names the ID that was actually issued', () => {
     const previewed = autoField()!.value;
     expect(previewed).toBe('ACME000007X');
     await user.type(within(dialog).getByLabelText(/Full name/), 'Nur Aisyah');
-    await user.type(within(dialog).getByLabelText(/Email/), 'nur@acme.test');
+    await user.type(within(dialog).getByLabelText(/^Work email/), 'nur@acme.test');
     await user.click(within(dialog).getByRole('button', { name: w.createDraft }));
 
     expect(await screen.findByText(w.created.heading)).toBeTruthy();
@@ -253,7 +253,7 @@ describe('the confirmation names the ID that was actually issued', () => {
   it('offers Continue filling in details (to the draft) and Back to the list (close + refresh)', async () => {
     const { user, dialog } = await openWith('Acme Sdn Bhd');
     await user.type(within(dialog).getByLabelText(/Full name/), 'Nur Aisyah');
-    await user.type(within(dialog).getByLabelText(/Email/), 'nur@acme.test');
+    await user.type(within(dialog).getByLabelText(/^Work email/), 'nur@acme.test');
     await user.click(within(dialog).getByRole('button', { name: w.createDraft }));
     await screen.findByText(w.created.heading);
 
@@ -270,7 +270,7 @@ describe('the confirmation names the ID that was actually issued', () => {
   it('re-opening the prompt starts a fresh create, not the last receipt', async () => {
     const { user, dialog } = await openWith('Acme Sdn Bhd');
     await user.type(within(dialog).getByLabelText(/Full name/), 'Nur Aisyah');
-    await user.type(within(dialog).getByLabelText(/Email/), 'nur@acme.test');
+    await user.type(within(dialog).getByLabelText(/^Work email/), 'nur@acme.test');
     await user.click(within(dialog).getByRole('button', { name: w.createDraft }));
     await screen.findByText(w.created.heading);
     await user.click(screen.getByRole('button', { name: w.created.backToList }));

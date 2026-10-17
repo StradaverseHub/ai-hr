@@ -1,3 +1,5 @@
+import { hasPersonnelPostedBinding } from './helpers/personnel-posted-binding';
+import { personnelPresence, personnelInput, personnelControl } from '../lib/personnel-form-contract';
 /**
  * Item 5988053a / 33a5ce41 → ea36b7fa — Family tab drift guards, re-pinned for the CONSOLIDATED design:
  * the three per-relationship sections (Spouse / Children / Other Dependants) are merged into ONE
@@ -52,27 +54,33 @@ describe('Personnel — consolidated Family & Dependents Information (ea36b7fa)'
       'remarks',
     ];
     for (const field of named) {
-      expect(PAGE.includes(`name="${field}"`), `missing dependent input name="${field}"`).toBe(true);
+      expect(hasPersonnelPostedBinding(PAGE, 'family.family_and_dependents.' + field.toLowerCase(), field), `missing dependent input name="${field}"`).toBe(true);
     }
     // The ONE relationship select lives in the island (rendered FIRST, above the panels).
-    expect(REL_FIELDS.includes('name="relationship"')).toBe(true);
-    expect(REL_FIELDS.includes('required')).toBe(true);
+    expect(hasPersonnelPostedBinding(REL_FIELDS, 'family.family_and_dependents.relationship', 'relationship')).toBe(true);
+    expect(personnelControl('family.family_and_dependents.relationship', 'record').required).toBe(true);
     // The page no longer mounts its own relationship control (no hidden per-section input either).
     expect(PAGE.includes('<select name="relationship"')).toBe(false);
     expect(PAGE.includes('<input type="hidden" name="relationship"')).toBe(false);
     // studyCountry renders through the catalog-backed ProfileOptionSelect (legacy-value tolerant), fed by
     // the already-loaded profile_option country catalog — not a hand-rolled select.
-    expect(PAGE.includes('name="studyCountry"')).toBe(true);
-    expect(/<ProfileOptionSelect\s+name="studyCountry"/.test(PAGE.replace(/\s+/g, ' '))).toBe(true);
+    expect(hasPersonnelPostedBinding(PAGE, 'family.family_and_dependents.studycountry', 'studyCountry')).toBe(true);
+    expect(PAGE).toMatch(/<ProfileOptionSelect[^>]*personnelFieldId="family\.family_and_dependents\.studycountry"/);
     expect(PAGE.includes('options={profileOptions.country}')).toBe(true);
   });
 
   it('keeps every tri-state checkbox (and its __present marker mechanism) mounted', () => {
     // familyCheckbox emits BOTH the checkbox and its hidden `${name}__present` marker —
     // dependent-actions.ts editBool depends on the marker to distinguish unticked from absent.
-    expect(PAGE.includes('name={`${name}__present`}')).toBe(true);
+    expect(PAGE).toContain('<input {...personnelPresence(fieldId)} value="1" />');
+    expect(PAGE).toContain('<input {...personnelInput(fieldId)} defaultChecked={checked} />');
+    expect(PAGE).toContain('const fieldId=familyBooleanFields[name]');
     for (const box of ['isBeneficiary', 'spouseWorking', 'isStudent', 'isDeceased', 'childTaxRelief']) {
       expect(PAGE.includes(`familyCheckbox('${box}'`), `missing familyCheckbox('${box}')`).toBe(true);
+      const id = 'family.family_and_dependents.' + box.toLowerCase();
+      expect(PAGE).toContain(box + ":'" + id + "'");
+      expect(personnelPresence(id)).toMatchObject({name:box+'__present', type:'hidden'});
+      expect(personnelInput(id)).toMatchObject({name:box, type:'checkbox'});
     }
   });
 

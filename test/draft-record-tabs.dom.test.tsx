@@ -1,3 +1,4 @@
+import { personnelCaption } from './helpers/personnel-markup';
 /**
  * THE DRAFT RECORD, RENDERED — item 759dfc7d, work item 2.
  *
@@ -260,13 +261,13 @@ describe('it is still a draft: nothing is lost, nothing is demanded', () => {
     // Employment: a department, three tabs away.
     await openTab(messages.people.detail.tabs.job);
     await userEvent.selectOptions(
-      within(shownPanel()).getByLabelText(messages.people.wizard.fields.department),
+      within(shownPanel()).getByLabelText(personnelCaption(messages.people.detail.employmentInfo.department)),
       'dp-1',
     );
 
     // Payroll: a salary.
     await openTab(messages.people.detail.tabs.payroll);
-    await userEvent.type(within(shownPanel()).getByLabelText(messages.people.wizard.fields.basicSalary), '5200');
+    await userEvent.type(within(shownPanel()).getByLabelText(personnelCaption(messages.people.detail.basicSalaryMyr)), '5200');
 
     // …and every one of them is still there on the way back. Nothing was saved in between: this is the
     // in-progress record surviving navigation, which is what "fill it in over several days" needs first.
@@ -277,10 +278,10 @@ describe('it is still a draft: nothing is lost, nothing is demanded', () => {
     expect((document.getElementById('perm-mobile-phone') as HTMLInputElement).value)
       .toBe('+60123456789');
     await openTab(messages.people.detail.tabs.job);
-    expect((within(shownPanel()).getByLabelText(messages.people.wizard.fields.department) as HTMLSelectElement).value)
+    expect((within(shownPanel()).getByLabelText(personnelCaption(messages.people.detail.employmentInfo.department)) as HTMLSelectElement).value)
       .toBe('dp-1');
     await openTab(messages.people.detail.tabs.payroll);
-    expect((within(shownPanel()).getByLabelText(messages.people.wizard.fields.basicSalary) as HTMLInputElement).value)
+    expect((within(shownPanel()).getByLabelText(personnelCaption(messages.people.detail.basicSalaryMyr)) as HTMLInputElement).value)
       .toBe('5200');
 
     // And the save that follows carries all three — the point of keeping them.
@@ -300,14 +301,14 @@ describe('it is still a draft: nothing is lost, nothing is demanded', () => {
     // readers below prove exactly that: both render OUTSIDE the shell, and both are right about a value
     // whose own panel is hidden. Neither could be if the value lived in the panel's DOM.
     wrap();
-    const name = within(shownPanel()).getByLabelText(messages.people.wizard.fields.fullName) as HTMLInputElement;
+    const name = within(shownPanel()).getByLabelText(personnelCaption(messages.people.detail.fullNameIc)) as HTMLInputElement;
     await userEvent.clear(name);
     await userEvent.type(name, 'Nadia binti Yusof');
 
     // Fill in a department on the Employment tab too — one of the things Activate is still waiting for.
     await openTab(messages.people.detail.tabs.job);
     await userEvent.selectOptions(
-      within(shownPanel()).getByLabelText(messages.people.wizard.fields.department),
+      within(shownPanel()).getByLabelText(personnelCaption(messages.people.detail.employmentInfo.department)),
       'dp-1',
     );
 

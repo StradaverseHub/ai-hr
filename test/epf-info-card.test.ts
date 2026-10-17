@@ -1,3 +1,5 @@
+import { personnelFormChoices } from '../lib/personnel-form-contract';
+import { hasPersonnelPostedBinding } from './helpers/personnel-posted-binding';
 /**
  * Feedback 127dffba — EPF Contribution Information Card redesign (Personnel · Bank & Statutory tab).
  *
@@ -65,7 +67,9 @@ describe('EPF Info Card (127dffba)', () => {
 
   it('EPF Category dropdown no longer offers the manual_fixed option, and does offer the three named ones', () => {
     const src = read('components/epf-election.tsx');
-    expect(src).not.toMatch(/<option[^>]*value="manual_fixed"/);
+    expect(src).toContain("personnelFormChoices('bank_statutory.epf_contribution.epfuimode').map");
+    expect(src).toContain('<option key={choice.value} value={choice.value}>');
+    expect(personnelFormChoices('bank_statutory.epf_contribution.epfuimode').map(choice => choice.value)).not.toContain('manual_fixed');
     // The other four categories remain, plus 70b14723's three.
     for (const v of [
       'auto',
@@ -76,7 +80,7 @@ describe('EPF Info Card (127dffba)', () => {
       'manual_employer_amount',
       'manual_both_amount',
     ]) {
-      expect(src, v).toMatch(new RegExp(`<option value="${v}"`));
+      expect(personnelFormChoices('bank_statutory.epf_contribution.epfuimode').map(choice => choice.value), v).toContain(v);
     }
   });
 
@@ -89,11 +93,11 @@ describe('EPF Info Card (127dffba)', () => {
     //     baked-in sample) bound to `defaultValue` in form mode;
     //   * the page still supplies the STORED value, which is the half a component-only check would miss.
     const src = read('components/epf-registration-fields.tsx');
-    const at = src.indexOf("t('epfNumber')");
+    const at = src.indexOf('<PersonnelField fieldId="bank_statutory.epf_contribution.epfnumber"');
     expect(at, 'the EPF Number field is defined in the shared group').toBeGreaterThan(-1);
-    const field = src.slice(at, src.indexOf("t('epfCitizenship')", at));
+    const field = src.slice(at, src.indexOf('<PersonnelField fieldId="bank_statutory.epf_contribution.epfcitizenship"', at));
     expect(field).toContain('placeholder="123456789"');
-    expect(field).toContain("name: 'epfNumber'");
+    expect(hasPersonnelPostedBinding(field, 'bank_statutory.epf_contribution.epfnumber', 'epfNumber')).toBe(true);
     expect(field).toContain('defaultValue: epfNumber');
     // Blank when empty, never a baked-in sample.
     expect(src).toContain("const epfNumber = props.epfNumber ?? '';");

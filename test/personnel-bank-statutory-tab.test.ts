@@ -1,3 +1,4 @@
+import { hasPersonnelPostedBinding } from './helpers/personnel-posted-binding';
 /**
  * Bank & Statutory tab (feedback 40ef71a0) — the Personnel (Admin) employee-detail page must expose a
  * dedicated "Bank & Statutory" tab that surfaces the existing Statutory (Malaysia) card (EPF / SOCSO /
@@ -81,7 +82,7 @@ describe('Personnel — Bank & Statutory tab (40ef71a0)', () => {
     expect(statutoryForm.includes('mode="form"'), 'EPF group must stay uncontrolled + named here').toBe(true);
     const EPF = fs.readFileSync(path.resolve(__dirname, '../components/epf-registration-fields.tsx'), 'utf8');
     for (const field of ['epfNumber', 'epfCitizenship']) {
-      expect(EPF.includes(`name: '${field}'`), `missing statutory input ${field}`).toBe(true);
+      expect(hasPersonnelPostedBinding(EPF, 'bank_statutory.epf_contribution.' + field.toLowerCase(), field), `missing statutory input ${field}`).toBe(true);
     }
     // 35b7af0a group 7 — socsoNumber followed epfNumber out of this file into a shared group, so the
     // inline `name="socsoNumber"` assertion that stood here would now fail for a cosmetic reason. It is
@@ -96,7 +97,7 @@ describe('Personnel — Bank & Statutory tab (40ef71a0)', () => {
       'SOCSO/EIS group must stay uncontrolled + named here',
     ).toBe(true);
     for (const field of ['socsoNumber', 'socsoCategory', 'eisCategory']) {
-      expect(SOCSO.includes(`name="${field}"`), `missing statutory input ${field}`).toBe(true);
+      expect(hasPersonnelPostedBinding(SOCSO, 'bank_statutory.socso_eis_and_others_statutory.' + field.toLowerCase(), field), `missing statutory input ${field}`).toBe(true);
     }
     // Item e3ce0d4d — the IC input moved into the nationality-conditional IdentityFields client
     // component; the Profile tab wires it via setIcAction={setIcAction}. taxNumber remains on the
@@ -107,7 +108,7 @@ describe('Personnel — Bank & Statutory tab (40ef71a0)', () => {
     // Employee wizard too), so the guard follows it: the named input exists in that component, this form
     // renders the component, and it renders it in the mode that actually posts a named field.
     const SHARED_IDENTITY = fs.readFileSync(path.resolve(__dirname, '../components/identity-fields.tsx'), 'utf8');
-    expect(SHARED_IDENTITY.includes('name="icNumber"')).toBe(true);
+    expect(hasPersonnelPostedBinding(SHARED_IDENTITY, 'profile.identity_and_passport.icnumber', 'icNumber')).toBe(true);
     expect(IDENTITY.includes('<IdentityNumberField')).toBe(true);
     expect(IDENTITY.match(/<IdentityNumberField[\s\S]*?\/>/)![0].includes('mode="form"')).toBe(true);
     expect(IDENTITY.includes('action={setIcAction}')).toBe(true);

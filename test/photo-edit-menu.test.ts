@@ -1,3 +1,5 @@
+import { personnelInput } from '../lib/personnel-form-contract';
+import { hasPersonnelPostedBinding } from './helpers/personnel-posted-binding';
 /**
  * dc23d3b6 — Profile-photo UI redesign (static-source guard).
  *
@@ -78,7 +80,9 @@ describe('Photo edit menu: controls live behind the Edit trigger', () => {
     expect(page.includes("description={t('photoRemoveConfirm')}")).toBe(true);
     // accept + required file input preserved (2 MB / mime enforcement lives server-side, unchanged).
     expect(page.includes('accept="image/png,image/jpeg"')).toBe(true);
-    expect(page).toMatch(/type="file"[\s\S]*?required/);
+    const menuBody = page.slice(page.indexOf('<PhotoEditMenu'), page.indexOf('</PhotoEditMenu>'));
+    expect(hasPersonnelPostedBinding(menuBody, 'profile.personal_details.photo', 'photo')).toBe(true);
+    expect(personnelInput('profile.personal_details.photo')).toMatchObject({type:'file', required:true});
   });
 });
 

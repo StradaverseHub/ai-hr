@@ -93,7 +93,7 @@ const shownPanel = () => {
 /** The control under a `Field` label. BY THE LABEL'S OWN CAPTION, not `getByLabelText`: a Field's <label>
  *  wraps its hint and a select's options too, so its full text is never just the caption. */
 const control = (caption: string) => {
-  const span = [...shownPanel().querySelectorAll('label > span')].find((el) => el.textContent === caption);
+  const span = [...shownPanel().querySelectorAll('label > span')].find((el) => el.textContent?.replace(/\s*\*$/, '') === caption);
   return (span?.closest('label')?.querySelector('input, select') ?? null) as HTMLInputElement | HTMLSelectElement | null;
 };
 const savedData = () => (saveDraftAction.mock.calls.at(-1) as unknown as [string, EmployeeDraftData, number])[1];
@@ -187,7 +187,7 @@ describe('the end-date box follows the Employment Type', () => {
   it('switching Full-Time → Contract on screen brings the box in', async () => {
     wrap(draftOf({ employmentType: 'full_time' }));
     expect(control(w.fields.contractEndDate), 'no box for full_time').toBeNull();
-    await userEvent.selectOptions(control(w.fields.employmentType)!, 'contract');
+    await userEvent.selectOptions(control(en.people.detail.employmentInfo.employmentType)!, 'contract');
     expect(control(w.fields.contractEndDate), 'box appears for contract').toBeTruthy();
   });
 });
