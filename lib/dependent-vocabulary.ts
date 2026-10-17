@@ -234,3 +234,11 @@ export function childCategoryContradictsDob(r: ChildReliefRow, asOf: Date = new 
   const age = childAgeYears(r.dateOfBirth, asOf);
   return age != null && age >= 18;
 }
+
+/** The canonical Family writer's applicability, shared with its employee presentation.
+ * Manual/import owners retain validate-or-ignore; proposal adapters can refuse ignored changes explicitly. */
+export function dependentFieldApplies(relationship:string|null|undefined,field:string):boolean {
+ if(['marriageDate','marriageStatus','spouseWorking','companyName','employerAddress'].includes(field))return relationship==='spouse';
+ if(['isStudent','schoolName','studyLevel','studyCountry','childReliefCategory','childTaxRelief','childReliefPercentage'].includes(field))return relationship==='child';
+ return true;
+}

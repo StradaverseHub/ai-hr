@@ -83,8 +83,8 @@ describe('My Absence: first-level nav rename (label-only, same href)', () => {
   });
 });
 
-describe('My Absence: /me is purely profile — Leave tab removed, deep-links forwarded', () => {
-  it('no leave tab key, no leave panel, no leave reads or dialogs on /me', () => {
+describe('My Absence: mutations stay on /leave; My Profile has its approved read-only own Leave panel', () => {
+  it('no copied leave request forms or duplicate balance-dashboard implementation on /me', () => {
     expect(mePage.includes("key: 'leave'")).toBe(false);
     expect(mePage.includes('leave: (')).toBe(false);
     for (const gone of [
@@ -103,10 +103,10 @@ describe('My Absence: /me is purely profile — Leave tab removed, deep-links fo
     }
   });
 
-  it('back-compat: /me?tab=leave redirects straight to /leave', () => {
-    expect(mePage.includes("if (spTab === 'leave')")).toBe(true);
-    expect(mePage).toMatch(/redirect\(`\/leave\$\{/);
-    expect(mePage.includes("import { redirect } from 'next/navigation'")).toBe(true);
+  it('cf588903: /me?tab=leave selects the own read-only Leave panel; actual leave workflows stay on /leave',()=>{
+    expect(mePage).not.toContain("if (spTab === 'leave')");expect(mePage).toContain('href="/leave"');expect(mePage).toContain('leave:facts.modules.leave?leavePanel:null');
+    const facts=read('core/profile-view.ts');expect(facts).toContain('leaveBalancesTx(tx,ctx,employmentId');expect(facts).toContain('leaveEntitlementBreakdownTx(tx,employmentId');
+    expect(mePage).not.toContain('action={myRequestLeave}');expect(leavePage).toContain('<RequestLeaveDialog');
   });
 
   it('the self-service leave actions land on /leave — no /me?tab=leave target remains', () => {

@@ -1,3 +1,4 @@
+import {dependentFieldApplies} from '../lib/dependent-vocabulary';
 import { dependentNaturalKey } from '../lib/dependent-identity';
 export { dependentNaturalKey } from '../lib/dependent-identity';
 /**
@@ -738,8 +739,8 @@ function normChildReliefPercentage(v: number | null | undefined): number | null 
  * NULL regardless of the input (validate-or-ignore). General fields apply to every relationship.
  */
 function extraColumnsForAdd(relationship: string, x: DependentExtraInput) {
-  const isSpouse = relationship === 'spouse';
-  const isChild = relationship === 'child';
+  const isSpouse = dependentFieldApplies(relationship,'spouseWorking');
+  const isChild = dependentFieldApplies(relationship,'childTaxRelief');
   return {
     passportNumber: trimOrNull(x.passportNumber),
     residentialAddress: trimOrNull(x.residentialAddress),
@@ -847,7 +848,7 @@ export async function addDependentTx(
   const fullName = (p.fullName ?? '').trim();
   if (fullName === '') throw new DependentValidationError('Dependent name is required.', 'fullName');
   // ea36b7fa — built-ins always valid; custom types must be ACTIVE dependentRelationship catalog options.
-  await assertRelationshipAllowed(tx, p.relationship);
+  await validateDependentInputTx(tx,p);
   const gender = normGender(p.gender);
   const [row] = await tx
     .insert(employeeDependent)
@@ -886,10 +887,11 @@ export async function addDependentTx(
 export async function addDependent(
   ctx: SessionContext,
   p: { personId: string } & DependentInput,
+  outerTx?:Tx,
 ): Promise<{ id: string; childReliefSync: ChildReliefSyncResult }> {
-  const res = await withTenant(ctx, (tx) => addDependentTx(tx, ctx, p.personId, p));
+  const res = outerTx ? await addDependentTx(outerTx,ctx,p.personId,p) : await withTenant(ctx, (tx) => addDependentTx(tx, ctx, p.personId, p));
   // R46 47146ea3 — refresh the PCB child count from the register. Runs after commit, never throws.
-  const childReliefSync = await syncChildReliefFromFamily(ctx, p.personId);
+  const childReliefSync = await syncChildReliefFromFamily(ctx, p.personId,outerTx);
   return { ...res, childReliefSync };
 }
 
@@ -907,6 +909,19 @@ export async function addDependent(
  * It runs in ONE read-only transaction (the catalog lookup needs the caller's RLS session) and reports
  * the member's POSITION rather than its name: an error message is not a place to put a child's name.
  */
+/** Canonical proposal/manual validation with the same unchanged-legacy relationship tolerance. */
+export async function validateDependentInputTx(tx:Tx,p:Partial<DependentInput>,existing?:{fullName:string;relationship:string}){
+ if((p.fullName!==undefined||!existing)&&!(p.fullName??'').trim())throw new DependentValidationError('Dependent name is required.','fullName');
+ if(p.relationship!==undefined&&p.relationship!==existing?.relationship)await assertRelationshipAllowed(tx,p.relationship);
+ if(!existing&&p.relationship===undefined)throw new DependentValidationError('Dependent relationship is invalid.','relationship');
+ if(p.gender!==undefined)normGender(p.gender);
+ const relationship=p.relationship??existing?.relationship;
+ if(relationship==='spouse'&&p.marriageStatus!==undefined)normMarriageStatus(p.marriageStatus);
+ if(relationship==='child'){
+  if(p.childReliefCategory!==undefined)normChildReliefCategory(p.childReliefCategory);
+  if(p.childReliefPercentage!==undefined)normChildReliefPercentage(p.childReliefPercentage);
+ }
+}
 export async function assertDependentsValid(ctx: SessionContext, members: DependentInput[],outerTx?:Tx): Promise<void> {
   if (members.length === 0) return;
   const run=async(tx:Tx)=>{
@@ -1028,12 +1043,14 @@ export async function updateDependent(
     phone?: string | null;
     remarks?: string | null;
   } & DependentExtraInput,
+  outerTx?:Tx,
 ): Promise<{ id: string; childReliefSync: ChildReliefSyncResult }> {
-  const res = await withTenant(ctx, async (tx) => {
+  const run=async(tx:Tx)=>{
     const existing = await loadDependent(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new DependentValidationError('Dependent record not found.');
     }
+    await validateDependentInputTx(tx,p,existing);
     const patch: Record<string, unknown> = {};
     if (p.fullName !== undefined) {
       const fullName = p.fullName.trim();
@@ -1062,8 +1079,8 @@ export async function updateDependent(
     // CHANGED away from spouse/child we NULL the now-irrelevant fields so no stale cross-section data
     // lingers.
     const effRel = (patch.relationship as string | undefined) ?? existing.relationship;
-    const isSpouse = effRel === 'spouse';
-    const isChild = effRel === 'child';
+    const isSpouse = dependentFieldApplies(effRel,'spouseWorking');
+    const isChild = dependentFieldApplies(effRel,'childTaxRelief');
     const relChanged = patch.relationship !== undefined && patch.relationship !== existing.relationship;
 
     if (p.passportNumber !== undefined) patch.passportNumber = trimOrNull(p.passportNumber);
@@ -1121,10 +1138,11 @@ export async function updateDependent(
       payload: { diff: Object.keys(patch).filter((k) => k !== 'updatedAt') },
     });
     return { id: p.id, personId: existing.personId };
-  });
+  };
+  const res=outerTx ? await run(outerTx) : await withTenant(ctx,run);
   // R46 47146ea3 — a DOB correction, a student-flag change or an explicit childTaxRelief decision can all
   // move the eligible count, so an edit must re-sync exactly like an add.
-  const childReliefSync = await syncChildReliefFromFamily(ctx, res.personId);
+  const childReliefSync = await syncChildReliefFromFamily(ctx, res.personId,outerTx);
   return { id: res.id, childReliefSync };
 }
 

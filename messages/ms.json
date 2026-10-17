@@ -742,7 +742,7 @@
       "compensation": "Gaji Asas",
       "compMeta": "asas / bln · sejak {validFrom}",
       "noCompensation": "Tiada pampasan ditetapkan.",
-      "basicSalaryMyr": "Gaji asas (MYR)",
+      "basicSalaryMyr": "Gaji asas",
       "updatePay": "Tambah semakan gaji",
       "statutoryMalaysia": "Berkanun (Malaysia)",
       "icNumber": "No. Identiti (NRIC)",
@@ -1777,7 +1777,7 @@
       "photoView": "View photo",
       "photoViewClose": "Close",
       "photoViewTitle": "{name} — profile photo",
-      "childrenPhysical": "Anak yang layak untuk pelepasan cukai",
+      "childrenPhysical": "Bilangan anak sebenar",
       "childrenQualifying": "Dikira sebagai, untuk cukai bulanan (C)",
       "childProvenanceEntered": "Entered by hand",
       "childProvenanceFromFamily": "Worked out from the Family records",
@@ -1821,7 +1821,19 @@
       "taxSelectionChoose": "Pilih kategori cukai",
       "taxCategoryLegacy3": "Kategori 3 — pasangan bekerja, bercerai, balu/duda atau bujang dengan anak angkat",
       "taxCategorySingleHint": "Kategori 1 LHDN bermaksud bujang. Kategori pekerja berkahwin mengikut status pekerjaan pasangan, walaupun pelepasan anak tidak dituntut.",
-      "taxCategoryNoneExplanation": "Kategori Cukai ialah Tiada untuk pemprosesan gaji ini. PCB tidak dikira; pengiraan berkanun lain diteruskan seperti biasa."
+      "taxCategoryNoneExplanation": "Kategori Cukai ialah Tiada untuk pemprosesan gaji ini. PCB tidak dikira; pengiraan berkanun lain diteruskan seperti biasa.",
+      "sharedFields": {
+        "photo": "Foto profil",
+        "childReliefAmount": "Amaun pelepasan anak",
+        "serviceYears": "Tahun perkhidmatan",
+        "days": "Hari mengikut tahun perkhidmatan",
+        "unmatchedLeaveTypes": "Jenis cuti tidak sepadan",
+        "roundedEarnedToDate": "Diperoleh hingga kini selepas pembundaran",
+        "entitlementTable": "Jadual kelayakan",
+        "sharedBalanceSource": "Sumber baki dikongsi",
+        "createdByName": "Dimuat naik oleh",
+        "updatedByName": "Terakhir dikemas kini oleh"
+      }
     },
     "import": {
       "title": "Import pekerja",
@@ -12150,11 +12162,11 @@
         },
         "contact": {
           "title": "Butiran hubungan anda",
-          "body": "Kemas kini telefon, alamat, tarikh lahir dan hubungan kecemasan anda di sini. Perubahan ini disimpan **serta-merta**, tanpa kelulusan."
+          "body": "Gunakan Mohon Sunting untuk mengubah medan yang dibenarkan Admin. Maklumat hubungan mungkin disimpan serta-merta; perubahan lain memerlukan kelulusan. Alamat bercanggah kekal untuk semakan HR."
         },
         "bank": {
           "title": "Bank dan berkanun",
-          "body": "Akaun bank dan kategori cukai PCB anda berada di sini. Buka **Mohon perubahan** untuk menghantar suntingan, yang akan ke pentadbir anda untuk kelulusan."
+          "body": "Semak maklumat bank dan berkanun yang direkodkan. Gunakan Mohon Sunting untuk perubahan yang dibenarkan, kemudian Simpan melalui aliran kelulusan sedia ada."
         },
         "payslips": {
           "title": "Slip gaji anda",
@@ -12162,7 +12174,7 @@
         },
         "attendance": {
           "title": "Ringkasan kehadiran",
-          "body": "Daftar masuk dan keluar untuk hari ini di sini. Untuk sejarah kehadiran penuh anda, buka halaman Kehadiran. Anda juga boleh memohon pembetulan untuk ketukan yang tertinggal."
+          "body": "Rekod masuk dan keluar di Kehadiran Saya. Pautan di sini membuka sejarah kehadiran dan permohonan pembetulan anda."
         },
         "leave": {
           "title": "Baki dan permohonan cuti",
@@ -20437,5 +20449,69 @@
     },
     "updated": "Dikemas kini",
     "assignmentStatus": "Status tugasan semasa"
+  },
+  "essProfile": {
+    "requestEdit": "Mohon untuk mengedit",
+    "save": "Simpan perubahan",
+    "cancel": "Batal",
+    "saving": "Sedang menyimpan…",
+    "viewOnly": "Lihat sahaja",
+    "editable": "Boleh diedit",
+    "primaryOnly": "Hubungan utama sedia ada sahaja (legasi)",
+    "workflowOnly": "Gunakan aliran kerja khusus",
+    "unavailable": "Tidak tersedia",
+    "notRecorded": "Belum direkodkan",
+    "recordedValue": "Nilai yang direkodkan",
+    "clear": "Kosongkan nilai",
+    "undo": "Buat asal perubahan",
+    "leaveUnsaved": "Tinggalkan halaman ini dan buang perubahan yang belum disimpan?",
+    "viewHelp": "Semak rekod Personel anda sendiri. Permohonan tertunda tidak menggantikan rekod induk.",
+    "editHelp": "Edit medan yang dibenarkan merentas tab, kemudian simpan sekali. Perubahan hubungan boleh disimpan terus; perubahan lain menunggu kelulusan.",
+    "pendingValue": "Permohonan tertunda: {value}",
+    "saved": "Disimpan terus: {saved}. Menunggu kelulusan: {waiting}.",
+    "reference": "Rujukan: {reference}",
+    "addRecord": "Tambah rekod",
+    "noRecords": "Tiada rekod untuk dipaparkan.",
+    "primaryRecord": "Hubungan utama semasa",
+    "existingRecord": "Rekod sedia ada",
+    "newRecord": "Rekod baharu — belum dihantar",
+    "removeNew": "Buang rekod baharu",
+    "legacyAddressTitle": "Alamat legasi yang dikekalkan",
+    "legacyAddressHelp": "Alamat lama ini berbeza daripada alamat Personel. Ia kekal untuk penyelarasan; mengedit alamat Tetap atau Surat-menyurat tidak akan menyalin atau memadamkannya secara senyap.",
+    "requestHistory": "Permohonan perubahan profil",
+    "chooseEmployment": "Pilih pekerjaan anda",
+    "countryUnavailable": "Pengeditan berkanun tidak tersedia untuk negara pekerjaan ini. Rekod sedia ada kekal.",
+    "error": {
+      "invalid": "Semak medan yang ditandakan dan gabungan yang diperlukan.",
+      "permission": "Anda tidak boleh mengedit rekod pekerjaan ini.",
+      "fieldClosed": "Pentadbir telah mengehadkan medan yang dipilih. Perubahan anda belum dihantar.",
+      "stale": "Rekod tersimpan telah berubah. Simpan salinan suntingan, kemudian muat semula dan semak sebelum menyimpan lagi.",
+      "unavailable": "Rekod atau perkhidmatan negara yang diperlukan tidak tersedia. Tiada apa dihantar.",
+      "addressReview": "Gunakan medan alamat Tetap atau Surat-menyurat Personel. Alamat legasi dikekalkan.",
+      "system": "Perubahan tidak dapat disimpan. Input anda kekal di sini. Cuba lagi atau hubungi HR dengan rujukan."
+    },
+    "register": {
+      "dependent": "Keluarga dan tanggungan",
+      "qualification": "Kelayakan akademik dan profesional",
+      "emergency": "Hubungan kecemasan"
+    },
+    "status": {
+      "pending": "Menunggu kelulusan",
+      "approved": "Diluluskan",
+      "rejected": "Ditolak"
+    },
+    "viewChanges": "Lihat perubahan",
+    "loadingHistory": "Memuatkan sejarah…",
+    "currentValue": "Semasa: {value}",
+    "proposedValue": "Diminta: {value}",
+    "missingRecord": "Rekod asal tidak lagi tersedia.",
+    "settingsFailure": "Tetapan tidak dapat disimpan. Sila cuba lagi atau hubungi sokongan.",
+    "savedFields": "Disimpan sekarang: {fields}",
+    "waitingFields": "Menunggu kelulusan: {fields}",
+    "moduleUnavailable": "Modul {module} tidak tersedia. Maklumat teras pekerjaan sedia ada kekal kelihatan.",
+    "statutoryUnavailable": "Maklumat bank dan berkanun tidak tersedia kerana pekerjaan ini tiada pakej negara yang disokong. Medan profil lain yang dibenarkan masih tersedia.",
+    "notApplicable": "Medan ini tidak terpakai kepada hubungan yang dipilih. Buat asal atau pulihkan hubungan sebelum menyimpan.",
+    "bankNotApplicable": "Nilai ini hanya terpakai apabila pilihan pemegang tersuai diaktifkan. Aktifkan pilihan itu atau buat asal perubahan ini sebelum menyimpan.",
+    "taxNotApplicable": "Kategori keserasian angka tidak boleh diubah apabila keadaan cukai yang disimpan ialah Tiada. Gunakan aliran kerja pemilihan cukai untuk mengubah keadaan itu."
   }
 }

@@ -742,7 +742,7 @@
       "compensation": "Lương cơ bản",
       "compMeta": "cơ bản / tháng · từ {validFrom}",
       "noCompensation": "Chưa thiết lập lương thưởng.",
-      "basicSalaryMyr": "Lương cơ bản (MYR)",
+      "basicSalaryMyr": "Lương cơ bản",
       "updatePay": "Thêm điều chỉnh lương",
       "statutoryMalaysia": "Pháp lý (Malaysia)",
       "icNumber": "Số định danh (NRIC)",
@@ -1777,7 +1777,7 @@
       "photoView": "View photo",
       "photoViewClose": "Close",
       "photoViewTitle": "{name} — profile photo",
-      "childrenPhysical": "Số con đủ điều kiện giảm trừ thuế",
+      "childrenPhysical": "Số con thực tế",
       "childrenQualifying": "Được tính là, cho thuế hàng tháng (C)",
       "childProvenanceEntered": "Entered by hand",
       "childProvenanceFromFamily": "Worked out from the Family records",
@@ -1821,7 +1821,19 @@
       "taxSelectionChoose": "Chọn phân loại thuế",
       "taxCategoryLegacy3": "Nhóm 3 — vợ hoặc chồng làm việc, ly hôn, góa hoặc độc thân có con nuôi",
       "taxCategorySingleHint": "Nhóm 1 của LHDN là độc thân. Người đã kết hôn vẫn theo tình trạng làm việc của vợ hoặc chồng, dù không yêu cầu giảm trừ con.",
-      "taxCategoryNoneExplanation": "Nhóm thuế là Không trong lần xử lý lương này. PCB không được tính; các khoản theo luật khác tiếp tục bình thường."
+      "taxCategoryNoneExplanation": "Nhóm thuế là Không trong lần xử lý lương này. PCB không được tính; các khoản theo luật khác tiếp tục bình thường.",
+      "sharedFields": {
+        "photo": "Ảnh hồ sơ",
+        "childReliefAmount": "Số tiền giảm trừ cho con",
+        "serviceYears": "Số năm công tác",
+        "days": "Số ngày theo thâm niên",
+        "unmatchedLeaveTypes": "Loại nghỉ phép chưa khớp",
+        "roundedEarnedToDate": "Quyền lợi đã tích lũy sau làm tròn",
+        "entitlementTable": "Bảng quyền lợi",
+        "sharedBalanceSource": "Nguồn số dư dùng chung",
+        "createdByName": "Người tải lên",
+        "updatedByName": "Người cập nhật gần nhất"
+      }
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -12150,11 +12162,11 @@
         },
         "contact": {
           "title": "Thông tin liên hệ của bạn",
-          "body": "Cập nhật số điện thoại, địa chỉ, ngày sinh và liên hệ khẩn cấp tại đây. Những thay đổi này được lưu **ngay lập tức**, không cần phê duyệt."
+          "body": "Dùng Yêu cầu chỉnh sửa để thay đổi các trường được quản trị viên cho phép. Thông tin liên hệ có thể được lưu ngay; các thay đổi khác cần phê duyệt. Địa chỉ mâu thuẫn được giữ lại để HR xem xét."
         },
         "bank": {
           "title": "Ngân hàng và pháp định",
-          "body": "Tài khoản ngân hàng và hạng thuế PCB của bạn nằm ở đây. Mở **Yêu cầu thay đổi** để gửi chỉnh sửa, các thay đổi này sẽ chuyển đến quản trị viên của bạn để phê duyệt."
+          "body": "Xem thông tin ngân hàng và pháp định đã ghi nhận. Dùng Yêu cầu chỉnh sửa cho các trường được phép rồi Lưu để gửi theo quy trình phê duyệt hiện có."
         },
         "payslips": {
           "title": "Phiếu lương của bạn",
@@ -12162,7 +12174,7 @@
         },
         "attendance": {
           "title": "Tóm tắt chấm công",
-          "body": "Chấm công vào/ra cho hôm nay tại đây. Để xem toàn bộ lịch sử chấm công, hãy mở trang Chấm công. Bạn cũng có thể yêu cầu sửa lần chấm công bị thiếu."
+          "body": "Chấm công vào và ra tại Chấm công của tôi. Các liên kết ở đây mở lịch sử chấm công và yêu cầu điều chỉnh của bạn."
         },
         "leave": {
           "title": "Số dư và yêu cầu nghỉ phép",
@@ -20437,5 +20449,69 @@
     },
     "updated": "Cập nhật",
     "assignmentStatus": "Trạng thái phân công hiện tại"
+  },
+  "essProfile": {
+    "requestEdit": "Yêu cầu chỉnh sửa",
+    "save": "Lưu thay đổi",
+    "cancel": "Hủy",
+    "saving": "Đang lưu…",
+    "viewOnly": "Chỉ xem",
+    "editable": "Có thể chỉnh sửa",
+    "primaryOnly": "Chỉ liên hệ chính hiện có (quyền cũ)",
+    "workflowOnly": "Sử dụng quy trình chuyên biệt",
+    "unavailable": "Không khả dụng",
+    "notRecorded": "Chưa ghi nhận",
+    "recordedValue": "Giá trị đã ghi nhận",
+    "clear": "Xóa giá trị",
+    "undo": "Hoàn tác thay đổi",
+    "leaveUnsaved": "Rời trang và bỏ các thay đổi chưa lưu?",
+    "viewHelp": "Xem hồ sơ nhân sự của bạn. Yêu cầu chờ duyệt không thay thế dữ liệu chính.",
+    "editHelp": "Chỉnh sửa các trường được phép giữa các tab rồi lưu một lần. Thông tin liên hệ có thể lưu ngay; thay đổi khác chờ duyệt.",
+    "pendingValue": "Giá trị chờ duyệt: {value}",
+    "saved": "Đã lưu ngay: {saved}. Chờ duyệt: {waiting}.",
+    "reference": "Mã tham chiếu: {reference}",
+    "addRecord": "Thêm bản ghi",
+    "noRecords": "Không có bản ghi để hiển thị.",
+    "primaryRecord": "Liên hệ chính hiện tại",
+    "existingRecord": "Bản ghi hiện có",
+    "newRecord": "Bản ghi mới — chưa gửi",
+    "removeNew": "Bỏ bản ghi mới",
+    "legacyAddressTitle": "Địa chỉ cũ được giữ lại",
+    "legacyAddressHelp": "Địa chỉ cũ khác địa chỉ trong hồ sơ nhân sự và được giữ nguyên để đối chiếu. Sửa địa chỉ thường trú hoặc liên hệ không tự sao chép hay xóa địa chỉ cũ.",
+    "requestHistory": "Yêu cầu thay đổi hồ sơ",
+    "chooseEmployment": "Chọn hồ sơ việc làm của bạn",
+    "countryUnavailable": "Chưa hỗ trợ sửa thông tin luật định cho quốc gia của hồ sơ việc làm này. Dữ liệu hiện có được giữ nguyên.",
+    "error": {
+      "invalid": "Kiểm tra các trường được chỉ ra và tổ hợp bắt buộc.",
+      "permission": "Bạn không được sửa hồ sơ việc làm này.",
+      "fieldClosed": "Quản trị viên đã hạn chế một trường được chọn. Thay đổi chưa được gửi.",
+      "stale": "Bản ghi đã thay đổi. Giữ bản sao nội dung đã sửa, tải lại và kiểm tra trước khi lưu lại.",
+      "unavailable": "Bản ghi hoặc dịch vụ quốc gia cần thiết không khả dụng. Chưa gửi thay đổi nào.",
+      "addressReview": "Sử dụng các trường địa chỉ thường trú hoặc liên hệ trong hồ sơ nhân sự. Địa chỉ cũ được giữ lại.",
+      "system": "Không thể lưu thay đổi. Nội dung đã nhập vẫn còn. Hãy thử lại hoặc liên hệ nhân sự kèm mã tham chiếu."
+    },
+    "register": {
+      "dependent": "Gia đình và người phụ thuộc",
+      "qualification": "Trình độ học vấn và chuyên môn",
+      "emergency": "Liên hệ khẩn cấp"
+    },
+    "status": {
+      "pending": "Chờ duyệt",
+      "approved": "Đã duyệt",
+      "rejected": "Đã từ chối"
+    },
+    "viewChanges": "Xem thay đổi",
+    "loadingHistory": "Đang tải lịch sử…",
+    "currentValue": "Hiện tại: {value}",
+    "proposedValue": "Đề nghị: {value}",
+    "missingRecord": "Bản ghi gốc không còn khả dụng.",
+    "settingsFailure": "Không thể lưu cài đặt. Vui lòng thử lại hoặc liên hệ bộ phận hỗ trợ.",
+    "savedFields": "Đã lưu: {fields}",
+    "waitingFields": "Đang chờ phê duyệt: {fields}",
+    "moduleUnavailable": "Mô-đun {module} không khả dụng. Các thông tin việc làm cốt lõi hiện có vẫn được hiển thị.",
+    "statutoryUnavailable": "Thông tin ngân hàng và pháp định không khả dụng vì hồ sơ việc làm này không có gói quốc gia được hỗ trợ. Các trường hồ sơ khác được phép vẫn khả dụng.",
+    "notApplicable": "Trường này không áp dụng cho mối quan hệ đã chọn. Hãy hoàn tác hoặc khôi phục mối quan hệ trước khi lưu.",
+    "bankNotApplicable": "Giá trị này chỉ áp dụng khi bật tùy chọn người nhận tùy chỉnh tương ứng. Hãy bật tùy chọn đó hoặc hoàn tác thay đổi này trước khi lưu.",
+    "taxNotApplicable": "Không thể đổi mã loại số tương thích khi tình trạng thuế đã lưu là Không áp dụng. Hãy dùng quy trình lựa chọn thuế để thay đổi tình trạng đó."
   }
 }

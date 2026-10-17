@@ -1,3 +1,5 @@
+import {personnelField} from '../lib/personnel-field-registry';
+import {personnelScalarIssue} from '../lib/personnel-import-contract';
 import { isCalendarDate } from '../lib/calendar-date';
 /**
  * Organizational lifecycle services (ADR-0003). Each mutation runs inside `withTenant`
@@ -1393,9 +1395,9 @@ const CATALOG_BACKED_COLUMNS: Partial<Record<keyof PersonProfileFields, ProfileO
  * NAME ONLY (never values — religion/race/address are PII and the event log is append-only, PDPA-erasure
  * cannot reach it — mirrors core/profile.ts).
  */
-export async function updatePerson(
+async function writePersonProfile(
   ctx: SessionContext,
-  p: { personId: string; fullName: string; primaryEmail: string; phone?: string | null; via?: string } & PersonProfileFields,
+  p: { personId: string; fullName?: string; primaryEmail?: string; phone?: string | null; via?: string } & PersonProfileFields,
   /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
   outerTx?: Tx,
 ) {
@@ -1421,15 +1423,15 @@ export async function updatePerson(
       })
       .from(person)
       .where(eq(person.id, p.personId))
-      .limit(1);
+      .limit(1).for('update');
     if (!before) throw new Error('Person not found');
     const after = {
-      fullName: p.fullName.trim(),
-      primaryEmail: p.primaryEmail.trim(),
-      phone: p.phone?.trim() || null,
+      fullName: p.fullName===undefined?before.fullName:p.fullName.trim(),
+      primaryEmail: p.primaryEmail===undefined?before.primaryEmail:p.primaryEmail.trim(),
+      phone: p.phone===undefined?before.phone:p.phone?.trim()||null,
     };
-    if (!after.fullName) throw new Error('Name is required');
-    if (!after.primaryEmail) throw new Error('Email is required');
+    if (p.fullName!==undefined&&!after.fullName) throw new Error('Name is required');
+    if (p.primaryEmail!==undefined&&!after.primaryEmail) throw new Error('Email is required');
     // Only the profile fields explicitly PRESENT on the caller's payload (undefined = leave unchanged).
     const profileSet: Record<string, string | null> = {};
     const profileFields: string[] = [];
@@ -1488,6 +1490,17 @@ export async function updatePerson(
     return { id: p.personId };
   };
   return outerTx ? run(outerTx) : withTenant(ctx,run);
+}
+
+/** Existing full form contract, including its established omitted-phone clear semantics. */
+export function updatePerson(ctx:SessionContext,p:{personId:string;fullName:string;primaryEmail:string;phone?:string|null;via?:string}&PersonProfileFields,outerTx?:Tx){
+ return writePersonProfile(ctx,{...p,phone:p.phone??null},outerTx);
+}
+/** Canonical partial profile adapter. Omitted trio values retain exact stored nullable data.
+ * Required-name/email validation applies when supplied, rather than forcing an unrelated legacy repair. */
+export function updatePersonProfilePartial(ctx:SessionContext,p:{personId:string;fullName?:string;primaryEmail?:string;phone?:string|null;via?:string}&PersonProfileFields,outerTx?:Tx){
+ if(p.primaryEmail!==undefined&&p.primaryEmail.trim()){const field=personnelField('profile.contact_and_permanent_address.primaryemail');if(!field||personnelScalarIssue(field,p.primaryEmail))throw new Error('Email is invalid');}
+ return writePersonProfile(ctx,p,outerTx);
 }
 
 /**

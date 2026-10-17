@@ -1,192 +1,435 @@
-# My Profile — exactly what an employee sees of their own record, and what they do not
+# My Profile: shared Personnel visibility and update routes
 
-Board item **9583deac**, stage one. r259.
+Approved cf588903 replaces the old six-tab/legacy-address/Today presentation. All eleven Personnel tabs
+remain in their canonical order: Profile, Family, Employment, Employment History, Attendance,
+Bank & Statutory, Payroll, Leave, Documents, Qualification and Others.
 
-The approved plan promises you this list in writing:
+Each stable Personnel descriptor below has an explicit ESS disposition. Import/report eligibility does
+not grant employee access. Visible means an authorized own fact, not access to its administrative writer;
+missing/ambiguous historical evidence is Unavailable, not today's value or invented zero. Dedicated
+Payroll/document/Leave/Attendance owners retain their module, release and visibility guards.
 
-> Some tabs will show less than the administrator's view even when the layout matches — an employee has no
-> business seeing another person's cost centre or an internal note. **The list of exactly which fields are
-> hidden is written down and shown to you before stage one is built, not decided as we go.**
+One Request to Edit, Save and Cancel spans tabs. Only touched permitted fields are submitted. Saved
+contacts and waiting proposals remain distinct, masked as appropriate. Exact record IDs are rechecked;
+Primary/Highest/child-relief changes remain canonical owner operations. HR decides without self-approval.
 
-This is that list. It is the difference between a self-service screen and a data leak, so it is a
-deliverable of the round rather than a note about one.
+The legacy request set contains twenty-four fields: seventeen on Profile and seven on Bank & Statutory.
+Legacy `all` and arrays retain the previous request semantics and finite direct contacts/current-primary
+five fields, even for legacy `[]` (no requests). New complete saves use `{version:2,fields:[...]}` in the
+same setting; v2 empty and View Only close those direct rights too. New fields default View Only.
 
-**One correction to that promise, and it is ours to make.** The plan says the list would be shown to you
-*before* stage one was built. It was not: it was written **during** the build, as each card was matched to
-the Personnel record's, and you are reading it now, with the screen finished and before it is released to
-anybody. That is later than we promised. Nothing on the list was decided after the fact — the screen is
-built from this list rather than described by it — but the sequence was not the one you were told, so we
-would rather say so here than let the title imply otherwise.
+Canonical Permanent/Correspondence are shown and proposed through their owner. Legacy-only/conflicting
+addresses remain explicit read-only reconciliation evidence; no silent copy/drop. HR document repository
+metadata is protected; Documents retains only existing released own outputs, review and resignation routes.
 
-It is not prose that can rot. `app/me/visible-fields.ts` holds the same list as code, the screen renders
-from it, and `test/me-profile-visibility.test.ts` fails the build if this document and that file stop
-agreeing. The same file also now checks the harder direction: every field the administrator's Personnel
-record shows must be either on the employee's screen or on the withheld list below. A field added to a
-Personnel card in some later round cannot quietly go missing from the employee's copy of their own
-record — the build stops until somebody decides, in writing, which of the two it is.
+This is an implementation inventory, not evidence of verified UI or security acceptance. Types, tests,
+actual roles, six locales, themes, narrow viewport, keyboard, save/reopen and approval remain pending the
+coordinated verification window. SQL0554 is unapplied and not journaled in this isolated branch.
 
----
-
-## The shape
-
-My Profile now carries the **same six tabs, in the same order, with the same names** as the Personnel
-record an administrator sees:
-
-| Tab | The card(s) on it |
-| --- | --- |
-| **Profile** | Personal details · Contact & address · Emergency contact · Personal details, identity & documents (request a change — added in stage two) |
-| **Employment** | Employment Information · Direct Superior · (other current positions, with the pay of each, if any) |
-| **Bank & Statutory** | Bank Information · Statutory (Malaysia) · Others Statutory · Bank, tax & personal (request a change) |
-| **Payroll** | Basic Salary · My payslips · Personal tax relief (TP1) · My loans |
-| **Family** | Family & Dependents Information |
-| **Documents** | Tax statement (EA) · Review outcome · Resignation |
-
-**A company that has not bought Payroll** does not see My payslips, Personal tax relief (TP1) or My loans: all
-three belong to the Payroll module, so the cards are left out. The **Tax statement (EA)** is different: it is a
-statutory document built from payslips that already exist, so a company that ran payroll and later stopped
-still gives its employees (leavers included) their EA as a PDF. A company that never ran payroll has no
-statement, and no EA card is shown.
-The Payroll tab stays, with Basic Salary on it, because the salary record belongs to the employee's
-employment and not to the Payroll module.
-
-The first card on each of the first five tabs carries the **same name HR sees**, letter for letter, because
-it is the same catalogue entry. The rest are the employee's own lists — payslips, tax relief, loans, EA
-statements, the resignation form — which have no Personnel counterpart at all, so there is no second name
-for them to drift from.
-
-The tab names are not copies of the Personnel screen's words — they are the **same catalogue entries**,
-read from the same place. Rename a tab on the Personnel side and it renames here. That is what stops the
-two screens drifting apart again, which was the original complaint.
-
-Two things sit **outside** the tabs, on purpose:
-
-- **Clock in / out** stays at the top of the page. It is one of only two places a geofenced punch can be
-  made, and the Personnel record has no clocking card, so putting it in a tab would have meant deleting it.
-- **My Performance** (goals, feedback requests, one-to-one check-ins) moved to its own screen at
-  `/me/performance`, linked from the top of My Profile. The Personnel record has no Performance tab; the
-  contents moved rather than disappearing.
-
----
-
-## What an employee **cannot** see on their own record
-
-Three kinds of thing are withheld, and the difference between them matters.
-
-### 1. Other people's data, reachable from a field on this person's record
-
-| Tab | Field | Why |
-| --- | --- | --- |
-| Bank & Statutory | Duplicate income-tax-number warning | It names the **other** employees filed under the same tax reference. A warning meant for HR would tell an employee who else shares their number. |
-| Employment | Cost centre and cost-recharge allocation | Which companies this salary is charged to is the group's internal accounting, not a fact about the person, and the percentages disclose an inter-company arrangement. |
-| Employment | Delegations (who covers this person’s approvals) | An operational authority setting about other employees' approval rights; changing it is an HR act, and reading it tells an employee who can approve in their name. |
-| Family | Dependant remarks and employer details of a working spouse | Free-text HR notes about a family member, and a third party's employer address, neither of which the employee record needs to show back. |
-| Family | Dependant identity, address, marriage and study details | The Family card shows who is on the record and whether each child counts toward tax relief. A dependant's own IC/passport, home address, marriage date and schooling are another person's details, held for a payroll purpose and not printed back onto a self-service screen. |
-| Profile | Emergency contact remark | The register's free-text note is HR's ("call the sister first, the mother is overseas"). Who the contacts are, how to reach them, their address and their priority are all shown. |
-
-### 2. The employer's own commercial position, recorded against the employee
-
-| Tab | Field | Why |
-| --- | --- | --- |
-| Bank & Statutory | Employer-borne EPF / SOCSO / EIS / SKBBK / tax flags | These record which contributions the **company** absorbs on the employee's behalf — an employment-cost arrangement, not the employee's statutory position. |
-| Bank & Statutory | Child-relief rate table (full / half categories) | Tenant-level tax configuration shared by every employee; the employee's own relief **count** is shown, the grid behind it is not. |
-| Payroll | Payroll policy assignment (which pay template applies) | Internal payroll configuration. What it produces — pay mode, payment term, the payslip — is shown; the template name is not. |
-| Payroll | Pay component catalogue and recurring component setup | HR master data for building pay. Every amount it produces already appears on the employee's own payslip. |
-| Payroll | CP38 instalment orders | An LHDN order telling the **employer** to deduct a fixed instalment of an employee's tax arrears. The deduction itself is a line on the employee's own payslip, which My Profile shows; the order record — its reference, its months, HR's note on it — is the employer's compliance file, and the employee receives the order from LHDN directly. |
-| Payroll | Zakat contribution setup | The state, method and rate by which zakat is computed for this employee is payroll configuration on the employer's side. The amount it produces is a line on the employee's own payslip and on their EA statement, both of which My Profile shows. |
-| Employment | Attendance, holiday-calendar and shift configuration | Which holiday calendar, shift pattern and geofence apply to this employment are operational settings HR assigns. What they produce — the public holidays on the leave calendar, the clock-in the employee actually makes — is on My Absence and at the top of this screen; the assignment itself is not a fact about the person. |
-| Employment | Contract remark | A free-text HR note on the contract ("renew at revised rate", "do not extend"). The contract **dates** are shown; the note is an internal judgement. |
-
-### 3. An internal judgement about this person
-
-The most dangerous class: it *is* their data, and it is still not a thing to hand them without an HR
-decision.
-
-| Tab | Field | Why |
-| --- | --- | --- |
-| Employment | Blacklist flag and blacklist reason | An internal HR decision about re-employment. Disclosing it on a self-service screen would be the employee learning it from a web page. |
-| Payroll | Salary revision remarks and the full revision history | The **current** salary, currency and effective date are shown. The remark on each past revision is HR's reasoning, and the increment history is a performance conversation, not a field. |
-| Documents | HR personnel-file documents (the Documents repository) | The file can hold a warning letter or an investigation note, and there is no per-document "visible to employee" switch yet. Payslips, EA statements and review letters — the documents meant **for** the employee — are shown. |
-| Every tab | Change History / audit trail | It names which member of staff changed what and when. It is HR's record of its own handling of the person. |
-| Every tab | Data privacy tools (PDPA export / erasure controls) | Administrative controls that act on the record; a request route, not a self-service button. |
-| Every tab | Movement history (transfer / termination / blacklist events) | The event ledger carries the reasons behind each movement, including exit reasons recorded by HR before anything is communicated. |
-
----
-
-## One address on the Contact & address card, and why there is only one
-
-The plan promises you this, and we hold ourselves to it: *"My Profile will not hold a second copy of
-anybody's information. It reads the Personnel record and writes requests against it, so there is only ever
-one master."*
-
-Keeping that promise cost this round a card. **HR’s Permanent and Correspondence address block** is not on
-My Profile, and the reason is worth a paragraph because it is a fact about your data rather than a
-decision about privacy.
-
-An employee record currently holds the home address in **two different places**. There is the address the
-employee maintains themselves — the one behind the "My details" panel on this screen, which saves the
-moment they press the button. And there is the Permanent / Correspondence pair that HR fills in on the
-Personnel record, which is what feeds statutory forms and reports. They were one address until the
-Personnel card was split into two blocks; since then, nothing keeps them in step.
-
-We built My Profile showing HR’s pair first. The result was a card an employee could not trust: two
-addresses on screen, and a Save button that changed neither of them — while the mobile number and personal
-email in the same panel *did* update, because those are single columns shared by both screens. An employee
-would have corrected their address, seen it apparently ignored, and corrected it again.
-
-So My Profile shows **the address the employee can actually change**, and nothing else. What is on the
-card is what the button writes.
-
-**What that means for you, in practice.** Until the two are merged, an address an employee corrects on My
-Profile does not appear on the Personnel record, and an address HR types on the Personnel record does not
-appear on My Profile. That is true today, before this round, and this round does not make it worse — but it
-is now visible, so we are telling you rather than leaving you to find it. Merging them is a change to the
-stored record itself and needs a short, separate piece of work: decide which of the two is the master, copy
-the other into it, and retire the loser. We recommend doing it before stage two, because stage two is
-where an employee starts *requesting* changes to fields HR owns, and an address with two homes would make
-a request ambiguous the first time it was used.
-
----
-
-## Two more decisions worth stating plainly
-
-**The bank account number is masked.** The employee sees the bank and the last four digits, which is
-enough to confirm which account is on file without the full number rendering onto a shared screen or into
-a screenshot. That is how My Profile has always shown it; nothing changed.
-
-**Nothing new became editable in stage one.** Stage one showed the record. The two ways to change
-something were already there and were unchanged:
-
-- low-risk contact details (mobile, personal email, home address, emergency contact) save immediately;
-- bank details, PCB category, number of children, date of birth, gender and marital status raise a
-  **request** that waits for an administrator.
-
-**Stage two (r260) widened the second of those** from three areas to twenty-four named fields, added the
-rejection reason, and put a waiting request's value beside the master one rather than over it. The whole
-list, and what is deliberately left off it, is `docs/me-profile-change-requests.md` — written for you the
-same way this document is. Nothing on the withheld list below became requestable: an employee cannot ask
-to change a field they are not shown, and the build fails if the two lists ever disagree.
-
-One label moved as part of that, and it belongs in this document because it is a field name you read.
-**"PCB category" on the Bank & Statutory tab is now "Tax Category"** — Personnel Management's own name for
-it, the one on the Identification & Tax card. It had been the one field on this screen still carrying a
-second wording of its own, which is exactly the drift this whole item was raised about. Same field, same
-value, HR's name for it.
-
-**Stage three (r261) added the two settings** that control, field by field, what an employee may ask to
-change, and who approves it — `docs/me-profile-request-settings.md`. Neither changes anything on this
-document's withheld list: a field an employee may not SEE never becomes something they may ask about, and
-the build still fails if the two lists disagree.
-
----
-
-## The one item we would like a decision on
-
-**The HR personnel file (the Documents repository) is withheld for now.** Technically an employee is
-already permitted to read the documents filed against their own employment — the database allows it. We
-have not surfaced them, because there is no way today to mark a single document "the employee may see
-this", and the same folder is where a warning letter would be filed. Surfacing the folder wholesale would
-publish those.
-
-The right fix is a per-document visibility switch on the HR side, which is a small piece of work but is
-not in stage one's scope. Until then the Documents tab shows only what is produced **for** the employee:
-their EA statements, their review outcome, and their own resignation.
+| Stable Personnel field | Tab | ESS visibility | Update route | Reason |
+| --- | --- | --- | --- | --- |
+| `profile.personal_details.employeecode` | Profile | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `profile.personal_details.salutation` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.personal_details.fullname` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.personal_details.firstname` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.personal_details.lastname` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.personal_details.preferredname` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.personal_details.nationality` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.personal_details.religion` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.personal_details.race` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.personal_details.dateofbirth` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.personal_details.age` | Profile | Visible | viewOnly | Calculated from recorded birth date and viewing date. |
+| `profile.personal_details.gender` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.personal_details.maritalstatus` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.personal_details.status` | Profile | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `profile.personal_details.photo` | Profile | Visible | specialist | Photo stays under the guarded file owner. |
+| `profile.identity_and_passport.icnumber` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.identity_and_passport.oldicnumber` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.identity_and_passport.passportnumber` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.identity_and_passport.passportissuedate` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.identity_and_passport.passportexpirydate` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.identity_and_passport.passportissuingcountry` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.identity_and_passport.passportissuingcountrycode` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.identity_and_passport.passportremark` | Profile | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `profile.contact_and_permanent_address.primaryemail` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.contact_and_permanent_address.phone` | Profile | Visible | immediate | Existing low-risk contact owner. |
+| `profile.contact_and_permanent_address.homephone` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.contact_and_permanent_address.personalemail` | Profile | Visible | immediate | Existing low-risk contact owner. |
+| `profile.contact_and_permanent_address.permanentaddressline1` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.contact_and_permanent_address.permanentaddressline2` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.contact_and_permanent_address.permanentaddressline3` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.contact_and_permanent_address.permanentpostcode` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.contact_and_permanent_address.permanentcity` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.contact_and_permanent_address.permanentstate` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.contact_and_permanent_address.permanentcountry` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.correspondence_address.correspondenceaddressline1` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.correspondence_address.correspondenceaddressline2` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.correspondence_address.correspondenceaddressline3` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.correspondence_address.correspondencepostcode` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.correspondence_address.correspondencecity` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.correspondence_address.correspondencestate` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.correspondence_address.correspondencecountry` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.correspondence_address.correspondencemobilephone` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.correspondence_address.correspondencehomephone` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `profile.correspondence_address.copypermanentaddress` | Profile | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `profile.emergency_contact.fullname` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical Emergency Contact owner. |
+| `profile.emergency_contact.relationship` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical Emergency Contact owner. |
+| `profile.emergency_contact.mobilephone` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical Emergency Contact owner. |
+| `profile.emergency_contact.homephone` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical Emergency Contact owner. |
+| `profile.emergency_contact.priority` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical Emergency Contact owner. |
+| `profile.emergency_contact.address` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical Emergency Contact owner. |
+| `profile.emergency_contact.remarks` | Profile | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `family.family_and_dependents.relationship` | Family | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `family.family_and_dependents.fullname` | Family | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `family.family_and_dependents.gender` | Family | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `family.family_and_dependents.dateofbirth` | Family | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `family.family_and_dependents.age` | Family | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `family.family_and_dependents.phone` | Family | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `family.family_and_dependents.icorpassport` | Family | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `family.family_and_dependents.icorpassport_8` | Family | Protected | viewOnly | Duplicate conditional presentation of the same family identity field; the canonical descriptor is displayed once. |
+| `family.family_and_dependents.passportnumber` | Family | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `family.family_and_dependents.residentialaddress` | Family | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `family.family_and_dependents.marriagedate` | Family | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `family.family_and_dependents.marriagestatus` | Family | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `family.family_and_dependents.occupation` | Family | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `family.family_and_dependents.companyname` | Family | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `family.family_and_dependents.employeraddress` | Family | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `family.family_and_dependents.spouseworking` | Family | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `family.family_and_dependents.isbeneficiary` | Family | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `family.family_and_dependents.isdeceased` | Family | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `family.family_and_dependents.isstudent` | Family | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `family.family_and_dependents.schoolname` | Family | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `family.family_and_dependents.studylevel` | Family | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `family.family_and_dependents.studycountry` | Family | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `family.family_and_dependents.childreliefcategory` | Family | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `family.family_and_dependents.childtaxrelief` | Family | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `family.family_and_dependents.childreliefpercentage` | Family | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `family.family_and_dependents.countstowardrelief` | Family | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `family.family_and_dependents.remarks` | Family | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment.organisation_assignment.companyname` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.organisation_assignment.businessunitname` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.organisation_assignment.departmentname` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.organisation_assignment.positionname` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.organisation_assignment.gradename` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.organisation_assignment.employmenttype` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.additional_organisation_labels.orgdivision` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.additional_organisation_labels.orgbranch` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.additional_organisation_labels.orgregion` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.additional_organisation_labels.orgline` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.additional_organisation_labels.orgsection` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.additional_organisation_labels.orgteam` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.additional_organisation_labels.orgbase` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.additional_organisation_labels.employmentcategory` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.employment_dates_and_service.hiredon` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.employment_dates_and_service.joindate` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.employment_dates_and_service.groupservice` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.employment_dates_and_service.companyservice` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.employment_dates_and_service.yearofservice` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.employment_dates_and_service.probationvalue` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.employment_dates_and_service.probationunit` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.employment_dates_and_service.extendedprobationvalue` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.employment_dates_and_service.extendedprobationunit` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.employment_dates_and_service.finalconfirmationdate` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.employment_dates_and_service.contractstartdate` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.employment_dates_and_service.contractenddate` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.employment_dates_and_service.contractremark` | Employment | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment.employment_dates_and_service.noticebeforeconfirmationvalue` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.employment_dates_and_service.noticebeforeconfirmationunit` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.employment_dates_and_service.noticeafterconfirmationvalue` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.employment_dates_and_service.noticeafterconfirmationunit` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.employment_dates_and_service.tenderresignationdate` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.employment_dates_and_service.resignationdate` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.employment_dates_and_service.lastworkingdate` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.direct_superior_and_history.employeecode` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.direct_superior_and_history.fullname` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.direct_superior_and_history.employeecode_3` | Employment | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment.direct_superior_and_history.fullname_4` | Employment | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment.direct_superior_and_history.validfrom` | Employment | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment.direct_superior_and_history.validto` | Employment | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment.approval_delegations.employeecode` | Employment | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment.approval_delegations.fullname` | Employment | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment.approval_delegations.validfrom` | Employment | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment.approval_delegations.validto` | Employment | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.event_information.kind` | Employment History | Visible | viewOnly | Recorded own employment event; private reasons and actors are withheld. |
+| `employment_history.event_information.effectivefrom` | Employment History | Visible | viewOnly | Recorded own employment event; private reasons and actors are withheld. |
+| `employment_history.event_information.enddate` | Employment History | Visible | viewOnly | Recorded own employment event; private reasons and actors are withheld. |
+| `employment_history.event_information.lastworkingdate` | Employment History | Visible | viewOnly | Recorded own employment event; private reasons and actors are withheld. |
+| `employment_history.event_information.recordedbyname` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.event_information.recordedat` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.event_information.remarks` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.event_information.status` | Employment History | Visible | viewOnly | Recorded own employment event; private reasons and actors are withheld. |
+| `employment_history.event_information.jobtitle` | Employment History | Visible | viewOnly | Recorded own employment event; private reasons and actors are withheld. |
+| `employment_history.event_information.basicsalary` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.event_information.terminationreason` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.event_information.terminationtype` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.event_information.resignationdate` | Employment History | Visible | viewOnly | Recorded own employment event; private reasons and actors are withheld. |
+| `employment_history.event_information.noticeserveddays` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.event_information.blacklisted` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.event_information.correctionreason` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.event_information.reversedbyname` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.event_information.reversedat` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.event_information.reversalreason` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.before_changes_and_after_changes.companyname` | Employment History | Visible | viewOnly | Recorded before/after own organisation fact; no current-as-history substitution. |
+| `employment_history.before_changes_and_after_changes.businessunitname` | Employment History | Visible | viewOnly | Recorded before/after own organisation fact; no current-as-history substitution. |
+| `employment_history.before_changes_and_after_changes.orgdivision` | Employment History | Visible | viewOnly | Recorded before/after own organisation fact; no current-as-history substitution. |
+| `employment_history.before_changes_and_after_changes.departmentname` | Employment History | Visible | viewOnly | Recorded before/after own organisation fact; no current-as-history substitution. |
+| `employment_history.before_changes_and_after_changes.positionname` | Employment History | Visible | viewOnly | Recorded before/after own organisation fact; no current-as-history substitution. |
+| `employment_history.before_changes_and_after_changes.gradename` | Employment History | Visible | viewOnly | Recorded before/after own organisation fact; no current-as-history substitution. |
+| `employment_history.before_changes_and_after_changes.employmenttype` | Employment History | Visible | viewOnly | Recorded before/after own organisation fact; no current-as-history substitution. |
+| `employment_history.before_changes_and_after_changes.manageremployeecode` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.before_changes_and_after_changes.managername` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.before_changes_and_after_changes.basicsalary` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.before_changes_and_after_changes.currency` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.before_changes_and_after_changes.paymode` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.before_changes_and_after_changes.paymentterm` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.before_changes_and_after_changes.employmentcategory` | Employment History | Visible | viewOnly | Recorded before/after own organisation fact; no current-as-history substitution. |
+| `employment_history.before_changes_and_after_changes.orgregion` | Employment History | Visible | viewOnly | Recorded before/after own organisation fact; no current-as-history substitution. |
+| `employment_history.before_changes_and_after_changes.orgbranch` | Employment History | Visible | viewOnly | Recorded before/after own organisation fact; no current-as-history substitution. |
+| `employment_history.before_changes_and_after_changes.orgteam` | Employment History | Visible | viewOnly | Recorded before/after own organisation fact; no current-as-history substitution. |
+| `employment_history.before_changes_and_after_changes.orgsection` | Employment History | Visible | viewOnly | Recorded before/after own organisation fact; no current-as-history substitution. |
+| `employment_history.before_changes_and_after_changes.orgline` | Employment History | Visible | viewOnly | Recorded before/after own organisation fact; no current-as-history substitution. |
+| `employment_history.before_changes_and_after_changes.orgbase` | Employment History | Visible | viewOnly | Recorded before/after own organisation fact; no current-as-history substitution. |
+| `employment_history.before_changes_and_after_changes.locationname` | Employment History | Visible | viewOnly | Recorded before/after own organisation fact; no current-as-history substitution. |
+| `employment_history.original_hire_details_and_corrections.businessunitname` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.original_hire_details_and_corrections.departmentname` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.original_hire_details_and_corrections.positionname` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.original_hire_details_and_corrections.costcentername` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.original_hire_details_and_corrections.locationname` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.original_hire_details_and_corrections.manageremployeecode` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.original_hire_details_and_corrections.managername` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.original_hire_details_and_corrections.originalvalue` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.original_hire_details_and_corrections.correctedvalue` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.original_hire_details_and_corrections.recordedbyname` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.original_hire_details_and_corrections.recordedat` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.original_hire_details_and_corrections.reason` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `attendance.holiday_calendar_and_schedule.holidaygroupname` | Attendance | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `attendance.holiday_calendar_and_schedule.schedulegroupname` | Attendance | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `attendance.clocking_and_attendance_photo.geofencingenabled` | Attendance | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `attendance.clocking_and_attendance_photo.clockinglocationcode` | Attendance | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `attendance.clocking_and_attendance_photo.clockinglocationname` | Attendance | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `attendance.clocking_and_attendance_photo.clockinglocationaddress` | Attendance | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `attendance.clocking_and_attendance_photo.geofenceradiusm` | Attendance | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `attendance.clocking_and_attendance_photo.clockinglocationstatus` | Attendance | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `attendance.clocking_and_attendance_photo.cardid` | Attendance | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `attendance.clocking_and_attendance_photo.attendancephotosetting` | Attendance | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `attendance.work_location_and_shift_arrangement.locationcode` | Attendance | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `attendance.work_location_and_shift_arrangement.locationname` | Attendance | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `attendance.work_location_and_shift_arrangement.locationeffectivefrom` | Attendance | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `attendance.work_location_and_shift_arrangement.shifttype` | Attendance | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `attendance.work_location_and_shift_arrangement.backupshiftcode` | Attendance | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `attendance.work_location_and_shift_arrangement.backupshiftname` | Attendance | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `attendance.work_location_and_shift_arrangement.shifteffectivefrom` | Attendance | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `attendance.work_location_and_shift_arrangement.previousshiftcode` | Attendance | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `attendance.work_location_and_shift_arrangement.previousshiftname` | Attendance | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `attendance.work_location_and_shift_arrangement.newshiftcode` | Attendance | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `attendance.work_location_and_shift_arrangement.newshiftname` | Attendance | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `attendance.work_location_and_shift_arrangement.changedbyname` | Attendance | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `attendance.work_location_and_shift_arrangement.changedat` | Attendance | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `bank_statutory.bank_information.bankname` | Bank & Statutory | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `bank_statutory.bank_information.bankaccountno` | Bank & Statutory | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `bank_statutory.bank_information.enablecustomholdername` | Bank & Statutory | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `bank_statutory.bank_information.customholdername` | Bank & Statutory | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `bank_statutory.bank_information.enablecustomholderid` | Bank & Statutory | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `bank_statutory.bank_information.customholderid` | Bank & Statutory | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `bank_statutory.epf_contribution.epfnumber` | Bank & Statutory | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `bank_statutory.epf_contribution.epfcitizenship` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
+| `bank_statutory.epf_contribution.epfmode` | Bank & Statutory | Protected | specialist | Internal persisted calculation enum; the canonical EPF UI category/election and applicable employee figures are shown instead. |
+| `bank_statutory.epf_contribution.epfemployeerate` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
+| `bank_statutory.epf_contribution.epfemployerrate` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.epf_contribution.epfemployeeamount` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
+| `bank_statutory.epf_contribution.epfemployeramount` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.epf_contribution.epfmanualreason` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.epf_contribution.employerbearsepf` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.socso_eis_and_others_statutory.socsonumber` | Bank & Statutory | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `bank_statutory.socso_eis_and_others_statutory.socsocategory` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
+| `bank_statutory.socso_eis_and_others_statutory.eiscategory` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
+| `bank_statutory.socso_eis_and_others_statutory.subjecttoskbbk` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
+| `bank_statutory.socso_eis_and_others_statutory.employerbearssocso` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.socso_eis_and_others_statutory.employerbearseis` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.socso_eis_and_others_statutory.employerbearsskbbk` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.socso_eis_and_others_statutory.hrdfsubject` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
+| `bank_statutory.income_tax_pcb.taxnumber` | Bank & Statutory | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `bank_statutory.income_tax_pcb.taxcategory` | Bank & Statutory | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `bank_statutory.income_tax_pcb.taxresidency` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
+| `bank_statutory.income_tax_pcb.disabledindividual` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
+| `bank_statutory.income_tax_pcb.disabledspouse` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
+| `bank_statutory.income_tax_pcb.childreliefmode` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
+| `bank_statutory.income_tax_pcb.numchildren` | Bank & Statutory | Visible | approval | Legacy physical child-count proposal; the existing tax owner validates and applies after approval. This is not the family-derived qualifying-child count. |
+| `bank_statutory.income_tax_pcb.qualifyingchildren` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
+| `bank_statutory.income_tax_pcb.childreliefamount` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
+| `bank_statutory.income_tax_pcb.employerbearstax` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.income_tax_pcb.employername` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.income_tax_pcb.selectionconfirmationrequired` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.income_tax_pcb.item` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.income_tax_pcb.category` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.income_tax_pcb.share` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.income_tax_pcb.qualifyingunits` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.income_tax_pcb.reliefamount` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.declared_child_relief_table.under18full` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.declared_child_relief_table.under18half` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.declared_child_relief_table.preuniversityfull` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.declared_child_relief_table.preuniversityhalf` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.declared_child_relief_table.tertiaryfull` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.declared_child_relief_table.tertiaryhalf` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.declared_child_relief_table.disabledfull` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.declared_child_relief_table.disabledhalf` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.declared_child_relief_table.disabledstudyfull` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.declared_child_relief_table.disabledstudyhalf` | Bank & Statutory | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `payroll.basic_salary_and_salary_history.validfrom` | Payroll | Visible | specialist | Own compensation projection; salary revisions remain an authorized Payroll workflow. |
+| `payroll.basic_salary_and_salary_history.basicsalary` | Payroll | Visible | specialist | Own compensation projection; salary revisions remain an authorized Payroll workflow. |
+| `payroll.basic_salary_and_salary_history.currency` | Payroll | Visible | specialist | Own compensation projection; salary revisions remain an authorized Payroll workflow. |
+| `payroll.basic_salary_and_salary_history.previoussalary` | Payroll | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `payroll.basic_salary_and_salary_history.incrementamount` | Payroll | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `payroll.basic_salary_and_salary_history.incrementpercent` | Payroll | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `payroll.basic_salary_and_salary_history.paymode` | Payroll | Visible | specialist | Own compensation projection; salary revisions remain an authorized Payroll workflow. |
+| `payroll.basic_salary_and_salary_history.paymentterm` | Payroll | Visible | specialist | Own compensation projection; salary revisions remain an authorized Payroll workflow. |
+| `payroll.basic_salary_and_salary_history.rateamount` | Payroll | Visible | specialist | Own compensation projection; salary revisions remain an authorized Payroll workflow. |
+| `payroll.basic_salary_and_salary_history.remarks` | Payroll | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `payroll.basic_salary_and_salary_history.status` | Payroll | Visible | specialist | Own compensation projection; salary revisions remain an authorized Payroll workflow. |
+| `payroll.payment_method_and_payroll_policy.paymentmethod` | Payroll | Visible | specialist | Own pay information only; no payroll configuration or transaction edits. |
+| `payroll.payment_method_and_payroll_policy.payrollpolicyname` | Payroll | Visible | specialist | Own pay information only; no payroll configuration or transaction edits. |
+| `payroll.pay_items.componentname` | Payroll | Visible | specialist | Own pay information only; no payroll configuration or transaction edits. |
+| `payroll.pay_items.amount` | Payroll | Visible | specialist | Own pay information only; no payroll configuration or transaction edits. |
+| `payroll.pay_items.currency` | Payroll | Visible | specialist | Own pay information only; no payroll configuration or transaction edits. |
+| `payroll.pay_items.validfrom` | Payroll | Visible | specialist | Own pay information only; no payroll configuration or transaction edits. |
+| `payroll.pay_items.validto` | Payroll | Visible | specialist | Own pay information only; no payroll configuration or transaction edits. |
+| `payroll.pay_items.prorate` | Payroll | Visible | specialist | Own pay information only; no payroll configuration or transaction edits. |
+| `payroll.pay_items.remarks` | Payroll | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `payroll.cp38_deduction.reference` | Payroll | Visible | specialist | Own pay information only; no payroll configuration or transaction edits. |
+| `payroll.cp38_deduction.monthlyamount` | Payroll | Visible | specialist | Own pay information only; no payroll configuration or transaction edits. |
+| `payroll.cp38_deduction.validfrom` | Payroll | Visible | specialist | Own pay information only; no payroll configuration or transaction edits. |
+| `payroll.cp38_deduction.validto` | Payroll | Visible | specialist | Own pay information only; no payroll configuration or transaction edits. |
+| `payroll.cp38_deduction.remarks` | Payroll | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `payroll.cp38_deduction.status` | Payroll | Visible | specialist | Own pay information only; no payroll configuration or transaction edits. |
+| `payroll.leave_encashment.rawbalance` | Payroll | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `payroll.leave_encashment.autodays` | Payroll | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `payroll.leave_encashment.effectivedays` | Payroll | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `payroll.leave_encashment.asof` | Payroll | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `payroll.leave_encashment.status` | Payroll | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `payroll.leave_encashment.adjusteddays` | Payroll | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `payroll.leave_encashment.reason` | Payroll | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `payroll.previous_employment_this_year_tp3_opening_balances.year` | Payroll | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `payroll.previous_employment_this_year_tp3_opening_balances.netremuneration` | Payroll | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `payroll.previous_employment_this_year_tp3_opening_balances.epfclaimed` | Payroll | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `payroll.previous_employment_this_year_tp3_opening_balances.pcbpaid` | Payroll | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `payroll.zakat_summary.status` | Payroll | Visible | specialist | Own pay information only; no payroll configuration or transaction edits. |
+| `payroll.zakat_summary.stateauthority` | Payroll | Visible | specialist | Own pay information only; no payroll configuration or transaction edits. |
+| `payroll.zakat_summary.method` | Payroll | Visible | specialist | Own pay information only; no payroll configuration or transaction edits. |
+| `payroll.zakat_summary.rate` | Payroll | Visible | specialist | Own pay information only; no payroll configuration or transaction edits. |
+| `leave.grade_and_benefit_scheme.gradename` | Leave | Visible | viewOnly | Existing own Leave balance/benefit owner; unavailable is not zero. |
+| `leave.grade_and_benefit_scheme.schemename` | Leave | Visible | viewOnly | Existing own Leave balance/benefit owner; unavailable is not zero. |
+| `leave.grade_and_benefit_scheme.effectivefrom` | Leave | Visible | viewOnly | Existing own Leave balance/benefit owner; unavailable is not zero. |
+| `leave.grade_and_benefit_scheme.serviceyears` | Leave | Visible | viewOnly | Existing own Leave balance/benefit owner; unavailable is not zero. |
+| `leave.grade_and_benefit_scheme.leavetypename` | Leave | Visible | viewOnly | Existing own Leave balance/benefit owner; unavailable is not zero. |
+| `leave.grade_and_benefit_scheme.pickedupby` | Leave | Visible | viewOnly | Existing own Leave balance/benefit owner; unavailable is not zero. |
+| `leave.grade_and_benefit_scheme.days` | Leave | Visible | viewOnly | Existing own Leave balance/benefit owner; unavailable is not zero. |
+| `leave.grade_and_benefit_scheme.unmatchedleavetypes` | Leave | Visible | viewOnly | Existing own Leave balance/benefit owner; unavailable is not zero. |
+| `leave.leave_balance_and_breakdown.leavetypename` | Leave | Visible | viewOnly | Existing own Leave balance/benefit owner; unavailable is not zero. |
+| `leave.leave_balance_and_breakdown.asof` | Leave | Visible | viewOnly | Existing own Leave balance/benefit owner; unavailable is not zero. |
+| `leave.leave_balance_and_breakdown.entitlement` | Leave | Visible | viewOnly | Existing own Leave balance/benefit owner; unavailable is not zero. |
+| `leave.leave_balance_and_breakdown.earnedtodate` | Leave | Visible | viewOnly | Existing own Leave balance/benefit owner; unavailable is not zero. |
+| `leave.leave_balance_and_breakdown.roundedearnedtodate` | Leave | Visible | viewOnly | Existing own Leave balance/benefit owner; unavailable is not zero. |
+| `leave.leave_balance_and_breakdown.broughtforward` | Leave | Visible | viewOnly | Existing own Leave balance/benefit owner; unavailable is not zero. |
+| `leave.leave_balance_and_breakdown.adjustments` | Leave | Visible | viewOnly | Existing own Leave balance/benefit owner; unavailable is not zero. |
+| `leave.leave_balance_and_breakdown.total` | Leave | Visible | viewOnly | Existing own Leave balance/benefit owner; unavailable is not zero. |
+| `leave.leave_balance_and_breakdown.taken` | Leave | Visible | viewOnly | Existing own Leave balance/benefit owner; unavailable is not zero. |
+| `leave.leave_balance_and_breakdown.pendingapproval` | Leave | Visible | viewOnly | Existing own Leave balance/benefit owner; unavailable is not zero. |
+| `leave.leave_balance_and_breakdown.broughtforwardforfeited` | Leave | Visible | viewOnly | Existing own Leave balance/benefit owner; unavailable is not zero. |
+| `leave.leave_balance_and_breakdown.expirydate` | Leave | Visible | viewOnly | Existing own Leave balance/benefit owner; unavailable is not zero. |
+| `leave.leave_balance_and_breakdown.availablebalance` | Leave | Visible | viewOnly | Existing own Leave balance/benefit owner; unavailable is not zero. |
+| `leave.leave_balance_and_breakdown.entitlementstatus` | Leave | Visible | viewOnly | Existing own Leave balance/benefit owner; unavailable is not zero. |
+| `leave.leave_balance_and_breakdown.entitlementtable` | Leave | Visible | viewOnly | Existing own Leave balance/benefit owner; unavailable is not zero. |
+| `leave.leave_balance_and_breakdown.sharedbalancesource` | Leave | Visible | viewOnly | Existing own Leave balance/benefit owner; unavailable is not zero. |
+| `leave.entitlement_recalculation_history.effectivefrom` | Leave | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `leave.entitlement_recalculation_history.leavetypename` | Leave | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `leave.entitlement_recalculation_history.previousgradename` | Leave | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `leave.entitlement_recalculation_history.newgradename` | Leave | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `leave.entitlement_recalculation_history.reason` | Leave | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `leave.entitlement_recalculation_history.previousdays` | Leave | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `leave.entitlement_recalculation_history.newdays` | Leave | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `leave.entitlement_recalculation_history.changedays` | Leave | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `documents.employee_documents.title` | Documents | Protected | specialist | HR repository metadata is not an employee document grant. Documents retains existing released employee outputs through their dedicated guarded owners. |
+| `documents.employee_documents.category` | Documents | Protected | specialist | HR repository metadata is not an employee document grant. Documents retains existing released employee outputs through their dedicated guarded owners. |
+| `documents.employee_documents.description` | Documents | Protected | specialist | HR repository metadata is not an employee document grant. Documents retains existing released employee outputs through their dedicated guarded owners. |
+| `documents.employee_documents.filename` | Documents | Protected | specialist | HR repository metadata is not an employee document grant. Documents retains existing released employee outputs through their dedicated guarded owners. |
+| `documents.employee_documents.mimetype` | Documents | Protected | specialist | HR repository metadata is not an employee document grant. Documents retains existing released employee outputs through their dedicated guarded owners. |
+| `documents.employee_documents.sizebytes` | Documents | Protected | specialist | HR repository metadata is not an employee document grant. Documents retains existing released employee outputs through their dedicated guarded owners. |
+| `documents.employee_documents.createdat` | Documents | Protected | specialist | HR repository metadata is not an employee document grant. Documents retains existing released employee outputs through their dedicated guarded owners. |
+| `documents.employee_documents.updatedat` | Documents | Protected | specialist | HR repository metadata is not an employee document grant. Documents retains existing released employee outputs through their dedicated guarded owners. |
+| `documents.employee_documents.createdbyname` | Documents | Protected | specialist | HR repository metadata is not an employee document grant. Documents retains existing released employee outputs through their dedicated guarded owners. |
+| `documents.employee_documents.updatedbyname` | Documents | Protected | specialist | HR repository metadata is not an employee document grant. Documents retains existing released employee outputs through their dedicated guarded owners. |
+| `documents.employee_documents.content` | Documents | Protected | specialist | HR repository metadata is not an employee document grant. Documents retains existing released employee outputs through their dedicated guarded owners. |
+| `qualification.academic_and_professional_qualifications.level` | Qualification | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `qualification.academic_and_professional_qualifications.institute` | Qualification | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `qualification.academic_and_professional_qualifications.fromym` | Qualification | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `qualification.academic_and_professional_qualifications.toym` | Qualification | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `qualification.academic_and_professional_qualifications.graduationdate` | Qualification | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `qualification.academic_and_professional_qualifications.major` | Qualification | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `qualification.academic_and_professional_qualifications.result` | Qualification | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `qualification.academic_and_professional_qualifications.description` | Qualification | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `qualification.academic_and_professional_qualifications.highest` | Qualification | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `others.change_history.eventtype` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.change_history.action` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.change_history.highimpact` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.change_history.actortype` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.change_history.actorname` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.change_history.module` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.change_history.aggregatetype` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.change_history.occurredat` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.change_history.sequence` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.change_history.changedfield` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.change_history.previousvalue` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.change_history.newvalue` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.leave_requests.leavetypename` | Others | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `others.leave_requests.startdate` | Others | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `others.leave_requests.enddate` | Others | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `others.leave_requests.days` | Others | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `others.leave_requests.status` | Others | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `others.probation_contract_internship_review.employmenttype` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.probation_contract_internship_review.type` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.probation_contract_internship_review.enddate` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.probation_contract_internship_review.duedate` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.probation_contract_internship_review.status` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.probation_contract_internship_review.decision` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.probation_contract_internship_review.documentkind` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.probation_contract_internship_review.documentfilename` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.probation_contract_internship_review.content` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.related_values_shown_during_hire_correction.companyname` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.related_values_shown_during_hire_correction.hiredon` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.related_values_shown_during_hire_correction.joindate` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.related_values_shown_during_hire_correction.gradename` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.related_values_shown_during_hire_correction.employmenttype` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `leave.eligibility_and_explanation_details.rulename` | Leave | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `leave.eligibility_and_explanation_details.state` | Leave | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `leave.eligibility_and_explanation_details.validfrom` | Leave | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `leave.eligibility_and_explanation_details.validto` | Leave | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `leave.eligibility_and_explanation_details.nonmatchreason` | Leave | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `leave.eligibility_and_explanation_details.balanceline` | Leave | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `leave.eligibility_and_explanation_details.explanation` | Leave | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `leave.eligibility_and_explanation_details.description` | Leave | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `leave.eligibility_and_explanation_details.formula` | Leave | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `profile.draft_only_saved_address_choice.sameaspermanent` | Profile | Protected | specialist | Draft creation control; not a saved employee fact. |
+| `employment.draft_only_employment_fields.costcenterid` | Employment | Protected | specialist | Draft creation control; not a saved employee fact. |
+| `employment.draft_only_employment_fields.internshipenddate` | Employment | Protected | specialist | Draft creation control; not a saved employee fact. |
+| `employment.draft_only_employment_fields.probationenddate` | Employment | Protected | specialist | Draft creation control; not a saved employee fact. |
+| `payroll.draft_initial_monthly_allowance.monthlyallowance` | Payroll | Protected | specialist | Draft creation control; not a saved employee fact. |
+| `employment.employment_dates_and_service.confirmationdate` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `bank_statutory.income_tax_pcb.taxcircumstance` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
+| `employment.direct_superior_and_history.superioremploymentid` | Employment | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment.approval_delegations.delegateemploymentid` | Employment | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `attendance.work_location_and_shift_arrangement.locationid` | Attendance | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.epf_contribution.epfuimode` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
+| `attendance.clocking_and_attendance_photo.clockinglocationids` | Attendance | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `attendance.work_location_and_shift_arrangement.backupshiftid` | Attendance | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `bank_statutory.income_tax_pcb.childrelieftable_under_18_full` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
+| `bank_statutory.income_tax_pcb.childrelieftable_under_18_half` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
+| `bank_statutory.income_tax_pcb.childrelieftable_study_preu_full` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
+| `bank_statutory.income_tax_pcb.childrelieftable_study_preu_half` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
+| `bank_statutory.income_tax_pcb.childrelieftable_study_tertiary_full` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
+| `bank_statutory.income_tax_pcb.childrelieftable_study_tertiary_half` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
+| `bank_statutory.income_tax_pcb.childrelieftable_disabled_full` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
+| `bank_statutory.income_tax_pcb.childrelieftable_disabled_half` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
+| `bank_statutory.income_tax_pcb.childrelieftable_disabled_study_full` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
+| `bank_statutory.income_tax_pcb.childrelieftable_disabled_study_half` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
+| `employment_history.original_hire_details_and_corrections.costcenterid` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `employment_history.event_information.terminationreasoncode` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |

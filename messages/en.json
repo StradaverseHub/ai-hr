@@ -742,7 +742,7 @@
       "compensation": "Basic Salary",
       "compMeta": "basic / mo · since {validFrom}",
       "noCompensation": "No compensation set.",
-      "basicSalaryMyr": "Basic salary (MYR)",
+      "basicSalaryMyr": "Basic salary",
       "updatePay": "Add salary revision",
       "statutoryMalaysia": "Statutory (Malaysia)",
       "icNumber": "Identity No (NRIC)",
@@ -1777,7 +1777,7 @@
       "photoView": "View photo",
       "photoViewClose": "Close",
       "photoViewTitle": "{name} — profile photo",
-      "childrenPhysical": "Children qualifying for tax relief",
+      "childrenPhysical": "Physical child count",
       "childrenQualifying": "Counted as, for monthly tax (C)",
       "childProvenanceEntered": "Entered by hand",
       "childProvenanceFromFamily": "Worked out from the Family records",
@@ -1821,7 +1821,19 @@
       "taxSelectionChoose": "Choose a tax category",
       "taxCategoryLegacy3": "Category 3 — spouse working, divorced or widowed, or single with adopted child",
       "taxCategorySingleHint": "LHDN Category 1 means Single. Married employees follow their spouse’s working status, even when no child relief is claimed.",
-      "taxCategoryNoneExplanation": "Tax Category was None for this payroll attempt. PCB was not calculated; other statutory calculations continue normally."
+      "taxCategoryNoneExplanation": "Tax Category was None for this payroll attempt. PCB was not calculated; other statutory calculations continue normally.",
+      "sharedFields": {
+        "photo": "Profile photo",
+        "childReliefAmount": "Child relief amount",
+        "serviceYears": "Years of service",
+        "days": "Days at service years",
+        "unmatchedLeaveTypes": "Unmatched leave types",
+        "roundedEarnedToDate": "Rounded Earned to Date",
+        "entitlementTable": "Entitlement table",
+        "sharedBalanceSource": "Shared balance source",
+        "createdByName": "Uploaded by",
+        "updatedByName": "Last updated by"
+      }
     },
     "import": {
       "title": "Import employees",
@@ -12150,11 +12162,11 @@
         },
         "contact": {
           "title": "Your contact details",
-          "body": "Update your phone, address, date of birth, and emergency contact here. These changes save **immediately**, no approval needed."
+          "body": "Use Request to Edit to change fields permitted by Admin. Contacts may save immediately; other changes need approval. Conflicting addresses stay available for HR review."
         },
         "bank": {
           "title": "Bank and statutory",
-          "body": "Your bank account and PCB tax category live here. Open **Request a change** to submit edits, which go to your admin for approval."
+          "body": "Review recorded bank and statutory details. Use Request to Edit for permitted changes and Save to submit them through the existing approval workflow."
         },
         "payslips": {
           "title": "Your payslips",
@@ -12162,7 +12174,7 @@
         },
         "attendance": {
           "title": "Attendance summary",
-          "body": "Check in and out for today from here. For your full attendance history, open the Attendance page. You can also request a fix for a missed punch."
+          "body": "Clock in and out under My Attendance. The links here open your attendance history and correction requests."
         },
         "leave": {
           "title": "Leave balances and requests",
@@ -20437,5 +20449,69 @@
     },
     "updated": "Updated",
     "assignmentStatus": "Current assignment status"
+  },
+  "essProfile": {
+    "requestEdit": "Request to edit",
+    "save": "Save changes",
+    "cancel": "Cancel",
+    "saving": "Saving…",
+    "viewOnly": "View only",
+    "editable": "Editable",
+    "primaryOnly": "Existing primary contact only (legacy)",
+    "workflowOnly": "Use the dedicated workflow",
+    "unavailable": "Unavailable",
+    "notRecorded": "Not recorded",
+    "recordedValue": "Recorded value",
+    "clear": "Clear value",
+    "undo": "Undo change",
+    "leaveUnsaved": "Leave this page and discard your unsaved changes?",
+    "viewHelp": "Review your own Personnel record. Pending requests do not replace the master record.",
+    "editHelp": "Edit permitted fields across tabs, then save once. Contact changes may save immediately; other changes wait for approval.",
+    "pendingValue": "Pending request: {value}",
+    "saved": "Saved immediately: {saved}. Waiting for approval: {waiting}.",
+    "reference": "Reference: {reference}",
+    "addRecord": "Add record",
+    "noRecords": "No records to display.",
+    "primaryRecord": "Current primary contact",
+    "existingRecord": "Existing record",
+    "newRecord": "New record — not yet submitted",
+    "removeNew": "Remove new record",
+    "legacyAddressTitle": "Retained legacy address",
+    "legacyAddressHelp": "This older address differs from the Personnel address. It remains unchanged for reconciliation; editing Permanent or Correspondence address will not silently copy or erase it.",
+    "requestHistory": "Profile change requests",
+    "chooseEmployment": "Choose your employment",
+    "countryUnavailable": "Statutory editing is unavailable for this employment’s country. Existing records remain unchanged.",
+    "error": {
+      "invalid": "Review the highlighted fields and their required combinations.",
+      "permission": "You cannot edit this employment record.",
+      "fieldClosed": "An administrator has restricted a selected field. Your changes have not been submitted.",
+      "stale": "The saved record has changed. Keep a copy of your edits, then reload and review before saving again.",
+      "unavailable": "The required record or country service is unavailable. Nothing was submitted.",
+      "addressReview": "Use the Personnel Permanent or Correspondence address fields. The legacy address has been retained.",
+      "system": "The changes could not be saved. Your input remains here. Please try again or contact HR with the reference."
+    },
+    "register": {
+      "dependent": "Family and dependents",
+      "qualification": "Academic and professional qualifications",
+      "emergency": "Emergency contacts"
+    },
+    "status": {
+      "pending": "Waiting for approval",
+      "approved": "Approved",
+      "rejected": "Rejected"
+    },
+    "viewChanges": "View changes",
+    "loadingHistory": "Loading history…",
+    "currentValue": "Current: {value}",
+    "proposedValue": "Requested: {value}",
+    "missingRecord": "The original record is no longer available.",
+    "settingsFailure": "The settings could not be saved. Please try again or contact support.",
+    "savedFields": "Saved now: {fields}",
+    "waitingFields": "Waiting for approval: {fields}",
+    "moduleUnavailable": "The {module} module is unavailable. Existing core employment facts remain visible.",
+    "statutoryUnavailable": "Bank and statutory information is unavailable because this employment has no supported country pack. Other permitted profile fields remain available.",
+    "notApplicable": "This field does not apply to the selected relationship. Undo it or restore the relationship before saving.",
+    "bankNotApplicable": "This value applies only when its custom holder option is enabled. Enable that option or undo this change before saving.",
+    "taxNotApplicable": "The numeric compatibility category cannot be changed while the saved tax circumstance is None. Use the tax selection workflow to change that circumstance."
   }
 }

@@ -257,8 +257,8 @@ export const SETTING_CATALOG: SettingCatalogEntry[] = [
    * lib/profile-requestable-fields.ts inside a catalog that no test compares against it, and it would rot
    * the first time a field was added, renamed or withdrawn. `'all'` means "this tenant has not configured
    * it — the declaration's own default applies", which is exactly stage two's shipped behaviour and is
-   * resolved in ONE place (`resolveAllowedRequestKeys`). A CONFIGURED tenant holds a json array of keys;
-   * `[]` is a legitimate configured value meaning nothing may be asked about.
+   * resolved in ONE place (`resolveAllowedRequestKeys`). Legacy configured arrays govern requests only; [] closes requests but preserves finite direct contacts.
+   * New complete policies use {version:2,fields:[...]}; their [] closes all edits, including direct contacts.
    *
    * `ess.profile_change_approver` defaults to `'admin'` — stage two's authority, unchanged, so this round
    * changes nothing for a tenant that never opens the screen. The only other value is `'group_admin'`,
@@ -282,7 +282,7 @@ export const SETTING_CATALOG: SettingCatalogEntry[] = [
    * Both are `defaultOnInstall: null`: there is nothing to write at provisioning time, because the
    * absence of a row IS the default and the default is the shipped behaviour.
    */
-  { key: 'ess.profile_change_fields', moduleCode: 'ess', scope: 'tenant', valueType: 'json', defaultValue: 'all', defaultOnInstall: null, customerVisible: true, description: 'Which fields of their own record an employee may ask to change. Not set means every field the product offers; otherwise exactly the fields listed.', sortOrder: 150 },
+  { key: 'ess.profile_change_fields', moduleCode: 'ess', scope: 'tenant', valueType: 'json', defaultValue: 'all', defaultOnInstall: null, customerVisible: true, description: 'Which fields of their own record an employee may ask to change. Legacy defaults retain the original request set and finite direct contacts. A saved complete policy explicitly lists employee-editable Personnel fields.', sortOrder: 150 },
   { key: 'ess.profile_change_approver', moduleCode: 'ess', scope: 'tenant', valueType: 'string', defaultValue: 'admin', defaultOnInstall: null, customerVisible: true, description: "Who decides an employee's request to change their own record: any HR administrator, or only a group administrator. One approver either way — never two levels, and never somebody deciding their own.", sortOrder: 160 },
 ];
 

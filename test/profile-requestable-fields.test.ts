@@ -45,6 +45,7 @@ const CORE_PROFILE = read('core/profile.ts');
 const ME_ACTIONS = read('app/me/actions.ts');
 const REQUEST_CARD = read('app/me/request-change-card.tsx');
 const ME_PAGE = read('app/me/page.tsx');
+const ESS_EDITOR=read('app/me/profile-editor.tsx'),ESS_OWNER=read('core/profile-edit.ts'),POLICY_OWNER=read('core/profile-edit-policy.ts'),PROPOSAL_DISPLAY=read('lib/profile-proposal-display.ts');
 // The two screens an APPROVER reads a proposed change on. Both are held to the same renderer as /me.
 const PERSONNEL_PAGE = read('app/admin/personnel/page.tsx');
 const APPROVALS_PAGE = read('app/approvals/page.tsx');
@@ -161,12 +162,9 @@ describe('r260 — the requestable-field declaration', () => {
     for (const dead of ["formData.get('bankName')", "formData.get('taxCategory')", "formData.get('gender')"]) {
       expect(ME_ACTIONS.includes(dead), `${dead} survives the declaration-driven read`).toBe(false);
     }
-    // Every tab named by the declaration has a card mounted for it on /me — a field declared on a tab
-    // with no card is a field nobody can ask about.
-    for (const tab of new Set(PROFILE_REQUESTABLE_FIELDS.map((f) => f.tab))) {
-      expect(requestableFieldsForTab(tab).length).toBeGreaterThan(0);
-      expect(ME_PAGE.includes(`<RequestChangeCard tab="${tab}"`), `no request card mounted for tab '${tab}'`).toBe(true);
-    }
+    // Legacy endpoint remains declaration driven, while the actual screen is the single shared editor.
+    expect(ME_PAGE).not.toContain('<RequestChangeCard');expect(ME_PAGE).toContain('<ProfileEditor');expect(ESS_EDITOR).toContain('essVisibleFields()');expect(ESS_EDITOR).toContain('canEdit(field.id,row)');
+
   });
 
   it('core/profile.ts applies from the declaration, and applies NOTHING on a rejection', () => {
@@ -286,7 +284,7 @@ describe('r260 — the requestable-field declaration', () => {
     expect(maskAccountNumber(null)).toBeNull();
     expect(formatProposedValue(acct, '1234567890', t, { mask: true })).toBe('•••• 7890');
     expect(formatProposedValue(acct, '1234567890', t, { mask: false })).toBe('1234567890');
-    expect(ME_PAGE).toContain('maskAccountNumber(st.bankAccountNo)');
+    expect(ME_PAGE).toContain('profileProposalLines(');expect(ME_PAGE).toContain('{mask:true}');expect(ESS_EDITOR).toContain('field.ess.masked&&!touched');
     expect(REQUEST_CARD).toContain('formatProposedValue(field, value, t, { mask: true })');
   });
 
@@ -368,26 +366,11 @@ describe('r260 — the requestable-field declaration', () => {
     expect(formatProposedValue(requestableField('preferredName')!, '', t, { mask: false })).toBe('— cleared —');
     expect(formatProposedValue(requestableField('preferredName')!, null, t, { mask: false })).toBe('— cleared —');
 
-    for (const [name, src] of [
-      ['app/admin/personnel/page.tsx', PERSONNEL_PAGE],
-      ['app/approvals/page.tsx', APPROVALS_PAGE],
-      ['app/me/request-change-card.tsx', REQUEST_CARD],
-    ] as const) {
-      expect(src, `${name} must print a proposed value through the shared renderer`).toContain('formatProposedValue(');
-      // …and the exact no-op that shipped must never come back, on any of them.
-      expect(src, `${name} resolves a select option to its own .value — the reader gets the stored code`).not.toMatch(
-        /options\?\.find\([\s\S]{0,80}?\)\?\.value/,
-      );
+    for(const [name,src]of [['app/admin/personnel/page.tsx',PERSONNEL_PAGE],['app/approvals/page.tsx',APPROVALS_PAGE],['app/me/page.tsx',ME_PAGE]]){
+      expect(src,name).toContain(name==='app/me/page.tsx'?'profileProposalLines(':'profileProposalReviewLines(');expect(src,name).not.toMatch(/options\?\.find\([\s\S]{0,80}?\)\?\.value/);
     }
-    // The approval queues resolve option words from the namespace the EMPLOYEE picked them in.
-    for (const [name, src] of [
-      ['app/admin/personnel/page.tsx', PERSONNEL_PAGE],
-      ['app/approvals/page.tsx', APPROVALS_PAGE],
-    ] as const) {
-      expect(src, `${name} must resolve option labels from PROFILE_REQUEST_OPTION_NAMESPACE`).toContain(
-        'getTranslations(PROFILE_REQUEST_OPTION_NAMESPACE)',
-      );
-    }
+    expect(PROPOSAL_DISPLAY).toContain('formatProposedValue(field,value,k=>resolve(`me.${k}`,k),opts)');expect(PROPOSAL_DISPLAY).toContain('descriptor?.ess.masked');expect(PROPOSAL_DISPLAY).toContain('personnelFieldChoices(field)');expect(PROPOSAL_DISPLAY).toContain('personnelFieldLabel(field,resolve)');
+
   });
 });
 
@@ -472,53 +455,16 @@ describe('r261 — the two settings are catalogued, and catalogued the way they 
     // always been jsonb. Before r261 no TypeScript writer could express one, so a `json` catalog entry
     // was unreachable from the product. This is the conjunct that keeps the two in step.
     expect(CORE_TENANT_SETTINGS).toContain('settingValueType(p.value) !== entry.valueType');
-    expect(CORE_TENANT_SETTINGS).toContain("return Array.isArray(v) ? 'json' : typeof v;");
+    expect(CORE_TENANT_SETTINGS).toContain("return Array.isArray(v)||isProfileEditPolicyValue(v) ? 'json' : typeof v;");
   });
 });
 
 describe('r261 — a switched-off field is ABSENT from the employee\'s screen, not disabled on it', () => {
-  it('the /me card renders from the OFFERED list, and the page resolves it from the tenant setting', () => {
-    /**
-     * NON-VACUITY: reverting `offeredRequestableFieldsForTab(tab, allowedKeys)` to
-     * `requestableFieldsForTab(tab)` in the card fails the first expectation here, and the live-cluster
-     * file's "OMITTED, not offered disabled" case with it.
-     */
-    expect(REQUEST_CARD).toContain('offeredRequestableFieldsForTab(tab, allowedKeys)');
-    expect(REQUEST_CARD, 'the prop is required, so a caller cannot silently reopen every field').toContain(
-      'allowedKeys: ReadonlySet<string>;',
-    );
-    /**
-     * ⚠️ THE PAGE READS IT THE QUIET WAY, AND ITS DEGRADED ANSWER IS CLOSED (r261 fix pass).
-     * /me first shipped reading the THROWING service form, which turned an entitlement-resolution
-     * failure into a 500 on the home screen of the entire workforce — there is no app/error.tsx. Both
-     * halves are pinned because both matter: the quiet reader keeps the page rendering, and the `[]`
-     * fallback is what makes the degraded answer "no field may be requested" rather than "every field
-     * may be" (the catalog default for this key is the OPEN sentinel `'all'`).
-     */
-    expect(ME_PAGE).toContain("getSettingOrFallback<readonly string[]>(s, 'ess.profile_change_fields', [])");
-    expect(ME_PAGE).toContain('const allowedRequestKeys = resolveAllowedRequestKeys(');
-    // COMMENTS STRIPPED FIRST (AGENTS 27): both pages EXPLAIN what they used to call and why they no
-    // longer do, and a guard that tripped on the explanation would teach the next person to delete it.
-    const strip = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
-    expect(
-      strip(ME_PAGE).includes('profileChangeAllowedKeys('),
-      "the /me page must not read the throwing service form — that is a 500 on an employee's own record",
-    ).toBe(false);
-    // The approvals inbox is the same decision, and its degraded answer is the NARROWER approver.
+  it('the actual editor keeps View Only visible and derives writable controls only from the fresh owner permission sets',()=>{
+    expect(ME_PAGE).toContain('readOwnProfileWorkspace(s,{employmentId})');expect(ESS_EDITOR).toContain('const editable=new Set(workspace.editable),primaryEditable=new Set(workspace.legacyPrimaryEditable)');
+    expect(ESS_EDITOR).toContain('const allowed=canEdit(field.id,row)');expect(ESS_EDITOR).toContain('{allowed?<div');expect(ESS_EDITOR).toContain('{displayValue}');
+    expect(ESS_OWNER).toContain('freshProfileEditPolicyTx(tx,ctx)');expect(ESS_OWNER).toContain("throw new EssProfileError('fieldClosed',[field.id])");
     expect(APPROVALS_PAGE).toContain("getSettingOrFallback<string>(s, 'ess.profile_change_approver', 'group_admin')");
-    expect(
-      strip(APPROVALS_PAGE).includes('profileChangeApprover('),
-      'the approvals inbox must not read the throwing service form either',
-    ).toBe(false);
-    for (const tab of ['profile', 'bankStatutory']) {
-      expect(
-        ME_PAGE.includes(`<RequestChangeCard tab="${tab}"`) && ME_PAGE.includes('allowedKeys={allowedRequestKeys}'),
-        `the ${tab} card must be handed the tenant's allow-list`,
-      ).toBe(true);
-    }
-    // Two cards, two allow-list props — a page that resolved it once and passed it once would leave one
-    // tab reading the full declaration.
-    expect(ME_PAGE.split('allowedKeys={allowedRequestKeys}').length - 1).toBe(2);
   });
 
   it('offers NO inert control — the request card contains no disabled attribute at all', () => {
@@ -539,7 +485,7 @@ describe('r261 — a switched-off field is ABSENT from the employee\'s screen, n
   });
 
   it('the service drops a disallowed key too — the screen is not the gate', () => {
-    expect(CORE_PROFILE).toContain('sanitizeProposed(p.proposed, profileChangeAllowedKeys(ctx))');
+    expect(CORE_PROFILE).toContain('sanitizeProposed(p.proposed as ProfileChangeProposed,profileChangeAllowedKeys(ctx))');
     expect(CORE_PROFILE).toContain('if (!allowed.has(key)) continue;');
     /**
      * ⚠️ AND THE DECISION RE-ASKS (r261 fix pass). The request side and the sweep both run at a
@@ -564,7 +510,7 @@ describe('r261 — a switched-off field is ABSENT from the employee\'s screen, n
       'sql`${profileChangeRequest.proposed} ?| ARRAY[${sql.join(',
     );
     expect(CORE_PROFILE, 'the counts are aggregated in SQL over every pending row').toContain(
-      'LATERAL jsonb_object_keys(r.proposed)',
+      "SELECT jsonb_object_keys(CASE WHEN r.proposed->>'v'='2'",
     );
     // The HR-DIRECT setter is deliberately NOT narrowed by the employee's permission: switching a field
     // off must not stop HR correcting it, which is the very act an employee is being told to ask for.
@@ -573,28 +519,14 @@ describe('r261 — a switched-off field is ABSENT from the employee\'s screen, n
 });
 
 describe('r261 — the settings screen speaks the declaration\'s own vocabulary', () => {
-  it('renders one control per DECLARED field, named by the shared people.detail key', () => {
-    expect(SETTINGS_PAGE).toContain('requestableFieldsForTab(tab).map');
-    expect(SETTINGS_PAGE, 'per FIELD, which is what the reporter asked for').toContain('value={f.key}');
-    expect(SETTINGS_PAGE, 'and named the way Personnel Management names it').toContain('{tp(f.labelKey)}');
-    // No second vocabulary: the screen must not invent a label key of its own for a field.
+  it('renders every applicable shared descriptor with canonical labels and finite View Only/Editable options',()=>{
+    expect(SETTINGS_PAGE).toContain('essVisibleFields()');expect(SETTINGS_PAGE).toContain('personnelFieldLabel(field');expect(SETTINGS_PAGE).toContain('permission:${field.id}');expect(SETTINGS_PAGE).toContain('value="viewOnly"');expect(SETTINGS_PAGE).toContain('value="editable"');
     expect(SETTINGS_PAGE).not.toMatch(/t\(`field\./);
   });
 
-  it('the action intersects the posted names with the declaration and never trusts them', () => {
-    /**
-     * ⚠️ THE FORM POSTS FIELD NAMES. A hand-rolled POST can name anything at all, and the dangerous
-     * shape is not a typo — it is a key the declaration deliberately EXCLUDES (an HR determination, or
-     * something on the withheld list an employee may not even see). Storing a permission over one of
-     * those would make it requestable the moment anybody widened the declaration.
-     */
-    expect(SETTINGS_ACTIONS).toContain('PROFILE_REQUESTABLE_KEYS.filter((k) => posted.includes(k)');
-    expect(SETTINGS_ACTIONS, 'and the setting key is a constant, never posted').not.toContain("formData.get('key')");
-    // The consequence of switching a field off is carried out in the same action, not left to a cron.
-    expect(SETTINGS_ACTIONS).toContain('withdrawProfileChangesForLockedFields(s, {');
-    expect(SETTINGS_ACTIONS, 'the setting is written FIRST, so a failure cannot withdraw under a permission that never changed').toMatch(
-      /setTenantSetting\(s, \{ key: PROFILE_REQUEST_FIELDS_SETTING_KEY[\s\S]*?withdrawPendingRequests|setTenantSetting\(s, \{ key: PROFILE_REQUEST_FIELDS_SETTING_KEY[\s\S]*?withdrawProfileChangesForLockedFields/,
-    );
+  it('writes a complete bounded v2 policy and withdraws locked pending requests in the SAME canonical transaction',()=>{
+    expect(SETTINGS_ACTIONS).toContain('for(const field of essEditableFields())');expect(SETTINGS_ACTIONS).toContain('formData.get(`permission:${field.id}`)');expect(SETTINGS_ACTIONS).not.toContain("formData.get('key')");expect(SETTINGS_ACTIONS).toContain('saveProfileEditPolicy(s,');
+    expect(POLICY_OWNER).toContain('const policy={version:2 as const,fields:p.keys}');expect(POLICY_OWNER).toContain("setTenantSetting(before.ctx,{key:'ess.profile_change_fields',value:policy},tx)");expect(POLICY_OWNER).toContain('withdrawProfileChangesForLockedFields(before.ctx,{lockedKeys:locked,reason:p.withdrawnReason},tx)');
   });
 
   it('the withdrawal writes the request row and NOTHING else — no master table, ever', () => {
