@@ -126,7 +126,7 @@ exec @ARGV or die "setsid shim: exec failed: \$!\\n";
 const PNPM_SHIM = `#!/bin/sh
 printf '%s\\n' "pnpm $*" >> "$DEPLOY_TRACE"
 if [ "$1" = "build" ]; then
-  printf '%s\n' "testing-source=${AIHR_SYSTEM_TESTING_SOURCE_REF:-}" "testing-record=${AIHR_SYSTEM_TESTING_BUILD_RECORD_ID:-}" >> "$DEPLOY_TRACE"
+  printf '%s\\n' "testing-source=\${AIHR_SYSTEM_TESTING_SOURCE_REF:-}" "testing-record=\${AIHR_SYSTEM_TESTING_BUILD_RECORD_ID:-}" >> "$DEPLOY_TRACE"
   if [ -n "\${AIHR_TEST_BUILD_SLEEP:-}" ]; then sleep "$AIHR_TEST_BUILD_SLEEP"; fi
   if [ "\${AIHR_TEST_BUILD_CLOBBER:-0}" = "1" ]; then
     mkdir -p .next && head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \\n' > .next/BUILD_ID
