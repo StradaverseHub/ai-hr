@@ -13,10 +13,17 @@ vi.mock('../components/attendance-settings-navigation',()=>({AttendanceSettingsN
 vi.mock('../app/admin/attendance/shift-actions',()=>({createShiftAction:vi.fn(),updateShiftAction:vi.fn()}));
 import {ShiftForm,type ShiftRow} from '../app/admin/attendance/shift-form';
 
-const shift={id:'full-flexi-guidance',name:'Fictional Full Flexi',code:'FF-GUIDANCE',type:'full_flexi',startTime:null,endTime:null,
+const shift:ShiftRow={id:'full-flexi-guidance',name:'Fictional Full Flexi',code:'FF-GUIDANCE',type:'full_flexi',startTime:null,endTime:null,
   normalMinutesOverride:480,breakMinutes:30,breakPeriods:[{start:'12:00',end:'13:00',flexible:true,flexibleMinutes:30}],
   weeklyPattern:[1,2,3,4,5],halfPattern:[],offPattern:[],ruleId:null,color:null,description:null,
-} as ShiftRow;
+  tenantId:'11111111-1111-1111-1111-111111111111',companyId:null,allowedRuleIds:[],
+  dailyCutoffEnabled:false,dailyCutoffTime:null,crossesMidnight:false,
+  lateGraceMinutes:null,earlyLeaveGraceMinutes:null,otRule:null,differential:null,
+  dayType:null,category:null,earlyIn:null,lateOut:null,lateOutNextDay:null,
+  fullDayLeaveMinutes:null,normalHoursRoundingMinutes:null,fullDayOtMinutes:null,
+  halfDayFirstOut:null,halfDaySecondIn:null,flexibleBreakEnabled:false,flexibleBreakMinutes:null,
+  archivedAt:null,createdAt:new Date('2026-01-01T00:00:00Z'),updatedAt:new Date('2026-01-01T00:00:00Z'),
+};
 
 for(const [locale,messages] of [['en',en],['ms',ms],['zh',zh],['ta',ta],['th',th],['vi',viMessages]] as const){
   it(`${locale}: the whole form gives duration-only Full Flexi guidance and switches fixed/Semi guidance with the live type`,async()=>{
