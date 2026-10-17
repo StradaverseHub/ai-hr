@@ -142,8 +142,8 @@ describe('ADR-0080 rung 6: nav parity with the pre-retrofit sidebar', () => {
   // r389 (bc3e203d) — UPDATED, NOT LOOSENED: the exact set gained Leave Credit History, third, at the address
   // the old form-plus-list page held. The parent node stays ungated; the new ROW is gated on the `toil` module
   // in components/sidebar.tsx (test/r299-leave-credit-screens.test.ts pins that mapping), which is a module
-  // gate, not a role flag — so the "no adminOnly / managerUp" loop below still holds for all three rows.
-  it('declares exactly Request, History and Leave Credit History under the ungated My Leave flyout', () => {
+  // gate, not a role flag — so the "no adminOnly / managerUp" loop still holds for all self-service rows.
+  it('declares the exact approved five self-service destinations under the ungated My Leave flyout', () => {
     const self = leavePack.navNodes!.filter(n => n.group === 'main');
     expect(self).toHaveLength(1);
     expect(self[0].labelKey).toBe('myLeave');
@@ -153,7 +153,9 @@ describe('ADR-0080 rung 6: nav parity with the pre-retrofit sidebar', () => {
     expect(self[0].children.map(c => [c.href,c.labelKey,c.exactHref,c.icon])).toEqual([
       ['/leave','leaveOverview',true,CalendarDays], ['/leave/history','leaveHistory',true,History],
       ['/leave/credit','leaveCreditHistory',true,CalendarClock],
-      // r404 (42e55e2b) — UPDATED, NOT LOOSENED: My Leave › Leave Details, fourth, after Leave Credit History.
+      // 2634fa7a: earned-credit Details follows request Status; labels/routes remain distinct.
+      ['/leave/credit-details','leaveCreditDetails',true,CalendarClock],
+      // r404 (42e55e2b) — core Leave Details stays last, after the two credit destinations.
       ['/leave/details','leaveDetails',true,ClipboardList],
     ]);
     expect(self[0]).not.toHaveProperty('adminOnly');
