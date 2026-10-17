@@ -4,11 +4,7 @@ This is an unexecuted combined operator journey for approved9689f5d3 and cf58890
 
 ## Prerequisites and exact target
 
-<<<<<<< HEAD
-The coordinator must first integrate the real prerequisites and register0561_versioned_system_testing at idx561/when1791900000041. The migration source alone is insufficient. Provision this worktree's own real dependencies and private local environment through the normal coordinated process. No symlinked dependencies, production URLs, production runtime or real identity provider is accepted.
-=======
 The coordinator must first integrate the real prerequisites and register0561_versioned_system_testing at idx561/when1791900000041, after0560_employee_profile_edit_scope. The migration source alone is insufficient. Provision this worktree's own real dependencies and private local environment through the normal coordinated process. No symlinked dependencies, production URLs, production runtime or real identity provider is accepted.
->>>>>>> 2dbe77d44 (test: prepare shared Profile and Testing browser fixture)
 
 After union integration, review the instruction/source relationship for each affected bundled guide and freeze its reviewed source fingerprint. Do not regenerate fingerprints merely to make the check green. The current guide fingerprints intentionally become review-required when their source dependencies change. Root owns the five documented static Next compile keys and official release helper invocation. Missing compile evidence, mismatched source/catalogue and unreviewed guide changes remain unavailable for confirmation.
 
@@ -44,11 +40,7 @@ Read actual UUIDs from the receipt, never hardcode them in browser scripts. The 
 | ForeignHR | Separate tenant group HR; cannot see primary guides, attempts, screenshots or Feedback |
 | DisabledHR | Separate unentitled tenant group HR with own Employment; core Profile remains available and Testing refuses |
 
-<<<<<<< HEAD
-The primary tenant also has a second company for scope controls. Shared is a published two-step local guide assigned independently to A, B and UserOnly. History has two canonically published instruction versions and an A assignment to version two, with no observations falsely attached to version one. Unassigned is a published master-only guide. Inactive is assigned to A but the current instructions explicitly disallow execution. Incomplete is a saved unfinished Draft, not a published instruction. The fixture creates no legacy versionless observation or historical baseline; genuine pre0561 upgrade behavior has its own isolated migration regression.
-=======
 The primary tenant has current MY, explicitly declared non-statutory SG and former MY companies. Dates derive from the canonical Kuala Lumpur clock; Payroll uses the preceding complete calendar month, before the concurrent SG hire. TesterA has leading-zero contact, bank and registration values, distinct permanent/correspondence/retained legacy addresses, a fictional photo, two same-name children with different birth dates, active/archived qualifications and emergency contacts, a highest qualification, a primary contact, and recorded inactive catalogue choices. Canonical country writers own statutory/tax selection. Canonical Payroll creates, generates and closes one scoped MYR3500 fictional salary run with no advisory gaps; no raw payslip/status insert or payment/bank/mail occurs. A distinct HR-only repository document must remain absent from own Profile. The initial receipt records exact released subject and route; it does not generate PDF bytes.
->>>>>>> 2dbe77d44 (test: prepare shared Profile and Testing browser fixture)
 
 Shared is a published two-step own-Profile guide assigned independently to A, B and UserOnly. History has two canonically published instruction versions and an A assignment to version two, with no observations falsely attached to version one. Unassigned is a published master-only guide. Inactive is assigned to A but the current instructions explicitly disallow execution. Incomplete is a saved unfinished Draft, not a published instruction. The fixture creates no legacy versionless observation or historical baseline; genuine pre0561 upgrade behavior has its own isolated migration regression.
 

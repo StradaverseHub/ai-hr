@@ -152,14 +152,11 @@ if(!options.heldLockWorker) {
     if(fs.existsSync(path.join(out,'browser-manifest.json'))!==options.continueObservations)throw new Error('Initial mode requires no prior target; --continue-observations requires its exact preserved target. No reset or generic resume exists.');
     const journal=JSON.parse(fs.readFileSync(path.join(root,'db/migrations/meta/_journal.json'),'utf8'));
     if(!journal.entries.some(e=>e.idx===561&&e.when===1791900000041&&e.tag==='0561_versioned_system_testing'))throw new Error('Parent must integrate the real0561 journal after prerequisites before execution.');
-<<<<<<< HEAD
-=======
     const sourceJournal=journal.entries.map(entry=>{
       if(!/^[a-zA-Z0-9_-]+$/.test(entry.tag))throw new Error('Invalid canonical migration tag.');
       return {...entry,sha256:createHash('sha256').update(fs.readFileSync(path.join(root,'db/migrations',entry.tag+'.sql'))).digest('hex')};
     });
     const journalDigest=createHash('sha256').update(JSON.stringify(sourceJournal)).digest('hex');
->>>>>>> 2dbe77d44 (test: prepare shared Profile and Testing browser fixture)
     const compiled=prepareSystemTestingBuild({worktree:root,candidate,buildRecordId:randomUUID()});
     if(!options.reviewRequired){
       const directory=systemTestingBuildDirectory('local');ensurePrivateReleaseDirectory(directory);
