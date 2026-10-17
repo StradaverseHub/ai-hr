@@ -270,9 +270,17 @@ describe('§5 the wiring the database tests cannot see', () => {
 
   it('activation writes the two fields AFTER the statutory write and BEFORE the draft is deleted', () => {
     const src = read('core/employee-draft.ts');
-    const start = src.indexOf('export async function completeEmployeeDraft(');
-    expect(start, 'completeEmployeeDraft not found').toBeGreaterThanOrEqual(0);
-    const fn = src.slice(start, src.indexOf('\n}\n', start));
+    const entryAt = src.indexOf('export async function completeEmployeeDraft(');
+    expect(entryAt, 'completeEmployeeDraft not found').toBeGreaterThanOrEqual(0);
+    const entryEnd = src.indexOf('\n}\n', entryAt);
+    expect(entryEnd).toBeGreaterThan(entryAt);
+    const entry = src.slice(entryAt, entryEnd);
+    expect(entry).toContain('return withTenant(ctx,tx=>completeEmployeeDraftTx(tx,ctx,id));');
+    const start = src.indexOf('async function completeEmployeeDraftTx(', entryEnd);
+    expect(start, 'the explicit transaction owner exists after the entry point').toBeGreaterThan(entryEnd);
+    const end = src.indexOf('\n}\n', start);
+    expect(end).toBeGreaterThan(start);
+    const fn = src.slice(start, end);
     expect(fn.length, 'the function slice parsed empty').toBeGreaterThan(5000);
     const at = (needle: string) => {
       const i = fn.indexOf(needle);

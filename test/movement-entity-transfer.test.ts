@@ -35,6 +35,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { and, eq, isNull } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
+import { personnelWorkflowControl } from '../lib/personnel-form-contract';
 import {
   adminCtx,
   closeAll,
@@ -732,9 +733,21 @@ describe('SOURCE GUARDS — the New Event form', () => {
 
   it('makes Company editable ONLY for entityTransfer, and keeps the read-only note otherwise', () => {
     expect(NEW_EVENT.includes("const isEntityTransfer = behaviour === 'entityTransfer';")).toBe(true);
-    expect(NEW_EVENT.includes('name="companyId"')).toBe(true);
-    // The read-only branch must survive: every other kind still shows the note it always did.
-    expect(NEW_EVENT.includes("t('form.companyReadOnly')")).toBe(true);
+    expect(NEW_EVENT).toContain('"companyId": "employment.organisation_assignment.companyname"');
+    const from = NEW_EVENT.indexOf("'company', label(movementField('companyId'))");
+    const end = NEW_EVENT.indexOf("row('businessUnit'", from);
+    expect(from).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(from);
+    const company = NEW_EVENT.slice(from, end);
+    expect(company.length).toBeGreaterThan(100);
+    expect(company).toMatch(/isEntityTransfer\s*\?\s*\(\s*<select/);
+    expect(company).toContain("...personnelWorkflowControl(movementField('companyId'), 'movement', 'edit')");
+    expect(personnelWorkflowControl('employment.organisation_assignment.companyname', 'movement', 'edit').name).toBe('companyId');
+    expect(company).toContain('value={destCompanyId}');
+    expect(company).toContain('setDestCompanyId(e.target.value)');
+    expect(company).not.toMatch(/\b(disabled|readOnly)=/);
+    // The same conditional's other branch must show the note, never a company editor.
+    expect(company).toMatch(/<\/select>\s*\)\s*:\s*\(\s*<span[^>]*>\{t\('form.companyReadOnly'\)\}<\/span>/);
   });
 
   it('re-scopes the org pickers to the destination company', () => {
