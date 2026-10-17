@@ -5,7 +5,7 @@ import { withTenant, type SessionContext } from '../db/client';
 import * as s from '../db/schema';
 import { setFeedbackPlan, approveFeedbackPlan, startFeedbackBuild, completeFeedbackBuild } from '../core/feedback';
 import { hireEmployee } from '../core/org';
-import { ModuleNotEnabledError } from '../core/entitlements';
+import { EntitlementsTenantMismatchError, ModuleNotEnabledError } from '../core/entitlements';
 import { listTestingLibrary, getTestingLibraryCase, getTestingInstructionVersion, listTestingTesterOptions, requestTestingRetest, createTestCase, updateTestCase, recordTestRun, addTestingScreenshot, assignTestingCase, beginTestingExecution, getTestingExecution, getTestingScreenshot, listTestingAssignments, publishTestInstruction, raiseTestingExecutionFeedback, saveTestInstructionDraft, saveTestingExecution } from '../core/system-testing';
 import { TestingRefusal, type InstructionDefinition } from '../lib/system-testing/model';
 import { pgSqlState } from '../lib/db-error';
@@ -103,8 +103,13 @@ describe('personal System Testing isolation and immutable instructions', () => {
     await expect(withTenant(admin, tx => tx.update(s.testCaseVersion).set({ definition: { ...guide, title: 'Altered published instructions' } }).where(eq(s.testCaseVersion.id, f.version.versionId)))).rejects.toThrow();
     await expect(withTenant(one, tx => tx.insert(s.testExecution).values({ tenantId: b.tenantId, assignmentId: f.other.assignmentId, versionId: f.version.versionId, testerUserId: two.userId!, attemptNo: 1 }))).rejects.toThrow();
     const unseen = await withTenant(two, tx => tx.select().from(s.testExecution).where(eq(s.testExecution.id, f.execution.executionId))); expect(unseen).toEqual([]);
-    const another = await seedBase(); const cross = { ...one, tenantId: another.tenantId };
-    await expect(getTestingExecution(cross, f.execution.executionId)).rejects.toMatchObject({ code: 'not_found' });
+    const another = await seedBase(); const counterfeit = { ...one, tenantId: another.tenantId };
+    await expect(getTestingExecution(counterfeit, f.execution.executionId)).rejects.toBeInstanceOf(EntitlementsTenantMismatchError);
+    await setModule(another.tenantId,'system_testing','active');
+    const foreign=await entitledCtx(another);
+    expect(foreign.userId).toBe(another.adminUserId);
+    expect((await listTestingAssignments(foreign)).rows).toEqual([]);
+    await expect(getTestingExecution(foreign, f.execution.executionId)).rejects.toMatchObject({ code: 'not_found' });
   });
   it('refuses simultaneous stale saves and preserves the successful observation exactly once', async () => {
     const f = await setup(), results = await Promise.allSettled([saveTestingExecution(one, observation(f)), saveTestingExecution(one, observation(f, 'failed'))]);
