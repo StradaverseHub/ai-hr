@@ -1,4 +1,6 @@
 """Pure dependency-injected lifecycle regressions. No socket, unit, /proc, key or cgroup access."""
+import ast
+import pathlib
 import importlib.util
 import sys
 import unittest
@@ -66,5 +68,21 @@ class AncillaryReceipt(unittest.TestCase):
     def test_client_refuses_a_key_bearing_environment_before_any_user_socket_or_unit_read(self):
         with mock.patch.dict(peer.os.environ,{'AUTH_SESSION_KEY':'fictional-test-only'},clear=True):
             with self.assertRaises(Exception):peer.client_main()
+
+class NegativeProbeFraming(unittest.TestCase):
+    def test_caller_authority_probe_reaches_strict_keys_after_valid_request_framing(self):
+        probe = pathlib.Path(spec.origin).with_name('verify-internal-report-isolation.py')
+        tree = ast.parse(probe.read_text())
+        programs = [node.args[1].value for node in ast.walk(tree)
+                    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == 'as_user'
+                    and len(node.args) > 1 and isinstance(node.args[1], ast.Constant)
+                    and isinstance(node.args[1].value, str) and 'caller-authority' in node.args[1].value]
+        self.assertEqual(len(programs), 1)
+        calls = [node for node in ast.walk(ast.parse(programs[0]))
+                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == 'sendall']
+        self.assertEqual(len(calls), 1)
+        body = ast.literal_eval(calls[0].args[0])
+        self.assertEqual(body, b'{"phase":"status","subject":"caller-authority"}\n')
+        self.assertEqual(peer.json.loads(body), {'phase':'status','subject':'caller-authority'})
 
 if __name__ == '__main__': unittest.main()
