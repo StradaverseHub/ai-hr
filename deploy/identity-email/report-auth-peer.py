@@ -122,13 +122,23 @@ def receive_activation(peer, deadline):
             os.close(fd)
 
 def client_main():
+    # Independent wall-clock bound also covers a caller that never closes stdin or a stuck syscall.
+    def expired(_signal, _frame):
+        raise RuntimeError('private retirement client deadline')
+    previous=signal.signal(signal.SIGALRM,expired)
+    signal.setitimer(signal.ITIMER_REAL,CLIENT_SECONDS)
+    try:
+        return _client_main(time.monotonic()+CLIENT_SECONDS)
+    finally:
+        signal.setitimer(signal.ITIMER_REAL,0);signal.signal(signal.SIGALRM,previous)
+
+def _client_main(deadline):
     # Invoked by the keyless sender, never under broker.env. Do not inherit a DB URL, key,
     # private sender config or caller CA into this independent retirement observer.
     require(set(os.environ) <= {'PATH', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ'})
     require(os.getuid() == pwd.getpwnam('aihr-identity-email').pw_uid and os.getuid() > 0)
     body = sys.stdin.buffer.read(REQUEST_MAX + 1)
     require(0 < len(body) <= REQUEST_MAX and b'\n' not in body)
-    deadline = time.monotonic() + CLIENT_SECONDS
     directory_fd = events_fd = None
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
         peer.settimeout(CLIENT_SECONDS);peer.connect('/run/aihr-report-auth.sock');peer.sendall(body+b'\n')
