@@ -433,6 +433,8 @@ export const refCache = new Map<string, string[]>();
 export const PER_TENANT = ['review_cycle', 'claim_type', 'clocking_location', 'shift'];
 /** Column values a CHECK constraint needs that the generic filler cannot infer. */
 export const OVERRIDES: Record<string, Record<string, string>> = {
+  // 0545 allows absent anchors only for full_flexi. This fixture is a normal shift and still needs both.
+  shift: { start_time: "'09:00'", end_time: "'17:00'" },
   attendance_correction: { proposed_check_in: 'now()' }, // attendance_correction_at_least_one
   roster_assignment: { is_rest_day: 'true' }, // roster_assignment_shift_xor_rest (shift_id stays null)
   // attendance_clock_capture: the photo/geo CHECKs (a 1-byte "photo" whose size matches, a fix inside the radius).
