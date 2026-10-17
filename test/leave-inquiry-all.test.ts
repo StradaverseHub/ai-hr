@@ -4,13 +4,16 @@ import { beforeAll, afterAll, describe, it, expect } from 'vitest';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
+import { setLeaveTypeRules, updateLeaveType } from '../core/admin';
+import { decideLeave, openLeaveYear, requestLeave } from '../core/leave';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import { leaveInquiryContext, leaveInquiryBalancePairs, leaveInquiryRecordsPage, collectInquiryExport } from '../core/leave-inquiry';
 import { leaveBalances, leaveBalancesTx, leaveEntitlementBreakdown, leaveEntitlementBreakdownTx } from '../core/read';
 import { withTenant } from '../db/client';
 import { inquiryBalancePage } from '../app/leave/employee-balances/inquiry-data';
 import { employeeBalanceRows } from '../app/leave/employee-balances/rows';
 import { parseInquiryQuery, inquiryDate, inquiryScopeReturnPath } from '../lib/leave-inquiry-query';
-import { adminCtx, migrateTestDb, resetDb, seedBase, closeAll, owner, type Base } from './harness';
+import { adminCtx, migrateTestDb, resetDb, seedBase, seedEntitlement, closeAll, owner, type Base } from './harness';
 let b: Base, ctx: SessionContext, company2: string, other: string, mine: string, empty: string, poolType: string;
 const ids: string[] = [];
 const q = (params = {}, kind: 'balances' | 'records' = 'balances') => parseInquiryQuery({ asOf: '2026-10-15', ...params }, kind);
@@ -80,6 +83,54 @@ describe('23e87eef: authorized All/single inquiry', () => {
     const own = await employeeBalanceRows(ctx, mine, query.asOf, 'en', {}, { audience: 'self' });
     expect(own.find(r => r.leaveTypeId === b.annualLeaveTypeId)?.available).toBe(9);
     const none = q({ emp: empty }); expect((await inquiryBalancePage(ctx, await leaveInquiryContext(ctx, [b.companyId], none), none, 'en')).rows).toEqual([]);
+  });
+  it('All, single and My Leave retain real carry alongside approved and pending half-days', async () => {
+    // A separate tenant keeps the existing pagination fixture unchanged. Every credit/debit below
+    // comes from the configured Leave owners; no synthetic balance or raw ledger/request is inserted.
+    const base = await seedBase(), admin = adminCtx(base), asOf = todayInKualaLumpur();
+    const year = Number(asOf.slice(0, 4)), previousStart = `${year - 1}-01-01`, currentStart = `${year}-01-01`;
+    await updateLeaveType(admin, {
+      id: base.annualLeaveTypeId, name: 'Annual Leave', yearCycleOverride: 'c2c',
+      durations: ['half_day_am', 'half_day_pm'], backdatingLimitDays: null, minAdvanceDays: null,
+    });
+    await setLeaveTypeRules(admin, {
+      id: base.annualLeaveTypeId, accrualMethod: 'grant_on_hire_prorated',
+      carryForwardEnabled: true, carryForwardMax: 12,
+      carryForwardExpiryMonth: null, carryForwardExpiryDay: null,
+    });
+    await seedEntitlement(admin, { leaveTypeId: base.annualLeaveTypeId, annualDays: 12, validFrom: previousStart });
+    const subject = await hireEmployee(admin, {
+      person: { fullName: 'Carried half-day inquiry', primaryEmail: `${randomUUID()}@inquiry.local` },
+      companyId: base.companyId, departmentId: base.deptA, employmentType: 'full_time', hiredOn: previousStart,
+      grantLeaveTypes: [{ id: base.annualLeaveTypeId, code: 'ANNUAL' }],
+    });
+    await openLeaveYear(admin, { year, employmentIds: [subject.employmentId], leaveTypeIds: [base.annualLeaveTypeId] });
+    const application = {
+      employmentId: subject.employmentId, leaveTypeId: base.annualLeaveTypeId,
+      startDate: currentStart, endDate: currentStart, today: asOf,
+    };
+    const approved = await requestLeave(admin, { ...application, durationType: 'half_day_am' });
+    expect(approved.days).toBe(0.5);
+    await decideLeave(admin, { leaveRequestId: approved.leaveRequestId, decision: 'approved' });
+    const pending = await requestLeave(admin, { ...application, durationType: 'half_day_pm' });
+    expect(pending.days).toBe(0.5);
+
+    const allQuery = parseInquiryQuery({ asOf, type: base.annualLeaveTypeId }, 'balances');
+    const all = await inquiryBalancePage(admin, await leaveInquiryContext(admin, [base.companyId], allQuery), allQuery, 'en');
+    expect(all.total).toBe(1); expect(all.rows).toHaveLength(1);
+    const { employee, ...row } = all.rows[0]; expect(employee.employmentId).toBe(subject.employmentId);
+    const singleQuery = parseInquiryQuery({ asOf, emp: subject.employmentId, type: base.annualLeaveTypeId }, 'balances');
+    const single = await inquiryBalancePage(admin, await leaveInquiryContext(admin, [base.companyId], singleQuery), singleQuery, 'en');
+    expect(single.rows).toEqual(all.rows);
+    const individual = (await employeeBalanceRows(admin, subject.employmentId, asOf, 'en')).find(r => r.leaveTypeId === base.annualLeaveTypeId);
+    const myLeave = (await employeeBalanceRows(admin, subject.employmentId, asOf, 'en', {}, { audience: 'self' })).find(r => r.leaveTypeId === base.annualLeaveTypeId);
+    expect(row).toEqual(individual); expect(row).toEqual(myLeave);
+    // Literal business expectations distinguish carry from this year's grant, and gross balance
+    // from the half-day reservation. Comparing two readers alone would not establish these figures.
+    expect(row).toMatchObject({ broughtForward: 12, ytdEntitled: 12, taken: 0.5, pending: 0.5, forfeitedBf: 0, balance: 23.5, available: 23 });
+    expect(row.breakdown).toMatchObject({ carriedForward: 12, currentYearEntitlement: 12, takenThisCycle: 0.5, pendingApproval: 0.5, balance: 23.5, totalAvailable: 23 });
+    expect(row.breakdown?.transactions.some(transaction => transaction.sourceRequestId === approved.leaveRequestId && transaction.days === -0.5)).toBe(true);
+    expect(row.breakdown?.transactions.some(transaction => transaction.sourceRequestId === pending.leaveRequestId)).toBe(false);
   });
   it('record count/page/export share scope, KL applied-day versus leave overlap and stable ties', async () => {
     const query = q({ from: '2026-10-15', to: '2026-10-15', dateMode: 'applied' }, 'records'); const scope = await leaveInquiryContext(ctx, [b.companyId], query);
