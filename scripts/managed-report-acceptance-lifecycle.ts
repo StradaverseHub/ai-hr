@@ -32,5 +32,5 @@ export function bindAcceptanceActivationReceipt(raw:unknown,id:string,expected:A
  if(JSON.stringify(marker)!==JSON.stringify(internalReportDispatchMarker.parse(wanted)))throw new Error('Partial activation source/runtime/instance differs.');return marker;
 }
 export function bindAcceptanceActivationMarker(raw:unknown,receiptMarker:InternalReportDispatchMarker):InternalReportDispatchMarker{
- const current=internalReportDispatchMarker.parse(raw);if(JSON.stringify({...current,state:'paused'})!==JSON.stringify(receiptMarker))throw new Error('Partial activation marker changed.');return current;
+ const current=internalReportDispatchMarker.parse(raw);if(JSON.stringify({...current,state:'paused'})!==JSON.stringify(internalReportDispatchMarker.parse(receiptMarker)))throw new Error('Partial activation marker changed.');return current;
 }
