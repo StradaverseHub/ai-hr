@@ -10,7 +10,7 @@ const root=fileURLToPath(new URL('..',import.meta.url)).replace(/\/$/,'');
 const inventory=JSON.parse(readFileSync(new URL('../scripts/reports-migration-only-inventory.json',import.meta.url),'utf8'));
 const journal=(JSON.parse(readFileSync(new URL('../db/migrations/meta/_journal.json',import.meta.url),'utf8')).entries as {tag:string;when:number}[]).map(row=>({...row,sha256:hash(readFileSync(new URL('../db/migrations/'+row.tag+'.sql',import.meta.url)))}));
 function snapshot(){
- const shared={name:'ai_hr_app',database:REPORTS_MIGRATION_ATTEMPT.database,server_addr:'127.0.0.1',server_port:5433,database_oid:REPORTS_MIGRATION_ATTEMPT.databaseOid};
+ const shared={name:'ai_hr_app',database:REPORTS_MIGRATION_ATTEMPT.database,server_addr:'127.0.0.1',server_port:5433,database_oid:String(REPORTS_MIGRATION_ATTEMPT.databaseOid)};
  return {connections:{application:{...shared,rolsuper:false,rolbypassrls:false},migration:{...shared,name:'postgres'}},readOnly:'on',isolation:'repeatable read',tenants:[{id:'00000000-0000-0000-0000-000000000000',name:'System (auth audit)',workosOrgId:'org_system_auth_audit'}],applied:journal.map(row=>({hash:row.sha256,created_at:String(row.when)})),inventory:structuredClone(inventory)};
 }
 describe('one reviewed Reports migration-only recovery',()=>{
@@ -53,7 +53,8 @@ describe('one reviewed Reports migration-only recovery',()=>{
   const head=execFileSync('git',['-C',root,'rev-parse','HEAD'],{maxBuffer:16000000}).toString().trim();
   const proof=await readReportsRecoverySourceProof(root,head);
   expect(proof.some((row:{path:string})=>row.path==='scripts/report-fixture-connection.mjs')).toBe(true);
-  expect(proof.find((row:{path:string})=>row.path==='db/schema.ts')).toMatchObject({oldSha256:proof.find((row:{path:string})=>row.path==='db/schema.ts').sha256});
+  const schema=proof.find((row:{path:string})=>row.path==='db/schema.ts');expect(schema).toBeDefined();
+  expect(schema!.oldSha256).toBe(schema!.sha256);
  });
  it('retains existing fresh refusal and writes one recovery admission before only canonical fixture runs',()=>{
   const source=readFileSync(new URL('../scripts/dev-browser-original18.mjs',import.meta.url),'utf8');
