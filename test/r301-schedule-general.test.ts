@@ -432,8 +432,8 @@ describe('C. Company Policy Settings — one row per company', () => {
     expect(c, 'never saved: a dash').toContain('>—</td>');
 
     for (const [row, id] of [[a, b.companyId], [bRow, companyB], [c, companyC]] as const) {
-      expect(row).toContain(`href="${SCHEDULE}?viewPolicy=${id}#schedule-panel"`);
-      expect(row).toContain(`href="${SCHEDULE}?policy=${id}#schedule-panel"`);
+      expect(row).toContain(`href="${COMPANY_POLICY}?viewPolicy=${id}#schedule-panel"`);
+      expect(row).toContain(`href="${COMPANY_POLICY}?policy=${id}#schedule-panel"`);
       expect(row, 'no Delete on a company setting').not.toContain('>Delete<');
       expect(row).not.toContain('<form');
     }
@@ -446,7 +446,7 @@ describe('C. Company Policy Settings — one row per company', () => {
     expect(panel).toContain(esc(SC.policyViewTitle.replace('{company}', 'Acme Sdn Bhd')));
     expect(panel).toContain('08:15'); // late after, company A's own
     expect(panel).not.toMatch(/<form|<input|<select|<textarea/);
-    expect(panel, 'and it offers Edit for the same company').toContain(`href="${SCHEDULE}?policy=${b.companyId}#schedule-panel"`);
+    expect(panel, 'and it offers Edit for the same company').toContain(`href="${COMPANY_POLICY}?policy=${b.companyId}#schedule-panel"`);
   });
 });
 
@@ -756,7 +756,7 @@ describe('H. the old addresses are guarded redirects to the matching card', () =
 
   it('every retained anchor occurs once at its owning destination',async()=>{
     for(const [html,id] of [[await renderSchedule(),'schedule-groups'],[await renderOvertime(),'work-schedule-overtime'],[await renderCompany({policy:b.companyId}),'schedule-panel'],[await renderDevices(),'registered-devices']] as const)expect(html.split(` id="${id}"`).length-1,id).toBe(1);
-    expect(await redirectOf(()=>SchedulePage({searchParams:Promise.resolve({policy:b.companyId})}))).toBe(`${COMPANY_POLICY}?policy=${b.companyId}`);
+    expect(await redirectOf(()=>SchedulePage({searchParams:Promise.resolve({policy:b.companyId})}))).toBe(`${COMPANY_POLICY}?policy=${b.companyId}#schedule-panel`);
   });
 });
 
