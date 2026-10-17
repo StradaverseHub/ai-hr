@@ -55,7 +55,11 @@ describe('Personnel import explains fields kept in their own workflows',()=>{
     if(choice==='profile')fireEvent.click(screen.getByRole('radio',{name:/^Profile /}));
     fireEvent.click(screen.getByRole('button',{name:choice==='full'?'Download Excel template':'Download Profile template'}));
     await waitFor(()=>expect(mocks.build).toHaveBeenCalledOnce());
-    const options=mocks.build.mock.calls[0][2] as {extraSheets:{name:string;rows:(string|number)[][]}[]};
+    const headers=mocks.build.mock.calls[0][0] as string[];
+    const options=mocks.build.mock.calls[0][2] as {columnWidths:number[];extraSheets:{name:string;rows:(string|number)[][];columnWidths:number[]}[]};
+    expect(options.columnWidths).toHaveLength(headers.length);
+    for(const width of options.columnWidths)expect(width).toBeGreaterThanOrEqual(16);
+    for(const sheet of options.extraSheets)expect(sheet.columnWidths?.length,sheet.name).toBeGreaterThan(0);
     const instructions=options.extraSheets.find(sheet=>sheet.name==='Instructions');
     expect(instructions).toBeDefined();
     const rows=instructions!.rows;
