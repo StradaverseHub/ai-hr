@@ -37,7 +37,8 @@ export function validateReportsRecoveryNames(names){
 export function validateReportsMigrationSnapshot(snapshot,journal){
  assertReportFixtureConnections(snapshot.connections,{database:REPORTS_MIGRATION_ATTEMPT.database,ownerName:'postgres'});
  if(snapshot.connections.application.database_oid!==REPORTS_MIGRATION_ATTEMPT.databaseOid||snapshot.readOnly!=='on'||snapshot.isolation!=='repeatable read'||!same(snapshot.tenants,[{id:'00000000-0000-0000-0000-000000000000',name:'System (auth audit)',workosOrgId:'org_system_auth_audit'}])||!same(snapshot.inventory,expectedInventory)||journal.length!==460||snapshot.applied.length!==journal.length)fail();
- for(let i=0;i<journal.length;i++)if(!Number.isSafeInteger(journal[i].when)||i>0&&journal[i].when<=journal[i-1].when||String(snapshot.applied[i].created_at)!==String(journal[i].when)||snapshot.applied[i].hash!==journal[i].sha256)fail();
+ // Historical journal order is authoritative even where adjacent timestamps decrease.
+ for(let i=0;i<journal.length;i++)if(!Number.isSafeInteger(journal[i].when)||String(snapshot.applied[i].created_at)!==String(journal[i].when)||snapshot.applied[i].hash!==journal[i].sha256)fail();
 }
 async function ownedFile(file,max=1000000){
  const stat=await fs.lstat(file);
@@ -72,7 +73,7 @@ export async function prepareReportsMigrationOnlyRecovery({root,candidate,out,ow
  const snapshot=await owner.begin('isolation level repeatable read read only',async tx=>{
   await tx`select set_config('statement_timeout','10000',true)`;
   const [transaction]=await tx`select current_setting('transaction_read_only') as read_only,current_setting('transaction_isolation') as isolation`;
-  const applied=await tx`select hash,created_at::text as created_at from drizzle.__drizzle_migrations order by created_at,id`;
+  const applied=await tx`select hash,created_at::text as created_at from drizzle.__drizzle_migrations order by id`;
   const tenants=await tx`select id::text,name,workos_org_id as "workosOrgId" from public.tenant order by id`;
   const names=await tx`select c.relname as name from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind in ('r','p') order by c.relname`;
   if(!same(names.map(row=>row.name),expectedInventory.map(row=>row.name)))fail();
