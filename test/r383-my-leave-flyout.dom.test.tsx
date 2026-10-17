@@ -18,6 +18,8 @@ beforeEach(()=>{location.path='/leave/history';});
 // so it is listed with AND without the `toil` module; only Leave Credit History is gated.
 // r426 (b3da5f59) — UPDATED, NOT LOOSENED: that row now reads "Leave Credit Status" (same key nav.leaveCreditHistory,
 // same href /leave/credit); the three name lookups below pin the new wording.
+// 2634fa7a — the approved Leave Credit Details entry follows Credit Status and precedes Leave Details.
+// Both credit entries use the existing toil gate; the three core leave entries remain visible without it.
 describe('My Leave uses the shared sidebar flyout',()=>{
  it.each([false,true])('keeps leaf links outside the rail and swaps/dismisses one panel in collapsed=%s',collapsed=>{
   const {container}=show(collapsed);const rail=container.querySelector('aside')!;expect(rail).not.toBeNull();
@@ -26,10 +28,12 @@ describe('My Leave uses the shared sidebar flyout',()=>{
   expect(leave).toHaveAttribute('aria-expanded','false');
   fireEvent.click(leave);const panel=screen.getByRole('navigation',{name:'My Leave'});
   expect(rail.contains(panel)).toBe(false);
-  expect(within(panel).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/leave','/leave/history','/leave/credit','/leave/details']);
+  expect(within(panel).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/leave','/leave/history','/leave/credit','/leave/credit-details','/leave/details']);
   expect(within(panel).getByRole('link',{name:'Leave Request Status'})).toHaveAttribute('aria-current','page');
   expect(within(panel).getByRole('link',{name:'Leave Request'})).not.toHaveAttribute('aria-current');
   expect(within(panel).getByRole('link',{name:'Leave Credit Status'})).not.toHaveAttribute('aria-current');
+  expect(within(panel).getByRole('link',{name:'Leave Credit Details'})).not.toHaveAttribute('aria-current');
+  expect(within(panel).getAllByRole('link').filter(link=>link.getAttribute('aria-current')==='page').map(link=>link.getAttribute('href'))).toEqual(['/leave/history']);
   // The old name is gone from the panel, not merely joined by the new one.
   expect(within(panel).queryByRole('link',{name:'Leave Overview'})).toBeNull();
   const attendance=screen.getByRole('button',{name:'My Attendance'});fireEvent.click(attendance);
@@ -51,25 +55,32 @@ describe('My Leave uses the shared sidebar flyout',()=>{
   // r389: must drop Leave Credit History, which belongs to the sellable `toil` add-on.
   const coreLeave=screen.getByRole('button',{name:'My Leave'});expect(coreLeave.classList.contains('bg-accent')).toBe(true);
   expect(screen.queryByRole('button',{name:'My Attendance'})).toBeNull();
-  fireEvent.click(coreLeave);expect(within(screen.getByRole('navigation',{name:'My Leave'})).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/leave','/leave/history','/leave/details']);
+  fireEvent.click(coreLeave);const corePanel=screen.getByRole('navigation',{name:'My Leave'});expect(within(corePanel).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/leave','/leave/history','/leave/details']);
+  expect(within(corePanel).queryByRole('link',{name:'Leave Credit Status'})).toBeNull();expect(within(corePanel).queryByRole('link',{name:'Leave Credit Details'})).toBeNull();
  });
- it('r389 · offers Leave Credit History only with the toil module, and lights it alone on its own page',()=>{
-  location.path='/leave/credit';
+ it.each([
+  {path:'/leave/credit',active:'Leave Credit Status',inactive:'Leave Credit Details'},
+  {path:'/leave/credit-details',active:'Leave Credit Details',inactive:'Leave Credit Status'},
+ ])('offers both credit entries only with toil and lights only the current link on $path',({path,active,inactive})=>{
+  location.path=path;
   const off=show(false,['attendance']);
-  // Without toil no visible row answers for /leave/credit, so Home is not the active section and starts
-  // closed — the same shape as the tracker case below. Open it, then the flyout: the row is simply absent.
+  // Without toil neither credit route has a visible row, so Home is not the active section and starts
+  // closed — the same shape as the tracker case below. Open it, then prove both credit rows are absent.
   const home=screen.getByRole('button',{name:messages.nav.sectionHome});expect(home).toHaveAttribute('aria-expanded','false');fireEvent.click(home);
   fireEvent.click(screen.getByRole('button',{name:'My Leave'}));
   expect(within(screen.getByRole('navigation',{name:'My Leave'})).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/leave','/leave/history','/leave/details']);
   expect(within(screen.getByRole('navigation',{name:'My Leave'})).queryByRole('link',{name:'Leave Credit Status'})).toBeNull();
+  expect(within(screen.getByRole('navigation',{name:'My Leave'})).queryByRole('link',{name:'Leave Credit Details'})).toBeNull();
   off.unmount();
   show(false,['toil']);
   const leave=screen.getByRole('button',{name:'My Leave'});
-  expect(leave.classList.contains('bg-accent'),'My Leave is the open section on /leave/credit').toBe(true);
+  expect(leave.classList.contains('bg-accent'),'My Leave is the open section on '+path).toBe(true);
   fireEvent.click(leave);
   const panel=screen.getByRole('navigation',{name:'My Leave'});
-  expect(within(panel).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/leave','/leave/history','/leave/credit','/leave/details']);
-  expect(within(panel).getByRole('link',{name:'Leave Credit Status'})).toHaveAttribute('aria-current','page');
+  expect(within(panel).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/leave','/leave/history','/leave/credit','/leave/credit-details','/leave/details']);
+  expect(within(panel).getByRole('link',{name:active})).toHaveAttribute('aria-current','page');
+  expect(within(panel).getByRole('link',{name:inactive})).not.toHaveAttribute('aria-current');
+  expect(within(panel).getAllByRole('link').filter(link=>link.getAttribute('aria-current')==='page').map(link=>link.getAttribute('href'))).toEqual([path]);
   expect(within(panel).getByRole('link',{name:'Leave Request'})).not.toHaveAttribute('aria-current');
   expect(within(panel).getByRole('link',{name:'Leave Request Status'})).not.toHaveAttribute('aria-current');
  });

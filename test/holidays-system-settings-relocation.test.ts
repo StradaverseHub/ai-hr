@@ -133,10 +133,10 @@ describe('4509d2b8 — access is UNCHANGED: administrators only, same guard, sam
     );
   });
 
-  it('the lib/permissions.ts column is untouched — same href, same guard, same four routes', () => {
-    // Rule 20 does NOT apply (no new page, no moved route), so this is a no-change assertion: the item is
-    // wrong if the matrix moved with the menu. A guarded route missing from here becomes a screen nobody
-    // can grant or revoke, and test/function-access.test.ts fails both ways.
+  it('the permission column keeps its href and admin guard, including the approved replacement screen', () => {
+    // The menu move preserves every original bookmark and its matrix owner. The later replacement
+    // feature adds one route under that same admin-guarded column; name it explicitly rather than
+    // relaxing this exact set or exempting a guarded page from the matrix.
     const screen = SCREENS.find((s) => s.screenKey === 'holidays');
     expect(screen, 'the holidays screen column still exists').toBeTruthy();
     expect(screen!.href).toBe(HREF);
@@ -144,10 +144,12 @@ describe('4509d2b8 — access is UNCHANGED: administrators only, same guard, sam
     expect(screen!.guard).toBe('requireAdmin');
     expect(screen!.routes).toEqual([
       '/admin/holidays',
+      '/admin/holidays/replacements',
       '/admin/holidays/groups',
       '/admin/holidays/groups/new',
       '/admin/holidays/groups/[id]',
     ]);
+    expect(read('app/admin/holidays/replacements/page.tsx')).toContain('await scopedAdmin()');
   });
 
   it('the URL is preserved — every registered route still resolves to a page on disk', () => {

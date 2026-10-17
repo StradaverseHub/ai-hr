@@ -113,14 +113,20 @@ describe('0e276da0 — the resolver and the s.60D skip are untouched (ADR-0086: 
    * door ADR-0086 leaves open. The behavioural halves are pinned by test/holiday-calendar-resolution.test.ts
    * and test/holiday-calendar-coverage.test.ts; these two are the source-level "still there, verbatim".
    */
-  it('the Custom skip that suppresses the s.60D warning is still there, verbatim', () => {
-    expect(src).toContain("if (effEmpGroupArchetype === 'custom') return { country: emp.country, state: null, skipCompleteness: true };");
+  it('the Custom skip still suppresses the s.60D warning and names no gazette states', () => {
+    // Dated replacement provenance adds the full state set; Custom still opts out entirely.
+    expect(src).toMatch(/if \(effEmpGroupArchetype === 'custom'\) return \{ country: emp\.country, state: null, skipCompleteness: true,\s*states:\s*\[\]\s*\};/);
     expect(src, 'the SITE copy is gone with the site rung').not.toContain('effCalArchetype');
   });
 
   it('the Custom resolution branch still returns the calendar’s own days and NO gazette', () => {
-    expect(src).toContain("if (effEmpGroupArchetype === 'custom') {");
-    expect(src).toContain('return new Set([...adHocRows.map((h) => h.d), ...chainExtras]);');
+    // Resolution now retains original record identity for replacement provenance; the public date
+    // wrapper projects dates afterward. Restrict this assertion to the actual Custom branch.
+    const begin=src.indexOf("if (effEmpGroupArchetype === 'custom') {"),end=src.indexOf('\n    }',begin);
+    expect(begin).toBeGreaterThanOrEqual(0);expect(end-begin).toBeGreaterThan(100);
+    const custom=src.slice(begin,end);expect(custom).toContain('return uniqueOriginalHolidays([...adHocRows, ...chainExtras]);');expect(custom).not.toContain('gazetteRows');
+    const dates=src.indexOf('export async function originalHolidayDatesFor('),datesEnd=src.indexOf('/** Effective holiday set:',dates);
+    expect(dates).toBeGreaterThanOrEqual(0);expect(datesEnd-dates).toBeGreaterThan(100);expect(src.slice(dates,datesEnd)).toContain('return new Set((await originalHolidayCalendarFor(tx,p)).map(h=>h.date));');
   });
 
   it('the coverage read appends no domain event — it is a pure read', () => {

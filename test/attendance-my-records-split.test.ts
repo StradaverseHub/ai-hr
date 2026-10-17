@@ -531,7 +531,7 @@ describe('2aef3cd8 / 67268d83 — both retired scope-note claims are gone from a
  * could undo with every other guard staying green: the page bounding its range against the kernel's own
  * constant, and not issuing the read at all when it refuses.
  */
-describe('67268d83 — six statuses, three flags, and a bounded range', () => {
+describe('67268d83 — canonical statuses, three flags, and a bounded range', () => {
   const src = stripComments(read(EMPLOYEE_PAGE));
 
   /** The literal members of a `export type X = 'a' | 'b' | null;` union, read off the kernel's source. */
@@ -555,12 +555,13 @@ describe('67268d83 — six statuses, three flags, and a bounded range', () => {
 
   it('the Status column offers EXACTLY the statuses the kernel can produce — no Late, no Incomplete', () => {
     const kernel = unionMembers(derive, 'AttendanceStatus');
-    expect(kernel.sort(), 'the kernel’s v1 status set').toEqual(
-      ['absent', 'off', 'on_leave', 'ph', 'present', 'rest'].sort(),
+    // ba0dfca1: dated Schedule Group Enable Exception adds Exempt without hiding measured flags.
+    expect(kernel.sort(), 'the kernel’s status set including the approved exemption').toEqual(
+      ['absent', 'exempt', 'off', 'on_leave', 'ph', 'present', 'rest'].sort(),
     );
     expect(
       literalKeys('statusText').sort(),
-      'the screen’s Status labels must be exactly the kernel’s statuses: a seventh is a state the kernel ' +
+      'the screen’s Status labels must be exactly the kernel’s statuses: an extra one is a state the kernel ' +
         'never returns, and a missing one renders undefined in a cell',
     ).toEqual(kernel.sort());
     // Named explicitly, because these two are the ones the reporter asked for AS statuses and the plan
