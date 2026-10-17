@@ -39,9 +39,16 @@ class Retirement(unittest.TestCase):
         with self.assertRaises(Exception): self.run_wait(['empty'], {'load':'loaded','active':'inactive','invocation':'b'*32,'pid':0,'cgroup':''})
     def test_known_empty_same_activation_can_retire_without_a_timing_guess(self):
         self.assertEqual(self.run_wait(['populated','empty'], {'load':'loaded','active':'inactive','invocation':'a'*32,'pid':0,'cgroup':''}), ['populated','empty'])
-    def test_collection_requires_not_found_not_a_missing_or_reused_path(self):
+    def test_collection_retains_strict_not_found_path_and_refuses_reuse(self):
         self.run_wait(['collected'], {'load':'not-found','active':'inactive','invocation':'','pid':0,'cgroup':''})
         with self.assertRaises(Exception): self.run_wait(['collected'], {'load':'loaded','active':'active','invocation':'b'*32,'pid':123,'cgroup':PATH})
+    def test_collected_exact_activation_can_have_a_loaded_inactive_definition(self):
+        self.assertEqual(self.run_wait(['collected'], {'load':'loaded','active':'inactive','invocation':'','pid':0,'cgroup':''}), ['collected'])
+    def test_loaded_definition_requires_the_exact_retired_empty_state(self):
+        retired={'load':'loaded','active':'inactive','invocation':'','pid':0,'cgroup':''}
+        for change in [{'active':'failed'},{'load':'unknown'},{'active':'active'},{'pid':123},{'invocation':'b'*32},{'invocation':'a'*32},{'cgroup':'/foreign'},{'cgroup':PATH}]:
+            with self.assertRaises(Exception):self.run_wait(['collected'],dict(retired,**change))
+        with self.assertRaises(Exception):self.run_wait(['populated'],retired)
     def test_interrupted_or_unknown_unit_and_descriptor_states_refuse(self):
         for value in ['unknown','deleted-at-receipt']:
             with self.assertRaises(Exception): self.run_wait([value], {'load':'not-found','active':'inactive','invocation':'','pid':0,'cgroup':''})
