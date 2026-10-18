@@ -71,7 +71,7 @@ describe('Pay Items create-only atomic import and pending calculation boundaries
   it('creates inactive rows in the same transaction and records importer/time/sanitized filename without descriptions', async () => {
     const result = await createPayComponentsFromImport(ctx, [{ input: input(' new-one '), archived: true }, { input: input('NEW_TWO'), archived: false }], '../folder\\fictional\n.xlsx');
     expect(result.created).toBe(2);
-    const rows = await catalog(base.tenantId); expect(rows.map(r => r.code)).toEqual(['NEW-ONE', 'NEW_TWO']);
+    const rows = await catalog(base.tenantId); expect(rows.map(r => r.code).sort()).toEqual(['NEW-ONE', 'NEW_TWO']);
     expect(rows.find(r => r.code === 'NEW-ONE')!.archivedAt).not.toBeNull();
     expect(rows.find(r => r.code === 'NEW_TWO')!.archivedAt).toBeNull();
     const audit = await events(base.tenantId); expect(audit).toHaveLength(2);

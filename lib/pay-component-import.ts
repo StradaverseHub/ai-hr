@@ -1,5 +1,5 @@
-import type { PayComponentInput } from '../core/pay-components';
-import type { PayRuleKind } from '../core/pay-rule';
+// Type-only facade imports keep this workbook/client contract free of server initialization.
+import type { PayComponentInput, PayRuleKind } from '../packs/payroll/service';
 import { PAY_COMPONENT_DEFAULTS as defaults, payComponentEaDefault, payComponentOvertimeDefault } from './pay-component-contract';
 
 export const PAY_ITEM_MAX_BYTES = 5 * 1024 * 1024;

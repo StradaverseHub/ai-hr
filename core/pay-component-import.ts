@@ -1,10 +1,8 @@
 import { createHash } from 'node:crypto';
 import type { SessionContext } from '../db/client';
 import { countryPacks } from '../localization/registry';
-import { PAY_RULE_KINDS } from './pay-rule';
-import { PAY_DISPLAY_CATEGORIES } from './pay-display-category';
-import { PCB_REMUNERATION_TYPES, ROUNDING_METHODS, pcbExemptionCodesFor, listPayComponents,
-  validatePayComponentCreateSettings, createPayComponentsFromImport } from './pay-components';
+import { PAY_RULE_KINDS, PAY_DISPLAY_CATEGORIES, PCB_REMUNERATION_TYPES, ROUNDING_METHODS, pcbExemptionCodesFor, listPayComponents,
+  validatePayComponentCreateSettings, createPayComponentsFromImport } from '../packs/payroll/service';
 import { normalizePayItemRow, type PayItemVocabulary, type PayItemPreview, type PayItemField } from '../lib/pay-component-import';
 import { readPayItemWorkbook } from '../lib/pay-component-workbook';
 import { isAdmin } from '../lib/authz-model';
