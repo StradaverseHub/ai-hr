@@ -869,8 +869,8 @@
         "lib/authz.ts",
         "core/system-testing-workspace.ts"
       ],
-      "reviewedSourceHash": "6fc196927f7a8078ffb6205305fbab7c6a33cb503a4da518f1bfe925f74d08ea",
-      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
+      "reviewedSourceHash": "c184d3200b164b640b948433b49c64821ac3410406a535e9aa8655145c78ec84",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival. Additional bounded source review at b36fcc37ab825968825b7a3c41862b2a5eeedee4: System Testing now accepts preserved canonical hexadecimal login IDs at assignment and own/team-list account boundaries. Its administrator, tenant, live-login and assignment ownership checks are unchanged; a Testing assignment still grants no company-maintenance or HR authority. The organization guide steps and other declared owners remain unchanged. This review establishes no manual execution, runtime, gate or service-arrival pass."
     },
     {
       "semanticId": "settings.labels.metadata",
@@ -1109,8 +1109,8 @@
         "lib/authz.ts",
         "core/system-testing-workspace.ts"
       ],
-      "reviewedSourceHash": "6cc05a3c11559efb020626bf848c448ac1602683c7dbd59c81b868dca9fedb14",
-      "reviewNote": "Bounded actual merged-source review at aa7ab5602d5169c300e3816b05747f53f91ed9c4: Optional entitlement transaction composition does not change requester/approver identity, queue scope or own request history. Current combined permissions and prior authority remain intact. Source bytes are bound to the implemented owners; actual manual checks remain required. This review establishes no runtime/gate/manual pass, exhaustive coverage or live arrival."
+      "reviewedSourceHash": "44fb57b8fd66c6595121d7bd783c357a3d6d2a2419dfff7a16eeb2892956dd4c",
+      "reviewNote": "Bounded actual merged-source review at aa7ab5602d5169c300e3816b05747f53f91ed9c4: Optional entitlement transaction composition does not change requester/approver identity, queue scope or own request history. Current combined permissions and prior authority remain intact. Source bytes are bound to the implemented owners; actual manual checks remain required. This review establishes no runtime/gate/manual pass, exhaustive coverage or live arrival. Additional bounded source review at b36fcc37ab825968825b7a3c41862b2a5eeedee4: System Testing now accepts preserved canonical hexadecimal login IDs at assignment and own/team-list account boundaries. Requester/approver separation, approval eligibility, tenant scope and Testing own/team authority are unchanged; assignment cannot grant self-approval. The existing approval guide steps and other declared owners remain unchanged. This review establishes no manual execution, runtime, gate or service-arrival pass."
     },
     {
       "semanticId": "workflow.approvals.history",
@@ -1574,8 +1574,8 @@
         "lib/system-testing/read-boundary.ts",
         "lib/hr-date.ts"
       ],
-      "reviewedSourceHash": "4f0ee967c7b4fd43c4b776dd4d48f77ff6ce077137b1bf46f6fd743596c7bb60",
-      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
+      "reviewedSourceHash": "428dbf580f7011e867a70696b0304e259f395c05b24b18a0e5978f616044a322",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival. Additional bounded source review at b36fcc37ab825968825b7a3c41862b2a5eeedee4: A separate account-ID validator now accepts preserved canonical hexadecimal login identities for assigning a tester and listing own/team assignments. Generated case/version/execution/build IDs retain strict testingUuid validation. Tenant/live-login checks, administrator/team/own-assignment guards, independent saved actors, immutable versions/history and retest behavior are unchanged. No identity is created or rewritten, and the existing guide steps and other declared owners remain unchanged. This review establishes no manual execution, runtime, gate or service-arrival pass."
     },
     {
       "semanticId": "payroll.pay-items.import",
