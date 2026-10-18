@@ -331,10 +331,9 @@ export function listSupportedBatchComponents(ctx: SessionContext) {
 export type PayComponentInput = {
   code: string;
   name: string;
-  // Pay Items redesign (feedback 4994a48f): optional short display name ("Transport") for payslips and
-  // reports later. undefined ⇒ leave the stored value untouched (existing callers that predate the field
-  // must not wipe it); ''/null ⇒ stored as null. Deliberately NO uniqueness rule (house precedent:
-  // department/cost_center/position/business_unit all carry the same optional label with none).
+  // New rows require a short display label. On existing rows, omission preserves the stored label;
+  // an unchanged legacy NULL is retained, while a changed label must satisfy today's required limit.
+  // Labels are not unique (the same display wording may describe different pay codes).
   label?: string | null;
   description?: string | null;
   /** Only import creates incomplete calculations. Completion requires a real, validated rule. */
@@ -705,6 +704,14 @@ export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
   return withTenant(ctx, tx => upsertPayComponentTx(tx, ctx, p));
 }
 
+export class PayComponentNotFoundError extends Error {
+  constructor() { super('This pay component is no longer available. Reopen the catalog.'); this.name = 'PayComponentNotFoundError'; }
+}
+/** Maintenance edits never create a row if the submitted code is absent or was removed concurrently. */
+export function updatePayComponent(ctx: SessionContext, p: PayComponentInput) {
+  return withTenant(ctx, tx => upsertPayComponentTx(tx, ctx, p, { updateOnly: true }));
+}
+
 /** Process/reprocess backstop, independent of typed-pay feature flags. A stored legacy assignment
  * cannot activate an incomplete calculation by bypassing today's assignment picker/writer. */
 export async function assertNoPendingPayComponentsTx(tx: Tx, p: { batchId: string; employmentIds: string[]; periodStart: string; periodEnd: string }) {
@@ -725,7 +732,7 @@ export async function assertNoPendingPayComponentsTx(tx: Tx, p: { batchId: strin
 }
 
 async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponentInput,
-  options: { createOnly?: boolean; archived?: boolean; importFileName?: string; deferResolutionOrder?: boolean } = {}) {
+  options: { createOnly?: boolean; updateOnly?: boolean; archived?: boolean; importFileName?: string; deferResolutionOrder?: boolean } = {}) {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':pay-component-catalog'}, 0))`);
     const rule = ruleOf(p);
     if (p.pendingInputKind != null && (!PENDING_PAY_INPUT_KINDS.includes(p.pendingInputKind) || rule != null))
@@ -754,10 +761,11 @@ async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponent
       .where(and(eq(payComponent.tenantId, ctx.tenantId), eq(payComponent.code, p.code)))
       .limit(1);
     if (existing && options.createOnly) throw new PayComponentCodeExistsError(p.code, existing.archivedAt != null);
-    if (existing) {
-      const issues = payComponentIdentityIssues(p, existing);
-      if (issues.length) throw new PayComponentInputError(issues);
-    }
+    if (!existing && options.updateOnly) throw new PayComponentNotFoundError();
+    // Both insert paths obey today's identity contract. Only an unchanged EXISTING legacy identity
+    // gets preservation semantics; a public upsert cannot create a label-less or invalid new code.
+    const issues = payComponentIdentityIssues(p, existing);
+    if (issues.length) throw new PayComponentInputError(issues);
     const description = p.description === undefined ? {} : { description: p.description?.trim() || null };
     // Omitted pending kind preserves existing state unless a complete calculation was explicitly saved.
     // A stale caller sending rule:null cannot turn an imported calculation into an accidental fixed code.

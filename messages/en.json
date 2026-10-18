@@ -12720,6 +12720,7 @@
     "importValid": "Valid",
     "importChanged": "The file changed. Check it again before importing.",
     "importFailed": "Import could not be completed. Check the file and try again.",
+    "errorComponentUnavailable": "This pay component is no longer available. Reopen the catalog.",
     "invalidSetting": "{field}: {reason}",
     "importIssue_required": "Required value.",
     "importIssue_invalidCode": "Use at most 20 uppercase letters, digits, underscores or hyphens.",

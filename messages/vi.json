@@ -12720,6 +12720,7 @@
     "importValid": "Hợp lệ",
     "importChanged": "Tệp đã thay đổi. Hãy kiểm tra lại trước khi nhập.",
     "importFailed": "Không thể hoàn tất việc nhập. Hãy kiểm tra tệp rồi thử lại.",
+    "errorComponentUnavailable": "Khoản lương này không còn khả dụng. Hãy mở lại danh mục.",
     "invalidSetting": "{field}: {reason}",
     "importIssue_required": "Bắt buộc có giá trị.",
     "importIssue_invalidCode": "Dùng tối đa 20 chữ hoa, chữ số, dấu gạch dưới hoặc gạch nối.",

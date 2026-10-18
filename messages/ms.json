@@ -12720,6 +12720,7 @@
     "importValid": "Sah",
     "importChanged": "Fail telah berubah. Semak semula sebelum mengimport.",
     "importFailed": "Import tidak dapat diselesaikan. Semak fail dan cuba lagi.",
+    "errorComponentUnavailable": "Komponen gaji ini tidak lagi tersedia. Buka semula katalog.",
     "invalidSetting": "{field}: {reason}",
     "importIssue_required": "Nilai diperlukan.",
     "importIssue_invalidCode": "Gunakan maksimum 20 huruf besar, digit, garis bawah atau sempang.",

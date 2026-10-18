@@ -12720,6 +12720,7 @@
     "importValid": "有效",
     "importChanged": "文件已更改。请重新检查后再导入。",
     "importFailed": "无法完成导入。请检查文件后重试。",
+    "errorComponentUnavailable": "此薪资项目已不可用。请重新打开目录。",
     "invalidSetting": "{field}：{reason}",
     "importIssue_required": "必填值。",
     "importIssue_invalidCode": "最多使用 20 个大写字母、数字、下划线或连字符。",

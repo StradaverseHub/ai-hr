@@ -8,7 +8,7 @@ import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { createBatch, generatePayslips } from '../packs/payroll/service';
 import { createIndividualTxn } from '../core/payroll-individual-txn';
 import { createPayComponentsFromImport, createPayComponent, listPayComponents, PayComponentCodeExistsError,
-  setEmploymentPayComponent, setPayrollBatchComponent, upsertPayComponent, PayRuleInvalidError,
+  setEmploymentPayComponent, setPayrollBatchComponent, upsertPayComponent, updatePayComponent, seedPayComponentCatalog, PayComponentInputError, PayComponentNotFoundError, PayRuleInvalidError,
   type PayComponentInput } from '../core/pay-components';
 import { PayComponentCalculationPendingError } from '../lib/pay-component-contract';
 import { payItemVocabulary, previewPayItemImport, commitPayItemImport } from '../core/pay-component-import';
@@ -32,6 +32,35 @@ describe('Pay Items create-only atomic import and pending calculation boundaries
   beforeEach(async () => { await resetDb(); base = await seedBase(); ctx = await entitledCtx(base); });
   afterAll(async () => { await closeAll(); });
 
+  it('refuses identity-invalid public upsert inserts without a row or creation event', async () => {
+    const before = await catalog(base.tenantId), audit = await events(base.tenantId);
+    for (const [code, overrides, field, issue] of [
+      ['NO_LABEL', {label: undefined}, 'label', 'required'],
+      ['BLANK_LABEL', {label: '   '}, 'label', 'required'],
+      ['LONG_LABEL', {label: 'X'.repeat(61)}, 'label', 'tooLong'],
+      ['BAD CODE', {}, 'code', 'invalidCode'],
+      ['X'.repeat(21), {}, 'code', 'invalidCode'],
+    ] as const) {
+      await expect(upsertPayComponent(ctx, input(code, overrides))).rejects.toMatchObject({name: 'PayComponentInputError', issues: expect.arrayContaining([{field, code: issue}])});
+      expect(await catalog(base.tenantId)).toEqual(before); expect(await events(base.tenantId)).toEqual(audit);
+    }
+  });
+  it('maintenance update refuses an absent code even with otherwise valid creation settings', async () => {
+    const before = await catalog(base.tenantId), audit = await events(base.tenantId);
+    await expect(updatePayComponent(ctx, input('FORGED_EDIT'))).rejects.toBeInstanceOf(PayComponentNotFoundError);
+    expect(await catalog(base.tenantId)).toEqual(before); expect(await events(base.tenantId)).toEqual(audit);
+  });
+  it('retains an existing seed null label but refuses clearing a newly supplied required label', async () => {
+    await seedPayComponentCatalog(ctx);
+    const legacy = (await catalog(base.tenantId)).find(row => row.label === null)!; expect(legacy).toBeDefined();
+    await updatePayComponent(ctx, {...legacy, name: 'Updated legacy display only', epfBonus2012: undefined, pcbRemunerationType: undefined, pcbExemptionCode: undefined});
+    const retained = (await catalog(base.tenantId)).find(row => row.id === legacy.id)!;
+    expect(retained.label).toBeNull(); expect(retained.code).toBe(legacy.code); expect(retained.name).toBe('Updated legacy display only');
+    await upsertPayComponent(ctx, input('REQUIRED_LABEL'));
+    const before = await catalog(base.tenantId), audit = await events(base.tenantId);
+    await expect(updatePayComponent(ctx, input('REQUIRED_LABEL', {label: '  '}))).rejects.toBeInstanceOf(PayComponentInputError);
+    expect(await catalog(base.tenantId)).toEqual(before); expect(await events(base.tenantId)).toEqual(audit);
+  });
   it('creates inactive rows in the same transaction and records importer/time/sanitized filename without descriptions', async () => {
     const result = await createPayComponentsFromImport(ctx, [{ input: input(' new-one '), archived: true }, { input: input('NEW_TWO'), archived: false }], '../folder\\fictional\n.xlsx');
     expect(result.created).toBe(2);

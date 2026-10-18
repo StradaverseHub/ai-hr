@@ -22,7 +22,8 @@ import {
   PayRuleInvalidError,
   previewPayRule,
   seedPayComponentCatalog,
-  upsertPayComponent,
+  updatePayComponent,
+  PayComponentNotFoundError,
   type PayComponentInput,
   type PcbRemunerationType,
 } from '@/core/pay-components';
@@ -113,6 +114,7 @@ function componentFields(formData: FormData, normalizeCode = true): PayComponent
 
 /** Map a service rejection to a LOCALISED message (no raw English error codes on screen). */
 async function messageOf(e: unknown, t: Awaited<ReturnType<typeof getTranslations>>): Promise<string> {
+  if (e instanceof PayComponentNotFoundError) return t('errorComponentUnavailable');
   if (e instanceof PayComponentInputError) {
     const rule = await getTranslations('payRule');
     return e.issues.map(issue => t('invalidSetting', { field: PAY_ITEM_COLUMNS.find(([field]) => field === issue.field)?.[1] ?? issue.field, reason: payItemIssueMessage(issue.code, t, rule) })).join(' ');
@@ -209,7 +211,7 @@ export async function updateComponentAction(formData: FormData) {
   const unsupported = unsupportedTaxableMessage(input, t);
   if (unsupported) redirect(`${PAGE}/${encodeURIComponent(input.code)}?error=${encodeURIComponent(unsupported)}`);
   try {
-    const { id, changed } = await upsertPayComponent(s, input);
+    const { id, changed } = await updatePayComponent(s, input);
     // ── Feedback 017d9c25 (r187) — a statutory edit marks the runs it makes stale ──────────────────
     // Keying a one-off transaction against a processed run already does this; changing a Pay Item did
     // not, which is why the reporter's January figures sat there looking settled after they unticked
