@@ -30,6 +30,42 @@ describe('r385 real statutory form payload and six-locale explanation', () => {
     expect(new FormData(form).get('pcbExemptionCode')).toBe('');
     expect(errors).toEqual([]);
   });
+  it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('allows an untouched legacy NULL pair for a description-only edit in %s, then requires actual statutory edits', locale => {
+    const { container } = render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]}>
+      <form><textarea name="description" defaultValue="" /><StatutoryConfig editing includedInEpf={true} epfBonus2012={false} includedInSocsoEis={true} includedInPcb={true} includedInHrdfBase={false} pcbRemunerationType={null} pcbExemptionCode={null} /></form>
+    </NextIntlClientProvider>);
+    const form = container.querySelector('form')!;
+    const rem = form.querySelector<HTMLSelectElement>('[name="pcbRemunerationType"]')!;
+    const exemption = form.querySelector<HTMLSelectElement>('[name="pcbExemptionCode"]')!;
+    fireEvent.change(form.querySelector('textarea')!, { target: { value: 'Fictional description only' } });
+    expect(form.checkValidity()).toBe(true);
+    const untouched = new FormData(form);
+    expect(untouched.get('description')).toBe('Fictional description only');
+    expect(untouched.get('pcbRemunerationType')).toBe('');
+    expect(untouched.get('pcbExemptionCode')).toBeNull(); // disabled blank selector; no invented choice
+    expect(untouched.get('includedInPcb')).toBe('on');
+    fireEvent.change(rem, { target: { value: 'normal' } });
+    expect(form.checkValidity()).toBe(false);
+    expect(exemption.required).toBe(true);
+    fireEvent.change(exemption, { target: { value: 'PCB_TAXABLE' } });
+    expect(form.checkValidity()).toBe(true);
+    expect(new FormData(form).get('pcbExemptionCode')).toBe('PCB_TAXABLE');
+  });
+  it.each([false, undefined])('new/copy forms never inherit legacy NULL-pair preservation (editing=%s)', editing => {
+    const { container } = render(<NextIntlClientProvider locale="en" messages={en}>
+      <form><StatutoryConfig editing={editing} includedInEpf={true} epfBonus2012={false} includedInSocsoEis={true} includedInPcb={true} includedInHrdfBase={false} pcbRemunerationType={null} pcbExemptionCode={null} /></form>
+    </NextIntlClientProvider>);
+    expect(container.querySelector('form')!.checkValidity()).toBe(false);
+  });
+  it('a statutory flag edit cannot keep the legacy blank-pair browser exemption', () => {
+    const { container } = render(<NextIntlClientProvider locale="en" messages={en}>
+      <form><StatutoryConfig editing includedInEpf={true} epfBonus2012={false} includedInSocsoEis={true} includedInPcb={true} includedInHrdfBase={false} pcbRemunerationType={null} pcbExemptionCode={null} /></form>
+    </NextIntlClientProvider>);
+    const form = container.querySelector('form')!;
+    expect(form.checkValidity()).toBe(true);
+    fireEvent.click(form.querySelector<HTMLInputElement>('[name="includedInEpf"]')!);
+    expect(form.checkValidity()).toBe(false);
+  });
   it('all precise benefit messages retain the pay-code context in every catalogue', () => {
     for (const catalogue of Object.values(catalogues)) for (const key of ['errorUnsupportedTaxable', 'errorBenefit_classification_conflict', 'errorBenefit_unsupported_kind', 'errorBenefit_normal_remuneration_required'] as const) {
       expect(catalogue.payComponents[key]).toContain('{code}');

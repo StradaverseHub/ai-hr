@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import type { SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { importBatchComponents, listPayComponents, listSupportedBatchComponents, unsupportedTaxableReason, upsertPayComponent } from '../core/pay-components';
+import { importBatchComponents, listPayComponents, listSupportedBatchComponents, unsupportedTaxableReason, upsertPayComponent, updatePayComponent, seedPayComponentCatalog, PayComponentStatutoryConfigError } from '../core/pay-components';
 import { setCompensation } from '../core/comp';
 import { requirePackFor } from '../localization/registry';
 import { readPcbNonCash } from '../localization/noncash-benefits';
@@ -98,6 +98,50 @@ describe('r385 full pay-item classification through actual maintenance actions a
     await assertRetained();
   });
 
+  it('description-only maintenance retains legacy BASIC NULL classification and identity, while actual edits remain strict', async () => {
+    await seedPayComponentCatalog(ctx);
+    const legacy = (await listPayComponents(ctx)).find(row => row.code === 'BASIC')!;
+    expect(legacy).toMatchObject({ label: null, includedInPcb: true, pcbRemunerationType: null, pcbExemptionCode: null, pendingInputKind: null });
+    const payload = () => {
+      const fd = new FormData();
+      for (const key of ['code', 'name', 'kind', 'label', 'description', 'eaFormLine', 'roundingMethod', 'displayCategory', 'pcbRemunerationType', 'pcbExemptionCode'] as const) fd.set(key, String(legacy[key] ?? ''));
+      fd.set('rule', legacy.rule ? JSON.stringify(legacy.rule) : '');
+      for (const key of ['includedInEpf', 'includedInSocsoEis', 'includedInPcb', 'includedInHrdfBase', 'epfBonus2012', 'prorates', 'orpOvertime', 'orpUnpaidLeave'] as const) if (legacy[key]) fd.set(key, 'on');
+      return fd;
+    };
+    const fd = payload(); fd.set('description', 'Board20 legacy description edit (fictional)');
+    expect(await location(updateComponentAction, fd)).toContain('toast=toastSaved');
+    const saved = (await listPayComponents(ctx)).find(row => row.id === legacy.id)!;
+    expect(saved).toEqual({ ...legacy, description: 'Board20 legacy description edit (fictional)' });
+    // The authoritative writer accepts this same unchanged legacy pair without trusting any form marker.
+    await updatePayComponent(ctx, { ...saved, description: 'Owner-side description only' });
+    const ownerSaved = (await listPayComponents(ctx)).find(row => row.id === legacy.id)!;
+    expect(ownerSaved).toEqual({ ...saved, description: 'Owner-side description only' });
+    const incomplete = payload(); incomplete.set('pcbRemunerationType', 'normal');
+    expect(await location(updateComponentAction, incomplete)).toContain('error=errorStatutory_pcbExemptionTypeRequired');
+    await expect(updatePayComponent(ctx, { ...ownerSaved, pcbRemunerationType: 'normal' })).rejects.toBeInstanceOf(PayComponentStatutoryConfigError);
+    const changedFlag = payload(); changedFlag.delete('includedInEpf');
+    expect(await location(updateComponentAction, changedFlag)).toContain('error=errorStatutory_pcbRemunerationTypeRequired');
+    const forgedType = payload(); forgedType.set('pcbRemunerationType', 'INVALID');
+    expect(await location(updateComponentAction, forgedType)).toContain('error=errorStatutory_pcbRemunerationTypeRequired');
+    expect((await listPayComponents(ctx)).find(row => row.id === legacy.id)).toEqual(ownerSaved);
+    const copied = payload(); copied.set('code', 'BASIC_COPY'); copied.set('label', 'Fictional copy');
+    expect(await location(createComponentAction, copied)).toContain('error=errorStatutory_pcbRemunerationTypeRequired');
+    // Completing the pair is valid; an old blank-pair form must then be refused, never erase completion.
+    const complete = payload(); complete.set('pcbRemunerationType', 'normal'); complete.set('pcbExemptionCode', 'PCB_TAXABLE');
+    expect(await location(updateComponentAction, complete)).toContain('toast=toastSaved');
+    const completed = (await listPayComponents(ctx)).find(row => row.id === legacy.id)!;
+    expect(completed).toMatchObject({ pcbRemunerationType: 'normal', pcbExemptionCode: 'PCB_TAXABLE' });
+    expect(await location(updateComponentAction, payload())).toContain('error=errorStatutory_pcbRemunerationTypeRequired');
+    await expect(updatePayComponent(ctx, { ...ownerSaved })).rejects.toBeInstanceOf(PayComponentStatutoryConfigError);
+    expect((await listPayComponents(ctx)).find(row => row.id === legacy.id)).toEqual(completed);
+  });
+  it('cash display/EA metadata and a valid label edit do not force remapping an unchanged legacy PCB pair', async () => {
+    await seedPayComponentCatalog(ctx);
+    const legacy = (await listPayComponents(ctx)).find(row => row.code === 'BASIC')!;
+    await updatePayComponent(ctx, { ...legacy, label: 'Basic display', displayCategory: 'basic', eaFormLine: 'EA_B1A' });
+    expect((await listPayComponents(ctx)).find(row => row.id === legacy.id)).toEqual({ ...legacy, label: 'Basic display', displayCategory: 'basic', eaFormLine: 'EA_B1A' });
+  });
   it('a legacy partial setter preserves stored classification when changing an unrelated field', async () => {
     expect(await location(createComponentAction, form('bik'))).toContain('toast=toastSaved');
     const existing = (await listPayComponents(ctx)).find(c => c.code === 'BIK_HOUSE')!;
