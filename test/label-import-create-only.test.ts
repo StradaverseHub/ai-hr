@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import * as XLSX from 'xlsx';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -30,6 +31,12 @@ describe('new-only System Label import identity boundary',()=>{
   await owner.db.update(table).set({archivedAt:new Date()}).where(eq(table.id,labelId!));
   const archived=await previewSystemLabelImport(ctx,await book({[kind]:[org(b.companyId,code)]}),'add');
   expect(archived.valid).toBe(false);expect(archived.rows[0]).toMatchObject({reason:'existing',before:null});
+ });
+ it.each(['xlsx','biff8'] as const)('applies real %s new data through the canonical owner',async type=>{
+  const original=await book({division:[{Code:'FORMAT_NEW',Label:'Fictional new'}]}),bytes=XLSX.write(XLSX.read(original,{type:'buffer'}),{type:'buffer',bookType:type}) as Buffer;
+  const preview=await previewSystemLabelImport(adminCtx(b),bytes,'update');expect(preview.valid).toBe(true);
+  expect(await applySystemLabelImport(adminCtx(b),{bytes,mode:'merge',token:preview.token,confirmUpdates:true})).toMatchObject({imported:1,updated:0});
+  expect(await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'FORMAT_NEW'))).toHaveLength(1);
  });
  it('does not confuse a code in a foreign tenant with an incumbent and refuses cross-tenant existence requests',async()=>{
   const foreign=await seedBase();
