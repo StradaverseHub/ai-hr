@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "revision": "reviewed-baseline.4",
+  "revision": "reviewed-baseline.5",
   "entries": [
     {
       "semanticId": "personnel.profile.reopen",
@@ -1474,7 +1474,7 @@
         "lib/profile-edit-policy-value.ts",
         "lib/personnel-field-label.ts"
       ],
-      "reviewedSourceHash": "ad969595aab5f436e7b8cccd258a51635144ee5e2c0f7eede1328e74a530ceef",
+      "reviewedSourceHash": "74bba2f567fa6051a1b426ac057e792e26f86d71437cb32bb9a42142ffd5a701",
       "reviewNote": "Source-to-guide semantic review completed for this bounded implemented journey at 66dcb71a81b7ac53b2783426c202603d7e751f2f. Actual execution remains required. Source review establishes neither a manual pass, service arrival nor complete functional coverage."
     },
     {
@@ -1563,7 +1563,7 @@
         "lib/system-testing/read-boundary.ts",
         "lib/hr-date.ts"
       ],
-      "reviewedSourceHash": "69692af30584f7e2de2357c9bafc9dafa742a4c2bff97e63f4f4199a5e3d77e4",
+      "reviewedSourceHash": "621ad8716e007ce0cf75aa29ca2e776afde9886c8e0c4eb370a80a37a823d720",
       "reviewNote": "Source-to-guide semantic review completed for this bounded implemented journey at 66dcb71a81b7ac53b2783426c202603d7e751f2f. Actual execution remains required. Source review establishes neither a manual pass, service arrival nor complete functional coverage."
     }
   ]
