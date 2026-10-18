@@ -3998,12 +3998,16 @@ export default async function EmployeePage({
 
   // 66a63bd6 — Edit (?editMovement=<id>): the SAME comparison form, pre-filled from the movement being
   // corrected. `canEdit` comes from the service, so a row the service would refuse never renders a form.
+  // Include the edited code's metadata even if inactive; the client needs its resolved behavior.
   const movementEditRow = spEditMovement ? movements.find((m) => m.id === spEditMovement && m.canEdit) : undefined;
   const editEventCard = canCreateMovement && movementEditRow && movementFormProps ? (
     <Card id="section-movement-edit-event" className="overflow-hidden">
       <SectionHeader title={t('movement.editTitle')} />
       <MovementNewEvent
         {...movementFormProps}
+        types={movementTypes
+          .filter((r) => r.active || r.code === movementEditRow.kind)
+          .map((r) => ({ code: r.code, label: r.label, behaviourKind: r.behaviourKind }))}
         edit={{
           movementId: movementEditRow.id,
           kind: movementEditRow.kind,
