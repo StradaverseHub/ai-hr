@@ -51,7 +51,7 @@ describe('V3.1 onboarding database and authorization', () => {
     });
     it('keeps operational requisition visibility after a Facility-to-Tech handoff without widening action rights', async () => {
         const context = await onboardingContext(admin), config = structuredClone(context.config);
-        config.groups.find(g => g.id === 'facility')!.members = [other.userId];
+        config.groups.find(g => g.id === 'facility')!.members = [other.userId!];
         config.catalogue.push({ id: 'card', name: 'Access card', type: 'device', active: true, rules: {}, workflow: null, team: 'facility', card: true });
         await onboardingSaveConfig(admin, context.revision, config);
         const row = await prepared();
@@ -218,7 +218,7 @@ describe('V3.1 onboarding database and authorization', () => {
     });
     it('serializes simultaneous claims and refuses a stale write or peer takeover', async () => {
         const context = await onboardingContext(admin), config = structuredClone(context.config);
-        config.groups.find(g => g.id === 'group-tech')!.members.push(other.userId);
+        config.groups.find(g => g.id === 'group-tech')!.members.push(other.userId!);
         await onboardingSaveConfig(admin, context.revision, config);
         const row = await prepared(), item = row.case.requisitions[0]!.items[0]!;
         const results = await Promise.allSettled([tech, other].map(user => onboardingCommand(user, row.case.id, row.revision, { type: 'fulfil', itemId: item.id, status: 'progress' })));
