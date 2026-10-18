@@ -26,9 +26,10 @@ export default async function OnboardingCasePage({ params, searchParams }: { par
   const yes = t('common.yes'); const no = t('common.no');
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <PageHeader title={`${c.number} · ${c.fullName}`} back={{ href: '/lifecycle/onboarding', label: t('onboarding.title') }}
+      <PageHeader title={`${c.number} · ${c.fullName}`} back={{ href: '/lifecycle/onboarding/legacy', label: t('onboarding.legacyTitle') }}
         description={`${c.jobTitle ?? ''}${c.department ? ` · ${c.department}` : ''}`}
         actions={<><Pill value={c.status} label={t(`status.${c.status}`)} /><ProgressBar percent={data.progress.percent} label={t('case.progress')} /></>} />
+      <p className="rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">{t('onboarding.legacyHint')}</p>
       <ErrorBanner message={error} />
       <LifecycleTabs level={level} active="onboarding" />
 

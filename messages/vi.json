@@ -16233,7 +16233,9 @@
       "newHint": "Tạo hồ sơ cũng tạo luôn yêu cầu IT.",
       "create": "Tạo hồ sơ và yêu cầu IT",
       "import": "Nhập từ Excel",
-      "empty": "Không có hồ sơ tiếp nhận nào."
+      "empty": "Không có hồ sơ tiếp nhận nào.",
+      "legacyTitle": "Hồ sơ hội nhập theo quy trình trước",
+      "legacyHint": "Các hồ sơ này dùng danh sách kiểm tra và quy trình phê duyệt trước đây. Dữ liệu và lịch sử được giữ nguyên."
     },
     "offboarding": {
       "title": "Nghỉ việc",

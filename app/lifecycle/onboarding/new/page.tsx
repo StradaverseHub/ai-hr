@@ -16,7 +16,7 @@ export default async function NewOnboardingPage({ searchParams }: { searchParams
   ]);
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <PageHeader title={t('onboarding.new')} description={t('onboarding.newHint')} back={{ href: '/lifecycle/onboarding', label: t('onboarding.title') }} />
+      <PageHeader title={t('onboarding.new')} description={t('onboarding.newHint')} back={{ href: '/lifecycle/onboarding/legacy', label: t('onboarding.legacyTitle') }} />
       <ErrorBanner message={error} />
       <Card className="p-4">
         <form action={createOnboardingAction} className="grid gap-3 sm:grid-cols-2">

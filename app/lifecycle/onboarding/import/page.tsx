@@ -10,7 +10,7 @@ export default async function ImportPage() {
   const companies = await listMyCompanies(s);
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <PageHeader title={t('import.title')} description={t('import.subtitle')} back={{ href: '/lifecycle/onboarding', label: t('onboarding.title') }} />
+      <PageHeader title={t('import.title')} description={t('import.subtitle')} back={{ href: '/lifecycle/onboarding/legacy', label: t('onboarding.legacyTitle') }} />
       <ImportHires companies={companies.map((c) => ({ id: c.id, name: c.name }))} />
     </div>
   );

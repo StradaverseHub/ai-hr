@@ -16233,7 +16233,9 @@
       "newHint": "Mencipta kes juga mencipta permintaan IT.",
       "create": "Cipta kes dan permintaan IT",
       "import": "Import daripada Excel",
-      "empty": "Tiada kes orientasi di sini."
+      "empty": "Tiada kes orientasi di sini.",
+      "legacyTitle": "Kes orientasi terdahulu",
+      "legacyHint": "Kes ini menggunakan senarai semak dan proses kelulusan terdahulu. Data serta sejarahnya dikekalkan."
     },
     "offboarding": {
       "title": "Pelepasan",

@@ -16233,7 +16233,9 @@
       "newHint": "Creating the case also creates its IT requisition.",
       "create": "Create case and IT request",
       "import": "Import from Excel",
-      "empty": "No onboarding cases here."
+      "empty": "No onboarding cases here.",
+      "legacyTitle": "Previous onboarding cases",
+      "legacyHint": "These cases use the previous checklist and approval process. Their data and history are retained."
     },
     "offboarding": {
       "title": "Offboarding",

@@ -16233,7 +16233,9 @@
       "newHint": "创建案件时会同时创建对应的IT申请。",
       "create": "创建案件和IT申请",
       "import": "从Excel导入",
-      "empty": "这里没有入职案件。"
+      "empty": "这里没有入职案件。",
+      "legacyTitle": "原有入职个案",
+      "legacyHint": "这些个案沿用原有清单和审批流程，数据与历史记录均予保留。"
     },
     "offboarding": {
       "title": "离职",
