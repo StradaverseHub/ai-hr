@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "revision": "reviewed-baseline.3",
+  "revision": "reviewed-baseline.4",
   "entries": [
     {
       "semanticId": "personnel.profile.reopen",
@@ -56,7 +56,7 @@
         "app/admin/personnel/[employmentId]/actions.ts",
         "core/org.ts"
       ],
-      "reviewedSourceHash": "136c452c1dc95954dbc5462789906a7924664a6523feb1e8cf8ea33467809059",
+      "reviewedSourceHash": "cf55f75ca3a6e0058ff8f74c20936f81756648174e8c0843ae06ae700348a184",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -869,7 +869,7 @@
         "lib/authz.ts",
         "core/system-testing-workspace.ts"
       ],
-      "reviewedSourceHash": "59ffee65a50e2bdfcd855e2305c49ffc2f6144533539b0f68f2424bf2ef119ee",
+      "reviewedSourceHash": "de3e47162fa2962243037d97f96da24d4914798a8f7fe29998b99f9e255a2811",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -1098,7 +1098,7 @@
         "lib/authz.ts",
         "core/system-testing-workspace.ts"
       ],
-      "reviewedSourceHash": "748434be6e96ce6e802dcd31e5d79a13c00cc2e06975a49d3a79ffcedd1cbbde",
+      "reviewedSourceHash": "832a18c282836a369389c7061b7312b92da406db512b36166c6849a60dc99044",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
     },
     {
@@ -1392,6 +1392,179 @@
       ],
       "reviewedSourceHash": "777ce2062e0e45a91ac9c2f7e1c76de7022f05ea181e4e594bb69e659a94dedb",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+    },
+    {
+      "semanticId": "personnel.own-profile.mixed-save",
+      "definition": {
+        "format": 1,
+        "title": "Save an own phone change and review a separate preferred-name proposal",
+        "objective": "Verify an own Profile save separates immediate contact persistence from a preferred-name proposal requiring real HR approval.",
+        "functionKey": "personnel.own-profile",
+        "area": "personnel",
+        "moduleCode": "employees",
+        "category": "workflow",
+        "priority": "high",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and designated fictional records only. Do not enter production personal data.",
+          "The coordinator supplies one eligible own employment and a separate HR approver. The Profile policy explicitly enables Mobile Phone Number for immediate saving and Preferred Name for approval; neither field has a conflicting pending request.",
+          "The current stored phone and preferred name are known. No other writer changes either field during this check. Do not alter salary, bank, statutory or Family fields."
+        ],
+        "testData": [
+          "Exact fictional employment code/selection, old stored phone and preferred name, a new fictional phone value and a distinctive new fictional preferred name."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "As the HR approver, open the designated employee in Personnel and note the stored Mobile Phone Number and Preferred Name. Then sign in as the employee and open /me, selecting the supplied own employment if a chooser appears. Open its Profile tab.",
+            "expected": "The employee and HR read the same designated person/employment facts. The ordinary employee receives the shared own Profile view, not HR administration authority."
+          },
+          {
+            "id": "step2",
+            "action": "Select Request to edit. Change only the configured Mobile Phone Number and Preferred Name, then select Save changes once.",
+            "expected": "The success result explicitly separates the phone saved now from the preferred name waiting for approval. A specific refusal must be recorded as a refusal, not a successful mixed save."
+          },
+          {
+            "id": "step3",
+            "action": "After a successful save, leave and reopen /me for the same employment. Read the Profile tab and the request history under Others. Separately reopen the HR Personnel Profile.",
+            "expected": "The new phone is stored in both authorized views. The master Preferred Name is still its previous value, and the new name appears in the same pending proposal history. No unrelated field was changed."
+          },
+          {
+            "id": "step4",
+            "action": "As the separate eligible HR approver, open /approvals, select the Profile changes category and identify the exact employee and proposed Preferred Name. Review current and proposed values, then approve once.",
+            "expected": "The normal owner accepts only a current authorized non-self approval under the configured approver policy. Record any stale/authority refusal without claiming approval. A successful approval applies the submitted preferred name through the canonical person owner."
+          },
+          {
+            "id": "step5",
+            "action": "After successful approval, reopen the employee /me Profile and Others request history, then reopen HR Personnel for the same employee.",
+            "expected": "Both authorized master views retain the approved preferred name and previously saved phone. The proposal history records approved status and preserves its submitted field values; an employee save was not silently treated as approval."
+          }
+        ],
+        "expectedBehavior": "Verify an own Profile save separates immediate contact persistence from a preferred-name proposal requiring real HR approval.",
+        "expectedFunction": "Verify an own Profile save separates immediate contact persistence from a preferred-name proposal requiring real HR approval.",
+        "permissions": [
+          "The fictional employee may edit their own eligible employment under the configured ESS field policy.",
+          "A different HR administrator has scoped Personnel access and is eligible under the configured Profile-change approver setting."
+        ],
+        "jurisdiction": null,
+        "configuration": "Requires the explicitly enabled immediate phone and approval-only preferred-name fields, one eligible own employment and a separate scoped HR approver under the current Profile-change policy. No default field permission or financial rule is assumed.",
+        "screenKeys": [
+          "personnelAdmin",
+          "approvals"
+        ]
+      },
+      "sources": [
+        "app/me/page.tsx",
+        "app/me/profile-editor.tsx",
+        "app/me/profile-edit-actions.ts",
+        "core/profile-edit.ts",
+        "core/profile-edit-policy.ts",
+        "core/profile.ts",
+        "core/org.ts",
+        "lib/personnel-ess-contract.ts",
+        "lib/personnel-field-registry.ts",
+        "lib/profile-proposal-display.ts",
+        "app/approvals/page.tsx",
+        "app/approvals/actions.ts",
+        "app/admin/personnel/[employmentId]/page.tsx",
+        "lib/permissions.ts",
+        "core/read.ts",
+        "core/entitlements.ts",
+        "lib/personnel-ess-model.ts",
+        "lib/profile-edit-policy-value.ts",
+        "lib/personnel-field-label.ts"
+      ],
+      "reviewedSourceHash": "ad969595aab5f436e7b8cccd258a51635144ee5e2c0f7eede1328e74a530ceef",
+      "reviewNote": "Source-to-guide semantic review completed for this bounded implemented journey at 66dcb71a81b7ac53b2783426c202603d7e751f2f. Actual execution remains required. Source review establishes neither a manual pass, service arrival nor complete functional coverage."
+    },
+    {
+      "semanticId": "settings.testing.independent-observations",
+      "definition": {
+        "format": 1,
+        "title": "Keep two tester observations independent across an instruction revision",
+        "objective": "Verify two real testers retain separate saved observations and earlier versions remain history when instructions change.",
+        "functionKey": "system-testing.independent-observations",
+        "area": "system_settings",
+        "moduleCode": "system_testing",
+        "category": "integration",
+        "priority": "high",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and designated fictional records only. Do not enter production personal data.",
+          "System Testing is enabled. A coordinator supplies a dedicated published local fictional control case, separate from shipped catalogue guides, with no existing draft. Its TC number, function identifier and current version are supplied. Its only instruction is to read harmless fixture text and record the observation; no business operation is authorized.",
+          "Two different real fictional login accounts A and B are available and are not yet assigned to the control case. Neither has an observation for its supplied version; the administrator is a third account. Human testers record only what they actually observe."
+        ],
+        "testData": [
+          "The exact control-case TC number/function/version and three real login identities. Each tester chooses distinct actual-result/comment text. A harmless additional instruction sentence is reserved for the administrator revision."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "As the administrator, open /admin/system-testing and the supplied control case. Review its published instructions and assign both actual tester accounts to the same published version.",
+            "expected": "One stable TC number and one shared instruction version are shown. Assignment identifies each real login; the administrator does not write observations on either tester’s behalf."
+          },
+          {
+            "id": "step2",
+            "action": "As tester A, open /system-testing, locate the control TC number and Start. Read the fixture instruction, record a truthful actual result and distinct comment, select In progress and Save observation. Leave and reopen the same execution. As the administrator, inspect Team progress for the exact function and both testers.",
+            "expected": "A retains the exact saved text, real tester identity, recorded date/time and In progress status. B remains Not started; A’s save does not update B’s status."
+          },
+          {
+            "id": "step3",
+            "action": "As tester B in its own signed-in session, open the same case/version, Start and read the fixture text. Save a different truthful actual result/comment as In progress, then reopen.",
+            "expected": "B retains its own distinct text and identity. Reopening A still shows A’s original text; the common guide/version has not been overwritten by either observation."
+          },
+          {
+            "id": "step4",
+            "action": "As tester A, append another truthful comment through Save observation. Reopen Observation history, then inspect B and the administrator Team progress with the supplied function/tester filters.",
+            "expected": "A’s two saves remain separate history entries with their original recorded actors and instants. B’s earlier text and single save remain unchanged. Team review is read-only and does not present a Save as another tester control."
+          },
+          {
+            "id": "step5",
+            "action": "As the administrator, edit only the dedicated control instruction to add the supplied harmless sentence and Save and publish. Open version history and each earlier execution, then return to both current assignments.",
+            "expected": "The TC number stays stable and a new immutable instruction version is published. Earlier executions still show the exact earlier guide and their saved observations as read-only history. Both current assignments require retesting; publishing neither overwrites feedback nor grants a pass on the new version."
+          },
+          {
+            "id": "step6",
+            "action": "As one tester, start a current-version attempt, read the revised instruction and save only a truthful In progress observation. Reopen both current assignments.",
+            "expected": "The new attempt points to the new version and retains its real tester’s observation. The other tester’s current assignment remains Retest required until that tester records a new applicable observation. Earlier history remains available."
+          }
+        ],
+        "expectedBehavior": "Verify two real testers retain separate saved observations and earlier versions remain history when instructions change.",
+        "expectedFunction": "Verify two real testers retain separate saved observations and earlier versions remain history when instructions change.",
+        "permissions": [
+          "A System Testing administrator may maintain instructions, assign real login accounts and read team results.",
+          "Each assigned tester has System Testing entitlement and may save only their own observations; no business-record authority is granted."
+        ],
+        "jurisdiction": null,
+        "configuration": "Requires the enabled System Testing area, the separate local control case and three real login accounts described above. The intentional manual revision applies only to that control case; it does not replace a catalogue proposal or resolve another case’s local draft.",
+        "screenKeys": [
+          "systemTesting",
+          "mySystemTesting"
+        ]
+      },
+      "sources": [
+        "app/admin/system-testing/page.tsx",
+        "app/admin/system-testing/[id]/page.tsx",
+        "app/admin/system-testing/workspace-actions.ts",
+        "app/system-testing/page.tsx",
+        "components/system-testing/instruction-editor.tsx",
+        "components/system-testing/assignment-list.tsx",
+        "components/system-testing/execution-review.tsx",
+        "components/system-testing/observation-form.tsx",
+        "components/system-testing/recorded-time.tsx",
+        "core/system-testing-workspace.ts",
+        "core/system-testing-library.ts",
+        "core/system-testing-actors.ts",
+        "lib/system-testing/model.ts",
+        "lib/permissions.ts",
+        "core/system-testing.ts",
+        "app/system-testing/executions/[id]/page.tsx",
+        "app/admin/system-testing/executions/[id]/page.tsx",
+        "lib/system-testing/read-boundary.ts",
+        "lib/hr-date.ts"
+      ],
+      "reviewedSourceHash": "69692af30584f7e2de2357c9bafc9dafa742a4c2bff97e63f4f4199a5e3d77e4",
+      "reviewNote": "Source-to-guide semantic review completed for this bounded implemented journey at 66dcb71a81b7ac53b2783426c202603d7e751f2f. Actual execution remains required. Source review establishes neither a manual pass, service arrival nor complete functional coverage."
     }
   ]
 }
