@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {asc,eq} from 'drizzle-orm';
+import {and,asc,eq} from 'drizzle-orm';
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {assignment,domainEvent,employment,movementEventType} from '../db/schema';
 import {hireEmployee} from '../core/org';
@@ -14,7 +14,7 @@ beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase()
 const day=(offset:number)=>new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+offset*86400000).toISOString().slice(0,10);
 const hire=()=>hireEmployee(adminCtx(b),{person:{fullName:'Fictional custom correction',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-30)});
 const state=async(id:string)=>({
- employment:await owner.db.select().from(employment).where(eq(employment.id,id)),
+ employment:await owner.db.select().from(employment).where(eq(employment.id,id)).orderBy(asc(employment.id)),
  assignments:await owner.db.select().from(assignment).where(eq(assignment.employmentId,id)).orderBy(asc(assignment.id)),
  events:await owner.db.select().from(domainEvent).where(eq(domainEvent.subjectEmploymentId,id)).orderBy(asc(domainEvent.sequence)),
 });
@@ -62,7 +62,7 @@ describe('custom Movement correction uses canonical behavior and retains recorde
   const e=await hire(),ctx=adminCtx(b),type=await saveMovementEventType(ctx,{label:'Fictional corrupt reference',behaviourKind:'secondment'});
   await createMovementEvent(ctx,{employmentId:e.employmentId,kind:type.code,effectiveDate:day(-2)});
   // Malformed fixture only: exercise canonical read-side refusal rather than weakening type writes.
-  await owner.db.update(movementEventType).set({behaviourKind}).where(eq(movementEventType.code,type.code));
+  await owner.db.update(movementEventType).set({behaviourKind}).where(and(eq(movementEventType.tenantId,b.tenantId),eq(movementEventType.code,type.code)));
   const history=await movementHistory(ctx,e.employmentId),row=history.find(item=>item.kind===type.code)!;
   expect(history.some(item=>item.kind==='hired')).toBe(true);expect(row).toMatchObject({kind:type.code,canEdit:false,canReverse:false});
   const before=await state(e.employmentId);
