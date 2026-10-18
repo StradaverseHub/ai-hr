@@ -54,7 +54,15 @@ beforeEach(()=>{
  m.open.mockImplementation(async(path:string)=>{
   const bytes=path==='/etc/crontab'?Buffer.alloc(0):path==='/proc/777/cmdline'?Buffer.from('/opt/node20/bin/node\0--env-file=.env.production\0--import\0tsx\0scripts/provision-runner.ts\0'):Buffer.from('fictional executable');
   const stat={isFile:()=>true,uid:0,mode:0o100755,size:bytes.length,ino:1,mtimeMs:1,ctimeMs:1};
-  return {stat:async(options?:{bigint?:boolean})=>options?.bigint?{...stat,uid:BigInt(0),mode:BigInt(stat.mode),size:BigInt(bytes.length),ino:BigInt(1),mtimeNs:BigInt(1),ctimeNs:BigInt(1)}:stat,read:async(buffer:Buffer,offset:number,length:number,position:number)=>({bytesRead:bytes.copy(buffer,offset,position,Math.min(bytes.length,position+length))}),close:vi.fn().mockResolvedValue(undefined)};
+  let cursor=0;
+  return {stat:async(options?:{bigint?:boolean})=>options?.bigint?{...stat,uid:BigInt(0),mode:BigInt(stat.mode),size:BigInt(bytes.length),ino:BigInt(1),mtimeNs:BigInt(1),ctimeNs:BigInt(1)}:stat,
+   read:async(buffer:Buffer,offset:number,length:number,position:number|null)=>{
+    const start=position===null?cursor:position;
+    const bytesRead=start>=bytes.length?0:bytes.copy(buffer,offset,start,Math.min(bytes.length,start+length));
+    // A null position consumes this handle's cursor; explicit-position reads leave it unchanged.
+    if(position===null)cursor+=bytesRead;
+    return {bytesRead};
+   },close:vi.fn().mockResolvedValue(undefined)};
  });
  m.writeFile.mockImplementation(async(path:string,bytes:Uint8Array)=>{if(files.has(path))throw new Error('Unexpected overwrite');files.set(path,Buffer.from(bytes));});
  m.link.mockImplementation(async(from:string,to:string)=>{if(files.has(to)||!files.has(from))throw new Error('Unexpected link');files.set(to,Buffer.from(files.get(from)!));});
