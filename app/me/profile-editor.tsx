@@ -88,7 +88,7 @@ export function ProfileEditor({workspace,facts,extraPanels,history,defaultTab='p
    </div>:<p className="min-h-9 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm break-words">{displayValue}</p>}
    {workspace.fieldReadOnlyReasons?.[field.id]==='derivedChildCount'&&<p className="text-xs text-muted-foreground">{t('childCountDerived')}</p>}
    {!taxAvailable&&<p className="text-xs text-muted-foreground">{t('statutoryUnavailable')}</p>}
-   {!applicable&&<p className="text-xs text-amber-800 dark:text-amber-300">{t(!bankApplicable?'bankNotApplicable':!taxApplicable?'taxNotApplicable':'notApplicable')} {touched&&<button type="button" disabled={busy} onClick={()=>setChanges(previous=>{const next={...previous};delete next[key];return next;})} className="underline">{t('undo')}</button>}</p>}
+   {!applicable&&(bankApplicable||editing&&touched)&&<p className="text-xs text-amber-800 dark:text-amber-300">{t(!bankApplicable?'bankNotApplicable':!taxApplicable?'taxNotApplicable':'notApplicable')} {touched&&<button type="button" disabled={busy} onClick={()=>setChanges(previous=>{const next={...previous};delete next[key];return next;})} className="underline">{t('undo')}</button>}</p>}
    {pendingLines.map(line=><p key={line.key} className="text-xs text-amber-800 dark:text-amber-300">{t('pendingValue',{value:line.value})}</p>)}
   </div>;
  }
