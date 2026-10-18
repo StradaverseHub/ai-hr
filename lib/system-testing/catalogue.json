@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "revision": "reviewed-baseline.5",
+  "revision": "reviewed-baseline.6",
   "entries": [
     {
       "semanticId": "personnel.profile.reopen",
@@ -1563,7 +1563,7 @@
         "lib/system-testing/read-boundary.ts",
         "lib/hr-date.ts"
       ],
-      "reviewedSourceHash": "621ad8716e007ce0cf75aa29ca2e776afde9886c8e0c4eb370a80a37a823d720",
+      "reviewedSourceHash": "6957d078d11c41970de402e52da4589089fde7815a8d24fee47012dfcac8ca2c",
       "reviewNote": "Source-to-guide semantic review completed for this bounded implemented journey at 66dcb71a81b7ac53b2783426c202603d7e751f2f. Actual execution remains required. Source review establishes neither a manual pass, service arrival nor complete functional coverage."
     }
   ]
