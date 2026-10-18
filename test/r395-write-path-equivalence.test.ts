@@ -7,7 +7,9 @@
  * admin hire failed: `INSERT INTO person … RETURNING` checks the new row against the SELECT policy, the set
  * is computed from the statement's snapshot, and the row being inserted is not in it. 216 suite tests went
  * red. A read-only proof cannot see that, so this one compares WRITES, under (a) the live (new) policies and
- * (b) all 57 OLD USING clauses restored in the same transaction, then rolled back:
+ * (b) the53 unaffected OLD USING clauses restored in the same transaction, then rolled back.
+ * The four explicit0561 replacements retain their exact current graph on both sides; changed account-only
+ * semantics are separately proved, never asserted equivalent to0515:
  *
  *   1. per context (24) × every rewritten policy whose command admits INSERT/UPDATE (all 53 ALL policies):
  *      a generic INSERT … RETURNING for each of ~26 subject employments (own, reports, HOD members, other
@@ -30,12 +32,14 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { hireEmployee } from '../core/org';
 import { closeAll, harnessSnapshot } from './harness';
+import { assertTestingFeedbackPolicyGraph,currentFeedbackPolicySnapshot,testingFeedbackHistoricalKeys } from './r395-current-feedback-policies';
 import {
-  BUILDERS, C, CONTEXTS, D, E, EMPS, P, POLICIES, Rollback, T2, b, inCtx, pg, q, setupOrg, type Ctx, type Row,
+  LIVE_SWAPPABLE_POLICIES, seedLegacyFeedbackParent, BUILDERS, C, CONTEXTS, D, E, EMPS, P, POLICIES, Rollback, T2, b, inCtx, pg, q, setupOrg, type Ctx, type Row,
 } from './r395-org';
 
-const OLD_USING = POLICIES.map((p) => `alter policy "${p.policy}" on "${p.table}" using (${p.oldQual})`);
-const NEW_USING = POLICIES.map((p) => `alter policy "${p.policy}" on "${p.table}" using (${p.newQual})`);
+const OLD_USING = LIVE_SWAPPABLE_POLICIES.map((p) => `alter policy "${p.policy}" on "${p.table}" using (${p.oldQual})`);
+let NEW_USING:string[]=[];
+const originalLiveUsing=new Map<string,string>();
 const WRITE_TABLES = [...new Set(POLICIES.filter((p) => ['ALL', 'INSERT', 'UPDATE'].includes(p.cmd)).map((p) => p.table))].sort();
 
 // The first 0515's person form — the defect, re-installable for the mutation run.
@@ -56,6 +60,7 @@ const ADMIN_IN_SET_USING = POLICIES.filter((p) => p.newQual.includes(ADMIN_ARM_T
   (p) => `alter policy "${p.policy}" on "${p.table}" using (${p.newQual.replace(ADMIN_ARM_TEXT, '')})`,
 );
 let originalPersonFn = '';
+let currentFeedbackPolicies:Row[]=[];
 
 const SUBJECTS = [
   'ceo', 'mid', 'leaf', 'leaf2', 'subco', 'bemp', 'midT', 'underMidT', 'termleaf', 'expired', 'future', 'hod', 'hodsub',
@@ -100,6 +105,7 @@ const proj = (t: string) => {
 /** Run the same list of statements under the NEW policies and then the OLD USING clauses; same transaction. */
 async function bothWays(ctx: Ctx, stmts: string[]): Promise<{ after: Outcome[]; before: Outcome[] }> {
   return inCtx(ctx, async (tx) => {
+    expect(await currentFeedbackPolicySnapshot(tx),'0561 graph before write comparison').toEqual(currentFeedbackPolicies);
     await tx.unsafe(`set local role ai_hr_app`);
     const after: Outcome[] = [];
     for (const s of stmts) after.push(await attempt(tx, s));
@@ -108,6 +114,8 @@ async function bothWays(ctx: Ctx, stmts: string[]): Promise<{ after: Outcome[]; 
     await tx.unsafe(`set local role ai_hr_app`);
     const before: Outcome[] = [];
     for (const s of stmts) before.push(await attempt(tx, s));
+    await tx.unsafe('reset role');
+    expect(await currentFeedbackPolicySnapshot(tx),'0561 graph after historical write comparison').toEqual(currentFeedbackPolicies);
     return { after, before };
   });
 }
@@ -124,6 +132,16 @@ const tally = (bucket: string, key: string, o: Outcome) => {
 
 beforeAll(async () => {
   await setupOrg();
+  currentFeedbackPolicies=await assertTestingFeedbackPolicyGraph();
+  const live=await q(`select tablename,policyname,qual from pg_policies where schemaname='public' order by tablename,policyname`);
+  for(const p of LIVE_SWAPPABLE_POLICIES){
+    const row=live.find(r=>r.tablename===p.table&&r.policyname===p.policy);
+    expect(row,`${p.table}.${p.policy} current restoration source`).toBeTruthy();
+    expect(row!.qual).toBeTypeOf('string');
+    originalLiveUsing.set(`${p.table}.${p.policy}`,String(row!.qual));
+  }
+  // Restore actual current qualifiers, including the approved0540 assessment extension, not old fixture bytes.
+  NEW_USING=LIVE_SWAPPABLE_POLICIES.map(p=>`alter policy "${p.policy}" on "${p.table}" using (${originalLiveUsing.get(`${p.table}.${p.policy}`)})`);
   await loadVolatile();
   // FRESH subjects: employments with no generic rows yet, so a write is not masked by a one-per-employment
   // unique constraint. freshA reports to ceo, freshB to r2 (company B), freshA1 sits in the HOD's H_A1.
@@ -135,6 +153,8 @@ beforeAll(async () => {
     E[name] = ee.id as string;
     P[name] = pp.id as string;
     EMPS.push(ee);
+    // A valid existing parent lets fresh-subject attachment INSERTs exercise RLS, not a binding error.
+    await seedLegacyFeedbackParent(ee);
   }
   const [d] = await q(`select pg_get_functiondef('app.visible_person_ids()'::regprocedure) as def`);
   originalPersonFn = d.def as string;
@@ -158,6 +178,9 @@ afterAll(async () => {
 describe('r395 write path — setup', () => {
   it('53 rewritten policies admit writes; builders exist for every write table except the hand-written three', () => {
     expect(WRITE_TABLES.length).toBe(53);
+    expect(POLICIES).toHaveLength(57);
+    expect(LIVE_SWAPPABLE_POLICIES).toHaveLength(53);
+    expect(POLICIES.filter(p=>!LIVE_SWAPPABLE_POLICIES.includes(p)).map(p=>`${p.table}.${p.policy}`).sort()).toEqual([...testingFeedbackHistoricalKeys].sort());
     expect(CONTEXTS.length).toBe(24);
     expect(ADMIN_IN_SET_USING.length, 'six person policies carry the admin arm').toBe(6);
     const missing = WRITE_TABLES.filter((t) => !BUILDERS.has(t));
@@ -345,6 +368,7 @@ describe('r395 write path — the REAL hireEmployee, new policies vs old USING c
   };
   it.each(HIRE_CASES)('hireEmployee as %s into %s: same outcome under new and old policies', async (ctxName, co, dept, expectHired) => {
     const tag = `${ctxName}-${co}`.replace(/[^a-z0-9]+/gi, '_').toLowerCase();
+    expect(await currentFeedbackPolicySnapshot(),'0561 graph before real hire comparison').toEqual(currentFeedbackPolicies);
     const after = await hireOutcome(ctxName, co, dept, `${tag}_new`);
     let before = '';
     try {
@@ -354,12 +378,14 @@ describe('r395 write path — the REAL hireEmployee, new policies vs old USING c
       for (const s of NEW_USING) await q(s);
       if (process.env.R395_WRITE_MUTATION === 'admin_in_set') for (const s of ADMIN_IN_SET_USING) await q(s);
     }
+    expect(await currentFeedbackPolicySnapshot(),'0561 graph after real hire restoration').toEqual(currentFeedbackPolicies);
     expect(after, `hire as ${ctxName} into ${co}`).toBe(before);
     if (expectHired) expect(after, `hire as ${ctxName} into ${co} succeeds`).toBe('hired');
     else expect(after, `hire as ${ctxName} into ${co} is refused`).toMatch(/^refused:/);
   }, 60_000);
   it('the live policies are restored after the hire swaps', async () => {
     const live = new Map((await q(`select tablename, policyname, qual from pg_policies`)).map((r) => [`${r.tablename}.${r.policyname}`, r.qual]));
-    if (!process.env.R395_WRITE_MUTATION) for (const p of POLICIES) expect(live.get(`${p.table}.${p.policy}`)).toBe(p.newQual);
+    expect(await currentFeedbackPolicySnapshot(),'0561 graph retained after all swaps').toEqual(currentFeedbackPolicies);
+    if (!process.env.R395_WRITE_MUTATION) for (const p of LIVE_SWAPPABLE_POLICIES) expect(live.get(`${p.table}.${p.policy}`)).toBe(originalLiveUsing.get(`${p.table}.${p.policy}`));
   });
 });
