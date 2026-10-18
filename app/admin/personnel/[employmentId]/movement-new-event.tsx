@@ -25,7 +25,7 @@ import { PAY_MODE_OPTIONS, PAYMENT_TERM_OPTIONS } from '@/components/pay-structu
 import { createMovementEventAction, editMovementEventAction } from './actions';
 
 import {MOVEMENT_FORM_IDS, movementFormFields} from '@/lib/movement-form-contract';
-import {COMPARISON_KINDS} from '@/core/movement-kinds';
+import {isComparisonKind} from '@/core/movement-kinds';
 const movementField=(name:keyof typeof MOVEMENT_FORM_IDS)=>MOVEMENT_FORM_IDS[name];
 export type MovementOption = { id: string; name: string };
 /** b7b22514 — a Direct Superior candidate, carrying the company that decides whether an Entity Transfer
@@ -237,7 +237,7 @@ export function MovementNewEvent({
     }
   };
 
-  const isComparison = (COMPARISON_KINDS as readonly string[]).includes(behaviour);
+  const isComparison = isComparisonKind(behaviour);
   /**
    * b7b22514 — ENTITY TRANSFER. The destination company is form STATE, not just a submitted value, because
    * picking it has to re-scope the org pickers below it: the department list of the company they are

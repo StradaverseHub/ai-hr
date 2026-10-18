@@ -612,14 +612,14 @@ export async function editMovementEventAction(formData: FormData) {
   try {
     const p = parseMovementForm(formData);
     const gradeBefore = { gradeId: await employmentGradeId(s, employmentId) };
-    await editMovementEvent(s, {
+    const result=await editMovementEvent(s, {
       employmentId,
       movementId: String(formData.get('movementId') ?? '').trim(),
       reason: orNull(formData.get('reason')),
       ...p,
     });
     // A correction can move the grade just as the original did, and it carries its own effective date.
-    if (isComparisonKind(p.kind))
+    if (isComparisonKind(result.behaviourKind))
       await recomputeEntitlement(s, employmentId, 'movement_recorded', {
         gradeBefore,
         changeEffectiveOn: p.effectiveDate ?? null,

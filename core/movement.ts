@@ -18,6 +18,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { todayInKualaLumpur } from '../lib/hr-date';
+import {isCalendarDate} from '../lib/calendar-date';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf, type MovementTag } from '../db/events';
 import {
@@ -727,7 +728,9 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
                 ? ((after.joinDate as string | null) ?? occDate)
                 : kind === 'groupJoinDateCorrection'
                   ? ((after.hiredOn as string | null) ?? occDate)
-                  : occDate;
+                  : kind==='probationExtension'&&typeof mv?.effectiveDate==='string'&&isCalendarDate(mv.effectiveDate)
+                    ? mv.effectiveDate
+                    : occDate;
         const endDate =
           kind === 'probationExtension'
             ? ((after.extendedConfirmationDate as string | null) ?? mv?.endDate ?? null)
@@ -2548,11 +2551,12 @@ export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:Cr
       },tx);
 
     case 'probationExtension':
+      if(!isCalendarDate(p.effectiveDate))throw new Error('A valid effective date (YYYY-MM-DD) is required.');
       if (!endDate) throw new Error('An extended confirmation (new probation end) date is required.');
       return setEmploymentInfo(ctx, {
         employmentId: p.employmentId,
         extendedConfirmationDate: endDate,
-        movement: { type: 'probationExtension', remarks, endDate, groupId: randomUUID() },
+        movement: { type: 'probationExtension', remarks, endDate, effectiveDate:p.effectiveDate, groupId: randomUUID() },
       },tx);
 
     case 'resignation':
@@ -3209,7 +3213,7 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
   const remarks = p.remarks?.trim() || null;
   const endDate = p.endDate?.trim() || null;
 
-  return withTenant(ctx, async (tx) => {
+  const result=await withTenant(ctx, async (tx) => {
     const { events, rows, statusOf, today } = await projectRows(tx, ctx.tenantId, p.employmentId);
     const row = rows.find((r) => r.id === p.movementId);
     if (!row) throw new Error('Movement event not found.');
@@ -3379,4 +3383,5 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
       throw e;
     }
   });
+  return {...result,behaviourKind:p.kind};
 }

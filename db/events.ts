@@ -23,6 +23,8 @@ export type MovementTag = {
   type: string;
   remarks?: string | null;
   endDate?: string | null;
+  /** Probation Extension's entered effective day; legacy tags have only occurrence/end dates. */
+  effectiveDate?: string;
   secondary?: boolean;
   /** 08913328 — correlates every leg of ONE movement submitted from the comparison form (assignment,
    *  grade, flat org columns, reporting line, pay). The history detail needs it because the flat

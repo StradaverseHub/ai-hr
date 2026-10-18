@@ -1,3 +1,4 @@
+import {movementNeedsEntitlementReprojection} from '../core/movement-kinds';
 /**
  * 89ea527b — WHICH date drives length of service, and therefore leave entitlement.
  *
@@ -185,7 +186,10 @@ describe('drift guard — nothing in the entitlement engine may read join_date',
     const start = actionsSrc.indexOf('export async function createMovementEventAction');
     expect(start).toBeGreaterThan(-1);
     const body = actionsSrc.slice(start, actionsSrc.indexOf('\n}\n', start));
-    expect(body).toContain("p.kind === 'groupJoinDateCorrection'");
+    expect(body.length).toBeGreaterThan(100);
+    expect(body).toContain('movementNeedsEntitlementReprojection(res.behaviourKind)');
+    expect(movementNeedsEntitlementReprojection('groupJoinDateCorrection')).toBe(true);
+    expect(movementNeedsEntitlementReprojection('joinDateChange')).toBe(false);
     expect(body).toContain('recomputeEntitlement');
   });
 });
