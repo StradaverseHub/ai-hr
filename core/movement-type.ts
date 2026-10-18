@@ -259,6 +259,14 @@ function resolveMovementTypeRow(code:string,row:typeof movementEventType.$inferS
   return null;
 }
 
+/** Resolve a history's already loaded tenant catalogue through the SAME canonical policy.
+ * Includes inactive types; unknown/corrupt mappings resolve to null without losing history rows.
+ */
+export function resolveMovementEventTypeRows(tenantId:string,codes:readonly string[],rows:readonly (typeof movementEventType.$inferSelect)[]){
+ const byCode=new Map(rows.filter(row=>row.tenantId===tenantId).map(row=>[row.code,row]));
+ return new Map(codes.map(code=>[code,resolveMovementTypeRow(code,byCode.get(code))] as const));
+}
+
 /** Bounded exact active choices inside a caller-owned transaction; one catalog read, no per-type query. */
 export async function activeMovementEventTypeChoicesTx(tx:Tx,tenantId:string){
  const overlays=await tx.select().from(movementEventType).where(eq(movementEventType.tenantId,tenantId)).orderBy(asc(movementEventType.sortOrder),asc(movementEventType.code)).limit(1001);
