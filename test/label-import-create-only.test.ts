@@ -5,10 +5,11 @@ import {eq,sql} from 'drizzle-orm';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {withTenant} from '../db/client';
 import * as s from '../db/schema';
-import {bulkSaveLabels,createCompany} from '../core/admin';
+import {bulkSaveLabels,createCompany,createJobGrade} from '../core/admin';
 import {existingSystemLabelImportKeysTx} from '../core/system-labels';
 import {previewSystemLabelImport,applySystemLabelImport} from '../core/system-label-import';
 import {buildSystemLabelWorkbook} from '../lib/system-label-workbook';
+import {createGradeGroup} from '../packs/leave/service';
 import {ORGANISATION_LABEL_KINDS} from '../lib/system-label-definition';
 let b:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();});
@@ -55,6 +56,23 @@ describe('new-only System Label import identity boundary',()=>{
   expect(await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'RACE_ONLY'))).toHaveLength(1);
   const events=await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.eventType,'system-label-import.applied'));
   expect(events).toHaveLength(1);expect(events[0].payload).toMatchObject({mode:'add',summary:{imported:1,updated:0}});
+ });
+ it('returns typed localized-reason inputs for ordinary invalid rows without changing validation',async()=>{
+  const grade=await createJobGrade(adminCtx(b),{code:'TAKEN_GRADE',name:'Already used label'});await createGradeGroup(adminCtx(b),{name:'Existing group',gradeIds:[grade.id]});
+  const source=await book({
+   department:[{...org(b.companyId,''),Label:'Missing code'},{...org('','MISSING_COMPANY')},org('UNKNOWN_COMPANY','BAD_COMPANY'),{...org(b.companyId,'BAD_CRITERIA'),Criteria:'unsupported'},{...org(b.companyId,'BAD_CRITERIA_COMPANY'),'Criteria Companies':'UNKNOWN_COMPANY'},{...org(b.companyId,'EMPTY_CRITERIA'),'Criteria Companies':''},{...org(b.companyId,'BAD_HEAD'),'Head Employee Code':'UNKNOWN_EMPLOYEE'}],
+   cost_center:[{...org(b.companyId,'MISSING_DESCRIPTION'),Description:''}],
+   division:[{Code:'BAD_SORT',Label:'Bad sort','Sort Order':'1.5'},{Code:'STILL_VALID',Label:'Valid'}],
+   grades:[{Code:'lowercase',Label:'Invalid code'},{Code:'MISSING_LABEL',Label:''},{Code:'DUPLICATE_LABEL',Label:'Already used label'}],
+   grade_groups:[{Name:'Unknown grade group','Grade Codes':'UNKNOWN_GRADE'},{Name:'Already assigned group','Grade Codes':'TAKEN_GRADE'}],
+  });
+  const wb=XLSX.read(source,{type:'buffer'});XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Code'],['UNSUPPORTED']]),'unsupported');const bytes=XLSX.write(wb,{type:'buffer',bookType:'xlsx'}) as Buffer;
+  const preview=await previewSystemLabelImport(adminCtx(b),bytes);
+  const reasons={MISSING_COMPANY:'required',BAD_COMPANY:'invalidCompany',BAD_CRITERIA:'invalidCriteria',BAD_CRITERIA_COMPANY:'invalidCriteriaCompany',EMPTY_CRITERIA:'criteriaCompaniesRequired',BAD_HEAD:'invalidHeadEmployee',MISSING_DESCRIPTION:'required',BAD_SORT:'wholeNumber',lowercase:'invalidGradeCode',MISSING_LABEL:'required',DUPLICATE_LABEL:'gradeLabelExists','Unknown grade group':'invalidGradeReferences','Already assigned group':'gradeAlreadyGrouped',UNSUPPORTED:'unsupportedCategory'};
+  for(const [code,reason]of Object.entries(reasons))expect(preview.rows.find(row=>(row.after.Code??row.after.Name)===code)).toMatchObject({reason,outcome:'error',selected:false});
+  expect(preview.rows.find(row=>row.after.Label==='Missing code')).toMatchObject({reason:'required',reasonField:'Code'});
+  for(const [code,field]of [['MISSING_COMPANY','Company'],['MISSING_DESCRIPTION','Description'],['MISSING_LABEL','Label']])expect(preview.rows.find(row=>row.after.Code===code)).toMatchObject({reasonField:field});
+  expect(preview.valid).toBe(true);expect(preview.rows.find(row=>row.after.Code==='STILL_VALID')).toMatchObject({outcome:'add',selected:true});
  });
  it('the existence oracle rejects malformed and oversized requests rather than exposing tables',async()=>{
   for(const payload of [[{key:'r',kind:'unsupported',code:'X'}],[{key:'r',kind:'department',code:'X'},{key:'r',kind:'position',code:'X'}],Array.from({length:7001},(_,i)=>({key:String(i),kind:'department',code:'X'}))]){

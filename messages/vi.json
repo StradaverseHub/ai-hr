@@ -20298,6 +20298,27 @@
     "existing": "Mã này đã tồn tại trong danh mục. Không thay đổi bản ghi hiện có.",
     "duplicate": "Mã trùng trong sổ làm việc; chỉ thêm hàng hợp lệ đầu tiên.",
     "conflicting": "Mã xung đột trong sổ làm việc; bỏ qua hàng xuất hiện sau này.",
-    "importing": "Đang nhập…"
+    "importing": "Đang nhập…",
+    "unsupportedCategory": "Trang tính này không thuộc danh mục nhãn được hỗ trợ.",
+    "required": "Bắt buộc nhập {field}.",
+    "invalidCompany": "Chọn một công ty đang hoạt động trong phạm vi quản trị của bạn.",
+    "invalidCriteria": "Criteria phải là companies hoặc global.",
+    "invalidCriteriaCompany": "Chọn các công ty áp dụng đang hoạt động trong phạm vi quản trị của bạn.",
+    "globalAdminRequired": "Tiêu chí toàn cục cần quản trị viên cấp tập đoàn.",
+    "criteriaCompaniesRequired": "Tiêu chí companies cần danh sách công ty. Tiêu chí global phải để trống danh sách.",
+    "invalidHeadEmployee": "Mã nhân viên phụ trách phải xác định một nhân viên đang làm việc tại công ty tạo nhãn.",
+    "wholeNumber": "Hạng và Thứ tự phải là số nguyên.",
+    "invalidGradeCode": "Mã bậc phải bắt đầu bằng chữ in hoa và chỉ gồm chữ in hoa, chữ số hoặc dấu gạch dưới.",
+    "gradeLabelExists": "Một bậc đang hoạt động khác đã dùng nhãn này.",
+    "invalidGradeReferences": "Mã bậc phải tham chiếu các bậc hiện có đang hoạt động. Hãy nhập bậc mới riêng trước.",
+    "gradeAlreadyGrouped": "Một bậc đã thuộc nhóm khác. Hãy đổi nhóm của bậc đó trong trình chỉnh sửa trước.",
+    "invalidRow": "Dòng này không hợp lệ. Kiểm tra giá trị rồi tải lên lại.",
+    "fields": {
+      "Code": "Mã",
+      "Company": "Công ty",
+      "Description": "Mô tả",
+      "Label": "Nhãn",
+      "Name": "Tên"
+    }
   }
 }

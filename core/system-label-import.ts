@@ -10,12 +10,15 @@ import { visibleLabelIdsCondition, labelMaintenanceCondition, SYSTEM_LABEL_MAINT
 import { createGradeGroup } from '../packs/leave/service';
 import { EMPLOYMENT_LABEL_CATEGORIES, LABEL_IMPORT_DEFINITIONS, ORGANISATION_LABEL_KINDS,
   ORGANISATION_LABEL_COLUMNS, type OrganisationLabelKind, type LabelImportMode,
-  type LabelImportRow, type LabelImportPreview, type LabelImportPreviewRow } from '../lib/system-label-definition';
+  type LabelImportRow, type LabelImportPreview, type LabelImportPreviewRow, type LabelImportRowReason, type LabelImportRequiredField } from '../lib/system-label-definition';
 import { readSystemLabelWorkbook, buildSystemLabelWorkbook, systemLabelExportId, systemLabelErrorWorkbook } from '../lib/system-label-workbook';
 
+class LabelImportRowError extends Error {
+  constructor(readonly reason:LabelImportRowReason,message:string,readonly reasonField?:LabelImportRequiredField){super(message);}
+}
 const lower = (v: string) => v.toLowerCase();
 const list = (v: string) => [...new Set(v.split(';').map(x => x.trim()).filter(Boolean))].sort();
-const whole = (v: string) => { if (v && !/^-?\d{1,9}$/.test(v)) throw new Error('Rank and Sort Order must be whole numbers.'); return Number(v || 0); };
+const whole = (v: string) => { if (v && !/^-?\d{1,9}$/.test(v)) throw new LabelImportRowError('wholeNumber','Rank and Sort Order must be whole numbers.'); return Number(v || 0); };
 const same = (a: Record<string,string>, b: Record<string,string>) => JSON.stringify(Object.keys(a).sort().map(key=>[key,a[key]])) === JSON.stringify(Object.keys(b).sort().map(key=>[key,b[key]]));
 type Org = { kind: OrganisationLabelKind; id: string; companyId: string; archived: boolean;
   values: Record<string, string>; original: LabelUpdateInput };
@@ -134,9 +137,9 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audi
     output.push(result);
     try {
       const definition=LABEL_IMPORT_DEFINITIONS.find(d=>d.kind===row.sheet);
-      if(!definition)throw new Error('Unsupported label category. This worksheet was not imported.');
+      if(!definition)throw new LabelImportRowError('unsupportedCategory','Unsupported label category. This worksheet was not imported.');
       const v=result.after;
-      const requireValue=(field:string)=>{if(!v[field])throw new Error(`${field} is required.`);return v[field];};
+      const requireValue=(field:LabelImportRequiredField)=>{if(!v[field])throw new LabelImportRowError('required',`${field} is required.`,field);return v[field];};
       const identify=(identity:string)=>{
         const previous=seen.get(identity);
         if(previous){result.reason=same(previous,v)?'duplicate':'conflicting';result.outcome='skip';result.selected=false;result.message=same(previous,v)?'Duplicate code in this workbook; only the first valid row can be added.':'Conflicting code in this workbook; this later row is skipped.';return false;}
@@ -147,21 +150,21 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audi
       };
       if((ORGANISATION_LABEL_KINDS as readonly string[]).includes(row.sheet)){
         const kind=row.sheet as OrganisationLabelKind, code=requireValue('Code');
-        if(incumbentKeys.has(key))throw new Error(existingCodeMessage);
+        if(incumbentKeys.has(key))throw new LabelImportRowError('existing',existingCodeMessage);
         const companyValue=requireValue('Company'),matches=c.companies.filter(co=>co.id===companyValue||co.name===companyValue);
         const co=matches.length===1?matches[0]:undefined;
-        if(!co)throw new Error('Company is unknown or ambiguous.');
-        if(!co.writable||co.archived)throw new Error('Company is archived or outside your administrator scope.');
+        if(!co)throw new LabelImportRowError('invalidCompany','Company is unknown or ambiguous.');
+        if(!co.writable||co.archived)throw new LabelImportRowError('invalidCompany','Company is archived or outside your administrator scope.');
         v.Company=companyCell(c.companies,co.id);
-        if(!['companies','global'].includes(v.Criteria))throw new Error('Criteria must be companies or global.');
-        const shared=list(v['Criteria Companies']).map(value=>{const matches=c.companies.filter(co=>co.id===value||co.name===value);if(matches.length!==1)throw new Error('A Criteria company is unknown or ambiguous. Use a company from Reference.');return matches[0].id;}).sort();
+        if(!['companies','global'].includes(v.Criteria))throw new LabelImportRowError('invalidCriteria','Criteria must be companies or global.');
+        const shared=list(v['Criteria Companies']).map(value=>{const matches=c.companies.filter(co=>co.id===value||co.name===value);if(matches.length!==1)throw new LabelImportRowError('invalidCriteriaCompany','A Criteria company is unknown or ambiguous. Use a company from Reference.');return matches[0].id;}).sort();
         v['Criteria Companies']=shared.map(id=>companyCell(c.companies,id)).sort().join(';');
-        if(v.Criteria==='global'&&!c.groupAdmin)throw new Error('Global criteria require a group administrator.');
-        if((v.Criteria==='companies')!==(shared.length>0))throw new Error('Companies criteria require a nonempty company list; Global must leave Criteria Companies blank.');
-        if(shared.some(id=>!c.companies.some(co=>co.id===id&&co.writable&&!co.archived)))throw new Error('A Criteria company is archived or outside your administrator scope.');
+        if(v.Criteria==='global'&&!c.groupAdmin)throw new LabelImportRowError('globalAdminRequired','Global criteria require a group administrator.');
+        if((v.Criteria==='companies')!==(shared.length>0))throw new LabelImportRowError('criteriaCompaniesRequired','Companies criteria require a nonempty company list; Global must leave Criteria Companies blank.');
+        if(shared.some(id=>!c.companies.some(co=>co.id===id&&co.writable&&!co.archived)))throw new LabelImportRowError('invalidCriteriaCompany','A Criteria company is archived or outside your administrator scope.');
         const head=v['Head Employee Code'],heads=head?c.employees.filter(e=>e.companyId===co.id&&e.code===head&&e.active):[];
-        if(head&&heads.length!==1)throw new Error('Head Employee Code must identify one active employee in the origin company.');
-        for(const col of ORGANISATION_LABEL_COLUMNS[kind])if('required' in col&&col.required)requireValue({code:'Code',label:'Label',description:'Description'}[col.headerKey]);
+        if(head&&heads.length!==1)throw new LabelImportRowError('invalidHeadEmployee','Head Employee Code must identify one active employee in the origin company.');
+        for(const col of ORGANISATION_LABEL_COLUMNS[kind])if('required' in col&&col.required)requireValue(({code:'Code',label:'Label',description:'Description'} as const)[col.headerKey]);
         // Import uniqueness is category-wide, unlike ordinary manual Criteria editing.
         if(!identify(`${kind}|${lower(code.trim())}`))continue;
         const fields:Partial<LabelCreateInput>={companyId:co.id,label:v.Label};
@@ -170,31 +173,31 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audi
         add(async()=>{},{kind,create:{...fields,key,companyId:co.id,isGlobal:v.Criteria==='global',companyIds:shared} as LabelCreateInput});
       }else if((EMPLOYMENT_LABEL_CATEGORIES as readonly string[]).includes(row.sheet)){
         const value=requireValue('Code');
-        if(c.options.some(option=>option.category===row.sheet&&option.value===value))throw new Error(existingCodeMessage);
+        if(c.options.some(option=>option.category===row.sheet&&option.value===value))throw new LabelImportRowError('existing',existingCodeMessage);
         v.Label=v.Label||value;v['Sort Order']=String(whole(v['Sort Order']));
         if(!identify(`${row.sheet}|${value}`))continue;
         add(()=>createProfileOption(ctx,{category:row.sheet,value,label:v.Label,description:v.Description,sortOrder:Number(v['Sort Order'])},tx));
       }else if(row.sheet==='grades'){
         const code=requireValue('Code');
-        if(!/^[A-Z][A-Z0-9_]{0,31}$/.test(code))throw new Error('Grade Code must use uppercase letters, digits or underscores.');
-        if(c.grades.some(grade=>grade.code===code))throw new Error(existingCodeMessage);
+        if(!/^[A-Z][A-Z0-9_]{0,31}$/.test(code))throw new LabelImportRowError('invalidGradeCode','Grade Code must use uppercase letters, digits or underscores.');
+        if(c.grades.some(grade=>grade.code===code))throw new LabelImportRowError('existing',existingCodeMessage);
         const name=requireValue('Label');v.Rank=String(whole(v.Rank));
         if(seen.has(`grades|${code}`)){identify(`grades|${code}`);continue;}
-        if(c.grades.some(grade=>!grade.archivedAt&&lower(grade.name)===lower(name))||names.has(lower(name)))throw new Error('Another grade already uses this Label.');
+        if(c.grades.some(grade=>!grade.archivedAt&&lower(grade.name)===lower(name))||names.has(lower(name)))throw new LabelImportRowError('gradeLabelExists','Another grade already uses this Label.');
         identify(`grades|${code}`);names.add(lower(name));add(()=>createJobGrade(ctx,{code,name,rank:Number(v.Rank),description:v.Description},tx));
       }else{
         const name=requireValue('Name');
-        if(c.groups.some(group=>lower(group.name)===lower(name)))throw new Error(existingCodeMessage);
+        if(c.groups.some(group=>lower(group.name)===lower(name)))throw new LabelImportRowError('existing',existingCodeMessage);
         const codes=list(v['Grade Codes']);v['Grade Codes']=codes.join(';');
         const grades=codes.map(code=>c.grades.find(grade=>grade.code===code&&!grade.archivedAt));
-        if(grades.some(grade=>!grade))throw new Error('Grade Codes must reference existing active grades. Import new grades separately first.');
+        if(grades.some(grade=>!grade))throw new LabelImportRowError('invalidGradeReferences','Grade Codes must reference existing active grades. Import new grades separately first.');
         if(seen.has(`grade_groups|${lower(name)}`)){identify(`grade_groups|${lower(name)}`);continue;}
-        for(const grade of grades)if(c.members.some(member=>member.gradeId===grade!.id)||memberClaims.has(grade!.id))throw new Error('A grade already belongs to another group. Change its membership in the editor first.');
+        for(const grade of grades)if(c.members.some(member=>member.gradeId===grade!.id)||memberClaims.has(grade!.id))throw new LabelImportRowError('gradeAlreadyGrouped','A grade already belongs to another group. Change its membership in the editor first.');
         if(!identify(`grade_groups|${lower(name)}`))continue;
         for(const grade of grades)memberClaims.add(grade!.id);
         add(()=>createGradeGroup(ctx,{name,gradeIds:grades.map(grade=>grade!.id)},tx));
       }
-    }catch(error){if(error instanceof Error&&error.message===existingCodeMessage)result.reason='existing';result.outcome='error';result.selected=false;result.message=error instanceof Error?error.message:'Invalid label row.';}
+    }catch(error){result.reason=error instanceof LabelImportRowError?error.reason:'invalidRow';if(error instanceof LabelImportRowError&&error.reasonField)result.reasonField=error.reasonField;result.outcome='error';result.selected=false;result.message=error instanceof Error?error.message:'Invalid label row.';}
   }
   for(const result of output)if(result.warnings?.length)result.message=[result.message,...result.warnings].join(' ');
   const orgGroups=new Map<OrganisationLabelKind,LabelCreateInput[]>(),apply:(()=>Promise<unknown>)[]=[];

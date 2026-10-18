@@ -20298,6 +20298,27 @@
     "existing": "Kod ini sudah wujud dalam kategori ini. Tiada rekod sedia ada akan diubah.",
     "duplicate": "Kod berulang dalam buku kerja ini; hanya baris sah pertama boleh ditambah.",
     "conflicting": "Kod bercanggah dalam buku kerja ini; baris kemudian ini dilangkau.",
-    "importing": "Mengimport…"
+    "importing": "Mengimport…",
+    "unsupportedCategory": "Lembaran ini bukan kategori label yang disokong.",
+    "required": "{field} diperlukan.",
+    "invalidCompany": "Pilih satu syarikat aktif dalam skop pentadbir anda.",
+    "invalidCriteria": "Kriteria mestilah companies atau global.",
+    "invalidCriteriaCompany": "Pilih syarikat Kriteria yang aktif dalam skop pentadbir anda.",
+    "globalAdminRequired": "Kriteria global memerlukan pentadbir kumpulan.",
+    "criteriaCompaniesRequired": "Kriteria companies memerlukan senarai syarikat. Kriteria global mesti membiarkan senarai kosong.",
+    "invalidHeadEmployee": "Kod Pekerja Ketua mesti merujuk kepada seorang pekerja aktif dalam syarikat penciptaan.",
+    "wholeNumber": "Pangkat dan Susunan mesti nombor bulat.",
+    "invalidGradeCode": "Kod Gred mesti bermula dengan huruf besar dan hanya menggunakan huruf besar, digit atau garis bawah.",
+    "gradeLabelExists": "Gred aktif lain telah menggunakan Label ini.",
+    "invalidGradeReferences": "Kod Gred mesti merujuk kepada gred aktif sedia ada. Import gred baharu secara berasingan dahulu.",
+    "gradeAlreadyGrouped": "Satu gred sudah menjadi ahli kumpulan lain. Tukar keahliannya dalam editor dahulu.",
+    "invalidRow": "Baris ini tidak sah. Semak nilainya dan muat naik semula.",
+    "fields": {
+      "Code": "Kod",
+      "Company": "Syarikat",
+      "Description": "Huraian",
+      "Label": "Label",
+      "Name": "Nama"
+    }
   }
 }

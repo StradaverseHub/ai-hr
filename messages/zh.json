@@ -20298,6 +20298,27 @@
     "existing": "该分类中已存在此代码。不会修改任何现有记录。",
     "duplicate": "工作簿中有重复代码，仅添加首个有效行。",
     "conflicting": "工作簿中的代码冲突，已跳过此后续行。",
-    "importing": "正在导入…"
+    "importing": "正在导入…",
+    "unsupportedCategory": "此工作表不是受支持的标签类别。",
+    "required": "必须填写{field}。",
+    "invalidCompany": "请选择您管理员权限范围内的一家有效公司。",
+    "invalidCriteria": "Criteria 必须为 companies 或 global。",
+    "invalidCriteriaCompany": "请选择您管理员权限范围内的有效适用公司。",
+    "globalAdminRequired": "全局适用条件需要集团管理员权限。",
+    "criteriaCompaniesRequired": "companies 条件需要公司列表；global 条件必须将列表留空。",
+    "invalidHeadEmployee": "负责人编号必须对应创建公司内的一名在职员工。",
+    "wholeNumber": "等级和排序必须为整数。",
+    "invalidGradeCode": "职级代码必须以大写字母开头，且只能包含大写字母、数字或下划线。",
+    "gradeLabelExists": "其他有效职级已使用此标签。",
+    "invalidGradeReferences": "职级代码必须引用现有有效职级。请先单独导入新职级。",
+    "gradeAlreadyGrouped": "某职级已属于其他组。请先在编辑器中更改其组别。",
+    "invalidRow": "此行无效。请检查内容后重新上传。",
+    "fields": {
+      "Code": "代码",
+      "Company": "公司",
+      "Description": "说明",
+      "Label": "标签",
+      "Name": "名称"
+    }
   }
 }

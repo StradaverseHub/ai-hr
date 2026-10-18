@@ -20298,6 +20298,27 @@
     "existing": "This code already exists in this category. No existing record will be changed.",
     "duplicate": "Duplicate code in this workbook; only the first valid row can be added.",
     "conflicting": "Conflicting code in this workbook; this later row is skipped.",
-    "importing": "Importing…"
+    "importing": "Importing…",
+    "unsupportedCategory": "This worksheet is not a supported label category.",
+    "required": "{field} is required.",
+    "invalidCompany": "Choose one active company within your administrator scope.",
+    "invalidCriteria": "Criteria must be companies or global.",
+    "invalidCriteriaCompany": "Choose active Criteria companies within your administrator scope.",
+    "globalAdminRequired": "Global criteria require a group administrator.",
+    "criteriaCompaniesRequired": "Companies criteria need a company list. Global criteria must leave the list blank.",
+    "invalidHeadEmployee": "Head Employee Code must identify one active employee in the creation company.",
+    "wholeNumber": "Rank and Sort Order must be whole numbers.",
+    "invalidGradeCode": "Grade Code must start with an uppercase letter and use only uppercase letters, digits or underscores.",
+    "gradeLabelExists": "Another active grade already uses this Label.",
+    "invalidGradeReferences": "Grade Codes must refer to existing active grades. Import new grades separately first.",
+    "gradeAlreadyGrouped": "A grade already belongs to another group. Change its membership in the editor first.",
+    "invalidRow": "This row is invalid. Check its values and upload it again.",
+    "fields": {
+      "Code": "Code",
+      "Company": "Company",
+      "Description": "Description",
+      "Label": "Label",
+      "Name": "Name"
+    }
   }
 }
