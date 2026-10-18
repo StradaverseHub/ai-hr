@@ -22,7 +22,7 @@
  * inside this shell contains the target, it activates that panel so the tour spotlight can measure a
  * visible element (panels stay mounted-but-hidden, so `querySelector` finds targets in hidden tabs).
  */
-import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { firstDirtyGuard } from '@/lib/unsaved-changes';
 
@@ -75,6 +75,7 @@ export function ClientTabs<K extends string>({
    */
   monolithTxt?: boolean;
 }) {
+  const tabShellId = useId();
   const initial = defaultTab && tabs.some((tab) => tab.key === defaultTab) ? defaultTab : tabs[0]?.key;
   const [active, setActive] = useState<K | undefined>(initial);
 
@@ -178,6 +179,7 @@ export function ClientTabs<K extends string>({
   return (
     <div ref={shellRef} className="space-y-6">
       <nav
+        role="tablist"
         aria-label={ariaLabel}
         className={cn(
           'flex flex-wrap gap-1 rounded-[1.25rem] border border-border bg-card p-1.5 shadow-[var(--shadow-card)]',
@@ -190,6 +192,8 @@ export function ClientTabs<K extends string>({
             key={tab.key}
             type="button"
             role="tab"
+            id={`${tabShellId}-tab-${tab.key}`}
+            aria-controls={`${tabShellId}-panel-${tab.key}`}
             aria-selected={active === tab.key}
             aria-current={active === tab.key ? 'true' : undefined}
             onClick={() => selectTab(tab.key)}
@@ -224,6 +228,8 @@ export function ClientTabs<K extends string>({
           <div
             key={tab.key}
             role="tabpanel"
+            id={`${tabShellId}-panel-${tab.key}`}
+            aria-labelledby={`${tabShellId}-tab-${tab.key}`}
             data-tabpanel={tab.key}
             hidden={active !== tab.key}
             className={active === tab.key ? 'space-y-6' : undefined}
