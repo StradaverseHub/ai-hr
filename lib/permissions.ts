@@ -1011,7 +1011,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   // SAME commit that emptied the page (test/function-access.test.ts fails BOTH ways). The destination is
   // registered on `leaveConfig` above, behind the same requireAdmin guard, so nobody who could open the old
   // page loses access. (a324a4b3 had renamed its label nav.toilPolicy → nav.timeOffInLieu.)
-  // ADR-0125: role-independent module grants and participation are explained by the scope notes.
+  // ADR-0129: role-independent module grants and participation are explained by the scope notes.
   { screenKey: 'onboardingV31', href: '/lifecycle/onboarding', labelKey: 'nav.newJoiners', guard: 'onboardingAccess', routes: ['/lifecycle/onboarding', '/lifecycle/onboarding/cases/[id]'], hasScopeNote: true },
   { screenKey: 'onboardingChecklists', href: '/lifecycle/onboarding/checklists', labelKey: 'nav.onboardingChecklists', guard: 'onboardingAccess', routes: ['/lifecycle/onboarding/checklists'], hasScopeNote: true },
   { screenKey: 'onboardingSettings', href: '/admin/lifecycle/onboarding', labelKey: 'nav.onboardingSettings', guard: 'onboardingAccess', routes: ['/admin/lifecycle/onboarding'], hasScopeNote: true },
