@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import { cleanup,fireEvent,render,screen,within } from '@testing-library/react';
+import { cleanup,fireEvent,render,screen,waitFor,within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
@@ -41,6 +41,48 @@ describe('versioned testing controls',()=>{
     view.rerender(<NextIntlClientProvider locale="en" messages={en}><TestingObservationForm {...props} revision={4} current={{...props.current,actualResult:'Changed in another tab'}}/></NextIntlClientProvider>);
     expect(screen.getByLabelText(en.systemTestingWorkspace.actualResult)).toHaveValue('Unsubmitted typed observation');
     expect((document.querySelector('input[name="revision"]') as HTMLInputElement).value).toBe('3');
+  });
+  it('retains its submitted status and text after an actual successful action reset, then submits the acknowledged revision',async()=>{
+    const submissions:Record<string,string>[]=[];
+    actions.observe.mockImplementation(async(_prior,form:FormData)=>{
+      submissions.push(Object.fromEntries([...form].map(([key,value])=>[key,String(value)])));
+      return {error:null,savedObservation:{executionId:id,revision:submissions.length+3}};
+    });
+    wrap(<TestingObservationForm executionId={id} assignmentId={id} versionId={id} revision={3} current={{status:'failed',actualResult:'Prior failed result',comments:'Prior comment',defectNotes:'Prior defect',improvementNotes:'Prior improvement'}}/>);
+    fireEvent.change(screen.getByLabelText(en.systemTestingWorkspace.status),{target:{value:'passed'}});
+    for(const [label,value]of [[en.systemTestingWorkspace.actualResult,'Observed passing result'],[en.systemTestingWorkspace.comments,'New comment'],[en.systemTestingWorkspace.defectNotes,''],[en.systemTestingWorkspace.improvementNotes,'New improvement']])fireEvent.change(screen.getByLabelText(label),{target:{value}});
+    fireEvent.submit(screen.getByRole('button',{name:en.systemTestingWorkspace.saveObservation}).closest('form')!);
+    await waitFor(()=>expect((document.querySelector('input[name="revision"]') as HTMLInputElement).value).toBe('4'));
+    expect(screen.getByLabelText(en.systemTestingWorkspace.status)).toHaveValue('passed');
+    expect(screen.getByLabelText(en.systemTestingWorkspace.actualResult)).toHaveValue('Observed passing result');
+    expect(screen.getByLabelText(en.systemTestingWorkspace.comments)).toHaveValue('New comment');
+    expect(screen.getByLabelText(en.systemTestingWorkspace.defectNotes)).toHaveValue('');
+    expect(screen.getByLabelText(en.systemTestingWorkspace.improvementNotes)).toHaveValue('New improvement');
+    fireEvent.submit(screen.getByRole('button',{name:en.systemTestingWorkspace.saveObservation}).closest('form')!);
+    await waitFor(()=>expect((document.querySelector('input[name="revision"]') as HTMLInputElement).value).toBe('5'));
+    expect(submissions).toHaveLength(2);
+    expect(submissions[0]).toMatchObject({revision:'3',status:'passed',actualResult:'Observed passing result',defectNotes:''});
+    expect(submissions[1]).toMatchObject({revision:'4',status:'passed',actualResult:'Observed passing result',comments:'New comment',defectNotes:'',improvementNotes:'New improvement'});
+  });
+  it('preserves edits and the last own acknowledged revision after a refused action',async()=>{
+    const submissions:Record<string,string>[]=[];
+    actions.observe.mockImplementation(async(_prior,form:FormData)=>{
+      submissions.push(Object.fromEntries([...form].map(([key,value])=>[key,String(value)])));
+      return submissions.length===1?{error:null,savedObservation:{executionId:id,revision:4}}:{error:'invalid'};
+    });
+    wrap(<TestingObservationForm executionId={id} assignmentId={id} versionId={id} revision={3} current={{status:'failed',actualResult:'Original',comments:'',defectNotes:'Old defect',improvementNotes:''}}/>);
+    fireEvent.submit(screen.getByRole('button',{name:en.systemTestingWorkspace.saveObservation}).closest('form')!);
+    await waitFor(()=>expect((document.querySelector('input[name="revision"]') as HTMLInputElement).value).toBe('4'));
+    fireEvent.change(screen.getByLabelText(en.systemTestingWorkspace.status),{target:{value:'passed'}});
+    fireEvent.change(screen.getByLabelText(en.systemTestingWorkspace.actualResult),{target:{value:'Keep unsaved result'}});
+    fireEvent.change(screen.getByLabelText(en.systemTestingWorkspace.defectNotes),{target:{value:''}});
+    fireEvent.submit(screen.getByRole('button',{name:en.systemTestingWorkspace.saveObservation}).closest('form')!);
+    await screen.findByRole('alert');
+    expect(screen.getByLabelText(en.systemTestingWorkspace.status)).toHaveValue('passed');
+    expect(screen.getByLabelText(en.systemTestingWorkspace.actualResult)).toHaveValue('Keep unsaved result');
+    expect(screen.getByLabelText(en.systemTestingWorkspace.defectNotes)).toHaveValue('');
+    expect((document.querySelector('input[name="revision"]') as HTMLInputElement).value).toBe('4');
+    expect(submissions[1]).toMatchObject({revision:'4',status:'passed',actualResult:'Keep unsaved result',defectNotes:''});
   });
   it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('renders all result states and explanatory copy in %s',locale=>{
     wrap(<TestingObservationForm executionId={id} assignmentId={id} versionId={id} revision={3} current={{status:'blocked',actualResult:'Fictional result',comments:'',defectNotes:'',improvementNotes:''}}/>,locale);
