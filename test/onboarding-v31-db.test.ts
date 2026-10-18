@@ -170,6 +170,22 @@ describe('V3.1 onboarding database and authorization', () => {
         expect(unavailable).toEqual(expect.arrayContaining([expect.objectContaining({ user_id: tech.userId })]));
         expect(JSON.stringify(unavailable)).not.toContain('PRIVATE');
     });
+    it('does not expose a foreign person name through a malformed cross-tenant account link', async () => {
+        const foreign = await seedBase();
+        const foreignName = 'PRIVATE FOREIGN PERSON NAME';
+        const [foreignPerson] = await owner.db.insert(schema.person).values({tenantId:foreign.tenantId,fullName:foreignName,primaryEmail:'foreign-person@onb-test.invalid'}).returning();
+        // Deliberately use the owner to create a malformed link admitted by the global person FK.
+        const mislinked = await createAppUser(b.tenantId, foreignPerson!.id, 'employee');
+        const fallback = 'User ' + mislinked.slice(0,8);
+        const directory = await withTenant(tech, tx => tx.execute(sql`select * from app.onboarding_directory()`)) as unknown as {id:string;name:string}[];
+        expect(directory.find(user => user.id === mislinked)?.name).toBe(fallback);
+        expect(directory.some(user => user.name === foreignName)).toBe(false);
+        expect(directory.find(user => user.id === tech.userId)?.name).toBe('Kevin Tech');
+        expect(directory.find(user => user.id === other.userId)?.name).toBe('Other Employee');
+        const context = await onboardingContext({...tech,userId:mislinked,personId:foreignPerson!.id});
+        expect(context.actor.name).toBe(fallback);
+        expect(context.directory.find(user => user.id === mislinked)?.name).toBe(fallback);
+    });
     it('hides foreign-tenant cases and labels even from another tenant administrator', async () => {
         const row = await prepared(), foreign = await seedBase();
         await setModule(foreign.tenantId, 'lifecycle', 'active');

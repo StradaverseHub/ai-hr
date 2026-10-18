@@ -32,7 +32,7 @@ async function actorTx(tx: Tx, ctx: SessionContext, config: M.Config, companyId?
         master: boolean;
         hr: boolean;
         name: string;
-    }>(await tx.execute(sql `select app.is_group_admin() as master, app.is_admin_for(${companyId ?? null}::uuid) as hr, coalesce(p.full_name,'User '||left(u.id::text,8)) as name from app_user u left join person p on p.id=u.person_id where u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id() and not app.login_blocked(u.id)`));
+    }>(await tx.execute(sql `select app.is_group_admin() as master, app.is_admin_for(${companyId ?? null}::uuid) as hr, coalesce(p.full_name,'User '||left(u.id::text,8)) as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id() and not app.login_blocked(u.id)`));
     if (!row)
         M.fail('Your login is not available.', 'forbidden');
     return { id: uid(ctx), name: row.name, module: config.access.onboarding.includes(uid(ctx)), master: row.master, hr: row.hr };

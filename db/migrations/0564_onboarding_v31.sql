@@ -104,7 +104,7 @@ GRANT SELECT,INSERT,UPDATE ON lc_onboarding_seen TO ai_hr_app;
 -- A bounded public directory projection. Historical actor names remain in the case log.
 CREATE OR REPLACE FUNCTION app.onboarding_directory() RETURNS TABLE(id uuid,name text)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
- SELECT u.id,coalesce(p.full_name,'User '||left(u.id::text,8)) FROM app_user u LEFT JOIN person p ON p.id=u.person_id
+ SELECT u.id,coalesce(p.full_name,'User '||left(u.id::text,8)) FROM app_user u LEFT JOIN person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id
  WHERE u.tenant_id=app.current_tenant_id() AND NOT app.login_blocked(u.id)
  AND app.current_user_id() IS NOT NULL AND NOT app.login_blocked(app.current_user_id())
  ORDER BY coalesce(p.full_name,'User '||left(u.id::text,8)),u.id
