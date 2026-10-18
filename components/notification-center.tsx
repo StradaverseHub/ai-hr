@@ -252,7 +252,7 @@ export function NotificationCenter({
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
-          <div className="absolute right-0 z-50 mt-2 w-[22rem] overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-card)]">
+          <div className="fixed right-3 z-50 mt-2 w-[22rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-card)] lg:absolute lg:right-0">
             {/* Segmented tab bar — one style for every role; only the data behind each tab differs. */}
             <div className="border-b border-border px-3 pb-2 pt-2.5">
               <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted/60 p-1">
