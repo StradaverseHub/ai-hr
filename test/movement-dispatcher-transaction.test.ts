@@ -3,12 +3,15 @@ import {randomUUID} from 'node:crypto';
 import {asc,eq} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant} from '../db/client';
-import {assignment,domainEvent,employment} from '../db/schema';
+import {assignment,domainEvent,employment,leaveLedger,leaveEntitlementRecalcAudit} from '../db/schema';
 import {hireEmployee} from '../core/org';
+import {createJobGrade} from '../core/admin';
 import {createMovementEvent,createMovementEventTx,movementCurrentStateTx,movementHistory} from '../core/movement';
+import {movementNeedsEntitlementReprojection} from '../core/movement-kinds';
 import {saveMovementEventType,setMovementEventTypeActive} from '../core/movement-type';
+import {reprojectEntitlementForEmployment} from '../packs/leave/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,seedEntitlement,type Base} from './harness';
 let base:Base;
 const dateOffset=(days:number)=>new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+days*86400000).toISOString().slice(0,10);
 beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();base=await seedBase();});afterAll(closeAll);
@@ -53,5 +56,26 @@ describe('canonical Movement dispatcher caller transaction',()=>{
   const e=await employee(),ctx={...adminCtx(base),roles:['employee']},before=await rows(e.employmentId);
   await expect(withTenant(ctx,tx=>createMovementEventTx(tx,ctx,{employmentId:e.employmentId,kind:'blacklist',effectiveDate:todayInKualaLumpur()}))).rejects.toThrow('Only an admin can record a movement.');
   expect(await rows(e.employmentId)).toEqual(before);
+ });
+ it('resolves a custom promotion for the entitlement trigger and rolls its real leave adjustment/audit back with a later failure',async()=>{
+  const ctx=adminCtx(base),year=todayInKualaLumpur().slice(0,4),grade=await createJobGrade(ctx,{code:'B20H',name:'Fictional higher entitlement'});
+  await seedEntitlement(ctx,{leaveTypeId:base.annualLeaveTypeId,annualDays:8,validFrom:`${year}-01-01`,name:'Fictional baseline entitlement'});
+  await seedEntitlement(ctx,{leaveTypeId:base.annualLeaveTypeId,annualDays:16,gradeId:grade.id,validFrom:`${year}-01-01`,name:'Fictional grade entitlement'});
+  const e=await hireEmployee(ctx,{person:{fullName:'Fictional atomic entitlement',primaryEmail:`movement-leave-${randomUUID()}@example.test`},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:`${year}-01-01`,grantLeaveTypes:[{id:base.annualLeaveTypeId,code:'ANNUAL'}]});
+  const type=await saveMovementEventType(ctx,{label:'Fictional advancement',behaviourKind:'promotion'}),before=await rows(e.employmentId);
+  const ledger=()=>owner.db.select().from(leaveLedger).where(eq(leaveLedger.employmentId,e.employmentId)).orderBy(asc(leaveLedger.id));
+  const audit=()=>owner.db.select().from(leaveEntitlementRecalcAudit).where(eq(leaveEntitlementRecalcAudit.employmentId,e.employmentId)).orderBy(asc(leaveEntitlementRecalcAudit.id));
+  const beforeLedger=await ledger(),beforeAudit=await audit();expect(beforeLedger.reduce((sum,row)=>sum+Number(row.days),0)).toBe(8);
+  await expect(withTenant(ctx,async tx=>{
+   const gradeBefore={gradeId:(await movementCurrentStateTx(tx,e.employmentId)).gradeId};
+   const result=await createMovementEventTx(tx,ctx,{employmentId:e.employmentId,kind:type.code,effectiveDate:todayInKualaLumpur(),gradeId:grade.id});
+   expect(result.behaviourKind).toBe('promotion');expect(movementNeedsEntitlementReprojection(result.behaviourKind)).toBe(true);
+   expect(movementNeedsEntitlementReprojection(type.code)).toBe(false); // The old raw-code action would skip this real effect.
+   const recalc=await reprojectEntitlementForEmployment(ctx,{employmentId:e.employmentId,trigger:'movement_recorded',gradeBefore,changeEffectiveOn:todayInKualaLumpur()},tx);
+   expect(recalc).toEqual({affected:1,totalDelta:8});
+   expect(await tx.select().from(leaveEntitlementRecalcAudit).where(eq(leaveEntitlementRecalcAudit.employmentId,e.employmentId))).toHaveLength(beforeAudit.length+1);
+   throw new Error('Fictional later selected event failure');
+  })).rejects.toThrow('Fictional later selected event failure');
+  expect(await rows(e.employmentId)).toEqual(before);expect(await ledger()).toEqual(beforeLedger);expect(await audit()).toEqual(beforeAudit);
  });
 });

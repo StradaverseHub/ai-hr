@@ -106,3 +106,8 @@ export const isComparisonKind = (k: string): k is ComparisonKind =>
 export const INTERCHANGEABLE_COMPARISON_KINDS: readonly ComparisonKind[] = COMPARISON_KINDS.filter(
   (k) => k !== 'confirmation' && k !== 'entityTransfer',
 );
+
+/** Same resolved-behavior trigger for manual action and atomic Movement import entitlement parity. */
+export function movementNeedsEntitlementReprojection(behaviourKind:string):boolean{
+  return isComparisonKind(behaviourKind)||behaviourKind==='probationExtension'||behaviourKind==='groupJoinDateCorrection'||behaviourKind==='termination';
+}

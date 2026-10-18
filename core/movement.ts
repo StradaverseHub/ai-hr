@@ -2490,6 +2490,7 @@ export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:Cr
   // mapped to, and its code travels on as `typeCode` so the ledger records what HR chose. A type that was
   // switched off is refused here rather than silently applied — that is the whole point of switching it off.
   const p = await resolveInputTypeTx(tx, ctx, rawInput, 'record');
+  const execute=async()=>{
   if (p.kind !== 'blacklist' && !/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveDate ?? '')) {
     throw new Error('A valid effective date (YYYY-MM-DD) is required.');
   }
@@ -2598,6 +2599,10 @@ export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:Cr
         return { employmentId: p.employmentId };
       }
   }
+  };
+  const result=await execute();
+  if(!result)throw new Error('Unsupported movement event type.');
+  return {...result,behaviourKind:p.kind};
 }
 
 // ───────────── Scheduled application — 941c9dac ─────────────
