@@ -14,7 +14,7 @@ const directory=(bytes:Buffer)=>{for(let at=bytes.length-22;at>=0;at--)if(bytes.
 function addExtra(bytes:Buffer,target:'local'|'central',tag:number){
  const {end,start}=directory(bytes),local=bytes.readUInt32LE(start+42),centralName=bytes.readUInt16LE(start+28),localName=bytes.readUInt16LE(local+26);
  const at=target==='local'?local+30+localName:start+46+centralName;
- const extra=Buffer.alloc(20);extra.writeUInt16LE(tag,0);extra.writeUInt16LE(16,2);extra.writeBigUInt64LE(0x40000000n,4);extra.writeBigUInt64LE(1n,12);
+ const extra=Buffer.alloc(20);extra.writeUInt16LE(tag,0);extra.writeUInt16LE(16,2);extra.writeBigUInt64LE(BigInt(0x40000000),4);extra.writeBigUInt64LE(BigInt(1),12);
  const changed=Buffer.concat([bytes.subarray(0,at),extra,bytes.subarray(at)]),newStart=start+(target==='local'?extra.length:0),newEnd=end+extra.length;
  if(target==='local'){
   changed.writeUInt16LE(bytes.readUInt16LE(local+28)+extra.length,local+28);
