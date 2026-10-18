@@ -1,10 +1,10 @@
 import {randomUUID} from 'node:crypto';
 import {asc,eq,sql} from 'drizzle-orm';
 import {beforeAll,beforeEach,afterAll,describe,it,expect,vi} from 'vitest';
-import {assignment,compensation,domainEvent,employment,leaveLedger,leaveEntitlementRecalcAudit} from '../db/schema';
+import {assignment,compensation,domainEvent,employment,leaveLedger,leaveEntitlementRecalcAudit,payPeriod,payrollBatch,payslip,movementEventType} from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {withTenant} from '../db/client';
-import {createCompany,createDepartment} from '../core/admin';
+import {createCompany,createDepartment,createJobGrade} from '../core/admin';
 import {setLabelCriteriaBatch} from '../core/system-labels';
 import {createMovementEvent,movementCurrentState,movementHistory,reverseMovementEvent,applyDueMovementsTx} from '../core/movement';
 import {previewMovementImport,commitMovementImport,movementImportCatalog} from '../core/movement-import';
@@ -13,7 +13,7 @@ import * as leaveService from '../packs/leave/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {toCsv} from '../lib/csv';
 import type {MovementImportPreview} from '../lib/movement-import-contract';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,seedEntitlement,type Base} from './harness';
 let b:Base;beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase();});afterAll(closeAll);
 const day=(offset:number)=>new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+offset*86400000).toISOString().slice(0,10);
 async function hire(code='EMP-0004'){
@@ -70,11 +70,16 @@ describe('Movement rollback-only preview and atomic confirmation',()=>{
   const text=csv([['EMP-0004',type.code,day(-1),'','','']]);const preview=await ready(text);expect(preview.valid).toBe(1);expect((await commit(text,preview)).imported).toBe(1);
   await setMovementEventTypeActive(adminCtx(b),{code:type.code,active:false});expect((await ready(text)).valid).toBe(0);
  });
- it('rolls every selected row, compensation, grade/leave/audit back when the second required leave leg refuses',async()=>{
-  const id=await hire(),before=await state(id);const text=csv([['EMP-0004','promotion',day(-5),'','3500',''],['EMP-0004','transfer',day(-2),b.deptB,'','']]);const preview=await ready(text);expect(preview.valid).toBe(2);
-  const real=leaveService.reprojectEntitlementForEmployment;let calls=0;
-  const spy=vi.spyOn(leaveService,'reprojectEntitlementForEmployment').mockImplementation(async(...args)=>{calls++;if(calls===2)throw new Error('fixture_required_leave_refusal');return real(...args);});
-  try {const result=await commit(text,preview);expect(result.imported).toBe(0);expect(result.failed).toBe(2);expect(await state(id)).toEqual(before);}finally{spy.mockRestore();}
+ it('rolls actual grade, leave, compensation and audit back when the committed pass’s second required leave leg refuses',async()=>{
+  const ctx=adminCtx(b),year=todayInKualaLumpur().slice(0,4),grade=await createJobGrade(ctx,{code:'IMP16',name:'Import sixteen days'});
+  await seedEntitlement(ctx,{leaveTypeId:b.annualLeaveTypeId,annualDays:8,validFrom:year+'-01-01',name:'Import base eight days'});
+  await seedEntitlement(ctx,{leaveTypeId:b.annualLeaveTypeId,annualDays:16,gradeId:grade.id,validFrom:year+'-01-01',name:'Import grade sixteen days'});
+  const e=await hireEmployee(ctx,{person:{fullName:'Fictional full atomic import',primaryEmail:randomUUID()+'@fixture.test'},employeeCode:'EMP-0004',companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:year+'-01-01',grantLeaveTypes:[{id:b.annualLeaveTypeId,code:'ANNUAL'}]});
+  const id=e.employmentId,before=await state(id);expect(before.ledger.reduce((sum,row)=>sum+Number(row.days),0)).toBe(8);
+  const text=toCsv([['employee_code','event_type','effective_date','department_id','basic_salary','grade_id'],['EMP-0004','promotion',day(-5),'','3500',grade.id],['EMP-0004','transfer',day(-2),b.deptB,'','']]);const preview=await ready(text);expect(preview.valid).toBe(2);expect(await state(id)).toEqual(before);
+  const real=leaveService.reprojectEntitlementForEmployment;let calls=0,committedPassDelta:number|null=null;
+  const spy=vi.spyOn(leaveService,'reprojectEntitlementForEmployment').mockImplementation(async(...args)=>{calls++;if(calls===4)throw new Error('fixture_required_leave_refusal');const value=await real(...args);if(calls===3)committedPassDelta=value.totalDelta;return value;});
+  try {const result=await commit(text,preview);expect(calls).toBe(4);expect(committedPassDelta).toBe(8);expect(result.imported).toBe(0);expect(result.failed).toBe(2);expect(await state(id)).toEqual(before);}finally{spy.mockRestore();}
  });
  it('keeps unrelated employees independent while refusing nonexistent Employee IDs and non-admin callers',async()=>{
   const id=await hire();const text=csv([['EMP-0004','transfer',day(-2),b.deptB,'',''],['MISSING','promotion',day(-1),'','3500','']]);
@@ -106,10 +111,48 @@ describe('Movement rollback-only preview and atomic confirmation',()=>{
   const text=toCsv([['employee_code','event_type','effective_date','end_date','termination_reason_code','remarks'],['EMP-0004','termination',day(-5),day(-5),'contract_expiry','Fictional end'],['EMP-0004','secondment',day(-2),'','','After end']]);
   const preview=await ready(text);expect(preview.valid).toBe(1);expect(preview.employees[0].rows.find(row=>row.row===3)?.errors).toContain('event_after_exit');expect(await state(id)).toEqual(before);
  });
+
+
+ it('does not offer or execute a corrupt custom lifecycle mapping hidden behind an otherwise active code',async()=>{
+  const id=await hire(),before=await state(id),ctx=adminCtx(b);
+  await owner.db.insert(movementEventType).values({tenantId:b.tenantId,code:'forged_exit',label:'Fictional forged lifecycle type',behaviourKind:'termination',isActive:true});
+  expect((await movementImportCatalog(ctx,b.companyId)).types.some(type=>type.code==='forged_exit')).toBe(false);
+  expect((await ready(csv([['EMP-0004','forged_exit',day(-1),'','','']]))).valid).toBe(0);expect(await state(id)).toEqual(before);
+ });
+ it('requires both company scopes for Entity Transfer and refuses foreign-tenant subjects without leaking identity',async()=>{
+  const id=await hire(),ctx=adminCtx(b),destination=await createCompany(ctx,{legalName:'Fictional restricted destination',country:'MY'}),department=await createDepartment(ctx,{companyId:destination.id,name:'Restricted destination department'});
+  await setLabelCriteriaBatch(ctx,[{kind:'department',labelId:department.id,isGlobal:false,companyIds:[destination.id]}]);
+  const text=toCsv([['employee_code','event_type','effective_date','company_id','department_id'],['EMP-0004','entityTransfer',day(-2),destination.id,department.id]]);
+  const scoped={...ctx,grants:[{role:'hr_admin',companyId:b.companyId}]};const before=await state(id);
+  const refused=await previewMovementImport(scoped,{companyId:b.companyId,csv:text});expect(refused.valid).toBe(0);expect(await state(id)).toEqual(before);
+  const foreign=await seedBase(),foreignResult=await previewMovementImport(adminCtx(foreign),{companyId:foreign.companyId,csv:csv([['EMP-0004','secondment',day(-1),'','','']])});
+  expect(foreignResult.valid).toBe(0);expect(foreignResult.employees[0].name).toBeNull();expect(foreignResult.employees[0].employmentId).toBeNull();expect(await state(id)).toEqual(before);
+ });
+ it('keeps employees independent when a later canonical write fails for only one employee',async()=>{
+  const first=await hire('EMP-0004'),second=await hire('EMP-0005'),beforeFirst=await state(first),beforeSecond=await state(second);
+  const text=csv([['EMP-0004','promotion',day(-5),'','3500',''],['EMP-0004','transfer',day(-2),b.deptB,'',''],['EMP-0005','promotion',day(-1),'','3900','']]);const preview=await ready(text);expect(preview.valid).toBe(3);
+  await owner.db.execute(sql`create function public.b20_import_one_employee_refusal() returns trigger language plpgsql as $$ begin if exists(select 1 from employment where id=NEW.employment_id and employee_code='EMP-0004') then raise exception 'fixture one employee write refusal'; end if; return NEW; end $$`);
+  await owner.db.execute(sql`create trigger b20_import_one_employee_refusal before insert on assignment for each row execute function public.b20_import_one_employee_refusal()`);
+  try {const result=await commit(text,preview);expect(result).toMatchObject({imported:1,failed:2});expect(await state(first)).toEqual(beforeFirst);expect((await state(second)).compensation).not.toEqual(beforeSecond.compensation);expect((await movementCurrentState(adminCtx(b),second)).basicSalary).toBe('3900.00');}
+  finally{await owner.db.execute(sql`drop trigger b20_import_one_employee_refusal on assignment`);await owner.db.execute(sql`drop function public.b20_import_one_employee_refusal()`);}
+ });
+ it('records a backdated movement without altering a released payroll and retains its normal correction lock',async()=>{
+  const id=await hire(),ctx=adminCtx(b),effective=day(-2),period=effective.slice(0,7);
+  const [pp]=await owner.db.insert(payPeriod).values({tenantId:b.tenantId,companyId:b.companyId,period,status:'closed'}).returning({id:payPeriod.id});
+  const [batch]=await owner.db.insert(payrollBatch).values({tenantId:b.tenantId,companyId:b.companyId,payPeriodId:pp.id,payPeriod:period,batchDate:period+'-25',status:'closed'}).returning({id:payrollBatch.id});
+  await owner.db.insert(payslip).values({tenantId:b.tenantId,batchId:batch.id,employmentId:id,basicSalary:'3000.00',grossPay:'3000.00',statutory:{},totalDeductions:'0.00',netPay:'3000.00',employerCost:'3000.00'});
+  const beforeBatch=await owner.db.select().from(payrollBatch).where(eq(payrollBatch.id,batch.id)),beforeSlips=await owner.db.select().from(payslip).where(eq(payslip.batchId,batch.id)).orderBy(asc(payslip.id));
+  const text=csv([['EMP-0004','transfer',effective,b.deptB,'','Fictional historic transfer']]),preview=await ready(text);expect(preview.valid).toBe(1);expect((await commit(text,preview)).imported).toBe(1);
+  expect(await owner.db.select().from(payrollBatch).where(eq(payrollBatch.id,batch.id))).toEqual(beforeBatch);expect(await owner.db.select().from(payslip).where(eq(payslip.batchId,batch.id)).orderBy(asc(payslip.id))).toEqual(beforeSlips);
+  const movement=(await movementHistory(ctx,id)).find(row=>row.kind==='transfer');expect(movement).toMatchObject({payrollLocked:true,canEdit:false,canReverse:false});
+  await expect(reverseMovementEvent(ctx,{employmentId:id,movementId:movement!.id,reason:'Fictional forbidden rollback'})).rejects.toThrow();
+ });
  it('rolls back on an unexpected database refusal during preview, never retaining successful earlier row legs',async()=>{
   const id=await hire(),before=await state(id);const text=csv([['EMP-0004','promotion',day(-5),'','3500',''],['EMP-0004','transfer',day(-2),b.deptB,'','']]);
   await owner.db.execute(sql`create function public.b20_movement_preview_refusal() returns trigger language plpgsql as $$ begin raise exception 'fixture assignment refusal'; end $$`);
   await owner.db.execute(sql`create trigger b20_movement_preview_refusal before insert on assignment for each row execute function public.b20_movement_preview_refusal()`);
-  try {const preview=await ready(text);expect(preview.employees[0].rows.some(row=>row.status==='invalid')).toBe(true);expect(await state(id)).toEqual(before);}finally{await owner.db.execute(sql`drop trigger b20_movement_preview_refusal on assignment`);await owner.db.execute(sql`drop function public.b20_movement_preview_refusal()`);}
+  try {const preview=await ready(text);expect(preview.employees[0].rows.some(row=>row.status==='invalid')).toBe(true);
+   for(const row of preview.employees[0].rows.filter(row=>row.status==='invalid')){expect(row.errors).toEqual(['change_refused']);expect(row.errors.join(' ')).not.toMatch(/insert into|fixture assignment refusal|params:/i);}
+   expect(await state(id)).toEqual(before);}finally{await owner.db.execute(sql`drop trigger b20_movement_preview_refusal on assignment`);await owner.db.execute(sql`drop function public.b20_movement_preview_refusal()`);}
  });
 });

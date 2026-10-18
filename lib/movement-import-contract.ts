@@ -5,7 +5,7 @@ import {normalizeEmployeeCode,isValidEmployeeCode} from './employee-code';
 import {MOVEMENT_FORM_IDS,movementFormFields,movementFormRequired,type MovementFormField} from './movement-form-contract';
 import {personnelScalarIssue} from './personnel-import-contract';
 import {personnelFormField} from './personnel-form-contract';
-export const MOVEMENT_IMPORT_LIMITS={bytes:900000,rows:200,perEmployee:20,employees:50,statementMs:5000,lockMs:1000,employeeMs:15000,requestMs:45000} as const;
+export const MOVEMENT_IMPORT_LIMITS={bytes:900000,rows:200,perEmployee:20,employees:50,statementMs:5000,lockMs:1000,employeeMs:15000,requestMs:45000,historyRows:10000,referenceRows:10000} as const;
 export const MOVEMENT_IMPORT_FIELDS=Object.keys(MOVEMENT_FORM_IDS).filter((key):key is MovementFormField=>key!=='reason');
 export const MOVEMENT_IMPORT_COLUMNS=['employee_code',...MOVEMENT_IMPORT_FIELDS.map(field=>field==='kind'?'event_type':field.replace(/[A-Z]/g,c=>'_'+c.toLowerCase()))];
 export const MOVEMENT_IMPORT_HEADERS=['Employee ID',...MOVEMENT_IMPORT_FIELDS.map(field=>field==='kind'?'EventType':field==='effectiveDate'?'EffectiveDate':field.replace(/([a-z])([A-Z])/g,'$1 $2').replace(/^./,c=>c.toUpperCase()))];
@@ -43,6 +43,7 @@ export function parseMovementImport(text:string):{records:MovementImportRecord[]
  for(const header of headers)if(!MOVEMENT_IMPORT_COLUMNS.includes(header))errors.push(`unknown_column:${header}`);
  for(const header of ['employee_code','event_type','effective_date'])if(!headers.includes(header))errors.push(`missing_column:${header}`);
  if(grid.length-1>MOVEMENT_IMPORT_LIMITS.rows)errors.push('too_many_rows');
+ if(grid.length===1)errors.push('no_data_rows');
  if(errors.length)return {records:[],fileErrors:errors};
  const records=grid.slice(1).map((values,index)=>{
   const raw=Object.fromEntries(headers.map((header,column)=>[header,(values[column]??'').trim()]));const cells:MovementImportRecord['cells']={};

@@ -7,6 +7,7 @@ import {personnelFormField} from './personnel-form-contract';
 import {TERMINATION_REASON_CODES} from '../core/termination-reason';
 import {buildXlsx} from './spreadsheet';
 import {toCsv} from './csv';
+import {addXlsxListValidation} from './xlsx-list-validation';
 export function movementImportTemplate(catalog:MovementImportCatalog,resolve:PersonnelLabelResolver){
  const words=(key:string,fallback:string)=>resolve('people.import.movement.'+key,fallback);
  const label=(field:MovementFormField)=>personnelFieldLabel(personnelFormField(MOVEMENT_FORM_IDS[field]),resolve);
@@ -40,6 +41,22 @@ export function movementImportTemplate(catalog:MovementImportCatalog,resolve:Per
 export async function movementImportWorkbook(catalog:MovementImportCatalog,resolve:PersonnelLabelResolver){
  const template=movementImportTemplate(catalog,resolve);
  if(!catalog.types.length)throw new Error('No active Movement event types are available.');
- return buildXlsx(template.headers,[],{sheetName:'Movements',textColumns:template.headers.map((_,index)=>index),textRowFloor:MOVEMENT_IMPORT_LIMITS.rows,headerNotes:template.headerNotes,columnWidths:template.headers.map((_,index)=>index===0?22:26),extraSheets:[{name:'Instructions',rows:template.instructions,columnWidths:[55,35,70,90],wrapText:true}],validationLists:template.lists,validationSheetName:'Lists'});
+ const references=[
+  {title:resolve('people.import.movement.eventType','Event type'),values:template.lists.find(list=>list.column===1)!.values},
+  {title:resolve('people.import.movement.values','Values'),values:catalog.types.map(type=>type.label??resolve('people.detail.movement.eventType.'+type.behaviour,type.code))},
+  ...template.lists.filter(list=>list.column!==1).map(list=>({title:template.headerNotes[list.column],values:list.values})),
+ ];
+ const length=Math.max(...references.map(column=>column.values.length));
+ const listRows=[references.map(column=>column.title),...Array.from({length},(_,index)=>references.map(column=>column.values[index]??''))];
+ const bytes=await buildXlsx(template.headers,[],{sheetName:'Movements',textColumns:template.headers.map((_,index)=>index),textRowFloor:MOVEMENT_IMPORT_LIMITS.rows,headerNotes:template.headerNotes,columnWidths:template.headers.map((_,index)=>index===0?22:26),extraSheets:[{name:'Instructions',rows:template.instructions,columnWidths:[55,35,70,90],wrapText:true},{name:'Lists',rows:listRows,columnWidths:references.map(()=>44)}]});
+ // Our own three-sheet workbook has no defined names. Add only the fixed EventType reference;
+ // all other large lookup lists remain visible without Excel's bounded dropdown inventory.
+ const {default:JSZip}=await import('jszip');const zip=await JSZip.loadAsync(bytes),entry=zip.file('xl/workbook.xml');
+ if(!entry)throw new Error('Generated Movement workbook is missing.');
+ const xml=await entry.async('string');if(/<definedNames\b/.test(xml))throw new Error('Unexpected Movement template names.');
+ const position=xml.search(/<(?:calcPr|oleSize|customWorkbookViews|pivotCaches|smartTagPr|smartTagTypes|webPublishing|fileRecoveryPr|webPublishObjects|extLst)\b|<\/workbook>/);
+ if(position<0)throw new Error('Generated Movement workbook is malformed.');
+ zip.file('xl/workbook.xml',xml.slice(0,position)+`<definedNames><definedName name="AIHR_Personnel_0_1">&apos;Lists&apos;!$A$2:$A$${catalog.types.length+1}</definedName></definedNames>`+xml.slice(position));
+ return addXlsxListValidation(await zip.generateAsync({type:'uint8array',compression:'DEFLATE'}),[{sheetIndex:0,column:1,name:'AIHR_Personnel_0_1',lastRow:MOVEMENT_IMPORT_LIMITS.rows+1}]);
 }
 export function movementImportCsvTemplate(){return toCsv([MOVEMENT_IMPORT_HEADERS]);}

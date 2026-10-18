@@ -32,7 +32,7 @@ export function personnelImportExclusionReasonKey(field:PersonnelFieldDescriptor
  * Repeated captions for the same saved fact also keep the supported owner's status.
  */
 export function personnelImportExclusions(choice:PersonnelImportChoice,fields:readonly PersonnelFieldDescriptor[]=PERSONNEL_FIELDS){
-  const movementFields=new Set<string>([...Object.values(MOVEMENT_FORM_IDS),'employment_history.event_information.lastworkingdate']);
+  const movementFields=new Set<string>([...Object.entries(MOVEMENT_FORM_IDS).filter(([key])=>key!=='reason').map(([,id])=>id),'employment_history.event_information.lastworkingdate']);
   const compatibilityIds=new Set<string>(PERSONNEL_IMPORT_COMPATIBILITY.map(adapter=>adapter.fieldId));
   const carried=new Set(fields.filter(field=>field.import.column||field.import.register||compatibilityIds.has(field.id)).map(field=>JSON.stringify([field.owner,field.ownerField,field.grain])));
   return fields.filter(field=>!movementFields.has(field.id)&&!field.import.column&&!field.import.register && !carried.has(JSON.stringify([field.owner,field.ownerField,field.grain])) && (choice==='full'||choice==='movement'&&field.tab==='Employment History'||choice!=='movement'&&field.tab===SECTION_TABS[choice] && (choice!=='emergency'||field.owner==='emergencyContact')));

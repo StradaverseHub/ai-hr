@@ -227,6 +227,11 @@ export async function resolveMovementEventTypeTx(
     .from(movementEventType)
     .where(and(eq(movementEventType.tenantId, tenantId), eq(movementEventType.code, code)))
     .limit(1);
+  return resolveMovementTypeRow(code,row);
+}
+
+/** Shared exact catalogue resolution; import choices must not reinterpret corrupt custom behaviours. */
+function resolveMovementTypeRow(code:string,row:typeof movementEventType.$inferSelect|undefined):{code:string;behaviourKind:MovementKind;active:boolean;label:string|null}|null{
   if (row) {
     const behaviourKind = isBuiltInKind(row.behaviourKind)
       ? row.behaviourKind
@@ -243,6 +248,20 @@ export async function resolveMovementEventTypeTx(
   if (isBuiltInKind(code)) return { code, behaviourKind: code, active: true, label: null };
   return null;
 }
+
+/** Bounded exact active choices inside a caller-owned transaction; one catalog read, no per-type query. */
+export async function activeMovementEventTypeChoicesTx(tx:Tx,tenantId:string){
+ const overlays=await tx.select().from(movementEventType).where(eq(movementEventType.tenantId,tenantId)).orderBy(asc(movementEventType.sortOrder),asc(movementEventType.code)).limit(1001);
+ if(overlays.length>1000)throw new MovementTypeError('movement_catalog_too_large');
+ const byCode=new Map(overlays.map(row=>[row.code,row]));
+ const choices=[];
+ for(const code of new Set([...MOVEMENT_KINDS,...overlays.map(row=>row.code)])){
+  const resolved=resolveMovementTypeRow(code,byCode.get(code));if(resolved?.active)choices.push(resolved);
+ }
+ if(choices.length>1000)throw new MovementTypeError('movement_catalog_too_large');
+ return choices;
+}
+
 
 /**
  * Add a custom type, or rename / re-point an existing catalogue entry.

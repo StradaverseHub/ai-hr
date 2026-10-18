@@ -2123,7 +2123,12 @@
           "event_after_exit": "Sự kiện thông thường không được sau ngày kết thúc việc làm đã ghi.",
           "same_date_conflicting_changes": "Hai sự kiện đã chọn thay đổi cùng trường vào cùng ngày. Hãy giải quyết xung đột trước.",
           "duplicate_event_in_sequence": "Chuỗi đã chọn chứa sự kiện trùng lặp.",
-          "ambiguous_current_records": "Hồ sơ việc làm hiện tại không rõ ràng. Hãy xem Nhân sự trước khi nhập."
+          "ambiguous_current_records": "Hồ sơ việc làm hiện tại không rõ ràng. Hãy xem Nhân sự trước khi nhập.",
+          "no_data_rows": "Thêm ít nhất một dòng sự kiện bên dưới tiêu đề.",
+          "movement_catalog_too_large": "Danh sách loại sự kiện vượt kích thước nhập được hỗ trợ. Hãy dùng từng Sự kiện mới.",
+          "movement_reference_catalog_too_large": "Danh sách tham chiếu vượt kích thước nhập được hỗ trợ. Hãy dùng Nhân sự để thay đổi.",
+          "movement_history_too_large": "Lịch sử nhân viên vượt giới hạn kiểm tra nhập. Hãy ghi sự kiện trong Nhân sự.",
+          "change_refused": "Thay đổi bị từ chối. Không lưu thay đổi nào của nhân viên này."
         }
       }
     },

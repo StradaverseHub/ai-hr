@@ -5,17 +5,17 @@
 import {createHash} from 'node:crypto';
 import {and,asc,eq,isNull,or,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {assignment,businessUnit,company,compensation,department,domainEvent,employment,jobGrade,location,movementEventType,person,position,profileOption,reportingLine} from '../db/schema';
+import {assignment,businessUnit,company,compensation,department,domainEvent,employment,jobGrade,location,person,position,profileOption,reportingLine} from '../db/schema';
 import {isAdmin} from '../lib/authz-model';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {MOVEMENT_FORM_IDS,type MovementFormField} from '../lib/movement-form-contract';
 import {personnelFormField,personnelFormChoices} from '../lib/personnel-form-contract';
 import {MOVEMENT_IMPORT_LIMITS,parseMovementImport,movementImportCellIssues,movementImportDate,type MovementImportRecord,type MovementImportRow,type MovementImportEmployee,type MovementImportPreview,type MovementImportResult} from '../lib/movement-import-contract';
 import {createMovementEventTx,movementCurrentStateTx,applyDueMovementsTx,type CreateMovementInput} from './movement';
-import {MOVEMENT_KINDS,movementNeedsEntitlementReprojection} from './movement-kinds';
-import {resolveMovementEventTypeTx} from './movement-type';
+import {isComparisonKind,movementNeedsEntitlementReprojection} from './movement-kinds';
+import {resolveMovementEventTypeTx,activeMovementEventTypeChoicesTx} from './movement-type';
 import {lockEmploymentStatutoryOwnerTx} from './org';
-import {lockLabelCriteriaTx,visibleLabelIdsCondition} from './system-labels';
+import {visibleLabelIdsCondition} from './system-labels';
 import {reprojectEntitlementForEmployment} from '../packs/leave/service';
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export type MovementImportOption={value:string;label:string;aliases?:string[]};
@@ -32,29 +32,23 @@ async function assertCompany(tx:Tx,ctx:SessionContext,id:string){
 }
 async function catalogTx(tx:Tx,ctx:SessionContext,companyId:string):Promise<MovementImportCatalog>{
  await assertCompany(tx,ctx,companyId);
- const overlays=await tx.select({code:movementEventType.code}).from(movementEventType).where(eq(movementEventType.tenantId,ctx.tenantId)).orderBy(asc(movementEventType.sortOrder),asc(movementEventType.code)).limit(1001);
- if(overlays.length>1000)throw new Error('movement_catalog_too_large');
- const types:MovementImportCatalog['types']=[];
- for(const code of new Set([...MOVEMENT_KINDS,...overlays.map(row=>row.code)])){
-  const resolved=await resolveMovementEventTypeTx(tx,ctx.tenantId,code);if(resolved?.active)types.push({code:resolved.code,label:resolved.label,behaviour:resolved.behaviourKind});
- }
- if(types.length>1000)throw new Error('movement_catalog_too_large');
- const companies=await tx.select({value:company.id,label:company.legalName}).from(company).where(and(eq(company.tenantId,ctx.tenantId),sql`app.is_admin_for(${company.id})`)).orderBy(asc(company.legalName),asc(company.id)).limit(1001);
- const departments=await tx.select({value:department.id,label:department.name}).from(department).where(and(eq(department.tenantId,ctx.tenantId),isNull(department.archivedAt),visibleLabelIdsCondition(department,'department',[companyId]))).orderBy(asc(department.name),asc(department.id)).limit(1001);
- const positions=await tx.select({value:position.id,label:position.title}).from(position).where(and(eq(position.tenantId,ctx.tenantId),isNull(position.archivedAt),visibleLabelIdsCondition(position,'position',[companyId]))).orderBy(asc(position.title),asc(position.id)).limit(1001);
- const units=await tx.select({value:businessUnit.id,label:businessUnit.name}).from(businessUnit).where(and(eq(businessUnit.tenantId,ctx.tenantId),isNull(businessUnit.archivedAt),visibleLabelIdsCondition(businessUnit,'business_unit',[companyId]))).orderBy(asc(businessUnit.name),asc(businessUnit.id)).limit(1001);
- const locations=await tx.select({value:location.id,label:location.name}).from(location).where(and(eq(location.tenantId,ctx.tenantId),eq(location.companyId,companyId),isNull(location.archivedAt))).orderBy(asc(location.name),asc(location.id)).limit(1001);
- const grades=await tx.select({value:jobGrade.id,label:jobGrade.name,code:jobGrade.code}).from(jobGrade).where(and(eq(jobGrade.tenantId,ctx.tenantId),isNull(jobGrade.archivedAt))).orderBy(asc(jobGrade.code),asc(jobGrade.id)).limit(1001);
- const managers=await tx.select({value:employment.id,label:employment.employeeCode,name:person.fullName}).from(employment).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).where(and(eq(employment.tenantId,ctx.tenantId),isNull(employment.terminatedOn))).orderBy(asc(employment.employeeCode),asc(employment.id)).limit(1001);
- if([companies,departments,positions,units,locations,grades,managers].some(rows=>rows.length>1000))throw new Error('movement_reference_catalog_too_large');
+ const types=(await activeMovementEventTypeChoicesTx(tx,ctx.tenantId)).map(type=>({code:type.code,label:type.label,behaviour:type.behaviourKind}));
+ const companies=await tx.select({value:company.id,label:company.legalName}).from(company).where(and(eq(company.tenantId,ctx.tenantId),isNull(company.archivedAt),sql`app.is_admin_for(${company.id})`)).orderBy(asc(company.legalName),asc(company.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
+ const departments=await tx.select({value:department.id,label:department.name}).from(department).where(and(eq(department.tenantId,ctx.tenantId),isNull(department.archivedAt),visibleLabelIdsCondition(department,'department',[companyId]))).orderBy(asc(department.name),asc(department.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
+ const positions=await tx.select({value:position.id,label:position.title}).from(position).where(and(eq(position.tenantId,ctx.tenantId),isNull(position.archivedAt),visibleLabelIdsCondition(position,'position',[companyId]))).orderBy(asc(position.title),asc(position.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
+ const units=await tx.select({value:businessUnit.id,label:businessUnit.name}).from(businessUnit).where(and(eq(businessUnit.tenantId,ctx.tenantId),isNull(businessUnit.archivedAt),visibleLabelIdsCondition(businessUnit,'business_unit',[companyId]))).orderBy(asc(businessUnit.name),asc(businessUnit.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
+ const locations=await tx.select({value:location.id,label:location.name}).from(location).where(and(eq(location.tenantId,ctx.tenantId),eq(location.companyId,companyId),isNull(location.archivedAt))).orderBy(asc(location.name),asc(location.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
+ const grades=await tx.select({value:jobGrade.id,label:jobGrade.name,code:jobGrade.code}).from(jobGrade).where(and(eq(jobGrade.tenantId,ctx.tenantId),isNull(jobGrade.archivedAt))).orderBy(asc(jobGrade.code),asc(jobGrade.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
+ const managers=await tx.select({value:employment.id,label:employment.employeeCode,name:person.fullName}).from(employment).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).where(and(eq(employment.tenantId,ctx.tenantId),isNull(employment.terminatedOn))).orderBy(asc(employment.employeeCode),asc(employment.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
+ if([companies,departments,positions,units,locations,grades,managers].some(rows=>rows.length>MOVEMENT_IMPORT_LIMITS.referenceRows))throw new Error('movement_reference_catalog_too_large');
  const fields:MovementImportCatalog['fields']={companyId:companies,departmentId:departments,positionId:positions,businessUnitId:units,locationId:locations,gradeId:grades.map(row=>({value:row.value,label:row.code+' · '+row.label,aliases:[row.code,row.label]})),managerEmploymentId:managers.map(row=>({value:row.value,label:(row.label??'')+' · '+row.name,aliases:[row.label??'',row.name].filter(Boolean)}))};
- const options=await tx.select({category:profileOption.category,value:profileOption.value,label:profileOption.label}).from(profileOption).where(and(eq(profileOption.tenantId,ctx.tenantId),eq(profileOption.isActive,true))).orderBy(asc(profileOption.category),asc(profileOption.sortOrder),asc(profileOption.id)).limit(10001);
- if(options.length>10000)throw new Error('movement_reference_catalog_too_large');
+ const options=await tx.select({category:profileOption.category,value:profileOption.value,label:profileOption.label}).from(profileOption).where(and(eq(profileOption.tenantId,ctx.tenantId),eq(profileOption.isActive,true))).orderBy(asc(profileOption.category),asc(profileOption.sortOrder),asc(profileOption.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
+ if(options.length>MOVEMENT_IMPORT_LIMITS.referenceRows)throw new Error('movement_reference_catalog_too_large');
  for(const field of Object.keys(fieldKinds) as (keyof typeof fieldKinds)[]){
   const category=personnelFormField(MOVEMENT_FORM_IDS[field]).allowedValuesOwner?.replace(/^profile_option:/,'');
   fields[field]=options.filter(row=>row.category===category).map(({value,label})=>({value,label}));
  }
- if(Object.values(fields).some(rows=>rows&&rows.length>1000))throw new Error('movement_reference_catalog_too_large');
+ if(Object.values(fields).some(rows=>rows&&rows.length>MOVEMENT_IMPORT_LIMITS.referenceRows))throw new Error('movement_reference_catalog_too_large');
  return {types,companies,fields};
 }
 export function movementImportCatalog(ctx:SessionContext,companyId:string){assertAdmin(ctx);return withTenant(ctx,async tx=>{await limits(tx);return catalogTx(tx,ctx,companyId);},{readOnlySnapshot:true});}
@@ -74,9 +68,9 @@ async function inputTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,empl
  const effectiveDate=movementImportDate(record.cells.effectiveDate!)!;
  const [dates]=await tx.select({hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,lastWorkingDate:employment.lastWorkingDate,resignationDate:employment.resignationDate}).from(employment).where(eq(employment.id,employmentId)).limit(1);
  if(!dates)throw new Error('employee_not_available');
- if(resolved.behaviourKind!=='groupJoinDateCorrection'&&effectiveDate<dates.hiredOn)throw new Error('event_before_hire');
+ if(!['groupJoinDateCorrection','blacklist'].includes(resolved.behaviourKind)&&effectiveDate<dates.hiredOn)throw new Error('event_before_hire');
  const exit=[dates.terminatedOn,dates.lastWorkingDate,dates.resignationDate].filter((date):date is string=>!!date).sort()[0];
- if(exit&&effectiveDate>exit&&!['blacklist','groupJoinDateCorrection'].includes(resolved.behaviourKind))throw new Error('event_after_exit');
+ if(exit&&effectiveDate>exit&&(isComparisonKind(resolved.behaviourKind)||['secondment','actingPosition'].includes(resolved.behaviourKind)))throw new Error('event_after_exit');
  if(resolved.behaviourKind==='blacklist'&&effectiveDate!==todayInKualaLumpur())throw new Error('blacklist_date_must_be_today');
  const targetCompanyId=record.cells.companyId?lookup(record.cells.companyId,source.companies,'companyId'):currentCompanyId;
  const catalog=targetCompanyId===currentCompanyId?source:await catalogTx(tx,ctx,targetCompanyId);
@@ -103,7 +97,6 @@ async function inputTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,empl
 async function subjectTx(tx:Tx,ctx:SessionContext,companyId:string,code:string){
  const rows=await tx.select({id:employment.id,name:person.fullName}).from(employment).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.companyId,companyId),eq(employment.employeeCode,code),sql`app.is_admin_for(${employment.companyId})`)).limit(2);
  if(rows.length!==1)throw new Error('employee_not_found_in_selected_company');
- await lockLabelCriteriaTx(tx,ctx.tenantId);
  await lockEmploymentStatutoryOwnerTx(tx,rows[0].id);
  const locked=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,rows[0].id),eq(employment.companyId,companyId))).for('update');
  if(!locked.length)throw new Error('employee_changed');
@@ -117,16 +110,22 @@ async function subjectTx(tx:Tx,ctx:SessionContext,companyId:string,code:string){
  * The digest is a stale-preview comparison, never an authorization credential. All writes revalidate. */
 async function fingerprintTx(tx:Tx,ctx:SessionContext,id:string,companyId:string,inputHash:string,selection:number[],records:MovementImportRecord[],deadline:number){
  const emp=await tx.select().from(employment).where(eq(employment.id,id));
- const assignments=await tx.select().from(assignment).where(eq(assignment.employmentId,id)).orderBy(asc(assignment.id));
- const salaries=await tx.select().from(compensation).where(eq(compensation.employmentId,id)).orderBy(asc(compensation.id));
- const lines=await tx.select().from(reportingLine).where(or(eq(reportingLine.subordinateEmploymentId,id),eq(reportingLine.managerEmploymentId,id))).orderBy(asc(reportingLine.id));
- const events=await tx.select({id:domainEvent.id,sequence:domainEvent.sequence,payload:domainEvent.payload}).from(domainEvent).where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.subjectEmploymentId,id))).orderBy(asc(domainEvent.sequence),asc(domainEvent.id));
+ const assignments=await tx.select().from(assignment).where(eq(assignment.employmentId,id)).orderBy(asc(assignment.id)).limit(MOVEMENT_IMPORT_LIMITS.historyRows+1);
+ const salaries=await tx.select().from(compensation).where(eq(compensation.employmentId,id)).orderBy(asc(compensation.id)).limit(MOVEMENT_IMPORT_LIMITS.historyRows+1);
+ const lines=await tx.select().from(reportingLine).where(or(eq(reportingLine.subordinateEmploymentId,id),eq(reportingLine.managerEmploymentId,id))).orderBy(asc(reportingLine.id)).limit(MOVEMENT_IMPORT_LIMITS.historyRows+1);
+ const events=await tx.select({id:domainEvent.id,sequence:domainEvent.sequence,payload:domainEvent.payload}).from(domainEvent).where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.subjectEmploymentId,id))).orderBy(asc(domainEvent.sequence),asc(domainEvent.id)).limit(MOVEMENT_IMPORT_LIMITS.historyRows+1);
+ if([assignments,salaries,lines,events].some(rows=>rows.length>MOVEMENT_IMPORT_LIMITS.historyRows))throw new Error('movement_history_too_large');
  const source=await catalogTx(tx,ctx,companyId);const destinations=new Set([companyId]);
  for(const record of records)if(record.cells.companyId){try{destinations.add(lookup(record.cells.companyId,source.companies,'companyId'));}catch{/* The row validator reports an invalid reference without discarding other rows. */}}
- const catalogs=[];for(const destination of [...destinations].sort()){budget(deadline);catalogs.push([destination,destination===companyId?source:await catalogTx(tx,ctx,destination)]);}
+ const catalogs=[];for(const destination of [...destinations].sort()){budget(deadline);catalogs.push([destination,digest(destination===companyId?source:await catalogTx(tx,ctx,destination))]);}
  return digest({tenant:ctx.tenantId,user:ctx.userId??null,inputHash,selection,emp,assignments,salaries,lines,events,catalogs});
 }
-function message(error:unknown){return error instanceof Error&&!('code' in error)?error.message:'The change was refused. No changes from this employee were saved.';}
+function message(error:unknown){
+ // Drizzle wraps driver errors; its outer message contains SQL and bound values even when only
+ // cause carries the PostgreSQL code. Never put that text in a preview or downloadable row report.
+ if(!(error instanceof Error)||['code','query','params','cause'].some(key=>key in error)||error.name==='DrizzleQueryError')return 'change_refused';
+ return error.message.slice(0,1000);
+}
 function rowView(record:MovementImportRecord):MovementImportRow{return {row:record.row,employeeCode:record.employeeCode,eventType:record.cells.kind??'',effectiveDate:movementImportDate(record.cells.effectiveDate??'')??record.cells.effectiveDate??'',status:'excluded',errors:[...record.errors]};}
 function selectionFor(records:MovementImportRecord[],selection?:number[]){
  if(selection===undefined)return records.map(row=>row.row);

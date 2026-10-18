@@ -2123,7 +2123,12 @@
           "event_after_exit": "An ordinary event cannot follow the recorded employment end.",
           "same_date_conflicting_changes": "Two selected events change the same field on the same date. Resolve the conflict first.",
           "duplicate_event_in_sequence": "The selected sequence contains a duplicate event.",
-          "ambiguous_current_records": "Current employment records are ambiguous. Review Personnel before importing."
+          "ambiguous_current_records": "Current employment records are ambiguous. Review Personnel before importing.",
+          "no_data_rows": "Add at least one event row below the header.",
+          "movement_catalog_too_large": "The event type list exceeds this import’s supported size. Use individual New Event entries.",
+          "movement_reference_catalog_too_large": "A reference list exceeds this import’s supported size. Use Personnel for these changes.",
+          "movement_history_too_large": "This employee’s history exceeds the bounded import check. Use Personnel to record the event.",
+          "change_refused": "The change was refused. No changes from this employee were saved."
         }
       }
     },

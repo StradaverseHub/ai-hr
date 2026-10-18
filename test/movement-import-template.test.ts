@@ -16,8 +16,8 @@ describe('live Movement workbook',()=>{
   expect(wb.SheetNames).toEqual(['Movements','Instructions','Lists']);expect(wb.Workbook?.Sheets?.every(sheet=>!sheet.Hidden)).toBe(true);
   expect(wb.Sheets.Movements.A2?.z??wb.Sheets.Movements.A2?.t).toBeDefined();
   const {default:JSZip}=await import('jszip');const zip=await JSZip.loadAsync(bytes);const sheet=await zip.file('xl/worksheets/sheet1.xml')!.async('string');
-  expect(sheet).toContain('sqref="B2:B501"');expect(sheet).toContain('AIHR_Personnel_0_1');
+  expect(sheet).toContain('sqref="B2:B201"');expect(sheet).toContain('AIHR_Personnel_0_1');
   const workbook=await zip.file('xl/workbook.xml')!.async('string');expect(workbook).toMatch(/(?:&apos;|')Lists(?:&apos;|')/);
-  const decoded=await workbookToCsvTexts(bytes,[],false,['Instructions','Lists']);expect(parseMovementImport(decoded.first).fileErrors).toEqual([]);
+  const decoded=await workbookToCsvTexts(bytes,[],false,['Instructions','Lists']);expect(parseMovementImport(decoded.first).fileErrors).toEqual(['no_data_rows']);
  });
 });

@@ -2123,7 +2123,12 @@
           "event_after_exit": "普通事件不能晚于已记录的雇佣结束日期。",
           "same_date_conflicting_changes": "两个所选事件在同一天更改同一字段，请先解决冲突。",
           "duplicate_event_in_sequence": "所选顺序包含重复事件。",
-          "ambiguous_current_records": "当前雇佣记录不唯一，请先在人事资料中检查。"
+          "ambiguous_current_records": "当前雇佣记录不唯一，请先在人事资料中检查。",
+          "no_data_rows": "请在标题下方添加至少一行事件。",
+          "movement_catalog_too_large": "事件类型列表超出本导入支持的范围，请使用单独的新建事件。",
+          "movement_reference_catalog_too_large": "参考列表超出本导入支持的范围，请在人事资料中进行这些更改。",
+          "movement_history_too_large": "此员工的历史超出导入检查范围，请在人事资料中记录事件。",
+          "change_refused": "变更被拒绝，此员工的更改均未保存。"
         }
       }
     },

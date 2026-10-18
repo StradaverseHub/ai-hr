@@ -2123,7 +2123,12 @@
           "event_after_exit": "Peristiwa biasa tidak boleh selepas tarikh tamat pekerjaan direkodkan.",
           "same_date_conflicting_changes": "Dua peristiwa dipilih mengubah medan sama pada tarikh sama. Selesaikan konflik dahulu.",
           "duplicate_event_in_sequence": "Urutan dipilih mengandungi peristiwa berulang.",
-          "ambiguous_current_records": "Rekod pekerjaan semasa tidak jelas. Semak Personel sebelum import."
+          "ambiguous_current_records": "Rekod pekerjaan semasa tidak jelas. Semak Personel sebelum import.",
+          "no_data_rows": "Tambah sekurang-kurangnya satu baris peristiwa di bawah pengepala.",
+          "movement_catalog_too_large": "Senarai jenis peristiwa melebihi saiz import yang disokong. Gunakan entri Peristiwa Baharu individu.",
+          "movement_reference_catalog_too_large": "Senarai rujukan melebihi saiz import yang disokong. Gunakan Personel untuk perubahan ini.",
+          "movement_history_too_large": "Sejarah pekerja ini melebihi had semakan import. Gunakan Personel untuk merekodkan peristiwa.",
+          "change_refused": "Perubahan ditolak. Tiada perubahan untuk pekerja ini disimpan."
         }
       }
     },
