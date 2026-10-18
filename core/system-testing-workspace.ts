@@ -10,7 +10,7 @@ import { executionInputSchema, legacyOutcomeFor, parseInstruction, parseInstruct
 import { testingDigest } from '../lib/system-testing/hash';
 import { assertModuleEnabled } from './entitlements';
 import { submitFeedback } from './feedback';
-import { isTestableModule, nextTestCaseNoTx, SYSTEM_TESTING_MODULE } from './system-testing';
+import { isTestableModule, listTestableModules, nextTestCaseNoTx, SYSTEM_TESTING_MODULE } from './system-testing';
 
 function participant(ctx: SessionContext): string {
   assertModuleEnabled(ctx, SYSTEM_TESTING_MODULE);
