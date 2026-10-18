@@ -1,7 +1,7 @@
 /** Browser template: transport names stay stable; field/type labels and guidance follow app locale. */
 import type {MovementImportCatalog} from '../core/movement-import';
-import {MOVEMENT_FORM_IDS,movementFormFields,movementFormRequired,type MovementFormField} from './movement-form-contract';
-import {MOVEMENT_IMPORT_COLUMNS,MOVEMENT_IMPORT_FIELDS,MOVEMENT_IMPORT_HEADERS,MOVEMENT_IMPORT_LIMITS} from './movement-import-contract';
+import {MOVEMENT_FORM_IDS,movementFormFields,type MovementFormField} from './movement-form-contract';
+import {MOVEMENT_IMPORT_COLUMNS,MOVEMENT_IMPORT_FIELDS,MOVEMENT_IMPORT_HEADERS,MOVEMENT_IMPORT_LIMITS,movementImportRequired} from './movement-import-contract';
 import {personnelFieldLabel,type PersonnelLabelResolver,personnelFieldChoices} from './personnel-import-contract';
 import {personnelFormField} from './personnel-form-contract';
 import {TERMINATION_REASON_CODES} from '../core/termination-reason';
@@ -27,7 +27,7 @@ export function movementImportTemplate(catalog:MovementImportCatalog,resolve:Per
   [],[words('eventType','Event type'),words('behaviour','Behaviour'),words('requiredFields','Required fields'),words('optionalFields','Optional fields')],
   ...catalog.types.map(type=>{
    const fields=movementFormFields(type.behaviour,'resignation').filter(field=>field!=='kind');
-   return [`${type.code} · ${typeLabel(type)}`,resolve('people.detail.movement.eventType.'+type.behaviour,type.behaviour),['Employee ID','EffectiveDate',...fields.filter(field=>field!=='effectiveDate'&&movementFormRequired(field,type.behaviour)).map(field=>field==='endDate'&&type.behaviour==='termination'?personnelFieldLabel(personnelFormField('employment_history.event_information.lastworkingdate'),resolve):field==='resignationDate'?label(field)+' ('+words('resignationOnly','resignation reason only')+')':label(field))].join(', '),fields.filter(field=>field!=='effectiveDate'&&!movementFormRequired(field,type.behaviour)).map(label).join(', ')];
+   return [`${type.code} · ${typeLabel(type)}`,resolve('people.detail.movement.eventType.'+type.behaviour,type.behaviour),['Employee ID','EffectiveDate',...fields.filter(field=>field!=='effectiveDate'&&movementImportRequired(field,type.behaviour)).map(field=>field==='endDate'&&type.behaviour==='termination'?personnelFieldLabel(personnelFormField('employment_history.event_information.lastworkingdate'),resolve):field==='resignationDate'?label(field)+' ('+words('resignationOnly','resignation reason only')+')':label(field))].join(', '),fields.filter(field=>field!=='effectiveDate'&&!movementImportRequired(field,type.behaviour)).map(label).join(', ')];
   }),
   [],[words('terminationHint','For Termination, End date is Last Working Day. Resignation date is required only for resignation reason; termination reason determines exit classification.')],
   [],[words('column','Column'),words('field','Personnel field'),words('values','Values')],
