@@ -40,7 +40,7 @@ async function main() {
     const { hireEmployee } = await import('../core/org');
     const { createBusinessUnit, createDepartment } = await import('../core/admin');
     const { saveEmployeeDraft, completeEmployeeDraft } = await import('../core/employee-draft');
-    const { onboardingSetup, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, createOnboardingCase, refreshOnboardingPersonnel, sweepOnboarding } = await import('../packs/lifecycle/service');
+    const { onboardingSetup, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, createOnboardingCase, refreshOnboardingPersonnel, sweepOnboarding, cancelCase } = await import('../packs/lifecycle/service');
     const { todayInKualaLumpur } = await import('../lib/hr-date'), M = await import('../lib/onboarding-model');
     try {
         const prior = await readFile(out, 'utf8').then(JSON.parse, () => null);
@@ -111,14 +111,20 @@ async function main() {
         const activated = await completeEmployeeDraft(hr, ameliaDraft.id);
         const [activeEmployee] = await owner.db.select().from(schema.employment).where(eq(schema.employment.id, activated.employmentId));
         users.amelia = { id: await createAppUser(b.tenantId, activeEmployee!.personId, 'employee'), personId: activeEmployee!.personId, employmentId: activeEmployee!.id, name: 'Amelia Tan' };
+        const olderDraft = await saveEmployeeDraft(hr, { data: { profile: { fullName: 'Fictional Older Handover', employeeCode: 'DEMO-OLD-WORK', primaryEmail: 'older-handover@onb-fixture.example.test' }, employment: { companyId: b.companyId, departmentId: manufacturingDept.id, positionId: b.positionId, hiredOn: M.dayDate(today, -40), employmentType: 'full_time', reportingManagerEmploymentId: users.farid!.employmentId }, payroll: { basicSalary: '5000' } }, currentStep: 2 });
+        const older = (await onboardingList(hr)).find(r => r.case.sourceDraftId === olderDraft.id)!;
+        await onboardingCommand(hr, older.case.id, older.revision, {type:'saveSubmit',patch:{hiring:'new_hire',checklistOverride:'none',selected:['laptop']}});
+        await completeEmployeeDraft(hr,olderDraft.id);
         await refreshOnboardingPersonnel(master);
         await sweepOnboarding(master);
         const legacy = await createOnboardingCase(master, { companyId: b.companyId, fullName: 'Fictional legacy hire', employeeNo: 'DEMO-OLD-1', joinDate: today, jobTitle: 'Analyst', department: 'Finance', supervisor: 'Sarah Lim', laptopRequired: true, carparkRequired: false });
+        const historical = await createOnboardingCase(master, { companyId: b.companyId, fullName: 'Fictional historical hire', employeeNo: 'DEMO-HISTORY-1', joinDate: M.dayDate(today,-60), jobTitle: 'Analyst', department: 'Finance', supervisor: 'Sarah Lim', laptopRequired: false, carparkRequired: false });
+        await cancelCase(master,'onboarding',historical.number,'Synthetic preserved historical case');
         const legacyRows = await owner.db.select().from(schema.lcCase).orderBy(asc(schema.lcCase.id)), legacyHistory = await owner.db.select().from(schema.lcHistory).orderBy(asc(schema.lcHistory.id));
         rows = await onboardingList(hr);
         await mkdir(resolve('scratchpad/onb-v31'), { recursive: true });
-        await writeFile(out, JSON.stringify({ synthetic: true, digestVersion: 2, tenantId: b.tenantId, companyId: b.companyId, users, caseIds: rows.map(r => r.case.id), haziq: rows.find(r => r.case.sourceDraftId === pending.id)!.case.id, amelia: amelia.case.id, legacyId: legacy.id, legacyDigest: createHash('sha256').update(JSON.stringify({ legacyRows, legacyHistory })).digest('hex') }, null, 2), { mode: 0o600, flag: 'wx' });
-        console.log('Created three isolated onboarding journeys, nine staff personas and a new-joiner account and a legacy preservation witness.');
+        await writeFile(out, JSON.stringify({ synthetic: true, digestVersion: 2, tenantId: b.tenantId, companyId: b.companyId, users, caseIds: rows.map(r => r.case.id), haziq: rows.find(r => r.case.sourceDraftId === pending.id)!.case.id, amelia: amelia.case.id, legacyId: legacy.id, legacyHistoryNumber: historical.number, older: older.case.id, legacyDigest: createHash('sha256').update(JSON.stringify({ legacyRows, legacyHistory })).digest('hex') }, null, 2), { mode: 0o600, flag: 'wx' });
+        console.log('Created four isolated onboarding journeys, nine staff personas and a new-joiner account, with active and historical legacy preservation witnesses.');
     }
     finally {
         await closeAll();
