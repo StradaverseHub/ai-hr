@@ -15,7 +15,7 @@ export default async function Page({ params, searchParams }: {
     }>;
 }) {
     const s = await requireModule('lifecycle'), { id } = await params, { generation } = await searchParams;
-    if (!/^[0-9a-f-]{36}$/i.test(id))
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))
         notFound();
     const detail = await onboardingDetail(s, id, 'requisition', generation).catch(e => {
         if (e instanceof OnboardingError && ['not_found', 'forbidden'].includes(e.code))
