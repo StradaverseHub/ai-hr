@@ -557,6 +557,7 @@ describe('r261 — who approves, and the two things that setting must never do',
      * administrators, and this case asks the question under BOTH of them.
      */
     const { E, requestId } = await pendingRequestFor('NeverWider');
+    const before=await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,requestId));
     const boss = await hire('Boss');
     await setReportingLine(adminCtx(b), {
       subordinateEmploymentId: E.employmentId,
@@ -571,11 +572,11 @@ describe('r261 — who approves, and the two things that setting must never do',
       await setTenantSetting(groupAdminCtx(), { key: PROFILE_REQUEST_APPROVER_SETTING_KEY, value });
       const boss2 = await freshCtx(bossCtx);
       const colleague2 = await freshCtx(colleague);
-      // The subject's own administrative manager: visible to them, and still not theirs to decide.
+      // A reporting line grants no request-decision UPDATE policy: this manager cannot lock the row.
       await expect(
         decideProfileChange(boss2, { requestId, decision: 'approved' }),
         `manager must not decide under '${value}'`,
-      ).rejects.toThrow(/Only an admin can approve/);
+      ).rejects.toThrow('profile change request not found (or not visible)');
       // A colleague: refused before the row is even readable.
       await expect(
         decideProfileChange(colleague2, { requestId, decision: 'approved' }),
@@ -584,6 +585,7 @@ describe('r261 — who approves, and the two things that setting must never do',
     }
     const [p] = await owner.db.select().from(person).where(eq(person.id, E.personId));
     expect(p.preferredName).toBeNull();
+    expect(await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,requestId))).toEqual(before);
   });
 
   it('NOBODY DECIDES THEIR OWN REQUEST, under either setting', async () => {

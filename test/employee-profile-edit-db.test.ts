@@ -154,9 +154,10 @@ describe('My Profile canonical transaction and scope',()=>{
   const s=await subject();await countryPack().statutory.set(admin(),{personId:s.personId,icNumber:'900101015020',taxCategory:2,taxCircumstance:'spouse_not_working'});
   await saveProfileEditPolicy(admin(),{keys:[taxCategoryField],withdrawnReason:'Field restricted'});const view=await readOwnProfileWorkspace(s.ctx,{employmentId:s.employmentId}),proposal=empty();proposal.fields=[{fieldId:taxCategoryField,before:view.baselines[taxCategoryField],value:1}];const result=await submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal});
   await countryPack().statutory.setTax(admin(),{personId:s.personId,taxCategory:2,taxCircumstance:'none',taxResidency:'none'});
+  const none=await countryPack().statutory.get(admin(),s.personId);expect(none).toMatchObject({taxCategory:2,taxCircumstance:'none'});
   await expect(decideProfileChange(admin(),{requestId:result.requestId!,decision:'approved'})).rejects.toMatchObject({code:'invalid',fieldIds:[taxCategoryField]});
   await expect(submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal})).rejects.toMatchObject({code:'invalid',fieldIds:[taxCategoryField]});
-  expect(await countryPack().statutory.get(admin(),s.personId)).toMatchObject({taxCategory:2,taxCircumstance:'none',taxResidency:'none'});const [request]=await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,result.requestId!));expect(request.status).toBe('pending');
+  expect(await countryPack().statutory.get(admin(),s.personId)).toEqual(none);const [request]=await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,result.requestId!));expect(request.status).toBe('pending');
  });
  it('keeps a future final day eligible and rejects an elapsed final day under the same stale client context',async()=>{
   const s=await subject();const today=todayInKualaLumpur(),tomorrow=new Date(Date.parse(today+'T00:00:00Z')+86400000).toISOString().slice(0,10),yesterday=new Date(Date.parse(today+'T00:00:00Z')-86400000).toISOString().slice(0,10);
@@ -169,7 +170,7 @@ describe('My Profile canonical transaction and scope',()=>{
   const s=await subject();await owner.db.update(person).set({primaryEmail:'',phone:'0110000000'}).where(eq(person.id,s.personId));
   await updatePersonProfilePartial(admin(),{personId:s.personId,preferredName:'Recorded fixture'});
   const [master]=await owner.db.select().from(person).where(eq(person.id,s.personId));expect(master.primaryEmail).toBe('');expect(master.phone).toBe('0110000000');expect(master.preferredName).toBe('Recorded fixture');
-  await expect(updatePersonProfilePartial(admin(),{personId:s.personId,fullName:' '})).rejects.toThrow('Name is required');await expect(updatePersonProfilePartial(admin(),{personId:s.personId,primaryEmail:' '})).rejects.toThrow('Email is required');await expect(updatePersonProfilePartial(admin(),{personId:s.personId,primaryEmail:'invalid-email'})).rejects.toThrow('Email is invalid');
+  await expect(async()=>updatePersonProfilePartial(admin(),{personId:s.personId,fullName:' '})).rejects.toThrow('Name is required');await expect(async()=>updatePersonProfilePartial(admin(),{personId:s.personId,primaryEmail:' '})).rejects.toThrow('Email is required');await expect(async()=>updatePersonProfilePartial(admin(),{personId:s.personId,primaryEmail:'invalid-email'})).rejects.toThrow('Email is invalid');
  });
  it('removes non-CRUD and PUBLIC grants while retaining canonical request history and scoped decisions',async()=>{
   const [row]=await owner.db.execute(sql`select has_table_privilege('ai_hr_app','profile_change_request','TRUNCATE') truncate,has_table_privilege('ai_hr_app','profile_change_request','REFERENCES') references,has_table_privilege('ai_hr_app','profile_change_request','TRIGGER') trigger,has_table_privilege('ai_hr_app','profile_change_request','SELECT,INSERT,UPDATE,DELETE') crud`);

@@ -435,7 +435,7 @@ describe('r261 — the two settings are catalogued, and catalogued the way they 
 describe('r261 — a switched-off field is ABSENT from the employee\'s screen, not disabled on it', () => {
   it('the actual editor keeps View Only visible and derives writable controls only from the fresh owner permission sets',()=>{
     expect(ME_PAGE).toContain('readOwnProfileWorkspace(s,{employmentId})');expect(ESS_EDITOR).toContain('const editable=new Set(workspace.editable),primaryEditable=new Set(workspace.legacyPrimaryEditable)');
-    expect(ESS_EDITOR).toContain('const allowed=canEdit(field.id,row)');expect(ESS_EDITOR).toContain('{allowed?<div');expect(ESS_EDITOR).toContain('{displayValue}');
+    expect(ESS_EDITOR).toContain('const allowed=applicable&&taxAvailable&&canEdit(field.id,row)');expect(ESS_EDITOR).toContain('{allowed?<div');expect(ESS_EDITOR).toContain('{displayValue}');
     expect(ESS_OWNER).toContain('freshProfileEditPolicyTx(tx,ctx)');expect(ESS_OWNER).toContain("throw new EssProfileError('fieldClosed',[field.id])");
     expect(APPROVALS_PAGE).toContain("getSettingOrFallback<string>(s, 'ess.profile_change_approver', 'group_admin')");
   });
@@ -481,7 +481,7 @@ describe('r261 — a switched-off field is ABSENT from the employee\'s screen, n
     const sweep = CORE_PROFILE.slice(CORE_PROFILE.indexOf('export async function pendingProfileChangeCountsByKey'));
     expect(sweep, 'the pending queue must not be read behind a blind row cap').not.toContain('.limit(1000)');
     expect(CORE_PROFILE, 'the locked keys are matched IN the database, not sifted in TypeScript').toContain(
-      'sql`${profileChangeRequest.proposed} ?| ARRAY[${sql.join(',
+      'sql`(${profileChangeRequest.proposed} ?| ARRAY[${sql.join(',
     );
     expect(CORE_PROFILE, 'the counts are aggregated in SQL over every pending row').toContain(
       "SELECT jsonb_object_keys(CASE WHEN r.proposed->>'v'='2'",

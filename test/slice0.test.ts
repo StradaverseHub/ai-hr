@@ -1604,7 +1604,7 @@ describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () 
     };
     await expect(
       decideAttendanceCorrection(selfCtx, { correctionId, decision: 'approved' }),
-    ).rejects.toMatchObject({code:'permission'});
+    ).rejects.toThrow('You cannot decide your own attendance application');
   });
 
   it('rejecting leaves attendance untouched', async () => {
@@ -1639,7 +1639,7 @@ describe('ESS — profile self-service (ADR-0012)', () => {
     const a = adminCtx(base);
     const E = await hire(a, base, 'Contacter');
     const emp = await empCtxFor(E.personId);
-    await expect(updateOwnContact(emp,{phone:'0123456789',addressLine1:'12 Jalan Test',emergencyContactName:'Next of Kin'})).rejects.toMatchObject({code:'invalid'});
+    await expect(updateOwnContact(emp,{phone:'0123456789',addressLine1:'12 Jalan Test',emergencyContactName:'Next of Kin'})).rejects.toMatchObject({code:'addressReview'});
     await updateOwnContact(emp,{phone:'0123456789'});
     const [p]=await owner.db.select().from(schema.person).where(eq(schema.person.id,E.personId));
     expect(p.phone).toBe('0123456789');expect(p.addressLine1).toBeNull();
@@ -1757,7 +1757,7 @@ describe('ESS — profile self-service (ADR-0012)', () => {
     };
     await expect(
       decideProfileChange(mgrCtx, { requestId, decision: 'approved' }),
-    ).rejects.toThrow(/only an admin/i);
+    ).rejects.toThrow('profile change request not found (or not visible)');
   });
 
   it('the requesting employee cannot approve their own change', async () => {
@@ -1771,7 +1771,7 @@ describe('ESS — profile self-service (ADR-0012)', () => {
     });
     await expect(
       decideProfileChange(emp, { requestId, decision: 'approved' }),
-    ).rejects.toMatchObject({code:'permission'});
+    ).rejects.toThrow('profile change request not found (or not visible)');
   });
 });
 
