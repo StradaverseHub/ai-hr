@@ -22,8 +22,8 @@
  * contents MOVED and the move is asserted below exactly the way the Leave tab's was:
  *   • Performance (goals / 360 feedback / 1:1 check-ins) → /me/performance, a screen of its own, because
  *     /performance redirects a plain employee away and this was their only route to their own goals;
- *   • Overview → its clock in/out control stayed on /me ABOVE the tab strip (one of only two places a
- *     geofenced punch can be made), and its concurrent-positions list moved onto the Employment tab.
+ *   • Overview → its concurrent-positions list moved onto the Employment tab. The later approved Profile
+ *     redesign removes quick clocking from /me; the mounted /attendance/clock client retains both punches.
  * The tab NAMES are no longer asserted here — they are Personnel's keys now, and
  * test/me-profile-visibility.test.ts is where that relationship is pinned.
  */
@@ -78,11 +78,10 @@ const CORRECTION_FORM = fs.readFileSync(
   'utf8',
 );
 
-// Every server action the page bound on the long-scroll layout. Losing any of these = an ESS capability
-// silently disappears from the UI, which the tab restructure must never do.
+// Server actions retained on the current /me surface. Approved relocations are checked at their
+// mounted destination as well as absent here; removing a name alone cannot prove a capability survived.
 const ACTIONS = [
-  'myCheckIn',
-  'myCheckOut',
+  // Check In/Out now use the mounted Attendance clock client and canonical API, checked below.
   // myRequestCorrection / myRequestOvertime / myRequestTravel left this list with the request forms
   // (0bb0e303 rev2) — they are bound on /attendance/requests, asserted in the describe at the foot.
   // myRequestLeave / myPreviewLeaveDeduction left this list with the Leave tab (a7cbd895) — the apply
@@ -94,16 +93,37 @@ const ACTIONS = [
   'mySubmitResignation',
   'myWithdrawResignation',
 ];
+const CLOCK_PAGE = fs.readFileSync(path.resolve(__dirname, '../app/attendance/clock/page.tsx'), 'utf8');
+const CLOCK_CLIENT = fs.readFileSync(path.resolve(__dirname, '../app/attendance/clock/clock-client.tsx'), 'utf8');
+const CLOCK_API = fs.readFileSync(path.resolve(__dirname, '../app/api/attendance/clock/route.ts'), 'utf8');
+// A historical comment naming a retired form must not satisfy an executable binding assertion.
+const codeOnly = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 const PERFORMANCE_PAGE_SRC = fs.readFileSync(
   path.resolve(__dirname, '../app/me/performance/page.tsx'),
   'utf8',
 );
 
 describe('/me — tabbed My Workspace (311ad7ba)', () => {
-  it('keeps every server-action binding present after the tab restructure', () => {
+  it('keeps current /me actions and retains both clock directions on the mounted Attendance clock surface', () => {
+    const me = codeOnly(ME_SURFACE), clockPage = codeOnly(CLOCK_PAGE), clockClient = codeOnly(CLOCK_CLIENT), clockApi = codeOnly(CLOCK_API);
     for (const a of ACTIONS) {
-      expect(ME_SURFACE.includes(`action={${a}}`), `missing form action={${a}}`).toBe(true);
+      expect(me.includes(`action={${a}}`), `missing retained /me form action={${a}}`).toBe(true);
     }
+    for (const retired of ['myCheckIn', 'myCheckOut', 'AttendanceClockButton']) expect(me).not.toMatch(new RegExp(`\\b${retired}\\b`));
+    expect(clockPage).toContain("import { ClockPageClient } from './clock-client'");
+    expect(clockPage).toContain('const initial=await ownClockToday(session)');
+    expect(clockPage).toContain('<ClockPageClient initial={initial}');
+    for (const direction of ['in', 'out']) expect(clockClient).toContain(`onClick={()=>startClock('${direction}')}`);
+    const start = clockClient.indexOf('function startClock('), end = clockClient.indexOf('const blocked=', start);
+    expect(start, 'mounted clock direction dispatcher exists').toBeGreaterThanOrEqual(0);
+    expect(end, 'dispatcher slice is nonempty and bounded by its following control state').toBeGreaterThan(start + 120);
+    expect(clockClient.slice(start, end)).toContain('void confirm(direction)');
+    expect(clockClient).toContain('Object.entries({action:direction,requestId,');
+    expect(clockClient).toContain("fetch('/api/attendance/clock',{method:'POST',body:command.current.body})");
+    expect(clockApi).toContain('export async function POST(request: Request)');
+    expect(clockApi).toContain('const session = await clockApiSession()');
+    expect(clockApi).toContain("from '@/packs/attendance/service'");
+    expect(clockApi).toContain("await captureEmployeeClock(session,{action:String(data.get('action')) as 'in'|'out'");
   });
 
   it('wires all eleven Personnel tabs while Leave mutations retain their existing destination',()=>{
@@ -131,7 +151,7 @@ describe('/me — tabbed My Workspace (311ad7ba)', () => {
   });
 
   it('keeps the link to the Attendance page after the Overview tab was retired (r259)', () => {
-    // The link outlived the tab it was on. It now sits beside the clock control above the tab strip.
+    // The link remains on the Profile Attendance panel; quick clocking is on its dedicated page.
     expect(PAGE.includes("href=\"/attendance\"")).toBe(true);
     expect(PAGE.includes("t('viewAttendanceHistory')")).toBe(true);
   });
