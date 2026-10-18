@@ -530,6 +530,8 @@ describe('2da9937a — the worked overtime examples', () => {
     const cat = await listPayComponents(a);
     const ot2 = cat.find((c) => c.code === 'OT2_0')!;
     const ot3 = cat.find((c) => c.code === 'OT3_0')!;
+    expect(ot2).toMatchObject({ name: 'Overtime 2.0', label: 'Overtime 2.0' });
+    expect(ot3).toMatchObject({ name: 'Overtime 3.0', label: 'Overtime 3.0' });
     expect(ot2.rule).toMatchObject({ kind: 'per_hour', rate: 22 });
     expect(ot3.rule).toMatchObject({ kind: 'per_hour', rate: 33 });
     // The statutory treatment is COPIED, never re-decided: 2× of the same payment is taxed the same way.
@@ -564,12 +566,15 @@ describe('2da9937a — the worked overtime examples', () => {
     await payItem('OT1_5', 'Overtime 1.5', { kind: 'per_hour', rate: HOURLY_1_5 });
     await seedOvertimeMultipliers(a);
     // The admin corrects OT2_0 by hand.
-    await payItem('OT2_0', 'Overtime 2.0', { kind: 'per_hour', rate: 25 });
+    await payItem('OT2_0', 'HR corrected overtime 2.0', { kind: 'per_hour', rate: 25 });
 
     const again = await seedOvertimeMultipliers(a);
     expect(again.created).toEqual([]);
     expect(again.skipped).toEqual(['OT2_0', 'OT3_0']);
     const cat = await listPayComponents(a);
+    expect(cat.find((c) => c.code === 'OT2_0')).toMatchObject({
+      name: 'HR corrected overtime 2.0', label: 'HR corrected overtime 2.0',
+    });
     expect(cat.find((c) => c.code === 'OT2_0')!.rule).toMatchObject({ kind: 'per_hour', rate: 25 });
   });
 

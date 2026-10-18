@@ -1436,6 +1436,7 @@ export function seedOvertimeMultipliers(
       await upsertPayComponent(ctx, {
         code,
         name: seed.name,
+        label: seed.name,
         kind: ref.kind as PayComponentInput['kind'],
         includedInEpf: ref.includedInEpf,
         includedInSocsoEis: ref.includedInSocsoEis,
