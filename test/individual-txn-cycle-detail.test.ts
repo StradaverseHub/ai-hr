@@ -26,7 +26,7 @@ describe('39c7 configured cycle labels on the actual Individual Transaction read
   await resetDb();base=await seedBase();await setModule(base.tenantId,'typed_pay_components','active');await setSetting(base.tenantId,'payroll.individual_txn_pay_enabled',true);ctx=await entitledCtx(base);
   const hired=await hireEmployee(ctx,{person:{fullName:'Fictional cycle detail',primaryEmail:randomUUID()+'@demo.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2026-01-01'});employmentId=hired.employmentId;personId=hired.personId;
   await setCompensation(ctx,{employmentId,basicSalary:5000,effectiveFrom:'2026-01-01'});await setStatutoryProfileMY(ctx,{personId,icNumber:'900101011234'});
-  const component=await createPayComponent(ctx,{code:'CYCLE_DETAIL',name:'Fictional cycle earning',kind:'allowance',includedInEpf:false,includedInSocsoEis:false,includedInPcb:false,includedInHrdfBase:false,isNonPayable:false,prorates:false});componentId=component.id;
+  const component=await createPayComponent(ctx,{code:'CYCLE_DETAIL',name:'Fictional cycle earning',label:'Fictional cycle earning',kind:'allowance',includedInEpf:false,includedInSocsoEis:false,includedInPcb:false,includedInHrdfBase:false,isNonPayable:false,prorates:false});componentId=component.id;
  });
  const rows=()=>listIndividualTxnsAcross(ctx,{companyIds:[base.companyId],employmentId,year:2026,month:10});
  const cycle=(name:string,runType:'regular'|'off_cycle'='regular',companyId=base.companyId)=>upsertPayrollCycle(ctx,{companyId,name,runType});

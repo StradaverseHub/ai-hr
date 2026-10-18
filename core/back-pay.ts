@@ -101,6 +101,7 @@ import { type SessionContext, type Tx } from '../db/client';
 // See core/module-gate.ts.
 import { withPayrollTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent } from '../db/events';
+import { assertPayComponentReady } from '../lib/pay-component-contract';
 import {
   appUser,
   backPayLine,
@@ -393,6 +394,7 @@ async function computeLinesTx(tx: Tx, p: { candidates: ArrearsCandidate[] }): Pr
       name: payComponent.name,
       kind: payComponent.kind,
       rule: payComponent.rule,
+      pendingInputKind: payComponent.pendingInputKind,
       resolutionOrder: payComponent.resolutionOrder,
       prorates: payComponent.prorates,
       rounding: payComponent.roundingMethod,
@@ -552,6 +554,7 @@ async function computeLinesTx(tx: Tx, p: { candidates: ArrearsCandidate[] }): Pr
       for (const r of recurring) {
         const c = catalogById.get(r.componentId);
         if (!c) continue;
+        assertPayComponentReady(c);
         entries.push({
           code: c.code,
           name: c.name,
@@ -569,6 +572,7 @@ async function computeLinesTx(tx: Tx, p: { candidates: ArrearsCandidate[] }): Pr
       for (const r of batchComps) {
         const c = catalogById.get(r.componentId);
         if (!c) continue;
+        assertPayComponentReady(c);
         entries.push({
           code: c.code,
           name: c.name,

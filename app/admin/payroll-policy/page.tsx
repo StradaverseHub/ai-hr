@@ -37,7 +37,7 @@ export default async function PayrollPolicyPage({
   const companies = all.filter((c) => scopeIds.includes(c.id));
   const policies = await listPolicies(s, scopeIds);
   // f3148da1 Step 4 — pay components offered as the "convert OT excess to pay item" target (earnings only).
-  const payComponents = (await listPayComponents(s)).filter((c) => c.kind === 'allowance');
+  const payComponents = (await listPayComponents(s, { readyOnly: true })).filter((c) => c.kind === 'allowance');
 
   // Search / filter / sort (the catalog is small — applied in-page over the server-rendered list).
   const sortKey: SortKey = (['name', 'type', 'status', 'updated'] as const).includes(sort as SortKey) ? (sort as SortKey) : 'name';

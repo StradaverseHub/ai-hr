@@ -493,7 +493,7 @@ export default async function EmployeePage({
   // Typed pay components (Wave 3 #9) — recurring components for this employee + the catalog to add from.
   // r298 — Payroll-owned: not read at all for a tenant without Payroll (see `payrollOn`).
   const payComps = admin && payrollOn ? await listEmploymentPayComponents(s, employmentId) : [];
-  const componentCatalog = admin && payrollOn ? await listPayComponents(s) : [];
+  const componentCatalog = admin && payrollOn ? await listPayComponents(s, { readyOnly: true }) : [];
   // 1.2.3 CP38 — per-employee LHDN instalment records (admin-only master data). r298 — Payroll-owned.
   const cp38Records = admin && payrollOn ? await listCp38(s, { employmentId }) : [];
   // ADR-0069 — leave encashment snapshot, admin-only card. Null when no resignation has been frozen

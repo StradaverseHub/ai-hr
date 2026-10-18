@@ -7,6 +7,7 @@ import { BatchNotDraftError,resolveBatchScopeFilter,type BatchScope } from './pa
 import { allowanceCents, allowanceMoney } from '../lib/attendance-allowance-rules';
 import { assertModuleEnabled } from './entitlements';
 import { isUnsupportedTaxableComponent } from './pay-components';
+import { assertPayComponentReady } from '../lib/pay-component-contract';
 export class AllowancePayrollConflictError extends Error {
   constructor(message='An unrelated payroll input uses this pay code. Review it in Payroll before transferring.') { super(message); this.name='AllowancePayrollConflictError'; }
 }
@@ -26,6 +27,8 @@ export async function projectAttendanceAllowanceTx(tx:Tx,ctx:SessionContext,p:{b
   if(other.length) throw new AllowancePayrollConflictError('This policy and payment month already belongs to another payroll run');
   const scope=await resolveBatchScopeFilter(tx,batch.scope as BatchScope|null);
   if(scope.employmentIds&&p.contributions.some(c=>!scope.employmentIds!.includes(c.employmentId)))throw new Error('Allowance recipient is outside the payroll run scope');
+  const componentIds=[...new Set(p.contributions.map(c=>c.componentId))];
+  if(componentIds.length){const components=await tx.select({code:payComponent.code,pendingInputKind:payComponent.pendingInputKind}).from(payComponent).where(inArray(payComponent.id,componentIds));for(const component of components)assertPayComponentReady(component);}
   const previous=await tx.select().from(payrollAttendanceAllowanceSource).where(and(eq(payrollAttendanceAllowanceSource.batchId,p.batchId),eq(payrollAttendanceAllowanceSource.policyId,p.policyId)));
   const touched=new Map<string,{employmentId:string;componentId:string}>();
   for(const row of [...previous,...p.contributions]) touched.set(`${row.employmentId}:${row.componentId}`,{employmentId:row.employmentId,componentId:row.componentId});
@@ -71,6 +74,6 @@ export async function projectAttendanceAllowanceTx(tx:Tx,ctx:SessionContext,p:{b
 export function listAttendanceAllowancePayCodes(ctx:SessionContext){
   return withTenant(ctx,async tx=>{
     const rows=await tx.select().from(payComponent).where(eq(payComponent.tenantId,ctx.tenantId)).orderBy(payComponent.code);
-    return rows.filter(c=>!c.archivedAt&&!c.isNonPayable&&(!c.rule||c.rule.kind==='fixed')&&(c.kind==='allowance'||c.kind==='deduction')&&!isUnsupportedTaxableComponent(c)).map(c=>({id:c.id,code:c.code,name:c.name,kind:c.kind}));
+    return rows.filter(c=>!c.archivedAt&&c.pendingInputKind==null&&!c.isNonPayable&&(!c.rule||c.rule.kind==='fixed')&&(c.kind==='allowance'||c.kind==='deduction')&&!isUnsupportedTaxableComponent(c)).map(c=>({id:c.id,code:c.code,name:c.name,kind:c.kind}));
   });
 }

@@ -5,7 +5,7 @@ import { classifyNonCashBenefit, NonCashBenefitConfigurationError } from '../loc
  * helpers that seed components from the legacy compensation + payroll_input so the gated kernel path
  * is byte-identical. Every state-changing method appends a DomainEvent (substrate discipline).
  */
-import { and, eq, gte, ilike, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, eq, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
@@ -18,6 +18,7 @@ import {
   payrollBatchComponent,
   payrollCycle,
   payrollInput,
+  payrollIndividualTxn,
   payslip,
   person,
 } from '../db/schema';
@@ -36,8 +37,11 @@ import { addDaysIso, addMonths, monthOf, monthRange } from '../lib/roster-month'
 // a3d485f6 — "today" for the refusal's suggested date is a CALENDAR DAY, so it goes through the tenant
 // timezone (the repo rule this file's addDaysIso comment states from the other side).
 import { todayInKualaLumpur } from '../lib/hr-date';
+import { assertPayComponentReady, payComponentIdentityIssues, PENDING_PAY_INPUT_KINDS, type PendingPayInputKind } from '../lib/pay-component-contract';
+import { payItemImportFileName } from '../lib/pay-component-import';
 import {
   isFixedAllowanceComponent,
+  isStatutoryComponent,
   payRuleDependencies as payRuleDependenciesOf,
   payRuleDerivesAmount,
   payRuleInputUnit,
@@ -301,10 +305,10 @@ export function getEmploymentPayComponent(
   });
 }
 
-export function listPayComponents(ctx: SessionContext, opts: { includeArchived?: boolean } = {}) {
+export function listPayComponents(ctx: SessionContext, opts: { includeArchived?: boolean; readyOnly?: boolean } = {}) {
   return withTenant(ctx, async (tx) => {
     const rows = await tx.select().from(payComponent).where(eq(payComponent.tenantId, ctx.tenantId)).orderBy(payComponent.code);
-    return opts.includeArchived ? rows : rows.filter((r) => r.archivedAt == null);
+    return rows.filter(r => (opts.includeArchived || r.archivedAt == null) && (!opts.readyOnly || r.pendingInputKind == null));
   });
 }
 
@@ -319,7 +323,7 @@ export function listSupportedBatchComponents(ctx: SessionContext) {
   return withTenant(ctx, async (tx) => {
     const rows = await tx.select().from(payComponent).where(eq(payComponent.tenantId, ctx.tenantId)).orderBy(payComponent.code);
     return rows
-      .filter((r) => r.archivedAt == null && !isUnsupportedTaxableComponent(r))
+      .filter((r) => r.archivedAt == null && r.pendingInputKind == null && !isUnsupportedTaxableComponent(r))
       .map((r) => ({ id: r.id, code: r.code, name: r.name, kind: r.kind }));
   });
 }
@@ -332,6 +336,9 @@ export type PayComponentInput = {
   // must not wipe it); ''/null ⇒ stored as null. Deliberately NO uniqueness rule (house precedent:
   // department/cost_center/position/business_unit all carry the same optional label with none).
   label?: string | null;
+  description?: string | null;
+  /** Only import creates incomplete calculations. Completion requires a real, validated rule. */
+  pendingInputKind?: PendingPayInputKind | null;
   kind: 'allowance' | 'deduction' | 'contribution' | 'non_payable';
   includedInEpf: boolean;
   includedInSocsoEis: boolean;
@@ -414,6 +421,7 @@ export const STATUTORY_RELEVANT_FIELDS = [
   'prorates',
   'roundingMethod',
   'rule',
+  'pendingInputKind',
   'epfBonus2012',
   'pcbRemunerationType',
   'pcbExemptionCode',
@@ -444,15 +452,22 @@ export function validateStatutoryClassification(p: {
   pcbRemunerationType?: PcbRemunerationType | null;
   pcbExemptionCode?: string | null;
 }): { ok: true } | { ok: false; code: PayComponentStatutoryErrorCode } {
-  if (p.epfBonus2012 && !p.includedInEpf) return { ok: false, code: 'epfBonusRequiresEpf' };
+  const errors = statutoryClassificationErrors(p);
+  return errors.length ? { ok: false, code: errors[0] } : { ok: true };
+}
+
+/** One policy, both legacy first-refusal callers and workbook all-cell diagnostics. */
+function statutoryClassificationErrors(p: Parameters<typeof validateStatutoryClassification>[0]): PayComponentStatutoryErrorCode[] {
+  const errors: PayComponentStatutoryErrorCode[] = [];
+  if (p.epfBonus2012 && !p.includedInEpf) errors.push('epfBonusRequiresEpf');
   const supplied = p.pcbRemunerationType !== undefined || p.pcbExemptionCode !== undefined;
-  if (!supplied || !p.includedInPcb) return { ok: true };
+  if (!supplied || !p.includedInPcb) return errors;
   const remType = cleanRemunerationType(p.pcbRemunerationType);
-  if (!remType) return { ok: false, code: 'pcbRemunerationTypeRequired' };
+  if (!remType) errors.push('pcbRemunerationTypeRequired');
   const code = p.pcbExemptionCode ?? null;
-  if (!code) return { ok: false, code: 'pcbExemptionTypeRequired' };
-  if (!(code in pcbExemptionCodesFor(remType))) return { ok: false, code: 'pcbExemptionTypeInvalid' };
-  return { ok: true };
+  if (!code) errors.push('pcbExemptionTypeRequired');
+  else if (remType && !(code in pcbExemptionCodesFor(remType))) errors.push('pcbExemptionTypeInvalid');
+  return errors;
 }
 
 /**
@@ -555,15 +570,78 @@ export class PayComponentCodeExistsError extends Error {
  * (single validation/event path — the insert branch emits pay-component.created).
  */
 export async function createPayComponent(ctx: SessionContext, p: PayComponentInput) {
-  const hit = await lookupPayComponentByCode(ctx, p.code);
+  return withTenant(ctx, tx => createPayComponentTx(tx, ctx, p));
+}
+
+export class PayComponentInputError extends Error {
+  constructor(public readonly issues: { field: string; code: string }[]) {
+    super('Invalid pay component settings.');
+    this.name = 'PayComponentInputError';
+  }
+}
+
+/** The form and workbook share the same server-side create contract, including hard financial refusals. */
+export function validatePayComponentCreateSettings(p: PayComponentInput): { field: string; code: string }[] {
+  const issues: { field: string; code: string }[] = payComponentIdentityIssues(p);
+  const rule = ruleOf(p);
+  const validation = validatePayRule(rule, p.prorates);
+  if (!validation.ok) issues.push({ field: 'inputKind', code: validation.code });
+  if (p.pendingInputKind != null) {
+    if (!PENDING_PAY_INPUT_KINDS.includes(p.pendingInputKind) || rule != null)
+      issues.push({ field: 'inputKind', code: 'invalidPendingCalculation' });
+    if ((p.pendingInputKind === 'per_day' || p.pendingInputKind === 'per_hour') && p.prorates)
+      issues.push({ field: 'prorates', code: 'PRORATION_CONFLICT' });
+    if (isStatutoryComponent(p.code, p.kind)) issues.push({ field: 'inputKind', code: 'STATUTORY_FORBIDDEN' });
+  }
+  for (const code of statutoryClassificationErrors(p)) issues.push({ field: code === 'epfBonusRequiresEpf' ? 'epfBonus2012' : code === 'pcbRemunerationTypeRequired' ? 'pcbRemunerationType' : 'pcbExemptionCode', code });
+  if (!p.includedInPcb && (p.pcbRemunerationType || p.pcbExemptionCode))
+    issues.push({ field: 'pcbRemunerationType', code: 'pcbFieldsRequirePcb' });
+  const benefit = unsupportedTaxableReason(p);
+  if (benefit) issues.push({ field: 'displayCategory', code: benefit });
+  return issues;
+}
+
+/** Shared create-only owner; transaction caller owns atomicity, without nested transactions. */
+export async function createPayComponentTx(tx: Tx, ctx: SessionContext, input: PayComponentInput,
+  options: { archived?: boolean; importFileName?: string; deferResolutionOrder?: boolean } = {}) {
+  const p = { ...input, code: input.code.trim().toUpperCase(), label: input.label?.trim() ?? '', name: input.name.trim() || input.label?.trim() || '' };
+  const issues = validatePayComponentCreateSettings(p);
+  if (issues.length) throw new PayComponentInputError(issues);
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':pay-component-catalog'}, 0))`);
+  const [hit] = await tx.select({ archivedAt: payComponent.archivedAt }).from(payComponent)
+    .where(and(eq(payComponent.tenantId, ctx.tenantId), sql`upper(trim(${payComponent.code})) = ${p.code}`)).limit(1);
   if (hit) throw new PayComponentCodeExistsError(p.code, hit.archivedAt != null);
-  return upsertPayComponent(ctx, p);
+  return upsertPayComponentTx(tx, ctx, p, { ...options, createOnly: true });
+}
+
+/** Whole-file transaction; errors, concurrent duplicates and audit faults roll every row back. */
+export function createPayComponentsFromImport(ctx: SessionContext, rows: { input: PayComponentInput; archived: boolean }[], fileName: string) {
+  return withTenant(ctx, async tx => {
+    if (!ctx.roles?.some(role => role === 'hr_admin' || role === 'super_admin')) throw new Error('Pay component administration required.');
+    if (!rows.length || rows.length > 1000) throw new Error('Invalid pay component import size.');
+    const seen = new Set<string>();
+    for (const row of rows) {
+      const issues = validatePayComponentCreateSettings(row.input);
+      if (issues.length) throw new PayComponentInputError(issues);
+      const code = row.input.code.trim().toUpperCase();
+      if (seen.has(code)) throw new PayComponentCodeExistsError(code, false);
+      seen.add(code);
+    }
+    const ids: string[] = [];
+    for (const row of rows) {
+      const result = await createPayComponentTx(tx, ctx, row.input, { archived: row.archived,
+        importFileName: payItemImportFileName(fileName), deferResolutionOrder: true });
+      ids.push(result.id);
+    }
+    await recordResolutionOrderTx(tx, ctx.tenantId);
+    return { created: ids.length, ids };
+  });
 }
 
 // The diffable catalog fields for the trimmed audit payload (changed field NAMES only — no values:
 // app/admin/audit/page.tsx never renders payloads, and free-text name/label in the immutable event
 // stream would violate the payload discipline the comment below enforces).
-const DIFF_FIELDS = ['name', 'label', 'kind', 'includedInEpf', 'includedInSocsoEis', 'includedInPcb', 'includedInHrdfBase', 'isNonPayable', 'prorates', 'eaFormLine', 'roundingMethod', 'rule', 'epfBonus2012', 'pcbRemunerationType', 'pcbExemptionCode', 'displayCategory', 'orpOvertime', 'orpUnpaidLeave'] as const;
+const DIFF_FIELDS = ['name', 'label', 'description', 'pendingInputKind', 'kind', 'includedInEpf', 'includedInSocsoEis', 'includedInPcb', 'includedInHrdfBase', 'isNonPayable', 'prorates', 'eaFormLine', 'roundingMethod', 'rule', 'epfBonus2012', 'pcbRemunerationType', 'pcbExemptionCode', 'displayCategory', 'orpOvertime', 'orpUnpaidLeave'] as const;
 
 // ── 61bf109d — dependency-graph plumbing ─────────────────────────────────────────────────────────────
 // A pay item may now be a percentage of ANOTHER pay item, or a formula that reads one, so the catalog is a
@@ -573,10 +651,10 @@ const DIFF_FIELDS = ['name', 'label', 'kind', 'includedInEpf', 'includedInSocsoE
  *  code is rejected as such rather than silently reading 0). */
 async function catalogNodesTx(tx: Tx, tenantId: string): Promise<PayRuleCatalogNode[]> {
   const rows = await tx
-    .select({ code: payComponent.code, rule: payComponent.rule, kind: payComponent.kind, archivedAt: payComponent.archivedAt, orpOvertime: payComponent.orpOvertime })
+    .select({ code: payComponent.code, rule: payComponent.rule, kind: payComponent.kind, archivedAt: payComponent.archivedAt, pendingInputKind: payComponent.pendingInputKind, orpOvertime: payComponent.orpOvertime })
     .from(payComponent)
     .where(eq(payComponent.tenantId, tenantId));
-  return rows.map((r) => ({ code: r.code, rule: r.rule, kind: r.kind, archived: r.archivedAt != null, orpOvertime: r.orpOvertime }));
+  return rows.map((r) => ({ code: r.code, rule: r.rule, kind: r.kind, archived: r.archivedAt != null || r.pendingInputKind != null, orpOvertime: r.orpOvertime }));
 }
 
 /**
@@ -624,8 +702,36 @@ async function recordResolutionOrderTx(tx: Tx, tenantId: string): Promise<void> 
  *  proration flag before any write (throws PayRuleInvalidError on failure — same proration/sign/bounds
  *  contract the kernel and the AI validator enforce, from the one pure validatePayRule). */
 export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx, tx => upsertPayComponentTx(tx, ctx, p));
+}
+
+/** Process/reprocess backstop, independent of typed-pay feature flags. A stored legacy assignment
+ * cannot activate an incomplete calculation by bypassing today's assignment picker/writer. */
+export async function assertNoPendingPayComponentsTx(tx: Tx, p: { batchId: string; employmentIds: string[]; periodStart: string; periodEnd: string }) {
+  if (!p.employmentIds.length) return;
+  const columns = { code: payComponent.code, pendingInputKind: payComponent.pendingInputKind };
+  const recurring = await tx.select(columns).from(employmentPayComponent)
+    .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
+    .where(and(isNotNull(payComponent.pendingInputKind), inArray(employmentPayComponent.employmentId, p.employmentIds), isNull(employmentPayComponent.supersededAt),
+      lte(employmentPayComponent.validFrom, p.periodEnd), or(isNull(employmentPayComponent.validTo), gte(employmentPayComponent.validTo, p.periodStart))));
+  const batch = await tx.select(columns).from(payrollBatchComponent)
+    .innerJoin(payComponent, eq(payComponent.id, payrollBatchComponent.componentId))
+    .where(and(isNotNull(payComponent.pendingInputKind), eq(payrollBatchComponent.batchId, p.batchId), inArray(payrollBatchComponent.employmentId, p.employmentIds)));
+  const individual = await tx.select(columns).from(payrollIndividualTxn)
+    .innerJoin(payComponent, eq(payComponent.id, payrollIndividualTxn.componentId))
+    .where(and(isNotNull(payComponent.pendingInputKind), eq(payrollIndividualTxn.batchId, p.batchId), inArray(payrollIndividualTxn.employmentId, p.employmentIds),
+      or(isNull(payrollIndividualTxn.consumedBatchId), eq(payrollIndividualTxn.consumedBatchId, p.batchId))));
+  for (const component of [...recurring, ...batch, ...individual]) assertPayComponentReady(component);
+}
+
+async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponentInput,
+  options: { createOnly?: boolean; archived?: boolean; importFileName?: string; deferResolutionOrder?: boolean } = {}) {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':pay-component-catalog'}, 0))`);
     const rule = ruleOf(p);
+    if (p.pendingInputKind != null && (!PENDING_PAY_INPUT_KINDS.includes(p.pendingInputKind) || rule != null))
+      throw new PayComponentInputError([{ field: 'inputKind', code: 'invalidPendingCalculation' }]);
+    if ((p.pendingInputKind === 'per_day' || p.pendingInputKind === 'per_hour') && p.prorates)
+      throw new PayRuleInvalidError('PRORATION_CONFLICT');
     const v = validatePayRule(rule, p.prorates);
     if (!v.ok) throw new PayRuleInvalidError(v.code);
     // ── 61bf109d — the CATALOG-AWARE half of the guard, refused at SAVE time ────────────────────────
@@ -647,10 +753,23 @@ export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
       .from(payComponent)
       .where(and(eq(payComponent.tenantId, ctx.tenantId), eq(payComponent.code, p.code)))
       .limit(1);
+    if (existing && options.createOnly) throw new PayComponentCodeExistsError(p.code, existing.archivedAt != null);
+    if (existing) {
+      const issues = payComponentIdentityIssues(p, existing);
+      if (issues.length) throw new PayComponentInputError(issues);
+    }
+    const description = p.description === undefined ? {} : { description: p.description?.trim() || null };
+    // Omitted pending kind preserves existing state unless a complete calculation was explicitly saved.
+    // A stale caller sending rule:null cannot turn an imported calculation into an accidental fixed code.
+    const pending = p.pendingInputKind !== undefined
+      ? { pendingInputKind: p.pendingInputKind }
+      : rule != null ? { pendingInputKind: null } : {};
+    if (existing?.pendingInputKind && p.pendingInputKind === null && rule == null)
+      throw new PayComponentInputError([{ field: 'inputKind', code: 'calculationRequired' }]);
     let id: string;
     let changed: string[] = [];
     if (existing) {
-      const next = { name: p.name, kind: p.kind, ...flagsOf(p), ...attrsOf(p), ...classificationOf(p), ...displayCategoryOf(p), ...orpOf(p), rule, ...(label !== undefined ? { label } : {}) };
+      const next = { name: p.name, kind: p.kind, ...flagsOf(p), ...attrsOf(p), ...classificationOf(p), ...displayCategoryOf(p), ...orpOf(p), rule, ...description, ...pending, ...(label !== undefined ? { label } : {}) };
       changed = DIFF_FIELDS.filter((f) => {
         if (!(f in next)) return false; // label omitted ⇒ untouched ⇒ not a change
         const a = (next as Record<string, unknown>)[f];
@@ -668,7 +787,7 @@ export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
     } else {
       const [row] = await tx
         .insert(payComponent)
-        .values({ tenantId: ctx.tenantId, code: p.code, name: p.name, label: label ?? null, kind: p.kind, ...flagsOf(p), ...attrsOf(p), ...classificationOf(p), ...displayCategoryOf(p), ...orpOfInsert(p, rule), rule })
+        .values({ tenantId: ctx.tenantId, code: p.code, name: p.name, label: label ?? null, kind: p.kind, ...flagsOf(p), ...attrsOf(p), ...classificationOf(p), ...displayCategoryOf(p), ...orpOfInsert(p, rule), rule, ...description, ...pending, ...(options.archived ? { archivedAt: sql`now()` } : {}) })
         .returning({ id: payComponent.id });
       id = row.id;
     }
@@ -677,7 +796,7 @@ export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
     // it is written INSIDE the same transaction as the rule, so the order and the rule it was derived from
     // can never disagree. Only rows whose rank actually moved are written (a catalog of fixed amounts
     // issues no UPDATE at all, so the byte-identical legacy path stays write-free).
-    await recordResolutionOrderTx(tx, ctx.tenantId);
+    if (!options.deferResolutionOrder) await recordResolutionOrderTx(tx, ctx.tenantId);
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'pay-component',
@@ -686,14 +805,14 @@ export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
       actor: actorOf(ctx),
       // No PII, no amounts, no field VALUES — the code, which rule kind (null when fixed/unconfigured),
       // which fields changed (names only) and whether the row is archived (actor/time live on the event).
-      payload: { code: p.code, ruleKind: rule?.kind ?? null, changed, archived: existing ? existing.archivedAt != null : false },
+      payload: { code: p.code, ruleKind: rule?.kind ?? null, changed, archived: existing ? existing.archivedAt != null : options.archived ?? false,
+        ...(options.importFileName ? { source: 'Excel import', fileName: payItemImportFileName(options.importFileName) } : {}) },
     });
     // 017d9c25 — `changed` is returned so the master-save action can mark the processed runs this edit
     // makes stale (markRunsAffectedByPayComponent), WITHOUT recomputing the diff or importing the payroll
     // kernel here. Additive: every existing caller destructures `{ id }` and is unaffected. Empty on an
     // insert — a brand-new code cannot be on a run that has already been processed.
     return { id, changed };
-  });
 }
 
 /**
@@ -1166,7 +1285,7 @@ export function deriveIndividualTxnAmount(
     if (!emp || emp.companyId !== p.companyId) return { derived: false };
 
     const [item] = await tx
-      .select({ code: payComponent.code, kind: payComponent.kind, rule: payComponent.rule, archivedAt: payComponent.archivedAt })
+      .select({ code: payComponent.code, kind: payComponent.kind, rule: payComponent.rule, archivedAt: payComponent.archivedAt, pendingInputKind: payComponent.pendingInputKind })
       .from(payComponent)
       .where(and(eq(payComponent.tenantId, ctx.tenantId), eq(payComponent.id, p.componentId)))
       .limit(1);
@@ -1174,6 +1293,7 @@ export function deriveIndividualTxnAmount(
     // rejects both with InvalidTxnComponentError, and inventing a second error here would give the same
     // mistake two names. Report "nothing derived" and let the write path refuse.
     if (!item || item.archivedAt != null) return { derived: false };
+    assertPayComponentReady(item);
     const rule = item.rule as PayRule | null;
     if (!payRuleDerivesAmount(rule)) return { derived: false };
 
@@ -1653,6 +1773,9 @@ export function setEmploymentPayComponent(
     // uniform contract. Both checks still run before any write.
     if (effectiveTo != null && effectiveTo < p.effectiveFrom) throw new FixedTransactionDateError();
     if (currency !== 'MYR') throw new UnsupportedFixedCurrencyError(currency);
+    const [component] = await tx.select({ code: payComponent.code, pendingInputKind: payComponent.pendingInputKind })
+      .from(payComponent).where(eq(payComponent.id, p.componentId)).limit(1);
+    if (component) assertPayComponentReady(component);
     // Amount>0 invariant on the aggregate — inherited by every UI write path. The backfill opts out for its
     // legitimate zero-allowance seed rows only (allowZeroAmount).
     if (!p.allowZeroAmount && !(p.amount > 0)) throw new FixedTransactionAmountError();
@@ -2258,6 +2381,7 @@ export function setPayrollBatchComponent(
     const [comp] = await tx
       .select({
         code: payComponent.code,
+        pendingInputKind: payComponent.pendingInputKind,
         kind:payComponent.kind,displayCategory:payComponent.displayCategory,eaFormLine:payComponent.eaFormLine,epfBonus2012:payComponent.epfBonus2012,
         includedInEpf: payComponent.includedInEpf,
         includedInSocsoEis: payComponent.includedInSocsoEis,
@@ -2268,6 +2392,7 @@ export function setPayrollBatchComponent(
       .from(payComponent)
       .where(eq(payComponent.id, p.componentId))
       .limit(1);
+    if (comp) assertPayComponentReady(comp);
     if (comp && isUnsupportedTaxableComponent(comp)) throw new UnsupportedBatchComponentError(comp.code);
     const [cur] = await tx
       .select({ id: payrollBatchComponent.id })
@@ -2413,6 +2538,7 @@ export async function importBatchComponents(
     const comps = await tx
       .select({
         id: payComponent.id,
+        pendingInputKind: payComponent.pendingInputKind,
         code: payComponent.code,
         name: payComponent.name,
         kind: payComponent.kind,
@@ -2441,6 +2567,7 @@ export async function importBatchComponents(
       else if (!emp) error = `Unknown employee: ${employee}`;
       else if (!code) error = 'Missing component';
       else if (!comp) error = `Unknown component: ${code}`;
+      else if (comp.pendingInputKind != null) error = `Complete the calculation for ${code} before assigning it.`;
       else if (!Number.isFinite(amount)) error = `Invalid amount: ${amountRaw}`;
       // Same complete classification as the picker and single-row writer, before any import write.
       else if (isUnsupportedTaxableComponent(comp)) {

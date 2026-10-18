@@ -52,7 +52,7 @@ export default async function IndividualTransactionPage({
     listBatches(s, scopeIds),
     listEmployees(s, scopeIds),
     listCompanies(s),
-    listPayComponents(s), // Payroll Item Master — the form's item picker is sourced from these active items.
+    listPayComponents(s, { readyOnly: true }), // Payroll Item Master — the form's item picker is sourced from these active items.
   ]);
   // 49e7e0a2 — the form used to be handed DRAFT runs only, which is why a processed run could not even be
   // named as a target. Both writable statuses are offered now; `closed` is not, because the service

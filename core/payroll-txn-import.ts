@@ -221,6 +221,7 @@ async function loadCatalogs(ctx: SessionContext, scopeIds: string[]): Promise<Ca
         kind: payComponent.kind,
         rule: payComponent.rule,
         archivedAt: payComponent.archivedAt,
+        pendingInputKind: payComponent.pendingInputKind,
         // 0db616f3 — read ONLY to raise the "this looks like a bonus and you are not using the bonus
         // run" warning below. It is presentation metadata (db/schema.ts says so in as many words) and it
         // never routes a row; routing is the file's own `Payroll Cycle` column and nothing else.
@@ -233,7 +234,7 @@ async function loadCatalogs(ctx: SessionContext, scopeIds: string[]): Promise<Ca
   // ARCHIVED ITEMS ARE EXCLUDED. The request asks for "Payroll Item is active", and an archived item is
   // one an admin deliberately retired — importing against it would resurrect it through a side door.
   for (const c of components) {
-    if (c.archivedAt != null) continue;
+    if (c.archivedAt != null || c.pendingInputKind != null) continue;
     componentByCode.set(c.code.trim().toUpperCase(), {
       id: c.id,
       code: c.code,

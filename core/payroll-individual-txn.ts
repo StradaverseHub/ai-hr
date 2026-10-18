@@ -26,6 +26,7 @@
 import { and, asc, desc, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
+import { assertPayComponentReady } from '../lib/pay-component-contract';
 import {
   company,
   employment,
@@ -429,7 +430,7 @@ async function assertTxnComponents(
   const ids = [...new Set(rows.map((r) => r.componentId).filter((v): v is string => v != null))];
   if (ids.length === 0) return;
   const comps = await tx
-    .select({ id: payComponent.id, kind: payComponent.kind, archivedAt: payComponent.archivedAt })
+    .select({ id: payComponent.id, code: payComponent.code, kind: payComponent.kind, archivedAt: payComponent.archivedAt, pendingInputKind: payComponent.pendingInputKind })
     .from(payComponent)
     .where(inArray(payComponent.id, ids));
   const byId = new Map(comps.map((c) => [c.id, c]));
@@ -438,6 +439,7 @@ async function assertTxnComponents(
     const c = byId.get(r.componentId);
     if (!c) throw new InvalidTxnComponentError('not_found');
     if (c.archivedAt != null) throw new InvalidTxnComponentError('archived');
+    assertPayComponentReady(c);
     if (COMPONENT_KIND_TO_TXN_KIND[c.kind] !== r.kind) throw new InvalidTxnComponentError('kind_mismatch');
   }
 }
