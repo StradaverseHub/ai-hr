@@ -766,6 +766,7 @@ async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponent
     // gets preservation semantics; a public upsert cannot create a label-less or invalid new code.
     const issues = payComponentIdentityIssues(p, existing);
     if (issues.length) throw new PayComponentInputError(issues);
+    const storedCode = existing?.code ?? p.code.trim().toUpperCase();
     const description = p.description === undefined ? {} : { description: p.description?.trim() || null };
     // Omitted pending kind preserves existing state unless a complete calculation was explicitly saved.
     // A stale caller sending rule:null cannot turn an imported calculation into an accidental fixed code.
@@ -795,7 +796,7 @@ async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponent
     } else {
       const [row] = await tx
         .insert(payComponent)
-        .values({ tenantId: ctx.tenantId, code: p.code, name: p.name, label: label ?? null, kind: p.kind, ...flagsOf(p), ...attrsOf(p), ...classificationOf(p), ...displayCategoryOf(p), ...orpOfInsert(p, rule), rule, ...description, ...pending, ...(options.archived ? { archivedAt: sql`now()` } : {}) })
+        .values({ tenantId: ctx.tenantId, code: storedCode, name: p.name, label: label ?? null, kind: p.kind, ...flagsOf(p), ...attrsOf(p), ...classificationOf(p), ...displayCategoryOf(p), ...orpOfInsert(p, rule), rule, ...description, ...pending, ...(options.archived ? { archivedAt: sql`now()` } : {}) })
         .returning({ id: payComponent.id });
       id = row.id;
     }
@@ -813,7 +814,7 @@ async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponent
       actor: actorOf(ctx),
       // No PII, no amounts, no field VALUES — the code, which rule kind (null when fixed/unconfigured),
       // which fields changed (names only) and whether the row is archived (actor/time live on the event).
-      payload: { code: p.code, ruleKind: rule?.kind ?? null, changed, archived: existing ? existing.archivedAt != null : options.archived ?? false,
+      payload: { code: storedCode, ruleKind: rule?.kind ?? null, changed, archived: existing ? existing.archivedAt != null : options.archived ?? false,
         ...(options.importFileName ? { source: 'Excel import', fileName: payItemImportFileName(options.importFileName) } : {}) },
     });
     // 017d9c25 — `changed` is returned so the master-save action can mark the processed runs this edit

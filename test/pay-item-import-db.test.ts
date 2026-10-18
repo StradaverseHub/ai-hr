@@ -45,6 +45,13 @@ describe('Pay Items create-only atomic import and pending calculation boundaries
       expect(await catalog(base.tenantId)).toEqual(before); expect(await events(base.tenantId)).toEqual(audit);
     }
   });
+  it('normalizes only a new public upsert code before storing and auditing its identity', async () => {
+    const created = await upsertPayComponent(ctx, input('  new-upsert  ', {label: 'Canonical new identity'}));
+    const row = (await catalog(base.tenantId)).find(item => item.id === created.id)!;
+    expect(row.code).toBe('NEW-UPSERT'); expect(row.label).toBe('Canonical new identity');
+    const audit = (await events(base.tenantId)).filter(event => event.aggregateId === created.id);
+    expect(audit).toHaveLength(1); expect(audit[0].payload).toMatchObject({code: 'NEW-UPSERT'});
+  });
   it('maintenance update refuses an absent code even with otherwise valid creation settings', async () => {
     const before = await catalog(base.tenantId), audit = await events(base.tenantId);
     await expect(updatePayComponent(ctx, input('FORGED_EDIT'))).rejects.toBeInstanceOf(PayComponentNotFoundError);
