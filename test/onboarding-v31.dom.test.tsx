@@ -86,7 +86,7 @@ describe('V3.1 localized task controls', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Save case details' }));
         await screen.findByText('Case details saved.');
         expect(screen.getByRole('button', { name: 'Submit case and confirm checklist' })).toBeVisible();
-        expect(screen.getByRole('button', { name: 'Save case details' })).toBeEnabled();
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Save case details' })).toBeEnabled());
     });
     it('retains older unfinished equipment and pending preparation while recent filtering excludes old cancelled or completed work', () => {
         const today=todayInKualaLumpur(), join=dayDate(today,-40), actor={id:'owner',name:'HR',module:true,hr:true,master:false};

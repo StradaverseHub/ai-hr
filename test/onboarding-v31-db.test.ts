@@ -70,21 +70,29 @@ describe('V3.1 onboarding database and authorization', () => {
         const data = structuredClone(stored!.data) as {profile:{fullName:string}};
         data.profile.fullName = 'Updated by scheduled Personnel refresh';
         await owner.db.update(schema.employeeDraft).set({data,updatedAt:new Date(Date.now()+1000)}).where(eq(schema.employeeDraft.id,saved.id));
+        const [baseline] = await owner.db.insert(schema.employeeDraft).values({tenantId:b.tenantId,companyId:b.companyId,label:'Draft predating setup',data:{profile:{fullName:'Draft predating setup'},employment:{companyId:b.companyId}},currentStep:1}).returning();
         const system:SessionContext = {tenantId:b.tenantId,roles:['hr_admin'],entitlements:admin.entitlements};
         await refreshOnboardingPersonnel(system);
-        const row = (await onboardingList(admin))[0]!;
+        const all = await onboardingList(admin);
+        const row = all.find(row => row.case.sourceDraftId === saved.id)!;
         expect(row.case.source.fullName).toBe(data.profile.fullName);
         expect(row.case.personId).toBeNull(); expect(row.case.employmentId).toBeNull();
+        const backfilled = all.find(row => row.case.sourceDraftId === baseline!.id)!;
+        expect(backfilled.case.number).not.toBe(row.case.number);
+        expect(backfilled.case.history.some(entry => entry.by === 'system')).toBe(true);
+        await expect(withTenant({...system,roles:['employee']},tx=>tx.execute(sql`select app.onboarding_next_case_number('2026')`))).rejects.toThrow();
+        await expect(withTenant(system,tx=>tx.execute(sql`select app.onboarding_next_case_number('not-a-year')`))).rejects.toThrow();
         expect((await sweepOnboarding(system)).created).toBeGreaterThan(0);
         expect((await onboardingNotices(admin)).length).toBeGreaterThan(0);
     });
     it('keeps one case and the latest Personnel source during concurrent save and backfill', async () => {
         const [stored] = await owner.db.insert(schema.employeeDraft).values({tenantId:b.tenantId,companyId:b.companyId,label:'Existing baseline draft',data:{profile:{fullName:'Existing baseline draft'},employment:{companyId:b.companyId}},currentStep:1}).returning();
         const system:SessionContext = {tenantId:b.tenantId,roles:['hr_admin'],entitlements:admin.entitlements};
-        await Promise.all([
+        const attempts = await Promise.allSettled([
             refreshOnboardingPersonnel(system),
             saveEmployeeDraft(admin,{id:stored!.id,data:{profile:{fullName:'Latest concurrent Personnel name'},employment:{companyId:b.companyId}},currentStep:1})
         ]);
+        expect(attempts.map(result => result.status)).toEqual(['fulfilled','fulfilled']);
         const rows = await onboardingList(admin);
         expect(rows).toHaveLength(1);
         expect(rows[0]!.case.sourceDraftId).toBe(stored!.id);

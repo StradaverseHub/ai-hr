@@ -519,7 +519,7 @@ export async function onboardingSyncDraftTx(ctx: SessionContext, tx: Tx, draftId
     if (!number) {
         const [seq] = rows<{
             n: number;
-        }>(await tx.execute(sql `select app.lc_next_number(${'OB-' + today.slice(0, 4)}) as n`));
+        }>(await tx.execute(sql `select app.onboarding_next_case_number(${today.slice(0, 4)}) as n`));
         number = 'OB-' + today.slice(0, 4) + '-' + String(seq!.n).padStart(4, '0');
     }
     const c = row?.data ?? M.blankCase(randomUUID(), number, draftId, source, env);

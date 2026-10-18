@@ -328,3 +328,26 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
 $$;
 REVOKE ALL ON FUNCTION app.onboarding_supervisors() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onboarding_supervisors() TO ai_hr_app;
+
+--> statement-breakpoint
+-- The scheduled Personnel refresh has tenant/role scope but deliberately has no fabricated login.
+-- Retain the same authoritative lifecycle counter and leave the legacy login-only allocator intact.
+CREATE OR REPLACE FUNCTION app.onboarding_next_case_number(p_year text) RETURNS integer
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE v integer;
+BEGIN
+ IF app.current_tenant_id() IS NULL OR
+    (app.current_user_id() IS NULL AND NOT app.is_group_admin()) THEN
+   RAISE EXCEPTION 'onboarding_next_case_number: no authorized session';
+ END IF;
+ IF p_year IS NULL OR p_year !~ '^[0-9]{4}$' THEN
+   RAISE EXCEPTION 'onboarding_next_case_number: invalid year';
+ END IF;
+ INSERT INTO lc_counter(tenant_id,prefix,last_value)
+ VALUES(app.current_tenant_id(),'OB-'||p_year,1)
+ ON CONFLICT(tenant_id,prefix) DO UPDATE SET last_value=lc_counter.last_value+1
+ RETURNING last_value INTO v;
+ RETURN v;
+END $$;
+REVOKE ALL ON FUNCTION app.onboarding_next_case_number(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_next_case_number(text) TO ai_hr_app;
