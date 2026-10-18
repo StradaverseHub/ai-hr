@@ -33,6 +33,7 @@ import { getOnboardingStatus } from '@/core/onboarding';
 import { listPendingTasks } from '@/core/approvals-inbox';
 import { onboardingTasks, onboardingUnreadNoticeCount, onboardingNotices, onboardingNavigation } from '@/packs/lifecycle/service';
 import { NotificationCenter, type NotificationTaskItem } from '@/components/notification-center';
+import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
 import { CommandBar } from '@/components/command-bar';
 import { dispatchNotifications, listNotifications, unreadNotificationCount } from '@/core/notifications';
 import { listApprovalHistory } from '@/core/read';
@@ -163,7 +164,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const onboardingAccess=onboardingNav.module;
   const onboardingQueue = isModuleEnabledOrFalse(session, 'lifecycle') ? await onboardingTasks(session) : [];
   const legacyApprovalCount = approvalTasks.length;
-  const pendingTasks:NotificationTaskItem[]=[...approvalTasks,...onboardingQueue.map(item=>({id:item.id,kind:'onboarding' as const,subjectName:item.title+' · '+item.joiner,createdAt:item.due?item.due+'T00:00:00Z':new Date().toISOString(),linkPath:'/tasks'}))];
+  const pendingTasks:NotificationTaskItem[]=[...approvalTasks,...onboardingQueue.map(onboardingNotificationTask)];
   const onboardingNoticesEnabled=isModuleEnabledOrFalse(session,'lifecycle');
   const [onboardingUnread,onboardingRead]=onboardingNoticesEnabled?await Promise.all([onboardingNotices(session),onboardingNotices(session,true)]):[[],[]];
   const onboardingUnreadCount=onboardingNoticesEnabled?await onboardingUnreadNoticeCount(session):0;

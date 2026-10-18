@@ -10,7 +10,7 @@ import { markAllNotificationsReadAction, markNotificationReadAction } from '@/ap
 import type { NotificationRow as StoredNotificationRow } from '@/core/notifications';
 type NotificationRow=Pick<StoredNotificationRow,'id'|'title'|'body'|'severity'|'linkPath'|'createdAt'|'readAt'>;
 import type { PendingTaskItem as ApprovalTaskItem } from '@/core/approvals-inbox';
-export type NotificationTaskItem=Omit<ApprovalTaskItem,'kind'>&{kind:ApprovalTaskItem['kind']|'onboarding'};
+export type NotificationTaskItem=ApprovalTaskItem | (Omit<ApprovalTaskItem,'kind'|'createdAt'>&{kind:'onboarding';createdAt?:undefined});
 import type { ApprovalHistoryItem } from '@/lib/approval-history';
 
 /**
@@ -92,11 +92,12 @@ export function NotificationCenter({
 
   // ── Task tab: merge the approvals queue with the action notifications, newest first. ──
   const taskEntries = useMemo(() => {
-    const entries: ({ type: 'queue'; at: number; item: NotificationTaskItem } | { type: 'notif'; at: number; item: NotificationRow })[] = [
-      ...tasks.map((item) => ({ type: 'queue' as const, at: Date.parse(item.createdAt), item })),
+    const entries: ({ type: 'queue'; at: number|null; item: NotificationTaskItem } | { type: 'notif'; at: number; item: NotificationRow })[] = [
+      ...tasks.map((item) => ({ type: 'queue' as const, at: item.createdAt ? Date.parse(item.createdAt) : null, item })),
       ...taskNotifications.map((item) => ({ type: 'notif' as const, at: new Date(item.createdAt).getTime(), item })),
     ];
-    return entries.sort((a, b) => b.at - a.at);
+    // Keep genuine recorded instants newest first. Undated queue entries follow in stable ID order.
+    return entries.sort((a, b) => a.at === null ? b.at === null ? a.item.id.localeCompare(b.item.id) : 1 : b.at === null ? -1 : b.at - a.at);
   }, [tasks, taskNotifications]);
 
   // ── History tab: read notifications + approval decisions, merged newest first, searchable. ──
@@ -161,7 +162,7 @@ export function NotificationCenter({
               <span className="truncate text-sm font-medium text-foreground">
                 {t(`task.${task.kind}` as 'task.leave')}
               </span>
-              <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">{relTime(new Date(task.createdAt))}</span>
+              {task.createdAt && <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">{relTime(new Date(task.createdAt))}</span>}
             </div>
             {task.subjectName && <p className="mt-0.5 truncate text-xs text-muted-foreground">{task.subjectName}</p>}
           </div>
