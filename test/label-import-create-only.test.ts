@@ -44,8 +44,9 @@ describe('new-only System Label import identity boundary',()=>{
   await bulkSaveLabels(adminCtx(foreign),'department',{creates:[{key:'foreign',companyId:foreign.companyId,name:'FOREIGN_ONLY'}],updates:[]});
   const bytes=await book({department:[org(b.companyId,'FOREIGN_ONLY')]});
   expect((await previewSystemLabelImport(adminCtx(b),bytes,'add')).rows[0].outcome).toBe('add');
-  await expect(withTenant(adminCtx(b),tx=>existingSystemLabelImportKeysTx(tx,foreign.tenantId,[{key:'r',kind:'department',code:'FOREIGN_ONLY'}]))).rejects.toThrow(/administrator|permission/i);
-  await expect(withTenant({...adminCtx(b),roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]},tx=>existingSystemLabelImportKeysTx(tx,b.tenantId,[{key:'r',kind:'department',code:'FOREIGN_ONLY'}]))).rejects.toThrow(/administrator|permission/i);
+  // Drizzle's outer message describes the query; only its PostgreSQL cause proves the intended guard.
+  await expect(withTenant(adminCtx(b),tx=>existingSystemLabelImportKeysTx(tx,foreign.tenantId,[{key:'r',kind:'department',code:'FOREIGN_ONLY'}]))).rejects.toMatchObject({cause:{code:'42501',message:'Only an administrator may check import codes'}});
+  await expect(withTenant({...adminCtx(b),roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]},tx=>existingSystemLabelImportKeysTx(tx,b.tenantId,[{key:'r',kind:'department',code:'FOREIGN_ONLY'}]))).rejects.toMatchObject({cause:{code:'42501',message:'Only an administrator may check import codes'}});
  });
  it('serializes two confirmations so at most one imports a category-wide new code',async()=>{
   const bytes=await book({division:[{Code:'RACE_ONLY',Label:'Fictional race'}]}),ctx=adminCtx(b);
@@ -87,7 +88,7 @@ describe('new-only System Label import identity boundary',()=>{
  });
  it('the existence oracle rejects malformed and oversized requests rather than exposing tables',async()=>{
   for(const payload of [[{key:'r',kind:'unsupported',code:'X'}],[{key:'r',kind:'department',code:'X'},{key:'r',kind:'position',code:'X'}],Array.from({length:7001},(_,i)=>({key:String(i),kind:'department',code:'X'}))]){
-   await expect(withTenant(adminCtx(b),tx=>tx.execute(sql`select key from app.existing_system_label_import_keys(${b.tenantId}::uuid,${JSON.stringify(payload)}::jsonb)`))).rejects.toThrow(/Invalid import/);
+   await expect(withTenant(adminCtx(b),tx=>tx.execute(sql`select key from app.existing_system_label_import_keys(${b.tenantId}::uuid,${JSON.stringify(payload)}::jsonb)`))).rejects.toMatchObject({cause:{code:'22023',message:'Invalid import code request'}});
   }
  });
 });
