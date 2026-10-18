@@ -29,7 +29,8 @@
  *             `WHERE <new USING>` selects — the old and new texts are test/fixtures/r395-policy-quals.json,
  *             generated from pg_policies before and after 0515;
  *         (b) as the APP ROLE, the rows visible through the live (new) policies = the rows visible after
- *             putting all 57 OLD USING clauses back inside the same transaction (then rolled back). (b) is
+ *             putting the52 unaffected OLD USING clauses back while holding the exact0560/0561 Profile/Feedback graphs
+ *             constant on both sides (then rolled back). Changed0560/0561 semantics are separately tested. (b) is
  *             the whole-system statement — it includes the other policies on each table and RLS inside
  *             each policy's sub-selects — which (a) alone could not make: a table with several permissive
  *             policies (toil_accrual has 3), or a qual whose EXISTS reads an RLS table (pay_period reads
@@ -45,17 +46,23 @@
 import { writeFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { closeAll } from './harness';
+import { assertTestingFeedbackPolicyGraph,currentFeedbackPolicySnapshot,testingFeedbackHistoricalKeys } from './r395-current-feedback-policies';
+import {assertCurrentProfilePolicyGraph,currentProfilePolicySnapshot,profileHistoricalPolicyKey} from './r395-current-profile-policies';
 import {
-  ALL_EMP, ALL_PERSON, CONTEXTS, MUTATIONS, POLICIES, Rollback, TABLES, TENANT_OF_PERSON, b, ctxByName, fill, inCtx,
+  ACCOUNT_FEEDBACK, LIVE_SWAPPABLE_POLICIES, ALL_EMP, ALL_PERSON, CONTEXTS, MUTATIONS, POLICIES, Rollback, TABLES, TENANT_OF_PERSON, b, ctxByName, fill, inCtx,
   nameOf, pg, q, setBasedVsPerRow, setupOrg, sorted, visibleNames, type Row,
 } from './r395-org';
 
 const REPORT: Record<string, unknown> = {};
 
 let originalDef = '';
+let currentFeedbackPolicies:Row[]=[];
+let currentProfilePolicies:Row[]=[];
 
 beforeAll(async () => {
   await setupOrg();
+  currentFeedbackPolicies=await assertTestingFeedbackPolicyGraph();
+  currentProfilePolicies=await assertCurrentProfilePolicyGraph();
   const [d] = await q(`select pg_get_functiondef('app.visible_employment_ids()'::regprocedure) as def`);
   originalDef = d.def as string;
   const m = process.env.R395_MUTATION;
@@ -145,11 +152,17 @@ describe('r395 (i)/(ii) — the set functions equal the per-row functions, for e
 describe('r395 (iii) — every rewritten table shows exactly the same rows', () => {
   it('the fixture lists 57 policies over the tables 0515 rewrote, and the filler put rows in most of them', async () => {
     expect(POLICIES.length).toBe(57);
+    expect(LIVE_SWAPPABLE_POLICIES).toHaveLength(52);
+    expect(POLICIES.filter(p=>!LIVE_SWAPPABLE_POLICIES.includes(p)).map(p=>`${p.table}.${p.policy}`).sort()).toEqual([...testingFeedbackHistoricalKeys,profileHistoricalPolicyKey].sort());
     const counts: Record<string, number> = {};
     for (const t of TABLES) {
       const [r] = await q(`select count(*)::int as n from "${t}" where tenant_id = $1`, [b.tenantId]);
       counts[t] = r.n as number;
     }
+    const [attachments]=await q('select count(*)::int as n from feedback_attachment where employment_id IS NOT NULL');
+    expect(attachments.n, 'legacy employment-backed attachments remain populated').toBeGreaterThanOrEqual(ALL_EMP.length);
+    const [badBindings]=await q('select count(*)::int as n from feedback_attachment a join feedback_request f on f.id=a.feedback_request_id where a.tenant_id IS DISTINCT FROM f.tenant_id OR a.employment_id IS DISTINCT FROM f.reporter_employment_id');
+    expect(badBindings.n, 'all fixture evidence has its exact parent tenant/employment').toBe(0);
     REPORT.rowsInTenant = counts;
     const filled = TABLES.filter((t) => counts[t] > 0);
     const empty = TABLES.filter((t) => counts[t] === 0);
@@ -177,7 +190,7 @@ describe('r395 (iii) — every rewritten table shows exactly the same rows', () 
 
   it.each([...Array(24).keys()])('context #%i: (b) app-role rows identical under old vs new policies', async (i) => {
     const ctx = CONTEXTS[i];
-    // (b) as the app role: live policies, then all 57 OLD USING clauses restored in the same transaction.
+    // (b) as the app role: all table rows are compared; the explicit0560/0561 graphs are unchanged on both sides.
     const seen: Record<string, number> = {};
     await inCtx(ctx, async (tx) => {
       const read = async () => {
@@ -188,12 +201,17 @@ describe('r395 (iii) — every rewritten table shows exactly the same rows', () 
         }
         return out;
       };
+      expect(await currentFeedbackPolicySnapshot(tx),'0561 graph before live read').toEqual(currentFeedbackPolicies);
+      expect(await currentProfilePolicySnapshot(tx),'0560 Profile graph before live read').toEqual(currentProfilePolicies);
       await tx.unsafe(`set local role ai_hr_app`);
       const after = await read();
       await tx.unsafe(`reset role`);
-      for (const p of POLICIES) await tx.unsafe(`alter policy "${p.policy}" on "${p.table}" using (${p.oldQual})`);
+      for (const p of LIVE_SWAPPABLE_POLICIES) await tx.unsafe(`alter policy "${p.policy}" on "${p.table}" using (${p.oldQual})`);
       await tx.unsafe(`set local role ai_hr_app`);
       const before = await read();
+      await tx.unsafe('reset role');
+      expect(await currentFeedbackPolicySnapshot(tx),'0561 graph after historical swap').toEqual(currentFeedbackPolicies);
+      expect(await currentProfilePolicySnapshot(tx),'0560 Profile graph after historical swap').toEqual(currentProfilePolicies);
       for (const t of TABLES) {
         expect(after[t], `(iii-b) ${ctx.name}: ${t}`).toEqual(before[t]);
         seen[t] = before[t].length;
@@ -201,6 +219,29 @@ describe('r395 (iii) — every rewritten table shows exactly the same rows', () 
     });
     (REPORT.rowsVisible ??= {} as Record<string, unknown>);
     (REPORT.rowsVisible as Record<string, unknown>)[ctx.name] = seen;
+  });
+});
+
+describe('0561 — current account Feedback semantics, not historical 0515 equivalence',()=>{
+  it('keeps account-only request/evidence visible only to its live owner or same-tenant group admin across all24 contexts',async()=>{
+    expect(ACCOUNT_FEEDBACK).toHaveLength(2);
+    expect(new Set(ACCOUNT_FEEDBACK.map(row=>row.tenantId)).size).toBe(2);
+    for(const row of ACCOUNT_FEEDBACK){
+      const [parent]=await q('select reporter_employment_id,reporter_user_id from feedback_request where id=$1',[row.reportId]);
+      expect(parent).toEqual({reporter_employment_id:null,reporter_user_id:row.userId});
+      const [image]=await q('select employment_id,uploaded_by_user_id,feedback_request_id from feedback_attachment where id=$1',[row.attachmentId]);
+      expect(image).toEqual({employment_id:null,uploaded_by_user_id:row.userId,feedback_request_id:row.reportId});
+      for(const ctx of CONTEXTS){
+        const allowed=ctx.tenantId===row.tenantId&&Boolean(ctx.userId)&&(ctx.userId===row.userId||ctx.grants.some(g=>g.companyId===null&&['hr_admin','super_admin'].includes(g.role)));
+        await inCtx(ctx,async tx=>{
+          await tx.unsafe('set local role ai_hr_app');
+          const requests=await tx.unsafe('select id from feedback_request where id=$1',[row.reportId]);
+          const attachments=await tx.unsafe('select id from feedback_attachment where id=$1',[row.attachmentId]);
+          expect(requests.map(r=>r.id),ctx.name+' account request').toEqual(allowed?[row.reportId]:[]);
+          expect(attachments.map(r=>r.id),ctx.name+' account evidence').toEqual(allowed?[row.attachmentId]:[]);
+        });
+      }
+    }
   });
 });
 

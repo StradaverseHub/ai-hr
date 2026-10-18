@@ -35,6 +35,7 @@
  * and the failure mode is a half-entered person appearing in a headcount or a payroll run.
  */
 import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { onboardingSyncDraftTx } from '../packs/lifecycle/service';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
   company, employeeDraft, employeeIdConfig, person, tenantCounter, department, position,
@@ -437,6 +438,7 @@ export async function saveEmployeeDraft(
       actor: actorOf(ctx),
       payload: { currentStep, step: stepKey(currentStep), companyId, hasLabel: label !== '' },
     });
+    await onboardingSyncDraftTx(ctx,tx,id,'save');
     return { id };
   };
   return outerTx?run(outerTx):withTenant(ctx,run);
@@ -628,6 +630,7 @@ export async function createEmployeeDraftWithReservedCode(
       // exists but belongs to nobody yet is exactly the thing somebody will later have to account for.
       payload: { companyId, reservedEmployeeCode: code, mode: decision.mode, hasLabel: true },
     });
+    await onboardingSyncDraftTx(ctx,tx,row.id,'save');
     return { id: row.id, employeeCode: code };
   });
 }
@@ -644,6 +647,7 @@ export async function discardEmployeeDraft(ctx: SessionContext, id: string): Pro
       .from(employeeDraft)
       .where(eq(employeeDraft.id, id))
       .limit(1);
+    await onboardingSyncDraftTx(ctx,tx,id,'discard');
     const deleted = await tx
       .delete(employeeDraft)
       .where(eq(employeeDraft.id, id))
@@ -1281,6 +1285,7 @@ async function completeEmployeeDraftTx(tx:Tx,ctx:SessionContext,id:string):Promi
   // WITH IT — deleting the row releases the held code, and it must, because the employment now carries
   // that same code and two live claims on one ID is the state the hold exists to prevent. Deliberately
   // NOT `releaseReservedNumber`: the number was SPENT, not abandoned, so the counter stays where it is.
+  await onboardingSyncDraftTx(ctx,tx,id,'active',{employmentId,personId});
   const deleted=await tx.delete(employeeDraft).where(eq(employeeDraft.id,id)).returning({id:employeeDraft.id});
   if(deleted.length!==1)throw new DraftActivationValidationError('draft_unavailable',[]);
     await appendEvent(tx, {

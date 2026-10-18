@@ -10509,3 +10509,44 @@ export const attendanceOvertimeCalculationEvidence = pgTable('attendance_overtim
   calculationId:uuid('calculation_id').primaryKey().references(()=>attendanceOvertimeCalculation.id,{onDelete:'restrict'}),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
   inputs:jsonb('inputs').notNull().$type<Record<string,unknown>>(),evidence:jsonb('evidence').notNull().$type<Record<string,unknown>>(),
 });
+
+/** V3.1 aggregates are versioned separately; legacy lifecycle records are never reinterpreted. */
+export const lcOnboardingConfig = pgTable('lc_onboarding_config', {
+  tenantId: tenantId().primaryKey(), revision: integer('revision').notNull().default(1),
+  data: jsonb('data').$type<import('../lib/onboarding-model').Config>().notNull(), updatedAt: timestamp('updated_at',{withTimezone:true}).defaultNow().notNull(),
+});
+export const lcOnboardingCase = pgTable('lc_onboarding_case', {
+  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
+  sourceDraftId:uuid('source_draft_id'), employmentId:uuid('employment_id').references(()=>employment.id),
+  revision:integer('revision').notNull().default(1),data:jsonb('data').$type<import('../lib/onboarding-model').Case>().notNull(),
+  createdAt:createdAt(),updatedAt:timestamp('updated_at',{withTimezone:true}).defaultNow().notNull(),
+},t=>[uniqueIndex('lc_onboarding_case_source_uq').on(t.tenantId,t.sourceDraftId)]);
+export const lcOnboardingPrivate = pgTable('lc_onboarding_private', {
+  caseId:uuid('case_id').primaryKey().references(()=>lcOnboardingCase.id),tenantId:tenantId(),
+  companyId:uuid('company_id').notNull().references(()=>company.id),data:jsonb('data').$type<{source:Partial<import('../lib/onboarding-model').Facts>;local:Partial<import('../lib/onboarding-model').Facts>}>().notNull(),
+});
+export const lcOnboardingNote = pgTable('lc_onboarding_note', {
+  id:id(),tenantId:tenantId(),caseId:uuid('case_id').notNull().references(()=>lcOnboardingCase.id),
+  data:jsonb('data').$type<import('../lib/onboarding-model').Note>().notNull(),createdAt:createdAt(),
+});
+export const lcOnboardingSeen = pgTable('lc_onboarding_seen', {
+  tenantId:tenantId(),userId:uuid('user_id').notNull().references(()=>appUser.id),caseId:uuid('case_id').notNull().references(()=>lcOnboardingCase.id),seenAt:timestamp('seen_at',{withTimezone:true}).defaultNow().notNull(),
+},t=>[primaryKey({columns:[t.tenantId,t.userId,t.caseId]})]);
+
+export const lcOnboardingConfigHistory=pgTable('lc_onboarding_config_history',{
+ tenantId:tenantId(),revision:integer('revision').notNull(),data:jsonb('data').notNull(),
+ actorUserId:uuid('actor_user_id').notNull().references(()=>appUser.id),createdAt:createdAt(),
+},t=>[primaryKey({columns:[t.tenantId,t.revision]})]);
+export const lcOnboardingNotice=pgTable('lc_onboarding_notice',{
+ id:id(),tenantId:tenantId(),userId:uuid('user_id').notNull().references(()=>appUser.id),
+ caseId:uuid('case_id').notNull().references(()=>lcOnboardingCase.id),kind:text('kind').notNull(),
+ occurrence:text('occurrence').notNull(),createdAt:createdAt(),readAt:timestamp('read_at',{withTimezone:true}),
+},t=>[uniqueIndex('lc_onboarding_digest_day_uq').on(t.tenantId,t.userId,t.occurrence).where(sql`kind='digest'`)]);
+export const lcOnboardingCaseRevision=pgTable('lc_onboarding_case_revision',{
+ caseId:uuid('case_id').notNull().references(()=>lcOnboardingCase.id),revision:integer('revision').notNull(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
+ data:jsonb('data').$type<import('../lib/onboarding-model').Case>().notNull(),createdAt:createdAt(),
+},t=>[primaryKey({columns:[t.caseId,t.revision]})]);
+export const lcOnboardingPrivateRevision=pgTable('lc_onboarding_private_revision',{
+ caseId:uuid('case_id').notNull().references(()=>lcOnboardingCase.id),revision:integer('revision').notNull(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
+ data:jsonb('data').$type<typeof lcOnboardingPrivate.$inferSelect.data>().notNull(),createdAt:createdAt(),
+},t=>[primaryKey({columns:[t.caseId,t.revision]})]);

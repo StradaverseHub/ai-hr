@@ -24,9 +24,9 @@ rule, zero rate, arbitrary percentage or fabricated formula is installed. A comp
 the existing structural and catalog validator before the writer clears pending. A stale caller
 submitting a NULL rule cannot clear it.
 
-Migration `0562_pay_component_import_state` has centrally reserved journal index 562 and timestamp
-1791900000042. The parent appends its journal entry after integrating 0560/0561; those migrations
-and all applied predecessors must remain immutable.
+Migration `0565_pay_component_import_state` has centrally reserved journal index 565 and timestamp
+1791900000045. Integrate the released Profile/Testing and Onboarding `0564` baseline before appending
+this import migration and `0566`; preserve the actual merged journal prefix and all applied predecessors.
 
 ## Atomicity, permissions and provenance
 

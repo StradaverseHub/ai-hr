@@ -1,6 +1,6 @@
--- 0563: importing adds only new category codes, even outside the caller's visible companies.
+-- 0566: importing adds only new category codes, even outside the caller's visible companies.
 -- This read-only oracle reveals only existence for caller-supplied keys; manual Criteria rules stay intact.
--- Reserved idx563/when1791900000043; the integrator appends the journal after 0562.
+-- Reserved idx566/when1791900000046; the integrator appends the journal after 0565.
 CREATE FUNCTION app.existing_system_label_import_keys(p_tenant uuid,p_rows jsonb)
 RETURNS TABLE(key text)
 LANGUAGE plpgsql STABLE SECURITY DEFINER

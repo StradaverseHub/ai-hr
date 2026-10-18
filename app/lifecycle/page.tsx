@@ -19,7 +19,7 @@ export default async function LifecycleHub({ searchParams }: { searchParams: Pro
     ? await Promise.all([listCases(s, 'onboarding'), listCases(s, 'offboarding'), listRequisitions(s, { status: 'open' }), lifecycleWorklist(s), pendingApprovals(s)])
     : [[], [], [], [], { requisitions: [], assetRequests: [] }];
   const tiles = [
-    { href: '/lifecycle/onboarding', label: t('tabs.onboarding'), n: onb.length },
+    { href: '/lifecycle/onboarding/legacy', label: t('onboarding.legacyTitle'), n: onb.length },
     { href: '/lifecycle/offboarding', label: t('tabs.offboarding'), n: ofb.length },
     { href: '/lifecycle/requisitions', label: t('hub.openRequisitions'), n: reqs.length },
     ...(level >= LEVEL.manager ? [{ href: '/lifecycle/requisitions?approval=pending', label: t('hub.awaitingApproval'), n: pending.requisitions.length + pending.assetRequests.length }] : []),

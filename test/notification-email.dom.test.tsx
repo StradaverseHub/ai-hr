@@ -18,7 +18,15 @@ import MyPage from '../app/me/notifications/page';
 beforeEach(()=>{cleanup();vi.clearAllMocks();m.accounts.mockResolvedValue([]);m.policy.mockResolvedValue([]);m.deliveries.mockResolvedValue([]);m.relay.mockResolvedValue(null);m.group.mockReturnValue(true);m.internal.mockReturnValue(false);m.identity.mockResolvedValue(null);m.preferences.mockResolvedValue({employments:[{id:'employment',code:'EMP-01'}],preferences:[],policy:[]});});
 describe('workflow email configuration screens',()=>{
  it('does not claim mail is active when the root-installed service has not been upgraded',async()=>{
-  render(await AdminPage({searchParams:Promise.resolve({})}));expect(screen.getByText(en.workflowEmail.upgradeRequired)).toBeTruthy();expect(screen.getAllByRole('checkbox')).toHaveLength(14);expect(screen.getByRole('checkbox',{name:en.workflowEmail.categories.employee_master_reports})).not.toBeChecked();expect(screen.getAllByRole('checkbox').every(c=>!(c as HTMLInputElement).checked)).toBe(true);
+  render(await AdminPage({searchParams:Promise.resolve({})}));
+  expect(screen.getByText(en.workflowEmail.upgradeRequired)).toBeTruthy();
+  // Explicit product contract, independent of the category array that renders the screen.
+  const expectedCategories = ['attendance','claims','delegation','leave','notice','offboarding','onboarding','payroll','performance','profile','readiness','review','rewards','toil','employee_master_reports'] as const;
+  expect(screen.getAllByRole('checkbox')).toHaveLength(expectedCategories.length);
+  for (const category of expectedCategories) {
+   // A singular exact-name query also refuses duplicate controls or an absent category.
+   expect(screen.getByRole('checkbox',{name:en.workflowEmail.categories[category]})).not.toBeChecked();
+  }
  });
  it('makes tenant controls read-only for a company administrator',async()=>{
   m.group.mockReturnValue(false);render(await AdminPage({searchParams:Promise.resolve({})}));expect(screen.queryByRole('button',{name:en.workflowEmail.savePolicy})).toBeNull();expect((screen.getByRole('group') as HTMLFieldSetElement).disabled).toBe(true);

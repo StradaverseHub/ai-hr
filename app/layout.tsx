@@ -31,7 +31,9 @@ import { allowedCompanies } from '@/core/read';
 import { getScopeIds } from '@/lib/scope';
 import { getOnboardingStatus } from '@/core/onboarding';
 import { listPendingTasks } from '@/core/approvals-inbox';
-import { NotificationCenter } from '@/components/notification-center';
+import { onboardingTasks, onboardingUnreadNoticeCount, onboardingNotices, onboardingNavigation } from '@/packs/lifecycle/service';
+import { NotificationCenter, type NotificationTaskItem } from '@/components/notification-center';
+import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
 import { CommandBar } from '@/components/command-bar';
 import { dispatchNotifications, listNotifications, unreadNotificationCount } from '@/core/notifications';
 import { listApprovalHistory } from '@/core/read';
@@ -154,10 +156,18 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // same reason `notifEnabled` two lines above uses it: this is the root layout and a throw 500s every
   // authenticated route. `listPendingTasks` takes the answer rather than asking, so the loud/quiet choice
   // belongs to whichever surface calls it.
-  const pendingTasks = await listPendingTasks(session, scopeIds, {
+  const approvalTasks = await listPendingTasks(session, scopeIds, {
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: isModuleEnabledOrFalse(session, 'claims'),
   });
+  const onboardingNav=isModuleEnabledOrFalse(session,'lifecycle')?await onboardingNavigation(session):{module:false,master:false,requisitions:false};
+  const onboardingAccess=onboardingNav.module;
+  const onboardingQueue = isModuleEnabledOrFalse(session, 'lifecycle') ? await onboardingTasks(session) : [];
+  const legacyApprovalCount = approvalTasks.length;
+  const pendingTasks:NotificationTaskItem[]=[...approvalTasks,...onboardingQueue.map(onboardingNotificationTask)];
+  const onboardingNoticesEnabled=isModuleEnabledOrFalse(session,'lifecycle');
+  const [onboardingUnread,onboardingRead]=onboardingNoticesEnabled?await Promise.all([onboardingNotices(session),onboardingNotices(session,true)]):[[],[]];
+  const onboardingUnreadCount=onboardingNoticesEnabled?await onboardingUnreadNoticeCount(session):0;
   const notifUnread = notifEnabled ? await unreadNotificationCount(session, undefined, { action: false }) : 0;
   const taskNotifCount = notifEnabled ? await unreadNotificationCount(session, undefined, { action: true }) : 0;
   const notifItems = notifEnabled ? await listNotifications(session, undefined, { limit: 12, read: false, action: false }) : [];
@@ -204,7 +214,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // by construction the same user-scoped queue: only items awaiting THIS viewer's decision,
               // self-excluding, admin-only categories gated inside listPendingTasks. NOT the bell's
               // taskCount below, which also folds in unread action notifications (not approval records).
-              approvalCount={pendingTasks.length}
+              approvalCount={legacyApprovalCount}
+              taskCount={pendingTasks.length}
+              onboardingAccess={onboardingAccess}
+              onboardingMaster={onboardingNav.master}
+              onboardingRequisitionsAccess={onboardingNav.requisitions}
               // ADR-0077 slice 4 — which module-owned rows the rail may advertise. A plain string array
               // (or null), never the snapshot itself: Sidebar is a client component, and passing the
               // entitlement context would drag the resolver into the client bundle. null means "no
@@ -335,12 +349,12 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                       Task tab covers its purpose (and works even with NOTIFICATIONS_ENABLED off, where
                       only the notification reads are dark). */}
                   <NotificationCenter
-                    unread={notifUnread}
-                    items={notifItems}
+                    unread={notifUnread + onboardingUnreadCount}
+                    items={[...notifItems,...onboardingUnread]}
                     tasks={pendingTasks}
                     taskNotifications={taskNotifs}
                     taskCount={pendingTasks.length + taskNotifCount}
-                    readItems={readNotifs}
+                    readItems={[...readNotifs,...onboardingRead]}
                     history={approvalHistory}
                     canApprove={canApprove}
                   />

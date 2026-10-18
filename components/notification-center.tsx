@@ -7,8 +7,10 @@ import { useTranslations } from 'next-intl';
 import { useIsMonolith } from '@/components/ui-theme-context';
 import { Bell, Search } from 'lucide-react';
 import { markAllNotificationsReadAction, markNotificationReadAction } from '@/app/notification-actions';
-import type { NotificationRow } from '@/core/notifications';
-import type { PendingTaskItem } from '@/core/approvals-inbox';
+import type { NotificationRow as StoredNotificationRow } from '@/core/notifications';
+type NotificationRow=Pick<StoredNotificationRow,'id'|'title'|'body'|'severity'|'linkPath'|'createdAt'|'readAt'>;
+import type { PendingTaskItem as ApprovalTaskItem } from '@/core/approvals-inbox';
+export type NotificationTaskItem=ApprovalTaskItem | (Omit<ApprovalTaskItem,'kind'|'createdAt'>&{kind:'onboarding';createdAt?:undefined});
 import type { ApprovalHistoryItem } from '@/lib/approval-history';
 
 /**
@@ -66,7 +68,7 @@ export function NotificationCenter({
   /** The Notification tab list — unread, non-action. */
   items: NotificationRow[];
   /** The live approvals queue awaiting the viewer's decision. */
-  tasks?: PendingTaskItem[];
+  tasks?: NotificationTaskItem[];
   /** Unread severity-'action' notifications — "complete this" items outside the approvals queue. */
   taskNotifications?: NotificationRow[];
   /** Full open-task count (queue + action notices) — the Task tab badge. */
@@ -90,11 +92,12 @@ export function NotificationCenter({
 
   // ── Task tab: merge the approvals queue with the action notifications, newest first. ──
   const taskEntries = useMemo(() => {
-    const entries: ({ type: 'queue'; at: number; item: PendingTaskItem } | { type: 'notif'; at: number; item: NotificationRow })[] = [
-      ...tasks.map((item) => ({ type: 'queue' as const, at: Date.parse(item.createdAt), item })),
+    const entries: ({ type: 'queue'; at: number|null; item: NotificationTaskItem } | { type: 'notif'; at: number; item: NotificationRow })[] = [
+      ...tasks.map((item) => ({ type: 'queue' as const, at: item.createdAt ? Date.parse(item.createdAt) : null, item })),
       ...taskNotifications.map((item) => ({ type: 'notif' as const, at: new Date(item.createdAt).getTime(), item })),
     ];
-    return entries.sort((a, b) => b.at - a.at);
+    // Keep genuine recorded instants newest first. Undated queue entries follow in stable ID order.
+    return entries.sort((a, b) => a.at === null ? b.at === null ? a.item.id.localeCompare(b.item.id) : 1 : b.at === null ? -1 : b.at - a.at);
   }, [tasks, taskNotifications]);
 
   // ── History tab: read notifications + approval decisions, merged newest first, searchable. ──
@@ -149,7 +152,7 @@ export function NotificationCenter({
     );
   };
 
-  const taskQueueRow = (task: PendingTaskItem) => (
+  const taskQueueRow = (task: NotificationTaskItem) => (
     <li key={`t-${task.id}`}>
       <Link href={task.linkPath} onClick={() => setOpen(false)} className="block hover:bg-accent">
         <div className="flex gap-2.5 px-4 py-2.5">
@@ -159,7 +162,7 @@ export function NotificationCenter({
               <span className="truncate text-sm font-medium text-foreground">
                 {t(`task.${task.kind}` as 'task.leave')}
               </span>
-              <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">{relTime(new Date(task.createdAt))}</span>
+              {task.createdAt && <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">{relTime(new Date(task.createdAt))}</span>}
             </div>
             {task.subjectName && <p className="mt-0.5 truncate text-xs text-muted-foreground">{task.subjectName}</p>}
           </div>
@@ -249,7 +252,7 @@ export function NotificationCenter({
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
-          <div className="absolute right-0 z-50 mt-2 w-[22rem] overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-card)]">
+          <div className="fixed right-3 z-50 mt-2 w-[22rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-card)] lg:absolute lg:right-0">
             {/* Segmented tab bar — one style for every role; only the data behind each tab differs. */}
             <div className="border-b border-border px-3 pb-2 pt-2.5">
               <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted/60 p-1">
