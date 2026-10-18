@@ -344,9 +344,10 @@ export function provisionRunnerMode(args:readonly string[]):'default'|'installed
 /** Validate BEFORE any application import or env-file loader. Installer supplies env-i + a separate
  * root-owned runner.env; this command itself reads no env file, including production/local fallback. */
 export function validateInstalledInternalReportEnvironment(env:NodeJS.ProcessEnv):void {
-  const allowed=new Set(['AUTH_PROVIDER','AUTH_PUBLIC_ORIGIN','DATABASE_URL','MIGRATION_DATABASE_URL',
+  const allowed=new Set(['AUTH_PROVIDER','AUTH_PUBLIC_ORIGIN','DATABASE_URL','MIGRATION_DATABASE_URL','EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED',
     'NODE_ENV','TZ','HOME','PATH','LANG','LC_ALL','LC_CTYPE','TMPDIR','PWD','SHLVL','_']);
   if(Object.keys(env).some(key=>!allowed.has(key)))throw new Error('Internal report runner environment is not closed.');
+  if(!['true','false'].includes(env.EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED??''))throw new Error('Internal report runner scheduling capability is invalid.');
   if(env.AUTH_PROVIDER!=='internal'||!env.DATABASE_URL||!env.MIGRATION_DATABASE_URL)throw new Error('Internal report runner configuration is incomplete.');
   const origin=new URL(env.AUTH_PUBLIC_ORIGIN??'');
   if(origin.protocol!=='https:'||origin.username||origin.password||origin.pathname!=='/'||origin.search||origin.hash
