@@ -21,7 +21,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { hireEmployee } from '../core/org';
 import { updateOwnContact } from '../core/profile';
 import { employeeDetail } from '../core/read';
+import {setCompensation,compensationHistoryDetailed} from '../core/comp';
 import {readOwnProfileWorkspace} from '../core/profile-edit';
+import {readOwnProfileFacts} from '../core/profile-view';
+import {PERSONNEL_FIELDS,personnelField} from '../lib/personnel-field-registry';
+import {todayInKualaLumpur} from '../lib/hr-date';
 import { myProfileRecord } from '../app/me/record';
 import { ME_WITHHELD_COLUMNS } from '../app/me/visible-fields';
 import { person } from '../db/schema';
@@ -30,6 +34,8 @@ import {
   adminCtx,
   closeAll,
   createAppUser,
+  entitledCtx,
+  setModule,
   migrateTestDb,
   owner,
   resetDb,
@@ -38,6 +44,21 @@ import {
 } from './harness';
 
 let b: Base;
+
+// Two compatibility DTO facts share short names with protected owners. Exempt ONLY these
+// exact legacy paths; a protected key anywhere else (including an array) remains a violation.
+const LEGACY_OWN_FACT_PATHS=new Set([
+  JSON.stringify(['contact','homeAddress','state']),
+  JSON.stringify(['compensation','monthlyAllowance']),
+]);
+function withheldPaths(value:unknown,withheld:string,path:string[]=[]):string[][] {
+  if(value===null||typeof value!=='object')return [];
+  return Object.entries(value).flatMap(([key,child])=>{
+    const next=[...path,key];
+    return [...(key===withheld&&!LEGACY_OWN_FACT_PATHS.has(JSON.stringify(next))?[next]:[]),...withheldPaths(child,withheld,next)];
+  });
+}
+
 
 async function hire(name: string) {
   return hireEmployee(adminCtx(b), {
@@ -117,25 +138,54 @@ describe('r259 — /me is scoped to the caller’s own employment', () => {
     expect(await myProfileRecord(ctx)).toBeNull();
   });
 
-  it('carries no withheld field out of the admin row', async () => {
-    // The redaction is an explicit projection in app/me/record.ts. This is the runtime half of the
-    // source-static check in test/me-profile-visibility.test.ts: what is actually handed to the page must
-    // not contain the columns docs/me-profile-field-visibility.md promises are withheld — a promise to the
-    // reporter that the object itself has to keep, not only the JSX.
-    const mine = await hire('Selfreader');
-    const ctx = await employeeCtx(mine.personId);
-    const record = await myProfileRecord(ctx);
+  it('carries no manifest-withheld field out of the legacy DTO except its exact legitimate own-fact paths', async () => {
+    const mine=await hire('Selfreader'),ctx=await employeeCtx(mine.personId);
+    await owner.db.update(person).set({state:'ZZOWNLEGACYSTATE'}).where(eq(person.id,mine.personId));
+    await setCompensation(adminCtx(b),{employmentId:mine.employmentId,basicSalary:3500,monthlyAllowance:25.13,effectiveFrom:todayInKualaLumpur(),remarks:'ZZINTERNALSALARYREASON'});
+    const record=await myProfileRecord(ctx);
+    expect(record?.contact.homeAddress.state).toBe('ZZOWNLEGACYSTATE');
+    expect(record?.compensation).toMatchObject({basicSalary:'3500.00',monthlyAllowance:'25.13'});
+    expect(JSON.stringify(record)).not.toContain('ZZINTERNALSALARYREASON');
 
-    // DRIVEN BY THE MANIFEST. This was a hand-written list of ten names, and a hand-written list is what
-    // let `payrollPolicyStatus` and `holidayGroupName` — both named in app/me/record.ts's own comment as
-    // deliberately not projected — be added to the projection with this file green. Every name now comes
-    // from `ME_HIDDEN_FIELDS[].columns`, the same declaration the reporter's document is written from.
-    const flat = JSON.stringify(record);
-    expect(ME_WITHHELD_COLUMNS.length, 'the withheld list names no columns at all').toBeGreaterThan(20);
-    for (const withheld of ME_WITHHELD_COLUMNS) {
-      expect(flat.includes(`"${withheld}"`), `the employee record carries the withheld field ${withheld}`).toBe(
-        false,
-      );
+    // The manifest remains the complete authority. The two same-name protected owners stay armed.
+    expect(personnelField('leave.eligibility_and_explanation_details.state')).toMatchObject({owner:'leaveEligibility',ownerField:'state',ess:{visibility:'protected'}});
+    expect(personnelField('payroll.draft_initial_monthly_allowance.monthlyallowance')).toMatchObject({owner:'draft',ownerField:'monthlyAllowance',ess:{visibility:'protected'}});
+    expect(ME_WITHHELD_COLUMNS).toEqual(expect.arrayContaining(['state','monthlyAllowance']));
+    expect(ME_WITHHELD_COLUMNS.length,'the withheld list names no columns at all').toBeGreaterThan(20);
+    for(const withheld of ME_WITHHELD_COLUMNS)expect(withheldPaths(record,withheld),`legacy employee DTO carries protected ${withheld}`).toEqual([]);
+  });
+
+  it('detects same-name protected keys outside the two exact own-fact paths',()=>{
+    const allowed={contact:{homeAddress:{state:'Own state'}},compensation:{monthlyAllowance:'25.13'}};
+    expect(withheldPaths(allowed,'state')).toEqual([]);expect(withheldPaths(allowed,'monthlyAllowance')).toEqual([]);
+    const injected={...allowed,leaveEligibility:{state:'internal'},draft:{monthlyAllowance:'9999.99'},contact:{...allowed.contact,other:{state:'internal'}},rows:[{state:'internal',monthlyAllowance:'9999.99'}],
+      // A literal dotted key must not masquerade as the actual nested own-fact path.
+      'contact.homeAddress':{state:'internal'}};
+    const statePaths=withheldPaths(injected,'state'),allowancePaths=withheldPaths(injected,'monthlyAllowance');
+    expect(statePaths).toHaveLength(4);expect(statePaths).toEqual(expect.arrayContaining([['leaveEligibility','state'],['contact','other','state'],['rows','0','state'],['contact.homeAddress','state']]));
+    expect(allowancePaths).toHaveLength(2);expect(allowancePaths).toEqual(expect.arrayContaining([['draft','monthlyAllowance'],['rows','0','monthlyAllowance']]));
+  });
+
+  it('projects populated current Profile facts and workspace only by visible stable field IDs for the actual own subject',async()=>{
+    await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'attendance','active');
+    const mine=await hire('Selfreader'),colleague=await hire('Colleague');
+    const ctx={...await entitledCtx(b,['employee']),...await employeeCtx(mine.personId)};
+    const internal='ZZCURRENTOWNERINTERNALSALARYREASON';
+    await setCompensation(adminCtx(b),{employmentId:mine.employmentId,basicSalary:3500,monthlyAllowance:25.13,effectiveFrom:todayInKualaLumpur(),remarks:internal});
+    const revisions=await compensationHistoryDetailed(adminCtx(b),mine.employmentId);
+    expect(revisions.some(row=>row.remarks===internal),'private sentinel must exist in the canonical salary owner').toBe(true);
+    const facts=await readOwnProfileFacts(ctx,mine.employmentId),workspace=await readOwnProfileWorkspace(ctx,{employmentId:mine.employmentId});
+    expect(facts.header).toMatchObject({name:'Selfreader'});expect(facts.modules).toEqual({payroll:true,leave:true,attendance:true});
+    expect(facts.values['payroll.basic_salary_and_salary_history.basicsalary']).toBe('3500.00');
+    expect(workspace.values['profile.personal_details.fullname']).toBe('Selfreader');
+    expect(facts.records.length,'real hired history must exercise records.values').toBeGreaterThan(0);
+    const emitted=[facts.values,...facts.records.map(row=>row.values),workspace.values,...workspace.registers.map(row=>row.values)];
+    for(const values of emitted){
+      for(const field of PERSONNEL_FIELDS.filter(field=>field.ess.visibility==='protected'))expect(Object.hasOwn(values,field.id),`protected stable field ID emitted: ${field.id}`).toBe(false);
+      for(const id of Object.keys(values))expect(personnelField(id)?.ess.visibility,`undeclared or nonvisible field ID: ${id}`).toBe('visible');
     }
+    expect(JSON.stringify({facts,workspace})).not.toContain(internal);
+    await expect(readOwnProfileFacts(ctx,colleague.employmentId)).rejects.toMatchObject({code:'permission'});
+    await expect(readOwnProfileWorkspace(ctx,{employmentId:colleague.employmentId})).rejects.toMatchObject({code:'permission'});
   });
 });
