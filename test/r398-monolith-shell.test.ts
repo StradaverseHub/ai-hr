@@ -6,8 +6,8 @@
  *  • The intent bar sits between the top line and <main>; the status line after <main>.
  *  • <CommandBar /> stays MOUNTED in Monolith (its centre track is hidden, not removed), because the intent
  *    bar opens that dialog and ⌘K lives in it.
- *  • CLASSIC IS UNTOUCHED: every class string of the shell elements as main ships them is still present
- *    verbatim, so the Monolith look can only have been ADDED as `monolith:` utilities, never edited in.
+ *  • Classic keeps its baseline class strings except the explicit mobile notification-panel repair
+ *    below. That repair keeps the panel within the viewport; every other baseline class remains pinned.
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -31,6 +31,12 @@ const classNames = (src: string) => [...src.matchAll(/className="([^"]+)"/g)].ma
 /** Every single-quoted class list handed to cn() — three or more utilities, so prose and paths are skipped. */
 const cnStrings = (src: string) =>
   [...src.matchAll(/'([a-z0-9!:[\]().%_/&>*=,-]+(?: [a-z0-9!:[\]().%_/&>*=,-]+){2,})'/g)].map((m) => m[1]);
+
+// The original right-aligned absolute panel clipped outside the 390px viewport. The bounded fixed
+// mobile panel and desktop absolute anchor were verified at 390px and 1280px on candidate fc3f41d7.
+// This is one exact replacement, not permission to change other Classic shell styling.
+const CLASSIC_NOTIFICATION_PANEL = 'absolute right-0 z-50 mt-2 w-[22rem] overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-card)]';
+const RESPONSIVE_NOTIFICATION_PANEL = 'fixed right-3 z-50 mt-2 w-[22rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-card)] lg:absolute lg:right-0';
 
 describe('Monolith shell wiring', () => {
   it('the monolith: variant keys on <html data-ui-theme="monolith">, like the tokens', () => {
@@ -65,7 +71,7 @@ describe('Monolith shell wiring', () => {
   });
 });
 
-describe('Classic is untouched: main’s shell class strings are all still here, verbatim', () => {
+describe('Classic shell baseline, with the approved mobile notification positioning repair', () => {
   for (const file of ['app/layout.tsx', 'components/sidebar.tsx', 'components/company-switcher.tsx', 'components/notification-center.tsx']) {
     it(file, () => {
       const before = classNames(onMain(file));
@@ -76,14 +82,20 @@ describe('Classic is untouched: main’s shell class strings are all still here,
         expect(cnStrings(onMain(file)).some((c) => c.includes('rounded-[1.25rem]'))).toBe(true);
       }
       const now = read(file);
+      if (file === 'components/notification-center.tsx') {
+        expect(before.filter(cls => cls === CLASSIC_NOTIFICATION_PANEL)).toHaveLength(1);
+        expect(classNames(now).filter(cls => cls === RESPONSIVE_NOTIFICATION_PANEL)).toHaveLength(1);
+      }
       const quoted = cnStrings(onMain(file));
       for (const cls of quoted) {
         const kept = now.includes(`'${cls}'`) || now.includes(`'${cls} monolith:`);
         expect(kept, `Classic cn() class string changed in ${file}: '${cls}'`).toBe(true);
       }
       for (const cls of before) {
+        const expected = file === 'components/notification-center.tsx' && cls === CLASSIC_NOTIFICATION_PANEL
+          ? RESPONSIVE_NOTIFICATION_PANEL : cls;
         // Either the exact attribute is still there, or the same string with `monolith:` utilities appended.
-        const kept = now.includes(`className="${cls}"`) || now.includes(`className="${cls} monolith:`);
+        const kept = now.includes(`className="${expected}"`) || now.includes(`className="${expected} monolith:`);
         expect(kept, `Classic class string changed in ${file}: "${cls}"`).toBe(true);
       }
     });
