@@ -80,7 +80,12 @@ describe('no leave sweep skips an employment silently', () => {
   it('does not add the field to the sweep that has no pack loop', () => {
     const i = SRC.indexOf('export async function reprojectEntitlementForEmployment');
     expect(i).toBeGreaterThan(0);
-    const body = SRC.slice(i, i + 2000);
+    // Bound the complete named function: its documented parameters can grow without changing the
+    // result contract. A fixed character window stopped before `none` when Movement added outerTx.
+    const end = SRC.indexOf('\n}\n', i);
+    expect(end, 'the named function has a top-level closing boundary').toBeGreaterThan(i);
+    const body = SRC.slice(i, end + 2);
     expect(body).toContain('const none = { affected: 0, totalDelta: 0 };');
+    expect(body).not.toMatch(/\bpackBlocked\b/);
   });
 });
