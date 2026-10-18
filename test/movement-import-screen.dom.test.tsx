@@ -18,7 +18,7 @@ const selected:MovementImportPreview={...initial,selection:[2,4],employees:[{...
 const result:MovementImportResult={employees:[{...selected.employees[0],rows:selected.employees[0].rows.map(row=>row.status==='valid'?{...row,status:'imported'}:row)}],imported:2,excluded:1,failed:0,byEventType:[{eventType:'promotion',imported:1,failed:0,excluded:0},{eventType:'transfer',imported:1,failed:0,excluded:0},{eventType:'bad_type',imported:0,failed:0,excluded:1}]};
 const reference={departments:[],positions:[],costCenters:[],states:[],countries:[],nationalities:[],relationships:[],familyRelationships:[]};
 function mount(workbench=false){render(<NextIntlClientProvider locale="en" messages={en}>{workbench?<ImportWorkbench companies={companies} defaultCompanyId="a" reference={reference}/>:<MovementImport companies={companies} defaultCompanyId="a"/>}</NextIntlClientProvider>);if(workbench)fireEvent.click(screen.getByRole('radio',{name:/^Movement /}));}
-function input(){fireEvent.change(screen.getByLabelText('Or paste CSV'),{target:{value:'employee_code,event_type,effective_date\nEMP-0004,promotion,18-Oct-2026'}});}
+function input(value='employee_code,event_type,effective_date\nEMP-0004,promotion,18-Oct-2026'){fireEvent.change(screen.getByLabelText('Or paste CSV'),{target:{value}});}
 function deferred<T>(){let resolve!:(value:T)=>void;const promise=new Promise<T>(done=>resolve=done);return {resolve,promise};}
 beforeEach(()=>{vi.resetAllMocks();mocks.preview.mockResolvedValue(initial);mocks.commit.mockResolvedValue(result);mocks.read.mockResolvedValue({name:'fictional.csv',text:'new bytes'});Object.defineProperty(URL,'createObjectURL',{configurable:true,value:vi.fn(()=> 'blob:fixture')});Object.defineProperty(URL,'revokeObjectURL',{configurable:true,value:vi.fn()});vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(()=>{});});
 describe('Movement import selection and immutable confirmation',()=>{
@@ -45,7 +45,14 @@ describe('Movement import selection and immutable confirmation',()=>{
  it('invalidates an old preview after editing CSV or the selected company',async()=>{
   mount();input();fireEvent.click(screen.getByRole('button',{name:'Check file'}));await screen.findByRole('heading',{name:'Review events before importing'});
   fireEvent.change(screen.getByLabelText('Selected company'),{target:{value:'b'}});expect(screen.queryByRole('heading',{name:'Review events before importing'})).toBeNull();
-  fireEvent.click(screen.getByRole('button',{name:'Check file'}));await screen.findByRole('heading',{name:'Review events before importing'});input();expect(screen.queryByRole('heading',{name:'Review events before importing'})).toBeNull();
+  expect(screen.queryByRole('button',{name:'Confirm and import selected events'})).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'Check file'}));await screen.findByRole('heading',{name:'Review events before importing'});
+  await waitFor(()=>expect(mocks.preview).toHaveBeenLastCalledWith('b',expect.stringContaining('promotion'),undefined));
+  const changed='employee_code,event_type,effective_date\nEMP-0004,transfer,20-Oct-2026';input(changed);
+  expect(screen.getByLabelText('Or paste CSV')).toHaveValue(changed);expect(screen.queryByRole('heading',{name:'Review events before importing'})).toBeNull();
+  expect(screen.queryByRole('button',{name:'Confirm and import selected events'})).toBeNull();expect(mocks.commit).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button',{name:'Check file'}));await screen.findByRole('heading',{name:'Review events before importing'});
+  expect(mocks.preview).toHaveBeenLastCalledWith('b',changed,undefined);
  });
  it('removes the previous ready preview when a new check fails',async()=>{
   mocks.preview.mockResolvedValueOnce({...selected,excluded:0,selection:[2,4]}).mockRejectedValueOnce(new Error('fixture failure'));mount();input();fireEvent.click(screen.getByRole('button',{name:'Check file'}));await screen.findByRole('heading',{name:'Review events before importing'});

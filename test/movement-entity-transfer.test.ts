@@ -36,6 +36,8 @@ import path from 'node:path';
 import { and, eq, isNull } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { personnelWorkflowControl } from '../lib/personnel-form-contract';
+import { MOVEMENT_FORM_IDS, movementFormFields } from '../lib/movement-form-contract';
+import { isComparisonKind } from '../core/movement-kinds';
 import {
   adminCtx,
   closeAll,
@@ -721,19 +723,32 @@ describe('SOURCE GUARDS — the New Event form', () => {
     'utf8',
   );
 
-  it('carries entityTransfer in its OWN mirrored comparison list, or the grid never renders', () => {
-    // The island must not import a server module, so it keeps a copy of COMPARISON_KINDS. If the two drift,
-    // Entity Transfer renders the LIFECYCLE form — no Company row, no grid — and the whole item reverts.
-    const mirrored = NEW_EVENT.slice(
-      NEW_EVENT.indexOf('const COMPARISON_KINDS'),
-      NEW_EVENT.indexOf('/** 66a63bd6'),
-    );
-    expect(mirrored.includes("'entityTransfer'")).toBe(true);
+  it('uses the pure comparison owner to render the Entity Transfer grid', () => {
+    expect(NEW_EVENT).toContain("import {isComparisonKind} from '@/core/movement-kinds'");
+    expect(NEW_EVENT).toContain('const behaviour = behaviourOf(kind);');
+    expect(NEW_EVENT).toContain('const isComparison = isComparisonKind(behaviour);');
+    expect(isComparisonKind('entityTransfer')).toBe(true);
+    expect(isComparisonKind('secondment')).toBe(false);
+    expect(movementFormFields('entityTransfer')).toEqual([...movementFormFields('transfer'), 'companyId']);
+    const from = NEW_EVENT.indexOf('{isComparison && (');
+    const end = NEW_EVENT.indexOf('<div className="flex items-center justify-end gap-2', from);
+    expect(from).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(from);
+    const grid = NEW_EVENT.slice(from, end);
+    expect(grid.length).toBeGreaterThan(100);
+    expect(grid).toContain("t('form.currentInformation')");
+    expect(grid).toContain("t('form.afterInformation')");
+    expect(grid).toContain('{comparisonRows}');
+    expect(grid).toContain("isEntityTransfer ? t('form.entityTransferHint') : t('form.comparisonHint')");
   });
 
   it('makes Company editable ONLY for entityTransfer, and keeps the read-only note otherwise', () => {
     expect(NEW_EVENT.includes("const isEntityTransfer = behaviour === 'entityTransfer';")).toBe(true);
-    expect(NEW_EVENT).toContain('"companyId": "employment.organisation_assignment.companyname"');
+    expect(NEW_EVENT).toContain("import {MOVEMENT_FORM_IDS, movementFormFields} from '@/lib/movement-form-contract'");
+    expect(NEW_EVENT).toContain('const movementField=(name:keyof typeof MOVEMENT_FORM_IDS)=>MOVEMENT_FORM_IDS[name];');
+    expect(MOVEMENT_FORM_IDS.companyId).toBe('employment.organisation_assignment.companyname');
+    // The shared admission/template contract offers Company for this built-in alone.
+    expect(MOVEMENT_KINDS.filter(kind => movementFormFields(kind).includes('companyId'))).toEqual(['entityTransfer']);
     const from = NEW_EVENT.indexOf("'company', label(movementField('companyId'))");
     const end = NEW_EVENT.indexOf("row('businessUnit'", from);
     expect(from).toBeGreaterThan(-1);
@@ -753,6 +768,8 @@ describe('SOURCE GUARDS — the New Event form', () => {
   it('re-scopes the org pickers to the destination company', () => {
     // A form that lets HR keep a Johor department while moving to a KL company is a form that manufactures
     // the exact incoherence the service then has to refuse.
+    expect(NEW_EVENT).toContain('const scopeCompanyId = isEntityTransfer ? destCompanyId : current.companyId;');
+    expect(NEW_EVENT).toContain('orgByCompany?.[scopeCompanyId]');
     expect(NEW_EVENT.includes('scoped.departments')).toBe(true);
     expect(NEW_EVENT.includes('scoped.positions')).toBe(true);
     expect(NEW_EVENT.includes('scoped.businessUnits')).toBe(true);

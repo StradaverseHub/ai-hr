@@ -31,3 +31,15 @@ export function personnelFormSources(root:string,roots:readonly string[]=PERSONN
   for(const file of roots)visit(file);
   return {files,boundaries};
 }
+
+/** Source text only: imported descriptor maps are audited without evaluating application modules. */
+export function personnelImportSourceReader(root:string){
+  const baseRoot=path.resolve(root);
+  return (from:string,specifier:string):string|undefined=>{
+    if(!specifier.startsWith('@/')&&!specifier.startsWith('./')&&!specifier.startsWith('../'))return undefined;
+    const base=specifier.startsWith('@/')?path.resolve(baseRoot,specifier.slice(2)):path.resolve(baseRoot,path.dirname(from),specifier);
+    if(!base.startsWith(baseRoot+path.sep))return undefined;
+    const file=[base+'.ts',base+'.tsx',path.join(base,'index.ts')].find(candidate=>existsSync(candidate));
+    return file?readFileSync(file,'utf8'):undefined;
+  };
+}

@@ -35,7 +35,8 @@ export function personnelImportExclusions(choice:PersonnelImportChoice,fields:re
   const movementFields=new Set<string>([...Object.entries(MOVEMENT_FORM_IDS).filter(([key])=>key!=='reason').map(([,id])=>id),'employment_history.event_information.lastworkingdate']);
   const compatibilityIds=new Set<string>(PERSONNEL_IMPORT_COMPATIBILITY.map(adapter=>adapter.fieldId));
   const carried=new Set(fields.filter(field=>field.import.column||field.import.register||compatibilityIds.has(field.id)).map(field=>JSON.stringify([field.owner,field.ownerField,field.grain])));
-  return fields.filter(field=>!movementFields.has(field.id)&&!field.import.column&&!field.import.register && !carried.has(JSON.stringify([field.owner,field.ownerField,field.grain])) && (choice==='full'||choice==='movement'&&field.tab==='Employment History'||choice!=='movement'&&field.tab===SECTION_TABS[choice] && (choice!=='emergency'||field.owner==='emergencyContact')));
+  // Movement availability applies to that choice; other templates retain their own guidance.
+  return fields.filter(field=>(choice!=='movement'||!movementFields.has(field.id))&&!field.import.column&&!field.import.register && !carried.has(JSON.stringify([field.owner,field.ownerField,field.grain])) && (choice==='full'||choice==='movement'&&field.tab==='Employment History'||choice!=='movement'&&field.tab===SECTION_TABS[choice] && (choice!=='emergency'||field.owner==='emergencyContact')));
 }
 export function personnelImportExclusionEntries(choice:PersonnelImportChoice,resolve:PersonnelLabelResolver){
   return personnelImportExclusions(choice).map(field=>{

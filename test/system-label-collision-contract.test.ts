@@ -44,7 +44,29 @@ describe('inherited label collision single-owner contracts',()=>{
   expect(service).toContain('not app.system_label_collision_allowed');
   expect(workbook).toContain('await existingSystemLabelImportKeysTx(tx,ctx.tenantId,proposals)');
   expect(workbook).not.toContain('refusedLabelCollisionProposalsTx');
-  expect(workbook).toContain('if(incumbentKeys.has(key))throw new Error(existingCodeMessage)');
-  expect(workbook).toContain('{creates,updates:[]}');
+  const analyseStart=workbook.indexOf('async function analyse('),analyseEnd=workbook.indexOf('export function previewSystemLabelImport(',analyseStart);
+  expect(analyseStart).toBeGreaterThan(-1);expect(analyseEnd).toBeGreaterThan(analyseStart);
+  const analyse=workbook.slice(analyseStart,analyseEnd);
+  expect(analyse.length).toBeGreaterThan(100);
+  const orgStart=analyse.indexOf('if((ORGANISATION_LABEL_KINDS as readonly string[]).includes(row.sheet)){'),orgEnd=analyse.indexOf('}else if((EMPLOYMENT_LABEL_CATEGORIES',orgStart);
+  expect(orgStart).toBeGreaterThan(-1);expect(orgEnd).toBeGreaterThan(orgStart);
+  expect(analyse.slice(orgStart,orgEnd)).toContain("if(incumbentKeys.has(key))throw new LabelImportRowError('existing',existingCodeMessage)");
+  // Incumbents remain visible refusals with no before image; only selected new rows reach creates.
+  expect(analyse).toContain("outcome:'error',message:'',before:null");
+  expect(analyse).toContain("result.reason=error instanceof LabelImportRowError?error.reason:'invalidRow'");
+  expect(analyse).toContain("result.outcome='error';result.selected=false");
+  expect(analyse).toContain("writes.filter(write=>output.some(row=>row.selected&&row.outcome==='add'&&row.sheet+':'+row.row===write.key))");
+  expect(analyse).toContain('bulkSaveLabels(ctx,kind,{creates,updates:[]},tx)');
+
+  // Confirmation independently repeats the existence analysis under the canonical writers' lock;
+  // a preview is neither an update right nor a reservation against a concurrent creator.
+  const applyStart=workbook.indexOf('export function applySystemLabelImport(');
+  expect(applyStart).toBeGreaterThan(analyseEnd);
+  const apply=workbook.slice(applyStart);
+  expect(apply.length).toBeGreaterThan(100);
+  expect(apply).toMatch(/await lockLabelCriteriaTx\(tx,ctx.tenantId\);[\s\S]*await analyse\(tx,ctx,rows,audit,p.selectedKeys\);[\s\S]*if\(preview.token!==p.token\)throw new Error[\s\S]*if\(!preview.valid\)throw new Error[\s\S]*for\(const write of writes\)await write\(\);/);
+  const admin=read('../core/admin.ts'),ownerStart=admin.indexOf('export async function bulkSaveLabels('),ownerEnd=admin.indexOf('const errors: LabelRowError[]',ownerStart);
+  expect(ownerStart).toBeGreaterThan(-1);expect(ownerEnd).toBeGreaterThan(ownerStart);
+  expect(admin.slice(ownerStart,ownerEnd)).toContain('await lockLabelCriteriaTx(tx, ctx.tenantId);');
  });
 });

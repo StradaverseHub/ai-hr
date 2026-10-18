@@ -61,6 +61,18 @@ describe('Personnel workbook defects observed in actual Chrome downloads',()=>{
     expect(entries.find(entry=>entry.id==='employment.direct_superior_and_history.superioremploymentid')).toMatchObject({label:'Direct Superior — Personnel record selector'});
     expect(entries.find(entry=>entry.id==='employment.direct_superior_and_history.superioremploymentid')?.reason).toContain('Employee ID or work email');
   });
+  it('keeps full and section relationship explanations while Movement suppresses its actual supported fields',()=>{
+    const full=personnelImportExclusions('full').map(field=>field.id),movement=personnelImportExclusions('movement').map(field=>field.id);
+    expect(full).toContain('employment.direct_superior_and_history.superioremploymentid');
+    expect(full).not.toContain('employment.direct_superior_and_history.employeecode');
+    expect(movement).not.toContain('employment_history.event_information.kind');
+    expect(movement).not.toContain('employment_history.event_information.effectivefrom');
+    expect(movement.length).toBeGreaterThan(0);
+    const profile=personnelImportExclusions('profile'),bank=personnelImportExclusions('bank_statutory');
+    expect(profile.length).toBeGreaterThan(0);expect(profile.every(field=>field.tab==='Profile')).toBe(true);
+    expect(bank.length).toBeGreaterThan(0);expect(bank.every(field=>field.tab==='Bank & Statutory')).toBe(true);
+    expect(EMPLOYEE_XLSX_COLUMNS).toContain('direct_superior');
+  });
   it.each(['en','ms','zh','ta','th','vi'])('%s section fence no longer claims all statutory fields are forbidden',locale=>{
     const messages=JSON.parse(readFileSync(new URL(`../messages/${locale}.json`,import.meta.url),'utf8'));
     expect(messages.people.import.sectionInstructionFence).not.toMatch(/EPF|SOCSO|EIS/);

@@ -42,6 +42,8 @@ import {
   reverseMovementEvent,
 } from '../core/movement';
 import { CONFIGURABLE_BEHAVIOUR_KINDS } from '../core/movement-type';
+import { isComparisonKind } from '../core/movement-kinds';
+import { movementFormFields } from '../lib/movement-form-contract';
 import { sweepDueMovements } from '../core/movement-apply';
 import { deriveEmploymentStatus } from '../core/employment-status';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -385,11 +387,38 @@ describe('3ced1040 — Confirmation behaves like Promotion', () => {
       path.resolve(__dirname, '../app/admin/personnel/[employmentId]/movement-new-event.tsx'),
       'utf8',
     );
-    // The form keeps its OWN mirrored copy of the comparison list (it must not import a server module).
-    // If the two drift, Confirmation renders the lifecycle form and this whole item silently reverts.
-    const mirrored = src.slice(src.indexOf('const COMPARISON_KINDS'), src.indexOf('/** 66a63bd6'));
-    expect(mirrored.includes("'confirmation'"), 'the mirrored list must carry confirmation').toBe(true);
-    expect(src.includes("t('form.confirmationHint')"), 'the date is explained as the confirmation date').toBe(true);
+    // The client now consumes the pure kind owner instead of maintaining a second comparison list.
+    expect(src).toContain("import {isComparisonKind} from '@/core/movement-kinds'");
+    expect(src).toContain('const behaviour = behaviourOf(kind);');
+    expect(src).toContain('const isComparison = isComparisonKind(behaviour);');
+    expect(isComparisonKind('confirmation')).toBe(true);
+    expect(isComparisonKind('probationExtension')).toBe(false);
+    expect(movementFormFields('confirmation')).toEqual(movementFormFields('promotion'));
+    expect(movementFormFields('confirmation')).toContain('effectiveDate');
+    expect(movementFormFields('confirmation')).toContain('basicSalary');
+
+    // A working predicate must actually gate the nonempty Current / After render branch.
+    const gridStart = src.indexOf('{isComparison && (');
+    const gridEnd = src.indexOf('<div className="flex items-center justify-end gap-2', gridStart);
+    expect(gridStart).toBeGreaterThan(-1);
+    expect(gridEnd).toBeGreaterThan(gridStart);
+    const grid = src.slice(gridStart, gridEnd);
+    expect(grid.length).toBeGreaterThan(100);
+    expect(grid).toContain("t('form.currentInformation')");
+    expect(grid).toContain("t('form.afterInformation')");
+    expect(grid).toContain('{comparisonRows}');
+
+    const dateKinds = src.match(/const DATE_VALUE_KINDS[^=]*=\s*\[([\s\S]*?)\];/);
+    expect(dateKinds).not.toBeNull();
+    expect(dateKinds![1]).toContain("'confirmation'");
+    const dateStart = src.indexOf('{showEffectiveDate && (');
+    const dateEnd = src.indexOf('{showEndDate && (', dateStart);
+    expect(dateStart).toBeGreaterThan(-1);
+    expect(dateEnd).toBeGreaterThan(dateStart);
+    const date = src.slice(dateStart, dateEnd);
+    expect(date).toContain("movementField('effectiveDate')");
+    expect(date).toContain('DATE_VALUE_KINDS.includes(behaviour)');
+    expect(date).toMatch(/behaviour === 'confirmation'\s*\? t\('form.confirmationHint'\)/);
 
     for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
       const msg = JSON.parse(fs.readFileSync(path.resolve(__dirname, `../messages/${loc}.json`), 'utf8'));
