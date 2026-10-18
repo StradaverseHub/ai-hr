@@ -4,6 +4,7 @@ import { useState, type ChangeEvent } from 'react';
 import { useTranslations } from 'next-intl';
 import { PersonnelField } from '@/components/personnel-field';
 import { personnelInput, personnelControl, personnelFormChoices } from '@/lib/personnel-form-contract';
+import {epfUiModeFrom as uiModeFrom} from '@/lib/epf-mode-map';
 import { EPF_UI_MODE_OPTIONS } from '@/lib/epf-mode-map';
 
 // Inlined from components/ui (server module) so this stays a clean client island.
@@ -90,25 +91,6 @@ const isAmountMode = (m: UiMode): m is keyof typeof AMOUNT_MODES => m in AMOUNT_
  * as Semi-Auto. A `manual_amount` row with NO amount cannot be saved (`resolveEpfElection` refuses it), so
  * the final fall-through is defence against a hand-edited row, not a reachable state.
  */
-function uiModeFrom(
-  mode: string | null,
-  employeeRate: number | null,
-  employerRate: number | null,
-  employeeAmount: number | null,
-  employerAmount: number | null,
-): UiMode {
-  if (mode === 'exempt') return 'none';
-  if (mode === 'voluntary_excess') {
-    // Semi-Auto = employee side elected, employer side left statutory (null).
-    return employeeRate != null && employerRate == null ? 'semi_auto' : 'manual_percentage';
-  }
-  if (mode === 'manual_amount') {
-    if (employeeAmount != null && employerAmount != null) return 'manual_both_amount';
-    if (employeeAmount != null) return 'manual_employee_amount';
-    if (employerAmount != null) return 'manual_employer_amount';
-  }
-  return 'auto';
-}
 
 export function EpfElection({
   mode,

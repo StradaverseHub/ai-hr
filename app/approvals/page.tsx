@@ -1,3 +1,4 @@
+import {profileProposalReviewLines} from '@/lib/profile-proposal-display';
 import {LeaveCreditClaimReviewNotice} from '@/components/leave/leave-credit-claim-review';
 import {leaveCreditClaimReviewBlocks} from '@/lib/leave-credit-claim-review';
 import { pendingRewardReviews } from '@/packs/rewards/service';
@@ -213,6 +214,7 @@ export default async function ApprovalsPage({
   // r260 — Personnel Management's own field labels, so a proposed profile change is named in the
   // approver's queue exactly as the employee reads it on their record and HR reads it on the card.
   const tPeople = await getTranslations('people.detail');
+  const profileLabels=await getTranslations();
   // r260 — the option WORDS behind a proposed select (gender, marital status, PCB category) live in the
   // namespace the employee picked them in. Resolved through the SHARED renderer so this queue and My
   // Profile cannot end up describing one request two ways.
@@ -1113,15 +1115,9 @@ export default async function ApprovalsPage({
                         scans this file's RAW SOURCE for the retired admin path, and a source-scanning
                         guard does not strip comments — AGENTS 27.) */}
                     <div className="text-xs text-muted-foreground">
-                      {Object.entries((r.proposed ?? {}) as Record<string, unknown>).map(([k, v]) => {
-                        const f = requestableField(k);
-                        // mask: false — the approver is checking the proposed account number against a
-                        // bank letter; the EMPLOYEE's own screen is the one that masks it.
-                        const line = f
-                          ? `${tPeople(f.labelKey)} → ${formatProposedValue(f, v, tMeOptions, { mask: false })}`
-                          : `${k} → ${v}`;
-                        return <div key={k}>{line}</div>;
-                      })}
+                      {profileProposalReviewLines(r.proposed,r.review,(key,fallback)=>profileLabels.has(key)?profileLabels(key):fallback,{mask:false}).map(line=>(
+                        <div key={line.key}>{line.recordLabel&&<p className="font-medium">{line.recordLabel}</p>}<p>{line.label}</p><p>{profileLabels('essProfile.currentValue',{value:line.currentValue})}</p><p>{profileLabels('essProfile.proposedValue',{value:line.value})}</p></div>
+                      ))}
                     </div>
                   </div>
                   <ProfileChangeDecide

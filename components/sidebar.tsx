@@ -237,6 +237,7 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   // test/system-testing.test.ts pins this href against the row in SYSTEM_SETTINGS_NODE and the route on
   // disk, so the three cannot part company silently.
   ['/admin/system-testing', 'system_testing'] as const,
+  ['/system-testing', 'system_testing'] as const,
   // ADR-0082 — `assistant` is the SECOND hand-written entry and for the same reason as the first: it is
   // a catalog module with `packBacked: false`, so there is no pack descriptor to derive the href from.
   // Without this line the row would advertise a module the tenant has not bought. The per-user
@@ -370,6 +371,7 @@ const GROUPS: Group[] = [
     items: [
       { href: '/', labelKey: 'dashboard', icon: LayoutDashboard },
       { href: '/me', labelKey: 'myWorkspace', icon: UserRound, tour: 'nav-me' },
+      { href: '/system-testing', labelKey: 'mySystemTesting', icon: FlaskConical },
       { href: '/org', labelKey: 'orgChart', icon: Network },
       // a7cbd895: "My Absence" — the first-level home for ALL leave self-service after the /me Leave
       // tab merged into /leave. Since ADR-0080 rung 6 the row lives on the leave pack and mounts here

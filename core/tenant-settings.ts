@@ -1,3 +1,5 @@
+import {isProfileEditPolicyValue,type ProfileEditPolicyValue} from '../lib/profile-edit-policy-value';
+import {lockProfileEditPolicyTx} from './profile-edit-policy';
 /**
  * ADR-0084 — THE APP'S FIRST WRITER OF `tenant_setting`, and the switchboard for the unattended agents.
  *
@@ -36,7 +38,7 @@
  *     value for exactly that, and never reports a switch as effective when its gate is shut.
  */
 import { and, eq, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import * as schema from '../db/schema';
 import { isGroupAdmin } from '../lib/authz-model';
@@ -72,17 +74,17 @@ const catalogEntry = (key: string) => SETTING_CATALOG.find((s) => s.key === key)
  * the writer now carries the same four value types the catalog and the `setting_definition_value_type`
  * CHECK have carried since 0313 — no policy changes, no migration.
  */
-export type TenantSettingValue = boolean | number | string | readonly string[];
+export type TenantSettingValue = boolean | number | string | readonly string[] | ProfileEditPolicyValue;
 
 /**
- * The catalog `valueType` a value would satisfy. Arrays are the ONLY json shape this writer accepts:
- * every catalogued json setting today is a list, and admitting an arbitrary object would mean a caller
+ * The catalog `valueType` a value would satisfy. Arrays and the bounded versioned ESS policy are json:
+ * the ESS object is accepted only for its exact catalog key; admitting an arbitrary object would mean a caller
  * could store a shape no reader in the product knows how to interpret. Anything else answers with its
  * own `typeof`, so a string written to a `json` key (or an array to a `string` key) is refused with the
  * same typed `wrong_type` a mistyped boolean has always produced.
  */
 function settingValueType(v: TenantSettingValue): string {
-  return Array.isArray(v) ? 'json' : typeof v;
+  return Array.isArray(v)||isProfileEditPolicyValue(v) ? 'json' : typeof v;
 }
 
 /**
@@ -94,6 +96,7 @@ function settingValueType(v: TenantSettingValue): string {
 export async function setTenantSetting(
   ctx: SessionContext,
   p: { key: string; value: TenantSettingValue },
+  outerTx?:Tx,
 ): Promise<void> {
   // Mirrors app.is_group_admin(). A company-scoped admin is deliberately NOT enough: these switches are
   // tenant-wide, and a per-company admin flipping one would change behaviour for companies they do not
@@ -105,8 +108,10 @@ export async function setTenantSetting(
   if (entry.scope !== 'tenant') throw new TenantSettingError('not_tenant_scoped');
   if (!entry.customerVisible) throw new TenantSettingError('not_customer_visible');
   if (settingValueType(p.value) !== entry.valueType) throw new TenantSettingError('wrong_type');
+  if(p.value!==null&&typeof p.value==='object'&&!Array.isArray(p.value)&&(p.key!=='ess.profile_change_fields'||!isProfileEditPolicyValue(p.value)))throw new TenantSettingError('wrong_type');
 
-  await withTenant(ctx, async (tx) => {
+  const run=async (tx:Tx) => {
+    if(p.key==='ess.profile_change_fields'||p.key==='ess.profile_change_approver')await lockProfileEditPolicyTx(tx,ctx.tenantId);
     await tx
       .insert(schema.tenantSetting)
       .values({ tenantId: ctx.tenantId, key: p.key, value: p.value as never, source: 'customer' })
@@ -127,7 +132,8 @@ export async function setTenantSetting(
       // somebody may have to account for later, which is the whole reason it is an event and not a write.
       payload: { key: p.key, value: p.value },
     });
-  });
+  };
+  if(outerTx)await run(outerTx);else await withTenant(ctx,run);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════════════════════════

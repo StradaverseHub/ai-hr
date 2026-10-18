@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import config from '../next.config';
+import { PHASE_PRODUCTION_SERVER } from 'next/constants';
 
 describe('camera permission response policy', () => {
   it('permits first-party attendance capture without granting other pages camera or microphone', async () => {
-    const rules = await config.headers!();
+    const resolved = config(PHASE_PRODUCTION_SERVER);
+    const rules = await resolved.headers!();
     const defaults = rules.find(rule => rule.source === '/:path*')!.headers;
     const clockRules = rules.filter(rule => rule.source === '/attendance/clock');
     expect(clockRules).toHaveLength(1);

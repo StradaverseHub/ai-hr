@@ -30,6 +30,14 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const assertUuid = (s: string, label: string) => {
   if (!UUID.test(s)) throw new Error(`${label} is not a valid UUID: ${s}`);
 };
+/** Nullable only for an already-authenticated canonical user-only report; never a new operator reporter. */
+function reporterEmploymentSql(value: string | null): string {
+  if (value === null) return 'NULL';
+  assertUuid(value, 'reporter employment id'); return `'${value}'`;
+}
+function reporterBindingBody(p: { id: string; tenantId: string; reporterEmploymentId: string | null }): string {
+  return `PERFORM 1 FROM feedback_request WHERE id='${p.id}'::uuid AND tenant_id='${p.tenantId}'::uuid AND reporter_employment_id IS NOT DISTINCT FROM ${reporterEmploymentSql(p.reporterEmploymentId)}::uuid FOR UPDATE; IF NOT FOUND THEN RAISE EXCEPTION 'Feedback reporter binding changed'; END IF;`;
+}
 /** A dollar-quote tag that cannot appear inside the payload, so arbitrary plan text is injection-safe. */
 const dq = (s: string): string => {
   let tag = 'fb';
@@ -116,7 +124,8 @@ export type RemoteBlockEpisode = {
 export type RemoteFeedback = {
   id: string;
   tenant_id: string;
-  reporter_employment_id: string;
+  reporter_employment_id: string | null;
+  reporter_user_id: string | null;
   category: string;
   title: string;
   description: string;
@@ -143,7 +152,7 @@ export type RemoteFeedback = {
 };
 
 const SELECT_COLS =
-  'id, tenant_id, reporter_employment_id, category, title, description, expected_behavior, expected_function, status, plan, plan_revision, contest_reason, build_ref';
+  'id, tenant_id, reporter_employment_id, reporter_user_id, category, title, description, expected_behavior, expected_function, status, plan, plan_revision, contest_reason, build_ref';
 
 /**
  * The two queries a pull actually issues, as text.
@@ -324,7 +333,8 @@ export function raiseFeedback(p: {
   const sql = [
     'BEGIN;',
     // reporter_label = OPERATOR_REPORTER_LABEL (0348): the board shows who actually WROTE this item. The
-    // employment id still has to be a real one — it is NOT NULL and drives RLS can_see_employment() — so
+    // this operator raise still requires a real employment context. User-only app reports authenticate
+    // their login through the canonical owner instead; this operator API cannot invent that identity. So
     // without the label an operator-raised item is indistinguishable from one the human reporter typed.
     `INSERT INTO feedback_request (id, tenant_id, reporter_employment_id, reporter_user_id, reporter_label, category, title, description, expected_behavior, expected_function, status) ` +
       `VALUES ('${id}', '${p.tenantId}', '${p.reporterEmploymentId}', ${ruser}, ${dq(OPERATOR_REPORTER_LABEL)}, '${p.category}', ${dq(title)}, ${dq(description)}, ${eb}, ${ef}, 'open');`,
@@ -389,7 +399,7 @@ export function attachPlanMockups(p: {
 export function pushPlanWithMockups(p: {
   id: string;
   tenantId: string;
-  reporterEmploymentId: string;
+  reporterEmploymentId: string | null;
   plan: string;
   model: string;
   mockups?: PlanMockup[];
@@ -402,15 +412,16 @@ export function pushPlanWithMockups(p: {
 export function pushPlan(p: {
   id: string;
   tenantId: string;
-  reporterEmploymentId: string;
+  reporterEmploymentId: string | null;
   plan: string;
   model: string;
 }): void {
   assertUuid(p.id, 'feedback id');
   assertUuid(p.tenantId, 'tenant id');
-  assertUuid(p.reporterEmploymentId, 'reporter employment id');
+  reporterEmploymentSql(p.reporterEmploymentId);
   const sql = [
     'BEGIN;',
+    doBlock(reporterBindingBody(p)),
     // Close whatever version is still open. A contest already stamped its own outcome WITH the reporter's
     // words, and `outcome IS NULL` keeps this from overwriting it — a re-plan must never erase the
     // objection that prompted it, which is precisely how the old history was lost.
@@ -419,7 +430,7 @@ export function pushPlan(p: {
     // The history row, written in the SAME transaction as the plan itself so the two cannot diverge.
     // Without this the operator loop would push plans straight past the history the reporter reads.
     `INSERT INTO feedback_plan_revision (tenant_id, feedback_request_id, revision, plan, plan_model) SELECT '${p.tenantId}', '${p.id}', plan_revision, ${dq(p.plan)}, ${dq(p.model)} FROM feedback_request WHERE id = '${p.id}' ON CONFLICT (feedback_request_id, revision) DO NOTHING;`,
-    `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.plan.drafted', 'agent', '${p.reporterEmploymentId}', ${dq(JSON.stringify({ model: p.model, via: 'improvement-loop' }))}::jsonb);`,
+    `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.plan.drafted', 'agent', ${reporterEmploymentSql(p.reporterEmploymentId)}, ${dq(JSON.stringify({ model: p.model, via: 'improvement-loop' }))}::jsonb);`,
     'COMMIT;',
   ].join('\n');
   remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, sql);
@@ -440,7 +451,7 @@ export function pushPlan(p: {
 export function markBlocked(p: {
   id: string;
   tenantId: string;
-  reporterEmploymentId: string;
+  reporterEmploymentId: string | null;
   reason: string;
   blockedById?: string | null;
 }): void {
@@ -463,13 +474,13 @@ export function markBlocked(p: {
 export function markBlockedSql(p: {
   id: string;
   tenantId: string;
-  reporterEmploymentId: string;
+  reporterEmploymentId: string | null;
   reason: string;
   blockedById?: string | null;
 }): string {
   assertUuid(p.id, 'feedback id');
   assertUuid(p.tenantId, 'tenant id');
-  assertUuid(p.reporterEmploymentId, 'reporter employment id');
+  reporterEmploymentSql(p.reporterEmploymentId);
   if (p.blockedById) assertUuid(p.blockedById, 'blocked-by id');
   if (!p.reason?.trim()) throw new Error('A reason is required — say what the item is waiting on.');
   const blocker = p.blockedById ? `'${p.blockedById}'` : 'NULL';
@@ -479,6 +490,7 @@ export function markBlockedSql(p: {
       [
         'DECLARE n int;',
         'BEGIN',
+        reporterBindingBody(p),
         // `approved` OR `building` — see markBlocked. ROW_COUNT, not a re-read of the status, is what the
         // episode and the event hang off: an item that was ALREADY blocked reads the same afterwards, and
         // an episode or event for a park that did not happen is a fabricated question in the history.
@@ -491,7 +503,7 @@ export function markBlockedSql(p: {
         "    IF to_regclass('public.feedback_block') IS NOT NULL THEN",
         `      EXECUTE 'INSERT INTO feedback_block (tenant_id, feedback_request_id, question, blocked_by_id) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING' USING '${p.tenantId}'::uuid, '${p.id}'::uuid, ${dq(p.reason.trim())}::text, ${blocker}::uuid;`,
         '    END IF;',
-        `    INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.blocked', 'agent', '${p.reporterEmploymentId}', ${dq(JSON.stringify({ reason: p.reason, blockedById: p.blockedById ?? null, via: 'improvement-loop' }))}::jsonb);`,
+        `    INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.blocked', 'agent', ${reporterEmploymentSql(p.reporterEmploymentId)}, ${dq(JSON.stringify({ reason: p.reason, blockedById: p.blockedById ?? null, via: 'improvement-loop' }))}::jsonb);`,
         '  END IF;',
         outcomeRecord(p.id),
         'END',
@@ -503,7 +515,7 @@ export function markBlockedSql(p: {
 }
 
 /** The question was answered — return the item to the build queue (status → approved). */
-export function markUnblocked(p: { id: string; tenantId: string; reporterEmploymentId: string; note?: string | null }): void {
+export function markUnblocked(p: { id: string; tenantId: string; reporterEmploymentId: string | null; note?: string | null }): void {
   assertMoved(
     p.id,
     'approved',
@@ -516,18 +528,19 @@ export function markUnblocked(p: { id: string; tenantId: string; reporterEmploym
 export function markUnblockedSql(p: {
   id: string;
   tenantId: string;
-  reporterEmploymentId: string;
+  reporterEmploymentId: string | null;
   note?: string | null;
 }): string {
   assertUuid(p.id, 'feedback id');
   assertUuid(p.tenantId, 'tenant id');
-  assertUuid(p.reporterEmploymentId, 'reporter employment id');
+  reporterEmploymentSql(p.reporterEmploymentId);
   const sql = [
     OUTCOME_SETUP,
     doBlock(
       [
         'DECLARE n int;',
         'BEGIN',
+        reporterBindingBody(p),
         `  UPDATE feedback_request SET status = 'approved', blocked_reason = NULL, blocked_by_id = NULL, updated_at = now() WHERE id = '${p.id}' AND status = 'blocked';`,
         // ROW_COUNT matters even more on the way out than on the way in: an item that is already
         // `approved` looks identical AFTER a release that never happened, so a status re-read here would
@@ -540,7 +553,7 @@ export function markUnblockedSql(p: {
         "    IF to_regclass('public.feedback_block') IS NOT NULL THEN",
         `      EXECUTE 'UPDATE feedback_block SET answer = nullif(btrim($1), ''''), resolved_at = now() WHERE feedback_request_id = $2 AND resolved_at IS NULL' USING ${p.note ? dq(p.note) : 'NULL'}::text, '${p.id}'::uuid;`,
         '    END IF;',
-        `    INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.unblocked', 'agent', '${p.reporterEmploymentId}', ${dq(JSON.stringify({ note: p.note ?? null, via: 'improvement-loop' }))}::jsonb);`,
+        `    INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.unblocked', 'agent', ${reporterEmploymentSql(p.reporterEmploymentId)}, ${dq(JSON.stringify({ note: p.note ?? null, via: 'improvement-loop' }))}::jsonb);`,
         '  END IF;',
         outcomeRecord(p.id),
         'END',
@@ -552,42 +565,45 @@ export function markUnblockedSql(p: {
 }
 
 /** Move an approved item into the build (status → building + a feedback.build.started event). */
-export function markBuildStarted(p: { id: string; tenantId: string; reporterEmploymentId: string }): void {
+export function markBuildStarted(p: { id: string; tenantId: string; reporterEmploymentId: string | null }): void {
   assertUuid(p.id, 'feedback id');
   assertUuid(p.tenantId, 'tenant id');
-  assertUuid(p.reporterEmploymentId, 'reporter employment id');
+  reporterEmploymentSql(p.reporterEmploymentId);
   const sql = [
     'BEGIN;',
+    doBlock(reporterBindingBody(p)),
     `UPDATE feedback_request SET status = 'building', updated_at = now() WHERE id = '${p.id}' AND status = 'approved';`,
-    `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.build.started', 'agent', '${p.reporterEmploymentId}', ${dq(JSON.stringify({ via: 'improvement-loop' }))}::jsonb);`,
+    `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.build.started', 'agent', ${reporterEmploymentSql(p.reporterEmploymentId)}, ${dq(JSON.stringify({ via: 'improvement-loop' }))}::jsonb);`,
     'COMMIT;',
   ].join('\n');
   remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, sql);
 }
 
 /** Mark a green build done (status → done + build_ref + a feedback.build.completed event). buildRef = the branch/PR. */
-export function markBuildCompleted(p: { id: string; tenantId: string; reporterEmploymentId: string; buildRef: string }): void {
+export function markBuildCompleted(p: { id: string; tenantId: string; reporterEmploymentId: string | null; buildRef: string }): void {
   assertUuid(p.id, 'feedback id');
   assertUuid(p.tenantId, 'tenant id');
-  assertUuid(p.reporterEmploymentId, 'reporter employment id');
+  reporterEmploymentSql(p.reporterEmploymentId);
   const sql = [
     'BEGIN;',
+    doBlock(reporterBindingBody(p)),
     `UPDATE feedback_request SET status = 'done', build_ref = ${dq(p.buildRef)}, updated_at = now() WHERE id = '${p.id}' AND status = 'building';`,
-    `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.build.completed', 'agent', '${p.reporterEmploymentId}', ${dq(JSON.stringify({ buildRef: p.buildRef, via: 'improvement-loop' }))}::jsonb);`,
+    `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.build.completed', 'agent', ${reporterEmploymentSql(p.reporterEmploymentId)}, ${dq(JSON.stringify({ buildRef: p.buildRef, via: 'improvement-loop' }))}::jsonb);`,
     'COMMIT;',
   ].join('\n');
   remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, sql);
 }
 
 /** Close a released item (status → deployed + a feedback.deployed event). buildRef is the PR/commit link. */
-export function markDeployed(p: { id: string; tenantId: string; reporterEmploymentId: string; buildRef: string }): void {
+export function markDeployed(p: { id: string; tenantId: string; reporterEmploymentId: string | null; buildRef: string }): void {
   assertUuid(p.id, 'feedback id');
   assertUuid(p.tenantId, 'tenant id');
-  assertUuid(p.reporterEmploymentId, 'reporter employment id');
+  reporterEmploymentSql(p.reporterEmploymentId);
   const sql = [
     'BEGIN;',
+    doBlock(reporterBindingBody(p)),
     `UPDATE feedback_request SET status = 'deployed', build_ref = ${dq(p.buildRef)}, decided_at = now(), updated_at = now() WHERE id = '${p.id}';`,
-    `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.deployed', 'agent', '${p.reporterEmploymentId}', ${dq(JSON.stringify({ buildRef: p.buildRef }))}::jsonb);`,
+    `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.deployed', 'agent', ${reporterEmploymentSql(p.reporterEmploymentId)}, ${dq(JSON.stringify({ buildRef: p.buildRef }))}::jsonb);`,
     'COMMIT;',
   ].join('\n');
   remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, sql);

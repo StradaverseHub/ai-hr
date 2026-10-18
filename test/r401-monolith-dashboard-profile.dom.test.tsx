@@ -90,6 +90,7 @@ vi.mock('@/core/read', () => ({
   reportingLinesFor: vi.fn(async () => null),
   upcomingHolidays: vi.fn(async () => EVENTS),
   // my profile
+  myOwnEmploymentSubjects:vi.fn(async()=>[{employmentId:'e1',company:'Nusantara Holdings',employeeCode:'EMP0042'}]),
   myEmployments: vi.fn(async () => [{ employmentId: 'e1', company: 'Nusantara Holdings', position: 'Analyst', department: 'Finance', basic: '7200', allowance: '400' }]),
   myPayslips: vi.fn(async () => PAYSLIPS),
   myTaxRelief: vi.fn(async () => ({ year: 2026, rows: [], ytd: 0 })),
@@ -142,8 +143,8 @@ vi.mock('@/components/notice/notice-surfaces', async () => {
 });
 // ── /me only ──
 const PAYSLIPS = [
-  { id: 'p1', payPeriod: '2026-08', company: 'Nusantara Holdings', gross: '7600', deductions: '926.95', net: '6673.05', status: 'closed', released: true, runType: 'regular', runSeq: 1 },
-  { id: 'p2', payPeriod: '2026-09', company: 'Nusantara Holdings', gross: '7700', deductions: '938.14', net: '6761.86', status: 'closed', released: true, runType: 'regular', runSeq: 1 },
+  { id: 'p1', employmentId:'e1', payPeriod: '2026-08', company: 'Nusantara Holdings', gross: '7600', deductions: '926.95', net: '6673.05', status: 'closed', released: true, runType: 'regular', runSeq: 1 },
+  { id: 'p2', employmentId:'e1', payPeriod: '2026-09', company: 'Nusantara Holdings', gross: '7700', deductions: '938.14', net: '6761.86', status: 'closed', released: true, runType: 'regular', runSeq: 1 },
 ];
 vi.mock('@/core/loans', () => ({ listLoansForEmployment: vi.fn(async () => []) }));
 vi.mock('@/core/profile', () => ({ myProfileChangeRequests: vi.fn(async () => []) }));
@@ -165,6 +166,9 @@ vi.mock('@/components/attendance-clock-button', () => ({
   AttendanceClockButton: ({ label }: { label: string }) => <button type="button">{label}</button>,
   LocationNotice: () => null,
 }));
+vi.mock('@/core/profile-edit',()=>({readOwnProfileWorkspace:vi.fn(async()=>({employmentId:'e1',personId:'p1',country:'MY',values:{'profile.personal_details.fullname':'Aisyah Rahman','profile.personal_details.employeecode':'EMP0042'},baselines:{},registers:[],editable:[],legacyPrimaryEditable:[],addressReview:false,legacyAddress:{},statutoryAvailable:true}))}));
+vi.mock('@/core/profile-view',()=>({readOwnProfileFacts:vi.fn(async()=>({values:{},records:[],choices:{},service:{group:{years:5,months:7,days:19},company:{years:5,months:7,days:19}},header:{name:'Aisyah Rahman',employeeCode:'EMP0042',company:'Nusantara Holdings',department:'Finance',position:'Analyst',superior:null,status:'active',photo:false,service:{years:5,months:7,days:19}},modules:{payroll:true,leave:true,attendance:true}}))}));
+vi.mock('../app/me/profile-edit-actions',()=>({saveMyProfileEditAction:vi.fn(),readMyProfileMovementAction:vi.fn()}));
 vi.mock('../app/me/record', () => ({ myProfileRecord: vi.fn(async () => RECORD) }));
 const RECORD = {
   employmentId: 'e1',
@@ -339,51 +343,14 @@ describe('Dashboard — Classic renders today’s markup for the same data', () 
   });
 });
 
-describe('My Profile', () => {
-  it('Monolith: kicker + h1 + real cells, the punch as a section, the tabs as text buttons', async () => {
-    setTheme('monolith');
-    const { container } = await renderMe();
-    const header = container.querySelector('[data-mono-header]') as HTMLElement;
-    expect(header).not.toBeNull();
-    expect(within(header).getByRole('heading', { level: 1 })).toHaveTextContent(t('me.title'));
-    expect(header.querySelector('p')).toHaveTextContent('EMP0042 · Aisyah Rahman · Analyst, Finance');
-    const cells = container.querySelector('[data-cells]') as HTMLElement;
-    const terms = [...cells.querySelectorAll('dt')].map((d) => d.textContent);
-    expect(terms).toEqual([t('me.lastPayslip'), t('people.detail.employmentInfo.groupService')]);
-    // The NEWEST released payslip (2026-09), not the first row.
-    expect(cells).toHaveTextContent('RM 6,761.86');
-    expect(cells).toHaveTextContent('2026-09 · Nusantara Holdings');
-    // Truth: every number in the header and cells comes from the fixture.
-    const allowed = new Set(numbersIn(JSON.stringify({ PAYSLIPS, RECORD })).concat(['5', '7', '19']));
-    const stray = [...numbersInEl(header), ...numbersInEl(cells)].filter((n) => !allowed.has(n));
-    expect(stray, `figures with no source: ${stray.join(', ')}`).toEqual([]);
-    // The punch is still here, as a section, with its action.
-    expect(screen.getByRole('region', { name: t('me.todayHeading') })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: t('me.checkIn') })).toBeInTheDocument();
-    // Tabs: the same six, the strip drawn as text buttons in Monolith.
-    const tabs = screen.getAllByRole('tab');
-    expect(tabs).toHaveLength(6);
-    expect(tabs[0].closest('nav')).toHaveClass('monolith:border-b');
-    expect(tabs[0]).toHaveClass('monolith:border-ink');
-    // A read-only field is a hairline kv value in Monolith, still a disabled unnamed input.
-    const code = screen.getByDisplayValue('EMP0042');
-    expect(code).toBeDisabled();
-    expect(code).not.toHaveAttribute('name');
-    expect(code).toHaveClass('monolith:border-b', 'monolith:bg-transparent');
-  });
-
-  it('Classic: today’s header and punch card, no Monolith head or cells', async () => {
-    setTheme('classic');
-    const { container } = await renderMe();
-    expect(container.querySelector('[data-mono-header]')).toBeNull();
-    expect(container.querySelector('[data-cells]')).toBeNull();
-    const h1 = screen.getByRole('heading', { level: 1 });
-    expect(h1).toHaveClass('text-xl', 'font-semibold', 'tracking-tight');
-    expect(h1.nextElementSibling).toHaveTextContent('EMP0042 · Aisyah Rahman · Analyst, Finance');
-    const punch = container.querySelector('[data-tour="me-attendance"]') as HTMLElement;
-    expect(punch).toHaveClass('p-4');
-    expect(within(punch).getByRole('heading', { level: 2 })).toHaveClass('text-sm', 'font-semibold');
-    expect(screen.queryByText(t('me.lastPayslip'))).toBeNull();
-    expect(screen.getAllByRole('tab')).toHaveLength(6);
-  });
+describe('My Profile approved Personnel alignment in both themes',()=>{
+ it.each(['monolith','classic'] as const)('%s retains own summary and eleven tabs, without Today/clocking',async theme=>{
+  setTheme(theme);const {container}=await renderMe();
+  expect(screen.getByRole('heading',{level:1})).toHaveTextContent(t('me.title'));
+  expect(screen.getByRole('heading',{name:'Aisyah Rahman'})).toBeInTheDocument();
+  expect(screen.getAllByText('EMP0042').length).toBeGreaterThan(0);expect(screen.getByText('Finance · Analyst')).toBeInTheDocument();
+  const tabs=screen.getAllByRole('tab');expect(tabs).toHaveLength(11);expect(tabs[0].closest('nav')).toHaveClass('monolith:border-b');expect(tabs[0]).toHaveClass('monolith:border-ink');
+  expect(screen.queryByRole('region',{name:t('me.todayHeading')})).toBeNull();expect(screen.queryByRole('button',{name:t('me.checkIn')})).toBeNull();expect(screen.queryByRole('button',{name:t('me.checkOut')})).toBeNull();
+  expect(container.querySelector('input[name="employeeCode"]')).toBeNull();expect(screen.getByRole('link',{name:t('me.viewAttendanceHistory'),hidden:true})).toHaveAttribute('href','/attendance');
+ });
 });

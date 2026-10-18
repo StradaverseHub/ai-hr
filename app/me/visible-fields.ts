@@ -1,42 +1,9 @@
-/**
- * MY PROFILE — WHAT AN EMPLOYEE SEES OF THEIR OWN RECORD, AND WHAT THEY DO NOT.
- *
- * r259 stage one (board item 9583deac). The approved plan promises the reporter, in writing:
- *
- *   "Some tabs will show less than the administrator's view even when the layout matches — an employee
- *    has no business seeing another person's cost centre or an internal note. The list of exactly which
- *    fields are hidden is written down and shown to you before stage one is built, not decided as we go."
- *
- * THIS FILE IS THAT LIST, and `docs/me-profile-field-visibility.md` is the same list written for the
- * reporter. They are held together by test/me-profile-visibility.test.ts, so the screen, the manifest and
- * the document cannot say three different things.
- *
- * ── WHY THE LABEL KEYS LIVE HERE ────────────────────────────────────────────────────────────────────
- * Every tab label and every card title below is a `people.detail.*` key — the SAME string Personnel
- * Management renders. That is the whole complaint this item was raised about: the employee and HR were
- * looking at two differently-named shapes of one person. Naming a tab here with a `me.*` key of its own
- * would re-open exactly that gap the first time someone renamed one of them, so /me reads Personnel's
- * own catalogue entry and the drift becomes structurally impossible rather than merely discouraged.
- * test/me-profile-visibility.test.ts asserts that every key named here is ALSO rendered by
- * app/admin/personnel/[employmentId]/page.tsx or by a shared component both screens mount — so a rename
- * on the Personnel side turns the suite red instead of silently splitting the two screens again.
- *
- * ── SCOPE ───────────────────────────────────────────────────────────────────────────────────────────
- * Stage one (r259) was a READ surface: the two write paths that already existed on /me (the direct
- * contact self-edit, and the approval-gated change request — ADR-0012, core/profile.ts) were preserved
- * exactly as they were.
- *
- * Stage two (r260) WIDENED the second of those. Which fields may be asked about is declared once in
- * `lib/profile-requestable-fields.ts`, and every `labelKey` there is an entry of
- * `ME_VISIBLE_FIELD_LABEL_KEYS` below — enforced by test/profile-requestable-fields.test.ts, so an
- * employee can never be offered a change to a field they are not shown, and a request, a record and (in
- * stage three) a permission can never call one field by three different names. Stage two also added the
- * rejection reason. Stage three — the per-field permission SETTING and the approver-choice setting — is
- * still not built.
- */
-
-/** The six tabs the plan names, in the order it names them. Personnel's own keys. */
-export const ME_TABS = ['profile', 'job', 'bankStatutory', 'payroll', 'family', 'documents'] as const;
+import {PERSONNEL_FIELDS} from '@/lib/personnel-field-registry';
+import {ESS_PROFILE_TABS,PERSONNEL_ESS_SECTION_LABEL_KEYS} from '@/lib/personnel-ess-model';
+/** Compatibility exports for source consumers; ESS authority lives on every shared Personnel descriptor.
+ * Import/report scope never grants employee visibility or editing. */
+/** All eleven Personnel tabs, in the approved Personnel order. */
+export const ME_TABS = ['profile','family','job','careerMovement','attendance','bankStatutory','payroll','leave','documents','qualification','others'] as const;
 export type MeTabKey = (typeof ME_TABS)[number];
 
 /**
@@ -53,6 +20,11 @@ export const ME_TAB_LABEL_KEY: Record<MeTabKey, string> = {
   payroll: 'tabs.payroll',
   family: 'tabs.family',
   documents: 'tabs.documents',
+  careerMovement:'tabs.careerMovement',
+  attendance:'tabs.attendance',
+  leave:'tabs.leave',
+  qualification:'tabs.qualification',
+  others:'tabs.others',
 };
 
 /**
@@ -64,29 +36,27 @@ export const ME_TAB_LABEL_KEY: Record<MeTabKey, string> = {
  * Management has no card for them at all; there is no second name to drift from. They are listed in
  * `ME_SELF_SERVICE_SECTIONS` so the document can account for every card on the screen.
  */
-export const ME_SECTION_TITLE_KEY: Record<MeTabKey, readonly string[]> = {
-  profile: ['personalDetails', 'contactAddressTitle', 'emergencyTitle'],
-  job: ['employmentInfo.title', 'directSuperiorTitle'],
-  bankStatutory: ['bankCardTitle', 'statutoryMalaysia', 'othersStatutoryTitle'],
-  payroll: ['compensation'],
-  family: ['family.title'],
-  documents: [],
-};
+export const ME_SECTION_TITLE_KEY:Record<MeTabKey,readonly string[]>=Object.fromEntries<readonly string[]>(ME_TABS.map((tab,index)=>[tab,[...new Set(PERSONNEL_FIELDS.filter(field=>field.tab===ESS_PROFILE_TABS[index]&&field.ess.visibility==='visible').map(field=>PERSONNEL_ESS_SECTION_LABEL_KEYS[field.section]??ME_TAB_LABEL_KEY[tab]))]])) as Record<MeTabKey,readonly string[]>;
 
 /** Cards that exist only on the employee's own screen — no Personnel counterpart, so `me.*` titles. */
 export const ME_SELF_SERVICE_SECTIONS: Record<MeTabKey, readonly string[]> = {
   // r260 stage two — the Profile tab gained its own "request a change" card, so the control to correct a
   // wrong passport number sits under the wrong passport number rather than on the Bank tab.
-  profile: ['requestChangeProfileHeading'],
+  profile: [],
   job: [],
-  bankStatutory: ['approvalGatedHeading'],
+  bankStatutory: [],
   payroll: ['myPayslips', 'taxReliefTp1', 'myLoans'],
   family: [],
   documents: ['taxStatementEa', 'resignationTitle'],
+  careerMovement:[],
+  attendance:[],
+  leave:[],
+  qualification:[],
+  others:[],
 };
 
 export type HiddenField = {
-  /** Which of the six tabs the field would have appeared on, or 'all' for a whole Personnel tab. */
+  /** Which Personnel tab the field would have appeared on, or 'all' for a whole Personnel tab. */
   tab: MeTabKey | 'all';
   /** The field or card, named the way HR would name it on the Personnel screen. */
   field: string;
@@ -126,402 +96,18 @@ export type HiddenField = {
  *      document that may be a warning letter). The most dangerous class: it IS their data, and it is
  *      still not a thing to hand them without an HR decision.
  */
-export const ME_HIDDEN_FIELDS: readonly HiddenField[] = [
-  // ── 1. Other people's data ────────────────────────────────────────────────────────────────────────
-  {
-    tab: 'bankStatutory',
-    field: 'Duplicate income-tax-number warning',
-    reason:
-      'It names the OTHER employees filed under the same tax reference. A warning meant for HR would tell an employee who else shares their number.',
-    columns: ['taxNumberSharedWith'],
-  },
-  {
-    tab: 'job',
-    field: 'Cost centre and cost-recharge allocation',
-    reason:
-      'Which companies this salary is charged to is the group’s internal accounting, not a fact about the person, and the percentages disclose an inter-company arrangement.',
-    columns: ['costAllocation'],
-  },
-  {
-    tab: 'job',
-    field: 'Delegations (who covers this person’s approvals)',
-    reason:
-      'An operational authority setting about other employees’ approval rights; changing it is an HR act, and reading it tells an employee who can approve in their name.',
-  },
-  {
-    tab: 'family',
-    field: 'Dependant remarks and employer details of a working spouse',
-    reason:
-      'Free-text HR notes about a family member, and a third party’s employer address, neither of which the employee record needs to show back.',
-    columns: ['remarks', 'occupation', 'companyName', 'employerAddress', 'spouseWorking'],
-  },
+export const ME_HIDDEN_FIELDS:readonly HiddenField[]=PERSONNEL_FIELDS.filter(field=>field.ess.visibility==='protected').map(field=>({
+ tab:ME_TABS[ESS_PROFILE_TABS.indexOf(field.tab as typeof ESS_PROFILE_TABS[number])]??'all',field:field.label,reason:field.ess.reason,
+ columns:PERSONNEL_FIELDS.some(visible=>visible.ess.visibility==='visible'&&visible.ownerField===field.ownerField)?[]:[field.ownerField],
+}));
 
-  {
-    tab: 'family',
-    field: 'Dependant identity, address, marriage and study details',
-    reason:
-      'The Family card shows who is on the record and whether each child counts toward tax relief. A dependant’s own IC/passport, home address, marriage date and schooling are another person’s details, held for a payroll purpose and not printed back onto a self-service screen. (The dependant’s passport number and gender columns share their names with the employee’s own — which ARE shown — so they are named here rather than in `columns`.)',
-    columns: [
-      'icOrPassport',
-      'residentialAddress',
-      'marriageDate',
-      'marriageStatus',
-      'schoolName',
-      'studyLevel',
-      'studyCountry',
-      'childReliefCategory',
-      'childReliefPercentage',
-      'deceasedOn',
-    ],
-  },
+export const ME_VISIBLE_FIELD_LABEL_KEYS:Record<MeTabKey,readonly string[]>=Object.fromEntries<readonly string[]>(ME_TABS.map((key,index)=>[key,
+ [...new Set(PERSONNEL_FIELDS.filter(field=>field.tab===ESS_PROFILE_TABS[index]&&field.ess.visibility==='visible'&&field.labelKey.startsWith('people.detail.')).map(field=>field.labelKey.slice('people.detail.'.length)))],
+])) as Record<MeTabKey,readonly string[]>;
 
-  // ── 2. The employer's commercial position ─────────────────────────────────────────────────────────
-  {
-    tab: 'bankStatutory',
-    field: 'Employer-borne EPF / SOCSO / EIS / SKBBK / tax flags',
-    reason:
-      'These record which contributions the COMPANY absorbs on the employee’s behalf — an employment-cost arrangement, not the employee’s statutory position.',
-    columns: [
-      'employerBearsEpf',
-      'employerBearsSocso',
-      'employerBearsEis',
-      'employerBearsSkbbk',
-      'employerBearsTax',
-    ],
-  },
-  {
-    tab: 'bankStatutory',
-    field: 'Child-relief rate table (full / half categories)',
-    reason:
-      'Tenant-level tax configuration shared by every employee; the employee’s own relief COUNT is shown, the grid behind it is not.',
-    columns: ['childReliefTable', 'childReliefMode'],
-  },
-  {
-    tab: 'payroll',
-    field: 'Payroll policy assignment (which pay template applies)',
-    reason:
-      'Internal payroll configuration. What it produces — pay mode, payment term, the payslip — is shown; the template name is not.',
-    columns: ['payrollPolicyId', 'payrollPolicyName', 'payrollPolicyStatus'],
-  },
-  {
-    tab: 'payroll',
-    field: 'Pay component catalogue and recurring component setup',
-    reason:
-      'HR master data for building pay. Every amount it produces already appears on the employee’s own payslip.',
-  },
-  {
-    tab: 'job',
-    field: 'Contract remark',
-    reason:
-      'A free-text HR note on the contract (“renew at revised rate”, “do not extend”). The contract DATES are shown; the note is an internal judgement.',
-    columns: ['contractRemark'],
-  },
+export const ME_WITHHELD_COLUMNS:readonly string[]=[...new Set(ME_HIDDEN_FIELDS.flatMap(field=>field.columns??[]))];
 
-  {
-    tab: 'job',
-    field: 'Attendance, holiday-calendar and shift configuration',
-    reason:
-      'Which holiday calendar, shift pattern and geofence apply to this employment are operational settings HR assigns and changes. What they produce — the public holidays on the leave calendar, the clock-in the employee actually makes — is on My Absence and at the top of this screen; the assignment itself is not a field on the person.',
-    columns: [
-      'holidayGroupId',
-      'holidayGroupName',
-      'defaultShiftId',
-      'shiftType',
-      'geofencingEnabled',
-      'geofenceRadiusM',
-    ],
-  },
-  {
-    tab: 'payroll',
-    field: 'CP38 instalment orders',
-    reason:
-      'An LHDN order telling the EMPLOYER to deduct a fixed instalment of an employee’s tax arrears. The deduction itself appears on the employee’s own payslip, which My Profile shows; the order record — its reference, its start and end month, HR’s remark on it — is the employer’s compliance file, and the employee receives the order from LHDN directly.',
-    columns: ['cp38Ref', 'cp38Amount'],
-  },
-  {
-    tab: 'payroll',
-    field: 'Zakat contribution setup',
-    reason:
-      'The state, method and rate by which zakat is computed for this employee is payroll configuration on the employer’s side; the amount it produces is a line on the employee’s own payslip and on their EA statement, both of which My Profile shows.',
-  },
-  {
-    tab: 'profile',
-    field: 'HR’s Permanent and Correspondence address block',
-    reason:
-      'Not a policy decision — an honest one about the data. `person` still carries TWO sets of address columns: the home address the employee maintains here, and the Permanent / Correspondence pair the Personnel screen writes. My Profile shows the one its own Save button changes, because showing both would put two different addresses on one card under a button that moves neither. Unifying them needs a database change, which is the next step and not this one.',
-    columns: [
-      'permanentAddressLine1',
-      'permanentAddressLine2',
-      'permanentAddressLine3',
-      'permanentPostcode',
-      'permanentCity',
-      'permanentState',
-      'permanentCountry',
-      'correspondenceAddressLine1',
-      'correspondenceAddressLine2',
-      'correspondenceAddressLine3',
-      'correspondencePostcode',
-      'correspondenceCity',
-      'correspondenceState',
-      'correspondenceCountry',
-      'correspondenceMobilePhone',
-      'correspondenceHomePhone',
-    ],
-  },
-
-  // ── 3. Internal judgements about this person ──────────────────────────────────────────────────────
-  {
-    tab: 'job',
-    field: 'Blacklist flag and blacklist reason',
-    reason:
-      'An internal HR decision about re-employment. Disclosing it on a self-service screen would be the employee learning it from a web page.',
-    columns: ['blacklistedAt', 'blacklistReason'],
-  },
-  {
-    tab: 'payroll',
-    field: 'Salary revision remarks and the full revision history',
-    reason:
-      'The CURRENT salary, currency and effective date are shown. The remark on each past revision is HR’s reasoning, and the increment history is a performance conversation, not a field.',
-    columns: ['remarks', 'createdByName'],
-  },
-  {
-    tab: 'documents',
-    field: 'HR personnel-file documents (the Documents repository)',
-    reason:
-      'The file can hold a warning letter or an investigation note, and there is no per-document “visible to employee” switch yet. Payslips, EA statements and review letters — the documents meant FOR the employee — are shown.',
-  },
-  {
-    tab: 'profile',
-    field: 'Emergency contact remark',
-    reason:
-      'The register’s free-text note is HR’s (“call the sister first, the mother is overseas”). Who the contacts are, how to reach them, their address and their priority are all shown.',
-  },
-  {
-    tab: 'all',
-    field: 'Change History / audit trail',
-    reason:
-      'It names which member of staff changed what and when. It is HR’s record of its own handling of the person.',
-  },
-  {
-    tab: 'all',
-    field: 'Data privacy tools (PDPA export / erasure controls)',
-    reason: 'Administrative controls that act on the record; a request route, not a self-service button.',
-  },
-  {
-    tab: 'all',
-    field: 'Movement history (transfer / termination / blacklist events)',
-    reason:
-      'The event ledger carries the reasons behind each movement, including exit reasons recorded by HR before anything is communicated.',
-  },
-];
-
-/**
- * Fields that ARE shown, keyed by the `people.detail.*` label the employee sees them under.
- *
- * The screen renders from this list, so "what the document promises" and "what the page prints" are one
- * declaration. A field added to the screen without being added here does not render; a field added here
- * without a translation fails test/i18n-coverage.test.ts.
- */
-export const ME_VISIBLE_FIELD_LABEL_KEYS: Record<MeTabKey, readonly string[]> = {
-  profile: [
-    'employeeIdLabel',
-    'salutation',
-    'fullNameIc',
-    'firstName',
-    'lastName',
-    'preferredName',
-    'nationality',
-    'religion',
-    'race',
-    'gender',
-    'maritalStatus',
-    'birthDate',
-    'age',
-    'identityNricTitle',
-    'icNumber',
-    'oldIcNumber',
-    'passportNumber',
-    'passportIssueDate',
-    'passportExpiryDate',
-    'passportIssuingCountry',
-    'passportInfoTitle',
-    'workEmail',
-    'phone',
-    'homePhone',
-    'personalEmail',
-    // The ONE home address on this card — the legacy `person.address_line1..country` block, which is the
-    // block the contact self-edit writes. HR's Permanent / Correspondence pair is a different set of
-    // columns and is NOT on this screen; see app/me/record.ts and the "one address" section of
-    // docs/me-profile-field-visibility.md for why, and what would have to happen to unify them.
-    'addressLine1',
-    'addressLine2',
-    'addressLine3',
-    'postcode',
-    'city',
-    'stateLabel',
-    'country',
-    // The emergency-contact register, rendered as a table. `emergency.address` is here because the
-    // self-edit fold-out posts it; `emergency.remarks` is withheld.
-    'emergency.name',
-    'emergency.relationship',
-    'emergency.mobilePhone',
-    'emergency.homePhone',
-    'emergency.address',
-    'emergency.priority',
-  ],
-  job: [
-    'employmentInfo.company',
-    'employmentInfo.department',
-    'employmentInfo.position',
-    'employmentInfo.businessUnit',
-    'employmentInfo.jobGrade',
-    'employmentInfo.employmentType',
-    'employmentInfo.category',
-    'employmentInfo.division',
-    'employmentInfo.branch',
-    'employmentInfo.region',
-    'employmentInfo.line',
-    'employmentInfo.section',
-    'employmentInfo.team',
-    'employmentInfo.base',
-    'locationSelect',
-    'employmentInfo.groupJoinDate',
-    'employmentInfo.joinDate',
-    'employmentInfo.groupService',
-    'employmentInfo.currentCompanyService',
-    'employmentInfo.confirmationDate',
-    'employmentInfo.contractStartDate',
-    'employmentInfo.contractEndDate',
-    'employmentInfo.tenderResignationDate',
-    'employmentInfo.resignationDate',
-    'employmentInfo.lastWorkingDate',
-    'directSuperiorTitle',
-  ],
-  bankStatutory: [
-    'bank',
-    'bankAccount',
-    // r260 — the PCB category is now named with PERSONNEL'S OWN key. It used to render `me.pcbCategory`,
-    // a second wording for a field HR already names `people.detail.taxCategoryLabel` on the
-    // Identification & Tax card (components/tax-category-field.tsx, the 35b7af0a shared group). That is
-    // precisely the drift this manifest exists to prevent, and stage two had to fix it because the field
-    // is requestable: a request, a record and a permission may not call one field three things.
-    'taxCategoryLabel',
-    'epfNumber',
-    'epfCitizenship',
-    'socsoEisNumber',
-    'socsoCategoryLabel',
-    'eisCategoryLabel',
-    'taxNumber',
-    'incomeTaxResident',
-    // 04b88724 — the Personnel card split one field into Physical children (this head count, which is
-    // what `num_children` is and what Form E / CP8D / EA read) and Qualifying children (PCB). My Profile
-    // follows the HEAD COUNT under Personnel's new caption; the qualifying figure is accounted for in
-    // ME_UNRENDERED_PERSONNEL_FIELDS below.
-    //   ⚠️ r364 — "and what Form E / CP8D / EA read" WAS FALSE FOR A DAY and is true again. r359 moved EA
-    //   item 8 onto the s.48-weighted C; the reporter reversed it, because A.8 asks for the "Number of
-    //   children qualified for tax relief" and that is a count. Precisely: Form E and CP8D read this
-    //   column directly; the EA reads it in 'auto' and 'manual' and reads the keyed grid's head count in
-    //   'auto_table', which is the same count. The weighted figure is not a number of people and no box
-    //   on the EA prints it — what it produces is the ringgit in Section D item 6. The caption this
-    //   manifest follows changed with it: "Children on record" became "Children qualifying for tax
-    //   relief". The key did not, so nothing here moves.
-    'childrenPhysical',
-    'disabledIndividualLabel',
-    'disabledSpouseLabel',
-    'subjectToHrdf',
-  ],
-  payroll: [
-    // `employmentInfo.company` labels WHICH employment this pay belongs to — an employee may hold two
-    // (ADR-0009) and an unlabelled figure tells them nothing.
-    'employmentInfo.company',
-    'compensation',
-    'salaryCurrency',
-    'effectiveDate',
-    'paymentMethod',
-    'payMode',
-    'paymentTerm',
-    'rateAmount',
-  ],
-  family: [
-    'family.name',
-    'family.relationship',
-    'family.dateOfBirth',
-    'family.childAge',
-    'family.contactNumber',
-    'family.countsTowardRelief',
-    // Already rendered as the existing beneficiary Badge, rather than a read-field row.
-    'family.beneficiary',
-  ],
-  documents: [],
-};
-
-/**
- * Every column name the withheld list above forbids, flattened — the machine-readable half of the list.
- *
- * test/me-profile-visibility.test.ts greps app/me/record.ts and app/me/page.tsx for these;
- * test/me-profile-scope.test.ts looks for them in the object a LIVE read hands the page. Neither test
- * carries a list of its own any more, which is the point: the reporter's list, the document and the two
- * guards are one declaration, and extending the guard is something you do by writing a sentence for the
- * reporter rather than by remembering to edit an array in a test.
- */
-export const ME_WITHHELD_COLUMNS: readonly string[] = [
-  ...new Set(ME_HIDDEN_FIELDS.flatMap((f) => f.columns ?? [])),
-];
-
-/**
- * ── THE PERSONNEL → MY PROFILE DIRECTION, WHICH IS THE ONE THAT SILENTLY DRIFTS ─────────────────────
- *
- * Every `people.detail.*` FIELD LABEL the Personnel record renders and My Profile does not, each with the
- * reason it is not there. test/me-profile-visibility.test.ts reads the Personnel screen's own
- * `label={t('…')}` list and requires every key on it to be either in `ME_VISIBLE_FIELD_LABEL_KEYS` above
- * or in this map — so a field added to a shared Personnel group turns the suite red instead of quietly
- * never appearing on the employee's copy of their own record.
- *
- * WHY THIS MAP EXISTS AT ALL, given the plan said "reuse the Personnel section components, do NOT fork
- * them". Two of the three Personnel cards My Profile mirrors are not components: Contact & Address and
- * Employment Information are inline `<form action={…}>` markup inside
- * app/admin/personnel/[employmentId]/page.tsx, so there is nothing to mount. The shared field groups that
- * DO exist (person-details-fields, birth-date-fields, epf-registration-fields, …) are EDIT controls —
- * `mode: 'form'` renders a `name`-carrying `<select>` bound to a server action — and mounting one inside a
- * read surface would put a submittable control into a card that already has two real forms on it, which
- * is precisely what app/me/read-field.tsx exists to prevent. So My Profile renders the same catalogue
- * KEYS through a read-only field, and this map plus the guard closes the gap that forking would otherwise
- * leave open. Stage two, which makes fields requestable, is where the shared controls become the right
- * tool.
- *
- * A key is on this map for one of these explicit dispositions, and the sentence says which:
- *   • WITHHELD — it is on `ME_HIDDEN_FIELDS` above and in the reporter's document;
- *   • NOT A CARD THIS SCREEN CARRIES — it belongs to a Personnel tab My Profile does not mirror
- *     (Qualification, Movement, Attendance, Leave, Documents), or to a screen of its own (/leave);
- *   • AN HR CONTROL, NOT A FACT — a picker, a placeholder, a copy button or a filter, whose VALUE the
- *     employee already reads elsewhere on My Profile.
- *   • NOT YET MIRRORED — an explicitly recorded pre-existing omission with no established disclosure
- *     policy. This is a limitation, not permission to withhold future fields without a decision.
- */
-export const ME_UNRENDERED_PERSONNEL_FIELDS: Readonly<Record<string, string>> = {
-  subjectToSkbbk: 'NOT YET MIRRORED — Personnel records this scheme flag, but the existing My Profile read model does not project it. No disclosure-policy decision is established; current behaviour is retained in this 17-item release.',
-  // Registry-backed captions for facts already covered by the existing disclosure list above.
-  // These entries account for existing behaviour; they do not change the read or its permissions.
-  employerBearsEpf: 'WITHHELD — the documented employer-borne contribution flags record the company’s cost arrangement.',
-  employerBearsSocso: 'WITHHELD — the documented employer-borne contribution flags record the company’s cost arrangement.',
-  employerBearsEis: 'WITHHELD — the documented employer-borne contribution flags record the company’s cost arrangement.',
-  employerBearsSkbbk: 'WITHHELD — the documented employer-borne contribution flags record the company’s cost arrangement.',
-  employerBearsTax: 'WITHHELD — the documented employer-borne contribution flags record the company’s cost arrangement.',
-  enableCustomHolderName: 'AN HR CONTROL — enables the third-party bank-holder name, whose identity is already withheld below.',
-  enableCustomHolderId: 'AN HR CONTROL — enables the third-party bank-holder identification, which is already withheld below.',
-  'family.currentlyWorking': 'WITHHELD — the working spouse’s employment details, already listed under Dependant remarks and employer details.',
-  'family.deceasedStatus': 'WITHHELD — the dependant’s status accompanying the deceasedOn detail in the existing dependant-details list.',
-  'family.studentStatus': 'WITHHELD — the dependant’s study details used for relief eligibility; the existing list withholds schooling.',
-  'family.newIc': 'WITHHELD — the dependant’s own identity document, already covered by Dependant identity, address, marriage and study details.',
-  'family.icOrBirthCert': 'WITHHELD — the dependant’s own identity document, already covered by Dependant identity, address, marriage and study details.',
-  'family.childTaxRelief': 'WITHHELD — HR’s per-child relief election and classification; the Family card shows the resulting Counts toward relief.',
-  'family.childReliefCat_under_18': 'WITHHELD — a category heading in the existing withheld child-relief rate table and classification controls.',
-  'family.childReliefCat_disabled': 'WITHHELD — a category heading in the existing withheld child-relief rate table and classification controls.',
-  'family.childReliefCat_disabled_study': 'WITHHELD — a category heading in the existing withheld child-relief rate table and classification controls.',
-  'family.childReliefCat_study_preu': 'WITHHELD — a category heading in the existing withheld child-relief rate table and classification controls.',
-  'family.childReliefCat_study_tertiary': 'WITHHELD — a category heading in the existing withheld child-relief rate table and classification controls.',
-  'clocking.attendancePhotoLabel': 'NOT A CARD HERE — the Attendance tab and its clocking/photo controls are not among My Profile’s six tabs.',
-  'qualification.highest': 'NOT A CARD HERE — the Qualification tab is not among My Profile’s six tabs, as with the other qualification fields below.',
+const LEGACY_UNRENDERED_PERSONNEL_FIELDS: Readonly<Record<string, string>> = {
   // ── Withheld — see ME_HIDDEN_FIELDS and docs/me-profile-field-visibility.md ────────────────────────
   'employmentInfo.contractRemark': 'WITHHELD — the HR note on the contract; the contract dates are shown.',
   salaryColRemarks: 'WITHHELD — HR’s reasoning on each salary revision; the current salary is shown.',
@@ -608,3 +194,7 @@ export const ME_UNRENDERED_PERSONNEL_FIELDS: Readonly<Record<string, string>> = 
   directSuperiorLabel: 'AN HR CONTROL — HR’s superior picker; the superior is shown under the Direct Superior card’s own title.',
   passportIssuingCountryCode: 'AN HR CONTROL — the ISO code behind the issuing country, whose NAME is shown.',
 };
+
+// Existing control/workflow vocabulary is not a second inventory of business facts.
+const visibleKeys=new Set(Object.values(ME_VISIBLE_FIELD_LABEL_KEYS).flat());
+export const ME_UNRENDERED_PERSONNEL_FIELDS:Readonly<Record<string,string>>=Object.fromEntries(Object.entries(LEGACY_UNRENDERED_PERSONNEL_FIELDS).filter(([key])=>!visibleKeys.has(key)));

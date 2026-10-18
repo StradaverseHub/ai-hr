@@ -43,6 +43,9 @@ const ALL_TABLES = [
   'leave_cancellation_step',
   'app_user', 'role_assignment', 'domain_event', 'app_external_identity', 'app_identity_session', 'app_internal_auth_record', 'deployment_identity_operator', 'app_manual_identity_enrollment',
   'compensation', 'employee_statutory_my', 'tenant_counter',
+  // ADR0128: explicitly reset both legacy and versioned System Testing records.
+  'test_execution_attachment', 'test_catalogue_update', 'test_run', 'test_execution', 'test_assignment', 'test_case_version', 'test_case',
+  'feedback_attachment', 'feedback_plan_revision', 'feedback_block', 'feedback_request',
   // 6d671f44 — Create New Employee drafts (migration 0337). Listed explicitly rather than left to the
   // TRUNCATE ... CASCADE from `tenant`: the ADR-0071 note below is what happens when a table is only
   // ever cleared by accident.

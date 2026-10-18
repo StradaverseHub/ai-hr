@@ -2,6 +2,7 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import * as schema from '../db/schema';
+import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
 import { isAdmin, isGroupAdmin } from '../lib/authz-model';
 import { readinessSnapshot, type ReadinessGapId } from './record-readiness';
 import { profileChangeAllowedKeys, profileChangeApprover } from './tenant-settings';
@@ -25,10 +26,23 @@ export async function loadReadinessActions(tx: Tx, ctx: SessionContext, employme
     }).from(schema.employment).where(and(inArray(schema.employment.id, ids), isNull(schema.employment.terminatedOn)));
     const requests = await tx.select({
       id: schema.profileChangeRequest.id, employmentId: schema.profileChangeRequest.employmentId,
-      fields: sql<string[]>`array(select item.key from jsonb_each(
-        case when jsonb_typeof(${schema.profileChangeRequest.proposed})='object'
-          then ${schema.profileChangeRequest.proposed} else '{}'::jsonb end
-      ) item where jsonb_typeof(item.value)='string' and nullif(btrim(item.value #>> '{}'),'') is not null order by item.key)`,
+      fields: sql<string[]>`array(select distinct correction.key from (
+        select item.key from jsonb_each(case
+          when jsonb_typeof(${schema.profileChangeRequest.proposed})='object'
+            and ${schema.profileChangeRequest.proposed}->>'v' is distinct from '2'
+          then ${schema.profileChangeRequest.proposed} else '{}'::jsonb end) item
+          where jsonb_typeof(item.value)='string' and nullif(btrim(item.value #>> '{}'),'') is not null
+        union all
+        select aliases.key from jsonb_array_elements(case
+          when ${schema.profileChangeRequest.proposed}->>'v'='2'
+            and jsonb_typeof(${schema.profileChangeRequest.proposed}->'fields')='array'
+          then ${schema.profileChangeRequest.proposed}->'fields' else '[]'::jsonb end) item
+          join (values ${sql.join(PERSONNEL_FIELDS.filter(field=>field.ess.binding?.legacyKey&&
+            Object.values(READINESS_CORRECTIONS).some(rule=>(rule.fields as readonly string[]).includes(field.ess.binding!.legacyKey!)))
+            .map(field=>sql`(${field.id}::text,${field.ess.binding!.legacyKey!}::text)`),sql`, `)}) aliases(field_id,key)
+            on aliases.field_id=item->>'fieldId'
+          where jsonb_typeof(item->'value')='string' and nullif(btrim(item->>'value'),'') is not null
+      ) correction order by correction.key)`,
     }).from(schema.profileChangeRequest)
       .innerJoin(schema.employment, eq(schema.employment.id, schema.profileChangeRequest.employmentId))
       .where(and(inArray(schema.profileChangeRequest.employmentId, ids), eq(schema.profileChangeRequest.status, 'pending'),

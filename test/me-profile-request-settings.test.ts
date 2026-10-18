@@ -1,3 +1,5 @@
+import {requirePackFor} from '../localization/registry';
+import {requestCurrentProfileChange as requestProfileChange,seedStoredLegacyProfileRequest} from './helpers/profile-requests';
 /**
  * r261 stage three (board item 9583deac) — THE TWO SETTINGS, AND THE THREE THINGS THEY MUST NEVER DO.
  *
@@ -24,12 +26,10 @@ import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { hireEmployee, setReportingLine } from '../core/org';
 import {
-  ProfileChangeFieldClosedError,
   decideProfileChange,
   listProfileChangeRequests,
   myProfileChangeRequests,
   pendingProfileChangeCountsByKey,
-  requestProfileChange,
   withdrawProfileChangesForLockedFields,
 } from '../core/profile';
 import {
@@ -202,13 +202,12 @@ describe('r261 — the setting is written through the policy-fenced writer', () 
 });
 
 describe('r261 — a switched-off field cannot be asked about, however you ask', () => {
-  it('THE SERVICE DROPS A DISALLOWED KEY EVEN WHEN IT IS POSTED BY HAND', async () => {
+  it('THE SERVICE REFUSES A DISALLOWED FIELD EVEN WHEN IT IS POSTED BY HAND', async () => {
     /**
      * The screen renders no control for a switched-off field, which stops an employee. This is the case
      * about somebody who is not using the screen: the key is put straight into `proposed`.
      *
-     * NON-VACUITY: reverting `if (!allowed.has(key)) continue;` in core/profile.ts sanitizeProposed
-     * makes the first expectation below resolve instead of reject, and the second find a stored row.
+     * Removing the current owner's field-policy check would store this forged closed-field proposal.
      */
     const a = adminCtx(b);
     const E = await hire('Locked');
@@ -219,27 +218,24 @@ describe('r261 — a switched-off field cannot be asked about, however you ask',
     await expect(
       requestProfileChange(emp, {
         employmentId: E.employmentId,
-        proposed: { bankName: 'NewBank', bankAccountNo: '999988887777' },
+        proposed: { bankName: requirePackFor('MY').client.bankNames[0], bankAccountNo: '999988887777' },
       }),
-    ).rejects.toThrow(/Nothing to change/);
+    ).rejects.toMatchObject({code:'fieldClosed'});
 
     const rows = await owner.db.select().from(profileChangeRequest);
     expect(rows, 'a request for a switched-off field must not be stored at all').toEqual([]);
   });
 
-  it('a mixed proposal keeps ONLY the allowed half, and the approver is never shown the rest', async () => {
-    const a = adminCtx(b);
-    const E = await hire('Mixed');
-    await setStatutoryProfileMY(a, { personId: E.personId, icNumber: '900101010112', bankName: 'OldBank', bankAccountNo: '111122223333' });
-    await allowOnly(['preferredName']);
-    const emp = await freshCtx(await employeeCtx(E.personId));
-
-    const { requestId } = await requestProfileChange(emp, {
-      employmentId: E.employmentId,
-      proposed: { preferredName: 'Ren', gender: 'female', bankName: 'NewBank', bankAccountNo: '999988887777' },
-    });
-    const [row] = await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id, requestId));
-    expect(Object.keys(row.proposed as Record<string, unknown>)).toEqual(['preferredName']);
+  it('a mixed proposal refuses closed fields atomically, then accepts an allowed-only proposal',async()=>{
+    const a=adminCtx(b),E=await hire('Mixed');
+    await setStatutoryProfileMY(a,{personId:E.personId,icNumber:'900101010112',bankName:'OldBank',bankAccountNo:'111122223333'});
+    await allowOnly(['preferredName']);const emp=await freshCtx(await employeeCtx(E.personId));
+    const before=await masterSnapshot(E.personId);
+    await expect(requestProfileChange(emp,{employmentId:E.employmentId,proposed:{preferredName:'Ren',gender:'female',bankName:requirePackFor('MY').client.bankNames[0],bankAccountNo:'999988887777'}})).rejects.toMatchObject({code:'fieldClosed'});
+    expect(await owner.db.select().from(profileChangeRequest)).toEqual([]);expect(await masterSnapshot(E.personId)).toEqual(before);
+    const {requestId}=await requestProfileChange(emp,{employmentId:E.employmentId,proposed:{preferredName:'Ren'}});
+    const [row]=await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,requestId));
+    expect(row.proposed).toMatchObject({v:2,fields:[{fieldId:'profile.personal_details.preferredname',value:'Ren'}],registers:[]});
   });
 
   it('an empty configuration means an employee may ask for nothing at all', async () => {
@@ -250,7 +246,7 @@ describe('r261 — a switched-off field cannot be asked about, however you ask',
     expect([...profileChangeAllowedKeys(emp)]).toEqual([]);
     await expect(
       requestProfileChange(emp, { employmentId: E.employmentId, proposed: { preferredName: 'Nobody' } }),
-    ).rejects.toThrow(/Nothing to change/);
+    ).rejects.toMatchObject({code:'fieldClosed'});
   });
 });
 
@@ -269,9 +265,9 @@ describe('r261 — switching a field off, with a request already waiting on it',
     const E = await hire('Waiting');
     await setStatutoryProfileMY(a, { personId: E.personId, icNumber: '900101010113', bankName: 'OldBank', bankAccountNo: '111122223333' });
     const emp = await freshCtx(await employeeCtx(E.personId));
-    const { requestId } = await requestProfileChange(emp, {
+    const { requestId } = await seedStoredLegacyProfileRequest(emp, {
       employmentId: E.employmentId,
-      proposed: { bankName: 'NewBank', bankAccountNo: '999988887777' },
+      proposed: { bankName: requirePackFor('MY').client.bankNames[0], bankAccountNo: '999988887777' },
     });
     const before = await masterSnapshot(E.personId);
 
@@ -294,7 +290,7 @@ describe('r261 — switching a field off, with a request already waiting on it',
     expect(row.decidedByEmploymentId).toBeNull();
     // NOTHING WAS DESTROYED: the row and what was asked for both survive, which is what makes the
     // employee's own screen able to explain what happened.
-    expect(Object.keys(row.proposed as Record<string, unknown>).sort()).toEqual(['bankAccountNo', 'bankName']);
+    expect(Object.keys(row.proposed as Record<string,unknown>).sort()).toEqual(['bankAccountNo','bankName']);
     // AND NOTHING WAS APPLIED.
     expect(await masterSnapshot(E.personId)).toEqual(before);
 
@@ -337,7 +333,7 @@ describe('r261 — switching a field off, with a request already waiting on it',
      * because nothing made the missed row any more likely to fall inside an unordered thousand.
      *
      * NON-VACUITY: restore `.limit(1000)` on the whole pending set (either function) and this goes red —
-     * `counts.get('bankAccountNo')` reads undefined instead of 1, and `withdrawn` reads 0 instead of 1.
+     * `counts.get('bank_statutory.bank_information.bankaccountno')` reads undefined instead of 1, and `withdrawn` reads 0 instead of 1.
      */
     const a = adminCtx(b);
     const E = await hire('Volume');
@@ -356,15 +352,15 @@ describe('r261 — switching a field off, with a request already waiting on it',
     );
     const { requestId } = await requestProfileChange(emp, {
       employmentId: E.employmentId,
-      proposed: { bankName: 'NewBank', bankAccountNo: '999988887777' },
+      proposed: { bankName: requirePackFor('MY').client.bankNames[0], bankAccountNo: '999988887777' },
     });
     const before = await masterSnapshot(E.personId);
 
     // THE SCREEN TELLS THE TRUTH FIRST. Under the cap the bank fields reported nothing waiting, which is
     // the reading an employer would have switched the field off on.
     const counts = await pendingProfileChangeCountsByKey(groupAdminCtx());
-    expect(counts.get('bankName'), 'the badge must not under-report past the old cap').toBe(1);
-    expect(counts.get('bankAccountNo')).toBe(1);
+    expect(counts.get('bank_statutory.bank_information.bankname'), 'the badge must not under-report past the old cap').toBe(1);
+    expect(counts.get('bank_statutory.bank_information.bankaccountno')).toBe(1);
     expect(counts.get('preferredName'), 'and it counts every pending row, not the first thousand').toBe(1100);
 
     await allowOnly(PROFILE_REQUESTABLE_KEYS.filter((k) => k !== 'bankName' && k !== 'bankAccountNo'));
@@ -407,16 +403,14 @@ describe('r261 — switching a field off, with a request already waiting on it',
     const emp = await freshCtx(await employeeCtx(E.personId));
     const { requestId } = await requestProfileChange(emp, {
       employmentId: E.employmentId,
-      proposed: { bankName: 'NewBank', bankAccountNo: '999988887777' },
+      proposed: { bankName: requirePackFor('MY').client.bankNames[0], bankAccountNo: '999988887777' },
     });
 
     // The permission is withdrawn through the REAL writer, and the sweep deliberately does not run.
     await allowOnly(PROFILE_REQUESTABLE_KEYS.filter((k) => k !== 'bankName' && k !== 'bankAccountNo'));
     const hr = await freshCtx(groupAdminCtx());
 
-    await expect(decideProfileChange(hr, { requestId, decision: 'approved' })).rejects.toBeInstanceOf(
-      ProfileChangeFieldClosedError,
-    );
+    await expect(decideProfileChange(hr, { requestId, decision: 'approved' })).rejects.toMatchObject({code:'fieldClosed'});
     const [after] = await owner.db
       .select({ bankAccountNo: employeeStatutoryMy.bankAccountNo })
       .from(employeeStatutoryMy)
@@ -468,7 +462,7 @@ describe('r261 — switching a field off, with a request already waiting on it',
     });
     const { requestId } = await requestProfileChange(await freshCtx(selfGroupAdmin), {
       employmentId: selfPerson.employmentId,
-      proposed: { bankName: 'NewBank', bankAccountNo: '999988887777' },
+      proposed: { bankName: requirePackFor('MY').client.bankNames[0], bankAccountNo: '999988887777' },
     });
     const before = await masterSnapshot(selfPerson.personId);
 
@@ -563,6 +557,7 @@ describe('r261 — who approves, and the two things that setting must never do',
      * administrators, and this case asks the question under BOTH of them.
      */
     const { E, requestId } = await pendingRequestFor('NeverWider');
+    const before=await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,requestId));
     const boss = await hire('Boss');
     await setReportingLine(adminCtx(b), {
       subordinateEmploymentId: E.employmentId,
@@ -577,11 +572,11 @@ describe('r261 — who approves, and the two things that setting must never do',
       await setTenantSetting(groupAdminCtx(), { key: PROFILE_REQUEST_APPROVER_SETTING_KEY, value });
       const boss2 = await freshCtx(bossCtx);
       const colleague2 = await freshCtx(colleague);
-      // The subject's own administrative manager: visible to them, and still not theirs to decide.
+      // A reporting line grants no request-decision UPDATE policy: this manager cannot lock the row.
       await expect(
         decideProfileChange(boss2, { requestId, decision: 'approved' }),
         `manager must not decide under '${value}'`,
-      ).rejects.toThrow(/Only an admin can approve/);
+      ).rejects.toThrow('profile change request not found (or not visible)');
       // A colleague: refused before the row is even readable.
       await expect(
         decideProfileChange(colleague2, { requestId, decision: 'approved' }),
@@ -590,6 +585,7 @@ describe('r261 — who approves, and the two things that setting must never do',
     }
     const [p] = await owner.db.select().from(person).where(eq(person.id, E.personId));
     expect(p.preferredName).toBeNull();
+    expect(await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,requestId))).toEqual(before);
   });
 
   it('NOBODY DECIDES THEIR OWN REQUEST, under either setting', async () => {
@@ -616,7 +612,7 @@ describe('r261 — who approves, and the two things that setting must never do',
       await expect(
         decideProfileChange(await freshCtx(selfAdmin), { requestId, decision: 'approved' }),
         `self-approval must be banned under '${value}'`,
-      ).rejects.toThrow(/cannot decide your own/);
+      ).rejects.toMatchObject({code:'permission'});
     }
     const [p] = await owner.db.select().from(person).where(eq(person.id, selfPerson.personId));
     expect(p.preferredName, 'nothing applied').toBeNull();
@@ -655,4 +651,17 @@ describe('r261 — who approves, and the two things that setting must never do',
       decideProfileChange(await freshCtx(groupAdminCtx()), { requestId, decision: 'rejected', reason: 'again' }),
     ).rejects.toThrow(/already approved/);
   });
+});
+
+describe('declaration-owned legacy and v2 withdrawal identities',()=>{
+ it.each(['preferredName','profile.personal_details.preferredname'])('withdraws both stored generations by %s without accepting unknown names',async lockedKey=>{
+  const E=await hire('BothGenerations'),emp=await freshCtx(await employeeCtx(E.personId));
+  const legacy=await seedStoredLegacyProfileRequest(emp,{employmentId:E.employmentId,proposed:{preferredName:'Historical pending'}});
+  const current=await requestProfileChange(emp,{employmentId:E.employmentId,proposed:{preferredName:'Current pending'}});
+  const before=await pendingProfileChangeCountsByKey(groupAdminCtx());expect(before.get('preferredName')).toBe(1);expect(before.get('profile.personal_details.preferredname')).toBe(1);
+  expect(await withdrawProfileChangesForLockedFields(groupAdminCtx(),{lockedKeys:['unknown-field'],reason:'No authority from unknown names'})).toEqual({withdrawn:0});
+  expect(await withdrawProfileChangesForLockedFields(groupAdminCtx(),{lockedKeys:[lockedKey],reason:'Field is closed'})).toEqual({withdrawn:2});
+  for(const requestId of [legacy.requestId,current.requestId]){const [row]=await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,requestId));expect(row.status).toBe('rejected');expect(row.decisionReason).toBe('Field is closed');}
+  expect((await masterSnapshot(E.personId)).person!.preferredName).toBeNull();
+ });
 });

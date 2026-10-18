@@ -22,8 +22,8 @@
  * contents MOVED and the move is asserted below exactly the way the Leave tab's was:
  *   • Performance (goals / 360 feedback / 1:1 check-ins) → /me/performance, a screen of its own, because
  *     /performance redirects a plain employee away and this was their only route to their own goals;
- *   • Overview → its clock in/out control stayed on /me ABOVE the tab strip (one of only two places a
- *     geofenced punch can be made), and its concurrent-positions list moved onto the Employment tab.
+ *   • Overview → its concurrent-positions list moved onto the Employment tab. The later approved Profile
+ *     redesign removes quick clocking from /me; the mounted /attendance/clock client retains both punches.
  * The tab NAMES are no longer asserted here — they are Personnel's keys now, and
  * test/me-profile-visibility.test.ts is where that relationship is pinned.
  */
@@ -38,7 +38,8 @@ const PAGE = fs.readFileSync(path.resolve(__dirname, '../app/me/page.tsx'), 'utf
 // searched across BOTH files. That is not a relaxation: an action or an anchor still has to be provably
 // present on the /me surface, it is simply no longer required to sit in one particular file of it.
 const REQUEST_CARD = fs.readFileSync(path.resolve(__dirname, '../app/me/request-change-card.tsx'), 'utf8');
-const ME_SURFACE = `${PAGE}\n${REQUEST_CARD}`;
+const EDITOR=fs.readFileSync(path.resolve(__dirname,'../app/me/profile-editor.tsx'),'utf8');
+const ME_SURFACE = `${PAGE}\n${EDITOR}`;
 // afc29d75 — all six catalogues, so "the retired string is gone" is checked where it can actually still
 // be hiding. An unused key removed from en.json alone is the shape the unused-key check carries forever.
 const MESSAGES: Record<string, { me: Record<string, unknown> }> = Object.fromEntries(
@@ -77,51 +78,59 @@ const CORRECTION_FORM = fs.readFileSync(
   'utf8',
 );
 
-// Every server action the page bound on the long-scroll layout. Losing any of these = an ESS capability
-// silently disappears from the UI, which the tab restructure must never do.
+// Server actions retained on the current /me surface. Approved relocations are checked at their
+// mounted destination as well as absent here; removing a name alone cannot prove a capability survived.
 const ACTIONS = [
-  'myCheckIn',
-  'myCheckOut',
+  // Check In/Out now use the mounted Attendance clock client and canonical API, checked below.
   // myRequestCorrection / myRequestOvertime / myRequestTravel left this list with the request forms
   // (0bb0e303 rev2) — they are bound on /attendance/requests, asserted in the describe at the foot.
   // myRequestLeave / myPreviewLeaveDeduction left this list with the Leave tab (a7cbd895) — the apply
   // capability lives on /leave (RequestLeaveDialog → requestLeaveAction), guarded by
   // test/leave-request-relocation.test.ts.
-  'myUpdateContact',
-  'myRequestProfileChange',
   // myUpdateGoalProgress / myCreateGoal / mySubmitPeerFeedback / myDeclinePeerFeedback left this list at
   // r259 with the Performance tab — they are bound on /me/performance, asserted in the describe at the
   // foot of this file, so "the capability vanished" still fails.
   'mySubmitResignation',
   'myWithdrawResignation',
 ];
+const CLOCK_PAGE = fs.readFileSync(path.resolve(__dirname, '../app/attendance/clock/page.tsx'), 'utf8');
+const CLOCK_CLIENT = fs.readFileSync(path.resolve(__dirname, '../app/attendance/clock/clock-client.tsx'), 'utf8');
+const CLOCK_API = fs.readFileSync(path.resolve(__dirname, '../app/api/attendance/clock/route.ts'), 'utf8');
+// A historical comment naming a retired form must not satisfy an executable binding assertion.
+const codeOnly = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 const PERFORMANCE_PAGE_SRC = fs.readFileSync(
   path.resolve(__dirname, '../app/me/performance/page.tsx'),
   'utf8',
 );
 
 describe('/me — tabbed My Workspace (311ad7ba)', () => {
-  it('keeps every server-action binding present after the tab restructure', () => {
+  it('keeps current /me actions and retains both clock directions on the mounted Attendance clock surface', () => {
+    const me = codeOnly(ME_SURFACE), clockPage = codeOnly(CLOCK_PAGE), clockClient = codeOnly(CLOCK_CLIENT), clockApi = codeOnly(CLOCK_API);
     for (const a of ACTIONS) {
-      expect(ME_SURFACE.includes(`action={${a}}`), `missing form action={${a}}`).toBe(true);
+      expect(me.includes(`action={${a}}`), `missing retained /me form action={${a}}`).toBe(true);
     }
+    for (const retired of ['myCheckIn', 'myCheckOut', 'AttendanceClockButton']) expect(me).not.toMatch(new RegExp(`\\b${retired}\\b`));
+    expect(clockPage).toContain("import { ClockPageClient } from './clock-client'");
+    expect(clockPage).toContain('const initial=await ownClockToday(session)');
+    expect(clockPage).toContain('<ClockPageClient initial={initial}');
+    for (const direction of ['in', 'out']) expect(clockClient).toContain(`onClick={()=>startClock('${direction}')}`);
+    const start = clockClient.indexOf('function startClock('), end = clockClient.indexOf('const blocked=', start);
+    expect(start, 'mounted clock direction dispatcher exists').toBeGreaterThanOrEqual(0);
+    expect(end, 'dispatcher slice is nonempty and bounded by its following control state').toBeGreaterThan(start + 120);
+    expect(clockClient.slice(start, end)).toContain('void confirm(direction)');
+    expect(clockClient).toContain('Object.entries({action:direction,requestId,');
+    expect(clockClient).toContain("fetch('/api/attendance/clock',{method:'POST',body:command.current.body})");
+    expect(clockApi).toContain('export async function POST(request: Request)');
+    expect(clockApi).toContain('const session = await clockApiSession()');
+    expect(clockApi).toContain("from '@/packs/attendance/service'");
+    expect(clockApi).toContain("await captureEmployeeClock(session,{action:String(data.get('action')) as 'in'|'out'");
   });
 
-  it('wires the six Personnel-shaped tabs, and no Leave tab (moved to /leave · a7cbd895)', () => {
-    // r259 REPLACED the five-key list that used to be here, and the replacement is not a weaker check:
-    // the tab set now comes from ME_TABS (app/me/visible-fields.ts), so asserting the panel wiring is
-    // asserting the whole strip. The five retired keys are asserted GONE below, which the old case could
-    // not do because they were what it required.
-    for (const key of ['profile', 'job', 'bankStatutory', 'payroll', 'family', 'documents']) {
-      expect(new RegExp(`^\\s+${key}: `, 'm').test(PAGE), `missing panel for tab '${key}'`).toBe(true);
-    }
-    for (const dead of ["key: 'overview'", "key: 'pay'", "key: 'performance'"]) {
-      expect(PAGE.includes(dead), `${dead} belongs to the arrangement r259 replaced`).toBe(false);
-    }
-    // The Leave tab is gone — leave self-service lives on /leave ("My Absence").
-    expect(PAGE.includes("key: 'leave'")).toBe(false);
-    expect(PAGE.includes('leave: (')).toBe(false);
-    expect(PAGE.includes('action={myRequestLeave}')).toBe(false);
+  it('wires all eleven Personnel tabs while Leave mutations retain their existing destination',()=>{
+    expect(EDITOR).toContain("['profile','family','job','careerMovement','attendance','bankStatutory','payroll','leave','documents','qualification','others']");
+    expect(EDITOR).toContain('Object.fromEntries(keys.map((key,index)=>');expect(EDITOR).toContain('panels={panels}');expect(PAGE).toContain('<ProfileEditor');
+    expect(PAGE).toContain('href="/leave"');expect(PAGE).not.toContain('action={myRequestLeave}');
+    for(const dead of ["key: 'overview'","key: 'pay'","key: 'performance'"])expect(PAGE).not.toContain(dead);
   });
 
   it('deep-links reloads back to their tab (native GET forms carry ?tab=)', () => {
@@ -130,7 +139,7 @@ describe('/me — tabbed My Workspace (311ad7ba)', () => {
     // resolves, which the legacy map below is for.
     expect(PAGE.includes('name="tab" value="payroll"')).toBe(true);
     expect(PAGE, 'an old ?tab=pay bookmark must still land somewhere real').toContain(
-      "const LEGACY_TAB: Record<string, MeTabKey> = { overview: 'profile', pay: 'payroll' };",
+      "const LEGACY_TAB:Record<string,MeTabKey>={overview:'profile',pay:'payroll'};",
     );
     // The server validates ?tab= and feeds it to the shell as defaultTab.
     expect(PAGE.includes('defaultTab={activeTab}')).toBe(true);
@@ -142,7 +151,7 @@ describe('/me — tabbed My Workspace (311ad7ba)', () => {
   });
 
   it('keeps the link to the Attendance page after the Overview tab was retired (r259)', () => {
-    // The link outlived the tab it was on. It now sits beside the clock control above the tab strip.
+    // The link remains on the Profile Attendance panel; quick clocking is on its dedicated page.
     expect(PAGE.includes("href=\"/attendance\"")).toBe(true);
     expect(PAGE.includes("t('viewAttendanceHistory')")).toBe(true);
   });
@@ -319,15 +328,10 @@ describe('/me → /attendance/requests: the request forms moved, they did not di
     }
   });
 
-  it('keeps the geofenced punch on /me (311ad7ba) — only the request forms travelled', () => {
-    // /me is one of only two places a punch can be made. A relocation that took the clock control with the
-    // forms would remove that, quietly, on a change nobody read as touching clocking.
-    //
-    // r259 is precisely such a change and this is what stopped it: the six Personnel-shaped tabs have no
-    // clocking card, so the control moved ABOVE the strip rather than into a tab. Same page, same actions.
-    expect(PAGE.includes('action={myCheckIn}')).toBe(true);
-    expect(PAGE.includes('action={myCheckOut}')).toBe(true);
-    expect(PAGE.includes('<LocationNotice />')).toBe(true);
+  it('removes clocking only from My Profile and retains the canonical My Attendance clock course',()=>{
+    for(const forbidden of ['action={myCheckIn}','action={myCheckOut}','AttendanceClockButton','<LocationNotice'])expect(ME_SURFACE).not.toContain(forbidden);
+    const clock=fs.readFileSync(path.resolve(__dirname,'../app/attendance/clock/page.tsx'),'utf8'),client=fs.readFileSync(path.resolve(__dirname,'../app/attendance/clock/clock-client.tsx'),'utf8');
+    expect(clock).toContain('<ClockPageClient');expect(client).toContain("fetch('/api/attendance/clock',{method:'POST'");expect(PAGE).toContain('href="/attendance"');
   });
 
   it('lands the employee back on the page they posted from', () => {

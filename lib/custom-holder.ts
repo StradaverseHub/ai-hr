@@ -42,3 +42,10 @@ export function customHolderGaps(h: CustomHolder): Array<'name' | 'id'> {
   if (h.enableCustomHolderId && !(h.customHolderId ?? '').trim()) gaps.push('id');
   return gaps;
 }
+
+/** Whether a holder value is retained by the canonical Bank writer's effective switches. */
+export function customHolderFieldApplies(h: Pick<CustomHolder, 'enableCustomHolderName' | 'enableCustomHolderId'>, field: string): boolean {
+  if (field === 'customHolderName') return h.enableCustomHolderName === true;
+  if (field === 'customHolderId') return h.enableCustomHolderId === true;
+  return true;
+}

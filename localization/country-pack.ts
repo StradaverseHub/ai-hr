@@ -329,6 +329,8 @@ export interface CountryPackClient {
   payroll: {
     /** The SAME function the server pack exposes (and `childReliefAmountFor` is built on). */
     childReliefFor: (p: ChildReliefInput) => ChildReliefFigure;
+    epfRateToPercent?:typeof import('../lib/epf-mode-map').epfRateToPercent;
+    epfUiModeFrom?:typeof import('../lib/epf-mode-map')['epfUiModeFrom'];
     taxCircumstanceOptions?: typeof import('./my/tax-circumstance')['TAX_CIRCUMSTANCE_OPTIONS'];
     taxCircumstanceOf?: typeof import('./my/tax-circumstance')['taxCircumstanceOf'];
     readSavedTaxCircumstance?: typeof import('./my/tax-circumstance')['readSavedTaxCircumstance'];
@@ -384,11 +386,15 @@ export interface CountryPack {
   statutory: {
     set: MyStatutoryModule['setStatutoryProfileMY'];
     get: MyStatutoryModule['getStatutoryProfileMY'];
+    /** Exact country-owned row revision for masked ESS concurrency checks; never a value digest. */
+    getEditSnapshot?: MyStatutoryModule['getStatutoryEditSnapshotMY'];
     setTp3: MyStatutoryModule['setTp3ProfileMY'];
     setBank: MyStatutoryModule['setBankProfileMY'];
     setRegistrationNumbers?: MyStatutoryModule['setRegistrationNumbersMY'];
     setIc: MyStatutoryModule['setIcProfileMY'];
+    canApplyIcChange:MyStatutoryModule['canApplyIcProfileChangeMY'];
     setPassport: MyStatutoryModule['setPassportProfileMY'];
+    validatePassport:MyStatutoryModule['validatePassportProfileMY'];
     setTax: MyStatutoryModule['setTaxProfileMY'];
     getTaxSelection?: MyTaxSelectionModule['getTaxSelectionMY'];
     saveTaxSelection?: MyTaxSelectionModule['saveTaxSelectionMY'];
@@ -530,6 +536,8 @@ export interface CountryPack {
      * per-category child relief omits all three and nothing in the kernel asks for them.
      */
     childReliefFor?: (p: ChildReliefInput) => ChildReliefFigure;
+    /** Canonical head count of the recorded grid, separate from weighted qualifying units. */
+    childReliefTableHeadCount?: (table: unknown) => number;
     /**
      * Item 04b88724 — what the resolved ruleset prices each relief category at, in ringgit AND in
      * qualifying children. The ONE place `units = amountRM / perChild` is written; a screen that has to

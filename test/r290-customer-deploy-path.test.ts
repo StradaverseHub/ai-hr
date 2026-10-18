@@ -90,6 +90,15 @@ function shimRepo(envProduction: string): { dir: string; trace: string } {
     fs.writeFileSync(p, `#!/bin/sh\nprintf '%s\\n' "${cmd} $*" >> "$DEPLOY_TRACE"\nexit 0\n`);
     fs.chmodSync(p, 0o755);
   }
+  // Observe the actual ordinary build environment; unset alone would permit Next to reload stale
+  // values from the private env file later. No secret field is logged by this fixture.
+  fs.writeFileSync(path.join(dir, 'bin/pnpm'), `#!/bin/sh
+printf '%s\\n' "pnpm $*" >> "$DEPLOY_TRACE"
+if [ "$1" = "build" ]; then
+  printf '%s\\n' "testing-source=\${AIHR_SYSTEM_TESTING_SOURCE_REF-unset}" "testing-record=\${AIHR_SYSTEM_TESTING_BUILD_RECORD_ID-unset}" "testing-catalogue=\${AIHR_SYSTEM_TESTING_CATALOGUE_HASH-unset}" "testing-content=\${AIHR_SYSTEM_TESTING_CONTENT_HASH-unset}" "testing-paths=\${AIHR_SYSTEM_TESTING_SOURCE_HASH_RECORD-unset}" "testing-context=\${AIHR_SYSTEM_TESTING_BUILD_CONTEXT-unset}" >> "$DEPLOY_TRACE"
+fi
+exit 0
+`);
   // sha256sum has to produce something `cut -d' ' -f1` can read, and macOS has no sha256sum at all.
   const sha = path.join(dir, 'bin', 'sha256sum');
   fs.writeFileSync(
@@ -165,6 +174,16 @@ describe('r290 harness precondition', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('the customer deploy path cannot reach the demo seeder', () => {
+  it('ordinary nonofficial builds explicitly clear all five stale private Testing compile values and context', () => {
+    const stale = ['SOURCE_REF', 'BUILD_RECORD_ID', 'CATALOGUE_HASH', 'CONTENT_HASH', 'SOURCE_HASH_RECORD', 'BUILD_CONTEXT']
+      .map(key => `AIHR_SYSTEM_TESTING_${key}=stale-private-build-metadata`).join('\n');
+    const result = runDeploy('deploy-customer.sh', [], CUSTOMER_ENV + stale + '\nTESTING_BUILD_RECORD=6fa9e236-7a92-42d6-94a5-9b703ff6a16c\n');
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    for (const key of ['source', 'record', 'catalogue', 'content', 'paths', 'context']) expect(result.trace).toContain(`testing-${key}=\n`);
+    expect(result.trace).not.toContain('stale-private-build-metadata');
+    expect(result.trace).not.toContain('system-testing-build-cli.ts build');
+    expect(result.trace).not.toContain('db/seed.ts');
+  });
   it('deploy.sh --customer runs to the end and NEVER invokes db/seed.ts', () => {
     const r = runDeploy('deploy.sh', ['--customer'], CUSTOMER_ENV);
     expect(r.status).toBe(0);

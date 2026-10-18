@@ -1,3 +1,5 @@
+import {requirePackFor} from '../localization/registry';
+import {requestCurrentProfileChange as requestProfileChange} from './helpers/profile-requests';
 /**
  * ADR-0077 slice 3 — WHY THE PAYROLL-KERNEL TESTS IN THIS FILE USE `entitledCtx`, NOT `adminCtx`.
  *
@@ -107,7 +109,7 @@ import {
   decideAttendanceCorrection,
   requestAttendanceCorrection,
 } from '../core/attendance';
-import { decideProfileChange, requestProfileChange, updateOwnContact } from '../core/profile';
+import { decideProfileChange,  updateOwnContact } from '../core/profile';
 import {
   batchDetail,
   BatchNotDraftError,
@@ -1602,7 +1604,7 @@ describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () 
     };
     await expect(
       decideAttendanceCorrection(selfCtx, { correctionId, decision: 'approved' }),
-    ).rejects.toThrow(/cannot decide your own/i);
+    ).rejects.toThrow('You cannot decide your own attendance application');
   });
 
   it('rejecting leaves attendance untouched', async () => {
@@ -1637,23 +1639,11 @@ describe('ESS — profile self-service (ADR-0012)', () => {
     const a = adminCtx(base);
     const E = await hire(a, base, 'Contacter');
     const emp = await empCtxFor(E.personId);
-    await updateOwnContact(emp, {
-      phone: '0123456789',
-      addressLine1: '12 Jalan Test',
-      emergencyContactName: 'Next of Kin',
-    });
-    const [p] = await owner.db.select().from(schema.person).where(eq(schema.person.id, E.personId));
-    expect(p.phone).toBe('0123456789');
-    expect(p.addressLine1).toBe('12 Jalan Test');
-    // 23ad620e — the emergency contact left `person` for its own register. The self-write must still
-    // land: person_emergency_contact's WITH CHECK is (is_admin OR is_self_person), the same rule
-    // person_rls applies, so an employee editing their own contact is exactly as privileged as before.
-    const [ec] = await owner.db
-      .select()
-      .from(schema.personEmergencyContact)
-      .where(eq(schema.personEmergencyContact.personId, E.personId));
-    expect(ec.fullName).toBe('Next of Kin');
-    expect(ec.priority).toBe('primary');
+    await expect(updateOwnContact(emp,{phone:'0123456789',addressLine1:'12 Jalan Test',emergencyContactName:'Next of Kin'})).rejects.toMatchObject({code:'addressReview'});
+    await updateOwnContact(emp,{phone:'0123456789'});
+    const [p]=await owner.db.select().from(schema.person).where(eq(schema.person.id,E.personId));
+    expect(p.phone).toBe('0123456789');expect(p.addressLine1).toBeNull();
+    expect(await owner.db.select().from(schema.personEmergencyContact).where(eq(schema.personEmergencyContact.personId,E.personId))).toEqual([]);
   });
 
   it('#24: a date-of-birth / marital-status change applies to the person only after approval', async () => {
@@ -1688,14 +1678,14 @@ describe('ESS — profile self-service (ADR-0012)', () => {
     const emp = await empCtxFor(E.personId);
     const { requestId } = await requestProfileChange(emp, {
       employmentId: E.employmentId,
-      proposed: { bankName: 'Maybank', bankAccountNo: '5566778899' },
+      proposed: { bankName: requirePackFor('MY').client.bankNames[0], bankAccountNo: '5566778899' },
     });
     // Pending — nothing changes until an admin approves.
     expect((await getStatutoryProfileMY(a, E.personId))?.bankAccountNo).toBe('111122223333');
 
     await decideProfileChange(a, { requestId, decision: 'approved' });
     const stat = await getStatutoryProfileMY(a, E.personId);
-    expect(stat?.bankName).toBe('Maybank');
+    expect(stat?.bankName).toBe(requirePackFor('MY').client.bankNames[0]);
     expect(stat?.bankAccountNo).toBe('5566778899');
 
     // S1 (security): the append-only event log must NOT hold the cleartext account number —
@@ -1706,19 +1696,20 @@ describe('ESS — profile self-service (ADR-0012)', () => {
       .where(eq(schema.domainEvent.aggregateId, requestId));
     const dump = JSON.stringify(events);
     expect(dump).not.toContain('5566778899');
-    expect(dump).toContain('bankAccountNo'); // the field name is audited
+    expect(dump).toContain('bank_statutory.bank_information.bankaccountno'); // the field name is audited
   });
 
   it('a bank change must carry both fields — partial updates are rejected at request time', async () => {
     const a = adminCtx(base);
     const E = await hire(a, base, 'Halfbank');
+    await setStatutoryProfileMY(a,{personId:E.personId,icNumber:'900101015020'});
     const emp = await empCtxFor(E.personId);
     await expect(
       requestProfileChange(emp, { employmentId: E.employmentId, proposed: { bankAccountNo: '999' } }),
-    ).rejects.toThrow(/both the bank name and the account number/i);
+    ).rejects.toMatchObject({code:'invalid'});
     await expect(
       requestProfileChange(emp, { employmentId: E.employmentId, proposed: { bankName: 'OnlyName' } }),
-    ).rejects.toThrow(/both the bank name and the account number/i);
+    ).rejects.toMatchObject({code:'invalid'});
   });
 
   it('rejecting a change leaves the statutory profile untouched', async () => {
@@ -1732,7 +1723,7 @@ describe('ESS — profile self-service (ADR-0012)', () => {
     const emp = await empCtxFor(E.personId);
     const { requestId } = await requestProfileChange(emp, {
       employmentId: E.employmentId,
-      proposed: { bankName: 'NoBank', bankAccountNo: '0000' },
+      proposed: { bankName: requirePackFor('MY').client.bankNames[0], bankAccountNo: '0000' },
     });
     // r260 stage two — a rejection now REQUIRES a reason (ProfileChangeReasonRequiredError), and the
     // employee is shown it. The property this case pins is unchanged: refusing applies nothing.
@@ -1766,7 +1757,7 @@ describe('ESS — profile self-service (ADR-0012)', () => {
     };
     await expect(
       decideProfileChange(mgrCtx, { requestId, decision: 'approved' }),
-    ).rejects.toThrow(/only an admin/i);
+    ).rejects.toThrow('profile change request not found (or not visible)');
   });
 
   it('the requesting employee cannot approve their own change', async () => {
@@ -1776,11 +1767,11 @@ describe('ESS — profile self-service (ADR-0012)', () => {
     const emp = await empCtxFor(E.personId);
     const { requestId } = await requestProfileChange(emp, {
       employmentId: E.employmentId,
-      proposed: { bankName: 'SelfBank', bankAccountNo: '1234' },
+      proposed: { bankName: requirePackFor('MY').client.bankNames[0], bankAccountNo: '1234' },
     });
     await expect(
       decideProfileChange(emp, { requestId, decision: 'approved' }),
-    ).rejects.toThrow(/cannot decide your own/i);
+    ).rejects.toThrow('profile change request not found (or not visible)');
   });
 });
 
