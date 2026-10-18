@@ -29,8 +29,8 @@ describe('default-off scheduled Employee Master release capability',()=>{
  });
  it('retains explicit opt-in and preserves ordinary authorization/recipient validation',async()=>{vi.stubEnv('EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED','true');await expect(saveEmployeeMasterSchedule(ctx,[id(7)],input,policy)).resolves.toEqual({id:'saved-schedule'});expect(m.write).toHaveBeenCalledWith(expect.objectContaining({enabled:true,nextRunAt:expect.any(Date)}));});
  it('can still disable an existing schedule while held, clearing its next date',async()=>{vi.stubEnv('EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED',undefined);await expect(saveEmployeeMasterSchedule(ctx,[id(7)],{...input,enabled:false},policy)).resolves.toEqual({id:'saved-schedule'});expect(m.write).toHaveBeenCalledWith(expect.objectContaining({enabled:false,nextRunAt:null}));expect(policy).not.toHaveBeenCalled();expect(m.event).toHaveBeenCalledTimes(1);});
- it('does no transport, scope, queue, claim or job logging even when a supplied daemon would report ready',async()=>{
-  vi.stubEnv('EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED',undefined);const transport=vi.fn(async()=>({version:1,ready:true})),execute=vi.fn(async()=>[]),select=vi.fn();
+ it.each([undefined,'false'])('does no transport, scope, queue, claim or job logging while held (%s), even with a ready daemon',async value=>{
+  vi.stubEnv('EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED',value);const transport=vi.fn(async()=>({version:1,ready:true})),execute=vi.fn(async()=>[]),select=vi.fn();
   expect(await sweepEmployeeMasterReports({execute,select} as never,{transport:transport as never})).toMatchObject({queued:0,attempted:0,unavailable:true});
   for(const fn of [transport,execute,select,m.scope,m.job,m.ipc])expect(fn).not.toHaveBeenCalled();
  });

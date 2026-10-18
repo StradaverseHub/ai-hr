@@ -6,7 +6,7 @@ import {readFileSync} from 'node:fs';
 import ts from 'typescript';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {internalReportRunnerEnvironment} from '../deploy/identity-email/internal-report-install-model';
+import {internalReportRunnerEnvironment,parseInternalReportRunnerEnvironment} from '../deploy/identity-email/internal-report-install-model';
 import {randomUUID} from 'node:crypto';
 import {internalReportDispatchMarker,validateReportDispatchMarker,dispatchSha256,reportDispatchInstance,supportedInternalReportRuntime,readTrustedDispatchFile,installedReportDispatch,INTERNAL_REPORT_DISPATCH_CRON_SOURCE,INTERNAL_REPORT_DISPATCH_ROOT,INTERNAL_REPORT_DISPATCH_RUNTIME} from '../lib/employee-master-dispatch';
 import {classifyReportProcess,processStartTicks,validateOwnedCron} from '../deploy/identity-email/report-scheduling';
@@ -37,10 +37,10 @@ describe('installed scheduling admission',()=>{
   filesystem.lstat.mockResolvedValue({isDirectory:()=>true,uid:0,mode:0o775});await expect(readTrustedDispatchFile('/etc/fixture-marker',4096,0o644)).rejects.toThrow('parent');
   filesystem.lstat.mockResolvedValue({isDirectory:()=>false,uid:0,mode:0o755});await expect(readTrustedDispatchFile('/etc/fixture-marker',4096,0o644)).rejects.toThrow('parent');
  });
- it('parses the existing generated env as literal data, including shell metacharacters, without loading app code',()=>{
-  const owner="postgres://fixture-owner:literal'`$value;$(never)@127.0.0.1/fictional_report",raw=internalReportRunnerEnvironment({origin:'https://report-acceptance.invalid',appDatabase:'postgres://ai_hr_app:fixture@127.0.0.1/fictional_report',ownerDatabase:owner});
-  const result=parseLauncher('environment',raw);expect(result.MIGRATION_DATABASE_URL).toBe(owner);expect(Object.keys(result)).toHaveLength(9);expect(result.AUTH_PROVIDER).toBe('internal');
-  for(const invalid of [raw+"AUTH_SESSION_KEY='forbidden'\n",raw+"AUTH_PROVIDER='internal'\n",raw.replace("TZ='UTC'","TZ=$(touch /never)"),raw.replace("HOME='/nonexistent'","HOME='/root'"),raw.replace("LANG='C.UTF-8'",''),'x'.repeat(16385),raw.replace("TZ='UTC'","TZ='UTC' #comment")])expect(()=>parseLauncher('environment',invalid)).toThrow();
+ it.each([false,true])('parses canonical env and capability %s as literal data without loading app code',enabled=>{
+  const owner="postgres://fixture-owner:literal'`$value;$(never)@127.0.0.1/fictional_report",raw=internalReportRunnerEnvironment({origin:'https://report-acceptance.invalid',appDatabase:'postgres://ai_hr_app:fixture@127.0.0.1/fictional_report',ownerDatabase:owner,scheduledEmailEnabled:enabled});
+  const result=parseLauncher('environment',raw);expect(result.MIGRATION_DATABASE_URL).toBe(owner);expect(Object.keys(result)).toHaveLength(10);expect(result.EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED).toBe(String(enabled));expect(parseInternalReportRunnerEnvironment(raw)).toEqual(result);expect(result.AUTH_PROVIDER).toBe('internal');
+  for(const invalid of [raw.replace(/^EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED=.*\n/m,''),...['TRUE','1',' true','true ',''].map(value=>raw.replace(`EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED='${enabled}'`,`EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED='${value}'`)),raw+"AUTH_SESSION_KEY='forbidden'\n",raw+"AUTH_PROVIDER='internal'\n",raw.replace("TZ='UTC'","TZ=$(touch /never)"),raw.replace("HOME='/nonexistent'","HOME='/root'"),raw.replace("LANG='C.UTF-8'",''),'x'.repeat(16385),raw.replace("TZ='UTC'","TZ='UTC' #comment")])expect(()=>parseLauncher('environment',invalid)).toThrow();
  });
  it('launcher refuses invented root identities/extra marker authority and retains paused as a no-dispatch state',()=>{
   expect(parseLauncher('marker',JSON.stringify(marker())).state).toBe('paused');expect(parseLauncher('marker',JSON.stringify({...marker(),state:'active'})).runnerUid).toBe(1001);

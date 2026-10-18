@@ -8,16 +8,26 @@ vi.mock('../db/client',()=>({createDb:mocks.createDb,client:{end:mocks.appEnd}})
 vi.mock('../lib/employee-master-dispatch',()=>({installedReportDispatch:mocks.admission}));
 vi.mock('../core/employee-master-delivery',()=>({sweepEmployeeMasterReports:mocks.sweep}));
 import {provisionRunnerMode,validateInstalledInternalReportEnvironment,runInstalledInternalReportTick,runProvisionReportStage} from '../scripts/provision-runner';
-const valid=()=>({AUTH_PROVIDER:'internal',AUTH_PUBLIC_ORIGIN:'https://hr.example.test',DATABASE_URL:'postgres://ai_hr_app:synthetic-app@localhost:5433/fictional_report',MIGRATION_DATABASE_URL:'postgres://fictional_owner:synthetic-owner@localhost:5433/fictional_report',NODE_ENV:'production' as const,TZ:'Asia/Kuala_Lumpur',PATH:'/usr/bin:/bin'});
+import {internalReportRunnerEnvironment,parseInternalReportRunnerEnvironment} from '../deploy/identity-email/internal-report-install-model';
+const valid=()=>({AUTH_PROVIDER:'internal',AUTH_PUBLIC_ORIGIN:'https://hr.example.test',DATABASE_URL:'postgres://ai_hr_app:synthetic-app@localhost:5433/fictional_report',MIGRATION_DATABASE_URL:'postgres://fictional_owner:synthetic-owner@localhost:5433/fictional_report',EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED:'true',NODE_ENV:'production' as const,TZ:'Asia/Kuala_Lumpur',PATH:'/usr/bin:/bin'});
 beforeEach(()=>{vi.clearAllMocks();mocks.ownerEnd.mockResolvedValue(undefined);mocks.appEnd.mockResolvedValue(undefined);mocks.createDb.mockReturnValue({db:{fictional:true},client:{end:mocks.ownerEnd}});mocks.admission.mockResolvedValue('dedicated');mocks.sweep.mockResolvedValue({attempted:1,sent:1,failed:0,uncertain:0,tenantsFailed:0});});
 describe('closed installed internal report-only command',()=>{
  it('retains default dispatch and accepts only the exact smaller command, never an env skip flag',()=>{
   expect(provisionRunnerMode([])).toBe('default');expect(provisionRunnerMode(['--installed-internal-reports-only'])).toBe('installedInternalReportsOnly');
-  for(const args of [['--skip-env'],['--installed-internal-reports-only','--provision'],['--internal'],['--installed-internal-reports-only=1']])expect(()=>provisionRunnerMode(args)).toThrow('Unknown provisioning runner command');
+  for(const args of [['--skip-env'],['--installed-internal-reports-only','--provision'],['--internal'],['--installed-internal-reports-only=1'],['--installed-internal-reports-only','--scheduled-email=true']])expect(()=>provisionRunnerMode(args)).toThrow('Unknown provisioning runner command');
  });
  it('requires separate app/owner authorities for exactly the same database and canonical installed origin',()=>{
   expect(()=>validateInstalledInternalReportEnvironment(valid())).not.toThrow();
   for(const patch of [{AUTH_PROVIDER:'workos'},{AUTH_PUBLIC_ORIGIN:'http://hr.example.test'},{AUTH_PUBLIC_ORIGIN:'https://hr.example.test/'},{AUTH_PUBLIC_ORIGIN:'https://user:password@hr.example.test'},{MIGRATION_DATABASE_URL:''},{MIGRATION_DATABASE_URL:valid().DATABASE_URL},{MIGRATION_DATABASE_URL:'postgres://owner:synthetic@localhost:5433/other'},{DATABASE_URL:'postgres://owner:synthetic@localhost:5433/fictional_report'},{DATABASE_URL:valid().DATABASE_URL+'?options=-crole=postgres'},{DATABASE_URL:'postgres://ai_hr_app:synthetic@remote.example.test/fictional_report'}])expect(()=>validateInstalledInternalReportEnvironment({...valid(),...patch})).toThrow();
+ });
+ it.each(['true','false'])('accepts only the explicit literal capability %s before app imports',value=>expect(()=>validateInstalledInternalReportEnvironment({...valid(),EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED:value})).not.toThrow());
+ it.each([false,true])('admits canonical installed writer/parser output for capability %s',scheduledEmailEnabled=>{
+  const values=valid(),raw=internalReportRunnerEnvironment({origin:values.AUTH_PUBLIC_ORIGIN,appDatabase:values.DATABASE_URL,ownerDatabase:values.MIGRATION_DATABASE_URL,scheduledEmailEnabled});
+  expect(()=>validateInstalledInternalReportEnvironment(parseInternalReportRunnerEnvironment(raw))).not.toThrow();
+ });
+ it.each([undefined,'','TRUE','1',' true','true '])('rejects missing/malformed capability %s before owner work',async value=>{
+  const previous=process.env;process.env={...valid(),EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED:value};
+  try{await expect(runInstalledInternalReportTick()).rejects.toThrow('scheduling capability');expect(mocks.admission).not.toHaveBeenCalled();expect(mocks.createDb).not.toHaveBeenCalled();expect(mocks.sweep).not.toHaveBeenCalled();}finally{process.env=previous;}
  });
  it.each(['AUTH_SESSION_KEY','WORKOS_API_KEY','IDENTITY_EMAIL_CLIENT_SECRET','WORKFLOW_EMAIL_LOOKUP_CLIENT_SECRET','NODE_OPTIONS','PROVISION_SKIP_ENV','IDENTITY_EMAIL_SOCKET'])('refuses inherited/private/override input before imports or any owner work: %s',key=>{
   expect(()=>validateInstalledInternalReportEnvironment({...valid(),[key]:'synthetic-private-or-override'})).toThrow('environment is not closed');
