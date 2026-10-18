@@ -15,9 +15,17 @@
 import { and, count, eq, inArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { companyPayrollConfig, employment, payrollPolicy, type PayRule, type PayrollPolicyConfig } from '../db/schema';
+import { companyPayrollConfig, employment, payComponent, payrollPolicy, type PayRule, type PayrollPolicyConfig } from '../db/schema';
+import { assertPayComponentReady } from '../lib/pay-component-contract';
 import { validatePayRule, type PayRuleKind } from './pay-rule';
 import { cleanPayrollPolicyConfig } from './payroll-policy-config';
+
+async function assertPolicyPayItemReadyTx(tx: Tx, config: PayrollPolicyConfig | null) {
+  const handling = config?.overtime?.exceedHandling;
+  if (handling?.action !== 'convert') return;
+  const [component] = await tx.select({ code: payComponent.code, pendingInputKind: payComponent.pendingInputKind }).from(payComponent).where(eq(payComponent.id, handling.componentId)).limit(1);
+  if (component) assertPayComponentReady(component);
+}
 
 /** Clamp a priority to a non-negative integer (the Phase-2 bulk-assign tie-break). Default 0. */
 function cleanPriority(v: number | undefined): number {
@@ -143,6 +151,7 @@ export async function createPolicy(
   const status: PolicyStatus = p.status && POLICY_STATUSES.includes(p.status) ? p.status : 'active';
   return withTenant(ctx, async (tx) => {
     let id: string;
+    await assertPolicyPayItemReadyTx(tx, config);
     try {
       const [row] = await tx
         .insert(payrollPolicy)
@@ -201,6 +210,7 @@ export async function updatePolicy(
     // config/priority: an explicit patch is cleaned + persisted; omitting it keeps the stored value.
     const config =
       p.config !== undefined ? cleanPayrollPolicyConfig(p.config) : (before.config as PayrollPolicyConfig | null);
+    await assertPolicyPayItemReadyTx(tx, config);
     const priority = p.priority !== undefined ? cleanPriority(p.priority) : before.priority;
     try {
       await tx
@@ -258,6 +268,8 @@ export async function setStatus(
   if (!POLICY_STATUSES.includes(p.status as PolicyStatus)) throw new Error('Unknown status');
   const status = p.status as PolicyStatus;
   return withTenant(ctx, async (tx) => {
+    const [policy] = await tx.select({ config: payrollPolicy.config }).from(payrollPolicy).where(eq(payrollPolicy.id, p.id)).limit(1);
+    if (status === 'active' && policy) await assertPolicyPayItemReadyTx(tx, policy.config);
     await tx.update(payrollPolicy).set({ status, updatedAt: sql`now()` }).where(eq(payrollPolicy.id, p.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -314,12 +326,13 @@ export async function assignPolicy(
     if (!emp) throw new Error('Employment not found');
     if (p.policyId != null) {
       const [pol] = await tx
-        .select({ id: payrollPolicy.id, companyId: payrollPolicy.companyId })
+        .select({ id: payrollPolicy.id, companyId: payrollPolicy.companyId, config: payrollPolicy.config })
         .from(payrollPolicy)
         .where(eq(payrollPolicy.id, p.policyId))
         .limit(1);
       if (!pol) throw new Error('Payroll policy not found');
       if (pol.companyId !== emp.companyId) throw new PolicyCompanyMismatchError();
+      await assertPolicyPayItemReadyTx(tx, pol.config);
     }
     await tx
       .update(employment)

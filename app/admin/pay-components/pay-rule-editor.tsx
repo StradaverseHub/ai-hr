@@ -63,6 +63,7 @@ type Props = {
   kind: string;
   prorates: boolean;
   rule: PayRule | null;
+  pendingInputKind?: Exclude<PayRuleKind, 'fixed'> | null;
   aiEnabled: boolean;
   /** Other ACTIVE pay items in this tenant's catalog (this one excluded) — the reference picker's options. */
   payItems: PayItemOption[];
@@ -183,13 +184,14 @@ export function PayRuleEditor({
   kind: componentKind,
   prorates: initialProrates,
   rule: initialRule,
+  pendingInputKind,
   aiEnabled,
   payItems,
   previewEmployees,
 }: Props) {
   const t = useTranslations('payRule');
   const tc = useTranslations('payComponents');
-  const [kind, setKind] = useState<PayRuleKind>(initialRule?.kind ?? 'fixed');
+  const [kind, setKind] = useState<PayRuleKind>(initialRule?.kind ?? pendingInputKind ?? 'fixed');
   const [prorates, setProrates] = useState(initialProrates);
   const [pct, setPct] = useState(initialRule?.kind === 'percent_of' ? String(initialRule.pct) : '');
   const [pctBase, setPctBase] = useState<'basic' | 'component'>(

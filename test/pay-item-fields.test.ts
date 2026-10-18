@@ -15,6 +15,8 @@ import {
   listPayComponents,
   lookupPayComponentByCode,
   upsertPayComponent,
+  PayComponentInputError,
+  seedPayComponentCatalog,
   type PayComponentInput,
 } from '../core/pay-components';
 import { adminCtx, closeAll, latestEventPayload, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -37,7 +39,7 @@ afterAll(async () => {
 const formShaped = (over: Partial<PayComponentInput> = {}): PayComponentInput => ({
   code: 'TRANSPORT',
   name: 'Transportation Allowance',
-  label: '',
+  label: 'Transport',
   kind: 'allowance',
   includedInEpf: true,
   includedInSocsoEis: true,
@@ -55,7 +57,7 @@ const byCode = async (code: string) =>
   (await listPayComponents(adminCtx(base), { includeArchived: true })).find((c) => c.code === code);
 
 describe('Pay Items — label field', () => {
-  it('label round-trips; blank stores NULL; undefined leaves the stored value untouched', async () => {
+  it('label round-trips; blank is refused without a write; undefined leaves the stored value untouched', async () => {
     const a = adminCtx(base);
     await upsertPayComponent(a, formShaped({ label: '  Transport  ' }));
     expect((await byCode('TRANSPORT'))!.label).toBe('Transport'); // trimmed round-trip
@@ -65,9 +67,18 @@ describe('Pay Items — label field', () => {
     await upsertPayComponent(a, withoutLabel);
     expect((await byCode('TRANSPORT'))!.label).toBe('Transport');
 
-    // blank ⇒ NULL (the form clears it).
-    await upsertPayComponent(a, formShaped({ label: '   ' }));
-    expect((await byCode('TRANSPORT'))!.label).toBeNull();
+    // Changed labels now obey the required Label contract, without erasing the existing row.
+    const before = await byCode('TRANSPORT');
+    await expect(upsertPayComponent(a, formShaped({ label: '   ' }))).rejects.toBeInstanceOf(PayComponentInputError);
+    expect(await byCode('TRANSPORT')).toEqual(before);
+  });
+
+  it('preserves an unchanged legacy NULL label through an unrelated edit', async () => {
+    const a = adminCtx(base); await seedPayComponentCatalog(a);
+    const old = (await byCode('HOUSING'))!; expect(old.label).toBeNull();
+    const {label: _omit, ...withoutLabel} = formShaped({code: 'HOUSING', name: 'Legacy housing rename'});
+    await upsertPayComponent(a, withoutLabel);
+    const saved = (await byCode('HOUSING'))!; expect(saved.id).toBe(old.id); expect(saved.label).toBeNull(); expect(saved.name).toBe('Legacy housing rename');
   });
 
   // The deliberate no-uniqueness decision (house precedent: the System Labels shape on

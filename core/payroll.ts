@@ -111,7 +111,8 @@ import {
 // db/schema.ts) and refuses rather than answering when a session could not have seen a filing, and a
 // second hand-rolled "has this month been filed" here is exactly the drift that comment forbids.
 import { describeFiledEvidence, periodFiledTx, type FiledEvidence } from './statutory-filed';
-import { setPayrollBatchComponent } from './pay-components';
+import { assertNoPendingPayComponentsTx, setPayrollBatchComponent } from './pay-components';
+import { assertPayComponentReady } from '../lib/pay-component-contract';
 import { cp38ForPeriod } from './cp38';
 // The month-collapse rule for approved TP1 declarations. Imported rather than re-implemented: the
 // limit check, the screen's remaining strip, the printed ACCUMULATED column and this feed must all
@@ -4449,10 +4450,11 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     ];
     if (convertComponentIds.length) {
       const comps = await tx
-        .select({ id: payComponent.id, code: payComponent.code, name: payComponent.name, archivedAt: payComponent.archivedAt })
+        .select({ id: payComponent.id, code: payComponent.code, name: payComponent.name, archivedAt: payComponent.archivedAt, pendingInputKind: payComponent.pendingInputKind })
         .from(payComponent)
         .where(inArray(payComponent.id, convertComponentIds));
       const byId = new Map(comps.filter((c) => c.archivedAt == null).map((c) => [c.id, { code: c.code, name: c.name }]));
+      for (const component of comps.filter(c => c.archivedAt == null)) assertPayComponentReady(component);
       for (const e of emps) {
         const eh = policyConfigByEmp.get(e.employmentId)?.overtime?.exceedHandling;
         if (eh?.action === 'convert') {
@@ -4563,6 +4565,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       legacyBaseSlips: number;
     };
     const empIds = emps.map((e) => e.employmentId);
+    await assertNoPendingPayComponentsTx(tx, { batchId: p.batchId, employmentIds: empIds, periodStart, periodEnd });
     // 1.2.3 CP38 Deduction — the LHDN/court instalment in effect for THIS payroll month, per employment
     // (auto-apply by month). Folded into deductions + stamped onto statutory.cp38 below; an additional run
     // re-charges nothing (handled per-employee with isAdditionalRun, like slipUnpaid/hrdf).

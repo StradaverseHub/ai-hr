@@ -44,7 +44,7 @@ describe('r386 dependent salary consumers and immutable saved selection basis', 
 
   it('actual percentage transaction derivation follows its pay month, not the open future salary', async () => {
     const { employee } = await salaryHistory();
-    await upsertPayComponent(ctx, { code: 'R386PCT', name: 'Synthetic Percentage', kind: 'allowance',
+    await upsertPayComponent(ctx, { label: 'Synthetic Percentage', code: 'R386PCT', name: 'Synthetic Percentage', kind: 'allowance',
       includedInEpf: false, includedInSocsoEis: false, includedInPcb: true, includedInHrdfBase: false,
       isNonPayable: false, prorates: false, rule: { kind: 'formula', start: { ref: 'basic' }, terms: [{ op: '*', operand: { ref: 'number', value: 0.1 } }] } });
     const [component] = await owner.db.select().from(schema.payComponent)

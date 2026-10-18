@@ -16,6 +16,7 @@ import { OrpConfig } from './orp-config';
 import { PayRuleEditor } from './pay-rule-editor';
 import { StatutoryConfig } from './statutory-config';
 import { createComponentAction, updateComponentAction } from './actions';
+import { PAY_COMPONENT_DEFAULTS, payCalculationStatus, payComponentOvertimeDefault, payComponentEaDefault } from '@/lib/pay-component-contract';
 
 const LIST = '/admin/pay-components';
 
@@ -67,7 +68,7 @@ export async function ComponentForm({
     // In copy mode the source's own code is offered too: the new item is a distinct code and may legitimately
     // reference the one it was copied from (self-exclusion only applies to a rule reading ITSELF, which the
     // blank new code cannot yet do).
-    .filter((c) => (copy || c.code !== component?.code) && !isStatutoryComponent(c.code, c.kind))
+    .filter((c) => c.pendingInputKind == null && (copy || c.code !== component?.code) && !isStatutoryComponent(c.code, c.kind))
     .map((c) => ({ code: c.code, name: c.label ?? c.name }));
 
   return (
@@ -86,6 +87,7 @@ export async function ComponentForm({
         back={{ href: LIST, label: t('backToList') }}
       />
       <ErrorBanner message={error} />
+      {component?.pendingInputKind && <p role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm">{t(payCalculationStatus(component.pendingInputKind))} — {t('calculationPendingHint')}</p>}
 
       <form action={editing ? updateComponentAction : createComponentAction} className="space-y-6">
         {/* ea54fe6e — the EA-form-line CONTROL IS BACK. It was replaced by a hidden passthrough in the
@@ -103,18 +105,22 @@ export async function ComponentForm({
                 readOnly={editing}
                 defaultValue={copy ? '' : (component?.code ?? '')}
                 placeholder="HOUSING"
-                pattern="[A-Za-z0-9_]+"
+                pattern={editing ? undefined : '[A-Za-z0-9_-]+'}
+                maxLength={editing ? undefined : 20}
                 className={`${inputCls} font-mono uppercase ${editing ? 'opacity-60' : ''}`}
               />
             </Field>
             <Field label={t('colLabel')}>
-              <input name="label" defaultValue={component?.label ?? ''} placeholder={t('labelPlaceholder')} className={inputCls} />
+              <input name="label" required={!editing || !!component?.label} maxLength={(component?.label?.length ?? 0) > 60 ? undefined : 60} defaultValue={component?.label ?? ''} placeholder={t('labelPlaceholder')} className={inputCls} />
             </Field>
             <Field label={t('colName')}>
-              <input name="name" required defaultValue={component?.name ?? ''} placeholder={t('namePlaceholder')} className={inputCls} />
+              <input name="name" required={editing} defaultValue={component?.name ?? ''} placeholder={t('namePlaceholder')} className={inputCls} />
+            </Field>
+            <Field label={t('colDescription')}>
+              <textarea name="description" maxLength={200} defaultValue={component?.description ?? ''} className={inputCls} />
             </Field>
             <Field label={t('colKind')}>
-              <select name="kind" defaultValue={component?.kind ?? 'allowance'} className={inputCls}>
+              <select name="kind" defaultValue={component?.kind ?? PAY_COMPONENT_DEFAULTS.kind} className={inputCls}>
                 <option value="allowance">{t('kind_allowance')}</option>
                 <option value="deduction">{t('kind_deduction')}</option>
                 <option value="contribution">{t('kind_contribution')}</option>
@@ -154,13 +160,13 @@ export async function ComponentForm({
             // Earning fed the overtime aggregate automatically, and nothing at all fed the unpaid-leave
             // base. An operator who creates an item and never opens this card therefore gets exactly the
             // pre-0456 behaviour, which is the same promise migration 0456 keeps for the existing 29.
-            orpUnpaidLeave={component?.orpUnpaidLeave ?? false}
+            orpUnpaidLeave={component?.orpUnpaidLeave ?? PAY_COMPONENT_DEFAULTS.orpUnpaidLeave}
             // ⚠️ KIND-AWARE, and it was not. `?? true` pre-ticked Overtime on EVERY new item, so creating
             // the reporter's own pairing (Category = Non-Payable + Payroll Category = Benefit in Kind) and
             // saving without ever opening this card stored orp_overtime = true — which then made the admin
             // preview quote a figure the run does not pay. The pre-0456 answer was the KIND test, and this
             // is that test: a new Earning fed the aggregate, nothing else did.
-            orpOvertime={component?.orpOvertime ?? (component?.kind ?? 'allowance') === 'allowance'}
+            orpOvertime={component?.orpOvertime ?? payComponentOvertimeDefault(component?.kind ?? PAY_COMPONENT_DEFAULTS.kind)}
             kind={component?.kind ?? 'allowance'}
           />
         </Card>
@@ -175,7 +181,7 @@ export async function ComponentForm({
           <p className="text-xs text-muted-foreground">{t('sectionPaySettingsHint')}</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label={t('colRounding')}>
-              <select name="roundingMethod" defaultValue={component?.roundingMethod ?? 'none'} className={inputCls}>
+              <select name="roundingMethod" defaultValue={component?.roundingMethod ?? PAY_COMPONENT_DEFAULTS.roundingMethod} className={inputCls}>
                 {ROUNDING_METHODS.map((m) => (
                   <option key={m} value={m}>{t(`rounding_${m}`)}</option>
                 ))}
@@ -186,8 +192,9 @@ export async function ComponentForm({
             <PayRuleEditor
               code={copy ? '' : (component?.code ?? '')}
               kind={component?.kind ?? 'allowance'}
-              prorates={component?.prorates ?? true}
+              prorates={component?.prorates ?? PAY_COMPONENT_DEFAULTS.prorates}
               rule={(component?.rule ?? null) as PayRule | null}
+              pendingInputKind={component?.pendingInputKind ?? null}
               aiEnabled={aiEnabled}
               payItems={payItems}
               previewEmployees={previewEmployees.map((e) => ({
@@ -211,11 +218,11 @@ export async function ComponentForm({
                 EPF Bonus 2012 is only tickable with EPF itself. Client island: the exemption list filters
                 with the remuneration type without a round trip (server action re-validates). */}
             <StatutoryConfig
-              includedInEpf={component?.includedInEpf ?? true}
-              epfBonus2012={component?.epfBonus2012 ?? false}
-              includedInSocsoEis={component?.includedInSocsoEis ?? true}
-              includedInPcb={component?.includedInPcb ?? true}
-              includedInHrdfBase={component?.includedInHrdfBase ?? false}
+              includedInEpf={component?.includedInEpf ?? PAY_COMPONENT_DEFAULTS.includedInEpf}
+              epfBonus2012={component?.epfBonus2012 ?? PAY_COMPONENT_DEFAULTS.epfBonus2012}
+              includedInSocsoEis={component?.includedInSocsoEis ?? PAY_COMPONENT_DEFAULTS.includedInSocsoEis}
+              includedInPcb={component?.includedInPcb ?? PAY_COMPONENT_DEFAULTS.includedInPcb}
+              includedInHrdfBase={component?.includedInHrdfBase ?? PAY_COMPONENT_DEFAULTS.includedInHrdfBase}
               pcbRemunerationType={component?.pcbRemunerationType ?? null}
               pcbExemptionCode={component?.pcbExemptionCode ?? null}
             />
@@ -237,7 +244,7 @@ export async function ComponentForm({
           <p className="text-xs text-muted-foreground">{t('sectionEaFormHint')}</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label={t('colEaLine')}>
-              <select name="eaFormLine" defaultValue={canonicalEa ?? (component?.kind === 'deduction' || component?.kind === 'non_payable' || component?.kind === 'contribution' ? '' : 'EA_B1A')} className={inputCls}>
+              <select name="eaFormLine" defaultValue={component ? canonicalEa ?? '' : payComponentEaDefault(PAY_COMPONENT_DEFAULTS.kind) ?? ''} className={inputCls}>
                 <option value="">{t('eaLineNone')}</option>
                 {eaCatalogue.filter(e => e.active).map(e => <option key={e.code} value={e.code}>{e.label}</option>)}
                 {currentEa && !eaCatalogue.some(e => e.code === canonicalEa) && <option value={currentEa}>{t(`eaLine_${currentEa}`)}</option>}

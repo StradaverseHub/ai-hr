@@ -272,7 +272,7 @@ async function setupEmployee(code: string, displayCategory: string | null | unde
   await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
   await seedPayComponentCatalog(a);
   await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await idByCode(base, 'BASIC'), amount: 5000, effectiveFrom: '2026-01-01' });
-  await upsertPayComponent(a, {
+  await upsertPayComponent(a, { label: 'Overtime 1.5',
     code, name: 'Overtime 1.5', kind: 'allowance',
     includedInEpf: false, includedInSocsoEis: true, includedInPcb: true, includedInHrdfBase: false,
     isNonPayable: false, prorates: false, roundingMethod: 'none',

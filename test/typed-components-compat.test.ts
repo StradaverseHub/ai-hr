@@ -180,7 +180,7 @@ describe('Wave 3 #9-3 — typed components are byte-identical to the legacy kern
     expect((baseline.statutory as Record<string, unknown>).recordLines).toBeUndefined(); // no record lines when none exist
 
     // ── With a record-only BIK: non-payable AND not PCB-taxable ──
-    await upsertPayComponent(a, { code: 'BIK_PARK', name: 'Parking (record only)', kind: 'non_payable', includedInEpf: false, includedInSocsoEis: false, includedInPcb: false, includedInHrdfBase: false, isNonPayable: true, prorates: false });
+    await upsertPayComponent(a, { label: 'Parking (record only)', code: 'BIK_PARK', name: 'Parking (record only)', kind: 'non_payable', includedInEpf: false, includedInSocsoEis: false, includedInPcb: false, includedInHrdfBase: false, isNonPayable: true, prorates: false });
     const recId = (await listPayComponents(a)).find((c) => c.code === 'BIK_PARK')!.id;
     await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: recId, amount: 120, effectiveFrom: '2026-01-01' });
 
@@ -213,7 +213,7 @@ describe('Wave 3 #9-3 — typed components are byte-identical to the legacy kern
     await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234' });
     await seedPayComponentCatalog(a);
     // A BIK: taxable (PCB) but non-payable — v1 cannot place it in a cash bucket.
-    await upsertPayComponent(a, { code: 'BIK_CAR', name: 'Company car (BIK)', kind: 'non_payable', includedInEpf: false, includedInSocsoEis: false, includedInPcb: true, includedInHrdfBase: false, isNonPayable: true, prorates: false });
+    await upsertPayComponent(a, { label: 'Company car (BIK)', code: 'BIK_CAR', name: 'Company car (BIK)', kind: 'non_payable', includedInEpf: false, includedInSocsoEis: false, includedInPcb: true, includedInHrdfBase: false, isNonPayable: true, prorates: false });
     await backfillEmploymentComponentsFromCompensation(a);
     const bikId = (await listPayComponents(a)).find((c) => c.code === 'BIK_CAR')!.id;
     await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: bikId, amount: 250, effectiveFrom: '2026-01-01' });

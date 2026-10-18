@@ -1,6 +1,7 @@
 import type { TestingCatalogueAppliedResult } from '../lib/system-testing/updates';
 import type { InstructionDefinition, PublishedInstruction, ExecutionStatus } from '../lib/system-testing/model';
 import {PERSONNEL_EMPLOYMENT_TYPES,PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS} from '../lib/personnel-choice-vocabulary';
+import type { PendingPayInputKind } from '../lib/pay-component-contract';
 import type { EmployeeMasterSpec } from '../lib/employee-master-report';
 import type { AttendanceAdminAmendment, AttendanceDayKindOverride, ManualOtRows } from '../lib/attendance-day-adjustment';
 /**
@@ -6834,6 +6835,10 @@ export const payComponent = pgTable(
     // mirroring the System Labels label field on department/cost_center. No unique index — house rule
     // (core/admin.ts): label uniqueness, if ever specified, is enforced in the service, not a DB index.
     label: text('label'),
+    description: text('description'),
+    // Imported calculations have no operands yet. NULL preserves the existing ready/fixed contract;
+    // non-NULL records the requested kind and MUST be refused by assignment and payroll owners.
+    pendingInputKind: text('pending_input_kind').$type<PendingPayInputKind | null>(),
     kind: payComponentKindEnum('kind').notNull(),
     // Treatment flags — which statutory base the component feeds (the four MY "wages" definitions).
     includedInEpf: boolean('included_in_epf').notNull().default(false),

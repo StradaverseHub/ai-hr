@@ -24,6 +24,7 @@ import { adminCtx, closeAll, eventTypesFor, migrateTestDb, resetDb, seedBase, ty
 const input = (code: string, over: Partial<PayComponentInput> = {}): PayComponentInput => ({
   code,
   name: `${code} component`,
+  label: `${code} component`,
   kind: 'allowance',
   includedInEpf: true,
   includedInSocsoEis: true,

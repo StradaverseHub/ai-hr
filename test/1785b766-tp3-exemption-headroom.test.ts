@@ -200,7 +200,7 @@ let b: Base;
 let a: SessionContext;
 
 const TRAVEL = 'TRAVELALLOW';
-const componentInput = (code: string, over: Partial<PayComponentInput> = {}): PayComponentInput => ({
+const componentInput = (code: string, over: Partial<PayComponentInput> = {}): PayComponentInput => ({ label: `${code} component`,
   code,
   name: `${code} component`,
   kind: 'allowance',

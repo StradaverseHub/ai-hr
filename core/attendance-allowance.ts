@@ -1,3 +1,4 @@
+import { assertPayComponentReady } from '../lib/pay-component-contract';
 import {visibleLabelIdsCondition,labelCompanyIdsSql} from './system-labels';
 import { allowanceLeaveTypesTx } from '../packs/leave/service';
 import { allowanceExpressionCriteria } from '../lib/attendance-allowance-expression';
@@ -88,6 +89,7 @@ async function validateDefinitionTx(tx:Tx,p:{companyId:string;payComponentId:str
   await assertPolicyAdminTx(tx,p.companyId);
   const [component]=await tx.select().from(payComponent).where(eq(payComponent.id,p.payComponentId));
   if(!component)throw new Error('Pay code not found');
+  assertPayComponentReady(component);
   if(isUnsupportedTaxableComponent(component))throw new UnsupportedBatchComponentError(component.code);
   if(component.archivedAt||component.isNonPayable||(component.rule&&component.rule.kind!=='fixed')||(p.policyType==='deduction'?component.kind!=='deduction':component.kind!=='allowance'))throw new Error('Choose an active fixed Payroll code compatible with Earning or Deduction');
   if(!p.rules)return;

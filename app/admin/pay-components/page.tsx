@@ -12,6 +12,8 @@ import { settingsBack } from '@/app/payroll/setup/back';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { DownloadCsv } from '@/components/download-csv';
 import { archiveComponentAction, deleteComponentAction, seedCatalogAction } from './actions';
+import { ImportPayItems } from './import-pay-items';
+import { payCalculationStatus, type PendingPayInputKind } from '@/lib/pay-component-contract';
 
 const PAGE = '/admin/pay-components';
 type Status = 'active' | 'inactive' | 'all';
@@ -20,7 +22,7 @@ type Status = 'active' | 'inactive' | 'all';
  *  rev2 the cell is a LINK to the pay item, because the editable selector lives on the maintenance form
  *  (the "Input Type" dropdown in pay-rule-editor.tsx, inside Pay Settings) and the list gave no hint of it.
  *  null / 'fixed' ⇒ fixed amount, matching the kernel's legacy fixed-amount behaviour. */
-const inputTypeOf = (rule: unknown): PayRuleKind => (rule as PayRule | null)?.kind ?? 'fixed';
+const inputTypeOf = (rule: unknown, pending?: PendingPayInputKind | null): PayRuleKind => pending ?? (rule as PayRule | null)?.kind ?? 'fixed';
 
 /**
  * Pay Items (feedback 911b2886) — LIST-ONLY page. The Create / Edit maintenance form moved to dedicated
@@ -52,7 +54,7 @@ export default async function PayComponentsPage({
 
   const needle = q.toLowerCase();
   const rows = components.filter((c) => {
-    const okQ = !needle || [c.code, c.name, c.label ?? ''].some((v) => v.toLowerCase().includes(needle));
+    const okQ = !needle || [c.code, c.name, c.label ?? '', c.description ?? ''].some((v) => v.toLowerCase().includes(needle));
     const okStatus = status === 'all' || (status === 'inactive' ? c.archivedAt != null : c.archivedAt == null);
     return okQ && okStatus;
   });
@@ -90,6 +92,8 @@ export default async function PayComponentsPage({
     { key: 'code', label: t('colCode') },
     { key: 'name', label: t('colName') },
     { key: 'label', label: t('colLabel') },
+    { key: 'description', label: t('colDescription') },
+    { key: 'calculationStatus', label: t('calculationStatus') },
     { key: 'kind', label: t('colKind') },
     { key: 'inputType', label: t('colInputType') },
     { key: 'status', label: t('colStatus') },
@@ -109,8 +113,10 @@ export default async function PayComponentsPage({
     code: c.code,
     name: c.name,
     label: c.label ?? '',
+    description: c.description ?? '',
+    calculationStatus: c.pendingInputKind ? t(payCalculationStatus(c.pendingInputKind)) : '',
     kind: t(`kind_${c.kind}`),
-    inputType: t(`inputType_${inputTypeOf(c.rule)}`),
+    inputType: t(`inputType_${inputTypeOf(c.rule, c.pendingInputKind)}`),
     status: c.archivedAt ? t('statusInactive') : t('statusActive'),
     epf: String(c.includedInEpf),
     socso: String(c.includedInSocsoEis),
@@ -172,7 +178,9 @@ export default async function PayComponentsPage({
               </Link>
             ))}
           </nav>
-          <div className="ml-auto">
+          <div className="ml-auto flex flex-wrap items-center gap-3">
+            <a href={`${PAGE}/template`} className="rounded-lg border border-border px-3 py-2 text-sm font-medium">{t('downloadTemplate')}</a>
+            <ImportPayItems />
             <DownloadCsv columns={exportColumns} rows={exportRows} filename="pay-items.csv" />
           </div>
         </div>
@@ -219,8 +227,9 @@ export default async function PayComponentsPage({
                       title={t('inputTypeLinkTitle', { code: c.code })}
                       className="font-medium text-primary hover:underline"
                     >
-                      {t(`inputType_${inputTypeOf(c.rule)}`)}
+                      {t(`inputType_${inputTypeOf(c.rule, c.pendingInputKind)}`)}
                     </Link>
+                    {c.pendingInputKind && <span className="mt-1 block text-xs font-medium text-amber-700 dark:text-amber-300">{t(payCalculationStatus(c.pendingInputKind))}</span>}
                     {wordsOf(c.rule) && (
                       <span className="mt-0.5 block text-xs text-muted-foreground">{wordsOf(c.rule)}</span>
                     )}

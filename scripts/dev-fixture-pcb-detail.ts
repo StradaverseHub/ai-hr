@@ -217,7 +217,7 @@ async function main() {
     employmentId:e.employmentId,expectedCompanyId:company.id,scheme:requestedScheme,
   });
   if (typedBonus) {
-    const component = await upsertPayComponent(ctx, {code:'PCB_DETAIL_BONUS',name:'Synthetic PCB detail bonus',
+    const component = await upsertPayComponent(ctx, {code:'PCB_DETAIL_BONUS',label:'Synthetic PCB detail bonus',name:'Synthetic PCB detail bonus',
       kind:'allowance',includedInEpf:true,includedInSocsoEis:false,includedInPcb:true,
       includedInHrdfBase:false,isNonPayable:false,prorates:false,epfBonus2012:true,
       pcbRemunerationType:'additional',pcbExemptionCode:'PCB_TAXABLE',eaFormLine:'EA_B1A'});

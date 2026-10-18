@@ -25,15 +25,15 @@ describe('r387 retained one-off noncash exemption assessment',()=>{
   const employee=await hireEmployee(ctx,{person:{fullName:'Synthetic Retained Benefit',primaryEmail:`${randomUUID()}@test.local`},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:`${year-1}-01-01`});
   await pack.statutory.set(ctx,{personId:employee.personId,icNumber:'900101145678',taxCategory:1});
   await setCompensation(ctx,{employmentId:employee.employmentId,basicSalary:10000,effectiveFrom:`${year-1}-01-01`});
-  const bonus=await upsertPayComponent(ctx,{...bonusFlags,code:'SYNTH_RETAIN_BONUS',name:'Synthetic Bonus'});
+  const bonus=await upsertPayComponent(ctx,{...bonusFlags,code:'SYNTH_RETAIN_BONUS',label:'Synthetic Bonus',name:'Synthetic Bonus'});
   const slip=async(batchId:string)=>{const rows=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));const row=rows.find(r=>r.employmentId===employee.employmentId);expect(row).toBeTruthy();return row!;};
   const addBonus=async(batchId:string)=>setPayrollBatchComponent(ctx,{batchId,employmentId:employee.employmentId,componentId:bonus.id,amount:1000});
   return {ctx,employee,slip,addBonus};
  }
  it('retains distinct earlier one-off BIK and VOLA rows in subsequent additional and restated regular working',async()=>{
   const {ctx,employee,slip,addBonus}=await setup();
-  const bik=await upsertPayComponent(ctx,{...benefitFlags,code:'SYNTH_ONEOFF_BIK',name:'Saved One-off Car',displayCategory:'bik',eaFormLine:'EA_B3',pcbExemptionCode:'PCB_PERQUISITE'});
-  const vola=await upsertPayComponent(ctx,{...benefitFlags,code:'SYNTH_ONEOFF_VOLA',name:'Saved One-off Home',displayCategory:'vola',eaFormLine:'EA_B4',pcbExemptionCode:'PCB_CHILD_CARE'});
+  const bik=await upsertPayComponent(ctx,{...benefitFlags,code:'SYNTH_ONEOFF_BIK',label:'Saved One-off Car',name:'Saved One-off Car',displayCategory:'bik',eaFormLine:'EA_B3',pcbExemptionCode:'PCB_PERQUISITE'});
+  const vola=await upsertPayComponent(ctx,{...benefitFlags,code:'SYNTH_ONEOFF_VOLA',label:'Saved One-off Home',name:'Saved One-off Home',displayCategory:'vola',eaFormLine:'EA_B4',pcbExemptionCode:'PCB_CHILD_CARE'});
   // No recurring assignments: these codes can only come from the first run's saved one-off ownership.
   const first=await createAdditionalRun(ctx,{companyId:base.companyId,payPeriod:period,runType:'bonus'});await addBonus(first.batchId);
   await setPayrollBatchComponent(ctx,{batchId:first.batchId,employmentId:employee.employmentId,componentId:bik.id,amount:100});
@@ -69,7 +69,7 @@ describe('r387 retained one-off noncash exemption assessment',()=>{
  it('shows unknown annual cap when reused and fresh same-code assessments used different saved limits',async()=>{
   const {ctx,employee,slip,addBonus}=await setup();
   const code='PCB_CHILD_CARE';
-  const car=await upsertPayComponent(ctx,{...benefitFlags,code:'SYNTH_CAP_CONFLICT',name:'Saved Recurring Car',displayCategory:'bik',eaFormLine:'EA_B3',pcbExemptionCode:code});
+  const car=await upsertPayComponent(ctx,{...benefitFlags,code:'SYNTH_CAP_CONFLICT',label:'Saved Recurring Car',name:'Saved Recurring Car',displayCategory:'bik',eaFormLine:'EA_B3',pcbExemptionCode:code});
   await setEmploymentPayComponent(ctx,{employmentId:employee.employmentId,componentId:car.id,amount:40,effectiveFrom:`${year}-01-01`});
   const first=await createBatch(ctx,{companyId:base.companyId,payPeriod:period});await generatePayslips(ctx,{batchId:first.batchId});
   const issued=await slip(first.batchId),saved=readPcbExemptions((issued.statutory as any).pcbExemptions);expect(saved).not.toBeNull();

@@ -17,11 +17,13 @@ import {
   listPayRulePreviewCandidates,
   PayComponentCodeExistsError,
   PayComponentInUseError,
+  PayComponentInputError,
   PayComponentStatutoryConfigError,
   PayRuleInvalidError,
   previewPayRule,
   seedPayComponentCatalog,
-  upsertPayComponent,
+  updatePayComponent,
+  PayComponentNotFoundError,
   type PayComponentInput,
   type PcbRemunerationType,
 } from '@/core/pay-components';
@@ -29,6 +31,8 @@ import {
 import { markRunsAffectedByPayComponent } from '@/packs/payroll/service';
 import { draftPayRule, PayRuleDraftError } from '@/core/pay-rule-ai';
 import type { PayRule, PayRuleTraceStep } from '@/core/pay-rule';
+import { payItemIssueMessage } from '@/lib/pay-item-import-messages';
+import { PAY_ITEM_COLUMNS } from '@/lib/pay-component-import';
 
 const PAGE = '/admin/pay-components';
 // NOTE — redirect() throws NEXT_REDIRECT by design. back()/fail() must therefore be called OUTSIDE any
@@ -66,16 +70,17 @@ export async function seedCatalogAction() {
 const bool = (fd: FormData, name: string) => fd.get(name) === 'on';
 
 /** The maintenance form's fields → a typed service input (shared by create and update). */
-function componentFields(formData: FormData): PayComponentInput {
+function componentFields(formData: FormData, normalizeCode = true): PayComponentInput {
   const rawKind = String(formData.get('kind') ?? 'allowance');
   const kind = (['allowance', 'deduction', 'contribution', 'non_payable'] as const).includes(rawKind as never)
     ? (rawKind as 'allowance' | 'deduction' | 'contribution' | 'non_payable')
     : 'allowance';
   return {
-    code: String(formData.get('code') ?? '').trim().toUpperCase(),
-    name: String(formData.get('name') ?? '').trim(),
+    code: normalizeCode ? String(formData.get('code') ?? '').trim().toUpperCase() : String(formData.get('code') ?? ''),
+    name: String(formData.get('name') ?? '').trim() || String(formData.get('label') ?? '').trim(),
     // Optional short display name; the service trims and stores blank as null.
     label: String(formData.get('label') ?? ''),
+    description: String(formData.get('description') ?? '').trim() || null,
     kind,
     includedInEpf: bool(formData, 'includedInEpf'),
     includedInSocsoEis: bool(formData, 'includedInSocsoEis'),
@@ -109,6 +114,11 @@ function componentFields(formData: FormData): PayComponentInput {
 
 /** Map a service rejection to a LOCALISED message (no raw English error codes on screen). */
 async function messageOf(e: unknown, t: Awaited<ReturnType<typeof getTranslations>>): Promise<string> {
+  if (e instanceof PayComponentNotFoundError) return t('errorComponentUnavailable');
+  if (e instanceof PayComponentInputError) {
+    const rule = await getTranslations('payRule');
+    return e.issues.map(issue => t('invalidSetting', { field: PAY_ITEM_COLUMNS.find(([field]) => field === issue.field)?.[1] ?? issue.field, reason: payItemIssueMessage(issue.code, t, rule) })).join(' ');
+  }
   // A bad rule ⇒ map the stable error CODE to a localised payRule.errors.* message.
   if (e instanceof PayRuleInvalidError) {
     const tr = await getTranslations('payRule');
@@ -195,13 +205,13 @@ export async function createComponentAction(formData: FormData) {
 export async function updateComponentAction(formData: FormData) {
   const s = await getSession();
   const t = await getTranslations('payComponents');
-  const input = componentFields(formData);
+  const input = componentFields(formData, false);
   const saveAndNew = formData.get('intent') === 'saveAndNew';
   // Same fail-closed guard as create, and outside the try/catch for the same redirect() reason.
   const unsupported = unsupportedTaxableMessage(input, t);
   if (unsupported) redirect(`${PAGE}/${encodeURIComponent(input.code)}?error=${encodeURIComponent(unsupported)}`);
   try {
-    const { id, changed } = await upsertPayComponent(s, input);
+    const { id, changed } = await updatePayComponent(s, input);
     // ── Feedback 017d9c25 (r187) — a statutory edit marks the runs it makes stale ──────────────────
     // Keying a one-off transaction against a processed run already does this; changing a Pay Item did
     // not, which is why the reporter's January figures sat there looking settled after they unticked

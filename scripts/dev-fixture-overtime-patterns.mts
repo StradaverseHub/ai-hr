@@ -144,7 +144,7 @@ async function main() {
  async function overtimeItem(ctx:SessionContext) {
   const pack=requirePackFor('MY'),seed=pack.payComponents.defaults.find(row=>row.code===pack.payComponents.backfillCodes.overtime);if(!seed)throw new Error('Country overtime mapping seed unavailable.');
   let item=one(await owner.db.select().from(s.payComponent).where(and(eq(s.payComponent.tenantId,ctx.tenantId),eq(s.payComponent.code,seed.code))),'OT earning item');
-  if(!item){if(previous)throw new Error('Previously declared earning item missing.');const made=await createPayComponent(ctx,seed);item=one(await owner.db.select().from(s.payComponent).where(eq(s.payComponent.id,made.id)),'created earning item');}
+  if(!item){if(previous)throw new Error('Previously declared earning item missing.');const made=await createPayComponent(ctx,{...seed,label:seed.name});item=one(await owner.db.select().from(s.payComponent).where(eq(s.payComponent.id,made.id)),'created earning item');}
   if(!item||item.archivedAt||item.kind!==seed.kind||item.isNonPayable!==seed.isNonPayable||item.includedInEpf!==seed.includedInEpf||item.includedInSocsoEis!==seed.includedInSocsoEis||item.includedInPcb!==seed.includedInPcb||item.includedInHrdfBase!==seed.includedInHrdfBase)throw new Error('Existing OT earning treatment changed; preserve it.');return {id:item.id,code:item.code};
  }
  const earningItem=await overtimeItem(hr),foreignItem=await overtimeItem(tenantHr);

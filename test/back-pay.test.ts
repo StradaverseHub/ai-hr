@@ -254,7 +254,7 @@ describe('2ef69d1e — Back Pay (Arrears)', () => {
   it('a pay item configured as a percentage of basic follows the revised figure with no extra setup', async () => {
     const a = adminCtx(base);
     await seedPayComponentCatalog(a);
-    await upsertPayComponent(a, {
+    await upsertPayComponent(a, { label: 'Skill Allowance',
       code: 'SKILLALW',
       name: 'Skill Allowance',
       kind: 'allowance',
