@@ -1593,7 +1593,12 @@ export function movementCurrentState(
   ctx: SessionContext,
   employmentId: string,
 ): Promise<MovementCurrentState> {
-  return withTenant(ctx, (tx) => currentStateTx(tx, employmentId));
+  return withTenant(ctx, (tx) => movementCurrentStateTx(tx, employmentId));
+}
+
+/** Same canonical state read inside a caller-owned movement transaction. */
+export function movementCurrentStateTx(tx:Tx,employmentId:string):Promise<MovementCurrentState>{
+  return currentStateTx(tx,employmentId);
 }
 
 export type CreateMovementInput = {
@@ -2044,9 +2049,6 @@ async function applyComparisonMovementTx(
   }
 }
 
-const applyComparisonMovement = (ctx: SessionContext, p: CreateMovementInput, kind: ComparisonKind) =>
-  withTenant(ctx, (tx) => applyComparisonMovementTx(tx, ctx, p, kind));
-
 /**
  * 941c9dac — the fields of the submitted right column, frozen onto the scheduled event so the sweep can
  * replay EXACTLY what HR typed months later. `undefined` (the form did not offer the field) is dropped
@@ -2436,13 +2438,14 @@ async function scheduleTerminationTx(
  *     at one of the consequence-free kinds. That is what stops a renamed type from acting like a
  *     Termination.
  */
-async function resolveInputType<T extends CreateMovementInput>(
+async function resolveInputTypeTx<T extends CreateMovementInput>(
+  tx: Tx,
   ctx: SessionContext,
   p: T,
   verb: 'record' | 'correct',
   opts?: { allowInactive?: boolean },
 ): Promise<T> {
-  const resolved = await withTenant(ctx, (tx) => resolveMovementEventTypeTx(tx, ctx.tenantId, p.kind));
+  const resolved = await resolveMovementEventTypeTx(tx, ctx.tenantId, p.kind);
   if (!resolved) throw new Error('Unknown movement event type.');
   if (!resolved.active && !opts?.allowInactive) {
     throw new Error(
@@ -2450,6 +2453,10 @@ async function resolveInputType<T extends CreateMovementInput>(
     );
   }
   return { ...p, kind: resolved.behaviourKind, typeCode: resolved.code };
+}
+
+async function resolveInputType<T extends CreateMovementInput>(ctx:SessionContext,p:T,verb:'record'|'correct',opts?:{allowInactive?:boolean}):Promise<T>{
+  return withTenant(ctx,tx=>resolveInputTypeTx(tx,ctx,p,verb,opts));
 }
 
 /**
@@ -2468,7 +2475,12 @@ async function resolveInputType<T extends CreateMovementInput>(
  * state. NOTE (ADR-0015): subject-scoped events are readable by the employee themselves — like the
  * existing termination reason, movement remarks are staff-visible by design.
  */
-export async function createMovementEvent(ctx: SessionContext, rawInput: CreateMovementInput) {
+export function createMovementEvent(ctx: SessionContext, rawInput: CreateMovementInput) {
+  return withTenant(ctx,tx=>createMovementEventTx(tx,ctx,rawInput));
+}
+
+/** Canonical dispatcher in a caller-owned transaction; every writer/ledger leg shares this Tx. */
+export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput){
   const roles = ctx.roles ?? [];
   if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
     throw new Error('Only an admin can record a movement.');
@@ -2477,7 +2489,7 @@ export async function createMovementEvent(ctx: SessionContext, rawInput: CreateM
   // built-in kind resolves to itself; one of the organisation's own types resolves to the behaviour it was
   // mapped to, and its code travels on as `typeCode` so the ledger records what HR chose. A type that was
   // switched off is refused here rather than silently applied — that is the whole point of switching it off.
-  const p = await resolveInputType(ctx, rawInput, 'record');
+  const p = await resolveInputTypeTx(tx, ctx, rawInput, 'record');
   if (p.kind !== 'blacklist' && !/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveDate ?? '')) {
     throw new Error('A valid effective date (YYYY-MM-DD) is required.');
   }
@@ -2498,9 +2510,9 @@ export async function createMovementEvent(ctx: SessionContext, rawInput: CreateM
     // dated in the FUTURE is recorded as a pending intent and applies on the morning of its date.
     const today = todayInKualaLumpur();
     if (p.effectiveDate > today) {
-      return withTenant(ctx, (tx) => scheduleMovementTx(tx, ctx, p, p.kind as ComparisonKind));
+      return scheduleMovementTx(tx, ctx, p, p.kind as ComparisonKind);
     }
-    return applyComparisonMovement(ctx, p, p.kind);
+    return applyComparisonMovementTx(tx, ctx, p, p.kind);
   }
 
   const remarks = p.remarks?.trim() || null;
@@ -2521,7 +2533,7 @@ export async function createMovementEvent(ctx: SessionContext, rawInput: CreateM
         employmentId: p.employmentId,
         joinDate: p.effectiveDate,
         movement: { type: 'joinDateChange', remarks, groupId: randomUUID() },
-      });
+      },tx);
 
     // 89ea527b — Group Join Date Correction: the authorized historical-data correction of the master service
     // date. This is the ONLY route to hired_on after creation, and it MOVES LEAVE ENTITLEMENT (service bands
@@ -2532,7 +2544,7 @@ export async function createMovementEvent(ctx: SessionContext, rawInput: CreateM
         employmentId: p.employmentId,
         hiredOn: p.effectiveDate,
         movement: { type: 'groupJoinDateCorrection', remarks, groupId: randomUUID() },
-      });
+      },tx);
 
     case 'probationExtension':
       if (!endDate) throw new Error('An extended confirmation (new probation end) date is required.');
@@ -2540,7 +2552,7 @@ export async function createMovementEvent(ctx: SessionContext, rawInput: CreateM
         employmentId: p.employmentId,
         extendedConfirmationDate: endDate,
         movement: { type: 'probationExtension', remarks, endDate, groupId: randomUUID() },
-      });
+      },tx);
 
     case 'resignation':
       return setEmploymentInfo(ctx, {
@@ -2548,28 +2560,26 @@ export async function createMovementEvent(ctx: SessionContext, rawInput: CreateM
         tenderResignationDate: p.effectiveDate,
         ...(endDate ? { lastWorkingDate: endDate } : {}),
         movement: { type: 'resignation', remarks, endDate, groupId: randomUUID() },
-      });
+      },tx);
 
     // ae9350f2 — Termination. Validated once, then either applied now or scheduled for its effective date;
     // see the "Termination" section above for why a future-dated one must not write anything today.
-    case 'termination':
-      return withTenant(ctx, async (tx) => {
+    case 'termination': {
         const plan = await planTerminationTx(tx, ctx, p, 'create');
         return plan.effectiveDate > todayInKualaLumpur()
           ? scheduleTerminationTx(tx, ctx, p.employmentId, plan)
           : applyTerminationTx(tx, ctx, p.employmentId, plan);
-      });
+      }
 
     case 'blacklist':
       return setEmploymentBlacklist(ctx, {
         employmentId: p.employmentId,
         blacklisted: p.blacklisted ?? true,
         reason: remarks,
-      });
+      },tx);
 
     case 'secondment':
-    case 'actingPosition':
-      return withTenant(ctx, async (tx) => {
+    case 'actingPosition': {
         const [emp] = await tx
           .select({ id: employment.id })
           .from(employment)
@@ -2586,7 +2596,7 @@ export async function createMovementEvent(ctx: SessionContext, rawInput: CreateM
           payload: { type: p.typeCode ?? p.kind, effectiveDate: p.effectiveDate, endDate, remarks },
         });
         return { employmentId: p.employmentId };
-      });
+      }
   }
 }
 
