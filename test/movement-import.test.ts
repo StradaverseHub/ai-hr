@@ -98,7 +98,9 @@ describe('Movement rollback-only preview and atomic confirmation',()=>{
   const before=await state(id);const preview=await ready(text);expect(preview.valid).toBe(2);expect(await state(id)).toEqual(before);
   expect(preview.employees[0].rows[1].before?.companyId).toContain(destination.id);expect(preview.employees[0].rows[1].proposed?.basicSalary).toBe('4200.00');
   const result=await commit(text,preview);expect(result.imported).toBe(2);expect((await movementCurrentState(ctx,id)).companyId).toBe(b.companyId);
-  const history=await movementHistory(ctx,id);expect(history.filter(row=>row.scheduled&&row.status==='pending')).toHaveLength(2);
+  const after=await state(id);expect(after.employment).toEqual(before.employment);expect(after.assignments).toEqual(before.assignments);expect(after.compensation).toEqual(before.compensation);
+  const intents=after.events.filter(row=>row.eventType==='employment.movement.scheduled'),pending=(await movementHistory(ctx,id)).filter(row=>row.status==='pending');
+  expect(intents).toEqual(expect.arrayContaining([expect.objectContaining({payload:expect.objectContaining({type:'entityTransfer',effectiveDate:day(7)})}),expect.objectContaining({payload:expect.objectContaining({type:'promotion',effectiveDate:day(14)})})]));expect(intents).toHaveLength(2);expect(pending.map(row=>row.id).sort()).toEqual(intents.map(row=>row.id).sort());
   await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,id,day(14)));
   expect(await movementCurrentState(ctx,id)).toMatchObject({companyId:destination.id,departmentId:department.id,basicSalary:'4200.00'});
  });
@@ -108,7 +110,8 @@ describe('Movement rollback-only preview and atomic confirmation',()=>{
   const preview=await ready(text);expect(preview.valid).toBe(2);expect(preview.employees[0].rows[1].before?.basicSalary).toBe('3500.00');expect(preview.employees[0].rows[1].proposed?.basicSalary).toBe('3000.00');expect(await state(id)).toEqual(before);
   const result=await commit(text,preview);expect(result).toMatchObject({imported:2,failed:0});expect(result.employees[0].rows[1].proposed).toEqual(preview.employees[0].rows[1].proposed);
   const after=await state(id);expect(after.employment).toEqual(before.employment);expect(after.assignments).toEqual(before.assignments);expect(after.compensation).toEqual(before.compensation);
-  expect((await movementHistory(ctx,id)).filter(row=>row.scheduled&&row.status==='pending')).toHaveLength(2);
+  const intents=after.events.filter(row=>row.eventType==='employment.movement.scheduled'),pending=(await movementHistory(ctx,id)).filter(row=>row.status==='pending');
+  expect(intents).toEqual(expect.arrayContaining([expect.objectContaining({payload:expect.objectContaining({type:'promotion',effectiveDate:day(7)})}),expect.objectContaining({payload:expect.objectContaining({type:'promotion',effectiveDate:day(14)})})]));expect(intents).toHaveLength(2);expect(pending.map(row=>row.id).sort()).toEqual(intents.map(row=>row.id).sort());
   await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,id,day(7)));expect(await movementCurrentState(ctx,id)).toMatchObject({departmentId:b.deptB,basicSalary:'3500.00'});
   await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,id,day(14)));expect(await movementCurrentState(ctx,id)).toMatchObject({departmentId:b.deptA,basicSalary:'3000.00'});
  });

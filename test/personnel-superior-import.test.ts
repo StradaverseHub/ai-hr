@@ -39,7 +39,9 @@ describe('Movement Direct Superior uses the canonical dated edge',()=>{
   await setReportingLine(ctx,{subordinateEmploymentId:employee.employmentId,managerEmploymentId:first.employmentId,lineType:'administrative',validFrom:dateOffset(-10)});
   await createMovementEvent(ctx,{employmentId:employee.employmentId,kind:'reportingLineChange',managerEmploymentId:future.employmentId,effectiveDate:dateOffset(10)});
   const before=await lines(employee.employmentId),audit=await events(employee.employmentId);expect((await preview(file('NOP021','NOP022'))).valid).toBe(0);
-  expect((await movementHistory(ctx,employee.employmentId)).filter(row=>row.scheduled&&row.status==='pending')).toHaveLength(1);
+  const pending=(await movementHistory(ctx,employee.employmentId)).filter(row=>row.status==='pending');expect(pending).toEqual([expect.objectContaining({kind:'reportingLineChange',effectiveDate:dateOffset(10),status:'pending'})]);
+  const intents=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.subjectEmploymentId,employee.employmentId),eq(s.domainEvent.eventType,'employment.movement.scheduled'))).orderBy(s.domainEvent.sequence);
+  expect(intents).toEqual([expect.objectContaining({payload:expect.objectContaining({type:'reportingLineChange',effectiveDate:dateOffset(10),input:expect.objectContaining({managerEmploymentId:future.employmentId})})})]);expect(pending.map(row=>row.id).sort()).toEqual(intents.map(row=>row.id).sort());
   expect(await lines(employee.employmentId)).toEqual(before);expect(await events(employee.employmentId)).toEqual(audit);
  });
  it('refuses ambiguous open edges instead of choosing the first row',async()=>{
