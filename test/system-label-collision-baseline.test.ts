@@ -137,18 +137,19 @@ describe('bounded inherited System Label collisions',()=>{
    expect(await refusedLabelCollisionProposalsTx(tx,randomUUID(),[base])).toEqual(['exact']);
   });
  });
- it('preview/apply preserve inherited metadata and no-op export; new overlap refuses in both paths',async()=>{
+ it('blocks inherited codes from every workbook mode without consuming their manual collision baseline',async()=>{
   const admin=adminCtx(b),exported=await downloadSystemLabelsWithData(admin,{companyIds:f.companies,kinds:['cost_center','position'],includeInactive:false});
-  const noop=await previewSystemLabelImport(admin,exported,'merge');expect(noop.valid).toBe(true);expect(noop.rows.every(row=>row.outcome==='skip')).toBe(true);
-  expect(await applySystemLabelImport(admin,{bytes:exported,mode:'merge',token:noop.token,confirmUpdates:true})).toMatchObject({imported:0,updated:0,failed:0});
-  const bytes=await buildSystemLabelWorkbook({kinds:['cost_center'],references:{companies:[],grades:[],employees:[]},rows:{cost_center:[{Company:b.companyId,Code:'HQ',Label:'Editable incumbent',Description:'Fictional edited description',Criteria:'global','Criteria Companies':''}]}});
-  const preview=await previewSystemLabelImport(admin,bytes,'update');expect(preview.valid).toBe(true);
-  await applySystemLabelImport(admin,{bytes,mode:'update',token:preview.token,confirmUpdates:true});
-  expect((await owner.db.select().from(s.costCenter).where(eq(s.costCenter.id,f.costs[0])))[0].label).toBe('Editable incumbent');
-  const [newCo]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional new conflicting origin'}).returning({id:s.company.id});
-  const bad=await buildSystemLabelWorkbook({kinds:['cost_center'],references:{companies:[],grades:[],employees:[]},rows:{cost_center:[{Company:newCo.id,Code:'HQ',Label:'New row',Description:'Must refuse',Criteria:'global','Criteria Companies':''}]}});
-  const refusal=await previewSystemLabelImport(admin,bad,'add');expect(refusal.valid).toBe(false);expect(refusal.rows[0].outcome).toBe('error');
-  await expect(applySystemLabelImport(admin,{bytes:bad,mode:'add',token:refusal.token,confirmUpdates:true})).rejects.toThrow(/conflicting row/);
+  const before=await owner.db.select().from(s.costCenter).where(eq(s.costCenter.id,f.costs[0]));
+  const noop=await previewSystemLabelImport(admin,exported,'merge');expect(noop.valid).toBe(false);expect(noop.rows.every(row=>row.reason==='existing')).toBe(true);
+  await expect(applySystemLabelImport(admin,{bytes:exported,mode:'merge',token:noop.token,confirmUpdates:true})).rejects.toThrow('no valid new codes');
+  const bytes=await buildSystemLabelWorkbook({kinds:['cost_center'],references:{companies:[],grades:[],employees:[]},rows:{cost_center:[{Company:b.companyId,Code:'HQ',Label:'Must not edit',Description:'Must not overwrite',Criteria:'global','Criteria Companies':''}]}});
+  const preview=await previewSystemLabelImport(admin,bytes,'update');expect(preview.valid).toBe(false);expect(preview.rows[0].reason).toBe('existing');
+  await expect(applySystemLabelImport(admin,{bytes,mode:'update',token:preview.token,confirmUpdates:true})).rejects.toThrow('no valid new codes');
+  expect(await owner.db.select().from(s.costCenter).where(eq(s.costCenter.id,f.costs[0]))).toEqual(before);
+  const [newCo]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional disjoint origin'}).returning({id:s.company.id});
+  const bad=await buildSystemLabelWorkbook({kinds:['cost_center'],references:{companies:[],grades:[],employees:[]},rows:{cost_center:[{Company:newCo.id,Code:'HQ',Label:'New row',Description:'Must refuse',Criteria:'companies','Criteria Companies':newCo.id}]}});
+  const refusal=await previewSystemLabelImport(admin,bad,'add');expect(refusal.valid).toBe(false);expect(refusal.rows[0].reason).toBe('existing');
+  await expect(applySystemLabelImport(admin,{bytes:bad,mode:'add',token:refusal.token,confirmUpdates:true})).rejects.toThrow('no valid new codes');
  });
  it('keeps Personnel aliases ambiguous and exact ID selection stable',()=>{
   const lookup=new PersonnelImportLookup<string>();for(const id of f.costs)lookup.add(id,id,{codes:['HQ'],names:['Head Office']});
@@ -166,8 +167,8 @@ describe('bounded inherited System Label collisions',()=>{
    await tx.execute(sql`alter table label_company_assignment enable trigger user`);
   });
   const bytes=await buildSystemLabelWorkbook({kinds:['department'],references:{companies:[],grades:[],employees:[]},rows:{department:[{Company:b.companyId,Code:'Ambiguous same-origin legacy',Label:'Must not pick a first row',Criteria:'global','Criteria Companies':''}]}});
-  const preview=await previewSystemLabelImport(adminCtx(b),bytes,'update');expect(preview.valid).toBe(false);expect(preview.rows[0].message).toMatch(/multiple records/);
-  await expect(applySystemLabelImport(adminCtx(b),{bytes,mode:'update',token:preview.token,confirmUpdates:true})).rejects.toThrow(/invalid or conflicting/);
+  const preview=await previewSystemLabelImport(adminCtx(b),bytes,'update');expect(preview.valid).toBe(false);expect(preview.rows[0].reason).toBe('existing');
+  await expect(applySystemLabelImport(adminCtx(b),{bytes,mode:'update',token:preview.token,confirmUpdates:true})).rejects.toThrow('no valid new codes');
   const unchanged=await owner.db.select().from(s.department).where(sql`${s.department.id} in (${ids[0]}::uuid,${ids[1]}::uuid)`);
   expect(unchanged).toHaveLength(2);expect(unchanged.every(row=>row.label===null)).toBe(true);
  });

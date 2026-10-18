@@ -18,6 +18,6 @@ describe('System Labels persistent epoch lock order',()=>{
   const locks=[...source.matchAll(/LOCK TABLE ([^`]+) IN SHARE ROW EXCLUSIVE MODE/g)].map(match=>match[1].split(',').map(value=>value.trim().replaceAll('"','')));
   expect(locks.length).toBeGreaterThan(0);
   for(const tables of locks){expect(tables).toEqual(['profile_option','job_grade','grade_group','grade_group_member']);}
-  expect(source).toContain('await lockLabelCriteriaTx(tx, ctx.tenantId)');
+  expect(source).toContain('await lockLabelCriteriaTx(tx,ctx.tenantId)');
  });
 });

@@ -38,13 +38,13 @@ describe('inherited label collision single-owner contracts',()=>{
   expect(migration).toContain('a.id<b.id');expect(migration).toContain('a.is_global AND b.is_global');
   expect(migration).toContain('LOCK TABLE department,position,cost_center,business_unit,label_company_assignment');
  });
- it('shares one read-only predicate across actual DB guard, service and workbook and refuses ambiguous workbook identities',()=>{
+ it('keeps manual Criteria collision ownership and gives import a stricter tenant-wide existence check',()=>{
   const service=read('../core/system-labels.ts'),workbook=read('../core/system-label-import.ts');
   expect(migration).toContain('AND NOT app.system_label_collision_allowed');
   expect(service).toContain('not app.system_label_collision_allowed');
-  expect(workbook).toContain('await refusedLabelCollisionProposalsTx(tx,ctx.tenantId,pairs)');
-  expect(workbook).toContain('if(twins.length>1)throw');
-  expect(workbook).not.toContain('twins.find(');
-  expect(workbook).toContain('if(old)v.Code=old.values.Code');
+  expect(workbook).toContain('await existingSystemLabelImportKeysTx(tx,ctx.tenantId,proposals)');
+  expect(workbook).not.toContain('refusedLabelCollisionProposalsTx');
+  expect(workbook).toContain('if(incumbentKeys.has(key))throw new Error(existingCodeMessage)');
+  expect(workbook).toContain('{creates,updates:[]}');
  });
 });

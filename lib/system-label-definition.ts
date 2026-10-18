@@ -23,6 +23,6 @@ export type LabelImportRow = { sheet: string; row: number; values: Record<string
 export type LabelImportPreviewRow = LabelImportRow & {
   outcome: 'add' | 'update' | 'skip' | 'error'; message: string;
   before: Record<string, string> | null; after: Record<string, string>;
-  selected?: boolean; stale?: boolean;
+  selected?: boolean; stale?: boolean; reason?: 'existing'|'duplicate'|'conflicting';
 };
 export type LabelImportPreview = { token: string; rows: LabelImportPreviewRow[]; valid: boolean; mode?: LabelImportMode };

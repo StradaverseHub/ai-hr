@@ -1,17 +1,17 @@
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { createHash, randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import * as s from '../db/schema';
 import { actorOf, appendEvent } from '../db/events';
-import { bulkSaveLabels, createJobGrade, updateJobGrade, type LabelCreateInput, type LabelUpdateInput } from './admin';
-import { createProfileOption, updateProfileOption } from './profile-options';
-import { visibleLabelIdsCondition, labelMaintenanceCondition, SYSTEM_LABEL_MAINTENANCE_LIMIT, boundedLabelMaintenanceRows, lockLabelCriteriaTx, refusedLabelCollisionProposalsTx, LABEL_COLLISION_PREVIEW_PAIR_LIMIT, type LabelCollisionProposal } from './system-labels';
-import { createGradeGroup, updateGradeGroup } from '../packs/leave/service';
+import { bulkSaveLabels, createJobGrade, type LabelCreateInput, type LabelUpdateInput } from './admin';
+import { createProfileOption } from './profile-options';
+import { visibleLabelIdsCondition, labelMaintenanceCondition, SYSTEM_LABEL_MAINTENANCE_LIMIT, boundedLabelMaintenanceRows, lockLabelCriteriaTx, existingSystemLabelImportKeysTx } from './system-labels';
+import { createGradeGroup } from '../packs/leave/service';
 import { EMPLOYMENT_LABEL_CATEGORIES, LABEL_IMPORT_DEFINITIONS, ORGANISATION_LABEL_KINDS,
   ORGANISATION_LABEL_COLUMNS, type OrganisationLabelKind, type LabelImportMode,
   type LabelImportRow, type LabelImportPreview, type LabelImportPreviewRow } from '../lib/system-label-definition';
-import { readSystemLabelWorkbook, buildSystemLabelWorkbook, systemLabelExportId } from '../lib/system-label-workbook';
+import { readSystemLabelWorkbook, buildSystemLabelWorkbook, systemLabelExportId, systemLabelErrorWorkbook } from '../lib/system-label-workbook';
 
 const lower = (v: string) => v.toLowerCase();
 const list = (v: string) => [...new Set(v.split(';').map(x => x.trim()).filter(Boolean))].sort();
@@ -117,193 +117,114 @@ async function readExportAudit(tx:Tx,ctx:SessionContext,exportId:string|null):Pr
  return {version:1,rows:payload.rows,exportedAt:event.occurredAt.toISOString()};
 }
 
-async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], mode: LabelImportMode, audit:ExportAudit|null=null,selectedKeys?:string[]): Promise<{preview:LabelImportPreview;writes:(()=>Promise<unknown>)[]}> {
-  if (mode!=='add'&&mode!=='update'&&mode!=='merge') throw new Error('Choose Add New or Update Existing.');
-  const c=await catalogue(tx), output:LabelImportPreviewRow[]=[], writes:{key:string;apply:()=>Promise<unknown>;org?:{kind:OrganisationLabelKind;create?:LabelCreateInput;update?:LabelUpdateInput}}[]=[];
-  const merge=mode==='merge';
-  const currentIds=new Set(exportRows(c,true).map(r=>r.id));
-  const auditIds=audit?.rows.map(r=>r.id).filter(id=>currentIds.has(id))??[];
-  const changes=auditIds.length?await tx.select({id:s.domainEvent.aggregateId,at:s.domainEvent.occurredAt,name:s.person.fullName}).from(s.domainEvent).leftJoin(s.appUser,eq(s.appUser.id,s.domainEvent.actorId)).leftJoin(s.person,eq(s.person.id,s.appUser.personId)).where(and(eq(s.domainEvent.tenantId,ctx.tenantId),inArray(s.domainEvent.aggregateId,auditIds))).orderBy(desc(s.domainEvent.occurredAt),desc(s.domainEvent.id)):[];
+const existingCodeMessage = 'This code already exists in this category. No existing record will be changed. Edit it on the System Labels page.';
+/** Import intent is server-owned. Legacy mode arguments and export receipts confer no update right. */
+async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audit: ExportAudit|null, selectedKeys?: string[]): Promise<{preview:LabelImportPreview;writes:(()=>Promise<unknown>)[]}> {
+  const c=await catalogue(tx), output:LabelImportPreviewRow[]=[], writes:{key:string;apply:()=>Promise<unknown>;org?:{kind:OrganisationLabelKind;create:LabelCreateInput}}[]=[];
   const allowedKeys=new Set(rows.map(r=>r.sheet+':'+r.row));
   if(selectedKeys&&(new Set(selectedKeys).size!==selectedKeys.length||selectedKeys.some(k=>!allowedKeys.has(k))))throw new Error('Invalid row selection.');
   const selected=selectedKeys?new Set(selectedKeys):null;
-  const seen=new Map<string,Record<string,string>>(), names=new Set<string>(), memberClaims=new Map<string,string>();
-  for (const row of rows) {
-    const result:LabelImportPreviewRow={...row,outcome:'error',message:'',before:null,after:{...row.values}};
-    result.selected=selected?selected.has(row.sheet+':'+row.row):true;
+  const proposals=rows.filter(row=>(ORGANISATION_LABEL_KINDS as readonly string[]).includes(row.sheet)&&!!row.values.Code).map(row=>({key:row.sheet+':'+row.row,kind:row.sheet as OrganisationLabelKind,code:row.values.Code}));
+  // Only existence is returned: hidden companies, identities and values never enter this catalogue.
+  const incumbentKeys=new Set(await existingSystemLabelImportKeysTx(tx,ctx.tenantId,proposals));
+  const seen=new Map<string,Record<string,string>>(), names=new Set<string>(), memberClaims=new Set<string>();
+  for(const row of rows){
+    const key=row.sheet+':'+row.row;
+    const result:LabelImportPreviewRow={...row,outcome:'error',message:'',before:null,after:{...row.values},selected:selected?selected.has(key):true};
     output.push(result);
     try {
       const definition=LABEL_IMPORT_DEFINITIONS.find(d=>d.kind===row.sheet);
-      if(!definition)throw new Error('Unsupported label category.');
+      if(!definition)throw new Error('Unsupported label category. This worksheet was not imported.');
       const v=result.after;
-      const writeErrors:string[]=[];
-      const guard=(condition:boolean,message:string)=>{if(!condition)return;if(merge)writeErrors.push(message);else throw new Error(message);};
-      const mergeBefore=(before:Record<string,string>|null)=>{
-       if(!merge)return;
-       for(const key of Object.keys(v)){
-        if(v[key]==='[CLEAR]'){if(['Company','Code','Name','Criteria'].includes(key))throw new Error(key+' cannot be cleared.');v[key]='';}
-        else if(before&&v[key]==='')v[key]=before[key]??'';
-       }
+      const requireValue=(field:string)=>{if(!v[field])throw new Error(`${field} is required.`);return v[field];};
+      const identify=(identity:string)=>{
+        const previous=seen.get(identity);
+        if(previous){result.reason=same(previous,v)?'duplicate':'conflicting';result.outcome='skip';result.selected=false;result.message=same(previous,v)?'Duplicate code in this workbook; only the first valid row can be added.':'Conflicting code in this workbook; this later row is skipped.';return false;}
+        seen.set(identity,{...v});return true;
       };
-      const requireValue=(key:string)=>{if(!v[key])throw new Error(`${key} is required.`);return v[key];};
-      const identify=(key:string)=>{
-        const previous=seen.get(key);
-        if(previous){if(!same(previous,v))throw new Error('Conflicting rows in this workbook use the same identifier.');result.outcome='skip';result.selected=false;result.message='Exact duplicate row in this workbook.';return false;}
-        seen.set(key,v);return true;
+      const add=(apply:()=>Promise<unknown>,org?:{kind:OrganisationLabelKind;create:LabelCreateInput})=>{
+        result.outcome='add';result.message='Valid new code.';writes.push({key,apply,org});
       };
-      const classify=(before:Record<string,string>|null, apply:()=>Promise<unknown>,org?:{kind:OrganisationLabelKind;create?:LabelCreateInput;update?:LabelUpdateInput})=>{
-        result.before=before;
-        if(before&&same(before,v)){result.outcome='skip';result.selected=false;result.message='No change.';return;}
-        if(writeErrors.length)throw new Error(writeErrors[0]);
-        const exported=audit?.rows.find(r=>r.key===rowKey(row.sheet,v));
-        if(exported&&before&&exported.hash!==fingerprint(before)){
-          const change=changes.find(e=>e.id===exported.id&&e.at.toISOString()>=audit!.exportedAt);
-          result.stale=true;result.message=change?`Changed after export by ${change.name??'an unrecorded editor'} at ${new Intl.DateTimeFormat('en-MY',{timeZone:'Asia/Kuala_Lumpur',dateStyle:'medium',timeStyle:'short'}).format(change.at)}. Review before overwriting.`:'This record changed after export. Review before overwriting; editor details are unavailable.';
-        }
-        if(before&&mode==='add')throw new Error('Existing identifier has different values. Use Update Existing or correct the row.');
-        result.outcome=before?'update':'add';if(!result.stale)result.message=before?'Review the current and proposed values.':'Valid new option.';writes.push({key:row.sheet+':'+row.row,apply,org});
-      };
-      if ((ORGANISATION_LABEL_KINDS as readonly string[]).includes(row.sheet)) {
-        const kind=row.sheet as OrganisationLabelKind, companyValue=requireValue('Company'), code=requireValue('Code');
-        const matches=c.companies.filter(x=>x.id===companyValue||x.name===companyValue);
+      if((ORGANISATION_LABEL_KINDS as readonly string[]).includes(row.sheet)){
+        const kind=row.sheet as OrganisationLabelKind, code=requireValue('Code');
+        if(incumbentKeys.has(key))throw new Error(existingCodeMessage);
+        const companyValue=requireValue('Company'),matches=c.companies.filter(co=>co.id===companyValue||co.name===companyValue);
         const co=matches.length===1?matches[0]:undefined;
         if(!co)throw new Error('Company is unknown or ambiguous.');
-        guard(!co.writable||!!co.archived,'Company is archived or outside your administrator scope.');
-        const companyId=co.id;v.Company=companyCell(c.companies,companyId);
-        const twins=c.orgs.filter(x=>x.kind===kind&&x.companyId===companyId&&lower(x.values.Code.trim())===lower(code));
-        if(twins.length>1)throw new Error('Company and Code identify multiple records. Resolve this ambiguity in System Labels before importing.');
-        const old=twins[0];
-        if(old&&old.values.Code.trim()!==code)throw new Error('Keep the existing Code spelling; import cannot rename an identifier.');
-        // The workbook reader trims cells; preserve an incumbent stored spelling (including outer
-        // whitespace) rather than silently rewriting an identifier during a metadata-only round trip.
-        if(old)v.Code=old.values.Code;
-        mergeBefore(old?.values??null);
-        if(row.values.Criteria==='global' && row.values['Criteria Companies']==='')v['Criteria Companies']='';
-        if(merge&&old&&same(old.values,v)){classify(old.values,async()=>{});continue;}
-        if(!['companies','global'].includes(v['Criteria']))throw new Error('Criteria must be companies or global.');
-        const shared=list(v['Criteria Companies']).map(value=>{const matches=c.companies.filter(x=>x.id===value||x.name===value);if(matches.length!==1)throw new Error('A shared company is unknown or ambiguous. Use a company from Reference.');return matches[0].id;}).sort();v['Criteria Companies']=shared.map(id=>companyCell(c.companies,id)).sort().join(';');
-        const criteriaChanged=!old||v.Criteria!==old.values.Criteria||(v.Criteria==='companies'&&v['Criteria Companies']!==old.values['Criteria Companies']);
-        guard(criteriaChanged&&(v['Criteria']==='global'||old?.values.Criteria==='global')&&!c.groupAdmin,'Global criteria changes require a group administrator.');
-        if((v['Criteria']==='companies')!==(shared.length>0))throw new Error('Companies criteria require a complete nonempty company list; Global must leave Criteria Companies blank.');
-        guard(criteriaChanged&&shared.some(id=>!c.companies.some(x=>x.id===id&&x.writable&&!x.archived)),'A shared company is archived or outside your administrator scope.');
-        const head=merge&&row.values['Head Employee Code']===''?'':v['Head Employee Code'];
-        const headMatches=head?c.employees.filter(e=>e.companyId===companyId&&e.code===head&&e.active):[];
-        if(head&&headMatches.length!==1)throw new Error('Head Employee Code must identify one active employee in the origin company.');
+        if(!co.writable||co.archived)throw new Error('Company is archived or outside your administrator scope.');
+        v.Company=companyCell(c.companies,co.id);
+        if(!['companies','global'].includes(v.Criteria))throw new Error('Criteria must be companies or global.');
+        const shared=list(v['Criteria Companies']).map(value=>{const matches=c.companies.filter(co=>co.id===value||co.name===value);if(matches.length!==1)throw new Error('A Criteria company is unknown or ambiguous. Use a company from Reference.');return matches[0].id;}).sort();
+        v['Criteria Companies']=shared.map(id=>companyCell(c.companies,id)).sort().join(';');
+        if(v.Criteria==='global'&&!c.groupAdmin)throw new Error('Global criteria require a group administrator.');
+        if((v.Criteria==='companies')!==(shared.length>0))throw new Error('Companies criteria require a nonempty company list; Global must leave Criteria Companies blank.');
+        if(shared.some(id=>!c.companies.some(co=>co.id===id&&co.writable&&!co.archived)))throw new Error('A Criteria company is archived or outside your administrator scope.');
+        const head=v['Head Employee Code'],heads=head?c.employees.filter(e=>e.companyId===co.id&&e.code===head&&e.active):[];
+        if(head&&heads.length!==1)throw new Error('Head Employee Code must identify one active employee in the origin company.');
         for(const col of ORGANISATION_LABEL_COLUMNS[kind])if('required' in col&&col.required)requireValue({code:'Code',label:'Label',description:'Description'}[col.headerKey]);
-        guard(!!old?.archived,'Restore the archived option in System Labels first.');
-        if(!identify(`${kind}|${companyId}|${lower(code)}`))continue;
-        const fields:Partial<LabelCreateInput>={companyId,label:v.Label};
+        // Import uniqueness is category-wide, unlike ordinary manual Criteria editing.
+        if(!identify(`${kind}|${lower(code.trim())}`))continue;
+        const fields:Partial<LabelCreateInput>={companyId:co.id,label:v.Label};
         for(const col of ORGANISATION_LABEL_COLUMNS[kind])Object.assign(fields,{[col.field]:v[{code:'Code',label:'Label',description:'Description'}[col.headerKey]]});
-        if('Head Employee Code' in v&&(!merge||row.values['Head Employee Code']!==''))fields.headEmploymentId=headMatches[0]?.id??null;
-        classify(old?.values??null,async()=>{},old
-          ? {kind,update:{...old.original,...fields,key:old.id,id:old.id,criteria:{isGlobal:v.Criteria==='global',companyIds:shared}}}
-          : {kind,create:{...fields,key:`${row.sheet}:${row.row}`,companyId,isGlobal:v.Criteria==='global',companyIds:shared} as LabelCreateInput});
-      } else if ((EMPLOYMENT_LABEL_CATEGORIES as readonly string[]).includes(row.sheet)) {
+        if('Head Employee Code' in v)fields.headEmploymentId=heads[0]?.id??null;
+        add(async()=>{},{kind,create:{...fields,key,companyId:co.id,isGlobal:v.Criteria==='global',companyIds:shared} as LabelCreateInput});
+      }else if((EMPLOYMENT_LABEL_CATEGORIES as readonly string[]).includes(row.sheet)){
         const value=requireValue('Code');
-        const old=c.options.find(x=>x.category===row.sheet&&x.value===value);
-        mergeBefore(old?{Code:old.value,Label:old.label,Description:old.description??'','Sort Order':String(old.sortOrder)}:null);
-        if(merge&&row.values.Label==='[CLEAR]')throw new Error('Label is required.');
+        if(c.options.some(option=>option.category===row.sheet&&option.value===value))throw new Error(existingCodeMessage);
         v.Label=v.Label||value;v['Sort Order']=String(whole(v['Sort Order']));
-        guard(!!old&&!old.isActive,'Activate the existing option in System Labels first.');
         if(!identify(`${row.sheet}|${value}`))continue;
-        const before=old?{Code:old.value,Label:old.label,Description:old.description??'','Sort Order':String(old.sortOrder)}:null;
-        classify(before,()=>old?updateProfileOption(ctx,{id:old.id,label:v.Label,description:v.Description,sortOrder:Number(v['Sort Order'])},tx)
-          :createProfileOption(ctx,{category:row.sheet,value,label:v.Label,description:v.Description,sortOrder:Number(v['Sort Order'])},tx));
-      } else if(row.sheet==='grades') {
+        add(()=>createProfileOption(ctx,{category:row.sheet,value,label:v.Label,description:v.Description,sortOrder:Number(v['Sort Order'])},tx));
+      }else if(row.sheet==='grades'){
         const code=requireValue('Code');
-        const old=c.grades.find(x=>x.code===code&&!x.archivedAt)??c.grades.find(x=>x.code===code);
-        mergeBefore(old?{Code:old.code,Label:old.name,Description:old.description??'',Rank:String(old.rank)}:null);
-        const before=old?{Code:old.code,Label:old.name,Description:old.description??'',Rank:String(old.rank)}:null;
-        if(merge&&before&&same(before,v)){classify(before,async()=>{});continue;}
         if(!/^[A-Z][A-Z0-9_]{0,31}$/.test(code))throw new Error('Grade Code must use uppercase letters, digits or underscores.');
+        if(c.grades.some(grade=>grade.code===code))throw new Error(existingCodeMessage);
         const name=requireValue('Label');v.Rank=String(whole(v.Rank));
-        guard(!!old?.archivedAt,'Restore the archived grade first.');
         if(!identify(`grades|${code}`))continue;
-        if(c.grades.some(x=>!x.archivedAt&&lower(x.name)===lower(name)&&x.id!==old?.id)||names.has(lower(name)))throw new Error('Another grade already uses this Label.');
-        names.add(lower(name));
-        classify(old?{Code:old.code,Label:old.name,Description:old.description??'',Rank:String(old.rank)}:null,
-          ()=>old?updateJobGrade(ctx,{id:old.id,name,rank:Number(v.Rank),description:v.Description},tx):createJobGrade(ctx,{code,name,rank:Number(v.Rank),description:v.Description},tx));
-      } else {
+        if(c.grades.some(grade=>!grade.archivedAt&&lower(grade.name)===lower(name))||names.has(lower(name)))throw new Error('Another grade already uses this Label.');
+        names.add(lower(name));add(()=>createJobGrade(ctx,{code,name,rank:Number(v.Rank),description:v.Description},tx));
+      }else{
         const name=requireValue('Name');
-        const old=c.groups.find(x=>lower(x.name)===lower(name)&&!x.archivedAt)??c.groups.find(x=>lower(x.name)===lower(name));
-        mergeBefore(old?{Name:old.name,'Grade Codes':c.members.filter(m=>m.gradeGroupId===old.id).map(m=>c.grades.find(g=>g.id===m.gradeId)?.code??'').sort().join(';')}:null);
-        const saved=old?{Name:old.name,'Grade Codes':c.members.filter(m=>m.gradeGroupId===old.id).map(m=>c.grades.find(g=>g.id===m.gradeId)?.code??'').sort().join(';')}:null;
-        if(merge&&saved&&same(saved,v)){classify(saved,async()=>{});continue;}
+        if(c.groups.some(group=>lower(group.name)===lower(name)))throw new Error(existingCodeMessage);
         const codes=list(v['Grade Codes']);v['Grade Codes']=codes.join(';');
-        guard(!!old?.archivedAt,'Restore the archived grade group first.');
-        if(old&&old.name!==name)throw new Error('Keep the existing group Name spelling.');
-        const grades=codes.map(code=>c.grades.find(g=>g.code===code&&!g.archivedAt));
-        if(grades.some(g=>!g))throw new Error('Grade Codes must reference existing active grades. Import new grades separately first.');
-        for(const grade of grades){
-          if(c.members.some(m=>m.gradeId===grade!.id&&m.gradeGroupId!==old?.id)||memberClaims.has(grade!.id)&&memberClaims.get(grade!.id)!==name)
-            throw new Error('A grade already belongs to another group. Change its membership in the editor first.');
-        }
+        const grades=codes.map(code=>c.grades.find(grade=>grade.code===code&&!grade.archivedAt));
+        if(grades.some(grade=>!grade))throw new Error('Grade Codes must reference existing active grades. Import new grades separately first.');
+        for(const grade of grades)if(c.members.some(member=>member.gradeId===grade!.id)||memberClaims.has(grade!.id))throw new Error('A grade already belongs to another group. Change its membership in the editor first.');
         if(!identify(`grade_groups|${lower(name)}`))continue;
-        for(const grade of grades)memberClaims.set(grade!.id,name);
-        const before=old?{Name:old.name,'Grade Codes':c.members.filter(m=>m.gradeGroupId===old.id).map(m=>c.grades.find(g=>g.id===m.gradeId)?.code??'').sort().join(';')}:null;
-        classify(before,()=>old?updateGradeGroup(ctx,{id:old.id,name,gradeIds:grades.map(g=>g!.id)},tx):createGradeGroup(ctx,{name,gradeIds:grades.map(g=>g!.id)},tx));
+        for(const grade of grades)memberClaims.add(grade!.id);
+        add(()=>createGradeGroup(ctx,{name,gradeIds:grades.map(grade=>grade!.id)},tx));
       }
-    } catch(error) {
-      result.outcome='error';result.message=error instanceof Error?error.message:'Invalid label row.';
-    }
+    }catch(error){if(error instanceof Error&&error.message===existingCodeMessage)result.reason='existing';result.outcome='error';result.selected=false;result.message=error instanceof Error?error.message:'Invalid label row.';}
   }
   for(const result of output)if(result.warnings?.length)result.message=[result.message,...result.warnings].join(' ');
-  const selectedWrites=writes.filter(w=>output.some(r=>r.selected&&r.sheet+':'+r.row===w.key));
-  type ProjectedCriteria={kind:OrganisationLabelKind;id:string|null;code:string;global:boolean;companies:Set<string>;sourceKey?:string};
-  const companyId=(value:string)=>{const matches=c.companies.filter(company=>company.id===value||company.name===value);
-    if(matches.length!==1)throw new Error('Saved company Criteria are unknown or ambiguous. Refresh the workbook.');return matches[0].id;};
-  const finalCriteria=new Map<string,ProjectedCriteria>(c.orgs.filter(row=>!row.archived).map(row=>[row.kind+':'+row.id,{kind:row.kind,id:row.id,code:lower(row.values.Code.trim()),global:row.values.Criteria==='global',companies:new Set(list(row.values['Criteria Companies']).map(companyId).filter((id):id is string=>!!id))}]));
-  for(const write of selectedWrites){const proposal=write.org;if(!proposal)continue;const input=proposal.update??proposal.create!;
-    const id=proposal.update?.id??null,criteria=proposal.update?.criteria??{isGlobal:proposal.create!.isGlobal??false,companyIds:proposal.create!.companyIds??[proposal.create!.companyId]};
-    finalCriteria.set(proposal.kind+':'+(id??write.key),{kind:proposal.kind,id,code:lower(String(proposal.kind==='department'?input.name:proposal.kind==='position'?input.title:input.code).trim()),global:criteria.isGlobal,companies:new Set(criteria.companyIds),sourceKey:write.key});
-  }
-  const byCode=new Map<string,ProjectedCriteria[]>();for(const row of finalCriteria.values()){const key=row.kind+':'+row.code;byCode.set(key,[...(byCode.get(key)??[]),row]);}
-  const pairs:LabelCollisionProposal[]=[],pairSources=new Map<string,string[]>();
-  for(const bucket of byCode.values())for(let i=0;i<bucket.length;i++){
-   const first=bucket[i];if(!first.sourceKey)continue;
-   for(let j=0;j<bucket.length;j++){
-    const second=bucket[j];if(i===j||(second.sourceKey&&j<i))continue;
-    if(pairs.length>=LABEL_COLLISION_PREVIEW_PAIR_LIMIT)throw new Error('Too many matching label codes. Preview a smaller workbook.');
-    const key=String(pairs.length);
-    pairs.push({key,kind:first.kind,code:first.code,
-      first:{id:first.id,global:first.global,companyIds:[...first.companies]},
-      second:{id:second.id,global:second.global,companyIds:[...second.companies]}});
-    pairSources.set(key,[first.sourceKey,second.sourceKey].filter((value):value is string=>!!value));
-   }
-  }
-  for(const key of await refusedLabelCollisionProposalsTx(tx,ctx.tenantId,pairs))for(const sourceKey of pairSources.get(key)??[]){
-    const result=output.find(result=>result.sheet+':'+result.row===sourceKey)!;
-    result.outcome='error';result.message='Another active label has the same code in the proposed company Criteria.';
-  }
-  const orgGroups=new Map<OrganisationLabelKind,{creates:LabelCreateInput[];updates:LabelUpdateInput[]}>(),apply:(()=>Promise<unknown>)[]=[];
-  for(const write of selectedWrites){if(!write.org){apply.push(write.apply);continue;}const group=orgGroups.get(write.org.kind)??{creates:[],updates:[]};if(write.org.create)group.creates.push(write.org.create);if(write.org.update)group.updates.push(write.org.update);orgGroups.set(write.org.kind,group);}
-  for(const kind of ORGANISATION_LABEL_KINDS){const group=orgGroups.get(kind);if(group)apply.push(()=>bulkSaveLabels(ctx,kind,group,tx));}
-  const token=createHash('sha256').update(JSON.stringify([ctx.tenantId,ctx.userId,mode,c,audit,output])).digest('hex');
-  return {preview:{token,rows:output,valid:output.length>0&&!output.some(x=>x.selected&&x.outcome==='error'),mode} satisfies LabelImportPreview,writes:apply};
+  const orgGroups=new Map<OrganisationLabelKind,LabelCreateInput[]>(),apply:(()=>Promise<unknown>)[]=[];
+  const selectedWrites=writes.filter(write=>output.some(row=>row.selected&&row.outcome==='add'&&row.sheet+':'+row.row===write.key));
+  for(const write of selectedWrites){if(!write.org){apply.push(write.apply);continue;}orgGroups.set(write.org.kind,[...(orgGroups.get(write.org.kind)??[]),write.org.create]);}
+  for(const kind of ORGANISATION_LABEL_KINDS){const creates=orgGroups.get(kind);if(creates?.length)apply.push(()=>bulkSaveLabels(ctx,kind,{creates,updates:[]},tx));}
+  const token=createHash('sha256').update(JSON.stringify([ctx.tenantId,ctx.userId,'add',c,audit,output])).digest('hex');
+  return {preview:{token,rows:output,valid:selectedWrites.length>0,mode:'add'},writes:apply};
 }
 
-export function previewSystemLabelImport(ctx:SessionContext,bytes:Buffer,mode:LabelImportMode,selectedKeys?:string[]): Promise<LabelImportPreview> {
+export function previewSystemLabelImport(ctx:SessionContext,bytes:Buffer,_legacyMode:LabelImportMode='add',selectedKeys?:string[]): Promise<LabelImportPreview> {
   const rows=readSystemLabelWorkbook(bytes);
-  return withTenant(ctx,async tx=>{const audit=await readExportAudit(tx,ctx,systemLabelExportId(bytes));return (await analyse(tx,ctx,rows,audit?'merge':mode,audit,selectedKeys)).preview;});
+  if(!rows.length)throw new Error('The workbook contains no label data. Fill in new codes in a recognised category sheet.');
+  return withTenant(ctx,async tx=>{const audit=await readExportAudit(tx,ctx,systemLabelExportId(bytes));return (await analyse(tx,ctx,rows,audit,selectedKeys)).preview;});
 }
 
-export function applySystemLabelImport(ctx:SessionContext,p:{bytes:Buffer;mode:LabelImportMode;token:string;confirmUpdates:boolean;selectedKeys?:string[]}): Promise<{imported:number;updated:number;skipped:number;failed:number}> {
+export function applySystemLabelImport(ctx:SessionContext,p:{bytes:Buffer;mode?:LabelImportMode;token:string;confirmUpdates?:boolean;selectedKeys?:string[]}): Promise<{imported:number;updated:number;skipped:number;failed:number;errorReport?:string}> {
   const rows=readSystemLabelWorkbook(p.bytes);
   return withTenant(ctx,async tx=>{
-    // Non-Criteria catalogue writers retain their legacy workbook serialization. Never table-lock
-    // Criteria/reference tables after an epoch: normal INSERT acquires RowExclusive before its
-    // BEFORE trigger, which would invert the epoch/table order and deadlock an ordinary hire/create.
+    // Same lock order as the canonical owners; an unexpected writer refusal rolls back all additions.
     await tx.execute(sql`LOCK TABLE profile_option, job_grade, grade_group, grade_group_member IN SHARE ROW EXCLUSIVE MODE`);
-    await lockLabelCriteriaTx(tx, ctx.tenantId);
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
     const audit=await readExportAudit(tx,ctx,systemLabelExportId(p.bytes));
-    const {preview,writes}=await analyse(tx,ctx,rows,audit?'merge':p.mode,audit,p.selectedKeys);
-    if(!preview.valid)throw new Error('Correct every invalid or conflicting row before importing.');
+    const {preview,writes}=await analyse(tx,ctx,rows,audit,p.selectedKeys);
     if(preview.token!==p.token)throw new Error('Labels or permissions changed since preview. Preview the workbook again.');
-    if(preview.rows.some(r=>r.selected&&r.outcome==='update')&&!p.confirmUpdates)throw new Error('Confirm the current and proposed values before updating existing options.');
+    if(!preview.valid)throw new Error('There are no valid new codes to import. Edit existing codes on the System Labels page.');
     for(const write of writes)await write();
-    const summary={imported:preview.rows.filter(r=>r.selected&&r.outcome==='add').length,updated:preview.rows.filter(r=>r.selected&&r.outcome==='update').length,
-      skipped:preview.rows.filter(r=>!r.selected||r.outcome==='skip').length,failed:0};
-    if(writes.length)await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'system-label-import',aggregateId:randomUUID(),eventType:'system-label-import.applied',actor:actorOf(ctx),payload:{mode:p.mode,summary,rows:preview.rows}});
-    return summary;
+    const summary={imported:preview.rows.filter(row=>row.selected&&row.outcome==='add').length,updated:0,
+      skipped:preview.rows.filter(row=>!row.selected||row.outcome!=='add').length,failed:0};
+    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'system-label-import',aggregateId:randomUUID(),eventType:'system-label-import.applied',actor:actorOf(ctx),payload:{mode:'add',summary,rows:preview.rows.filter(row=>row.selected&&row.outcome==='add')}});
+    const blocked=preview.rows.filter(row=>!row.selected||row.outcome!=='add');
+    return {...summary,...(blocked.length?{errorReport:Buffer.from(systemLabelErrorWorkbook(blocked)).toString('base64')}:{})};
   });
 }
