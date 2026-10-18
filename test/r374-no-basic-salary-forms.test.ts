@@ -48,6 +48,7 @@ import {
 import { completeEmployeeDraft, saveEmployeeDraft } from '../core/employee-draft';
 import { createCycle, openCycle, submitManagerReview, enactCompAction } from '../core/performance';
 import { createMovementEvent } from '../core/movement';
+import { MOVEMENT_FORM_IDS } from '../lib/movement-form-contract';
 import { personnelInput, personnelFormRequired, personnelFormField, personnelWorkflowInput } from '../lib/personnel-form-contract';
 import { hasPersonnelPostedBinding } from './helpers/personnel-posted-binding';
 import { draftActivationFieldLabels } from '../lib/draft-activation-presentation';
@@ -890,7 +891,9 @@ describe('§6 the Movement screen reaches the same refusal, and it is now legibl
     // If the movement screen called that field something else, the shared sentence would point HR at a
     // control that is not on their screen and a movement-specific string would be owed.
     const movement = read(MOVEMENT_FORM);
-    expect(movement).toContain('"remarks": "employment_history.event_information.remarks"');
+    expect(MOVEMENT_FORM_IDS.remarks).toBe('employment_history.event_information.remarks');
+    expect(movement).toMatch(/import\s*\{[^}]*\bMOVEMENT_FORM_IDS\b[^}]*\}\s*from\s*['"]@\/lib\/movement-form-contract['"]/);
+    expect(movement).toMatch(/const movementField\s*=\s*\(name\s*:\s*keyof typeof MOVEMENT_FORM_IDS\)\s*=>\s*MOVEMENT_FORM_IDS\[name\]/);
     expect(movement).toContain("label(movementField('remarks'))");
     expect(personnelFormField('employment_history.event_information.remarks').labelKey).toBe('people.detail.movement.form.remarks');
     for (const loc of LOCALES) {
@@ -916,7 +919,7 @@ describe('§6 the Movement screen reaches the same refusal, and it is now legibl
     expect(src).toContain("basicSalary: rawSalary === '' ? undefined : Number(rawSalary)");
     // The form keeps the stored value (blank when absent), with no requirement and a zero floor.
     const mv = read(MOVEMENT_FORM);
-    expect(mv).toContain('"basicSalary": "payroll.basic_salary_and_salary_history.basicsalary"');
+    expect(MOVEMENT_FORM_IDS.basicSalary).toBe('payroll.basic_salary_and_salary_history.basicsalary');
     const at = mv.indexOf("...personnelWorkflowInput(movementField('basicSalary'), 'movement', 'edit')");
     expect(at).toBeGreaterThanOrEqual(0);
     const open = mv.lastIndexOf('<input', at);
