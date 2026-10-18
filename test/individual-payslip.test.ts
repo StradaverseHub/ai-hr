@@ -12,6 +12,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import ts from 'typescript';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
@@ -485,17 +486,37 @@ describe('f35f758a note 8 — the pay item master save refuses the combination t
   it('both master-save actions run it, and refuse BEFORE the service is called', () => {
     const src = read('app/admin/pay-components/actions.ts');
     expect(src).toContain('isUnsupportedTaxableComponent');
-    // Create and update both. A guard on one of the two is a guard on neither.
-    for (const action of ['createComponentAction', 'updateComponentAction']) {
-      const start = src.indexOf(`export async function ${action}`);
-      expect(start, `${action} must exist`).toBeGreaterThan(-1);
-      const body = src.slice(start, src.indexOf('\nexport ', start + 1));
-      expect(body, `${action} must run the guard`).toContain('unsupportedTaxableMessage');
-      // BEFORE the write, not in the catch: redirect() signals by THROWING, and a redirect inside the try
-      // is caught and re-toasted as the raw NEXT_REDIRECT sentinel (this file's own header records that bug).
-      const guardAt = body.indexOf('unsupportedTaxableMessage(input, t)');
-      const tryAt = body.indexOf('try {');
-      expect(guardAt, `${action}: the guard must run before the try block`).toBeLessThan(tryAt);
+    const source = ts.createSourceFile('actions.ts', src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const calls = (root: ts.Node, name: string): ts.CallExpression[] => {
+      const found: ts.CallExpression[] = [];
+      const visit = (node: ts.Node) => {
+        if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === name) found.push(node);
+        ts.forEachChild(node, visit);
+      };
+      visit(root); return found;
+    };
+    // Create and update both. An authenticated read may have its own try/catch before the pure guard.
+    for (const [action, writer] of [['createComponentAction', 'createPayComponent'], ['updateComponentAction', 'updatePayComponent']]) {
+      const fn = source.statements.find((node): node is ts.FunctionDeclaration => ts.isFunctionDeclaration(node) && node.name?.text === action);
+      if (!fn?.body) throw new Error(`${action} must have a nonempty action body`);
+      const statements = fn.body.statements;
+      expect(statements.length).toBeGreaterThan(0);
+      expect(calls(fn.body, writer), `${action}: exactly one canonical writer`).toHaveLength(1);
+      expect(calls(fn.body, writer)[0].arguments.map(arg => arg.getText(source))).toEqual(['s', 'input']);
+      expect(calls(fn.body, 'unsupportedTaxableMessage'), `${action}: exactly one pure guard`).toHaveLength(1);
+      const guard = calls(fn.body, 'unsupportedTaxableMessage')[0];
+      expect(guard.arguments.map(arg => arg.getText(source))).toEqual(['input', 't']);
+      // Both the guard initializer and its refusal are direct action statements, outside every try.
+      const guardStatement = statements.find(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(
+        decl => ts.isIdentifier(decl.name) && decl.name.text === 'unsupported' && calls(decl, 'unsupportedTaxableMessage').includes(guard),
+      ));
+      const refusal = statements.find(node => ts.isIfStatement(node) && ts.isIdentifier(node.expression) && node.expression.text === 'unsupported'
+        && calls(node.thenStatement, 'redirect').some(call => calls(call, 'encodeURIComponent').some(encoded => encoded.arguments[0]?.getText(source) === 'unsupported')));
+      const writerTry = statements.find(node => ts.isTryStatement(node) && calls(node.tryBlock, writer).length === 1);
+      if (!guardStatement || !refusal || !writerTry) throw new Error(`${action}: guard/refusal must be outside the canonical writer try`);
+      // redirect() throws: putting the refusal in the writer try would catch NEXT_REDIRECT as an error.
+      expect(statements.indexOf(guardStatement), `${action}: initialize before refusing`).toBeLessThan(statements.indexOf(refusal));
+      expect(statements.indexOf(refusal), `${action}: refuse BEFORE entering the writer try`).toBeLessThan(statements.indexOf(writerTry));
     }
   });
 
