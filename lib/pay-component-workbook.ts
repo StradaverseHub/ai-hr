@@ -1,3 +1,4 @@
+import { inflateRawSync } from 'node:zlib';
 import JSZip from 'jszip';
 import * as XLSX from 'xlsx';
 import { PAY_COMPONENT_WORKBOOK_LAYOUT as layout } from './pay-component-workbook-layout';
@@ -10,28 +11,79 @@ export class PayItemWorkbookError extends Error {
   }
 }
 
-/** Bound central-directory expansion BEFORE SheetJS/JSZip inflate anything. No encryption/ZIP64. */
+const MAX_EXPANDED_BYTES = 40 * 1024 * 1024;
+const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, value) => {
+  for (let bit = 0; bit < 8; bit++) value = value & 1 ? 0xedb88320 ^ value >>> 1 : value >>> 1;
+  return value >>> 0;
+});
+function archiveCrc32(bytes: Buffer): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) crc = CRC_TABLE[(crc ^ byte) & 255] ^ crc >>> 8;
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+/** Admit only consistent ordinary ZIP records, and bound ACTUAL expansion before either workbook
+ * parser runs. Metadata alone is untrusted: SheetJS reads local sizes and inflates before checking them.
+ * No ZIP64, encryption, alternate Unicode path names, hidden records or unsupported compression. */
 export function checkPayItemArchive(bytes: Buffer) {
   if (bytes.length > PAY_ITEM_MAX_BYTES) throw new PayItemWorkbookError('tooLarge');
-  const bad = () => { throw new PayItemWorkbookError('invalidWorkbook'); };
+  const bad = (): never => { throw new PayItemWorkbookError('invalidWorkbook'); };
   if (bytes.length < 22 || bytes.readUInt32LE(0) !== 0x04034b50) return bad();
   let end = -1;
-  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) if (bytes.readUInt32LE(i) === 0x06054b50) { end = i; break; }
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) {
+    if (bytes.readUInt32LE(i) === 0x06054b50 && i + 22 + bytes.readUInt16LE(i + 20) === bytes.length) { end = i; break; }
+  }
   if (end < 0 || bytes.readUInt16LE(end + 4) || bytes.readUInt16LE(end + 6)) return bad();
   const count = bytes.readUInt16LE(end + 10), start = bytes.readUInt32LE(end + 16);
-  if (!count || count > 256 || start > end || bytes.readUInt32LE(end + 12) !== end - start || end + 22 + bytes.readUInt16LE(end + 20) !== bytes.length) return bad();
+  if (!count || count > 256 || bytes.readUInt16LE(end + 8) !== count || start > end || bytes.readUInt32LE(end + 12) !== end - start) return bad();
+  function checkExtras(offset: number, length: number) {
+    const limit = offset + length;
+    while (offset < limit) {
+      if (offset + 4 > limit) return bad();
+      const tag = bytes.readUInt16LE(offset), size = bytes.readUInt16LE(offset + 2);
+      if (tag === 0x0001 || tag === 0x7075 || offset + 4 + size > limit) return bad();
+      offset += 4 + size;
+    }
+  }
   let offset = start, expanded = 0; const names = new Set<string>();
+  const ranges: { start: number; end: number }[] = [];
   for (let n = 0; n < count; n++) {
-    if (offset + 46 > end || bytes.readUInt32LE(offset) !== 0x02014b50 || bytes.readUInt16LE(offset + 8) & 1) return bad();
-    const nameLength = bytes.readUInt16LE(offset + 28), extra = bytes.readUInt16LE(offset + 30), comment = bytes.readUInt16LE(offset + 32);
-    const name = bytes.subarray(offset + 46, offset + 46 + nameLength).toString('utf8');
-    if (names.has(name) || /vbaProject|externalLinks|embeddings|\.\.\//i.test(name)) return bad();
-    names.add(name);
-    expanded += bytes.readUInt32LE(offset + 24);
-    if (expanded > 40 * 1024 * 1024 || bytes.readUInt32LE(offset + 42) >= start) return bad();
-    offset += 46 + nameLength + extra + comment;
+    if (offset + 46 > end || bytes.readUInt32LE(offset) !== 0x02014b50) return bad();
+    const flags = bytes.readUInt16LE(offset + 8), method = bytes.readUInt16LE(offset + 10);
+    const crc = bytes.readUInt32LE(offset + 16), compressed = bytes.readUInt32LE(offset + 20), size = bytes.readUInt32LE(offset + 24);
+    const nameLength = bytes.readUInt16LE(offset + 28), extra = bytes.readUInt16LE(offset + 30), comment = bytes.readUInt16LE(offset + 32), local = bytes.readUInt32LE(offset + 42);
+    const next = offset + 46 + nameLength + extra + comment;
+    if (!nameLength || next > end || flags & ~0x080e || ![0, 8].includes(method) || bytes.readUInt16LE(offset + 34) || compressed === 0xffffffff || size === 0xffffffff || local + 30 > start) return bad();
+    const nameBytes = bytes.subarray(offset + 46, offset + 46 + nameLength), name = nameBytes.toString('utf8');
+    if (names.has(name) || /vbaProject|externalLinks|embeddings/i.test(name) || /[\\\x00]/.test(name) || name.startsWith('/') || name.split('/').some(part => part === '.' || part === '..')) return bad();
+    names.add(name); checkExtras(offset + 46 + nameLength, extra);
+    if (bytes.readUInt32LE(local) !== 0x04034b50 || bytes.readUInt16LE(local + 4) !== bytes.readUInt16LE(offset + 6) || bytes.readUInt16LE(local + 6) !== flags || bytes.readUInt16LE(local + 8) !== method) return bad();
+    const localNameLength = bytes.readUInt16LE(local + 26), localExtra = bytes.readUInt16LE(local + 28), dataStart = local + 30 + localNameLength + localExtra;
+    const dataEnd = dataStart + compressed;
+    if (localNameLength !== nameLength || dataStart > start || dataEnd > start || !bytes.subarray(local + 30, local + 30 + localNameLength).equals(nameBytes)) return bad();
+    checkExtras(local + 30 + localNameLength, localExtra);
+    const localCrc = bytes.readUInt32LE(local + 14), localCompressed = bytes.readUInt32LE(local + 18), localSize = bytes.readUInt32LE(local + 22);
+    let recordEnd = dataEnd;
+    if (flags & 8) {
+      // Streaming ZIP entries may leave local sizes zero, but their descriptor must agree exactly.
+      if (localCrc !== 0 && localCrc !== crc || localCompressed !== 0 && localCompressed !== compressed || localSize !== 0 && localSize !== size) return bad();
+      const signed = dataEnd + 4 <= start && bytes.readUInt32LE(dataEnd) === 0x08074b50, descriptor = dataEnd + (signed ? 4 : 0);
+      recordEnd = descriptor + 12;
+      if (recordEnd > start || bytes.readUInt32LE(descriptor) !== crc || bytes.readUInt32LE(descriptor + 4) !== compressed || bytes.readUInt32LE(descriptor + 8) !== size) return bad();
+    } else if (localCrc !== crc || localCompressed !== compressed || localSize !== size) return bad();
+    if (size > MAX_EXPANDED_BYTES - expanded) return bad();
+    const payload = bytes.subarray(dataStart, dataEnd);
+    let actual: Buffer;
+    try { actual = method === 0 ? payload : inflateRawSync(payload, { maxOutputLength: Math.max(1, size) }); }
+    catch { return bad(); }
+    if (actual.length !== size || archiveCrc32(actual) !== crc) return bad();
+    expanded += actual.length; ranges.push({ start: local, end: recordEnd }); offset = next;
   }
   if (offset !== end) return bad();
+  ranges.sort((a, b) => a.start - b.start);
+  let localEnd = 0;
+  for (const range of ranges) { if (range.start !== localEnd) return bad(); localEnd = range.end; }
+  if (localEnd !== start) return bad();
 }
 
 export function readPayItemWorkbook(bytes: Buffer): PayItemUploadRow[] {
