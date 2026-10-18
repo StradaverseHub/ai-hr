@@ -4,9 +4,9 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { NotificationCenter, type NotificationTaskItem } from '../components/notification-center';
 import { onboardingNotificationTask } from '../lib/onboarding-notification-task';
+import messages from '../messages/en.json';
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
 vi.mock('../app/notification-actions',()=>({markAllNotificationsReadAction:vi.fn(),markNotificationReadAction:vi.fn()}));
-const messages=JSON.parse(readFileSync(new URL('../messages/en.json',import.meta.url),'utf8'));
 afterEach(()=>vi.restoreAllMocks());
 it('omits invented onboarding ages, orders undated work deterministically and retains genuine approval timestamps and counts',()=>{
  const now=Date.now();vi.spyOn(Date,'now').mockReturnValue(now);
@@ -28,5 +28,5 @@ it('omits invented onboarding ages, orders undated work deterministically and re
  expect(entries[3]!.textContent).toBe('Onboarding workUndated checklist · Fictional hire');
  view.rerender(<NextIntlClientProvider locale="en" messages={messages}><NotificationCenter unread={1} items={[]} tasks={[...tasks].reverse()} taskCount={4}/></NextIntlClientProvider>);
  expect(screen.getAllByRole('listitem').map(e=>e.textContent)).toEqual(entries.map(e=>e.textContent));
- expect(readFileSync(new URL('../app/layout.tsx',import.meta.url),'utf8')).toContain('...onboardingQueue.map(onboardingNotificationTask)');
+ expect(readFileSync('app/layout.tsx','utf8')).toContain('...onboardingQueue.map(onboardingNotificationTask)');
 });
