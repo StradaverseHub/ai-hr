@@ -412,7 +412,10 @@
     "workflowEmail": "การแจ้งเตือนขั้นตอนงาน",
     "applicationHistory": "ประวัติคำขอ",
     "attendanceApprovalWorkflow": "เวิร์กโฟลว์การอนุมัติ",
-    "myPerformance": "ผลงานของฉัน"
+    "myPerformance": "ผลงานของฉัน",
+    "myTasks": "งานของฉัน",
+    "newJoiners": "พนักงานใหม่",
+    "onboardingRequisitions": "คำขออุปกรณ์"
   },
   "dashboard": {
     "title": "แดชบอร์ด",
@@ -9733,7 +9736,8 @@
         "myTeam": "ผู้จัดการดูผู้ใต้บังคับบัญชาปัจจุบันทั้งโดยตรงและทางอ้อม ผู้ดูแล HR เลือกแผนกในบริษัทที่ได้รับสิทธิ์ได้",
         "identityEmail": "ผู้ดูแล HR สามารถดูตัวอย่างแบบฟอร์ม SMTP ได้ การดูหรือเปลี่ยนการตั้งค่าจริงต้องลงทะเบียนผู้ดูแลข้อมูลประจำตัวของการติดตั้งแยกต่างหาก",
         "workflowEmail": "ต้องเป็นผู้ดูแลระดับกลุ่มจึงจะเปลี่ยนหมวดหมู่สำหรับทั้งองค์กรได้",
-        "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked."
+        "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked.",
+        "myTasks": "เฉพาะงานที่มอบหมายให้คุณ ทีมที่คุณมีสิทธิ์ และการสนทนาที่กล่าวถึงคุณ"
       },
       "status": {
         "active": "ใช้งานอยู่",
@@ -12713,7 +12717,8 @@
       "claim": "อนุมัติการเบิกค่าใช้จ่าย",
       "resignation": "พิจารณาคำขอลาออก",
       "managerReview": "ทำการประเมินการจ้างงานให้เสร็จ",
-      "hrReview": "บันทึกผลการพิจารณาของ HR"
+      "hrReview": "บันทึกผลการพิจารณาของ HR",
+      "onboarding": "งานเตรียมพนักงานใหม่"
     },
     "countWord": "{count, plural, other {การแจ้งเตือน}}",
     "emailPreferences": "การตั้งค่าอีเมล"
@@ -17343,7 +17348,8 @@
       "review": "การทบทวนการจ้างงาน",
       "rewards": "รางวัล",
       "toil": "วันหยุดชดเชย",
-      "employee_master_reports": "ไฟล์แนบรายงานข้อมูลหลักพนักงาน"
+      "employee_master_reports": "ไฟล์แนบรายงานข้อมูลหลักพนักงาน",
+      "onboarding": "การเตรียมพนักงานใหม่"
     },
     "groupAdminHelp": "ต้องเป็นผู้ดูแลระดับกลุ่มจึงจะเปลี่ยนหมวดหมู่สำหรับทั้งองค์กรได้",
     "assessmentReminder": {

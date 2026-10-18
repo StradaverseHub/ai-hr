@@ -412,7 +412,10 @@
     "workflowEmail": "Pemberitahuan aliran kerja",
     "applicationHistory": "Sejarah Permohonan",
     "attendanceApprovalWorkflow": "Aliran Kerja Kelulusan",
-    "myPerformance": "Prestasi Saya"
+    "myPerformance": "Prestasi Saya",
+    "myTasks": "Tugas saya",
+    "newJoiners": "Pekerja baharu",
+    "onboardingRequisitions": "Permintaan kelengkapan"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -9733,7 +9736,8 @@
         "myTeam": "Pengurus melihat pekerja seliaan langsung atau tidak langsung semasa. Pentadbir HR boleh memilih jabatan dalam syarikat yang dibenarkan.",
         "identityEmail": "Pentadbir HR boleh melihat pratonton borang SMTP. Melihat atau mengubah tetapan sebenar memerlukan pendaftaran berasingan sebagai pentadbir identiti pemasangan.",
         "workflowEmail": "Pentadbir kumpulan diperlukan untuk menukar kategori bagi seluruh organisasi.",
-        "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked."
+        "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked.",
+        "myTasks": "Hanya tugas anda, pasukan yang dibenarkan dan perbualan yang menyebut anda."
       },
       "status": {
         "active": "Aktif",
@@ -12713,7 +12717,8 @@
       "claim": "Luluskan tuntutan perbelanjaan",
       "resignation": "Putuskan permohonan peletakan jawatan",
       "managerReview": "Lengkapkan penilaian pekerjaan",
-      "hrReview": "Rekod keputusan semakan HR"
+      "hrReview": "Rekod keputusan semakan HR",
+      "onboarding": "Tugas penerimaan pekerja"
     },
     "countWord": "{count, plural, other {pemberitahuan}}",
     "emailPreferences": "Keutamaan e-mel"
@@ -17343,7 +17348,8 @@
       "review": "Semakan pekerjaan",
       "rewards": "Ganjaran",
       "toil": "Cuti gantian",
-      "employee_master_reports": "Lampiran laporan Induk Pekerja"
+      "employee_master_reports": "Lampiran laporan Induk Pekerja",
+      "onboarding": "Penerimaan pekerja"
     },
     "groupAdminHelp": "Pentadbir kumpulan diperlukan untuk menukar kategori bagi seluruh organisasi.",
     "assessmentReminder": {

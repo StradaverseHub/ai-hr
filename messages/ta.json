@@ -412,7 +412,10 @@
     "workflowEmail": "பணிச்செயல்முறை அறிவிப்புகள்",
     "applicationHistory": "விண்ணப்ப வரலாறு",
     "attendanceApprovalWorkflow": "ஒப்புதல் பணிப்பாய்வு",
-    "myPerformance": "எனது செயல்திறன்"
+    "myPerformance": "எனது செயல்திறன்",
+    "myTasks": "எனது பணிகள்",
+    "newJoiners": "புதிய பணியாளர்கள்",
+    "onboardingRequisitions": "உபகரணக் கோரிக்கைகள்"
   },
   "dashboard": {
     "title": "டாஷ்போர்டு",
@@ -9733,7 +9736,8 @@
         "myTeam": "மேலாளர்கள் தற்போதைய நேரடி அல்லது மறைமுக கீழ்நிலைப் பணியாளர்களைப் பார்க்கலாம். மனிதவள நிர்வாகிகள் அனுமதிக்கப்பட்ட நிறுவனங்களின் துறைகளைத் தேர்ந்தெடுக்கலாம்.",
         "identityEmail": "HR நிர்வாகிகள் SMTP படிவத்தை முன்னோட்டமிடலாம். உண்மையான அமைப்புகளைப் பார்க்க அல்லது மாற்ற தனி நிறுவல் அடையாள நிர்வாகிப் பதிவு தேவை.",
         "workflowEmail": "நிறுவனம் முழுவதற்குமான வகைகளை மாற்ற குழு நிர்வாகி தேவை.",
-        "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked."
+        "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked.",
+        "myTasks": "உங்களுக்கு ஒதுக்கப்பட்ட பணிகள், அங்கீகரிக்கப்பட்ட குழுப் பணிகள் மற்றும் உங்களைக் குறிப்பிடும் உரையாடல்கள் மட்டும்."
       },
       "status": {
         "active": "செயலில்",
@@ -12713,7 +12717,8 @@
       "claim": "செலவு கோரிக்கையை அங்கீகரிக்கவும்",
       "resignation": "ராஜினாமா கோரிக்கையை முடிவு செய்யவும்",
       "managerReview": "வேலை மதிப்பாய்வை முடிக்கவும்",
-      "hrReview": "HR மதிப்பாய்வு முடிவைப் பதிவு செய்யவும்"
+      "hrReview": "HR மதிப்பாய்வு முடிவைப் பதிவு செய்யவும்",
+      "onboarding": "பணியமர்வு பணிகள்"
     },
     "countWord": "{count, plural, one {அறிவிப்பு} other {அறிவிப்புகள்}}",
     "emailPreferences": "மின்னஞ்சல் விருப்பங்கள்"
@@ -17343,7 +17348,8 @@
       "review": "பணி மதிப்பாய்வுகள்",
       "rewards": "வெகுமதிகள்",
       "toil": "ஈடுசெய் விடுப்பு",
-      "employee_master_reports": "பணியாளர் முதன்மை அறிக்கை இணைப்புகள்"
+      "employee_master_reports": "பணியாளர் முதன்மை அறிக்கை இணைப்புகள்",
+      "onboarding": "பணியமர்வு"
     },
     "groupAdminHelp": "நிறுவனம் முழுவதற்குமான வகைகளை மாற்ற குழு நிர்வாகி தேவை.",
     "assessmentReminder": {

@@ -412,7 +412,10 @@
     "workflowEmail": "Thông báo quy trình",
     "applicationHistory": "Lịch sử đơn",
     "attendanceApprovalWorkflow": "Quy trình phê duyệt",
-    "myPerformance": "Hiệu suất của tôi"
+    "myPerformance": "Hiệu suất của tôi",
+    "myTasks": "Công việc của tôi",
+    "newJoiners": "Nhân viên mới",
+    "onboardingRequisitions": "Yêu cầu trang thiết bị"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -9733,7 +9736,8 @@
         "myTeam": "Quản lý xem nhân viên hiện đang báo cáo trực tiếp hoặc gián tiếp. Quản trị HR chọn phòng ban trong các công ty được cấp quyền.",
         "identityEmail": "Quản trị viên HR có thể xem trước biểu mẫu SMTP. Việc xem hoặc thay đổi thiết lập thực tế yêu cầu đăng ký riêng làm quản trị viên danh tính của bản cài đặt.",
         "workflowEmail": "Cần quản trị viên cấp tập đoàn để thay đổi danh mục cho toàn tổ chức.",
-        "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked."
+        "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked.",
+        "myTasks": "Chỉ công việc được giao cho bạn, nhóm bạn được phép tham gia và hội thoại nhắc đến bạn."
       },
       "status": {
         "active": "Đang hoạt động",
@@ -12713,7 +12717,8 @@
       "claim": "Phê duyệt yêu cầu hoàn phí",
       "resignation": "Quyết định đơn xin nghỉ việc",
       "managerReview": "Hoàn thành đánh giá nhân viên",
-      "hrReview": "Ghi nhận quyết định đánh giá của HR"
+      "hrReview": "Ghi nhận quyết định đánh giá của HR",
+      "onboarding": "Công việc hội nhập"
     },
     "countWord": "{count, plural, other {thông báo}}",
     "emailPreferences": "Tùy chọn email"
@@ -17343,7 +17348,8 @@
       "review": "Đánh giá việc làm",
       "rewards": "Khen thưởng",
       "toil": "Nghỉ bù",
-      "employee_master_reports": "Tệp đính kèm báo cáo Hồ sơ nhân viên"
+      "employee_master_reports": "Tệp đính kèm báo cáo Hồ sơ nhân viên",
+      "onboarding": "Hội nhập nhân viên"
     },
     "groupAdminHelp": "Cần quản trị viên cấp tập đoàn để thay đổi danh mục cho toàn tổ chức.",
     "assessmentReminder": {

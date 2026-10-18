@@ -412,7 +412,10 @@
     "workflowEmail": "Workflow notifications",
     "applicationHistory": "Application History",
     "attendanceApprovalWorkflow": "Approval Workflow",
-    "myPerformance": "My Performance"
+    "myPerformance": "My Performance",
+    "myTasks": "My tasks",
+    "newJoiners": "New Joiners",
+    "onboardingRequisitions": "Requisitions"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -9733,7 +9736,8 @@
         "myTeam": "Managers see their current direct or indirect reports. HR administrators can choose departments within their authorized companies.",
         "identityEmail": "HR administrators can preview the SMTP form. Viewing or changing live settings requires separate installation identity-administrator enrollment.",
         "workflowEmail": "A group administrator is required to change categories for the whole organisation.",
-        "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked."
+        "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked.",
+        "myTasks": "Only work assigned to you, your authorised teams, and conversations that mention you."
       },
       "status": {
         "active": "Active",
@@ -12713,7 +12717,8 @@
       "claim": "Approve expense claim",
       "resignation": "Decide resignation request",
       "managerReview": "Complete employment review",
-      "hrReview": "Record HR review decision"
+      "hrReview": "Record HR review decision",
+      "onboarding": "Onboarding work"
     },
     "countWord": "{count, plural, one {notification} other {notifications}}",
     "emailPreferences": "Email preferences"
@@ -17343,7 +17348,8 @@
       "review": "Employment reviews",
       "rewards": "Rewards",
       "toil": "Time off in lieu",
-      "employee_master_reports": "Employee Master report attachments"
+      "employee_master_reports": "Employee Master report attachments",
+      "onboarding": "Onboarding"
     },
     "groupAdminHelp": "A group administrator is required to change categories for the whole organisation.",
     "assessmentReminder": {

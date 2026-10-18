@@ -412,7 +412,10 @@
     "workflowEmail": "工作流程通知",
     "applicationHistory": "申请历史",
     "attendanceApprovalWorkflow": "审批流程",
-    "myPerformance": "我的绩效"
+    "myPerformance": "我的绩效",
+    "myTasks": "我的任务",
+    "newJoiners": "新入职员工",
+    "onboardingRequisitions": "设备与权限申请"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -9733,7 +9736,8 @@
         "myTeam": "经理查看当前直接或间接下属。人力资源管理员可在获授权公司内选择部门。",
         "identityEmail": "HR 管理员可以预览 SMTP 表单。查看或更改实际设置需要单独注册为安装身份管理员。",
         "workflowEmail": "只有集团管理员可更改整个组织的类别设置。",
-        "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked."
+        "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked.",
+        "myTasks": "仅显示分配给您、您有权限的团队以及提及您的对话。"
       },
       "status": {
         "active": "启用",
@@ -12713,7 +12717,8 @@
       "claim": "审批费用报销",
       "resignation": "决定辞职申请",
       "managerReview": "完成雇佣评估",
-      "hrReview": "记录 HR 评估决定"
+      "hrReview": "记录 HR 评估决定",
+      "onboarding": "入职工作"
     },
     "countWord": "{count, plural, other {条通知}}",
     "emailPreferences": "邮件偏好"
@@ -17343,7 +17348,8 @@
       "review": "雇佣评审",
       "rewards": "奖励",
       "toil": "补休",
-      "employee_master_reports": "员工主档报表附件"
+      "employee_master_reports": "员工主档报表附件",
+      "onboarding": "入职"
     },
     "groupAdminHelp": "只有集团管理员可更改整个组织的类别设置。",
     "assessmentReminder": {

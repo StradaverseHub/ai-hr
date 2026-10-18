@@ -99,6 +99,7 @@ export interface ScreenEntry {
  * payroll surfaces. `routes` collapses parent+child pages that share one guard into a single column.
  */
 export const SCREENS: readonly ScreenEntry[] = [
+  {screenKey:'myTasks',href:'/tasks',labelKey:'nav.myTasks',guard:'scopedSession',routes:['/tasks'],hasScopeNote:true},
   {screenKey:'employeeMasterReports',href:'/reports/employee-master',labelKey:'employeeMasterReports.title',guard:'scopedSession',routes:['/reports/employee-master','/reports/employee-master/[id]']},
   {screenKey:'onehrAssignments',href:'/me/performance',labelKey:'onehr.assignments',guard:'scopedSession',routes:['/performance/workspace','/performance/assessment/feedback/[requestId]','/performance/assessment/calibration/[sessionId]'],hasScopeNote:true},
   {screenKey:'attendanceConfigurationDestinations',href:'/admin/attendance/settings/company-policy',labelKey:'attendanceSettingsHub.companyPolicy.title',guard:'scopedAdmin',routes:['/admin/attendance/settings/company-policy','/admin/attendance/settings/work-schedule-overtime','/admin/attendance/settings/registered-devices']},

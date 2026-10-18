@@ -7,7 +7,8 @@ import { useTranslations } from 'next-intl';
 import { useIsMonolith } from '@/components/ui-theme-context';
 import { Bell, Search } from 'lucide-react';
 import { markAllNotificationsReadAction, markNotificationReadAction } from '@/app/notification-actions';
-import type { NotificationRow } from '@/core/notifications';
+import type { NotificationRow as StoredNotificationRow } from '@/core/notifications';
+type NotificationRow=Pick<StoredNotificationRow,'id'|'title'|'body'|'severity'|'linkPath'|'createdAt'|'readAt'>;
 import type { PendingTaskItem } from '@/core/approvals-inbox';
 import type { ApprovalHistoryItem } from '@/lib/approval-history';
 

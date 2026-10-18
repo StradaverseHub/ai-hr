@@ -397,6 +397,8 @@ const GROUPS: Group[] = [
     // see Approvals + Performance. Route guards are unchanged (scopedSession on /personnel).
     labelKey: 'manage',
     items: [
+      { href: '/tasks', labelKey: 'myTasks', icon: ListChecks },
+      ...LIFECYCLE_LINKS.filter(link=>link.group==='manage'),
       { href: '/personnel', labelKey: 'people', icon: Users },
       LEAVE_TRACKER_ROW,
       MY_TEAM_ROW,
@@ -513,6 +515,8 @@ export function Sidebar({
   canApprove = false,
   canAccessTeam = false,
   approvalCount = 0,
+  taskCount = 0,
+  onboardingAccess = false,
   enabledModules = null,
   defaultCollapsed,
   viewerName = null,
@@ -538,6 +542,8 @@ export function Sidebar({
    *  "Approval Items" row. Computed once in app/layout.tsx as listPendingTasks(...).length; the rail
    *  never queries. 0 (or a viewer without the row) renders no badge. */
   approvalCount?: number;
+  taskCount?: number;
+  onboardingAccess?: boolean;
   defaultCollapsed: boolean;
   /** r398 — the Monolith rail's user line (README §3). Display only; Classic does not render it. */
   viewerName?: string | null;
@@ -612,7 +618,7 @@ export function Sidebar({
   // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating). Role gating and
   // module gating are ANDed: a row needs both the role AND the module to appear.
   const canSeeChild = (c: ChildItem) =>
-    moduleAllows(c.href) && (c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c === MY_TEAM_ROW ? canAccessTeam : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove : true);
+    moduleAllows(c.href) && (c.href!=='/lifecycle/onboarding'||onboardingAccess) && (c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c === MY_TEAM_ROW ? canAccessTeam : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove : true);
   const groups = GROUPS
     // Group-level flags still supported (the Admin group uses adminOnly).
     .filter((g) => (g.adminOnly ? isAdmin || canConfigureIdentityEmail : g.managerUp ? isAdmin || canApprove : true))
@@ -802,20 +808,21 @@ export function Sidebar({
                   if (isCollapsible(item)) return monolithModule(item);
                   const active = isRowActive(item);
                   const label = t(item.labelKey);
-                  const showApprovalCount = item.href === '/approvals' && approvalCount > 0;
+                  const rowCount = item.href === '/tasks' ? taskCount : approvalCount;
+                  const showApprovalCount = (item.href === '/approvals' || item.href === '/tasks') && rowCount > 0;
                   return (
                     <Link
                       key={item.href}
                       href={item.navigationHref ?? item.href}
                       data-tour={item.tour}
-                      aria-label={showApprovalCount ? `${label}, ${t('approvalsCount', { count: approvalCount })}` : label}
+                      aria-label={showApprovalCount ? `${label}, ${t('approvalsCount', { count: rowCount })}` : label}
                       aria-current={active ? 'page' : undefined}
                       className={cn(railRow, active && 'border-ink text-ink hover:border-ink')}
                     >
                       <span className="min-w-0">{label}</span>
                       {showApprovalCount && (
                         <span aria-hidden className="shrink-0 text-[10px] tabular-nums text-signal-text">
-                          {approvalCount > 99 ? '99+' : approvalCount}
+                          {rowCount > 99 ? '99+' : rowCount}
                         </span>
                       )}
                     </Link>
@@ -863,7 +870,7 @@ export function Sidebar({
           if (!isCollapsible(item)) return <Link key={item.href} href={item.navigationHref ?? item.href}
             data-tour={item.tour} aria-current={isRowActive(item) ? 'page' : undefined}
             >
-            {t(item.labelKey)}{item.href === '/approvals' && approvalCount > 0 && <ApprovalCountBadge count={approvalCount} collapsed={false} />}
+            {t(item.labelKey)}{(item.href === '/approvals' && approvalCount > 0 || item.href === '/tasks' && taskCount > 0) && <ApprovalCountBadge count={item.href === '/tasks' ? taskCount : approvalCount} collapsed={false} />}
           </Link>;
           const children = item.children.filter(canSeeChild);
           const active = item.defaultHref || item.activeMatch === 'children'
@@ -1036,7 +1043,8 @@ export function Sidebar({
                 // Pending-approval badge (feedback 836118c4). Keyed on the href, like every other
                 // row-specific behaviour in this file — no marker field on the Item type. The count
                 // arrives pre-computed from the layout; a viewer without the row never reaches here.
-                const showApprovalCount = item.href === '/approvals' && approvalCount > 0;
+                const rowCount = item.href === '/tasks' ? taskCount : approvalCount;
+                  const showApprovalCount = (item.href === '/approvals' || item.href === '/tasks') && rowCount > 0;
                 return (
                   <Link
                     key={item.href}
@@ -1045,7 +1053,7 @@ export function Sidebar({
                     title={collapsed ? label : undefined}
                     // The badge itself is aria-hidden, so the count reaches screen readers here —
                     // otherwise the rail would announce "Approval Items" whether 0 or 12 are waiting.
-                    aria-label={showApprovalCount ? `${label}, ${t('approvalsCount', { count: approvalCount })}` : label}
+                    aria-label={showApprovalCount ? `${label}, ${t('approvalsCount', { count: rowCount })}` : label}
                     aria-current={active ? 'page' : undefined}
                     className={cn(
                       rowBase,
@@ -1063,7 +1071,7 @@ export function Sidebar({
                     />
                     {!collapsed && <span className="truncate text-sm">{label}</span>}
                     {showApprovalCount && (
-                      <ApprovalCountBadge count={approvalCount} collapsed={collapsed} />
+                      <ApprovalCountBadge count={rowCount} collapsed={collapsed} />
                     )}
                   </Link>
                 );
