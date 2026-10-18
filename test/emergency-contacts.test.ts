@@ -9,17 +9,20 @@
  *     for /me) resolves to the SAME highest-priority record — the carry-forward guarantee the plan promised,
  *     in the same spirit as test/transfer-preserves-business-unit.test.ts pinning a column that must not be
  *     dropped: here it is a READ that must not fall back to the retired person.emergency_contact_* columns;
- *  4. the compatibility writers (admin updatePerson, self-service updateOwnContact) keep speaking the five
- *     old field names and land on the highest-priority record instead of the retired columns.
+ *  4. admin updatePerson retains its compatibility aliases; ESS refuses those direct aliases and uses
+ *     a policy-enabled versioned proposal/HR decision against the exact register row instead.
  */
-import { sql } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee, updatePerson } from '../core/org';
-import { updateOwnContact, myProfile } from '../core/profile';
+import { updateOwnContact, myProfile, decideProfileChange } from '../core/profile';
+import {readOwnProfileWorkspace,submitOwnProfileEdit} from '../core/profile-edit';
+import {saveProfileEditPolicy} from '../core/profile-edit-policy';
+import type {EssProfileProposal} from '../lib/personnel-ess-model';
 import { employeeDetail } from '../core/read';
 import {
   addEmergencyContact,
@@ -184,45 +187,37 @@ describe('23ad620e — emergency contact register', () => {
     expect(mine!.person!.emergencyContactAddress).toBe(detail!.emergencyContactAddress);
   });
 
-  it('the compatibility writers create then patch the highest-priority record, never the retired columns', async () => {
-    const E = await hire('Compat Writer');
-    // Admin path: the five old field names still work and CREATE the register's first (primary) record.
-    await updatePerson(adminCtx(b), {
-      personId: E.personId,
-      fullName: 'Compat Writer',
-      primaryEmail: 'compat@t.local',
-      emergencyContactName: 'Original Kin',
-      emergencyContactPhone: '012-1111111',
-    });
-    let rows = await listEmergencyContacts(adminCtx(b), { personId: E.personId });
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ fullName: 'Original Kin', mobilePhone: '012-1111111', priority: 'primary' });
+  it('admin compatibility patches the primary while ESS aliases refuse and an approved versioned request updates that exact row', async () => {
+    const E = await hire('Compat Writer'),hr={...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};
+    // Admin aliases still CREATE the first primary record and PATCH it without retargeting other rows.
+    await updatePerson(hr,{personId:E.personId,fullName:'Compat Writer',primaryEmail:'compat@t.local',emergencyContactName:'Original Kin',emergencyContactPhone:'012-1111111'});
+    let rows=await listEmergencyContacts(hr,{personId:E.personId});expect(rows).toHaveLength(1);
+    const primary=rows[0];expect(primary).toMatchObject({fullName:'Original Kin',mobilePhone:'012-1111111',priority:'primary'});
+    const other=await addEmergencyContact(hr,{personId:E.personId,fullName:'Second Kin',priority:'other'});
+    const beforeAdmin=await listEmergencyContacts(hr,{personId:E.personId});
+    await updatePerson(hr,{personId:E.personId,fullName:'Compat Writer',primaryEmail:'compat@t.local',emergencyContactPhone:'012-2222222'});
+    rows=await listEmergencyContacts(hr,{personId:E.personId});expect(rows.find(row=>row.id===primary.id)).toMatchObject({fullName:'Original Kin',mobilePhone:'012-2222222',priority:'primary'});expect(rows.find(row=>row.id===other.id)).toEqual(beforeAdmin.find(row=>row.id===other.id));
 
-    // A second contact HR adds through the register must not be disturbed by the compatibility path.
-    const other = await addEmergencyContact(adminCtx(b), {
-      personId: E.personId,
-      fullName: 'Second Kin',
-      priority: 'other',
-    });
+    const fields=['profile.emergency_contact.fullname','profile.emergency_contact.mobilephone','profile.emergency_contact.relationship'];
+    await saveProfileEditPolicy(hr,{keys:fields,withdrawnReason:'Only the exact emergency fields are enabled'});
+    const uid=await createAppUser(b.tenantId,E.personId,'employee');
+    const empCtx:SessionContext={...adminCtx(b),userId:uid,personId:E.personId,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]};
+    const beforeOwn=await listEmergencyContacts(hr,{personId:E.personId});
+    await expect(updateOwnContact(empCtx,{emergencyContactName:'Renamed Kin',emergencyContactPhone:'012-9999999',emergencyContactRelationship:'Spouse'})).rejects.toMatchObject({code:'addressReview'});
+    expect(await listEmergencyContacts(hr,{personId:E.personId})).toEqual(beforeOwn);
+    expect(await owner.db.select().from(schema.profileChangeRequest).where(eq(schema.profileChangeRequest.personId,E.personId)).orderBy(asc(schema.profileChangeRequest.id))).toEqual([]);
 
-    // Self-service path: the employee updates their own contact — it patches the SAME primary record.
-    const uid = await createAppUser(b.tenantId, E.personId, 'employee');
-    const empCtx: SessionContext = { tenantId: b.tenantId, userId: uid, personId: E.personId, roles: ['employee'] };
-    await updateOwnContact(empCtx, {
-      emergencyContactName: 'Renamed Kin',
-      emergencyContactPhone: '012-9999999',
-      emergencyContactRelationship: 'Spouse',
-    });
-    rows = await listEmergencyContacts(adminCtx(b), { personId: E.personId });
-    expect(rows).toHaveLength(2);
-    expect(rows[0]).toMatchObject({
-      id: rows[0].id,
-      fullName: 'Renamed Kin',
-      mobilePhone: '012-9999999',
-      relationship: 'Spouse',
-      priority: 'primary',
-    });
-    expect(rows.find((r) => r.id === other.id)!.fullName).toBe('Second Kin');
+    const workspace=await readOwnProfileWorkspace(empCtx,{employmentId:E.employmentId}),record=workspace.registers.find(row=>row.kind==='emergency'&&row.id===primary.id);expect(record).toBeDefined();
+    const values=['Renamed Kin','012-9999999','Spouse'];
+    const proposal:EssProfileProposal={v:2,fields:[],registers:[{kind:'emergency',id:primary.id,clientId:primary.id,fields:fields.map((fieldId,index)=>({fieldId,before:record!.baselines[fieldId],value:values[index]}))}]};
+    const result=await submitOwnProfileEdit(empCtx,{employmentId:E.employmentId,proposal});expect(result.saved).toEqual([]);expect(result.waiting).toEqual(fields);expect(result.requestId).toBeTruthy();
+    expect(await listEmergencyContacts(hr,{personId:E.personId})).toEqual(beforeOwn);
+    expect(await owner.db.select().from(schema.profileChangeRequest).where(eq(schema.profileChangeRequest.id,result.requestId!)).orderBy(asc(schema.profileChangeRequest.id))).toEqual([expect.objectContaining({status:'pending',proposed:proposal})]);
+    await decideProfileChange(hr,{requestId:result.requestId!,decision:'approved'});
+    rows=await listEmergencyContacts(hr,{personId:E.personId});expect(rows.map(row=>row.id).sort()).toEqual(beforeOwn.map(row=>row.id).sort());
+    expect(rows.find(row=>row.id===primary.id)).toMatchObject({fullName:'Renamed Kin',mobilePhone:'012-9999999',relationship:'Spouse',priority:'primary'});
+    expect(rows.find(row=>row.id===other.id)).toEqual(beforeOwn.find(row=>row.id===other.id));
+    expect(await owner.db.select({status:schema.profileChangeRequest.status}).from(schema.profileChangeRequest).where(eq(schema.profileChangeRequest.id,result.requestId!)).orderBy(asc(schema.profileChangeRequest.id))).toEqual([{status:'approved'}]);
   });
 
   it('clearing every field through the single-contact form removes the record rather than leaving a ghost', async () => {
