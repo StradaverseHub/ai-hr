@@ -4,15 +4,19 @@
  *  - updatePerson writes the new profile fields + the person.updated event lists them by NAME only
  *    (never the religion/race VALUES — PDPA / ADR-0030 append-only log);
  *  - setPersonComplianceFields now also sets date of birth (admin path) + rejects a non-admin;
- *  - updateOwnContact writes the structured home address + extended emergency contact for the caller's
- *    own row (self path) and no longer touches the legacy `address` column.
+ *  - direct ESS contact aliases cannot bypass versioned address/Emergency approval; permitted phone/
+ *    email save immediately while canonical Permanent fields and exact register IDs await HR.
  */
-import { eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee, updatePerson } from '../core/org';
-import { setPersonComplianceFields, updateOwnContact } from '../core/profile';
+import { setPersonComplianceFields, updateOwnContact, decideProfileChange } from '../core/profile';
+import {readOwnProfileWorkspace,submitOwnProfileEdit} from '../core/profile-edit';
+import {saveProfileEditPolicy} from '../core/profile-edit-policy';
+import {addEmergencyContact,listEmergencyContacts} from '../core/emergency-contacts';
+import type {EssProfileProposal} from '../lib/personnel-ess-model';
 import {
   adminCtx,
   closeAll,
@@ -150,34 +154,32 @@ describe('b4682879 — person profile fields', () => {
     ).rejects.toThrow(/admin/i);
   });
 
-  it('updateOwnContact writes structured address + extended emergency contact for the caller (self path)', async () => {
-    const E = await hire('SelfContact');
-    const uid = await createAppUser(b.tenantId, E.personId, 'employee');
-    const empCtx: SessionContext = { tenantId: b.tenantId, userId: uid, personId: E.personId, roles: ['employee'] };
-    await updateOwnContact(empCtx, {
-      phone: '0199999999',
-      personalEmail: 'self@home.test',
-      addressLine1: '9 Jalan Sembilan',
-      postcode: '43000',
-      city: 'Kajang',
-      state: 'Selangor',
-      country: 'Malaysia',
-      emergencyContactName: 'My Kin',
-      emergencyContactRelationship: 'Parent',
-      emergencyContactPhone2: '0188888888',
-      emergencyContactAddress: '9 Jalan Sembilan',
-    });
-    const p = await personRow(E.personId);
-    expect(p.addressLine1).toBe('9 Jalan Sembilan');
-    expect(p.city).toBe('Kajang');
-    expect(p.state).toBe('Selangor');
-    expect(p.personalEmail).toBe('self@home.test');
-    // 23ad620e — the self path writes the emergency block into the register, not onto `person`.
-    const ec = await primaryContact(E.personId);
-    expect(ec.fullName).toBe('My Kin');
-    expect(ec.relationship).toBe('Parent');
-    expect(ec.homePhone).toBe('0188888888');
-    // Legacy single-line `address` is no longer written by the self path.
-    expect(p.address).toBeNull();
+  it('refuses mixed legacy aliases atomically, saves permitted contact details immediately and approves canonical Permanent/Emergency changes', async () => {
+    const E=await hire('SelfContact'),hr={...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};
+    const primary=await addEmergencyContact(hr,{personId:E.personId,fullName:'Original Kin',mobilePhone:'012-1111111',homePhone:'0180000000',address:'Original contact address',priority:'primary'});
+    const other=await addEmergencyContact(hr,{personId:E.personId,fullName:'Retained backup',priority:'secondary'});
+    const phone='profile.contact_and_permanent_address.phone',email='profile.contact_and_permanent_address.personalemail';
+    const addressChanges:[string,string][]=[['profile.contact_and_permanent_address.permanentaddressline1','9 Jalan Sembilan'],['profile.contact_and_permanent_address.permanentpostcode','43000'],['profile.contact_and_permanent_address.permanentcity','Kajang'],['profile.contact_and_permanent_address.permanentstate','Selangor'],['profile.contact_and_permanent_address.permanentcountry','Malaysia']];
+    const contactChanges:[string,string][]=[['profile.emergency_contact.fullname','My Kin'],['profile.emergency_contact.relationship','Parent'],['profile.emergency_contact.homephone','0188888888'],['profile.emergency_contact.address','9 Jalan Sembilan']];
+    await saveProfileEditPolicy(hr,{keys:[phone,email,...addressChanges.map(([id])=>id),...contactChanges.map(([id])=>id)],withdrawnReason:'Only the explicit contact and address fields are enabled'});
+    const uid=await createAppUser(b.tenantId,E.personId,'employee');
+    const empCtx:SessionContext={...adminCtx(b),userId:uid,personId:E.personId,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]};
+    const beforePerson=await personRow(E.personId),beforeContacts=await listEmergencyContacts(hr,{personId:E.personId});
+    await expect(updateOwnContact(empCtx,{phone:'0199999999',personalEmail:'self@home.test',addressLine1:'9 Jalan Sembilan',postcode:'43000',city:'Kajang',state:'Selangor',country:'Malaysia',emergencyContactName:'My Kin',emergencyContactRelationship:'Parent',emergencyContactPhone2:'0188888888',emergencyContactAddress:'9 Jalan Sembilan'})).rejects.toMatchObject({code:'addressReview'});
+    expect(await personRow(E.personId)).toEqual(beforePerson);expect(await listEmergencyContacts(hr,{personId:E.personId})).toEqual(beforeContacts);
+    expect(await owner.db.select().from(schema.profileChangeRequest).where(eq(schema.profileChangeRequest.personId,E.personId)).orderBy(asc(schema.profileChangeRequest.id))).toEqual([]);
+
+    const workspace=await readOwnProfileWorkspace(empCtx,{employmentId:E.employmentId}),record=workspace.registers.find(row=>row.kind==='emergency'&&row.id===primary.id);expect(record).toBeDefined();
+    const proposal:EssProfileProposal={v:2,fields:[[phone,'0199999999'],[email,'self@home.test'],...addressChanges].map(([fieldId,value])=>({fieldId,before:workspace.baselines[fieldId],value})),registers:[{kind:'emergency',id:primary.id,clientId:primary.id,fields:contactChanges.map(([fieldId,value])=>({fieldId,before:record!.baselines[fieldId],value}))}]};
+    const result=await submitOwnProfileEdit(empCtx,{employmentId:E.employmentId,proposal});expect(result.saved).toEqual([phone,email]);expect(result.waiting).toEqual([...addressChanges.map(([id])=>id),...contactChanges.map(([id])=>id)]);expect(result.requestId).toBeTruthy();
+    const immediate=await personRow(E.personId);expect(immediate).toMatchObject({phone:'0199999999',personalEmail:'self@home.test'});
+    for(const key of ['permanentAddressLine1','permanentPostcode','permanentCity','permanentState','permanentCountry','address','addressLine1','postcode','city','state','country'] as const)expect(immediate[key]).toEqual(beforePerson[key]);
+    expect(await listEmergencyContacts(hr,{personId:E.personId})).toEqual(beforeContacts);
+    expect(await owner.db.select({status:schema.profileChangeRequest.status}).from(schema.profileChangeRequest).where(eq(schema.profileChangeRequest.id,result.requestId!)).orderBy(asc(schema.profileChangeRequest.id))).toEqual([{status:'pending'}]);
+    await decideProfileChange(hr,{requestId:result.requestId!,decision:'approved'});
+    const approved=await personRow(E.personId);expect(approved).toMatchObject({phone:'0199999999',personalEmail:'self@home.test',permanentAddressLine1:'9 Jalan Sembilan',permanentPostcode:'43000',permanentCity:'Kajang',permanentState:'Selangor',permanentCountry:'Malaysia'});
+    for(const key of ['address','addressLine1','postcode','city','state','country'] as const)expect(approved[key]).toEqual(beforePerson[key]);
+    const contacts=await listEmergencyContacts(hr,{personId:E.personId});expect(contacts.map(row=>row.id).sort()).toEqual(beforeContacts.map(row=>row.id).sort());expect(contacts.find(row=>row.id===primary.id)).toMatchObject({fullName:'My Kin',relationship:'Parent',mobilePhone:'012-1111111',homePhone:'0188888888',address:'9 Jalan Sembilan',priority:'primary'});expect(contacts.find(row=>row.id===other.id)).toEqual(beforeContacts.find(row=>row.id===other.id));
+    expect(await owner.db.select({status:schema.profileChangeRequest.status}).from(schema.profileChangeRequest).where(eq(schema.profileChangeRequest.id,result.requestId!)).orderBy(asc(schema.profileChangeRequest.id))).toEqual([{status:'approved'}]);
   });
 });
