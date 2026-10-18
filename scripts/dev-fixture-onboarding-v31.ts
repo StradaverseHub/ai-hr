@@ -18,8 +18,10 @@ function local(raw: string | undefined) {
 if (process.env.NODE_ENV === 'production')
     throw Error('This fixture cannot run in production.');
 const appUrl = local(process.env.DATABASE_URL), ownerUrl = local(process.env.MIGRATION_DATABASE_URL);
-for (const [key, value] of Object.entries({ DATABASE_URL: appUrl, MIGRATION_DATABASE_URL: ownerUrl, TEST_DATABASE_URL: appUrl, TEST_MIGRATION_DATABASE_URL: ownerUrl }))
-    process.env[key] = value;
+process.env.DATABASE_URL = appUrl;
+process.env.MIGRATION_DATABASE_URL = ownerUrl;
+process.env.TEST_DATABASE_URL = appUrl;
+process.env.TEST_MIGRATION_DATABASE_URL = ownerUrl;
 async function main() {
     const adminUrl = new URL(ownerUrl);
     adminUrl.pathname = '/postgres';
