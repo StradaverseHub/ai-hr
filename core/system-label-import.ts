@@ -179,15 +179,16 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audi
         if(!/^[A-Z][A-Z0-9_]{0,31}$/.test(code))throw new Error('Grade Code must use uppercase letters, digits or underscores.');
         if(c.grades.some(grade=>grade.code===code))throw new Error(existingCodeMessage);
         const name=requireValue('Label');v.Rank=String(whole(v.Rank));
-        if(!identify(`grades|${code}`))continue;
+        if(seen.has(`grades|${code}`)){identify(`grades|${code}`);continue;}
         if(c.grades.some(grade=>!grade.archivedAt&&lower(grade.name)===lower(name))||names.has(lower(name)))throw new Error('Another grade already uses this Label.');
-        names.add(lower(name));add(()=>createJobGrade(ctx,{code,name,rank:Number(v.Rank),description:v.Description},tx));
+        identify(`grades|${code}`);names.add(lower(name));add(()=>createJobGrade(ctx,{code,name,rank:Number(v.Rank),description:v.Description},tx));
       }else{
         const name=requireValue('Name');
         if(c.groups.some(group=>lower(group.name)===lower(name)))throw new Error(existingCodeMessage);
         const codes=list(v['Grade Codes']);v['Grade Codes']=codes.join(';');
         const grades=codes.map(code=>c.grades.find(grade=>grade.code===code&&!grade.archivedAt));
         if(grades.some(grade=>!grade))throw new Error('Grade Codes must reference existing active grades. Import new grades separately first.');
+        if(seen.has(`grade_groups|${lower(name)}`)){identify(`grade_groups|${lower(name)}`);continue;}
         for(const grade of grades)if(c.members.some(member=>member.gradeId===grade!.id)||memberClaims.has(grade!.id))throw new Error('A grade already belongs to another group. Change its membership in the editor first.');
         if(!identify(`grade_groups|${lower(name)}`))continue;
         for(const grade of grades)memberClaims.add(grade!.id);

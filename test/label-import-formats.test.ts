@@ -59,6 +59,10 @@ describe('bounded real XLS and XLSX Labels admission',()=>{
   if(type==='xlsx')expect(()=>readSystemLabelWorkbook(make(type,wb=>{wb.Sheets.division.B2.v='X'.repeat(1001);}))).toThrow(/too long/);
   expect(()=>readSystemLabelWorkbook(make(type,wb=>{for(let i=0;i<17;i++)XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Code'],['X']]),'extra'+i);}))).toThrow(/Too many worksheets/);
  });
+ it('does not silently drop a single populated row in an unsupported sheet',()=>{
+  const bytes=make('xlsx',wb=>XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['POSSIBLE_DATA']]),'unknown'));
+  expect(readSystemLabelWorkbook(bytes).find(row=>row.sheet==='unknown')).toEqual({sheet:'unknown',row:1,values:{Code:'POSSIBLE_DATA'}});
+ });
  it('reports unsupported populated sheets alongside supported data instead of silently losing rows',()=>{
   const bytes=make('xlsx',wb=>XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Code'],['UNSUPPORTED']]),'unexpected'));
   const rows=readSystemLabelWorkbook(bytes);expect(rows.map(row=>[row.sheet,row.row,row.values.Code])).toEqual([['division',2,'00007'],['unexpected',2,'UNSUPPORTED']]);

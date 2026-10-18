@@ -104,6 +104,11 @@ export function readSystemLabelWorkbook(bytes: Buffer, options:{generation?:numb
         if(values[i].some(value=>String(value).length>1000))throw new Error('A value is too long in an unsupported worksheet.');
         rows.push({sheet,row:i+1,values:{Code:String(values[i][0]??'').trim()}});
       }
+      // An unrecognised one-line sheet may contain data rather than a header. Do not silently drop it.
+      if(!count&&values[0]?.some(value=>String(value).trim())){
+        if(rows.length>=LABEL_WORKBOOK_TOTAL_ROWS||values[0].some(value=>String(value).length>1000))throw new Error('Unsupported worksheet exceeds the supported size.');
+        rows.push({sheet,row:1,values:{Code:String(values[0][0]??'').trim()}});
+      }
       continue;
     }
     seen.add(sheet);

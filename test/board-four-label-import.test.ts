@@ -56,7 +56,10 @@ describe('reviewed System Labels imports',()=>{
     const bytes=book({division:[{Code:'VALID',Label:'Valid'},{Code:'',Label:'Invalid'}]});
     const preview=await previewSystemLabelImport(adminCtx(b),bytes,'add');expect(preview.valid).toBe(true);
     expect(preview.rows.map(row=>[row.outcome,row.selected])).toEqual([['add',true],['error',false]]);
-    expect(await applySystemLabelImport(adminCtx(b),{bytes,mode:'add',token:preview.token})).toMatchObject({imported:1,updated:0,skipped:1});
+    const summary=await applySystemLabelImport(adminCtx(b),{bytes,mode:'add',token:preview.token});expect(summary).toMatchObject({imported:1,updated:0,skipped:1});
+    expect(summary.errorReport).toBeTruthy();const report=XLSX.read(Buffer.from(summary.errorReport!,'base64'),{type:'buffer'});
+    expect(XLSX.utils.sheet_to_json(report.Sheets.Errors)).toMatchObject([{Worksheet:'division',Row:3,Code:'',Message:'Code is required.'}]);
+    expect(XLSX.utils.sheet_to_json(report.Sheets.Errors)).toHaveLength(1);
     expect(await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'VALID'))).toHaveLength(1);
     const valid=book({division:[{Code:'NOT_SAVED',Label:'Valid'}]});const stale=await previewSystemLabelImport(adminCtx(b),valid,'add');
     await apply(book({division:[{Code:'OTHER',Label:'Other'}]}));
