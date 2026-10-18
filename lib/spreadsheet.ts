@@ -182,6 +182,8 @@ export async function buildXlsx(
     }
     XLSX.utils.book_append_sheet(wb, sheet, extra.name);
   }
+  const validationSheetName=opts?.validationSheetName??'__PersonnelLists';
+  if(!/^[A-Za-z_][A-Za-z0-9_]{0,30}$/.test(validationSheetName))throw new Error('Invalid template validation sheet name.');
   const validationLists:{sheetIndex:number;column:number;name:string;lastRow:number}[]=[];
   const sources=[opts,...(opts?.extraSheets??[])];
   const optionColumns:string[][]=[];
@@ -193,14 +195,14 @@ export async function buildXlsx(
     const column=optionColumns.length;optionColumns.push(values);
     const name=`AIHR_Personnel_${sheetIndex}_${list.column}`;
     wb.Workbook??={};wb.Workbook.Names??=[];
-    wb.Workbook.Names.push({Name:name,Ref:`'__PersonnelLists'!$${XLSX.utils.encode_col(column)}$1:$${XLSX.utils.encode_col(column)}$${values.length}`});
+    wb.Workbook.Names.push({Name:name,Ref:`'${validationSheetName}'!$${XLSX.utils.encode_col(column)}$1:$${XLSX.utils.encode_col(column)}$${values.length}`});
     validationLists.push({sheetIndex,column:list.column,name,lastRow:501});
   }
   if(optionColumns.length) {
-    if(wb.SheetNames.includes('__PersonnelLists'))throw new Error('Reserved template sheet name.');
+    if(wb.SheetNames.includes(validationSheetName))throw new Error('Reserved template sheet name.');
     const count=Math.max(...optionColumns.map(values=>values.length));
-    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(Array.from({length:count},(_,row)=>optionColumns.map(values=>values[row]??''))),'__PersonnelLists');
-    wb.Workbook??={};wb.Workbook.Sheets=wb.SheetNames.map(name=>({name,Hidden:name==='__PersonnelLists'?2:0}));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(Array.from({length:count},(_,row)=>optionColumns.map(values=>values[row]??''))),validationSheetName);
+    wb.Workbook??={};wb.Workbook.Sheets=wb.SheetNames.map(name=>({name,Hidden:name===validationSheetName&&!opts?.validationSheetName?2:0}));
   }
   // type:'array' → SheetJS returns an ArrayBuffer (despite older typings suggesting Uint8Array);
   // wrap it so callers always get real bytes, safe for a browser Blob or Buffer.from().
@@ -227,6 +229,8 @@ export type BuildXlsxOptions = {
   extraSheets?: { name: string; rows: (string | number)[][]; textColumns?: number[];columnWidths?:number[];wrapText?:boolean;headerNotes?:string[];validationLists?:{column:number;values:readonly string[]}[] }[];
   headerNotes?:string[];
   validationLists?:{column:number;values:readonly string[]}[];
+  /** Opt-in visible reference sheet; default retains the existing hidden Personnel list sheet. */
+  validationSheetName?:string;
   /** How many rows below the samples get the text format pre-applied. */
   textRowFloor?: number;
 };
