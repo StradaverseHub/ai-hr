@@ -65,6 +65,33 @@ describe('Employee Master report contract',()=>{
     expect(runEmployeeMasterProjection(spec,catalogue,[value],today).sections[0].rows.map(row=>row.cells.map(cell=>cell.value)))
       .toEqual([['Older','child-one-1'],['Newer','child-one-2']]);
   });
+  it('projects 1,000 expanded Family remarks without repeatedly traversing their owner register',()=>{
+    const remarks=PERSONNEL_FIELDS.find(field=>field.owner==='dependent'&&field.ownerField==='remarks')!;
+    let ownerReads=0,dateReads=0;
+    const family=Array.from({length:1000},(_,index):MasterOwnerRecord=>({
+      id:'family-'+String(index).padStart(4,'0'),
+      get createdAt(){
+        // Bound the old quadratic path without depending on machine speed or waiting for a timeout.
+        if(++dateReads>10_000)throw new Error('Expanded Family date reads exceeded the bounded input traversal.');
+        return '2026-10-15T00:00:00.000Z';
+      },
+      values:{[remarks.id]:{value:'Fictional Family remark '+index}},
+    }));
+    const value:MasterSubject={id:'one',kind:'employment',personId:'person-one',companyId:company,owners:{
+      get dependent(){
+        if(++ownerReads>2)throw new Error('Expanded Family owner register was repeatedly traversed.');
+        return family;
+      },
+    }};
+    const spec=validate(definition({columns:[{...defaultMasterColumn(remarks),records:'all'}]}),[remarks]);
+    const result=runEmployeeMasterProjection(spec,[remarks],[value],today);
+    expect(result).toMatchObject({asAt:today,employeeCount:1,personCount:1,totalRows:1000});
+    expect(result.sections[0].rows.map(row=>({recordId:row.recordId,cells:row.cells}))).toStrictEqual(
+      Array.from({length:1000},(_,index)=>({recordId:'family-'+String(index).padStart(4,'0'),cells:[{value:'Fictional Family remark '+index,currency:undefined,sourceRecordId:'family-'+String(index).padStart(4,'0')}]})),
+    );
+    expect(ownerReads).toBeLessThanOrEqual(2);
+    expect(dateReads).toBeLessThanOrEqual(10_000);
+  });
   it('retains subjects whose selected All register has no record',()=>{
     const value=subject('one');value.owners.dependent=[];
     const spec=validate(definition({columns:[{...defaultMasterColumn(fields[2]),records:'all'}]}));
