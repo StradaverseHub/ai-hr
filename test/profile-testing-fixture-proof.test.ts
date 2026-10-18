@@ -53,7 +53,7 @@ describe('shared Profile/Testing fixture evidence refusal',()=>{
   expect(()=>assertProfileTestingInvariant(recorded,changed)).toThrow('preserve all observations');
  });
  it('records a missing browser PDF honestly and refuses incomplete or fabricated evidence',()=>{
-  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'profile-testing-proof-'));temporary.push(directory);
+  const directory=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'profile-testing-proof-')));temporary.push(directory);
   const fixture={releasedPayroll:{payslipId:'slip',employmentId:'employee',pdfRoute:'/me/payslip/slip/pdf'}};
   expect(verifyOptionalProfileTestingPdf(directory,fixture)).toEqual({status:'not_yet_observed'});
   fs.writeFileSync(path.join(directory,'released-pdf-observation.json'),JSON.stringify({actualBrowserDownload:false}),{mode:0o600});
