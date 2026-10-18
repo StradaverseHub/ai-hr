@@ -8,6 +8,10 @@ import {TERMINATION_REASON_CODES} from '../core/termination-reason';
 import {buildXlsx} from './spreadsheet';
 import {toCsv} from './csv';
 import {addXlsxListValidation} from './xlsx-list-validation';
+// The shared form order places Company before EventType. Bind validation to the actual transport
+// column; a fixed B column would put event choices on Company and hide its own reference list.
+const eventTypeColumn=MOVEMENT_IMPORT_FIELDS.indexOf('kind')+1;
+const eventTypeValidationName=`AIHR_Personnel_0_${eventTypeColumn}`;
 export function movementImportTemplate(catalog:MovementImportCatalog,resolve:PersonnelLabelResolver){
  const words=(key:string,fallback:string)=>resolve('people.import.movement.'+key,fallback);
  const label=(field:MovementFormField)=>personnelFieldLabel(personnelFormField(MOVEMENT_FORM_IDS[field]),resolve);
@@ -29,7 +33,7 @@ export function movementImportTemplate(catalog:MovementImportCatalog,resolve:Per
   [],[words('column','Column'),words('field','Personnel field'),words('values','Values')],
   ...MOVEMENT_IMPORT_FIELDS.map((field,index)=>[MOVEMENT_IMPORT_HEADERS[index+1],label(field),['effectiveDate','endDate','resignationDate'].includes(field)?'DD-MMM-YYYY':field==='kind'?words('liveCatalog','Active Movement Settings types; use the code or code · label. Hired is excluded.'):personnelFieldChoices(personnelFormField(MOVEMENT_FORM_IDS[field])).map(value=>value.value).join(', ')]),
  ];
- const lists:{column:number;values:string[]}[]=[{column:1,values:catalog.types.map(type=>type.label?`${type.code} · ${type.label}`:type.code)}];
+ const lists:{column:number;values:string[]}[]=[{column:eventTypeColumn,values:catalog.types.map(type=>type.label?`${type.code} · ${type.label}`:type.code)}];
  for(const field of MOVEMENT_IMPORT_FIELDS){
   if(field==='kind')continue;
   const fieldOptions=catalog.fields[field];
@@ -42,9 +46,9 @@ export async function movementImportWorkbook(catalog:MovementImportCatalog,resol
  const template=movementImportTemplate(catalog,resolve);
  if(!catalog.types.length)throw new Error('No active Movement event types are available.');
  const references=[
-  {title:resolve('people.import.movement.eventType','Event type'),values:template.lists.find(list=>list.column===1)!.values},
+  {title:resolve('people.import.movement.eventType','Event type'),values:template.lists.find(list=>list.column===eventTypeColumn)!.values},
   {title:resolve('people.import.movement.values','Values'),values:catalog.types.map(type=>type.label??resolve('people.detail.movement.eventType.'+type.behaviour,type.code))},
-  ...template.lists.filter(list=>list.column!==1).map(list=>({title:template.headerNotes[list.column],values:list.values})),
+  ...template.lists.filter(list=>list.column!==eventTypeColumn).map(list=>({title:template.headerNotes[list.column],values:list.values})),
  ];
  const length=Math.max(...references.map(column=>column.values.length));
  const listRows=[references.map(column=>column.title),...Array.from({length},(_,index)=>references.map(column=>column.values[index]??''))];
@@ -56,7 +60,7 @@ export async function movementImportWorkbook(catalog:MovementImportCatalog,resol
  const xml=await entry.async('string');if(/<definedNames\b/.test(xml))throw new Error('Unexpected Movement template names.');
  const position=xml.search(/<(?:calcPr|oleSize|customWorkbookViews|pivotCaches|smartTagPr|smartTagTypes|webPublishing|fileRecoveryPr|webPublishObjects|extLst)\b|<\/workbook>/);
  if(position<0)throw new Error('Generated Movement workbook is malformed.');
- zip.file('xl/workbook.xml',xml.slice(0,position)+`<definedNames><definedName name="AIHR_Personnel_0_1">&apos;Lists&apos;!$A$2:$A$${catalog.types.length+1}</definedName></definedNames>`+xml.slice(position));
- return addXlsxListValidation(await zip.generateAsync({type:'uint8array',compression:'DEFLATE'}),[{sheetIndex:0,column:1,name:'AIHR_Personnel_0_1',lastRow:MOVEMENT_IMPORT_LIMITS.rows+1}]);
+ zip.file('xl/workbook.xml',xml.slice(0,position)+`<definedNames><definedName name="${eventTypeValidationName}">&apos;Lists&apos;!$A$2:$A$${catalog.types.length+1}</definedName></definedNames>`+xml.slice(position));
+ return addXlsxListValidation(await zip.generateAsync({type:'uint8array',compression:'DEFLATE'}),[{sheetIndex:0,column:eventTypeColumn,name:eventTypeValidationName,lastRow:MOVEMENT_IMPORT_LIMITS.rows+1}]);
 }
 export function movementImportCsvTemplate(){return toCsv([MOVEMENT_IMPORT_HEADERS]);}
