@@ -39,7 +39,7 @@ describe('three-step new-code import wizard',()=>{
   mocks.fetch.mockResolvedValueOnce(response({ok:true,preview:{token:'invalid-locales',valid:false,rows:invalid}}));await user.click(screen.getByRole('button',{name:w.check}));
   expect(await screen.findByText(w.invalidCompany)).toBeVisible();expect(screen.getByText(w.notSelected)).toBeVisible();expect(screen.getByText(w.notSelectedStatus)).toBeVisible();for(const reason of reasons)expect(screen.getByText(w[reason])).toBeVisible();
   for(const field of ['Code','Company','Description','Label','Name'] as const)expect(screen.getByText(w.required.replace('{field}',w.fields[field]))).toBeVisible();
-  expect(screen.queryByText('SERVER_ENGLISH_MUST_NOT_RENDER')).not.toBeInTheDocument();expect(screen.getByRole('button',{name:w.importCount.replace('{count}','0')})).toBeDisabled();
+  expect(screen.queryByText('SERVER_ENGLISH_MUST_NOT_RENDER')).not.toBeInTheDocument();expect(await screen.findByRole('button',{name:w.importCount.replace('{count}','0')})).toBeDisabled();
  });
  it('keeps all-blocked rows read-only and disables import; Escape closes and restores the trigger',async()=>{
   const user=userEvent.setup();mount();await upload(user);
