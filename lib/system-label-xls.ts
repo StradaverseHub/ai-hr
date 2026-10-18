@@ -60,7 +60,7 @@ export function legacyLabelWorkbookStream(bytes:Buffer):Buffer {
     if(offset+4>stream.length)throw invalid();
     const record=stream.readUInt16LE(offset),length=stream.readUInt16LE(offset+2);offset+=4;
     if(length>8224||offset+length>stream.length)throw invalid();
-    if(record===0x002f||([0x0012,0x0019,0x0063,0x00dd].includes(record)&&length>=2&&stream.readUInt16LE(offset)!==0))throw new Error('Protected or encrypted Excel workbooks cannot be imported.');
+    if(record===0x002f||record===0x0086||([0x0012,0x0019,0x0063,0x00dd].includes(record)&&length>=2&&stream.readUInt16LE(offset)!==0))throw new Error('Protected or encrypted Excel workbooks cannot be imported.');
     if([0x0006,0x0206,0x0406,0x0221,0x04bc].includes(record))throw new Error('Formula in legacy XLS workbook. Enter literal values.');
     offset+=length;
   }
