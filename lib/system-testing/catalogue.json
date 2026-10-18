@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "revision": "reviewed-baseline.6",
+  "revision": "reviewed-baseline.7",
   "entries": [
     {
       "semanticId": "personnel.profile.reopen",
@@ -56,8 +56,8 @@
         "app/admin/personnel/[employmentId]/actions.ts",
         "core/org.ts"
       ],
-      "reviewedSourceHash": "cf55f75ca3a6e0058ff8f74c20936f81756648174e8c0843ae06ae700348a184",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "f676b165832e226aa09fd02bd4e2b2c48a954869723233d7800226e25371ec52",
+      "reviewNote": "Source-to-guide semantic review at 44138b7b80d2dddb2cf495fe9ddcce374011baa5 supports this bounded implemented journey. Actual manual checks remain required. Reviewed source bytes establish neither a test/manual pass, complete functional coverage nor live service arrival."
     },
     {
       "semanticId": "personnel.import.invalid",
@@ -115,8 +115,8 @@
         "app/admin/personnel/import/section-import.tsx",
         "lib/import-sections.ts"
       ],
-      "reviewedSourceHash": "b3160ca5daa5d23c7a8b9bd14d49ceb48ce689a2566d741828d414c8a38de845",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "65e1bb6807d449b872629fef81ad82623d6150467977489a8f2014f21005f5f5",
+      "reviewNote": "Source-to-guide semantic review at 44138b7b80d2dddb2cf495fe9ddcce374011baa5 supports this bounded implemented journey. Actual manual checks remain required. Reviewed source bytes establish neither a test/manual pass, complete functional coverage nor live service arrival."
     },
     {
       "semanticId": "personnel.family.roundtrip",
@@ -179,8 +179,8 @@
         "lib/dependent-identity.ts",
         "lib/import-sections.ts"
       ],
-      "reviewedSourceHash": "413e54af91f3523f7aacbcff6452e65340d4f9720b505a2f3c20b6ef7de2df34",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "0ab1cf5198433a4a078393cb9facbd234d7fa7aa0dbfe68bad25b541e450f025",
+      "reviewNote": "Source-to-guide semantic review at 44138b7b80d2dddb2cf495fe9ddcce374011baa5 supports this bounded implemented journey. Actual manual checks remain required. Reviewed source bytes establish neither a test/manual pass, complete functional coverage nor live service arrival."
     },
     {
       "semanticId": "payroll.scope.review",
@@ -235,8 +235,8 @@
         "core/payroll.ts",
         "lib/permissions.ts"
       ],
-      "reviewedSourceHash": "b4179e48681da34579b668fa5bb91797465a1e0b65f6bca07eb8688fa7faf974",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "f71a16ec8047bdff9fb74c6d8d7110b2970a3aefd4a920aa34f04a0c16a31760",
+      "reviewNote": "Source-to-guide semantic review at 44138b7b80d2dddb2cf495fe9ddcce374011baa5 supports this bounded implemented journey. Actual manual checks remain required. Reviewed source bytes establish neither a test/manual pass, complete functional coverage nor live service arrival."
     },
     {
       "semanticId": "payroll.salary.effective",
@@ -291,8 +291,8 @@
         "lib/permissions.ts",
         "app/admin/personnel/[employmentId]/actions.ts"
       ],
-      "reviewedSourceHash": "0fa1f981c81607725b876483fe8e0298d2ccdc9e7eb5319e3a4c732404990e8a",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "6cd8f3b78a809d5dc9824d7b13533b2be2873e8257d9670b706e26ceb2a37ccb",
+      "reviewNote": "Source-to-guide semantic review at 44138b7b80d2dddb2cf495fe9ddcce374011baa5 supports this bounded implemented journey. Actual manual checks remain required. Reviewed source bytes establish neither a test/manual pass, complete functional coverage nor live service arrival."
     },
     {
       "semanticId": "payroll.run.closed",
@@ -347,8 +347,8 @@
         "lib/permissions.ts",
         "lib/authz.ts"
       ],
-      "reviewedSourceHash": "cd2d03b58c272f9e9a9cbfb458e6446950e4816e68cd0c3372d4db1caccd0eae",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "58b0c066c91a8e8fc6696008686afea682ecbfda7bfa205220622aa36eae5fb6",
+      "reviewNote": "Source-to-guide semantic review at 44138b7b80d2dddb2cf495fe9ddcce374011baa5 supports this bounded implemented journey. Actual manual checks remain required. Reviewed source bytes establish neither a test/manual pass, complete functional coverage nor live service arrival."
     },
     {
       "semanticId": "attendance.day.classification",
@@ -522,8 +522,8 @@
         "components/overtime-patterns/preview-panel.tsx",
         "app/admin/attendance/settings/overtime-patterns/actions.ts"
       ],
-      "reviewedSourceHash": "f1b517ae061bb04b77ddd37cd91f3b0390a68644f1951f30e31e78297de9149a",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "983a64d5dacacf6a45e4afb605be2b6230bb6084fd54a80101679ed2aba5c64e",
+      "reviewNote": "Source-to-guide semantic review at 44138b7b80d2dddb2cf495fe9ddcce374011baa5 supports this bounded implemented journey. Actual manual checks remain required. Reviewed source bytes establish neither a test/manual pass, complete functional coverage nor live service arrival."
     },
     {
       "semanticId": "leave.request.pending",
@@ -580,8 +580,8 @@
         "app/leave/page.tsx",
         "components/leave/own-leave-history.tsx"
       ],
-      "reviewedSourceHash": "fc30db1a216d0948536ceb5845fd4f26f5620d3307b59f98149c19600e39fd5f",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "f6ee9b9042f2a8cf7417d53d03c323dee6dc30433046e52227623c4861fe5660",
+      "reviewNote": "Source-to-guide semantic review at 44138b7b80d2dddb2cf495fe9ddcce374011baa5 supports this bounded implemented journey. Actual manual checks remain required. Reviewed source bytes establish neither a test/manual pass, complete functional coverage nor live service arrival."
     },
     {
       "semanticId": "leave.credit.bound",
@@ -811,8 +811,8 @@
         "app/admin/personnel/[employmentId]/actions.ts",
         "core/read.ts"
       ],
-      "reviewedSourceHash": "bfcd83f0bc4aad8a36a2666c987cbd0b59e1033ad5c371aa7e024e13ac059326",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "1dda807dda5586cf17ea7bf24441ce8c52c5a4d351bfe1f09e954744f3630251",
+      "reviewNote": "Source-to-guide semantic review at 44138b7b80d2dddb2cf495fe9ddcce374011baa5 supports this bounded implemented journey. Actual manual checks remain required. Reviewed source bytes establish neither a test/manual pass, complete functional coverage nor live service arrival."
     },
     {
       "semanticId": "organization.scope.refusal",
@@ -926,8 +926,8 @@
         "lib/permissions.ts",
         "components/system-labels-grid.tsx"
       ],
-      "reviewedSourceHash": "708dcd501c2bcec17675cf644a9d1c9de4baf13068086790eaaf49754c900388",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "9cd9665e732aa01e9bbf01a0476d6bbfb90d2c01e3619bec556f1fc51436961c",
+      "reviewNote": "Source-to-guide semantic review at 44138b7b80d2dddb2cf495fe9ddcce374011baa5 supports this bounded implemented journey. Actual manual checks remain required. Reviewed source bytes establish neither a test/manual pass, complete functional coverage nor live service arrival."
     },
     {
       "semanticId": "settings.labels.collision",
@@ -982,8 +982,8 @@
         "lib/permissions.ts",
         "components/system-labels-grid.tsx"
       ],
-      "reviewedSourceHash": "a535fa0dbf0fb9cb914624964351d4fc258390e2de868a3a6c7887079b013c35",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "64cd1159d276b59e56571005bd16da8ec51efff81b5b4d527bdb7364fd3110c3",
+      "reviewNote": "Source-to-guide semantic review at 44138b7b80d2dddb2cf495fe9ddcce374011baa5 supports this bounded implemented journey. Actual manual checks remain required. Reviewed source bytes establish neither a test/manual pass, complete functional coverage nor live service arrival."
     },
     {
       "semanticId": "settings.labels.workbook",
@@ -1049,11 +1049,10 @@
         "lib/system-label-definition.ts",
         "lib/system-label-workbook.ts",
         "lib/system-label-upload.ts",
-        "lib/system-label-xls.ts",
-        "db/migrations/0563_label_import_tenant_code_collision.sql"
+        "lib/system-label-xls.ts"
       ],
-      "reviewedSourceHash": "425a8c5a898dd27a7168517bcbc9e3dbe7a4d6460b3fee13ed6964e1b6236bd6",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "fdade759bbd6496f2152e31b17c51ede723570a9df46fc41130399cf1750b8cf",
+      "reviewNote": "Source-to-guide semantic review at 44138b7b80d2dddb2cf495fe9ddcce374011baa5 supports this bounded implemented journey. Actual manual checks remain required. Reviewed source bytes establish neither a test/manual pass, complete functional coverage nor live service arrival."
     },
     {
       "semanticId": "workflow.approvals.own",
@@ -1110,8 +1109,8 @@
         "lib/authz.ts",
         "core/system-testing-workspace.ts"
       ],
-      "reviewedSourceHash": "832a18c282836a369389c7061b7312b92da406db512b36166c6849a60dc99044",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "48b6cff148ec48548f721004ef07d40af164728fd0e7d23bc1a96ceb4d5014f4",
+      "reviewNote": "Source-to-guide semantic review at 44138b7b80d2dddb2cf495fe9ddcce374011baa5 supports this bounded implemented journey. Actual manual checks remain required. Reviewed source bytes establish neither a test/manual pass, complete functional coverage nor live service arrival."
     },
     {
       "semanticId": "workflow.approvals.history",
@@ -1169,8 +1168,8 @@
         "components/leave/own-leave-history.tsx",
         "core/read.ts"
       ],
-      "reviewedSourceHash": "ed230e904589e4a6071c954ba1b6ce5c0372dae5e59700215b346e0432dc37ea",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "f3276a9e78805076c9e1fdc4635405802e9752d6eb1530a596a357a8b1c3a9f6",
+      "reviewNote": "Source-to-guide semantic review at 44138b7b80d2dddb2cf495fe9ddcce374011baa5 supports this bounded implemented journey. Actual manual checks remain required. Reviewed source bytes establish neither a test/manual pass, complete functional coverage nor live service arrival."
     },
     {
       "semanticId": "workflow.approvals.empty",
@@ -1486,8 +1485,8 @@
         "lib/profile-edit-policy-value.ts",
         "lib/personnel-field-label.ts"
       ],
-      "reviewedSourceHash": "74bba2f567fa6051a1b426ac057e792e26f86d71437cb32bb9a42142ffd5a701",
-      "reviewNote": "Source-to-guide semantic review completed for this bounded implemented journey at 66dcb71a81b7ac53b2783426c202603d7e751f2f. Actual execution remains required. Source review establishes neither a manual pass, service arrival nor complete functional coverage."
+      "reviewedSourceHash": "fd804c59e43e79fd5a9e980cb8ceee76de9c4b5bd310675e49835f415ec8bdcf",
+      "reviewNote": "Source-to-guide semantic review at 44138b7b80d2dddb2cf495fe9ddcce374011baa5 supports this bounded implemented journey. Actual manual checks remain required. Reviewed source bytes establish neither a test/manual pass, complete functional coverage nor live service arrival."
     },
     {
       "semanticId": "settings.testing.independent-observations",
@@ -1577,6 +1576,175 @@
       ],
       "reviewedSourceHash": "6957d078d11c41970de402e52da4589089fde7815a8d24fee47012dfcac8ca2c",
       "reviewNote": "Source-to-guide semantic review completed for this bounded implemented journey at 66dcb71a81b7ac53b2783426c202603d7e751f2f. Actual execution remains required. Source review establishes neither a manual pass, service arrival nor complete functional coverage."
+    },
+    {
+      "semanticId": "payroll.pay-items.import",
+      "definition": {
+        "format": 1,
+        "title": "Check a create-only Pay Items workbook and retain incomplete calculations",
+        "objective": "Verify an invalid Pay Items workbook creates no catalogue rows, a corrected error-free file adds only new codes, and an imported incomplete Formula remains pending.",
+        "functionKey": "payroll.pay-items.import",
+        "area": "payroll",
+        "moduleCode": "payroll",
+        "category": "integration",
+        "priority": "high",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and designated fictional records only. Do not use production personal or financial data.",
+          "The coordinator supplies catalogue administration authority, one accessible fictional employee with a Payroll tab, and an existing ready pay-code control so its Add Pay Item picker is available.",
+          "Prepare two unused fictional codes and complete valid settings using current screen choices: one Fixed item and one active Formula item with no supplied calculation. Prepare a separate invalid copy also containing an existing active or inactive code. No concurrent writer changes these codes."
+        ],
+        "testData": [
+          "The two fictional codes, Labels, optional Descriptions, exact desired active/inactive values and valid current statutory/classification choices. Keep codes at most20 characters, Labels at most60 and Descriptions at most200.",
+          "Use the current downloaded XLSX with Instructions, Pay Items, Example, Field Guide and Lists; enter data in Pay Items from row3 under its existing headers. Example rows are reference, not an instruction to import all examples unchanged."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "Open /admin/pay-components, download the current template and inspect its five sheets and current choices/default guidance. Prepare the invalid copy described above.",
+            "expected": "The workbook uses current catalogue choices and explains its screen-aligned defaults. Unsupported historical workbook choices are not silently adopted."
+          },
+          {
+            "id": "step2",
+            "action": "Open Import Excel, upload the invalid copy and Check. Inspect row/cell errors, normalized settings and warnings; download its error workbook. Do not apply a corrected file yet. Reopen the catalogue in an authorized view.",
+            "expected": "Confirmation is unavailable while errors remain. The error report preserves the workbook and identifies its row/cell issues. Neither unused fictional code has been created and the incumbent code remains unchanged."
+          },
+          {
+            "id": "step3",
+            "action": "Remove the invalid existing-code row in a separate corrected file. Choose the corrected file, Check again, and review every normalized setting and pending classification for both new codes.",
+            "expected": "The preview is error-free and identifies exactly two intended new codes. Formula is explicitly incomplete/pending; no zero rate or executable calculation is invented. A specific refusal must be recorded as a refusal."
+          },
+          {
+            "id": "step4",
+            "action": "Confirm the error-free import once, then reopen/search the exact two codes, using the relevant Active/Inactive filter. Inspect Label, Description, settings and calculation status without changing them.",
+            "expected": "The actual created count is two. Both settings persist with the intended status; the Formula item remains Formula pending. Reopening is required and does not itself prove Payroll processing or calculated money."
+          },
+          {
+            "id": "step5",
+            "action": "Open the supplied fictional employee Payroll tab and its Add Pay Item picker without saving an assignment. Compare the known ready control with the pending Formula code. Cancel the dialog.",
+            "expected": "The ready control is available and the pending Formula is absent from assignable choices. No assignment or Payroll action was performed; canonical forged-assignment/Process/Reprocess backstops require separate checks."
+          },
+          {
+            "id": "step6",
+            "action": "Re-upload the same corrected file and Check without confirming any replacement.",
+            "expected": "The now-existing codes are refused, including any created inactive identity. Existing saved settings remain unchanged; this workflow is create-only."
+          }
+        ],
+        "expectedBehavior": "Verify an invalid Pay Items workbook creates no catalogue rows, a corrected error-free file adds only new codes, and an imported incomplete Formula remains pending.",
+        "expectedFunction": "Verify an invalid Pay Items workbook creates no catalogue rows, a corrected error-free file adds only new codes, and an imported incomplete Formula remains pending.",
+        "permissions": [
+          "An actual catalogue administrator with normal Pay Items access and normal Personnel Payroll-read authority over the designated fictional employee."
+        ],
+        "jurisdiction": null,
+        "configuration": "Requires two coordinator-reviewed valid rows under current country-pack restrictions. This bounded guide does not test 1000-row timing, native Excel rendering, malicious archive refusal, injected write-fault rollback, formula completion or all financial consumers.",
+        "screenKeys": [
+          "payComponents",
+          "personnelAdmin"
+        ]
+      },
+      "sources": [
+        "app/admin/pay-components/page.tsx",
+        "app/admin/pay-components/import-pay-items.tsx",
+        "app/admin/pay-components/import/route.ts",
+        "app/admin/pay-components/template/route.ts",
+        "app/admin/pay-components/component-form.tsx",
+        "app/admin/pay-components/actions.ts",
+        "app/admin/pay-components/pay-rule-editor.tsx",
+        "core/pay-component-import.ts",
+        "core/pay-components.ts",
+        "lib/pay-component-contract.ts",
+        "lib/pay-component-import.ts",
+        "lib/pay-component-workbook.ts",
+        "lib/pay-component-workbook-layout.ts",
+        "lib/pay-item-import-messages.ts",
+        "app/admin/personnel/[employmentId]/page.tsx",
+        "lib/permissions.ts"
+      ],
+      "reviewNote": "Source-to-guide semantic review at 44138b7b80d2dddb2cf495fe9ddcce374011baa5 supports this bounded implemented journey. Actual manual checks remain required. Reviewed source bytes establish neither a test/manual pass, complete functional coverage nor live service arrival.",
+      "reviewedSourceHash": "fd50e93d282e6263b1a4e57b016f5732a042fd8909865841537a2b13afd1b7a9"
+    },
+    {
+      "semanticId": "personnel.movement.import",
+      "definition": {
+        "format": 1,
+        "title": "Exclude an invalid Movement row and confirm a rechecked employee sequence",
+        "objective": "Verify a dated Promotion and Transfer for one existing fictional employee are checked in order, an invalid row is excluded explicitly, and the confirmed selected history retains the same employee identity.",
+        "functionKey": "personnel.movement.import",
+        "area": "personnel",
+        "moduleCode": "employees",
+        "category": "integration",
+        "priority": "high",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and designated fictional records only. Do not use production personal or financial data.",
+          "The coordinator supplies one existing fictional employee in an administered source company, its original employment identity and current history/header, and two valid nonconflicting dates after hire and no later than today in the app HR calendar.",
+          "Promotion and Transfer event types are active. The coordinator supplies an actual changed grade or fictional salary for Promotion, a different valid department for Transfer, required current New Event inputs and a period not prohibited by existing Payroll rules. No concurrent writer changes this subject or catalogue."
+        ],
+        "testData": [
+          "A current Movement XLSX or CSV for the exact existing employee: later Transfer, an invalid Hired/unknown-event row, and earlier Promotion. Keep every unsupported cell blank; blanks retain existing values. Do not submit Entity Transfer, exit events or another employee in this bounded guide."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "Open /admin/personnel/import, select Movement and the source company. Download its Excel and CSV templates; inspect Movements, Instructions and Lists in Excel. Note the employee’s original history and header separately.",
+            "expected": "Movement occupies the former Employment choice. Other import choices remain available. The live type list excludes Hired; templates distinguish required/optional fields and omitted blank values."
+          },
+          {
+            "id": "step2",
+            "action": "Upload the mixed three-row file and Check. Inspect the employee group, rejected row, effective-date order, and Current/Proposed comparisons. Reopen the original Personnel view before confirming.",
+            "expected": "The two valid events are shown in effective-date order even if physical rows differ; the invalid type is disabled/excluded with a reason. Preview itself has not persisted a Movement or changed the employee header."
+          },
+          {
+            "id": "step3",
+            "action": "Keep only the two valid rows selected. Select Recheck selected events, review their fresh Current/Proposed sequence and the retained rejected-row reason, then acknowledge the exact excluded-row count.",
+            "expected": "Confirmation requires a preview bound to the selected rows and explicit exclusion acknowledgment. A dependent selected event cannot rely on an excluded predecessor; any actual recheck refusal must be retained and corrected rather than forced through."
+          },
+          {
+            "id": "step4",
+            "action": "Confirm the reviewed selected sequence once. Read actual totals and per-event-type results, and download the rejected/failed-row report.",
+            "expected": "For the supplied valid fixture, exactly one Promotion and one Transfer are imported and the invalid row remains excluded. A final stale/write refusal must be recorded honestly; all selected events for this employee save together or none, while other employees are independent and not exercised here."
+          },
+          {
+            "id": "step5",
+            "action": "Follow View history for this employee. Reopen its Movement history and latest Personnel details and inspect both event details with their recorded effective dates.",
+            "expected": "The original employee identity remains; no new employee is created. Exactly the two selected movement rows are retained in ordinary history and today’s header reflects their valid changes. The invalid row did not become history. Edit/Roll Back availability is observed only; no edit, rollback, future-sweep, leave-money parity or whole-upload atomicity result is claimed."
+          }
+        ],
+        "expectedBehavior": "Verify a dated Promotion and Transfer for one existing fictional employee are checked in order, an invalid row is excluded explicitly, and the confirmed selected history retains the same employee identity.",
+        "expectedFunction": "Verify a dated Promotion and Transfer for one existing fictional employee are checked in order, an invalid row is excluded explicitly, and the confirmed selected history retains the same employee identity.",
+        "permissions": [
+          "A real HR administrator with normal source-company Personnel and Movement authority. Any selected target/lookup references must remain inside the caller’s normal authority."
+        ],
+        "jurisdiction": null,
+        "configuration": "Requires coordinator-reviewed ordinary comparison events and valid dates/current catalogue. Future intent execution, active custom types, Entity Transfer scope, multi-employee failure isolation and injected rollback need separate dedicated guides/checks.",
+        "screenKeys": [
+          "personnelAdmin"
+        ]
+      },
+      "sources": [
+        "app/admin/personnel/import/import-workbench.tsx",
+        "app/admin/personnel/import/movement-import.tsx",
+        "app/admin/personnel/import/movement-actions.ts",
+        "core/movement-import.ts",
+        "core/movement.ts",
+        "core/movement-type.ts",
+        "core/movement-kinds.ts",
+        "core/org.ts",
+        "core/leave.ts",
+        "lib/movement-import-contract.ts",
+        "lib/movement-import-template.ts",
+        "lib/movement-form-contract.ts",
+        "lib/import-sections.ts",
+        "lib/import-file.ts",
+        "lib/personnel-field-registry.ts",
+        "lib/personnel-form-contract.ts",
+        "lib/permissions.ts",
+        "app/admin/personnel/[employmentId]/page.tsx",
+        "app/admin/personnel/[employmentId]/movement-new-event.tsx",
+        "app/admin/personnel/[employmentId]/actions.ts"
+      ],
+      "reviewNote": "Source-to-guide semantic review at 44138b7b80d2dddb2cf495fe9ddcce374011baa5 supports this bounded implemented journey. Actual manual checks remain required. Reviewed source bytes establish neither a test/manual pass, complete functional coverage nor live service arrival.",
+      "reviewedSourceHash": "0d323f2932fc4c66c68e688ae3137ff656a196df963c33a9a3c0db8e50a1d0ff"
     }
   ]
 }
