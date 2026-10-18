@@ -8,8 +8,9 @@ const mocks = vi.hoisted(() => ({ change: vi.fn(), load: vi.fn(), note: vi.fn(),
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: mocks.refresh, push: vi.fn() }) }));
 vi.mock('../app/lifecycle/onboarding/v31-actions', () => ({ changeOnboarding: mocks.change, loadOnboardingTask: mocks.load, writeOnboardingNote: mocks.note, markOnboardingSeen: mocks.seen, saveOnboardingConfig: mocks.config, saveOnboardingChecklistTasks: mocks.tasks }));
 const { OnboardingSettings } = await import('../app/admin/lifecycle/onboarding/settings');
+const { Joiners } = await import('../app/lifecycle/onboarding/joiners');
 const { OnboardingCaseView } = await import('../app/lifecycle/onboarding/case-view');
-const { defaultConfig, blankCase } = await import('../lib/onboarding-model');
+const { defaultConfig, blankCase, submitCase, handover, cancelCase, progress, dayDate } = await import('../lib/onboarding-model');
 const { TasksView } = await import('../app/tasks/tasks-view');
 const { OnboardingDateInput } = await import('../components/onboarding-date-input');
 const messages = (locale: string) => JSON.parse(readFileSync(new URL('../messages/' + locale + '.json', import.meta.url), 'utf8'));
@@ -71,6 +72,27 @@ describe('V3.1 localized task controls', () => {
         await screen.findByText('Case details saved.');
         expect(screen.getByRole('button', { name: 'Submit case and confirm checklist' })).toBeVisible();
         expect(screen.getByRole('button', { name: 'Save case details' })).toBeEnabled();
+    });
+    it('retains older unfinished equipment and pending preparation while recent filtering excludes old cancelled or completed work', () => {
+        const today=todayInKualaLumpur(), join=dayDate(today,-40), actor={id:'owner',name:'HR',module:true,hr:true,master:false};
+        let id=0;
+        const env={today,now:today+'T02:00:00.000Z',id:()=>String(++id),nextNumber:()=> 'IT-'+(++id),leave:{},taskLoads:{},lastTaskAssignment:{},pendingApprovals:{},lifetimeApprovals:{},users:['owner']};
+        const config=defaultConfig('owner');config.groups.find(g=>g.id==='group-tech')!.members=['owner'];
+        config.catalogue=[{id:'laptop',name:'Laptop',type:'device',active:true,rules:{},workflow:null,team:'group-tech',card:false}];
+        const working=blankCase('working','OB-1','draft',{fullName:'Older equipment work',joinDate:join,company:'company',department:'dept',title:'job',supervisor:'manager'},env);
+        working.personnelStatus='Active';working.hiring='new_hire';working.selected=['laptop'];submitCase(config,working,actor,env);
+        const cancelled=structuredClone(working);cancelled.id='cancelled';cancelled.source.fullName='Old cancelled case';cancelCase(cancelled,'Test',actor,env);
+        const complete=structuredClone(working);complete.id='complete';complete.source.fullName='Old completed case';complete.requisitions[0]!.items[0]!.state='ready';handover(config,complete,actor,env);
+        const pending=blankCase('pending','OB-4','draft-4',{fullName:'Older pending preparation',joinDate:join},env);pending.personnelStatus='Active';
+        const rows=[working,cancelled,complete,pending].map(c=>({case:c,revision:1,isNew:false,progress:progress(config,c)}));
+        const options={businessGroup:[],company:[],department:[],title:[],grade:[],employmentType:[],supervisor:[]};
+        render(<NextIntlClientProvider locale="en" messages={messages('en')}><Joiners rows={rows as never} config={config} options={options}/></NextIntlClientProvider>);
+        expect(screen.getByRole('link',{name:'Older equipment work'})).toBeVisible();
+        expect(screen.getByRole('link',{name:'Older pending preparation'})).toBeVisible();
+        expect(screen.queryByRole('link',{name:'Old cancelled case'})).not.toBeInTheDocument();
+        expect(screen.queryByRole('link',{name:'Old completed case'})).not.toBeInTheDocument();
+        const due=dayDate(join,-7).split('-').reverse().join('/');
+        expect(screen.getByTitle(new RegExp('Next: Case details.*Due '+due))).toBeInTheDocument();
     });
     it('keeps a future task visible with its status control locked', () => {
         render(<NextIntlClientProvider locale="en" messages={messages('en')} timeZone="Asia/Kuala_Lumpur"><TasksView items={[{ ...task, locked: true, lockReason: 'After Day 1 handover' }]} existing={[]}/></NextIntlClientProvider>);
