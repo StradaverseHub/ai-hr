@@ -251,6 +251,7 @@ async function analyze(
   const { byCode, catalog, icOwners, emailOwners } = await loadSubjects(
     ctx,
     codes,
+    section,
   );
 
   const seenCodes = new Set<string>();
@@ -390,7 +391,7 @@ async function analyze(
 }
 
 /** Read every employee this file names, plus the catalogs and the IC ownership map, in one pass. */
-async function loadSubjects(ctx: SessionContext, codes: Set<string>) {
+async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: ImportSection) {
   return withTenant(ctx, async (tx) => {
     // The tenant's employments, keyed by Employee ID and by work email. Both keys are needed: the
     // Direct Superior column accepts either, exactly as the wide importer's does.
