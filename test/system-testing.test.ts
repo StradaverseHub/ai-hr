@@ -24,9 +24,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { todayInKualaLumpur } from '../lib/hr-date';
+import { HR_LOCAL_TZ, todayInKualaLumpur } from '../lib/hr-date';
 import {
   CROSS_MODULE_CODE,
   NotAdminError,
@@ -674,14 +674,57 @@ describe('e6be5a3b — the module, the placement, and the wiring', () => {
     expect(readRepo('app/admin/system-testing/workspace-actions.ts').trimStart().startsWith("'use server'")).toBe(true);
   });
 
-  it('a date from an instant goes through todayInKualaLumpur, on every screen that prints one', () => {
-    // CLAUDE.md §8. `toISOString().slice(0,10)` is the shape that reads right on this box and prints
-    // yesterday for a run recorded at 00:30 MYT.
-    for (const p of [DETAIL_PAGE,'components/system-testing/execution-review.tsx']) {
-      const src = strip(readRepo(p));
-      expect(src, `${p} formats dates in the tenant's calendar`).toContain('todayInKualaLumpur(');
-      expect(src, `${p} must not slice an ISO string into a date`).not.toMatch(/toISOString\(\)\s*\.slice/);
+  it('recorded HR instants use the shared date-and-time formatter on every timestamp surface', () => {
+    // CLAUDE.md §8: recorded instants need the explicit HR timezone, rather than a UTC date slice.
+    // The approved names/update-times/history scope now includes both personal and team consumers.
+    const surfaces = [
+      {path:DETAIL_PAGE,values:['c.updatedAt','data.currentVersion.publishedAt','historical.publishedAt','v.publishedAt','run.runAt']},
+      {path:'components/system-testing/execution-review.tsx',values:['data.updatedAt','run.runAt']},
+      {path:'components/system-testing/assignment-list.tsx',values:['row.updatedAt']},
+      {path:'components/system-testing/catalogue-review.tsx',values:['row.createdAt']},
+    ];
+    for (const surface of surfaces) {
+      const src = strip(readRepo(surface.path));
+      expect(src.length,`${surface.path}: nonempty timestamp source`).toBeGreaterThan(300);
+      expect(src,`${surface.path}: imports the canonical formatter`).toMatch(/import\s*\{\s*TestingRecordedTime\s*\}\s*from\s*['"](?:@\/components\/system-testing\/|\.\/)recorded-time['"]/);
+      for (const value of surface.values) {
+        const escaped=value.replaceAll('.', '\\.');
+        expect(src,`${surface.path}: renders the recorded ${value}`).toMatch(new RegExp(`<TestingRecordedTime\\b[^>]*\\bvalue\\s*=\\s*\\{\\s*${escaped}\\s*\\}`));
+      }
+      expect(src,`${surface.path}: no competing local/UTC date formatter`).not.toMatch(/toISOString\(\)\s*\.slice|toLocaleDateString|toLocaleTimeString|Intl\.DateTimeFormat/);
     }
+    const formatter=strip(readRepo('components/system-testing/recorded-time.tsx'));
+    expect(formatter.length,'nonempty canonical formatter').toBeGreaterThan(300);
+    expect(formatter).toMatch(/import\s*\{\s*HR_LOCAL_TZ\s*\}\s*from\s*['"]@\/lib\/hr-date['"]/);
+    expect(formatter).toMatch(/timeZone:\s*HR_LOCAL_TZ/);
+    expect(formatter).toMatch(/dateStyle:\s*['"]medium['"]/);expect(formatter).toMatch(/timeStyle:\s*['"]medium['"]/);
+    expect(formatter).toMatch(/dateTime=\{value\.toISOString\(\)\}/);
+    expect(formatter).toMatch(/\.format\(value\)/);
+    expect(formatter).not.toMatch(/toISOString\(\)\s*\.slice|new Date\(/);
+  });
+
+  it('recorded HR instants retain the exact historical instant across Kuala Lumpur midnight',async()=>{
+    const getLocale=vi.fn(async()=>'en');
+    // Only this direct component read needs a request locale; do not mock the business date owner.
+    vi.doMock('next-intl/server',()=>({getLocale}));
+    try {
+      const {TestingRecordedTime}=await import('../components/system-testing/recorded-time');
+      const beforeMidnight=new Date('2025-06-04T15:59:59.000Z'),afterMidnight=new Date('2025-06-04T16:00:01.123Z');
+      const before=await TestingRecordedTime({value:beforeMidnight}),after=await TestingRecordedTime({value:afterMidnight});
+      expect(HR_LOCAL_TZ).toBe('Asia/Kuala_Lumpur');
+      expect(before.type).toBe('time');expect(after.type).toBe('time');
+      expect(before.props.title).toBe(HR_LOCAL_TZ);expect(after.props.title).toBe(HR_LOCAL_TZ);
+      expect(before.props.dateTime).toBe('2025-06-04T15:59:59.000Z');
+      expect(after.props.dateTime).toBe('2025-06-04T16:00:01.123Z');
+      expect(before.props.children).toContain('Jun 4, 2025');expect(before.props.children).toContain('11:59:59 PM');
+      expect(after.props.children).toContain('Jun 5, 2025');expect(after.props.children).toContain('12:00:01 AM');
+      // This is deliberately distinguishable from the original UTC-date fault, on any host timezone.
+      const utc=new Intl.DateTimeFormat('en',{dateStyle:'medium',timeStyle:'medium',timeZone:'UTC'}).format(afterMidnight);
+      expect(after.props.children).not.toBe(utc);
+      expect(beforeMidnight.toISOString()).toBe('2025-06-04T15:59:59.000Z');
+      expect(afterMidnight.toISOString()).toBe('2025-06-04T16:00:01.123Z');
+      expect(getLocale).toHaveBeenCalledTimes(2);
+    } finally {vi.doUnmock('next-intl/server');}
   });
 });
 
