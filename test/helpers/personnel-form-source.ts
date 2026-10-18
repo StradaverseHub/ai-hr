@@ -6,8 +6,30 @@ export type PersonnelSourceIssue={line:number;message:string};
 const CONTROL_TAGS=new Set(['input','select','textarea','DateField','Combobox','ProfileOptionSelect','ProfileOptionSelectControlled','IcDobAutofill','CurrencySelect','MultiSelectPopover']);
 const ADAPTERS=new Set(['personnelInput','personnelControl','personnelFormName','personnelCarry','personnelPresence','personnelDisplay','personnelRadio','personnelWorkflowControl','personnelWorkflowInput','personnelWorkflowCarry']);
 /** Inspect real JSX, including controlled draft controls. A registry count is never evidence of rendering. */
-export function auditPersonnelFormSource(file:string,text:string,fields:readonly PersonnelFieldDescriptor[],options:{exemptions?:readonly PersonnelSourceExemption[];dynamicBindings?:Record<string,readonly string[]>}={}) {
+export function auditPersonnelFormSource(file:string,text:string,fields:readonly PersonnelFieldDescriptor[],options:{exemptions?:readonly PersonnelSourceExemption[];dynamicBindings?:Record<string,readonly string[]>;resolveImportSource?:(from:string,specifier:string)=>string|undefined}={}) {
   const source=ts.createSourceFile(file,text,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+  // Resolve the renderer's actual named import and exported literal map. Never exempt a binding
+  // or maintain a second descriptor map; unknown modules/keys/nonliteral entries remain unresolved.
+  const importedMaps=new Map<string,Readonly<Record<string,string>>>();
+  for(const node of source.statements)if(ts.isImportDeclaration(node)&&ts.isStringLiteral(node.moduleSpecifier)){
+    const imports=node.importClause?.namedBindings;if(!imports||!ts.isNamedImports(imports))continue;
+    const moduleText=options.resolveImportSource?.(file,node.moduleSpecifier.text);if(moduleText===undefined)continue;
+    const imported=ts.createSourceFile(node.moduleSpecifier.text,moduleText,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS);
+    for(const binding of imports.elements){
+      const exported=binding.propertyName?.text??binding.name.text;
+      for(const statement of imported.statements)if(ts.isVariableStatement(statement)&&statement.modifiers?.some(m=>m.kind===ts.SyntaxKind.ExportKeyword))for(const declaration of statement.declarationList.declarations){
+        if(!ts.isIdentifier(declaration.name)||declaration.name.text!==exported||!declaration.initializer)continue;
+        let value=declaration.initializer;while(ts.isAsExpression(value)||ts.isParenthesizedExpression(value)||ts.isSatisfiesExpression(value))value=value.expression;
+        if(!ts.isObjectLiteralExpression(value))continue;
+        const map:Record<string,string>={};let literal=true;
+        for(const prop of value.properties){
+          if(!ts.isPropertyAssignment(prop)||!(ts.isIdentifier(prop.name)||ts.isStringLiteralLike(prop.name))||!ts.isStringLiteralLike(prop.initializer)||Object.hasOwn(map,prop.name.text)){literal=false;break;}
+          map[prop.name.text]=prop.initializer.text;
+        }
+        if(literal&&Object.keys(map).length)importedMaps.set(binding.name.text,map);
+      }
+    }
+  }
   const issues:PersonnelSourceIssue[]=[];let controls=0;const usedExemptions=new Map<PersonnelSourceExemption,number>();
   const byId=new Map(fields.map(field=>[field.id,field]));
   const report=(node:ts.Node,message:string)=>issues.push({line:source.getLineAndCharacterOfPosition(node.getStart(source)).line+1,message});
@@ -22,34 +44,41 @@ export function auditPersonnelFormSource(file:string,text:string,fields:readonly
     const visit=(child:ts.Node)=>{if(ts.isBinaryExpression(child)&&child.operatorToken.kind===ts.SyntaxKind.EqualsEqualsEqualsToken&&ts.isPropertyAccessExpression(child.left)&&['owner','ownerField','formGroup'].includes(child.left.name.text)){const value=ts.isStringLiteralLike(child.right)?child.right.text:ts.isIdentifier(child.right)?bindings[child.right.text]:undefined;if(value)predicates[child.left.name.text]=value;}child.forEachChild(visit);};visit(node);
     return Object.keys(predicates).length?fields.filter(field=>Object.entries(predicates).every(([key,value])=>field[key as keyof PersonnelFieldDescriptor]===value)).map(field=>field.id):[];
   };
-  const ids=(expression:ts.Expression,seen=new Set<ts.Node>()):readonly string[]=>{
+  const ids=(expression:ts.Expression,seen=new Set<ts.Node>(),argumentsByParameter:ReadonlyMap<ts.ParameterDeclaration,readonly string[]>=new Map()):readonly string[]=>{
     if(seen.has(expression))return [];seen=new Set(seen).add(expression);
     const exact=options.dynamicBindings?.[expression.getText(source)];if(exact)return exact;
     if(ts.isStringLiteralLike(expression))return [expression.text];
-    if(ts.isParenthesizedExpression(expression)||ts.isAsExpression(expression)||ts.isNonNullExpression(expression))return ids(expression.expression,seen);
-    if(ts.isConditionalExpression(expression))return [...ids(expression.whenTrue,seen),...ids(expression.whenFalse,seen)];
-    if(ts.isArrayLiteralExpression(expression))return expression.elements.flatMap(e=>ts.isExpression(e)?ids(e,seen):[]);
-    if(ts.isObjectLiteralExpression(expression))return expression.properties.flatMap(p=>ts.isPropertyAssignment(p)?ids(p.initializer,seen):[]);
+    if(ts.isParenthesizedExpression(expression)||ts.isAsExpression(expression)||ts.isNonNullExpression(expression))return ids(expression.expression,seen,argumentsByParameter);
+    if(ts.isConditionalExpression(expression))return [...ids(expression.whenTrue,seen,argumentsByParameter),...ids(expression.whenFalse,seen,argumentsByParameter)];
+    if(ts.isArrayLiteralExpression(expression))return expression.elements.flatMap(e=>ts.isExpression(e)?ids(e,seen,argumentsByParameter):[]);
+    if(ts.isObjectLiteralExpression(expression))return expression.properties.flatMap(p=>ts.isPropertyAssignment(p)?ids(p.initializer,seen,argumentsByParameter):[]);
     if(ts.isCallExpression(expression)&&ts.isIdentifier(expression.expression)){
       const d=declaration(expression.expression.text,expression),fn=d?.initializer;
       if(fn&&(ts.isArrowFunction(fn)||ts.isFunctionExpression(fn))){
-        if(!ts.isBlock(fn.body))return ids(fn.body,seen);
-        const returns:ts.Expression[]=[];visitChildren(fn.body,node=>{if(ts.isReturnStatement(node)&&node.expression)returns.push(node.expression);});return returns.flatMap(value=>ids(value,seen));
+        const bound=new Map(argumentsByParameter);
+        fn.parameters.forEach((parameter,index)=>{const argument=expression.arguments[index];if(argument)bound.set(parameter,ids(argument,seen,argumentsByParameter));});
+        if(!ts.isBlock(fn.body))return ids(fn.body,seen,bound);
+        const returns:ts.Expression[]=[];visitChildren(fn.body,node=>{if(ts.isReturnStatement(node)&&node.expression)returns.push(node.expression);});return returns.flatMap(value=>ids(value,seen,bound));
       }
     }
     if(ts.isIdentifier(expression)){
       const fn=enclosingFunction(expression);
-      if(ts.isFunctionLike(fn)){const index=fn.parameters.findIndex(p=>ts.isIdentifier(p.name)&&p.name.text===expression.text);if(index>=0&&ts.isVariableDeclaration(fn.parent)&&ts.isIdentifier(fn.parent.name)){const values:ts.Expression[]=[],ownerName=fn.parent.name.text;visitChildren(source,node=>{if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&node.expression.text===ownerName&&node.arguments[index])values.push(node.arguments[index]);});return values.flatMap(value=>ids(value,seen));}}
+      if(ts.isFunctionLike(fn)){const parameter=fn.parameters.find(p=>ts.isIdentifier(p.name)&&p.name.text===expression.text);if(parameter&&argumentsByParameter.has(parameter))return argumentsByParameter.get(parameter)!;}
+      if(ts.isFunctionLike(fn)){const index=fn.parameters.findIndex(p=>ts.isIdentifier(p.name)&&p.name.text===expression.text);if(index>=0&&ts.isVariableDeclaration(fn.parent)&&ts.isIdentifier(fn.parent.name)){const values:ts.Expression[]=[],ownerName=fn.parent.name.text;visitChildren(source,node=>{if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&node.expression.text===ownerName&&node.arguments[index])values.push(node.arguments[index]);});return values.flatMap(value=>ids(value,seen,argumentsByParameter));}}
       const d=declaration(expression.text,expression);if(d?.initializer){
         if(ts.isArrayBindingPattern(d.name)&&ts.isElementAccessExpression(d.initializer)&&ts.isIdentifier(d.initializer.expression)){
           const index=d.name.elements.findIndex(e=>ts.isBindingElement(e)&&ts.isIdentifier(e.name)&&e.name.text===expression.text);
           const owner=declaration(d.initializer.expression.text,d.initializer);let map=owner?.initializer;if(map&&ts.isAsExpression(map))map=map.expression;
-          if(map&&ts.isObjectLiteralExpression(map))return map.properties.flatMap(p=>ts.isPropertyAssignment(p)&&ts.isArrayLiteralExpression(p.initializer)&&p.initializer.elements[index]?ids(p.initializer.elements[index] as ts.Expression,seen):[]);
+          if(map&&ts.isObjectLiteralExpression(map))return map.properties.flatMap(p=>ts.isPropertyAssignment(p)&&ts.isArrayLiteralExpression(p.initializer)&&p.initializer.elements[index]?ids(p.initializer.elements[index] as ts.Expression,seen,argumentsByParameter):[]);
         }
-        return ids(d.initializer,seen);
+        return ids(d.initializer,seen,argumentsByParameter);
       }
     }
     if(ts.isElementAccessExpression(expression)||ts.isPropertyAccessExpression(expression)){
+      if(ts.isIdentifier(expression.expression)&&!declaration(expression.expression.text,expression)){
+        const map=importedMaps.get(expression.expression.text);
+        if(map){const keys=ts.isElementAccessExpression(expression)?expression.argumentExpression?ids(expression.argumentExpression,seen,argumentsByParameter):[]:[expression.name.text];return keys.length&&keys.every(key=>Object.hasOwn(map,key))?keys.map(key=>map[key]):[];}
+      }
       if(ts.isPropertyAccessExpression(expression)&&expression.name.text==='id'){
         if(ts.isCallExpression(expression.expression)&&ts.isIdentifier(expression.expression.expression)){
           const call=expression.expression,d=declaration(call.expression.getText(source),call),fn=d?.initializer;
@@ -58,7 +87,7 @@ export function auditPersonnelFormSource(file:string,text:string,fields:readonly
         for(const scope of scopes(expression)){const found=registryQuery(scope);if(found.length)return found;}
         return [];
       }
-      return ids(expression.expression,seen);
+      return ids(expression.expression,seen,argumentsByParameter);
     }
     return [];
   };

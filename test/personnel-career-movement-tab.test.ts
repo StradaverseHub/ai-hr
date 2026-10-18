@@ -12,6 +12,8 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { isCorrectedMovementRow, partitionMovementRows } from '../lib/movement-visibility';
 import type { MovementHistoryRow, MovementReversal, MovementStatus } from '../core/movement';
+import { COMPARISON_KINDS,isComparisonKind } from '../core/movement-kinds';
+import { movementFormFields } from '../lib/movement-form-contract';
 
 const PAGE = fs.readFileSync(
   path.resolve(__dirname, '../app/admin/personnel/[employmentId]/page.tsx'),
@@ -140,7 +142,16 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
     // Transfer must render the Transfer grid. The invariant is unchanged — the grid follows the change
     // kinds — so the guard follows the construct that now expresses it.
     expect(NEW_EVENT.includes('const behaviour = behaviourOf(kind);')).toBe(true);
-    expect(NEW_EVENT.includes('const isComparison = COMPARISON_KINDS.includes(behaviour);')).toBe(true);
+    expect(NEW_EVENT).toContain("import {isComparisonKind} from '@/core/movement-kinds'");
+    expect(NEW_EVENT).toContain('const isComparison = isComparisonKind(behaviour);');
+    expect(NEW_EVENT).not.toContain('const COMPARISON_KINDS');
+    expect(COMPARISON_KINDS.length).toBeGreaterThan(0);
+    for(const kind of ['transfer','entityTransfer','promotion','demotion','increment','salaryAdjustment','orgAssignmentChange','employmentTypeChange','reportingLineChange','confirmation']){
+      expect(isComparisonKind(kind),kind).toBe(true);expect(movementFormFields(kind),kind).toContain('basicSalary');
+    }
+    for(const kind of ['probationExtension','secondment','actingPosition','resignation','termination','blacklist','joinDateChange','groupJoinDateCorrection','not-a-kind']){
+      expect(isComparisonKind(kind),kind).toBe(false);expect(movementFormFields(kind),kind).not.toContain('basicSalary');
+    }
   });
 
   it('has the comparison labels in all six locales (no raw key at runtime)', () => {
