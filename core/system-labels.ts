@@ -385,6 +385,18 @@ export async function refusedLabelCollisionProposalsTx(tx: Tx, tenantId: string,
   return (result as unknown as {key:string}[]).map(row=>row.key);
 }
 
+/** Create-only workbook identity check. The database returns no hidden record or company data. */
+export async function existingSystemLabelImportKeysTx(tx:Tx,tenantId:string,rows:{key:string;kind:LabelKind;code:string}[]):Promise<string[]> {
+  if(!rows.length)return [];
+  const seen=new Set<string>();
+  if(rows.length>7000)throw new Error('Invalid import code request.');
+  for(const row of rows){if(!row||typeof row.key!=='string'||!row.key||row.key.length>200||seen.has(row.key)||!LABEL_KINDS.includes(row.kind)||typeof row.code!=='string'||!row.code||row.code.length>1000)throw new Error('Invalid import code request.');seen.add(row.key);}
+  const payload=JSON.stringify(rows);
+  if(Buffer.byteLength(payload)>8_000_000)throw new Error('Import code request exceeds the supported size.');
+  const result=await tx.execute(sql`select key from app.existing_system_label_import_keys(${tenantId}::uuid,${payload}::jsonb)`);
+  return (result as unknown as {key:string}[]).map(row=>row.key);
+}
+
 /** Compatibility entry points delegate to the complete owner; no independent sharing switch exists. */
 export function assignLabelToCompanies(ctx: SessionContext, p: {kind:string;labelId:string;companyIds:string[]}, existingTx?: Tx): Promise<{assigned:string[]}> {
   assertKind(p.kind);

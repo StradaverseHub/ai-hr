@@ -20,9 +20,11 @@ export const LABEL_IMPORT_DEFINITIONS = [
 export type LabelImportKind = typeof LABEL_IMPORT_DEFINITIONS[number]['kind'];
 export type LabelImportMode = 'add' | 'update' | 'merge';
 export type LabelImportRow = { sheet: string; row: number; values: Record<string, string>; warnings?:string[] };
+export type LabelImportRowReason = 'existing'|'duplicate'|'conflicting'|'unsupportedCategory'|'required'|'invalidCompany'|'invalidCriteria'|'invalidCriteriaCompany'|'globalAdminRequired'|'criteriaCompaniesRequired'|'invalidHeadEmployee'|'wholeNumber'|'invalidGradeCode'|'gradeLabelExists'|'invalidGradeReferences'|'gradeAlreadyGrouped'|'invalidRow'|'notSelected';
+export type LabelImportRequiredField = 'Code'|'Company'|'Description'|'Label'|'Name';
 export type LabelImportPreviewRow = LabelImportRow & {
   outcome: 'add' | 'update' | 'skip' | 'error'; message: string;
   before: Record<string, string> | null; after: Record<string, string>;
-  selected?: boolean; stale?: boolean;
+  selected?: boolean; stale?: boolean; reason?: LabelImportRowReason; reasonField?: LabelImportRequiredField;
 };
 export type LabelImportPreview = { token: string; rows: LabelImportPreviewRow[]; valid: boolean; mode?: LabelImportMode };

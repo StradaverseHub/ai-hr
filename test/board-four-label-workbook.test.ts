@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
 import { LABEL_IMPORT_DEFINITIONS } from '../lib/system-label-definition';
-import { readSystemLabelWorkbook, systemLabelTemplate, systemLabelErrorWorkbook } from '../lib/system-label-workbook';
+import { readSystemLabelWorkbook, systemLabelTemplate, systemLabelErrorWorkbook, LABEL_WORKBOOK_MAX_BYTES } from '../lib/system-label-workbook';
 
 const workbook=(sheet:string,rows:unknown[][])=>{const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),sheet);return XLSX.write(wb,{type:'buffer',bookType:'xlsx'}) as Buffer;};
 describe('System Labels Excel contract',()=>{
@@ -29,14 +29,14 @@ describe('System Labels Excel contract',()=>{
     expect(()=>readSystemLabelWorkbook(XLSX.write(wb,{type:'buffer',bookType:'xlsx'}))).toThrow('Formula');
   });
   it('rejects oversize, malformed archives and over-limit rows',()=>{
-    expect(()=>readSystemLabelWorkbook(Buffer.alloc(750001))).toThrow();
+    expect(()=>readSystemLabelWorkbook(Buffer.alloc(LABEL_WORKBOOK_MAX_BYTES+1))).toThrow();
     expect(()=>readSystemLabelWorkbook(Buffer.from('not a workbook'))).toThrow();
     expect(()=>readSystemLabelWorkbook(workbook('division',[['Code','Label','Description','Sort Order'],...Array.from({length:501},(_,i)=>[String(i),'X','',''])]))).toThrow('limit');
   });
   it('exports spreadsheet-safe errors with exact source row references',()=>{
     const bytes=systemLabelErrorWorkbook([{sheet:'division',row:2,values:{Code:'=HYPERLINK("bad")'},before:null,after:{},outcome:'error',message:'=1+1'}]);
     const wb=XLSX.read(bytes,{type:'array'}),rows=XLSX.utils.sheet_to_json<string[]>(wb.Sheets.Errors,{header:1});
-    expect(rows[1].slice(0,4)).toEqual(['division',2,'error',"'=1+1"]);
+    expect(rows[1]).toEqual(['division',2,"'=HYPERLINK(\"bad\")",'error',"'=1+1"]);
     expect(Object.values(wb.Sheets.Errors).some(c=>c?.f)).toBe(false);
   });
 });

@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 const calls=vi.hoisted(()=>({admin:vi.fn(async()=>({s:{}})),preview:vi.fn()}));
 vi.mock('../lib/scope',()=>({scopedAdmin:calls.admin}));
 vi.mock('../app/admin/settings/system-labels/import-actions',()=>({previewLabelsAction:calls.preview}));
+import { LABEL_UPLOAD_REQUEST_MAX_BYTES } from '../lib/system-label-upload';
 import { POST } from '../app/admin/settings/system-labels/errors/route';
 beforeEach(()=>{vi.clearAllMocks();calls.preview.mockResolvedValue({ok:true,preview:{rows:[{sheet:'division',row:2,outcome:'error',message:'Code is required.',values:{Code:''}}]}});});
 describe('authenticated label error download',()=>{
@@ -19,7 +20,7 @@ describe('authenticated label error download',()=>{
     expect(response.status).toBe(403);expect(calls.admin).not.toHaveBeenCalled();expect(calls.preview).not.toHaveBeenCalled();
   });
   it('bounds the streamed request before parsing or previewing it',async()=>{
-    const response=await POST(new Request('http://localhost/admin/settings/system-labels/errors',{method:'POST',headers:{Origin:'http://localhost','Content-Type':'multipart/form-data; boundary=test'},body:'x'.repeat(1024*1024+1)}));
+    const response=await POST(new Request('http://localhost/admin/settings/system-labels/errors',{method:'POST',headers:{Origin:'http://localhost','Content-Type':'multipart/form-data; boundary=test'},body:'x'.repeat(LABEL_UPLOAD_REQUEST_MAX_BYTES+1)}));
     expect(response.status).toBe(413);expect(calls.preview).not.toHaveBeenCalled();
   });
 });

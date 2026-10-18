@@ -33,7 +33,8 @@ describe('reviewed System Labels imports',()=>{
       d.scope==='company'?{Company:b.companyId,Scope:'own',Code:'EXCEL_'+d.kind,Label:'Readable',Description:'Description'}:
         {Code:'EXCEL_'+d.kind,Label:'Readable',Description:'Description','Sort Order':'3'}];
     const bytes=book(data);expect(await apply(bytes)).toMatchObject({imported:12,updated:0,failed:0});
-    expect(await apply(bytes)).toMatchObject({imported:0,skipped:12});
+    const blocked=await previewSystemLabelImport(adminCtx(b),bytes,'add');expect(blocked.valid).toBe(false);expect(blocked.rows).toHaveLength(12);expect(blocked.rows.every(row=>row.reason==='existing'&&!row.selected)).toBe(true);
+    await expect(applySystemLabelImport(adminCtx(b),{bytes,token:blocked.token})).rejects.toThrow('no valid new codes');
     const [department]=await owner.db.select().from(s.department).where(eq(s.department.name,'EXCEL_department'));
     const [position]=await owner.db.select().from(s.position).where(eq(s.position.title,'EXCEL_position'));
     const [cost]=await owner.db.select().from(s.costCenter).where(eq(s.costCenter.code,'EXCEL_cost_center'));
@@ -41,25 +42,29 @@ describe('reviewed System Labels imports',()=>{
     expect(await labelIdsForCompany(adminCtx(b),'department',b.companyId)).toContain(department.id);
     expect((await listProfileOptions(adminCtx(b),'division')).map(r=>r.value)).toContain('EXCEL_division');
   });
-  it('requires explicit Update Existing plus confirmation, previews before/after, and keeps the identifier',async()=>{
+  it.each(['add','update','merge'] as const)('blocks changed and unchanged existing codes despite legacy mode %s and confirmation',async mode=>{
     const first=book({division:[{Code:'FIXED',Label:'Original'}]});await apply(first);
-    const bytes=book({division:[{Code:'FIXED',Label:'Updated',Description:'Changed','Sort Order':'2'}]});
-    expect((await previewSystemLabelImport(adminCtx(b),bytes,'add')).valid).toBe(false);
-    const preview=await previewSystemLabelImport(adminCtx(b),bytes,'update');
-    expect(preview.rows[0]).toMatchObject({outcome:'update',before:{Code:'FIXED',Label:'Original'},after:{Code:'FIXED',Label:'Updated'}});
-    await expect(applySystemLabelImport(adminCtx(b),{bytes,mode:'update',token:preview.token,confirmUpdates:false})).rejects.toThrow('Confirm');
-    expect(await apply(bytes,'update',true)).toMatchObject({updated:1});
-    const [row]=await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'FIXED'));expect(row.value).toBe('FIXED');expect(row.label).toBe('Updated');
+    for(const Label of ['Original','Updated']){
+      const bytes=book({division:[{Code:'FIXED',Label,Description:'Changed','Sort Order':'2'}]});
+      const preview=await previewSystemLabelImport(adminCtx(b),bytes,mode);
+      expect(preview).toMatchObject({valid:false,mode:'add'});expect(preview.rows[0]).toMatchObject({outcome:'error',reason:'existing',before:null,selected:false});
+      await expect(applySystemLabelImport(adminCtx(b),{bytes,mode,token:preview.token,confirmUpdates:true})).rejects.toThrow('no valid new codes');
+    }
+    const [row]=await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'FIXED'));expect(row).toMatchObject({value:'FIXED',label:'Original'});
   });
-  it('invalid rows prevent every otherwise valid row from saving, and changed previews are refused',async()=>{
+  it('imports unrelated valid rows while reporting invalid rows, and refuses changed previews',async()=>{
     const bytes=book({division:[{Code:'VALID',Label:'Valid'},{Code:'',Label:'Invalid'}]});
-    const preview=await previewSystemLabelImport(adminCtx(b),bytes,'add');expect(preview.valid).toBe(false);
-    await expect(applySystemLabelImport(adminCtx(b),{bytes,mode:'add',token:preview.token,confirmUpdates:false})).rejects.toThrow('Correct every');
-    expect(await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'VALID'))).toEqual([]);
-    const valid=book({division:[{Code:'VALID',Label:'Valid'}]});const stale=await previewSystemLabelImport(adminCtx(b),valid,'add');
+    const preview=await previewSystemLabelImport(adminCtx(b),bytes,'add');expect(preview.valid).toBe(true);
+    expect(preview.rows.map(row=>[row.outcome,row.selected])).toEqual([['add',true],['error',false]]);
+    const summary=await applySystemLabelImport(adminCtx(b),{bytes,mode:'add',token:preview.token});expect(summary).toMatchObject({imported:1,updated:0,skipped:1});
+    expect(summary.errorReport).toBeTruthy();const report=XLSX.read(Buffer.from(summary.errorReport!,'base64'),{type:'buffer'});
+    expect(XLSX.utils.sheet_to_json(report.Sheets.Errors)).toMatchObject([{Worksheet:'division',Row:3,Code:'',Message:'Code is required.'}]);
+    expect(XLSX.utils.sheet_to_json(report.Sheets.Errors)).toHaveLength(1);
+    expect(await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'VALID'))).toHaveLength(1);
+    const valid=book({division:[{Code:'NOT_SAVED',Label:'Valid'}]});const stale=await previewSystemLabelImport(adminCtx(b),valid,'add');
     await apply(book({division:[{Code:'OTHER',Label:'Other'}]}));
-    await expect(applySystemLabelImport(adminCtx(b),{bytes:valid,mode:'add',token:stale.token,confirmUpdates:false})).rejects.toThrow('changed since preview');
-    expect(await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'VALID'))).toEqual([]);
+    await expect(applySystemLabelImport(adminCtx(b),{bytes:valid,mode:'add',token:stale.token})).rejects.toThrow('changed since preview');
+    expect(await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'NOT_SAVED'))).toEqual([]);
   });
   it('preserves company scope; missing or foreign companies cannot turn a row global',async()=>{
     for(const Company of ['',randomUUID()]){
@@ -82,10 +87,10 @@ describe('reviewed System Labels imports',()=>{
     await owner.db.update(s.jobGrade).set({archivedAt:new Date()}).where(eq(s.jobGrade.id,archived.id));
     expect((await previewSystemLabelImport(adminCtx(b),book({grades:[{Code:'ARCHIVED',Label:'New'}]}),'add')).valid).toBe(false);
   });
-  it('reports identical file duplicates as skipped and conflicting duplicates as errors',async()=>{
+  it('reports identical and conflicting later workbook duplicates as skipped',async()=>{
     const row={Code:'ONE',Label:'One'};
     expect(await apply(book({division:[row,row]}))).toMatchObject({imported:1,skipped:1});
-    expect((await previewSystemLabelImport(adminCtx(b),book({division:[row,{...row,Label:'Different'}]}),'update')).valid).toBe(false);
+    const preview=await previewSystemLabelImport(adminCtx(b),book({division:[{Code:'TWO',Label:'First'},{Code:'TWO',Label:'Different'}]}),'update');expect(preview.valid).toBe(true);expect(preview.rows.map(row=>row.outcome)).toEqual(['add','skip']);expect(preview.rows[1].reason).toBe('conflicting');
   });
   it('applies explicit permitted Criteria without changing legacy sharing flags, and keeps Global visible',async()=>{
     const other=await createCompany(adminCtx(b),{legalName:'Excel second company'});
