@@ -52,6 +52,32 @@ describe('Pay Items workbook contract', () => {
     expect(listValues.slice(1).map(row => row[3]).filter(Boolean)).toEqual(vocabulary.roundingMethod!.map(c => c.label));
     expect(listValues.slice(1).map(row => row[6]).filter(Boolean)).toEqual(vocabulary.pcbExemptionCode!.map(c => c.label));
   });
+  it('exports text-only dropdown formulas with exact Lists ranges, never embedded worksheet markup', async () => {
+    const bytes = await buildPayItemWorkbook(vocabulary), wb = XLSX.read(bytes, { type: 'buffer' });
+    const listValues = XLSX.utils.sheet_to_json<string[]>(wb.Sheets.Lists, { header: 1, defval: '' });
+    // These are the workbook's public column contracts, checked against the actual emitted Lists data.
+    const dropdownColumns = { D: 'A', E: 'B', F: 'C', I: 'D', J: 'E', O: 'F', P: 'G', S: 'H',
+      G: 'I', H: 'I', K: 'I', L: 'I', M: 'I', N: 'I', Q: 'I', R: 'I' };
+    const zip = await JSZip.loadAsync(bytes);
+    for (const index of [2, 3]) {
+      const xml = await zip.file(`xl/worksheets/sheet${index}.xml`)!.async('string');
+      // CT_DataValidation formula1 is text, not an XML container. Excel repairs nested mergeCells.
+      const formulas = [...xml.matchAll(/<formula1>([\s\S]*?)<\/formula1>/g)];
+      expect(formulas).toHaveLength(17);
+      for (const [, text] of formulas) expect(text).not.toMatch(/<[^>]+>/);
+      expect(xml.match(/<mergeCells\b/g)).toHaveLength(1);
+      const validations = [...xml.matchAll(/<dataValidation\b([^>]*)>([\s\S]*?)<\/dataValidation>/g)];
+      expect(validations).toHaveLength(17);
+      for (const [dataColumn, listColumn] of Object.entries(dropdownColumns)) {
+        const columnIndex = XLSX.utils.decode_col(listColumn);
+        const populated = listValues.slice(1).map(row => row[columnIndex]).filter(Boolean);
+        expect(populated.length, `Lists!${listColumn} has real choices`).toBeGreaterThan(0);
+        const own = validations.filter(([, attrs]) => attrs.includes(`sqref="${dataColumn}3:${dataColumn}502"`));
+        expect(own).toHaveLength(1);
+        expect(own[0][2]).toBe(`<formula1>INDIRECT(&quot;Lists!$${listColumn}$2:$${listColumn}$${populated.length + 1}&quot;)</formula1>`);
+      }
+    }
+  });
   it('pastes all eight corrected examples into the data sheet without invented rates/formulas', async () => {
     const wb = XLSX.read(await buildPayItemWorkbook(vocabulary), { type: 'buffer' });
     const examples = XLSX.utils.sheet_to_json<string[]>(wb.Sheets.Example, { header: 1, defval: '' }).slice(2, 10);
