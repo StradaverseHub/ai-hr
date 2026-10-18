@@ -78,7 +78,6 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
   // to catch.
   const SECTION_LABEL: Record<ImportSection, string> = {
     profile: t('sectionProfile'),
-    employment: t('sectionEmployment'),
     bank_statutory: t('sectionBankStatutory'),
     family: t('sectionFamily'),
     qualification:t('sectionQualification'),

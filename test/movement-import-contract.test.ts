@@ -37,3 +37,11 @@ describe('Movement file is the New Event transport',()=>{
   expect(parseMovementImport(head+Array(21).fill('EMP-1,secondment,18-Oct-2026').join('\n')).records.every(row=>row.errors.includes('too_many_employee_rows'))).toBe(true);
  });
 });
+
+it('keeps rejected row explanations in a narrower preview and final row download without granting write authority',async()=>{
+ const {retainMovementExclusionReasons}=await import('../lib/movement-import-contract');
+ const previous=[{employeeCode:'EMP-1',employmentId:'e',name:'Fictional',fingerprint:'old',rows:[{row:2,employeeCode:'EMP-1',eventType:'bad',effectiveDate:'2026-10-18',status:'invalid' as const,errors:['unknown_reference:event_type']}]}];
+ const next=[{...previous[0],fingerprint:'new',rows:[{...previous[0].rows[0],status:'excluded' as const,errors:[]}]}];
+ expect(retainMovementExclusionReasons(next,previous)[0].rows[0]).toMatchObject({status:'excluded',errors:['unknown_reference:event_type']});
+ const different=[{...next[0],rows:[{...next[0].rows[0],employeeCode:'OTHER'}]}];expect(retainMovementExclusionReasons(different,previous)[0].rows[0].errors).toEqual([]);
+});

@@ -435,39 +435,23 @@ describe('2983802f §5 · the other three sections write what they own', () => {
     expect((await statutoryOf('SEC0051')).bankAccountNo).toBe(bankBefore);
   });
 
-  it('Employment writes the probation and notice periods and the direct superior', async () => {
-    await seedEmployee(52, 'SEC0052');
-    await seedEmployee(53, 'SEC0053');
-    const records = recs('employee_code,probation_months,resignation_notice_months,direct_superior', [
-      'SEC0052,6,2,SEC0053',
-    ]);
-    const result = await commitSectionImport(a, { section: 'employment', records });
-    expect(result.updated, JSON.stringify(result.failed)).toBe(1);
-
-    const emp = await employmentOf('SEC0052');
-    expect(emp.probationMonths).toBe(6);
-    expect(emp.resignationNoticeMonths).toBe(2);
-
-    const manager = await employmentOf('SEC0053');
-    const [line] = await owner.db
-      .select()
-      .from(schema.reportingLine)
-      .where(eq(schema.reportingLine.subordinateEmploymentId, emp.id));
-    expect(line.managerEmploymentId).toBe(manager.id);
+  it('refuses the retired Employment key and preserves periods and reporting history', async () => {
+    await seedEmployee(52, 'SEC0052');await seedEmployee(53, 'SEC0053');
+    const before=await employmentOf('SEC0052');
+    const lines=await owner.db.select().from(schema.reportingLine).where(eq(schema.reportingLine.subordinateEmploymentId,before.id)).orderBy(schema.reportingLine.id);
+    const records=recs('employee_code,probation_months,resignation_notice_months,direct_superior',['SEC0052,6,2,SEC0053']);
+    await expect(commitSectionImport(a,{section:'employment',records})).rejects.toThrow(/Movement/);
+    await expect(validateSectionImport(a,{section:'employment',records})).rejects.toThrow(/Movement/);
+    expect(await employmentOf('SEC0052')).toEqual(before);
+    expect(await owner.db.select().from(schema.reportingLine).where(eq(schema.reportingLine.subordinateEmploymentId,before.id)).orderBy(schema.reportingLine.id)).toEqual(lines);
   });
 
-  it('Employment refuses a direct superior nobody employs, and refuses the employee themselves', async () => {
-    await seedEmployee(54, 'SEC0054');
-    const preview = await validateSectionImport(a, {
-      section: 'employment',
-      records: recs('employee_code,direct_superior', ['SEC0054,GHOST9']),
-    });
-    expect(preview.rows[0].errors.join(' ')).toContain('GHOST9');
-    const self = await validateSectionImport(a, {
-      section: 'employment',
-      records: recs('employee_code,direct_superior', ['SEC0054,SEC0054']),
-    });
-    expect(self.rows[0].errors.join(' ')).toContain('themselves');
+  it('refuses old Direct Superior columns through an undated section and identifies the dated owner',async()=>{
+    await seedEmployee(54,'SEC0054');
+    const preview=await validateSectionImport(a,{section:'profile',records:recs('employee_code,direct_superior',['SEC0054,GHOST9'])});
+    expect(preview.fileErrors.join(' ')).toContain('direct_superior');
+    expect(preview.fileErrors.length).toBeGreaterThan(0);
+    await expect(validateSectionImport(a,{section:'employment',records:recs('employee_code,direct_superior',['SEC0054,SEC0054'])})).rejects.toThrow(/Movement/);
   });
 
   it('Family adds a member to an existing employee, and skips one that is already on file', async () => {
@@ -599,53 +583,28 @@ describe('2983802f §7 · an import that reports success must be visible on the 
    * probationMonths` — so an import that wrote only the legacy column changed nothing anybody could see
    * for every employee whose Employment tab had ever been saved.
    */
-  it('Employment writes the probation and notice period the Employment tab actually reads', async () => {
-    await seedEmployee(71, 'SEC0071');
-    const records = recs('employee_code,probation_months,resignation_notice_months', ['SEC0071,6,2']);
-    const result = await commitSectionImport(a, { section: 'employment', records });
-    expect(result.updated, JSON.stringify(result.failed)).toBe(1);
-
-    const emp = await employmentOf('SEC0071');
-    expect(emp.probationValue).toBe(6);
-    expect(emp.probationUnit).toBe('month');
-    expect(emp.noticeBeforeConfirmationValue).toBe(2);
-    expect(emp.noticeBeforeConfirmationUnit).toBe('month');
-    // …and the legacy twin is written from the SAME cell, so the tab's fallback can never contradict it.
-    expect(emp.probationMonths).toBe(6);
-    expect(emp.resignationNoticeMonths).toBe(2);
+  it('retains the supported Personnel period owner and refuses an old import attempting to overwrite it',async()=>{
+    await seedEmployee(71,'SEC0071');const before=await employmentOf('SEC0071');
+    await setEmploymentInfo(a,{employmentId:before.id,probationValue:'6',probationUnit:'month',noticeBeforeConfirmationValue:'2',noticeBeforeConfirmationUnit:'month'});
+    const saved=await employmentOf('SEC0071');expect(saved).toMatchObject({probationValue:6,probationUnit:'month',noticeBeforeConfirmationValue:2,noticeBeforeConfirmationUnit:'month'});
+    await expect(commitSectionImport(a,{section:'employment',records:recs('employee_code,probation_months,resignation_notice_months',['SEC0071,3,1'])})).rejects.toThrow(/Movement/);
+    expect(await employmentOf('SEC0071')).toEqual(saved);
   });
 
-  it('an employee whose Employment tab was saved once still SEES the imported probation period', async () => {
-    await seedEmployee(72, 'SEC0072');
-    const before = await employmentOf('SEC0072');
-    // Exactly what the Employment tab form posts (page.tsx has probationValue/probationUnit inputs and
-    // no probationMonths input at all) — the save that used to make an import invisible.
-    await setEmploymentInfo(a, { employmentId: before.id, probationValue: '3', probationUnit: 'month' });
-
-    const records = recs('employee_code,probation_months', ['SEC0072,6']);
-    expect((await commitSectionImport(a, { section: 'employment', records })).updated).toBe(1);
-
-    const emp = await employmentOf('SEC0072');
-    expect(emp.probationValue ?? emp.probationMonths).toBe(6); // ← the expression the tab renders
-    expect(emp.probationUnit).toBe('month');
+  it('directs displaced probation columns away from Profile and preserves the current period',async()=>{
+    await seedEmployee(72,'SEC0072');const before=await employmentOf('SEC0072');
+    await setEmploymentInfo(a,{employmentId:before.id,probationValue:'3',probationUnit:'month'});
+    const preview=await validateSectionImport(a,{section:'profile',records:recs('employee_code,probation_months',['SEC0072,6'])});
+    expect(preview.fileErrors.join(' ')).toContain('probation_months');expect(preview.updateCount).toBe(0);
+    expect((await employmentOf('SEC0072')).probationValue).toBe(3);
   });
 
-  it('a days column writes a DAYS period, and months + days on one row is refused', async () => {
-    await seedEmployee(73, 'SEC0073');
-    const days = recs('employee_code,probation_days', ['SEC0073,90']);
-    expect((await commitSectionImport(a, { section: 'employment', records: days })).updated).toBe(1);
-    const emp = await employmentOf('SEC0073');
-    expect(emp.probationValue).toBe(90);
-    expect(emp.probationUnit).toBe('day');
-    expect(emp.probationDays).toBe(90);
-
-    // The screen holds ONE number and ONE unit per period, so half of this row would be dropped.
-    const both = await validateSectionImport(a, {
-      section: 'employment',
-      records: recs('employee_code,probation_months,probation_days', ['SEC0073,3,15']),
-    });
-    expect(both.rows[0].errors.join(' ')).toContain('cannot both be filled in');
-    expect(both.rows[0].ok).toBe(false);
+  it('keeps day-unit periods editable only through their canonical Personnel owner',async()=>{
+    await seedEmployee(73,'SEC0073');const before=await employmentOf('SEC0073');
+    await setEmploymentInfo(a,{employmentId:before.id,probationValue:'90',probationUnit:'day'});
+    const saved=await employmentOf('SEC0073');expect(saved.probationValue).toBe(90);expect(saved.probationUnit).toBe('day');
+    await expect(validateSectionImport(a,{section:'employment',records:recs('employee_code,probation_months,probation_days',['SEC0073,3,15'])})).rejects.toThrow(/Movement/);
+    expect(await employmentOf('SEC0073')).toEqual(saved);
   });
 
   it('the fence names the section that owns a refused column, and says plainly when none does', async () => {

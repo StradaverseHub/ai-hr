@@ -76,3 +76,12 @@ export function movementImportCellIssues(record:MovementImportRecord,behaviour:s
  }
  return issues;
 }
+/** Preserve server-observed rejection explanations while rechecking a narrower selected sequence.
+ * Display-only: neither this history nor these error strings are accepted by the write owner. */
+export function retainMovementExclusionReasons(employees:MovementImportEmployee[],previous:MovementImportEmployee[]):MovementImportEmployee[]{
+ const prior=new Map(previous.flatMap(employee=>employee.rows.map(row=>[row.row,row] as const)));
+ return employees.map(employee=>({...employee,rows:employee.rows.map(row=>{
+  const old=prior.get(row.row);
+  return row.status==='excluded'&&!row.errors.length&&old?.employeeCode===row.employeeCode&&old.eventType===row.eventType&&old.errors.length?{...row,errors:[...old.errors]}:row;
+ })}));
+}

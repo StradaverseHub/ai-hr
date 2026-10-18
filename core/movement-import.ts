@@ -18,7 +18,7 @@ import {lockEmploymentStatutoryOwnerTx} from './org';
 import {lockLabelCriteriaTx,visibleLabelIdsCondition} from './system-labels';
 import {reprojectEntitlementForEmployment} from '../packs/leave/service';
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
-export type MovementImportOption={value:string;label:string};
+export type MovementImportOption={value:string;label:string;aliases?:string[]};
 export type MovementImportCatalog={types:{code:string;label:string|null;behaviour:string}[];companies:MovementImportOption[];fields:Partial<Record<MovementFormField,MovementImportOption[]>>};
 const fieldKinds={orgDivision:true,employmentCategory:true,orgRegion:true,orgBranch:true,orgTeam:true,orgSection:true,orgLine:true,orgBase:true} as const;
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -38,6 +38,7 @@ async function catalogTx(tx:Tx,ctx:SessionContext,companyId:string):Promise<Move
  for(const code of new Set([...MOVEMENT_KINDS,...overlays.map(row=>row.code)])){
   const resolved=await resolveMovementEventTypeTx(tx,ctx.tenantId,code);if(resolved?.active)types.push({code:resolved.code,label:resolved.label,behaviour:resolved.behaviourKind});
  }
+ if(types.length>1000)throw new Error('movement_catalog_too_large');
  const companies=await tx.select({value:company.id,label:company.legalName}).from(company).where(and(eq(company.tenantId,ctx.tenantId),sql`app.is_admin_for(${company.id})`)).orderBy(asc(company.legalName),asc(company.id)).limit(1001);
  const departments=await tx.select({value:department.id,label:department.name}).from(department).where(and(eq(department.tenantId,ctx.tenantId),isNull(department.archivedAt),visibleLabelIdsCondition(department,'department',[companyId]))).orderBy(asc(department.name),asc(department.id)).limit(1001);
  const positions=await tx.select({value:position.id,label:position.title}).from(position).where(and(eq(position.tenantId,ctx.tenantId),isNull(position.archivedAt),visibleLabelIdsCondition(position,'position',[companyId]))).orderBy(asc(position.title),asc(position.id)).limit(1001);
@@ -46,20 +47,21 @@ async function catalogTx(tx:Tx,ctx:SessionContext,companyId:string):Promise<Move
  const grades=await tx.select({value:jobGrade.id,label:jobGrade.name,code:jobGrade.code}).from(jobGrade).where(and(eq(jobGrade.tenantId,ctx.tenantId),isNull(jobGrade.archivedAt))).orderBy(asc(jobGrade.code),asc(jobGrade.id)).limit(1001);
  const managers=await tx.select({value:employment.id,label:employment.employeeCode,name:person.fullName}).from(employment).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).where(and(eq(employment.tenantId,ctx.tenantId),isNull(employment.terminatedOn))).orderBy(asc(employment.employeeCode),asc(employment.id)).limit(1001);
  if([companies,departments,positions,units,locations,grades,managers].some(rows=>rows.length>1000))throw new Error('movement_reference_catalog_too_large');
- const fields:MovementImportCatalog['fields']={companyId:companies,departmentId:departments,positionId:positions,businessUnitId:units,locationId:locations,gradeId:grades.map(row=>({value:row.value,label:row.code+' · '+row.label})),managerEmploymentId:managers.map(row=>({value:row.value,label:(row.label??'')+' · '+row.name}))};
+ const fields:MovementImportCatalog['fields']={companyId:companies,departmentId:departments,positionId:positions,businessUnitId:units,locationId:locations,gradeId:grades.map(row=>({value:row.value,label:row.code+' · '+row.label,aliases:[row.code,row.label]})),managerEmploymentId:managers.map(row=>({value:row.value,label:(row.label??'')+' · '+row.name,aliases:[row.label??'',row.name].filter(Boolean)}))};
  const options=await tx.select({category:profileOption.category,value:profileOption.value,label:profileOption.label}).from(profileOption).where(and(eq(profileOption.tenantId,ctx.tenantId),eq(profileOption.isActive,true))).orderBy(asc(profileOption.category),asc(profileOption.sortOrder),asc(profileOption.id)).limit(10001);
  if(options.length>10000)throw new Error('movement_reference_catalog_too_large');
  for(const field of Object.keys(fieldKinds) as (keyof typeof fieldKinds)[]){
   const category=personnelFormField(MOVEMENT_FORM_IDS[field]).allowedValuesOwner?.replace(/^profile_option:/,'');
   fields[field]=options.filter(row=>row.category===category).map(({value,label})=>({value,label}));
  }
+ if(Object.values(fields).some(rows=>rows&&rows.length>1000))throw new Error('movement_reference_catalog_too_large');
  return {types,companies,fields};
 }
 export function movementImportCatalog(ctx:SessionContext,companyId:string){assertAdmin(ctx);return withTenant(ctx,async tx=>{await limits(tx);return catalogTx(tx,ctx,companyId);},{readOnlySnapshot:true});}
 function lookup(raw:string,options:MovementImportOption[],field:string):string{
  const exact=options.filter(option=>option.value===raw||`${option.value} · ${option.label}`===raw);
  if(exact.length===1)return exact[0].value;
- const named=options.filter(option=>option.label.toLocaleLowerCase()===raw.toLocaleLowerCase()||option.label.split(' · ')[0].toLocaleLowerCase()===raw.toLocaleLowerCase());
+ const named=options.filter(option=>option.label.toLowerCase()===raw.toLowerCase()||option.aliases?.some(alias=>alias.toLowerCase()===raw.toLowerCase()));
  if(named.length!==1)throw new Error(named.length?'ambiguous_reference:'+field:'unknown_reference:'+field);
  return named[0].value;
 }
@@ -223,6 +225,7 @@ export async function commitMovementImport(ctx:SessionContext,p:{companyId:strin
    budget(deadline);
    employee=await withTenant(ctx,async tx=>{
     const employeeDeadline=Math.min(deadline,Date.now()+MOVEMENT_IMPORT_LIMITS.employeeMs);await limits(tx);await assertCompany(tx,ctx,p.companyId);const subject=await subjectTx(tx,ctx,p.companyId,code);
+    employee={...employee,employmentId:subject.id,name:subject.name};
     const fingerprint=await fingerprintTx(tx,ctx,subject.id,p.companyId,inputHash,selection,records,employeeDeadline);
     if(!p.fingerprints||p.fingerprints[code]!==fingerprint)throw new Error('preview_stale_revalidate');
     const rehearsed=await rehearseSequenceTx(tx,ctx,chosen,subject.id,employeeDeadline);

@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Card } from '@/components/ui';
-import { IMPORT_SECTION_KEYS, type ImportSection } from '@/lib/import-sections';
+import { PERSONNEL_IMPORT_CHOICES, type PersonnelImportChoice } from '@/lib/import-sections';
 import { EmployeeImport, type ImportReference } from './employee-import';
 import { SectionImport } from './section-import';
+import {MovementImport} from './movement-import';
 import {ImportExplanations} from './import-explanations';
 
 /**
@@ -17,7 +18,7 @@ import {ImportExplanations} from './import-explanations';
  *
  *   · Everything            — the full 49-column template. Creates new employees. UNCHANGED.
  *   · Profile               ┐
- *   · Employment            │ narrow templates, one section each, that UPDATE people who already exist
+ *   · Movement              │ narrow templates, one section each, that UPDATE people who already exist
  *   · Bank and Statutory    │ and are matched by Employee ID.
  *   · Family                ┘
  *
@@ -39,15 +40,15 @@ export function ImportWorkbench({
   reference: ImportReference;
 }) {
   const t = useTranslations('people.import');
-  const [choice, setChoice] = useState<'full' | ImportSection>('full');
+  const [choice, setChoice] = useState<PersonnelImportChoice>('full');
   const [committing, setCommitting] = useState(false);
 
   // Literal `t()` calls (see the note in section-import.tsx): a computed key is invisible to
   // test/i18n-coverage.test.ts check C, and a missing label would render the raw key on the screen.
-  const LABELS: Record<'full' | ImportSection, { title: string; hint: string }> = {
+  const LABELS: Record<PersonnelImportChoice, { title: string; hint: string }> = {
     full: { title: t('sectionFull'), hint: t('sectionFullHint') },
     profile: { title: t('sectionProfile'), hint: t('sectionProfileHint') },
-    employment: { title: t('sectionEmployment'), hint: t('sectionEmploymentHint') },
+    movement: { title: t('movement.choice'), hint: t('movement.choiceHint') },
     bank_statutory: { title: t('sectionBankStatutory'), hint: t('sectionBankStatutoryHint') },
     family: { title: t('sectionFamily'), hint: t('sectionFamilyHint') },
     qualification:{title:t('sectionQualification'),hint:t('sectionQualificationHint')},
@@ -69,7 +70,7 @@ export function ImportWorkbench({
         <fieldset disabled={committing}>
           <legend className="sr-only">{t('sectionChooserTitle')}</legend>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {(['full', ...IMPORT_SECTION_KEYS] as const).map((key) => {
+            {PERSONNEL_IMPORT_CHOICES.map((key) => {
               const selected = choice === key;
               return (
                 <label
@@ -106,6 +107,8 @@ export function ImportWorkbench({
       <ImportExplanations choice={choice}/>
       {choice === 'full' ? (
         <EmployeeImport companies={companies} defaultCompanyId={defaultCompanyId} reference={reference} onCommitPendingChange={setCommitting} />
+      ) : choice==='movement' ? (
+        <MovementImport companies={companies} defaultCompanyId={defaultCompanyId} onCommitPendingChange={setCommitting}/>
       ) : (
         // Keyed on the choice so switching sections REMOUNTS the island: the loaded file, the preview
         // and the result all belong to one column contract and must not survive a change of contract.

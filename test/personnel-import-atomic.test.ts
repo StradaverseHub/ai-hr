@@ -89,7 +89,7 @@ it('persists Attendance and payment choices through their canonical owners and p
  expect(created.failed).toEqual([]);expect(created.imported).toBe(1);
  const [before]=await owner.db.select().from(employment).where(eq(employment.employeeCode,'CONTRACT01'));
  expect(before).toMatchObject({cardId:'00007',attendancePhotoSetting:'optional',paymentMethod:'bank_transfer'});
- const updated=await commitSectionImport(adminCtx(b),{section:'employment',records:[{employee_code:'CONTRACT01',attendance_photo_setting:'required',card_id:''}]});
+ const updated=await commitSectionImport(adminCtx(b),{section:'profile',records:[{employee_code:'CONTRACT01',attendance_photo_setting:'required',card_id:''}]});
  expect(updated.failed).toEqual([]);expect(updated.updated).toBe(1);
  const [after]=await owner.db.select().from(employment).where(eq(employment.id,before.id));
  expect(after).toMatchObject({cardId:'00007',attendancePhotoSetting:'required',paymentMethod:'bank_transfer'});

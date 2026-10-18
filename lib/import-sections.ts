@@ -38,10 +38,13 @@ import { PERSONNEL_EMPLOYMENT_IMPORT_FIELDS, PERSONNEL_PROFILE_IMPORT_FIELDS, PE
  */
 import { DEPENDENT_IMPORT_COLUMNS, IMPORT_COLUMNS, RETIRED_PERSONNEL_TEMPLATE_COLUMNS } from './import-schema';
 
-/** The four sections the reporter named. Ordered as they appear in the chooser. */
-export const IMPORT_SECTION_KEYS = ['profile', 'employment', 'bank_statutory', 'family', 'qualification', 'emergency'] as const;
+/** Undated record-updater sections. Movement is deliberately outside this writer union. */
+export const IMPORT_SECTION_KEYS = ['profile', 'bank_statutory', 'family', 'qualification', 'emergency'] as const;
 
 export type ImportSection = (typeof IMPORT_SECTION_KEYS)[number];
+/** Seven user choices; Movement has its own dated canonical sequence owner. */
+export const PERSONNEL_IMPORT_CHOICES=['full','profile','movement','bank_statutory','family','qualification','emergency'] as const;
+export type PersonnelImportChoice=(typeof PERSONNEL_IMPORT_CHOICES)[number];
 
 export function isImportSection(v: string): v is ImportSection {
   return (IMPORT_SECTION_KEYS as readonly string[]).includes(v);
@@ -98,40 +101,13 @@ const PROFILE_COLUMNS = [
   'emergency_contact_phone',
   'emergency_contact_home_phone',
   'emergency_contact_address',
+  ...PERSONNEL_FIELDS.filter(field=>field.import.writer==='operational' && field.import.section==='profile').map(field=>field.import.column!),
   ...PERSONNEL_FIELDS.filter(field=>['ic','passport'].includes(field.import.writer??'')).map(field=>field.import.column!),
   ...[...PERSONNEL_PROFILE_IMPORT_FIELDS,...PERSONNEL_COMPLIANCE_IMPORT_FIELDS].map(field=>field.import.column!).filter(column=>!['address_line_1','address_line_2','address_line_3','postcode','city','state','country','emergency_contact_name','emergency_contact_relationship','emergency_contact_phone','emergency_contact_home_phone','emergency_contact_address'].includes(column)),
 ] as const;
 
-/**
- * EMPLOYMENT — the contractual periods the Employment tab maintains, plus the reporting line.
- *
- * DELIBERATELY NARROW. Department, position, cost centre, company, employment type and the join date
- * are NOT here: moving somebody between departments or companies is a dated organisational MOVEMENT
- * with its own history row, not a cell edit, and `setEmploymentInfo` refuses the join date outright
- * unless a movement tag accompanies it (core/org.ts). A spreadsheet column that silently did nothing
- * would be worse than no column at all. See `UNSECTIONED_COLUMNS`.
- *
- * WHAT THE PERIOD COLUMNS ACTUALLY WRITE, and why it is not the column of the same name. Migration
- * 0213 (955c7de4) redesigned the Employment tab's periods into a VALUE + UNIT pair — `probation_value`
- * / `probation_unit`, `notice_before_confirmation_value` / `_unit` — and the tab reads
- * `probationValue ?? probationMonths`. So an import that wrote only the legacy `probation_months`
- * column was INVISIBLE on that screen for every employee whose Employment tab had ever been saved:
- * a run that reported success and changed nothing anybody could see. `core/import-sections.ts` maps
- * `probation_months` → (value = N, unit = 'month') and `probation_days` → (value = N, unit = 'day'),
- * writing the matching legacy column alongside so the two never disagree. The screen holds ONE period
- * per field, so a row supplying BOTH months and days for the same period is refused rather than
- * silently losing half of it.
- */
-const EMPLOYMENT_COLUMNS = [
-  'probation_months',
-  'probation_days',
-  'confirmation_date',
-  'resignation_notice_months',
-  'resignation_notice_days',
-  'direct_superior',
-  ...PERSONNEL_EMPLOYMENT_IMPORT_FIELDS.map(field=>field.import.column!).filter(column=>column!=='confirmation_date'),
-  ...PERSONNEL_FIELDS.filter(field=>field.import.writer==='operational' && field.import.section==='employment').map(field=>field.import.column!),
-] as const;
+/** Former undated Employment columns are explicitly redirected, never silently ignored. */
+const RETIRED_EMPLOYMENT_COLUMNS=['probation_months','probation_days','confirmation_date','resignation_notice_months','resignation_notice_days','direct_superior',...PERSONNEL_EMPLOYMENT_IMPORT_FIELDS.map(field=>field.import.column!)] as const;
 
 /**
  * BANK AND STATUTORY — the salary-payment destination and the tax inputs.
@@ -150,7 +126,6 @@ export const IMPORT_SECTION_DEFS: Record<ImportSection, ImportSectionDef> = {
   qualification:{key:'qualification',register:'qualification',required:[],optional:personnelRegisterColumns('qualification').filter(c=>c!=='employee_code'),family:false},
   emergency:{key:'emergency',register:'emergency',required:[],optional:personnelRegisterColumns('emergency').filter(c=>c!=='employee_code'),family:false},
   profile: { key: 'profile', required: [], optional: PROFILE_COLUMNS, family: false },
-  employment: { key: 'employment', required: [], optional: EMPLOYMENT_COLUMNS, family: false },
   bank_statutory: { key: 'bank_statutory', required: [], optional: BANK_STATUTORY_COLUMNS, family: false },
   family: {
     key: 'family',
@@ -167,6 +142,7 @@ export const IMPORT_SECTION_DEFS: Record<ImportSection, ImportSectionDef> = {
  * next person to add a column has to answer the same question rather than guess.
  */
 export const UNSECTIONED_COLUMNS: Record<string, string> = {
+  ...Object.fromEntries(RETIRED_EMPLOYMENT_COLUMNS.map(column=>[column,'The undated Employment import is retired. Use dated Movement import for New Event fields; contract and notice period settings remain in Personnel Employment.'])),
   company: 'moving an employee between legal entities is an Entity Transfer movement, not a cell edit',
   department: 'a department change is a dated organisational assignment with its own history row',
   position: 'a position change is a dated organisational assignment with its own history row',
@@ -247,7 +223,6 @@ export function sectionOwning(column: string): ImportSection | null {
  *  (`core/import.ts` does the same); the screen's own chrome is translated. */
 export const SECTION_DISPLAY_NAMES: Record<ImportSection, string> = {
   profile: 'Profile',
-  employment: 'Employment',
   bank_statutory: 'Bank and Statutory',
   family: 'Family',
   qualification:'Qualifications',
@@ -366,7 +341,6 @@ export type SectionImportResult = {
  */
 export const SECTION_SHEET_NAMES: Record<ImportSection, string> = {
   profile: 'Profile',
-  employment: 'Employment',
   bank_statutory: 'Bank and Statutory',
   family: 'Family',
   qualification:'Qualifications',
@@ -375,7 +349,6 @@ export const SECTION_SHEET_NAMES: Record<ImportSection, string> = {
 
 export const SECTION_TEMPLATE_FILENAMES: Record<ImportSection, string> = {
   profile: 'profile-update-template.xlsx',
-  employment: 'employment-update-template.xlsx',
   bank_statutory: 'bank-statutory-update-template.xlsx',
   family: 'family-update-template.xlsx',
   qualification:'qualification-update-template.xlsx',

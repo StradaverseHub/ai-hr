@@ -8,9 +8,9 @@ import {sectionTemplateColumns,sectionTextColumnIndexes} from '../lib/import-sec
 import {personnelImportExclusions,personnelImportExclusionEntries} from '../lib/personnel-import-exclusions';
 
 describe('Personnel workbook defects observed in actual Chrome downloads',()=>{
-  it.each(['full','profile','employment'] as const)('%s protects newly identified phone and relationship keys through row 501',async choice=>{
+  it.each(['full','profile'] as const)('%s protects newly identified phone and relationship keys through row 501',async choice=>{
     const columns=choice==='full'?[...EMPLOYEE_XLSX_COLUMNS]:sectionTemplateColumns(choice);
-    const keys=choice==='employment'?['direct_superior']:['correspondence_mobile_phone','correspondence_home_phone',...(choice==='full'?['direct_superior']:[])];
+    const keys=['correspondence_mobile_phone','correspondence_home_phone',...(choice==='full'?['direct_superior']:[])];
     const textColumns=choice==='full'?employeeTextColumnIndexes():sectionTextColumnIndexes(choice);
     const bytes=await buildXlsx(columns,[],{textColumns});
     const ws=XLSX.read(bytes,{type:'array',cellNF:true}).Sheets['Leave Import'];

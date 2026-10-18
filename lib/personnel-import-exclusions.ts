@@ -1,8 +1,9 @@
+import {MOVEMENT_FORM_IDS} from './movement-form-contract';
 import {PERSONNEL_FIELDS,PERSONNEL_IMPORT_COMPATIBILITY,type PersonnelFieldDescriptor} from './personnel-field-registry';
 import {personnelFieldLabel,type PersonnelLabelResolver} from './personnel-field-label';
-import type {ImportSection} from './import-sections';
+import type {ImportSection,PersonnelImportChoice} from './import-sections';
+export type {PersonnelImportChoice} from './import-sections';
 
-export type PersonnelImportChoice='full'|ImportSection;
 /** Translation adapter for the registry's existing owner reasons, not a second field inventory.
  * Unknown reasons remain visible verbatim; the exact coverage test requires their translation.
  */
@@ -24,16 +25,17 @@ const REASON_KEYS:Readonly<Record<string,string>>={
   "Correct Hire Details selects the original assignment Cost Centre ID through the guarded correction owner, carries only proven inherited values and retains the prior audit. The cost-centre name report projection remains separate.": "hireCorrection",
   "The lifecycle Movement workflow validates coded exit reason, derives turnover classification and requires the associated dates before applying termination.": "termination",
 };
-const SECTION_TABS:Record<ImportSection,string>={profile:'Profile',employment:'Employment',bank_statutory:'Bank & Statutory',family:'Family',qualification:'Qualification',emergency:'Profile'};
+const SECTION_TABS:Record<ImportSection,string>={profile:'Profile',bank_statutory:'Bank & Statutory',family:'Family',qualification:'Qualification',emergency:'Profile'};
 const TAB_KEYS:Readonly<Record<string,string>>={Profile:'profile',Family:'family',Employment:'job','Employment History':'careerMovement',Attendance:'attendance','Bank & Statutory':'bankStatutory',Payroll:'payroll',Leave:'leave',Documents:'documents',Qualification:'qualification',Others:'others'};
 export function personnelImportExclusionReasonKey(field:PersonnelFieldDescriptor):string|undefined{return REASON_KEYS[field.import.disabledReason??''];}
 /** A supported full column or repeated-record column is never advertised as unimportable.
  * Repeated captions for the same saved fact also keep the supported owner's status.
  */
 export function personnelImportExclusions(choice:PersonnelImportChoice,fields:readonly PersonnelFieldDescriptor[]=PERSONNEL_FIELDS){
+  const movementFields=new Set<string>([...Object.values(MOVEMENT_FORM_IDS),'employment_history.event_information.lastworkingdate']);
   const compatibilityIds=new Set<string>(PERSONNEL_IMPORT_COMPATIBILITY.map(adapter=>adapter.fieldId));
   const carried=new Set(fields.filter(field=>field.import.column||field.import.register||compatibilityIds.has(field.id)).map(field=>JSON.stringify([field.owner,field.ownerField,field.grain])));
-  return fields.filter(field=>!field.import.column&&!field.import.register && !carried.has(JSON.stringify([field.owner,field.ownerField,field.grain])) && (choice==='full'||field.tab===SECTION_TABS[choice] && (choice!=='emergency'||field.owner==='emergencyContact')));
+  return fields.filter(field=>!movementFields.has(field.id)&&!field.import.column&&!field.import.register && !carried.has(JSON.stringify([field.owner,field.ownerField,field.grain])) && (choice==='full'||choice==='movement'&&field.tab==='Employment History'||choice!=='movement'&&field.tab===SECTION_TABS[choice] && (choice!=='emergency'||field.owner==='emergencyContact')));
 }
 export function personnelImportExclusionEntries(choice:PersonnelImportChoice,resolve:PersonnelLabelResolver){
   return personnelImportExclusions(choice).map(field=>{
