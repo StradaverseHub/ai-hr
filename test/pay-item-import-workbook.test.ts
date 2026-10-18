@@ -37,7 +37,7 @@ describe('Pay Items workbook contract', () => {
       for (let row = 3; row <= 502; row++) {
         expect(sheet[`T${row}`], `${name}!T${row} survives XLSX export/read`).toBeDefined();
         expect(sheet[`T${row}`].f, `${name}!T${row} retains duplicate-code advice`).toContain('COUNTIF');
-        expect(sheet[`T${row}`].f, `${name}!T${row} reads its own row`).toContain(`COUNTA(A${row}:S${row})`);
+        expect(sheet[`T${row}`].f, `${name}!T${row} reads its own row`).toContain(`COUNTBLANK(A${row}:S${row})=19`);
       }
     }
     const zip = await JSZip.loadAsync(bytes), xml = await zip.file('xl/worksheets/sheet2.xml')!.async('string');
@@ -51,6 +51,31 @@ describe('Pay Items workbook contract', () => {
     expect(listValues.slice(1).map(row => row[0]).filter(Boolean)).toEqual(vocabulary.kind!.map(c => c.label));
     expect(listValues.slice(1).map(row => row[3]).filter(Boolean)).toEqual(vocabulary.roundingMethod!.map(c => c.label));
     expect(listValues.slice(1).map(row => row[6]).filter(Boolean)).toEqual(vocabulary.pcbExemptionCode!.map(c => c.label));
+  });
+  it('treats emitted empty-string entry cells as blank and gates only populated rows for advice and highlighting', async () => {
+    const bytes = await buildPayItemWorkbook(vocabulary), wb = XLSX.read(bytes, { type: 'buffer', cellFormula: true });
+    const zip = await JSZip.loadAsync(bytes);
+    for (const [index, name] of [[2, 'Pay Items'], [3, 'Example']] as const) {
+      const sheet = wb.Sheets[name];
+      for (let row = 3; row <= 502; row++) {
+        const values = Array.from({ length: 19 }, (_, column) => sheet[`${XLSX.utils.encode_col(column)}${row}`]?.v);
+        // COUNTBLANK includes a literal empty string; COUNTA counts that stored value as nonempty.
+        const blankCells = values.filter(value => value == null || value === '').length;
+        expect(blankCells === 19, `${name} row${row}: real example versus untouched blank row`).toBe(name === 'Pay Items' || row > 10);
+        expect(sheet[`T${row}`].f).toMatch(new RegExp(`^IF\\(COUNTBLANK\\(A${row}:S${row}\\)=19,"",IF\\(OR\\(A${row}="",B${row}="",D${row}=""\\)`));
+      }
+      const xml = await zip.file(`xl/worksheets/sheet${index}.xml`)!.async('string');
+      const formatting = [...xml.matchAll(/<conditionalFormatting\b[^>]*>([\s\S]*?)<\/conditionalFormatting>/g)];
+      expect(formatting).toHaveLength(7);
+      const guarded = formatting.flatMap(([, body]) => [...body.matchAll(/<formula>([\s\S]*?)<\/formula>/g)].map(([, formula]) => formula)).filter(formula => !formula.includes('LEFT(T3'));
+      expect(guarded).toHaveLength(8);
+      for (const formula of guarded) expect(formula).toMatch(/^AND\(COUNTBLANK\(\$A3:\$S3\)&lt;19,/);
+      expect(xml).not.toContain('COUNTA(');
+    }
+    // A row containing only a real pay code must enter the ordinary missing-required-fields branch.
+    const partialRow = Array.from({ length: 19 }, () => ''); partialRow[0] = 'FICTIONAL_ONLY_CODE';
+    expect(partialRow.filter(value => value === '').length).toBe(18);
+    expect(wb.Sheets['Pay Items'].T3.f).toContain('IF(OR(A3="",B3="",D3=""),"Missing Pay Code / Label / Category"');
   });
   it('exports text-only dropdown formulas with exact Lists ranges, never embedded worksheet markup', async () => {
     const bytes = await buildPayItemWorkbook(vocabulary), wb = XLSX.read(bytes, { type: 'buffer' });
