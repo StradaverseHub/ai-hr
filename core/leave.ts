@@ -10840,10 +10840,13 @@ export async function reprojectEntitlementForEmployment(
      */
     changeEffectiveOn?: string | null;
   },
+  /** Atomic Movement import composes ledger/audit with its employee sequence; ordinary callers
+   * retain their existing independent transaction and best-effort orchestration. */
+  outerTx?: Tx,
 ): Promise<{ affected: number; totalDelta: number }> {
   const asOf = p.asOf ?? todayInKualaLumpur();
   const none = { affected: 0, totalDelta: 0 };
-  return withTenant(ctx, async (tx) => {
+  const run=async(tx:Tx)=>{
     // 1. Resolve the employment + its company's country/leave-cycle context.
     const [emp] = await tx
       .select({
@@ -11058,7 +11061,8 @@ export async function reprojectEntitlementForEmployment(
       totalDelta = round2(totalDelta + delta);
     }
     return { affected, totalDelta };
-  });
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /**

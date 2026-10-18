@@ -24,37 +24,8 @@ import { CurrencySelect } from '@/components/currency-select';
 import { PAY_MODE_OPTIONS, PAYMENT_TERM_OPTIONS } from '@/components/pay-structure-fields';
 import { createMovementEventAction, editMovementEventAction } from './actions';
 
-const MOVEMENT_FORM_IDS = {
-  "companyId": "employment.organisation_assignment.companyname",
-  "businessUnitId": "employment.organisation_assignment.businessunitname",
-  "departmentId": "employment.organisation_assignment.departmentname",
-  "positionId": "employment.organisation_assignment.positionname",
-  "gradeId": "employment.organisation_assignment.gradename",
-  "employmentType": "employment.organisation_assignment.employmenttype",
-  "locationId": "attendance.work_location_and_shift_arrangement.locationid",
-  "managerEmploymentId": "employment.direct_superior_and_history.superioremploymentid",
-  "basicSalary": "payroll.basic_salary_and_salary_history.basicsalary",
-  "currency": "payroll.basic_salary_and_salary_history.currency",
-  "payMode": "payroll.basic_salary_and_salary_history.paymode",
-  "paymentTerm": "payroll.basic_salary_and_salary_history.paymentterm",
-  "orgDivision": "employment.additional_organisation_labels.orgdivision",
-  "employmentCategory": "employment.additional_organisation_labels.employmentcategory",
-  "orgRegion": "employment.additional_organisation_labels.orgregion",
-  "orgBranch": "employment.additional_organisation_labels.orgbranch",
-  "orgTeam": "employment.additional_organisation_labels.orgteam",
-  "orgSection": "employment.additional_organisation_labels.orgsection",
-  "orgLine": "employment.additional_organisation_labels.orgline",
-  "orgBase": "employment.additional_organisation_labels.orgbase",
-  "kind": "employment_history.event_information.kind",
-  "effectiveDate": "employment_history.event_information.effectivefrom",
-  "endDate": "employment_history.event_information.enddate",
-  "terminationReasonCode": "employment_history.event_information.terminationreasoncode",
-  "resignationDate": "employment_history.event_information.resignationdate",
-  "terminationNoticeDays": "employment_history.event_information.noticeserveddays",
-  "blacklisted": "employment_history.event_information.blacklisted",
-  "remarks": "employment_history.event_information.remarks",
-  "reason": "employment_history.event_information.correctionreason"
-} as const;
+import {MOVEMENT_FORM_IDS, movementFormFields} from '@/lib/movement-form-contract';
+import {isComparisonKind} from '@/core/movement-kinds';
 const movementField=(name:keyof typeof MOVEMENT_FORM_IDS)=>MOVEMENT_FORM_IDS[name];
 export type MovementOption = { id: string; name: string };
 /** b7b22514 — a Direct Superior candidate, carrying the company that decides whether an Entity Transfer
@@ -149,21 +120,6 @@ const DATE_VALUE_KINDS: readonly string[] = [
   // employee's new Join Date with the company they are moving to. It needs the hint more than Confirmation
   // does, because the date it silently writes is one HR used to have to type on a second screen.
   'entityTransfer',
-];
-
-// Mirrors core/movement.ts COMPARISON_KINDS — the kinds that render the Current / After grid.
-// 3ced1040 added `confirmation` to both; the two lists must move together or the grid does not render.
-const COMPARISON_KINDS: readonly string[] = [
-  'transfer',
-  'entityTransfer',
-  'promotion',
-  'demotion',
-  'increment',
-  'salaryAdjustment',
-  'orgAssignmentChange',
-  'employmentTypeChange',
-  'reportingLineChange',
-  'confirmation',
 ];
 
 /** 66a63bd6 — the movement being corrected. Absent = the New Event form, unchanged. */
@@ -281,7 +237,7 @@ export function MovementNewEvent({
     }
   };
 
-  const isComparison = COMPARISON_KINDS.includes(behaviour);
+  const isComparison = isComparisonKind(behaviour);
   /**
    * b7b22514 — ENTITY TRANSFER. The destination company is form STATE, not just a submitted value, because
    * picking it has to re-scope the org pickers below it: the department list of the company they are
@@ -312,8 +268,8 @@ export function MovementNewEvent({
   // and nothing in the record says which of the two the user meant).
   const isTermination = behaviour === 'termination';
   const showBlacklist = behaviour === 'blacklist';
-  const showEndDate = ['probationExtension', 'secondment', 'actingPosition', 'resignation', 'termination'].includes(behaviour);
-  const showEffectiveDate = behaviour !== 'blacklist';
+  const showEndDate = movementFormFields(behaviour).includes('endDate');
+  const showEffectiveDate = movementFormFields(behaviour).includes('effectiveDate');
   const [terminationReason, setTerminationReason] = useState<string>('');
   // "Resignation Date — mandatory for resignation cases" (the reporter's rule). Shown only for that reason,
   // because for a dismissal or a contract expiry there is no resignation to date.

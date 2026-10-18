@@ -1,6 +1,7 @@
 'use server';
 
 import { publicErrorMessage } from '@/lib/public-error';
+import {movementNeedsEntitlementReprojection} from '@/core/movement-kinds';
 import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -554,12 +555,7 @@ export async function createMovementEventAction(formData: FormData) {
     // kinds are. This is NOT the leave PAYOUT, which the approved plan defers to the final-settlement step.
     // 3ced1040 — `confirmation` used to be named here explicitly and is not any more: it is a comparison
     // kind now, so isComparisonKind covers it. The set is otherwise unchanged.
-    if (
-      isComparisonKind(p.kind) ||
-      p.kind === 'probationExtension' ||
-      p.kind === 'groupJoinDateCorrection' ||
-      p.kind === 'termination'
-    ) {
+    if (movementNeedsEntitlementReprojection(res.behaviourKind)) {
       // The movement's own effective date, NOT today: a promotion effective 1 July keyed in September is
       // recorded as having taken effect on 1 July. It reaches the AUDIT row only — the ledger row keeps
       // the posting date, because re-dating money is a separate decision (see the migration's header).
@@ -616,14 +612,14 @@ export async function editMovementEventAction(formData: FormData) {
   try {
     const p = parseMovementForm(formData);
     const gradeBefore = { gradeId: await employmentGradeId(s, employmentId) };
-    await editMovementEvent(s, {
+    const result=await editMovementEvent(s, {
       employmentId,
       movementId: String(formData.get('movementId') ?? '').trim(),
       reason: orNull(formData.get('reason')),
       ...p,
     });
     // A correction can move the grade just as the original did, and it carries its own effective date.
-    if (isComparisonKind(p.kind))
+    if (isComparisonKind(result.behaviourKind))
       await recomputeEntitlement(s, employmentId, 'movement_recorded', {
         gradeBefore,
         changeEffectiveOn: p.effectiveDate ?? null,

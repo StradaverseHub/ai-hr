@@ -607,7 +607,8 @@ describe('476f23ed — the settings screen', () => {
     // Every field-visibility decision runs off `behaviour`. If one is left keyed on `kind`, a tenant's own
     // type mapped onto Transfer renders the wrong form — which is the whole failure mode this guards.
     expect(src).toContain('const behaviour = behaviourOf(kind);');
-    expect(src).toContain('COMPARISON_KINDS.includes(behaviour)');
+    expect(src).toContain('isComparisonKind(behaviour)');
+    expect(src).toMatch(/import\s*\{isComparisonKind\}\s*from\s*['"]@\/core\/movement-kinds['"]/);
     expect(src).toContain("behaviour === 'termination'");
     expect(src).toContain("behaviour === 'blacklist'");
     expect(src).toContain('DATE_VALUE_KINDS.includes(behaviour)');

@@ -18,6 +18,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { todayInKualaLumpur } from '../lib/hr-date';
+import {isCalendarDate} from '../lib/calendar-date';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf, type MovementTag } from '../db/events';
 import {
@@ -727,7 +728,9 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
                 ? ((after.joinDate as string | null) ?? occDate)
                 : kind === 'groupJoinDateCorrection'
                   ? ((after.hiredOn as string | null) ?? occDate)
-                  : occDate;
+                  : kind==='probationExtension'&&typeof mv?.effectiveDate==='string'&&isCalendarDate(mv.effectiveDate)
+                    ? mv.effectiveDate
+                    : occDate;
         const endDate =
           kind === 'probationExtension'
             ? ((after.extendedConfirmationDate as string | null) ?? mv?.endDate ?? null)
@@ -1593,7 +1596,12 @@ export function movementCurrentState(
   ctx: SessionContext,
   employmentId: string,
 ): Promise<MovementCurrentState> {
-  return withTenant(ctx, (tx) => currentStateTx(tx, employmentId));
+  return withTenant(ctx, (tx) => movementCurrentStateTx(tx, employmentId));
+}
+
+/** Same canonical state read inside a caller-owned movement transaction. */
+export function movementCurrentStateTx(tx:Tx,employmentId:string):Promise<MovementCurrentState>{
+  return currentStateTx(tx,employmentId);
 }
 
 export type CreateMovementInput = {
@@ -2044,9 +2052,6 @@ async function applyComparisonMovementTx(
   }
 }
 
-const applyComparisonMovement = (ctx: SessionContext, p: CreateMovementInput, kind: ComparisonKind) =>
-  withTenant(ctx, (tx) => applyComparisonMovementTx(tx, ctx, p, kind));
-
 /**
  * 941c9dac — the fields of the submitted right column, frozen onto the scheduled event so the sweep can
  * replay EXACTLY what HR typed months later. `undefined` (the form did not offer the field) is dropped
@@ -2092,10 +2097,15 @@ async function scheduleMovementTx(
   ctx: SessionContext,
   p: CreateMovementInput,
   kind: ComparisonKind,
+  admission?: { baseline?: MovementCurrentState; capture?: (baseline: MovementCurrentState) => void },
 ) {
-  const cur = await currentStateTx(tx, p.employmentId);
+  // Always reread the real subject under current RLS. Only the canonical rollback rehearsal below can
+  // supply a verified predecessor state for a future sequence; ordinary New Event/Edit use live state.
+  const live = await currentStateTx(tx, p.employmentId);
+  const cur = admission?.baseline ?? live;
   const d = movementDeltas(p, cur);
   if (d.nothingChanged) throw new MovementNoChangeError();
+  admission?.capture?.({...cur});
 
   const remarks = p.remarks?.trim() || null;
   const endDate = p.endDate?.trim() || null;
@@ -2436,13 +2446,14 @@ async function scheduleTerminationTx(
  *     at one of the consequence-free kinds. That is what stops a renamed type from acting like a
  *     Termination.
  */
-async function resolveInputType<T extends CreateMovementInput>(
+async function resolveInputTypeTx<T extends CreateMovementInput>(
+  tx: Tx,
   ctx: SessionContext,
   p: T,
   verb: 'record' | 'correct',
   opts?: { allowInactive?: boolean },
 ): Promise<T> {
-  const resolved = await withTenant(ctx, (tx) => resolveMovementEventTypeTx(tx, ctx.tenantId, p.kind));
+  const resolved = await resolveMovementEventTypeTx(tx, ctx.tenantId, p.kind);
   if (!resolved) throw new Error('Unknown movement event type.');
   if (!resolved.active && !opts?.allowInactive) {
     throw new Error(
@@ -2450,6 +2461,10 @@ async function resolveInputType<T extends CreateMovementInput>(
     );
   }
   return { ...p, kind: resolved.behaviourKind, typeCode: resolved.code };
+}
+
+async function resolveInputType<T extends CreateMovementInput>(ctx:SessionContext,p:T,verb:'record'|'correct',opts?:{allowInactive?:boolean}):Promise<T>{
+  return withTenant(ctx,tx=>resolveInputTypeTx(tx,ctx,p,verb,opts));
 }
 
 /**
@@ -2468,7 +2483,17 @@ async function resolveInputType<T extends CreateMovementInput>(
  * state. NOTE (ADR-0015): subject-scoped events are readable by the employee themselves — like the
  * existing termination reason, movement remarks are staff-visible by design.
  */
-export async function createMovementEvent(ctx: SessionContext, rawInput: CreateMovementInput) {
+export function createMovementEvent(ctx: SessionContext, rawInput: CreateMovementInput) {
+  return withTenant(ctx,tx=>createMovementEventTx(tx,ctx,rawInput));
+}
+
+/** Canonical dispatcher in a caller-owned transaction; every writer/ledger leg shares this Tx. */
+export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput){
+  return dispatchMovementEventTx(tx,ctx,rawInput);
+}
+
+/** Private admission data never comes from a form or caller-supplied baseline. */
+async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput,futureAdmission?:{baseline?:MovementCurrentState;capture?:(baseline:MovementCurrentState)=>void;expectedBehaviour?:string}){
   const roles = ctx.roles ?? [];
   if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
     throw new Error('Only an admin can record a movement.');
@@ -2477,7 +2502,9 @@ export async function createMovementEvent(ctx: SessionContext, rawInput: CreateM
   // built-in kind resolves to itself; one of the organisation's own types resolves to the behaviour it was
   // mapped to, and its code travels on as `typeCode` so the ledger records what HR chose. A type that was
   // switched off is refused here rather than silently applied — that is the whole point of switching it off.
-  const p = await resolveInputType(ctx, rawInput, 'record');
+  const p = await resolveInputTypeTx(tx, ctx, rawInput, 'record');
+  if(futureAdmission?.expectedBehaviour!==undefined&&p.kind!==futureAdmission.expectedBehaviour)throw new Error('preview_stale_revalidate');
+  const execute=async()=>{
   if (p.kind !== 'blacklist' && !/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveDate ?? '')) {
     throw new Error('A valid effective date (YYYY-MM-DD) is required.');
   }
@@ -2498,9 +2525,9 @@ export async function createMovementEvent(ctx: SessionContext, rawInput: CreateM
     // dated in the FUTURE is recorded as a pending intent and applies on the morning of its date.
     const today = todayInKualaLumpur();
     if (p.effectiveDate > today) {
-      return withTenant(ctx, (tx) => scheduleMovementTx(tx, ctx, p, p.kind as ComparisonKind));
+      return scheduleMovementTx(tx, ctx, p, p.kind as ComparisonKind, futureAdmission);
     }
-    return applyComparisonMovement(ctx, p, p.kind);
+    return applyComparisonMovementTx(tx, ctx, p, p.kind);
   }
 
   const remarks = p.remarks?.trim() || null;
@@ -2521,7 +2548,7 @@ export async function createMovementEvent(ctx: SessionContext, rawInput: CreateM
         employmentId: p.employmentId,
         joinDate: p.effectiveDate,
         movement: { type: 'joinDateChange', remarks, groupId: randomUUID() },
-      });
+      },tx);
 
     // 89ea527b — Group Join Date Correction: the authorized historical-data correction of the master service
     // date. This is the ONLY route to hired_on after creation, and it MOVES LEAVE ENTITLEMENT (service bands
@@ -2532,15 +2559,16 @@ export async function createMovementEvent(ctx: SessionContext, rawInput: CreateM
         employmentId: p.employmentId,
         hiredOn: p.effectiveDate,
         movement: { type: 'groupJoinDateCorrection', remarks, groupId: randomUUID() },
-      });
+      },tx);
 
     case 'probationExtension':
+      if(!isCalendarDate(p.effectiveDate))throw new Error('A valid effective date (YYYY-MM-DD) is required.');
       if (!endDate) throw new Error('An extended confirmation (new probation end) date is required.');
       return setEmploymentInfo(ctx, {
         employmentId: p.employmentId,
         extendedConfirmationDate: endDate,
-        movement: { type: 'probationExtension', remarks, endDate, groupId: randomUUID() },
-      });
+        movement: { type: 'probationExtension', remarks, endDate, effectiveDate:p.effectiveDate, groupId: randomUUID() },
+      },tx);
 
     case 'resignation':
       return setEmploymentInfo(ctx, {
@@ -2548,28 +2576,26 @@ export async function createMovementEvent(ctx: SessionContext, rawInput: CreateM
         tenderResignationDate: p.effectiveDate,
         ...(endDate ? { lastWorkingDate: endDate } : {}),
         movement: { type: 'resignation', remarks, endDate, groupId: randomUUID() },
-      });
+      },tx);
 
     // ae9350f2 — Termination. Validated once, then either applied now or scheduled for its effective date;
     // see the "Termination" section above for why a future-dated one must not write anything today.
-    case 'termination':
-      return withTenant(ctx, async (tx) => {
+    case 'termination': {
         const plan = await planTerminationTx(tx, ctx, p, 'create');
         return plan.effectiveDate > todayInKualaLumpur()
           ? scheduleTerminationTx(tx, ctx, p.employmentId, plan)
           : applyTerminationTx(tx, ctx, p.employmentId, plan);
-      });
+      }
 
     case 'blacklist':
       return setEmploymentBlacklist(ctx, {
         employmentId: p.employmentId,
         blacklisted: p.blacklisted ?? true,
         reason: remarks,
-      });
+      },tx);
 
     case 'secondment':
-    case 'actingPosition':
-      return withTenant(ctx, async (tx) => {
+    case 'actingPosition': {
         const [emp] = await tx
           .select({ id: employment.id })
           .from(employment)
@@ -2586,8 +2612,76 @@ export async function createMovementEvent(ctx: SessionContext, rawInput: CreateM
           payload: { type: p.typeCode ?? p.kind, effectiveDate: p.effectiveDate, endDate, remarks },
         });
         return { employmentId: p.employmentId };
-      });
+      }
   }
+  };
+  const result=await execute();
+  if(!result)throw new Error('Unsupported movement event type.');
+  return {...result,behaviourKind:p.kind};
+}
+
+/** A single ordered create function; no caller can pass a comparison baseline or replay token. */
+export type MovementSequenceCreate = (input: CreateMovementInput) => ReturnType<typeof createMovementEventTx>;
+const MOVEMENT_SEQUENCE_MAX = 20;
+const sequenceInputKey = (input: CreateMovementInput) => JSON.stringify(Object.entries(input).filter(([,value])=>value!==undefined).sort(([a],[b])=>a.localeCompare(b)));
+
+/**
+ * Rehearse at most twenty events for ONE employee, ALWAYS rolling the nested savepoint back. The caller
+ * may advance scheduled intents and required leave effects only through canonical owners on shadowTx.
+ * The returned replay function lives only inside this same outer transaction/context. It accepts only
+ * the exact immutable inputs, once and in order; failed rehearsal never returns it. Only this owner
+ * captures future comparison baselines, and they affect admission/conflict fields, never current masters.
+ */
+export async function rehearseMovementSequenceTx<T>(tx:Tx,ctx:SessionContext,prepare:(shadowTx:Tx,create:MovementSequenceCreate)=>Promise<T>){
+  const contextKey=()=>JSON.stringify({tenantId:ctx.tenantId,userId:ctx.userId,roles:ctx.roles,grants:ctx.grants});
+  const originalContext=contextKey();
+  const transactionIdentity=()=>tx.execute<{id:string;session:string}>(sql`select pg_current_xact_id()::text as id, concat_ws('|',current_setting('app.tenant_id',true),current_setting('app.user_id',true),current_setting('app.roles',true),current_setting('app.grants',true)) as session`);
+  const [transaction]=await transactionIdentity();
+  const plans:{input:CreateMovementInput;key:string;baseline?:MovementCurrentState;behaviour:string}[]=[];
+  let subject:string|undefined,previousDate:string|undefined,preparing=false,inFlight=false,failed=false;
+  class RehearsalRollback extends Error{constructor(readonly value:T){super('movement_sequence_rehearsal_rollback');}}
+  let value:T;
+  try{
+    await tx.transaction(async shadowTx=>{
+      preparing=true;
+      const create:MovementSequenceCreate=async input=>{
+        if(!preparing)throw new Error('movement_sequence_not_available');
+        if(inFlight||failed){failed=true;throw new Error('movement_sequence_not_available');}
+        inFlight=true;
+        try{
+          if(plans.length>=MOVEMENT_SEQUENCE_MAX)throw new Error('too_many_employee_rows');
+          if(subject!==undefined&&input.employmentId!==subject)throw new Error('movement_sequence_employee_changed');
+          if(previousDate!==undefined&&input.effectiveDate<previousDate)throw new Error('movement_sequence_order_changed');
+          const frozen=Object.freeze({...input});let baseline:MovementCurrentState|undefined;
+          const result=await dispatchMovementEventTx(shadowTx,ctx,frozen,{capture:current=>{baseline=Object.freeze({...current});}});
+          plans.push({input:frozen,key:sequenceInputKey(frozen),baseline,behaviour:result.behaviourKind});subject=frozen.employmentId;previousDate=frozen.effectiveDate;
+          return result;
+        }catch(error){failed=true;throw error;}finally{inFlight=false;}
+      };
+      try{
+        const prepared=await prepare(shadowTx,create);
+        if(failed||inFlight)throw new Error('movement_sequence_rehearsal_failed');
+        throw new RehearsalRollback(prepared);
+      }finally{preparing=false;}
+    });
+    throw new Error('movement_rehearsal_did_not_rollback');
+  }catch(error){if(!(error instanceof RehearsalRollback))throw error;value=error.value;}
+  let next=0,replaying=false,replayFailed=false;
+  const replay:MovementSequenceCreate=async input=>{
+    if(replaying||replayFailed||next>=plans.length)throw new Error('movement_sequence_not_available');
+    replaying=true;
+    try{
+      const plan=plans[next];
+      if(sequenceInputKey(input)!==plan.key)throw new Error('movement_sequence_input_changed');
+      if(contextKey()!==originalContext)throw new Error('movement_sequence_context_changed');
+      const [current]=await transactionIdentity();
+      if(!transaction||current?.id!==transaction.id)throw new Error('movement_sequence_transaction_ended');
+      if(current.session!==transaction.session)throw new Error('movement_sequence_context_changed');
+      next++; // Once only, even if the writer refuses; caller must abort the outer employee transaction.
+      return await dispatchMovementEventTx(tx,ctx,plan.input,{baseline:plan.baseline,expectedBehaviour:plan.behaviour});
+    }catch(error){replayFailed=true;throw error;}finally{replaying=false;}
+  };
+  return {value,replay};
 }
 
 // ───────────── Scheduled application — 941c9dac ─────────────
@@ -3194,7 +3288,7 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
   const remarks = p.remarks?.trim() || null;
   const endDate = p.endDate?.trim() || null;
 
-  return withTenant(ctx, async (tx) => {
+  const result=await withTenant(ctx, async (tx) => {
     const { events, rows, statusOf, today } = await projectRows(tx, ctx.tenantId, p.employmentId);
     const row = rows.find((r) => r.id === p.movementId);
     if (!row) throw new Error('Movement event not found.');
@@ -3364,4 +3458,5 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
       throw e;
     }
   });
+  return {...result,behaviourKind:p.kind};
 }

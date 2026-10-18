@@ -3102,6 +3102,7 @@ export async function setEmploymentInfo(
 export async function setEmploymentBlacklist(
   ctx: SessionContext,
   p: { employmentId: string; blacklisted: boolean; reason?: string | null },
+  outerTx?: Tx,
 ) {
   const roles = ctx.roles ?? [];
   if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
@@ -3109,7 +3110,7 @@ export async function setEmploymentBlacklist(
   }
   const today = todayInKualaLumpur();
   const reason = p.reason == null ? null : String(p.reason).trim() || null;
-  return withTenant(ctx, async (tx) => {
+  const run=async(tx:Tx)=>{
     const [before] = await tx
       .select({ blacklistedAt: employment.blacklistedAt, blacklistReason: employment.blacklistReason })
       .from(employment)
@@ -3142,7 +3143,8 @@ export async function setEmploymentBlacklist(
       },
     });
     return { id: p.employmentId, blacklisted: p.blacklisted, changed: true as const };
-  });
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /** R46 79eb7151 — the disbursement channels an employee can be paid through. r393 (685d2380 step 2) — the

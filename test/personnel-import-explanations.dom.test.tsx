@@ -1,3 +1,4 @@
+vi.mock('../app/admin/personnel/import/movement-actions',()=>({movementCatalogAction:vi.fn(),previewMovementAction:vi.fn(),commitMovementAction:vi.fn()}));
 import {fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
