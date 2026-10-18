@@ -1539,6 +1539,8 @@
         },
         "detail": {
           "eventInformation": "Event Information",
+          "scheduledValues": "Scheduled / proposed values",
+          "scheduledValuesNote": "These are the saved targets for this scheduled event. They have not been applied. Only explicitly submitted fields are shown.",
           "beforeChanges": "Before Changes",
           "afterChanges": "After Changes",
           "field": "Field",
@@ -1551,6 +1553,7 @@
         "field": {
           "company": "Company",
           "businessUnit": "Business Unit",
+          "location": "Work Location",
           "department": "Department",
           "position": "Position",
           "grade": "Job Grade",

@@ -1539,6 +1539,8 @@
         },
         "detail": {
           "eventInformation": "事件信息",
+          "scheduledValues": "计划／拟议值",
+          "scheduledValuesNote": "以下是为此计划事件保存的目标值，尚未生效。仅显示明确提交的字段。",
           "beforeChanges": "变更前",
           "afterChanges": "变更后",
           "field": "字段",
@@ -1551,6 +1553,7 @@
         "field": {
           "company": "公司",
           "businessUnit": "业务单位",
+          "location": "工作地点",
           "department": "部门",
           "position": "职位",
           "grade": "职级",

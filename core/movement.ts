@@ -31,6 +31,7 @@ import {
   domainEvent,
   employment,
   jobGrade,
+  location,
   movementEventType,
   person,
   position,
@@ -290,6 +291,12 @@ export type MovementRowSummary = Pick<
   'id' | 'kind' | 'effectiveDate' | 'entryDate' | 'status' | 'endDate' | 'remarks' | 'reversed'
 >;
 
+export type MovementIntentField = 'company' | 'businessUnit' | 'department' | 'position' | 'location' |
+  'grade' | 'employmentType' | 'manager' | 'basicSalary' | 'currency' | 'payMode' | 'paymentTerm' | MovementFlatField;
+
+/** Saved targets only: not an applied snapshot or an invented historical before-state. */
+export type MovementPendingIntent = { values: { field: MovementIntentField; value: string | null }[] };
+
 export type MovementDetail = {
   row: MovementRowSummary;
   /** Full name of the user who recorded the change; null for SYSTEM/import writes and the synthesized row. */
@@ -299,6 +306,8 @@ export type MovementDetail = {
   /** null = first record (the Hired row renders an After column only). */
   before: MovementSnapshot | null;
   after: MovementSnapshot;
+  /** Pending comparison inputs, kept separate so Reports/ESS retain actual as-of semantics. */
+  pendingIntent?: MovementPendingIntent | null;
   /** Flat, non-dated columns THIS movement actually moved. Empty when it moved none — the rows are only
    *  rendered when they carry real evidence, so a historical movement never shows today's value as if it
    *  had been part of the change. */
@@ -1385,6 +1394,61 @@ async function snapshotAt(
   };
 }
 
+/** Resolve only explicitly saved comparison targets under the caller's existing tenant/RLS.
+ * No dispatcher, rehearsal, current-state substitution or write is involved in viewing intent. */
+async function pendingIntentTx(tx: Tx, tenantId: string, event: RawEvent): Promise<MovementPendingIntent | null> {
+  const payload = event.payload;
+  if (!payload || typeof payload !== 'object' || !('input' in payload)) return null;
+  const input = payload.input;
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
+  const values: MovementPendingIntent['values'] = [];
+  const reference = async (key: string, field: MovementIntentField, read: (id: string) => Promise<string | null>) => {
+    if (!(key in input)) return;
+    const id = Reflect.get(input, key);
+    if (id === null) values.push({field, value: null});
+    else if (typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      values.push({field, value: await read(id)});
+    }
+  };
+  await reference('companyId', 'company', async id => {
+    const [row] = await tx.select({name: company.legalName}).from(company).where(and(eq(company.tenantId, tenantId), eq(company.id, id))).limit(1);
+    return row?.name ?? null;
+  });
+  await reference('businessUnitId', 'businessUnit', async id => {
+    const [row] = await tx.select({name: businessUnit.name}).from(businessUnit).where(and(eq(businessUnit.tenantId, tenantId), eq(businessUnit.id, id))).limit(1);
+    return row?.name ?? null;
+  });
+  await reference('departmentId', 'department', async id => {
+    const [row] = await tx.select({name: department.name}).from(department).where(and(eq(department.tenantId, tenantId), eq(department.id, id))).limit(1);
+    return row?.name ?? null;
+  });
+  await reference('positionId', 'position', async id => {
+    const [row] = await tx.select({name: position.title}).from(position).where(and(eq(position.tenantId, tenantId), eq(position.id, id))).limit(1);
+    return row?.name ?? null;
+  });
+  await reference('locationId', 'location', async id => {
+    const [row] = await tx.select({name: location.name}).from(location).where(and(eq(location.tenantId, tenantId), eq(location.id, id))).limit(1);
+    return row?.name ?? null;
+  });
+  await reference('gradeId', 'grade', async id => {
+    const [row] = await tx.select({name: jobGrade.name}).from(jobGrade).where(and(eq(jobGrade.tenantId, tenantId), eq(jobGrade.id, id))).limit(1);
+    return row?.name ?? null;
+  });
+  await reference('managerEmploymentId', 'manager', async id => {
+    const [row] = await tx.select({name: person.fullName}).from(employment).innerJoin(person, eq(person.id, employment.personId))
+      .where(and(eq(employment.tenantId, tenantId), eq(person.tenantId, tenantId), eq(employment.id, id))).limit(1);
+    return row?.name ?? null;
+  });
+  for (const field of ['employmentType', 'basicSalary', 'currency', 'payMode', 'paymentTerm', ...MOVEMENT_FLAT_FIELDS] as const) {
+    if (!(field in input)) continue; // Omitted is not a clear and not today's value.
+    const value: unknown = Reflect.get(input, field);
+    if (value === null || typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value))) {
+      values.push({field, value: value === null ? null : String(value)});
+    }
+  }
+  return values.length ? {values} : null;
+}
+
 /**
  * Detail view for one history row: event information plus a side-by-side Before/After comparison built
  * by as-of reconstruction at the effective date. Hired renders After only (before = null → the UI shows
@@ -1454,6 +1518,9 @@ export async function movementDetailTx(tx: Tx,
       occurredAt: row.occurredAt,
       before,
       after,
+      pendingIntent: row.scheduled && statusOf(row) === 'pending' && ev
+        ? await pendingIntentTx(tx, ctx.tenantId, ev)
+        : null,
       flatChanges: flatChangesOf(group.length ? group : events.filter((e) => e.id === row.id)),
       hireCorrection:
         row.kind === 'hired'
