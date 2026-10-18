@@ -78,12 +78,18 @@ describe('the write re-states the policy rather than leaning on it', () => {
     expect(c, 'customer-visible, which the policy does not check and the product must').toContain('!entry.customerVisible');
     // r261 widened the writer to the `json` value type the catalog and 0313's CHECK have always
     // carried (board item 9583deac stores a list of field keys), so the conjunct is now spelled through
-    // `settingValueType` — which answers 'json' for an array and `typeof` for everything else. The
-    // assertion follows the line rather than being dropped: what matters is that the DECLARED TYPE is
-    // still checked in TypeScript before the policy has to catch it silently.
+    // `settingValueType`. The approved ESS v2 policy also has one bounded object shape, validated by
+    // its canonical predicate and admitted ONLY for its exact key. The malformed/extra-key/version/
+    // duplicate-field matrix lives in personnel-ess-contract.test.ts; arbitrary objects remain refused.
     expect(c, 'and the declared value type').toContain('settingValueType(p.value) !== entry.valueType');
-    expect(c, "…answering 'json' only for a list, never for an arbitrary object").toContain(
-      "return Array.isArray(v) ? 'json' : typeof v;",
+    expect(c, 'JSON is limited to lists and the canonical bounded ESS policy').toContain(
+      "return Array.isArray(v)||isProfileEditPolicyValue(v) ? 'json' : typeof v;",
+    );
+    expect(c, 'the object predicate comes from its canonical owner').toContain(
+      "import {isProfileEditPolicyValue,type ProfileEditPolicyValue} from '../lib/profile-edit-policy-value'",
+    );
+    expect(c, 'an object is refused outside the exact ESS key or without the bounded predicate').toContain(
+      "if(p.value!==null&&typeof p.value==='object'&&!Array.isArray(p.value)&&(p.key!=='ess.profile_change_fields'||!isProfileEditPolicyValue(p.value)))throw new TenantSettingError('wrong_type');",
     );
   });
 
