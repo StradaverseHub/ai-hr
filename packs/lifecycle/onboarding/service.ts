@@ -489,6 +489,8 @@ export async function onboardingSyncDraftTx(ctx: SessionContext, tx: Tx, draftId
 }) {
     if (ctx.entitlementsExempt || ctx.entitlementsError || !isModuleEnabled(ctx, 'lifecycle'))
         return;
+    // Personnel saves and the scheduled backfill must not both create the first case for one draft.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':onboarding'},0))`);
     const { config, revision } = await configTx(tx, ctx);
     if (!revision)
         return;

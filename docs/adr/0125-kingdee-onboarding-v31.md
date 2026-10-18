@@ -39,7 +39,7 @@ Recent Active joiners remain on the list for 30 days by default, with unfinished
 
 ## Assignment and approval
 
-Checklist round robin checks approved full-day leave on the due date, applies the group's open-task limit and balances task count then least recent automatic assignment. Failure is stored and exposed to owners/editors; retry is explicit.
+Checklist round robin checks approved leave, including partial-day leave, on the due date, applies the group's open-task limit and balances task count then least recent automatic assignment. Failure is stored and exposed to owners/editors; retry is explicit.
 
 Approval round robin checks leave today, avoids the requester when another candidate exists, balances pending then lifetime group approvals, then member order. It has no task workload cap. The Leave owner's per-date approval semantics are preserved, including cancelled child dates and approved partial-day leave; the handoff's day-level unavailable rule applies to any approved duration; the narrow availability projection returns dates, never medical detail.
 

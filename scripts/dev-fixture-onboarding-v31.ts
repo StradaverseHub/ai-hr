@@ -36,7 +36,7 @@ async function main() {
     const { seedCatalogsAt } = await import('./seed-catalogs');
     await seedCatalogsAt(ownerUrl);
     const { seedBase, owner, setModule, entitledCtx, createAppUser, closeAll } = await import('../test/harness');
-    const { eq, asc } = await import('drizzle-orm'), schema = await import('../db/schema');
+    const { eq, asc, sql } = await import('drizzle-orm'), schema = await import('../db/schema');
     const { hireEmployee } = await import('../core/org');
     const { createBusinessUnit, createDepartment } = await import('../core/admin');
     const { saveEmployeeDraft, completeEmployeeDraft } = await import('../core/employee-draft');
@@ -48,7 +48,8 @@ async function main() {
             const cases = await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.tenantId, prior.tenantId));
             if (!prior.caseIds.every((id: string) => cases.some(c => c.id === id)))
                 throw Error('Existing fixture does not match its saved identity; refusing to reset it.');
-            const legacyRows = prior.digestVersion === 2 ? await owner.db.select().from(schema.lcCase).orderBy(asc(schema.lcCase.id)) : await owner.db.select().from(schema.lcCase), legacyHistory = prior.digestVersion === 2 ? await owner.db.select().from(schema.lcHistory).orderBy(asc(schema.lcHistory.id)) : await owner.db.select().from(schema.lcHistory);
+            // Version 1 recorded physical row order; verify that exact witness before using canonical ID ordering in new fixtures.
+            const legacyRows = prior.digestVersion === 2 ? await owner.db.select().from(schema.lcCase).orderBy(asc(schema.lcCase.id)) : await owner.db.select().from(schema.lcCase).orderBy(sql`ctid`), legacyHistory = prior.digestVersion === 2 ? await owner.db.select().from(schema.lcHistory).orderBy(asc(schema.lcHistory.id)) : await owner.db.select().from(schema.lcHistory).orderBy(sql`ctid`);
             if (createHash('sha256').update(JSON.stringify({legacyRows,legacyHistory})).digest('hex') !== prior.legacyDigest)
                 throw Error('The legacy preservation witness changed.');
             console.log('Existing isolated onboarding fixture identities and legacy history digest verified without resetting data.');

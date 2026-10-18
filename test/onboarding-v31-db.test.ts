@@ -64,6 +64,32 @@ describe('V3.1 onboarding database and authorization', () => {
         await expect(onboardingCommand(other, row.case.id, printed.revision, { type: 'fulfil', itemId: card.id, status: 'done' })).rejects.toThrow();
         expect((await onboardingRequisitions(other)).some(r => r.caseId === row.case.id)).toBe(true);
     });
+    it('refreshes and dispatches through the scheduled service principal without a fabricated login', async () => {
+        const saved = await draft();
+        const [stored] = await owner.db.select().from(schema.employeeDraft).where(eq(schema.employeeDraft.id,saved.id)).orderBy(schema.employeeDraft.id);
+        const data = structuredClone(stored!.data) as {profile:{fullName:string}};
+        data.profile.fullName = 'Updated by scheduled Personnel refresh';
+        await owner.db.update(schema.employeeDraft).set({data,updatedAt:new Date(Date.now()+1000)}).where(eq(schema.employeeDraft.id,saved.id));
+        const system:SessionContext = {tenantId:b.tenantId,roles:['hr_admin'],entitlements:admin.entitlements};
+        await refreshOnboardingPersonnel(system);
+        const row = (await onboardingList(admin))[0]!;
+        expect(row.case.source.fullName).toBe(data.profile.fullName);
+        expect(row.case.personId).toBeNull(); expect(row.case.employmentId).toBeNull();
+        expect((await sweepOnboarding(system)).created).toBeGreaterThan(0);
+        expect((await onboardingNotices(admin)).length).toBeGreaterThan(0);
+    });
+    it('keeps one case and the latest Personnel source during concurrent save and backfill', async () => {
+        const [stored] = await owner.db.insert(schema.employeeDraft).values({tenantId:b.tenantId,companyId:b.companyId,label:'Existing baseline draft',data:{profile:{fullName:'Existing baseline draft'},employment:{companyId:b.companyId}},currentStep:1}).returning();
+        const system:SessionContext = {tenantId:b.tenantId,roles:['hr_admin'],entitlements:admin.entitlements};
+        await Promise.all([
+            refreshOnboardingPersonnel(system),
+            saveEmployeeDraft(admin,{id:stored!.id,data:{profile:{fullName:'Latest concurrent Personnel name'},employment:{companyId:b.companyId}},currentStep:1})
+        ]);
+        const rows = await onboardingList(admin);
+        expect(rows).toHaveLength(1);
+        expect(rows[0]!.case.sourceDraftId).toBe(stored!.id);
+        expect(rows[0]!.case.source.fullName).toBe('Latest concurrent Personnel name');
+    });
     it('automatically creates one pending case, saves incomplete data and protects source identity', async () => {
         const d = await draft();
         const rows = await onboardingList(admin);
