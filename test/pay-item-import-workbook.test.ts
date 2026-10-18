@@ -16,7 +16,7 @@ const t = (key: string) => {
 const vocabulary = payItemVocabulary(t, t);
 function upload(rows: string[][], headers: readonly string[] = PAY_ITEM_COLUMNS.map(([, label]) => label)) {
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[], headers, ...rows]), 'Pay Items');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[], [...headers], ...rows]), 'Pay Items');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Retained reference'], ['=literal text']]), 'Other');
   return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
 }
