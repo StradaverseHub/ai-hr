@@ -11,6 +11,7 @@ describe('preserved onboarding process navigation',()=>{
   for(const path of ['[number]','new','import']){
    const page=source('app/lifecycle/onboarding/'+path+'/page.tsx');
    expect(page).toContain("href: '/lifecycle/onboarding/legacy', label: t('onboarding.legacyTitle')");
+   expect(page).not.toContain('href="/lifecycle/onboarding"');
   }
  });
  it('labels the previous process and preserved history in all supported locales',()=>{

@@ -102,7 +102,7 @@ export default async function OnboardingCasePage({ params, searchParams }: { par
             <form action={reopenCaseAction}><input type="hidden" name="kind" value="onboarding" /><input type="hidden" name="number" value={c.number} /><Button type="submit" size="sm" variant="outline">{t('case.reopen')}</Button></form>
           )}
           {c.cancelReason && <p className="text-xs text-muted-foreground">{t('common.reason')}: {c.cancelReason}</p>}
-          <Link href="/lifecycle/onboarding" className="text-xs text-muted-foreground hover:text-foreground">← {t('onboarding.title')}</Link>
+          <Link href="/lifecycle/onboarding/legacy" className="text-xs text-muted-foreground hover:text-foreground">← {t('onboarding.legacyTitle')}</Link>
         </aside>
       </div>
     </div>
