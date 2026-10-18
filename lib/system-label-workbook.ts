@@ -57,15 +57,33 @@ function checkZip(bytes:Buffer){
   const count=bytes.readUInt16LE(end+10);let offset=bytes.readUInt32LE(end+16),expanded=0;
   if(!count||count>160||bytes.readUInt16LE(end+4)||bytes.readUInt16LE(end+6)||bytes.readUInt16LE(end+8)!==count)throw new Error('Unsupported Excel archive.');
   const names=new Set<string>();
+  // SheetJS consumes local sizes and ZIP64 overrides before checking the central directory.
+  // Refuse alternate size/name interpretations before its inflater can allocate from them.
+  function checkExtras(start:number,length:number,limit:number){
+    const stop=start+length;if(stop>limit)throw new Error('Invalid Excel archive entry.');
+    for(let at=start;at<stop;){
+      if(at+4>stop)throw new Error('Invalid Excel archive entry.');
+      const tag=bytes.readUInt16LE(at),size=bytes.readUInt16LE(at+2);
+      if(tag===0x0001||tag===0x7075||at+4+size>stop)throw new Error('Unsupported Excel archive extra field.');
+      at+=4+size;
+    }
+  }
   for(let n=0;n<count;n++){
     if(offset+46>end||bytes.readUInt32LE(offset)!==0x02014b50)throw new Error('Invalid Excel archive directory.');
     const flags=bytes.readUInt16LE(offset+8),method=bytes.readUInt16LE(offset+10),compressed=bytes.readUInt32LE(offset+20),size=bytes.readUInt32LE(offset+24),nameLength=bytes.readUInt16LE(offset+28),local=bytes.readUInt32LE(offset+42);
-    if(flags&0x41||![0,8].includes(method))throw new Error('Encrypted or unsupported Excel archive.');
+    if(flags&~0x080e||![0,8].includes(method))throw new Error('Encrypted or unsupported Excel archive.');
     expanded+=size;if(expanded>8_000_000)throw new Error('Excel workbook expands beyond the supported size.');
+    const extraLength=bytes.readUInt16LE(offset+30),commentLength=bytes.readUInt16LE(offset+32);
+    if(!nameLength||offset+46+nameLength+extraLength+commentLength>end)throw new Error('Invalid Excel archive directory.');
+    checkExtras(offset+46+nameLength,extraLength,end);
     const name=bytes.subarray(offset+46,offset+46+nameLength).toString('utf8');
     if(names.has(name)||local+30>bytes.length||bytes.readUInt32LE(local)!==0x04034b50||bytes.readUInt16LE(local+6)!==flags||bytes.readUInt16LE(local+8)!==method)throw new Error('Invalid Excel archive entry.');
     names.add(name);
-    const localNameLength=bytes.readUInt16LE(local+26),dataStart=local+30+localNameLength+bytes.readUInt16LE(local+28);
+    const localNameLength=bytes.readUInt16LE(local+26),localExtraLength=bytes.readUInt16LE(local+28),dataStart=local+30+localNameLength+localExtraLength;
+    checkExtras(local+30+localNameLength,localExtraLength,bytes.readUInt32LE(end+16));
+    const localCompressed=bytes.readUInt32LE(local+18),localSize=bytes.readUInt32LE(local+22);
+    if(flags&8?localCompressed!==0&&localCompressed!==compressed||localSize!==0&&localSize!==size:localCompressed!==compressed||localSize!==size)
+      throw new Error('Invalid Excel archive size metadata.');
     if(bytes.subarray(local+30,local+30+localNameLength).toString('utf8')!==name||dataStart+compressed>bytes.readUInt32LE(end+16))throw new Error('Invalid Excel archive entry.');
     const payload=bytes.subarray(dataStart,dataStart+compressed),content=method===0?payload:inflateRawSync(payload,{maxOutputLength:Math.max(1,size)});
     if(content.length!==size)throw new Error('Invalid Excel archive size.');
