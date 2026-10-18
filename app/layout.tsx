@@ -32,7 +32,7 @@ import { getScopeIds } from '@/lib/scope';
 import { getOnboardingStatus } from '@/core/onboarding';
 import { listPendingTasks } from '@/core/approvals-inbox';
 import { onboardingTasks, onboardingUnreadNoticeCount, onboardingNotices, onboardingNavigation } from '@/packs/lifecycle/service';
-import { NotificationCenter } from '@/components/notification-center';
+import { NotificationCenter, type NotificationTaskItem } from '@/components/notification-center';
 import { CommandBar } from '@/components/command-bar';
 import { dispatchNotifications, listNotifications, unreadNotificationCount } from '@/core/notifications';
 import { listApprovalHistory } from '@/core/read';
@@ -155,15 +155,15 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // same reason `notifEnabled` two lines above uses it: this is the root layout and a throw 500s every
   // authenticated route. `listPendingTasks` takes the answer rather than asking, so the loud/quiet choice
   // belongs to whichever surface calls it.
-  const pendingTasks = await listPendingTasks(session, scopeIds, {
+  const approvalTasks = await listPendingTasks(session, scopeIds, {
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: isModuleEnabledOrFalse(session, 'claims'),
   });
   const onboardingNav=isModuleEnabledOrFalse(session,'lifecycle')?await onboardingNavigation(session):{module:false,master:false,requisitions:false};
   const onboardingAccess=onboardingNav.module;
   const onboardingQueue = isModuleEnabledOrFalse(session, 'lifecycle') ? await onboardingTasks(session) : [];
-  const legacyApprovalCount = pendingTasks.length;
-  pendingTasks.push(...onboardingQueue.map(item=>({id:item.id,kind:'onboarding' as const,subjectName:item.title+' · '+item.joiner,createdAt:item.due?item.due+'T00:00:00Z':new Date().toISOString(),linkPath:'/tasks'})));
+  const legacyApprovalCount = approvalTasks.length;
+  const pendingTasks:NotificationTaskItem[]=[...approvalTasks,...onboardingQueue.map(item=>({id:item.id,kind:'onboarding' as const,subjectName:item.title+' · '+item.joiner,createdAt:item.due?item.due+'T00:00:00Z':new Date().toISOString(),linkPath:'/tasks'}))];
   const onboardingNoticesEnabled=isModuleEnabledOrFalse(session,'lifecycle');
   const [onboardingUnread,onboardingRead]=onboardingNoticesEnabled?await Promise.all([onboardingNotices(session),onboardingNotices(session,true)]):[[],[]];
   const onboardingUnreadCount=onboardingNoticesEnabled?await onboardingUnreadNoticeCount(session):0;

@@ -1,13 +1,13 @@
 'use client';
 import { useOnboardingCopy } from '@/lib/onboarding-copy';
-import { useState, useTransition } from 'react';
+import { useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button, Card, Field, inputCls, PageHeader } from '@/components/ui';
 import type { onboardingContext, onboardingOptions, OnboardingConfig } from '@/packs/lifecycle/service';
 import type { Rules, TaskDef, StepDef } from '@/lib/onboarding-model';
 import { specificity, canonicalRules } from '@/lib/onboarding-model';
-import { saveOnboardingConfig } from '@/app/lifecycle/onboarding/v31-actions';
+import { saveOnboardingConfig, saveOnboardingChecklistTasks } from '@/app/lifecycle/onboarding/v31-actions';
 type Context = Awaited<ReturnType<typeof onboardingContext>>;
 type Options = Awaited<ReturnType<typeof onboardingOptions>>;
 export function OnboardingSettings({ context, options, initialTab = 'settings' }: {
@@ -16,21 +16,41 @@ export function OnboardingSettings({ context, options, initialTab = 'settings' }
     initialTab?: 'checklists' | 'settings' | 'groups' | 'access';
 }) {
     const copy = useOnboardingCopy();
-    const [config, setConfig] = useState(context.config), [revision, setRevision] = useState(context.revision), [tab, setTab] = useState(context.actor.module ? initialTab : initialTab === 'access' ? 'access' : 'groups'), [error, setError] = useState(''), [saved, setSaved] = useState(''), [search, setSearch] = useState(''), [flagRetired, setFlagRetired] = useState(false), [replacements, setReplacements] = useState<Record<string, string>>({}), [busy, start] = useTransition(), router = useRouter();
+    const [config, setConfig] = useState(context.config), [tab, setTab] = useState(context.actor.module ? initialTab : initialTab === 'access' ? 'access' : 'groups'), [error, setError] = useState(''), [saved, setSaved] = useState(''), [search, setSearch] = useState(''), [flagRetired, setFlagRetired] = useState(false), [replacements, setReplacements] = useState<Record<string, string>>({}), [busy, start] = useTransition(), router = useRouter();
     const actor = context.actor, directory = context.directory;
-    const change = (fn: (c: OnboardingConfig) => void) => { const n = structuredClone(config); fn(n); setConfig(n); setSaved(''); return n; };
-    const save = (value = config) => start(async () => {
-        setError('');
-        setSaved('');
-        const result = await saveOnboardingConfig(revision, value, replacements, flagRetired);
-        if (result.error)
-            setError(result.error);
-        else {
-            setRevision(revision + 1);
-            setSaved('Changes saved');
-            router.refresh();
-        }
+    const configRef = useRef(config), revisionRef = useRef(context.revision), queue = useRef(Promise.resolve()), failed = useRef(false);
+    const change = (fn: (c: OnboardingConfig) => void) => { const n = structuredClone(configRef.current); fn(n); configRef.current = n; setConfig(n); setSaved(''); return n; };
+    const enqueue = (write: (revision: number) => Promise<{
+        error: string | null;
+        revision: number | null;
+    }>) => start(async () => {
+        const pending = queue.current.then(async () => {
+            if (failed.current)
+                return;
+            setError('');
+            setSaved('');
+            const result = await write(revisionRef.current);
+            if (result.error || result.revision === null) {
+                failed.current = true;
+                setError(result.error || 'Reload before saving.');
+            }
+            else {
+                revisionRef.current = result.revision;
+                setSaved('Changes saved');
+                router.refresh();
+            }
+        }).catch(() => { failed.current = true; setError('The change could not be saved. Reload and try again.'); });
+        queue.current = pending;
+        await pending;
     });
+    const save = () => { const snapshot = structuredClone(configRef.current); enqueue(revision => saveOnboardingConfig(revision, snapshot, replacements, flagRetired)); };
+    const saveTasks = (clId: string, value = configRef.current) => {
+        // A new checklist needs its initial explicit save before narrow task autosaves.
+        if (!context.config.checklists.some(c => c.id === clId))
+            return;
+        const tasks = structuredClone(value.checklists.find(c => c.id === clId)!.tasks);
+        enqueue(revision => saveOnboardingChecklistTasks(revision, clId, tasks));
+    };
     const remove = (kind: 'checklists' | 'groups' | 'catalogue' | 'workflows' | 'routings', id: string) => {
         if (window.confirm('Remove this ' + kind.slice(0, -1) + '? Existing work and history are retained.'))
             change(c => {
@@ -47,7 +67,7 @@ export function OnboardingSettings({ context, options, initialTab = 'settings' }
     const taskChange = (clId: string, tId: string, patch: Partial<TaskDef>, auto = false) => {
         const n = change(c => Object.assign(c.checklists.find(x => x.id === clId)!.tasks.find(x => x.id === tId)!, patch));
         if (auto)
-            save(n);
+            saveTasks(clId, n);
     };
     const moveTask = (clId: string, index: number, direction: number) => {
         const n = change(c => {
@@ -56,24 +76,27 @@ export function OnboardingSettings({ context, options, initialTab = 'settings' }
             if (target >= 0 && target < tasks.length)
                 [tasks[index], tasks[target]] = [tasks[target]!, tasks[index]!];
         });
-        save(n);
+        saveTasks(clId, n);
     };
     const stepChange = (wfId: string, stepId: string, patch: Partial<StepDef>) => change(c => Object.assign(c.workflows.find(x => x.id === wfId)!.steps.find(x => x.id === stepId)!, patch));
     const rules = (value: Rules, dimensions: (keyof Rules)[], onChange: (r: Rules) => void) => <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{dimensions.map(key => <Field key={key} label={key === 'businessGroup' ? copy("Business Group") : key === 'employmentType' ? copy("Employment type") : key === 'title' ? copy("Job title") : key === 'grade' ? copy("Job grade") : key[0]!.toUpperCase() + key.slice(1)}><select multiple className={inputCls + ' h-24'} value={value[key] ?? []} onChange={e => onChange({ ...value, [key]: [...e.target.selectedOptions].map(o => o.value) })}>{options[key].map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select><span className="text-xs text-muted-foreground">{copy("Empty matches anyone")}</span>{(value[key] ?? []).filter(id => !options[key].some(o => o.id === id)).map(id => <span key={id} className="block text-xs text-destructive">{copy("Inactive reference: ")}{id}</span>)}</Field>)}</div>;
-    return <div className="space-y-5"><PageHeader title={copy("Onboarding configuration")} description={copy("Checklists, equipment rules, approvals and the people who carry out the work.")} actions={<Link href="/lifecycle/onboarding"><Button variant="outline">{copy("New Joiners")}</Button></Link>}/><nav className="flex flex-wrap gap-2 border-b border-border pb-3" aria-label={copy("Onboarding configuration")}>{[...(actor.module ? [['checklists', copy("Checklist Management")], ['settings', copy("Onboarding settings")]] : []), ['groups', copy("Assignment groups")], ...(actor.master ? [['access', copy("Module access")]] : [])].map(([id, label]) => <Button key={id} size="sm" variant={tab === id ? 'secondary' : 'ghost'} onClick={() => setTab(id!)}>{copy(label!)}</Button>)}</nav>{error && <p role="alert" className="rounded-md border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}{saved && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-300">{saved}</p>}
- {tab === 'checklists' && <div className="space-y-4">{['owned', 'other'].map(section => <section key={section} className="space-y-3"><h2 className="text-lg font-semibold">{section === 'owned' ? copy("Owned by you") : copy("Other checklists")}</h2>{config.checklists.filter(cl => section === 'owned' ? cl.owner === actor.id : cl.owner !== actor.id).map(cl => <details key={cl.id} className="rounded-lg border border-border bg-card" open><summary className="cursor-pointer p-4 font-medium">{cl.name} <span className="text-sm font-normal text-muted-foreground">· {copy(cl.owner === actor.id ? 'Owner' : 'Can edit')} · {context.checklistCounts[cl.id] ?? 0} {copy('Joiner')} · {cl.tasks.length} {copy(" tasks · ")}{specificity(cl.rules) ? specificity(cl.rules) + ' matching fields' : copy("Fallback checklist")}</span></summary><div className="space-y-4 border-t border-border p-4"><div className="grid gap-3 sm:grid-cols-2"><Field label={copy("Checklist name")}><input className={inputCls} value={cl.name} onChange={e => change(c => { c.checklists.find(x => x.id === cl.id)!.name = e.target.value; })}/></Field><Field label={copy("Owner")}>{cl.owner === actor.id ? userSelect(cl.owner, id => change(c => { c.checklists.find(x => x.id === cl.id)!.owner = id; }), true) : <p className="py-2 text-sm">{directory.find(u => u.id === cl.owner)?.name ?? cl.owner}</p>}</Field></div>{rules(cl.rules, ['department', 'grade', 'businessGroup', 'company', 'employmentType'], r => change(c => { c.checklists.find(x => x.id === cl.id)!.rules = r; }))}{config.checklists.some(other => other.id !== cl.id && canonicalRules(other.rules) === canonicalRules(cl.rules)) && <p className="text-sm text-amber-800 dark:text-amber-200">{copy("Another checklist has these rules. Equal matches use the oldest checklist.")}</p>}
+    return <div className="space-y-5"><PageHeader title={copy("Onboarding configuration")} description={copy("Checklists, equipment rules, approvals and the people who carry out the work.")} actions={<Link href="/lifecycle/onboarding"><Button variant="outline">{copy("New Joiners")}</Button></Link>}/><nav className="flex flex-wrap gap-2 border-b border-border pb-3" aria-label={copy("Onboarding configuration")}>{[...(actor.module ? [['checklists', copy("Checklist Management")], ['settings', copy("Onboarding settings")]] : []), ['groups', copy("Assignment groups")], ...(actor.master ? [['access', copy("Module access")]] : [])].map(([id, label]) => <Button key={id} size="sm" variant={tab === id ? 'secondary' : 'ghost'} onClick={() => {
+                if (id === 'checklists' || id === 'settings' || id === 'groups' || id === 'access')
+                    setTab(id);
+            }}>{copy(label!)}</Button>)}</nav>{error && <p role="alert" className="rounded-md border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}{saved && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-300">{saved}</p>}
+ {tab === 'checklists' && actor.module && <div className="space-y-4">{['owned', 'other'].map(section => <section key={section} className="space-y-3"><h2 className="text-lg font-semibold">{section === 'owned' ? copy("Owned by you") : copy("Other checklists")}</h2>{config.checklists.filter(cl => section === 'owned' ? cl.owner === actor.id : cl.owner !== actor.id).map(cl => <details key={cl.id} className="rounded-lg border border-border bg-card" open><summary className="cursor-pointer p-4 font-medium">{cl.name} <span className="text-sm font-normal text-muted-foreground">· {copy(cl.owner === actor.id ? 'Owner' : 'Can edit')} · {context.checklistCounts[cl.id] ?? 0} {copy('Joiner')} · {cl.tasks.length} {copy(" tasks · ")}{specificity(cl.rules) ? specificity(cl.rules) + ' matching fields' : copy("Fallback checklist")}</span></summary><div className="space-y-4 border-t border-border p-4"><div className="grid gap-3 sm:grid-cols-2"><Field label={copy("Checklist name")}><input className={inputCls} value={cl.name} onChange={e => change(c => { c.checklists.find(x => x.id === cl.id)!.name = e.target.value; })}/></Field><Field label={copy("Owner")}>{cl.owner === actor.id ? userSelect(cl.owner, id => change(c => { c.checklists.find(x => x.id === cl.id)!.owner = id; }), true) : <p className="py-2 text-sm">{directory.find(u => u.id === cl.owner)?.name ?? cl.owner}</p>}</Field></div>{rules(cl.rules, ['department', 'grade', 'businessGroup', 'company', 'employmentType'], r => change(c => { c.checklists.find(x => x.id === cl.id)!.rules = r; }))}{config.checklists.some(other => other.id !== cl.id && canonicalRules(other.rules) === canonicalRules(cl.rules)) && <p className="text-sm text-amber-800 dark:text-amber-200">{copy("Another checklist has these rules. Equal matches use the oldest checklist.")}</p>}
  <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-medium">{copy("Tasks")}</h3><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => {
                         const n = change(c => {
                             for (const t of c.checklists.find(x => x.id === cl.id)!.tasks.filter(t => t.by === 'group'))
                                 t.method = 'rr';
                         });
-                        save(n);
+                        saveTasks(cl.id, n);
                     }}>{copy("Set group tasks to round robin")}</Button><Button size="sm" variant="outline" onClick={() => {
                         const n = change(c => {
                             for (const t of c.checklists.find(x => x.id === cl.id)!.tasks.filter(t => t.by === 'group'))
                                 t.method = 'manual';
                         });
-                        save(n);
+                        saveTasks(cl.id, n);
                     }}>{copy("Set group tasks to manual")}</Button></div></div>
  <ol className="space-y-3">{cl.tasks.map((t, index) => <li key={t.id} draggable onDragStart={e => e.dataTransfer.setData('text/plain', cl.id + ':' + index)} onDragOver={e => e.preventDefault()} onDrop={e => {
                             e.preventDefault();
@@ -85,10 +108,10 @@ export function OnboardingSettings({ context, options, initialTab = 'settings' }
                                     if (moved)
                                         tasks.splice(index, 0, moved);
                                 });
-                                save(n);
+                                saveTasks(cl.id, n);
                             }
-                        }} className="space-y-3 rounded-md border border-border p-3"><div className="flex gap-2"><input aria-label={copy("Task name")} className={inputCls} value={t.name} onChange={e => taskChange(cl.id, t.id, { name: e.target.value })} onBlur={() => save()}/><Button size="sm" variant="ghost" aria-label={'Move ' + t.name + ' up'} disabled={index === 0} onClick={() => moveTask(cl.id, index, -1)}>↑</Button><Button size="sm" variant="ghost" aria-label={'Move ' + t.name + ' down'} disabled={index === cl.tasks.length - 1} onClick={() => moveTask(cl.id, index, 1)}>↓</Button><Button size="sm" variant="ghost" onClick={() => { const n = change(c => { const x = c.checklists.find(x => x.id === cl.id)!; x.tasks = x.tasks.filter(x => x.id !== t.id); }); save(n); }}>{copy("Remove task")}</Button></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><Field label={copy("Completed by")}><select className={inputCls} value={t.by} onChange={e => taskChange(cl.id, t.id, { by: e.target.value as TaskDef['by'] }, true)}><option value="group">{copy("Assignment group")}</option><option value="joiner">{copy("New joiner")}</option><option value="manager">{copy("Line manager")}</option></select></Field>{t.by === 'group' && <><Field label={copy("Assignment group")}>{groupSelect(t.group, id => taskChange(cl.id, t.id, { group: id }, true))}</Field><Field label={copy("Assignment method")}><select className={inputCls} value={t.method} onChange={e => taskChange(cl.id, t.id, { method: e.target.value as TaskDef['method'] }, true)}><option value="manual">{copy("Manual")}</option><option value="rr">{copy("Round robin")}</option></select></Field></>}<Field label={copy("Opens on Day")}><input type="number" className={inputCls} value={t.opens ?? ''} onChange={e => taskChange(cl.id, t.id, { opens: e.target.value === '' ? null : Number(e.target.value) })} onBlur={() => save()}/></Field><Field label={copy("Due by Day")}><input type="number" className={inputCls} value={t.due} onChange={e => taskChange(cl.id, t.id, { due: Number(e.target.value) })} onBlur={() => save()}/></Field></div><label className="flex gap-2 text-sm"><input type="checkbox" checked={t.gate} onChange={e => taskChange(cl.id, t.id, { gate: e.target.checked }, true)}/>{copy("Wait for requisition handover")}</label></li>)}</ol><Button size="sm" variant="outline" onClick={() => change(c => { c.checklists.find(x => x.id === cl.id)!.tasks.push({ id: crypto.randomUUID(), name: 'New task', by: 'group', group: config.groups.find(g => g.id === 'people-gbs')?.id ?? '', method: 'manual', opens: null, due: 1, gate: false }); })}>{copy("Add task")}</Button>{cl.owner === actor.id && <Button size="sm" variant="ghost" onClick={() => remove('checklists', cl.id)}>{copy("Delete checklist")}</Button>}</div></details>)}</section>)}<Button variant="outline" onClick={() => change(c => { c.checklists.push({ id: crypto.randomUUID(), name: 'New checklist', owner: actor.id, createdAt: new Date().toISOString(), rules: {}, tasks: [] }); })}>{copy("Create checklist")}</Button></div>}
- {tab === 'settings' && <div className="space-y-4"><Card className="space-y-2 p-4"><label className="flex gap-2 font-medium"><input type="checkbox" checked={config.countEquipment} onChange={e => change(c => { c.countEquipment = e.target.checked; })}/>{copy("Count equipment and access in onboarding progress")}</label><p className="text-sm text-muted-foreground">{copy("Readiness receives partial credit. Full equipment credit requires Day 1 handover.")}</p><Field label={copy("Group Tech fulfilment group")}>{groupSelect(config.techGroup, id => change(c => { c.techGroup = id; }))}</Field><Field label={copy("Show recent Active joiners for this many days")}><input type="number" min={1} max={365} className={inputCls + ' max-w-32'} value={config.recentActiveDays} onChange={e => change(c => { c.recentActiveDays = Number(e.target.value); })}/></Field></Card>
+                        }} className="space-y-3 rounded-md border border-border p-3"><div className="flex gap-2"><input aria-label={copy("Task name")} className={inputCls} value={t.name} onChange={e => taskChange(cl.id, t.id, { name: e.target.value })} onBlur={() => saveTasks(cl.id)}/><Button size="sm" variant="ghost" aria-label={'Move ' + t.name + ' up'} disabled={index === 0} onClick={() => moveTask(cl.id, index, -1)}>↑</Button><Button size="sm" variant="ghost" aria-label={'Move ' + t.name + ' down'} disabled={index === cl.tasks.length - 1} onClick={() => moveTask(cl.id, index, 1)}>↓</Button><Button size="sm" variant="ghost" onClick={() => { const n = change(c => { const x = c.checklists.find(x => x.id === cl.id)!; x.tasks = x.tasks.filter(x => x.id !== t.id); }); saveTasks(cl.id, n); }}>{copy("Remove task")}</Button></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><Field label={copy("Completed by")}><select className={inputCls} value={t.by} onChange={e => taskChange(cl.id, t.id, { by: e.target.value as TaskDef['by'] }, true)}><option value="group">{copy("Assignment group")}</option><option value="joiner">{copy("New joiner")}</option><option value="manager">{copy("Line manager")}</option></select></Field>{t.by === 'group' && <><Field label={copy("Assignment group")}>{groupSelect(t.group, id => taskChange(cl.id, t.id, { group: id }, true))}</Field><Field label={copy("Assignment method")}><select className={inputCls} value={t.method} onChange={e => taskChange(cl.id, t.id, { method: e.target.value as TaskDef['method'] }, true)}><option value="manual">{copy("Manual")}</option><option value="rr">{copy("Round robin")}</option></select></Field></>}<Field label={copy("Opens on Day")}><input type="number" className={inputCls} value={t.opens ?? ''} onChange={e => taskChange(cl.id, t.id, { opens: e.target.value === '' ? null : Number(e.target.value) })} onBlur={() => saveTasks(cl.id)}/></Field><Field label={copy("Due by Day")}><input type="number" className={inputCls} value={t.due} onChange={e => taskChange(cl.id, t.id, { due: Number(e.target.value) })} onBlur={() => saveTasks(cl.id)}/></Field></div><label className="flex gap-2 text-sm"><input type="checkbox" checked={t.gate} onChange={e => taskChange(cl.id, t.id, { gate: e.target.checked }, true)}/>{copy("Wait for requisition handover")}</label></li>)}</ol><Button size="sm" variant="outline" onClick={() => { const n = change(c => { c.checklists.find(x => x.id === cl.id)!.tasks.push({ id: crypto.randomUUID(), name: 'New task', by: 'group', group: config.groups.find(g => g.id === 'people-gbs')?.id ?? '', method: 'manual', opens: null, due: 1, gate: false }); }); saveTasks(cl.id, n); }}>{copy("Add task")}</Button>{cl.owner === actor.id && <Button size="sm" variant="ghost" onClick={() => remove('checklists', cl.id)}>{copy("Delete checklist")}</Button>}</div></details>)}</section>)}<Button variant="outline" onClick={() => change(c => { c.checklists.push({ id: crypto.randomUUID(), name: 'New checklist', owner: actor.id, createdAt: new Date().toISOString(), rules: {}, tasks: [] }); })}>{copy("Create checklist")}</Button></div>}
+ {tab === 'settings' && actor.module && <div className="space-y-4"><Card className="space-y-2 p-4"><label className="flex gap-2 font-medium"><input type="checkbox" checked={config.countEquipment} onChange={e => change(c => { c.countEquipment = e.target.checked; })}/>{copy("Count equipment and access in onboarding progress")}</label><p className="text-sm text-muted-foreground">{copy("Readiness receives partial credit. Full equipment credit requires Day 1 handover.")}</p><Field label={copy("Group Tech fulfilment group")}>{groupSelect(config.techGroup, id => change(c => { c.techGroup = id; }))}</Field><Field label={copy("Show recent Active joiners for this many days")}><input type="number" min={1} max={365} className={inputCls + ' max-w-32'} value={config.recentActiveDays} onChange={e => change(c => { c.recentActiveDays = Number(e.target.value); })}/></Field></Card>
  {(['system', 'device'] as const).map(type => <details key={type} className="rounded-lg border border-border bg-card"><summary className="cursor-pointer p-4 font-medium">{type === 'system' ? copy("Systems catalogue") : copy("Devices and facility access")} · {config.catalogue.filter(i => i.type === type && i.active).length} {copy(" available")}</summary><div className="space-y-4 border-t border-border p-4">{config.catalogue.filter(i => i.type === type).map(i => <section key={i.id} className="space-y-3 border-b border-border pb-4"><div className="grid gap-3 sm:grid-cols-2"><Field label={copy("Item name")}><input className={inputCls} value={i.name} onChange={e => change(c => { c.catalogue.find(x => x.id === i.id)!.name = e.target.value; })}/></Field><Field label={copy("Fulfilling team")}>{groupSelect(i.team, id => change(c => { c.catalogue.find(x => x.id === i.id)!.team = id; }))}</Field></div>{rules(i.rules, ['businessGroup', 'company', 'department', 'title'], r => change(c => { c.catalogue.find(x => x.id === i.id)!.rules = r; }))}<div className="grid gap-3 sm:grid-cols-2"><Field label={copy("Approval workflow (always required when selected)")}>{workflowSelect(i.workflow, id => change(c => { c.catalogue.find(x => x.id === i.id)!.workflow = id; }))}</Field>{type === 'device' && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={i.card} onChange={e => change(c => {
                             const item = c.catalogue.find(x => x.id === i.id)!;
                             item.card = e.target.checked;

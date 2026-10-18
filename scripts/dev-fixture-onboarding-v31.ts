@@ -8,8 +8,13 @@ try {
 }
 catch { }
 const name = 'ai_hr_onb_v31_ui', out = resolve('scratchpad/onb-v31/fixture.json');
-function local(raw: string | undefined) { const u = new URL(raw ?? ''); if (!['postgres:', 'postgresql:'].includes(u.protocol) || !['localhost', '127.0.0.1'].includes(u.hostname) || u.port !== '5433')
-    throw Error('Only the local disposable Postgres instance is permitted.'); u.pathname = '/' + name; return u.toString(); }
+function local(raw: string | undefined) {
+    const u = new URL(raw ?? '');
+    if (!['postgres:', 'postgresql:'].includes(u.protocol) || !['localhost', '127.0.0.1'].includes(u.hostname) || u.port !== '5433')
+        throw Error('Only the local disposable Postgres instance is permitted.');
+    u.pathname = '/' + name;
+    return u.toString();
+}
 if (process.env.NODE_ENV === 'production')
     throw Error('This fixture cannot run in production.');
 const appUrl = local(process.env.DATABASE_URL), ownerUrl = local(process.env.MIGRATION_DATABASE_URL);
@@ -31,11 +36,11 @@ async function main() {
     const { seedCatalogsAt } = await import('./seed-catalogs');
     await seedCatalogsAt(ownerUrl);
     const { seedBase, owner, setModule, entitledCtx, createAppUser, closeAll } = await import('../test/harness');
-    const { eq } = await import('drizzle-orm'), schema = await import('../db/schema');
+    const { eq, asc } = await import('drizzle-orm'), schema = await import('../db/schema');
     const { hireEmployee } = await import('../core/org');
     const { createBusinessUnit, createDepartment } = await import('../core/admin');
-    const { saveEmployeeDraft } = await import('../core/employee-draft');
-    const { onboardingSetup, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, createOnboardingCase } = await import('../packs/lifecycle/service');
+    const { saveEmployeeDraft, completeEmployeeDraft } = await import('../core/employee-draft');
+    const { onboardingSetup, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, createOnboardingCase, refreshOnboardingPersonnel, sweepOnboarding } = await import('../packs/lifecycle/service');
     const { todayInKualaLumpur } = await import('../lib/hr-date'), M = await import('../lib/onboarding-model');
     try {
         const prior = await readFile(out, 'utf8').then(JSON.parse, () => null);
@@ -43,7 +48,10 @@ async function main() {
             const cases = await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.tenantId, prior.tenantId));
             if (!prior.caseIds.every((id: string) => cases.some(c => c.id === id)))
                 throw Error('Existing fixture does not match its saved identity; refusing to reset it.');
-            console.log('Existing isolated onboarding fixture verified without changing data.');
+            const legacyRows = prior.digestVersion === 2 ? await owner.db.select().from(schema.lcCase).orderBy(asc(schema.lcCase.id)) : await owner.db.select().from(schema.lcCase), legacyHistory = prior.digestVersion === 2 ? await owner.db.select().from(schema.lcHistory).orderBy(asc(schema.lcHistory.id)) : await owner.db.select().from(schema.lcHistory);
+            if (createHash('sha256').update(JSON.stringify({legacyRows,legacyHistory})).digest('hex') !== prior.legacyDigest)
+                throw Error('The legacy preservation witness changed.');
+            console.log('Existing isolated onboarding fixture identities and legacy history digest verified without resetting data.');
             return;
         }
         const b = await seedBase();
@@ -95,16 +103,21 @@ async function main() {
         ];
         await onboardingSaveConfig(master, context.revision, cfg);
         const pending = await saveEmployeeDraft(hr, { data: { profile: { fullName: 'Muhammad Haziq', employeeCode: 'DEMO-HZ-001', primaryEmail: 'haziq@onb-fixture.example.test' }, employment: { companyId: b.companyId, departmentId: manufacturingDept.id, positionId: b.positionId, hiredOn: M.dayDate(today, 5), employmentType: 'full_time', reportingManagerEmploymentId: users.farid!.employmentId } }, currentStep: 2 });
-        await saveEmployeeDraft(hr, { data: { profile: { fullName: 'Amelia Tan', employeeCode: 'DEMO-AM-002', primaryEmail: 'amelia@onb-fixture.example.test' }, employment: { companyId: b.companyId, departmentId: constructionDept.id, positionId: b.positionId, hiredOn: today, employmentType: 'full_time', reportingManagerEmploymentId: users.farid!.employmentId } }, currentStep: 2 });
+        const ameliaDraft = await saveEmployeeDraft(hr, { data: { profile: { fullName: 'Amelia Tan', employeeCode: 'DEMO-AM-002', primaryEmail: 'amelia@onb-fixture.example.test' }, employment: { companyId: b.companyId, departmentId: constructionDept.id, positionId: b.positionId, hiredOn: today, employmentType: 'full_time', reportingManagerEmploymentId: users.farid!.employmentId }, payroll: { basicSalary: '5000' } }, currentStep: 2 });
         await saveEmployeeDraft(hr, { data: { profile: { fullName: 'Fictional Unscheduled Hire' }, employment: { companyId: b.companyId } }, currentStep: 1 });
         let rows = await onboardingList(hr), amelia = rows.find(r => M.effectiveFacts(r.case).fullName === 'Amelia Tan')!;
         await onboardingCommand(hr, amelia.case.id, amelia.revision, { type: 'saveSubmit', patch: { hiring: 'new_hire', selected: ['m365', 'laptop', 'card'], local: { gbsTa: 'Farid Ismail' }, notes: 'Synthetic fixture: prepare a quiet workstation.' } });
+        const activated = await completeEmployeeDraft(hr, ameliaDraft.id);
+        const [activeEmployee] = await owner.db.select().from(schema.employment).where(eq(schema.employment.id, activated.employmentId));
+        users.amelia = { id: await createAppUser(b.tenantId, activeEmployee!.personId, 'employee'), personId: activeEmployee!.personId, employmentId: activeEmployee!.id, name: 'Amelia Tan' };
+        await refreshOnboardingPersonnel(master);
+        await sweepOnboarding(master);
         const legacy = await createOnboardingCase(master, { companyId: b.companyId, fullName: 'Fictional legacy hire', employeeNo: 'DEMO-OLD-1', joinDate: today, jobTitle: 'Analyst', department: 'Finance', supervisor: 'Sarah Lim', laptopRequired: true, carparkRequired: false });
-        const legacyRows = await owner.db.select().from(schema.lcCase), legacyHistory = await owner.db.select().from(schema.lcHistory);
+        const legacyRows = await owner.db.select().from(schema.lcCase).orderBy(asc(schema.lcCase.id)), legacyHistory = await owner.db.select().from(schema.lcHistory).orderBy(asc(schema.lcHistory.id));
         rows = await onboardingList(hr);
         await mkdir(resolve('scratchpad/onb-v31'), { recursive: true });
-        await writeFile(out, JSON.stringify({ synthetic: true, tenantId: b.tenantId, companyId: b.companyId, users, caseIds: rows.map(r => r.case.id), haziq: rows.find(r => r.case.sourceDraftId === pending.id)!.case.id, amelia: amelia.case.id, legacyId: legacy.id, legacyDigest: createHash('sha256').update(JSON.stringify({ legacyRows, legacyHistory })).digest('hex') }, null, 2), { mode: 0o600, flag: 'wx' });
-        console.log('Created three isolated onboarding journeys, nine synthetic personas and a legacy preservation witness.');
+        await writeFile(out, JSON.stringify({ synthetic: true, digestVersion: 2, tenantId: b.tenantId, companyId: b.companyId, users, caseIds: rows.map(r => r.case.id), haziq: rows.find(r => r.case.sourceDraftId === pending.id)!.case.id, amelia: amelia.case.id, legacyId: legacy.id, legacyDigest: createHash('sha256').update(JSON.stringify({ legacyRows, legacyHistory })).digest('hex') }, null, 2), { mode: 0o600, flag: 'wx' });
+        console.log('Created three isolated onboarding journeys, nine staff personas and a new-joiner account and a legacy preservation witness.');
     }
     finally {
         await closeAll();

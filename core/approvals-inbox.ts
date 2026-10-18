@@ -29,7 +29,6 @@ import { myEmployment } from './read';
 
 /** The per-module task vocabulary — each key maps to an i18n label (notifications.task.*). */
 export type PendingTaskKind =
-  | 'onboarding'
   | 'leave'
   | 'leaveCancellation'
   | 'attendance'

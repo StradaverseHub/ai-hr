@@ -9742,7 +9742,14 @@
         "identityEmail": "HR 管理员可以预览 SMTP 表单。查看或更改实际设置需要单独注册为安装身份管理员。",
         "workflowEmail": "只有集团管理员可更改整个组织的类别设置。",
         "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked.",
-        "myTasks": "仅显示分配给您、您有权限的团队以及提及您的对话。"
+        "myTasks": "仅显示分配给您、您有权限的团队以及提及您的对话。",
+        "onboardingV31": "需要单独授予入职模块访问权，与人事角色无关。人事专用身份字段还需要相应公司的人员管理权限。",
+        "onboardingChecklists": "入职模块用户可编辑所有清单；只有当前负责人可以转交或删除清单。",
+        "onboardingSettings": "入职模块用户维护政策、目录、审批流程和路由。未获模块权限的主管理员只能管理分配组和授权。",
+        "onboardingGroups": "入职模块用户和主管理员管理分配组。组成员资格不授予模块页面访问权。",
+        "onboardingModuleAccess": "只有具有集团级人事管理权限的主管理员可以授予或移除模块访问权。",
+        "onboardingRequisitions": "配置的履行组、审批组和系统添加组、模块用户及公司人事可查看申请。操作仍受当前团队、审批步骤或项目权限限制。仅被提及只能查看相应讨论。",
+        "onboardingAcknowledgement": "只有与该次入职关联的本人可以确认已交付给自己的设备。重新入职及多重雇佣的记录分别保留。"
       },
       "status": {
         "active": "启用",

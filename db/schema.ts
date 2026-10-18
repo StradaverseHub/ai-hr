@@ -10486,7 +10486,7 @@ export const lcOnboardingNotice=pgTable('lc_onboarding_notice',{
  id:id(),tenantId:tenantId(),userId:uuid('user_id').notNull().references(()=>appUser.id),
  caseId:uuid('case_id').notNull().references(()=>lcOnboardingCase.id),kind:text('kind').notNull(),
  occurrence:text('occurrence').notNull(),createdAt:createdAt(),readAt:timestamp('read_at',{withTimezone:true}),
-});
+},t=>[uniqueIndex('lc_onboarding_digest_day_uq').on(t.tenantId,t.userId,t.occurrence).where(sql`kind='digest'`)]);
 export const lcOnboardingCaseRevision=pgTable('lc_onboarding_case_revision',{
  caseId:uuid('case_id').notNull().references(()=>lcOnboardingCase.id),revision:integer('revision').notNull(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
  data:jsonb('data').$type<import('../lib/onboarding-model').Case>().notNull(),createdAt:createdAt(),

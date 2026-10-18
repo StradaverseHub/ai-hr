@@ -48,12 +48,23 @@ $$;
 REVOKE ALL ON FUNCTION app.onboarding_group_member(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onboarding_group_member(text) TO ai_hr_app;
 --> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.onboarding_requisition_group_access() RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM lc_onboarding_config cfg WHERE cfg.tenant_id=app.current_tenant_id() AND (
+ app.onboarding_group_member(cfg.data->>'techGroup') OR
+ EXISTS(SELECT 1 FROM jsonb_array_elements_text(cfg.data->'exceptions'->'groups') g WHERE app.onboarding_group_member(g)) OR
+ EXISTS(SELECT 1 FROM jsonb_array_elements(cfg.data->'catalogue') i WHERE app.onboarding_group_member(i->>'team')) OR
+ EXISTS(SELECT 1 FROM jsonb_array_elements(cfg.data->'workflows') w,jsonb_array_elements(w->'steps') s WHERE s->>'type'='group' AND app.onboarding_group_member(s->>'target')) OR
+ EXISTS(SELECT 1 FROM jsonb_array_elements(cfg.data->'routings') r,jsonb_array_elements(r->'rows') row WHERE app.onboarding_group_member(row->>'group'))))
+$$;
+REVOKE ALL ON FUNCTION app.onboarding_requisition_group_access() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_requisition_group_access() TO ai_hr_app;
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.onboarding_participant(p_id uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM lc_onboarding_case c WHERE c.tenant_id=app.current_tenant_id() AND c.id=p_id AND (
  app.onboarding_page_access() OR
- (jsonb_array_length(c.data->'requisitions')>0 AND EXISTS(SELECT 1 FROM lc_onboarding_config cfg WHERE cfg.tenant_id=c.tenant_id AND
- (app.onboarding_group_member(cfg.data->>'techGroup') OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(cfg.data->'exceptions'->'groups') add_group WHERE app.onboarding_group_member(add_group))))) OR
+ (jsonb_array_length(c.data->'requisitions')>0 AND app.onboarding_requisition_group_access()) OR
  EXISTS(SELECT 1 FROM app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=c.tenant_id AND u.person_id::text=c.data->>'personId') OR
  EXISTS(SELECT 1 FROM jsonb_array_elements(c.data->'tasks') t WHERE t->>'assignee'=app.current_user_id()::text) OR
  EXISTS(SELECT 1 FROM jsonb_array_elements(c.data->'requisitions') r,
@@ -158,6 +169,7 @@ CREATE TABLE lc_onboarding_notice (
  kind text NOT NULL, occurrence text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(),read_at timestamptz,
  UNIQUE(tenant_id,user_id,case_id,kind,occurrence)
 );
+CREATE UNIQUE INDEX lc_onboarding_digest_day_uq ON lc_onboarding_notice(tenant_id,user_id,occurrence) WHERE kind='digest';
 ALTER TABLE lc_onboarding_notice ENABLE ROW LEVEL SECURITY;
 CREATE POLICY onb_notice_read ON lc_onboarding_notice FOR SELECT USING(tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND app.onboarding_participant(case_id));
 CREATE POLICY onb_notice_insert ON lc_onboarding_notice FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND app.is_group_admin());

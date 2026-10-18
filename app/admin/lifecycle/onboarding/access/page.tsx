@@ -5,4 +5,4 @@ import { OnboardingSettings } from '../settings';
 import { OnboardingSetup } from '@/app/lifecycle/onboarding/setup';
 export default async function Page() { const s = await requireModule('lifecycle'), context = await onboardingContext(s); if (!context.actor.master)
     notFound(); if (!context.revision)
-    return <OnboardingSetup master initialized={false}/>; return <OnboardingSettings key={context.revision} context={context} options={await onboardingOptions(s)} initialTab="access"/>; }
+    return <OnboardingSetup master initialized={false}/>; return <OnboardingSettings context={context} options={await onboardingOptions(s)} initialTab="access"/>; }

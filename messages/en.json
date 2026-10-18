@@ -9742,7 +9742,14 @@
         "identityEmail": "HR administrators can preview the SMTP form. Viewing or changing live settings requires separate installation identity-administrator enrollment.",
         "workflowEmail": "A group administrator is required to change categories for the whole organisation.",
         "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked.",
-        "myTasks": "Only work assigned to you, your authorised teams, and conversations that mention you."
+        "myTasks": "Only work assigned to you, your authorised teams, and conversations that mention you.",
+        "onboardingV31": "Requires an explicit Onboarding module grant, independent of HR role. HR-only identity fields also require company HR access.",
+        "onboardingChecklists": "Onboarding module users edit all checklists; only the current owner transfers or deletes a checklist.",
+        "onboardingSettings": "Onboarding module users maintain policies, catalogues, workflows and routing. A Master Admin without module access manages groups and grants only.",
+        "onboardingGroups": "Onboarding module users and Master Admin manage assignment groups. Group membership does not grant module-page access.",
+        "onboardingModuleAccess": "Only a Master Admin with group-wide HR administration grants or removes module access.",
+        "onboardingRequisitions": "Operational fulfilment, approval and configured add-system groups, module users and company HR can read requisitions. Actions remain restricted to the current team, step or item rights. A mention alone grants only its discussion context.",
+        "onboardingAcknowledgement": "Only the person linked to the hire can acknowledge their own handed-over equipment. Rehire and multiple-employment cases remain separate."
       },
       "status": {
         "active": "Active",

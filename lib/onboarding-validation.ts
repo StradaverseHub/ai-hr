@@ -3,12 +3,12 @@ const id = z.string().min(1).max(100);
 const name = z.string().trim().min(1).max(200);
 const rules = z.object({ businessGroup: z.array(id).max(300).optional(), company: z.array(id).max(300).optional(), department: z.array(id).max(300).optional(), title: z.array(id).max(300).optional(), grade: z.array(id).max(300).optional(), employmentType: z.array(id).max(30).optional() }).strict();
 const step = z.object({ id, label: name, type: z.enum(['group', 'routing', 'person']), target: z.string().max(100), method: z.enum(['manual', 'rr']) }).strict();
-const task = z.object({ id, name, by: z.enum(['group', 'joiner', 'manager']), group: z.string().max(100), method: z.enum(['manual', 'rr']), opens: z.number().int().min(-365).max(365).nullable(), due: z.number().int().min(-365).max(365), gate: z.boolean() }).strict();
+export const onboardingTaskSchema = z.object({ id, name, by: z.enum(['group', 'joiner', 'manager']), group: z.string().max(100), method: z.enum(['manual', 'rr']), opens: z.number().int().min(-365).max(365).nullable(), due: z.number().int().min(-365).max(365), gate: z.boolean() }).strict();
 export const onboardingConfigSchema = z.object({
     version: z.literal(1), groups: z.array(z.object({ id, name, members: z.array(id).max(500), limit: z.number().int().min(1).max(1000) }).strict()).max(100),
     workflows: z.array(z.object({ id, name, mode: z.enum(['seq', 'par']), steps: z.array(step).min(1).max(30) }).strict()).max(100),
     routings: z.array(z.object({ id, name, rows: z.array(z.object({ id, rules, group: z.string().max(100) }).strict()).max(300) }).strict()).max(100),
-    checklists: z.array(z.object({ id, name, owner: id, createdAt: z.string().datetime(), rules, tasks: z.array(task).max(100) }).strict()).max(100),
+    checklists: z.array(z.object({ id, name, owner: id, createdAt: z.string().datetime(), rules, tasks: z.array(onboardingTaskSchema).max(100) }).strict()).max(100),
     catalogue: z.array(z.object({ id, name, type: z.enum(['system', 'device']), active: z.boolean(), rules, workflow: id.nullable(), team: z.string().max(100), card: z.boolean() }).strict()).max(500),
     access: z.object({ onboarding: z.array(id).max(1000), offboarding: z.array(id).max(1000) }).strict(),
     countEquipment: z.boolean(), techGroup: z.string().max(100), exceptions: z.object({ groups: z.array(id).max(100), workflow: id.nullable(), always: z.boolean(), remindDays: z.number().int().min(0).max(365), confirmingGroup: z.string().max(100) }).strict(),

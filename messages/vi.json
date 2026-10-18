@@ -9742,7 +9742,14 @@
         "identityEmail": "Quản trị viên HR có thể xem trước biểu mẫu SMTP. Việc xem hoặc thay đổi thiết lập thực tế yêu cầu đăng ký riêng làm quản trị viên danh tính của bản cài đặt.",
         "workflowEmail": "Cần quản trị viên cấp tập đoàn để thay đổi danh mục cho toàn tổ chức.",
         "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked.",
-        "myTasks": "Chỉ công việc được giao cho bạn, nhóm bạn được phép tham gia và hội thoại nhắc đến bạn."
+        "myTasks": "Chỉ công việc được giao cho bạn, nhóm bạn được phép tham gia và hội thoại nhắc đến bạn.",
+        "onboardingV31": "Cần được cấp quyền mô-đun hội nhập riêng, độc lập với vai trò HR. Trường định danh dành cho HR còn yêu cầu quyền HR tại công ty.",
+        "onboardingChecklists": "Người dùng mô-đun hội nhập sửa được mọi danh sách; chỉ chủ sở hữu hiện tại được chuyển hoặc xóa danh sách.",
+        "onboardingSettings": "Người dùng mô-đun quản lý chính sách, danh mục, quy trình phê duyệt và định tuyến. Quản trị viên chính chưa có quyền mô-đun chỉ quản lý nhóm và cấp quyền.",
+        "onboardingGroups": "Người dùng mô-đun và quản trị viên chính quản lý nhóm phân công. Tư cách thành viên nhóm không cấp quyền vào trang mô-đun.",
+        "onboardingModuleAccess": "Chỉ quản trị viên chính có quyền quản trị HR toàn tập đoàn mới được cấp hoặc thu hồi quyền mô-đun.",
+        "onboardingRequisitions": "Các nhóm thực hiện, phê duyệt và thêm hệ thống đã cấu hình, người dùng mô-đun và HR công ty được đọc yêu cầu. Thao tác vẫn giới hạn theo nhóm, bước hoặc quyền mục hiện tại. Việc được nhắc đến chỉ cấp quyền xem cuộc thảo luận tương ứng.",
+        "onboardingAcknowledgement": "Chỉ người được liên kết với lần tuyển dụng đó được xác nhận thiết bị của mình sau bàn giao. Hồ sơ tái tuyển dụng và nhiều quan hệ việc làm được giữ riêng."
       },
       "status": {
         "active": "Đang hoạt động",

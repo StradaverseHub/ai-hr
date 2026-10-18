@@ -53,7 +53,7 @@ Rejected executions retain their decisions. A new request after removal creates 
 
 ## Configuration rights and deletion
 
-Module access, task/group participation, checklist ownership and HR-sensitive access are independent. Master Admin maps to the platform's group-administrator authority. Module grants are explicit. Team participation remains available from My tasks without Onboarding page access.
+Module access, task/group participation, checklist ownership and HR-sensitive access are independent. Master Admin maps to the platform's group-administrator authority. Module grants are explicit. Team participation remains available from My tasks without Onboarding page access. Members of configured catalogue fulfilling groups, approval workflow/routing groups, Group Tech and add-system groups can read the requisition list and details, matching the handoff’s operational roles. This read access persists across the Facility-to-Tech stage change; action rights remain bound to the current team or approval step. Mention-only users receive the scoped thread rather than the full requisition.
 
 The specific owner-only checklist deletion rule governs over the handoff's broader permission summary. Ownership transfer requires current owner and a new owner with module access. Last checklist/fallback and used/last workflow protections apply.
 

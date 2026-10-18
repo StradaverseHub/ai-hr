@@ -55,13 +55,13 @@ export const MATRIX_ROLES: readonly Role[] = [
 ] as const;
 
 /** The page guard each screen is gated by — the single source of the access truth for that screen. */
-export type Guard = 'requireAdmin' | 'scopedAdmin' | 'scopedSession' | 'requireTeamAccess';
+export type Guard = 'requireAdmin' | 'scopedAdmin' | 'scopedSession' | 'requireTeamAccess' | 'onboardingAccess' | 'onboardingParticipant' | 'onboardingMaster';
 
 /** Roles that can REACH a screen given its guard (coarse page-level access). */
 export function rolesForGuard(guard: Guard): ReadonlySet<Role> {
   if (guard === 'requireTeamAccess') return new Set<Role>(['manager', 'hr_admin', 'super_admin']);
   // requireAdmin & scopedAdmin both gate on isAdmin → hr_admin + super_admin only.
-  if (guard === 'requireAdmin' || guard === 'scopedAdmin') {
+  if (guard === 'requireAdmin' || guard === 'scopedAdmin' || guard === 'onboardingMaster') {
     return new Set<Role>(['hr_admin', 'super_admin']);
   }
   // scopedSession gates nothing at the page boundary — every authenticated role reaches it; RLS scopes data.
@@ -1011,6 +1011,14 @@ export const SCREENS: readonly ScreenEntry[] = [
   // SAME commit that emptied the page (test/function-access.test.ts fails BOTH ways). The destination is
   // registered on `leaveConfig` above, behind the same requireAdmin guard, so nobody who could open the old
   // page loses access. (a324a4b3 had renamed its label nav.toilPolicy → nav.timeOffInLieu.)
+  // ADR-0125: role-independent module grants and participation are explained by the scope notes.
+  { screenKey: 'onboardingV31', href: '/lifecycle/onboarding', labelKey: 'nav.newJoiners', guard: 'onboardingAccess', routes: ['/lifecycle/onboarding', '/lifecycle/onboarding/cases/[id]'], hasScopeNote: true },
+  { screenKey: 'onboardingChecklists', href: '/lifecycle/onboarding/checklists', labelKey: 'nav.onboardingChecklists', guard: 'onboardingAccess', routes: ['/lifecycle/onboarding/checklists'], hasScopeNote: true },
+  { screenKey: 'onboardingSettings', href: '/admin/lifecycle/onboarding', labelKey: 'nav.onboardingSettings', guard: 'onboardingAccess', routes: ['/admin/lifecycle/onboarding'], hasScopeNote: true },
+  { screenKey: 'onboardingGroups', href: '/admin/lifecycle/onboarding/groups', labelKey: 'nav.onboardingGroups', guard: 'onboardingParticipant', routes: ['/admin/lifecycle/onboarding/groups'], hasScopeNote: true },
+  { screenKey: 'onboardingModuleAccess', href: '/admin/lifecycle/onboarding/access', labelKey: 'nav.onboardingModuleAccess', guard: 'onboardingMaster', routes: ['/admin/lifecycle/onboarding/access'], hasScopeNote: true },
+  { screenKey: 'onboardingRequisitions', href: '/lifecycle/requisitions/onboarding', labelKey: 'nav.onboardingRequisitions', guard: 'onboardingParticipant', routes: ['/lifecycle/requisitions/onboarding', '/lifecycle/requisitions/onboarding/[id]'], hasScopeNote: true },
+  { screenKey: 'onboardingAcknowledgement', href: '/lifecycle/acknowledgement', labelKey: 'onboardingV31.copy.c0671783a107b', guard: 'onboardingParticipant', routes: ['/lifecycle/acknowledgement'], hasScopeNote: true },
   {
     // ADR-0095 — the Lifecycle module's Module Config. requireAdmin; the module's own staff screens under
     // /lifecycle carry no matrix guard of their own (their level check is the module's staff table, which

@@ -9,7 +9,8 @@ import { Bell, Search } from 'lucide-react';
 import { markAllNotificationsReadAction, markNotificationReadAction } from '@/app/notification-actions';
 import type { NotificationRow as StoredNotificationRow } from '@/core/notifications';
 type NotificationRow=Pick<StoredNotificationRow,'id'|'title'|'body'|'severity'|'linkPath'|'createdAt'|'readAt'>;
-import type { PendingTaskItem } from '@/core/approvals-inbox';
+import type { PendingTaskItem as ApprovalTaskItem } from '@/core/approvals-inbox';
+export type NotificationTaskItem=Omit<ApprovalTaskItem,'kind'>&{kind:ApprovalTaskItem['kind']|'onboarding'};
 import type { ApprovalHistoryItem } from '@/lib/approval-history';
 
 /**
@@ -67,7 +68,7 @@ export function NotificationCenter({
   /** The Notification tab list — unread, non-action. */
   items: NotificationRow[];
   /** The live approvals queue awaiting the viewer's decision. */
-  tasks?: PendingTaskItem[];
+  tasks?: NotificationTaskItem[];
   /** Unread severity-'action' notifications — "complete this" items outside the approvals queue. */
   taskNotifications?: NotificationRow[];
   /** Full open-task count (queue + action notices) — the Task tab badge. */
@@ -91,7 +92,7 @@ export function NotificationCenter({
 
   // ── Task tab: merge the approvals queue with the action notifications, newest first. ──
   const taskEntries = useMemo(() => {
-    const entries: ({ type: 'queue'; at: number; item: PendingTaskItem } | { type: 'notif'; at: number; item: NotificationRow })[] = [
+    const entries: ({ type: 'queue'; at: number; item: NotificationTaskItem } | { type: 'notif'; at: number; item: NotificationRow })[] = [
       ...tasks.map((item) => ({ type: 'queue' as const, at: Date.parse(item.createdAt), item })),
       ...taskNotifications.map((item) => ({ type: 'notif' as const, at: new Date(item.createdAt).getTime(), item })),
     ];
@@ -150,7 +151,7 @@ export function NotificationCenter({
     );
   };
 
-  const taskQueueRow = (task: PendingTaskItem) => (
+  const taskQueueRow = (task: NotificationTaskItem) => (
     <li key={`t-${task.id}`}>
       <Link href={task.linkPath} onClick={() => setOpen(false)} className="block hover:bg-accent">
         <div className="flex gap-2.5 px-4 py-2.5">
