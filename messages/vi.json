@@ -1539,6 +1539,8 @@
         },
         "detail": {
           "eventInformation": "Thông tin sự kiện",
+          "scheduledValues": "Giá trị đã lên lịch / đề xuất",
+          "scheduledValuesNote": "Đây là các giá trị mục tiêu đã lưu cho sự kiện được lên lịch này và chưa được áp dụng. Chỉ hiển thị các trường đã được gửi rõ ràng.",
           "beforeChanges": "Trước thay đổi",
           "afterChanges": "Sau thay đổi",
           "field": "Trường",
@@ -1551,6 +1553,7 @@
         "field": {
           "company": "Công ty",
           "businessUnit": "Đơn vị kinh doanh",
+          "location": "Địa điểm làm việc",
           "department": "Phòng ban",
           "position": "Chức vụ",
           "grade": "Cấp bậc",

@@ -142,6 +142,7 @@ import {
 import { SalaryRevisionConfirm } from '@/components/salary-revision-confirm';
 import { SalaryHistoryTable, type SalaryRowView } from '@/components/salary-history-table';
 import { PayStructureFields, type PayModeOption } from '@/components/pay-structure-fields';
+import { PERSONNEL_PAY_MODES, PERSONNEL_PAYMENT_TERMS } from '@/lib/personnel-choice-vocabulary';
 // 297ae65a — searchable ISO 4217 Currency select for the Basic Salary form + the company default it preselects.
 import { CurrencySelect } from '@/components/currency-select';
 import { getCompanyCurrency } from '@/core/read';
@@ -3897,6 +3898,25 @@ export default async function EmployeePage({
           </ul>
         </div>
       )}
+      {movementDetailData.pendingIntent ? (
+        <section className="border-t border-border" aria-label={t('movement.detail.scheduledValues')}>
+          <h3 className="px-4 pt-4 font-medium">{t('movement.detail.scheduledValues')}</h3>
+          <p className="px-4 py-2 text-sm text-muted-foreground">{t('movement.detail.scheduledValuesNote')}</p>
+          <dl className="divide-y divide-border">
+            {movementDetailData.pendingIntent.values.map(({field, value}) => {
+              const display = field === 'employmentType' ? movementEmpTypeLabel(value)
+                : field === 'payMode' && value !== null && PERSONNEL_PAY_MODES.some(option => option === value)
+                  ? t(`payMode_${value}` as 'payMode_monthly')
+                : field === 'paymentTerm' && value !== null && PERSONNEL_PAYMENT_TERMS.some(option => option === value)
+                  ? t(`paymentTerm_${value}` as 'paymentTerm_monthly') : value;
+              return <div key={field} className="grid grid-cols-2 gap-4 px-4 py-2.5 text-sm">
+                <dt className="text-muted-foreground">{t(`movement.field.${field}`)}</dt>
+                <dd className="font-medium text-foreground">{display ?? '—'}</dd>
+              </div>;
+            })}
+          </dl>
+        </section>
+      ) : (
       <table className="w-full border-t border-border text-sm">
         <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
@@ -3924,6 +3944,7 @@ export default async function EmployeePage({
           })}
         </tbody>
       </table>
+      )}
       <div className="p-4">
         <Link href={`/admin/personnel/${employmentId}?tab=careerMovement`} className={btnGhost}>
           {t('movement.detail.backToHistory')}
