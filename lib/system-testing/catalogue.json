@@ -1743,8 +1743,8 @@
         "app/admin/personnel/[employmentId]/movement-new-event.tsx",
         "app/admin/personnel/[employmentId]/actions.ts"
       ],
-      "reviewNote": "Source-to-guide semantic review at 44138b7b80d2dddb2cf495fe9ddcce374011baa5 supports this bounded implemented journey. Actual manual checks remain required. Reviewed source bytes establish neither a test/manual pass, complete functional coverage nor live service arrival.",
-      "reviewedSourceHash": "0d323f2932fc4c66c68e688ae3137ff656a196df963c33a9a3c0db8e50a1d0ff"
+      "reviewNote": "Bounded source re-review at a906086d50985868a5c14c4aa7d1f04cd6a1e784 of the Movement workbook EventType-column repair preserves this existing guide definition and declared source list. EventType validation follows the actual V column and Company references remain present. Remaining unchanged owners retain the source-to-guide review at 44138b7b80d2dddb2cf495fe9ddcce374011baa5. Actual manual checks remain required; this review establishes no runtime, manual-test, gate or live-arrival result.",
+      "reviewedSourceHash": "2313741cc7902647e3a81d50c7ffb095e078b6370e58e8b8936ba109f37e0508"
     }
   ]
 }
