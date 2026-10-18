@@ -99,7 +99,7 @@ const DEMO_ENV = [
 // Harness 1 — a throwaway "server": the real deploy scripts, nothing real on PATH.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
-type Box = { dir: string; stateDir: string; bin: string; trace: string };
+type Box = { dir: string; stateDir: string; bin: string; trace: string; sqlTrace: string };
 
 /**
  * `setsid(1)` does not exist on macOS, so the shim is a REAL implementation of it — perl's
@@ -126,6 +126,7 @@ exec @ARGV or die "setsid shim: exec failed: \$!\\n";
 const PNPM_SHIM = `#!/bin/sh
 printf '%s\\n' "pnpm $*" >> "$DEPLOY_TRACE"
 if [ "$1" = "build" ]; then
+  printf '%s\\n' "testing-source=\${AIHR_SYSTEM_TESTING_SOURCE_REF:-}" "testing-record=\${AIHR_SYSTEM_TESTING_BUILD_RECORD_ID:-}" >> "$DEPLOY_TRACE"
   if [ -n "\${AIHR_TEST_BUILD_SLEEP:-}" ]; then sleep "$AIHR_TEST_BUILD_SLEEP"; fi
   if [ "\${AIHR_TEST_BUILD_CLOBBER:-0}" = "1" ]; then
     mkdir -p .next && head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \\n' > .next/BUILD_ID
@@ -138,7 +139,9 @@ exit 0
 `;
 
 function makeBox(envProduction = DEMO_ENV): Box {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'r291-box-'));
+  // Official build evidence deliberately rejects world-writable ancestry, including /tmp on Linux.
+  const fixtures = path.join(fs.realpathSync(REPO), 'scratchpad'); fs.mkdirSync(fixtures, { recursive: true });
+  const dir = fs.mkdtempSync(path.join(fixtures, 'r291-box-'));
   const bin = path.join(dir, 'bin');
   const stateDir = path.join(dir, 'state');
   fs.mkdirSync(path.join(dir, 'deploy'));
@@ -152,12 +155,20 @@ function makeBox(envProduction = DEMO_ENV): Box {
   fs.writeFileSync(path.join(dir, 'pnpm-lock.yaml'), 'lockfile: not a real one\n');
   fs.writeFileSync(path.join(dir, '.env.production'), envProduction);
 
-  const trace = path.join(dir, 'trace.log');
-  for (const cmd of ['node', 'psql', 'sudo', 'systemctl', 'npx', 'rsync']) {
+  const trace = path.join(dir, 'trace.log'), sqlTrace = path.join(dir, 'sql.log');
+  for (const cmd of ['node', 'sudo', 'systemctl', 'npx', 'rsync']) {
     const p = path.join(bin, cmd);
     fs.writeFileSync(p, `#!/bin/sh\nprintf '%s\\n' "${cmd} $*" >> "$DEPLOY_TRACE"\nexit 0\n`);
     fs.chmodSync(p, 0o755);
   }
+  // markDeployed sends its canonical SQL on stdin (`-f -`), not in argv. Other psql reads use -tAc
+  // and must not consume stdin or turn the command trace into a fictitious SQL observation.
+  fs.writeFileSync(path.join(bin, 'psql'), `#!/bin/sh
+printf '%s\\n' "psql $*" >> "$DEPLOY_TRACE"
+case " $* " in *" -f - "*) cat >> "$DEPLOY_SQL_TRACE" ;; esac
+exit 0
+`);
+  fs.chmodSync(path.join(bin, 'psql'), 0o755);
   // sha256sum has to produce something `cut -d' ' -f1` can read, and macOS has no sha256sum at all.
   fs.writeFileSync(
     path.join(bin, 'sha256sum'),
@@ -175,7 +186,7 @@ function makeBox(envProduction = DEMO_ENV): Box {
     `#!/bin/sh\nwhile [ $# -gt 1 ]; do case "$1" in -p|-o|-i) shift 2 ;; *) shift ;; esac; done\nexec /bin/bash -c "$1"\n`,
   );
   fs.chmodSync(path.join(bin, 'ssh'), 0o755);
-  return { dir, stateDir, bin, trace };
+  return { dir, stateDir, bin, trace, sqlTrace };
 }
 
 /** The environment the box's scripts see. Nothing is inherited: deploy.sh sources its own env file. */
@@ -184,6 +195,7 @@ function boxEnv(box: Box, extra: Record<string, string> = {}): NodeJS.ProcessEnv
     PATH: `${box.bin}:/usr/bin:/bin:/usr/sbin:/sbin`,
     HOME: box.dir,
     DEPLOY_TRACE: box.trace,
+    DEPLOY_SQL_TRACE: box.sqlTrace,
     AIHR_DEPLOY_STATE_DIR: box.stateDir,
     ...extra,
   } as unknown as NodeJS.ProcessEnv;
@@ -789,12 +801,15 @@ const UUID_ITEM = '22222222-2222-2222-2222-222222222222';
 const UUID_TENANT = '33333333-3333-3333-3333-333333333333';
 const UUID_EMP = '44444444-4444-4444-4444-444444444444';
 
-type CliRun = { status: number | null; out: string; trace: string };
+type CliRun = { status: number | null; out: string; trace: string; sql: string };
 
-function runReleaseCli(box: Box, extra: Record<string, string> = {}): CliRun {
+function runReleaseCli(box: Box, extra: Record<string, string> = {}, reporterEmploymentId: string | null = UUID_EMP): CliRun {
   // A real git worktree, because release.ts reads HEAD out of it with real git.
-  const wt = fs.mkdtempSync(path.join(os.tmpdir(), 'r291-wt-'));
+  const wt = fs.mkdtempSync(path.join(box.dir, 'r291-wt-'));
   fs.writeFileSync(path.join(wt, 'README.md'), 'r291\n');
+  fs.writeFileSync(path.join(wt, '.gitignore'), '.gate-receipt.json\n');
+  fs.mkdirSync(path.join(wt, 'lib/system-testing'), { recursive: true });
+  fs.writeFileSync(path.join(wt, 'lib/system-testing/catalogue.json'), JSON.stringify({ format: 1, revision: 'fictional.release', entries: [] }));
   const git = (...args: string[]) => spawnSync('git', args, { cwd: wt, encoding: 'utf8' });
   git('init', '-q');
   git('config', 'user.email', 'r291@example.invalid');
@@ -807,6 +822,30 @@ function runReleaseCli(box: Box, extra: Record<string, string> = {}): CliRun {
   const head = git('rev-parse', 'HEAD').stdout.trim();
   fs.writeFileSync(path.join(wt, '.gate-receipt.json'), JSON.stringify({ sha: head, result: 'PASS', tier: 'full' }));
 
+  // Retain the real receiver and build-child boundary. Only pnpm's expensive actual compilation is
+  // shimmed: it writes a real BUILD_ID. The rsync shim transfers this fixture's committed catalogue.
+  const quote = (value: string) => "'" + value.replace(/'/g, "'\"'\"'") + "'";
+  const cli = path.join(REPO, 'scripts/improve/system-testing-build-cli.ts');
+  const loader = path.join(REPO, 'node_modules/tsx/dist/loader.mjs');
+  fs.writeFileSync(path.join(box.bin, 'node'), `#!/bin/sh
+printf '%s\\n' "node $*" >> "$DEPLOY_TRACE"
+if [ "\${3:-}" = "scripts/improve/system-testing-build-cli.ts" ]; then
+  shift 3
+  if [ "$1" = "receive" ]; then
+    cat > "$HOME/received-build.json"
+    if [ "\${AIHR_TEST_RECORD_TAMPER:-0}" = "1" ]; then printf '{}\\n' > "$HOME/received-build.json"; fi
+    exec ${quote(process.execPath)} --import ${quote(loader)} ${quote(cli)} "$@" < "$HOME/received-build.json"
+  fi
+  exec ${quote(process.execPath)} --import ${quote(loader)} ${quote(cli)} "$@"
+fi
+exit 0
+`);
+  fs.writeFileSync(path.join(box.bin, 'rsync'), `#!/bin/sh
+printf '%s\\n' "rsync $*" >> "$DEPLOY_TRACE"
+mkdir -p ${quote(path.join(box.dir, 'lib/system-testing'))}
+cp ${quote(path.join(wt, 'lib/system-testing/catalogue.json'))} ${quote(path.join(box.dir, 'lib/system-testing/catalogue.json'))}
+`);
+
   const r = spawnSync(
     process.execPath,
     ['--import', 'tsx', path.join(REPO, 'scripts/improve/cli.ts'), 'release'],
@@ -817,7 +856,7 @@ function runReleaseCli(box: Box, extra: Record<string, string> = {}): CliRun {
       input: JSON.stringify({
         id: UUID_ITEM,
         tenantId: UUID_TENANT,
-        reporterEmploymentId: UUID_EMP,
+        reporterEmploymentId,
         worktree: wt,
         branch: 'build/r291-detach',
         buildRef: 'r291-fixture',
@@ -828,6 +867,7 @@ function runReleaseCli(box: Box, extra: Record<string, string> = {}): CliRun {
         PATH: `${box.bin}:${process.env.PATH ?? ''}`,
         HOME: box.dir,
         DEPLOY_TRACE: box.trace,
+        DEPLOY_SQL_TRACE: box.sqlTrace,
         AIHR_DEPLOY_STATE_DIR: box.stateDir,
         IMPROVE_SSH_HOST: 'shim.invalid',
         IMPROVE_SSH_PORT: '8288',
@@ -841,6 +881,7 @@ function runReleaseCli(box: Box, extra: Record<string, string> = {}): CliRun {
     status: r.status,
     out: `${r.stdout ?? ''}${r.stderr ?? ''}`,
     trace: fs.existsSync(box.trace) ? fs.readFileSync(box.trace, 'utf8') : '',
+    sql: fs.existsSync(box.sqlTrace) ? fs.readFileSync(box.sqlTrace, 'utf8') : '',
   };
 }
 
@@ -857,19 +898,48 @@ describe('pnpm improve:release, end to end against a shim server', () => {
     // markDeployed is the only thing here that runs psql. It must not have.
     expect(r.trace).not.toContain('psql');
     expect(r.out).not.toContain('status → deployed');
+    const builds = fs.readdirSync(path.join(box.dir, '.aihr-system-testing-builds'));
+    expect(builds).toHaveLength(1);
+    expect(fs.existsSync(path.join(box.dir, '.aihr-system-testing-builds', builds[0], 'successful-build.json'))).toBe(false);
     // …and the box agrees with what the local command reported.
     expect(askState(box).state).toBe('failed');
   }, 180_000);
 
   it('a remote build that SUCCEEDS exits zero and does mark the item deployed', () => {
-    const box = makeBox();
+    const stale = ['SOURCE_REF', 'BUILD_RECORD_ID', 'CATALOGUE_HASH', 'CONTENT_HASH', 'SOURCE_HASH_RECORD']
+      .map(key => `AIHR_SYSTEM_TESTING_${key}=stale-private-build-metadata`).join('\n');
+    const box = makeBox(DEMO_ENV + stale + '\nAIHR_DEPLOY_REF=stale-private-source\n');
     const r = runReleaseCli(box);
     expect(r.status, r.out).toBe(0);
     expect(r.out).toContain('status → deployed');
     expect(r.trace).toContain('psql'); // markDeployed reached the server
+    expect(r.sql).toContain(`WHERE id='${UUID_ITEM}'::uuid AND tenant_id='${UUID_TENANT}'::uuid AND reporter_employment_id IS NOT DISTINCT FROM '${UUID_EMP}'::uuid FOR UPDATE`);
     expect(r.trace).toContain('pnpm build');
     expect(r.trace).toContain('systemctl restart aihr');
     expect(askState(box).state).toBe('ok');
+    const received = JSON.parse(fs.readFileSync(path.join(box.dir, 'received-build.json'), 'utf8'));
+    const published = path.join(box.dir, '.aihr-system-testing-builds', received.identity.buildRecordId);
+    expect(JSON.parse(fs.readFileSync(path.join(published, 'system-testing.json'), 'utf8'))).toEqual(received);
+    expect(JSON.parse(fs.readFileSync(path.join(published, 'successful-build.json'), 'utf8'))).toMatchObject({ identity: received.identity, activeServiceVerified: false, manualExecutionVerified: false, nextBuildId: askState(box).build_id });
+    expect(r.trace).toContain(`testing-source=${received.identity.sourceRef}`);
+    expect(r.trace).toContain(`testing-record=${received.identity.buildRecordId}`);
+  }, 180_000);
+
+  it('corrupt transferred provenance refuses before build/migration or board transition', () => {
+    const box = makeBox(), result = runReleaseCli(box, { AIHR_TEST_RECORD_TAMPER: '1' });
+    expect(result.status).not.toBe(0);
+    expect(result.trace).not.toContain('pnpm build'); expect(result.trace).not.toContain('pnpm db:migrate');
+    expect(result.trace).not.toContain('psql'); expect(result.out).not.toContain('status → deployed');
+    expect(fs.existsSync(path.join(box.dir, '.aihr-system-testing-builds'))).toBe(false);
+  }, 180_000);
+
+  it('carries an actual stored NULL reporter into exact canonical mark binding without borrowing an employment', () => {
+    const box = makeBox(), result = runReleaseCli(box, {}, null);
+    expect(result.status, result.out).toBe(0);
+    expect(result.sql).toContain(`WHERE id='${UUID_ITEM}'::uuid AND tenant_id='${UUID_TENANT}'::uuid AND reporter_employment_id IS NOT DISTINCT FROM NULL::uuid FOR UPDATE`);
+    expect(result.sql).not.toContain("'null'");
+    expect(result.sql).not.toContain(UUID_EMP);
+    expect(result.out).toContain('status → deployed');
   }, 180_000);
 
   it('a deploy that DIES partway makes the local command exit non-zero and name the mixed tree', async () => {

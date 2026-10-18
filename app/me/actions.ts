@@ -70,10 +70,7 @@ import {
   type AttendanceRequestKind,
   type OtReasonCategory,
 } from '@/db/schema';
-import { requestProfileChange, updateOwnContact, type ProfileChangeProposed } from '@/core/profile';
-// 9583deac stage two — the ONE declaration of which fields an employee may ask to change. This action
-// reads it instead of naming seven fields by hand; see that file's header.
-import { PROFILE_REQUESTABLE_FIELDS } from '@/lib/profile-requestable-fields';
+import { updateOwnContact } from '@/core/profile';
 import { saveTp1Draft, submitTp1 } from '@/core/tax-relief';
 import { readTp1FormInput } from '@/lib/tp1-form-input';
 import type { Tp1FormState } from '@/lib/tp1-form-state';
@@ -800,38 +797,12 @@ export async function myUpdateContact(formData: FormData) {
   redirect('/me?toast=Profile+updated');
 }
 
-/**
- * Ask for a change to any field `lib/profile-requestable-fields.ts` declares (9583deac stage two).
- *
- * ── ONE LOOP, NOT A LIST OF NAMES ───────────────────────────────────────────────────────────────────
- * This used to read seven `formData.get('…')` calls by hand, which is exactly why the request form, the
- * sanitiser and the applier could each know a different set of fields. It now walks the declaration, so
- * "which fields may be asked about" is answered in ONE place and this action cannot fall behind the form
- * that posts to it.
- *
- * BLANK MEANS "LEAVE IT ALONE" — unchanged semantics, and the reason the form is not pre-filled. A key
- * only enters the proposal when the employee actually typed or picked something; `core/profile.ts`
- * `sanitizeProposed` then validates the value and drops anything it does not recognise.
- *
- * THE EMPLOYMENT IS THE SESSION'S — `resolveMe()` resolves it from `ctx.personId`, never from the form.
- * A hidden employment id in this form would be the whole scope of My Profile undone by one input.
- */
-export async function myRequestProfileChange(formData: FormData) {
-  const { s, employmentId } = await resolveMe();
-  const proposed: ProfileChangeProposed = {};
-  for (const field of PROFILE_REQUESTABLE_FIELDS) {
-    const raw = String(formData.get(field.key) ?? '').trim();
-    if (!raw) continue;
-    (proposed as Record<string, string | number>)[field.key] =
-      field.input === 'number' || field.key === 'taxCategory' ? Number(raw) : raw;
-  }
-  try {
-    await requestProfileChange(s, { employmentId, proposed });
-  } catch (e) {
-    redirect(`/me?error=${encodeURIComponent(publicErrorMessage(e))}`);
-  }
-  revalidatePath('/me');
-  redirect('/me?toast=Change+requested+for+approval');
+/** Retired unversioned form: old stored requests retain their history/decision course.
+ * New changes use saveMyProfileEditAction and the canonical versioned workspace owner. */
+export async function myRequestProfileChange(_formData: FormData) {
+  await getSession();
+  const t = await getTranslations('essProfile');
+  redirect(`/me?error=${encodeURIComponent(t('error.invalid'))}`);
 }
 
 // ── Self Personal Tax Relief (ADR-0050, #1.1.3; per-category breakdown a2f1fa24) — yearly TP1 ──

@@ -13,6 +13,7 @@ const { extension } = vi.hoisted(() => ({
     label: 'Fictional registry extension', tab: 'Profile', section: 'Personal details',
     type: 'text', owner: 'person', ownerField: 'registryExtensionSentinel', grain: 'single',
     history: 'current', sensitivity: 'personnel', scope: 'both',
+    ess: { visibility: 'protected', edit: 'viewOnly', reason: 'Fictional test-only descriptor has no employee owner binding.' },
     report: { enabled: true, filter: true, sort: true, group: true, sum: false },
     import: {
       column: 'registry_extension_sentinel', section: 'profile', writer: 'person-profile',

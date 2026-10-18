@@ -21,6 +21,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { hireEmployee } from '../core/org';
 import { updateOwnContact } from '../core/profile';
 import { employeeDetail } from '../core/read';
+import {readOwnProfileWorkspace} from '../core/profile-edit';
 import { myProfileRecord } from '../app/me/record';
 import { ME_WITHHELD_COLUMNS } from '../app/me/visible-fields';
 import { person } from '../db/schema';
@@ -95,55 +96,13 @@ describe('r259 — /me is scoped to the caller’s own employment', () => {
     expect(asAdmin?.employmentId).toBe(colleague.employmentId);
   });
 
-  it('shows the address its own Save button changes, and no other', async () => {
-    /**
-     * THE BLOCKER, PROVED THE WAY IT WAS FOUND: three DIFFERENT addresses planted in the three column
-     * families `person` carries, then the record the Contact & address card is built from is read back.
-     *
-     * The first cut of this round projected HR's `permanent_*` / `correspondence_*` pair and rendered it
-     * read-only directly above the contact self-edit fold-out — which posts the LEGACY
-     * `address_line1..country` names, the only ones `updateOwnContact` writes. So the employee saw one
-     * address, edited it, pressed Save, and the address on that same card did not move; the phone and
-     * personal email beside it did, because those columns are shared. That is what the assertions below
-     * would have caught: the permanent and correspondence sentinels reaching the page at all.
-     *
-     * The second half is the property stated positively — save, read back, and watch the DISPLAYED value
-     * move. A card can only pass both if what it prints and what it writes are one set of columns.
-     */
-    const mine = await hire('Selfreader');
-    const ctx = await employeeCtx(mine.personId);
-
-    await owner.db
-      .update(person)
-      .set({
-        addressLine1: 'ZZLEGACYLINE1',
-        city: 'ZZLEGACYCITY',
-        permanentAddressLine1: 'ZZPERMLINE1',
-        permanentCity: 'ZZPERMCITY',
-        correspondenceAddressLine1: 'ZZCORRLINE1',
-      })
-      .where(eq(person.id, mine.personId));
-
-    const before = await myProfileRecord(ctx);
-    const shown = JSON.stringify(before);
-    // The address the fold-out edits IS the address the card prints.
-    expect(shown.includes('ZZLEGACYLINE1'), 'the card does not show the address its Save button writes').toBe(true);
-    expect(shown.includes('ZZLEGACYCITY')).toBe(true);
-    // …and the family it cannot write is not on the card at all.
-    for (const unwritable of ['ZZPERMLINE1', 'ZZPERMCITY', 'ZZCORRLINE1']) {
-      expect(
-        shown.includes(unwritable),
-        `My Profile shows ${unwritable} — an address from a column family its Save button cannot change`,
-      ).toBe(false);
-    }
-
-    // Now the positive form: press Save with a new address and the DISPLAYED value moves.
-    await updateOwnContact(ctx, { addressLine1: 'ZZSAVEDLINE1', city: 'ZZSAVEDCITY', country: 'Malaysia' });
-    const after = await myProfileRecord(ctx);
-    expect(after!.contact.homeAddress.addressLine1, 'saving the address did not change what the card shows')
-      .toBe('ZZSAVEDLINE1');
-    expect(after!.contact.homeAddress.city).toBe('ZZSAVEDCITY');
-    expect(after!.contact.homeAddress.country).toBe('Malaysia');
+  it('shows canonical address blocks and retained legacy reconciliation without allowing the retired direct address writer',async()=>{
+    const mine=await hire('Selfreader'),ctx=await employeeCtx(mine.personId);
+    await owner.db.update(person).set({addressLine1:'ZZLEGACYLINE1',permanentAddressLine1:'ZZPERMLINE1',correspondenceAddressLine1:'ZZCORRLINE1'}).where(eq(person.id,mine.personId));
+    const workspace=await readOwnProfileWorkspace(ctx,{employmentId:mine.employmentId});
+    expect(workspace.values['profile.contact_and_permanent_address.permanentaddressline1']).toBe('ZZPERMLINE1');expect(workspace.values['profile.correspondence_address.correspondenceaddressline1']).toBe('ZZCORRLINE1');expect(workspace.addressReview).toBe(true);expect(workspace.legacyAddress.addressLine1).toBe('ZZLEGACYLINE1');
+    await expect(updateOwnContact(ctx,{addressLine1:'ZZUNAUTHORIZED'})).rejects.toMatchObject({code:'addressReview'});
+    const [master]=await owner.db.select().from(person).where(eq(person.id,mine.personId));expect(master.addressLine1).toBe('ZZLEGACYLINE1');expect(master.permanentAddressLine1).toBe('ZZPERMLINE1');expect(master.correspondenceAddressLine1).toBe('ZZCORRLINE1');
   });
 
   it('a principal linked to no employment gets nothing rather than somebody else’s record', async () => {

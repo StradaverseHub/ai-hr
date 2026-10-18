@@ -1492,9 +1492,9 @@ describe('Bank Account: the company debit account is not masked here', () => {
       read('lib/profile-requestable-fields.ts'),
       'the shared employee-account mask (maskAccountNumber) still truncates to four digits',
     ).toContain('`•••• ${String(no).slice(-4)}`');
-    expect(read('app/me/page.tsx'), 'app/me still masks an employee account').toContain(
-      'maskAccountNumber(st.bankAccountNo)',
-    );
+    expect(read('core/profile-edit.ts'), 'own master fields are masked before RSC').toContain('field.ess.masked');
+    expect(read('core/profile-edit.ts')).toContain('value.slice(-4)');
+    expect(read('app/me/page.tsx')).toContain('{mask:true}');
     // …and the pending value drawn beside it is masked by the same function, not printed in full.
     expect(
       read('app/me/request-change-card.tsx'),

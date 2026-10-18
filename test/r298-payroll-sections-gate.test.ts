@@ -130,7 +130,8 @@ import { createLoan, listLoansForEmployment } from '../core/loans';
 import { myEmploymentIdsAll, myPayslips, myTaxRelief, myTaxReliefEmploymentIds } from '../core/read';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { SectionHeader } from '../components/ui';
-import { ClientTabs } from '../components/personnel-tabs';
+import {ProfileEditor} from '../app/me/profile-editor';
+import {ME_TABS} from '../app/me/visible-fields';
 import { TabSaveScope } from '../components/tab-save-scope';
 import { CompanyPanel } from '../components/company-panel';
 import EmployeePage from '../app/admin/personnel/[employmentId]/page';
@@ -419,9 +420,9 @@ describe('r298 — My Profile: payslips, TP1 and loans follow the Payroll module
   const PAYROLL_TITLES = ['myPayslips', 'taxReliefTp1', 'myLoans', 'taxStatementEa'] as const;
 
   const tabsOf = (tree: unknown) => {
-    const shells = collect(tree, (el) => el.type === ClientTabs);
+    const shells = collect(tree, (el) => el.type === ProfileEditor);
     expect(shells, 'one tab shell').toHaveLength(1);
-    return shells[0].props as { defaultTab: string; tabs: { key: string }[] };
+    return {defaultTab:shells[0].props.defaultTab,tabs:ME_TABS.map(key=>({key}))};
   };
 
   it('Payroll ON — all four cards are drawn with their data, and every read ran as before', async () => {

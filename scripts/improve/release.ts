@@ -38,6 +38,7 @@
  * ─────────────────────────────────────────────────────────────────────────────────────────────────────
  */
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tierFor } from '../gate-tier-git';
@@ -46,6 +47,9 @@ import { markDeployed } from './remote';
 import { readyProductionBaseline } from '../gate-impact-git';
 import { validateImpactReceipt } from './release-impact-gate';
 import { recordReleaseLearning } from './release-learning';
+import { testingSourceRef, testingUuid } from '../../lib/system-testing/model';
+import { stableTestingJson } from '../../lib/system-testing/hash';
+import { ensurePrivateReleaseDirectory, prepareSystemTestingBuild, publishSystemTestingBuild, systemTestingBuildDirectory } from './system-testing-manifest';
 
 const HOST = process.env.IMPROVE_SSH_HOST ?? '10.20.30.20';
 const PORT = process.env.IMPROVE_SSH_PORT ?? '8288';
@@ -137,7 +141,8 @@ export function buildPendingCommand(ref: string, dir = DIR, stateDir = DEPLOY_ST
  * REFUSING when setsid is absent is deliberate. Falling back to a bare `nohup … &` would look like it
  * worked and would still die to a group signal — the exact failure this round exists to remove.
  */
-export function buildLaunchCommand(ref: string, dir = DIR, stateDir = DEPLOY_STATE_DIR): string {
+export function buildLaunchCommand(ref: string, dir = DIR, stateDir = DEPLOY_STATE_DIR, testingBuildRecordId?: string): string {
+  if (testingBuildRecordId !== undefined) testingUuid.parse(testingBuildRecordId);
   return [
     'set -e',
     `cd ${dir}`,
@@ -146,9 +151,16 @@ export function buildLaunchCommand(ref: string, dir = DIR, stateDir = DEPLOY_STA
     `LOG='${stateDir}'/deploy-$(date -u +%Y%m%dT%H%M%SZ)-$$.log`,
     `: > "$LOG"`,
     `AIHR_DEPLOY_STATE_DIR='${stateDir}' AIHR_DEPLOY_REF='${ref}' AIHR_DEPLOY_LOG="$LOG" ` +
-      `setsid nohup ./deploy/deploy.sh > "$LOG" 2>&1 < /dev/null &`,
+      `setsid nohup ./deploy/deploy.sh${testingBuildRecordId ? ` --testing-build-record=${testingBuildRecordId}` : ''} > "$LOG" 2>&1 < /dev/null &`,
     `echo "aihr-deploy-log=$LOG"`,
   ].join('\n');
+}
+
+/** Bounded canonical JSON is sent as stdin by the caller; no record/path/credential in shell argv. */
+export function buildTestingRecordCommand(ref: string, buildRecordId: string, dir = DIR): string {
+  testingSourceRef.parse(ref); testingUuid.parse(buildRecordId);
+  const quote = (value: string) => "'" + value.replace(/'/g, "'\"'\"'") + "'";
+  return `cd ${quote(dir)} && PATH=/opt/node24/bin:/opt/node22/bin:/opt/node20/bin:$PATH node --import tsx scripts/improve/system-testing-build-cli.ts receive ${ref} ${buildRecordId}`;
 }
 
 /** One poll: the log bytes after `offset`, the sentinel, then the state block. */
@@ -423,6 +435,13 @@ export async function deployWorktree(p: { worktree: string }): Promise<void> {
   console.log('→ final gate: npx tsc --noEmit');
   run('npx', ['tsc', '--noEmit'], p.worktree, tscEnv());
 
+  // One fresh immutable code-only record for this exact clean candidate. No guide is restamped and
+  // neither a prepared record nor a built artifact supplies arrival or a tester's observation.
+  const testingBuild = prepareSystemTestingBuild({ worktree: p.worktree, candidate: head, buildRecordId: randomUUID() });
+  const testingDirectory = systemTestingBuildDirectory('local');
+  ensurePrivateReleaseDirectory(testingDirectory);
+  publishSystemTestingBuild(testingBuild, testingDirectory);
+
   let previousRef:string|undefined;
   try { previousRef=parseDeployStatus(execFileSync('ssh',sshArgs(`cd ${DIR} && deploy/deploy-state.sh status`),{encoding:'utf8',timeout:30000})).built_ref; }
   catch { console.warn('  Release-learning baseline unavailable; full gate evidence remains authoritative.'); }
@@ -439,13 +458,20 @@ export async function deployWorktree(p: { worktree: string }): Promise<void> {
 
   // 3. rsync the worktree → server (same excludes as deploy; .env.production preserved on the box).
   const src = p.worktree.replace(/\/?$/, '/');
+  if (stableTestingJson(prepareSystemTestingBuild({ worktree: p.worktree, candidate: head, buildRecordId: testingBuild.identity.buildRecordId })) !== stableTestingJson(testingBuild)) throw new Error('System Testing release source changed before rsync.');
   console.log(`→ rsync ${src} → ${USER}@${HOST}:${DIR}/`);
   run('rsync', deploymentRsyncArgs(src));
+
+  // Receiver verifies actual installed catalogue/source bytes and publishes under its fixed private
+  // home directory. Its refusal stops before launch, migration or any board transition.
+  execFileSync('ssh', sshArgs(buildTestingRecordCommand(head, testingBuild.identity.buildRecordId)), {
+    input: stableTestingJson(testingBuild) + '\n', stdio: ['pipe', 'inherit', 'inherit'], maxBuffer: 1024 * 1024, timeout: 30000,
+  });
 
   // 4. deploy.sh on the server, DETACHED (build + migrate; the restart still needs the user's sudo,
   //    by design), then followed by polling. See the header for why.
   console.log('→ deploy.sh on the server — detached (setsid nohup); following by polling');
-  const launch = execFileSync('ssh', sshArgs(buildLaunchCommand(head)), {
+  const launch = execFileSync('ssh', sshArgs(buildLaunchCommand(head, DIR, DEPLOY_STATE_DIR, testingBuild.identity.buildRecordId)), {
     encoding: 'utf8',
     maxBuffer: 1024 * 1024,
   });
@@ -496,7 +522,7 @@ export async function deployWorktree(p: { worktree: string }): Promise<void> {
 export async function releaseBuiltItem(p: {
   id: string;
   tenantId: string;
-  reporterEmploymentId: string;
+  reporterEmploymentId: string | null;
   worktree: string;
   branch?: string;
   buildRef: string;

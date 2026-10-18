@@ -2609,6 +2609,7 @@ export function assignmentHistory(ctx: SessionContext, employmentId: string) {
         // per version; the Movement tab replaced the old status column in this table back at 78853b97, so
         // nothing rendered it. Current Employee Status is derived, once, from the lifecycle dates.
         employmentType: assignment.employmentType,
+        locationCode:location.code,locationName:location.name,locationEffectiveFrom:assignment.validFrom,
         validFrom: assignment.validFrom,
         validTo: assignment.validTo,
       })
@@ -2616,8 +2617,9 @@ export function assignmentHistory(ctx: SessionContext, employmentId: string) {
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(position, eq(position.id, assignment.positionId))
       .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId))
+      .leftJoin(location,eq(location.id,assignment.locationId))
       .where(and(eq(assignment.employmentId, employmentId), isNull(assignment.supersededAt)))
-      .orderBy(desc(assignment.validFrom)),
+      .orderBy(desc(assignment.validFrom),desc(assignment.id)),
   );
 }
 
@@ -6064,8 +6066,17 @@ export function employmentSubject(ctx: SessionContext, employmentId: string) {
 }
 
 /** ALL active employments for the current principal (concurrent multi-company, ADR-0009). */
-export function myEmployments(ctx: SessionContext) {
-  return withTenant(ctx, async (tx) => {
+/** Existing login final-day eligibility, selected explicitly by the own Profile edit course. */
+export function profileEditEmploymentPredicate(ctx:SessionContext){
+ return sql`${employment.tenantId}=${ctx.tenantId}::uuid AND ${employment.hiredOn}<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+  AND ${employment.blacklistedAt} IS NULL AND (LEAST(${employment.resignationDate},${employment.lastWorkingDate},${employment.terminatedOn}) IS NULL
+   OR LEAST(${employment.resignationDate},${employment.lastWorkingDate},${employment.terminatedOn})>=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+  AND EXISTS(SELECT 1 FROM app_user u WHERE u.id=${ctx.userId}::uuid AND u.tenant_id=${ctx.tenantId}::uuid AND u.person_id=${ctx.personId}::uuid AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))`;
+}
+export function myEmployments(ctx:SessionContext,opts:{profileEdit?:boolean}={}){
+ return withTenant(ctx,tx=>myEmploymentsTx(tx,ctx,opts));
+}
+export async function myEmploymentsTx(tx:Tx,ctx:SessionContext,opts:{profileEdit?:boolean}={}){
     if (!ctx.personId) return [];
     return tx
       .select({
@@ -6098,9 +6109,28 @@ export function myEmployments(ctx: SessionContext) {
           isNull(compensation.supersededAt),
         ),
       )
-      .where(and(eq(employment.personId, ctx.personId), isNull(employment.terminatedOn)))
-      .orderBy(employment.hiredOn);
-  });
+      .where(and(eq(employment.personId, ctx.personId), opts.profileEdit?profileEditEmploymentPredicate(ctx):isNull(employment.terminatedOn)))
+      .orderBy(employment.hiredOn,employment.id);
+}
+
+/** Salary-free own-subject inventory. A caller must explicitly select an ID from this set.
+ * Dated company proof is strict: a missing assignment is Unknown, never today's company fallback. */
+export async function myOwnEmploymentSubjectsTx(tx:Tx,ctx:SessionContext,opts:{profileEdit?:boolean}={}){
+ if(!ctx.personId)return [];
+ const date=todayInKualaLumpur();
+ const rows=await tx.select({employmentId:employment.id,personId:person.id,personName:person.fullName,employeeCode:employment.employeeCode,
+  currentCompanyId:employment.companyId,company:company.legalName,country:company.country,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,
+  resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate,blacklistedAt:employment.blacklistedAt,status:employmentStatusSql()})
+  .from(employment).innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId))
+  .where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId),opts.profileEdit?profileEditEmploymentPredicate(ctx):undefined))
+  .orderBy(employment.hiredOn,employment.id);
+ const {provenCompanyDatesTx}=await import('./employment-company');
+ const proofs=await provenCompanyDatesTx(tx,rows.map(row=>({employmentId:row.employmentId,date})));
+ return rows.map(row=>({...row,companyProof:proofs.get(`${row.employmentId}|${date}`)??{companyId:null,reason:'employment_unavailable' as const}}));
+}
+export type OwnEmploymentSubject=Awaited<ReturnType<typeof myOwnEmploymentSubjectsTx>>[number];
+export function myOwnEmploymentSubjects(ctx:SessionContext,opts:{profileEdit?:boolean}={}){
+ return withTenant(ctx,tx=>myOwnEmploymentSubjectsTx(tx,ctx,opts));
 }
 
 /**
@@ -6182,6 +6212,7 @@ export function myPayslips(ctx: SessionContext, employmentIds: string[]) {
     const rows = await tx
       .select({
         id: payslip.id,
+        employmentId:payslip.employmentId,
         company: company.legalName,
         payPeriod: payrollBatch.payPeriod,
         runType: payrollBatch.runType,

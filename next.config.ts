@@ -1,5 +1,6 @@
 import type { NextConfig } from 'next';
 import createNextIntlPlugin from 'next-intl/plugin';
+import { systemTestingNextCompileEnvironment } from './scripts/improve/system-testing-next-config';
 
 const withNextIntl = createNextIntlPlugin('./i18n/request.ts');
 
@@ -80,4 +81,9 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default withNextIntl(nextConfig);
+export default (phase: string) => withNextIntl({
+  ...nextConfig,
+  // Both canonical pnpm build and direct Next builds pass this validating boundary.
+  // No selector means five explicit empty substitutions, despite inherited or dotenv values.
+  env: systemTestingNextCompileEnvironment({ phase, worktree: process.cwd() }),
+});

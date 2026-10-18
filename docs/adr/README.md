@@ -71,3 +71,6 @@ See also: [Malaysia localization — spec mapping & gap closure](../architecture
 | [0120](0120-employee-replacement-holidays.md) | Stable annual original calendar, explicit replacement policy and employee-specific audited allocations | Direction accepted; verification pending |
 
 | [0123](0123-versioned-overtime-patterns-and-source-settlement.md) | Immutable formula versions, explicit OT-stage assignment, recorded inputs and one cash/TOIL day source | Direction accepted; implementation and verification pending |
+
+| [0125](0125-personnel-employee-profile-ownership.md) | Shared Personnel facts, explicit employee field permissions and atomic self-service editing | Implementation direction accepted; verification pending |
+| [0128](0128-versioned-system-testing-and-personal-executions.md) | Immutable testing instructions, independent tester history and reviewed source-bound catalogue updates | Implementation direction accepted; verification pending |

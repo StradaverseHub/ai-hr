@@ -1,0 +1,1570 @@
+{
+  "format": 1,
+  "revision": "reviewed-baseline.6",
+  "entries": [
+    {
+      "semanticId": "personnel.profile.reopen",
+      "definition": {
+        "format": 1,
+        "title": "Save and reopen a fictional preferred name",
+        "objective": "Check canonical profile persistence.",
+        "functionKey": "personnel.profile",
+        "area": "personnel",
+        "moduleCode": "employees",
+        "category": "functional",
+        "priority": "medium",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and fictional records only. Do not use production personal data.",
+          "An existing active fictional employee is visible in Personnel."
+        ],
+        "testData": [
+          "A distinctive fictional preferred name."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "Open /admin/personnel, open the fictional employee and its Profile tab.",
+            "expected": "The correct employee code and existing profile are visible."
+          },
+          {
+            "id": "step2",
+            "action": "Change only Preferred Name and save.",
+            "expected": "The normal save result confirms success without changing unrelated fields."
+          },
+          {
+            "id": "step3",
+            "action": "Leave the employee screen, then reopen the same code and Profile tab.",
+            "expected": "The exact saved preferred name is retained."
+          }
+        ],
+        "expectedBehavior": "The exact saved preferred name is retained.",
+        "expectedFunction": "Check canonical profile persistence.",
+        "permissions": [
+          "Normal company-scoped HR access to the fictional employee."
+        ],
+        "jurisdiction": null,
+        "configuration": null,
+        "screenKeys": [
+          "personnelAdmin"
+        ]
+      },
+      "sources": [
+        "app/admin/personnel/[employmentId]/page.tsx",
+        "core/profile.ts",
+        "lib/permissions.ts",
+        "app/admin/personnel/[employmentId]/actions.ts",
+        "core/org.ts"
+      ],
+      "reviewedSourceHash": "cf55f75ca3a6e0058ff8f74c20936f81756648174e8c0843ae06ae700348a184",
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+    },
+    {
+      "semanticId": "personnel.import.invalid",
+      "definition": {
+        "format": 1,
+        "title": "Check a Personnel import before applying",
+        "objective": "Check import validation and absence of partial changes.",
+        "functionKey": "personnel.import",
+        "area": "personnel",
+        "moduleCode": "employees",
+        "category": "validation",
+        "priority": "medium",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and fictional records only. Do not use production personal data.",
+          "Use the current template downloaded from the import screen."
+        ],
+        "testData": [
+          "An existing fictional employee code and an invalid date value."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "Open /admin/personnel/import and download the current template for the intended section.",
+            "expected": "The download identifies the intended section and current column contract."
+          },
+          {
+            "id": "step2",
+            "action": "Put the fictional employee code in one row and an invalid value in a date column; upload and Check.",
+            "expected": "The preview identifies the row and field error; applying the invalid data is unavailable."
+          },
+          {
+            "id": "step3",
+            "action": "Reopen the fictional employee without applying a corrected file.",
+            "expected": "The stored date and other employee fields remain unchanged."
+          }
+        ],
+        "expectedBehavior": "The stored date and other employee fields remain unchanged.",
+        "expectedFunction": "Check import validation and absence of partial changes.",
+        "permissions": [
+          "Normal company-scoped HR access to the fictional employee."
+        ],
+        "jurisdiction": null,
+        "configuration": null,
+        "screenKeys": [
+          "personnelAdmin"
+        ]
+      },
+      "sources": [
+        "app/admin/personnel/import/page.tsx",
+        "core/import-sections.ts",
+        "core/import.ts",
+        "lib/permissions.ts",
+        "app/admin/personnel/import/section-actions.ts",
+        "app/admin/personnel/import/section-import.tsx",
+        "lib/import-sections.ts"
+      ],
+      "reviewedSourceHash": "b3160ca5daa5d23c7a8b9bd14d49ceb48ce689a2566d741828d414c8a38de845",
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+    },
+    {
+      "semanticId": "personnel.family.roundtrip",
+      "definition": {
+        "format": 1,
+        "title": "Re-import unchanged same-name Family members with distinct birth dates",
+        "objective": "Verify Family identity matching preserves two distinct recorded members without adding duplicates.",
+        "functionKey": "personnel.family",
+        "area": "personnel",
+        "moduleCode": "employees",
+        "category": "regression",
+        "priority": "medium",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and fictional records only. Do not use production personal data.",
+          "A dedicated fictional employee already has two Family members with the same name and relationship but different recorded dates of birth; the fixture coordinator supplies their exact unchanged names, relationship, dates and any recorded identifiers."
+        ],
+        "testData": [
+          "The fictional employee code and both unchanged Family identities, including the distinct birth dates and matching recorded government identifiers where applicable. Do not rename either member in this import."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "Open /admin/personnel, open the dedicated fictional employee Family section and note both same-name members and their distinct dates of birth.",
+            "expected": "Two separate existing Family records are visible with the supplied unchanged facts."
+          },
+          {
+            "id": "step2",
+            "action": "Open /admin/personnel/import, select Family and download its current template. Enter one row for each unchanged member using the same fictional employee code, original name, relationship, distinct birth date and any exact recorded identifiers. Do not invent a Record ID or change a name.",
+            "expected": "The Family template uses the supported Family columns. Each row identifies its existing member by the canonical matching facts; qualification/emergency Record ID update behavior is not claimed."
+          },
+          {
+            "id": "step3",
+            "action": "Upload and Check the two unchanged rows. Inspect the result and do not force an Apply when all rows are already-on-file skips.",
+            "expected": "Each exact existing identity is reported as already on file/skipped, not as a new name update. An ambiguity is a refusal to review, not permission to create a substitute identity."
+          },
+          {
+            "id": "step4",
+            "action": "Reopen the same employee Family section and compare both recorded members with the original facts.",
+            "expected": "Both distinct birth-date records and their original fields remain unchanged, with no additional duplicate Family member."
+          }
+        ],
+        "expectedBehavior": "Unchanged exact Family identities are skipped without duplicate creation; same-name members with distinct recorded birth dates remain separate and unchanged.",
+        "expectedFunction": "Verify Family identity matching preserves two distinct recorded members without adding duplicates.",
+        "permissions": [
+          "Normal company-scoped HR access to the fictional employee."
+        ],
+        "jurisdiction": null,
+        "configuration": null,
+        "screenKeys": [
+          "personnelAdmin"
+        ]
+      },
+      "sources": [
+        "app/admin/personnel/import/section-import.tsx",
+        "core/dependents.ts",
+        "lib/permissions.ts",
+        "app/admin/personnel/import/section-actions.ts",
+        "core/import-sections.ts",
+        "lib/dependent-identity.ts",
+        "lib/import-sections.ts"
+      ],
+      "reviewedSourceHash": "413e54af91f3523f7aacbcff6452e65340d4f9720b505a2f3c20b6ef7de2df34",
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+    },
+    {
+      "semanticId": "payroll.scope.review",
+      "definition": {
+        "format": 1,
+        "title": "Review a Payroll run with a subset scope",
+        "objective": "Check headcount, readiness and editable input rows use the same persisted run population.",
+        "functionKey": "payroll.scope",
+        "area": "payroll",
+        "moduleCode": "payroll",
+        "category": "integration",
+        "priority": "high",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and fictional records only. Do not use production personal data.",
+          "A fictional Draft regular Payroll run contains an explicit subset; an included employee lacks salary and an excluded control employee exists."
+        ],
+        "testData": [
+          "The exact included employee codes and an excluded control code."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "Open the fictional run from /payroll.",
+            "expected": "The run company, period, status and saved subset identify the intended run."
+          },
+          {
+            "id": "step2",
+            "action": "Compare Headcount and salary-readiness membership with the period-active included codes. Compare editable input rows with included employees who have applicable compensation. Check the excluded control in each surface.",
+            "expected": "Headcount includes the selected period-active employee whose salary is missing, and readiness reports that gap. Editable inputs use the same persisted scope fence but omit employees without applicable compensation. The excluded control is absent from all three."
+          },
+          {
+            "id": "step3",
+            "action": "Review the readiness issue for the included fictional employee whose salary is missing.",
+            "expected": "The included employee receives the applicable readiness issue; an excluded employee does not inflate the blocker count."
+          }
+        ],
+        "expectedBehavior": "The included employee receives the applicable readiness issue; an excluded employee does not inflate the blocker count.",
+        "expectedFunction": "Check persisted run scope fences headcount, readiness and compensation-backed input rows while preserving missing-salary blockers.",
+        "permissions": [
+          "Payroll authority for the fictional company and run."
+        ],
+        "jurisdiction": null,
+        "configuration": null,
+        "screenKeys": [
+          "payroll"
+        ]
+      },
+      "sources": [
+        "app/payroll/[batchId]/page.tsx",
+        "core/payroll-readiness.ts",
+        "core/payroll.ts",
+        "lib/permissions.ts"
+      ],
+      "reviewedSourceHash": "b4179e48681da34579b668fa5bb91797465a1e0b65f6bca07eb8688fa7faf974",
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+    },
+    {
+      "semanticId": "payroll.salary.effective",
+      "definition": {
+        "format": 1,
+        "title": "Save and reopen a dated fictional salary",
+        "objective": "Check the Payroll salary section retains period-effective inputs.",
+        "functionKey": "payroll.salary",
+        "area": "payroll",
+        "moduleCode": "payroll",
+        "category": "functional",
+        "priority": "medium",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and fictional records only. Do not use production personal data.",
+          "An existing fictional employee and an editable salary date are available."
+        ],
+        "testData": [
+          "An operator-selected fictional amount and effective date; no real pay data."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "Open the fictional employee Payroll tab and its salary editor.",
+            "expected": "The existing dated compensation rows are visible only to the authorized tester."
+          },
+          {
+            "id": "step2",
+            "action": "Save the fictional salary using the intended effective date.",
+            "expected": "The normal writer accepts the valid date and amount."
+          },
+          {
+            "id": "step3",
+            "action": "Reopen the employee Payroll tab and inspect the saved dated row.",
+            "expected": "The amount and effective date match the saved input; unrelated historical rows remain available."
+          }
+        ],
+        "expectedBehavior": "The amount and effective date match the saved input; unrelated historical rows remain available.",
+        "expectedFunction": "Check the Payroll salary section retains period-effective inputs.",
+        "permissions": [
+          "Personnel salary-write authority for the fictional company."
+        ],
+        "jurisdiction": null,
+        "configuration": null,
+        "screenKeys": [
+          "personnelAdmin"
+        ]
+      },
+      "sources": [
+        "app/admin/personnel/[employmentId]/page.tsx",
+        "core/comp.ts",
+        "lib/permissions.ts",
+        "app/admin/personnel/[employmentId]/actions.ts"
+      ],
+      "reviewedSourceHash": "0fa1f981c81607725b876483fe8e0298d2ccdc9e7eb5319e3a4c732404990e8a",
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+    },
+    {
+      "semanticId": "payroll.run.closed",
+      "definition": {
+        "format": 1,
+        "title": "Refuse an unauthorized Payroll run URL",
+        "objective": "Check Payroll company authority on direct navigation.",
+        "functionKey": "payroll.run",
+        "area": "payroll",
+        "moduleCode": "payroll",
+        "category": "permission",
+        "priority": "high",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and fictional records only. Do not use production personal data.",
+          "An administrator supplies a fictional control run URL for a company outside every read and Payroll scope of this tester. The tester has no visible control employment or payslip and receives none of its Payroll data."
+        ],
+        "testData": [
+          "One fictional out-of-scope run identifier."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "Sign in as the tester with no authority over the control company.",
+            "expected": "The session identifies the intended tester."
+          },
+          {
+            "id": "step2",
+            "action": "Navigate directly to the supplied control run URL.",
+            "expected": "The run is refused or unavailable; salary, inputs and payslip figures are not disclosed."
+          },
+          {
+            "id": "step3",
+            "action": "Return to an authorized screen.",
+            "expected": "Normal authorized navigation remains usable."
+          }
+        ],
+        "expectedBehavior": "Normal authorized navigation remains usable.",
+        "expectedFunction": "Check Payroll company authority on direct navigation.",
+        "permissions": [
+          "A tester with no control-company Payroll authority and no alternative legitimate read path to this run."
+        ],
+        "jurisdiction": null,
+        "configuration": null,
+        "screenKeys": [
+          "payroll"
+        ]
+      },
+      "sources": [
+        "app/payroll/[batchId]/page.tsx",
+        "core/payroll.ts",
+        "lib/permissions.ts",
+        "lib/authz.ts"
+      ],
+      "reviewedSourceHash": "cd2d03b58c272f9e9a9cbfb458e6446950e4816e68cd0c3372d4db1caccd0eae",
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+    },
+    {
+      "semanticId": "attendance.day.classification",
+      "definition": {
+        "format": 1,
+        "title": "Read a rostered non-workday classification",
+        "objective": "Check authorized day classification is distinct from an attendance status.",
+        "functionKey": "attendance.day",
+        "area": "attendance",
+        "moduleCode": "attendance",
+        "category": "regression",
+        "priority": "medium",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and fictional records only. Do not use production personal data.",
+          "A fictional rostered rest day or public holiday has an attendance record."
+        ],
+        "testData": [
+          "The fictional date and its known roster/day classification."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "Open the fictional date in the authorized /attendance/individual day detail for the intended employee.",
+            "expected": "The correct employee and date are shown."
+          },
+          {
+            "id": "step2",
+            "action": "Read Day Type and Attendance Status separately.",
+            "expected": "Day Type reflects the authorized rest/holiday/work classification; a presence status is not substituted for Day Type."
+          },
+          {
+            "id": "step3",
+            "action": "Return to the date list and reopen the same day.",
+            "expected": "The same recorded classification remains visible."
+          }
+        ],
+        "expectedBehavior": "The same recorded classification remains visible.",
+        "expectedFunction": "Check authorized day classification is distinct from an attendance status.",
+        "permissions": [
+          "Managerial or HR Attendance individual-detail reading authority for the fictional employee."
+        ],
+        "jurisdiction": null,
+        "configuration": null,
+        "screenKeys": [
+          "attendance"
+        ]
+      },
+      "sources": [
+        "app/attendance/individual/[date]/page.tsx",
+        "core/attendance-explain.ts",
+        "lib/permissions.ts",
+        "components/attendance-day-parts.tsx",
+        "core/attendance-derive.ts"
+      ],
+      "reviewedSourceHash": "ba02f2caa91b9654381ef9cbc9afdd0d806125f72601f5060410ae41862837e9",
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+    },
+    {
+      "semanticId": "attendance.correction.chain",
+      "definition": {
+        "format": 1,
+        "title": "Review a submitted correction approval chain",
+        "objective": "Check frozen approval routing and authentic decision history.",
+        "functionKey": "attendance.correction",
+        "area": "attendance",
+        "moduleCode": "attendance",
+        "category": "workflow",
+        "priority": "high",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and fictional records only. Do not use production personal data.",
+          "A fictional date can be corrected; an explicit approval workflow is configured."
+        ],
+        "testData": [
+          "A fictional correction reason and proposed clock values."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "As the fictional employee, submit a valid correction and open its request detail.",
+            "expected": "The request is pending and identifies its assigned approval chain."
+          },
+          {
+            "id": "step2",
+            "action": "As the assigned approver, review the exact request and record the permitted decision.",
+            "expected": "The canonical current-stage authority accepts the assigned approver, a valid delegate, or an eligible scoped HR administrator under the configured workflow. Subject self-decision and stale stages are refused; the saved decision identifies the real actor."
+          },
+          {
+            "id": "step3",
+            "action": "Reopen request history as the authorized employee.",
+            "expected": "The decision and submitted values remain linked to the same request; another tester is not impersonated."
+          }
+        ],
+        "expectedBehavior": "The decision and submitted values remain linked to the same request; another tester is not impersonated.",
+        "expectedFunction": "Check frozen approval routing and authentic decision history.",
+        "permissions": [
+          "Employee submission access and separately authorized approver accounts."
+        ],
+        "jurisdiction": null,
+        "configuration": null,
+        "screenKeys": [
+          "attendance"
+        ]
+      },
+      "sources": [
+        "app/attendance/requests/page.tsx",
+        "core/attendance-workflow.ts",
+        "core/attendance.ts",
+        "lib/permissions.ts",
+        "components/attendance-workflow-progress.tsx"
+      ],
+      "reviewedSourceHash": "169b092a9ee53ea849e2b894be4939651f4b0c44968e7efe80ed756809b6e107",
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+    },
+    {
+      "semanticId": "attendance.formula.private",
+      "definition": {
+        "format": 1,
+        "title": "Keep formula duration visible without salary disclosure",
+        "objective": "Check duration evidence can remain known when cash-only facts are private.",
+        "functionKey": "attendance.formula",
+        "area": "attendance",
+        "moduleCode": "attendance",
+        "category": "permission",
+        "priority": "high",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and fictional records only. Do not use production personal data.",
+          "The fixture coordinator supplies an approved formula day with a ready, exact stored duration and a persisted refused cash result due to an unavailable salary-based input. No later ready cash calculation or settlement exists for this day."
+        ],
+        "testData": [
+          "The fictional employee/date, exact known duration, original calculation/source reference, and verified absence of a cash settlement supplied by the fixture coordinator."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "Open the supplied fictional employee/date in the authorized individual Attendance day detail as the manager.",
+            "expected": "The relevant attendance and approval facts are visible."
+          },
+          {
+            "id": "step2",
+            "action": "Expand the formula duration reference/details and inspect its stored duration and cash-availability notice.",
+            "expected": "The exact stored duration is visible. The fixture cash-refused record says cash is unavailable; no salary value or invented money is disclosed."
+          },
+          {
+            "id": "step3",
+            "action": "As the separate authorized HR account, open the same employee/date in the overtime pattern actual Payroll review. Use Review actual only; do not Calculate actual or Transfer.",
+            "expected": "The persisted calculation/source reference still matches the original fixture and manager disclosure. Cash remains refused, transfer is unavailable, and no cash settlement is reported. Neither this manager display nor Review actual is a Calculate/Transfer action."
+          }
+        ],
+        "expectedBehavior": "Known stored duration remains visible without salary disclosure; its refused cash result is not presented as transferable money.",
+        "expectedFunction": "Check duration evidence can remain known when cash-only facts are private.",
+        "permissions": [
+          "A manager with authorized individual-day Attendance reading access and no salary reading authority; a separate authorized HR account with overtime setup and Payroll review access."
+        ],
+        "jurisdiction": null,
+        "configuration": null,
+        "screenKeys": [
+          "attendance",
+          "attendancePolicyConfig"
+        ]
+      },
+      "sources": [
+        "core/payroll-overtime-pattern.ts",
+        "lib/permissions.ts",
+        "packs/attendance/overtime-input.ts",
+        "app/attendance/individual/[date]/page.tsx",
+        "components/formula-overtime-record.tsx",
+        "lib/overtime-records.ts",
+        "components/overtime-patterns/preview-panel.tsx",
+        "app/admin/attendance/settings/overtime-patterns/actions.ts"
+      ],
+      "reviewedSourceHash": "f1b517ae061bb04b77ddd37cd91f3b0390a68644f1951f30e31e78297de9149a",
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+    },
+    {
+      "semanticId": "leave.request.pending",
+      "definition": {
+        "format": 1,
+        "title": "Submit a fictional Leave request and reopen it",
+        "objective": "Check self-service submission and pending history.",
+        "functionKey": "leave.request",
+        "area": "leave",
+        "moduleCode": "leave",
+        "category": "workflow",
+        "priority": "high",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and fictional records only. Do not use production personal data.",
+          "The fictional employee has an available configured Leave type and valid isolated test dates."
+        ],
+        "testData": [
+          "A fictional reason and configured duration."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "Open /leave and select the intended Leave type and valid dates.",
+            "expected": "The applicable preview and requirements are shown for the employee."
+          },
+          {
+            "id": "step2",
+            "action": "Complete the required fields and submit once.",
+            "expected": "The normal writer reports submission or a specific policy refusal; a refusal is not recorded as a pass of submission."
+          },
+          {
+            "id": "step3",
+            "action": "If submitted, reopen Leave history and the exact request.",
+            "expected": "The dates, reason and pending/decided status belong to the same employee request."
+          }
+        ],
+        "expectedBehavior": "The dates, reason and pending/decided status belong to the same employee request.",
+        "expectedFunction": "Check self-service submission and pending history.",
+        "permissions": [
+          "Employee self-service Leave authority."
+        ],
+        "jurisdiction": null,
+        "configuration": null,
+        "screenKeys": [
+          "leave"
+        ]
+      },
+      "sources": [
+        "app/leave/actions.ts",
+        "app/leave/history/page.tsx",
+        "core/leave.ts",
+        "lib/permissions.ts",
+        "app/leave/page.tsx",
+        "components/leave/own-leave-history.tsx"
+      ],
+      "reviewedSourceHash": "fc30db1a216d0948536ceb5845fd4f26f5620d3307b59f98149c19600e39fd5f",
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+    },
+    {
+      "semanticId": "leave.credit.bound",
+      "definition": {
+        "format": 1,
+        "title": "Refuse a Leave Credit claim above recorded formula duration",
+        "objective": "Check entered claim and recorded formula bound remain distinct.",
+        "functionKey": "leave.credit",
+        "area": "leave",
+        "moduleCode": "leave",
+        "category": "validation",
+        "priority": "medium",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and fictional records only. Do not use production personal data.",
+          "A fictional non-workday has known formula duration below the proposed claim, with no unresolved tier setup."
+        ],
+        "testData": [
+          "The exact fictional date and an entered window exceeding the known bound."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "Open the Leave Credit request dialog and select the fictional date.",
+            "expected": "The recorded date facts and formula-duration review load."
+          },
+          {
+            "id": "step2",
+            "action": "Enter a claim longer than the recorded formula duration.",
+            "expected": "The full-width review explains the entered claim and recorded bound; it does not promise a capped or invented credit."
+          },
+          {
+            "id": "step3",
+            "action": "Inspect the submit control and then leave without submitting.",
+            "expected": "The unresolved/refused row disables submission; legacy self-declaration is not silently substituted."
+          }
+        ],
+        "expectedBehavior": "The unresolved/refused row disables submission; legacy self-declaration is not silently substituted.",
+        "expectedFunction": "Check entered claim and recorded formula bound remain distinct.",
+        "permissions": [
+          "Employee self-service Leave Credit access."
+        ],
+        "jurisdiction": null,
+        "configuration": null,
+        "screenKeys": [
+          "leave"
+        ]
+      },
+      "sources": [
+        "components/leave/leave-credit-request-table.tsx",
+        "core/toil.ts",
+        "lib/permissions.ts",
+        "lib/leave-credit-claim-review.ts",
+        "components/leave/leave-credit-claim-review.tsx"
+      ],
+      "reviewedSourceHash": "23e0a406d3fd9c2d83f97224769241ce053af7e1fc1823c6456c7bdc0697102e",
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+    },
+    {
+      "semanticId": "leave.inquiry.sort",
+      "definition": {
+        "format": 1,
+        "title": "Page and export a globally sorted Leave Inquiry",
+        "objective": "Check Leave Code order and export membership.",
+        "functionKey": "leave.inquiry",
+        "area": "leave",
+        "moduleCode": "leave",
+        "category": "regression",
+        "priority": "medium",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and fictional records only. Do not use production personal data.",
+          "At least two fictional employees have more than one visible Leave type."
+        ],
+        "testData": [
+          "The visible employee codes and Leave codes."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "Open the Leave balances Inquiry, select the authorized company and sort by Leave Code.",
+            "expected": "The whole filtered result is ordered by Leave Code with stable employee ties."
+          },
+          {
+            "id": "step2",
+            "action": "Move between result pages and reverse the sort.",
+            "expected": "Ordering remains global and deterministic, not restarted inside each employee."
+          },
+          {
+            "id": "step3",
+            "action": "Export the same filtered selection and compare its membership and displayed balances.",
+            "expected": "The authorized export contains each selected row once, using the same owner balance semantics."
+          }
+        ],
+        "expectedBehavior": "The authorized export contains each selected row once, using the same owner balance semantics.",
+        "expectedFunction": "Check Leave Code order and export membership.",
+        "permissions": [
+          "HR Leave Inquiry authority for the fictional company."
+        ],
+        "jurisdiction": null,
+        "configuration": null,
+        "screenKeys": [
+          "leaveEmployeeBalances"
+        ]
+      },
+      "sources": [
+        "app/leave/employee-balances/page.tsx",
+        "core/leave-inquiry.ts",
+        "lib/permissions.ts",
+        "app/leave/employee-balances/export/route.ts",
+        "app/leave/employee-balances/inquiry-data.ts",
+        "lib/leave-inquiry-query.ts"
+      ],
+      "reviewedSourceHash": "6f59c8c9a5e6b3f83d6b1d9d0a42784de09e6e228a6c70ee02dc245acd69b2af",
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+    },
+    {
+      "semanticId": "organization.company.reopen",
+      "definition": {
+        "format": 1,
+        "title": "Save and reopen fictional company details",
+        "objective": "Check company maintenance persistence.",
+        "functionKey": "organization.company",
+        "area": "organization",
+        "moduleCode": "org",
+        "category": "functional",
+        "priority": "medium",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and fictional records only. Do not use production personal data.",
+          "A dedicated fictional company exists."
+        ],
+        "testData": [
+          "A fictional company display/address value; no real registration details."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "Open /admin/organization and edit the dedicated fictional company.",
+            "expected": "The intended company identity and editable fields are visible."
+          },
+          {
+            "id": "step2",
+            "action": "Change one allowed descriptive field and save.",
+            "expected": "The normal company writer accepts the valid change."
+          },
+          {
+            "id": "step3",
+            "action": "Reopen the company view and editor.",
+            "expected": "The saved field is retained without changing company identity or unrelated setup."
+          }
+        ],
+        "expectedBehavior": "The saved field is retained without changing company identity or unrelated setup.",
+        "expectedFunction": "Check company maintenance persistence.",
+        "permissions": [
+          "Normal HR configuration authority for the fictional company."
+        ],
+        "jurisdiction": null,
+        "configuration": null,
+        "screenKeys": [
+          "organization"
+        ]
+      },
+      "sources": [
+        "app/admin/organization/[companyId]/page.tsx",
+        "core/admin.ts",
+        "lib/permissions.ts",
+        "app/admin/actions.ts",
+        "components/company-panel.tsx"
+      ],
+      "reviewedSourceHash": "46b02f2f9a646fcc6edb4b4363ad869b4528c0b5f161568b0f6b91d21d7d77e8",
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+    },
+    {
+      "semanticId": "organization.reporting.history",
+      "definition": {
+        "format": 1,
+        "title": "Change a fictional administrative reporting line",
+        "objective": "Check canonical reporting history and authorized chart consumption.",
+        "functionKey": "organization.reporting",
+        "area": "organization",
+        "moduleCode": "org",
+        "category": "integration",
+        "priority": "high",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and fictional records only. Do not use production personal data.",
+          "Fictional subordinate, old manager and new manager exist within permitted scope."
+        ],
+        "testData": [
+          "The exact fictional subordinate, old superior and new superior employment codes, and today in the app HR calendar."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "Open the subordinate Employment section and review its current direct superior.",
+            "expected": "The existing administrative reporting relationship is shown."
+          },
+          {
+            "id": "step2",
+            "action": "Select the intended fictional new Direct Superior through the normal Employment editor and save; this editor makes the change effective today.",
+            "expected": "The canonical writer accepts the valid relationship effective today. The guide does not claim to have exercised a separate cycle or invalid-scope attempt."
+          },
+          {
+            "id": "step3",
+            "action": "Reopen the subordinate and authorized /org view.",
+            "expected": "The new administrative superior is reflected for today in the employee and authorized /org view. The former superior remains in read-only history with its closed interval."
+          }
+        ],
+        "expectedBehavior": "The new superior is effective today, and the former superior remains in retained history.",
+        "expectedFunction": "Check canonical reporting history and authorized chart consumption.",
+        "permissions": [
+          "HR reporting-line maintenance authority and authorized Org Chart reading access."
+        ],
+        "jurisdiction": null,
+        "configuration": null,
+        "screenKeys": [
+          "orgChart"
+        ]
+      },
+      "sources": [
+        "app/org/page.tsx",
+        "core/movement.ts",
+        "core/org.ts",
+        "lib/permissions.ts",
+        "app/admin/personnel/[employmentId]/page.tsx",
+        "app/admin/personnel/[employmentId]/actions.ts",
+        "core/read.ts"
+      ],
+      "reviewedSourceHash": "bfcd83f0bc4aad8a36a2666c987cbd0b59e1033ad5c371aa7e024e13ac059326",
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+    },
+    {
+      "semanticId": "organization.scope.refusal",
+      "definition": {
+        "format": 1,
+        "title": "Keep company maintenance outside an employee role",
+        "objective": "Check the real company screen guard.",
+        "functionKey": "organization.scope",
+        "area": "organization",
+        "moduleCode": "org",
+        "category": "permission",
+        "priority": "high",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and fictional records only. Do not use production personal data.",
+          "A fictional admin-only company URL is supplied by the fixture coordinator."
+        ],
+        "testData": [
+          "The fictional URL only, without private company data."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "Sign in as the ordinary employee and open /org.",
+            "expected": "Authorized organization data remains scoped to the employee."
+          },
+          {
+            "id": "step2",
+            "action": "Try the fictional /admin/organization maintenance URL.",
+            "expected": "Administration is refused or redirected; the testing assignment does not confer HR access."
+          },
+          {
+            "id": "step3",
+            "action": "Return to /org.",
+            "expected": "The authorized employee journey remains usable."
+          }
+        ],
+        "expectedBehavior": "The authorized employee journey remains usable.",
+        "expectedFunction": "Check the real company screen guard.",
+        "permissions": [
+          "An ordinary employee account with no HR administration role."
+        ],
+        "jurisdiction": null,
+        "configuration": null,
+        "screenKeys": [
+          "organization"
+        ]
+      },
+      "sources": [
+        "app/admin/organization/[companyId]/page.tsx",
+        "app/org/page.tsx",
+        "lib/permissions.ts",
+        "lib/scope.ts",
+        "lib/authz.ts",
+        "core/system-testing-workspace.ts"
+      ],
+      "reviewedSourceHash": "de3e47162fa2962243037d97f96da24d4914798a8f7fe29998b99f9e255a2811",
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+    },
+    {
+      "semanticId": "settings.labels.metadata",
+      "definition": {
+        "format": 1,
+        "title": "Change a fictional label description without widening Criteria",
+        "objective": "Check label metadata and availability are independent.",
+        "functionKey": "settings.labels",
+        "area": "system_settings",
+        "moduleCode": "employees",
+        "category": "functional",
+        "priority": "medium",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and fictional records only. Do not use production personal data.",
+          "A dedicated fictional label has known Criteria."
+        ],
+        "testData": [
+          "A fictional description and the original company Criteria."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "Open System Labels and inspect the fictional label and its Criteria.",
+            "expected": "The current label identity and availability are visible."
+          },
+          {
+            "id": "step2",
+            "action": "Change only its description or display label, then save.",
+            "expected": "The normal label owner saves the metadata."
+          },
+          {
+            "id": "step3",
+            "action": "Reopen the row and its Criteria.",
+            "expected": "The new metadata is retained; the label ID, code and company availability remain unchanged."
+          }
+        ],
+        "expectedBehavior": "The new metadata is retained; the label ID, code and company availability remain unchanged.",
+        "expectedFunction": "Check label metadata and availability are independent.",
+        "permissions": [
+          "Label administration authority for the fictional label origin."
+        ],
+        "jurisdiction": null,
+        "configuration": null,
+        "screenKeys": [
+          "systemLabels"
+        ]
+      },
+      "sources": [
+        "app/admin/settings/system-labels/page.tsx",
+        "core/admin.ts",
+        "core/system-labels.ts",
+        "lib/permissions.ts",
+        "components/system-labels-grid.tsx"
+      ],
+      "reviewedSourceHash": "708dcd501c2bcec17675cf644a9d1c9de4baf13068086790eaaf49754c900388",
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+    },
+    {
+      "semanticId": "settings.labels.collision",
+      "definition": {
+        "format": 1,
+        "title": "Refuse a new ambiguous System Label code",
+        "objective": "Check new overlapping label ambiguity is refused.",
+        "functionKey": "settings.labels",
+        "area": "system_settings",
+        "moduleCode": "employees",
+        "category": "validation",
+        "priority": "medium",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and fictional records only. Do not use production personal data.",
+          "A dedicated active fictional Cost Center already exists for known company Criteria."
+        ],
+        "testData": [
+          "A new fictional Cost Center draft using the same code after trim/case normalization and overlapping company Criteria; preserve the existing row."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "In the Cost Centers category of System Labels, add the conflicting fictional draft without changing the existing row.",
+            "expected": "The existing row remains visible with its own identity."
+          },
+          {
+            "id": "step2",
+            "action": "Attempt to save the overlapping duplicate.",
+            "expected": "The owner refuses the new collision with an actionable error."
+          },
+          {
+            "id": "step3",
+            "action": "Reopen the existing label and remove the unsaved conflicting row.",
+            "expected": "The original identity, code and availability are unchanged; no second active ambiguous row was created."
+          }
+        ],
+        "expectedBehavior": "The original identity, code and availability are unchanged; no second active ambiguous row was created.",
+        "expectedFunction": "Check new overlapping label ambiguity is refused.",
+        "permissions": [
+          "Group label administration authority in the fictional tenant."
+        ],
+        "jurisdiction": null,
+        "configuration": null,
+        "screenKeys": [
+          "systemLabels"
+        ]
+      },
+      "sources": [
+        "core/admin.ts",
+        "core/system-labels.ts",
+        "lib/permissions.ts",
+        "components/system-labels-grid.tsx"
+      ],
+      "reviewedSourceHash": "a535fa0dbf0fb9cb914624964351d4fc258390e2de868a3a6c7887079b013c35",
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+    },
+    {
+      "semanticId": "settings.labels.workbook",
+      "definition": {
+        "format": 1,
+        "title": "Download, Check and apply fictional System Label data",
+        "objective": "Check the workbook uses the same Criteria and collision owner.",
+        "functionKey": "settings.labels",
+        "area": "system_settings",
+        "moduleCode": "employees",
+        "category": "integration",
+        "priority": "high",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and fictional records only. Do not use production personal data.",
+          "The fictional label is visible in the selected label category."
+        ],
+        "testData": [
+          "A current existing-data workbook and one harmless fictional description edit."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "Download the current data workbook from the selected System Labels category.",
+            "expected": "The intended category and stable row identities are present."
+          },
+          {
+            "id": "step2",
+            "action": "Edit only the fictional description; upload and Check.",
+            "expected": "The preview identifies the intended row and change without silently changing Criteria."
+          },
+          {
+            "id": "step3",
+            "action": "Confirm the selected current and proposed update values, Apply, then reopen the fictional label.",
+            "expected": "The saved description matches the confirmed preview. Original identifier spelling and Criteria remain unchanged; this valid round trip does not itself establish a separate unauthorized/ambiguous-row negative test."
+          }
+        ],
+        "expectedBehavior": "The selected confirmed description update persists while identifier and Criteria remain unchanged.",
+        "expectedFunction": "Check the workbook uses the same Criteria and collision owner.",
+        "permissions": [
+          "Label import and origin/company maintenance authority."
+        ],
+        "jurisdiction": null,
+        "configuration": null,
+        "screenKeys": [
+          "systemLabels"
+        ]
+      },
+      "sources": [
+        "app/admin/settings/system-labels/import-actions.ts",
+        "core/system-label-import.ts",
+        "core/system-labels.ts",
+        "lib/permissions.ts",
+        "components/system-label-import.tsx",
+        "app/admin/settings/system-labels/current-data/route.ts"
+      ],
+      "reviewedSourceHash": "425a8c5a898dd27a7168517bcbc9e3dbe7a4d6460b3fee13ed6964e1b6236bd6",
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+    },
+    {
+      "semanticId": "workflow.approvals.own",
+      "definition": {
+        "format": 1,
+        "title": "Refuse self-approval of a fictional request",
+        "objective": "Check requester and approver identities remain distinct.",
+        "functionKey": "workflow.approvals",
+        "area": "workflow_approvals",
+        "moduleCode": "approvals",
+        "category": "permission",
+        "priority": "high",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and fictional records only. Do not use production personal data.",
+          "A pending fictional Leave request has a separately assigned approver."
+        ],
+        "testData": [
+          "The request identifier and requester account."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "Open /approvals as the requester.",
+            "expected": "Only legitimately actionable queues are offered."
+          },
+          {
+            "id": "step2",
+            "action": "Open the employee request history and inspect the pending request.",
+            "expected": "The requester can see their request but is not offered authority to approve it merely through a testing assignment."
+          },
+          {
+            "id": "step3",
+            "action": "Have the actual assigned approver inspect the same request separately.",
+            "expected": "The approval action belongs to the real eligible approver; the requester remains distinct."
+          }
+        ],
+        "expectedBehavior": "The approval action belongs to the real eligible approver; the requester remains distinct.",
+        "expectedFunction": "Check requester and approver identities remain distinct.",
+        "permissions": [
+          "A fictional employee account that created the request."
+        ],
+        "jurisdiction": null,
+        "configuration": null,
+        "screenKeys": [
+          "approvals"
+        ]
+      },
+      "sources": [
+        "app/approvals/page.tsx",
+        "core/leave.ts",
+        "lib/permissions.ts",
+        "components/leave/own-leave-history.tsx",
+        "lib/authz.ts",
+        "core/system-testing-workspace.ts"
+      ],
+      "reviewedSourceHash": "832a18c282836a369389c7061b7312b92da406db512b36166c6849a60dc99044",
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+    },
+    {
+      "semanticId": "workflow.approvals.history",
+      "definition": {
+        "format": 1,
+        "title": "Decide a fictional request and read its history",
+        "objective": "Check actual decision attribution and retained history.",
+        "functionKey": "workflow.approvals",
+        "area": "workflow_approvals",
+        "moduleCode": "approvals",
+        "category": "workflow",
+        "priority": "high",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and fictional records only. Do not use production personal data.",
+          "A pending fictional Leave request is currently actionable by an approver with normal /approvals and /approvals/history access. The fixture records whether the current stage is final."
+        ],
+        "testData": [
+          "A fictional decision reason."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "As the assigned approver, review the pending request details in /approvals.",
+            "expected": "The subject, dates and submitted facts identify the intended request."
+          },
+          {
+            "id": "step2",
+            "action": "Record the intended permitted decision once.",
+            "expected": "The normal workflow reports the decision or a specific stale/authority refusal."
+          },
+          {
+            "id": "step3",
+            "action": "Reopen /approvals/history as the eligible approver and the same request in the employee own history.",
+            "expected": "If accepted, history records the real actor and stage decision; the employee shows the resulting next pending stage or final outcome. If refused, record the specific refusal and unchanged request, not a decision pass. Reopening shows no invented second decision; no repeated-submission regression result is claimed by this guide."
+          }
+        ],
+        "expectedBehavior": "Accepted stage decisions retain actual attribution and the correct pending/final outcome; a refusal is recorded honestly without an invented decision.",
+        "expectedFunction": "Check actual decision attribution and retained history.",
+        "permissions": [
+          "The actual configured approver and the request owner accounts."
+        ],
+        "jurisdiction": null,
+        "configuration": null,
+        "screenKeys": [
+          "approvals"
+        ]
+      },
+      "sources": [
+        "app/approvals/history/page.tsx",
+        "app/approvals/page.tsx",
+        "core/leave.ts",
+        "lib/permissions.ts",
+        "app/approvals/actions.ts",
+        "components/leave/own-leave-history.tsx",
+        "core/read.ts"
+      ],
+      "reviewedSourceHash": "ed230e904589e4a6071c954ba1b6ce5c0372dae5e59700215b346e0432dc37ea",
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+    },
+    {
+      "semanticId": "workflow.approvals.empty",
+      "definition": {
+        "format": 1,
+        "title": "Read an empty assigned approval queue",
+        "objective": "Check the empty state is honest and navigable.",
+        "functionKey": "workflow.approvals",
+        "area": "workflow_approvals",
+        "moduleCode": "approvals",
+        "category": "functional",
+        "priority": "medium",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and fictional records only. Do not use production personal data.",
+          "Use a fictional HR administrator or manager whose supported selected category has a known empty actionable queue, independently of Testing assignments."
+        ],
+        "testData": [
+          "The account identity only."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "Open /approvals and select a supported category.",
+            "expected": "The intended category and account are visible."
+          },
+          {
+            "id": "step2",
+            "action": "Read the empty queue and available navigation.",
+            "expected": "An explicit empty state is shown; no invented requests or approval controls appear."
+          },
+          {
+            "id": "step3",
+            "action": "Open approval history and return.",
+            "expected": "History remains a separate authorized read and the empty queue remains usable."
+          }
+        ],
+        "expectedBehavior": "History remains a separate authorized read and the empty queue remains usable.",
+        "expectedFunction": "Check the empty state is honest and navigable.",
+        "permissions": [
+          "Normal scoped HR administrator or manager access to both Approvals and Approval History. A Testing assignment grants no business access."
+        ],
+        "jurisdiction": null,
+        "configuration": null,
+        "screenKeys": [
+          "approvals"
+        ]
+      },
+      "sources": [
+        "app/approvals/history/page.tsx",
+        "app/approvals/page.tsx",
+        "lib/permissions.ts",
+        "lib/approvals-categories.ts",
+        "lib/authz.ts"
+      ],
+      "reviewedSourceHash": "0e59329e96bdf139cc34cbdf70d5a232e191ba7f581b821f75412d88383763e8",
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+    },
+    {
+      "semanticId": "statutory.company.reopen",
+      "definition": {
+        "format": 1,
+        "title": "Save and reopen fictional statutory registration setup",
+        "objective": "Check configured statutory setup is persisted without claiming legal correctness.",
+        "functionKey": "statutory.company",
+        "area": "statutory_payment",
+        "moduleCode": "payroll",
+        "category": "functional",
+        "priority": "medium",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and fictional records only. Do not use production personal data.",
+          "Use a dedicated fictional MY company with the installed MY statutory capability and a fixture-approved supported body."
+        ],
+        "testData": [
+          "Fixture-approved fictional registration values appropriate for the configured body."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "Open the fictional company statutory setup screen.",
+            "expected": "Only applicable installed-country bodies and fields are offered."
+          },
+          {
+            "id": "step2",
+            "action": "Edit only the fixture-approved registration fields for the intended body and Save all changes.",
+            "expected": "The result names the saved body or a specific refusal/partial failure; untouched bodies are not newly configured."
+          },
+          {
+            "id": "step3",
+            "action": "If the intended body saved successfully, reopen the same company statutory setup and compare its values; otherwise record the refusal without claiming save success.",
+            "expected": "Successfully saved fixture values persist for that company and body. This test certifies neither legal registration nor eligibility."
+          }
+        ],
+        "expectedBehavior": "The saved values are retained for the intended company; this test does not certify registration or legal eligibility.",
+        "expectedFunction": "Check configured statutory setup is persisted without claiming legal correctness.",
+        "permissions": [
+          "Company statutory configuration authority."
+        ],
+        "jurisdiction": "MY",
+        "configuration": "Requires the installed MY statutory capability and body-specific fictional fixture fields.",
+        "screenKeys": [
+          "organization"
+        ]
+      },
+      "sources": [
+        "app/admin/organization/[companyId]/statutory/page.tsx",
+        "app/admin/organization/statutory-tab-actions.ts",
+        "lib/permissions.ts",
+        "packs/payroll/service.ts",
+        "core/statutory-authority.ts",
+        "components/statutory-setup-screen.tsx"
+      ],
+      "reviewedSourceHash": "d516ac95e2e788d288fd638ccd113a67616c345b5a802b048503177d26361985",
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+    },
+    {
+      "semanticId": "statutory.forms.scope",
+      "definition": {
+        "format": 1,
+        "title": "Review only authorized fictional statutory figures",
+        "objective": "Check statutory form navigation preserves Payroll scope.",
+        "functionKey": "statutory.forms",
+        "area": "statutory_payment",
+        "moduleCode": "payroll",
+        "category": "permission",
+        "priority": "high",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and fictional records only. Do not use production personal data.",
+          "A fictional MY company has processed EPF Payroll contributions and a fixture-supported Borang A preview. Its exact company, month and eligible run selection are known; a separate control company is outside all tester read scope."
+        ],
+        "testData": [
+          "Fictional MY company, payroll month, exact selected processed run identities, expected authorized employee codes and an out-of-scope control company URL."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "Open /payroll/statutory-forms, choose the supported Borang A form, then complete its authorized company, period and Payroll cycle criteria.",
+            "expected": "The form is chosen before its declared criteria. Company and cycle choices are scoped to the intended fictional data."
+          },
+          {
+            "id": "step2",
+            "action": "Continue to the Borang A preview with the supplied eligible run selection.",
+            "expected": "Employee membership and displayed stored figures match the authorized company/month and selected runs; this guide assumes no fixed monetary amount."
+          },
+          {
+            "id": "step3",
+            "action": "Open the fixture coordinator-supplied out-of-scope control-company Borang A preview URL.",
+            "expected": "The control preview is refused or unavailable before showing its statutory data. Returning to the authorized preview does not merge control employees or amounts."
+          }
+        ],
+        "expectedBehavior": "Control-company statutory data is refused or unavailable rather than merged into the authorized preview.",
+        "expectedFunction": "Check statutory form navigation preserves Payroll scope.",
+        "permissions": [
+          "Payroll statutory-reading authority for the fictional company."
+        ],
+        "jurisdiction": "MY",
+        "configuration": "Requires isolated MY Payroll runs eligible for the installed Borang A preview and the supplied company/month/run selection. Use the fixture runs in their actual stored processed or closed state.",
+        "screenKeys": [
+          "payroll"
+        ]
+      },
+      "sources": [
+        "app/payroll/statutory-forms/open/page.tsx",
+        "app/payroll/statutory-forms/page.tsx",
+        "lib/permissions.ts",
+        "packs/payroll/service.ts",
+        "app/payroll/statutory-forms/criteria.ts",
+        "app/payroll/borang-a/shared.ts",
+        "core/reporting.ts"
+      ],
+      "reviewedSourceHash": "f0ad9cb76723621f62c68c49c59bd8d053c3668d18e64c163f598d63fa05e487",
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+    },
+    {
+      "semanticId": "payment.submission.review",
+      "definition": {
+        "format": 1,
+        "title": "Review a fictional statutory submission before download",
+        "objective": "Check statutory submission criteria and setup refusal without claiming filing or payment.",
+        "functionKey": "payment.submission",
+        "area": "statutory_payment",
+        "moduleCode": "payroll",
+        "category": "validation",
+        "priority": "medium",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and fictional records only. Do not use production personal data.",
+          "Use a dedicated fictional MY company and processed EPF run with fixture-approved Borang A upload data. A coordinator has left its required EPF employer reference missing and supplies the valid fictional restoration value. No salary bank format or real submission is involved."
+        ],
+        "testData": [
+          "Fictional company, payroll month, exact eligible run selection and approved EPF employer reference."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "Open /payroll/payment-submission, select the available KWSP Borang A upload format and open its Download dialog. Choose the fictional company, month and supplied eligible Payroll runs.",
+            "expected": "The selected format is an installed statutory submission capability. The salary bank file shelf does not pretend to provide a format."
+          },
+          {
+            "id": "step2",
+            "action": "Attempt the fictional download with the coordinator-supplied missing EPF employer reference fixture.",
+            "expected": "The normal builder refuses the missing required registration before returning a successful upload file. Record the specific refusal."
+          },
+          {
+            "id": "step3",
+            "action": "Restore only the approved fictional EPF employer reference through that company statutory setup, then reopen the same Download dialog and download only when normal checks permit it.",
+            "expected": "The file identifies the intended fictional company/month and selected runs with the approved reference. Downloading neither transmits a filing nor asserts agency or bank acceptance or payment."
+          }
+        ],
+        "expectedBehavior": "Missing required statutory setup refuses file generation; after approved fixture repair, an authorized download still makes no filing, acceptance or payment claim.",
+        "expectedFunction": "Check statutory submission criteria and setup refusal without claiming filing or payment.",
+        "permissions": [
+          "Scoped Payroll submission review and company statutory configuration authority for the dedicated fictional company."
+        ],
+        "jurisdiction": "MY",
+        "configuration": "Requires the installed MY EPF Borang A statutory submission capability and fixture-approved statutory setup. Use the file owner’s actual registration and format validation; do not invent account or routing rules.",
+        "screenKeys": [
+          "payroll"
+        ]
+      },
+      "sources": [
+        "app/payroll/payment-submission/download/route.ts",
+        "app/payroll/payment-submission/page.tsx",
+        "lib/permissions.ts",
+        "packs/payroll/service.ts",
+        "app/payroll/payment-submission/registry.ts",
+        "app/payroll/borang-a/shared.ts",
+        "app/payroll/payment-submission/download-dialog.tsx"
+      ],
+      "reviewedSourceHash": "777ce2062e0e45a91ac9c2f7e1c76de7022f05ea181e4e594bb69e659a94dedb",
+      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+    },
+    {
+      "semanticId": "personnel.own-profile.mixed-save",
+      "definition": {
+        "format": 1,
+        "title": "Save an own phone change and review a separate preferred-name proposal",
+        "objective": "Verify an own Profile save separates immediate contact persistence from a preferred-name proposal requiring real HR approval.",
+        "functionKey": "personnel.own-profile",
+        "area": "personnel",
+        "moduleCode": "employees",
+        "category": "workflow",
+        "priority": "high",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and designated fictional records only. Do not enter production personal data.",
+          "The coordinator supplies one eligible own employment and a separate HR approver. The Profile policy explicitly enables Mobile Phone Number for immediate saving and Preferred Name for approval; neither field has a conflicting pending request.",
+          "The current stored phone and preferred name are known. No other writer changes either field during this check. Do not alter salary, bank, statutory or Family fields."
+        ],
+        "testData": [
+          "Exact fictional employment code/selection, old stored phone and preferred name, a new fictional phone value and a distinctive new fictional preferred name."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "As the HR approver, open the designated employee in Personnel and note the stored Mobile Phone Number and Preferred Name. Then sign in as the employee and open /me, selecting the supplied own employment if a chooser appears. Open its Profile tab.",
+            "expected": "The employee and HR read the same designated person/employment facts. The ordinary employee receives the shared own Profile view, not HR administration authority."
+          },
+          {
+            "id": "step2",
+            "action": "Select Request to edit. Change only the configured Mobile Phone Number and Preferred Name, then select Save changes once.",
+            "expected": "The success result explicitly separates the phone saved now from the preferred name waiting for approval. A specific refusal must be recorded as a refusal, not a successful mixed save."
+          },
+          {
+            "id": "step3",
+            "action": "After a successful save, leave and reopen /me for the same employment. Read the Profile tab and the request history under Others. Separately reopen the HR Personnel Profile.",
+            "expected": "The new phone is stored in both authorized views. The master Preferred Name is still its previous value, and the new name appears in the same pending proposal history. No unrelated field was changed."
+          },
+          {
+            "id": "step4",
+            "action": "As the separate eligible HR approver, open /approvals, select the Profile changes category and identify the exact employee and proposed Preferred Name. Review current and proposed values, then approve once.",
+            "expected": "The normal owner accepts only a current authorized non-self approval under the configured approver policy. Record any stale/authority refusal without claiming approval. A successful approval applies the submitted preferred name through the canonical person owner."
+          },
+          {
+            "id": "step5",
+            "action": "After successful approval, reopen the employee /me Profile and Others request history, then reopen HR Personnel for the same employee.",
+            "expected": "Both authorized master views retain the approved preferred name and previously saved phone. The proposal history records approved status and preserves its submitted field values; an employee save was not silently treated as approval."
+          }
+        ],
+        "expectedBehavior": "Verify an own Profile save separates immediate contact persistence from a preferred-name proposal requiring real HR approval.",
+        "expectedFunction": "Verify an own Profile save separates immediate contact persistence from a preferred-name proposal requiring real HR approval.",
+        "permissions": [
+          "The fictional employee may edit their own eligible employment under the configured ESS field policy.",
+          "A different HR administrator has scoped Personnel access and is eligible under the configured Profile-change approver setting."
+        ],
+        "jurisdiction": null,
+        "configuration": "Requires the explicitly enabled immediate phone and approval-only preferred-name fields, one eligible own employment and a separate scoped HR approver under the current Profile-change policy. No default field permission or financial rule is assumed.",
+        "screenKeys": [
+          "personnelAdmin",
+          "approvals"
+        ]
+      },
+      "sources": [
+        "app/me/page.tsx",
+        "app/me/profile-editor.tsx",
+        "app/me/profile-edit-actions.ts",
+        "core/profile-edit.ts",
+        "core/profile-edit-policy.ts",
+        "core/profile.ts",
+        "core/org.ts",
+        "lib/personnel-ess-contract.ts",
+        "lib/personnel-field-registry.ts",
+        "lib/profile-proposal-display.ts",
+        "app/approvals/page.tsx",
+        "app/approvals/actions.ts",
+        "app/admin/personnel/[employmentId]/page.tsx",
+        "lib/permissions.ts",
+        "core/read.ts",
+        "core/entitlements.ts",
+        "lib/personnel-ess-model.ts",
+        "lib/profile-edit-policy-value.ts",
+        "lib/personnel-field-label.ts"
+      ],
+      "reviewedSourceHash": "74bba2f567fa6051a1b426ac057e792e26f86d71437cb32bb9a42142ffd5a701",
+      "reviewNote": "Source-to-guide semantic review completed for this bounded implemented journey at 66dcb71a81b7ac53b2783426c202603d7e751f2f. Actual execution remains required. Source review establishes neither a manual pass, service arrival nor complete functional coverage."
+    },
+    {
+      "semanticId": "settings.testing.independent-observations",
+      "definition": {
+        "format": 1,
+        "title": "Keep two tester observations independent across an instruction revision",
+        "objective": "Verify two real testers retain separate saved observations and earlier versions remain history when instructions change.",
+        "functionKey": "system-testing.independent-observations",
+        "area": "system_settings",
+        "moduleCode": "system_testing",
+        "category": "integration",
+        "priority": "high",
+        "active": true,
+        "prerequisites": [
+          "Use an isolated test tenant and designated fictional records only. Do not enter production personal data.",
+          "System Testing is enabled. A coordinator supplies a dedicated published local fictional control case, separate from shipped catalogue guides, with no existing draft. Its TC number, function identifier and current version are supplied. Its only instruction is to read harmless fixture text and record the observation; no business operation is authorized.",
+          "Two different real fictional login accounts A and B are available and are not yet assigned to the control case. Neither has an observation for its supplied version; the administrator is a third account. Human testers record only what they actually observe."
+        ],
+        "testData": [
+          "The exact control-case TC number/function/version and three real login identities. Each tester chooses distinct actual-result/comment text. A harmless additional instruction sentence is reserved for the administrator revision."
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "action": "As the administrator, open /admin/system-testing and the supplied control case. Review its published instructions and assign both actual tester accounts to the same published version.",
+            "expected": "One stable TC number and one shared instruction version are shown. Assignment identifies each real login; the administrator does not write observations on either tester’s behalf."
+          },
+          {
+            "id": "step2",
+            "action": "As tester A, open /system-testing, locate the control TC number and Start. Read the fixture instruction, record a truthful actual result and distinct comment, select In progress and Save observation. Leave and reopen the same execution. As the administrator, inspect Team progress for the exact function and both testers.",
+            "expected": "A retains the exact saved text, real tester identity, recorded date/time and In progress status. B remains Not started; A’s save does not update B’s status."
+          },
+          {
+            "id": "step3",
+            "action": "As tester B in its own signed-in session, open the same case/version, Start and read the fixture text. Save a different truthful actual result/comment as In progress, then reopen.",
+            "expected": "B retains its own distinct text and identity. Reopening A still shows A’s original text; the common guide/version has not been overwritten by either observation."
+          },
+          {
+            "id": "step4",
+            "action": "As tester A, append another truthful comment through Save observation. Reopen Observation history, then inspect B and the administrator Team progress with the supplied function/tester filters.",
+            "expected": "A’s two saves remain separate history entries with their original recorded actors and instants. B’s earlier text and single save remain unchanged. Team review is read-only and does not present a Save as another tester control."
+          },
+          {
+            "id": "step5",
+            "action": "As the administrator, edit only the dedicated control instruction to add the supplied harmless sentence and Save and publish. Open version history and each earlier execution, then return to both current assignments.",
+            "expected": "The TC number stays stable and a new immutable instruction version is published. Earlier executions still show the exact earlier guide and their saved observations as read-only history. Both current assignments require retesting; publishing neither overwrites feedback nor grants a pass on the new version."
+          },
+          {
+            "id": "step6",
+            "action": "As one tester, start a current-version attempt, read the revised instruction and save only a truthful In progress observation. Reopen both current assignments.",
+            "expected": "The new attempt points to the new version and retains its real tester’s observation. The other tester’s current assignment remains Retest required until that tester records a new applicable observation. Earlier history remains available."
+          }
+        ],
+        "expectedBehavior": "Verify two real testers retain separate saved observations and earlier versions remain history when instructions change.",
+        "expectedFunction": "Verify two real testers retain separate saved observations and earlier versions remain history when instructions change.",
+        "permissions": [
+          "A System Testing administrator may maintain instructions, assign real login accounts and read team results.",
+          "Each assigned tester has System Testing entitlement and may save only their own observations; no business-record authority is granted."
+        ],
+        "jurisdiction": null,
+        "configuration": "Requires the enabled System Testing area, the separate local control case and three real login accounts described above. The intentional manual revision applies only to that control case; it does not replace a catalogue proposal or resolve another case’s local draft.",
+        "screenKeys": [
+          "systemTesting",
+          "mySystemTesting"
+        ]
+      },
+      "sources": [
+        "app/admin/system-testing/page.tsx",
+        "app/admin/system-testing/[id]/page.tsx",
+        "app/admin/system-testing/workspace-actions.ts",
+        "app/system-testing/page.tsx",
+        "components/system-testing/instruction-editor.tsx",
+        "components/system-testing/assignment-list.tsx",
+        "components/system-testing/execution-review.tsx",
+        "components/system-testing/observation-form.tsx",
+        "components/system-testing/recorded-time.tsx",
+        "core/system-testing-workspace.ts",
+        "core/system-testing-library.ts",
+        "core/system-testing-actors.ts",
+        "lib/system-testing/model.ts",
+        "lib/permissions.ts",
+        "core/system-testing.ts",
+        "app/system-testing/executions/[id]/page.tsx",
+        "app/admin/system-testing/executions/[id]/page.tsx",
+        "lib/system-testing/read-boundary.ts",
+        "lib/hr-date.ts"
+      ],
+      "reviewedSourceHash": "6957d078d11c41970de402e52da4589089fde7815a8d24fee47012dfcac8ca2c",
+      "reviewNote": "Source-to-guide semantic review completed for this bounded implemented journey at 66dcb71a81b7ac53b2783426c202603d7e751f2f. Actual execution remains required. Source review establishes neither a manual pass, service arrival nor complete functional coverage."
+    }
+  ]
+}

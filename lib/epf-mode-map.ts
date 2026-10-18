@@ -154,3 +154,30 @@ export function mapEpfUiMode(
       return { epfMode: 'auto', ...NO_RATE, ...NO_AMOUNT };
   }
 }
+
+/** Recorded election category; shared unchanged with the Personnel election control. */
+export function epfUiModeFrom(
+  mode: string | null,
+  employeeRate: number | null,
+  employerRate: number | null,
+  employeeAmount: number | null,
+  employerAmount: number | null,
+): EpfUiMode {
+  if (mode === 'exempt') return 'none';
+  if (mode === 'voluntary_excess') {
+    // Semi-Auto = employee side elected, employer side left statutory (null).
+    return employeeRate != null && employerRate == null ? 'semi_auto' : 'manual_percentage';
+  }
+  if (mode === 'manual_amount') {
+    if (employeeAmount != null && employerAmount != null) return 'manual_both_amount';
+    if (employeeAmount != null) return 'manual_employee_amount';
+    if (employerAmount != null) return 'manual_employer_amount';
+  }
+  return 'auto';
+}
+
+/** Stored fractional EPF rate to the percent shown by the existing Personnel election controls. */
+export function epfRateToPercent(value:string|number|null|undefined):number|null {
+ if(value==null||value==='')return null;
+ const amount=Number(value);return Number.isFinite(amount)?amount*100:null;
+}

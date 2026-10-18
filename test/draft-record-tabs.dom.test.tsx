@@ -100,8 +100,8 @@ const wrap = (data: EmployeeDraftData = freshDraft(), initialStep = 1, initialTa
     </NextIntlClientProvider>,
   );
 
-/** The tab strip, by its accessible name — the shell labels the nav with `people.wizard.progressLabel`. */
-const tabStrip = () => screen.getByRole('navigation', { name: messages.people.wizard.progressLabel });
+/** The tab strip, by its accessible name — the shell labels the tablist with `people.wizard.progressLabel`. */
+const tabStrip = () => screen.getByRole('tablist', { name: messages.people.wizard.progressLabel });
 const tabNames = () => within(tabStrip()).getAllByRole('tab').map((b) => b.textContent);
 const openTab = async (name: string) => {
   await userEvent.click(within(tabStrip()).getByRole('tab', { name }));

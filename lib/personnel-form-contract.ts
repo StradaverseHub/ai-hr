@@ -89,3 +89,9 @@ export function personnelWorkflowInput(id:string,workflow:'movement'|'hireCorrec
 export function personnelWorkflowCarry(id:string,workflow:'movement'|'hireCorrection'|'companyCorrection'|'delegationEnd') {
   return {...personnelWorkflowControl(id,workflow),type:'hidden',required:false};
 }
+
+/** ESS is an explicit authority presentation, unrelated to import/report/scope metadata. */
+export function personnelEssControl(id:string,editable:ReadonlySet<string>,editing:boolean){
+  const field=personnelField(id);if(!field||field.ess.visibility!=='visible')throw new Error('Personnel ESS binding unavailable.');
+  return {'data-personnel-field':id,disabled:!editing||!editable.has(id)||!field.ess.binding||!['immediate','approval'].includes(field.ess.edit)};
+}

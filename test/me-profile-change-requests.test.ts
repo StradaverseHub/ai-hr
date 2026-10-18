@@ -1,3 +1,4 @@
+import {seedStoredLegacyProfileRequest,requestCurrentProfileChange} from './helpers/profile-requests';
 /**
  * r260 stage two (board item 9583deac) — ASKING FOR A CHANGE, AND WHAT MUST NEVER HAPPEN WHILE IT WAITS.
  *
@@ -26,7 +27,6 @@ import {
   ProfileChangeReasonRequiredError,
   decideProfileChange,
   myProfileChangeRequests,
-  requestProfileChange,
 } from '../core/profile';
 import { erasePersonPii } from '../core/pdpa';
 import { getStatutoryProfileMY, setStatutoryProfileMY } from '../localization/my/statutory';
@@ -148,7 +148,7 @@ describe('r260 — a pending request never reaches the master record, and a reje
 
     const before = await masterSnapshot(E.personId);
 
-    const { requestId } = await requestProfileChange(emp, {
+    const { requestId } = await seedStoredLegacyProfileRequest(emp, {
       employmentId: E.employmentId,
       proposed: {
         fullName: 'Somebody Else Entirely',
@@ -193,7 +193,7 @@ describe('r260 — a pending request never reaches the master record, and a reje
     const E = await hire('Reasonless');
     await setStatutoryProfileMY(a, { personId: E.personId, icNumber: '900101010102', bankAccountNo: '4444' });
     const emp = await employeeCtx(E.personId);
-    const { requestId } = await requestProfileChange(emp, {
+    const { requestId } = await seedStoredLegacyProfileRequest(emp, {
       employmentId: E.employmentId,
       proposed: { bankName: 'NoBank', bankAccountNo: '0000' },
     });
@@ -218,7 +218,7 @@ describe('r260 — a pending request never reaches the master record, and a reje
     expect((await getStatutoryProfileMY(a, E.personId))?.bankAccountNo).toBe('4444');
   });
 
-  it('APPROVING applies the widened fields — the ones stage two added, not only the original seven', async () => {
+  it('APPROVING a stored legacy request applies the widened fields — the ones stage two added, not only the original seven', async () => {
     /**
      * The other half of the safety property: the mechanism must actually work for the new fields, or
      * "widened" would mean "accepted into a queue and dropped on approval". That gap was real before
@@ -233,13 +233,14 @@ describe('r260 — a pending request never reaches the master record, and a reje
     await setStatutoryProfileMY(a, { personId: E.personId, icNumber: '900101010103' });
     const emp = await employeeCtx(E.personId);
 
-    const { requestId } = await requestProfileChange(emp, {
+    const { requestId } = await seedStoredLegacyProfileRequest(emp, {
       employmentId: E.employmentId,
       proposed: {
         fullName: 'Widened Binti Abdullah',
         preferredName: 'Wid',
         nationality: 'Malaysian',
         passportNumber: 'K7654321',
+        passportIssueDate: '2022-06-30',
         passportExpiryDate: '2032-06-30',
         epfNumber: 'EPF-12345',
         socsoNumber: 'SOC-67890',
@@ -267,38 +268,18 @@ describe('r260 — a pending request never reaches the master record, and a reje
     expect(row.reason).toBe('Checked against the passport.');
   });
 
-  it('a proposal cannot smuggle a field the declaration does not carry', async () => {
-    // `sanitizeProposed` keeps only declared keys. A form (or a hand-rolled POST) naming a column that
-    // is NOT requestable — an internal HR judgement, say — must reach neither the stored proposal nor
-    // the master row.
-    const a = adminCtx(b);
-    const E = await hire('Smuggler');
-    await setStatutoryProfileMY(a, { personId: E.personId, icNumber: '900101010104' });
-    const emp = await employeeCtx(E.personId);
-    const { requestId } = await requestProfileChange(emp, {
-      employmentId: E.employmentId,
-      // `isResident` and `employerBearsTax` are real columns on employee_statutory_my and are NOT on the
-      // declaration; `blacklistReason` is not even on this table.
-      proposed: {
-        preferredName: 'Legit',
-        isResident: false,
-        employerBearsTax: true,
-        blacklistReason: 'nice try',
-      } as never,
-    });
-    const [stored] = await owner.db
-      .select({ proposed: profileChangeRequest.proposed })
-      .from(profileChangeRequest)
-      .where(eq(profileChangeRequest.id, requestId));
-    expect(Object.keys(stored.proposed as Record<string, unknown>).sort()).toEqual(['preferredName']);
-
-    await decideProfileChange(a, { requestId, decision: 'approved' });
-    const [row] = await owner.db
-      .select({ isResident: employeeStatutoryMy.isResident, employerBearsTax: employeeStatutoryMy.employerBearsTax })
-      .from(employeeStatutoryMy)
-      .where(eq(employeeStatutoryMy.personId, E.personId));
-    expect(row.isResident).toBe(true);
-    expect(row.employerBearsTax).toBe(false);
+  it('a current proposal cannot smuggle an undeclared field or store its allowed half', async()=>{
+    const a=adminCtx(b),E=await hire('Smuggler'),emp=await employeeCtx(E.personId);
+    await setStatutoryProfileMY(a,{personId:E.personId,icNumber:'900101010104'});
+    const before=await masterSnapshot(E.personId);
+    await expect(requestCurrentProfileChange(emp,{employmentId:E.employmentId,proposed:{preferredName:'Legit',isResident:false,employerBearsTax:true,blacklistReason:'nice try'} as never})).rejects.toMatchObject({code:'permission'});
+    expect(await owner.db.select().from(profileChangeRequest)).toEqual([]);
+    expect(await masterSnapshot(E.personId)).toEqual(before);
+    const {requestId}=await requestCurrentProfileChange(emp,{employmentId:E.employmentId,proposed:{preferredName:'Legit'}});
+    await decideProfileChange(a,{requestId,decision:'approved'});
+    expect((await masterSnapshot(E.personId)).person!.preferredName).toBe('Legit');
+    const [row]=await owner.db.select().from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,E.personId));
+    expect(row.isResident).toBe(true);expect(row.employerBearsTax).toBe(false);
   });
 
   it('an approval that would duplicate another employee’s IC is refused in words, not by a raw constraint', async () => {
@@ -310,7 +291,7 @@ describe('r260 — a pending request never reaches the master record, and a reje
     await setStatutoryProfileMY(a, { personId: A.personId, icNumber: '900101010105' });
     await setStatutoryProfileMY(a, { personId: B2.personId, icNumber: '900101010106' });
     const emp = await employeeCtx(B2.personId);
-    const { requestId } = await requestProfileChange(emp, {
+    const { requestId } = await seedStoredLegacyProfileRequest(emp, {
       employmentId: B2.employmentId,
       proposed: { icNumber: '900101010105' },
     });
@@ -341,17 +322,17 @@ describe('r260 — an employee sees and decides only their OWN requests', () => 
     const meCtx = await employeeCtx(mine.personId);
     const themCtx = await employeeCtx(colleague.personId);
 
-    await requestProfileChange(meCtx, { employmentId: mine.employmentId, proposed: { preferredName: 'Mine' } });
-    await requestProfileChange(themCtx, { employmentId: colleague.employmentId, proposed: { preferredName: 'Theirs' } });
+    await requestCurrentProfileChange(meCtx, { employmentId: mine.employmentId, proposed: { preferredName: 'Mine' } });
+    await requestCurrentProfileChange(themCtx, { employmentId: colleague.employmentId, proposed: { preferredName: 'Theirs' } });
 
     const minesList = await myProfileChangeRequests(meCtx);
     expect(minesList).toHaveLength(1);
-    expect((minesList[0].proposed as Record<string, unknown>).preferredName).toBe('Mine');
+    expect(minesList[0].proposed).toMatchObject({v:2,fields:[{fieldId:'profile.personal_details.preferredname',value:'Mine'}]});
 
     // The colleague's own list is likewise only theirs.
     const theirsList = await myProfileChangeRequests(themCtx);
     expect(theirsList).toHaveLength(1);
-    expect((theirsList[0].proposed as Record<string, unknown>).preferredName).toBe('Theirs');
+    expect(theirsList[0].proposed).toMatchObject({v:2,fields:[{fieldId:'profile.personal_details.preferredname',value:'Theirs'}]});
 
     // An ADMIN calling it gets their OWN (none) — not the whole tenant's. The admin can see every row
     // through RLS, so this is the service's session scope answering, not the database.
@@ -363,10 +344,11 @@ describe('r260 — an employee sees and decides only their OWN requests', () => 
     const mine = await hire('Decider');
     const colleague = await hire('Subject');
     await setStatutoryProfileMY(a, { personId: colleague.personId, icNumber: '900101010109' });
+    const beforeStatutory=await getStatutoryProfileMY(a,colleague.personId);
     const meCtx = await employeeCtx(mine.personId);
     const themCtx = await employeeCtx(colleague.personId);
 
-    const { requestId } = await requestProfileChange(themCtx, {
+    const { requestId } = await seedStoredLegacyProfileRequest(themCtx, {
       employmentId: colleague.employmentId,
       proposed: { bankName: 'TheirBank', bankAccountNo: '9999' },
     });
@@ -395,8 +377,9 @@ describe('r260 — an employee sees and decides only their OWN requests', () => 
       'profile change request not found (or not visible)',
     );
 
-    // (c) The subject CAN see their own row — so this refusal is the self-decision ban doing the work,
-    //     which is a different layer again, and it must not be satisfiable by (a) or (b).
+    // (c) Ordinary own-history SELECT stays available. A decision also requires UPDATE RLS through
+    // SELECT FOR UPDATE, so an employee cannot acquire that row for either approval or rejection.
+    // Administrator self-decision is tested independently where the request row is lockable.
     const visibleToSubject = await withTenant(themCtx, (tx) =>
       tx
         .select({ id: profileChangeRequest.id })
@@ -404,18 +387,8 @@ describe('r260 — an employee sees and decides only their OWN requests', () => 
         .where(eq(profileChangeRequest.id, requestId)),
     );
     expect(visibleToSubject.map((r) => r.id), 'the subject cannot see their own request').toEqual([requestId]);
-    for (const decision of ['approved', 'rejected'] as const) {
-      await expect(
-        decideProfileChange(themCtx, {
-          requestId,
-          decision,
-          // A reason is supplied on the rejection so it is refused for WHO is asking, not for what is
-          // missing — ProfileChangeReasonRequiredError would otherwise mask the self-decision ban.
-          reason: decision === 'rejected' ? 'let me out of it' : undefined,
-        }),
-        `a subject decided their OWN request (${decision})`,
-      ).rejects.toThrow(/cannot decide your own/i);
-    }
+    await expect(decideProfileChange(themCtx,{requestId,decision:'approved'})).rejects.toThrow('profile change request not found (or not visible)');
+    await expect(decideProfileChange(themCtx,{requestId,decision:'rejected',reason:'let me out of it'})).rejects.toThrow('profile change request not found (or not visible)');
 
     // Still pending, and the bank account still untouched.
     const [row] = await owner.db
@@ -423,6 +396,7 @@ describe('r260 — an employee sees and decides only their OWN requests', () => 
       .from(profileChangeRequest)
       .where(eq(profileChangeRequest.id, requestId));
     expect(row.status).toBe('pending');
+    expect(await getStatutoryProfileMY(a,colleague.personId)).toEqual(beforeStatutory);
   });
 
   it('the rejection reason reaches the employee who asked, and nobody else’s does', async () => {
@@ -434,11 +408,11 @@ describe('r260 — an employee sees and decides only their OWN requests', () => 
     const meCtx = await employeeCtx(mine.personId);
     const themCtx = await employeeCtx(colleague.personId);
 
-    const r1 = await requestProfileChange(meCtx, {
+    const r1 = await seedStoredLegacyProfileRequest(meCtx, {
       employmentId: mine.employmentId,
       proposed: { bankName: 'MyBank', bankAccountNo: '1111' },
     });
-    const r2 = await requestProfileChange(themCtx, {
+    const r2 = await seedStoredLegacyProfileRequest(themCtx, {
       employmentId: colleague.employmentId,
       proposed: { bankName: 'TheirBank', bankAccountNo: '2222' },
     });
@@ -461,11 +435,11 @@ describe('r260 — an employee sees and decides only their OWN requests', () => 
     await setStatutoryProfileMY(a, { personId: E.personId, icNumber: '900101010112' });
     const emp = await employeeCtx(E.personId);
 
-    const approved = await requestProfileChange(emp, { employmentId: E.employmentId, proposed: { preferredName: 'Yes' } });
+    const approved = await requestCurrentProfileChange(emp, { employmentId: E.employmentId, proposed: { preferredName: 'Yes' } });
     await decideProfileChange(a, { requestId: approved.requestId, decision: 'approved' });
-    const rejected = await requestProfileChange(emp, { employmentId: E.employmentId, proposed: { preferredName: 'No' } });
+    const rejected = await requestCurrentProfileChange(emp, { employmentId: E.employmentId, proposed: { preferredName: 'No' } });
     await decideProfileChange(a, { requestId: rejected.requestId, decision: 'rejected', reason: 'Use your legal name.' });
-    await requestProfileChange(emp, { employmentId: E.employmentId, proposed: { preferredName: 'Maybe' } });
+    await requestCurrentProfileChange(emp, { employmentId: E.employmentId, proposed: { preferredName: 'Maybe' } });
 
     const rows = await myProfileChangeRequests(emp);
     expect(rows.map((r) => r.status).sort()).toEqual(['approved', 'pending', 'rejected']);
@@ -506,7 +480,7 @@ describe('r260 — a PDPA erasure survives a legacy rejection that has no reason
 
     // (1) THE LEGACY ROW: rejected, with NO reason. Planted as the owner because the service refuses to
     // create one — which is the whole point: it is a row from BEFORE the rule existed.
-    const legacy = await requestProfileChange(emp, {
+    const legacy = await seedStoredLegacyProfileRequest(emp, {
       employmentId: E.employmentId,
       proposed: { bankName: 'NewBank', bankAccountNo: '777788889999' },
     });
@@ -518,7 +492,7 @@ describe('r260 — a PDPA erasure survives a legacy rejection that has no reason
     // (2) A MODERN rejection alongside it, carrying the approver's free text ABOUT this employee. It has
     // to be erased too: core/profile.ts keeps the sentence out of the append-only event log on the
     // stated promise that it "is RLS-scoped and erasable with the record".
-    const modern = await requestProfileChange(emp, {
+    const modern = await requestCurrentProfileChange(emp, {
       employmentId: E.employmentId,
       proposed: { preferredName: 'Nickname' },
     });
@@ -577,7 +551,7 @@ describe('r260 — a PDPA erasure survives a legacy rejection that has no reason
     const emp = await employeeCtx(E.personId);
 
     for (const reason of [undefined, null, '', '   '] as const) {
-      const { requestId } = await requestProfileChange(emp, {
+      const { requestId } = await requestCurrentProfileChange(emp, {
         employmentId: E.employmentId,
         proposed: { preferredName: `Try-${String(reason)}` },
       });

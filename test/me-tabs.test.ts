@@ -38,7 +38,8 @@ const PAGE = fs.readFileSync(path.resolve(__dirname, '../app/me/page.tsx'), 'utf
 // searched across BOTH files. That is not a relaxation: an action or an anchor still has to be provably
 // present on the /me surface, it is simply no longer required to sit in one particular file of it.
 const REQUEST_CARD = fs.readFileSync(path.resolve(__dirname, '../app/me/request-change-card.tsx'), 'utf8');
-const ME_SURFACE = `${PAGE}\n${REQUEST_CARD}`;
+const EDITOR=fs.readFileSync(path.resolve(__dirname,'../app/me/profile-editor.tsx'),'utf8');
+const ME_SURFACE = `${PAGE}\n${EDITOR}`;
 // afc29d75 — all six catalogues, so "the retired string is gone" is checked where it can actually still
 // be hiding. An unused key removed from en.json alone is the shape the unused-key check carries forever.
 const MESSAGES: Record<string, { me: Record<string, unknown> }> = Object.fromEntries(
@@ -87,8 +88,6 @@ const ACTIONS = [
   // myRequestLeave / myPreviewLeaveDeduction left this list with the Leave tab (a7cbd895) — the apply
   // capability lives on /leave (RequestLeaveDialog → requestLeaveAction), guarded by
   // test/leave-request-relocation.test.ts.
-  'myUpdateContact',
-  'myRequestProfileChange',
   // myUpdateGoalProgress / myCreateGoal / mySubmitPeerFeedback / myDeclinePeerFeedback left this list at
   // r259 with the Performance tab — they are bound on /me/performance, asserted in the describe at the
   // foot of this file, so "the capability vanished" still fails.
@@ -107,21 +106,11 @@ describe('/me — tabbed My Workspace (311ad7ba)', () => {
     }
   });
 
-  it('wires the six Personnel-shaped tabs, and no Leave tab (moved to /leave · a7cbd895)', () => {
-    // r259 REPLACED the five-key list that used to be here, and the replacement is not a weaker check:
-    // the tab set now comes from ME_TABS (app/me/visible-fields.ts), so asserting the panel wiring is
-    // asserting the whole strip. The five retired keys are asserted GONE below, which the old case could
-    // not do because they were what it required.
-    for (const key of ['profile', 'job', 'bankStatutory', 'payroll', 'family', 'documents']) {
-      expect(new RegExp(`^\\s+${key}: `, 'm').test(PAGE), `missing panel for tab '${key}'`).toBe(true);
-    }
-    for (const dead of ["key: 'overview'", "key: 'pay'", "key: 'performance'"]) {
-      expect(PAGE.includes(dead), `${dead} belongs to the arrangement r259 replaced`).toBe(false);
-    }
-    // The Leave tab is gone — leave self-service lives on /leave ("My Absence").
-    expect(PAGE.includes("key: 'leave'")).toBe(false);
-    expect(PAGE.includes('leave: (')).toBe(false);
-    expect(PAGE.includes('action={myRequestLeave}')).toBe(false);
+  it('wires all eleven Personnel tabs while Leave mutations retain their existing destination',()=>{
+    expect(EDITOR).toContain("['profile','family','job','careerMovement','attendance','bankStatutory','payroll','leave','documents','qualification','others']");
+    expect(EDITOR).toContain('Object.fromEntries(keys.map((key,index)=>');expect(EDITOR).toContain('panels={panels}');expect(PAGE).toContain('<ProfileEditor');
+    expect(PAGE).toContain('href="/leave"');expect(PAGE).not.toContain('action={myRequestLeave}');
+    for(const dead of ["key: 'overview'","key: 'pay'","key: 'performance'"])expect(PAGE).not.toContain(dead);
   });
 
   it('deep-links reloads back to their tab (native GET forms carry ?tab=)', () => {
@@ -130,7 +119,7 @@ describe('/me — tabbed My Workspace (311ad7ba)', () => {
     // resolves, which the legacy map below is for.
     expect(PAGE.includes('name="tab" value="payroll"')).toBe(true);
     expect(PAGE, 'an old ?tab=pay bookmark must still land somewhere real').toContain(
-      "const LEGACY_TAB: Record<string, MeTabKey> = { overview: 'profile', pay: 'payroll' };",
+      "const LEGACY_TAB:Record<string,MeTabKey>={overview:'profile',pay:'payroll'};",
     );
     // The server validates ?tab= and feeds it to the shell as defaultTab.
     expect(PAGE.includes('defaultTab={activeTab}')).toBe(true);
@@ -319,15 +308,10 @@ describe('/me → /attendance/requests: the request forms moved, they did not di
     }
   });
 
-  it('keeps the geofenced punch on /me (311ad7ba) — only the request forms travelled', () => {
-    // /me is one of only two places a punch can be made. A relocation that took the clock control with the
-    // forms would remove that, quietly, on a change nobody read as touching clocking.
-    //
-    // r259 is precisely such a change and this is what stopped it: the six Personnel-shaped tabs have no
-    // clocking card, so the control moved ABOVE the strip rather than into a tab. Same page, same actions.
-    expect(PAGE.includes('action={myCheckIn}')).toBe(true);
-    expect(PAGE.includes('action={myCheckOut}')).toBe(true);
-    expect(PAGE.includes('<LocationNotice />')).toBe(true);
+  it('removes clocking only from My Profile and retains the canonical My Attendance clock course',()=>{
+    for(const forbidden of ['action={myCheckIn}','action={myCheckOut}','AttendanceClockButton','<LocationNotice'])expect(ME_SURFACE).not.toContain(forbidden);
+    const clock=fs.readFileSync(path.resolve(__dirname,'../app/attendance/clock/page.tsx'),'utf8'),client=fs.readFileSync(path.resolve(__dirname,'../app/attendance/clock/clock-client.tsx'),'utf8');
+    expect(clock).toContain('<ClockPageClient');expect(client).toContain("fetch('/api/attendance/clock',{method:'POST'");expect(PAGE).toContain('href="/attendance"');
   });
 
   it('lands the employee back on the page they posted from', () => {
