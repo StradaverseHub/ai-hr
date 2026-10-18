@@ -177,7 +177,9 @@ describe('personal System Testing isolation and immutable instructions', () => {
     expect((await getTestingLibraryCase(admin,f.draft.caseId)).versions.map(v => v.id)).toEqual([f.version.versionId]);
     expect((await listTestingTesterOptions(admin)).rows.map(r => r.userId)).toContain(one.userId);
     for (const call of [() => listTestingLibrary(one),() => getTestingLibraryCase(one,f.draft.caseId),() => listTestingTesterOptions(one)]) await expect(call()).rejects.toMatchObject({ code: 'not_assigned' });
+    const saved = await saveTestingExecution(one, observation(f, 'in_progress'));
     const team = await getTestingExecution(admin,f.execution.executionId,{ team: true }); expect(team.canSave).toBe(false);
+    expect(team.currentObservation?.id).toBe(saved.runId);
     expect(team.testerName).toBe('Fictional Tester One');
     expect(team.history.map(run=>run.runByUserId)).toEqual([one.userId]);
     const library = await getTestingLibraryCase(admin, f.draft.caseId);
