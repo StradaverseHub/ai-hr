@@ -89,7 +89,7 @@ const wrap = (data: EmployeeDraftData = freshDraft()) =>
     </NextIntlClientProvider>,
   );
 
-const tabStrip = () => screen.getByRole('navigation', { name: messages.people.wizard.progressLabel });
+const tabStrip = () => screen.getByRole('tablist', { name: messages.people.wizard.progressLabel });
 const openTab = async (name: string) => {
   await userEvent.click(within(tabStrip()).getByRole('tab', { name }));
 };
