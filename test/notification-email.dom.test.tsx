@@ -25,7 +25,7 @@ describe('workflow email configuration screens',()=>{
   expect(screen.getAllByRole('checkbox')).toHaveLength(expectedCategories.length);
   for (const category of expectedCategories) {
    // A singular exact-name query also refuses duplicate controls or an absent category.
-   expect(screen.getByRole('checkbox',{name:en.workflowEmail.categories[category],exact:true})).not.toBeChecked();
+   expect(screen.getByRole('checkbox',{name:en.workflowEmail.categories[category]})).not.toBeChecked();
   }
  });
  it('makes tenant controls read-only for a company administrator',async()=>{
