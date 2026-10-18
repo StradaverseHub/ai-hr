@@ -3,7 +3,10 @@ import {asc,eq,sql} from 'drizzle-orm';
 import {beforeAll,beforeEach,afterAll,describe,it,expect,vi} from 'vitest';
 import {assignment,compensation,domainEvent,employment,leaveLedger,leaveEntitlementRecalcAudit} from '../db/schema';
 import {hireEmployee} from '../core/org';
-import {createMovementEvent,movementCurrentState,movementHistory,reverseMovementEvent} from '../core/movement';
+import {withTenant} from '../db/client';
+import {createCompany,createDepartment} from '../core/admin';
+import {setLabelCriteriaBatch} from '../core/system-labels';
+import {createMovementEvent,movementCurrentState,movementHistory,reverseMovementEvent,applyDueMovementsTx} from '../core/movement';
 import {previewMovementImport,commitMovementImport,movementImportCatalog} from '../core/movement-import';
 import {saveMovementEventType,setMovementEventTypeActive} from '../core/movement-type';
 import * as leaveService from '../packs/leave/service';
@@ -77,6 +80,31 @@ describe('Movement rollback-only preview and atomic confirmation',()=>{
   const id=await hire();const text=csv([['EMP-0004','transfer',day(-2),b.deptB,'',''],['MISSING','promotion',day(-1),'','3500','']]);
   const initial=await ready(text);expect(initial.valid).toBe(1);const preview=await ready(text,[2]);const result=await commit(text,preview);expect(result).toMatchObject({imported:1,excluded:1});expect((await movementCurrentState(adminCtx(b),id)).departmentId).toBe(b.deptB);
   await expect(previewMovementImport({...adminCtx(b),roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]},{companyId:b.companyId,csv:text})).rejects.toThrow('Only an admin');
+ });
+
+ it('validates a future Entity Transfer then a destination-scoped promotion without applying either early',async()=>{
+  const id=await hire(),ctx=adminCtx(b);const destination=await createCompany(ctx,{legalName:'Fictional Movement destination',country:'MY'});
+  const department=await createDepartment(ctx,{companyId:destination.id,name:'Destination Operations'});
+  await setLabelCriteriaBatch(ctx,[{kind:'department',labelId:department.id,isGlobal:false,companyIds:[destination.id]}]);
+  const text=toCsv([['employee_code','event_type','effective_date','company_id','department_id','basic_salary'],['EMP-0004','entityTransfer',day(7),destination.id,department.id,''],['EMP-0004','promotion',day(14),'',department.id,'4200']]);
+  const before=await state(id);const preview=await ready(text);expect(preview.valid).toBe(2);expect(await state(id)).toEqual(before);
+  expect(preview.employees[0].rows[1].before?.companyId).toContain(destination.id);expect(preview.employees[0].rows[1].proposed?.basicSalary).toBe('4200.00');
+  const result=await commit(text,preview);expect(result.imported).toBe(2);expect((await movementCurrentState(ctx,id)).companyId).toBe(b.companyId);
+  const history=await movementHistory(ctx,id);expect(history.filter(row=>row.scheduled&&row.status==='pending')).toHaveLength(2);
+  await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,id,day(14)));
+  expect(await movementCurrentState(ctx,id)).toMatchObject({companyId:destination.id,departmentId:department.id,basicSalary:'4200.00'});
+ });
+ it('refuses pre-hire neutral events and conflicting same-date writes while retaining disjoint same-date changes',async()=>{
+  const id=await hire(),before=await state(id);
+  expect((await ready(csv([['EMP-0004','secondment',day(-61),'','','Before hire']]))).valid).toBe(0);
+  const conflict=csv([['EMP-0004','promotion',day(-2),'','3500',''],['EMP-0004','increment',day(-2),'','3700','']]);const preview=await ready(conflict);expect(preview.valid).toBe(1);expect(preview.employees[0].rows.find(row=>row.row===3)?.errors).toContain('same_date_conflicting_changes');
+  expect(await state(id)).toEqual(before);
+  const disjoint=csv([['EMP-0004','promotion',day(-2),'','3500',''],['EMP-0004','transfer',day(-2),b.deptB,'','']]);expect((await ready(disjoint)).valid).toBe(2);
+ });
+ it('refuses a selected ordinary successor after an earlier selected termination, with no retained preview effects',async()=>{
+  const id=await hire(),before=await state(id);
+  const text=toCsv([['employee_code','event_type','effective_date','end_date','termination_reason_code','remarks'],['EMP-0004','termination',day(-5),day(-5),'contract_expiry','Fictional end'],['EMP-0004','secondment',day(-2),'','','After end']]);
+  const preview=await ready(text);expect(preview.valid).toBe(1);expect(preview.employees[0].rows.find(row=>row.row===3)?.errors).toContain('event_after_exit');expect(await state(id)).toEqual(before);
  });
  it('rolls back on an unexpected database refusal during preview, never retaining successful earlier row legs',async()=>{
   const id=await hire(),before=await state(id);const text=csv([['EMP-0004','promotion',day(-5),'','3500',''],['EMP-0004','transfer',day(-2),b.deptB,'','']]);

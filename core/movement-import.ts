@@ -11,7 +11,7 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {MOVEMENT_FORM_IDS,type MovementFormField} from '../lib/movement-form-contract';
 import {personnelFormField,personnelFormChoices} from '../lib/personnel-form-contract';
 import {MOVEMENT_IMPORT_LIMITS,parseMovementImport,movementImportCellIssues,movementImportDate,type MovementImportRecord,type MovementImportRow,type MovementImportEmployee,type MovementImportPreview,type MovementImportResult} from '../lib/movement-import-contract';
-import {createMovementEventTx,movementCurrentStateTx,type CreateMovementInput} from './movement';
+import {createMovementEventTx,movementCurrentStateTx,applyDueMovementsTx,type CreateMovementInput} from './movement';
 import {MOVEMENT_KINDS,movementNeedsEntitlementReprojection} from './movement-kinds';
 import {resolveMovementEventTypeTx} from './movement-type';
 import {lockEmploymentStatutoryOwnerTx} from './org';
@@ -70,6 +70,11 @@ async function inputTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,empl
  if(!resolved?.active)throw new Error('unknown_or_inactive_event_type');
  const issues=movementImportCellIssues(record,resolved.behaviourKind);if(issues.length)throw new Error(issues.join('; '));
  const effectiveDate=movementImportDate(record.cells.effectiveDate!)!;
+ const [dates]=await tx.select({hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,lastWorkingDate:employment.lastWorkingDate,resignationDate:employment.resignationDate}).from(employment).where(eq(employment.id,employmentId)).limit(1);
+ if(!dates)throw new Error('employee_not_available');
+ if(resolved.behaviourKind!=='groupJoinDateCorrection'&&effectiveDate<dates.hiredOn)throw new Error('event_before_hire');
+ const exit=[dates.terminatedOn,dates.lastWorkingDate,dates.resignationDate].filter((date):date is string=>!!date).sort()[0];
+ if(exit&&effectiveDate>exit&&!['blacklist','groupJoinDateCorrection'].includes(resolved.behaviourKind))throw new Error('event_after_exit');
  if(resolved.behaviourKind==='blacklist'&&effectiveDate!==todayInKualaLumpur())throw new Error('blacklist_date_must_be_today');
  const targetCompanyId=record.cells.companyId?lookup(record.cells.companyId,source.companies,'companyId'):currentCompanyId;
  const catalog=targetCompanyId===currentCompanyId?source:await catalogTx(tx,ctx,targetCompanyId);
@@ -91,7 +96,7 @@ async function inputTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,empl
    const options=catalog.fields[field]??[];input[field as keyof typeof fieldKinds]=options.length?lookup(raw,options,field):raw;
   }else if(field==='remarks'||field==='currency'||field==='payMode'||field==='paymentTerm'||field==='terminationReasonCode')input[field]=raw;
  }
- return input;
+ return {input,source,catalog};
 }
 async function subjectTx(tx:Tx,ctx:SessionContext,companyId:string,code:string){
  const rows=await tx.select({id:employment.id,name:person.fullName}).from(employment).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.companyId,companyId),eq(employment.employeeCode,code),sql`app.is_admin_for(${employment.companyId})`)).limit(2);
@@ -99,7 +104,12 @@ async function subjectTx(tx:Tx,ctx:SessionContext,companyId:string,code:string){
  await lockLabelCriteriaTx(tx,ctx.tenantId);
  await lockEmploymentStatutoryOwnerTx(tx,rows[0].id);
  const locked=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,rows[0].id),eq(employment.companyId,companyId))).for('update');
- if(!locked.length)throw new Error('employee_changed');return rows[0];
+ if(!locked.length)throw new Error('employee_changed');
+ const openAssignments=await tx.select({id:assignment.id}).from(assignment).where(and(eq(assignment.employmentId,rows[0].id),isNull(assignment.validTo),isNull(assignment.supersededAt))).limit(2);
+ const openComp=await tx.select({id:compensation.id}).from(compensation).where(and(eq(compensation.employmentId,rows[0].id),isNull(compensation.validTo),isNull(compensation.supersededAt))).limit(2);
+ const openLines=await tx.select({id:reportingLine.id}).from(reportingLine).where(and(eq(reportingLine.subordinateEmploymentId,rows[0].id),eq(reportingLine.lineType,'administrative'),isNull(reportingLine.validTo),isNull(reportingLine.supersededAt))).limit(2);
+ if([openAssignments,openComp,openLines].some(values=>values.length>1))throw new Error('ambiguous_current_records');
+ return rows[0];
 }
 /** Fresh authoritative state, including historical/scheduled events and caller-visible current catalogs.
  * The digest is a stale-preview comparison, never an authorization credential. All writes revalidate. */
@@ -126,14 +136,49 @@ function sortSequence(rows:MovementImportRecord[]){return [...rows].sort((a,b)=>
 async function lifecycleTx(tx:Tx,id:string){
  const [row]=await tx.select({hiredOn:employment.hiredOn,joinDate:employment.joinDate,confirmationDate:employment.confirmationDate,extendedConfirmationDate:employment.extendedConfirmationDate,tenderResignationDate:employment.tenderResignationDate,lastWorkingDate:employment.lastWorkingDate,terminatedOn:employment.terminatedOn,blacklistedAt:employment.blacklistedAt}).from(employment).where(eq(employment.id,id)).limit(1);return row??{};
 }
-async function applyRowTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,id:string):Promise<MovementImportRow>{
+type RehearsedRow={view:MovementImportRow;input:CreateMovementInput;changedFields:string[]};
+function readable(values:Record<string,string|null>,catalog:MovementImportCatalog):Record<string,string|null>{
+ return Object.fromEntries(Object.entries(values).map(([key,value])=>{
+  const options=key==='companyId'?catalog.companies:catalog.fields[key as MovementFormField];
+  const found=options?.find(option=>option.value===value);return [key,found?found.label+' · '+found.value:value];
+ }));
+}
+function assertSequence(previous:RehearsedRow[],next:RehearsedRow){
+ const sameDay=previous.filter(row=>row.input.effectiveDate===next.input.effectiveDate);
+ if(sameDay.some(row=>digest(row.input)===digest(next.input)))throw new Error('duplicate_event_in_sequence');
+ if(sameDay.some(row=>row.changedFields.some(field=>next.changedFields.includes(field))))throw new Error('same_date_conflicting_changes');
+}
+async function applyRowTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,id:string,rehearsal:boolean,resolvedInput?:CreateMovementInput):Promise<RehearsedRow>{
  const before={...await movementCurrentStateTx(tx,id),...await lifecycleTx(tx,id)};
- const input=await inputTx(tx,ctx,record,id,before.companyId);
+ const prepared=resolvedInput?null:await inputTx(tx,ctx,record,id,before.companyId);
+ const input=resolvedInput??prepared!.input;
+ const catalogBefore=prepared?.source??await catalogTx(tx,ctx,before.companyId);
+ const catalogAfter=prepared?.catalog??(input.companyId&&input.companyId!==before.companyId?await catalogTx(tx,ctx,input.companyId):catalogBefore);
  const result=await createMovementEventTx(tx,ctx,input);
  if('changed' in result&&result.changed===false)throw new Error('movement_has_no_changes');
- if(movementNeedsEntitlementReprojection(result.behaviourKind))await reprojectEntitlementForEmployment(ctx,{employmentId:id,trigger:'movement_recorded',gradeBefore:{gradeId:before.gradeId},changeEffectiveOn:input.effectiveDate},tx);
+ const scheduled='scheduled' in result&&result.scheduled===true;
+ // Advance only the rollback-only rehearsal, through the very same owner the normal sweep uses.
+ // The committed pass records the original future intent and never runs this branch.
+ if(scheduled&&rehearsal)await applyDueMovementsTx(tx,ctx,id,input.effectiveDate);
+ if(movementNeedsEntitlementReprojection(result.behaviourKind))await reprojectEntitlementForEmployment(ctx,{employmentId:id,trigger:scheduled&&rehearsal?'movement_applied':'movement_recorded',gradeBefore:{gradeId:before.gradeId},changeEffectiveOn:input.effectiveDate,...(scheduled&&rehearsal?{asOf:input.effectiveDate}:{})},tx);
  const after={...await movementCurrentStateTx(tx,id),...await lifecycleTx(tx,id)};
- return {...rowView(record),eventType:input.kind,status:'valid',errors:[],before,proposed:{...after,...Object.fromEntries(Object.entries(input).filter(([key])=>!['employmentId','kind'].includes(key)).map(([key,value])=>[key,value==null?null:String(value)]))},scheduled:'scheduled' in result&&result.scheduled===true,payrollFlaggedPeriods:'payrollFlaggedPeriods' in result&&Array.isArray(result.payrollFlaggedPeriods)?result.payrollFlaggedPeriods:[]};
+ const afterValues:Record<string,string|null>=after;
+ const changedFields=Object.entries(before).filter(([key,value])=>afterValues[key]!==value).map(([key])=>key);
+ const extra=Object.fromEntries(Object.entries(input).filter(([key])=>!['employmentId','kind','effectiveDate','typeCode'].includes(key)&&!(key in after)).map(([key,value])=>[key,value==null?null:String(value)]));
+ const view:MovementImportRow={...rowView(record),eventType:input.kind,status:'valid',errors:[],before:readable(before,catalogBefore),proposed:{...readable(after,catalogAfter),...extra},scheduled,payrollFlaggedPeriods:'payrollFlaggedPeriods' in result&&Array.isArray(result.payrollFlaggedPeriods)?result.payrollFlaggedPeriods:[]};
+ return {view,input,changedFields};
+}
+/** This sentinel is caught only AFTER Drizzle has rolled the complete rehearsal savepoint back. */
+class SequenceRollback extends Error{constructor(readonly rows:RehearsedRow[]){super('movement_sequence_rehearsal_rollback');}}
+async function rehearseSequenceTx(tx:Tx,ctx:SessionContext,records:MovementImportRecord[],id:string,deadline:number):Promise<RehearsedRow[]>{
+ try{
+  await tx.transaction(async rehearsalTx=>{
+   const rows:RehearsedRow[]=[];
+   for(const record of sortSequence(records)){budget(deadline);const next=await applyRowTx(rehearsalTx,ctx,record,id,true);assertSequence(rows,next);rows.push(next);budget(deadline);}
+   throw new SequenceRollback(rows);
+  });
+ }catch(error){if(error instanceof SequenceRollback)return error.rows;throw error;}
+ throw new Error('movement_rehearsal_did_not_rollback');
 }
 class PreviewRollback extends Error{constructor(readonly employee:MovementImportEmployee){super('movement_preview_rollback');}}
 export async function previewMovementImport(ctx:SessionContext,p:{companyId:string;csv:string;selection?:number[]}):Promise<MovementImportPreview>{
@@ -146,11 +191,11 @@ export async function previewMovementImport(ctx:SessionContext,p:{companyId:stri
    await withTenant(ctx,async tx=>{
     const employeeDeadline=Math.min(deadline,Date.now()+MOVEMENT_IMPORT_LIMITS.employeeMs);await limits(tx);await assertCompany(tx,ctx,p.companyId);
     const subject=await subjectTx(tx,ctx,p.companyId,code);employee={...employee,employmentId:subject.id,name:subject.name,fingerprint:await fingerprintTx(tx,ctx,subject.id,p.companyId,inputHash,selection,records,employeeDeadline)};
-    const rows:MovementImportRow[]=[];
+    const rows:MovementImportRow[]=[];const previous:RehearsedRow[]=[];
     for(const record of sortSequence(records)){
      budget(employeeDeadline);
      if(!selection.includes(record.row)){rows.push(rowView(record));continue;}
-     try{rows.push(await tx.transaction(rowTx=>applyRowTx(rowTx,ctx,record,subject.id)));}
+     try{const next=await tx.transaction(async rowTx=>{const value=await applyRowTx(rowTx,ctx,record,subject.id,true);assertSequence(previous,value);return value;});previous.push(next);rows.push(next.view);}
      catch(error){rows.push({...rowView(record),status:'invalid',errors:[message(error)]});}
      budget(employeeDeadline);
     }
@@ -180,10 +225,13 @@ export async function commitMovementImport(ctx:SessionContext,p:{companyId:strin
     const employeeDeadline=Math.min(deadline,Date.now()+MOVEMENT_IMPORT_LIMITS.employeeMs);await limits(tx);await assertCompany(tx,ctx,p.companyId);const subject=await subjectTx(tx,ctx,p.companyId,code);
     const fingerprint=await fingerprintTx(tx,ctx,subject.id,p.companyId,inputHash,selection,records,employeeDeadline);
     if(!p.fingerprints||p.fingerprints[code]!==fingerprint)throw new Error('preview_stale_revalidate');
+    const rehearsed=await rehearseSequenceTx(tx,ctx,chosen,subject.id,employeeDeadline);
+    if(await fingerprintTx(tx,ctx,subject.id,p.companyId,inputHash,selection,records,employeeDeadline)!==fingerprint)throw new Error('preview_stale_revalidate');
     const rows:MovementImportRow[]=[];
     for(const record of sortSequence(records)){
      if(!selection.includes(record.row)){rows.push(rowView(record));continue;}
-     budget(employeeDeadline);const row=await applyRowTx(tx,ctx,record,subject.id);rows.push({...row,status:'imported'});budget(employeeDeadline);
+     budget(employeeDeadline);const plan=rehearsed.find(row=>row.view.row===record.row);if(!plan)throw new Error('movement_sequence_changed');
+     const row=await applyRowTx(tx,ctx,record,subject.id,false,plan.input);rows.push({...plan.view,status:'imported',scheduled:row.view.scheduled,payrollFlaggedPeriods:row.view.payrollFlaggedPeriods});budget(employeeDeadline);
     }
     return {employeeCode:code,employmentId:subject.id,name:subject.name,rows,fingerprint};
    });
