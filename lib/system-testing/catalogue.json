@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "revision": "reviewed-baseline.6",
+  "revision": "reviewed-baseline.8",
   "entries": [
     {
       "semanticId": "personnel.profile.reopen",
@@ -56,8 +56,8 @@
         "app/admin/personnel/[employmentId]/actions.ts",
         "core/org.ts"
       ],
-      "reviewedSourceHash": "cf55f75ca3a6e0058ff8f74c20936f81756648174e8c0843ae06ae700348a184",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "bb0baeb1dfee916c27f0ece9f1e3e4895f52e32d8ffbd1911fc657d191fa9038",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     },
     {
       "semanticId": "personnel.import.invalid",
@@ -115,8 +115,8 @@
         "app/admin/personnel/import/section-import.tsx",
         "lib/import-sections.ts"
       ],
-      "reviewedSourceHash": "b3160ca5daa5d23c7a8b9bd14d49ceb48ce689a2566d741828d414c8a38de845",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "9332f17252fa5034fb3227b2dcfd7c2b1f0cfd5b9c3b764febfc27cc70cfedec",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     },
     {
       "semanticId": "personnel.family.roundtrip",
@@ -179,8 +179,8 @@
         "lib/dependent-identity.ts",
         "lib/import-sections.ts"
       ],
-      "reviewedSourceHash": "413e54af91f3523f7aacbcff6452e65340d4f9720b505a2f3c20b6ef7de2df34",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "56b95f614988dca042a52d8b91fd02869eadd469ba1031c1d7c243d7d1e53473",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     },
     {
       "semanticId": "payroll.scope.review",
@@ -235,8 +235,8 @@
         "core/payroll.ts",
         "lib/permissions.ts"
       ],
-      "reviewedSourceHash": "b4179e48681da34579b668fa5bb91797465a1e0b65f6bca07eb8688fa7faf974",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "110521d5ed77ac9b48174902956141c7c5deff0810e7445a78fa0d012bb96204",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     },
     {
       "semanticId": "payroll.salary.effective",
@@ -291,8 +291,8 @@
         "lib/permissions.ts",
         "app/admin/personnel/[employmentId]/actions.ts"
       ],
-      "reviewedSourceHash": "0fa1f981c81607725b876483fe8e0298d2ccdc9e7eb5319e3a4c732404990e8a",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "75f887d2d59737033524974fcabbcea491cea49b25fefbbab37a5a8220d6ceae",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     },
     {
       "semanticId": "payroll.run.closed",
@@ -347,8 +347,8 @@
         "lib/permissions.ts",
         "lib/authz.ts"
       ],
-      "reviewedSourceHash": "cd2d03b58c272f9e9a9cbfb458e6446950e4816e68cd0c3372d4db1caccd0eae",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "0950166d4035f66c51dd908619a9b863973faa80f42e7ace220850cf7938a046",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     },
     {
       "semanticId": "attendance.day.classification",
@@ -404,8 +404,8 @@
         "components/attendance-day-parts.tsx",
         "core/attendance-derive.ts"
       ],
-      "reviewedSourceHash": "ba02f2caa91b9654381ef9cbc9afdd0d806125f72601f5060410ae41862837e9",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "ea590b05c81e7f43d52163b1f15dd711541f377b4a5938deec6ade78cc649bc3",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     },
     {
       "semanticId": "attendance.correction.chain",
@@ -461,8 +461,8 @@
         "lib/permissions.ts",
         "components/attendance-workflow-progress.tsx"
       ],
-      "reviewedSourceHash": "169b092a9ee53ea849e2b894be4939651f4b0c44968e7efe80ed756809b6e107",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "2c5901f845f7029a4cb3246851820970c6466705a78fdf8ed5bae3459f17c712",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     },
     {
       "semanticId": "attendance.formula.private",
@@ -522,8 +522,8 @@
         "components/overtime-patterns/preview-panel.tsx",
         "app/admin/attendance/settings/overtime-patterns/actions.ts"
       ],
-      "reviewedSourceHash": "f1b517ae061bb04b77ddd37cd91f3b0390a68644f1951f30e31e78297de9149a",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "ccfdcff8db7fd9722f301a48ea478e3df12e01501de51e9de51fc2b58f7d697d",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     },
     {
       "semanticId": "leave.request.pending",
@@ -580,8 +580,8 @@
         "app/leave/page.tsx",
         "components/leave/own-leave-history.tsx"
       ],
-      "reviewedSourceHash": "fc30db1a216d0948536ceb5845fd4f26f5620d3307b59f98149c19600e39fd5f",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "0d316cb299a03a940d40b2eb4033203fb5fcce45fa8a27fdd6d4ae9f72dda26c",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     },
     {
       "semanticId": "leave.credit.bound",
@@ -637,8 +637,8 @@
         "lib/leave-credit-claim-review.ts",
         "components/leave/leave-credit-claim-review.tsx"
       ],
-      "reviewedSourceHash": "23e0a406d3fd9c2d83f97224769241ce053af7e1fc1823c6456c7bdc0697102e",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "dc6caa8bc3ccf64f4797754fa88c72f93422302e0b065e1ab7f55103d1b50bdb",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     },
     {
       "semanticId": "leave.inquiry.sort",
@@ -695,8 +695,8 @@
         "app/leave/employee-balances/inquiry-data.ts",
         "lib/leave-inquiry-query.ts"
       ],
-      "reviewedSourceHash": "6f59c8c9a5e6b3f83d6b1d9d0a42784de09e6e228a6c70ee02dc245acd69b2af",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "18e26211cabbc7590f6285a42cbf1c6bb9aaa01ba99e51c07a4b4f6cf5f11c3f",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     },
     {
       "semanticId": "organization.company.reopen",
@@ -752,8 +752,8 @@
         "app/admin/actions.ts",
         "components/company-panel.tsx"
       ],
-      "reviewedSourceHash": "46b02f2f9a646fcc6edb4b4363ad869b4528c0b5f161568b0f6b91d21d7d77e8",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "4164ad8de21287b554a4a6535ff35e4e424b9674e5c37598b85cd66f8cc67717",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     },
     {
       "semanticId": "organization.reporting.history",
@@ -811,8 +811,8 @@
         "app/admin/personnel/[employmentId]/actions.ts",
         "core/read.ts"
       ],
-      "reviewedSourceHash": "bfcd83f0bc4aad8a36a2666c987cbd0b59e1033ad5c371aa7e024e13ac059326",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "f568985721d5c861973a59dc492a654be53f8eb648a49b898388bec9067f176a",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     },
     {
       "semanticId": "organization.scope.refusal",
@@ -869,8 +869,8 @@
         "lib/authz.ts",
         "core/system-testing-workspace.ts"
       ],
-      "reviewedSourceHash": "de3e47162fa2962243037d97f96da24d4914798a8f7fe29998b99f9e255a2811",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "6fc196927f7a8078ffb6205305fbab7c6a33cb503a4da518f1bfe925f74d08ea",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     },
     {
       "semanticId": "settings.labels.metadata",
@@ -926,8 +926,8 @@
         "lib/permissions.ts",
         "components/system-labels-grid.tsx"
       ],
-      "reviewedSourceHash": "708dcd501c2bcec17675cf644a9d1c9de4baf13068086790eaaf49754c900388",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "418eeda818d8aa842aee5ea4bbc2c5d5f20a7640daf2811e82ce603a9d2dfbc3",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     },
     {
       "semanticId": "settings.labels.collision",
@@ -982,8 +982,8 @@
         "lib/permissions.ts",
         "components/system-labels-grid.tsx"
       ],
-      "reviewedSourceHash": "a535fa0dbf0fb9cb914624964351d4fc258390e2de868a3a6c7887079b013c35",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "9b401987a475c67cb882e26fc1a61bc8111905355bf248667bf1c49ebb4656b8",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     },
     {
       "semanticId": "settings.labels.workbook",
@@ -1040,8 +1040,8 @@
         "components/system-label-import.tsx",
         "app/admin/settings/system-labels/current-data/route.ts"
       ],
-      "reviewedSourceHash": "425a8c5a898dd27a7168517bcbc9e3dbe7a4d6460b3fee13ed6964e1b6236bd6",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "1e19f7775b1cb93b7fb9e2d1561c493e61b0f24b5121838f8530eaf8ba96bf6d",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     },
     {
       "semanticId": "workflow.approvals.own",
@@ -1098,8 +1098,8 @@
         "lib/authz.ts",
         "core/system-testing-workspace.ts"
       ],
-      "reviewedSourceHash": "832a18c282836a369389c7061b7312b92da406db512b36166c6849a60dc99044",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "43a8717f745b09520c198ad431e2b36eb5ade772084113f5371b202b831f40e6",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     },
     {
       "semanticId": "workflow.approvals.history",
@@ -1157,8 +1157,8 @@
         "components/leave/own-leave-history.tsx",
         "core/read.ts"
       ],
-      "reviewedSourceHash": "ed230e904589e4a6071c954ba1b6ce5c0372dae5e59700215b346e0432dc37ea",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "f8e667f5a325540e43e393a20698f8090c8b250342d93c37f55f3fc6db88d00d",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     },
     {
       "semanticId": "workflow.approvals.empty",
@@ -1214,8 +1214,8 @@
         "lib/approvals-categories.ts",
         "lib/authz.ts"
       ],
-      "reviewedSourceHash": "0e59329e96bdf139cc34cbdf70d5a232e191ba7f581b821f75412d88383763e8",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "29782f0556d5a189151884e785158c67cc4a2117a151474406da033fc37a2f74",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     },
     {
       "semanticId": "statutory.company.reopen",
@@ -1272,8 +1272,8 @@
         "core/statutory-authority.ts",
         "components/statutory-setup-screen.tsx"
       ],
-      "reviewedSourceHash": "d516ac95e2e788d288fd638ccd113a67616c345b5a802b048503177d26361985",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "fa99c7c67cb34290bfcd52f0a6673a08ac1ac606dbbac2013b6b85516843fdf7",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     },
     {
       "semanticId": "statutory.forms.scope",
@@ -1331,8 +1331,8 @@
         "app/payroll/borang-a/shared.ts",
         "core/reporting.ts"
       ],
-      "reviewedSourceHash": "f0ad9cb76723621f62c68c49c59bd8d053c3668d18e64c163f598d63fa05e487",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "46cf2bbe8cef290a2dde0e9a3260de2fc1f378c4176683711d946d1a36a2deb6",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     },
     {
       "semanticId": "payment.submission.review",
@@ -1390,8 +1390,8 @@
         "app/payroll/borang-a/shared.ts",
         "app/payroll/payment-submission/download-dialog.tsx"
       ],
-      "reviewedSourceHash": "777ce2062e0e45a91ac9c2f7e1c76de7022f05ea181e4e594bb69e659a94dedb",
-      "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
+      "reviewedSourceHash": "7503fb90ba7aea283d75c49946f581fb81c9b6c5ad159b836f0f4c107014bf41",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     },
     {
       "semanticId": "personnel.own-profile.mixed-save",
@@ -1474,8 +1474,8 @@
         "lib/profile-edit-policy-value.ts",
         "lib/personnel-field-label.ts"
       ],
-      "reviewedSourceHash": "74bba2f567fa6051a1b426ac057e792e26f86d71437cb32bb9a42142ffd5a701",
-      "reviewNote": "Source-to-guide semantic review completed for this bounded implemented journey at 66dcb71a81b7ac53b2783426c202603d7e751f2f. Actual execution remains required. Source review establishes neither a manual pass, service arrival nor complete functional coverage."
+      "reviewedSourceHash": "205c0e5e5559b259fcd6f0360526c7d01990c02a751478eceb839e2acf13a4b2",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     },
     {
       "semanticId": "settings.testing.independent-observations",
@@ -1563,8 +1563,8 @@
         "lib/system-testing/read-boundary.ts",
         "lib/hr-date.ts"
       ],
-      "reviewedSourceHash": "6957d078d11c41970de402e52da4589089fde7815a8d24fee47012dfcac8ca2c",
-      "reviewNote": "Source-to-guide semantic review completed for this bounded implemented journey at 66dcb71a81b7ac53b2783426c202603d7e751f2f. Actual execution remains required. Source review establishes neither a manual pass, service arrival nor complete functional coverage."
+      "reviewedSourceHash": "4f0ee967c7b4fd43c4b776dd4d48f77ff6ce077137b1bf46f6fd743596c7bb60",
+      "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
     }
   ]
 }
