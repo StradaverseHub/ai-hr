@@ -582,6 +582,29 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
   /** A kind the tag may legitimately name: a built-in, or one of this tenant's configured codes. */
   const knownKind = (v: string | undefined): v is string => !!v && (isKnownKind(v) || tenantCodes.has(v));
 
+  // Older comparison tags did not freeze their entered day. A flat/grade primary can recover it
+  // only from a uniquely dated companion in its own immutable group, never an unrelated later move.
+  const groupDates = new Map<string, Set<string>>();
+  for (const event of events) {
+    const tag = tagOf(event), payload = event.payload;
+    if (!tag?.groupId || !payload || typeof payload !== 'object' || Array.isArray(payload)) continue;
+    const dateKey = event.eventType === 'compensation.set' ? 'effectiveFrom'
+      : event.eventType === 'reporting-line.set' ? 'validFrom'
+      : ['assignment.transferred', 'employment.assignment.changed', 'employment.company.transferred'].includes(event.eventType)
+        ? 'effectiveDate' : null;
+    if (!dateKey || (event.eventType === 'reporting-line.set' && 'lineType' in payload && payload.lineType === 'delegate')) continue;
+    const date: unknown = Reflect.get(payload, dateKey);
+    if (typeof date !== 'string' || !isCalendarDate(date)) continue;
+    const dates = groupDates.get(tag.groupId) ?? new Set<string>();
+    dates.add(date); groupDates.set(tag.groupId, dates);
+  }
+  const comparisonEffectiveDate = (tag: MovementTag | null, occurrence: string): string => {
+    if (typeof tag?.effectiveDate === 'string' && isCalendarDate(tag.effectiveDate)) return tag.effectiveDate;
+    const dates = tag?.groupId ? groupDates.get(tag.groupId) : null;
+    // Conflicting/missing legacy evidence is unknown: retain its historical occurrence fallback.
+    return dates?.size === 1 ? dates.values().next().value ?? occurrence : occurrence;
+  };
+
   let sawHiredEvent = false;
   const rows: ProjectedRow[] = [];
   /** 66a63bd6 — movement id → the rollback that undid it. Applied after the loop: the reversal event is
@@ -693,7 +716,7 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
         rows.push({
           ...base,
           kind: mv.type,
-          effectiveDate: occDate,
+          effectiveDate: comparisonEffectiveDate(mv, occDate),
           endDate: mv?.endDate ?? null,
           remarks: mv?.remarks ?? null,
         });
@@ -739,7 +762,7 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
                   ? ((after.hiredOn as string | null) ?? occDate)
                   : kind==='probationExtension'&&typeof mv?.effectiveDate==='string'&&isCalendarDate(mv.effectiveDate)
                     ? mv.effectiveDate
-                    : occDate;
+                    : comparisonEffectiveDate(mv, occDate);
         const endDate =
           kind === 'probationExtension'
             ? ((after.extendedConfirmationDate as string | null) ?? mv?.endDate ?? null)
@@ -1944,7 +1967,7 @@ async function applyComparisonMovementTx(
     const tag = (opts: { withRemarks: boolean }): MovementTag => {
       // 476f23ed — the TAG carries the catalogue code (what the organisation calls this event); `kind`
       // carries the behaviour that just ran. They are identical for every built-in type.
-      const t: MovementTag = { type: p.typeCode ?? kind, groupId };
+      const t: MovementTag = { type: p.typeCode ?? kind, groupId, effectiveDate: p.effectiveDate };
       // ADR-0030 redact-to-reference: comp events never carry remark text — it lives on the comp row.
       if (opts.withRemarks) {
         t.remarks = remarks;
@@ -1985,12 +2008,10 @@ async function applyComparisonMovementTx(
      * 3ced1040 — a CONFIRMATION runs its info leg FIRST, so that leg (and not whichever other one happens
      * to come first) takes the primary tag and owns the history row.
      *
-     * This is not cosmetic. The row's Effective Date is read off the PRIMARY event, and only this leg
-     * carries the confirmation date. `employment.grade.changed` is not effective-dated at all — the
-     * projection falls back to the day it was KEYED — so a confirmation that also moved job grade would
-     * put today's date on the very row that exists to record the confirmation date. Hoisting the leg
-     * that knows the date is the whole fix, and it is scoped to this kind: for every other comparison
-     * kind an info leg projects the keyed date too, so leading with it would move the same fault around.
+     * Keep Confirmation's historical primary identity: the info leg owns the confirmation date.
+     * Every comparison leg now also freezes the entered effective day in its movement tag, so a grade
+     * or flat-column primary no longer substitutes the day HR keyed a backdated movement. The leg
+     * ordering and primary/secondary grouping remain unchanged.
      */
     if (confirmationChanged) await infoLeg();
 

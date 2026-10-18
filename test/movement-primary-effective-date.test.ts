@@ -71,6 +71,14 @@ describe('comparison Movement effective date is independent of its primary leg',
   const before=await snapshot(first.id),event=before.events.find(row=>row.eventType==='employment.grade.changed'&&typeof row.payload==='object'&&row.payload!==null&&'movement' in row.payload&&JSON.stringify(row.payload).includes(legacyGroup))!;
   expect((await movementHistory(first.ctx,first.id)).find(row=>row.id===event.id)?.effectiveDate).toBe(todayInKualaLumpur(event.occurredAt));expect(await snapshot(first.id)).toEqual(before);
  });
+ it('keeps an entered comparison day when the flat info leg rather than grade owns the history row',async()=>{
+  const {id,ctx}=await hire();
+  await createMovementEvent(ctx,{employmentId:id,kind:'promotion',effectiveDate:day(-6),orgDivision:'Retail',basicSalary:3500});
+  const before=await snapshot(id),[promotion]=(await movementHistory(ctx,id)).filter(row=>row.kind==='promotion');
+  expect(before.events.find(row=>row.id===promotion.id)?.eventType).toBe('employment.info.updated');expect(promotion.effectiveDate).toBe(day(-6));
+  const detail=await movementDetail(ctx,id,promotion.id);expect(detail?.before?.salaryAmount).toBe('3000.00');expect(detail?.after.salaryAmount).toBe('3500.00');
+  expect(detail?.flatChanges).toEqual([{field:'orgDivision',before:null,after:'Retail'}]);expect(await snapshot(id)).toEqual(before);
+ });
  it('keeps occurrence fallback when a historical group has conflicting dated evidence instead of choosing one leg arbitrarily',async()=>{
   const {id,ctx,higher}=await hire(),groupId=randomUUID();
   await withTenant(ctx,async tx=>{
