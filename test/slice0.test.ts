@@ -35,7 +35,7 @@ import {requestCurrentProfileChange as requestProfileChange} from './helpers/pro
  * therefore resolve real snapshots as well. See the comment at the manager-approval test.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
@@ -2627,18 +2627,21 @@ describe('UC — performance: state machine, authz, pay seam', () => {
   });
 
   it('does not leak ratings or comp amounts into the tenant-wide event log', async () => {
-    const { eCtx, mCtx, reviewId } = await setupCycle();
+    const { eCtx, mCtx, cycleId, reviewId } = await setupCycle();
     await submitSelfReview(eCtx, { reviewId, selfRating: 3 });
     await submitManagerReview(mCtx, { reviewId, managerRating: 4, overallRating: 4, recommendedMeritPct: 7, recommendedBonus: 1500 });
     const events = await owner.db
-      .select({ payload: schema.domainEvent.payload })
+      .select({ eventType: schema.domainEvent.eventType, payload: schema.domainEvent.payload })
       .from(schema.domainEvent)
-      .where(eq(schema.domainEvent.aggregateId, reviewId));
-    const blob = JSON.stringify(events.map((e) => e.payload));
-    // no rating value (3/4), no merit %, no bonus amount in any payload
-    expect(blob).not.toMatch(/"(selfRating|managerRating|overallRating|meritPct|bonus)"/);
-    expect(blob).not.toContain('1500');
-    expect(blob).not.toContain('"7"');
+      .where(eq(schema.domainEvent.aggregateId, reviewId))
+      .orderBy(asc(schema.domainEvent.sequence), asc(schema.domainEvent.id));
+    // ADR-0015: all three actual review events carry only their cycle reference. Exact structure
+    // refuses extra scalar or nested secrets without mistaking digits in a generated UUID for pay.
+    expect(events).toStrictEqual([
+      { eventType: 'performance-review.self-submitted', payload: { cycleId } },
+      { eventType: 'performance-review.manager-submitted', payload: { cycleId } },
+      { eventType: 'performance-review.comp-recommended', payload: { cycleId } },
+    ]);
   });
 
   it('budget "consumed" reflects the true raise, not the post-enact (inflated) salary', async () => {
