@@ -13,6 +13,10 @@ export const testingSemanticId = z.string().regex(/^[a-z][a-z0-9]*(?:[._-][a-z0-
 export const testingHash = z.string().regex(/^[a-f0-9]{64}$/);
 export const testingSourceRef = z.string().regex(/^[a-f0-9]{40}$/);
 export const testingUuid = z.string().uuid();
+/** Persisted login IDs can predate RFC version/variant UUID generation (including the Demo admin).
+ * Accept canonical PostgreSQL hex UUID syntax only at account boundaries; live tenant/login/assignment
+ * checks remain authority. Generated Testing record and build IDs continue to use testingUuid. */
+export const testingAccountId = z.guid();
 /** Relative reviewed repository paths only; never a URL, a supplied filesystem target or a git ref. */
 export const testingSourcePath = z.string().max(240).regex(/^(?:app|core|lib|packs|components)\/[A-Za-z0-9_./\[\]-]+\.(?:ts|tsx|json)$/).refine(p => !p.split('/').some(s => s === '.' || s === '..' || s === ''));
 export const instructionStepSchema = z.strictObject({ id: testingSemanticId, action: text, expected: text });

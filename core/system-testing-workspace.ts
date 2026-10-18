@@ -6,7 +6,7 @@ import { appUser, feedbackRequest, testAssignment, testCase, testCaseVersion, te
 import { testingActorNamesTx } from './system-testing-actors';
 import { isAdmin } from '../lib/authz';
 import { SCREENS } from '../lib/permissions';
-import { executionInputSchema, legacyOutcomeFor, parseInstruction, parseInstructionDraft, parsePublishedInstruction, TestingRefusal, TESTING_LIMITS, testingUuid, testingHash, testingSourceRef, testingSemanticId, type ExecutionInput, type ExecutionStatus, type InstructionDefinition } from '../lib/system-testing/model';
+import { executionInputSchema, legacyOutcomeFor, parseInstruction, parseInstructionDraft, parsePublishedInstruction, TestingRefusal, TESTING_LIMITS, testingUuid, testingAccountId, testingHash, testingSourceRef, testingSemanticId, type ExecutionInput, type ExecutionStatus, type InstructionDefinition } from '../lib/system-testing/model';
 import { testingDigest } from '../lib/system-testing/hash';
 import { assertModuleEnabled } from './entitlements';
 import { submitFeedback } from './feedback';
@@ -99,7 +99,7 @@ export async function publishTestInstruction(ctx: SessionContext, p: { caseId: s
   });
 }
 export async function assignTestingCase(ctx: SessionContext, p: { caseId: string; testerUserId: string; expectedVersionId: string; active: boolean; expectedRevision: number | null }): Promise<{ assignmentId: string; revision: number }> {
-  const actor = administrator(ctx); testingUuid.parse(p.caseId); testingUuid.parse(p.testerUserId); testingUuid.parse(p.expectedVersionId);
+  const actor = administrator(ctx); testingUuid.parse(p.caseId); testingAccountId.parse(p.testerUserId); testingUuid.parse(p.expectedVersionId);
   return withTenant(ctx, async tx => {
     await libraryLock(tx, ctx);
     const c = await caseLock(tx, ctx, p.caseId);
@@ -166,7 +166,7 @@ export async function listTestingAssignments(ctx: SessionContext, p: { team?: bo
   const page = p.page ?? 1;
   if (!Number.isInteger(page) || page < 1 || page > 20000 || (p.functionKey?.length??0)>160 || (p.category?.length??0)>100 || (p.priority?.length??0)>100) throw new TestingRefusal('invalid');
   const tester = p.team ? p.testerUserId ?? null : actor;
-  if (tester) testingUuid.parse(tester);
+  if (tester) testingAccountId.parse(tester);
   return withTenant(ctx, async tx => {
     const base = assignmentRowsSql(ctx,p,tester);
     const filter = sql`WHERE (${p.status ?? null}::text IS NULL OR status=${p.status ?? null}::text)`;

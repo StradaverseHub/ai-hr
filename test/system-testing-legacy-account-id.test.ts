@@ -27,8 +27,8 @@ beforeEach(async () => {
   b = await seedBase();
   await setModule(b.tenantId, 'system_testing', 'active');
   admin = await entitledCtx(b);
-  // The same canonical provisioning owner used by db/seed.ts; no person/employment is invented
-  // to repair the account ID, and no existing identity is rewritten.
+  // Reproduce the same canonical Person/login graph as the seeded admin, without employment.
+  // The product fix neither creates nor rewrites any identity.
   const chain = await owner.db.transaction(tx => createAdminChain(tx, b.tenantId, {
     email: 'legacy-admin@testing.invalid', fullName: 'Fictional preserved HR Admin',
     appUserId: existingAccountId, withRoleAssignment: true,
