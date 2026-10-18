@@ -15,7 +15,7 @@ let b:Base;beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await
 const day=(offset:number)=>new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+offset*86400000).toISOString().slice(0,10);
 async function hire(){
  const ctx=adminCtx(b),base=await createJobGrade(ctx,{code:'BASE',name:'Original Grade'}),higher=await createJobGrade(ctx,{code:'HIGHER',name:'Higher Grade'});
- const {employmentId}=await hireEmployee(ctx,{person:{fullName:'Fictional grade anchored Movement',primaryEmail:`${randomUUID()}@fixture.test`},companyId:b.companyId,departmentId:b.deptA,gradeId:base.id,hiredOn:day(-60),employeeCode:'EMP-0004'});
+ const {employmentId}=await hireEmployee(ctx,{person:{fullName:'Fictional grade anchored Movement',primaryEmail:`${randomUUID()}@fixture.test`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',gradeId:base.id,hiredOn:day(-60),employeeCode:'EMP-0004'});
  await setCompensation(ctx,{employmentId,basicSalary:3000,effectiveFrom:day(-40)});return {id:employmentId,ctx,base,higher};
 }
 async function snapshot(id:string){return{
