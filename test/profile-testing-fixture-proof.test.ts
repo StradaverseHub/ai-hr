@@ -31,6 +31,7 @@ describe('shared Profile/Testing fixture evidence refusal',()=>{
   function driver(raw:boolean,hired='2025-01-01'){
    const query=async(parts:TemplateStringsArray)=>{
     const sql=parts.join('?');
+    if(sql.startsWith('set local '))return [];
     if(sql.includes('current_database()'))return [{database:'ai_hr_board19_profile_testing_browser',address:'127.0.0.1',port:5433,oid:'12345'}];
     if(sql.includes('full_visibility'))return [{full_visibility:true}];
     if(sql.includes('from tenant '))return [{id:'tenant',name:'Fixture'}];
