@@ -1,9 +1,10 @@
 import {randomUUID} from 'node:crypto';
 import {asc,eq,sql} from 'drizzle-orm';
 import {beforeAll,beforeEach,afterAll,describe,it,expect,vi} from 'vitest';
-import {assignment,compensation,domainEvent,employment,leaveLedger,leaveEntitlementRecalcAudit,payPeriod,payrollBatch,payslip,movementEventType} from '../db/schema';
+import {assignment,compensation,domainEvent,employment,leaveLedger,leaveEntitlementRecalcAudit,payPeriod,payrollBatch,payslip,movementEventType,systemLabelCriteriaEpoch} from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {withTenant} from '../db/client';
+import * as tenantClient from '../db/client';
 import {createCompany,createDepartment,createJobGrade} from '../core/admin';
 import {setLabelCriteriaBatch} from '../core/system-labels';
 import {createMovementEvent,movementCurrentState,movementHistory,reverseMovementEvent,applyDueMovementsTx} from '../core/movement';
@@ -23,6 +24,7 @@ const csv=(rows:(string|number)[][])=>toCsv([['employee_code','event_type','effe
 const fingerprints=(preview:MovementImportPreview)=>Object.fromEntries(preview.employees.filter(employee=>employee.fingerprint).map(employee=>[employee.employeeCode,employee.fingerprint!]));
 async function ready(text:string,selection?:number[]){return previewMovementImport(adminCtx(b),{companyId:b.companyId,csv:text,selection});}
 async function commit(text:string,preview:MovementImportPreview,acknowledgeExcluded=true){return commitMovementImport(adminCtx(b),{companyId:b.companyId,csv:text,selection:preview.selection,inputHash:preview.inputHash,fingerprints:fingerprints(preview),acknowledgeExcluded});}
+const epochs=()=>owner.db.select().from(systemLabelCriteriaEpoch).where(eq(systemLabelCriteriaEpoch.tenantId,b.tenantId)).orderBy(asc(systemLabelCriteriaEpoch.labelKind));
 async function state(id:string){return {
  employment:await owner.db.select().from(employment).where(eq(employment.id,id)).orderBy(asc(employment.id)),
  assignments:await owner.db.select().from(assignment).where(eq(assignment.employmentId,id)).orderBy(asc(assignment.id)),
@@ -33,10 +35,10 @@ async function state(id:string){return {
 };}
 describe('Movement rollback-only preview and atomic confirmation',()=>{
  it('rehearses effective-date order, excludes an invalid type, and commits only the explicitly rechecked valid sequence',async()=>{
-  const id=await hire(),before=await state(id);
+  const id=await hire(),before=await state(id),beforeEpoch=await epochs();
   const text=csv([['EMP-0004','transfer',day(-2),b.deptB,'','Later transfer'],['EMP-0004','hired',day(-3),'','','Not creatable'],['EMP-0004','promotion',day(-5),'','3500','Earlier promotion']]);
   const initial=await ready(text);expect(initial.fileErrors).toEqual([]);expect(initial.valid).toBe(2);expect(initial.excluded).toBe(1);
-  expect(initial.employees[0].rows.map(row=>row.row)).toEqual([4,3,2]);expect(await state(id)).toEqual(before);
+  expect(initial.employees[0].rows.map(row=>row.row)).toEqual([4,3,2]);expect(await state(id)).toEqual(before);expect(await epochs()).toEqual(beforeEpoch);
   const preview=await ready(text,[2,4]);expect(preview.valid).toBe(2);expect(preview.employees[0].rows.find(row=>row.row===3)?.status).toBe('excluded');
   await expect(commit(text,preview,false)).rejects.toThrow('confirm_excluded_rows');
   expect((await commit(text,preview)).imported).toBe(2);expect(await movementCurrentState(adminCtx(b),id)).toMatchObject({departmentId:b.deptB,basicSalary:'3500.00'});
@@ -146,6 +148,20 @@ describe('Movement rollback-only preview and atomic confirmation',()=>{
   expect(await owner.db.select().from(payrollBatch).where(eq(payrollBatch.id,batch.id))).toEqual(beforeBatch);expect(await owner.db.select().from(payslip).where(eq(payslip.batchId,batch.id)).orderBy(asc(payslip.id))).toEqual(beforeSlips);
   const movement=(await movementHistory(ctx,id)).find(row=>row.kind==='transfer');expect(movement).toMatchObject({payrollLocked:true,canEdit:false,canReverse:false});
   await expect(reverseMovementEvent(ctx,{employmentId:id,movementId:movement!.id,reason:'Fictional forbidden rollback'})).rejects.toThrow();
+ });
+
+ it('rolls back transactional label epochs and an actually armed audit chain during preview',async()=>{
+  const id=await hire(),before=await state(id),beforeEpoch=await epochs(),text=csv([['EMP-0004','transfer',day(-2),b.deptB,'','Armed preview audit']]);
+  const original=tenantClient.withTenant,beforeIds=new Set(before.events.map(row=>row.id));let observedChainRows=0,observedEpochChange=false;
+  const intercepted:typeof original=async<T>(ctx:tenantClient.SessionContext,fn:(tx:tenantClient.Tx)=>Promise<T>,options?:{readOnlySnapshot:true})=>original(ctx,async tx=>{
+   await tx.execute(sql`select set_config('app.audit_hash_chain','on',true)`);
+   try{return await fn(tx);}catch(error){
+    const rows=await tx.select({id:domainEvent.id,chainSeq:domainEvent.chainSeq}).from(domainEvent).where(eq(domainEvent.subjectEmploymentId,id));observedChainRows+=rows.filter(row=>!beforeIds.has(row.id)&&row.chainSeq!==null).length;
+    const currentEpoch=await tx.select().from(systemLabelCriteriaEpoch).where(eq(systemLabelCriteriaEpoch.tenantId,b.tenantId)).orderBy(asc(systemLabelCriteriaEpoch.labelKind));observedEpochChange=JSON.stringify(currentEpoch)!==JSON.stringify(beforeEpoch);throw error;
+   }
+  },options);
+  const spy=vi.spyOn(tenantClient,'withTenant').mockImplementation(intercepted);
+  try{const preview=await ready(text);expect(preview.valid).toBe(1);expect(observedChainRows).toBeGreaterThan(0);expect(observedEpochChange).toBe(true);expect(await state(id)).toEqual(before);expect(await epochs()).toEqual(beforeEpoch);}finally{spy.mockRestore();}
  });
  it('rolls back on an unexpected database refusal during preview, never retaining successful earlier row legs',async()=>{
   const id=await hire(),before=await state(id);const text=csv([['EMP-0004','promotion',day(-5),'','3500',''],['EMP-0004','transfer',day(-2),b.deptB,'','']]);
