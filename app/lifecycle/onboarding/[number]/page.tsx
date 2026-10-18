@@ -26,9 +26,10 @@ export default async function OnboardingCasePage({ params, searchParams }: { par
   const yes = t('common.yes'); const no = t('common.no');
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <PageHeader title={`${c.number} · ${c.fullName}`} back={{ href: '/lifecycle/onboarding', label: t('onboarding.title') }}
+      <PageHeader title={`${c.number} · ${c.fullName}`} back={{ href: '/lifecycle/onboarding/legacy', label: t('onboarding.legacyTitle') }}
         description={`${c.jobTitle ?? ''}${c.department ? ` · ${c.department}` : ''}`}
         actions={<><Pill value={c.status} label={t(`status.${c.status}`)} /><ProgressBar percent={data.progress.percent} label={t('case.progress')} /></>} />
+      <p className="rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">{t('onboarding.legacyHint')}</p>
       <ErrorBanner message={error} />
       <LifecycleTabs level={level} active="onboarding" />
 
@@ -101,7 +102,7 @@ export default async function OnboardingCasePage({ params, searchParams }: { par
             <form action={reopenCaseAction}><input type="hidden" name="kind" value="onboarding" /><input type="hidden" name="number" value={c.number} /><Button type="submit" size="sm" variant="outline">{t('case.reopen')}</Button></form>
           )}
           {c.cancelReason && <p className="text-xs text-muted-foreground">{t('common.reason')}: {c.cancelReason}</p>}
-          <Link href="/lifecycle/onboarding" className="text-xs text-muted-foreground hover:text-foreground">← {t('onboarding.title')}</Link>
+          <Link href="/lifecycle/onboarding/legacy" className="text-xs text-muted-foreground hover:text-foreground">← {t('onboarding.legacyTitle')}</Link>
         </aside>
       </div>
     </div>

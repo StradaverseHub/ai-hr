@@ -13,3 +13,5 @@ export * from '../../core/lifecycle-worklist';
 export * from '../../core/lifecycle-export';
 export * from '../../core/lifecycle-rules';
 export * from '../../core/lifecycle-defaults';
+
+export * from './onboarding/service';

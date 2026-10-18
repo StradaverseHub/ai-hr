@@ -226,6 +226,15 @@ type Spec = {
 // Recipient defaults to the event's subjectEmploymentId. Keep titles/bodies short; deep-link into the
 // app where the full, gated detail lives.
 const REGISTRY: Record<string, Spec | Spec[]> = {
+  'onboarding.digest': {
+    kind:'onboarding.digest',category:'onboarding',
+    recipients:async(tx,ev,payload)=>{
+      if(typeof payload?.recipientUserId!=='string'||typeof payload?.caseId!=='string')return [];
+      const result=await tx.execute(sql`select * from app.onboarding_mail_recipient(${payload.caseId}::uuid,${payload.recipientUserId}::uuid) as employment_id`);
+      return (result as unknown as {employment_id:string}[]).map(row=>row.employment_id);
+    },
+    render:()=>({severity:'info',title:'Your daily onboarding digest',body:'Review your assigned onboarding work, approvals and conversations.',linkPath:'/tasks'}),
+  },
   'assessment.reminder-queued': {
     kind:'performance.reminder',category:'performance',
     recipients:(tx,ev)=>assessmentReminderRecipientsTx(tx,ev.aggregateId),
