@@ -136,14 +136,17 @@ describe('accessible count label: nav.approvalsCount', () => {
   });
 
   it('the rail composes it into the row aria-label when items are pending', () => {
-    expect(sidebar).toContain("t('approvalsCount', { count: approvalCount })");
+    expect(sidebar.match(/const rowCount = item.href === '\/tasks' \? taskCount : approvalCount;/g)).toHaveLength(2);
+    expect(sidebar.match(/t\('approvalsCount', \{ count: rowCount \}\)/g)).toHaveLength(2);
     expect(sidebar).toContain('aria-label={showApprovalCount ?');
   });
 });
 
 describe('the count is the viewer\'s own pending queue, computed once', () => {
   it('the layout passes listPendingTasks(...).length — no second query', () => {
-    expect(layout).toContain('approvalCount={pendingTasks.length}');
+    expect(layout).toContain('const legacyApprovalCount = approvalTasks.length;');
+    expect(layout).toContain('approvalCount={legacyApprovalCount}');
+    expect(layout).not.toContain('approvalCount={pendingTasks.length}');
     // The value it reuses is still the same single call already made for the bell.
     //
     // r292 UPDATED, NOT LOOSENED. Module gating gave listPendingTasks a third argument (the resolved
@@ -152,7 +155,7 @@ describe('the count is the viewer\'s own pending queue, computed once', () => {
     // always "exactly ONE call, and the count reuses it". That is now asserted directly by counting CALL
     // sites rather than matching one argument list, which is both stronger and immune to the next
     // argument change. Do not weaken this to "contains listPendingTasks".
-    expect(layout).toContain('const pendingTasks = await listPendingTasks(session, scopeIds,');
+    expect(layout).toContain('const approvalTasks = await listPendingTasks(session, scopeIds,');
     const callSites = layout.split('await listPendingTasks(').length - 1;
     expect(callSites, 'exactly one listPendingTasks call in the root layout').toBe(1);
   });
@@ -162,11 +165,16 @@ describe('the count is the viewer\'s own pending queue, computed once', () => {
     // approval records. The nav badge is strictly approval items.
     expect(layout).toContain('taskCount={pendingTasks.length + taskNotifCount}');
     expect(layout).not.toContain('approvalCount={pendingTasks.length + taskNotifCount}');
+    // Onboarding work joins My tasks/the bell, never the legacy Approval Items count.
+    expect(layout).toContain('const pendingTasks:NotificationTaskItem[]=[...approvalTasks,...onboardingQueue.map(onboardingNotificationTask)];');
+    expect(layout).toContain('taskCount={pendingTasks.length}');
   });
 
-  it('the rail renders the badge on the /approvals row only, gated on a positive count', () => {
-    expect(sidebar).toContain("const showApprovalCount = item.href === '/approvals' && approvalCount > 0");
-    expect(sidebar).toContain('<ApprovalCountBadge count={approvalCount} collapsed={collapsed} />');
+  it('each work row renders its own count only when positive', () => {
+    expect(sidebar.match(/const showApprovalCount = \(item.href === '\/approvals' \|\| item.href === '\/tasks'\) && rowCount > 0;/g)).toHaveLength(2);
+    expect(sidebar).toContain('<ApprovalCountBadge count={rowCount} collapsed={collapsed} />');
+    expect(sidebar).toContain("(item.href === '/approvals' && approvalCount > 0 || item.href === '/tasks' && taskCount > 0)");
+    expect(sidebar).toContain("<ApprovalCountBadge count={item.href === '/tasks' ? taskCount : approvalCount} collapsed={false} />");
     expect(sidebar).toContain("from '@/components/approval-count-badge'");
     // The collapsed-rail bubble is absolutely positioned, so its row needs a positioned ancestor.
     expect(sidebar).toContain("showApprovalCount && 'relative'");
