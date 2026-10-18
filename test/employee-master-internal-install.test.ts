@@ -1,6 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {readFileSync} from 'node:fs';
-import {installedWebPrincipal,installedInternalConfiguration,internalReportSenderDatabase,internalReportRunnerDatabase,internalReportRunnerEnvironment,internalReportSenderGrants,forbiddenSenderFunctionsSql} from '../deploy/identity-email/internal-report-install-model';
+import {installedWebPrincipal,installedInternalConfiguration,internalReportSenderDatabase,internalReportRunnerDatabase,internalReportRunnerEnvironment,parseInternalReportRunnerEnvironment,assertInternalReportSchedulingEnabled,internalReportSenderGrants,forbiddenSenderFunctionsSql} from '../deploy/identity-email/internal-report-install-model';
 import {employeeMasterDeliverySocket} from '../lib/employee-master-delivery-ipc';
 import {reportRenderOrigin} from '../deploy/identity-email/render-config';
 const source=(name:string)=>readFileSync(new URL('../deploy/identity-email/'+name,import.meta.url),'utf8');
@@ -11,7 +11,7 @@ describe('internal report installation boundaries',()=>{
   expect(employeeMasterDeliverySocket({AUTH_PROVIDER:'internal',IDENTITY_EMAIL_SOCKET:'/run/old-external.sock'})).toBe('/run/aihr-internal-report.sock');expect(employeeMasterDeliverySocket({AUTH_PROVIDER:'keycloak',IDENTITY_EMAIL_SOCKET:'/run/old-external.sock'})).toBe('/run/old-external.sock');expect(employeeMasterDeliverySocket({})).toBe('/run/aihr-identity-email.sock');
  });
  it('takes fixed non-root already-running principal and canonical current internal configuration',()=>{
-  expect(installedWebPrincipal(principal)).toEqual(principal);expect(installedInternalConfiguration(env)).toEqual({origin:env.AUTH_PUBLIC_ORIGIN,key:env.AUTH_SESSION_KEY,database:env.DATABASE_URL});
+  expect(installedWebPrincipal(principal)).toEqual(principal);expect(installedInternalConfiguration(env)).toEqual({origin:env.AUTH_PUBLIC_ORIGIN,key:env.AUTH_SESSION_KEY,database:env.DATABASE_URL,scheduledEmailEnabled:false});
  });
  it.each([{uid:0},{gid:0},{pid:0},{dynamicUser:'yes'},{unit:'../../other.service'},{user:'root user'}])('refuses ambiguous/root/dynamic identity %j',change=>expect(()=>installedWebPrincipal({...principal,...change})).toThrow());
  it.each([{AUTH_PROVIDER:'keycloak'},{AUTH_SESSION_KEY:'bad'},{AUTH_PUBLIC_ORIGIN:'http://report-acceptance.invalid'},{MIGRATION_DATABASE_URL:'postgres://owner:secret@127.0.0.1/db'},{DATABASE_URL:'postgres://owner:secret@127.0.0.1:5432/ai_hr_report_delivery_acceptance'}])('refuses provider/key/owner substitute %j',change=>expect(()=>installedInternalConfiguration({...env,...change})).toThrow());
@@ -22,8 +22,28 @@ describe('internal report installation boundaries',()=>{
  it('requires separately supplied exact-database owner and emits only shell-safe key-free runner values',()=>{
   const owner='postgres://existing_owner:fictional@127.0.0.1:5432/ai_hr_report_delivery_acceptance';expect(internalReportRunnerDatabase(owner,env.DATABASE_URL).username).toBe('existing_owner');
   for(const bad of [env.DATABASE_URL,owner.replace('existing_owner','aihr_identity_email'),owner.replace('5432','5433'),owner+'?options=-crole%3Dpostgres'])expect(()=>internalReportRunnerDatabase(bad,env.DATABASE_URL)).toThrow();
-  const content=internalReportRunnerEnvironment({origin:env.AUTH_PUBLIC_ORIGIN,appDatabase:env.DATABASE_URL,ownerDatabase:owner});expect(content).not.toContain('AUTH_SESSION_KEY');expect(content.split('\n').filter(Boolean).map(line=>line.split('=')[0])).toEqual(['AUTH_PROVIDER','AUTH_PUBLIC_ORIGIN','DATABASE_URL','MIGRATION_DATABASE_URL','NODE_ENV','TZ','HOME','PATH','LANG']);
-  const tricky=internalReportRunnerEnvironment({origin:env.AUTH_PUBLIC_ORIGIN,appDatabase:env.DATABASE_URL,ownerDatabase:owner+"'$()`"});expect(tricky).toContain("'\\''");expect(tricky).toContain('$()`');
+  const content=internalReportRunnerEnvironment({origin:env.AUTH_PUBLIC_ORIGIN,appDatabase:env.DATABASE_URL,ownerDatabase:owner,scheduledEmailEnabled:false});expect(content).not.toContain('AUTH_SESSION_KEY');expect(content.split('\n').filter(Boolean).map(line=>line.split('=')[0])).toEqual(['AUTH_PROVIDER','AUTH_PUBLIC_ORIGIN','DATABASE_URL','MIGRATION_DATABASE_URL','EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED','NODE_ENV','TZ','HOME','PATH','LANG']);
+  const tricky=internalReportRunnerEnvironment({origin:env.AUTH_PUBLIC_ORIGIN,appDatabase:env.DATABASE_URL,ownerDatabase:owner+"'$()`",scheduledEmailEnabled:false});expect(tricky).toContain("'\\''");expect(tricky).toContain('$()`');
+ });
+ it.each([undefined,'false','TRUE','1',' true','true ','true'])('derives scheduling only from exact actual-web value %s',value=>{
+  expect(installedInternalConfiguration({...env,EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED:value}).scheduledEmailEnabled).toBe(value==='true');
+ });
+ it.each([false,true])('roundtrips the required typed capability %s through the closed canonical writer',enabled=>{
+  const input={origin:env.AUTH_PUBLIC_ORIGIN,appDatabase:env.DATABASE_URL,ownerDatabase:env.DATABASE_URL.replace('ai_hr_app','fixture_owner'),scheduledEmailEnabled:enabled};
+  const raw=internalReportRunnerEnvironment(input),parsed=parseInternalReportRunnerEnvironment(Buffer.from(raw));
+  expect(parsed.EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED).toBe(String(enabled));expect(Object.keys(parsed)).toHaveLength(10);
+  const web=installedInternalConfiguration({...env,EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED:String(enabled)});
+  if(enabled)expect(()=>assertInternalReportSchedulingEnabled(web,raw)).not.toThrow();else expect(()=>assertInternalReportSchedulingEnabled(web,raw)).toThrow(/held/);
+  for(const patch of [undefined,'true','false',1,null])expect(()=>Reflect.apply(internalReportRunnerEnvironment,null,[{...input,scheduledEmailEnabled:patch}])).toThrow('typed');
+  for(const value of ['', 'TRUE','1',' true','true '])expect(()=>parseInternalReportRunnerEnvironment(raw.replace(`EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED='${enabled}'`, `EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED='${value}'`))).toThrow();
+  for(const invalid of [raw.replace(/^EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED=.*\n/m,''),raw+"EXTRA='false'\n",raw+"EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED='true'\n",raw.replace("TZ='UTC'","TZ='UTC' #comment"),raw.replace("HOME='/nonexistent'","HOME='/root'"),raw.replace("NODE_ENV='production'","NODE_ENV='development'"),raw.replace(/^AUTH_PUBLIC_ORIGIN=.*$/m,"AUTH_PUBLIC_ORIGIN=''"),raw.slice(0,-1),'x'.repeat(16385)])expect(()=>parseInternalReportRunnerEnvironment(invalid)).toThrow();
+  expect(()=>parseInternalReportRunnerEnvironment(new Uint8Array([255]))).toThrow();
+ });
+ it('refuses a held web, a stale held runner, or a different installed profile even when the caller opts in',()=>{
+  const web=installedInternalConfiguration({...env,EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED:'true'}),input={origin:web.origin,appDatabase:web.database,ownerDatabase:web.database.replace('ai_hr_app','fixture_owner'),scheduledEmailEnabled:true};
+  expect(()=>assertInternalReportSchedulingEnabled({...web,scheduledEmailEnabled:false},internalReportRunnerEnvironment(input))).toThrow('held');
+  expect(()=>assertInternalReportSchedulingEnabled(web,internalReportRunnerEnvironment({...input,scheduledEmailEnabled:false}))).toThrow('held');
+  for(const patch of [{origin:'https://other.invalid'},{appDatabase:input.appDatabase.replace('5432','5433')},{ownerDatabase:input.appDatabase}])expect(()=>assertInternalReportSchedulingEnabled(web,internalReportRunnerEnvironment({...input,...patch}))).toThrow();
  });
  it('validates key-free renderer origin without calling Auth configuration',()=>{
   expect(reportRenderOrigin(env.AUTH_PUBLIC_ORIGIN)).toBe(env.AUTH_PUBLIC_ORIGIN);for(const url of ['http://fixture.invalid','https://user:password@fixture.invalid','https://fixture.invalid/path','https://fixture.invalid?issuer=other','https://fixture.invalid#x'])expect(()=>reportRenderOrigin(url)).toThrow();
@@ -31,7 +51,8 @@ describe('internal report installation boundaries',()=>{
  it('revokes existing direct report authority and tests effective inherited/PUBLIC and generic Auth authority',()=>{
   expect(internalReportSenderGrants.join(';')).toContain('REVOKE EXECUTE ON FUNCTION identity_email.report_target');expect(internalReportSenderGrants.join(';')).toContain('identity_email.start_report');expect(internalReportSenderGrants.join(';')).toContain('identity_email.finish_report');
   expect(forbiddenSenderFunctionsSql).toContain('has_function_privilege');expect(forbiddenSenderFunctionsSql).toContain("internal_auth_%");expect(forbiddenSenderFunctionsSql).toContain('internal_report_context');
-  const install=source('upgrade-internal-reports.ts');expect(install).toContain("'/proc/'+principal.pid+'/environ'");expect(install).toContain("show('MainPID')");expect(install).toContain('forbiddenSenderFunctionsSql');expect(install).toContain('has_table_privilege');expect(install).not.toContain('usermod');
+  const install=source('upgrade-internal-reports.ts');expect(install).toContain("'/proc/'+principal.pid+'/environ'");expect(install).toContain("show('MainPID')");expect(install).toContain('forbiddenSenderFunctionsSql');expect(install).toContain('has_table_privilege');expect(install).not.toContain('usermod');expect(install).toContain('scheduledEmailEnabled:web.scheduledEmailEnabled');
+  const privateWorkers=install.split('\n').filter(line=>/changes.push.*\/(broker|sender|renderer)\.env/.test(line));expect(privateWorkers).toHaveLength(3);for(const line of privateWorkers)expect(line).not.toMatch(/scheduledEmailEnabled|EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED/);
  });
  it('keeps external renderer socket default0600 and only reviewed internal bundle installs0660 client group',()=>{
   expect(source('aihr-report-renderer.socket')).toContain('SocketMode=0600');expect(source('build-internal-reports.ts')).toContain('SocketGroup=aihr-report-clients');expect(source('build-internal-reports.ts')).toContain('SocketMode=0660');
