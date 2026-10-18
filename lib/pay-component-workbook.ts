@@ -251,7 +251,8 @@ export async function buildPayItemWorkbook(vocabulary: PayItemVocabulary): Promi
     validations.unshift('<dataValidation type="textLength" operator="lessThanOrEqual" allowBlank="0" showErrorMessage="1" errorStyle="stop" sqref="A3:A502"><formula1>20</formula1></dataValidation>');
     if (!xml.includes('<cols>')) xml = xml.replace('<sheetData>', layout.cols + '<sheetData>');
     const extras = layout.conditionalFormatting + `<dataValidations count="${validations.length}">${validations.join('')}</dataValidations>`;
-    xml = xml.replace(/(<mergeCells[\s\S]*?<\/mergeCells>)/, '$1' + extras);
+    // Insert literally: replacement strings reinterpret absolute Excel references such as $10 as $1.
+    xml = xml.replace(/<mergeCells[\s\S]*?<\/mergeCells>/, mergeCells => mergeCells + extras);
     zip.file(part, xml);
   }
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
