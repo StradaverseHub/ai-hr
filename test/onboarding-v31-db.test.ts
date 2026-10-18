@@ -2,9 +2,9 @@ import { afterAll, beforeEach, describe, it, expect } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
-import { saveEmployeeDraft, discardEmployeeDraft } from '../core/employee-draft';
+import { saveEmployeeDraft, discardEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft';
 import { hireEmployee } from '../core/org';
-import { onboardingSetup, onboardingContext, onboardingList, onboardingDetail, onboardingCommand, onboardingSaveConfig, onboardingTasks, onboardingNote, sweepOnboarding, onboardingNotices, onboardingReadNotice, createOnboardingCase, caseHistory } from '../packs/lifecycle/service';
+import { onboardingSetup, onboardingContext, onboardingList, onboardingDetail, onboardingCommand, onboardingSaveConfig, onboardingTasks, onboardingNote, sweepOnboarding, onboardingNotices, onboardingReadNotice, createOnboardingCase, caseHistory, refreshOnboardingPersonnel, onboardingRequisitions } from '../packs/lifecycle/service';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { dayDate } from '../lib/onboarding-model';
@@ -48,6 +48,74 @@ describe('V3.1 onboarding database and authorization', () => {
         expect(await onboardingList(admin)).toHaveLength(1);
         expect((await onboardingList(admin))[0]!.case.source.fullName).toBe('Updated Hire');
     });
+    it('preserves the same case when Personnel activates its draft', async () => {
+        const saved = await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Activation Hire', employeeCode: 'ONB-ACT-1', primaryEmail: 'activation@test.invalid' }, employment: { companyId: b.companyId, departmentId: b.deptA, positionId: b.positionId, employmentType: 'full_time', hiredOn: todayInKualaLumpur() }, payroll: { basicSalary: '5000' } }, currentStep: 5 });
+        const before = (await onboardingList(admin))[0]!;
+        const active = await completeEmployeeDraft(admin, saved.id);
+        const after = (await onboardingList(admin))[0]!;
+        expect(after.case).toMatchObject({ id: before.case.id, sourceDraftId: saved.id, employmentId: active.employmentId, personnelStatus: 'Active' });
+        expect(await owner.db.select().from(schema.employeeDraft).where(eq(schema.employeeDraft.id, saved.id))).toHaveLength(0);
+        expect((await owner.db.select().from(schema.lcOnboardingCaseRevision)).some(r => r.data.personnelStatus === 'Draft')).toBe(true);
+    });
+    it('links tasks when the login is created after activation without a Personnel field change', async () => {
+        const context = await onboardingContext(admin), config = structuredClone(context.config);
+        config.checklists[0]!.tasks.push({ id: 'acceptance', name: 'Device acknowledgement', by: 'joiner', group: '', method: 'manual', opens: 1, due: 1, gate: true });
+        await onboardingSaveConfig(admin, context.revision, config);
+        const saved = await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Late account hire', employeeCode: 'LATE-LOGIN-1', primaryEmail: 'late-login@test.invalid' }, employment: { companyId: b.companyId, departmentId: b.deptA, positionId: b.positionId, employmentType: 'full_time', hiredOn: todayInKualaLumpur() }, payroll: { basicSalary: '5000' } }, currentStep: 5 });
+        const active = await completeEmployeeDraft(admin, saved.id);
+        let row = (await onboardingList(admin))[0]!;
+        await onboardingCommand(admin, row.case.id, row.revision, { type: 'saveSubmit', patch: { hiring: 'new_hire', local: { supervisor: 'Manager' }, selected: ['m365'] } });
+        row = (await onboardingList(admin))[0]!;
+        expect(row.case.tasks.find(t => t.id === 'acceptance')?.assignee).toBeNull();
+        const [employee] = await owner.db.select().from(schema.employment).where(eq(schema.employment.id, active.employmentId));
+        const user = await createAppUser(b.tenantId, employee!.personId, 'employee');
+        await refreshOnboardingPersonnel(admin);
+        row = (await onboardingList(admin))[0]!;
+        expect(row.case.tasks.find(t => t.id === 'acceptance')).toMatchObject({ assignee: user, failure: null });
+        const revision = row.revision;
+        await refreshOnboardingPersonnel(admin);
+        expect((await onboardingList(admin))[0]!.revision).toBe(revision);
+    });
+    it('keeps an incomplete join date save usable without breaking the task queue', async () => {
+        await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Unscheduled Hire' }, employment: { companyId: b.companyId } }, currentStep: 1 });
+        const row = (await onboardingList(admin))[0]!;
+        await onboardingCommand(admin, row.case.id, row.revision, { type: 'save', patch: { local: { joinDate: '12/' } } });
+        const queue = await onboardingTasks(admin);
+        expect(queue.find(t => t.kind === 'case')?.due).toBe('');
+        expect((await onboardingDetail(admin, row.case.id)).case.local.joinDate).toBe('12/');
+    });
+    it('uses approved Leave dates without reviving a cancelled child date or exposing reasons', async () => {
+        const [employee] = await owner.db.select().from(schema.employment).where(eq(schema.employment.personId, tech.personId!));
+        const due = dayDate(todayInKualaLumpur(), 8), previous = dayDate(due, -1);
+        const [leave] = await owner.db.insert(schema.leaveRequest).values({ tenantId: b.tenantId, employmentId: employee!.id, leaveTypeId: b.annualLeaveTypeId, startDate: previous, endDate: due, days: '1', status: 'approved', reason: 'PRIVATE MEDICAL DETAIL' }).returning();
+        await owner.db.insert(schema.leaveRequestDate).values([{ tenantId: b.tenantId, leaveRequestId: leave!.id, subjectEmploymentId: employee!.id, leaveDate: previous, days: '1', status: 'approved' }, { tenantId: b.tenantId, leaveRequestId: leave!.id, subjectEmploymentId: employee!.id, leaveDate: due, days: '1', status: 'cancelled' }]);
+        const availability = () => withTenant(admin, tx => tx.execute(sql `select * from app.onboarding_unavailable(array[${due}::date])`));
+        expect(await availability()).toHaveLength(0);
+        await owner.db.insert(schema.leaveRequest).values({ tenantId: b.tenantId, employmentId: employee!.id, leaveTypeId: b.annualLeaveTypeId, startDate: due, endDate: due, days: '0.5', durationType: 'half_day_am', status: 'approved', reason: 'PRIVATE MEDICAL DETAIL' });
+        const unavailable = await availability();
+        expect(unavailable).toEqual(expect.arrayContaining([expect.objectContaining({ user_id: tech.userId })]));
+        expect(JSON.stringify(unavailable)).not.toContain('PRIVATE');
+    });
+    it('hides foreign-tenant cases and labels even from another tenant administrator', async () => {
+        const row = await prepared(), foreign = await seedBase();
+        await setModule(foreign.tenantId, 'lifecycle', 'active');
+        const foreignAdmin = await entitledCtx(foreign);
+        expect(await withTenant(foreignAdmin, tx => tx.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id, row.case.id)))).toHaveLength(0);
+        const labels = await withTenant(foreignAdmin, tx => tx.execute(sql `select app.onboarding_case_labels(${row.case.id}::uuid) as labels`));
+        expect(labels[0]?.labels).toBeNull();
+        await expect(onboardingCommand(foreignAdmin, row.case.id, row.revision, { type: 'cancel', reason: 'Unauthorized' })).rejects.toThrow('not found');
+    });
+    it('counts group-backed approval load separately from explicit person decisions', async () => {
+        const context = await onboardingContext(admin), config = structuredClone(context.config);
+        config.workflows[0]!.mode = 'par';
+        config.workflows[0]!.steps.push({ id: 'person-only', label: 'Named person', type: 'person', target: tech.userId!, method: 'rr' });
+        config.catalogue[0]!.workflow = config.workflows[0]!.id;
+        await onboardingSaveConfig(admin, context.revision, config);
+        await prepared();
+        const loads = await withTenant(admin, tx => tx.execute(sql `select * from app.onboarding_assignment_loads() where user_id=${tech.userId}::uuid`));
+        expect(Number(loads[0]!.pending_approvals)).toBe(1);
+        expect(Number(loads[0]!.lifetime_approvals)).toBe(1);
+    });
     it('keeps HR-only data in a separate RLS-protected record', async () => {
         const row = await prepared();
         const visible = await onboardingDetail(tech, row.case.id, 'task');
@@ -56,6 +124,8 @@ describe('V3.1 onboarding database and authorization', () => {
         expect((await onboardingDetail(admin, row.case.id)).case.source.ic).toBe('PRIVATE-IC');
         const publicRows = await owner.db.select().from(schema.lcOnboardingCase);
         expect(JSON.stringify(publicRows)).not.toContain('PRIVATE-IC');
+        expect(JSON.stringify(await owner.db.select().from(schema.lcOnboardingCaseRevision))).not.toContain('PRIVATE-IC');
+        expect(await withTenant(tech, tx => tx.select().from(schema.lcOnboardingPrivateRevision))).toHaveLength(0);
     });
     it('allows assigned staff without module access to act but denies full onboarding pages', async () => {
         const row = await prepared();
@@ -138,6 +208,19 @@ describe('V3.1 onboarding database and authorization', () => {
         await onboardingNote(admin, row.case.id, { id: note!.id, context: 'requisition', body: '', mentions: [], deleted: true });
         const [after] = await owner.db.select().from(schema.lcOnboardingNote);
         expect(after!.data).toMatchObject({ body: 'Second version', deleted: true, revisions: [{ body: 'First version' }, { body: 'Second version' }] });
+    });
+    it('a mention grants the scoped conversation without granting full requisition access', async () => {
+        const row = await prepared();
+        await onboardingNote(admin, row.case.id, { context: 'requisition', body: 'Please reply', mentions: [other.userId!] });
+        const detail = await onboardingDetail(other, row.case.id, 'task');
+        expect(detail.canOpenRequisition).toBe(false);
+        expect(detail.case.source.email).toBeUndefined();
+        expect(detail.case.requisitions[0]!.items).toHaveLength(0);
+        expect(detail.notes.some(n => n.body === 'Please reply')).toBe(true);
+        await expect(onboardingDetail(other, row.case.id, 'requisition')).rejects.toThrow('Requisition access');
+        expect(await onboardingRequisitions(other)).toHaveLength(0);
+        await onboardingNote(other, row.case.id, { context: 'requisition', body: 'Replied without page access', mentions: [] });
+        expect((await onboardingTasks(other)).some(t => t.kind === 'mention')).toBe(false);
     });
     it('prevents a nonauthor from editing note content even through direct SQL', async () => {
         const row = await prepared();

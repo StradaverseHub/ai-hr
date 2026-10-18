@@ -52,6 +52,8 @@ CREATE OR REPLACE FUNCTION app.onboarding_participant(p_id uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM lc_onboarding_case c WHERE c.tenant_id=app.current_tenant_id() AND c.id=p_id AND (
  app.onboarding_page_access() OR
+ (jsonb_array_length(c.data->'requisitions')>0 AND EXISTS(SELECT 1 FROM lc_onboarding_config cfg WHERE cfg.tenant_id=c.tenant_id AND
+ (app.onboarding_group_member(cfg.data->>'techGroup') OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(cfg.data->'exceptions'->'groups') add_group WHERE app.onboarding_group_member(add_group))))) OR
  EXISTS(SELECT 1 FROM app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=c.tenant_id AND u.person_id::text=c.data->>'personId') OR
  EXISTS(SELECT 1 FROM jsonb_array_elements(c.data->'tasks') t WHERE t->>'assignee'=app.current_user_id()::text) OR
  EXISTS(SELECT 1 FROM jsonb_array_elements(c.data->'requisitions') r,
@@ -91,12 +93,10 @@ GRANT SELECT,INSERT,UPDATE ON lc_onboarding_seen TO ai_hr_app;
 -- A bounded public directory projection. Historical actor names remain in the case log.
 CREATE OR REPLACE FUNCTION app.onboarding_directory() RETURNS TABLE(id uuid,name text)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
- SELECT u.id,coalesce(p.full_name,'User') FROM app_user u LEFT JOIN person p ON p.id=u.person_id
+ SELECT u.id,coalesce(p.full_name,'User '||left(u.id::text,8)) FROM app_user u LEFT JOIN person p ON p.id=u.person_id
  WHERE u.tenant_id=app.current_tenant_id() AND NOT app.login_blocked(u.id)
- AND (app.onboarding_page_access() OR app.is_group_admin() OR EXISTS(
- SELECT 1 FROM lc_onboarding_config c,jsonb_array_elements(c.data->'groups') g
- WHERE c.tenant_id=app.current_tenant_id() AND (g->'members') ? app.current_user_id()::text))
- ORDER BY coalesce(p.full_name,'User'),u.id
+ AND app.current_user_id() IS NOT NULL AND NOT app.login_blocked(app.current_user_id())
+ ORDER BY coalesce(p.full_name,'User '||left(u.id::text,8)),u.id
 $$;
 REVOKE ALL ON FUNCTION app.onboarding_directory() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onboarding_directory() TO ai_hr_app;
@@ -113,7 +113,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  JOIN employment e ON e.person_id=u.person_id AND e.tenant_id=u.tenant_id
  JOIN leave_request lr ON lr.employment_id=e.id AND lr.tenant_id=e.tenant_id
  CROSS JOIN dates
- WHERE lr.duration_type='full_day' AND (
+ WHERE (
  EXISTS(SELECT 1 FROM leave_request_date ld WHERE ld.leave_request_id=lr.id AND ld.leave_date=dates.d AND ld.status='approved')
  OR (lr.status='approved' AND dates.d BETWEEN lr.start_date AND lr.end_date
  AND NOT EXISTS(SELECT 1 FROM leave_request_date ld WHERE ld.leave_request_id=lr.id)))
@@ -164,20 +164,6 @@ CREATE POLICY onb_notice_insert ON lc_onboarding_notice FOR INSERT WITH CHECK(te
 CREATE POLICY onb_notice_update ON lc_onboarding_notice FOR UPDATE USING(tenant_id=app.current_tenant_id() AND user_id=app.current_user_id()) WITH CHECK(tenant_id=app.current_tenant_id() AND user_id=app.current_user_id());
 GRANT SELECT,INSERT ON lc_onboarding_notice TO ai_hr_app;
 GRANT UPDATE(read_at) ON lc_onboarding_notice TO ai_hr_app;
---> statement-breakpoint
-CREATE OR REPLACE FUNCTION app.onboarding_mail_recipient(p_case uuid,p_user uuid) RETURNS SETOF uuid
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
- WITH target AS (
- SELECT u.id,u.person_id FROM app_user u WHERE u.id=p_user AND u.tenant_id=app.current_tenant_id() AND NOT app.login_blocked(u.id)
- AND app.is_group_admin()
- ), candidates AS (
- SELECT e.id FROM employment e JOIN target t ON t.person_id=e.person_id WHERE e.tenant_id=app.current_tenant_id()
- )
- SELECT id FROM candidates WHERE (SELECT count(*) FROM candidates)=1 AND EXISTS(
- SELECT 1 FROM lc_onboarding_notice n WHERE n.tenant_id=app.current_tenant_id() AND n.case_id=p_case AND n.user_id=p_user AND n.kind='digest' AND n.occurrence=to_char(now() AT TIME ZONE 'Asia/Kuala_Lumpur','YYYY-MM-DD'))
-$$;
-REVOKE ALL ON FUNCTION app.onboarding_mail_recipient(uuid,uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.onboarding_mail_recipient(uuid,uuid) TO ai_hr_app;
 --> statement-breakpoint
 DROP POLICY onb_config_read ON lc_onboarding_config;
 CREATE POLICY onb_config_read ON lc_onboarding_config FOR SELECT USING(tenant_id=app.current_tenant_id() AND (app.current_user_id() IS NOT NULL OR app.is_group_admin()));
@@ -237,6 +223,9 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  SELECT 1 FROM lc_onboarding_notice n WHERE n.tenant_id=app.current_tenant_id() AND n.case_id=p_case AND n.user_id=p_user AND n.kind='digest' AND n.occurrence=to_char(now() AT TIME ZONE 'Asia/Kuala_Lumpur','YYYY-MM-DD'))
 $$;
 
+REVOKE ALL ON FUNCTION app.onboarding_mail_recipient(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_mail_recipient(uuid,uuid) TO ai_hr_app;
+
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.onboarding_task_actors(p_person uuid,p_supervisor uuid)
 RETURNS TABLE(kind text,user_id uuid)
@@ -265,7 +254,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  tasks AS (SELECT c.data->>'state' AS case_state,t FROM cs c,jsonb_array_elements(c.data->'tasks') t),
  past_tasks AS (SELECT t FROM cs c,jsonb_array_elements(coalesce(c.data->'taskHistory','[]'::jsonb)) h,jsonb_array_elements(h) t),
  auto_history AS (SELECT a FROM (SELECT t FROM tasks UNION ALL SELECT t FROM past_tasks) x,jsonb_array_elements(coalesce(t->'autoAssignments','[]'::jsonb)) a),
- steps AS (SELECT c.data->>'state' AS case_state,r,i,s FROM cs c,jsonb_array_elements(c.data->'requisitions') r,jsonb_array_elements(r->'items') i,jsonb_array_elements(i->'steps') s),
+ steps AS (SELECT c.data->>'state' AS case_state,r,i,s FROM cs c,jsonb_array_elements(c.data->'requisitions') r,jsonb_array_elements(r->'items') i,jsonb_array_elements(i->'steps') s WHERE s->>'type' IN ('group','routing')),
  assigned AS (SELECT a FROM steps,jsonb_array_elements(coalesce(s->'assignments','[]'::jsonb)) a)
  SELECT u.id,
  (SELECT count(*) FROM tasks WHERE case_state='submitted' AND t->>'by'='group' AND t->>'assignee'=u.id::text AND t->>'status'<>'done'),
@@ -276,3 +265,54 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
 $$;
 REVOKE ALL ON FUNCTION app.onboarding_assignment_loads() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onboarding_assignment_loads() TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE TABLE lc_onboarding_case_revision (
+ case_id uuid NOT NULL REFERENCES lc_onboarding_case(id),revision integer NOT NULL,
+ tenant_id uuid NOT NULL REFERENCES tenant(id),company_id uuid NOT NULL REFERENCES company(id),
+ data jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(case_id,revision)
+);
+ALTER TABLE lc_onboarding_case_revision ENABLE ROW LEVEL SECURITY;
+CREATE POLICY onb_revision_read ON lc_onboarding_case_revision FOR SELECT USING(tenant_id=app.current_tenant_id() AND (app.onboarding_participant(case_id) OR app.is_admin_for(company_id)));
+CREATE POLICY onb_revision_insert ON lc_onboarding_case_revision FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND (app.onboarding_participant(case_id) OR app.is_admin_for(company_id)));
+GRANT SELECT,INSERT ON lc_onboarding_case_revision TO ai_hr_app;
+--> statement-breakpoint
+CREATE TABLE lc_onboarding_private_revision (
+ case_id uuid NOT NULL REFERENCES lc_onboarding_case(id),revision integer NOT NULL,
+ tenant_id uuid NOT NULL REFERENCES tenant(id),company_id uuid NOT NULL REFERENCES company(id),
+ data jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(case_id,revision)
+);
+ALTER TABLE lc_onboarding_private_revision ENABLE ROW LEVEL SECURITY;
+CREATE POLICY onb_private_revision_read ON lc_onboarding_private_revision FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id));
+CREATE POLICY onb_private_revision_insert ON lc_onboarding_private_revision FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id));
+GRANT SELECT,INSERT ON lc_onboarding_private_revision TO ai_hr_app;
+
+--> statement-breakpoint
+-- Names for the already-authorized case, without widening Personnel or master-data browsing rights.
+CREATE OR REPLACE FUNCTION app.onboarding_case_labels(p_case uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ WITH c AS (SELECT (data->'local')||(data->'source') AS f FROM lc_onboarding_case
+ WHERE id=p_case AND tenant_id=app.current_tenant_id() AND (app.onboarding_participant(id) OR app.is_admin_for(company_id)))
+ SELECT jsonb_strip_nulls(jsonb_build_object(
+ 'company',(SELECT legal_name FROM company,c WHERE company.tenant_id=app.current_tenant_id() AND company.id::text=c.f->>'company'),
+ 'businessGroup',(SELECT name FROM business_unit,c WHERE business_unit.tenant_id=app.current_tenant_id() AND business_unit.id::text=c.f->>'businessGroup'),
+ 'department',(SELECT name FROM department,c WHERE department.tenant_id=app.current_tenant_id() AND department.id::text=c.f->>'department'),
+ 'title',(SELECT title FROM position,c WHERE position.tenant_id=app.current_tenant_id() AND position.id::text=c.f->>'title'),
+ 'grade',(SELECT name FROM job_grade,c WHERE job_grade.tenant_id=app.current_tenant_id() AND job_grade.id::text=c.f->>'grade'),
+ 'supervisor',(SELECT p.full_name FROM employment e JOIN person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id,c WHERE e.tenant_id=app.current_tenant_id() AND e.id::text=c.f->>'supervisor')
+ )) WHERE EXISTS(SELECT 1 FROM c)
+$$;
+REVOKE ALL ON FUNCTION app.onboarding_case_labels(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_case_labels(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.onboarding_supervisors() RETURNS TABLE(id uuid,name text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT e.id,coalesce(e.employee_code||' – ','')||p.full_name||' · '||co.legal_name
+ FROM employment e JOIN person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+ JOIN company co ON co.id=e.company_id AND co.tenant_id=e.tenant_id
+ WHERE e.tenant_id=app.current_tenant_id() AND e.terminated_on IS NULL
+ AND (app.onboarding_page_access() OR app.is_group_admin()) ORDER BY p.full_name,e.employee_code,e.id
+$$;
+REVOKE ALL ON FUNCTION app.onboarding_supervisors() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_supervisors() TO ai_hr_app;

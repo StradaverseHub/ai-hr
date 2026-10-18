@@ -25,6 +25,7 @@ export const onboardingCommandSchema = z.discriminatedUnion('type', [
     z.object({ type: z.literal('saveSubmit'), patch: onboardingPatchSchema }).strict(), z.object({ type: z.literal('submit') }).strict(), z.object({ type: z.literal('cancel'), reason: z.string().min(1).max(1000), note: z.string().max(10000).optional() }).strict(), z.object({ type: z.literal('reopen') }).strict(),
     z.object({ type: z.literal('releaseClaim'), itemId: id }).strict(),
     z.object({ type: z.literal('retryApproval'), itemId: id }).strict(),
+    z.object({ type: z.literal('itemTeam'), itemId: id, group: z.string().max(100) }).strict(),
     z.object({ type: z.literal('taskGroup'), taskId: id, group: z.string().max(100) }).strict(),
     z.object({ type: z.literal('task'), taskId: id, status: z.enum(['todo', 'progress', 'done']) }).strict(),
     z.object({ type: z.literal('assignTask'), taskId: id, user: id.nullable(), roundRobin: z.boolean() }).strict(),

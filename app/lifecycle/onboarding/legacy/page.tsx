@@ -18,7 +18,7 @@ export default async function OnboardingList({ searchParams }: { searchParams: P
       <ErrorBanner message={sp.error} />
       <LifecycleTabs level={level} active="onboarding" />
       <div className="flex items-center gap-4 text-sm">
-        <Link href="/lifecycle/onboarding" className={!history ? 'font-medium' : 'text-muted-foreground hover:text-foreground'}>{t('common.active')}</Link>
+        <Link href="/lifecycle/onboarding/legacy" className={!history ? 'font-medium' : 'text-muted-foreground hover:text-foreground'}>{t('common.active')}</Link>
         {level >= LEVEL.manager && <Link href="/lifecycle/onboarding?view=history" className={history ? 'font-medium' : 'text-muted-foreground hover:text-foreground'}>{t('common.historyList')}</Link>}
         {level >= LEVEL.manager && <a className="ml-auto text-primary underline-offset-2 hover:underline" href="/lifecycle/export/onboarding">{t('common.exportCsv')}</a>}
       </div>

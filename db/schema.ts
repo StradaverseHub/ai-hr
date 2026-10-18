@@ -10487,3 +10487,11 @@ export const lcOnboardingNotice=pgTable('lc_onboarding_notice',{
  caseId:uuid('case_id').notNull().references(()=>lcOnboardingCase.id),kind:text('kind').notNull(),
  occurrence:text('occurrence').notNull(),createdAt:createdAt(),readAt:timestamp('read_at',{withTimezone:true}),
 });
+export const lcOnboardingCaseRevision=pgTable('lc_onboarding_case_revision',{
+ caseId:uuid('case_id').notNull().references(()=>lcOnboardingCase.id),revision:integer('revision').notNull(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
+ data:jsonb('data').$type<import('../lib/onboarding-model').Case>().notNull(),createdAt:createdAt(),
+},t=>[primaryKey({columns:[t.caseId,t.revision]})]);
+export const lcOnboardingPrivateRevision=pgTable('lc_onboarding_private_revision',{
+ caseId:uuid('case_id').notNull().references(()=>lcOnboardingCase.id),revision:integer('revision').notNull(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
+ data:jsonb('data').$type<typeof lcOnboardingPrivate.$inferSelect.data>().notNull(),createdAt:createdAt(),
+},t=>[primaryKey({columns:[t.caseId,t.revision]})]);

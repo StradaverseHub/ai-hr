@@ -19,7 +19,7 @@ HR-entered missing values remain local onboarding answers. There is no implicit 
 
 V3.1 uses separate storage from lc_case, lc_case_step and legacy ITR requisitions. Existing legacy cases, header approvals, asset issues, acknowledgements, employee requests, returns and offboarding retain their meanings.
 
-The persisted case is an aggregate with stable child IDs for tasks, requisition generations, items and snapshotted approval steps. Its row version and transaction lock protect concurrent changes. Requisition history remains in the aggregate; superseded task runs and acknowledgements have explicit history collections. Definition revisions are retained in an append-only configuration-history table. Notes are retained when edited or deleted. Domain events contain references, actor and action rather than copied HR field values.
+The persisted case is an aggregate with stable child IDs for tasks, requisition generations, items and snapshotted approval steps. Its row version and transaction lock protect concurrent changes. Requisition history remains in the aggregate; superseded task runs and acknowledgements have explicit history collections. Definition revisions are retained in an append-only configuration-history table. Every changed case version is archived before replacement; HR-sensitive revisions use separate immutable storage and company-aware HR RLS. Notes are retained when edited or deleted. Domain events contain references, actor and action rather than copied HR field values.
 
 Cost centre, IC and passport are stored separately under company-aware HR RLS. Task participation does not grant legacy staff privileges or Personnel draft access.
 
@@ -41,7 +41,7 @@ Recent Active joiners remain on the list for 30 days by default, with unfinished
 
 Checklist round robin checks approved full-day leave on the due date, applies the group's open-task limit and balances task count then least recent automatic assignment. Failure is stored and exposed to owners/editors; retry is explicit.
 
-Approval round robin checks leave today, avoids the requester when another candidate exists, balances pending then lifetime group approvals, then member order. It has no task workload cap. The Leave owner's per-date approval semantics are preserved; the narrow availability projection returns dates, never medical detail.
+Approval round robin checks leave today, avoids the requester when another candidate exists, balances pending then lifetime group approvals, then member order. It has no task workload cap. The Leave owner's per-date approval semantics are preserved, including cancelled child dates and approved partial-day leave; the handoff's day-level unavailable rule applies to any approved duration; the narrow availability projection returns dates, never medical detail.
 
 Item-mandatory workflows override exception settings and checkboxes. Matched nonmandatory items need no approval. Other exceptions follow their configured workflow and checkbox/always-required setting.
 

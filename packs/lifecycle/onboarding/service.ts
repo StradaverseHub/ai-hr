@@ -4,7 +4,7 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { withLifecycleTenant as withTenant } from '../../../core/module-gate';
 import { type SessionContext, type Tx } from '../../../db/client';
 import { appendEvent, actorOf } from '../../../db/events';
-import { lcOnboardingCase as cases, lcOnboardingConfig as configs, lcOnboardingPrivate as secrets, lcOnboardingNote as notes, lcOnboardingSeen as seen, employeeDraft, department, company, position, businessUnit, jobGrade, employment, person, assignment, employmentTypeEnum } from '../../../db/schema';
+import { lcOnboardingCaseRevision as revisions, lcOnboardingPrivateRevision as privateRevisions, lcOnboardingCase as cases, lcOnboardingConfig as configs, lcOnboardingPrivate as secrets, lcOnboardingNote as notes, lcOnboardingSeen as seen, employeeDraft, department, company, position, businessUnit, jobGrade, costCenter, employment, person, assignment, employmentTypeEnum } from '../../../db/schema';
 import { isModuleEnabled } from '../../../core/entitlements';
 import { todayInKualaLumpur } from '../../../lib/hr-date';
 import { visibleLabelIdsCondition } from '../../../core/system-labels';
@@ -32,7 +32,7 @@ async function actorTx(tx: Tx, ctx: SessionContext, config: M.Config, companyId?
         master: boolean;
         hr: boolean;
         name: string;
-    }>(await tx.execute(sql `select app.is_group_admin() as master, app.is_admin_for(${companyId ?? null}::uuid) as hr, coalesce(p.full_name,'User') as name from app_user u left join person p on p.id=u.person_id where u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id() and not app.login_blocked(u.id)`));
+    }>(await tx.execute(sql `select app.is_group_admin() as master, app.is_admin_for(${companyId ?? null}::uuid) as hr, coalesce(p.full_name,'User '||left(u.id::text,8)) as name from app_user u left join person p on p.id=u.person_id where u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id() and not app.login_blocked(u.id)`));
     if (!row)
         M.fail('Your login is not available.', 'forbidden');
     return { id: uid(ctx), name: row.name, module: config.access.onboarding.includes(uid(ctx)), master: row.master, hr: row.hr };
@@ -46,6 +46,8 @@ async function directoryTx(tx: Tx) {
 }
 async function environmentTx(tx: Tx, ctx: SessionContext, config: M.Config, all: M.Case[]): Promise<M.Environment> {
     const { now, today } = clock(), dates = new Set([today]);
+    for (let n = 2; n <= 31; n++)
+        dates.add(M.dayDate(today, n));
     for (const c of all) {
         for (const t of c.tasks)
             dates.add(t.dueOn);
@@ -68,7 +70,8 @@ async function environmentTx(tx: Tx, ctx: SessionContext, config: M.Config, all:
     const leave: Record<string, string[]> = {};
     for (const x of unavailable)
         (leave[x.user_id] ??= []).push(x.on_date);
-    const env: M.Environment = { now, today, id: randomUUID, nextNumber: () => M.fail('A requisition number was not reserved.'), leave, taskLoads: {}, lastTaskAssignment: {}, pendingApprovals: {}, lifetimeApprovals: {}, users: (await directoryTx(tx)).map(u => u.id) };
+    const directory = await directoryTx(tx);
+    const env: M.Environment = { now, today, userNames: Object.fromEntries(directory.map(u => [u.id, u.name])), id: randomUUID, nextNumber: () => M.fail('A requisition number was not reserved.'), leave, taskLoads: {}, lastTaskAssignment: {}, pendingApprovals: {}, lifetimeApprovals: {}, users: directory.map(u => u.id) };
     const loads = rows<{
         user_id: string;
         task_load: string;
@@ -106,7 +109,16 @@ function stripPrivate(c: M.Case) {
 async function storeTx(tx: Tx, ctx: SessionContext, row: Row, c: M.Case, hr: boolean) {
     const { value, data } = stripPrivate(c);
     jsonSize(value);
-    const updated = await tx.update(cases).set({ data: value, employmentId: c.employmentId, revision: row.revision + 1, updatedAt: new Date() }).where(and(eq(cases.id, row.id), eq(cases.revision, row.revision))).returning({ id: cases.id });
+    const [before] = await tx.select().from(cases).where(and(eq(cases.id, row.id), eq(cases.revision, row.revision))).limit(1);
+    if (!before)
+        M.fail('This case changed. Reload it before trying again.', 'conflict');
+    await tx.insert(revisions).values({ caseId: before.id, revision: before.revision, tenantId: ctx.tenantId, companyId: before.companyId, data: before.data }).onConflictDoNothing();
+    if (hr) {
+        const [previousPrivate] = await tx.select().from(secrets).where(eq(secrets.caseId, row.id));
+        if (previousPrivate)
+            await tx.insert(privateRevisions).values({ caseId: before.id, revision: before.revision, tenantId: ctx.tenantId, companyId: previousPrivate.companyId, data: previousPrivate.data }).onConflictDoNothing();
+    }
+    const updated = await tx.update(cases).set({ data: value, companyId: row.companyId, employmentId: c.employmentId, revision: row.revision + 1, updatedAt: new Date() }).where(and(eq(cases.id, row.id), eq(cases.revision, row.revision))).returning({ id: cases.id });
     if (!updated.length)
         M.fail('This case changed. Reload it before trying again.', 'conflict');
     if (hr)
@@ -118,7 +130,7 @@ export async function onboardingContext(ctx: SessionContext) {
         const all = (await tx.select({ data: cases.data }).from(cases).orderBy(asc(cases.id))).map(r => r.data);
         const environment = await environmentTx(tx, ctx, config, all);
         const current = all.filter(c => c.state !== 'cancelled');
-        return { config, revision, actor, directory: await directoryTx(tx), loads: environment.taskLoads, availability: environment.leave, totalJoiners: current.length, matchCounts: Object.fromEntries(config.catalogue.map(i => [i.id, current.filter(c => i.active && M.matches(i.rules, M.effectiveFacts(c))).length])) };
+        return { config, revision, actor, directory: await directoryTx(tx), loads: environment.taskLoads, availability: environment.leave, totalJoiners: current.length, checklistCounts: Object.fromEntries(config.checklists.map(cl => [cl.id, current.filter(c => M.matchChecklist(config, c).checklist?.id === cl.id).length])), matchCounts: Object.fromEntries(config.catalogue.map(i => [i.id, current.filter(c => i.active && M.matches(i.rules, M.effectiveFacts(c))).length])) };
     });
 }
 export async function onboardingSetup(ctx: SessionContext) {
@@ -150,7 +162,11 @@ export async function onboardingOptions(ctx: SessionContext) {
             tx.select({ id: position.id, name: position.title }).from(position).where(visibleLabelIdsCondition(position, 'position', ids)).orderBy(asc(position.title)),
             tx.select({ id: jobGrade.id, name: jobGrade.name }).from(jobGrade).orderBy(asc(jobGrade.name)),
         ]);
-        return { company: companies, department: departments, businessGroup: units, title: titles, grade: grades, employmentType: employmentTypeEnum.enumValues.map(id => ({ id, name: id.replaceAll('_', ' ') })) };
+        const supervisors = rows<{
+            id: string;
+            name: string;
+        }>(await tx.execute(sql `select * from app.onboarding_supervisors()`));
+        return { supervisor: supervisors, company: companies, department: departments, businessGroup: units, title: titles, grade: grades, employmentType: employmentTypeEnum.enumValues.map(id => ({ id, name: id.replaceAll('_', ' ') })) };
     });
 }
 export async function onboardingList(ctx: SessionContext, companyIds?: string[]) {
@@ -177,13 +193,19 @@ async function loadTx(tx: Tx, ctx: SessionContext, id: string, lock = false) {
     }
     return { row, config, actor, c };
 }
-export async function onboardingDetail(ctx: SessionContext, id: string, mode: 'case' | 'requisition' | 'task' = 'case') {
+function canReadRequisition(config: M.Config, r: M.Requisition | null, actor: M.Actor): boolean {
+    return !!r && (actor.module || actor.hr || M.inGroup(config, config.techGroup, actor.id) || config.exceptions.groups.some(g => M.inGroup(config, g, actor.id)) || r.items.some(i => M.inGroup(config, i.team, actor.id) || i.steps.some(s => s.user === actor.id || M.inGroup(config, s.group, actor.id))));
+}
+export async function onboardingDetail(ctx: SessionContext, id: string, mode: 'case' | 'requisition' | 'task' = 'case', generation?: string) {
     return withTenant(ctx, async (tx) => {
         const { row, config, actor, c } = await loadTx(tx, ctx, id);
         if (mode === 'case' && !actor.module)
             M.fail('Onboarding access is required.', 'forbidden');
         if (mode !== 'case' && !actor.module && !await participantTx(tx, id))
             M.fail('This work is not available to you.', 'forbidden');
+        const selectedReq = generation ? c.requisitions.find(r => r.id === generation) ?? null : M.currentReq(c);
+        if (mode === 'requisition' && !canReadRequisition(config, selectedReq, actor))
+            M.fail('Requisition access is required.', 'forbidden');
         const thread = await tx.select().from(notes).where(eq(notes.caseId, id)).orderBy(asc(notes.createdAt), asc(notes.id));
         let visible = c;
         if (!actor.module && mode === 'task') {
@@ -192,16 +214,35 @@ export async function onboardingDetail(ctx: SessionContext, id: string, mode: 'c
             visible.taskHistory = [];
             visible.acknowledgementHistory = [];
             visible.acknowledgement = null;
-            visible.requisitions = visible.requisitions.filter(r => !r.cancelledAt).map(r => ({ ...r, hrNote: r.items.some(i => M.inGroup(config, i.team, actor.id)) ? r.hrNote : '', items: r.items.filter(i => M.inGroup(config, i.team, actor.id) || i.steps.some(s => s.user === actor.id || M.inGroup(config, s.group, actor.id))) }));
+            visible.requisitions = visible.requisitions.filter(r => !r.cancelledAt).map(r => ({ ...r, hrNote: (r.items.some(i => M.inGroup(config, i.team, actor.id)) || config.exceptions.groups.some(g => M.inGroup(config, g, actor.id))) ? r.hrNote : '', items: r.items.filter(i => M.inGroup(config, i.team, actor.id) || i.steps.some(s => s.user === actor.id || M.inGroup(config, s.group, actor.id))) }));
             visible.local = {};
             visible.notes = '';
             visible.extras = [];
             visible.selected = [];
             const f = M.effectiveFacts(c);
             visible.source = { fullName: f.fullName, joinDate: f.joinDate, businessGroup: f.businessGroup, company: f.company, title: f.title };
-            visible.tasks = visible.tasks.filter(t => t.assignee === actor.id);
+            visible.tasks = visible.tasks.filter(t => t.assignee === actor.id || thread.some(n => n.data.context === t.id && n.data.mentions.includes(actor.id)));
         }
-        return { case: visible, revision: row.revision, config, actor, directory: await directoryTx(tx), notes: thread.map(n => n.data).filter(n => actor.module || n.by === actor.id || n.mentions.includes(actor.id) || c.tasks.some(t => t.id === n.context && t.assignee === actor.id) || n.context === 'requisition' && !!M.currentReq(c)?.items.some(i => M.inGroup(config, i.team, actor.id) || i.steps.some(s => s.user === actor.id || M.inGroup(config, s.group, actor.id)))), availability: (await environmentTx(tx, ctx, config, [c])).leave, today: todayInKualaLumpur() };
+        if (mode === 'requisition' && !actor.module && selectedReq) {
+            visible = structuredClone(c);
+            visible.tasks = [];
+            visible.taskHistory = [];
+            visible.acknowledgement = null;
+            visible.acknowledgementHistory = [];
+            visible.requisitions = [selectedReq];
+            visible.history = visible.history.filter(h => h.at >= selectedReq.createdAt && (!selectedReq.cancelledAt || h.at <= selectedReq.cancelledAt));
+        }
+        const [caseLabels] = rows<{
+            labels: Partial<Record<keyof M.Facts, string>>;
+        }>(await tx.execute(sql `select app.onboarding_case_labels(${id}::uuid) as labels`));
+        const labels = caseLabels?.labels ?? {};
+        const effective = M.effectiveFacts(c);
+        if (actor.hr && /^[0-9a-f-]{36}$/i.test(effective.costCentre)) {
+            const [cost] = await tx.select({ name: costCenter.name }).from(costCenter).where(eq(costCenter.id, effective.costCentre));
+            if (cost)
+                labels.costCentre = cost.name;
+        }
+        return { canOpenRequisition: canReadRequisition(config, M.currentReq(c), actor), labels, case: visible, revision: row.revision, config, actor, directory: await directoryTx(tx), notes: thread.map(n => n.data).filter(n => actor.module || n.by === actor.id || n.mentions.includes(actor.id) || c.tasks.some(t => t.id === n.context && t.assignee === actor.id) || n.context === 'requisition' && !!M.currentReq(c)?.items.some(i => M.inGroup(config, i.team, actor.id) || i.steps.some(s => s.user === actor.id || M.inGroup(config, s.group, actor.id)))), availability: (await environmentTx(tx, ctx, config, [c])).leave, today: todayInKualaLumpur() };
     });
 }
 const participantTx = async (tx: Tx, id: string) => rows<{
@@ -271,6 +312,10 @@ export type OnboardingCommand = {
     type: 'releaseClaim';
     itemId: string;
 } | {
+    type: 'itemTeam';
+    itemId: string;
+    group: string;
+} | {
     type: 'taskGroup';
     taskId: string;
     group: string;
@@ -321,6 +366,17 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
             case 'retryApproval':
                 M.retryApprovals(config, c, command.itemId, actor, env);
                 break;
+            case 'itemTeam': {
+                if (!actor.module || c.state !== 'submitted' || !r || r.handedAt)
+                    M.fail('Only onboarding editors can repair an open requisition team.', 'forbidden');
+                const item = r.items.find(i => i.id === command.itemId && !i.removed);
+                if (!item || item.team || !config.groups.some(g => g.id === command.group))
+                    M.fail('Choose a team for an item without a group.');
+                item.team = command.group;
+                item.claim = null;
+                M.log(c, actor, env, 'item.team_repaired', item.name);
+                break;
+            }
             case 'releaseClaim': {
                 if (c.state !== 'submitted' || !r || r.handedAt)
                     M.fail('This requisition is closed.');
@@ -387,8 +443,8 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
                 M.handover(config, c, actor, env);
                 break;
             case 'readNote':
-                if (!r || !r.items.some(i => M.inGroup(config, i.team, actor.id)))
-                    M.fail('Only the fulfilling teams acknowledge this note.', 'forbidden');
+                if (!r || !(r.items.some(i => M.inGroup(config, i.team, actor.id)) || config.exceptions.groups.some(g => M.inGroup(config, g, actor.id))))
+                    M.fail('Only the fulfilling teams or groups who can add systems acknowledge this note.', 'forbidden');
                 else {
                     r.noteAcks[actor.id] = r.noteVersion;
                     M.log(c, actor, env, 'note.read');
@@ -465,11 +521,11 @@ export async function onboardingSyncDraftTx(ctx: SessionContext, tx: Tx, draftId
         if (privateRow)
             Object.assign(c.local, privateRow.data.local);
     }
-    const old = JSON.stringify(c.source);
+    const old = JSON.stringify(Object.entries(c.source).sort());
     c.source = source;
     c.syncedAt = now;
     c.sourceVersion = draft.updatedAt.toISOString();
-    if (row && old !== JSON.stringify(stripPrivate(c).value.source) && c.state === 'submitted')
+    if (row && old !== JSON.stringify(Object.entries(stripPrivate(c).value.source).sort()) && c.state === 'submitted')
         c.reconcileNeeded = true;
     if (active) {
         c.employmentId = active.employmentId;
@@ -481,7 +537,7 @@ export async function onboardingSyncDraftTx(ctx: SessionContext, tx: Tx, draftId
     if (active)
         await assignRoleTasksTx(tx, c);
     if (row)
-        await storeTx(tx, ctx, row, c, a.hr);
+        await storeTx(tx, ctx, { ...row, companyId: draft.companyId }, c, a.hr);
     else {
         const { value, data: secretData } = stripPrivate(c);
         await tx.insert(cases).values({ id: c.id, tenantId: ctx.tenantId, companyId: draft.companyId, sourceDraftId: draftId, data: value, employmentId: c.employmentId });
@@ -548,7 +604,7 @@ export async function onboardingSaveConfig(ctx: SessionContext, revision: number
                 cl.createdAt = new Date().toISOString();
             }
         for (const w of old.workflows)
-            if (!next.workflows.some(n => n.id === w.id) && (old.catalogue.some(i => i.workflow === w.id) || old.exceptions.workflow === w.id))
+            if (!next.workflows.some(n => n.id === w.id) && (next.catalogue.some(i => i.workflow === w.id) || next.exceptions.workflow === w.id))
                 M.fail('This workflow is still used by the catalogue or exceptions.');
         const deleted = old.groups.filter(g => !next.groups.some(n => n.id === g.id));
         for (const g of deleted) {
@@ -729,6 +785,7 @@ export type OnboardingTask = {
     locked?: boolean;
     claimedBy?: string | null;
     context?: string;
+    lockReason?: string;
 };
 export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTask[]> {
     return withTenant(ctx, async (tx) => {
@@ -745,18 +802,23 @@ export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTa
                 out.push({ id: c.id + ':' + partial.kind + ':' + (partial.taskId ?? partial.noteId ?? partial.itemIds?.join(',') ?? ''), caseId: c.id, revision: row.revision, joiner: f.fullName, businessGroup: f.businessGroup, joinDate: f.joinDate, due, overdue: !!due && due < today, assigned: false, tagged: false, team: false, ...partial });
             };
             if (c.state === 'pending' && actor.module)
-                add({ kind: 'case', title: 'Submit onboarding case', due: f.joinDate ? M.dayDate(f.joinDate, -7) : '', assigned: true });
+                add({ kind: 'case', title: 'Submit onboarding case', due: M.validDate(f.joinDate) ? M.dayDate(f.joinDate, -7) : '', team: true });
             if (c.state !== 'submitted')
                 continue;
             for (const t of c.tasks) {
-                if (t.status === 'done' || t.opensOn && t.opensOn > today || t.gate && !r?.handedAt)
+                if (t.status === 'done')
                     continue;
+                const locked = !!(t.opensOn && t.opensOn > today || t.gate && !r?.handedAt), lockReason = t.gate && !r?.handedAt ? 'After Day 1 handover' : t.opensOn && t.opensOn > today ? 'Opens ' + t.opensOn.split('-').reverse().join('/') : undefined;
                 if (t.assignee === actor.id)
-                    add({ kind: t.by === 'joiner' && t.gate ? 'acknowledgement' : 'checklist', title: t.name, taskId: t.id, due: t.dueOn, status: t.status, assigned: true });
+                    add({ kind: t.by === 'joiner' && t.gate ? 'acknowledgement' : 'checklist', title: t.name, taskId: t.id, due: t.dueOn, status: t.status, assigned: true, locked, lockReason });
+                if (t.by !== 'group' && !t.assignee && t.failure && actor.module)
+                    add({ kind: 'owner', title: 'Link the Personnel account: ' + t.name, taskId: t.id, due: t.dueOn, team: true });
                 if (t.by === 'group' && !t.assignee && actor.module && (t.failure || t.dueOn <= M.dayDate(today, 8)))
-                    add({ kind: 'owner', title: 'Assign an owner: ' + t.name, taskId: t.id, due: t.dueOn });
+                    add({ kind: 'owner', title: 'Assign an owner: ' + t.name, taskId: t.id, due: t.dueOn, team: true });
             }
             if (r && !r.cancelledAt && !r.handedAt) {
+                if (actor.module && r.items.some(i => !i.removed && !i.team))
+                    add({ kind: 'owner', title: 'Choose a fulfilling team', itemIds: r.items.filter(i => !i.removed && !i.team).map(i => i.id) });
                 const actionable = r.items.filter(i => !i.removed && i.approval === 'pending' && i.steps.some(s => M.stepOpen(i, s) && s.status === 'pending' && (!s.manual || s.user) && (s.user === actor.id || M.inGroup(config, s.group, actor.id))));
                 if (actionable.length)
                     add({ kind: 'approval', title: 'Approve ' + actionable.length + ' items', itemIds: actionable.map(i => i.id), assigned: actionable.some(i => i.steps.some(s => s.user === actor.id && M.stepOpen(i, s))), team: true });
@@ -772,11 +834,11 @@ export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTa
                 }
                 if (M.inGroup(config, config.techGroup, actor.id) && !r.items.some(i => !i.removed && i.approval === 'pending') && r.items.filter(M.activeItem).every(i => i.state === 'ready'))
                     add({ kind: 'handover', title: 'Record Day 1 handover', team: true, overdue: !!f.joinDate && f.joinDate <= today });
-                if (r.hrNote && r.noteAcks[actor.id] !== r.noteVersion && r.items.some(i => M.inGroup(config, i.team, actor.id)))
+                if (r.hrNote && r.noteAcks[actor.id] !== r.noteVersion && (r.items.some(i => M.inGroup(config, i.team, actor.id)) || config.exceptions.groups.some(g => M.inGroup(config, g, actor.id))))
                     add({ kind: 'hrNote', title: 'Read People GBS note', team: true });
             }
             for (const n of allNotes.filter(n => n.caseId === c.id).map(n => n.data))
-                if (!n.deleted && n.mentions.includes(actor.id) && !n.resolved.includes(actor.id)) {
+                if (!n.deleted && (!c.submittedAt || n.at >= c.submittedAt) && n.mentions.includes(actor.id) && !n.resolved.includes(actor.id)) {
                     const within = !!f.joinDate && f.joinDate <= M.dayDate(today, config.exceptions.remindDays + 1);
                     add({ kind: 'mention', title: n.name + ' mentioned you', noteId: n.id, context: n.context, tagged: true, assigned: true, overdue: within });
                 }
@@ -800,7 +862,7 @@ export async function onboardingNotices(ctx: SessionContext, read = false): Prom
             kind: string;
             created_at: Date;
             read_at: Date | null;
-        }>(await tx.execute(sql `select id,kind,created_at,read_at from lc_onboarding_notice where tenant_id=app.current_tenant_id() and user_id=app.current_user_id() and (read_at is not null)=${read} order by created_at desc,id desc limit 50`));
+        }>(await tx.execute(sql `select id,kind,created_at,read_at from lc_onboarding_notice where tenant_id=app.current_tenant_id() and user_id=app.current_user_id() and kind<>'digest' and (read_at is not null)=${read} order by created_at desc,id desc limit 50`));
         const titles: Record<string, string> = { sync: 'New joiner synced', due: 'Onboarding task due soon', overdue: 'Onboarding work is overdue', owner: 'An onboarding task needs an owner', assignment_failed: 'A task could not be assigned', mention: 'You were mentioned in onboarding', digest: 'Your daily onboarding digest' };
         return result.map(n => ({ id: 'onb:' + n.id, title: titles[n.kind] ?? 'Onboarding update', body: 'Open My tasks to review the work you can access.', severity: n.kind === 'overdue' || n.kind === 'assignment_failed' ? 'warning' : 'info', linkPath: '/tasks', createdAt: n.created_at, readAt: n.read_at }));
     });
@@ -837,7 +899,9 @@ export async function sweepOnboarding(ctx: SessionContext) {
             const digestUsers = new Set<string>();
             if (c.state === 'cancelled')
                 continue;
-            for (const user of config.access.onboarding)
+            const matchedChecklist = M.matchChecklist(config, c).checklist;
+            const syncedUsers = new Set([...config.access.onboarding, ...(matchedChecklist?.tasks.flatMap(t => config.groups.find(g => g.id === t.group)?.members ?? []) ?? [])]);
+            for (const user of syncedUsers)
                 await notify(user, c.id, 'sync', c.id);
             if (c.state === 'pending')
                 for (const user of config.access.onboarding)
@@ -870,7 +934,7 @@ export async function sweepOnboarding(ctx: SessionContext) {
                     for (const step of i.steps.filter(s => M.stepOpen(i, s)))
                         for (const user of step.user ? [step.user] : config.groups.find(g => g.id === step.group)?.members ?? [])
                             digestUsers.add(user);
-            for (const n of thread.filter(n => n.caseId === c.id && !n.data.deleted).map(n => n.data))
+            for (const n of thread.filter(n => n.caseId === c.id && !n.data.deleted && (!c.submittedAt || n.data.at >= c.submittedAt)).map(n => n.data))
                 for (const user of n.mentions.filter(u => !n.resolved.includes(u))) {
                     digestUsers.add(user);
                     await notify(user, c.id, 'mention', n.id);
@@ -899,7 +963,7 @@ export async function refreshOnboardingPersonnel(ctx: SessionContext) {
         }>(await tx.execute(sql `select app.is_group_admin() as ok`));
         if (!ok)
             M.fail('Personnel synchronisation requires a group administrator.', 'forbidden');
-        const { config, revision } = await configTx(tx, ctx);
+        const { config, revision } = await configTx(tx, ctx), today = todayInKualaLumpur();
         if (!revision)
             return;
         const drafts = await tx.select({ id: employeeDraft.id }).from(employeeDraft).orderBy(asc(employeeDraft.id));
@@ -908,8 +972,10 @@ export async function refreshOnboardingPersonnel(ctx: SessionContext) {
         const list = await tx.select().from(cases).orderBy(asc(cases.id)).for('update');
         for (const row of list) {
             const c = structuredClone(row.data);
-            if (!c.employmentId)
+            if (!c.employmentId) {
+                await refreshRoleLinksTx(tx, ctx, row, c);
                 continue;
+            }
             const [snapshot] = rows<{
                 person_id: string;
                 company_id: string;
@@ -923,9 +989,9 @@ export async function refreshOnboardingPersonnel(ctx: SessionContext) {
       'supervisor',rl.manager_employment_id::text,'ic',stat.ic_number,'passport',stat.passport_number)) as source
     from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id
     left join lateral (select x.* from assignment x where x.employment_id=e.id and x.tenant_id=e.tenant_id and x.superseded_at is null
-      and (x.valid_to is null or x.valid_to>current_date) order by (x.valid_from<=current_date) desc,case when x.valid_from<=current_date then x.valid_from end desc,x.valid_from asc,x.id limit 1) a on true
+      and (x.valid_to is null or x.valid_to>${today}::date) order by (x.valid_from<=${today}::date) desc,case when x.valid_from<=${today}::date then x.valid_from end desc,x.valid_from asc,x.id limit 1) a on true
     left join lateral (select x.manager_employment_id from reporting_line x where x.subordinate_employment_id=e.id and x.tenant_id=e.tenant_id and x.line_type='administrative' and x.superseded_at is null
-      and (x.valid_to is null or x.valid_to>current_date) order by (x.valid_from<=current_date) desc,x.valid_from desc,x.id limit 1) rl on true
+      and (x.valid_to is null or x.valid_to>${today}::date) order by (x.valid_from<=${today}::date) desc,x.valid_from desc,x.id limit 1) rl on true
     left join employee_statutory_my stat on stat.person_id=e.person_id and stat.tenant_id=e.tenant_id
     where e.id=${c.employmentId}::uuid and e.tenant_id=app.current_tenant_id()
    `));
@@ -933,8 +999,10 @@ export async function refreshOnboardingPersonnel(ctx: SessionContext) {
                 continue;
             const [{ data: privateData } = { data: { source: {}, local: {} } }] = await tx.select({ data: secrets.data }).from(secrets).where(eq(secrets.caseId, c.id));
             const before = { ...c.source, ...privateData.source };
-            if (JSON.stringify(Object.entries(before).sort()) === JSON.stringify(Object.entries(snapshot.source).sort()))
+            if (JSON.stringify(Object.entries(before).sort()) === JSON.stringify(Object.entries(snapshot.source).sort())) {
+                await refreshRoleLinksTx(tx, ctx, row, c);
                 continue;
+            }
             c.source = snapshot.source;
             c.local = { ...c.local, ...privateData.local };
             c.personId = snapshot.person_id;
@@ -952,42 +1020,64 @@ export async function refreshOnboardingPersonnel(ctx: SessionContext) {
         }
     });
 }
-export async function onboardingNavigation(ctx: SessionContext) { return withTenant(ctx, async (tx) => { const { config } = await configTx(tx, ctx); return config.access.onboarding.includes(uid(ctx)); }); }
-async function assignRoleTasksTx(tx: Tx, c: M.Case) {
-    const supervisor = M.effectiveFacts(c).supervisor;
-    const manager = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(supervisor) ? supervisor : null;
+export async function onboardingNavigation(ctx: SessionContext) { return withTenant(ctx, async (tx) => { const { config } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config); return { module: actor.module, master: actor.master, requisitions: actor.module || config.groups.some(g => g.members.includes(actor.id)) }; }); }
+async function assignRoleTasksTx(tx: Tx, c: M.Case): Promise<boolean> {
+    const supervisor = M.effectiveFacts(c).supervisor, manager = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(supervisor) ? supervisor : null;
     const resolved = rows<{
         kind: string;
         user_id: string;
     }>(await tx.execute(sql `select * from app.onboarding_task_actors(${c.personId}::uuid,${manager}::uuid)`));
+    let changed = false;
     for (const task of c.tasks.filter(t => t.by !== 'group' && t.status !== 'done')) {
         const user = resolved.find(r => r.kind === task.by)?.user_id ?? null;
-        task.assignee = user;
-        task.failure = user ? null : 'The ' + (task.by === 'joiner' ? 'new joiner' : 'line manager') + ' needs a linked Personnel account.';
+        const failure = user ? null : 'The ' + (task.by === 'joiner' ? 'new joiner' : 'line manager') + ' needs a linked Personnel account.';
+        if (task.assignee !== user || task.failure !== failure) {
+            task.assignee = user;
+            task.failure = failure;
+            changed = true;
+        }
     }
+    return changed;
 }
-export async function onboardingMyAcknowledgement(ctx: SessionContext) {
+async function refreshRoleLinksTx(tx: Tx, ctx: SessionContext, row: Row, c: M.Case) {
+    if (c.state !== 'submitted' || !await assignRoleTasksTx(tx, c))
+        return;
+    const actor: M.Actor = { id: ctx.userId ?? 'system', name: 'Personnel Management', module: true, hr: true, master: true };
+    const env: M.Environment = { ...clock(), id: randomUUID, nextNumber: () => '', leave: {}, taskLoads: {}, lastTaskAssignment: {}, pendingApprovals: {}, lifetimeApprovals: {}, users: [] };
+    M.log(c, actor, env, 'task.account_link_updated');
+    await storeTx(tx, ctx, row, c, false);
+    await auditTx(tx, ctx, c, 'task_account_link_updated');
+}
+export async function onboardingMyAcknowledgements(ctx: SessionContext) {
     return withTenant(ctx, async (tx) => {
         const list = await tx.select().from(cases).orderBy(asc(cases.createdAt), asc(cases.id));
-        const row = list.find(r => r.data.personId === ctx.personId && r.data.state === 'submitted');
-        if (!row)
-            return null;
-        const c = row.data, r = M.currentReq(c);
-        return { id: c.id, revision: row.revision, name: M.effectiveFacts(c).fullName, available: !!r?.handedAt, submittedAt: c.acknowledgement?.at ?? null };
+        return list.filter(row => !!ctx.personId && row.data.personId === ctx.personId && row.data.state === 'submitted').map(row => {
+            const c = row.data, r = M.currentReq(c), f = M.effectiveFacts(c);
+            return { id: c.id, revision: row.revision, name: f.fullName, employeeId: f.employeeId, joinDate: f.joinDate, number: c.number, available: !!r?.handedAt, submittedAt: c.acknowledgement?.at ?? null };
+        });
     });
+}
+export async function onboardingMyAcknowledgement(ctx: SessionContext, caseId?: string) {
+    const views = await onboardingMyAcknowledgements(ctx);
+    return caseId ? views.find(view => view.id === caseId) ?? null : views.length === 1 ? views[0]! : null;
 }
 /** Participant-scoped list includes all retained requisition generations. */
 export async function onboardingRequisitions(ctx: SessionContext) {
     return withTenant(ctx, async (tx) => {
         const { config } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config);
-        const list = await tx.select().from(cases).orderBy(asc(cases.createdAt), asc(cases.id));
-        return list.flatMap(row => row.data.requisitions.map(r => ({
+        const list = await tx.select({ data: cases.data, id: cases.id, hr: sql<boolean> `app.is_admin_for(${cases.companyId})` }).from(cases).orderBy(asc(cases.createdAt), asc(cases.id));
+        return list.flatMap(row => row.data.requisitions.filter(r => canReadRequisition(config, r, { ...actor, hr: row.hr })).map(r => ({
             id: r.id, caseId: row.id, number: r.number, joiner: M.effectiveFacts(row.data).fullName,
             joinDate: M.effectiveFacts(row.data).joinDate, createdAt: r.createdAt,
             status: M.requisitionStatus(r), ready: r.items.filter(M.activeItem).filter(i => ['ready', 'handed'].includes(i.state)).length,
             active: r.items.filter(M.activeItem).length, pending: r.items.filter(i => !i.removed && i.approval === 'pending').length,
-            unreadNote: !!r.hrNote && r.noteAcks[actor.id] !== r.noteVersion && r.items.some(i => M.inGroup(config, i.team, actor.id)),
+            unreadNote: !!r.hrNote && r.noteAcks[actor.id] !== r.noteVersion && (r.items.some(i => M.inGroup(config, i.team, actor.id)) || config.exceptions.groups.some(g => M.inGroup(config, g, actor.id))),
             current: M.currentReq(row.data)?.id === r.id,
         })));
     });
+}
+export async function onboardingUnreadNoticeCount(ctx: SessionContext): Promise<number> {
+    return withTenant(ctx, async (tx) => Number(rows<{
+        count: string;
+    }>(await tx.execute(sql `select count(*)::text as count from lc_onboarding_notice where tenant_id=app.current_tenant_id() and user_id=app.current_user_id() and read_at is null and kind<>'digest'`))[0]?.count ?? 0));
 }

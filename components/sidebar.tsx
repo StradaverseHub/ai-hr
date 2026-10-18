@@ -149,6 +149,7 @@ const CLAIMS_CONFIG_ROW: ChildItem = CLAIMS_LINKS.find((l) => l.group === 'admin
 const LIFECYCLE_LINKS = modulePackById('lifecycle')!.navLinks!;
 const LIFECYCLE_ROW: ChildItem = LIFECYCLE_LINKS.find((l) => l.group === 'main')!;
 const LIFECYCLE_CONFIG_ROW: ChildItem = LIFECYCLE_LINKS.find((l) => l.group === 'admin')!;
+const ONBOARDING_NODE:CollapsibleGroupItem={...modulePackById('lifecycle')!.navNodes![0]!,collapsible:true};
 
 // Performance nav row (ADR-0080 rung 4): the single manager-up row the performance pack
 // contributes (packs/performance/index.ts, PERFORMANCE_NAV_LINKS — provenance comments moved with
@@ -211,6 +212,7 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   ...(modulePackById('attendance')!.navLinks ?? []).map((l) => [l.href, 'attendance'] as const),
   ...CLAIMS_LINKS.map((l) => [l.href, 'claims'] as const),
   ...LIFECYCLE_LINKS.map((l) => [l.href, 'lifecycle'] as const),
+  ...ONBOARDING_NODE.children.map(l=>[l.href,'lifecycle'] as const),
   ...(modulePackById('payroll')!.navNodes ?? []).flatMap((n) => n.children.map((c) => [c.href, 'payroll'] as const)),
   // ADR-0104: Overview and the explainer serve core HR readiness, including tenants without payroll.
   // r235 — payroll-gated for a sharper reason than the two above: the ONLY action type closes payroll
@@ -398,6 +400,7 @@ const GROUPS: Group[] = [
     labelKey: 'manage',
     items: [
       { href: '/tasks', labelKey: 'myTasks', icon: ListChecks },
+      ONBOARDING_NODE,
       ...LIFECYCLE_LINKS.filter(link=>link.group==='manage'),
       { href: '/personnel', labelKey: 'people', icon: Users },
       LEAVE_TRACKER_ROW,
@@ -485,6 +488,7 @@ const GROUPS: Group[] = [
       ATTENDANCE_NODE,
       CLAIMS_CONFIG_ROW,
       LIFECYCLE_CONFIG_ROW,
+      ...LIFECYCLE_LINKS.filter(link=>link.group==='admin'&&link.href!==LIFECYCLE_CONFIG_ROW.href),
       // Since ADR-0080 rung 7 the payroll nav lives on the payroll pack and mounts here by const
       // reference (PAYROLL_NODE — a flyout node since 1459e116, a flat row before that).
       PAYROLL_NODE,
@@ -517,6 +521,8 @@ export function Sidebar({
   approvalCount = 0,
   taskCount = 0,
   onboardingAccess = false,
+  onboardingMaster = false,
+  onboardingRequisitionsAccess = false,
   enabledModules = null,
   defaultCollapsed,
   viewerName = null,
@@ -544,6 +550,8 @@ export function Sidebar({
   approvalCount?: number;
   taskCount?: number;
   onboardingAccess?: boolean;
+  onboardingMaster?: boolean;
+  onboardingRequisitionsAccess?: boolean;
   defaultCollapsed: boolean;
   /** r398 — the Monolith rail's user line (README §3). Display only; Classic does not render it. */
   viewerName?: string | null;
@@ -618,15 +626,15 @@ export function Sidebar({
   // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating). Role gating and
   // module gating are ANDed: a row needs both the role AND the module to appear.
   const canSeeChild = (c: ChildItem) =>
-    moduleAllows(c.href) && (c.href!=='/lifecycle/onboarding'||onboardingAccess) && (c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c === MY_TEAM_ROW ? canAccessTeam : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove : true);
+    moduleAllows(c.href) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c === MY_TEAM_ROW ? canAccessTeam : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove : true);
   const groups = GROUPS
     // Group-level flags still supported (the Admin group uses adminOnly).
-    .filter((g) => (g.adminOnly ? isAdmin || canConfigureIdentityEmail : g.managerUp ? isAdmin || canApprove : true))
+    .filter((g) => (g.adminOnly ? isAdmin || canConfigureIdentityEmail || onboardingAccess || onboardingMaster : g.managerUp ? isAdmin || canApprove : true))
     // 1b35f17b: filter per-row too, so a group (e.g. Manage) can mix all-employee rows
     // (Personnel) with manager-up rows (Approvals/Performance).
     .map((g) => ({
       ...g,
-      items: g.items.filter((r) => (!g.adminOnly || isAdmin || (isCollapsible(r) ? r.children.some(c => c.identityEmailOnly && canSeeChild(c)) : r.identityEmailOnly)) && (isCollapsible(r) ? r.children.some(canSeeChild) : canSeeChild(r))),
+      items: g.items.filter((r) => (!g.adminOnly || isAdmin || (!isCollapsible(r)&&r.href.startsWith('/admin/lifecycle/onboarding')&&canSeeChild(r)) || (isCollapsible(r) ? r.children.some(c => c.identityEmailOnly && canSeeChild(c)) : r.identityEmailOnly)) && (isCollapsible(r) ? r.children.some(canSeeChild) : canSeeChild(r))),
     }))
     // Drop a group that has become empty for this viewer (no stray divider in the collapsed rail).
     .filter((g) => g.items.length > 0);

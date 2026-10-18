@@ -139,6 +139,7 @@ export type Approval = StepDef & {
     viaDefault: string | null;
     unavailable: boolean;
     by: Id | null;
+    byName?: string;
     when: string | null;
     assignments: {
         user: Id;
@@ -155,6 +156,10 @@ export type Item = {
     source: 'matched' | 'exception';
     fromCase: boolean;
     addedBy: Id;
+    addedByName?: string;
+    requesterName?: string;
+    confirmedByName?: string | null;
+    workflowName?: string | null;
     requester: Id;
     confirmedBy: Id | null;
     reason: string;
@@ -257,6 +262,7 @@ export type Environment = {
     pendingApprovals: Record<Id, number>;
     lifetimeApprovals: Record<Id, number>;
     users: Id[];
+    userNames?: Record<Id, string>;
 };
 export class OnboardingError extends Error {
     constructor(message: string, readonly code = 'invalid', readonly fields: string[] = []) { super(message); }
@@ -400,8 +406,9 @@ function autoApprove(item: Item, c: Case, a: Actor, env: Environment) {
         if (s.user === item.requester) {
             s.status = 'approved';
             s.by = s.user;
+            s.byName = item.requesterName ?? env.userNames?.[s.user] ?? (a.id === s.user ? a.name : undefined);
             s.when = env.now;
-            log(c, a, env, 'approval.auto_approved', item.name + ' · ' + s.label);
+            log(c, { ...a, id: s.user, name: s.byName ?? 'Requester' }, env, 'approval.auto_approved', item.name + ' · ' + s.label);
         }
     }
     refreshApproval(item);
@@ -418,14 +425,15 @@ export function addItem(config: Config, c: Case, r: Requisition, cat: Catalogue,
     const workflowId = approvalPolicy(config, cat, source, send), workflow = config.workflows.find(w => w.id === workflowId);
     if (workflowId && !workflow)
         fail('The approval workflow is unavailable. Update settings before requesting this item.');
-    const item: Item = { id: env.id(), catalogueId: cat.id, name: cat.name, type: cat.type, team: cat.team, card: cat.card, source, fromCase, addedBy: a.id, requester: a.id, confirmedBy, reason, workflowId, mode: workflow?.mode ?? 'seq', steps: [], approval: 'none', state: 'todo', stage: cat.card ? 'facility' : 'tech', claim: null, removed: false, retiredFlag: false, revokeNeeded: false };
+    const item: Item = { id: env.id(), catalogueId: cat.id, name: cat.name, type: cat.type, team: cat.team, card: cat.card, source, fromCase, addedBy: a.id, addedByName: a.name, requesterName: a.name, confirmedByName: confirmedBy ? env.userNames?.[confirmedBy] ?? null : null, workflowName: workflow?.name ?? null, requester: a.id, confirmedBy, reason, workflowId, mode: workflow?.mode ?? 'seq', steps: [], approval: 'none', state: 'todo', stage: cat.card ? 'facility' : 'tech', claim: null, removed: false, retiredFlag: false, revokeNeeded: false };
     for (const def of workflow?.steps ?? []) {
         const resolved = resolveGroup(config, def, c, env), manual = def.type !== 'person' && def.method === 'manual';
-        const existing = r.items.flatMap(i => i.steps).find(s => s.group && s.group === resolved.group && s.user && !['withdrawn', 'unresolved'].includes(s.status));
+        const shared = [...item.steps, ...r.items.flatMap(i => i.steps)].filter(s => s.group && s.group === resolved.group && s.user && env.users.includes(s.user) && !['withdrawn', 'unresolved'].includes(s.status));
+        const existing = shared.find(s => s.status === 'pending') ?? shared[0];
         const id = def.type === 'person' ? (env.users.includes(def.target) ? def.target : null) : manual ? null : existing?.user ?? (resolved.group ? chooseApprover(config, resolved.group, a.id, env) : null);
         const status = def.type === 'person' && !id || def.type !== 'person' && !resolved.group ? 'unresolved' : 'pending';
         item.steps.push({ ...def, group: resolved.group, user: id, status, manual, fallback: !manual && !!resolved.group && !id, viaDefault: resolved.viaDefault, unavailable: resolved.unavailable, by: null, when: null, assignments: id ? [{ user: id, at: env.now }] : [] });
-        if (id && !existing) {
+        if (id) {
             env.pendingApprovals[id] = (env.pendingApprovals[id] ?? 0) + 1;
             env.lifetimeApprovals[id] = (env.lifetimeApprovals[id] ?? 0) + 1;
         }
@@ -437,6 +445,8 @@ export function addItem(config: Config, c: Case, r: Requisition, cat: Catalogue,
 }
 const REQUIRED_FIELD_LABELS: Record<string, string> = { fullName: 'Full name', joinDate: 'Join date', title: 'Job title', department: 'Department', company: 'Company', supervisor: 'Supervisor', hiring: 'New hire or replacement', replacedEmployee: 'Employee being replaced' };
 export function validateCase(config: Config, c: Case) {
+    if (c.checklistOverride && c.checklistOverride !== 'none' && !config.checklists.some(cl => cl.id === c.checklistOverride) && !(c.personnelStatus === 'Active' && c.confirmedChecklist?.id === c.checklistOverride))
+        fail('The selected checklist is unavailable. Choose another checklist or No checklist.', 'invalid', ['checklistOverride']);
     const f = effectiveFacts(c), missing = ['fullName', 'joinDate', 'title', 'department', 'company', 'supervisor'].filter(k => !f[k as keyof Facts]?.trim());
     if (!c.hiring)
         missing.push('hiring');
@@ -445,13 +455,19 @@ export function validateCase(config: Config, c: Case) {
     if (missing.length)
         fail('Complete: ' + missing.map(key => REQUIRED_FIELD_LABELS[key] ?? key).join(', '), 'required', missing);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(f.joinDate) || Number.isNaN(Date.parse(f.joinDate)) || new Date(f.joinDate).toISOString().slice(0, 10) !== f.joinDate)
-        fail('Enter a valid join date.');
+        fail('Enter a valid join date.', 'invalid', ['joinDate']);
     if (f.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email))
-        fail('Enter a valid email address.');
+        fail('Enter a valid email address.', 'invalid', ['email']);
+    const retained = (id: Id) => c.state === 'submitted' && !!currentReq(c)?.items.some(i => i.fromCase && !i.removed && i.catalogueId === id);
     for (const id of c.selected) {
         const cat = config.catalogue.find(x => x.id === id);
-        if (!cat?.active || !matches(cat.rules, f))
-            fail('A selected item no longer matches. Untick it before submitting.');
+        if (!cat || !cat.active && !retained(id) || !matches(cat.rules, f))
+            fail('A selected item no longer matches. Untick it before submitting.', 'invalid', ['selected']);
+    }
+    for (const extra of c.extras) {
+        const cat = config.catalogue.find(x => x.id === extra.catalogueId);
+        if (!cat || !cat.active && !retained(extra.catalogueId))
+            fail('An additional item is unavailable. Remove it before submitting.', 'invalid', ['extras']);
     }
     if (c.extras.some(x => !x.reason.trim()))
         fail('A reason is required for every additional request.');
@@ -554,6 +570,13 @@ export function reconcileItems(config: Config, c: Case, a: Actor, env: Environme
             const extra = c.extras.find(x => x.catalogueId === id);
             addItem(config, c, r, cat, extra ? 'exception' : 'matched', true, extra?.reason ?? '', extra?.approval ?? false, null, a, env);
         }
+    for (const item of r.items.filter(i => i.fromCase && !i.removed && i.source === 'exception')) {
+        const extra = c.extras.find(x => x.catalogueId === item.catalogueId);
+        if (extra && item.reason !== extra.reason) {
+            item.reason = extra.reason;
+            log(c, a, env, 'item.reason_updated', item.name);
+        }
+    }
     if (r.hrNote !== c.notes) {
         r.hrNote = c.notes;
         r.noteVersion++;
@@ -685,6 +708,7 @@ export function decide(config: Config, c: Case, itemIds: Id[], decision: 'approv
     for (const { item, step: s } of decisions) {
         s.status = decision === 'approve' ? 'approved' : 'rejected';
         s.by = a.id;
+        s.byName = a.name;
         s.when = env.now;
         log(c, a, env, s.user && s.user !== a.id ? 'approval.on_behalf' : 'approval.decided', item.name + ' · ' + decision);
         refreshApproval(item);
@@ -703,7 +727,7 @@ export function assignApproval(config: Config, c: Case, itemId: Id, stepId: Id, 
         userAllowed(env, id);
     for (const i of r.items)
         for (const s of i.steps)
-            if (!i.removed && s.group === step.group && s.status === 'pending' && (s === step || !s.user)) {
+            if (!i.removed && s.group === step.group && s.status === 'pending') {
                 s.user = id;
                 if (id)
                     s.assignments.push({ user: id, at: env.now });
@@ -811,6 +835,9 @@ export function validateConfig(config: Config) {
     for (const cat of config.catalogue)
         if (!cat.name.trim() || !!cat.team && !groups.has(cat.team) || cat.workflow && !flows.has(cat.workflow))
             fail('A catalogue item has a missing name, team or approval workflow.');
+    for (const id of [config.techGroup, config.exceptions.confirmingGroup, ...config.exceptions.groups])
+        if (id && !groups.has(id))
+            fail('An onboarding setting refers to a missing group.');
     if (config.exceptions.workflow && !flows.has(config.exceptions.workflow))
         fail('The exception workflow is missing.');
     if (config.exceptions.remindDays < 0 || !Number.isInteger(config.exceptions.remindDays) || config.recentActiveDays < 1)
@@ -838,7 +865,8 @@ export function retryApprovals(config: Config, c: Case, itemId: Id, a: Actor, en
         if (!def)
             continue;
         const resolved = resolveGroup(config, def, c, env), manual = def.type !== 'person' && def.method === 'manual';
-        const existing = r.items.flatMap(i => i.steps).find(s => s !== step && s.group === resolved.group && s.user && s.status !== 'withdrawn');
+        const shared = r.items.flatMap(i => i.steps).filter(s => s !== step && s.group === resolved.group && s.user && env.users.includes(s.user) && s.status !== 'withdrawn');
+        const existing = shared.find(s => s.status === 'pending') ?? shared[0];
         const user = def.type === 'person' ? (env.users.includes(def.target) ? def.target : null) : manual ? null : existing?.user ?? (resolved.group ? chooseApprover(config, resolved.group, item.requester, env) : null);
         Object.assign(step, def, resolved, { user, manual, fallback: !manual && !!resolved.group && !user, status: def.type === 'person' && !user || def.type !== 'person' && !resolved.group ? 'unresolved' : 'pending' });
         if (user)

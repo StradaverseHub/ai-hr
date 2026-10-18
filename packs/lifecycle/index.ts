@@ -28,19 +28,24 @@
 import { Laptop } from 'lucide-react';
 import { registerPack, type ModulePack, type NavLinkDescriptor } from '../registry';
 const LIFECYCLE_NAV_LINKS: NavLinkDescriptor[] = [
-    { group: 'manage', href: '/lifecycle/onboarding', labelKey: 'newJoiners', icon: Laptop },
     { group: 'manage', href: '/lifecycle/requisitions/onboarding', labelKey: 'onboardingRequisitions', icon: Laptop },
     { group: 'main', href: '/lifecycle', labelKey: 'lifecycle', icon: Laptop },
     { group: 'admin', href: '/admin/lifecycle', labelKey: 'lifecycleConfig', icon: Laptop },
+    { group: 'admin', href: '/admin/lifecycle/onboarding', labelKey: 'onboardingSettings', icon: Laptop },
+    { group: 'admin', href: '/admin/lifecycle/onboarding/groups', labelKey: 'onboardingGroups', icon: Laptop },
+    { group: 'admin', href: '/admin/lifecycle/onboarding/access', labelKey: 'onboardingModuleAccess', icon: Laptop },
 ];
 export const lifecyclePack: ModulePack = {
     id: 'lifecycle',
     kind: 'module',
     navLinks: LIFECYCLE_NAV_LINKS,
+    navNodes: [{ group: 'manage', labelKey: 'onboardingV31', icon: Laptop, defaultHref: '/lifecycle/onboarding', children: [{ href: '/lifecycle/onboarding', labelKey: 'newJoiners', icon: Laptop, exactHref: true, ownedSubpaths: ['/lifecycle/onboarding/cases', '/lifecycle/onboarding/legacy'] }, { href: '/lifecycle/onboarding/checklists', labelKey: 'onboardingChecklists', icon: Laptop }] }],
     satelliteTables: [
         { table: 'lc_onboarding_config', note: 'V3.1 versioned definitions and independent module access' },
         { table: 'lc_onboarding_config_history', note: 'Immutable configuration revisions' },
         { table: 'lc_onboarding_case', note: 'Personnel source identity, task and requisition generations' },
+        { table: 'lc_onboarding_case_revision', note: 'Immutable public case revisions' },
+        { table: 'lc_onboarding_private_revision', note: 'Immutable HR-only case revisions' },
         { table: 'lc_onboarding_private', note: 'HR-only case values behind separate RLS' },
         { table: 'lc_onboarding_note', note: 'Task and requisition conversation history' },
         { table: 'lc_onboarding_seen', note: 'Per-user joiner seen state, separate from notification reads' },
