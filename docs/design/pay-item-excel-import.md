@@ -31,7 +31,9 @@ and all applied predecessors must remain immutable.
 ## Atomicity, permissions and provenance
 
 The authenticated same-origin route bounds the multipart stream before parsing, accepts XLSX only,
-and enforces 5 MB / 1000 actual nonblank data rows. ZIP expansion is bounded before inflation.
+and enforces 5 MB / 1000 actual nonblank data rows. ZIP local and central headers, names, sizes and streaming descriptors must agree. Bounded native
+inflation verifies actual expanded sizes and CRCs within a cumulative 40 MB before SheetJS or JSZip
+runs; ZIP64 overrides, alternate path names and unindexed local records are refused.
 Only Pay Items and its row-2 recognized headers are read. Unknown/advisory columns are ignored;
 formula cells in imported fields are errors and are never evaluated.
 
@@ -53,7 +55,7 @@ sanitized file name; descriptions and workbook contents are not copied into the 
 | Owner or consumer | Pending/description behavior |
 | --- | --- |
 | Catalog seed and statutory backfill | Omitted new fields remain NULL or preserve existing values; existing rule/flags are not backfilled differently. |
-| Canonical create/upsert | Create validates identity/settings; edit preserves omitted descriptions; full validated rules clear pending. |
+| Canonical create/upsert | Every new insert validates identity/settings and stores a normalized code; the maintenance edit owner requires an existing row. Unchanged legacy identities and omitted descriptions are preserved; full validated rules clear pending. |
 | Copy/new/edit screens | Description is distinct from Name/Label; copied pending types reopen the real editor with missing operands. |
 | Archive/delete | Existing archive/delete lifecycle is unchanged; activating a pending item does not make it assignable. |
 | Catalog/CSV export | Requested type and pending caption remain visible; description is exported as presentation text. |
