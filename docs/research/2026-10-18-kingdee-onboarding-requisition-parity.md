@@ -1,6 +1,6 @@
 # Kingdee onboarding and requisition comparison and implementation plan
 
-Prepared 18 October 2026 before implementation. This comparison records the original baseline and approved plan; the accepted implementation decisions are recorded in [ADR 0125](../adr/0125-kingdee-onboarding-v31.md).
+Prepared 18 October 2026. Planning artifact only; no application changes.
 
 The requested change replaces our manual onboarding case and provisioning checklist with a Personnel driven onboarding process: HR prepares and submits a case, configurable rules select its checklist and equipment, and teams complete assigned tasks, item approvals, fulfilment and Day 1 handover. Requisitions here are IT and facilities work orders, not hiring or headcount requests.
 
