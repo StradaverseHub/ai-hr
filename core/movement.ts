@@ -57,7 +57,7 @@ import {
   type ComparisonKind,
   type MovementKind,
 } from './movement-kinds';
-import { resolveMovementEventTypeTx } from './movement-type';
+import { resolveMovementEventTypeTx, resolveMovementEventTypeRows } from './movement-type';
 // c063eea9 — the hire-details correction. It owns its event and the trace the Hired row wears; this module
 // loads the event (it projects no row of its own) and follows its row replacements when rolling back.
 import {
@@ -562,14 +562,11 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
    *
    * A tenant with no configured types gets an empty set and the built-in list, i.e. today's behaviour.
    */
-  const tenantCodes = new Set(
-    (
-      await tx
-        .select({ code: movementEventType.code })
-        .from(movementEventType)
-        .where(eq(movementEventType.tenantId, tenantId))
-    ).map((r) => r.code),
-  );
+  const catalogue = await tx.select().from(movementEventType).where(eq(movementEventType.tenantId, tenantId));
+  const tenantCodes = new Set(catalogue.map(r=>r.code));
+  // Keep recorded codes for identity/projection, and resolve behavior separately for correction.
+  // Reuse this existing catalogue read; inactive/custom history must not cause per-row queries.
+  const resolvedTypes=resolveMovementEventTypeRows(tenantId,[...MOVEMENT_KINDS,...tenantCodes],catalogue);
   /** A kind the tag may legitimately name: a built-in, or one of this tenant's configured codes. */
   const knownKind = (v: string | undefined): v is string => !!v && (isKnownKind(v) || tenantCodes.has(v));
 
@@ -901,7 +898,7 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
 
   const superseded = supersededScheduledIds(rows, today);
   const statusOf = (r: ProjectedRow): MovementStatus => statusOfRow(r, superseded);
-  return { emp, events, rows, statusOf, today };
+  return { emp, events, rows, statusOf, today, resolvedTypes };
 }
 
 /** The ledger events one movement is made of: every leg of a comparison-form submit (they share a
@@ -1007,16 +1004,16 @@ type Correctability = { canReverse: boolean; canEdit: boolean; stateChanging: bo
 /** Whether this movement can be rolled back, and whether it can be corrected in place. `isLatest` is the
  *  in-place rule: an edit replays through the SAME writers, and those act on the OPEN dated row, so a
  *  state-changing movement can only be corrected while it is still the most recent one. */
-function correctabilityOf(row: ProjectedRow, group: RawEvent[], isLatest: boolean): Correctability {
+function correctabilityOf(row: ProjectedRow, group: RawEvent[], isLatest: boolean, behaviour:string|null): Correctability {
   const stateChanging = group.some((e) => STATE_CHANGING_EVENT_TYPES.has(e.eventType));
-  if (!group.length) return { canReverse: false, canEdit: false, stateChanging };
+  if (!group.length || !behaviour) return { canReverse: false, canEdit: false, stateChanging };
   const supported = group.every(
     (e) =>
       REVERSIBLE_EVENT_TYPES.has(e.eventType) &&
-      (e.eventType !== 'employment.info.updated' || infoLegIsFlatOnly(e, row.kind)),
+      (e.eventType !== 'employment.info.updated' || infoLegIsFlatOnly(e, behaviour)),
   );
   const canReverse = supported && !row.reversed;
-  const canEdit = canReverse && (!stateChanging || (isComparisonKind(row.kind) && isLatest));
+  const canEdit = canReverse && (!stateChanging || (isComparisonKind(behaviour) && isLatest));
   return { canReverse, canEdit, stateChanging };
 }
 
@@ -1214,7 +1211,7 @@ export function movementHistory(ctx: SessionContext, employmentId: string): Prom
 
 /** Explicit owner read seam for a caller-held scoped report snapshot. */
 export async function movementHistoryTx(tx: Tx, ctx: SessionContext, employmentId: string): Promise<MovementHistoryRow[]> {
-    const { emp, events, rows, statusOf } = await projectRows(tx, ctx.tenantId, employmentId);
+    const { emp, events, rows, statusOf, resolvedTypes } = await projectRows(tx, ctx.tenantId, employmentId);
     // 66a63bd6 — the two payroll period sets come from core/comp.ts, so the per-row affordance runs the
     // SAME rule the service refuses on (the Basic Salary card's precedent).
     const closed = await closedPeriodsTx(tx, employmentId);
@@ -1232,7 +1229,7 @@ export async function movementHistoryTx(tx: Tx, ctx: SessionContext, employmentI
       const g = groupEventsOf(events, r);
       const spanEnd = g.length ? Math.max(...g.map((e) => e.sequence)) : -1;
       const status = statusOf(r);
-      const c = correctabilityOf(r, g, spanEnd === latest);
+      const c = correctabilityOf(r, g, spanEnd === latest, resolvedTypes.get(r.kind)?.behaviourKind??null);
       // 941c9dac — a SUPERSEDED movement is terminal: it never applied and never will, so there is
       // nothing to cancel and nothing to replay. Editing one would also be a trap — the values HR typed
       // are precisely the ones another movement has already overridden.
@@ -3174,7 +3171,7 @@ async function reverseMovementTx(
   reason: string | null,
   corrected: boolean,
 ): Promise<void> {
-  const { events, rows, statusOf } = await projectRows(tx, ctx.tenantId, employmentId);
+  const { events, rows, statusOf, resolvedTypes } = await projectRows(tx, ctx.tenantId, employmentId);
   const row = rows.find((r) => r.id === movementId);
   if (!row) throw new Error('Movement event not found.');
   if (row.reversed) throw new Error('This movement event has already been rolled back.');
@@ -3187,7 +3184,7 @@ async function reverseMovementTx(
     );
   }
   const group = groupEventsOf(events, row);
-  const c = correctabilityOf(row, group, false);
+  const c = correctabilityOf(row, group, false, resolvedTypes.get(row.kind)?.behaviourKind??null);
   if (!c.canReverse) {
     throw new MovementNotCorrectableError(
       'This event type cannot be rolled back from Employment History — use the screen that records it.',
@@ -3289,10 +3286,11 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
   const endDate = p.endDate?.trim() || null;
 
   const result=await withTenant(ctx, async (tx) => {
-    const { events, rows, statusOf, today } = await projectRows(tx, ctx.tenantId, p.employmentId);
+    const { events, rows, statusOf, today, resolvedTypes } = await projectRows(tx, ctx.tenantId, p.employmentId);
     const row = rows.find((r) => r.id === p.movementId);
     if (!row) throw new Error('Movement event not found.');
     if (row.reversed) throw new Error('This movement event has already been rolled back.');
+    if (!resolvedTypes.get(row.kind)) throw new MovementNotCorrectableError('This event type cannot be edited from Employment History — use the screen that records it.');
     const status = statusOf(row);
 
     /**
@@ -3357,7 +3355,7 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
     const group = groupEventsOf(events, row);
     const spanEnd = group.length ? Math.max(...group.map((e) => e.sequence)) : -1;
     const isLatest = spanEnd === latestStateChangingSpanEnd(events, rows);
-    const c = correctabilityOf(row, group, isLatest);
+    const c = correctabilityOf(row, group, isLatest, resolvedTypes.get(row.kind)?.behaviourKind??null);
     if (!c.canEdit) {
       throw new MovementNotCorrectableError(
         c.canReverse && c.stateChanging && !isLatest
