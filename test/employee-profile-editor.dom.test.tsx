@@ -44,15 +44,30 @@ describe('My Profile single cross-tab editor',()=>{
   mount();fireEvent.click(screen.getByRole('button',{name:en.essProfile.requestEdit}));const input=within(panel('bankStatutory')).getByLabelText(en.people.detail.bankAccount);expect(input).toHaveValue('');expect(input).toHaveAttribute('placeholder','•••• 1234');
   fireEvent.change(input,{target:{value:'9876543210'}});let finish:(value:unknown)=>void=()=>{};mocks.save.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));const save=screen.getByRole('button',{name:en.essProfile.save});fireEvent.click(save);fireEvent.click(save);expect(mocks.save).toHaveBeenCalledTimes(1);expect(mocks.save.mock.calls[0][0].proposal.fields).toEqual([{fieldId:bankAccount,before:'bank-proof',value:'9876543210'}]);finish({ok:false,code:'stale',fieldIds:[bankAccount]});await waitFor(()=>expect(screen.getByRole('alert')).toBeTruthy());
  });
+ it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('shows disabled blank custom-holder fields without change warnings in read-only or untouched edit mode in %s',locale=>{
+  const view=workspace(),words=catalogues[locale];
+  for(const [field,flag]of [['customHolderName','enableCustomHolderName'],['customHolderId','enableCustomHolderId']]as const){
+   const id=`bank_statutory.bank_information.${field.toLowerCase()}`,flagId=`bank_statutory.bank_information.${flag.toLowerCase()}`;
+   view.values[id]=null;view.values[flagId]=false;view.baselines[id]='holder-proof';view.baselines[flagId]='flag-proof';view.editable.push(id,flagId);
+  }
+  mount(locale,view);fireEvent.click(screen.getByRole('tab',{name:words.people.detail.tabs.bankStatutory}));const tab=screen.getByRole('tabpanel',{name:words.people.detail.tabs.bankStatutory});
+  expect(within(tab).getByText(words.people.detail.customHolderName)).toBeTruthy();expect(within(tab).getByText(words.people.detail.customHolderId)).toBeTruthy();
+  expect(within(tab).queryAllByText(words.essProfile.bankNotApplicable)).toHaveLength(0);
+  fireEvent.click(screen.getByRole('button',{name:words.essProfile.requestEdit}));
+  expect(within(tab).getByLabelText(words.people.detail.enableCustomHolderName)).toHaveValue('false');expect(within(tab).getByLabelText(words.people.detail.enableCustomHolderId)).toHaveValue('false');
+  expect(within(tab).queryByLabelText(words.people.detail.customHolderName)).toBeNull();expect(within(tab).queryByLabelText(words.people.detail.customHolderId)).toBeNull();
+  expect(within(tab).queryAllByText(words.essProfile.bankNotApplicable)).toHaveLength(0);expect(mocks.save).not.toHaveBeenCalled();
+ });
  it.each([['customHolderName','enableCustomHolderName'],['customHolderId','enableCustomHolderId']] as const)('makes %s editable only for its effective enabled switch and retains a touched value after disabling',async(field,flag)=>{
   const id=`bank_statutory.bank_information.${field.toLowerCase()}`,flagId=`bank_statutory.bank_information.${flag.toLowerCase()}`,view=workspace();view.values[id]=null;view.values[flagId]=false;view.baselines[id]='holder-proof';view.baselines[flagId]='flag-proof';view.editable.push(id,flagId);
   mount('en',view);fireEvent.click(screen.getByRole('button',{name:en.essProfile.requestEdit}));const tab=panel('bankStatutory');
-  expect(within(tab).queryByLabelText(en.people.detail[field])).toBeNull();expect(within(tab).getAllByText(en.essProfile.bankNotApplicable).length).toBeGreaterThan(0);
+  expect(within(tab).queryByLabelText(en.people.detail[field])).toBeNull();expect(within(tab).queryAllByText(en.essProfile.bankNotApplicable)).toHaveLength(0);
   const toggle=within(tab).getByLabelText(en.people.detail[flag]);fireEvent.change(toggle,{target:{value:'true'}});fireEvent.change(within(tab).getByLabelText(en.people.detail[field]),{target:{value:'Entered holder'}});
-  fireEvent.change(toggle,{target:{value:'false'}});expect(within(tab).queryByLabelText(en.people.detail[field])).toBeNull();expect(within(tab).getByText('Entered holder')).toBeTruthy();
+  fireEvent.change(toggle,{target:{value:'false'}});expect(within(tab).queryByLabelText(en.people.detail[field])).toBeNull();expect(within(tab).getByText('Entered holder')).toBeTruthy();expect(within(tab).getAllByText(en.essProfile.bankNotApplicable)).toHaveLength(1);
   mocks.save.mockResolvedValueOnce({ok:false,code:'invalid',fieldIds:[id]});fireEvent.click(screen.getByRole('button',{name:en.essProfile.save}));await waitFor(()=>expect(mocks.save).toHaveBeenCalledTimes(1));
   expect(mocks.save.mock.calls[0][0].proposal.fields).toEqual([{fieldId:id,before:'holder-proof',value:'Entered holder'}]);expect(within(tab).getByText('Entered holder')).toBeTruthy();
-  fireEvent.change(toggle,{target:{value:'true'}});expect(within(tab).getByLabelText(en.people.detail[field])).toHaveValue('Entered holder');
+  fireEvent.change(toggle,{target:{value:'true'}});expect(within(tab).getByLabelText(en.people.detail[field])).toHaveValue('Entered holder');expect(within(tab).queryAllByText(en.essProfile.bankNotApplicable)).toHaveLength(0);
+  fireEvent.change(toggle,{target:{value:'false'}});const retained=within(tab).getByText('Entered holder').parentElement;expect(retained).not.toBeNull();fireEvent.click(within(retained!).getByRole('button',{name:en.essProfile.undo}));expect(within(tab).queryByText('Entered holder')).toBeNull();expect(within(tab).queryAllByText(en.essProfile.bankNotApplicable)).toHaveLength(0);
  });
  it('shows a saved None tax circumstance with an explanation and no numeric category edit',()=>{
   const view=workspace(),id='bank_statutory.income_tax_pcb.taxcategory';view.values[id]=2;view.values['bank_statutory.income_tax_pcb.taxcircumstance']='none';view.editable.push(id);
