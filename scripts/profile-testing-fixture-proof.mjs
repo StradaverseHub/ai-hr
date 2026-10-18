@@ -29,7 +29,8 @@ export async function profileTestingInvariant(client,fixture){
    companies:await tx`select id,tenant_id,country,currency,company_label,legal_name,archived_at from company where tenant_id=any(${tenantIds}::uuid[]) order by id`,
    users:await tx`select id,tenant_id,person_id,workos_user_id,archived_at from app_user where id=any(${users}::uuid[]) order by id`,
    grants:await tx`select id,tenant_id,app_user_id,role,company_id from role_assignment where app_user_id=any(${users}::uuid[]) order by id`,
-   employments:await tx`select id,tenant_id,person_id,company_id,employee_code,hired_on,terminated_on from employment where tenant_id=any(${tenantIds}::uuid[]) order by id`,
+   // Drizzle configures DATE as text; raw postgres parses Date. Pin SQL text before hashing.
+   employments:await tx`select id,tenant_id,person_id,company_id,employee_code,hired_on::text as hired_on,terminated_on::text as terminated_on from employment where tenant_id=any(${tenantIds}::uuid[]) order by id`,
    versions:(await tx`select to_jsonb(v) row from test_case_version v where id=any(${versions}::uuid[]) order by id`).map(r=>r.row),
    assignments:await tx`select id,tenant_id,test_case_id,tester_user_id from test_assignment where id=any(${assignments}::uuid[]) order by id`,
    released:(await tx`select jsonb_build_object('batch',to_jsonb(b),'payslip',to_jsonb(p)) row from payroll_batch b join payslip p on p.batch_id=b.id where b.id=${fixture.releasedPayroll.batchId}::uuid and p.id=${fixture.releasedPayroll.payslipId}::uuid and p.employment_id=${fixture.releasedPayroll.employmentId}::uuid and b.status='closed' and b.released_at<=now()`).map(r=>r.row),
