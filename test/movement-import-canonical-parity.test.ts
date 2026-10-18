@@ -24,7 +24,8 @@ describe('canonical Movement date and correction parity',()=>{
   const text=toCsv([['employee_code','event_type','effective_date','end_date','remarks'],['B20-IMPORT','probationExtension',effectiveDate,endDate,'Fictional date parity']]);
   const {preview}=await importFile(text);expect(preview.employees[0].rows[0].effectiveDate).toBe(effectiveDate);expect(preview.employees[0].rows[0].proposed?.extendedConfirmationDate).toBe(endDate);
   for(const id of [manual.employmentId,imported.employmentId]){
-   const row=(await movementHistory(ctx,id)).find(item=>item.kind==='probationExtension');expect(row).toMatchObject({effectiveDate,endDate,status:'applied',scheduled:false});
+   const row=(await movementHistory(ctx,id)).find(item=>item.kind==='probationExtension');expect(row).toMatchObject({effectiveDate,endDate,status:'applied'});
+   const events=await owner.db.select({id:domainEvent.id,eventType:domainEvent.eventType,payload:domainEvent.payload}).from(domainEvent).where(eq(domainEvent.id,row!.id)).orderBy(asc(domainEvent.id));expect(events).toEqual([expect.objectContaining({eventType:'employment.info.updated',payload:expect.objectContaining({movement:expect.objectContaining({type:'probationExtension',effectiveDate,endDate})})})]);
    const [record]=await owner.db.select({extendedConfirmationDate:employment.extendedConfirmationDate}).from(employment).where(eq(employment.id,id));expect(record.extendedConfirmationDate).toBe(endDate);
   }
  });
