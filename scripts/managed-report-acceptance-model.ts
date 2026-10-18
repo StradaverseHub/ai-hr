@@ -1,6 +1,7 @@
 /** Import-safe contract for one owned disposable internal-mode Linux journey. No Auth/DB runtime. */
 import {z} from 'zod';
 import {LEGACY_MODULE_ENV_GATES,LEGACY_SETTING_ENV_GATES} from '../packs/catalog';
+import {employeeMasterScheduledEmailEnabled} from '../lib/employee-master-scheduled-email';
 export const REPORT_ACCEPTANCE_DATABASE='ai_hr_report_delivery_acceptance';
 export const REPORT_ACCEPTANCE_ORIGIN='https://localhost:3543';
 export const REPORT_ACCEPTANCE_TENANT='Managed Reports acceptance fictional tenant';
@@ -16,15 +17,18 @@ export function reportAcceptanceSameEndpoint(a:URL,b:URL){if(a.hostname!==b.host
 
 /** Pure projection from a copied caller snapshot and the reviewed active web environment. This does
  * not decide module availability: it copies the complete catalog inputs for the isolated fixture.
+ * Scheduling capability is separate: derive the canonical literal from verified web, never caller.
  * Validate every caller authority value before returning any mutation plan; errors contain no values. */
 export function reportAcceptanceEnvironmentProjection(caller:Readonly<Record<string,string|undefined>>,web:Readonly<Record<string,string>>,migrationUrl:string){
  for(const name of ['AUTH_PROVIDER','AUTH_PUBLIC_ORIGIN','AUTH_SESSION_KEY','DATABASE_URL'] as const){
   if(caller[name]!==undefined&&caller[name]!==web[name])throw new Error('Caller cannot override active web Auth/database authority.');
  }
- const assign:Record<string,string|undefined>={AUTH_PROVIDER:web.AUTH_PROVIDER,AUTH_PUBLIC_ORIGIN:web.AUTH_PUBLIC_ORIGIN,AUTH_SESSION_KEY:web.AUTH_SESSION_KEY,DATABASE_URL:web.DATABASE_URL};
+ const capability='EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED',enabled=employeeMasterScheduledEmailEnabled(web)?'true':'false';
+ if(caller[capability]!==undefined&&caller[capability]!==enabled)throw new Error('Caller cannot override active web report scheduling capability.');
+ const assign:Record<string,string|undefined>={AUTH_PROVIDER:web.AUTH_PROVIDER,AUTH_PUBLIC_ORIGIN:web.AUTH_PUBLIC_ORIGIN,AUTH_SESSION_KEY:web.AUTH_SESSION_KEY,DATABASE_URL:web.DATABASE_URL,[capability]:enabled};
  const clear=[...new Set([...Object.values(LEGACY_MODULE_ENV_GATES),...Object.values(LEGACY_SETTING_ENV_GATES)])].filter((name):name is string=>typeof name==='string'&&name.length>0);
  for(const name of clear)if(web[name]!==undefined)assign[name]=web[name];
- clear.push('DEV_TENANT_ID','DEV_USER_ID');
+ clear.push(capability,'DEV_TENANT_ID','DEV_USER_ID');
  Object.assign(assign,{ALLOW_DEMO_SESSION:'false',NODE_ENV:web.NODE_ENV??'production',MIGRATION_DATABASE_URL:migrationUrl});
  return {clear,assign};
 }
