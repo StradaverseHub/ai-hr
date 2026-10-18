@@ -5,12 +5,11 @@ import { revalidatePath } from 'next/cache';
 import { previewSystemLabelImport, applySystemLabelImport } from '@/core/system-label-import';
 import { LABEL_WORKBOOK_MAX_BYTES } from '@/lib/system-label-workbook';
 import { publicErrorMessage } from '@/lib/public-error';
-import type { LabelImportMode } from '@/lib/system-label-definition';
 
 async function upload(data:FormData) {
   const file=data.get('file');
-  if(!(file instanceof File)||!file.name.toLowerCase().endsWith('.xlsx')||!file.size||file.size>LABEL_WORKBOOK_MAX_BYTES)
-    throw new Error('Choose an .xlsx file no larger than 750 KB.');
+  if(!(file instanceof File)||!/\.xlsx?$/i.test(file.name)||!file.size||file.size>LABEL_WORKBOOK_MAX_BYTES)
+    throw new Error('Choose an XLSX or XLS file no larger than 5 MB.');
   return Buffer.from(await file.arrayBuffer());
 }
 
@@ -25,15 +24,15 @@ function selection(data:FormData):string[]|undefined {
 
 export async function previewLabelsAction(data:FormData) {
   const {s}=await scopedAdmin();
-  try {return {ok:true as const,preview:await previewSystemLabelImport(s,await upload(data),String(data.get('mode')) as LabelImportMode,selection(data))};}
+  try {return {ok:true as const,preview:await previewSystemLabelImport(s,await upload(data),'add',selection(data))};}
   catch(e){return {ok:false as const,message:publicErrorMessage(e)};}
 }
 
 export async function importLabelsAction(data:FormData) {
   const {s}=await scopedAdmin();
   try {
-    const summary=await applySystemLabelImport(s,{bytes:await upload(data),mode:String(data.get('mode')) as LabelImportMode,
-      token:String(data.get('token')??''),confirmUpdates:data.get('confirmUpdates')==='true',selectedKeys:selection(data)});
+    const summary=await applySystemLabelImport(s,{bytes:await upload(data),mode:'add',
+      token:String(data.get('token')??''),confirmUpdates:false,selectedKeys:selection(data)});
     revalidatePath('/admin/settings/system-labels');
     revalidatePath('/admin/personnel');
     revalidatePath('/admin/settings/system-labels/profile-options');
