@@ -18,7 +18,7 @@ it('omits invented onboarding ages, orders undated work deterministically and re
  expect(tasks[0]).not.toHaveProperty('createdAt');expect(tasks[2]).not.toHaveProperty('createdAt');
  const view=render(<NextIntlClientProvider locale="en" messages={messages}><NotificationCenter unread={1} items={[]} tasks={tasks} taskCount={4}/></NextIntlClientProvider>);
  fireEvent.click(screen.getByRole('button',{name:'Notifications, 5 waiting: 1 unread and 4 open tasks'}));
- fireEvent.click(screen.getByRole('button',{name:'Tasks 4'}));
+ fireEvent.click(screen.getByRole('button',{name:/^Tasks\s*4$/}));
  const entries=screen.getAllByRole('listitem');
  expect(entries.map(e=>e.textContent)).toEqual([
   expect.stringContaining('Newer real approval'),expect.stringContaining('Older real approval'),expect.stringContaining('Future checklist'),expect.stringContaining('Undated checklist')
