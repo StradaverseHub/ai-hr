@@ -25,6 +25,7 @@ import {
 } from '@/localization/my/statutory-tables';
 
 type Props = {
+  editing?: boolean;
   includedInEpf: boolean;
   epfBonus2012: boolean;
   includedInSocsoEis: boolean;
@@ -50,6 +51,9 @@ export function StatutoryConfig(p: Props) {
   const [pcb, setPcb] = useState(p.includedInPcb);
   const [remType, setRemType] = useState<PcbRemunerationType | ''>(p.pcbRemunerationType ?? '');
   const [exemptCode, setExemptCode] = useState(p.pcbExemptionCode ?? '');
+  const [statutoryEdited, setStatutoryEdited] = useState(false);
+  // Only an unchanged existing pre-classification pair may remain blank. Create/copy is always strict.
+  const preserveLegacy = p.editing && p.includedInPcb && p.pcbRemunerationType === null && p.pcbExemptionCode === null && !statutoryEdited;
 
   // The exemption list valid for the selected remuneration type (built-in vocabulary; the annual caps are
   // shown beside each code exactly as the LHDN specification lists them).
@@ -62,7 +66,7 @@ export function StatutoryConfig(p: Props) {
   };
 
   return (
-    <div className="space-y-3 sm:col-span-3">
+    <div className="space-y-3 sm:col-span-3" onChange={() => setStatutoryEdited(true)}>
       {/* EPF Configuration */}
       <div className="space-y-2 rounded-xl border border-border bg-muted/30 p-3">
         <h4 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -120,12 +124,12 @@ export function StatutoryConfig(p: Props) {
             <label className="flex flex-col gap-1.5">
               <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 {t('remunerationTypeLabel')}
-                <span className="text-destructive">*</span>
+                {!preserveLegacy && <span className="text-destructive">*</span>}
                 <InfoTip text={t('remunerationTypeTip')} />
               </span>
               <select
                 name="pcbRemunerationType"
-                required
+                required={!preserveLegacy}
                 value={remType}
                 onChange={(e) => onRemTypeChange(e.target.value as PcbRemunerationType | '')}
                 className={inputCls}
@@ -141,12 +145,12 @@ export function StatutoryConfig(p: Props) {
             <label className="flex flex-col gap-1.5">
               <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 {t('exemptionTypeLabel')}
-                <span className="text-destructive">*</span>
+                {!preserveLegacy && <span className="text-destructive">*</span>}
                 <InfoTip text={t('exemptionTypeTip')} />
               </span>
               <select
                 name="pcbExemptionCode"
-                required
+                required={!preserveLegacy}
                 disabled={!remType}
                 value={exemptCode}
                 onChange={(e) => setExemptCode(e.target.value)}

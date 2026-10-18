@@ -218,6 +218,7 @@ export async function ComponentForm({
                 EPF Bonus 2012 is only tickable with EPF itself. Client island: the exemption list filters
                 with the remuneration type without a round trip (server action re-validates). */}
             <StatutoryConfig
+              editing={editing}
               includedInEpf={component?.includedInEpf ?? PAY_COMPONENT_DEFAULTS.includedInEpf}
               epfBonus2012={component?.epfBonus2012 ?? PAY_COMPONENT_DEFAULTS.epfBonus2012}
               includedInSocsoEis={component?.includedInSocsoEis ?? PAY_COMPONENT_DEFAULTS.includedInSocsoEis}

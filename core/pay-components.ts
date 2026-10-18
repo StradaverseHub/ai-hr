@@ -522,6 +522,18 @@ const classificationOf = (p: PayComponentInput) =>
         pcbRemunerationType: p.includedInPcb ? cleanRemunerationType(p.pcbRemunerationType) : null,
         pcbExemptionCode: p.includedInPcb ? (p.pcbExemptionCode ?? null) : null,
       };
+/** Only the pre-classification NULL pair may survive an unrelated maintenance edit.
+ * Kind and contribution flags are statutory inputs. EA/display feed the classifier only for non-cash items.
+ * Description, label, calculation and ORP metadata do not manufacture a new statutory classification.
+ * The update owner checks its own stored row under the catalogue lock; no posted preservation flag exists.
+ */
+export function isUnchangedLegacyPcbClassification(p: PayComponentInput, existing: typeof payComponent.$inferSelect | undefined): boolean {
+  if (!existing?.includedInPcb || existing.pcbRemunerationType !== null || existing.pcbExemptionCode !== null || (existing.epfBonus2012 && !existing.includedInEpf)) return false;
+  const fields = ['kind', 'isNonPayable', 'includedInEpf', 'includedInSocsoEis', 'includedInPcb', 'includedInHrdfBase',
+    'epfBonus2012', 'pcbRemunerationType', 'pcbExemptionCode'] as const;
+  return fields.every(field => p[field] === undefined || p[field] === existing[field])
+    && (!existing.isNonPayable || (['displayCategory', 'eaFormLine'] as const).every(field => p[field] === undefined || p[field] === existing[field]));
+}
 // Label normalisation: undefined ⇒ "not supplied" (leave as-is on update / null on insert); trimmed-blank ⇒ null.
 const cleanLabel = (v: string | null | undefined): string | null | undefined =>
   v === undefined ? undefined : (v?.trim() || null);
@@ -748,10 +760,6 @@ async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponent
     const catalog = await catalogNodesTx(tx, ctx.tenantId);
     const g = validatePayRuleAgainstCatalog({ code: p.code, rule, kind: p.kind }, catalog);
     if (!g.ok) throw new PayRuleInvalidError(g.code);
-    // LHDN PCB 2026 classification guard (feedback 09b554e9) — no-op for legacy callers that don't supply
-    // the fields; server-authoritative for every form save (create delegates here — single path).
-    const cls = validateStatutoryClassification(p);
-    if (!cls.ok) throw new PayComponentStatutoryConfigError(cls.code);
     const label = cleanLabel(p.label);
     // Full row (not just the id) so the event can carry the changed-field-name list + archived state
     // without a second SELECT.
@@ -762,6 +770,12 @@ async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponent
       .limit(1);
     if (existing && options.createOnly) throw new PayComponentCodeExistsError(p.code, existing.archivedAt != null);
     if (!existing && options.updateOnly) throw new PayComponentNotFoundError();
+    // Existing NULL/NULL legacy settings are retained only on an unchanged maintenance update.
+    // Create/import and every actual classification change still require the complete valid pair.
+    if (!(options.updateOnly && isUnchangedLegacyPcbClassification(p, existing))) {
+      const cls = validateStatutoryClassification(p);
+      if (!cls.ok) throw new PayComponentStatutoryConfigError(cls.code);
+    }
     // Both insert paths obey today's identity contract. Only an unchanged EXISTING legacy identity
     // gets preservation semantics; a public upsert cannot create a label-less or invalid new code.
     const issues = payComponentIdentityIssues(p, existing);
