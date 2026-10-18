@@ -1,5 +1,5 @@
 /**
- * COLLAPSIBLE NAV SECTIONS — the rail has to FIT, and the active section has to stay visible.
+ * COLLAPSIBLE NAV SECTIONS — the rail has to FIT, with route defaults and explicit user control.
  *
  * ═══ THE MEASUREMENT THAT CAUSED THIS ═══
  *
@@ -18,8 +18,8 @@
  * The properties pinned here are the ones whose loss would silently undo the fix:
  *  1. EVERY group is labelled. The first group had no label, which meant it could not collapse; at ten
  *     rows it alone is half the rail, and no amount of collapsing the other three could make it fit.
- *  2. The ACTIVE section is force-open and its control is disabled. "Where am I" must never depend on a
- *     toggle — collapsing the section you are standing in hides the highlighted row.
+ *  2. The route opens its section by default; an explicit user collapse still works on the same route.
+ *     Current-link highlighting remains independent of whether its section is open.
  *  3. A closed section renders NO items. If the items render and are merely hidden by CSS, the rail's
  *     scroll height is unchanged and the fix is cosmetic.
  */
@@ -47,12 +47,15 @@ describe('sidebar sections must keep the rail inside the viewport', () => {
     expect(EN.nav.sectionHome).toBeTruthy();
   });
 
-  it('forces the active section open and disables its toggle', () => {
-    expect(SIDEBAR).toContain('const activeSectionKey');
-    // The force-open lives in sectionOpen so every reader agrees; a caller checking only the state Set
-    // would collapse the current section.
-    expect(SIDEBAR).toMatch(/sectionOpen\s*=\s*\(key\?: string\)\s*=>\s*\n?\s*key == null \|\| key === activeSectionKey/);
-    expect(SIDEBAR).toContain('disabled={group.labelKey === activeSectionKey}');
+  it('shares explicit section overrides across both themes and resets only the navigation destination', () => {
+    // The rendered/keyboard regression is sidebar-section-collapse.dom.test.tsx. This guard keeps
+    // both theme headers on that same state owner instead of restoring a force-open branch.
+    expect(SIDEBAR).toContain('key == null || (openSections[key] ?? key === activeSectionKey)');
+    expect(SIDEBAR).toContain('[key]: !(prev[key] ?? key === activeSectionKey)');
+    expect(SIDEBAR.match(/onClick=\{\(\) => toggleSection\(group\.labelKey!\)\}/g)).toHaveLength(2);
+    expect(SIDEBAR).toContain('delete next[activeSectionKey]');
+    expect(SIDEBAR).toContain('}, [pathname, search, activeSectionKey]);');
+    expect(SIDEBAR).not.toContain('disabled={group.labelKey === activeSectionKey}');
   });
 
   it('does not RENDER the items of a closed section', () => {

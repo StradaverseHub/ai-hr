@@ -594,16 +594,15 @@ export function Sidebar({
    * Analytics, Audit trail, Data Privacy, Security & permissions and AI, which is where a provider is
    * configured. A menu whose second half is only reachable by scrolling is not a menu people use.
    *
-   * ⚠️ THE ACTIVE SECTION IS ALWAYS OPEN AND CANNOT BE CLOSED. "Where am I" must never depend on a
-   * toggle: collapsing the section you are standing in would hide the highlighted row and leave the rail
-   * saying nothing about the current page.
+   * Route ownership opens the current section by default. An explicit user choice can still close it;
+   * navigating to another route opens that route's section again without changing current-link matching.
    *
    * Session state, deliberately NOT a cookie. `rail_collapsed` is read SSR-side precisely so the icon
    * rail has no flash; a second cookie read on the client after mount would flip sections open after
    * paint, which is the same flash in a new place. Navigating within a section keeps it open, and moving
    * to another section opens that one, so the state a user actually experiences is the useful one.
    */
-  const [openSections, setOpenSections] = useState<ReadonlySet<string>>(new Set());
+  const [openSections, setOpenSections] = useState<Readonly<Record<string, boolean>>>({});
   // Escape returns focus to the trigger that opened the panel.
   const triggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   // Safety net for back/forward navigation only — picking a sub-item closes via its onClick
@@ -665,8 +664,22 @@ export function Sidebar({
       ),
     )?.labelKey ?? null;
 
+  // Reset only the destination section's manual override on actual navigation (including report
+  // categories sharing a pathname). A same-route rerender must retain an explicit collapse.
+  useEffect(() => {
+    if (!activeSectionKey) return;
+    setOpenSections((prev) => {
+      if (!(activeSectionKey in prev)) return prev;
+      const next = { ...prev };
+      delete next[activeSectionKey];
+      return next;
+    });
+  }, [pathname, search, activeSectionKey]);
   const sectionOpen = (key?: string) =>
-    key == null || key === activeSectionKey || openSections.has(key);
+    key == null || (openSections[key] ?? key === activeSectionKey);
+  const toggleSection = (key: string) => setOpenSections((prev) => ({
+    ...prev, [key]: !(prev[key] ?? key === activeSectionKey),
+  }));
 
   const openNode = openKey && !monolith
     ? groups.flatMap((g) => g.items).find((r): r is CollapsibleGroupItem => isCollapsible(r) && r.labelKey === openKey && (!r.defaultHref || collapsed)) ?? null
@@ -791,25 +804,15 @@ export function Sidebar({
             {group.labelKey && (
               <button
                 type="button"
-                onClick={() =>
-                  setOpenSections((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(group.labelKey!)) next.delete(group.labelKey!);
-                    else next.add(group.labelKey!);
-                    return next;
-                  })
-                }
-                disabled={group.labelKey === activeSectionKey}
+                onClick={() => toggleSection(group.labelKey!)}
                 aria-expanded={sectionOpen(group.labelKey)}
                 aria-controls={`nav-section-${group.labelKey}`}
                 className="mb-1.5 flex w-full items-center justify-between border-b border-hairline pb-1.5 text-left font-mono text-[11px] uppercase tracking-[0.12em] text-mid enabled:hover:text-ink"
               >
                 <span>{t(group.labelKey)}</span>
-                {group.labelKey !== activeSectionKey && (
-                  <span aria-hidden className="text-faint">
-                    {sectionOpen(group.labelKey) ? '−' : '+'}
-                  </span>
-                )}
+                <span aria-hidden className="text-faint">
+                  {sectionOpen(group.labelKey) ? '−' : '+'}
+                </span>
               </button>
             )}
             <div id={group.labelKey ? `nav-section-${group.labelKey}` : undefined} className="flex w-full flex-col gap-0.5">
@@ -971,16 +974,7 @@ export function Sidebar({
               {!collapsed && group.labelKey && (
                 <button
                   type="button"
-                  onClick={() =>
-                    setOpenSections((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(group.labelKey!)) next.delete(group.labelKey!);
-                      else next.add(group.labelKey!);
-                      return next;
-                    })
-                  }
-                  // The active section cannot be collapsed, so its control is not offered as one.
-                  disabled={group.labelKey === activeSectionKey}
+                  onClick={() => toggleSection(group.labelKey!)}
                   aria-expanded={sectionOpen(group.labelKey)}
                   aria-controls={`nav-section-${group.labelKey}`}
                   className={cn(
@@ -989,19 +983,17 @@ export function Sidebar({
                     // duplicate space. Reclaiming it is what brings the Admin section — the longest, at
                     // 15 rows — inside the viewport instead of one row over.
                     gi === 0 ? 'pt-0.5' : 'pt-2.5',
-                    group.labelKey !== activeSectionKey && 'hover:text-foreground',
+                    'hover:text-foreground',
                   )}
                 >
                   <span>{t(group.labelKey)}</span>
-                  {group.labelKey !== activeSectionKey && (
-                    <ChevronDown
-                      aria-hidden
-                      className={cn(
-                        'h-3.5 w-3.5 shrink-0 transition-transform',
-                        !sectionOpen(group.labelKey) && '-rotate-90',
-                      )}
-                    />
-                  )}
+                  <ChevronDown
+                    aria-hidden
+                    className={cn(
+                      'h-3.5 w-3.5 shrink-0 transition-transform',
+                      !sectionOpen(group.labelKey) && '-rotate-90',
+                    )}
+                  />
                 </button>
               )}
               {/* The id `aria-controls` on the heading points at. Without a real element to reference,
