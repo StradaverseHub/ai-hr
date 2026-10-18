@@ -12,6 +12,8 @@ import {
   deletePayComponent,
   isStatutoryRelevantChange,
   isUnsupportedTaxableComponent,
+  isUnchangedLegacyPcbClassification,
+  listPayComponents,
   unsupportedTaxableReason,
   validateStatutoryClassification,
   listPayRulePreviewCandidates,
@@ -209,8 +211,16 @@ export async function updateComponentAction(formData: FormData) {
   const t = await getTranslations('payComponents');
   const input = componentFields(formData, false);
   const saveAndNew = formData.get('intent') === 'saveAndNew';
-  // Same fail-closed guard as create, and outside the try/catch for the same redirect() reason.
-  const unsupported = unsupportedTaxableMessage(input, t);
+  let preserveLegacy = false;
+  try {
+    // Read the authenticated tenant row; posted values cannot assert legacy status. The writer repeats
+    // this exact check under its lock, so a stale form cannot clear a subsequently completed pair.
+    const existing = (await listPayComponents(s, { includeArchived: true })).find(row => row.code === input.code);
+    preserveLegacy = isUnchangedLegacyPcbClassification(input, existing);
+  } catch (e) {
+    redirect(`${PAGE}/${encodeURIComponent(input.code)}?error=${encodeURIComponent(await messageOf(e, t))}`);
+  }
+  const unsupported = preserveLegacy ? null : unsupportedTaxableMessage(input, t);
   if (unsupported) redirect(`${PAGE}/${encodeURIComponent(input.code)}?error=${encodeURIComponent(unsupported)}`);
   try {
     const { id, changed } = await updatePayComponent(s, input);
