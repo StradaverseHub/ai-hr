@@ -206,7 +206,8 @@ export async function buildPayItemWorkbook(vocabulary: PayItemVocabulary): Promi
     for (let r = 2; r < 502; r++) for (let c = 0; c < 20; c++) {
       const address = XLSX.utils.encode_cell({ r, c });
       if (!ws[address]) ws[address] = { t: 's', v: '' };
-      if (c === 19) ws[address] = { t: 's', f: layout.rowCheck.replace('"Formula"', `"${(vocabulary.inputKind?.find(choice => choice.value === 'formula')?.label ?? 'Formula').replace(/"/g, '""')}"`).replace(/(?<![A-Z0-9_$])([A-S])3\b/g, `$1${r + 1}`) };
+      // Row Check returns text. Retain an empty string cache so XLSX readers keep the formula cell.
+      if (c === 19) ws[address] = { t: 's', v: '', f: layout.rowCheck.replace('"Formula"', `"${(vocabulary.inputKind?.find(choice => choice.value === 'formula')?.label ?? 'Formula').replace(/"/g, '""')}"`).replace(/(?<![A-Z0-9_$])([A-S])3\b/g, `$1${r + 1}`) };
     }
     ws['!ref'] = 'A1:T502';
     XLSX.utils.book_append_sheet(wb, ws, name);

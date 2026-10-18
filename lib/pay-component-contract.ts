@@ -1,8 +1,6 @@
-import type { PayRuleKind } from '../core/pay-rule';
-
 /** One stored pending fact. A missing rule on a ready legacy row still means fixed amount. */
 export const PENDING_PAY_INPUT_KINDS = ['qty_rate', 'percent_of', 'per_day', 'per_hour', 'flat_capped', 'formula'] as const;
-export type PendingPayInputKind = Exclude<PayRuleKind, 'fixed'>;
+export type PendingPayInputKind = typeof PENDING_PAY_INPUT_KINDS[number];
 export type PayCalculationStatus = 'ready' | 'formula_pending' | 'calculation_pending';
 export function payCalculationStatus(pendingInputKind: PendingPayInputKind | null | undefined): PayCalculationStatus {
   return pendingInputKind === 'formula' ? 'formula_pending' : pendingInputKind ? 'calculation_pending' : 'ready';

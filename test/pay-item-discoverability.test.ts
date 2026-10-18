@@ -152,9 +152,23 @@ describe('61bf109d rev2 — the list points at the screen that changes the value
   const formSrc = read('app', 'admin', 'pay-components', 'component-form.tsx');
 
   it('makes the Input Type cell a link to the pay item, same target as the row Edit action', () => {
-    const cell = listSrc.slice(listSrc.indexOf('inputType_${inputTypeOf(c.rule)}') - 800);
-    expect(cell, 'Input Type is rendered inside a Link').toContain('href={`${PAGE}/${encodeURIComponent(c.code)}`}');
-    expect(listSrc, 'the link is titled so its purpose is obvious').toContain('inputTypeLinkTitle');
+    const value = '{t(`inputType_${inputTypeOf(c.rule, c.pendingInputKind)}`)}';
+    const valueAt = listSrc.indexOf(value);
+    expect(valueAt, 'the actual rendered Input Type value exists').toBeGreaterThanOrEqual(0);
+    const start = listSrc.lastIndexOf('<td ', valueAt), end = listSrc.indexOf('</td>', valueAt);
+    expect(start, 'the Input Type cell starts before its value').toBeGreaterThanOrEqual(0);
+    expect(end, 'the Input Type cell ends after its value').toBeGreaterThan(valueAt);
+    const cell = listSrc.slice(start, end + '</td>'.length);
+    const inputLinks = [...cell.matchAll(/<Link\b[\s\S]*?<\/Link>/g)].map(match => match[0]);
+    expect(inputLinks, 'one edit link contains the actual Input Type value').toHaveLength(1);
+    expect(inputLinks[0]).toContain(value);
+    expect(inputLinks[0], 'the link explains its purpose').toContain("title={t('inputTypeLinkTitle', { code: c.code })}");
+    const editLinks = [...listSrc.matchAll(/<Link\b[\s\S]*?<\/Link>/g)]
+      .map(match => match[0]).filter(link => link.includes("{t('edit')}"));
+    expect(editLinks, 'the row Edit action remains present').toHaveLength(1);
+    const target = 'href={`${PAGE}/${encodeURIComponent(c.code)}`}';
+    expect(inputLinks[0], 'Input Type links to its pay item').toContain(target);
+    expect(editLinks[0], 'the Edit action has the identical destination').toContain(target);
   });
 
   it('prints the plain-words formula on the list rows and in the CSV export', () => {

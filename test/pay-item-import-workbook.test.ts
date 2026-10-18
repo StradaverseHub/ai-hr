@@ -3,9 +3,10 @@ import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import en from '../messages/en.json';
 import { payItemVocabulary } from '../core/pay-component-import';
+import { PAY_RULE_KINDS } from '../core/pay-rule';
 import { validatePayComponentCreateSettings } from '../core/pay-components';
 import { PAY_ITEM_COLUMNS, normalizePayItemRow, matchPayItemChoice, payItemImportFileName } from '../lib/pay-component-import';
-import { payComponentIdentityIssues, payCalculationStatus, payComponentReferenceStamp, PayComponentCalculationPendingError } from '../lib/pay-component-contract';
+import { PENDING_PAY_INPUT_KINDS, payComponentIdentityIssues, payCalculationStatus, payComponentReferenceStamp, PayComponentCalculationPendingError } from '../lib/pay-component-contract';
 import { buildPayItemWorkbook, readPayItemWorkbook, payItemErrorWorkbook } from '../lib/pay-component-workbook';
 
 const t = (key: string) => {
@@ -23,11 +24,22 @@ function upload(rows: string[][], headers: readonly string[] = PAY_ITEM_COLUMNS.
 const valid = ['TEST_1', 'Fictional label', '', 'Earning', '', '', '', '', '', '', '', '', '', 'N'];
 
 describe('Pay Items workbook contract', () => {
+  it('represents every calculated canonical input kind in the pure pending contract', () => {
+    expect([...PENDING_PAY_INPUT_KINDS]).toEqual(PAY_RULE_KINDS.filter(kind => kind !== 'fixed'));
+  });
   it('generates five ordered live-list sheets, supplied styles, C3 freeze and all 500 advisory rows', async () => {
     const bytes = await buildPayItemWorkbook(vocabulary), wb = XLSX.read(bytes, { type: 'buffer', cellFormula: true });
     expect(wb.SheetNames).toEqual(['Instructions', 'Pay Items', 'Example', 'Field Guide', 'Lists']);
-    expect(wb.Sheets['Pay Items'].T3.f).toContain('COUNTIF');
-    expect(wb.Sheets['Pay Items'].T502.f).toContain('A502');
+    for (const name of ['Pay Items', 'Example']) {
+      const sheet = wb.Sheets[name];
+      const advisory = Object.entries(sheet).filter(([address, cell]) => /^T\d+$/.test(address) && Number(address.slice(1)) >= 3 && typeof cell.f === 'string');
+      expect(advisory, `${name}: exactly 500 exported Row Check formulas`).toHaveLength(500);
+      for (let row = 3; row <= 502; row++) {
+        expect(sheet[`T${row}`], `${name}!T${row} survives XLSX export/read`).toBeDefined();
+        expect(sheet[`T${row}`].f, `${name}!T${row} retains duplicate-code advice`).toContain('COUNTIF');
+        expect(sheet[`T${row}`].f, `${name}!T${row} reads its own row`).toContain(`COUNTA(A${row}:S${row})`);
+      }
+    }
     const zip = await JSZip.loadAsync(bytes), xml = await zip.file('xl/worksheets/sheet2.xml')!.async('string');
     expect(xml).toContain('topLeftCell="C3"');
     expect(xml).toContain('xSplit="2" ySplit="2"');
