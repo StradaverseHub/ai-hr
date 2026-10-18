@@ -23,6 +23,7 @@ export function OnboardingSettings({ context, options, initialTab = 'settings' }
     const enqueue = (write: (revision: number) => Promise<{
         error: string | null;
         revision: number | null;
+        code?: string;
     }>) => start(async () => {
         const pending = queue.current.then(async () => {
             if (failed.current)
@@ -31,7 +32,7 @@ export function OnboardingSettings({ context, options, initialTab = 'settings' }
             setSaved('');
             const result = await write(revisionRef.current);
             if (result.error || result.revision === null) {
-                failed.current = true;
+                failed.current = result.code !== 'invalid';
                 setError(result.error || 'Reload before saving.');
             }
             else {

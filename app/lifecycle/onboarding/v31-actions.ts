@@ -5,7 +5,7 @@ import { onboardingCommand, onboardingSaveConfig, onboardingSaveChecklistTasks, 
 import type { TaskDef } from '@/lib/onboarding-model';
 import { OnboardingError } from '@/lib/onboarding-model';
 import { ZodError } from 'zod';
-const failure = (e: unknown) => ({ fields: e instanceof OnboardingError ? e.fields : [], error: e instanceof OnboardingError ? e.message : e instanceof ZodError ? 'Check the highlighted values and try again.' : 'The change could not be saved. Reload and try again.' });
+const failure = (e: unknown) => ({ code: e instanceof OnboardingError ? e.code : e instanceof ZodError ? 'invalid' : 'unknown', fields: e instanceof OnboardingError ? e.fields : [], error: e instanceof OnboardingError ? e.message : e instanceof ZodError ? 'Check the highlighted values and try again.' : 'The change could not be saved. Reload and try again.' });
 const refresh = () => { revalidatePath('/lifecycle'); revalidatePath('/tasks'); revalidatePath('/admin/lifecycle/onboarding'); };
 export async function changeOnboarding(id: string, revision: number, command: OnboardingCommand) {
     try {

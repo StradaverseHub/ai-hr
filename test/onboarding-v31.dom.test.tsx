@@ -63,6 +63,21 @@ describe('V3.1 localized task controls', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Save configuration' }));
         await waitFor(() => expect(mocks.config).toHaveBeenCalledWith(3, expect.objectContaining({ countEquipment: !initial }), {}, false));
     });
+    it('lets HR correct a task validation error and retry at the same settings revision', async () => {
+        const config=defaultConfig('owner');config.checklists[0]!.tasks=[{id:'welcome',name:'Welcome',by:'group',group:'people-gbs',method:'manual',opens:null,due:1,gate:false}];
+        mocks.tasks.mockReset().mockResolvedValueOnce({error:'Day 0 is invalid.',revision:null,code:'invalid'}).mockResolvedValueOnce({error:null,revision:2});
+        const context={config,revision:1,actor:{id:'owner',module:true,master:false},directory:[{id:'owner',name:'Owner'}],checklistCounts:{},loads:{},availability:{},matchCounts:{},totalJoiners:0};
+        const options={businessGroup:[],company:[],department:[],title:[],grade:[],employmentType:[]};
+        render(<NextIntlClientProvider locale="en" messages={messages('en')}><OnboardingSettings context={context as never} options={options as never} initialTab="checklists"/></NextIntlClientProvider>);
+        const due=screen.getByRole('spinbutton',{name:'Due by Day'});
+        fireEvent.change(due,{target:{value:'0'}});fireEvent.blur(due);
+        expect(await screen.findByRole('alert')).toHaveTextContent('Day 0 is invalid.');
+        fireEvent.change(due,{target:{value:'1'}});fireEvent.blur(due);
+        await waitFor(()=>expect(mocks.tasks).toHaveBeenCalledTimes(2));
+        expect(mocks.tasks.mock.calls.map(call=>call[0])).toEqual([1,1]);
+        expect(await screen.findByRole('status')).toHaveTextContent('Changes saved');
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
     it('keeps a saved pending case open so HR can submit without reloading', async () => {
         const today = todayInKualaLumpur(), env = { today, now: today + 'T02:00:00.000Z', id: () => 'history', nextNumber: () => '', leave: {}, taskLoads: {}, lastTaskAssignment: {}, pendingApprovals: {}, lifetimeApprovals: {}, users: ['owner'] };
         const c = blankCase('case', 'OB-1', 'draft', { fullName: 'Fictional Hire' }, env);
