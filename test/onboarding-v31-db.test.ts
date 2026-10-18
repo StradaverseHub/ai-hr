@@ -183,6 +183,7 @@ describe('V3.1 onboarding database and authorization', () => {
         await expect(onboardingDetail(tech, row.case.id)).rejects.toThrow('access');
         const queue = await onboardingTasks(tech);
         expect(queue.some(i => i.kind === 'checklist')).toBe(true);
+        expect((await onboardingDetail(tech,row.case.id,'task')).availability).toEqual({});
         await onboardingCommand(tech, row.case.id, row.revision, { type: 'task', taskId: 'welcome', status: 'done' });
         expect((await onboardingDetail(admin, row.case.id)).case.tasks[0]!.status).toBe('done');
     });
