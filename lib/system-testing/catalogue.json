@@ -76,26 +76,26 @@
           "Use the current template downloaded from the import screen."
         ],
         "testData": [
-          "An existing fictional employee code and an invalid date value."
+          "One existing fictional employee code, its original recorded date of birth, and an invalid date_of_birth value. Use only the Profile template; do not use the retired undated Employment section or the Movement sequence card."
         ],
         "steps": [
           {
             "id": "step1",
-            "action": "Open /admin/personnel/import and download the current template for the intended section.",
-            "expected": "The download identifies the intended section and current column contract."
+            "action": "Open /admin/personnel/import, select Profile and download its current template.",
+            "expected": "The current Profile template contains employee_code and date_of_birth. Movement is a separate dated event workflow and is not used for this single-row refusal check."
           },
           {
             "id": "step2",
-            "action": "Put the fictional employee code in one row and an invalid value in a date column; upload and Check.",
+            "action": "Enter only the fictional employee_code and an invalid date_of_birth value in one Profile row; leave other cells blank, upload and Check.",
             "expected": "The preview identifies the row and field error; applying the invalid data is unavailable."
           },
           {
             "id": "step3",
             "action": "Reopen the fictional employee without applying a corrected file.",
-            "expected": "The stored date and other employee fields remain unchanged."
+            "expected": "The original stored date of birth and all other employee fields remain unchanged."
           }
         ],
-        "expectedBehavior": "The stored date and other employee fields remain unchanged.",
+        "expectedBehavior": "The original stored date of birth and all other employee fields remain unchanged.",
         "expectedFunction": "Check import validation and absence of partial changes.",
         "permissions": [
           "Normal company-scoped HR access to the fictional employee."
@@ -989,8 +989,8 @@
       "semanticId": "settings.labels.workbook",
       "definition": {
         "format": 1,
-        "title": "Download, Check and apply fictional System Label data",
-        "objective": "Check the workbook uses the same Criteria and collision owner.",
+        "title": "Import only new fictional System Label codes",
+        "objective": "Check the three-step workbook import adds valid new codes and skips existing or invalid rows without overwriting records.",
         "functionKey": "settings.labels",
         "area": "system_settings",
         "moduleCode": "employees",
@@ -999,30 +999,35 @@
         "active": true,
         "prerequisites": [
           "Use an isolated test tenant and fictional records only. Do not use production personal data.",
-          "The fictional label is visible in the selected label category."
+          "The tester may maintain the selected category and origin/Criteria companies. Prepare one fictional existing code and a different unused code in that category."
         ],
         "testData": [
-          "A current existing-data workbook and one harmless fictional description edit."
+          "A current-data or blank-template XLSX/XLS with one existing fictional code whose label/description is edited, one valid unused fictional code, and one ordinary invalid row. Keep worksheet names/headers and the 5 MB, 500-row-per-sheet and 7000-row workbook limits."
         ],
         "steps": [
           {
             "id": "step1",
-            "action": "Download the current data workbook from the selected System Labels category.",
-            "expected": "The intended category and stable row identities are present."
+            "action": "Open Import Excel on System Labels. Inspect Upload the file, Check results and Done, the template link and the new-codes-only warning. Select the fictional mixed workbook.",
+            "expected": "The import opens in a keyboard-accessible dialog without an import-mode selector. The workbook is checked before any save."
           },
           {
             "id": "step2",
-            "action": "Edit only the fictional description; upload and Check.",
-            "expected": "The preview identifies the intended row and change without silently changing Criteria."
+            "action": "Check results. Inspect all source rows, valid-add and blocked/skipped counts, and download the error report.",
+            "expected": "The unused valid code is ready to add; the existing edited code and invalid row are blocked/skipped with source category, Excel row, code and reason. The report exposes no hidden company details."
           },
           {
             "id": "step3",
-            "action": "Confirm the selected current and proposed update values, Apply, then reopen the fictional label.",
-            "expected": "The saved description matches the confirmed preview. Original identifier spelling and Criteria remain unchanged; this valid round trip does not itself establish a separate unauthorized/ambiguous-row negative test."
+            "action": "Import the valid new code, inspect Done, then reopen both the new and existing fictional labels.",
+            "expected": "Done reports exactly the actual created/skipped counts. The new label persists with its reviewed Criteria; the existing label retains every saved value and its Criteria. Downloading skipped rows after Done still reports the original blocked rows, not the successfully created code."
+          },
+          {
+            "id": "step4",
+            "action": "Re-upload the same workbook and check again. Inspect the now all-blocked results. If separately supplied authorized isolated fixtures exist, also check an existing code in a different or hidden company and an inactive existing identity; record any missing fixture coverage.",
+            "expected": "Previously created/existing identities are blocked; an all-blocked preview disables Import and makes no writes. A hidden-company collision receives only the general existing-code refusal. Record unavailable fixture coverage honestly."
           }
         ],
-        "expectedBehavior": "The selected confirmed description update persists while identifier and Criteria remain unchanged.",
-        "expectedFunction": "Check the workbook uses the same Criteria and collision owner.",
+        "expectedBehavior": "Only the reviewed valid new code is created. Existing values and Criteria remain unchanged, and blocked/skipped rows retain an error report. A manual guide run does not itself prove forged legacy API arguments are refused.",
+        "expectedFunction": "Use the canonical label import owner with new-only intent, permission revalidation and truthful created/skipped results.",
         "permissions": [
           "Label import and origin/company maintenance authority."
         ],
@@ -1038,7 +1043,14 @@
         "core/system-labels.ts",
         "lib/permissions.ts",
         "components/system-label-import.tsx",
-        "app/admin/settings/system-labels/current-data/route.ts"
+        "app/admin/settings/system-labels/current-data/route.ts",
+        "app/admin/settings/system-labels/import/route.ts",
+        "app/admin/settings/system-labels/errors/route.ts",
+        "lib/system-label-definition.ts",
+        "lib/system-label-workbook.ts",
+        "lib/system-label-upload.ts",
+        "lib/system-label-xls.ts",
+        "db/migrations/0563_label_import_tenant_code_collision.sql"
       ],
       "reviewedSourceHash": "425a8c5a898dd27a7168517bcbc9e3dbe7a4d6460b3fee13ed6964e1b6236bd6",
       "reviewNote": "Source-to-guide semantic review corrected this bounded guide against implemented owners. Manual execution remains required. Final integrated source fingerprints must be reviewed before publication; this guide claims neither runtime success nor complete function coverage."
