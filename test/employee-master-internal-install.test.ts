@@ -1,5 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {readFileSync} from 'node:fs';
+import ts from 'typescript';
 import {installedWebPrincipal,installedInternalConfiguration,internalReportSenderDatabase,internalReportRunnerDatabase,internalReportRunnerEnvironment,parseInternalReportRunnerEnvironment,assertInternalReportSchedulingEnabled,internalReportSenderGrants,forbiddenSenderFunctionsSql} from '../deploy/identity-email/internal-report-install-model';
 import {employeeMasterDeliverySocket} from '../lib/employee-master-delivery-ipc';
 import {reportRenderOrigin} from '../deploy/identity-email/render-config';
@@ -52,7 +53,25 @@ describe('internal report installation boundaries',()=>{
   expect(internalReportSenderGrants.join(';')).toContain('REVOKE EXECUTE ON FUNCTION identity_email.report_target');expect(internalReportSenderGrants.join(';')).toContain('identity_email.start_report');expect(internalReportSenderGrants.join(';')).toContain('identity_email.finish_report');
   expect(forbiddenSenderFunctionsSql).toContain('has_function_privilege');expect(forbiddenSenderFunctionsSql).toContain("internal_auth_%");expect(forbiddenSenderFunctionsSql).toContain('internal_report_context');
   const install=source('upgrade-internal-reports.ts');expect(install).toContain("'/proc/'+principal.pid+'/environ'");expect(install).toContain("show('MainPID')");expect(install).toContain('forbiddenSenderFunctionsSql');expect(install).toContain('has_table_privilege');expect(install).not.toContain('usermod');expect(install).toContain('scheduledEmailEnabled:web.scheduledEmailEnabled');
-  const privateWorkers=install.split('\n').filter(line=>/changes.push.*\/(broker|sender|renderer)\.env/.test(line));expect(privateWorkers).toHaveLength(3);for(const line of privateWorkers)expect(line).not.toMatch(/scheduledEmailEnabled|EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED/);
+  // Match the actual push destination, never a drop-in's content mentioning renderer.env.
+  const tree=ts.createSourceFile('upgrade-internal-reports.ts',install,ts.ScriptTarget.Latest,true);
+  const privateWorkers:{destination:ts.BinaryExpression;call:ts.CallExpression}[]=[];
+  function visit(node:ts.Node){
+   if(ts.isCallExpression(node)&&ts.isPropertyAccessExpression(node.expression)&&ts.isIdentifier(node.expression.expression)&&node.expression.expression.text==='changes'&&node.expression.name.text==='push'){
+    expect(node.arguments).toHaveLength(1);const tuple=node.arguments[0];expect(ts.isArrayLiteralExpression(tuple)).toBe(true);
+    if(ts.isArrayLiteralExpression(tuple)){
+     const destination=tuple.elements[0];
+     if(ts.isBinaryExpression(destination)&&ts.isStringLiteral(destination.right)&&/^\/(broker|sender|renderer)\.env$/.test(destination.right.text))privateWorkers.push({destination,call:node});
+    }
+   }
+   ts.forEachChild(node,visit);
+  }
+  visit(tree);expect(privateWorkers).toHaveLength(3);
+  expect(privateWorkers.map(({destination})=>destination.right.getText(tree)).sort()).toEqual(["'/broker.env'","'/renderer.env'","'/sender.env'"]);
+  for(const {destination,call} of privateWorkers){
+   expect(destination.operatorToken.kind).toBe(ts.SyntaxKind.PlusToken);expect(destination.left.getText(tree)).toBe('config');
+   expect(call.getText(tree)).not.toMatch(/scheduledEmailEnabled|EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED/);
+  }
  });
  it('keeps external renderer socket default0600 and only reviewed internal bundle installs0660 client group',()=>{
   expect(source('aihr-report-renderer.socket')).toContain('SocketMode=0600');expect(source('build-internal-reports.ts')).toContain('SocketGroup=aihr-report-clients');expect(source('build-internal-reports.ts')).toContain('SocketMode=0660');
