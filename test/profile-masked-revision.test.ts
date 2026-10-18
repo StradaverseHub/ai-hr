@@ -133,8 +133,12 @@ describe('country-owned masked profile row revisions',()=>{
   await addDependent(admin(),{personId:a.personId,fullName:'Qualifying child',relationship:'child',dateOfBirth:`${Number(todayInKualaLumpur().slice(0,4))-8}-01-01`,childTaxRelief:true});
   const table={under_18:{full:1,half:1},disabled:{full:1,half:0}};
   // Deliberately stale compatibility projection: canonical automatic read must not simply echo nine.
-  await owner.db.update(employeeStatutoryMy).set({numChildren:9,childReliefMode:mode,childReliefTable:table,taxCategory:2}).where(eq(employeeStatutoryMy.personId,a.personId));
+  await owner.db.update(employeeStatutoryMy).set({numChildren:9,childReliefMode:'manual',childReliefTable:table,taxCategory:2}).where(eq(employeeStatutoryMy.personId,a.personId));
   const id='bank_statutory.income_tax_pcb.numchildren';await saveProfileEditPolicy(admin(),{keys:[id],withdrawnReason:'Fixture field closure'});
+  // A genuine manual workspace supplies a matching stored-value baseline. After a mode change,
+  // possession of that baseline still cannot authorize overwriting an automatic derived count.
+  const manualView=await readOwnProfileWorkspace(a.ctx,{employmentId:a.employmentId});expect(manualView.values[id]).toBe(9);
+  if(mode!=='manual')await owner.db.update(employeeStatutoryMy).set({childReliefMode:mode}).where(eq(employeeStatutoryMy.personId,a.personId));
   const view=await readOwnProfileWorkspace(a.ctx,{employmentId:a.employmentId});
   if(mode==='manual'){
    expect(view.values[id]).toBe(9);expect(view.fieldReadOnlyReasons?.[id]).toBeUndefined();
@@ -144,7 +148,10 @@ describe('country-owned masked profile row revisions',()=>{
    const relief=await qualifyingChildReliefFor(a.ctx,{personId:a.personId,country:'MY',asOf:todayInKualaLumpur()});
    const count=mode==='auto'?relief!.eligibleChildren:pack().payroll.childReliefTableHeadCount!(table);
    expect(count).toBe(mode==='auto'?1:3);expect(view.values[id]).toBe(count);expect(view.values[id]).not.toBe(9);expect(view.fieldReadOnlyReasons?.[id]).toBe('derivedChildCount');
-   await expect(submitOwnProfileEdit(a.ctx,{employmentId:a.employmentId,proposal:{v:2,fields:[{fieldId:id,before:view.baselines[id],value:4}],registers:[]}})).rejects.toMatchObject({code:'invalid',fieldIds:[id]});
+   // CAS precedes applicability: the derived display's token differs from the retained compatibility9.
+   await expect(submitOwnProfileEdit(a.ctx,{employmentId:a.employmentId,proposal:{v:2,fields:[{fieldId:id,before:view.baselines[id],value:4}],registers:[]}})).rejects.toMatchObject({code:'stale',fieldIds:[id]});
+   await expect(submitOwnProfileEdit(a.ctx,{employmentId:a.employmentId,proposal:{v:2,fields:[{fieldId:id,before:manualView.baselines[id],value:4}],registers:[]}})).rejects.toMatchObject({code:'invalid',fieldIds:[id]});
+   expect(await owner.db.select().from(profileChangeRequest)).toEqual([]);
    const legacy=await seedStoredLegacyProfileRequest(a.ctx,{employmentId:a.employmentId,proposed:{numChildren:4}});
    await expect(decideProfileChange(admin(),{requestId:legacy.requestId,decision:'approved'})).rejects.toMatchObject({code:'invalid',fieldIds:[id]});
    expect((await pack().statutory.get(admin(),a.personId))!.numChildren).toBe(9);
