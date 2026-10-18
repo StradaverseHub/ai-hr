@@ -56,8 +56,8 @@
         "app/admin/personnel/[employmentId]/actions.ts",
         "core/org.ts"
       ],
-      "reviewedSourceHash": "d973da344978ebec646ff854a3a728819a5a94d6d79ccc18698c6dba4d2e99ce",
-      "reviewNote": "Bounded actual merged-source review at aa7ab5602d5169c300e3816b05747f53f91ed9c4: Ready-only recurring Pay Item options and Movement entitlement composition do not alter preferred-name persistence or Profile authority. Current combined permissions and prior authority remain intact. Source bytes are bound to the implemented owners; actual manual checks remain required. This review establishes no runtime/gate/manual pass, exhaustive coverage or live arrival."
+      "reviewedSourceHash": "82d29467b07f7c000bdd2e523274a5c2865a5759bfd5028a4602f5c78cc908f2",
+      "reviewNote": "Follow-up bounded source review at 8344511294eda90518d8c572b971efc6664b5246: The only new Personnel page change supplies the exact inactive edited Movement type to the Edit card. Preferred-name inputs, save authority and reopening are unchanged. This retains the prior bounded definition and establishes no manual execution, UI, type, gate or production pass."
     },
     {
       "semanticId": "personnel.import.invalid",
@@ -291,8 +291,8 @@
         "lib/permissions.ts",
         "app/admin/personnel/[employmentId]/actions.ts"
       ],
-      "reviewedSourceHash": "f340936ab278bd17947dc3aba9327115238edbcff0f8086e53bae5f903199a26",
-      "reviewNote": "Bounded actual merged-source review at aa7ab5602d5169c300e3816b05747f53f91ed9c4: Personnel filters recurring Pay Item choices, while salary editor/effective-date ownership stays unchanged; Movement-only action orchestration is separate. Current combined permissions and prior authority remain intact. Source bytes are bound to the implemented owners; actual manual checks remain required. This review establishes no runtime/gate/manual pass, exhaustive coverage or live arrival."
+      "reviewedSourceHash": "b12fc9670ae35c6c1dfbb1c4d75e8be636572d5301f6088197b16a0ff0df58ed",
+      "reviewNote": "Follow-up bounded source review at 8344511294eda90518d8c572b971efc6664b5246: The Personnel page change is confined to Movement Edit metadata. The dated salary editor and compensation writer used by this guide are unchanged. This retains the prior bounded definition and establishes no manual execution, UI, type, gate or production pass."
     },
     {
       "semanticId": "payroll.run.closed",
@@ -811,8 +811,8 @@
         "app/admin/personnel/[employmentId]/actions.ts",
         "core/read.ts"
       ],
-      "reviewedSourceHash": "4eedd9f91aff5dde7ae47d06ef8f502bd05b3d5b6884f20c90abeef7cfef0283",
-      "reviewNote": "Bounded actual merged-source review at aa7ab5602d5169c300e3816b05747f53f91ed9c4: Movement dispatch shares caller transactions and blacklist gets optional transaction composition. Manual reporting-line persistence/history and Org Chart consumption remain unchanged. Current combined permissions and prior authority remain intact. Source bytes are bound to the implemented owners; actual manual checks remain required. This review establishes no runtime/gate/manual pass, exhaustive coverage or live arrival."
+      "reviewedSourceHash": "36069992b3d2740cc326e345a591b3bca604c26e576cb8080498e8b917a1693a",
+      "reviewNote": "Follow-up bounded source review at 8344511294eda90518d8c572b971efc6664b5246: Custom Movement correction now resolves behavior through the existing canonical type policy, retaining recorded codes, latest-applied and reversal constraints. The page change is confined to Movement Edit; ordinary administrative reporting-line writes and authorized Org Chart consumption are unchanged. This retains the prior bounded definition and establishes no manual execution, UI, type, gate or production pass."
     },
     {
       "semanticId": "organization.scope.refusal",
@@ -1485,8 +1485,8 @@
         "lib/profile-edit-policy-value.ts",
         "lib/personnel-field-label.ts"
       ],
-      "reviewedSourceHash": "a556722f0474fba3bee58657616c8c762031a081ad4381f81d3b2953ab08d358",
-      "reviewNote": "Bounded actual merged-source review at aa7ab5602d5169c300e3816b05747f53f91ed9c4: Exactly Card ID and Attendance Photo import-section metadata moves to Profile; all ESS policies, own phone immediate save, preferred-name approval, CAS and retained observation/history owners remain unchanged. Current combined permissions and prior authority remain intact. Source bytes are bound to the implemented owners; actual manual checks remain required. This review establishes no runtime/gate/manual pass, exhaustive coverage or live arrival."
+      "reviewedSourceHash": "6453f6e5cc9784b7d8aa9529d9154b56aa018d20366eff9feb9445b81bdfd30d",
+      "reviewNote": "Follow-up bounded source review at 8344511294eda90518d8c572b971efc6664b5246: The administrative Personnel page adds only the exact inactive Movement type being edited. Own-profile phone/preferred-name save, policies, approvals, retained history and CAS are unchanged. This retains the prior bounded definition and establishes no manual execution, UI, type, gate or production pass."
     },
     {
       "semanticId": "settings.testing.independent-observations",
@@ -1660,8 +1660,8 @@
         "app/admin/personnel/[employmentId]/page.tsx",
         "lib/permissions.ts"
       ],
-      "reviewedSourceHash": "9dc8e5ed5e8c56a911ac6e850f9eccbe20b2855d282c93eb5299c0e2c68b3bb3",
-      "reviewNote": "Bounded actual merged-source review at aa7ab5602d5169c300e3816b05747f53f91ed9c4: The error-free whole-file canonical create-only writer, normalized preview, pending Formula caption/picker exclusion and existing-code re-upload refusal support this bounded journey. Current combined permissions and prior authority remain intact. Source bytes are bound to the implemented owners; actual manual checks remain required. This review establishes no runtime/gate/manual pass, exhaustive coverage or live arrival."
+      "reviewedSourceHash": "b700393a5bca3b24ac8189aaa6367b8255a51aab005e68df474dcb99b10e7eaf",
+      "reviewNote": "Follow-up bounded source review at 8344511294eda90518d8c572b971efc6664b5246: Workbook advisory text formulas now retain their empty cache through XLSX roundtrip; payroll values use the public facade and pending types remain a pure contract. Canonical overtime example creation supplies its explicit named label. The manual PCB checkbox retires dependent selections when unticked, while contradictory workbook inputs remain refused. The page change supplies only Movement Edit metadata; create-only import, pending assignment exclusion and this guide definition remain intact. This retains the prior bounded definition and establishes no manual execution, UI, type, gate or production pass."
     },
     {
       "semanticId": "personnel.movement.import",
@@ -1743,8 +1743,8 @@
         "app/admin/personnel/[employmentId]/movement-new-event.tsx",
         "app/admin/personnel/[employmentId]/actions.ts"
       ],
-      "reviewedSourceHash": "70a9ae109a2f3a0a093f69c1cbf050e34ee3595460850ec8623a1ecd137a626c",
-      "reviewNote": "Bounded actual merged-source review at aa7ab5602d5169c300e3816b05747f53f91ed9c4: Rollback-only preview, selected-sequence fingerprint/recheck/exclusion acknowledgement and per-employee canonical commit support the bounded Promotion+Transfer journey. EventType validation uses its actual V column while Company references remain present. Current combined permissions and prior authority remain intact. Source bytes are bound to the implemented owners; actual manual checks remain required. This review establishes no runtime/gate/manual pass, exhaustive coverage or live arrival."
+      "reviewedSourceHash": "a00fafabc13ae2e00d89b94179f2e897d9839feb196dc2bc1e0a426a190bff6e",
+      "reviewNote": "Follow-up bounded source review at 8344511294eda90518d8c572b971efc6664b5246: Import-specific requiredness keeps omitted Department as no change, requires an explicit Entity Transfer destination and retains lifecycle requirements; template guidance consumes that same adapter. History correction resolves custom behavior through canonical type policy without changing recorded identity or family/latest/access restrictions. The Edit card retains only its exact inactive type alongside active choices; New Event stays active-only. This guide remains the bounded Promotion/Transfer journey and makes no new custom-edit or financial execution claim. This retains the prior bounded definition and establishes no manual execution, UI, type, gate or production pass."
     }
   ]
 }
