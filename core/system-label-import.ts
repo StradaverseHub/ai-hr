@@ -199,6 +199,10 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audi
       }
     }catch(error){result.reason=error instanceof LabelImportRowError?error.reason:'invalidRow';if(error instanceof LabelImportRowError&&error.reasonField)result.reasonField=error.reasonField;result.outcome='error';result.selected=false;result.message=error instanceof Error?error.message:'Invalid label row.';}
   }
+  // Valid subset selection is intentional, not a validation error. Keep it visible in reports.
+  for(const result of output)if(result.outcome==='add'&&!result.selected){
+    result.outcome='skip';result.reason='notSelected';result.message='Valid new code was not selected for this import. No record was created.';
+  }
   for(const result of output)if(result.warnings?.length)result.message=[result.message,...result.warnings].join(' ');
   const orgGroups=new Map<OrganisationLabelKind,LabelCreateInput[]>(),apply:(()=>Promise<unknown>)[]=[];
   const selectedWrites=writes.filter(write=>output.some(row=>row.selected&&row.outcome==='add'&&row.sheet+':'+row.row===write.key));

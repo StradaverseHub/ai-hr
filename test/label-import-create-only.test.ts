@@ -74,6 +74,17 @@ describe('new-only System Label import identity boundary',()=>{
   for(const [code,field]of [['MISSING_COMPANY','Company'],['MISSING_DESCRIPTION','Description'],['MISSING_LABEL','Label']])expect(preview.rows.find(row=>row.after.Code===code)).toMatchObject({reasonField:field});
   expect(preview.valid).toBe(true);expect(preview.rows.find(row=>row.after.Code==='STILL_VALID')).toMatchObject({outcome:'add',selected:true});
  });
+ it('reports an intentionally unselected valid row as skipped while importing only the selected valid subset',async()=>{
+  const bytes=await book({division:[{Code:'SELECTED_NEW',Label:'Selected'},{Code:'UNSELECTED_NEW',Label:'Unselected'}]}),ctx=adminCtx(b),selectedKeys=['division:2'];
+  const preview=await previewSystemLabelImport(ctx,bytes,'add',selectedKeys);
+  expect(preview.valid).toBe(true);expect(preview.rows.find(row=>row.after.Code==='SELECTED_NEW')).toMatchObject({outcome:'add',selected:true});
+  expect(preview.rows.find(row=>row.after.Code==='UNSELECTED_NEW')).toMatchObject({outcome:'skip',reason:'notSelected',selected:false});
+  const summary=await applySystemLabelImport(ctx,{bytes,token:preview.token,selectedKeys});expect(summary).toMatchObject({imported:1,updated:0,skipped:1,failed:0});expect(summary.errorReport).toBeTruthy();
+  const report=XLSX.read(Buffer.from(summary.errorReport!,'base64'),{type:'buffer'}),rows=XLSX.utils.sheet_to_json<string[]>(report.Sheets.Errors,{header:1,raw:false});
+  expect(rows).toEqual([['Worksheet','Row','Code','Result','Message'],['division','3','UNSELECTED_NEW','skip','Valid new code was not selected for this import. No record was created.']]);
+  expect(await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'SELECTED_NEW'))).toHaveLength(1);expect(await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'UNSELECTED_NEW'))).toHaveLength(0);
+  const events=await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.eventType,'system-label-import.applied'));expect(events).toHaveLength(1);expect(events[0].payload).toMatchObject({summary:{imported:1,updated:0,skipped:1,failed:0},rows:[{after:{Code:'SELECTED_NEW'}}]});
+ });
  it('the existence oracle rejects malformed and oversized requests rather than exposing tables',async()=>{
   for(const payload of [[{key:'r',kind:'unsupported',code:'X'}],[{key:'r',kind:'department',code:'X'},{key:'r',kind:'position',code:'X'}],Array.from({length:7001},(_,i)=>({key:String(i),kind:'department',code:'X'}))]){
    await expect(withTenant(adminCtx(b),tx=>tx.execute(sql`select key from app.existing_system_label_import_keys(${b.tenantId}::uuid,${JSON.stringify(payload)}::jsonb)`))).rejects.toThrow(/Invalid import/);

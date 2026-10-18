@@ -20319,6 +20319,8 @@
       "Description": "Mô tả",
       "Label": "Nhãn",
       "Name": "Tên"
-    }
+    },
+    "notSelected": "Mã mới hợp lệ này không được chọn để nhập. Không có bản ghi nào được tạo.",
+    "notSelectedStatus": "Không được chọn — đã bỏ qua"
   }
 }

@@ -20319,6 +20319,8 @@
       "Description": "Huraian",
       "Label": "Label",
       "Name": "Nama"
-    }
+    },
+    "notSelected": "Kod baharu yang sah tidak dipilih untuk import ini. Tiada rekod dicipta.",
+    "notSelectedStatus": "Tidak dipilih — dilangkau"
   }
 }

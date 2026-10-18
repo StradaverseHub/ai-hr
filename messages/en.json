@@ -20319,6 +20319,8 @@
       "Description": "Description",
       "Label": "Label",
       "Name": "Name"
-    }
+    },
+    "notSelected": "Valid new code was not selected for this import. No record was created.",
+    "notSelectedStatus": "Not selected — skipped"
   }
 }

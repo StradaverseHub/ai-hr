@@ -35,9 +35,9 @@ describe('three-step new-code import wizard',()=>{
   const user=userEvent.setup();mount(locale,messages);const w=messages.labelsImportWizard;
   await user.click(screen.getByRole('button',{name:messages.admin.systemLabels.excel.import}));await user.upload(screen.getByLabelText(w.upload),new File(['fictional'],'invalid.xlsx'));
   const reasons=['unsupportedCategory','invalidCompany','invalidCriteria','invalidCriteriaCompany','globalAdminRequired','criteriaCompaniesRequired','invalidHeadEmployee','wholeNumber','invalidGradeCode','gradeLabelExists','invalidGradeReferences','gradeAlreadyGrouped','invalidRow'] as const;
-  const invalid=[...reasons.map((reason,index)=>({...rows[1],row:index+2,reason,message:'SERVER_ENGLISH_MUST_NOT_RENDER'})),...(['Code','Company','Description','Label','Name'] as const).map((reasonField,index)=>({...rows[1],row:index+30,reason:'required',reasonField,message:'SERVER_ENGLISH_MUST_NOT_RENDER'}))];
+  const invalid=[{...rows[1],row:99,outcome:'skip',reason:'notSelected',message:'SERVER_ENGLISH_MUST_NOT_RENDER'},...reasons.map((reason,index)=>({...rows[1],row:index+2,reason,message:'SERVER_ENGLISH_MUST_NOT_RENDER'})),...(['Code','Company','Description','Label','Name'] as const).map((reasonField,index)=>({...rows[1],row:index+30,reason:'required',reasonField,message:'SERVER_ENGLISH_MUST_NOT_RENDER'}))];
   mocks.fetch.mockResolvedValueOnce(response({ok:true,preview:{token:'invalid-locales',valid:false,rows:invalid}}));await user.click(screen.getByRole('button',{name:w.check}));
-  expect(await screen.findByText(w.invalidCompany)).toBeVisible();for(const reason of reasons)expect(screen.getByText(w[reason])).toBeVisible();
+  expect(await screen.findByText(w.invalidCompany)).toBeVisible();expect(screen.getByText(w.notSelected)).toBeVisible();expect(screen.getByText(w.notSelectedStatus)).toBeVisible();for(const reason of reasons)expect(screen.getByText(w[reason])).toBeVisible();
   for(const field of ['Code','Company','Description','Label','Name'] as const)expect(screen.getByText(w.required.replace('{field}',w.fields[field]))).toBeVisible();
   expect(screen.queryByText('SERVER_ENGLISH_MUST_NOT_RENDER')).not.toBeInTheDocument();expect(screen.getByRole('button',{name:w.importCount.replace('{count}','0')})).toBeDisabled();
  });

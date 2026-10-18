@@ -20319,6 +20319,8 @@
       "Description": "说明",
       "Label": "标签",
       "Name": "名称"
-    }
+    },
+    "notSelected": "此有效新代码未被选中导入，未创建任何记录。",
+    "notSelectedStatus": "未选择 — 已跳过"
   }
 }
