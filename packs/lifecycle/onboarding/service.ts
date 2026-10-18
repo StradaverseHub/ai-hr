@@ -471,6 +471,7 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
                 for (const t of c.tasks.filter(t => t.by === 'joiner' && t.gate)) {
                     t.status = 'done';
                     t.completedAt = env.now;
+                    t.completedBy = actor.id;
                 }
                 M.log(c, actor, env, 'acknowledgement.submitted');
                 break;

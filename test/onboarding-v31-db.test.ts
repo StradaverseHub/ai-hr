@@ -126,6 +126,21 @@ describe('V3.1 onboarding database and authorization', () => {
         const revision = row.revision;
         await refreshOnboardingPersonnel(admin);
         expect((await onboardingList(admin))[0]!.revision).toBe(revision);
+        const joiner:SessionContext = {...tech,userId:user,personId:employee!.personId,roles:['employee'],grants:undefined};
+        const acknowledgement = {type:'acknowledge' as const,data:{acknowledged:'true',contactNumber:'0100000000',serialNumber:'FICTIONAL-SERIAL'}};
+        await expect(onboardingCommand(joiner,row.case.id,row.revision,acknowledgement)).rejects.toThrow('not available');
+        await onboardingCommand(tech,row.case.id,row.revision,{type:'fulfil',itemId:row.case.requisitions[0]!.items[0]!.id,status:'done'});
+        row=(await onboardingList(admin))[0]!;
+        await onboardingCommand(tech,row.case.id,row.revision,{type:'handover'});
+        row=(await onboardingList(admin))[0]!;
+        await onboardingCommand(joiner,row.case.id,row.revision,acknowledgement);
+        row=(await onboardingList(admin))[0]!;
+        expect(row.case.tasks.find(t=>t.id==='acceptance')).toMatchObject({status:'done',completedBy:user});
+        expect(row.case.acknowledgement?.by).toBe(user);
+        const completedRevision=row.revision;
+        await refreshOnboardingPersonnel(admin);
+        expect((await onboardingList(admin))[0]!.revision).toBe(completedRevision);
+        await expect(onboardingCommand(joiner,row.case.id,completedRevision,acknowledgement)).rejects.toThrow('not available');
     });
     it('keeps an incomplete join date save usable without breaking the task queue', async () => {
         await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Unscheduled Hire' }, employment: { companyId: b.companyId } }, currentStep: 1 });
