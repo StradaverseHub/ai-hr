@@ -282,7 +282,7 @@ describe('r298 — Personnel: Pay Items, CP38 and the Payroll Policy picker foll
     expect(payrollCovers(tree)).toContain('assignTitle');
 
     expect(vi.mocked(listEmploymentPayComponents)).toHaveBeenCalledWith(session.s, e.employmentId);
-    expect(vi.mocked(listPayComponents)).toHaveBeenCalledWith(session.s);
+    expect(vi.mocked(listPayComponents)).toHaveBeenCalledWith(session.s, { readyOnly: true });
     expect(vi.mocked(listCp38)).toHaveBeenCalledWith(session.s, { employmentId: e.employmentId });
     expect(vi.mocked(listAssignablePolicies)).toHaveBeenCalledWith(session.s, base.companyId);
   });

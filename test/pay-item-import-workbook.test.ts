@@ -72,6 +72,12 @@ describe('Pay Items workbook contract', () => {
       pendingInputKind: null, eaFormLine: null, displayCategory: null });
     expect(row.warnings).toContain('unmappedEarning');
   });
+  it('refuses explicit workbook PCB fields when PCB is N rather than clearing the imported choices', () => {
+    const raw = [...valid]; raw[14] = 'normal'; raw[15] = 'PCB_TAXABLE';
+    const row = normalizePayItemRow(readPayItemWorkbook(upload([raw]))[0], vocabulary);
+    expect(row.input).toMatchObject({ includedInPcb: false, pcbRemunerationType: 'normal', pcbExemptionCode: 'PCB_TAXABLE' });
+    expect(validatePayComponentCreateSettings(row.input)).toContainEqual({ field: 'pcbRemunerationType', code: 'pcbFieldsRequirePcb' });
+  });
   it('normalizes reordered/case/space/asterisk headers and rejects missing or duplicate headers', () => {
     const headers = PAY_ITEM_COLUMNS.map(([, label]) => `  ${label.toUpperCase().replace(/\*/g, '')}  `);
     expect(readPayItemWorkbook(upload([valid], headers))[0].values.code).toBe('TEST_1');

@@ -75,6 +75,7 @@ function componentFields(formData: FormData, normalizeCode = true): PayComponent
   const kind = (['allowance', 'deduction', 'contribution', 'non_payable'] as const).includes(rawKind as never)
     ? (rawKind as 'allowance' | 'deduction' | 'contribution' | 'non_payable')
     : 'allowance';
+  const includedInPcb = bool(formData, 'includedInPcb');
   return {
     code: normalizeCode ? String(formData.get('code') ?? '').trim().toUpperCase() : String(formData.get('code') ?? ''),
     name: String(formData.get('name') ?? '').trim() || String(formData.get('label') ?? '').trim(),
@@ -84,7 +85,7 @@ function componentFields(formData: FormData, normalizeCode = true): PayComponent
     kind,
     includedInEpf: bool(formData, 'includedInEpf'),
     includedInSocsoEis: bool(formData, 'includedInSocsoEis'),
-    includedInPcb: bool(formData, 'includedInPcb'),
+    includedInPcb,
     includedInHrdfBase: bool(formData, 'includedInHrdfBase'),
     isNonPayable: kind === 'non_payable',
     prorates: bool(formData, 'prorates'),
@@ -97,8 +98,9 @@ function componentFields(formData: FormData, normalizeCode = true): PayComponent
     // panels hide them), so the service's mandatory-pair / wrong-list / epf-bonus-without-epf validation is
     // authoritative on every save (PayComponentStatutoryConfigError → localised message below).
     epfBonus2012: bool(formData, 'epfBonus2012'),
-    pcbRemunerationType: (String(formData.get('pcbRemunerationType') ?? '') || null) as PcbRemunerationType | null,
-    pcbExemptionCode: String(formData.get('pcbExemptionCode') ?? '') || null,
+    // Unticking PCB retires the form's prior dependent selections. Workbook inputs remain strict.
+    pcbRemunerationType: includedInPcb ? (String(formData.get('pcbRemunerationType') ?? '') || null) as PcbRemunerationType | null : null,
+    pcbExemptionCode: includedInPcb ? String(formData.get('pcbExemptionCode') ?? '') || null : null,
     // Feedback 3c473773 — the Payroll Category (which box on the payslip this item prints in). The form
     // ALWAYS supplies it, so a save is authoritative; blank ⇒ null ⇒ the box falls back to the pre-0393
     // inference. It changes DISPLAY only — no statutory flag, base or form reads it.

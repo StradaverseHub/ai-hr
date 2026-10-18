@@ -117,7 +117,18 @@ describe('r385 full pay-item classification through actual maintenance actions a
   it('unticking PCB keeps benefit/EA identity and clears tax classification without creating an invented benefit type', async () => {
     const fd = form('vola'); fd.delete('includedInPcb');
     expect(await location(createComponentAction, fd)).toContain('toast=toastSaved');
-    expect((await listPayComponents(ctx)).find(c => c.code === 'BIK_HOUSE')).toMatchObject({ displayCategory: 'vola', eaFormLine: 'EA_B4', includedInPcb: false, pcbRemunerationType: null, pcbExemptionCode: null });
+    const saved = (await listPayComponents(ctx)).find(c => c.code === 'BIK_HOUSE')!;
+    const untaxed = { id: saved.id, code: 'BIK_HOUSE', label: 'BIK_HOUSE', kind: 'non_payable', isNonPayable: true,
+      displayCategory: 'vola', eaFormLine: 'EA_B4', includedInPcb: false, pcbRemunerationType: null, pcbExemptionCode: null };
+    expect(saved).toMatchObject(untaxed);
+    // The posted selections are deliberately still present: only the screen checkbox retires them.
+    expect(fd.get('pcbRemunerationType')).toBe('normal'); expect(fd.get('pcbExemptionCode')).toBe('PCB_TAXABLE');
+    fd.set('includedInPcb', 'on');
+    expect(await location(updateComponentAction, fd)).toContain('toast=toastSaved');
+    expect((await listPayComponents(ctx)).find(c => c.id === saved.id)).toMatchObject({ includedInPcb: true, pcbRemunerationType: 'normal', pcbExemptionCode: 'PCB_TAXABLE' });
+    fd.delete('includedInPcb');
+    expect(await location(updateComponentAction, fd)).toContain('toast=toastSaved');
+    expect((await listPayComponents(ctx)).find(c => c.id === saved.id)).toMatchObject(untaxed);
   });
 
   it('a benefit saved by the action reaches the existing PCB snapshot without changing cash bases or rewriting history', async () => {
