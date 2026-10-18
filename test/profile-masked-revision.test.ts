@@ -16,7 +16,7 @@ import type {EssProfileProposal} from '../lib/personnel-ess-model';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base;
 const account='bank_statutory.bank_information.bankaccountno',passport='profile.identity_and_passport.passportnumber',holder='bank_statutory.bank_information.customholderid',ic='profile.identity_and_passport.icnumber',oldIc='profile.identity_and_passport.oldicnumber',preferred='profile.personal_details.preferredname';
-const pack=()=>requirePackFor('MY'),admin=()=>adminCtx(b);
+const pack=()=>requirePackFor('MY'),admin=():SessionContext=>({...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]});
 const raw='123456781234';
 beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase();});afterAll(closeAll);
 async function subject(){

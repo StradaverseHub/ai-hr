@@ -344,6 +344,7 @@ describe('r260 — an employee sees and decides only their OWN requests', () => 
     const mine = await hire('Decider');
     const colleague = await hire('Subject');
     await setStatutoryProfileMY(a, { personId: colleague.personId, icNumber: '900101010109' });
+    const beforeStatutory=await getStatutoryProfileMY(a,colleague.personId);
     const meCtx = await employeeCtx(mine.personId);
     const themCtx = await employeeCtx(colleague.personId);
 
@@ -376,8 +377,9 @@ describe('r260 — an employee sees and decides only their OWN requests', () => 
       'profile change request not found (or not visible)',
     );
 
-    // (c) The subject CAN see their own row — so this refusal is the self-decision ban doing the work,
-    //     which is a different layer again, and it must not be satisfiable by (a) or (b).
+    // (c) Ordinary own-history SELECT stays available. A decision also requires UPDATE RLS through
+    // SELECT FOR UPDATE, so an employee cannot acquire that row for either approval or rejection.
+    // Administrator self-decision is tested independently where the request row is lockable.
     const visibleToSubject = await withTenant(themCtx, (tx) =>
       tx
         .select({ id: profileChangeRequest.id })
@@ -385,8 +387,8 @@ describe('r260 — an employee sees and decides only their OWN requests', () => 
         .where(eq(profileChangeRequest.id, requestId)),
     );
     expect(visibleToSubject.map((r) => r.id), 'the subject cannot see their own request').toEqual([requestId]);
-    await expect(decideProfileChange(themCtx,{requestId,decision:'approved'})).rejects.toMatchObject({code:'permission'});
-    await expect(decideProfileChange(themCtx,{requestId,decision:'rejected',reason:'let me out of it'})).rejects.toThrow(/cannot decide your own/i);
+    await expect(decideProfileChange(themCtx,{requestId,decision:'approved'})).rejects.toThrow('profile change request not found (or not visible)');
+    await expect(decideProfileChange(themCtx,{requestId,decision:'rejected',reason:'let me out of it'})).rejects.toThrow('profile change request not found (or not visible)');
 
     // Still pending, and the bank account still untouched.
     const [row] = await owner.db
@@ -394,6 +396,7 @@ describe('r260 — an employee sees and decides only their OWN requests', () => 
       .from(profileChangeRequest)
       .where(eq(profileChangeRequest.id, requestId));
     expect(row.status).toBe('pending');
+    expect(await getStatutoryProfileMY(a,colleague.personId)).toEqual(beforeStatutory);
   });
 
   it('the rejection reason reaches the employee who asked, and nobody else’s does', async () => {
