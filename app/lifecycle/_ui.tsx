@@ -42,10 +42,10 @@ export function ProgressBar({ percent, label }: { percent: number; label?: strin
 
 /** The module's section strip. Requesters see only Overview and Asset requests; staff see the rest. */
 export async function LifecycleTabs({ level, active }: { level: number; active: string }) {
-  const t = await getTranslations('lifecycle.tabs');
+  const t = await getTranslations('lifecycle.tabs'), legacy = await getTranslations('lifecycle.onboarding');
   const tabs = [
     { key: 'overview', href: '/lifecycle', min: 0 },
-    { key: 'onboarding', href: '/lifecycle/onboarding', min: LEVEL.agent },
+    { key: 'onboarding', href: '/lifecycle/onboarding/legacy', min: LEVEL.agent },
     { key: 'offboarding', href: '/lifecycle/offboarding', min: LEVEL.agent },
     { key: 'requisitions', href: '/lifecycle/requisitions', min: LEVEL.agent },
     { key: 'assets', href: '/lifecycle/assets', min: LEVEL.agent },
@@ -56,7 +56,7 @@ export async function LifecycleTabs({ level, active }: { level: number; active: 
       {tabs.map((x) => (
         <Link key={x.key} href={x.href} aria-current={active === x.key ? 'page' : undefined}
           className={cn('-mb-px border-b-2 px-3 py-2 text-sm', active === x.key ? 'border-primary font-medium text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}>
-          {t(x.key)}
+          {x.key === 'onboarding' ? legacy('legacyTitle') : t(x.key)}
         </Link>
       ))}
     </nav>

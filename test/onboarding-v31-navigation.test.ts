@@ -3,6 +3,8 @@ import { describe,it,expect } from 'vitest';
 const source=(path:string)=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 describe('preserved onboarding process navigation',()=>{
  it('opens legacy history on the legacy list and returns old tools and details to that process',()=>{
+  expect(source('app/lifecycle/page.tsx')).toContain("{ href: '/lifecycle/onboarding/legacy', label: t('onboarding.legacyTitle'), n: onb.length }");
+  expect(source('app/lifecycle/_ui.tsx')).toContain("{ key: 'onboarding', href: '/lifecycle/onboarding/legacy', min: LEVEL.agent }");
   const listing=source('app/lifecycle/onboarding/legacy/page.tsx');
   expect(listing).toContain('href="/lifecycle/onboarding/legacy?view=history"');
   expect(listing).not.toContain('href="/lifecycle/onboarding?view=history"');
