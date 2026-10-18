@@ -60,6 +60,16 @@ export function parseMovementImport(text:string):{records:MovementImportRecord[]
  for(const record of records)if(counts.get(record.employeeCode)!>MOVEMENT_IMPORT_LIMITS.perEmployee)record.errors.push('too_many_employee_rows');
  return {records,fileErrors:errors};
 }
+/** A partial import omits retained facts, unlike the manual form's full right column.
+ * Department must remain valid in the canonical writer, but a blank transport cell never clears it.
+ * Entity Transfer still needs an explicit destination; lifecycle requirements keep their form owner.
+ */
+export function movementImportRequired(field:MovementFormField,behaviour:string):boolean{
+ if(field==='departmentId')return false;
+ if(field==='kind')return true;
+ if(field==='companyId'&&behaviour==='entityTransfer')return true;
+ return movementFormRequired(field,behaviour);
+}
 export function movementImportCellIssues(record:MovementImportRecord,behaviour:string):string[]{
  const issues=[...record.errors];const visible=new Set(movementFormFields(behaviour,record.cells.terminationReasonCode));
  for(const field of MOVEMENT_IMPORT_FIELDS){
@@ -68,7 +78,7 @@ export function movementImportCellIssues(record:MovementImportRecord,behaviour:s
   if(field==='effectiveDate'&&behaviour==='blacklist')continue;
   if(value&&!visible.has(field)){issues.push(`not_applicable:${field}`);continue;}
   if(!visible.has(field))continue;
-  if(!value&&movementFormRequired(field,behaviour))issues.push(`required:${field}`);
+  if(!value&&movementImportRequired(field,behaviour))issues.push(`required:${field}`);
   if(!value)continue;
   if(['effectiveDate','endDate','resignationDate'].includes(field)){if(!movementImportDate(value))issues.push(`invalid_date:${field}`);}
   else if(!['kind','companyId','businessUnitId','departmentId','positionId','gradeId','locationId','managerEmploymentId'].includes(field)){
