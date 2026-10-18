@@ -79,7 +79,7 @@ describe('Payroll Setup — pay-rule kernel (typed_pay_components entitled)', ()
 
   // Attach a NEW wage-bucket allowance component (EPF+SOCSO+PCB, non-prorating) carrying `rule`, at `amount`.
   async function attachRuleComponent(employmentId: string, code: string, rule: PayRule | null, amount: number) {
-    await upsertPayComponent(a, {
+    await upsertPayComponent(a, { label: code,
       code,
       name: code,
       kind: 'allowance',
@@ -164,7 +164,7 @@ describe('Payroll Setup — pay-rule kernel (typed_pay_components entitled)', ()
   it('an unsupported-PCB component still throws even when it carries a rule (precedence)', async () => {
     const e = await setupEmployee();
     // PCB-taxable, non-payable BIK — unsupported in v1. A rule on it must not let it through.
-    await upsertPayComponent(a, {
+    await upsertPayComponent(a, { label: 'BIK with rule',
       code: 'BIKRULE',
       name: 'BIK with rule',
       kind: 'non_payable',

@@ -303,7 +303,7 @@ describe('61bf109d C1 — structural refusals (pure)', () => {
   });
 });
 
-const baseInput = {
+const baseInput = { label: 'Test item',
   name: 'Test item',
   kind: 'allowance' as const,
   includedInEpf: true,

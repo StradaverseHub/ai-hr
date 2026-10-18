@@ -108,7 +108,7 @@ async function hire() {
 /** Create (or re-rule) a catalog allowance and return its id. */
 async function payItem(code: string, name: string, rule: PayRule | null): Promise<string> {
   const a = adminCtx(base);
-  await upsertPayComponent(a, {
+  await upsertPayComponent(a, { label: name,
     code,
     name,
     kind: 'allowance',

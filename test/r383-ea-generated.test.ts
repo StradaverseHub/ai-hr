@@ -31,16 +31,16 @@ describe('r383 generated payroll to employee EA statement',()=>{
  async function slip(batchId:string){const [s]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));expect(s).toBeTruthy();return s;}
  it('uses run-owned B3/B4, excludes noncash exemption from cash allowance subtraction, and preserves amendments',async()=>{
   const {ctx,e}=await employee();
-  const cashAllowance=await upsertPayComponent(ctx,{code:'EA_CASH_ALLOW',name:'Synthetic cash allowance',kind:'allowance',isNonPayable:false,prorates:false,includedInPcb:true,includedInEpf:true,includedInSocsoEis:true,includedInHrdfBase:true,displayCategory:'allowance',pcbRemunerationType:'normal',pcbExemptionCode:'PCB_TAXABLE',epfBonus2012:false});
+  const cashAllowance=await upsertPayComponent(ctx,{ label: 'Synthetic cash allowance',code:'EA_CASH_ALLOW',name:'Synthetic cash allowance',kind:'allowance',isNonPayable:false,prorates:false,includedInPcb:true,includedInEpf:true,includedInSocsoEis:true,includedInHrdfBase:true,displayCategory:'allowance',pcbRemunerationType:'normal',pcbExemptionCode:'PCB_TAXABLE',epfBonus2012:false});
   await setEmploymentPayComponent(ctx,{employmentId:e.employmentId,componentId:cashAllowance.id,amount:500,effectiveFrom:'2026-01-01'});
-  const bik=await upsertPayComponent(ctx,{...flags,code:'EA_CAR',name:'Synthetic taxable BIK',displayCategory:'bik',eaFormLine:'EA_B3',pcbExemptionCode:'PCB_CHILD_CARE'});
-  const info=await upsertPayComponent(ctx,{...flags,code:'EA_INFO_CAR',name:'Synthetic non-PCB BIK',displayCategory:'bik',eaFormLine:'EA_B3',includedInPcb:false,pcbExemptionCode:null});
-  const vola=await upsertPayComponent(ctx,{...flags,code:'EA_HOME',name:'Synthetic accommodation',displayCategory:'vola',eaFormLine:'EA_B4'});
+  const bik=await upsertPayComponent(ctx,{...flags,code:'EA_CAR',label:'Synthetic taxable BIK',name:'Synthetic taxable BIK',displayCategory:'bik',eaFormLine:'EA_B3',pcbExemptionCode:'PCB_CHILD_CARE'});
+  const info=await upsertPayComponent(ctx,{...flags,code:'EA_INFO_CAR',label:'Synthetic non-PCB BIK',name:'Synthetic non-PCB BIK',displayCategory:'bik',eaFormLine:'EA_B3',includedInPcb:false,pcbExemptionCode:null});
+  const vola=await upsertPayComponent(ctx,{...flags,code:'EA_HOME',label:'Synthetic accommodation',name:'Synthetic accommodation',displayCategory:'vola',eaFormLine:'EA_B4'});
   await setEmploymentPayComponent(ctx,{employmentId:e.employmentId,componentId:bik.id,amount:2000,effectiveFrom:'2026-01-01'});
   await setEmploymentPayComponent(ctx,{employmentId:e.employmentId,componentId:info.id,amount:400,effectiveFrom:'2026-01-01'});
   const jan=await regular(ctx,'2026-01');
   const extra=await createAdditionalRun(ctx,{companyId:base.companyId,payPeriod:'2026-01',runType:'bonus'});
-  const cash=await upsertPayComponent(ctx,{code:'EA_BONUS',name:'Synthetic cash bonus',kind:'allowance',isNonPayable:false,prorates:false,includedInPcb:true,includedInEpf:true,includedInSocsoEis:false,includedInHrdfBase:false,pcbRemunerationType:'additional',pcbExemptionCode:'PCB_TAXABLE',epfBonus2012:true});
+  const cash=await upsertPayComponent(ctx,{ label: 'Synthetic cash bonus',code:'EA_BONUS',name:'Synthetic cash bonus',kind:'allowance',isNonPayable:false,prorates:false,includedInPcb:true,includedInEpf:true,includedInSocsoEis:false,includedInHrdfBase:false,pcbRemunerationType:'additional',pcbExemptionCode:'PCB_TAXABLE',epfBonus2012:true});
   await setPayrollBatchComponent(ctx,{batchId:extra.batchId,employmentId:e.employmentId,componentId:cash.id,amount:3000});
   await createIndividualTxn(ctx,{batchId:extra.batchId,employmentId:e.employmentId,kind:'earning',componentId:vola.id,txnDate:'2026-01-15',amount:800});await generatePayslips(ctx,{batchId:extra.batchId});
   const feb=await regular(ctx,'2026-02');const saved=[await slip(jan),await slip(extra.batchId),await slip(feb)];
@@ -66,12 +66,12 @@ describe('r383 generated payroll to employee EA statement',()=>{
  });
  it('keeps noncash ownership separate when the existing annual cash-routing mode is active',async()=>{
   const {ctx,e}=await employee();
-  const bik=await upsertPayComponent(ctx,{...flags,code:'EA_FUTURE_CAR',name:'Synthetic BIK',displayCategory:'bik',eaFormLine:'EA_B3'});
-  const vola=await upsertPayComponent(ctx,{...flags,code:'EA_FUTURE_HOME',name:'Synthetic accommodation',displayCategory:'vola',eaFormLine:'EA_B4'});
+  const bik=await upsertPayComponent(ctx,{...flags,code:'EA_FUTURE_CAR',label:'Synthetic BIK',name:'Synthetic BIK',displayCategory:'bik',eaFormLine:'EA_B3'});
+  const vola=await upsertPayComponent(ctx,{...flags,code:'EA_FUTURE_HOME',label:'Synthetic accommodation',name:'Synthetic accommodation',displayCategory:'vola',eaFormLine:'EA_B4'});
   await setEmploymentPayComponent(ctx,{employmentId:e.employmentId,componentId:bik.id,amount:600,effectiveFrom:'2027-01-01'});
   const jan=await regular(ctx,'2027-01');
   const extra=await createAdditionalRun(ctx,{companyId:base.companyId,payPeriod:'2027-01',runType:'bonus'});
-  const cash=await upsertPayComponent(ctx,{code:'EA_FUTURE_BONUS',name:'Synthetic cash bonus',kind:'allowance',isNonPayable:false,prorates:false,includedInPcb:true,includedInEpf:true,includedInSocsoEis:false,includedInHrdfBase:false,pcbRemunerationType:'additional',pcbExemptionCode:'PCB_TAXABLE',epfBonus2012:true});
+  const cash=await upsertPayComponent(ctx,{ label: 'Synthetic cash bonus',code:'EA_FUTURE_BONUS',name:'Synthetic cash bonus',kind:'allowance',isNonPayable:false,prorates:false,includedInPcb:true,includedInEpf:true,includedInSocsoEis:false,includedInHrdfBase:false,pcbRemunerationType:'additional',pcbExemptionCode:'PCB_TAXABLE',epfBonus2012:true});
   await setPayrollBatchComponent(ctx,{batchId:extra.batchId,employmentId:e.employmentId,componentId:cash.id,amount:3000});
   await createIndividualTxn(ctx,{batchId:extra.batchId,employmentId:e.employmentId,kind:'earning',componentId:vola.id,txnDate:'2027-01-15',amount:800});await generatePayslips(ctx,{batchId:extra.batchId});
   const regularSaved=await slip(jan),extraSaved=await slip(extra.batchId);
@@ -85,7 +85,7 @@ describe('r383 generated payroll to employee EA statement',()=>{
   // A generated cash-only result without the later noncash stamp models old history; no monetary trace is fabricated.
   const old=structuredClone(legacy.statutory as any);delete old.pcbNonCash;
   await owner.db.update(schema.payslip).set({statutory:old}).where(eq(schema.payslip.id,legacy.id));
-  const bik=await upsertPayComponent(ctx,{...flags,code:'EA_NEW_CAR',name:'Synthetic later BIK',displayCategory:'bik',eaFormLine:'EA_B3'});
+  const bik=await upsertPayComponent(ctx,{...flags,code:'EA_NEW_CAR',label:'Synthetic later BIK',name:'Synthetic later BIK',displayCategory:'bik',eaFormLine:'EA_B3'});
   await setEmploymentPayComponent(ctx,{employmentId:e.employmentId,componentId:bik.id,amount:600,effectiveFrom:'2026-02-01'});
   const feb=await regular(ctx,'2026-02');expect((await slip(feb)).statutory).toMatchObject({pcbNonCash:{owned:{bik:600,vola:0}}});
   const before=await employeeEaStatement(ctx,{employmentId:e.employmentId,year:'2026',companyId:base.companyId});
@@ -97,8 +97,8 @@ describe('r383 generated payroll to employee EA statement',()=>{
  });
  it('keeps known BIK plus unmapped VOLA unavailable in the actual EA page until explicitly amended',async()=>{
   const {ctx,e}=await employee();sessionState.ctx=ctx;
-  const bik=await upsertPayComponent(ctx,{...flags,code:'EA_KNOWN_CAR',name:'Synthetic mapped BIK',displayCategory:'bik',eaFormLine:'EA_B3'});
-  const vola=await upsertPayComponent(ctx,{...flags,code:'EA_UNMAPPED_HOME',name:'Synthetic unmapped accommodation',displayCategory:'vola',eaFormLine:null});
+  const bik=await upsertPayComponent(ctx,{...flags,code:'EA_KNOWN_CAR',label:'Synthetic mapped BIK',name:'Synthetic mapped BIK',displayCategory:'bik',eaFormLine:'EA_B3'});
+  const vola=await upsertPayComponent(ctx,{...flags,code:'EA_UNMAPPED_HOME',label:'Synthetic unmapped accommodation',name:'Synthetic unmapped accommodation',displayCategory:'vola',eaFormLine:null});
   await setEmploymentPayComponent(ctx,{employmentId:e.employmentId,componentId:bik.id,amount:600,effectiveFrom:'2026-01-01'});
   const jan=await regular(ctx,'2026-01');const extra=await createAdditionalRun(ctx,{companyId:base.companyId,payPeriod:'2026-01',runType:'bonus'});
   await createIndividualTxn(ctx,{batchId:extra.batchId,employmentId:e.employmentId,kind:'earning',componentId:vola.id,txnDate:'2026-01-15',amount:800});await generatePayslips(ctx,{batchId:extra.batchId});

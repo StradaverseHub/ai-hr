@@ -49,7 +49,7 @@ afterAll(async () => {
   await closeAll();
 });
 
-const baseItem = {
+const baseItem = { label: 'Test item',
   name: 'Test item',
   kind: 'allowance' as const,
   includedInEpf: true,

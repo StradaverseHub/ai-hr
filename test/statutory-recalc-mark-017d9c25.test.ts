@@ -33,7 +33,7 @@ import { adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBas
 let base: Base;
 let a: SessionContext;
 
-const input = (code: string, over: Partial<PayComponentInput> = {}): PayComponentInput => ({
+const input = (code: string, over: Partial<PayComponentInput> = {}): PayComponentInput => ({ label: `${code} component`,
   code,
   name: `${code} component`,
   kind: 'allowance',

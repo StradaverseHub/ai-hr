@@ -121,7 +121,7 @@ describe('ADR-0035 1D — pay-component CSV import', () => {
     await hire(a, 'e5@imp.test');
     await seedPayComponentCatalog(a);
     // A BIK: PCB-taxable but non-payable — the v1 kernel cannot tax it (ADR-0025 §5).
-    await upsertPayComponent(a, {
+    await upsertPayComponent(a, { label: 'Company car (BIK)',
       code: 'BIK_CAR',
       name: 'Company car (BIK)',
       kind: 'non_payable',
@@ -159,7 +159,7 @@ describe('ADR-0035 1D — pay-component CSV import', () => {
     await hire(a, 'e6@imp.test');
     await seedPayComponentCatalog(a);
     // A record-only BIK: non-payable but NOT PCB-taxable — allowed (carried as a payslip record line).
-    await upsertPayComponent(a, {
+    await upsertPayComponent(a, { label: 'Parking (record only)',
       code: 'BIK_NOTE',
       name: 'Parking (record only)',
       kind: 'non_payable',

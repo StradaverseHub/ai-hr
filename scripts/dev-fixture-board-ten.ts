@@ -163,7 +163,7 @@ async function ensureFixture() {
   if (!component) {
     const seed = requirePackFor('MY').payComponents.defaults.find(c => c.code === 'ATTENDANCE');
     if (!seed) throw new Error('MY registry has no ATTENDANCE default.');
-    await upsertPayComponent(bootstrap, {...seed, rule: {kind: 'fixed'}});
+    await upsertPayComponent(bootstrap, {...seed, label: seed.name, rule: {kind: 'fixed'}});
     [component] = await owner.db.select().from(s.payComponent).where(and(eq(s.payComponent.tenantId, tenantId), eq(s.payComponent.code, 'ATTENDANCE')));
   }
   if (!(await listAttendanceAllowancePayCodes(a)).some(c => c.id === component.id && c.kind === 'allowance')) {

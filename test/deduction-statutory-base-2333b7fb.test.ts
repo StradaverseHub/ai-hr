@@ -53,7 +53,7 @@ let base: Base;
 let a: SessionContext;
 
 /** An EARNING pay item, ticked into everything unless overridden. */
-const earning = (code: string, over: Partial<PayComponentInput> = {}): PayComponentInput => ({
+const earning = (code: string, over: Partial<PayComponentInput> = {}): PayComponentInput => ({ label: `${code} component`,
   code,
   name: `${code} component`,
   kind: 'allowance',
@@ -72,7 +72,7 @@ const earning = (code: string, over: Partial<PayComponentInput> = {}): PayCompon
  * ABSENT, DB018) all declare `pcbRemunerationType: 'normal'`; that declaration is deliberately
  * reproduced in the tests below because it is what proves the fix sits ahead of the stream routing.
  */
-const deduction = (code: string, over: Partial<PayComponentInput> = {}): PayComponentInput => ({
+const deduction = (code: string, over: Partial<PayComponentInput> = {}): PayComponentInput => ({ label: `${code} component`,
   code,
   name: `${code} component`,
   kind: 'deduction',

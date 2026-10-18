@@ -82,7 +82,7 @@ describe('ADR-0035 1A — pay-component rounding + attributes + delete guard', (
     await seedPayComponentCatalog(a);
     // BASIC (exact) + a custom wage allowance carrying the rounding under test.
     await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await idByCode(base, 'BASIC'), amount: 5000, effectiveFrom: '2026-01-01' });
-    await upsertPayComponent(a, {
+    await upsertPayComponent(a, { label: 'Rounding allowance',
       code: 'RND_ALLOW', name: 'Rounding allowance', kind: 'allowance',
       includedInEpf: true, includedInSocsoEis: true, includedInPcb: true, includedInHrdfBase: false,
       isNonPayable: false, prorates: true, roundingMethod: method,
@@ -126,7 +126,7 @@ describe('ADR-0035 1A — pay-component rounding + attributes + delete guard', (
     // Two separate allowances that both land in the wage figure — the reporter's exact complaint: a single
     // total with no way to see which allowances make it up.
     for (const [code, name, amount] of [['ALW_TRAVEL', 'Travel Allowance', 120], ['ALW_PHONE', 'Phone Allowance', 80]] as const) {
-      await upsertPayComponent(a, {
+      await upsertPayComponent(a, { label: name,
         code, name, kind: 'allowance',
         includedInEpf: true, includedInSocsoEis: true, includedInPcb: true, includedInHrdfBase: false,
         isNonPayable: false, prorates: true, roundingMethod: 'none',
@@ -164,7 +164,7 @@ describe('ADR-0035 1A — pay-component rounding + attributes + delete guard', (
   it('persists EA-form line + rounding, and rejects invalid values', async () => {
     const a = adminCtx(base);
     await upsertPayComponent(a, {
-      code: 'HOUSING', name: 'Housing', kind: 'allowance',
+      code: 'HOUSING', label: 'Housing', name: 'Housing', kind: 'allowance',
       includedInEpf: true, includedInSocsoEis: true, includedInPcb: true, includedInHrdfBase: false,
       isNonPayable: false, prorates: true, eaFormLine: 'bik', roundingMethod: 'nearest',
     });
@@ -199,7 +199,7 @@ describe('ADR-0035 1A — pay-component rounding + attributes + delete guard', (
       person: { fullName: 'Del', primaryEmail: 'del@acme.test' },
       companyId: base.companyId, departmentId: base.deptA, employmentType: 'full_time', hiredOn: '2026-01-01',
     });
-    await upsertPayComponent(a, {
+    await upsertPayComponent(a, { label: 'Phone allowance',
       code: 'PHONE', name: 'Phone allowance', kind: 'allowance',
       includedInEpf: false, includedInSocsoEis: false, includedInPcb: true, includedInHrdfBase: false,
       isNonPayable: false, prorates: true,
@@ -211,7 +211,7 @@ describe('ADR-0035 1A — pay-component rounding + attributes + delete guard', (
     await expect(deletePayComponent(a, phoneId)).rejects.toBeInstanceOf(PayComponentInUseError);
 
     // An unreferenced component deletes cleanly.
-    await upsertPayComponent(a, {
+    await upsertPayComponent(a, { label: 'Unused',
       code: 'UNUSED', name: 'Unused', kind: 'allowance',
       includedInEpf: false, includedInSocsoEis: false, includedInPcb: true, includedInHrdfBase: false,
       isNonPayable: false, prorates: true,
@@ -259,7 +259,7 @@ describe('a96d320c — the pay-rule quantity/rate stamp, and the equality that g
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: p.hiredOn });
     await seedPayComponentCatalog(a);
     await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await idByCode(base, 'BASIC'), amount: 5000, effectiveFrom: p.hiredOn });
-    await upsertPayComponent(a, {
+    await upsertPayComponent(a, { label: 'Site visit allowance',
       code: 'QR_ALLOW', name: 'Site visit allowance', kind: 'allowance',
       includedInEpf: true, includedInSocsoEis: true, includedInPcb: true, includedInHrdfBase: false,
       isNonPayable: false, prorates: p.prorates, roundingMethod: p.roundingMethod,

@@ -304,7 +304,7 @@ async function runWithCp38(amount: number, opts: { email: string; ic: string; ma
   // distinct money in the same column, so the CP38 row and the residual row are two different figures and
   // one printed in place of the other is visible. `assertNonVacuous` refuses the degenerate shape outright.
   if (opts.manual != null) {
-    await upsertPayComponent(admin, {
+    await upsertPayComponent(admin, { label: 'Staff purchase',
       code: 'DB368',
       name: 'Staff purchase',
       kind: 'deduction',

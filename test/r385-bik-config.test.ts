@@ -20,7 +20,7 @@ import { createComponentAction, updateComponentAction } from '../app/admin/pay-c
 
 function form(kind: 'bik' | 'vola', code = 'BIK_HOUSE') {
   const fd = new FormData();
-  for (const [key, value] of Object.entries({ code, name: code, kind: 'non_payable', displayCategory: kind,
+  for (const [key, value] of Object.entries({ label: code, code, name: code, kind: 'non_payable', displayCategory: kind,
     eaFormLine: kind === 'bik' ? 'EA_B3' : 'EA_B4', includedInPcb: 'on', pcbRemunerationType: 'normal',
     pcbExemptionCode: 'PCB_TAXABLE', roundingMethod: 'none', rule: '' })) fd.set(key, value);
   return fd;
@@ -52,6 +52,12 @@ describe('r385 full pay-item classification through actual maintenance actions a
     expect(row.name).toBe('Renamed benefit'); expect(row.pcbRemunerationType).toBe('normal');
     expect(row.displayCategory).toBe(kind); expect(row.pcbExemptionCode).toBe('PCB_TAXABLE');
     expect((await listSupportedBatchComponents(ctx)).map(c => c.id)).toContain(row.id);
+  });
+
+  it('refuses a forged maintenance edit for an absent code instead of creating a new row', async () => {
+    const before = await listPayComponents(ctx, {includeArchived: true});
+    expect(await location(updateComponentAction, form('bik', 'ABSENT_EDIT'))).toContain('error=errorComponentUnavailable');
+    expect(await listPayComponents(ctx, {includeArchived: true})).toEqual(before);
   });
 
   it.each([createComponentAction, updateComponentAction])('reports genuinely missing/invalid selections and exact benefit refusals before persistence', async (action) => {
@@ -145,12 +151,12 @@ describe('r385 full pay-item classification through actual maintenance actions a
     const employee = await hireEmployee(ctx, { person: { fullName: 'Synthetic Benefit Import', primaryEmail: email }, companyId: base.companyId, departmentId: base.deptA, employmentType: 'full_time', hiredOn: '2025-01-01' });
     const batch = await createBatch(ctx, { companyId: base.companyId, payPeriod: '2026-07' });
     for (const kind of ['bik', 'vola'] as const) expect(await location(createComponentAction, form(kind, kind.toUpperCase()))).toContain('toast=toastSaved');
-    await upsertPayComponent(ctx, { code: 'UNKNOWN', name: 'Unclassified', kind: 'non_payable', isNonPayable: true,
+    await upsertPayComponent(ctx, { label: 'Unclassified', code: 'UNKNOWN', name: 'Unclassified', kind: 'non_payable', isNonPayable: true,
       prorates: false, includedInPcb: true, includedInEpf: false, includedInSocsoEis: false, includedInHrdfBase: false,
       pcbRemunerationType: 'normal', pcbExemptionCode: 'PCB_TAXABLE' });
     for (const [code, eaFormLine, pcbRemunerationType] of [
       ['CONFLICT', 'EA_B4', 'normal'], ['ADDITIONAL', 'EA_B3', 'additional'],
-    ] as const) await upsertPayComponent(ctx, { code, name: code, kind: 'non_payable', isNonPayable: true,
+    ] as const) await upsertPayComponent(ctx, { label: code, code, name: code, kind: 'non_payable', isNonPayable: true,
       displayCategory: 'bik', eaFormLine, prorates: false, includedInPcb: true, includedInEpf: false,
       includedInSocsoEis: false, includedInHrdfBase: false, pcbRemunerationType, pcbExemptionCode: 'PCB_TAXABLE' });
     const refused = await importBatchComponents(ctx, { batchId: batch.batchId,

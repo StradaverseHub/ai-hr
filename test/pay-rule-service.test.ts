@@ -11,7 +11,7 @@ import type { SessionContext } from '../db/client';
 import { PayRuleInvalidError, listPayComponents, upsertPayComponent } from '../core/pay-components';
 import { adminCtx, closeAll, latestEventPayload, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
-const baseInput = {
+const baseInput = { label: 'Housing allowance',
   name: 'Housing allowance',
   kind: 'allowance' as const,
   includedInEpf: true,

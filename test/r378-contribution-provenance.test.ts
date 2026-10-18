@@ -40,7 +40,7 @@ describe('configured contribution provenance without changing payroll money', ()
     await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234' });
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
     for (const [code, kind, nonPayable, amount] of [['DIRECTOR', 'allowance', false, 400], ['COMPANY_PLAN', 'contribution', true, 250], ['CASH_CONTRIB', 'contribution', false, 150]] as const) {
-      await upsertPayComponent(a, { code, name: code, kind, includedInEpf: false, includedInSocsoEis: false, includedInPcb: false, includedInHrdfBase: false, isNonPayable: nonPayable, prorates: false });
+      await upsertPayComponent(a, { label: code, code, name: code, kind, includedInEpf: false, includedInSocsoEis: false, includedInPcb: false, includedInHrdfBase: false, isNonPayable: nonPayable, prorates: false });
       const item = (await listPayComponents(a)).find(row => row.code === code)!;
       await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: item.id, amount, effectiveFrom: '2026-01-01' });
     }

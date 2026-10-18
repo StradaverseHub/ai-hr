@@ -100,7 +100,7 @@ describe('Feature 1.2 — payroll Transaction sub-module', () => {
     const a = adminCtx(base);
     await seedPayComponentCatalog(a);
     // A PCB-taxable, non-payable component is the kernel's unsupported class — must NOT be offered.
-    await upsertPayComponent(a, {
+    await upsertPayComponent(a, { label: 'Taxable BIK',
       code: 'BADTAX',
       name: 'Taxable BIK',
       kind: 'non_payable',

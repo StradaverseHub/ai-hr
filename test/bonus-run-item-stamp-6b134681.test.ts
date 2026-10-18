@@ -58,7 +58,7 @@ let base: Base;
 let a: SessionContext;
 
 /** An EARNING pay item. Defaults mirror an ordinary taxable allowance. */
-const earning = (code: string, name: string, over: Partial<PayComponentInput> = {}): PayComponentInput => ({
+const earning = (code: string, name: string, over: Partial<PayComponentInput> = {}): PayComponentInput => ({ label: name,
   code,
   name,
   kind: 'allowance',

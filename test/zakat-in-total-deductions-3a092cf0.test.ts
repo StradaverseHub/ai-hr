@@ -150,7 +150,7 @@ describe('3a092cf0 — zakat belongs in Total Deductions', () => {
     // The travel allowance as a real pay item, out of every statutory base.
     await seedPayComponentCatalog(a0);
     await backfillEmploymentComponentsFromCompensation(a0);
-    await upsertPayComponent(a0, {
+    await upsertPayComponent(a0, { label: 'Travel Allowance',
       code: 'TRAVEL_R255',
       name: 'Travel Allowance',
       kind: 'allowance',

@@ -393,7 +393,7 @@ describe('711adcd2 — a pay item CREATED after the switch keeps the pre-switch 
       ['NEWDEDUCT', 'deduction'],
       ['NEWBIK', 'non_payable'],
     ] as const) {
-      await upsertPayComponent(a, {
+      await upsertPayComponent(a, { label: code,
         code,
         name: code,
         kind,
@@ -417,7 +417,7 @@ describe('711adcd2 — a pay item CREATED after the switch keeps the pre-switch 
 
   it('an operator’s explicit untick still wins over that default', async () => {
     const a = await entitledCtx(b);
-    await upsertPayComponent(a, {
+    await upsertPayComponent(a, { label: 'Opt out',
       code: 'OPTOUT',
       name: 'Opt out',
       kind: 'allowance',
@@ -456,8 +456,8 @@ describe('711adcd2 — the admin PREVIEW answers for the tick boxes, not for the
       prorates: false,
       roundingMethod: 'none',
     } as const;
-    await upsertPayComponent(a, { code: 'HOUSING', name: 'Housing', kind: 'allowance', ...fixed });
-    await upsertPayComponent(a, { code: 'MEAL', name: 'Meal', kind: 'allowance', ...fixed });
+    await upsertPayComponent(a, { code: 'HOUSING', label: 'Housing', name: 'Housing', kind: 'allowance', ...fixed });
+    await upsertPayComponent(a, { code: 'MEAL', label: 'Meal', name: 'Meal', kind: 'allowance', ...fixed });
     const items = await listPayComponents(a);
     const idOf = (c: string) => items.find((x) => x.code === c)!.id;
     for (const [code, amount] of [['HOUSING', 500], ['MEAL', 250]] as const) {
@@ -513,10 +513,10 @@ describe('711adcd2 — the admin PREVIEW answers for the tick boxes, not for the
       prorates: false,
       roundingMethod: 'none',
     } as const;
-    await upsertPayComponent(a, { code: 'HOUSING', name: 'Housing', kind: 'allowance', isNonPayable: false, ...base });
+    await upsertPayComponent(a, { code: 'HOUSING', label: 'Housing', name: 'Housing', kind: 'allowance', isNonPayable: false, ...base });
     // A Benefit in Kind: recorded, never paid — and deliberately TICKED for overtime.
     await upsertPayComponent(a, {
-      code: 'BIKCAR', name: 'Company car', kind: 'non_payable', isNonPayable: true, ...base,
+      code: 'BIKCAR', label: 'Company car', name: 'Company car', kind: 'non_payable', isNonPayable: true, ...base,
       orpOvertime: true, orpUnpaidLeave: false,
     });
     const items = await listPayComponents(a);
@@ -567,7 +567,7 @@ describe('711adcd2 — the unpaid-leave ORP base, through the kernel', () => {
     await addUnpaidLeave(e, '2026-05-04', '2026-05-05', 2);
 
     // A 500 fixed allowance, ticked into the unpaid-leave ORP base.
-    await upsertPayComponent(a, {
+    await upsertPayComponent(a, { label: 'Housing allowance',
       code: 'HOUSING',
       name: 'Housing allowance',
       kind: 'allowance',
