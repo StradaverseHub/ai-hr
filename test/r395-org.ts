@@ -8,12 +8,13 @@ import { readFileSync } from 'node:fs';
 import { owner, resetDb, seedBase, harnessSnapshot, type Base } from './harness';
 import { submitFeedback,addFeedbackAttachment } from '../core/feedback';
 import { testingFeedbackHistoricalKeys } from './r395-current-feedback-policies';
+import { profileHistoricalPolicyKey } from './r395-current-profile-policies';
 
 export type Policy = { table: string; policy: string; cmd: string; calls: number; oldQual: string; newQual: string; withCheck: string | null };
 export const FIXTURE = JSON.parse(readFileSync('test/fixtures/r395-policy-quals.json', 'utf8')) as { policies: Policy[] };
 export const POLICIES = FIXTURE.policies;
-// 0561 changed these four semantics; never resurrect them in the live 0515 equivalence swap.
-export const LIVE_SWAPPABLE_POLICIES = POLICIES.filter(p=>!testingFeedbackHistoricalKeys.has(`${p.table}.${p.policy}`));
+// 0560/0561 changed these five semantics; never resurrect them in the live 0515 equivalence swap.
+export const LIVE_SWAPPABLE_POLICIES = POLICIES.filter(p=>!testingFeedbackHistoricalKeys.has(`${p.table}.${p.policy}`)&&`${p.table}.${p.policy}`!==profileHistoricalPolicyKey);
 export const ACCOUNT_FEEDBACK:{tenantId:string;userId:string;reportId:string;attachmentId:string}[]=[];
 export async function seedLegacyFeedbackParent(e:Row){
   const ctx=CONTEXTS.find(c=>c.tenantId===e.tenant_id&&c.grants.some(g=>g.role==='hr_admin'&&g.companyId===null));

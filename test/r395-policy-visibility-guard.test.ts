@@ -12,7 +12,7 @@
  *      inserted/updated row, which is the right cost), and does on 34 policies.
  *   2. the policies 0515 rewrote are exactly the fixture's 57 (test/fixtures/r395-policy-quals.json,
  *      generated from pg_policies before and after 0515), each with the fixture's post-0515 USING text and
- *      its WITH CHECK text UNCHANGED from before 0515, except the explicitly pinned 0540 assessment-file and 0561 user-only Feedback extensions.
+ *      its WITH CHECK text UNCHANGED from before 0515, except the explicitly pinned 0540 assessment-file, 0560 own-Profile and 0561 user-only Feedback extensions.
  *   3. the migration file's ALTER POLICY statements name exactly those 57 and set no WITH CHECK.
  *   4. the set form really is planned as an InitPlan (the `(SELECT …)` wrapper is load-bearing).
  */
@@ -20,6 +20,7 @@ import { readFileSync } from 'node:fs';
 import { afterAll, describe, expect, it } from 'vitest';
 import { closeAll, owner } from './harness';
 import { assertTestingFeedbackPolicyGraph,testingFeedbackHistoricalKeys } from './r395-current-feedback-policies';
+import {assertCurrentProfilePolicyGraph,profileHistoricalPolicyKey} from './r395-current-profile-policies';
 
 type Policy = { table: string; policy: string; cmd: string; calls: number; oldQual: string; newQual: string; withCheck: string | null };
 const FIXTURE = JSON.parse(readFileSync('test/fixtures/r395-policy-quals.json', 'utf8')) as { policies: Policy[] };
@@ -53,7 +54,7 @@ describe('r395 — per-row visibility functions are gone from every policy USING
     expect(inCheck.length).toBeGreaterThan(0);
   });
 
-  it('the 57 rewritten policies retain exact visibility with the assessment-file and user-only Feedback extensions', async () => {
+  it('the 57 rewritten policies retain exact visibility with the assessment-file, own-Profile and user-only Feedback extensions', async () => {
     expect(FIXTURE.policies.length).toBe(57);
     expect(FIXTURE.policies.filter((p) => /app\.can_see_person\(/.test(p.oldQual)).length, 'six person policies').toBe(6);
     const live = new Map(
@@ -61,7 +62,7 @@ describe('r395 — per-row visibility functions are gone from every policy USING
     );
     const reconciledFeedbackKeys = new Set<string>();
     for (const p of FIXTURE.policies) {
-      // These historical invariants still apply to all 57 fixture entries, including the four 0561 cases.
+      // These historical invariants still apply to all 57 fixture entries, including the five 0560/0561 cases.
       expect(p.oldQual, `${key(p.table, p.policy)} old USING called a per-row function`).toMatch(/app\.can_see_(employment|person)\(/);
       expect(p.newQual).toMatch(/visible_(employment|person)_ids\(\)/);
       // can_see_person's admin arm is TRUE for any id (another tenant's person; the row an INSERT … RETURNING
@@ -70,7 +71,7 @@ describe('r395 — per-row visibility functions are gone from every policy USING
         expect(p.newQual, `${key(p.table, p.policy)} keeps the is_admin() arm`).toMatch(/\( SELECT app\.is_admin\(\) AS is_admin\) OR \([a-z_.]+ = ANY \(\( SELECT app\.visible_person_ids\(\)/);
       }
       const historicalKey=key(p.table,p.policy);
-      if(testingFeedbackHistoricalKeys.has(historicalKey)) {
+      if(testingFeedbackHistoricalKeys.has(historicalKey)||historicalKey===profileHistoricalPolicyKey) {
         reconciledFeedbackKeys.add(historicalKey);
       } else {
         const r = live.get(historicalKey);
@@ -80,9 +81,10 @@ describe('r395 — per-row visibility functions are gone from every policy USING
         expect(r!.with_check ?? null, `${historicalKey} WITH CHECK`).toBe(attachment?assessmentAttachment.withCheck:p.withCheck);
       }
     }
-    expect([...reconciledFeedbackKeys].sort(), 'exactly four historical entries receive the explicit 0561 reconciliation')
-      .toEqual([...testingFeedbackHistoricalKeys].sort());
+    expect([...reconciledFeedbackKeys].sort(), 'exactly five historical entries receive the explicit 0560/0561 reconciliation')
+      .toEqual([...testingFeedbackHistoricalKeys,profileHistoricalPolicyKey].sort());
     await assertTestingFeedbackPolicyGraph();
+    await assertCurrentProfilePolicyGraph();
   });
 
   it('the migration ALTERs exactly the fixture policies, USING only', () => {
