@@ -89,7 +89,7 @@ async function main(){
  changes.push([runtime+'/internal-node',await readFile(node),0o755]);
  if(ca)changes.push([runtime+'/internal-smtp-ca.pem',ca,0o644]);
  changes.push([config+'/broker.env',envLine('AUTH_PROVIDER','internal')+envLine('AUTH_PUBLIC_ORIGIN',web.origin)+envLine('AUTH_SESSION_KEY',web.key)+envLine('DATABASE_URL',web.database)+envLine('REPORT_AUTH_BROKER_WEB_UID',String(principal.uid)),0o600]);
- changes.push([config+'/runner.env',internalReportRunnerEnvironment({origin:web.origin,appDatabase:web.database,ownerDatabase:runnerDb.toString()}),0o600]);
+ changes.push([config+'/runner.env',internalReportRunnerEnvironment({origin:web.origin,appDatabase:web.database,ownerDatabase:runnerDb.toString(),scheduledEmailEnabled:web.scheduledEmailEnabled}),0o600]);
  changes.push([config+'/sender.env',envLine('AUTH_PROVIDER','internal')+envLine('AUTH_PUBLIC_ORIGIN',web.origin)+envLine('IDENTITY_EMAIL_DATABASE_URL',senderDb.toString())+envLine('REPORT_RENDERER_UID',String(rendererUid))+(ca?envLine('NODE_EXTRA_CA_CERTS',runtime+'/internal-smtp-ca.pem'):''),0o600]);
  changes.push([config+'/renderer.env',envLine('AUTH_PROVIDER','internal')+envLine('AUTH_PUBLIC_ORIGIN',web.origin)+envLine('DATABASE_URL',web.database)+envLine('REPORT_RENDERER_AUTH_BROKER_UID',String(principal.uid)),0o600]);
  const rendererDropin=units+'/aihr-report-renderer@.service.d';await mkdir(rendererDropin,{recursive:true,mode:0o755});await trusted(rendererDropin,true);
