@@ -12,20 +12,21 @@
  *      inserted/updated row, which is the right cost), and does on 34 policies.
  *   2. the policies 0515 rewrote are exactly the fixture's 57 (test/fixtures/r395-policy-quals.json,
  *      generated from pg_policies before and after 0515), each with the fixture's post-0515 USING text and
- *      its WITH CHECK text UNCHANGED from before 0515, except the explicitly pinned 0540 assessment-file extension.
+ *      its WITH CHECK text UNCHANGED from before 0515, except the explicitly pinned 0540 assessment-file and 0561 user-only Feedback extensions.
  *   3. the migration file's ALTER POLICY statements name exactly those 57 and set no WITH CHECK.
  *   4. the set form really is planned as an InitPlan (the `(SELECT …)` wrapper is load-bearing).
  */
 import { readFileSync } from 'node:fs';
 import { afterAll, describe, expect, it } from 'vitest';
 import { closeAll, owner } from './harness';
+import { assertTestingFeedbackPolicyGraph,testingFeedbackHistoricalKeys } from './r395-current-feedback-policies';
 
 type Policy = { table: string; policy: string; cmd: string; calls: number; oldQual: string; newQual: string; withCheck: string | null };
 const FIXTURE = JSON.parse(readFileSync('test/fixtures/r395-policy-quals.json', 'utf8')) as { policies: Policy[] };
 const MIGRATION = readFileSync('db/migrations/0515_set_based_visibility.sql', 'utf8');
 const key = (t: string, p: string) => `${t}.${p}`;
 // 0540 deliberately adds assigned assessment-file readers and author-owned proof writes.
-// Keep 0515's historical fixture intact; pin the exact current policy instead of skipping it.
+// Keep 0515's historical fixture intact; pin the exact current policies instead of skipping them.
 const assessmentAttachment = {
  qual: '((tenant_id = app.current_tenant_id()) AND ((employment_id = ANY (( SELECT app.visible_employment_ids() AS visible_employment_ids)::uuid[])) OR app.can_admin_perfcomp_employment(employment_id) OR COALESCE(app.assessment_file_read(review_id, evidence_id, id, uploaded_by_user_id, removed_at), false)))',
  withCheck: '((tenant_id = app.current_tenant_id()) AND ((employment_id = ANY (( SELECT app.visible_employment_ids() AS visible_employment_ids)::uuid[])) OR app.can_admin_perfcomp_employment(employment_id) OR COALESCE(app.assessment_file_write(review_id, evidence_id, uploaded_by_user_id), false)))',
@@ -37,6 +38,7 @@ afterAll(async () => {
 
 type Row = Record<string, unknown>;
 const q = async (text: string, params: unknown[] = []) => (await owner.client.unsafe(text, params as never[])) as unknown as Row[];
+
 
 describe('r395 — per-row visibility functions are gone from every policy USING clause', () => {
   it('pg_policies: no USING clause calls app.can_see_employment( or app.can_see_person(', async () => {
@@ -51,18 +53,15 @@ describe('r395 — per-row visibility functions are gone from every policy USING
     expect(inCheck.length).toBeGreaterThan(0);
   });
 
-  it('the 57 rewritten policies retain their set visibility with the explicit assessment-file extension', async () => {
+  it('the 57 rewritten policies retain exact visibility with the assessment-file and user-only Feedback extensions', async () => {
     expect(FIXTURE.policies.length).toBe(57);
     expect(FIXTURE.policies.filter((p) => /app\.can_see_person\(/.test(p.oldQual)).length, 'six person policies').toBe(6);
     const live = new Map(
-      (await q(`select tablename, policyname, qual, with_check from pg_policies`)).map((r) => [key(r.tablename as string, r.policyname as string), r]),
+      (await q(`select tablename, policyname, qual, with_check, cmd, roles, permissive from pg_policies where schemaname='public'`)).map((r) => [key(r.tablename as string, r.policyname as string), r]),
     );
+    const reconciledFeedbackKeys = new Set<string>();
     for (const p of FIXTURE.policies) {
-      const r = live.get(key(p.table, p.policy));
-      expect(r, `${key(p.table, p.policy)} exists`).toBeTruthy();
-      const attachment=p.table==='performance_attachment'&&p.policy==='performance_attachment_rls';
-      expect(r!.qual, `${key(p.table, p.policy)} USING`).toBe(attachment?assessmentAttachment.qual:p.newQual);
-      expect(r!.with_check ?? null, `${key(p.table, p.policy)} WITH CHECK`).toBe(attachment?assessmentAttachment.withCheck:p.withCheck);
+      // These historical invariants still apply to all 57 fixture entries, including the four 0561 cases.
       expect(p.oldQual, `${key(p.table, p.policy)} old USING called a per-row function`).toMatch(/app\.can_see_(employment|person)\(/);
       expect(p.newQual).toMatch(/visible_(employment|person)_ids\(\)/);
       // can_see_person's admin arm is TRUE for any id (another tenant's person; the row an INSERT … RETURNING
@@ -70,7 +69,20 @@ describe('r395 — per-row visibility functions are gone from every policy USING
       if (/app\.can_see_person\(/.test(p.oldQual)) {
         expect(p.newQual, `${key(p.table, p.policy)} keeps the is_admin() arm`).toMatch(/\( SELECT app\.is_admin\(\) AS is_admin\) OR \([a-z_.]+ = ANY \(\( SELECT app\.visible_person_ids\(\)/);
       }
+      const historicalKey=key(p.table,p.policy);
+      if(testingFeedbackHistoricalKeys.has(historicalKey)) {
+        reconciledFeedbackKeys.add(historicalKey);
+      } else {
+        const r = live.get(historicalKey);
+        expect(r, `${historicalKey} exists`).toBeTruthy();
+        const attachment=p.table==='performance_attachment'&&p.policy==='performance_attachment_rls';
+        expect(r!.qual, `${historicalKey} USING`).toBe(attachment?assessmentAttachment.qual:p.newQual);
+        expect(r!.with_check ?? null, `${historicalKey} WITH CHECK`).toBe(attachment?assessmentAttachment.withCheck:p.withCheck);
+      }
     }
+    expect([...reconciledFeedbackKeys].sort(), 'exactly four historical entries receive the explicit 0561 reconciliation')
+      .toEqual([...testingFeedbackHistoricalKeys].sort());
+    await assertTestingFeedbackPolicyGraph();
   });
 
   it('the migration ALTERs exactly the fixture policies, USING only', () => {

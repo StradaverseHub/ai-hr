@@ -5,11 +5,21 @@
  */
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { owner, resetDb, seedBase, type Base } from './harness';
+import { owner, resetDb, seedBase, harnessSnapshot, type Base } from './harness';
+import { submitFeedback,addFeedbackAttachment } from '../core/feedback';
+import { testingFeedbackHistoricalKeys } from './r395-current-feedback-policies';
 
 export type Policy = { table: string; policy: string; cmd: string; calls: number; oldQual: string; newQual: string; withCheck: string | null };
 export const FIXTURE = JSON.parse(readFileSync('test/fixtures/r395-policy-quals.json', 'utf8')) as { policies: Policy[] };
 export const POLICIES = FIXTURE.policies;
+// 0561 changed these four semantics; never resurrect them in the live 0515 equivalence swap.
+export const LIVE_SWAPPABLE_POLICIES = POLICIES.filter(p=>!testingFeedbackHistoricalKeys.has(`${p.table}.${p.policy}`));
+export const ACCOUNT_FEEDBACK:{tenantId:string;userId:string;reportId:string;attachmentId:string}[]=[];
+export async function seedLegacyFeedbackParent(e:Row){
+  const ctx=CONTEXTS.find(c=>c.tenantId===e.tenant_id&&c.grants.some(g=>g.role==='hr_admin'&&g.companyId===null));
+  if(!ctx)throw new Error('Exact fixture group administrator missing.');
+  return submitFeedback({...ctx,entitlements:harnessSnapshot(ctx.tenantId)},{reporterEmploymentId:String(e.id),category:'issue',title:'Fictional employment Feedback parent',description:'Constraint-valid parent for historical visibility comparisons.'});
+}
 export const TABLES = [...new Set(POLICIES.map((p) => p.table))].sort();
 
 export const pg = owner.client;
@@ -302,6 +312,15 @@ export async function seedOrg() {
 // ── generic filler: one row per employment in every touched table ──────────────────────────────────────
 export type Col = { name: string; dataType: string; udt: string; nullable: boolean; hasDefault: boolean };
 export async function fillTables() {
+  // Replace obsolete NULL-reporter/null-uploader generic rows with genuine account-owned examples.
+  // Both tenant universes remain populated; no trigger is disabled and no caller identity is forged.
+  ACCOUNT_FEEDBACK.length=0;
+  for(const ctx of [ctxByName('login without a person'),ctxByName('other tenant manager')]){
+    const actual={...ctx,entitlements:harnessSnapshot(ctx.tenantId)};
+    const report=await submitFeedback(actual,{category:'issue',title:'Fictional account-only Feedback',description:'Current 0561 account ownership, separate from historical predicate equivalence.'});
+    const image=await addFeedbackAttachment(actual,{feedbackId:report.id,fileName:'fictional.txt',mimeType:'text/plain',content:Buffer.from('Fictional r395 account evidence')});
+    ACCOUNT_FEEDBACK.push({tenantId:ctx.tenantId,userId:ctx.userId,reportId:report.id,attachmentId:image.id});
+  }
   // payslip: read by the pay_period / payroll_batch quals. The rest are NOT NULL parents of target rows,
   // filled ONE row per tenant (PER_TENANT) rather than one per employment.
   const support = ['payslip', ...PER_TENANT];
@@ -343,7 +362,7 @@ export async function fillTables() {
   }
 
   for (const table of ordered) {
-    fill[table] = { rows: 0, errors: [] };
+    fill[table] = { rows: ['feedback_request','feedback_attachment'].includes(table)?ACCOUNT_FEEDBACK.length:0, errors: [] };
     const cols = (
       await q(
         `select column_name as name, data_type as "dataType", udt_name as udt, is_nullable = 'YES' as nullable,
@@ -378,6 +397,12 @@ export async function fillTables() {
           if (c.nullable) continue;
           v = lit(users.find((u) => u.tenant_id === e.tenant_id)!.id as string);
         } else if (ref === 'tenant') v = lit(e.tenant_id as string);
+        else if(table==='feedback_attachment'&&c.name==='feedback_request_id'){
+          // 0561 requires the attachment's exact tenant/employment parent; random FK rotation is invalid.
+          const parents=await q(`select id from feedback_request where tenant_id=$1 and reporter_employment_id=$2 order by id`,[e.tenant_id,e.id]);
+          if(parents.length===0)throw new Error('Constraint-valid Feedback parent missing from fixture.');
+          v=lit(String(parents[0].id));
+        }
         else if (ref) {
           if (c.nullable) continue;
           // ROTATE through the parent's rows so child rows hang off many parents (and so many employments),
@@ -411,7 +436,9 @@ export async function fillTables() {
       ? [emps.find((x) => x.tenant_id === b.tenantId)!, emps.find((x) => x.tenant_id === T2)!]
       : emps;
     const plan: [Row, boolean][] = perTenant.map((e) => [e, false]);
-    if (nullableTargets.length) plan.push([emps[0], true], [emps[emps.length - 1], true]);
+    // Current NULL-subject Feedback rows are the canonical two-tenant examples above, not invalid
+    // rows with no real reporter/parent. Other tables retain every original nullable-subject case.
+    if (nullableTargets.length&&!['feedback_request','feedback_attachment'].includes(table)) plan.push([emps[0], true], [emps[emps.length - 1], true]);
     for (const [e, nullCol] of plan) {
       const stmt = await build(e, i++, nullCol);
       if (!stmt) {
