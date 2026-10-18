@@ -41,26 +41,27 @@ describe('V3.1 onboarding database and authorization', () => {
     }
     it('saves task definitions alone, checks revisions and preserves other configuration', async () => {
         const before = await onboardingContext(admin), checklist = before.config.checklists[0]!;
-        const tasks = structuredClone(checklist.tasks); tasks[0]!.name = 'Updated task only';
-        expect(await onboardingSaveChecklistTasks(admin, before.revision, checklist.id, tasks)).toEqual({revision: before.revision + 1});
+        const tasks = structuredClone(checklist.tasks);
+        tasks[0]!.name = 'Updated task only';
+        expect(await onboardingSaveChecklistTasks(admin, before.revision, checklist.id, tasks)).toEqual({ revision: before.revision + 1 });
         const after = await onboardingContext(admin);
-        expect(after.config).toEqual({...before.config, checklists: before.config.checklists.map(c => c.id === checklist.id ? {...c,tasks} : c)});
+        expect(after.config).toEqual({ ...before.config, checklists: before.config.checklists.map(c => c.id === checklist.id ? { ...c, tasks } : c) });
         await expect(onboardingSaveChecklistTasks(admin, before.revision, checklist.id, tasks)).rejects.toThrow('Settings changed');
         await expect(onboardingSaveChecklistTasks(tech, after.revision, checklist.id, tasks)).rejects.toThrow('Onboarding access');
     });
     it('keeps operational requisition visibility after a Facility-to-Tech handoff without widening action rights', async () => {
         const context = await onboardingContext(admin), config = structuredClone(context.config);
         config.groups.find(g => g.id === 'facility')!.members = [other.userId];
-        config.catalogue.push({id:'card',name:'Access card',type:'device',active:true,rules:{},workflow:null,team:'facility',card:true});
+        config.catalogue.push({ id: 'card', name: 'Access card', type: 'device', active: true, rules: {}, workflow: null, team: 'facility', card: true });
         await onboardingSaveConfig(admin, context.revision, config);
         const row = await prepared();
-        await onboardingCommand(admin,row.case.id,row.revision,{type:'save',patch:{selected:['m365','card']}});
-        const facility = await onboardingDetail(other,row.case.id,'requisition');
+        await onboardingCommand(admin, row.case.id, row.revision, { type: 'save', patch: { selected: ['m365', 'card'] } });
+        const facility = await onboardingDetail(other, row.case.id, 'requisition');
         const card = facility.case.requisitions.find(r => !r.cancelledAt)!.items.find(i => i.catalogueId === 'card')!;
-        await onboardingCommand(other,row.case.id,facility.revision,{type:'fulfil',itemId:card.id,status:'done'});
-        const printed = await onboardingDetail(other,row.case.id,'requisition');
-        expect(printed.case.requisitions[0]!.items.find(i => i.id === card.id)).toMatchObject({state:'printed',team:'group-tech'});
-        await expect(onboardingCommand(other,row.case.id,printed.revision,{type:'fulfil',itemId:card.id,status:'done'})).rejects.toThrow();
+        await onboardingCommand(other, row.case.id, facility.revision, { type: 'fulfil', itemId: card.id, status: 'done' });
+        const printed = await onboardingDetail(other, row.case.id, 'requisition');
+        expect(printed.case.requisitions[0]!.items.find(i => i.id === card.id)).toMatchObject({ state: 'printed', team: 'group-tech' });
+        await expect(onboardingCommand(other, row.case.id, printed.revision, { type: 'fulfil', itemId: card.id, status: 'done' })).rejects.toThrow();
         expect((await onboardingRequisitions(other)).some(r => r.caseId === row.case.id)).toBe(true);
     });
     it('automatically creates one pending case, saves incomplete data and protects source identity', async () => {
@@ -168,17 +169,17 @@ describe('V3.1 onboarding database and authorization', () => {
     it('serializes simultaneous claims and refuses a stale write or peer takeover', async () => {
         const context = await onboardingContext(admin), config = structuredClone(context.config);
         config.groups.find(g => g.id === 'group-tech')!.members.push(other.userId);
-        await onboardingSaveConfig(admin,context.revision,config);
+        await onboardingSaveConfig(admin, context.revision, config);
         const row = await prepared(), item = row.case.requisitions[0]!.items[0]!;
-        const results = await Promise.allSettled([tech,other].map(user => onboardingCommand(user,row.case.id,row.revision,{type:'fulfil',itemId:item.id,status:'progress'})));
+        const results = await Promise.allSettled([tech, other].map(user => onboardingCommand(user, row.case.id, row.revision, { type: 'fulfil', itemId: item.id, status: 'progress' })));
         expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1);
         expect(results.filter(r => r.status === 'rejected')).toHaveLength(1);
-        const current = await onboardingDetail(admin,row.case.id);
+        const current = await onboardingDetail(admin, row.case.id);
         const claimed = current.case.requisitions[0]!.items[0]!;
-        expect([tech.userId,other.userId]).toContain(claimed.claim);
+        expect([tech.userId, other.userId]).toContain(claimed.claim);
         const peer = claimed.claim === tech.userId ? other : tech;
-        await expect(onboardingCommand(peer,row.case.id,current.revision,{type:'fulfil',itemId:item.id,status:'done'})).rejects.toThrow();
-        await expect(onboardingCommand(tech,row.case.id,row.revision,{type:'fulfil',itemId:item.id,status:'done'})).rejects.toThrow('changed');
+        await expect(onboardingCommand(peer, row.case.id, current.revision, { type: 'fulfil', itemId: item.id, status: 'done' })).rejects.toThrow();
+        await expect(onboardingCommand(tech, row.case.id, row.revision, { type: 'fulfil', itemId: item.id, status: 'done' })).rejects.toThrow('changed');
     });
     it('keeps old task/requisition history after cancel, reopen and resubmit', async () => {
         let row = await prepared();
