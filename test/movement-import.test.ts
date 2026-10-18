@@ -3,6 +3,7 @@ import {asc,eq,sql} from 'drizzle-orm';
 import {beforeAll,beforeEach,afterAll,describe,it,expect,vi} from 'vitest';
 import {assignment,compensation,domainEvent,employment,leaveLedger,leaveEntitlementRecalcAudit,payPeriod,payrollBatch,payslip,movementEventType,systemLabelCriteriaEpoch} from '../db/schema';
 import {hireEmployee} from '../core/org';
+import {setCompensation} from '../core/comp';
 import {withTenant} from '../db/client';
 import * as tenantClient from '../db/client';
 import {createCompany,createDepartment,createJobGrade} from '../core/admin';
@@ -100,6 +101,16 @@ describe('Movement rollback-only preview and atomic confirmation',()=>{
   const history=await movementHistory(ctx,id);expect(history.filter(row=>row.scheduled&&row.status==='pending')).toHaveLength(2);
   await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,id,day(14)));
   expect(await movementCurrentState(ctx,id)).toMatchObject({companyId:destination.id,departmentId:department.id,basicSalary:'4200.00'});
+ });
+ it('commits future salary and department returns to the present baseline without applying either date early',async()=>{
+  const id=await hire(),ctx=adminCtx(b);await setCompensation(ctx,{employmentId:id,basicSalary:3000,effectiveFrom:day(-40)});
+  const before=await state(id),text=csv([['EMP-0004','promotion',day(7),b.deptB,3500,'Future first'],['EMP-0004','promotion',day(14),b.deptA,3000,'Future return']]);
+  const preview=await ready(text);expect(preview.valid).toBe(2);expect(preview.employees[0].rows[1].before?.basicSalary).toBe('3500.00');expect(preview.employees[0].rows[1].proposed?.basicSalary).toBe('3000.00');expect(await state(id)).toEqual(before);
+  const result=await commit(text,preview);expect(result).toMatchObject({imported:2,failed:0});expect(result.employees[0].rows[1].proposed).toEqual(preview.employees[0].rows[1].proposed);
+  const after=await state(id);expect(after.employment).toEqual(before.employment);expect(after.assignments).toEqual(before.assignments);expect(after.compensation).toEqual(before.compensation);
+  expect((await movementHistory(ctx,id)).filter(row=>row.scheduled&&row.status==='pending')).toHaveLength(2);
+  await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,id,day(7)));expect(await movementCurrentState(ctx,id)).toMatchObject({departmentId:b.deptB,basicSalary:'3500.00'});
+  await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,id,day(14)));expect(await movementCurrentState(ctx,id)).toMatchObject({departmentId:b.deptA,basicSalary:'3000.00'});
  });
  it('refuses pre-hire neutral events and conflicting same-date writes while retaining disjoint same-date changes',async()=>{
   const id=await hire(),before=await state(id);

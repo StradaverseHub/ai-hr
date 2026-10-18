@@ -2097,10 +2097,15 @@ async function scheduleMovementTx(
   ctx: SessionContext,
   p: CreateMovementInput,
   kind: ComparisonKind,
+  admission?: { baseline?: MovementCurrentState; capture?: (baseline: MovementCurrentState) => void },
 ) {
-  const cur = await currentStateTx(tx, p.employmentId);
+  // Always reread the real subject under current RLS. Only the canonical rollback rehearsal below can
+  // supply a verified predecessor state for a future sequence; ordinary New Event/Edit use live state.
+  const live = await currentStateTx(tx, p.employmentId);
+  const cur = admission?.baseline ?? live;
   const d = movementDeltas(p, cur);
   if (d.nothingChanged) throw new MovementNoChangeError();
+  admission?.capture?.({...cur});
 
   const remarks = p.remarks?.trim() || null;
   const endDate = p.endDate?.trim() || null;
@@ -2484,6 +2489,11 @@ export function createMovementEvent(ctx: SessionContext, rawInput: CreateMovemen
 
 /** Canonical dispatcher in a caller-owned transaction; every writer/ledger leg shares this Tx. */
 export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput){
+  return dispatchMovementEventTx(tx,ctx,rawInput);
+}
+
+/** Private admission data never comes from a form or caller-supplied baseline. */
+async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput,futureAdmission?:{baseline?:MovementCurrentState;capture?:(baseline:MovementCurrentState)=>void;expectedBehaviour?:string}){
   const roles = ctx.roles ?? [];
   if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
     throw new Error('Only an admin can record a movement.');
@@ -2493,6 +2503,7 @@ export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:Cr
   // mapped to, and its code travels on as `typeCode` so the ledger records what HR chose. A type that was
   // switched off is refused here rather than silently applied — that is the whole point of switching it off.
   const p = await resolveInputTypeTx(tx, ctx, rawInput, 'record');
+  if(futureAdmission?.expectedBehaviour!==undefined&&p.kind!==futureAdmission.expectedBehaviour)throw new Error('preview_stale_revalidate');
   const execute=async()=>{
   if (p.kind !== 'blacklist' && !/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveDate ?? '')) {
     throw new Error('A valid effective date (YYYY-MM-DD) is required.');
@@ -2514,7 +2525,7 @@ export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:Cr
     // dated in the FUTURE is recorded as a pending intent and applies on the morning of its date.
     const today = todayInKualaLumpur();
     if (p.effectiveDate > today) {
-      return scheduleMovementTx(tx, ctx, p, p.kind as ComparisonKind);
+      return scheduleMovementTx(tx, ctx, p, p.kind as ComparisonKind, futureAdmission);
     }
     return applyComparisonMovementTx(tx, ctx, p, p.kind);
   }
@@ -2607,6 +2618,70 @@ export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:Cr
   const result=await execute();
   if(!result)throw new Error('Unsupported movement event type.');
   return {...result,behaviourKind:p.kind};
+}
+
+/** A single ordered create function; no caller can pass a comparison baseline or replay token. */
+export type MovementSequenceCreate = (input: CreateMovementInput) => ReturnType<typeof createMovementEventTx>;
+const MOVEMENT_SEQUENCE_MAX = 20;
+const sequenceInputKey = (input: CreateMovementInput) => JSON.stringify(Object.entries(input).filter(([,value])=>value!==undefined).sort(([a],[b])=>a.localeCompare(b)));
+
+/**
+ * Rehearse at most twenty events for ONE employee, ALWAYS rolling the nested savepoint back. The caller
+ * may advance scheduled intents and required leave effects only through canonical owners on shadowTx.
+ * The returned replay function lives only inside this same outer transaction/context. It accepts only
+ * the exact immutable inputs, once and in order; failed rehearsal never returns it. Only this owner
+ * captures future comparison baselines, and they affect admission/conflict fields, never current masters.
+ */
+export async function rehearseMovementSequenceTx<T>(tx:Tx,ctx:SessionContext,prepare:(shadowTx:Tx,create:MovementSequenceCreate)=>Promise<T>){
+  const contextKey=()=>JSON.stringify({tenantId:ctx.tenantId,userId:ctx.userId,roles:ctx.roles,grants:ctx.grants});
+  const originalContext=contextKey();
+  const transactionIdentity=()=>tx.execute<{id:string;session:string}>(sql`select pg_current_xact_id()::text as id, concat_ws('|',current_setting('app.tenant_id',true),current_setting('app.user_id',true),current_setting('app.roles',true),current_setting('app.grants',true)) as session`);
+  const [transaction]=await transactionIdentity();
+  const plans:{input:CreateMovementInput;key:string;baseline?:MovementCurrentState;behaviour:string}[]=[];
+  let subject:string|undefined,previousDate:string|undefined,preparing=false,inFlight=false,failed=false;
+  class RehearsalRollback extends Error{constructor(readonly value:T){super('movement_sequence_rehearsal_rollback');}}
+  let value:T;
+  try{
+    await tx.transaction(async shadowTx=>{
+      preparing=true;
+      const create:MovementSequenceCreate=async input=>{
+        if(!preparing)throw new Error('movement_sequence_not_available');
+        if(inFlight||failed){failed=true;throw new Error('movement_sequence_not_available');}
+        inFlight=true;
+        try{
+          if(plans.length>=MOVEMENT_SEQUENCE_MAX)throw new Error('too_many_employee_rows');
+          if(subject!==undefined&&input.employmentId!==subject)throw new Error('movement_sequence_employee_changed');
+          if(previousDate!==undefined&&input.effectiveDate<previousDate)throw new Error('movement_sequence_order_changed');
+          const frozen=Object.freeze({...input});let baseline:MovementCurrentState|undefined;
+          const result=await dispatchMovementEventTx(shadowTx,ctx,frozen,{capture:current=>{baseline=Object.freeze({...current});}});
+          plans.push({input:frozen,key:sequenceInputKey(frozen),baseline,behaviour:result.behaviourKind});subject=frozen.employmentId;previousDate=frozen.effectiveDate;
+          return result;
+        }catch(error){failed=true;throw error;}finally{inFlight=false;}
+      };
+      try{
+        const prepared=await prepare(shadowTx,create);
+        if(failed||inFlight)throw new Error('movement_sequence_rehearsal_failed');
+        throw new RehearsalRollback(prepared);
+      }finally{preparing=false;}
+    });
+    throw new Error('movement_rehearsal_did_not_rollback');
+  }catch(error){if(!(error instanceof RehearsalRollback))throw error;value=error.value;}
+  let next=0,replaying=false,replayFailed=false;
+  const replay:MovementSequenceCreate=async input=>{
+    if(replaying||replayFailed||next>=plans.length)throw new Error('movement_sequence_not_available');
+    replaying=true;
+    try{
+      const plan=plans[next];
+      if(sequenceInputKey(input)!==plan.key)throw new Error('movement_sequence_input_changed');
+      if(contextKey()!==originalContext)throw new Error('movement_sequence_context_changed');
+      const [current]=await transactionIdentity();
+      if(!transaction||current?.id!==transaction.id)throw new Error('movement_sequence_transaction_ended');
+      if(current.session!==transaction.session)throw new Error('movement_sequence_context_changed');
+      next++; // Once only, even if the writer refuses; caller must abort the outer employee transaction.
+      return await dispatchMovementEventTx(tx,ctx,plan.input,{baseline:plan.baseline,expectedBehaviour:plan.behaviour});
+    }catch(error){replayFailed=true;throw error;}finally{replaying=false;}
+  };
+  return {value,replay};
 }
 
 // ───────────── Scheduled application — 941c9dac ─────────────

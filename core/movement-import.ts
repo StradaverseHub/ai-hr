@@ -11,9 +11,9 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {MOVEMENT_FORM_IDS,type MovementFormField} from '../lib/movement-form-contract';
 import {personnelFormField,personnelFormChoices} from '../lib/personnel-form-contract';
 import {MOVEMENT_IMPORT_LIMITS,parseMovementImport,movementImportCellIssues,movementImportDate,type MovementImportRecord,type MovementImportRow,type MovementImportEmployee,type MovementImportPreview,type MovementImportResult} from '../lib/movement-import-contract';
-import {createMovementEventTx,movementCurrentStateTx,applyDueMovementsTx,type CreateMovementInput} from './movement';
+import {createMovementEventTx,movementCurrentStateTx,applyDueMovementsTx,rehearseMovementSequenceTx,type MovementSequenceCreate,type CreateMovementInput} from './movement';
 import {isComparisonKind,movementNeedsEntitlementReprojection} from './movement-kinds';
-import {resolveMovementEventTypeTx,activeMovementEventTypeChoicesTx} from './movement-type';
+import {resolveMovementEventTypeTx,activeMovementEventTypeChoicesTx,lockMovementTypeCatalogueTx} from './movement-type';
 import {lockEmploymentStatutoryOwnerTx} from './org';
 import {visibleLabelIdsCondition} from './system-labels';
 import {reprojectEntitlementForEmployment} from '../packs/leave/service';
@@ -123,6 +123,7 @@ async function fingerprintTx(tx:Tx,ctx:SessionContext,id:string,companyId:string
 function message(error:unknown){
  // Drizzle wraps driver errors; its outer message contains SQL and bound values even when only
  // cause carries the PostgreSQL code. Never put that text in a preview or downloadable row report.
+ if(error instanceof Error&&error.message.startsWith('movement_sequence_'))return 'change_refused';
  if(!(error instanceof Error)||['code','query','params','cause'].some(key=>key in error)||error.name==='DrizzleQueryError')return 'change_refused';
  return error.message.slice(0,1000);
 }
@@ -149,13 +150,13 @@ function assertSequence(previous:RehearsedRow[],next:RehearsedRow){
  if(sameDay.some(row=>digest(row.input)===digest(next.input)))throw new Error('duplicate_event_in_sequence');
  if(sameDay.some(row=>row.changedFields.some(field=>next.changedFields.includes(field))))throw new Error('same_date_conflicting_changes');
 }
-async function applyRowTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,id:string,rehearsal:boolean,resolvedInput?:CreateMovementInput):Promise<RehearsedRow>{
+async function applyRowTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,id:string,rehearsal:boolean,resolvedInput?:CreateMovementInput,create?:MovementSequenceCreate):Promise<RehearsedRow>{
  const before={...await movementCurrentStateTx(tx,id),...await lifecycleTx(tx,id)};
  const prepared=resolvedInput?null:await inputTx(tx,ctx,record,id,before.companyId);
  const input=resolvedInput??prepared!.input;
  const catalogBefore=prepared?.source??await catalogTx(tx,ctx,before.companyId);
  const catalogAfter=prepared?.catalog??(input.companyId&&input.companyId!==before.companyId?await catalogTx(tx,ctx,input.companyId):catalogBefore);
- const result=await createMovementEventTx(tx,ctx,input);
+ const result=await (create?create(input):createMovementEventTx(tx,ctx,input));
  if('changed' in result&&result.changed===false)throw new Error('movement_has_no_changes');
  const scheduled='scheduled' in result&&result.scheduled===true;
  // Advance only the rollback-only rehearsal, through the very same owner the normal sweep uses.
@@ -169,17 +170,12 @@ async function applyRowTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,i
  const view:MovementImportRow={...rowView(record),eventType:input.kind,status:'valid',errors:[],before:readable(before,catalogBefore),proposed:{...readable(after,catalogAfter),...extra},scheduled,payrollFlaggedPeriods:'payrollFlaggedPeriods' in result&&Array.isArray(result.payrollFlaggedPeriods)?result.payrollFlaggedPeriods:[]};
  return {view,input,changedFields};
 }
-/** This sentinel is caught only AFTER Drizzle has rolled the complete rehearsal savepoint back. */
-class SequenceRollback extends Error{constructor(readonly rows:RehearsedRow[]){super('movement_sequence_rehearsal_rollback');}}
-async function rehearseSequenceTx(tx:Tx,ctx:SessionContext,records:MovementImportRecord[],id:string,deadline:number):Promise<RehearsedRow[]>{
- try{
-  await tx.transaction(async rehearsalTx=>{
-   const rows:RehearsedRow[]=[];
-   for(const record of sortSequence(records)){budget(deadline);const next=await applyRowTx(rehearsalTx,ctx,record,id,true);assertSequence(rows,next);rows.push(next);budget(deadline);}
-   throw new SequenceRollback(rows);
-  });
- }catch(error){if(error instanceof SequenceRollback)return error.rows;throw error;}
- throw new Error('movement_rehearsal_did_not_rollback');
+async function rehearseSequenceTx(tx:Tx,ctx:SessionContext,records:MovementImportRecord[],id:string,deadline:number){
+ return rehearseMovementSequenceTx(tx,ctx,async(rehearsalTx,create)=>{
+  const rows:RehearsedRow[]=[];
+  for(const record of sortSequence(records)){budget(deadline);const next=await applyRowTx(rehearsalTx,ctx,record,id,true,undefined,create);assertSequence(rows,next);rows.push(next);budget(deadline);}
+  return rows;
+ });
 }
 class PreviewRollback extends Error{constructor(readonly employee:MovementImportEmployee){super('movement_preview_rollback');}}
 export async function previewMovementImport(ctx:SessionContext,p:{companyId:string;csv:string;selection?:number[]}):Promise<MovementImportPreview>{
@@ -190,7 +186,7 @@ export async function previewMovementImport(ctx:SessionContext,p:{companyId:stri
   budget(deadline);let employee:MovementImportEmployee={employeeCode:code,employmentId:null,name:null,rows:sortSequence(records).map(rowView),fingerprint:null};
   try{
    await withTenant(ctx,async tx=>{
-    const employeeDeadline=Math.min(deadline,Date.now()+MOVEMENT_IMPORT_LIMITS.employeeMs);await limits(tx);await assertCompany(tx,ctx,p.companyId);
+    const employeeDeadline=Math.min(deadline,Date.now()+MOVEMENT_IMPORT_LIMITS.employeeMs);await limits(tx);await lockMovementTypeCatalogueTx(tx,ctx.tenantId);await assertCompany(tx,ctx,p.companyId);
     const subject=await subjectTx(tx,ctx,p.companyId,code);employee={...employee,employmentId:subject.id,name:subject.name,fingerprint:await fingerprintTx(tx,ctx,subject.id,p.companyId,inputHash,selection,records,employeeDeadline)};
     const rows:MovementImportRow[]=[];const previous:RehearsedRow[]=[];
     for(const record of sortSequence(records)){
@@ -223,7 +219,7 @@ export async function commitMovementImport(ctx:SessionContext,p:{companyId:strin
   try{
    budget(deadline);
    employee=await withTenant(ctx,async tx=>{
-    const employeeDeadline=Math.min(deadline,Date.now()+MOVEMENT_IMPORT_LIMITS.employeeMs);await limits(tx);await assertCompany(tx,ctx,p.companyId);const subject=await subjectTx(tx,ctx,p.companyId,code);
+    const employeeDeadline=Math.min(deadline,Date.now()+MOVEMENT_IMPORT_LIMITS.employeeMs);await limits(tx);await lockMovementTypeCatalogueTx(tx,ctx.tenantId);await assertCompany(tx,ctx,p.companyId);const subject=await subjectTx(tx,ctx,p.companyId,code);
     employee={...employee,employmentId:subject.id,name:subject.name};
     const fingerprint=await fingerprintTx(tx,ctx,subject.id,p.companyId,inputHash,selection,records,employeeDeadline);
     if(!p.fingerprints||p.fingerprints[code]!==fingerprint)throw new Error('preview_stale_revalidate');
@@ -232,8 +228,8 @@ export async function commitMovementImport(ctx:SessionContext,p:{companyId:strin
     const rows:MovementImportRow[]=[];
     for(const record of sortSequence(records)){
      if(!selection.includes(record.row)){rows.push(rowView(record));continue;}
-     budget(employeeDeadline);const plan=rehearsed.find(row=>row.view.row===record.row);if(!plan)throw new Error('movement_sequence_changed');
-     const row=await applyRowTx(tx,ctx,record,subject.id,false,plan.input);rows.push({...plan.view,status:'imported',scheduled:row.view.scheduled,payrollFlaggedPeriods:row.view.payrollFlaggedPeriods});budget(employeeDeadline);
+     budget(employeeDeadline);const plan=rehearsed.value.find(row=>row.view.row===record.row);if(!plan)throw new Error('movement_sequence_changed');
+     const row=await applyRowTx(tx,ctx,record,subject.id,false,plan.input,rehearsed.replay);rows.push({...plan.view,status:'imported',scheduled:row.view.scheduled,payrollFlaggedPeriods:row.view.payrollFlaggedPeriods});budget(employeeDeadline);
     }
     return {employeeCode:code,employmentId:subject.id,name:subject.name,rows,fingerprint};
    });

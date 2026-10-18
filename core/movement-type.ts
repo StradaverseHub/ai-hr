@@ -119,6 +119,16 @@ export function codeFromLabel(label: string): string {
     .slice(0, 40);
 }
 
+/** Shared import admission lock, held until its employee transaction commits or rolls back. Catalogue
+ * writers take the exclusive form BEFORE reading/upserting, including absent built-in overlays. Import
+ * acquires this before statutory/employment locks; no caller upgrades a shared lock to exclusive. */
+export async function lockMovementTypeCatalogueTx(tx:Tx,tenantId:string){
+  await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended('movement-type-catalogue:' || ${tenantId}::text,0))`);
+}
+async function lockMovementTypeCatalogueWriteTx(tx:Tx,tenantId:string){
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended('movement-type-catalogue:' || ${tenantId}::text,0))`);
+}
+
 /** The overlay rows for this tenant, keyed by code. */
 async function overlayTx(tx: Tx, tenantId: string) {
   const rows = await tx
@@ -278,6 +288,7 @@ export async function saveMovementEventType(
   if (!label) throw new MovementTypeError('A name is required.');
 
   return withTenant(ctx, async (tx) => {
+    await lockMovementTypeCatalogueWriteTx(tx,ctx.tenantId);
     const existingCode = p.code?.trim() || null;
 
     // ── Renaming an existing entry (built-in or custom) ────────────────────────────────────────────
@@ -369,6 +380,7 @@ export async function setMovementEventTypeActive(
 ): Promise<void> {
   assertAdmin(ctx, 'change movement event types');
   await withTenant(ctx, async (tx) => {
+    await lockMovementTypeCatalogueWriteTx(tx,ctx.tenantId);
     const resolved = await resolveMovementEventTypeTx(tx, ctx.tenantId, p.code);
     if (!resolved) throw new MovementTypeError('Unknown movement event type.');
     await upsertTx(tx, ctx, {
@@ -392,6 +404,7 @@ export async function deleteMovementEventType(ctx: SessionContext, code: string)
     throw new MovementTypeError('A built-in event type cannot be deleted. Switch it off instead.');
   }
   await withTenant(ctx, async (tx) => {
+    await lockMovementTypeCatalogueWriteTx(tx,ctx.tenantId);
     const inUse = await inUseCodesTx(tx, ctx.tenantId);
     if (inUse.has(code)) {
       throw new MovementTypeError(
