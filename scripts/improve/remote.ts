@@ -421,7 +421,7 @@ export function pushPlan(p: {
   reporterEmploymentSql(p.reporterEmploymentId);
   const sql = [
     'BEGIN;',
-    doBlock(reporterBindingBody(p)),
+    doBlock(['BEGIN', reporterBindingBody(p), 'END'].join('\n')),
     // Close whatever version is still open. A contest already stamped its own outcome WITH the reporter's
     // words, and `outcome IS NULL` keeps this from overwriting it — a re-plan must never erase the
     // objection that prompted it, which is precisely how the old history was lost.
@@ -571,7 +571,7 @@ export function markBuildStarted(p: { id: string; tenantId: string; reporterEmpl
   reporterEmploymentSql(p.reporterEmploymentId);
   const sql = [
     'BEGIN;',
-    doBlock(reporterBindingBody(p)),
+    doBlock(['BEGIN', reporterBindingBody(p), 'END'].join('\n')),
     `UPDATE feedback_request SET status = 'building', updated_at = now() WHERE id = '${p.id}' AND status = 'approved';`,
     `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.build.started', 'agent', ${reporterEmploymentSql(p.reporterEmploymentId)}, ${dq(JSON.stringify({ via: 'improvement-loop' }))}::jsonb);`,
     'COMMIT;',
@@ -586,7 +586,7 @@ export function markBuildCompleted(p: { id: string; tenantId: string; reporterEm
   reporterEmploymentSql(p.reporterEmploymentId);
   const sql = [
     'BEGIN;',
-    doBlock(reporterBindingBody(p)),
+    doBlock(['BEGIN', reporterBindingBody(p), 'END'].join('\n')),
     `UPDATE feedback_request SET status = 'done', build_ref = ${dq(p.buildRef)}, updated_at = now() WHERE id = '${p.id}' AND status = 'building';`,
     `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.build.completed', 'agent', ${reporterEmploymentSql(p.reporterEmploymentId)}, ${dq(JSON.stringify({ buildRef: p.buildRef, via: 'improvement-loop' }))}::jsonb);`,
     'COMMIT;',
@@ -601,7 +601,7 @@ export function markDeployed(p: { id: string; tenantId: string; reporterEmployme
   reporterEmploymentSql(p.reporterEmploymentId);
   const sql = [
     'BEGIN;',
-    doBlock(reporterBindingBody(p)),
+    doBlock(['BEGIN', reporterBindingBody(p), 'END'].join('\n')),
     `UPDATE feedback_request SET status = 'deployed', build_ref = ${dq(p.buildRef)}, decided_at = now(), updated_at = now() WHERE id = '${p.id}';`,
     `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.deployed', 'agent', ${reporterEmploymentSql(p.reporterEmploymentId)}, ${dq(JSON.stringify({ buildRef: p.buildRef }))}::jsonb);`,
     'COMMIT;',
