@@ -1,3 +1,4 @@
+/** Ops/Strata supersedes historical audience-position pins below; route, permission and source-inventory safeguards remain. */
 /**
  * System Settings nav consolidation guard (item a4e49748).
  *
@@ -29,6 +30,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { countQuoted, nodeBlock } from './helpers/sidebar-source';
+import { navigationPlacement } from '../lib/navigation-workspaces';
 
 const SIDEBAR = fs.readFileSync(path.resolve(__dirname, '../components/sidebar.tsx'), 'utf8');
 const LAYOUT = fs.readFileSync(path.resolve(__dirname, '../app/layout.tsx'), 'utf8');
@@ -140,17 +142,13 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
     expect(node!).toMatch(/labelKey:\s*'systemSettings'/);
   });
 
-  it('contains the three setup screens as children, in the ticket order', () => {
-    const positions = TICKET_HREFS.map((href) => {
-      const idx = node!.indexOf(`'${href}'`);
-      expect(idx, `${href} is a child of the System Settings node`).toBeGreaterThan(-1);
-      return idx;
-    });
-    const sorted = [...positions].sort((a, b) => a - b);
-    expect(
-      positions,
-      'children follow the ticket order (Employee ID → Dashboard Cards → System Labels)',
-    ).toEqual(sorted);
+  it('retains the original setup destinations and places employee configuration separately from shared system settings', () => {
+    for (const href of TICKET_HREFS) {
+      expect(node!.indexOf(`'${href}'`), `${href} retains its authorized source descriptor`).toBeGreaterThan(-1);
+    }
+    expect(navigationPlacement('/admin/settings/employee-id')).toEqual({area:'ops',module:'people',section:'config'});
+    expect(navigationPlacement('/admin/settings/dashboard')).toEqual({area:'system'});
+    expect(navigationPlacement('/admin/settings/system-labels')).toEqual({area:'system'});
   });
 
   it('carries EVERY child in the declared order — no row appended, clipped or reshuffled unnoticed', () => {
@@ -226,29 +224,22 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
   // 645e67c4 turned the leave reference from a flat row into a flyout node (LEAVE_CONFIG_ROW ->
   // LEAVE_CONFIG_NODE) WITHOUT moving it — the same rename 1459e116 made for payroll. This guard is
   // about POSITION, which is unchanged; the node's contents are test/leave-flyout-nav.test.ts.
-  it('keeps the config rows in order: LEAVE_CONFIG_NODE → CLAIMS_CONFIG_ROW → PAYROLL_NODE', () => {
+  it('keeps each original config owner while placing module setup in its own Configuration section', () => {
     const block = adminGroupBlock();
-    const leaveRef = block.indexOf('LEAVE_CONFIG_NODE');
-    const claimsRef = block.indexOf('CLAIMS_CONFIG_ROW');
-    // ADR-0080 rung 7: the payroll entry moved onto the payroll pack and mounts by const reference,
-    // like the claims/leave config rows — asserted by position here. 1459e116 turned that reference
-    // from a flat row into a flyout node (PAYROLL_ROW → PAYROLL_NODE) without moving it; its
-    // contents are test/payroll-flyout-nav.test.ts.
-    const payroll = block.indexOf('PAYROLL_NODE');
-    expect(leaveRef, 'LEAVE_CONFIG_NODE is referenced in the admin group').toBeGreaterThan(-1);
-    expect(claimsRef, 'CLAIMS_CONFIG_ROW is referenced after LEAVE_CONFIG_NODE').toBeGreaterThan(leaveRef);
-    expect(payroll, 'PAYROLL_NODE sits after CLAIMS_CONFIG_ROW').toBeGreaterThan(claimsRef);
+    for (const name of ['LEAVE_CONFIG_NODE','CLAIMS_CONFIG_ROW','PAYROLL_NODE','SYSTEM_SETTINGS_NODE']) {
+      expect(block, `${name}: no legacy authorized source owner lost`).toMatch(new RegExp(`^[ \\t]*${name},$`,'m'));
+    }
+    expect(navigationPlacement('/admin/leave-config/types')).toEqual({area:'ops',module:'leave',section:'config'});
+    expect(navigationPlacement('/admin/claims')).toEqual({area:'ops',module:'claims',section:'config'});
+    expect(navigationPlacement('/payroll/setup')).toEqual({area:'ops',module:'payroll',section:'config'});
   });
 
-  it('keeps SYSTEM_SETTINGS_NODE after Organization and before Leave after Personnel moves to Manage', () => {
-    const block = adminGroupBlock();
-    const organization = block.indexOf(`'/admin/organization'`);
-    const nodeRef = block.indexOf('SYSTEM_SETTINGS_NODE');
-    const leaveRef = block.indexOf('LEAVE_CONFIG_NODE');
-    expect(organization, 'Organization remains the first flat Admin destination').toBeGreaterThan(-1);
-    expect(block).not.toContain("href: '/admin/personnel'");
-    expect(nodeRef, 'SYSTEM_SETTINGS_NODE follows Organization').toBeGreaterThan(organization);
-    expect(leaveRef, 'SYSTEM_SETTINGS_NODE sits before the LEAVE_CONFIG_NODE row').toBeGreaterThan(nodeRef);
+  it('separates People configuration and daily HR work from the shared System Configuration gear', () => {
+    expect(navigationPlacement('/admin/organization')).toEqual({area:'ops',module:'people',section:'config'});
+    expect(navigationPlacement('/admin/personnel')).toEqual({area:'ops',module:'people',section:'hr'});
+    for (const href of ['/admin/holidays','/admin/settings/system-labels','/admin/settings/email','/admin/ai']) {
+      expect(navigationPlacement(href), href).toEqual({area:'system'});
+    }
   });
 
   // fdc20776 (flyout redesign) removed per-group open/closed persistence entirely: panels are

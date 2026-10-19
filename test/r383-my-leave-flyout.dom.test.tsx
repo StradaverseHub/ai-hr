@@ -23,12 +23,12 @@ beforeEach(()=>{location.path='/leave/history';});
 describe('My Leave uses the shared sidebar flyout',()=>{
  it.each([false,true])('keeps leaf links outside the rail and swaps/dismisses one panel in collapsed=%s',collapsed=>{
   const {container}=show(collapsed);const rail=container.querySelector('aside')!;expect(rail).not.toBeNull();
-  const leave=screen.getByRole('button',{name:'My Leave'});
+  const leave=screen.getByRole('button',{name:messages.nav.moduleLeave});
   expect(within(rail).queryByRole('link',{name:'Leave Request'})).toBeNull();
   expect(leave).toHaveAttribute('aria-expanded','false');
-  fireEvent.click(leave);const panel=screen.getByRole('navigation',{name:'My Leave'});
+  fireEvent.click(leave);const panel=screen.getByRole('navigation',{name:messages.nav.moduleLeave});
   expect(rail.contains(panel)).toBe(false);
-  expect(within(panel).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/leave','/leave/history','/leave/credit','/leave/credit-details','/leave/details']);
+  expect(within(panel).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/leave','/leave/history','/leave/credit','/leave/credit-details','/leave/details','/leave/tracker?calendar=1']);
   expect(within(panel).getByRole('link',{name:'Leave Request Status'})).toHaveAttribute('aria-current','page');
   expect(within(panel).getByRole('link',{name:'Leave Request'})).not.toHaveAttribute('aria-current');
   expect(within(panel).getByRole('link',{name:'Leave Credit Status'})).not.toHaveAttribute('aria-current');
@@ -36,26 +36,26 @@ describe('My Leave uses the shared sidebar flyout',()=>{
   expect(within(panel).getAllByRole('link').filter(link=>link.getAttribute('aria-current')==='page').map(link=>link.getAttribute('href'))).toEqual(['/leave/history']);
   // The old name is gone from the panel, not merely joined by the new one.
   expect(within(panel).queryByRole('link',{name:'Leave Overview'})).toBeNull();
-  const attendance=screen.getByRole('button',{name:'My Attendance'});fireEvent.click(attendance);
-  expect(screen.queryByRole('navigation',{name:'My Leave'})).toBeNull();
-  expect(screen.getByRole('navigation',{name:'My Attendance'})).toBeInTheDocument();
-  fireEvent.click(leave);expect(screen.queryByRole('navigation',{name:'My Attendance'})).toBeNull();
-  fireEvent.keyDown(document,{key:'Escape'});expect(screen.queryByRole('navigation',{name:'My Leave'})).toBeNull();expect(leave).toHaveFocus();
-  fireEvent.click(leave);fireEvent.click(container.querySelector('.fixed.inset-0.z-40')!);expect(screen.queryByRole('navigation',{name:'My Leave'})).toBeNull();
-  fireEvent.click(leave);fireEvent.click(screen.getByRole('link',{name:'Leave Request'}));expect(screen.queryByRole('navigation',{name:'My Leave'})).toBeNull();
+  const attendance=screen.getByRole('button',{name:messages.nav.moduleAttendance});fireEvent.click(attendance);
+  expect(screen.queryByRole('navigation',{name:messages.nav.moduleLeave})).toBeNull();
+  expect(screen.getByRole('navigation',{name:messages.nav.moduleAttendance})).toBeInTheDocument();
+  fireEvent.click(leave);expect(screen.queryByRole('navigation',{name:messages.nav.moduleAttendance})).toBeNull();
+  fireEvent.keyDown(document,{key:'Escape'});expect(screen.queryByRole('navigation',{name:messages.nav.moduleLeave})).toBeNull();expect(leave).toHaveFocus();
+  fireEvent.click(leave);fireEvent.click(container.querySelector('.fixed.inset-0.z-40')!);expect(screen.queryByRole('navigation',{name:messages.nav.moduleLeave})).toBeNull();
+  fireEvent.click(leave);fireEvent.click(screen.getByRole('link',{name:'Leave Request'}));expect(screen.queryByRole('navigation',{name:messages.nav.moduleLeave})).toBeNull();
   expect(within(rail).queryByRole('link',{name:'Leave Request Status'})).toBeNull();
  });
  it('highlights the overview and keeps core leave visible while sellable attendance is hidden',()=>{
-  location.path='/leave';const view=show();const leave=screen.getByRole('button',{name:'My Leave'});expect(leave.classList.contains('bg-accent')).toBe(true);
-  fireEvent.click(leave);const panel=screen.getByRole('navigation',{name:'My Leave'});
+  location.path='/leave';const view=show();const leave=screen.getByRole('button',{name:messages.nav.moduleLeave});expect(leave.classList.contains('bg-accent')).toBe(true);
+  fireEvent.click(leave);const panel=screen.getByRole('navigation',{name:messages.nav.moduleLeave});
   expect(within(panel).getByRole('link',{name:'Leave Request'})).toHaveAttribute('aria-current','page');
   expect(within(panel).getByRole('link',{name:'Leave Request Status'})).not.toHaveAttribute('aria-current');
   view.unmount();show(false,[]);
   // Leave is shared core, so an empty sellable-module list must retain both CORE self-service links — and
   // r389: must drop Leave Credit History, which belongs to the sellable `toil` add-on.
-  const coreLeave=screen.getByRole('button',{name:'My Leave'});expect(coreLeave.classList.contains('bg-accent')).toBe(true);
-  expect(screen.queryByRole('button',{name:'My Attendance'})).toBeNull();
-  fireEvent.click(coreLeave);const corePanel=screen.getByRole('navigation',{name:'My Leave'});expect(within(corePanel).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/leave','/leave/history','/leave/details']);
+  const coreLeave=screen.getByRole('button',{name:messages.nav.moduleLeave});expect(coreLeave.classList.contains('bg-accent')).toBe(true);
+  expect(screen.queryByRole('button',{name:messages.nav.moduleAttendance})).toBeNull();
+  fireEvent.click(coreLeave);const corePanel=screen.getByRole('navigation',{name:messages.nav.moduleLeave});expect(within(corePanel).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/leave','/leave/history','/leave/details','/leave/tracker?calendar=1']);
   expect(within(corePanel).queryByRole('link',{name:'Leave Credit Status'})).toBeNull();expect(within(corePanel).queryByRole('link',{name:'Leave Credit Details'})).toBeNull();
  });
  it.each([
@@ -64,37 +64,32 @@ describe('My Leave uses the shared sidebar flyout',()=>{
  ])('offers both credit entries only with toil and lights only the current link on $path',({path,active,inactive})=>{
   location.path=path;
   const off=show(false,['attendance']);
-  // Without toil neither credit route has a visible row, so Home is not the active section and starts
-  // closed — the same shape as the tracker case below. Open it, then prove both credit rows are absent.
-  const home=screen.getByRole('button',{name:messages.nav.sectionHome});expect(home).toHaveAttribute('aria-expanded','false');fireEvent.click(home);
-  fireEvent.click(screen.getByRole('button',{name:'My Leave'}));
-  expect(within(screen.getByRole('navigation',{name:'My Leave'})).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/leave','/leave/history','/leave/details']);
-  expect(within(screen.getByRole('navigation',{name:'My Leave'})).queryByRole('link',{name:'Leave Credit Status'})).toBeNull();
-  expect(within(screen.getByRole('navigation',{name:'My Leave'})).queryByRole('link',{name:'Leave Credit Details'})).toBeNull();
+  // The Leave module remains available while its paid credit children are absent.
+  fireEvent.click(screen.getByRole('button',{name:messages.nav.moduleLeave}));
+  expect(within(screen.getByRole('navigation',{name:messages.nav.moduleLeave})).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/leave','/leave/history','/leave/details','/leave/tracker?calendar=1']);
+  expect(within(screen.getByRole('navigation',{name:messages.nav.moduleLeave})).queryByRole('link',{name:'Leave Credit Status'})).toBeNull();
+  expect(within(screen.getByRole('navigation',{name:messages.nav.moduleLeave})).queryByRole('link',{name:'Leave Credit Details'})).toBeNull();
   off.unmount();
   show(false,['toil']);
-  const leave=screen.getByRole('button',{name:'My Leave'});
+  const leave=screen.getByRole('button',{name:messages.nav.moduleLeave});
   expect(leave.classList.contains('bg-accent'),'My Leave is the open section on '+path).toBe(true);
   fireEvent.click(leave);
-  const panel=screen.getByRole('navigation',{name:'My Leave'});
-  expect(within(panel).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/leave','/leave/history','/leave/credit','/leave/credit-details','/leave/details']);
+  const panel=screen.getByRole('navigation',{name:messages.nav.moduleLeave});
+  expect(within(panel).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/leave','/leave/history','/leave/credit','/leave/credit-details','/leave/details','/leave/tracker?calendar=1']);
   expect(within(panel).getByRole('link',{name:active})).toHaveAttribute('aria-current','page');
   expect(within(panel).getByRole('link',{name:inactive})).not.toHaveAttribute('aria-current');
   expect(within(panel).getAllByRole('link').filter(link=>link.getAttribute('aria-current')==='page').map(link=>link.getAttribute('href'))).toEqual([path]);
   expect(within(panel).getByRole('link',{name:'Leave Request'})).not.toHaveAttribute('aria-current');
   expect(within(panel).getByRole('link',{name:'Leave Request Status'})).not.toHaveAttribute('aria-current');
  });
- it.each([false,true])('does not highlight My Leave on the tracker route in collapsed=%s',collapsed=>{
+ it.each([false,true])('the shared Leave module selects only the tracker on its route in collapsed=%s',collapsed=>{
   location.path='/leave/tracker';show(collapsed);
-  if(!collapsed){
-   // Manage is active on the tracker; the inactive Home section initially stays closed.
-   expect(screen.queryByRole('button',{name:'My Leave'})).toBeNull();
-   const home=screen.getByRole('button',{name:messages.nav.sectionHome});expect(home).toHaveAttribute('aria-expanded','false');fireEvent.click(home);
-  }
-  const leave=screen.getByRole('button',{name:'My Leave'});
-  expect(leave.classList.contains('bg-accent')).toBe(false);fireEvent.click(leave);
-  const panel=screen.getByRole('navigation',{name:'My Leave'});
-  expect(within(panel).getAllByRole('link').every(link=>!link.hasAttribute('aria-current'))).toBe(true);
+  const leave=screen.getByRole('button',{name:messages.nav.moduleLeave});
+  expect(leave.classList.contains('bg-accent')).toBe(true);fireEvent.click(leave);
+  const panel=screen.getByRole('navigation',{name:messages.nav.moduleLeave});
+  expect(within(panel).getByRole('link',{name:messages.nav.teamLeaveTracker})).toHaveAttribute('href','/leave/tracker?calendar=1');
+  expect(within(panel).getAllByRole('link').filter(link=>link.hasAttribute('aria-current')).map(link=>link.getAttribute('href'))).toEqual(['/leave/tracker?calendar=1']);
+  expect(within(panel).getByRole('link',{name:'Leave Request'})).not.toHaveAttribute('aria-current');
  });
 
 });

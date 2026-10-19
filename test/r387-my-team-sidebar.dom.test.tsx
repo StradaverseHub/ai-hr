@@ -25,37 +25,47 @@ function rail(roles:string[],collapsed=false) {
     <Sidebar isAdmin={isAdmin} canApprove={roles.includes('manager')} canAccessTeam={hasTeamAccess(session)}
       enabledModules={['leave']} defaultCollapsed={collapsed}/>
   </NextIntlClientProvider>);
-  if(!collapsed)fireEvent.click(screen.getByRole('button',{name:messages.nav.manage}));
   return view;
 }
 
-describe('My Team is actually mounted in the authorized viewer’s Manage rail',()=>{
-  it.each(['manager','hr_admin','super_admin'])('%s sees My Team immediately beside the preserved tracker without optional attendance',role=>{
+function openModule(name:string) {
+  const trigger=screen.getByRole('button',{name});
+  fireEvent.click(trigger);
+  return screen.getByRole('navigation',{name});
+}
+
+describe('My Team keeps its exact role boundary inside People',()=>{
+  it.each(['manager','hr_admin','super_admin'])('%s sees My Team under People and the preserved calendar under Leave without optional attendance',role=>{
     rail([role]);
-    const manage=document.getElementById('nav-section-manage');
-    expect(manage,'the real Manage section is rendered').not.toBeNull();
-    const links=within(manage!).getAllByRole('link');
-    const tracker=within(manage!).getByRole('link',{name:messages.nav.teamLeaveTracker});
-    const team=within(manage!).getByRole('link',{name:messages.nav.myTeam});
-    expect(tracker).toHaveAttribute('href','/leave/tracker?calendar=1');
-    expect(team).toHaveAttribute('href','/manage/my-team');
-    expect(links.indexOf(team)).toBe(links.indexOf(tracker)+1);
+    const people=openModule(messages.nav.modulePeople);
+    expect(within(people).getByRole('link',{name:messages.nav.myTeam})).toHaveAttribute('href','/manage/my-team');
+    expect(within(people).getByRole('link',{name:messages.nav.people})).toHaveAttribute('href','/personnel');
+    expect(within(people).getByText(messages.nav.sectionTeam)).toBeInTheDocument();
+    const leave=openModule(messages.nav.moduleLeave);
+    expect(within(leave).getByRole('link',{name:messages.nav.teamLeaveTracker})).toHaveAttribute('href','/leave/tracker?calendar=1');
+    expect(within(leave).queryByRole('link',{name:messages.nav.myTeam})).toBeNull();
   });
 
-  it.each(['employee','payroll_partner','performance_comp_partner'])('%s retains the calendar but cannot acquire the team menu through the broader admin rail',role=>{
+  it.each(['employee','payroll_partner','performance_comp_partner'])('%s retains the calendar but cannot acquire My Team through the broader admin rail',role=>{
     rail([role]);
-    expect(screen.getByRole('link',{name:messages.nav.teamLeaveTracker})).toHaveAttribute('href','/leave/tracker?calendar=1');
+    const peopleTrigger=screen.queryByRole('button',{name:messages.nav.modulePeople});
+    if(peopleTrigger) {
+      fireEvent.click(peopleTrigger);
+      expect(within(screen.getByRole('navigation',{name:messages.nav.modulePeople})).queryByRole('link',{name:messages.nav.myTeam})).toBeNull();
+    } else expect(screen.getByRole('link',{name:messages.nav.modulePeople})).toHaveAttribute('href','/personnel');
     expect(screen.queryByRole('link',{name:messages.nav.myTeam})).not.toBeInTheDocument();
+    const leave=openModule(messages.nav.moduleLeave);
+    expect(within(leave).getByRole('link',{name:messages.nav.teamLeaveTracker})).toHaveAttribute('href','/leave/tracker?calendar=1');
   });
 
   it('a manager who also has a partner role retains team access',()=>{
     rail(['manager','payroll_partner']);
-    expect(screen.getByRole('link',{name:messages.nav.myTeam})).toHaveAttribute('href','/manage/my-team');
+    expect(within(openModule(messages.nav.modulePeople)).getByRole('link',{name:messages.nav.myTeam})).toHaveAttribute('href','/manage/my-team');
   });
 
   it('the collapsed manager rail retains the accessible My Team destination',()=>{
     rail(['manager'],true);
-    expect(screen.getByRole('link',{name:messages.nav.myTeam})).toHaveAttribute('href','/manage/my-team');
+    expect(within(openModule(messages.nav.modulePeople)).getByRole('link',{name:messages.nav.myTeam})).toHaveAttribute('href','/manage/my-team');
   });
 
   it('the real server shell passes the same role predicate that guards the page',()=>{

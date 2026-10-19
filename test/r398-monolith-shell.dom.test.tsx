@@ -122,7 +122,7 @@ describe('Monolith rail', () => {
     pathname = '/admin/leave-config/types';
     adminRail();
     const rail = aside();
-    const kids = within(rail).getByRole('navigation', { name: messages.nav.leaveConfig });
+    const kids = within(rail).getByRole('navigation', { name: messages.nav.moduleLeave });
     // Inline: inside the rail itself, not a panel beside it.
     expect(rail.contains(kids)).toBe(true);
     expect(document.querySelector('[id^="nav-flyout-"]'), 'no flyout panel in Monolith').toBeNull();
@@ -150,7 +150,7 @@ describe('Monolith rail', () => {
   it('the approval count keeps its accessible name', () => {
     setTheme('monolith');
     adminRail();
-    fireEvent.click(within(aside()).getByRole('button', { name: messages.nav.manage }));
+    fireEvent.click(within(aside()).getByRole('button', { name: messages.nav.inbox }));
     expect(
       within(aside()).getByRole('link', { name: `${messages.nav.approvals}, 3 items awaiting your decision` }),
     ).toHaveAttribute('href', '/approvals');
@@ -290,28 +290,31 @@ describe('the top line and the status line', () => {
 
 
 describe('Current workspace navigation', () => {
-  it('replaces the rail with workspace tabs and locates the active page', () => {
+  it('replaces the rail with shared links and Ops/Strata selection, and locates the active module', () => {
     setTheme('current'); pathname = '/personnel'; adminRail();
     expect(document.querySelector('aside')).toBeNull();
-    expect(screen.getByRole('button', { name: messages.nav.manage })).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByRole('link', { name: messages.nav.people })).toHaveAttribute('aria-current', 'page');
-    fireEvent.click(screen.getByRole('button', { name: messages.nav.sectionHome }));
+    expect(screen.getByRole('button', { name: messages.nav.workspaceOps })).toHaveAttribute('aria-pressed', 'true');
+    const people=screen.getByRole('button', { name: messages.nav.modulePeople });
+    expect(people).toHaveAttribute('data-active','true');fireEvent.click(people);
+    expect(within(screen.getByRole('navigation',{name:messages.nav.modulePeople})).getByRole('link', { name: messages.nav.people })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: messages.nav.dashboard })).toHaveAttribute('href', '/');
+    fireEvent.click(screen.getByRole('button', { name: messages.nav.workspaceStrata }));
+    expect(screen.getByRole('button', { name: messages.nav.workspaceStrata })).toHaveAttribute('aria-pressed','true');
     expect(screen.getByRole('link', { name: messages.nav.dashboard })).toHaveAttribute('href', '/');
   });
-  it('uses the same role filtering and expands authorized module children', () => {
+  it('uses the same role filtering and direct-links a module with one authorized destination', () => {
     setTheme('current');
     wrap(<Sidebar isAdmin={false} canApprove={false} canAccessTeam={false} enabledModules={[]} defaultCollapsed={false} />);
-    expect(screen.queryByRole('button', { name: messages.nav.admin })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: messages.nav.manage }));
+    expect(screen.queryByRole('button', { name: messages.nav.systemConfiguration })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: messages.nav.inbox }));
     expect(screen.queryByRole('link', { name: /Approval Items/ })).toBeNull();
-    expect(screen.getByRole('link', { name: messages.nav.people })).toHaveAttribute('href', '/personnel');
+    expect(screen.getByRole('link', { name: messages.nav.modulePeople })).toHaveAttribute('href', '/personnel');
   });
-  it('opens module links inline, closes them with Escape and returns focus', () => {
+  it('opens system links inline, closes them with Escape and returns focus', () => {
     setTheme('current'); pathname = '/'; adminRail();
-    fireEvent.click(screen.getByRole('button', { name: messages.nav.admin }));
-    const trigger = screen.getByRole('button', { name: messages.nav.systemSettings });
+    const trigger = screen.getByRole('button', { name: messages.nav.systemConfiguration });
     fireEvent.click(trigger);
-    const links = screen.getByRole('navigation', { name: messages.nav.systemSettings });
+    const links = screen.getByRole('navigation', { name: messages.nav.systemConfiguration });
     expect(within(links).getByRole('link', { name: messages.nav.holidays })).toHaveAttribute('href', '/admin/holidays');
     fireEvent.keyDown(links, { key: 'Escape' });
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
