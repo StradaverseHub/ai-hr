@@ -1,3 +1,5 @@
+import type {ProfilePresentationPolicy} from './profile-edit-policy';
+import {projectOwnProfileProposal,ownProfileProposalIsIntact} from '../lib/personnel-ess-visibility';
 import {freshProfileEditPolicyTx} from './profile-edit-policy';
 import {EssProfileError,type EssProfileProposal} from '../lib/personnel-ess-model';
 import {personnelField,PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
@@ -662,11 +664,12 @@ export function listProfileChangeRequests(
  * status of your own requests: waiting, approved or rejected", and a rejection that scrolled off the
  * bottom after five newer requests is a promise not kept.
  */
-export function myProfileChangeRequests(ctx: SessionContext, limit = 50) {
+export function myProfileChangeRequests(ctx: SessionContext, limit = 50,presentation?:ProfilePresentationPolicy) {
   const personId = ctx.personId;
   if (!personId) return Promise.resolve([]);
-  return withTenant(ctx, (tx) =>
-    tx
+  return withTenant(ctx, async (tx) => {
+    const policy=presentation??await freshProfileEditPolicyTx(tx,ctx);
+    const rows=await tx
       .select({
         id: profileChangeRequest.id,
         proposed: profileChangeRequest.proposed,
@@ -677,9 +680,15 @@ export function myProfileChangeRequests(ctx: SessionContext, limit = 50) {
       })
       .from(profileChangeRequest)
       .where(eq(profileChangeRequest.personId, personId))
-      .orderBy(desc(profileChangeRequest.createdAt))
-      .limit(limit),
-  );
+      .orderBy(desc(profileChangeRequest.createdAt),desc(profileChangeRequest.id))
+      .limit(limit);
+    return rows.map(row=>{
+      const proposed=projectOwnProfileProposal(row.proposed,policy.visible);
+      // Free-form decision text can repeat a proposed private value; retain it only for an intact view.
+      const intact=ownProfileProposalIsIntact(row.proposed,policy.visible);
+      return {...row,proposed,decisionReason:intact?row.decisionReason:null};
+    });
+  });
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════════════════════════

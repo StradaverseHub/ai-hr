@@ -1,0 +1,19 @@
+'use client';
+import {useRef,useState} from 'react';
+import type {ProfileFieldPermission} from '@/lib/profile-edit-policy-value';
+type Row={id:string;label:string;group:string;canEdit:boolean;permission:ProfileFieldPermission;primaryOnly:boolean;waiting:number};
+const permissions=['editable','viewOnly','hide'] as const;
+export function PermissionMatrix({rows,disabled,labels}:{rows:Row[];disabled:boolean;labels:Record<ProfileFieldPermission|'field'|'all'|'primaryOnly'|'waiting',string>}){
+ const [choices,setChoices]=useState<Record<string,ProfileFieldPermission|undefined>>(()=>Object.fromEntries(rows.map(row=>[row.id,row.permission])));
+ const [primary,setPrimary]=useState(()=>new Set(rows.filter(row=>row.primaryOnly).map(row=>row.id)));
+ function choose(id:string,value:ProfileFieldPermission){setChoices(previous=>({...previous,[id]:previous[id]===value?undefined:value}));setPrimary(previous=>{const next=new Set(previous);next.delete(id);return next;});}
+ function all(value:ProfileFieldPermission){const eligible=rows.filter(row=>value!=='editable'||row.canEdit);setChoices(previous=>({...previous,...Object.fromEntries(eligible.map(row=>[row.id,value]))}));setPrimary(previous=>new Set([...previous].filter(id=>!eligible.some(row=>row.id===id))));}
+ return <div className="overflow-x-auto"><table className="w-full min-w-[36rem] text-sm"><thead><tr><th scope="col" className="p-2 text-left">{labels.field}</th>{permissions.map(permission=><th scope="col" key={permission} className="p-2 text-center"><span className="block">{labels[permission]}</span><MixedCheckbox disabled={disabled} label={`${labels.all}: ${labels[permission]}`} checked={rows.filter(row=>permission!=='editable'||row.canEdit).every(row=>choices[row.id]===permission)} mixed={rows.some(row=>choices[row.id]===permission)&&!rows.filter(row=>permission!=='editable'||row.canEdit).every(row=>choices[row.id]===permission)} onChange={()=>all(permission)}/></th>)}</tr></thead><tbody>{[...new Set(rows.map(row=>row.group))].map(group=><Group key={group} group={group} rows={rows.filter(row=>row.group===group)} choices={choices} primary={primary} disabled={disabled} choose={choose} labels={labels}/>)}</tbody></table></div>;
+}
+function MixedCheckbox({checked,mixed,disabled,label,onChange}:{checked:boolean;mixed:boolean;disabled:boolean;label:string;onChange:()=>void}){
+ const ref=useRef<HTMLInputElement>(null);
+ return <label className="mt-2 inline-flex items-center gap-2 text-xs font-normal"><input ref={element=>{ref.current=element;if(element)element.indeterminate=mixed;}} type="checkbox" checked={checked} disabled={disabled} aria-checked={mixed?'mixed':checked} onChange={onChange}/>{label}</label>;
+}
+function Group({group,rows,choices,primary,disabled,choose,labels}:{group:string;rows:Row[];choices:Record<string,ProfileFieldPermission|undefined>;primary:Set<string>;disabled:boolean;choose:(id:string,value:ProfileFieldPermission)=>void;labels:Record<ProfileFieldPermission|'field'|'all'|'primaryOnly'|'waiting',string>}){
+ return <><tr><th scope="colgroup" colSpan={4} className="bg-muted/50 p-2 text-left font-semibold">{group}</th></tr>{rows.map(row=><tr key={row.id} className="border-b border-border"><th scope="row" className="p-2 text-left font-normal"><span>{row.label}</span>{row.waiting>0&&<span className="ml-2 text-xs text-muted-foreground">{labels.waiting}: {row.waiting}</span>}{primary.has(row.id)&&<span className="mt-1 block text-xs text-muted-foreground">{labels.primaryOnly}<input type="hidden" name="primaryOnly" value={row.id}/></span>}<input type="hidden" name={`permission:${row.id}`} value={choices[row.id]??''}/></th>{permissions.map(permission=><td key={permission} className="p-2 text-center"><input type="checkbox" aria-label={`${row.label}: ${labels[permission]}`} checked={choices[row.id]===permission} disabled={disabled||permission==='editable'&&!row.canEdit} onChange={()=>choose(row.id,permission)}/></td>)}</tr>)}</>;
+}

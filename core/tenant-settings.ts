@@ -1,4 +1,4 @@
-import {isProfileEditPolicyValue,type ProfileEditPolicyValue} from '../lib/profile-edit-policy-value';
+import {isProfileEditPolicyValue,isProfileVisibilityPolicyValue,type ProfileEditPolicyValue,type ProfileVisibilityPolicyValue} from '../lib/profile-edit-policy-value';
 import {lockProfileEditPolicyTx} from './profile-edit-policy';
 /**
  * ADR-0084 — THE APP'S FIRST WRITER OF `tenant_setting`, and the switchboard for the unattended agents.
@@ -74,7 +74,7 @@ const catalogEntry = (key: string) => SETTING_CATALOG.find((s) => s.key === key)
  * the writer now carries the same four value types the catalog and the `setting_definition_value_type`
  * CHECK have carried since 0313 — no policy changes, no migration.
  */
-export type TenantSettingValue = boolean | number | string | readonly string[] | ProfileEditPolicyValue;
+export type TenantSettingValue = boolean | number | string | readonly string[] | ProfileEditPolicyValue | ProfileVisibilityPolicyValue;
 
 /**
  * The catalog `valueType` a value would satisfy. Arrays and the bounded versioned ESS policy are json:
@@ -84,7 +84,7 @@ export type TenantSettingValue = boolean | number | string | readonly string[] |
  * same typed `wrong_type` a mistyped boolean has always produced.
  */
 function settingValueType(v: TenantSettingValue): string {
-  return Array.isArray(v)||isProfileEditPolicyValue(v) ? 'json' : typeof v;
+  return Array.isArray(v)||isProfileEditPolicyValue(v)||isProfileVisibilityPolicyValue(v) ? 'json' : typeof v;
 }
 
 /**
@@ -108,7 +108,7 @@ export async function setTenantSetting(
   if (entry.scope !== 'tenant') throw new TenantSettingError('not_tenant_scoped');
   if (!entry.customerVisible) throw new TenantSettingError('not_customer_visible');
   if (settingValueType(p.value) !== entry.valueType) throw new TenantSettingError('wrong_type');
-  if(p.value!==null&&typeof p.value==='object'&&!Array.isArray(p.value)&&(p.key!=='ess.profile_change_fields'||!isProfileEditPolicyValue(p.value)))throw new TenantSettingError('wrong_type');
+  if(p.value!==null&&typeof p.value==='object'&&!Array.isArray(p.value)&&(p.key!=='ess.profile_change_fields'||(!isProfileEditPolicyValue(p.value)&&!isProfileVisibilityPolicyValue(p.value))))throw new TenantSettingError('wrong_type');
 
   const run=async (tx:Tx) => {
     if(p.key==='ess.profile_change_fields'||p.key==='ess.profile_change_approver')await lockProfileEditPolicyTx(tx,ctx.tenantId);

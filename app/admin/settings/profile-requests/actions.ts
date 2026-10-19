@@ -4,8 +4,8 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import {saveProfileEditPolicy} from '@/core/profile-edit-policy';
-import {essEditableFields} from '@/lib/personnel-ess-contract';
+import {saveProfileVisibilityPolicy} from '@/core/profile-edit-policy';
+import {essVisibleFields} from '@/lib/personnel-ess-contract';
 import {
   TenantSettingError,
   setTenantSetting,
@@ -45,15 +45,16 @@ export async function saveProfileRequestFieldsAction(formData: FormData) {
   const s = await getSession();
   const t = await getTranslations('profileRequestSettings');
 
-  const next:string[]=[];
-  for(const field of essEditableFields()){
-    const value=formData.get(`permission:${field.id}`);
-    if(value==='editable')next.push(field.id);
-    else if(value==='primaryOnly'&&field.ess.legacyPrimaryKey)next.push(field.ess.legacyPrimaryKey);
-    else if(value!=='viewOnly')await refuse(new TenantSettingError('wrong_type'));
+  const fields:Record<string,'editable'|'viewOnly'|'hide'>={};
+  for(const field of essVisibleFields()){
+    const posted=formData.getAll(`permission:${field.id}`);
+    if(posted.length!==1||!['editable','viewOnly','hide'].includes(String(posted[0])))await refuse(new TenantSettingError('wrong_type'));
+    fields[field.id]=posted[0] as 'editable'|'viewOnly'|'hide';
   }
+  const primaryOnly=formData.getAll('primaryOnly');
+  if(primaryOnly.some(id=>typeof id!=='string'))await refuse(new TenantSettingError('wrong_type'));
   let withdrawn=0;
-  try{({withdrawn}=await saveProfileEditPolicy(s,{keys:next,withdrawnReason:t('withdrawnReason')}));}
+  try{({withdrawn}=await saveProfileVisibilityPolicy(s,{policy:{version:3,fields,primaryOnly},withdrawnReason:t('withdrawnReason')}));}
   catch(e){await refuse(e);}
 
   revalidatePath(PAGE);

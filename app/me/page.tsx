@@ -1,3 +1,4 @@
+import {readProfilePresentationPolicy} from '@/core/profile-edit-policy';
 import Link from 'next/link';
 import {redirect} from 'next/navigation';
 import {getTranslations} from 'next-intl/server';
@@ -10,6 +11,7 @@ import {myResignation} from '@/core/offboarding';
 import {serviceYearsMonthsDaysAt} from '@/packs/leave/service';
 import {readOwnProfileWorkspace} from '@/core/profile-edit';
 import {readOwnProfileFacts} from '@/core/profile-view';
+import {essFactVisible} from '@/lib/personnel-ess-visibility';
 import {personnelField} from '@/lib/personnel-field-registry';
 import {personnelFieldChoices} from '@/lib/personnel-import-contract';
 import {profileProposalLines} from '@/lib/profile-proposal-display';
@@ -47,9 +49,12 @@ export default async function MePage({
   if (spTab === 'performance') redirect('/me/performance');
 
   const te=await getTranslations('essProfile'),allLabels=await getTranslations();
+  const presentation=await readProfilePresentationPolicy(s);
+  const visible=presentation.visible;
+  const canSee=(owner:string,field:string)=>essFactVisible(visible,owner,field);
   const own=await myOwnEmploymentSubjects(s,{profileEdit:true});
   const selected=requestedEmploymentId?own.find(row=>row.employmentId===requestedEmploymentId):own.length===1?own[0]:null;
-  if(!selected&&own.length>0)return <div className="mx-auto max-w-2xl space-y-4"><PageHeader title={t('title')} description={te('chooseEmployment')}/>{requestedEmploymentId&&<ErrorBanner message={te('error.permission')}/>}<Card className="p-5"><ul className="space-y-3">{own.map(row=><li key={row.employmentId}><Link href={`/me?employmentId=${row.employmentId}`} className="text-primary underline">{row.employeeCode} · {row.company}</Link></li>)}</ul></Card></div>;
+  if(!selected&&own.length>0)return <div className="mx-auto max-w-2xl space-y-4"><PageHeader title={t('title')} description={te('chooseEmployment')}/>{requestedEmploymentId&&<ErrorBanner message={te('error.permission')}/>}<Card className="p-5"><ul className="space-y-3">{own.map(row=><li key={row.employmentId}><Link href={`/me?employmentId=${row.employmentId}`} className="text-primary underline">{canSee('employment','employeeCode')?row.employeeCode:''} · {canSee('assignment','companyName')?row.company:''}</Link></li>)}</ul></Card></div>;
   const record = selected?await myProfileRecord(s,selected.employmentId):null;
 
   if (!record) {
@@ -65,7 +70,7 @@ export default async function MePage({
 
   const { employmentId } = record;
   const employments = own;
-  const [workspace,facts]=await Promise.all([readOwnProfileWorkspace(s,{employmentId}),readOwnProfileFacts(s,employmentId)]);
+  const [workspace,facts]=await Promise.all([readOwnProfileWorkspace(s,{employmentId},presentation),readOwnProfileFacts(s,employmentId,presentation)]);
 
   const payrollOn = isModuleEnabledOrFalse(s, 'payroll');
 
@@ -75,7 +80,7 @@ export default async function MePage({
   const [payslips, taxRelief, profileRequests, resignation, myLoans] = await Promise.all([
     payrollOn ? myPayslips(s, employments.map((e) => e.employmentId)) : [],
     payrollOn ? myTaxRelief(s, taxReliefEmploymentIds) : noTaxRelief,
-    myProfileChangeRequests(s),
+    myProfileChangeRequests(s,50,presentation),
     myResignation(s, employmentId),
 
     payrollOn ? listLoansForEmployment(s, employmentId) : [],
@@ -154,6 +159,7 @@ export default async function MePage({
   };
 
   const {employment:emp,compensation:comp}=record;
+
   const compensationChoice=(fieldName:string,value:string|null|undefined)=>{if(value==null)return null;const field=personnelField(`payroll.basic_salary_and_salary_history.${fieldName}`);const choice=field?personnelFieldChoices(field).find(option=>option.value===value):null;return choice?allLabels(choice.labelKey):value;};
 
   const payrollPanel = (
@@ -166,18 +172,18 @@ export default async function MePage({
             resolved from the session; an employee holding two of them (ADR-0009) would otherwise read one
             unlabelled figure and have no way to tell which contract it belongs to. The other positions and
             their pay are on the Employment tab's "My positions" card. */}
-        <ReadField label={tp('employmentInfo.company')} value={emp.company} notSet={notSet} />
-        <ReadField label={tp('basicSalaryMyr')} value={comp ? Number(comp.basicSalary).toFixed(2) : null} notSet={notSet} />
-        <ReadField label={tp('salaryCurrency')} value={comp?.currency ?? null} notSet={notSet} />
-        <ReadField label={tp('effectiveDate')} value={comp?.validFrom?formatDmy(comp.validFrom):null} notSet={notSet} />
-        <ReadField label={tp('paymentMethod')} value={paymentMethodLabel(record.paymentMethod)} notSet={tp('paymentMethodNotSet')} />
-        <ReadField label={tp('payMode')} value={compensationChoice('paymode',comp?.payMode)} notSet={notSet} />
-        <ReadField label={tp('paymentTerm')} value={compensationChoice('paymentterm',comp?.paymentTerm)} notSet={notSet} />
+        {canSee('assignment','companyName')&&<ReadField label={tp('employmentInfo.company')} value={canSee('assignment','companyName')?emp.company:null} notSet={notSet} />}
+        {canSee('compensation','basicSalary')&&<ReadField label={tp('basicSalaryMyr')} value={canSee('compensation','basicSalary')&&comp?Number(comp.basicSalary).toFixed(2):null} notSet={notSet} />}
+        {canSee('compensation','currency')&&<ReadField label={tp('salaryCurrency')} value={canSee('compensation','currency')?comp?.currency??null:null} notSet={notSet} />}
+        {canSee('compensation','validFrom')&&<ReadField label={tp('effectiveDate')} value={canSee('compensation','validFrom')&&comp?.validFrom?formatDmy(comp.validFrom):null} notSet={notSet} />}
+        {canSee('payrollProfile','paymentMethod')&&<ReadField label={tp('paymentMethod')} value={canSee('payrollProfile','paymentMethod')?paymentMethodLabel(record.paymentMethod):null} notSet={tp('paymentMethodNotSet')} />}
+        {canSee('compensation','payMode')&&<ReadField label={tp('payMode')} value={canSee('compensation','payMode')?compensationChoice('paymode',comp?.payMode):null} notSet={notSet} />}
+        {canSee('compensation','paymentTerm')&&<ReadField label={tp('paymentTerm')} value={canSee('compensation','paymentTerm')?compensationChoice('paymentterm',comp?.paymentTerm):null} notSet={notSet} />}
         {/* Daily / hourly staff are paid from the rate, not the basic — it was already projected in
             app/me/record.ts and simply never put on screen. Blank for a monthly contract, like any other
             field that is not recorded. */}
-        <ReadField label={tp('rateAmount')} value={comp?.rateAmount ?? null} notSet={notSet} />
-        <ReadField label={tp('status')} value={comp?tp('salaryStatusActive'):null} notSet={notSet} />
+        {canSee('compensation','rateAmount')&&<ReadField label={tp('rateAmount')} value={canSee('compensation','rateAmount')?comp?.rateAmount??null:null} notSet={notSet} />}
+        {canSee('compensation','status')&&<ReadField label={tp('status')} value={canSee('compensation','status')&&comp?tp('salaryStatusActive'):null} notSet={notSet} />}
       </ReadCard>
 
       {/* r298 — this card, TP1 and My loans are the Payroll pack's; absent (and unread) without Payroll. */}
@@ -474,7 +480,7 @@ export default async function MePage({
   const leavePanel=<Card className="p-4"><Link href="/leave" className="text-primary underline">{allLabels('nav.myAbsence')}</Link></Card>;
   return <div className="mx-auto max-w-[90rem] space-y-5">
     <PageHeader title={t('title')} description={facts.header.company}/><ErrorBanner message={error}/>
-    <Card className="p-4 sm:p-6"><div className="flex flex-wrap items-start gap-4"><Avatar name={facts.header.name} src={facts.header.photo?`/personnel/photo/${workspace.personId}`:null} className="size-20"/><div className="min-w-0 flex-1"><p className="text-xs text-muted-foreground">{facts.header.employeeCode}</p><h2 className="mt-1 text-xl font-semibold">{facts.header.name}</h2><p className="mt-1 text-sm text-muted-foreground">{facts.header.company}</p><p className="mt-1 text-sm text-muted-foreground">{facts.header.department??'—'} · {facts.header.position??'—'}</p><div className="mt-3 flex flex-wrap items-center gap-3"><Badge>{allLabels(`people.employeeStatus.${facts.header.status}`)}</Badge><span className="text-sm">{tp('directSuperiorTitle')}: {facts.header.superior??'—'}</span><span className="text-sm">{tp('employmentInfo.groupService')}: {fmtServiceYmd(emp.hiredOn)}</span></div></div>{own.length>1&&<form method="get"><Field label={te('chooseEmployment')}><select name="employmentId" defaultValue={employmentId} className={inputCls}>{own.map(row=><option key={row.employmentId} value={row.employmentId}>{row.employeeCode} · {row.company}</option>)}</select></Field><Button type="submit" variant="outline" size="sm" className="mt-2">{te('chooseEmployment')}</Button></form>}</div></Card>
+    <Card className="p-4 sm:p-6"><div className="flex flex-wrap items-start gap-4"><Avatar name={facts.header.name} src={facts.header.photo?`/personnel/photo/${workspace.personId}`:null} className="size-20"/><div className="min-w-0 flex-1"><p className="text-xs text-muted-foreground">{facts.header.employeeCode}</p><h2 className="mt-1 text-xl font-semibold">{facts.header.name}</h2><p className="mt-1 text-sm text-muted-foreground">{facts.header.company}</p><p className="mt-1 text-sm text-muted-foreground">{facts.header.department??'—'} · {facts.header.position??'—'}</p><div className="mt-3 flex flex-wrap items-center gap-3">{facts.header.status&&<Badge>{allLabels(`people.employeeStatus.${facts.header.status}`)}</Badge>}<span className="text-sm">{tp('directSuperiorTitle')}: {facts.header.superior??'—'}</span><span className="text-sm">{tp('employmentInfo.groupService')}: {canSee('employment','hiredOn')?fmtServiceYmd(emp.hiredOn):null}</span></div></div>{own.length>1&&<form method="get"><Field label={te('chooseEmployment')}><select name="employmentId" defaultValue={employmentId} className={inputCls}>{own.map(row=><option key={row.employmentId} value={row.employmentId}>{canSee('employment','employeeCode')?row.employeeCode:''} · {canSee('assignment','companyName')?row.company:''}</option>)}</select></Field><Button type="submit" variant="outline" size="sm" className="mt-2">{te('chooseEmployment')}</Button></form>}</div></Card>
     {!workspace.statutoryAvailable&&<Card className="p-4 text-sm text-muted-foreground">{te('countryUnavailable')}</Card>}
     <ProfileEditor key={employmentId} workspace={workspace} facts={facts} defaultTab={activeTab} history={history} extraPanels={{payroll:payrollPanel,documents:documentsPanel,attendance:facts.modules.attendance?attendancePanel:null,leave:facts.modules.leave?leavePanel:null,others:<Card className="p-4"><Link href="/me/performance" className="text-primary underline">{t('myPerformanceLink')}</Link></Card>}}/>
   </div>;

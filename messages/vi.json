@@ -20757,7 +20757,11 @@
     "notApplicable": "Trường này không áp dụng cho mối quan hệ đã chọn. Hãy hoàn tác hoặc khôi phục mối quan hệ trước khi lưu.",
     "bankNotApplicable": "Giá trị này chỉ áp dụng khi bật tùy chọn người nhận tùy chỉnh tương ứng. Hãy bật tùy chọn đó hoặc hoàn tác thay đổi này trước khi lưu.",
     "taxNotApplicable": "Không thể đổi mã loại số tương thích khi tình trạng thuế đã lưu là Không áp dụng. Hãy dùng quy trình lựa chọn thuế để thay đổi tình trạng đó.",
-    "childCountDerived": "Số con đủ điều kiện này được xác định từ hồ sơ Gia đình hoặc bảng giảm trừ cho con đã ghi nhận. Nhân sự quản lý chế độ giảm trừ và hồ sơ nguồn."
+    "childCountDerived": "Số con đủ điều kiện này được xác định từ hồ sơ Gia đình hoặc bảng giảm trừ cho con đã ghi nhận. Nhân sự quản lý chế độ giảm trừ và hồ sơ nguồn.",
+    "hide": "Ẩn",
+    "field": "Trường",
+    "selectAll": "Chọn tất cả",
+    "waiting": "Đang chờ"
   },
   "labelsImportWizard": {
     "title": "Nhập nhãn tổ chức",
