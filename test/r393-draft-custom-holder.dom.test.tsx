@@ -18,7 +18,7 @@ import { personnelMarkupContract, personnelCaption } from './helpers/personnel-m
  * jsdom applies no CSS and computes no layout: rendering and interaction logic only.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { useState, type ReactNode } from 'react';
@@ -162,6 +162,8 @@ describe('§2 ticking opens the box and the draft keeps what was typed', () => {
     await userEvent.click(tickBox(d.enableCustomHolderId));
     await userEvent.type(valueBox(d.customHolderId)!, '910202025050');
     await userEvent.click(screen.getByRole('button', { name: en.people.wizard.saveDraft }));
+    // The fieldset is disabled while the save is in flight; the un-tick below must wait for it to finish.
+    await waitFor(() => expect(screen.getByRole('button', { name: en.people.wizard.saveDraft })).toBeEnabled());
     const s = savedData().statutory!;
     expect(s.enableCustomHolderName, 'data.statutory.enableCustomHolderName').toBe('yes');
     expect(s.customHolderName, 'data.statutory.customHolderName').toBe('Siti Spouse');

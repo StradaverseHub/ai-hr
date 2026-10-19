@@ -25,7 +25,7 @@
  * dev-server render check.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
@@ -117,7 +117,11 @@ const byId = (id: string) => {
 /** The draft as Save posted it — the only thing that ever reaches the server. */
 const savedData = () => (saveDraftAction.mock.calls.at(-1) as unknown as [string, EmployeeDraftData, number])[1];
 const save = async () => {
-  await userEvent.click(screen.getByRole('button', { name: messages.people.wizard.saveDraft }));
+  const button = screen.getByRole('button', { name: messages.people.wizard.saveDraft });
+  await userEvent.click(button);
+  // The wizard disables its whole fieldset while a save is in flight; a click before it re-enables is
+  // dropped. Wait for the save to finish so the next interaction lands, however slow the machine.
+  await waitFor(() => expect(button).toBeEnabled());
 };
 
 beforeEach(() => {
