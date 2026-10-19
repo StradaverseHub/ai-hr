@@ -151,7 +151,7 @@ export async function readMovementWorkbook(bytes:Buffer,p:{tenantId:string;compa
  inspect(bytes);const XLSX=await import('xlsx');const wb=XLSX.read(bytes,{type:'buffer',cellFormula:true,cellDates:false,cellNF:true,sheetRows:10006});
  if(new Set(wb.SheetNames.map(n=>n.toLowerCase())).size!==wb.SheetNames.length)throw new Error('workbook_structure_invalid');
  for(const name of ['Instructions','Lists','_meta'])if(Object.values(wb.Sheets[name]??{}).some(c=>c&&typeof c==='object'&&'f'in c&&c.f))throw new Error('formula_input');
- for(const name of wb.Workbook?.Names??[]){if(!/^AIHR_Movement_List_\d+$/.test(name.Name)||!/^'Lists'!\$[A-Z]{1,3}\$2:\$[A-Z]{1,3}\$[1-9]\d{0,4}$/.test(name.Ref))throw new Error('workbook_structure_invalid');}
+ for(const name of wb.Workbook?.Names??[]){if(!/^AIHR_Movement_List_\d+$/.test(name.Name)||!/^(?:'Lists'|Lists)!\$[A-Z]{1,3}\$2:\$[A-Z]{1,3}\$[1-9]\d{0,4}$/.test(name.Ref))throw new Error('workbook_structure_invalid');}
  const metaSheet=wb.Sheets._meta;if(!metaSheet)throw new Error('workbook_metadata_invalid');
  const raw=XLSX.utils.sheet_to_json<unknown[]>(metaSheet,{header:1,raw:true,blankrows:false});if(raw.length>100||raw.some(r=>r.length!==1||typeof r[0]!=='string'))throw new Error('workbook_metadata_invalid');
  let metadata:MovementWorkbookMetadata;try{metadata=verifyMovementWorkbook(JSON.parse(raw.map(r=>r[0]).join('')),p.tenantId,p.companyId);}catch(error){throw error instanceof Error?error:new Error('workbook_metadata_invalid');}
