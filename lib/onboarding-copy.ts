@@ -473,7 +473,18 @@ const keys: Record<string, string> = {
     "Activate card": "c08a6a342294b",
     "Print and send card": "c46c3c8c8a155",
     "Latest Personnel sync": "cb5a129b7d740",
-    "not counted": "c147d1e291c11"
+    "not counted": "c147d1e291c11",
+    "Add people": "c6e5e1e137765",
+    "How round robin works": "cc30db4f57b53",
+    "Leave on": "ceb301f446f75",
+    "Matching people": "cda16067f4f7a",
+    "No members yet. Round-robin tasks remain unassigned until someone is added.": "c1b6a91a045ee",
+    "No one outside this group matches your search.": "c8bf2a86d76b3",
+    "Onboarding access": "cbcb39f4f3023",
+    "Remove from group": "c035edd9bd720",
+    "Search people to add to": "c5d9c3ec58913",
+    "Works from My tasks": "c95332e75dac8",
+    "open tasks": "cd1a339556dbb"
 };
 const states: Record<string, string> = { todo: 'To do', progress: 'In progress', done: 'Done', pending: 'Pending', submitted: 'Submitted', cancelled: 'Cancelled', approved: 'Approved', rejected: 'Rejected', withdrawn: 'Withdrawn', unresolved: 'Unresolved', awaiting_approval: 'Awaiting approval', in_progress: 'In progress', ready: 'Ready', completed: 'Completed', handed: 'Handed over', printed: 'Printed, sent to Group Tech', none: 'None' };
 export function useOnboardingCopy() {

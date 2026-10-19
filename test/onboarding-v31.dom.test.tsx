@@ -1,5 +1,5 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { readFileSync } from 'node:fs';
 import type { OnboardingTask } from '../packs/lifecycle/service';
@@ -10,7 +10,8 @@ vi.mock('../app/lifecycle/onboarding/v31-actions', () => ({ changeOnboarding: mo
 const { OnboardingSettings } = await import('../app/admin/lifecycle/onboarding/settings');
 const { Joiners } = await import('../app/lifecycle/onboarding/joiners');
 const { OnboardingCaseView } = await import('../app/lifecycle/onboarding/case-view');
-const { defaultConfig, blankCase, submitCase, handover, cancelCase, progress, dayDate } = await import('../lib/onboarding-model');
+const { HistoricalOnboardingRequisition } = await import('../app/lifecycle/requisitions/onboarding/historical-view');
+const { defaultConfig, blankCase, submitCase, handover, cancelCase, progress, dayDate, fulfil, reopenCase, currentReq, decide } = await import('../lib/onboarding-model');
 const { TasksView } = await import('../app/tasks/tasks-view');
 const { OnboardingDateInput } = await import('../components/onboarding-date-input');
 const messages = (locale: string) => JSON.parse(readFileSync(new URL('../messages/' + locale + '.json', import.meta.url), 'utf8'));
@@ -108,6 +109,20 @@ describe('V3.1 localized task controls', () => {
         expect(screen.getByRole('button', { name: 'Submit case and confirm checklist' })).toBeVisible();
         await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled());
     });
+    it('updates required hiring fields immediately before a save',()=>{
+        const today=todayInKualaLumpur(), env={today,now:new Date().toISOString(),id:()=> 'history',nextNumber:()=> '',leave:{},taskLoads:{},lastTaskAssignment:{},pendingApprovals:{},lifetimeApprovals:{},users:['owner']};
+        const c=blankCase('case','OB-current','draft',{fullName:'Fictional Hire',joinDate:today,title:'title',department:'department',company:'company',supervisor:'owner'},env);
+        const detail={case:c,config:defaultConfig('owner'),revision:7,actor:{id:'owner',name:'HR',module:true,hr:true,master:false},directory:[],labels:{},notes:[],availability:{},today,canOpenRequisition:false};
+        render(<NextIntlClientProvider locale="en" messages={messages('en')}><OnboardingCaseView detail={detail}/></NextIntlClientProvider>);
+        expect(screen.getByText('1 required fields missing')).toBeVisible();
+        fireEvent.change(screen.getByRole('combobox',{name:'New hire or replacement*'}),{target:{value:'new_hire'}});
+        expect(screen.getByText('All required fields complete')).toBeVisible();
+        fireEvent.change(screen.getByRole('combobox',{name:'New hire or replacement*'}),{target:{value:'replacement'}});
+        expect(screen.getByText('1 required fields missing')).toBeVisible();
+        fireEvent.change(screen.getByRole('textbox',{name:'Employee being replaced*'}),{target:{value:'Fictional Former Employee'}});
+        expect(screen.getByText('All required fields complete')).toBeVisible();
+        expect(mocks.change).not.toHaveBeenCalled();
+    });
     it('keeps checklist selection available on a submitted case and confirms through the history-preserving command',async()=>{
         const today=todayInKualaLumpur();let id=0;
         const env={today,now:new Date().toISOString(),id:()=>String(++id),nextNumber:()=> 'IT-'+(++id),leave:{},taskLoads:{},lastTaskAssignment:{},pendingApprovals:{},lifetimeApprovals:{},users:['owner']};
@@ -156,4 +171,42 @@ describe('V3.1 localized task controls', () => {
         fireEvent.blur(screen.getByRole('textbox', { name: 'Joining date' }));
         expect(screen.getByRole('alert')).toBeVisible();
     });
+});
+
+
+describe('prototype group editing and retained requisitions',()=>{
+ it('searches within the chosen group and persists add/remove without changing other groups',async()=>{
+  const config=defaultConfig('owner');config.groups[0]!.members=['owner'];let revision=1;
+  mocks.config.mockImplementation(async()=>({error:null,revision:++revision}));
+  const context={config,revision:1,actor:{id:'owner',module:true,master:false},directory:[{id:'owner',name:'Fictional HR'},{id:'colleague',name:'Fictional Colleague'}],checklistCounts:{},loads:{owner:2},availability:{},matchCounts:{},totalJoiners:0};
+  const options={businessGroup:[],company:[],department:[],title:[],grade:[],employmentType:[]};
+  render(<NextIntlClientProvider locale="en" messages={messages('en')}><OnboardingSettings context={context as never} options={options as never} initialTab="groups"/></NextIntlClientProvider>);
+  const group=screen.getByRole('region',{name:'People GBS'});
+  fireEvent.change(within(group).getByRole('searchbox',{name:'Search people to add to People GBS'}),{target:{value:'Colleague'}});
+  fireEvent.click(within(group).getByRole('option',{name:'Fictional Colleague · Add'}));
+  expect(within(group).getByRole('button',{name:'Remove from group Fictional Colleague · People GBS'})).toBeVisible();
+  expect(within(group).queryByRole('listbox',{name:'Matching people'})).toBeNull();expect(mocks.config).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button',{name:'Save configuration'}));
+  await waitFor(()=>expect(mocks.config).toHaveBeenCalledTimes(1));
+  expect(mocks.config.mock.calls[0]![1].groups[0].members).toEqual(['owner','colleague']);
+  expect(mocks.config.mock.calls[0]![1].groups.slice(1)).toEqual(config.groups.slice(1));
+  await waitFor(()=>expect(screen.getByRole('button',{name:'Save configuration'})).toBeEnabled());
+  fireEvent.click(within(group).getByRole('button',{name:'Remove from group Fictional Colleague · People GBS'}));
+  fireEvent.click(screen.getByRole('button',{name:'Save configuration'}));
+  await waitFor(()=>expect(mocks.config).toHaveBeenCalledTimes(2));
+  expect(mocks.config.mock.calls[1]![0]).toBe(2);expect(mocks.config.mock.calls[1]![1].groups[0].members).toEqual(['owner']);
+ });
+ it('shows original approval mode and handed items read-only after cancellation and a new generation',()=>{
+  const today=todayInKualaLumpur();let n=0;const env={today,now:new Date().toISOString(),id:()=> 'record-'+(++n),nextNumber:()=> 'IT-'+(++n),leave:{},taskLoads:{},lastTaskAssignment:{},pendingApprovals:{},lifetimeApprovals:{},users:['owner','reviewer'],userNames:{owner:'Recorded Actor',reviewer:'Recorded Reviewer'}};
+  const actor={id:'owner',name:'Recorded Actor',module:true,hr:true,master:false},config=defaultConfig('owner');
+  config.groups.find(g=>g.id==='group-tech')!.members=['owner'];config.checklists[0]!.tasks=[];
+  config.workflows=[{id:'fixture-approval',name:'Saved sequential policy',mode:'seq',steps:[{id:'step',label:'Recorded review',type:'person',target:'reviewer',method:'manual'}]}];
+  config.catalogue=[{id:'system',name:'Fictional system',type:'system',active:true,rules:{},workflow:'fixture-approval',team:'group-tech',card:false}];
+  const c=blankCase('case','OB-current','draft',{fullName:'Fictional Hire',joinDate:today,title:'title',department:'department',company:'company',supervisor:'owner'},env);c.hiring='new_hire';c.selected=['system'];submitCase(config,c,actor,env);
+  const old=currentReq(c)!;decide(config,c,[old.items[0]!.id],'approve',{...actor,id:'reviewer',name:'Recorded Reviewer'},env);fulfil(config,c,old.items[0]!.id,'done',actor,env);handover(config,c,actor,env);cancelCase(c,'Other',actor,env);reopenCase(c,actor,env);config.workflows[0]!.mode='par';config.workflows[0]!.name='Current parallel policy';submitCase(config,c,actor,env);
+  const detail={case:c,config,revision:3,actor,directory:[{id:'owner',name:'Recorded Actor'}],labels:{},notes:[],availability:{},today,canOpenRequisition:true};
+  render(<NextIntlClientProvider locale="en" messages={messages('en')}><HistoricalOnboardingRequisition detail={detail as never} generation={old.id}/></NextIntlClientProvider>);
+  expect(screen.getByText('Handed over')).toBeVisible();expect(screen.getByText('In sequence · Saved sequential policy')).toBeVisible();expect(screen.getByText(/Recorded review · Approved · Recorded Reviewer/)).toBeVisible();
+  expect(screen.queryByText(/Current parallel policy/)).toBeNull();expect(screen.queryByRole('button')).toBeNull();expect(screen.queryByRole('combobox')).toBeNull();expect(screen.queryByRole('textbox')).toBeNull();
+ });
 });

@@ -1098,8 +1098,8 @@ export async function onboardingRequisitions(ctx: SessionContext) {
         return list.flatMap(row => row.data.requisitions.filter(r => canReadRequisition(config, r, { ...actor, hr: row.hr })).map(r => ({
             id: r.id, caseId: row.id, caseNumber: row.data.number, number: r.number, joiner: M.effectiveFacts(row.data).fullName,
             joinDate: M.effectiveFacts(row.data).joinDate, createdAt: r.createdAt,
-            status: M.requisitionStatus(r), ready: r.items.filter(M.activeItem).filter(i => ['ready', 'handed'].includes(i.state)).length,
-            active: r.items.filter(M.activeItem).length, pending: r.items.filter(i => !i.removed && i.approval === 'pending').length,
+            status: M.requisitionStatus(r), ready: M.requisitionItemCounts(r).ready,
+            active: r.items.filter(M.activeItem).length, total:M.requisitionItemCounts(r).total, pending: r.items.filter(i => !i.removed && i.approval === 'pending').length,
             unreadNote: !!r.hrNote && r.noteAcks[actor.id] !== r.noteVersion && (r.items.some(i => M.inGroup(config, i.team, actor.id)) || config.exceptions.groups.some(g => M.inGroup(config, g, actor.id))),
             current: M.currentReq(row.data)?.id === r.id,
         })));

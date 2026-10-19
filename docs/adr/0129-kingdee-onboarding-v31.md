@@ -7,6 +7,37 @@ Reference: Kingdee AI HR Onboarding Handoff V3.1, prepared 16 October 2026
 
 The owner approved the comparison and implementation plan, instructed exact handoff behavior, accepted the recommended resolutions of open points, and required preservation of existing data and history.
 
+## Interactive prototype alignment, 19 October 2026
+
+The owner subsequently supplied `Kingdee-AI-HR-Onboarding-Prototype-V3 (1).html`
+(SHA256 `a97023a4fbf14b6ccab71348a5fe0f0d177af2f4745476c447b8cad48b4ec8e2`),
+authorized a full presentation overhaul, and explicitly excluded its fixed dates and simulated identity
+switching. Its working layout and flow guide New Joiners, case summaries, checklist management,
+Assignment groups, settings, My tasks and requisitions, using the existing Classic theme. Real
+authentication, company/tenant scope, private-field protections and assigned-user/work-claim guards
+remain authoritative. Inert prototype navigation and fixture identities are not product features.
+
+Manage contains Personnel Management (with its existing administrator boundary), Onboarding with
+New Joiners/Checklist Management, and Requisitions with All requisitions. Onboarding settings,
+Assignment groups and master-only Module access remain under Admin. Legacy hubs do not also claim
+the active state of these explicit destinations. Counts use authorized, current backend projections.
+
+Saving incomplete case answers is separate from confirming a checklist. New pending submissions
+require an applied checklist. The earlier Manual None decision remains valid for already-submitted
+cases and historical records: reading or reconciling those cases must not rewrite their submission,
+tasks or requisition history. No migration or historical conversion is needed for this refinement.
+
+Checklist definitions and task order autosave through revision-checked writes. General settings,
+group membership/replacement and module access retain an atomic Save configuration action so an
+administrator can compose a valid configuration before applying it. This replaces the prototype's
+in-memory persistence without changing its ownership and assignment model.
+
+Requisition requested-item totals include pending approvals; readiness still excludes pending,
+rejected, withdrawn and removed work as appropriate. This presentation count does not change task
+progress or handover eligibility. Historical generations expose their stored workflow mode, decisions,
+item states, conversations and handover time without mutation controls. Cancelling a requisition must
+not make a previously handed item appear to have lost its recorded fulfilment state.
+
 ## Identity and ownership
 
 Personnel owns supplied hire facts. A saved draft is captured input, not employment. The onboarding source link retains the draft UUID without a cascading draft foreign key. Activation attaches person and employment to the same case before deleting the draft. Draft discard cancels its onboarding work with a recorded reason. Source updates and backfill are retry-safe.

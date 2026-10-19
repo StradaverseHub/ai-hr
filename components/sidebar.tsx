@@ -660,9 +660,9 @@ export function Sidebar({
   // Attendance highlighting that nobody asked about.
   const isRowActive = (r: { href: string; exactHref?: boolean; ownedSubpaths?: string[] }) => {
     // Explicit onboarding destinations own their pages; the legacy hub must not select Home too.
-    const lifecycleDestination = r.href === '/lifecycle' && groups.some(g => g.items.some(item =>
-      isCollapsible(item) && item.children.filter(canSeeChild).some(child =>
-        child.href.startsWith('/lifecycle/') && isNavRowActive(pathname, search, child))));
+    const lifecycleDestination = ['/lifecycle', '/admin/lifecycle'].includes(r.href) && groups.some(g => g.items.some(item =>
+      (isCollapsible(item) ? item.children.filter(canSeeChild) : [item]).some(child =>
+        child.href.startsWith(r.href + '/') && isNavRowActive(pathname, search, child))));
     return !lifecycleDestination && isNavRowActive(pathname, search, r);
   };
   // 10b59703 — the paths a fly-out child answers for: its own href plus any `ownedSubpaths` the pack

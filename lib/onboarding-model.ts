@@ -300,6 +300,11 @@ export function dayDate(join: string, day: number): string {
 }
 export const currentReq = (c: Case) => c.requisitions.find(r => !r.cancelledAt) ?? null;
 export const activeItem = (i: Item) => !i.removed && !['pending', 'rejected', 'withdrawn'].includes(i.approval);
+/** The requested-item denominator includes work awaiting approval, as the requisition shows it. */
+export function requisitionItemCounts(r: Requisition) {
+    const items=r.items.filter(i=>!i.removed&&!['rejected','withdrawn'].includes(i.approval));
+    return {total:items.length,ready:items.filter(activeItem).filter(i=>['ready','handed'].includes(i.state)).length};
+}
 export function requisitionStatus(r: Requisition): 'cancelled' | 'completed' | 'awaiting_approval' | 'ready' | 'in_progress' | 'submitted' {
     if (r.cancelledAt)
         return 'cancelled';

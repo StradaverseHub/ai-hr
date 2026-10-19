@@ -21266,7 +21266,18 @@
       "c08a6a342294b": "Activate card",
       "c46c3c8c8a155": "Print and send card",
       "cb5a129b7d740": "Latest Personnel sync",
-      "c147d1e291c11": "not counted"
+      "c147d1e291c11": "not counted",
+      "c6e5e1e137765": "Add people",
+      "cc30db4f57b53": "How round robin works",
+      "ceb301f446f75": "Leave on",
+      "cda16067f4f7a": "Matching people",
+      "c1b6a91a045ee": "No members yet. Round-robin tasks remain unassigned until someone is added.",
+      "c8bf2a86d76b3": "No one outside this group matches your search.",
+      "cbcb39f4f3023": "Onboarding access",
+      "c035edd9bd720": "Remove from group",
+      "c5d9c3ec58913": "Search people to add to",
+      "c95332e75dac8": "Works from My tasks",
+      "cd1a339556dbb": "open tasks"
     }
   }
 }

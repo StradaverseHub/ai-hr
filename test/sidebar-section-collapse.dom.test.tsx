@@ -123,3 +123,16 @@ describe('Classic prototype onboarding navigation',()=>{
     expect(within(navigation()).getByRole('link',{name:messages.nav[child]})).toHaveAttribute('href',path);
   });
 });
+
+describe('Classic onboarding Admin destinations have one current row',()=>{
+ it.each([
+  ['/admin/lifecycle/onboarding','onboardingSettings'],
+  ['/admin/lifecycle/onboarding/groups','onboardingGroups'],
+  ['/admin/lifecycle/onboarding/access','onboardingModuleAccess'],
+ ] as const)('selects only %s', (pathname,label)=>{
+  document.documentElement.setAttribute('data-ui-theme','classic');route.pathname=pathname;
+  render(<NextIntlClientProvider locale="en" messages={messages}><Sidebar isAdmin onboardingAccess onboardingMaster onboardingRequisitionsAccess enabledModules={null} defaultCollapsed={false}/></NextIntlClientProvider>);
+  expect(screen.getByRole('link',{name:messages.nav[label]})).toHaveAttribute('aria-current','page');
+  expect([...document.querySelectorAll('a[aria-current="page"]')].map(a=>a.getAttribute('href'))).toEqual([pathname]);
+ });
+});
