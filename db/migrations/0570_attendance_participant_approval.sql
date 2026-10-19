@@ -684,3 +684,81 @@ $$;
 --> statement-breakpoint
 CREATE INDEX attendance_workflow_v3_pending_requests ON public.attendance_workflow_request(tenant_id,created_at,id)
  WHERE routing_version=3 AND current_stage<jsonb_array_length(stages);
+
+
+--> statement-breakpoint
+-- Preserve the 0551 cash-source owner verbatim except the exact non-final v3 history INSERT above
+-- its existing input/settlement protection. Final approval, rejection and actual input writes retain
+-- their canonical Attendance/payroll authority and cash/TOIL/closed-run safeguards.
+CREATE OR REPLACE FUNCTION app.guard_overtime_cash_source_write() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE olddoc jsonb;newdoc jsonb;doc jsonb;tenant_value uuid;emp uuid;on_date date;claim record;batch_status text;request_value uuid;seen text[]:='{}';source_key text;full_source_visibility boolean;requested_minutes integer;
+BEGIN
+ -- A non-final v3 completion records approval history, not a changed cash input. It may be written
+ -- by the exact ordinary participant without granting Personnel/payroll visibility. Every other
+ -- trigger (decision authority, links, immutability and RLS) still validates this INSERT.
+ IF TG_TABLE_NAME='attendance_workflow_decision' AND TG_OP='INSERT' THEN
+  IF NEW.tenant_id=app.current_tenant_id() AND NEW.actual_user_id=app.current_user_id()::text
+   AND NEW.decision='approved' AND NEW.previous_status='pending' AND NEW.resulting_status='pending'
+   AND EXISTS(SELECT 1 FROM public.attendance_workflow_request w
+    JOIN public.attendance_correction c ON c.id=w.correction_id AND c.tenant_id=w.tenant_id AND c.employment_id=w.employment_id
+    WHERE w.id=NEW.request_id AND w.tenant_id=NEW.tenant_id AND w.routing_version=3 AND w.employment_id=NEW.employment_id
+     AND c.status='pending' AND c.requested_ot_minutes IS NOT NULL AND w.current_stage=NEW.stage_index
+     AND NEW.stage_index BETWEEN 0 AND jsonb_array_length(w.stages)-2
+     AND app.attendance_workflow_v3_completion_write(w.id,NEW.stage_index,NEW.decision)
+     AND EXISTS(SELECT 1 FROM public.attendance_workflow_participant_decision p
+      WHERE p.request_id=w.id AND p.tenant_id=w.tenant_id AND p.employment_id=w.employment_id AND p.stage_index=NEW.stage_index
+       AND p.actual_user_id=app.current_user_id() AND app.attendance_workflow_active_write(p.xmin)
+       AND p.actual_user_id::text=NEW.actual_user_id AND p.actual_person_id IS NOT DISTINCT FROM NEW.actual_person_id
+       AND p.actual_employment_id IS NOT DISTINCT FROM NEW.actual_employment_id AND p.acting_mode=NEW.acting_mode
+       AND p.assigned->>'kind'=NEW.assigned_kind AND (p.assigned->>'employmentId')::uuid IS NOT DISTINCT FROM NEW.assigned_employment_id
+       AND p.remarks IS NOT DISTINCT FROM NEW.remarks AND p.decision=NEW.decision))
+   THEN RETURN NEW; END IF;
+ END IF;
+ -- FORCE RLS makes an empty owner read inconclusive unless this EFFECTIVE reader truly bypasses RLS.
+ -- This is absence proof only: a protected source still requires its normal context and guards.
+ olddoc:=CASE WHEN TG_OP='INSERT' THEN NULL ELSE to_jsonb(OLD) END;newdoc:=CASE WHEN TG_OP='DELETE' THEN NULL ELSE to_jsonb(NEW) END;
+ IF TG_OP='UPDATE' THEN
+  IF TG_TABLE_NAME='attendance' THEN
+   -- A referenced canonical day is an immutable source identity, including context-only sources.
+   -- Check BEFORE derived-field/no-op shortcuts and before FK/RLS rejection of the new identity.
+   IF (NEW.id,NEW.tenant_id,NEW.employment_id,NEW.attendance_date) IS DISTINCT FROM(OLD.id,OLD.tenant_id,OLD.employment_id,OLD.attendance_date) AND EXISTS(SELECT 1 FROM public.attendance_overtime_source d WHERE d.attendance_id=OLD.id AND d.tenant_id=OLD.tenant_id) THEN RAISE EXCEPTION 'Referenced overtime Attendance identity is immutable' USING ERRCODE='23514';END IF;
+  END IF;
+  IF TG_TABLE_NAME='attendance' AND (olddoc->'check_in_at',olddoc->'check_out_at',olddoc->'status',olddoc->'absence_reason',olddoc->'day_type',olddoc->'worked_minutes',olddoc->'late_minutes',olddoc->'early_out_minutes',olddoc->'under_minutes',CASE WHEN jsonb_typeof(olddoc->'calc_trace')='object' THEN(olddoc->'calc_trace')-'overtime'-'overtimePattern' ELSE '{}'::jsonb END) IS NOT DISTINCT FROM(newdoc->'check_in_at',newdoc->'check_out_at',newdoc->'status',newdoc->'absence_reason',newdoc->'day_type',newdoc->'worked_minutes',newdoc->'late_minutes',newdoc->'early_out_minutes',newdoc->'under_minutes',CASE WHEN jsonb_typeof(newdoc->'calc_trace')='object' THEN(newdoc->'calc_trace')-'overtime'-'overtimePattern' ELSE '{}'::jsonb END) THEN RETURN NEW;END IF;
+  IF TG_TABLE_NAME='attendance_punch' AND (olddoc->'employment_id',olddoc->'attendance_date',olddoc->'punch_at',olddoc->'direction',olddoc->'attendance_id',olddoc->'voided_at') IS NOT DISTINCT FROM(newdoc->'employment_id',newdoc->'attendance_date',newdoc->'punch_at',newdoc->'direction',newdoc->'attendance_id',newdoc->'voided_at') THEN RETURN NEW;END IF;
+  IF TG_TABLE_NAME='attendance_correction' AND (olddoc-'reason'-'remarks') IS NOT DISTINCT FROM(newdoc-'reason'-'remarks') THEN RETURN NEW;END IF;
+ END IF;
+ SELECT rolsuper OR rolbypassrls INTO full_source_visibility FROM pg_catalog.pg_roles WHERE rolname=current_user;
+ FOR doc IN SELECT value FROM jsonb_array_elements(jsonb_build_array(olddoc,newdoc)) WHERE value<>'null'::jsonb LOOP
+  tenant_value:=(doc->>'tenant_id')::uuid;
+  -- Non-OT requests/decisions are not formula approval inputs. Their actual clock effects still
+  -- pass through Attendance/punch guards; OLD and NEW docs retain protection for removed OT inputs.
+  IF TG_TABLE_NAME='attendance_correction' AND doc->>'requested_ot_minutes' IS NULL THEN CONTINUE;END IF;
+  IF TG_TABLE_NAME='attendance_workflow_decision' THEN
+   SELECT c.employment_id,c.attendance_date,c.requested_ot_minutes INTO emp,on_date,requested_minutes FROM public.attendance_workflow_request r JOIN public.attendance_correction c ON c.id=r.correction_id AND c.tenant_id=r.tenant_id WHERE r.id=(doc->>'request_id')::uuid AND r.tenant_id=tenant_value;
+   IF FOUND AND requested_minutes IS NULL THEN CONTINUE;END IF;
+  ELSE emp:=(doc->>'employment_id')::uuid;on_date:=(doc->>'attendance_date')::date;END IF;
+  IF full_source_visibility AND emp IS NOT NULL AND on_date IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.attendance_overtime_source d WHERE d.tenant_id=tenant_value AND d.employment_id=emp AND d.attendance_date=on_date) THEN CONTINUE;END IF;
+  IF tenant_value IS DISTINCT FROM app.current_tenant_id() THEN RAISE EXCEPTION 'Overtime input tenant mismatch' USING ERRCODE='42501';END IF;
+  IF emp IS NULL OR on_date IS NULL THEN CONTINUE;END IF;source_key:=emp::text||':'||on_date::text;IF source_key=ANY(seen) THEN CONTINUE;END IF;seen:=array_append(seen,source_key);
+  IF NOT(emp=ANY(app.visible_employment_ids()) OR app.can_admin_payroll_employment(emp)) THEN RAISE EXCEPTION 'Canonical Attendance subject authority is required' USING ERRCODE='42501';END IF;
+  -- Raw input is already Attendance-row locked. Serialize source claims BEFORE batch locks; do not
+  -- acquire employee advisory here (actual calculation takes employee -> Attendance -> source).
+  PERFORM d.id FROM public.attendance_overtime_source d WHERE d.tenant_id=tenant_value AND d.employment_id=emp AND d.attendance_date=on_date ORDER BY d.id FOR UPDATE;
+  -- Tenant plus subject authority makes the matching source visible even under FORCE RLS.
+  IF NOT FOUND THEN CONTINUE;END IF;
+  IF EXISTS(SELECT 1 FROM public.overtime_source_settlement st JOIN public.attendance_overtime_source d ON d.id=st.source_id WHERE st.tenant_id=tenant_value AND d.tenant_id=tenant_value AND d.employment_id=emp AND d.attendance_date=on_date AND st.mode='toil' AND st.released_at IS NULL) THEN RAISE EXCEPTION 'Reverse and release canonical TOIL before changing its overtime source' USING ERRCODE='23514';END IF;
+  -- The existing private owner locks every relevant batch in stable ID order, including draft runs.
+  PERFORM * FROM app.attendance_payroll_protection_rows(emp);
+  FOR claim IN SELECT st.id,st.payroll_batch_id,d.id AS source_id FROM public.overtime_source_settlement st JOIN public.attendance_overtime_source d ON d.id=st.source_id WHERE st.tenant_id=tenant_value AND d.tenant_id=tenant_value AND d.employment_id=emp AND d.attendance_date=on_date AND st.mode='cash' AND st.released_at IS NULL ORDER BY st.payroll_batch_id LOOP
+   SELECT status::text INTO batch_status FROM public.payroll_batch WHERE id=claim.payroll_batch_id AND tenant_id=tenant_value FOR UPDATE;
+   IF batch_status='closed' THEN RAISE EXCEPTION 'Closed Payroll protects this overtime source; use its controlled adjustment workflow' USING ERRCODE='23514';END IF;
+   IF batch_status='processed' THEN
+    UPDATE public.payroll_batch SET needs_recalc_at=now(),recalc_employment_ids=(SELECT coalesce(jsonb_agg(DISTINCT value),'[]'::jsonb) FROM jsonb_array_elements(coalesce(recalc_employment_ids,'[]'::jsonb)||jsonb_build_array(emp::text))) WHERE id=claim.payroll_batch_id AND tenant_id=tenant_value AND status='processed';
+   END IF;
+   -- Append invalidation evidence; do NOT take a source row lock after the batch (cash transfer uses
+   -- employee -> source -> batch). Fresh canonical digests remain the settlement/close authority.
+   INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload) VALUES(tenant_value,'overtime-pattern',claim.source_id,'overtime.cash-source.invalidated','user',app.current_user_id(),emp,jsonb_build_object('sourceId',claim.source_id,'batchId',claim.payroll_batch_id,'date',on_date,'inputOwner',TG_TABLE_NAME,'operation',TG_OP));
+  END LOOP;
+ END LOOP;
+ IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
+END $$;
