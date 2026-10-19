@@ -3,10 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Search, ArrowRight, UserCog } from 'lucide-react';
 import { DelegationManager } from '@/components/delegation-manager';
 import { loadDelegationContextAction, type DelegationContext } from '@/app/delegations/actions';
 import { OPEN_COMMAND_BAR_EVENT, type OpenCommandBarDetail } from '@/lib/command-bar-events';
+import { useNavIndex } from '@/components/nav-index-context';
 
 /**
  * R44 delegation (Phase 1) — the product's FIRST global command bar. There was no search / cmdk primitive
@@ -51,6 +54,11 @@ export function CommandBar() {
   // Which action's sub-panel is showing (null = the search list).
   const [active, setActive] = useState<CommandItemId | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Atelier round 1 — "Go to": the destinations the rail is showing this viewer (components/nav-index-context.tsx).
+  // Published by the rail from its own filtered graph, so this lists nothing the viewer's rail hides; each
+  // destination still enforces its own route guard. Every theme gets it: it is the same command bar.
+  const { entries: navEntries } = useNavIndex();
+  const router = useRouter();
 
   // Cmd/Ctrl-K opens the bar from anywhere; Escape is handled by the Dialog itself.
   useEffect(() => {
@@ -97,6 +105,13 @@ export function CommandBar() {
     const hay = [t(item.titleKey), t(item.subtitleKey), ...item.keywords].join(' ').toLowerCase();
     return hay.includes(q);
   });
+  const navResults = navEntries
+    .filter((e) => !q || [e.label, e.parent ?? '', e.section ?? ''].join(' ').toLowerCase().includes(q))
+    .slice(0, q ? 20 : 10);
+  const go = (href: string) => {
+    onOpenChange(false);
+    router.push(href);
+  };
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -142,12 +157,18 @@ export function CommandBar() {
                   autoFocus
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    // Enter takes the first match: an action first (as before), else the first destination.
+                    if (e.key !== 'Enter') return;
+                    if (results[0]) setActive(results[0].id);
+                    else if (navResults[0]) go(navResults[0].href);
+                  }}
                   placeholder={t('placeholder')}
                   className="h-12 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                 />
               </div>
               <div className="p-3">
-                {results.length === 0 ? (
+                {results.length === 0 && navResults.length === 0 ? (
                   <div className="px-3 py-6 text-center text-sm text-muted-foreground">{t('noResults')}</div>
                 ) : (
                   <ul className="space-y-1">
@@ -172,6 +193,27 @@ export function CommandBar() {
                       </li>
                     ))}
                   </ul>
+                )}
+                {navResults.length > 0 && (
+                  <>
+                    <div className="px-3 pb-1 pt-3 text-xs font-medium text-muted-foreground">{t('goTo')}</div>
+                    <ul className="space-y-0.5">
+                      {navResults.map((e) => (
+                        <li key={e.href}>
+                          <Link
+                            href={e.href}
+                            onClick={() => onOpenChange(false)}
+                            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                          >
+                            <span className="min-w-0 flex-1 truncate font-medium">{e.label}</span>
+                            <span className="max-w-[45%] shrink-0 truncate text-xs text-muted-foreground">
+                              {[e.section, e.parent].filter(Boolean).join(' · ')}
+                            </span>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
                 )}
               </div>
             </>

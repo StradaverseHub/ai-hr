@@ -1,8 +1,9 @@
 /**
  * r396 — the user-selectable UI THEME (Monolith rollout, step 1).
  *
- * Themes: Current (Plum + Ledger), `monolith` (the default — docs/design/monolith/) and `classic` (the indigo, rounded,
- * floating-shell look the app had before). The theme is ONE axis; light/dark (next-themes, the `.dark`
+ * Themes: Current (Plum + Ledger), `monolith` (the default — docs/design/monolith/), `classic` (the indigo, rounded,
+ * floating-shell look the app had before) and `atelier` (the assistant-first shell, opt-in; its brief is
+ * .impeccable/surfaces/app-layout-tsx.md and its stylesheet app/atelier.css). The theme is ONE axis; light/dark (next-themes, the `.dark`
  * class) is the other, and the two are independent: every theme has a light and a dark palette.
  *
  * The choice is per browser, in the `ui_theme` cookie. app/layout.tsx reads it on the SERVER and writes
@@ -13,7 +14,7 @@
  * Client-safe: no imports, so both the server layout and the client switcher share these constants.
  */
 export const UI_THEME_COOKIE = 'ui_theme';
-export const UI_THEMES = ['monolith', 'classic', 'current'] as const;
+export const UI_THEMES = ['monolith', 'classic', 'current', 'atelier'] as const;
 export type UiTheme = (typeof UI_THEMES)[number];
 export const DEFAULT_UI_THEME: UiTheme = 'monolith';
 /** The attribute on <html> that globals.css scopes Monolith's tokens under. */

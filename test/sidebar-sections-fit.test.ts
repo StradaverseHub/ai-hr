@@ -52,7 +52,8 @@ describe('sidebar sections must keep the rail inside the viewport', () => {
     // both theme headers on that same state owner instead of restoring a force-open branch.
     expect(SIDEBAR).toContain('key == null || (openSections[key] ?? key === activeSectionKey)');
     expect(SIDEBAR).toContain('[key]: !(prev[key] ?? key === activeSectionKey)');
-    expect(SIDEBAR.match(/onClick=\{\(\) => toggleSection\(group\.labelKey!\)\}/g)).toHaveLength(2);
+    // Three theme headers (Classic, Monolith, Atelier) — every one on the same state owner.
+    expect(SIDEBAR.match(/onClick=\{\(\) => toggleSection\(group\.labelKey!\)\}/g)).toHaveLength(3);
     expect(SIDEBAR).toContain('delete next[activeSectionKey]');
     expect(SIDEBAR).toContain('}, [pathname, search, activeSectionKey]);');
     expect(SIDEBAR).not.toContain('disabled={group.labelKey === activeSectionKey}');

@@ -67,9 +67,9 @@ beforeEach(() => {
 });
 
 describe('A. resolveUiTheme — the cookie decides, the default is Monolith', () => {
-  it('the vocabulary is exactly monolith | classic | current, cookie `ui_theme`, default monolith', () => {
+  it('the vocabulary is exactly monolith | classic | current | atelier, cookie `ui_theme`, default monolith', () => {
     expect(UI_THEME_COOKIE).toBe('ui_theme');
-    expect([...UI_THEMES]).toEqual(['monolith', 'classic', 'current']);
+    expect([...UI_THEMES]).toEqual(['monolith', 'classic', 'current', 'atelier']);
     expect(DEFAULT_UI_THEME).toBe('monolith');
   });
   it('cookie absent → monolith', () => {
@@ -79,10 +79,11 @@ describe('A. resolveUiTheme — the cookie decides, the default is Monolith', ()
   it('cookie classic → classic; cookie monolith → monolith', () => {
     expect(resolveUiTheme('classic')).toBe('classic');
     expect(resolveUiTheme('current')).toBe('current');
+    expect(resolveUiTheme('atelier')).toBe('atelier');
     expect(resolveUiTheme('monolith')).toBe('monolith');
   });
   it('invalid value → monolith (never a third state)', () => {
-    for (const bad of ['', 'Classic', 'CLASSIC', ' classic', 'dark', 'light', 'indigo', 'monolith;classic']) {
+    for (const bad of ['', 'Classic', 'CLASSIC', ' classic', 'Atelier', 'atelier ', 'dark', 'light', 'indigo', 'monolith;classic']) {
       expect(resolveUiTheme(bad), bad).toBe('monolith');
       expect(isUiTheme(bad), bad).toBe(false);
     }
@@ -90,7 +91,7 @@ describe('A. resolveUiTheme — the cookie decides, the default is Monolith', ()
 });
 
 describe('B. setUiTheme — the server action', () => {
-  it.each(['classic', 'monolith', 'current'])('accepts %s and sets ui_theme for 1 year, SameSite=Lax, path=/', async (theme) => {
+  it.each(['classic', 'monolith', 'current', 'atelier'])('accepts %s and sets ui_theme for 1 year, SameSite=Lax, path=/', async (theme) => {
     await expect(setUiTheme(theme)).resolves.toEqual({ ok: true });
     expect(cookieSet).toHaveBeenCalledTimes(1);
     expect(cookieSet).toHaveBeenCalledWith('ui_theme', theme, {

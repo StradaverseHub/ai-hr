@@ -43,6 +43,7 @@ import { toursForRoles, WELCOME_TOUR_ID } from '@/lib/onboarding-tour';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { currentUiTheme } from '@/lib/ui-theme-server';
 import { UiThemeProvider } from '@/components/ui-theme-context';
+import { NavIndexProvider } from '@/components/nav-index-context';
 import { IntentBar } from '@/components/intent-bar';
 import { ShellRoutePath, ShellLiveClock, ShellStatusLine } from '@/components/shell-top-line';
 
@@ -199,6 +200,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <UiThemeProvider theme={uiTheme}>
           {/* Detached floating layout: the rail, the top bar, and each content card
               float separately on the canvas with gutters between them. */}
+          {/* Atelier round 1 — the rail publishes its visible destinations here for the command bar's "Go to"
+              list and the Atelier breadcrumb (components/nav-index-context.tsx). */}
+          <NavIndexProvider>
           <div data-app-shell className="flex h-full gap-3 lg:gap-4 monolith:gap-0!">
             <Sidebar
               // ADR-0049: a partner is an admin who sees a subset, so it gets the admin nav group;
@@ -326,7 +330,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                 </div>
                 {/* r398 — hidden, NOT unmounted, in Monolith: the command bar keeps its ⌘K listener and its dialog
                     (portalled to <body>), and the intent bar below opens that same dialog. */}
-                <div className="flex min-w-0 items-center justify-center monolith:hidden">
+                <div className="flex min-w-0 items-center justify-center monolith:hidden atelier:hidden">
                   <CommandBar />
                 </div>
                 {/* Right cluster (overlap guard d9b81f8d): min-w-0 lets the 1fr track constrain the
@@ -385,6 +389,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               <ShellStatusLine companies={allowed} selected={scopeIds} />
             </div>
           </div>
+          </NavIndexProvider>
           <OnboardingTour tours={tours} autoStartTourId={onboarded ? null : WELCOME_TOUR_ID} />
           {/* 6e122302 — the after-login notice popup, mounted beside the onboarding tour because that is
               the existing "show something once after login and remember the dismissal" surface. At most

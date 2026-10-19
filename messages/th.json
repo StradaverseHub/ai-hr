@@ -515,7 +515,31 @@
     "block_plannedAbsences": "ปฏิทินการลา",
     "block_recentlyJoined": "เข้าร่วมล่าสุด",
     "block_upcomingEvents": "กิจกรรมที่กำลังจะมาถึง",
-    "block_recentActivity": "กิจกรรมล่าสุด"
+    "block_recentActivity": "กิจกรรมล่าสุด",
+    "atelier": {
+      "greetingMorning": "สวัสดีตอนเช้า",
+      "greetingAfternoon": "สวัสดีตอนบ่าย",
+      "greetingEvening": "สวัสดีตอนเย็น",
+      "greetingWithName": "{greeting} คุณ{name}",
+      "pressure": "{count, plural, =0 {ขณะนี้ไม่มีรายการที่รอคุณ} other {มี # รายการรอคุณดำเนินการ}}",
+      "askLabel": "ถามผู้ช่วย",
+      "askPlaceholder": "ถามเรื่องวันลา สลิปเงินเดือน วันหยุด หรือทีมของคุณ…",
+      "askSubmit": "ถาม",
+      "suggestLeave": "ฉันเหลือวันลาพักร้อนกี่วัน",
+      "suggestAway": "สัปดาห์นี้ใครไม่อยู่บ้าง",
+      "suggestPay": "ทำไมเงินเดือนสุทธิของฉันจึงเปลี่ยนไป",
+      "suggestHoliday": "วันหยุดนักขัตฤกษ์ครั้งถัดไปคือวันไหน",
+      "needsYou": "รอคุณดำเนินการ",
+      "needsYouEmpty": "จัดการครบทุกรายการแล้ว คำขออนุมัติและงานใหม่จะแสดงที่นี่",
+      "viewAll": "ดูทั้งหมด",
+      "open": "เปิด",
+      "undecided": "รอการตัดสินใจ",
+      "decidedToday": "ตัดสินใจแล้ววันนี้",
+      "decidedHint": "แต่ละตราแสดงผู้ที่ตัดสินใจ",
+      "decidedEmpty": "วันนี้ยังไม่มีการบันทึกการตัดสินใจ",
+      "automatic": "อัตโนมัติ",
+      "yourDashboard": "แดชบอร์ดของคุณ"
+    }
   },
   "people": {
     "employeeStatus": {
@@ -12096,7 +12120,8 @@
     "signedInAs": "เข้าสู่ระบบในชื่อ",
     "viewProfile": "ดูโปรไฟล์ของฉัน",
     "live": "สด",
-    "scope": "ขอบเขต"
+    "scope": "ขอบเขต",
+    "breadcrumb": "เส้นทางนำทาง"
   },
   "components": {
     "plannedAbsences": {
@@ -12201,7 +12226,8 @@
       "current": "Current",
       "label": "ธีม",
       "monolith": "Monolith",
-      "classic": "คลาสสิก"
+      "classic": "คลาสสิก",
+      "atelier": "Atelier"
     },
     "drawer": {
       "close": "ปิด"
@@ -15029,7 +15055,9 @@
     "delegationTitle": "การมอบหมายการอนุมัติ",
     "delegationSubtitle": "มอบหมายงานอนุมัติของคุณให้ผู้ใช้อื่น",
     "loadError": "เกิดข้อผิดพลาดขณะโหลด กรุณาลองใหม่",
-    "retry": "ลองอีกครั้ง"
+    "retry": "ลองอีกครั้ง",
+    "quickActions": "การดำเนินการด่วน",
+    "goTo": "ไปที่"
   },
   "delegations": {
     "title": "การมอบหมายการอนุมัติ",
