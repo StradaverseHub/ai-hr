@@ -37,7 +37,7 @@ describe('managed report fixture caller snapshot and environment projection',()=
   const target:Record<string,string|undefined>=Object.fromEntries(gates.map(name=>[name,'true']));
   target.UNRELATED='keep';const identity=target;
   const plan=reportAcceptanceEnvironmentProjection({...target},web,migration);
-  expect([...plan.clear].sort()).toEqual([...gates,'DEV_TENANT_ID','DEV_USER_ID'].sort());
+  expect([...plan.clear].sort()).toEqual([...gates,'EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED','DEV_TENANT_ID','DEV_USER_ID'].sort());
   expect(project(target)).toBe(identity);
   for(const name of gates)expect(Object.hasOwn(target,name),name).toBe(false);
   expect(target.UNRELATED).toBe('keep');
@@ -53,12 +53,25 @@ describe('managed report fixture caller snapshot and environment projection',()=
   project(target,activeWeb);expect(target.AUDIT_HASH_CHAIN_ENABLED).toBe('false');expect(Object.hasOwn(target,'NOTIFICATIONS_ENABLED')).toBe(false);
  });
  it('retains env identity and unrelated caller inputs, clears demo identities and uses only reviewed authority',()=>{
-  const target:Record<string,string|undefined>={UNRELATED:'keep',DEV_TENANT_ID:'demo-tenant',DEV_USER_ID:'demo-user',ALLOW_DEMO_SESSION:'true',NODE_ENV:'development',MIGRATION_DATABASE_URL:'caller-owner',EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED:'false'};
+  const target:Record<string,string|undefined>={UNRELATED:'keep',DEV_TENANT_ID:'demo-tenant',DEV_USER_ID:'demo-user',ALLOW_DEMO_SESSION:'true',NODE_ENV:'development',MIGRATION_DATABASE_URL:'caller-owner'};
   const identity=target;project(target,{...web,UNRELATED:'web-must-not-copy',EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED:'true',UNREVIEWED_AUTH_BYPASS:'true'});
   expect(target).toBe(identity);expect(target.UNRELATED).toBe('keep');
   expect(Object.hasOwn(target,'DEV_TENANT_ID')).toBe(false);expect(Object.hasOwn(target,'DEV_USER_ID')).toBe(false);
   expect(target.ALLOW_DEMO_SESSION).toBe('false');expect(target.NODE_ENV).toBe('production');expect(target.MIGRATION_DATABASE_URL).toBe(migration);
-  expect(target.EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED).toBe('false');expect(Object.hasOwn(target,'UNREVIEWED_AUTH_BYPASS')).toBe(false);
+  expect(target.EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED).toBe('true');expect(Object.hasOwn(target,'UNREVIEWED_AUTH_BYPASS')).toBe(false);
+ });
+ it.each([undefined,'false','TRUE','1',' true','true ','true'])('derives a closed scheduling literal from actual-web value %s',value=>{
+  const activeWeb={...web,...(value===undefined?{}:{EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED:value})};
+  const target:Record<string,string|undefined>={};const plan=reportAcceptanceEnvironmentProjection(target,activeWeb,migration);
+  expect(plan.clear).toContain('EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED');project(target,activeWeb);
+  expect(target.EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED).toBe(value==='true'?'true':'false');
+ });
+ it.each(['true','false'])('accepts only a matching canonical caller capability %s',value=>{
+  const target:Record<string,string|undefined>={EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED:value};project(target,{...web,EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED:value});expect(target.EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED).toBe(value);
+ });
+ it.each([{web:'true',caller:'false'},{web:'false',caller:'true'},{web:undefined,caller:'true'},{web:'TRUE',caller:'TRUE'},{web:'true',caller:' true'},{web:'false',caller:''}])('refuses a caller capability override before mutation %j',value=>{
+  const activeWeb={...web,...(value.web===undefined?{}:{EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED:value.web})},target={UNRELATED:'keep',DEV_USER_ID:'untouched',EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED:value.caller},before={...target};
+  expect(()=>project(target,activeWeb)).toThrow('Caller cannot override active web report scheduling capability.');expect(target).toEqual(before);
  });
  it('preserves an explicitly supplied active web NODE_ENV rather than the caller value',()=>{
   const target={NODE_ENV:'caller-value'};project(target,{...web,NODE_ENV:'development'});expect(target.NODE_ENV).toBe('development');

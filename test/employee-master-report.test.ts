@@ -65,6 +65,72 @@ describe('Employee Master report contract',()=>{
     expect(runEmployeeMasterProjection(spec,catalogue,[value],today).sections[0].rows.map(row=>row.cells.map(cell=>cell.value)))
       .toEqual([['Older','child-one-1'],['Newer','child-one-2']]);
   });
+  it('projects 1,000 expanded Family remarks without repeatedly traversing their owner register',()=>{
+    const remarks=PERSONNEL_FIELDS.find(field=>field.owner==='dependent'&&field.ownerField==='remarks')!;
+    let ownerReads=0,dateReads=0;
+    const family=Array.from({length:1000},(_,index):MasterOwnerRecord=>({
+      id:'family-'+String(index).padStart(4,'0'),
+      get createdAt(){
+        // Bound the old quadratic path without depending on machine speed or waiting for a timeout.
+        if(++dateReads>10_000)throw new Error('Expanded Family date reads exceeded the bounded input traversal.');
+        return '2026-10-15T00:00:00.000Z';
+      },
+      values:{remarks:{value:'Fictional Family remark '+index}},
+    }));
+    const value:MasterSubject={id:'one',kind:'employment',personId:'person-one',companyId:company,owners:{
+      get dependent(){
+        if(++ownerReads>2)throw new Error('Expanded Family owner register was repeatedly traversed.');
+        return family;
+      },
+    }};
+    const spec=validate(definition({columns:[{...defaultMasterColumn(remarks),records:'all'}]}),[remarks]);
+    const result=runEmployeeMasterProjection(spec,[remarks],[value],today);
+    expect(result).toMatchObject({asAt:today,employeeCount:1,personCount:1,totalRows:1000});
+    expect(result.sections[0].rows.map(row=>({recordId:row.recordId,cells:row.cells}))).toStrictEqual(
+      Array.from({length:1000},(_,index)=>({recordId:'family-'+String(index).padStart(4,'0'),cells:[{value:'Fictional Family remark '+index,currency:undefined,sourceRecordId:'family-'+String(index).padStart(4,'0')}]})),
+    );
+    expect(ownerReads).toBeLessThanOrEqual(2);
+    expect(dateReads).toBeLessThanOrEqual(10_000);
+  });
+  it('bounds mixed Family All, Family Latest and cross-owner lookups to one input traversal',()=>{
+    const currentDay=today;
+    const familyName=PERSONNEL_FIELDS.find(field=>field.owner==='dependent'&&field.ownerField==='fullName')!;
+    const relationship=PERSONNEL_FIELDS.find(field=>field.owner==='dependent'&&field.ownerField==='relationship')!;
+    const employeeId=f('employeeId','employment',{grain:'single'});
+    const catalogue=[familyName,relationship,employeeId,...fields];
+    let familyReads=0,personReads=0,employmentReads=0,dateReads=0;
+    const family=Array.from({length:1000},(_,index):MasterOwnerRecord=>({
+      id:'family-'+String(index).padStart(4,'0'),
+      get createdAt(){if(++dateReads>10_000)throw new Error('Mixed Family date traversal exceeded its bounded input.');return currentDay+'T00:00:00.000Z';},
+      values:{fullName:{value:'Fictional large row '+index},relationship:{value:index===999?'latest child':'child'},remarks:{value:'x'.repeat(30_000)}},
+    }));
+    const value=subject('one');
+    value.owners={
+      get dependent(){if(++familyReads>2)throw new Error('Mixed All/Latest repeatedly traversed Family.');return family;},
+      get person(){if(++personReads>2)throw new Error('Expanded rows repeatedly traversed a cross-owner register.');return [record('person-one',{name:{value:'Recipient'},number:{value:1},current:{value:'Current name'}})];},
+      get employment(){if(++employmentReads>2)throw new Error('Expanded rows repeated the condition owner traversal.');return [record('employment-one',{employeeId:{value:'REPORT-RECIPIENT'}})];},
+      compensation:[record('salary-one',{salary:{value:'1000.10',currency:'MYR'}})],
+    };
+    const spec=definition({asAt:currentDay,columns:[{...defaultMasterColumn(familyName),records:'all'},defaultMasterColumn(relationship),defaultMasterColumn(employeeId),...fields.filter(field=>['name','number','current','salary'].includes(field.id)).map(defaultMasterColumn)],expression:{id:'root',type:'group',logic:'and',children:[{id:'employee',type:'condition',field:employeeId.id,operator:'eq',value:'REPORT-RECIPIENT'}]}});
+    const result=runEmployeeMasterProjection(validateEmployeeMasterSpec(spec,catalogue,currentDay),catalogue,[value],currentDay);
+    expect(result).toMatchObject({asAt:currentDay,employeeCount:1,totalRows:1000});
+    for(const [index,row]of result.sections[0].rows.entries()){
+      expect(row.recordId).toBe('family-'+String(index).padStart(4,'0'));
+      expect(row.cells.map(cell=>cell.value)).toEqual(['Fictional large row '+index,'latest child','REPORT-RECIPIENT','Recipient','1000.10','Current name',1]);
+      expect(row.cells[0].sourceRecordId).toBe(row.recordId);
+      expect(row.cells[1].sourceRecordId).toBe('family-0999');
+    }
+    for(const reads of [familyReads,personReads,employmentReads])expect(reads).toBeLessThanOrEqual(2);
+    expect(dateReads).toBeLessThanOrEqual(10_000);
+  });
+  it('resolves fresh owner revisions and as-at dates on each report invocation',()=>{
+    const value=subject('one');
+    const spec=validate(definition({columns:[defaultMasterColumn(fields[2])]}));
+    expect(runEmployeeMasterProjection(spec,fields,[value],today).sections[0].rows[0].cells[0].value).toBe('Newer');
+    value.owners.dependent.push(record('new-child',{child:{value:'Fresh revision'}},{effectiveFrom:today}));
+    expect(runEmployeeMasterProjection(spec,fields,[value],today).sections[0].rows[0].cells[0].value).toBe('Fresh revision');
+    expect(runEmployeeMasterProjection({...spec,asAt:'2020-01-01'},fields,[value],today).sections[0].rows[0].cells[0].value).toBe('Older');
+  });
   it('retains subjects whose selected All register has no record',()=>{
     const value=subject('one');value.owners.dependent=[];
     const spec=validate(definition({columns:[{...defaultMasterColumn(fields[2]),records:'all'}]}));

@@ -18,7 +18,7 @@ RUNTIME = "/usr/local/lib/aihr-identity-email/internal-node"
 LAUNCHER = "/usr/local/lib/aihr-identity-email/internal-report-tick"
 LOCK = "/run/aihr-internal-report-tick.lock"
 CRON_SOURCE = "# AIHR owned internal Employee Master dispatch v1\n* * * * * root " + LAUNCHER + "\n"
-ENV_KEYS = {"AUTH_PROVIDER", "AUTH_PUBLIC_ORIGIN", "DATABASE_URL", "MIGRATION_DATABASE_URL", "NODE_ENV", "TZ", "HOME", "PATH", "LANG"}
+ENV_KEYS = {"AUTH_PROVIDER", "AUTH_PUBLIC_ORIGIN", "DATABASE_URL", "MIGRATION_DATABASE_URL", "EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED", "NODE_ENV", "TZ", "HOME", "PATH", "LANG"}
 MARKER_KEYS = {"version", "purpose", "state", "installationId", "runnerUser", "runnerGroup", "runnerUid", "runnerGid", "candidateRoot", "sourcePins", "runtimeSha256", "instanceSha256", "cronSha256"}
 
 
@@ -73,6 +73,8 @@ def parse_environment(raw):
     fixed = {"AUTH_PROVIDER": "internal", "NODE_ENV": "production", "TZ": "UTC", "HOME": "/nonexistent", "PATH": "/usr/local/lib/aihr-identity-email:/usr/bin:/bin", "LANG": "C.UTF-8"}
     if set(result) != ENV_KEYS or any(result[key] != value for key, value in fixed.items()):
         raise ValueError("Environment differs")
+    if result["EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED"] not in ("true", "false"):
+        raise ValueError("Invalid scheduling capability")
     if not all(result[key] for key in ("AUTH_PUBLIC_ORIGIN", "DATABASE_URL", "MIGRATION_DATABASE_URL")):
         raise ValueError("Missing installed environment")
     return result
