@@ -2231,7 +2231,20 @@
           "saved": "Events saved by movement type",
           "recheck": "Check complete sequences",
           "noData": "No movement entries were found.",
-          "refused": "This change could not be applied. Correct the highlighted field and check the complete sequence again."
+          "refused": "This change could not be applied. Correct the highlighted field and check the complete sequence again.",
+          "dateGuide": "Dates: DD-MMM-YYYY or YYYY-MM-DD. Blacklist uses the current Kuala Lumpur day.",
+          "sequenceGuide": "Each employee’s complete sequence saves together. Unused tabs and untouched prefilled rows are skipped.",
+          "exampleGuide": "Examples are guidance only; no example employee is an import row.",
+          "incrementExample": "Example: increment of 100.00 on an existing employee; enter the effective day and leave other changes blank.",
+          "zeroBaselineGuide": "An absent or zero salary gives no Change %; correct the employee’s salary history first.",
+          "requiredInputs": "Required inputs",
+          "optionalInputs": "Optional inputs",
+          "colourGuide": "Grey = current · Yellow = input · Green = calculation",
+          "formulaNote": "Display only. The server recalculates from authoritative records; percentage is blank for a missing/zero baseline.",
+          "choiceTitle": "Choose a valid business value",
+          "choiceError": "Use a current value from the list.",
+          "probationEndDate": "Probation End Date",
+          "employedScope": "Employees on probation or serving notice remain included. Ended or blacklisted employments are excluded from prefill."
         }
       }
     },

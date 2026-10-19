@@ -2231,7 +2231,20 @@
           "saved": "按人事异动类型保存的事件",
           "recheck": "检查完整事件顺序",
           "noData": "未找到人事异动条目。",
-          "refused": "无法应用此变更。请修正突出显示的字段，并重新检查完整事件顺序。"
+          "refused": "无法应用此变更。请修正突出显示的字段，并重新检查完整事件顺序。",
+          "dateGuide": "日期：DD-MMM-YYYY 或 YYYY-MM-DD。黑名单变更使用吉隆坡当前日期。",
+          "sequenceGuide": "每名员工的完整事件顺序一并保存。未使用的工作表及未改动的预填行会被跳过。",
+          "exampleGuide": "示例仅供参考；示例员工不是待导入的行。",
+          "incrementExample": "示例：为现有员工加薪 100.00；填写生效日期，其他变更留空。",
+          "zeroBaselineGuide": "薪资缺失或为零时，不显示变更 %。请先修正该员工的薪资历史。",
+          "requiredInputs": "必填内容",
+          "optionalInputs": "选填内容",
+          "colourGuide": "灰色 = 当前 · 黄色 = 填写内容 · 绿色 = 计算结果",
+          "formulaNote": "仅供显示。服务器会根据权威记录重新计算；基准值缺失或为零时，百分比留空。",
+          "choiceTitle": "选择有效的业务值",
+          "choiceError": "请使用列表中的当前有效值。",
+          "probationEndDate": "试用期结束日期",
+          "employedScope": "试用期员工及通知期内员工仍会纳入。已结束或已列入黑名单的雇佣记录不会预填。"
         }
       }
     },

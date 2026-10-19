@@ -2231,7 +2231,20 @@
           "saved": "Peristiwa disimpan mengikut jenis Pergerakan",
           "recheck": "Semak urutan lengkap",
           "noData": "Tiada entri Pergerakan ditemui.",
-          "refused": "Perubahan ini tidak dapat digunakan. Betulkan medan yang diserlahkan dan semak keseluruhan urutan sekali lagi."
+          "refused": "Perubahan ini tidak dapat digunakan. Betulkan medan yang diserlahkan dan semak keseluruhan urutan sekali lagi.",
+          "dateGuide": "Tarikh: DD-MMM-YYYY atau YYYY-MM-DD. Senarai hitam menggunakan tarikh semasa di Kuala Lumpur.",
+          "sequenceGuide": "Keseluruhan urutan setiap pekerja disimpan bersama. Tab yang tidak digunakan dan baris praisi yang tidak diubah akan dilangkau.",
+          "exampleGuide": "Contoh adalah untuk panduan sahaja; pekerja contoh bukan baris import.",
+          "incrementExample": "Contoh: kenaikan 100.00 bagi pekerja sedia ada; masukkan tarikh kuat kuasa dan biarkan perubahan lain kosong.",
+          "zeroBaselineGuide": "Gaji yang tiada atau sifar tidak menghasilkan Perubahan %. Betulkan sejarah gaji pekerja terlebih dahulu.",
+          "requiredInputs": "Isian wajib",
+          "optionalInputs": "Isian pilihan",
+          "colourGuide": "Kelabu = semasa · Kuning = isian · Hijau = pengiraan",
+          "formulaNote": "Paparan sahaja. Pelayan mengira semula daripada rekod sahih; peratusan dikosongkan jika asas pengiraan tiada atau sifar.",
+          "choiceTitle": "Pilih nilai perniagaan yang sah",
+          "choiceError": "Gunakan nilai semasa daripada senarai.",
+          "probationEndDate": "Tarikh tamat percubaan",
+          "employedScope": "Pekerja dalam tempoh percubaan atau sedang menjalani tempoh notis tetap disertakan. Rekod pekerjaan yang telah tamat atau disenarai hitam tidak diisi terlebih dahulu."
         }
       }
     },

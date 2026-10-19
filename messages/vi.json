@@ -2231,7 +2231,20 @@
           "saved": "Các sự kiện đã lưu theo loại Biến động",
           "recheck": "Kiểm tra chuỗi sự kiện đầy đủ",
           "noData": "Không tìm thấy mục Biến động nào.",
-          "refused": "Không thể áp dụng thay đổi này. Hãy sửa trường được đánh dấu rồi kiểm tra lại toàn bộ chuỗi sự kiện."
+          "refused": "Không thể áp dụng thay đổi này. Hãy sửa trường được đánh dấu rồi kiểm tra lại toàn bộ chuỗi sự kiện.",
+          "dateGuide": "Ngày: DD-MMM-YYYY hoặc YYYY-MM-DD. Danh sách đen dùng ngày hiện tại theo giờ Kuala Lumpur.",
+          "sequenceGuide": "Toàn bộ chuỗi sự kiện của mỗi nhân viên được lưu cùng nhau. Các trang tính không dùng và dòng điền sẵn chưa thay đổi được bỏ qua.",
+          "exampleGuide": "Ví dụ chỉ để hướng dẫn; dòng nhân viên trong ví dụ không phải dòng được nhập.",
+          "incrementExample": "Ví dụ: tăng 100.00 cho nhân viên hiện có; nhập ngày hiệu lực và để trống các thay đổi khác.",
+          "zeroBaselineGuide": "Nếu chưa có lương hoặc lương bằng không, Thay đổi % sẽ để trống. Hãy sửa lịch sử lương của nhân viên trước.",
+          "requiredInputs": "Nội dung bắt buộc",
+          "optionalInputs": "Nội dung tùy chọn",
+          "colourGuide": "Xám = hiện tại · Vàng = dữ liệu nhập · Xanh lá = tính toán",
+          "formulaNote": "Chỉ để hiển thị. Máy chủ tính lại từ hồ sơ chính thức; phần trăm để trống nếu thiếu mức lương cơ sở hoặc mức này bằng không.",
+          "choiceTitle": "Chọn giá trị nghiệp vụ hợp lệ",
+          "choiceError": "Dùng giá trị hiện tại trong danh sách.",
+          "probationEndDate": "Ngày kết thúc thử việc",
+          "employedScope": "Vẫn bao gồm nhân viên đang thử việc hoặc đang trong thời gian báo trước nghỉ việc. Hồ sơ việc làm đã kết thúc hoặc bị đưa vào danh sách đen không được điền sẵn."
         }
       }
     },
