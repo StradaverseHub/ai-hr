@@ -5,7 +5,6 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useIsMonolith, useUiTheme } from './ui-theme-context';
-import { KingdeeMark } from './kingdee-mark';
 import {
   ArrowLeftRight,
   BarChart3,
@@ -14,6 +13,7 @@ import {
   Building2,
   CalendarDays,
   Clock,
+  Command,
   FileBarChart,
   Hash,
   ClipboardCheck,
@@ -68,6 +68,8 @@ import {
 import '@/packs/register-all';
 import { modulePackById } from '@/packs/registry';
 import { NAVIGATION_MODULES, NAVIGATION_SECTIONS, placeNavigation, navigationPlacement, navigationRouteOwner, type NavigationWorkspace } from '@/lib/navigation-workspaces';
+import { usePublishNavIndex, type NavIndexEntry } from '@/components/nav-index-context';
+import { openCommandBar } from '@/lib/command-bar-events';
 
 // `labelKey` indexes the `nav` message namespace; labels are resolved at render via useTranslations.
 // `tour` (optional) marks the element as an onboarding-tour anchor (ADR-0018).
@@ -608,6 +610,8 @@ export function Sidebar({
   const monolith = useIsMonolith();
   const current = useUiTheme() === 'current';
   const [workspaceChoice, setWorkspaceChoice] = useState<NavigationWorkspace | null>(null);
+  const atelier = useUiTheme() === 'atelier';
+  const tBar = useTranslations('commandBar');
   const collapsed = monolith ? false : collapsedPref;
   const locale = useLocale();
   // r398 — Monolith shows a module's children INLINE (no flyout panel). An explicit open/close per module
@@ -724,7 +728,7 @@ export function Sidebar({
   const workspaceSwitch = () => availableWorkspaces.length > 1 ? <div role="group" aria-label={t('workspaceSwitch')}
     className={cn('flex gap-1 rounded-lg border border-border p-1',collapsed&&'flex-col')}>
     {availableWorkspaces.map(workspace=><button key={workspace} type="button" aria-pressed={selectedWorkspace===workspace}
-      onClick={()=>{setWorkspaceChoice(workspace);setOpenKey(null);setInlineOpen({});}}
+      onClick={()=>{setWorkspaceChoice(workspace);setOpenKey(null);setInlineOpen({});setRailKids({});}}
       className={cn('min-h-11 flex-1 rounded-md font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring',collapsed?'px-1 text-xs':'px-2 text-sm',selectedWorkspace===workspace?'bg-accent text-accent-foreground':'text-muted-foreground hover:bg-accent/60')}>
       {t(workspace==='ops'?'workspaceOps':'workspaceStrata')}
     </button>)}
@@ -779,6 +783,34 @@ export function Sidebar({
   const toggleSection = (key: string) => setOpenSections((prev) => ({
     ...prev, [key]: !(prev[key] ?? key === activeSectionKey),
   }));
+
+  /* Atelier round 1 — publish what this rail shows, for the command bar's "Go to" list and the Atelier
+     breadcrumb (components/nav-index-context.tsx). Built from the SAME filtered `groups` and the same
+     `canSeeChild` / `isRowActive` the rows render with, in every theme, so the palette can never list a
+     destination this viewer's rail hides. Called before any early return: it is a hook. */
+  const navEntries: NavIndexEntry[] = [];
+  let activeEntry: NavIndexEntry | null = null;
+  for (const g of groups) {
+    const section = g.labelKey ? t(g.labelKey) : null;
+    for (const r of g.items) {
+      if (isCollapsible(r)) {
+        const kids = r.children.filter(canSeeChild);
+        const parent = t(r.labelKey);
+        const activeKid = kids.filter((c) => isRowActive(c))
+          .sort((a, b) => b.href.split('?')[0].length - a.href.split('?')[0].length)[0];
+        for (const c of kids) {
+          const entry = { href: c.navigationHref ?? c.href, label: t(c.labelKey), section, parent };
+          navEntries.push(entry);
+          if (!activeEntry && c === activeKid) activeEntry = entry;
+        }
+      } else {
+        const entry = { href: r.navigationHref ?? r.href, label: t(r.labelKey), section, parent: null };
+        navEntries.push(entry);
+        if (!activeEntry && isRowActive(r)) activeEntry = entry;
+      }
+    }
+  }
+  usePublishNavIndex(navEntries, activeEntry);
 
   const openNode = openKey && !monolith
     ? groups.flatMap((g) => g.items).find((r): r is CollapsibleGroupItem => isCollapsible(r) && r.labelKey === openKey && (!r.defaultHref || collapsed)) ?? null
@@ -962,6 +994,122 @@ export function Sidebar({
   // The review journey owns its 224px navigator and floating route back to the dashboard.
   if (pathname === modulePackById('performance')?.navLinks?.find(link => link.labelKey === 'myPerformance')?.href) return null;
 
+  /* ── Atelier round 1 — THE ASSISTANT-FIRST RAIL (brief: .impeccable/surfaces/app-layout-tsx.md). Rendering
+     only, like Monolith's: the SAME `groups`, `canSeeChild`, `isRowActive` and section state, so which rows
+     exist, in which order, and which one is current cannot differ between themes. What differs: the
+     workspace line, a Quick actions button (it opens the one command bar, lib/command-bar-events.ts), 16px
+     icons on 30px rows, a module's children inline under a hairline instead of a flyout, and the viewer at
+     the foot. No collapse to an icon rail: like Monolith, the rail is always open on desktop. */
+  if (atelier) {
+    const atelierCount = (href: string) => {
+      const n = href === '/tasks' ? taskCount : href === '/approvals' ? approvalCount : 0;
+      return n > 0 ? n : null;
+    };
+    const atelierModule = (item: CollapsibleGroupItem) => {
+      const children = item.children.filter(canSeeChild);
+      if (children.length === 0) return null;
+      const active = item.defaultHref || item.activeMatch === 'children'
+        ? children.some(isRowActive) : isParentActive(pathname, children.flatMap(childPaths));
+      const expanded = inlineOpen[item.labelKey] ?? active;
+      const Icon = item.icon;
+      const label = t(item.labelKey);
+      const kidsId = `atelier-kids-${item.labelKey}`;
+      const currentHref = children.filter((c) => isRowActive(c))
+        .sort((a, b) => b.href.split('?')[0].length - a.href.split('?')[0].length)[0]?.href;
+      const flip = () => setInlineOpen((old) => ({ ...old, [item.labelKey]: !expanded }));
+      return (
+        <div key={item.labelKey} data-atelier-module={item.labelKey}>
+          {item.defaultHref ? (
+            <div className="atelier-row pr-0">
+              <Link href={item.defaultHref} className="flex min-w-0 flex-1 items-center gap-2.5 text-inherit no-underline">
+                <Icon aria-hidden /><span className="truncate">{label}</span>
+              </Link>
+              <button type="button" aria-label={label} aria-expanded={expanded} aria-controls={kidsId} onClick={flip}
+                className="atelier-row w-auto px-1.5">
+                <ChevronDown aria-hidden className="atelier-chevron" />
+              </button>
+            </div>
+          ) : (
+            <button type="button" aria-expanded={expanded} aria-controls={kidsId} onClick={flip} className="atelier-row">
+              <Icon aria-hidden /><span className="truncate">{label}</span>
+              <ChevronDown aria-hidden className="atelier-chevron" />
+            </button>
+          )}
+          {expanded && (
+            <nav id={kidsId} aria-label={label} className="atelier-kids">
+              {children.map((child) => (
+                <Link key={child.href} href={child.navigationHref ?? child.href} data-tour={child.tour}
+                  aria-current={child.href === currentHref ? 'page' : undefined} className="atelier-row">
+                  {childCaption(child)}
+                </Link>
+              ))}
+            </nav>
+          )}
+        </div>
+      );
+    };
+    const initials = (viewerName ?? '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('');
+    return (
+      <div className="relative hidden h-full shrink-0 sm:block">
+        <aside data-app-sidebar data-atelier-navigation className="atelier-rail">
+          <Link href="/" aria-label={t('home')} className="atelier-workspace">
+            <span data-brand-tile aria-hidden>AI</span>
+            <span>{tCommon('appName')}</span>
+          </Link>
+          <button type="button" className="atelier-quick" onClick={() => openCommandBar('')}>
+            <Command aria-hidden className="size-3.5 shrink-0" />
+            <span>{tBar('quickActions')}</span>
+            <kbd aria-hidden>⌘K</kbd>
+          </button>
+          <nav data-tour="nav" aria-label={tCommon('appName')} className="atelier-nav">
+            {groups.map((group, gi) => (
+              <div key={gi}>
+                {group.labelKey && (
+                  <button
+                    type="button"
+                    onClick={() => toggleSection(group.labelKey!)}
+                    aria-expanded={sectionOpen(group.labelKey)}
+                    aria-controls={`nav-section-${group.labelKey}`}
+                    className="atelier-section"
+                  >
+                    <span>{t(group.labelKey)}</span>
+                    <ChevronDown aria-hidden className={cn('size-3.5 shrink-0', !sectionOpen(group.labelKey) && '-rotate-90')} />
+                  </button>
+                )}
+                <div id={group.labelKey ? `nav-section-${group.labelKey}` : undefined} className="flex flex-col gap-px">
+                  {sectionOpen(group.labelKey) && group.items.map((item) => {
+                    if (isCollapsible(item)) return atelierModule(item);
+                    const Icon = item.icon;
+                    const label = t(item.labelKey);
+                    const count = atelierCount(item.href);
+                    return (
+                      <Link key={item.href} href={item.navigationHref ?? item.href} data-tour={item.tour}
+                        aria-label={count ? `${label}, ${t('approvalsCount', { count })}` : label}
+                        aria-current={isRowActive(item) ? 'page' : undefined} className="atelier-row">
+                        <Icon aria-hidden /><span className="truncate">{label}</span>
+                        {count && <span aria-hidden className="atelier-count">{count > 99 ? '99+' : count}</span>}
+                      </Link>
+                    );
+                  })}
+                </div>
+                {gi===0&&workspaceSwitch()}
+              </div>
+            ))}
+          </nav>
+          {viewerName && (
+            <div className="atelier-user" data-rail-user>
+              <span aria-hidden className="atelier-avatar">{initials || '·'}</span>
+              <div className="min-w-0">
+                <b className="truncate">{viewerName}</b>
+                {viewerCode && <span>{viewerCode}</span>}
+              </div>
+            </div>
+          )}
+        </aside>
+      </div>
+    );
+  }
+
   // Current uses the same authorized navigation graph, arranged as workspace tabs.
   // Browsing another workspace never changes scope or grants access to a destination.
   if (current) {
@@ -981,7 +1129,8 @@ export function Sidebar({
     return <div data-current-navigation data-tour="nav" className="current-navigation">
       <div className="current-workspaces">
         <Link href="/" className="current-brand" aria-label={t('home')}>
-          <span data-brand-ground><KingdeeMark className="size-7"/></span><span>{tCommon('appName')}</span>
+          <span data-brand-tile aria-hidden>AI</span>
+          <span>{tCommon('appName')}</span>
         </Link>
         <nav aria-label={t('sharedNavigation')} className="current-workspace-links">{groups[0].items.map(currentRow)}</nav>
         {workspaceSwitch()}
@@ -1041,12 +1190,8 @@ export function Sidebar({
             collapsed ? 'justify-center' : 'px-1 py-0.5',
           )}
         >
-          {/* The badge is WHITE in both themes, not `bg-primary` as the old "HR" tile was: the mark's
-              four colours are the brand's own and read correctly only on a light ground. A logo that
-              re-tints with the colour scheme has stopped being the logo. The ring keeps it from
-              dissolving into a light background. */}
-          <span data-brand-ground className="grid size-10 shrink-0 place-items-center rounded-2xl bg-white p-1.5 ring-1 ring-border shadow-[var(--shadow-sm)]">
-            <KingdeeMark className="size-full" />
+          <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-primary text-[13px] font-bold text-primary-foreground shadow-[var(--shadow-sm)]" aria-hidden>
+            AI
           </span>
           {!collapsed && (
             <span className="whitespace-nowrap text-[15px] font-semibold tracking-tight text-foreground">

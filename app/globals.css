@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./current.css";
+@import "./atelier.css";
 
 /* next-themes toggles the `.dark` class on <html>, so make Tailwind's
    `dark:` variant respond to that class instead of the OS preference. */
@@ -10,6 +11,9 @@
    styles are untouched: a `monolith:` utility does not match in Classic at all. Same shape as `dark:` above
    (:where keeps the specificity of the bare utility, so variant order decides, exactly as for dark:). */
 @custom-variant monolith (&:where([data-ui-theme='monolith'] *));
+
+/* Atelier (app/atelier.css) — the same mechanism, for the few shell utilities a CSS file cannot reach. */
+@custom-variant atelier (&:where([data-ui-theme='atelier'] *));
 
 :root {
   /* Floating-shell surfaces: canvas frame the app floats on → content area

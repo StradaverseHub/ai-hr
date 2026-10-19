@@ -47,7 +47,7 @@ afterEach(() => document.documentElement.removeAttribute('data-ui-theme'));
 
 describe('r396 — the theme control', () => {
   it.each(Object.keys(LOCALES) as (keyof typeof LOCALES)[])(
-    '[%s] is a labelled <select> offering Monolith, Classic and Current, zero next-intl errors',
+    '[%s] is a labelled <select> offering Monolith, Classic, Current and Atelier, zero next-intl errors',
     (loc) => {
       const msgs = LOCALES[loc] as unknown as { components: { uiTheme: Record<string, string> } };
       const strings = msgs.components.uiTheme;
@@ -56,8 +56,8 @@ describe('r396 — the theme control', () => {
       const select = screen.getByRole('combobox', { name: strings.label });
       expect(select.tagName).toBe('SELECT');
       const options = within(select).getAllByRole('option') as HTMLOptionElement[];
-      expect(options.map((o) => o.value)).toEqual(['monolith', 'classic', 'current']);
-      expect(options.map((o) => o.textContent)).toEqual([strings.monolith, strings.classic, strings.current]);
+      expect(options.map((o) => o.value)).toEqual(['monolith', 'classic', 'current', 'atelier']);
+      expect(options.map((o) => o.textContent)).toEqual([strings.monolith, strings.classic, strings.current, strings.atelier]);
     },
   );
 

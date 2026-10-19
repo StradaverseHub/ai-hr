@@ -8,6 +8,7 @@ import {
   dashboardStats,
   groupBreakdown,
   leaveBalances,
+  listApprovalHistory,
   listCompanies,
   myEmployment,
   recentActivity,
@@ -20,7 +21,12 @@ import { deriveEmploymentStatus } from '@/core/employment-status';
 import { myFeedbackRequests } from '@/packs/performance/service';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { MODULE_CATALOG } from '@/packs/catalog';
-import { pendingApprovalsCount } from '@/core/approvals-inbox';
+import { listPendingTasks, pendingApprovalsCount } from '@/core/approvals-inbox';
+import { mayUseAssistant } from '@/core/assistant-grant';
+import { viewerIdentity } from '@/lib/viewer';
+import { todayInKualaLumpur } from '@/lib/hr-date';
+import { shapeApprovalHistoryItems } from '@/lib/approval-history';
+import { AtelierHome } from '@/app/dashboard-atelier';
 import { Card, PageHeader, StatusBadge } from '@/components/ui';
 import { LeaveBalanceCard } from '@/components/leave-balance-card';
 import {
@@ -590,6 +596,64 @@ export default async function DashboardPage({
     defaultDisplay: c.defaultDisplay,
     employeeSelectable: c.employeeSelectable,
   }));
+
+  // Atelier round 1 — the assistant-first Home (app/dashboard-atelier.tsx). Every read above has run and
+  // the customizer below is the viewer's own saved layout. Three reads of its own, here only: the inbox the
+  // bell already shows (core/approvals-inbox.ts), the assistant gate (Home offers the box only to someone it
+  // can answer), and today's decisions — approvers only, the same gate and read as the bell's History tab.
+  if ((await currentUiTheme()) === 'atelier') {
+    const klToday = todayInKualaLumpur(now);
+    const showHistory = admin || managerRole;
+    const [viewer, tasks, assistant, historyRows] = await Promise.all([
+      viewerIdentity(s),
+      listPendingTasks(s, scopeIds, {
+        attendance: isModuleEnabledOrFalse(s, 'attendance'),
+        claims: isModuleEnabledOrFalse(s, 'claims'),
+      }),
+      mayUseAssistant(s),
+      // Malaysia keeps UTC+8 all year (no DST), so the local midnight is a fixed offset.
+      showHistory ? listApprovalHistory(s, { from: new Date(`${klToday}T00:00:00+08:00`).toISOString(), limit: 8 }) : Promise.resolve([]),
+    ]);
+    const hour = Number(
+      new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hourCycle: 'h23', timeZone: 'Asia/Kuala_Lumpur' }).format(now),
+    );
+    const todayLong = new Intl.DateTimeFormat(locale, {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      timeZone: 'Asia/Kuala_Lumpur',
+    }).format(now);
+    return (
+      <AtelierHome
+        name={viewer.name}
+        hour={hour}
+        todayLong={todayLong}
+        locale={locale}
+        nowMs={nowMs}
+        tasks={tasks}
+        history={shapeApprovalHistoryItems(historyRows)}
+        showHistory={showHistory}
+        canAsk={assistant.allowed}
+        notice={
+          unavailableModule && (
+            <Card className="border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/40">
+              <h2 className="text-sm font-semibold">{tModule('title')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{tModule('body', { module: unavailableModule.name })}</p>
+            </Card>
+          )
+        }
+        dashboard={
+          <DashboardCustomizer
+            cards={customizerCards}
+            blocks={cardNodes}
+            layout={savedLayout ?? { selected: [], order: [] }}
+            saveAction={saveDashboardLayoutAction}
+            resetAction={resetDashboardLayoutAction}
+          />
+        }
+      />
+    );
+  }
 
   // r401 — MONOLITH (docs/design/monolith/reference/P-Dashboard.dc.html). Same reads, same values, same
   // customizer and saved layout; only the drawing differs, so the branch sits here, after every read. The

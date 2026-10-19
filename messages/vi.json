@@ -267,7 +267,7 @@
     "breakStopUsingHint": "Đánh dấu ô này, sau đó cho mỗi giờ nghỉ số phút Linh hoạt riêng bên dưới."
   },
   "common": {
-    "appName": "Kingdee AI HR",
+    "appName": "AIHR",
     "language": "Ngôn ngữ",
     "save": "Lưu",
     "cancel": "Hủy",
@@ -351,7 +351,7 @@
     "usersRoles": "Người dùng & vai trò",
     "collapse": "Thu gọn",
     "expand": "Mở rộng",
-    "home": "Trang chủ AI HR",
+    "home": "Trang chủ AIHR",
     "knowledgeBase": "Cơ sở tri thức",
     "claimsConfig": "Cấu hình khoản chi",
     "claims": "Khoản chi",
@@ -538,7 +538,31 @@
     "block_plannedAbsences": "Lịch nghỉ phép",
     "block_recentlyJoined": "Mới tham gia",
     "block_upcomingEvents": "Sự kiện sắp tới",
-    "block_recentActivity": "Hoạt động gần đây"
+    "block_recentActivity": "Hoạt động gần đây",
+    "atelier": {
+      "greetingMorning": "Chào buổi sáng",
+      "greetingAfternoon": "Chào buổi chiều",
+      "greetingEvening": "Chào buổi tối",
+      "greetingWithName": "{greeting}, {name}",
+      "pressure": "{count, plural, =0 {hiện không có việc nào cần bạn} other {# việc cần bạn xử lý}}",
+      "askLabel": "Hỏi Trợ lý",
+      "askPlaceholder": "Hỏi về ngày nghỉ, phiếu lương, ngày lễ hoặc nhóm của bạn…",
+      "askSubmit": "Hỏi",
+      "suggestLeave": "Tôi còn bao nhiêu ngày phép năm?",
+      "suggestAway": "Tuần này ai vắng mặt?",
+      "suggestPay": "Vì sao lương thực nhận của tôi thay đổi?",
+      "suggestHoliday": "Ngày lễ tiếp theo là khi nào?",
+      "needsYou": "Cần bạn xử lý",
+      "needsYouEmpty": "Bạn đã xử lý xong mọi việc. Yêu cầu phê duyệt và công việc mới sẽ hiện ở đây.",
+      "viewAll": "Xem tất cả",
+      "open": "Mở",
+      "undecided": "Đang chờ quyết định",
+      "decidedToday": "Đã quyết định hôm nay",
+      "decidedHint": "Mỗi dấu cho biết ai đã quyết định",
+      "decidedEmpty": "Hôm nay chưa có quyết định nào được ghi nhận.",
+      "automatic": "Tự động",
+      "yourDashboard": "Bảng điều khiển của bạn"
+    }
   },
   "people": {
     "employeeStatus": {
@@ -12216,7 +12240,8 @@
     "signedInAs": "Đang đăng nhập với tư cách",
     "viewProfile": "Xem hồ sơ của tôi",
     "live": "Trực tiếp",
-    "scope": "Phạm vi"
+    "scope": "Phạm vi",
+    "breadcrumb": "Đường dẫn"
   },
   "components": {
     "plannedAbsences": {
@@ -12321,7 +12346,8 @@
       "current": "Current",
       "label": "Giao diện",
       "monolith": "Monolith",
-      "classic": "Cổ điển"
+      "classic": "Cổ điển",
+      "atelier": "Atelier"
     },
     "drawer": {
       "close": "Đóng"
@@ -12392,7 +12418,7 @@
     "back": "Quay lại",
     "next": "Tiếp theo",
     "done": "Xong",
-    "welcomeTitle": "Chào mừng đến với AI HR 👋",
+    "welcomeTitle": "Chào mừng đến với AIHR 👋",
     "welcomeBody": "Một chuyến tham quan nhanh 30 giây để biết mọi thứ nằm ở đâu. Bạn có thể xem lại bất cứ lúc nào từ nút trợ giúp trên thanh trên cùng.",
     "navTitle": "Thanh điều hướng của bạn",
     "navBody": "Mọi phân hệ đều nằm trong thanh bên này. Những gì bạn thấy ở đây tùy thuộc vào vai trò của bạn — nhân viên, quản lý và quản trị viên nhân sự đều có công cụ riêng.",
@@ -15149,7 +15175,9 @@
     "delegationTitle": "Ủy quyền phê duyệt",
     "delegationSubtitle": "Ủy quyền các nhiệm vụ phê duyệt của bạn cho người dùng khác",
     "loadError": "Đã xảy ra lỗi khi tải. Vui lòng thử lại.",
-    "retry": "Thử lại"
+    "retry": "Thử lại",
+    "quickActions": "Thao tác nhanh",
+    "goTo": "Đi tới"
   },
   "delegations": {
     "title": "Ủy quyền phê duyệt",
@@ -15447,7 +15475,9 @@
     "pageNumber": "Trang {n}",
     "truncated": "Đang hiển thị {shown, number} dòng đầu tiên trong tổng số {total, number} dòng.",
     "truncatedHint": "Dùng Báo cáo → Xuất dữ liệu để lấy toàn bộ.",
-    "truncatedExport": "Xuất toàn bộ dữ liệu"
+    "truncatedExport": "Xuất toàn bộ dữ liệu",
+    "previousPage": "Trang trước",
+    "nextPage": "Trang sau"
   },
   "movementSettings": {
     "title": "Cài đặt biến động",

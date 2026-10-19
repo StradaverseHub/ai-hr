@@ -267,7 +267,7 @@
     "breakStopUsingHint": "Tick this, then give each break its own Flexible minutes below."
   },
   "common": {
-    "appName": "Kingdee AI HR",
+    "appName": "AIHR",
     "language": "Language",
     "save": "Save",
     "cancel": "Cancel",
@@ -351,7 +351,7 @@
     "usersRoles": "Users & roles",
     "collapse": "Collapse",
     "expand": "Expand",
-    "home": "AI HR home",
+    "home": "AIHR home",
     "knowledgeBase": "Knowledge Base",
     "claimsConfig": "Claims config",
     "claims": "Claims",
@@ -538,7 +538,31 @@
     "block_plannedAbsences": "Leave Calendar",
     "block_recentlyJoined": "Recently Joined",
     "block_upcomingEvents": "Upcoming Events",
-    "block_recentActivity": "Recent Activity"
+    "block_recentActivity": "Recent Activity",
+    "atelier": {
+      "greetingMorning": "Good morning",
+      "greetingAfternoon": "Good afternoon",
+      "greetingEvening": "Good evening",
+      "greetingWithName": "{greeting}, {name}",
+      "pressure": "{count, plural, =0 {nothing needs you right now} one {# item needs you} other {# items need you}}",
+      "askLabel": "Ask the assistant",
+      "askPlaceholder": "Ask about your leave, payslips, holidays or team…",
+      "askSubmit": "Ask",
+      "suggestLeave": "How much annual leave do I have left?",
+      "suggestAway": "Who is away this week?",
+      "suggestPay": "Why did my net pay change?",
+      "suggestHoliday": "When is the next public holiday?",
+      "needsYou": "Needs you",
+      "needsYouEmpty": "You're all caught up. New approvals and tasks will appear here.",
+      "viewAll": "View all",
+      "open": "Open",
+      "undecided": "Waiting for a decision",
+      "decidedToday": "Decided today",
+      "decidedHint": "Each mark shows who decided",
+      "decidedEmpty": "No decisions recorded yet today.",
+      "automatic": "Automatic",
+      "yourDashboard": "Your dashboard"
+    }
   },
   "people": {
     "employeeStatus": {
@@ -12216,7 +12240,8 @@
     "signedInAs": "Signed in as",
     "viewProfile": "View my profile",
     "live": "Live",
-    "scope": "Scope"
+    "scope": "Scope",
+    "breadcrumb": "Breadcrumb"
   },
   "components": {
     "plannedAbsences": {
@@ -12321,7 +12346,8 @@
       "current": "Current",
       "label": "Theme",
       "monolith": "Monolith",
-      "classic": "Classic"
+      "classic": "Classic",
+      "atelier": "Atelier"
     },
     "drawer": {
       "close": "Close"
@@ -12392,7 +12418,7 @@
     "back": "Back",
     "next": "Next",
     "done": "Done",
-    "welcomeTitle": "Welcome to AI HR 👋",
+    "welcomeTitle": "Welcome to AIHR 👋",
     "welcomeBody": "A quick 30-second tour of where everything lives. You can replay it any time from the help button in the top bar.",
     "navTitle": "Your navigation",
     "navBody": "Every module lives in this sidebar. What you see here depends on your role — employees, managers and HR admins each get their own tools.",
@@ -15149,7 +15175,9 @@
     "delegationTitle": "Approval Delegation",
     "delegationSubtitle": "Delegate your approval tasks to another user",
     "loadError": "Something went wrong while loading. Please try again.",
-    "retry": "Try again"
+    "retry": "Try again",
+    "quickActions": "Quick actions",
+    "goTo": "Go to"
   },
   "delegations": {
     "title": "Approval Delegation",
@@ -15447,7 +15475,9 @@
     "pageNumber": "Page {n}",
     "truncated": "Showing the first {shown, number} of {total, number} rows.",
     "truncatedHint": "Use Reports → Export for the complete set.",
-    "truncatedExport": "Export the complete set"
+    "truncatedExport": "Export the complete set",
+    "previousPage": "Previous page",
+    "nextPage": "Next page"
   },
   "movementSettings": {
     "title": "Movement Settings",

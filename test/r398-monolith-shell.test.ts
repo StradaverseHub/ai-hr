@@ -37,6 +37,12 @@ const cnStrings = (src: string) =>
 // This is one exact replacement, not permission to change other Classic shell styling.
 const CLASSIC_NOTIFICATION_PANEL = 'absolute right-0 z-50 mt-2 w-[22rem] overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-card)]';
 const RESPONSIVE_NOTIFICATION_PANEL = 'fixed right-3 z-50 mt-2 w-[22rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-card)] lg:absolute lg:right-0';
+// The Kingdee mark was removed and the app is branded "AIHR" alone (owner decision 2026-10-20): the sidebar
+// badge goes back to a plain primary lettered tile. An approved Classic change, mapped like the notification
+// panel above. Same mapping as the branding branch (claude/app-branding-ai-hr-802edd), which spelled it "AI HR".
+const KINGDEE_BRAND_BADGE = 'grid size-10 shrink-0 place-items-center rounded-2xl bg-white p-1.5 ring-1 ring-border shadow-[var(--shadow-sm)]';
+const KINGDEE_MARK_SIZE = 'size-full';
+const HR_BRAND_BADGE = 'grid size-10 shrink-0 place-items-center rounded-2xl bg-primary text-[13px] font-bold text-primary-foreground shadow-[var(--shadow-sm)]';
 
 describe('Monolith shell wiring', () => {
   it('the monolith: variant keys on <html data-ui-theme="monolith">, like the tokens', () => {
@@ -86,14 +92,24 @@ describe('Classic shell baseline, with the approved mobile notification position
         expect(before.filter(cls => cls === CLASSIC_NOTIFICATION_PANEL)).toHaveLength(1);
         expect(classNames(now).filter(cls => cls === RESPONSIVE_NOTIFICATION_PANEL)).toHaveLength(1);
       }
+      if (file === 'components/sidebar.tsx') {
+        expect(before.filter(cls => cls === KINGDEE_BRAND_BADGE)).toHaveLength(1);
+        expect(classNames(now).filter(cls => cls === HR_BRAND_BADGE)).toHaveLength(1);
+        expect(classNames(now)).not.toContain(KINGDEE_BRAND_BADGE);
+        expect(before.filter(cls => cls === KINGDEE_MARK_SIZE)).toHaveLength(1);
+        expect(now).not.toContain('KingdeeMark');
+      }
       const quoted = cnStrings(onMain(file));
       for (const cls of quoted) {
         const kept = now.includes(`'${cls}'`) || now.includes(`'${cls} monolith:`);
         expect(kept, `Classic cn() class string changed in ${file}: '${cls}'`).toBe(true);
       }
       for (const cls of before) {
+        // The mark's own `size-full` went with the mark; nothing replaces it.
+        if (file === 'components/sidebar.tsx' && cls === KINGDEE_MARK_SIZE) continue;
         const expected = file === 'components/notification-center.tsx' && cls === CLASSIC_NOTIFICATION_PANEL
-          ? RESPONSIVE_NOTIFICATION_PANEL : cls;
+          ? RESPONSIVE_NOTIFICATION_PANEL
+          : file === 'components/sidebar.tsx' && cls === KINGDEE_BRAND_BADGE ? HR_BRAND_BADGE : cls;
         // Either the exact attribute is still there, or the same string with `monolith:` utilities appended.
         const kept = now.includes(`className="${expected}"`) || now.includes(`className="${expected} monolith:`);
         expect(kept, `Classic class string changed in ${file}: "${cls}"`).toBe(true);

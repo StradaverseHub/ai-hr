@@ -1,0 +1,392 @@
+/* Atelier: the assistant-first shell (opt-in, `ui_theme=atelier`). Brief and direction contract:
+   .impeccable/surfaces/app-layout-tsx.md; reference mocks: .impeccable/mocks/shell/.
+   Neutral greys at chroma zero, fire orange as the ONLY accent (primary actions, focus, selection), semantic
+   status colour, and one signature: the maker's mark on work a person confirmed. Everything here is scoped
+   under :root[data-ui-theme='atelier'], so Classic, Monolith and Current compute exactly as before.
+   Like Current, the theme restyles the shell, cards, form focus and every native table under <main> from this
+   file, so it reaches every screen without touching them; components/sidebar.tsx renders its own rail for
+   the structure CSS cannot produce (data-atelier-navigation). */
+:root[data-ui-theme='atelier'] {
+  color-scheme: light;
+  --canvas: #ffffff;
+  --background: #ffffff;
+  --foreground: #1c1c1f;
+  --card: #ffffff;
+  --card-foreground: #1c1c1f;
+  --popover: #ffffff;
+  --popover-foreground: #1c1c1f;
+  --sidebar: #f8f8f9;
+  --sidebar-foreground: #4b4b52;
+  --sidebar-border: #e8e8eb;
+  --primary: #c2410c;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #1c1c1f;
+  --muted: #f4f4f5;
+  --muted-foreground: #5f5f67;
+  --accent: #efeff1;
+  --accent-foreground: #1c1c1f;
+  --destructive: #b42318;
+  --destructive-foreground: #ffffff;
+  --border: #e8e8eb;
+  --input: #d4d4d8;
+  --ring: #c2410c;
+  --radius: .75rem;
+  --radius-panel: .75rem;
+  --shadow-sm: 0 1px 2px rgb(20 20 30 / .05);
+  --shadow-card: none;
+  --shadow-pop: 0 4px 12px -2px rgb(20 20 30 / .08), 0 16px 40px -8px rgb(20 20 30 / .14);
+  --shadow-shell: none;
+  /* Atelier's own roles. */
+  --atelier-ink-3: #66666e;
+  --atelier-line-strong: #dcdce0;
+  --atelier-accent-wash: #fdf1ea;
+  --atelier-accent-hover: #a8380a;
+  --atelier-tan: #8a5a2e;
+  --atelier-tan-wash: #f5ede5;
+  --atelier-ok: #17703f;
+  --atelier-ok-wash: #e8f5ed;
+  --atelier-warn: #8a5300;
+  --atelier-warn-wash: #fdf4e1;
+  --atelier-info: #2353b8;
+  --atelier-info-wash: #ebf1fd;
+  /* The product UI face is the platform's own (the brief: no display font). The CJK / Thai / Tamil
+     fallback chain in --font-sans (app/globals.css @theme) still follows it. */
+  --font-jakarta: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+}
+/* Dark is a supported state, not yet a designed one (the brief lists it as open): neutral greys with the
+   same single accent, lifted for contrast on a dark ground. */
+:root[data-ui-theme='atelier'].dark {
+  color-scheme: dark;
+  --canvas: #111113;
+  --background: #111113;
+  --foreground: #ededef;
+  --card: #18181b;
+  --card-foreground: #ededef;
+  --popover: #1c1c20;
+  --popover-foreground: #ededef;
+  --sidebar: #161618;
+  --sidebar-foreground: #b4b4bc;
+  --sidebar-border: #26262b;
+  --primary: #fb8a4a;
+  --primary-foreground: #1c1c1f;
+  --secondary: #222226;
+  --secondary-foreground: #ededef;
+  --muted: #222226;
+  --muted-foreground: #a8a8b0;
+  --accent: #26262b;
+  --accent-foreground: #ededef;
+  --destructive: #ff8a80;
+  --destructive-foreground: #1c1c1f;
+  --border: #2a2a2f;
+  --input: #3a3a40;
+  --ring: #fb8a4a;
+  --atelier-ink-3: #a8a8b0;
+  --atelier-line-strong: #34343a;
+  --atelier-accent-wash: #3a2418;
+  --atelier-accent-hover: #fca06c;
+  --atelier-tan: #e0b48a;
+  --atelier-tan-wash: #2e241c;
+  --atelier-ok: #7fd3a1;
+  --atelier-ok-wash: #16281e;
+  --atelier-warn: #f2c26b;
+  --atelier-warn-wash: #2c2312;
+  --atelier-info: #9cbcff;
+  --atelier-info-wash: #18223a;
+}
+
+@media screen {
+  /* ── The shell: flat, edge to edge ─────────────────────────────────────────────────────────────── */
+  :root[data-ui-theme='atelier'] body { background: var(--background); }
+  :root[data-ui-theme='atelier'] body:has([data-app-shell]) { padding: 0; }
+  :root[data-ui-theme='atelier'] [data-app-shell] { gap: 0; }
+  :root[data-ui-theme='atelier'] [data-app-content] { gap: 0; }
+  :root[data-ui-theme='atelier'] [data-app-header] {
+    height: 3rem; min-height: 3rem; border-radius: 0; border-width: 0 0 1px; box-shadow: none;
+    background: var(--background); padding-inline: 1.25rem 1rem;
+  }
+  :root[data-ui-theme='atelier'] [data-shell-group-label] { display: none; }
+  /* The header is a three-track grid built around the centre search; Atelier hides that track (Quick actions
+     lives in the rail), and a grid with a hidden middle child would drop the right cluster into the narrow
+     centre track. So the bar is a row instead, as in Monolith: where-you-are on the left, you on the right. */
+  :root[data-ui-theme='atelier'] [data-app-header] { display: flex; align-items: center; gap: 1rem; }
+  :root[data-ui-theme='atelier'] [data-app-header] > div:first-child { flex: 1 1 auto; min-width: 0; }
+  :root[data-ui-theme='atelier'] [data-app-header] > div:last-child { flex: none; margin-left: auto; }
+  :root[data-ui-theme='atelier'] .atelier-crumb { flex: none; max-width: 22rem; }
+  :root[data-ui-theme='atelier'] [data-app-content] > main { padding: 1.75rem 2rem 2.5rem; }
+  @media (max-width: 639px) {
+    :root[data-ui-theme='atelier'] [data-app-content] > main { padding: 1rem; }
+  }
+  :root[data-ui-theme='atelier'] main h1 { letter-spacing: -.015em; }
+
+  /* ── Cards, form focus, the company switcher ──────────────────────────────────────────────────── */
+  :root[data-ui-theme='atelier'] [data-ui-card] { border-radius: .75rem; border-color: var(--border); box-shadow: none; }
+  :root[data-ui-theme='atelier'] :is(input,select,textarea) { accent-color: var(--primary); }
+  /* Elements that opt out with `outline-none` show focus on their own container (the command bar's input,
+     the ask box), so the ring does not draw a second box inside the first. */
+  :root[data-ui-theme='atelier'] :is(button,a,input,select,textarea,[tabindex]):focus-visible:not(.outline-none) {
+    outline: 2px solid var(--ring); outline-offset: 2px;
+  }
+  :root[data-ui-theme='atelier'] [data-company-switcher] {
+    min-height: 1.875rem; border: 1px solid var(--border); border-radius: .5rem;
+    background: var(--background); padding-inline: .625rem; color: var(--sidebar-foreground); font-size: .8125rem;
+  }
+  :root[data-ui-theme='atelier'] [data-company-switcher]:hover { background: var(--accent); color: var(--foreground); }
+
+  /* ── Native tables under <main>: one vocabulary for every list ─────────────────────────────────────
+     Sentence-case 12.5px headers on a hairline, 44px rows, a quiet hover, tabular figures. Sorting, sticky
+     columns, row actions and StackedTable's container queries are untouched: only paint changes. */
+  :root[data-ui-theme='atelier'] main table { font-variant-numeric: tabular-nums; border-color: var(--border); }
+  :root[data-ui-theme='atelier'] main table thead { background: var(--background); color: var(--atelier-ink-3); }
+  :root[data-ui-theme='atelier'] main table thead th {
+    font-size: .78125rem; font-weight: 500; letter-spacing: 0; text-transform: none;
+    border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  :root[data-ui-theme='atelier'] main table tbody tr { border-color: var(--border); }
+  :root[data-ui-theme='atelier'] main table tbody td { border-color: var(--border); height: 2.75rem; }
+  :root[data-ui-theme='atelier'] main table tbody tr:hover,
+  :root[data-ui-theme='atelier'] main table tbody tr:focus-within { background: var(--sidebar); }
+
+  /* ── The rail (components/sidebar.tsx, data-atelier-navigation) ─────────────────────────────────── */
+  :root[data-ui-theme='atelier'] .atelier-rail {
+    display: flex; flex-direction: column; width: 15.5rem; height: 100%; min-height: 0;
+    background: var(--sidebar); border-right: 1px solid var(--sidebar-border); color: var(--sidebar-foreground);
+    font-size: .84375rem;
+  }
+  :root[data-ui-theme='atelier'] .atelier-workspace {
+    display: flex; align-items: center; gap: .625rem; padding: .75rem .75rem .5rem .875rem;
+    color: var(--foreground); font-weight: 600; font-size: .875rem; text-decoration: none;
+  }
+  :root[data-ui-theme='atelier'] .atelier-workspace [data-brand-tile] {
+    display: grid; place-items: center; width: 1.75rem; height: 1.75rem; flex: none; border-radius: .4375rem;
+    background: var(--primary); color: var(--primary-foreground); font-size: .6875rem; font-weight: 700; letter-spacing: .02em;
+  }
+  :root[data-ui-theme='atelier'] .atelier-workspace span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  :root[data-ui-theme='atelier'] .atelier-quick {
+    display: flex; align-items: center; gap: .5rem; margin: .25rem .625rem .75rem; height: 1.875rem; padding: 0 .5rem;
+    border: 1px solid var(--atelier-line-strong); border-radius: .5rem; background: var(--background);
+    color: var(--sidebar-foreground); box-shadow: var(--shadow-sm); text-align: left;
+  }
+  :root[data-ui-theme='atelier'] .atelier-quick:hover { color: var(--foreground); }
+  :root[data-ui-theme='atelier'] .atelier-quick kbd {
+    margin-left: auto; font: inherit; font-size: .6875rem; line-height: 1rem; padding: 0 .25rem;
+    color: var(--atelier-ink-3); border: 1px solid var(--border); border-radius: .25rem; background: var(--sidebar);
+  }
+  :root[data-ui-theme='atelier'] .atelier-nav { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 0 .5rem .75rem; }
+  :root[data-ui-theme='atelier'] .atelier-section {
+    display: flex; width: 100%; align-items: center; justify-content: space-between; height: 1.75rem;
+    margin-top: .625rem; padding: 0 .5rem; border-radius: .375rem;
+    font-size: .75rem; font-weight: 500; color: var(--atelier-ink-3); text-align: left;
+  }
+  :root[data-ui-theme='atelier'] .atelier-section:hover { color: var(--foreground); }
+  :root[data-ui-theme='atelier'] .atelier-row {
+    display: flex; width: 100%; align-items: center; gap: .625rem; min-height: 1.875rem; padding: 0 .5rem;
+    border-radius: .375rem; color: var(--sidebar-foreground); text-decoration: none; text-align: left;
+  }
+  :root[data-ui-theme='atelier'] .atelier-row:hover { background: var(--accent); color: var(--foreground); }
+  :root[data-ui-theme='atelier'] .atelier-row[aria-current='page'] { background: #e9e9ec; color: var(--foreground); font-weight: 500; }
+  :root[data-ui-theme='atelier'].dark .atelier-row[aria-current='page'] { background: #2c2c32; }
+  :root[data-ui-theme='atelier'] .atelier-row svg { width: 1rem; height: 1rem; flex: none; color: var(--atelier-ink-3); }
+  :root[data-ui-theme='atelier'] .atelier-row[aria-current='page'] svg { color: var(--foreground); }
+  :root[data-ui-theme='atelier'] .atelier-row .atelier-count { margin-left: auto; font-size: .71875rem; font-variant-numeric: tabular-nums; color: var(--primary); font-weight: 600; }
+  :root[data-ui-theme='atelier'] .atelier-row .atelier-chevron { margin-left: auto; width: .875rem; height: .875rem; transition: transform 150ms cubic-bezier(.23,1,.32,1); }
+  :root[data-ui-theme='atelier'] .atelier-row[aria-expanded='false'] .atelier-chevron { transform: rotate(-90deg); }
+  :root[data-ui-theme='atelier'] .atelier-kids { display: flex; flex-direction: column; margin: .125rem 0 .25rem 1.0625rem; padding-left: .625rem; border-left: 1px solid var(--sidebar-border); }
+  :root[data-ui-theme='atelier'] .atelier-kids .atelier-row { min-height: 1.75rem; }
+  :root[data-ui-theme='atelier'] .atelier-kids .atelier-row > span { margin-left: auto; }
+  :root[data-ui-theme='atelier'] .atelier-user {
+    display: flex; align-items: center; gap: .625rem; padding: .625rem .875rem; border-top: 1px solid var(--sidebar-border);
+    line-height: 1.25;
+  }
+  :root[data-ui-theme='atelier'] .atelier-user b { display: block; font-weight: 500; color: var(--foreground); font-size: .8125rem; }
+  :root[data-ui-theme='atelier'] .atelier-user span { font-size: .75rem; color: var(--atelier-ink-3); }
+  :root[data-ui-theme='atelier'] .atelier-avatar {
+    display: grid; place-items: center; flex: none; width: 1.75rem; height: 1.75rem; border-radius: 999px;
+    background: var(--primary); color: var(--primary-foreground); font-size: .6875rem; font-weight: 600;
+  }
+  :root[data-ui-theme='atelier'] .atelier-crumb { display: inline-flex; min-width: 0; align-items: center; gap: .375rem; color: var(--atelier-ink-3); font-size: .84375rem; white-space: nowrap; }
+  :root[data-ui-theme='atelier'] .atelier-crumb b { font-weight: 500; color: var(--foreground); overflow: hidden; text-overflow: ellipsis; }
+  :root[data-ui-theme='atelier'] .atelier-crumb i { color: var(--atelier-line-strong); font-style: normal; }
+
+  /* ── The maker's mark: the one signature ───────────────────────────────────────────────────────────
+     Dashed ring = prepared or pending, nobody has signed. Debossed disc = a named person decided it. */
+  :root[data-ui-theme='atelier'] .atelier-mark {
+    display: grid; place-items: center; flex: none; width: 1.75rem; height: 1.75rem; border-radius: 999px;
+    background: var(--atelier-tan-wash); color: var(--atelier-tan); font-size: .65625rem; font-weight: 700; letter-spacing: .04em;
+    box-shadow: inset 1px 1px 2px rgb(80 40 10 / .32), inset -1px -1px 1px rgb(255 255 255 / .8);
+  }
+  :root[data-ui-theme='atelier'] .atelier-unmarked { flex: none; width: 1.75rem; height: 1.75rem; border-radius: 999px; border: 1.5px dashed var(--atelier-line-strong); }
+}
+
+/* ── Home (app/dashboard-atelier.tsx, mock .impeccable/mocks/shell/home.html) ─────────────────────── */
+@media screen {
+  /* The page is as wide as the existing dashboard grid needs (72rem, Classic's max-w-6xl); the new sections
+     above it keep the 860px reading column of the mock, so a card grid is never squeezed into a text measure. */
+  :root[data-ui-theme='atelier'] .atelier-home { max-width: 72rem; margin: 0 auto; padding-top: 1.5rem; display: flex; flex-direction: column; gap: 2.25rem; }
+  :root[data-ui-theme='atelier'] .atelier-home > :not(.atelier-dash) { width: 100%; max-width: 53.75rem; margin-inline: auto; }
+  :root[data-ui-theme='atelier'] .atelier-hello h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -.015em; line-height: 1.25; color: var(--foreground); text-wrap: balance; }
+  :root[data-ui-theme='atelier'] .atelier-hello p { margin-top: .25rem; color: var(--atelier-ink-3); font-size: .875rem; }
+  :root[data-ui-theme='atelier'] .atelier-ask-form { display: flex; flex-direction: column; gap: .875rem; margin-top: -1rem; }
+  :root[data-ui-theme='atelier'] .atelier-ask {
+    border: 1px solid var(--atelier-line-strong); border-radius: .75rem; background: var(--card);
+    box-shadow: 0 1px 2px rgb(20 20 30 / .04), 0 4px 16px -4px rgb(20 20 30 / .08);
+    transition: border-color 150ms, box-shadow 150ms;
+  }
+  :root[data-ui-theme='atelier'] .atelier-ask:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent), 0 4px 16px -4px rgb(20 20 30 / .08); }
+  :root[data-ui-theme='atelier'] .atelier-ask textarea {
+    display: block; width: 100%; min-height: 4rem; resize: none; border: 0; outline: 0; background: transparent;
+    padding: 1rem 1rem .375rem; font-size: .9375rem; line-height: 1.5; color: var(--foreground);
+  }
+  :root[data-ui-theme='atelier'] .atelier-ask textarea:focus-visible { outline: none; }
+  :root[data-ui-theme='atelier'] .atelier-ask textarea::placeholder { color: var(--atelier-ink-3); }
+  :root[data-ui-theme='atelier'] .atelier-ask-bar { display: flex; justify-content: flex-end; padding: .375rem .625rem .625rem; }
+  :root[data-ui-theme='atelier'] .atelier-send {
+    display: grid; place-items: center; width: 1.875rem; height: 1.875rem; border-radius: .5rem;
+    background: var(--primary); color: var(--primary-foreground); transition: background 150ms, opacity 150ms;
+  }
+  :root[data-ui-theme='atelier'] .atelier-send:hover:not(:disabled) { background: var(--atelier-accent-hover); }
+  :root[data-ui-theme='atelier'] .atelier-send:disabled { background: var(--muted); color: var(--atelier-ink-3); cursor: default; }
+  :root[data-ui-theme='atelier'] .atelier-suggest { display: flex; flex-wrap: wrap; justify-content: center; gap: .5rem; }
+  :root[data-ui-theme='atelier'] .atelier-suggest button {
+    height: 1.875rem; padding: 0 .75rem; border: 1px solid var(--border); border-radius: 999px; background: var(--card);
+    color: var(--sidebar-foreground); font-size: .8125rem; transition: background 150ms, color 150ms;
+  }
+  :root[data-ui-theme='atelier'] .atelier-suggest button:hover { background: var(--sidebar); color: var(--foreground); }
+  :root[data-ui-theme='atelier'] .atelier-sect-h { display: flex; align-items: center; gap: .5rem; margin-bottom: .5rem; padding: 0 .25rem; }
+  :root[data-ui-theme='atelier'] .atelier-sect-h h2 { font-size: .875rem; font-weight: 600; color: var(--foreground); }
+  :root[data-ui-theme='atelier'] .atelier-n { font-size: .75rem; font-variant-numeric: tabular-nums; color: var(--primary); font-weight: 600; }
+  :root[data-ui-theme='atelier'] .atelier-hint { font-size: .75rem; color: var(--atelier-ink-3); }
+  :root[data-ui-theme='atelier'] .atelier-sect-link { margin-left: auto; display: inline-flex; align-items: center; gap: .25rem; font-size: .8125rem; color: var(--sidebar-foreground); }
+  :root[data-ui-theme='atelier'] .atelier-sect-link:hover { color: var(--foreground); }
+  :root[data-ui-theme='atelier'] .atelier-empty { border: 1px dashed var(--border); border-radius: .75rem; padding: 1rem 1.125rem; font-size: .875rem; color: var(--atelier-ink-3); }
+  :root[data-ui-theme='atelier'] .atelier-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: .75rem; overflow: hidden; background: var(--card); }
+  :root[data-ui-theme='atelier'] .atelier-item { display: grid; grid-template-columns: 1.75rem minmax(0,1fr) auto; align-items: center; gap: .75rem; padding: .6875rem .875rem; }
+  :root[data-ui-theme='atelier'] .atelier-item + .atelier-item { border-top: 1px solid var(--border); }
+  :root[data-ui-theme='atelier'] .atelier-item:hover { background: var(--sidebar); }
+  :root[data-ui-theme='atelier'] .atelier-t { font-weight: 500; font-size: .875rem; color: var(--foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  :root[data-ui-theme='atelier'] .atelier-m { margin-top: .0625rem; font-size: .78125rem; color: var(--atelier-ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  :root[data-ui-theme='atelier'] .atelier-btn {
+    display: inline-flex; align-items: center; height: 1.75rem; padding: 0 .75rem; border-radius: .5rem;
+    border: 1px solid var(--atelier-line-strong); background: var(--card); color: var(--foreground); font-size: .8125rem; font-weight: 500;
+    box-shadow: var(--shadow-sm); white-space: nowrap;
+  }
+  :root[data-ui-theme='atelier'] .atelier-btn:hover { background: var(--sidebar); }
+  :root[data-ui-theme='atelier'] .atelier-by { text-align: right; font-size: .75rem; line-height: 1.35; color: var(--atelier-ink-3); font-variant-numeric: tabular-nums; }
+  @media (max-width: 639px) {
+    :root[data-ui-theme='atelier'] .atelier-home { padding-top: .5rem; gap: 1.75rem; }
+    :root[data-ui-theme='atelier'] .atelier-suggest { justify-content: flex-start; }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-ui-theme='atelier'] :is(.atelier-ask, .atelier-send, .atelier-suggest button, .atelier-row .atelier-chevron) { transition: none; }
+}
+
+/* ── The component pass: every page, no page code ─────────────────────────────────────────────────
+   Pages keep their layout (per-page redesigns are later rounds); their parts take the Atelier vocabulary
+   from the kit's own hooks (components/ui.tsx: data-page-header, data-ui-card, data-ui-card-header,
+   data-ui-section-header, data-ui-status) and from the two button class contracts every screen shares
+   (btnPrimary / Button default = `bg-primary`, btnGhost / Button outline = `border-input`). */
+@media screen {
+  /* Page header: a real title and a hairline, the way the shell's top bar reads. */
+  :root[data-ui-theme='atelier'] main [data-page-header] { padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
+  :root[data-ui-theme='atelier'] main [data-page-header] h1 { font-size: 1.375rem; font-weight: 600; letter-spacing: -.015em; line-height: 1.25; text-wrap: balance; }
+  :root[data-ui-theme='atelier'] main [data-page-header] h1 + p { color: var(--atelier-ink-3); }
+
+  /* Cards: flat, one hairline, a quiet tinted header strip in sentence case. */
+  :root[data-ui-theme='atelier'] main [data-ui-card] { background: var(--card); }
+  /* Only a header INSIDE a card is a strip; a section header standing on the page stays a plain heading. */
+  :root[data-ui-theme='atelier'] main [data-ui-section-header] { letter-spacing: 0; text-transform: none; }
+  :root[data-ui-theme='atelier'] main :is([data-ui-card-header], [data-ui-card] [data-ui-section-header]) {
+    background: var(--sidebar); border-color: var(--border); color: var(--foreground);
+    font-size: .8125rem; font-weight: 600; letter-spacing: 0; text-transform: none;
+  }
+  :root[data-ui-theme='atelier'] main [data-ui-card] > [data-ui-card-header]:first-child,
+  :root[data-ui-theme='atelier'] main [data-ui-card] > [data-ui-section-header]:first-child { border-radius: .6875rem .6875rem 0 0; }
+
+  /* Buttons: one height, one corner, one soft shadow; the accent only on the primary. */
+  :root[data-ui-theme='atelier'] main :is(button, a)[class~='inline-flex']:is([class~='bg-primary'], [class~='border-input']) {
+    min-height: 2rem; height: auto; border-radius: .5rem; box-shadow: var(--shadow-sm); font-weight: 500;
+  }
+  :root[data-ui-theme='atelier'] main :is(button, a)[class~='inline-flex'][class~='bg-primary']:hover:not(:disabled) { background: var(--atelier-accent-hover); }
+  :root[data-ui-theme='atelier'] main :is(button, a)[class~='inline-flex'][class~='border-input'] { border-color: var(--atelier-line-strong); background: var(--card); color: var(--foreground); }
+  :root[data-ui-theme='atelier'] main :is(button, a)[class~='inline-flex'][class~='border-input']:hover:not(:disabled) { background: var(--sidebar); }
+
+  /* Fields: a firmer border and the accent halo on focus (fields opt out of the outline ring). */
+  :root[data-ui-theme='atelier'] main :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file'], [type='color']), select, textarea) {
+    border-color: var(--atelier-line-strong); border-radius: .5rem;
+  }
+  :root[data-ui-theme='atelier'] main :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file'], [type='color']), select, textarea):focus-visible {
+    border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+  }
+  :root[data-ui-theme='atelier'] .atelier-ask textarea:focus-visible { box-shadow: none; }
+
+  /* Status pills: a leading dot, so state never rides on colour alone. */
+  :root[data-ui-theme='atelier'] [data-ui-status] { gap: .375rem; padding-inline: .5rem .625rem; }
+  :root[data-ui-theme='atelier'] [data-ui-status]::before { content: ''; width: .375rem; height: .375rem; flex: none; border-radius: 999px; background: currentColor; }
+  :root[data-ui-theme='atelier'] [data-ui-status='draft']::before { background: transparent; border: 1.5px dashed currentColor; }
+
+  /* Tabs: ink for the selected tab, the hairline below; never a coloured block. */
+  :root[data-ui-theme='atelier'] main [role='tab'] { color: var(--atelier-ink-3); }
+  :root[data-ui-theme='atelier'] main [role='tab'][aria-selected='true'] { color: var(--foreground); font-weight: 500; }
+
+  /* Dialogs and popovers: the shell's corner and the one lifted shadow. */
+  :root[data-ui-theme='atelier'] [role='dialog'] { border-radius: .75rem; border-color: var(--border); box-shadow: var(--shadow-pop); }
+}
+
+/* A page's own two-part breadcrumb ("Manage / My tasks") repeats the shell's; a deeper one (a case inside
+   onboarding) carries more than the rail row does and stays. */
+@media screen {
+  :root[data-ui-theme='atelier'] main .onb-breadcrumb:not(:has(> span:nth-child(3))) { display: none; }
+}
+
+/* ── Tables: navigation on top, quiet row actions (owner request 2026-10-20) ───────────────────────
+   A card that holds one of the shared pagers (components/pager.tsx, client-pager.tsx: data-ui-pager)
+   becomes a column whose order is: its title strip, its filter row, the pager, then the table — so the
+   count and the page controls are read before the rows, as in the shell mock. Only paint and order change;
+   every link, form and control is the same element in the same place in the DOM. */
+@media screen {
+  /* The card becomes a wrapping row: title strip on its own line, then the filter row with the pager on its
+     right (the control-panel arrangement), then the table on its own line. */
+  :root[data-ui-theme='atelier'] main [data-ui-card]:has(> [data-ui-pager]) { display: flex; flex-flow: row wrap; }
+  :root[data-ui-theme='atelier'] main [data-ui-card]:has(> [data-ui-pager]) > * { order: 1; flex: 0 0 100%; min-width: 0; }
+  :root[data-ui-theme='atelier'] main [data-ui-card]:has(> [data-ui-pager]) > :is([data-ui-card-header], [data-ui-section-header]) { order: -3; }
+  :root[data-ui-theme='atelier'] main [data-ui-card]:has(> [data-ui-pager]) > form { order: -2; flex: 1 1 24rem; border-bottom: 1px solid var(--border); }
+  :root[data-ui-theme='atelier'] main [data-ui-card] > [data-ui-pager] { order: -1; flex: 1 0 auto; border-top: 0; border-bottom: 1px solid var(--border); }
+
+  /* The compact pager: rows-per-page, "1–25 / 248", and one ‹ › pair joined like a segmented control. */
+  :root[data-ui-theme='atelier'] .atelier-pager {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .75rem;
+    padding: .625rem 1rem; background: var(--card);
+  }
+  :root[data-ui-theme='atelier'] .atelier-pager label {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+  }
+  :root[data-ui-theme='atelier'] .atelier-pager select { height: 1.875rem; border-color: var(--atelier-line-strong); border-radius: .5rem; font-size: .8125rem; }
+  :root[data-ui-theme='atelier'] .atelier-pager-range { font-size: .875rem; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--foreground); white-space: nowrap; }
+  :root[data-ui-theme='atelier'] .atelier-pager-steps {
+    display: inline-flex; border: 1px solid var(--atelier-line-strong); border-radius: .5rem; overflow: hidden;
+    background: var(--card); box-shadow: var(--shadow-sm);
+  }
+  :root[data-ui-theme='atelier'] .atelier-pager-steps > :is(a, button) {
+    display: grid; place-items: center; width: 2rem; height: 1.875rem; color: var(--foreground); transition: background 150ms;
+  }
+  :root[data-ui-theme='atelier'] .atelier-pager-steps > :is(a, button) + :is(a, button) { border-left: 1px solid var(--atelier-line-strong); }
+  :root[data-ui-theme='atelier'] .atelier-pager-steps > :is(a, button):hover:not(:disabled) { background: var(--sidebar); }
+  :root[data-ui-theme='atelier'] .atelier-pager-steps > button:disabled { color: var(--atelier-line-strong); cursor: default; }
+  :root[data-ui-theme='atelier'] .atelier-pager-steps svg { width: 1rem; height: 1rem; }
+  :root[data-ui-theme='atelier'] .atelier-pager-note { flex: 0 0 100%; margin: 0; font-size: .75rem; color: var(--atelier-warn); text-align: right; }
+  :root[data-ui-theme='atelier'] .atelier-pager-note a { color: inherit; text-decoration: underline; }
+
+  /* Row actions: small borderless buttons instead of underlined links; the accent appears on hover only. */
+  :root[data-ui-theme='atelier'] main table td :is(a, button)[class~='underline'] {
+    display: inline-flex; align-items: center; min-height: 1.625rem; padding: 0 .4375rem; border-radius: .375rem;
+    color: var(--foreground); text-decoration: none; font-weight: 500;
+  }
+  :root[data-ui-theme='atelier'] main table td :is(a, button)[class~='underline']:hover { background: var(--accent); color: var(--primary); }
+  /* Hand-made status pills in table cells (not the kit's StatusBadge) get the same leading dot. */
+  :root[data-ui-theme='atelier'] main table td span[class~='rounded-full'][class~='px-2']:not([data-ui-status]) { display: inline-flex; align-items: center; gap: .375rem; }
+  :root[data-ui-theme='atelier'] main table td span[class~='rounded-full'][class~='px-2']:not([data-ui-status])::before {
+    content: ''; width: .375rem; height: .375rem; flex: none; border-radius: 999px; background: currentColor;
+  }
+}
+

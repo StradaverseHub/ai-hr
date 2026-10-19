@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { useIsMonolith } from '@/components/ui-theme-context';
+import { useIsMonolith, useUiTheme } from '@/components/ui-theme-context';
+import { useNavIndex } from '@/components/nav-index-context';
 import { companyScopeLabel } from '@/components/company-switcher';
 
 /**
@@ -15,7 +16,25 @@ import { companyScopeLabel } from '@/components/company-switcher';
 /** The top line's start: the route path in mono, then a hairline tick before the company switcher. */
 export function ShellRoutePath() {
   const monolith = useIsMonolith();
+  const atelier = useUiTheme() === 'atelier';
   const pathname = usePathname();
+  const { active } = useNavIndex();
+  const tTop = useTranslations('topbar');
+  // Atelier round 1 — a breadcrumb from the rail's own current row (components/nav-index-context.tsx):
+  // section, then module, then page. Nothing when the page is not a rail destination (a record detail
+  // reached from a list keeps the list's row lit, so this still names where you are).
+  if (atelier) {
+    if (!active) return null;
+    const trail = [active.section, active.parent].filter((x): x is string => !!x);
+    return (
+      <nav aria-label={tTop('breadcrumb')} className="atelier-crumb" data-shell-path>
+        {trail.map((part) => (
+          <span key={part} className="contents">{part}<i aria-hidden>/</i></span>
+        ))}
+        <b aria-current="page">{active.label}</b>
+      </nav>
+    );
+  }
   if (!monolith) return null;
   return (
     <>

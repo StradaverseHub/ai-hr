@@ -2,6 +2,7 @@ import { getFormatter, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { ASSESSMENT_WINDOWS, MIN_COMPLETED, AGED_OPEN_DAYS, assessProcesses, estimateLoad, parseBoundedInt, parseWindow,
   type AgentRole, type ProcessAssessment } from '@/core/process-assessment';
+import { Info } from 'lucide-react';
 import { Card, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 
 /**
@@ -31,10 +32,12 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
     : hours < 1 ? t('minutesShort', { n: Math.round(hours * 60) })
     : hours < 48 ? t('hours', { n: n(hours) }) : t('days', { n: n(hours / 24) });
 
-  const metric = (label: string, value: string, hint?: string) => <div className="min-w-0">
-    <dt className="text-xs text-muted-foreground">{label}</dt>
-    <dd className="mt-0.5 text-lg font-semibold tabular-nums">{value}</dd>
-    {hint && <dd className="text-xs text-muted-foreground">{hint}</dd>}
+  // One figure per cell. Every label is given two lines of height, so the figures line up on one baseline
+  // whatever a label's length in any locale; the hint is quieter than the figure and omitted when empty.
+  const metric = (label: string, value: string, hint?: string) => <div className="min-w-0 lg:border-l lg:border-border lg:pl-4 lg:first:border-l-0 lg:first:pl-0">
+    <dt className="min-h-[2.5em] text-xs leading-tight text-muted-foreground">{label}</dt>
+    <dd className="mt-1 text-2xl font-semibold leading-none tracking-tight tabular-nums">{value}</dd>
+    {hint && <dd className="mt-1.5 text-xs leading-snug text-muted-foreground">{hint}</dd>}
   </div>;
 
   const card = (p: ProcessAssessment, rank: number) => {
@@ -50,17 +53,19 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
         <span className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium ${ROLE_TONE[p.role]}`}>{t(`roles.${p.role}`)}</span>
       </div>
       {!p.enabled ? <p className="mt-4 text-sm text-muted-foreground">{t('moduleOff')}</p> : m && <>
-        <dl className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+        {/* The reason for the badge sits under it, in the badge's own colour, not at the foot of the card. */}
+        {p.role === 'measure_first' && <p className="mt-3 flex items-start gap-2 rounded-md bg-amber-600/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-200">
+          <Info aria-hidden className="mt-0.5 size-4 shrink-0" />{t('needMore', { min: MIN_COMPLETED })}</p>}
+        <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-5 rounded-lg bg-muted/40 p-4 sm:grid-cols-3 lg:grid-cols-5 lg:gap-x-0">
           {metric(t('started'), n(m.started), m.closedUndecided ? t('completedClosed', { n: n(m.completed), w: n(m.closedUndecided) }) : t('completedOf', { n: n(m.completed) }))}
           {metric(t('open'), n(m.open), m.agedOpen ? t('agedOpen', { n: n(m.agedOpen), days: AGED_OPEN_DAYS }) : undefined)}
-          {metric(t('median'), duration(m.medianHours), t('p90', { value: duration(m.p90Hours) }))}
+          {metric(t('median'), duration(m.medianHours), m.p90Hours == null ? undefined : t('p90', { value: duration(m.p90Hours) }))}
           {metric(t('rework'), m.started ? f.number(m.rework / m.started, { style: 'percent' }) : '—', t('reworkHint'))}
           {p.profile.actionsLinked
             ? metric(t('staffActions'), n(p.staffActionsPer30 ?? 0), acts ? t('automatedShare', { share: f.number(m.automatedActions / acts, { style: 'percent' }) }) : undefined)
             : metric(t('staffActions'), '—', t('notLinked'))}
         </dl>
         {load && <p className="mt-3 text-sm">{load.fte == null ? t('estimateHours', { hours: n(load.hours) }) : t('estimateFte', { hours: n(load.hours), fte: f.number(load.fte, { maximumFractionDigits: 2 }) })} <span className="text-xs text-muted-foreground">{t('estimateLabel')}</span></p>}
-        {p.role === 'measure_first' && <p className="mt-3 text-sm text-muted-foreground">{t('needMore', { min: MIN_COMPLETED })}</p>}
         <div className="mt-4 border-t border-border pt-3">
           <p className="text-xs font-medium text-muted-foreground">{t('candidates')}</p>
           <ul className="mt-2 flex flex-wrap gap-2">{p.profile.actions.map(a => <li key={a.id} className="rounded-md border border-border px-2 py-1 text-xs">

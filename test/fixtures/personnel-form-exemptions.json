@@ -650,7 +650,7 @@
   "components/client-pager.tsx": [
     {
       "tag": "select",
-      "context": "ClientPager",
+      "context": "sizeSelect",
       "hidden": false,
       "occurrences": 1,
       "reason": "Generic table page-size navigation; no Personnel fact or writer."

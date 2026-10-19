@@ -267,7 +267,7 @@
     "breakStopUsingHint": "Tandakan ini, kemudian berikan setiap rehat minit Fleksibel tersendiri di bawah."
   },
   "common": {
-    "appName": "Kingdee AI HR",
+    "appName": "AIHR",
     "language": "Bahasa",
     "save": "Simpan",
     "cancel": "Batal",
@@ -351,7 +351,7 @@
     "usersRoles": "Pengguna & peranan",
     "collapse": "Kuncupkan",
     "expand": "Kembangkan",
-    "home": "Laman utama AI HR",
+    "home": "Laman utama AIHR",
     "knowledgeBase": "Pusat Pengetahuan",
     "claimsConfig": "Konfigurasi tuntutan",
     "claims": "Tuntutan",
@@ -538,7 +538,31 @@
     "block_plannedAbsences": "Kalendar Cuti",
     "block_recentlyJoined": "Baru Menyertai",
     "block_upcomingEvents": "Acara Akan Datang",
-    "block_recentActivity": "Aktiviti Terkini"
+    "block_recentActivity": "Aktiviti Terkini",
+    "atelier": {
+      "greetingMorning": "Selamat pagi",
+      "greetingAfternoon": "Selamat petang",
+      "greetingEvening": "Selamat malam",
+      "greetingWithName": "{greeting}, {name}",
+      "pressure": "{count, plural, =0 {tiada apa yang memerlukan anda sekarang} other {# perkara memerlukan anda}}",
+      "askLabel": "Tanya Pembantu",
+      "askPlaceholder": "Tanya tentang cuti, slip gaji, cuti umum atau pasukan anda…",
+      "askSubmit": "Tanya",
+      "suggestLeave": "Berapa baki cuti tahunan saya?",
+      "suggestAway": "Siapa yang tiada minggu ini?",
+      "suggestPay": "Mengapa gaji bersih saya berubah?",
+      "suggestHoliday": "Bilakah cuti umum yang seterusnya?",
+      "needsYou": "Memerlukan anda",
+      "needsYouEmpty": "Semua sudah selesai. Kelulusan dan tugasan baharu akan dipaparkan di sini.",
+      "viewAll": "Lihat semua",
+      "open": "Buka",
+      "undecided": "Menunggu keputusan",
+      "decidedToday": "Diputuskan hari ini",
+      "decidedHint": "Setiap tanda menunjukkan siapa yang membuat keputusan",
+      "decidedEmpty": "Belum ada keputusan direkodkan hari ini.",
+      "automatic": "Automatik",
+      "yourDashboard": "Papan pemuka anda"
+    }
   },
   "people": {
     "employeeStatus": {
@@ -12216,7 +12240,8 @@
     "signedInAs": "Log masuk sebagai",
     "viewProfile": "Lihat Profil Saya",
     "live": "Langsung",
-    "scope": "Skop"
+    "scope": "Skop",
+    "breadcrumb": "Laluan navigasi"
   },
   "components": {
     "plannedAbsences": {
@@ -12321,7 +12346,8 @@
       "current": "Current",
       "label": "Tema",
       "monolith": "Monolith",
-      "classic": "Klasik"
+      "classic": "Klasik",
+      "atelier": "Atelier"
     },
     "drawer": {
       "close": "Tutup"
@@ -12392,7 +12418,7 @@
     "back": "Kembali",
     "next": "Seterusnya",
     "done": "Selesai",
-    "welcomeTitle": "Selamat datang ke AI HR 👋",
+    "welcomeTitle": "Selamat datang ke AIHR 👋",
     "welcomeBody": "Lawatan pantas 30 saat untuk mengenali lokasi setiap perkara. Anda boleh mainkan semula bila-bila masa melalui butang bantuan di bar atas.",
     "navTitle": "Navigasi anda",
     "navBody": "Setiap modul terletak di bar sisi ini. Apa yang anda nampak di sini bergantung pada peranan anda — pekerja, pengurus dan pentadbir HR masing-masing mempunyai alat tersendiri.",
@@ -15149,7 +15175,9 @@
     "delegationTitle": "Perwakilan Kelulusan",
     "delegationSubtitle": "Wakilkan tugas kelulusan anda kepada pengguna lain",
     "loadError": "Berlaku masalah semasa memuatkan. Sila cuba lagi.",
-    "retry": "Cuba lagi"
+    "retry": "Cuba lagi",
+    "quickActions": "Tindakan pantas",
+    "goTo": "Pergi ke"
   },
   "delegations": {
     "title": "Perwakilan Kelulusan",
@@ -15447,7 +15475,9 @@
     "pageNumber": "Halaman {n}",
     "truncated": "Memaparkan {shown, number} baris pertama daripada {total, number} baris.",
     "truncatedHint": "Guna Laporan → Eksport untuk set lengkap.",
-    "truncatedExport": "Eksport set lengkap"
+    "truncatedExport": "Eksport set lengkap",
+    "previousPage": "Halaman sebelumnya",
+    "nextPage": "Halaman seterusnya"
   },
   "movementSettings": {
     "title": "Tetapan Pergerakan",

@@ -205,7 +205,8 @@ const STATUS_STYLES: Record<string, string> = {
 export function StatusBadge({ status, label }: { status: string | null; label?: string }) {
   const cls = (status && STATUS_STYLES[status]) || 'bg-muted text-muted-foreground';
   return (
-    <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize', cls)}>
+    // `data-ui-status` lets a theme stylesheet recognise the kit's status pill (app/atelier.css); markup only.
+    <span data-ui-status={status ?? undefined} className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize', cls)}>
       {label ?? (status ? status.replace(/_/g, ' ') : '—')}
     </span>
   );

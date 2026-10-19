@@ -12,7 +12,7 @@ const ui=(props:Partial<Parameters<typeof Sidebar>[0]>={})=><NextIntlClientProvi
  <Sidebar isAdmin canApprove canAccessTeam onboardingAccess onboardingMaster onboardingRequisitionsAccess enabledModules={null} defaultCollapsed={false} {...props}/>
 </NextIntlClientProvider>;
 afterEach(()=>{cleanup();document.documentElement.removeAttribute('data-ui-theme');route.pathname='/';route.search='';});
-describe.each(['classic','monolith'] as const)('%s Ops/Strata navigation',theme=>{
+describe.each(['classic','monolith','atelier'] as const)('%s Ops/Strata navigation',theme=>{
  it('switches workspace without navigation and keeps module collapse keyboard-operable',async()=>{
   document.documentElement.setAttribute('data-ui-theme',theme);const user=userEvent.setup();render(ui());
   const strata=screen.getByRole('button',{name:messages.nav.workspaceStrata});
