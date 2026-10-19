@@ -45,6 +45,22 @@ describe('authenticated per-type Movement workbook',()=>{
   const harmless=await zip.generateAsync({type:'nodebuffer',compression:'DEFLATE'});await expect(parse(harmless)).resolves.toMatchObject({fileErrors:['no_data_rows'],records:[]});
   zip.file('xl/fictional-payload.aihr-unused',Buffer.from('fictional inert bytes'));await expect(parse(await zip.generateAsync({type:'nodebuffer',compression:'DEFLATE'}))).rejects.toThrow();
  });
+ it.each(["'Lists'",'Lists'])('admits the exact native Excel-compatible %s absolute named-list form without changing inputs',async sheetName=>{
+  const columns=movementWorkbookLayout(catalog.types[0],resolve),entered=await edit(await make(),wb=>{for(const [key,value]of [['incrementAmount','25.13'],['effectiveDate','2026-10-18']])wb.Sheets.Increment[XLSX.utils.encode_cell({r:5,c:columns.findIndex(c=>c.key===key)})]={t:'s',v:value};});
+  const zip=await JSZip.loadAsync(entered),entry=zip.file('xl/workbook.xml')!,original=await entry.async('string');let names=0;
+  zip.file('xl/workbook.xml',original.replace(/(<definedName\b[^>]*>)([\s\S]*?)(<\/definedName>)/g,(_all,open,ref,close)=>{names++;expect(ref).toMatch(/^(?:&apos;Lists&apos;|'Lists'|Lists)!/);return open+ref.replace(/^(?:&apos;Lists&apos;|'Lists'|Lists)!/,sheetName+'!')+close;}));expect(names).toBeGreaterThan(0);
+  const bytes=await zip.generateAsync({type:'nodebuffer',compression:'DEFLATE'}),parsed=await parse(bytes);expect(parsed.fileErrors).toEqual([]);expect(parsed.records).toHaveLength(1);expect(parsed.records[0]).toMatchObject({employeeCode:subjects[0].employeeCode,incrementAmount:'25.13',cells:{effectiveDate:'2026-10-18'},errors:[]});
+ });
+ it.each(['Other!$A$2:$A$4',"'Other'!$A$2:$A$4",'[other.xlsx]Lists!$A$2:$A$4','Lists!A2:A4','Lists!$A$2:A$4','Lists!$A$1:$A$4','Lists!$A$2:$A$100000','Lists!$A$2:$A$0','SUM(Lists!$A$2:$A$4)','Lists!$A$2:$A$4,Lists!$B$2:$B$4',"'Lists'!$A$2:$A$4+1","'Lists!$A$2:$A$4",'Lists !$A$2:$A$4'])('refuses nonliteral, foreign, relative or malformed named-list reference %s',async ref=>{
+  const zip=await JSZip.loadAsync(await make()),entry=zip.file('xl/workbook.xml')!;let changed=false;
+  zip.file('xl/workbook.xml',(await entry.async('string')).replace(/(<definedName\b[^>]*>)([\s\S]*?)(<\/definedName>)/,(_all,open,_old,close)=>{changed=true;return open+ref+close;}));expect(changed).toBe(true);
+  await expect(parse(await zip.generateAsync({type:'nodebuffer',compression:'DEFLATE'}))).rejects.toThrow('workbook_structure_invalid');
+ });
+ it('keeps the generated defined-name whitelist when accepting unquoted Lists references',async()=>{
+  const zip=await JSZip.loadAsync(await make()),entry=zip.file('xl/workbook.xml')!;
+  zip.file('xl/workbook.xml',(await entry.async('string')).replace(/(<definedName\b[^>]*name=")AIHR_Movement_List_\d+("[^>]*>)/,'$1Other_List$2'));
+  await expect(parse(await zip.generateAsync({type:'nodebuffer',compression:'DEFLATE'}))).rejects.toThrow('workbook_structure_invalid');
+ });
  it('binds physical headings across uploader locale and refuses swapping yellow captions or prefilled identity',async()=>{
   const bytes=await make();await expect(readMovementWorkbook(bytes,{tenantId:a,companyId:a,catalog,resolve:(_k,f)=>'Localized '+f})).resolves.toMatchObject({fileErrors:['no_data_rows']});
   const columns=movementWorkbookLayout(catalog.types[0],resolve),x=columns.findIndex(c=>c.key==='incrementAmount'),y=columns.findIndex(c=>c.key==='effectiveDate');
