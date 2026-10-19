@@ -3270,6 +3270,13 @@
       "when": 1791900000046,
       "tag": "0566_label_import_tenant_code_collision",
       "breakpoints": true
+    },
+    {
+      "idx": 567,
+      "version": "7",
+      "when": 1791900000047,
+      "tag": "0567_employment_test_record",
+      "breakpoints": true
     }
   ]
 }

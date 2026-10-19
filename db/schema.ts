@@ -1159,6 +1159,9 @@ export const employment = pgTable(
     // different, person-keyed table): 'bank_transfer' requires a bank name AND an account number on the
     // person's employee_statutory_my row.
     paymentMethod: paymentMethodEnum('payment_method'),
+    // Explicit HR classification; false means unmarked, never inferred or certified real.
+    // Only new Direct Superior selection in Movement imports consumes this flag.
+    isTestRecord: boolean('is_test_record').notNull().default(false),
     createdAt: createdAt(),
   },
   (t) => [
