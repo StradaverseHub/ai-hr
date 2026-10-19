@@ -3270,6 +3270,13 @@
       "when": 1791900000046,
       "tag": "0566_label_import_tenant_code_collision",
       "breakpoints": true
+    },
+    {
+      "idx": 568,
+      "version": "7",
+      "when": 1791900000048,
+      "tag": "0568_ai_user_default_allowance",
+      "breakpoints": true
     }
   ]
 }
