@@ -267,7 +267,7 @@
     "breakStopUsingHint": "Tick this, then give each break its own Flexible minutes below."
   },
   "common": {
-    "appName": "Kingdee AI HR",
+    "appName": "AIHR",
     "language": "Language",
     "save": "Save",
     "cancel": "Cancel",
@@ -330,7 +330,7 @@
     "usersRoles": "Users & roles",
     "collapse": "Collapse",
     "expand": "Expand",
-    "home": "AI HR home",
+    "home": "AIHR home",
     "knowledgeBase": "Knowledge Base",
     "claimsConfig": "Claims config",
     "claims": "Claims",
@@ -12299,7 +12299,7 @@
     "back": "Back",
     "next": "Next",
     "done": "Done",
-    "welcomeTitle": "Welcome to AI HR 👋",
+    "welcomeTitle": "Welcome to AIHR 👋",
     "welcomeBody": "A quick 30-second tour of where everything lives. You can replay it any time from the help button in the top bar.",
     "navTitle": "Your navigation",
     "navBody": "Every module lives in this sidebar. What you see here depends on your role — employees, managers and HR admins each get their own tools.",

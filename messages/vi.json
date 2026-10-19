@@ -267,7 +267,7 @@
     "breakStopUsingHint": "Đánh dấu ô này, sau đó cho mỗi giờ nghỉ số phút Linh hoạt riêng bên dưới."
   },
   "common": {
-    "appName": "Kingdee AI HR",
+    "appName": "AIHR",
     "language": "Ngôn ngữ",
     "save": "Lưu",
     "cancel": "Hủy",
@@ -330,7 +330,7 @@
     "usersRoles": "Người dùng & vai trò",
     "collapse": "Thu gọn",
     "expand": "Mở rộng",
-    "home": "Trang chủ AI HR",
+    "home": "Trang chủ AIHR",
     "knowledgeBase": "Cơ sở tri thức",
     "claimsConfig": "Cấu hình khoản chi",
     "claims": "Khoản chi",
@@ -12299,7 +12299,7 @@
     "back": "Quay lại",
     "next": "Tiếp theo",
     "done": "Xong",
-    "welcomeTitle": "Chào mừng đến với AI HR 👋",
+    "welcomeTitle": "Chào mừng đến với AIHR 👋",
     "welcomeBody": "Một chuyến tham quan nhanh 30 giây để biết mọi thứ nằm ở đâu. Bạn có thể xem lại bất cứ lúc nào từ nút trợ giúp trên thanh trên cùng.",
     "navTitle": "Thanh điều hướng của bạn",
     "navBody": "Mọi phân hệ đều nằm trong thanh bên này. Những gì bạn thấy ở đây tùy thuộc vào vai trò của bạn — nhân viên, quản lý và quản trị viên nhân sự đều có công cụ riêng.",

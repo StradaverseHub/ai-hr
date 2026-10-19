@@ -267,7 +267,7 @@
     "breakStopUsingHint": "Tandakan ini, kemudian berikan setiap rehat minit Fleksibel tersendiri di bawah."
   },
   "common": {
-    "appName": "Kingdee AI HR",
+    "appName": "AIHR",
     "language": "Bahasa",
     "save": "Simpan",
     "cancel": "Batal",
@@ -330,7 +330,7 @@
     "usersRoles": "Pengguna & peranan",
     "collapse": "Kuncupkan",
     "expand": "Kembangkan",
-    "home": "Laman utama AI HR",
+    "home": "Laman utama AIHR",
     "knowledgeBase": "Pusat Pengetahuan",
     "claimsConfig": "Konfigurasi tuntutan",
     "claims": "Tuntutan",
@@ -12299,7 +12299,7 @@
     "back": "Kembali",
     "next": "Seterusnya",
     "done": "Selesai",
-    "welcomeTitle": "Selamat datang ke AI HR 👋",
+    "welcomeTitle": "Selamat datang ke AIHR 👋",
     "welcomeBody": "Lawatan pantas 30 saat untuk mengenali lokasi setiap perkara. Anda boleh mainkan semula bila-bila masa melalui butang bantuan di bar atas.",
     "navTitle": "Navigasi anda",
     "navBody": "Setiap modul terletak di bar sisi ini. Apa yang anda nampak di sini bergantung pada peranan anda — pekerja, pengurus dan pentadbir HR masing-masing mempunyai alat tersendiri.",

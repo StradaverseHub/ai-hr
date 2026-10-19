@@ -74,7 +74,7 @@ const fontVariables = `${jakarta.variable} ${geistMono.variable} ${schibsted.var
 // no translator here. The brand name is the same string in all six locales anyway — it is a name, not
 // copy — so the sidebar reading it from `common.appName` and this reading it from source stay in step.
 export const metadata: Metadata = {
-  title: 'Kingdee AI HR',
+  title: 'AIHR',
   description: 'AI-native HR platform',
 };
 

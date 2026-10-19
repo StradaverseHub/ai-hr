@@ -5,7 +5,6 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useIsMonolith, useUiTheme } from './ui-theme-context';
-import { KingdeeMark } from './kingdee-mark';
 import {
   ArrowLeftRight,
   BarChart3,
@@ -973,7 +972,7 @@ export function Sidebar({
       <div className="relative hidden h-full shrink-0 sm:block">
         <aside data-app-sidebar data-atelier-navigation className="atelier-rail">
           <Link href="/" aria-label={t('home')} className="atelier-workspace">
-            <span data-brand-ground><KingdeeMark className="size-full" /></span>
+            <span data-brand-tile aria-hidden>AI</span>
             <span>{tCommon('appName')}</span>
           </Link>
           <button type="button" className="atelier-quick" onClick={() => openCommandBar('')}>
@@ -1037,7 +1036,7 @@ export function Sidebar({
     return <div data-current-navigation data-tour="nav" className="current-navigation">
       <div className="current-workspaces">
         <Link href="/" className="current-brand" aria-label={t('home')}>
-          <span data-brand-ground><KingdeeMark className="size-7" /></span>
+          <span data-brand-tile aria-hidden>AI</span>
           <span>{tCommon('appName')}</span>
         </Link>
         <nav aria-label={tCommon('appName')} className="current-workspace-tabs">
@@ -1113,12 +1112,8 @@ export function Sidebar({
             collapsed ? 'justify-center' : 'px-1 py-0.5',
           )}
         >
-          {/* The badge is WHITE in both themes, not `bg-primary` as the old "HR" tile was: the mark's
-              four colours are the brand's own and read correctly only on a light ground. A logo that
-              re-tints with the colour scheme has stopped being the logo. The ring keeps it from
-              dissolving into a light background. */}
-          <span data-brand-ground className="grid size-10 shrink-0 place-items-center rounded-2xl bg-white p-1.5 ring-1 ring-border shadow-[var(--shadow-sm)]">
-            <KingdeeMark className="size-full" />
+          <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-primary text-[13px] font-bold text-primary-foreground shadow-[var(--shadow-sm)]" aria-hidden>
+            AI
           </span>
           {!collapsed && (
             <span className="whitespace-nowrap text-[15px] font-semibold tracking-tight text-foreground">
