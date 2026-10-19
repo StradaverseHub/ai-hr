@@ -1,6 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {essVisibleFields,resolveEssEditableIds,resolveEssPrimaryEditableIds} from '../lib/personnel-ess-contract';
-import {resolveEssVisibleIds,projectEssVisible,projectOwnProfileProposal,ownProfileProposalIsIntact} from '../lib/personnel-ess-visibility';
+import {resolveEssVisibleIds,projectEssVisible,projectOwnProfileProposal,ownProfileProposalIsIntact,linkedEssFieldIds} from '../lib/personnel-ess-visibility';
 import {isProfileVisibilityPolicyValue,type ProfileVisibilityPolicyValue} from '../lib/profile-edit-policy-value';
 const policy=():ProfileVisibilityPolicyValue=>({version:3,fields:Object.fromEntries(essVisibleFields().map(field=>[field.id,'viewOnly'])),primaryOnly:[]});
 describe('ESS three-state disclosure authority',()=>{
@@ -27,6 +27,8 @@ describe('ESS three-state disclosure authority',()=>{
   const raw=policy(),id='profile.personal_details.dateofbirth';
   const visible=resolveEssVisibleIds({...raw,fields:{...raw.fields,[id]:'hide'}});
   expect(visible.has('profile.personal_details.age')).toBe(false);
+  expect(linkedEssFieldIds(id)).toContain('profile.personal_details.age');
+  expect(linkedEssFieldIds(id)).not.toContain('family.family_and_dependents.dateofbirth');
   expect(visible.has('family.family_and_dependents.dateofbirth')).toBe(true);
  });
  it('never exposes hidden proposed values, CAS baselines or free-form reasons through own history',()=>{

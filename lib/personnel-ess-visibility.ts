@@ -3,7 +3,8 @@ import {PERSONNEL_FIELDS,personnelField} from './personnel-field-registry';
 import {isLegacyProfileEditPolicy,isProfileEditPolicyValue,isProfileVisibilityPolicyValue} from './profile-edit-policy-value';
 const explicitAliases:readonly (readonly string[])[]=[
  ['person.fullName','person.firstName','person.lastName'],
- ['person.dateOfBirth','person.age'],
+ // Birth date is written by the compliance owner; age is a derived Person projection.
+ ['compliance.dateOfBirth','person.dateOfBirth','person.age'],
  ['dependent.dateOfBirth','dependent.age'],
  ['employment.hiredOn','employment.groupService','employment.yearOfService'],
  ['employment.joinDate','employment.companyService'],
