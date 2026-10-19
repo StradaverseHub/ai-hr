@@ -2191,7 +2191,8 @@
           "single_type_required": "Choose one movement type for CSV or pasted CSV.",
           "invalid_filter": "A filter is unavailable in this company. Refresh the choices and select again.",
           "invalid_file": "Choose an original XLSX workbook or a valid CSV for the selected type.",
-          "origin": "Reload the page and upload from this application."
+          "origin": "Reload the page and upload from this application.",
+          "blacklist_input_required": "Choose Blacklisted or enter Remarks. Employee ID alone is not a blacklist instruction."
         },
         "v2": {
           "type": "Movement type",

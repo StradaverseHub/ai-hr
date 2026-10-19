@@ -2191,7 +2191,8 @@
           "single_type_required": "Chọn một loại Biến động cho CSV hoặc CSV được dán.",
           "invalid_filter": "Một bộ lọc không khả dụng trong công ty này. Hãy làm mới lựa chọn rồi chọn lại.",
           "invalid_file": "Chọn sổ làm việc XLSX gốc hoặc CSV hợp lệ cho loại đã chọn.",
-          "origin": "Tải lại trang và tải tệp lên từ ứng dụng này."
+          "origin": "Tải lại trang và tải tệp lên từ ứng dụng này.",
+          "blacklist_input_required": "Chọn trạng thái Danh sách đen hoặc nhập Ghi chú. Chỉ có mã nhân viên không phải là chỉ dẫn đưa vào danh sách đen."
         },
         "v2": {
           "type": "Loại Biến động",

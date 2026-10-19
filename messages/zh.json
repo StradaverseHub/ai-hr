@@ -2191,7 +2191,8 @@
           "single_type_required": "请为 CSV 文件或粘贴的 CSV 选择一个人事异动类型。",
           "invalid_filter": "此公司无法使用某个筛选项。请刷新选项并重新选择。",
           "invalid_file": "请选择原始 XLSX 工作簿或符合所选类型的有效 CSV。",
-          "origin": "请重新加载页面，并通过此应用上传。"
+          "origin": "请重新加载页面，并通过此应用上传。",
+          "blacklist_input_required": "请选择“列入黑名单”状态或填写备注。仅填写员工编号并不表示要列入黑名单。"
         },
         "v2": {
           "type": "人事异动类型",

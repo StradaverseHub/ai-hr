@@ -2191,7 +2191,8 @@
           "single_type_required": "Pilih satu jenis Pergerakan untuk CSV atau CSV yang ditampal.",
           "invalid_filter": "Penapis tidak tersedia dalam syarikat ini. Muat semula pilihan dan pilih sekali lagi.",
           "invalid_file": "Pilih buku kerja XLSX asal atau CSV yang sah untuk jenis yang dipilih.",
-          "origin": "Muat semula halaman dan muat naik melalui aplikasi ini."
+          "origin": "Muat semula halaman dan muat naik melalui aplikasi ini.",
+          "blacklist_input_required": "Pilih status Disenarai hitam atau masukkan Catatan. ID Pekerja sahaja bukan arahan untuk menyenaraihitamkan."
         },
         "v2": {
           "type": "Jenis Pergerakan",
