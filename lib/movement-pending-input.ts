@@ -1,8 +1,14 @@
-/** Client-safe names of saved scheduling inputs; absence stays distinct from an explicit clear. */
+/** Client-safe field vocabulary shared by canonical Movement and its form projections. */
+export const MOVEMENT_FLAT_FIELDS = [
+  'orgDivision','employmentCategory','orgRegion','orgBranch','orgTeam','orgSection','orgLine','orgBase',
+] as const;
+export type MovementFlatField = (typeof MOVEMENT_FLAT_FIELDS)[number];
+
+/** Names of saved scheduling inputs; absence stays distinct from an explicit clear. */
 export const MOVEMENT_PENDING_COMPARISON_FIELDS = [
   'companyId','departmentId','positionId','businessUnitId','locationId','gradeId',
   'employmentType','managerEmploymentId','basicSalary','currency','payMode','paymentTerm',
-  'orgDivision','employmentCategory','orgRegion','orgBranch','orgTeam','orgSection','orgLine','orgBase',
+  ...MOVEMENT_FLAT_FIELDS,
 ] as const;
 export const MOVEMENT_PENDING_INPUT_FIELDS = [...MOVEMENT_PENDING_COMPARISON_FIELDS,
   'terminationReasonCode','terminationNoticeDays','resignationDate',
