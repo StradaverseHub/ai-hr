@@ -3,7 +3,7 @@ import { SaxesParser } from 'saxes';
 import { readSpreadsheetArchive, decodeSpreadsheetXml, SpreadsheetArchiveError } from './spreadsheet-archive';
 import { legacyLabelWorkbookStream } from './system-label-xls';
 import * as XLSX from 'xlsx';
-import { LABEL_IMPORT_DEFINITIONS, LABEL_TEMPLATE_DEFINITIONS, LABEL_TEMPLATE_NOTE, type LabelImportRow, type LabelImportPreviewRow } from './system-label-definition';
+import { LABEL_IMPORT_DEFINITIONS, LABEL_TEMPLATE_DEFINITIONS, LABEL_TEMPLATE_NOTE, ORGANISATION_LABEL_KINDS, type LabelImportRow, type LabelImportPreviewRow } from './system-label-definition';
 
 export const LABEL_WORKBOOK_GENERATION=2;
 export const LABEL_WORKBOOK_MAX_BYTES = 5_000_000;
@@ -60,10 +60,13 @@ function checkZip(bytes: Buffer) {
   }
   const sheets:{name:string;part:string}[]=[], ids=new Set<string>(),parts=new Set<string>(),names=new Set<string>();
   const parser=new SaxesParser({xmlns:true}),path:string[]=[];
+  const mainNamespaces=['http://schemas.openxmlformats.org/spreadsheetml/2006/main','http://purl.oclc.org/ooxml/spreadsheetml/main'];
   parser.on('opentag',tag=>{
     path.push(tag.local);
+    if(path.length===1&&(tag.local!=='workbook'||!mainNamespaces.includes(tag.uri)))throw new Error('Invalid Excel workbook.');
+    if(path.join('/')==='workbook/sheets'&&!mainNamespaces.includes(tag.uri))throw new Error('Invalid Excel workbook.');
     if(tag.local!=='sheet')return;
-    if(path.join('/')!=='workbook/sheets/sheet'||!['http://schemas.openxmlformats.org/spreadsheetml/2006/main','http://purl.oclc.org/ooxml/spreadsheetml/main'].includes(tag.uri))throw new Error('Invalid or ambiguous Excel worksheet.');
+    if(path.join('/')!=='workbook/sheets/sheet'||!mainNamespaces.includes(tag.uri))throw new Error('Invalid or ambiguous Excel worksheet.');
     const attributes=Object.fromEntries(Object.values(tag.attributes).map(attribute=>[attribute.local,attribute.value]));
     const relationshipId=Object.values(tag.attributes).find(attribute=>attribute.local==='id'&&/\/relationships$/.test(attribute.uri))?.value;
     const relationship=archive.relationships.get('xl/workbook.xml')?.find(row=>row.id===relationshipId&&/\/worksheet$/.test(row.type));
@@ -77,8 +80,9 @@ function checkZip(bytes: Buffer) {
     if(!/\.xml$/i.test(part))continue;
     const xml=new SaxesParser({xmlns:true});let protectionCount=0;
     xml.on('opentag',tag=>{
-      if(tag.local==='workbookProtection'||tag.local==='fileSharing'&&Object.values(tag.attributes).some(attribute=>/password|hash|salt|spinCount/i.test(attribute.local)))throw new Error('Protected Excel workbooks cannot be imported.');
-      if(tag.local!=='sheetProtection')return;
+      const local=tag.local.toLowerCase();
+      if(local==='workbookprotection'||local==='filesharing'&&Object.values(tag.attributes).some(attribute=>/password|hash|salt|spinCount/i.test(attribute.local)))throw new Error('Protected Excel workbooks cannot be imported.');
+      if(local!=='sheetprotection')return;
       const attributes=Object.values(tag.attributes).filter(attribute=>attribute.uri!=='http://www.w3.org/2000/xmlns/');
       const booleanAttributes=new Set(['sheet','objects','scenarios','formatCells','formatColumns','formatRows','insertColumns','insertRows','insertHyperlinks','deleteColumns','deleteRows','selectLockedCells','sort','autoFilter','pivotTables','selectUnlockedCells']);
       if(++protectionCount>1||!sample||part!==sample.part||attributes.some(attribute=>attribute.uri||!booleanAttributes.has(attribute.local)||!['0','1','true','false'].includes(attribute.value)))throw new Error('Protected Excel workbooks cannot be imported.');
@@ -99,8 +103,8 @@ export function readSystemLabelWorkbook(bytes: Buffer, options:{generation?:numb
   if (wb.SheetNames.length > LABEL_IMPORT_DEFINITIONS.length + 3) throw new Error('Too many worksheets.');
   const rows: LabelImportRow[] = [], seen = new Set<string>();
   for (const sheet of wb.SheetNames) {
-    if (sheet === 'Instructions' || sheet === 'Sample' || sheet === 'Reference' || sheet === LABEL_EXPORT_SHEET) continue;
     for (const [key,cell] of Object.entries(wb.Sheets[sheet])) if(!key.startsWith('!')&&cell?.f)throw new Error(`Formula in ${sheet}!${key}. Enter a literal value.`);
+    if (sheet === 'Instructions' || sheet === 'Sample' || sheet === 'Reference' || sheet === LABEL_EXPORT_SHEET) continue;
     const template=LABEL_TEMPLATE_DEFINITIONS.find(d=>d.sheet===sheet);
     const definition = LABEL_IMPORT_DEFINITIONS.find(d => d.kind === (template?.kind??sheet));
     if(definition&&seen.has(definition.kind))throw new Error(`Duplicate label worksheet: ${sheet}`);
@@ -180,6 +184,95 @@ export function systemLabelExportId(bytes:Buffer):string|null {
 }
 
 type LabelWorkbookReferences={companies:string[][];grades:string[][];employees:string[][]};
+export type LabelTemplateData={samples:Record<string,Record<string,string>[]>;suggestions?:Partial<Record<string,string[]>>};
+const xmlLiteral=(value:string)=>value.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
+const templateFieldHelp:Record<string,string>={
+  Code:'Required new code. Existing codes in this category, in any company, including inactive codes, are skipped. Department Code is its Name; Position Code is its Title.',
+  Label:'Display label. Job Grade requires a label. For Division through Category, blank uses Code.',
+  Description:'Optional detail, except Cost Centres and Business Units require this name.',
+  'Head Employee Code':'Optional active employee from the creation company. Enter the employee code, or the exact code — name shown in Sample. This identifies a person, not Yes/No.',
+  Company:'Creation company: exact permitted company name or its ID if the name is ambiguous. This does not automatically include the company in Criteria.',
+  Criteria:'companies or global. Global requires a group administrator and leaves Criteria Companies blank.',
+  'Criteria Companies':'For companies, enter the complete nonempty list of permitted company names or IDs separated by semicolons. Include the creation company only if it should use this code.',
+  Status:'Active or Inactive for new rows only. Blank defaults to Active. Other values are refused. Existing codes never change status through import.',
+  Rank:'Whole number. Blank defaults to zero.',
+  Name:'Required new Grade Group name. Existing group names are skipped.',
+  'Grade Codes':'Existing Active job-grade codes, separated by semicolons. A grade can belong to only one group. Import new grades first in a separate import.',
+};
+function fictionalSample(kind:string):Record<string,string>{
+  if(kind==='grade_groups')return {Name:'(example) New grade group','Grade Codes':'EXAMPLE_GRADE'};
+  return {Code:'EXAMPLE_NEW',Label:'(example) New label',Description:'(example) Fictional description',Company:'(example) Your company',Criteria:'companies','Criteria Companies':'(example) Your company','Head Employee Code':'',Rank:'0',Status:'Active'};
+}
+/** Clean upload sheets and a separate, scoped, literal-only guide. No data sheet is pre-populated. */
+export async function buildSystemLabelUploadTemplate(p:LabelTemplateData):Promise<Buffer>{
+  const wb=XLSX.utils.book_new();
+  const instructions:string[][]=[
+    ['System Labels — Upload Template'],
+    ['Enter new codes in the blank category sheets from row 3. Keep the note, worksheet names and headers unchanged.'],
+    ['Instructions and Sample are reference only and never imported. Empty upload sheets are ignored. Formulas and protected upload sheets are refused.'],
+    ['Import adds new codes only. Existing codes in this category, for any company, including inactive codes, are skipped. Other valid new rows can still import after preview.'],
+    ['Status accepts Active or Inactive where present; blank means Active. Grade Groups has no Status. Import never updates, restores or deletes existing records.'],
+    ['Maximum 5 MB, 500 filled data rows per category and 7000 per workbook. Suggestions do not block typing or saving; the application validates your completed file.'],
+    ['Company is creation ownership. Criteria independently controls availability. Division through Category, Job Grade and Grade Groups are tenant-wide shared lists.'],
+    ['Sample has up to three permitted current Active rows per category. An (example) row is fictional and appears only when there is no permitted current example.'],
+    ['Sample is grey and protected against accidental edits without a password. This is not encryption or a security boundary.'],
+    [],['Worksheet','Column','How to complete it'],
+  ];
+  for(const definition of LABEL_TEMPLATE_DEFINITIONS)for(const [header,field]of definition.columns)instructions.push([definition.sheet,header,templateFieldHelp[field]]);
+  const guide=XLSX.utils.aoa_to_sheet(instructions);guide['!cols']=[{wch:25},{wch:25},{wch:110}];
+  XLSX.utils.book_append_sheet(wb,guide,'Instructions');
+  for(const definition of LABEL_TEMPLATE_DEFINITIONS){
+    const ws=XLSX.utils.aoa_to_sheet([[LABEL_TEMPLATE_NOTE],definition.columns.map(([header])=>header)]);
+    ws['!cols']=definition.columns.map(([header])=>({wch:header==='Description'||header==='Head (leave approver)'?38:26}));
+    for(let row=2;row<LABEL_WORKBOOK_MAX_ROWS+2;row++)for(let col=0;col<definition.columns.length;col++)ws[XLSX.utils.encode_cell({r:row,c:col})]={t:'s',v:'',z:definition.columns[col][1]==='Rank'?'0':'@'};
+    ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:LABEL_WORKBOOK_MAX_ROWS+1,c:definition.columns.length-1}});
+    ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:definition.columns.length-1}}];
+    XLSX.utils.book_append_sheet(wb,ws,definition.sheet);
+  }
+  const sampleRows:string[][]=[['SAMPLE ONLY – NOT UPLOADED'],['Reference examples only. Enter new codes in the blank category sheets.']];
+  for(const definition of LABEL_TEMPLATE_DEFINITIONS){
+    const rows=p.samples[definition.kind]??[];
+    if(rows.length>3)throw new Error('A Sample category exceeds three examples.');
+    sampleRows.push([], [definition.sheet,...((ORGANISATION_LABEL_KINDS as readonly string[]).includes(definition.kind)?['Company-linked: creation ownership and Criteria are independent.']:['Tenant-wide shared list.'])],definition.columns.map(([header])=>header));
+    for(const row of rows.length?rows:[fictionalSample(definition.kind)])sampleRows.push(definition.columns.map(([,field])=>safe(row[field]??'')));
+  }
+  const sample=XLSX.utils.aoa_to_sheet(sampleRows);sample['!cols']=Array.from({length:8},()=>({wch:30}));sample['!protect']={};
+  XLSX.utils.book_append_sheet(wb,sample,'Sample');
+  const zip=await JSZip.loadAsync(XLSX.write(wb,{type:'buffer',bookType:'xlsx',compression:true}));
+  zip.file('xl/styles.xml','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="3"><font><sz val="11"/><name val="Aptos"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Aptos"/></font><font><color rgb="FF595959"/><sz val="11"/><name val="Aptos"/></font></fonts><fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF4F46E5"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE7E6E6"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="49" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"><alignment wrapText="1"/></xf><xf numFmtId="49" fontId="2" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1" applyNumberFormat="1"><alignment wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>');
+  for(let index=0;index<wb.SheetNames.length;index++){
+    const name=wb.SheetNames[index],path=`xl/worksheets/sheet${index+1}.xml`,entry=zip.file(path)!;
+    let xml=await entry.async('string');const definition=LABEL_TEMPLATE_DEFINITIONS.find(row=>row.sheet===name);
+    xml=xml.replace(/<c\b([^>]*?)>/g,(_all,attributes:string)=>{
+      const address=/\br="([A-Z]+)(\d+)"/.exec(attributes),text=/\bt="(?:s|str|inlineStr)"/.test(attributes);
+      const style=name==='Sample'?3:definition&&address?.[2]==='2'||!definition&&address?.[2]==='1'?2:text?1:0;
+      return '<c'+attributes.replace(/\s+s="[^"]*"/g,'')+` s="${style}">`;
+    });
+    if(definition){
+      const view='<sheetViews><sheetView workbookViewId="0"><pane ySplit="2" topLeftCell="A3" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A3" sqref="A3"/></sheetView></sheetViews>';
+      xml=xml.replace(/<sheetViews>[\s\S]*?<\/sheetViews>/,view);
+      if(!xml.includes('<sheetViews>'))xml=xml.replace(/(<dimension[^>]*\/>)/,'$1'+view);
+      const validations:string[]=[];
+      for(let column=0;column<definition.columns.length;column++){
+        const field=definition.columns[column][1],suggestions=field==='Status'?['Active','Inactive']:field==='Criteria'?['companies','global']:p.suggestions?.[field]??[];
+        const choices=[...new Set(suggestions)].filter(value=>value&&!/[",\r\n]/.test(value));
+        // Inline OOXML lists have a 255-character limit. Omit long suggestions rather than truncate identities.
+        if(!choices.length||choices.join(',').length>253)continue;
+        const col=XLSX.utils.encode_col(column);
+        validations.push(`<dataValidation type="list" allowBlank="1" showErrorMessage="0" sqref="${col}3:${col}${LABEL_WORKBOOK_MAX_ROWS+2}"><formula1>&quot;${xmlLiteral(choices.join(','))}&quot;</formula1></dataValidation>`);
+      }
+      const validation=validations.length?`<dataValidations count="${validations.length}">${validations.join('')}</dataValidations>`:'';
+      const filter=`<autoFilter ref="A2:${XLSX.utils.encode_col(definition.columns.length-1)}${LABEL_WORKBOOK_MAX_ROWS+2}"/>`;
+      xml=xml.replace('</sheetData>','</sheetData>'+filter);
+      const after=xml.includes('</mergeCells>')?'</mergeCells>':'</autoFilter>';
+      xml=xml.replace(after,after+validation);
+    }
+    zip.file(path,xml);
+  }
+  const bytes=await zip.generateAsync({type:'nodebuffer',compression:'DEFLATE'});
+  readSystemLabelWorkbook(bytes);
+  return bytes;
+}
 /** One builder for blank and populated templates. ZIP changes add standard Office worksheet features
  * without a second record owner, formulas, macros or a second spreadsheet dependency. */
 export async function buildSystemLabelWorkbook(p:{references:LabelWorkbookReferences;kinds:string[];rows?:Record<string,Record<string,string>[]>;includeStatus?:boolean;exportId?:string}):Promise<Buffer> {

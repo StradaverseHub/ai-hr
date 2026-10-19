@@ -8,9 +8,8 @@ import { Button, ErrorBanner, tableWrapCls, thCls, theadCls, tbodyCls } from './
 import { LABEL_IMPORT_DEFINITIONS, ORGANISATION_LABEL_KINDS, type LabelImportPreview, type LabelImportPreviewRow } from '@/lib/system-label-definition';
 import type { previewLabelsAction, importLabelsAction } from '@/app/admin/settings/system-labels/import-actions';
 
-export function SystemLabelImport({companies=[],selectedCompanyIds=[]}:{companies?:{id:string;name:string}[];selectedCompanyIds?:string[]}={}) {
+export function SystemLabelImport(_props:{companies?:{id:string;name:string}[];selectedCompanyIds?:string[]}={}) {
   const w=useTranslations('labelsImportWizard'),t=useTranslations('admin.systemLabels.excel'),tx=useTranslations('labelExcelRoundTrip'),tc=useTranslations('admin.systemLabels'),tp=useTranslations('admin.profileOptions'),tg=useTranslations('admin.benefitScheme'),router=useRouter();
-  const [exportOpen,setExportOpen]=useState(false),[exportPending,setExportPending]=useState(false),[exportError,setExportError]=useState('');
   const category=(kind:string)=>(ORGANISATION_LABEL_KINDS as readonly string[]).includes(kind)?tc(`category.${kind}`):kind==='grades'?tc('category.grade'):kind==='grade_groups'?tg('groupsTitle'):tp(`category.${kind}`);
   const rowMessage=(row:LabelImportPreviewRow)=>row.reason==='required'&&row.reasonField?w('required',{field:w(`fields.${row.reasonField}`)}):w(row.reason==='required'?'invalidRow':row.reason??'invalidRow');
   const fileInput=useRef<HTMLInputElement>(null),stepHeading=useRef<HTMLHeadingElement>(null),importTrigger=useRef<HTMLButtonElement>(null);
@@ -49,33 +48,11 @@ export function SystemLabelImport({companies=[],selectedCompanyIds=[]}:{companie
       const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='system-labels-errors.xlsx';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
     }catch(error){setError(error instanceof Error?error.message:w('reportFailed'));}
   });
-  const download=async(e:React.FormEvent<HTMLFormElement>)=>{
-   e.preventDefault();setExportError('');setExportPending(true);
-   try{
-    const d=new FormData(e.currentTarget),q=new URLSearchParams();for(const [key,value]of d)q.append(key,String(value));
-    const response=await fetch('/admin/settings/system-labels/current-data?'+q.toString(),{cache:'no-store'});
-    if(!response.ok){const data=await response.json();throw new Error(data.error??tx('downloadFailed'));}
-    if(!(response.headers.get('Content-Type')??'').includes('spreadsheetml'))throw new Error(tx('downloadFailed'));
-    const blob=await response.blob(),url=URL.createObjectURL(blob),link=document.createElement('a');
-    link.href=url;link.download=/filename="([^"]+)"/.exec(response.headers.get('Content-Disposition')??'')?.[1]??'system-labels.xlsx';
-    document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);setExportOpen(false);
-   }catch(e){setExportError(e instanceof Error?e.message:tx('downloadFailed'));}finally{setExportPending(false);}
-  };
   return <section className="space-y-3" data-label-import>
     <div className="flex flex-wrap justify-end gap-2">
-      <a href="/admin/settings/system-labels/template" className="inline-flex h-9 items-center rounded-md border border-border px-3 text-sm font-medium">{tx('blank')}</a>
-      <Button type="button" variant="outline" onClick={()=>{setExportError('');setExportOpen(true);}}>{tx('current')}</Button>
+      <a href="/admin/settings/system-labels/template" className="inline-flex h-9 items-center rounded-md border border-border px-3 text-sm font-medium">{tx('template')}</a>
       <Button ref={importTrigger} type="button" onClick={()=>{if(summary){setSummary(null);setPreview(null);setFile(null);setError('');}setOpen(true);}}>{t('import')}</Button>
     </div>
-    <Dialog.Root open={exportOpen} onOpenChange={value=>{if(!exportPending)setExportOpen(value);}}><Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-50 bg-black/40"/><Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[90dvh] w-[95vw] max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-border bg-card p-5 shadow-xl">
-      <Dialog.Title className="text-lg font-semibold">{tx('current')}</Dialog.Title><Dialog.Description className="mt-1 text-sm text-muted-foreground">{tx('exportHelp')}</Dialog.Description>
-      <form onSubmit={download} className="mt-4 space-y-4">
-        <fieldset disabled={exportPending} className="space-y-2"><legend className="mb-2 text-sm font-semibold">{tc('companies')}</legend>{companies.map(c=><label key={c.id} className="flex min-h-9 items-center gap-2 text-sm"><input type="checkbox" name="company" value={c.id} defaultChecked={selectedCompanyIds.includes(c.id)}/>{c.name}</label>)}</fieldset>
-        <fieldset disabled={exportPending}><legend className="mb-2 text-sm font-semibold">{tc('categories')}</legend><div className="grid gap-2 sm:grid-cols-2">{LABEL_IMPORT_DEFINITIONS.map(d=><label key={d.kind} className="flex min-h-9 items-center gap-2 text-sm"><input type="checkbox" name="kind" value={d.kind} defaultChecked/>{category(d.kind)}</label>)}</div></fieldset>
-        <label className="flex min-h-9 items-center gap-2 text-sm"><input type="checkbox" name="inactive" value="1" disabled={exportPending}/>{tx('inactive')}</label><ErrorBanner message={exportError}/>
-        <div className="flex justify-end gap-2"><Dialog.Close asChild><Button type="button" variant="secondary" disabled={exportPending}>{tc('cancel')}</Button></Dialog.Close><Button type="submit" disabled={exportPending||!companies.length}>{exportPending?t('working'):tx('download')}</Button></div>
-      </form>
-    </Dialog.Content></Dialog.Portal></Dialog.Root>
     <Dialog.Root open={open} onOpenChange={value=>{if(!pending)setOpen(value);}}><Dialog.Portal>
       <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40"/>
       <Dialog.Content onCloseAutoFocus={event=>{event.preventDefault();importTrigger.current?.focus();}} className="fixed left-1/2 top-1/2 z-50 flex max-h-[92dvh] w-[96vw] max-w-4xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-xl">
@@ -84,7 +61,7 @@ export function SystemLabelImport({companies=[],selectedCompanyIds=[]}:{companie
         <div className="space-y-4 overflow-y-auto p-5" aria-busy={pending}>
           <div role={error?'alert':undefined}><ErrorBanner message={error}/></div>
           {step===1&&<div className="grid gap-6 md:grid-cols-2">
-            <div className="space-y-5"><section><h3 className="font-semibold">1. {w('template')}</h3><a href="/admin/settings/system-labels/template" className="mt-2 inline-flex min-h-9 items-center rounded-md border border-border px-3 text-sm font-medium">{tx('blank')}</a></section><section><h3 className="font-semibold">2. {w('newOnly')}</h3><p className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">{w('warning')}</p></section></div>
+            <div className="space-y-5"><section><h3 className="font-semibold">1. {w('template')}</h3><a href="/admin/settings/system-labels/template" className="mt-2 inline-flex min-h-9 items-center rounded-md border border-border px-3 text-sm font-medium">{tx('template')}</a></section><section><h3 className="font-semibold">2. {w('newOnly')}</h3><p className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">{w('warning')}</p></section></div>
             <section><h3 className="font-semibold">3. {w('upload')}</h3><label className={`relative mt-2 flex min-h-48 cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-primary/40 bg-muted/20 p-5 text-center focus-within:ring-2 focus-within:ring-primary ${pending?'pointer-events-none opacity-60':''}`} onDragOver={event=>{event.preventDefault();}} onDrop={event=>{event.preventDefault();if(!pending)choose(event.dataTransfer.files[0]??null);}}>
               <svg aria-hidden="true" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="text-primary"><path d="M7 18H5a4 4 0 0 1-.7-7.94 7 7 0 0 1 13.43-1.48A4.5 4.5 0 0 1 19 17.9h-2M12 21V10m-4 4 4-4 4 4"/></svg>
               <span className="font-medium">{w('drop')}</span><span className="text-xs text-muted-foreground">{w('accepts')}</span><span className="text-xs text-muted-foreground">{w('maximum')}</span>

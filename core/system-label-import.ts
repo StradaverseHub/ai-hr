@@ -1,6 +1,6 @@
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { createHash, randomUUID } from 'node:crypto';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, sql, isNull, inArray, getTableName } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import * as s from '../db/schema';
 import { actorOf, appendEvent } from '../db/events';
@@ -11,7 +11,7 @@ import { createGradeGroup } from '../packs/leave/service';
 import { EMPLOYMENT_LABEL_CATEGORIES, LABEL_IMPORT_DEFINITIONS, ORGANISATION_LABEL_KINDS,
   ORGANISATION_LABEL_COLUMNS, type OrganisationLabelKind, type LabelImportMode,
   type LabelImportRow, type LabelImportPreview, type LabelImportPreviewRow, type LabelImportRowReason, type LabelImportRequiredField } from '../lib/system-label-definition';
-import { readSystemLabelWorkbook, buildSystemLabelWorkbook, systemLabelExportId, systemLabelErrorWorkbook } from '../lib/system-label-workbook';
+import { readSystemLabelWorkbook, buildSystemLabelWorkbook, buildSystemLabelUploadTemplate, systemLabelExportId, systemLabelErrorWorkbook } from '../lib/system-label-workbook';
 
 class LabelImportRowError extends Error {
   constructor(readonly reason:LabelImportRowReason,message:string,readonly reasonField?:LabelImportRequiredField){super(message);}
@@ -68,12 +68,44 @@ async function catalogue(tx: Tx): Promise<Catalogue> {
   return {companies,orgs,options,grades,groups,members,employees,groupAdmin:permission[0].global};
 }
 
-export function downloadSystemLabelTemplate(ctx: SessionContext): Promise<Buffer> {
+/** Sample is a minimal derived projection, filtered before each category's stable three-row limit.
+ * Origin administration and Criteria visibility are independent gates. */
+export function downloadSystemLabelTemplate(ctx: SessionContext, selectedCompanyIds?:string[]): Promise<Buffer> {
   return withTenant(ctx,async tx => {
-    const c=await catalogue(tx);
-    return buildSystemLabelWorkbook({kinds:LABEL_IMPORT_DEFINITIONS.map(d=>d.kind),references:{companies:c.companies.filter(x=>x.writable&&!x.archived).map(x=>[x.name,x.id]),
-      grades:c.grades.filter(x=>!x.archivedAt).map(x=>[x.code,x.name]),
-      employees:c.employees.filter(x=>c.companies.some(co=>co.id===x.companyId&&co.writable)&&x.code).map(x=>[x.code!,x.companyId,x.name])}});
+    const permission=await tx.execute(sql`select app.is_admin() as allowed`) as unknown as {allowed:boolean}[];
+    if(!permission[0]?.allowed)throw new Error('Only an administrator may import System Labels.');
+    // Names are exposed only after their own administration check; ambiguous names use exact IDs.
+    const companyName=(id:ReturnType<typeof sql>)=>sql<string>`(select case when (select count(*) from company same_name where same_name.tenant_id=co.tenant_id and same_name.legal_name=co.legal_name and app.is_admin_for(same_name.id))=1 then co.legal_name else co.id::text end from company co where co.id=${id} and app.is_admin_for(co.id) and co.archived_at is null)`;
+    const companies=await tx.select({id:s.company.id,name:s.company.legalName,cell:companyName(sql`company.id`)}).from(s.company).where(and(
+      sql`app.is_admin_for(${s.company.id})`,isNull(s.company.archivedAt),
+      selectedCompanyIds===undefined?sql`true`:selectedCompanyIds.length?inArray(s.company.id,[...new Set(selectedCompanyIds)]):sql`false`,
+    )).orderBy(asc(s.company.legalName),asc(s.company.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1);
+    boundedLabelMaintenanceRows(companies);
+    const selected=companies.map(company=>company.id),samples:Record<string,Record<string,string>[]>={};
+    for(const kind of ORGANISATION_LABEL_KINDS){
+      const table={department:s.department,position:s.position,cost_center:s.costCenter,business_unit:s.businessUnit}[kind];
+      const outer=sql.identifier(getTableName(table));
+      const code={department:s.department.name,position:s.position.title,cost_center:s.costCenter.code,business_unit:s.businessUnit.code}[kind];
+      const description={department:s.department.description,position:s.position.description,cost_center:s.costCenter.name,business_unit:s.businessUnit.name}[kind];
+      const headColumn=kind==='department'?s.department.headEmploymentId:kind==='business_unit'?s.businessUnit.headEmploymentId:null;
+      const head=headColumn?sql<string>`(select e.employee_code || ' — ' || p.full_name from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id where e.id=${headColumn} and e.company_id=${outer}.company_id and app.is_admin_for(e.company_id) and e.employee_code is not null and e.hired_on<=${todayInKualaLumpur()}::date and (e.terminated_on is null or e.terminated_on>=${todayInKualaLumpur()}::date) limit 1)`:sql<string>`''`;
+      const rows=await tx.select({code,label:table.label,description,company:companyName(sql`${outer}.company_id`),global:table.isGlobal,
+        criteria:sql<string[]>`array(select ${companyName(sql`lca.company_id`)} from label_company_assignment lca where lca.tenant_id=${outer}.tenant_id and lca.label_kind=${kind} and lca.label_id=${outer}.id order by lca.company_id)`,head,
+      }).from(table).where(and(isNull(table.archivedAt),sql`app.is_admin_for(${table.companyId})`,sql`${companyName(sql`${outer}.company_id`)} is not null`,visibleLabelIdsCondition(table,kind,selected),
+        sql`not exists(select 1 from label_company_assignment private_criteria join company private_company on private_company.id=private_criteria.company_id and private_company.tenant_id=private_criteria.tenant_id where private_criteria.tenant_id=${table.tenantId} and private_criteria.label_kind=${kind} and private_criteria.label_id=${table.id} and (not app.is_admin_for(private_company.id) or private_company.archived_at is not null))`,
+      )).orderBy(asc(code),asc(table.id)).limit(3);
+      samples[kind]=rows.map(row=>({Code:row.code,Label:row.label??'',Description:row.description??'',Company:row.company,Criteria:row.global?'global':'companies','Criteria Companies':row.global?'':row.criteria.join(';'),'Head Employee Code':row.head??'',Status:'Active'}));
+    }
+    for(const category of EMPLOYMENT_LABEL_CATEGORIES){
+      const rows=await tx.select({code:s.profileOption.value,label:s.profileOption.label,description:s.profileOption.description}).from(s.profileOption).where(and(eq(s.profileOption.category,category),eq(s.profileOption.isActive,true))).orderBy(asc(s.profileOption.value),asc(s.profileOption.id)).limit(3);
+      samples[category]=rows.map(row=>({Code:row.code,Label:row.label,Description:row.description??'',Status:'Active'}));
+    }
+    const grades=await tx.select({code:s.jobGrade.code,label:s.jobGrade.name,description:s.jobGrade.description,rank:s.jobGrade.rank}).from(s.jobGrade).where(isNull(s.jobGrade.archivedAt)).orderBy(asc(s.jobGrade.code),asc(s.jobGrade.id)).limit(3);
+    samples.grades=grades.map(row=>({Code:row.code,Label:row.label,Description:row.description??'',Rank:String(row.rank),Status:'Active'}));
+    const groups=await tx.select({name:s.gradeGroup.name,codes:sql<string[]>`array(select jg.code from grade_group_member member join job_grade jg on jg.id=member.grade_id and jg.tenant_id=member.tenant_id where member.grade_group_id=grade_group.id and member.tenant_id=grade_group.tenant_id order by jg.code,jg.id)`}).from(s.gradeGroup).where(isNull(s.gradeGroup.archivedAt)).orderBy(asc(s.gradeGroup.name),asc(s.gradeGroup.id)).limit(3);
+    samples.grade_groups=groups.map(row=>({Name:row.name,'Grade Codes':row.codes.join(';')}));
+    const heads=[...new Set(ORGANISATION_LABEL_KINDS.flatMap(kind=>samples[kind].map(row=>row['Head Employee Code']).filter(Boolean)))];
+    return buildSystemLabelUploadTemplate({samples,suggestions:{Company:companies.map(company=>company.cell),'Head Employee Code':heads,'Grade Codes':grades.map(grade=>grade.code)}});
   });
 }
 

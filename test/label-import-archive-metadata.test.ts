@@ -32,13 +32,13 @@ describe('Labels ZIP metadata is admitted before the workbook parser',()=>{
  });
  it.each(['localCompressed','localSize'] as const)('rejects forged %s before SheetJS can consume it',field=>{
   const bytes=Buffer.from(make()),{start}=directory(bytes),local=bytes.readUInt32LE(start+42);bytes.writeUInt32LE(0x40000000,local+(field==='localCompressed'?18:22));parser.blocked=true;
-  expect(()=>readSystemLabelWorkbook(bytes)).toThrow('Invalid Excel archive size metadata.');expect(parser.calls).toBe(0);
+  expect(()=>readSystemLabelWorkbook(bytes)).toThrow('Invalid Excel archive.');expect(parser.calls).toBe(0);
  });
  it.each(['local','central'] as const)('rejects %s ZIP64 overrides before parser allocation',target=>{
-  const bytes=addExtra(make(),target,0x0001);parser.blocked=true;expect(()=>readSystemLabelWorkbook(bytes)).toThrow('Unsupported Excel archive extra field.');expect(parser.calls).toBe(0);
+  const bytes=addExtra(make(),target,0x0001);parser.blocked=true;expect(()=>readSystemLabelWorkbook(bytes)).toThrow('Invalid Excel archive.');expect(parser.calls).toBe(0);
  });
  it('rejects alternate Unicode path metadata rather than checking a different entry name',()=>{
-  parser.blocked=true;expect(()=>readSystemLabelWorkbook(addExtra(make(),'local',0x7075))).toThrow('Unsupported Excel archive extra field.');expect(parser.calls).toBe(0);
+  parser.blocked=true;expect(()=>readSystemLabelWorkbook(addExtra(make(),'local',0x7075))).toThrow('Invalid Excel archive.');expect(parser.calls).toBe(0);
  });
  it('keeps actual inflation bounded when both local and central declarations lie small',async()=>{
   const zip=new JSZip();zip.file('xl/workbook.xml',' '.repeat(8_000_001));const bytes=await zip.generateAsync({type:'nodebuffer',compression:'DEFLATE'}),{start}=directory(bytes),local=bytes.readUInt32LE(start+42);bytes.writeUInt32LE(1,start+24);bytes.writeUInt32LE(1,local+22);parser.blocked=true;
