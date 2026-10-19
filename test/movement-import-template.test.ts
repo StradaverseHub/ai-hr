@@ -1,6 +1,7 @@
 import {beforeEach,afterEach,describe,it,expect,vi} from 'vitest';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
+import {SaxesParser} from 'saxes';
 import {buildMovementWorkbook,readMovementWorkbook} from '../lib/movement-workbook.server';
 import {movementWorkbookLayout,movementWorkbookRequirements} from '../lib/movement-workbook-layout';
 import {parseMovementTypeCsv,movementTypeCsvTemplate,movementInputRecord} from '../lib/movement-type-csv';
@@ -64,14 +65,21 @@ describe('authenticated per-type Movement workbook',()=>{
   const type={code:'confirmation',label:'Confirmation',behaviour:'confirmation'},columns=movementWorkbookLayout(type,resolve),address=(key:string,row=5)=>XLSX.utils.encode_cell({r:row,c:columns.findIndex(c=>c.key===key)});
   const bytes=await buildMovementWorkbook({tenantId:a,companyId:a,companyName:'Fictional A',catalog:{...catalog,types:[type]},subjects:[{...subjects[0],current:{...subjects[0].current,joinDate:'2026-01-06',probationEndDate:'2026-11-01',basicSalary:'0'}}],typeCode:type.code,resolve});
   const wb=XLSX.read(bytes,{type:'buffer',cellNF:true,cellFormula:true}),sheet=wb.Sheets.Confirmation,zip=await JSZip.loadAsync(bytes),styles=await zip.file('xl/styles.xml')!.async('string'),xml=await zip.file('xl/worksheets/sheet2.xml')!.async('string');
-  const formats=[...styles.matchAll(/<numFmt\b[^>]*numFmtId="(\d+)"[^>]*formatCode="([^"]*)"[^>]*\/>/g)];expect(new Set(formats.map(f=>f[1])).size).toBe(formats.length);
-  const xfs=/<cellXfs[^>]*>([\s\S]*?)<\/cellXfs>/.exec(styles)![1].match(/<xf\b[^>]*(?:\/>|>[\s\S]*?<\/xf>)/g)!;
-  const style=(cell:string)=>{const entry=new RegExp('<c\\b[^>]*r="'+cell+'"[^>]*>').exec(xml)![0];return xfs[Number(/\bs="(\d+)"/.exec(entry)![1])];};
+  const formats=new Map<string,string>(),xfs:Record<string,string>[]=[],cellStyles=new Map<string,number>();let inCellXfs=false,currentStyle:Record<string,string>|undefined;
+  const styleParser=new SaxesParser({xmlns:true});styleParser.on('opentag',tag=>{
+   const attrs=Object.fromEntries(Object.values(tag.attributes).map(a=>[a.local,a.value]));
+   if(tag.local==='numFmt'){expect(formats.has(attrs.numFmtId)).toBe(false);formats.set(attrs.numFmtId,attrs.formatCode);}
+   if(tag.local==='cellXfs')inCellXfs=true;
+   if(tag.local==='xf'&&inCellXfs){currentStyle=attrs;xfs.push(attrs);}
+   if(tag.local==='protection'&&currentStyle)Object.assign(currentStyle,attrs);
+  });styleParser.on('closetag',tag=>{if(tag.local==='cellXfs')inCellXfs=false;if(tag.local==='xf')currentStyle=undefined;});styleParser.write(styles).close();
+  const sheetParser=new SaxesParser({xmlns:true});sheetParser.on('opentag',tag=>{if(tag.local==='c'){const attrs=Object.fromEntries(Object.values(tag.attributes).map(a=>[a.local,a.value]));cellStyles.set(attrs.r,Number(attrs.s??0));}});sheetParser.write(xml).close();
+  const style=(cell:string)=>{const id=cellStyles.get(cell);expect(id).toBeDefined();expect(xfs[id!]).toBeDefined();return xfs[id!];};
   // SheetJS may retain an unused format60 declaration. Inspect the final cell XF reference, not the first matching declaration.
-  const dateFormatId=/\bnumFmtId="(\d+)"/.exec(style(address('effectiveDate')))![1],explicit=formats.find(f=>f[1]===dateFormatId);expect(Number(dateFormatId)).toBeGreaterThanOrEqual(164);expect(explicit?.[2]).toBe('dd-mmm-yyyy');
-  for(const key of ['current.joinDate','current.probationEndDate','effectiveDate']){const cell=address(key);expect(sheet[cell].z).toBe('dd-mmm-yyyy');expect(style(cell)).toContain('numFmtId="'+explicit![1]+'"');expect(style(cell)).toContain('applyNumberFormat="1"');expect(style(cell)).toContain('locked="'+(key==='effectiveDate'?'0':'1')+'"');}
+  const dateFormatId=style(address('effectiveDate')).numFmtId;expect(Number(dateFormatId)).toBeGreaterThanOrEqual(164);expect(formats.get(dateFormatId)).toBe('dd-mmm-yyyy');
+  for(const key of ['current.joinDate','current.probationEndDate','effectiveDate']){const cell=address(key);expect(sheet[cell].z).toBe('dd-mmm-yyyy');expect(style(cell)).toMatchObject({numFmtId:dateFormatId,applyNumberFormat:'1',locked:key==='effectiveDate'?'0':'1'});}
   expect(sheet[address('current.joinDate')].t).toBe('n');expect(sheet[address('current.joinDate')].v).toBe((Date.parse('2026-01-06T00:00:00Z')-Date.UTC(1899,11,30))/86400000);expect(sheet[address('effectiveDate')].v).toBe('');
-  expect(sheet[address('effectiveDate',204)].z).toBe('dd-mmm-yyyy');expect(style(address('employeeCode'))).toContain('numFmtId="49"');expect(style(address('employeeName'))).toContain('numFmtId="49"');expect(style(address('current.basicSalary'))).toContain('numFmtId="2"');expect(sheet[address('current.basicSalary')].v).toBe('0');
+  expect(sheet[address('effectiveDate',204)].z).toBe('dd-mmm-yyyy');expect(style(address('employeeCode')).numFmtId).toBe('49');expect(style(address('employeeName')).numFmtId).toBe('49');expect(style(address('current.basicSalary')).numFmtId).toBe('2');expect(sheet[address('current.basicSalary')].v).toBe('0');
  });
  it('leaves green salary and difference blank without a baseline while preserving a recorded zero baseline',async()=>{
   for(const [code,behaviour,formulaKey,inputKey]of [['increment','increment','calculated.basicSalary','incrementAmount'],['salaryAdjustment','salaryAdjustment','calculated.difference','basicSalary']]){
