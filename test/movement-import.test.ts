@@ -81,8 +81,36 @@ describe('Movement rollback-only preview and atomic confirmation',()=>{
  });
  it('keeps unrelated employees independent while refusing nonexistent Employee IDs and non-admin callers',async()=>{
   const id=await hire();const text=csv([['EMP-0004','transfer',day(-2),b.deptB,'',''],['MISSING','promotion',day(-1),'','3500','']]);
-  const initial=await ready(text);expect(initial.valid).toBe(1);const preview=await ready(text,[2]);const result=await commit(text,preview);expect(result).toMatchObject({imported:1,excluded:1});expect((await movementCurrentState(adminCtx(b),id)).departmentId).toBe(b.deptB);
+  const preview=await ready(text);expect(preview.valid).toBe(1);
+  const result=await commitMovementImport(adminCtx(b),{companyId:b.companyId,csv:text,selection:[2],inputHash:preview.inputHash,fingerprints:fingerprints(preview),acknowledgeExcluded:true});
+  expect(result).toMatchObject({imported:1,failed:0,excluded:1});expect((await movementCurrentState(adminCtx(b),id)).departmentId).toBe(b.deptB);
   await expect(previewMovementImport({...adminCtx(b),roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]},{companyId:b.companyId,csv:text})).rejects.toThrow('Only an admin');
+ });
+
+ it('confirms an original mixed preview for a complete valid employee while excluding another employee’s invalid sequence',async()=>{
+  const good=await hire(),bad=await hire('EMP-0005'),beforeGood=await state(good),beforeBad=await state(bad);
+  const text=csv([['EMP-0004','secondment',day(-2),'','','Valid first event'],['EMP-0005','transfer',day(-1),'Missing department','','Invalid other employee'],['EMP-0004','actingPosition',day(-1),'','','Valid second event']]);
+  const preview=await ready(text);expect(preview).toMatchObject({valid:2,excluded:1});expect(await state(good)).toEqual(beforeGood);expect(await state(bad)).toEqual(beforeBad);
+  const payload={companyId:b.companyId,csv:text,selection:[2,4],inputHash:preview.inputHash,fingerprints:fingerprints(preview),acknowledgeExcluded:false};
+  await expect(commitMovementImport(adminCtx(b),payload)).rejects.toThrow('confirm_excluded_rows');
+  const result=await commitMovementImport(adminCtx(b),{...payload,acknowledgeExcluded:true});
+  expect(result).toMatchObject({imported:2,failed:0,excluded:1});expect(await state(bad)).toEqual(beforeBad);
+  const history=await movementHistory(adminCtx(b),good);
+  expect(history.filter(row=>['secondment','actingPosition'].includes(row.kind)).map(row=>row.kind).sort()).toEqual(['actingPosition','secondment']);
+  const audits=(await state(good)).events.filter(row=>row.eventType==='movement-import.employee.applied');
+  expect(audits).toHaveLength(1);expect(audits[0].payload).toMatchObject({eventCount:2,sourceRows:[{key:2,sheet:'CSV',row:2},{key:4,sheet:'CSV',row:4}]});
+ });
+
+ it('allows deselecting a complete valid employee but refuses adding an employee not rehearsed in the preview',async()=>{
+  const selected=await hire(),excluded=await hire('EMP-0005'),beforeExcluded=await state(excluded);
+  const text=csv([['EMP-0004','secondment',day(-2),'','','Selected employee'],['EMP-0005','actingPosition',day(-1),'','','Excluded employee']]);
+  const preview=await ready(text);expect(preview.valid).toBe(2);
+  const result=await commitMovementImport(adminCtx(b),{companyId:b.companyId,csv:text,selection:[2],inputHash:preview.inputHash,fingerprints:fingerprints(preview),acknowledgeExcluded:true});
+  expect(result).toMatchObject({imported:1,failed:0,excluded:1});expect(await state(excluded)).toEqual(beforeExcluded);
+  const narrowed=await ready(text,[2]);
+  const unpreviewed=await commitMovementImport(adminCtx(b),{companyId:b.companyId,csv:text,selection:[3],inputHash:narrowed.inputHash,fingerprints:fingerprints(narrowed),acknowledgeExcluded:true});
+  expect(unpreviewed).toMatchObject({imported:0,failed:1,excluded:1});expect(await state(excluded)).toEqual(beforeExcluded);
+  expect((await movementHistory(adminCtx(b),selected)).filter(row=>row.kind==='secondment')).toHaveLength(1);
  });
 
  it('validates a future Entity Transfer then a destination-scoped promotion without applying either early',async()=>{

@@ -115,6 +115,9 @@ async function subjectTx(tx:Tx,ctx:SessionContext,companyId:string,code:string){
 /** Fresh authoritative state, including historical/scheduled events and caller-visible current catalogs.
  * The digest is a stale-preview comparison, never an authorization credential. All writes revalidate. */
 async function fingerprintTx(tx:Tx,ctx:SessionContext,id:string,companyId:string,inputHash:string,selection:number[],records:MovementImportRecord[],deadline:number,references:MovementManagerEvidence[]=[]){
+ // Confirmation may exclude other complete employees from the original preview. Bind only this
+ // employee's selection; inputHash still binds the entire file and the whole-sequence guard remains.
+ const employeeSelection=records.filter(row=>selection.includes(row.row)).map(row=>row.row).sort((a,b)=>a-b);
  const employmentRows=await tx.select().from(employment).where(eq(employment.id,id));
  const emp=employmentRows.map(({isTestRecord:_classification,...facts})=>facts);
  const assignments=await tx.select().from(assignment).where(eq(assignment.employmentId,id)).orderBy(asc(assignment.id)).limit(MOVEMENT_IMPORT_LIMITS.historyRows+1);
@@ -125,7 +128,7 @@ async function fingerprintTx(tx:Tx,ctx:SessionContext,id:string,companyId:string
  const source=await catalogTx(tx,ctx,companyId);const destinations=new Set([companyId]);
  for(const record of records)if(record.cells.companyId){try{destinations.add(lookup(record.cells.companyId,source.companies,'companyId'));}catch{/* The row validator reports an invalid reference without discarding other rows. */}}
  const catalogs=[];for(const destination of [...destinations].sort()){budget(deadline);const catalogue=destination===companyId?source:await catalogTx(tx,ctx,destination);const stable={...catalogue,fields:{...catalogue.fields,managerEmploymentId:catalogue.fields.managerEmploymentId?.map(({isTestRecord:_classification,...facts})=>facts)}};catalogs.push([destination,digest(stable)]);}
- return digest({tenant:ctx.tenantId,user:ctx.userId??null,inputHash,selection,emp,assignments,salaries,lines,events,catalogs,references,blacklistDay:records.some(row=>row.importVersion===2&&source.types.find(t=>t.code===row.cells.kind)?.behaviour==='blacklist')?todayInKualaLumpur():null});
+ return digest({tenant:ctx.tenantId,user:ctx.userId??null,inputHash,selection:employeeSelection,emp,assignments,salaries,lines,events,catalogs,references,blacklistDay:records.some(row=>row.importVersion===2&&source.types.find(t=>t.code===row.cells.kind)?.behaviour==='blacklist')?todayInKualaLumpur():null});
 }
 function message(error:unknown){
  // Drizzle wraps driver errors; its outer message contains SQL and bound values even when only
