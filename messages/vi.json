@@ -2122,7 +2122,7 @@
           "blacklistedAt": "Ngày vào danh sách đen"
         },
         "issues": {
-          "file_too_large": "Tệp vượt quá 900 KB.",
+          "file_too_large": "Tệp quá lớn. Hãy chia đợt Biến động thành các phần nhỏ hơn.",
           "empty_file": "Tệp trống.",
           "duplicate_headers": "Cột xuất hiện nhiều lần.",
           "unknown_column": "Cột không được hỗ trợ.",
@@ -2160,7 +2160,38 @@
           "movement_catalog_too_large": "Danh sách loại sự kiện vượt kích thước nhập được hỗ trợ. Hãy dùng từng Sự kiện mới.",
           "movement_reference_catalog_too_large": "Danh sách tham chiếu vượt kích thước nhập được hỗ trợ. Hãy dùng Nhân sự để thay đổi.",
           "movement_history_too_large": "Lịch sử nhân viên vượt giới hạn kiểm tra nhập. Hãy ghi sự kiện trong Nhân sự.",
-          "change_refused": "Thay đổi bị từ chối. Không lưu thay đổi nào của nhân viên này."
+          "change_refused": "Thay đổi bị từ chối. Không lưu thay đổi nào của nhân viên này.",
+          "workbook_key_unavailable": "Chưa cấu hình ký sổ làm việc. Hãy liên hệ quản trị viên hệ thống; bạn vẫn có thể dùng CSV.",
+          "workbook_metadata_invalid": "Không thể xác minh sổ làm việc này. Hãy tải sổ làm việc mới.",
+          "workbook_company_mismatch": "Sổ làm việc này thuộc công ty khác. Hãy chọn công ty đó hoặc tải sổ làm việc mới.",
+          "workbook_catalogue_changed": "Thiết lập Biến động đã thay đổi sau khi tải sổ làm việc này. Hãy tải sổ làm việc mới.",
+          "workbook_columns_changed": "Tiêu đề hoặc bố cục cột của sổ làm việc đã thay đổi. Hãy tải sổ làm việc mới và giữ nguyên tiêu đề.",
+          "workbook_identity_changed": "Mã nhân viên được điền sẵn đã bị thay đổi. Hãy tải đúng danh sách nhân viên hoặc dùng sổ làm việc trống có tất cả loại.",
+          "workbook_structure_invalid": "Cấu trúc sổ làm việc này không được hỗ trợ. Hãy tải sổ làm việc mới.",
+          "workbook_password_not_supported": "Không hỗ trợ sổ làm việc được bảo vệ bằng mật khẩu. Hãy dùng sổ làm việc gốc không có mật khẩu.",
+          "workbook_unexpected_sheet": "Sổ làm việc có trang tính bổ sung chứa dữ liệu. Hãy giữ các trang tính Biến động gốc.",
+          "workbook_business_value_invalid": "Một giá trị trong sổ làm việc quá dài hoặc chứa tham chiếu nội bộ. Hãy sửa giá trị nguồn trước khi tải xuống.",
+          "whole_employee_selection_required": "Đưa vào hoặc loại ra toàn bộ chuỗi sự kiện của một nhân viên. Không thể bỏ qua từng sự kiện riêng lẻ.",
+          "employee_sequence_invalid": "Một sự kiện khác của nhân viên này có lỗi. Hãy sửa toàn bộ chuỗi sự kiện trước khi lưu.",
+          "test_superior_not_available": "Hồ sơ việc làm này được đánh dấu là hồ sơ thử nghiệm và không thể được chọn làm Cấp trên trực tiếp mới.",
+          "position_or_grade_required": "Nhập Chức danh hoặc Cấp bậc công việc mới.",
+          "probation_required": "Nhân viên này hiện không trong thời gian thử việc. Hãy kiểm tra các mốc ngày đã ghi nhận trong hồ sơ việc làm.",
+          "probation_end_must_be_later": "Nhập ngày kết thúc thử việc sau ngày kết thúc thử việc cuối cùng đang áp dụng cho nhân viên.",
+          "confirmation_before_probation_end": "Ngày xác nhận chính thức không thể trước ngày kết thúc thử việc hiện tại của nhân viên.",
+          "promotion_grade_not_higher": "Theo thứ tự cấp bậc đã cấu hình, đây không phải cấp bậc cao hơn. Hãy sửa đề xuất thăng chức hoặc thứ tự cấp bậc đã cấu hình.",
+          "grade_order_unknown": "Thứ tự cấp bậc chưa có hoặc không rõ ràng. Hãy xem lại cấp bậc đề xuất trước khi lưu.",
+          "salary_effective_date_conflict": "Mức lương có hiệu lực vào ngày này mâu thuẫn với bản điều chỉnh lương chưa có ngày kết thúc. Hãy xem lại và sửa lịch sử lương của nhân viên trước khi nhập.",
+          "conflicting_salary_inputs": "Chỉ dùng Số tiền tăng hoặc Lương cơ bản mới, không dùng cả hai.",
+          "positive_increment_required": "Số tiền tăng phải lớn hơn không.",
+          "salary_rise_over_twenty_percent": "Lương cơ bản đề xuất tăng hơn 20%. Hãy xem lại số tiền.",
+          "backdated_over_three_months": "Sự kiện này được ghi lùi ngày hơn ba tháng dương lịch. Hãy kiểm tra ngày hiệu lực.",
+          "formula_input": "Có công thức nằm ngoài các ô tính toán màu xanh lá do sổ làm việc tạo ra. Hãy nhập giá trị trực tiếp vào ô màu vàng, không nhập công thức.",
+          "internal_reference_not_allowed": "Dùng tên hoặc mã nghiệp vụ trong danh sách. Không chấp nhận tham chiếu nội bộ.",
+          "wrong_type_columns": "Các cột CSV này không khớp với loại Biến động đã chọn. Hãy tải mẫu CSV của loại đó.",
+          "single_type_required": "Chọn một loại Biến động cho CSV hoặc CSV được dán.",
+          "invalid_filter": "Một bộ lọc không khả dụng trong công ty này. Hãy làm mới lựa chọn rồi chọn lại.",
+          "invalid_file": "Chọn sổ làm việc XLSX gốc hoặc CSV hợp lệ cho loại đã chọn.",
+          "origin": "Tải lại trang và tải tệp lên từ ứng dụng này."
         },
         "v2": {
           "type": "Loại Biến động",
@@ -2199,7 +2230,8 @@
           "singleTypeRequired": "Chọn một loại cho tệp CSV và CSV được dán.",
           "saved": "Các sự kiện đã lưu theo loại Biến động",
           "recheck": "Kiểm tra chuỗi sự kiện đầy đủ",
-          "noData": "Không tìm thấy mục Biến động nào."
+          "noData": "Không tìm thấy mục Biến động nào.",
+          "refused": "Không thể áp dụng thay đổi này. Hãy sửa trường được đánh dấu rồi kiểm tra lại toàn bộ chuỗi sự kiện."
         }
       }
     },

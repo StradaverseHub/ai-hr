@@ -2122,7 +2122,7 @@
           "blacklistedAt": "Blacklist date"
         },
         "issues": {
-          "file_too_large": "File exceeds 900 KB.",
+          "file_too_large": "The file is too large. Split the movement exercise.",
           "empty_file": "The file is empty.",
           "duplicate_headers": "A column appears more than once.",
           "unknown_column": "Unsupported column.",
@@ -2160,7 +2160,38 @@
           "movement_catalog_too_large": "The event type list exceeds this import’s supported size. Use individual New Event entries.",
           "movement_reference_catalog_too_large": "A reference list exceeds this import’s supported size. Use Personnel for these changes.",
           "movement_history_too_large": "This employee’s history exceeds the bounded import check. Use Personnel to record the event.",
-          "change_refused": "The change was refused. No changes from this employee were saved."
+          "change_refused": "The change was refused. No changes from this employee were saved.",
+          "workbook_key_unavailable": "Workbook signing is not configured. Contact the system administrator; CSV is still available.",
+          "workbook_metadata_invalid": "This workbook could not be verified. Download a new workbook.",
+          "workbook_company_mismatch": "This workbook belongs to a different company. Select its company or download a new workbook.",
+          "workbook_catalogue_changed": "Movement Settings changed after this workbook was downloaded. Download a new workbook.",
+          "workbook_columns_changed": "The workbook headings or column layout changed. Download a new workbook and keep its headings unchanged.",
+          "workbook_identity_changed": "A prefilled Employee ID was changed. Download the correct employees or use the blank full workbook.",
+          "workbook_structure_invalid": "The workbook structure is not supported. Download a new workbook.",
+          "workbook_password_not_supported": "Password-protected workbooks are not supported. Use the original workbook without a password.",
+          "workbook_unexpected_sheet": "The workbook contains an unexpected nonempty tab. Keep the original movement tabs.",
+          "workbook_business_value_invalid": "A workbook value is too long or contains an internal reference. Correct the source value before downloading.",
+          "whole_employee_selection_required": "Include or exclude an employee’s complete sequence. Individual events cannot be skipped.",
+          "employee_sequence_invalid": "Another event for this employee has an error. Correct the complete sequence before saving.",
+          "test_superior_not_available": "This employment record is marked as a test record and cannot be selected as a new Direct Superior.",
+          "position_or_grade_required": "Enter a new Position or Job Grade.",
+          "probation_required": "This employee is not currently on probation. Check their recorded employment dates.",
+          "probation_end_must_be_later": "Enter a probation end after the employee’s current final probation end.",
+          "confirmation_before_probation_end": "The confirmation cannot precede the employee’s current probation end.",
+          "promotion_grade_not_higher": "The configured grade order does not make this a higher grade. Correct the promotion or the configured grade order.",
+          "grade_order_unknown": "The grade order is missing or ambiguous. Review the proposed grade before saving.",
+          "salary_effective_date_conflict": "The salary effective on this date conflicts with the open salary revision. Review and correct the employee’s salary history before importing.",
+          "conflicting_salary_inputs": "Use either Increment Amount or New Basic Salary, not both.",
+          "positive_increment_required": "Increment Amount must be greater than zero.",
+          "salary_rise_over_twenty_percent": "The proposed basic salary increases by more than 20%. Review the amount.",
+          "backdated_over_three_months": "This event is backdated by more than three calendar months. Review the effective date.",
+          "formula_input": "A formula is present outside the workbook’s generated green calculation cells. Enter literal values in yellow cells.",
+          "internal_reference_not_allowed": "Use the business name or code from the list. Internal references are not accepted.",
+          "wrong_type_columns": "These CSV columns do not match the chosen movement type. Download its CSV template.",
+          "single_type_required": "Choose one movement type for CSV or pasted CSV.",
+          "invalid_filter": "A filter is unavailable in this company. Refresh the choices and select again.",
+          "invalid_file": "Choose an original XLSX workbook or a valid CSV for the selected type.",
+          "origin": "Reload the page and upload from this application."
         },
         "v2": {
           "type": "Movement type",
@@ -2199,7 +2230,8 @@
           "singleTypeRequired": "Choose one type for CSV and pasted CSV.",
           "saved": "Events saved by movement type",
           "recheck": "Check complete sequences",
-          "noData": "No movement entries were found."
+          "noData": "No movement entries were found.",
+          "refused": "This change could not be applied. Correct the highlighted field and check the complete sequence again."
         }
       }
     },

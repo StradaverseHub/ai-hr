@@ -2122,7 +2122,7 @@
           "blacklistedAt": "Tarikh senarai hitam"
         },
         "issues": {
-          "file_too_large": "Fail melebihi 900 KB.",
+          "file_too_large": "Fail terlalu besar. Bahagikan latihan Pergerakan kepada beberapa bahagian.",
           "empty_file": "Fail kosong.",
           "duplicate_headers": "Lajur berulang.",
           "unknown_column": "Lajur tidak disokong.",
@@ -2160,7 +2160,38 @@
           "movement_catalog_too_large": "Senarai jenis peristiwa melebihi saiz import yang disokong. Gunakan entri Peristiwa Baharu individu.",
           "movement_reference_catalog_too_large": "Senarai rujukan melebihi saiz import yang disokong. Gunakan Personel untuk perubahan ini.",
           "movement_history_too_large": "Sejarah pekerja ini melebihi had semakan import. Gunakan Personel untuk merekodkan peristiwa.",
-          "change_refused": "Perubahan ditolak. Tiada perubahan untuk pekerja ini disimpan."
+          "change_refused": "Perubahan ditolak. Tiada perubahan untuk pekerja ini disimpan.",
+          "workbook_key_unavailable": "Penandatanganan buku kerja belum dikonfigurasi. Hubungi pentadbir sistem; CSV masih boleh digunakan.",
+          "workbook_metadata_invalid": "Buku kerja ini tidak dapat disahkan. Muat turun buku kerja baharu.",
+          "workbook_company_mismatch": "Buku kerja ini milik syarikat lain. Pilih syarikat tersebut atau muat turun buku kerja baharu.",
+          "workbook_catalogue_changed": "Tetapan Pergerakan telah berubah sejak buku kerja ini dimuat turun. Muat turun buku kerja baharu.",
+          "workbook_columns_changed": "Tajuk atau susun atur lajur buku kerja telah berubah. Muat turun buku kerja baharu dan kekalkan tajuk asalnya.",
+          "workbook_identity_changed": "ID Pekerja yang diisi terlebih dahulu telah diubah. Muat turun pekerja yang betul atau gunakan buku kerja penuh yang kosong.",
+          "workbook_structure_invalid": "Struktur buku kerja ini tidak disokong. Muat turun buku kerja baharu.",
+          "workbook_password_not_supported": "Buku kerja yang dilindungi kata laluan tidak disokong. Gunakan buku kerja asal tanpa kata laluan.",
+          "workbook_unexpected_sheet": "Buku kerja mengandungi tab tambahan yang tidak kosong. Kekalkan tab Pergerakan asal.",
+          "workbook_business_value_invalid": "Nilai dalam buku kerja terlalu panjang atau mengandungi rujukan dalaman. Betulkan nilai sumber sebelum memuat turun.",
+          "whole_employee_selection_required": "Sertakan atau kecualikan keseluruhan urutan bagi seorang pekerja. Peristiwa individu tidak boleh dilangkau.",
+          "employee_sequence_invalid": "Peristiwa lain bagi pekerja ini mempunyai ralat. Betulkan keseluruhan urutan sebelum menyimpan.",
+          "test_superior_not_available": "Rekod pekerjaan ini ditandakan sebagai rekod ujian dan tidak boleh dipilih sebagai Ketua Langsung baharu.",
+          "position_or_grade_required": "Masukkan Jawatan atau Gred Jawatan baharu.",
+          "probation_required": "Pekerja ini tidak berada dalam tempoh percubaan pada masa ini. Semak tarikh pekerjaan yang direkodkan.",
+          "probation_end_must_be_later": "Masukkan tarikh tamat percubaan selepas tarikh akhir percubaan semasa pekerja.",
+          "confirmation_before_probation_end": "Tarikh pengesahan tidak boleh mendahului tarikh tamat percubaan semasa pekerja.",
+          "promotion_grade_not_higher": "Mengikut susunan gred yang dikonfigurasi, gred ini bukan gred yang lebih tinggi. Betulkan kenaikan pangkat atau susunan gred yang dikonfigurasi.",
+          "grade_order_unknown": "Susunan gred tiada atau tidak jelas. Semak gred yang dicadangkan sebelum menyimpan.",
+          "salary_effective_date_conflict": "Gaji yang berkuat kuasa pada tarikh ini bercanggah dengan semakan gaji yang masih terbuka. Semak dan betulkan sejarah gaji pekerja sebelum mengimport.",
+          "conflicting_salary_inputs": "Gunakan sama ada Amaun Kenaikan atau Gaji Pokok Baharu, bukan kedua-duanya.",
+          "positive_increment_required": "Amaun Kenaikan mesti melebihi sifar.",
+          "salary_rise_over_twenty_percent": "Gaji pokok yang dicadangkan meningkat lebih daripada 20%. Semak amaun tersebut.",
+          "backdated_over_three_months": "Tarikh kuat kuasa peristiwa ini diundurkan lebih daripada tiga bulan kalendar. Semak tarikh kuat kuasa.",
+          "formula_input": "Terdapat formula di luar sel pengiraan hijau yang dijana oleh buku kerja. Masukkan nilai terus, bukan formula, dalam sel kuning.",
+          "internal_reference_not_allowed": "Gunakan nama atau kod perniagaan daripada senarai. Rujukan dalaman tidak diterima.",
+          "wrong_type_columns": "Lajur CSV ini tidak sepadan dengan jenis Pergerakan yang dipilih. Muat turun templat CSV bagi jenis tersebut.",
+          "single_type_required": "Pilih satu jenis Pergerakan untuk CSV atau CSV yang ditampal.",
+          "invalid_filter": "Penapis tidak tersedia dalam syarikat ini. Muat semula pilihan dan pilih sekali lagi.",
+          "invalid_file": "Pilih buku kerja XLSX asal atau CSV yang sah untuk jenis yang dipilih.",
+          "origin": "Muat semula halaman dan muat naik melalui aplikasi ini."
         },
         "v2": {
           "type": "Jenis Pergerakan",
@@ -2199,7 +2230,8 @@
           "singleTypeRequired": "Pilih satu jenis untuk CSV dan CSV yang ditampal.",
           "saved": "Peristiwa disimpan mengikut jenis Pergerakan",
           "recheck": "Semak urutan lengkap",
-          "noData": "Tiada entri Pergerakan ditemui."
+          "noData": "Tiada entri Pergerakan ditemui.",
+          "refused": "Perubahan ini tidak dapat digunakan. Betulkan medan yang diserlahkan dan semak keseluruhan urutan sekali lagi."
         }
       }
     },
