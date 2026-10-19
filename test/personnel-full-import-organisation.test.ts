@@ -1,4 +1,5 @@
 import {describe,it,expect} from 'vitest';
+import {readFileSync} from 'node:fs';
 import {PersonnelImportLookup} from '../lib/personnel-import-lookup';
 import {PersonnelImportCatalog,normalizePersonnelCatalogRecord} from '../lib/personnel-import-catalog';
 import {employeeTemplate} from '../lib/import-template';
@@ -31,6 +32,19 @@ describe('full hire organisation contract',()=>{
   expect(normalizePersonnelCatalogRecord({org_division:' shared '},'employee',catalog).record.org_division).toBe('DIV-A');
   expect(catalog.resolve('division','Retired').value).toBeUndefined();
   expect(catalog.display('division','DIV-A')).toBe('Shared (DIV-A)');
+ });
+ it('binds Personnel Category display to its live owner label, retaining the canonical code as fallback',()=>{
+  const page=readFileSync(new URL('../app/admin/personnel/[employmentId]/page.tsx',import.meta.url),'utf8');
+  const start=page.indexOf('<PersonnelField fieldId="employment.additional_organisation_labels.employmentcategory"');
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end=page.indexOf('</PersonnelField>',start);expect(end).toBeGreaterThan(start);
+  const field=page.slice(start,end);expect(field.length).toBeGreaterThan(200);
+  expect(field).toContain('profileOptions.category.find(option=>option.value===emp.employmentCategory)?.label?.trim() || emp.employmentCategory');
+ });
+ it('keeps the default category catalogue identifier-first for unrelated import consumers',()=>{
+  const catalog=new PersonnelImportCatalog();
+  catalog.addOption({category:'category',value:'CAT-A',label:'Shared'});catalog.addOption({category:'category',value:'Shared',label:'Other'});
+  expect(normalizePersonnelCatalogRecord({employment_category:'Shared'},'employee',catalog).record.employment_category).toBe('Shared');
  });
  it('includes creation-only BU and grade in both formats using their existing Personnel labels',()=>{
   for(const column of ['business_unit','job_grade']){

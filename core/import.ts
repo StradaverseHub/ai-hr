@@ -386,7 +386,7 @@ async function analyze(
       .select({ code: employeeDraft.reservedEmployeeCode })
       .from(employeeDraft)
       .where(isNotNull(employeeDraft.reservedEmployeeCode));
-    const catalog = new PersonnelImportCatalog(new Set(['division','branch','region','line','section','team','base']));
+    const catalog = new PersonnelImportCatalog(new Set(['division','branch','region','line','section','team','base','category']));
     for(const option of options)catalog.addOption(option);
     const superiorByCode = new Map<string, string>();
     const superiorByEmail = new Map<string, string|null>();
