@@ -1,13 +1,22 @@
 import {describe,expect,it} from 'vitest';
 import {readFileSync} from 'node:fs';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
-import {personnelControl,personnelInput,personnelFormChoices,personnelFormIssue,personnelFormName,personnelFormRequired,personnelFormMetadataIssue,personnelWorkflowControl,personnelWorkflowCarry,personnelDisplay} from '../lib/personnel-form-contract';
+import {personnelControl,personnelInput,personnelFormChoices,personnelFormIssue,personnelFormName,personnelFormRequired,personnelFormMetadataIssue,personnelFormWidget,personnelWorkflowControl,personnelWorkflowCarry,personnelDisplay} from '../lib/personnel-form-contract';
 import {personnelFieldChoices,personnelFieldLabel} from '../lib/personnel-import-contract';
 import {auditPersonnelFormSource} from './helpers/personnel-form-source';
 const birth='profile.personal_details.dateofbirth';
 const initial='employment.employment_dates_and_service.confirmationdate';
 const final='employment.employment_dates_and_service.finalconfirmationdate';
 describe('Personnel shared form contract',()=>{
+  it('supports an explicitly declared true/false choice presentation without changing the canonical boolean fact',()=>{
+    const id='employment.data_classification.istestrecord',field=PERSONNEL_FIELDS.find(f=>f.id===id)!;
+    expect(field).toMatchObject({type:'boolean',owner:'employment',ownerField:'isTestRecord',form:{name:'isTestRecord',widget:'choice'}});
+    expect(personnelFormMetadataIssue(field)).toBeNull();expect(personnelFormWidget(id)).toBe('choice');
+    expect(personnelControl(id,'edit')).toEqual({'data-personnel-field':id,name:'isTestRecord',required:false});
+    expect(()=>personnelInput(id,'edit')).toThrow(/specialized/); // Never silently turn the select into a checkbox.
+    const changed=structuredClone(field);changed.type='number';expect(personnelFormMetadataIssue(changed)).toContain('canonical type');
+    expect(field.import.column).toBeUndefined();expect(field.import.writer).toBeUndefined();expect(field.ess.binding).toBeUndefined();
+  });
   it('resolves the mounted read-only employment values without exposing a writable join-date field',()=>{
     for(const id of ['employment.organisation_assignment.gradename','employment.organisation_assignment.employmenttype','employment.employment_dates_and_service.hiredon','employment.employment_dates_and_service.joindate'])expect(personnelDisplay(id)).toEqual({'data-personnel-field':id});
     const join='employment.employment_dates_and_service.joindate';

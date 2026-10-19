@@ -4719,6 +4719,22 @@ export default async function EmployeePage({
      existing functional/project/dotted rows remain in the data (org chart still renders them — their
      retirement is a follow-up decision, not decided here). Prior superiors stay visible read-only in
      the compact history disclosure below the field. */
+  const dataClassificationCard = admin && classification ? (
+    <Card id="section-data-classification">
+      <SectionHeader title={t('dataClassification.title')}/>
+      <form action={setTestRecordAction} className="space-y-3 p-4">
+        <input type="hidden" name="employmentId" value={emp.employmentId}/>
+        <p className="text-sm text-muted-foreground">{t('dataClassification.help')}</p>
+        <PersonnelField fieldId="employment.data_classification.istestrecord" mode="edit">
+          <select {...personnelControl('employment.data_classification.istestrecord','edit')} className={inputCls} defaultValue={String(classification.isTestRecord)}>
+            <option value="false">{t('dataClassification.unmarked')}</option><option value="true">{t('dataClassification.marked')}</option>
+          </select>
+        </PersonnelField>
+        <button type="submit" className={btnPrimary}>{t('dataClassification.save')}</button>
+      </form>
+    </Card>
+  ) : null;
+
   const directSuperiorCard = (
     <Card id="section-direct-superior">
       <SectionHeader title={t('directSuperiorTitle')} />
@@ -5096,17 +5112,7 @@ export default async function EmployeePage({
             {employmentInfoCard}
           </TabSaveScope>
         )}
-        {admin && classification && <Card id="section-data-classification">
-          <SectionHeader title={t('dataClassification.title')}/>
-          <form action={setTestRecordAction} className="space-y-3 p-4">
-            <input type="hidden" name="employmentId" value={emp.employmentId}/>
-            <p className="text-sm text-muted-foreground">{t('dataClassification.help')}</p>
-            <Field label={t('dataClassification.testRecord')}><select className={inputCls} name="isTestRecord" defaultValue={String(classification.isTestRecord)}>
-              <option value="false">{t('dataClassification.unmarked')}</option><option value="true">{t('dataClassification.marked')}</option>
-            </select></Field>
-            <button type="submit" className={btnPrimary}>{t('dataClassification.save')}</button>
-          </form>
-        </Card>}
+        {dataClassificationCard}
         {directSuperiorCard}
         {delegationsCard}
       </>
