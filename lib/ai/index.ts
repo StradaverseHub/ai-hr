@@ -16,6 +16,7 @@ import { governed,textReservation } from './governance';
 import { anthropicAdapter } from './providers/anthropic';
 import { googleAdapter } from './providers/google';
 import { openaiAdapter } from './providers/openai';
+import { openrouterAdapter } from './providers/openrouter';
 import { AiImageReadError,imageReadError,validImageBytes } from './image-protocol';
 import type { ImageReadArgs } from './types';
 export { AiImageReadError } from './image-protocol';
@@ -51,6 +52,8 @@ const ADAPTERS: Record<AiProvider, AiAdapter> = {
   anthropic: anthropicAdapter,
   openai: openaiAdapter,
   google: googleAdapter,
+  // No readImage on purpose (see providers/openrouter.ts): supportsImageReading('openrouter') is false.
+  openrouter: openrouterAdapter,
 };
 
 function adapterFor(provider: AiProvider): AiAdapter {

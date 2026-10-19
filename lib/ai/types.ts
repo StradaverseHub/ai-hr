@@ -3,7 +3,7 @@
  * implements, so the rest of the app is provider-agnostic. Draft-only: adapters generate text and
  * validate credentials; they never persist anything.
  */
-export type AiProvider = 'anthropic' | 'openai' | 'google';
+export type AiProvider = 'anthropic' | 'openai' | 'google' | 'openrouter';
 
 /** Resolved, ready-to-use config for one generation — the decrypted key lives only in request memory. */
 export type ResolvedAiConfig = {

@@ -11,13 +11,21 @@
  *  - Domain events carry {provider, model} only — never the key, ciphertext, or test result.
  *  - Fail closed: a present-but-undecryptable active config errors; it does NOT silently fall through
  *    to the shared platform env key.
+ *  - OpenRouter is OPT-IN per tenant (`ai.openrouter_enabled`, default off; r570). Prompts sent through
+ *    it are processed by OpenRouter and by the model provider it routes to, so a key may be saved,
+ *    activated, tested or USED only while a group admin has allowed it. The setting is read FRESH inside
+ *    each transaction (never from the request's cached snapshot), and an active OpenRouter config whose
+ *    setting is off fails CLOSED — it never falls through to the platform env key.
  */
 import { governedAiConfig } from './ai-governance';
 import type { AiFeatureId } from '../lib/ai/features';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { aiProviderConfig } from '../db/schema';
+import { isGroupAdmin } from '../lib/authz-model';
+import { getSetting, resolveEntitlementsTx } from './entitlements';
+import { setTenantSetting } from './tenant-settings';
 import {
   envFallbackConfig,
   hasEnvFallback,
@@ -25,6 +33,7 @@ import {
   isSecretStorable,
   PROVIDER_META,
   PROVIDERS,
+  supportsImageReading,
   validateConfig,
   type AiProvider,
   type ResolvedAiConfig,
@@ -46,6 +55,30 @@ function assertAdmin(ctx: SessionContext) {
   if (!isAdminCtx(ctx)) throw new AiConfigError('Only an admin can manage AI configuration.');
 }
 
+const OPENROUTER_OFF = 'OpenRouter is not allowed for this organisation. A group administrator must allow it first.';
+
+/**
+ * Whether this tenant currently allows OpenRouter. Resolved from the tenant's rows INSIDE `tx` — the
+ * same fresh-snapshot pattern core/ai-governance.ts uses — so a switch turned off a moment ago is seen by
+ * the very next save, activation, test or call, not after the request's cached snapshot expires.
+ * The literal key is passed to getSetting on purpose (test/module-catalog-drift.test.ts can only see a
+ * literal). A SETTING_KILL on the key resolves to the catalog default, which is off: fail closed.
+ */
+async function openRouterAllowedTx(tx: Tx, ctx: SessionContext): Promise<boolean> {
+  const fresh: SessionContext = {
+    ...ctx,
+    entitlements: await resolveEntitlementsTx(tx, ctx.tenantId),
+    entitlementsExempt: undefined,
+    entitlementsError: undefined,
+  };
+  return getSetting(fresh, 'ai.openrouter_enabled') === true;
+}
+
+/** Refuse any write that would store, activate or use an OpenRouter key while the tenant disallows it. */
+async function assertProviderAllowedTx(tx: Tx, ctx: SessionContext, provider: AiProvider) {
+  if (PROVIDER_META[provider].optIn && !(await openRouterAllowedTx(tx, ctx))) throw new AiConfigError(OPENROUTER_OFF);
+}
+
 // ─────────────────────────────── reads ───────────────────────────────
 
 export type AiProviderView = {
@@ -57,7 +90,9 @@ export type AiProviderView = {
   model: string;
   keyLast4: string | null;
   isActive: boolean;
-  envKeyPresent: boolean; // a platform env key exists for this provider
+  envKeyPresent: boolean; // a platform env key exists for this provider (always false for OpenRouter)
+  optIn: boolean; // the tenant must allow this provider before it can be used (OpenRouter)
+  imageReading: boolean; // the provider can read image evidence (OpenRouter: no, by decision)
 };
 
 export type AiConfigView = {
@@ -65,6 +100,8 @@ export type AiConfigView = {
   providers: AiProviderView[];
   envFallback: { provider: AiProvider; model: string } | null;
   usingEnvFallback: boolean; // no tenant config active, but an env key would be used
+  openRouterEnabled: boolean; // the tenant's `ai.openrouter_enabled`, read fresh
+  mayToggleOpenRouter: boolean; // only a GROUP admin may change it (the setting is tenant-wide)
 };
 
 /** Admin-only. The settings-page model: one entry per provider, NEVER including the ciphertext. */
@@ -94,8 +131,11 @@ export function getAiConfigView(ctx: SessionContext): Promise<AiConfigView> {
         keyLast4: row?.keyLast4 ?? null,
         isActive: row?.isActive ?? false,
         envKeyPresent: meta.envKeyVars.some((v) => Boolean(process.env[v]?.trim())),
+        optIn: meta.optIn,
+        imageReading: supportsImageReading(p),
       };
     });
+    const openRouterEnabled = await openRouterAllowedTx(tx, ctx);
     const env = envFallbackConfig();
     const anyActive = providers.some((p) => p.isActive);
     return {
@@ -103,6 +143,8 @@ export function getAiConfigView(ctx: SessionContext): Promise<AiConfigView> {
       providers,
       envFallback: env ? { provider: env.provider, model: env.model } : null,
       usingEnvFallback: !anyActive && Boolean(env),
+      openRouterEnabled,
+      mayToggleOpenRouter: isGroupAdmin(ctx),
     };
   });
 }
@@ -120,6 +162,9 @@ export async function resolveActiveAiConfig(tx: Tx, ctx: SessionContext, feature
   const row = rows[0];
   if (row) {
     if (!isProvider(row.provider)) throw new AiConfigError('Stored AI provider is unknown.');
+    // FAIL CLOSED, like an undecryptable key: an active OpenRouter row while the tenant disallows it is an
+    // error, never a fall-through to the platform env key below.
+    if (PROVIDER_META[row.provider].optIn && !(await openRouterAllowedTx(tx, ctx))) throw new AiConfigError(OPENROUTER_OFF);
     const apiKey = decryptSecret(row.api_key_ciphertext, ctx.tenantId); // throws on failure → fail closed
     return governedAiConfig(ctx,{ provider: row.provider, model: row.model, apiKey },feature);
   }
@@ -131,10 +176,13 @@ export async function resolveActiveAiConfig(tx: Tx, ctx: SessionContext, feature
 export function isAiConfigured(ctx: SessionContext): Promise<boolean> {
   return withTenant(ctx, async (tx) => {
     const [active] = await tx
-      .select({ id: aiProviderConfig.id })
+      .select({ id: aiProviderConfig.id, provider: aiProviderConfig.provider })
       .from(aiProviderConfig)
       .where(eq(aiProviderConfig.isActive, true))
       .limit(1);
+    // A disallowed OpenRouter config is "not configured": resolveActiveAiConfig would throw for it, and
+    // it must not be reported as the env fallback either (it never falls through to it).
+    if (active && PROVIDER_META[active.provider].optIn) return openRouterAllowedTx(tx, ctx);
     return active ? true : hasEnvFallback();
   });
 }
@@ -164,6 +212,7 @@ export async function saveAiProviderConfig(
 
   await withTenant(ctx, async (tx) => {
     assertAdmin(ctx);
+    await assertProviderAllowedTx(tx, ctx, p.provider as AiProvider);
     const [existing] = await tx
       .select({ id: aiProviderConfig.id })
       .from(aiProviderConfig)
@@ -221,6 +270,7 @@ export async function setActiveProvider(ctx: SessionContext, p: { provider: stri
   if (!isProvider(p.provider)) throw new AiConfigError('Unknown AI provider.');
   await withTenant(ctx, async (tx) => {
     assertAdmin(ctx);
+    await assertProviderAllowedTx(tx, ctx, p.provider as AiProvider);
     const [row] = await tx
       .select({ id: aiProviderConfig.id })
       .from(aiProviderConfig)
@@ -294,6 +344,10 @@ export async function testConnection(
 
   return withTenant(ctx, async (tx) => {
     assertAdmin(ctx);
+    // A typed key is sent to the provider by the probe, so a disallowed OpenRouter is refused before it.
+    if (PROVIDER_META[p.provider as AiProvider].optIn && !(await openRouterAllowedTx(tx, ctx))) {
+      return { ok: false, error: OPENROUTER_OFF };
+    }
     let cfg: ResolvedAiConfig;
     if (typed) {
       cfg = { provider: p.provider as AiProvider, model, apiKey: typed };
@@ -312,5 +366,37 @@ export async function testConnection(
       cfg = { provider: active.provider, model, apiKey: active.apiKey };
     }
     return validateConfig(cfg);
+  });
+}
+
+/**
+ * Allow or disallow OpenRouter for the whole tenant. GROUP admin only (a company-scoped admin must not
+ * decide where every company's prompts may go). The write goes through setTenantSetting, which audits it
+ * as 'tenant-setting.changed'. Turning it OFF also deactivates an active OpenRouter config in the SAME
+ * transaction and records 'ai-provider-config.disabled', so the tenant is never left with an active
+ * provider it has just forbidden. The stored key is kept (write-only, unusable while off); removing it
+ * is a separate, explicit action.
+ */
+export async function setOpenRouterEnabled(ctx: SessionContext, on: boolean): Promise<void> {
+  if (typeof on !== 'boolean') throw new AiConfigError('Choose on or off.');
+  if (!isGroupAdmin(ctx)) throw new AiConfigError('Only a group administrator can allow or disallow OpenRouter.');
+  await withTenant(ctx, async (tx) => {
+    await setTenantSetting(ctx, { key: 'ai.openrouter_enabled', value: on }, tx);
+    if (on) return;
+    const deactivated = await tx
+      .update(aiProviderConfig)
+      .set({ isActive: false, updatedByUserId: ctx.userId ?? null, updatedAt: sql`now()` })
+      .where(and(eq(aiProviderConfig.provider, 'openrouter'), eq(aiProviderConfig.isActive, true)))
+      .returning({ id: aiProviderConfig.id });
+    for (const row of deactivated) {
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'ai-provider-config',
+        aggregateId: row.id,
+        eventType: 'ai-provider-config.disabled',
+        actor: actorOf(ctx),
+        payload: { provider: 'openrouter', reason: 'openrouter_disallowed' },
+      });
+    }
   });
 }

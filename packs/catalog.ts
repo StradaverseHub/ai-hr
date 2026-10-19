@@ -284,6 +284,12 @@ export const SETTING_CATALOG: SettingCatalogEntry[] = [
    */
   { key: 'ess.profile_change_fields', moduleCode: 'ess', scope: 'tenant', valueType: 'json', defaultValue: 'all', defaultOnInstall: null, customerVisible: true, description: 'Which fields of their own record an employee may ask to change. Legacy defaults retain the original request set and finite direct contacts. A saved complete policy explicitly lists employee-editable Personnel fields.', sortOrder: 150 },
   { key: 'ess.profile_change_approver', moduleCode: 'ess', scope: 'tenant', valueType: 'string', defaultValue: 'admin', defaultOnInstall: null, customerVisible: true, description: "Who decides an employee's request to change their own record: any HR administrator, or only a group administrator. One approver either way — never two levels, and never somebody deciding their own.", sortOrder: 160 },
+  // r570 — OpenRouter is an aggregator: a prompt goes to OpenRouter AND to whichever model provider it
+  // routes to, possibly outside Malaysia. Off by default and off on install; a group admin must allow it
+  // before an OpenRouter key can be saved, activated or used (core/ai-config.ts enforces it, reading the
+  // value fresh inside each transaction). `moduleCode: null`: it is installation-wide policy about where
+  // tenant data may go, not part of any purchasable module.
+  { key: 'ai.openrouter_enabled', moduleCode: null, scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Allow an OpenRouter API key to be used for AI features. Prompts are processed by OpenRouter and by the model provider it routes to, possibly outside Malaysia.', sortOrder: 218 },
 ];
 
 /*
@@ -467,6 +473,10 @@ export const LEGACY_SETTING_ENV_GATES: Readonly<Record<string, string | null>> =
   // open to change requests or who signs one off.
   'ess.profile_change_fields': null,
   'ess.profile_change_approver': null,
+  // `null` — r570, new rather than migrated from a deployment flag, and it must stay out of
+  // `legacyEnabledSettingsIn`: no backfill may decide on a customer's behalf that their prompts can go
+  // through an aggregator.
+  'ai.openrouter_enabled': null,
 };
 
 /**

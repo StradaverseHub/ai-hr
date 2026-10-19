@@ -3277,6 +3277,13 @@
       "when": 1791900000048,
       "tag": "0568_ai_user_default_allowance",
       "breakpoints": true
+    },
+    {
+      "idx": 570,
+      "version": "7",
+      "when": 1791900000050,
+      "tag": "0570_ai_provider_openrouter",
+      "breakpoints": true
     }
   ]
 }
