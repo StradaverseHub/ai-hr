@@ -1640,7 +1640,8 @@
           "terminationPayrollFlag": "Termination saved. A payroll run has already been processed for {periods}, past the termination date — review that run. It was not changed.",
           "entityTransferDateHint": "This date is when the transfer takes effect, and it also becomes the employee’s Join Date with the company they are moving to. Their Group Join Date does not change, so their service, leave and long-service entitlement carry across.",
           "entityTransferHint": "Choose the company the employee is moving to. The Business Unit, Department, Position and Work Location lists below now show the destination company’s options — pick a Department there. Their employee ID, Group Join Date and history stay exactly as they are.",
-          "selectPlaceholder": "Select…"
+          "selectPlaceholder": "Select…",
+          "pendingTargetUnavailable": "A saved target is no longer available in your current choices or access scope. This correction cannot be saved. Review the pending event before continuing."
         },
         "edit": "Edit",
         "rollback": "Roll Back",
