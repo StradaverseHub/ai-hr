@@ -31,7 +31,7 @@ const LIFECYCLE_NAV_LINKS: NavLinkDescriptor[] = [
     { group: 'manage', href: '/lifecycle/requisitions/onboarding', labelKey: 'onboardingRequisitions', icon: Laptop },
     { group: 'main', href: '/lifecycle', labelKey: 'lifecycle', icon: Laptop },
     { group: 'admin', href: '/admin/lifecycle', labelKey: 'lifecycleConfig', icon: Laptop },
-    { group: 'admin', href: '/admin/lifecycle/onboarding', labelKey: 'onboardingSettings', icon: Laptop },
+    { group: 'admin', href: '/admin/lifecycle/onboarding', labelKey: 'onboardingSettings', icon: Laptop, exactHref: true },
     { group: 'admin', href: '/admin/lifecycle/onboarding/groups', labelKey: 'onboardingGroups', icon: Laptop },
     { group: 'admin', href: '/admin/lifecycle/onboarding/access', labelKey: 'onboardingModuleAccess', icon: Laptop },
 ];

@@ -6,6 +6,7 @@ import { cookies, headers } from 'next/headers';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale } from 'next-intl/server';
 import './globals.css';
+import './onboarding-workspace.css';
 import { Suspense } from 'react';
 import { Providers } from './providers';
 import { Sidebar } from '@/components/sidebar';
@@ -160,7 +161,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: isModuleEnabledOrFalse(session, 'claims'),
   });
-  const onboardingNav=isModuleEnabledOrFalse(session,'lifecycle')?await onboardingNavigation(session):{module:false,master:false,requisitions:false};
+  const onboardingNav=isModuleEnabledOrFalse(session,'lifecycle')?await onboardingNavigation(session):{module:false,master:false,requisitions:false,joiners:0,checklists:0};
   const onboardingAccess=onboardingNav.module;
   const onboardingQueue = isModuleEnabledOrFalse(session, 'lifecycle') ? await onboardingTasks(session) : [];
   const legacyApprovalCount = approvalTasks.length;
@@ -217,6 +218,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               approvalCount={legacyApprovalCount}
               taskCount={pendingTasks.length}
               onboardingAccess={onboardingAccess}
+              onboardingJoinerCount={onboardingNav.joiners}
+              onboardingChecklistCount={onboardingNav.checklists}
               onboardingMaster={onboardingNav.master}
               onboardingRequisitionsAccess={onboardingNav.requisitions}
               // ADR-0077 slice 4 — which module-owned rows the rail may advertise. A plain string array

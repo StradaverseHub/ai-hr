@@ -151,6 +151,7 @@ const LIFECYCLE_LINKS = modulePackById('lifecycle')!.navLinks!;
 const LIFECYCLE_ROW: ChildItem = LIFECYCLE_LINKS.find((l) => l.group === 'main')!;
 const LIFECYCLE_CONFIG_ROW: ChildItem = LIFECYCLE_LINKS.find((l) => l.group === 'admin')!;
 const ONBOARDING_NODE:CollapsibleGroupItem={...modulePackById('lifecycle')!.navNodes![0]!,collapsible:true};
+const ONBOARDING_REQUISITIONS_NODE:CollapsibleGroupItem={collapsible:true,labelKey:'onboardingRequisitions',icon:ONBOARDING_NODE.icon,defaultHref:'/lifecycle/requisitions/onboarding',children:[{...LIFECYCLE_LINKS.find(l=>l.href==='/lifecycle/requisitions/onboarding')!,labelKey:'allOnboardingRequisitions',exactHref:true,ownedSubpaths:['/lifecycle/requisitions/onboarding']}]};
 
 // Performance nav row (ADR-0080 rung 4): the single manager-up row the performance pack
 // contributes (packs/performance/index.ts, PERFORMANCE_NAV_LINKS — provenance comments moved with
@@ -403,8 +404,10 @@ const GROUPS: Group[] = [
     labelKey: 'manage',
     items: [
       { href: '/tasks', labelKey: 'myTasks', icon: ListChecks },
+      { href: '/admin/personnel', labelKey: 'personnelAdmin', icon: Users, adminOnly: true },
       ONBOARDING_NODE,
-      ...LIFECYCLE_LINKS.filter(link=>link.group==='manage'),
+      ONBOARDING_REQUISITIONS_NODE,
+      ...LIFECYCLE_LINKS.filter(link=>link.group==='manage'&&link.href!=='/lifecycle/requisitions/onboarding'),
       { href: '/personnel', labelKey: 'people', icon: Users },
       LEAVE_TRACKER_ROW,
       MY_TEAM_ROW,
@@ -476,7 +479,7 @@ const GROUPS: Group[] = [
        * MapPin left this file with the row — no sibling here used it, and the pack's own node is where it
        * is drawn now.
        */
-      { href: '/admin/personnel', labelKey: 'personnelAdmin', icon: Users },
+
       // a4e49748: the three system-wide setup rows (Employee ID numbering / Dashboard cards / System
       // Labels) collapsed into the single System Settings node above.
       SYSTEM_SETTINGS_NODE,
@@ -529,6 +532,8 @@ export function Sidebar({
   onboardingAccess = false,
   onboardingMaster = false,
   onboardingRequisitionsAccess = false,
+  onboardingJoinerCount,
+  onboardingChecklistCount,
   enabledModules = null,
   defaultCollapsed,
   viewerName = null,
@@ -558,6 +563,8 @@ export function Sidebar({
   onboardingAccess?: boolean;
   onboardingMaster?: boolean;
   onboardingRequisitionsAccess?: boolean;
+  onboardingJoinerCount?:number;
+  onboardingChecklistCount?:number;
   defaultCollapsed: boolean;
   /** r398 — the Monolith rail's user line (README §3). Display only; Classic does not render it. */
   viewerName?: string | null;
@@ -606,6 +613,7 @@ export function Sidebar({
    * paint, which is the same flash in a new place. Navigating within a section keeps it open, and moving
    * to another section opens that one, so the state a user actually experiences is the useful one.
    */
+  const [inlineOpen, setInlineOpen] = useState<Record<string, boolean>>({});
   const [openSections, setOpenSections] = useState<Readonly<Record<string, boolean>>>({});
   // Escape returns focus to the trigger that opened the panel.
   const triggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -614,6 +622,7 @@ export function Sidebar({
   // effect never fires when switching report categories).
   useEffect(() => {
     setOpenKey(null);
+    setInlineOpen({});
     setWorkspaceKey(null);
   }, [pathname]);
   /**
@@ -644,13 +653,22 @@ export function Sidebar({
     // Drop a group that has become empty for this viewer (no stray divider in the collapsed rail).
     .filter((g) => g.items.length > 0);
 
+  const childCaption=(child:{href:string;labelKey:string})=>{
+    const count=child.href==='/lifecycle/onboarding'?onboardingJoinerCount:child.href==='/lifecycle/onboarding/checklists'?onboardingChecklistCount:undefined;
+    return <>{t(child.labelKey)}{count!==undefined&&<span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground">{count}</span>}</>;
+  };
   const isActive = (href: string) => isHrefActive(pathname, search, href);
   // 388e53c2 — flat rows go through isNavRowActive so a row can opt out of prefix matching or claim
   // paths outside its own href. Applied ONLY at the flat-row call site below: the flyout child ranking
   // and isParentActive are deliberately untouched, because changing them would move Payroll and
   // Attendance highlighting that nobody asked about.
-  const isRowActive = (r: { href: string; exactHref?: boolean; ownedSubpaths?: string[] }) =>
-    isNavRowActive(pathname, search, r);
+  const isRowActive = (r: { href: string; exactHref?: boolean; ownedSubpaths?: string[] }) => {
+    // Explicit onboarding destinations own their pages; the legacy hub must not select Home too.
+    const lifecycleDestination = ['/lifecycle', '/admin/lifecycle'].includes(r.href) && groups.some(g => g.items.some(item =>
+      (isCollapsible(item) ? item.children.filter(canSeeChild) : [item]).some(child =>
+        child.href.startsWith(r.href + '/') && isNavRowActive(pathname, search, child))));
+    return !lifecycleDestination && isNavRowActive(pathname, search, r);
+  };
   // 10b59703 — the paths a fly-out child answers for: its own href plus any `ownedSubpaths` the pack
   // declared (packs/registry.ts NavChildDescriptor). Fed to isParentActive so the parent node lights
   // up on an owned tab exactly as it does on the child's own address. Highlighting only, never a gate.
@@ -664,7 +682,7 @@ export function Sidebar({
       g.items.some((r) =>
         isCollapsible(r)
           ? (r.defaultHref || r.activeMatch === 'children' ? r.children.filter(canSeeChild).some(isRowActive) : isParentActive(pathname, r.children.filter(canSeeChild).flatMap(childPaths)))
-          : isNavRowActive(pathname, search, r),
+          : isRowActive(r),
       ),
     )?.labelKey ?? null;
 
@@ -782,7 +800,7 @@ export function Sidebar({
                   aria-current={current ? 'page' : undefined}
                   className={cn(railKid, current && 'text-signal-text hover:text-signal-text')}
                 >
-                  {t(child.labelKey)}
+                  {childCaption(child)}
                 </Link>
               );
             })}
@@ -909,7 +927,7 @@ export function Sidebar({
             if (e.key === 'Escape') { setOpenKey(null); document.querySelector<HTMLButtonElement>(`[aria-controls="current-module-${item.labelKey}"]`)?.focus(); }
           }}>
           {children.map((child) => <Link key={child.href} href={child.href} aria-current={child.href === currentHref ? 'page' : undefined}
-            onClick={() => setOpenKey(null)}>{t(child.labelKey)}</Link>)}
+            onClick={() => setOpenKey(null)}>{childCaption(child)}</Link>)}
         </nav>;
       })}
     </div>;
@@ -1014,14 +1032,14 @@ export function Sidebar({
                   if (children.length === 0) return null;
                   if (item.defaultHref && !collapsed) {
                     const active = children.some(isRowActive);
-                    const expanded = active || openKey === item.labelKey;
+                    const expanded = inlineOpen[item.labelKey] ?? (active || openKey === item.labelKey);
                     const Icon = item.icon;
                     return <div key={item.labelKey}>
                       <div className={cn(rowBase, 'w-full gap-1 px-3 py-1', active && 'bg-accent')}>
                         <Link href={item.defaultHref} className="flex min-h-11 min-w-0 flex-1 items-center gap-3"><Icon className="size-5 shrink-0" aria-hidden /><span className="text-sm">{t(item.labelKey)}</span></Link>
-                        <button type="button" aria-label={t(item.labelKey)} aria-expanded={expanded} aria-controls={`inline-${item.labelKey}`} className="flex size-11 shrink-0 items-center justify-center" onClick={() => setOpenKey((key) => key === item.labelKey ? null : item.labelKey)}><ChevronDown className={cn('size-4', !expanded && '-rotate-90')} aria-hidden /></button>
+                        <button type="button" aria-label={t(item.labelKey)} aria-expanded={expanded} aria-controls={`inline-${item.labelKey}`} className="flex size-11 shrink-0 items-center justify-center" onClick={() => setInlineOpen(old=>({...old,[item.labelKey]:!expanded}))}><ChevronDown className={cn('size-4', !expanded && '-rotate-90')} aria-hidden /></button>
                       </div>
-                      {expanded && <nav id={`inline-${item.labelKey}`} aria-label={t(item.labelKey)} className="ml-7 flex flex-col gap-1">{children.map((child) => <Link key={child.href} href={child.href} aria-current={isRowActive(child) ? 'page' : undefined} className={cn('flex min-h-11 items-center rounded-xl px-3 text-sm', isRowActive(child) ? 'bg-accent font-medium text-accent-foreground' : 'text-muted-foreground hover:bg-accent')}>{t(child.labelKey)}</Link>)}</nav>}
+                      {expanded && <nav id={`inline-${item.labelKey}`} aria-label={t(item.labelKey)} className="ml-7 flex flex-col gap-1">{children.map((child) => <Link key={child.href} href={child.href} aria-current={isRowActive(child) ? 'page' : undefined} className={cn('flex min-h-11 items-center rounded-xl px-3 text-sm', isRowActive(child) ? 'bg-accent font-medium text-accent-foreground' : 'text-muted-foreground hover:bg-accent')}>{childCaption(child)}</Link>)}</nav>}
                     </div>;
                   }
                   return (

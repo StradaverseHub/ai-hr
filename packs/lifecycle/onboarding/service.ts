@@ -1042,7 +1042,14 @@ export async function refreshOnboardingPersonnel(ctx: SessionContext) {
         }
     });
 }
-export async function onboardingNavigation(ctx: SessionContext) { return withTenant(ctx, async (tx) => { const { config } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config); return { module: actor.module, master: actor.master, requisitions: actor.module || actor.hr || requisitionGroupAccess(config, actor.id) }; }); }
+export async function onboardingNavigation(ctx: SessionContext) {
+    return withTenant(ctx, async (tx) => {
+        const { config, revision } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config);
+        const list = actor.module ? await tx.select({data:cases.data}).from(cases).orderBy(asc(cases.id)) : [];
+        const today=todayInKualaLumpur();
+        return { module:actor.module, master:actor.master, requisitions:actor.module || actor.hr || requisitionGroupAccess(config,actor.id), joiners:list.filter(row=>M.visibleRecentJoiner(config,row.data,today)).length, checklists:actor.module&&revision?config.checklists.length:0 };
+    });
+}
 async function assignRoleTasksTx(tx: Tx, c: M.Case): Promise<boolean> {
     const supervisor = M.effectiveFacts(c).supervisor, manager = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(supervisor) ? supervisor : null;
     const resolved = rows<{
@@ -1089,10 +1096,10 @@ export async function onboardingRequisitions(ctx: SessionContext) {
         const { config } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config);
         const list = await tx.select({ data: cases.data, id: cases.id, hr: sql<boolean> `app.is_admin_for(${cases.companyId})` }).from(cases).orderBy(asc(cases.createdAt), asc(cases.id));
         return list.flatMap(row => row.data.requisitions.filter(r => canReadRequisition(config, r, { ...actor, hr: row.hr })).map(r => ({
-            id: r.id, caseId: row.id, number: r.number, joiner: M.effectiveFacts(row.data).fullName,
+            id: r.id, caseId: row.id, caseNumber: row.data.number, number: r.number, joiner: M.effectiveFacts(row.data).fullName,
             joinDate: M.effectiveFacts(row.data).joinDate, createdAt: r.createdAt,
-            status: M.requisitionStatus(r), ready: r.items.filter(M.activeItem).filter(i => ['ready', 'handed'].includes(i.state)).length,
-            active: r.items.filter(M.activeItem).length, pending: r.items.filter(i => !i.removed && i.approval === 'pending').length,
+            status: M.requisitionStatus(r), ready: M.requisitionItemCounts(r).ready,
+            active: r.items.filter(M.activeItem).length, total:M.requisitionItemCounts(r).total, pending: r.items.filter(i => !i.removed && i.approval === 'pending').length,
             unreadNote: !!r.hrNote && r.noteAcks[actor.id] !== r.noteVersion && (r.items.some(i => M.inGroup(config, i.team, actor.id)) || config.exceptions.groups.some(g => M.inGroup(config, g, actor.id))),
             current: M.currentReq(row.data)?.id === r.id,
         })));

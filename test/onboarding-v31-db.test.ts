@@ -4,7 +4,7 @@ import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { saveEmployeeDraft, discardEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft';
 import { hireEmployee } from '../core/org';
-import { onboardingSetup, onboardingContext, onboardingList, onboardingDetail, onboardingCommand, onboardingSaveConfig, onboardingSaveChecklistTasks, onboardingTasks, onboardingNote, sweepOnboarding, onboardingNotices, onboardingReadNotice, createOnboardingCase, caseHistory, refreshOnboardingPersonnel, onboardingRequisitions } from '../packs/lifecycle/service';
+import { onboardingSetup, onboardingContext, onboardingList, onboardingDetail, onboardingCommand, onboardingSaveConfig, onboardingSaveChecklistTasks, onboardingTasks, onboardingNote, sweepOnboarding, onboardingNotices, onboardingReadNotice, createOnboardingCase, caseHistory, refreshOnboardingPersonnel, onboardingRequisitions, onboardingNavigation } from '../packs/lifecycle/service';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { dayDate } from '../lib/onboarding-model';
@@ -39,6 +39,12 @@ describe('V3.1 onboarding database and authorization', () => {
         await onboardingCommand(admin, row!.case.id, row!.revision, { type: 'submit' });
         return (await onboardingList(admin))[0]!;
     }
+    it('counts the same visible joiners and checklists as the authorized module without leaking counts to task-only users', async()=>{
+        await draft();
+        expect(await onboardingNavigation(admin)).toMatchObject({module:true,joiners:1,checklists:1});
+        expect(await onboardingNavigation(tech)).toMatchObject({module:false,joiners:0,checklists:0});
+        expect(await onboardingNavigation(other)).toMatchObject({module:false,joiners:0,checklists:0});
+    });
     it('saves task definitions alone, checks revisions and preserves other configuration', async () => {
         const before = await onboardingContext(admin), checklist = before.config.checklists[0]!;
         const tasks = structuredClone(checklist.tasks);
