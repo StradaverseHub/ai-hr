@@ -139,6 +139,11 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audi
       const definition=LABEL_IMPORT_DEFINITIONS.find(d=>d.kind===row.sheet);
       if(!definition)throw new LabelImportRowError('unsupportedCategory','Unsupported label category. This worksheet was not imported.');
       const v=result.after;
+      // Legacy exports spelled inactive differently; preserve its state rather than discarding it.
+      const status=v.Status==='Archived / Inactive'?'Inactive':v.Status||'Active';
+      if(!['Active','Inactive'].includes(status)||(row.sheet==='grade_groups'&&status!=='Active'))throw new LabelImportRowError('invalidStatus','Status must be Active or Inactive. Grade Groups does not support an initial inactive status.');
+      const active=status==='Active';
+      if(row.sheet!=='grade_groups')v.Status=status;
       const requireValue=(field:LabelImportRequiredField)=>{if(!v[field])throw new LabelImportRowError('required',`${field} is required.`,field);return v[field];};
       const identify=(identity:string)=>{
         const previous=seen.get(identity);
@@ -162,12 +167,13 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audi
         if(v.Criteria==='global'&&!c.groupAdmin)throw new LabelImportRowError('globalAdminRequired','Global criteria require a group administrator.');
         if((v.Criteria==='companies')!==(shared.length>0))throw new LabelImportRowError('criteriaCompaniesRequired','Companies criteria require a nonempty company list; Global must leave Criteria Companies blank.');
         if(shared.some(id=>!c.companies.some(co=>co.id===id&&co.writable&&!co.archived)))throw new LabelImportRowError('invalidCriteriaCompany','A Criteria company is archived or outside your administrator scope.');
-        const head=v['Head Employee Code'],heads=head?c.employees.filter(e=>e.companyId===co.id&&e.code===head&&e.active):[];
+        const head=v['Head Employee Code'],heads=head?c.employees.filter(e=>e.companyId===co.id&&(e.code===head||`${e.code} — ${e.name}`===head)&&e.active):[];
+        if(heads.length===1)v['Head Employee Code']=heads[0].code!;
         if(head&&heads.length!==1)throw new LabelImportRowError('invalidHeadEmployee','Head Employee Code must identify one active employee in the origin company.');
         for(const col of ORGANISATION_LABEL_COLUMNS[kind])if('required' in col&&col.required)requireValue(({code:'Code',label:'Label',description:'Description'} as const)[col.headerKey]);
         // Import uniqueness is category-wide, unlike ordinary manual Criteria editing.
         if(!identify(`${kind}|${lower(code.trim())}`))continue;
-        const fields:Partial<LabelCreateInput>={companyId:co.id,label:v.Label};
+        const fields:Partial<LabelCreateInput>={companyId:co.id,label:v.Label,archived:!active};
         for(const col of ORGANISATION_LABEL_COLUMNS[kind])Object.assign(fields,{[col.field]:v[{code:'Code',label:'Label',description:'Description'}[col.headerKey]]});
         if('Head Employee Code' in v)fields.headEmploymentId=heads[0]?.id??null;
         add(async()=>{},{kind,create:{...fields,key,companyId:co.id,isGlobal:v.Criteria==='global',companyIds:shared} as LabelCreateInput});
@@ -176,7 +182,7 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audi
         if(c.options.some(option=>option.category===row.sheet&&option.value===value))throw new LabelImportRowError('existing',existingCodeMessage);
         v.Label=v.Label||value;v['Sort Order']=String(whole(v['Sort Order']));
         if(!identify(`${row.sheet}|${value}`))continue;
-        add(()=>createProfileOption(ctx,{category:row.sheet,value,label:v.Label,description:v.Description,sortOrder:Number(v['Sort Order'])},tx));
+        add(()=>createProfileOption(ctx,{category:row.sheet,value,label:v.Label,description:v.Description,sortOrder:Number(v['Sort Order']),isActive:active},tx));
       }else if(row.sheet==='grades'){
         const code=requireValue('Code');
         if(!/^[A-Z][A-Z0-9_]{0,31}$/.test(code))throw new LabelImportRowError('invalidGradeCode','Grade Code must use uppercase letters, digits or underscores.');
@@ -184,7 +190,7 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audi
         const name=requireValue('Label');v.Rank=String(whole(v.Rank));
         if(seen.has(`grades|${code}`)){identify(`grades|${code}`);continue;}
         if(c.grades.some(grade=>!grade.archivedAt&&lower(grade.name)===lower(name))||names.has(lower(name)))throw new LabelImportRowError('gradeLabelExists','Another grade already uses this Label.');
-        identify(`grades|${code}`);names.add(lower(name));add(()=>createJobGrade(ctx,{code,name,rank:Number(v.Rank),description:v.Description},tx));
+        identify(`grades|${code}`);names.add(lower(name));add(()=>createJobGrade(ctx,{code,name,rank:Number(v.Rank),description:v.Description,active},tx));
       }else{
         const name=requireValue('Name');
         if(c.groups.some(group=>lower(group.name)===lower(name)))throw new LabelImportRowError('existing',existingCodeMessage);
