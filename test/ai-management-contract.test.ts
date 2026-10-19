@@ -23,16 +23,22 @@ describe('complete AI management inventory and boundary',()=>{
   const config=read('core/ai-config.ts');expect(config.match(/governedAiConfig\(/g)?.length).toBe(2);
  });
  it('keeps the SQL inventory, module catalogue and canonical switches consistent',()=>{
-  const migration=read('db/migrations/0541_ai_control_centre.sql');
-  for(const feature of AI_FEATURES){expect(migration).toContain(`'${feature.id}'`);if(feature.module)expect(MODULE_CATALOG.some(m=>m.code===feature.module)).toBe(true);if(feature.setting)expect(SETTING_CATALOG.some(s=>s.key===feature.setting)).toBe(true);}
-  const policies=[...migration.matchAll(/(?:NEW.feature_id|wanted_feature) NOT IN \(([^)]+)\)/g)];expect(policies).toHaveLength(2);
-  for(const match of policies){const expected=match[0].startsWith('NEW.')?AI_FEATURES.filter(f=>f.setting===null):AI_FEATURES;expect([...match[1].matchAll(/'([^']+)'/g)].map(m=>m[1]).sort()).toEqual(expected.map(f=>f.id).sort());}
+  // The live definition of a function is its LAST redefinition in journal (apply) order; 0568 replaced ai_admit.
+  const journal:string[]=JSON.parse(read('db/migrations/meta/_journal.json')).entries.map((e:{tag:string})=>`db/migrations/${e.tag}.sql`);
+  const live=(marker:string)=>{const files=journal.filter(f=>read(f).includes(marker));expect(files.length,marker).toBeGreaterThan(0);return read(files.at(-1)!);};
+  const guard=live('FUNCTION app.ai_control_policy_guard()'),admit=live('FUNCTION app.ai_admit(');
+  expect(journal.filter(f=>read(f).includes('FUNCTION app.ai_admit(')).length).toBeGreaterThanOrEqual(2);
+  for(const feature of AI_FEATURES){expect(admit).toContain(`'${feature.id}'`);if(feature.module)expect(MODULE_CATALOG.some(m=>m.code===feature.module)).toBe(true);if(feature.setting)expect(SETTING_CATALOG.some(s=>s.key===feature.setting)).toBe(true);}
+  for(const [source,marker,expected] of [[guard,'NEW.feature_id',AI_FEATURES.filter(f=>f.setting===null)],[admit,'wanted_feature',AI_FEATURES]] as const){
+   const lists=[...source.matchAll(new RegExp(`${marker.replace('.','\\.')} NOT IN \\(([^)]+)\\)`,'g'))];expect(lists,marker).toHaveLength(1);
+   expect([...lists[0][1].matchAll(/'([^']+)'/g)].map(m=>m[1]).sort()).toEqual(expected.map(f=>f.id).sort());
+  }
  });
  it('has every dynamic key in all six locales and describes reservations and shared attribution',()=>{
   for(const locale of ['en','ms','zh','vi','th','ta']){
    const data=JSON.parse(read(`messages/${locale}.json`)).aiManagement;
    for(const feature of AI_FEATURES)expect(data.features[feature.id],`${locale}:${feature.id}`).toBeTruthy();
-   for(const [section,keys] of Object.entries({states:['ready','paused','module','provider','restricted'],runStates:['pending','completed','failed','blocked'],kinds:['assistant','agent','feature','platform'],operations:['draft','conversation','image'],reasons:['paused','daily_limit','monthly_limit']}))for(const key of keys)expect(data[section][key],`${locale}:${section}.${key}`).toBeTruthy();
+   for(const [section,keys] of Object.entries({states:['ready','paused','module','provider','restricted'],runStates:['pending','completed','failed','blocked'],kinds:['assistant','agent','feature','platform'],operations:['draft','conversation','image'],reasons:['paused','daily_limit','monthly_limit'],levels:['near','at']}))for(const key of keys)expect(data[section][key],`${locale}:${section}.${key}`).toBeTruthy();
    expect(data.reservationHelp.length).toBeGreaterThan(30);expect(data.attribution.length).toBeGreaterThan(30);
   }
  });

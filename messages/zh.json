@@ -422,7 +422,8 @@
     "onboardingChecklists": "清单管理",
     "onboardingSettings": "入职设置",
     "onboardingGroups": "分配小组",
-    "onboardingModuleAccess": "模块权限"
+    "onboardingModuleAccess": "模块权限",
+    "controlTowerOpportunities": "机会"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -16118,7 +16119,8 @@
       "review": "由人力资源审核并更新记录",
       "shown": "显示 {total} 个问题中的 {shown} 个。",
       "verificationNote": "关闭表示检查时相关信息已填写或已不再需要。人力资源仍需验证其准确性。薪资和访问权限决定继续使用现有审批。",
-      "quality": "薪资与 AI 质量"
+      "quality": "薪资与 AI 质量",
+      "opportunities": "机会"
     },
     "corrections": {
       "employeeTitle": "完善您的资料",
@@ -19519,7 +19521,7 @@
     "searchUsers": "搜索用户",
     "search": "搜索",
     "noUsers": "没有匹配的用户。",
-    "moreUsers": "显示 50 个匹配项。请缩小搜索范围以查找其他用户。",
+    "moreUsers": "显示用量最高的 50 个匹配项。请搜索以查找其他用户。",
     "noCompanies": "您的管理范围内没有公司。",
     "inherited": "现有控制",
     "businessLimits": "模块访问、功能权限以及 Performance 每位用户每日每个字段最多五次成功草稿的现有限制继续适用。",
@@ -19589,7 +19591,43 @@
     "actor": "调用者",
     "scheduledActor": "定时代理",
     "required": "需要约 {tokens} 个令牌",
-    "sections": "AI 管理栏目"
+    "sections": "AI 管理栏目",
+    "attention": "需要关注",
+    "attentionHelp": "达到上限 80% 或以上的公司和登录账号，以及今天（马来西亚时间）有调用被拦截的登录账号。令牌用量按准入时的方式计算，包含已记录和已预留的令牌。",
+    "attentionScoped": "仅显示您管理的公司。个人登录账号仅对集团管理员可见。",
+    "attentionNone": "目前没有需要关注的事项。",
+    "attentionCompanies": "接近或达到上限的公司",
+    "attentionUsers": "接近或达到上限的登录账号",
+    "attentionBlocked": "今天被拦截的登录账号",
+    "blockedToday": "{count, plural, other {今天有 # 次调用被拦截}}",
+    "requestsOfLimit": "今天 {used} / {limit} 次请求",
+    "requestsNoCap": "今天 {used} 次请求 · 无上限",
+    "tokensOfLimit": "本月 {used} / {limit} 个令牌",
+    "tokensNoCap": "本月 {used} 个令牌 · 无上限",
+    "heldIncluded": "含 {held} 个预留",
+    "levels": {
+      "near": "接近上限",
+      "at": "已达上限"
+    },
+    "defaultAllowance": "所有登录账号的默认额度",
+    "defaultHelp": "适用于每个没有个人额度的登录账号。个人额度会替代该登录账号的默认额度；两者从不叠加。计划任务代理不受影响。留空表示无上限；零表示阻止新的调用。",
+    "defaultSet": "现适用于所有没有个人额度的登录账号。",
+    "defaultNotSet": "未设置默认额度：没有个人额度的登录账号没有用户上限。",
+    "individualHelp": "保存某个登录账号的行会为其设置替代默认额度的个人额度。“使用默认”可将其恢复为默认额度。",
+    "sourceIndividual": "个人额度 — 替代默认额度",
+    "sourceDefault": "使用默认额度",
+    "useDefault": "使用默认",
+    "usesDefault": "该登录账号现已使用默认额度。",
+    "userSort": "按本月令牌用量排序，最高者在前。",
+    "runFilter": "显示",
+    "runAll": "全部调用",
+    "runBlocked": "仅被拦截",
+    "runFailed": "仅失败",
+    "allFeatures": "全部功能",
+    "applyFilter": "应用",
+    "clearFilter": "清除筛选",
+    "runsFiltered": "显示最近 50 条匹配的调用。",
+    "noMatchingRuns": "没有符合这些筛选条件的调用。"
   },
   "accountEmail": {
     "title": "账户邮件发送记录",
@@ -21307,5 +21345,84 @@
       "c95332e75dac8": "通过“我的任务”处理工作",
       "cd1a339556dbb": "未完成任务"
     }
+  },
+  "processAssessment": {
+    "back": "控制中心",
+    "title": "自动化机会",
+    "description": "根据您的记录衡量 AI 代理可以从 HR 接手哪些处理工作。此页面不会更改数据，也不会调用 AI 模型。",
+    "window": "统计最近开始的案例",
+    "windowDays": "{days} 天",
+    "minutes": "每次员工操作的分钟数（可选）",
+    "fteHours": "每个全职月的工时（可选）",
+    "notSet": "未设置",
+    "apply": "更新",
+    "estimateHelp": "系统中没有任何地方记录员工耗时。请输入您自己估计的每次员工操作分钟数，并可选填全职月的工作小时数，以查看估算的每月工作量。这些输入不会被保存。",
+    "ranked": "按员工处理量排序的流程",
+    "rankHelp": "自 {from} 起开始的案例，按每 30 天的员工操作次数排序。员工操作是指除案例所涉员工本人以外的任何人在案例上留下记录的操作。",
+    "started": "已开始案例",
+    "completedOf": "已完成 {n} 个",
+    "open": "仍未结",
+    "agedOpen": "{n} 个超过 {days} 天",
+    "median": "一般完成时间",
+    "p90": "90% 在 {value} 内",
+    "hours": "{n} 小时",
+    "days": "{n} 天",
+    "rework": "返工",
+    "reworkHint": "被拒绝、撤回、取消或重新打开",
+    "staffActions": "每 30 天员工操作次数",
+    "automatedShare": "{share} 的操作已自动化",
+    "notLinked": "处理操作尚未关联到这些案例",
+    "estimateHours": "每月约 {hours} 个员工工时。",
+    "estimateFte": "每月约 {hours} 个员工工时，约合 {fte} 个全职人力。",
+    "estimateLabel": "根据您的输入估算，并非实测。",
+    "needMore": "此期间已完成案例少于 {min} 个。请先延长衡量时间再作决定。",
+    "candidates": "代理可以承担的工作（决定本身仍由人作出）",
+    "moduleOff": "您的组织未启用此模块。",
+    "limitsTitle": "这些数字不能说明的内容",
+    "limitEffort": "经过时间不等于工作量：等待五天的案例可能只需五分钟的工作。",
+    "limitOutside": "在系统之外完成的工作（如电子邮件、电话和电子表格）在此不可见。",
+    "limitStaff": "时间和人力数字只来自您自己的输入。在代理运行并衡量前后对比之前，不声称任何节省。",
+    "limitNoChange": "此页面只读取您本来就能打开的记录。会执行操作的代理属于后续阶段。",
+    "version": "评估规则 {version}",
+    "processes": {
+      "leave": "请假申请",
+      "claims": "费用报销",
+      "attendance_correction": "考勤更正",
+      "profile_change": "员工资料变更",
+      "onboarding": "入职",
+      "offboarding": "离职",
+      "readiness": "缺失的员工资料"
+    },
+    "decision": {
+      "routine": "常规：由规则决定结果。",
+      "judgement": "判断：由审批人权衡申请。",
+      "consequential": "重大：影响薪酬、资金或访问权限，因此始终由人决定。"
+    },
+    "roles": {
+      "automate_parts": "部分自动化",
+      "assist": "仅辅助",
+      "measure_first": "先衡量",
+      "off": "未启用"
+    },
+    "tiers": {
+      "automatic": "自动",
+      "confirm": "点击确认后",
+      "approve": "准备好交给审批人"
+    },
+    "actions": {
+      "chase_overdue_approver": "催办逾期审批人",
+      "check_completeness": "检查申请是否完整",
+      "submit_on_request": "应员工请求提交",
+      "request_missing_evidence": "索取缺失的收据或证明",
+      "request_missing_information": "索取缺失的信息",
+      "prepare_for_approval": "准备变更以供审批",
+      "chase_step_owner": "催办逾期步骤负责人",
+      "tick_system_verified_steps": "勾选系统可证明已完成的步骤",
+      "open_case_from_hire": "有人入职时建立案例",
+      "open_case_from_resignation": "辞职获接受时建立案例"
+    },
+    "minutesShort": "{n} 分钟",
+    "underMinute": "< 1 分钟",
+    "completedClosed": "已完成 {n} 个，{w} 个未经决定即关闭"
   }
 }

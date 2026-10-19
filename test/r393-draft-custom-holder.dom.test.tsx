@@ -18,7 +18,7 @@ import { personnelMarkupContract, personnelCaption } from './helpers/personnel-m
  * jsdom applies no CSS and computes no layout: rendering and interaction logic only.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { useState, type ReactNode } from 'react';
@@ -167,9 +167,16 @@ describe('§2 ticking opens the box and the draft keeps what was typed', () => {
     expect(s.customHolderName, 'data.statutory.customHolderName').toBe('Siti Spouse');
     expect(s.enableCustomHolderId, 'data.statutory.enableCustomHolderId').toBe('yes');
     expect(s.customHolderId, 'data.statutory.customHolderId').toBe('910202025050');
+    // The first Save runs in a transition that disables this tab's fieldset and Save until it settles; a
+    // click before then lands on a disabled control and is dropped, so act only on the settled screen.
+    await waitFor(() => {
+      expect(tickBox(d.enableCustomHolderId)).toBeEnabled();
+      expect(screen.getByRole('button', { name: en.people.wizard.saveDraft })).toBeEnabled();
+    }, { timeout: 5000 });
     await userEvent.click(tickBox(d.enableCustomHolderId));
     expect(valueBox(d.customHolderId), 'un-ticking closes the box').toBeNull();
     await userEvent.click(screen.getByRole('button', { name: en.people.wizard.saveDraft }));
+    expect(saveDraftAction, 'the second Save reached the server').toHaveBeenCalledTimes(2);
     expect(savedData().statutory!.enableCustomHolderId, 'the un-tick is stored').toBe('no');
   });
 

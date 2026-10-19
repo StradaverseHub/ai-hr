@@ -106,13 +106,19 @@ describe('the write re-states the policy rather than leaning on it', () => {
     expect(code(SERVICE)).toContain('actor: actorOf(ctx)');
   });
 
-  it('the action takes an AGENT ID, never a settings key, from the form', () => {
+  it('the screen posts a closed AI feature id, never a settings key, from the form', () => {
     // ⚠️ A form field naming a key would let anyone who can open this screen write ANY tenant-scoped
-    // catalogued setting — including the two that reopen a finalised payroll run.
+    // catalogued setting — including the two that reopen a finalised payroll run. The retired per-agent
+    // switch action (removed when AI management absorbed the agents) took an agent id for the same reason;
+    // the surviving writer takes a feature id, checks it against AI_FEATURES and reads the key from there.
     const c = code(ACTION);
-    expect(c).toContain("formData.get('agentId')");
-    expect(c, 'the key comes from the closed list, not the request').toContain('AI_AGENT_SETTINGS.find((a) => a.id === id)');
+    expect(c.includes('setAgentSwitchAction'), 'the retired switch action stays gone').toBe(false);
+    expect(c).toContain("formData.get('feature')");
+    expect(c, 'the id is checked against the closed catalogue').toContain('!isAiFeature(feature)');
     expect(c.includes("formData.get('key')"), 'the key must never be posted').toBe(false);
+    const management = code(read('core/ai-management.ts'));
+    expect(management, 'the key comes from the closed list, not the request').toContain('const entry = AI_FEATURES.find(f=>f.id===feature)!;');
+    expect(management).toContain('if(entry.setting) return setTenantSetting(ctx,{key:entry.setting,value:enabled});');
   });
 });
 

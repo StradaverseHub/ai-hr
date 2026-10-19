@@ -984,5 +984,7 @@ export function toolsFor(ctx: SessionContext): AssistantTool[] {
 
 export const specsFor = (ctx: SessionContext): AiToolSpec[] => toolsFor(ctx).map((t) => t.spec);
 
-export const toolByName = (name: string): AssistantTool | undefined =>
-  ASSISTANT_TOOLS.find((t) => t.spec.name === name);
+// There is deliberately NO lookup across all of ASSISTANT_TOOLS. Dispatch resolves a call only from the
+// list toolsFor() offered for this exchange (core/assistant.ts runTools); a lookup over the whole
+// registry is how a tool the tenant does not hold (my_payslip_summary without payroll) used to run when
+// the model named it. test/assistant-dispatch-offered.test.ts pins it.

@@ -39,7 +39,7 @@ import { converse } from '../lib/ai';
 import { AiAllowanceError, type AiStop, type AiToolCall, type AiToolResult, type AiTurn, type AiUsage } from '../lib/ai/types';
 import { resolveActiveAiConfig } from './ai-config';
 import { assertMayUseAssistant } from './assistant-grant';
-import { specsFor, toolByName, type ToolOutcome } from './assistant-tools';
+import { ASSISTANT_TOOLS, toolsFor, type AssistantTool, type ToolOutcome } from './assistant-tools';
 
 /**
  * §2.5 fixes this at 8: enough for a genuinely multi-part question ("who on my team is on leave next
@@ -144,6 +144,9 @@ const SYSTEM: string[] = [
  * states outright that it must never be a tenant id, user id or email.
  */
 const CACHE_KEY = 'assistant-v1';
+
+/** Every registered name — consulted ONLY to label an audit refusal, never to resolve a call. */
+const ASSISTANT_TOOL_NAMES: ReadonlySet<string> = new Set(ASSISTANT_TOOLS.map((t) => t.spec.name));
 
 /** 'YYYY-MM' for the usage period, from a Date the CALLER supplies — never `new Date()` inside a
  *  function the tests need to pin. */
@@ -257,7 +260,10 @@ export async function askAssistant(
   // is the failure mode of a safety default nobody can discover.
   const ceiling = budget ? Number(budget.monthlyTokenCeiling) : null;
 
-  const tools = specsFor(ctx);
+  // ONE list, computed once: what the model is offered and what dispatch may run are the same array, so
+  // a tool outside the tenant's modules cannot be reached by the model simply naming it.
+  const offered = toolsFor(ctx);
+  const tools = offered.map((t) => t.spec);
   const turns: AiTurn[] = [{ role: 'user', content: question }];
   const audit: { name: string; input: unknown; rowCount: number | null; refusal?: string }[] = [];
 
@@ -308,7 +314,7 @@ export async function askAssistant(
         toolCalls: res.toolCalls,
         providerState: res.providerState,
       });
-      const results = await runTools(ctx, res.toolCalls, audit);
+      const results = await runTools(ctx, offered, res.toolCalls, audit);
       turns.push({ role: 'tool', results });
 
       if (i === MAX_TURNS - 1) hitTurnCap = true;
@@ -355,15 +361,21 @@ export async function askAssistant(
  */
 async function runTools(
   ctx: SessionContext,
+  offered: readonly AssistantTool[],
   calls: AiToolCall[],
   audit: { name: string; input: unknown; rowCount: number | null; refusal?: string }[],
 ): Promise<AiToolResult[]> {
   return Promise.all(
     calls.map(async (call): Promise<AiToolResult> => {
-      const tool = toolByName(call.name);
+      const tool = offered.find((t) => t.spec.name === call.name);
       if (!tool) {
-        // A hallucinated tool name. An error, not a refusal: there is nothing for the model to relay.
-        audit.push({ name: call.name, input: call.input, rowCount: null, refusal: 'unknown_tool' });
+        // Resolved ONLY from what this exchange offered. A name that exists in the registry but was not
+        // offered (a module the tenant does not hold) is a module-gate bypass if it runs, whether the model
+        // hallucinated it or a tool result injected it. The model gets the SAME sentence as for a name
+        // that does not exist, so the reply is no oracle for which tools exist; only the audit tells the
+        // two apart. An error, not a refusal: there is nothing for the model to relay.
+        const exists = ASSISTANT_TOOL_NAMES.has(call.name);
+        audit.push({ name: call.name, input: call.input, rowCount: null, refusal: exists ? 'not_offered' : 'unknown_tool' });
         return { id: call.id, name: call.name, content: 'No such tool.', isError: true };
       }
       // `input === undefined` means the provider produced arguments we could not parse. AiToolCall's own
