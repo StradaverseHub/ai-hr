@@ -111,6 +111,7 @@ import {
 import {
   movementHistory,
   movementDetail,
+  movementPendingEditInput,
   movementCurrentState,
   INTERCHANGEABLE_COMPARISON_KINDS,
   isComparisonKind,
@@ -4024,10 +4025,13 @@ export default async function EmployeePage({
   // corrected. `canEdit` comes from the service, so a row the service would refuse never renders a form.
   // Include the edited code's metadata even if inactive; the client needs its resolved behavior.
   const movementEditRow = spEditMovement ? movements.find((m) => m.id === spEditMovement && m.canEdit) : undefined;
+  const movementEditInput = movementEditRow && movementEditRow.status === 'pending'
+    ? await movementPendingEditInput(s, employmentId, movementEditRow.id) : null;
   const editEventCard = canCreateMovement && movementEditRow && movementFormProps ? (
     <Card id="section-movement-edit-event" className="overflow-hidden">
       <SectionHeader title={t('movement.editTitle')} />
       <MovementNewEvent
+        key={movementEditRow.id}
         {...movementFormProps}
         types={movementTypes
           .filter((r) => r.active || r.code === movementEditRow.kind)
@@ -4038,6 +4042,8 @@ export default async function EmployeePage({
           effectiveDate: movementEditRow.effectiveDate,
           endDate: movementEditRow.endDate,
           remarks: movementEditRow.remarks,
+          pendingInput: movementEditInput?.values,
+          pendingUnavailable: movementEditInput?.unavailable,
           // A correction may re-classify the movement within its own family (a Transfer that should have
           // been a Promotion), never across it — the service replays the same set of writers either way.
           // 476f23ed — the family is decided by the BEHAVIOUR, not by the code, so a correction of one of

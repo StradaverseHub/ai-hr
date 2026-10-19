@@ -1640,7 +1640,8 @@
           "terminationPayrollFlag": "Đã lưu việc chấm dứt. Kỳ lương {periods} đã được xử lý vượt quá ngày chấm dứt — hãy kiểm tra kỳ lương đó. Hệ thống không thay đổi nó.",
           "entityTransferDateHint": "Ngày này là ngày điều chuyển có hiệu lực, đồng thời trở thành Ngày gia nhập của nhân viên tại công ty mới. Ngày gia nhập Tập đoàn không thay đổi, nên thâm niên, phép năm và quyền lợi thâm niên dài hạn vẫn được giữ nguyên.",
           "entityTransferHint": "Chọn công ty mà nhân viên sẽ chuyển đến. Danh sách Đơn vị kinh doanh, Phòng ban, Chức danh và Địa điểm làm việc bên dưới hiện hiển thị lựa chọn của công ty đích — hãy chọn Phòng ban trong đó. Mã nhân viên, Ngày gia nhập Tập đoàn và lịch sử của họ giữ nguyên.",
-          "selectPlaceholder": "Chọn…"
+          "selectPlaceholder": "Chọn…",
+          "pendingTargetUnavailable": "Giá trị đích đã lưu không còn nằm trong các lựa chọn hoặc phạm vi truy cập hiện tại của bạn. Không thể lưu bản chỉnh sửa này. Hãy kiểm tra thay đổi chưa có hiệu lực trước khi tiếp tục."
         },
         "edit": "Sửa",
         "rollback": "Hoàn tác",

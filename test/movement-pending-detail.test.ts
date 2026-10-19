@@ -50,6 +50,11 @@ describe('pending Movement View shows saved intent separately from applied histo
     expect(await movementPendingEditInput(ctx,id,original.id)).toBeNull();
     const recorded=(await snapshot(id)).events.find(e=>e.id===revised.id)!;
     expect((recorded.payload as {input:unknown}).input).toEqual({departmentId:b.deptB,basicSalary:3500,positionId:null});
+    await editMovementEvent(ctx,{employmentId:id,movementId:revised.id,kind:'promotion',effectiveDate:day(9),basicSalary:3600,positionId:null,reason:'Fictional explicit target correction'});
+    const explicit=(await movementHistory(ctx,id)).find(r=>r.status==='pending')!;
+    expect(await movementPendingEditInput(ctx,id,explicit.id)).toEqual({values:{departmentId:b.deptB,basicSalary:'3600',positionId:null},unavailable:false});
+    const foreign=await seedBase();
+    await expect(movementPendingEditInput(adminCtx(foreign),id,explicit.id)).rejects.toThrow();
   });
   it('shows a manually scheduled target without changing actual snapshots or writing during View', async () => {
     const id = await hire(), ctx = adminCtx(b);

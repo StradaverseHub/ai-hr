@@ -1640,7 +1640,8 @@
           "terminationPayrollFlag": "Penamatan disimpan. Gaji bagi {periods} telah pun diproses melebihi tarikh penamatan — sila semak larian gaji itu. Ia tidak diubah.",
           "entityTransferDateHint": "Tarikh ini ialah tarikh pemindahan berkuat kuasa, dan ia juga menjadi Tarikh Menyertai pekerja dengan syarikat yang mereka pindah. Tarikh Menyertai Kumpulan tidak berubah, jadi perkhidmatan, cuti dan kelayakan perkhidmatan panjang mereka dibawa bersama.",
           "entityTransferHint": "Pilih syarikat yang pekerja ini akan pindah. Senarai Unit Perniagaan, Jabatan, Jawatan dan Lokasi Kerja di bawah kini menunjukkan pilihan syarikat destinasi — pilih Jabatan di situ. ID pekerja, Tarikh Menyertai Kumpulan dan sejarah mereka kekal seperti sedia ada.",
-          "selectPlaceholder": "Pilih…"
+          "selectPlaceholder": "Pilih…",
+          "pendingTargetUnavailable": "Sasaran yang disimpan tidak lagi tersedia dalam pilihan atau skop akses semasa anda. Pembetulan ini tidak boleh disimpan. Semak peristiwa yang belum berkuat kuasa sebelum meneruskan."
         },
         "edit": "Sunting",
         "rollback": "Batalkan",

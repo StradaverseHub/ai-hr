@@ -34,7 +34,7 @@ describe('pending Movement Edit retains its saved target independently of curren
   const {container}=mount({...base,edit:edit('entityTransfer',{companyId:'company-b',departmentId:'department-b',managerEmploymentId:'manager-dest',basicSalary:'3500',positionId:null})});
   expect(container.querySelector('select[name="companyId"]')).toHaveValue('company-b');expect(container.querySelector('select[name="departmentId"]')).toHaveValue('department-b');
   expect(container.querySelector('select[name="managerEmploymentId"]')).toHaveValue('manager-dest');expect(container.querySelector('input[name="basicSalary"]')).toHaveValue(3500);
-  expect(screen.getByText('3000.00')).toBeInTheDocument();expect(screen.getByText('Fictional Main')).toBeInTheDocument();
+  expect(screen.getByText('3000.00')).toBeInTheDocument();expect(screen.getAllByText('Fictional Main').length).toBeGreaterThan(0);
   fireEvent.change(container.querySelector('select[name="gradeId"]')!,{target:{value:'grade-b'}});
   const data=await submit(container);expect(data.get('companyId')).toBe('company-b');expect(data.get('departmentId')).toBe('department-b');expect(data.get('basicSalary')).toBe('3500');expect(data.get('positionId')).toBe('');expect(data.get('gradeId')).toBe('grade-b');
  });
