@@ -2237,7 +2237,7 @@
           "sequenceGuide": "Each employee’s complete sequence saves together. Unused tabs and untouched prefilled rows are skipped.",
           "exampleGuide": "Examples are guidance only; no example employee is an import row.",
           "incrementExample": "Example: increment of 100.00 on an existing employee; enter the effective day and leave other changes blank.",
-          "zeroBaselineGuide": "An absent or zero salary gives no Change %; correct the employee’s salary history first.",
+          "zeroBaselineGuide": "Change % stays blank when the salary baseline is missing or zero. Review the salary history in Check and preview.",
           "requiredInputs": "Required inputs",
           "optionalInputs": "Optional inputs",
           "colourGuide": "Grey = current · Yellow = input · Green = calculation",
@@ -2245,7 +2245,9 @@
           "choiceTitle": "Choose a valid business value",
           "choiceError": "Use a current value from the list.",
           "probationEndDate": "Probation End Date",
-          "employedScope": "Employees on probation or serving notice remain included. Ended or blacklisted employments are excluded from prefill."
+          "employedScope": "Employees on probation or serving notice remain included. Ended or blacklisted employments are excluded from prefill.",
+          "referenceGuide": "Dropdowns suggest current business values. You may type a supported code or unique label; Check and preview validates every entry before saving.",
+          "baselineGuide": "When current salary is blank, green salary calculations stay blank. Check and preview supplies the authoritative salary baseline, including blank or repeated employee rows. A recorded zero remains a salary baseline."
         }
       }
     },

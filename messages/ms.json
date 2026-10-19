@@ -2237,7 +2237,7 @@
           "sequenceGuide": "Keseluruhan urutan setiap pekerja disimpan bersama. Tab yang tidak digunakan dan baris praisi yang tidak diubah akan dilangkau.",
           "exampleGuide": "Contoh adalah untuk panduan sahaja; pekerja contoh bukan baris import.",
           "incrementExample": "Contoh: kenaikan 100.00 bagi pekerja sedia ada; masukkan tarikh kuat kuasa dan biarkan perubahan lain kosong.",
-          "zeroBaselineGuide": "Gaji yang tiada atau sifar tidak menghasilkan Perubahan %. Betulkan sejarah gaji pekerja terlebih dahulu.",
+          "zeroBaselineGuide": "Perubahan % kekal kosong jika asas gaji tiada atau sifar. Semak sejarah gaji dalam Semak dan pratonton.",
           "requiredInputs": "Isian wajib",
           "optionalInputs": "Isian pilihan",
           "colourGuide": "Kelabu = semasa · Kuning = isian · Hijau = pengiraan",
@@ -2245,7 +2245,9 @@
           "choiceTitle": "Pilih nilai perniagaan yang sah",
           "choiceError": "Gunakan nilai semasa daripada senarai.",
           "probationEndDate": "Tarikh tamat percubaan",
-          "employedScope": "Pekerja dalam tempoh percubaan atau sedang menjalani tempoh notis tetap disertakan. Rekod pekerjaan yang telah tamat atau disenarai hitam tidak diisi terlebih dahulu."
+          "employedScope": "Pekerja dalam tempoh percubaan atau sedang menjalani tempoh notis tetap disertakan. Rekod pekerjaan yang telah tamat atau disenarai hitam tidak diisi terlebih dahulu.",
+          "referenceGuide": "Senarai juntai bawah mencadangkan nilai perniagaan semasa. Anda boleh menaip kod yang disokong atau label yang unik; Semak dan pratonton mengesahkan setiap entri sebelum disimpan.",
+          "baselineGuide": "Apabila gaji semasa kosong, pengiraan gaji hijau kekal kosong. Semak dan pratonton menyediakan asas gaji yang berautoriti, termasuk bagi baris pekerja kosong atau berulang. Nilai sifar yang direkodkan tetap menjadi asas gaji."
         }
       }
     },
