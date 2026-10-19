@@ -1,4 +1,5 @@
 'use client';
+import { ScheduleShiftSelector } from './schedule-shift-selector';
 import { useActionState, useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { normalizeRotation, MAX_ROTATION_DAYS, type RotationCycle, type RotationDay, type WeekDayKind } from '@/core/week-pattern';
@@ -31,7 +32,7 @@ export function ScheduleRotationEditor({ruleId, revision, initial, shifts, minim
   },[state]);
   const afterSaved=lastSavedDate?new Date(Date.parse(`${lastSavedDate}T00:00:00Z`)+86_400_000).toISOString().slice(0,10):minimumDate;
   const nextMinimum=afterSaved>minimumDate?afterSaved:minimumDate;
-  const chosen=shifts.filter(s=>pool.includes(s.id));
+  const chosen=shifts.filter(s=>pool.includes(s.id) && !s.archived && s.available);
   const mark=(next:RotationCycle)=>{setCycle(next);setDirty(true);};
   let validation=''; try {normalizeRotation(cycle,pool);} catch(e){validation=e instanceof Error?e.message:t('invalid');}
   const generate=()=>{
@@ -51,13 +52,8 @@ export function ScheduleRotationEditor({ruleId, revision, initial, shifts, minim
     <fieldset disabled={!editing||pending} className="space-y-3">
       <legend className="text-sm font-medium">{t('pool')}</legend>
       <p className="text-xs text-muted-foreground">{t('poolHint')}</p>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {shifts.map(s=><label key={s.id} className="flex items-start gap-2 rounded border border-border p-2 text-sm">
-          <input type="checkbox" name="allowedShiftIds" value={s.id} checked={pool.includes(s.id)}
-            disabled={!s.available&&!pool.includes(s.id)} onChange={e=>{setPool(e.target.checked?[...pool,s.id]:pool.filter(id=>id!==s.id));setDirty(true);}}/>
-          <span>{s.code?`${s.code} · `:''}{s.name}<span className="block text-xs text-muted-foreground">{(s.startTime?.slice(0,5)??'—')}–{(s.endTime?.slice(0,5)??'—')}{s.archived?` · ${t('archived')}`:!s.available?` · ${t('otherGroup')}`:''}</span></span>
-        </label>)}
-      </div>
+      <ScheduleShiftSelector id={`${formId}-shifts`} choices={shifts.map(s => ({ ...s, detail: `${s.startTime?.slice(0,5) ?? '—'}–${s.endTime?.slice(0,5) ?? '—'}` }))}
+        selectedIds={pool} onChange={ids => { setPool(ids); setDirty(true); }} />
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm">{t('basedOn')}<select name="rotationUnitDraft" className={inputCls} value={unit} onChange={e=>{setUnit(e.target.value as 'week'|'day');setDirty(true);}}><option value="week">{t('week')}</option><option value="day">{t('day')}</option></select></label>
         <label className="text-sm">{t('length')}<input name="rotationLengthDraft" type="number" min={1} max={unit==='week'?52:366} step={1} value={length} className={inputCls} onChange={e=>{setLength(e.target.value);setDirty(true);}}/></label>
@@ -75,7 +71,7 @@ export function ScheduleRotationEditor({ruleId, revision, initial, shifts, minim
           <td className="p-2 whitespace-nowrap">{cycle.unit==='week'?`${t('week')} ${Math.floor(index/7)+1} · ${t(`weekday${index%7+1}`)}`:`${t('day')} ${index+1}`}</td>
           <td className="p-2"><select name={`rotationDayKind_${index}`} aria-label={`${t('dayType')} ${index+1}`} className={inputCls} value={day.kind} onChange={e=>{const kind=e.target.value as WeekDayKind;changeDay(index,{kind,shiftId:kind==='full'||kind==='half'?day.shiftId??chosen.find(s=>s.available)?.id??null:null});}}>{(['full','half','off','rest'] as const).map(k=><option key={k} value={k}>{t(k)}</option>)}</select></td>
           <td className="p-2">{day.kind==='full'||day.kind==='half'?<select name={`rotationDayShift_${index}`} aria-label={`${t('shift')} ${index+1}`} className={inputCls} value={day.shiftId??''} onChange={e=>changeDay(index,{...day,shiftId:e.target.value||null})}>
-            <option value="">{t('chooseShift')}</option>{day.shiftId&&!chosen.some(s=>s.id===day.shiftId)&&<option value={day.shiftId}>{t('removedShift')}</option>}{chosen.map(s=><option key={s.id} value={s.id} disabled={!s.available}>{s.code?`${s.code} · `:''}{s.name}{s.archived?` · ${t('archived')}`:''}</option>)}</select>:t('notRequired')}</td>
+            <option value="">{t('chooseShift')}</option>{day.shiftId&&!chosen.some(s=>s.id===day.shiftId)&&<option value={day.shiftId} disabled>{sh ? `${sh.code ? `${sh.code} · ` : ''}${sh.name} · ${sh.archived ? t('archived') : t('otherGroup')}` : t('removedShift')}</option>}{chosen.map(s=><option key={s.id} value={s.id} disabled={!s.available}>{s.code?`${s.code} · `:''}{s.name}{s.archived?` · ${t('archived')}`:''}</option>)}</select>:t('notRequired')}</td>
           <td className="p-2 whitespace-nowrap">{sh?`${(sh.startTime?.slice(0,5)??'—')}–${((day.kind==='half'?sh.halfEnd:sh.endTime)?.slice(0,5)??'—')} · ${t('minutes',{n:day.kind==='half'?sh.halfMinutes:sh.fullMinutes})}`:'—'}</td>
         </tr>;})}</tbody>
       </table></div>

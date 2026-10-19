@@ -21414,5 +21414,19 @@
       "c95332e75dac8": "Làm việc qua Công việc của tôi",
       "cd1a339556dbb": "công việc đang mở"
     }
+  },
+  "scheduleShiftSelection": {
+    "search": "Tìm ca đang hoạt động",
+    "placeholder": "Tìm tên hoặc mã ca",
+    "count": "Đã chọn {selected} ca hoạt động · {total} ca đang hoạt động",
+    "selectMatching": "Chọn tất cả kết quả phù hợp",
+    "clearActive": "Xóa lựa chọn ca đang hoạt động",
+    "activeShifts": "Ca đang hoạt động",
+    "noMatches": "Không có ca đang hoạt động phù hợp với tìm kiếm.",
+    "noActive": "Không có ca đang hoạt động.",
+    "historical": "Ca không khả dụng đã chọn trước đây",
+    "historicalHelp": "Các tham chiếu này được giữ để xem xét. Xóa hoặc thay thế ca không khả dụng trước khi lưu vòng luân phiên mới có ngày hiệu lực; lịch sử đã lưu không thay đổi.",
+    "remove": "Xóa tham chiếu",
+    "removeNamed": "Xóa tham chiếu không khả dụng: {name}"
   }
 }

@@ -1,3 +1,4 @@
+import { ScheduleShiftSelector } from '@/components/schedule-shift-selector';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { AttendanceSettingsActionForm, AttendanceSettingsSaveButton } from '@/components/attendance-settings-action-form';
@@ -26,6 +27,7 @@ export type RuleShiftChoice = {
   code: string | null;
   inThisGroup: boolean;
   otherGroupName: string | null;
+  archived?: boolean;
 };
 
 /**
@@ -230,34 +232,9 @@ export async function RuleForm({
           <h2 className="text-sm font-semibold text-foreground">{t('shiftsAllowedTitle')}</h2>
           <p className="text-xs text-muted-foreground">{t('shiftsAllowedHint')}</p>
           <input type="hidden" name="allowedShiftsEditor" value="1" />
-          {shifts.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t('shiftsAllowedEmpty')}</p>
-          ) : (
-            <ul className="divide-y divide-border rounded-lg border border-border">
-              {shifts.map((sh) => (
-                <li key={sh.id}>
-                  <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm has-[:checked]:bg-primary/10">
-                    <input
-                      type="checkbox"
-                      name="allowedShiftIds"
-                      value={sh.id}
-                      defaultChecked={sh.inThisGroup}
-                      className="h-3.5 w-3.5 accent-primary"
-                    />
-                    <span className="font-medium text-foreground">{sh.name}</span>
-                    {sh.code && <span className="font-mono text-xs text-muted-foreground">{sh.code}</span>}
-                    <span className="ml-auto text-xs text-muted-foreground">
-                      {sh.inThisGroup
-                        ? null
-                        : sh.otherGroupName
-                          ? t('shiftsAllowedInGroup', { group: sh.otherGroupName })
-                          : t('shiftsAllowedNoGroup')}
-                    </span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          )}
+          <ScheduleShiftSelector id={`schedule-rule-shifts-${rule?.id ?? 'new'}`} choices={shifts.map(sh => ({ id: sh.id, name: sh.name, code: sh.code, archived: sh.archived,
+            detail: sh.inThisGroup ? undefined : sh.otherGroupName ? t('shiftsAllowedInGroup', { group: sh.otherGroupName }) : t('shiftsAllowedNoGroup') }))}
+            initialSelectedIds={shifts.filter(sh => sh.inThisGroup).map(sh => sh.id)} />
         </Card>}
 
         {/* Section 3 — Overtime */}
