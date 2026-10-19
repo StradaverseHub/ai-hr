@@ -275,7 +275,7 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
 
     // Ops/Strata replaces audience positions with module ownership. Source pack gates stay intact.
     for (const name of ['ATTENDANCE_NODE','MY_ATTENDANCE_NODE','LEAVE_CONFIG_NODE','CLAIMS_CONFIG_ROW']) {
-      expect(sidebar, `${name} survives in the authorized inventory`).toMatch(new RegExp(`^[ \\t]*${name},$`,'m'));
+      expect(sidebar.split('\n').some(line=>line.trim()===`${name},`), `${name} survives in the authorized inventory`).toBe(true);
     }
     expect(navigationPlacement('/admin/attendance/settings')).toEqual({area:'ops',module:'attendance',section:'config'});
     expect(navigationPlacement('/admin/attendance/schedule-assignment')).toEqual({area:'ops',module:'attendance',section:'hr'});
