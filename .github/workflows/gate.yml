@@ -34,6 +34,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      - run: npm ci --prefix mobile --no-audit --no-fund
       - run: pnpm exec tsc --noEmit
         env: { NODE_OPTIONS: --max-old-space-size=8192 }
 
@@ -70,25 +71,32 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
+      # Full history: several guards `git show` an older commit, and r396 compares against `main`.
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - run: git rev-parse --verify -q refs/heads/main >/dev/null || git branch main origin/main
       - uses: pnpm/action-setup@v4
         with: { version: '${{ env.PNPM_VERSION }}' }
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
+      - name: pdftotext (the PDF tests read their own output with it)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
       # The same disposable settings as scripts/dev-db-rebuild.sh, on tmpfs. A service container cannot
       # take `-c` flags, so Postgres is started here instead.
       - name: Start Postgres 16
         run: |
-          docker run -d --name pg -p 5433:5432 --tmpfs /var/lib/postgresql/data \
+          # Host network, so the server sees connections from 127.0.0.1 as it does locally.
+          docker run -d --name pg --network host --tmpfs /var/lib/postgresql/data \
             -e POSTGRES_HOST_AUTH_METHOD=trust -e TZ="$TZ" postgres:16 \
-            -c fsync=off -c synchronous_commit=off -c full_page_writes=off \
+            -c port=5433 -c fsync=off -c synchronous_commit=off -c full_page_writes=off \
             -c wal_level=minimal -c max_wal_senders=0 -c shared_buffers=512MB -c max_connections=200
-          for i in $(seq 1 30); do docker exec pg pg_isready -U postgres && break; sleep 1; done
-          docker exec pg psql -U postgres -v ON_ERROR_STOP=1 \
+          for i in $(seq 1 30); do docker exec pg pg_isready -U postgres -p 5433 && break; sleep 1; done
+          docker exec pg psql -U postgres -p 5433 -v ON_ERROR_STOP=1 \
             -c "CREATE ROLE ai_hr_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;" \
             -c "CREATE DATABASE ai_hr_dev OWNER ai_hr_app;" \
             -c "CREATE DATABASE ai_hr_test OWNER ai_hr_app;"
       - run: pnpm install --frozen-lockfile
+      - run: npm ci --prefix mobile --no-audit --no-fund
       - run: cp .env.example .env.local
       - name: vitest shard ${{ matrix.shard }}/8
         run: |
