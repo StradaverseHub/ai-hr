@@ -53,6 +53,18 @@ describe('authenticated per-type Movement workbook',()=>{
   const changed=await edit(bytes,wb=>{const s=wb.Sheets.Increment;s[XLSX.utils.encode_cell({r:5,c:grey})]={t:'n',v:9999999};s[XLSX.utils.encode_cell({r:5,c:amount})]={t:'s',v:'10.13'};s[XLSX.utils.encode_cell({r:5,c:date})]={t:'s',v:'2026-11-01'};});
   const row=(await parse(changed)).records[0];expect(row.incrementAmount).toBe('10.13');expect(row.cells.basicSalary).toBeUndefined();
  });
+ it('leaves green salary and difference blank without a baseline while preserving a recorded zero baseline',async()=>{
+  for(const [code,behaviour,formulaKey,inputKey]of [['increment','increment','calculated.basicSalary','incrementAmount'],['salaryAdjustment','salaryAdjustment','calculated.difference','basicSalary']]){
+   const type={code,label:code,behaviour},columns=movementWorkbookLayout(type,resolve),cell=(key:string)=>XLSX.utils.encode_cell({r:5,c:columns.findIndex(c=>c.key===key)}),baseline=cell('current.basicSalary'),input=cell(inputKey);
+   const expected=`IF(OR(${input}="",${baseline}=""),"",${formulaKey==='calculated.basicSalary'?baseline+'+'+input:input+'-'+baseline})`;
+   for(const salary of [null,'0']){
+    const bytes=await buildMovementWorkbook({tenantId:a,companyId:a,companyName:'Fictional A',catalog:{...catalog,types:[type]},subjects:[{...subjects[0],current:{...subjects[0].current,basicSalary:salary}}],typeCode:code,resolve});
+    const wb=XLSX.read(bytes,{type:'buffer',cellFormula:true}),sheet=wb.Sheets[code];expect(sheet[cell(formulaKey)].f).toBe(expected);expect(sheet[baseline]?.v??'').toBe(salary??'');
+    expect(sheet[cell(formulaKey)].c?.[0].t).toContain('Check and preview supplies the authoritative salary baseline');
+    expect(XLSX.utils.sheet_to_json<string[]>(wb.Sheets.Instructions,{header:1}).flat().join(' ')).toContain('A recorded zero remains a salary baseline.');
+   }
+  }
+ });
  it('provides protected but usable rows6–205, locking only bound identities and skipping untouched scaffolding',async()=>{
   const bytes=await buildMovementWorkbook({tenantId:a,companyId:a,companyName:'Fictional A',catalog,subjects:subjects.slice(0,1),typeCode:'increment',resolve}),zip=await JSZip.loadAsync(bytes);
   const xml=await zip.file('xl/worksheets/sheet2.xml')!.async('string'),styles=await zip.file('xl/styles.xml')!.async('string'),xfs=/<cellXfs[^>]*>([\s\S]*?)<\/cellXfs>/.exec(styles)![1].match(/<xf\b[^>]*(?:\/>|>[\s\S]*?<\/xf>)/g)!;
