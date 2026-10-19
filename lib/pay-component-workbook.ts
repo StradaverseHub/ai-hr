@@ -2,6 +2,8 @@ import { inflateRawSync } from 'node:zlib';
 import JSZip from 'jszip';
 import * as XLSX from 'xlsx';
 import { PAY_COMPONENT_WORKBOOK_LAYOUT as layout } from './pay-component-workbook-layout';
+import type { payComponent } from '../db/schema';
+import { PAY_COMPONENT_DEFAULTS as defaults } from './pay-component-contract';
 import { PAY_ITEM_COLUMNS, PAY_ITEM_SYSTEM_KEYS, PAY_ITEM_MAX_BYTES, PAY_ITEM_MAX_ROWS, normalizePayItemHeader,
   type PayItemField, type PayItemPreviewRow, type PayItemUploadRow, type PayItemVocabulary } from './pay-component-import';
 
@@ -167,92 +169,149 @@ export async function payItemErrorWorkbook(bytes: Buffer, rows: PayItemPreviewRo
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
 
-/** Eight reference scenarios, expressed with today's accepted codes; no rates/formulas are invented. */
-export function payItemExampleRows(vocabulary: PayItemVocabulary): string[][] {
-  const label = (field: PayItemField, value: string) => vocabulary[field]?.find(c => c.value === value)?.label ?? value;
-  const base = { kind: 'allowance', pcbRemunerationType: 'normal', pcbExemptionCode: 'PCB_TAXABLE' };
-  const scenarios: Record<string, string>[] = [
-    { ...base, code: 'A0020', label: 'DIRECTOR FEE', description: 'Director fee', orpUnpaidLeave: 'N', orpOvertime: 'N', prorates: 'N', includedInSocsoEis: 'N', eaFormLine: 'EA_B1B' },
-    { ...base, code: 'A0027', label: 'HANDPHONE ALLOWANCE', description: 'Phone allowance', displayCategory: 'allowance', eaFormLine: 'EA_B1A' },
-    { ...base, code: 'A0030', label: 'HANDPHONE ALLOWANCE (no EPF)', description: 'Current illustrative taxable classification; review before use', displayCategory: 'allowance', includedInEpf: 'N', eaFormLine: 'EA_B1C' },
-    { ...base, code: 'A0040', label: 'MEAL ALLOWANCE', description: 'Current illustrative taxable classification; review before use', displayCategory: 'allowance', eaFormLine: 'EA_B1A' },
-    { ...base, code: 'B0010', label: 'ANNUAL BONUS', description: 'Annual performance bonus', displayCategory: 'bonus', orpUnpaidLeave: 'N', orpOvertime: 'N', prorates: 'N', epfBonus2012: 'Y', pcbRemunerationType: 'additional', includedInSocsoEis: 'N', eaFormLine: 'EA_B1B' },
-    { ...base, code: 'OT150', label: 'OVERTIME 1.5X', description: 'Complete hourly rate on screen before assigning', displayCategory: 'overtime', orpUnpaidLeave: 'N', orpOvertime: 'N', prorates: 'N', includedInEpf: 'N', inputKind: 'per_hour', eaFormLine: 'EA_B1A' },
-    { ...base, code: 'BIK_CAR', label: 'COMPANY CAR BIK', description: 'Benefit-in-kind: company car', kind: 'non_payable', displayCategory: 'bik', orpUnpaidLeave: 'N', orpOvertime: 'N', prorates: 'N', includedInEpf: 'N', includedInSocsoEis: 'N', eaFormLine: 'EA_B3' },
-    { code: 'D0100', label: 'STAFF LOAN', description: 'Staff loan monthly instalment', kind: 'deduction', displayCategory: 'deduction', orpUnpaidLeave: 'N', orpOvertime: 'N', prorates: 'N', includedInEpf: 'N', includedInPcb: 'N', includedInSocsoEis: 'N' },
-  ];
-  return scenarios.map(row => PAY_ITEM_COLUMNS.map(([field]) => row[field] ? label(field, row[field]) : ''));
+/** Presentation order is independent of the canonical reader's order: old row-2 headers remain valid. */
+const mainFields: readonly PayItemField[] = ['code', 'label', 'description', 'kind', 'inputKind', 'eaFormLine', 'archived'];
+export const PAY_ITEM_TEMPLATE_COLUMNS = [
+  ...mainFields.map(field => PAY_ITEM_COLUMNS.find(([key]) => key === field)!),
+  ...PAY_ITEM_COLUMNS.filter(([field]) => !mainFields.includes(field)),
+];
+type Catalogue = typeof payComponent.$inferSelect;
+export type PayItemCatalogueRow = Pick<Catalogue,
+  'code' | 'label' | 'description' | 'kind' | 'displayCategory' | 'archivedAt' | 'pendingInputKind' | 'rule' |
+  'orpUnpaidLeave' | 'orpOvertime' | 'roundingMethod' | 'prorates' | 'includedInEpf' | 'epfBonus2012' |
+  'includedInPcb' | 'pcbRemunerationType' | 'pcbExemptionCode' | 'includedInSocsoEis' | 'includedInHrdfBase' | 'eaFormLine'>;
+
+/** Catalogue facts only, never illustrative financial settings or inferred tax treatment. */
+export function payItemSampleRows(catalogue: readonly PayItemCatalogueRow[], vocabulary: PayItemVocabulary): string[][] {
+  const preferred = ['A0020', 'A0027', 'BASIC'];
+  const rank = (code: string) => { const index = preferred.indexOf(code); return index < 0 ? preferred.length : index; };
+  const chosen = [...catalogue].sort((a, b) => rank(a.code) - rank(b.code) || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0)).slice(0, 3);
+  return chosen.map(row => PAY_ITEM_TEMPLATE_COLUMNS.map(([field]) => {
+    const value = field === 'archived' ? row.archivedAt == null ? 'active' : 'inactive'
+      : field === 'inputKind' ? row.pendingInputKind ?? row.rule?.kind ?? 'fixed' : row[field];
+    const raw = typeof value === 'boolean' ? value ? 'Y' : 'N' : String(value ?? '');
+    return vocabulary[field]?.find(choice => choice.value === raw)?.label ?? raw;
+  }));
 }
 
-export async function buildPayItemWorkbook(vocabulary: PayItemVocabulary): Promise<Buffer> {
-  const wb = XLSX.utils.book_new();
-  const instructions = [
-    ['Pay Items — Import Template'], ['Enter new codes in Pay Items from row 3; Example is reference only. XLSX only, 5 MB, 1000 data rows.'],
-    ['Blank defaults match Create New Pay Code: unpaid-leave ORP N; overtime ORP Y for Earning, otherwise N; fixed input; prorates Y; EPF/SOCSO/PCB Y; EPF Bonus/HRDF N; exact rounding; automatic payroll category.'],
-    ['Blank EA defaults to B1(a) for Earning, otherwise Not mapped. An explicit Not mapped is retained. These differ from the older supplied workbook.'],
-    ['PCB Y requires a current Remuneration Type and Exemption Type. PCB N requires both blank. Choose from Lists.'],
-    ['The older phone/telco and meal exemption labels are not current choices. Corrected examples explicitly illustrate PCB_TAXABLE; Payroll must verify the appropriate classification before migration. No exemption cap or statutory treatment is inferred.'],
-    ['Calculated input types are imported pending: complete the real rate, operands or Formula builder before assignment/payroll. No workbook formulas are imported or evaluated.'],
-    ['Per-day/per-hour plus Prorates Y is refused by the existing validator (double proration). Warnings do not override financial refusals.'],
-    ['All rows must be error-free; confirmation revalidates and creates the entire file in one transaction. Existing active/inactive codes are never updated.'],
-    ['Row Check is an Excel aid only, not server validation. Downloaded templates contain 500 formatted entry rows; uploads allow 1000 data rows.'],
+export async function buildPayItemWorkbook(vocabulary: PayItemVocabulary, catalogue: readonly PayItemCatalogueRow[] = []): Promise<Buffer> {
+  const wb = XLSX.utils.book_new(), samples = payItemSampleRows(catalogue, vocabulary);
+  const label = (field: PayItemField, value: string) => vocabulary[field]?.find(choice => choice.value === value)?.label ?? value;
+  const blankDefaults: Partial<Record<PayItemField, string>> = {
+    code: 'Required; max 20; A–Z, 0–9, underscore or hyphen', label: 'Required; max 60', description: 'Blank; max 200', kind: 'Required',
+    archived: label('archived', defaults.archived ? 'inactive' : 'active'), inputKind: label('inputKind', defaults.inputKind),
+    displayCategory: label('displayCategory', ''), roundingMethod: label('roundingMethod', defaults.roundingMethod),
+    orpOvertime: 'Y for Earning; otherwise N', eaFormLine: 'B1(a) for Earning; otherwise Not mapped',
+  };
+  for (const field of ['orpUnpaidLeave', 'prorates', 'includedInEpf', 'epfBonus2012', 'includedInPcb', 'includedInSocsoEis', 'includedInHrdfBase'] as const)
+    blankDefaults[field] = defaults[field] ? 'Y' : 'N';
+  const meanings: Partial<Record<PayItemField, string>> = {
+    code: 'Unique new code; existing active or inactive codes are refused.', label: 'Short display label used on payslips and lists.',
+    description: 'Optional descriptive text; does not determine financial settings.', kind: 'Use the current catalogue category choices.',
+    displayCategory: 'Payslip grouping; does not change statutory treatment.', archived: 'Inactive records remain in the catalogue.',
+    orpUnpaidLeave: 'Included in the ordinary-rate base for unpaid leave and absence deductions.',
+    orpOvertime: 'Included in the All fixed allowances total used by the overtime formula.',
+    roundingMethod: 'Rounding for this pay item; statutory contribution rounding is separate.',
+    inputKind: 'Calculated types are imported pending configuration on screen.', prorates: 'Prorates for partial-period employment.',
+    includedInEpf: 'Feeds the EPF wage base.', epfBonus2012: 'Y requires EPF = Y; identifies bonus treatment for EPF.',
+    includedInPcb: 'Feeds taxable remuneration for PCB/MTD; requires current remuneration and exemption details.',
+    pcbRemunerationType: 'Required when PCB = Y; blank when PCB = N. Use a current matching remuneration/exemption pair.',
+    pcbExemptionCode: 'Required when PCB = Y; blank when PCB = N. No exemption is inferred from the label.',
+    includedInSocsoEis: 'One combined flag for the SOCSO and EIS wage bases.', includedInHrdfBase: 'Feeds the HRDF levy base.',
+    eaFormLine: 'EA reporting classification; does not change the calculation.',
+  };
+  const instructions: string[][] = [
+    ['Pay Items — Import Template'],
+    ['Create new pay codes only. Existing codes are not imported; remove them before confirming.'],
+    ['Enter new codes on Pay Items from row 3. Only Pay Items is imported. XLSX only; 5 MB; 1000 data rows.'],
+    ['Instructions and Sample are reference only. Sample is read-only. You can unprotect it without a password.'],
+    [`Sample contains ${samples.length} actual catalogue record(s) available to this administrator. No example records are invented.`],
+    ['Dropdowns help entry without blocking typed values. Check workbook validates accepted choices, required fields and current catalogue codes.'],
+    ['PCB defaults to Y. Remuneration Type and Exemption Type are required when PCB = Y; leave both blank when PCB = N. No tax treatment is inferred from a code or label.'],
+    ['Calculated input types remain pending: complete and save the real rate, operands or Formula builder on screen before assignment/payroll. Workbook formulas are never imported or evaluated.'],
+    ['Per-day/per-hour with Prorates Y is refused (double proration). Warnings do not override financial refusals.'],
+    ['Check workbook previews errors before confirmation. All rows must be error-free; confirmation revalidates and creates the entire file in one transaction. Existing active/inactive codes are never overwritten.'],
+    ['Blank defaults match Create New Pay Code. Explicit values override defaults. Review the conditional settings after the main seven columns.'],
+    ['Pay Items has 500 formatted blank entry rows; uploads allow 1000 populated data rows. Sample rows are not automatically copied to Pay Items.'],
+    [], ['FIELD GUIDE — current choices and blank defaults'],
+    ['Column', 'Field', 'Required', 'Default if blank', 'Rule / notes', 'System key'],
+    ...PAY_ITEM_TEMPLATE_COLUMNS.map(([field, header], index) => [XLSX.utils.encode_col(index), header,
+      ['code', 'label', 'kind'].includes(field) ? 'Yes' : ['pcbRemunerationType', 'pcbExemptionCode'].includes(field) ? 'If PCB = Y' : 'No',
+      blankDefaults[field] ?? 'Blank',
+      meanings[field] ?? '',
+      PAY_ITEM_SYSTEM_KEYS[PAY_ITEM_COLUMNS.findIndex(([key]) => key === field)]]),
+    [], ['ALLOWED VALUES — used by dropdowns; server validation remains authoritative'],
   ];
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(instructions), 'Instructions');
-  const band = ['GENERAL INFORMATION', '', '', '', '', '', 'ORP CALCULATION', '', 'CALCULATION', '', '', 'STATUTORY CONFIGURATION', '', '', '', '', '', '', 'EA FORM REPORTING', 'VALIDATION'];
-  const headers = [...PAY_ITEM_COLUMNS.map(([, header]) => header), 'Row Check (not imported)'];
-  for (const [name, data] of [['Pay Items', []], ['Example', payItemExampleRows(vocabulary)]] as const) {
-    const ws = XLSX.utils.aoa_to_sheet([band, headers, ...data]);
-    ws['!merges'] = ['A1:F1', 'G1:H1', 'I1:K1', 'L1:R1'].map(XLSX.utils.decode_range);
-    for (let r = 2; r < 502; r++) for (let c = 0; c < 20; c++) {
+  // Each current vocabulary owns its own exact range on Instructions. No fourth/hidden lists sheet.
+  const choiceRanges = new Map<PayItemField, string>();
+  for (const [field, values] of Object.entries(vocabulary) as [PayItemField, NonNullable<PayItemVocabulary[PayItemField]>][]) {
+    if (!values.length) continue;
+    instructions.push([PAY_ITEM_COLUMNS.find(([key]) => key === field)![1], 'Accepted label', 'System value']);
+    const start = instructions.length + 1;
+    for (const choice of values) instructions.push(['', choice.label, choice.value]);
+    choiceRanges.set(field, `Instructions!$B$${start}:$B$${instructions.length}`);
+    instructions.push([]);
+  }
+  const guide = XLSX.utils.aoa_to_sheet(instructions);
+  guide['!cols'] = [{ wch: 28 }, { wch: 42 }, { wch: 30 }, { wch: 42 }, { wch: 70 }, { wch: 25 }];
+  guide['!rows'] = instructions.map(row => ({ hpt: row.length === 1 && row[0].length > 100 ? 55 : 30 }));
+  guide['!merges'] = instructions.flatMap((row, r) => row.length === 1 && row[0] ? [{ s: { r, c: 0 }, e: { r, c: 5 } }] : []);
+  XLSX.utils.book_append_sheet(wb, guide, 'Instructions');
+  const headers = PAY_ITEM_TEMPLATE_COLUMNS.map(([, header]) => header);
+  for (const [name, rows] of [['Pay Items', []], ['Sample', samples]] as const) {
+    const ws = XLSX.utils.aoa_to_sheet([
+      [name === 'Sample' ? 'SAMPLE ONLY – NOT UPLOADED' : 'ENTER NEW PAY CODES ONLY — conditional settings follow the main seven fields'], headers, ...rows,
+    ]);
+    ws['!merges'] = [XLSX.utils.decode_range('A1:S1')];
+    ws['!cols'] = PAY_ITEM_TEMPLATE_COLUMNS.map(([field]) => ({ wch: field === 'description' ? 40 : field === 'label' ? 28 : 24 }));
+    ws['!rows'] = [{ hpt: 30 }, { hpt: 48 }, ...rows.map(() => ({ hpt: 84 }))];
+    const last = name === 'Pay Items' ? 502 : Math.max(3, samples.length + 2);
+    for (let r = 2; r < last; r++) for (let c = 0; c < PAY_ITEM_TEMPLATE_COLUMNS.length; c++) {
       const address = XLSX.utils.encode_cell({ r, c });
       if (!ws[address]) ws[address] = { t: 's', v: '' };
-      // Row Check returns text. Retain an empty string cache so XLSX readers keep the formula cell.
-      if (c === 19) ws[address] = { t: 's', v: '', f: layout.rowCheck.replace('"Formula"', `"${(vocabulary.inputKind?.find(choice => choice.value === 'formula')?.label ?? 'Formula').replace(/"/g, '""')}"`).replace(/(?<![A-Z0-9_$])([A-S])3\b/g, `$1${r + 1}`) };
     }
-    ws['!ref'] = 'A1:T502';
+    ws['!ref'] = `A1:S${last}`;
     XLSX.utils.book_append_sheet(wb, ws, name);
   }
-  const defaultNotes: Partial<Record<PayItemField, string>> = { code: 'Required; A-Z, 0-9, underscore or hyphen; max20', label: 'Required; max60', description: 'Optional; max200', kind: 'Required', archived: 'Active', inputKind: 'Fixed Value', orpUnpaidLeave: 'N (current screen default)', orpOvertime: 'Y for Earning, otherwise N', prorates: 'Y', includedInEpf: 'Y', includedInSocsoEis: 'Y', includedInPcb: 'Y', epfBonus2012: 'N', includedInHrdfBase: 'N', roundingMethod: 'Exact (no rounding)', displayCategory: 'Automatic', eaFormLine: 'B1(a) for Earning; otherwise Not mapped' };
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
-    ['Col', 'Template Header', 'Screen Field (Create New Pay Code)', 'Section', 'Mandatory', 'Allowed Values', 'Default if Blank', 'Rule / Notes', 'System Key'],
-    ...PAY_ITEM_COLUMNS.map(([field, header], index) => [XLSX.utils.encode_col(index), header, header.replace(/ \*/, ''), index < 6 ? 'General Information' : index < 8 ? 'ORP Calculation' : index < 11 ? 'Calculation' : index < 18 ? 'Statutory Configuration' : 'EA Form Reporting',
-      ['code', 'label', 'kind'].includes(field) ? 'Yes' : ['pcbRemunerationType', 'pcbExemptionCode'].includes(field) ? 'If PCB = Y' : 'No',
-      vocabulary[field]?.map(c => c.label).join('; ') ?? 'Text', defaultNotes[field] ?? 'Blank',
-      ['pcbRemunerationType', 'pcbExemptionCode'].includes(field) ? 'Required when PCB = Y; blank when PCB = N. Match current remuneration/exemption pair.' : field === 'inputKind' ? 'Calculated types remain pending until their real configuration is saved on screen.' : defaultNotes[field] ?? '', PAY_ITEM_SYSTEM_KEYS[index]]),
-  ]), 'Field Guide');
-  const listFields = ['kind', 'displayCategory', 'archived', 'roundingMethod', 'inputKind', 'pcbRemunerationType', 'pcbExemptionCode', 'eaFormLine', 'includedInEpf'] as const;
-  const lists = listFields.map(field => [field, vocabulary[field] ?? []] as const);
-  const listRows: string[][] = [lists.map(([field], index) => index === 8 ? 'Y/N' : PAY_ITEM_COLUMNS.find(([key]) => key === field)?.[1] ?? field)];
-  for (let r = 0; r < Math.max(...lists.map(([, values]) => values.length)); r++) listRows.push(lists.map(([, values]) => values[r]?.label ?? ''));
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(listRows), 'Lists');
   const zip = await JSZip.loadAsync(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', compression: true }));
-  zip.file('xl/styles.xml', layout.styles);
-  for (const index of [2, 3]) {
+  let wrappedStyle = 0, sampleStyle = 0;
+  // Explicit locking/wrapping avoids inheriting old entry-sheet style decisions on Sample.
+  const styles = layout.styles.replace(/<cellXfs count="(\d+)">([\s\S]*?)<\/cellXfs>/, (_all, count: string, body: string) => {
+    const formats = body.match(/<xf\b[^>]*>[\s\S]*?<\/xf>/g);
+    if (!formats?.[22]) throw new Error('Pay workbook text style missing.');
+    wrappedStyle = Number(count);
+    const wrapped = formats[22].replace(/applyAlignment="[^"]*"/, 'applyAlignment="1"')
+      .replace(/applyProtection="[^"]*"/, 'applyProtection="1"').replace(/wrapText="[^"]*"/, 'wrapText="1"')
+      .replace(/vertical="[^"]*"/, 'vertical="top"');
+    sampleStyle = wrappedStyle + 1;
+    const reference = wrapped.replace(/fillId="0"/, 'fillId="12"').replace('<xf ', '<xf applyFill="1" ');
+    return `<cellXfs count="${wrappedStyle + 2}">${body}${wrapped}${reference}</cellXfs>`;
+  });
+  zip.file('xl/styles.xml', styles);
+  for (const index of [1, 2, 3]) {
     const part = `xl/worksheets/sheet${index}.xml`, file = zip.file(part); if (!file) throw new Error('Generated pay worksheet missing.');
     let xml = await file.async('string');
     const view = '<sheetViews><sheetView workbookViewId="0" showGridLines="0"><pane xSplit="2" ySplit="2" topLeftCell="C3" activePane="bottomRight" state="frozen"/><selection pane="bottomRight" activeCell="C3" sqref="C3"/></sheetView></sheetViews>';
-    xml = xml.replace(/<sheetViews>[\s\S]*?<\/sheetViews>/, view);
-    if (!xml.includes('<sheetViews>')) xml = xml.replace(/(<dimension[^>]*\/>)/, '$1' + view);
+    if (index !== 1) {
+      xml = xml.replace(/<sheetViews>[\s\S]*?<\/sheetViews>/, view);
+      if (!xml.includes('<sheetViews>')) xml = xml.replace(/(<dimension[^>]*\/>)/, '$1' + view);
+    }
     xml = xml.replace(/<c\b([^>]*)>/g, (_all, attributes: string) => {
       const address = /\br="([A-Z]+)(\d+)"/.exec(attributes);
-      const row = address?.[2] === '1' ? '1' : address?.[2] === '2' ? '2' : '3';
-      const styles: Readonly<Record<string, string>> = layout.cellStyles[row];
-      const style = styles[address?.[1] ?? ''] ?? (row === '1' ? '12' : row === '2' ? '19' : '22');
+      const row = Number(address?.[2] ?? 0);
+      // Reuse the submitted band/header colours, with literal, wrapped and locked reference cells.
+      const style = row === 1 ? '12' : index !== 1 && row === 2 ? '19' : String(index === 3 ? sampleStyle : wrappedStyle);
       return `<c${attributes.replace(/\s+s="[^"]*"/g, '')} s="${style}">`;
     });
-    const validations = Object.entries(vocabulary).map(([field, values]) => {
-      const dataColumn = PAY_ITEM_COLUMNS.findIndex(([key]) => key === field);
-      if (dataColumn < 0 || !values?.length) return '';
-      const ownIndex = listFields.findIndex(key => key === field);
-      const listIndex = ownIndex < 0 ? 8 : ownIndex;
-      const col = XLSX.utils.encode_col(dataColumn), reference = `Lists!$${XLSX.utils.encode_col(listIndex)}$2:$${XLSX.utils.encode_col(listIndex)}$${values.length + 1}`;
-      return `<dataValidation type="list" allowBlank="1" showErrorMessage="1" errorStyle="stop" sqref="${col}3:${col}502"><formula1>INDIRECT(&quot;${reference}&quot;)</formula1></dataValidation>`;
-    }).filter(Boolean);
-    validations.unshift('<dataValidation type="textLength" operator="lessThanOrEqual" allowBlank="0" showErrorMessage="1" errorStyle="stop" sqref="A3:A502"><formula1>20</formula1></dataValidation>');
-    if (!xml.includes('<cols>')) xml = xml.replace('<sheetData>', layout.cols + '<sheetData>');
-    const extras = layout.conditionalFormatting + `<dataValidations count="${validations.length}">${validations.join('')}</dataValidations>`;
-    // Insert literally: replacement strings reinterpret absolute Excel references such as $10 as $1.
-    xml = xml.replace(/<mergeCells[\s\S]*?<\/mergeCells>/, mergeCells => mergeCells + extras);
+    if (index === 2) {
+      const validations = PAY_ITEM_TEMPLATE_COLUMNS.flatMap(([field], column) => {
+        const reference = choiceRanges.get(field); if (!reference) return [];
+        const col = XLSX.utils.encode_col(column);
+        return [`<dataValidation type="list" allowBlank="1" showErrorMessage="0" sqref="${col}3:${col}502"><formula1>INDIRECT(&quot;${reference}&quot;)</formula1></dataValidation>`];
+      });
+      xml = xml.replace(/<mergeCells[\s\S]*?<\/mergeCells>/, mergeCells => mergeCells + `<dataValidations count="${validations.length}">${validations.join('')}</dataValidations>`);
+    }
+    if (index === 3) xml = xml.replace(/<mergeCells/, '<sheetProtection sheet="1" objects="1" scenarios="1"/><mergeCells');
     zip.file(part, xml);
   }
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
