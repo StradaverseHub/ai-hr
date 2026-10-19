@@ -83,6 +83,16 @@ describe('Labels template scope and initial state through canonical writers',()=
     expect(emptySample).toContain('(example)');
     await expect(previewSystemLabelImport(adminCtx(b),bytes)).rejects.toThrow('no label data');
   });
+  it('uses an authorized company ID when its name is ambiguous with the Criteria delimiter',async()=>{
+    const co=await createCompany(adminCtx(b),{legalName:'Fictional; Scoped Company'});
+    await bulkSaveLabels(adminCtx(b),'department',{creates:[{key:'semicolon-sample',companyId:co.id,name:'SEMICOLON_EXAMPLE',companyIds:[co.id]}],updates:[]});
+    const downloaded=XLSX.read(await downloadSystemLabelTemplate(adminCtx(b),[co.id]),{type:'buffer'});
+    const rows=XLSX.utils.sheet_to_json<string[]>(downloaded.Sheets.Sample,{header:1,raw:false});
+    const sample=rows.find(row=>row[0]==='SEMICOLON_EXAMPLE');
+    expect(sample).toBeDefined();expect(sample).toContain(co.id);expect(sample).not.toContain('Fictional; Scoped Company');
+    const preview=await previewSystemLabelImport(adminCtx(b),book({department:[{Company:co.id,Criteria:'companies','Criteria Companies':co.id,Code:'SEMICOLON_NEW',Label:'New scoped department',Status:'Active'}]}));
+    expect(preview.rows[0]).toMatchObject({outcome:'add',after:{Company:co.id,'Criteria Companies':co.id}});
+  });
   it('never puts hidden-origin or hidden Criteria companies into any XML part',async()=>{
     const hidden=await createCompany(adminCtx(b),{legalName:'SECRET_B22_ORIGIN'});
     await bulkSaveLabels(adminCtx(b),'department',{creates:[{key:'secret',companyId:hidden.id,name:'SECRET_B22_CODE',isGlobal:true}],updates:[]});

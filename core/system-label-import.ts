@@ -76,7 +76,7 @@ export function downloadSystemLabelTemplate(ctx: SessionContext, selectedCompany
     const permission=await tx.execute(sql`select app.is_admin() as allowed`) as unknown as {allowed:boolean}[];
     if(!permission[0]?.allowed)throw new Error('Only an administrator may import System Labels.');
     // Names are exposed only after their own administration check; ambiguous names use exact IDs.
-    const companyName=(id:ReturnType<typeof sql>)=>sql<string>`(select case when (select count(*) from company same_name where same_name.tenant_id=co.tenant_id and same_name.legal_name=co.legal_name and app.is_admin_for(same_name.id))=1 then co.legal_name else co.id::text end from company co where co.id=${id} and app.is_admin_for(co.id) and co.archived_at is null)`;
+    const companyName=(id:ReturnType<typeof sql>)=>sql<string>`(select case when (select count(*) from company same_name where same_name.tenant_id=co.tenant_id and same_name.legal_name=co.legal_name and app.is_admin_for(same_name.id))=1 and position(';' in co.legal_name)=0 then co.legal_name else co.id::text end from company co where co.id=${id} and app.is_admin_for(co.id) and co.archived_at is null)`;
     const companies=await tx.select({id:s.company.id,name:s.company.legalName,cell:companyName(sql`company.id`)}).from(s.company).where(and(
       sql`app.is_admin_for(${s.company.id})`,isNull(s.company.archivedAt),
       selectedCompanyIds===undefined?sql`true`:selectedCompanyIds.length?inArray(s.company.id,[...new Set(selectedCompanyIds)]):sql`false`,
