@@ -1,0 +1,106 @@
+# The release gate on Linux: typecheck, production build, and the whole vitest suite in parallel shards,
+# each shard with its own throwaway Postgres. Matches the box (Linux x86_64, Asia/Kuala_Lumpur); the build
+# runs on node 20 like the box, the suite on node 22 like the existing local gate.
+name: gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gate-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TZ: Asia/Kuala_Lumpur
+  LANG: en_US.UTF-8
+  PNPM_VERSION: 10.33.2
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: '${{ env.PNPM_VERSION }}' }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec tsc --noEmit
+        env: { NODE_OPTIONS: --max-old-space-size=8192 }
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: '${{ env.PNPM_VERSION }}' }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: cp .env.example .env.local
+      - run: pnpm exec next build
+        env: { NODE_OPTIONS: --max-old-space-size=8192 }
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: '${{ env.PNPM_VERSION }}' }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      # The same disposable settings as scripts/dev-db-rebuild.sh, on tmpfs. A service container cannot
+      # take `-c` flags, so Postgres is started here instead.
+      - name: Start Postgres 16
+        run: |
+          docker run -d --name pg -p 5433:5432 --tmpfs /var/lib/postgresql/data \
+            -e POSTGRES_HOST_AUTH_METHOD=trust -e TZ="$TZ" postgres:16 \
+            -c fsync=off -c synchronous_commit=off -c full_page_writes=off \
+            -c wal_level=minimal -c max_wal_senders=0 -c shared_buffers=512MB -c max_connections=200
+          for i in $(seq 1 30); do docker exec pg pg_isready -U postgres && break; sleep 1; done
+          docker exec pg psql -U postgres -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE ai_hr_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;" \
+            -c "CREATE DATABASE ai_hr_dev OWNER ai_hr_app;" \
+            -c "CREATE DATABASE ai_hr_test OWNER ai_hr_app;"
+      - run: pnpm install --frozen-lockfile
+      - run: cp .env.example .env.local
+      - name: vitest shard ${{ matrix.shard }}/8
+        run: |
+          mkdir -p shard-report
+          pnpm exec vitest run --shard=${{ matrix.shard }}/8 \
+            --reporter=default --reporter=json --outputFile.json=shard-report/shard-${{ matrix.shard }}.json
+        env: { VITEST_MAX_WORKERS: 3 }
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shard-${{ matrix.shard }}
+          path: shard-report/
+          if-no-files-found: error
+
+  # Green only if every shard ran and, together, they counted every suite file exactly once.
+  verify:
+    needs: [typecheck, build, test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: shard-report, pattern: shard-*, merge-multiple: true }
+      - run: node scripts/ci/verify-shards.mjs shard-report 8
+      - name: All jobs green
+        run: |
+          [ "${{ needs.typecheck.result }}" = success ] && [ "${{ needs.build.result }}" = success ] \
+            && [ "${{ needs.test.result }}" = success ]
