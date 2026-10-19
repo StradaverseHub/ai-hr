@@ -8,6 +8,7 @@ import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrect
 import { saveAttendanceWorkflow, setAttendanceWorkflowEnabled, previewAttendanceWorkflow, reassignAttendanceWorkflowStageToHr, hasPendingAttendanceParticipantAssignment, decideAttendanceWorkflowStageTx } from '../core/attendance-workflow';
 import { attendanceApplicationDetail, attendanceApplicationFilterOptions } from '../core/attendance-application-history';
 import { listPendingTasks } from '../core/approvals-inbox';
+import { createBatch } from '../packs/payroll/service';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import type { AttendanceV3WorkflowInput } from '../lib/attendance-workflow-v3';
 import { adminCtx, createAppUser, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -21,13 +22,13 @@ async function actor(name: string, role: 'employee' | 'hr_admin' = 'employee', d
     const ctx: SessionContext = { ...adminCtx(base), userId, personId: hired.personId, roles: [role], grants: [{ role, companyId: base.companyId }] };
     return { ...hired, ctx };
 }
-async function fixture(mode: 'sequential' | 'any_one' = 'sequential', onlyHr = false, ot = false, employeeFinal = false) {
+async function fixture(mode: 'sequential' | 'any_one' = 'sequential', onlyHr = false, ot = false, employeeFinal = false, currentOtDay = false) {
     const root = adminCtx(b), worker = await actor('Fictional applicant', 'employee', b.deptA), first = await actor('Fictional first participant'), second = await actor('Fictional second participant'), hr = await actor('Fictional final HR', 'hr_admin');
     const today = todayInKualaLumpur();
     const nextDay = new Date(`${today}T12:00:00Z`); nextDay.setUTCDate(nextDay.getUTCDate() + 1);
-    const on = ot ? nextDay.toISOString().slice(0, 10) : today;
-    if (!ot) await checkIn(root, { employmentId: worker.employmentId, date: on, time: '08:00', manual: true });
-    if (!ot) await checkOut(root, { employmentId: worker.employmentId, date: on, time: '17:00', manual: true });
+    const on = ot && !currentOtDay ? nextDay.toISOString().slice(0, 10) : today;
+    if (!ot || currentOtDay) await checkIn(root, { employmentId: worker.employmentId, date: on, time: '08:00', manual: true });
+    if (!ot || currentOtDay) await checkOut(root, { employmentId: worker.employmentId, date: on, time: '17:00', manual: true });
     const input: AttendanceV3WorkflowInput = { companyId: b.companyId, routingVersion: 3, code: 'PARTICIPANTS', name: 'Accountable participant route', applicationType: ot ? 'self_overtime' : 'irregularity', priority: 100, criteria: { departmentIds: [b.deptA] }, active: true,
         stages: [{ name: 'Level 1', mode, source: { kind: 'specific_employee', employmentIds: [first.employmentId, second.employmentId] }, hrAlternative: false },
             { name: 'Level 2', mode: 'sequential', source: { kind: 'specific_employee', employmentIds: [hr.employmentId] }, hrAlternative: false }] };
@@ -354,5 +355,66 @@ describe('v3 exact tenant/company, live identity and immutable history boundary'
         expect((await state(f)).workflow?.participantDecisions).toHaveLength(0);
         expect((await state(f)).workflow?.decisions).toHaveLength(0);
         expect((await day(f)).checkInAt).toBe('08:00:00');
+    });
+});
+
+
+describe('ordinary v3 OT level completion is history, not a cash-source mutation', () => {
+    async function recordedSource(f: Awaited<ReturnType<typeof fixture>>) {
+        const rows = await owner.db.select().from(schema.attendanceOvertimeSource).where(and(eq(schema.attendanceOvertimeSource.employmentId, f.worker.employmentId), eq(schema.attendanceOvertimeSource.attendanceDate, f.on)));
+        expect(rows).toHaveLength(1); // The old guard's no-source shortcut must NOT hide this regression.
+        return rows[0];
+    }
+    it('records an ordinary non-final OT level against a real source without changing inputs or Payroll', async () => {
+        const f = await fixture('sequential', false, true, false, true);
+        const source = await recordedSource(f), beforeDay = await day(f);
+        const { batchId } = await createBatch(f.root, { companyId: b.companyId, payPeriod: f.on.slice(0, 7), scope: { employmentIds: [f.worker.employmentId] } });
+        const [batch] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
+        const settlements = await owner.db.select().from(schema.overtimeSourceSettlement).where(eq(schema.overtimeSourceSettlement.sourceId, source.id));
+        const [authority] = await withTenant(f.second.ctx, tx => tx.execute(sql`select current_user as role,app.can_see_employment(${f.worker.employmentId}::uuid) as personnel,app.can_admin_payroll_employment(${f.worker.employmentId}::uuid) as payroll`)) as unknown as { role: string; personnel: boolean; payroll: boolean }[];
+        expect(authority).toEqual({ role: 'ai_hr_app', personnel: false, payroll: false });
+        await decideAttendanceCorrection(f.first.ctx, { correctionId: f.id, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:0' });
+        expect((await state(f)).workflow?.decisions).toHaveLength(0);
+        const result = await decideAttendanceCorrection(f.second.ctx, { correctionId: f.id, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:1' });
+        expect(result).toMatchObject({ status: 'pending' });
+        const detail = await state(f);
+        expect(detail.workflow?.currentStage).toBe(1);
+        expect(detail.workflow?.participantDecisions).toHaveLength(2);
+        expect(detail.workflow?.decisions).toMatchObject([{ decision: 'approved', resultingStatus: 'pending', actualUserId: f.second.ctx.userId }]);
+        expect(detail.application.status).toBe('pending');
+        expect(await day(f)).toEqual(beforeDay);
+        expect(await recordedSource(f)).toEqual(source);
+        expect(await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId))).toEqual([batch]);
+        expect(await owner.db.select().from(schema.overtimeSourceSettlement).where(eq(schema.overtimeSourceSettlement.sourceId, source.id))).toEqual(settlements);
+        expect(await owner.db.select({ id: schema.domainEvent.id }).from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId, source.id), eq(schema.domainEvent.eventType, 'overtime.cash-source.invalidated')))).toEqual([]);
+    });
+    it('does not exempt a forged, committed-participant or foreign-tenant completion', async () => {
+        const f = await fixture('sequential', false, true, false, true), before = await state(f);
+        await recordedSource(f);
+        const forged = (ctx: SessionContext, who = f.first) => withTenant(ctx, tx => tx.insert(schema.attendanceWorkflowDecision).values({ tenantId: b.tenantId, requestId: before.workflow!.id, employmentId: f.worker.employmentId, stageIndex: 0,
+            decision: 'approved', assignedKind: 'specific_employee', assignedEmploymentId: who.employmentId, actualUserId: ctx.userId!, actualPersonId: ctx.personId!, actualEmploymentId: who.employmentId,
+            actualActorName: 'Untrusted input', actingMode: 'assigned', previousStatus: 'pending', resultingStatus: 'pending' }));
+        await expect(forged(f.first.ctx)).rejects.toMatchObject({ cause: expect.objectContaining({ message: expect.stringContaining('fulfilled participant level') }) });
+        await decideAttendanceCorrection(f.first.ctx, { correctionId: f.id, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:0' });
+        await expect(forged(f.first.ctx)).rejects.toMatchObject({ cause: expect.objectContaining({ message: expect.stringContaining('fulfilled participant level') }) });
+        const otherBase = await seedBase(), foreign = await actor('Fictional foreign completion actor', 'employee', otherBase.deptB, otherBase);
+        expect(await withTenant(foreign.ctx, tx => tx.select({ id: schema.employment.id }).from(schema.employment).where(eq(schema.employment.id, foreign.employmentId)))).toEqual([{ id: foreign.employmentId }]);
+        await expect(forged(foreign.ctx, foreign)).rejects.toThrow();
+        const detail = await state(f);
+        expect(detail.workflow?.participantDecisions).toHaveLength(1);
+        expect(detail.workflow?.decisions).toHaveLength(0);
+        expect(detail.application.status).toBe('pending');
+    });
+    it('retains final ordinary OT handoff even with a real source, then allows the scoped HR owner', async () => {
+        const f = await fixture('sequential', true, true, true, true), source = await recordedSource(f), beforeDay = await day(f);
+        await expect(decideAttendanceCorrection(f.first.ctx, { correctionId: f.id, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:0' })).rejects.toMatchObject({ problem: { code: 'hr_handoff_required', levelIndex: 0 } });
+        expect((await state(f)).workflow?.participantDecisions).toHaveLength(0);
+        expect((await state(f)).workflow?.decisions).toHaveLength(0);
+        expect(await recordedSource(f)).toEqual(source);
+        expect(await day(f)).toEqual(beforeDay);
+        await reassignAttendanceWorkflowStageToHr(f.hr.ctx, { correctionId: f.id, expectedStageIndex: 0, expectedParticipantSlot: '0:0', reason: 'Final calculation remains with scoped HR' });
+        await expect(decideAttendanceCorrection(f.hr.ctx, { correctionId: f.id, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:0' })).resolves.toMatchObject({ status: 'approved' });
+        expect((await state(f)).workflow?.participantDecisions).toHaveLength(1);
+        expect((await state(f)).workflow?.participantReassignments).toHaveLength(1);
     });
 });
