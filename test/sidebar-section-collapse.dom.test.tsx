@@ -60,4 +60,19 @@ describe.each(['classic','monolith'] as const)('%s Ops/Strata navigation',theme=
   expect(screen.queryByRole('link',{name:messages.nav.approvals})).toBeNull();
   expect(screen.getByRole('link',{name:messages.nav.myTasks})).toHaveAttribute('href','/tasks');
  });
+ it('admits a named Attendance participant to the inbox without granting manager navigation',()=>{
+  document.documentElement.setAttribute('data-ui-theme',theme);
+  const props={isAdmin:false,canApprove:false,canAccessTeam:false,hasAssignedAttendanceApproval:true,onboardingAccess:false,onboardingMaster:false,onboardingRequisitionsAccess:false,enabledModules:['attendance']};
+  const view=render(ui(props));
+  fireEvent.click(screen.getByRole('button',{name:messages.nav.inbox,exact:true}));
+  expect(screen.getByRole('link',{name:messages.nav.approvals})).toHaveAttribute('href','/approvals');
+  const people=screen.queryByRole('button',{name:messages.nav.modulePeople,exact:true});
+  if(people)fireEvent.click(people);
+  expect(screen.queryByRole('link',{name:messages.nav.myTeam})).toBeNull();
+  expect(screen.queryByRole('button',{name:messages.nav.systemConfiguration,exact:true})).toBeNull();
+  view.rerender(ui({...props,hasAssignedAttendanceApproval:false}));
+  const inbox=screen.getByRole('button',{name:messages.nav.inbox,exact:true});
+  if(inbox.getAttribute('aria-expanded')!=='true')fireEvent.click(inbox);
+  expect(screen.queryByRole('link',{name:messages.nav.approvals})).toBeNull();
+ });
 });
