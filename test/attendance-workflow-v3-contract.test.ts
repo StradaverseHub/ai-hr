@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { validateAttendanceWorkflow } from '../lib/attendance-workflow';
 import {
-    AttendanceLevelError, attendanceV3LevelProgress, parseAttendanceV3Route, resolveAttendanceV3Route, projectAttendanceV3SlotReassignment,
+    AttendanceLevelError, attendanceV3LevelProgress, parseAttendanceV3Route, resolveAttendanceV3Route, projectAttendanceV3SlotReassignment, attendanceLevelProblemToken, parseAttendanceLevelProblemToken, validateAnyAttendanceWorkflow,
     type AttendanceV3Identity, type AttendanceV3Level, type AttendanceV3ParticipantDecision, type AttendanceV3Resolver,
 } from '../lib/attendance-workflow-v3';
 const id = (n: number) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
@@ -21,7 +21,7 @@ function problem(work: () => unknown, code: string, levelIndex: number | null) {
         expect((error as AttendanceLevelError).problem).toMatchObject({ code, levelIndex });
     }
 }
-describe('Attendance v3 isolated posted-route boundary (not enabled in the live owner)', () => {
+describe('Attendance v3 exact posted-route boundary', () => {
     it('keeps independent modes, caller order and explicit depth rather than stage ordinal', () => {
         const input = route([level([id(3), id(1)], 'any_one'), superior(5), level([id(2)])]);
         expect(parseAttendanceV3Route(input)).toEqual({ routingVersion: 3, stages: [
@@ -29,7 +29,7 @@ describe('Attendance v3 isolated posted-route boundary (not enabled in the live 
         ] });
         expect(input.stages[0].name).toBe('Untrusted label');
     });
-    it('retains the legacy refusal of v3 until SQL and effect integration are complete', () => {
+    it('retains the legacy-only validator while v3 uses its explicit new boundary', () => {
         expect(() => validateAttendanceWorkflow({ companyId: id(90), routingVersion: 3 as never, code: 'V3', name: 'Pending source', applicationType: 'irregularity', priority: 100, criteria: {}, stages: [{ name: 'Level 1', level: { kind: 'direct_manager', employmentId: null, alternates: [] } }], active: false })).toThrow();
     });
     it.each([null, {}, { routingVersion: 2, stages: [level()] }, { ...route(), tenantId: id(90) }, { ...route(), stages: '[]' }])('refuses malformed route shape without coercion', raw => problem(() => parseAttendanceV3Route(raw), 'invalid_route', null));
@@ -173,5 +173,20 @@ describe('reasoned outstanding participant-slot reassignment projection', () => 
         problem(() => projectAttendanceV3SlotReassignment(original, 0, [], '0:1', identity(0), identity(0), 'Reason'), 'self_approval', 0);
         problem(() => projectAttendanceV3SlotReassignment(original, 0, [], '0:1', identity(3), identity(0), 'Reason'), 'duplicate_employment', 0);
         problem(() => projectAttendanceV3SlotReassignment(original, 0, [recorded(9)], '0:1', identity(9), identity(0), 'Reason'), 'invalid_evidence', 0);
+    });
+});
+
+describe('finite submission transport and version boundary', () => {
+    it('round-trips only finite public level/problem facts', () => {
+        const value = { code: 'missing_superior' as const, levelIndex: 4, participantIndex: 0 };
+        expect(parseAttendanceLevelProblemToken(attendanceLevelProblemToken(value))).toEqual(value);
+        expect(parseAttendanceLevelProblemToken('invalid_route:route:level')).toEqual({ code: 'invalid_route', levelIndex: null });
+        for (const token of [null, '<script>:0:level', 'missing_superior:10:level', 'missing_superior:0:20', 'missing_superior:0:level:extra', 'SELECT private_value']) expect(parseAttendanceLevelProblemToken(token)).toBeNull();
+    });
+    it('validates common metadata through its owner and preserves v3 ordered participants independently', () => {
+        const input = { companyId: id(90), code: 'V3', name: 'Per-person approvals', applicationType: 'irregularity' as const, priority: 100, criteria: {}, active: false, ...route([level([id(3), id(1)], 'any_one'), superior(5)]) };
+        expect(validateAnyAttendanceWorkflow(input)).toMatchObject({ routingVersion: 3, stages: [{ name: 'Level 1', mode: 'any_one', source: { employmentIds: [id(3), id(1)] } }, { name: 'Level 2', source: { depth: 5 } }] });
+        expect(() => validateAnyAttendanceWorkflow({ ...input, criteria: { unsupported: ['secret'] } })).toThrow();
+        expect(() => validateAnyAttendanceWorkflow({ ...input, priority: -1 })).toThrow();
     });
 });
