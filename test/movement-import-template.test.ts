@@ -28,6 +28,13 @@ describe('authenticated per-type Movement workbook',()=>{
   const edited=await edit(bytes,book=>{for(let r=5;r<8;r++){book.Sheets.Increment[XLSX.utils.encode_cell({r,c:amount})]={t:'n',v:100};book.Sheets.Increment[XLSX.utils.encode_cell({r,c:date})]={t:'s',v:'01-Nov-2026'};}});
   const parsed=await parse(edited);expect(parsed.fileErrors).toEqual([]);expect(parsed.records).toHaveLength(3);expect(parsed.records.every(r=>r.incrementAmount==='100'&&r.cells.kind==='increment')).toBe(true);expect(parsed.records.map(r=>r.source?.row)).toEqual([6,7,8]);
  });
+ it('accepts an unused macro-enabled extension declaration while refusing a real part that uses it',async()=>{
+  const zip=await JSZip.loadAsync(await make()),entry=zip.file('[Content_Types].xml')!;
+  // The ordinary SheetJS package already contains an unused BIN default; another unused declaration is equally inert.
+  zip.file('[Content_Types].xml',(await entry.async('string')).replace('</Types>','<Default Extension="aihr-unused" ContentType="application/vnd.ms-excel.sheet.binary.macroEnabled.main"/></Types>'));
+  const harmless=await zip.generateAsync({type:'nodebuffer',compression:'DEFLATE'});await expect(parse(harmless)).resolves.toMatchObject({fileErrors:['no_data_rows'],records:[]});
+  zip.file('xl/fictional-payload.aihr-unused',Buffer.from('fictional inert bytes'));await expect(parse(await zip.generateAsync({type:'nodebuffer',compression:'DEFLATE'}))).rejects.toThrow();
+ });
  it('binds physical headings across uploader locale and refuses swapping yellow captions or prefilled identity',async()=>{
   const bytes=await make();await expect(readMovementWorkbook(bytes,{tenantId:a,companyId:a,catalog,resolve:(_k,f)=>'Localized '+f})).resolves.toMatchObject({fileErrors:['no_data_rows']});
   const columns=movementWorkbookLayout(catalog.types[0],resolve),x=columns.findIndex(c=>c.key==='incrementAmount'),y=columns.findIndex(c=>c.key==='effectiveDate');
@@ -58,9 +65,10 @@ describe('authenticated per-type Movement workbook',()=>{
   const bytes=await buildMovementWorkbook({tenantId:a,companyId:a,companyName:'Fictional A',catalog:{...catalog,types:[type]},subjects:[{...subjects[0],current:{...subjects[0].current,joinDate:'2026-01-06',probationEndDate:'2026-11-01',basicSalary:'0'}}],typeCode:type.code,resolve});
   const wb=XLSX.read(bytes,{type:'buffer',cellNF:true,cellFormula:true}),sheet=wb.Sheets.Confirmation,zip=await JSZip.loadAsync(bytes),styles=await zip.file('xl/styles.xml')!.async('string'),xml=await zip.file('xl/worksheets/sheet2.xml')!.async('string');
   const formats=[...styles.matchAll(/<numFmt\b[^>]*numFmtId="(\d+)"[^>]*formatCode="([^"]*)"[^>]*\/>/g)];expect(new Set(formats.map(f=>f[1])).size).toBe(formats.length);
-  const explicit=formats.find(f=>f[2]==='dd-mmm-yyyy');expect(explicit).toBeDefined();expect(Number(explicit![1])).toBeGreaterThanOrEqual(164);
   const xfs=/<cellXfs[^>]*>([\s\S]*?)<\/cellXfs>/.exec(styles)![1].match(/<xf\b[^>]*(?:\/>|>[\s\S]*?<\/xf>)/g)!;
   const style=(cell:string)=>{const entry=new RegExp('<c\\b[^>]*r="'+cell+'"[^>]*>').exec(xml)![0];return xfs[Number(/\bs="(\d+)"/.exec(entry)![1])];};
+  // SheetJS may retain an unused format60 declaration. Inspect the final cell XF reference, not the first matching declaration.
+  const dateFormatId=/\bnumFmtId="(\d+)"/.exec(style(address('effectiveDate')))![1],explicit=formats.find(f=>f[1]===dateFormatId);expect(Number(dateFormatId)).toBeGreaterThanOrEqual(164);expect(explicit?.[2]).toBe('dd-mmm-yyyy');
   for(const key of ['current.joinDate','current.probationEndDate','effectiveDate']){const cell=address(key);expect(sheet[cell].z).toBe('dd-mmm-yyyy');expect(style(cell)).toContain('numFmtId="'+explicit![1]+'"');expect(style(cell)).toContain('applyNumberFormat="1"');expect(style(cell)).toContain('locked="'+(key==='effectiveDate'?'0':'1')+'"');}
   expect(sheet[address('current.joinDate')].t).toBe('n');expect(sheet[address('current.joinDate')].v).toBe((Date.parse('2026-01-06T00:00:00Z')-Date.UTC(1899,11,30))/86400000);expect(sheet[address('effectiveDate')].v).toBe('');
   expect(sheet[address('effectiveDate',204)].z).toBe('dd-mmm-yyyy');expect(style(address('employeeCode'))).toContain('numFmtId="49"');expect(style(address('employeeName'))).toContain('numFmtId="49"');expect(style(address('current.basicSalary'))).toContain('numFmtId="2"');expect(sheet[address('current.basicSalary')].v).toBe('0');
