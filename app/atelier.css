@@ -106,6 +106,13 @@
     background: var(--background); padding-inline: 1.25rem 1rem;
   }
   :root[data-ui-theme='atelier'] [data-shell-group-label] { display: none; }
+  /* The header is a three-track grid built around the centre search; Atelier hides that track (Quick actions
+     lives in the rail), and a grid with a hidden middle child would drop the right cluster into the narrow
+     centre track. So the bar is a row instead, as in Monolith: where-you-are on the left, you on the right. */
+  :root[data-ui-theme='atelier'] [data-app-header] { display: flex; align-items: center; gap: 1rem; }
+  :root[data-ui-theme='atelier'] [data-app-header] > div:first-child { flex: 1 1 auto; min-width: 0; }
+  :root[data-ui-theme='atelier'] [data-app-header] > div:last-child { flex: none; margin-left: auto; }
+  :root[data-ui-theme='atelier'] .atelier-crumb { flex: none; max-width: 22rem; }
   :root[data-ui-theme='atelier'] [data-app-content] > main { padding: 1.75rem 2rem 2.5rem; }
   @media (max-width: 639px) {
     :root[data-ui-theme='atelier'] [data-app-content] > main { padding: 1rem; }
@@ -115,7 +122,9 @@
   /* ── Cards, form focus, the company switcher ──────────────────────────────────────────────────── */
   :root[data-ui-theme='atelier'] [data-ui-card] { border-radius: .75rem; border-color: var(--border); box-shadow: none; }
   :root[data-ui-theme='atelier'] :is(input,select,textarea) { accent-color: var(--primary); }
-  :root[data-ui-theme='atelier'] :is(button,a,input,select,textarea,[tabindex]):focus-visible {
+  /* Elements that opt out with `outline-none` show focus on their own container (the command bar's input,
+     the ask box), so the ring does not draw a second box inside the first. */
+  :root[data-ui-theme='atelier'] :is(button,a,input,select,textarea,[tabindex]):focus-visible:not(.outline-none) {
     outline: 2px solid var(--ring); outline-offset: 2px;
   }
   :root[data-ui-theme='atelier'] [data-company-switcher] {
@@ -211,7 +220,10 @@
 
 /* ── Home (app/dashboard-atelier.tsx, mock .impeccable/mocks/shell/home.html) ─────────────────────── */
 @media screen {
-  :root[data-ui-theme='atelier'] .atelier-home { max-width: 53.75rem; margin: 0 auto; padding-top: 1.5rem; display: flex; flex-direction: column; gap: 2.25rem; }
+  /* The page is as wide as the existing dashboard grid needs (72rem, Classic's max-w-6xl); the new sections
+     above it keep the 860px reading column of the mock, so a card grid is never squeezed into a text measure. */
+  :root[data-ui-theme='atelier'] .atelier-home { max-width: 72rem; margin: 0 auto; padding-top: 1.5rem; display: flex; flex-direction: column; gap: 2.25rem; }
+  :root[data-ui-theme='atelier'] .atelier-home > :not(.atelier-dash) { width: 100%; max-width: 53.75rem; margin-inline: auto; }
   :root[data-ui-theme='atelier'] .atelier-hello h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -.015em; line-height: 1.25; color: var(--foreground); text-wrap: balance; }
   :root[data-ui-theme='atelier'] .atelier-hello p { margin-top: .25rem; color: var(--atelier-ink-3); font-size: .875rem; }
   :root[data-ui-theme='atelier'] .atelier-ask-form { display: flex; flex-direction: column; gap: .875rem; margin-top: -1rem; }
