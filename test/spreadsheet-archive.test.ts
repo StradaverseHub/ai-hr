@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import JSZip from 'jszip';
+import { deflateRawSync } from 'node:zlib';
 import { decodeSpreadsheetXml, readSpreadsheetArchive, SpreadsheetArchiveError } from '@/lib/spreadsheet-archive';
 
 const limits = { maxBytes: 5_000_000, maxExpandedBytes: 8_000_000, maxEntries: 160 };
@@ -53,5 +54,24 @@ describe('shared spreadsheet archive admission', () => {
   it('decodes UTF-16 and refuses invalid byte sequences', () => {
     expect(decodeSpreadsheetXml(Buffer.from('\ufeff<worksheet/>', 'utf16le'))).toBe('<worksheet/>');
     expect(() => decodeSpreadsheetXml(Buffer.from([0xc3, 0x28]))).toThrow(SpreadsheetArchiveError);
+  });
+  it.each([Buffer.from('hidden'), deflateRawSync(Buffer.from('second stream'))])('refuses unconsumed bytes inside a declared DEFLATE payload', async trailing => {
+    const zip = new JSZip();
+    zip.file('xl/workbook.xml', '<workbook/>', { createFolders: false });
+    const bytes = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+    const end = bytes.length - 22, start = bytes.readUInt32LE(end + 16);
+    const changed = Buffer.concat([bytes.subarray(0, start), trailing, bytes.subarray(start)]);
+    changed.writeUInt32LE(bytes.readUInt32LE(18) + trailing.length, 18);
+    changed.writeUInt32LE(bytes.readUInt32LE(start + 20) + trailing.length, start + trailing.length + 20);
+    changed.writeUInt32LE(start + trailing.length, end + trailing.length + 16);
+    expect(() => readSpreadsheetArchive(changed, limits)).toThrow(SpreadsheetArchiveError);
+  });
+  it('refuses case-colliding package names and incorrectly cased relationship targets', async () => {
+    const zip = await JSZip.loadAsync(await workbook());
+    zip.file('XL/workbook.xml', '<workbook/>');
+    const bytes = await zip.generateAsync({ type: 'nodebuffer' });
+    expect(() => readSpreadsheetArchive(bytes, limits)).toThrow(SpreadsheetArchiveError);
+    const wrongCase = await workbook('worksheets/SHEET1.xml');
+    expect(() => readSpreadsheetArchive(wrongCase, limits)).toThrow(SpreadsheetArchiveError);
   });
 });

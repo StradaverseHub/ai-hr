@@ -57,7 +57,7 @@ function targetPart(source: string, target: string): string {
 function readRelationships(parts: ReadonlyMap<string, Buffer>): ReadonlyMap<string, readonly SpreadsheetRelationship[]> {
   const all = new Map<string, readonly SpreadsheetRelationship[]>();
   for (const [name, bytes] of parts) {
-    if (!name.endsWith('.rels')) continue;
+    if (!/\.rels$/i.test(name)) continue;
     const source = relationshipSource(name);
     if (source && !parts.has(source) || all.has(source)) return unsafeRelationship();
     const rows: SpreadsheetRelationship[] = [], ids = new Set<string>();
@@ -104,7 +104,7 @@ export function readSpreadsheetArchive(bytes: Buffer, limits: SpreadsheetArchive
     }
   };
   let offset = start, expanded = 0;
-  const parts = new Map<string, Buffer>(), ranges: { start: number; end: number }[] = [];
+  const parts = new Map<string, Buffer>(), foldedNames = new Set<string>(), ranges: { start: number; end: number }[] = [];
   for (let n = 0; n < count; n++) {
     if (offset + 46 > end || bytes.readUInt32LE(offset) !== 0x02014b50) return invalid();
     const flags = bytes.readUInt16LE(offset + 8), method = bytes.readUInt16LE(offset + 10), crc = bytes.readUInt32LE(offset + 16);
@@ -115,7 +115,9 @@ export function readSpreadsheetArchive(bytes: Buffer, limits: SpreadsheetArchive
     const nameBytes = bytes.subarray(offset + 46, offset + 46 + nameLength);
     let name: string;
     try { name = new TextDecoder('utf-8', { fatal: true }).decode(nameBytes); } catch { return invalid(); }
-    if (parts.has(name) || /vbaProject|externalLinks|embeddings/i.test(name) || /[\\\x00]/.test(name) || name.startsWith('/') || name.split('/').some(part => part === '.' || part === '..')) return invalid();
+    // Some workbook consumers case-fold package paths. Refuse aliases rather than selecting one.
+    if (foldedNames.has(name.toLowerCase()) || /vbaProject|externalLinks|embeddings/i.test(name) || /[\\\x00:]/.test(name) || name.startsWith('/') || name.split('/').some(part => part === '.' || part === '..')) return invalid();
+    foldedNames.add(name.toLowerCase());
     checkExtras(offset + 46 + nameLength, extra);
     if (bytes.readUInt32LE(local) !== 0x04034b50 || bytes.readUInt16LE(local + 4) !== bytes.readUInt16LE(offset + 6) || bytes.readUInt16LE(local + 6) !== flags || bytes.readUInt16LE(local + 8) !== method) return invalid();
     const localNameLength = bytes.readUInt16LE(local + 26), localExtra = bytes.readUInt16LE(local + 28), dataStart = local + 30 + localNameLength + localExtra, dataEnd = dataStart + compressed;
@@ -131,7 +133,16 @@ export function readSpreadsheetArchive(bytes: Buffer, limits: SpreadsheetArchive
     } else if (localCrc !== crc || localCompressed !== compressed || localSize !== size) return invalid();
     if (size > limits.maxExpandedBytes - expanded) throw new SpreadsheetArchiveError('expandedLimit');
     const payload = bytes.subarray(dataStart, dataEnd); let actual: Buffer;
-    try { actual = method === 0 ? payload : inflateRawSync(payload, { maxOutputLength: Math.max(1, size) }); } catch { return invalid(); }
+    try {
+      if (method === 0) actual = payload;
+      else {
+        // Node's documented info option exposes input consumed by the inflater. A valid first
+        // stream must not conceal trailing garbage or a second stream inside its declared payload.
+        const result = inflateRawSync(payload, { maxOutputLength: Math.max(1, size), info: true }) as unknown as { buffer: Buffer; engine: { bytesWritten: number } };
+        if (result.engine.bytesWritten !== payload.length) return invalid();
+        actual = result.buffer;
+      }
+    } catch { return invalid(); }
     if (actual.length !== size || crc32(actual) !== crc) return invalid();
     if (/\.(?:xml|rels)$/i.test(name)) {
       const xml = decodeSpreadsheetXml(actual), parser = new SaxesParser({ xmlns: true });
