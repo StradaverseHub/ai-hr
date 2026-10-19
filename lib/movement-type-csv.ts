@@ -2,7 +2,7 @@
 import {todayInKualaLumpur} from './hr-date';
 import {parseCsv,toCsv} from './csv';
 import {normalizeEmployeeCode,isValidEmployeeCode} from './employee-code';
-import {movementImportDate,MOVEMENT_IMPORT_LIMITS,type MovementImportRecord} from './movement-import-contract';
+import {movementImportDate,movementImportHasBlacklistInput,MOVEMENT_IMPORT_LIMITS,type MovementImportRecord} from './movement-import-contract';
 import {movementWorkbookLayout,movementWorkbookScalarChoices,type MovementWorkbookType,type MovementWorkbookColumn} from './movement-workbook-layout';
 import type {PersonnelLabelResolver} from './personnel-import-contract';
 export function movementTypeCsvTemplate(type:MovementWorkbookType,resolve:PersonnelLabelResolver){return toCsv([movementWorkbookLayout(type,resolve).map(c=>c.label)]);}
@@ -15,6 +15,7 @@ export function movementInputRecord(type:MovementWorkbookType,columns:MovementWo
   if(column.key==='incrementAmount')incrementAmount=value;
   else if(column.field){const choices=movementWorkbookScalarChoices(column.field);const matches=choices.filter(choice=>value===choice.value||resolvers.some(resolve=>{const label=resolve(choice.labelKey,choice.value);return value===label||value===choice.value+' · '+label;}));cells[column.field]=matches.length===1?matches[0].value:value;}
  });
+ if(type.behaviour==='blacklist'&&!movementImportHasBlacklistInput(cells))errors.push('blacklist_input_required');
  if(!isValidEmployeeCode(employeeCode))errors.push('invalid_employee_code');
  if(type.behaviour!=='blacklist'&&(!cells.effectiveDate||!movementImportDate(cells.effectiveDate)))errors.push('invalid_effective_date');
  return {row,employeeCode,cells,errors,incrementAmount,importVersion:2,source};

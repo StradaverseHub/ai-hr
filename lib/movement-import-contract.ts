@@ -70,8 +70,15 @@ export function movementImportRequired(field:MovementFormField,behaviour:string)
  if(field==='companyId'&&behaviour==='entityTransfer')return true;
  return movementFormRequired(field,behaviour);
 }
+/** Import scaffolding is not an instruction to accept the manual blacklist default.
+ * An explicit status (including false), or remarks with the canonical default, records intent.
+ * Kind, generated date and grey snapshots alone never supply that intent. */
+export function movementImportHasBlacklistInput(cells:MovementImportRecord['cells']):boolean{
+ return !!(cells.blacklisted?.trim()||cells.remarks?.trim());
+}
 export function movementImportCellIssues(record:MovementImportRecord,behaviour:string):string[]{
  const issues=[...record.errors];const visible=new Set(movementFormFields(behaviour,record.cells.terminationReasonCode));
+ if(behaviour==='blacklist'&&!movementImportHasBlacklistInput(record.cells)&&!issues.includes('blacklist_input_required'))issues.push('blacklist_input_required');
  for(const field of MOVEMENT_IMPORT_FIELDS){
   const value=record.cells[field];
   // Every row carries a date. Blacklist is a current-day flag; the server verifies its date explicitly.

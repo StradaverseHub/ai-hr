@@ -30,6 +30,12 @@ describe('Movement file is the New Event transport',()=>{
   const row=parseMovementImport('employee_code,event_type,effective_date,basic_salary\nEMP-1,secondment,18-Oct-2026,3500').records[0];
   expect(movementImportCellIssues(row,'secondment')).toContain('not_applicable:basicSalary');
  });
+ it('does not treat legacy CSV/Paste identity, kind and date as a blacklist instruction at authoritative import validation',()=>{
+  const csv='employee_code,event_type,effective_date,blacklisted,remarks\nEMP-1,blacklist,18-Oct-2026,,';
+  const row=parseMovementImport(csv).records[0];expect(row.errors).toEqual([]);expect(movementImportCellIssues(row,'blacklist')).toContain('blacklist_input_required');
+  for(const cells of [{blacklisted:'true'},{blacklisted:'false'},{remarks:'Deliberate fictional blacklist instruction'}])expect(movementImportCellIssues({...row,cells:{...row.cells,...cells}},'blacklist')).not.toContain('blacklist_input_required');
+  expect(movementImportCellIssues({...row,cells:{...row.cells,remarks:'  '}},'blacklist')).toContain('blacklist_input_required');
+ });
  it('bounds bytes, total rows and per-employee sequence length before opening any transaction',()=>{
   expect(parseMovementImport('x'.repeat(MOVEMENT_IMPORT_LIMITS.bytes+1)).fileErrors).toContain('file_too_large');
   const head='employee_code,event_type,effective_date\n';

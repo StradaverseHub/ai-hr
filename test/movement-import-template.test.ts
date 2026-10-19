@@ -53,6 +53,29 @@ describe('authenticated per-type Movement workbook',()=>{
   const changed=await edit(bytes,wb=>{const s=wb.Sheets.Increment;s[XLSX.utils.encode_cell({r:5,c:grey})]={t:'n',v:9999999};s[XLSX.utils.encode_cell({r:5,c:amount})]={t:'s',v:'10.13'};s[XLSX.utils.encode_cell({r:5,c:date})]={t:'s',v:'2026-11-01'};});
   const row=(await parse(changed)).records[0];expect(row.incrementAmount).toBe('10.13');expect(row.cells.basicSalary).toBeUndefined();
  });
+ it('retains ID-only blank Blacklist rows as incomplete, while explicit status or remarks preserve canonical intent',async()=>{
+  const type={code:'blacklist',label:'Blacklist',behaviour:'blacklist'},blacklistCatalog={...catalog,types:[...catalog.types,type]},columns=movementWorkbookLayout(type,resolve);
+  const bytes=await buildMovementWorkbook({tenantId:a,companyId:a,companyName:'Fictional A',catalog:blacklistCatalog,subjects:[],resolve});
+  const idOnly=await edit(bytes,wb=>{wb.Sheets.Blacklist.A6={t:'s',v:'EX-001'};});
+  const parsed=await readMovementWorkbook(idOnly,{tenantId:a,companyId:a,catalog:blacklistCatalog,resolve});
+  expect(parsed.records).toHaveLength(1);expect(parsed.records[0]).toMatchObject({employeeCode:'EX-001',source:{sheet:'Blacklist',row:6},errors:['blacklist_input_required']});
+  expect(parsed.records[0].cells.effectiveDate).toBeDefined();expect(parsed.records[0].cells.blacklisted).toBeUndefined();
+  const greyOnly=await edit(idOnly,wb=>{wb.Sheets.Blacklist.B6={t:'s',v:'Fictional employee'};wb.Sheets.Blacklist[XLSX.utils.encode_cell({r:5,c:columns.findIndex(c=>c.key==='current.blacklistedAt')})]={t:'s',v:'2026-10-18'};});
+  expect((await readMovementWorkbook(greyOnly,{tenantId:a,companyId:a,catalog:blacklistCatalog,resolve})).records[0].errors).toEqual(['blacklist_input_required']);
+  for(const [field,value]of [['blacklisted','true'],['blacklisted','false'],['remarks','Deliberate fictional blacklist instruction']]){
+   const entered=await edit(idOnly,wb=>{wb.Sheets.Blacklist[XLSX.utils.encode_cell({r:5,c:columns.findIndex(c=>c.key===field)})]={t:'s',v:value};});
+   const result=await readMovementWorkbook(entered,{tenantId:a,companyId:a,catalog:blacklistCatalog,resolve});expect(result.records[0].errors).toEqual([]);expect(result.records[0].cells[field as 'blacklisted'|'remarks']).toBe(value);
+  }
+ });
+ it('refuses ID-only single-type CSV/Paste Blacklist rows without requiring a status when remarks deliberately use its default',()=>{
+  const type={code:'blacklist',label:'Blacklist',behaviour:'blacklist'};
+  for(const csv of ['Employee ID\nEX-001','Employee ID,Blacklisted,Remarks\nEX-001, , ']){
+   const parsed=parseMovementTypeCsv(csv,type,resolve);expect(parsed.fileErrors).toEqual([]);expect(parsed.records).toHaveLength(1);expect(parsed.records[0].errors).toEqual(['blacklist_input_required']);
+  }
+  for(const [field,value]of [['blacklisted','true'],['blacklisted','false'],['remarks','Deliberate fictional blacklist instruction']]){
+   const parsed=parseMovementTypeCsv('employeeCode,'+field+'\nEX-001,'+value,type,resolve);expect(parsed.records[0].errors).toEqual([]);expect(parsed.records[0].cells[field as 'blacklisted'|'remarks']).toBe(value);
+  }
+ });
  it('normalizes every resolved blacklist behaviour to the fresh KL day ahead of future rows, including across midnight',()=>{
   const before=new Date();before.setUTCHours(15,59,59,0);vi.useFakeTimers();vi.setSystemTime(before);
   const type={code:'custom_blacklist_fixture',label:'Fictional custom blacklist',behaviour:'blacklist'},columns=movementWorkbookLayout(type,resolve),values=columns.map(c=>c.key==='employeeCode'?'EX-001':c.key==='blacklisted'?'true':'');
