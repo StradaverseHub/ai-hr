@@ -234,6 +234,23 @@ describe('atomic Draft activation', () => {
     expect(draftActivationValidation(failure)?.fields).toEqual([{ tab: 'job', field: 'department' }]);
   });
 
+  it.each(['department','position','cost_center','grade'] as const)('refuses an archived %s with safe field feedback before hiring',async kind=>{
+    const data=input();
+    let referenceId:string;
+    if(kind==='department')referenceId=b.deptA;
+    else if(kind==='position'){referenceId=b.positionId;data.employment!.positionId=referenceId;}
+    else if(kind==='cost_center'){referenceId=b.costCenterId;data.employment!.costCenterId=referenceId;}
+    else {
+      const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:'ACT-GRADE',name:'Draft grade'}).returning();
+      referenceId=grade.id;data.employment!.gradeId=referenceId;
+    }
+    const {ctx,id}=await held(data);
+    const table={department:schema.department,position:schema.position,cost_center:schema.costCenter,grade:schema.jobGrade}[kind];
+    await owner.db.update(table).set({archivedAt:new Date()}).where(eq(table.id,referenceId));
+    const failure=await rejectedWithoutChanges(ctx,id,'reference_invalid');
+    expect(draftActivationValidation(failure)?.fields).toEqual([{tab:'job',field:kind==='cost_center'?'costCenter':kind}]);
+  });
+
   it('refuses a selected Department moved outside the company eligibility rule', async () => {
     const { ctx, id } = await held();
     const [other] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Other Company' }).returning();
