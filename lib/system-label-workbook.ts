@@ -167,11 +167,42 @@ export function readSystemLabelWorkbook(bytes: Buffer, options:{generation?:numb
 
 export function systemLabelErrorWorkbook(rows: LabelImportPreviewRow[]): Uint8Array {
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+  const data = [
     ['Worksheet', 'Row', 'Code', 'Result', 'Message'],
     ...rows.filter(r => r.outcome === 'error'||r.outcome === 'skip').map(r => [safe(r.sheet), r.row, safe(r.values.Code??r.values.Name??''), r.outcome, safe(r.message)]),
-  ]), 'Errors');
-  return new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
+  ];
+  const sheet = XLSX.utils.aoa_to_sheet(data), widths = [24, 8, 38, 12, 88];
+  sheet['!cols'] = widths.map(wch => ({ wch }));
+  // Reserve space for wrapped identifiers/messages. This is a conservative estimate, not font metrics;
+  // all cell text is retained and unusually long rows remain manually expandable in Excel.
+  sheet['!rows'] = data.map((row, index) => ({ hpt: index === 0 ? 24 : Math.min(240, Math.max(32,
+    8 + 15 * Math.max(...row.map((value, column) => String(value).split(/\r\n|\r|\n/).reduce((lines, line) => lines + Math.max(1, Math.ceil([...line].length / (widths[column] - 4))), 0))),
+  )) }));
+  XLSX.utils.book_append_sheet(wb, sheet, 'Errors');
+  // The installed SheetJS writer serializes widths/heights but not arbitrary cell.s alignment.
+  // Its public synchronous ZIP API styles only this freshly generated report, preserving our
+  // synchronous caller contract; no uploaded archive or business value is rewritten here.
+  const zip = XLSX.CFB.read(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }), { type: 'buffer' });
+  const part = (name: string): string => {
+    const entry = XLSX.CFB.find(zip, name);
+    if (!entry?.content) throw new Error('Error workbook layout is unavailable.');
+    return Buffer.from(entry.content).toString('utf8');
+  };
+  let styles = part('xl/styles.xml');
+  const cellXfs = /<cellXfs\b[^>]*\bcount="(\d+)"[^>]*>/.exec(styles);
+  if (!cellXfs || !styles.includes('</cellXfs>')) throw new Error('Error workbook styles are unavailable.');
+  const first = Number(cellXfs[1]);
+  const wrapped = [0, 49].map(numFmtId => `<xf numFmtId="${numFmtId}" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>`).join('');
+  styles = styles.replace(cellXfs[0], cellXfs[0].replace(/count="\d+"/, `count="${first + 2}"`)).replace('</cellXfs>', wrapped + '</cellXfs>');
+  const xml = part('xl/worksheets/sheet1.xml').replace(/<c\b[^>]*>/g, opening => {
+    const closed = opening.endsWith('/>'), attributes = opening.slice(2, closed ? -2 : -1).replace(/\s+s="[^"]*"/g, '');
+    const address = /\br="([A-Z]+)(\d+)"/.exec(attributes);
+    const style = first + (address?.[1] === 'B' && address[2] !== '1' ? 0 : 1);
+    return '<c' + attributes + ` s="${style}"` + (closed ? '/>' : '>');
+  });
+  XLSX.CFB.utils.cfb_add(zip, 'xl/styles.xml', Buffer.from(styles));
+  XLSX.CFB.utils.cfb_add(zip, 'xl/worksheets/sheet1.xml', Buffer.from(xml));
+  return new Uint8Array(XLSX.CFB.write(zip, { type: 'buffer', fileType: 'zip', compression: true }));
 }
 
 
