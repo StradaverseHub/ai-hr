@@ -28,10 +28,10 @@ export type BulkCategory = 'leave' | 'leaveCancellation' | 'attendance' | 'overt
 
 /** A selectable pending row handed from the server page to the client island. `id` is the request id — the
  *  selection is keyed by (type,id) so it is index-independent and survives a re-sort (sort item 09cda965). */
-export type BulkRow = { id: string; type: BulkDecideType; category: BulkCategory; expectedStageIndex?: number };
+export type BulkRow = { id: string; type: BulkDecideType; category: BulkCategory; expectedStageIndex?: number; expectedParticipantSlot?: string };
 
 /** One item posted back to the bulk server action. */
-export type BulkDecideItem = { type: BulkDecideType; id: string; expectedStageIndex?: number };
+export type BulkDecideItem = { type: BulkDecideType; id: string; expectedStageIndex?: number; expectedParticipantSlot?: string };
 
 export const BULK_DECIDE_TYPES: readonly BulkDecideType[] = [
   'leave',
@@ -123,7 +123,9 @@ export function parseBulkItems(raw: string): BulkDecideItem[] {
     seen.add(key);
     const stage = (el as { expectedStageIndex?: unknown }).expectedStageIndex;
     if (stage !== undefined && (!Number.isInteger(stage) || Number(stage) < 0 || Number(stage) > 9)) continue;
-    out.push({ type: type as BulkDecideType, id, ...(type === 'attendance' && typeof stage === 'number' ? { expectedStageIndex: stage } : {}) });
+    const participantSlot = (el as { expectedParticipantSlot?: unknown }).expectedParticipantSlot;
+    if (participantSlot !== undefined && (type !== 'attendance' || typeof participantSlot !== 'string' || !/^[0-9]:(?:[0-9]|1[0-9]|hr)$/.test(participantSlot))) continue;
+    out.push({ type: type as BulkDecideType, id, ...(type === 'attendance' && typeof stage === 'number' ? { expectedStageIndex: stage } : {}), ...(type === 'attendance' && typeof participantSlot === 'string' ? { expectedParticipantSlot: participantSlot } : {}) });
   }
   return out;
 }

@@ -1,4 +1,5 @@
 'use server';
+import { AttendanceLevelError, attendanceLevelProblemToken } from '@/lib/attendance-workflow-v3';
 
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
@@ -39,6 +40,7 @@ export async function requestOwnAttendanceDayAction(formData: FormData) {
       reason,
     });
   } catch (error) {
+    if (error instanceof AttendanceLevelError) redirect(`${back}&workflowProblem=${encodeURIComponent(attendanceLevelProblemToken(error.problem))}`);
     if (error instanceof AttendanceCorrectionPendingError) fail('myDayPending');
     if (error instanceof AttendanceCorrectionFutureDateError) fail('myDayFuture');
     fail('correctionRejected');
