@@ -74,6 +74,7 @@ export async function GET(req: Request) {
     const rows = await auditEvents(s, {
       module: moduleKey,
       aggregateType: type,
+      aggregateId: UUID_RE.test(g('record')) ? g('record') : undefined,
       eventQuery: g('q') || undefined,
       action,
       actorId: user,

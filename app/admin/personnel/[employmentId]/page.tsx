@@ -1,3 +1,4 @@
+import {employmentTestRecord} from '@/core/employment-test-record';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -76,6 +77,7 @@ import {
   endDelegationAction,
   setCompensationAction,
   setDirectSuperiorAction,
+  setTestRecordAction,
   setComplianceFieldsAction,
   setContactAddressAction,
   changeEmploymentCompanyAction,
@@ -333,6 +335,7 @@ export default async function EmployeePage({
 
   const emp = await employeeDetail(s, employmentId);
   if (!emp) notFound();
+  const classification = admin ? await employmentTestRecord(s, employmentId) : null;
   const today = todayInKualaLumpur();
   // Employee Status redesign (R43 c26c3ce5): Employee Status is SYSTEM-DERIVED read-time from the employment
   // lifecycle dates (+ the manual Blacklist override) — never a stored manual field. Computed once here and
@@ -5087,6 +5090,17 @@ export default async function EmployeePage({
             {employmentInfoCard}
           </TabSaveScope>
         )}
+        {admin && classification && <Card id="section-data-classification">
+          <SectionHeader title={t('dataClassification.title')}/>
+          <form action={setTestRecordAction} className="space-y-3 p-4">
+            <input type="hidden" name="employmentId" value={emp.employmentId}/>
+            <p className="text-sm text-muted-foreground">{t('dataClassification.help')}</p>
+            <Field label={t('dataClassification.testRecord')}><select className={inputCls} name="isTestRecord" defaultValue={String(classification.isTestRecord)}>
+              <option value="false">{t('dataClassification.unmarked')}</option><option value="true">{t('dataClassification.marked')}</option>
+            </select></Field>
+            <button type="submit" className={btnPrimary}>{t('dataClassification.save')}</button>
+          </form>
+        </Card>}
         {directSuperiorCard}
         {delegationsCard}
       </>

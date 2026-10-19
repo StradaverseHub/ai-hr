@@ -1,5 +1,6 @@
 'use server';
 
+import {setEmploymentTestRecord} from '@/core/employment-test-record';
 import { publicErrorMessage } from '@/lib/public-error';
 import {movementNeedsEntitlementReprojection} from '@/core/movement-kinds';
 import { randomUUID } from 'node:crypto';
@@ -2277,4 +2278,15 @@ async function applyAttendancePhotoSection(
     employmentId: String(formData.get('employmentId')),
     setting,
   });
+}
+
+/** Dedicated HR-only metadata command; generic tab saves and import/ESS never bind this field. */
+export async function setTestRecordAction(formData:FormData){
+ const ctx=await requireAdmin();const employmentId=String(formData.get('employmentId')??'');
+ const value=formData.get('isTestRecord');
+ if(value!=='true'&&value!=='false')throw new Error('classification_not_available');
+ try{await setEmploymentTestRecord(ctx,{employmentId,isTestRecord:value==='true'});}
+ catch{redirect(`/admin/personnel/${encodeURIComponent(employmentId)}?tab=job&error=classification_not_available`);}
+ revalidatePath(`/admin/personnel/${employmentId}`);
+ redirect(`/admin/personnel/${employmentId}?tab=job&toast=Saved`);
 }

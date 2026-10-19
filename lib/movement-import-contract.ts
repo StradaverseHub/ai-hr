@@ -9,11 +9,11 @@ export const MOVEMENT_IMPORT_LIMITS={bytes:900000,rows:200,perEmployee:20,employ
 export const MOVEMENT_IMPORT_FIELDS=Object.keys(MOVEMENT_FORM_IDS).filter((key):key is MovementFormField=>key!=='reason');
 export const MOVEMENT_IMPORT_COLUMNS=['employee_code',...MOVEMENT_IMPORT_FIELDS.map(field=>field==='kind'?'event_type':field.replace(/[A-Z]/g,c=>'_'+c.toLowerCase()))];
 export const MOVEMENT_IMPORT_HEADERS=['Employee ID',...MOVEMENT_IMPORT_FIELDS.map(field=>field==='kind'?'EventType':field==='effectiveDate'?'EffectiveDate':field.replace(/([a-z])([A-Z])/g,'$1 $2').replace(/^./,c=>c.toUpperCase()))];
-export type MovementImportRecord={row:number;employeeCode:string;cells:Partial<Record<MovementFormField,string>>;errors:string[]};
-export type MovementImportRow={row:number;employeeCode:string;eventType:string;effectiveDate:string;status:'valid'|'invalid'|'excluded'|'imported'|'failed';errors:string[];before?:Record<string,string|null>;proposed?:Record<string,string|null>;scheduled?:boolean;payrollFlaggedPeriods?:string[]};
+export type MovementImportRecord={row:number;employeeCode:string;cells:Partial<Record<MovementFormField,string>>;errors:string[];incrementAmount?:string;importVersion?:2;source?:{sheet:string;row:number}};
+export type MovementImportRow={row:number;employeeCode:string;eventType:string;effectiveDate:string;status:'valid'|'invalid'|'excluded'|'imported'|'failed';errors:string[];warnings?:string[];source?:{sheet:string;row:number};baselineDate?:string;before?:Record<string,string|null>;proposed?:Record<string,string|null>;scheduled?:boolean;payrollFlaggedPeriods?:string[]};
 export type MovementImportEmployee={employeeCode:string;employmentId:string|null;name:string|null;rows:MovementImportRow[];fingerprint:string|null};
 export type MovementImportPreview={inputHash:string;selection:number[];fileErrors:string[];employees:MovementImportEmployee[];excluded:number;valid:number};
-export type MovementImportResult={employees:MovementImportEmployee[];imported:number;failed:number;excluded:number;byEventType:{eventType:string;imported:number;failed:number;excluded:number}[]};
+export type MovementImportResult={employees:MovementImportEmployee[];imported:number;failed:number;excluded:number;byEventType:{eventType:string;imported:number;failed:number;excluded:number}[];batchId?:string};
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 export function movementImportDate(raw:string):string|null{
  if(isCalendarDate(raw))return raw;
