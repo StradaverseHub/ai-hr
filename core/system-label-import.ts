@@ -30,7 +30,7 @@ type Catalogue = {
   groups:(typeof s.gradeGroup.$inferSelect)[];members:(typeof s.gradeGroupMember.$inferSelect)[];
   employees:{id:string;code:string|null;companyId:string;name:string;active:boolean}[];groupAdmin:boolean;
 };
-const companyCell=(companies:Catalogue['companies'],id:string)=>{const co=companies.find(x=>x.id===id);return co&&companies.filter(x=>x.name===co.name).length===1?co.name:id;};
+const companyCell=(companies:Catalogue['companies'],id:string)=>{const co=companies.find(x=>x.id===id);return co&&!co.name.includes(';')&&companies.filter(x=>x.name===co.name).length===1?co.name:id;};
 async function catalogue(tx: Tx): Promise<Catalogue> {
   const permission = await tx.execute(sql`select app.is_admin() as allowed, app.is_group_admin() as global`) as unknown as {allowed:boolean;global:boolean}[];
   if (!permission[0]?.allowed) throw new Error('Only an administrator may import System Labels.');
