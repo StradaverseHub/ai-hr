@@ -224,21 +224,6 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
       personId = row.id;
     }
 
-    // Server-side cross-company guard (source of truth — client filtering is not). The chosen
-    // department / position / cost-center must be a label the hiring company MAY use. Shared System
-    // Labels (62de487d): this is now the resolver check (origin ∪ shared-in ∪ global, flag-gated) rather
-    // than a strict company_id match — with the flag OFF it collapses to the old origin-only strictness,
-    // so nothing changes until a company opts in. grade_id is tenant-wide (no company_id), not checked.
-    if (!(await labelUsableByCompany(tx, ctx.tenantId, 'department', p.departmentId, p.companyId))) {
-      throw new CrossCompanyError('department');
-    }
-    if (p.positionId && !(await labelUsableByCompany(tx, ctx.tenantId, 'position', p.positionId, p.companyId))) {
-      throw new CrossCompanyError('position');
-    }
-    if (p.costCenterId && !(await labelUsableByCompany(tx, ctx.tenantId, 'cost_center', p.costCenterId, p.companyId))) {
-      throw new CrossCompanyError('cost-center');
-    }
-
     const provisionalEndOn = p.provisionalEndOn ?? null;
     // Employee ID (feedback 38668d9b): HR keys it in (hire form + bulk import always pass one). Validate +
     // normalize + tenant-uniqueness pre-check. Only when no code is supplied (seed / test corpus) do we fall
