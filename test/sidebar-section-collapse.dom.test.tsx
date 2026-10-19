@@ -103,3 +103,22 @@ describe.each(themes)('%s sidebar section collapse on the current route', theme 
     else expect(screen.getByRole('button', { name: messages.nav.collapse })).toBeEnabled();
   });
 });
+
+
+describe('Classic prototype onboarding navigation',()=>{
+  it.each([['/lifecycle/onboarding','onboardingV31','newJoiners'],['/lifecycle/requisitions/onboarding','onboardingRequisitions','allOnboardingRequisitions']] as const)('keeps %s current and permits keyboard collapse and reopen',async(path,parent,child)=>{
+    document.documentElement.setAttribute('data-ui-theme','classic');route.pathname=path;
+    const user=userEvent.setup();
+    render(<NextIntlClientProvider locale="en" messages={messages}><Sidebar isAdmin onboardingAccess onboardingMaster onboardingRequisitionsAccess enabledModules={null} defaultCollapsed={false}/></NextIntlClientProvider>);
+    const toggle=screen.getByRole('button',{name:messages.nav[parent]});
+    expect(toggle).toHaveAttribute('aria-expanded','true');
+    const navigation=()=>screen.getByRole('navigation',{name:messages.nav[parent]});
+    expect(within(navigation()).getByRole('link',{name:messages.nav[child]})).toHaveAttribute('aria-current','page');
+    toggle.focus();await user.keyboard('{Enter}');
+    expect(toggle).toHaveAttribute('aria-expanded','false');
+    expect(screen.queryByRole('navigation',{name:messages.nav[parent]})).toBeNull();
+    await user.keyboard(' ');
+    expect(toggle).toHaveAttribute('aria-expanded','true');
+    expect(within(navigation()).getByRole('link',{name:messages.nav[child]})).toHaveAttribute('href',path);
+  });
+});

@@ -31,7 +31,7 @@ describe('V3.1 localized task controls', () => {
         await waitFor(() => expect(mocks.change).toHaveBeenCalledWith('case', 7, { type: 'task', taskId: 'welcome', status: 'done' }));
         expect(mocks.refresh).toHaveBeenCalledTimes(1);
     });
-    it('autosaves only checklist tasks, retains staged policy edits and sequences revisions', async () => {
+    it('autosaves checklist tasks without unrelated configuration writes and sequences revisions', async () => {
         const config = defaultConfig('owner');
         config.checklists[0]!.tasks = [{ id: 'welcome', name: 'Welcome', by: 'group', group: 'people-gbs', method: 'manual', opens: null, due: 1, gate: false }];
         let resolveFirst!: (value: {
@@ -42,11 +42,7 @@ describe('V3.1 localized task controls', () => {
         mocks.config.mockResolvedValue({ error: null, revision: 4 });
         const context = { config, revision: 1, actor: { id: 'owner', module: true, master: false }, directory: [{ id: 'owner', name: 'Owner' }], checklistCounts: {}, loads: {}, availability: {}, matchCounts: {}, totalJoiners: 0 };
         const options = { businessGroup: [], company: [], department: [], title: [], grade: [], employmentType: [] };
-        render(<NextIntlClientProvider locale="en" messages={messages('en')}><OnboardingSettings context={context as never} options={options as never}/></NextIntlClientProvider>);
-        const count = screen.getByRole('checkbox', { name: 'Count equipment and access in onboarding progress' });
-        const initial = count.hasAttribute('checked');
-        fireEvent.click(count);
-        fireEvent.click(screen.getByRole('button', { name: 'Checklist Management' }));
+        render(<NextIntlClientProvider locale="en" messages={messages('en')}><OnboardingSettings context={context as never} options={options as never} initialTab="checklists"/></NextIntlClientProvider>);
         const taskName = screen.getByRole('textbox', { name: 'Task name' });
         fireEvent.change(taskName, { target: { value: 'First change' } });
         fireEvent.blur(taskName);
@@ -58,10 +54,34 @@ describe('V3.1 localized task controls', () => {
         await waitFor(() => expect(mocks.tasks).toHaveBeenCalledTimes(2));
         expect(mocks.tasks.mock.calls[1]).toEqual([2, config.checklists[0]!.id, [{ ...config.checklists[0]!.tasks[0], name: 'Second change' }]]);
         expect(mocks.config).not.toHaveBeenCalled();
-        fireEvent.click(screen.getByRole('button', { name: 'Onboarding settings' }));
-        expect(screen.getByRole('checkbox', { name: 'Count equipment and access in onboarding progress' })).toHaveProperty('checked', !initial);
-        fireEvent.click(screen.getByRole('button', { name: 'Save configuration' }));
-        await waitFor(() => expect(mocks.config).toHaveBeenCalledWith(3, expect.objectContaining({ countEquipment: !initial }), {}, false));
+
+    });
+    it('saves configuration as one revision after the administrator finishes the settings form',async()=>{
+        const config=defaultConfig('owner');mocks.config.mockResolvedValue({error:null,revision:2});
+        const context={config,revision:1,actor:{id:'owner',module:true,master:false},directory:[{id:'owner',name:'Owner'}],checklistCounts:{},loads:{},availability:{},matchCounts:{},totalJoiners:0};
+        const options={businessGroup:[],company:[],department:[],title:[],grade:[],employmentType:[]};
+        render(<NextIntlClientProvider locale="en" messages={messages('en')}><OnboardingSettings context={context as never} options={options as never}/></NextIntlClientProvider>);
+        fireEvent.click(screen.getByRole('checkbox',{name:'Count equipment and access in onboarding progress'}));
+        expect(mocks.config).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button',{name:'Save configuration'}));
+        await waitFor(()=>expect(mocks.config).toHaveBeenCalledWith(1,expect.objectContaining({countEquipment:false}),{},false));
+    });
+    it('saves checklist metadata and creates a real definition before its queued task edits',async()=>{
+        const config=defaultConfig('owner');let revision=1;
+        mocks.config.mockImplementation(async()=>({error:null,revision:++revision}));
+        const context={config,revision:1,actor:{id:'owner',module:true,master:false},directory:[{id:'owner',name:'Owner'}],checklistCounts:{},loads:{},availability:{},matchCounts:{},totalJoiners:0};
+        const options={businessGroup:[],company:[],department:[],title:[],grade:[],employmentType:[]};
+        render(<NextIntlClientProvider locale="en" messages={messages('en')}><OnboardingSettings context={context as never} options={options as never} initialTab="checklists"/></NextIntlClientProvider>);
+        fireEvent.change(screen.getByRole('textbox',{name:'Checklist name'}),{target:{value:'Fictional operations checklist'}});
+        fireEvent.blur(screen.getByRole('textbox',{name:'Checklist name'}));
+        await waitFor(()=>expect(mocks.config).toHaveBeenCalledWith(1,expect.objectContaining({checklists:[expect.objectContaining({name:'Fictional operations checklist'})]}),{},false));
+        await waitFor(()=>expect(screen.getByRole('button',{name:'New checklist'})).toBeEnabled());
+        fireEvent.click(screen.getByRole('button',{name:'New checklist'}));
+        await waitFor(()=>expect(mocks.config).toHaveBeenCalledTimes(2));
+        fireEvent.click(screen.getByRole('button',{name:'Add task'}));
+        await waitFor(()=>expect(mocks.config).toHaveBeenCalledTimes(3));
+        expect(mocks.config.mock.calls.map(x=>x[0])).toEqual([1,2,3]);
+        expect(mocks.config.mock.calls[2]![1].checklists[1].tasks).toHaveLength(1);
     });
     it('lets HR correct a task validation error and retry at the same settings revision', async () => {
         const config=defaultConfig('owner');config.checklists[0]!.tasks=[{id:'welcome',name:'Welcome',by:'group',group:'people-gbs',method:'manual',opens:null,due:1,gate:false}];
@@ -69,7 +89,7 @@ describe('V3.1 localized task controls', () => {
         const context={config,revision:1,actor:{id:'owner',module:true,master:false},directory:[{id:'owner',name:'Owner'}],checklistCounts:{},loads:{},availability:{},matchCounts:{},totalJoiners:0};
         const options={businessGroup:[],company:[],department:[],title:[],grade:[],employmentType:[]};
         render(<NextIntlClientProvider locale="en" messages={messages('en')}><OnboardingSettings context={context as never} options={options as never} initialTab="checklists"/></NextIntlClientProvider>);
-        const due=screen.getByRole('spinbutton',{name:'Due by Day'});
+        const due=screen.getByRole('spinbutton',{name:'Due by day Welcome'});
         fireEvent.change(due,{target:{value:'0'}});fireEvent.blur(due);
         expect(await screen.findByRole('alert')).toHaveTextContent('Day 0 is invalid.');
         fireEvent.change(due,{target:{value:'1'}});fireEvent.blur(due);
@@ -83,10 +103,23 @@ describe('V3.1 localized task controls', () => {
         const c = blankCase('case', 'OB-1', 'draft', { fullName: 'Fictional Hire' }, env);
         const detail = { case: c, config: defaultConfig('owner'), revision: 7, actor: { id: 'owner', name: 'HR', module: true, hr: true, master: false }, directory: [], labels: {}, notes: [], availability: {}, today, canOpenRequisition: false };
         render(<NextIntlClientProvider locale="en" messages={messages('en')}><OnboardingCaseView detail={detail}/></NextIntlClientProvider>);
-        fireEvent.click(screen.getByRole('button', { name: 'Save case details' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await screen.findByText('Case details saved.');
         expect(screen.getByRole('button', { name: 'Submit case and confirm checklist' })).toBeVisible();
-        await waitFor(() => expect(screen.getByRole('button', { name: 'Save case details' })).toBeEnabled());
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled());
+    });
+    it('keeps checklist selection available on a submitted case and confirms through the history-preserving command',async()=>{
+        const today=todayInKualaLumpur();let id=0;
+        const env={today,now:new Date().toISOString(),id:()=>String(++id),nextNumber:()=> 'IT-'+(++id),leave:{},taskLoads:{},lastTaskAssignment:{},pendingApprovals:{},lifetimeApprovals:{},users:['owner']};
+        const config=defaultConfig('owner'),actor={id:'owner',name:'HR',module:true,hr:true,master:false};
+        const c=blankCase('case','OB-current','draft',{fullName:'Fictional Hire',joinDate:dayDate(today,5),title:'position',company:'company',department:'department',supervisor:'owner'},env);c.hiring='new_hire';submitCase(config,c,actor,env);
+        config.checklists.push({id:'alternative',name:'Alternative checklist',owner:'owner',createdAt:new Date().toISOString(),rules:{},tasks:[]});
+        const detail={case:c,config,revision:7,actor,directory:[{id:'owner',name:'HR'}],labels:{},notes:[],availability:{},today,canOpenRequisition:true};
+        render(<NextIntlClientProvider locale="en" messages={messages('en')}><OnboardingCaseView detail={detail}/></NextIntlClientProvider>);
+        expect(screen.getByRole('button',{name:'Edit details'})).toBeVisible();
+        fireEvent.change(screen.getByRole('combobox',{name:'Checklist choice'}),{target:{value:'alternative'}});
+        fireEvent.click(screen.getByRole('button',{name:'Confirm selection'}));
+        await waitFor(()=>expect(mocks.change).toHaveBeenCalledWith('case',7,{type:'saveSubmit',patch:expect.objectContaining({checklistOverride:'alternative'})}));
     });
     it('retains older unfinished equipment and pending preparation while recent filtering excludes old cancelled or completed work', () => {
         const today=todayInKualaLumpur(), join=dayDate(today,-40), actor={id:'owner',name:'HR',module:true,hr:true,master:false};
@@ -106,8 +139,8 @@ describe('V3.1 localized task controls', () => {
         expect(screen.getByRole('link',{name:'Older pending preparation'})).toBeVisible();
         expect(screen.queryByRole('link',{name:'Old cancelled case'})).not.toBeInTheDocument();
         expect(screen.queryByRole('link',{name:'Old completed case'})).not.toBeInTheDocument();
-        const due=dayDate(join,-7).split('-').reverse().join('/');
-        expect(screen.getByTitle(new RegExp('Next: Case details.*Due '+due))).toBeInTheDocument();
+        expect(screen.getByRole('button',{name:/Progress 0%.*Older pending preparation/})).toHaveTextContent('Pending submission');
+        expect(screen.getByText('Due '+new Intl.DateTimeFormat('en',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(dayDate(join,-7)+'T00:00:00Z')))).toBeInTheDocument();
     });
     it('keeps a future task visible with its status control locked', () => {
         render(<NextIntlClientProvider locale="en" messages={messages('en')} timeZone="Asia/Kuala_Lumpur"><TasksView items={[{ ...task, locked: true, lockReason: 'After Day 1 handover' }]} existing={[]}/></NextIntlClientProvider>);

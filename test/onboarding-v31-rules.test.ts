@@ -267,6 +267,17 @@ describe('V3.1 fulfilment, gates, progress and retained history', () => {
     });
 });
 describe('V3.1 confirmed definitions and assignment history', () => {
+    it('requires a checklist for a pending submission before creating work or history', () => {
+        c.checklistOverride='none';
+        const before=structuredClone(c);
+        expect(()=>M.submitCase(config,c,hr,env)).toThrow('Choose an onboarding checklist');
+        expect(c).toEqual(before);
+        c.checklistOverride=config.checklists[0]!.id;
+        M.submitCase(config,c,hr,env);
+        expect(c.state).toBe('submitted');
+        expect(c.confirmedChecklist?.id).toBe(config.checklists[0]!.id);
+        expect(c.requisitions).toHaveLength(1);
+    });
     it('keeps an Active hire’s confirmed manual template when the definition changes', () => {
         config.checklists[0]!.tasks = [template('pack')];
         c.checklistOverride = config.checklists[0]!.id;
@@ -277,9 +288,14 @@ describe('V3.1 confirmed definitions and assignment history', () => {
         expect(M.matchChecklist(config, c).checklist?.tasks.map(t => t.id)).toEqual(['pack']);
     });
     it('keeps confirmed None for an Active hire when matching definitions are added', () => {
+        // Represents a case already submitted before checklist selection became mandatory.
         c.checklistOverride = 'none';
-        M.submitCase(config, c, hr, env);
+        c.state = 'submitted';
+        c.submittedAt = env.now;
         c.personnelStatus = 'Active';
+        const previous=structuredClone(c);
+        M.submitCase(config,c,hr,env);
+        expect(c).toEqual(previous);
         expect(M.matchChecklist(config, c).checklist).toBeNull();
         expect(c.confirmedChecklist).toBeNull();
     });
