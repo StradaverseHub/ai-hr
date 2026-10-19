@@ -1,5 +1,5 @@
 'use client';
-import { Button, inputCls } from '@/components/ui';
+import { Button, inputCls } from '@/components/onboarding-ui';
 import { useOnboardingCopy } from '@/lib/onboarding-copy';
 import type { Group, TaskDef } from '@/lib/onboarding-model';
 

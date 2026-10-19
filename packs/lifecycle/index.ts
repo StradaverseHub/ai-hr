@@ -25,21 +25,21 @@
  * (hr_admin / super_admin) are always staff. Everyone else is a requester and sees only their own asset
  * requests. RLS (migration 0516) is the wall; the services apply the finer rules.
  */
-import { Laptop } from 'lucide-react';
+import { Laptop, Settings2, ShieldCheck, UserRoundPlus, Users } from 'lucide-react';
 import { registerPack, type ModulePack, type NavLinkDescriptor } from '../registry';
 const LIFECYCLE_NAV_LINKS: NavLinkDescriptor[] = [
     { group: 'manage', href: '/lifecycle/requisitions/onboarding', labelKey: 'onboardingRequisitions', icon: Laptop },
     { group: 'main', href: '/lifecycle', labelKey: 'lifecycle', icon: Laptop },
     { group: 'admin', href: '/admin/lifecycle', labelKey: 'lifecycleConfig', icon: Laptop },
-    { group: 'admin', href: '/admin/lifecycle/onboarding', labelKey: 'onboardingSettings', icon: Laptop, exactHref: true },
-    { group: 'admin', href: '/admin/lifecycle/onboarding/groups', labelKey: 'onboardingGroups', icon: Laptop },
-    { group: 'admin', href: '/admin/lifecycle/onboarding/access', labelKey: 'onboardingModuleAccess', icon: Laptop },
+    { group: 'admin', href: '/admin/lifecycle/onboarding', labelKey: 'onboardingSettings', icon: Settings2, exactHref: true },
+    { group: 'admin', href: '/admin/lifecycle/onboarding/groups', labelKey: 'onboardingGroups', icon: Users },
+    { group: 'admin', href: '/admin/lifecycle/onboarding/access', labelKey: 'onboardingModuleAccess', icon: ShieldCheck },
 ];
 export const lifecyclePack: ModulePack = {
     id: 'lifecycle',
     kind: 'module',
     navLinks: LIFECYCLE_NAV_LINKS,
-    navNodes: [{ group: 'manage', labelKey: 'onboardingV31', icon: Laptop, defaultHref: '/lifecycle/onboarding', children: [{ href: '/lifecycle/onboarding', labelKey: 'newJoiners', icon: Laptop, exactHref: true, ownedSubpaths: ['/lifecycle/onboarding/cases', '/lifecycle/onboarding/legacy'] }, { href: '/lifecycle/onboarding/checklists', labelKey: 'onboardingChecklists', icon: Laptop }] }],
+    navNodes: [{ group: 'manage', labelKey: 'onboardingV31', icon: UserRoundPlus, defaultHref: '/lifecycle/onboarding', children: [{ href: '/lifecycle/onboarding', labelKey: 'newJoiners', icon: UserRoundPlus, exactHref: true, ownedSubpaths: ['/lifecycle/onboarding/cases', '/lifecycle/onboarding/legacy'] }, { href: '/lifecycle/onboarding/checklists', labelKey: 'onboardingChecklists', icon: UserRoundPlus }] }],
     satelliteTables: [
         { table: 'lc_onboarding_config', note: 'V3.1 versioned definitions and independent module access' },
         { table: 'lc_onboarding_config_history', note: 'Immutable configuration revisions' },

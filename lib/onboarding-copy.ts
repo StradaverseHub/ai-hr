@@ -1,6 +1,8 @@
 'use client';
 import { useTranslations } from 'next-intl';
 const keys: Record<string, string> = {
+    "Joined": "c69318b0c6a92",
+    "Joins": "c49da3b2728bc",
     "% · Checklist": "c3b8171a3b4ee",
     ": Doesn't match, untick": "c1232493ed1db",
     "Access card: Facility prints, Group Tech activates": "c63eaf38912ec",

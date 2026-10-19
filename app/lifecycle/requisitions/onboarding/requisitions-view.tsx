@@ -3,7 +3,7 @@ import { useOnboardingCopy } from '@/lib/onboarding-copy';
 import { useState } from 'react';
 import { useLocale } from 'next-intl';
 import Link from 'next/link';
-import { Field, PageHeader, inputCls } from '@/components/ui';
+import { Field, PageHeader, inputCls } from '@/components/onboarding-ui';
 import { OnboardingBadge, OnboardingBreadcrumb } from '@/components/onboarding-workspace';
 import { onboardingDate } from '@/lib/onboarding-presentation';
 import type { onboardingRequisitions } from '@/packs/lifecycle/service';

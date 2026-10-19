@@ -17,6 +17,17 @@ Assignment groups, settings, My tasks and requisitions, using the existing Class
 authentication, company/tenant scope, private-field protections and assigned-user/work-claim guards
 remain authoritative. Inert prototype navigation and fixture identities are not product features.
 
+The owner clarified after reviewing the shipped presentation that the old onboarding and IT
+requisition UI may be replaced completely. The prototype is the presentation target, rather than a
+loose composition implemented with the previous lifecycle controls. Retire duplicate creation and
+navigation paths as the replacement becomes authoritative. Preserve older open work through
+compatibility views and the existing guarded services until it can be completed, as well as preserving
+completed records and their audit trails. Do not force historical cases into a new execution or reset
+progress to simplify the UI replacement. Before propagation and release, compare actual screens to
+the supplied reference at the same CSS viewport and zoom, including control metrics, density,
+wrapping, menu selection and pending-case field feedback. A functional walkthrough alone does not
+establish visual parity.
+
 Manage contains Personnel Management (with its existing administrator boundary), Onboarding with
 New Joiners/Checklist Management, and Requisitions with All requisitions. Onboarding settings,
 Assignment groups and master-only Module access remain under Admin. Legacy hubs do not also claim

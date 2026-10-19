@@ -10,7 +10,7 @@ import { OnboardingDateInput } from '@/components/onboarding-date-input';
 import { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Button, Card, Field, inputCls } from '@/components/ui';
+import { Button, Card, Field, inputCls } from '@/components/onboarding-ui';
 import { type onboardingDetail, type onboardingOptions, type OnboardingCommand } from '@/packs/lifecycle/service';
 import { effectiveFacts, matchChecklist, matches, currentReq, progress, requisitionStatus, activeItem, stepOpen, inGroup, missingCaseFields, requisitionItemCounts, validDate, type Facts, type CasePatch } from '@/lib/onboarding-model';
 import { changeOnboarding, writeOnboardingNote, markOnboardingSeen } from './v31-actions';

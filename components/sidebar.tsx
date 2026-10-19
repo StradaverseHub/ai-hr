@@ -150,7 +150,7 @@ const LIFECYCLE_LINKS = modulePackById('lifecycle')!.navLinks!;
 const LIFECYCLE_ROW: ChildItem = LIFECYCLE_LINKS.find((l) => l.group === 'main')!;
 const LIFECYCLE_CONFIG_ROW: ChildItem = LIFECYCLE_LINKS.find((l) => l.group === 'admin')!;
 const ONBOARDING_NODE:CollapsibleGroupItem={...modulePackById('lifecycle')!.navNodes![0]!,collapsible:true};
-const ONBOARDING_REQUISITIONS_NODE:CollapsibleGroupItem={collapsible:true,labelKey:'onboardingRequisitions',icon:ONBOARDING_NODE.icon,defaultHref:'/lifecycle/requisitions/onboarding',children:[{...LIFECYCLE_LINKS.find(l=>l.href==='/lifecycle/requisitions/onboarding')!,labelKey:'allOnboardingRequisitions',exactHref:true,ownedSubpaths:['/lifecycle/requisitions/onboarding']}]};
+const ONBOARDING_REQUISITIONS_NODE:CollapsibleGroupItem={collapsible:true,labelKey:'onboardingRequisitions',icon:LIFECYCLE_LINKS.find(l=>l.href==='/lifecycle/requisitions/onboarding')!.icon,defaultHref:'/lifecycle/requisitions/onboarding',children:[{...LIFECYCLE_LINKS.find(l=>l.href==='/lifecycle/requisitions/onboarding')!,labelKey:'allOnboardingRequisitions',exactHref:true,ownedSubpaths:['/lifecycle/requisitions/onboarding']}]};
 
 // Performance nav row (ADR-0080 rung 4): the single manager-up row the performance pack
 // contributes (packs/performance/index.ts, PERFORMANCE_NAV_LINKS — provenance comments moved with
@@ -1028,12 +1028,13 @@ export function Sidebar({
                   if (children.length === 0) return null;
                   if (item.defaultHref && !collapsed) {
                     const active = children.some(isRowActive);
-                    const expanded = inlineOpen[item.labelKey] ?? (active || openKey === item.labelKey);
+                    const fixedExpanded = item.labelKey === 'onboardingRequisitions';
+                    const expanded = fixedExpanded || (inlineOpen[item.labelKey] ?? (active || openKey === item.labelKey));
                     const Icon = item.icon;
-                    return <div key={item.labelKey}>
+                    return <div key={item.labelKey} data-prototype-module={item.labelKey}>
                       <div className={cn(rowBase, 'w-full gap-1 px-3 py-1', active && 'bg-accent')}>
                         <Link href={item.defaultHref} className="flex min-h-11 min-w-0 flex-1 items-center gap-3"><Icon className="size-5 shrink-0" aria-hidden /><span className="text-sm">{t(item.labelKey)}</span></Link>
-                        <button type="button" aria-label={t(item.labelKey)} aria-expanded={expanded} aria-controls={`inline-${item.labelKey}`} className="flex size-11 shrink-0 items-center justify-center" onClick={() => setInlineOpen(old=>({...old,[item.labelKey]:!expanded}))}><ChevronDown className={cn('size-4', !expanded && '-rotate-90')} aria-hidden /></button>
+                        {!fixedExpanded && <button type="button" aria-label={t(item.labelKey)} aria-expanded={expanded} aria-controls={`inline-${item.labelKey}`} className="flex size-11 shrink-0 items-center justify-center" onClick={() => setInlineOpen(old=>({...old,[item.labelKey]:!expanded}))}><ChevronDown className={cn('size-4', !expanded && '-rotate-90')} aria-hidden /></button>}
                       </div>
                       {expanded && <nav id={`inline-${item.labelKey}`} aria-label={t(item.labelKey)} className="ml-7 flex flex-col gap-1">{children.map((child) => <Link key={child.href} href={child.href} aria-current={isRowActive(child) ? 'page' : undefined} className={cn('flex min-h-11 items-center rounded-xl px-3 text-sm', isRowActive(child) ? 'bg-accent font-medium text-accent-foreground' : 'text-muted-foreground hover:bg-accent')}>{childCaption(child)}</Link>)}</nav>}
                     </div>;
@@ -1089,7 +1090,7 @@ export function Sidebar({
                       className={cn('size-[20px] shrink-0', active && 'text-primary')}
                       strokeWidth={2}
                     />
-                    {!collapsed && <span className="truncate text-sm">{label}</span>}
+                    {!collapsed && <span data-nav-label className="truncate text-sm">{label}</span>}
                     {showApprovalCount && (
                       <ApprovalCountBadge count={rowCount} collapsed={collapsed} />
                     )}

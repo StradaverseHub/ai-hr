@@ -15,7 +15,7 @@ export function onboardingNextStep(config: Config, c: Case):NextStep {
 
 export function onboardingDate(value: string, locale = 'en') {
   if (!validDate(value)) return 'Date needed';
-  return new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(value + 'T00:00:00Z'));
+  return new Intl.DateTimeFormat(locale === 'en' ? 'en-GB' : locale, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(value + 'T00:00:00Z'));
 }
 
 export function onboardingRelative(value: string, today: string, locale = 'en') {

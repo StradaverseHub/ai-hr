@@ -5,7 +5,7 @@ import { MultiSelectPopover } from '@/components/ui/multi-select-popover';
 import { useOnboardingCopy } from '@/lib/onboarding-copy';
 import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Card, Field, inputCls, PageHeader } from '@/components/ui';
+import { Button, Card, Field, inputCls, PageHeader } from '@/components/onboarding-ui';
 import type { onboardingContext, onboardingOptions, OnboardingConfig } from '@/packs/lifecycle/service';
 import type { Rules, StepDef } from '@/lib/onboarding-model';
 import { specificity, canonicalRules } from '@/lib/onboarding-model';

@@ -1,7 +1,7 @@
 'use client';
 import { useOnboardingCopy } from '@/lib/onboarding-copy';
 import { useState, useTransition } from 'react';
-import { Button, Card } from '@/components/ui';
+import { Button, Card } from '@/components/onboarding-ui';
 import { setupOnboarding } from './v31-actions';
 export function OnboardingSetup({ master, initialized }: {
     master: boolean;

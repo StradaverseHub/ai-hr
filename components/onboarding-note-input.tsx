@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useRef, useState } from 'react';
-import { Field, inputCls } from '@/components/ui';
+import { Field, inputCls } from '@/components/onboarding-ui';
 import { useOnboardingCopy } from '@/lib/onboarding-copy';
 
 /** Mention IDs come only from the authorized directory, never from a typed display name. */

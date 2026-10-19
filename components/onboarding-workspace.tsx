@@ -9,7 +9,7 @@ export function OnboardingBreadcrumb({ root, items = [] }: { root: string; items
   return <nav aria-label={copy('Breadcrumb')} className="onb-breadcrumb"><span>{copy(root)}</span>{items.map((item,i) => <span key={i}><span aria-hidden="true"> / </span>{item.href ? <Link href={item.href}>{copy(item.label)}</Link> : copy(item.label)}</span>)}</nav>;
 }
 
-export function OnboardingBadge({ children, tone = 'neutral' }: { children: ReactNode; tone?: 'neutral' | 'success' | 'warning' | 'danger' | 'primary' }) {
+export function OnboardingBadge({ children, tone = 'neutral' }: { children: ReactNode; tone?: 'neutral' | 'success' | 'warning' | 'danger' | 'primary' | 'new' }) {
   return <span className={'onb-badge onb-badge-' + tone}>{children}</span>;
 }
 
@@ -37,5 +37,5 @@ export function OnboardingProgress({ name, percent, next, due, checklist, ticket
   };
   const hide=()=>{keepOpen();const pop=document.getElementById(id);if(pop?.matches(':popover-open'))pop.hidePopover();};
   const scheduleHide=()=>{keepOpen();hideTimer.current=window.setTimeout(hide,150);};
-  return <><button type="button" className="onb-progress-trigger" aria-controls={id} aria-describedby={id} aria-label={copy('Progress')+' '+percent+'%. '+copy('Show the current pending step for')+' '+name} onClick={e=>show(e.currentTarget)} onMouseEnter={e=>show(e.currentTarget)} onMouseLeave={scheduleHide} onFocus={e=>show(e.currentTarget)} onBlur={hide}>{pending?<OnboardingBadge tone="warning">{copy('Pending submission')}</OnboardingBadge>:<><span className="onb-progress-track"><span style={{width:percent+'%'}}/></span><span>{percent}%{percent===100?' ✓':''}</span></>}</button><div popover="auto" role="tooltip" id={id} className="onb-progress-popover" onMouseEnter={keepOpen} onMouseLeave={scheduleHide}><h3>{name}: {copy('current progress')}</h3><p>{checklist}</p><strong>{copy(next)}</strong>{due&&<p>{copy('Due')} {due}</p>}<p>{ticket}</p><p>{breakdown}</p></div></>;
+  return <><button type="button" className="onb-progress-trigger" aria-controls={id} aria-describedby={id} aria-label={copy('Progress')+' '+percent+'%. '+copy('Show the current pending step for')+' '+name} onClick={e=>show(e.currentTarget)} onMouseEnter={e=>show(e.currentTarget)} onMouseLeave={scheduleHide} onFocus={e=>show(e.currentTarget)} onBlur={hide}>{pending?<OnboardingBadge tone="warning">{copy('Pending submission')}</OnboardingBadge>:<><span className="onb-progress-track" data-complete={percent===100||undefined}><span style={{width:percent+'%'}}/></span><span>{percent}%{percent===100?' ✓':''}</span></>}</button><div popover="auto" role="tooltip" id={id} className="onb-progress-popover" onMouseEnter={keepOpen} onMouseLeave={scheduleHide}><h3>{name}: {copy('current progress')}</h3><p>{checklist}</p><strong>{copy(next)}</strong>{due&&<p>{copy('Due')} {due}</p>}<p>{ticket}</p><p>{breakdown}</p></div></>;
 }

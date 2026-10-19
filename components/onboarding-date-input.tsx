@@ -1,7 +1,7 @@
 'use client';
 import { useOnboardingCopy } from '@/lib/onboarding-copy';
 import { useState } from 'react';
-import { inputCls } from '@/components/ui';
+import { inputCls } from '@/components/onboarding-ui';
 import { validDate } from '@/lib/onboarding-model';
 export function OnboardingDateInput({ value, onChange, label }: {
     value: string;
