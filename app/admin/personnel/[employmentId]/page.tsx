@@ -4480,7 +4480,7 @@ export default async function EmployeePage({
             {readOnlyValue("employment.additional_organisation_labels.orgbase", profileOptions.base.find(option=>option.value===emp.orgBase)?.label?.trim() || emp.orgBase)}
           </PersonnelField>
           <PersonnelField fieldId="employment.additional_organisation_labels.employmentcategory" mode="edit">
-            {readOnlyValue("employment.additional_organisation_labels.employmentcategory", emp.employmentCategory)}
+            {readOnlyValue("employment.additional_organisation_labels.employmentcategory", profileOptions.category.find(option=>option.value===emp.employmentCategory)?.label?.trim() || emp.employmentCategory)}
           </PersonnelField>
         </div>
 

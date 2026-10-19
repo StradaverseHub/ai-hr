@@ -3,6 +3,7 @@ import {and,eq,isNull} from 'drizzle-orm';
 import * as s from '../db/schema';
 import {validateEmployeeImport,commitEmployeeImport} from '../core/import';
 import {assignmentHistory} from '../core/read';
+import {listAllProfileOptions} from '../core/profile-options';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let base:Base;
@@ -37,4 +38,21 @@ it('rechecks active grade availability at confirmation rather than accepting the
  expect((await commitEmployeeImport(ctx,{companyId:base.companyId,records})).imported).toBe(0);
  const saved=await owner.db.select({id:s.employment.id}).from(s.employment).where(and(eq(s.employment.tenantId,base.tenantId),eq(s.employment.employeeCode,'STALE-ORG')));
  expect(saved).toEqual([]);
+});
+
+it('Category label beats another code at full import and a rename retains the saved canonical code',async()=>{
+ const [labelOwner]=await owner.db.insert(s.profileOption).values({tenantId:base.tenantId,category:'category',value:'CAT-A',label:'Shared',isActive:true}).returning();
+ await owner.db.insert(s.profileOption).values({tenantId:base.tenantId,category:'category',value:'Shared',label:'Other',isActive:true});
+ const ctx=adminCtx(base),records=[{employee_code:'CATEGORY-IMPORT',full_name:'Fictional category import',email:'category-import@fixture.test',department:'Finance',employment_category:' shared ',hired_on:todayInKualaLumpur(),ic_number:'930505051234',basic_salary:'3000'}];
+ const preview=await validateEmployeeImport(ctx,{companyId:base.companyId,records});
+ expect(preview.rows[0].errors).toEqual([]);
+ expect(preview.rows[0].proposed).toContainEqual({column:'employment_category',value:'shared → Shared (CAT-A)'});
+ expect((await commitEmployeeImport(ctx,{companyId:base.companyId,records})).imported).toBe(1);
+ const [saved]=await owner.db.select().from(s.employment).where(and(eq(s.employment.tenantId,base.tenantId),eq(s.employment.employeeCode,'CATEGORY-IMPORT')));
+ expect(saved.employmentCategory).toBe('CAT-A');
+ await owner.db.update(s.profileOption).set({label:'Renamed category'}).where(eq(s.profileOption.id,labelOwner.id));
+ const fresh=await listAllProfileOptions(ctx,{activeOnly:true});
+ expect(fresh.category.find(option=>option.value===saved.employmentCategory)?.label).toBe('Renamed category');
+ const [unchanged]=await owner.db.select({code:s.employment.employmentCategory}).from(s.employment).where(eq(s.employment.id,saved.id));
+ expect(unchanged.code).toBe('CAT-A');
 });
