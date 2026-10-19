@@ -42,6 +42,16 @@ async function namedPrincipal(tx:Tx,approverEmploymentId:string,subjectId:string
  const values=rows as unknown as {user_id:string;employment_id:string}[];
  if(values.length!==1)throw new ProfileRoutingError('unauthorized');return values[0];
 }
+/** Bounded set evaluation keeps the canonical principal predicate without one client round trip per employee. */
+async function eligibleTargetCount(tx:Tx,approverEmploymentId:string,subjectIds:string[]){
+ let count=0;
+ for(let offset=0;offset<subjectIds.length;offset+=500){
+  const ids=subjectIds.slice(offset,offset+500);
+  const rows=await tx.execute(sql`select count(*)::int eligible from unnest(ARRAY[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]) target(subject_id) join lateral app.profile_route_principal(${approverEmploymentId}::uuid,target.subject_id) principal on true`);
+  count+=Number((rows as unknown as {eligible:number}[])[0]?.eligible??0);
+ }
+ return count;
+}
 async function subjectContext(tx:Tx,ctx:SessionContext,subjectId:string){
  const [e]=await tx.select({companyId:employment.companyId,gradeId:employment.gradeId,orgDivision:employment.orgDivision,orgBranch:employment.orgBranch,orgRegion:employment.orgRegion,orgLine:employment.orgLine,orgSection:employment.orgSection,orgTeam:employment.orgTeam,orgBase:employment.orgBase,employmentCategory:employment.employmentCategory,hiredOn:employment.hiredOn,confirmationDate:employment.confirmationDate,finalConfirmationDate:employment.finalConfirmationDate,probationEndDate:employment.probationEndDate,provisionalEndOn:employment.provisionalEndOn,resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate,terminatedOn:employment.terminatedOn,blacklistedAt:employment.blacklistedAt,gender:person.gender,nationality:person.nationality,religion:person.religion,race:person.race}).from(employment).innerJoin(person,eq(person.id,employment.personId)).where(and(eq(employment.id,subjectId),eq(employment.tenantId,ctx.tenantId))).limit(1).for('update');
  if(!e)throw new ProfileRoutingError('unauthorized');
@@ -81,7 +91,8 @@ export function saveProfileRoutingPolicy(ctx:SessionContext,p:{expectedRevision:
   if(value.rules.some(rule=>!candidateIds.has(rule.approverEmploymentId)))throw new ProfileRoutingError('unauthorized');
   const covered=new Set<string>();
   for(const rule of value.rules){validateCriteria(rule.criteria);const targets=await routeTargets(tx,rule);
-   for(const id of targets){if(covered.has(id))throw new ProfileRoutingError('overlap');covered.add(id);await namedPrincipal(tx,rule.approverEmploymentId,id);}
+   for(const id of targets){if(covered.has(id))throw new ProfileRoutingError('overlap');covered.add(id);}
+   if(await eligibleTargetCount(tx,rule.approverEmploymentId,targets)!==targets.length)throw new ProfileRoutingError('unauthorized');
   }
   if(value.enabled&&!value.rules.length)throw new ProfileRoutingError('missing');
   await setTenantSetting(fresh.ctx,{key:PROFILE_ROUTING_KEY,value},tx);
@@ -143,7 +154,8 @@ export function previewProfileRoutingPolicy(ctx:SessionContext,input:{enabled:bo
   const candidateIds=new Set((candidateRows as unknown as {employment_id:string}[]).map(row=>row.employment_id));
   for(const rule of value.rules){validateCriteria(rule.criteria);const targets=await routeTargets(tx,rule);
    if(!candidateIds.has(rule.approverEmploymentId))ineligible++;
-   for(const id of targets){matches.set(id,(matches.get(id)??0)+1);try{await namedPrincipal(tx,rule.approverEmploymentId,id);}catch{ineligible++;}}
+   for(const id of targets)matches.set(id,(matches.get(id)??0)+1);
+   ineligible+=targets.length-await eligibleTargetCount(tx,rule.approverEmploymentId,targets);
   }
   const population=await resolveOrgCriteriaTargets(tx,{criteria:{},asOf:todayInKualaLumpur()});
   return {matched:matches.size,missing:population.filter(id=>!matches.has(id)).length,overlapping:[...matches.values()].filter(count=>count>1).length,ineligible};
