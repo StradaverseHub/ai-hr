@@ -171,6 +171,7 @@ export default async function ApprovalsPage({
   const rewardReviews = isModuleEnabledOrFalse(s, 'rewards') ? await pendingRewardReviews(s, scopeIds) : [];
   const assignedAttendance = isModuleEnabledOrFalse(s, 'attendance') && await hasPendingAttendanceParticipantAssignment(s);
   if (!admin && !manager && !rewardReviews.length && !assignedAttendance) redirect('/');
+  const attendanceOnly = !admin && !manager && !rewardReviews.length && assignedAttendance;
   const { error, sort: sortParam, category: categoryParam } = await searchParams;
   if(admin&&categoryParam==='profileChanges')redirect('/admin/personnel/profile-changes');
   // Approvals sort (09cda965): display-only ordering, read from ?sort= so it survives reload + bulk
@@ -178,7 +179,8 @@ export default async function ApprovalsPage({
   const sort = parseApprovalSort(sortParam);
   // Category panel (2dec6406): the selected approval area. Unknown values AND admin-only categories for a
   // non-admin viewer coerce to 'all' (the full inbox — today's page, unchanged).
-  const category = parseApprovalCategory(categoryParam, { admin });
+  const parsedCategory = parseApprovalCategory(categoryParam, { admin });
+  const category = attendanceOnly && !['all','attendance','overtime'].includes(parsedCategory) ? 'all' : parsedCategory;
   const t = await getTranslations('approvals');
   const tCreditReview=await getTranslations('replacementRequest.formulaReview');
   const tClock = await getTranslations('attendance.clockData');
@@ -193,7 +195,7 @@ export default async function ApprovalsPage({
   const tMeOptions = await getTranslations(PROFILE_REQUEST_OPTION_NAMESPACE);
   // fef49b9a — the tenant's own name for unpaid leave, resolved once for the whole page rather than per
   // row. Undefined when the tenant has no UNPAID type; leaveDisplaySplit then uses the translated label.
-  const unpaidTypeName = (await listLeaveTypes(s)).find((lt) => lt.code === 'UNPAID')?.name;
+  const unpaidTypeName = attendanceOnly ? undefined : (await listLeaveTypes(s)).find((lt) => lt.code === 'UNPAID')?.name;
   const decideLabels = {
     yourRequest: t('yourRequest'),
     approve: t('approve'),
@@ -220,14 +222,14 @@ export default async function ApprovalsPage({
   // b833a077 (r362) — `travel` stood between `corrections` and `profileChanges` in this destructuring and
   // `listTravelRequests` in the Promise.all below. My Travel was removed completely: no form can create a
   // travel request any more, so there is no queue to decide. The travel_request rows are kept for audit.
-  const [leave, leaveCancellations, replacementRequests, corrections, claims, resignations] = await Promise.all([
+  const [leave, leaveCancellations, replacementRequests, loadedCorrections, claims, resignations] = await Promise.all([
     // 8cb7b089 pre-fix: cap the 200-row limit over PENDING rows only. Without the status filter, a pending
     // request older than the 200 most recent rows of ANY status silently never reached this inbox — quietly
     // incomplete before, actively misleading once calendar pills deep-link straight to this section.
-    listLeaveRequests(s, scopeIds, 200, { status: 'pending' }),
-    listPendingLeaveCancellations(s, scopeIds),
+    attendanceOnly ? Promise.resolve([]) : listLeaveRequests(s, scopeIds, 200, { status: 'pending' }),
+    attendanceOnly ? Promise.resolve([]) : listPendingLeaveCancellations(s, scopeIds),
     // 5ff7daff: same reporting-line scope as every other queue on this page; RLS trims it further.
-    listPendingReplacementLeaveRequests(s, { companyIds: scopeIds }),
+    attendanceOnly ? Promise.resolve([]) : listPendingReplacementLeaveRequests(s, { companyIds: scopeIds }),
     // r292 — THE INBOX IS A CORE SCREEN AND MUST SURVIVE A TENANT THAT DECLINED THE OPTIONAL PACKS.
     // `listAttendanceCorrections` and `listPendingClaims` are now service-gated (core/module-gate.ts), so
     // calling them unconditionally would throw ModuleNotEnabledError here and take /approvals down for a
@@ -236,9 +238,10 @@ export default async function ApprovalsPage({
     // used rather than the throwing one for the reason its header gives — a resolver outage must degrade
     // one queue, not the whole inbox.
     attendanceOn ? listAttendanceCorrections(s, { companyIds: scopeIds, status: 'pending' }) : Promise.resolve([]),
-    claimsOn ? listPendingClaims(s) : Promise.resolve([]),
+    claimsOn && !attendanceOnly ? listPendingClaims(s) : Promise.resolve([]),
     admin ? listResignationRequests(s, { status: 'pending' }) : Promise.resolve([]),
   ]);
+  const corrections = attendanceOnly ? loadedCorrections.filter(row => row.workflow?.routingVersion === 3 && row.canDecide && row.personId !== s.personId) : loadedCorrections;
   // 1e9145d4 — the kind of day each OVERTIME row is asking for, so a rest-day or public-holiday plan is
   // impossible to miss while saying no is still cheap. Resolved through scheduleFor (the same resolver the
   // clocking path uses), and ONLY for overtime rows: a clock-time correction is about punches, not about
@@ -264,7 +267,7 @@ export default async function ApprovalsPage({
   const tReview = await getTranslations('review');
   const me = s.personId ? await myEmployment(s) : null;
   const [managerReviews, hrReviews] = await Promise.all([
-    me?.employmentId ? pendingManagerReviewsFor(s, me.employmentId) : Promise.resolve([]),
+    !attendanceOnly && me?.employmentId ? pendingManagerReviewsFor(s, me.employmentId) : Promise.resolve([]),
     admin ? listReviews(s, { status: 'pending_hr' }) : Promise.resolve([]),
   ]);
 
@@ -332,13 +335,13 @@ export default async function ApprovalsPage({
   const allPending = Object.values(pendingCounts).reduce((a, b) => a + b, 0);
 
   // Which sections render under the selected category; the corrections section additionally row-filters.
-  const visible = (section: ApprovalSection) => sectionVisible(category, section);
+  const visible = (section: ApprovalSection) => (!attendanceOnly || section === 'corrections') && sectionVisible(category, section);
   const rowFilter = correctionsRowFilter(category);
 
   // The three DECIDED buckets for the summary cards (approved / rejected / cancelled). Pending never comes
   // from SQL — it is the sum of the visible sections' in-memory counts below. null → the card shows a dash
   // (categories without that state, and both review queues which decide confirm/extend instead).
-  const decided = await decidedStatusCounts(s, scopeIds, category);
+  const decided = attendanceOnly ? { approved: null, rejected: null, cancelled: null } : await decidedStatusCounts(s, scopeIds, category);
 
   // Approvals sort (09cda965): order EACH per-type section's already-loaded rows in the render layer
   // (no loader ORDER BY rewrite). Sort is stable + keyed on request id, so counts/permissions/visible
@@ -423,7 +426,7 @@ export default async function ApprovalsPage({
       {/* 2dec6406: internal approval-task panel — INSIDE the page, between the main sidebar and the content.
           Sticky + independently scrollable on lg; below lg the same markup stacks above the content. */}
       <aside className="w-full shrink-0 lg:sticky lg:top-0 lg:max-h-screen lg:w-60 lg:overflow-y-auto">
-        <CategoryPanel category={category} sort={sortParam} counts={pendingCounts} allCount={allPending} admin={admin} />
+        <CategoryPanel category={category} sort={sortParam} counts={pendingCounts} allCount={allPending} admin={admin} attendanceOnly={attendanceOnly} />
       </aside>
     <div className="min-w-0 flex-1 space-y-6">
       {/* 8cb7b089: on arrival at /approvals#approvals-leave(-cancellation) — the calendar pill deep-links —
