@@ -26,7 +26,8 @@ describe('consolidated Control Tower', () => {
     expect(screen.getByRole('link', { name: 'Employee data' }).getAttribute('aria-current')).toBe('page');
     expect(screen.getByRole('link', { name: 'Approvals' }).getAttribute('href')).toBe('/control-tower/actions');
     expect(screen.getByRole('link', { name: 'AI management' }).getAttribute('href')).toBe('/control-tower/agents');
-    expect(screen.getAllByRole('link')).toHaveLength(6);
+    expect(screen.getByRole('link', { name: 'Opportunities' }).getAttribute('href')).toBe('/control-tower/opportunities');
+    expect(screen.getAllByRole('link')).toHaveLength(7);
   });
   it('does not present an unobserved queue as a successful clean check', async () => {
     show(await OrchestrationWorkQueue({ view: empty }));
