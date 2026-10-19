@@ -91,9 +91,22 @@ export async function buildMovementWorkbook(p:MovementWorkbookDownload){
  wb.Workbook??={};wb.Workbook.Sheets=wb.SheetNames.map(name=>({name,Hidden:name==='Lists'||name==='_meta'?1:0}));
  const zip=await JSZip.loadAsync(XLSX.write(wb,{type:'buffer',bookType:'xlsx',compression:true}));
  const styleEntry=zip.file('xl/styles.xml');if(!styleEntry)throw new Error('workbook_layout_invalid');let styles=await styleEntry.async('string');
+ // SheetJS registers formats from cell.z; use the explicit custom date format instead of locale-dependent built-in14.
+ const usedNumberFormats=new Set<number>();let dateFormatId:number|undefined,declaredFormats=0;
+ const formatParser=new SaxesParser({xmlns:true});formatParser.on('opentag',tag=>{
+  const attrs=Object.fromEntries(Object.values(tag.attributes).map(a=>[a.local,a.value]));
+  if(attrs.numFmtId!=null){const id=Number(attrs.numFmtId);if(!Number.isSafeInteger(id)||id<0||id>65535)throw new Error('workbook_layout_invalid');usedNumberFormats.add(id);}
+  if(tag.local==='numFmt'){declaredFormats++;if(attrs.formatCode==='dd-mmm-yyyy'&&Number(attrs.numFmtId)>=164)dateFormatId=Number(attrs.numFmtId);}
+ });formatParser.write(styles).close();
+ if(dateFormatId==null){
+  dateFormatId=164;while(usedNumberFormats.has(dateFormatId)&&dateFormatId<=65535)dateFormatId++;if(dateFormatId>65535)throw new Error('workbook_layout_invalid');
+  const format=`<numFmt numFmtId="${dateFormatId}" formatCode="dd-mmm-yyyy"/>`,open=/<numFmts\b[^>]*>/.exec(styles);
+  if(open){if(/\/>$/.test(open[0]))styles=styles.replace(open[0],`<numFmts count="${declaredFormats+1}">${format}</numFmts>`);else{if(!styles.includes('</numFmts>'))throw new Error('workbook_layout_invalid');styles=styles.replace(open[0],`<numFmts count="${declaredFormats+1}">`).replace('</numFmts>',format+'</numFmts>');}}
+  else styles=styles.replace(/<styleSheet\b[^>]*>/,open=>open+`<numFmts count="1">${format}</numFmts>`);
+ }
  const xfs=/<cellXfs count="(\d+)"[^>]*>/,fills=/<fills count="(\d+)"[^>]*>/;const xf=xfs.exec(styles),fill=fills.exec(styles);if(!xf||!fill)throw new Error('workbook_layout_invalid');const base=Number(xf[1]),fillBase=Number(fill[1]);
  styles=styles.replace(fills,`<fills count="${fillBase+3}">`).replace('</fills>',['FFE5E7EB','FFFEF3C7','FFD1FAE5'].map(color=>`<fill><patternFill patternType="solid"><fgColor rgb="${color}"/><bgColor indexed="64"/></patternFill></fill>`).join('')+'</fills>');
- styles=styles.replace(xfs,`<cellXfs count="${base+8}">`).replace('</cellXfs>',[0,1,2,3,4,5,6,7].map(i=>`<xf numFmtId="${[49,49,2,14,14,2,2,10][i]}" fontId="0" fillId="${fillBase+[0,1,2,1,0,0,1,2][i]}" borderId="0" xfId="0" applyFill="1" applyProtection="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/><protection locked="${[1,3,6].includes(i)?0:1}"/></xf>`).join('')+'</cellXfs>');zip.file('xl/styles.xml',styles);
+ styles=styles.replace(xfs,`<cellXfs count="${base+8}">`).replace('</cellXfs>',[0,1,2,3,4,5,6,7].map(i=>`<xf numFmtId="${[49,49,2,dateFormatId,dateFormatId,2,2,10][i]}"${[3,4].includes(i)?' applyNumberFormat="1"':''} fontId="0" fillId="${fillBase+[0,1,2,1,0,0,1,2][i]}" borderId="0" xfId="0" applyFill="1" applyProtection="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/><protection locked="${[1,3,6].includes(i)?0:1}"/></xf>`).join('')+'</cellXfs>');zip.file('xl/styles.xml',styles);
  for(let i=0;i<types.length;i++){
   const path=`xl/worksheets/sheet${i+2}.xml`,entry=zip.file(path);if(!entry)throw new Error('workbook_layout_invalid');let text=await entry.async('string');const columns=layouts[i];
   text=text.replace(/<c\b([^>]*\br="([A-Z]+)(\d+)"[^>]*)>/g,(whole,attrs:string,letters:string,r:string)=>{
