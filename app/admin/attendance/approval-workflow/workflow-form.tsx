@@ -2,12 +2,13 @@
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import { AttendanceResolvedRoutePreview } from '@/components/attendance-resolved-route-preview';
 import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import { ChipMultiSelect } from '@/components/ui/chip-multi-select';
 import { AttendanceStageEditor, emptyAttendanceStage } from './stage-editor';
 import { companyWorkflowHref } from './navigation';
 import { Button, Card, inputCls } from '@/components/ui';
-import { attendanceWorkflowCriteriaFields, attendanceLevelName, type AttendanceWorkflowOptions, type AttendanceWorkflowInput } from '@/lib/attendance-workflow';
+import { attendanceWorkflowCriteriaFields, attendanceLevelName, type AttendanceWorkflowOptions, type AttendanceWorkflowInput, type AttendanceResolvedStage } from '@/lib/attendance-workflow';
 import { previewAttendanceWorkflowAction, saveAttendanceWorkflowAction } from './actions';
 export function WorkflowForm({ initial, lineageId, context, options }: {
     initial: AttendanceWorkflowInput | null;
@@ -34,6 +35,8 @@ export function WorkflowForm({ initial, lineageId, context, options }: {
             name: string;
             selectedCode: string;
             problem: string | null;
+            routingVersion: 1 | 2;
+            resolvedStages: AttendanceResolvedStage[];
         }[];
         truncated: boolean;
     } | null>(null);
@@ -88,7 +91,7 @@ export function WorkflowForm({ initial, lineageId, context, options }: {
             if (!dirty || window.confirm(t('discard')))
                 router.push(companyWorkflowHref(input.companyId, input.applicationType));
         }}>{t('cancel')}</button></div></Card>
-  {preview && <Card className="space-y-3 p-5"><h2 className="font-semibold">{t('previewTitle', { count: preview.total })}</h2><ul className="divide-y divide-border">{preview.rows.map(row => <li key={row.employmentId} className="py-2 text-sm">{row.name} — {row.selectedCode}{row.problem && <p className="text-red-700">{row.problem}</p>}</li>)}</ul>{preview.truncated && <p>{t('previewTruncated')}</p>}</Card>}
+  {preview && <Card className="space-y-3 p-5"><h2 className="font-semibold">{t('previewTitle', { count: preview.total })}</h2><ul className="divide-y divide-border">{preview.rows.map(row => <li key={row.employmentId} className="py-2 text-sm">{row.name} — {row.selectedCode}{row.problem && <p className="text-red-700">{row.problem}</p>}<AttendanceResolvedRoutePreview stages={row.resolvedStages ?? []} routingVersion={row.routingVersion ?? 1} levelName={number => t('stageNumber', { number })} hrLabel={t('hr')} alternativeLabel={t('or')}/></li>)}</ul>{preview.truncated && <p>{t('previewTruncated')}</p>}</Card>}
  </fieldset></form></>;
 }
 export function RoutingSwitch({ companyId, type, enabled }: {

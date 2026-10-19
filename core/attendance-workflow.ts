@@ -327,15 +327,19 @@ export function previewAttendanceWorkflow(ctx: SessionContext, raw: AttendanceWo
             name: string;
             selectedCode: string;
             problem: string | null;
+            routingVersion: 1 | 2;
+            resolvedStages: AttendanceResolvedStage[];
         }[] = [];
         for (const id of targets.slice(0, 100)) {
             const [who] = await tx.execute(sql `select p.full_name from employment e join person p on p.id=e.person_id where e.id=${id}::uuid`) as unknown as {
                 full_name: string;
             }[];
-            const matches = [{ code: input.code, priority: input.priority }, ...await (async () => {
+            const matches = [{ code: input.code, priority: input.priority, stages: input.stages, routingVersion: input.routingVersion ?? 1 }, ...await (async () => {
                     const found: {
                         code: string;
                         priority: number;
+                        stages: AttendanceWorkflowInput['stages'];
+                        routingVersion: 1 | 2;
                     }[] = [];
                     for (const t of other.filter(t => t.lineageId !== lineageId))
                         if ((await workflowTargets(tx, t.criteria, input.companyId, [id])).includes(id))
@@ -344,14 +348,16 @@ export function previewAttendanceWorkflow(ctx: SessionContext, raw: AttendanceWo
                 })()];
             matches.sort((a, b) => a.priority - b.priority || a.code.localeCompare(b.code));
             let problem: string | null = matches.filter(m => m.priority === matches[0].priority).length > 1 ? 'Conflicting templates at the same priority.' : null;
-            if (!problem && matches[0].code === input.code)
+            let resolvedStages: AttendanceResolvedStage[] = [];
+            // Preview the actual priority winner through the same resolver used by submission.
+            if (!problem)
                 try {
-                    await resolveStages(tx, id, input.stages, input.routingVersion);
+                    resolvedStages = await resolveStages(tx, id, matches[0].stages, matches[0].routingVersion);
                 }
                 catch (e) {
                     problem = e instanceof AttendanceWorkflowError ? e.message : 'Unable to resolve the approval stages.';
                 }
-            result.push({ employmentId: id, name: who?.full_name ?? id, selectedCode: matches[0].code, problem });
+            result.push({ employmentId: id, name: who?.full_name ?? id, selectedCode: matches[0].code, problem, routingVersion: matches[0].routingVersion, resolvedStages });
         }
         return { total: targets.length, rows: result, truncated: targets.length > result.length };
     });

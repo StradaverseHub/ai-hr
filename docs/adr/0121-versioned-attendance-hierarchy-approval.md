@@ -77,3 +77,36 @@ The final decision identity and frozen OT method cannot be edited or reopened af
 landing may change only applied_at and approved_ot_minutes: it requires a freshly written same-day owner
 result, with a separate claim and an amount stamp equal to the fresh trace's approvedMinutes. Cancellation
 retains its existing applicant/scoped-HR owner path and never rewrites the original decision history.
+
+## Per-level participant model for routing version 3
+
+The approved Attendance follow-up (797ba70b, revision 2) requires a new explicit routing version, not a
+reinterpretation of legacy alternates. Each level has its own Sequential or Any One mode and either an
+explicit superior depth 1–5 from the applicant or an ordered group of named employees. Named groups have
+at most 20 participants per level, 100 per workflow, and workflows have 1–10 levels. Unknown fields,
+invalid identities and excessive selections refuse rather than being sanitized or truncated. Employment,
+person and login identity are separately frozen and checked for self/repeated assignments. Personnel
+continues to own hierarchy, lifecycle, company scope and login eligibility.
+
+A whole-level HR alternative must never silently satisfy a required named group. In v3 it is supported
+only for an explicitly configured single-superior source. A selected group combined with that alternative
+is refused explicitly. A reasoned reassignment of a named group operates on one outstanding participant
+slot; it retains the original route, completed participant decisions and the previous/replacement identity.
+It cannot replace the whole level or erase completed requirements. Existing v1/v2 alternatives remain
+unchanged. This preserves the requirement that every sequential participant is necessary.
+
+Participant decisions and level-completion decisions have distinct grains. The existing unique
+(request, stage) decision remains a completion record; it must not be weakened to accommodate individual
+participants. The future transaction owner must lock the request, check the exact current slot and live
+actor authority, write immutable participant evidence, and write/advance the unique completion record
+only when the mode is fulfilled or a participant rejects. Any One requires a first-writer decision under
+that same lock. Frozen request assignment grants no general Personnel or correction rights.
+
+The isolated v3 contract and progress projection do not enable version 3. The live input validator and SQL
+remain v1/v2 until participant persistence, request-bound RLS, slot-grain reassignment, ordinary-employee
+inbox access and all final-effect guards are integrated together. In particular, accepting a v3 stage in
+TypeScript alone cannot widen ADR-0121's active-writing-savepoint proof: final effects must still have an
+actively written final level-completion decision, the real actor, the exact subject/day/correction and the
+canonical Attendance/payroll/TOIL owners. Neither a partial participant approval nor previously committed
+level evidence may establish that capability. No runtime or release verification is established by this
+source model decision.
