@@ -1037,12 +1037,17 @@ export function Sidebar({
           )}
           {expanded && (
             <nav id={kidsId} aria-label={label} className="atelier-kids">
-              {children.map((child) => (
-                <Link key={child.href} href={child.navigationHref ?? child.href} data-tour={child.tour}
-                  aria-current={child.href === currentHref ? 'page' : undefined} className="atelier-row">
-                  {childCaption(child)}
-                </Link>
-              ))}
+              {children.map((child, index) => {
+                const heading = sectionLabel(child.href);
+                return <Fragment key={child.href}>
+                  {heading && heading !== sectionLabel(children[index - 1]?.href ?? '') &&
+                    <p className="m-0 mt-2 px-2 text-xs font-medium text-muted-foreground">{t(heading)}</p>}
+                  <Link href={child.navigationHref ?? child.href} data-tour={child.tour}
+                    aria-current={child.href === currentHref ? 'page' : undefined} className="atelier-row">
+                    {childCaption(child)}
+                  </Link>
+                </Fragment>;
+              })}
             </nav>
           )}
         </div>
