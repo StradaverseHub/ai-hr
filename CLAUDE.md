@@ -107,11 +107,17 @@ Minimize clicks, entry and searching; maximize context, defaults, visibility and
 
 Run these before planning anything. Each finds what the others cannot.
 
-    # 1. Does production run main? Zero lines = yes. Same excludes as scripts/improve/release.ts.
+    # 1. Does production run main? Zero lines = yes. EXACTLY the excludes of deploymentRsyncArgs in
+    #    scripts/improve/release.ts (test/claude-md-arrival-excludes.test.ts fails if they drift).
     cd ~/Projects/ai-hr/.claude/worktrees/mainwt && rsync -azi --delete --dry-run \
       -e "ssh -p 8288 -o BatchMode=yes" --exclude node_modules --exclude .next --exclude .git \
       --exclude '.env*' --exclude .turbo --exclude coverage --exclude .claude --exclude graphify-out \
-      --exclude .vitest-attachments --exclude /docs/HANDOFF-HISTORY.md --exclude /docs/adr/ \
+      --exclude .vitest-attachments --exclude /scratchpad/ --exclude /mobile/android/ \
+      --exclude /mobile/ios/ --exclude /mobile/dist/ --exclude /mobile/builds/ --exclude /mobile/.expo/ \
+      --exclude /mobile/credentials.json --exclude '/mobile/*.p8' --exclude '/mobile/*.key' \
+      --exclude '/mobile/*.pem' --exclude '/mobile/*.p12' --exclude '/mobile/*.jks' \
+      --exclude '/mobile/*.keystore' --exclude '/mobile/*.mobileprovision' \
+      --exclude /docs/HANDOFF-HISTORY.md --exclude /docs/adr/ \
       ./ ubuntu@203.142.6.241:/opt/ai-hr/
     # 2. The board: every status with ids. pull / pull-approved / pull-blocked give the full items.
     IMPROVE_SSH_HOST=203.142.6.241 pnpm improve:status
