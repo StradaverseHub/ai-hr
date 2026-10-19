@@ -1,7 +1,8 @@
 # ai-hr — how to work here
 
-The only instruction file. Live state comes from git, the server and the board (§3), never from a
-document. History: `docs/HANDOFF-HISTORY.md` (rounds, newest first). Decisions: `docs/adr/`.
+The only instruction file, for Claude and Codex alike: `AGENTS.md` is a symlink to it. Never replace
+the link with a copy. Live state comes from git, the server and the board (§3), never from a document.
+History: `docs/HANDOFF-HISTORY.md` (rounds, newest first). Decisions: `docs/adr/`.
 
 **Keep this file short.** A lesson learned the hard way goes into a test, a script or a lint first;
 the incident story goes into the round entry. Add a line here only when no check can enforce it, and
@@ -84,6 +85,14 @@ deletes ~62k lines. Do not merge or reinvestigate it. Before naming a round
 5. **Report** what was demonstrated, where, and what was not verified.
 
 Documentation-only changes need a diff, link and consistency review — no build, DB or deploy.
+
+**CI** (`.github/workflows/gate.yml`, GitHub Actions, public repo `zenlam/ai-hr`): typecheck, migration
+order, `next build` on node 20 and the suite in 8 parallel shards, on every pull request and every push
+to `main`. Push your branch and open a draft PR to get it. **It is not yet the release gate**: until
+`improve:release` checks CI, the local receipt above is still required. Everything a test needs must be
+installable in CI: a tool or package you installed by hand (`pdftotext`, PyMuPDF, `mobile/`'s npm
+dependencies) goes into the workflow. A test may only `git show` a commit that `main` contains — one that
+exists only on a local branch passes here and fails on every fresh clone.
 
 **When the gate is red:** if the failing test and everything it imports are identical to main, it
 fails on main too — suspect the environment or the **calendar** (tests seeded by calendar year).

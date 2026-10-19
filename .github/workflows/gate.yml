@@ -79,8 +79,10 @@ jobs:
         with: { version: '${{ env.PNPM_VERSION }}' }
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
-      - name: pdftotext (the PDF tests read their own output with it)
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
+      - name: PDF tools the tests read their output with (pdftotext, PyMuPDF)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
+          python3 -m pip install --quiet pymupdf
       # The same disposable settings as scripts/dev-db-rebuild.sh, on tmpfs. A service container cannot
       # take `-c` flags, so Postgres is started here instead.
       - name: Start Postgres 16
