@@ -15,10 +15,10 @@ let b: Base;
 beforeAll(migrateTestDb);
 afterAll(closeAll);
 beforeEach(async () => { await resetDb(); b = await seedBase(); });
-async function actor(name: string, role: 'employee' | 'hr_admin' = 'employee', departmentId = b.deptB) {
-    const hired = await hireEmployee(adminCtx(b), { person: { fullName: name, primaryEmail: `${randomUUID()}@attendance-v3.test` }, companyId: b.companyId, departmentId, employmentType: 'full_time', hiredOn: '2020-01-01' });
-    const userId = await createAppUser(b.tenantId, hired.personId, role);
-    const ctx: SessionContext = { ...adminCtx(b), userId, personId: hired.personId, roles: [role], grants: [{ role, companyId: b.companyId }] };
+async function actor(name: string, role: 'employee' | 'hr_admin' = 'employee', departmentId = b.deptB, base = b) {
+    const hired = await hireEmployee(adminCtx(base), { person: { fullName: name, primaryEmail: `${randomUUID()}@attendance-v3.test` }, companyId: base.companyId, departmentId, employmentType: 'full_time', hiredOn: '2020-01-01' });
+    const userId = await createAppUser(base.tenantId, hired.personId, role);
+    const ctx: SessionContext = { ...adminCtx(base), userId, personId: hired.personId, roles: [role], grants: [{ role, companyId: base.companyId }] };
     return { ...hired, ctx };
 }
 async function fixture(mode: 'sequential' | 'any_one' = 'sequential', onlyHr = false, ot = false, employeeFinal = false) {
@@ -230,5 +230,114 @@ describe('independent Personnel depth and final HR handoff', () => {
         expect(detail.workflow?.participantDecisions).toHaveLength(1);
         expect(detail.workflow?.participantReassignments).toHaveLength(1);
         expect(detail.application.status).toBe('approved');
+    });
+});
+
+
+/** App-role witnesses are positive before the refusal: an empty RLS result alone is insufficient. */
+describe('v3 exact tenant/company, live identity and immutable history boundary', () => {
+    async function slot(ctx: SessionContext, correctionId: string) {
+        const [row] = await withTenant(ctx, tx => tx.execute(sql`select app.attendance_workflow_v3_decision_slot(${correctionId}::uuid) as actor`)) as unknown as { actor: { slot: string } | null }[];
+        return row.actor;
+    }
+    async function resolve(ctx: SessionContext, subjectId: string, stages: AttendanceV3WorkflowInput['stages']) {
+        const [row] = await withTenant(ctx, tx => tx.execute(sql`select app.attendance_workflow_resolve_v3(${subjectId}::uuid,${JSON.stringify(stages)}::jsonb) as route`)) as unknown as { route: { ok: boolean; problem?: { code: string; levelIndex: number | null } } }[];
+        return row.route;
+    }
+    it('refuses real foreign-tenant and sibling-company employees without hiding a valid assignment', async () => {
+        const f = await fixture(), original = await state(f);
+        expect(await slot(f.first.ctx, f.id)).toMatchObject({ slot: '0:0' });
+        expect((await resolve(f.root, f.worker.employmentId, f.input.stages)).ok).toBe(true);
+        const [company] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Fictional isolated sibling company' }).returning();
+        const [department] = await owner.db.insert(schema.department).values({ tenantId: b.tenantId, companyId: company.id, name: 'Fictional sibling department' }).returning();
+        const siblingBase = { ...b, companyId: company.id, deptB: department.id };
+        const sibling = await actor('Fictional sibling company employee', 'employee', department.id, siblingBase);
+        const otherBase = await seedBase();
+        const foreign = await actor('Fictional separate tenant employee', 'employee', otherBase.deptB, otherBase);
+        for (const outsider of [sibling, foreign]) {
+            const [own] = await withTenant(outsider.ctx, tx => tx.select({ id: schema.employment.id }).from(schema.employment).where(eq(schema.employment.id, outsider.employmentId)));
+            expect(own?.id).toBe(outsider.employmentId); // Live authenticated app-role context, not a broken fixture.
+            expect(await slot(outsider.ctx, f.id)).toBeNull();
+            expect(await withTenant(outsider.ctx, tx => tx.select().from(schema.attendanceWorkflowRequest).where(eq(schema.attendanceWorkflowRequest.id, original.workflow!.id)))).toEqual([]);
+            await expect(decideAttendanceCorrection(outsider.ctx, { correctionId: f.id, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:0' })).rejects.toThrow();
+            const stages: AttendanceV3WorkflowInput['stages'] = [{ name: 'Level 1', mode: 'sequential', source: { kind: 'specific_employee', employmentIds: [outsider.employmentId] }, hrAlternative: false }];
+            expect(await resolve(f.root, f.worker.employmentId, stages)).toMatchObject({ ok: false, problem: { code: 'employee_unavailable', levelIndex: 0 } });
+        }
+        expect((await state(f)).workflow?.participantDecisions).toHaveLength(0);
+        await decideAttendanceCorrection(f.first.ctx, { correctionId: f.id, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:0' });
+        expect((await state(f)).workflow?.participantDecisions).toHaveLength(1);
+    });
+    it('refuses inactive or unlinked frozen identities and restores only the original live assignment', async () => {
+        const f = await fixture();
+        expect(await slot(f.first.ctx, f.id)).toMatchObject({ slot: '0:0' });
+        const mutations = [
+            { apply: () => owner.db.update(schema.employment).set({ terminatedOn: todayInKualaLumpur() }).where(eq(schema.employment.id, f.first.employmentId)), restore: () => owner.db.update(schema.employment).set({ terminatedOn: null }).where(eq(schema.employment.id, f.first.employmentId)), code: 'employee_unavailable' },
+            { apply: () => owner.db.update(schema.appUser).set({ archivedAt: new Date() }).where(eq(schema.appUser.id, f.first.ctx.userId!)), restore: () => owner.db.update(schema.appUser).set({ archivedAt: null }).where(eq(schema.appUser.id, f.first.ctx.userId!)), code: 'missing_or_ambiguous_login' },
+            { apply: () => owner.db.update(schema.appUser).set({ personId: null }).where(eq(schema.appUser.id, f.first.ctx.userId!)), restore: () => owner.db.update(schema.appUser).set({ personId: f.first.personId }).where(eq(schema.appUser.id, f.first.ctx.userId!)), code: 'missing_or_ambiguous_login' },
+        ];
+        for (const mutation of mutations) {
+            await mutation.apply();
+            expect(await slot(f.first.ctx, f.id)).toBeNull();
+            expect(await resolve(f.root, f.worker.employmentId, f.input.stages)).toMatchObject({ ok: false, problem: { code: mutation.code, levelIndex: 0 } });
+            await expect(decideAttendanceCorrection(f.first.ctx, { correctionId: f.id, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:0' })).rejects.toThrow();
+            expect((await state(f)).workflow?.participantDecisions).toHaveLength(0);
+            await mutation.restore();
+            expect(await slot(f.first.ctx, f.id)).toMatchObject({ slot: '0:0' });
+        }
+        await decideAttendanceCorrection(f.first.ctx, { correctionId: f.id, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:0' });
+        expect((await state(f)).workflow?.participantDecisions).toHaveLength(1);
+    });
+    it('denies direct app-role UPDATE and DELETE for visible participant and reassignment evidence', async () => {
+        const f = await fixture();
+        await decideAttendanceCorrection(f.first.ctx, { correctionId: f.id, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:0', remarks: 'Original participant evidence' });
+        await reassignAttendanceWorkflowStageToHr(f.hr.ctx, { correctionId: f.id, expectedStageIndex: 0, expectedParticipantSlot: '0:1', reason: 'Original reasoned outstanding-slot handoff' });
+        const before = await state(f), participant = before.workflow!.participantDecisions[0], reassignment = before.workflow!.participantReassignments[0];
+        const [identity] = await withTenant(f.hr.ctx, tx => tx.execute(sql`select current_user as role`)) as unknown as { role: string }[];
+        expect(identity.role).toBe('ai_hr_app');
+        expect(await withTenant(f.hr.ctx, tx => tx.select().from(schema.attendanceWorkflowParticipantDecision).where(eq(schema.attendanceWorkflowParticipantDecision.id, participant.id)))).toHaveLength(1);
+        expect(await withTenant(f.hr.ctx, tx => tx.select().from(schema.attendanceWorkflowParticipantReassignment).where(eq(schema.attendanceWorkflowParticipantReassignment.id, reassignment.id)))).toHaveLength(1);
+        for (const target of [
+            { table: 'attendance_workflow_participant_decision', field: 'remarks', id: participant.id },
+            { table: 'attendance_workflow_participant_reassignment', field: 'reason', id: reassignment.id },
+        ]) {
+            // Constant table/column names only; values remain bound. Each refusal has its own transaction.
+            await expect(withTenant(f.hr.ctx, tx => tx.execute(sql`UPDATE public.${sql.identifier(target.table)} SET ${sql.identifier(target.field)}='Forged history' WHERE id=${target.id}::uuid`))).rejects.toMatchObject({ cause: expect.objectContaining({ code: '42501' }) });
+            await expect(withTenant(f.hr.ctx, tx => tx.execute(sql`DELETE FROM public.${sql.identifier(target.table)} WHERE id=${target.id}::uuid`))).rejects.toMatchObject({ cause: expect.objectContaining({ code: '42501' }) });
+        }
+        const after = await state(f);
+        expect(after.workflow?.participantDecisions).toEqual(before.workflow!.participantDecisions);
+        expect(after.workflow?.participantReassignments).toEqual(before.workflow!.participantReassignments);
+        expect(after.workflow?.stages).toEqual(before.workflow!.stages);
+    });
+    it('binds a genuine active final proof to its exact request, subject, day and real actor', async () => {
+        const f = await fixture('sequential', true), other = await actor('Fictional other effect subject');
+        const previousDay = new Date(`${f.on}T12:00:00Z`); previousDay.setUTCDate(previousDay.getUTCDate() - 1);
+        const wrongDate = previousDay.toISOString().slice(0, 10);
+        const rollback = new Error('Intentional rollback of v3 exact final-proof diagnostic');
+        let observed = false;
+        await expect(withTenant(f.hr.ctx, async tx => {
+            await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${b.tenantId + ':' + f.worker.employmentId},0))`);
+            await tx.execute(sql`select id from attendance_correction where id=${f.id}::uuid for update`);
+            await tx.execute(sql`SAVEPOINT v3_exact_effect`);
+            expect(await decideAttendanceWorkflowStageTx(tx, f.hr.ctx, { correctionId: f.id, employmentId: f.worker.employmentId, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:0' })).toMatchObject({ final: true, versionedFinalEffect: true });
+            await tx.execute(sql`select app.attendance_workflow_begin_effect(${f.id}::uuid)`);
+            const [scope] = await tx.execute(sql`select app.attendance_workflow_effect_scope(${f.worker.employmentId}::uuid,${f.on}::date) as exact,app.attendance_workflow_effect_scope(${f.worker.employmentId}::uuid,${wrongDate}::date) as wrong_day,app.attendance_workflow_effect_scope(${other.employmentId}::uuid,${f.on}::date) as wrong_subject`) as unknown as { exact: boolean; wrong_day: boolean; wrong_subject: boolean }[];
+            expect(scope).toEqual({ exact: true, wrong_day: false, wrong_subject: false });
+            await tx.execute(sql`select set_config('app.attendance_workflow_effect',${randomUUID()},true)`);
+            const [wrongRequest] = await tx.execute(sql`select app.attendance_workflow_effect_scope(${f.worker.employmentId}::uuid,${f.on}::date) as ok`) as unknown as { ok: boolean }[];
+            expect(wrongRequest.ok).toBe(false);
+            await tx.execute(sql`select set_config('app.attendance_workflow_effect',${f.id},true),set_config('app.user_id',${f.first.ctx.userId!},true)`);
+            const [wrongActor] = await tx.execute(sql`select app.attendance_workflow_effect_scope(${f.worker.employmentId}::uuid,${f.on}::date) as ok`) as unknown as { ok: boolean }[];
+            expect(wrongActor.ok).toBe(false);
+            await tx.execute(sql`select set_config('app.user_id',${f.hr.ctx.userId!},true)`);
+            const [restored] = await tx.execute(sql`select app.attendance_workflow_effect_scope(${f.worker.employmentId}::uuid,${f.on}::date) as ok`) as unknown as { ok: boolean }[];
+            expect(restored.ok).toBe(true);
+            observed = true;
+            throw rollback;
+        })).rejects.toBe(rollback);
+        expect(observed).toBe(true);
+        expect((await state(f)).workflow?.participantDecisions).toHaveLength(0);
+        expect((await state(f)).workflow?.decisions).toHaveLength(0);
+        expect((await day(f)).checkInAt).toBe('08:00:00');
     });
 });
