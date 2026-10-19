@@ -91,3 +91,36 @@ produced a passing 16-case management run, with the other fourteen consumer file
 Actual external provider connectivity was intentionally untested: the local journey used fictional
 data and denied model network calls, proving control refusals before transport. These observations
 do not substitute for the final candidate's gate, production build or live-schema migration rehearsal.
+
+## Amendment, 2026-10-19: default user allowance, usage against limits, attention
+
+Decision. A tenant may hold one DEFAULT per-user allowance (`ai_control_policy` kind `user_default`,
+scope key `user_default`, no subject; migration 0568): daily requests, monthly tokens and allowed/paused.
+It governs every login that has no individual user policy. An individual user policy REPLACES the default
+for that login; the two never stack, so an individual allowance may be looser or stricter than the default.
+Calls without a login (scheduled agents, `uid` NULL) are never governed by it. Company caps still apply
+cumulatively beside whichever user rule applies. Only group administrators may write the default; the 0541
+write policy already admits non-company rows only for `app.is_group_admin()`. Every login may read the
+default, as it may read its own individual policy. No default value is shipped: a tenant without the row
+has no user cap, exactly as before.
+
+`app.ai_admit` keeps its signature, result columns and refusal reasons; only its policy selection changed
+(the default joins the policy loop when the caller has a login and no individual policy, counting that
+login's own runs). Callers, including future orchestration agents, need no change.
+
+"Use default" removes a login's individual policy row. The application role gains DELETE on
+`ai_control_policy`; a BEFORE DELETE guard takes the admission lock and refuses to remove anything but an
+individual user row, so feature, company and default rows still change only by update. The removed values
+are kept in the `ai-control.allowance-cleared` event; run history is untouched. A login that follows the
+default is shown with the default's values prefilled, so saving its row creates an individual copy rather
+than an accidental "no cap" exemption.
+
+Monitoring. Every company and user row shows usage against its effective limit: requests today and tokens
+this month, where tokens are recorded plus held reservations, i.e. exactly what admission counts. "Near
+limit" starts at 80% and "At limit" at 100% (a zero cap is at its limit). A "Needs attention" section lists
+companies and logins near or at a cap with usage, and logins with calls blocked today (Malaysia day).
+Company administrators see only their own companies there and no login identities. The user list is ordered
+by this month's counted tokens, highest first, computed over every matching login, so heavy users are not
+hidden behind an alphabetical first page. Group administrators can filter recent runs to blocked or failed
+calls and by capability. The unused per-agent switch action was removed; feature switches remain the single
+writer for the agents' canonical settings.
