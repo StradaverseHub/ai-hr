@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import {buildMovementWorkbook,readMovementWorkbook} from '../lib/movement-workbook.server';
 import {movementWorkbookLayout} from '../lib/movement-workbook-layout';
-import {parseMovementTypeCsv,movementTypeCsvTemplate} from '../lib/movement-type-csv';
+import {parseMovementTypeCsv,movementTypeCsvTemplate,movementInputRecord} from '../lib/movement-type-csv';
 import type {MovementImportCatalog} from '../core/movement-import';
 const a='11111111-1111-4111-8111-111111111111',b='22222222-2222-4222-8222-222222222222',department='33333333-3333-4333-8333-333333333333';
 const catalog:MovementImportCatalog={types:[{code:'increment',label:'Increment',behaviour:'increment'},{code:'custom_increment',label:'Increment',behaviour:'increment'},{code:'resignation',label:'Resignation',behaviour:'resignation'}],companies:[{value:a,label:'Fictional A'}],fields:{departmentId:[{value:department,label:'Finance'}]}};
@@ -12,7 +12,7 @@ const subjects=Array.from({length:5},(_,i)=>({employeeCode:'EX-00'+i,name:'Ficti
 const make=()=>buildMovementWorkbook({tenantId:a,companyId:a,companyName:'Fictional A',catalog,subjects,typeCode:'increment',resolve});
 const parse=(bytes:Buffer)=>readMovementWorkbook(bytes,{tenantId:a,companyId:a,catalog,resolve});
 async function edit(bytes:Buffer,patch:(wb:XLSX.WorkBook)=>void){const wb=XLSX.read(bytes,{type:'buffer',cellFormula:true});patch(wb);return Buffer.from(XLSX.write(wb,{type:'buffer',bookType:'xlsx',compression:true}));}
-beforeEach(()=>{vi.stubEnv('MOVEMENT_IMPORT_WORKBOOK_KEY',Buffer.alloc(32,7).toString('base64url'));vi.stubEnv('MOVEMENT_IMPORT_WORKBOOK_KEY_ID','public-fixture-only');});afterEach(()=>vi.unstubAllEnvs());
+beforeEach(()=>{vi.stubEnv('MOVEMENT_IMPORT_WORKBOOK_KEY',Buffer.alloc(32,7).toString('base64url'));vi.stubEnv('MOVEMENT_IMPORT_WORKBOOK_KEY_ID','public-fixture-only');});afterEach(()=>{vi.unstubAllEnvs();vi.useRealTimers();});
 describe('authenticated per-type Movement workbook',()=>{
  it('uses one live layout for inherited types and keeps CSV single-type with no Event Type input',()=>{
   expect(movementWorkbookLayout(catalog.types[0],resolve).map(c=>c.key)).toEqual(movementWorkbookLayout(catalog.types[1],resolve).map(c=>c.key));
@@ -52,5 +52,14 @@ describe('authenticated per-type Movement workbook',()=>{
   const bytes=await make(),columns=movementWorkbookLayout(catalog.types[0],resolve),amount=columns.findIndex(c=>c.key==='incrementAmount'),date=columns.findIndex(c=>c.key==='effectiveDate'),grey=columns.findIndex(c=>c.key==='current.basicSalary');
   const changed=await edit(bytes,wb=>{const s=wb.Sheets.Increment;s[XLSX.utils.encode_cell({r:5,c:grey})]={t:'n',v:9999999};s[XLSX.utils.encode_cell({r:5,c:amount})]={t:'s',v:'10.13'};s[XLSX.utils.encode_cell({r:5,c:date})]={t:'s',v:'2026-11-01'};});
   const row=(await parse(changed)).records[0];expect(row.incrementAmount).toBe('10.13');expect(row.cells.basicSalary).toBeUndefined();
+ });
+ it('normalizes every resolved blacklist behaviour to the fresh KL day ahead of future rows, including across midnight',()=>{
+  const before=new Date();before.setUTCHours(15,59,59,0);vi.useFakeTimers();vi.setSystemTime(before);
+  const type={code:'custom_blacklist_fixture',label:'Fictional custom blacklist',behaviour:'blacklist'},columns=movementWorkbookLayout(type,resolve),values=columns.map(c=>c.key==='employeeCode'?'EX-001':c.key==='blacklisted'?'true':'');
+  const first=movementInputRecord(type,columns,values,1,{sheet:'Fictional custom blacklist',row:6});expect(first.cells.effectiveDate).toBeDefined();expect(columns.some(c=>c.key==='effectiveDate')).toBe(false);
+  const future=new Date(before.getTime()+7*86400000).toISOString().slice(0,10);expect(first.cells.effectiveDate!<future).toBe(true);
+  vi.setSystemTime(new Date(before.getTime()+2000));const second=movementInputRecord(type,columns,values,1,{sheet:'Fictional custom blacklist',row:6});expect(second.cells.effectiveDate).not.toBe(first.cells.effectiveDate);
+  // Normalized input changes as well as the locked core's blacklist-day fingerprint: an old preview cannot be reused.
+  expect(JSON.stringify(second)).not.toBe(JSON.stringify(first));
  });
 });

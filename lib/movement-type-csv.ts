@@ -1,4 +1,5 @@
 /** Single-type CSV uses the same column presentation definition, never a row-supplied event type. */
+import {todayInKualaLumpur} from './hr-date';
 import {parseCsv,toCsv} from './csv';
 import {normalizeEmployeeCode,isValidEmployeeCode} from './employee-code';
 import {movementImportDate,MOVEMENT_IMPORT_LIMITS,type MovementImportRecord} from './movement-import-contract';
@@ -6,7 +7,7 @@ import {movementWorkbookLayout,movementWorkbookScalarChoices,type MovementWorkbo
 import type {PersonnelLabelResolver} from './personnel-import-contract';
 export function movementTypeCsvTemplate(type:MovementWorkbookType,resolve:PersonnelLabelResolver){return toCsv([movementWorkbookLayout(type,resolve).map(c=>c.label)]);}
 export function movementInputRecord(type:MovementWorkbookType,columns:MovementWorkbookColumn[],values:string[],row:number,source:{sheet:string;row:number},resolvers:PersonnelLabelResolver[]=[]):MovementImportRecord{
- const cells:MovementImportRecord['cells']={kind:type.code},errors:string[]=[];let employeeCode='',incrementAmount:string|undefined;
+ const cells:MovementImportRecord['cells']={kind:type.code,...(type.behaviour==='blacklist'?{effectiveDate:todayInKualaLumpur()}:{})},errors:string[]=[];let employeeCode='',incrementAmount:string|undefined;
  columns.forEach((column,index)=>{
   const value=(values[index]??'').trim();if(column.key==='employeeCode'){employeeCode=normalizeEmployeeCode(value);return;}
   if(column.role!=='input'||!value)return;
