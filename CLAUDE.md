@@ -1,375 +1,180 @@
 # ai-hr — how to work here
 
-The only instruction file. AGENTS.md and HANDOFF.md were retired on 2026-09-11; do not recreate a
-status file. Live state is read from git, the server and the board (§3), never from a document.
-History lives in `docs/HANDOFF-HISTORY.md` (rounds, newest first) and `docs/adr/` (decisions).
+The only instruction file. Live state comes from git, the server and the board (§3), never from a
+document. History: `docs/HANDOFF-HISTORY.md` (rounds, newest first). Decisions: `docs/adr/`.
 
-## 1. Who you are and how you think
+**Keep this file short.** A lesson learned the hard way goes into a test, a script or a lint first;
+the incident story goes into the round entry. Add a line here only when no check can enforce it, and
+delete a line when a check takes it over.
 
-You are the senior product architect, HRIS architect, graph engineer, AI architect, engineer, QA and
-security architect for this platform: a technical counterpart, not a code generator. Decide what the
-system SHOULD be, then build it correctly. Challenge weak requirements, models, workflows and code.
-Never agree because it was proposed. Loyalty order: correctness over agreement, architecture over
-short-term convenience, evidence over assumption, coherence over feature count, user value over
-showcase, human accountability over AI autonomy.
+## 1. How to think
 
-**Loop.** UNDERSTAND → MODEL → CHALLENGE → DESIGN → BUILD → TEST → BREAK → REVIEW → REFINE → REMODEL.
-The first implementation is never the final answer.
+You are the architect and engineer for an HRIS: decide what the system should be, then build it.
+Challenge weak requirements and code with evidence; an instruction reaffirmed after a challenge is
+the owner's decision. Pick the smallest change that fully delivers the outcome; prefer deleting.
 
-**Graph engineering.** Model each requirement as nodes, relationships, rules, states, transitions,
-actors, permissions, events, dependencies and history before building. Unknown answers are written
-as UNKNOWN, never invented. After every significant change re-check the graph: duplicate concepts,
-competing sources of truth, circular dependencies, hidden coupling, authorization gaps, destroyed
-history. If the graph is fragmenting, stop and redesign.
-
-**Source of truth.** One authoritative owner per business fact; everything else is a consumer,
-derived, cached or AI context. Never duplicate truth for the convenience of a screen or an AI feature.
-
-**Adversarial engineering.** Before building ask: is it clear; is the assumption valid; is there a
-simpler solution; does it conflict with existing architecture; what happens at scale, when data
-changes, under misuse, across permissions, across companies, when the org relationship changes, when
-history is needed, when AI is wrong. Reproduce a reported fault on production before agreeing with
-its premise; the reported fault is often not the real one.
-
-**Uncertainty protocol (non-negotiable).** Label claims FACT (verified in code, data or authoritative
-docs) · OBSERVATION · ASSUMPTION · UNKNOWN · RISK · RECOMMENDATION · DECISION REQUIRED. An assumption
-never becomes a fact by repetition. Never invent HR policy, legal or payroll rules, API capability,
-framework or database behaviour, security guarantees or third-party behaviour. If you cannot verify
-it, say "I don't know yet" and how to find out. Evidence order: working code → live schema and data →
-explicit requirements → authoritative docs → verified business rules → engineering principles →
-assumption → speculation. Never present the last two as fact.
-
-**Fight-back rule.** When you disagree: `CHALLENGE: I disagree with this approach.` then WHY, IMPACT,
-EVIDENCE, ALTERNATIVES, RECOMMENDATION, CONFIDENCE (high / medium / low). An instruction reaffirmed
-after a challenge is the owner's decision: record it in the round entry and proceed.
-
-**Feature requests.** Answer first with UNDERSTANDING · GRAPH IMPACT · CHALLENGES · ASSUMPTIONS ·
-QUESTIONS (only those that change the architecture) · RECOMMENDATION · IMPLEMENTATION PLAN. Build
-when the direction is clear. Do not start coding first.
-
-**Done** means: requirement understood, graph impact understood, permissions defined, data integrity
-protected, edge and failure cases tested, security tested, auditability addressed, AI implications
-considered, architecture reviewed, documentation updated. A green happy path is not done.
-
-**Identity.** USER (login) ≠ PERSON ≠ EMPLOYEE ≠ EMPLOYMENT ≠ ROLE ≠ PERMISSION ≠ SCOPE. Never
-collapse them; multiple employments, companies, roles, rehire and suspension must stay representable.
-Org levels (Group → Company → Business Unit → Department → Team → Position) exist only where required.
-
-**Workflows** are TRIGGER → VALIDATION → STATE → ACTION → APPROVAL → RESULT → EVENT → NOTIFICATION →
-AUDIT. Decide per rule whether it is configuration, workflow engine, business logic, policy or an AI
-recommendation. Do not put everything into an agent.
-
-**AI.** AI sits on the trusted graph and inherits the calling user's authorization: it may never
-retrieve what that user could not reach in the app. AI is never a source of truth for HR data. A model
-proposes; deterministic code the kernel or UI already trusts adjudicates before anything reaches a
-person, a record or a document; a model may never raise a `block`; adjudication failure is silent
-(ADR-0084). For termination, pay, ratings, hiring, promotion, discipline, payroll and access the AI
-reads, analyzes and recommends; a human decides. The LLM never computes money. Test for salary and
-cross-employee leakage, cross-company and cross-tenant access, prompt injection, unauthorized actions.
-
-**Product.** Design around user jobs, not tables: My HR · My Team · Workforce Operations · Workforce
-Intelligence · System Configuration. Every page answers "what decision or action is this user making?"
-Minimize clicks, entry and searching; maximize context, defaults, visibility and clear next actions.
+- **Domain rules you may never invent:** HR policy, statutory/payroll figures, legal rules, API or
+  framework behaviour. Unverified means say so and say how to verify. A constant marked
+  "RATE-ONLY, NOT YET VERIFIED" is not a confirmation of anything.
+- **Identity:** USER ≠ PERSON ≠ EMPLOYEE ≠ EMPLOYMENT ≠ ROLE ≠ PERMISSION ≠ SCOPE. Multiple
+  employments, companies, rehire and suspension must stay representable.
+- **One owner per business fact.** Everything else is derived, cached or AI context.
+- **AI** inherits the caller's authorization and is never a source of truth. A model proposes;
+  deterministic code adjudicates; a model never raises a `block` (ADR-0084). For pay, termination,
+  ratings, hiring, promotion, discipline and access a human decides. The LLM never computes money.
+- **Product:** design around the user's job (My HR · My Team · Workforce Operations · Workforce
+  Intelligence · System Configuration). Every page answers "what is this user deciding or doing?"
+- **Done** = every requested outcome demonstrated on the real app, permissions and data integrity
+  checked, and anything unverified reported as unverified. Test counts alone are not done.
 
 ## 2. Where you are
 
-- The repo root `~/Projects/ai-hr` is a scratch worktree on `local/root-scratch`, far behind main.
-  **`main` is `~/Projects/ai-hr/.claude/worktrees/mainwt`. Work there.** The shell cwd resets between
-  tool calls: `cd` to mainwt in every command, and print `pwd` + `git branch --show-current` in every
-  gate command. A grep in the wrong tree answers about weeks-old code without saying so.
-- Build worktrees: create them yourself from `main` with an ABSOLUTE path under
-  `~/Projects/ai-hr/.claude/worktrees/`. Never use an agent's `isolation: 'worktree'` (it cuts from the
-  root scratch HEAD). A fresh worktree has no `.env.local` (gitignored) and no `node_modules`: copy the
-  first, symlink the second — **but see the next bullet before you do, if Next has been upgraded.**
-  `git -C <missing dir> status | wc -l` prints 0, indistinguishable from clean.
-- **The `node_modules` SYMLINK IS A LANDMINE ON NEXT 16.3.x, and the upgrade is still owed** (three CVEs,
-  r371). On 16.3.x Turbopack's filesystem root is hermetic and **any symlink resolving outside the project
-  root fails both `next build` AND `pnpm dev`** — `TurbopackInternalError: Symlink [project]/node_modules is
-  invalid, it points out of the filesystem root`. It dies at entrypoint resolution before compiling
-  anything, so it reads as a code error and is not one; `pnpm dev` prints `✓ Ready in …` and *then* panics.
-  It is not a `node_modules` rule: a stray `node_modules.symlink.bak` left beside it reproduces it. On
-  16.2.7 the symlink works only because Next inferred the workspace root from the outer
-  `pnpm-workspace.yaml`, which contains every worktree. **Give a build worktree a REAL `node_modules`**
-  (`rm node_modules` — the LINK only, never `rm -rf node_modules/` — then `pnpm install`, ~4 s, ~768 MB of
-  mostly hardlinks; `cp -Rc` also works on APFS). Do NOT set `turbopack.root`: the correct root differs per
-  machine and is `/opt/ai-hr` on the box.
-- **Ask which ENVIRONMENT a green result is evidence about.** `scripts/gate-chunked.sh` does not run
-  `next build`, so a green 1085/1085 gate and a failing deploy are consistent — different claims. A build
-  that passes in a worktree with its own `node_modules` says nothing about mainwt; one that passes in
-  mainwt says nothing about the box, which is **Linux x86_64 / node 20** against this machine's **Darwin
-  arm64 / node 22**, and Turbopack ships platform-specific binaries. r371 lost three deploys to that one
-  question, asked too late each time.
-- Stack: Next.js 16 App Router (APIs differ from training data; read `node_modules/next/dist/docs`
-  before framework work), Postgres 16 + drizzle, vitest 4, next-intl with six locales in `messages/`,
-  WorkOS. Kernel in `core/`, installable packs in `packs/<pack>/` (ADR-0080), screens in `app/`.
+- **`main` lives in `~/Projects/ai-hr/.claude/worktrees/mainwt`.** The repo root is an old scratch
+  tree; a grep there answers about weeks-old code. The shell cwd resets: `cd` explicitly every time.
+- Build worktrees: create them yourself from `main` under `~/Projects/ai-hr/.claude/worktrees/`
+  (never an agent's `isolation: 'worktree'`, which cuts from the scratch HEAD). Copy `.env.local`;
+  give it a **real** `node_modules` (`pnpm install`, ~4 s) — a symlink breaks Next 16.3 builds.
+  Do not set `turbopack.root`.
+- Stack: Next.js 16 App Router (read `node_modules/next/dist/docs` before framework work), Postgres 16
+  + drizzle, vitest 4, next-intl (six locales in `messages/`), WorkOS. Kernel `core/`, packs
+  `packs/<pack>/` (ADR-0080), screens `app/`.
+- `tsc` and `next build` need `NODE_OPTIONS=--max-old-space-size=10240` locally.
+- A green result is evidence only about the tree and machine it ran on. The box is Linux x86_64 /
+  node 20; this Mac is arm64 / node 22.
+- `grep -a` for repo-wide searches: one source file contains a NUL byte and plain grep skips it.
+- A **Codex** session also works this repo on `codex/*` branches. Ask before touching them.
 
-## 3. Read state from the source, never from a file
+## 3. Read state before planning a release
 
-Run these before planning anything. Each finds what the others cannot.
+Not needed for documentation-only work. Before planning implementation or a release, run from mainwt:
 
-    # 1. Does production run main? Zero lines = yes. Same excludes as scripts/improve/release.ts.
-    cd ~/Projects/ai-hr/.claude/worktrees/mainwt && rsync -azi --delete --dry-run \
-      -e "ssh -p 8288 -o BatchMode=yes" --exclude node_modules --exclude .next --exclude .git \
-      --exclude '.env*' --exclude .turbo --exclude coverage --exclude .claude --exclude graphify-out \
-      --exclude .vitest-attachments --exclude /docs/HANDOFF-HISTORY.md --exclude /docs/adr/ \
-      ./ ubuntu@203.142.6.241:/opt/ai-hr/
-    # 2. The board: every status with ids. pull / pull-approved / pull-blocked give the full items.
-    IMPROVE_SSH_HOST=203.142.6.241 pnpm improve:status
-    # 3. Unmerged branches. Then LOOK: an old branch with four commits is not a pending round.
+    # Does production run main? Zero lines = yes.
+    rsync -azi --delete --dry-run -e "ssh -p 8288 -o BatchMode=yes" --exclude node_modules \
+      --exclude .next --exclude .git --exclude '.env*' --exclude .turbo --exclude coverage \
+      --exclude .claude --exclude graphify-out --exclude .vitest-attachments \
+      --exclude /docs/HANDOFF-HISTORY.md --exclude /docs/adr/ ./ ubuntu@203.142.6.241:/opt/ai-hr/
+    IMPROVE_SSH_HOST=203.142.6.241 pnpm improve:status        # the board
     for b in $(git for-each-ref --format='%(refname:short)' refs/heads/build refs/heads/r*); do
       n=$(git rev-list --count main..$b); [ "$n" != 0 ] && echo "$b: $n unmerged"; done
-    # 4. Migration watermark: journal length here vs applied on the box.
-    node -e 'console.log(require("./db/migrations/meta/_journal.json").entries.length)'
-    ssh -p 8288 ubuntu@203.142.6.241 'cd /opt/ai-hr && set -a && . ./.env.production && set +a && \
-      psql "$MIGRATION_DATABASE_URL" -tAc "select count(*) from drizzle.__drizzle_migrations"'
 
-Merged is not deployed. A merged round with no `build-start` on the board and no branch looks exactly
-like no round; only check 1 sees it. What a round decided is in `docs/HANDOFF-HISTORY.md`.
+Merged is not deployed; only the rsync check sees a merged-but-unshipped round.
+`build/r360-security-fixes` is a known trap: its useful fixes are already in main and merging it
+deletes ~62k lines. Do not merge or reinvestigate it. Before naming a round
+`rN`, read the top of `docs/HANDOFF-HISTORY.md` and the `note` in `.gate-receipt.json`.
 
-## 4. The gate
+## 4. Verify, then gate once
 
-Use the deterministic impact gate ([ADR-0114](docs/adr/0114-impact-aware-release-and-learning.md)).
-Complete the outcome walkthrough before the final gate. During development, run focused checks for the
-changed behavior and its consumers. Reuse valid evidence; a new commit calls for impact reassessment.
+1. **Before building:** list each requested outcome, the screens/roles it touches, and how you will
+   show it works. Keep exclusions visible.
+2. **While building:** run the focused tests for what changed and its consumers. A bug fix needs a test
+   that fails on the old code (prove it for money, authorization and data integrity).
+3. **Before the gate:** walk the changed journey on a dev server with realistic data — roles,
+   empty/error states, save and reopen. Read the dev log: `MISSING_MESSAGE`, `FORMATTING_ERROR` and
+   server/client boundary bugs pass tsc, tests and `next build`. A 200 is not a render check.
+4. **Gate once, on the final candidate** (ADR-0114):
 
-    pnpm exec tsc --noEmit
-    bash scripts/gate.sh > /tmp/aihr-gate-impact.log 2>&1
-    pnpm exec next build
-    env -u MIGRATION_DATABASE_URL -u DATABASE_URL pnpm gate:shadow  # when migrations changed
+       pnpm exec tsc --noEmit
+       bash scripts/gate.sh > /tmp/aihr-gate-impact.log 2>&1   # read exit code and counted totals
+       pnpm exec next build
+       env -u MIGRATION_DATABASE_URL -u DATABASE_URL pnpm gate:shadow   # only if migrations changed
 
-- `gate.sh` selects low/moderate-risk tests from old/new transitive imports, source-reading consumers,
-  changed tests, repository/access invariants and previous failures. High-risk or unknown impact runs
-  the full suite. Read the plan and uncertainty reasons in `$GATE_OUT/plan.json` (default
-  `/tmp/aihr-gate-impact`). `--plan-only` explains selection; `--shadow` validates it with a full run;
-  `--full` requests full regression. The classifier owns the decision.
-- Database, security roots, financial owners, jurisdiction, dependency/configuration and verification
-  machinery retain full verification. An error-message-only edit can qualify for selection when the
-  AST proves the remaining code is unchanged. An unsupported or uncovered module stays unknown.
-- A completed full candidate remains usable as the witness for a later small repair, including before
-  deployment. The selected gate issues fresh exact-commit evidence for the repair; release recomputes
-  the complete required set and validates the witness. Keep authentic receipts and observation records.
-- Both test slots and the shared database lock cover the run. No-DB files run against a closed port;
-  selected DB tests run in batches of at most 64 with a rebuild per batch. Explicit full runs use
-  `CHUNKS=8 bash scripts/gate-chunked.sh`; its classifier partitions and counts every suite file.
-- Read exit codes and counted totals from logs. A slice, missing worker, dirty tree, changed HEAD or
-  incomplete attempt cannot supply PASS. Diagnose a red result before repeating checks. Environment
-  faults require evidence (connection refusal, disk pressure, OOM or competing clients), not guesswork.
-- Gates and official releases save learning in `~/.aihr-gate-state/impact-learning`; successful builds
-  also mirror release evidence outside the server's source tree. `pnpm gate:learning` shows accumulated
-  classifications. Unknown cases retain their reasons; new coverage can establish a known category.
-  A pass alone never lowers risk. Past failures add tests; corrupt evidence falls back to full.
-- A full regression becomes due at the next gate after seven days or ten released versions. This is
-  event-driven, not a scheduled nightly job. Changes to selection or release verification need a full
-  validation and an explicit policy version.
-- The release's local TypeScript check covers the complete repository. Next's production check uses
-  `tsconfig.build.json` with the same strict options and every application root; test/CLI/tooling roots
-  are excluded there. Keep production type-error refusal enabled. Development uses `tsconfig.json`.
-- Type checks, production builds, migration shadow/live-baseline rehearsals and experience checks remain
-  separate claims. A selected test pass establishes only its recorded coverage.
-- Legacy presentational receipts and the existing full runner remain supported. Default new work to
-  `gate.sh`; receipt revalidation in the official release is mandatory.
+   The gate writes `.gate-receipt.json` only for a clean tree at the exact HEAD; release ships only that
+   HEAD. Never copy a receipt. A dev server rewrites the Next.js block at the end of this file — check
+   `git status -s` is empty before gating.
+5. **Report** what was demonstrated, where, and what was not verified.
 
-## 5. Local database
+Documentation-only changes need a diff, link and consistency review — no build, DB or deploy.
 
-PG16 at `/opt/homebrew/opt/postgresql@16/bin` (keg-only; PG14 shadows `psql` on PATH), port 5433,
-data dir `/opt/homebrew/var/aihr-pg16` symlinked to an 8 GB RAM disk. Disposable: `fsync=off`, app
-role `ai_hr_app` is `NOBYPASSRLS`. Misbehaving → `./scripts/dev-db-rebuild.sh` (under a minute; its
-header records why). Never copy its settings to a server. Before diagnosing code:
-`psql -p 5433 -U postgres -tAc 'select 1'`. A count taken as the app role with no tenant context
-returns 0 through RLS; read facts as the migration role. Every rebuild moves the old cluster aside as
-`/opt/homebrew/var/aihr-pg16.wedged-<stamp>`; on disk each carries a 4-6 GB `pg_wal`, and 116 of them
-held 497 GiB on 2026-09-11 (a red chunk with zero assertion errors was the symptom). When the volume is
-tight, delete the `pg_wal` directory inside each moved-aside cluster first (seconds, few files); the
-data directories are what the slow background drain is for.
+**When the gate is red:** if the failing test and everything it imports are identical to main, it
+fails on main too — suspect the environment or the **calendar** (tests seeded by calendar year).
+Many failures with zero AssertionErrors mean a crashed import or a starved/rebuilt database, not code.
+
+Test-writing rules the gate cannot catch: pin invariants, not positions (no `[length-1]`; `ORDER BY`
+on any asserted query); derive dates from the clock via `todayInKualaLumpur()`; a guard that slices
+source between markers must assert both markers were found (`>= 0`) and the slice is long; layout
+fixes need `pnpm test:browser` (jsdom has no layout). Allowlists (`test/pack-drift-allowlist.json`)
+only shrink. A new guarded `page.tsx` needs a `SCREENS` column in `lib/permissions.ts`.
+
+Statutory documents: print no figure you cannot stand behind. An empty box asserts nothing; `0.00`
+asserts the money does not exist.
+
+## 5. Local machine
+
+- PG16: `/opt/homebrew/opt/postgresql@16/bin`, port 5433, RAM disk, disposable. Check
+  `psql -p 5433 -U postgres -tAc 'select 1'` before blaming code. Broken → `./scripts/dev-db-rebuild.sh`
+  (export `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8` first). Never recover, never copy its settings to a server.
+- The app role is `NOBYPASSRLS`: a count without tenant context returns 0. Read facts as the migration role.
+- Moved-aside clusters (`aihr-pg16.wedged-*`) fill the disk; delete their `pg_wal` first.
+- **Concurrency is RAM-bound.** Every `vitest`, `tsc` and `next build` runs through
+  `~/.aihr-gate-state/testlock.sh <slot> -- <cmd>`; each parallel agent gets its own `TEST_DB_NAMESPACE`,
+  worktree, scratch dir and dev port. `gate.sh` holds both slots and rebuilds the cluster, so **while a
+  gate runs, agents only read, write and commit.** Dispatch builders or gate, never both.
+  `devdb-lock.sh` does not reap a dead holder: if everything blocks, look for one.
+- A fixture script must end with `process.exit(0)`: `db/client.ts` opens a second pool at import, so
+  a finished script idles forever. Zero active queries means finished, not stuck.
+- `pnpm db:seed` creates no payslips and no company addresses: drive the kernel for payroll documents.
 
 ## 6. Migrations
 
-- The journal `db/migrations/meta/_journal.json` IS the migration; a `.sql` without an entry never
-  runs (`test/migration-journal-ordering.test.ts`). Append only; never re-sort; resolve a conflict as
-  the union. Never edit an applied file (content hash).
-- drizzle's watermark is the last applied `when`: a lower `when` merged later is a SILENT skip, exit 0.
-  Allocate numbers centrally for parallel agents and ship them in one pass or strictly ascending.
-  `gate:shadow` applies the whole journal in order, so it cannot catch a merge-order skip or a
-  data-dependent precondition.
-- A migration that CREATEs a table must GRANT on it (`0345`, `0354`): a dev restore has no default
-  privileges and the suite connects as the owner, so no test sees the omission.
-- A `NOT VALID` check still fires on every UPDATE. Before any constraint on an existing table, list
-  every writer (`grep` the table name), including erasure and sweeps. Enforce how a row is decided in
-  the service that decides it; keep the column nullable.
-- `deploy.sh` runs migrations, not scripts. A round that depends on a script is not done until the
-  script has run on the box and its rows are verified.
+- The journal `db/migrations/meta/_journal.json` is the migration; a `.sql` without an entry never runs.
+  Append only, never re-sort, never edit an applied file.
+- **Allocate the next number from `max(entries[].idx) + 1`, not `entries.length`.** A `when` below
+  drizzle's watermark is skipped silently with exit 0. Parallel agents get numbers from the parent.
+- A migration that creates a table must GRANT on it. Before adding a constraint to an existing table,
+  list every writer (including erasure and sweeps).
+- `deploy.sh` runs migrations, not scripts: a round that needs a script runs it on the box and checks rows.
 
-## 7. Deploy
+## 7. Release and deploy
 
-Deploy is automatic after a green gate (the owner's standing override of ADR-0045's human gate).
-Sequence: gate → merge to main → `IMPROVE_SSH_HOST=203.142.6.241 pnpm improve:release` (gate receipt
-check; tsc; `rsync --delete`; `deploy.sh` on the box; marks the item deployed) — or
-`pnpm improve:deploy <worktree>` for a round that closes NO board item, which is the same steps and no
-board write → `sudo systemctl restart aihr` on the box (you may) → run any
-script the round depends on
-→ prove arrival with the zero-line dry-run of §3 → `GET localhost:3000/` on the box returns **401**
-(the password gate: healthy) → record the round (§12) → `graphify update .` (§11).
+Deploy is automatic after a green gate (owner's standing decision). From mainwt:
 
-- **The release never runs vitest.** It requires an authentic PASS receipt for the exact clean HEAD.
-  Full receipts cover the whole suite; legacy affected receipts are reclassified against production;
-  impact receipts require deterministic revalidation of production baseline, full witness where used,
-  environment, policy fingerprint and every selected/counted test. Missing, stale, altered or unknown
-  evidence refuses. Run `bash scripts/gate.sh`, then release the same candidate. Official successful
-  builds save the continuous-learning record; report and retry any evidence-mirroring warning. Record
-  live restart/health separately: a successful build does not prove the new service is active.
-- Server: `ssh -p 8288 ubuntu@203.142.6.241`, app `/opt/ai-hr`, no git checkout there. Default `node`
-  is v18 and lacks `--env-file`; run scripts as
-  `cd /opt/ai-hr && set -a && . ./.env.production && set +a && /opt/node20/bin/node --import tsx scripts/<x>.ts`.
-  Run `deploy.sh` under `setsid nohup … &` and poll its log; it outlives an ssh session. `improve:release`
-  does that itself now (r291) and follows by polling, so a Ctrl-C stops the watching, not the deploy.
-  `cd /opt/ai-hr && deploy/deploy-state.sh status` is the box's own answer to "running, finished, or died
-  partway?" — `stale_build=1` means new source sits beside a `.next` built from something else, and the
-  service is still serving the OLD build, so fix and re-deploy rather than restarting.
-- Cron on the box (`crontab -l` is the truth, not `deploy/DEPLOY.md`): provision-runner every minute,
-  capture-usage 01:00, anomaly-sweep 02:30, review-sweep 03:00, accrue-earned monthly, expire-carry
-  1 April. A script existing in `scripts/` does not mean it runs.
-- `next build` on the box precedes `db:migrate`; an OOM leaves production untouched. Never
-  `typescript.ignoreBuildErrors`.
+1. Merge to main with `--ff-only` (if main moved, re-gate the merged commit).
+2. `IMPROVE_SSH_HOST=203.142.6.241 pnpm improve:release` (closes board items) or
+   `pnpm improve:deploy <worktree>` (no board item). Both check the receipt, rsync and run `deploy.sh`.
+3. On the box: `cd /opt/ai-hr && deploy/deploy-state.sh status`. `state=ok stale_build=0` and
+   `built_ref` = your HEAD → `sudo systemctl restart aihr` yourself. `stale_build=1` or a failed build →
+   **never restart** (it takes production down); fix and redeploy. "died (phase: restart)" from the
+   watcher is often a race — check the box before acting.
+4. Prove arrival: the rsync check prints zero lines and `GET localhost:3000/` on the box returns 401.
+5. Record the round (§10) and run `graphify update .`.
 
-## 8. Verification standards
+Server: `ssh -p 8288 ubuntu@203.142.6.241`, app `/opt/ai-hr`, no git. Run scripts with
+`set -a && . ./.env.production && set +a && /opt/node20/bin/node --import tsx scripts/<x>.ts`.
+`crontab -l` there is the truth about scheduled jobs.
 
-- **A 200 is not a render check.** `MISSING_MESSAGE`, `FORMATTING_ERROR` and server→client boundary
-  bugs pass tsc, the suite and `next build`. Render on a dev server and read its log:
-  `pnpm db:seed && PORT=3111 pnpm dev`, curl the route, read the log, kill the server in the same command.
-- **A key is not a screen.** The RSC payload carries the whole catalogue, so grepping fetched HTML for
-  a label proves nothing. Find the component that renders the key (`grep -rn "t('key')" app/ components/`)
-  or strip `<script>` before counting. Resolve a `labelKey` against `messages/en.json` before describing
-  what a screen says. Before deleting a key, grep the computed form too (`` t(`prefix.${x}`) ``).
-- **Guards only the full gate sees:** a new guarded `page.tsx` needs a `SCREENS` column in
-  `lib/permissions.ts` (`test/function-access.test.ts`); a `core/` file imports `packs/<pack>/service`,
-  never a pack's internals (the drift ratchet; `test/pack-drift-allowlist.json` only shrinks; the ratchet
-  reads comments, so reword a quoted specifier); exact-set nav guards are updated, not loosened; a guard
-  pinning a decision you are reversing is updated, not deleted.
-- **Pin invariants, not positions.** No `[length-1]`, "the last entry", "the newest row". Any asserted
-  array from a query needs `ORDER BY`. No hardcoded future dates; derive from the clock. A date from an
-  instant goes through `todayInKualaLumpur()` (`lib/hr-date.ts`), fixtures included.
-- **A form field that is always submitted cannot be read by presence.** When a defect lives in the
-  contract between two files, pin it across both.
-- **Adversarial verify is the load-bearing step.** Builders sincerely report green over real defects.
-  Brief the verifier to re-derive the builder's non-vacuity claim (revert the fix from a copy, watch the
-  named assertion fail), to run every guard that greps the directories touched, and to list the files it
-  ran; a guard named in a report but absent from the list is unrun. One fix pass, then hand-fix; anything
-  money-affecting is hand-fixed on the first pass. A green refusal test may be pinning RLS, not your guard.
-- **Statutory documents.** Never print a figure or assurance you cannot stand behind. An absent box
-  asserts nothing; `0.00` asserts the money does not exist. A shared caption may say only what is true
-  of every member and checkable from this repo. Test the row count the form is ruled for. When two PDF
-  renderers disagree, the disagreement is the instrument.
-- **Verify the premise hardest when it is your own correction of the reporter.** Read attachments
-  (`feedback_attachment`, base64 out, `unzip` a docx, look in `word/media/`) before calling anything
-  unobtainable.
+## 8. The feedback board
 
-- **A guard that greps a SLICE of source must first prove the slice is non-empty.** `slice(-1, n)`
-  returns `""` because a negative start is read as `length + start`, so a renamed marker turns a sweep
-  into a no-op that reports green. `test/r219-ea-cp8a-form.test.ts` asserted **nothing at all** from r346
-  to r373 this way (measured on main: `indexOf` → −1, slice length 0). Assert both markers were found
-  (`>= 0`, not truthy — `-1` is truthy) and that the slice is substantially long. A length assertion is
-  the only thing separating "no violations" from "no text". A distinctiveness check must not BE a length
-  threshold, though — that breaks on CJK.
-- **A red gate is not automatically yours.** Before debugging, check whether the round touched the file
-  (`git diff --name-only main...HEAD -- <file>`) and whether the test and every source file it imports are
-  byte-identical to main. If they are, it fails on main too and the cause is the environment — often the
-  **calendar**. A test that seeds by calendar year against an anniversary cycle is a time bomb; one fired
-  when the clock rolled to 1 October. Read the chunk log's `Start at`.
-- **A dev fixture must END, not just finish.** `db/client.ts` opens the app singleton pool AT IMPORT and
-  caches pools by connection STRING, and `DATABASE_URL`/`MIGRATION_DATABASE_URL` are different strings for
-  the same database — so closing your own pool leaves Node alive on the other's idle handle: zero queries,
-  zero CPU, indefinite hold on the dev-DB lock. **Zero `ai_hr%` connections means FINISHED, not stuck.**
-  End a throwaway fixture with `process.exit(0)`, run it under a watchdog (**macOS has no `timeout`**), and
-  require it to run clean twice AND exit without being killed.
-- **`pnpm db:seed` cannot support a render check on any payroll-derived document**: `db/seed.ts` TRUNCATEs
-  `payroll_batch`/`payslip` and inserts NEITHER (`select count(*) from payslip` → 0), and demo companies
-  have no address columns. Such a check looks green and exercises nothing. Drive the kernel instead.
-- **A committed fixture is bound by the pack boundaries** — both import ratchets scan `scripts/`. Consume
-  payroll via `packs/payroll/service` and jurisdiction via `requirePackFor()`, never `core/payroll` or
-  `localization/my` directly. **Adding yourself to an allowlist is the failure, not the fix**: both lists
-  only ever shrink.
+Statuses: open → planned → approved → building → done → deployed; plus contested, blocked, rejected,
+cancelled. Always set `IMPROVE_SSH_HOST=203.142.6.241` (the default host is LAN-only).
 
-## 9. The feedback board
+- Plans are plain text for a non-technical consultant: use the `feedback-plan` skill. **One course of
+  action** — approve carries no payload, so a plan offering choices cannot be answered. Attach a
+  rendered mockup (`pnpm mockup`) for any screen.
+- Reproduce on production before accepting a ticket's premise. Check `git log --all --grep=<id>` first:
+  an approved item may already be shipped (then `mark-deployed`, don't rebuild).
+- `push-plan` deletes the contest wording: quote it in the plan's opening paragraph.
+- Pushing a plan onto a deployed item resets it to planned; `raise` a new item instead.
+- Run `build-start` right after the builder has read its plan (`pull-approved` only returns `approved`
+  items), so the board never shows `approved` for work in progress.
+- Reply on Telegram when the owner writes from Telegram.
 
-Statuses: open → planned → approved → building → done → deployed; plus contested (re-plan from the
-reporter's latest words), blocked (approved, waiting on an answer; read `block_trail`), rejected,
-cancelled. Commands from mainwt as `IMPROVE_SSH_HOST=203.142.6.241 pnpm improve:<cmd>`: status ·
-pull · pull-approved · pull-blocked · push-plan · block · unblock · build-start · build-complete ·
-release · deploy · mark-deployed · raise. The CLI's default host is LAN-only; always set the host.
-`deploy <worktree>` (r357) is `release` without the board write — for a round that closes no item,
-which is a real case and used to be shipped by retyping `rsync --delete` against production.
+## 9. Subagents and git
 
-- Plans are PLAIN TEXT, read by a non-technical consultant, rendered raw. Use the `feedback-plan` skill
-  (`~/Projects/ai-hr/.claude/skills/feedback-plan`). State ONE course of action: approve carries no
-  payload, so a plan that offers choices can never be answered. Attach a rendered mockup for any screen
-  (`mockupPaths`; `pnpm mockup`; read `scripts/mockup/README.md`) and draw no figures on it.
-- Push one item at a time and read the output for `pushed plan`. Pushing a plan onto a deployed item
-  resets it to planned: a decision the reporter must own is `raise`d instead (it stamps
-  `reporter_label = 'CLAUDE AI'`). An item raised `open` with no plan has no reply path: ask questions
-  inside a plan, with a recommendation.
-- Reproduce on production before agreeing a ticket's premise: already built → mislabelled → adjacent
-  screen → diagnosis inverted → wider than reported, before "absent". When a verification contradicts
-  what you already told the reporter, say so in plain words at the TOP of the next item.
-- Diff the approved plan against the brief before launching an agent; brief every agent to report what
-  it did NOT do. Adversarial plan-critique loops do not converge; do not simply run another round.
-- Reply on Telegram when the owner writes from Telegram; terminal output never reaches their chat.
+- The parent creates worktrees, allocates migration numbers, keeps agents on disjoint files and runs
+  the final gate alone. Agents commit on their own branch: never amend, rebase or `git stash`.
+- Builders report green over real defects. Verify independently against the acceptance list, not the
+  builder's tests; for money, fix by hand. Verify your own raised items and briefs the same way.
+- Before merging, `git log --oneline main..<branch>` for every branch; read the uncommitted diff of
+  any agent you stopped. Merging `messages/*.json`: consult the merge base, or deletions come back.
+- After changing behaviour, grep `messages/`, comments and test names for sentences describing the old
+  rule. Retire message keys, don't delete them; grep computed keys (`` t(`prefix.${x}`) ``) too.
+- Code graph: `graphify explain|query|path|affected` in mainwt before grepping cold.
 
-## 10. Subagents and git
+## 10. Recording a round
 
-- The parent creates worktrees (§2), allocates migration numbers, groups work so no two agents touch
-  the same files, gives each its own `TEST_DB_NAMESPACE`, and alone runs the single full gate. Agents
-  run only targeted tests and commit on their own branch: never amend, rebase or `git stash` (the
-  stash is repo-global; another agent gets yours). Set work aside with a WIP commit.
-- Before merging and again immediately before the final gate: `git log --oneline main..<branch>` for
-  EVERY branch; a workflow reporting "complete" is not its branches being frozen. Before merging a
-  branch whose agent you stopped, read its uncommitted diff. Never rewrite a commit an integrator may
-  have merged. Never branch on a value an agent echoes back; close over your own work list.
-- Commit a WIP checkpoint before any command that can undo a file. `git checkout -- <file>` reverts
-  to HEAD, not to your working state. Merging `messages/*.json`: presence is a value, consult the merge
-  base for deletions, a naive deep-merge resurrects deleted keys. When two branches touch one function,
-  read what each was FOR before resolving.
-- **NEVER put two agents in one worktree**, and give each a **round-scoped scratchpad directory AND a
-  round-scoped dev port** (`scratchpad/r372-render/` + port 3131, not `scratchpad/render/` + 3111) — for
-  the same reason `TEST_DB_NAMESPACE` exists. Two agents both chose `scratchpad/render/`: one's cleanup
-  deleted the other's served PDFs mid-round. Worse, **a render check's evidence IS `dev.log`, and reading
-  a sibling's `dev.log` is indistinguishable from reading your own** — one agent caught it only because a
-  log it had just written held requests it never made. Beware a render script that kills whatever holds
-  its port; on a shared port it kills a sibling's server.
-- A build worktree needs a **REAL `node_modules`** (§2), and **every** `vitest`/`next build`/`tsc` goes
-  through `~/.aihr-gate-state/testlock.sh <slot> -- <cmd>`. **The lock does NOT protect a
-  running gate** — it has two slots, so it hands an agent one while the gate holds the other. And
-  `gate-chunked.sh` calls `scripts/dev-db-rebuild.sh` **inside its per-chunk loop**, rebuilding the whole
-  cluster 16 times, which destroys any concurrent vitest's databases **whatever its
-  `TEST_DB_NAMESPACE`** — a namespace separates agents from each other, never from a cluster rebuild. So
-  while the parent gates, agents run **NO vitest at all**: reading, `tsc` and committing only. Measured
-  in r374 — a gate chunk came back `8 failed`, across eight unrelated suites, with **zero
-  AssertionErrors** and 136 environment-shaped errors. Dispatch builders OR gate; never both.
-  **Even `tsc` is too heavy**: measured in r374 at **1.19 GB RSS**, and a second run reached 2.4 GB — beside
-  three vitest workers that starved Postgres into four `Hook timed out in 30000ms` and `9 failed` with
-  **zero AssertionErrors**, including a pure-JSON locale test, which can only time out and never genuinely
-  miss a key. So during a gate agents read, write and commit; they do not run `tsc`, `vitest`,
-  `next build`, `db:seed` or a dev server.
-  **Make the lock enforce it rather than asking agents to police it — hold BOTH slots by nesting:**
-  `bash ~/.aihr-gate-state/testlock.sh gate-a -- bash ~/.aihr-gate-state/testlock.sh gate-b -- <gate>`.
-  Nesting also **self-sequences**: it blocks until a builder's in-flight `tsc` releases its slot, so no
-  process has to be killed. `devdb-lock.sh` has ONE holder and
-  **does not reap dead holders**: if you are killed holding it, everyone blocks.
-- Worked workflow scripts: `scripts/improve/*.workflow.js`.
-
-## 11. The code graph
-
-`graphify-out/` in mainwt is a tree-sitter knowledge graph of the codebase. Query it before grepping
-cold: `graphify explain "<symbol>"` · `graphify query "<question>"` · `graphify path "A" "B"` ·
-`graphify affected "X" --depth 2` · `graphify god-nodes --top 20`. Refresh after every merge to main:
-`graphify update .` (seconds; `--force` after large deletions). Symbols exported through destructuring
-under-report; a thin result on a hot symbol is a parser gap, fall back to grep. `.sql` is not parsed.
-
-## 12. Recording a round
-
-When a round ships, prepend ONE entry to `docs/HANDOFF-HISTORY.md`: round id and date, `main@sha`,
-migration or none, items closed, the DECISIONS the tickets did not settle, corrections owed to the
-reporter, and what was NOT done. That is the only hand-written record. Then refresh the graph.
-A decision that binds future work becomes an ADR in `docs/adr/`.
+Prepend one entry to `docs/HANDOFF-HISTORY.md`: round id and date, `main@sha`, migration, items
+closed, decisions the tickets didn't settle, corrections owed to the reporter, and what was NOT done.
+A decision that binds future work becomes an ADR.
 
 <!-- BEGIN:nextjs-agent-rules -->
 
