@@ -62,4 +62,20 @@ describe('root layout assigned Attendance inbox navigation',()=>{
   expect(props!.isAdmin).toBe(false);
   expect(props!.approvalCount).toBe(1);
  });
+ it('keeps relocated Profile Changes in My tasks while counting only Approval Items destinations',async()=>{
+  m.session.mockResolvedValue({tenantId:'tenant',userId:'hr',roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]});
+  m.operator.mockResolvedValue(false);
+  const createdAt=new Date().toISOString();
+  m.tasks.mockResolvedValue([
+   {id:'fictional-attendance',kind:'attendance',subjectName:'Fictional colleague',createdAt,linkPath:'/approvals#attendance'},
+   {id:'fictional-profile',kind:'profile',subjectName:'Fictional colleague',createdAt,linkPath:'/admin/personnel/profile-changes#request-fictional-profile'},
+  ]);
+  const props=sidebarProps(await Layout({children:null}));
+  expect(m.tasks).toHaveBeenCalledTimes(1);
+  expect(props!.taskCount).toBe(2);
+  expect(props!.approvalCount).toBe(1);
+  expect(props!.hasAssignedAttendanceApproval).toBe(false);
+  expect(props!.canApprove).toBe(false);
+  expect(props!.isAdmin).toBe(true);
+ });
 });

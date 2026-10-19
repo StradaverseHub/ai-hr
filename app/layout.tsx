@@ -167,7 +167,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const onboardingNav=isModuleEnabledOrFalse(session,'lifecycle')?await onboardingNavigation(session):{module:false,master:false,requisitions:false,joiners:0,checklists:0};
   const onboardingAccess=onboardingNav.module;
   const onboardingQueue = isModuleEnabledOrFalse(session, 'lifecycle') ? await onboardingTasks(session) : [];
-  const legacyApprovalCount = approvalTasks.length;
+  // Profile Changes now has its own Personnel queue. Count only tasks this inbox actually opens;
+  // My tasks and the bell still contain every canonical task, without another query.
+  const legacyApprovalCount = approvalTasks.filter(task => task.linkPath.split(/[?#]/, 1)[0] === '/approvals').length;
   const pendingTasks:NotificationTaskItem[]=[...approvalTasks,...onboardingQueue.map(onboardingNotificationTask)];
   const onboardingNoticesEnabled=isModuleEnabledOrFalse(session,'lifecycle');
   const [onboardingUnread,onboardingRead]=onboardingNoticesEnabled?await Promise.all([onboardingNotices(session),onboardingNotices(session,true)]):[[],[]];

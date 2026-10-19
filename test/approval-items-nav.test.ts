@@ -144,8 +144,8 @@ describe('accessible count label: nav.approvalsCount', () => {
 });
 
 describe('the count is the viewer\'s own pending queue, computed once', () => {
-  it('the layout passes listPendingTasks(...).length — no second query', () => {
-    expect(layout).toContain('const legacyApprovalCount = approvalTasks.length;');
+  it('the layout derives the matching inbox destinations from the same canonical task read — no second query', () => {
+    expect(layout).toContain("const legacyApprovalCount = approvalTasks.filter(task => task.linkPath.split(/[?#]/, 1)[0] === '/approvals').length;");
     expect(layout).toContain('approvalCount={legacyApprovalCount}');
     expect(layout).not.toContain('approvalCount={pendingTasks.length}');
     // The value it reuses is still the same single call already made for the bell.
