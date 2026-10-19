@@ -18,9 +18,13 @@ async function upload(user:ReturnType<typeof userEvent.setup>,name='fictional.xl
 describe('three-step new-code import wizard',()=>{
  it.each(locales)('renders Upload, mixed Check and Done with real translations in %s',async(locale,messages)=>{
   const user=userEvent.setup();mount(locale,messages);const w=messages.labelsImportWizard;
+  const template=screen.getByRole('link',{name:messages.labelExcelRoundTrip.template});
+  expect(template).toHaveAttribute('href','/admin/settings/system-labels/template');
+  expect(template.nextElementSibling).toBe(screen.getByRole('button',{name:messages.admin.systemLabels.excel.import}));
+  expect(screen.queryByRole('button',{name:messages.labelExcelRoundTrip.current})).not.toBeInTheDocument();
   await user.click(screen.getByRole('button',{name:messages.admin.systemLabels.excel.import}));
   const dialog=screen.getByRole('dialog',{name:w.title});expect(within(dialog).getByText(w.warning)).toBeVisible();expect(within(dialog).queryByRole('combobox')).not.toBeInTheDocument();
-  expect(within(dialog).getByRole('link',{name:messages.labelExcelRoundTrip.blank})).toHaveAttribute('href','/admin/settings/system-labels/template');
+  expect(within(dialog).getByRole('link',{name:messages.labelExcelRoundTrip.template})).toHaveAttribute('href','/admin/settings/system-labels/template');
   await user.upload(within(dialog).getByLabelText(w.upload),new File(['fictional'],'fictional.xls'));
   mocks.fetch.mockResolvedValueOnce(response({ok:true,preview:{token:'source-bound-token',mode:'add',valid:true,rows}}));
   await user.click(within(dialog).getByRole('button',{name:w.check}));
@@ -34,7 +38,7 @@ describe('three-step new-code import wizard',()=>{
  it.each(locales)('localizes ordinary validation refusals in %s without displaying server English',async(locale,messages)=>{
   const user=userEvent.setup();mount(locale,messages);const w=messages.labelsImportWizard;
   await user.click(screen.getByRole('button',{name:messages.admin.systemLabels.excel.import}));await user.upload(screen.getByLabelText(w.upload),new File(['fictional'],'invalid.xlsx'));
-  const reasons=['unsupportedCategory','invalidCompany','invalidCriteria','invalidCriteriaCompany','globalAdminRequired','criteriaCompaniesRequired','invalidHeadEmployee','wholeNumber','invalidGradeCode','gradeLabelExists','invalidGradeReferences','gradeAlreadyGrouped','invalidRow'] as const;
+  const reasons=['unsupportedCategory','invalidCompany','invalidCriteria','invalidCriteriaCompany','globalAdminRequired','criteriaCompaniesRequired','invalidHeadEmployee','invalidStatus','wholeNumber','invalidGradeCode','gradeLabelExists','invalidGradeReferences','gradeAlreadyGrouped','invalidRow'] as const;
   const invalid=[{...rows[1],row:99,outcome:'skip',reason:'notSelected',message:'SERVER_ENGLISH_MUST_NOT_RENDER'},...reasons.map((reason,index)=>({...rows[1],row:index+2,reason,message:'SERVER_ENGLISH_MUST_NOT_RENDER'})),...(['Code','Company','Description','Label','Name'] as const).map((reasonField,index)=>({...rows[1],row:index+30,reason:'required',reasonField,message:'SERVER_ENGLISH_MUST_NOT_RENDER'}))];
   mocks.fetch.mockResolvedValueOnce(response({ok:true,preview:{token:'invalid-locales',valid:false,rows:invalid}}));await user.click(screen.getByRole('button',{name:w.check}));
   expect(await screen.findByText(w.invalidCompany)).toBeVisible();expect(screen.getByText(w.notSelected)).toBeVisible();expect(screen.getByText(w.notSelectedStatus)).toBeVisible();for(const reason of reasons)expect(screen.getByText(w[reason])).toBeVisible();
