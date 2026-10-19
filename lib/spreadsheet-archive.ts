@@ -82,6 +82,48 @@ function readRelationships(parts: ReadonlyMap<string, Buffer>): ReadonlyMap<stri
   return all;
 }
 
+/** Resolve content types against the admitted package, rather than rejecting unused declarations.
+ * SheetJS writes a macro-enabled BIN default even in ordinary XLSX packages with no BIN part.
+ * An exact part override wins over the extension default. Ambiguous declarations are refused. */
+function checkContentTypes(parts: ReadonlyMap<string, Buffer>): void {
+  const bytes = parts.get('[Content_Types].xml');
+  if (!bytes) return; // Retain admission of bounded minimal packages used by the existing consumers.
+  const defaults = new Map<string, string>(), overrides = new Map<string, string>();
+  const foldedParts = new Map([...parts.keys()].map(name => [name.toLowerCase(), name]));
+  const foldedOverrides = new Set<string>();
+  const parser = new SaxesParser({ xmlns: true }); let depth = 0;
+  parser.on('doctype', invalid);
+  parser.on('opentag', tag => {
+    depth++;
+    if (tag.uri !== 'http://schemas.openxmlformats.org/package/2006/content-types' || (depth === 1 ? tag.local !== 'Types' : depth !== 2 || !['Default', 'Override'].includes(tag.local))) return invalid();
+    if (depth === 1) return;
+    const attributes = Object.fromEntries(Object.values(tag.attributes).filter(attribute => !attribute.uri).map(attribute => [attribute.local, attribute.value]));
+    const type = attributes.ContentType;
+    if (!type || type !== type.trim()) return invalid();
+    if (tag.local === 'Default') {
+      const extension = attributes.Extension?.toLowerCase();
+      if (!extension || /[\\\x00-\x20/?#:]/.test(extension) || defaults.has(extension)) return invalid();
+      defaults.set(extension, type);
+    } else {
+      const name = attributes.PartName;
+      if (!name?.startsWith('/')) return invalid();
+      const part = targetPart('', name);
+      // Avoid URI/case aliases interpreted differently by another workbook consumer.
+      if (name !== '/' + part || foldedOverrides.has(part.toLowerCase()) || foldedParts.has(part.toLowerCase()) && !parts.has(part)) return invalid();
+      foldedOverrides.add(part.toLowerCase()); overrides.set(part, type);
+    }
+  });
+  parser.on('closetag', () => { depth--; });
+  parser.on('text', value => { if (value.trim()) return invalid(); });
+  try { parser.write(decodeSpreadsheetXml(bytes)).close(); } catch { return invalid(); }
+  for (const name of parts.keys()) {
+    if (name === '[Content_Types].xml' || name.endsWith('/')) continue;
+    const extension = /\.([^./]+)$/.exec(name)?.[1].toLowerCase();
+    const type = overrides.get(name) ?? (extension ? defaults.get(extension) : undefined);
+    if (type && /macroEnabled|vbaProject|oleObject/i.test(type)) return invalid();
+  }
+}
+
 /** Strict ordinary ZIP admission before a spreadsheet parser can allocate from untrusted metadata.
  * This owns archive/relationship safety only. Formula and protection rules belong to each adapter. */
 export function readSpreadsheetArchive(bytes: Buffer, limits: SpreadsheetArchiveLimits): SpreadsheetArchive {
@@ -148,7 +190,6 @@ export function readSpreadsheetArchive(bytes: Buffer, limits: SpreadsheetArchive
       const xml = decodeSpreadsheetXml(actual), parser = new SaxesParser({ xmlns: true });
       parser.on('doctype', invalid);
       try { parser.write(xml).close(); } catch { return invalid(); }
-      if (name === '[Content_Types].xml' && /macroEnabled|vbaProject|oleObject/i.test(xml)) return invalid();
     }
     expanded += actual.length; parts.set(name, actual); ranges.push({ start: local, end: recordEnd }); offset = next;
   }
@@ -156,5 +197,6 @@ export function readSpreadsheetArchive(bytes: Buffer, limits: SpreadsheetArchive
   ranges.sort((a, b) => a.start - b.start); let localEnd = 0;
   for (const range of ranges) { if (range.start !== localEnd) return invalid(); localEnd = range.end; }
   if (localEnd !== start || !parts.has('xl/workbook.xml')) return invalid();
+  checkContentTypes(parts);
   return { parts, relationships: readRelationships(parts) };
 }

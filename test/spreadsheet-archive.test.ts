@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import JSZip from 'jszip';
+import * as XLSX from 'xlsx';
 import { deflateRawSync } from 'node:zlib';
 import { decodeSpreadsheetXml, readSpreadsheetArchive, SpreadsheetArchiveError } from '@/lib/spreadsheet-archive';
 
@@ -11,7 +12,69 @@ async function workbook(target = 'worksheets/sheet1.xml', mode = '') {
   zip.file('xl/_rels/workbook.xml.rels', `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="${target}" ${mode}/></Relationships>`);
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
+function ordinaryXlsx(compression = true): Buffer {
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Code', 'Label'], ['00007', 'Fictional label']]), 'Labels');
+  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', compression }) as Buffer;
+}
 describe('shared spreadsheet archive admission', () => {
+  it.each([false, true])('accepts actual SheetJS ordinary XLSX with unused macro BIN default, compression=%s', async compression => {
+    const bytes = ordinaryXlsx(compression), zip = await JSZip.loadAsync(bytes);
+    const types = await zip.file('[Content_Types].xml')!.async('string');
+    expect(types).toContain('application/vnd.ms-excel.sheet.binary.macroEnabled.main');
+    expect(Object.keys(zip.files).some(name => /\.bin$/i.test(name))).toBe(false);
+    expect(readSpreadsheetArchive(bytes, limits).parts.has('xl/workbook.xml')).toBe(true);
+  });
+  it('refuses a real macro-enabled workbook override in an otherwise ordinary XLSX', async () => {
+    const zip = await JSZip.loadAsync(ordinaryXlsx()), entry = zip.file('[Content_Types].xml')!;
+    const normal = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml';
+    const types = await entry.async('string');
+    expect(types).toContain(normal);
+    zip.file('[Content_Types].xml', types.replace(normal, 'application/vnd.ms-excel.sheet.macroEnabled.main+xml'));
+    const bytes = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+    expect(() => readSpreadsheetArchive(bytes, limits)).toThrow(SpreadsheetArchiveError);
+  });
+  it('refuses an existing part inheriting the forbidden BIN default', async () => {
+    const zip = await JSZip.loadAsync(ordinaryXlsx());
+    zip.file('xl/payload.bin', Buffer.from('fictional payload'));
+    const bytes = await zip.generateAsync({ type: 'nodebuffer', compression: 'STORE' });
+    expect(() => readSpreadsheetArchive(bytes, limits)).toThrow(SpreadsheetArchiveError);
+  });
+  it('uses an exact safe override instead of an unused forbidden extension default', async () => {
+    const zip = await JSZip.loadAsync(ordinaryXlsx()), entry = zip.file('[Content_Types].xml')!;
+    zip.file('xl/payload.bin', Buffer.from('fictional inert payload'));
+    zip.file('[Content_Types].xml', (await entry.async('string')).replace('</Types>', '<Override PartName="/xl/payload.bin" ContentType="application/octet-stream"/></Types>'));
+    const bytes = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+    expect(readSpreadsheetArchive(bytes, limits).parts.has('xl/payload.bin')).toBe(true);
+  });
+  it.each(['application/vnd.ms-office.vbaProject', 'application/vnd.openxmlformats-officedocument.oleObject'])('refuses an effective forbidden override on a neutrally named part: %s', async type => {
+    const zip = await JSZip.loadAsync(ordinaryXlsx()), entry = zip.file('[Content_Types].xml')!;
+    zip.file('xl/payload.bin', Buffer.from('fictional payload'));
+    zip.file('[Content_Types].xml', (await entry.async('string')).replace('</Types>', `<Override PartName="/xl/payload.bin" ContentType="${type}"/></Types>`));
+    const bytes = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+    expect(() => readSpreadsheetArchive(bytes, limits)).toThrow(SpreadsheetArchiveError);
+  });
+  it('refuses conflicting extension defaults and case aliases in part overrides', async () => {
+    for (const declaration of ['<Default Extension="BIN" ContentType="application/octet-stream"/>', '<Override PartName="/xl/WORKBOOK.xml" ContentType="application/octet-stream"/>']) {
+      const zip = await JSZip.loadAsync(ordinaryXlsx()), entry = zip.file('[Content_Types].xml')!;
+      zip.file('[Content_Types].xml', (await entry.async('string')).replace('</Types>', declaration + '</Types>'));
+      const bytes = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+      expect(() => readSpreadsheetArchive(bytes, limits)).toThrow(SpreadsheetArchiveError);
+    }
+  });
+  it.each(['vbaProject', 'oleObject', 'package'])('retains forbidden relationship admission despite harmless part names: %s', async relation => {
+    const zip = await JSZip.loadAsync(await workbook()), entry = zip.file('xl/_rels/workbook.xml.rels')!;
+    zip.file('xl/_rels/workbook.xml.rels', (await entry.async('string')).replace('/worksheet"', '/' + relation + '"'));
+    const bytes = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+    expect(() => readSpreadsheetArchive(bytes, limits)).toThrow(SpreadsheetArchiveError);
+  });
+  it('retains embedded-part refusal even with no suspicious content-type declaration', async () => {
+    const zip = await JSZip.loadAsync(await workbook());
+    zip.file('xl/embeddings/payload.bin', Buffer.from('fictional payload'));
+    const bytes = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+    expect(() => readSpreadsheetArchive(bytes, limits)).toThrow(SpreadsheetArchiveError);
+  });
+
   it('resolves the actual worksheet part without imposing formula or protection policy', async () => {
     const archive = readSpreadsheetArchive(await workbook(), limits);
     expect(archive.relationships.get('xl/workbook.xml')).toEqual([{ id: 'rId1', type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet', target: 'worksheets/sheet1.xml', part: 'xl/worksheets/sheet1.xml' }]);
