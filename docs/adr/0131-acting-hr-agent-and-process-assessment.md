@@ -82,8 +82,11 @@ and over a selectable window:
 
 - volume started, completed and still open, and open items older than seven days;
 - median and 90th-percentile elapsed time to the final decision or completion;
-- staff actions per case: actions by a login that is not the employee the case is about;
-- employee actions per case, and the share of actions already done by system or agent;
+- staff actions per 30 days: recorded actions on the window's cases by a login that is not the employee
+  the case is about (a login linked to the same person counts as the employee);
+- the share of recorded actions already done by system or agent;
+- cases closed without any decision (withdrawn or cancelled while pending), so that started equals
+  completed plus open plus closed;
 - rework: rejected, withdrawn, cancelled or reopened share.
 
 Each process also carries a static, versioned fit profile in code: whether the engine can verify the
@@ -107,6 +110,12 @@ default minutes, no removable-share percentage and no headcount reduction are in
 - Processes: leave requests (excluding imported history), claims (excluding drafts), attendance
   correction requests, profile change requests, onboarding cases, offboarding cases and employee-data
   readiness cases.
+- Counting rules: a leave submission split into several rows is one case, and events recorded on its group
+  id belong to it. Rows re-issued by a partial cancellation carry the original decision on a newer row; they
+  are bookkeeping copies, not cases, and are excluded. Durations that would be negative are excluded rather
+  than shown as zero. Per-date decisions emit one event per date, so one approval session can count as several
+  staff actions. Actions on separate leave-cancellation requests and events from external actors are not
+  counted.
 - Limits: staff action counts depend on services writing events. A person's work outside the system
   (email, phone, spreadsheets) is invisible. Elapsed time is not effort. Lifecycle staff actions come
   from `lc_history`. This is a baseline, not an efficiency audit.

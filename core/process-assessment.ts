@@ -107,21 +107,27 @@ const ROWS: Record<ProcessId, SQL> = {
     from hr_orchestration_case c join employment e on e.id = c.employment_id`,
 };
 
-/** Who acted on each case: (case_id, actor_type, actor_id). Lifecycle keeps its own history table. */
+/**
+ * Who acted on each case: (person_id, actor_type, actor_id), where person_id is the case's employee.
+ * Events are fetched by `aggregate_id = any(<the case ids>)` so the lookup uses the aggregate index and the
+ * event table's RLS functions run only on matching rows. Joining per case instead made the planner scan
+ * every leave event once per case — 500 cases with 1,000 events did not finish in 300 s.
+ */
 function actions(id: ProcessId): SQL {
-  const eventsFor = (aggregate: string) => sql`select c.case_id, ev.actor_type::text as actor_type, ev.actor_id
-    from cases c cross join lateral (select distinct x from unnest(c.row_ids || c.case_id) as x) as rid(id)
-    join domain_event ev on ev.tenant_id = app.current_tenant_id() and ev.aggregate_type = ${aggregate} and ev.aggregate_id = rid.id`;
+  const eventsFor = (aggregate: string) => sql`select i.person_id, ev.actor_type::text as actor_type, ev.actor_id
+    from domain_event ev join ids i on i.agg_id = ev.aggregate_id
+    where ev.tenant_id = app.current_tenant_id() and ev.aggregate_type = ${aggregate}
+      and ev.aggregate_id = any(array(select agg_id from ids))`;
   switch (id) {
     case 'leave': return eventsFor('leave-request');
     case 'claims': return eventsFor('claim-request');
     case 'attendance_correction': return eventsFor('attendance-correction');
     case 'profile_change': return eventsFor('profile-change');
-    case 'onboarding': case 'offboarding': return sql`select c.case_id,
+    case 'onboarding': case 'offboarding': return sql`select i.person_id,
         case when h.actor_user_id is null then 'system' else 'user' end as actor_type, h.actor_user_id as actor_id
-      from cases c cross join lateral (select distinct x from unnest(c.row_ids || c.case_id) as x) as rid(id)
-      join lc_history h on h.tenant_id = app.current_tenant_id() and h.ref_type = 'case' and h.ref_id = rid.id`;
-    case 'readiness': return sql`select null::uuid as case_id, null::text as actor_type, null::uuid as actor_id where false`;
+      from lc_history h join ids i on i.agg_id = h.ref_id
+      where h.tenant_id = app.current_tenant_id() and h.ref_type = 'case' and h.ref_id = any(array(select agg_id from ids))`;
+    case 'readiness': return sql`select null::uuid as person_id, null::text as actor_type, null::uuid as actor_id where false`;
   }
 }
 
@@ -145,28 +151,27 @@ async function measure(tx: Tx, id: ProcessId, from: Date): Promise<ProcessMeasur
         case when not bool_or(is_open) then max(decided_at) end as finished_at,
         bool_or(is_open) as is_open, bool_or(is_rework) as is_rework, array_agg(row_id) as row_ids
       from rows group by case_id having min(created_at) >= ${from.toISOString()}::timestamptz),
+    -- Every id an action may be recorded against: each row, and the case's group id (an emergency
+    -- submission is recorded on the group, not on either row).
+    ids as (select distinct c.person_id, x.id as agg_id from cases c cross join lateral unnest(c.row_ids || c.case_id) as x(id)),
     acts as (${actions(id)}),
-    -- One grouped pass over the actions. A login belongs to the employee when it is linked to the same person;
-    -- every other user action is staff. (Correlated per-case subqueries here took 115 s on 4,000 cases.)
-    counts as (
-      select a.case_id,
-        count(*) filter (where a.actor_type = 'user' and (c.person_id is null or u.person_id is distinct from c.person_id)) as staff,
-        count(*) filter (where a.actor_type = 'user' and c.person_id is not null and u.person_id = c.person_id) as employee,
-        count(*) filter (where a.actor_type in ('system','agent')) as automated
-      from acts a join cases c on c.case_id = a.case_id left join app_user u on u.id = a.actor_id
-      group by a.case_id),
-    per_case as (
-      select c.*, coalesce(k.staff, 0) as staff, coalesce(k.employee, 0) as employee, coalesce(k.automated, 0) as automated
-      from cases c left join counts k on k.case_id = c.case_id)
-    select count(*)::int as started,
-      count(*) filter (where finished_at is not null)::int as completed,
-      count(*) filter (where is_open)::int as open,
-      count(*) filter (where is_open and started_at < now() - make_interval(days => ${AGED_OPEN_DAYS}::int))::int as aged_open,
-      count(*) filter (where is_rework)::int as rework,
-      percentile_cont(0.5) within group (order by extract(epoch from finished_at - started_at)) filter (where finished_at >= started_at) as p50,
-      percentile_cont(0.9) within group (order by extract(epoch from finished_at - started_at)) filter (where finished_at >= started_at) as p90,
-      coalesce(sum(staff), 0)::int as staff, coalesce(sum(employee), 0)::int as employee, coalesce(sum(automated), 0)::int as automated
-    from per_case`);
+    -- A login belongs to the employee when it is linked to the same person; every other user action is staff.
+    act_totals as (
+      select count(*) filter (where a.actor_type = 'user' and (a.person_id is null or u.person_id is distinct from a.person_id))::int as staff,
+        count(*) filter (where a.actor_type = 'user' and a.person_id is not null and u.person_id = a.person_id)::int as employee,
+        count(*) filter (where a.actor_type in ('system','agent'))::int as automated
+      from acts a left join app_user u on u.id = a.actor_id),
+    case_totals as (
+      select count(*)::int as started,
+        count(*) filter (where finished_at is not null)::int as completed,
+        count(*) filter (where is_open)::int as open,
+        count(*) filter (where is_open and started_at < now() - make_interval(days => ${AGED_OPEN_DAYS}::int))::int as aged_open,
+        count(*) filter (where is_rework)::int as rework,
+        -- Negative durations are excluded rather than clamped: a clamp would show bad data as a fast case.
+        percentile_cont(0.5) within group (order by extract(epoch from finished_at - started_at)) filter (where finished_at >= started_at) as p50,
+        percentile_cont(0.9) within group (order by extract(epoch from finished_at - started_at)) filter (where finished_at >= started_at) as p90
+      from cases)
+    select * from case_totals cross join act_totals`);
   const hours = (v: number | string | null) => v == null ? null : Math.round(Number(v) / 36) / 100;
   return { started: r.started, completed: r.completed, open: r.open, agedOpen: r.aged_open, rework: r.rework,
     closedUndecided: r.started - r.completed - r.open,

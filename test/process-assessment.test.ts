@@ -129,6 +129,24 @@ describe('process assessment (ADR-0131 Phase 1)', () => {
     expect(o.measures!.started).toBe(0);
   });
 
+  it('stays fast at volume: events are fetched by case id, not rescanned per case', async () => {
+    // Regression for a plan that rescanned every leave event once per case: 500 cases with 1,000 events did
+    // not finish in 300 s. With the id-indexed lookup, 4,000 cases took 1.8 s locally for all seven processes.
+    const f = await fixture();
+    const created = ago(5 * DAY);
+    const rows = await owner.db.insert(schema.leaveRequest).values(Array.from({ length: 1000 }, (_, i) => ({
+      tenantId: base.tenantId, employmentId: f.employmentId, leaveTypeId: base.annualLeaveTypeId, startDate: '2026-01-05',
+      endDate: '2026-01-05', days: '1', status: 'approved' as const, createdAt: created, decidedAt: new Date(created.getTime() + (i + 1) * 60_000),
+    }))).returning({ id: schema.leaveRequest.id });
+    await owner.db.insert(schema.domainEvent).values(rows.flatMap(r => (['user', 'system'] as const).map(actorType => ({
+      tenantId: base.tenantId, aggregateType: 'leave-request', aggregateId: r.id, eventType: 'leave-request.approved',
+      actorType, actorId: actorType === 'user' ? base.adminUserId : null, subjectEmploymentId: f.employmentId }))));
+    const started = Date.now();
+    const m = (await assessProcesses(adminCtx(base), 365)).processes.find(p => p.id === 'leave')!.measures!;
+    expect(Date.now() - started).toBeLessThan(30_000);
+    expect(m).toMatchObject({ started: 1000, completed: 1000, staffActions: 1000, automatedActions: 1000 });
+  }, 120_000);
+
   it('refuses a caller who is not an administrator', async () => {
     const employee = { ...adminCtx(base), roles: ['employee'], grants: [{ role: 'employee', companyId: null }] };
     await expect(assessProcesses(employee, 90)).rejects.toThrow('Only HR administrators');
