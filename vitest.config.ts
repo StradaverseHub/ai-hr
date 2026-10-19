@@ -74,6 +74,9 @@ export default defineConfig({
           name: 'dom',
           environment: 'jsdom',
           setupFiles: ['./test/dom-setup.ts'],
+          // On a CI runner the workers share a few cores with Postgres, and jsdom renders that pass on a
+          // 12-core Mac hit the 5 s default with nothing wrong. Locally unchanged.
+          testTimeout: process.env.CI ? 20_000 : 5_000,
           include: ['test/**/*.dom.test.tsx'],
         },
       },

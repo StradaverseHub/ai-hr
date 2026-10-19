@@ -9,8 +9,12 @@
  * with "found multiple elements" for reasons that have nothing to do with the component under test.
  */
 import '@testing-library/jest-dom/vitest';
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { afterEach } from 'vitest';
+
+// findBy / waitFor give up after 1 s by default. On a loaded CI runner a correct render can take longer,
+// so CI waits up to 5 s. Assertions are unchanged; locally the default stands.
+if (process.env.CI) configure({ asyncUtilTimeout: 5_000 });
 
 /**
  * jsdom implements no layout, so it ships NO Element.prototype.scrollIntoView at all — not a stub, the
