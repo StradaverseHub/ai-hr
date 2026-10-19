@@ -19,7 +19,7 @@ import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import {isCalendarDate} from '../lib/calendar-date';
-import {MOVEMENT_PENDING_COMPARISON_FIELDS,MOVEMENT_PENDING_INPUT_FIELDS,movementPendingFormValues,type MovementPendingFormValues} from '../lib/movement-pending-input';
+import {MOVEMENT_FLAT_FIELDS,MOVEMENT_PENDING_COMPARISON_FIELDS,MOVEMENT_PENDING_INPUT_FIELDS,movementPendingFormValues,type MovementFlatField,type MovementPendingFormValues} from '../lib/movement-pending-input';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf, type MovementTag } from '../db/events';
 import {
@@ -272,17 +272,8 @@ export type MovementSnapshot = {
  * NOT effective-dated, so unlike the MovementSnapshot fields they cannot be reconstructed as-of; their
  * before/after is read back from the movement's own `employment.info.updated` event payload.
  */
-export const MOVEMENT_FLAT_FIELDS = [
-  'orgDivision',
-  'employmentCategory',
-  'orgRegion',
-  'orgBranch',
-  'orgTeam',
-  'orgSection',
-  'orgLine',
-  'orgBase',
-] as const;
-export type MovementFlatField = (typeof MOVEMENT_FLAT_FIELDS)[number];
+export {MOVEMENT_FLAT_FIELDS};
+export type {MovementFlatField};
 
 export type MovementFlatChange = { field: MovementFlatField; before: string | null; after: string | null };
 
