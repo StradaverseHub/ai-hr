@@ -1,3 +1,4 @@
+/** Ops/Strata supersedes historical audience-position pins below; route, permission and source-inventory safeguards remain. */
 /**
  * 0bb0e303 — Attendance settings moved into Admin, staff get "My Attendance".
  *
@@ -23,6 +24,7 @@ import { attendanceMonthSummary, checkIn, checkOut } from '../core/attendance';
 import { hireEmployee } from '../core/org';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, resetDb, seedBase, type Base, harnessSnapshot } from './harness';
 import { attendancePack } from '../packs/attendance';
+import { navigationPlacement } from '../lib/navigation-workspaces';
 
 const root = path.resolve(__dirname, '..');
 const read = (rel: string) => readFileSync(path.join(root, rel), 'utf8');
@@ -271,35 +273,16 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     const sidebar = read('components/sidebar.tsx');
     expect(sidebar, 'the pre-merge admin node stays gone').not.toContain('ATTENDANCE_ADMIN_NODE');
 
-    const adminGroupStart = sidebar.indexOf("labelKey: 'admin',");
-    const manageGroupStart = sidebar.indexOf("labelKey: 'manage',");
-    expect(adminGroupStart).toBeGreaterThan(-1);
-    expect(manageGroupStart).toBeGreaterThan(-1);
+    // Ops/Strata replaces audience positions with module ownership. Source pack gates stay intact.
+    for (const name of ['ATTENDANCE_NODE','MY_ATTENDANCE_NODE','LEAVE_CONFIG_NODE','CLAIMS_CONFIG_ROW']) {
+      expect(sidebar.split('\n').some(line=>line.trim()===`${name},`), `${name} survives in the authorized inventory`).toBe(true);
+    }
+    expect(navigationPlacement('/admin/attendance/settings')).toEqual({area:'ops',module:'attendance',section:'config'});
+    expect(navigationPlacement('/admin/attendance/schedule-assignment')).toEqual({area:'ops',module:'attendance',section:'hr'});
+    expect(navigationPlacement('/attendance/clock')).toEqual({area:'ops',module:'attendance',section:'mine'});
+    expect(navigationPlacement('/admin/leave-config/types')).toEqual({area:'ops',module:'leave',section:'config'});
+    expect(navigationPlacement('/admin/claims')).toEqual({area:'ops',module:'claims',section:'config'});
 
-    // `String.search` answers -1 for no match, and -1 is below every real offset — so a const name that
-    // no longer exists turns `toBeGreaterThan(leaveConfigAt)` into a tautology instead of a failure. That
-    // is exactly how the "after Leave config" half died silently for the whole life of LEAVE_CONFIG_NODE.
-    // Assert the mount INSIDE the helper: a rename now fails here, loudly, at the name that moved.
-    const mountOf = (konst: string) => {
-      const at = sidebar.search(new RegExp(`^[ \\t]*${konst},$`, 'm'));
-      expect(
-        at,
-        `${konst} must be mounted in components/sidebar.tsx — a renamed const makes every position assertion in this case vacuously true`,
-      ).toBeGreaterThan(-1);
-      return at;
-    };
-    const attendanceAt = mountOf('ATTENDANCE_NODE');
-    const leaveConfigAt = mountOf('LEAVE_CONFIG_NODE');
-    const claimsConfigAt = mountOf('CLAIMS_CONFIG_ROW');
-
-    // Literally between them, inside the admin group.
-    expect(attendanceAt, 'ATTENDANCE_NODE is mounted').toBeGreaterThan(-1);
-    expect(attendanceAt, 'inside the admin group').toBeGreaterThan(adminGroupStart);
-    expect(attendanceAt, 'after Leave config').toBeGreaterThan(leaveConfigAt);
-    expect(attendanceAt, 'before Claims config').toBeLessThan(claimsConfigAt);
-
-    // My Attendance stays in the ungated day-to-day group, above Manage.
-    expect(mountOf('MY_ATTENDANCE_NODE'), 'My Attendance stays ungated').toBeLessThan(manageGroupStart);
   });
 
   it('rev3: NOTHING non-admin travelled into the admin group with it', () => {

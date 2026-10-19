@@ -28,6 +28,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
 const sidebar = read('components/sidebar.tsx');
+const flyout = read('components/nav-flyout.tsx');
 const layout = read('app/layout.tsx');
 const actions = read('app/approvals/actions.ts');
 const permissions = read('lib/permissions.ts');
@@ -173,8 +174,15 @@ describe('the count is the viewer\'s own pending queue, computed once', () => {
   it('each work row renders its own count only when positive', () => {
     expect(sidebar.match(/const showApprovalCount = \(item.href === '\/approvals' \|\| item.href === '\/tasks'\) && rowCount > 0;/g)).toHaveLength(2);
     expect(sidebar).toContain('<ApprovalCountBadge count={rowCount} collapsed={collapsed} />');
-    expect(sidebar).toContain("(item.href === '/approvals' && approvalCount > 0 || item.href === '/tasks' && taskCount > 0)");
-    expect(sidebar).toContain("<ApprovalCountBadge count={item.href === '/tasks' ? taskCount : approvalCount} collapsed={false} />");
+    // Inbox children share one caption in Monolith/Current; Classic forwards the same count
+    // into its detached panel. Both contracts must retain distinct Tasks/Approval Items counts.
+    expect(sidebar).toContain("const pending=child.href==='/tasks'?taskCount:child.href==='/approvals'?approvalCount:0;");
+    expect(sidebar).toContain('pending>0&&');
+    expect(sidebar).toContain("t('approvalsCount',{count:pending})");
+    expect(sidebar).toContain('<ApprovalCountBadge count={pending} collapsed={false}/>');
+    expect(sidebar).toContain("pendingCount:child.href==='/tasks'?taskCount:child.href==='/approvals'?approvalCount:0");
+    expect(flyout).toContain("t('approvalsCount',{count:child.pendingCount})");
+    expect(flyout).toContain('child.pendingCount!=null&&child.pendingCount>0&&<ApprovalCountBadge count={child.pendingCount} collapsed={false}/>');
     expect(sidebar).toContain("from '@/components/approval-count-badge'");
     // The collapsed-rail bubble is absolutely positioned, so its row needs a positioned ancestor.
     expect(sidebar).toContain("showApprovalCount && 'relative'");

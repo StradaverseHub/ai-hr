@@ -75,3 +75,5 @@ See also: [Malaysia localization — spec mapping & gap closure](../architecture
 | [0125](0125-personnel-employee-profile-ownership.md) | Shared Personnel facts, explicit employee field permissions and atomic self-service editing | Implementation direction accepted; verification pending |
 | [0128](0128-versioned-system-testing-and-personal-executions.md) | Immutable testing instructions, independent tester history and reviewed source-bound catalogue updates | Implementation direction accepted; verification pending |
 | [0129](0129-kingdee-onboarding-v31.md) | Personnel-linked onboarding, separate operational tasks, recorded approvals and preserved handover history | Accepted |
+
+| [0132](0132-module-navigation-workspaces.md) | Ops/Strata module navigation, existing audience boundaries and canonical deep-link ownership | Direction accepted; implementation and verification pending |
