@@ -335,7 +335,7 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
     jsonSize(command);
     return withTenant(ctx, async (tx) => {
         // Serialise assignment/load decisions within the tenant, including simultaneous submissions.
-        await tx.execute(sql `select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':onboarding'},0))`);
+        await lockOnboardingTx(tx, ctx.tenantId);
         const { row, config, actor, c } = await loadTx(tx, ctx, id, true);
         if (row.revision !== revision) {
             if (actor.module && command.type === 'submit' && c.state === 'submitted' && !c.reconcileNeeded)
@@ -484,6 +484,22 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
     });
 }
 /** Called by Personnel while its original transaction is still open; optional module stays optional. */
+/**
+ * d839ff30 — THE ONE LOCK ORDER FOR ONBOARDING: the tenant's audit-chain lock, THEN the onboarding lock.
+ *
+ * Every domain_event insert takes the tenant's audit-chain advisory lock in its BEFORE INSERT trigger
+ * (db/migrations/0534_persisted_audit_chain.sql) and holds it to commit. A Personnel save appends its event
+ * and only then reaches onboardingSyncDraftTx (audit-chain, then onboarding), while the Personnel backfill
+ * took the onboarding lock and then appended onboarding-case events (onboarding, then audit-chain). Run
+ * together, that is a deadlock and Postgres rolls one of them back (40P01). Taking the audit-chain lock
+ * first wherever the onboarding lock is taken puts every path in the same order, whatever it did before.
+ * The audit-chain key must stay byte-identical to the trigger's; test/onboarding-v31-db.test.ts forces the
+ * interleaving and fails if the two ever drift apart.
+ */
+async function lockOnboardingTx(tx: Tx, tenantId: string) {
+    await tx.execute(sql `select pg_advisory_xact_lock(hashtext('audit-chain:' || ${tenantId}::uuid::text))`);
+    await tx.execute(sql `select pg_advisory_xact_lock(hashtextextended(${tenantId + ':onboarding'},0))`);
+}
 export async function onboardingSyncDraftTx(ctx: SessionContext, tx: Tx, draftId: string, mode: 'save' | 'active' | 'discard', active?: {
     employmentId: string;
     personId: string;
@@ -491,7 +507,7 @@ export async function onboardingSyncDraftTx(ctx: SessionContext, tx: Tx, draftId
     if (ctx.entitlementsExempt || ctx.entitlementsError || !isModuleEnabled(ctx, 'lifecycle'))
         return;
     // Personnel saves and the scheduled backfill must not both create the first case for one draft.
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':onboarding'},0))`);
+    await lockOnboardingTx(tx, ctx.tenantId);
     const { config, revision } = await configTx(tx, ctx);
     if (!revision)
         return;
@@ -565,7 +581,7 @@ async function saveConfig(ctx: SessionContext, revision: number, input: M.Config
     tasks: M.TaskDef[];
 }) {
     return withTenant(ctx, async (tx) => {
-        await tx.execute(sql `select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':onboarding'},0))`);
+        await lockOnboardingTx(tx, ctx.tenantId);
         const { config: old, revision: current } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, old);
         if (!actor.module && !actor.master)
             M.fail('Onboarding access is required.', 'forbidden');
