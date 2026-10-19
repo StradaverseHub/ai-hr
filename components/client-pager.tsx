@@ -291,31 +291,7 @@ export function ClientPager({
         </p>
       )}
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <label htmlFor={`client-page-size-${names.page}`} className="text-xs text-muted-foreground">
-            {t('rowsPerPage')}
-          </label>
-          <select
-            id={`client-page-size-${names.page}`}
-            value={String(state.size)}
-            onChange={(e) => {
-              const raw = e.target.value;
-              const size = raw === 'all' ? 'all' : (Number(raw) as PageSize);
-              if (rememberAs) rememberSize(rememberAs, size);
-              // Changing the page size restarts at the first page — page 4 of 25-row pages is meaningless
-              // once the page is 200 rows, and landing past the end would show an empty table.
-              go({ page: 0, size });
-            }}
-            className="h-7 rounded-md border border-border bg-card px-1.5 text-xs tabular-nums text-foreground outline-none transition-colors focus-visible:border-ring"
-          >
-            {PAGE_SIZE_OPTIONS.map((n) => (
-              <option key={n} value={String(n)}>
-                {n}
-              </option>
-            ))}
-            <option value="all">{t('all')}</option>
-          </select>
-        </div>
+        {sizeSelect}
         <span className="text-xs tabular-nums text-muted-foreground">
           {state.from > 0
             ? t('range', { from: state.from, to: state.to, total: state.total })
