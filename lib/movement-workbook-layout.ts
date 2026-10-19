@@ -13,7 +13,7 @@ export function movementWorkbookLayout(type:MovementWorkbookType,resolve:Personn
  const word=(key:string,fallback:string)=>resolve('people.import.movement.v2.'+key,fallback);
  const label=(field:string)=>field in MOVEMENT_FORM_IDS?personnelFieldLabel(personnelFormField(MOVEMENT_FORM_IDS[field as MovementFormField]),resolve):(()=>{const descriptor=PERSONNEL_FIELDS.find(f=>f.owner==='employment'&&f.ownerField===field&&f.grain==='single');return descriptor?personnelFieldLabel(descriptor,resolve):field==='probationEndDate'?word('probationEndDate','Probation End Date'):field;})();
  const applicable=movementFormFields(type.behaviour,'resignation').filter(f=>f!=='kind');
- const fields=(main[type.behaviour]??['endDate']).filter(f=>f==='incrementAmount'||applicable.includes(f as MovementFormField));
+ const fields=(main[type.behaviour]??['endDate']).filter(f=>f==='incrementAmount'||applicable.some(field=>field===f));
  const columns:MovementWorkbookColumn[]=[{key:'employeeCode',label:resolve('people.import.movement.employeeId','Employee ID'),role:'identity'},{key:'employeeName',label:word('employeeName','Employee Name'),role:'current'},...(grey[type.behaviour]??[]).map(key=>({key:'current.'+key,label:word('current','Current')+' '+label(key),role:'current' as const}))];
  for(const field of fields)columns.push({key:field,label:field==='incrementAmount'?word('incrementAmount','Increment Amount'):label(field),role:'input',...(field!=='incrementAmount'?{field:field as MovementFormField}:{})});
  if(fields.includes('incrementAmount'))columns.push({key:'calculated.basicSalary',label:word('new','Proposed')+' '+label('basicSalary'),role:'formula'},{key:'calculated.changePercent',label:word('changePercent','Change %'),role:'formula'});
