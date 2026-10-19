@@ -26,7 +26,7 @@ async function adminFor(tx: Tx, companyId: string) {
 const companyLock = (tx: Tx, tenantId: string, companyId: string, type: string) => tx.execute(sql `select pg_advisory_xact_lock(hashtextextended(${tenantId + ':attendance-workflow:' + companyId + ':' + type},0))`);
 async function validateScope(tx: Tx, ctx: SessionContext, input: AnyAttendanceWorkflowInput) {
     if (input.routingVersion === 3) {
-        const eligible = await tx.execute(sql`select id from app.attendance_workflow_v3_approver_options(${[input.companyId]}::uuid[])`) as unknown as { id: string }[];
+        const eligible = await tx.execute(sql`select id from app.attendance_workflow_v3_approver_options(ARRAY[${input.companyId}::uuid]::uuid[])`) as unknown as { id: string }[];
         const allowed = new Set(eligible.map(row => row.id));
         for (const [levelIndex, stage] of input.stages.entries()) {
             if (stage.source.kind !== 'specific_employee') continue;

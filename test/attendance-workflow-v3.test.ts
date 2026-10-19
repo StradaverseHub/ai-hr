@@ -6,7 +6,7 @@ import * as schema from '../db/schema';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, listAttendanceCorrections } from '../core/attendance';
 import { saveAttendanceWorkflow, setAttendanceWorkflowEnabled, previewAttendanceWorkflow, reassignAttendanceWorkflowStageToHr, hasPendingAttendanceParticipantAssignment, decideAttendanceWorkflowStageTx } from '../core/attendance-workflow';
-import { attendanceApplicationDetail } from '../core/attendance-application-history';
+import { attendanceApplicationDetail, attendanceApplicationFilterOptions } from '../core/attendance-application-history';
 import { listPendingTasks } from '../core/approvals-inbox';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import type { AttendanceV3WorkflowInput } from '../lib/attendance-workflow-v3';
@@ -41,6 +41,21 @@ const evidence = (id: string) => owner.db.select().from(schema.attendanceWorkflo
 const state = async (f: Awaited<ReturnType<typeof fixture>>) => (await attendanceApplicationDetail(f.root, [b.companyId], f.id))!;
 const day = async (f: Awaited<ReturnType<typeof fixture>>) => (await owner.db.select().from(schema.attendance).where(and(eq(schema.attendance.employmentId, f.worker.employmentId), eq(schema.attendance.attendanceDate, f.on))))[0];
 describe('Attendance v3 participant owner and exact request capability', () => {
+    it('loads approver choices for empty, single and multiple authorized company selections', async () => {
+        const first = await actor('Fictional first company choice');
+        const [company] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Fictional second choices company' }).returning();
+        const [department] = await owner.db.insert(schema.department).values({ tenantId: b.tenantId, companyId: company.id, name: 'Fictional second choices department' }).returning();
+        const second = await actor('Fictional second company choice', 'employee', department.id, { ...b, companyId: company.id, deptB: department.id });
+        const empty = await attendanceApplicationFilterOptions(adminCtx(b), []);
+        expect(empty.companies).toEqual([]);
+        const single = await attendanceApplicationFilterOptions(adminCtx(b), [b.companyId]);
+        expect(single.approverEmployees?.map(row => row.id)).toContain(first.employmentId);
+        expect(single.approverEmployees?.map(row => row.id)).not.toContain(second.employmentId);
+        const both = await attendanceApplicationFilterOptions(adminCtx(b), [b.companyId, company.id]);
+        expect(both.companies.map(row => row.id).sort()).toEqual([b.companyId, company.id].sort());
+        expect(both.approverEmployees?.map(row => row.id)).toEqual(expect.arrayContaining([first.employmentId, second.employmentId]));
+    });
+
     it('allows exact ordinary employees to decide in order without granting general Personnel rights', async () => {
         const f = await fixture();
         const before = await state(f);
