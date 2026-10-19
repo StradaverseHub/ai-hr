@@ -1844,6 +1844,14 @@
         "sharedBalanceSource": "Sumber baki dikongsi",
         "createdByName": "Dimuat naik oleh",
         "updatedByName": "Terakhir dikemas kini oleh"
+      },
+      "dataClassification": {
+        "title": "Pengelasan data",
+        "testRecord": "Rekod ujian",
+        "help": "HR boleh menandakan rekod pekerjaan ini sebagai rekod ujian. Rekod ini masih boleh digunakan untuk latihan Pergerakan, tetapi tidak boleh dipilih sebagai Ketua Langsung baharu dalam import Pergerakan. Rekod tanpa tanda belum dikelaskan.",
+        "unmarked": "Belum ditandakan",
+        "marked": "Ditandakan sebagai rekod ujian",
+        "save": "Simpan pengelasan"
       }
     },
     "import": {
@@ -2153,6 +2161,45 @@
           "movement_reference_catalog_too_large": "Senarai rujukan melebihi saiz import yang disokong. Gunakan Personel untuk perubahan ini.",
           "movement_history_too_large": "Sejarah pekerja ini melebihi had semakan import. Gunakan Personel untuk merekodkan peristiwa.",
           "change_refused": "Perubahan ditolak. Tiada perubahan untuk pekerja ini disimpan."
+        },
+        "v2": {
+          "type": "Jenis Pergerakan",
+          "oneType": "Satu jenis dengan pekerja",
+          "allTypes": "Semua jenis aktif — buku kerja kosong",
+          "download": "Muat turun buku kerja",
+          "filters": "Tapis pekerja",
+          "department": "Jabatan",
+          "businessUnit": "Unit perniagaan",
+          "grade": "Gred jawatan",
+          "location": "Lokasi",
+          "probationOnly": "Pekerja dalam tempoh percubaan sahaja",
+          "allValues": "Semua nilai",
+          "contextHint": "Syarikat dan satu jenis yang dipilih digunakan untuk CSV dan CSV yang ditampal. Menukarnya akan mengosongkan fail yang dimuatkan dan pratonton.",
+          "workbookHint": "Kelabu: rekod semasa. Kuning: isian anda. Hijau: pengiraan untuk paparan. Nilai semasa dan gaji disemak semula sebelum disimpan.",
+          "wholeEmployee": "Keseluruhan urutan bagi setiap pekerja disertakan atau dikecualikan bersama.",
+          "sequence": "Urutan pekerja lengkap",
+          "warnings": "Amaran",
+          "sheet": "Tab",
+          "column": "Lajur",
+          "audit": "Lihat audit import",
+          "errorWorkbook": "Muat turun ralat beranotasi",
+          "included": "Sertakan pekerja",
+          "noTypes": "Tiada jenis Pergerakan aktif tersedia.",
+          "limit": "Maksimum 50 pekerja dan 200 peristiwa yang diisi. Kecilkan skop penapis; tiada pekerja digugurkan tanpa pemberitahuan.",
+          "current": "Semasa",
+          "new": "Cadangan",
+          "incrementAmount": "Amaun kenaikan",
+          "changePercent": "Perubahan %",
+          "difference": "Perbezaan",
+          "otherChanges": "Perubahan lain (pilihan)",
+          "employeeName": "Nama pekerja",
+          "currency": "Mata wang",
+          "downloaded": "Dimuat turun",
+          "instructions": "Arahan",
+          "singleTypeRequired": "Pilih satu jenis untuk CSV dan CSV yang ditampal.",
+          "saved": "Peristiwa disimpan mengikut jenis Pergerakan",
+          "recheck": "Semak urutan lengkap",
+          "noData": "Tiada entri Pergerakan ditemui."
         }
       }
     },
@@ -19617,7 +19664,8 @@
     "include": "Sertakan",
     "noChange": "Tiada perubahan",
     "new": "Baharu",
-    "previewAgain": "Pilihan baris berubah. Pratonton semula sebelum mengesahkan."
+    "previewAgain": "Pilihan baris berubah. Pratonton semula sebelum mengesahkan.",
+    "template": "Muat turun templat"
   },
   "allowanceV3": {
     "all": "Semua · setiap syarat mesti lulus",
@@ -20789,7 +20837,8 @@
       "Name": "Nama"
     },
     "notSelected": "Kod baharu yang sah tidak dipilih untuk import ini. Tiada rekod dicipta.",
-    "notSelectedStatus": "Tidak dipilih — dilangkau"
+    "notSelectedStatus": "Tidak dipilih — dilangkau",
+    "invalidStatus": "Status mestilah Active atau Inactive. Biarkan kosong untuk menggunakan Active."
   },
   "onboardingV31": {
     "copy": {

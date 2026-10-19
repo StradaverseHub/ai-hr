@@ -1844,6 +1844,14 @@
         "sharedBalanceSource": "Shared balance source",
         "createdByName": "Uploaded by",
         "updatedByName": "Last updated by"
+      },
+      "dataClassification": {
+        "title": "Data classification",
+        "testRecord": "Test record",
+        "help": "HR can mark this employment as a test record. It stays available for movement exercises but cannot be chosen as a new Direct Superior in Movement imports. Unmarked records have not been classified.",
+        "unmarked": "Unmarked",
+        "marked": "Marked as test record",
+        "save": "Save classification"
       }
     },
     "import": {
@@ -2153,6 +2161,45 @@
           "movement_reference_catalog_too_large": "A reference list exceeds this import’s supported size. Use Personnel for these changes.",
           "movement_history_too_large": "This employee’s history exceeds the bounded import check. Use Personnel to record the event.",
           "change_refused": "The change was refused. No changes from this employee were saved."
+        },
+        "v2": {
+          "type": "Movement type",
+          "oneType": "One type with employees",
+          "allTypes": "All active types — blank workbook",
+          "download": "Download workbook",
+          "filters": "Filter employees",
+          "department": "Department",
+          "businessUnit": "Business unit",
+          "grade": "Job grade",
+          "location": "Location",
+          "probationOnly": "Only employees on probation",
+          "allValues": "All values",
+          "contextHint": "Company and one selected type apply to CSV and pasted CSV. Changing them clears the loaded file and preview.",
+          "workbookHint": "Grey: current records. Yellow: your entries. Green: display calculations. Current values and pay are checked again before saving.",
+          "wholeEmployee": "Each employee’s complete sequence is included or excluded together.",
+          "sequence": "Complete employee sequence",
+          "warnings": "Warnings",
+          "sheet": "Tab",
+          "column": "Column",
+          "audit": "View import audit",
+          "errorWorkbook": "Download annotated errors",
+          "included": "Include employee",
+          "noTypes": "No active Movement types are available.",
+          "limit": "At most 50 employees and 200 entered events. Narrow the filters; no employee is silently omitted.",
+          "current": "Current",
+          "new": "Proposed",
+          "incrementAmount": "Increment Amount",
+          "changePercent": "Change %",
+          "difference": "Difference",
+          "otherChanges": "Other changes (optional)",
+          "employeeName": "Employee Name",
+          "currency": "Currency",
+          "downloaded": "Downloaded",
+          "instructions": "Instructions",
+          "singleTypeRequired": "Choose one type for CSV and pasted CSV.",
+          "saved": "Events saved by movement type",
+          "recheck": "Check complete sequences",
+          "noData": "No movement entries were found."
         }
       }
     },
@@ -19617,7 +19664,8 @@
     "include": "Include",
     "noChange": "No change",
     "new": "New",
-    "previewAgain": "The row selection changed. Preview again before confirming."
+    "previewAgain": "The row selection changed. Preview again before confirming.",
+    "template": "Download template"
   },
   "allowanceV3": {
     "all": "All · every condition must pass",
@@ -20789,7 +20837,8 @@
       "Name": "Name"
     },
     "notSelected": "Valid new code was not selected for this import. No record was created.",
-    "notSelectedStatus": "Not selected — skipped"
+    "notSelectedStatus": "Not selected — skipped",
+    "invalidStatus": "Status must be Active or Inactive. Leave it blank to use Active."
   },
   "onboardingV31": {
     "copy": {

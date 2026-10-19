@@ -1844,6 +1844,14 @@
         "sharedBalanceSource": "Nguồn số dư dùng chung",
         "createdByName": "Người tải lên",
         "updatedByName": "Người cập nhật gần nhất"
+      },
+      "dataClassification": {
+        "title": "Phân loại dữ liệu",
+        "testRecord": "Hồ sơ thử nghiệm",
+        "help": "HR có thể đánh dấu hồ sơ việc làm này là hồ sơ thử nghiệm. Hồ sơ vẫn có thể được dùng để thực hành Biến động, nhưng không thể được chọn làm Cấp trên trực tiếp mới khi nhập Biến động. Hồ sơ chưa đánh dấu là hồ sơ chưa được phân loại.",
+        "unmarked": "Chưa đánh dấu",
+        "marked": "Đã đánh dấu là hồ sơ thử nghiệm",
+        "save": "Lưu phân loại"
       }
     },
     "import": {
@@ -2153,6 +2161,45 @@
           "movement_reference_catalog_too_large": "Danh sách tham chiếu vượt kích thước nhập được hỗ trợ. Hãy dùng Nhân sự để thay đổi.",
           "movement_history_too_large": "Lịch sử nhân viên vượt giới hạn kiểm tra nhập. Hãy ghi sự kiện trong Nhân sự.",
           "change_refused": "Thay đổi bị từ chối. Không lưu thay đổi nào của nhân viên này."
+        },
+        "v2": {
+          "type": "Loại Biến động",
+          "oneType": "Một loại kèm nhân viên",
+          "allTypes": "Tất cả loại đang bật — sổ làm việc trống",
+          "download": "Tải sổ làm việc",
+          "filters": "Lọc nhân viên",
+          "department": "Phòng ban",
+          "businessUnit": "Đơn vị kinh doanh",
+          "grade": "Cấp bậc công việc",
+          "location": "Địa điểm",
+          "probationOnly": "Chỉ nhân viên đang thử việc",
+          "allValues": "Tất cả giá trị",
+          "contextHint": "Công ty và một loại đã chọn áp dụng cho tệp CSV và CSV được dán. Thay đổi các lựa chọn này sẽ xóa tệp đã tải lên và bản xem trước.",
+          "workbookHint": "Xám: hồ sơ hiện tại. Vàng: dữ liệu bạn nhập. Xanh lá: kết quả tính toán để hiển thị. Giá trị hiện tại và tiền lương được kiểm tra lại trước khi lưu.",
+          "wholeEmployee": "Toàn bộ chuỗi sự kiện của mỗi nhân viên được đưa vào hoặc loại ra cùng nhau.",
+          "sequence": "Chuỗi sự kiện đầy đủ của nhân viên",
+          "warnings": "Cảnh báo",
+          "sheet": "Trang tính",
+          "column": "Cột",
+          "audit": "Xem nhật ký kiểm toán nhập dữ liệu",
+          "errorWorkbook": "Tải lỗi có chú thích",
+          "included": "Đưa nhân viên vào",
+          "noTypes": "Không có loại Biến động đang bật nào.",
+          "limit": "Tối đa 50 nhân viên và 200 sự kiện được nhập. Hãy thu hẹp bộ lọc; không nhân viên nào bị bỏ qua mà không được thông báo.",
+          "current": "Hiện tại",
+          "new": "Đề xuất",
+          "incrementAmount": "Số tiền tăng",
+          "changePercent": "Thay đổi %",
+          "difference": "Chênh lệch",
+          "otherChanges": "Thay đổi khác (tùy chọn)",
+          "employeeName": "Tên nhân viên",
+          "currency": "Loại tiền tệ",
+          "downloaded": "Đã tải xuống",
+          "instructions": "Hướng dẫn",
+          "singleTypeRequired": "Chọn một loại cho tệp CSV và CSV được dán.",
+          "saved": "Các sự kiện đã lưu theo loại Biến động",
+          "recheck": "Kiểm tra chuỗi sự kiện đầy đủ",
+          "noData": "Không tìm thấy mục Biến động nào."
         }
       }
     },
@@ -19617,7 +19664,8 @@
     "include": "Bao gồm",
     "noChange": "Không đổi",
     "new": "Mới",
-    "previewAgain": "Lựa chọn dòng đã thay đổi. Xem trước lại trước khi xác nhận."
+    "previewAgain": "Lựa chọn dòng đã thay đổi. Xem trước lại trước khi xác nhận.",
+    "template": "Tải mẫu"
   },
   "allowanceV3": {
     "all": "Tất cả · mọi điều kiện phải đạt",
@@ -20789,7 +20837,8 @@
       "Name": "Tên"
     },
     "notSelected": "Mã mới hợp lệ này không được chọn để nhập. Không có bản ghi nào được tạo.",
-    "notSelectedStatus": "Không được chọn — đã bỏ qua"
+    "notSelectedStatus": "Không được chọn — đã bỏ qua",
+    "invalidStatus": "Trạng thái phải là Active hoặc Inactive. Để trống để dùng giá trị mặc định Active."
   },
   "onboardingV31": {
     "copy": {
