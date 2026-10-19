@@ -1104,6 +1104,9 @@ export const SCREENS: readonly ScreenEntry[] = [
       // ADR-0074 r245 — the cross-run exceptions queue. Same requireAdmin guard as its siblings and the
       // per-run queue it complements, so it needs a column here or test/function-access.test.ts fails.
       '/control-tower/exceptions',
+      // ADR-0131 Phase 1 — the process assessment. Same requireAdmin guard as its siblings, so it needs a
+      // column here or test/function-access.test.ts fails.
+      '/control-tower/opportunities',
       '/payroll/configuration',
       // R17 31646c85: Statutory Configuration split into per-body sub-menus (EPF/SOCSO/EIS/PCB/HRDF),
       // each a real sub-route under the same scopedAdmin guard as the index.

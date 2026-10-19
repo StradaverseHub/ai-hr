@@ -422,7 +422,8 @@
     "onboardingChecklists": "Quản lý danh sách kiểm tra",
     "onboardingSettings": "Cài đặt tiếp nhận",
     "onboardingGroups": "Nhóm phân công",
-    "onboardingModuleAccess": "Quyền truy cập mô-đun"
+    "onboardingModuleAccess": "Quyền truy cập mô-đun",
+    "controlTowerOpportunities": "Cơ hội"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -16090,7 +16091,8 @@
       "review": "Nhân sự kiểm tra và cập nhật hồ sơ",
       "shown": "Hiển thị {shown} trên {total} vấn đề.",
       "verificationNote": "Đóng nghĩa là thông tin đã được điền hoặc không còn bắt buộc tại thời điểm kiểm tra. Nhân sự vẫn chịu trách nhiệm xác minh độ chính xác. Quyết định về lương và quyền truy cập dùng quy trình phê duyệt hiện có.",
-      "quality": "Chất lượng bảng lương và AI"
+      "quality": "Chất lượng bảng lương và AI",
+      "opportunities": "Cơ hội"
     },
     "corrections": {
       "employeeTitle": "Hoàn thiện hồ sơ của bạn",
@@ -21315,5 +21317,84 @@
       "c95332e75dac8": "Làm việc qua Công việc của tôi",
       "cd1a339556dbb": "công việc đang mở"
     }
+  },
+  "processAssessment": {
+    "back": "Trung tâm điều hành",
+    "title": "Cơ hội tự động hóa",
+    "description": "Những phần việc xử lý mà một tác tử AI có thể nhận thay cho HR, được đo từ hồ sơ của bạn. Trang này không thay đổi dữ liệu và không gọi mô hình AI.",
+    "window": "Hồ sơ bắt đầu trong",
+    "windowDays": "{days} ngày gần nhất",
+    "minutes": "Số phút cho mỗi thao tác của nhân viên (tùy chọn)",
+    "fteHours": "Số giờ của một tháng toàn thời gian (tùy chọn)",
+    "notSet": "Chưa đặt",
+    "apply": "Cập nhật",
+    "estimateHelp": "Thời gian của nhân viên không được ghi nhận ở bất kỳ đâu trong hệ thống. Hãy nhập ước tính của bạn về số phút cho mỗi thao tác của nhân viên, và tùy chọn số giờ làm việc trong một tháng toàn thời gian, để xem khối lượng ước tính mỗi tháng. Các giá trị này không được lưu.",
+    "ranked": "Quy trình xếp theo khối lượng xử lý của nhân viên",
+    "rankHelp": "Hồ sơ bắt đầu từ {from}, xếp theo số thao tác của nhân viên trên 30 ngày. Thao tác của nhân viên là mọi thao tác được ghi nhận trên hồ sơ bởi người khác ngoài chính nhân viên liên quan.",
+    "started": "Hồ sơ đã bắt đầu",
+    "completedOf": "{n} đã hoàn tất",
+    "open": "Còn mở",
+    "agedOpen": "{n} quá {days} ngày",
+    "median": "Thời gian hoàn tất thông thường",
+    "p90": "9 trên 10 trong vòng {value}",
+    "hours": "{n} giờ",
+    "days": "{n} ngày",
+    "rework": "Làm lại",
+    "reworkHint": "Bị từ chối, rút lại, hủy hoặc mở lại",
+    "staffActions": "Thao tác của nhân viên trên 30 ngày",
+    "automatedShare": "{share} thao tác đã được tự động hóa",
+    "notLinked": "Thao tác xử lý chưa được liên kết với các hồ sơ này",
+    "estimateHours": "Khoảng {hours} giờ công nhân viên mỗi tháng.",
+    "estimateFte": "Khoảng {hours} giờ công nhân viên mỗi tháng, tương đương khoảng {fte} nhân sự toàn thời gian.",
+    "estimateLabel": "Ước tính từ dữ liệu bạn nhập, không phải số đo.",
+    "needMore": "Có ít hơn {min} hồ sơ hoàn tất trong giai đoạn này. Hãy đo lâu hơn trước khi quyết định.",
+    "candidates": "Công việc tác tử có thể đảm nhận (quyết định vẫn do con người đưa ra)",
+    "moduleOff": "Mô-đun này chưa được bật cho tổ chức của bạn.",
+    "limitsTitle": "Những điều các số liệu này không cho thấy",
+    "limitEffort": "Thời gian trôi qua không phải là công sức: một hồ sơ chờ năm ngày có thể chỉ cần năm phút làm việc.",
+    "limitOutside": "Công việc làm ngoài hệ thống, như email, điện thoại và bảng tính, không hiển thị ở đây.",
+    "limitStaff": "Số liệu về thời gian và nhân sự chỉ xuất hiện từ dữ liệu bạn nhập. Không khẳng định mức tiết kiệm nào cho đến khi tác tử chạy và đo được trước và sau.",
+    "limitNoChange": "Trang này chỉ đọc những hồ sơ bạn vốn đã mở được. Các tác tử hành động là giai đoạn sau.",
+    "version": "Quy tắc đánh giá {version}",
+    "processes": {
+      "leave": "Đơn nghỉ phép",
+      "claims": "Yêu cầu hoàn chi phí",
+      "attendance_correction": "Điều chỉnh chấm công",
+      "profile_change": "Thay đổi hồ sơ nhân viên",
+      "onboarding": "Tiếp nhận nhân viên mới",
+      "offboarding": "Nghỉ việc",
+      "readiness": "Thông tin nhân viên còn thiếu"
+    },
+    "decision": {
+      "routine": "Thường lệ: quy tắc quyết định kết quả.",
+      "judgement": "Cần cân nhắc: người phê duyệt xem xét yêu cầu.",
+      "consequential": "Hệ trọng: ảnh hưởng đến lương, tiền hoặc quyền truy cập, nên luôn do con người quyết định."
+    },
+    "roles": {
+      "automate_parts": "Tự động hóa một phần",
+      "assist": "Chỉ hỗ trợ",
+      "measure_first": "Đo trước",
+      "off": "Chưa bật"
+    },
+    "tiers": {
+      "automatic": "tự động",
+      "confirm": "sau khi bấm xác nhận",
+      "approve": "chuẩn bị cho người phê duyệt"
+    },
+    "actions": {
+      "chase_overdue_approver": "Nhắc người phê duyệt quá hạn",
+      "check_completeness": "Kiểm tra yêu cầu đã đầy đủ",
+      "submit_on_request": "Gửi theo yêu cầu của nhân viên",
+      "request_missing_evidence": "Yêu cầu hóa đơn hoặc chứng từ còn thiếu",
+      "request_missing_information": "Yêu cầu thông tin còn thiếu",
+      "prepare_for_approval": "Chuẩn bị thay đổi để phê duyệt",
+      "chase_step_owner": "Nhắc người phụ trách bước quá hạn",
+      "tick_system_verified_steps": "Đánh dấu các bước hệ thống chứng minh được là đã xong",
+      "open_case_from_hire": "Mở hồ sơ khi có người được tuyển",
+      "open_case_from_resignation": "Mở hồ sơ khi đơn nghỉ việc được chấp nhận"
+    },
+    "minutesShort": "{n} phút",
+    "underMinute": "< 1 phút",
+    "completedClosed": "{n} đã hoàn tất, {w} đóng mà không có quyết định"
   }
 }

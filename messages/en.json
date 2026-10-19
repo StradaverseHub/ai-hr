@@ -422,7 +422,8 @@
     "onboardingChecklists": "Checklist Management",
     "onboardingSettings": "Onboarding settings",
     "onboardingGroups": "Assignment groups",
-    "onboardingModuleAccess": "Module access"
+    "onboardingModuleAccess": "Module access",
+    "controlTowerOpportunities": "Opportunities"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -16090,7 +16091,8 @@
       "review": "HR to review and update record",
       "shown": "Showing {shown} of {total} issues.",
       "verificationNote": "Closure means the information is present or no longer required at the recorded check. HR remains responsible for validating its accuracy. Payroll and access decisions use their existing approvals.",
-      "quality": "Payroll and AI quality"
+      "quality": "Payroll and AI quality",
+      "opportunities": "Opportunities"
     },
     "corrections": {
       "employeeTitle": "Complete your record",
@@ -21315,5 +21317,84 @@
       "c95332e75dac8": "Works from My tasks",
       "cd1a339556dbb": "open tasks"
     }
+  },
+  "processAssessment": {
+    "back": "Control Tower",
+    "title": "Automation opportunities",
+    "description": "Where an AI agent could take handling work off HR, measured from your records. Nothing on this page changes data or calls an AI model.",
+    "window": "Cases started in the last",
+    "windowDays": "{days} days",
+    "minutes": "Minutes per staff action (optional)",
+    "fteHours": "Hours per full-time month (optional)",
+    "notSet": "Not set",
+    "apply": "Update",
+    "estimateHelp": "Staff time is not recorded anywhere in the system. Enter your own estimate of minutes per staff action, and optionally the working hours in a full-time month, to see an estimated monthly load. These inputs are not saved.",
+    "ranked": "Processes ranked by staff handling",
+    "rankHelp": "Cases started since {from}, ranked by staff actions per 30 days. A staff action is any recorded action on a case by someone other than the employee it is about.",
+    "started": "Cases started",
+    "completedOf": "{n} completed",
+    "open": "Still open",
+    "agedOpen": "{n} older than {days} days",
+    "median": "Typical time to finish",
+    "p90": "9 in 10 within {value}",
+    "hours": "{n} h",
+    "days": "{n} days",
+    "rework": "Rework",
+    "reworkHint": "Rejected, withdrawn, cancelled or reopened",
+    "staffActions": "Staff actions per 30 days",
+    "automatedShare": "{share} of actions already automated",
+    "notLinked": "Handling is not linked to these cases yet",
+    "estimateHours": "About {hours} h of staff time a month.",
+    "estimateFte": "About {hours} h of staff time a month, roughly {fte} full-time equivalent.",
+    "estimateLabel": "Estimate from your inputs, not a measurement.",
+    "needMore": "Fewer than {min} completed cases in this period. Measure for longer before deciding.",
+    "candidates": "Work an agent could take on (the decision itself stays with people)",
+    "moduleOff": "This module is not enabled for your organisation.",
+    "limitsTitle": "What these figures do not show",
+    "limitEffort": "Elapsed time is not effort: a case that waits five days may take five minutes of work.",
+    "limitOutside": "Work done outside the system, such as email, phone calls and spreadsheets, is not visible here.",
+    "limitStaff": "Time and headcount figures appear only from your own inputs. No savings are claimed until an agent runs and the before-and-after is measured.",
+    "limitNoChange": "This page only reads records you can already open. Agents that act are a later phase.",
+    "version": "Assessment rules {version}",
+    "processes": {
+      "leave": "Leave requests",
+      "claims": "Expense claims",
+      "attendance_correction": "Attendance corrections",
+      "profile_change": "Employee profile changes",
+      "onboarding": "Onboarding",
+      "offboarding": "Offboarding",
+      "readiness": "Missing employee details"
+    },
+    "decision": {
+      "routine": "Routine: rules decide the outcome.",
+      "judgement": "Judgement: an approver weighs the request.",
+      "consequential": "Consequential: affects pay, money or access, so a person always decides."
+    },
+    "roles": {
+      "automate_parts": "Automate parts",
+      "assist": "Assist only",
+      "measure_first": "Measure first",
+      "off": "Not enabled"
+    },
+    "tiers": {
+      "automatic": "automatic",
+      "confirm": "after a click to confirm",
+      "approve": "prepared for an approver"
+    },
+    "actions": {
+      "chase_overdue_approver": "Chase overdue approvers",
+      "check_completeness": "Check the request is complete",
+      "submit_on_request": "Submit on the employee’s request",
+      "request_missing_evidence": "Ask for missing receipts or evidence",
+      "request_missing_information": "Ask for missing information",
+      "prepare_for_approval": "Prepare the change for approval",
+      "chase_step_owner": "Chase owners of overdue steps",
+      "tick_system_verified_steps": "Tick steps the system can prove are done",
+      "open_case_from_hire": "Open the case when someone is hired",
+      "open_case_from_resignation": "Open the case when a resignation is accepted"
+    },
+    "minutesShort": "{n} min",
+    "underMinute": "< 1 min",
+    "completedClosed": "{n} completed, {w} closed without a decision"
   }
 }

@@ -422,7 +422,8 @@
     "onboardingChecklists": "Pengurusan senarai semak",
     "onboardingSettings": "Tetapan penyertaan",
     "onboardingGroups": "Kumpulan penugasan",
-    "onboardingModuleAccess": "Akses modul"
+    "onboardingModuleAccess": "Akses modul",
+    "controlTowerOpportunities": "Peluang"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -16090,7 +16091,8 @@
       "review": "HR menyemak dan mengemas kini rekod",
       "shown": "Memaparkan {shown} daripada {total} isu.",
       "verificationNote": "Penutupan bermaksud maklumat telah diisi atau tidak lagi diperlukan semasa semakan yang direkodkan. HR bertanggungjawab mengesahkan ketepatannya. Keputusan gaji dan akses menggunakan kelulusan sedia ada.",
-      "quality": "Kualiti gaji dan AI"
+      "quality": "Kualiti gaji dan AI",
+      "opportunities": "Peluang"
     },
     "corrections": {
       "employeeTitle": "Lengkapkan rekod anda",
@@ -21315,5 +21317,84 @@
       "c95332e75dac8": "Bekerja melalui Tugas saya",
       "cd1a339556dbb": "tugas terbuka"
     }
+  },
+  "processAssessment": {
+    "back": "Menara Kawalan",
+    "title": "Peluang automasi",
+    "description": "Di mana ejen AI boleh mengambil alih kerja pengendalian daripada HR, diukur daripada rekod anda. Halaman ini tidak mengubah data atau memanggil model AI.",
+    "window": "Kes dimulakan dalam tempoh",
+    "windowDays": "{days} hari",
+    "minutes": "Minit bagi setiap tindakan kakitangan (pilihan)",
+    "fteHours": "Jam bagi sebulan sepenuh masa (pilihan)",
+    "notSet": "Tidak ditetapkan",
+    "apply": "Kemas kini",
+    "estimateHelp": "Masa kakitangan tidak direkodkan di mana-mana dalam sistem. Masukkan anggaran anda sendiri bagi minit setiap tindakan kakitangan, dan secara pilihan jam bekerja dalam sebulan sepenuh masa, untuk melihat anggaran beban bulanan. Input ini tidak disimpan.",
+    "ranked": "Proses disusun mengikut pengendalian kakitangan",
+    "rankHelp": "Kes yang dimulakan sejak {from}, disusun mengikut tindakan kakitangan bagi setiap 30 hari. Tindakan kakitangan ialah sebarang tindakan yang direkodkan pada kes oleh orang selain pekerja yang berkenaan.",
+    "started": "Kes dimulakan",
+    "completedOf": "{n} selesai",
+    "open": "Masih terbuka",
+    "agedOpen": "{n} melebihi {days} hari",
+    "median": "Masa lazim untuk selesai",
+    "p90": "9 daripada 10 dalam {value}",
+    "hours": "{n} j",
+    "days": "{n} hari",
+    "rework": "Kerja semula",
+    "reworkHint": "Ditolak, ditarik balik, dibatalkan atau dibuka semula",
+    "staffActions": "Tindakan kakitangan setiap 30 hari",
+    "automatedShare": "{share} tindakan sudah diautomasikan",
+    "notLinked": "Pengendalian belum dipautkan kepada kes ini",
+    "estimateHours": "Kira-kira {hours} jam kakitangan sebulan.",
+    "estimateFte": "Kira-kira {hours} jam kakitangan sebulan, lebih kurang {fte} setara sepenuh masa.",
+    "estimateLabel": "Anggaran daripada input anda, bukan ukuran.",
+    "needMore": "Kurang daripada {min} kes selesai dalam tempoh ini. Ukur lebih lama sebelum membuat keputusan.",
+    "candidates": "Kerja yang boleh diambil alih oleh ejen (keputusan tetap dibuat oleh manusia)",
+    "moduleOff": "Modul ini tidak didayakan untuk organisasi anda.",
+    "limitsTitle": "Perkara yang tidak ditunjukkan oleh angka ini",
+    "limitEffort": "Masa berlalu bukan usaha: kes yang menunggu lima hari mungkin hanya memerlukan lima minit kerja.",
+    "limitOutside": "Kerja di luar sistem, seperti e-mel, panggilan telefon dan hamparan, tidak kelihatan di sini.",
+    "limitStaff": "Angka masa dan bilangan kakitangan hanya dipaparkan daripada input anda sendiri. Tiada penjimatan dituntut sehingga ejen berjalan dan keadaan sebelum dan selepas diukur.",
+    "limitNoChange": "Halaman ini hanya membaca rekod yang sudah boleh anda buka. Ejen yang bertindak ialah fasa kemudian.",
+    "version": "Peraturan penilaian {version}",
+    "processes": {
+      "leave": "Permohonan cuti",
+      "claims": "Tuntutan perbelanjaan",
+      "attendance_correction": "Pembetulan kehadiran",
+      "profile_change": "Perubahan profil pekerja",
+      "onboarding": "Kemasukan pekerja baharu",
+      "offboarding": "Keluar pekerja",
+      "readiness": "Butiran pekerja yang tiada"
+    },
+    "decision": {
+      "routine": "Rutin: peraturan menentukan keputusan.",
+      "judgement": "Pertimbangan: pelulus menilai permohonan.",
+      "consequential": "Berkesan besar: menjejaskan gaji, wang atau akses, jadi manusia sentiasa membuat keputusan."
+    },
+    "roles": {
+      "automate_parts": "Automasikan sebahagian",
+      "assist": "Bantu sahaja",
+      "measure_first": "Ukur dahulu",
+      "off": "Tidak didayakan"
+    },
+    "tiers": {
+      "automatic": "automatik",
+      "confirm": "selepas klik pengesahan",
+      "approve": "disediakan untuk pelulus"
+    },
+    "actions": {
+      "chase_overdue_approver": "Susuli pelulus yang lewat",
+      "check_completeness": "Semak permohonan lengkap",
+      "submit_on_request": "Hantar atas permintaan pekerja",
+      "request_missing_evidence": "Minta resit atau bukti yang tiada",
+      "request_missing_information": "Minta maklumat yang tiada",
+      "prepare_for_approval": "Sediakan perubahan untuk kelulusan",
+      "chase_step_owner": "Susuli pemilik langkah yang lewat",
+      "tick_system_verified_steps": "Tandakan langkah yang sistem boleh buktikan selesai",
+      "open_case_from_hire": "Buka kes apabila seseorang diambil bekerja",
+      "open_case_from_resignation": "Buka kes apabila peletakan jawatan diterima"
+    },
+    "minutesShort": "{n} min",
+    "underMinute": "< 1 min",
+    "completedClosed": "{n} selesai, {w} ditutup tanpa keputusan"
   }
 }
