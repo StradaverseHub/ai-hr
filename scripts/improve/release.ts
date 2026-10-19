@@ -46,6 +46,7 @@ import { decideReleaseGate, type DeployedVerdict, type GateReceipt } from './rel
 import { markDeployed } from './remote';
 import { readyProductionBaseline } from '../gate-impact-git';
 import { validateImpactReceipt } from './release-impact-gate';
+import { ciGate } from './release-ci';
 import { recordReleaseLearning } from './release-learning';
 import { testingSourceRef, testingUuid } from '../../lib/system-testing/model';
 import { stableTestingJson } from '../../lib/system-testing/hash';
@@ -396,6 +397,9 @@ export async function deployWorktree(p: { worktree: string }): Promise<void> {
   }
   // 1. FINAL GATE — prove a gate already covered THIS commit before anything leaves this machine.
   //
+  // Since 2026-10-20 that proof is a green GitHub Actions `gate` run for HEAD (release-ci.ts). The local
+  // receipt logic below now runs only under AIHR_RELEASE_WITHOUT_CI=github-outage.
+  //
   // r417 (ADR-0094): the release NEVER runs the test suite any more. Until r417 a missing or stale
   // receipt fell through to a bare `pnpm vitest run`, which is the one command this machine cannot take
   // (CLAUDE.md §4). Now the receipt decides — see scripts/improve/release-gate.ts — and its tier is printed:
@@ -405,31 +409,40 @@ export async function deployWorktree(p: { worktree: string }): Promise<void> {
   //   • missing, unreadable, non-PASS or for another sha → refused, with the gate command to run.
   // tsc still always runs (seconds).
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: p.worktree, encoding: 'utf8' }).trim();
+  // CI first: a green `gate` run on GitHub for this exact commit ships it (scripts/improve/release-ci.ts).
+  // The local receipt below is consulted only under the GitHub-outage override.
+  const ci = ciGate({ head, cwd: p.worktree, override: process.env.AIHR_RELEASE_WITHOUT_CI });
+  for (const line of ci.lines) console.log(line);
+  if (!ci.ok) {
+    throw new Error(`release refused by the CI check — nothing was shipped.\n${ci.lines.join('\n')}`);
+  }
   let receipt: GateReceipt | null = null;
   let receiptError: string | undefined;
-  try {
-    receipt = JSON.parse(readFileSync(join(p.worktree, '.gate-receipt.json'), 'utf8')) as GateReceipt;
-  } catch (e) {
-    receiptError = existsSync(join(p.worktree, '.gate-receipt.json'))
-      ? `unreadable: ${e instanceof Error ? e.message : String(e)}`
-      : `missing in ${p.worktree}`;
-  }
-  const decision = decideReleaseGate({
-    receipt,
-    receiptError,
-    head,
-    deployedVerdict: () => deployedVerdict(p.worktree),
-    impactVerdict: () => {
-      try {
-        const status=parseDeployStatus(execFileSync('ssh',sshArgs(`cd ${DIR} && deploy/deploy-state.sh status`),{encoding:'utf8',timeout:30000}));
-        const deployedRef=readyProductionBaseline(status);
-        return validateImpactReceipt(receipt!,{head,deployedRef,worktree:p.worktree});
-      } catch(e) { return {ok:false,lines:['✗ REFUSED: impact revalidation unavailable: '+String(e)]}; }
-    },
-  });
-  for (const line of decision.lines) console.log(line);
-  if (!decision.ok) {
-    throw new Error(`release refused by the gate check — nothing was shipped.\n${decision.lines.join('\n')}`);
+  if (ci.overridden) {
+    try {
+      receipt = JSON.parse(readFileSync(join(p.worktree, '.gate-receipt.json'), 'utf8')) as GateReceipt;
+    } catch (e) {
+      receiptError = existsSync(join(p.worktree, '.gate-receipt.json'))
+        ? `unreadable: ${e instanceof Error ? e.message : String(e)}`
+        : `missing in ${p.worktree}`;
+    }
+    const decision = decideReleaseGate({
+      receipt,
+      receiptError,
+      head,
+      deployedVerdict: () => deployedVerdict(p.worktree),
+      impactVerdict: () => {
+        try {
+          const status=parseDeployStatus(execFileSync('ssh',sshArgs(`cd ${DIR} && deploy/deploy-state.sh status`),{encoding:'utf8',timeout:30000}));
+          const deployedRef=readyProductionBaseline(status);
+          return validateImpactReceipt(receipt!,{head,deployedRef,worktree:p.worktree});
+        } catch(e) { return {ok:false,lines:['✗ REFUSED: impact revalidation unavailable: '+String(e)]}; }
+      },
+    });
+    for (const line of decision.lines) console.log(line);
+    if (!decision.ok) {
+      throw new Error(`release refused by the gate check — nothing was shipped.\n${decision.lines.join('\n')}`);
+    }
   }
 
   console.log('→ final gate: npx tsc --noEmit');
@@ -503,8 +516,9 @@ export async function deployWorktree(p: { worktree: string }): Promise<void> {
         `  current state: ssh -p ${PORT} ${USER}@${HOST} "cd ${DIR} && deploy/deploy-state.sh status"`,
     );
   }
-  try {
-    const learning=recordReleaseLearning({worktree:p.worktree,sha:head,buildId:status.built_build_id,previousRef,receipt:receipt!,status,
+  // Release learning belongs to the local impact gate; a CI-gated release has no receipt to learn from.
+  if (receipt) try {
+    const learning=recordReleaseLearning({worktree:p.worktree,sha:head,buildId:status.built_build_id,previousRef,receipt,status,
       mirror:record=>{
         const quote=(value:string)=>"'"+value.replace(/'/g,"'\"'\"'")+"'";
         execFileSync('ssh',sshArgs(`cd ${quote(DIR)} && AIHR_IMPACT_STATE_DIR=${quote(DEPLOY_STATE_DIR+'/impact-learning')} /opt/node20/bin/node --import tsx scripts/gate-learning-cli.ts record-release`),

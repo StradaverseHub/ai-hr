@@ -186,6 +186,13 @@ exit 0
     `#!/bin/sh\nwhile [ $# -gt 1 ]; do case "$1" in -p|-o|-i) shift 2 ;; *) shift ;; esac; done\nexec /bin/bash -c "$1"\n`,
   );
   fs.chmodSync(path.join(bin, 'ssh'), 0o755);
+  // A shim `gh` for release-ci.ts. AIHR_TEST_CI=green reports a passed `gate` run (verify job passed) for
+  // the worktree's own HEAD; anything else reports no runs. Every call is traced.
+  fs.writeFileSync(
+    path.join(bin, 'gh'),
+    `#!/bin/sh\nprintf '%s\\n' "gh $*" >> "$DEPLOY_TRACE"\ncase "$2" in\n  */jobs*) [ "\${AIHR_TEST_CI:-}" = green ] && echo success || echo null ;;\n  *) if [ "\${AIHR_TEST_CI:-}" = green ]; then printf '[{"id":1,"name":"gate","head_sha":"%s","status":"completed","conclusion":"success","html_url":"https://ci.invalid/1","event":"pull_request"}]\\n' "$(git rev-parse HEAD)"; else echo '[]'; fi ;;\nesac\n`,
+  );
+  fs.chmodSync(path.join(bin, 'gh'), 0o755);
   return { dir, stateDir, bin, trace, sqlTrace };
 }
 
@@ -814,6 +821,7 @@ function runReleaseCli(box: Box, extra: Record<string, string> = {}, reporterEmp
   git('init', '-q');
   git('config', 'user.email', 'r291@example.invalid');
   git('config', 'user.name', 'r291');
+  git('remote', 'add', 'origin', 'https://github.com/example-invalid/ai-hr.git'); // release-ci.ts reads it
   git('add', '-A');
   git('commit', '-qm', 'r291 fixture');
   // r417 (ADR-0094): release.ts no longer runs the suite on a missing receipt — it refuses. This fixture is
@@ -873,6 +881,9 @@ cp ${quote(path.join(wt, 'lib/system-testing/catalogue.json'))} ${quote(path.joi
         IMPROVE_SSH_PORT: '8288',
         IMPROVE_SSH_USER: 'ubuntu',
         IMPROVE_REMOTE_DIR: box.dir,
+        // These end-to-end cases were written for the receipt-gated release, which now runs only under the
+        // GitHub-outage override; the CI-gated path has its own cases below (AIHR_RELEASE_WITHOUT_CI: '').
+        AIHR_RELEASE_WITHOUT_CI: 'github-outage',
         ...extra,
       } as unknown as NodeJS.ProcessEnv,
     },
@@ -886,6 +897,27 @@ cp ${quote(path.join(wt, 'lib/system-testing/catalogue.json'))} ${quote(path.joi
 }
 
 describe('pnpm improve:release, end to end against a shim server', () => {
+  it('without the override, no green CI run refuses before anything leaves the machine', () => {
+    const box = makeBox();
+    const r = runReleaseCli(box, { AIHR_RELEASE_WITHOUT_CI: '' });
+    expect(r.status, r.out).not.toBe(0);
+    expect(r.out).toContain('REFUSED: no gate run for HEAD');
+    expect(r.trace).toContain('gh api repos/');
+    expect(r.trace).not.toContain('rsync');
+    expect(r.trace).not.toContain('pnpm build');
+    expect(r.trace).not.toContain('psql');
+  }, 180_000);
+
+  it('a green CI run for HEAD ships without consulting the local receipt', () => {
+    const box = makeBox();
+    const r = runReleaseCli(box, { AIHR_RELEASE_WITHOUT_CI: '', AIHR_TEST_CI: 'green' });
+    expect(r.status, r.out).toBe(0);
+    expect(r.out).toContain('CI: gate passed for HEAD');
+    expect(r.out).not.toContain('final gate: tier=');
+    expect(r.trace).toContain('pnpm build');
+    expect(r.out).toContain('status → deployed');
+  }, 180_000);
+
   it('a remote build that FAILS makes the local command exit NON-ZERO and marks nothing deployed', () => {
     const box = makeBox();
     const r = runReleaseCli(box, { AIHR_TEST_BUILD_FAIL: '1' });

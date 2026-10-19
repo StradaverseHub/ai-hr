@@ -3,20 +3,21 @@
 # runs on node 20 like the box, the suite on node 22 like the existing local gate.
 name: gate
 
+# Runs on ready pull requests only (drafts run nothing, to save Actions minutes on a private repo), and
+# re-runs on every push to a ready PR. It tests the PR's own head commit, not GitHub's merge commit: main
+# moves by --ff-only, so the commit improve:release ships is exactly the one tested (release-ci.ts).
 on:
-  push:
-    branches: [main]
   pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# A newer push to a branch replaces its older run. On main every commit is tested, so a red main points
-# at the commit that broke it.
+# A newer push to a pull request replaces its older run.
 concurrency:
-  group: gate-${{ github.ref }}-${{ github.ref == 'refs/heads/main' && github.sha || 'latest' }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: gate-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   TZ: Asia/Kuala_Lumpur
@@ -25,10 +26,12 @@ env:
 
 jobs:
   typecheck:
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with: { ref: '${{ github.event.pull_request.head.sha || github.sha }}' }
       - uses: pnpm/action-setup@v4
         with: { version: '${{ env.PNPM_VERSION }}' }
       - uses: actions/setup-node@v4
@@ -40,20 +43,23 @@ jobs:
 
   # Production skips, with exit 0, a migration whose `when` sorts below one it already applied.
   migrations:
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+        with: { ref: '${{ github.event.pull_request.head.sha || github.sha }}', fetch-depth: 0 }
       - run: node scripts/ci/check-migration-order.mjs "$BASE"
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha || 'origin/main' }}
 
   build:
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with: { ref: '${{ github.event.pull_request.head.sha || github.sha }}' }
       - uses: pnpm/action-setup@v4
         with: { version: '${{ env.PNPM_VERSION }}' }
       - uses: actions/setup-node@v4
@@ -64,6 +70,7 @@ jobs:
         env: { NODE_OPTIONS: --max-old-space-size=8192 }
 
   test:
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
@@ -73,7 +80,7 @@ jobs:
     steps:
       # Full history: several guards `git show` an older commit, and r396 compares against `main`.
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+        with: { ref: '${{ github.event.pull_request.head.sha || github.sha }}', fetch-depth: 0 }
       - run: git rev-parse --verify -q refs/heads/main >/dev/null || git branch main origin/main
       - uses: pnpm/action-setup@v4
         with: { version: '${{ env.PNPM_VERSION }}' }
@@ -116,10 +123,11 @@ jobs:
   # Green only if every shard ran and, together, they counted every suite file exactly once.
   verify:
     needs: [typecheck, migrations, build, test]
-    if: always()
+    if: ${{ always() && !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with: { ref: '${{ github.event.pull_request.head.sha || github.sha }}' }
       - uses: actions/download-artifact@v4
         with: { path: shard-report, pattern: shard-*, merge-multiple: true }
       - run: node scripts/ci/verify-shards.mjs shard-report 8

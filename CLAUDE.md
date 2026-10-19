@@ -72,27 +72,32 @@ deletes ~62k lines. Do not merge or reinvestigate it. Before naming a round
 3. **Before the gate:** walk the changed journey on a dev server with realistic data — roles,
    empty/error states, save and reopen. Read the dev log: `MISSING_MESSAGE`, `FORMATTING_ERROR` and
    server/client boundary bugs pass tsc, tests and `next build`. A 200 is not a render check.
-4. **Gate once, on the final candidate** (ADR-0114):
+4. **Gate once, on the final candidate:** push the branch and mark its PR ready; CI runs the gate (below).
+   Run no full suite on this Mac. Only during a GitHub outage, gate locally (ADR-0114) and release with
+   the override:
 
        pnpm exec tsc --noEmit
        bash scripts/gate.sh > /tmp/aihr-gate-impact.log 2>&1   # read exit code and counted totals
        pnpm exec next build
        env -u MIGRATION_DATABASE_URL -u DATABASE_URL pnpm gate:shadow   # only if migrations changed
 
-   The gate writes `.gate-receipt.json` only for a clean tree at the exact HEAD; release ships only that
-   HEAD. Never copy a receipt. A dev server rewrites the Next.js block at the end of this file — check
-   `git status -s` is empty before gating.
+   The local gate writes `.gate-receipt.json` only for a clean tree at the exact HEAD. Never copy a
+   receipt. A dev server rewrites the Next.js block at the end of this file — check `git status -s` is
+   empty before gating.
 5. **Report** what was demonstrated, where, and what was not verified.
 
 Documentation-only changes need a diff, link and consistency review — no build, DB or deploy.
 
-**CI** (`.github/workflows/gate.yml`, GitHub Actions, public repo `zenlam/ai-hr`): typecheck, migration
-order, `next build` on node 20 and the suite in 8 parallel shards, on every pull request and every push
-to `main`. Push your branch and open a draft PR to get it. **It is not yet the release gate**: until
-`improve:release` checks CI, the local receipt above is still required. Everything a test needs must be
-installable in CI: a tool or package you installed by hand (`pdftotext`, PyMuPDF, `mobile/`'s npm
-dependencies) goes into the workflow. A test may only `git show` a commit that `main` contains — one that
-exists only on a local branch passes here and fails on every fresh clone.
+**CI is the release gate** (`.github/workflows/gate.yml`, GitHub Actions, private repo `zenlam/ai-hr`,
+free plan): typecheck, migration order, `next build` on node 20 and the suite in 8 parallel shards. It runs
+only on a **ready** pull request (drafts run nothing — every run spends plan minutes) and again on every
+push to it, testing the PR's own head commit. `improve:release` ships only a commit with a green `gate`
+run whose `verify` job passed; merge with `--ff-only` so `main`'s commit is the tested one. If GitHub
+Actions is down, `AIHR_RELEASE_WITHOUT_CI=github-outage` falls back to the local receipt above — record
+any use in the round entry. No branch protection (not on the free plan): the release check is the guard.
+Everything a test needs must be installable in CI: a tool or package you installed by hand (`pdftotext`,
+PyMuPDF, `mobile/`'s npm dependencies) goes into the workflow. A test may only `git show` a commit that
+`main` contains — one that exists only on a local branch passes here and fails on every fresh clone.
 
 **When the gate is red:** if the failing test and everything it imports are identical to main, it
 fails on main too — suspect the environment or the **calendar** (tests seeded by calendar year).
@@ -137,9 +142,10 @@ asserts the money does not exist.
 
 Deploy is automatic after a green gate (owner's standing decision). From mainwt:
 
-1. Merge to main with `--ff-only` (if main moved, re-gate the merged commit).
+1. Merge to main with `--ff-only` once the PR's CI is green (if main moved, update the branch, push, and
+   let CI re-run — the merged commit must be the tested one). Push `main` to GitHub.
 2. `IMPROVE_SSH_HOST=203.142.6.241 pnpm improve:release` (closes board items) or
-   `pnpm improve:deploy <worktree>` (no board item). Both check the receipt, rsync and run `deploy.sh`.
+   `pnpm improve:deploy <worktree>` (no board item). Both check CI for HEAD, rsync and run `deploy.sh`.
 3. On the box: `cd /opt/ai-hr && deploy/deploy-state.sh status`. `state=ok stale_build=0` and
    `built_ref` = your HEAD → `sudo systemctl restart aihr` yourself. `stale_build=1` or a failed build →
    **never restart** (it takes production down); fix and redeploy. "died (phase: restart)" from the
