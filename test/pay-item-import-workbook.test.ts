@@ -2,12 +2,17 @@ import { describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import en from '../messages/en.json';
+import ms from '../messages/ms.json';
+import zh from '../messages/zh.json';
+import ta from '../messages/ta.json';
+import th from '../messages/th.json';
+import vi from '../messages/vi.json';
 import { payItemVocabulary } from '../core/pay-component-import';
 import { PAY_RULE_KINDS } from '../core/pay-rule';
 import { validatePayComponentCreateSettings } from '../core/pay-components';
 import { PAY_ITEM_COLUMNS, normalizePayItemRow, matchPayItemChoice, payItemImportFileName } from '../lib/pay-component-import';
 import { PENDING_PAY_INPUT_KINDS, payComponentIdentityIssues, payCalculationStatus, payComponentReferenceStamp, PayComponentCalculationPendingError } from '../lib/pay-component-contract';
-import { buildPayItemWorkbook, readPayItemWorkbook, payItemErrorWorkbook } from '../lib/pay-component-workbook';
+import { buildPayItemWorkbook, readPayItemWorkbook, payItemErrorWorkbook, payItemSampleRows, PAY_ITEM_TEMPLATE_COLUMNS, type PayItemCatalogueRow } from '../lib/pay-component-workbook';
 
 const t = (key: string) => {
   const value = (en.payComponents as Record<string, unknown>)[key];
@@ -23,95 +28,110 @@ function upload(rows: string[][], headers: readonly string[] = PAY_ITEM_COLUMNS.
 }
 const valid = ['TEST_1', 'Fictional label', '', 'Earning', '', '', '', '', '', '', '', '', '', 'N'];
 
+function catalogueRow(code: string, patch: Partial<PayItemCatalogueRow> = {}): PayItemCatalogueRow {
+  return { code, label: `Actual ${code}`, description: null, kind: 'allowance', displayCategory: null,
+    archivedAt: null, pendingInputKind: null, rule: null, orpUnpaidLeave: false, orpOvertime: true,
+    roundingMethod: 'none', prorates: true, includedInEpf: true, epfBonus2012: false,
+    includedInPcb: true, pcbRemunerationType: 'normal', pcbExemptionCode: 'PCB_TAXABLE',
+    includedInSocsoEis: true, includedInHrdfBase: false, eaFormLine: 'EA_B1A', ...patch };
+}
+
 describe('Pay Items workbook contract', () => {
   it('represents every calculated canonical input kind in the pure pending contract', () => {
     expect([...PENDING_PAY_INPUT_KINDS]).toEqual(PAY_RULE_KINDS.filter(kind => kind !== 'fixed'));
   });
-  it('generates five ordered live-list sheets, supplied styles, C3 freeze and all 500 advisory rows', async () => {
+  it('generates exactly three sheets, all current headers, and a blank entry sheet with no invented samples', async () => {
     const bytes = await buildPayItemWorkbook(vocabulary), wb = XLSX.read(bytes, { type: 'buffer', cellFormula: true });
-    expect(wb.SheetNames).toEqual(['Instructions', 'Pay Items', 'Example', 'Field Guide', 'Lists']);
-    for (const name of ['Pay Items', 'Example']) {
-      const sheet = wb.Sheets[name];
-      const advisory = Object.entries(sheet).filter(([address, cell]) => /^T\d+$/.test(address) && Number(address.slice(1)) >= 3 && typeof cell.f === 'string');
-      expect(advisory, `${name}: exactly 500 exported Row Check formulas`).toHaveLength(500);
-      for (let row = 3; row <= 502; row++) {
-        expect(sheet[`T${row}`], `${name}!T${row} survives XLSX export/read`).toBeDefined();
-        expect(sheet[`T${row}`].f, `${name}!T${row} retains duplicate-code advice`).toContain('COUNTIF');
-        expect(sheet[`T${row}`].f, `${name}!T${row} reads its own row`).toContain(`COUNTBLANK(A${row}:S${row})=19`);
-      }
-    }
-    const zip = await JSZip.loadAsync(bytes), xml = await zip.file('xl/worksheets/sheet2.xml')!.async('string');
-    expect(xml).toContain('topLeftCell="C3"');
-    expect(xml).toContain('xSplit="2" ySplit="2"');
-    expect(xml.match(/<dataValidation\s/g)).toHaveLength(17);
-    expect(xml.match(/<conditionalFormatting\s/g)).toHaveLength(7);
-    expect(xml.match(/<cfRule\s/g)).toHaveLength(10);
-    expect(xml).toContain('sqref="T3:T502"');
-    const listValues = XLSX.utils.sheet_to_json<string[]>(wb.Sheets.Lists, { header: 1, defval: '' });
-    expect(listValues.slice(1).map(row => row[0]).filter(Boolean)).toEqual(vocabulary.kind!.map(c => c.label));
-    expect(listValues.slice(1).map(row => row[3]).filter(Boolean)).toEqual(vocabulary.roundingMethod!.map(c => c.label));
-    expect(listValues.slice(1).map(row => row[6]).filter(Boolean)).toEqual(vocabulary.pcbExemptionCode!.map(c => c.label));
-  });
-  it('treats emitted empty-string entry cells as blank and gates only populated rows for advice and highlighting', async () => {
-    const bytes = await buildPayItemWorkbook(vocabulary), wb = XLSX.read(bytes, { type: 'buffer', cellFormula: true });
+    expect(wb.SheetNames).toEqual(['Instructions', 'Pay Items', 'Sample']);
+    const headers = XLSX.utils.sheet_to_json<string[]>(wb.Sheets['Pay Items'], { header: 1, defval: '' })[1];
+    expect(headers.slice(0, 7)).toEqual(['Pay Code *', 'Label *', 'Description', 'Category *', 'Input Type', 'EA Form Line', 'Status']);
+    expect(headers).toHaveLength(PAY_ITEM_COLUMNS.length);
+    expect(new Set(headers)).toEqual(new Set(PAY_ITEM_COLUMNS.map(([, header]) => header)));
+    expect(() => readPayItemWorkbook(bytes)).toThrow('emptyWorkbook');
+    expect(wb.Sheets.Sample.A1.v).toBe('SAMPLE ONLY – NOT UPLOADED');
+    expect(XLSX.utils.sheet_to_json<string[]>(wb.Sheets.Instructions, { header: 1 }).flat().join(' ')).toContain('Sample contains 0 actual catalogue record(s)');
+    for (const name of ['Pay Items', 'Sample']) expect(Object.values(wb.Sheets[name]).some(cell => cell?.f)).toBe(false);
     const zip = await JSZip.loadAsync(bytes);
-    for (const [index, name] of [[2, 'Pay Items'], [3, 'Example']] as const) {
-      const sheet = wb.Sheets[name];
-      for (let row = 3; row <= 502; row++) {
-        const values = Array.from({ length: 19 }, (_, column) => sheet[`${XLSX.utils.encode_col(column)}${row}`]?.v);
-        // COUNTBLANK includes a literal empty string; COUNTA counts that stored value as nonempty.
-        const blankCells = values.filter(value => value == null || value === '').length;
-        expect(blankCells === 19, `${name} row${row}: real example versus untouched blank row`).toBe(name === 'Pay Items' || row > 10);
-        expect(sheet[`T${row}`].f).toMatch(new RegExp(`^IF\\(COUNTBLANK\\(A${row}:S${row}\\)=19,"",IF\\(OR\\(A${row}="",B${row}="",D${row}=""\\)`));
-      }
-      const xml = await zip.file(`xl/worksheets/sheet${index}.xml`)!.async('string');
-      const formatting = [...xml.matchAll(/<conditionalFormatting\b[^>]*>([\s\S]*?)<\/conditionalFormatting>/g)];
-      expect(formatting).toHaveLength(7);
-      const guarded = formatting.flatMap(([, body]) => [...body.matchAll(/<formula>([\s\S]*?)<\/formula>/g)].map(([, formula]) => formula)).filter(formula => !formula.includes('LEFT(T3'));
-      expect(guarded).toHaveLength(8);
-      for (const formula of guarded) expect(formula).toMatch(/^AND\(COUNTBLANK\(\$A3:\$S3\)&lt;19,/);
-      expect(xml).not.toContain('COUNTA(');
-    }
-    // A row containing only a real pay code must enter the ordinary missing-required-fields branch.
-    const partialRow = Array.from({ length: 19 }, () => ''); partialRow[0] = 'FICTIONAL_ONLY_CODE';
-    expect(partialRow.filter(value => value === '').length).toBe(18);
-    expect(wb.Sheets['Pay Items'].T3.f).toContain('IF(OR(A3="",B3="",D3=""),"Missing Pay Code / Label / Category"');
+    const entry = await zip.file('xl/worksheets/sheet2.xml')!.async('string');
+    const sample = await zip.file('xl/worksheets/sheet3.xml')!.async('string');
+    expect(entry).toContain('topLeftCell="C3"');
+    expect(entry).not.toContain('sheetProtection');
+    expect(sample).toContain('<sheetProtection sheet="1"');
+    expect(sample).not.toMatch(/password=|algorithmName=/);
+    const styles = await zip.file('xl/styles.xml')!.async('string');
+    const sampleCell = /<c\b[^>]*r="B3"[^>]*s="(\d+)"/.exec(sample);
+    expect(sampleCell).not.toBeNull();
+    const cellStyles = /<cellXfs[^>]*>([\s\S]*?)<\/cellXfs>/.exec(styles)![1].match(/<xf\b[^>]*>[\s\S]*?<\/xf>/g)!;
+    const referenceStyle = cellStyles[Number(sampleCell![1])];
+    expect(referenceStyle).toContain('locked="true"');
+    expect(referenceStyle).toContain('applyProtection="1"');
+    expect(referenceStyle).toContain('wrapText="1"');
+    const fillIndex = Number(/fillId="(\d+)"/.exec(referenceStyle)![1]);
+    const fills = /<fills[^>]*>([\s\S]*?)<\/fills>/.exec(styles)![1].match(/<fill>[\s\S]*?<\/fill>/g)!;
+    expect(fills[fillIndex]).toContain('rgb="FFF3F4F6"');
   });
-  it('exports text-only dropdown formulas with exact Lists ranges, never embedded worksheet markup', async () => {
+  it('uses only actual catalogue facts, prefers existing familiar codes, and falls back deterministically without changing input', () => {
+    const catalogue = [catalogueRow('Z'), catalogueRow('BASIC'), catalogueRow('A0027', { archivedAt: new Date(), includedInPcb: false, pcbRemunerationType: null, pcbExemptionCode: null }), catalogueRow('A0020', { label: '=literal catalogue label', pendingInputKind: 'per_hour', prorates: false })];
+    const before = catalogue.map(row => row.code);
+    const rows = payItemSampleRows(catalogue, vocabulary);
+    expect(rows.map(row => row[0])).toEqual(['A0020', 'A0027', 'BASIC']);
+    const at = (code: string, field: string) => rows.find(row => row[0] === code)![PAY_ITEM_TEMPLATE_COLUMNS.findIndex(([key]) => key === field)];
+    expect(at('A0020', 'label')).toBe('=literal catalogue label');
+    expect(at('A0020', 'inputKind')).toBe(t('inputType_per_hour'));
+    expect(at('A0020', 'prorates')).toBe('N');
+    expect(at('A0027', 'archived')).toBe(t('statusInactive'));
+    expect(at('A0027', 'includedInPcb')).toBe('N');
+    expect(at('A0027', 'pcbExemptionCode')).toBe('');
+    expect(catalogue.map(row => row.code)).toEqual(before);
+    expect(payItemSampleRows([catalogueRow('Z'), catalogueRow('A')], vocabulary).map(row => row[0])).toEqual(['A', 'Z']);
+    expect(payItemSampleRows([], vocabulary)).toEqual([]);
+  });
+  it('uses exact current Instructions ranges and nonblocking dropdowns, without a hidden fourth sheet', async () => {
     const bytes = await buildPayItemWorkbook(vocabulary), wb = XLSX.read(bytes, { type: 'buffer' });
-    const listValues = XLSX.utils.sheet_to_json<string[]>(wb.Sheets.Lists, { header: 1, defval: '' });
-    // These are the workbook's public column contracts, checked against the actual emitted Lists data.
-    const dropdownColumns = { D: 'A', E: 'B', F: 'C', I: 'D', J: 'E', O: 'F', P: 'G', S: 'H',
-      G: 'I', H: 'I', K: 'I', L: 'I', M: 'I', N: 'I', Q: 'I', R: 'I' };
-    const zip = await JSZip.loadAsync(bytes);
-    for (const index of [2, 3]) {
-      const xml = await zip.file(`xl/worksheets/sheet${index}.xml`)!.async('string');
-      // CT_DataValidation formula1 is text, not an XML container. Excel repairs nested mergeCells.
-      const formulas = [...xml.matchAll(/<formula1>([\s\S]*?)<\/formula1>/g)];
-      expect(formulas).toHaveLength(17);
-      for (const [, text] of formulas) expect(text).not.toMatch(/<[^>]+>/);
-      expect(xml.match(/<mergeCells\b/g)).toHaveLength(1);
-      const validations = [...xml.matchAll(/<dataValidation\b([^>]*)>([\s\S]*?)<\/dataValidation>/g)];
-      expect(validations).toHaveLength(17);
-      for (const [dataColumn, listColumn] of Object.entries(dropdownColumns)) {
-        const columnIndex = XLSX.utils.decode_col(listColumn);
-        const populated = listValues.slice(1).map(row => row[columnIndex]).filter(Boolean);
-        expect(populated.length, `Lists!${listColumn} has real choices`).toBeGreaterThan(0);
-        const own = validations.filter(([, attrs]) => attrs.includes(`sqref="${dataColumn}3:${dataColumn}502"`));
-        expect(own).toHaveLength(1);
-        expect(own[0][2]).toBe(`<formula1>INDIRECT(&quot;Lists!$${listColumn}$2:$${listColumn}$${populated.length + 1}&quot;)</formula1>`);
-      }
+    const zip = await JSZip.loadAsync(bytes), xml = await zip.file('xl/worksheets/sheet2.xml')!.async('string');
+    const validations = [...xml.matchAll(/<dataValidation\b([^>]*)>([\s\S]*?)<\/dataValidation>/g)];
+    expect(validations).toHaveLength(Object.values(vocabulary).filter(values => values.length).length);
+    for (const [field, choices] of Object.entries(vocabulary)) {
+      const column = XLSX.utils.encode_col(PAY_ITEM_TEMPLATE_COLUMNS.findIndex(([key]) => key === field));
+      const validation = validations.filter(([, attrs]) => attrs.includes(`sqref="${column}3:${column}502"`));
+      expect(validation).toHaveLength(1);
+      expect(validation[0][1]).toContain('showErrorMessage="0"');
+      expect(validation[0][1]).not.toContain('errorStyle="stop"');
+      const range = /Instructions!\$B\$(\d+):\$B\$(\d+)/.exec(validation[0][2]);
+      expect(range).not.toBeNull();
+      const values = Array.from({ length: Number(range![2]) - Number(range![1]) + 1 }, (_, i) => wb.Sheets.Instructions[`B${Number(range![1]) + i}`].v);
+      expect(values).toEqual(choices.map(choice => choice.label));
+      expect(validation[0][2]).not.toMatch(/<[^>]+>(?:<[^>]+>)/);
     }
   });
-  it('pastes all eight corrected examples into the data sheet without invented rates/formulas', async () => {
-    const wb = XLSX.read(await buildPayItemWorkbook(vocabulary), { type: 'buffer' });
-    const examples = XLSX.utils.sheet_to_json<string[]>(wb.Sheets.Example, { header: 1, defval: '' }).slice(2, 10);
-    const rows = readPayItemWorkbook(upload(examples)).map(row => normalizePayItemRow(row, vocabulary));
-    expect(rows).toHaveLength(8);
-    for (const row of rows) { expect(row.errors, row.input.code).toEqual([]); expect(validatePayComponentCreateSettings(row.input), row.input.code).toEqual([]); }
-    expect(rows.find(row => row.input.code === 'OT150')!.input).toMatchObject({ rule: null, pendingInputKind: 'per_hour', prorates: false });
-    expect(rows.find(row => row.input.code === 'BIK_CAR')!.input).toMatchObject({ kind: 'non_payable', isNonPayable: true, displayCategory: 'bik' });
-    expect(rows.filter(row => ['A0030', 'A0040'].includes(row.input.code)).every(row => row.input.description?.includes('illustrative taxable'))).toBe(true);
+  it.each([['en', en], ['ms', ms], ['zh', zh], ['ta', ta], ['th', th], ['vi', vi]] as const)('uses the current %s maintenance vocabulary for choices and actual sample values', async (_locale, messages) => {
+    const local = (key: string) => {
+      const value = (messages.payComponents as Record<string, unknown>)[key];
+      if (typeof value !== 'string') throw new Error(`Missing locale field ${key}`);
+      return value;
+    };
+    const vocab = payItemVocabulary(local, t);
+    const bytes = await buildPayItemWorkbook(vocab, [catalogueRow('REAL')]);
+    const wb = XLSX.read(bytes, { type: 'buffer' });
+    expect(wb.SheetNames).toEqual(['Instructions', 'Pay Items', 'Sample']);
+    expect(wb.Sheets.Sample.D3.v).toBe(local('kind_allowance'));
+    expect(wb.Sheets.Sample.E3.v).toBe(local('inputType_fixed'));
+    expect(wb.Sheets.Sample.G3.v).toBe(local('statusActive'));
+    expect(() => readPayItemWorkbook(bytes)).toThrow('emptyWorkbook');
+  });
+  it('never imports Sample, including literal formula-like catalogue labels, and accepts new and legacy header orders', async () => {
+    const bytes = await buildPayItemWorkbook(vocabulary, [catalogueRow('A0020', { label: '=1+1' })]);
+    const wb = XLSX.read(bytes, { type: 'buffer', cellFormula: true });
+    expect(wb.Sheets.Sample.B3).toMatchObject({ t: 's', v: '=1+1' });
+    expect(wb.Sheets.Sample.B3.f).toBeUndefined();
+    expect(() => readPayItemWorkbook(bytes)).toThrow('emptyWorkbook');
+    const canonical = Object.fromEntries(PAY_ITEM_COLUMNS.map(([field], index) => [field, valid[index] ?? '']));
+    XLSX.utils.sheet_add_aoa(wb.Sheets['Pay Items'], [PAY_ITEM_TEMPLATE_COLUMNS.map(([field]) => canonical[field])], { origin: 'A3' });
+    wb.Sheets.Sample.B3 = { t: 'n', f: '1+1', v: 2 }; // Reference sheet must never become an upload owner.
+    const actual = readPayItemWorkbook(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
+    expect(actual).toHaveLength(1);
+    expect(actual[0].values).toEqual(readPayItemWorkbook(upload([valid]))[0].values);
+    expect(actual[0].formulaFields).toEqual([]);
   });
   it('uses current blank defaults while retaining an explicit Not mapped and inactive status', () => {
     const raw = [...valid]; raw[4] = 'Work it out automatically'; raw[5] = 'Inactive'; raw[18] = t('eaLineNone');
