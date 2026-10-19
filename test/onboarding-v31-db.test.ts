@@ -4,7 +4,8 @@ import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { saveEmployeeDraft, discardEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft';
 import { hireEmployee } from '../core/org';
-import { onboardingSetup, onboardingContext, onboardingList, onboardingDetail, onboardingCommand, onboardingSaveConfig, onboardingSaveChecklistTasks, onboardingTasks, onboardingNote, sweepOnboarding, onboardingNotices, onboardingReadNotice, createOnboardingCase, caseHistory, refreshOnboardingPersonnel, onboardingRequisitions, onboardingNavigation } from '../packs/lifecycle/service';
+import { onboardingSetup, onboardingContext, onboardingList, onboardingDetail, onboardingCommand, onboardingSaveConfig, onboardingSaveChecklistTasks, onboardingTasks, onboardingNote, sweepOnboarding, onboardingNotices, onboardingReadNotice, createOnboardingCase, caseHistory, refreshOnboardingPersonnel, onboardingSyncDraftTx, onboardingRequisitions, onboardingNavigation } from '../packs/lifecycle/service';
+import { appendEvent, actorOf } from '../db/events';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { dayDate } from '../lib/onboarding-model';
@@ -103,6 +104,37 @@ describe('V3.1 onboarding database and authorization', () => {
         expect(rows).toHaveLength(1);
         expect(rows[0]!.case.sourceDraftId).toBe(stored!.id);
         expect(rows[0]!.case.source.fullName).toBe('Latest concurrent Personnel name');
+    });
+    it('d839ff30: a save already holding the audit chain and a starting backfill cannot deadlock', async () => {
+        // The interleaving the full gate hit as 40P01, forced instead of hoped for. The save has appended its
+        // event, so it holds the tenant's audit-chain lock, and only then asks for the onboarding lock; the
+        // backfill starts in between. Before d839ff30 the backfill took the onboarding lock and then waited on
+        // the audit chain, so each waited on the other. Now it queues on the audit chain first and holds nothing.
+        const [stored] = await owner.db.insert(schema.employeeDraft).values({tenantId:b.tenantId,companyId:b.companyId,label:'Forced interleaving draft',data:{profile:{fullName:'Forced interleaving draft'},employment:{companyId:b.companyId}},currentStep:1}).returning();
+        const system:SessionContext = {tenantId:b.tenantId,roles:['hr_admin'],entitlements:admin.entitlements};
+        let appended!: () => void, proceed!: () => void;
+        const holding = new Promise<void>(resolve => { appended = resolve; }), go = new Promise<void>(resolve => { proceed = resolve; });
+        const save = withTenant(admin, async (tx) => {
+            await appendEvent(tx, { tenantId: b.tenantId, aggregateType: 'employee-draft', aggregateId: stored!.id, eventType: 'employee-draft.updated', actor: actorOf(admin), payload: {} });
+            appended();
+            await go;
+            await onboardingSyncDraftTx(admin, tx, stored!.id, 'save');
+        });
+        await Promise.race([holding, save]);
+        const backfill = refreshOnboardingPersonnel(system);
+        // Wait until the backfill is actually blocked on an advisory lock, so the save resumes into the
+        // contested window every time rather than on a lucky schedule.
+        const deadline = Date.now() + 10_000;
+        for (;;) {
+            const [{ n }] = await owner.db.execute(sql`select count(*)::int as n from pg_locks where locktype = 'advisory' and not granted and database = (select oid from pg_database where datname = current_database())`) as unknown as { n: number }[];
+            if (n > 0) break;
+            if (Date.now() > deadline) throw new Error('the backfill never queued on an advisory lock; the interleaving was not reached');
+            await new Promise(resolve => setTimeout(resolve, 25));
+        }
+        proceed();
+        const attempts = await Promise.allSettled([save, backfill]);
+        expect(attempts.map(result => result.status === 'rejected' ? String((result.reason as Error)?.cause ?? result.reason) : 'fulfilled')).toEqual(['fulfilled','fulfilled']);
+        expect((await onboardingList(admin)).filter(row => row.case.sourceDraftId === stored!.id)).toHaveLength(1);
     });
     it('automatically creates one pending case, saves incomplete data and protects source identity', async () => {
         const d = await draft();
