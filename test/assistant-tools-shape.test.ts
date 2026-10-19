@@ -29,11 +29,13 @@ import {
   ASSISTANT_TOOLS,
   EMPLOYEE_PROFILE_FIELDS,
   specsFor,
-  toolByName,
   toolsFor,
   type AssistantTool,
   type ToolOutcome,
 } from '../core/assistant-tools';
+
+// Test-only lookup over the whole registry. Production has none: dispatch resolves from toolsFor(ctx).
+const toolByName = (name: string): AssistantTool | undefined => ASSISTANT_TOOLS.find((t) => t.spec.name === name);
 import { hireEmployee, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';

@@ -28,10 +28,10 @@ import {
   seedPayComponentCatalog,
   setEmploymentPayComponent,
 } from '../core/pay-components';
-import { toolByName } from '../core/assistant-tools';
+import { ASSISTANT_TOOLS } from '../core/assistant-tools';
 import type { SessionContext } from '../db/client';
 
-const tool = () => toolByName('my_pay_change')!;
+const tool = () => ASSISTANT_TOOLS.find((t) => t.spec.name === 'my_pay_change')!;
 
 describe('ADR-0074 item 5 — my_pay_change', () => {
   let base: Base;
