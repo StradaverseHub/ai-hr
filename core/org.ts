@@ -194,6 +194,8 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
   const run = async (tx:Tx) => {
     // The same Criteria-before-row lock order as the canonical reference writers.
     await lockLabelCriteriaTx(tx,ctx.tenantId);
+    const [hireCompany]=await tx.select({id:company.id}).from(company).where(and(eq(company.tenantId,ctx.tenantId),eq(company.id,p.companyId),isNull(company.archivedAt),sql`app.is_admin_for(${company.id})`)).for('share');
+    if(!hireCompany)throw new CrossCompanyError('employment');
     for(const [table,id,kind] of [[businessUnit,p.businessUnitId,'business_unit'],[department,p.departmentId,'department'],[position,p.positionId,'position'],[costCenter,p.costCenterId,'cost_center']] as const) {
       if(!id)continue;
       const [active]=await tx.select({id:table.id}).from(table).where(and(eq(table.tenantId,ctx.tenantId),eq(table.id,id),isNull(table.archivedAt))).for('share');

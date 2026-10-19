@@ -111,6 +111,7 @@ type CompanyContext = {
   buByName: PersonnelImportLookup<string>;
   gradeByName: PersonnelImportLookup<string>;
   organisationDisplay: Map<string,string>;
+  departmentBusinessUnits:Map<string,string|null>;
   pack: CountryPack;
 };
 
@@ -279,6 +280,7 @@ async function loadCompanyContext(
     id: co.id,
     name: co.name,
     deptByName,posByName,ccByName,buByName,gradeByName,
+    departmentBusinessUnits:new Map(departments.map(department=>[department.id,department.businessUnitId])),
     organisationDisplay:new Map([
       ...departments.map(d=>[d.id,display(d.label,d.code)] as const),
       ...positions.map(p=>[p.id,display(p.label,p.code)] as const),
@@ -514,6 +516,8 @@ async function analyze(
     };
     const businessUnitId=organisationChoice('business_unit',buByName);
     const gradeId=organisationChoice('job_grade',gradeByName);
+    const departmentUnit=departmentId?cctx?.departmentBusinessUnits.get(departmentId):undefined;
+    if(businessUnitId && departmentUnit && businessUnitId!==departmentUnit)errors.push('department: unavailable under the selected business_unit');
 
     // Hire date
     const hiredOn = norm(rec.hired_on);

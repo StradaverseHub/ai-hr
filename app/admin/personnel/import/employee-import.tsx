@@ -79,7 +79,7 @@ export function EmployeeImport({
   const familyChoices=personnelImportFields('family').filter(field=>personnelFieldChoices(field).length).map(field=>({label:descriptorColumnLabel(field.import.column!,'family',(key,fallback)=>personnelLabels.has(key)?personnelLabels(key):fallback),values:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value)}));
   const router = useRouter();
   const [companyId, setCompanyId] = useState(defaultCompanyId);
-  const organisationGuidance=reference.organisationByCompany?.[companyId]??{};
+  const organisationGuidance=reference.organisationByCompany?.[companyId]??{department:reference.departments,position:reference.positions,cost_center:reference.costCenters};
   const [csv, setCsv] = useState('');
   // Item 2983802f — the Family sheet's rows, as CSV text, decoded from the SAME workbook in the browser.
   // Always '' for a pasted or .csv upload: a CSV file is one sheet, so it cannot carry family members.
