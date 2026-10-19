@@ -658,8 +658,13 @@ export function Sidebar({
   // paths outside its own href. Applied ONLY at the flat-row call site below: the flyout child ranking
   // and isParentActive are deliberately untouched, because changing them would move Payroll and
   // Attendance highlighting that nobody asked about.
-  const isRowActive = (r: { href: string; exactHref?: boolean; ownedSubpaths?: string[] }) =>
-    isNavRowActive(pathname, search, r);
+  const isRowActive = (r: { href: string; exactHref?: boolean; ownedSubpaths?: string[] }) => {
+    // Explicit onboarding destinations own their pages; the legacy hub must not select Home too.
+    const lifecycleDestination = r.href === '/lifecycle' && groups.some(g => g.items.some(item =>
+      isCollapsible(item) && item.children.filter(canSeeChild).some(child =>
+        child.href.startsWith('/lifecycle/') && isNavRowActive(pathname, search, child))));
+    return !lifecycleDestination && isNavRowActive(pathname, search, r);
+  };
   // 10b59703 — the paths a fly-out child answers for: its own href plus any `ownedSubpaths` the pack
   // declared (packs/registry.ts NavChildDescriptor). Fed to isParentActive so the parent node lights
   // up on an owned tab exactly as it does on the child's own address. Highlighting only, never a gate.
@@ -673,7 +678,7 @@ export function Sidebar({
       g.items.some((r) =>
         isCollapsible(r)
           ? (r.defaultHref || r.activeMatch === 'children' ? r.children.filter(canSeeChild).some(isRowActive) : isParentActive(pathname, r.children.filter(canSeeChild).flatMap(childPaths)))
-          : isNavRowActive(pathname, search, r),
+          : isRowActive(r),
       ),
     )?.labelKey ?? null;
 

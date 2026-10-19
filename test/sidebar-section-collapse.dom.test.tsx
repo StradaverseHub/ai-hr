@@ -111,6 +111,7 @@ describe('Classic prototype onboarding navigation',()=>{
     const user=userEvent.setup();
     render(<NextIntlClientProvider locale="en" messages={messages}><Sidebar isAdmin onboardingAccess onboardingMaster onboardingRequisitionsAccess enabledModules={null} defaultCollapsed={false}/></NextIntlClientProvider>);
     const toggle=screen.getByRole('button',{name:messages.nav[parent]});
+    expect(screen.queryByRole('link',{name:messages.nav.lifecycle})).toBeNull();
     expect(toggle).toHaveAttribute('aria-expanded','true');
     const navigation=()=>screen.getByRole('navigation',{name:messages.nav[parent]});
     expect(within(navigation()).getByRole('link',{name:messages.nav[child]})).toHaveAttribute('aria-current','page');
