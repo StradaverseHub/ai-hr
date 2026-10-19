@@ -25,7 +25,7 @@
  * dev-server render check.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
@@ -319,8 +319,15 @@ describe('Bank & Statutory — the EPF category, the employer-bears switches, th
     expect(savedData().statutory?.employerBearsSkbbk).toBeUndefined();
 
     // …and un-ticking is an explicit 'no', not a return to absent.
+    // The first Save runs in a transition that disables this tab's fieldset and Save until it settles; a
+    // click before then lands on a disabled control and is dropped, so act only on the settled screen.
+    await waitFor(() => {
+      expect(field(detail.employerBearsEpf)).toBeEnabled();
+      expect(screen.getByRole('button', { name: messages.people.wizard.saveDraft })).toBeEnabled();
+    }, { timeout: 5000 });
     await userEvent.click(field(detail.employerBearsEpf));
     await save();
+    expect(saveDraftAction).toHaveBeenCalledTimes(2);
     expect(savedData().statutory?.employerBearsEpf).toBe('no');
   });
 
