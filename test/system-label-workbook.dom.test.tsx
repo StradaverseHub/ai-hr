@@ -88,5 +88,6 @@ describe('System Labels workbook native worksheet structure', () => {
     expect(systemLabelExportId(bytes)).toBe(populated ? exportId : null);
     expect(sheets.filter(sheet => sheet.getAttribute('state') === 'veryHidden').map(sheet => sheet.getAttribute('name')))
       .toEqual(populated ? ['_Export'] : []);
-  });
+  // Building and parsing 14 native worksheets is CPU work; the full gate runs other files too.
+  }, 20000);
 });

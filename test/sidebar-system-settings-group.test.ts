@@ -106,7 +106,8 @@ const ADMIN_GROUP_FLAT_HREFS = [
   // attendance module — stated, not hidden. The ADDRESS did not move back and neither did the
   // screenKey. Pinned at its home by test/work-location-organization-relocation.test.ts and
   // test/sidebar-attendance-group.test.ts.
-  '/admin/personnel',
+  // Prototype V3 places Personnel Management in Manage; its admin audience remains intact.
+  // test/sidebar-personnel-manage.test.ts pins that row and the unchanged destination.
   // 6e122302 — the Notice Board is a flat row (one screen; its new/detail pages are routes on it),
   // sitting after PAYROLL_NODE and before /analytics. Added here deliberately: this list is an EXACT
   // set whose job is to catch a sibling accidentally CLIPPED by an edit, so a genuinely new row has to
@@ -239,13 +240,14 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
     expect(payroll, 'PAYROLL_NODE sits after CLAIMS_CONFIG_ROW').toBeGreaterThan(claimsRef);
   });
 
-  it('places SYSTEM_SETTINGS_NODE immediately after the /admin/personnel row (before LEAVE_CONFIG_NODE)', () => {
+  it('keeps SYSTEM_SETTINGS_NODE after Organization and before Leave after Personnel moves to Manage', () => {
     const block = adminGroupBlock();
-    const personnel = block.indexOf(`'/admin/personnel'`);
+    const organization = block.indexOf(`'/admin/organization'`);
     const nodeRef = block.indexOf('SYSTEM_SETTINGS_NODE');
     const leaveRef = block.indexOf('LEAVE_CONFIG_NODE');
-    expect(personnel, '/admin/personnel row exists').toBeGreaterThan(-1);
-    expect(nodeRef, 'SYSTEM_SETTINGS_NODE is referenced in the admin group').toBeGreaterThan(personnel);
+    expect(organization, 'Organization remains the first flat Admin destination').toBeGreaterThan(-1);
+    expect(block).not.toContain("href: '/admin/personnel'");
+    expect(nodeRef, 'SYSTEM_SETTINGS_NODE follows Organization').toBeGreaterThan(organization);
     expect(leaveRef, 'SYSTEM_SETTINGS_NODE sits before the LEAVE_CONFIG_NODE row').toBeGreaterThan(nodeRef);
   });
 

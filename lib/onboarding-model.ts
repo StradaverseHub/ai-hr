@@ -300,6 +300,11 @@ export function dayDate(join: string, day: number): string {
 }
 export const currentReq = (c: Case) => c.requisitions.find(r => !r.cancelledAt) ?? null;
 export const activeItem = (i: Item) => !i.removed && !['pending', 'rejected', 'withdrawn'].includes(i.approval);
+/** The requested-item denominator includes work awaiting approval, as the requisition shows it. */
+export function requisitionItemCounts(r: Requisition) {
+    const items=r.items.filter(i=>!i.removed&&!['rejected','withdrawn'].includes(i.approval));
+    return {total:items.length,ready:items.filter(activeItem).filter(i=>['ready','handed'].includes(i.state)).length};
+}
 export function requisitionStatus(r: Requisition): 'cancelled' | 'completed' | 'awaiting_approval' | 'ready' | 'in_progress' | 'submitted' {
     if (r.cancelledAt)
         return 'cancelled';
@@ -322,6 +327,10 @@ export function progress(config: Config, c: Case) {
     const count = config.countEquipment && !!r;
     const denominator = total + (count ? 1 : 0);
     return { done, total, ready, active: active.length, handed: !!r?.handedAt, percent: denominator ? Math.round(100 * (done + (count ? credit : 0)) / denominator) : 0 };
+}
+/** Display window only. Access is still enforced by the tenant/company and module guards. */
+export function visibleRecentJoiner(config: Config, c: Case, today: string) {
+    return c.personnelStatus === 'Draft' || c.state !== 'cancelled' && (c.state === 'pending' || c.tasks.some(t => t.status !== 'done') || !!currentReq(c) && !currentReq(c)?.handedAt) || effectiveFacts(c).joinDate >= dayDate(today, -config.recentActiveDays);
 }
 export function log(c: Case, a: Actor, env: Environment, action: string, detail = '') {
     c.history.push({ id: env.id(), at: env.now, by: a.id, name: a.name, action, detail });
@@ -444,14 +453,19 @@ export function addItem(config: Config, c: Case, r: Requisition, cat: Catalogue,
     return item;
 }
 const REQUIRED_FIELD_LABELS: Record<string, string> = { fullName: 'Full name', joinDate: 'Join date', title: 'Job title', department: 'Department', company: 'Company', supervisor: 'Supervisor', hiring: 'New hire or replacement', replacedEmployee: 'Employee being replaced' };
-export function validateCase(config: Config, c: Case) {
-    if (c.checklistOverride && c.checklistOverride !== 'none' && !config.checklists.some(cl => cl.id === c.checklistOverride) && !(c.personnelStatus === 'Active' && c.confirmedChecklist?.id === c.checklistOverride))
-        fail('The selected checklist is unavailable. Choose another checklist or No checklist.', 'invalid', ['checklistOverride']);
+/** Shared required-field projection for validation and the onboarding preparation UI. */
+export function missingCaseFields(c: Case): string[] {
     const f = effectiveFacts(c), missing = ['fullName', 'joinDate', 'title', 'department', 'company', 'supervisor'].filter(k => !f[k as keyof Facts]?.trim());
     if (!c.hiring)
         missing.push('hiring');
     if (c.hiring === 'replacement' && !c.replacedEmployee.trim())
         missing.push('replacedEmployee');
+    return missing;
+}
+export function validateCase(config: Config, c: Case) {
+    if (c.checklistOverride && c.checklistOverride !== 'none' && !config.checklists.some(cl => cl.id === c.checklistOverride) && !(c.personnelStatus === 'Active' && c.confirmedChecklist?.id === c.checklistOverride))
+        fail('The selected checklist is unavailable. Choose another checklist or No checklist.', 'invalid', ['checklistOverride']);
+    const f = effectiveFacts(c), missing = missingCaseFields(c);
     if (missing.length)
         fail('Complete: ' + missing.map(key => REQUIRED_FIELD_LABELS[key] ?? key).join(', '), 'required', missing);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(f.joinDate) || Number.isNaN(Date.parse(f.joinDate)) || new Date(f.joinDate).toISOString().slice(0, 10) !== f.joinDate)
@@ -482,6 +496,8 @@ export function submitCase(config: Config, c: Case, a: Actor, env: Environment) 
         return;
     validateCase(config, c);
     const chosen = matchChecklist(config, c).checklist;
+    if (c.state === 'pending' && !chosen)
+        fail('Choose an onboarding checklist before submitting.', 'required', ['checklistOverride']);
     if (c.state === 'submitted') {
         reconcileItems(config, c, a, env);
         if (c.reconcileNeeded) {

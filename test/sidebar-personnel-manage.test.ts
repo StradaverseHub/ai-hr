@@ -2,9 +2,8 @@
  * Personnel relocation guard (item 1b35f17b).
  *
  * The ticket relocates the "Personnel" employee directory out of the top-level menu into the
- * "Manage" section of the sidebar (Manage → Personnel). Nothing else moves: the /personnel route,
- * its guard, and all employee data are unchanged; the separate /admin/personnel entry stays in the
- * Admin group. Visibility is preserved: Personnel remains visible to every employee (no per-row
+ * "Manage" section of the sidebar (Manage → Personnel). The employee directory route and its permissions remain unchanged. The prototype-alignment
+ * request subsequently places the separate admin-only Personnel Management row in Manage too. Visibility is preserved: Personnel remains visible to every employee (no per-row
  * flag), while Approvals/Performance stay manager-up.
  *
  * `GROUPS` is a module-private const in a `'use client'` component, so — per the established
@@ -74,10 +73,13 @@ describe('sidebar Personnel relocation (1b35f17b)', () => {
     expect(perfRef, 'PERFORMANCE_ROW is referenced after /approvals').toBeGreaterThan(approvals);
   });
 
-  it('leaves the /admin/personnel entry untouched in the Admin group', () => {
+  it('places Personnel Management in Manage with its admin-only boundary preserved', () => {
     expect(countQuoted(SRC, '/admin/personnel')).toBe(1);
-    // Everything after the Admin group marker to the end of the GROUPS array.
-    const adminIdx = SIDEBAR.indexOf(`labelKey: 'admin'`);
-    expect(SIDEBAR.indexOf(`'/admin/personnel'`)).toBeGreaterThan(adminIdx);
+    const manage=groupBlock('manage','aiControlTower');
+    expect(manage).toContain("{ href: '/admin/personnel', labelKey: 'personnelAdmin', icon: Users, adminOnly: true }");
+    const adminStart=SIDEBAR.indexOf("labelKey: 'admin'");
+    expect(adminStart).toBeGreaterThan(-1);
+    const admin=SIDEBAR.slice(adminStart);
+    expect(admin).not.toContain("'/admin/personnel'");
   });
 });
