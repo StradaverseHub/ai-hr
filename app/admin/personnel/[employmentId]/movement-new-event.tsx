@@ -462,7 +462,13 @@ export function MovementNewEvent({
   return (
     <form action={saved ? submitPendingCorrection : edit ? editMovementEventAction : createMovementEventAction}
       ref={form=>{if(saved&&form&&!initialFields.current)initialFields.current=new Map(Array.from(new FormData(form).entries()).filter((entry):entry is [string,string]=>typeof entry[1]==='string'));}}
-      onChangeCapture={event=>{if(saved){const name=(event.target as HTMLInputElement).name;if(name)touched.current.add(name);}}}>
+      onChangeCapture={event=>{
+        if (!saved) return;
+        const target: EventTarget = event.target;
+        if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) {
+          if (target.name) touched.current.add(target.name);
+        }
+      }}>
       <input type="hidden" name="employmentId" value={employmentId} />
       {edit && <input type="hidden" name="movementId" value={edit.movementId} />}
 
