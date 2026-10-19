@@ -1069,7 +1069,7 @@ export function Sidebar({
           <nav data-tour="nav" aria-label={tCommon('appName')} className="atelier-nav">
             {groups.map((group, gi) => (
               <div key={gi}>
-                {group.labelKey && (
+                {group.labelKey && !isWorkspaceKey(group.labelKey) && (
                   <button
                     type="button"
                     onClick={() => toggleSection(group.labelKey!)}
