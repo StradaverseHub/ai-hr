@@ -17,7 +17,7 @@ import {reportBrokerResponse} from '../lib/internal-auth/report-broker-model';
 import {assertResidualFailure,residualPredecessorManifest,RESIDUAL_PREDECESSOR,RESIDUAL_SOURCE,RESIDUAL_DATE,RESIDUAL_PINNED_FILES,runManagedReportResidualCases} from './managed-report-residual';
 import {assertManagedReportWorkbook} from './managed-report-workbook-evidence';
 import {assertManagedReportAuthorityRefusal} from './managed-report-authority-evidence';
-import {captureReportExecutionDay,assertReportExecutionDay,residualReportExecutionSpec} from './managed-report-execution-day';
+import {captureReportExecutionDay,assertReportExecutionDay,residualReportExecutionSpec,assertResidualExecutionPublication} from './managed-report-execution-day';
 import {fingerprintOwnedReportArtifact} from '../deploy/identity-email/report-artifact';
 import {REPORT_INSPECTION_LIFETIME_MS} from '../lib/internal-auth/report-broker-proof';
 import type {SessionContext} from '../db/client';
@@ -245,6 +245,7 @@ async function main(){
  }
  check(base&&base.version===2&&base.runId===marker.runId&&base.candidateSha===marker.candidateSha&&tenants.length===2,'Exact completed prepare receipt required.');
  const execution=captureReportExecutionDay(mode,base.date);
+ if(mode==='verify-residual')assertResidualExecutionPublication(await privateJson(out+'/residual-execution.json'),marker,execution);
  fixtureTenant=base.tenantId;
  const admin=await context(base.owner,base.tenantId),recipient=await context(base.recipient,base.tenantId);
  for(const ctx of [admin,recipient])check(JSON.stringify(ctx.grants)===JSON.stringify([{role:'hr_admin',companyId:null}]),'Exact fictional administrator grants changed.');
