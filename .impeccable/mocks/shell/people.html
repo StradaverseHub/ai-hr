@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>People · ai-hr</title>
+<link rel="stylesheet" href="shell.css">
+<style>
+.body { flex: 1; display: grid; grid-template-columns: 1fr 340px; min-height: 0; }
+.content { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.views { display: flex; align-items: center; gap: 2px; padding: 8px 16px 0 16px; border-bottom: 1px solid var(--line); }
+.views a { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px; color: var(--ink-3); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.views a b { font-weight: 500; font-size: 12px; color: var(--ink-3); background: var(--side); border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; }
+.views a.on { color: var(--ink); border-bottom-color: var(--ink); font-weight: 500; }
+.views .add { color: var(--ink-3); }
+.tools { display: flex; align-items: center; gap: 6px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.search { display: flex; align-items: center; gap: 8px; height: 30px; width: 200px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r-md); color: var(--ink-3); }
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 6px 0 10px; border-radius: var(--r-md); background: var(--side); border: 1px solid var(--line); font-size: 12.5px; color: var(--ink-2); }
+.chip b { font-weight: 500; color: var(--ink); }
+.chip svg { color: var(--ink-3); }
+.tools .right { margin-left: auto; display: flex; gap: 4px; align-items: center; }
+.grid-wrap { flex: 1; overflow: auto; }
+table.t { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+table.t thead th { position: sticky; top: 0; z-index: 1; background: var(--bg); text-align: left; font-weight: 500; color: var(--ink-3); font-size: 12.5px; height: 34px; padding: 0 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.t thead th .h { display: inline-flex; align-items: center; gap: 4px; }
+table.t thead th.sorted { color: var(--ink); }
+table.t td { height: 48px; padding: 0 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.t th + th, table.t td + td { border-left: 1px solid transparent; }
+table.t tbody tr:hover td { background: var(--side); }
+table.t tbody tr.sel td { background: var(--accent-wash); }
+table.t .r { text-align: right; }
+table.t .cb { width: 36px; padding-right: 0; }
+.box { width: 14px; height: 14px; border: 1.5px solid var(--line-strong); border-radius: 4px; display: inline-block; vertical-align: middle; background: var(--bg); }
+tr.sel .box { background: var(--accent); border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+.person { display: flex; align-items: center; gap: 10px; }
+.person b { font-weight: 500; display: block; }
+.person div span { font-size: 12px; color: var(--ink-3); }
+.mgr { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-2); }
+.cap { display: inline-flex; align-items: center; gap: 8px; }
+.cap .track { width: 64px; height: 6px; border-radius: 3px; background: var(--hover); overflow: hidden; }
+.cap .track i { display: block; height: 100%; background: var(--ink-3); border-radius: 3px; }
+.cap .track i.low { background: var(--warn); }
+.foot-row { display: flex; align-items: center; gap: 16px; padding: 0 16px; height: 36px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--ink-3); flex: none; }
+.foot-row b { color: var(--ink); font-weight: 500; }
+.selbar { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
+/* assistant panel */
+.asst { border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; background: var(--bg); }
+.asst header { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 8px 0 16px; border-bottom: 1px solid var(--line); font-weight: 600; }
+.asst header .ctx { font-weight: 400; font-size: 12px; color: var(--ink-3); }
+.asst header .icon-btn { margin-left: auto; }
+.thread { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+.q { align-self: flex-end; max-width: 280px; background: var(--side); border: 1px solid var(--line); border-radius: 12px 12px 4px 12px; padding: 8px 12px; }
+.a { font-size: 13.5px; line-height: 1.55; }
+.a .src { font-size: 12px; color: var(--ink-3); margin-bottom: 4px; }
+.a ul { list-style: none; margin-top: 8px; border: 1px solid var(--line); border-radius: var(--r-md); }
+.a li { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--line); font-size: 13px; }
+.a li:first-child { border-top: 0; }
+.a li span.d { margin-left: auto; color: var(--ink-3); font-size: 12px; }
+.card { border: 1px solid var(--line-strong); border-radius: var(--r-lg); box-shadow: var(--shadow-1); overflow: hidden; }
+.card .ch { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+.card .ch b { font-weight: 500; display: block; }
+.card .ch span { font-size: 12px; color: var(--ink-3); }
+.card .cb2 { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); background: var(--side); }
+.composer { margin: 12px 16px 16px; border: 1px solid var(--line-strong); border-radius: var(--r-lg); box-shadow: var(--shadow-1); }
+.composer .in { padding: 10px 12px 4px; color: var(--ink-3); }
+.composer .bar { display: flex; align-items: center; padding: 4px 6px 6px 6px; gap: 4px; }
+.composer .send { margin-left: auto; width: 28px; height: 28px; border-radius: var(--r-md); background: var(--hover); color: var(--ink-3); display: grid; place-items: center; }
+.composer .ctxchip { font-size: 12px; color: var(--ink-2); background: var(--side); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; }
+</style></head>
+<body>
+<aside class="side">
+  <div class="ws">
+    <div class="ws-logo">SM</div>
+    <div class="ws-name"><span>Seri Mutiara Group</span><svg class="i sm"><use href="icons.svg#down"/></svg></div>
+    <button class="collapse" aria-label="Collapse sidebar"><svg class="i"><use href="icons.svg#panel"/></svg></button>
+  </div>
+  <div class="quick">
+    <button class="qa"><svg class="i sm"><use href="icons.svg#cmd"/></svg>Quick actions<kbd>⌘K</kbd></button>
+    <button class="sq" aria-label="Search"><svg class="i sm"><use href="icons.svg#search"/></svg></button>
+  </div>
+  <nav class="nav">
+    <a><svg class="i"><use href="icons.svg#home"/></svg>Home</a>
+    <a><svg class="i"><use href="icons.svg#inbox"/></svg>Inbox<span class="count">6</span></a>
+    <a><svg class="i"><use href="icons.svg#approve"/></svg>Approvals<span class="count due">4</span></a>
+    <a><svg class="i"><use href="icons.svg#tasks"/></svg>Tasks<span class="count">2</span></a>
+    <div class="sec">My HR</div>
+    <a><svg class="i"><use href="icons.svg#leave"/></svg>My leave</a>
+    <a><svg class="i"><use href="icons.svg#doc"/></svg>My payslips</a>
+    <div class="sec">Workforce</div>
+    <a class="on"><svg class="i"><use href="icons.svg#users"/></svg>People<span class="count">248</span></a>
+    <a><svg class="i"><use href="icons.svg#org"/></svg>Org chart</a>
+    <a><svg class="i"><use href="icons.svg#userplus"/></svg>Onboarding<span class="count">3</span></a>
+    <a><svg class="i"><use href="icons.svg#cal"/></svg>Leave</a>
+    <a><svg class="i"><use href="icons.svg#clock"/></svg>Attendance</a>
+    <div class="sec">Payroll</div>
+    <a><svg class="i"><use href="icons.svg#wallet"/></svg>Pay runs</a>
+    <a><svg class="i"><use href="icons.svg#bank"/></svg>Statutory filings</a>
+    <a><svg class="i"><use href="icons.svg#receipt"/></svg>Claims</a>
+    <div class="sec">Insights</div>
+    <a><svg class="i"><use href="icons.svg#chart"/></svg>Reports</a>
+  </nav>
+  <div class="foot">
+    <span class="av lg a3">FH</span>
+    <div class="who"><b>Farah Hanim</b><span>HR admin · 4 companies</span></div>
+    <button class="icon-btn" style="margin-left:auto" aria-label="Settings"><svg class="i"><use href="icons.svg#sliders"/></svg></button>
+  </div>
+</aside>
+
+<div class="main">
+  <header class="top">
+    <div class="crumb">Workforce<span class="sep">/</span><svg class="i"><use href="icons.svg#users"/></svg><b>People</b></div>
+    <div class="right">
+      <span class="scope"><i class="dot"></i>Seri Mutiara Properties Sdn Bhd<svg class="i sm"><use href="icons.svg#down"/></svg></span>
+      <button class="btn"><svg class="i sm"><use href="icons.svg#upload"/></svg>Import</button>
+      <button class="btn primary"><svg class="i sm"><use href="icons.svg#plus"/></svg>Add employee</button>
+    </div>
+  </header>
+  <div class="body">
+    <section class="content">
+      <nav class="views">
+        <a class="on">All employees <b>248</b></a>
+        <a>Probation ending <b>3</b></a>
+        <a>On leave today <b>3</b></a>
+        <a>Leasing team <b>41</b></a>
+        <a class="add"><svg class="i sm"><use href="icons.svg#plus"/></svg>View</a>
+      </nav>
+      <div class="tools">
+        <div class="search"><svg class="i sm"><use href="icons.svg#search"/></svg>Search people</div>
+        <span class="chip">Status <b>Active</b><svg class="i sm"><use href="icons.svg#x"/></svg></span>
+        <span class="chip">Department <b>Any</b><svg class="i sm"><use href="icons.svg#down"/></svg></span>
+        <button class="btn ghost sm"><svg class="i sm"><use href="icons.svg#filter"/></svg>Filter</button>
+        <div class="right">
+          <button class="btn ghost sm"><svg class="i sm"><use href="icons.svg#sort"/></svg>Start date</button>
+          <button class="btn ghost sm"><svg class="i sm"><use href="icons.svg#cols"/></svg>Columns</button>
+        </div>
+      </div>
+      <div class="grid-wrap">
+        <table class="t">
+          <thead><tr>
+            <th class="cb"><span class="box"></span></th>
+            <th>Employee</th><th>Department</th><th>Manager</th>
+            <th class="sorted"><span class="h">Start date<svg class="i sm"><use href="icons.svg#arrowdown"/></svg></span></th>
+            <th>Status</th><th class="r">Basic (RM)</th>
+          </tr></thead>
+          <tbody>
+            <tr><td class="cb"><span class="box"></span></td><td><div class="person"><span class="av lg a1">AZ</span><div><b>Aisyah Zulkifli</b><span>Admin clerk · Starts 1 Nov</span></div></div></td><td><span class="tag"><i style="background:#2f6fd6"></i>Admin</span></td><td><span class="mgr"><span class="av a5">LM</span>Lim Mei Ling</span></td><td class="num">01 Nov 2026</td><td><span class="pill info">Starting</span></td><td class="r num">2,800.00</td></tr>
+            <tr class="sel"><td class="cb"><span class="box"></span></td><td><div class="person"><span class="av lg a6">KN</span><div><b>Kevin Ng</b><span>Facilities technician · SMP-0388</span></div></div></td><td><span class="tag"><i style="background:#a16207"></i>Facilities</span></td><td><span class="mgr"><span class="av a2">CY</span>Chong Yee Ling</span></td><td class="num">01 May 2026</td><td><span class="pill warn">Probation · 31 Oct</span></td><td class="r num">3,240.00</td></tr>
+            <tr><td class="cb"><span class="box"></span></td><td><div class="person"><span class="av lg a4">AY</span><div><b>Aminah Yusof</b><span>Leasing executive · SMP-0371</span></div></div></td><td><span class="tag"><i style="background:#0f8b6e"></i>Leasing</span></td><td><span class="mgr"><span class="av a5">LM</span>Lim Mei Ling</span></td><td class="num">03 Feb 2026</td><td><span class="pill info">On leave</span></td><td class="r num">3,900.00</td></tr>
+            <tr><td class="cb"><span class="box"></span></td><td><div class="person"><span class="av lg a3">FI</span><div><b>Farhan Iskandar</b><span>Security officer · SMP-0352</span></div></div></td><td><span class="tag"><i style="background:#6b7280"></i>Security</span></td><td><span class="mgr"><span class="av a7">MS</span>Muthu Selvam</span></td><td class="num">14 Oct 2025</td><td><span class="pill ok">Active</span></td><td class="r num">2,650.00</td></tr>
+            <tr><td class="cb"><span class="box"></span></td><td><div class="person"><span class="av lg a2">TW</span><div><b>Tan Wei Ming</b><span>Facilities supervisor · SMP-0317</span></div></div></td><td><span class="tag"><i style="background:#a16207"></i>Facilities</span></td><td><span class="mgr"><span class="av a2">CY</span>Chong Yee Ling</span></td><td class="num">02 Jun 2025</td><td><span class="pill info">On leave</span></td><td class="r num">3,700.00</td></tr>
+            <tr><td class="cb"><span class="box"></span></td><td><div class="person"><span class="av lg a5">NA</span><div><b>Nurul Aina binti Rahman</b><span>Leasing executive · SMP-0290</span></div></div></td><td><span class="tag"><i style="background:#0f8b6e"></i>Leasing</span></td><td><span class="mgr"><span class="av a5">LM</span>Lim Mei Ling</span></td><td class="num">06 Jan 2025</td><td><span class="pill ok">Active</span></td><td class="r num">4,200.00</td></tr>
+            <tr><td class="cb"><span class="box"></span></td><td><div class="person"><span class="av lg a7">RK</span><div><b>Rajesh Kumar a/l Muthu</b><span>Security officer · SMP-0244</span></div></div></td><td><span class="tag"><i style="background:#6b7280"></i>Security</span></td><td><span class="mgr"><span class="av a7">MS</span>Muthu Selvam</span></td><td class="num">11 Mar 2024</td><td><span class="pill ok">Active</span></td><td class="r num">2,980.00</td></tr>
+            <tr><td class="cb"><span class="box"></span></td><td><div class="person"><span class="av lg a4">SK</span><div><b>Siti Khadijah binti Omar</b><span>Accounts executive · SMP-0198</span></div></div></td><td><span class="tag"><i style="background:#7a5af0"></i>Finance</span></td><td><span class="mgr"><span class="av a2">CY</span>Chong Yee Ling</span></td><td class="num">15 Aug 2023</td><td><span class="pill ok">Active</span></td><td class="r num">4,050.00</td></tr>
+            <tr><td class="cb"><span class="box"></span></td><td><div class="person"><span class="av lg a1">WK</span><div><b>Wong Kar Hoe</b><span>Facilities technician · SMP-0163</span></div></div></td><td><span class="tag"><i style="background:#a16207"></i>Facilities</span></td><td><span class="mgr"><span class="av a6">TW</span>Tan Wei Ming</span></td><td class="num">04 Jan 2023</td><td><span class="pill bad">Notice · 13 Nov</span></td><td class="r num">3,100.00</td></tr>
+            <tr><td class="cb"><span class="box"></span></td><td><div class="person"><span class="av lg a2">HR</span><div><b>Hafiz Rahim</b><span>Payroll executive · SMP-0102</span></div></div></td><td><span class="tag"><i style="background:#7a5af0"></i>Finance</span></td><td><span class="mgr"><span class="av a3">FH</span>Farah Hanim</span></td><td class="num">01 Jul 2021</td><td><span class="pill ok">Active</span></td><td class="r num">4,800.00</td></tr>
+            <tr><td class="cb"><span class="box"></span></td><td><div class="person"><span class="av lg a5">LM</span><div><b>Lim Mei Ling</b><span>Leasing manager · SMP-0067</span></div></div></td><td><span class="tag"><i style="background:#0f8b6e"></i>Leasing</span></td><td><span class="mgr"><span class="av a3">FH</span>Farah Hanim</span></td><td class="num">12 Sep 2019</td><td><span class="pill ok">Active</span></td><td class="r num">7,600.00</td></tr>
+            <tr><td class="cb"><span class="box"></span></td><td><div class="person"><span class="av lg a2">CY</span><div><b>Chong Yee Ling</b><span>Operations manager · SMP-0031</span></div></div></td><td><span class="tag"><i style="background:#a16207"></i>Facilities</span></td><td><span class="mgr"><span class="av a3">FH</span>Farah Hanim</span></td><td class="num">02 Mar 2017</td><td><span class="pill ok">Active</span></td><td class="r num">8,250.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="foot-row"><span><b class="num">248</b> employees</span><span>Basic total <b class="num">RM 1,186,420.00</b></span><span class="selbar"><b>1 selected</b><button class="btn sm">Message</button><button class="btn sm">Export</button></span></div>
+    </section>
+
+    <aside class="asst">
+      <header><svg class="i"><use href="icons.svg#msg"/></svg>Assistant<span class="ctx">on this view</span><button class="icon-btn" aria-label="Close assistant"><svg class="i"><use href="icons.svg#x"/></svg></button></header>
+      <div class="thread">
+        <div class="q">Whose probation ends before December?</div>
+        <div class="a">
+          <div class="src">Read 248 employment records</div>
+          Three people. I drafted a confirmation letter for each from their last review; Kevin Ng's is first because his ends in 12 days.
+          <ul>
+            <li><span class="av a6">KN</span>Kevin Ng<span class="d num">31 Oct</span></li>
+            <li><span class="av a4">DS</span>Daniel Soh<span class="d num">18 Nov</span></li>
+            <li><span class="av a1">PR</span>Priya Raman<span class="d num">30 Nov</span></li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="ch"><span class="unmarked"></span><div><b>3 confirmation letters</b><span>Prepared · sent to each manager to sign</span></div></div>
+          <div class="cb2"><button class="btn sm primary">Confirm and send</button><button class="btn sm">Review letters</button></div>
+        </div>
+      </div>
+      <div class="composer">
+        <div class="in">Ask about these 248 people…</div>
+        <div class="bar"><span class="ctxchip">All employees · Active</span><button class="icon-btn" aria-label="Attach"><svg class="i sm"><use href="icons.svg#clip"/></svg></button><button class="send" aria-label="Send"><svg class="i sm"><use href="icons.svg#up"/></svg></button></div>
+      </div>
+    </aside>
+  </div>
+</div>
+</body></html>

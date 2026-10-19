@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Home · ai-hr</title>
+<link rel="stylesheet" href="shell.css">
+<style>
+.page { flex: 1; overflow: auto; }
+.wrap { max-width: 860px; margin: 0 auto; padding: 56px 32px 48px; }
+.hello h1 { font-size: 24px; font-weight: 600; letter-spacing: -.015em; }
+.hello p { color: var(--ink-3); margin-top: 4px; }
+.ask { margin-top: 20px; border: 1px solid var(--line-strong); border-radius: var(--r-lg); box-shadow: var(--shadow-2); background: var(--bg); }
+.ask:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring), var(--shadow-2); }
+.ask textarea { display: block; width: 100%; border: 0; outline: 0; resize: none; padding: 16px 16px 6px; font-size: 15px; line-height: 1.5; min-height: 64px; background: transparent; }
+.ask .file { display: inline-flex; align-items: center; gap: 8px; margin: 4px 16px 0; height: 30px; padding: 0 10px 0 8px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--side); font-size: 12.5px; }
+.ask .file .x { width: 18px; height: 18px; border-radius: 4px; background: #1d6f42; color: #fff; display: grid; place-items: center; font-size: 9px; font-weight: 700; }
+.ask .file span { color: var(--ink-3); }
+.ask .bar { display: flex; align-items: center; gap: 4px; padding: 8px 10px 10px; }
+.ask .bar .scope { height: 26px; font-size: 12.5px; }
+.ask .send { margin-left: auto; width: 30px; height: 30px; border-radius: var(--r-md); background: var(--accent); color: #fff; display: grid; place-items: center; }
+.sugg { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; justify-content: center; }
+.sugg button { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink-2); background: var(--bg); }
+.sugg button:hover { background: var(--side); color: var(--ink); }
+.sugg svg { color: var(--ink-3); }
+.sect { margin-top: 40px; }
+.sect-h { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 0 4px; }
+.sect-h h2 { font-size: 14px; font-weight: 600; }
+.sect-h .n { font-size: 12px; color: var(--ink-3); }
+.sect-h .right { margin-left: auto; display: flex; align-items: center; gap: 2px; color: var(--ink-3); font-size: 13px; }
+.list { border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; }
+.item { display: grid; grid-template-columns: 28px 1fr auto; gap: 12px; align-items: center; padding: 11px 14px; border-top: 1px solid var(--line); }
+.item:first-child { border-top: 0; }
+.item:hover { background: var(--side); }
+.item .t { font-weight: 500; }
+.item .m { color: var(--ink-3); font-size: 12.5px; margin-top: 1px; }
+.item .acts { display: flex; gap: 6px; align-items: center; }
+.item.open { background: var(--bg); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.detail { grid-column: 2 / 4; margin-top: 6px; }
+.facts { display: flex; gap: 28px; padding: 10px 0 12px; }
+.facts div b { display: block; font-size: 18px; font-weight: 600; letter-spacing: -.01em; }
+.facts div span { font-size: 12px; color: var(--ink-3); }
+table.mini { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.mini th { text-align: left; font-weight: 500; color: var(--ink-3); font-size: 12px; padding: 6px 10px; border-bottom: 1px solid var(--line); background: var(--side); }
+table.mini td { padding: 7px 10px; border-bottom: 1px solid var(--line); }
+table.mini .r { text-align: right; }
+table.mini tr.held td { background: var(--warn-wash); }
+table.mini .before { color: var(--ink-3); }
+.tablebox { border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+.detail .acts { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
+.detail .acts .note { margin-left: auto; font-size: 12px; color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.row { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-top: 1px solid var(--line); }
+.row:first-child { border-top: 0; }
+.row .when { margin-left: auto; font-size: 12.5px; color: var(--ink-3); }
+.row .when.soon { color: var(--accent); font-weight: 500; }
+.done .row .who { margin-left: auto; text-align: right; font-size: 12px; color: var(--ink-3); line-height: 1.3; }
+</style></head>
+<body>
+
+<aside class="side">
+  <div class="ws">
+    <div class="ws-logo">SM</div>
+    <div class="ws-name"><span>Seri Mutiara Group</span><svg class="i sm"><use href="icons.svg#down"/></svg></div>
+    <button class="collapse" aria-label="Collapse sidebar"><svg class="i"><use href="icons.svg#panel"/></svg></button>
+  </div>
+  <div class="quick">
+    <button class="qa"><svg class="i sm"><use href="icons.svg#cmd"/></svg>Quick actions<kbd>⌘K</kbd></button>
+    <button class="sq" aria-label="Search"><svg class="i sm"><use href="icons.svg#search"/></svg></button>
+  </div>
+  <nav class="nav">
+    <a class="on"><svg class="i"><use href="icons.svg#home"/></svg>Home</a>
+    <a><svg class="i"><use href="icons.svg#inbox"/></svg>Inbox<span class="count">6</span></a>
+    <a><svg class="i"><use href="icons.svg#approve"/></svg>Approvals<span class="count due">4</span></a>
+    <a><svg class="i"><use href="icons.svg#tasks"/></svg>Tasks<span class="count">2</span></a>
+    <div class="sec">My HR</div>
+    <a><svg class="i"><use href="icons.svg#leave"/></svg>My leave</a>
+    <a><svg class="i"><use href="icons.svg#doc"/></svg>My payslips</a>
+    <div class="sec">Workforce</div>
+    <a><svg class="i"><use href="icons.svg#users"/></svg>People<span class="count">248</span></a>
+    <a><svg class="i"><use href="icons.svg#org"/></svg>Org chart</a>
+    <a><svg class="i"><use href="icons.svg#userplus"/></svg>Onboarding<span class="count">3</span></a>
+    <a><svg class="i"><use href="icons.svg#cal"/></svg>Leave</a>
+    <a><svg class="i"><use href="icons.svg#clock"/></svg>Attendance</a>
+    <div class="sec">Payroll</div>
+    <a><svg class="i"><use href="icons.svg#wallet"/></svg>Pay runs</a>
+    <a><svg class="i"><use href="icons.svg#bank"/></svg>Statutory filings</a>
+    <a><svg class="i"><use href="icons.svg#receipt"/></svg>Claims</a>
+    <div class="sec">Insights</div>
+    <a><svg class="i"><use href="icons.svg#chart"/></svg>Reports</a>
+  </nav>
+  <div class="foot">
+    <span class="av lg a3">FH</span>
+    <div class="who"><b>Farah Hanim</b><span>HR admin · 4 companies</span></div>
+    <button class="icon-btn" style="margin-left:auto" aria-label="Settings"><svg class="i"><use href="icons.svg#sliders"/></svg></button>
+  </div>
+</aside>
+
+<div class="main">
+  <header class="top">
+    <div class="crumb"><svg class="i"><use href="icons.svg#home"/></svg><b>Home</b></div>
+    <div class="right">
+      <span class="scope"><i class="dot"></i>Seri Mutiara Properties Sdn Bhd<svg class="i sm"><use href="icons.svg#down"/></svg></span>
+      <button class="icon-btn" aria-label="Notifications"><svg class="i"><use href="icons.svg#bell"/></svg></button>
+      <button class="icon-btn" aria-label="Help"><svg class="i"><use href="icons.svg#help"/></svg></button>
+    </div>
+  </header>
+
+  <div class="page"><div class="wrap">
+    <div class="hello"><h1>Good morning, Farah</h1><p>Monday, 19 October · 4 things need you, payroll cutoff is Friday</p></div>
+
+    <div class="ask">
+      <textarea rows="2" aria-label="Ask the assistant">Import this overtime sheet into October payroll and tell me anything that looks wrong.</textarea>
+      <div class="file"><span class="x">X</span>OT-Oct-2026.xlsx <span>214 rows · 38 KB</span></div>
+      <div class="bar">
+        <button class="icon-btn" aria-label="Attach a file"><svg class="i"><use href="icons.svg#clip"/></svg></button>
+        <span class="scope"><i class="dot"></i>Seri Mutiara Properties<svg class="i sm"><use href="icons.svg#down"/></svg></span>
+        <button class="send" aria-label="Send"><svg class="i"><use href="icons.svg#up"/></svg></button>
+      </div>
+    </div>
+    <div class="sugg">
+      <button><svg class="i sm"><use href="icons.svg#wallet"/></svg>Prepare October payroll</button>
+      <button><svg class="i sm"><use href="icons.svg#cal"/></svg>Who's away this week?</button>
+      <button><svg class="i sm"><use href="icons.svg#userplus"/></svg>Onboard a new hire</button>
+      <button><svg class="i sm"><use href="icons.svg#upload"/></svg>Import a spreadsheet</button>
+    </div>
+
+    <section class="sect">
+      <div class="sect-h"><h2>Needs you</h2><span class="n">4 prepared by the assistant</span><div class="right"><span>Oldest first</span><svg class="i sm"><use href="icons.svg#down"/></svg></div></div>
+      <div class="list">
+        <div class="item open">
+          <span class="unmarked" title="Prepared, not yet confirmed"></span>
+          <div><div class="t">Import 211 overtime rows into October payroll</div><div class="m">From OT-Oct-2026.xlsx · prepared 10:44 · 3 rows held for you</div></div>
+          <div class="acts"><span class="pill prep">Prepared</span><button class="icon-btn" aria-label="More"><svg class="i"><use href="icons.svg#more"/></svg></button></div>
+          <div class="detail">
+            <div class="facts"><div><b class="num">214</b><span>rows read</span></div><div><b class="num">211</b><span>ready</span></div><div><b class="num" style="color:var(--warn)">3</b><span>held</span></div><div><b class="num">RM 18,406.20</b><span>overtime added</span></div></div>
+            <div class="tablebox"><table class="mini">
+              <tr><th>Employee</th><th class="r">OT hours</th><th class="r">Net pay before → after (RM)</th><th></th></tr>
+              <tr><td>Nurul Aina binti Rahman</td><td class="r num">62.0</td><td class="r num"><span class="before">4,812.40 →</span> 6,640.20</td><td class="r"><span class="pill warn">+38%</span></td></tr>
+              <tr class="held"><td>Rajesh Kumar a/l Muthu</td><td class="r num">19.5</td><td class="r" style="color:var(--warn)">Held · rest day</td><td></td></tr>
+              <tr class="held"><td>Staff no. SMP-0419</td><td class="r num">4.0</td><td class="r" style="color:var(--warn)">Held · not in this company</td><td></td></tr>
+            </table></div>
+            <div class="acts"><button class="btn primary">Confirm 211 rows</button><button class="btn">Review held rows</button><button class="btn ghost">Discard</button><span class="note">Nothing is saved until you confirm</span></div>
+          </div>
+        </div>
+        <div class="item">
+          <span class="av lg a5">LM</span>
+          <div><div class="t">Leave · Lim Mei Ling, 3 days</div><div class="m">Annual leave 22–24 Oct · 11 days left after · no clash in Leasing</div></div>
+          <div class="acts"><button class="btn sm">Decline</button><button class="btn sm primary">Approve</button></div>
+        </div>
+        <div class="item">
+          <span class="av lg a1">AZ</span>
+          <div><div class="t">Offer letter drafted · Aisyah Zulkifli, Admin clerk</div><div class="m">RM 2,800 basic · starts 1 Nov · EPF number missing</div></div>
+          <div class="acts"><span class="pill prep">Prepared</span><button class="btn sm">Review</button></div>
+        </div>
+        <div class="item">
+          <span class="av lg a6">KN</span>
+          <div><div class="t">Probation ending · Kevin Ng, Facilities</div><div class="m">Ends 31 Oct · confirmation letter drafted from his last review</div></div>
+          <div class="acts"><span class="pill prep">Prepared</span><button class="btn sm">Review</button></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="two">
+      <section class="sect">
+        <div class="sect-h"><h2>Coming up</h2><div class="right"><button class="icon-btn" aria-label="Previous"><svg class="i sm"><use href="icons.svg#left"/></svg></button><button class="icon-btn" aria-label="Next"><svg class="i sm"><use href="icons.svg#right"/></svg></button></div></div>
+        <div class="list">
+          <div class="row"><svg class="i" style="color:var(--accent)"><use href="icons.svg#wallet"/></svg>October payroll cutoff<span class="when soon">Fri 23 Oct</span></div>
+          <div class="row"><svg class="i" style="color:var(--ink-3)"><use href="icons.svg#userplus"/></svg>Aisyah Zulkifli starts<span class="when">Sun 1 Nov</span></div>
+          <div class="row"><svg class="i" style="color:var(--ink-3)"><use href="icons.svg#bank"/></svg>EPF, SOCSO, EIS and PCB for October<span class="when">Sun 15 Nov</span></div>
+          <div class="row"><span class="stack"><span class="av a2">TW</span><span class="av a4">AY</span><span class="av a7">HR</span></span>3 people away today<span class="when">View</span></div>
+        </div>
+      </section>
+      <section class="sect done">
+        <div class="sect-h"><h2>Confirmed today</h2><span class="n">marked by a person</span></div>
+        <div class="list">
+          <div class="row"><span class="mark" aria-hidden="true">FH</span>Leave approved · Tan Wei Ming<span class="who">Farah Hanim<br><span class="num">10:42</span></span></div>
+          <div class="row"><span class="mark" aria-hidden="true">FH</span>Bank details updated · Siti Khadijah<span class="who">Farah Hanim<br><span class="num">09:15</span></span></div>
+          <div class="row"><span class="mark" aria-hidden="true">HR</span>September bank file released<span class="who">Hafiz Rahim<br><span class="num">08:03</span></span></div>
+        </div>
+      </section>
+    </div>
+  </div></div>
+</div>
+</body></html>
