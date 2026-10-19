@@ -4,11 +4,12 @@ import {PersonnelImportLookup} from './personnel-import-lookup';
 import {personnelImportFields,type PersonnelImportSheet} from './personnel-import-contract';
 /** Same active owner values as the forms; display names are aliases, never stored instead of codes. */
 export class PersonnelImportCatalog extends Map<string,Set<string>> {
+ constructor(private readonly labelFirstCategories:ReadonlySet<string>=new Set()) {super();}
  private lookups=new Map<string,PersonnelImportLookup<string>>();
  addOption(option:{category:string;value:string;label?:string|null;isActive?:boolean}) {
   const values=this.get(option.category)??new Set<string>();this.set(option.category,values);
   if(option.isActive===false)return;values.add(option.value);
-  const lookup=this.lookups.get(option.category)??new PersonnelImportLookup<string>();
+  const lookup=this.lookups.get(option.category)??new PersonnelImportLookup<string>(this.labelFirstCategories.has(option.category)?'label-first':'identifier-first');
   lookup.add(option.value,option.value,{names:[option.label]});this.lookups.set(option.category,lookup);
  }
  resolve(category:string,value:string) {const lookup=this.lookups.get(category);return {value:lookup?.get(value),ambiguous:lookup?.isAmbiguous(value)??false};}
@@ -26,7 +27,7 @@ export function normalizePersonnelCatalogRecord(record:Record<string,string>,she
   const raw=(record[column]??'').trim();if(!raw)continue;
   if(sheet==='family' && column==='relationship' && (DEPENDENT_RELATIONSHIPS as readonly string[]).includes(raw))continue;
   const found=catalog.resolve(category,raw);
-  if(found.ambiguous)errors.push(`${column}: ambiguous option name — use its exact saved code from the Reference sheet.`);
+  if(found.ambiguous)errors.push(`${column}: ambiguous option name — choose a distinct label or code from the Reference sheet.`);
   else if(found.value!==undefined)normalized[column]=found.value;
  }
  return {record:normalized,errors};

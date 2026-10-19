@@ -1340,6 +1340,8 @@ export function listPositions(
         id: position.id,
         companyId: position.companyId,
         title: position.title,
+        code: position.title,
+        label: position.label,
         jobFamily: position.jobFamily,
         // f1bbc572 — the "All Companies" flag travels WITH the row so a client-side narrowing to one
         // company can keep a global label instead of dropping it on origin (the resolver in the WHERE
@@ -1374,6 +1376,7 @@ export function listCostCenters(
         companyId: costCenter.companyId,
         code: costCenter.code,
         name: costCenter.name,
+        label: costCenter.label,
         // f1bbc572 — the "All Companies" flag travels WITH the row so a client-side narrowing to one
         // company can keep a global label instead of dropping it on origin (the resolver in the WHERE
         // above already admits it; a picker that re-filtered on company_id alone threw it away again).
@@ -1409,6 +1412,7 @@ export function listBusinessUnits(
         companyId: businessUnit.companyId,
         code: businessUnit.code,
         name: businessUnit.name,
+        label: businessUnit.label,
         // f1bbc572 — the "All Companies" flag travels WITH the row so a client-side narrowing to one
         // company can keep a global label instead of dropping it on origin (the resolver in the WHERE
         // above already admits it; a picker that re-filtered on company_id alone threw it away again).

@@ -1,4 +1,5 @@
-/** Exact identifiers take precedence. Human labels resolve only when they identify one record. */
+/** Identifier-first remains the default for existing import paths. Full hire organisation fields
+ * explicitly opt into label-first; ambiguity always refuses within the chosen precedence tier. */
 export class PersonnelImportLookup<T> {
   private exact = new Map<string, Map<string,T>>();
   private names = new Map<string, Map<string,T>>();
@@ -9,7 +10,8 @@ export class PersonnelImportLookup<T> {
     }
     return this;
   }
-  private matches(value:string) {const key=this.key(value);return this.exact.get(key)??this.names.get(key);}
+  constructor(private readonly policy:'identifier-first'|'label-first'='identifier-first') {}
+  private matches(value:string) {const key=this.key(value);return this.policy==='label-first' ? this.names.get(key)??this.exact.get(key) : this.exact.get(key)??this.names.get(key);}
   get(value:string):T|undefined {const matches=this.matches(value);return matches?.size===1?[...matches.values()][0]:undefined;}
   isAmbiguous(value:string) {return (this.matches(value)?.size??0)>1;}
 }

@@ -25,7 +25,7 @@ import { applyMaxBalance, applyRounding, composeEntitlement, hireYearGrantDays, 
 // re-exported through core/leave, which core/org.ts already imports: one hop, no cycle either way.
 import { buildTemplateEntitlementResolver } from './entitlement-template';
 import { packFor } from '../localization/registry';
-import { labelUsableByCompany } from './system-labels';
+import { lockLabelCriteriaTx, labelUsableByCompany } from './system-labels';
 import { deriveEmploymentStatus } from './employment-status';
 // ae9350f2 — the coded exit reason derives the turnover classification. termination-reason.ts imports only
 // the TerminationType TYPE back from this file, so the cycle is erased at compile time and there is no
@@ -57,6 +57,7 @@ import {
   reportingLineScope,
   leaveLedger,
   employmentTypeEnum,
+  jobGrade,
   // R46 79eb7151 — read-only here, to validate the bank-transfer payment method against the person's
   // salary-payment destination. This module never WRITES the statutory row.
   employeeStatutoryMy,
@@ -126,6 +127,7 @@ export type HireParams = {
   departmentId: string;
   positionId?: string;
   costCenterId?: string;
+  businessUnitId?: string;
   employmentType: EmploymentType;
   hiredOn: string; // 'YYYY-MM-DD'
   /** Employee ID keyed in by HR (feedback 38668d9b). The hire form and the bulk import both REQUIRE a
@@ -190,6 +192,21 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
   /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
   outerTx?: Tx) {
   const run = async (tx:Tx) => {
+    // The same Criteria-before-row lock order as the canonical reference writers.
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
+    for(const [table,id,kind] of [[businessUnit,p.businessUnitId,'business_unit'],[department,p.departmentId,'department'],[position,p.positionId,'position'],[costCenter,p.costCenterId,'cost_center']] as const) {
+      if(!id)continue;
+      const [active]=await tx.select({id:table.id}).from(table).where(and(eq(table.tenantId,ctx.tenantId),eq(table.id,id),isNull(table.archivedAt))).for('share');
+      if(!active || !(await labelUsableByCompany(tx,ctx.tenantId,kind,id,p.companyId)))throw new CrossCompanyError(kind==='business_unit'?'business-unit':kind==='cost_center'?'cost-center':kind);
+    }
+    if(p.businessUnitId){
+      const [dept]=await tx.select({businessUnitId:department.businessUnitId}).from(department).where(eq(department.id,p.departmentId));
+      if(dept?.businessUnitId && dept.businessUnitId!==p.businessUnitId)throw new Error('Choose a department available under the selected business unit.');
+    }
+    if(p.gradeId){
+      const [grade]=await tx.select({id:jobGrade.id}).from(jobGrade).where(and(eq(jobGrade.tenantId,ctx.tenantId),eq(jobGrade.id,p.gradeId),isNull(jobGrade.archivedAt))).for('share');
+      if(!grade)throw new Error('Choose an active job grade from this organisation.');
+    }
     let personId = p.person.id;
     if (!personId) {
       const [row] = await tx
@@ -278,6 +295,7 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
       tenantId: ctx.tenantId,
       employmentId: emp.id,
       departmentId: p.departmentId,
+      businessUnitId: p.businessUnitId ?? null,
       positionId: p.positionId ?? null,
       costCenterId: p.costCenterId ?? null,
       employmentType: p.employmentType,
@@ -452,6 +470,7 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
         personId,
         companyId: p.companyId,
         departmentId: p.departmentId,
+        businessUnitId: p.businessUnitId ?? null,
         hiredOn: p.hiredOn,
         positionId: p.positionId ?? null,
         costCenterId: p.costCenterId ?? null,

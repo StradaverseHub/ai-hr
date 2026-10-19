@@ -41,6 +41,7 @@ Siti Aminah,siti@demo.test,Operations,,2026-06-15,contract,950909093456,4100,0,,
 type Phase = 'idle' | 'previewed' | 'done';
 
 export type ImportReference = {
+  organisationByCompany?:Record<string,Record<string,string[]>>;
   departments: string[];
   positions: string[];
   costCenters: string[];
@@ -78,6 +79,7 @@ export function EmployeeImport({
   const familyChoices=personnelImportFields('family').filter(field=>personnelFieldChoices(field).length).map(field=>({label:descriptorColumnLabel(field.import.column!,'family',(key,fallback)=>personnelLabels.has(key)?personnelLabels(key):fallback),values:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value)}));
   const router = useRouter();
   const [companyId, setCompanyId] = useState(defaultCompanyId);
+  const organisationGuidance=reference.organisationByCompany?.[companyId]??{};
   const [csv, setCsv] = useState('');
   // Item 2983802f — the Family sheet's rows, as CSV text, decoded from the SAME workbook in the browser.
   // Always '' for a pasted or .csv upload: a CSV file is one sheet, so it cannot carry family members.
@@ -212,7 +214,7 @@ export function EmployeeImport({
           columnWidths:personnelTemplateColumnWidths(employeeTemplate.columns.map(column=>employeeColumnLabel(column.key))),
           wrapText:true,
           headerNotes: employeeTemplate.columns.map(column=>guidance(column.key,'employee','create')),
-          validationLists:personnelImportFields('employee').flatMap(field=>{const column=employeeTemplate.columns.findIndex(item=>item.key===field.import.column);const values=field.import.catalog?reference.catalogs?.[field.import.catalog]??[]:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value);return column>=0&&values.length?[{column,values}]:[];}),
+          validationLists:[...Object.entries(organisationGuidance).map(([key,values])=>({column:employeeTemplate.columns.findIndex(column=>column.key===key),values})).filter(list=>list.column>=0),...personnelImportFields('employee').flatMap(field=>{const column=employeeTemplate.columns.findIndex(item=>item.key===field.import.column);const values=field.import.catalog?reference.catalogs?.[field.import.catalog]??[]:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value);return column>=0&&values.length?[{column,values}]:[];})],
           extraSheets: [
             // Item 2983802f — THE FAMILY SHEET, second so it reads as the other sheet to fill in. It is
             // read back BY NAME on upload, so its position is free but its name is not.
@@ -238,9 +240,7 @@ export function EmployeeImport({
               columnWidths:[80],wrapText:true,
               rows: buildReferenceRows(t('referenceHeading'), [
                 { label: employeeColumnLabel('company'), values: companies.map((c) => c.name) },
-                { label: employeeColumnLabel('department'), values: reference.departments },
-                { label: employeeColumnLabel('position'), values: reference.positions },
-                { label: employeeColumnLabel('cost_center'), values: reference.costCenters },
+                ...Object.entries(organisationGuidance).map(([column,values])=>({label:`${employeeColumnLabel(column)} — ${companies.find(company=>company.id===companyId)?.name??''}`,values})),
                 ...personnelImportFields('employee').filter(field=>field.import.catalog || personnelFieldChoices(field).length).map(field=>({label:employeeColumnLabel(field.import.column!),values:field.import.catalog?reference.catalogs?.[field.import.catalog]??[]:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value)})),
                 {label:employeeColumnLabel('passport_issuing_country'),values:reference.nationalities},
                 ...familyChoices,

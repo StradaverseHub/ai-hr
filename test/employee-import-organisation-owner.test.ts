@@ -1,0 +1,40 @@
+import {beforeAll,beforeEach,afterAll,it,expect} from 'vitest';
+import {and,eq,isNull} from 'drizzle-orm';
+import * as s from '../db/schema';
+import {validateEmployeeImport,commitEmployeeImport} from '../core/import';
+import {assignmentHistory} from '../core/read';
+import {todayInKualaLumpur} from '../lib/hr-date';
+import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+let base:Base;
+beforeAll(async()=>{await migrateTestDb();});
+beforeEach(async()=>{await resetDb();base=await seedBase();});
+afterAll(async()=>{await closeAll();});
+it('imports labels into the first assignment and employment grade, then shows a renamed live owner label',async()=>{
+ const [unit]=await owner.db.insert(s.businessUnit).values({tenantId:base.tenantId,companyId:base.companyId,code:'BU-ORG',name:'Unit description',label:'Readable business unit'}).returning();
+ const [grade]=await owner.db.insert(s.jobGrade).values({tenantId:base.tenantId,code:'GRADE-ORG',name:'Readable grade'}).returning();
+ await owner.db.update(s.department).set({name:'DP0001',label:'GREEN INTEGRATED BASE STABILISER',businessUnitId:unit.id}).where(eq(s.department.id,base.deptA));
+ // The same text is another department's CODE. A label match must win.
+ await owner.db.update(s.department).set({name:'GREEN INTEGRATED BASE STABILISER',label:'Different department'}).where(eq(s.department.id,base.deptB));
+ const records=[{employee_code:'ORG-IMPORT',full_name:'Fictional org import',email:'org-import@fixture.test',department:'  green integrated base stabiliser ',business_unit:' readable business unit ',job_grade:' readable grade ',hired_on:todayInKualaLumpur(),ic_number:'910505051234',basic_salary:'3000'}];
+ const ctx=adminCtx(base);
+ const preview=await validateEmployeeImport(ctx,{companyId:base.companyId,records});
+ expect(preview.rows[0].errors).toEqual([]);
+ expect(preview.rows[0].proposed).toContainEqual({column:'department',value:'green integrated base stabiliser → GREEN INTEGRATED BASE STABILISER (DP0001)'});
+ const result=await commitEmployeeImport(ctx,{companyId:base.companyId,records});
+ expect(result.imported).toBe(1);expect(result.failed).toEqual([]);
+ const [employee]=await owner.db.select().from(s.employment).where(and(eq(s.employment.tenantId,base.tenantId),eq(s.employment.employeeCode,'ORG-IMPORT')));
+ expect(employee.gradeId).toBe(grade.id);
+ const placements=await owner.db.select().from(s.assignment).where(and(eq(s.assignment.employmentId,employee.id),isNull(s.assignment.supersededAt))).orderBy(s.assignment.validFrom,s.assignment.id);
+ expect(placements).toHaveLength(1);expect(placements[0]).toMatchObject({departmentId:base.deptA,businessUnitId:unit.id,validFrom:records[0].hired_on});
+ await owner.db.update(s.department).set({label:'Renamed department'}).where(eq(s.department.id,base.deptA));
+ expect((await assignmentHistory(ctx,employee.id))[0].department).toBe('Renamed department');
+});
+it('rechecks active grade availability at confirmation rather than accepting the earlier preview',async()=>{
+ const [grade]=await owner.db.insert(s.jobGrade).values({tenantId:base.tenantId,code:'GRADE-STALE',name:'Grade that retires'}).returning();
+ const ctx=adminCtx(base),records=[{employee_code:'STALE-ORG',full_name:'Fictional stale grade',email:'stale-org@fixture.test',department:'Finance',job_grade:'Grade that retires',hired_on:todayInKualaLumpur(),ic_number:'920505051234',basic_salary:'3000'}];
+ expect((await validateEmployeeImport(ctx,{companyId:base.companyId,records})).rows[0].errors).toEqual([]);
+ await owner.db.update(s.jobGrade).set({archivedAt:new Date()}).where(eq(s.jobGrade.id,grade.id));
+ expect((await commitEmployeeImport(ctx,{companyId:base.companyId,records})).imported).toBe(0);
+ const saved=await owner.db.select({id:s.employment.id}).from(s.employment).where(and(eq(s.employment.tenantId,base.tenantId),eq(s.employment.employeeCode,'STALE-ORG')));
+ expect(saved).toEqual([]);
+});
