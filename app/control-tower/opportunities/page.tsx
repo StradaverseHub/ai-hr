@@ -27,6 +27,8 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
   const view = await assessProcesses(s, window);
   const n = (v: number) => f.number(v, { maximumFractionDigits: 1 });
   const duration = (hours: number | null) => hours == null ? '—'
+    : hours * 60 < 1 ? t('underMinute')
+    : hours < 1 ? t('minutesShort', { n: Math.round(hours * 60) })
     : hours < 48 ? t('hours', { n: n(hours) }) : t('days', { n: n(hours / 24) });
 
   const metric = (label: string, value: string, hint?: string) => <div className="min-w-0">
@@ -38,7 +40,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
   const card = (p: ProcessAssessment, rank: number) => {
     const m = p.measures;
     const acts = m ? m.staffActions + m.employeeActions + m.automatedActions : 0;
-    const load = p.staffActionsPer30 == null ? null : estimateLoad(p.staffActionsPer30, minutes, fteHours);
+    const load = !p.staffActionsPer30 ? null : estimateLoad(p.staffActionsPer30, minutes, fteHours);
     return <Card key={p.id} className="p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
@@ -57,7 +59,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
             ? metric(t('staffActions'), n(p.staffActionsPer30 ?? 0), acts ? t('automatedShare', { share: f.number(m.automatedActions / acts, { style: 'percent' }) }) : undefined)
             : metric(t('staffActions'), '—', t('notLinked'))}
         </dl>
-        {load && <p className="mt-3 text-sm">{load.fte == null ? t('estimateHours', { hours: n(load.hours) }) : t('estimateFte', { hours: n(load.hours), fte: n(load.fte) })} <span className="text-xs text-muted-foreground">{t('estimateLabel')}</span></p>}
+        {load && <p className="mt-3 text-sm">{load.fte == null ? t('estimateHours', { hours: n(load.hours) }) : t('estimateFte', { hours: n(load.hours), fte: f.number(load.fte, { maximumFractionDigits: 2 }) })} <span className="text-xs text-muted-foreground">{t('estimateLabel')}</span></p>}
         {p.role === 'measure_first' && <p className="mt-3 text-sm text-muted-foreground">{t('needMore', { min: MIN_COMPLETED })}</p>}
         <div className="mt-4 border-t border-border pt-3">
           <p className="text-xs font-medium text-muted-foreground">{t('candidates')}</p>

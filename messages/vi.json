@@ -21219,6 +21219,8 @@
       "tick_system_verified_steps": "Đánh dấu các bước hệ thống chứng minh được là đã xong",
       "open_case_from_hire": "Mở hồ sơ khi có người được tuyển",
       "open_case_from_resignation": "Mở hồ sơ khi đơn nghỉ việc được chấp nhận"
-    }
+    },
+    "minutesShort": "{n} phút",
+    "underMinute": "< 1 phút"
   }
 }

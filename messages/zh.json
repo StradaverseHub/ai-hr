@@ -21219,6 +21219,8 @@
       "tick_system_verified_steps": "勾选系统可证明已完成的步骤",
       "open_case_from_hire": "有人入职时建立案例",
       "open_case_from_resignation": "辞职获接受时建立案例"
-    }
+    },
+    "minutesShort": "{n} 分钟",
+    "underMinute": "< 1 分钟"
   }
 }

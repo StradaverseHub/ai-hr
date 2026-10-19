@@ -21171,8 +21171,8 @@
     "staffActions": "Staff actions per 30 days",
     "automatedShare": "{share} of actions already automated",
     "notLinked": "Handling is not linked to these cases yet",
-    "estimateHours": "About {hours} staff hours a month.",
-    "estimateFte": "About {hours} staff hours a month, roughly {fte} full-time equivalent.",
+    "estimateHours": "About {hours} h of staff time a month.",
+    "estimateFte": "About {hours} h of staff time a month, roughly {fte} full-time equivalent.",
     "estimateLabel": "Estimate from your inputs, not a measurement.",
     "needMore": "Fewer than {min} completed cases in this period. Measure for longer before deciding.",
     "candidates": "Work an agent could take on (the decision itself stays with people)",
@@ -21219,6 +21219,8 @@
       "tick_system_verified_steps": "Tick steps the system can prove are done",
       "open_case_from_hire": "Open the case when someone is hired",
       "open_case_from_resignation": "Open the case when a resignation is accepted"
-    }
+    },
+    "minutesShort": "{n} min",
+    "underMinute": "< 1 min"
   }
 }

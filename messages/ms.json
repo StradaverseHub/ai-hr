@@ -21219,6 +21219,8 @@
       "tick_system_verified_steps": "Tandakan langkah yang sistem boleh buktikan selesai",
       "open_case_from_hire": "Buka kes apabila seseorang diambil bekerja",
       "open_case_from_resignation": "Buka kes apabila peletakan jawatan diterima"
-    }
+    },
+    "minutesShort": "{n} min",
+    "underMinute": "< 1 min"
   }
 }
