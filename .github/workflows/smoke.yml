@@ -1,0 +1,7 @@
+name: smoke
+on: push
+jobs:
+  hello:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "actions runs on this repo"
