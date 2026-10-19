@@ -12,7 +12,6 @@ import {
   ScrollText,
   ShieldCheck,
   Timer,
-  UserRound,
   type LucideIcon,
 } from 'lucide-react';
 import { Card } from '@/components/ui';
@@ -43,7 +42,6 @@ const ICONS: Record<PanelCategory, LucideIcon> = {
   attendance: Clock,
   overtime: Timer,
   claim: Receipt,
-  profileChanges: UserRound,
   resignations: ScrollText,
   managerReviews: MessageSquareText,
   hrReviews: ShieldCheck,
@@ -58,7 +56,6 @@ const LABEL_KEY: Record<PanelCategory, string> = {
   attendance: 'attendanceCorrections',
   overtime: 'categoryOvertime',
   claim: 'claims',
-  profileChanges: 'profileChanges',
   resignations: 'resignations',
   managerReviews: 'managerReviews',
   hrReviews: 'hrReviews',
