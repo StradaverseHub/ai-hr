@@ -10,6 +10,7 @@ import {MOVEMENT_IMPORT_LIMITS,type MovementImportRecord,type MovementImportEmpl
 import type {PersonnelLabelResolver} from './personnel-import-contract';
 import {personnelImportLabelResolvers} from './personnel-import-labels.server';
 import {todayInKualaLumpur} from './hr-date';
+import {movementImportIssueText} from './movement-import-issues';
 export const MOVEMENT_WORKBOOK_LIMITS={maxBytes:5_000_000,maxExpandedBytes:64_000_000,maxEntries:6000} as const;
 const UUID=/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 const xml=(s:string)=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
@@ -55,12 +56,12 @@ export async function buildMovementWorkbook(p:MovementWorkbookDownload){
    }else cell.z='@';
   }
   if(p.employees){
-   const errors=new Map(p.employees.flatMap(e=>e.rows.map(r=>[r.row,r.errors.join('; ')] as const)));
-   sheet[col(columns.length)+'5']={t:'s',v:p.resolve('people.import.movement.errors','Errors')};
-   for(const record of matched)sheet[col(columns.length)+(record.source?.row??6)]={t:'s',v:business(errors.get(record.row))};
+   const errors=new Map(p.employees.flatMap(e=>e.rows.map(r=>[r.row,movementImportIssueText(r.errors,p.resolve)] as const)));
+   sheet[col(columns.length)+'5']={t:'s',v:p.resolve('people.import.movement.errors','Errors')};sheet['!rows']=[];sheet['!rows'][4]={hpt:30};
+   for(const record of matched){const row=record.source?.row??6,text=business(errors.get(record.row));sheet[col(columns.length)+row]={t:'s',v:text};if(text)sheet['!rows'][row-1]={hpt:Math.max(30,Math.min(240,Math.ceil(text.length/60)*15))};}
    sheet['!ref']=`A1:${col(columns.length)}${rowCount+5}`;
   }
-  sheet['!cols']=columns.map(c=>({wch:c.key==='employeeName'?28:c.role==='current'?23:27}));
+  sheet['!cols']=[...columns.map(c=>({wch:c.key==='employeeName'?28:c.role==='current'?23:27})),...(p.employees?[{wch:72}]:[])];
   XLSX.utils.book_append_sheet(wb,sheet,names[i]);
   for(const [c,column]of columns.entries()){
    if(column.role!=='input'||!column.field)continue;
@@ -106,14 +107,19 @@ export async function buildMovementWorkbook(p:MovementWorkbookDownload){
  }
  const xfs=/<cellXfs count="(\d+)"[^>]*>/,fills=/<fills count="(\d+)"[^>]*>/;const xf=xfs.exec(styles),fill=fills.exec(styles);if(!xf||!fill)throw new Error('workbook_layout_invalid');const base=Number(xf[1]),fillBase=Number(fill[1]);
  styles=styles.replace(fills,`<fills count="${fillBase+3}">`).replace('</fills>',['FFE5E7EB','FFFEF3C7','FFD1FAE5'].map(color=>`<fill><patternFill patternType="solid"><fgColor rgb="${color}"/><bgColor indexed="64"/></patternFill></fill>`).join('')+'</fills>');
- styles=styles.replace(xfs,`<cellXfs count="${base+8}">`).replace('</cellXfs>',[0,1,2,3,4,5,6,7].map(i=>`<xf numFmtId="${[49,49,2,dateFormatId,dateFormatId,2,2,10][i]}"${[3,4].includes(i)?' applyNumberFormat="1"':''} fontId="0" fillId="${fillBase+[0,1,2,1,0,0,1,2][i]}" borderId="0" xfId="0" applyFill="1" applyProtection="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/><protection locked="${[1,3,6].includes(i)?0:1}"/></xf>`).join('')+'</cellXfs>');zip.file('xl/styles.xml',styles);
+ styles=styles.replace(xfs,`<cellXfs count="${base+9}">`).replace('</cellXfs>',[0,1,2,3,4,5,6,7,8].map(i=>`<xf numFmtId="${[49,49,2,dateFormatId,dateFormatId,2,2,10,49][i]}"${[3,4].includes(i)?' applyNumberFormat="1"':''} fontId="0" fillId="${i===8?0:fillBase+[0,1,2,1,0,0,1,2][i]}" borderId="0" xfId="0" applyFill="1" applyProtection="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/><protection locked="${[1,3,6].includes(i)?0:1}"/></xf>`).join('')+'</cellXfs>');zip.file('xl/styles.xml',styles);
  for(let i=0;i<types.length;i++){
   const path=`xl/worksheets/sheet${i+2}.xml`,entry=zip.file(path);if(!entry)throw new Error('workbook_layout_invalid');let text=await entry.async('string');const columns=layouts[i];
   text=text.replace(/<c\b([^>]*\br="([A-Z]+)(\d+)"[^>]*)>/g,(whole,attrs:string,letters:string,r:string)=>{
-   if(Number(r)<6)return whole;let c=0;for(const letter of letters)c=c*26+letter.charCodeAt(0)-64;const column=columns[c-1];if(!column)return whole;
-   const unlocked=column.role==='input'||column.role==='identity'&&!bindings[i].identities.some(identity=>identity.row===Number(r));
-   const date=column.field&&['effectiveDate','endDate','resignationDate'].includes(column.field)||column.role==='current'&&/Date|hiredOn/.test(column.key);const money=/basicSalary|incrementAmount/.test(column.key);
-   const style=column.role==='formula'?base+(column.key.endsWith('changePercent')?7:2):unlocked?base+(date?3:money?6:1):base+(date?4:money?5:0);
+   let c=0;for(const letter of letters)c=c*26+letter.charCodeAt(0)-64;
+   const annotation=!!p.employees&&c===columns.length+1&&Number(r)>=5;if(Number(r)<6&&!annotation)return whole;
+   let style:number;
+   if(annotation)style=base+8;
+   else{const column=columns[c-1];if(!column)return whole;
+    const unlocked=column.role==='input'||column.role==='identity'&&!bindings[i].identities.some(identity=>identity.row===Number(r));
+    const date=column.field&&['effectiveDate','endDate','resignationDate'].includes(column.field)||column.role==='current'&&/Date|hiredOn/.test(column.key);const money=/basicSalary|incrementAmount/.test(column.key);
+    style=column.role==='formula'?base+(column.key.endsWith('changePercent')?7:2):unlocked?base+(date?3:money?6:1):base+(date?4:money?5:0);
+   }
    return '<c'+attrs.replace(/\s+s="[^" ]*"/,'')+` s="${style}">`;
   });
   const currentEnd=Math.max(0,columns.findIndex(c=>c.role==='input'));

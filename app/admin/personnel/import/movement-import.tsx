@@ -4,8 +4,8 @@ import {useTranslations} from 'next-intl';
 import Link from 'next/link';
 import {toCsv} from '@/lib/csv';
 import {Button,Card,Field,inputCls} from '@/components/ui';
-import {MOVEMENT_FORM_IDS} from '@/lib/movement-form-contract';
-import {personnelFormLabel} from '@/lib/personnel-form-contract';
+import {movementImportFieldLabel,movementImportIssueText} from '@/lib/movement-import-issues';
+import {retainMovementExclusionReasons} from '@/lib/movement-import-contract';
 import {movementTypeCsvTemplate} from '@/lib/movement-type-csv';
 import type {MovementImportPreview,MovementImportResult,MovementImportRow} from '@/lib/movement-import-contract';
 import type {MovementImportCatalog,MovementImportFilters} from '@/core/movement-import';
@@ -17,33 +17,33 @@ export function MovementImport({companies,defaultCompanyId,onCommitPendingChange
  const [companyId,setCompanyId]=useState(defaultCompanyId),[typeCode,setTypeCode]=useState(''),[mode,setMode]=useState<'one'|'all'>('one');
  const [catalog,setCatalog]=useState<MovementImportCatalog|null>(null),[filters,setFilters]=useState<MovementImportFilters>({});
  const [csv,setCsv]=useState(''),[file,setFile]=useState<File|null>(null),[preview,setPreview]=useState<MovementImportPreview|null>(null),[result,setResult]=useState<MovementImportResult|null>(null);
- const [errorReceipt,setErrorReceipt]=useState('');
+ const [errorReceipt,setErrorReceipt]=useState(''),[previewErrorReceipt,setPreviewErrorReceipt]=useState('');
  const [selected,setSelected]=useState<string[]>([]),[acknowledge,setAcknowledge]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null);
  const revision=useRef(0),pending=useRef(false),input=useRef<HTMLInputElement>(null),summary=useRef<HTMLDivElement>(null);
  const resolver=(key:string,fallback:string)=>labels.has(key)?labels(key):fallback;
- const fieldLabel=(key:string)=>key in MOVEMENT_FORM_IDS?personnelFormLabel(MOVEMENT_FORM_IDS[key as keyof typeof MOVEMENT_FORM_IDS],resolver):t.has('currentFields.'+key)?t('currentFields.'+key):key;
+ const fieldLabel=(key:string)=>movementImportFieldLabel(key,resolver);
  const eventLabel=(code:string)=>{const type=catalog?.types.find(v=>v.code===code);return type?.label??resolver('people.detail.movement.eventType.'+(type?.behaviour??code),code);};
- const issueText=(issue:string)=>[...new Set(issue.split('; '))].map(part=>{const [code,...detail]=part.split(':');return t.has('issues.'+code)?t('issues.'+code)+(detail.length?' · '+fieldLabel(detail.join(':')):''):word('refused','This change could not be applied. Correct the highlighted field and check the complete sequence again.')+(detail.length?' · '+fieldLabel(detail[0]):'');}).join('; ');
- const reset=()=>{revision.current++;setPreview(null);setResult(null);setSelected([]);setAcknowledge(false);setError(null);setErrorReceipt('');};
+ const issueText=(issue:string|readonly string[])=>movementImportIssueText(issue,resolver);
+ const reset=()=>{revision.current++;setPreview(null);setResult(null);setSelected([]);setAcknowledge(false);setError(null);setErrorReceipt('');setPreviewErrorReceipt('');};
  const resetContext=()=>{reset();setFile(null);setCsv('');if(input.current)input.current.value='';};
  useEffect(()=>{let active=true;setCatalog(null);if(companyId)void movementCatalogAction(companyId).then(value=>{if(active)setCatalog(value);}).catch(()=>{if(active)setError(t('templateFailed'));});return()=>{active=false;};},[companyId]);
  useEffect(()=>()=>{revision.current++;},[]);
  const selectedType=catalog?.types.find(type=>type.code===typeCode);
  const makeForm=(operation:string)=>{const body=new FormData();body.set('operation',operation);body.set('companyId',companyId);body.set('typeCode',typeCode);body.set('filters',JSON.stringify(filters));if(operation==='errors'&&errorReceipt)body.set('errorReceipt',errorReceipt);if(file)body.set('file',file);else body.set('csv',csv);return body;};
  const run=async(operation:'preview'|'apply'|'download'|'errors')=>{
-  if(operation==='errors'&&(!file||!file.name.toLowerCase().endsWith('.xlsx'))){const employees=result?.employees??preview?.employees??[];download(toCsv([[word('sheet','Tab'),t('row'),t('employeeId'),t('eventType'),t('errors')],...employees.flatMap(e=>e.rows.filter(r=>r.status!=='imported'&&r.status!=='valid').map(r=>[r.source?.sheet??'CSV',r.source?.row??r.row,r.employeeCode,eventLabel(r.eventType),r.errors.map(issueText).join('; ')]))]),'text/csv;charset=utf-8','movement-import-errors.csv');return;}
+  if(operation==='errors'&&(!file||!file.name.toLowerCase().endsWith('.xlsx'))){const employees=result?.employees??preview?.employees??[];download(toCsv([[word('sheet','Tab'),t('row'),t('employeeId'),t('eventType'),t('errors')],...employees.flatMap(e=>e.rows.filter(r=>r.status!=='imported'&&r.status!=='valid').map(r=>[r.source?.sheet??'CSV',r.source?.row??r.row,r.employeeCode,eventLabel(r.eventType),issueText(r.errors)]))]),'text/csv;charset=utf-8','movement-import-errors.csv');return;}
   if(pending.current)return;pending.current=true;setBusy(true);setError(null);const current=revision.current;
   if(operation==='apply')onCommitPendingChange?.(true);
-  if(operation==='preview'){setPreview(null);setResult(null);setSelected([]);setAcknowledge(false);}
+  if(operation==='preview'){setPreview(null);setResult(null);setSelected([]);setAcknowledge(false);setPreviewErrorReceipt('');}
   try{
    const body=makeForm(operation);if(operation==='download'&&mode==='all')body.set('typeCode','');
-   if(operation==='apply'&&preview){body.set('selection',JSON.stringify(preview.employees.filter(e=>selected.includes(e.employeeCode)).flatMap(e=>e.rows.map(r=>r.row))));body.set('inputHash',preview.inputHash);body.set('fingerprints',JSON.stringify(Object.fromEntries(preview.employees.filter(e=>e.fingerprint).map(e=>[e.employeeCode,e.fingerprint]))));body.set('acknowledgeExcluded',String(acknowledge));}
+   if(operation==='apply'&&preview){if(previewErrorReceipt)body.set('previewErrorReceipt',previewErrorReceipt);body.set('selection',JSON.stringify(preview.employees.filter(e=>selected.includes(e.employeeCode)).flatMap(e=>e.rows.map(r=>r.row))));body.set('inputHash',preview.inputHash);body.set('fingerprints',JSON.stringify(Object.fromEntries(preview.employees.filter(e=>e.fingerprint).map(e=>[e.employeeCode,e.fingerprint]))));body.set('acknowledgeExcluded',String(acknowledge));}
    const response=await fetch('/admin/personnel/import/movement',{method:'POST',body});
    if(current!==revision.current)return;
    if(response.ok&&response.headers.get('content-type')?.includes('spreadsheetml')){download(await response.arrayBuffer(),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',operation==='errors'?'movement-import-errors.xlsx':'movement-import.xlsx');return;}
    const value=await response.json();if(!response.ok||!value.ok){setError(issueText(value.error??'change_refused'));return;}
-   if(value.preview){setPreview(value.preview);setResult(null);setSelected(value.preview.employees.filter((e:MovementImportPreview['employees'][number])=>e.fingerprint&&e.rows.every(r=>r.status==='valid')).map((e:MovementImportPreview['employees'][number])=>e.employeeCode));setAcknowledge(false);requestAnimationFrame(()=>summary.current?.focus());}
-   if(value.result){setResult(value.result);setErrorReceipt(value.errorReceipt??'');requestAnimationFrame(()=>summary.current?.focus());}
+   if(value.preview){setPreview(value.preview);setPreviewErrorReceipt(value.previewErrorReceipt??'');setResult(null);setSelected(value.preview.employees.filter((e:MovementImportPreview['employees'][number])=>e.fingerprint&&e.rows.every(r=>r.status==='valid')).map((e:MovementImportPreview['employees'][number])=>e.employeeCode));setAcknowledge(false);requestAnimationFrame(()=>summary.current?.focus());}
+   if(value.result){setResult({...value.result,employees:retainMovementExclusionReasons(value.result.employees,preview?.employees??[])});setErrorReceipt(value.errorReceipt??'');requestAnimationFrame(()=>summary.current?.focus());}
   }catch{if(current===revision.current)setError(operation==='apply'?t('applyFailed'):t('checkFailed'));}
   finally{pending.current=false;setBusy(false);if(operation==='apply')onCommitPendingChange?.(false);}
  };
@@ -73,7 +73,7 @@ export function MovementImport({companies,defaultCompanyId,onCommitPendingChange
   {!!preview?.fileErrors.length&&<div role="alert" className="rounded-lg border border-destructive p-4"><p>{t('fileRefused')}</p><ul>{preview.fileErrors.map((issue,i)=><li key={i} className="text-sm">{issueText(issue)}</li>)}</ul></div>}
   {!!employees.length&&<Card className="space-y-4 p-5"><div ref={summary} tabIndex={-1} className="outline-none"><h2 className="font-medium">{result?t('resultTitle'):t('previewTitle')}</h2><p role="status" className="text-sm">{result?t('resultCounts',{imported:result.imported,failed:result.failed,excluded:result.excluded}):t('previewCounts',{valid:preview!.valid,excluded:preview!.excluded})}</p></div>
    <p className="text-sm text-muted-foreground">{word('wholeEmployee','Each employee’s complete sequence is included or excluded together.')}</p>
-   {[...groups].map(([type,rows])=><details key={type} className="rounded-lg border p-3"><summary className="cursor-pointer text-sm font-medium">{eventLabel(type)} · {rows.length}</summary><div className="mt-3 space-y-3">{rows.map(row=><div key={row.row} className="space-y-2 border-t pt-2"><p className="text-sm font-medium">{row.employeeCode} · {row.source?.sheet??'CSV'} · {t('row')} {row.source?.row??row.row} · {row.effectiveDate} · {t('rowStatus.'+row.status)}</p>{row.errors.length>0&&<ul className="text-xs text-destructive">{row.errors.map((error,i)=><li key={i}>{issueText(error)}</li>)}</ul>}{!!row.warnings?.length&&<ul className="text-xs text-amber-700 dark:text-amber-400" aria-label={word('warnings','Warnings')}>{row.warnings.map((warning,i)=><li key={i}>{issueText(warning)}</li>)}</ul>}{row.proposed&&<><div className="grid grid-cols-3 text-xs font-medium"><span>{t('field')}</span><span>{t('current')}</span><span>{t('proposed')}</span></div>{compare(row)}</>}</div>)}</div></details>)}
+   {[...groups].map(([type,rows])=><details key={type} className="rounded-lg border p-3"><summary className="cursor-pointer text-sm font-medium">{eventLabel(type)} · {rows.length}</summary><div className="mt-3 space-y-3">{rows.map(row=><div key={row.row} className="space-y-2 border-t pt-2"><p className="text-sm font-medium">{row.employeeCode} · {row.source?.sheet??'CSV'} · {t('row')} {row.source?.row??row.row} · {row.effectiveDate} · {t('rowStatus.'+row.status)}</p>{row.errors.length>0&&<ul className="text-xs text-destructive"><li>{issueText(row.errors)}</li></ul>}{!!row.warnings?.length&&<ul className="text-xs text-amber-700 dark:text-amber-400" aria-label={word('warnings','Warnings')}><li>{issueText(row.warnings)}</li></ul>}{row.proposed&&<><div className="grid grid-cols-3 text-xs font-medium"><span>{t('field')}</span><span>{t('current')}</span><span>{t('proposed')}</span></div>{compare(row)}</>}</div>)}</div></details>)}
    {employees.map(employee=><section key={employee.employeeCode} className="space-y-2 rounded-lg border p-3"><h3 className="text-sm font-medium">{employee.employeeCode} · {employee.name??t('notFound')}</h3>
     {!result&&<label className="flex items-center gap-2 text-sm"><input type="checkbox" disabled={busy||!employee.fingerprint||employee.rows.some(r=>r.status!=='valid')} checked={selected.includes(employee.employeeCode)} onChange={e=>{setSelected(current=>e.target.checked?[...current,employee.employeeCode]:current.filter(c=>c!==employee.employeeCode));setAcknowledge(false);}}/>{word('included','Include employee')}</label>}
     <details><summary className="cursor-pointer text-xs font-medium">{word('sequence','Complete employee sequence')}</summary><ol className="mt-2 list-inside list-decimal text-xs">{employee.rows.map(row=><li key={row.row}>{row.effectiveDate} · {eventLabel(row.eventType)} · {row.source?.sheet??'CSV'} / {row.source?.row??row.row}</li>)}</ol></details>
