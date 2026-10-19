@@ -7,7 +7,7 @@ import {assignment, compensation, domainEvent, employment} from '../db/schema';
 import {withTenant} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
-import {createMovementEvent, movementDetail, movementHistory, reverseMovementEvent, applyDueMovementsTx} from '../core/movement';
+import {createMovementEvent, movementDetail, movementHistory, movementPendingEditInput, editMovementEvent, reverseMovementEvent, applyDueMovementsTx} from '../core/movement';
 import {previewMovementImport, commitMovementImport} from '../core/movement-import';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {toCsv} from '../lib/csv';
@@ -36,6 +36,21 @@ async function snapshot(id: string) {
 }
 
 describe('pending Movement View shows saved intent separately from applied history', () => {
+  it('prefills canonical saved targets and retains omitted targets in a date/remarks-only pending correction', async () => {
+    const id=await hire(),ctx=adminCtx(b);
+    await createMovementEvent(ctx,{employmentId:id,kind:'promotion',effectiveDate:day(7),departmentId:b.deptB,basicSalary:3500,positionId:null,remarks:'Fictional original'});
+    const original=(await movementHistory(ctx,id)).find(r=>r.status==='pending')!;
+    const before=await snapshot(id);
+    expect(await movementPendingEditInput(ctx,id,original.id)).toEqual({values:{departmentId:b.deptB,basicSalary:'3500',positionId:null},unavailable:false});
+    expect(await snapshot(id)).toEqual(before); // Prefill is a scoped owner read, never a write.
+    await editMovementEvent(ctx,{employmentId:id,movementId:original.id,kind:'promotion',effectiveDate:day(8),remarks:'Fictional revised remarks',reason:'Fictional date-only correction',departmentId:undefined,basicSalary:undefined});
+    const revised=(await movementHistory(ctx,id)).find(r=>r.status==='pending')!;
+    expect(revised).toMatchObject({effectiveDate:day(8),remarks:'Fictional revised remarks'});
+    expect(await movementPendingEditInput(ctx,id,revised.id)).toEqual({values:{departmentId:b.deptB,basicSalary:'3500',positionId:null},unavailable:false});
+    expect(await movementPendingEditInput(ctx,id,original.id)).toBeNull();
+    const recorded=(await snapshot(id)).events.find(e=>e.id===revised.id)!;
+    expect((recorded.payload as {input:unknown}).input).toEqual({departmentId:b.deptB,basicSalary:3500,positionId:null});
+  });
   it('shows a manually scheduled target without changing actual snapshots or writing during View', async () => {
     const id = await hire(), ctx = adminCtx(b);
     await createMovementEvent(ctx, {employmentId:id, kind:'promotion', effectiveDate:day(7), departmentId:b.deptB, basicSalary:3500});
