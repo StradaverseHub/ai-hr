@@ -345,9 +345,10 @@ async function main(){
   const expectedRows=people.map(person=>{check(typeof person.code==='string','Fictional employee code absent.');return {code:person.code,fullName:person.fullName};});
   assertExecutionDay();await fs.writeFile(out+'/residual-actual-ticks-started',JSON.stringify({candidateSha:marker.candidateSha,runId:marker.runId,...execution,inventorySha256:inventoryBefore,oldStateSha256})+'\n',{mode:0o600,flag:'wx'});
   const tickDue=new Date(Date.now()+180_000);tickDue.setUTCSeconds(0,0);
-  const tickReports:{kind:'weekly'|'monthly';report:Awaited<ReturnType<typeof saveEmployeeMasterReport>>;schedule:NonNullable<Awaited<ReturnType<typeof getEmployeeMasterSchedule>>>}[]=[];
+  const tickReports:{kind:'weekly'|'monthly';report:Awaited<ReturnType<typeof getEmployeeMasterReport>>;schedule:NonNullable<Awaited<ReturnType<typeof getEmployeeMasterSchedule>>>}[]=[];
   for(const kind of ['weekly','monthly'] as const){
-   assertExecutionDay();const report=await saveEmployeeMasterReport(admin,[base.companyId],{name:'Residual actual '+kind+' '+marker.runId,description:'Actual installed runner weekly/monthly acceptance',sharedRoleIds:['hr_admin'],spec:residualReportExecutionSpec(template.spec,execution)});ownedReports.add(report.id);
+   assertExecutionDay();const savedReport=await saveEmployeeMasterReport(admin,[base.companyId],{name:'Residual actual '+kind+' '+marker.runId,description:'Actual installed runner weekly/monthly acceptance',sharedRoleIds:['hr_admin'],spec:residualReportExecutionSpec(template.spec,execution)});ownedReports.add(savedReport.id);
+   const report=await getEmployeeMasterReport(admin,[base.companyId],savedReport.id);check(report.id===savedReport.id&&report.version===savedReport.version,'Actual tick report readback identity/version differs.');
    assertExecutionDay();const config={frequency:kind,day:kind==='weekly'?tickDue.getUTCDay():tickDue.getUTCDate(),hour:tickDue.getUTCHours(),minute:tickDue.getUTCMinutes(),timezone:'UTC'},savedSchedule=await saveEmployeeMasterSchedule(admin,[base.companyId],{reportId:report.id,version:report.version,enabled:true,config,recipients:[{userId:base.recipient.userId,employmentId:base.recipient.employmentId}]});
    const schedule=await getEmployeeMasterSchedule(admin,report.id);check(schedule?.id===savedSchedule.id&&schedule.nextRunAt===tickDue.toISOString(),'Actual tick setup crossed its genuine due minute.');tickReports.push({kind,report,schedule});
   }
@@ -397,7 +398,7 @@ async function main(){
    const schedule=await saveEmployeeMasterSchedule(admin,[base.companyId],{reportId:report.id,version:report.version,enabled:true,config,recipients:[{userId:base.recipient.userId,employmentId:base.recipient.employmentId}]});
    check((await getEmployeeMasterSchedule(admin,report.id))?.nextRunAt===due.toISOString(),'Residual setup crossed its genuine due minute.');cases.push({kind,reportId:report.id,scheduleId:schedule.id,due,config});
   }
-  assertExecutionDay();check(ownedReports.size===4,'Residual must own exactly four new reports.');
+  assertExecutionDay();check([...ownedReports].length===4,'Residual must own exactly four new reports.');
   await fs.writeFile(out+'/residual-started',JSON.stringify({candidateSha:marker.candidateSha,runId:marker.runId,...execution,predecessorManifestSha256:hash(JSON.stringify(predecessor)),cases:cases.map(({kind,reportId,scheduleId})=>({kind,reportId,scheduleId})),familySha256})+'\n',{mode:0o600,flag:'wx'});
   const outcome=async(id:string)=>(await owner!.client`select status,reason,lease_until from custom_report_occurrence where id=${id}::uuid and tenant_id=${base!.tenantId}::uuid`)[0];
   async function queueResidual(kind:'oversized'|'consent'){
