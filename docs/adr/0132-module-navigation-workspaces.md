@@ -32,6 +32,13 @@ An explicit direct destination wins a tie with an older umbrella-owned path.
 Navigating resets workspace overrides; selecting another workspace alone does not
 navigate or grant access. Tasks and approvals retain their accessible count labels.
 
+The existing focused Performance workspace shell is preserved: Classic and Current
+use the journey's own navigator and dashboard return instead of the global sidebar
+on `/performance/workspace`, including its Talent and Development query variants.
+Monolith retains its global rail there. Route-owner coverage alone therefore does
+not establish visible Ops/Strata selection on those focused screens; acceptance
+must inspect their actual entry and return journeys in each theme.
+
 The approved change removes the employee Mobile App preview menu entry, while
 retaining its route for existing links and placing the administrative entry under
 System Configuration. Locations moves into Attendance Configuration. Personnel
