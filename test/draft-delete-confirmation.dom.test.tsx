@@ -77,6 +77,9 @@ describe('safe activation outcomes on the retained Draft',()=>{
   it('only a confirmed activation navigates, and unknown system details stay private',async()=>{
     const user=userEvent.setup(),words=catalog().people.wizard;mocks.activate.mockResolvedValueOnce({ok:false,kind:'system',reference:'SQLSTATE private data'});wrap();await user.click(screen.getByRole('button',{name:words.activate}));
     expect((await screen.findByRole('alert')).textContent).toBe(words.activationFailed);expect(mocks.push).not.toHaveBeenCalled();
-    await user.click(screen.getByRole('button',{name:words.activate}));await waitFor(()=>expect(mocks.push).toHaveBeenCalledWith('/admin/personnel/fictional-employment?from=personnel'));expect(mocks.refresh).toHaveBeenCalledTimes(1);
+    // The failure renders before the first Activate's transition settles, and Activate stays disabled until it
+    // does; a click in that window is dropped, so act only on the settled screen.
+    await waitFor(()=>expect(screen.getByRole('button',{name:words.activate})).toBeEnabled(),{timeout:5000});
+    await user.click(screen.getByRole('button',{name:words.activate}));expect(mocks.activate).toHaveBeenCalledTimes(2);await waitFor(()=>expect(mocks.push).toHaveBeenCalledWith('/admin/personnel/fictional-employment?from=personnel'));expect(mocks.refresh).toHaveBeenCalledTimes(1);
   });
 });

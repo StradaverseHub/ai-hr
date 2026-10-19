@@ -84,7 +84,8 @@ describe('b2713800 · the warning reaches the person reading the preview', () =>
   it('keeps the row Ready and leaves Import enabled — it is a warning, not a refusal', async () => {
     await previewWith(previewWithWarning);
     expect(screen.getByText('Ready')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Import 1 valid record/ })).toBeEnabled();
+    // The preview can render before the Validate transition settles, while the button still reads "Importing…".
+    expect(await screen.findByRole('button', { name: /Import 1 valid record/ })).toBeEnabled();
     // …and the header still counts it as ready rather than as an error.
     expect(screen.getByText('1 ready')).toBeInTheDocument();
   });

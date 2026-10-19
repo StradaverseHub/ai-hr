@@ -19,6 +19,7 @@ import {
   ClipboardCheck,
   FlaskConical,
   Gauge,
+  TrendingUp,
   Sparkles,
   Wand2,
   LayoutDashboard,
@@ -440,6 +441,9 @@ const GROUPS: Group[] = [
       // ADR-0083 §2.5 — the approval queue. The only screen in the product where a person authorises an
       // agent to write, which is why it is a row of its own rather than a panel on another page.
       { href: '/control-tower/actions', labelKey: 'controlTowerActions', icon: Wand2, adminOnly: true },
+      // ADR-0131 Phase 1 — where agents could take work off HR, measured from the records. A working
+      // screen, so it sits above the reference explainer.
+      { href: '/control-tower/opportunities', labelKey: 'controlTowerOpportunities', icon: TrendingUp, adminOnly: true },
       { href: '/control-tower/how-it-works', labelKey: 'controlTowerHow', icon: BookOpen, adminOnly: true },
     ],
   },

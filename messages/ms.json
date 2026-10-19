@@ -422,7 +422,8 @@
     "onboardingChecklists": "Pengurusan senarai semak",
     "onboardingSettings": "Tetapan penyertaan",
     "onboardingGroups": "Kumpulan penugasan",
-    "onboardingModuleAccess": "Akses modul"
+    "onboardingModuleAccess": "Akses modul",
+    "controlTowerOpportunities": "Peluang"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -16090,7 +16091,8 @@
       "review": "HR menyemak dan mengemas kini rekod",
       "shown": "Memaparkan {shown} daripada {total} isu.",
       "verificationNote": "Penutupan bermaksud maklumat telah diisi atau tidak lagi diperlukan semasa semakan yang direkodkan. HR bertanggungjawab mengesahkan ketepatannya. Keputusan gaji dan akses menggunakan kelulusan sedia ada.",
-      "quality": "Kualiti gaji dan AI"
+      "quality": "Kualiti gaji dan AI",
+      "opportunities": "Peluang"
     },
     "corrections": {
       "employeeTitle": "Lengkapkan rekod anda",
@@ -19491,7 +19493,7 @@
     "searchUsers": "Cari pengguna",
     "search": "Cari",
     "noUsers": "Tiada pengguna sepadan.",
-    "moreUsers": "Memaparkan 50 padanan. Perincikan carian untuk mencari pengguna lain.",
+    "moreUsers": "Memaparkan 50 padanan dengan penggunaan tertinggi. Cari untuk menemui pengguna lain.",
     "noCompanies": "Tiada syarikat dalam skop pentadbiran anda.",
     "inherited": "Kawalan sedia ada",
     "businessLimits": "Akses modul, kebenaran ciri dan had Performance sedia ada sebanyak lima draf berjaya setiap medan setiap pengguna sehari masih terpakai.",
@@ -19561,7 +19563,43 @@
     "actor": "Pemanggil",
     "scheduledActor": "Ejen berjadual",
     "required": "Memerlukan anggaran {tokens} token",
-    "sections": "Bahagian pengurusan AI"
+    "sections": "Bahagian pengurusan AI",
+    "attention": "Perlu perhatian",
+    "attentionHelp": "Syarikat dan log masuk pada 80% atau lebih daripada had, serta log masuk yang panggilannya disekat hari ini (waktu Malaysia). Penggunaan token mengira token yang direkodkan dan ditempah, sama seperti semasa kemasukan.",
+    "attentionScoped": "Memaparkan syarikat yang anda tadbir. Log masuk individu boleh dilihat oleh pentadbir kumpulan.",
+    "attentionNone": "Tiada apa-apa yang perlu perhatian sekarang.",
+    "attentionCompanies": "Syarikat yang hampir atau mencapai had",
+    "attentionUsers": "Log masuk yang hampir atau mencapai had",
+    "attentionBlocked": "Log masuk yang disekat hari ini",
+    "blockedToday": "{count, plural, other {# panggilan disekat hari ini}}",
+    "requestsOfLimit": "{used} daripada {limit} permintaan hari ini",
+    "requestsNoCap": "{used} permintaan hari ini · tiada had",
+    "tokensOfLimit": "{used} daripada {limit} token bulan ini",
+    "tokensNoCap": "{used} token bulan ini · tiada had",
+    "heldIncluded": "termasuk {held} ditempah",
+    "levels": {
+      "near": "Hampir had",
+      "at": "Mencapai had"
+    },
+    "defaultAllowance": "Had lalai untuk setiap log masuk",
+    "defaultHelp": "Terpakai kepada setiap log masuk yang tiada had individu. Had individu menggantikan had lalai bagi log masuk tersebut; kedua-duanya tidak pernah dijumlahkan. Ejen berjadual tidak terjejas. Kosong bermaksud tiada had; sifar menyekat panggilan baharu.",
+    "defaultSet": "Kini terpakai kepada setiap log masuk tanpa had individu.",
+    "defaultNotSet": "Tiada had lalai ditetapkan: log masuk tanpa had individu tidak mempunyai had pengguna.",
+    "individualHelp": "Menyimpan baris log masuk memberikannya had individu yang menggantikan had lalai. Guna lalai mengembalikan log masuk kepada had lalai.",
+    "sourceIndividual": "Had individu — menggantikan had lalai",
+    "sourceDefault": "Mengikut had lalai",
+    "useDefault": "Guna lalai",
+    "usesDefault": "Log masuk ini kini mengikut had lalai.",
+    "userSort": "Disusun mengikut penggunaan token bulan ini, tertinggi dahulu.",
+    "runFilter": "Tunjukkan",
+    "runAll": "Semua panggilan",
+    "runBlocked": "Disekat sahaja",
+    "runFailed": "Gagal sahaja",
+    "allFeatures": "Semua keupayaan",
+    "applyFilter": "Guna",
+    "clearFilter": "Kosongkan penapis",
+    "runsFiltered": "Memaparkan 50 panggilan sepadan terkini.",
+    "noMatchingRuns": "Tiada panggilan sepadan dengan penapis ini."
   },
   "accountEmail": {
     "title": "Penghantaran e-mel akaun",
@@ -21279,5 +21317,84 @@
       "c95332e75dac8": "Bekerja melalui Tugas saya",
       "cd1a339556dbb": "tugas terbuka"
     }
+  },
+  "processAssessment": {
+    "back": "Menara Kawalan",
+    "title": "Peluang automasi",
+    "description": "Di mana ejen AI boleh mengambil alih kerja pengendalian daripada HR, diukur daripada rekod anda. Halaman ini tidak mengubah data atau memanggil model AI.",
+    "window": "Kes dimulakan dalam tempoh",
+    "windowDays": "{days} hari",
+    "minutes": "Minit bagi setiap tindakan kakitangan (pilihan)",
+    "fteHours": "Jam bagi sebulan sepenuh masa (pilihan)",
+    "notSet": "Tidak ditetapkan",
+    "apply": "Kemas kini",
+    "estimateHelp": "Masa kakitangan tidak direkodkan di mana-mana dalam sistem. Masukkan anggaran anda sendiri bagi minit setiap tindakan kakitangan, dan secara pilihan jam bekerja dalam sebulan sepenuh masa, untuk melihat anggaran beban bulanan. Input ini tidak disimpan.",
+    "ranked": "Proses disusun mengikut pengendalian kakitangan",
+    "rankHelp": "Kes yang dimulakan sejak {from}, disusun mengikut tindakan kakitangan bagi setiap 30 hari. Tindakan kakitangan ialah sebarang tindakan yang direkodkan pada kes oleh orang selain pekerja yang berkenaan.",
+    "started": "Kes dimulakan",
+    "completedOf": "{n} selesai",
+    "open": "Masih terbuka",
+    "agedOpen": "{n} melebihi {days} hari",
+    "median": "Masa lazim untuk selesai",
+    "p90": "9 daripada 10 dalam {value}",
+    "hours": "{n} j",
+    "days": "{n} hari",
+    "rework": "Kerja semula",
+    "reworkHint": "Ditolak, ditarik balik, dibatalkan atau dibuka semula",
+    "staffActions": "Tindakan kakitangan setiap 30 hari",
+    "automatedShare": "{share} tindakan sudah diautomasikan",
+    "notLinked": "Pengendalian belum dipautkan kepada kes ini",
+    "estimateHours": "Kira-kira {hours} jam kakitangan sebulan.",
+    "estimateFte": "Kira-kira {hours} jam kakitangan sebulan, lebih kurang {fte} setara sepenuh masa.",
+    "estimateLabel": "Anggaran daripada input anda, bukan ukuran.",
+    "needMore": "Kurang daripada {min} kes selesai dalam tempoh ini. Ukur lebih lama sebelum membuat keputusan.",
+    "candidates": "Kerja yang boleh diambil alih oleh ejen (keputusan tetap dibuat oleh manusia)",
+    "moduleOff": "Modul ini tidak didayakan untuk organisasi anda.",
+    "limitsTitle": "Perkara yang tidak ditunjukkan oleh angka ini",
+    "limitEffort": "Masa berlalu bukan usaha: kes yang menunggu lima hari mungkin hanya memerlukan lima minit kerja.",
+    "limitOutside": "Kerja di luar sistem, seperti e-mel, panggilan telefon dan hamparan, tidak kelihatan di sini.",
+    "limitStaff": "Angka masa dan bilangan kakitangan hanya dipaparkan daripada input anda sendiri. Tiada penjimatan dituntut sehingga ejen berjalan dan keadaan sebelum dan selepas diukur.",
+    "limitNoChange": "Halaman ini hanya membaca rekod yang sudah boleh anda buka. Ejen yang bertindak ialah fasa kemudian.",
+    "version": "Peraturan penilaian {version}",
+    "processes": {
+      "leave": "Permohonan cuti",
+      "claims": "Tuntutan perbelanjaan",
+      "attendance_correction": "Pembetulan kehadiran",
+      "profile_change": "Perubahan profil pekerja",
+      "onboarding": "Kemasukan pekerja baharu",
+      "offboarding": "Keluar pekerja",
+      "readiness": "Butiran pekerja yang tiada"
+    },
+    "decision": {
+      "routine": "Rutin: peraturan menentukan keputusan.",
+      "judgement": "Pertimbangan: pelulus menilai permohonan.",
+      "consequential": "Berkesan besar: menjejaskan gaji, wang atau akses, jadi manusia sentiasa membuat keputusan."
+    },
+    "roles": {
+      "automate_parts": "Automasikan sebahagian",
+      "assist": "Bantu sahaja",
+      "measure_first": "Ukur dahulu",
+      "off": "Tidak didayakan"
+    },
+    "tiers": {
+      "automatic": "automatik",
+      "confirm": "selepas klik pengesahan",
+      "approve": "disediakan untuk pelulus"
+    },
+    "actions": {
+      "chase_overdue_approver": "Susuli pelulus yang lewat",
+      "check_completeness": "Semak permohonan lengkap",
+      "submit_on_request": "Hantar atas permintaan pekerja",
+      "request_missing_evidence": "Minta resit atau bukti yang tiada",
+      "request_missing_information": "Minta maklumat yang tiada",
+      "prepare_for_approval": "Sediakan perubahan untuk kelulusan",
+      "chase_step_owner": "Susuli pemilik langkah yang lewat",
+      "tick_system_verified_steps": "Tandakan langkah yang sistem boleh buktikan selesai",
+      "open_case_from_hire": "Buka kes apabila seseorang diambil bekerja",
+      "open_case_from_resignation": "Buka kes apabila peletakan jawatan diterima"
+    },
+    "minutesShort": "{n} min",
+    "underMinute": "< 1 min",
+    "completedClosed": "{n} selesai, {w} ditutup tanpa keputusan"
   }
 }

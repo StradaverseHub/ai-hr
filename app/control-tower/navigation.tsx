@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl';
 
 const tabs = [
   ['', 'overview'], ['/readiness', 'readiness'], ['/exceptions', 'exceptions'],
-  ['/actions', 'actions'], ['/agents', 'agents'], ['/how-it-works', 'guide'],
+  ['/actions', 'actions'], ['/agents', 'agents'], ['/opportunities', 'opportunities'], ['/how-it-works', 'guide'],
 ] as const;
 
 export function ControlTowerNavigation({ payrollEnabled = true }: { payrollEnabled?: boolean }) {
