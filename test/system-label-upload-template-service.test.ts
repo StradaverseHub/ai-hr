@@ -81,7 +81,7 @@ describe('Labels template scope and initial state through canonical writers',()=
     const empty=XLSX.read(await downloadSystemLabelTemplate(adminCtx(b),[]),{type:'buffer'}),emptySample=JSON.stringify(XLSX.utils.sheet_to_json(empty.Sheets.Sample,{header:1,raw:false}));
     expect(emptySample).not.toContain('000_A');expect(emptySample).toContain('TENANT_SHARED_EXAMPLE');
     expect(emptySample).toContain('(example)');
-    await expect(previewSystemLabelImport(adminCtx(b),bytes)).rejects.toThrow('no label data');
+    expect(()=>previewSystemLabelImport(adminCtx(b),bytes)).toThrow('no label data');
   });
   it('uses an authorized company ID when its name is ambiguous with the Criteria delimiter',async()=>{
     const co=await createCompany(adminCtx(b),{legalName:'Fictional; Scoped Company'});

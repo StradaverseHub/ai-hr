@@ -190,7 +190,7 @@ describe('f1bbc572 — every surface that narrows a label catalogue to a company
 
   it('the common maintenance page consumes database-scoped reads without a company-switcher filter',()=>{
     const page=src('app/admin/settings/system-labels/page.tsx'),admin=src('core/admin.ts'),tools=src('components/system-label-import-tools.tsx');
-    expect(tools).toContain('labelMaintenanceCompanies(session)');expect(tools).not.toMatch(/scopedAdmin|scopeIds/);
+    expect(tools).toContain('await requireAdmin()');expect(tools).toContain('<SystemLabelImport/>');expect(tools).not.toMatch(/scopedAdmin|scopeIds/);
     expect(page).toContain('labelMaintenanceCompanies(s)');expect(page).not.toMatch(/scopedIdSet|globalUsable|sharedSystemLabels|labelsInCompanyScope/);
     for(const [fn,table,kind]of [['listDepartmentsForLabels','department','department'],['listPositionsForLabels','position','position'],['listCostCentersForLabels','costCenter','cost_center'],['listBusinessUnitsForLabels','businessUnit','business_unit']]){
       const start=admin.indexOf('export function '+fn+'('),end=admin.indexOf('\nexport function ',start+1);expect(start).toBeGreaterThanOrEqual(0);const body=admin.slice(start,end<0?admin.length:end);expect(body.length).toBeGreaterThan(500);expect(body).toContain(`labelMaintenanceCondition(${table}, '${kind}')`);expect(body).toContain('.limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1)');

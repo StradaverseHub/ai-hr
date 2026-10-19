@@ -113,14 +113,14 @@ describe('Movement rollback-only preview and atomic confirmation',()=>{
  it('refuses pre-hire neutral events and conflicting same-date writes while retaining disjoint same-date changes',async()=>{
   const id=await hire(),before=await state(id);
   expect((await ready(csv([['EMP-0004','secondment',day(-61),'','','Before hire']]))).valid).toBe(0);
-  const conflict=csv([['EMP-0004','promotion',day(-2),'','3500',''],['EMP-0004','increment',day(-2),'','3700','']]);const preview=await ready(conflict);expect(preview.valid).toBe(1);expect(preview.employees[0].rows.find(row=>row.row===3)?.errors).toContain('same_date_conflicting_changes');
+  const conflict=csv([['EMP-0004','promotion',day(-2),'','3500',''],['EMP-0004','increment',day(-2),'','3700','']]);const preview=await ready(conflict);expect(preview.valid).toBe(0);expect(preview.employees[0].rows.find(row=>row.row===2)?.errors).toEqual(['employee_sequence_invalid']);expect(preview.employees[0].rows.find(row=>row.row===3)?.errors).toContain('same_date_conflicting_changes');
   expect(await state(id)).toEqual(before);
   const disjoint=csv([['EMP-0004','promotion',day(-2),'','3500',''],['EMP-0004','transfer',day(-2),b.deptB,'','']]);expect((await ready(disjoint)).valid).toBe(2);
  });
  it('refuses a selected ordinary successor after an earlier selected termination, with no retained preview effects',async()=>{
   const id=await hire(),before=await state(id);
   const text=toCsv([['employee_code','event_type','effective_date','end_date','termination_reason_code','remarks'],['EMP-0004','termination',day(-5),day(-5),'contract_expiry','Fictional end'],['EMP-0004','secondment',day(-2),'','','After end']]);
-  const preview=await ready(text);expect(preview.valid).toBe(1);expect(preview.employees[0].rows.find(row=>row.row===3)?.errors).toContain('event_after_exit');expect(await state(id)).toEqual(before);
+  const preview=await ready(text);expect(preview.valid).toBe(0);expect(preview.employees[0].rows.find(row=>row.row===2)?.errors).toEqual(['employee_sequence_invalid']);expect(preview.employees[0].rows.find(row=>row.row===3)?.errors).toContain('event_after_exit');expect(await state(id)).toEqual(before);
  });
 
 
@@ -177,7 +177,8 @@ describe('Movement rollback-only preview and atomic confirmation',()=>{
   await owner.db.execute(sql`create function public.b20_movement_preview_refusal() returns trigger language plpgsql as $$ begin raise exception 'fixture assignment refusal'; end $$`);
   await owner.db.execute(sql`create trigger b20_movement_preview_refusal before insert on assignment for each row execute function public.b20_movement_preview_refusal()`);
   try {const preview=await ready(text);expect(preview.employees[0].rows.some(row=>row.status==='invalid')).toBe(true);
-   for(const row of preview.employees[0].rows.filter(row=>row.status==='invalid')){expect(row.errors).toEqual(['change_refused']);expect(row.errors.join(' ')).not.toMatch(/insert into|fixture assignment refusal|params:/i);}
+   expect(preview.valid).toBe(0);expect(preview.employees[0].rows.find(row=>row.row===2)?.errors).toEqual(['change_refused']);expect(preview.employees[0].rows.find(row=>row.row===3)?.errors).toEqual(['employee_sequence_invalid']);
+   for(const row of preview.employees[0].rows.filter(row=>row.status==='invalid'))expect(row.errors.join(' ')).not.toMatch(/insert into|fixture assignment refusal|params:/i);
    expect(await state(id)).toEqual(before);}finally{await owner.db.execute(sql`drop trigger b20_movement_preview_refusal on assignment`);await owner.db.execute(sql`drop function public.b20_movement_preview_refusal()`);}
  });
 });
