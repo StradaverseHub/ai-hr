@@ -227,7 +227,7 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
   it('keeps each original config owner while placing module setup in its own Configuration section', () => {
     const block = adminGroupBlock();
     for (const name of ['LEAVE_CONFIG_NODE','CLAIMS_CONFIG_ROW','PAYROLL_NODE','SYSTEM_SETTINGS_NODE']) {
-      expect(block, `${name}: no legacy authorized source owner lost`).toMatch(new RegExp(`^[ \\t]*${name},$`,'m'));
+      expect(block.split('\n').some(line=>line.trim()===`${name},`), `${name}: no legacy authorized source owner lost`).toBe(true);
     }
     expect(navigationPlacement('/admin/leave-config/types')).toEqual({area:'ops',module:'leave',section:'config'});
     expect(navigationPlacement('/admin/claims')).toEqual({area:'ops',module:'claims',section:'config'});
