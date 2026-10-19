@@ -10,6 +10,7 @@ import {parseMovementTypeCsv} from '@/lib/movement-type-csv';
 import {movementErrorReceipt,verifyMovementErrorReceipt,movementWorkbookSigningReady} from '@/lib/movement-workbook-metadata.server';
 import type {MovementWorkbookBinding} from '@/lib/movement-workbook-metadata.server';
 import type {MovementImportRecord,MovementImportEmployee} from '@/lib/movement-import-contract';
+import {retainMovementExclusionReasons} from '@/lib/movement-import-contract';
 export const runtime='nodejs';
 const reply=(value:unknown,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'private, no-store'}});
 async function form(request:Request){
@@ -20,6 +21,18 @@ async function form(request:Request){
 }
 const json=(data:FormData,key:string,max:number)=>{const raw=String(data.get(key)??'');if(raw.length>max)throw new Error('invalid_file');try{return raw?JSON.parse(raw):undefined;}catch{throw new Error('invalid_file');}};
 const download=(bytes:Buffer,name:string)=>new Response(new Uint8Array(bytes),{headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':`attachment; filename="${name}"`,'Cache-Control':'private, no-store'}});
+/** A verified display receipt supplies reasons only. Freshly parsed source owns row/employee/type identity. */
+function observedRows(rows:{row:number;errors:string[]}[],records:MovementImportRecord[]):MovementImportEmployee[]{
+ const byKey=new Map(records.map(record=>[record.row,record])),seen=new Set<number>(),employees=new Map<string,MovementImportEmployee>();
+ for(const row of rows){
+  const record=byKey.get(row?.row);
+  if(!record||!Number.isSafeInteger(row.row)||seen.has(row.row)||!Array.isArray(row.errors)||row.errors.length>200||row.errors.some(error=>typeof error!=='string'||error.length>1000))throw new Error('workbook_metadata_invalid');
+  seen.add(row.row);let employee=employees.get(record.employeeCode);
+  if(!employee){employee={employeeCode:record.employeeCode,employmentId:null,name:null,fingerprint:null,rows:[]};employees.set(record.employeeCode,employee);}
+  employee.rows.push({row:record.row,employeeCode:record.employeeCode,eventType:record.cells.kind??'',effectiveDate:record.cells.effectiveDate??'',status:'excluded',errors:[...row.errors],source:record.source});
+ }
+ return [...employees.values()];
+}
 export async function POST(request:Request){
  if(!isSameOriginBrowserRequest(request))return reply({ok:false,error:'origin'},403);
  const ctx=await requireAdmin(),t=await getTranslations(),resolve=(key:string,fallback:string)=>t.has(key)?t(key):fallback;
@@ -43,19 +56,26 @@ export async function POST(request:Request){
   }
   if(fileErrors.length)return reply({ok:true,preview:{inputHash:'',selection:[],fileErrors,employees:[],excluded:0,valid:0}});
   const input={companyId,csv:'',records,sourceHash,catalogueHash:movementWorkbookCatalogue(catalog)};
-  if(operation==='preview')return reply({ok:true,preview:await previewMovementImport(ctx,input)});
+  if(operation==='preview'){
+   const preview=await previewMovementImport(ctx,input);let previewErrorReceipt:string|undefined;
+   if(movementWorkbookSigningReady())try{previewErrorReceipt=movementErrorReceipt({tenantId:ctx.tenantId,userId:ctx.userId??'',companyId,sourceHash,rows:preview.employees.flatMap(employee=>employee.rows.map(row=>({row:row.row,errors:row.errors})))});}catch{/* Display evidence is optional; keyless CSV remains usable. */}
+   return reply({ok:true,preview,previewErrorReceipt});
+  }
   if(operation==='errors'){
    // Derive errors from the current canonical preview; never turn client-supplied messages into a file.
    const token=String(data.get('errorReceipt')??'');
-   const preview=token?{employees:[{employeeCode:'',employmentId:null,name:null,fingerprint:null,rows:verifyMovementErrorReceipt(token,{tenantId:ctx.tenantId,userId:ctx.userId??'',companyId,sourceHash}).map(row=>({row:row.row,employeeCode:'',eventType:'',effectiveDate:'',status:'failed' as const,errors:row.errors}))}]}:await previewMovementImport(ctx,input);
+   const preview=token?{employees:observedRows(verifyMovementErrorReceipt(token,{tenantId:ctx.tenantId,userId:ctx.userId??'',companyId,sourceHash}),records)}:await previewMovementImport(ctx,input);
    const reportRows=token?new Set(preview.employees.flatMap(e=>e.rows.map(row=>row.row))):null;
    const reportRecords=reportRows?records.filter(record=>reportRows.has(record.row)):records;
    return download(await buildMovementWorkbook({tenantId:ctx.tenantId,companyId,companyName:catalog.companies.find(c=>c.value===companyId)?.label??'',catalog,subjects:[],sourceBindings,resolve,records:reportRecords,employees:preview.employees}),'movement-import-errors.xlsx');
   }
   const selection=json(data,'selection',3000),fingerprints=json(data,'fingerprints',15000),inputHash=String(data.get('inputHash')??'');
   if(!Array.isArray(selection)||!fingerprints||typeof fingerprints!=='object'||Array.isArray(fingerprints))throw new Error('invalid_selection');
+  const previewToken=String(data.get('previewErrorReceipt')??'');
+  const previous=data.has('previewErrorReceipt')?observedRows(verifyMovementErrorReceipt(previewToken,{tenantId:ctx.tenantId,userId:ctx.userId??'',companyId,sourceHash}),records):[];
   const canReportWorkbook=movementWorkbookSigningReady();
-  const result=await commitMovementImport(ctx,{...input,selection,inputHash,fingerprints,acknowledgeExcluded:data.get('acknowledgeExcluded')==='true'});
+  const committed=await commitMovementImport(ctx,{...input,selection,inputHash,fingerprints,acknowledgeExcluded:data.get('acknowledgeExcluded')==='true'});
+  const result={...committed,employees:retainMovementExclusionReasons(committed.employees,previous)};
   if(result.imported){revalidatePath('/admin/personnel');for(const employee of result.employees as MovementImportEmployee[])if(employee.employmentId)revalidatePath('/admin/personnel/'+employee.employmentId);}
   let errorReceipt:string|undefined;
   if(canReportWorkbook)try{errorReceipt=movementErrorReceipt({tenantId:ctx.tenantId,userId:ctx.userId??'',companyId,sourceHash,rows:result.employees.flatMap(e=>e.rows.filter(row=>row.status!=='imported').map(row=>({row:row.row,errors:row.errors})))});}catch{/* Optional display download must never conceal an already committed result. */}
