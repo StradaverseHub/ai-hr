@@ -20,6 +20,7 @@ import { isAdmin } from '../lib/authz-model';
 import { APPROVAL_SECTION_ID } from '../lib/approvals-focus';
 import type { SessionContext } from '../db/client';
 import { listLeaveRequests, listPendingLeaveCancellations } from './read';
+import { hasPendingAttendanceParticipantAssignment } from './attendance-workflow';
 import { listAttendanceCorrections } from './attendance';
 import { listProfileChangeRequests } from './profile';
 import { listPendingClaims } from './claims';
@@ -85,7 +86,13 @@ export async function listPendingTasks(
     ? await pendingManagerReviewsFor(ctx, me.employmentId)
     : [];
 
-  if (!admin && !manager && managerReviews.length === 0) return [];
+  if (!admin && !manager && managerReviews.length === 0) {
+    if (!modules.attendance || !await hasPendingAttendanceParticipantAssignment(ctx)) return [];
+    const corrections = await listAttendanceCorrections(ctx, { companyIds: scopeIds, status: 'pending' });
+    return corrections.filter(row => row.workflow?.routingVersion === 3 && row.canDecide && row.personId !== ctx.personId).map(row => ({
+      id: row.id, kind: 'attendance' as const, subjectName: row.employee, createdAt: row.createdAt.toISOString(), linkPath: '/approvals',
+    })).sort((a, b) => a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.id.localeCompare(b.id));
+  }
 
   const [leave, leaveCancellations, corrections, profileChanges, claims, resignations, hrReviews] = await Promise.all([
     listLeaveRequests(ctx, scopeIds, 200, { status: 'pending' }),
@@ -131,7 +138,7 @@ export async function listPendingTasks(
       createdAt: iso(r.createdAt),
       linkPath: `/approvals#${APPROVAL_SECTION_ID.leaveCancellation}`,
     })),
-    ...corrections.map((r) => ({
+    ...corrections.filter(r => r.canDecide !== false && r.personId !== ctx.personId).map((r) => ({
       id: r.id,
       kind: 'attendance' as const,
       subjectName: r.employee,
@@ -143,7 +150,7 @@ export async function listPendingTasks(
       kind: 'profile' as const,
       subjectName: r.employee,
       createdAt: iso(r.createdAt),
-      linkPath: '/approvals',
+      linkPath: `/admin/personnel/profile-changes#request-${r.id}`,
     })),
     ...claims.map((r) => ({
       id: r.id,

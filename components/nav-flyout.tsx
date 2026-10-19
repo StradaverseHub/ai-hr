@@ -1,10 +1,11 @@
 'use client';
 
 import Link from '@/components/intent-link';
-import { useEffect, useRef, type Ref } from 'react';
+import { Fragment, useEffect, useRef, type Ref } from 'react';
 import { useTranslations } from 'next-intl';
 import { ChevronRight, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ApprovalCountBadge } from '@/components/approval-count-badge';
 
 /**
  * Flyout navigation for modules with sub-items (fdc20776 — replaces the accordion in
@@ -27,6 +28,9 @@ import { cn } from '@/lib/utils';
  */
 
 export type FlyoutChild = {
+  pendingCount?: number;
+  sectionKey?: string;
+  navigationHref?: string;
   href: string;
   labelKey: string;
   icon: LucideIcon;
@@ -106,6 +110,7 @@ export function NavFlyout({
   panelId,
   onToggle,
   triggerRef,
+  tour,
 }: {
   /** Parent label key in the `nav` namespace (also the sidebar's `openKey` identity). */
   labelKey: string;
@@ -123,12 +128,14 @@ export function NavFlyout({
   onToggle: () => void;
   /** Registered with the sidebar so Escape can return focus here. */
   triggerRef: Ref<HTMLButtonElement>;
+  tour?: string;
 }) {
   const t = useTranslations('nav');
   const label = t(labelKey);
   return (
     <button
       ref={triggerRef}
+      data-tour={tour}
       type="button"
       onClick={onToggle}
       aria-haspopup="true"
@@ -220,12 +227,14 @@ export function NavFlyoutPanel({
             const ChildIcon = child.icon;
             const childLabel = t(child.labelKey);
             return (
+              <Fragment key={child.href}>
+              {child.sectionKey && child.sectionKey!==items[i-1]?.sectionKey && <p className="mb-0 mt-3 px-3 text-xs font-medium text-muted-foreground">{t(child.sectionKey)}</p>}
               <Link
                 key={child.href}
                 ref={i === 0 ? firstLinkRef : undefined}
-                href={child.href}
+                href={child.navigationHref ?? child.href}
                 data-tour={child.tour}
-                aria-label={childLabel}
+                aria-label={child.pendingCount ? `${childLabel}, ${t('approvalsCount',{count:child.pendingCount})}` : childLabel}
                 aria-current={active ? 'page' : undefined}
                 // Mandatory, not belt-and-braces: all Reports children share the /reports
                 // pathname and differ only in the `cat` query param, so a usePathname effect
@@ -244,7 +253,9 @@ export function NavFlyoutPanel({
                   strokeWidth={2}
                 />
                 <span className="truncate text-sm">{childLabel}</span>
+                {child.pendingCount!=null&&child.pendingCount>0&&<ApprovalCountBadge count={child.pendingCount} collapsed={false}/>}
               </Link>
+              </Fragment>
             );
           })}
         </nav>

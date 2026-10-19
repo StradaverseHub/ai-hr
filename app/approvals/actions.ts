@@ -1,9 +1,16 @@
 'use server';
+import { attendanceWorkflowErrorMessage } from '@/lib/attendance-workflow-error-message';
+import { AttendanceLevelError } from '@/lib/attendance-workflow-v3';
 
 import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
+import { scopedSession } from '@/lib/scope';
+import { isAdmin } from '@/lib/authz-model';
+import { isModuleEnabledOrFalse } from '@/core/entitlements';
+import { pendingRewardReviews } from '@/packs/rewards/service';
+import { hasPendingAttendanceParticipantAssignment } from '@/packs/attendance/service';
 import { getSession } from '@/lib/session';
 import { decideLeave, decideLeaveDate, decideLeaveDates, decideLeaveCancellation } from '@/core/leave';
 import { parseBulkItems, runBulkDecide, type BulkDecideItem } from '@/lib/approvals-bulk';
@@ -45,6 +52,30 @@ function navOf(formData: FormData): Nav {
 function revalidateShell(): void {
   revalidatePath(back);
   revalidatePath('/', 'layout');
+}
+/** After the last request-bound task, keep feedback on an allowed neutral destination. */
+async function attendanceDecisionReturnUrl(s: Awaited<ReturnType<typeof getSession>>, nav: Nav, feedback: { toast?: string; error?: string }): Promise<string> {
+  const neutralDestination = () => {
+    const query = new URLSearchParams();
+    if (feedback.toast) query.set('toast', feedback.toast);
+    if (feedback.error) query.set('error', feedback.error);
+    return `/?${query.toString()}`;
+  };
+  if (!isAdmin(s) && !(s.roles ?? []).includes('manager')) {
+    try {
+      const hasNextAssignment = isModuleEnabledOrFalse(s, 'attendance') && await hasPendingAttendanceParticipantAssignment(s);
+      if (!hasNextAssignment) {
+        const { scopeIds } = await scopedSession();
+        const rewards = isModuleEnabledOrFalse(s, 'rewards') ? await pendingRewardReviews(s, scopeIds) : [];
+        if (!rewards.length) return neutralDestination();
+      }
+    } catch {
+      // Navigation reads cannot turn an already-committed decision into a failed action.
+      // Home retains the original outcome without assuming any remaining inbox authority.
+      return neutralDestination();
+    }
+  }
+  return approvalsReturnUrl({ ...nav, ...feedback });
 }
 function done(toast: string, nav: Nav = {}): never {
   revalidateShell();
@@ -154,12 +185,15 @@ export async function approveCorrectionAction(formData: FormData) {
   const decision = String(formData.get('decision')) as 'approved' | 'rejected';
   let outcomeStatus: string = decision;
   try {
-    const outcome = await decideAttendanceCorrection(s, { correctionId: String(formData.get('id')), decision, remarks: String(formData.get('remarks') ?? ''), rejectReason: String(formData.get('rejectReason') ?? ''), expectedStageIndex: formData.get('workflowStage') ? Number(formData.get('workflowStage')) : undefined });
+    const outcome = await decideAttendanceCorrection(s, { correctionId: String(formData.get('id')), decision, remarks: String(formData.get('remarks') ?? ''), rejectReason: String(formData.get('rejectReason') ?? ''), expectedStageIndex: formData.get('workflowStage') ? Number(formData.get('workflowStage')) : undefined, expectedParticipantSlot: String(formData.get('workflowParticipant') ?? '') || undefined });
     outcomeStatus = outcome.status;
   } catch (e) {
-    fail(e instanceof MissingAttendanceRejectReasonError ? new Error((await getTranslations('attendance'))('rejectRequired')) : e, nav);
+    const error = e instanceof AttendanceLevelError ? await attendanceWorkflowErrorMessage(e) : e instanceof MissingAttendanceRejectReasonError ? (await getTranslations('attendance'))('rejectRequired') : publicErrorMessage(e);
+    redirect(await attendanceDecisionReturnUrl(s, nav, { error }));
   }
-  done(outcomeStatus === 'pending' ? (await getTranslations('attendanceHistory'))('stageRecorded') : `Correction ${decision}`, nav);
+  const toast = outcomeStatus === 'pending' ? (await getTranslations('attendanceHistory'))('stageRecorded') : `Correction ${decision}`;
+  revalidateShell();
+  redirect(await attendanceDecisionReturnUrl(s, nav, { toast }));
 }
 
 /**
@@ -169,17 +203,11 @@ export async function approveCorrectionAction(formData: FormData) {
  * an optional extra this action may drop: `components/profile-change-decide.tsx` posts it as `reason`
  * from a `required` textarea, and this reads it. An approval may carry one too — an approver's note.
  */
-export async function approveProfileChangeAction(formData: FormData) {
-  const s = await getSession();
-  const nav = navOf(formData);
-  const decision = String(formData.get('decision')) as 'approved' | 'rejected';
-  const reason = String(formData.get('reason') ?? '').trim() || undefined;
-  try {
-    await decideProfileChange(s, { requestId: String(formData.get('id')), decision, reason });
-  } catch (e) {
-    fail(e, nav);
-  }
-  done(`Change ${decision}`, nav);
+/** Old posted forms continue through the canonical queue action and land on the relocated queue. */
+export async function approveProfileChangeAction(formData:FormData){
+ const {decideProfileChangeAction}=await import('../admin/personnel/profile-changes/actions');
+ if(!formData.has('requestId'))formData.set('requestId',String(formData.get('id')??''));
+ return decideProfileChangeAction(formData);
 }
 
 export async function decideResignationAction(formData: FormData) {
@@ -266,7 +294,7 @@ async function dispatchBulkItem(
       });
       return;
     case 'attendance':
-      await decideAttendanceCorrection(s, { correctionId: item.id, decision, rejectReason, deciderEmploymentId, expectedStageIndex: item.expectedStageIndex });
+      await decideAttendanceCorrection(s, { correctionId: item.id, decision, rejectReason, deciderEmploymentId, expectedStageIndex: item.expectedStageIndex, expectedParticipantSlot: item.expectedParticipantSlot });
       return;
   }
 }
@@ -301,7 +329,7 @@ export async function bulkDecideAction(formData: FormData) {
       : skipped > 0
         ? t('bulkApprovedPartial', { done: approved, skipped })
         : t('bulkApprovedAll', { done: approved });
-  redirect(approvalsReturnUrl({ ...nav, toast: summary }));
+  redirect(items.every(item => item.type === 'attendance') ? await attendanceDecisionReturnUrl(s, nav, { toast: summary }) : approvalsReturnUrl({ ...nav, toast: summary }));
 }
 
 export async function approveClaimAction(formData: FormData) {

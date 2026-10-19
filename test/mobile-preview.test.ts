@@ -33,8 +33,9 @@ describe('mobile-preview module (ca2f2fef)', () => {
 
   it('the sidebar exposes exactly one /mobile-preview nav entry', () => {
     const src = read('components/sidebar.tsx');
-    const matches = src.match(/'\/mobile-preview'/g) ?? [];
+    const matches = src.match(/\{\s*href:\s*'\/mobile-preview'/g) ?? [];
     expect(matches.length).toBe(1);
+    expect(src).toContain("row.href !== '/mobile-preview' || isAdmin");
   });
 
   it('the live preview presents the five task destinations without sample identities', () => {

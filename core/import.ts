@@ -51,8 +51,8 @@ import { addDependentTx, syncChildReliefFromFamily, assertDependentsValid, type 
 // whose country resolves no pack fails the import loudly (D3) instead of validating under MY rules.
 import { requirePackFor, type CountryPack } from '../localization/registry';
 import { normalizeEmployeeCode, isValidEmployeeCode, EMPLOYEE_CODE_MAX_LEN } from '../lib/employee-code';
-import { listCompanies, listDepartments, listLeaveTypes } from './read';
-import { listPositions, listCostCenters } from './admin';
+import { listCompanies, listDepartments, listLeaveTypes, listJobGrades } from './read';
+import { listPositions, listCostCenters, listBusinessUnits } from './admin';
 import { appendEvent, actorOf } from '../db/events';
 import {
   DEPENDENT_IMPORT_COLUMNS,
@@ -108,6 +108,10 @@ type CompanyContext = {
   deptByName: PersonnelImportLookup<string>;
   posByName: PersonnelImportLookup<string>;
   ccByName: PersonnelImportLookup<string>;
+  buByName: PersonnelImportLookup<string>;
+  gradeByName: PersonnelImportLookup<string>;
+  organisationDisplay: Map<string,string>;
+  departmentBusinessUnits:Map<string,string|null>;
   pack: CountryPack;
 };
 
@@ -122,6 +126,8 @@ type ResolvedRow = {
     departmentId: string;
     positionId?: string;
     costCenterId?: string;
+    businessUnitId?: string;
+    gradeId?: string;
     employmentType: 'full_time' | 'part_time' | 'contract' | 'intern';
     hiredOn: string;
     employeeCode?: string; // optional — blank/absent falls through to hireEmployee's auto counter
@@ -252,21 +258,36 @@ async function loadCompanyContext(
   ctx: SessionContext,
   co: { id: string; name: string; country: string | null },
 ): Promise<CompanyContext> {
-  const [departments, positions, costCenters] = await Promise.all([
+  const [departments, positions, costCenters, businessUnits, grades] = await Promise.all([
     listDepartments(ctx, { companyIds: [co.id] }),
     listPositions(ctx, { companyIds: [co.id] }),
     listCostCenters(ctx, { companyIds: [co.id] }),
+    listBusinessUnits(ctx, { companyIds: [co.id] }),
+    listJobGrades(ctx),
   ]);
-  const deptByName=new PersonnelImportLookup<string>();
-  const posByName=new PersonnelImportLookup<string>();
-  const ccByName=new PersonnelImportLookup<string>();
-  for(const d of departments)deptByName.add(d.id,d.id,{names:[d.name]});
-  for(const p of positions)posByName.add(p.id,p.id,{names:[p.title]});
-  for(const c of costCenters)ccByName.add(c.id,c.id,{codes:[c.code],names:[c.name]});
+  const deptByName=new PersonnelImportLookup<string>('label-first');
+  const posByName=new PersonnelImportLookup<string>('label-first');
+  const ccByName=new PersonnelImportLookup<string>('label-first');
+  const buByName=new PersonnelImportLookup<string>('label-first');
+  const gradeByName=new PersonnelImportLookup<string>('label-first');
+  for(const d of departments)deptByName.add(d.id,d.id,{codes:[d.code],names:[d.label]});
+  for(const p of positions)posByName.add(p.id,p.id,{codes:[p.code],names:[p.label]});
+  for(const c of costCenters)ccByName.add(c.id,c.id,{codes:[c.code],names:[c.label]});
+  for(const b of businessUnits)buByName.add(b.id,b.id,{codes:[b.code],names:[b.label]});
+  for(const g of grades)gradeByName.add(g.id,g.id,{codes:[g.code],names:[g.name]});
+  const display=(label:string|null,code:string|null)=>label?.trim()?`${label.trim()}${code?` (${code})`:''}`:code??'';
   return {
     id: co.id,
     name: co.name,
-    deptByName,posByName,ccByName,
+    deptByName,posByName,ccByName,buByName,gradeByName,
+    departmentBusinessUnits:new Map(departments.map(department=>[department.id,department.businessUnitId])),
+    organisationDisplay:new Map([
+      ...departments.map(d=>[d.id,display(d.label,d.code)] as const),
+      ...positions.map(p=>[p.id,display(p.label,p.code)] as const),
+      ...costCenters.map(c=>[c.id,display(c.label,c.code)] as const),
+      ...businessUnits.map(b=>[b.id,display(b.label,b.code)] as const),
+      ...grades.map(g=>[g.id,display(g.name,g.code)] as const),
+    ]),
     // Rung 5a (ADR-0080 D1/D6): IC rules come from the COMPANY'S country pack, fail-loud when the
     // country resolves nothing — so a per-row company change also changes the statutory rules applied.
     pack: requirePackFor(co.country),
@@ -284,7 +305,7 @@ async function analyze(
   registerRecords:PersonnelRegisterRecords={},
 ): Promise<{ preview: ImportPreview; resolved: ResolvedRow[]; dependents: ResolvedDependent[]; registers:Awaited<ReturnType<typeof validateRegisterImport>>[] }> {
   if(Object.keys(registerRecords).some(key=>!(PERSONNEL_REGISTER_KINDS as readonly string[]).includes(key)))throw new Error('Unknown register sheet.');
-  const [allCompanies, leaveTypes] = await Promise.all([listCompanies(ctx), listLeaveTypes(ctx)]);
+  const [allCompanies, leaveTypes] = await Promise.all([listCompanies(ctx,{adminOnly:true}), listLeaveTypes(ctx)]);
   // d8471481 — company lookup keys. Legal name is what the reporter's template shows; company label
   // and registration number are accepted because those are what an HR spreadsheet usually carries.
   // The id is accepted too so a machine-generated file can be exact. All matched case-insensitively.
@@ -365,7 +386,7 @@ async function analyze(
       .select({ code: employeeDraft.reservedEmployeeCode })
       .from(employeeDraft)
       .where(isNotNull(employeeDraft.reservedEmployeeCode));
-    const catalog = new PersonnelImportCatalog();
+    const catalog = new PersonnelImportCatalog(new Set(['division','branch','region','line','section','team','base']));
     for(const option of options)catalog.addOption(option);
     const superiorByCode = new Map<string, string>();
     const superiorByEmail = new Map<string, string|null>();
@@ -431,10 +452,12 @@ async function analyze(
     else if (rc.unknown) errors.push(`Unknown company "${rc.raw}"`);
     else if (!rc.co) errors.push('Missing company');
     const cctx = rc.co ? contexts.get(rc.co.id) : undefined;
-    const { deptByName, posByName, ccByName } = cctx ?? {
+    const { deptByName, posByName, ccByName, buByName, gradeByName } = cctx ?? {
       deptByName: new PersonnelImportLookup<string>(),
       posByName: new PersonnelImportLookup<string>(),
       ccByName: new PersonnelImportLookup<string>(),
+      buByName: new PersonnelImportLookup<string>(),
+      gradeByName: new PersonnelImportLookup<string>(),
     };
     const pack = cctx?.pack ?? normPack!;
 
@@ -465,7 +488,7 @@ async function analyze(
     const deptName = norm(rec.department);
     const departmentId = deptByName.get(deptName.toLowerCase());
     if (!deptName) errors.push('Missing department');
-    else if (deptByName.isAmbiguous(deptName))errors.push(`Ambiguous department "${deptName}" — use its exact ID`);
+    else if (deptByName.isAmbiguous(deptName))errors.push(`Ambiguous department "${deptName}" — choose a distinct label or code`);
     else if (!departmentId) errors.push(`Unknown department "${deptName}"`);
 
     // Position / cost-center (optional, resolved by name; unknown = error so it's never dropped silently)
@@ -473,16 +496,28 @@ async function analyze(
     let positionId: string | undefined;
     if (posName) {
       positionId = posByName.get(posName.toLowerCase());
-      if(posByName.isAmbiguous(posName))errors.push(`Ambiguous position "${posName}" — use its exact ID`);
+      if(posByName.isAmbiguous(posName))errors.push(`Ambiguous position "${posName}" — choose a distinct label or code`);
       else if (!positionId) errors.push(`Unknown position "${posName}"`);
     }
     const ccName = norm(rec.cost_center);
     let costCenterId: string | undefined;
     if (ccName) {
       costCenterId = ccByName.get(ccName.toLowerCase());
-      if(ccByName.isAmbiguous(ccName))errors.push(`Ambiguous cost_center "${ccName}" — use its exact ID or code`);
+      if(ccByName.isAmbiguous(ccName))errors.push(`Ambiguous cost_center "${ccName}" — choose a distinct label or code`);
       else if (!costCenterId) errors.push(`Unknown cost_center "${ccName}"`);
     }
+
+    const organisationChoice=(column:string,lookup:PersonnelImportLookup<string>)=>{
+      const raw=norm(rec[column]);if(!raw)return undefined;
+      const id=lookup.get(raw);
+      if(lookup.isAmbiguous(raw))errors.push(`Ambiguous ${column} "${raw}" for ${cctx?.name??'the selected company'} — choose a distinct label or code`);
+      else if(!id)errors.push(`Unavailable ${column} "${raw}" for ${cctx?.name??'the selected company'}`);
+      return id;
+    };
+    const businessUnitId=organisationChoice('business_unit',buByName);
+    const gradeId=organisationChoice('job_grade',gradeByName);
+    const departmentUnit=departmentId?cctx?.departmentBusinessUnits.get(departmentId):undefined;
+    if(businessUnitId && departmentUnit && businessUnitId!==departmentUnit)errors.push('department: unavailable under the selected business_unit');
 
     // Hire date
     const hiredOn = norm(rec.hired_on);
@@ -772,7 +807,12 @@ async function analyze(
 
     const ok = errors.length === 0;
     const result: RowResult = {
-      proposed:personnelImportProposedValues(rec,'employee'),
+      proposed:personnelImportProposedValues(rec,'employee').map(value=>{
+        const id=({department:departmentId,position:positionId,cost_center:costCenterId,business_unit:businessUnitId,job_grade:gradeId} as Record<string,string|undefined>)[value.column];
+        const category=PERSONNEL_EMPLOYMENT_IMPORT_FIELDS.find(field=>field.import.column===value.column)?.import.catalog;
+        const display=id?cctx?.organisationDisplay.get(id):category?catalog.display(category,rec[value.column]):undefined;
+        return display?{...value,value:`${norm(rawRecord[value.column])} → ${display}`}:value;
+      }),
       rowNum: idx + 1,
       fullName,
       email,
@@ -790,6 +830,7 @@ async function analyze(
         departmentId: departmentId ?? '',
         positionId,
         costCenterId,
+        businessUnitId,gradeId,
         employmentType,
         hiredOn,
         // Blank → undefined so hireEmployee falls through to the nextEmployeeCode auto-counter.

@@ -1,3 +1,4 @@
+/** Ops/Strata supersedes historical audience-position pins below; route, permission and source-inventory safeguards remain. */
 /**
  * Attendance nav consolidation guard (items b3dc0f78 + 5cb199b3 + f60cd403).
  *
@@ -39,6 +40,7 @@ import { describe, expect, it } from 'vitest';
 // The file keeps its own inline nodeBlock (it slices the PACK); the shared helper is needed for the one
 // assertion that has to look inside components/sidebar.tsx instead — where Holidays now lives (4509d2b8).
 import { nodeBlock as nodeBlockOf } from './helpers/sidebar-source';
+import { navigationPlacement } from '../lib/navigation-workspaces';
 
 const SIDEBAR = fs.readFileSync(path.resolve(__dirname, '../components/sidebar.tsx'), 'utf8');
 const PACK = fs.readFileSync(path.resolve(__dirname, '../packs/attendance/index.ts'), 'utf8');
@@ -156,7 +158,8 @@ const TICKET_TAIL_HREFS = ['/admin/attendance-allowance', '/admin/work-locations
  * distinct from TICKET_MOVED_OUT (a different MENU, components/sidebar.tsx SYSTEM_SETTINGS_NODE) and
  * TICKET_RE_ADDRESSED (a `was` → `now` pair, still a row somewhere): this one is a row nowhere at all.
  */
-const RETIRED_HREFS = ['/admin/work-locations'] as const;
+// Ops/Strata explicitly restores this link inside Attendance Configuration. Its old route stays guarded.
+const RESTORED_CONFIGURATION_HREFS = ['/admin/work-locations'] as const;
 
 /** One of the node literals (packs/attendance/index.ts): declaration to the closing `};`. */
 function nodeBlock(constName: string): string {
@@ -228,14 +231,17 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
    * twice; a stub that forwards before guarding would leak the destination to a non-administrator; and no
    * `ownedSubpaths` would mean a bookmark that lands on step 2 through the stub shows "Locations" unlit.
    */
-  it('r428: Work Locations has LEFT the rail — folded into the row above, its old address a guarded stub it owns', () => {
-    for (const href of RETIRED_HREFS) {
+  it('Ops/Strata restores Work Locations exactly once under Attendance Configuration, retaining its guarded forward', () => {
+    for (const href of RESTORED_CONFIGURATION_HREFS) {
       // `countQuoted` would also match the SAME quoted string inside `ownedSubpaths: […]` below — correct,
       // since that is not a row — so the row-specific shape `href: '…'` is counted directly instead.
       expect(
-        SRC.split(`href: '${href}'`).length - 1,
-        `${href} still has a nav row somewhere in the rail`,
-      ).toBe(0);
+        [...SRC.matchAll(/\{\s*href:\s*'([^']+)'/g)].filter(match=>match[1]===href).length,
+        `${href} appears once as a configuration destination`,
+      ).toBe(1);
+      expect(navigationPlacement(href)).toEqual({area:'ops',module:'attendance',section:'config'});
+      const restored=SIDEBAR.split('\n').find(line=>new RegExp(`href:\\s*'${href}'`).test(line));
+      expect(restored).toMatch(/adminOnly:\s*true/);
       const stub = fs.readFileSync(path.resolve(__dirname, '..', `app${href}`, 'page.tsx'), 'utf8');
       const guard = stub.indexOf('requireAdmin()');
       const fwd = stub.indexOf('redirect(');

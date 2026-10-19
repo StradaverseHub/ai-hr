@@ -4279,7 +4279,8 @@ export default async function EmployeePage({
   // the administrator lands on the form that actually performs the change rather than on a tab they must
   // then navigate. Tab-qualified so the panel is already selected.
   const newMovementHref = `/admin/personnel/${emp.employmentId}?tab=careerMovement&newEvent=1`;
-  const gradeName = emp.gradeId ? (grades.find((g) => g.id === emp.gradeId)?.name ?? null) : null;
+  const currentGrade=emp.gradeId?grades.find(g=>g.id===emp.gradeId):undefined;
+  const gradeName=currentGrade?.name?.trim() || currentGrade?.code || null;
   const employmentTypeLabel =
     current?.employmentType && EMPLOYMENT_TYPE_OPTIONS.includes(current.employmentType)
       ? t(`employmentInfo.employmentType_${current.employmentType}` as 'employmentInfo.employmentType_full_time')
@@ -4461,31 +4462,31 @@ export default async function EmployeePage({
         </div>
 
         {/* 8ebabbf2 — the eight flat organisation columns, likewise view-only. They were catalog-backed
-            ProfileOptionSelect dropdowns (1001ff61); the stored value is now displayed directly, which is
-            what those dropdowns rendered anyway for both catalog and legacy free-text values. Movement's
+            ProfileOptionSelect dropdowns (1001ff61); the current owner label is displayed with the canonical code as fallback,
+            including legacy free-text values that have no matching catalogue row. Movement's
             comparison form owns them now (core/movement.ts MOVEMENT_FLAT_FIELDS) and keeps the same
             catalog validation, because it writes through the same setEmploymentInfo. */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           <PersonnelField fieldId="employment.additional_organisation_labels.orgdivision" mode="edit">
-            {readOnlyValue("employment.additional_organisation_labels.orgdivision", emp.orgDivision)}
+            {readOnlyValue("employment.additional_organisation_labels.orgdivision", profileOptions.division.find(option=>option.value===emp.orgDivision)?.label?.trim() || emp.orgDivision)}
           </PersonnelField>
           <PersonnelField fieldId="employment.additional_organisation_labels.orgbranch" mode="edit">
-            {readOnlyValue("employment.additional_organisation_labels.orgbranch", emp.orgBranch)}
+            {readOnlyValue("employment.additional_organisation_labels.orgbranch", profileOptions.branch.find(option=>option.value===emp.orgBranch)?.label?.trim() || emp.orgBranch)}
           </PersonnelField>
           <PersonnelField fieldId="employment.additional_organisation_labels.orgregion" mode="edit">
-            {readOnlyValue("employment.additional_organisation_labels.orgregion", emp.orgRegion)}
+            {readOnlyValue("employment.additional_organisation_labels.orgregion", profileOptions.region.find(option=>option.value===emp.orgRegion)?.label?.trim() || emp.orgRegion)}
           </PersonnelField>
           <PersonnelField fieldId="employment.additional_organisation_labels.orgline" mode="edit">
-            {readOnlyValue("employment.additional_organisation_labels.orgline", emp.orgLine)}
+            {readOnlyValue("employment.additional_organisation_labels.orgline", profileOptions.line.find(option=>option.value===emp.orgLine)?.label?.trim() || emp.orgLine)}
           </PersonnelField>
           <PersonnelField fieldId="employment.additional_organisation_labels.orgsection" mode="edit">
-            {readOnlyValue("employment.additional_organisation_labels.orgsection", emp.orgSection)}
+            {readOnlyValue("employment.additional_organisation_labels.orgsection", profileOptions.section.find(option=>option.value===emp.orgSection)?.label?.trim() || emp.orgSection)}
           </PersonnelField>
           <PersonnelField fieldId="employment.additional_organisation_labels.orgteam" mode="edit">
-            {readOnlyValue("employment.additional_organisation_labels.orgteam", emp.orgTeam)}
+            {readOnlyValue("employment.additional_organisation_labels.orgteam", profileOptions.team.find(option=>option.value===emp.orgTeam)?.label?.trim() || emp.orgTeam)}
           </PersonnelField>
           <PersonnelField fieldId="employment.additional_organisation_labels.orgbase" mode="edit">
-            {readOnlyValue("employment.additional_organisation_labels.orgbase", emp.orgBase)}
+            {readOnlyValue("employment.additional_organisation_labels.orgbase", profileOptions.base.find(option=>option.value===emp.orgBase)?.label?.trim() || emp.orgBase)}
           </PersonnelField>
           <PersonnelField fieldId="employment.additional_organisation_labels.employmentcategory" mode="edit">
             {readOnlyValue("employment.additional_organisation_labels.employmentcategory", emp.employmentCategory)}

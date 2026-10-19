@@ -168,8 +168,9 @@ export default async function AttendancePage({
                             <form action={decideCorrectionAction}>
                               <input type="hidden" name="correctionId" value={c.id} />
                               <input type="hidden" name="workflowStage" value={c.workflow?.currentStage ?? ''} />
+                              <input type="hidden" name="workflowParticipant" value={c.workflow?.currentParticipantSlot ?? ''} />
                               <input type="hidden" name="decision" value="approved" />
-                              {c.workflow?.routingVersion === 2 && <label className="block text-xs">{tHistory('remarks')}<textarea name="remarks" maxLength={1000} className="block min-h-20 w-full rounded border border-border bg-background p-2" /></label>}
+                              {(c.workflow?.routingVersion === 2 || c.workflow?.routingVersion === 3) && <label className="block text-xs">{tHistory('remarks')}<textarea name="remarks" maxLength={1000} className="block min-h-20 w-full rounded border border-border bg-background p-2" /></label>}
                               <Button type="submit" size="sm">
                                 {t('approve')}
                               </Button>
@@ -177,6 +178,7 @@ export default async function AttendancePage({
                             <form action={decideCorrectionAction}>
                               <input type="hidden" name="correctionId" value={c.id} />
                               <input type="hidden" name="workflowStage" value={c.workflow?.currentStage ?? ''} />
+                              <input type="hidden" name="workflowParticipant" value={c.workflow?.currentParticipantSlot ?? ''} />
                               <input type="hidden" name="decision" value="rejected" />
                               <label className="block text-xs">{t('rejectReasonLabel')}<textarea name="rejectReason" required maxLength={1000} className="block w-full rounded border border-border bg-background p-2" /></label>
                               <Button type="submit" size="sm" variant="outline">

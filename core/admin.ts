@@ -1340,6 +1340,8 @@ export function listPositions(
         id: position.id,
         companyId: position.companyId,
         title: position.title,
+        code: position.title,
+        label: position.label,
         jobFamily: position.jobFamily,
         // f1bbc572 — the "All Companies" flag travels WITH the row so a client-side narrowing to one
         // company can keep a global label instead of dropping it on origin (the resolver in the WHERE
@@ -1374,6 +1376,7 @@ export function listCostCenters(
         companyId: costCenter.companyId,
         code: costCenter.code,
         name: costCenter.name,
+        label: costCenter.label,
         // f1bbc572 — the "All Companies" flag travels WITH the row so a client-side narrowing to one
         // company can keep a global label instead of dropping it on origin (the resolver in the WHERE
         // above already admits it; a picker that re-filtered on company_id alone threw it away again).
@@ -1409,6 +1412,7 @@ export function listBusinessUnits(
         companyId: businessUnit.companyId,
         code: businessUnit.code,
         name: businessUnit.name,
+        label: businessUnit.label,
         // f1bbc572 — the "All Companies" flag travels WITH the row so a client-side narrowing to one
         // company can keep a global label instead of dropping it on origin (the resolver in the WHERE
         // above already admits it; a picker that re-filtered on company_id alone threw it away again).
@@ -2532,6 +2536,7 @@ export async function updateDepartment(
   // description always overwrites (like name), stored null when blank — no tri-state.
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
     // businessUnitId + headEmploymentId are tri-state: undefined → leave the column untouched (a name-only
     // rename must NOT wipe them); null/'' → clear it; an id → set it (validated to the department's own
     // company). Fetch the department's company once when either is supplied.
@@ -2566,6 +2571,7 @@ export async function updateDepartment(
 }
 export function archiveDepartment(ctx: SessionContext, p: { id: string; archived: boolean }) {
   return withTenant(ctx, async (tx) => {
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
     await tx.update(department).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(department.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError('An active department with this name already exists — rename it before unarchiving.');
       throw e;
@@ -2575,6 +2581,7 @@ export function archiveDepartment(ctx: SessionContext, p: { id: string; archived
 }
 export async function deleteDepartment(ctx: SessionContext, p: { id: string }) {
   return withTenant(ctx, async (tx) => {
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
     const [u] = await tx.select({ n: sql<number>`count(*)::int` }).from(assignment).where(eq(assignment.departmentId, p.id));
     if ((u?.n ?? 0) > 0) throw new InUseError('department');
     await tx.delete(department).where(eq(department.id, p.id));
@@ -2586,6 +2593,7 @@ export async function updatePosition(ctx: SessionContext, p: { id: string; title
   const title = cleanName(p.title, 'Position title');
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
     await tx.update(position).set({ title, jobFamily: p.jobFamily?.trim() || null, description }).where(eq(position.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError(`A position titled “${title}” already exists in this company.`);
       throw e;
@@ -2595,6 +2603,7 @@ export async function updatePosition(ctx: SessionContext, p: { id: string; title
 }
 export function archivePosition(ctx: SessionContext, p: { id: string; archived: boolean }) {
   return withTenant(ctx, async (tx) => {
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
     await tx.update(position).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(position.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError('An active position with this title already exists — rename it before unarchiving.');
       throw e;
@@ -2604,6 +2613,7 @@ export function archivePosition(ctx: SessionContext, p: { id: string; archived: 
 }
 export async function deletePosition(ctx: SessionContext, p: { id: string }) {
   return withTenant(ctx, async (tx) => {
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
     const [u] = await tx.select({ n: sql<number>`count(*)::int` }).from(assignment).where(eq(assignment.positionId, p.id));
     if ((u?.n ?? 0) > 0) throw new InUseError('position');
     await tx.delete(position).where(eq(position.id, p.id));
@@ -2616,6 +2626,7 @@ export async function updateCostCenter(ctx: SessionContext, p: { id: string; cod
   const name = cleanName(p.name, 'Cost-center name');
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
     await tx.update(costCenter).set({ code, name, description }).where(eq(costCenter.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError(`A cost center with code “${code}” already exists in this company.`);
       throw e;
@@ -2625,6 +2636,7 @@ export async function updateCostCenter(ctx: SessionContext, p: { id: string; cod
 }
 export function archiveCostCenter(ctx: SessionContext, p: { id: string; archived: boolean }) {
   return withTenant(ctx, async (tx) => {
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
     await tx.update(costCenter).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(costCenter.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError('An active cost center with this code already exists — change it before unarchiving.');
       throw e;
@@ -2634,6 +2646,7 @@ export function archiveCostCenter(ctx: SessionContext, p: { id: string; archived
 }
 export async function deleteCostCenter(ctx: SessionContext, p: { id: string }) {
   return withTenant(ctx, async (tx) => {
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
     const [u] = await tx.select({ n: sql<number>`count(*)::int` }).from(assignment).where(eq(assignment.costCenterId, p.id));
     if ((u?.n ?? 0) > 0) throw new InUseError('cost center');
     await tx.delete(costCenter).where(eq(costCenter.id, p.id));
@@ -2649,6 +2662,7 @@ export async function updateBusinessUnit(
   const name = cleanName(p.name, 'Business-unit name');
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
     // headEmploymentId is tri-state (undefined ⇒ untouched; blank ⇒ clear; id ⇒ set, same-company-validated).
     const setValues: { code: string; name: string; description: string | null; headEmploymentId?: string | null } = {
       code,
@@ -2673,6 +2687,7 @@ export async function updateBusinessUnit(
 }
 export function archiveBusinessUnit(ctx: SessionContext, p: { id: string; archived: boolean }) {
   return withTenant(ctx, async (tx) => {
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
     await tx.update(businessUnit).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(businessUnit.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError('An active business unit with this code already exists — change it before unarchiving.');
       throw e;

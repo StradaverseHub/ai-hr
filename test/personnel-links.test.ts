@@ -47,7 +47,13 @@ describe('People → Personnel: everyday inbound links resolve to /personnel (ne
     it(`${label} (${file}) links to /personnel and not to /admin/personnel`, () => {
       const src = read(file);
       expect(src.includes('/personnel')).toBe(true);
-      expect(src.includes('/admin/personnel')).toBe(false);
+      // Approved relocation: exactly the HR-guarded legacy queue redirect is permitted.
+      // Requester links still use the read-only personnel course; no other admin href is exempted.
+      if(file==='app/approvals/page.tsx'){
+        const redirect=/if\(admin&&categoryParam==='profileChanges'\)redirect\('\/admin\/personnel\/profile-changes'\);/g;
+        expect(src.match(redirect)).toHaveLength(1);
+        expect(src.replace(redirect,'').includes('/admin/personnel')).toBe(false);
+      }else expect(src.includes('/admin/personnel')).toBe(false);
     });
   }
 });

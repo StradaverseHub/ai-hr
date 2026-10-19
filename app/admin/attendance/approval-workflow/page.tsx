@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { AttendanceWorkflowStageDescription } from '@/components/attendance-workflow-stage-description';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
@@ -39,7 +40,7 @@ export default async function AttendanceWorkflowPage({ searchParams }: { searchP
       <div className={tableWrapCls}><table className="w-full text-sm"><thead className="bg-background text-left text-xs uppercase text-muted-foreground"><tr>{['code', 'name', 'assignment', 'stages', 'priority', 'status', 'actions'].map(k => <th className={thCls} key={k}>{t(k)}</th>)}</tr></thead><tbody className={tbodyCls}>{workflows.map(row => <tr key={row.id}>
         <td className="p-3 font-mono">{row.code}</td><td className="p-3">{row.name}</td>
         <td className="min-w-48 p-3">{fields.some(({key}) => row.criteria[key]?.length) ? <ul className="space-y-1">{fields.filter(({key}) => row.criteria[key]?.length).map(({key, label, options:items}) => <li key={key}><span className="font-medium">{t(label)}: </span>{row.criteria[key]!.map(id => items.find(item => item.id === id)?.name ?? t('unavailable', { value: id })).join(', ')}</li>)}</ul> : t('all')}</td>
-        <td className="min-w-56 p-3"><ol className="list-inside list-decimal space-y-2">{row.stages.map((stage, index) => <li key={index}><span className="font-medium">{row.routingVersion === 2 ? t('stageNumber', { number: index + 1 }) : stage.name}</span><span className="block text-muted-foreground">{approversOf(stage.level).map(a => a.kind === 'direct_manager' ? t('manager') : t('hr')).join(` ${t('or')} `)}</span></li>)}</ol></td>
+        <td className="min-w-56 p-3"><ol className="list-inside list-decimal space-y-2">{row.stages.map((stage, index) => <li key={index}><span className="font-medium">{row.routingVersion !== 1 ? t('stageNumber', { number: index + 1 }) : stage.name}</span><div className="text-muted-foreground"><AttendanceWorkflowStageDescription stage={stage} manager={t('manager')} hr={t('hr')} or={t('or')} sequential={t('v3.sequential')} anyOne={t('v3.anyOne')} depth={number => t('v3.depthOption', { number })} selectedName={id => { const employee = (options.approverEmployees ?? options.employees).find(row => row.id === id); return employee ? [employee.employeeCode, employee.name].filter(Boolean).join(' · ') : t('unavailable', { value: id }); }}/></div></li>)}</ol></td>
         <td className="p-3">{row.priority}</td><td className="p-3">{row.active ? t('active') : t('inactive')}</td>
         <td className="p-3"><div className="flex gap-3"><Link className="text-primary underline" href={`${workflowRoot}/${row.lineageId}`}>{t('view')}</Link><Link className="text-primary underline" href={`${workflowRoot}/${row.lineageId}/edit`}>{t('edit')}</Link></div></td>
       </tr>)}</tbody></table>{!workflows.length && <p className="p-5 text-muted-foreground">{t('empty')}</p>}</div>

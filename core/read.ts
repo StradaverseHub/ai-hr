@@ -452,9 +452,9 @@ export function listEmployeesPage(
         name: person.fullName,
         email: person.primaryEmail,
         employeeCode: employment.employeeCode,
-        department: department.name,
+        department: sql<string|null>`coalesce(nullif(trim(${department.label}), ''), ${department.name})`,
         departmentId: assignment.departmentId,
-        position: position.title,
+        position: sql<string|null>`coalesce(nullif(trim(${position.label}), ''), ${position.title})`,
         company: company.legalName,
         companyId: employment.companyId,
         hiredOn: employment.hiredOn,
@@ -474,7 +474,7 @@ export function listEmployeesPage(
         // the row count is unchanged and the count query below needs no edit at all.
         jobGrade: jobGrade.name,
         employmentType: assignment.employmentType,
-        businessUnit: businessUnit.name,
+        businessUnit: sql<string|null>`coalesce(nullif(trim(${businessUnit.label}), ''), ${businessUnit.code})`,
         costCenter: costCenter.name,
         workLocation: location.name,
         joinDate: employment.joinDate,
@@ -692,6 +692,8 @@ export function listDepartments(
       .select({
         id: department.id,
         name: department.name,
+        code: department.name,
+        label: department.label,
         companyId: department.companyId,
         // Business Unit link (ADR-0068) — feeds the cascading hire-form department filter + the org admin
         // BU dropdown. Null = unassigned (visible under every BU on the hire form).
@@ -2595,15 +2597,15 @@ export function assignmentHistory(ctx: SessionContext, employmentId: string) {
     tx
       .select({
         id: assignment.id,
-        department: department.name,
+        department: sql<string>`coalesce(nullif(trim(${department.label}), ''), ${department.name})`,
         departmentId: assignment.departmentId,
-        position: position.title,
+        position: sql<string|null>`coalesce(nullif(trim(${position.label}), ''), ${position.title})`,
         positionId: assignment.positionId,
         // 1001ff61 — Business Unit on the assignment (nullable). Drives the Form A BU dropdown's default.
         businessUnitId: assignment.businessUnitId,
         // 570e3311 — BU display name (additive), so the detail page can label a pinned-current BU that is
         // no longer in the company-scoped option list (legacy / later-unshared data).
-        businessUnit: businessUnit.name,
+        businessUnit: sql<string|null>`coalesce(nullif(trim(${businessUnit.label}), ''), ${businessUnit.code})`,
         // R81 (9cbf5e0d): no `status` here any more — the column is dropped (migration 0331). This read
         // powers the dated org history (department / position / BU / type), which is what actually varies
         // per version; the Movement tab replaced the old status column in this table back at 78853b97, so

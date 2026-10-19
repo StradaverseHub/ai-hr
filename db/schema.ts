@@ -5572,6 +5572,12 @@ export const profileChangeRequest = pgTable(
     personId: uuid('person_id')
       .notNull()
       .references(() => person.id),
+    routeId:uuid('route_id'),
+    routeRevision:uuid('route_revision'),
+    routeApproverUserId:uuid('route_approver_user_id').references(()=>appUser.id),
+    routeApproverEmploymentId:uuid('route_approver_employment_id').references(()=>employment.id),
+    routeContext:jsonb('route_context'),
+    routeHistory:jsonb('route_history').notNull().default([]),
     proposed: jsonb('proposed').notNull(),
     status: profileChangeStatusEnum('status').notNull().default('pending'),
     decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
@@ -10269,9 +10275,9 @@ export const attendanceWorkflowTemplate = pgTable('attendance_workflow_template'
     id: id(), tenantId: tenantId(), companyId: uuid('company_id').notNull().references(() => company.id),
     code: text('code').notNull(), name: text('name').notNull(), description: text('description'),
     applicationType: text('application_type').notNull().$type<'irregularity' | 'self_overtime'>(),
-    routingVersion: integer('routing_version').notNull().default(1).$type<1 | 2>(),
+    routingVersion: integer('routing_version').notNull().default(1).$type<1 | 2 | 3>(),
     priority: integer('priority').notNull(), criteria: jsonb('criteria').notNull().$type<import('../lib/attendance-workflow').AttendanceWorkflowCriteria>(),
-    stages: jsonb('stages').notNull().$type<import('../lib/attendance-workflow').AttendanceWorkflowStage[]>(),
+    stages: jsonb('stages').notNull().$type<import('../lib/attendance-workflow').AttendanceWorkflowStage[] | import('../lib/attendance-workflow-v3').AttendanceV3Level[]>(),
     version: integer('version').notNull(), active: boolean('active').notNull().default(false), lineageId: uuid('lineage_id').notNull(),
     supersededAt: timestamp('superseded_at', { withTimezone: true }), createdAt: createdAt(),
 }, t => [uniqueIndex('attendance_workflow_current_code').on(t.tenantId, t.companyId, t.code).where(sql `superseded_at IS NULL`), uniqueIndex('attendance_workflow_lineage_version').on(t.lineageId, t.version)]);
@@ -10286,7 +10292,7 @@ export const attendanceWorkflowRequest = pgTable('attendance_workflow_request', 
     templateId: uuid('template_id').notNull().references(() => attendanceWorkflowTemplate.id), templateCode: text('template_code').notNull(),
     templateName: text('template_name').notNull(), templateVersion: integer('template_version').notNull(),
     applicationType: text('application_type').notNull().$type<'irregularity' | 'self_overtime'>(),
-    routingVersion: integer('routing_version').notNull().default(1).$type<1 | 2>(),
+    routingVersion: integer('routing_version').notNull().default(1).$type<1 | 2 | 3>(),
     stages: jsonb('stages').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedStage[]>(), currentStage: integer('current_stage').notNull().default(0), createdAt: createdAt(),
 }, t => [uniqueIndex('attendance_workflow_request_correction').on(t.correctionId)]);
 export const attendanceWorkflowDecision = pgTable('attendance_workflow_decision', {
@@ -10300,6 +10306,22 @@ export const attendanceWorkflowDecision = pgTable('attendance_workflow_decision'
     decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
 }, t => [uniqueIndex('attendance_workflow_decision_stage').on(t.requestId, t.stageIndex)]);
 
+
+// Participant evidence is additive; the existing unique request/stage completion remains unchanged.
+export const attendanceWorkflowParticipantDecision = pgTable('attendance_workflow_participant_decision', {
+    id: id(), tenantId: tenantId(), requestId: uuid('request_id').notNull().references(() => attendanceWorkflowRequest.id),
+    employmentId: uuid('employment_id').notNull().references(() => employment.id), stageIndex: integer('stage_index').notNull(), participantSlot: text('participant_slot').notNull(),
+    decision: text('decision').notNull().$type<'approved' | 'rejected'>(), assigned: jsonb('assigned').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedApprover>(),
+    actualUserId: uuid('actual_user_id').notNull().references(() => appUser.id), actualPersonId: uuid('actual_person_id').notNull().references(() => person.id),
+    actualEmploymentId: uuid('actual_employment_id').references(() => employment.id), actualActorName: text('actual_actor_name').notNull(),
+    actingMode: text('acting_mode').notNull().$type<'assigned' | 'delegate' | 'administrator'>(), remarks: text('remarks'), decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
+}, t => [uniqueIndex('attendance_workflow_participant_slot').on(t.requestId, t.stageIndex, t.participantSlot)]);
+export const attendanceWorkflowParticipantReassignment = pgTable('attendance_workflow_participant_reassignment', {
+    id: id(), tenantId: tenantId(), requestId: uuid('request_id').notNull().references(() => attendanceWorkflowRequest.id), stageIndex: integer('stage_index').notNull(), participantSlot: text('participant_slot').notNull(),
+    previousAssigned: jsonb('previous_assigned').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedApprover>(), assigned: jsonb('assigned').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedApprover>(),
+    reason: text('reason').notNull(), actualUserId: uuid('actual_user_id').notNull().references(() => appUser.id), actualPersonId: uuid('actual_person_id').notNull().references(() => person.id),
+    actualActorName: text('actual_actor_name').notNull(), occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+}, t => [index('attendance_workflow_participant_reassignment_history').on(t.requestId, t.stageIndex, t.participantSlot, t.occurredAt, t.id)]);
 
 // Private working copies never enter a submitted assessment or another actor's projection.
 export const assessmentDraft = pgTable('performance_assessment_draft', {
