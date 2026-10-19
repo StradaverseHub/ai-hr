@@ -1,4 +1,10 @@
--- ESS source preparation. Requires populated-role/schema and real journey verification before release.
+-- The canonical catalogs load after migrations on a fresh installation. Declare only the
+-- global ESS module here before its setting FKs; do not grant any tenant entitlement.
+-- seedCatalogs reconciles this declaration with packs/catalog.ts after migration.
+INSERT INTO module(code,name,category,description,depends_on,billable,is_core,parent_module,pack_backed,sort_order)
+ VALUES('ess','Employee Self-Service','core','The employee-facing workspace.','["employees"]'::jsonb,false,true,NULL,false,40)
+ ON CONFLICT(code) DO NOTHING;
+--> statement-breakpoint
 INSERT INTO setting_definition (key,module_code,scope,value_type,default_value,default_on_install,customer_visible,description,sort_order)
 VALUES ('ess.profile_photo_edit','ess','tenant','boolean','false'::jsonb,NULL,true,'Allow active employees to upload or replace their own profile photo; no deletion or other Personnel authority.',155)
 ON CONFLICT (key) DO NOTHING;

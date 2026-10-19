@@ -468,6 +468,8 @@ export const LEGACY_SETTING_ENV_GATES: Readonly<Record<string, string | null>> =
   // could turn one on. Keeping them out of `legacyEnabledSettingsIn` is also the right outcome on its own
   // terms: a backfill must never decide, on a customer's behalf, which of their employees' fields are
   // open to change requests or who signs one off.
+  'ess.profile_photo_edit': null,
+  'ess.profile_change_routing': null,
   'ess.profile_change_fields': null,
   'ess.profile_change_approver': null,
 };
