@@ -177,7 +177,7 @@ describe('Movement rollback-only preview and atomic confirmation',()=>{
   await owner.db.execute(sql`create function public.b20_movement_preview_refusal() returns trigger language plpgsql as $$ begin raise exception 'fixture assignment refusal'; end $$`);
   await owner.db.execute(sql`create trigger b20_movement_preview_refusal before insert on assignment for each row execute function public.b20_movement_preview_refusal()`);
   try {const preview=await ready(text);expect(preview.employees[0].rows.some(row=>row.status==='invalid')).toBe(true);
-   expect(preview.valid).toBe(0);expect(preview.employees[0].rows.find(row=>row.row===2)?.errors).toEqual(['change_refused']);expect(preview.employees[0].rows.find(row=>row.row===3)?.errors).toEqual(['employee_sequence_invalid']);
+   expect(preview.valid).toBe(0);expect(preview.employees[0].rows.find(row=>row.row===2)?.errors).toEqual(['employee_sequence_invalid']);expect(preview.employees[0].rows.find(row=>row.row===3)?.errors).toEqual(['change_refused']);
    for(const row of preview.employees[0].rows.filter(row=>row.status==='invalid'))expect(row.errors.join(' ')).not.toMatch(/insert into|fixture assignment refusal|params:/i);
    expect(await state(id)).toEqual(before);}finally{await owner.db.execute(sql`drop trigger b20_movement_preview_refusal on assignment`);await owner.db.execute(sql`drop function public.b20_movement_preview_refusal()`);}
  });
