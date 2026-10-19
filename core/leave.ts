@@ -6939,6 +6939,23 @@ async function applyLeaveCancellationApprovalTx(
           durationType: 'full_day',
           status: isCancelled ? 'cancelled' : 'approved',
           reason: req.reason,
+          // These are facts of the approved application, not new eligibility/consent decisions.
+          // Keep them on cancelled siblings too so the split audit retains the original context.
+          employeeRemark: req.employeeRemark,
+          unpaidConsentAt: req.unpaidConsentAt,
+          unpaidConsentBy: req.unpaidConsentBy,
+          survivingChildren: req.survivingChildren,
+          confinementDate: req.confinementDate,
+          allowanceEligible: req.allowanceEligible,
+          // Positive unpaidDays still refuses above: this preserves only the existing null/zero case.
+          unpaidDays: req.unpaidDays,
+          entitlementYear: req.entitlementYear,
+          submittedOn: req.submittedOn,
+          importedHistory: req.importedHistory,
+          // externalReference identifies ONE original application (tenant-unique). splitFromRequestId
+          // below preserves lineage; copying the reference would make the whole transaction fail.
+          externalReference: null,
+          // createdAt is the new row's creation time, not a copied original lifecycle timestamp.
           parentGroupId,
           decidedByEmploymentId: req.decidedByEmploymentId,
           decidedAt: req.decidedAt,
