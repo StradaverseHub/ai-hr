@@ -15356,7 +15356,9 @@
     "pageNumber": "Halaman {n}",
     "truncated": "Memaparkan {shown, number} baris pertama daripada {total, number} baris.",
     "truncatedHint": "Guna Laporan → Eksport untuk set lengkap.",
-    "truncatedExport": "Eksport set lengkap"
+    "truncatedExport": "Eksport set lengkap",
+    "previousPage": "Halaman sebelumnya",
+    "nextPage": "Halaman seterusnya"
   },
   "movementSettings": {
     "title": "Tetapan Pergerakan",

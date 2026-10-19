@@ -267,10 +267,10 @@ export function ClientPager({
           {note && <span className="ms-2">{note}</span>}
         </span>
         <span className="atelier-pager-steps">
-          <button type="button" disabled={!state.hasPrev} onClick={() => go({ page: state.page - 1 })} aria-label={t('previous')} title={t('previous')}>
+          <button type="button" disabled={!state.hasPrev} onClick={() => go({ page: state.page - 1 })} aria-label={t('previousPage')} title={t('previousPage')}>
             <ChevronLeft aria-hidden />
           </button>
-          <button type="button" disabled={!state.hasNext} onClick={() => go({ page: state.page + 1 })} aria-label={t('next')} title={t('next')}>
+          <button type="button" disabled={!state.hasNext} onClick={() => go({ page: state.page + 1 })} aria-label={t('nextPage')} title={t('nextPage')}>
             <ChevronRight aria-hidden />
           </button>
         </span>

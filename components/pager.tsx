@@ -107,14 +107,14 @@ export async function Pager({
         </span>
         <span className="atelier-pager-steps">
           {state.hasPrev ? (
-            <Link href={href({ page: state.page - 1 })} aria-label={t('previous')} title={t('previous')}><ChevronLeft aria-hidden /></Link>
+            <Link href={href({ page: state.page - 1 })} aria-label={t('previousPage')} title={t('previousPage')}><ChevronLeft aria-hidden /></Link>
           ) : (
-            <button type="button" disabled aria-label={t('previous')}><ChevronLeft aria-hidden /></button>
+            <button type="button" disabled aria-label={t('previousPage')}><ChevronLeft aria-hidden /></button>
           )}
           {state.hasNext ? (
-            <Link href={href({ page: state.page + 1 })} aria-label={t('next')} title={t('next')}><ChevronRight aria-hidden /></Link>
+            <Link href={href({ page: state.page + 1 })} aria-label={t('nextPage')} title={t('nextPage')}><ChevronRight aria-hidden /></Link>
           ) : (
-            <button type="button" disabled aria-label={t('next')}><ChevronRight aria-hidden /></button>
+            <button type="button" disabled aria-label={t('nextPage')}><ChevronRight aria-hidden /></button>
           )}
         </span>
       </div>

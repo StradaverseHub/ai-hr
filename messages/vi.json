@@ -15356,7 +15356,9 @@
     "pageNumber": "Trang {n}",
     "truncated": "Đang hiển thị {shown, number} dòng đầu tiên trong tổng số {total, number} dòng.",
     "truncatedHint": "Dùng Báo cáo → Xuất dữ liệu để lấy toàn bộ.",
-    "truncatedExport": "Xuất toàn bộ dữ liệu"
+    "truncatedExport": "Xuất toàn bộ dữ liệu",
+    "previousPage": "Trang trước",
+    "nextPage": "Trang sau"
   },
   "movementSettings": {
     "title": "Cài đặt biến động",

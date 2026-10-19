@@ -15356,7 +15356,9 @@
     "pageNumber": "பக்கம் {n}",
     "truncated": "மொத்தம் {total, number} வரிசைகளில் முதல் {shown, number} மட்டுமே காட்டப்படுகிறது.",
     "truncatedHint": "முழுத் தொகுப்பிற்கு அறிக்கைகள் → ஏற்றுமதி பயன்படுத்தவும்.",
-    "truncatedExport": "முழுத் தொகுப்பை ஏற்றுமதி செய்"
+    "truncatedExport": "முழுத் தொகுப்பை ஏற்றுமதி செய்",
+    "previousPage": "முந்தைய பக்கம்",
+    "nextPage": "அடுத்த பக்கம்"
   },
   "movementSettings": {
     "title": "பணி மாற்ற அமைப்புகள்",

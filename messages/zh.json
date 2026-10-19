@@ -15356,7 +15356,9 @@
     "pageNumber": "第 {n} 页",
     "truncated": "仅显示前 {shown, number} 条，共 {total, number} 条。",
     "truncatedHint": "请使用「报表 → 导出」获取完整数据。",
-    "truncatedExport": "导出完整数据"
+    "truncatedExport": "导出完整数据",
+    "previousPage": "上一页",
+    "nextPage": "下一页"
   },
   "movementSettings": {
     "title": "异动设置",
