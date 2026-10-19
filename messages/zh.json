@@ -1844,6 +1844,14 @@
         "sharedBalanceSource": "共享余额来源",
         "createdByName": "上传者",
         "updatedByName": "最后更新者"
+      },
+      "dataClassification": {
+        "title": "数据分类",
+        "testRecord": "测试记录",
+        "help": "HR 可将此雇佣记录标记为测试记录。该记录仍可用于人事异动演练，但在人事异动导入中不能被选为新的直属上级。未标记的记录表示尚未分类。",
+        "unmarked": "未标记",
+        "marked": "已标记为测试记录",
+        "save": "保存分类"
       }
     },
     "import": {
@@ -2153,6 +2161,45 @@
           "movement_reference_catalog_too_large": "参考列表超出本导入支持的范围，请在人事资料中进行这些更改。",
           "movement_history_too_large": "此员工的历史超出导入检查范围，请在人事资料中记录事件。",
           "change_refused": "变更被拒绝，此员工的更改均未保存。"
+        },
+        "v2": {
+          "type": "人事异动类型",
+          "oneType": "单一类型，包含员工",
+          "allTypes": "所有启用类型 — 空白工作簿",
+          "download": "下载工作簿",
+          "filters": "筛选员工",
+          "department": "部门",
+          "businessUnit": "业务单位",
+          "grade": "职级",
+          "location": "地点",
+          "probationOnly": "仅限试用期员工",
+          "allValues": "所有值",
+          "contextHint": "所选公司及单一类型适用于 CSV 文件和粘贴的 CSV。更改这些选项会清除已加载的文件和预览。",
+          "workbookHint": "灰色：当前记录。黄色：您的填写内容。绿色：仅供显示的计算结果。保存前会再次检查当前值和薪酬。",
+          "wholeEmployee": "每名员工的完整事件顺序将一并纳入或一并排除。",
+          "sequence": "员工完整事件顺序",
+          "warnings": "警告",
+          "sheet": "工作表",
+          "column": "列",
+          "audit": "查看导入审计记录",
+          "errorWorkbook": "下载带批注的错误文件",
+          "included": "纳入员工",
+          "noTypes": "没有可用的启用人事异动类型。",
+          "limit": "最多 50 名员工及 200 项已填写事件。请缩小筛选范围；系统不会默默遗漏任何员工。",
+          "current": "当前",
+          "new": "拟议",
+          "incrementAmount": "增加金额",
+          "changePercent": "变更 %",
+          "difference": "差额",
+          "otherChanges": "其他变更（选填）",
+          "employeeName": "员工姓名",
+          "currency": "货币",
+          "downloaded": "已下载",
+          "instructions": "说明",
+          "singleTypeRequired": "请为 CSV 文件和粘贴的 CSV 选择一个类型。",
+          "saved": "按人事异动类型保存的事件",
+          "recheck": "检查完整事件顺序",
+          "noData": "未找到人事异动条目。"
         }
       }
     },
@@ -19617,7 +19664,8 @@
     "include": "包含",
     "noChange": "无变化",
     "new": "新增",
-    "previewAgain": "所选行已更改。请重新预览后再确认。"
+    "previewAgain": "所选行已更改。请重新预览后再确认。",
+    "template": "下载模板"
   },
   "allowanceV3": {
     "all": "全部 · 每项条件均须通过",
@@ -20789,7 +20837,8 @@
       "Name": "名称"
     },
     "notSelected": "此有效新代码未被选中导入，未创建任何记录。",
-    "notSelectedStatus": "未选择 — 已跳过"
+    "notSelectedStatus": "未选择 — 已跳过",
+    "invalidStatus": "状态必须填写 Active 或 Inactive。留空时默认为 Active。"
   },
   "onboardingV31": {
     "copy": {
