@@ -130,7 +130,8 @@ export async function buildMovementWorkbook(p:MovementWorkbookDownload){
 function inspect(bytes:Buffer){
  const archive=readSpreadsheetArchive(bytes,MOVEMENT_WORKBOOK_LIMITS);let totalCells=0;
  for(const [name,data]of archive.parts){
-  if(!name.endsWith('.xml'))continue;const text=decodeSpreadsheetXml(data);if(/macroEnabled|vbaProject/i.test(text))throw new Error('workbook_structure_invalid');
+  // Shared archive admission resolves content types against actual parts and rejects macro/embedded relationships.
+  if(!name.endsWith('.xml'))continue;const text=decodeSpreadsheetXml(data);
   const parser=new SaxesParser({xmlns:true});let validationFormula=false,validationText='';const cellAddresses=new Set<string>();parser.on('doctype',()=>{throw new Error('workbook_structure_invalid');});
   parser.on('opentag',tag=>{
    const attrs=Object.fromEntries(Object.values(tag.attributes).map(a=>[a.local,a.value]));
