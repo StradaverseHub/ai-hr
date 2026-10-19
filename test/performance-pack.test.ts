@@ -117,7 +117,7 @@ describe('ADR-0080 rung 4: nav parity with the pre-retrofit sidebar', () => {
     expect(performancePack.navNodes).toBeUndefined();
   });
 
-  it('sidebar.tsx mounts the row via the registry and hardcodes it nowhere', () => {
+  it('sidebar.tsx mounts the registry rows without duplicating their destination declarations', () => {
     const sidebar = fs.readFileSync(path.resolve(__dirname, '../components/sidebar.tsx'), 'utf8');
     // The registration moved out of the sidebar into packs/register-all.ts (ADR-0077 slice 1) so that
     // SERVER code can enumerate module packs too — a client-component side effect left listPacks()
@@ -128,8 +128,12 @@ describe('ADR-0080 rung 4: nav parity with the pre-retrofit sidebar', () => {
     expect(registerAll, 'registers the pack (static side-effect import)').toContain(`import '@/packs/performance'`);
     expect(sidebar, 'sidebar pulls in the shared pack wiring').toContain(`import '@/packs/register-all'`);
     expect(sidebar, 'resolves the row through the registry').toContain(`modulePackById('performance')`);
+    expect(sidebar.split('\n').some(line=>line.trim()==='PERSONAL_PERFORMANCE_ROW,')).toBe(true);
+    expect(sidebar.split('\n').some(line=>line.trim()==='PERFORMANCE_ROW,')).toBe(true);
     for (const { href } of EXPECTED) {
-      expect(sidebar.includes(`'${href}'`), `${href} no longer hardcoded in sidebar.tsx`).toBe(false);
+      // Route-intent comparisons may name the path; they must never mint a second nav descriptor.
+      const duplicates=[...sidebar.matchAll(/\bhref:\s*'([^']+)'/g)].filter(match=>match[1]===href);
+      expect(duplicates, `${href} remains owned by its pack descriptor`).toEqual([]);
     }
   });
 });
