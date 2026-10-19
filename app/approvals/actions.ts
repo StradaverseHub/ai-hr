@@ -6,6 +6,11 @@ import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
+import { scopedSession } from '@/lib/scope';
+import { isAdmin } from '@/lib/authz-model';
+import { isModuleEnabledOrFalse } from '@/core/entitlements';
+import { pendingRewardReviews } from '@/packs/rewards/service';
+import { hasPendingAttendanceParticipantAssignment } from '@/packs/attendance/service';
 import { getSession } from '@/lib/session';
 import { decideLeave, decideLeaveDate, decideLeaveDates, decideLeaveCancellation } from '@/core/leave';
 import { parseBulkItems, runBulkDecide, type BulkDecideItem } from '@/lib/approvals-bulk';
@@ -47,6 +52,23 @@ function navOf(formData: FormData): Nav {
 function revalidateShell(): void {
   revalidatePath(back);
   revalidatePath('/', 'layout');
+}
+/** After the last request-bound task, keep feedback on an allowed neutral destination. */
+async function attendanceDecisionReturnUrl(s: Awaited<ReturnType<typeof getSession>>, nav: Nav, feedback: { toast?: string; error?: string }): Promise<string> {
+  if (!isAdmin(s) && !(s.roles ?? []).includes('manager')) {
+    const hasNextAssignment = isModuleEnabledOrFalse(s, 'attendance') && await hasPendingAttendanceParticipantAssignment(s);
+    if (!hasNextAssignment) {
+      const { scopeIds } = await scopedSession();
+      const rewards = isModuleEnabledOrFalse(s, 'rewards') ? await pendingRewardReviews(s, scopeIds) : [];
+      if (!rewards.length) {
+        const query = new URLSearchParams();
+        if (feedback.toast) query.set('toast', feedback.toast);
+        if (feedback.error) query.set('error', feedback.error);
+        return `/?${query.toString()}`;
+      }
+    }
+  }
+  return approvalsReturnUrl({ ...nav, ...feedback });
 }
 function done(toast: string, nav: Nav = {}): never {
   revalidateShell();
@@ -159,9 +181,12 @@ export async function approveCorrectionAction(formData: FormData) {
     const outcome = await decideAttendanceCorrection(s, { correctionId: String(formData.get('id')), decision, remarks: String(formData.get('remarks') ?? ''), rejectReason: String(formData.get('rejectReason') ?? ''), expectedStageIndex: formData.get('workflowStage') ? Number(formData.get('workflowStage')) : undefined, expectedParticipantSlot: String(formData.get('workflowParticipant') ?? '') || undefined });
     outcomeStatus = outcome.status;
   } catch (e) {
-    fail(e instanceof AttendanceLevelError ? new Error(await attendanceWorkflowErrorMessage(e)) : e instanceof MissingAttendanceRejectReasonError ? new Error((await getTranslations('attendance'))('rejectRequired')) : e, nav);
+    const error = e instanceof AttendanceLevelError ? await attendanceWorkflowErrorMessage(e) : e instanceof MissingAttendanceRejectReasonError ? (await getTranslations('attendance'))('rejectRequired') : publicErrorMessage(e);
+    redirect(await attendanceDecisionReturnUrl(s, nav, { error }));
   }
-  done(outcomeStatus === 'pending' ? (await getTranslations('attendanceHistory'))('stageRecorded') : `Correction ${decision}`, nav);
+  const toast = outcomeStatus === 'pending' ? (await getTranslations('attendanceHistory'))('stageRecorded') : `Correction ${decision}`;
+  revalidateShell();
+  redirect(await attendanceDecisionReturnUrl(s, nav, { toast }));
 }
 
 /**
@@ -303,7 +328,7 @@ export async function bulkDecideAction(formData: FormData) {
       : skipped > 0
         ? t('bulkApprovedPartial', { done: approved, skipped })
         : t('bulkApprovedAll', { done: approved });
-  redirect(approvalsReturnUrl({ ...nav, toast: summary }));
+  redirect(items.every(item => item.type === 'attendance') ? await attendanceDecisionReturnUrl(s, nav, { toast: summary }) : approvalsReturnUrl({ ...nav, toast: summary }));
 }
 
 export async function approveClaimAction(formData: FormData) {

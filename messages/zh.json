@@ -19291,7 +19291,8 @@
       "pendingParticipant": "等待您的决定",
       "reassignSlot": "要重新分配的待处理参与者",
       "chooseSlot": "请选择待处理参与者…",
-      "calculationHandoff": "此最终审批需要具备相应范围计算权限的 HR。请 HR 对待处理参与者记录有理由的重新分配；此前审批会保留。"
+      "calculationHandoff": "此最终审批需要具备相应范围计算权限的 HR。请 HR 对待处理参与者记录有理由的重新分配；此前审批会保留。",
+      "identityUnavailable": "所需审批人未启用、没有唯一可用的登录账号，或不在允许的公司范围内。请更换人选，或让 HR 修正其访问权限。"
     }
   },
   "attendanceHistory": {

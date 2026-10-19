@@ -155,7 +155,8 @@ BEGIN
  hr_ok:=app.attendance_workflow_has_hr(subject_id);
  FOR i IN 0..jsonb_array_length(configured)-1 LOOP
   stage:=configured->i; source:=stage->'source'; actors:='[]'; alternative:=false;
-  IF jsonb_typeof(stage) IS DISTINCT FROM 'object' OR NOT stage ?& ARRAY['name','mode','source','hrAlternative']
+  IF jsonb_typeof(stage) IS DISTINCT FROM 'object' THEN RETURN app.attendance_workflow_v3_problem('invalid_level',i); END IF;
+  IF NOT stage ?& ARRAY['name','mode','source','hrAlternative']
    OR EXISTS(SELECT 1 FROM jsonb_object_keys(stage) k WHERE k NOT IN ('name','mode','source','hrAlternative'))
    OR jsonb_typeof(stage->'name') IS DISTINCT FROM 'string' OR length(stage->>'name')>100 OR jsonb_typeof(stage->'hrAlternative') IS DISTINCT FROM 'boolean'
    THEN RETURN app.attendance_workflow_v3_problem('invalid_level',i); END IF;
@@ -679,3 +680,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  GROUP BY u.id,u.created_at
  ORDER BY u.created_at,u.id LIMIT 1;
 $$;
+
+--> statement-breakpoint
+CREATE INDEX attendance_workflow_v3_pending_requests ON public.attendance_workflow_request(tenant_id,created_at,id)
+ WHERE routing_version=3 AND current_stage<jsonb_array_length(stages);

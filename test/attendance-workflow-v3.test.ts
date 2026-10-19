@@ -21,7 +21,7 @@ async function actor(name: string, role: 'employee' | 'hr_admin' = 'employee', d
     const ctx: SessionContext = { ...adminCtx(b), userId, personId: hired.personId, roles: [role], grants: [{ role, companyId: b.companyId }] };
     return { ...hired, ctx };
 }
-async function fixture(mode: 'sequential' | 'any_one' = 'sequential', onlyHr = false, ot = false) {
+async function fixture(mode: 'sequential' | 'any_one' = 'sequential', onlyHr = false, ot = false, employeeFinal = false) {
     const root = adminCtx(b), worker = await actor('Fictional applicant', 'employee', b.deptA), first = await actor('Fictional first participant'), second = await actor('Fictional second participant'), hr = await actor('Fictional final HR', 'hr_admin');
     const today = todayInKualaLumpur();
     const nextDay = new Date(`${today}T12:00:00Z`); nextDay.setUTCDate(nextDay.getUTCDate() + 1);
@@ -31,7 +31,7 @@ async function fixture(mode: 'sequential' | 'any_one' = 'sequential', onlyHr = f
     const input: AttendanceV3WorkflowInput = { companyId: b.companyId, routingVersion: 3, code: 'PARTICIPANTS', name: 'Accountable participant route', applicationType: ot ? 'self_overtime' : 'irregularity', priority: 100, criteria: { departmentIds: [b.deptA] }, active: true,
         stages: [{ name: 'Level 1', mode, source: { kind: 'specific_employee', employmentIds: [first.employmentId, second.employmentId] }, hrAlternative: false },
             { name: 'Level 2', mode: 'sequential', source: { kind: 'specific_employee', employmentIds: [hr.employmentId] }, hrAlternative: false }] };
-    if (onlyHr) input.stages = [{ name: 'Level 1', mode: 'sequential', source: { kind: 'specific_employee', employmentIds: [hr.employmentId] }, hrAlternative: false }];
+    if (onlyHr) input.stages = [{ name: 'Level 1', mode: 'sequential', source: { kind: 'specific_employee', employmentIds: [employeeFinal ? first.employmentId : hr.employmentId] }, hrAlternative: false }];
     const template = await saveAttendanceWorkflow(root, input);
     await setAttendanceWorkflowEnabled(root, b.companyId, input.applicationType, true);
     const id = (await requestAttendanceCorrection(worker.ctx, { employmentId: worker.employmentId, date: on, ...(ot ? { requestedOtMinutes: 60, requestKind: 'self_overtime' as const } : { checkIn: '09:00', checkOut: '18:00' }), reason: 'Fictional v3 correction' })).correctionId;
@@ -187,5 +187,48 @@ describe('v3 database authority refuses bypasses and committed/released proof', 
         expect((await listAttendanceCorrections(f.first.ctx, { companyIds: otherCompanyContext, status: 'pending' })).map(row => row.id)).toContain(f.id);
         expect((await listAttendanceCorrections(unrelated.ctx, { companyIds: otherCompanyContext, status: 'pending' })).map(row => row.id)).not.toContain(f.id);
         expect((await listPendingTasks(f.first.ctx, otherCompanyContext, { attendance: true, claims: true })).map(row => row.id)).toEqual([f.id]);
+    });
+});
+
+describe('independent Personnel depth and final HR handoff', () => {
+    it('uses the applicant fifth superior after a selected first level in preview and the frozen submission', async () => {
+        const f = await fixture(), fourth = await actor('Fictional fourth superior'), fifth = await actor('Fictional fifth superior');
+        for (const [subordinate, superior] of [[f.worker, f.first], [f.first, f.second], [f.second, f.hr], [f.hr, fourth], [fourth, fifth]]) {
+            await setReportingLine(f.root, { subordinateEmploymentId: subordinate.employmentId, managerEmploymentId: superior.employmentId, lineType: 'administrative', validFrom: '2020-01-01' });
+        }
+        const value: AttendanceV3WorkflowInput = { ...f.input, stages: [
+            { ...f.input.stages[0], mode: 'any_one' },
+            { name: 'Level 2', mode: 'sequential', source: { kind: 'direct_manager', depth: 5 }, hrAlternative: false },
+        ] };
+        const saved = await saveAttendanceWorkflow(f.root, value, f.template.lineageId);
+        const preview = await previewAttendanceWorkflow(f.root, value, saved.lineageId);
+        const projected = preview.rows.find(row => row.employmentId === f.worker.employmentId)!;
+        expect(projected.levelProblem).toBeNull();
+        expect(projected.resolvedStages[0]).toMatchObject({ mode: 'any_one', source: { kind: 'specific_employee' } });
+        expect(projected.resolvedStages[1]).toMatchObject({ mode: 'sequential', source: { depth: 5 }, approvers: [{ employmentId: fifth.employmentId, hierarchyDepth: 5 }] });
+        const previousDay = new Date(`${f.on}T12:00:00Z`); previousDay.setUTCDate(previousDay.getUTCDate() - 1);
+        const on = previousDay.toISOString().slice(0, 10);
+        await checkIn(f.root, { employmentId: f.worker.employmentId, date: on, time: '08:00', manual: true });
+        await checkOut(f.root, { employmentId: f.worker.employmentId, date: on, time: '17:00', manual: true });
+        const id = (await requestAttendanceCorrection(f.worker.ctx, { employmentId: f.worker.employmentId, date: on, checkIn: '09:00', checkOut: '18:00', reason: 'Fifth Personnel superior is independent of second approval ordinal' })).correctionId;
+        expect((await attendanceApplicationDetail(f.root, [b.companyId], id))?.workflow?.stages).toEqual(projected.resolvedStages);
+    });
+    it('rolls back a final ordinary participant and provides a finite explicit HR handoff', async () => {
+        const f = await fixture('sequential', true, false, true);
+        const original = await state(f);
+        await expect(decideAttendanceCorrection(f.first.ctx, { correctionId: f.id, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:0' })).rejects.toMatchObject({ problem: { code: 'hr_handoff_required', levelIndex: 0 } });
+        let detail = await state(f);
+        expect(detail.application.status).toBe('pending');
+        expect(detail.workflow?.currentStage).toBe(0);
+        expect(detail.workflow?.participantDecisions).toHaveLength(0);
+        expect(detail.workflow?.decisions).toHaveLength(0);
+        expect((await day(f)).checkInAt).toBe('08:00:00');
+        await reassignAttendanceWorkflowStageToHr(f.hr.ctx, { correctionId: f.id, expectedStageIndex: 0, expectedParticipantSlot: '0:0', reason: 'Scoped HR performs the final canonical calculation' });
+        await decideAttendanceCorrection(f.hr.ctx, { correctionId: f.id, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:0' });
+        detail = await state(f);
+        expect(detail.workflow?.stages).toEqual(original.workflow!.stages);
+        expect(detail.workflow?.participantDecisions).toHaveLength(1);
+        expect(detail.workflow?.participantReassignments).toHaveLength(1);
+        expect(detail.application.status).toBe('approved');
     });
 });
