@@ -20795,7 +20795,9 @@
     "routingMatched": "Pekerja sepadan",
     "routingMissing": "Tiada peraturan sepadan",
     "routingOverlapping": "Padanan bertindih",
-    "routingIneligible": "Penugasan tidak layak"
+    "routingIneligible": "Penugasan tidak layak",
+    "routingSearch": "Cari permintaan menunggu",
+    "routingFirstPage": "Permulaan permintaan menunggu"
   },
   "labelsImportWizard": {
     "title": "Import label organisasi",

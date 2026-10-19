@@ -15,4 +15,8 @@ describe('relocated profile queue invalid-query boundary',()=>{
   await expect(Page({searchParams:Promise.resolve({requestId})})).rejects.toThrow('NOT_FOUND');
   expect(f.companies).not.toHaveBeenCalled();expect(f.scope).not.toHaveBeenCalled();expect(f.list).not.toHaveBeenCalled();expect(f.counts).not.toHaveBeenCalled();expect(f.reroutes).not.toHaveBeenCalled();
  });
+ for(const rerouteAfter of ['not-a-date|'+('-'.repeat(36)),'2026-01-01T00:00:00Z|'+('-'.repeat(36))])it('refuses malformed maintenance cursors before loading request identities',async()=>{
+  await expect(Page({searchParams:Promise.resolve({rerouteAfter})})).rejects.toThrow('NOT_FOUND');
+  expect(f.companies).not.toHaveBeenCalled();expect(f.reroutes).not.toHaveBeenCalled();
+ });
 });

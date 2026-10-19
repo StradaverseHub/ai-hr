@@ -6,11 +6,11 @@ import type {Tx} from '../db/client';
 /**
  * Employee profile photograph (b4682879). A 1:1 photo stored in the person_photo bytea SIDE TABLE
  * (schema.ts), mirroring core/admin.ts company-logo exactly. PNG/JPEG only; the mime is sniffed from magic
- * bytes at the action boundary before it reaches here (SVG is excluded — scriptable).
+ * bytes in this canonical owner (SVG is excluded — scriptable).
  *
  * RLS (0164): READ = app.can_see_person(person_id) — the photo is visible EXACTLY where the employee's name
  * already is (self / admin / administrative-manager subtree), narrower than the tenant-wide logo read
- * because a face photo is personal data. WRITE = admin only (reporter §1.5: admins upload/replace/remove).
+ * because a face photo is personal data. HR retains upload/replace/remove; the independently enabled own-photo course only uploads/replaces.
  *
  * Substrate: every write appends a DomainEvent (aggregateType 'person') with ONLY derived, non-PII payload
  * fields — never the bytes and never the raw user-supplied fileName (PDPA / ADR-0030 posture).

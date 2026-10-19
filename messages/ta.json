@@ -20795,7 +20795,9 @@
     "routingMatched": "பொருந்திய பணியாளர்கள்",
     "routingMissing": "பொருந்தும் விதி இல்லை",
     "routingOverlapping": "ஒன்றுடன் ஒன்று பொருந்தும் விதிகள்",
-    "routingIneligible": "தகுதியற்ற ஒதுக்கீடுகள்"
+    "routingIneligible": "தகுதியற்ற ஒதுக்கீடுகள்",
+    "routingSearch": "நிலுவைக் கோரிக்கைகளைத் தேடு",
+    "routingFirstPage": "நிலுவைக் கோரிக்கைகளின் தொடக்கம்"
   },
   "labelsImportWizard": {
     "title": "நிறுவன லேபிள்களை இறக்குமதி செய்",

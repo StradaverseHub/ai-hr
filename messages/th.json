@@ -20795,7 +20795,9 @@
     "routingMatched": "พนักงานที่ตรงเงื่อนไข",
     "routingMissing": "ไม่มีกฎที่ตรง",
     "routingOverlapping": "กฎซ้ำซ้อน",
-    "routingIneligible": "การมอบหมายที่ไม่เข้าเกณฑ์"
+    "routingIneligible": "การมอบหมายที่ไม่เข้าเกณฑ์",
+    "routingSearch": "ค้นหาคำขอค้าง",
+    "routingFirstPage": "เริ่มต้นรายการคำขอค้าง"
   },
   "labelsImportWizard": {
     "title": "นำเข้าป้ายกำกับองค์กร",

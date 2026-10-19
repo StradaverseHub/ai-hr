@@ -1,6 +1,7 @@
+import {z} from 'zod';
 /** Named HR routing is an authority-narrowing adapter over the canonical organisation resolver. */
 import {createHash,randomUUID} from 'node:crypto';
-import {and,asc,eq,isNull,inArray,sql} from 'drizzle-orm';
+import {and,asc,eq,isNull,inArray,or,gt,gte,ilike,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {employment,assignment,profileChangeRequest,person} from '../db/schema';
 import {appendEvent,actorOf} from '../db/events';
@@ -42,7 +43,7 @@ async function namedPrincipal(tx:Tx,approverEmploymentId:string,subjectId:string
  if(values.length!==1)throw new ProfileRoutingError('unauthorized');return values[0];
 }
 async function subjectContext(tx:Tx,ctx:SessionContext,subjectId:string){
- const [e]=await tx.select({companyId:employment.companyId,gradeId:employment.gradeId,orgDivision:employment.orgDivision,orgBranch:employment.orgBranch,orgRegion:employment.orgRegion,orgLine:employment.orgLine,orgSection:employment.orgSection,orgTeam:employment.orgTeam,orgBase:employment.orgBase,employmentCategory:employment.employmentCategory,hiredOn:employment.hiredOn,confirmationDate:employment.confirmationDate,resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate,terminatedOn:employment.terminatedOn,blacklistedAt:employment.blacklistedAt,gender:person.gender,nationality:person.nationality,religion:person.religion,race:person.race}).from(employment).innerJoin(person,eq(person.id,employment.personId)).where(and(eq(employment.id,subjectId),eq(employment.tenantId,ctx.tenantId))).limit(1).for('update');
+ const [e]=await tx.select({companyId:employment.companyId,gradeId:employment.gradeId,orgDivision:employment.orgDivision,orgBranch:employment.orgBranch,orgRegion:employment.orgRegion,orgLine:employment.orgLine,orgSection:employment.orgSection,orgTeam:employment.orgTeam,orgBase:employment.orgBase,employmentCategory:employment.employmentCategory,hiredOn:employment.hiredOn,confirmationDate:employment.confirmationDate,finalConfirmationDate:employment.finalConfirmationDate,probationEndDate:employment.probationEndDate,provisionalEndOn:employment.provisionalEndOn,resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate,terminatedOn:employment.terminatedOn,blacklistedAt:employment.blacklistedAt,gender:person.gender,nationality:person.nationality,religion:person.religion,race:person.race}).from(employment).innerJoin(person,eq(person.id,employment.personId)).where(and(eq(employment.id,subjectId),eq(employment.tenantId,ctx.tenantId))).limit(1).for('update');
  if(!e)throw new ProfileRoutingError('unauthorized');
  const today=todayInKualaLumpur();
  const rows=await tx.select({id:assignment.id,companyId:assignment.companyId,departmentId:assignment.departmentId,businessUnitId:assignment.businessUnitId,positionId:assignment.positionId,costCenterId:assignment.costCenterId,employmentType:assignment.employmentType}).from(assignment).where(and(eq(assignment.employmentId,subjectId),isNull(assignment.supersededAt),sql`${assignment.validFrom}<=${today}::date AND (${assignment.validTo} IS NULL OR ${assignment.validTo}>${today}::date)`)).orderBy(asc(assignment.id)).limit(2);
@@ -111,11 +112,16 @@ export function profileRouteCounts(ctx:SessionContext,companyIds?:string[]){
  });
 }
 /** Maintenance picker contains identities/status only, never another assignee's proposal or current facts. */
-export function profileRerouteCandidates(ctx:SessionContext){
- if(!isGroupAdmin(ctx))return Promise.resolve([]);
+export function profileRerouteCandidates(ctx:SessionContext,p:{query?:string;after?:{createdAt:string;id:string}}={}){
+ if(!isGroupAdmin(ctx))return Promise.resolve({rows:[],nextCursor:null});
+ const query=p.query?.trim()??'';if(query.length>120||p.after&&(!z.uuid().safeParse(p.after.id).success||!z.iso.datetime().safeParse(p.after.createdAt).success))throw new ProfileRoutingError('invalid');
  return withTenant(ctx,async tx=>{
   await tx.execute(sql`select set_config('app.profile_route_maintenance','on',true)`);
-  return tx.select({id:profileChangeRequest.id,employeeCode:employment.employeeCode,name:person.fullName,createdAt:profileChangeRequest.createdAt}).from(profileChangeRequest).innerJoin(employment,eq(employment.id,profileChangeRequest.employmentId)).innerJoin(person,eq(person.id,profileChangeRequest.personId)).where(eq(profileChangeRequest.status,'pending')).orderBy(asc(profileChangeRequest.createdAt),asc(profileChangeRequest.id));
+  const like=`%${query.replace(/[\\%_]/g,'\\$&')}%`,after=p.after?new Date(p.after.createdAt):null;
+  const rows=await tx.select({id:profileChangeRequest.id,employeeCode:employment.employeeCode,name:person.fullName,createdAt:profileChangeRequest.createdAt}).from(profileChangeRequest).innerJoin(employment,eq(employment.id,profileChangeRequest.employmentId)).innerJoin(person,eq(person.id,profileChangeRequest.personId)).where(and(eq(profileChangeRequest.status,'pending'),query?or(ilike(employment.employeeCode,like),ilike(person.fullName,like)):undefined,p.after&&after?or(gt(profileChangeRequest.createdAt,after),and(eq(profileChangeRequest.createdAt,after),gte(profileChangeRequest.id,p.after.id))):undefined)).orderBy(asc(profileChangeRequest.createdAt),asc(profileChangeRequest.id)).limit(51);
+  // The first omitted row is the inclusive boundary of the next page, never an inferred business identity.
+  const next=rows.slice(50,51)[0];
+  return {rows:rows.slice(0,50),nextCursor:next?{createdAt:next.createdAt.toISOString(),id:next.id}:null};
  });
 }
 

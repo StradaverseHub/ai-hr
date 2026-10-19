@@ -20795,7 +20795,9 @@
     "routingMatched": "Matched employees",
     "routingMissing": "Without a matching rule",
     "routingOverlapping": "Overlapping matches",
-    "routingIneligible": "Ineligible assignments"
+    "routingIneligible": "Ineligible assignments",
+    "routingSearch": "Search pending requests",
+    "routingFirstPage": "Start of pending requests"
   },
   "labelsImportWizard": {
     "title": "Import organisation labels",

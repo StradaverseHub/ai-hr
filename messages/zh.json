@@ -20795,7 +20795,9 @@
     "routingMatched": "匹配员工",
     "routingMissing": "无匹配规则",
     "routingOverlapping": "重叠匹配",
-    "routingIneligible": "无资格的分配"
+    "routingIneligible": "无资格的分配",
+    "routingSearch": "搜索待办申请",
+    "routingFirstPage": "返回待办申请首页"
   },
   "labelsImportWizard": {
     "title": "导入组织标签",

@@ -8,7 +8,7 @@ import {hireEmployee} from '../core/org';
 import {readOwnProfileWorkspace,submitOwnProfileEdit} from '../core/profile-edit';
 import {readOwnProfileFacts} from '../core/profile-view';
 import {listProfileChangeRequests,decideProfileChange,myProfileChangeRequests} from '../core/profile';
-import {saveProfileRoutingPolicy,rerouteProfileRequest,profileRouteCounts} from '../core/profile-routing';
+import {saveProfileRoutingPolicy,rerouteProfileRequest,profileRouteCounts,profileRerouteCandidates} from '../core/profile-routing';
 import {EMPTY_PROFILE_ROUTING,type ProfileRouteRule} from '../lib/profile-routing-policy';
 import {setTenantSetting} from '../core/tenant-settings';
 import {essVisibleFields} from '../lib/personnel-ess-contract';
@@ -74,6 +74,20 @@ describe('named profile routing against real request/organisation owners',()=>{
   await owner.db.delete(roleAssignment).where(and(eq(roleAssignment.appUserId,hr.ctx.userId!),eq(roleAssignment.role,'hr_admin')));
   await expect(decideProfileChange(hr.ctx,{requestId:submitted.requestId!,decision:'approved'})).rejects.toThrow();
   const [stored]=await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,submitted.requestId!));expect(stored.status).toBe('pending');
+ });
+});
+describe('bounded private maintenance picker',()=>{
+ it('keeps every request reachable across explicit cursor pages without returning proposed values',async()=>{
+  const employee=await worker('Paging subject');
+  const created=Date.now()-120000;
+  await owner.db.insert(profileChangeRequest).values(Array.from({length:53},(_,ordinal)=>({tenantId:b.tenantId,employmentId:employee.employmentId,personId:employee.personId,proposed:{private:'NEVER IN PICKER'},createdAt:new Date(created+ordinal)})));
+  const first=await profileRerouteCandidates(group(),{query:'Paging subject'});
+  expect(first.rows).toHaveLength(50);expect(first.nextCursor).not.toBeNull();
+  const second=await profileRerouteCandidates(group(),{query:'Paging subject',after:first.nextCursor!});
+  expect(second.rows).toHaveLength(3);expect(second.nextCursor).toBeNull();
+  expect(new Set([...first.rows,...second.rows].map(row=>row.id)).size).toBe(53);
+  expect(JSON.stringify({first,second})).not.toContain('NEVER IN PICKER');
+  expect(Object.keys(first.rows[0]).sort()).toEqual(['createdAt','employeeCode','id','name']);
  });
 });
 describe('independent own photo and hidden payloads',()=>{

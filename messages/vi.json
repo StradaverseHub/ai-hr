@@ -20795,7 +20795,9 @@
     "routingMatched": "Nhân viên khớp",
     "routingMissing": "Không có quy tắc khớp",
     "routingOverlapping": "Khớp trùng",
-    "routingIneligible": "Phân công không đủ điều kiện"
+    "routingIneligible": "Phân công không đủ điều kiện",
+    "routingSearch": "Tìm yêu cầu đang chờ",
+    "routingFirstPage": "Đầu danh sách yêu cầu đang chờ"
   },
   "labelsImportWizard": {
     "title": "Nhập nhãn tổ chức",
