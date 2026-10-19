@@ -20,12 +20,12 @@ describe.each(['classic','monolith','current'])('%s Profile Changes navigation',
   render(<NextIntlClientProvider locale="en" messages={messages} onError={error=>{throw error;}}>
    <Sidebar isAdmin={rail} canReviewProfileChanges={review} canApprove={manager} canAccessTeam={manager} enabledModules={null} defaultCollapsed={false}/>
   </NextIntlClientProvider>);
-  const people=screen.queryByRole('button',{name:messages.nav.modulePeople,exact:true});
+  const people=screen.queryByRole('button',{name:messages.nav.modulePeople});
   if(people)fireEvent.click(people);
   if(review){
    const panel=screen.getByRole('navigation',{name:messages.nav.modulePeople});
-   expect(within(panel).getByRole('link',{name:messages.nav.profileChanges,exact:true})).toHaveAttribute('href','/admin/personnel/profile-changes');
+   expect(within(panel).getByRole('link',{name:messages.nav.profileChanges})).toHaveAttribute('href','/admin/personnel/profile-changes');
    expect(within(panel).getByText(messages.nav.sectionHR)).toBeInTheDocument();
-  }else expect(screen.queryByRole('link',{name:messages.nav.profileChanges,exact:true})).toBeNull();
+  }else expect(screen.queryByRole('link',{name:messages.nav.profileChanges})).toBeNull();
  });
 });

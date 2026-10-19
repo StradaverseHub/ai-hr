@@ -15,10 +15,10 @@ afterEach(()=>{cleanup();document.documentElement.removeAttribute('data-ui-theme
 describe.each(['classic','monolith'] as const)('%s Ops/Strata navigation',theme=>{
  it('switches workspace without navigation and keeps module collapse keyboard-operable',async()=>{
   document.documentElement.setAttribute('data-ui-theme',theme);const user=userEvent.setup();render(ui());
-  const strata=screen.getByRole('button',{name:messages.nav.workspaceStrata,exact:true});
+  const strata=screen.getByRole('button',{name:messages.nav.workspaceStrata});
   await user.click(strata);expect(strata).toHaveAttribute('aria-pressed','true');expect(route.pathname).toBe('/');
-  await user.click(screen.getByRole('button',{name:messages.nav.workspaceOps,exact:true}));
-  const people=screen.getByRole('button',{name:messages.nav.modulePeople,exact:true});
+  await user.click(screen.getByRole('button',{name:messages.nav.workspaceOps}));
+  const people=screen.getByRole('button',{name:messages.nav.modulePeople});
   people.focus();await user.keyboard('{Enter}');expect(people).toHaveAttribute('aria-expanded','true');
   const panel=screen.getByRole('navigation',{name:messages.nav.modulePeople});
   expect(within(panel).getByRole('link',{name:messages.nav.personnelAdmin})).toHaveAttribute('href','/admin/personnel');
@@ -30,32 +30,32 @@ describe.each(['classic','monolith'] as const)('%s Ops/Strata navigation',theme=
  });
  it('reopens the newly visited module and keeps the shared gear reachable',()=>{
   document.documentElement.setAttribute('data-ui-theme',theme);route.pathname='/reports';route.search='cat=master';
-  const view=render(ui());expect(screen.getByRole('button',{name:messages.nav.workspaceStrata,exact:true})).toHaveAttribute('aria-pressed','true');
-  expect(screen.getByRole('button',{name:messages.nav.workforceInsights,exact:true})).toBeEnabled();
+  const view=render(ui());expect(screen.getByRole('button',{name:messages.nav.workspaceStrata})).toHaveAttribute('aria-pressed','true');
+  expect(screen.getByRole('button',{name:messages.nav.workforceInsights})).toBeEnabled();
   route.pathname='/admin/organization';route.search='';view.rerender(ui());
-  expect(screen.getByRole('button',{name:messages.nav.workspaceOps,exact:true})).toHaveAttribute('aria-pressed','true');
-  expect(screen.getByRole('button',{name:messages.nav.modulePeople,exact:true})).toBeEnabled();
-  const gear=screen.getByRole('button',{name:messages.nav.systemConfiguration,exact:true});
+  expect(screen.getByRole('button',{name:messages.nav.workspaceOps})).toHaveAttribute('aria-pressed','true');
+  expect(screen.getByRole('button',{name:messages.nav.modulePeople})).toBeEnabled();
+  const gear=screen.getByRole('button',{name:messages.nav.systemConfiguration});
   if(gear.getAttribute('aria-expanded')!=='true')fireEvent.click(gear);
   expect(screen.getByRole('link',{name:messages.nav.systemLabels})).toHaveAttribute('href','/admin/settings/system-labels');
  });
  it('offers only self-service Payroll to employees and keeps current-link ownership out of My Profile',()=>{
   document.documentElement.setAttribute('data-ui-theme',theme);route.pathname='/me';route.search='tab=payroll';
   render(ui({isAdmin:false,canApprove:false,canAccessTeam:false,onboardingAccess:false,onboardingMaster:false,onboardingRequisitionsAccess:false}));
-  const payroll=screen.getByRole('button',{name:messages.nav.payroll,exact:true});
+  const payroll=screen.getByRole('button',{name:messages.nav.payroll});
   if(payroll.getAttribute('aria-expanded')!=='true')fireEvent.click(payroll);
   const panel=screen.getByRole('navigation',{name:messages.nav.payroll});
   expect(within(panel).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/me?tab=payroll','/me/tax-relief']);
   expect(within(panel).getByRole('link',{name:messages.nav.myPayslips})).toHaveAttribute('aria-current','page');
   expect(screen.getByRole('link',{name:messages.nav.myWorkspace})).not.toHaveAttribute('aria-current');
-  expect(screen.queryByRole('button',{name:messages.nav.systemConfiguration,exact:true})).toBeNull();
+  expect(screen.queryByRole('button',{name:messages.nav.systemConfiguration})).toBeNull();
  });
  it('hides unavailable module workspaces and preserves testing entitlement plus employee preview exclusion',()=>{
   document.documentElement.setAttribute('data-ui-theme',theme);
   render(ui({isAdmin:false,canApprove:false,canAccessTeam:false,onboardingAccess:false,onboardingMaster:false,onboardingRequisitionsAccess:false,enabledModules:[]}));
   expect(screen.queryByRole('group',{name:messages.nav.workspaceSwitch})).toBeNull();
   expect(screen.queryByRole('link',{name:messages.nav.mobilePreview})).toBeNull();
-  const inbox=screen.getByRole('button',{name:messages.nav.inbox,exact:true});fireEvent.click(inbox);
+  const inbox=screen.getByRole('button',{name:messages.nav.inbox});fireEvent.click(inbox);
   expect(screen.queryByRole('link',{name:messages.nav.mySystemTesting})).toBeNull();
   expect(screen.queryByRole('link',{name:messages.nav.approvals})).toBeNull();
   expect(screen.getByRole('link',{name:messages.nav.myTasks})).toHaveAttribute('href','/tasks');
@@ -64,14 +64,14 @@ describe.each(['classic','monolith'] as const)('%s Ops/Strata navigation',theme=
   document.documentElement.setAttribute('data-ui-theme',theme);
   const props={isAdmin:false,canApprove:false,canAccessTeam:false,hasAssignedAttendanceApproval:true,onboardingAccess:false,onboardingMaster:false,onboardingRequisitionsAccess:false,enabledModules:['attendance']};
   const view=render(ui(props));
-  fireEvent.click(screen.getByRole('button',{name:messages.nav.inbox,exact:true}));
+  fireEvent.click(screen.getByRole('button',{name:messages.nav.inbox}));
   expect(screen.getByRole('link',{name:messages.nav.approvals})).toHaveAttribute('href','/approvals');
-  const people=screen.queryByRole('button',{name:messages.nav.modulePeople,exact:true});
+  const people=screen.queryByRole('button',{name:messages.nav.modulePeople});
   if(people)fireEvent.click(people);
   expect(screen.queryByRole('link',{name:messages.nav.myTeam})).toBeNull();
-  expect(screen.queryByRole('button',{name:messages.nav.systemConfiguration,exact:true})).toBeNull();
+  expect(screen.queryByRole('button',{name:messages.nav.systemConfiguration})).toBeNull();
   view.rerender(ui({...props,hasAssignedAttendanceApproval:false}));
-  const inbox=screen.getByRole('button',{name:messages.nav.inbox,exact:true});
+  const inbox=screen.getByRole('button',{name:messages.nav.inbox});
   if(inbox.getAttribute('aria-expanded')!=='true')fireEvent.click(inbox);
   expect(screen.queryByRole('link',{name:messages.nav.approvals})).toBeNull();
  });

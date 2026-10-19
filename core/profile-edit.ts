@@ -98,7 +98,7 @@ function addressNeedsReview(master:typeof person.$inferSelect){
  });
 }
 /** Private workspace contains explicitly visible fields only; no admin-row spread crosses RSC. */
-export function readOwnProfileWorkspace(ctx:SessionContext,p:{employmentId?:string}={},presentation?:ProfilePresentationPolicy){
+export function readOwnProfileWorkspace(ctx:SessionContext,p:{employmentId?:string}={},presentation?:ProfilePresentationPolicy):Promise<EssWorkspace>{
  return withTenant(ctx,async tx=>{
   const policy=presentation??await freshProfileEditPolicyTx(tx,ctx);const {subject,master}=await ownProfileSubjectTx(tx,policy.ctx,p.employmentId,false);
   const rows=await mastersTx(tx,policy.ctx,subject);

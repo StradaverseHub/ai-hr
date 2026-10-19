@@ -261,7 +261,8 @@ export function validateAnyAttendanceWorkflow(raw: unknown): AnyAttendanceWorkfl
     if (!object(raw) || raw.routingVersion !== 3) return validateAttendanceWorkflow(raw as AttendanceWorkflowInput);
     // The existing owner validates common assignment and metadata rules; no v3 participant is passed
     // through Leave sanitization or silently converted into an alternate.
-    const common = validateAttendanceWorkflow({ ...raw, routingVersion: 2, stages: [{ name: 'Level 1', level: { kind: 'direct_manager', employmentId: null, alternates: [] } }] } as AttendanceWorkflowInput);
+    const legacyInput = raw as AttendanceWorkflowInput;
+    const common = validateAttendanceWorkflow({ ...legacyInput, routingVersion: 2, stages: [{ name: 'Level 1', level: { kind: 'direct_manager', employmentId: null, alternates: [] } }] });
     return { ...common, ...parseAttendanceV3Route({ routingVersion: 3, stages: raw.stages }) };
 }
 

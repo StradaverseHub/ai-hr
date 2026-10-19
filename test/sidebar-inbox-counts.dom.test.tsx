@@ -16,14 +16,14 @@ describe.each(['classic','monolith','current'])('%s Inbox counts',theme=>{
  it('announces each queue independently and removes both badges at zero',()=>{
   document.documentElement.setAttribute('data-ui-theme',theme);
   const view=render(rail(3,8));
-  fireEvent.click(screen.getByRole('button',{name:messages.nav.inbox,exact:true}));
+  fireEvent.click(screen.getByRole('button',{name:messages.nav.inbox}));
   let inbox=screen.getByRole('navigation',{name:messages.nav.inbox});
   expect(within(inbox).getByRole('link',{name:`${messages.nav.approvals}, 3 items awaiting your decision`})).toHaveAttribute('href','/approvals');
   expect(within(inbox).getByRole('link',{name:`${messages.nav.myTasks}, 8 items awaiting your decision`})).toHaveAttribute('href','/tasks');
   view.rerender(rail(0,0));
   inbox=screen.getByRole('navigation',{name:messages.nav.inbox});
-  expect(within(inbox).getByRole('link',{name:messages.nav.approvals,exact:true})).toHaveAttribute('href','/approvals');
-  expect(within(inbox).getByRole('link',{name:messages.nav.myTasks,exact:true})).toHaveAttribute('href','/tasks');
+  expect(within(inbox).getByRole('link',{name:messages.nav.approvals})).toHaveAttribute('href','/approvals');
+  expect(within(inbox).getByRole('link',{name:messages.nav.myTasks})).toHaveAttribute('href','/tasks');
   expect(within(inbox).queryByText('3')).toBeNull();
   expect(within(inbox).queryByText('8')).toBeNull();
  });

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { CurrentLedger } from '@/components/current-ledger';
 import { getTranslations } from 'next-intl/server';
+import { PROFILE_REQUEST_OPTION_NAMESPACE } from '@/lib/profile-requestable-fields';
 import { requireAdmin } from '@/lib/authz';
 import { scopedSession } from '@/lib/scope';
 import {
