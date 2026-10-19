@@ -75,7 +75,7 @@ describe('Employee Master report contract',()=>{
         if(++dateReads>10_000)throw new Error('Expanded Family date reads exceeded the bounded input traversal.');
         return '2026-10-15T00:00:00.000Z';
       },
-      values:{[remarks.id]:{value:'Fictional Family remark '+index}},
+      values:{remarks:{value:'Fictional Family remark '+index}},
     }));
     const value:MasterSubject={id:'one',kind:'employment',personId:'person-one',companyId:company,owners:{
       get dependent(){
