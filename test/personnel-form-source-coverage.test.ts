@@ -7,6 +7,19 @@ import {auditPersonnelFormSource,type PersonnelSourceExemption} from './helpers/
 const root=fileURLToPath(new URL('..',import.meta.url));
 const exemptions=JSON.parse(readFileSync(new URL('./fixtures/personnel-form-exemptions.json',import.meta.url),'utf8')) as Record<string,PersonnelSourceExemption[]>;
 describe('actual mounted Personnel form inventory',()=>{
+  it('binds the classification fact and exempts only its one dedicated-command subject pointer',()=>{
+    const file='app/admin/personnel/[employmentId]/page.tsx',source=readFileSync(new URL('../'+file,import.meta.url),'utf8');
+    const start=source.indexOf('const dataClassificationCard'),end=source.indexOf('const directSuperiorCard',start);
+    expect(start).toBeGreaterThan(-1);expect(end).toBeGreaterThan(start+500);const card=source.slice(start,end);
+    expect(card).toContain('action={setTestRecordAction}');expect(card).toContain('fieldId="employment.data_classification.istestrecord"');
+    const binding="personnelControl('employment.data_classification.istestrecord','edit')";expect(card).toContain(binding);
+    expect(card).toContain('defaultValue={String(classification.isTestRecord)}');expect(card).toContain('value="false"');expect(card).toContain('value="true"');
+    const transport=exemptions[file].filter(item=>item.context==='dataClassificationCard');expect(transport).toHaveLength(1);
+    expect(transport[0]).toMatchObject({tag:'input',name:'employmentId',hidden:true,occurrences:1});
+    expect(transport[0].reason).toContain('setTestRecordAction');expect(exemptions[file].some(item=>item.name==='isTestRecord')).toBe(false);
+    const altered=source.replace(binding,'unregisteredClassificationControl()');expect(altered).not.toBe(source);
+    expect(auditPersonnelFormSource(file,altered,PERSONNEL_FIELDS,{exemptions:exemptions[file],resolveImportSource:personnelImportSourceReader(root)}).issues.some(issue=>issue.message.includes('Unbound Personnel control'))).toBe(true);
+  });
   it('checks every real control reached from Personnel, draft completion and short Create',()=>{
     const {files,boundaries}=personnelFormSources(root);
     for(const entry of PERSONNEL_FORM_ROOTS)expect(files.has(entry),entry).toBe(true);

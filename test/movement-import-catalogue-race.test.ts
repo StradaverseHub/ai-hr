@@ -39,7 +39,7 @@ describe('canonical catalogue mutation versus import final admission',()=>{
     expect(waiting.blocked).toBe(true);
    },{timeout:5000,interval:10});
    release();const result=await importing,outcome=await mutation;expect(result).toMatchObject({imported:1,failed:0});
-   expect(result.employees[0].rows[0].proposed?.departmentId).toContain(b.deptB);expect((await movementOwner.movementCurrentState(ctx,e.employmentId)).departmentId).toBe(b.deptB);
+   expect(result.employees[0].rows[0].proposed?.departmentId).toBe('Operations');expect((await movementOwner.movementCurrentState(ctx,e.employmentId)).departmentId).toBe(b.deptB);
    const events=await owner.db.select().from(domainEvent).where(eq(domainEvent.subjectEmploymentId,e.employmentId)).orderBy(asc(domainEvent.sequence));
    expect(events).toEqual(expect.arrayContaining([expect.objectContaining({payload:expect.objectContaining({movement:expect.objectContaining({type:code})})})]));
    if(mode==='delete'){expect(outcome.ok).toBe(false);if(!outcome.ok)expect(outcome.error).toMatchObject({message:expect.stringContaining('already used')});}

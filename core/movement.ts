@@ -19,6 +19,7 @@ import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import {isCalendarDate} from '../lib/calendar-date';
+import {MOVEMENT_FLAT_FIELDS,MOVEMENT_PENDING_COMPARISON_FIELDS,MOVEMENT_PENDING_INPUT_FIELDS,movementPendingFormValues,type MovementFlatField,type MovementPendingFormValues} from '../lib/movement-pending-input';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf, type MovementTag } from '../db/events';
 import {
@@ -271,17 +272,8 @@ export type MovementSnapshot = {
  * NOT effective-dated, so unlike the MovementSnapshot fields they cannot be reconstructed as-of; their
  * before/after is read back from the movement's own `employment.info.updated` event payload.
  */
-export const MOVEMENT_FLAT_FIELDS = [
-  'orgDivision',
-  'employmentCategory',
-  'orgRegion',
-  'orgBranch',
-  'orgTeam',
-  'orgSection',
-  'orgLine',
-  'orgBase',
-] as const;
-export type MovementFlatField = (typeof MOVEMENT_FLAT_FIELDS)[number];
+export {MOVEMENT_FLAT_FIELDS};
+export type {MovementFlatField};
 
 export type MovementFlatChange = { field: MovementFlatField; before: string | null; after: string | null };
 
@@ -1482,6 +1474,33 @@ export function movementDetail(
   return withTenant(ctx, tx => movementDetailTx(tx, ctx, employmentId, movementId));
 }
 
+/** Pending Edit alone needs raw picker values. Read the authoritative saved intent under current RLS;
+ * do not send a reference the caller can no longer resolve, or hydrate omitted values from today. */
+export function movementPendingEditInput(ctx:SessionContext,employmentId:string,movementId:string):Promise<{values?:MovementPendingFormValues;unavailable:boolean}|null>{
+  assertMovementAdmin(ctx,'correct a movement');
+  return withTenant(ctx,async tx=>{
+    const {emp,events,rows,statusOf}=await projectRows(tx,ctx.tenantId,employmentId);
+    const [scope]=await tx.execute<{ok:boolean}>(sql`select app.is_admin_for(${emp.companyId}::uuid) as ok`);
+    if(!scope?.ok)return {unavailable:true};
+    const row=rows.find(r=>r.id===movementId);
+    if(!row?.scheduled||statusOf(row)!=='pending')return null;
+    const event=events.find(e=>e.id===row.id),payload=event?.payload;
+    const input=payload&&typeof payload==='object'&&'input' in payload?payload.input:undefined;
+    if(!event||!input||typeof input!=='object'||Array.isArray(input))return {unavailable:true};
+    const values=movementPendingFormValues(input),display=await pendingIntentTx(tx,ctx.tenantId,event);
+    const refs={companyId:'company',departmentId:'department',positionId:'position',businessUnitId:'businessUnit',locationId:'location',gradeId:'grade',managerEmploymentId:'manager'} as const;
+    for(const [key,field]of Object.entries(refs)){
+      const value=Reflect.get(values,key);
+      if(value!=null&&!display?.values.some(v=>v.field===field&&v.value!==null))return {unavailable:true};
+    }
+    if(values.companyId){
+      const [destination]=await tx.execute<{ok:boolean}>(sql`select app.is_admin_for(${values.companyId}::uuid) as ok`);
+      if(!destination?.ok)return {unavailable:true};
+    }
+    return {values,unavailable:false};
+  },{readOnlySnapshot:true});
+}
+
 /** Explicit owner read seam for a caller-held scoped report snapshot. */
 export async function movementDetailTx(tx: Tx,
   ctx: SessionContext,
@@ -2145,16 +2164,7 @@ async function applyComparisonMovementTx(
  */
 function scheduledInputOf(p: CreateMovementInput): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  const keys = [
-    // b7b22514 — the destination company must be frozen onto a SCHEDULED Entity Transfer like every other
-    // submitted value: the sweep replays this input months later, and without it a transfer keyed in
-    // January for July would arrive with no destination and refuse itself inside a cron job.
-    'companyId',
-    'departmentId', 'positionId', 'businessUnitId', 'locationId', 'gradeId',
-    'employmentType', 'managerEmploymentId', 'basicSalary', 'currency', 'payMode', 'paymentTerm',
-    ...MOVEMENT_FLAT_FIELDS,
-  ] as const;
-  for (const k of keys) {
+  for (const k of MOVEMENT_PENDING_COMPARISON_FIELDS) {
     const v = (p as Record<string, unknown>)[k];
     if (v !== undefined) out[k] = v;
   }
@@ -3399,6 +3409,17 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
      * movement" diverge, and the in-place rule correctly follows the applied one.
      */
     if (row.scheduled && status === 'pending') {
+      // A partial correction retains only explicitly saved inputs. Submitted null/value wins;
+      // undefined is omission, not permission to replace a future target with today's baseline.
+      const payload=events.find(e=>e.id===row.id)?.payload;
+      const saved=payload&&typeof payload==='object'&&'input' in payload?payload.input:undefined;
+      const retained:Record<string,unknown>={};
+      if(saved&&typeof saved==='object'&&!Array.isArray(saved))for(const key of MOVEMENT_PENDING_INPUT_FIELDS){
+        const value:unknown=Reflect.get(saved,key);
+        if(value===null||typeof value==='string'||typeof value==='number'&&Number.isFinite(value))retained[key]=value;
+      }
+      const corrected={...retained,...Object.fromEntries(Object.entries(p).filter(([,value])=>value!==undefined)),
+        remarks:rawEdit.remarks===undefined?row.remarks:remarks,endDate:rawEdit.endDate===undefined?row.endDate:endDate} as typeof p;
       // ae9350f2 — a pending TERMINATION is correctable on exactly the same reasoning, and it has to be:
       // scheduling made `canEdit` true for it (a scheduled event is not state-changing), so without this
       // branch the Edit button would render and the service would refuse it — an affordance that lies.
@@ -3411,7 +3432,7 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
         await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true);
         // Planned AFTER the rollback, so the duplicate-termination rule sees the movement being corrected
         // as already reversed rather than as a second termination competing with itself.
-        const plan = await planTerminationTx(tx, ctx, { ...p, remarks, endDate }, 'create');
+        const plan = await planTerminationTx(tx, ctx, corrected, 'create');
         return plan.effectiveDate > today
           ? scheduleTerminationTx(tx, ctx, p.employmentId, plan)
           : applyTerminationTx(tx, ctx, p.employmentId, plan);
@@ -3423,11 +3444,10 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
       ) {
         throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
       }
-      if (p.kind === 'employmentTypeChange' && !p.employmentType) {
+      if (p.kind === 'employmentTypeChange' && !corrected.employmentType) {
         throw new Error('Select the new employment type.');
       }
       await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true);
-      const corrected = { ...p, remarks, endDate };
       // A correction may also move the date INTO the past — in which case the movement stops being a
       // schedule and applies at once, exactly as keying it fresh with that date would.
       return p.effectiveDate > today

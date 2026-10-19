@@ -1,3 +1,4 @@
+import {employmentTestRecord} from '@/core/employment-test-record';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -76,6 +77,7 @@ import {
   endDelegationAction,
   setCompensationAction,
   setDirectSuperiorAction,
+  setTestRecordAction,
   setComplianceFieldsAction,
   setContactAddressAction,
   changeEmploymentCompanyAction,
@@ -109,6 +111,7 @@ import {
 import {
   movementHistory,
   movementDetail,
+  movementPendingEditInput,
   movementCurrentState,
   INTERCHANGEABLE_COMPARISON_KINDS,
   isComparisonKind,
@@ -333,6 +336,7 @@ export default async function EmployeePage({
 
   const emp = await employeeDetail(s, employmentId);
   if (!emp) notFound();
+  const classification = admin ? await employmentTestRecord(s, employmentId) : null;
   const today = todayInKualaLumpur();
   // Employee Status redesign (R43 c26c3ce5): Employee Status is SYSTEM-DERIVED read-time from the employment
   // lifecycle dates (+ the manual Blacklist override) — never a stored manual field. Computed once here and
@@ -4021,10 +4025,13 @@ export default async function EmployeePage({
   // corrected. `canEdit` comes from the service, so a row the service would refuse never renders a form.
   // Include the edited code's metadata even if inactive; the client needs its resolved behavior.
   const movementEditRow = spEditMovement ? movements.find((m) => m.id === spEditMovement && m.canEdit) : undefined;
+  const movementEditInput = movementEditRow && movementEditRow.status === 'pending'
+    ? await movementPendingEditInput(s, employmentId, movementEditRow.id) : null;
   const editEventCard = canCreateMovement && movementEditRow && movementFormProps ? (
     <Card id="section-movement-edit-event" className="overflow-hidden">
       <SectionHeader title={t('movement.editTitle')} />
       <MovementNewEvent
+        key={movementEditRow.id}
         {...movementFormProps}
         types={movementTypes
           .filter((r) => r.active || r.code === movementEditRow.kind)
@@ -4035,6 +4042,8 @@ export default async function EmployeePage({
           effectiveDate: movementEditRow.effectiveDate,
           endDate: movementEditRow.endDate,
           remarks: movementEditRow.remarks,
+          pendingInput: movementEditInput?.values,
+          pendingUnavailable: movementEditInput?.unavailable,
           // A correction may re-classify the movement within its own family (a Transfer that should have
           // been a Promotion), never across it — the service replays the same set of writers either way.
           // 476f23ed — the family is decided by the BEHAVIOUR, not by the code, so a correction of one of
@@ -4710,6 +4719,22 @@ export default async function EmployeePage({
      existing functional/project/dotted rows remain in the data (org chart still renders them — their
      retirement is a follow-up decision, not decided here). Prior superiors stay visible read-only in
      the compact history disclosure below the field. */
+  const dataClassificationCard = admin && classification ? (
+    <Card id="section-data-classification">
+      <SectionHeader title={t('dataClassification.title')}/>
+      <form action={setTestRecordAction} className="space-y-3 p-4">
+        <input type="hidden" name="employmentId" value={emp.employmentId}/>
+        <p className="text-sm text-muted-foreground">{t('dataClassification.help')}</p>
+        <PersonnelField fieldId="employment.data_classification.istestrecord" mode="edit">
+          <select {...personnelControl('employment.data_classification.istestrecord','edit')} className={inputCls} defaultValue={String(classification.isTestRecord)}>
+            <option value="false">{t('dataClassification.unmarked')}</option><option value="true">{t('dataClassification.marked')}</option>
+          </select>
+        </PersonnelField>
+        <button type="submit" className={btnPrimary}>{t('dataClassification.save')}</button>
+      </form>
+    </Card>
+  ) : null;
+
   const directSuperiorCard = (
     <Card id="section-direct-superior">
       <SectionHeader title={t('directSuperiorTitle')} />
@@ -5087,6 +5112,7 @@ export default async function EmployeePage({
             {employmentInfoCard}
           </TabSaveScope>
         )}
+        {dataClassificationCard}
         {directSuperiorCard}
         {delegationsCard}
       </>

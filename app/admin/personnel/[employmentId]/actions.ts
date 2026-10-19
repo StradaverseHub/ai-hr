@@ -1,5 +1,6 @@
 'use server';
 
+import {setEmploymentTestRecord} from '@/core/employment-test-record';
 import { publicErrorMessage } from '@/lib/public-error';
 import {movementNeedsEntitlementReprojection} from '@/core/movement-kinds';
 import { randomUUID } from 'node:crypto';
@@ -467,7 +468,7 @@ export async function setDefaultShiftAction(formData: FormData) {
  * alone), blank = HR cleared it. `orNull` collapses both to null, which would read as "clear the Work
  * Location" on an event type that never showed it — hence `optional` below.
  */
-function parseMovementForm(formData: FormData) {
+function parseMovementForm(formData: FormData, mode: 'create' | 'edit' = 'create') {
   const kindRaw = String(formData.get('kind') ?? '').trim();
   // 476f23ed — the type may be one of the ORGANISATION's own (Movement Settings), so this can no longer be
   // an allowlist of the built-in kinds. It is a shape check only; core/movement.ts resolves the code
@@ -515,7 +516,11 @@ function parseMovementForm(formData: FormData) {
     // form posts for classification: core/movement.ts validates it against the built-in catalogue and
     // derives `terminationType` from it, so the two can never be submitted in contradiction.
     terminationReasonCode: optional('terminationReasonCode'),
-    terminationNoticeDays: rawNoticeDays === '' ? undefined : Number(rawNoticeDays),
+    // Pending corrections retain omitted inputs. A present blank notice must therefore be an explicit
+    // nullable clear; New Event keeps its existing blank-as-unspecified parser contract.
+    terminationNoticeDays: rawNoticeDays === ''
+      ? mode === 'edit' && formData.has('terminationNoticeDays') ? null : undefined
+      : Number(rawNoticeDays),
     resignationDate: optional('resignationDate'),
     blacklisted: String(formData.get('blacklisted') ?? 'true') !== 'false',
   };
@@ -610,7 +615,7 @@ export async function editMovementEventAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
-    const p = parseMovementForm(formData);
+    const p = parseMovementForm(formData, 'edit');
     const gradeBefore = { gradeId: await employmentGradeId(s, employmentId) };
     const result=await editMovementEvent(s, {
       employmentId,
@@ -2277,4 +2282,15 @@ async function applyAttendancePhotoSection(
     employmentId: String(formData.get('employmentId')),
     setting,
   });
+}
+
+/** Dedicated HR-only metadata command; generic tab saves and import/ESS never bind this field. */
+export async function setTestRecordAction(formData:FormData){
+ const ctx=await requireAdmin();const employmentId=String(formData.get('employmentId')??'');
+ const value=formData.get('isTestRecord');
+ if(value!=='true'&&value!=='false')throw new Error('classification_not_available');
+ try{await setEmploymentTestRecord(ctx,{employmentId,isTestRecord:value==='true'});}
+ catch{redirect(`/admin/personnel/${encodeURIComponent(employmentId)}?tab=job&error=classification_not_available`);}
+ revalidatePath(`/admin/personnel/${employmentId}`);
+ redirect(`/admin/personnel/${employmentId}?tab=job&toast=Saved`);
 }

@@ -59,7 +59,7 @@ export function personnelFormWidget(id:string) {
 export function personnelFormMetadataIssue(field:PersonnelFieldDescriptor):string|null {
   const widget=field.form?.widget;
   const expected=({text:'text',date:'date',number:'number',currency:'number',boolean:'checkbox',choice:'choice',file:'file',status:'display'} as const)[field.type];
-  if(widget && widget!=='display' && widget!==expected && !(widget==='email'&&field.type==='text') && !(widget==='month'&&field.type==='date'))return `Personnel widget contradicts canonical type: ${field.id}`;
+  if(widget && widget!=='display' && widget!==expected && !(widget==='email'&&field.type==='text') && !(widget==='month'&&field.type==='date') && !(widget==='choice'&&field.type==='boolean'))return `Personnel widget contradicts canonical type: ${field.id}`;
   if(widget==='display'&&!field.form?.workflowReason)return `Personnel display field needs its derived/owner reason: ${field.id}`;
   if(field.form?.required?.create!=null||field.form?.required?.draft!=null)return `Personnel create requirement has a duplicate authority: ${field.id}`;
   return null;

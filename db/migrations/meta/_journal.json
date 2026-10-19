@@ -3277,6 +3277,13 @@
       "when": 1791900000048,
       "tag": "0568_ai_user_default_allowance",
       "breakpoints": true
+    },
+    {
+      "idx": 569,
+      "version": "7",
+      "when": 1791900000049,
+      "tag": "0569_employment_test_record",
+      "breakpoints": true
     }
   ]
 }

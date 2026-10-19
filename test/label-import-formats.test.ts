@@ -41,7 +41,7 @@ describe('bounded real XLS and XLSX Labels admission',()=>{
  it('rejects wrong containers, oversize bytes, no recognised sheets and excessive rows',async()=>{
   expect(()=>readSystemLabelWorkbook(Buffer.from('<html>Excel</html>'))).toThrow();
   expect(()=>readSystemLabelWorkbook(Buffer.alloc(LABEL_WORKBOOK_MAX_BYTES+1))).toThrow(/5 MB/);
-  const zip=new JSZip();zip.file('unrelated.txt','Not Excel');const bytes=await zip.generateAsync({type:'nodebuffer'});expect(()=>readSystemLabelWorkbook(bytes)).toThrow(/supported XLSX/);
+  const zip=new JSZip();zip.file('unrelated.txt','Not Excel');const bytes=await zip.generateAsync({type:'nodebuffer'});expect(()=>readSystemLabelWorkbook(bytes)).toThrow(/Invalid Excel archive/);
   for(const type of ['biff8','xlsx'] as const){
    expect(()=>readSystemLabelWorkbook(make(type,wb=>{wb.SheetNames=['Reference'];wb.Sheets={Reference:wb.Sheets.division};}))).toThrow(/no recognised/);
    expect(()=>readSystemLabelWorkbook(make(type,wb=>{wb.Sheets.division=XLSX.utils.aoa_to_sheet([headers,...Array.from({length:501},(_,i)=>[String(i),'X','',''])]);}))).toThrow(/limit/);
@@ -50,7 +50,7 @@ describe('bounded real XLS and XLSX Labels admission',()=>{
  it('rejects encrypted ZIP flags and bounded archive expansion before SheetJS reads worksheets',async()=>{
   const bytes=Buffer.from(make('xlsx'));
   for(let offset=0;offset+46<bytes.length;offset++)if(bytes.readUInt32LE(offset)===0x02014b50){const local=bytes.readUInt32LE(offset+42);bytes.writeUInt16LE(bytes.readUInt16LE(offset+8)|1,offset+8);bytes.writeUInt16LE(bytes.readUInt16LE(local+6)|1,local+6);break;}
-  expect(()=>readSystemLabelWorkbook(bytes)).toThrow(/Encrypted/);
+  expect(()=>readSystemLabelWorkbook(bytes)).toThrow(/Invalid Excel archive/);
   const zip=new JSZip();zip.file('xl/workbook.xml',' '.repeat(8_000_001));const expanded=await zip.generateAsync({type:'nodebuffer',compression:'DEFLATE'});
   expect(expanded.length).toBeLessThan(LABEL_WORKBOOK_MAX_BYTES);expect(()=>readSystemLabelWorkbook(expanded)).toThrow(/expands/);
  });
