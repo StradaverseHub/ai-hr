@@ -371,6 +371,8 @@ const SYSTEM_SETTINGS_NODE: CollapsibleGroupItem = {
   ],
 };
 
+// Historical audience inventory: its group/row flags are visibility constraints, not render placement.
+// Ops/Strata placement is owned exclusively by lib/navigation-workspaces.ts.
 const GROUPS: Group[] = [
   {
     // a6-audit — LABELLED so it can COLLAPSE. It was the one unnamed group, which meant it was always
@@ -519,6 +521,9 @@ const GROUPS: Group[] = [
     ],
   },
 ];
+
+/** Source contract for inventory/visibility regressions; rendering always places authorized rows. */
+export const SIDEBAR_AUDIENCE_INVENTORY: readonly Group[] = GROUPS;
 
 /** Detached rail that floats on the canvas. Collapses to an icon-only strip; expands
  *  to icon + label. The choice persists via the `rail_collapsed` cookie (read SSR-side
@@ -721,13 +726,10 @@ export function Sidebar({
   const childCaption=(child:{href:string;labelKey:string})=>{
     const count=child.href==='/lifecycle/onboarding'?onboardingJoinerCount:child.href==='/lifecycle/onboarding/checklists'?onboardingChecklistCount:undefined;
     const pending=child.href==='/tasks'?taskCount:child.href==='/approvals'?approvalCount:0;
-    return <>{t(child.labelKey)}{count!==undefined&&<span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground">{count}</span>}{pending>0&&<ApprovalCountBadge count={pending} collapsed={false}/>}</>;
+    return <>{t(child.labelKey)}{count!==undefined&&<span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground">{count}</span>}{pending>0&&<><span className="sr-only">{`, ${t('approvalsCount',{count:pending})}`}</span><ApprovalCountBadge count={pending} collapsed={false}/></>}</>;
   };
   const isActive = (href: string) => isHrefActive(pathname, search, href);
-  // 388e53c2 — flat rows go through isNavRowActive so a row can opt out of prefix matching or claim
-  // paths outside its own href. Applied ONLY at the flat-row call site below: the flyout child ranking
-  // and isParentActive are deliberately untouched, because changing them would move Payroll and
-  // Attendance highlighting that nobody asked about.
+  // The shared route owner preserves query intent and explicit owned subpaths across all themes.
   const isRowActive = (r: { href: string; exactHref?: boolean; ownedSubpaths?: string[] }) => {
     // One owner across shared rows and modules, including query-based and non-descendant routes.
     if(routeOwner)return r.href===routeOwner.destination.href;
@@ -1197,7 +1199,7 @@ export function Sidebar({
       {openNode && (
         <NavFlyoutPanel
           labelKey={openNode.labelKey}
-          items={openChildren.map(child=>({...child,sectionKey:sectionLabel(child.href),tour:child.tour==='nav-admin'||child.tour==='nav-approvals'?undefined:child.tour,navigationHref:child.navigationHref})) as FlyoutChild[]}
+          items={openChildren.map(child=>({...child,sectionKey:sectionLabel(child.href),tour:child.tour==='nav-admin'||child.tour==='nav-approvals'?undefined:child.tour,navigationHref:child.navigationHref,pendingCount:child.href==='/tasks'?taskCount:child.href==='/approvals'?approvalCount:0})) as FlyoutChild[]}
           isActive={(href) => href === activeChildHref}
           rowBase={rowBase}
           panelId={`nav-flyout-${openNode.labelKey}`}
