@@ -80,7 +80,7 @@ describe('process assessment (ADR-0131 Phase 1)', () => {
     const l = view.processes.find(p => p.id === 'leave')!;
     expect(l.enabled).toBe(true);
     expect(l.measures).toEqual({
-      started: 15, completed: 14, open: 1, agedOpen: 1, rework: 1,
+      started: 15, completed: 14, open: 1, agedOpen: 1, rework: 1, closedUndecided: 0,
       // Sorted durations 1,2,3,4,5,6,7,7,8,9,10,11,12,24 h → median 7, p90 = 11 + 0.7 × (12 − 11).
       medianHours: 7, p90Hours: 11.7,
       staffActions: 15, employeeActions: 15, automatedActions: 1,
@@ -90,6 +90,23 @@ describe('process assessment (ADR-0131 Phase 1)', () => {
     // Leave has the most staff handling in this fixture, so it ranks first.
     expect(view.processes[0].id).toBe('leave');
     expect(view.processes.map(p => p.id).sort()).toEqual([...PROCESS_IDS].sort());
+  });
+
+  it('counts group-keyed events, ignores split copies, and explains undecided closures', async () => {
+    const f = await fixture();
+    const start = ago(10 * DAY);
+    // An emergency submission is recorded against the GROUP id, not either row.
+    const group = randomUUID();
+    await leave(f.employmentId, { created: start, decided: new Date(start.getTime() + 3 * HOUR), status: 'approved', group });
+    await leave(f.employmentId, { created: start, decided: new Date(start.getTime() + 3 * HOUR), status: 'approved', group });
+    await event(group, 'user', f.employeeUserId, 'leave-request.emergency.submitted', f.employmentId);
+    // A partial cancellation's re-issued row: created now, carrying the original (earlier) decision.
+    await leave(f.employmentId, { created: ago(DAY), decided: ago(5 * DAY), status: 'approved', group: randomUUID() });
+    // Withdrawn before any decision.
+    await leave(f.employmentId, { created: start, status: 'cancelled' });
+    const m = (await assessProcesses(adminCtx(base), 90)).processes.find(p => p.id === 'leave')!.measures!;
+    expect(m).toMatchObject({ started: 2, completed: 1, open: 0, closedUndecided: 1, rework: 1,
+      medianHours: 3, p90Hours: 3, employeeActions: 1, staffActions: 0 });
   });
 
   it('a narrower window excludes cases that started before it', async () => {
@@ -120,7 +137,7 @@ describe('process assessment (ADR-0131 Phase 1)', () => {
 
 describe('process assessment rules', () => {
   const measures = (completed: number): ProcessMeasures => ({ started: completed, completed, open: 0, agedOpen: 0, rework: 0,
-    medianHours: 1, p90Hours: 1, staffActions: 0, employeeActions: 0, automatedActions: 0 });
+    medianHours: 1, p90Hours: 1, staffActions: 0, employeeActions: 0, automatedActions: 0, closedUndecided: 0 });
 
   it('never recommends automating a consequential decision, and asks for data first', () => {
     expect(recommendRole(PROCESS_PROFILES.claims, true, measures(MIN_COMPLETED))).toBe('assist');

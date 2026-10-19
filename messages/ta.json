@@ -21221,6 +21221,7 @@
       "open_case_from_resignation": "பதவி விலகல் ஏற்கப்படும்போது வழக்கைத் திற"
     },
     "minutesShort": "{n} நிமி",
-    "underMinute": "< 1 நிமி"
+    "underMinute": "< 1 நிமி",
+    "completedClosed": "{n} முடிந்தவை, {w} முடிவின்றி மூடப்பட்டவை"
   }
 }

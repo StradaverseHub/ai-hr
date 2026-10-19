@@ -14,7 +14,7 @@
 import { sql, type SQL } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { isAdmin } from '../lib/authz-model';
-import { isModuleEnabledOrFalse } from './entitlements';
+import { isModuleEnabled } from './entitlements';
 
 export const ASSESSMENT_VERSION = 'assessment-v1';
 export const ASSESSMENT_WINDOWS = [30, 90, 180, 365] as const;
@@ -80,7 +80,12 @@ export const PROCESS_IDS = Object.keys(PROCESS_PROFILES) as ProcessId[];
 const ROWS: Record<ProcessId, SQL> = {
   leave: sql`select coalesce(r.parent_group_id, r.id) as case_id, r.id as row_id, e.person_id, r.created_at, r.decided_at,
       r.status = 'pending' as is_open, r.status in ('rejected','cancelled') as is_rework
-    from leave_request r join employment e on e.id = r.employment_id where not r.imported_history`,
+    from leave_request r join employment e on e.id = r.employment_id where not r.imported_history
+      -- A partial cancellation (decideLeaveCancellation) re-issues the kept dates as NEW rows under a fresh
+      -- parent_group_id while copying the ORIGINAL decided_at. Such a row was decided before it existed: it
+      -- is a bookkeeping copy of already-handled work, not a new case, and counting it would invent a case
+      -- with a negative duration.
+      and not (r.decided_at is not null and r.decided_at < r.created_at)`,
   claims: sql`select r.id as case_id, r.id as row_id, e.person_id, r.created_at, r.decided_at,
       r.status = 'pending' as is_open, r.status in ('rejected','cancelled') as is_rework
     from claim_request r join employment e on e.id = r.employment_id where r.status <> 'draft'`,
@@ -105,7 +110,7 @@ const ROWS: Record<ProcessId, SQL> = {
 /** Who acted on each case: (case_id, actor_type, actor_id). Lifecycle keeps its own history table. */
 function actions(id: ProcessId): SQL {
   const eventsFor = (aggregate: string) => sql`select c.case_id, ev.actor_type::text as actor_type, ev.actor_id
-    from cases c cross join lateral unnest(c.row_ids) as rid(id)
+    from cases c cross join lateral (select distinct x from unnest(c.row_ids || c.case_id) as x) as rid(id)
     join domain_event ev on ev.tenant_id = app.current_tenant_id() and ev.aggregate_type = ${aggregate} and ev.aggregate_id = rid.id`;
   switch (id) {
     case 'leave': return eventsFor('leave-request');
@@ -114,7 +119,7 @@ function actions(id: ProcessId): SQL {
     case 'profile_change': return eventsFor('profile-change');
     case 'onboarding': case 'offboarding': return sql`select c.case_id,
         case when h.actor_user_id is null then 'system' else 'user' end as actor_type, h.actor_user_id as actor_id
-      from cases c cross join lateral unnest(c.row_ids) as rid(id)
+      from cases c cross join lateral (select distinct x from unnest(c.row_ids || c.case_id) as x) as rid(id)
       join lc_history h on h.tenant_id = app.current_tenant_id() and h.ref_type = 'case' and h.ref_id = rid.id`;
     case 'readiness': return sql`select null::uuid as case_id, null::text as actor_type, null::uuid as actor_id where false`;
   }
@@ -122,6 +127,8 @@ function actions(id: ProcessId): SQL {
 
 export type ProcessMeasures = {
   started: number; completed: number; open: number; agedOpen: number; rework: number;
+  /** Withdrawn or cancelled before any decision: neither completed nor open, so started = completed + open + this. */
+  closedUndecided: number;
   medianHours: number | null; p90Hours: number | null;
   staffActions: number; employeeActions: number; automatedActions: number;
 };
@@ -139,25 +146,30 @@ async function measure(tx: Tx, id: ProcessId, from: Date): Promise<ProcessMeasur
         bool_or(is_open) as is_open, bool_or(is_rework) as is_rework, array_agg(row_id) as row_ids
       from rows group by case_id having min(created_at) >= ${from.toISOString()}::timestamptz),
     acts as (${actions(id)}),
+    -- One grouped pass over the actions. A login belongs to the employee when it is linked to the same person;
+    -- every other user action is staff. (Correlated per-case subqueries here took 115 s on 4,000 cases.)
+    counts as (
+      select a.case_id,
+        count(*) filter (where a.actor_type = 'user' and (c.person_id is null or u.person_id is distinct from c.person_id)) as staff,
+        count(*) filter (where a.actor_type = 'user' and c.person_id is not null and u.person_id = c.person_id) as employee,
+        count(*) filter (where a.actor_type in ('system','agent')) as automated
+      from acts a join cases c on c.case_id = a.case_id left join app_user u on u.id = a.actor_id
+      group by a.case_id),
     per_case as (
-      select c.*,
-        (select count(*) from acts a where a.case_id = c.case_id and a.actor_type = 'user'
-           and not exists (select 1 from app_user u where u.id = a.actor_id and u.person_id = c.person_id)) as staff,
-        (select count(*) from acts a where a.case_id = c.case_id and a.actor_type = 'user'
-           and exists (select 1 from app_user u where u.id = a.actor_id and u.person_id = c.person_id)) as employee,
-        (select count(*) from acts a where a.case_id = c.case_id and a.actor_type in ('system','agent')) as automated
-      from cases c)
+      select c.*, coalesce(k.staff, 0) as staff, coalesce(k.employee, 0) as employee, coalesce(k.automated, 0) as automated
+      from cases c left join counts k on k.case_id = c.case_id)
     select count(*)::int as started,
       count(*) filter (where finished_at is not null)::int as completed,
       count(*) filter (where is_open)::int as open,
       count(*) filter (where is_open and started_at < now() - make_interval(days => ${AGED_OPEN_DAYS}::int))::int as aged_open,
       count(*) filter (where is_rework)::int as rework,
-      percentile_cont(0.5) within group (order by greatest(0, extract(epoch from finished_at - started_at))) filter (where finished_at is not null) as p50,
-      percentile_cont(0.9) within group (order by greatest(0, extract(epoch from finished_at - started_at))) filter (where finished_at is not null) as p90,
+      percentile_cont(0.5) within group (order by extract(epoch from finished_at - started_at)) filter (where finished_at >= started_at) as p50,
+      percentile_cont(0.9) within group (order by extract(epoch from finished_at - started_at)) filter (where finished_at >= started_at) as p90,
       coalesce(sum(staff), 0)::int as staff, coalesce(sum(employee), 0)::int as employee, coalesce(sum(automated), 0)::int as automated
     from per_case`);
   const hours = (v: number | string | null) => v == null ? null : Math.round(Number(v) / 36) / 100;
   return { started: r.started, completed: r.completed, open: r.open, agedOpen: r.aged_open, rework: r.rework,
+    closedUndecided: r.started - r.completed - r.open,
     medianHours: hours(r.p50), p90Hours: hours(r.p90),
     staffActions: r.staff, employeeActions: r.employee, automatedActions: r.automated };
 }
@@ -207,7 +219,7 @@ export async function assessProcesses(ctx: SessionContext, window: AssessmentWin
     const processes: ProcessAssessment[] = [];
     for (const id of PROCESS_IDS) {
       const profile = PROCESS_PROFILES[id];
-      const enabled = profile.module == null || isModuleEnabledOrFalse(ctx, profile.module);
+      const enabled = profile.module == null || isModuleEnabled(ctx, profile.module);
       const measures = enabled ? await measure(tx, id, fromDate) : null;
       const staffActionsPer30 = measures && profile.actionsLinked ? Math.round(measures.staffActions * 30 / window * 10) / 10 : null;
       processes.push({ id, profile, enabled, measures, role: recommendRole(profile, enabled, measures), staffActionsPer30 });

@@ -21221,6 +21221,7 @@
       "open_case_from_resignation": "辞职获接受时建立案例"
     },
     "minutesShort": "{n} 分钟",
-    "underMinute": "< 1 分钟"
+    "underMinute": "< 1 分钟",
+    "completedClosed": "已完成 {n} 个，{w} 个未经决定即关闭"
   }
 }

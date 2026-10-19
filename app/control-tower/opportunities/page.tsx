@@ -51,7 +51,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
       </div>
       {!p.enabled ? <p className="mt-4 text-sm text-muted-foreground">{t('moduleOff')}</p> : m && <>
         <dl className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-          {metric(t('started'), n(m.started), t('completedOf', { n: n(m.completed) }))}
+          {metric(t('started'), n(m.started), m.closedUndecided ? t('completedClosed', { n: n(m.completed), w: n(m.closedUndecided) }) : t('completedOf', { n: n(m.completed) }))}
           {metric(t('open'), n(m.open), m.agedOpen ? t('agedOpen', { n: n(m.agedOpen), days: AGED_OPEN_DAYS }) : undefined)}
           {metric(t('median'), duration(m.medianHours), t('p90', { value: duration(m.p90Hours) }))}
           {metric(t('rework'), m.started ? f.number(m.rework / m.started, { style: 'percent' }) : '—', t('reworkHint'))}

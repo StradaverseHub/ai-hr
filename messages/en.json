@@ -21221,6 +21221,7 @@
       "open_case_from_resignation": "Open the case when a resignation is accepted"
     },
     "minutesShort": "{n} min",
-    "underMinute": "< 1 min"
+    "underMinute": "< 1 min",
+    "completedClosed": "{n} completed, {w} closed without a decision"
   }
 }

@@ -21221,6 +21221,7 @@
       "open_case_from_resignation": "Mở hồ sơ khi đơn nghỉ việc được chấp nhận"
     },
     "minutesShort": "{n} phút",
-    "underMinute": "< 1 phút"
+    "underMinute": "< 1 phút",
+    "completedClosed": "{n} đã hoàn tất, {w} đóng mà không có quyết định"
   }
 }

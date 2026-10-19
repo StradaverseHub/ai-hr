@@ -21221,6 +21221,7 @@
       "open_case_from_resignation": "Buka kes apabila peletakan jawatan diterima"
     },
     "minutesShort": "{n} min",
-    "underMinute": "< 1 min"
+    "underMinute": "< 1 min",
+    "completedClosed": "{n} selesai, {w} ditutup tanpa keputusan"
   }
 }

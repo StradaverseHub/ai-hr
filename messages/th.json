@@ -21221,6 +21221,7 @@
       "open_case_from_resignation": "เปิดกรณีเมื่อการลาออกได้รับการยอมรับ"
     },
     "minutesShort": "{n} นาที",
-    "underMinute": "< 1 นาที"
+    "underMinute": "< 1 นาที",
+    "completedClosed": "เสร็จสิ้น {n} ปิดโดยไม่มีการตัดสิน {w}"
   }
 }
