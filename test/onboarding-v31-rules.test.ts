@@ -288,10 +288,10 @@ describe('V3.1 confirmed definitions and assignment history', () => {
         expect(M.matchChecklist(config, c).checklist?.tasks.map(t => t.id)).toEqual(['pack']);
     });
     it('keeps confirmed None for an Active hire when matching definitions are added', () => {
-        // Represents a case already submitted before checklist selection became mandatory.
+        // Reproduce the stored shape of a pre-existing None submission, including its requisition and audit.
+        M.submitCase(config,c,hr,env);
         c.checklistOverride = 'none';
-        c.state = 'submitted';
-        c.submittedAt = env.now;
+        c.confirmedChecklist = null;
         c.personnelStatus = 'Active';
         const previous=structuredClone(c);
         M.submitCase(config,c,hr,env);
