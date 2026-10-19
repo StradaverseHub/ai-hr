@@ -15,6 +15,32 @@ function mount(other=false){return render(<NextIntlClientProvider locale="en" me
   initial={{unit:'day',length:2,effectiveFrom:date,anchorDate:date,days:[{kind:'full',shiftId:'a'},{kind:'rest',shiftId:null}]}}
   shifts={['a','b'].map(id=>({id,name:id==='a'?'Morning':'Night',code:id,startTime:'08:00',endTime:'17:00',halfEnd:'12:30',fullMinutes:480,halfMinutes:240,archived:false,available:true,selected:id==='a'}))}/>{other&&<form id="other-form" method="post"><input name="other" aria-label="Other form" defaultValue="Original"/></form>}</NextIntlClientProvider>);}
 describe('integrated allowed-shift and cycle editor',()=>{
+  it('retains its pool through search and submits a newly selected filtered shift with the dated cycle',()=>{
+    const {container}=mount();
+    fireEvent.change(screen.getByRole('searchbox'),{target:{value:'Night'}});
+    fireEvent.click(screen.getByRole('button',{name:messages.scheduleShiftSelection.selectMatching}));
+    const form=container.querySelector('#attendance-rotation-group') as HTMLFormElement;
+    expect(new FormData(form).getAll('allowedShiftIds')).toEqual(['a','b']);
+    expect(JSON.parse(String(new FormData(form).get('cycle'))).days[0].shiftId).toBe('a');
+    expect(within(screen.getByRole('combobox',{name:'Shift 1'})).getByRole('option',{name:'b · Night'})).toBeTruthy();
+  });
+
+  it('names a saved archived day reference but never offers it for another day',()=>{
+    render(<NextIntlClientProvider locale="en" messages={messages}><ScheduleRotationEditor ruleId="archived-group" revision="old-revision"
+      minimumDate={date} editing initial={{unit:'day',length:2,effectiveFrom:date,anchorDate:date,
+        days:[{kind:'full',shiftId:'old'},{kind:'full',shiftId:'active'}]}}
+      shifts={[
+        {id:'old',name:'Old morning',code:'OLD',startTime:'08:00',endTime:'17:00',halfEnd:'12:30',fullMinutes:480,halfMinutes:240,archived:true,available:false,selected:true},
+        {id:'active',name:'Current morning',code:'NEW',startTime:'08:00',endTime:'17:00',halfEnd:'12:30',fullMinutes:480,halfMinutes:240,archived:false,available:true,selected:true},
+      ]}/></NextIntlClientProvider>);
+    const first=screen.getByRole('combobox',{name:'Shift 1'}),second=screen.getByRole('combobox',{name:'Shift 2'});
+    const historical=within(first).getByRole('option',{name:`OLD · Old morning · ${messages.admin.rotation.archived}`});
+    expect(historical).toBeDisabled();expect((first as HTMLSelectElement).value).toBe('old');
+    expect(within(second).queryByRole('option',{name:/Old morning/})).toBeNull();
+    fireEvent.change(first,{target:{value:'active'}});
+    expect(within(first).queryByRole('option',{name:/Old morning/})).toBeNull();
+    expect(screen.queryByRole('checkbox',{name:/Old morning/})).toBeNull();
+  });
   it('makes an unsaved allowed shift immediately available in cycle selectors',()=>{
     const {container}=mount();
     fireEvent.click(screen.getByRole('checkbox',{name:/Night/}));

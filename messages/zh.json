@@ -21414,5 +21414,19 @@
       "c95332e75dac8": "通过“我的任务”处理工作",
       "cd1a339556dbb": "未完成任务"
     }
+  },
+  "scheduleShiftSelection": {
+    "search": "查找在用班次",
+    "placeholder": "搜索班次名称或代码",
+    "count": "已选 {selected} 个在用班次 · 共 {total} 个在用班次",
+    "selectMatching": "选择所有匹配项",
+    "clearActive": "清除在用班次选择",
+    "activeShifts": "在用班次",
+    "noMatches": "没有符合搜索条件的在用班次。",
+    "noActive": "没有可用的在用班次。",
+    "historical": "先前选择的不可用班次",
+    "historicalHelp": "这些引用保留供核对。保存新的生效轮班前，请移除或替换不可用班次；已保存的历史保持不变。",
+    "remove": "移除引用",
+    "removeNamed": "移除不可用引用：{name}"
   }
 }

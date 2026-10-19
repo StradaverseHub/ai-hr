@@ -2,27 +2,12 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listAttendanceRules } from '@/core/attendance-rule';
-import { Card, PageHeader } from '@/components/ui';
+import { Card, PageHeader, pageWideCls } from '@/components/ui';
 import { SCHEDULE, scheduleGroupViewPath } from '../../../../attendance-policy/schedule-panel';
 import { ScheduleGroupSections } from '../../group-sections';
 import { RULE_ID_RE, resolveSection } from '../../sections';
 
-/**
- * 665de026 — A READING COLUMN, NOT EDGE TO EDGE, and it is the same decision r301 made one level down.
- *
- * rules/rule-form.tsx capped ITSELF at `mx-auto max-w-3xl` for as long as it drew its own page chrome,
- * and test/attendance-screens-layout.test.ts pinned that ("a form spread across a very wide screen is
- * harder to fill in, not easier"). The cap moved UP here with the chrome, so the whole screen is one
- * column instead of a 3xl form sitting inside a full-width page beside wider sections. 5xl rather than
- * the old 3xl because this page carries more than the form did: the seven-day working-week row and the
- * overtime ladder both want the extra room, and the ladder is the table r301's note said the cap existed
- * to protect.
- */
-/* ⚠️ A STRING LITERAL, NOT A CONSTANT. test/attendance-screens-layout.test.ts reads className VALUES out
- * of the source, and its own header records the limit: "a className composed through cn() or a variable
- * escapes a source check like this one". Writing this as `className={FORM_COLUMN}` made all three pages
- * silently uncovered — the guard passed by seeing no className at all. Measured, not assumed: the three
- * cases failed with "expected 0 to be greater than 0" until the literal went back inline. */
+/** 7500c083: the group workspace uses the available width; individual sections keep their own saves. */
 
 /**
  * EDIT SCHEDULE — one Schedule Group, editable, on a page of its own (feedback 665de026, r331).
@@ -74,7 +59,7 @@ export default async function EditScheduleGroupPage({
 
   if (!rule) {
     return (
-      <div className="mx-auto max-w-5xl space-y-6">
+      <div className={pageWideCls}>
         <PageHeader title={t('editTitle')} back={{ href: SCHEDULE, label: t('backToList') }} />
         <Card>
           <p className="p-4 text-sm text-muted-foreground">{t('groupGone')}</p>
@@ -84,7 +69,7 @@ export default async function EditScheduleGroupPage({
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className={pageWideCls}>
       <PageHeader
         title={t('editTitle')}
         description={rule.name}

@@ -24,6 +24,7 @@ export function ruleShiftChoices(
       id: sh.id,
       name: sh.name,
       code: sh.code,
+      archived: !!sh.archivedAt,
       inThisGroup,
       // Only when it is somewhere ELSE. A shift already in this group needs no "now in …" note, and a
       // shift in no group at all gets the explicit "no group yet" label from the form rather than a blank.

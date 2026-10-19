@@ -21414,5 +21414,19 @@
       "c95332e75dac8": "Works from My tasks",
       "cd1a339556dbb": "open tasks"
     }
+  },
+  "scheduleShiftSelection": {
+    "search": "Find active shifts",
+    "placeholder": "Search shift name or code",
+    "count": "{selected} active selected · {total} active shifts",
+    "selectMatching": "Select all matching",
+    "clearActive": "Clear active selection",
+    "activeShifts": "Active shifts",
+    "noMatches": "No active shifts match your search.",
+    "noActive": "No active shifts are available.",
+    "historical": "Previously selected unavailable shifts",
+    "historicalHelp": "These references are retained for review. Remove or replace unavailable shifts before saving a new dated rotation; saved history is unchanged.",
+    "remove": "Remove reference",
+    "removeNamed": "Remove unavailable reference: {name}"
   }
 }

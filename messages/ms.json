@@ -21414,5 +21414,19 @@
       "c95332e75dac8": "Bekerja melalui Tugas saya",
       "cd1a339556dbb": "tugas terbuka"
     }
+  },
+  "scheduleShiftSelection": {
+    "search": "Cari syif aktif",
+    "placeholder": "Cari nama atau kod syif",
+    "count": "{selected} syif aktif dipilih · {total} syif aktif",
+    "selectMatching": "Pilih semua padanan",
+    "clearActive": "Kosongkan pilihan aktif",
+    "activeShifts": "Syif aktif",
+    "noMatches": "Tiada syif aktif sepadan dengan carian anda.",
+    "noActive": "Tiada syif aktif tersedia.",
+    "historical": "Syif tidak tersedia yang dipilih sebelum ini",
+    "historicalHelp": "Rujukan ini dikekalkan untuk semakan. Buang atau gantikan syif tidak tersedia sebelum menyimpan putaran bertarikh baharu; sejarah tersimpan tidak berubah.",
+    "remove": "Buang rujukan",
+    "removeNamed": "Buang rujukan tidak tersedia: {name}"
   }
 }
