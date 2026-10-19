@@ -92,8 +92,14 @@ export function runEmployeeMasterProjection(spec:EmployeeMasterSpec,fields:reado
     const f=descriptor(field);
     if(subject.kind==='draft'&&f.scope==='employment'||subject.kind==='employment'&&f.scope==='draft')return {cell:unavailable('not-applicable'),source:subject.id+':'+field};
     if(spec.asAt!==today&&(f.history==='current'||f.history==='none'))return {cell:unavailable('historical-unavailable'),source:subject.id+':'+field};
-    const available=records(subject,f.owner);
-    const record=expanded?.owner===f.owner?expanded.record:f.grain==='many'?available[0]:available.find(r=>!r.effectiveTo||r.effectiveTo>spec.asAt);
+    // Matching All rows already passed this owner's date filtering and ordering during expansion.
+    // Latest overrides and cross-owner cells still resolve their own eligible records below.
+    let record:MasterOwnerRecord|undefined;
+    if(expanded?.owner===f.owner)record=expanded.record;
+    else{
+      const available=records(subject,f.owner);
+      record=f.grain==='many'?available[0]:available.find(r=>!r.effectiveTo||r.effectiveTo>spec.asAt);
+    }
     const value=record?.values[(side==='before'?'before:':'')+personnelReportValueKey(f)]??unavailable(subject.kind==='draft'?'draft-unfinished':'not-recorded');
     return {cell:{...value,currency:value.currency??record?.currency,sourceRecordId:record?.id},source:f.owner+':'+(record?.id??subject.id+':missing')+':'+side+':'+personnelReportValueKey(f)};
   };
