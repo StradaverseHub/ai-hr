@@ -35,7 +35,8 @@ describe('Ops and Strata placement never grants authority',()=>{
  });
  it('assigns deep links by longest owned path and then exact query intent',()=>{
   const links=[{href:'/me'},{href:'/me?tab=payroll',ownedSubpaths:['/me/payslip']},{href:'/me/tax-relief'},{href:'/performance/workspace'},{href:'/performance/workspace?module=tm'},
-   {href:'/lifecycle/onboarding',exactHref:true,ownedSubpaths:['/lifecycle/onboarding/cases']},{href:'/lifecycle/onboarding/checklists'}];
+   {href:'/lifecycle/onboarding',exactHref:true,ownedSubpaths:['/lifecycle/onboarding/cases']},{href:'/lifecycle/onboarding/checklists'},
+   {href:'/admin/personnel'},{href:'/admin/personnel/profile-changes'}];
   expect(navigationRouteOwner('/me','tab=payroll',links)?.destination.href).toBe('/me?tab=payroll');
   expect(navigationRouteOwner('/me','tab=profile',links)?.destination.href).toBe('/me');
   expect(navigationRouteOwner('/me/payslip/fictional','',links)?.destination.href).toBe('/me?tab=payroll');
@@ -43,6 +44,7 @@ describe('Ops and Strata placement never grants authority',()=>{
   expect(navigationRouteOwner('/performance/workspace','module=tm',links)?.placement).toEqual({area:'strata',module:'talent',section:'team'});
   expect(navigationRouteOwner('/lifecycle/onboarding/cases/fictional','',links)?.destination.href).toBe('/lifecycle/onboarding');
   expect(navigationRouteOwner('/lifecycle/onboarding/checklists','',links)?.destination.href).toBe('/lifecycle/onboarding/checklists');
+  expect(navigationRouteOwner('/admin/personnel/profile-changes','status=pending',links)?.destination.href).toBe('/admin/personnel/profile-changes');
  });
  it('keeps each module in exactly one workspace',()=>{
   expect(new Set(NAVIGATION_MODULES.map(module=>module.id)).size).toBe(NAVIGATION_MODULES.length);
