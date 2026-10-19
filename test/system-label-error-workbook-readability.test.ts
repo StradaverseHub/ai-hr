@@ -3,6 +3,7 @@ import JSZip from 'jszip';
 import { SaxesParser } from 'saxes';
 import * as XLSX from 'xlsx';
 import { systemLabelErrorWorkbook } from '../lib/system-label-workbook';
+import { readSpreadsheetArchive } from '../lib/spreadsheet-archive';
 import type { LabelImportPreviewRow } from '../lib/system-label-definition';
 
 const error = (row: number, code: string, message: string, outcome: 'error' | 'skip' | 'add' = 'error'): LabelImportPreviewRow => ({
@@ -13,6 +14,9 @@ describe('Labels error workbook readability', () => {
     const code = 'B22_015_HIDDEN_INACTIVE', message = 'This code already exists in this category. No existing record will be changed. Edit it on the System Labels page. '.repeat(3);
     const bytes = systemLabelErrorWorkbook([error(6, code, message)]), zip = await JSZip.loadAsync(bytes);
     const xml = await zip.file('xl/worksheets/sheet1.xml')!.async('string'), styles = await zip.file('xl/styles.xml')!.async('string');
+    // Strict central-directory admission also detects duplicate paths from a mistaken CFB append.
+    const archive = readSpreadsheetArchive(Buffer.from(bytes), { maxBytes: 5_000_000, maxExpandedBytes: 8_000_000, maxEntries: 160 });
+    expect(archive.parts.get('xl/styles.xml')!.toString('utf8')).toBe(styles);
     const columns: { min: number; max: number; width: number }[] = [], cells = new Map<string, number>(), heights = new Map<number, number>();
     const parser = new SaxesParser({ xmlns: true });
     parser.on('opentag', tag => {
