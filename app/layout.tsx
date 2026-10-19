@@ -161,6 +161,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: isModuleEnabledOrFalse(session, 'claims'),
   });
+  // The canonical inbox admits ordinary employees only for an actionable, non-self v3 assignment.
+  // Reuse that result; do not promote the viewer to manager or query the assignment owner twice.
+  const hasAssignedAttendanceApproval = !canApprove && approvalTasks.some(task => task.kind === 'attendance');
   const onboardingNav=isModuleEnabledOrFalse(session,'lifecycle')?await onboardingNavigation(session):{module:false,master:false,requisitions:false,joiners:0,checklists:0};
   const onboardingAccess=onboardingNav.module;
   const onboardingQueue = isModuleEnabledOrFalse(session, 'lifecycle') ? await onboardingTasks(session) : [];
@@ -209,6 +212,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               canPreviewIdentityEmail={isAdmin(session)}
               isAdmin={isAdmin(session) || canManagePayroll(session) || canManagePerfComp(session)}
               canApprove={(session.roles ?? []).includes('manager')}
+              hasAssignedAttendanceApproval={hasAssignedAttendanceApproval}
               canAccessTeam={hasTeamAccess(session)}
               // Pending-approval badge on the "Approval Items" row (feedback 836118c4). Reuses the
               // pendingTasks already resolved above for the bell — ZERO extra queries — so the badge is
