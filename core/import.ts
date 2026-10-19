@@ -809,7 +809,8 @@ async function analyze(
     const result: RowResult = {
       proposed:personnelImportProposedValues(rec,'employee').map(value=>{
         const id=({department:departmentId,position:positionId,cost_center:costCenterId,business_unit:businessUnitId,job_grade:gradeId} as Record<string,string|undefined>)[value.column];
-        const display=id?cctx?.organisationDisplay.get(id):undefined;
+        const category=PERSONNEL_EMPLOYMENT_IMPORT_FIELDS.find(field=>field.import.column===value.column)?.import.catalog;
+        const display=id?cctx?.organisationDisplay.get(id):category?catalog.display(category,rec[value.column]):undefined;
         return display?{...value,value:`${norm(rawRecord[value.column])} → ${display}`}:value;
       }),
       rowNum: idx + 1,

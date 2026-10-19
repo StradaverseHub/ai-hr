@@ -30,6 +30,7 @@ describe('full hire organisation contract',()=>{
   catalog.addOption({category:'division',value:'OLD',label:'Retired',isActive:false});
   expect(normalizePersonnelCatalogRecord({org_division:' shared '},'employee',catalog).record.org_division).toBe('DIV-A');
   expect(catalog.resolve('division','Retired').value).toBeUndefined();
+  expect(catalog.display('division','DIV-A')).toBe('Shared (DIV-A)');
  });
  it('includes creation-only BU and grade in both formats using their existing Personnel labels',()=>{
   for(const column of ['business_unit','job_grade']){

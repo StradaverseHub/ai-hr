@@ -6,12 +6,15 @@ import {personnelImportFields,type PersonnelImportSheet} from './personnel-impor
 export class PersonnelImportCatalog extends Map<string,Set<string>> {
  constructor(private readonly labelFirstCategories:ReadonlySet<string>=new Set()) {super();}
  private lookups=new Map<string,PersonnelImportLookup<string>>();
+ private labels=new Map<string,Map<string,string>>();
  addOption(option:{category:string;value:string;label?:string|null;isActive?:boolean}) {
   const values=this.get(option.category)??new Set<string>();this.set(option.category,values);
   if(option.isActive===false)return;values.add(option.value);
+  const labels=this.labels.get(option.category)??new Map<string,string>();labels.set(option.value,option.label?.trim()?`${option.label.trim()} (${option.value})`:option.value);this.labels.set(option.category,labels);
   const lookup=this.lookups.get(option.category)??new PersonnelImportLookup<string>(this.labelFirstCategories.has(option.category)?'label-first':'identifier-first');
   lookup.add(option.value,option.value,{names:[option.label]});this.lookups.set(option.category,lookup);
  }
+ display(category:string,value:string) {return this.labels.get(category)?.get(value);}
  resolve(category:string,value:string) {const lookup=this.lookups.get(category);return {value:lookup?.get(value),ambiguous:lookup?.isAmbiguous(value)??false};}
 }
 export function normalizePersonnelCatalogRecord(record:Record<string,string>,sheet:PersonnelImportSheet,catalog:Map<string,Set<string>>) {
