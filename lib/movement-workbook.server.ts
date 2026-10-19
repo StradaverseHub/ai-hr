@@ -49,7 +49,7 @@ export async function buildMovementWorkbook(p:MovementWorkbookDownload){
   const sheet=XLSX.utils.aoa_to_sheet(rows);
   for(let r=5;r<rowCount+5;r++)for(let c=0;c<columns.length;c++){
    const address=col(c)+(r+1),column=columns[c],cell=sheet[address]??={t:'s',v:''};
-   if(column.role==='formula'){cell.t='n';cell.f=formula(column,columns,r+1);delete cell.v;cell.z=column.key.endsWith('changePercent')?'0.00%':'0.00';cell.c=[{a:'AIHR',t:words('formulaNote','Display only. The server recalculates from authoritative records; percentage is blank for a missing/zero baseline.')+' '+baselineGuide}];}
+   if(column.role==='formula'){cell.t='n';cell.f=formula(column,columns,r+1);delete cell.v;cell.z=column.key.endsWith('changePercent')?'0.00%':'0.00';cell.c=[{a:'AIHR',t:words('formulaNote','Display only. The server recalculates from authoritative records; percentage is blank for a missing/zero baseline.')+' '+baselineGuide}];cell.c.hidden=true;}
    else if(column.field&&['effectiveDate','endDate','resignationDate'].includes(column.field)||column.role==='current'&&/Date|hiredOn/.test(column.key)){
     cell.z='dd-mmm-yyyy';const raw=String(cell.v??'');if(/^\d{4}-\d{2}-\d{2}$/.test(raw)){cell.t='n';cell.v=(Date.parse(raw+'T00:00:00Z')-Date.UTC(1899,11,30))/86400000;}
    }else cell.z='@';

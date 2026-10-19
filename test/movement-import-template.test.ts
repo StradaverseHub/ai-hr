@@ -29,6 +29,15 @@ describe('authenticated per-type Movement workbook',()=>{
   const edited=await edit(bytes,book=>{for(let r=5;r<8;r++){book.Sheets.Increment[XLSX.utils.encode_cell({r,c:amount})]={t:'n',v:100};book.Sheets.Increment[XLSX.utils.encode_cell({r,c:date})]={t:'s',v:'01-Nov-2026'};}});
   const parsed=await parse(edited);expect(parsed.fileErrors).toEqual([]);expect(parsed.records).toHaveLength(3);expect(parsed.records.every(r=>r.incrementAmount==='100'&&r.cells.kind==='increment')).toBe(true);expect(parsed.records.map(r=>r.source?.row)).toEqual([6,7,8]);
  });
+ it('serializes formula notes as initially hidden VML shapes while retaining note text and sheet protection',async()=>{
+  const bytes=await make(),zip=await JSZip.loadAsync(bytes),wb=XLSX.read(bytes,{type:'buffer',cellFormula:true});
+  const drawings=Object.values(zip.files).filter(entry=>/^xl\/drawings\/.*\.vml$/.test(entry.name)),comments=Object.values(zip.files).filter(entry=>/^xl\/comments\d+\.xml$/.test(entry.name));expect(drawings).toHaveLength(1);expect(comments).toHaveLength(1);
+  const vml=await drawings[0].async('string'),commentXml=await comments[0].async('string'),shapes=[...vml.matchAll(/<v:shape\b[^>]*\bstyle="([^"]*)"[^>]*>/g)];
+  expect(shapes).toHaveLength(400);expect(shapes.every(shape=>/(?:^|;)\s*visibility:hidden(?:;|$)/.test(shape[1]))).toBe(true);expect(vml).not.toMatch(/<x:Visible\b/);expect(commentXml.match(/<comment\b/g)).toHaveLength(400);expect(commentXml).toContain('<author>AIHR</author>');
+  const columns=movementWorkbookLayout(catalog.types[0],resolve),column=columns.findIndex(c=>c.key==='calculated.basicSalary');
+  for(const row of [5,204]){const cell=wb.Sheets.Increment[XLSX.utils.encode_cell({r:row,c:column})];expect(cell.f).toBeTruthy();expect(cell.c?.[0].t).toContain('Display only. The server recalculates from authoritative records');expect(cell.c?.[0].t).toContain('Check and preview supplies the authoritative salary baseline');}
+  const sheetXml=await zip.file('xl/worksheets/sheet2.xml')!.async('string');expect(sheetXml).toContain('<sheetProtection sheet="1"');expect(sheetXml).not.toMatch(/<sheetProtection[^>]*(?:password|hashValue)=/);
+ });
  it('accepts an unused macro-enabled extension declaration while refusing a real part that uses it',async()=>{
   const zip=await JSZip.loadAsync(await make()),entry=zip.file('[Content_Types].xml')!;
   // The ordinary SheetJS package already contains an unused BIN default; another unused declaration is equally inert.
