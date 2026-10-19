@@ -280,3 +280,53 @@
 @media (prefers-reduced-motion: reduce) {
   :root[data-ui-theme='atelier'] :is(.atelier-ask, .atelier-send, .atelier-suggest button, .atelier-row .atelier-chevron) { transition: none; }
 }
+
+/* ── The component pass: every page, no page code ─────────────────────────────────────────────────
+   Pages keep their layout (per-page redesigns are later rounds); their parts take the Atelier vocabulary
+   from the kit's own hooks (components/ui.tsx: data-page-header, data-ui-card, data-ui-card-header,
+   data-ui-section-header, data-ui-status) and from the two button class contracts every screen shares
+   (btnPrimary / Button default = `bg-primary`, btnGhost / Button outline = `border-input`). */
+@media screen {
+  /* Page header: a real title and a hairline, the way the shell's top bar reads. */
+  :root[data-ui-theme='atelier'] main [data-page-header] { padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
+  :root[data-ui-theme='atelier'] main [data-page-header] h1 { font-size: 1.375rem; font-weight: 600; letter-spacing: -.015em; line-height: 1.25; text-wrap: balance; }
+  :root[data-ui-theme='atelier'] main [data-page-header] h1 + p { color: var(--atelier-ink-3); }
+
+  /* Cards: flat, one hairline, a quiet tinted header strip in sentence case. */
+  :root[data-ui-theme='atelier'] main [data-ui-card] { background: var(--card); }
+  :root[data-ui-theme='atelier'] main :is([data-ui-card-header], [data-ui-section-header]) {
+    background: var(--sidebar); border-color: var(--border); color: var(--foreground);
+    font-size: .8125rem; font-weight: 600; letter-spacing: 0; text-transform: none;
+  }
+  :root[data-ui-theme='atelier'] main [data-ui-card] > [data-ui-card-header]:first-child,
+  :root[data-ui-theme='atelier'] main [data-ui-card] > [data-ui-section-header]:first-child { border-radius: .6875rem .6875rem 0 0; }
+
+  /* Buttons: one height, one corner, one soft shadow; the accent only on the primary. */
+  :root[data-ui-theme='atelier'] main :is(button, a)[class~='inline-flex']:is([class~='bg-primary'], [class~='border-input']) {
+    min-height: 2rem; height: auto; border-radius: .5rem; box-shadow: var(--shadow-sm); font-weight: 500;
+  }
+  :root[data-ui-theme='atelier'] main :is(button, a)[class~='inline-flex'][class~='bg-primary']:hover:not(:disabled) { background: var(--atelier-accent-hover); }
+  :root[data-ui-theme='atelier'] main :is(button, a)[class~='inline-flex'][class~='border-input'] { border-color: var(--atelier-line-strong); background: var(--card); color: var(--foreground); }
+  :root[data-ui-theme='atelier'] main :is(button, a)[class~='inline-flex'][class~='border-input']:hover:not(:disabled) { background: var(--sidebar); }
+
+  /* Fields: a firmer border and the accent halo on focus (fields opt out of the outline ring). */
+  :root[data-ui-theme='atelier'] main :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file'], [type='color']), select, textarea) {
+    border-color: var(--atelier-line-strong); border-radius: .5rem;
+  }
+  :root[data-ui-theme='atelier'] main :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file'], [type='color']), select, textarea):focus-visible {
+    border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+  }
+  :root[data-ui-theme='atelier'] .atelier-ask textarea:focus-visible { box-shadow: none; }
+
+  /* Status pills: a leading dot, so state never rides on colour alone. */
+  :root[data-ui-theme='atelier'] [data-ui-status] { gap: .375rem; padding-inline: .5rem .625rem; }
+  :root[data-ui-theme='atelier'] [data-ui-status]::before { content: ''; width: .375rem; height: .375rem; flex: none; border-radius: 999px; background: currentColor; }
+  :root[data-ui-theme='atelier'] [data-ui-status='draft']::before { background: transparent; border: 1.5px dashed currentColor; }
+
+  /* Tabs: ink for the selected tab, the hairline below; never a coloured block. */
+  :root[data-ui-theme='atelier'] main [role='tab'] { color: var(--atelier-ink-3); }
+  :root[data-ui-theme='atelier'] main [role='tab'][aria-selected='true'] { color: var(--foreground); font-weight: 500; }
+
+  /* Dialogs and popovers: the shell's corner and the one lifted shadow. */
+  :root[data-ui-theme='atelier'] [role='dialog'] { border-radius: .75rem; border-color: var(--border); box-shadow: var(--shadow-pop); }
+}
