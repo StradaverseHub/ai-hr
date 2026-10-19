@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, inputCls } from '@/components/ui';
 import { attendanceLevelName } from '@/lib/attendance-workflow';
-import { ATTENDANCE_V3_LIMITS, type AttendanceV3Level, type AttendanceLevelProblem } from '@/lib/attendance-workflow-v3';
+import { attendanceLevelProblemMessageKey, ATTENDANCE_V3_LIMITS, type AttendanceV3Level, type AttendanceLevelProblem } from '@/lib/attendance-workflow-v3';
 
 /** V3 editor. Existing templates enter only through the explicit new-route conversion control. */
 export const emptyAttendanceV3Level = (index: number): AttendanceV3Level => ({ name: attendanceLevelName(index), mode: 'sequential', source: { kind: 'direct_manager', depth: 1 }, hrAlternative: false });
@@ -25,14 +25,7 @@ export function AttendanceStageEditorV3({ id, stages, employees, onChange, probl
         if (to < 0 || to >= stages.length) return;
         const next = [...stages]; [next[from], next[to]] = [next[to], next[from]]; update(next);
     };
-    const describe = (problem: AttendanceLevelProblem) => {
-        if (problem.code === 'selection_required') return v3('selectionRequired');
-        if (problem.code === 'too_many_participants') return v3('participantLimit');
-        if (problem.code === 'invalid_depth') return v3('depthRequired');
-        if (problem.code === 'duplicate_employment' || problem.code === 'duplicate_person' || problem.code === 'duplicate_login' || problem.code === 'self_approval') return v3('differentPeople');
-        if (problem.code === 'missing_superior' || problem.code === 'ambiguous_superior' || problem.code === 'cycle' || problem.code === 'inactive_superior') return v3('superiorUnavailable');
-        return v3('correctLevel');
-    };
+    const describe = (problem: AttendanceLevelProblem) => v3(attendanceLevelProblemMessageKey(problem));
     return <div className="space-y-4">
         {problems.length > 0 && <div ref={summary} tabIndex={-1} role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive outline-offset-4">
             <p className="font-semibold">{v3('summary')}</p><ul className="mt-2 list-disc pl-5">{problems.map((problem, index) => <li key={index}>{problem.levelIndex == null ? describe(problem) : <a className="underline" href={`#${id}-level-${problem.levelIndex}`} onClick={event => { event.preventDefault(); document.getElementById(`${id}-level-${problem.levelIndex}`)?.focus(); }}>{t('stageNumber', { number: problem.levelIndex + 1 })}: {describe(problem)}</a>}</li>)}</ul>

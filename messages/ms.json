@@ -19314,7 +19314,8 @@
       "pendingParticipant": "Menunggu keputusan anda",
       "reassignSlot": "Peserta tertunggak untuk ditugaskan semula",
       "chooseSlot": "Pilih peserta tertunggak…",
-      "calculationHandoff": "Kelulusan akhir ini memerlukan akses pengiraan HR berskop. Minta HR merekodkan penugasan semula bersebab bagi peserta tertunggak; kelulusan terdahulu dikekalkan."
+      "calculationHandoff": "Kelulusan akhir ini memerlukan akses pengiraan HR berskop. Minta HR merekodkan penugasan semula bersebab bagi peserta tertunggak; kelulusan terdahulu dikekalkan.",
+      "identityUnavailable": "Pelulus yang diperlukan tidak aktif, tiada satu akaun log masuk yang boleh digunakan, atau di luar skop syarikat yang dibenarkan. Ganti pilihan atau minta HR membetulkan aksesnya."
     }
   },
   "attendanceHistory": {

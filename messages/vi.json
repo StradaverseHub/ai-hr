@@ -19314,7 +19314,8 @@
       "pendingParticipant": "Đang chờ quyết định của bạn",
       "reassignSlot": "Người tham gia còn chờ cần phân công lại",
       "chooseSlot": "Chọn người tham gia còn chờ…",
-      "calculationHandoff": "Phê duyệt cuối này cần quyền tính toán HR đúng phạm vi. Nhờ HR ghi nhận phân công lại có lý do cho người tham gia còn chờ; các phê duyệt trước được giữ nguyên."
+      "calculationHandoff": "Phê duyệt cuối này cần quyền tính toán HR đúng phạm vi. Nhờ HR ghi nhận phân công lại có lý do cho người tham gia còn chờ; các phê duyệt trước được giữ nguyên.",
+      "identityUnavailable": "Một người phê duyệt bắt buộc không hoạt động, không có tài khoản hợp lệ duy nhất hoặc nằm ngoài phạm vi công ty được phép. Thay người được chọn hoặc nhờ HR sửa quyền truy cập."
     }
   },
   "attendanceHistory": {
