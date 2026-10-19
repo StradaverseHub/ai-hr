@@ -9,8 +9,9 @@ import {getSetting} from './entitlements';
 import {freshProfileEditPolicyTx} from './profile-edit-policy';
 import {setTenantSetting} from './tenant-settings';
 import {isAdmin,isGroupAdmin} from '../lib/authz-model';
+import {PERSONNEL_EMPLOYMENT_TYPES} from '../lib/personnel-choice-vocabulary';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {resolveOrgCriteriaTargets,ORG_CRITERIA_FIELDS,ORG_CRITERIA_DATE_FIELDS,ORG_CRITERIA_NUMBER_FIELDS,type OrgCriteria} from './org-criteria';
+import {resolveOrgCriteriaTargets,ORG_DATED_ASSIGNMENT_CRITERIA,ORG_EMPLOYMENT_COLUMN_CRITERIA,ORG_CRITERIA_FIELDS,ORG_CRITERIA_DATE_FIELDS,ORG_CRITERIA_NUMBER_FIELDS,type OrgCriteria} from './org-criteria';
 import {EMPTY_PROFILE_ROUTING,PROFILE_ROUTING_KEY,isProfileRoutingPolicy,type ProfileRoutingPolicy,type ProfileRouteRule} from '../lib/profile-routing-policy';
 export class ProfileRoutingError extends Error{
  constructor(readonly code:'invalid'|'missing'|'overlap'|'unauthorized'|'changed'|'reasonRequired'){super(`Profile routing: ${code}`);this.name='ProfileRoutingError';}
@@ -21,9 +22,14 @@ export function readProfileRoutingPolicy(ctx:SessionContext):ProfileRoutingPolic
  for(const rule of raw.rules)validateCriteria(rule.criteria);
  return raw;
 }
+const uuidCriteriaAxes=new Set<string>(['companyIds','departmentIds',...ORG_DATED_ASSIGNMENT_CRITERIA.map(axis=>axis.key),...ORG_EMPLOYMENT_COLUMN_CRITERIA.map(axis=>axis.key)]);
 function validateCriteria(criteria:ProfileRouteRule['criteria']){
  for(const [key,value] of Object.entries(criteria)){
-  if(ORG_CRITERIA_FIELDS.includes(key)){if(!Array.isArray(value))throw new ProfileRoutingError('invalid');}
+  if(ORG_CRITERIA_FIELDS.includes(key)){
+   if(!Array.isArray(value))throw new ProfileRoutingError('invalid');
+   if(uuidCriteriaAxes.has(key)&&value.some(id=>!z.guid().safeParse(id).success))throw new ProfileRoutingError('invalid');
+   if(key==='employmentTypes'&&value.some(type=>!(PERSONNEL_EMPLOYMENT_TYPES as readonly string[]).includes(type)))throw new ProfileRoutingError('invalid');
+  }
   else if((ORG_CRITERIA_DATE_FIELDS as readonly string[]).includes(key)){if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value)||!Number.isFinite(Date.parse(value+'T00:00:00Z'))||new Date(value+'T00:00:00Z').toISOString().slice(0,10)!==value)throw new ProfileRoutingError('invalid');}
   else if((ORG_CRITERIA_NUMBER_FIELDS as readonly string[]).includes(key)){if(typeof value!=='number'||!Number.isInteger(value)||value<0||value>150)throw new ProfileRoutingError('invalid');}
   else throw new ProfileRoutingError('invalid');
@@ -31,10 +37,10 @@ function validateCriteria(criteria:ProfileRouteRule['criteria']){
  if(typeof criteria.hiredFrom==='string'&&typeof criteria.hiredTo==='string'&&criteria.hiredFrom>criteria.hiredTo)throw new ProfileRoutingError('invalid');
  if(typeof criteria.minYearsOfService==='number'&&typeof criteria.maxYearsOfService==='number'&&criteria.minYearsOfService>criteria.maxYearsOfService)throw new ProfileRoutingError('invalid');
 }
-async function routeTargets(tx:Tx,rule:ProfileRouteRule,subjectId?:string){
+async function routeTargets(tx:Tx,rule:ProfileRouteRule,subjectId?:string,asOf=todayInKualaLumpur()){
  const ids=subjectId?[subjectId]:rule.employmentIds;
  if(subjectId&&rule.employmentIds.length&&!rule.employmentIds.includes(subjectId))return [];
- return resolveOrgCriteriaTargets(tx,{criteria:rule.criteria as OrgCriteria,asOf:todayInKualaLumpur(),...(ids.length?{employmentIds:ids}:{})});
+ return resolveOrgCriteriaTargets(tx,{criteria:rule.criteria as OrgCriteria,asOf,...(ids.length?{employmentIds:ids}:{})});
 }
 /** The SQL helper checks the candidate's current login, active employment and real company-tree grants. */
 async function namedPrincipal(tx:Tx,approverEmploymentId:string,subjectId:string){
@@ -52,21 +58,24 @@ async function eligibleTargetCount(tx:Tx,approverEmploymentId:string,subjectIds:
  }
  return count;
 }
-async function subjectContext(tx:Tx,ctx:SessionContext,subjectId:string){
+async function subjectContext(tx:Tx,ctx:SessionContext,subjectId:string,asOf:string){
  const [e]=await tx.select({companyId:employment.companyId,gradeId:employment.gradeId,orgDivision:employment.orgDivision,orgBranch:employment.orgBranch,orgRegion:employment.orgRegion,orgLine:employment.orgLine,orgSection:employment.orgSection,orgTeam:employment.orgTeam,orgBase:employment.orgBase,employmentCategory:employment.employmentCategory,hiredOn:employment.hiredOn,confirmationDate:employment.confirmationDate,finalConfirmationDate:employment.finalConfirmationDate,probationEndDate:employment.probationEndDate,provisionalEndOn:employment.provisionalEndOn,resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate,terminatedOn:employment.terminatedOn,blacklistedAt:employment.blacklistedAt,gender:person.gender,nationality:person.nationality,religion:person.religion,race:person.race}).from(employment).innerJoin(person,eq(person.id,employment.personId)).where(and(eq(employment.id,subjectId),eq(employment.tenantId,ctx.tenantId))).limit(1).for('update');
  if(!e)throw new ProfileRoutingError('unauthorized');
- const today=todayInKualaLumpur();
- const rows=await tx.select({id:assignment.id,companyId:assignment.companyId,departmentId:assignment.departmentId,businessUnitId:assignment.businessUnitId,positionId:assignment.positionId,costCenterId:assignment.costCenterId,employmentType:assignment.employmentType}).from(assignment).where(and(eq(assignment.employmentId,subjectId),isNull(assignment.supersededAt),sql`${assignment.validFrom}<=${today}::date AND (${assignment.validTo} IS NULL OR ${assignment.validTo}>${today}::date)`)).orderBy(asc(assignment.id)).limit(2);
- if(rows.length>1)throw new ProfileRoutingError('invalid');
- return {asOf:today,companyId:e.companyId,fingerprint:createHash('sha256').update(JSON.stringify({employment:e,assignment:rows[0]??null})).digest('hex')};
+ // Match the canonical criteria owner's inclusive end-date semantics, and lock its relevant rows.
+ // Assignment rollback is update-only; locking employment/person alone does not fence those writes.
+ const rows=await tx.select({id:assignment.id,companyId:assignment.companyId,departmentId:assignment.departmentId,businessUnitId:assignment.businessUnitId,positionId:assignment.positionId,costCenterId:assignment.costCenterId,employmentType:assignment.employmentType}).from(assignment).where(and(eq(assignment.employmentId,subjectId),isNull(assignment.supersededAt),sql`${assignment.validFrom}<=${asOf}::date AND (${assignment.validTo} IS NULL OR ${assignment.validTo}>=${asOf}::date)`)).orderBy(asc(assignment.id)).for('update');
+ return {asOf,companyId:e.companyId,fingerprint:createHash('sha256').update(JSON.stringify({employment:e,assignments:rows})).digest('hex')};
 }
 export async function resolveProfileRouteTx(tx:Tx,ctx:SessionContext,subjectId:string){
  const policy=readProfileRoutingPolicy(ctx);if(!policy.enabled)return null;
+ const asOf=todayInKualaLumpur();
+ // Acquire the snapshot before selecting any rule/principal, and retain its row locks until commit.
+ const routeContext=await subjectContext(tx,ctx,subjectId,asOf);
  const matches:ProfileRouteRule[]=[];
- for(const rule of policy.rules)if((await routeTargets(tx,rule,subjectId)).includes(subjectId))matches.push(rule);
+ for(const rule of policy.rules)if((await routeTargets(tx,rule,subjectId,asOf)).includes(subjectId))matches.push(rule);
  if(matches.length!==1)throw new ProfileRoutingError(matches.length?'overlap':'missing');
  const rule=matches[0],principal=await namedPrincipal(tx,rule.approverEmploymentId,subjectId);
- return {routeId:rule.id,routeRevision:policy.revision,routeApproverUserId:principal.user_id,routeApproverEmploymentId:principal.employment_id,routeContext:await subjectContext(tx,ctx,subjectId)};
+ return {routeId:rule.id,routeRevision:policy.revision,routeApproverUserId:principal.user_id,routeApproverEmploymentId:principal.employment_id,routeContext};
 }
 export async function assertProfileRouteDecisionTx(tx:Tx,ctx:SessionContext,request:typeof profileChangeRequest.$inferSelect){
  const policy=readProfileRoutingPolicy(ctx);
