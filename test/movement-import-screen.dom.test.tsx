@@ -32,4 +32,12 @@ describe('whole-employee Movement import experience',()=>{
   expect((mocks.fetch.mock.calls[0][1].body as FormData).get('file')).toBe(file);
   fireEvent.change(screen.getByLabelText('Selected company'),{target:{value:'b'}});expect(screen.queryByRole('heading',{name:'Review events before importing'})).toBeNull();expect(screen.getByLabelText('Or paste CSV')).toHaveValue('');
  });
+ it.each([undefined,'signed-server-preview'])('retains semantic preview reasons in the result with optional display evidence %s and leaves a manually excluded valid row error-free',async token=>{
+  const semantic={...preview,valid:2,excluded:1,employees:[{...preview.employees[0],rows:[{...row(1,'BAD','invalid'),errors:['unknown_reference:departmentId; unknown_reference:departmentId']}]},{...preview.employees[1],rows:[row(2,'GOOD','valid')]},{employeeCode:'MANUAL',employmentId:'manual',name:'Fictional manual',fingerprint:'manual-fingerprint',rows:[row(3,'MANUAL','valid')]}]};
+  mocks.fetch.mockResolvedValueOnce(response({ok:true,preview:semantic,previewErrorReceipt:token}));mount();await fill();fireEvent.click(screen.getByRole('button',{name:'Check file'}));await screen.findByRole('heading',{name:'Review events before importing'});
+  fireEvent.click(screen.getAllByRole('checkbox',{name:'Include employee'})[2]);fireEvent.click(screen.getByRole('checkbox',{name:/I confirm that 2/}));
+  mocks.fetch.mockResolvedValueOnce(response({ok:true,result:{...semantic,imported:1,failed:0,excluded:2,batchId:'batch',byEventType:[],employees:semantic.employees.map(e=>({...e,rows:e.rows.map(r=>({...r,status:e.employeeCode==='GOOD'?'imported':'excluded',errors:[]}))}))},workbookReportUnavailable:!token}));fireEvent.click(screen.getByRole('button',{name:'Confirm and import selected events'}));await screen.findByRole('heading',{name:'Import result'});
+  const body=mocks.fetch.mock.calls[1][1].body as FormData;expect(body.get('previewErrorReceipt')).toBe(token??null);expect(body.get('errors')).toBeNull();expect(JSON.parse(String(body.get('selection')))).toEqual([2]);
+  expect(screen.getByText(en.people.import.movement.issues.unknown_reference+' · Department')).toBeInTheDocument();expect(screen.queryByText('unknown_reference:departmentId')).toBeNull();expect(screen.getByText('MANUAL · Fictional manual')).toBeInTheDocument();
+ });
 });
