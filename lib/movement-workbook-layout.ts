@@ -34,7 +34,8 @@ export function movementTabNames(types:MovementWorkbookType[],resolve:PersonnelL
 export function movementWorkbookRequirements(type:MovementWorkbookType,columns:MovementWorkbookColumn[]){
  const required=columns.filter(c=>c.role==='identity'||c.role==='input'&&(c.key==='incrementAmount'&&type.behaviour==='increment'||c.field&&movementImportRequired(c.field,type.behaviour)||c.field==='basicSalary'&&type.behaviour==='salaryAdjustment'||c.field==='remarks'&&['salaryAdjustment','demotion','joinDateChange','groupJoinDateCorrection'].includes(type.behaviour))).map(c=>c.label);
  const optional=columns.filter(c=>c.role==='input'&&!required.includes(c.label)).map(c=>c.label);
- return {required,optional};
+ const requiredEither=type.behaviour==='blacklist'?columns.filter(c=>c.role==='input'&&['blacklisted','remarks'].includes(c.key)).map(c=>c.label):[];
+ return {required,optional,requiredEither};
 }
 
 export function movementWorkbookScalarChoices(field:MovementFormField){
