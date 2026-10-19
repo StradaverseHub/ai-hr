@@ -43,8 +43,11 @@ The approved change removes the employee Mobile App preview menu entry, while
 retaining its route for existing links and placing the administrative entry under
 System Configuration. Locations moves into Attendance Configuration. Personnel
 Management remains administrator-only under People HR; Team Directory stays
-employee-visible under People. The Profile Changes owner may later add its guarded
-queue to People HR without adding another approval authority.
+employee-visible under People. Profile Changes appears under People HR using the
+server's actual HR-administrator capability, independently of the older partner
+administration rail. Its assigned-principal service and RLS retain decision authority.
+Attendance participants likewise receive only the Approval Items destination from
+their existing actionable task read; this never sets the manager/team capabilities.
 
 ## Verification boundary
 

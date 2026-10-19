@@ -213,6 +213,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               isAdmin={isAdmin(session) || canManagePayroll(session) || canManagePerfComp(session)}
               canApprove={(session.roles ?? []).includes('manager')}
               hasAssignedAttendanceApproval={hasAssignedAttendanceApproval}
+              canReviewProfileChanges={isAdmin(session)}
               canAccessTeam={hasTeamAccess(session)}
               // Pending-approval badge on the "Approval Items" row (feedback 836118c4). Reuses the
               // pendingTasks already resolved above for the bell — ZERO extra queries — so the badge is

@@ -41,11 +41,11 @@ describe('root layout SMTP preview authority',()=>{
   {roles:['employee'],preview:false,rail:false},
  ])('keeps preview eligibility separate from the broader rail for $roles',async({roles,preview,rail})=>{
   m.session.mockResolvedValue({tenantId:'tenant',userId:'user',roles,grants:roles.map(role=>({role,companyId:null}))});m.operator.mockResolvedValue(false);
-  const props=sidebarProps(await Layout({children:<span>Fixture content</span>}));expect(props).toBeDefined();expect(props!.isAdmin).toBe(rail);expect(props!.canPreviewIdentityEmail).toBe(preview);expect(props!.canConfigureIdentityEmail).toBe(false);
+  const props=sidebarProps(await Layout({children:<span>Fixture content</span>}));expect(props).toBeDefined();expect(props!.isAdmin).toBe(rail);expect(props!.canPreviewIdentityEmail).toBe(preview);expect(props!.canReviewProfileChanges).toBe(preview);expect(props!.canConfigureIdentityEmail).toBe(false);
  });
  it('passes enrolled installation authority independently of HR role',async()=>{
   m.session.mockResolvedValue({tenantId:'tenant',userId:'operator',roles:['employee'],grants:[]});m.operator.mockResolvedValue(true);
-  const props=sidebarProps(await Layout({children:null}));expect(props).toBeDefined();expect(props!.isAdmin).toBe(false);expect(props!.canPreviewIdentityEmail).toBe(false);expect(props!.canConfigureIdentityEmail).toBe(true);
+  const props=sidebarProps(await Layout({children:null}));expect(props).toBeDefined();expect(props!.isAdmin).toBe(false);expect(props!.canPreviewIdentityEmail).toBe(false);expect(props!.canReviewProfileChanges).toBe(false);expect(props!.canConfigureIdentityEmail).toBe(true);
  });
 });
 

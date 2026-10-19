@@ -536,6 +536,7 @@ export function Sidebar({
   canPreviewIdentityEmail = false,
   canApprove = false,
   hasAssignedAttendanceApproval = false,
+  canReviewProfileChanges = false,
   canAccessTeam = false,
   approvalCount = 0,
   taskCount = 0,
@@ -557,6 +558,8 @@ export function Sidebar({
   canApprove?: boolean;
   /** A pending request-bound assignment exposes only the inbox, never manager navigation. */
   hasAssignedAttendanceApproval?: boolean;
+  /** Actual HR administration, independent of the broader partner administration rail. */
+  canReviewProfileChanges?: boolean;
   /** Actual My Team role authority, independent of the broader partner administration rail. */
   canAccessTeam?: boolean;
   /**
@@ -653,7 +656,7 @@ export function Sidebar({
   // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating). Role gating and
   // module gating are ANDed: a row needs both the role AND the module to appear.
   const canSeeChild = (c: ChildItem) =>
-    moduleAllows(c.href) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && hasAssignedAttendanceApproval : true);
+    moduleAllows(c.href) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && hasAssignedAttendanceApproval : true);
   // The former audience inventory still supplies its original visibility boundaries.
   // Only authorized rows are handed to the workspace placement owner below.
   const authorizedGroups = GROUPS
@@ -673,6 +676,7 @@ export function Sidebar({
   )).filter(row => row.href !== '/mobile-preview' || isAdmin)
     .map(row=>row.href==='/performance/workspace'?{...row,navigationHref:'/performance/workspace?module=pm'}:row);
   const additionalRows: ChildItem[] = [
+    {href:'/admin/personnel/profile-changes',labelKey:'profileChanges',icon:ListChecks,adminOnly:true},
     {href:'/me?tab=payroll',labelKey:'myPayslips',icon:Wallet,ownedSubpaths:['/me/payslip']},
     {href:'/me/tax-relief',labelKey:'taxRelief',icon:Receipt},
     {href:'/admin/claims/reimbursements',labelKey:'reimbursementsDue',icon:Receipt,adminOnly:true},
