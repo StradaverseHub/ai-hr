@@ -36,7 +36,7 @@ describe('canonical pending Edit input read authorization',()=>{
   await createMovementEvent(group,{employmentId:id,kind:'promotion',effectiveDate:day(7),departmentId:b.deptB});
   const pending=await recorded(group,id),employee=await actor('employee',b.companyId),before=await originalFacts(id);
   expect(employee.grants).toEqual([{role:'employee',companyId:b.companyId}]);
-  await expect(movementPendingEditInput(employee,id,pending.id)).rejects.toThrow('Only an admin');
+  expect(()=>movementPendingEditInput(employee,id,pending.id)).toThrow('Only an admin');
   expect(await originalFacts(id)).toEqual(before);
  });
  it('never exposes values for a foreign tenant or a movement belonging to another employment',async()=>{
