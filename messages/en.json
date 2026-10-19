@@ -267,7 +267,7 @@
     "breakStopUsingHint": "Tick this, then give each break its own Flexible minutes below."
   },
   "common": {
-    "appName": "Kingdee AI HR",
+    "appName": "AI HR",
     "language": "Language",
     "save": "Save",
     "cancel": "Cancel",

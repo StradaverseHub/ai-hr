@@ -267,7 +267,7 @@
     "breakStopUsingHint": "勾选此项，然后在下方为每个休息分别设定其弹性分钟数。"
   },
   "common": {
-    "appName": "Kingdee AI HR",
+    "appName": "AI HR",
     "language": "语言",
     "save": "保存",
     "cancel": "取消",
