@@ -143,7 +143,7 @@ export async function listPendingTasks(
       kind: 'profile' as const,
       subjectName: r.employee,
       createdAt: iso(r.createdAt),
-      linkPath: '/approvals',
+      linkPath: `/admin/personnel/profile-changes#request-${r.id}`,
     })),
     ...claims.map((r) => ({
       id: r.id,

@@ -136,19 +136,6 @@ async function claimCounts(tx: Tx): Promise<DecidedStatusCounts> {
   };
 }
 
-async function profileChangeCounts(
-  tx: Tx,
-  scopeIds: string[] | undefined,
-): Promise<DecidedStatusCounts> {
-  const rows = await tx
-    .select({ status: profileChangeRequest.status, count })
-    .from(profileChangeRequest)
-    .innerJoin(employment, eq(employment.id, profileChangeRequest.employmentId))
-    .where(companyScope(scopeIds))
-    .groupBy(profileChangeRequest.status);
-  const m = toMap(rows);
-  return { approved: m.get('approved') ?? 0, rejected: m.get('rejected') ?? 0, cancelled: null };
-}
 
 /**
  * 5ff7daff — replacement leave. approved / rejected only (the table has no cancelled state), scoped by
@@ -202,8 +189,6 @@ export async function decidedStatusCounts(
         return (await correctionCounts(tx, scopeIds)).overtime;
       case 'claim':
         return claimCounts(tx);
-      case 'profileChanges':
-        return profileChangeCounts(tx, scopeIds);
       case 'resignations':
         return resignationCounts(tx);
       case 'managerReviews':
@@ -218,7 +203,7 @@ export async function decidedStatusCounts(
           await replacementLeaveCounts(tx, scopeIds),
           ...(Object.values(await correctionCounts(tx, scopeIds)) as DecidedStatusCounts[]),
           await claimCounts(tx),
-          ...(admin ? [await profileChangeCounts(tx, scopeIds), await resignationCounts(tx)] : []),
+          ...(admin ? [await resignationCounts(tx)] : []),
         ];
         return parts.reduce<DecidedStatusCounts>(
           (acc, p) => ({

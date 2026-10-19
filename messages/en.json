@@ -422,7 +422,8 @@
     "onboardingChecklists": "Checklist Management",
     "onboardingSettings": "Onboarding settings",
     "onboardingGroups": "Assignment groups",
-    "onboardingModuleAccess": "Module access"
+    "onboardingModuleAccess": "Module access",
+    "profileChanges": "Profile changes"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -9883,7 +9884,8 @@
         "onboardingGroups": "Onboarding module users and Master Admin manage assignment groups. Group membership does not grant module-page access.",
         "onboardingModuleAccess": "Only a Master Admin with group-wide HR administration grants or removes module access.",
         "onboardingRequisitions": "Operational fulfilment, approval and configured add-system groups, module users and company HR can read requisitions. Actions remain restricted to the current team, step or item rights. A mention alone grants only its discussion context.",
-        "onboardingAcknowledgement": "Only the person linked to the hire can acknowledge their own handed-over equipment. Rehire and multiple-employment cases remain separate."
+        "onboardingAcknowledgement": "Only the person linked to the hire can acknowledge their own handed-over equipment. Rehire and multiple-employment cases remain separate.",
+        "profileChanges": "Review profile changes assigned to you within your current HR authority. Old requests retain their recorded routing."
       },
       "status": {
         "active": "Active",
@@ -20761,7 +20763,39 @@
     "hide": "Hide",
     "field": "Field",
     "selectAll": "Select all",
-    "waiting": "Waiting"
+    "waiting": "Waiting",
+    "photoEditSetting": "Profile photo editing",
+    "photoEditHelp": "Photo uploads are independent of field permissions. Employees may replace their own photo; removal remains an HR action.",
+    "allowOwnPhoto": "Allow employees to upload or replace their own photo",
+    "ownPhoto": "Profile photo",
+    "uploadPhoto": "Upload photo",
+    "photoFormats": "PNG or JPG, up to 2 MB.",
+    "photoSaveFailed": "The photo could not be saved. Check the file and your current permission.",
+    "namedRouting": "Named HR approvers",
+    "routingEnabled": "Use named HR approval routes",
+    "routingHelp": "Each request must match exactly one rule and an active HR approver with existing authority. Changing rules leaves pending requests assigned as recorded until explicitly reassigned.",
+    "routingName": "Rule name",
+    "routingApprover": "HR approver",
+    "routingChoose": "Choose a record",
+    "routingEmployees": "Limit to selected employees (optional)",
+    "routingCriteriaHelp": "Selections within a field mean OR; different fields and selected employees mean AND. Empty selections do not restrict that field. Missing, overlapping or unauthorized routes cannot receive a request.",
+    "routingRemove": "Remove rule",
+    "routingAdd": "Add rule",
+    "routingSave": "Save routing",
+    "routingSaveFailed": "Routing could not be saved. Check for overlapping rules, ineligible or self approvers, invalid criteria, or settings changed by another administrator.",
+    "routingQueueHelp": "Review profile changes assigned to you within your current HR authority. Old requests retain their recorded routing.",
+    "routingDecisionFailed": "The decision could not be saved. Check the reason, current authority and field permissions. A changed route or employee placement requires explicit reassignment.",
+    "routingReassign": "Reassign pending request",
+    "routingReassignHelp": "Reassignment resolves the current rules again. It requires a reason and preserves the original route in private history. It grants no new HR authority.",
+    "routingReason": "Reason for reassignment",
+    "routingReassignFailed": "Reassignment could not be saved. Check the pending request, current rules, eligible approver and reason.",
+    "previousPage": "Previous page",
+    "nextPage": "Next page",
+    "routingPreview": "Preview coverage",
+    "routingMatched": "Matched employees",
+    "routingMissing": "Without a matching rule",
+    "routingOverlapping": "Overlapping matches",
+    "routingIneligible": "Ineligible assignments"
   },
   "labelsImportWizard": {
     "title": "Import organisation labels",

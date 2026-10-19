@@ -169,17 +169,11 @@ export async function approveCorrectionAction(formData: FormData) {
  * an optional extra this action may drop: `components/profile-change-decide.tsx` posts it as `reason`
  * from a `required` textarea, and this reads it. An approval may carry one too — an approver's note.
  */
-export async function approveProfileChangeAction(formData: FormData) {
-  const s = await getSession();
-  const nav = navOf(formData);
-  const decision = String(formData.get('decision')) as 'approved' | 'rejected';
-  const reason = String(formData.get('reason') ?? '').trim() || undefined;
-  try {
-    await decideProfileChange(s, { requestId: String(formData.get('id')), decision, reason });
-  } catch (e) {
-    fail(e, nav);
-  }
-  done(`Change ${decision}`, nav);
+/** Old posted forms continue through the canonical queue action and land on the relocated queue. */
+export async function approveProfileChangeAction(formData:FormData){
+ const {decideProfileChangeAction}=await import('../admin/personnel/profile-changes/actions');
+ if(!formData.has('requestId'))formData.set('requestId',String(formData.get('id')??''));
+ return decideProfileChangeAction(formData);
 }
 
 export async function decideResignationAction(formData: FormData) {

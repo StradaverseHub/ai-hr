@@ -89,3 +89,30 @@ export async function saveProfileRequestApproverAction(formData: FormData) {
   revalidatePath('/approvals');
   redirect(`${PAGE}?toast=${encodeURIComponent(t('savedApprover'))}`);
 }
+
+export async function saveOwnPhotoSettingAction(formData:FormData){
+ const s=await getSession();
+ try{await setTenantSetting(s,{key:'ess.profile_photo_edit',value:formData.get('enabled')==='on'});}catch(e){await refuse(e);}
+ revalidatePath(PAGE);revalidatePath('/me');redirect(PAGE);
+}
+
+export async function saveNamedProfileRoutingAction(data:FormData){
+ const s=await getSession(),t=await getTranslations('essProfile');
+ try{
+  const raw=String(data.get('policy')??'');if(raw.length>512000)throw new Error('invalid');
+  const input=JSON.parse(raw) as {expectedRevision:string;enabled:boolean;rules:import('@/lib/profile-routing-policy').ProfileRouteRule[]};
+  const {saveProfileRoutingPolicy}=await import('@/core/profile-routing');
+  await saveProfileRoutingPolicy(s,input);
+ }catch{redirect(`${PAGE}?error=${encodeURIComponent(t('routingSaveFailed'))}`);}
+ revalidatePath(PAGE);revalidatePath('/admin/personnel/profile-changes');revalidatePath('/', 'layout');redirect(PAGE);
+}
+
+export async function previewNamedProfileRoutingAction(data:FormData):Promise<{ok:true;matched:number;missing:number;overlapping:number;ineligible:number}|{ok:false;error:string}>{
+ const s=await getSession(),t=await getTranslations('essProfile');
+ try{
+  const raw=String(data.get('policy')??'');if(raw.length>512000)throw new Error('invalid');
+  const parsed=JSON.parse(raw) as {enabled:boolean;rules:import('@/lib/profile-routing-policy').ProfileRouteRule[]};
+  const {previewProfileRoutingPolicy}=await import('@/core/profile-routing');
+  return {ok:true,...await previewProfileRoutingPolicy(s,{enabled:parsed.enabled,rules:parsed.rules})};
+ }catch{return {ok:false,error:t('routingSaveFailed')};}
+}

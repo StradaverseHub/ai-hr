@@ -422,7 +422,8 @@
     "onboardingChecklists": "Pengurusan senarai semak",
     "onboardingSettings": "Tetapan penyertaan",
     "onboardingGroups": "Kumpulan penugasan",
-    "onboardingModuleAccess": "Akses modul"
+    "onboardingModuleAccess": "Akses modul",
+    "profileChanges": "Perubahan profil"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -9883,7 +9884,8 @@
         "onboardingGroups": "Pengguna modul Onboarding dan Pentadbir Utama mengurus kumpulan tugasan. Keahlian kumpulan tidak memberi akses halaman modul.",
         "onboardingModuleAccess": "Hanya Pentadbir Utama dengan pentadbiran HR seluruh kumpulan boleh memberi atau membuang akses modul.",
         "onboardingRequisitions": "Kumpulan penyediaan, kelulusan dan penambahan sistem yang ditetapkan, pengguna modul serta HR syarikat boleh membaca permintaan. Tindakan mengikut hak pasukan, langkah atau item semasa. Sebutan hanya memberi konteks perbincangannya.",
-        "onboardingAcknowledgement": "Hanya individu yang dipautkan kepada pengambilan boleh mengakui peralatan sendiri selepas serahan. Kes pengambilan semula dan pekerjaan berbilang kekal berasingan."
+        "onboardingAcknowledgement": "Hanya individu yang dipautkan kepada pengambilan boleh mengakui peralatan sendiri selepas serahan. Kes pengambilan semula dan pekerjaan berbilang kekal berasingan.",
+        "profileChanges": "Semak perubahan profil yang ditugaskan kepada anda dalam kuasa HR semasa."
       },
       "status": {
         "active": "Aktif",
@@ -20761,7 +20763,39 @@
     "hide": "Sembunyikan",
     "field": "Medan",
     "selectAll": "Pilih semua",
-    "waiting": "Menunggu"
+    "waiting": "Menunggu",
+    "photoEditSetting": "Penyuntingan foto profil",
+    "photoEditHelp": "Muat naik foto berasingan daripada kebenaran medan. Pekerja boleh menggantikan foto sendiri; pemadaman kekal sebagai tindakan HR.",
+    "allowOwnPhoto": "Benarkan pekerja memuat naik atau menggantikan foto sendiri",
+    "ownPhoto": "Foto profil",
+    "uploadPhoto": "Muat naik foto",
+    "photoFormats": "PNG atau JPG, maksimum 2 MB.",
+    "photoSaveFailed": "Foto tidak dapat disimpan. Semak fail dan kebenaran semasa anda.",
+    "namedRouting": "Pelulus HR bernama",
+    "routingEnabled": "Gunakan laluan kelulusan HR bernama",
+    "routingHelp": "Setiap permintaan mesti sepadan dengan satu peraturan dan pelulus HR aktif yang sudah berkuasa. Permintaan sedia ada kekal pada laluan direkodkan sehingga ditugaskan semula.",
+    "routingName": "Nama peraturan",
+    "routingApprover": "Pelulus HR",
+    "routingChoose": "Pilih rekod",
+    "routingEmployees": "Hadkan kepada pekerja terpilih (pilihan)",
+    "routingCriteriaHelp": "Pilihan dalam medan menggunakan ATAU; antara medan dan pekerja terpilih menggunakan DAN. Pilihan kosong tidak mengehadkan medan. Laluan tiada, bertindih atau tanpa kuasa ditolak.",
+    "routingRemove": "Buang peraturan",
+    "routingAdd": "Tambah peraturan",
+    "routingSave": "Simpan penghalaan",
+    "routingSaveFailed": "Penghalaan tidak dapat disimpan. Semak pertindihan, kelayakan atau kelulusan sendiri, kriteria dan perubahan pentadbir lain.",
+    "routingQueueHelp": "Semak perubahan profil yang ditugaskan kepada anda dalam kuasa HR semasa.",
+    "routingDecisionFailed": "Keputusan tidak dapat disimpan. Semak alasan dan kuasa semasa. Perubahan laluan atau penempatan memerlukan penugasan semula.",
+    "routingReassign": "Tugaskan semula permintaan",
+    "routingReassignHelp": "Penugasan semula menilai semula peraturan semasa, memerlukan alasan dan menyimpan sejarah laluan. Tiada kuasa HR baharu diberikan.",
+    "routingReason": "Alasan penugasan semula",
+    "routingReassignFailed": "Penugasan semula gagal. Semak permintaan, peraturan, pelulus dan alasan.",
+    "previousPage": "Halaman sebelumnya",
+    "nextPage": "Halaman seterusnya",
+    "routingPreview": "Pratonton liputan",
+    "routingMatched": "Pekerja sepadan",
+    "routingMissing": "Tiada peraturan sepadan",
+    "routingOverlapping": "Padanan bertindih",
+    "routingIneligible": "Penugasan tidak layak"
   },
   "labelsImportWizard": {
     "title": "Import label organisasi",

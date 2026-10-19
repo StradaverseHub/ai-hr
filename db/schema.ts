@@ -5569,6 +5569,12 @@ export const profileChangeRequest = pgTable(
     personId: uuid('person_id')
       .notNull()
       .references(() => person.id),
+    routeId:uuid('route_id'),
+    routeRevision:uuid('route_revision'),
+    routeApproverUserId:uuid('route_approver_user_id').references(()=>appUser.id),
+    routeApproverEmploymentId:uuid('route_approver_employment_id').references(()=>employment.id),
+    routeContext:jsonb('route_context'),
+    routeHistory:jsonb('route_history').notNull().default([]),
     proposed: jsonb('proposed').notNull(),
     status: profileChangeStatusEnum('status').notNull().default('pending'),
     decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),

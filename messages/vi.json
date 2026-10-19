@@ -422,7 +422,8 @@
     "onboardingChecklists": "Quản lý danh sách kiểm tra",
     "onboardingSettings": "Cài đặt tiếp nhận",
     "onboardingGroups": "Nhóm phân công",
-    "onboardingModuleAccess": "Quyền truy cập mô-đun"
+    "onboardingModuleAccess": "Quyền truy cập mô-đun",
+    "profileChanges": "Thay đổi hồ sơ"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -9883,7 +9884,8 @@
         "onboardingGroups": "Người dùng mô-đun và quản trị viên chính quản lý nhóm phân công. Tư cách thành viên nhóm không cấp quyền vào trang mô-đun.",
         "onboardingModuleAccess": "Chỉ quản trị viên chính có quyền quản trị HR toàn tập đoàn mới được cấp hoặc thu hồi quyền mô-đun.",
         "onboardingRequisitions": "Các nhóm thực hiện, phê duyệt và thêm hệ thống đã cấu hình, người dùng mô-đun và HR công ty được đọc yêu cầu. Thao tác vẫn giới hạn theo nhóm, bước hoặc quyền mục hiện tại. Việc được nhắc đến chỉ cấp quyền xem cuộc thảo luận tương ứng.",
-        "onboardingAcknowledgement": "Chỉ người được liên kết với lần tuyển dụng đó được xác nhận thiết bị của mình sau bàn giao. Hồ sơ tái tuyển dụng và nhiều quan hệ việc làm được giữ riêng."
+        "onboardingAcknowledgement": "Chỉ người được liên kết với lần tuyển dụng đó được xác nhận thiết bị của mình sau bàn giao. Hồ sơ tái tuyển dụng và nhiều quan hệ việc làm được giữ riêng.",
+        "profileChanges": "Xem yêu cầu thay đổi hồ sơ được giao cho bạn trong phạm vi quyền HR hiện tại."
       },
       "status": {
         "active": "Đang hoạt động",
@@ -20761,7 +20763,39 @@
     "hide": "Ẩn",
     "field": "Trường",
     "selectAll": "Chọn tất cả",
-    "waiting": "Đang chờ"
+    "waiting": "Đang chờ",
+    "photoEditSetting": "Chỉnh sửa ảnh hồ sơ",
+    "photoEditHelp": "Tải ảnh độc lập với quyền trường. Nhân viên có thể thay ảnh của mình; việc xóa vẫn do HR thực hiện.",
+    "allowOwnPhoto": "Cho phép nhân viên tải lên hoặc thay ảnh của mình",
+    "ownPhoto": "Ảnh hồ sơ",
+    "uploadPhoto": "Tải ảnh lên",
+    "photoFormats": "PNG hoặc JPG, tối đa 2 MB.",
+    "photoSaveFailed": "Không thể lưu ảnh. Hãy kiểm tra tệp và quyền hiện tại.",
+    "namedRouting": "Người phê duyệt HR được chỉ định",
+    "routingEnabled": "Dùng quy tắc người phê duyệt HR được chỉ định",
+    "routingHelp": "Mỗi yêu cầu phải khớp đúng một quy tắc và người phê duyệt HR đang hoạt động có thẩm quyền sẵn có. Đổi quy tắc không tự đổi người nhận yêu cầu đang chờ.",
+    "routingName": "Tên quy tắc",
+    "routingApprover": "Người phê duyệt HR",
+    "routingChoose": "Chọn hồ sơ",
+    "routingEmployees": "Giới hạn nhân viên được chọn (tùy chọn)",
+    "routingCriteriaHelp": "Các lựa chọn trong một trường dùng HOẶC; giữa các trường và nhân viên được chọn dùng VÀ. Lựa chọn trống không giới hạn trường. Quy tắc thiếu, trùng hoặc không đủ quyền bị từ chối.",
+    "routingRemove": "Xóa quy tắc",
+    "routingAdd": "Thêm quy tắc",
+    "routingSave": "Lưu quy tắc",
+    "routingSaveFailed": "Không thể lưu. Kiểm tra quy tắc trùng, người không đủ quyền, tự phê duyệt, điều kiện hoặc thay đổi của quản trị viên khác.",
+    "routingQueueHelp": "Xem yêu cầu thay đổi hồ sơ được giao cho bạn trong phạm vi quyền HR hiện tại.",
+    "routingDecisionFailed": "Không thể lưu quyết định. Kiểm tra lý do và quyền hiện tại. Thay đổi quy tắc hoặc vị trí nhân viên cần được phân công lại rõ ràng.",
+    "routingReassign": "Phân công lại yêu cầu đang chờ",
+    "routingReassignHelp": "Phân công lại sẽ đánh giá quy tắc hiện tại, yêu cầu lý do và giữ lịch sử cũ. Không cấp thêm quyền HR.",
+    "routingReason": "Lý do phân công lại",
+    "routingReassignFailed": "Không thể phân công lại. Kiểm tra yêu cầu, quy tắc, người phê duyệt và lý do.",
+    "previousPage": "Trang trước",
+    "nextPage": "Trang sau",
+    "routingPreview": "Xem trước phạm vi",
+    "routingMatched": "Nhân viên khớp",
+    "routingMissing": "Không có quy tắc khớp",
+    "routingOverlapping": "Khớp trùng",
+    "routingIneligible": "Phân công không đủ điều kiện"
   },
   "labelsImportWizard": {
     "title": "Nhập nhãn tổ chức",

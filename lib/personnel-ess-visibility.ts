@@ -2,6 +2,7 @@
 import {PERSONNEL_FIELDS,personnelField} from './personnel-field-registry';
 import {isLegacyProfileEditPolicy,isProfileEditPolicyValue,isProfileVisibilityPolicyValue} from './profile-edit-policy-value';
 const explicitAliases:readonly (readonly string[])[]=[
+ ['person.fullName','person.firstName','person.lastName'],
  ['person.dateOfBirth','person.age'],
  ['dependent.dateOfBirth','dependent.age'],
  ['employment.hiredOn','employment.groupService','employment.yearOfService'],
@@ -58,4 +59,12 @@ export function ownProfileProposalIsIntact(raw:unknown,visible:ReadonlySet<strin
   return [...value.fields,...rows].every(item=>item&&typeof item==='object'&&!Array.isArray(item)&&typeof item.fieldId==='string'&&visible.has(item.fieldId));
  }
  return Object.keys(value).every(key=>PERSONNEL_FIELDS.some(field=>field.ess.binding?.legacyKey===key&&visible.has(field.id)));
+}
+
+/** Same explicit fact closure for the settings draft; no hidden browser facts are inspected. */
+export function linkedEssFieldIds(id:string):string[]{
+ const field=personnelField(id);if(!field)return [];
+ const linked=new Set([identity(field)]);let changed=true;
+ while(changed){changed=false;for(const group of explicitAliases){if(!group.some(key=>linked.has(key)))continue;for(const key of group)if(!linked.has(key)){linked.add(key);changed=true;}}}
+ return PERSONNEL_FIELDS.filter(item=>item.ess.visibility==='visible'&&linked.has(identity(item))).map(item=>item.id);
 }

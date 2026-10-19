@@ -1,10 +1,5 @@
 'use server';
 
-import { publicErrorMessage } from '@/lib/public-error';
-import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
-import { requireAdmin } from '@/lib/authz';
-import { decideProfileChange } from '@/core/profile';
 
 /**
  * 6d671f44 — `hireAction` USED TO LIVE HERE, and it is gone rather than merely unused.
@@ -29,19 +24,7 @@ import { decideProfileChange } from '@/core/profile';
  * `components/profile-change-decide.tsx` posts from its required textarea. An approval may carry one as
  * a note; the employee is shown either on My Profile beside their own request.
  */
-export async function decideProfileChangeAction(formData: FormData) {
-  const session = await requireAdmin();
-  const decision = String(formData.get('decision')) as 'approved' | 'rejected';
-  const reason = String(formData.get('reason') ?? '').trim() || undefined;
-  try {
-    await decideProfileChange(session, {
-      requestId: String(formData.get('requestId')),
-      decision,
-      reason,
-    });
-  } catch (e) {
-    redirect(`/admin/personnel?error=${encodeURIComponent(publicErrorMessage(e))}`);
-  }
-  revalidatePath('/admin/personnel');
-  redirect(`/admin/personnel?toast=${encodeURIComponent('Change ' + decision)}`);
+export async function decideProfileChangeAction(formData:FormData){
+ const {decideProfileChangeAction:decide}=await import('./profile-changes/actions');
+ return decide(formData);
 }

@@ -1,3 +1,8 @@
+import {isAdmin} from '../lib/authz-model';
+import {freshProfileEditPolicyTx} from './profile-edit-policy';
+import {getSetting} from './entitlements';
+import {EssProfileError} from '../lib/personnel-ess-model';
+import type {Tx} from '../db/client';
 /**
  * Employee profile photograph (b4682879). A 1:1 photo stored in the person_photo bytea SIDE TABLE
  * (schema.ts), mirroring core/admin.ts company-logo exactly. PNG/JPEG only; the mime is sniffed from magic
@@ -23,7 +28,7 @@ export const ALLOWED_PHOTO_MIME = ['image/png', 'image/jpeg'] as const;
 function assertValidPhoto(mimeType: string, content: Buffer): void {
   if (content.byteLength === 0) throw new Error('Empty file');
   if (content.byteLength > PHOTO_MAX_BYTES) throw new Error('Photo exceeds 2 MB');
-  if (!(ALLOWED_PHOTO_MIME as readonly string[]).includes(mimeType)) {
+  if (profilePhotoMime(content)!==mimeType || !(ALLOWED_PHOTO_MIME as readonly string[]).includes(mimeType)) {
     throw new Error('Only PNG or JPG images are allowed');
   }
 }
@@ -33,8 +38,21 @@ export async function setPersonPhoto(
   ctx: SessionContext,
   p: { personId: string; content: Buffer; fileName: string; mimeType: string; sizeBytes: number },
 ) {
+  if(!isAdmin(ctx))throw new EssProfileError('permission');
   assertValidPhoto(p.mimeType, p.content);
+  if(p.sizeBytes!==p.content.byteLength)throw new EssProfileError('invalid');
   return withTenant(ctx, async (tx) => {
+    return setPersonPhotoTx(tx,ctx,p);
+  });
+}
+
+/** Byte sniffing belongs to the canonical owner, including non-browser callers. */
+export function profilePhotoMime(content:Buffer):'image/png'|'image/jpeg'|null{
+ if(content.length>=8&&content.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])))return 'image/png';
+ if(content.length>=3&&content[0]===255&&content[1]===216&&content[2]===255)return 'image/jpeg';
+ return null;
+}
+async function setPersonPhotoTx(tx:Tx,ctx:SessionContext,p:{personId:string;content:Buffer;fileName:string;mimeType:string;sizeBytes:number}){
     await tx
       .insert(personPhoto)
       .values({
@@ -67,11 +85,23 @@ export async function setPersonPhoto(
       payload: { mimeType: p.mimeType, sizeBytes: p.sizeBytes },
     });
     return { personId: p.personId };
-  });
+}
+/** Own photo is independent of ordinary field editing; no deletion or delegated course is granted. */
+export function setOwnPersonPhoto(ctx:SessionContext,p:{employmentId:string;content:Buffer;fileName:string}){
+ const mimeType=profilePhotoMime(p.content);if(!mimeType)throw new EssProfileError('invalid');assertValidPhoto(mimeType,p.content);
+ return withTenant(ctx,async tx=>{
+  const policy=await freshProfileEditPolicyTx(tx,ctx);
+  if(!ctx.userId||getSetting(policy.ctx,'ess.profile_photo_edit')!==true||!policy.visible.has('profile.personal_details.photo'))throw new EssProfileError('permission');
+  const {ownProfileSubjectTx}=await import('./profile-edit');
+  const {subject}=await ownProfileSubjectTx(tx,policy.ctx,p.employmentId);
+  await tx.execute(sql`select set_config('app.profile_own_photo_write','on',true)`);
+  return setPersonPhotoTx(tx,policy.ctx,{personId:subject.personId,content:p.content,fileName:p.fileName.slice(0,255),mimeType,sizeBytes:p.content.byteLength});
+ });
 }
 
 /** Remove a person's profile photo. No-op-safe if none exists. */
 export async function removePersonPhoto(ctx: SessionContext, p: { personId: string }) {
+  if(!isAdmin(ctx))throw new EssProfileError('permission');
   return withTenant(ctx, async (tx) => {
     await tx.delete(personPhoto).where(eq(personPhoto.personId, p.personId));
     await appendEvent(tx, {
@@ -93,6 +123,7 @@ export async function getPersonPhoto(
   personId: string,
 ): Promise<{ content: Buffer; fileName: string; mimeType: string } | null> {
   return withTenant(ctx, async (tx) => {
+    if(personId===ctx.personId&&!isAdmin(ctx)){const policy=await freshProfileEditPolicyTx(tx,ctx);if(!policy.visible.has('profile.personal_details.photo'))return null;}
     const [row] = await tx
       .select({ content: personPhoto.content, fileName: personPhoto.fileName, mimeType: personPhoto.mimeType })
       .from(personPhoto)
