@@ -184,7 +184,8 @@ export function systemLabelErrorWorkbook(rows: LabelImportPreviewRow[]): Uint8Ar
   // synchronous caller contract; no uploaded archive or business value is rewritten here.
   const zip = XLSX.CFB.read(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }), { type: 'buffer' });
   const part = (name: string): string => {
-    const entry = XLSX.CFB.find(zip, name);
+    // CFB resolves a leading slash relative to its synthetic Root Entry storage.
+    const entry = XLSX.CFB.find(zip, '/' + name);
     if (!entry?.content) throw new Error('Error workbook layout is unavailable.');
     return Buffer.from(entry.content).toString('utf8');
   };
@@ -200,8 +201,8 @@ export function systemLabelErrorWorkbook(rows: LabelImportPreviewRow[]): Uint8Ar
     const style = first + (address?.[1] === 'B' && address[2] !== '1' ? 0 : 1);
     return '<c' + attributes + ` s="${style}"` + (closed ? '/>' : '>');
   });
-  XLSX.CFB.utils.cfb_add(zip, 'xl/styles.xml', Buffer.from(styles));
-  XLSX.CFB.utils.cfb_add(zip, 'xl/worksheets/sheet1.xml', Buffer.from(xml));
+  XLSX.CFB.utils.cfb_add(zip, '/xl/styles.xml', Buffer.from(styles));
+  XLSX.CFB.utils.cfb_add(zip, '/xl/worksheets/sheet1.xml', Buffer.from(xml));
   return new Uint8Array(XLSX.CFB.write(zip, { type: 'buffer', fileType: 'zip', compression: true }));
 }
 
