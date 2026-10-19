@@ -1,3 +1,4 @@
+import {projectEssVisible,essFactVisible} from '../lib/personnel-ess-visibility';
 import {createHash} from 'node:crypto';
 /** Own-profile edits compose canonical owners in ONE authenticated caller transaction. */
 import {and,asc,eq,isNull,sql} from 'drizzle-orm';
@@ -9,7 +10,7 @@ import {personnelField,PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
 import {parseEssProfileProposal,sameEssScalar} from '../lib/personnel-ess-contract';
 import {EssProfileError,type EssProfileProposal,type EssFieldChange,type EssScalar,type EssRegisterChange} from '../lib/personnel-ess-model';
 import {isModuleEnabled} from './entitlements';
-import {freshProfileEditPolicyTx} from './profile-edit-policy';
+import {freshProfileEditPolicyTx,type ProfilePresentationPolicy} from './profile-edit-policy';
 import {packFor} from '../localization/registry';
 import {updatePersonProfilePartial,type PersonProfileFields} from './org';
 import {setPersonComplianceFields,requestProfileChange,updateOwnContact} from './profile';
@@ -24,7 +25,7 @@ import {CHILD_RELIEF_PERCENTAGES,dependentFieldApplies} from '../lib/dependent-v
 import {EMERGENCY_CONTACT_PRIORITIES} from '../lib/emergency-contact-vocabulary';
 
 export type EssRecord={kind:EssRegisterChange['kind'];id:string;values:Record<string,EssScalar>;baselines:Record<string,string>;primary:boolean};
-export type EssWorkspace={employmentId:string;personId:string;country:string|null;values:Record<string,EssScalar>;baselines:Record<string,string>;registers:EssRecord[];editable:string[];legacyPrimaryEditable:string[];addressReview:boolean;legacyAddress:Record<string,string|null>;statutoryAvailable:boolean;fieldReadOnlyReasons?:Record<string,'derivedChildCount'>};
+export type EssWorkspace={visible?:string[];employmentId:string;personId:string;country:string|null;values:Record<string,EssScalar>;baselines:Record<string,string>;registers:EssRecord[];editable:string[];legacyPrimaryEditable:string[];addressReview:boolean;legacyAddress:Record<string,string|null>;statutoryAvailable:boolean;fieldReadOnlyReasons?:Record<string,'derivedChildCount'>};
 const scalar=(value:unknown):EssScalar=>value==null?null:typeof value==='string'||typeof value==='number'||typeof value==='boolean'?value:null;
 const record=(value:object)=>value as Record<string,unknown>; // typed owner rows, used only for explicit descriptor projections
 const text=(values:Record<string,EssScalar>,key:string):string|null|undefined=>{const value=values[key];if(value===undefined||value===null||typeof value==='string')return value;throw new EssProfileError('invalid');};
@@ -97,9 +98,9 @@ function addressNeedsReview(master:typeof person.$inferSelect){
  });
 }
 /** Private workspace contains explicitly visible fields only; no admin-row spread crosses RSC. */
-export function readOwnProfileWorkspace(ctx:SessionContext,p:{employmentId?:string}={}){
+export function readOwnProfileWorkspace(ctx:SessionContext,p:{employmentId?:string}={},presentation?:ProfilePresentationPolicy){
  return withTenant(ctx,async tx=>{
-  const policy=await freshProfileEditPolicyTx(tx,ctx);const {subject,master}=await ownProfileSubjectTx(tx,policy.ctx,p.employmentId,false);
+  const policy=presentation??await freshProfileEditPolicyTx(tx,ctx);const {subject,master}=await ownProfileSubjectTx(tx,policy.ctx,p.employmentId,false);
   const rows=await mastersTx(tx,policy.ctx,subject);
   const mayEdit=(await myOwnEmploymentSubjectsTx(tx,policy.ctx,{profileEdit:true})).some(row=>row.employmentId===subject.id);
   const values={...readonlyValues('person',master),...registryValues('person',master),...registryValues('compliance',master)};
@@ -126,7 +127,10 @@ export function readOwnProfileWorkspace(ctx:SessionContext,p:{employmentId?:stri
   }
   const primary=rows.emergency.filter(row=>row.priority==='primary');
   const registers:EssRecord[]=[...rows.dependents.map(row=>({kind:'dependent' as const,id:row.id,...safeValues({...registryValues('dependent',row),...readonlyValues('dependent',{age:childAgeYears(row.dateOfBirth),countsTowardRelief:isChildReliefEligible(row)})},id=>maskedRegisterBaseline(policy.ctx,subject,rows,'dependent',row.id,id)),primary:false})),...rows.qualifications.map(row=>({kind:'qualification' as const,id:row.id,...safeValues(registryValues('qualification',row)),primary:false})),...rows.emergency.map(row=>({kind:'emergency' as const,id:row.id,...safeValues(registryValues('emergency',row)),primary:primary.length===1&&primary[0].id===row.id}))];
-  return {employmentId:subject.id,personId:subject.personId,country:subject.country,...safeValues(values,id=>maskedProfileBaseline(policy.ctx,subject,rows,id)),registers,editable:mayEdit?[...policy.editable]:[],legacyPrimaryEditable:mayEdit?[...policy.legacyPrimary]:[],addressReview:addressNeedsReview(master),legacyAddress:legacyAddress(master),statutoryAvailable:Boolean(rows.pack),fieldReadOnlyReasons} satisfies EssWorkspace;
+  const visible=policy.visible;
+  const addressVisible=PERSONNEL_FIELDS.filter(field=>field.owner==='person'&&field.ownerField.startsWith('permanent')).every(field=>visible.has(field.id));
+  const safe=safeValues(projectEssVisible(values,visible),id=>maskedProfileBaseline(policy.ctx,subject,rows,id));
+  return {visible:[...visible],employmentId:subject.id,personId:subject.personId,country:subject.country,...safe,registers:registers.map(row=>({...row,values:projectEssVisible(row.values,visible),baselines:projectEssVisible(row.baselines,visible),primary:essFactVisible(visible,'emergency','priority')&&row.primary})).filter(row=>Object.keys(row.values).length>0),editable:mayEdit?[...policy.editable].filter(id=>visible.has(id)):[],legacyPrimaryEditable:mayEdit?[...policy.legacyPrimary].filter(id=>visible.has(id)):[],addressReview:addressVisible&&addressNeedsReview(master),legacyAddress:addressVisible?legacyAddress(master):{},statutoryAvailable:Boolean(rows.pack),fieldReadOnlyReasons:projectEssVisible(fieldReadOnlyReasons,visible)} satisfies EssWorkspace;
  });
 }
 

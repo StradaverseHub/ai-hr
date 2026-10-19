@@ -22,14 +22,13 @@ export type ApprovalCategory =
   // worked dates whose whole point is that they are checked line by line. Same exclusion, same reason, as
   // profile changes and per-date leave.
   | 'replacementLeave'
-  | 'profileChanges'
   | 'resignations'
   | 'managerReviews'
   | 'hrReviews'
   | 'rewards';
 
 /** Categories beyond the bulk taxonomy — the people matters, in panel order. */
-const PEOPLE_CATEGORIES = ['profileChanges', 'resignations', 'managerReviews', 'hrReviews', 'rewards'] as const;
+const PEOPLE_CATEGORIES = ['resignations', 'managerReviews', 'hrReviews', 'rewards'] as const;
 
 /**
  * Every category in canonical order: all first, then the bulk taxonomy, then replacement leave, then the
@@ -50,7 +49,6 @@ export const APPROVAL_CATEGORIES: readonly ApprovalCategory[] = [
 /** Categories whose queue only an admin carries (decide authz lives in the services; this only shapes
  *  the panel + the URL-param coercion so a manager deep-link never shows an admin-only view). */
 export const ADMIN_ONLY_CATEGORIES: readonly ApprovalCategory[] = [
-  'profileChanges',
   'resignations',
   'hrReviews',
 ];
@@ -102,7 +100,6 @@ export type ApprovalSection =
   | 'replacementLeave'
   | 'claims'
   | 'corrections'
-  | 'profileChanges'
   | 'resignations'
   | 'managerReviews'
   | 'hrReviews'
@@ -115,7 +112,6 @@ const SECTION_FOR_CATEGORY: Record<Exclude<ApprovalCategory, 'all'>, ApprovalSec
   attendance: 'corrections',
   overtime: 'corrections',
   claim: 'claims',
-  profileChanges: 'profileChanges',
   resignations: 'resignations',
   managerReviews: 'managerReviews',
   hrReviews: 'hrReviews',

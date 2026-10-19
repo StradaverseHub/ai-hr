@@ -29,9 +29,9 @@ export function ProfileEditor({workspace,facts,extraPanels,history,defaultTab='p
  const [outcome,setOutcome]=useState<{saved:string[];waiting:string[]}|null>(null);
  const pending=useRef(false),requestButton=useRef<HTMLButtonElement>(null);
  const editable=new Set(workspace.editable),primaryEditable=new Set(workspace.legacyPrimaryEditable);
- const fields=essVisibleFields(),values={...facts.values,...workspace.values},dirty=Object.keys(changes).length>0||newRows.length>0;
+ const fields=essVisibleFields().filter(field=>!workspace.visible||workspace.visible.includes(field.id)),values={...facts.values,...workspace.values},dirty=Object.keys(changes).length>0||newRows.length>0;
  const translate=(key:string,fallback:string)=>labels.has(key)?labels(key):fallback;
- const serviceText=(value:{years:number;months:number;days:number})=>[...(value.years>0?[labels('people.detail.employmentInfo.yearsUnit',{count:value.years})]:[]),...(value.years>0||value.months>0?[labels('people.detail.employmentInfo.monthsUnit',{count:value.months})]:[]),labels('people.detail.employmentInfo.daysUnit',{count:value.days})].join(' ');
+ const serviceText=(value:{years:number;months:number;days:number}|null)=>!value?null:[...(value.years>0?[labels('people.detail.employmentInfo.yearsUnit',{count:value.years})]:[]),...(value.years>0||value.months>0?[labels('people.detail.employmentInfo.monthsUnit',{count:value.months})]:[]),labels('people.detail.employmentInfo.daysUnit',{count:value.days})].join(' ');
  for(const field of fields.filter(field=>field.owner==='employment')){if(['groupService','yearOfService'].includes(field.ownerField))values[field.id]=serviceText(facts.service.group);if(field.ownerField==='companyService')values[field.id]=serviceText(facts.service.company);}
  const fieldLabel=(id:string)=>{const field=fields.find(field=>field.id===id);return field?personnelFieldLabel(field,translate):t('unavailable');};
  const canEdit=(id:string,row?:EssRecord|NewRecord)=>editing&&!workspace.fieldReadOnlyReasons?.[id]&&(editable.has(id)||Boolean(row?.primary&&primaryEditable.has(id)))&&Boolean(workspace.statutoryAvailable||!fields.find(field=>field.id===id)?.ess.binding||['person','compliance','dependent','qualification','emergency'].includes(fields.find(field=>field.id===id)!.ess.binding!.owner));
