@@ -53,6 +53,18 @@ describe('authenticated per-type Movement workbook',()=>{
   const changed=await edit(bytes,wb=>{const s=wb.Sheets.Increment;s[XLSX.utils.encode_cell({r:5,c:grey})]={t:'n',v:9999999};s[XLSX.utils.encode_cell({r:5,c:amount})]={t:'s',v:'10.13'};s[XLSX.utils.encode_cell({r:5,c:date})]={t:'s',v:'2026-11-01'};});
   const row=(await parse(changed)).records[0];expect(row.incrementAmount).toBe('10.13');expect(row.cells.basicSalary).toBeUndefined();
  });
+ it('keeps explicit dd-mmm-yyyy on populated and empty date cells while retaining numeric zero and text/code styles',async()=>{
+  const type={code:'confirmation',label:'Confirmation',behaviour:'confirmation'},columns=movementWorkbookLayout(type,resolve),address=(key:string,row=5)=>XLSX.utils.encode_cell({r:row,c:columns.findIndex(c=>c.key===key)});
+  const bytes=await buildMovementWorkbook({tenantId:a,companyId:a,companyName:'Fictional A',catalog:{...catalog,types:[type]},subjects:[{...subjects[0],current:{...subjects[0].current,joinDate:'2026-01-06',probationEndDate:'2026-11-01',basicSalary:'0'}}],typeCode:type.code,resolve});
+  const wb=XLSX.read(bytes,{type:'buffer',cellNF:true,cellFormula:true}),sheet=wb.Sheets.Confirmation,zip=await JSZip.loadAsync(bytes),styles=await zip.file('xl/styles.xml')!.async('string'),xml=await zip.file('xl/worksheets/sheet2.xml')!.async('string');
+  const formats=[...styles.matchAll(/<numFmt\b[^>]*numFmtId="(\d+)"[^>]*formatCode="([^"]*)"[^>]*\/>/g)];expect(new Set(formats.map(f=>f[1])).size).toBe(formats.length);
+  const explicit=formats.find(f=>f[2]==='dd-mmm-yyyy');expect(explicit).toBeDefined();expect(Number(explicit![1])).toBeGreaterThanOrEqual(164);
+  const xfs=/<cellXfs[^>]*>([\s\S]*?)<\/cellXfs>/.exec(styles)![1].match(/<xf\b[^>]*(?:\/>|>[\s\S]*?<\/xf>)/g)!;
+  const style=(cell:string)=>{const entry=new RegExp('<c\\b[^>]*r="'+cell+'"[^>]*>').exec(xml)![0];return xfs[Number(/\bs="(\d+)"/.exec(entry)![1])];};
+  for(const key of ['current.joinDate','current.probationEndDate','effectiveDate']){const cell=address(key);expect(sheet[cell].z).toBe('dd-mmm-yyyy');expect(style(cell)).toContain('numFmtId="'+explicit![1]+'"');expect(style(cell)).toContain('applyNumberFormat="1"');expect(style(cell)).toContain('locked="'+(key==='effectiveDate'?'0':'1')+'"');}
+  expect(sheet[address('current.joinDate')].t).toBe('n');expect(sheet[address('current.joinDate')].v).toBe((Date.parse('2026-01-06T00:00:00Z')-Date.UTC(1899,11,30))/86400000);expect(sheet[address('effectiveDate')].v).toBe('');
+  expect(sheet[address('effectiveDate',204)].z).toBe('dd-mmm-yyyy');expect(style(address('employeeCode'))).toContain('numFmtId="49"');expect(style(address('employeeName'))).toContain('numFmtId="49"');expect(style(address('current.basicSalary'))).toContain('numFmtId="2"');expect(sheet[address('current.basicSalary')].v).toBe('0');
+ });
  it('leaves green salary and difference blank without a baseline while preserving a recorded zero baseline',async()=>{
   for(const [code,behaviour,formulaKey,inputKey]of [['increment','increment','calculated.basicSalary','incrementAmount'],['salaryAdjustment','salaryAdjustment','calculated.difference','basicSalary']]){
    const type={code,label:code,behaviour},columns=movementWorkbookLayout(type,resolve),cell=(key:string)=>XLSX.utils.encode_cell({r:5,c:columns.findIndex(c=>c.key===key)}),baseline=cell('current.basicSalary'),input=cell(inputKey);
