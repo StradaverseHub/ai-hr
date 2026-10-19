@@ -116,6 +116,6 @@ export async function readOwnProfileMovementComparison(ctx:SessionContext,p:{emp
  return (['before','after'] as const).flatMap(side=>{
   const snapshot=detail[side];if(!snapshot)return [];
   const comparison={companyName:snapshot.company,businessUnitName:snapshot.businessUnit,departmentName:snapshot.department,positionName:snapshot.position,gradeName:snapshot.grade,employmentType:snapshot.employmentType,...Object.fromEntries(detail.flatChanges.map(change=>[change.field,change[side]]))};
-  return [{key:`${p.movementId}:${side}`,tab:'Employment History',section:'Before Changes and After Changes',context:side,date:detail.row.effectiveDate,values:projectEssVisible(project('movementComparison',comparison),policy.visible)}];
+  return [{key:`${p.movementId}:${side}`,tab:'Employment History',section:'Before Changes and After Changes',context:side,...(essFactVisible(policy.visible,'movement','effectiveFrom')?{date:detail.row.effectiveDate}:{}),values:projectEssVisible(project('movementComparison',comparison),policy.visible)}];
  });
 }
