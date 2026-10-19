@@ -2,7 +2,7 @@
 
 import Link from './intent-link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useIsMonolith, useUiTheme } from './ui-theme-context';
 import { KingdeeMark } from './kingdee-mark';
@@ -66,6 +66,7 @@ import {
 // server-only code into the bundle. See that file's header.
 import '@/packs/register-all';
 import { modulePackById } from '@/packs/registry';
+import { NAVIGATION_MODULES, NAVIGATION_SECTIONS, placeNavigation, navigationPlacement, navigationRouteOwner, type NavigationWorkspace } from '@/lib/navigation-workspaces';
 
 // `labelKey` indexes the `nav` message namespace; labels are resolved at render via useTranslations.
 // `tour` (optional) marks the element as an onboarding-tour anchor (ADR-0018).
@@ -81,6 +82,7 @@ type ChildItem = Item & {
   ownedSubpaths?: string[];
 };
 type CollapsibleGroupItem = {
+  tour?: string;
   activeMatch?: 'children';
   defaultHref?: string;
   collapsible: true;
@@ -239,6 +241,12 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   // disk, so the three cannot part company silently.
   ['/admin/system-testing', 'system_testing'] as const,
   ['/system-testing', 'system_testing'] as const,
+  ['/me?tab=payroll', 'payroll'] as const,
+  ['/me/tax-relief', 'payroll'] as const,
+  ['/admin/claims/reimbursements', 'claims'] as const,
+  ['/admin/work-locations', 'attendance'] as const,
+  ['/performance/workspace?module=tm', 'performance'] as const,
+  ['/performance/workspace?module=idp', 'performance'] as const,
   // ADR-0082 — `assistant` is the SECOND hand-written entry and for the same reason as the first: it is
   // a catalog module with `packBacked: false`, so there is no pack descriptor to derive the href from.
   // Without this line the row would advertise a module the tenant has not bought. The per-user
@@ -584,7 +592,7 @@ export function Sidebar({
   // the `rail_collapsed` cookie is neither read differently nor written by Monolith.
   const monolith = useIsMonolith();
   const current = useUiTheme() === 'current';
-  const [workspaceKey, setWorkspaceKey] = useState<string | null>(null);
+  const [workspaceChoice, setWorkspaceChoice] = useState<NavigationWorkspace | null>(null);
   const collapsed = monolith ? false : collapsedPref;
   const locale = useLocale();
   // r398 — Monolith shows a module's children INLINE (no flyout panel). An explicit open/close per module
@@ -619,8 +627,9 @@ export function Sidebar({
   useEffect(() => {
     setOpenKey(null);
     setInlineOpen({});
-    setWorkspaceKey(null);
-  }, [pathname]);
+    setRailKids({});
+    setWorkspaceChoice(null);
+  }, [pathname, search]);
   /**
    * Is this row's owning module on the tenant's plan? (ADR-0077 slice 4.)
    *
@@ -636,8 +645,10 @@ export function Sidebar({
   // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating). Role gating and
   // module gating are ANDed: a row needs both the role AND the module to appear.
   const canSeeChild = (c: ChildItem) =>
-    moduleAllows(c.href) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c === MY_TEAM_ROW ? canAccessTeam : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove : true);
-  const groups = GROUPS
+    moduleAllows(c.href) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove : true);
+  // The former audience inventory still supplies its original visibility boundaries.
+  // Only authorized rows are handed to the workspace placement owner below.
+  const authorizedGroups = GROUPS
     // Group-level flags still supported (the Admin group uses adminOnly).
     .filter((g) => (g.adminOnly ? isAdmin || canConfigureIdentityEmail || onboardingAccess || onboardingMaster : g.managerUp ? isAdmin || canApprove : true))
     // 1b35f17b: filter per-row too, so a group (e.g. Manage) can mix all-employee rows
@@ -649,9 +660,68 @@ export function Sidebar({
     // Drop a group that has become empty for this viewer (no stray divider in the collapsed rail).
     .filter((g) => g.items.length > 0);
 
+  const authorizedRows = authorizedGroups.flatMap(group => group.items.flatMap(row =>
+    isCollapsible(row) ? row.children.filter(canSeeChild) : [row],
+  )).filter(row => row.href !== '/mobile-preview' || isAdmin)
+    .map(row=>row.href==='/performance/workspace'?{...row,navigationHref:'/performance/workspace?module=pm'}:row);
+  const additionalRows: ChildItem[] = [
+    {href:'/me?tab=payroll',labelKey:'myPayslips',icon:Wallet,ownedSubpaths:['/me/payslip']},
+    {href:'/me/tax-relief',labelKey:'taxRelief',icon:Receipt},
+    {href:'/admin/claims/reimbursements',labelKey:'reimbursementsDue',icon:Receipt,adminOnly:true},
+    {href:'/admin/work-locations',labelKey:'workLocations',icon:Building2,adminOnly:true},
+    {href:'/reports',labelKey:'reports',icon:FileBarChart,adminOnly:true,exactHref:true},
+    {href:'/performance/workspace?module=tm',labelKey:'talent',icon:Users,managerUp:true},
+    {href:'/performance/workspace?module=idp',labelKey:'development',icon:Target},
+  ];
+  const destinations = [...authorizedRows, ...additionalRows.filter(canSeeChild)];
+  const navigation = placeNavigation(destinations);
+  const availableWorkspaces = (['ops','strata'] as const).filter(workspace =>
+    navigation.placed.some(row => row.placement.area === workspace),
+  );
+  const routeOwner = navigationRouteOwner(pathname, search, destinations);
+  const routeWorkspace = routeOwner?.placement.area;
+  const selectedWorkspace = workspaceChoice && availableWorkspaces.includes(workspaceChoice) ? workspaceChoice
+    : routeWorkspace === 'ops' || routeWorkspace === 'strata' ? routeWorkspace : availableWorkspaces[0];
+  const moduleRows: Row[] = NAVIGATION_MODULES.filter(module => module.workspace === selectedWorkspace).flatMap<Row>(module => {
+    const children = NAVIGATION_SECTIONS.flatMap(section => navigation.placed.filter(row =>
+      'module' in row.placement && row.placement.module === module.id && row.placement.section === section,
+    ).map(row => row.destination));
+    if (!children.length) return [];
+    if (children.length === 1) return [{...children[0],labelKey:module.labelKey}];
+    return [{collapsible:true,activeMatch:'children',labelKey:module.labelKey,icon:children[0].icon,
+      children,tour:children.some(child=>child.tour==='nav-admin')?'nav-admin':undefined} satisfies CollapsibleGroupItem];
+  });
+  const sharedRows = navigation.placed.filter(row=>row.placement.area==='shared').map(row=>row.destination);
+  const inboxRows = sharedRows.filter(row=>['/tasks','/approvals','/system-testing'].includes(row.href));
+  const sharedItems: Row[] = sharedRows.filter(row=>!inboxRows.includes(row));
+  if (inboxRows.length) sharedItems.splice(Math.min(2,sharedItems.length),0,{
+    collapsible:true,activeMatch:'children',labelKey:'inbox',icon:ListChecks,children:inboxRows,
+    tour:inboxRows.some(row=>row.tour==='nav-approvals')?'nav-approvals':undefined,
+  });
+  const systemRows = navigation.placed.filter(row=>row.placement.area==='system').map(row=>row.destination);
+  const groups: Group[] = [
+    {items:[...sharedItems,...navigation.unplaced]},
+    {labelKey:selectedWorkspace==='strata'?'workspaceStrata':'workspaceOps',items:moduleRows},
+    ...(systemRows.length ? [{items:[{collapsible:true,activeMatch:'children',labelKey:'systemConfiguration',icon:Settings2,children:systemRows} satisfies CollapsibleGroupItem]}] : []),
+  ];
+  const isWorkspaceKey = (key?:string) => key==='workspaceOps'||key==='workspaceStrata';
+  const workspaceSwitch = () => availableWorkspaces.length > 1 ? <div role="group" aria-label={t('workspaceSwitch')}
+    className={cn('flex gap-1 rounded-lg border border-border p-1',collapsed&&'flex-col')}>
+    {availableWorkspaces.map(workspace=><button key={workspace} type="button" aria-pressed={selectedWorkspace===workspace}
+      onClick={()=>{setWorkspaceChoice(workspace);setOpenKey(null);setInlineOpen({});}}
+      className={cn('min-h-11 flex-1 rounded-md font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring',collapsed?'px-1 text-xs':'px-2 text-sm',selectedWorkspace===workspace?'bg-accent text-accent-foreground':'text-muted-foreground hover:bg-accent/60')}>
+      {t(workspace==='ops'?'workspaceOps':'workspaceStrata')}
+    </button>)}
+  </div> : null;
+  const sectionLabel = (href:string) => {
+    const placement=navigationPlacement(href);
+    return placement && 'section' in placement ? `section${placement.section==='hr'?'HR':placement.section==='config'?'Configuration':placement.section==='mine'?'Mine':'Team'}` : undefined;
+  };
+
   const childCaption=(child:{href:string;labelKey:string})=>{
     const count=child.href==='/lifecycle/onboarding'?onboardingJoinerCount:child.href==='/lifecycle/onboarding/checklists'?onboardingChecklistCount:undefined;
-    return <>{t(child.labelKey)}{count!==undefined&&<span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground">{count}</span>}</>;
+    const pending=child.href==='/tasks'?taskCount:child.href==='/approvals'?approvalCount:0;
+    return <>{t(child.labelKey)}{count!==undefined&&<span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground">{count}</span>}{pending>0&&<ApprovalCountBadge count={pending} collapsed={false}/>}</>;
   };
   const isActive = (href: string) => isHrefActive(pathname, search, href);
   // 388e53c2 — flat rows go through isNavRowActive so a row can opt out of prefix matching or claim
@@ -659,11 +729,9 @@ export function Sidebar({
   // and isParentActive are deliberately untouched, because changing them would move Payroll and
   // Attendance highlighting that nobody asked about.
   const isRowActive = (r: { href: string; exactHref?: boolean; ownedSubpaths?: string[] }) => {
-    // Explicit onboarding destinations own their pages; the legacy hub must not select Home too.
-    const lifecycleDestination = ['/lifecycle', '/admin/lifecycle'].includes(r.href) && groups.some(g => g.items.some(item =>
-      (isCollapsible(item) ? item.children.filter(canSeeChild) : [item]).some(child =>
-        child.href.startsWith(r.href + '/') && isNavRowActive(pathname, search, child))));
-    return !lifecycleDestination && isNavRowActive(pathname, search, r);
+    // One owner across shared rows and modules, including query-based and non-descendant routes.
+    if(routeOwner)return r.href===routeOwner.destination.href;
+    return isNavRowActive(pathname,search,r);
   };
   // 10b59703 — the paths a fly-out child answers for: its own href plus any `ownedSubpaths` the pack
   // declared (packs/registry.ts NavChildDescriptor). Fed to isParentActive so the parent node lights
@@ -694,7 +762,7 @@ export function Sidebar({
     });
   }, [pathname, search, activeSectionKey]);
   const sectionOpen = (key?: string) =>
-    key == null || (openSections[key] ?? key === activeSectionKey);
+    key == null || isWorkspaceKey(key) || (openSections[key] ?? key === activeSectionKey);
   const toggleSection = (key: string) => setOpenSections((prev) => ({
     ...prev, [key]: !(prev[key] ?? key === activeSectionKey),
   }));
@@ -755,7 +823,7 @@ export function Sidebar({
       </span>
     );
     return (
-      <div key={item.labelKey} data-rail-module={item.labelKey}>
+      <div key={item.labelKey} data-rail-module={item.labelKey} data-tour={item.tour}>
         {item.defaultHref ? (
           <div className={cn(railRow, 'pr-0', (active || expanded) && 'text-ink', active && 'border-ink')}>
             <Link href={item.defaultHref} className="min-w-0 flex-1 text-inherit no-underline">
@@ -786,18 +854,22 @@ export function Sidebar({
         )}
         {expanded && (
           <nav id={kidsId} aria-label={label} className="mt-0.5 mb-1.5 ml-2.5 flex flex-col border-l border-hairline">
-            {children.map((child) => {
+            {children.map((child,index) => {
               const current = child.href === currentHref;
+              const heading=sectionLabel(child.href);
               return (
+                <Fragment key={child.href}>
+                {heading&&heading!==sectionLabel(children[index-1]?.href??'')&&<p className="mb-0 mt-2 px-3 text-xs text-muted-foreground">{t(heading)}</p>}
                 <Link
                   key={child.href}
-                  href={child.href}
-                  data-tour={child.tour}
+                  href={child.navigationHref??child.href}
+                  data-tour={child.tour==='nav-admin'||child.tour==='nav-approvals'?undefined:child.tour}
                   aria-current={current ? 'page' : undefined}
                   className={cn(railKid, current && 'text-signal-text hover:text-signal-text')}
                 >
                   {childCaption(child)}
                 </Link>
+                </Fragment>
               );
             })}
           </nav>
@@ -818,8 +890,8 @@ export function Sidebar({
       </Link>
       <nav data-tour="nav" className="relative -mr-2 flex w-full flex-1 flex-col gap-[22px] overflow-y-auto overflow-x-hidden pr-2">
         {groups.map((group, gi) => (
-          <div key={gi} className="flex w-full flex-col gap-0.5">
-            {group.labelKey && (
+          <div key={gi} className={cn('flex w-full flex-col gap-0.5',gi===2&&'mt-auto')}>
+            {group.labelKey && !isWorkspaceKey(group.labelKey) && (
               <button
                 type="button"
                 onClick={() => toggleSection(group.labelKey!)}
@@ -860,6 +932,7 @@ export function Sidebar({
                   );
                 })}
             </div>
+            {gi===0&&workspaceSwitch()}
           </div>
         ))}
       </nav>
@@ -879,51 +952,46 @@ export function Sidebar({
   // Current uses the same authorized navigation graph, arranged as workspace tabs.
   // Browsing another workspace never changes scope or grants access to a destination.
   if (current) {
-    const workspace = groups.find((g) => g.labelKey === workspaceKey)
-      ?? groups.find((g) => g.labelKey === activeSectionKey) ?? groups[0];
+    const currentRow = (item: Row) => {
+      if (!isCollapsible(item)) return <Link key={item.href} href={item.navigationHref ?? item.href}
+        data-tour={item.tour} aria-current={isRowActive(item) ? 'page' : undefined}>{t(item.labelKey)}</Link>;
+      const children=item.children.filter(canSeeChild);
+      return <div className="current-module" key={item.labelKey}>
+        <button type="button" data-tour={item.tour} aria-expanded={openKey===item.labelKey}
+          aria-controls={`current-module-${item.labelKey}`} data-active={children.some(isRowActive)||undefined}
+          onClick={()=>setOpenKey(openKey===item.labelKey?null:item.labelKey)}>
+          {t(item.labelKey)}<ChevronDown className="size-3.5" aria-hidden/>
+        </button>
+      </div>;
+    };
+    const currentNodes=groups.flatMap(group=>group.items).filter(isCollapsible).filter(item=>item.labelKey===openKey);
     return <div data-current-navigation data-tour="nav" className="current-navigation">
       <div className="current-workspaces">
         <Link href="/" className="current-brand" aria-label={t('home')}>
-          <span data-brand-ground><KingdeeMark className="size-7" /></span>
-          <span>{tCommon('appName')}</span>
+          <span data-brand-ground><KingdeeMark className="size-7"/></span><span>{tCommon('appName')}</span>
         </Link>
-        <nav aria-label={tCommon('appName')} className="current-workspace-tabs">
-          {groups.map((g) => <button type="button" key={g.labelKey}
-            aria-expanded={workspace === g} aria-controls="current-workspace-links"
-            onClick={() => { setWorkspaceKey(g.labelKey ?? null); setOpenKey(null); }}>
-            {t(g.labelKey!)}
-            {g.labelKey === activeSectionKey && <span className="current-location-dot" aria-hidden />}
-          </button>)}
-        </nav>
+        <nav aria-label={t('sharedNavigation')} className="current-workspace-links">{groups[0].items.map(currentRow)}</nav>
+        {workspaceSwitch()}
       </div>
-      <nav id="current-workspace-links" aria-label={t(workspace.labelKey!)} className="current-workspace-links">
-        {workspace.items.map((item) => {
-          if (!isCollapsible(item)) return <Link key={item.href} href={item.navigationHref ?? item.href}
-            data-tour={item.tour} aria-current={isRowActive(item) ? 'page' : undefined}
-            >
-            {t(item.labelKey)}{(item.href === '/approvals' && approvalCount > 0 || item.href === '/tasks' && taskCount > 0) && <ApprovalCountBadge count={item.href === '/tasks' ? taskCount : approvalCount} collapsed={false} />}
-          </Link>;
-          const children = item.children.filter(canSeeChild);
-          const active = item.defaultHref || item.activeMatch === 'children'
-            ? children.some(isRowActive) : isParentActive(pathname, children.flatMap(childPaths));
-          return <div className="current-module" key={item.labelKey}>
-            <button type="button" aria-expanded={openKey === item.labelKey}
-              aria-controls={`current-module-${item.labelKey}`} data-active={active || undefined}
-              onClick={() => setOpenKey(openKey === item.labelKey ? null : item.labelKey)}>
-              {t(item.labelKey)}<ChevronDown className="size-3.5" aria-hidden />
-            </button>
-          </div>;
-        })}
-      </nav>
-      {workspace.items.filter(isCollapsible).filter((item) => item.labelKey === openKey).map((item) => {
-        const children = item.children.filter(canSeeChild);
-        const currentHref = children.filter(isRowActive).sort((a,b) => b.href.split('?')[0].length - a.href.split('?')[0].length)[0]?.href;
+      {moduleRows.length>0&&<nav aria-label={t(selectedWorkspace==='strata'?'workspaceStrata':'workspaceOps')} className="current-workspace-links">
+        {moduleRows.map(currentRow)}
+      </nav>}
+      {groups[2]&&<nav aria-label={t('systemConfiguration')} className="current-workspace-links">{groups[2].items.map(currentRow)}</nav>}
+      {currentNodes.map(item=>{
+        const children=item.children.filter(canSeeChild);
+        const currentHref=children.filter(isRowActive).sort((a,b)=>b.href.length-a.href.length)[0]?.href;
         return <nav key={item.labelKey} id={`current-module-${item.labelKey}`} aria-label={t(item.labelKey)}
-          className="current-module-links" onKeyDown={(e) => {
-            if (e.key === 'Escape') { setOpenKey(null); document.querySelector<HTMLButtonElement>(`[aria-controls="current-module-${item.labelKey}"]`)?.focus(); }
+          className="current-module-links" onKeyDown={event=>{
+            if(event.key==='Escape'){setOpenKey(null);document.querySelector<HTMLButtonElement>(`[aria-controls="current-module-${item.labelKey}"]`)?.focus();}
           }}>
-          {children.map((child) => <Link key={child.href} href={child.href} aria-current={child.href === currentHref ? 'page' : undefined}
-            onClick={() => setOpenKey(null)}>{childCaption(child)}</Link>)}
+          {children.map((child,index)=>{
+            const heading=sectionLabel(child.href);
+            return <Fragment key={child.href}>
+              {heading&&heading!==sectionLabel(children[index-1]?.href??'')&&<p className="mb-0 mt-3 text-xs font-medium text-muted-foreground">{t(heading)}</p>}
+              <Link href={child.navigationHref??child.href} aria-current={child.href===currentHref?'page':undefined}
+                onClick={()=>setOpenKey(null)}>{childCaption(child)}</Link>
+            </Fragment>;
+          })}
         </nav>;
       })}
     </div>;
@@ -981,7 +1049,7 @@ export function Sidebar({
           className="relative flex w-full flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden py-3"
         >
           {groups.map((group, gi) => (
-            <div key={gi} className={cn('flex w-full flex-col gap-1', collapsed && 'items-center')}>
+            <div key={gi} className={cn('flex w-full flex-col gap-1', collapsed && 'items-center',gi===2&&'mt-auto')}>
               {gi > 0 && collapsed && (
                 <span className="my-1.5 h-px w-7 rounded-full bg-border" aria-hidden />
               )}
@@ -989,7 +1057,7 @@ export function Sidebar({
                   heading to click (labels are hidden), so sections stay open there and the divider above
                   is unchanged — collapsing a nameless strip of icons would hide destinations behind a
                   chevron with nothing to say what is inside. */}
-              {!collapsed && group.labelKey && (
+              {!collapsed && group.labelKey && !isWorkspaceKey(group.labelKey) && (
                 <button
                   type="button"
                   onClick={() => toggleSection(group.labelKey!)}
@@ -1054,6 +1122,7 @@ export function Sidebar({
                       triggerRef={(el) => {
                         triggerRefs.current[item.labelKey] = el;
                       }}
+                      tour={item.tour}
                     />
                   );
                 }
@@ -1097,6 +1166,7 @@ export function Sidebar({
                 );
               })}
               </div>
+              {gi===0&&workspaceSwitch()}
             </div>
           ))}
         </nav>
@@ -1127,7 +1197,7 @@ export function Sidebar({
       {openNode && (
         <NavFlyoutPanel
           labelKey={openNode.labelKey}
-          items={openChildren as FlyoutChild[]}
+          items={openChildren.map(child=>({...child,sectionKey:sectionLabel(child.href),tour:child.tour==='nav-admin'||child.tour==='nav-approvals'?undefined:child.tour,navigationHref:child.navigationHref})) as FlyoutChild[]}
           isActive={(href) => href === activeChildHref}
           rowBase={rowBase}
           panelId={`nav-flyout-${openNode.labelKey}`}
