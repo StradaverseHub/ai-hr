@@ -2,7 +2,7 @@ import {beforeEach,afterEach,describe,it,expect,vi} from 'vitest';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import {buildMovementWorkbook,readMovementWorkbook} from '../lib/movement-workbook.server';
-import {movementWorkbookLayout} from '../lib/movement-workbook-layout';
+import {movementWorkbookLayout,movementWorkbookRequirements} from '../lib/movement-workbook-layout';
 import {parseMovementTypeCsv,movementTypeCsvTemplate,movementInputRecord} from '../lib/movement-type-csv';
 import type {MovementImportCatalog} from '../core/movement-import';
 const a='11111111-1111-4111-8111-111111111111',b='22222222-2222-4222-8222-222222222222',department='33333333-3333-4333-8333-333333333333';
@@ -52,6 +52,41 @@ describe('authenticated per-type Movement workbook',()=>{
   const bytes=await make(),columns=movementWorkbookLayout(catalog.types[0],resolve),amount=columns.findIndex(c=>c.key==='incrementAmount'),date=columns.findIndex(c=>c.key==='effectiveDate'),grey=columns.findIndex(c=>c.key==='current.basicSalary');
   const changed=await edit(bytes,wb=>{const s=wb.Sheets.Increment;s[XLSX.utils.encode_cell({r:5,c:grey})]={t:'n',v:9999999};s[XLSX.utils.encode_cell({r:5,c:amount})]={t:'s',v:'10.13'};s[XLSX.utils.encode_cell({r:5,c:date})]={t:'s',v:'2026-11-01'};});
   const row=(await parse(changed)).records[0];expect(row.incrementAmount).toBe('10.13');expect(row.cells.basicSalary).toBeUndefined();
+ });
+ it('leaves green salary and difference blank without a baseline while preserving a recorded zero baseline',async()=>{
+  for(const [code,behaviour,formulaKey,inputKey]of [['increment','increment','calculated.basicSalary','incrementAmount'],['salaryAdjustment','salaryAdjustment','calculated.difference','basicSalary']]){
+   const type={code,label:code,behaviour},columns=movementWorkbookLayout(type,resolve),cell=(key:string)=>XLSX.utils.encode_cell({r:5,c:columns.findIndex(c=>c.key===key)}),baseline=cell('current.basicSalary'),input=cell(inputKey);
+   const expected=`IF(OR(${input}="",${baseline}=""),"",${formulaKey==='calculated.basicSalary'?baseline+'+'+input:input+'-'+baseline})`;
+   for(const salary of [null,'0']){
+    const bytes=await buildMovementWorkbook({tenantId:a,companyId:a,companyName:'Fictional A',catalog:{...catalog,types:[type]},subjects:[{...subjects[0],current:{...subjects[0].current,basicSalary:salary}}],typeCode:code,resolve});
+    const wb=XLSX.read(bytes,{type:'buffer',cellFormula:true}),sheet=wb.Sheets[code];expect(sheet[cell(formulaKey)].f).toBe(expected);expect(sheet[baseline]?.v??'').toBe(salary??'');
+    expect(sheet[cell(formulaKey)].c?.[0].t).toContain('Check and preview supplies the authoritative salary baseline');
+    expect(XLSX.utils.sheet_to_json<string[]>(wb.Sheets.Instructions,{header:1}).flat().join(' ')).toContain('A recorded zero remains a salary baseline.');
+   }
+  }
+ });
+ it('provides protected but usable rows6–205, locking only bound identities and skipping untouched scaffolding',async()=>{
+  const bytes=await buildMovementWorkbook({tenantId:a,companyId:a,companyName:'Fictional A',catalog,subjects:subjects.slice(0,1),typeCode:'increment',resolve}),zip=await JSZip.loadAsync(bytes);
+  const xml=await zip.file('xl/worksheets/sheet2.xml')!.async('string'),styles=await zip.file('xl/styles.xml')!.async('string'),xfs=/<cellXfs[^>]*>([\s\S]*?)<\/cellXfs>/.exec(styles)![1].match(/<xf\b[^>]*(?:\/>|>[\s\S]*?<\/xf>)/g)!;
+  const locked=(address:string)=>{const cell=new RegExp('<c\\b[^>]*r="'+address+'"[^>]*>').exec(xml)?.[0],style=/\bs="(\d+)"/.exec(cell??'');expect(style).not.toBeNull();return /<protection[^>]*locked="1"/.test(xfs[Number(style![1])]);};
+  const columns=movementWorkbookLayout(catalog.types[0],resolve),amount=columns.findIndex(c=>c.key==='incrementAmount');
+  expect(locked('A6')).toBe(true);expect(locked('A7')).toBe(false);expect(locked('A205')).toBe(false);expect(locked(XLSX.utils.encode_col(amount)+'205')).toBe(false);expect(locked('B205')).toBe(true);
+  expect((await parse(bytes)).records).toEqual([]);
+  const entered=await edit(bytes,wb=>{for(const [key,value]of [['employeeCode',subjects[0].employeeCode],['incrementAmount','100'],['effectiveDate','2026-11-01']])wb.Sheets.Increment[XLSX.utils.encode_cell({r:204,c:columns.findIndex(c=>c.key===key)})]={t:'s',v:value};});
+  expect((await parse(entered)).records).toMatchObject([{employeeCode:subjects[0].employeeCode,errors:[],source:{sheet:'Increment',row:205}}]);
+ });
+ it('explains the Blacklisted-or-Remarks requirement in actual localized workbook Instructions',async()=>{
+  const type={code:'blacklist',label:'Blacklist',behaviour:'blacklist'},local=(_key:string,fallback:string)=>_key==='people.import.movement.issues.blacklist_input_required'?'Localized: choose status OR enter remarks':fallback;
+  const guide=movementWorkbookRequirements(type,movementWorkbookLayout(type,local));expect(guide.required).toEqual(['Employee ID']);expect(guide.requiredEither).toHaveLength(2);
+  const bytes=await buildMovementWorkbook({tenantId:a,companyId:a,companyName:'Fictional A',catalog:{...catalog,types:[type]},subjects:[],resolve:local});
+  const wb=XLSX.read(bytes,{type:'buffer'}),rows=XLSX.utils.sheet_to_json<string[]>(wb.Sheets.Instructions,{header:1}),row=rows.find(row=>row[0]==='Blacklist');
+  expect(row?.[1]).toBe('Employee ID · Localized: choose status OR enter remarks');expect(row?.[2].split(' · ')).toEqual(guide.requiredEither);
+ });
+ it('keeps native dropdowns as suggestions while accepting a supported hand-entered code for server preview',async()=>{
+  const typedCatalog={...catalog,fields:{...catalog.fields,gradeId:[{value:b,label:'G2 · Grade Two',aliases:['G2','Grade Two']}]}},bytes=await buildMovementWorkbook({tenantId:a,companyId:a,companyName:'Fictional A',catalog:typedCatalog,subjects,typeCode:'increment',resolve}),zip=await JSZip.loadAsync(bytes),xml=await zip.file('xl/worksheets/sheet2.xml')!.async('string');
+  const validations=xml.match(/<dataValidation\b[^>]*>/g)??[];expect(validations.length).toBeGreaterThan(0);expect(validations.every(tag=>tag.includes('showErrorMessage="0"'))).toBe(true);
+  const columns=movementWorkbookLayout(catalog.types[0],resolve),changed=await edit(bytes,wb=>{for(const [key,value]of [['incrementAmount','100'],['effectiveDate','2026-11-01'],['gradeId','G2']])wb.Sheets.Increment[XLSX.utils.encode_cell({r:5,c:columns.findIndex(c=>c.key===key)})]={t:'s',v:value};});
+  expect((await readMovementWorkbook(changed,{tenantId:a,companyId:a,catalog:typedCatalog,resolve})).records[0]).toMatchObject({errors:[],cells:{gradeId:'G2'}});
  });
  it('retains ID-only blank Blacklist rows as incomplete, while explicit status or remarks preserve canonical intent',async()=>{
   const type={code:'blacklist',label:'Blacklist',behaviour:'blacklist'},blacklistCatalog={...catalog,types:[...catalog.types,type]},columns=movementWorkbookLayout(type,resolve);
