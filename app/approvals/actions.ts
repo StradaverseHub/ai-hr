@@ -55,17 +55,24 @@ function revalidateShell(): void {
 }
 /** After the last request-bound task, keep feedback on an allowed neutral destination. */
 async function attendanceDecisionReturnUrl(s: Awaited<ReturnType<typeof getSession>>, nav: Nav, feedback: { toast?: string; error?: string }): Promise<string> {
+  const neutralDestination = () => {
+    const query = new URLSearchParams();
+    if (feedback.toast) query.set('toast', feedback.toast);
+    if (feedback.error) query.set('error', feedback.error);
+    return `/?${query.toString()}`;
+  };
   if (!isAdmin(s) && !(s.roles ?? []).includes('manager')) {
-    const hasNextAssignment = isModuleEnabledOrFalse(s, 'attendance') && await hasPendingAttendanceParticipantAssignment(s);
-    if (!hasNextAssignment) {
-      const { scopeIds } = await scopedSession();
-      const rewards = isModuleEnabledOrFalse(s, 'rewards') ? await pendingRewardReviews(s, scopeIds) : [];
-      if (!rewards.length) {
-        const query = new URLSearchParams();
-        if (feedback.toast) query.set('toast', feedback.toast);
-        if (feedback.error) query.set('error', feedback.error);
-        return `/?${query.toString()}`;
+    try {
+      const hasNextAssignment = isModuleEnabledOrFalse(s, 'attendance') && await hasPendingAttendanceParticipantAssignment(s);
+      if (!hasNextAssignment) {
+        const { scopeIds } = await scopedSession();
+        const rewards = isModuleEnabledOrFalse(s, 'rewards') ? await pendingRewardReviews(s, scopeIds) : [];
+        if (!rewards.length) return neutralDestination();
       }
+    } catch {
+      // Navigation reads cannot turn an already-committed decision into a failed action.
+      // Home retains the original outcome without assuming any remaining inbox authority.
+      return neutralDestination();
     }
   }
   return approvalsReturnUrl({ ...nav, ...feedback });
