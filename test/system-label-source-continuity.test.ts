@@ -12,7 +12,9 @@ const root=fileURLToPath(new URL('..',import.meta.url));
 const hash=(bytes:string|Buffer)=>createHash('sha256').update(bytes).digest('hex');
 const git=(args:string[])=>execFileSync('git',['-C',root,...args],{maxBuffer:16000000});
 const old=LABELS_REVIEWED_PREPARATION.candidate;
-const corrected='4ab1f0c1175992a0c4725cd1165f774dc7938238';
+// The first commit on main whose fingerprinted files are byte-identical to 4ab1f0c11, which exists only
+// on the unmerged codex/board18-approval-history branch. A pin must be reachable from main, or a fresh clone cannot run it.
+const corrected='c71f57f4d808dfd4282e95b366f6b67e94a331c8';
 const proof=(paths:{path:string;sha256:string}[])=>({format:1,paths,sha256:hash(JSON.stringify(paths))});
 const gitProof=(candidate:string)=>proof(SYSTEM_LABEL_FIXTURE_SOURCE_PATHS.map(relative=>({path:relative,sha256:hash(git(['show',candidate+':'+relative]))})));
 const artifacts=[

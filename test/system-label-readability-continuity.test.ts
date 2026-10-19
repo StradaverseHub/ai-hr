@@ -13,7 +13,9 @@ import {LABELS_V1_RECEIPT,LABELS_READABILITY_PATCH,validateLabelsReadabilityEvid
 const root=fileURLToPath(new URL('..',import.meta.url));
 const hash=(bytes:Buffer|string)=>createHash('sha256').update(bytes).digest('hex');
 const git=(args:string[])=>execFileSync('git',['-C',root,...args],{maxBuffer:16000000});
-const corrected='3419fa0b2e4740719a6dc8d75049fc351a201746';
+// The first commit on main whose fingerprinted files are byte-identical to 3419fa0b2, which exists only
+// on the unmerged codex/board18-label-readability branch. A pin must be reachable from main, or a fresh clone cannot run it.
+const corrected='b2b482edfd1a5e8a22eace1132de35581602690a';
 // Exact reviewed metadata-only v1 receipt: source/manifest/artifact hashes, no credentials or business rows.
 const v1Bytes=readFileSync(new URL('./fixtures/system-label-continuity-v1.json',import.meta.url));
 const v1=JSON.parse(v1Bytes.toString());
