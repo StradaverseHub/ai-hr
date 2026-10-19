@@ -17,6 +17,8 @@ import {
   pagerStepMutedCls,
 } from './ui';
 import { PageSizeSelect } from './page-size-select';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { currentUiTheme } from '@/lib/ui-theme-server';
 
 /**
  * What a pager link targets. `page` is ALWAYS explicit (0 = the first page) and `size` is present only on
@@ -87,6 +89,37 @@ export async function Pager({
   // The numbered strip (9da61c86). A window rather than the whole run — see pageNumbers.
   const numbers = pageNumbers(state);
   const last = lastPage(state);
+
+  // Atelier — the compact control-panel pager: rows-per-page, "1–25 / 248", and one ‹ › pair. The same hrefs,
+  // the same truncation notice; First/Last and the numbered strip are not offered (owner request 2026-10-20).
+  if ((await currentUiTheme()) === 'atelier') {
+    return (
+      <div data-ui-pager data-ui-pager-compact className="atelier-pager">
+        {state.truncated && (
+          <p className="atelier-pager-note">
+            {t('truncated', { shown: ALL_ROW_CEILING, total: state.total })}{' '}
+            {exportHref ? <Link href={exportHref}>{t('truncatedExport')}</Link> : (truncatedHint ?? t('truncatedHint'))}
+          </p>
+        )}
+        <PageSizeSelect label={t('rowsPerPage')} value={String(state.size)} options={sizeOptions} />
+        <span className="atelier-pager-range">
+          {state.from > 0 ? `${state.from}–${state.to} / ${state.total}` : t('rangeEmpty', { total: state.total })}
+        </span>
+        <span className="atelier-pager-steps">
+          {state.hasPrev ? (
+            <Link href={href({ page: state.page - 1 })} aria-label={t('previous')} title={t('previous')}><ChevronLeft aria-hidden /></Link>
+          ) : (
+            <button type="button" disabled aria-label={t('previous')}><ChevronLeft aria-hidden /></button>
+          )}
+          {state.hasNext ? (
+            <Link href={href({ page: state.page + 1 })} aria-label={t('next')} title={t('next')}><ChevronRight aria-hidden /></Link>
+          ) : (
+            <button type="button" disabled aria-label={t('next')}><ChevronRight aria-hidden /></button>
+          )}
+        </span>
+      </div>
+    );
+  }
 
   return (
     // `data-ui-pager` lets a theme place the pager (app/atelier.css puts it above the table); markup only.

@@ -16,6 +16,8 @@ import {
   type PageState,
 } from '@/lib/pagination';
 import { pagerPageNumCls, pagerPageNumCurrentCls, pagerStepButtonCls } from './ui';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useUiTheme } from './ui-theme-context';
 
 /**
  * The pager for grids that live in the BROWSER (feedback fc776376).
@@ -189,6 +191,8 @@ export function ClientPager({
   const router = useRouter();
   const sp = useSearchParams();
   const names = paramNames ?? { page: 'page', size: 'size' };
+  // Atelier's compact pager (components/pager.tsx has the same branch). A hook, so it runs before any return.
+  const compact = useUiTheme() === 'atelier';
 
   /** Same rule as pageHref: build on top of the params already in the address, drop the empty ones. */
   const href = (over: { page: number; size?: PageSize }) => {
@@ -224,6 +228,55 @@ export function ClientPager({
   }, [rememberAs, hasPageParam, hasSizeParam]);
 
   if (!showPager(state)) return null;
+
+  const sizeSelect = (
+    <div className="flex items-center gap-2">
+      <label htmlFor={`client-page-size-${names.page}`} className="text-xs text-muted-foreground">
+        {t('rowsPerPage')}
+      </label>
+      <select
+        id={`client-page-size-${names.page}`}
+        value={String(state.size)}
+        onChange={(e) => {
+          const raw = e.target.value;
+          const size = raw === 'all' ? 'all' : (Number(raw) as PageSize);
+          if (rememberAs) rememberSize(rememberAs, size);
+          go({ page: 0, size });
+        }}
+        className="h-7 rounded-md border border-border bg-card px-1.5 text-xs tabular-nums text-foreground outline-none transition-colors focus-visible:border-ring"
+      >
+        {PAGE_SIZE_OPTIONS.map((n) => (
+          <option key={n} value={String(n)}>
+            {n}
+          </option>
+        ))}
+        <option value="all">{t('all')}</option>
+      </select>
+    </div>
+  );
+
+  if (compact) {
+    return (
+      <div data-ui-pager data-ui-pager-compact className="atelier-pager">
+        {state.truncated && (
+          <p className="atelier-pager-note">{t('truncated', { shown: ALL_ROW_CEILING, total: state.total })} {t('truncatedHint')}</p>
+        )}
+        {sizeSelect}
+        <span className="atelier-pager-range">
+          {state.from > 0 ? `${state.from}–${state.to} / ${state.total}` : t('rangeEmpty', { total: state.total })}
+          {note && <span className="ms-2">{note}</span>}
+        </span>
+        <span className="atelier-pager-steps">
+          <button type="button" disabled={!state.hasPrev} onClick={() => go({ page: state.page - 1 })} aria-label={t('previous')} title={t('previous')}>
+            <ChevronLeft aria-hidden />
+          </button>
+          <button type="button" disabled={!state.hasNext} onClick={() => go({ page: state.page + 1 })} aria-label={t('next')} title={t('next')}>
+            <ChevronRight aria-hidden />
+          </button>
+        </span>
+      </div>
+    );
+  }
 
   // A window of numbered pages, empty on a one-page list — see pageNumbers for why a lone "1" is noise.
   const numbers = pageNumbers(state);

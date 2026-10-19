@@ -345,12 +345,37 @@
    count and the page controls are read before the rows, as in the shell mock. Only paint and order change;
    every link, form and control is the same element in the same place in the DOM. */
 @media screen {
-  :root[data-ui-theme='atelier'] main [data-ui-card]:has(> [data-ui-pager]) { display: flex; flex-direction: column; }
-  :root[data-ui-theme='atelier'] main [data-ui-card]:has(> [data-ui-pager]) > * { order: 1; }
+  /* The card becomes a wrapping row: title strip on its own line, then the filter row with the pager on its
+     right (the control-panel arrangement), then the table on its own line. */
+  :root[data-ui-theme='atelier'] main [data-ui-card]:has(> [data-ui-pager]) { display: flex; flex-flow: row wrap; }
+  :root[data-ui-theme='atelier'] main [data-ui-card]:has(> [data-ui-pager]) > * { order: 1; flex: 0 0 100%; min-width: 0; }
   :root[data-ui-theme='atelier'] main [data-ui-card]:has(> [data-ui-pager]) > :is([data-ui-card-header], [data-ui-section-header]) { order: -3; }
-  :root[data-ui-theme='atelier'] main [data-ui-card]:has(> [data-ui-pager]) > form { order: -2; }
-  :root[data-ui-theme='atelier'] main [data-ui-card] > [data-ui-pager] { order: -1; border-top: 0; border-bottom: 1px solid var(--border); background: var(--card); }
-  :root[data-ui-theme='atelier'] main [data-ui-pager] > div:last-child { padding-block: .5rem; }
+  :root[data-ui-theme='atelier'] main [data-ui-card]:has(> [data-ui-pager]) > form { order: -2; flex: 1 1 24rem; border-bottom: 1px solid var(--border); }
+  :root[data-ui-theme='atelier'] main [data-ui-card] > [data-ui-pager] { order: -1; flex: 1 0 auto; border-top: 0; border-bottom: 1px solid var(--border); }
+
+  /* The compact pager: rows-per-page, "1–25 / 248", and one ‹ › pair joined like a segmented control. */
+  :root[data-ui-theme='atelier'] .atelier-pager {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .75rem;
+    padding: .625rem 1rem; background: var(--card);
+  }
+  :root[data-ui-theme='atelier'] .atelier-pager label {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+  }
+  :root[data-ui-theme='atelier'] .atelier-pager select { height: 1.875rem; border-color: var(--atelier-line-strong); border-radius: .5rem; font-size: .8125rem; }
+  :root[data-ui-theme='atelier'] .atelier-pager-range { font-size: .875rem; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--foreground); white-space: nowrap; }
+  :root[data-ui-theme='atelier'] .atelier-pager-steps {
+    display: inline-flex; border: 1px solid var(--atelier-line-strong); border-radius: .5rem; overflow: hidden;
+    background: var(--card); box-shadow: var(--shadow-sm);
+  }
+  :root[data-ui-theme='atelier'] .atelier-pager-steps > :is(a, button) {
+    display: grid; place-items: center; width: 2rem; height: 1.875rem; color: var(--foreground); transition: background 150ms;
+  }
+  :root[data-ui-theme='atelier'] .atelier-pager-steps > :is(a, button) + :is(a, button) { border-left: 1px solid var(--atelier-line-strong); }
+  :root[data-ui-theme='atelier'] .atelier-pager-steps > :is(a, button):hover:not(:disabled) { background: var(--sidebar); }
+  :root[data-ui-theme='atelier'] .atelier-pager-steps > button:disabled { color: var(--atelier-line-strong); cursor: default; }
+  :root[data-ui-theme='atelier'] .atelier-pager-steps svg { width: 1rem; height: 1rem; }
+  :root[data-ui-theme='atelier'] .atelier-pager-note { flex: 0 0 100%; margin: 0; font-size: .75rem; color: var(--atelier-warn); text-align: right; }
+  :root[data-ui-theme='atelier'] .atelier-pager-note a { color: inherit; text-decoration: underline; }
 
   /* Row actions: small borderless buttons instead of underlined links; the accent appears on hover only. */
   :root[data-ui-theme='atelier'] main table td :is(a, button)[class~='underline'] {
