@@ -19285,7 +19285,13 @@
       "differentPeople": "所需审批须由不同员工、人员及登录账号完成，且不能是申请人本人。",
       "superiorUnavailable": "上级缺失、未启用、不明确或涉及汇报循环。请修正人事资料，或明确配置 HR 备选。",
       "correctLevel": "请修正此级，并重新预览分配。",
-      "groupHrRefused": "HR 备选不能代替必需的指定员工组完成审批。"
+      "groupHrRefused": "HR 备选不能代替必需的指定员工组完成审批。",
+      "configureNewRoute": "配置逐级审批",
+      "conversionHelp": "这将新建从一级开始的路线草稿。保存新版本前，已保存流程及已提交申请仍保留原路线。",
+      "pendingParticipant": "等待您的决定",
+      "reassignSlot": "要重新分配的待处理参与者",
+      "chooseSlot": "请选择待处理参与者…",
+      "calculationHandoff": "此最终审批需要具备相应范围计算权限的 HR。请 HR 对待处理参与者记录有理由的重新分配；此前审批会保留。"
     }
   },
   "attendanceHistory": {

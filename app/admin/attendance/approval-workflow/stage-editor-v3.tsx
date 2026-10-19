@@ -6,7 +6,7 @@ import { Button, inputCls } from '@/components/ui';
 import { attendanceLevelName } from '@/lib/attendance-workflow';
 import { ATTENDANCE_V3_LIMITS, type AttendanceV3Level, type AttendanceLevelProblem } from '@/lib/attendance-workflow-v3';
 
-/** Prepared editor only. The live form must not offer conversion until v3 SQL/effect integration lands. */
+/** V3 editor. Existing templates enter only through the explicit new-route conversion control. */
 export const emptyAttendanceV3Level = (index: number): AttendanceV3Level => ({ name: attendanceLevelName(index), mode: 'sequential', source: { kind: 'direct_manager', depth: 1 }, hrAlternative: false });
 export function AttendanceStageEditorV3({ id, stages, employees, onChange, problems = [] }: {
     id: string;

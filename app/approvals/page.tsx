@@ -1,6 +1,7 @@
 import {profileProposalReviewLines} from '@/lib/profile-proposal-display';
 import {LeaveCreditClaimReviewNotice} from '@/components/leave/leave-credit-claim-review';
 import {leaveCreditClaimReviewBlocks} from '@/lib/leave-credit-claim-review';
+import { hasPendingAttendanceParticipantAssignment } from '@/packs/attendance/service';
 import { pendingRewardReviews } from '@/packs/rewards/service';
 import { formatMinutesToHM } from '@/lib/overtime-duration';
 import Link from 'next/link';
@@ -107,6 +108,7 @@ function DecideButtons({
   nav,
   rejectReasonLabel,
   workflowStage,
+  workflowParticipant,
   remarksLabel,
 }: {
   action: (fd: FormData) => void | Promise<void>;
@@ -116,6 +118,7 @@ function DecideButtons({
   nav: NavParams;
   rejectReasonLabel?: string;
   workflowStage?: number;
+  workflowParticipant?: string | null;
   remarksLabel?: string;
 }) {
   if (disabled) {
@@ -126,6 +129,7 @@ function DecideButtons({
       <form action={action}>
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="workflowStage" value={workflowStage ?? ''} />
+        <input type="hidden" name="workflowParticipant" value={workflowParticipant ?? ''} />
         <input type="hidden" name="decision" value="approved" />
         <NavFields nav={nav} />
         {remarksLabel && <label className="block text-xs">{remarksLabel}<textarea name="remarks" maxLength={1000} className="block min-h-20 w-full rounded border border-border bg-background p-2" /></label>}
@@ -136,6 +140,7 @@ function DecideButtons({
       {rejectReasonLabel ? <details><summary className="cursor-pointer text-sm">{labels.reject}</summary>      <form action={action}>
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="workflowStage" value={workflowStage ?? ''} />
+        <input type="hidden" name="workflowParticipant" value={workflowParticipant ?? ''} />
         <input type="hidden" name="decision" value="rejected" />
         <NavFields nav={nav} />
         {rejectReasonLabel && <label className="block text-xs">{rejectReasonLabel}<textarea name="rejectReason" required maxLength={1000} className="block min-h-20 w-full rounded border border-border bg-background p-2" /></label>}
@@ -145,6 +150,7 @@ function DecideButtons({
       </form></details> :       <form action={action}>
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="workflowStage" value={workflowStage ?? ''} />
+        <input type="hidden" name="workflowParticipant" value={workflowParticipant ?? ''} />
         <input type="hidden" name="decision" value="rejected" />
         <NavFields nav={nav} />
         <Button type="submit" size="sm" variant="outline">
@@ -168,7 +174,8 @@ export default async function ApprovalsPage({
   const admin = isAdmin(s);
   const manager = (s.roles ?? []).includes('manager');
   const rewardReviews = isModuleEnabledOrFalse(s, 'rewards') ? await pendingRewardReviews(s, scopeIds) : [];
-  if (!admin && !manager && !rewardReviews.length) redirect('/');
+  const assignedAttendance = isModuleEnabledOrFalse(s, 'attendance') && await hasPendingAttendanceParticipantAssignment(s);
+  if (!admin && !manager && !rewardReviews.length && !assignedAttendance) redirect('/');
   /**
    * r261 (board item 9583deac, stage three) — WHO carries the profile-change queue is now the tenant's
    * own setting, and this is the ONE place the page asks.
@@ -280,6 +287,7 @@ export default async function ApprovalsPage({
         s,
         corrections
           .filter(isOvertimeCorrection)
+          .filter(c => c.workflow?.routingVersion !== 3 || admin || manager)
           .map((c) => ({ employmentId: c.employmentId, date: c.attendanceDate })),
       )
     : new Map<string, PlanOtDayType>();
@@ -432,7 +440,7 @@ export default async function ApprovalsPage({
           .map((c) => ({
             id: c.id,
             type: 'attendance' as const,
-            ...(c.workflow ? {expectedStageIndex:c.workflow.currentStage} : {}),
+            ...(c.workflow ? {expectedStageIndex:c.workflow.currentStage, ...(c.workflow.currentParticipantSlot ? { expectedParticipantSlot: c.workflow.currentParticipantSlot } : {})} : {}),
             category: (isOvertimeCorrection(c) ? 'overtime' : 'attendance') as BulkCategory,
           }))
       : []),
@@ -1068,11 +1076,12 @@ export default async function ApprovalsPage({
                   <td className="px-4 py-2.5">
                     <DecideButtons
                       workflowStage={c.workflow?.currentStage}
+                      workflowParticipant={c.workflow?.currentParticipantSlot}
                       action={approveCorrectionAction}
                       rejectReasonLabel={t('rejectReasonPlaceholder')}
                       id={c.id}
                       disabled={mine(c.personId) || c.canDecide === false}
-                      remarksLabel={c.workflow?.routingVersion === 2 ? tHistory('remarks') : undefined}
+                      remarksLabel={(c.workflow?.routingVersion === 2 || c.workflow?.routingVersion === 3) ? tHistory('remarks') : undefined}
                       labels={c.canDecide === false && !mine(c.personId) ? {...decideLabels, yourRequest: tHistory('pendingStage')} : decideLabels}
                       nav={nav}
                     />

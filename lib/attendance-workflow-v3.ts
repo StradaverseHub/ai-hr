@@ -1,12 +1,12 @@
 /**
- * Attendance v3 contract groundwork. Deliberately NOT accepted by the live v1/v2 owner yet.
+ * Attendance v3 contract. The v1/v2 validator and Leave vocabulary retain their legacy semantics.
  *
  * This leaf cannot authorize a request, write a decision, or grant an Attendance effect capability.
- * Its resolver port must be implemented by the root-authorized Personnel reader. Persistence, RLS,
- * live decision authority and ADR-0121 final-write proof must land together before enabling v3.
+ * The server owner resolves through the root-authorized Personnel identity reader. Persistence, RLS,
+ * live decision authority and ADR-0121 final-write proof are integrated in migration0570.
  * Leave's ApprovalLevel/alternates vocabulary is not reinterpreted here.
  */
-import { attendanceLevelName } from './attendance-workflow';
+import { attendanceLevelName, validateAttendanceWorkflow, type AttendanceWorkflowInput } from './attendance-workflow';
 
 export const ATTENDANCE_V3_LIMITS = { levels: 10, participantsPerLevel: 20, participantsPerWorkflow: 100, superiorDepth: 5 } as const;
 export const ATTENDANCE_LEVEL_MODES = ['sequential', 'any_one'] as const;
@@ -28,7 +28,7 @@ export const ATTENDANCE_LEVEL_PROBLEMS = [
     'duplicate_person', 'duplicate_login', 'missing_superior', 'ambiguous_superior', 'cycle',
     'inactive_superior', 'outside_company_scope', 'missing_or_ambiguous_login', 'missing_person',
     'employee_unavailable', 'self_approval', 'hr_unavailable', 'invalid_identity', 'invalid_evidence',
-    'already_complete', 'not_next_participant',
+    'already_complete', 'not_next_participant', 'hr_handoff_required',
 ] as const;
 export type AttendanceLevelProblemCode = typeof ATTENDANCE_LEVEL_PROBLEMS[number];
 export type AttendanceLevelProblem = {
@@ -109,14 +109,14 @@ export type AttendanceV3FrozenLevel = {
     name: string;
     mode: AttendanceLevelMode;
     source: AttendanceV3Source;
-    participants: AttendanceV3Participant[];
+    approvers: AttendanceV3Participant[];
     /** A role alternative remains explicit. It does not become a named participant or a new role. */
     hrAlternative: boolean;
 };
 export type AttendanceV3FrozenRoute = { routingVersion: 3; stages: AttendanceV3FrozenLevel[] };
 
 /**
- * Shared resolution algorithm for future activation/preview/submission adapters.
+ * Shared resolution algorithm for activation/preview/submission contract comparisons.
  * It consumes authorized identity facts, not a client-provided principal map. No ambient I/O is used.
  */
 export async function resolveAttendanceV3Route(raw: unknown, applicant: AttendanceV3Identity, resolver: AttendanceV3Resolver): Promise<AttendanceV3FrozenRoute> {
@@ -140,7 +140,7 @@ export async function resolveAttendanceV3Route(raw: unknown, applicant: Attendan
     };
     const stages: AttendanceV3FrozenLevel[] = [];
     for (const [levelIndex, level] of route.stages.entries()) {
-        const participants: AttendanceV3Participant[] = [];
+        const approvers: AttendanceV3Participant[] = [];
         const source = level.source;
         let hrAlternative = false;
         const resolve = async (participantIndex: number, result: AttendanceIdentityResult, expectedEmploymentId?: string) => {
@@ -160,7 +160,7 @@ export async function resolveAttendanceV3Route(raw: unknown, applicant: Attendan
             if (seenPeople.has(personId)) fail('duplicate_person', levelIndex, participantIndex);
             if (seenUsers.has(userId)) fail('duplicate_login', levelIndex, participantIndex);
             seenEmployments.add(employmentId); seenPeople.add(personId); seenUsers.add(userId);
-            participants.push({ employmentId, personId, userId, name: actor.name, slot: `${levelIndex}:${participantIndex}`, kind: source.kind, ...(source.kind === 'direct_manager' ? { hierarchyDepth: source.depth } : {}) });
+            approvers.push({ employmentId, personId, userId, name: actor.name, slot: `${levelIndex}:${participantIndex}`, kind: source.kind, ...(source.kind === 'direct_manager' ? { hierarchyDepth: source.depth } : {}) });
         };
         if (source.kind === 'direct_manager') {
             await resolve(0, await readIdentity(() => resolver.superior(source.depth), levelIndex, 0));
@@ -171,7 +171,7 @@ export async function resolveAttendanceV3Route(raw: unknown, applicant: Attendan
         } else {
             for (const [participantIndex, employmentId] of source.employmentIds.entries()) await resolve(participantIndex, await readIdentity(() => resolver.selectedEmployee(employmentId), levelIndex, participantIndex), employmentId);
         }
-        stages.push({ name: level.name, mode: level.mode, source, participants, hrAlternative });
+        stages.push({ name: level.name, mode: level.mode, source, approvers, hrAlternative });
     }
     return { routingVersion: 3, stages };
 }
@@ -184,12 +184,12 @@ export type AttendanceV3ParticipantDecision = {
 };
 export type AttendanceV3LevelProgress = { complete: boolean; rejected: boolean; pendingSlots: string[] };
 /**
- * Projection only: the future transaction owner must lock the request, check the actor against the
+ * Projection only: the transaction owner must lock the request, check the actor against the
  * frozen slot plus live authority, insert immutable evidence, and create exactly one stage-completion
  * decision when complete. This function is NOT a database capability or a final-effect authorization.
  */
 export function attendanceV3LevelProgress(level: AttendanceV3FrozenLevel, evidence: readonly AttendanceV3ParticipantDecision[], levelIndex: number): AttendanceV3LevelProgress {
-    const slots = level.participants.map(participant => participant.slot);
+    const slots = level.approvers.map(participant => participant.slot);
     const alternativeSlot = `${levelIndex}:hr`;
     const eligibleSlots = level.hrAlternative ? [...slots, alternativeSlot] : slots;
     if (!slots.length && !level.hrAlternative) fail('invalid_evidence', levelIndex);
@@ -219,7 +219,7 @@ export type AttendanceV3SlotReassignment = {
     reason: string;
 };
 /**
- * Source-only projection for a future reasoned reassignment owner. It deliberately cannot assign HR
+ * Projection contract for the reasoned reassignment owner. It deliberately cannot assign HR
  * as a generic substitute for a selected group: the owner must resolve one authorized replacement
  * identity for this outstanding slot, retain this transition, and retain the original frozen route.
  * Authorization and concurrent outstanding-slot checks belong in that owner's locked transaction.
@@ -237,19 +237,52 @@ export function projectAttendanceV3SlotReassignment(
     if (!level || !reason.trim() || reason.trim().length > 500) fail('invalid_level', levelIndex);
     const progress = attendanceV3LevelProgress(level, evidence, levelIndex);
     if (progress.complete) fail('already_complete', levelIndex);
-    const previous = level.participants.find(participant => participant.slot === slot);
+    const previous = level.approvers.find(participant => participant.slot === slot);
     // Sequential future slots may be reassigned too, but any completed slot is immutable.
     if (!previous || evidence.some(record => record.slot === slot)) fail('not_next_participant', levelIndex);
     if (![replacement.employmentId, replacement.personId, replacement.userId].every(uuid) || !replacement.name?.trim()) fail('invalid_identity', levelIndex);
     const next = { ...replacement, employmentId: identityKey(replacement.employmentId), personId: identityKey(replacement.personId), userId: identityKey(replacement.userId), slot, kind: 'specific_employee' as const };
     if (next.employmentId === identityKey(applicant.employmentId) || next.personId === identityKey(applicant.personId) || next.userId === identityKey(applicant.userId)) fail('self_approval', levelIndex);
-    for (const participant of route.stages.flatMap(stage => stage.participants).filter(participant => participant.slot !== slot)) {
+    for (const participant of route.stages.flatMap(stage => stage.approvers).filter(participant => participant.slot !== slot)) {
         if (participant.employmentId === next.employmentId) fail('duplicate_employment', levelIndex);
         if (participant.personId === next.personId) fail('duplicate_person', levelIndex);
         if (participant.userId === next.userId) fail('duplicate_login', levelIndex);
     }
     // Completed decisions may be by a delegate/admin rather than the frozen assigned identity.
     if (evidence.some(record => identityKey(record.actualPersonId) === next.personId || identityKey(record.actualUserId) === next.userId)) fail('invalid_evidence', levelIndex);
-    const stages = route.stages.map((stage, index) => index === levelIndex ? { ...stage, participants: stage.participants.map(participant => participant.slot === slot ? next : { ...participant }) } : stage);
+    const stages = route.stages.map((stage, index) => index === levelIndex ? { ...stage, approvers: stage.approvers.map(participant => participant.slot === slot ? next : { ...participant }) } : stage);
     return { stages, reassignment: { slot, previous: { ...previous }, replacement: { ...next }, reason: reason.trim() } };
+}
+
+/** Explicit v3 input; legacy callers retain their original v1/v2 stage type. */
+export type AttendanceV3WorkflowInput = Omit<AttendanceWorkflowInput, 'routingVersion' | 'stages'> & AttendanceV3Route;
+export type AnyAttendanceWorkflowInput = AttendanceWorkflowInput | AttendanceV3WorkflowInput;
+export function validateAnyAttendanceWorkflow(raw: unknown): AnyAttendanceWorkflowInput {
+    if (!object(raw) || raw.routingVersion !== 3) return validateAttendanceWorkflow(raw as AttendanceWorkflowInput);
+    // The existing owner validates common assignment and metadata rules; no v3 participant is passed
+    // through Leave sanitization or silently converted into an alternate.
+    const common = validateAttendanceWorkflow({ ...raw, routingVersion: 2, stages: [{ name: 'Level 1', level: { kind: 'direct_manager', employmentId: null, alternates: [] } }] } as AttendanceWorkflowInput);
+    return { ...common, ...parseAttendanceV3Route({ routingVersion: 3, stages: raw.stages }) };
+}
+
+/** Finite, translated business guidance; never render raw driver/SQL errors or problem codes. */
+export function attendanceLevelProblemMessageKey(problem: AttendanceLevelProblem): 'selectionRequired' | 'participantLimit' | 'depthRequired' | 'differentPeople' | 'superiorUnavailable' | 'correctLevel' | 'calculationHandoff' {
+    if (problem.code === 'hr_handoff_required') return 'calculationHandoff';
+    if (problem.code === 'selection_required') return 'selectionRequired';
+    if (problem.code === 'too_many_participants') return 'participantLimit';
+    if (problem.code === 'invalid_depth') return 'depthRequired';
+    if (['duplicate_employment', 'duplicate_person', 'duplicate_login', 'self_approval'].includes(problem.code)) return 'differentPeople';
+    if (['missing_superior', 'ambiguous_superior', 'cycle', 'inactive_superior'].includes(problem.code)) return 'superiorUnavailable';
+    return 'correctLevel';
+}
+
+/** Finite transport for submission screens that otherwise accept only fixed error-message keys. */
+export function attendanceLevelProblemToken(problem: AttendanceLevelProblem): string {
+    return `${problem.code}:${problem.levelIndex ?? 'route'}:${problem.participantIndex ?? 'level'}`;
+}
+export function parseAttendanceLevelProblemToken(raw: unknown): AttendanceLevelProblem | null {
+    if (typeof raw !== 'string' || raw.length > 100) return null;
+    const [code, level, participant, extra] = raw.split(':');
+    if (extra !== undefined || !(ATTENDANCE_LEVEL_PROBLEMS as readonly string[]).includes(code) || !(level === 'route' || /^[0-9]$/.test(level ?? '')) || !(participant === 'level' || /^(?:[0-9]|1[0-9])$/.test(participant ?? ''))) return null;
+    return { code: code as AttendanceLevelProblemCode, levelIndex: level === 'route' ? null : Number(level), ...(participant === 'level' ? {} : { participantIndex: Number(participant) }) };
 }

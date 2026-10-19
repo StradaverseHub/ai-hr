@@ -66,8 +66,8 @@ describe('v3 authorized-identity resolution algorithm', () => {
         const port = resolver();
         const result = await resolveAttendanceV3Route(route([level([id(3), id(1)], 'any_one'), superior(5)]), identity(0), port);
         expect(port.superior).toHaveBeenCalledExactlyOnceWith(5);
-        expect(result.stages[0].participants.map(p => p.employmentId)).toEqual([id(3), id(1)]);
-        expect(result.stages[1].participants[0]).toMatchObject({ hierarchyDepth: 5, slot: '1:0' });
+        expect(result.stages[0].approvers.map(p => p.employmentId)).toEqual([id(3), id(1)]);
+        expect(result.stages[1].approvers[0]).toMatchObject({ hierarchyDepth: 5, slot: '1:0' });
     });
     it('freezes identity values and copies selected IDs without sharing mutable port objects', async () => {
         const actor = identity(1), configured = route([level([id(1)])]);
@@ -75,7 +75,7 @@ describe('v3 authorized-identity resolution algorithm', () => {
         const frozen = await resolveAttendanceV3Route(configured, identity(0), port);
         actor.name = 'Changed later';
         if (configured.stages[0].source.kind === 'specific_employee') configured.stages[0].source.employmentIds[0] = id(9);
-        expect(frozen.stages[0].participants[0].name).toBe('Fictional 1');
+        expect(frozen.stages[0].approvers[0].name).toBe('Fictional 1');
         expect(frozen.stages[0].source).toEqual({ kind: 'specific_employee', employmentIds: [id(1)] });
     });
     it.each(['missing_superior', 'ambiguous_superior', 'cycle', 'inactive_superior', 'outside_company_scope', 'missing_or_ambiguous_login'] as const)('returns finite level failure %s without raw values', async code => {
@@ -86,7 +86,7 @@ describe('v3 authorized-identity resolution algorithm', () => {
         const port = resolver(); port.superior = async () => ({ ok: false, code: 'missing_superior' });
         await expect(resolveAttendanceV3Route(route([superior(1)]), identity(0), port)).rejects.toMatchObject({ problem: { code: 'missing_superior' } });
         expect(port.hasHrAlternative).not.toHaveBeenCalled();
-        expect((await resolveAttendanceV3Route(route([superior(1, true)]), identity(0), port)).stages[0]).toMatchObject({ participants: [], hrAlternative: true });
+        expect((await resolveAttendanceV3Route(route([superior(1, true)]), identity(0), port)).stages[0]).toMatchObject({ approvers: [], hrAlternative: true });
         port.hasHrAlternative = async () => false;
         await expect(resolveAttendanceV3Route(route([superior(1, true)]), identity(0), port)).rejects.toMatchObject({ problem: { code: 'missing_superior' } });
     });
@@ -160,8 +160,8 @@ describe('reasoned outstanding participant-slot reassignment projection', () => 
         const original = await resolveAttendanceV3Route(route(), identity(0), resolver());
         const evidence = [recorded(1)];
         const result = projectAttendanceV3SlotReassignment(original, 0, evidence, '0:1', identity(9), identity(0), '  Assigned replacement after departure  ');
-        expect(original.stages[0].participants.map(p => p.employmentId)).toEqual([id(1), id(2), id(3)]);
-        expect(result.stages[0].participants.map(p => p.employmentId)).toEqual([id(1), id(9), id(3)]);
+        expect(original.stages[0].approvers.map(p => p.employmentId)).toEqual([id(1), id(2), id(3)]);
+        expect(result.stages[0].approvers.map(p => p.employmentId)).toEqual([id(1), id(9), id(3)]);
         expect(result.reassignment).toMatchObject({ slot: '0:1', previous: { employmentId: id(2) }, replacement: { employmentId: id(9) }, reason: 'Assigned replacement after departure' });
         expect(attendanceV3LevelProgress(result.stages[0], evidence, 0).pendingSlots).toEqual(['0:1']);
         expect(evidence).toEqual([recorded(1)]);

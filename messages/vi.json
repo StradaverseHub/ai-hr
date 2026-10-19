@@ -19285,7 +19285,13 @@
       "differentPeople": "Chọn nhân viên, người và tài khoản khác nhau, không phải người nộp đơn, cho các phê duyệt bắt buộc.",
       "superiorUnavailable": "Cấp trên bị thiếu, không hoạt động, không rõ hoặc thuộc vòng lặp báo cáo. Sửa Nhân sự hoặc cấu hình rõ phương án HR thay thế.",
       "correctLevel": "Sửa cấp này và xem trước phân công lại.",
-      "groupHrRefused": "Phương án HR thay thế không thể hoàn tất thay cho nhóm nhân viên bắt buộc."
+      "groupHrRefused": "Phương án HR thay thế không thể hoàn tất thay cho nhóm nhân viên bắt buộc.",
+      "configureNewRoute": "Cấu hình phê duyệt từng cấp",
+      "conversionHelp": "Thao tác này tạo bản nháp tuyến mới bắt đầu bằng một cấp. Quy trình đã lưu và đơn đã nộp giữ tuyến cũ cho đến khi lưu phiên bản mới.",
+      "pendingParticipant": "Đang chờ quyết định của bạn",
+      "reassignSlot": "Người tham gia còn chờ cần phân công lại",
+      "chooseSlot": "Chọn người tham gia còn chờ…",
+      "calculationHandoff": "Phê duyệt cuối này cần quyền tính toán HR đúng phạm vi. Nhờ HR ghi nhận phân công lại có lý do cho người tham gia còn chờ; các phê duyệt trước được giữ nguyên."
     }
   },
   "attendanceHistory": {

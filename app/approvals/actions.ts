@@ -1,4 +1,6 @@
 'use server';
+import { attendanceWorkflowErrorMessage } from '@/lib/attendance-workflow-error-message';
+import { AttendanceLevelError } from '@/lib/attendance-workflow-v3';
 
 import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
@@ -154,10 +156,10 @@ export async function approveCorrectionAction(formData: FormData) {
   const decision = String(formData.get('decision')) as 'approved' | 'rejected';
   let outcomeStatus: string = decision;
   try {
-    const outcome = await decideAttendanceCorrection(s, { correctionId: String(formData.get('id')), decision, remarks: String(formData.get('remarks') ?? ''), rejectReason: String(formData.get('rejectReason') ?? ''), expectedStageIndex: formData.get('workflowStage') ? Number(formData.get('workflowStage')) : undefined });
+    const outcome = await decideAttendanceCorrection(s, { correctionId: String(formData.get('id')), decision, remarks: String(formData.get('remarks') ?? ''), rejectReason: String(formData.get('rejectReason') ?? ''), expectedStageIndex: formData.get('workflowStage') ? Number(formData.get('workflowStage')) : undefined, expectedParticipantSlot: String(formData.get('workflowParticipant') ?? '') || undefined });
     outcomeStatus = outcome.status;
   } catch (e) {
-    fail(e instanceof MissingAttendanceRejectReasonError ? new Error((await getTranslations('attendance'))('rejectRequired')) : e, nav);
+    fail(e instanceof AttendanceLevelError ? new Error(await attendanceWorkflowErrorMessage(e)) : e instanceof MissingAttendanceRejectReasonError ? new Error((await getTranslations('attendance'))('rejectRequired')) : e, nav);
   }
   done(outcomeStatus === 'pending' ? (await getTranslations('attendanceHistory'))('stageRecorded') : `Correction ${decision}`, nav);
 }
@@ -266,7 +268,7 @@ async function dispatchBulkItem(
       });
       return;
     case 'attendance':
-      await decideAttendanceCorrection(s, { correctionId: item.id, decision, rejectReason, deciderEmploymentId, expectedStageIndex: item.expectedStageIndex });
+      await decideAttendanceCorrection(s, { correctionId: item.id, decision, rejectReason, deciderEmploymentId, expectedStageIndex: item.expectedStageIndex, expectedParticipantSlot: item.expectedParticipantSlot });
       return;
   }
 }

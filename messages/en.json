@@ -19285,7 +19285,13 @@
       "differentPeople": "Choose different non-self employees, people and logins for the required approvals.",
       "superiorUnavailable": "The superior is missing, inactive, ambiguous or part of a reporting cycle. Correct Personnel or explicitly offer an HR alternative.",
       "correctLevel": "Correct this level and preview the assignment again.",
-      "groupHrRefused": "An HR alternative cannot complete a required selected-employee group."
+      "groupHrRefused": "An HR alternative cannot complete a required selected-employee group.",
+      "configureNewRoute": "Configure per-level approvals",
+      "conversionHelp": "This creates a new route draft starting with one level. The saved workflow and submitted applications keep their existing route until a new version is saved.",
+      "pendingParticipant": "Waiting for your decision",
+      "reassignSlot": "Outstanding participant to reassign",
+      "chooseSlot": "Choose an outstanding participant…",
+      "calculationHandoff": "This final approval needs scoped HR calculation access. Ask HR to record a reasoned reassignment of the outstanding participant; earlier approvals are retained."
     }
   },
   "attendanceHistory": {

@@ -19285,7 +19285,13 @@
       "differentPeople": "Pilih pekerja, individu dan akaun berlainan yang bukan pemohon bagi kelulusan yang diperlukan.",
       "superiorUnavailable": "Penyelia tiada, tidak aktif, tidak jelas atau dalam kitaran pelaporan. Betulkan Personel atau tawarkan alternatif HR dengan jelas.",
       "correctLevel": "Betulkan peringkat ini dan pratonton tugasan sekali lagi.",
-      "groupHrRefused": "Alternatif HR tidak boleh melengkapkan kumpulan pekerja dipilih yang diwajibkan."
+      "groupHrRefused": "Alternatif HR tidak boleh melengkapkan kumpulan pekerja dipilih yang diwajibkan.",
+      "configureNewRoute": "Konfigurasi kelulusan setiap peringkat",
+      "conversionHelp": "Ini membuka draf laluan baharu bermula dengan satu peringkat. Aliran kerja tersimpan dan permohonan dihantar mengekalkan laluan lama sehingga versi baharu disimpan.",
+      "pendingParticipant": "Menunggu keputusan anda",
+      "reassignSlot": "Peserta tertunggak untuk ditugaskan semula",
+      "chooseSlot": "Pilih peserta tertunggak…",
+      "calculationHandoff": "Kelulusan akhir ini memerlukan akses pengiraan HR berskop. Minta HR merekodkan penugasan semula bersebab bagi peserta tertunggak; kelulusan terdahulu dikekalkan."
     }
   },
   "attendanceHistory": {

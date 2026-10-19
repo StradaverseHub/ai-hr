@@ -102,11 +102,20 @@ actor authority, write immutable participant evidence, and write/advance the uni
 only when the mode is fulfilled or a participant rejects. Any One requires a first-writer decision under
 that same lock. Frozen request assignment grants no general Personnel or correction rights.
 
-The isolated v3 contract and progress projection do not enable version 3. The live input validator and SQL
-remain v1/v2 until participant persistence, request-bound RLS, slot-grain reassignment, ordinary-employee
-inbox access and all final-effect guards are integrated together. In particular, accepting a v3 stage in
-TypeScript alone cannot widen ADR-0121's active-writing-savepoint proof: final effects must still have an
-actively written final level-completion decision, the real actor, the exact subject/day/correction and the
-canonical Attendance/payroll/TOIL owners. Neither a partial participant approval nor previously committed
-level evidence may establish that capability. No runtime or release verification is established by this
-source model decision.
+V3 enters through a separate exact configuration boundary; the legacy validator retains v1/v2 semantics.
+The v3 owner integrates participant persistence, request-bound RLS, slot-grain reassignment, ordinary
+employee inbox access and final-effect guards together. The ordinary-employee inbox branch reads only
+assigned Attendance work and does not query the unrelated manager queues or grant a Manager role.
+The configured stage count still owns advancement; partial participant decisions do not advance it.
+
+Final effects require an actively written final level-completion decision and an actively written final
+participant decision by the same real actor. The exact subject/day/correction, canonical Attendance effect,
+payroll cutoff and TOIL owners remain unchanged. Neither partial participant approval nor a previously
+committed level decision establishes that capability. Released-savepoint evidence remains refused by the
+existing active-write predicate. Legacy identity substitution/delegation seams explicitly exclude v3;
+they cannot become a weaker path around the participant owner.
+
+Changing an existing v1/v2 template to per-level configuration is deliberate: the editor states that it
+starts a new route draft with one level, while keeping company, criteria and metadata. The saved template
+and all submitted applications remain untouched until a new immutable version is saved. No source model,
+unrun regression or migration draft establishes runtime or release verification.

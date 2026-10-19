@@ -108,7 +108,7 @@ describe('company workflow editor outcomes', () => {
 
 
 describe('797ba70b: auto levels and complete assignment controls', () => {
-  it('adds/removes/reorders standard levels without custom names and saves explicit routing v2', async () => {
+  it('adds/removes/reorders independent levels without custom names and saves explicit routing v3', async () => {
     form(null);
     fireEvent.change(screen.getByLabelText('Workflow code'), { target: { value: 'SEQUENTIAL' } });
     fireEvent.change(screen.getByLabelText('Workflow name'), { target: { value: 'Sequential review' } });
@@ -116,14 +116,14 @@ describe('797ba70b: auto levels and complete assignment controls', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add Approval Level' }));
     const levels = () => screen.getAllByRole('listitem');
     expect(levels().map(li => within(li).getByRole('heading').textContent)).toEqual(['Level 1', 'Level 2', 'Level 3']);
-    fireEvent.change(within(levels()[0]).getByLabelText('Assigned approver'), { target: { value: 'hr_admin' } });
+    fireEvent.change(within(levels()[0]).getByLabelText('Superior depth'), { target: { value: '5' } });
     fireEvent.click(within(levels()[0]).getByRole('button', { name: 'Move down' }));
-    expect(within(levels()[1]).getByLabelText('Assigned approver')).toHaveValue('hr_admin');
+    expect(within(levels()[1]).getByLabelText('Superior depth')).toHaveValue('5');
     fireEvent.click(within(levels()[0]).getByRole('button', { name: 'Remove' }));
     expect(levels().map(li => within(li).getByRole('heading').textContent)).toEqual(['Level 1', 'Level 2']);
     expect(screen.queryByLabelText('Stage name')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Save workflow' })); await waitFor(() => expect(save).toHaveBeenCalled());
-    expect(save.mock.calls[0][1].routingVersion).toBe(2);
+    expect(save.mock.calls[0][1].routingVersion).toBe(3);
     expect(save.mock.calls[0][1].stages.map((s: { name: string }) => s.name)).toEqual(['Level 1', 'Level 2']);
   });
   it('keeps legacy behavior until explicit conversion and does not lose configured alternatives', async () => {
