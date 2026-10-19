@@ -294,7 +294,9 @@
 
   /* Cards: flat, one hairline, a quiet tinted header strip in sentence case. */
   :root[data-ui-theme='atelier'] main [data-ui-card] { background: var(--card); }
-  :root[data-ui-theme='atelier'] main :is([data-ui-card-header], [data-ui-section-header]) {
+  /* Only a header INSIDE a card is a strip; a section header standing on the page stays a plain heading. */
+  :root[data-ui-theme='atelier'] main [data-ui-section-header] { letter-spacing: 0; text-transform: none; }
+  :root[data-ui-theme='atelier'] main :is([data-ui-card-header], [data-ui-card] [data-ui-section-header]) {
     background: var(--sidebar); border-color: var(--border); color: var(--foreground);
     font-size: .8125rem; font-weight: 600; letter-spacing: 0; text-transform: none;
   }
@@ -330,3 +332,36 @@
   /* Dialogs and popovers: the shell's corner and the one lifted shadow. */
   :root[data-ui-theme='atelier'] [role='dialog'] { border-radius: .75rem; border-color: var(--border); box-shadow: var(--shadow-pop); }
 }
+
+/* A page's own two-part breadcrumb ("Manage / My tasks") repeats the shell's; a deeper one (a case inside
+   onboarding) carries more than the rail row does and stays. */
+@media screen {
+  :root[data-ui-theme='atelier'] main .onb-breadcrumb:not(:has(> span:nth-child(3))) { display: none; }
+}
+
+/* ── Tables: navigation on top, quiet row actions (owner request 2026-10-20) ───────────────────────
+   A card that holds one of the shared pagers (components/pager.tsx, client-pager.tsx: data-ui-pager)
+   becomes a column whose order is: its title strip, its filter row, the pager, then the table — so the
+   count and the page controls are read before the rows, as in the shell mock. Only paint and order change;
+   every link, form and control is the same element in the same place in the DOM. */
+@media screen {
+  :root[data-ui-theme='atelier'] main [data-ui-card]:has(> [data-ui-pager]) { display: flex; flex-direction: column; }
+  :root[data-ui-theme='atelier'] main [data-ui-card]:has(> [data-ui-pager]) > * { order: 1; }
+  :root[data-ui-theme='atelier'] main [data-ui-card]:has(> [data-ui-pager]) > :is([data-ui-card-header], [data-ui-section-header]) { order: -3; }
+  :root[data-ui-theme='atelier'] main [data-ui-card]:has(> [data-ui-pager]) > form { order: -2; }
+  :root[data-ui-theme='atelier'] main [data-ui-card] > [data-ui-pager] { order: -1; border-top: 0; border-bottom: 1px solid var(--border); background: var(--card); }
+  :root[data-ui-theme='atelier'] main [data-ui-pager] > div:last-child { padding-block: .5rem; }
+
+  /* Row actions: small borderless buttons instead of underlined links; the accent appears on hover only. */
+  :root[data-ui-theme='atelier'] main table td :is(a, button)[class~='underline'] {
+    display: inline-flex; align-items: center; min-height: 1.625rem; padding: 0 .4375rem; border-radius: .375rem;
+    color: var(--foreground); text-decoration: none; font-weight: 500;
+  }
+  :root[data-ui-theme='atelier'] main table td :is(a, button)[class~='underline']:hover { background: var(--accent); color: var(--primary); }
+  /* Hand-made status pills in table cells (not the kit's StatusBadge) get the same leading dot. */
+  :root[data-ui-theme='atelier'] main table td span[class~='rounded-full'][class~='px-2']:not([data-ui-status]) { display: inline-flex; align-items: center; gap: .375rem; }
+  :root[data-ui-theme='atelier'] main table td span[class~='rounded-full'][class~='px-2']:not([data-ui-status])::before {
+    content: ''; width: .375rem; height: .375rem; flex: none; border-radius: 999px; background: currentColor;
+  }
+}
+

@@ -3,7 +3,8 @@ import { OnboardingBreadcrumb, OnboardingBadge } from '@/components/onboarding-w
 import { useOnboardingCopy } from '@/lib/onboarding-copy';
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
-import { Button, Card, inputCls, PageHeader } from '@/components/ui';
+import { Button, Card, inputCls, PageHeader, buttonVariants } from '@/components/ui';
+import { useFormatter, useTranslations } from 'next-intl';
 import type { OnboardingTask } from '@/packs/lifecycle/service';
 import type { PendingTaskItem } from '@/core/approvals-inbox';
 import { changeOnboarding, loadOnboardingTask, writeOnboardingNote } from '@/app/lifecycle/onboarding/v31-actions';
@@ -15,6 +16,10 @@ export function TasksView({ items, existing }: {
     existing: PendingTaskItem[];
 }) {
     const copy = useOnboardingCopy();
+    // The approval rows use the SAME label vocabulary as the bell and Home (notifications.task.*), never the
+    // raw kind code; the filing date is a fixed date, not "n minutes ago", so server and client render alike.
+    const tTask = useTranslations('notifications.task');
+    const format = useFormatter();
     const [filter, setFilter] = useState('all'), [detail, setDetail] = useState<Detail | null>(null), [error, setError] = useState(''), [busy, start] = useTransition(), router = useRouter();
     const filters = [['all', 'All'], ['assigned', 'Assigned to me'], ['tagged', 'Tagged'], ['team', 'Team items'], ['overdue', 'Overdue']];
     const inFilter = (i: OnboardingTask, key: string) => key === 'all' || key === 'assigned' && i.assigned || key === 'tagged' && i.tagged || key === 'team' && i.team || key === 'overdue' && i.overdue;
@@ -47,5 +52,5 @@ export function TasksView({ items, existing }: {
                             setError(r.error);
                         else
                             router.refresh();
-                    })}>{copy("Mark done")}</Button>}<Button size="sm" variant="ghost" disabled={busy} onClick={() => open(i)}>{i.kind === 'manualApproval' ? copy("Choose an approver") : i.kind === 'owner' ? copy("Assign an owner") : i.kind === 'case' ? copy("Open case") : copy("Review")}</Button>{i.kind === 'acknowledgement' && <Link className="inline-flex items-center text-sm text-primary underline" href={'/lifecycle/acknowledgement?case=' + i.caseId}>{copy("Open device acknowledgement")}</Link>}{i.kind === 'case' && <Link className="inline-flex items-center text-sm text-primary underline" href={'/lifecycle/onboarding/cases/' + i.caseId}>{copy("Open onboarding")}</Link>}</div></article>)}{(filter === 'all' || filter === 'assigned') && existing.map(i => <article key={i.kind + ':' + i.id} className="flex items-center justify-between gap-3 p-4"><div><p className="font-medium">{i.subjectName ?? 'Approval request'}</p><p className="text-sm text-muted-foreground">{i.kind}</p></div><Link className="text-sm text-primary underline" href={i.linkPath}>{copy("Review approval")}</Link></article>)}</div>}</div>;
+                    })}>{copy("Mark done")}</Button>}<Button size="sm" variant="ghost" disabled={busy} onClick={() => open(i)}>{i.kind === 'manualApproval' ? copy("Choose an approver") : i.kind === 'owner' ? copy("Assign an owner") : i.kind === 'case' ? copy("Open case") : copy("Review")}</Button>{i.kind === 'acknowledgement' && <Link className="inline-flex items-center text-sm text-primary underline" href={'/lifecycle/acknowledgement?case=' + i.caseId}>{copy("Open device acknowledgement")}</Link>}{i.kind === 'case' && <Link className="inline-flex items-center text-sm text-primary underline" href={'/lifecycle/onboarding/cases/' + i.caseId}>{copy("Open onboarding")}</Link>}</div></article>)}{(filter === 'all' || filter === 'assigned') && existing.map(i => <article key={i.kind + ':' + i.id} className="onb-panel flex flex-wrap items-center justify-between gap-4"><div className="flex min-w-0 items-center gap-3"><span aria-hidden className="size-7 shrink-0 rounded-full border-[1.5px] border-dashed border-border" /><div className="min-w-0"><p className="font-medium">{tTask(i.kind)}</p><p className="mt-0.5 text-sm text-muted-foreground">{[i.subjectName ?? copy('Approval request'), format.dateTime(new Date(i.createdAt), { dateStyle: 'medium', timeZone: 'Asia/Kuala_Lumpur' })].join(' · ')}</p></div></div><Link className={buttonVariants({ variant: 'outline', size: 'sm' })} href={i.linkPath}>{copy("Review approval")}</Link></article>)}</div>}</div>;
 }
