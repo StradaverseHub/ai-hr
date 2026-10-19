@@ -6,7 +6,7 @@ describe('bounded named HR route transport',()=>{
  it('retains the disabled legacy boundary until explicitly enabled',()=>{expect(isProfileRoutingPolicy(EMPTY_PROFILE_ROUTING)).toBe(true);expect(EMPTY_PROFILE_ROUTING.enabled).toBe(false);});
  it('accepts stable principal employment identities and finite organisation/direct target criteria',()=>{expect(isProfileRoutingPolicy({...EMPTY_PROFILE_ROUTING,enabled:true,rules:[rule]})).toBe(true);});
  it('refuses duplicate route identities, duplicate direct subjects and arbitrary nested criteria payloads',()=>{
-  for(const rules of [[rule,rule],[{...rule,employmentIds:[id,id]}],[{...rule,criteria:{departmentIds:{all:true}}}]])expect(isProfileRoutingPolicy({...EMPTY_PROFILE_ROUTING,rules})).toBe(false);
+  for(const rules of [[rule,rule],[{...rule,employmentIds:[id,id]}],[{...rule,criteria:{departmentIds:{all:true}}}],[{...rule,criteria:{orgDivision:['']}}]])expect(isProfileRoutingPolicy({...EMPTY_PROFILE_ROUTING,rules})).toBe(false);
  });
  it('refuses unknown schema properties, invalid revisions and oversized rule lists',()=>{
   expect(isProfileRoutingPolicy({...EMPTY_PROFILE_ROUTING,arbitraryApproval:true})).toBe(false);
