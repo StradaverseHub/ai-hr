@@ -176,6 +176,7 @@ export default async function AuditPage({
 
       <Card data-tour="admin-audit-filters">
         <form className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3 lg:grid-cols-4">
+          {filters.aggregateId && <input type="hidden" name="record" value={filters.aggregateId}/>}
           <Field label={t('area')}>
             <select name="module" defaultValue={chosenModule ?? ''} className={inputCls}>
               <option value="">{t('allAreas')}</option>

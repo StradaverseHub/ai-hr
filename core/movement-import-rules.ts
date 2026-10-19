@@ -17,9 +17,7 @@ export async function movementImportRulesTx(tx:Tx,ctx:SessionContext,record:Move
   const [manager]=await tx.select().from(employment).where(and(eq(employment.id,input.managerEmploymentId),eq(employment.tenantId,ctx.tenantId))).limit(1);
   const applicableCompany=input.companyId??before.companyId;
   if(!manager||manager.companyId!==applicableCompany||manager.hiredOn>todayInKualaLumpur()||['resigned','blacklisted'].includes(deriveEmploymentStatus(manager,todayInKualaLumpur())))throw new Error('unknown_reference:managerEmploymentId');
-  // sequence is the always-present BIGSERIAL, NOT nullable hash-chain chainSeq or a timestamp/UUID max.
-  const [event]=await tx.select({revision:sql<string>`${domainEvent.sequence}::text`}).from(domainEvent).where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.aggregateType,'employment'),eq(domainEvent.aggregateId,manager.id),eq(domainEvent.subjectEmploymentId,manager.id),eq(domainEvent.eventType,EMPLOYMENT_TEST_RECORD_EVENT))).orderBy(desc(domainEvent.sequence),desc(domainEvent.id)).limit(1);
-  references.push({row:record.row,manager:manager.id,marked:manager.isTestRecord,revision:event?.revision??null});
+  references.push({row:record.row,manager:manager.id,...await managerClassificationTx(tx,ctx,manager.id)});
   if(manager.isTestRecord)throw new Error('test_superior_not_available:managerEmploymentId');
  }
  if(record.importVersion!==2)return {input,warnings,references,baselineDate};
@@ -58,10 +56,23 @@ export async function movementImportRulesTx(tx:Tx,ctx:SessionContext,record:Move
   const base=cents(basis.basicSalary),total=base+increment;
   if(total>BigInt(Number.MAX_SAFE_INTEGER))throw new Error('invalid_number:incrementAmount');
   input={...input,basicSalary:Number(total)/100,currency:input.currency??basis.currency};
-  if(base>BigInt(0)&&increment*BigInt(100)>base*BigInt(20))warnings.push('salary_rise_over_twenty_percent');
+
  }
+ if(input.basicSalary!==undefined&&before.basicSalary!=null){const base=cents(before.basicSalary),next=cents(input.basicSalary.toFixed(2));if(base>BigInt(0)&&(next-base)*BigInt(100)>base*BigInt(20))warnings.push('salary_rise_over_twenty_percent');}
  const today=todayInKualaLumpur(),[y,m,d]=today.split('-').map(Number),month=new Date(Date.UTC(y,m-4,1));
  const cutoff=new Date(Date.UTC(month.getUTCFullYear(),month.getUTCMonth(),Math.min(d,new Date(Date.UTC(month.getUTCFullYear(),month.getUTCMonth()+1,0)).getUTCDate()))).toISOString().slice(0,10);
  if(input.effectiveDate<cutoff)warnings.push('backdated_over_three_months');
  return {input,warnings,references,baselineDate};
+}
+
+async function managerClassificationTx(tx:Tx,ctx:SessionContext,id:string){
+ const [manager]=await tx.select({marked:employment.isTestRecord}).from(employment).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.id,id))).limit(1);if(!manager)throw new Error('preview_stale_revalidate');
+ // Always-present BIGSERIAL sequence, independent from the optional audit hash-chain sequence.
+ const [event]=await tx.select({revision:sql<string>`${domainEvent.sequence}::text`}).from(domainEvent).where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.aggregateType,'employment'),eq(domainEvent.aggregateId,id),eq(domainEvent.subjectEmploymentId,id),eq(domainEvent.eventType,EMPLOYMENT_TEST_RECORD_EVENT))).orderBy(desc(domainEvent.sequence),desc(domainEvent.id)).limit(1);
+ return {marked:manager.marked,revision:event?.revision??null};
+}
+/** Replayed plans were validated against their canonical ordered shadow state. Do not replace that
+ * private future baseline with today's unadvanced company or salary while checking metadata freshness. */
+export async function recheckMovementManagerEvidenceTx(tx:Tx,ctx:SessionContext,references:MovementManagerEvidence[]){
+ for(const reference of references){const actual=await managerClassificationTx(tx,ctx,reference.manager);if(actual.marked!==reference.marked||actual.revision!==reference.revision)throw new Error('preview_stale_revalidate');}
 }

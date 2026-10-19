@@ -3,17 +3,17 @@ import {createHash} from 'node:crypto';
 import {SaxesParser} from 'saxes';
 import type {MovementImportCatalog} from '../core/movement-import';
 import {readSpreadsheetArchive,decodeSpreadsheetXml} from './spreadsheet-archive';
-import {movementWorkbookLayout,movementTabNames,type MovementWorkbookColumn,type MovementWorkbookType} from './movement-workbook-layout';
-import {signMovementWorkbook,verifyMovementWorkbook,type MovementWorkbookMetadata} from './movement-workbook-metadata.server';
+import {movementWorkbookLayout,movementTabNames,movementWorkbookRequirements,movementWorkbookScalarChoices,type MovementWorkbookColumn,type MovementWorkbookType} from './movement-workbook-layout';
+import {signMovementWorkbook,verifyMovementWorkbook,type MovementWorkbookMetadata,type MovementWorkbookBinding} from './movement-workbook-metadata.server';
 import {movementInputRecord,movementRecordLimits} from './movement-type-csv';
 import type {MovementImportRecord,MovementImportEmployee} from './movement-import-contract';
 import type {PersonnelLabelResolver} from './personnel-import-contract';
-import {csvSafeCell} from './csv';
+import {personnelImportLabelResolvers} from './personnel-import-labels.server';
 import {todayInKualaLumpur} from './hr-date';
-export const MOVEMENT_WORKBOOK_LIMITS={maxBytes:5_000_000,maxExpandedBytes:64_000_000,maxEntries:2300} as const;
+export const MOVEMENT_WORKBOOK_LIMITS={maxBytes:5_000_000,maxExpandedBytes:64_000_000,maxEntries:6000} as const;
 const UUID=/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 const xml=(s:string)=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
-function business(value:unknown){const s=value==null?'':String(value);if(s.length>32767||UUID.test(s))throw new Error('workbook_business_value_invalid');return csvSafeCell(s);}
+function business(value:unknown){const s=value==null?'':String(value);if(s.length>32767||UUID.test(s))throw new Error('workbook_business_value_invalid');return s;}
 export function movementWorkbookCatalogue(catalog:MovementImportCatalog){return createHash('sha256').update(JSON.stringify({version:2,types:catalog.types})).digest('hex');}
 const col=(n:number)=>{let s='';for(n++;n;n=Math.floor((n-1)/26))s=String.fromCharCode(65+(n-1)%26)+s;return s;};
 function formula(column:MovementWorkbookColumn,columns:MovementWorkbookColumn[],row:number){
@@ -22,39 +22,40 @@ function formula(column:MovementWorkbookColumn,columns:MovementWorkbookColumn[],
  if(column.key==='calculated.changePercent')return `IF(OR(${find('incrementAmount')}="",${find('current.basicSalary')}="",${find('current.basicSalary')}=0),"",${find('incrementAmount')}/${find('current.basicSalary')})`;
  return `IF(${find('basicSalary')}="","",${find('basicSalary')}-${find('current.basicSalary')})`;
 }
-type Subject={employeeCode:string;name:string;current:Record<string,string|null>};
-export type MovementWorkbookDownload={tenantId:string;companyId:string;companyName:string;catalog:MovementImportCatalog;typeCode?:string;subjects:Subject[];resolve:PersonnelLabelResolver;records?:MovementImportRecord[];employees?:MovementImportEmployee[]};
+type Subject={employeeCode:string;name:string;current:Record<string,string|null>;managerExclusions?:string[]};
+export type MovementWorkbookDownload={tenantId:string;companyId:string;companyName:string;catalog:MovementImportCatalog;destinationCatalogs?:Record<string,MovementImportCatalog>;typeCode?:string;sourceBindings?:MovementWorkbookBinding[];subjects:Subject[];resolve:PersonnelLabelResolver;records?:MovementImportRecord[];employees?:MovementImportEmployee[]};
 /** Generate business-only cells, then apply this format's explicit OOXML presentation policy. */
 export async function buildMovementWorkbook(p:MovementWorkbookDownload){
  const XLSX=await import('xlsx'),{default:JSZip}=await import('jszip');
- const types=p.typeCode?p.catalog.types.filter(t=>t.code===p.typeCode):p.catalog.types;
+ const words=(key:string,fallback:string)=>p.resolve('people.import.movement.v2.'+key,fallback);
+ const types=p.sourceBindings?p.sourceBindings.map(binding=>{const type=p.catalog.types.find(t=>t.code===binding.code&&t.behaviour===binding.behaviour);if(!type)throw new Error('workbook_catalogue_changed');return type;}):p.typeCode?p.catalog.types.filter(t=>t.code===p.typeCode):p.catalog.types;
  if(!types.length)throw new Error('unknown_or_inactive_event_type');
- const names=movementTabNames(types,p.resolve),layouts=types.map(t=>movementWorkbookLayout(t,p.resolve));
- const wb=XLSX.utils.book_new(),now=new Date(),bindings=types.map((t,i)=>({sheet:names[i],code:t.code,behaviour:t.behaviour,columns:layouts[i].map(c=>c.key),identities:p.typeCode?p.subjects.map((s,index)=>({row:index+6,employeeCode:s.employeeCode})):[]}));
+ const names=p.sourceBindings?.map(b=>b.sheet)??movementTabNames(types,p.resolve),layouts=types.map((t,i)=>movementWorkbookLayout(t,p.resolve).map((c,index)=>({...c,label:p.sourceBindings?.[i].captions[index]??c.label})));
+ const wb=XLSX.utils.book_new(),now=new Date(),bindings=types.map((t,i)=>({sheet:names[i],code:t.code,behaviour:t.behaviour,columns:layouts[i].map(c=>c.key),captions:layouts[i].map(c=>business(c.label)),annotationCaption:p.employees?p.resolve('people.import.movement.errors','Errors'):undefined,identities:p.sourceBindings?.[i].identities??(p.typeCode?p.subjects.map((s,index)=>({row:index+6,employeeCode:s.employeeCode})):[])}));
  const meta=signMovementWorkbook({tenantId:p.tenantId,companyId:p.companyId,companyName:p.companyName,downloadedAt:now.toISOString(),catalogue:movementWorkbookCatalogue(p.catalog),sheets:bindings});
- const instructions=[['Movement Import'],[p.resolve('people.import.movement.v2.workbookHint','Grey: current records. Yellow: your entries. Green: display calculations. Current values and pay are checked again before saving.')],['Dates: DD-MMM-YYYY or YYYY-MM-DD. Blacklist uses the current Kuala Lumpur day.'],['Each employee’s complete sequence saves together. Unused tabs and untouched prefilled rows are skipped.'],['Examples are guidance only; no example employee is an import row.'],['Example: increment of 100.00 on an existing employee; enter the effective day and leave other changes blank.'],['An absent or zero salary gives no Change %; correct the employee’s salary history first.'],['Type','Required/optional inputs'],...types.map((t,i)=>[names[i],layouts[i].filter(c=>c.role==='input').map(c=>c.label).join(' · ')])];
+ const instructions=[[p.resolve('people.import.movement.title','Movement Import')],[p.resolve('people.import.movement.v2.workbookHint','Grey: current records. Yellow: your entries. Green: display calculations. Current values and pay are checked again before saving.')],[words('dateGuide','Dates: DD-MMM-YYYY or YYYY-MM-DD. Blacklist uses the current Kuala Lumpur day.')],[words('sequenceGuide','Each employee’s complete sequence saves together. Unused tabs and untouched prefilled rows are skipped.')],[words('exampleGuide','Examples are guidance only; no example employee is an import row.')],[words('incrementExample','Example: increment of 100.00 on an existing employee; enter the effective day and leave other changes blank.')],[words('zeroBaselineGuide','An absent or zero salary gives no Change %; correct the employee’s salary history first.')],[words('type','Movement type'),words('requiredInputs','Required inputs'),words('optionalInputs','Optional inputs')],...types.map((_t,i)=>{const guide=movementWorkbookRequirements(types[i],layouts[i]);return [names[i],guide.required.join(' · '),guide.optional.join(' · ')];})];
  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(instructions.map(row=>row.map(business))),'Instructions');
- const lists:string[][]=[[]];const listColumns=new Map<string,{column:number;name:string}>();const validations:{sheet:number;column:number;name:string;end:number}[]=[];
+ const lists:string[][]=[[]];const listColumns=new Map<string,{column:number;name:string}>();const validations:{sheet:number;column:number;name:string;start:number;end:number}[]=[];
  for(const [i,type]of types.entries()){
   const columns=layouts[i],matched=p.records?.filter(r=>r.cells.kind===type.code)??[];
-  const rowCount=Math.max(5,p.subjects.length,...matched.map(r=>Math.max(0,(r.source?.row??6)-5)));
+  const rowCount=Math.max(5,p.subjects.length,...(p.sourceBindings?.[i].identities??[]).map(r=>r.row-5),...matched.map(r=>Math.max(0,(r.source?.row??6)-5)));
   if(rowCount>205)throw new Error('too_many_rows');
-  const rows:unknown[][]=[[business(type.label??p.resolve('people.detail.movement.eventType.'+type.behaviour,type.code))],['Grey = current · Yellow = input · Green = calculation'],[todayInKualaLumpur(now)],columns.map(c=>c.other?'Other changes (optional)':''),columns.map(c=>business(c.label))];
+  const rows:unknown[][]=[[business(type.label??p.resolve('people.detail.movement.eventType.'+type.behaviour,type.code))],[words('colourGuide','Grey = current · Yellow = input · Green = calculation')],[words('downloaded','Downloaded')+' '+todayInKualaLumpur(now)],columns.map(c=>c.other?words('otherChanges','Other changes (optional)'):''),columns.map(c=>business(c.label))];
   for(let r=0;r<rowCount;r++){
    const subject=p.typeCode?p.subjects[r]:undefined,record=matched.find(x=>(x.source?.row??0)===r+6);
-   rows.push(columns.map(column=>column.key==='employeeCode'?business(record?.employeeCode??subject?.employeeCode):column.key==='employeeName'?business(subject?.name):column.role==='current'?business(subject?.current[column.key.slice(8)]):column.role==='input'?business(column.key==='incrementAmount'?record?.incrementAmount:column.field?record?.cells[column.field]:undefined):''));
+   rows.push(columns.map(column=>column.key==='employeeCode'?business(record?.employeeCode??subject?.employeeCode??p.sourceBindings?.[i].identities?.find(identity=>identity.row===r+6)?.employeeCode):column.key==='employeeName'?business(subject?.name):column.role==='current'?business(subject?.current[column.key.slice(8)]):column.role==='input'?business(column.key==='incrementAmount'?record?.incrementAmount:column.field?record?.cells[column.field]:undefined):''));
   }
   const sheet=XLSX.utils.aoa_to_sheet(rows);
   for(let r=5;r<rowCount+5;r++)for(let c=0;c<columns.length;c++){
    const address=col(c)+(r+1),column=columns[c],cell=sheet[address]??={t:'s',v:''};
-   if(column.role==='formula'){cell.t='n';cell.f=formula(column,columns,r+1);delete cell.v;cell.z=column.key.endsWith('changePercent')?'0.00%':'0.00';cell.c=[{a:'AIHR',t:'Display only. The server recalculates from authoritative records; percentage is blank for a missing/zero baseline.'}];}
+   if(column.role==='formula'){cell.t='n';cell.f=formula(column,columns,r+1);delete cell.v;cell.z=column.key.endsWith('changePercent')?'0.00%':'0.00';cell.c=[{a:'AIHR',t:words('formulaNote','Display only. The server recalculates from authoritative records; percentage is blank for a missing/zero baseline.')}];}
    else if(column.field&&['effectiveDate','endDate','resignationDate'].includes(column.field)||column.role==='current'&&/Date|hiredOn/.test(column.key)){
     cell.z='dd-mmm-yyyy';const raw=String(cell.v??'');if(/^\d{4}-\d{2}-\d{2}$/.test(raw)){cell.t='n';cell.v=(Date.parse(raw+'T00:00:00Z')-Date.UTC(1899,11,30))/86400000;}
    }else cell.z='@';
   }
   if(p.employees){
    const errors=new Map(p.employees.flatMap(e=>e.rows.map(r=>[r.row,r.errors.join('; ')] as const)));
-   sheet[col(columns.length)+'5']={t:'s',v:'Errors'};
+   sheet[col(columns.length)+'5']={t:'s',v:p.resolve('people.import.movement.errors','Errors')};
    for(const record of matched)sheet[col(columns.length)+(record.source?.row??6)]={t:'s',v:business(errors.get(record.row))};
    sheet['!ref']=`A1:${col(columns.length)}${rowCount+5}`;
   }
@@ -63,11 +64,22 @@ export async function buildMovementWorkbook(p:MovementWorkbookDownload){
   for(const [c,column]of columns.entries()){
    if(column.role!=='input'||!column.field)continue;
    let values=p.catalog.fields[column.field]?.filter(v=>column.field!=='managerEmploymentId'||!v.isTestRecord&&v.eligible&&(type.behaviour==='entityTransfer'?p.catalog.companies.some(company=>company.value===v.companyId):v.companyId===p.companyId)).map(v=>v.label)??[];
-   if(column.field==='managerEmploymentId'&&type.behaviour==='entityTransfer')values=p.catalog.fields.managerEmploymentId?.filter(v=>!v.isTestRecord&&v.eligible&&p.catalog.companies.some(company=>company.value===v.companyId)).map(v=>p.catalog.companies.find(company=>company.value===v.companyId)!.label+' · '+v.label)??[];
+   if(type.behaviour==='entityTransfer'&&p.destinationCatalogs&&column.field!=='companyId')values=Object.entries(p.destinationCatalogs).flatMap(([id,catalog])=>{const name=p.catalog.companies.find(c=>c.value===id)?.label;return (catalog.fields[column.field!]??[]).filter(v=>column.field!=='managerEmploymentId'||!v.isTestRecord&&v.eligible&&v.companyId===id).map(v=>name+' · '+v.label);});
+   else if(column.field==='managerEmploymentId'&&type.behaviour==='entityTransfer')values=p.catalog.fields.managerEmploymentId?.filter(v=>!v.isTestRecord&&v.eligible&&p.catalog.companies.some(company=>company.value===v.companyId)).map(v=>p.catalog.companies.find(company=>company.value===v.companyId)!.label+' · '+v.label)??[];
+   if(!values.length)values=movementWorkbookScalarChoices(column.field).map(option=>option.value+' · '+p.resolve(option.labelKey,option.value));
    if(!values.length)continue;if(values.length>10000)throw new Error('movement_reference_catalog_too_large');
-   const listKey=JSON.stringify(values);let reference=listColumns.get(listKey);
-   if(!reference){const listColumn=lists[0].length,name='AIHR_Movement_List_'+listColumn;lists[0].push(business(column.label));for(let row=0;row<values.length;row++){lists[row+1]??=[];lists[row+1][listColumn]=business(values[row]);}reference={column:listColumn,name};listColumns.set(listKey,reference);wb.Workbook??={};wb.Workbook.Names??=[];wb.Workbook.Names.push({Name:name,Ref:`'Lists'!$${col(listColumn)}$2:$${col(listColumn)}$${values.length+1}`});}
-   validations.push({sheet:i+1,column:c,name:reference.name,end:rowCount+5});
+   const register=(entries:string[],first:number,last:number)=>{
+    if(!entries.length)return;const listKey=JSON.stringify(entries);let reference=listColumns.get(listKey);
+    if(!reference){const listColumn=lists[0].length,name='AIHR_Movement_List_'+listColumn;lists[0].push(business(column.label));for(let row=0;row<entries.length;row++){lists[row+1]??=[];lists[row+1][listColumn]=business(entries[row]);}reference={column:listColumn,name};listColumns.set(listKey,reference);wb.Workbook??={};wb.Workbook.Names??=[];wb.Workbook.Names.push({Name:name,Ref:`'Lists'!$${col(listColumn)}$2:$${col(listColumn)}$${entries.length+1}`});}
+    validations.push({sheet:i+1,column:c,name:reference.name,start:first,end:last});
+   };
+   if(column.field==='managerEmploymentId'&&p.typeCode&&p.subjects.length){
+    for(const [row,subject]of p.subjects.entries()){
+     const excluded=new Set(subject.managerExclusions??[]);
+     const entries=type.behaviour==='entityTransfer'&&p.destinationCatalogs?Object.entries(p.destinationCatalogs).flatMap(([id,catalog])=>(catalog.fields.managerEmploymentId??[]).filter(v=>!v.isTestRecord&&v.eligible&&v.companyId===id&&!excluded.has(v.value)).map(v=>p.catalog.companies.find(c=>c.value===id)!.label+' · '+v.label)):(p.catalog.fields.managerEmploymentId??[]).filter(v=>!v.isTestRecord&&v.eligible&&v.companyId===p.companyId&&!excluded.has(v.value)).map(v=>v.label);
+     register(entries,row+6,row+6);
+    }
+   }else register(values,6,rowCount+5);
   }
  }
  if(lists[0].length>256||lists.reduce((n,r)=>n+r.length,0)>180000)throw new Error('movement_reference_catalog_too_large');
@@ -83,7 +95,7 @@ export async function buildMovementWorkbook(p:MovementWorkbookDownload){
   const path=`xl/worksheets/sheet${i+2}.xml`,entry=zip.file(path);if(!entry)throw new Error('workbook_layout_invalid');let text=await entry.async('string');const columns=layouts[i];
   text=text.replace(/<c\b([^>]*\br="([A-Z]+)(\d+)"[^>]*)>/g,(whole,attrs:string,letters:string,r:string)=>{
    if(Number(r)<6)return whole;let c=0;for(const letter of letters)c=c*26+letter.charCodeAt(0)-64;const column=columns[c-1];if(!column)return whole;
-   const unlocked=column.role==='input'||column.role==='identity'&&!p.subjects.length;
+   const unlocked=column.role==='input'||column.role==='identity'&&!bindings[i].identities.length;
    const date=column.field&&['effectiveDate','endDate','resignationDate'].includes(column.field)||column.role==='current'&&/Date|hiredOn/.test(column.key);const money=/basicSalary|incrementAmount/.test(column.key);
    const style=column.role==='formula'?base+(column.key.endsWith('changePercent')?7:2):unlocked?base+(date?3:money?6:1):base+(date?4:money?5:0);
    return '<c'+attrs.replace(/\s+s="[^" ]*"/,'')+` s="${style}">`;
@@ -92,7 +104,7 @@ export async function buildMovementWorkbook(p:MovementWorkbookDownload){
   text=text.replace(/<sheetViews>[\s\S]*?<\/sheetViews>/,`<sheetViews><sheetView workbookViewId="0"><pane xSplit="${currentEnd}" ySplit="5" topLeftCell="${col(currentEnd)}6" activePane="bottomRight" state="frozen"/></sheetView></sheetViews>`);
   const protection='<sheetProtection sheet="1" objects="1" scenarios="1" selectLockedCells="0" selectUnlockedCells="0"/>';
   text=text.replace('</sheetData>','</sheetData>'+protection);
-  const choices=validations.filter(v=>v.sheet===i+1);if(choices.length)text=text.replace('</worksheet>',`<dataValidations count="${choices.length}">${choices.map(v=>`<dataValidation type="list" allowBlank="1" showErrorMessage="1" errorTitle="Choose a valid business value" error="Use a current value from the list." sqref="${col(v.column)}6:${col(v.column)}${v.end}"><formula1>${xml(v.name)}</formula1></dataValidation>`).join('')}</dataValidations></worksheet>`);
+  const choices=validations.filter(v=>v.sheet===i+1);if(choices.length){const validation=`<dataValidations count="${choices.length}">${choices.map(v=>`<dataValidation type="list" allowBlank="1" showErrorMessage="1" errorTitle="${xml(words('choiceTitle','Choose a valid business value').slice(0,32))}" error="${xml(words('choiceError','Use a current value from the list.').slice(0,255))}" sqref="${col(v.column)}${v.start}:${col(v.column)}${v.end}"><formula1>${xml(v.name)}</formula1></dataValidation>`).join('')}</dataValidations>`;const at=text.search(/<(?:hyperlinks|printOptions|pageMargins|pageSetup|headerFooter|rowBreaks|colBreaks|customProperties|cellWatches|ignoredErrors|smartTags|drawing|legacyDrawing|picture|oleObjects|controls|webPublishItems|tableParts|extLst)\b|<\/worksheet>/);if(at<0)throw new Error('workbook_layout_invalid');text=text.slice(0,at)+validation+text.slice(at);}
   zip.file(path,text);
  }
  const bytes=await zip.generateAsync({type:'nodebuffer',compression:'DEFLATE'});readSpreadsheetArchive(bytes,MOVEMENT_WORKBOOK_LIMITS);return bytes;
@@ -103,29 +115,38 @@ function inspect(bytes:Buffer){
  const archive=readSpreadsheetArchive(bytes,MOVEMENT_WORKBOOK_LIMITS);let totalCells=0;
  for(const [name,data]of archive.parts){
   if(!name.endsWith('.xml'))continue;const text=decodeSpreadsheetXml(data);if(/macroEnabled|vbaProject/i.test(text))throw new Error('workbook_structure_invalid');
-  const parser=new SaxesParser({xmlns:true});parser.on('doctype',()=>{throw new Error('workbook_structure_invalid');});
+  const parser=new SaxesParser({xmlns:true});let validationFormula=false,validationText='';const cellAddresses=new Set<string>();parser.on('doctype',()=>{throw new Error('workbook_structure_invalid');});
   parser.on('opentag',tag=>{
    const attrs=Object.fromEntries(Object.values(tag.attributes).map(a=>[a.local,a.value]));
+   if(tag.local==='formula1'){validationFormula=true;validationText='';}
    if((tag.local==='sheetProtection'||tag.local==='workbookProtection')&&Object.keys(attrs).some(k=>/password|hashValue|algorithmName|saltValue/i.test(k)))throw new Error('workbook_password_not_supported');
+   if(tag.local==='formula'||tag.local==='formula2'||['oleObject','externalReference','externalReferences'].includes(tag.local))throw new Error('workbook_structure_invalid');
    if(tag.local==='dimension'&&attrs.ref){const match=/^(?:[A-Z]+\d+:)?([A-Z]+)(\d+)$/.exec(attrs.ref);if(!match||match[1].length>3||Number(match[2])>10005)throw new Error('workbook_structure_invalid');}
-   if(tag.local==='c'){if(++totalCells>450000||!/^([A-Z]{1,3})([1-9]\d{0,4})$/.test(attrs.r??''))throw new Error('workbook_structure_invalid');}
+   if(tag.local==='c'){if(++totalCells>650000||!/^([A-Z]{1,3})([1-9]\d{0,4})$/.test(attrs.r??'')||cellAddresses.has(attrs.r))throw new Error('workbook_structure_invalid');cellAddresses.add(attrs.r);}
   });
+  parser.on('text',value=>{if(validationFormula){validationText+=value;if(validationText.length>100)throw new Error('workbook_structure_invalid');}});
+  parser.on('closetag',tag=>{if(tag.local==='formula1'){if(!/^AIHR_Movement_List_\d+$/.test(validationText))throw new Error('workbook_structure_invalid');validationFormula=false;}});
   parser.write(text).close();
  }
  return archive;
 }
 export async function readMovementWorkbook(bytes:Buffer,p:{tenantId:string;companyId:string;catalog:MovementImportCatalog;resolve:PersonnelLabelResolver}){
  inspect(bytes);const XLSX=await import('xlsx');const wb=XLSX.read(bytes,{type:'buffer',cellFormula:true,cellDates:false,cellNF:true,sheetRows:10006});
+ if(new Set(wb.SheetNames.map(n=>n.toLowerCase())).size!==wb.SheetNames.length)throw new Error('workbook_structure_invalid');
+ for(const name of ['Instructions','Lists','_meta'])if(Object.values(wb.Sheets[name]??{}).some(c=>c&&typeof c==='object'&&'f'in c&&c.f))throw new Error('formula_input');
+ for(const name of wb.Workbook?.Names??[]){if(!/^AIHR_Movement_List_\d+$/.test(name.Name)||!/^'Lists'!\$[A-Z]{1,3}\$2:\$[A-Z]{1,3}\$[1-9]\d{0,4}$/.test(name.Ref))throw new Error('workbook_structure_invalid');}
  const metaSheet=wb.Sheets._meta;if(!metaSheet)throw new Error('workbook_metadata_invalid');
- const raw=XLSX.utils.sheet_to_json<unknown[]>(metaSheet,{header:1,raw:true,blankrows:false});if(raw.length>20||raw.some(r=>r.length!==1||typeof r[0]!=='string'))throw new Error('workbook_metadata_invalid');
+ const raw=XLSX.utils.sheet_to_json<unknown[]>(metaSheet,{header:1,raw:true,blankrows:false});if(raw.length>100||raw.some(r=>r.length!==1||typeof r[0]!=='string'))throw new Error('workbook_metadata_invalid');
  let metadata:MovementWorkbookMetadata;try{metadata=verifyMovementWorkbook(JSON.parse(raw.map(r=>r[0]).join('')),p.tenantId,p.companyId);}catch(error){throw error instanceof Error?error:new Error('workbook_metadata_invalid');}
  if(metadata.catalogue!==movementWorkbookCatalogue(p.catalog))throw new Error('workbook_catalogue_changed');
- const allowed=new Set(['Instructions','Lists','_meta',...metadata.sheets.map(s=>s.sheet)]);if(wb.SheetNames.some(name=>!allowed.has(name)&&Object.values(wb.Sheets[name]).some(c=>c&&typeof c==='object'&&'v'in c&&String(c.v??'').trim())))throw new Error('workbook_unexpected_sheet');
+ const allowed=new Set(['Instructions','Lists','_meta',...metadata.sheets.map(s=>s.sheet)]);if(wb.SheetNames.some(name=>!allowed.has(name)&&Object.values(wb.Sheets[name]).some(c=>c&&typeof c==='object'&&(('v'in c&&String(c.v??'').trim())||('f'in c&&c.f)))))throw new Error('workbook_unexpected_sheet');
  const records:MovementImportRecord[]=[];
  for(const binding of metadata.sheets){
   const sheet=wb.Sheets[binding.sheet],type=p.catalog.types.find(t=>t.code===binding.code&&t.behaviour===binding.behaviour);if(!sheet||!type)throw new Error('workbook_catalogue_changed');
   const columns=movementWorkbookLayout(type,p.resolve);if(JSON.stringify(columns.map(c=>c.key))!==JSON.stringify(binding.columns))throw new Error('workbook_columns_changed');
-  const range=XLSX.utils.decode_range(sheet['!ref']??'A1');if(range.e.r>205||range.e.c>columns.length)throw new Error('workbook_structure_invalid');
+  for(let c=0;c<columns.length;c++){const header=sheet[XLSX.utils.encode_cell({r:4,c})];if(header?.f||String(header?.v??'')!==binding.captions[c])throw new Error('workbook_columns_changed');}
+  const range=XLSX.utils.decode_range(sheet['!ref']??'A1');if(range.e.r>205||range.e.c>=columns.length+Number(!!binding.annotationCaption))throw new Error('workbook_structure_invalid');
+  if(binding.annotationCaption&&String(sheet[col(columns.length)+'5']?.v??'')!==binding.annotationCaption)throw new Error('workbook_columns_changed');
   const read=(r:number,c:number)=>{const cell=sheet[XLSX.utils.encode_cell({r,c})];if(!cell||cell.v==null)return '';if(cell.t==='n'&&columns[c]?.field&&['effectiveDate','endDate','resignationDate'].includes(columns[c].field!)){const d=XLSX.SSF.parse_date_code(Number(cell.v));if(!d)return '';return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;}return String(cell.v);};
   for(const [address,cell]of Object.entries(sheet)){
    if(address.startsWith('!')||!cell||typeof cell!=='object'||!('f'in cell)||!cell.f)continue;
@@ -138,8 +159,8 @@ export async function readMovementWorkbook(bytes:Buffer,p:{tenantId:string;compa
    const identity=binding.identities?.find(i=>i.row===r+1);
    if(identity&&values[0]!==identity.employeeCode)throw new Error('workbook_identity_changed');
    if(!entered&&(identity||!values[0].trim()))continue;
-   const record=movementInputRecord(type,columns,values,records.length+1,{sheet:binding.sheet,row:r+1});
-   if(values.some(v=>UUID.test(v)))record.errors.push('internal_reference_not_allowed');
+   const record=movementInputRecord(type,columns,values,records.length+1,{sheet:binding.sheet,row:r+1},personnelImportLabelResolvers);
+   if(values.some((v,c)=>['input','identity'].includes(columns[c].role)&&UUID.test(v)))record.errors.push('internal_reference_not_allowed');
    records.push(record);
   }
  }
