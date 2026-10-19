@@ -20,7 +20,7 @@ import {
   type RequestableField,
 } from '@/lib/profile-requestable-fields';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, pageWideCls } from '@/components/ui';
-import { saveProfileRequestApproverAction, saveProfileRequestFieldsAction,saveOwnPhotoSettingAction } from './actions';
+import { saveProfileRequestApproverAction, saveProfileRequestFieldsAction,saveOwnPhotoSettingAction,saveNamedProfileRoutingAction,previewNamedProfileRoutingAction } from './actions';
 
 /**
  * ── r261 · STAGE THREE OF BOARD ITEM 9583deac: THE TWO SETTINGS ─────────────────────────────────────
@@ -105,9 +105,9 @@ export default async function ProfileRequestSettingsPage({
 
       {!mayWrite && <Card className="p-4 text-sm text-muted-foreground">{t('readOnlyNotice')}</Card>}
 
-      <Card className="p-5"><SectionHeader title={te('photoEditSetting')}/><p className="mt-2 text-sm text-muted-foreground">{te('photoEditHelp')}</p><form action={saveOwnPhotoSettingAction,saveNamedProfileRoutingAction,previewNamedProfileRoutingAction} className="mt-4 space-y-3"><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="enabled" defaultChecked={getSetting(s,'ess.profile_photo_edit')===true} disabled={!mayWrite}/>{te('allowOwnPhoto')}</label>{mayWrite&&<button type="submit" className={btnPrimary}>{t('saveFields')}</button>}</form></Card>
+      <Card className="p-5"><SectionHeader title={te('photoEditSetting')}/><p className="mt-2 text-sm text-muted-foreground">{te('photoEditHelp')}</p><form action={saveOwnPhotoSettingAction} className="mt-4 space-y-3"><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="enabled" defaultChecked={getSetting(s,'ess.profile_photo_edit')===true} disabled={!mayWrite}/>{te('allowOwnPhoto')}</label>{mayWrite&&<button type="submit" className={btnPrimary}>{t('saveFields')}</button>}</form></Card>
 
-      <Card className="p-5"><SectionHeader title={te('namedRouting')}/><ProfileRoutingForm policy={readProfileRoutingPolicy(s)} sections={sections} employees={employees.map(employee=>({id:employee.employmentId,label:`${employee.employeeCode} · ${employee.name}`}))} approvers={employees.filter(employee=>approverIds.has(employee.employmentId)).map(employee=>({id:employee.employmentId,label:`${employee.employeeCode} · ${employee.name}`}))} disabled={!mayWrite} action={saveNamedProfileRoutingAction,previewNamedProfileRoutingAction} labels={{enabled:te('routingEnabled'),help:te('routingHelp'),name:te('routingName'),approver:te('routingApprover'),choose:te('routingChoose'),employees:te('routingEmployees'),criteriaHelp:te('routingCriteriaHelp'),remove:te('routingRemove'),add:te('routingAdd'),save:te('routingSave'),preview:te('routingPreview'),previewFailed:te('routingSaveFailed'),matched:te('routingMatched'),missing:te('routingMissing'),overlapping:te('routingOverlapping'),ineligible:te('routingIneligible')}}/></Card>
+      <Card className="p-5"><SectionHeader title={te('namedRouting')}/><ProfileRoutingForm policy={readProfileRoutingPolicy(s)} sections={sections} employees={employees.map(employee=>({id:employee.employmentId,label:`${employee.employeeCode} · ${employee.name}`}))} approvers={employees.filter(employee=>approverIds.has(employee.employmentId)).map(employee=>({id:employee.employmentId,label:`${employee.employeeCode} · ${employee.name}`}))} disabled={!mayWrite} action={saveNamedProfileRoutingAction} previewAction={previewNamedProfileRoutingAction} labels={{enabled:te('routingEnabled'),help:te('routingHelp'),name:te('routingName'),approver:te('routingApprover'),choose:te('routingChoose'),employees:te('routingEmployees'),criteriaHelp:te('routingCriteriaHelp'),remove:te('routingRemove'),add:te('routingAdd'),save:te('routingSave'),preview:te('routingPreview'),previewFailed:te('routingSaveFailed'),matched:te('routingMatched'),missing:te('routingMissing'),overlapping:te('routingOverlapping'),ineligible:te('routingIneligible')}}/></Card>
 
       {/* ── WHO APPROVES ───────────────────────────────────────────────────────────────────────────
           Two options and no third, because the plan sold SINGLE-LEVEL approval and the reporter
