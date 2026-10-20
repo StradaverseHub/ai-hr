@@ -366,7 +366,7 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     for (const c of adminCopy) {
       expect(c.adminOnly, 'any /attendance row in the admin node must be gated').toBe(true);
     }
-    const EMPLOYEE_RECORDS = '/attendance/my-records';
+    const EMPLOYEE_RECORDS = '/attendance/my-roster';
     const selfService = attendancePack.navNodes!.find((n) => n.labelKey === 'myAttendance')!;
     const records = selfService.children.find((c) => c.href === EMPLOYEE_RECORDS);
     expect(records, 'the employee’s own record is still in the self-service node').toBeDefined();
@@ -490,7 +490,7 @@ describe('0bb0e303 rev2 — Attendance Request is self-service, and stays that w
        * is asserted alongside exactly as it was. The row's gating is what this file is FOR, and r367 does
        * not touch it: an employee must still reach their own record with no gate at all.
        */
-      const href = '/attendance/my-records';
+      const href = '/attendance/my-roster';
       const added = mine.children.find((c) => c.href === href)!;
       expect({ adminOnly: added.adminOnly, managerUp: added.managerUp }, `${href} stays ungated`).toEqual({
         adminOnly: undefined,
