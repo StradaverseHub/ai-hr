@@ -38,6 +38,17 @@ describe('dated holiday calendar input and history',()=>{
   expect(screen.getByLabelText('End Date')).toHaveValue('2025-04-10');
   expect(new FormData(screen.getByRole('form',{name:'Edit assignment'}) as HTMLFormElement).get('replacesId')).toBe('revision');
  });
+ it('retains dates and selection when the save request fails, allowing an explicit retry',async()=>{
+  state.save.mockRejectedValueOnce(new Error('Network unavailable'));mount();fireEvent.click(screen.getByRole('button',{name:'Add calendar'}));
+  fireEvent.change(screen.getByLabelText('Calendar'),{target:{value:'state:Johor'}});
+  fireEvent.change(screen.getByLabelText('End Date'),{target:{value:'2025-04-10'}});
+  fireEvent.submit(screen.getByRole('form',{name:'Add calendar'}));
+  await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent('could not be saved'));
+  expect(screen.getByLabelText('Calendar')).toHaveValue('state:Johor');expect(screen.getByLabelText('End Date')).toHaveValue('2025-04-10');
+  expect(state.refresh).not.toHaveBeenCalled();expect(screen.getByRole('button',{name:'Save assignment'})).toBeEnabled();
+  state.save.mockResolvedValueOnce({ok:true,updated:0,reviewDates:[]});fireEvent.submit(screen.getByRole('form',{name:'Add calendar'}));
+  await waitFor(()=>expect(state.refresh).toHaveBeenCalledOnce());expect(state.save).toHaveBeenCalledTimes(2);
+ });
  it('shows a protected-payroll refusal without dismissing the edit or claiming success',async()=>{
   state.save.mockResolvedValue({ok:false,error:'closedPayroll'});mount();fireEvent.click(screen.getByRole('button',{name:'Add calendar'}));
   fireEvent.submit(screen.getByRole('form',{name:'Add calendar'}));

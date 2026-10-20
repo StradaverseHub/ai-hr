@@ -8,7 +8,7 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { setEmploymentCardId } from '@/core/attendance-card';
 import { requireAdmin } from '@/lib/authz';
-import { changeEmploymentCompany, CompanyLockedError, DestinationCompanyNotAdministered, employmentGradeId, endReportingLine, setEmployeeCode, setEmploymentBlacklist, setEmploymentPaymentMethod, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, updatePerson, type EmploymentTypeValue, type HolidayCalendarSelection, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
+import { changeEmploymentCompany, CompanyLockedError, DestinationCompanyNotAdministered, employmentGradeId, endReportingLine, setEmployeeCode, setEmploymentBlacklist, setEmploymentPaymentMethod, setEmploymentInfo, setReportingLine, updatePerson, type EmploymentTypeValue, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
 import {
   NegativeSalaryAmountError,
   NonFiniteSalaryAmountError,
@@ -959,16 +959,6 @@ export async function supersedeCompensationAction(formData: FormData) {
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
-/** Parse the unified "Holiday calendar" selector value into a discriminated selection. The single field
- *  emits `""` (company default), `"state:<label>"` (a built-in state), or `"group:<id>"` (an HR group),
- *  so a save of unrelated fields re-submits the existing selection rather than nulling it (clobber closed). */
-function parseHolidayCalendar(raw: FormDataEntryValue | null): HolidayCalendarSelection {
-  const v = String(raw ?? '');
-  if (v.startsWith('group:')) return { kind: 'group', groupId: v.slice('group:'.length) };
-  if (v.startsWith('state:')) return { kind: 'state', state: v.slice('state:'.length) };
-  return { kind: 'none' };
-}
-
 /** Normalise a text form field to `string | null` (empty → null). */
 const orNull = (v: FormDataEntryValue | null): string | null => {
   const s = String(v ?? '').trim();
@@ -1029,17 +1019,6 @@ export async function setPersonAction(formData: FormData) {
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
-
-/**
- * Item 52a30630 — save ONLY the Holiday Calendar for an employment. The unified Holiday Calendar selector
- * was RELOCATED off the Profile > Personal Details form onto the Attendance tab (HTML forms can't span the
- * tab panels), so it needs its own thin partial-save action. Mirrors the write that previously lived inline
- * in setPersonAction: parse the unified value (state OR HR-defined group) and hand it to the audited service
- * (setEmploymentHolidayCalendar appends the DomainEvent). requireAdmin gates it like the profile actions.
- */
-/**
- * r255 420ebab5 — the WRITE half of the Holiday Calendar card (see `applyStatutorySection`).
- */
 
 /** Old open tabs must use the dated workflow rather than changing the legacy fallback. */
 export async function setEmploymentHolidayCalendarAction(formData: FormData) {

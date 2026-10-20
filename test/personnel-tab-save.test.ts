@@ -355,14 +355,12 @@ describe('420ebab5 part two — one Save per tab on Personnel → Profile', () =
       'addQualificationAction',
       'editQualificationAction',
       'archiveQualificationAction',
-      'setDefaultShiftAction',
       'setCompensationAction',
       'reverseMovementEventAction',
       'changeEmploymentCompanyAction',
       'setDirectSuperiorAction',
       'endDelegationAction',
       'addDelegationAction',
-      'setLocationAction',
       'setPersonPhotoAction',
       'removePersonPhotoAction',
     ];
@@ -383,6 +381,16 @@ describe('420ebab5 part two — one Save per tab on Personnel → Profile', () =
       for (const action of BUCKET_B) {
         expect(bound, `${action} must still be bound to a <form action={…}>`).toContain(action);
       }
+    });
+
+    it('retires obsolete shift/location editors and keeps the dated calendar outside field-edit saving', () => {
+      const tags = formTags(PAGE()).join('\n');
+      expect(tags).not.toContain('setDefaultShiftAction');
+      expect(tags).not.toContain('setLocationAction');
+      const widget = read('app/admin/personnel/[employmentId]/holiday-calendar-assignments.tsx');
+      expect(widget).toContain('<form onSubmit={submit}');
+      expect(widget).toContain('saveHolidayCalendarAssignmentAction(form)');
+      expect(widget).not.toContain('data-save-section');
     });
 
     it('no bucket (b) form carries the consolidated-save marker', () => {

@@ -18,9 +18,11 @@ export function HolidayCalendarAssignments({employmentId,joinDate,employmentStar
  const submit=(event:FormEvent<HTMLFormElement>)=>{
   event.preventDefault();const form=new FormData(event.currentTarget);setError(null);setNotice(null);
   startTransition(async()=>{
-   const result=await saveHolidayCalendarAssignmentAction(form);
-   if(!result.ok){setError(result.error);return;}
-   setDraft(null);setNotice({updated:result.updated,reviewDates:result.reviewDates});router.refresh();
+   try{
+    const result=await saveHolidayCalendarAssignmentAction(form);
+    if(!result.ok){setError(result.error);return;}
+    setDraft(null);setNotice({updated:result.updated,reviewDates:result.reviewDates});router.refresh();
+   }catch{setError('failed');}
   });
  };
  const active=rows.filter(row=>!row.superseded),history=rows.filter(row=>row.superseded);
