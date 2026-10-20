@@ -82,6 +82,26 @@ describe('Card Assignment import uses canonical assignments and audit', () => {
     expect(outcomes.filter(r => r.status === 'fulfilled')).toHaveLength(1);
     expect([await card(a.id), await card(c.id)].filter(Boolean)).toHaveLength(1);
   });
+  it('serializes a card assignment against a concurrent employee identifier edit', async () => {
+    const a = await employee('E1'), c = await employee('E2'), ctx = adminCtx(b);
+    const outcomes = await Promise.allSettled([
+      setEmploymentCardId(ctx, { employmentId: a.id, cardId: 'shared-identity' }),
+      owner.db.update(schema.employment).set({ employeeCode: 'SHARED-IDENTITY' }).where(eq(schema.employment.id, c.id)),
+    ]);
+    expect(outcomes.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    const [other] = await owner.db.select().from(schema.employment).where(eq(schema.employment.id, c.id));
+    expect(await card(a.id) === 'shared-identity' && other.employeeCode === 'SHARED-IDENTITY').toBe(false);
+  });
+  it('serializes a card assignment against a concurrent normalized IC edit', async () => {
+    const a = await employee('E1'), c = await employee('E2'), ctx = adminCtx(b);
+    const outcomes = await Promise.allSettled([
+      setEmploymentCardId(ctx, { employmentId: a.id, cardId: '900101015555' }),
+      owner.db.insert(schema.employeeStatutoryMy).values({ tenantId: b.tenantId, personId: c.personId, icNumber: '900101-01-5555' }),
+    ]);
+    expect(outcomes.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    const identity = await owner.db.select().from(schema.employeeStatutoryMy).where(eq(schema.employeeStatutoryMy.personId, c.personId));
+    expect(await card(a.id) === '900101015555' && identity.length > 0).toBe(false);
+  });
   it('guards direct Personnel/code/IC writers as well as workbook writes', async () => {
     const a = await employee('E1', '900101015555'), c = await employee('E2');
     await expect(owner.db.update(schema.employment).set({ employeeCode: '900101015555' }).where(eq(schema.employment.id, c.id))).rejects.toThrow();
