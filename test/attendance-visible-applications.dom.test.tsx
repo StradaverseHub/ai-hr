@@ -10,6 +10,7 @@ vi.mock('next-intl/server', () => ({ getLocale: async () => 'en', getTranslation
 vi.mock('../packs/attendance/service', () => ({ listAttendanceCorrections: list, resolveApprovedOt: () => 0 }));
 vi.mock('../app/attendance/actions', () => ({ decideCorrectionAction: vi.fn() }));
 vi.mock('../components/attendance-workflow-progress', () => ({ AttendanceWorkflowProgress: () => <p>Saved request workflow</p> }));
+vi.mock('../components/pager', () => ({ Pager: () => null }));
 import Page from '../app/attendance/application-history/visible/page';
 beforeEach(() => vi.clearAllMocks()); afterEach(cleanup);
 it('uses the former Overview reader unchanged and keeps noncurrent rows visible without action forms', async () => {
