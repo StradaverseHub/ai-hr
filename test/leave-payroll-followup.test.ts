@@ -64,6 +64,14 @@ const slip = async (id: string) => (await owner.db.select().from(schema.payslip)
 const request = async (id: string) => (await owner.db.select().from(schema.leaveRequest).where(eq(schema.leaveRequest.id, id)))[0];
 
 describe('leave decisions and payroll follow-up', () => {
+  it('the manager coverage bridge exposes only segment coordinates, including when stored JSON contains extra private fields',async()=>{
+    const leaveId=await pending(),batchId=await processed();
+    await owner.db.update(schema.payslip).set({statutory:sql`statutory || ${JSON.stringify({segment:{companyId:b.companyId,from:`${lastMonth}-01`,to:addDays(`${today.slice(0,7)}-01`,-1),privateFinancialValue:'CONFIDENTIAL'}})}::jsonb`}).where(eq(schema.payslip.batchId,batchId));
+    const coverage=await withTenant(manager,tx=>tx.execute(sql`select * from app.leave_payroll_coverage(ARRAY[${leaveId}::uuid])`));
+    expect(coverage).toHaveLength(1);
+    expect(JSON.stringify(coverage)).not.toContain('CONFIDENTIAL');
+    expect(Object.keys(coverage[0])).not.toContain('net_pay');
+  });
   it('a manager approval marks exactly the affected employee, blocks close, and reprocessing changes real pay and clears the mark', async () => {
     const leaveId = await pending(); const batchId = await processed(); const before = await slip(batchId);
     expect((await batch(batchId)).needsRecalcAt).toBeNull();
