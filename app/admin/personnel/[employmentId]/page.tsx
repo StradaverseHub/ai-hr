@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
+import { RETIRED_PERSONNEL_TABS } from '@/lib/personnel-tab-sections';
 import { getTranslations } from 'next-intl/server';
 import { isAdmin } from '@/lib/authz';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
@@ -14,7 +15,6 @@ import {
   employeeAudit,
   employeeDetail,
   employmentCompanyEditable,
-  leaveBalances,
   leaveRequestsFor,
   listDepartments,
   listEmployees,
@@ -27,23 +27,12 @@ import { Avatar, Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHea
 import { LocationAssignment } from '@/components/attendance/location-assignment';
 import { hasPersonPhoto } from '@/core/person-photo';
 import { PhotoLightbox } from './photo-lightbox';
-import { listEntitlementRecalcAudit } from '@/core/leave';
 // 4da751c6 — the DERIVED Benefit Scheme readout. Stores nothing; asks the entitlement engine what it
 // already decided. See core/entitlement-scheme-view.ts for why there is no table behind it.
 import { benefitSchemeView } from '@/core/entitlement-scheme-view';
 // 6aee1d91 fix pass (m3) — the card's two links to the Leave types screen resolve through the module's one
 // list of addresses, so a link whose job is "go and change the schemes" cannot disagree with the menu.
 import { leaveConfigScreenHref } from '@/components/leave-config-map';
-import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
-import { personnelHrExplanation, personnelLeaveBreakdowns } from './leave-breakdowns';
-import {
-  ENTITLEMENT_STATUS_LABEL_KEY,
-  ENTITLEMENT_STATUS_TIP_KEY,
-  entitlementStatusNeedsNotice,
-} from '@/lib/entitlement-status';
-// r209 — a borrowing leave type's card shows the POOL's figures, so it must show the pool's entitlement
-// story too. See lib/shared-leave-balance.ts for the contradiction this closes.
-import { balanceStoryTypeId } from '@/lib/shared-leave-balance';
 import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { DateField } from '@/components/ui/date-field';
@@ -268,7 +257,6 @@ export default async function EmployeePage({
   const tStatus = await getTranslations('people.employeeStatus');
   // 31e39d74 — the leave-balance card captions a not-yet-generated entitlement with the SAME words the two
   // balance grids use, rather than a third phrasing of the same fact.
-  const tBal = await getTranslations('me.leaveBalanceTable');
   const admin = isAdmin(s);
   /**
    * r298 (board ceb1c560) — DOES THIS TENANT HOLD PAYROLL? Asked ONCE, here, and every Payroll-owned
@@ -290,6 +278,13 @@ export default async function EmployeePage({
   // rebuild the CURRENT query string and preserve every param it does not own, rather than dropping the
   // reader back onto a bare tab.
   const rawSearchParams = await searchParams;
+  const retiredDestination = rawSearchParams.tab === 'others' ? RETIRED_PERSONNEL_TABS.others : undefined;
+  if (retiredDestination) {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(rawSearchParams)) if (value != null) query.set(key, value);
+    query.set('tab', retiredDestination);
+    redirect(`/admin/personnel/${encodeURIComponent(employmentId)}?${query}`);
+  }
   const {
     error,
     from,
@@ -359,17 +354,8 @@ export default async function EmployeePage({
   // The org-assignment dropdowns scope to the PENDING company when one is chosen, else the current company.
   const orgScopeCompanyId = pendingCompany?.id ?? emp.companyId;
 
-  const [history, balances, requests, departments, reporting, employees, grades, delegations, recalcAudit] = await Promise.all([
+  const [history, requests, departments, reporting, employees, grades, delegations] = await Promise.all([
     assignmentHistory(s, employmentId),
-    // 994a5287: an ADMIN read — `includeHidden` keeps leave types HR has hidden from employee self-service,
-    // which is a rule about what the EMPLOYEE sees and never about what HR may look up on this profile.
-    // ec991c2a: `includeArchived` is the same statement about an ARCHIVED type. The employee's own list
-    // stops offering a retired type; this profile must still show the balance standing under it.
-    // d272834b — `includeIneligible` joins the other two ADMIN flags for the same reason they are here:
-    // HR's own picture of an employee must not lose a balance the employee's screen has stopped showing.
-    // A wrongly-granted Maternity Leave balance on a male employment is exactly the row this screen has
-    // to keep, because HR is who reverses it.
-    leaveBalances(s, employmentId, undefined, { includeHidden: true, includeArchived: true, includeIneligible: true }),
     leaveRequestsFor(s, employmentId),
     // 570e3311 — departments scoped to THIS employee's company (origin ∪ shared-in ∪ global via the
     // System Labels resolver), matching the Position/BU/Location pickers. Feeds exactly two places:
@@ -379,19 +365,10 @@ export default async function EmployeePage({
     listEmployees(s),
     listJobGrades(s),
     delegationsFor(s, employmentId),
-    // R45 7527ea5f — profile-change entitlement recalculation history for the Leave tab.
-    listEntitlementRecalcAudit(s, employmentId),
   ]);
-  // Leave entitlement breakdown (read-only). HR reuses the same component as /me; one ?asOf= drives the
-  // whole leave card. RLS scopes every read, so a viewer who can't see this employment's ledger/policy
-  // gets a null breakdown (rendered as nothing) rather than a leak. Invalid/empty asOf falls back to today.
-  const breakdownAsOf = spAsOf && /^\d{4}-\d{2}-\d{2}$/.test(spAsOf) ? spAsOf : today;
-  // r303 (31492f74): the Leave card's Explain panel prints HR's per-line working (./leave-breakdowns.ts).
-  const breakdowns = await personnelLeaveBreakdowns(s, employmentId, balances.map((b) => b.leaveTypeId), breakdownAsOf);
-  const breakdownByType = new Map(breakdowns.filter((x) => x != null).map((x) => [x!.leaveTypeId, x!]));
-  // 4da751c6 — same asOf as the breakdowns, so the scheme and the days it explains can never be read at
-  // two different dates. Read-only and derived; no write, no column, no migration.
-  const scheme = admin ? await benefitSchemeView(s, employmentId, breakdownAsOf) : null;
+  // The retained Benefit Scheme readout keeps its dated source; balances are read in Leave Inquiry.
+  const schemeAsOf = spAsOf && /^\d{4}-\d{2}-\d{2}$/.test(spAsOf) ? spAsOf : today;
+  const scheme = admin ? await benefitSchemeView(s, employmentId, schemeAsOf) : null;
   // Pay + statutory (salary, IC, bank, tax) are HR-admin-only on this directory page — never load or
   // render them for a manager viewing a direct report (consultant feedback #5). Compensation reads are
   // also tightened to admin-or-self at the RLS layer (migration 0060); this avoids fetching them at all.
@@ -826,7 +803,7 @@ export default async function EmployeePage({
 
   // Tab labels (people.detail.tabs.*). Six tabs regrouping the existing sections below; the page still
   // loads all data once, so switching tabs is instant and keeps the viewer on the same employee.
-  const tabs: { key: 'profile' | 'family' | 'job' | 'careerMovement' | 'attendance' | 'bankStatutory' | 'payroll' | 'leave' | 'documents' | 'qualification' | 'others'; label: string }[] = [
+  const tabs: { key: 'profile' | 'family' | 'job' | 'careerMovement' | 'attendance' | 'bankStatutory' | 'payroll' | 'leave' | 'documents' | 'qualification'; label: string }[] = [
     { key: 'profile', label: t('tabs.profile') },
     { key: 'family', label: t('tabs.family') },
     { key: 'job', label: t('tabs.job') },
@@ -852,7 +829,6 @@ export default async function EmployeePage({
     // a list-and-dialog register mirroring the Family tab's table + dialogForm pattern. Placed after
     // Documents per the request's tab-order example.
     { key: 'qualification', label: t('tabs.qualification') },
-    { key: 'others', label: t('tabs.others') },
   ];
 
   // 9d13221c — Age beside Date of Birth: completed whole years from the stored DOB to today, recomputed on
@@ -2762,146 +2738,6 @@ export default async function EmployeePage({
           </>
         )}
       </div>
-    </Card>
-  ) : null;
-
-  const leaveBalanceCard = (
-    <Card id="section-leave-balance">
-      <SectionHeader title={t('leaveBalance')} />
-        <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-          {balances.map((b) => (
-            <div key={b.leaveTypeId} className="p-4">
-              <div className="text-xs text-muted-foreground">{b.leaveType}</div>
-              <div className="text-2xl font-semibold tabular-nums">
-                {b.accrued > 0 || b.balance > 0 ? (
-                  <>
-                    {b.available}
-                    <span className="text-sm font-normal text-muted-foreground"> {t('availableSuffix', { accrued: b.accrued })}</span>
-                  </>
-                ) : (
-                  <span className="text-muted-foreground">—</span>
-                )}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {b.pending > 0
-                  ? t('usedWithPending', { taken: b.taken, pending: b.pending })
-                  : t('used', { taken: b.taken })}
-              </div>
-              {/* 31e39d74 — "configured but not yet generated" on the HR-side record too. This card shows
-                  an em dash rather than 0.00 for an inactive type, which is not a silent zero but is also
-                  not an ANSWER: it cannot distinguish a type nobody configured from one whose table is
-                  written and waiting for Generate Entitlement. The caption is that distinction. */}
-              {(() => {
-                // r209 — the POOL's status for a borrower (balanceStoryTypeId): its own breakdown says
-                // "no entitlement table", which is true of the type and false of the figure beside it.
-                const st = breakdownByType.get(balanceStoryTypeId(b))?.entitlementStatus;
-                return st && entitlementStatusNeedsNotice(st) ? (
-                  <div
-                    className="mt-1 text-xs text-amber-700 dark:text-amber-500"
-                    title={tBal(ENTITLEMENT_STATUS_TIP_KEY[st]!)}
-                  >
-                    {tBal(ENTITLEMENT_STATUS_LABEL_KEY[st])}
-                  </div>
-                ) : null;
-              })()}
-              {breakdownByType.get(balanceStoryTypeId(b)) && (
-                <EntitlementBreakdown
-                  data={breakdownByType.get(balanceStoryTypeId(b))!}
-                  summary={{ available: b.available }}
-                  // §5 Upcoming Approved Leave removed from the panel (feedback 11876072).
-                  visual={{ color: b.color, icon: b.icon, code: b.code }}
-                  asOf={breakdownAsOf}
-                  action={`/admin/personnel/${employmentId}`}
-                  hiddenParams={from ? { from } : {}}
-                  // r303 (31492f74): HR's per-line sentences, naming the pool when this row's figures are one.
-                  hrExplanation={personnelHrExplanation(s, b.sharedBalance)}
-                  dmyDates
-                />
-              )}
-            </div>
-          ))}
-          {balances.length === 0 && <div className="p-4 text-sm text-muted-foreground">{t('noLeaveRecords')}</div>}
-        </div>
-    </Card>
-  );
-
-  // R45 7527ea5f — Automatic Leave Entitlement Recalculation history. When a profile change (grade /
-  // employment type / hire date / confirmation) moves the resolved entitlement, the engine posts a
-  // compensating adjustment and records it here: previous → new entitlement, the reason (which field
-  // moved), and the effective date. Admin-only, shown under the Leave tab beneath the balance card.
-  // The `reason` column is free text written by whatever triggered the recalc, so this is a COMPUTED key
-  // and i18n-coverage check C cannot see it — it only matches literal t('a.b') calls.
-  //
-  // The fallback here used to be `t(key) === key ? reason : label`, which NEVER FIRED: next-intl returns
-  // the FULLY-QUALIFIED path on a miss (people.detail.recalcReason.x) while `key` is relative, so the
-  // comparison could not match and the raw path was painted on screen. Measured on production 2026-08-10:
-  // 50 of 72 audit rows rendered a key path to the user (leave_type_rules 29, year_cycle_override 11,
-  // movement_recorded 9, movement_applied 1).
-  //
-  // `t.has` is the house idiom for a computed key — app/admin/scheduled-actions/page.tsx does the same.
-  // Degrading to the raw reason is deliberate: reasons are added by new code paths faster than labels, and
-  // an unlabelled reason must read as a plain word, never as a key path.
-  const recalcReasonLabel = (reason: string): string =>
-    t.has(`recalcReason.${reason}`) ? t(`recalcReason.${reason}`) : reason;
-  const recalcHistoryCard = admin ? (
-    <Card id="section-entitlement-recalc">
-      <SectionHeader title={t('recalcHistoryTitle')} count={recalcAudit.length} />
-      <p className="px-4 pt-3 text-xs text-muted-foreground">{t('recalcHistoryHelp')}</p>
-      {recalcAudit.length === 0 ? (
-        <div className="p-4 text-sm text-muted-foreground">{t('recalcHistoryEmpty')}</div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th className="px-4 py-2 font-medium">{t('recalcColEffective')}</th>
-                <th className="px-4 py-2 font-medium">{t('recalcColType')}</th>
-                {/* 9e2a89e9 — the reporter asked for "previous Job Grade, new Job Grade, previous
-                    entitlement, new entitlement, effective date, and reason". Three of the six were
-                    already here; this is the fourth, and the date column above now carries the date the
-                    change TOOK EFFECT rather than the date somebody typed it in. */}
-                <th className="px-4 py-2 font-medium">{t('recalcColGrade')}</th>
-                <th className="px-4 py-2 font-medium">{t('recalcColReason')}</th>
-                <th className="px-4 py-2 text-right font-medium">{t('recalcColPrevious')}</th>
-                <th className="px-4 py-2 text-right font-medium">{t('recalcColNew')}</th>
-                <th className="px-4 py-2 text-right font-medium">{t('recalcColChange')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recalcAudit.map((r) => (
-                <tr key={r.id} className="border-b border-border last:border-0">
-                  {/* `tookEffectOn` is the change's own effective date where the writer knew it, and the
-                      posting date otherwise — one column, never two dates fighting over one heading. */}
-                  <td className="px-4 py-2 tabular-nums">{formatDmy(r.tookEffectOn)}</td>
-                  <td className="px-4 py-2">{r.leaveTypeName}</td>
-                  {/* An em dash where no grade change was recorded, and where the grade has since left
-                      the catalogue: an absent value asserts nothing, a guessed one asserts something
-                      false. "From no grade to GRADE 16" is a real change and prints as "— → GRADE 16". */}
-                  <td className="px-4 py-2 text-xs">
-                    {r.gradeChanged ? (
-                      <span className="whitespace-nowrap">
-                        {r.previousGradeName ?? '—'} → {r.newGradeName ?? '—'}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">{t('recalcGradeUnchanged')}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2 text-muted-foreground">{recalcReasonLabel(r.reason)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{r.previousEntitlement}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{r.newEntitlement}</td>
-                  <td
-                    className={`px-4 py-2 text-right tabular-nums font-medium ${
-                      r.delta > 0 ? 'text-emerald-600 dark:text-emerald-400' : r.delta < 0 ? 'text-red-600 dark:text-red-400' : ''
-                    }`}
-                  >
-                    {r.delta > 0 ? `+${r.delta}` : r.delta}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </Card>
   ) : null;
 
@@ -5059,7 +4895,7 @@ export default async function EmployeePage({
   const panels = {
     // Single-card tabs pass the node directly so a null (defensive; scopedAdmin guarantees non-null
     // here) falls through to the shell's empty-state rather than rendering a blank fragment.
-    profile: profilePanel,
+    profile: <>{profilePanel}{changeHistoryCard}{dataPrivacyCard}</>,
     family: familyPanel,
     // 420ebab5 part two (r255) — the Employment Information card is the tab's ONE bucket (a) form
     // (Employment Dates: probation / notice periods and lifecycle dates, overwritten in place), so it sits
@@ -5089,6 +4925,7 @@ export default async function EmployeePage({
         )}
         {directSuperiorCard}
         {delegationsCard}
+        {reviewCard}
       </>
     ),
     // Movement tab redesign (78853b97): ONE clean screen — the Employment History timeline (a
@@ -5238,31 +5075,20 @@ export default async function EmployeePage({
         {zakatSummaryCard}
       </>
     ),
-    // Leave Information (feedback d085c6fc): the Leave Balance card — including its entitlement
-    // breakdown drill-down — relocated out of Payroll into a dedicated leave-management tab. Same
-    // card, same data (loaded once for the page), just a different tab; no leave/payroll logic moved.
+    // 39306a9e: retain grade, scheme and requests. Balance and recalculation review live in Leave.
     leave: (
       <>
-        {/* Item 52a30630 — Grade relocated from Profile onto this tab, pinned above the balance card. */}
+        {/* Grade and Benefit Scheme keep their existing owners and actions. */}
         {gradeCard}
         {benefitSchemeCard}
-        {leaveBalanceCard}
-        {/* R45 7527ea5f — profile-change entitlement recalculation history. */}
-        {recalcHistoryCard}
+        {leaveRequestsCard}
       </>
     ),
     documents: documentsPanel,
     // Qualification (feedback a949184a): the academic/professional qualification register — a single card
     // mirroring the Family tab's list-and-dialog pattern (see qualificationPanel above).
     qualification: qualificationPanel,
-    others: (
-      <>
-        {changeHistoryCard}
-        {dataPrivacyCard}
-        {leaveRequestsCard}
-        {reviewCard}
-      </>
-    ),
+
   };
 
   return (

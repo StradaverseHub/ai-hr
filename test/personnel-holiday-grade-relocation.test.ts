@@ -251,6 +251,7 @@ describe('Item 52a30630 — Holiday Calendar → Attendance, Grade → Leave', (
 
     // Leave: the same decision's other half — Grade pinned above the balance card.
     const leave = panel('leave', 'documents: ');
-    expect(card(leave, 'gradeCard')).toBeLessThan(card(leave, 'leaveBalanceCard'));
+    expect(card(leave, 'gradeCard')).toBeLessThan(card(leave, 'benefitSchemeCard'));
+    expect(leave).not.toContain('{leaveBalanceCard}');
   });
 });

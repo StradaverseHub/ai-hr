@@ -205,3 +205,6 @@ export type PersonnelSaveTab = keyof typeof PERSONNEL_TAB_SECTIONS;
 export const ALL_PERSONNEL_TAB_SECTIONS: readonly string[] = Object.values(PERSONNEL_TAB_SECTIONS).flatMap(
   (ids) => [...ids],
 );
+
+/** Saved links to the retired admin Others tab retain a useful, canonical destination. */
+export const RETIRED_PERSONNEL_TABS = { others: 'profile' } as const;

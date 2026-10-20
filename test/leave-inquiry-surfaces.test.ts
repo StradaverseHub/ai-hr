@@ -298,7 +298,7 @@ describe('20c699f8: Employee Balances', () => {
    * sentences is the SAME `bd` (`derivation: true` on the one read) — no second read, no second source. The
    * Personnel record is the other HR mount and passes it too; the employee's My Leave dashboard never does.
    */
-  it('r303: both HR mounts switch the sentences on, off the row they already hold; the employee mount does not', () => {
+  it('r303: Leave Inquiry owns HR sentences; Personnel and the employee mount carry no duplicate', () => {
     const mount = balancesPage.slice(balancesPage.indexOf('<EntitlementBreakdown'));
     expect(mount.slice(0, mount.indexOf('/>'))).toContain('hrExplanation={r.hrExplanation}');
     // 2a57a007 (r340) — THE OBJECT GAINED A SECOND FIELD AND THIS LITERAL WAS UPDATED TO MATCH, because the
@@ -314,19 +314,10 @@ describe('20c699f8: Employee Balances', () => {
     );
     expect((rowsHelper.match(/leaveEntitlementBreakdown\(/g) ?? []).length, 'still exactly one breakdown read').toBe(1);
     const personnel = read('app/admin/personnel/[employmentId]/page.tsx');
-    // The Personnel record is HR-only for the sentences by the page's OWN admin predicate: the read and the switch
-    // go through ./leave-breakdowns.ts, which asks `isAdmin(s)` (driven with real sessions in
-    // test/r303-personnel-leave-explain.test.ts).
-    expect(personnel).toContain('await personnelLeaveBreakdowns(s, employmentId, balances.map((b) => b.leaveTypeId), breakdownAsOf)');
-    const helper = read('app/admin/personnel/[employmentId]/leave-breakdowns.ts');
-    expect(helper).toContain('const derivation = isAdmin(s);');
-    expect(helper).toContain('return isAdmin(s) ? { sharedBalance: sharedBalance ?? null } : undefined;');
-    const pMount = personnel.slice(personnel.indexOf('<EntitlementBreakdown'));
-    expect(pMount.slice(0, pMount.indexOf('/>'))).toContain('hrExplanation={personnelHrExplanation(s, b.sharedBalance)}');
-    expect(pMount.slice(0, pMount.indexOf('/>')), 'HR must not be ESS-gated').not.toContain('applyEssConfig');
-    // The employee side: neither the prop nor the working.
-    expect(read('components/leave/my-leave-dashboard.tsx')).not.toContain('hrExplanation');
-    expect(read('core/my-leave.ts')).not.toContain('derivation: true');
+    // 39306a9e: the Personnel duplicate is retired; Leave Inquiry remains the HR explanation owner.
+    expect(personnel).not.toContain('personnelLeaveBreakdowns');
+    expect(personnel).not.toContain('<EntitlementBreakdown');
+
   });
 
   it('re-runs BOTH reads when the as-at date changes (nothing is cached against another date)', () => {

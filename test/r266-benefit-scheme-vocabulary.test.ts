@@ -274,7 +274,11 @@ describe('§B · the mounts: one explainer key on both tables-block mounts, the 
     expect(src).toContain("tScheme('derivedNoteEmpty')");
     expect(src).toContain("tScheme('setUpSchemes')");
     // m3 — both links to the Leave types screen resolve through the module's one list of addresses.
-    const card = src.slice(src.indexOf('id="section-benefit-scheme"'), src.indexOf('const leaveBalanceCard'));
+    const start = src.indexOf('id="section-benefit-scheme"');
+    const end = src.indexOf('const salaryRows', start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start + 300);
+    const card = src.slice(start, end);
     expect((card.match(/href=\{leaveConfigScreenHref\('leaveTypes'\)\}/g) ?? []).length).toBe(2);
     expect(card).not.toContain('href="/admin/leave-config/types"');
     // Still read-only: no form, no action, no input on the card.

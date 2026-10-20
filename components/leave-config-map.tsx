@@ -1,3 +1,5 @@
+/** 010fdbec: the catalogue below still owns screen headers and sibling tabs.
+ * Seven destinations are now cards under Leave Settings; operations retain their menu entries. */
 /**
  * a6fe37fc — THE MAP OF THE LEAVE CONFIGURATION AREA.
  *

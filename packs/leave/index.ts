@@ -213,7 +213,7 @@ const LEAVE_NAV_LINKS: NavLinkDescriptor[] = [
  * tenant cannot not-have it), and the Administration group is gated adminOnly wholesale. Every one of
  * these pages calls requireAdmin()/scopedAdmin() for itself regardless.
  */
-const LEAVE_ADMIN_DESTINATIONS: NavNodeGroupDescriptor = {
+export const LEAVE_ADMIN_DESTINATIONS: NavNodeGroupDescriptor = {
   labelKey: 'leaveConfig',
   icon: SlidersHorizontal,
   group: 'admin',

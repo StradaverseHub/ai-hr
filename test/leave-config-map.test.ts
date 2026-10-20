@@ -19,7 +19,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { LEAVE_CONFIG_MAP, LEAVE_CONFIG_RECORDS_HREF, type LeaveConfigScreenId } from '../components/leave-config-map';
 import { SCREENS } from '../lib/permissions';
-import { leavePack } from '../packs/leave';
+import { leavePack, LEAVE_ADMIN_DESTINATIONS } from '../packs/leave';
 
 const declaredRoutes = new Set(
   SCREENS.filter((s) => s.screenKey === 'leaveConfig' || s.screenKey === 'leaveApproval').flatMap(
@@ -105,7 +105,7 @@ describe('a6fe37fc — the leave configuration map', () => {
       missing,
       'a route on the leaveConfig screen key that the menu never reaches is a screen nobody can find — ' +
         'the defect a6fe37fc exists to fix. The Reset records sub-screen is the one named exception.',
-    ).toEqual(['/admin/leave-config/history-import', '/admin/leave-config/bf-import', LEAVE_CONFIG_RECORDS_HREF]);
+    ).toEqual(['/admin/leave-config/settings', '/admin/leave-config/history-import', '/admin/leave-config/bf-import', LEAVE_CONFIG_RECORDS_HREF]);
     expect(LEAVE_CONFIG_RECORDS_HREF).toBe('/admin/leave-config/records');
     expect(readFileSync(new URL('../app/admin/leave-config/adjustments/page.tsx', import.meta.url), 'utf8')).toContain(
       '<Link href={LEAVE_CONFIG_RECORDS_HREF}',
@@ -147,7 +147,7 @@ describe('a6fe37fc — the leave configuration map', () => {
     // lives under the module IS a group here, one for one, in order. Leave Balance Health joined as a row
     // AND as a group in the same commit, so the two lists moved together and the only child still outside
     // them is the one whose destination is not a Leave Config page at all.
-    const children = leavePack.navNodes!.find((n) => n.group === 'admin')!.children;
+    const children = LEAVE_ADMIN_DESTINATIONS.children;
     const rows = children.filter((c) => c.href.startsWith('/admin/leave-config/'));
     expect(LEAVE_CONFIG_MAP.map((g) => g.navKey)).toEqual(rows.map((r) => r.labelKey));
     expect(LEAVE_CONFIG_MAP.map((g) => g.items[0].href)).toEqual(rows.map((r) => r.href));

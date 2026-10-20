@@ -13,6 +13,7 @@
  *
  * Popover structure (trigger button + fixed click-catcher backdrop + absolute right-aligned panel
  * with starting:* enter transition) mirrors components/company-switcher.tsx for visual consistency.
+ * Assignment bulk opts into the modal portal so the sidebar and table cannot clip its controls.
  */
 
 import { useEffect, useState, type MouseEvent } from 'react';
@@ -263,7 +264,7 @@ export function FilterPanel({ action, fields, values, labels, hidden, dataTour, 
     <Dialog.Trigger asChild>{trigger}</Dialog.Trigger>
     <Dialog.Portal>
       <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
-      <Dialog.Content aria-describedby={undefined} className="fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[min(32rem,calc(100%-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col gap-4 rounded-lg border border-border bg-popover p-4 text-popover-foreground shadow-xl">
+      <Dialog.Content aria-describedby={undefined} className="fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100dvh_-_2rem)] w-[min(32rem,calc(100vw_-_2rem))] -translate-x-1/2 -translate-y-1/2 flex-col gap-4 rounded-lg border border-border bg-popover p-4 text-popover-foreground shadow-xl">
         <div className="flex shrink-0 items-center justify-between gap-3">
           <Dialog.Title className="font-semibold">{labels.filter}</Dialog.Title>
           <Dialog.Close asChild><button type="button" aria-label={dialog.closeLabel} className="grid size-11 place-items-center rounded-md hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"><X className="size-4" aria-hidden /></button></Dialog.Close>
