@@ -145,6 +145,8 @@ export const UNSECTIONED_COLUMNS: Record<string, string> = {
   ...Object.fromEntries(RETIRED_EMPLOYMENT_COLUMNS.map(column=>[column,'The undated Employment import is retired. Use dated Movement import for New Event fields; contract and notice period settings remain in Personnel Employment.'])),
   company: 'moving an employee between legal entities is an Entity Transfer movement, not a cell edit',
   department: 'a department change is a dated organisational assignment with its own history row',
+  business_unit: 'the full Employee import sets the initial Business Unit at hire; later changes require a dated organisational Movement, not an undated section update',
+  job_grade: 'the full Employee import sets the initial Job Grade at hire; later changes require a dated organisational Movement, not an undated section update',
   position: 'a position change is a dated organisational assignment with its own history row',
   cost_center: 'a cost-centre change is a dated organisational assignment with its own history row',
   employment_type: 'employment type is carried by the dated assignment, not by a flat column',

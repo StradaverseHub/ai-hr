@@ -180,6 +180,15 @@ describe('2983802f §1 · the section catalogue accounts for every column', () =
     for (const s of IMPORT_SECTION_KEYS) expect(sectionColumns(s)[0]).toBe(SECTION_KEY_COLUMN);
   });
 
+  it('initial Business Unit and Job Grade remain outside every undated section writer', () => {
+    const initialAssignmentColumns = ['business_unit', 'job_grade'];
+    for (const section of IMPORT_SECTION_KEYS) {
+      expect(foreignColumns(section, [SECTION_KEY_COLUMN, ...initialAssignmentColumns])).toEqual(initialAssignmentColumns);
+      for (const column of initialAssignmentColumns) expect(sectionColumns(section)).not.toContain(column);
+    }
+    for (const column of initialAssignmentColumns) expect(UNSECTIONED_COLUMNS[column]).toContain('initial');
+  });
+
   it('unsectioned columns each carry a reason', () => {
     for (const [col, why] of Object.entries(UNSECTIONED_COLUMNS)) {
       expect(why.length, `${col} needs a reason`).toBeGreaterThan(10);
