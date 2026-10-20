@@ -5,6 +5,7 @@ import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
 import {Field,inputCls,btnPrimary} from '@/components/ui';
 import {AttendanceSettingsNavigation} from '@/components/attendance-settings-navigation';
+import {overtimeStarter,prepareOvertimeStarter,type OvertimeStarterKey} from '@/lib/overtime-pattern-starters';
 import {validateOvertimePatternDraft} from '@/lib/overtime-pattern-schema';
 import {OvertimePatternError} from '@/lib/overtime-pattern-model';
 import type {OvertimePattern,OvertimeAssignmentTarget,OvertimeIssue} from '@/lib/overtime-pattern-model';
@@ -21,7 +22,7 @@ const PAGE='/admin/attendance/settings/overtime-patterns';
 const button='min-h-10 rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent disabled:opacity-50';
 const newPattern=(eligibilityBasis:OvertimePattern['eligibilityBasis'],durationAllocation:OvertimePattern['durationAllocation']):OvertimePattern=>({v:1,currency:{code:'',minorScale:0},eligibilityBasis,durationAllocation,definitions:[],eligibility:{id:'eligibility',type:'group',logic:'and',children:[]},eligibleMinutes:null,durationCap:null,durationRounding:null,deductions:[],rates:[],paymentCap:null,moneyRounding:{stage:'line',mode:'halfUp'}});
 
-type WorkspaceProps={detail:OvertimePatternDetail|null;version?:OvertimePatternVersionView;setup:OvertimePatternSetup};
+type WorkspaceProps={detail:OvertimePatternDetail|null;version?:OvertimePatternVersionView;setup:OvertimePatternSetup;starterKey?:OvertimeStarterKey};
 export function OvertimeWorkspace(props:WorkspaceProps) {
   const t=useTranslations('overtimePatterns');
   if(props.detail?.pattern.kind==='legacy')return <p className="rounded-lg border border-border p-4 text-sm">{t('legacyHelp')} <a className="text-primary underline" href="/admin/attendance/schedule">{t('legacyLink')}</a></p>;
@@ -39,13 +40,14 @@ function NewOvertimePreparation(props:WorkspaceProps) {
   const [prepared,setPrepared]=useState<OvertimePattern|null>(null);
   if(prepared)return <EditableOvertimeWorkspace {...props} initialDefinition={prepared}/>;
   return <section className="space-y-4 rounded-xl border border-border bg-card p-5" aria-label={t('sections.basic')}>
-    <h2 className="font-semibold">{t('sections.basic')}</h2>
+    <h2 className="font-semibold">{props.starterKey?overtimeStarter(props.starterKey)?.name:t('sections.basic')}</h2>
+    {props.starterKey?<p className="text-sm text-muted-foreground">{t('starterHelp')}</p>:null}
     <Field label={t('eligibilityBasis')}><select className={inputCls} value={basis} onChange={event=>setBasis(event.target.value as typeof basis)}><option value="">{t('choose')}</option><option value="day">{t('bases.day')}</option><option value="session">{t('bases.session')}</option></select></Field><p className="text-sm text-muted-foreground">{t('eligibilityBasisHelp')}</p>
     <Field label={t('durationAllocation')}><select className={inputCls} value={direction} onChange={event=>setDirection(event.target.value as typeof direction)}><option value="">{t('choose')}</option><option value="earliest">{t('earliest')}</option><option value="latest">{t('latest')}</option></select></Field><p className="text-sm text-muted-foreground">{t('durationAllocationHelp')}</p>
-    <button type="button" className={btnPrimary} disabled={!basis||!direction} onClick={()=>{if(basis&&direction)setPrepared(newPattern(basis,direction));}}>{t('prepareDraft')}</button>
+    <button type="button" className={btnPrimary} disabled={!basis||!direction} onClick={()=>{if(basis&&direction)setPrepared(props.starterKey?prepareOvertimeStarter(props.starterKey,basis,direction):newPattern(basis,direction));}}>{t('prepareDraft')}</button>
   </section>;
 }
-function EditableOvertimeWorkspace({detail,version,setup,initialDefinition}:WorkspaceProps&{initialDefinition:OvertimePattern}) {
+function EditableOvertimeWorkspace({detail,version,setup,starterKey,initialDefinition}:WorkspaceProps&{initialDefinition:OvertimePattern}) {
   const t=useTranslations('overtimePatterns');
   const router=useRouter();
   const initial=initialDefinition;
@@ -53,7 +55,7 @@ function EditableOvertimeWorkspace({detail,version,setup,initialDefinition}:Work
   const [basisChosen,setBasisChosen]=useState(Boolean(initial?.eligibilityBasis));
   const [allocationChosen,setAllocationChosen]=useState(Boolean(initial?.durationAllocation));
   const [code,setCode]=useState(detail?.pattern.code??'');
-  const [name,setName]=useState(version?.name??'');
+  const [name,setName]=useState(version?.name??overtimeStarter(starterKey)?.name??'');
   const [description,setDescription]=useState(version?.description??'');
   const [creationCompanyId,setCreationCompanyId]=useState(detail?.pattern.creationCompanyId??'');
   const [companyIds,setCompanyIds]=useState<string[]>(version?.companyIds??[]);

@@ -20544,7 +20544,10 @@
     "cashResult": "Kết quả tiền mặt",
     "durationAuthorityHelp": "Chỉ bằng chứng thời lượng không cho phép trả tiền mặt hoặc yêu cầu TOIL.",
     "transferStaleHelp": "Dữ liệu làm thêm đã lưu không còn khớp với kiểm tra tài chính hiện tại. Nhập lý do và dùng “{action}”, sau đó kiểm tra kết quả mới đã lưu và chọn lại đợt lương. Đọc các lựa chọn không tính lại kết quả.",
-    "transferConflictHelp": "Ngày này đã có khoản thanh toán tiền hoặc nghỉ bù không tương thích. Kiểm tra khoản đã ghi nhận trước khi chọn thanh toán khác."
+    "transferConflictHelp": "Ngày này đã có khoản thanh toán tiền hoặc nghỉ bù không tương thích. Kiểm tra khoản đã ghi nhận trước khi chọn thanh toán khác.",
+    "standardStarters": "Mẫu khởi đầu tiêu chuẩn",
+    "prepareStarter": "Chuẩn bị bản nháp",
+    "starterHelp": "Chọn công ty, tiền tệ, ngày đủ điều kiện, cơ sở tính theo giờ và mã thu nhập trước khi kích hoạt. Các mẫu khởi đầu chưa được phân công; tên mức giá không xác lập công thức thanh toán theo luật định."
   },
   "systemTestingWorkspace": {
     "title": "Kiểm thử hệ thống",

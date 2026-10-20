@@ -20544,7 +20544,10 @@
     "cashResult": "Keputusan tunai",
     "durationAuthorityHelp": "Bukti tempoh sahaja tidak membenarkan bayaran tunai atau tuntutan TOIL.",
     "transferStaleHelp": "Input kerja lebih masa yang disimpan tidak lagi sepadan dengan semakan kewangan semasa. Masukkan sebab dan gunakan “{action}”, kemudian semak pengiraan baharu yang disimpan dan pilih proses Gaji semula. Membaca pilihan tidak mengira semulanya.",
-    "transferConflictHelp": "Hari ini sudah mempunyai penyelesaian tunai atau cuti gantian yang tidak serasi. Semak penyelesaian sedia ada sebelum memilih bayaran lain."
+    "transferConflictHelp": "Hari ini sudah mempunyai penyelesaian tunai atau cuti gantian yang tidak serasi. Semak penyelesaian sedia ada sebelum memilih bayaran lain.",
+    "standardStarters": "Corak permulaan standard",
+    "prepareStarter": "Sediakan draf",
+    "starterHelp": "Pilih syarikat, mata wang, kelayakan hari, asas kadar sejam dan kod pendapatan sebelum pengaktifan. Corak permulaan ini belum ditugaskan; nama kadar bukan formula bayaran berkanun."
   },
   "systemTestingWorkspace": {
     "title": "Ujian Sistem",
