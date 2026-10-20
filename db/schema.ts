@@ -10557,6 +10557,7 @@ export const payrollLeaveException = pgTable('payroll_leave_exception', {
   employmentId: uuid('employment_id').notNull().references(() => employment.id),
   leaveRequestId: uuid('leave_request_id').notNull().references(() => leaveRequest.id),
   sourceAction: text('source_action').notNull().$type<'approval' | 'charged_import'>(),
+  sourceRevision: text('source_revision').notNull(),
   affectedDates: jsonb('affected_dates').notNull().$type<string[]>(),
   createdBy: uuid('created_by').notNull().references(() => appUser.id), createdAt: createdAt(),
   status: text('status').notNull().default('open').$type<'open' | 'resolved'>(),

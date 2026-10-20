@@ -44,7 +44,7 @@ export async function lockPayrollForLeaveChangeTx(tx: Tx, p: {
   const ids = [...new Set(p.requestIds)].sort();
   if (!ids.length) return [];
   const requests = await tx.select({
-    id: leaveRequest.id, start: leaveRequest.startDate, end: leaveRequest.endDate,
+    id: leaveRequest.id, start: leaveRequest.startDate, end: leaveRequest.endDate, status: leaveRequest.status,
     duration: leaveRequest.durationType, imported: leaveRequest.importedHistory,
     allowance: leaveRequest.allowanceEligible, unpaidDays: leaveRequest.unpaidDays, paid: leaveType.paid,
     charged: sql<boolean>`exists(select 1 from leave_ledger ll where ll.tenant_id=${leaveRequest.tenantId} and ll.source_request_id=${leaveRequest.id} and ll.entry_type='debit')`,
@@ -84,12 +84,12 @@ export async function lockPayrollForLeaveChangeTx(tx: Tx, p: {
     const starts = [request.start, ...(p.survivorStarts?.get(request.id) ?? [])];
     const changedDates = p.changedDates?.get(request.id) ?? approvedDates.get(request.id) ?? datesBetween(request.start, request.end);
     const affected = new Set<string>();
-    if (unpaid) for (const date of starts) if (inside(date)) affected.add(date);
+    if (unpaid && request.status === 'approved') for (const date of starts) if (inside(date)) affected.add(date);
     // Weekly/biweekly disbursement weights read unpaid starts in the company's SALARY cycles,
     // independently of the employee's leave-deduction window. Mirror that existing consumer,
     // including its distinct paid-type treatment, without changing its arithmetic.
     const schedule = payrollScheduleFor(row.run_policy_config, { cutOffDay: row.salary_cutoff_day }, row.pay_period);
-    if (schedule.frequency !== 'monthly' && schedule.periods.length > 1 && (!request.paid || request.allowance === false || p.prospectivePaid === false)) {
+    if (request.status === 'approved' && schedule.frequency !== 'monthly' && schedule.periods.length > 1 && (!request.paid || request.allowance === false || p.prospectivePaid === false)) {
       for (const date of starts) if (schedule.periods.some(period => date >= period.start && date <= period.end)) affected.add(date);
     }
     if (p.action !== 'paid_setting' && request.duration === 'full_day' && row.policy_config?.leave?.deductAbsentDays === true) {
@@ -102,10 +102,10 @@ export async function lockPayrollForLeaveChangeTx(tx: Tx, p: {
 }
 
 /** Called before the Leave transaction commits, so an effect failure rolls the decision back. */
-export async function applyLeavePayrollEffectsTx(tx: Tx, hits: readonly LeavePayrollHit[], action: SourceAction) {
+export async function applyLeavePayrollEffectsTx(tx: Tx, hits: readonly LeavePayrollHit[], action: SourceAction, sourceRevision = 'completed') {
   for (const hit of hits) {
     try {
-      await tx.execute(sql`select app.record_leave_payroll_effect(${hit.requestId}::uuid,${hit.batchId}::uuid,${action},${JSON.stringify(hit.dates)}::jsonb)`);
+      await tx.execute(sql`select app.record_leave_payroll_effect(${hit.requestId}::uuid,${hit.batchId}::uuid,${action},${JSON.stringify(hit.dates)}::jsonb,${sourceRevision})`);
     } catch (error) {
       if (postgresCode(error) === '55P03') throw new LeavePayrollBusyError();
       throw error;
@@ -113,8 +113,10 @@ export async function applyLeavePayrollEffectsTx(tx: Tx, hits: readonly LeavePay
   }
 }
 
-export async function markPayrollAfterLeaveApprovalTx(tx: Tx, requestId: string, action: 'approval' | 'charged_import' = 'approval') {
-  await applyLeavePayrollEffectsTx(tx, await lockPayrollForLeaveChangeTx(tx, { requestIds: [requestId], action }), action);
+export async function markPayrollAfterLeaveApprovalTx(tx: Tx, requestId: string, action: 'approval' | 'charged_import' = 'approval', p: { changedDates?: readonly string[]; sourceRevision?: string } = {}) {
+  await applyLeavePayrollEffectsTx(tx, await lockPayrollForLeaveChangeTx(tx, { requestIds: [requestId], action,
+    ...(p.changedDates ? { changedDates:new Map([[requestId,p.changedDates]]) } : {}),
+  }), action, p.sourceRevision);
 }
 
 export async function lockPayrollForLeavePaidSettingTx(tx: Tx, typeId: string, nextPaid: boolean) {

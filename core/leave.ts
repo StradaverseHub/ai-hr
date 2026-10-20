@@ -5451,6 +5451,7 @@ async function finalizeLeaveApproval(
   daysOverride?: number,
   mixed = false,
   perDateOutcome?: PerDateOutcome,
+  payrollChangedDates?: readonly string[],
 ) {
   // Unpaid-leave payroll-impact: fetch the type's code + payroll-signal gate once — plus (cdf9ca48) the
   // balance source, which the gate and the debit below both need. Both approval paths (multi-step final
@@ -5582,7 +5583,7 @@ async function finalizeLeaveApproval(
     .update(leaveRequest)
     .set({ status: 'approved', decidedByEmploymentId: deciderEmploymentId ?? null, decidedAt: sql`now()` })
     .where(eq(leaveRequest.id, req.id));
-  await markPayrollAfterLeaveApprovalTx(tx, req.id);
+  await markPayrollAfterLeaveApprovalTx(tx, req.id, 'approval', { changedDates:payrollChangedDates });
   // Marriage Leave (72fca31d rule 3) — the approval that grants the leave also records the fact it is
   // granted FOR: Single becomes Married. Here, after the status flip, because migration 0485's writer
   // refuses on a request that is not approved — the row has to be true before the fact follows from it.
@@ -5948,7 +5949,7 @@ export async function decideLeaveDate(
     });
 
     // §4E finalization: only when NO pending dates remain (shared with the batch decideLeaveDates path).
-    return finalizePerDateIfComplete(tx, ctx, req, p.deciderEmploymentId);
+    return finalizePerDateIfComplete(tx, ctx, req, p.deciderEmploymentId, p.decision === 'approved' ? [p.leaveDate] : []);
   });
 }
 
@@ -5963,13 +5964,22 @@ async function finalizePerDateIfComplete(
   ctx: SessionContext,
   req: DecidableLeave,
   deciderEmploymentId?: string,
+  newlyApprovedDates: readonly string[] = [],
 ): Promise<{ status: 'pending' | 'approved' | 'rejected' }> {
   const remaining = await tx
     .select()
     .from(leaveRequestDate)
     .where(eq(leaveRequestDate.leaveRequestId, req.id));
   const stillPending = remaining.filter((d) => d.status === 'pending');
-  if (stillPending.length > 0) return { status: 'pending' as const };
+  if (stillPending.length > 0) {
+    // Approved child dates already relieve absence even while the parent awaits other decisions.
+    // Each decision group keeps its own follow-up identity, so later decisions cannot overwrite a
+    // payroll review and resolution recorded for an earlier group.
+    if (newlyApprovedDates.length) await markPayrollAfterLeaveApprovalTx(tx, req.id, 'approval', {
+      changedDates:newlyApprovedDates, sourceRevision:`dates:${[...newlyApprovedDates].sort().join(',')}`,
+    });
+    return { status: 'pending' as const };
+  }
 
   const approved = remaining.filter((d) => d.status === 'approved');
   const rejected = remaining.filter((d) => d.status === 'rejected');
@@ -5992,7 +6002,7 @@ async function finalizePerDateIfComplete(
         rejected: rejected.map((d) => ({ date: d.leaveDate, reason: d.rejectReason })),
       }
     : undefined;
-  await finalizeLeaveApproval(tx, ctx, req, deciderEmploymentId, approvedDays, mixed, perDateOutcome);
+  await finalizeLeaveApproval(tx, ctx, req, deciderEmploymentId, approvedDays, mixed, perDateOutcome, newlyApprovedDates);
   return { status: 'approved' as const };
 }
 
@@ -6063,7 +6073,7 @@ export async function decideLeaveDates(
         payload: { leaveDate: d.leaveDate, decision: d.decision, ...(d.rejectReason ? { rejectReason: d.rejectReason } : {}) },
       });
     }
-    return finalizePerDateIfComplete(tx, ctx, req, p.deciderEmploymentId);
+    return finalizePerDateIfComplete(tx, ctx, req, p.deciderEmploymentId, decisions.filter(d=>d.decision==='approved').map(d=>d.leaveDate));
   });
 }
 
