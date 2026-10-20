@@ -19492,7 +19492,7 @@
     "legacyHelp": "This application follows the original attendance approval rules.",
     "view": "View",
     "empty": "No applications match these filters.",
-    "total": "{count} applications",
+    "total": "{count, plural, one {# application} other {# applications}}",
     "pagination": "Application history pages",
     "previous": "Previous",
     "next": "Next",

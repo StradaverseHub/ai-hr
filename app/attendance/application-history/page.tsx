@@ -36,7 +36,7 @@ export default async function AttendanceApplicationHistoryPage({ searchParams }:
     return '/attendance/application-history?' + query;
   };
   const selects = [['companyId', 'company', options.companies], ['departmentId', 'department', options.departments], ['businessUnitId', 'businessUnit', options.businessUnits], ['gradeId', 'grade', options.grades], ['division', 'division', options.divisions]] as const;
-  const fieldClass = 'block space-y-1 rounded-md bg-white p-2 text-sm text-slate-900';
+  const fieldClass = 'block space-y-1 rounded-md bg-white! p-2 text-sm text-slate-900!';
   const panel = <Card className="space-y-3 p-4"><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
     <label className={fieldClass}>{t('search')}<input name="query" className={`${inputCls} min-h-11 w-full`} defaultValue={sp.query} /></label>
     {selects.map(([key, label, items]) => <label className={fieldClass} key={key}>{t(label)}<select name={key} defaultValue={sp[key] ?? ''} className={`${inputCls} min-h-11 w-full`}><option value="">{t('all')}</option>{items.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label>)}
