@@ -79,7 +79,10 @@ export async function POST(request:Request){
   if(result.imported){revalidatePath('/admin/personnel');for(const employee of result.employees as MovementImportEmployee[])if(employee.employmentId)revalidatePath('/admin/personnel/'+employee.employmentId);}
   let errorReceipt:string|undefined;
   if(canReportWorkbook)try{errorReceipt=movementErrorReceipt({tenantId:ctx.tenantId,userId:ctx.userId??'',companyId,sourceHash,rows:result.employees.flatMap(e=>e.rows.filter(row=>row.status!=='imported').map(row=>({row:row.row,errors:row.errors})))});}catch{/* Optional display download must never conceal an already committed result. */}
-  return reply({ok:true,result,errorReceipt,workbookReportUnavailable:!errorReceipt});
+  // The browser combines the untouched write result with its current preview once. Returning
+  // already-restored errors makes that second pass mistake historical exclusions for fresh refusals.
+  // Keep signed report explanations above; never restore identity or authority at the route boundary.
+  return reply({ok:true,result:committed,errorReceipt,workbookReportUnavailable:!errorReceipt});
  }catch(error){
   // Database wrappers contain SQL/bound values. Only finite application codes are presentation data.
   const raw=error instanceof Error&&!('query'in error)&&!('cause'in error)?error.message:'';
