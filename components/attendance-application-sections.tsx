@@ -1,12 +1,13 @@
 import type { attendanceApplicationDetail } from '@/packs/attendance/service';
 import { originalAttendanceReview } from '@/lib/attendance-review-evidence';
+import { attendanceHistoryDate } from '@/lib/attendance-history-filter';
 import { Card } from './ui';
 type Detail = NonNullable<Awaited<ReturnType<typeof attendanceApplicationDetail>>>;
 type Translate = (key: string, values?: Record<string, string | number>) => string;
 
 export function AttendanceApplicationSections({ detail, locale, t }: { detail: Detail; locale: string; t: Translate }) {
   const a = detail.application, review = detail.review, record = review?.record, schedule = review?.schedule;
-  const date = (v: string) => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${v}T00:00:00Z`));
+  const date = (v: string) => attendanceHistoryDate(v, locale);
   const instant = (v: Date) => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' }).format(v);
   const duration = (v: number | null | undefined) => v == null ? t('notRecorded') : t('durationMinutes', { minutes: v });
   const clock = (v: string | null | undefined) => v ? v.slice(0, 5) : t('notRecorded');
