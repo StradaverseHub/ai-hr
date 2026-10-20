@@ -504,7 +504,7 @@ export async function LeaveConfigMap({ current }: { current: MappedLeaveConfigSc
   const group = leaveConfigGroupOf(current);
   const settings = await getTranslations('leaveSettingsHub');
   const back = LEAVE_SETTINGS_DESTINATIONS.some(row => row.labelKey === group.navKey)
-    ? <Link href={LEAVE_SETTINGS_HREF} className="inline-flex w-fit text-sm text-primary underline underline-offset-4">{settings('back')}</Link> : null;
+    ? <Link href={LEAVE_SETTINGS_HREF} className="inline-flex min-h-11 w-fit items-center text-sm text-primary underline underline-offset-4">{settings('back')}</Link> : null;
   if (group.items.length < 2) return back;
   const t = await getTranslations('admin.leaveConfigMap');
   const tab = (active: boolean) =>

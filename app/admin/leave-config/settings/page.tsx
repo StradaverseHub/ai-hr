@@ -24,7 +24,7 @@ export default async function LeaveSettingsPage() {
       {cards.map(card => <Card key={card.href} className="flex flex-col p-5">
         <h2 className="text-base font-semibold">{card.title}</h2>
         <p className="mt-1 flex-1 text-sm text-muted-foreground">{card.description}</p>
-        <Link href={card.href} className="mt-4 inline-flex w-fit items-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90" aria-label={`${t('open')} — ${card.title}`}>{t('open')}</Link>
+        <Link href={card.href} className="mt-4 inline-flex min-h-11 w-fit items-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90" aria-label={`${t('open')} — ${card.title}`}>{t('open')}</Link>
       </Card>)}
     </div>
   </div>;
