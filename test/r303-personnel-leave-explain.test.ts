@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import type { PersonnelTabKey } from '../components/personnel-tabs';
 import { RETIRED_PERSONNEL_TABS } from '../lib/personnel-tab-sections';
 const read = (p: string) => fs.readFileSync(path.join(__dirname, '..', p), 'utf8');
 const source = read('app/admin/personnel/[employmentId]/page.tsx');
@@ -21,6 +22,7 @@ function panel(name: string) {
   if (!panels || !ts.isObjectLiteralExpression(panels)) throw Error('Panel map missing');
   return panels.properties.find(p => ts.isPropertyAssignment(p) && p.name.getText(ast) === name)?.getText(ast);
 }
+const selfServiceHistoryTab: PersonnelTabKey = 'others';
 describe('Personnel retains the Others capabilities at their new homes', () => {
   it('removes only duplicated balance/history data loading and the Others tab', () => {
     for (const name of ['leaveBalanceCard', 'recalcHistoryCard']) expect(declaration(name)).toBeUndefined();
@@ -38,6 +40,12 @@ describe('Personnel retains the Others capabilities at their new homes', () => {
     for (const name of ['changeHistoryCard', 'dataPrivacyCard']) expect(declaration(name)?.getText(ast)).toMatch(/admin\s*\?/);
     expect(declaration('reviewCard')?.getText(ast)).toMatch(/!emp\.terminatedOn && admin/);
     expect(source).toContain('saveProfileTabAction'); expect(source).toContain('saveJobTabAction');
+  });
+  it('preserves the shared self-service history tab while retiring only the admin tab', () => {
+    expect(selfServiceHistoryTab).toBe('others');
+    const selfService = read('app/me/profile-editor.tsx');
+    expect(selfService).toContain("key==='others'");
+    expect(selfService).toContain("t('requestHistory')");
   });
   it('retains saved links and stable report/permission field IDs after relabelling their tab', () => {
     expect(RETIRED_PERSONNEL_TABS.others).toBe('profile');
