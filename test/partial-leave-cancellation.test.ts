@@ -500,7 +500,7 @@ describe('Partial Leave Cancellation — gates', () => {
   it.each([true, false])('closed payroll blocks only a financially affected cancellation (paid=%s)', async (paid) => {
     const leaveTypeId = paid ? b.annualLeaveTypeId : (await owner.db.insert(schema.leaveType).values({
       tenantId: b.tenantId, code: 'UNPAID', name: 'Unpaid leave', paid: false,
-      counting: 'working_days', allowNegativeBalance: true, employeeCancelApproved: true,
+      counting: 'working_days', allowNegativeBalance: true, maxNegativeBalance: '30', employeeCancelApproved: true,
     }).returning({ id: schema.leaveType.id }))[0].id;
     const reqId = await approvedThreeDay(leaveTypeId);
     // A closed payroll batch for Aug 2026 in the subject's company, WITH the subject's own payslip in it —
@@ -551,6 +551,7 @@ describe('Partial Leave Cancellation — gates', () => {
     expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batch.id)).orderBy(schema.payslip.id)).toEqual(beforeSlip);
     expect((await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batch.id)))[0]).toEqual(beforeBatch);
     expect(await listPayrollLeaveExceptions(adminCtx(b), batch.id)).toEqual([]);
+    expect(await owner.db.select().from(schema.payrollLeaveException).where(eq(schema.payrollLeaveException.batchId, batch.id))).toHaveLength(0);
   });
 
   it('cannot cancel a date outside the span', async () => {
