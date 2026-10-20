@@ -615,8 +615,8 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     const dailyHr = new Set(['/admin/leave-config/balance-health','/admin/leave-config/adjustments',
       '/admin/leave-config/data-import','/admin/leave-config/leave-credit','/admin/leave-config/generate',
       '/admin/leave-config/earned-accrual','/leave/employee-balances']);
-    expect(NODE.children.length, 'the pack descriptor is not an empty placement sweep').toBe(EXPECTED_CHILDREN.length);
-    for (const child of NODE.children) {
+    expect(DESTINATIONS.children.length, 'the pack descriptor is not an empty placement sweep').toBe(EXPECTED_CHILDREN.length);
+    for (const child of DESTINATIONS.children) {
       expect(navigationPlacement(child.href), child.href).toEqual({area:'ops',module:'leave',section:dailyHr.has(child.href)?'hr':'config'});
     }
     for (const name of ['SYSTEM_SETTINGS_NODE','ATTENDANCE_NODE','CLAIMS_CONFIG_ROW','PAYROLL_NODE']) {
