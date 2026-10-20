@@ -423,7 +423,8 @@
     "onboardingSettings": "Tetapan penyertaan",
     "onboardingGroups": "Kumpulan penugasan",
     "onboardingModuleAccess": "Akses modul",
-    "controlTowerOpportunities": "Peluang"
+    "controlTowerOpportunities": "Peluang",
+    "leaveSettings": "Tetapan"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -21426,5 +21427,11 @@
     "minutesShort": "{n} min",
     "underMinute": "< 1 min",
     "completedClosed": "{n} selesai, {w} ditutup tanpa keputusan"
+  },
+  "leaveSettingsHub": {
+    "title": "Tetapan Cuti",
+    "subtitle": "Konfigurasikan kelayakan, baki, akruan, kelulusan dan peraturan cuti syarikat.",
+    "open": "Buka",
+    "back": "Kembali ke Tetapan Cuti"
   }
 }

@@ -423,7 +423,8 @@
     "onboardingSettings": "Cài đặt tiếp nhận",
     "onboardingGroups": "Nhóm phân công",
     "onboardingModuleAccess": "Quyền truy cập mô-đun",
-    "controlTowerOpportunities": "Cơ hội"
+    "controlTowerOpportunities": "Cơ hội",
+    "leaveSettings": "Cài đặt"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -21426,5 +21427,11 @@
     "minutesShort": "{n} phút",
     "underMinute": "< 1 phút",
     "completedClosed": "{n} đã hoàn tất, {w} đóng mà không có quyết định"
+  },
+  "leaveSettingsHub": {
+    "title": "Cài đặt nghỉ phép",
+    "subtitle": "Thiết lập quyền lợi, số dư, tích lũy, phê duyệt và quy định nghỉ phép của công ty.",
+    "open": "Mở",
+    "back": "Quay lại Cài đặt nghỉ phép"
   }
 }

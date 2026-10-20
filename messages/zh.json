@@ -423,7 +423,8 @@
     "onboardingSettings": "入职设置",
     "onboardingGroups": "分配小组",
     "onboardingModuleAccess": "模块权限",
-    "controlTowerOpportunities": "机会"
+    "controlTowerOpportunities": "机会",
+    "leaveSettings": "设置"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -21426,5 +21427,11 @@
     "minutesShort": "{n} 分钟",
     "underMinute": "< 1 分钟",
     "completedClosed": "已完成 {n} 个，{w} 个未经决定即关闭"
+  },
+  "leaveSettingsHub": {
+    "title": "休假设置",
+    "subtitle": "配置休假额度、余额、累计、审批及公司休假规则。",
+    "open": "打开",
+    "back": "返回休假设置"
   }
 }

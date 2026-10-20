@@ -213,7 +213,7 @@ const LEAVE_NAV_LINKS: NavLinkDescriptor[] = [
  * tenant cannot not-have it), and the Administration group is gated adminOnly wholesale. Every one of
  * these pages calls requireAdmin()/scopedAdmin() for itself regardless.
  */
-const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
+const LEAVE_ADMIN_DESTINATIONS: NavNodeGroupDescriptor = {
   labelKey: 'leaveConfig',
   icon: SlidersHorizontal,
   group: 'admin',
@@ -461,6 +461,22 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
 //     maps Leave Config › Leave Credit; the page repeats the check itself (a hidden row is not a gate).
 //   · r392 (e6712304): `leaveHistory` likewise KEEPS ITS KEY; its VALUE (and leave.historyHeading's) is now
 //     "Leave Request Status" in six locales. Leave History Data Import (admin) is a different screen.
+/** 010fdbec: partition the existing destinations; their paths and guards remain authoritative. */
+const LEAVE_SETTINGS_KEYS = new Set([
+  'leaveEntitlements', 'leaveBalanceHealth', 'leaveGenerate', 'leaveEarnedAccrual',
+  'leaveApprovalWorkflow', 'leaveCompanyRules', 'leaveSpecialSetting',
+]);
+export const LEAVE_SETTINGS_DESTINATIONS = LEAVE_ADMIN_DESTINATIONS.children.filter(row => LEAVE_SETTINGS_KEYS.has(row.labelKey));
+export const LEAVE_SETTINGS_HREF = '/admin/leave-config/settings';
+const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
+  ...LEAVE_ADMIN_DESTINATIONS,
+  children: [
+    ...LEAVE_ADMIN_DESTINATIONS.children.filter(row => !LEAVE_SETTINGS_KEYS.has(row.labelKey)),
+    { href: LEAVE_SETTINGS_HREF, labelKey: 'leaveSettings', icon: Settings2, adminOnly: true,
+      ownedSubpaths: LEAVE_SETTINGS_DESTINATIONS.flatMap(row => [row.href, ...(row.ownedSubpaths ?? [])]) },
+  ],
+};
+
 export const LEAVE_SELF_NAV: NavNodeGroupDescriptor = {
   group: 'main', labelKey: 'myLeave', icon: CalendarDays, activeMatch: 'children',
   children: [

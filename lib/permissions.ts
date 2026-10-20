@@ -578,6 +578,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     // the sweeps reachable when the `toil` entitlement lapses (a wind-down view), so the gating difference
     // this note defended is preserved on the one screen rather than by two.
     routes: [
+      '/admin/leave-config/settings',
       // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/import'` STOOD HERE and is DELIBERATELY GONE.
       // Import leave data is `/admin/leave-config/import` now; the old address is an unguarded redirect
       // stub (app/admin/leave/import/page.tsx), and a stub is not a screen this grid can describe, so it

@@ -423,7 +423,8 @@
     "onboardingSettings": "பணிச்சேர்க்கை அமைப்புகள்",
     "onboardingGroups": "பணி ஒதுக்கீட்டுக் குழுக்கள்",
     "onboardingModuleAccess": "தொகுதி அணுகல்",
-    "controlTowerOpportunities": "வாய்ப்புகள்"
+    "controlTowerOpportunities": "வாய்ப்புகள்",
+    "leaveSettings": "அமைப்புகள்"
   },
   "dashboard": {
     "title": "டாஷ்போர்டு",
@@ -21426,5 +21427,11 @@
     "minutesShort": "{n} நிமி",
     "underMinute": "< 1 நிமி",
     "completedClosed": "{n} முடிந்தவை, {w} முடிவின்றி மூடப்பட்டவை"
+  },
+  "leaveSettingsHub": {
+    "title": "விடுப்பு அமைப்புகள்",
+    "subtitle": "உரிமைகள், இருப்புகள், சேர்க்கைகள், ஒப்புதல்கள் மற்றும் நிறுவன விடுப்பு விதிகளை அமைக்கவும்.",
+    "open": "திற",
+    "back": "விடுப்பு அமைப்புகளுக்குத் திரும்பு"
   }
 }

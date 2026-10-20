@@ -423,7 +423,8 @@
     "onboardingSettings": "Onboarding settings",
     "onboardingGroups": "Assignment groups",
     "onboardingModuleAccess": "Module access",
-    "controlTowerOpportunities": "Opportunities"
+    "controlTowerOpportunities": "Opportunities",
+    "leaveSettings": "Settings"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -21426,5 +21427,11 @@
     "minutesShort": "{n} min",
     "underMinute": "< 1 min",
     "completedClosed": "{n} completed, {w} closed without a decision"
+  },
+  "leaveSettingsHub": {
+    "title": "Leave Settings",
+    "subtitle": "Configure entitlements, balances, accruals, approvals and company leave rules.",
+    "open": "Open",
+    "back": "Back to Leave Settings"
   }
 }

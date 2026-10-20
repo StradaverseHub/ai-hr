@@ -423,7 +423,8 @@
     "onboardingSettings": "การตั้งค่ารับเข้าทำงาน",
     "onboardingGroups": "กลุ่มมอบหมายงาน",
     "onboardingModuleAccess": "สิทธิ์เข้าถึงโมดูล",
-    "controlTowerOpportunities": "โอกาส"
+    "controlTowerOpportunities": "โอกาส",
+    "leaveSettings": "การตั้งค่า"
   },
   "dashboard": {
     "title": "แดชบอร์ด",
@@ -21426,5 +21427,11 @@
     "minutesShort": "{n} นาที",
     "underMinute": "< 1 นาที",
     "completedClosed": "เสร็จสิ้น {n} ปิดโดยไม่มีการตัดสิน {w}"
+  },
+  "leaveSettingsHub": {
+    "title": "การตั้งค่าการลา",
+    "subtitle": "กำหนดสิทธิ ยอดคงเหลือ การสะสม การอนุมัติ และกฎการลาของบริษัท",
+    "open": "เปิด",
+    "back": "กลับไปที่การตั้งค่าการลา"
   }
 }

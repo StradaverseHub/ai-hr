@@ -46,6 +46,7 @@
  * `test/server-client-boundary.test.ts` pins the class.
  */
 import Link from '@/components/intent-link';
+import { LEAVE_SETTINGS_DESTINATIONS, LEAVE_SETTINGS_HREF } from '@/packs/leave';
 import { getTranslations } from 'next-intl/server';
 
 /** Every screen in the area. The id is also its label key and its page heading. */
@@ -499,7 +500,10 @@ export async function leaveConfigPageHeader(
  */
 export async function LeaveConfigMap({ current }: { current: MappedLeaveConfigScreenId }) {
   const group = leaveConfigGroupOf(current);
-  if (group.items.length < 2) return null;
+  const settings = await getTranslations('leaveSettingsHub');
+  const back = LEAVE_SETTINGS_DESTINATIONS.some(row => row.labelKey === group.navKey)
+    ? <Link href={LEAVE_SETTINGS_HREF} className="inline-flex w-fit text-sm text-primary underline underline-offset-4">{settings('back')}</Link> : null;
+  if (group.items.length < 2) return back;
   const t = await getTranslations('admin.leaveConfigMap');
   const tab = (active: boolean) =>
     `flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition-colors ${
@@ -509,7 +513,7 @@ export async function LeaveConfigMap({ current }: { current: MappedLeaveConfigSc
     }`;
 
   return (
-    <nav aria-label={t('label')} data-testid="leave-config-tabs">
+    <>{back}<nav aria-label={t('label')} data-testid="leave-config-tabs">
       <ol className="flex flex-wrap items-center gap-1.5">
         {group.items.map((it, i) => (
           <li key={it.id} className="flex items-center gap-1.5">
@@ -528,6 +532,6 @@ export async function LeaveConfigMap({ current }: { current: MappedLeaveConfigSc
           </li>
         ))}
       </ol>
-    </nav>
+    </nav></>
   );
 }
