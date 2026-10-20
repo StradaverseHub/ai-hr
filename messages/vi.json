@@ -87,7 +87,7 @@
     "colEmployeeNo": "Mã nhân viên",
     "colEmployeeName": "Tên nhân viên",
     "colDepartment": "Phòng ban",
-    "colOccupation": "Chức vụ",
+    "colOccupation": "Chức danh",
     "colEdit": "Sửa",
     "prevMonth": "Tháng trước",
     "nextMonth": "Tháng sau",
@@ -272,7 +272,8 @@
     "replacementHoliday": "Ngày nghỉ lễ bù",
     "approvedLeave": "Nghỉ phép đã duyệt",
     "approvedPartLeave": "Nghỉ phép đã duyệt (một phần ngày)",
-    "dayContextHelp": "Nhãn ngày tách biệt với phân ca. Chi tiết nghỉ phép nằm trong mục Nghỉ phép."
+    "dayContextHelp": "Nhãn ngày tách biệt với phân ca. Chi tiết nghỉ phép nằm trong mục Nghỉ phép.",
+    "colPosition": "Chức vụ"
   },
   "common": {
     "appName": "AIHR",

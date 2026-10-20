@@ -272,7 +272,8 @@
     "replacementHoliday": "替代公共假期",
     "approvedLeave": "已批准休假",
     "approvedPartLeave": "已批准休假（部分时段）",
-    "dayContextHelp": "日期标签与排班分开。休假详情保留在休假模块中。"
+    "dayContextHelp": "日期标签与排班分开。休假详情保留在休假模块中。",
+    "colPosition": "职位"
   },
   "common": {
     "appName": "AIHR",

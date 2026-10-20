@@ -372,7 +372,7 @@ export function RosterGrid({
                 {t('colEmployee')}
               </th>
               <th className={`sticky z-20 ${HEAD_CLS} ${canEdit ? '' : 'border-r border-border'}`} style={pinned.col('occ')}>
-                {t('colOccupation')}
+                {t('colPosition')}
               </th>
               {canEdit && (
                 <th className={`sticky z-20 border-r border-border ${HEAD_CLS}`} style={pinned.col('edit')}>

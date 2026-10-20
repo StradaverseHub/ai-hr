@@ -272,7 +272,8 @@
     "replacementHoliday": "Cuti umum gantian",
     "approvedLeave": "Cuti diluluskan",
     "approvedPartLeave": "Cuti diluluskan (sebahagian hari)",
-    "dayContextHelp": "Label hari berasingan daripada penetapan syif. Butiran cuti kekal dalam Cuti."
+    "dayContextHelp": "Label hari berasingan daripada penetapan syif. Butiran cuti kekal dalam Cuti.",
+    "colPosition": "Jawatan"
   },
   "common": {
     "appName": "AIHR",

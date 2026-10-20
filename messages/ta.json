@@ -87,7 +87,7 @@
     "colEmployeeNo": "ஊழியர் எண்",
     "colEmployeeName": "ஊழியர் பெயர்",
     "colDepartment": "துறை",
-    "colOccupation": "பதவி",
+    "colOccupation": "பணி",
     "colEdit": "திருத்து",
     "prevMonth": "முந்தைய மாதம்",
     "nextMonth": "அடுத்த மாதம்",
@@ -272,7 +272,8 @@
     "replacementHoliday": "மாற்றுப் பொது விடுமுறை",
     "approvedLeave": "அங்கீகரிக்கப்பட்ட விடுப்பு",
     "approvedPartLeave": "அங்கீகரிக்கப்பட்ட விடுப்பு (பகுதி நாள்)",
-    "dayContextHelp": "நாள் குறிப்புகள் பணி ஒதுக்கீடுகளிலிருந்து தனித்தவை. விடுப்பு விவரங்கள் விடுப்பு பகுதியில் உள்ளன."
+    "dayContextHelp": "நாள் குறிப்புகள் பணி ஒதுக்கீடுகளிலிருந்து தனித்தவை. விடுப்பு விவரங்கள் விடுப்பு பகுதியில் உள்ளன.",
+    "colPosition": "பதவி"
   },
   "common": {
     "appName": "AIHR",
