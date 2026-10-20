@@ -3,6 +3,8 @@ import { isMyRosterView, myRosterHref, resolveMyRosterWindow, type MyRosterWindo
 
 export type AttendanceCalendarReturn = { calendar?: string; calendarView?: string; calendarMonth?: string; calendarDate?: string };
 export const CALENDAR_RETURN_FIELDS = ['calendar', 'calendarView', 'calendarMonth', 'calendarDate'] as const;
+const isCalendarDate = (value: string | undefined): value is string =>
+  typeof value === 'string' && isIsoDate(value) && new Date(`${value}T00:00:00Z`).toISOString().slice(0,10) === value;
 
 /** Only local, typed calendar coordinates survive a detail form or a hand-edited bookmark. */
 export function calendarReturnParams(input: AttendanceCalendarReturn): Record<string, string> {
@@ -11,7 +13,7 @@ export function calendarReturnParams(input: AttendanceCalendarReturn): Record<st
     calendar: '1',
     ...(isMyRosterView(input.calendarView) ? { calendarView: input.calendarView } : {}),
     ...(isMonthParam(input.calendarMonth) ? { calendarMonth: input.calendarMonth! } : {}),
-    ...(isIsoDate(input.calendarDate ?? '') ? { calendarDate: input.calendarDate! } : {}),
+    ...(isCalendarDate(input.calendarDate) ? { calendarDate: input.calendarDate } : {}),
   };
 }
 
