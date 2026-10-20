@@ -7,6 +7,7 @@ import { hireEmployee } from '../core/org';
 import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, listAttendanceCorrections } from '../core/attendance';
 import { saveAttendanceWorkflow, setAttendanceWorkflowEnabled } from '../core/attendance-workflow';
 import { attendanceApplicationDetail, listAttendanceApplicationHistory } from '../core/attendance-application-history';
+import { decideAttendanceHistorySelection } from '../packs/attendance/history-decisions';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx, createAppUser, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -83,5 +84,20 @@ describe('Request-bound history review and original Overview visibility', () => 
     expect(detail?.progress).toMatchObject({ state: 'unresolved', next: [{ name: 'Fictional first reviewer', eligible: false }] });
     expect(detail?.progress?.next.some(actor => actor.name === 'Fictional second reviewer')).toBe(false);
     expect((await listAttendanceCorrections(f.first.ctx, { companyIds: [b.companyId], status: 'pending' })).map(row => row.id)).not.toContain(f.id);
+  });
+  it('binds HR bulk decisions to the reviewed v3 participant as well as the level', async () => {
+    const f = await fixture();
+    await owner.db.update(schema.roleAssignment).set({ role: 'hr_admin', companyId: b.companyId }).where(eq(schema.roleAssignment.appUserId, f.first.ctx.userId));
+    const hr: SessionContext = { ...f.first.ctx, roles: ['hr_admin'], grants: [{ role: 'hr_admin', companyId: b.companyId }] };
+    const listing = await listAttendanceApplicationHistory(hr, [b.companyId], { status: 'pending' });
+    expect(listing.rows.find(row => row.id === f.id)).toMatchObject({ selectable: true, currentParticipantSlot: '0:0' });
+    for (const participantSlot of [undefined, '0:1']) {
+      expect(await decideAttendanceHistorySelection(hr, [b.companyId], { items: [{ id: f.id, stage: 0, participantSlot }], decision: 'approved', reason: 'Fictional reviewed selection' }))
+        .toMatchObject([{ id: f.id, status: 'failed' }]);
+    }
+    expect((await attendanceApplicationDetail(f.root, [b.companyId], f.id))?.workflow?.participantDecisions).toHaveLength(0);
+    expect(await decideAttendanceHistorySelection(hr, [b.companyId], { items: [{ id: f.id, stage: 0, participantSlot: '0:0' }], decision: 'approved', reason: 'Fictional reviewed selection' }))
+      .toMatchObject([{ id: f.id, status: 'pending' }]);
+    expect((await attendanceApplicationDetail(f.root, [b.companyId], f.id))?.workflow?.participantDecisions).toHaveLength(1);
   });
 });

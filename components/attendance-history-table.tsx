@@ -20,7 +20,7 @@ export function AttendanceHistoryTable({rows,returnTo}:{rows:AttendanceHistoryRo
     if(inFlight.current||!decision)return;
     inFlight.current=true;
     const chosen=selected;
-    const items=chosen.map(r=>({id:r.id,stage:r.currentStage,participantSlot:r.currentParticipantSlot}));
+    const items=chosen.map(r=>({id:r.id,stage:r.currentStage,...(r.currentParticipantSlot!=null?{participantSlot:r.currentParticipantSlot}:{})}));
     start(async()=>{try{setError('');const outcomes=await attendanceHistoryBulkAction({items,decision,reason});setResults(outcomes.map(outcome=>{const row=chosen.find(r=>r.id===outcome.id);return {...outcome,employee:row?.employee??'',attendanceDate:row?.attendanceDate??''};}));setSelected([]);setDecision(null);router.refresh();}catch(e){setError(e instanceof Error?e.message:t('bulkFailed'));}finally{inFlight.current=false;}});
   }
   return <div className="space-y-3">
