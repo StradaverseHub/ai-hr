@@ -78,6 +78,13 @@ describe('calendar-counted partial cancellation preserves the actual charged dat
     expect(survivingDates).toEqual(dates.filter(date => date !== cancelledDate));
     expect(after.filter(row => row.status === 'cancelled').map(row => ({ start: row.startDate, end: row.endDate, days: row.days }))).toEqual([{ start: cancelledDate, end: cancelledDate, days: '1.00' }]);
     for (const row of after) expect(facts(row)).toEqual(facts(original));
+    const history = await listLeaveRequests(employee, [companyId]);
+    const personal = await leaveRequestsFor(employee, employmentId);
+    for (const row of after) {
+      expect(row.parentGroupId).not.toBeNull();
+      expect(history.find(item => item.id === row.id)?.isEmergencyGroup).toBe(false);
+      expect(personal.find(item => item.id === row.id)?.isEmergencyGroup).toBe(false);
+    }
     const afterLedger = await ledger();
     expect(net(afterLedger)).toBe(23);
     expect(net(afterLedger) - net(before)).toBe(1);

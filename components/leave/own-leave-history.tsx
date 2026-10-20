@@ -357,8 +357,8 @@ export async function loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, 
     return {
       id: r.id,
       leaveType: r.leaveType,
-      // Emergency Leave (0106): tag the ANNUAL/UNPAID children of one EL submission as one Emergency Leave.
-      groupLabel: r.parentGroupId ? t('emergency.groupLabel') : null,
+      // The recorded EL submission proves origin; cancellation survivors also carry a group ID.
+      groupLabel: r.isEmergencyGroup ? t('emergency.groupLabel') : null,
       startDate: r.startDate,
       endDate: r.endDate,
       days: Number(r.days),

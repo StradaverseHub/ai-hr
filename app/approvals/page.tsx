@@ -555,7 +555,7 @@ export default async function ApprovalsPage({
                     <LeaveTypeCell
                       typeCode={r.typeCode}
                       typeName={r.leaveType}
-                      groupLabel={r.parentGroupId ? tLeave('emergency.groupLabel') : null}
+                      groupLabel={r.isEmergencyGroup ? tLeave('emergency.groupLabel') : null}
                     >
                       {/* Phase-B #13 (ADR-0062): the EA s.37 paid-allowance decision for a maternity request.
                           FALSE ⇒ the allowance was withheld → the 98-day leave is granted UNPAID (with a reason);
