@@ -29,6 +29,7 @@ import {
   migrateTestDb,
   resetDb,
   seedBase,
+  setModule,
   type Base,
 } from './harness';
 import { hireEmployee, setReportingLine } from '../core/org';
@@ -42,6 +43,7 @@ import {
   setRestDay,
 } from '../core/roster';
 import { monthRange } from '../lib/roster-month';
+import { myAttendanceCalendarWindow, attendanceForEmploymentRange, statusOf, flagOf } from '../packs/attendance/service';
 import type { SessionContext } from '../db/client';
 import {
   myRosterHref,
@@ -166,6 +168,23 @@ describe('6948727a — My Roster shows the caller their own roster and nobody el
     expect(view.employmentId).toBe(subordinateId);
     expect([...new Set(view.days.map((d) => d.shift?.code).filter(Boolean))]).toEqual(['SUB1']);
   });
+  it('the consolidated calendar keeps the same self-only roster and canonical attendance for every date', async () => {
+    const manager = await sessionFor(managerPersonId);
+    const result = (await myAttendanceCalendarWindow(manager, { from, to, employmentId:subordinateId } as {from:string;to:string}))!;
+    expect(result.employmentId).toBe(managerId);
+    expect([...new Set(result.days.map(day=>day.shift?.code).filter(Boolean))]).toEqual(['MGR1']);
+    const rows=await attendanceForEmploymentRange(manager,managerId,from,to);
+    for(const day of result.days){
+      const row=rows.find(row=>row.date===day.date)!;
+      expect(day.attendance).toEqual({status:statusOf(row),flag:flagOf(row),checkInAt:row.checkInAt,checkOutAt:row.checkOutAt});
+    }
+    expect(await myAttendanceCalendarWindow(ctx,{from,to})).toBeNull();
+  });
+  it('the combined attendance entry refuses a disabled module even with a valid personal employment', async () => {
+    const self = await sessionFor(managerPersonId);
+    await setModule(b.tenantId,'attendance','disabled');
+    await expect(myAttendanceCalendarWindow({...self,entitlements:harnessSnapshot(b.tenantId)},{from,to})).rejects.toThrow();
+  });
 
   it('a login linked to no active employment gets null, not somebody else’s roster', async () => {
     // The seeded HR administrator is exactly this: a real, named person with no employment.
@@ -243,7 +262,7 @@ describe('6948727a — nobody opens somebody else’s roster by editing the addr
       'resolveMyRosterWindow({ view: sp.view, month: sp.month, date: sp.date, today })',
     );
     // The read itself takes the SESSION and a pair of dates. No id passes through this call.
-    expect(src, 'the session decides whose roster this is').toContain('myRosterWindow(s, { from: w.from, to: w.to })');
+    expect(src, 'the session decides whose roster this is').toContain('myAttendanceCalendarWindow(s, { from: w.from, to: w.to })');
   });
 
   it('the page is authenticated, ungated, and imports no roster write', () => {

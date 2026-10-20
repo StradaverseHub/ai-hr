@@ -3,9 +3,11 @@ import { myRosterWindow } from '../../core/roster';
 import { attendanceForEmploymentRange } from '../../core/attendance';
 import { flagOf, statusOf } from '../../core/attendance-derive';
 import { todayInKualaLumpur } from '../../lib/hr-date';
+import { assertModuleGate } from '../../core/module-gate';
 
 /** Self-service composition: the caller cannot supply an employment or company selection. */
 export async function myAttendanceCalendarWindow(ctx: SessionContext, window: { from: string; to: string }) {
+  assertModuleGate(ctx, 'attendance');
   const roster = await myRosterWindow(ctx, window);
   if (!roster) return null;
   const rows = await attendanceForEmploymentRange(ctx, roster.employmentId, window.from, window.to);

@@ -145,136 +145,14 @@ import { registerPack, type ModulePack, type NavNodeGroupDescriptor } from '../r
  * moved. Read the note on the row before assuming the route is spare.
  */
 const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
-  labelKey: 'myAttendance',
-  icon: Clock,
-  group: 'main',
+  group: 'main', labelKey: 'myAttendance', icon: Clock,
   children: [
-    // Feedback 5249d43f: "Clock in/out" — the employee-facing clocking page — is the PRIMARY day-to-day
-    // action. Records moved out to the merged Attendance node (a324a4b3 rev2), so this is now the node's
-    // only row; it remains visible to every employee (self-service, like /me).
     { href: '/attendance/clock', labelKey: 'attendanceClock', icon: Clock },
-    /**
-     * f3e6c36e (r287) — THE SPLIT. This row used to point at `/attendance`, the same screen the admin
-     * "Employee Attendance" row opens. It now points at the employee's OWN screen and the admin screen is
-     * left to the administrator alone. Read the history before moving it back:
-     *
-     *   • a324a4b3 rev2 moved Records into the merged Attendance node; rev3 undid it, because that node
-     *     went into Administration and the Administration sidebar group gates `adminOnly` at GROUP level —
-     *     a row inside it renders for NOBODY but administrators, whatever its own flag says. So moving
-     *     this row does not make the screen admin-only, it makes it invisible to staff.
-     *     `test/sidebar-attendance-group.test.ts` exists to stop a third attempt and is still live.
-     *   • The reporter then asked a SECOND time, in writing, for the administrative Record function to
-     *     leave My Attendance. Under the fight-back rule an instruction reaffirmed after a challenge is
-     *     the owner's decision, so r287 takes it — and delivers it by SPLITTING rather than by moving,
-     *     which is the one way both things can be true at once. Their own point 7 (employee-facing
-     *     attendance functions stay under My Attendance) is what the new screen honours.
-     *
-     * UNGATED, like every sibling in this node. THE OLD REASON, kept because it is why the gate must not
-     * arrive later: `/attendance/my-records` resolved the caller's own employment and could show nobody
-     * else's rows, so a gate here would have taken an employee's own record away from them.
-     *
-     * ⚠️ 2aef3cd8 (r362) — THAT SCREEN IS NOW EMPTY, and the row reads "Attendance Overview". The reporter
-     * asked for the rename and for everything under the row to be removed; the approved plan says "Below
-     * the title the page is blank." So the sentence above describes a read that no longer happens. The row
-     * stays exactly where it is, ungated, and the route stays registered, because the plan's own next
-     * sentence is that new content arrives here later.
-     *
-     * WHAT THE READER MUST NOT DO WITH THAT: this route is not spare, and it is not a candidate for
-     * deletion just because it renders nothing. It is the ONLY employee-reachable address under My
-     * Attendance that is free to hold an attendance view — the four siblings are clocking, requests,
-     * plan-ot and request-status (b833a077 took the fifth, My Travel, out of this node entirely), and
-     * everything under ATTENDANCE_NAV is invisible to staff behind the group-level admin gate. Until content returns, an employee has nowhere in the product to look up
-     * their own attendance day by day; that consequence was stated at the top of the approved plan, the
-     * reporter approved it, and it is recorded on the page and in the r362 round entry.
-     *
-     * Clock rather than a new glyph: the collapsed rail renders glyphs only, and this is the same row the
-     * reporter has always known as Records — it is the address and the audience that changed, not the job.
-     * It shares Clock with `/attendance/clock` exactly as it did before the split (that pair predates this
-     * round and is unchanged by it).
-     */
-    // The former day list remains reachable from the calendar; one menu row owns both journeys.
+    // One self-service calendar owns roster, the detailed list and every personal day route.
     { href: '/attendance/my-roster', labelKey: 'attendanceCalendar', icon: CalendarRange, ownedSubpaths: ['/attendance/my-records'] },
-    // 0bb0e303 rev2 — the third self-service row the reporter listed. The attendance/overtime/travel
-    // request forms existed already, but only as fold-outs on the employee's own My Profile page: you
-    // had to know they were there. This row is the whole point of the item — the menu now reads Clock
-    // in/out, Records, Attendance Request, and /me links across rather than holding the forms itself.
-    // UNGATED, like its two siblings: every one of these is the caller's own request, and a gate here
-    // would take the forms away from exactly the staff they exist for.
-    // FilePen rather than a third Clock: the collapsed rail renders glyphs only, and a row that shares
-    // its neighbours' icon is unreachable there.
     { href: '/attendance/requests', labelKey: 'attendanceRequest', icon: FilePen },
-    // 1e9145d4 — Plan OT, the FOURTH self-service row, exactly where the reporter's screenshot puts it:
-    // beside Clock in/out, Records and Attendance Request. Overtime MOVED here off the Attendance Request
-    // screen, so overtime is filed in one place rather than two that drift apart. (2166ef79 moved it back
-    // onto that screen and left this row forwarding into a tab; c6bb5f5a — the reversal declared below —
-    // put the list back on this route, which is where it is now.)
-    //
-    // UNGATED, like its three siblings, and for the same reason: an overtime plan is the caller's OWN
-    // request. A gate here would take the form away from precisely the staff it exists for.
-    //
-    // Hourglass, not a fourth Clock or a second FilePen — the collapsed rail renders glyphs only and a row
-    // sharing a sibling's glyph is unreachable there. It is the same lucide ref the ADMIN node uses for
-    // Time off in lieu, which is a DIFFERENT fly-out with no row in common, so no collapsed rail ever shows
-    // the two side by side. (It is also the right picture: time set aside in advance.)
     { href: '/attendance/plan-ot', labelKey: 'planOvertime', icon: Hourglass },
-    /**
-     * c6bb5f5a — the FIFTH self-service row, and a DELIBERATE REVERSAL of what the row above it says.
-     * 2166ef79 folded Self Overtime, Travel Request and the request-history list onto ONE screen
-     * (/attendance/requests) as tabs and a stack of cards, because that is what the reporter asked for
-     * then; /attendance/plan-ot became a redirect into a tab. They have since asked for the opposite, in
-     * writing and confirmed: four functions, four rows, four screens. So plan-ot renders its own list
-     * again and this row gives the request history the home it never had — it sat below four tabs about
-     * something else.
-     *
-     * ⚠️ b833a077 (r362) — THERE WERE SIX ROWS HERE AND THERE ARE FIVE. c6bb5f5a added My Travel beside
-     * this one, at /attendance/travel, carrying the Plane glyph; the reporter has since asked for My
-     * Travel to be removed completely, and the approved plan takes the row, the screen, the form and the
-     * approvals section with it. What did NOT go: the travel_request table, its rows, its RLS policy, its
-     * grant, migration 0146, the company-change gate that reads the table (core/read.ts
-     * employmentCompanyBlockedTx) and the approval-history label for historic travel decisions
-     * (lib/approval-history.ts). The records are kept for audit and are simply no longer reachable from
-     * any screen. The old address still answers — it is a redirect to /attendance/clock, so a bookmark
-     * lands somewhere an employee can use rather than on a 404. DO NOT re-add the row without re-adding
-     * the screen: the redirect is not a hidden page waiting to be re-linked.
-     *
-     * UNGATED, like its four siblings, and for the same reason: every one of these is the caller's OWN
-     * request. A gate here would take the screen away from precisely the staff it exists for.
-     *
-     * Glyphs, not decoration: the collapsed rail renders icons ONLY, so no row may repeat a sibling's.
-     * ClipboardList (a list of requests and their outcomes) is unused elsewhere in this node. Plane left
-     * with the travel row and is no longer imported. The map-pin glyph is still deliberately NOT used
-     * here: it is the Physical Work Location row (Administration, components/sidebar.tsx — 639bf4a5 moved
-     * it out of this pack), and "where you may clock in" must not read as anything else.
-     *
-     * ⚠️ ONE LEVEL ONLY. NavChildDescriptor has no `children` field and components/nav-flyout.tsx renders
-     * a single level, so these are five rows side by side — not rows with sub-rows underneath.
-     */
     { href: '/attendance/request-status', labelKey: 'myAttendanceRequestStatus', icon: ClipboardList },
-    /**
-     * 6948727a (r369) — the SIXTH self-service row: the employee's own roster, read only.
-     *
-     * The reporter's words on the ticket are the whole specification: "New sub menu – My Roster. This is
-     * for employee to view only the Roster that assigned by their supervisor." The function is not new —
-     * `roster_assignment` has held these rows since migration 0075 — but until now the ONLY screen over
-     * them was `/roster`, which is an administrator's grid of everybody and sits in the group-gated
-     * Administration section. So from an employee's chair their own roster did not exist, which is
-     * exactly the shape of ticket this menu keeps receiving.
-     *
-     * UNGATED, like its five siblings, and for a reason one step removed from theirs: the others are the
-     * caller's OWN REQUESTS, and this is the caller's OWN SCHEDULE. A gate here would take an employee's
-     * shift times away from the employee. What keeps it honest is not the menu — `/attendance/my-roster`
-     * resolves the caller's employment server-side and takes no employment id at all (see
-     * core/roster.ts myRosterWindow) — because a row that is merely absent from a menu is still a URL.
-     *
-     * ⚠️ THE GLYPH IS CalendarRange, WHICH `/roster` ALSO CARRIES, and that is deliberate rather than an
-     * oversight. The collapsed rail renders glyphs only, so no row may repeat a SIBLING's — and `/roster`
-     * is not a sibling: it lives in ATTENDANCE_NAV and in the flat Manage links, never in this node, so no
-     * collapsed rail ever draws the two side by side. Sharing the picture is the right answer where the
-     * two rows genuinely show the same thing to two audiences, exactly as Clock and Attendance Overview
-     * share Clock one node up.
-     *
-     * ⚠️ ONE LEVEL ONLY, as the note above says: this is a sixth row beside the five, not a child of one.
-     */
   ],
 };
 

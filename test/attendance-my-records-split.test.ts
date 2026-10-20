@@ -122,8 +122,8 @@ describe('f3e6c36e — the two screens are genuinely two screens', () => {
   });
 
   it('one row each, in the right node, with the right gate', () => {
-    const employeeRow = mine.children.find((c) => c.href === EMPLOYEE_ROUTE);
-    expect(employeeRow, 'the employee’s own row (Attendance Overview since r362) is a My Attendance row').toBeDefined();
+    const employeeRow = mine.children.find((c) => c.href === '/attendance/my-roster');
+    expect(employeeRow, 'the consolidated personal calendar is a My Attendance row').toBeDefined();
     expect(
       { adminOnly: employeeRow!.adminOnly, managerUp: employeeRow!.managerUp },
       'an employee must reach their own record with no gate at all',
