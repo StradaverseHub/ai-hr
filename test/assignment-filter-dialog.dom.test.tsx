@@ -44,6 +44,21 @@ describe('assignment filters remain usable above page content', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  it('dismisses Clear all and reopens with the newly applied values, dropping the abandoned draft', async () => {
+    const { rerender } = render(<FilterPanel {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: /Filter/ }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search' }), { target: { value: 'Unsaved search' } });
+    const clear = screen.getByRole('link', { name: 'Clear all' });
+    expect(clear).toHaveAttribute('href', `${props.action}?returnTo=%2Fadmin%2Fattendance%2Fschedule-assignment%3Fq%3DSam`);
+    fireEvent.click(clear);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // The route keeps the filter island mounted while supplying cleared searchParams.
+    rerender(<FilterPanel {...props} values={{ q: '', status: [] }} />);
+    fireEvent.click(screen.getByRole('button', { name: /Filter/ }));
+    expect(screen.getByRole('textbox', { name: 'Search' })).toHaveValue('');
+    for (const box of screen.getAllByRole('checkbox')) expect(box).not.toBeChecked();
+  });
+
   it('does not count or show blank values as applied filters in either presentation', () => {
     const empty = { ...props, values: { q: '', status: [] }, labels: { ...props.labels, activeCount: '0 filters' } };
     render(<><FilterPanel {...empty} /><FilterChips {...empty} /></>);
