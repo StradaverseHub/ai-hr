@@ -148,6 +148,11 @@ changed behavior and its consumers. Reuse valid evidence; a new commit calls for
 - A completed full candidate remains usable as the witness for a later small repair, including before
   deployment. The selected gate issues fresh exact-commit evidence for the repair; release recomputes
   the complete required set and validates the witness. Keep authentic receipts and observation records.
+- A red or interrupted impact gate resumes with `bash scripts/gate.sh --resume` (ADR-0133): every unit
+  (no-DB, each 64-file DB batch, browser) leaves a write-once checkpoint in the learning store, and resume
+  reruns only units without a verified green one for the exact same commit, selection, partition,
+  environment and policy; anything else refuses. Release re-verifies every listed checkpoint and its log.
+  The full tier is not resumable.
 - Both test slots and the shared database lock cover the run. No-DB files run against a closed port;
   selected DB tests run in batches of at most 64 with a rebuild per batch. Explicit full runs use
   `CHUNKS=8 bash scripts/gate-chunked.sh`; its classifier partitions and counts every suite file.

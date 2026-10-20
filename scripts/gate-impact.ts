@@ -7,7 +7,8 @@ import { classifyFile,TEST_SETUP_FILES } from './gate-tier';
 import { guardFiles,isTestFile } from './gate-affected-plan';
 import { resolveSpecifier } from './gate-db-classify';
 
-export const IMPACT_POLICY_VERSION=1;
+// 2 (ADR-0133): impact receipts must list a verified green checkpoint for every unit.
+export const IMPACT_POLICY_VERSION=2;
 export type Risk='low'|'moderate'|'high'|'unknown';
 export type Classification={path:string;risk:Risk;reason:string;dependencies:string[];sourceHash:string|null;uncertainties:string[]};
 export type ImpactPlan={policyVersion:number;tier:'impact'|'full';risk:Risk;classifications:Classification[];reasons:string[];changed:string[];run:string[];selection:Record<string,string[]>;browser:boolean;barrelMode:'module'|'diagnostic-symbols';fingerprint:string};
