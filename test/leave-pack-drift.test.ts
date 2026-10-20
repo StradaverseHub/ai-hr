@@ -100,6 +100,7 @@ const BOUNDARIES = [
   // (app/leave/credit/page.tsx and its export route) reach it through packs/leave/service.
   'core/leave-credit-history',
   'core/leave-inquiry',
+  'core/leave-split-review',
   'core/benefit-scheme',
   // 6e9a126e — the entitlement redesign's new layer + its archive reader. In BOTH lists, same reasoning as
   // the notes above: as BOUNDARIES they are guarded like their siblings, and in ALWAYS_ALLOWED they may
@@ -135,6 +136,7 @@ const ALWAYS_ALLOWED = [
   'core/replacement-request.ts', // 296fc027 Step 2 — see the BOUNDARIES note above
   'core/leave-credit-request.ts', // r343 cbfa8b0b — see the BOUNDARIES note above
   'core/leave-inquiry.ts',
+  'core/leave-split-review.ts',
   'core/leave-credit-history.ts', // r389 bc3e203d — see the BOUNDARIES note above
   'core/benefit-scheme.ts',
   'core/entitlement-template.ts', // 6e9a126e — see the BOUNDARIES note above

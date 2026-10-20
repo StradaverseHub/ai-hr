@@ -21426,5 +21426,62 @@
     "minutesShort": "{n} phút",
     "underMinute": "< 1 phút",
     "completedClosed": "{n} đã hoàn tất, {w} đóng mà không có quyết định"
+  },
+  "leaveSplitReview": {
+    "title": "Rà soát các lần tách đơn nghỉ trước đây",
+    "description": "Chênh lệch có thể có trên những ngày còn lại đã duyệt",
+    "uncertainty": "Đây là các trường hợp cần rà soát, không phải lỗi lương đã được xác nhận. Giá trị được so với hồ sơ gốc hiện tại; thay đổi hợp lệ về sau hoặc bằng chứng thiếu có thể giải thích chênh lệch. Không thay đổi hồ sơ.",
+    "empty": "Không có trường hợp cần rà soát trong phạm vi này. Điều này không chứng nhận bảng lương trước đây.",
+    "employee": "Nhân viên",
+    "leave": "Mã đơn và ngày nghỉ",
+    "differences": "Thông tin cần rà soát",
+    "evidence": "Bằng chứng hiện có",
+    "root": "Mã gốc: {reference}",
+    "unresolved": "Không thể truy vết đầy đủ bằng chứng gốc.",
+    "candidate": "Cần nhân sự rà soát; không tự động sửa.",
+    "charging": {
+      "charged": "Có bút toán trừ liên kết",
+      "uncharged_import": "Đã nhập; không có bút toán trừ liên kết",
+      "no_debit_evidence": "Không tìm thấy bút toán trừ liên kết"
+    },
+    "fields": {
+      "employeeRemark": "Ghi chú nhân viên",
+      "consent": "Đồng ý nghỉ không lương",
+      "maternity": "Chi tiết thai sản",
+      "allowanceEligible": "Điều kiện hưởng trợ cấp",
+      "unpaidDays": "Ngày không lương",
+      "entitlementYear": "Năm hưởng phép",
+      "submission": "Chi tiết nộp ban đầu",
+      "importedHistory": "Dấu lịch sử nhập",
+      "reason": "Lý do xin nghỉ",
+      "lineage": "Chuỗi nguồn gốc thiếu hoặc có vòng lặp"
+    }
+  },
+  "payrollLeaveFollowup": {
+    "title": "Thay đổi nghỉ phép sau khi đóng lương",
+    "description": "Rà soát ảnh hưởng và lưu cách xử lý",
+    "noMoneyChange": "Phiếu lương đã đóng không thay đổi. Rà soát này không tự động khấu trừ hoặc chuyển tiền sang kỳ sau.",
+    "error": "Chưa lưu cách xử lý. Kiểm tra giải thích và đợt điều chỉnh rồi thử lại, hoặc làm mới nếu đã xử lý.",
+    "dates": "Ngày phân bổ bị ảnh hưởng",
+    "adjustmentReference": "Đợt điều chỉnh đã đóng",
+    "resolvedAt": "Thời điểm xử lý",
+    "resolution": "Cách xử lý",
+    "chooseResolution": "Chọn cách xử lý",
+    "chooseAdjustment": "Chưa chọn đợt điều chỉnh",
+    "adjustmentHelp": "Nếu điều chỉnh, chọn đợt đã đóng có nhân viên này. Nếu không cần điều chỉnh, để trống và giải thích lý do.",
+    "explanation": "Giải thích",
+    "resolve": "Ghi nhận cách xử lý",
+    "states": {
+      "open": "Cần rà soát",
+      "resolved": "Đã xử lý"
+    },
+    "outcomes": {
+      "adjustment": "Đã ghi nhận điều chỉnh",
+      "no_adjustment": "Không cần điều chỉnh"
+    },
+    "sources": {
+      "approval": "Đã duyệt nghỉ",
+      "charged_import": "Đã nhập lịch sử nghỉ có ghi trừ"
+    }
   }
 }

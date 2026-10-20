@@ -134,6 +134,7 @@ import {
 // FACADE, not `./payroll-cycle` directly (ADR-0080 D9, test/payroll-pack-drift.test.ts): this is a new
 // cross-module consumer, and the ratchet allowlist only ever shrinks.
 import { DEFAULT_PAYROLL_CYCLES, seedPayrollCycleCatalog } from '../packs/payroll/service';
+import { applyLeavePayrollEffectsTx, lockPayrollForLeavePaidSettingTx } from '../packs/payroll/service';
 
 /** The three holiday-calendar KINDS (ADR-0067). 'standard' = official gazette only (no resolver branch);
  *  'extended' = gazette ∪ company ad-hoc; 'custom' = company ad-hoc only (national NOT auto-added). */
@@ -3336,8 +3337,8 @@ export async function updateLeaveType(
     // truth (schema paid boolean notNull default true). OWN tri-state (undefined = paid column untouched),
     // mirroring perDateApproval — the identity/rename sub-form posts an `identity=1` marker and always forwards
     // a concrete boolean, so an unrelated sub-form save omits paid and the column stays untouched (no silent
-    // reset). Applies to FUTURE leave only (paid is read at request/payroll time); historical requests and the
-    // ledger are unaffected.
+    // reset). Payroll reads this type on existing approved requests too: real changes assess all affected
+    // runs, mark processed results stale and refuse closed effects atomically. Ledger days stay unchanged.
     paid?: boolean;
     // Duplicate Leave Application Restriction (feedback d5e51c34): the same-date double-booking policy for this
     // leave type. OWN tri-state (undefined = duplicate_application_policy column untouched), mirroring
@@ -4068,6 +4069,8 @@ export async function updateLeaveType(
         nextCustomMessages = Object.keys(merged).length === 0 ? null : merged;
       }
     }
+    const payrollHits = touchPaid && before && p.paid !== before.paid
+      ? await lockPayrollForLeavePaidSettingTx(tx, p.id, p.paid!) : [];
     await tx
       .update(leaveType)
       .set({
@@ -4119,6 +4122,7 @@ export async function updateLeaveType(
         }
         throw e;
       });
+    await applyLeavePayrollEffectsTx(tx, payrollHits, 'paid_setting');
     // Anniversary to Calendar (f3a64d90) — the BACKFILL. Unlike updateLeavePolicy, this service never
     // recalculated anything; a Leave Year Type save only rewrote a column, so employees already carrying a
     // figure computed under the OLD model kept it (the reporter's YTD 7.00 / balance −6.00). The moment the

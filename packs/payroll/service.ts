@@ -34,6 +34,7 @@
  */
 export * from '../../core/payroll';
 export * from '../../core/payroll-closed-runs';
+export * from '../../core/payroll-leave';
 export * from '../../core/payroll-cycle';
 export * from '../../core/payroll-config';
 export * from '../../core/payroll-policy';

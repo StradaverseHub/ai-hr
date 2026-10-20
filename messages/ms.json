@@ -21426,5 +21426,62 @@
     "minutesShort": "{n} min",
     "underMinute": "< 1 min",
     "completedClosed": "{n} selesai, {w} ditutup tanpa keputusan"
+  },
+  "leaveSplitReview": {
+    "title": "Semak pecahan cuti terdahulu",
+    "description": "Kemungkinan perbezaan pada baki hari yang diluluskan",
+    "uncertainty": "Ini ialah calon semakan, bukan kesilapan gaji yang terbukti. Nilai dibandingkan dengan rekod asal semasa; suntingan sah kemudian atau bukti yang tiada mungkin menjelaskan perbezaan. Tiada rekod diubah.",
+    "empty": "Tiada calon semakan dalam pilihan ini. Ini tidak mengesahkan gaji terdahulu.",
+    "employee": "Pekerja",
+    "leave": "Rujukan dan tarikh cuti",
+    "differences": "Fakta untuk disemak",
+    "evidence": "Bukti tersedia",
+    "root": "Rujukan asal: {reference}",
+    "unresolved": "Bukti asal tidak dapat dijejaki sepenuhnya.",
+    "candidate": "Semakan HR diperlukan; tiada pembetulan automatik.",
+    "charging": {
+      "charged": "Debit bersumber direkodkan",
+      "uncharged_import": "Diimport; tiada debit bersumber",
+      "no_debit_evidence": "Tiada debit bersumber ditemui"
+    },
+    "fields": {
+      "employeeRemark": "Catatan pekerja",
+      "consent": "Persetujuan cuti tanpa gaji",
+      "maternity": "Butiran bersalin",
+      "allowanceEligible": "Kelayakan elaun",
+      "unpaidDays": "Hari tanpa gaji",
+      "entitlementYear": "Tahun kelayakan",
+      "submission": "Butiran penyerahan asal",
+      "importedHistory": "Penanda sejarah import",
+      "reason": "Sebab permohonan",
+      "lineage": "Jejak tidak lengkap atau berkitar"
+    }
+  },
+  "payrollLeaveFollowup": {
+    "title": "Perubahan cuti selepas gaji ditutup",
+    "description": "Semak kesan dan simpan penyelesaiannya",
+    "noMoneyChange": "Slip gaji tertutup tidak berubah. Semakan ini tidak mencatat potongan atau membawa wang ke hadapan secara automatik.",
+    "error": "Penyelesaian tidak disimpan. Semak penjelasan dan larian pelarasan, kemudian cuba lagi atau muat semula jika sudah selesai.",
+    "dates": "Tarikh pengagihan terjejas",
+    "adjustmentReference": "Larian pelarasan tertutup",
+    "resolvedAt": "Diselesaikan pada",
+    "resolution": "Penyelesaian",
+    "chooseResolution": "Pilih penyelesaian",
+    "chooseAdjustment": "Tiada larian pelarasan dipilih",
+    "adjustmentHelp": "Untuk pelarasan, pilih larian pelarasan tertutup yang merangkumi pekerja ini. Jika tiada pelarasan, biarkan kosong dan jelaskan sebabnya.",
+    "explanation": "Penjelasan",
+    "resolve": "Rekod penyelesaian",
+    "states": {
+      "open": "Perlu semakan",
+      "resolved": "Selesai"
+    },
+    "outcomes": {
+      "adjustment": "Pelarasan direkodkan",
+      "no_adjustment": "Tiada pelarasan diperlukan"
+    },
+    "sources": {
+      "approval": "Cuti diluluskan",
+      "charged_import": "Sejarah cuti bercaj diimport"
+    }
   }
 }

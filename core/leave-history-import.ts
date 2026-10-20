@@ -129,6 +129,7 @@ import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
+import { markPayrollAfterLeaveApprovalTx } from '../packs/payroll/service';
 import {
   appUser,
   company,
@@ -801,6 +802,7 @@ export async function commitLeaveHistoryImport(
             sourceRequestId: created.id,
             effectiveOn: r.startDate,
           });
+          await markPayrollAfterLeaveApprovalTx(tx, created.id, 'charged_import');
         }
       });
       imported += 1;

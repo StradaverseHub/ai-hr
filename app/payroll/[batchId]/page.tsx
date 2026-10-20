@@ -33,6 +33,7 @@ import { payslipProvenance } from '@/core/payslip-recompute';
 // 3c473773 — payslip boxes + the employer-borne disclosure, both read from each payslip's own snapshot.
 import { payslipDisplayEarnings } from '@/core/pay-display-category';
 import { payslipEmployerBorne } from '@/core/payslip-employer-borne';
+import { PayrollLeaveFollowup } from './leave-followup';
 
 /**
  * `/payroll/<segment>` is the catch-all under the payroll workbench, so ANY unmatched path lands here
@@ -60,6 +61,7 @@ export default async function BatchPage({
     hw?: string;
     page?: string;
     size?: string;
+    leaveFollowupError?: string;
   }>;
 }) {
   const s = await requireAdmin();
@@ -526,6 +528,8 @@ export default async function BatchPage({
           )}
         </div>
       )}
+
+      <PayrollLeaveFollowup session={s} batchId={batch.id} failed={sp.leaveFollowupError === '1'} />
 
       {/* ef31d251 — the "hidden from employees" statement. Nothing on this screen has ever said that a
           calculated run's payslips are invisible until Close, which is why the step was skipped on all

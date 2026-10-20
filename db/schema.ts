@@ -10550,3 +10550,18 @@ export const lcOnboardingPrivateRevision=pgTable('lc_onboarding_private_revision
  caseId:uuid('case_id').notNull().references(()=>lcOnboardingCase.id),revision:integer('revision').notNull(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
  data:jsonb('data').$type<typeof lcOnboardingPrivate.$inferSelect.data>().notNull(),createdAt:createdAt(),
 },t=>[primaryKey({columns:[t.caseId,t.revision]})]);
+
+/** Closed-payroll leave follow-up, not a payroll input or automatic adjustment. */
+export const payrollLeaveException = pgTable('payroll_leave_exception', {
+  id: id(), tenantId: tenantId(), batchId: uuid('batch_id').notNull().references(() => payrollBatch.id),
+  employmentId: uuid('employment_id').notNull().references(() => employment.id),
+  leaveRequestId: uuid('leave_request_id').notNull().references(() => leaveRequest.id),
+  sourceAction: text('source_action').notNull().$type<'approval' | 'charged_import'>(),
+  affectedDates: jsonb('affected_dates').notNull().$type<string[]>(),
+  createdBy: uuid('created_by').notNull().references(() => appUser.id), createdAt: createdAt(),
+  status: text('status').notNull().default('open').$type<'open' | 'resolved'>(),
+  resolution: text('resolution').$type<'adjustment' | 'no_adjustment'>(),
+  adjustmentBatchId: uuid('adjustment_batch_id').references(() => payrollBatch.id),
+  explanation: text('explanation'), resolvedBy: uuid('resolved_by').references(() => appUser.id),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+}, t => [index('payroll_leave_exception_batch').on(t.tenantId, t.batchId, t.status, t.createdAt)]);

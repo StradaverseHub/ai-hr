@@ -25,6 +25,7 @@
  * country pack's `localization/my/client.ts` split (rung 5b).
  */
 export * from '../../core/leave';
+export * from '../../core/leave-split-review';
 export * from '../../core/leave-approval-policy';
 // r90 (241817ef) — the approval-rule conversion, exposed here so its operator script consumes it through
 // the facade like any other caller. The alternative was a fifth scripts/ entry in the audited debt
