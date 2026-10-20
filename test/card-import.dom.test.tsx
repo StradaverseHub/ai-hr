@@ -18,6 +18,7 @@ it('canceling a selected workbook makes no confirmation request', () => {
   fireEvent.change(screen.getByLabelText(en.cardImport.chooseFile, { exact: false }), { target: { files: [new File(['fixture'], 'cards.xlsx')] } });
   fireEvent.click(screen.getByRole('button', { name: en.cardImport.cancel }));
   expect(fetcher).not.toHaveBeenCalled(); expect(screen.queryByRole('heading', { name: en.cardImport.bulkTitle })).toBeNull();
+  expect(screen.getByRole('button', { name: en.cardImport.importExcel })).toHaveFocus();
 });
 it('binds confirmation to the reviewed file, selected rows and explicit replacement acknowledgment', async () => {
   fetcher.mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, preview: { receipt: 'review-receipt', fileHash: 'hash', fileName: 'cards.xlsx', rows: [
@@ -37,4 +38,6 @@ it('binds confirmation to the reviewed file, selected rows and explicit replacem
   expect(body.get('confirmReplacements')).toBe('true'); expect(body.get('company')).toBe('company');
   expect(body.get('file')).toBe(file);
   await screen.findByRole('heading', { name: en.cardImport.summary });
+  fireEvent.click(screen.getByRole('button', { name: en.cardImport.close }));
+  expect(screen.getByRole('button', { name: en.cardImport.importExcel })).toHaveFocus();
 });
