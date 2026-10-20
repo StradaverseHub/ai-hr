@@ -9,7 +9,6 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { sql } from 'drizzle-orm';
 import postgres from 'postgres';
-import * as schema from './schema';
 import { chainArmingDecision } from '../core/audit-chain-arming';
 import type { EntitlementSnapshot, EntitlementsExemptReason } from '../core/entitlement-types';
 // Value import, and safe: core/entitlement-types.ts imports NOTHING, so there is no cycle back here.
@@ -165,7 +164,8 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     client = postgres(connectionString, { max: options?.max ?? 10 });
     pgPools.set(connectionString, client);
   }
-  const db = drizzle(client, { schema });
+  // Table queries carry their own column types; application owners use explicit table queries.
+  const db = drizzle(client);
   type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
   /** Run `fn` in a transaction scoped to the session's tenant/user/roles.
