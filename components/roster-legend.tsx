@@ -33,13 +33,13 @@ export function RosterLegend({ entries, active, onChoose }: { entries: RosterLeg
   }, [open]);
   const visible = entries.filter(entry => `${entry.code} ${entry.name} ${entry.hint}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   return <Dialog.Root modal={false} open={open} onOpenChange={next => { if (next) { locate(); setQuery(''); } setOpen(next); }}>
-    <Dialog.Trigger asChild><button ref={trigger} type="button" className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm">
+    <Dialog.Trigger asChild><button ref={trigger} type="button" className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring">
       <span className="shrink-0 font-medium">{t(onChoose ? 'brush' : 'legend')}</span>
       {selected && onChoose && <span style={selected.style} className={`min-w-0 truncate rounded border px-2 py-0.5 text-xs ${selected.className}`}>{selected.code}</span>}
       <ChevronDown className="size-4 shrink-0" aria-hidden />
     </button></Dialog.Trigger>
     <Dialog.Portal><Dialog.Content ref={panel} style={position} aria-describedby={undefined} onOpenAutoFocus={event => { event.preventDefault(); search.current?.focus(); }} className="fixed z-50 flex flex-col overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-xl">
-      <div className="flex shrink-0 items-center justify-between gap-3 px-3 pt-2"><Dialog.Title className="text-sm font-semibold">{t('legend')}</Dialog.Title><Dialog.Close asChild><button type="button" aria-label={t('legendClose')} className="grid size-11 place-items-center rounded hover:bg-muted"><X className="size-4" aria-hidden /></button></Dialog.Close></div>
+      <div className="flex shrink-0 items-center justify-between gap-3 px-3 pt-2"><Dialog.Title className="text-sm font-semibold">{t('legend')}</Dialog.Title><Dialog.Close asChild><button type="button" aria-label={t('legendClose')} className="grid size-11 place-items-center rounded hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"><X className="size-4" aria-hidden /></button></Dialog.Close></div>
       <div className="shrink-0 px-3 pb-2"><label className="sr-only" htmlFor={searchId}>{t('legendSearch')}</label><input id={searchId} ref={search} value={query} onChange={event => setQuery(event.target.value)} placeholder={t('legendSearch')} className={inputCls} /></div>
       <div className="min-h-0 overflow-y-auto p-2">
         {!visible.length && <p role="status" className="p-3 text-sm text-muted-foreground">{t('legendEmpty')}</p>}
