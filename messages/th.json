@@ -21515,7 +21515,7 @@
     "working": "กำลังดำเนินการ…",
     "cancel": "ยกเลิก",
     "close": "ปิด",
-    "downloadErrors": "ดาวน์โหลดรายงานข้อผิดพลาด",
+    "downloadErrors": "ดาวน์โหลดรายงานข้อผิดพลาด (CSV)",
     "confirm": "ยืนยันการเปลี่ยนแปลงที่ตรวจสอบแล้ว",
     "totals": "ทั้งหมด {total} · นำเข้า {imported} · อัปเดต {updated} · ไม่เปลี่ยน {unchanged} · ล้มเหลว {failed} · ข้าม {skipped}",
     "previewCounts": "{total} แถว · เลือก {selected} · ต้องแก้ไข {failed} ยังไม่มีการบันทึกการเปลี่ยนแปลง",

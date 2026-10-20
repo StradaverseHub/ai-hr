@@ -21515,7 +21515,7 @@
     "working": "Đang xử lý…",
     "cancel": "Hủy",
     "close": "Đóng",
-    "downloadErrors": "Tải báo cáo lỗi",
+    "downloadErrors": "Tải báo cáo lỗi (CSV)",
     "confirm": "Xác nhận thay đổi đã kiểm tra",
     "totals": "Tổng {total} · Đã nhập {imported} · Cập nhật {updated} · Giữ nguyên {unchanged} · Lỗi {failed} · Bỏ qua {skipped}",
     "previewCounts": "{total} dòng · Đã chọn {selected} · Cần sửa {failed}. Chưa lưu thay đổi nào.",

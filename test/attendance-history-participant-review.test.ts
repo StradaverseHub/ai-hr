@@ -57,6 +57,7 @@ describe('Request-bound history review and original Overview visibility', () => 
     detail = await attendanceApplicationDetail(f.root, [b.companyId], f.id);
     expect(detail?.progress?.next.find(actor => actor.name === 'Fictional first reviewer')?.eligible).toBe(false);
     expect(detail?.progress?.next.find(actor => actor.name === 'Fictional second reviewer')?.eligible).toBe(true);
+    expect((await listAttendanceCorrections(f.first.ctx, { companyIds: [b.companyId], status: 'pending' })).map(row => row.id)).not.toContain(f.id);
     await expect(decideAttendanceCorrection(f.first.ctx, { correctionId: f.id, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:0' })).rejects.toThrow();
   });
   it('keeps scoped HR request IDs identical to the old reader and refuses foreign tenant/request probes', async () => {
@@ -65,6 +66,12 @@ describe('Request-bound history review and original Overview visibility', () => 
     const history = await listAttendanceApplicationHistory(f.root, [b.companyId], { status: 'pending', pageSize: 100 });
     expect(history.rows.map(row => row.id).sort()).toEqual(old.map(row => row.id).sort());
     expect(await projection(f.root, randomUUID())).toHaveLength(0);
+    const [otherCompany] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Fictional other company scope' }).returning();
+    const otherHr = await actor('Fictional other company HR');
+    await owner.db.update(schema.roleAssignment).set({ role: 'hr_admin', companyId: otherCompany.id }).where(eq(schema.roleAssignment.appUserId, otherHr.ctx.userId));
+    const otherScope: SessionContext = { ...otherHr.ctx, roles: ['hr_admin'], grants: [{ role: 'hr_admin', companyId: otherCompany.id }] };
+    expect(await projection(otherScope, f.id)).toHaveLength(0);
+    expect(await attendanceApplicationDetail(otherScope, [b.companyId], f.id)).toBeNull();
     const foreign = await seedBase();
     expect(await projection(adminCtx(foreign), f.id)).toHaveLength(0);
     expect(await attendanceApplicationDetail(adminCtx(foreign), [b.companyId], f.id)).toBeNull();
@@ -75,5 +82,6 @@ describe('Request-bound history review and original Overview visibility', () => 
     const detail = await attendanceApplicationDetail(f.root, [b.companyId], f.id);
     expect(detail?.progress).toMatchObject({ state: 'unresolved', next: [{ name: 'Fictional first reviewer', eligible: false }] });
     expect(detail?.progress?.next.some(actor => actor.name === 'Fictional second reviewer')).toBe(false);
+    expect((await listAttendanceCorrections(f.first.ctx, { companyIds: [b.companyId], status: 'pending' })).map(row => row.id)).not.toContain(f.id);
   });
 });

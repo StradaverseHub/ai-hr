@@ -21515,7 +21515,7 @@
     "working": "செயலாக்கப்படுகிறது…",
     "cancel": "ரத்து",
     "close": "மூடு",
-    "downloadErrors": "பிழை அறிக்கையைப் பதிவிறக்கு",
+    "downloadErrors": "பிழை அறிக்கையைப் பதிவிறக்கு (CSV)",
     "confirm": "சரிபார்த்த மாற்றங்களை உறுதிசெய்",
     "totals": "மொத்தம் {total} · இறக்குமதி {imported} · புதுப்பிப்பு {updated} · மாறாதவை {unchanged} · தோல்வி {failed} · தவிர்த்தவை {skipped}",
     "previewCounts": "{total} வரிகள் · {selected} தேர்வு · {failed} திருத்த வேண்டும். மாற்றங்கள் சேமிக்கப்படவில்லை.",

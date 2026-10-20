@@ -21515,7 +21515,7 @@
     "working": "处理中…",
     "cancel": "取消",
     "close": "关闭",
-    "downloadErrors": "下载错误报告",
+    "downloadErrors": "下载错误报告 (CSV)",
     "confirm": "确认已审核的变更",
     "totals": "总计 {total} · 新增 {imported} · 更新 {updated} · 未变 {unchanged} · 失败 {failed} · 跳过 {skipped}",
     "previewCounts": "{total} 行 · 已选 {selected} 行 · {failed} 行需修正。尚未保存任何变更。",

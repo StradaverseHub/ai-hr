@@ -31,7 +31,12 @@ import { actorOf, appendEvent } from '../db/events';
 import { employeeStatutoryMy, employment, person } from '../db/schema';
 
 export class CardIdStateError extends Error {
-  constructor(readonly code: 'scope' | 'stale' | 'conflict') { super(`card-id:${code}`); this.name = 'CardIdStateError'; }
+  constructor(readonly code: 'scope' | 'stale' | 'conflict') {
+    super({ scope: 'This employee is unavailable or outside your card assignment access.',
+      stale: 'The card assignment changed. Review the latest value and try again.',
+      conflict: 'This card conflicts with another employee identifier. Review the card value.' }[code]);
+    this.name = 'CardIdStateError';
+  }
 }
 
 /** Thrown when a card id is already in use — as a card, OR as another employee's code or IC. */

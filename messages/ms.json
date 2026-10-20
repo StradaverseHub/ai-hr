@@ -21515,7 +21515,7 @@
     "working": "Sedang diproses…",
     "cancel": "Batal",
     "close": "Tutup",
-    "downloadErrors": "Muat Turun Laporan Ralat",
+    "downloadErrors": "Muat Turun Laporan Ralat (CSV)",
     "confirm": "Sahkan Perubahan Disemak",
     "totals": "Jumlah {total} · Diimport {imported} · Dikemas kini {updated} · Tidak berubah {unchanged} · Gagal {failed} · Dilangkau {skipped}",
     "previewCounts": "{total} baris · {selected} dipilih · {failed} perlu dibetulkan. Tiada perubahan disimpan.",

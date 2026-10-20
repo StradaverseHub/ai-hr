@@ -34,13 +34,26 @@ describe('Card Assignment workbook contract', () => {
       (_: XLSX.WorkSheet, wb: XLSX.WorkBook) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['ignored employee']]), 'Other'),
     ]) expect(() => readCardImportWorkbook(workbook(edit))).toThrow();
   });
-  it('bounds actual archive inflation and refuses hidden external relationships', async () => {
+  it('refuses hidden external relationships', async () => {
     const zip = await JSZip.loadAsync(buildCardImportWorkbook([{ employeeCode: '0007', cardId: '0010' }]));
     const path = 'xl/_rels/workbook.xml.rels';
     const rels = await zip.file(path)!.async('string');
     zip.file(path, rels.replace('</Relationships>', '<Relationship Id="bad" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLink" Target="https://example.com/private" TargetMode="External"/></Relationships>'));
     const bytes = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
     expect(() => readCardImportWorkbook(bytes)).toThrow();
+  });
+  it('refuses oversized archive inflation before the workbook parser receives it', async () => {
+    const zip = await JSZip.loadAsync(buildCardImportWorkbook([{ employeeCode: '0007', cardId: '0010' }]));
+    zip.file('xl/oversized.xml', '<padding>' + 'x'.repeat(12 * 1024 * 1024) + '</padding>');
+    const bytes = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+    expect(bytes.length).toBeLessThan(2 * 1024 * 1024);
+    expect(() => readCardImportWorkbook(bytes)).toThrow();
+  });
+  it('refuses non-workbook bytes and rows beyond the declared entry area', () => {
+    expect(() => readCardImportWorkbook(Buffer.from('Employee ID,Card ID,Operation\n0007,0010,assign'))).toThrow();
+    expect(() => readCardImportWorkbook(workbook(ws => {
+      ws.A503 = { t: 's', v: 'outside' }; ws['!ref'] = 'A1:C503';
+    }))).toThrow('tooManyRows');
   });
   it('detects case-insensitive duplicates before selecting valid rows', () => {
     const rows = validateCardImportRows([
