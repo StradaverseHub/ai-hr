@@ -11,7 +11,7 @@ import { adminCancelLeave, decideLeave, decideLeaveDate, decideLeaveDates, decid
 import { updateLeaveType } from '../core/admin';
 import { erasePersonPii } from '../core/pdpa';
 import { commitLeaveHistoryImport } from '../core/leave-history-import';
-import { BatchNeedsRecalculationError, closeBatch, createBatch, createAdditionalRun, generatePayslips } from '../core/payroll';
+import { BatchNeedsRecalculationError, closeBatch, createBatch, createAdditionalRun, generatePayslips, setPayrollInput } from '../core/payroll';
 import { assignPolicy, createPolicy } from '../core/payroll-policy';
 import { LeavePayrollBusyError, LeavePayrollClosedError, listPayrollLeaveExceptions, resolvePayrollLeaveException } from '../core/payroll-leave';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -35,6 +35,7 @@ beforeEach(async () => {
   });
   const hiredSubject = await hire('Payroll subject'); const boss = await hire('Operational manager');
   const [employment] = await owner.db.select({ code: schema.employment.employeeCode }).from(schema.employment).where(eq(schema.employment.id, hiredSubject.employmentId));
+  if(!employment.code)throw new Error('The hired payroll subject must have an employee code');
   subject = { ...hiredSubject, code: employment.code };
   const userId = await createAppUser(b.tenantId, subject.personId, 'employee');
   const bossId = await createAppUser(b.tenantId, boss.personId, 'manager');
@@ -119,6 +120,7 @@ describe('leave decisions and payroll follow-up', () => {
     hr = {...hr,entitlements:harnessSnapshot(b.tenantId)};
     const leaveId=await pending();const batchId=await processed();
     const {batchId:adjustmentId}=await createAdditionalRun(hr,{companyId:b.companyId,payPeriod:lastMonth,runType:'adjustment',scope:{employmentIds:[subject.employmentId]}});
+    await setPayrollInput(hr,{batchId:adjustmentId,employmentId:subject.employmentId,overtimeAmount:0,bonusAmount:100});
     await generatePayslips(hr,{batchId:adjustmentId});
     await closeBatch(hr,{batchId:adjustmentId});await closeBatch(hr,{batchId});
     await decideLeave(manager,{leaveRequestId:leaveId,decision:'approved'});
@@ -176,6 +178,11 @@ describe('leave decisions and payroll follow-up', () => {
   it.each(['weekly','biweekly'] as const)('protects %s cycle disbursements when the leave start is outside the monthly deduction window',async frequency=>{
     const policy=await createPolicy(hr,{companyId:b.companyId,name:`${frequency} disbursement`,policyType:'monthly',config:{frequency}});
     await owner.db.insert(schema.companyPayrollConfig).values({tenantId:b.tenantId,companyId:b.companyId,defaultPayrollPolicyId:policy.id,unpaidLeaveCutOffDay:Number(monday.slice(8))});
+    // A real deduction already belongs to this leave window, outside its salary cycles. The later
+    // approval changes how that fixed deduction is allocated, while its monthly total stays fixed.
+    const earlier=addDays(monday,-7);
+    const prior=await requestLeave(employee,{employmentId:subject.employmentId,leaveTypeId:typeId,startDate:earlier,endDate:earlier,today:addDays(earlier,-30)});
+    await decideLeave(manager,{leaveRequestId:prior.leaveRequestId,decision:'approved'});
     const leaveId=await pending(),batchId=await processed(),before=await slip(batchId);
     await decideLeave(manager,{leaveRequestId:leaveId,decision:'approved'});
     expect((await batch(batchId)).recalcEmploymentIds).toEqual([subject.employmentId]);
@@ -197,7 +204,7 @@ describe('leave decisions and payroll follow-up', () => {
     await decideLeave(manager,{leaveRequestId:leaveId,decision:'approved'});
     const exceptions=await listPayrollLeaveExceptions(hr,batchId);expect(exceptions).toHaveLength(1);
     expect(await slip(batchId)).toEqual(before);
-    const [reviewerPerson]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional scoped reviewer'}).returning();
+    const [reviewerPerson]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional scoped reviewer',primaryEmail:`${randomUUID()}@reviewer.invalid`}).returning();
     const reviewer=await createAppUser(b.tenantId,reviewerPerson.id,'hr_admin');
     await owner.db.update(schema.roleAssignment).set({companyId:current.id}).where(eq(schema.roleAssignment.appUserId,reviewer));
     const scoped={tenantId:b.tenantId,userId:reviewer,roles:['hr_admin'],entitlements:harnessSnapshot(b.tenantId)};
