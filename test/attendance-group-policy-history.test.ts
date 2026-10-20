@@ -8,7 +8,7 @@ import {ensureStandardRule} from '../core/attendance-rule';
 import {attendanceGroupPolicyHistory,attendanceGroupPolicyOnTx,scheduleAttendanceGroupPolicy} from '../core/attendance-group-policy';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,ctx:SessionContext,ruleId:string;
 const plus=(days:number)=>new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+days*86400000).toISOString().slice(0,10);
 const policy=():AttendanceGroupPolicy=>({version:1,clock:{pairing:'auto',minimumIntervalMinutes:5,lateGraceMinutes:0,earlyGraceMinutes:0,skipLatenessIfIncomplete:true},
@@ -53,7 +53,7 @@ describe('future attendance execution policy history',()=>{
  it('checks current grants and module status before returning history or writing new versions',async()=>{
   await scheduleAttendanceGroupPolicy(ctx,input());
   await setModule(b.tenantId,'attendance','disabled');
-  await expect(attendanceGroupPolicyHistory(ctx,{companyId:b.companyId,ruleId})).rejects.toThrow();
+  await expect(attendanceGroupPolicyHistory(await entitledCtx(b),{companyId:b.companyId,ruleId})).rejects.toThrow();
   await setModule(b.tenantId,'attendance','active');
   await owner.db.delete(s.roleAssignment).where(eq(s.roleAssignment.appUserId,ctx.userId!));
   await expect(attendanceGroupPolicyHistory(ctx,{companyId:b.companyId,ruleId})).rejects.toThrow();

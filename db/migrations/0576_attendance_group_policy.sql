@@ -18,10 +18,14 @@ CREATE TABLE public.attendance_group_policy_revision (
 --> statement-breakpoint
 ALTER TABLE public.attendance_group_policy_revision ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.attendance_group_policy_revision FORCE ROW LEVEL SECURITY;
--- Configuration contains no salary, personal subject or formula amounts. Canonical attendance can
--- read its policy under the employee context; configuration screens separately require scoped admin.
+-- Configuration contains no salary or formula amounts. Canonical attendance can read the policy
+-- for a readable subject's current or recorded employer; screens separately require scoped admin.
 CREATE POLICY attendance_group_policy_read ON public.attendance_group_policy_revision FOR SELECT
- USING(tenant_id=app.current_tenant_id());
+ USING(tenant_id=app.current_tenant_id() AND (app.is_admin_for(company_id)
+  OR EXISTS(SELECT 1 FROM public.employment e WHERE e.tenant_id=attendance_group_policy_revision.tenant_id
+   AND e.company_id=attendance_group_policy_revision.company_id AND app.can_see_employment(e.id))
+  OR EXISTS(SELECT 1 FROM public.assignment a WHERE a.tenant_id=attendance_group_policy_revision.tenant_id
+   AND a.company_id=attendance_group_policy_revision.company_id AND app.can_see_employment(a.employment_id))));
 CREATE POLICY attendance_group_policy_insert ON public.attendance_group_policy_revision FOR INSERT
  WITH CHECK(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id)
   AND created_by_user_id=app.current_user_id());

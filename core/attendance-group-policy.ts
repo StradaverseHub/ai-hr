@@ -18,7 +18,7 @@ async function adminCompany(tx:Tx,ctx:SessionContext,companyId:string):Promise<v
   .where(and(eq(company.id,companyId),eq(company.tenantId,ctx.tenantId))).limit(1);
  if(!row?.allowed)throw Error('This company policy is outside your administrator scope.');
 }
-export function attendanceGroupPolicyHistory(ctx:SessionContext,p:{companyId:string;ruleId:string}):Promise<AttendanceGroupPolicyVersion[]>{
+export async function attendanceGroupPolicyHistory(ctx:SessionContext,p:{companyId:string;ruleId:string}):Promise<AttendanceGroupPolicyVersion[]>{
  overtimeUuid(p.ruleId,'ruleId');
  return withAttendanceTenant(ctx,async tx=>{
   await adminCompany(tx,ctx,p.companyId);
@@ -39,7 +39,7 @@ export async function attendanceGroupPolicyOnTx(tx:Tx,ctx:SessionContext,p:{comp
  if(!row)return null;
  return {id:row.id,companyId:row.companyId,ruleId:row.ruleId,ordinal:row.ordinal,effectiveFrom:row.effectiveFrom,policy:validateAttendanceGroupPolicy(row.policy,4320)};
 }
-export function scheduleAttendanceGroupPolicy(ctx:SessionContext,p:{companyId:string;ruleId:string;expectedOrdinal:number;
+export async function scheduleAttendanceGroupPolicy(ctx:SessionContext,p:{companyId:string;ruleId:string;expectedOrdinal:number;
  effectiveFrom:string;reason:string;policy:unknown}):Promise<{id:string;ordinal:number;effectiveFrom:string}>{
  overtimeUuid(p.ruleId,'ruleId');
  if(!ctx.userId||!Number.isSafeInteger(p.expectedOrdinal)||p.expectedOrdinal<0||typeof p.reason!=='string'||!p.reason.trim()||p.reason.trim().length>500)
