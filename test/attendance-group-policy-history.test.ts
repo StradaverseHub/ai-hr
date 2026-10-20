@@ -5,10 +5,13 @@ import type {SessionContext} from '../db/client';
 import {withTenant} from '../db/client';
 import * as s from '../db/schema';
 import {ensureStandardRule} from '../core/attendance-rule';
+import {hireEmployee} from '../core/org';
 import {attendanceGroupPolicyHistory,attendanceGroupPolicyOnTx,scheduleAttendanceGroupPolicy} from '../core/attendance-group-policy';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
+import {activateOvertimePattern,saveOvertimePatternDraft,validateOvertimePatternActivation} from '../packs/attendance/service';
+import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,ctx:SessionContext,ruleId:string;
 const plus=(days:number)=>new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+days*86400000).toISOString().slice(0,10);
 const policy=():AttendanceGroupPolicy=>({version:1,clock:{pairing:'auto',minimumIntervalMinutes:5,lateGraceMinutes:0,earlyGraceMinutes:0,skipLatenessIfIncomplete:true},
@@ -18,6 +21,38 @@ const input=()=>({companyId:b.companyId,ruleId,expectedOrdinal:0,effectiveFrom:p
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'attendance','active');ctx=adminCtx(b);ruleId=(await ensureStandardRule(ctx)).id;});
 describe('future attendance execution policy history',()=>{
+ it('lets an employee calculation read its employer policy while denying unrelated companies and configuration writes',async()=>{
+  const [other]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional unrelated policy company'}).returning();
+  await scheduleAttendanceGroupPolicy(ctx,input());
+  await scheduleAttendanceGroupPolicy(ctx,{...input(),companyId:other.id});
+  const employee=await hireEmployee(ctx,{person:{fullName:'Fictional policy reader',primaryEmail:'policy-reader@fixture.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:plus(-1)});
+  const userId=await createAppUser(b.tenantId,employee.personId,'employee');
+  const self={...ctx,userId,personId:employee.personId,roles:['employee']};
+  const visible=await withTenant(self,tx=>tx.select({companyId:s.attendanceGroupPolicyRevision.companyId}).from(s.attendanceGroupPolicyRevision).orderBy(asc(s.attendanceGroupPolicyRevision.companyId)));
+  expect(visible).toEqual([{companyId:b.companyId}]);
+  await expect(attendanceGroupPolicyHistory(self,{companyId:b.companyId,ruleId})).rejects.toThrow();
+  await expect(scheduleAttendanceGroupPolicy({...self,roles:['hr_admin']},{...input(),expectedOrdinal:1,effectiveFrom:plus(2)})).rejects.toThrow();
+  expect(await attendanceGroupPolicyHistory(ctx,{companyId:b.companyId,ruleId})).toHaveLength(1);
+ });
+ it('binds the existing central formula version only when active for this employer on the policy date',async()=>{
+  const [earning]=await owner.db.insert(s.payComponent).values({tenantId:b.tenantId,code:'POLICY_OT',name:'Fictional policy earning',kind:'allowance'}).returning();
+  const definition=prepareOvertimeStarter('ot15','day','earliest');
+  definition.currency={code:'MYR',minorScale:2};
+  definition.eligibility={id:'eligibility',type:'constant',value:true};
+  definition.rates[0].when={id:'rate_eligibility',type:'constant',value:true};
+  const tier=definition.rates[0].tiers[0];tier.mapping={earningItemId:earning.id,currency:'MYR'};
+  if(tier.payment.method!=='hourly'||tier.payment.rate.type!=='hourlyRate')throw Error('Fixture must retain the hourly formula');
+  tier.payment.rate.divisorMinutes={id:'hourly_divisor',unit:'minutes',type:'literal',value:'480'};
+  const draft=await saveOvertimePatternDraft(ctx,{draft:{code:'POLICY_'+randomUUID().slice(0,8),name:'Fictional 1.5 pattern',creationCompanyId:b.companyId,companyIds:[b.companyId],definition}});
+  const check=await validateOvertimePatternActivation(ctx,{versionId:draft.versionId,expectedRevision:draft.revision});
+  expect(check.issues).toEqual([]);expect(check.validationDigest).not.toBeNull();
+  await activateOvertimePattern(ctx,{versionId:draft.versionId,expectedRevision:draft.revision,validationDigest:check.validationDigest!,effectiveFrom:plus(2)});
+  const configured=policy();configured.overtime.enabled=true;
+  for(const key of ATTENDANCE_POLICY_DAY_CLASSES)configured.overtime.days[key].patternVersionId=draft.versionId;
+  await expect(scheduleAttendanceGroupPolicy(ctx,{...input(),policy:configured})).rejects.toThrow();
+  const saved=await scheduleAttendanceGroupPolicy(ctx,{...input(),effectiveFrom:plus(2),policy:configured});
+  expect((await attendanceGroupPolicyHistory(ctx,{companyId:b.companyId,ruleId})).find(row=>row.id===saved.id)?.policy).toEqual(configured);
+ });
  it('saves/reopens one immutable snapshot and leaves earlier days in legacy mode',async()=>{
   const saved=await scheduleAttendanceGroupPolicy(ctx,input());
   const history=await attendanceGroupPolicyHistory(ctx,{companyId:b.companyId,ruleId});
