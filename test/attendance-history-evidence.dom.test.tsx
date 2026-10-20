@@ -35,7 +35,8 @@ it('identifies the recorded missing clock direction for Incomplete Entry', async
 });
 it('keeps the original recorded attendance result distinct from the corrected current result', async () => {
   await show({ ...detail('absent', { record: { checkInAt: '08:00:00', checkOutAt: '17:00:00', status: 'present' }, schedule: null, organisation: null }),
-    events: [{ eventType: 'attendance-correction.effect.recorded', payload: { before: { status: 'absent', checkInAt: null, checkOutAt: null } } }] });
+    events: [{ id: 'recorded-effect', eventType: 'attendance-correction.effect.recorded', occurredAt: new Date('2026-10-20T03:00:00Z'), actorName: 'Fictional HR', actorType: 'user',
+      payload: { before: { status: 'absent', checkInAt: null, checkOutAt: null } } }] });
   const original = screen.getByRole('heading', { name: en.attendanceHistory.originalAttendance }).closest('section')!;
   const current = screen.getByRole('heading', { name: en.attendanceHistory.currentAttendance }).closest('section')!;
   expect(within(original).getByText(en.attendanceHistory.attendanceStates.absent)).toBeVisible();
