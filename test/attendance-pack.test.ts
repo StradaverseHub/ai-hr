@@ -668,8 +668,8 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     const adminRow = flattened.filter((c) => c.href === '/attendance');
     expect(adminRow.map((c) => c.labelKey)).toEqual(['employeeAttendance']);
     expect(adminRow[0].adminOnly, 'the admin entry is gated').toBe(true);
-    const mineRow = flattened.filter((c) => c.href === '/attendance/my-records');
-    expect(mineRow.map((c) => c.labelKey)).toEqual(['myRecords']);
+    const mineRow = flattened.filter((c) => c.href === '/attendance/my-roster');
+    expect(mineRow.map((c) => c.labelKey)).toEqual(['attendanceCalendar']);
     expect(mineRow[0].adminOnly, 'the employee entry stays ungated').toBeUndefined();
     expect(mineRow[0].managerUp, 'the employee entry stays ungated').toBeUndefined();
   });
@@ -847,7 +847,7 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // whatever address the employee's Records row points at, it must carry no gate, or an employee loses
     // sight of their own attendance. Re-pointing it at `/attendance` here would make this case pass
     // against the admin row and quietly stop covering the employee's.
-    const records = mine.children.find((c) => c.href === '/attendance/my-records')!;
+    const records = mine.children.find((c) => c.href === '/attendance/my-roster')!;
     expect({ adminOnly: records.adminOnly, managerUp: records.managerUp }).toEqual({
       adminOnly: undefined,
       managerUp: undefined,
