@@ -6,7 +6,7 @@
  * any open give-back on the same leave is superseded, a distinct `leave-request.admin-cancelled` event records
  * the REAL HR actor + display facts, and the employee is notified. HR cannot cancel their own leave here
  * (self-ban; super_admin excepted), a company-scoped admin can't reach another company's leave (RLS), and
- * already-cancelled / rejected / approved-REPLACEMENT / closed-payroll leave are refused.
+ * already-cancelled / rejected leave and changes affecting closed payroll are refused.
  *
  * Future dates (Aug 2026) so no future-gate interferes; the service intentionally allows past/started leave.
  */
@@ -25,6 +25,7 @@ import {
   LeaveCancellationNotAllowedError,
   LeaveCancellationPeriodClosedError,
 } from '../core/leave';
+import { listPayrollLeaveExceptions } from '../core/payroll-leave';
 import { dispatchNotifications } from '../core/notifications';
 import { listLeaveRequests, plannedAbsences } from '../core/read';
 import type { SessionContext } from '../db/client';
@@ -71,10 +72,10 @@ async function grantAnnual(days: string) {
 }
 
 /** Submit + single-step approve a 10–12 Aug ANNUAL leave; returns the row id (3 working days). */
-async function approvedThreeDay() {
+async function approvedThreeDay(leaveTypeId = b.annualLeaveTypeId) {
   const res = await requestLeave(subjectCtx, {
     employmentId: subject.employmentId,
-    leaveTypeId: b.annualLeaveTypeId,
+    leaveTypeId,
     startDate: '2026-08-10',
     endDate: '2026-08-12',
   });
@@ -386,8 +387,12 @@ describe('adminCancelLeave — REPLACEMENT (TOIL)', () => {
 });
 
 describe('adminCancelLeave — closed payroll period', () => {
-  it('refuses when the leave month has a closed payroll batch with the employee’s payslip', async () => {
-    const reqId = await approvedThreeDay(); // 10–12 Aug 2026 → month 2026-08
+  it.each([true, false])('closed payroll blocks only a financially affected HR cancellation (paid=%s)', async (paid) => {
+    const leaveTypeId = paid ? b.annualLeaveTypeId : (await owner.db.insert(schema.leaveType).values({
+      tenantId: b.tenantId, code: 'UNPAID', name: 'Unpaid leave', paid: false,
+      counting: 'working_days', allowNegativeBalance: true, employeeCancelApproved: true,
+    }).returning({ id: schema.leaveType.id }))[0].id;
+    const reqId = await approvedThreeDay(leaveTypeId); // 10–12 Aug 2026 → month 2026-08
     const [pp] = await owner.db
       .insert(schema.payPeriod)
       .values({ tenantId: b.tenantId, companyId: b.companyId, period: '2026-08', status: 'closed' })
@@ -414,10 +419,21 @@ describe('adminCancelLeave — closed payroll period', () => {
       netPay: '5000.00',
       employerCost: '5000.00',
     });
-    await expect(adminCancelLeave(adminCtx(b), { leaveRequestId: reqId })).rejects.toBeInstanceOf(
-      LeaveCancellationPeriodClosedError,
-    );
-    expect(await statusOf(reqId)).toBe('approved');
+    const beforeSlip = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batch.id)).orderBy(schema.payslip.id);
+    const [beforeBatch] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batch.id));
+    const beforeLedger = await owner.db.select().from(schema.leaveLedger).where(eq(schema.leaveLedger.employmentId, subject.employmentId)).orderBy(schema.leaveLedger.id);
+    const cancel = () => adminCancelLeave(adminCtx(b), { leaveRequestId: reqId });
+    if (paid) {
+      expect(await cancel()).toMatchObject({ previousStatus: 'approved', restoredDays: 3 });
+      expect(await statusOf(reqId)).toBe('cancelled');
+    } else {
+      await expect(cancel()).rejects.toBeInstanceOf(LeaveCancellationPeriodClosedError);
+      expect(await statusOf(reqId)).toBe('approved');
+      expect(await owner.db.select().from(schema.leaveLedger).where(eq(schema.leaveLedger.employmentId, subject.employmentId)).orderBy(schema.leaveLedger.id)).toEqual(beforeLedger);
+    }
+    expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batch.id)).orderBy(schema.payslip.id)).toEqual(beforeSlip);
+    expect((await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batch.id)))[0]).toEqual(beforeBatch);
+    expect(await listPayrollLeaveExceptions(adminCtx(b), batch.id)).toEqual([]);
   });
 });
 
