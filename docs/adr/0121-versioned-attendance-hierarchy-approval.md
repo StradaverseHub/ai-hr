@@ -119,3 +119,14 @@ Changing an existing v1/v2 template to per-level configuration is deliberate: th
 starts a new route draft with one level, while keeping company, criteria and metadata. The saved template
 and all submitted applications remain untouched until a new immutable version is saved. No source model,
 unrun regression or migration draft establishes runtime or release verification.
+
+
+A terminal rejection of an OT-bearing correction changes the canonical approval digest, even when it
+applies no payable Attendance effect. The v3 owner therefore requires the existing scoped calculation
+visibility for that terminal mutation, just as for final approval. An ordinary assignee without it gets
+the finite HR-handoff response; the entire attempted participant decision rolls back. Scoped HR may
+record a reasoned reassignment of only that outstanding slot and then reject through the canonical
+owner, retaining earlier participant evidence and the real HR decision/reason. This condition reads
+requested_ot_minutes from the actual correction, including Irregularity applications carrying OT; it
+must not be inferred from the application's screen/type alone. Ordinary non-OT rejection remains
+supported. No cash-source predicate, Personnel visibility or financial role is widened.

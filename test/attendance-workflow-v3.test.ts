@@ -22,7 +22,7 @@ async function actor(name: string, role: 'employee' | 'hr_admin' = 'employee', d
     const ctx: SessionContext = { ...adminCtx(base), userId, personId: hired.personId, roles: [role], grants: [{ role, companyId: base.companyId }] };
     return { ...hired, ctx };
 }
-async function fixture(mode: 'sequential' | 'any_one' = 'sequential', onlyHr = false, ot = false, employeeFinal = false, currentOtDay = false) {
+async function fixture(mode: 'sequential' | 'any_one' = 'sequential', onlyHr = false, ot = false, employeeFinal = false, currentOtDay = false, irregularityWithOt = false) {
     const root = adminCtx(b), worker = await actor('Fictional applicant', 'employee', b.deptA), first = await actor('Fictional first participant'), second = await actor('Fictional second participant'), hr = await actor('Fictional final HR', 'hr_admin');
     const today = todayInKualaLumpur();
     const nextDay = new Date(`${today}T12:00:00Z`); nextDay.setUTCDate(nextDay.getUTCDate() + 1);
@@ -35,7 +35,7 @@ async function fixture(mode: 'sequential' | 'any_one' = 'sequential', onlyHr = f
     if (onlyHr) input.stages = [{ name: 'Level 1', mode: 'sequential', source: { kind: 'specific_employee', employmentIds: [employeeFinal ? first.employmentId : hr.employmentId] }, hrAlternative: false }];
     const template = await saveAttendanceWorkflow(root, input);
     await setAttendanceWorkflowEnabled(root, b.companyId, input.applicationType, true);
-    const id = (await requestAttendanceCorrection(worker.ctx, { employmentId: worker.employmentId, date: on, ...(ot ? { requestedOtMinutes: 60, requestKind: 'self_overtime' as const } : { checkIn: '09:00', checkOut: '18:00' }), reason: 'Fictional v3 correction' })).correctionId;
+    const id = (await requestAttendanceCorrection(worker.ctx, { employmentId: worker.employmentId, date: on, ...(ot ? { requestedOtMinutes: 60, requestKind: 'self_overtime' as const } : { checkIn: '09:00', checkOut: '18:00', ...(irregularityWithOt ? { requestedOtMinutes: 60 } : {}) }), reason: 'Fictional v3 correction' })).correctionId;
     return { root, worker, first, second, hr, input, template, id, on };
 }
 const evidence = (id: string) => owner.db.select().from(schema.attendanceWorkflowParticipantDecision).where(eq(schema.attendanceWorkflowParticipantDecision.requestId, id)).orderBy(asc(schema.attendanceWorkflowParticipantDecision.stageIndex), asc(schema.attendanceWorkflowParticipantDecision.decidedAt), asc(schema.attendanceWorkflowParticipantDecision.id));
@@ -401,5 +401,41 @@ describe('ordinary v3 OT level completion is history, not a cash-source mutation
         await expect(decideAttendanceCorrection(f.hr.ctx, { correctionId: f.id, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:0' })).resolves.toMatchObject({ status: 'approved' });
         expect((await state(f)).workflow?.participantDecisions).toHaveLength(1);
         expect((await state(f)).workflow?.participantReassignments).toHaveLength(1);
+    });
+});
+
+
+describe('terminal OT rejection retains the canonical calculation boundary', () => {
+    it.each(['self_overtime', 'irregularity_with_ot'] as const)('hands off an ordinary %s rejection without losing prior participant work', async kind => {
+        const f = kind === 'self_overtime'
+            ? await fixture('sequential', false, true, false, true)
+            : await fixture('sequential', false, false, false, false, true);
+        const [source] = await owner.db.select().from(schema.attendanceOvertimeSource).where(and(eq(schema.attendanceOvertimeSource.employmentId, f.worker.employmentId), eq(schema.attendanceOvertimeSource.attendanceDate, f.on)));
+        expect(source?.id).toBeTruthy(); // Positively covers the old cash-source guard, not its absence shortcut.
+        const [subjectAuthority] = await withTenant(f.second.ctx, tx => tx.execute(sql`select current_user as role,app.can_see_employment(${f.worker.employmentId}::uuid) as personnel`)) as unknown as { role: string; personnel: boolean }[];
+        expect(subjectAuthority).toEqual({ role: 'ai_hr_app', personnel: false });
+        await decideAttendanceCorrection(f.first.ctx, { correctionId: f.id, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:0', remarks: 'Earlier work is retained' });
+        const before = await state(f), beforeDay = await day(f);
+        expect(before.workflow?.participantDecisions).toHaveLength(1);
+        await expect(decideAttendanceCorrection(f.second.ctx, { correctionId: f.id, decision: 'rejected', rejectReason: 'Ordinary participant requests a rejection', expectedStageIndex: 0, expectedParticipantSlot: '0:1' })).rejects.toMatchObject({ problem: { code: 'hr_handoff_required', levelIndex: 0 } });
+        const pending = await state(f);
+        expect(pending.application.status).toBe('pending');
+        expect(pending.workflow?.currentStage).toBe(0);
+        expect(pending.workflow?.participantDecisions).toEqual(before.workflow!.participantDecisions);
+        expect(pending.workflow?.decisions).toHaveLength(0);
+        expect(await day(f)).toEqual(beforeDay);
+        expect(await owner.db.select().from(schema.attendanceOvertimeSource).where(eq(schema.attendanceOvertimeSource.id, source.id))).toEqual([source]);
+        await reassignAttendanceWorkflowStageToHr(f.hr.ctx, { correctionId: f.id, expectedStageIndex: 0, expectedParticipantSlot: '0:1', reason: 'Scoped HR owns the terminal OT input decision' });
+        await decideAttendanceCorrection(f.hr.ctx, { correctionId: f.id, decision: 'rejected', rejectReason: 'Scoped HR checked and rejected the evidence', expectedStageIndex: 0, expectedParticipantSlot: '0:1' });
+        const rejected = await state(f);
+        expect(rejected.application.status).toBe('rejected');
+        expect(rejected.workflow?.currentStage).toBe(rejected.workflow!.stages.length);
+        expect(rejected.workflow?.stages).toEqual(before.workflow!.stages);
+        expect(rejected.workflow?.participantDecisions).toHaveLength(2);
+        expect(rejected.workflow?.participantDecisions[0]).toEqual(before.workflow!.participantDecisions[0]);
+        expect(rejected.workflow?.participantDecisions[1]).toMatchObject({ decision: 'rejected', actualUserId: f.hr.ctx.userId, remarks: 'Scoped HR checked and rejected the evidence' });
+        expect(rejected.workflow?.decisions).toMatchObject([{ decision: 'rejected', resultingStatus: 'rejected', actualUserId: f.hr.ctx.userId }]);
+        expect(rejected.workflow?.participantReassignments).toHaveLength(1);
+        expect(await day(f)).toEqual(beforeDay); // No attendance/payable effect is applied on rejection.
     });
 });
