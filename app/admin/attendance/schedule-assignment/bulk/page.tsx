@@ -62,6 +62,7 @@ export default async function BulkScheduleGroupPage({
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.scheduleAssignment');
+  const tCommon = await getTranslations('common');
   const sp = await searchParams;
 
   // Parsed EXACTLY as the list parses them — by VALUE, never by presence — so the two screens can never
@@ -198,7 +199,7 @@ export default async function BulkScheduleGroupPage({
         description={t('bulkDescription')}
         back={{ href: hrefWith(PAGE), label: t('detailBack') }}
         actions={
-          <FilterPanel action={BULK} fields={filterFields} values={filterValues} labels={filterLabels} />
+          <FilterPanel dialog={{ closeLabel: tCommon('cancel') }} action={BULK} fields={filterFields} values={filterValues} labels={filterLabels} />
         }
       />
       <FilterChips action={BULK} fields={filterFields} values={filterValues} labels={filterLabels} />
