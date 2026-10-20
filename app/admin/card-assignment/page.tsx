@@ -4,6 +4,7 @@ import { listCompanies, listEmployees } from '@/core/read';
 import { resolveCardMatch } from '@/core/attendance-card';
 import { Button, Card, ErrorBanner, PageHeader, inputCls } from '@/components/ui';
 import { saveCardIdAction } from './actions';
+import { ImportCards } from './import-cards';
 
 /**
  * 44bc1c33 — ATTENDANCE › CARD ASSIGNMENT.
@@ -62,6 +63,8 @@ export default async function CardAssignmentPage({
       <PageHeader title={t('cardTitle')} description={t('cardDescription')} />
 
       {sp.error && <ErrorBanner message={sp.error} />}
+
+      <ImportCards company={companyFilter ?? ''} />
 
       <form method="get" className="flex flex-wrap items-end gap-2">
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">

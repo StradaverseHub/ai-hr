@@ -61,3 +61,5 @@ export {formulaOvertimeForRowsTx, formulaOvertimeCashForRowsTx, type FormulaOver
 
 // Own-profile read surface; canonical owner and RLS remain unchanged.
 export {shiftArrangementHistory} from '../../core/shift-arrangement';
+
+export { previewCardImport, commitCardImport, cardImportExisting, assertCardImportAccess } from '../../core/attendance-card-import';
