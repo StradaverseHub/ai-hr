@@ -42,6 +42,15 @@ describe('Card Assignment workbook contract', () => {
     const bytes = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
     expect(() => readCardImportWorkbook(bytes)).toThrow();
   });
+  it('refuses repeated worksheet cell addresses rather than choosing a hidden first or last value', async () => {
+    const zip = await JSZip.loadAsync(buildCardImportWorkbook([{ employeeCode: '0007', cardId: '0010' }]));
+    const path = 'xl/worksheets/sheet1.xml', xml = await zip.file(path)!.async('string');
+    const cell = xml.match(/<c\b[^>]*\br="A3"[^>]*>[\s\S]*?<\/c>/)?.[0];
+    expect(cell).toBeTruthy();
+    zip.file(path, xml.replace('</sheetData>', `<row r="3">${cell}</row></sheetData>`));
+    const bytes = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+    expect(() => readCardImportWorkbook(bytes)).toThrow('invalidWorkbook');
+  });
   it('refuses oversized archive inflation before the workbook parser receives it', async () => {
     const zip = await JSZip.loadAsync(buildCardImportWorkbook([{ employeeCode: '0007', cardId: '0010' }]));
     zip.file('xl/oversized.xml', '<padding>' + 'x'.repeat(12 * 1024 * 1024) + '</padding>');

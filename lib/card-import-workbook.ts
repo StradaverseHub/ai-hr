@@ -1,11 +1,27 @@
 /** Card-specific schema over the shared bounded OOXML admission owner. */
 import * as XLSX from 'xlsx';
+import { SaxesParser } from 'saxes';
 import { decodeSpreadsheetXml, readSpreadsheetArchive } from './spreadsheet-archive';
 import { CARD_IMPORT_HEADERS, CARD_IMPORT_MAX_BYTES, CARD_IMPORT_MAX_ROWS, CARD_IMPORT_VERSION, CardImportError, type CardImportInput } from './card-import';
 
 export function readCardImportWorkbook(bytes: Buffer): CardImportInput[] {
   const archive = readSpreadsheetArchive(bytes, { maxBytes: CARD_IMPORT_MAX_BYTES, maxExpandedBytes: 12 * 1024 * 1024, maxEntries: 100 });
-  for (const [name, value] of archive.parts) if (/\.xml$/i.test(name) && /<(?:[\w.-]+:)?(?:sheetProtection|workbookProtection)\b/i.test(decodeSpreadsheetXml(value))) throw new CardImportError('invalidWorkbook');
+  for (const [name, value] of archive.parts) {
+    if (!/\.xml$/i.test(name)) continue;
+    const addresses = new Set<string>(), parser = new SaxesParser({ xmlns: true });
+    let firstElement = true, worksheet = false;
+    parser.on('opentag', tag => {
+      if (firstElement) { firstElement = false; worksheet = tag.local === 'worksheet'; }
+      if (tag.local === 'sheetProtection' || tag.local === 'workbookProtection') throw new CardImportError('invalidWorkbook');
+      if (!worksheet || tag.local !== 'c' || !['http://schemas.openxmlformats.org/spreadsheetml/2006/main', 'http://purl.oclc.org/ooxml/spreadsheetml/main'].includes(tag.uri)) return;
+      const address = Object.values(tag.attributes).find(attribute => attribute.local === 'r')?.value;
+      // A repeated XML cell is ambiguous even if a tolerant reader silently keeps the last value.
+      if (!address || !/^[A-Z]{1,3}[1-9]\d{0,6}$/.test(address) || addresses.has(address)) throw new CardImportError('invalidWorkbook');
+      addresses.add(address);
+    });
+    try { parser.write(decodeSpreadsheetXml(value)).close(); }
+    catch { throw new CardImportError('invalidWorkbook'); }
+  }
   let wb: XLSX.WorkBook;
   try { wb = XLSX.read(bytes, { type: 'buffer', cellFormula: true }); }
   catch { throw new CardImportError('invalidWorkbook'); }
