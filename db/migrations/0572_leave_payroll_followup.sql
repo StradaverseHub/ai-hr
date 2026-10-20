@@ -7,13 +7,14 @@ CREATE TABLE payroll_leave_exception (
  employment_id uuid NOT NULL REFERENCES employment(id),
  leave_request_id uuid NOT NULL REFERENCES leave_request(id),
  source_action text NOT NULL CHECK(source_action IN ('approval','charged_import')),
+ source_revision text NOT NULL,
  affected_dates jsonb NOT NULL CHECK(jsonb_typeof(affected_dates)='array'),
  created_by uuid NOT NULL REFERENCES app_user(id), created_at timestamptz NOT NULL DEFAULT now(),
  status text NOT NULL DEFAULT 'open' CHECK(status IN ('open','resolved')),
  resolution text CHECK(resolution IN ('adjustment','no_adjustment')),
  adjustment_batch_id uuid REFERENCES payroll_batch(id),
  explanation text, resolved_by uuid REFERENCES app_user(id), resolved_at timestamptz,
- UNIQUE(tenant_id,batch_id,leave_request_id,source_action),
+ UNIQUE(tenant_id,batch_id,leave_request_id,source_action,source_revision),
  CHECK ((status='open' AND resolution IS NULL AND adjustment_batch_id IS NULL AND explanation IS NULL AND resolved_by IS NULL AND resolved_at IS NULL)
  OR (status='resolved' AND resolution IS NOT NULL AND resolved_by IS NOT NULL AND resolved_at IS NOT NULL
      AND ((resolution='adjustment' AND adjustment_batch_id IS NOT NULL) OR (resolution='no_adjustment' AND adjustment_batch_id IS NULL))))
@@ -89,7 +90,7 @@ END $$;
 REVOKE ALL ON FUNCTION app.leave_type_payroll_requests(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.leave_type_payroll_requests(uuid) TO ai_hr_app;
 --> statement-breakpoint
-CREATE FUNCTION app.record_leave_payroll_effect(wanted_request uuid,wanted_batch uuid,action text,dates jsonb)
+CREATE FUNCTION app.record_leave_payroll_effect(wanted_request uuid,wanted_batch uuid,action text,dates jsonb,revision text DEFAULT 'completed')
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE lr leave_request; b payroll_batch; exception_id uuid; added boolean;
 BEGIN
@@ -99,7 +100,7 @@ BEGIN
    OR NOT EXISTS(SELECT 1 FROM app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=lr.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) THEN
    RAISE EXCEPTION 'Leave visibility required';
  END IF;
- IF jsonb_typeof(dates) IS DISTINCT FROM 'array' OR jsonb_array_length(dates)=0 THEN RAISE EXCEPTION 'Affected dates required'; END IF;
+ IF jsonb_typeof(dates) IS DISTINCT FROM 'array' OR jsonb_array_length(dates)=0 OR revision IS NULL OR length(revision)>4096 THEN RAISE EXCEPTION 'Affected dates and source revision required'; END IF;
  SELECT * INTO b FROM payroll_batch WHERE id=wanted_batch AND tenant_id=lr.tenant_id FOR UPDATE NOWAIT;
  IF NOT FOUND OR NOT EXISTS(SELECT 1 FROM payslip ps WHERE ps.batch_id=b.id AND ps.employment_id=lr.employment_id AND ps.tenant_id=lr.tenant_id) THEN
    RAISE EXCEPTION 'Leave payroll membership required';
@@ -112,18 +113,20 @@ BEGIN
      VALUES(lr.tenant_id,'payroll-batch',b.id,'payroll-batch.recalc-required','user',app.current_user_id(),
        jsonb_build_object('addedEmploymentIds',jsonb_build_array(lr.employment_id::text),'leaveRequestId',lr.id,'sourceAction',action)); END IF;
  ELSIF b.status='closed' THEN
-   IF action NOT IN ('approval','charged_import') OR lr.status<>'approved' THEN RAISE EXCEPTION 'Closed payroll cannot be changed by this leave action'; END IF;
+   IF action NOT IN ('approval','charged_import') OR NOT (lr.status='approved' OR (action='approval' AND lr.status='pending' AND EXISTS (
+    SELECT 1 FROM leave_request_date d WHERE d.leave_request_id=lr.id AND d.tenant_id=lr.tenant_id AND d.status='approved' AND dates @> jsonb_build_array(d.leave_date::text)
+   ))) THEN RAISE EXCEPTION 'Closed payroll cannot be changed by this leave action'; END IF;
    IF lr.imported_history AND NOT EXISTS(SELECT 1 FROM leave_ledger ll WHERE ll.tenant_id=lr.tenant_id AND ll.source_request_id=lr.id AND ll.entry_type='debit') THEN RETURN; END IF;
-   INSERT INTO payroll_leave_exception(tenant_id,batch_id,employment_id,leave_request_id,source_action,affected_dates,created_by)
-    VALUES(lr.tenant_id,b.id,lr.employment_id,lr.id,action,dates,app.current_user_id())
-    ON CONFLICT(tenant_id,batch_id,leave_request_id,source_action) DO NOTHING RETURNING id INTO exception_id;
+   INSERT INTO payroll_leave_exception(tenant_id,batch_id,employment_id,leave_request_id,source_action,source_revision,affected_dates,created_by)
+    VALUES(lr.tenant_id,b.id,lr.employment_id,lr.id,action,md5(revision),dates,app.current_user_id())
+    ON CONFLICT(tenant_id,batch_id,leave_request_id,source_action,source_revision) DO NOTHING RETURNING id INTO exception_id;
    IF exception_id IS NOT NULL THEN INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
     VALUES(lr.tenant_id,'payroll-leave-exception',exception_id,'payroll-leave-exception.opened','user',app.current_user_id(),
       jsonb_build_object('batchId',b.id,'leaveRequestId',lr.id,'sourceAction',action)); END IF;
  END IF;
 END $$;
-REVOKE ALL ON FUNCTION app.record_leave_payroll_effect(uuid,uuid,text,jsonb) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.record_leave_payroll_effect(uuid,uuid,text,jsonb) TO ai_hr_app;
+REVOKE ALL ON FUNCTION app.record_leave_payroll_effect(uuid,uuid,text,jsonb,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.record_leave_payroll_effect(uuid,uuid,text,jsonb,text) TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.resolve_leave_payroll_exception(wanted_exception uuid,outcome text,adjustment uuid,note text)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$

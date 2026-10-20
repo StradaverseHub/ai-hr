@@ -7,7 +7,7 @@ import { hireEmployee, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
-import { adminCancelLeave, decideLeave, decideLeaveCancellation, requestLeave, requestLeaveCancellation, LeaveCancellationPeriodClosedError } from '../core/leave';
+import { adminCancelLeave, decideLeave, decideLeaveDate, decideLeaveDates, decideLeaveCancellation, requestLeave, requestLeaveCancellation, LeaveCancellationPeriodClosedError } from '../core/leave';
 import { updateLeaveType } from '../core/admin';
 import { erasePersonPii } from '../core/pdpa';
 import { commitLeaveHistoryImport } from '../core/leave-history-import';
@@ -135,6 +135,35 @@ describe('leave decisions and payroll follow-up', () => {
       await generatePayslips(hr,{batchId,reprocessSubset:{employmentIds:[subject.employmentId],reason:'Approved paid leave relieves the absence deduction'}});
       expect(Number((await slip(batchId)).netPay)).toBeGreaterThan(Number(before.netPay));
     }
+  });
+  it('marks absence relief immediately when an approved child date still has pending siblings',async()=>{
+    await owner.db.update(schema.leaveType).set({paid:true,perDateApproval:true}).where(eq(schema.leaveType.id,typeId));
+    const policy=await createPolicy(hr,{companyId:b.companyId,name:'Per-date absence relief',policyType:'monthly',config:{leave:{deductAbsentDays:true}}});
+    await assignPolicy(hr,{employmentId:subject.employmentId,policyId:policy.id});
+    const leaveId=await pending(),batchId=await processed(),before=await slip(batchId);
+    await decideLeaveDate(manager,{leaveRequestId:leaveId,leaveDate:monday,decision:'approved'});
+    expect((await request(leaveId)).status).toBe('pending');
+    expect((await batch(batchId)).recalcEmploymentIds).toEqual([subject.employmentId]);
+    await generatePayslips(hr,{batchId,reprocessSubset:{employmentIds:[subject.employmentId],reason:'One approved date already relieves absence'}});
+    expect(Number((await slip(batchId)).netPay)).toBeGreaterThan(Number(before.netPay));
+    await decideLeaveDates(manager,{leaveRequestId:leaveId,decisions:[tuesday,wednesday].map(leaveDate=>({leaveDate,decision:'rejected' as const,rejectReason:'These dates were not approved'}))});
+    expect((await request(leaveId)).status).toBe('approved');
+    expect((await batch(batchId)).needsRecalcAt).toBeNull();
+  });
+  it('retains earlier closed-run resolution history when a later child date is approved',async()=>{
+    await owner.db.update(schema.leaveType).set({paid:true,perDateApproval:true}).where(eq(schema.leaveType.id,typeId));
+    const policy=await createPolicy(hr,{companyId:b.companyId,name:'Closed per-date absence relief',policyType:'monthly',config:{leave:{deductAbsentDays:true}}});
+    await assignPolicy(hr,{employmentId:subject.employmentId,policyId:policy.id});
+    const leaveId=await pending(),batchId=await processed();await closeBatch(hr,{batchId});const before=await slip(batchId);
+    await decideLeaveDate(manager,{leaveRequestId:leaveId,leaveDate:monday,decision:'approved'});
+    const [first]=await listPayrollLeaveExceptions(hr,batchId);expect(first.affected_dates).toEqual([monday]);
+    await resolvePayrollLeaveException(hr,{id:first.id,batchId,resolution:'no_adjustment',explanation:'The first approved date has been reviewed independently.'});
+    await decideLeaveDate(manager,{leaveRequestId:leaveId,leaveDate:tuesday,decision:'approved'});
+    await decideLeaveDate(manager,{leaveRequestId:leaveId,leaveDate:wednesday,decision:'rejected',rejectReason:'The remaining date is not approved'});
+    const rows=await listPayrollLeaveExceptions(hr,batchId);expect(rows).toHaveLength(2);
+    expect(rows.find(row=>row.id===first.id)).toMatchObject({status:'resolved',explanation:'The first approved date has been reviewed independently.'});
+    expect(rows.find(row=>row.id!==first.id)).toMatchObject({status:'open',affected_dates:[tuesday]});
+    expect(await slip(batchId)).toEqual(before);
   });
   it.each(['weekly','biweekly'] as const)('protects %s cycle disbursements when the leave start is outside the monthly deduction window',async frequency=>{
     const policy=await createPolicy(hr,{companyId:b.companyId,name:`${frequency} disbursement`,policyType:'monthly',config:{frequency}});
