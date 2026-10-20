@@ -8,6 +8,7 @@
  * wrapper; at 1280 it fits without scrolling; the trail row spans the table.
  */
 import { Fragment } from 'react';
+import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import '../app/globals.css';
@@ -71,7 +72,7 @@ function Screen() {
 function mount(width: number) {
   document.body.style.margin = '0';
   document.body.style.width = `${width}px`;
-  render(<Screen />);
+  render(<NextIntlClientProvider locale="en" messages={en}><Screen /></NextIntlClientProvider>);
   return { page: screen.getByTestId('page'), wrap: screen.getByTestId('wrap') };
 }
 
