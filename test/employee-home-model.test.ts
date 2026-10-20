@@ -1,6 +1,6 @@
 import {describe,expect,it} from 'vitest';
 import {locales} from '../i18n/config';
-import {DEFAULT_HOME_QUICK_ACTIONS,employeeHomeGreetingName,homeDisplayClock,homeGreetingKey,homeSummaryCandidates,
+import {DEFAULT_HOME_QUICK_ACTIONS,employeeHomeGreetingName,homeDisplayClock,homeGreetingKey,homeGreetingTemplate,homeSummaryCandidates,
  renderHomeTemplate,visibleHomeQuickActions,validateHomeQuickActions,validateHomeTemplate,type HomeTemplate,type HomeTemplateKey,type HomeSummaryCandidate} from '../lib/employee-home';
 const template=(key:HomeTemplateKey,body:string,priority=10):HomeTemplate=>({version:1,key,enabled:true,priority,text:Object.fromEntries(locales.map(locale=>[locale,body])) as HomeTemplate['text']});
 describe('Employee Home deterministic presentation',()=>{
@@ -44,6 +44,19 @@ describe('Employee Home deterministic presentation',()=>{
   expect(()=>validateHomeQuickActions(['leave','leave'])).toThrow();
   expect(()=>validateHomeQuickActions(['https://outside.invalid'])).toThrow();
   expect(()=>validateHomeQuickActions(['leave','claim','payslip','profile','calendar','notices','leave'])).toThrow();
+ });
+ it('falls back from disabled special greetings and applies configured priority to simultaneous events',()=>{
+  const facts={hour:8,birthday:true,firstDay:false,anniversary:true,returnedFromLeave:false};
+  const ordinary=template('greetingMorning','Morning, {name}');
+  const birthday=template('greetingBirthday','Happy birthday, {name}',20);
+  const anniversary=template('greetingAnniversary','{years} years, {name}',5);
+  expect(homeGreetingTemplate(facts,[ordinary,birthday,anniversary])?.key).toBe('greetingAnniversary');
+  expect(homeGreetingTemplate(facts,[ordinary,{...birthday,enabled:false},{...anniversary,enabled:false}])?.key).toBe('greetingMorning');
+  expect(homeGreetingTemplate(facts,[ordinary])?.key).toBe('greetingMorning');
+  expect(homeGreetingTemplate({...facts,anniversary:false},[ordinary,birthday])?.key).toBe('greetingBirthday');
+  expect(homeGreetingTemplate(facts,[{...ordinary,enabled:false}])).toBeNull();
+  expect(()=>homeGreetingTemplate(facts,[ordinary,ordinary])).toThrow('duplicates');
+  expect(()=>homeGreetingTemplate({...facts,birthday:undefined as never},[ordinary])).toThrow('events');
  });
  it('orders real facts urgent/reminder/good-news, respects disabled templates and never pads missing facts',()=>{
   const templates=[template('tasksPending','Waiting: {count}',1000),template('holidayComing','{name}: {date}',0),template('leaveApproved','Approved: {dates}',0)];

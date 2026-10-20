@@ -109,6 +109,24 @@ export function homeGreetingKey(p:{hour:number;birthday:boolean;firstDay:boolean
  if(p.anniversary)return 'greetingAnniversary';if(p.returnedFromLeave)return 'greetingReturn';
  return p.hour>=5&&p.hour<12?'greetingMorning':p.hour>=12&&p.hour<18?'greetingAfternoon':'greetingEvening';
 }
+/** Resolve configuration before choosing an event. Disabling a special greeting must not suppress the
+ * ordinary time greeting. HR priority orders simultaneous enabled events; stable event order breaks ties. */
+export function homeGreetingTemplate(p:Parameters<typeof homeGreetingKey>[0],templates:readonly HomeTemplate[]):HomeTemplate|null{
+ const ordinary=homeGreetingKey({...p,birthday:false,firstDay:false,anniversary:false,returnedFromLeave:false});
+ homeGreetingKey(p); // Validate the original event facts even when their templates are disabled.
+ if(templates.length>Object.keys(HOME_TEMPLATE_FIELDS).length)return refuse('greeting.limit');
+ const byKey=new Map(templates.map(raw=>{const template=validateHomeTemplate(raw);return [template.key,template] as const;}));
+ if(byKey.size!==templates.length)return refuse('greeting.duplicates');
+ const events:readonly [boolean,HomeGreetingTemplateKey][]=[
+  [p.birthday,'greetingBirthday'],[p.firstDay,'greetingFirstDay'],
+  [p.anniversary,'greetingAnniversary'],[p.returnedFromLeave,'greetingReturn'],
+ ];
+ const enabled=events.flatMap(([active,key],order)=>{
+  const template=byKey.get(key);return active&&template?.enabled?[{template,order}]:[];
+ }).sort((a,b)=>a.template.priority-b.template.priority||a.order-b.order);
+ if(enabled.length)return enabled[0].template;
+ const fallback=byKey.get(ordinary);return fallback?.enabled?fallback:null;
+}
 type SummaryKey=Extract<HomeTemplateKey,'tasksPending'|'leaveApproved'|'holidayComing'|'paydayComing'|'payslipReady'>;
 type TemplateValues<Key extends HomeTemplateKey>={[Field in typeof HOME_TEMPLATE_FIELDS[Key][number]]:Field extends 'count'|'years'?number:string};
 export type HomeSummaryCandidate={key:string;importance:'urgent'|'reminder'|'goodNews';destination:HomeQuickAction|'tasks'}&{
