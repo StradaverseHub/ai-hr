@@ -3277,6 +3277,13 @@
       "when": 1791900000048,
       "tag": "0568_ai_user_default_allowance",
       "breakpoints": true
+    },
+    {
+      "idx": 576,
+      "version": "7",
+      "when": 1791900000056,
+      "tag": "0576_attendance_group_policy",
+      "breakpoints": true
     }
   ]
 }

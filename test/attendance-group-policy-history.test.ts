@@ -1,0 +1,62 @@
+import {randomUUID} from 'node:crypto';
+import {and,asc,eq} from 'drizzle-orm';
+import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
+import type {SessionContext} from '../db/client';
+import {withTenant} from '../db/client';
+import * as s from '../db/schema';
+import {ensureStandardRule} from '../core/attendance-rule';
+import {attendanceGroupPolicyHistory,attendanceGroupPolicyOnTx,scheduleAttendanceGroupPolicy} from '../core/attendance-group-policy';
+import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
+import {todayInKualaLumpur} from '../lib/hr-date';
+import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+let b:Base,ctx:SessionContext,ruleId:string;
+const plus=(days:number)=>new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+days*86400000).toISOString().slice(0,10);
+const policy=():AttendanceGroupPolicy=>({version:1,clock:{pairing:'auto',minimumIntervalMinutes:5,lateGraceMinutes:0,earlyGraceMinutes:0,skipLatenessIfIncomplete:true},
+ overtime:{enabled:false,beforeShift:false,afterShift:true,allowBackdatedWithoutClock:false,splitAtMidnight:false,offsetLateness:false,approval:'manual',autoMethod:'actual',rounding:{mode:'none',step:null},
+ days:Object.fromEntries(ATTENDANCE_POLICY_DAY_CLASSES.map(key=>[key,{minimumMinutes:0,maximumMinutes:null,patternVersionId:null}])) as AttendanceGroupPolicy['overtime']['days']}});
+const input=()=>({companyId:b.companyId,ruleId,expectedOrdinal:0,effectiveFrom:plus(1),reason:'Fictional forward policy',policy:policy()});
+beforeAll(migrateTestDb);afterAll(closeAll);
+beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'attendance','active');ctx=adminCtx(b);ruleId=(await ensureStandardRule(ctx)).id;});
+describe('future attendance execution policy history',()=>{
+ it('saves/reopens one immutable snapshot and leaves earlier days in legacy mode',async()=>{
+  const saved=await scheduleAttendanceGroupPolicy(ctx,input());
+  const history=await attendanceGroupPolicyHistory(ctx,{companyId:b.companyId,ruleId});
+  expect(history).toHaveLength(1);expect(history[0]).toMatchObject({...saved,policy:policy(),createdByUserId:ctx.userId});
+  const resolve=(date:string)=>withTenant(ctx,tx=>attendanceGroupPolicyOnTx(tx,ctx,{companyId:b.companyId,ruleId,date}));
+  expect(await resolve(todayInKualaLumpur())).toBeNull();
+  expect(await resolve(plus(1))).toMatchObject({id:saved.id,policy:policy()});
+  const secondPolicy=policy();secondPolicy.clock.pairing='firstInLastOut';
+  const next=await scheduleAttendanceGroupPolicy(ctx,{...input(),expectedOrdinal:1,effectiveFrom:plus(2),policy:secondPolicy});
+  expect(await resolve(plus(1))).toMatchObject({id:saved.id,policy:policy()});
+  expect(await resolve(plus(2))).toMatchObject({id:next.id,policy:secondPolicy});
+  await expect(owner.db.update(s.attendanceGroupPolicyRevision).set({reason:'mutated'}).where(eq(s.attendanceGroupPolicyRevision.id,saved.id))).rejects.toThrow();
+  await expect(owner.db.delete(s.attendanceGroupPolicyRevision).where(eq(s.attendanceGroupPolicyRevision.id,saved.id))).rejects.toThrow();
+ });
+ it('serializes simultaneous stale writers and records exactly one scheduled-policy event',async()=>{
+  const results=await Promise.allSettled([scheduleAttendanceGroupPolicy(ctx,input()),scheduleAttendanceGroupPolicy(ctx,input())]);
+  expect(results.filter(result=>result.status==='fulfilled')).toHaveLength(1);
+  expect(results.filter(result=>result.status==='rejected')).toHaveLength(1);
+  const events=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,ruleId),eq(s.domainEvent.eventType,'attendance-rule.policy.scheduled'))).orderBy(asc(s.domainEvent.sequence));
+  expect(events).toHaveLength(1);expect(events[0].payload).toMatchObject({companyId:b.companyId,previousOrdinal:0,ordinal:1});
+ });
+ it('refuses foreign group/company references, missing or unactivated formulas, missing actors and same-day activation',async()=>{
+  const other=await seedBase(),foreignRule=(await ensureStandardRule(adminCtx(other))).id;
+  await expect(scheduleAttendanceGroupPolicy(ctx,{...input(),companyId:other.companyId})).rejects.toThrow();
+  await expect(scheduleAttendanceGroupPolicy(ctx,{...input(),ruleId:foreignRule})).rejects.toThrow();
+  await expect(scheduleAttendanceGroupPolicy({...ctx,userId:undefined},input())).rejects.toThrow();
+  await expect(scheduleAttendanceGroupPolicy(ctx,{...input(),effectiveFrom:todayInKualaLumpur()})).rejects.toThrow('future');
+  const invalid=policy();invalid.overtime.enabled=true;
+  for(const key of ATTENDANCE_POLICY_DAY_CLASSES)invalid.overtime.days[key].patternVersionId=randomUUID();
+  await expect(scheduleAttendanceGroupPolicy(ctx,{...input(),policy:invalid})).rejects.toThrow();
+  expect(await attendanceGroupPolicyHistory(ctx,{companyId:b.companyId,ruleId})).toEqual([]);
+ });
+ it('checks current grants and module status before returning history or writing new versions',async()=>{
+  await scheduleAttendanceGroupPolicy(ctx,input());
+  await setModule(b.tenantId,'attendance','disabled');
+  await expect(attendanceGroupPolicyHistory(ctx,{companyId:b.companyId,ruleId})).rejects.toThrow();
+  await setModule(b.tenantId,'attendance','active');
+  await owner.db.delete(s.roleAssignment).where(eq(s.roleAssignment.appUserId,ctx.userId!));
+  await expect(attendanceGroupPolicyHistory(ctx,{companyId:b.companyId,ruleId})).rejects.toThrow();
+  await expect(scheduleAttendanceGroupPolicy(ctx,{...input(),expectedOrdinal:1,effectiveFrom:plus(2)})).rejects.toThrow();
+ });
+});
