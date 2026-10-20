@@ -4,7 +4,7 @@ import { and, asc, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee, setReportingLine } from '../core/org';
-import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, listAttendanceCorrections } from '../core/attendance';
+import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, listAttendanceCorrections, addAttendanceCorrectionAttachment, getAttendanceCorrectionAttachment } from '../core/attendance';
 import { saveAttendanceWorkflow, setAttendanceWorkflowEnabled, previewAttendanceWorkflow, reassignAttendanceWorkflowStageToHr, hasPendingAttendanceParticipantAssignment, decideAttendanceWorkflowStageTx } from '../core/attendance-workflow';
 import { attendanceApplicationDetail, attendanceApplicationFilterOptions } from '../core/attendance-application-history';
 import { listPendingTasks } from '../core/approvals-inbox';
@@ -452,5 +452,60 @@ describe('terminal OT rejection retains the canonical calculation boundary', () 
         expect(rejected.workflow?.decisions).toMatchObject([{ decision: 'rejected', resultingStatus: 'rejected', actualUserId: f.hr.ctx.userId }]);
         expect(rejected.workflow?.participantReassignments).toHaveLength(1);
         expect(await day(f)).toEqual(beforeDay); // No attendance/payable effect is applied on rejection.
+    });
+});
+
+
+describe('v3 supporting evidence follows exact live request access', () => {
+    const content = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
+    const file = { fileName: 'fictional-clock-evidence.png', mimeType: 'image/png', content };
+    async function attached() {
+        const f = await fixture();
+        expect((await listAttendanceCorrections(f.first.ctx, { status: 'pending' })).find(row => row.id === f.id)?.hasAttachment).toBe(false);
+        const attachment = await addAttendanceCorrectionAttachment(f.worker.ctx, { correctionId: f.id, ...file });
+        return { ...f, attachmentId: attachment.id };
+    }
+    it('lets live assigned reviewers read actual bytes and discover the file without Personnel or payroll access', async () => {
+        const f = await attached();
+        for (const reviewer of [f.first, f.second]) {
+            const [scope] = await withTenant(reviewer.ctx, tx => tx.execute(sql`select current_user as role,app.can_see_employment(${f.worker.employmentId}::uuid) as personnel,app.can_admin_payroll_employment(${f.worker.employmentId}::uuid) as payroll`)) as unknown as { role: string; personnel: boolean; payroll: boolean }[];
+            expect(scope).toEqual({ role: 'ai_hr_app', personnel: false, payroll: false });
+            const attachment = await getAttendanceCorrectionAttachment(reviewer.ctx, f.id);
+            expect(attachment).toMatchObject({ fileName: file.fileName, mimeType: file.mimeType });
+            expect(Buffer.from(attachment!.content).equals(content)).toBe(true);
+            expect((await listAttendanceCorrections(reviewer.ctx, { status: 'pending' })).find(row => row.id === f.id)).toMatchObject({ hasAttachment: true });
+        }
+        await decideAttendanceCorrection(f.first.ctx, { correctionId: f.id, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:0' });
+        // Completed work retains its original supporting evidence while the remaining route is pending.
+        expect(Buffer.from((await getAttendanceCorrectionAttachment(f.first.ctx, f.id))!.content).equals(content)).toBe(true);
+    });
+    it('refuses unrelated, real foreign-tenant, revoked and reassigned-away readers', async () => {
+        const f = await attached(), unrelated = await actor('Fictional unrelated file reader');
+        const otherBase = await seedBase(), foreign = await actor('Fictional foreign file reader', 'employee', otherBase.deptB, otherBase);
+        for (const reader of [unrelated, foreign]) {
+            const own = await withTenant(reader.ctx, tx => tx.select({ id: schema.employment.id }).from(schema.employment).where(eq(schema.employment.id, reader.employmentId)));
+            expect(own).toEqual([{ id: reader.employmentId }]);
+            expect(await getAttendanceCorrectionAttachment(reader.ctx, f.id)).toBeNull();
+            expect((await listAttendanceCorrections(reader.ctx, { status: 'pending' })).some(row => row.id === f.id)).toBe(false);
+        }
+        await owner.db.update(schema.appUser).set({ archivedAt: new Date() }).where(eq(schema.appUser.id, f.first.ctx.userId!));
+        try { expect(await getAttendanceCorrectionAttachment(f.first.ctx, f.id)).toBeNull(); }
+        finally { await owner.db.update(schema.appUser).set({ archivedAt: null }).where(eq(schema.appUser.id, f.first.ctx.userId!)); }
+        expect(await getAttendanceCorrectionAttachment(f.first.ctx, f.id)).not.toBeNull();
+        await reassignAttendanceWorkflowStageToHr(f.hr.ctx, { correctionId: f.id, expectedStageIndex: 0, expectedParticipantSlot: '0:0', reason: 'Original reviewer unavailable; preserve original file and replace only this slot' });
+        expect(await getAttendanceCorrectionAttachment(f.first.ctx, f.id)).toBeNull();
+        expect(await getAttendanceCorrectionAttachment(f.hr.ctx, f.id)).not.toBeNull();
+        expect(await getAttendanceCorrectionAttachment(f.worker.ctx, f.id)).not.toBeNull();
+    });
+    it('does not grant assigned reviewers upload, update or delete authority over the evidence', async () => {
+        const f = await attached();
+        await expect(addAttendanceCorrectionAttachment(f.first.ctx, { correctionId: f.id, ...file, fileName: 'unauthorized.png' })).rejects.toThrow();
+        const changed = await withTenant(f.first.ctx, tx => tx.update(schema.attendanceCorrectionAttachment).set({ fileName: 'unauthorized.png' }).where(eq(schema.attendanceCorrectionAttachment.id, f.attachmentId)).returning({ id: schema.attendanceCorrectionAttachment.id }));
+        const deleted = await withTenant(f.first.ctx, tx => tx.delete(schema.attendanceCorrectionAttachment).where(eq(schema.attendanceCorrectionAttachment.id, f.attachmentId)).returning({ id: schema.attendanceCorrectionAttachment.id }));
+        expect(changed).toEqual([]); expect(deleted).toEqual([]);
+        const original = await getAttendanceCorrectionAttachment(f.worker.ctx, f.id);
+        expect(original).toMatchObject({ fileName: file.fileName, mimeType: file.mimeType });
+        expect(Buffer.from(original!.content).equals(content)).toBe(true);
+        expect(await owner.db.select({ id: schema.attendanceCorrectionAttachment.id }).from(schema.attendanceCorrectionAttachment).where(eq(schema.attendanceCorrectionAttachment.attendanceCorrectionId, f.id))).toEqual([{ id: f.attachmentId }]);
     });
 });

@@ -3641,8 +3641,8 @@ export async function addAttendanceCorrectionAttachment(
   });
 }
 
-/** The supporting file on an attendance request, for the download route. RLS-fenced (subject + manager +
- *  admin via can_see_employment), so this needs no gate of its own — the policy IS the gate. */
+/** Supporting file for the download route. RLS admits existing employment visibility or a live
+ *  exact v2/v3 request assignment; the latter never grants file writes or general Personnel visibility. */
 export function getAttendanceCorrectionAttachment(ctx: SessionContext, correctionId: string) {
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
@@ -4289,6 +4289,8 @@ export function listAttendanceCorrections(
         requestedOtMinutes: attendanceCorrection.requestedOtMinutes,
         approvedOtMinutes: attendanceCorrection.approvedOtMinutes,
         otApprovalMethod: attendanceCorrection.otApprovalMethod,
+        // The file stays behind the same RLS boundary; this list reads presence, never bytes.
+        hasAttachment: sql<boolean>`exists (select 1 from ${attendanceCorrectionAttachment} where ${attendanceCorrectionAttachment.attendanceCorrectionId} = ${attendanceCorrection.id})`,
         reason: attendanceCorrection.reason,
         rejectReason: attendanceCorrection.rejectReason,
         originalClockSnapshot: attendanceCorrection.originalClockSnapshot,

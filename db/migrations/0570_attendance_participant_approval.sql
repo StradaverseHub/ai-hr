@@ -297,6 +297,10 @@ CREATE POLICY attendance_workflow_v3_participant_read ON public.attendance_workf
  USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.attendance_workflow_request w WHERE w.id=request_id AND w.tenant_id=app.current_tenant_id() AND app.attendance_workflow_v3_read(w.correction_id)));
 CREATE POLICY attendance_workflow_v3_participant_insert ON public.attendance_workflow_participant_decision FOR INSERT
  WITH CHECK(tenant_id=app.current_tenant_id() AND actual_user_id=app.current_user_id() AND EXISTS(SELECT 1 FROM public.attendance_workflow_request w WHERE w.id=request_id AND w.tenant_id=app.current_tenant_id() AND app.attendance_workflow_v3_decision_slot(w.correction_id) IS NOT NULL));
+-- Supporting evidence follows the exact request read capability only. Existing employment-scoped
+-- INSERT/UPDATE/DELETE policies remain unchanged; assignment grants no file-writing authority.
+CREATE POLICY attendance_workflow_request_attachment_read ON public.attendance_correction_attachment FOR SELECT
+ USING(tenant_id=app.current_tenant_id() AND (app.attendance_workflow_v2_read(attendance_correction_id) OR app.attendance_workflow_v3_read(attendance_correction_id)));
 CREATE POLICY attendance_workflow_v3_correction_read ON public.attendance_correction FOR SELECT
  USING(tenant_id=app.current_tenant_id() AND app.attendance_workflow_v3_read(id));
 CREATE POLICY attendance_workflow_v3_correction_decide ON public.attendance_correction FOR UPDATE

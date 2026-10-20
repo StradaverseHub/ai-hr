@@ -5,8 +5,8 @@ import { getAttendanceCorrectionAttachment } from '@/packs/attendance/service';
 /**
  * 2166ef79 — stream the supporting file on an attendance request. Verbatim reuse of
  * app/me/leave/attachment/[id]/route.ts, retargeted: `id` is the attendance_correction id, and
- * getAttendanceCorrectionAttachment runs under RLS (subject + manager + admin, via can_see_employment on
- * the denormalised employment_id).
+ * getAttendanceCorrectionAttachment runs under RLS: existing employment visibility or a live exact
+ * v2/v3 request assignment. Supporting-file writes retain their original employment-scoped policies.
  *
  * NO PAGE GUARD, and that is the design rather than an omission: the RLS policy IS the gate. A guard here
  * would have to re-answer "may this person see this employee's file", which the policy already answers
