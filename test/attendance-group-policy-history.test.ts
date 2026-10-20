@@ -34,6 +34,23 @@ describe('future attendance execution policy history',()=>{
   await expect(scheduleAttendanceGroupPolicy({...self,roles:['hr_admin']},{...input(),expectedOrdinal:1,effectiveFrom:plus(2)})).rejects.toThrow();
   expect(await attendanceGroupPolicyHistory(ctx,{companyId:b.companyId,ruleId})).toHaveLength(1);
  });
+ it('does not use a superseded organisation record as authority to read another employer policy',async()=>{
+  const [other]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional corrected employer reference'}).returning();
+  await scheduleAttendanceGroupPolicy(ctx,input());
+  await scheduleAttendanceGroupPolicy(ctx,{...input(),companyId:other.id});
+  const employee=await hireEmployee(ctx,{person:{fullName:'Fictional corrected-history reader',primaryEmail:'corrected-history@fixture.invalid'},
+   companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:plus(-10)});
+  const userId=await createAppUser(b.tenantId,employee.personId,'employee');
+  const self:SessionContext={tenantId:b.tenantId,userId,personId:employee.personId,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}],entitlements:ctx.entitlements};
+  // Retained, explicitly superseded evidence is visible to its subject. It must not independently
+  // extend present authority to the corrected-away company. No actual assignment is retargeted.
+  const [obsolete]=await owner.db.insert(s.assignment).values({tenantId:b.tenantId,employmentId:employee.employmentId,
+   departmentId:b.deptA,companyId:other.id,employmentType:'full_time',validFrom:plus(-10),validTo:plus(-5),supersededAt:new Date()}).returning();
+  expect(await withTenant(self,tx=>tx.select({id:s.assignment.id}).from(s.assignment).where(eq(s.assignment.id,obsolete.id))))
+   .toEqual([{id:obsolete.id}]);
+  const visible=await withTenant(self,tx=>tx.select({companyId:s.attendanceGroupPolicyRevision.companyId}).from(s.attendanceGroupPolicyRevision));
+  expect(visible).toEqual([{companyId:b.companyId}]);
+ });
  it('binds the existing central formula version only when active for this employer on the policy date',async()=>{
   const [earning]=await owner.db.insert(s.payComponent).values({tenantId:b.tenantId,code:'POLICY_OT',name:'Fictional policy earning',kind:'allowance'}).returning();
   const definition=prepareOvertimeStarter('ot15','day','earliest');
