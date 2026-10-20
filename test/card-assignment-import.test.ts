@@ -140,6 +140,22 @@ describe('Card Assignment import uses canonical assignments and audit', () => {
     })).rejects.toThrow();
     expect(await owner.db.select().from(schema.employeeStatutoryMy).where(eq(schema.employeeStatutoryMy.personId, target.personId))).toHaveLength(0);
   });
+  it('does not block an unrelated code repair because of an unchanged legacy IC collision', async () => {
+    await employee('HOLDER', '900101015555');
+    const target = await employee('TARGET');
+    // Reproduce data predating this migration. Only the fixture owner can temporarily bypass the
+    // new trigger; the transaction restores enforcement before the repair is attempted.
+    await owner.db.transaction(async tx => {
+      await tx.execute(sql`ALTER TABLE public.employee_statutory_my DISABLE TRIGGER statutory_card_identifier_guard`);
+      await tx.insert(schema.employeeStatutoryMy).values({ tenantId: b.tenantId, personId: target.personId, icNumber: '900101-01-5555' });
+      await tx.execute(sql`ALTER TABLE public.employee_statutory_my ENABLE TRIGGER statutory_card_identifier_guard`);
+    });
+    await expect(owner.db.update(schema.employment).set({ employeeCode: null }).where(eq(schema.employment.id, target.id))).resolves.toBeDefined();
+    expect(await card(target.id)).toBeNull();
+    // Reactivation really does introduce a new active identity and must still refuse that collision.
+    await owner.db.update(schema.employment).set({ terminatedOn: '2025-01-01' }).where(eq(schema.employment.id, target.id));
+    await expect(owner.db.update(schema.employment).set({ terminatedOn: null }).where(eq(schema.employment.id, target.id))).rejects.toThrow();
+  });
   it('detects hidden-company conflicts without returning its holder; other tenants are independent', async () => {
     const [other] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Hidden company', registrationNo: randomUUID() }).returning();
     await employee('HIDDEN-STAFF', 'private-card', other.id);

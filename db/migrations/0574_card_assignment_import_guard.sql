@@ -19,14 +19,15 @@ GRANT EXECUTE ON FUNCTION app.card_identifier_free(uuid,text) TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.guard_card_identifiers() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
-DECLARE changed_card boolean; changed_code boolean;
+DECLARE changed_card boolean; changed_code boolean; activating boolean;
 BEGIN
  PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id::text||':card-identifiers',0));
  IF TG_TABLE_NAME='employment' THEN
-  changed_card := TG_OP='INSERT'; changed_code := TG_OP='INSERT';
+  activating := TG_OP='INSERT'; changed_card := activating; changed_code := activating;
   IF TG_OP='UPDATE' THEN
-   changed_card := NEW.card_id IS DISTINCT FROM OLD.card_id OR (NEW.terminated_on IS NULL AND OLD.terminated_on IS NOT NULL);
-   changed_code := NEW.employee_code IS DISTINCT FROM OLD.employee_code OR (NEW.terminated_on IS NULL AND OLD.terminated_on IS NOT NULL);
+   activating := NEW.terminated_on IS NULL AND OLD.terminated_on IS NOT NULL;
+   changed_card := NEW.card_id IS DISTINCT FROM OLD.card_id OR activating;
+   changed_code := NEW.employee_code IS DISTINCT FROM OLD.employee_code OR activating;
   END IF;
   IF changed_card AND NEW.card_id IS NOT NULL AND EXISTS(
    SELECT 1 FROM public.employment e LEFT JOIN public.employee_statutory_my s ON s.person_id=e.person_id AND s.tenant_id=e.tenant_id
@@ -39,7 +40,7 @@ BEGIN
    SELECT 1 FROM public.employment e WHERE e.tenant_id=NEW.tenant_id AND e.id<>NEW.id
    AND e.terminated_on IS NULL AND lower(btrim(e.card_id))=lower(btrim(NEW.employee_code)))
   THEN RAISE EXCEPTION 'Employee identifier conflicts with an assigned card' USING ERRCODE='23505'; END IF;
-  IF changed_code AND NEW.terminated_on IS NULL AND EXISTS(
+  IF activating AND NEW.terminated_on IS NULL AND EXISTS(
    SELECT 1 FROM public.employee_statutory_my s JOIN public.employment e ON e.tenant_id=s.tenant_id
    WHERE s.tenant_id=NEW.tenant_id AND s.person_id=NEW.person_id AND e.id<>NEW.id AND e.terminated_on IS NULL
    AND regexp_replace(coalesce(s.ic_number,''),'[^0-9]','','g')<>''
