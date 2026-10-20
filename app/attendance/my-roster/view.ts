@@ -21,6 +21,13 @@
  */
 import { addDaysIso, addMonths, isIsoDate, isMonthParam, monthOf, monthRange, weekRangeOf } from '@/lib/roster-month';
 
+/** Real calendar dates only; malformed bookmarks must fall back rather than throw. */
+export function isMyRosterDate(value: string | null | undefined): value is string {
+  if (!value || !isIsoDate(value)) return false;
+  const instant = Date.parse(`${value}T00:00:00Z`);
+  return Number.isFinite(instant) && new Date(instant).toISOString().slice(0, 10) === value;
+}
+
 /** Daily · Weekly · Monthly, exactly the three the approved picture draws, in its own order. */
 export type MyRosterViewKind = 'day' | 'week' | 'month';
 export const MY_ROSTER_VIEWS = ['day', 'week', 'month'] as const;
@@ -63,7 +70,7 @@ export function resolveMyRosterWindow(p: {
   // Any date inside the week identifies it; weekRangeOf snaps to Monday. `<input type="week">` is
   // deliberately not used here for the same reason the supervisor's roster refuses it — it posts an ISO
   // week-numbering year that disagrees with the calendar year across New Year.
-  const anchor = isIsoDate(p.date ?? '') ? p.date! : p.today;
+  const anchor = isMyRosterDate(p.date) ? p.date : p.today;
   const r = weekRangeOf(anchor);
   return { view, from: r.from, to: r.to, month: monthOf(r.from), focus: view === 'day' ? anchor : null };
 }
