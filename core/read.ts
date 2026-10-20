@@ -1314,8 +1314,7 @@ const leaveRequestSelection = {
   fromTime: leaveRequest.fromTime,
   toTime: leaveRequest.toTime,
   status: leaveRequest.status,
-  // Emergency Leave (0106): the shared id linking an EL submission's ANNUAL + UNPAID children, so a
-  // surface can group them as one logical absence. NULL for ordinary requests.
+  // Shared grouping ID for EL applications and partial-cancellation splits; it does not prove purpose.
   parentGroupId: leaveRequest.parentGroupId,
   isEmergencyGroup: emergencyGroupProvenance,
   // Phase-B #13 (ADR-0062): the EA s.37 maternity paid-allowance decision, so the approver sees whether
@@ -1944,7 +1943,7 @@ export function plannedAbsences(
         // hourly pill's exact start/end in its hover tooltip. NULL for full/half-day rows (time cols unset).
         fromTime: leaveRequest.fromTime,
         toTime: leaveRequest.toTime,
-        // Emergency Leave (0106): the shared id linking an EL submission's children. NULL for ordinary rows.
+        // Shared grouping ID: EL applications and partial-cancellation splits both use this field.
         parentGroupId: leaveRequest.parentGroupId,
         // Partial Leave Cancellation from the calendar (ADR-0065): the same eligibility fields listLeaveRequests
         // surfaces, so the dashboard calendar can gate a "Cancel dates" affordance identically to the Leave page.
@@ -4899,8 +4898,7 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
         // Edit/cancel-by-status: the applicant's own words prefill the Edit dialog.
         reason: leaveRequest.reason,
         employeeRemark: leaveRequest.employeeRemark,
-        // Emergency Leave (0106): the shared id linking an EL submission's ANNUAL + UNPAID children, so the
-        // /me history can group them under one EL heading. NULL for ordinary requests.
+        // EL applications and partial cancellations both group rows; recorded origin identifies EL.
         parentGroupId: leaveRequest.parentGroupId,
         isEmergencyGroup: emergencyGroupProvenance,
         hasDocument: sql<boolean>`exists (select 1 from leave_request_attachment lra where lra.leave_request_id = leave_request.id)`,
