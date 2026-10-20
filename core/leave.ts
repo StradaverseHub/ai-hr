@@ -2870,6 +2870,18 @@ function dayWeight(
   return inclusion.restDay || inclusion.offDay ? 1 : 0;
 }
 
+/** Calendar-counted leave charges every date at one day; working-counted leave keeps the canonical
+ * roster/holiday/inclusion weight. Cancellation must use the same distinction as submission. */
+function countedDayWeight(
+  date: string,
+  counting: string | null | undefined,
+  sched: LeaveResolvedSchedule,
+  holidays: Set<string>,
+  inclusion?: DayTypeInclusion,
+): number {
+  return counting === 'calendar_days' ? 1 : dayWeight(date, sched, holidays, inclusion);
+}
+
 /** True when `date` carries a non-zero leave DEDUCTION weight for the given schedule/holiday set and optional
  *  inclusion vector — i.e. it is a day this leave type actually deducts. When `inclusion` is undefined this is
  *  BYTE-IDENTICAL to isWorkingDay (a Full day weighs 1, a Half day 0.5 — both > 0 — and a holiday/rest day 0),
@@ -6100,12 +6112,12 @@ export async function decideLeaveDates(
 // plannedAbsences) filters status='approved', a cancelled segment disappears from balance/calendar/payroll
 // for free — no read-layer span math. See ADR-0065.
 
-/** A working date paired with its leave-deduction weight (Feedback 31474452 4e) — 1 for a Full working day,
+/** A counted date paired with its leave-deduction weight — 1 for a calendar-counted date or Full working day,
  *  0.5/1.0 for a Half day per the company toggle. */
 export type WeightedDate = { date: string; weight: number };
 
 /** Pure date math (no DB) so the service and tests share one implementation. Given the request's full ordered
- *  list of WORKING dates (each optionally carrying its deduction WEIGHT — Feedback 31474452 4e) and the set of
+ *  list of counted dates (each optionally carrying its deduction WEIGHT — Feedback 31474452 4e) and the set of
  *  dates to cancel, partition the working dates into maximal contiguous runs such that every cancelled date
  *  sits in its own single-date segment. Returns the segments (each `{ from, to, days }`, days = the SUM of the
  *  run's weights — 1 per date when no weights are supplied, so callers passing a plain `string[]` see exactly
@@ -6178,25 +6190,60 @@ export async function workingDatesForSpan(
  * byte-identical to workingDatesForSpan(tx, employmentId, start, end) with no inclusion vector (holidays
  * inside a span are a subset of the union range's set), and the union range is the LEAVES' own spans —
  * never the visible calendar window — so a leave straddling the window edge is never clipped.
- * workingDatesForSpan itself is untouched: the service validation paths still call it per request.
+ * The counting-aware cancellation reads use countedDatesForSpans below with each request’s policy.
  */
 export async function workingDatesForSpans(
   tx: Tx,
   employmentId: string,
   spans: { start: string; end: string }[],
 ): Promise<Map<string, string[]>> {
+  return countedDatesForSpans(tx, employmentId, spans.map((span) => ({
+    ...span,
+    key: `${span.start}|${span.end}`,
+    counting: 'working_days',
+  })));
+}
+
+/** The leave type's counted dates, shared by cancellation validation and its actual UI reads. */
+export async function countedDatesForSpan(
+  tx: Tx,
+  employmentId: string,
+  start: string,
+  end: string,
+  counting: string | null | undefined,
+  dayTypeInclusion?: unknown,
+): Promise<string[]> {
+  if (counting === 'calendar_days') return eachDate(start, end);
+  return workingDatesForSpan(tx, employmentId, start, end, normalizeDayTypeInclusion(dayTypeInclusion));
+}
+
+/** Resolve once per employment while keeping each request's counting rule and inclusion vector.
+ * The caller's stable key prevents equal spans of different types sharing a policy result. */
+export async function countedDatesForSpans(
+  tx: Tx,
+  employmentId: string,
+  spans: readonly { key: string; start: string; end: string; counting?: string | null; dayTypeInclusion?: unknown }[],
+): Promise<Map<string, string[]>> {
   const out = new Map<string, string[]>();
-  if (spans.length === 0) return out;
-  let minStart = spans[0].start;
-  let maxEnd = spans[0].end;
-  for (const s of spans) {
-    if (s.start < minStart) minStart = s.start;
-    if (s.end > maxEnd) maxEnd = s.end;
+  const working = spans.filter((span) => span.counting !== 'calendar_days');
+  let calendar: { holidays: Set<string>; schedule: LeaveResolvedSchedule } | undefined;
+  if (working.length > 0) {
+    const from = working.reduce((date, span) => span.start < date ? span.start : date, working[0].start);
+    const to = working.reduce((date, span) => span.end > date ? span.end : date, working[0].end);
+    calendar = {
+      holidays: await resolveHolidaySet(tx, employmentId, from, to),
+      schedule: await resolveSchedule(tx, employmentId),
+    };
   }
-  const hols = await resolveHolidaySet(tx, employmentId, minStart, maxEnd);
-  const sched = await resolveSchedule(tx, employmentId);
-  for (const s of spans) {
-    out.set(`${s.start}|${s.end}`, eachDate(s.start, s.end).filter((d) => isDeductibleDay(d, sched, hols)));
+  for (const span of spans) {
+    let dates = eachDate(span.start, span.end);
+    if (span.counting !== 'calendar_days') {
+      if (!calendar) throw new Error('Working-day calendar was not resolved');
+      const { schedule, holidays } = calendar;
+      const inclusion = normalizeDayTypeInclusion(span.dayTypeInclusion);
+      dates = dates.filter((date) => isDeductibleDay(date, schedule, holidays, inclusion));
+    }
+    out.set(span.key, dates);
   }
   return out;
 }
@@ -6428,6 +6475,7 @@ export async function requestLeaveCancellation(
       .select({
         // Day Type Inclusion (feedback ef6d7146): the type's re-inclusion vector — cancellation must offer + give
         // back exactly the day types the original deduction counted, or the ledger reversal/re-debit drifts.
+        counting: leaveType.counting,
         dayTypeInclusion: leaveType.dayTypeInclusion,
         // 3fb1a611: `role` too — leaveTypeIs resolves the role first and only then falls back to the code.
         // r301: the Cancel Approved Leave card, name + translations for the refusal that names the type.
@@ -6465,9 +6513,9 @@ export async function requestLeaveCancellation(
     const isReplacement = leaveTypeIs(lt, 'replacement');
     const cancelIncl = normalizeDayTypeInclusion(lt?.dayTypeInclusion);
 
-    // The request's working dates (the only cancellable dates), in the tenant calendar frame. Shared helper so
+    // The request's counted dates (calendar days or roster/inclusion-aware days). Shared helper so
     // the read layer (UI candidate list) and this gate agree exactly (R5 Build #2 — Fix C, no Mon–Fri drift).
-    let workingDates = await workingDatesForSpan(tx, req.employmentId, req.startDate, req.endDate, cancelIncl);
+    let workingDates = await countedDatesForSpan(tx, req.employmentId, req.startDate, req.endDate, lt?.counting, cancelIncl);
     // ADR-0068 §6: a per-date-approval request is now a single parentGroupId=NULL row, so it reaches here.
     // Its interior REJECTED dates are NOT approved leave — exclude them from the cancellable set so an employee
     // can only give back a date that was actually approved (mirrors §4A's effectively-approved-dates rule).
@@ -6515,14 +6563,14 @@ export async function requestLeaveCancellation(
       throw new LeaveCancellationNotAllowedError('a cancellation of this leave is already waiting for approval', 'already_pending');
     }
 
-    // requestedDays = the WEIGHTED total of the cancel dates (Feedback 31474452 4e) — each is a working date
-    // by the check above; a Half date contributes 0.5 (toggle OFF) or 1.0 (toggle ON) rather than always 1,
+    // requestedDays = the WEIGHTED total of the counted cancel dates. Calendar dates each count as 1;
+    // a working Half date contributes 0.5 (toggle OFF) or 1.0 (toggle ON),
     // so the manager's approval screen previews the real give-back amount decideLeaveCancellation will apply.
     const hols = await resolveHolidaySet(tx, req.employmentId, req.startDate, req.endDate);
     const sched = await resolveSchedule(tx, req.employmentId);
     // Day Type Inclusion (feedback ef6d7146): weigh each cancel date through the SAME vector the leave was
     // deducted under (cancelIncl above), so a re-included public-holiday/rest date previews its real weight.
-    const requestedDays = round2(cancelDates.reduce((s, d) => s + dayWeight(d, sched, hols, cancelIncl), 0));
+    const requestedDays = round2(cancelDates.reduce((s, d) => s + countedDayWeight(d, lt?.counting, sched, hols, cancelIncl), 0));
     // 3fb1a611 — CAN THE CREDIT COME BACK? Asked when the employee asks, so the refusal names the expired
     // credit on their own screen instead of stranding a pending card under the manager's approval button.
     // Read-only: nothing is restored until decideLeaveCancellation runs (and it asks again).
@@ -6822,7 +6870,7 @@ async function applyLeaveCancellationApprovalTx(
   const [decLt] = await tx
     // 3fb1a611: role + code as well — the register give-back below is keyed on leaveTypeIs(decLt, 'replacement').
     // r301: name, for the employee's notification.
-    .select({ dayTypeInclusion: leaveType.dayTypeInclusion, role: leaveType.role, code: leaveType.code, name: leaveType.name })
+    .select({ counting: leaveType.counting, dayTypeInclusion: leaveType.dayTypeInclusion, role: leaveType.role, code: leaveType.code, name: leaveType.name })
     .from(leaveType)
     .where(eq(leaveType.id, req.leaveTypeId))
     .limit(1);
@@ -6842,9 +6890,8 @@ async function applyLeaveCancellationApprovalTx(
     .where(eq(leaveRequestDate.leaveRequestId, req.id));
   const approvedDateSet = dateRows.length > 0 ? new Set(dateRows.filter((d) => d.status === 'approved').map((d) => d.leaveDate)) : null;
   const workingDates = eachDate(req.startDate, req.endDate)
-    .filter((d) => isDeductibleDay(d, sched, hols, decIncl))
-    .filter((d) => !approvedDateSet || approvedDateSet.has(d))
-    .map((date) => ({ date, weight: dayWeight(date, sched, hols, decIncl) }));
+    .map((date) => ({ date, weight: countedDayWeight(date, decLt?.counting, sched, hols, decIncl) }))
+    .filter((day) => day.weight > 0 && (!approvedDateSet || approvedDateSet.has(day.date)));
   // r301 hand-fix (verifier defect 4) — EVERY DATE ASKED FOR MUST STILL BE ON THIS ROW. A cancellation decided
   // after another one split the row (a second pending request from before the one-pending rule, or the row
   // changed some other way) used to be approved with 0 days given back and a notification saying the leave was
@@ -7032,7 +7079,7 @@ async function applyLeaveCancellationApprovalTx(
           effectiveOn: seg.from,
         });
       }
-      remainingDates.push(...eachDate(seg.from, seg.to).filter((d) => isDeductibleDay(d, sched, hols, decIncl)));
+      remainingDates.push(...workingDates.filter((day) => day.date >= seg.from && day.date <= seg.to).map((day) => day.date));
       remainingDays += segDays;
       if (i > 0) survivingNewRowIds.push(rowId); // a survivor that is NOT the reused segment[0] row
     } else {

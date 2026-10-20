@@ -75,8 +75,8 @@ import {
   serviceYearsAt,
   // 6e9a126e RELEASE TWO — the entitlement TEMPLATE overlay, for the balance breakdown's past-date read.
   policyForDatedReader,
-  workingDatesForSpan,
-  workingDatesForSpans,
+  countedDatesForSpan,
+  countedDatesForSpans,
   // r301 (83511d3b) — Cancel Approved Leave: the leave type's rule and THE button predicate, so the Team Leave
   // Tracker (plannedAbsences) and /leave (employeeCancelOffers) offer exactly what the service accepts.
   cancelApprovedSettingOf,
@@ -1279,6 +1279,8 @@ const leaveRequestSelection = {
   // Edit/cancel-by-status (item c9a19e34): the type id so the /leave own-pending Edit dialog can prefill its
   // leave-type <select>.
   leaveTypeId: leaveRequest.leaveTypeId,
+  leaveCounting: leaveType.counting,
+  leaveDayTypeInclusion: leaveType.dayTypeInclusion,
   typeCode: leaveType.code,
   appliedOn: leaveRequest.createdAt,
   startDate: leaveRequest.startDate,
@@ -1384,7 +1386,7 @@ const leaveRequestSelection = {
 } as const;
 
 /** R5 Build #2 (Fix C — holiday/working-day-aware cancellable list): resolve each ELIGIBLE row's REAL
- *  working dates (roster + public-holiday aware, the SAME frame requestLeaveCancellation validates against)
+ *  counted dates (calendar or roster/inclusion aware, the SAME frame requestLeaveCancellation validates against)
  *  so the Leave page offers exactly the cancellable candidates — not a Mon–Fri heuristic. Only resolved for
  *  approved full-day rows that are either a plain request (parentGroupId null) or a cancellation-split
  *  survivor; others get []. Runs bounded to the passed page of rows (≤ page size). */
@@ -1395,6 +1397,8 @@ async function resolveLeaveWorkingDates<
     parentGroupId: string | null;
     isCancellationSplit: boolean;
     employmentId: string;
+    leaveCounting: string | null;
+    leaveDayTypeInclusion: unknown;
     startDate: string;
     endDate: string;
   },
@@ -1406,7 +1410,7 @@ async function resolveLeaveWorkingDates<
         r.durationType === 'full_day' &&
         (r.parentGroupId == null || r.isCancellationSplit);
       const workingDates = eligibleShape
-        ? await workingDatesForSpan(tx, r.employmentId, r.startDate, r.endDate)
+        ? await countedDatesForSpan(tx, r.employmentId, r.startDate, r.endDate, r.leaveCounting, r.leaveDayTypeInclusion)
         : [];
       return { ...r, workingDates };
     }),
@@ -1948,6 +1952,8 @@ export function plannedAbsences(
         cancelRuleAllowed: leaveType.employeeCancelApproved,
         cancelRuleNoticeDays: leaveType.cancelNoticeDays,
         cancelRuleUnpaidDays: leaveRequest.unpaidDays,
+        cancelRuleCounting: leaveType.counting,
+        cancelRuleDayTypeInclusion: leaveType.dayTypeInclusion,
       })
       .from(leaveRequest)
       .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
@@ -1967,7 +1973,7 @@ export function plannedAbsences(
       .orderBy(leaveRequest.startDate);
 
     type LeaveRow = (typeof leaves)[number];
-    type Leave = Omit<LeaveRow, 'cancelRuleRole' | 'cancelRuleAllowed' | 'cancelRuleNoticeDays' | 'cancelRuleUnpaidDays'> & {
+    type Leave = Omit<LeaveRow, 'cancelRuleRole' | 'cancelRuleAllowed' | 'cancelRuleNoticeDays' | 'cancelRuleUnpaidDays' | 'cancelRuleCounting' | 'cancelRuleDayTypeInclusion'> & {
       candidateCancelDates: string[];
     };
     // r301 (83511d3b) — the type's Cancel Approved Leave rule for one row, through the ONE resolver.
@@ -2006,7 +2012,7 @@ export function plannedAbsences(
     }
 
     // Partial Leave Cancellation from the calendar (ADR-0065): each approved row carries the exact cancellable
-    // candidate dates — its REAL working dates (roster + holiday aware, resolved via the SAME workingDatesForSpan
+    // candidate dates — its REAL counted dates (calendar or roster/inclusion aware, via countedDatesForSpan
     // the service validates against) strictly after `today` (MYT), AND — for a per-date-approval request — only
     // the interior dates that were actually APPROVED (mirrors requestLeaveCancellation core/leave.ts:2115-2118,
     // so an interior-REJECTED date never looks cancellable on the calendar but is rejected on submit). Computed
@@ -2020,10 +2026,10 @@ export function plannedAbsences(
       // ee55f5fe step 2 — the per-leave N+1 fix that makes Month View viable. The old loop resolved the
       // roster + holiday set PER LEAVE (2 sequential round-trips each — Promise.all does not parallelise
       // on one tx). Group the ELIGIBLE leaves by employment and resolve each employment's roster + union-
-      // range holiday set ONCE via workingDatesForSpans: round-trips scale with the number of employments
+      // range holiday set ONCE via countedDatesForSpans: round-trips scale with the number of employments
       // that have eligible leave, independent of leave count. Ineligible rows simply have no map entry —
-      // candidatesFor() already defaults them to []. Per-span results are byte-identical to the old
-      // workingDatesForSpan path; the per-date-approval filter + `d > today` cut apply after, unchanged.
+      // candidatesFor() already defaults them to []. Every request retains its counting/inclusion policy;
+      // the per-date-approval filter + `d > today` cut apply after, unchanged.
       // r301 (83511d3b): the row shape is now ONE predicate shared with /leave — employeeCancellableDates with
       // no dates answers "is this row offered at all" (approved full-day, plain or split survivor, nothing
       // pending, the type's switch on, no unpaid days) — so a switched-off type is never resolved here.
@@ -2043,13 +2049,19 @@ export function plannedAbsences(
         else byEmployment.set(l.employmentId, [l]);
       }
       for (const [employmentId, empLeaves] of byEmployment) {
-        const spanDates = await workingDatesForSpans(
+        const spanDates = await countedDatesForSpans(
           tx,
           employmentId,
-          empLeaves.map((l) => ({ start: l.startDate, end: l.endDate })),
+          empLeaves.map((l) => ({
+            key: l.id,
+            start: l.startDate,
+            end: l.endDate,
+            counting: l.cancelRuleCounting,
+            dayTypeInclusion: l.cancelRuleDayTypeInclusion,
+          })),
         );
         for (const l of empLeaves) {
-          let working = spanDates.get(`${l.startDate}|${l.endDate}`) ?? [];
+          let working = spanDates.get(l.id) ?? [];
           // Per-date-approval request (has date rows): restrict to the APPROVED interior dates only.
           if (hasDateRows.has(l.id)) {
             const approvedSet = new Set(approvedDatesByReq.get(l.id) ?? []);
@@ -2081,7 +2093,7 @@ export function plannedAbsences(
     const expandedLeaves: Leave[] = [];
     for (const row of leaves) {
       // r301 — the rule columns were read for the candidate list only; the pill carries no new fields.
-      const { cancelRuleRole: _r, cancelRuleAllowed: _a, cancelRuleNoticeDays: _n, cancelRuleUnpaidDays: _u, ...l } = row;
+      const { cancelRuleRole: _r, cancelRuleAllowed: _a, cancelRuleNoticeDays: _n, cancelRuleUnpaidDays: _u, cancelRuleCounting: _c, cancelRuleDayTypeInclusion: _i, ...l } = row;
       const candidateCancelDates = candidatesFor(l.id);
       // A per-date request that is APPROVED with per-date rows → emit one leave per contiguous approved run.
       if (hasDateRows.has(l.id) && l.status === 'approved') {
