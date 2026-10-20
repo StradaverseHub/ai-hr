@@ -31,7 +31,8 @@ GRANT SELECT ON payroll_leave_exception TO ai_hr_app;
 -- No money columns, bank data, or other employees' membership is returned.
 CREATE FUNCTION app.leave_payroll_coverage(request_ids uuid[])
 RETURNS TABLE(request_id uuid,employment_id uuid,batch_id uuid,company_id uuid,status text,pay_period text,
- policy_config jsonb,unpaid_leave_cutoff_day integer,coverage_from date,coverage_to date,segment jsonb)
+ policy_config jsonb,unpaid_leave_cutoff_day integer,coverage_from date,coverage_to date,segment jsonb,
+ salary_cutoff_day integer,run_policy_config jsonb)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 BEGIN
  IF cardinality(request_ids) IS NULL OR cardinality(request_ids)>10000 OR EXISTS (
@@ -59,11 +60,13 @@ BEGIN
  SELECT lr.id,lr.employment_id,b.id,b.company_id,b.status::text,b.pay_period::text,
    CASE WHEN policy.status='active' THEN jsonb_build_object('cutOff',policy.config->'cutOff','frequency',policy.config->'frequency',
      'leave',jsonb_build_object('deductAbsentDays',policy.config->'leave'->'deductAbsentDays')) ELSE NULL END,
-   cfg.unpaid_leave_cut_off_day,ps.coverage_from,ps.coverage_to,jsonb_build_object('segment',ps.statutory->'segment')
+   cfg.unpaid_leave_cut_off_day,ps.coverage_from,ps.coverage_to,jsonb_build_object('segment',ps.statutory->'segment'),
+   cfg.cut_off_day,CASE WHEN run_policy.status='active' THEN jsonb_build_object('cutOff',run_policy.config->'cutOff','frequency',run_policy.config->'frequency') ELSE NULL END
  FROM leave_request lr JOIN payslip ps ON ps.employment_id=lr.employment_id AND ps.tenant_id=lr.tenant_id
  JOIN employment e ON e.id=lr.employment_id AND e.tenant_id=lr.tenant_id
  JOIN payroll_batch b ON b.id=ps.batch_id AND b.tenant_id=lr.tenant_id
  LEFT JOIN company_payroll_config cfg ON cfg.company_id=b.company_id AND cfg.tenant_id=b.tenant_id
+ LEFT JOIN payroll_policy run_policy ON run_policy.id=cfg.default_payroll_policy_id AND run_policy.tenant_id=b.tenant_id AND run_policy.company_id=b.company_id
  LEFT JOIN payroll_policy assigned ON assigned.id=e.payroll_policy_id AND assigned.tenant_id=e.tenant_id AND assigned.company_id=b.company_id
  LEFT JOIN payroll_policy policy ON policy.id=coalesce(assigned.id,cfg.default_payroll_policy_id) AND policy.tenant_id=b.tenant_id AND policy.company_id=b.company_id
  WHERE lr.id=ANY(request_ids) AND lr.tenant_id=app.current_tenant_id() AND b.status IN ('processed','closed')

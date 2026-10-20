@@ -136,6 +136,19 @@ describe('leave decisions and payroll follow-up', () => {
       expect(Number((await slip(batchId)).netPay)).toBeGreaterThan(Number(before.netPay));
     }
   });
+  it.each(['weekly','biweekly'] as const)('protects %s cycle disbursements when the leave start is outside the monthly deduction window',async frequency=>{
+    const policy=await createPolicy(hr,{companyId:b.companyId,name:`${frequency} disbursement`,policyType:'monthly',config:{frequency}});
+    await owner.db.insert(schema.companyPayrollConfig).values({tenantId:b.tenantId,companyId:b.companyId,defaultPayrollPolicyId:policy.id,unpaidLeaveCutOffDay:Number(monday.slice(8))});
+    const leaveId=await pending(),batchId=await processed(),before=await slip(batchId);
+    await decideLeave(manager,{leaveRequestId:leaveId,decision:'approved'});
+    expect((await batch(batchId)).recalcEmploymentIds).toEqual([subject.employmentId]);
+    await generatePayslips(hr,{batchId,reprocessSubset:{employmentIds:[subject.employmentId],reason:'Approved leave changes the scheduled cycle weighting'}});
+    const after=await slip(batchId);
+    expect(after.netPay).toBe(before.netPay);
+    expect((after.statutory as Record<string,unknown>).paymentSchedule).not.toEqual((before.statutory as Record<string,unknown>).paymentSchedule);
+    await closeBatch(hr,{batchId});
+    await expect(requestLeaveCancellation(employee,{leaveRequestId:leaveId,cancelDates:[monday],today:addDays(monday,-1)})).rejects.toBeInstanceOf(LeaveCancellationPeriodClosedError);
+  });
   it('uses the former paying company cut-off and denies an HR reviewer scoped only to the new company',async()=>{
     await owner.db.insert(schema.companyPayrollConfig).values({tenantId:b.tenantId,companyId:b.companyId,unpaidLeaveCutOffDay:Number(tuesday.slice(8))});
     const leaveId=await pending(),batchId=await processed();await closeBatch(hr,{batchId});

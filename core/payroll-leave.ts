@@ -2,7 +2,7 @@
 import { eq, inArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { leaveRequest, leaveRequestDate, leaveType } from '../db/schema';
-import { cutOffWindowFor, type PayrollPolicyConfig } from './payroll-policy-config';
+import { cutOffWindowFor, payrollScheduleFor, type PayrollPolicyConfig } from './payroll-policy-config';
 import { payslipSegmentOf } from './payslip-segment';
 
 export class LeavePayrollBusyError extends Error {
@@ -16,6 +16,7 @@ type Coverage = {
   request_id: string; employment_id: string; batch_id: string; company_id: string;
   status: 'processed' | 'closed'; pay_period: string; policy_config: PayrollPolicyConfig | null;
   unpaid_leave_cutoff_day: number | null; coverage_from: string | null; coverage_to: string | null; segment: unknown;
+  salary_cutoff_day: number | null; run_policy_config: PayrollPolicyConfig | null;
 };
 export type LeavePayrollHit = { requestId: string; batchId: string; employmentId: string; status: 'processed' | 'closed'; dates: string[] };
 function postgresCode(error: unknown): string | undefined {
@@ -61,7 +62,7 @@ export async function lockPayrollForLeaveChangeTx(tx: Tx, p: {
   try {
     // A JSON array is converted on the server. Never interpolate a PostgreSQL array literal.
     coverage = await tx.execute(sql`select request_id,employment_id,batch_id,company_id,status,pay_period,policy_config,
-      unpaid_leave_cutoff_day,coverage_from::text,coverage_to::text,segment from app.leave_payroll_coverage(
+      unpaid_leave_cutoff_day,coverage_from::text,coverage_to::text,segment,salary_cutoff_day,run_policy_config from app.leave_payroll_coverage(
       ARRAY(select jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))::uuid[]
     )`) as unknown as Coverage[];
   } catch (error) {
@@ -84,6 +85,13 @@ export async function lockPayrollForLeaveChangeTx(tx: Tx, p: {
     const changedDates = p.changedDates?.get(request.id) ?? approvedDates.get(request.id) ?? datesBetween(request.start, request.end);
     const affected = new Set<string>();
     if (unpaid) for (const date of starts) if (inside(date)) affected.add(date);
+    // Weekly/biweekly disbursement weights read unpaid starts in the company's SALARY cycles,
+    // independently of the employee's leave-deduction window. Mirror that existing consumer,
+    // including its distinct paid-type treatment, without changing its arithmetic.
+    const schedule = payrollScheduleFor(row.run_policy_config, { cutOffDay: row.salary_cutoff_day }, row.pay_period);
+    if (schedule.frequency !== 'monthly' && schedule.periods.length > 1 && (!request.paid || request.allowance === false || p.prospectivePaid === false)) {
+      for (const date of starts) if (schedule.periods.some(period => date >= period.start && date <= period.end)) affected.add(date);
+    }
     if (p.action !== 'paid_setting' && request.duration === 'full_day' && row.policy_config?.leave?.deductAbsentDays === true) {
       for (const date of changedDates) if (inside(date)) affected.add(date);
     }
