@@ -21770,7 +21770,7 @@
     "stale": "Hồ sơ đã thay đổi sau khi xem trước. Tải lên và kiểm tra lại.",
     "confirmationRequired": "Xác nhận thay thế và đặt lại trước khi lưu.",
     "notSelected": "Chưa chọn; không lưu thay đổi.",
-    "saveFailed": "Không thể lưu thay đổi. Kiểm tra dữ liệu thẻ hiện tại rồi thử lại.",
+    "saveFailed": "Không thể xác nhận kết quả. Hãy kiểm tra dữ liệu thẻ hiện tại trước khi thử lại.",
     "invalidWorkbook": "Tải mẫu XLSX không được bảo vệ, giữ nguyên trang tính, phiên bản và tiêu đề. Không chấp nhận công thức, liên kết hoặc macro.",
     "tooLarge": "Chọn sổ làm việc không quá 2 MB.",
     "tooManyRows": "Dùng tối đa 500 dòng trong mẫu. Chia tệp lớn thành các lần nhập riêng.",

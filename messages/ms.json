@@ -21770,7 +21770,7 @@
     "stale": "Rekod berubah selepas pratonton. Muat naik dan semak semula.",
     "confirmationRequired": "Sahkan penggantian dan reset sebelum menyimpan.",
     "notSelected": "Tidak dipilih; tiada perubahan disimpan.",
-    "saveFailed": "Perubahan tidak dapat disimpan. Semak penetapan semasa dan cuba lagi.",
+    "saveFailed": "Keputusan tidak dapat disahkan. Semak penetapan semasa sebelum mencuba lagi.",
     "invalidWorkbook": "Muat naik templat XLSX tanpa perlindungan dengan helaian, versi dan pengepala asal. Formula, pautan dan makro tidak diterima.",
     "tooLarge": "Pilih buku kerja tidak melebihi 2 MB.",
     "tooManyRows": "Gunakan sehingga 500 baris dalam templat. Pecahkan fail besar kepada import berasingan.",

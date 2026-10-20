@@ -21770,7 +21770,7 @@
     "stale": "This record changed after preview. Upload and review it again.",
     "confirmationRequired": "Confirm replacements and resets before saving.",
     "notSelected": "Not selected; no change was saved.",
-    "saveFailed": "The change could not be saved. Review current assignments and try again.",
+    "saveFailed": "The result could not be confirmed. Review current assignments before trying again.",
     "invalidWorkbook": "Upload an unprotected XLSX template with the original sheet, version and headers. Formulas, links and macros are not accepted.",
     "tooLarge": "Choose a workbook no larger than 2 MB.",
     "tooManyRows": "Use up to 500 rows in the template. Split larger files into separate imports.",
