@@ -103,7 +103,7 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Button, buttonVariants } from '@/components/ui';
-import { registerUnsavedGuard, UNSAVED_GUARD_IGNORE_SELECTOR } from '@/lib/unsaved-changes';
+import { registerUnsavedGuard, UNSAVED_GUARD_IGNORE_SELECTOR, INDEPENDENT_SUBMIT_SELECTOR } from '@/lib/unsaved-changes';
 import {
   baselineNewSections,
   buildTabPayload,
@@ -643,7 +643,7 @@ export function TabSaveScope({
       // that carries the marker. Under the old test both were invisible to this guard AND to the
       // scope-local one, so submitting either took the reader's unsaved date edits with it, silently, in a
       // redirect — the exact loss this guard exists to stop.
-      if (form.matches(SECTION_SELECTOR)) return;
+      if (form.matches(SECTION_SELECTOR) || form.matches(INDEPENDENT_SUBMIT_SELECTOR)) return;
       if (form.closest(UNSAVED_GUARD_IGNORE_SELECTOR)) return;
       const submitter = (e as SubmitEvent).submitter;
       e.preventDefault();

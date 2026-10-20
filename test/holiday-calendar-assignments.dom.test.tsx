@@ -2,12 +2,14 @@ import React from 'react';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
+import {TabSaveScope} from '../components/tab-save-scope';
+import {__resetUnsavedGuards} from '../lib/unsaved-changes';
 import en from '../messages/en.json';
 import {HolidayCalendarAssignments} from '../app/admin/personnel/[employmentId]/holiday-calendar-assignments';
 const state=vi.hoisted(()=>({save:vi.fn(),refresh:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:state.refresh})}));
 vi.mock('../app/admin/personnel/[employmentId]/holiday-calendar-actions',()=>({saveHolidayCalendarAssignmentAction:state.save}));
-afterEach(cleanup);beforeEach(()=>{state.save.mockReset();state.refresh.mockReset();});
+afterEach(()=>{cleanup();__resetUnsavedGuards();});beforeEach(()=>{state.save.mockReset();state.refresh.mockReset();});
 const base={employmentId:'employee',joinDate:'2025-04-05',employmentStartDate:'2025-04-01',fallbackLabel:'Selangor',groups:[{id:'group',name:'Recorded Calendar',active:true},{id:'old',name:'Inactive Calendar',active:false}],states:['Selangor','Johor'],rows:[]};
 const mount=(overrides:Partial<React.ComponentProps<typeof HolidayCalendarAssignments>>={})=>render(<NextIntlClientProvider locale="en" messages={en}><HolidayCalendarAssignments {...base} {...overrides}/></NextIntlClientProvider>);
 describe('dated holiday calendar input and history',()=>{
@@ -48,6 +50,51 @@ describe('dated holiday calendar input and history',()=>{
   expect(state.refresh).not.toHaveBeenCalled();expect(screen.getByRole('button',{name:'Save assignment'})).toBeEnabled();
   state.save.mockResolvedValueOnce({ok:true,updated:0,reviewDates:[]});fireEvent.submit(screen.getByRole('form',{name:'Add calendar'}));
   await waitFor(()=>expect(state.refresh).toHaveBeenCalledOnce());expect(state.save).toHaveBeenCalledTimes(2);
+ });
+ it('keeps the submitted native date values on an overlap refusal and retries exactly those values',async()=>{
+  state.save.mockResolvedValueOnce({ok:false,error:'overlap'});mount();
+  fireEvent.click(screen.getByRole('button',{name:'Add calendar'}));
+  fireEvent.change(screen.getByLabelText('Calendar'),{target:{value:'state:Johor'}});
+  // Native edits/autofill can reach FormData before React has observed a change callback.
+  const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!;
+  setter.call(screen.getByLabelText('Start Date'),'2025-04-10');
+  setter.call(screen.getByLabelText('End Date'),'2025-04-11');
+  fireEvent.submit(screen.getByRole('form',{name:'Add calendar'}));
+  await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent('overlaps'));
+  expect(screen.getByLabelText('Start Date')).toHaveValue('2025-04-10');
+  expect(screen.getByLabelText('End Date')).toHaveValue('2025-04-11');
+  expect(screen.getByLabelText('Calendar')).toHaveValue('state:Johor');
+  expect(state.refresh).not.toHaveBeenCalled();
+  const submitted=Object.fromEntries(state.save.mock.calls[0][0]);
+  state.save.mockResolvedValueOnce({ok:true,updated:0,reviewDates:[]});
+  fireEvent.submit(screen.getByRole('form',{name:'Add calendar'}));
+  await waitFor(()=>expect(state.refresh).toHaveBeenCalledOnce());
+  expect(Object.fromEntries(state.save.mock.calls[1][0])).toEqual(submitted);
+ });
+ it('saves the independent calendar with an unrelated tab draft and still warns before leaving',async()=>{
+  const tabSave=vi.fn();state.save.mockResolvedValue({ok:true,updated:0,reviewDates:[]});
+  render(<NextIntlClientProvider locale="en" messages={en}>
+   <TabSaveScope tabKey="attendance" identity={{employmentId:base.employmentId}} saveAction={tabSave} covers={['Web Clocking']}>
+    <form data-save-section="attendance-photo"><label>Photo requirement<input name="attendancePhotoSetting" defaultValue="required"/></label></form>
+    <HolidayCalendarAssignments {...base}/>
+   </TabSaveScope>
+   <a href="/admin/personnel">Leave personnel screen</a>
+  </NextIntlClientProvider>);
+  fireEvent.change(screen.getByLabelText('Photo requirement'),{target:{value:'optional'}});
+  await waitFor(()=>expect(screen.getByRole('button',{name:'Save Changes'})).toBeEnabled());
+  fireEvent.click(screen.getByRole('button',{name:'Add calendar'}));
+  fireEvent.change(screen.getByLabelText('Calendar'),{target:{value:'state:Johor'}});
+  fireEvent.submit(screen.getByRole('form',{name:'Add calendar'}));
+  await waitFor(()=>expect(state.save).toHaveBeenCalledOnce());
+  expect(screen.queryByRole('dialog')).toBeNull();expect(tabSave).not.toHaveBeenCalled();
+  expect(screen.getByLabelText('Photo requirement')).toHaveValue('optional');
+  expect(screen.getByRole('button',{name:'Save Changes'})).toBeEnabled();
+  fireEvent.click(screen.getByRole('link',{name:'Leave personnel screen'}));
+  const dialog=await screen.findByRole('dialog');
+  expect(dialog).toHaveTextContent('Unsaved changes');
+  fireEvent.click(screen.getByRole('button',{name:'Cancel'}));
+  expect(screen.getByLabelText('Photo requirement')).toHaveValue('optional');
+  expect(tabSave).not.toHaveBeenCalled();
  });
  it('shows a protected-payroll refusal without dismissing the edit or claiming success',async()=>{
   state.save.mockResolvedValue({ok:false,error:'closedPayroll'});mount();fireEvent.click(screen.getByRole('button',{name:'Add calendar'}));
