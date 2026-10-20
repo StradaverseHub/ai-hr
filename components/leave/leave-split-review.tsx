@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { getFormatter, getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import type { SessionContext } from '@/db/client';
 import { leaveSplitReview } from '@/packs/leave/service';
 import { Card, EmployeeCode, SectionHeader } from '@/components/ui';
@@ -7,8 +7,9 @@ import { Pager } from '@/components/pager';
 import { pageState, type PageQuery } from '@/lib/pagination';
 
 export async function LeaveSplitReview({ session, query, companyIds }: { session: SessionContext; query: PageQuery; companyIds: readonly string[] }) {
-  const [t, format] = await Promise.all([getTranslations('leaveSplitReview'), getFormatter()]);
-  const date = (value: string) => format.dateTime(new Date(`${value}T00:00:00Z`), { dateStyle: 'medium', timeZone: 'Asia/Kuala_Lumpur' });
+  const [t, locale] = await Promise.all([getTranslations('leaveSplitReview'), getLocale()]);
+  const format = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'Asia/Kuala_Lumpur' });
+  const date = (value: string) => format.format(new Date(`${value}T00:00:00Z`));
   const recordHref = (employmentId: string, requestId: string) => `/leave/employee-records?${new URLSearchParams({ emp: employmentId, q: requestId.slice(0, 8) })}`;
   const result = await leaveSplitReview(session, { ...query, companyIds });
   return (

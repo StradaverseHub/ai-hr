@@ -32,7 +32,9 @@ beforeEach(async () => {
     person: { fullName: name, primaryEmail: `${randomUUID()}@leave-payroll.test` }, companyId: b.companyId,
     departmentId: b.deptA, employmentType: 'full_time', hiredOn: addDays(today, -800),
   });
-  subject = await hire('Payroll subject'); const boss = await hire('Operational manager');
+  const hiredSubject = await hire('Payroll subject'); const boss = await hire('Operational manager');
+  const [employment] = await owner.db.select({ code: schema.employment.employeeCode }).from(schema.employment).where(eq(schema.employment.id, hiredSubject.employmentId));
+  subject = { ...hiredSubject, code: employment.code };
   const userId = await createAppUser(b.tenantId, subject.personId, 'employee');
   const bossId = await createAppUser(b.tenantId, boss.personId, 'manager');
   employee = { tenantId: b.tenantId, userId, personId: subject.personId, roles: ['employee'], entitlements: harnessSnapshot(b.tenantId) };
@@ -43,7 +45,7 @@ beforeEach(async () => {
   await setStatutoryProfileMY(hr, { personId: subject.personId, icNumber: '900101015201' });
   const [type] = await owner.db.insert(schema.leaveType).values({
     tenantId: b.tenantId, code: 'UNPAID', name: 'Unpaid leave', paid: false, counting: 'working_days',
-    allowNegativeBalance: true, employeeCancelApproved: true,
+    allowNegativeBalance: true, maxNegativeBalance: '30', employeeCancelApproved: true,
   }).returning(); typeId = type.id;
 });
 afterAll(closeAll);
@@ -127,6 +129,7 @@ describe('leave decisions and payroll follow-up', () => {
       entitlement_year: monday.slice(0, 4), leave_start_date: monday, leave_end_date: wednesday,
       number_of_day: '3', session: '', entry_date: '', submit_date: '', approved_date: '', remark: 'Historical migration',
     }] });
+    expect(result.errors).toEqual([]);
     expect(result.imported).toBe(1);
     expect(await listPayrollLeaveExceptions(hr, batchId)).toHaveLength(openingBalancesAreNet ? 0 : 1);
     expect(await slip(batchId)).toEqual(originalSlip);

@@ -8,12 +8,13 @@ import { Button, Card, EmployeeCode, ErrorBanner, Field, SectionHeader, inputCls
 import { resolveLeavePayrollExceptionAction } from './leave-followup-actions';
 
 export async function PayrollLeaveFollowup({ session, batchId, failed, query, params }: { session: SessionContext; batchId: string; failed?: boolean; query: PageQuery; params: Record<string, string | undefined> }) {
-  const [t, format, result] = await Promise.all([
-    getTranslations('payrollLeaveFollowup'), getFormatter(), payrollLeaveExceptionPage(session, batchId, query),
-  ]);
+  const result = await payrollLeaveExceptionPage(session, batchId, query);
   if (!result.total) return null;
   const rows = result.rows;
-  const adjustments = await listPayrollLeaveExceptionAdjustments(session, batchId, rows.filter(row => row.status === 'open').map(row => row.id));
+  const [t, format, adjustments] = await Promise.all([
+    getTranslations('payrollLeaveFollowup'), getFormatter(),
+    listPayrollLeaveExceptionAdjustments(session, batchId, rows.filter(row => row.status === 'open').map(row => row.id)),
+  ]);
   return <Card id="leave-followup" className="scroll-mt-6">
     <SectionHeader title={t('title')} subtitle={t('description')} />
     {failed && <ErrorBanner message={t('error')} />}
