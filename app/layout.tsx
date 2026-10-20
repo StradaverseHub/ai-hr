@@ -7,6 +7,11 @@ import { NextIntlClientProvider } from 'next-intl';
 import { getLocale } from 'next-intl/server';
 import './globals.css';
 import './onboarding-workspace.css';
+// Atelier is loaded HERE, not as an `@import` in globals.css. On the box a warm Turbopack build cache kept the
+// old @import graph of globals.css and shipped a stylesheet without one Atelier rule (round atelier-shell-r1,
+// 2026-10-20); a module import is an explicit edge the cache cannot miss. All its rules are scoped to
+// :root[data-ui-theme='atelier'], so loading it for every theme changes nothing for the others.
+import './atelier.css';
 import { Suspense } from 'react';
 import { Providers } from './providers';
 import { Sidebar } from '@/components/sidebar';
