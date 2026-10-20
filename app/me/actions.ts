@@ -3,6 +3,7 @@
 import { AttendanceLevelError } from '@/lib/attendance-workflow-v3';
 import { attendanceWorkflowErrorMessage } from '@/lib/attendance-workflow-error-message';
 import { publicErrorMessage } from '@/lib/public-error';
+import { LeavePayrollBusyError, LeavePayrollClosedError } from '@/packs/payroll/service';
 import { plannedOvertimeMinutes } from '@/lib/overtime-duration';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -311,6 +312,10 @@ export async function localizeLeaveError(
    */
   coverage?: { ctx: SessionContext; employmentId: string; leaveTypeId: string; subject: 'self' | 'other' },
 ): Promise<string> {
+  if (e instanceof LeavePayrollBusyError || e instanceof LeavePayrollClosedError) {
+    const payroll = await getTranslations('payrollLeaveFollowup');
+    return payroll(e instanceof LeavePayrollBusyError ? 'busy' : 'closed');
+  }
   const t = await getTranslations('leave.errors');
   const name = typeName ?? '';
   if (e instanceof LeaveDocumentRequiredError) {

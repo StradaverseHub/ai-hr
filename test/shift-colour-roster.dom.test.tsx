@@ -13,7 +13,7 @@
  * so this catches which classes are chosen, not how they paint.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
 import { RosterGrid, type GridEmployee, type ShiftLite } from '../components/roster-grid';
@@ -97,9 +97,9 @@ describe('6340aecb — the shift colour on the Duty Roster', () => {
   });
 
   it('the legend chip carries the same colour as the cell, so the key and the grid agree', () => {
-    const { container } = renderGrid({});
-    const chips = Array.from(container.querySelectorAll('button')).filter((el) => el.textContent?.startsWith('RED'));
-    expect(chips.length).toBeGreaterThan(0);
-    expect(chips[0].className).toContain(SHIFT_COLORS.red);
+    renderGrid({});
+    fireEvent.click(screen.getByRole('button', { name: /Assign RED/ }));
+    const chip = within(screen.getByRole('dialog', { name: 'Legend' })).getByText('RED', { exact:true });
+    expect(chip.className).toContain(SHIFT_COLORS.red);
   });
 });

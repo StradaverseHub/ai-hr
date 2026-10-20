@@ -12,6 +12,7 @@ import { myEmployment } from '@/core/read';
 import { Card, ErrorBanner, PageHeader, SectionHeader, Button, inputCls, pageWideCls } from '@/components/ui';
 import { AttendanceFigureCells } from '@/components/attendance-figure-cells';
 import { fmtMin, fmtDayDate } from '@/components/attendance-format';
+import { attendanceCalendarBackHref, calendarReturnParams, type AttendanceCalendarReturn } from '../../my-roster/attendance-links';
 
 /** Employee day view: every subject read resolves from the authenticated person's own employment. */
 const CORRECTION_MESSAGES: readonly string[] = [
@@ -30,7 +31,7 @@ export default async function MyAttendanceDayPage({
   searchParams,
 }: {
   params: Promise<{ date: string }>;
-  searchParams: Promise<{ from?: string; to?: string; error?: string; workflowProblem?: string; corrected?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; error?: string; workflowProblem?: string; corrected?: string } & AttendanceCalendarReturn>;
 }) {
   const t = await getTranslations('attendance');
   const locale = await getLocale();
@@ -73,7 +74,8 @@ export default async function MyAttendanceDayPage({
   // Keyed by attendance id, exactly as the list reads it — no second shape for one fact.
   const punches = row?.attendanceId ? punchesByAttendance.get(row.attendanceId) ?? [] : [];
 
-  const backHref = `/attendance/my-records?${new URLSearchParams({ ...(sp.from ? { from: sp.from } : {}), ...(sp.to ? { to: sp.to } : {}) }).toString()}`;
+  const backHref = attendanceCalendarBackHref(sp, date);
+  const returnParams = calendarReturnParams(sp);
 
   if (!row) {
     return (
@@ -242,6 +244,7 @@ export default async function MyAttendanceDayPage({
           <input type="hidden" name="date" value={date} />
           <input type="hidden" name="from" value={sp.from ?? ''} />
           <input type="hidden" name="to" value={sp.to ?? ''} />
+          {Object.entries(returnParams).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
           <fieldset disabled={pending || future} className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-end disabled:opacity-60">
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               {t('colCheckIn')}

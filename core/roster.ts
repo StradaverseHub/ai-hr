@@ -39,6 +39,8 @@ import {
   weekLookupTx,
 } from './attendance';
 import { breakRowMinutes, checkBreakRow, findBreakOverlaps } from './shift-break-rules';
+import { holidayCalendarFactsByEmployment } from './holidays';
+import { approvedLeavePresenceByEmploymentTx } from '../packs/leave/service';
 import { approvedLeaveDates } from './leave';
 import {workingShiftSchedule, rotationLookupTx, assertRotationPoolWriteTx} from '../packs/attendance/service';
 import type { RotationCycle } from './week-pattern';
@@ -2595,6 +2597,8 @@ export type RosterMonthView = {
   shifts: { id: string; code: string | null; name: string; startTime: string | null; endTime: string | null; color: string | null }[];
   /** `employmentId|date` → what is STORED (null for the dates nobody rostered). */
   cells: Record<string, AssignedCell>;
+  /** Independent authorised day facts; never shift assignments or medical details. */
+  dayContext: Record<string, { publicHoliday?: true; replacementHoliday?: true; approvedLeave?: 'full_day' | 'part_day' }>;
   /** employmentId → usual shift, for the grey ghost cells and the OFF markers. */
   usual: Record<string, UsualShift>;
   usualNames: Record<string, { code: string | null; name: string }>;
@@ -2743,6 +2747,22 @@ export async function rosterWindowView(
     for(const sh of u.rotationShifts??[]) usualNames[sh.id]={code:sh.code,name:sh.name};
   }
 
+  const dayContext: RosterMonthView['dayContext'] = {};
+  if (visible.length) await withTenant(ctx, async tx => {
+    const [calendar, leave] = await Promise.all([
+      holidayCalendarFactsByEmployment(tx, { employmentIds: visible, startDate: from, endDate: to }),
+      approvedLeavePresenceByEmploymentTx(tx, visible, from, to),
+    ]);
+    for (const id of visible) for (const date of dates) {
+      const facts: RosterMonthView['dayContext'][string] = {};
+      if (calendar.holidays.get(id)?.has(date)) facts.publicHoliday = true;
+      if (calendar.replacements.get(id)?.has(date)) facts.replacementHoliday = true;
+      const presence = leave.get(id)?.get(date);
+      if (presence) facts.approvedLeave = presence;
+      if (Object.keys(facts).length) dayContext[cellKey(id, date)] = facts;
+    }
+  });
+
   return {
     from,
     to,
@@ -2758,6 +2778,7 @@ export async function rosterWindowView(
       color: s.color,
     })),
     cells,
+    dayContext,
     usual,
     usualNames,
   };

@@ -349,7 +349,7 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     for (const c of adminCopy) {
       expect(c.adminOnly, 'any /attendance row in the admin node must be gated').toBe(true);
     }
-    const EMPLOYEE_RECORDS = '/attendance/my-records';
+    const EMPLOYEE_RECORDS = '/attendance/my-roster';
     const selfService = attendancePack.navNodes!.find((n) => n.labelKey === 'myAttendance')!;
     const records = selfService.children.find((c) => c.href === EMPLOYEE_RECORDS);
     expect(records, 'the employee’s own record is still in the self-service node').toBeDefined();
@@ -410,41 +410,10 @@ describe('0bb0e303 rev2 — Attendance Request is self-service, and stays that w
   it('adds the row to My Attendance, ungated, in the reporter’s order', () => {
     expect(mine.children.map((c) => c.href)).toEqual([
       '/attendance/clock',
-      // f3e6c36e (r287) — the employee's Records row points at its OWN screen now. The reporter asked
-      // twice for the administrative Record function to leave this menu and reaffirmed after being told
-      // that MOVING the row would hide the screen from staff rather than restrict it (the Administration
-      // group gates adminOnly at GROUP level). So the screen was SPLIT: `/attendance` is the
-      // administrator's, `/attendance/my-records` is the employee's, and this node's membership rule —
-      // six rows, written down, none of them gated — is unchanged.
-      '/attendance/my-records',
-      '/attendance/requests',
-      // 1e9145d4 — Plan OT joined the node as the fourth self-service row when overtime moved off the
-      // Attendance Request screen. Ungated for the same reason, and pinned by its own describe below.
-      '/attendance/plan-ot',
-      // c6bb5f5a — SIX rows, not four, and the case is UPDATED rather than re-typed as a new one: what it
-      // has always guarded is that this node's membership is written down and that nothing gated slips in.
-      // 2166ef79 had stacked Travel Request and the request history onto /attendance/requests; the
-      // reporter has since asked for each function to have its own row and its own screen, and confirmed
-      // it. Both new rows are ungated for the same reason as the four above — the caller's own requests.
-      //
-      // ⚠️ b833a077 (r362) — FIVE ROWS NOW. The line above said "SIX rows, not four" and '/attendance/travel'
-      // stood on the line below this one, immediately before request-status. The reporter asked for My
-      // Travel to be removed completely, so the row is gone with the screen it opened. The case is updated
-      // rather than loosened: this is still an exact set, and travel's own obligations (the address still
-      // forwards, the route stays unregistered) are asserted in test/attendance-pack.test.ts REMOVED and
-      // in the dedicated case below.
-      '/attendance/request-status',
-      /**
-       * ⚠️ 6948727a (r369) — SIX ROWS NOW, NOT FIVE. The note above says "FIVE ROWS NOW" and it is about
-       * My Travel's removal, which still stands; this is a different, later change, added here rather
-       * than letting an exact set be quietly relaxed to accommodate it.
-       *
-       * My Roster belongs in this set for the reason the describe exists: the membership of the
-       * self-service node is written down, so a row arriving without a line here is still a failure. Its
-       * own gating and data fence get a dedicated file (test/my-roster.test.ts) — ungated row, no admin
-       * page guard, and a service that takes no employment id at all.
-       */
       '/attendance/my-roster',
+      '/attendance/requests',
+      '/attendance/plan-ot',
+      '/attendance/request-status',
     ]);
     // plan-ot joins the loop this round: until c6bb5f5a it was a one-line redirect with nothing to guard,
     // and it now renders the employee's own overtime plans like the two beside it.
@@ -505,7 +474,7 @@ describe('0bb0e303 rev2 — Attendance Request is self-service, and stays that w
        * not touch it: an employee must still reach their own record with no gate at all.
        */
       const href = '/attendance/my-records';
-      const added = mine.children.find((c) => c.href === href)!;
+      const added = mine.children.find((c) => c.href === '/attendance/my-roster')!;
       expect({ adminOnly: added.adminOnly, managerUp: added.managerUp }, `${href} stays ungated`).toEqual({
         adminOnly: undefined,
         managerUp: undefined,

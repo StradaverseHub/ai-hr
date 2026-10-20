@@ -18,6 +18,7 @@ import { Pager } from '@/components/pager';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { resolveMyAttendanceRange } from './range';
+import { attendanceCalendarBackHref } from '../my-roster/attendance-links';
 
 /**
  * My Attendance › Attendance Overview (feedback 67268d83 round one, r367) — THE DAY LIST IS BACK.
@@ -198,6 +199,7 @@ export default async function MyAttendanceRecordsPage({
   return (
     <div className={pageWideCls}>
       <PageHeader title={t('myRecords.title')} />
+      <Link href={attendanceCalendarBackHref({}, from)} className="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">← {t('myDayBack')}</Link>
       <ErrorBanner message={sp.error} />
 
       <Card className="overflow-hidden">

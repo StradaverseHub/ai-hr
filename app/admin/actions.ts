@@ -1,4 +1,5 @@
 'use server';
+import { LeavePayrollBusyError, LeavePayrollClosedError } from '@/packs/payroll/service';
 
 import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
@@ -2317,6 +2318,10 @@ export async function updateLeaveTypeAction(fd: FormData) {
     // name/code messages and the closed-set validations are all written for HR to read. Only a driver-shaped
     // message is swapped, and it is logged in full server-side first, so nothing is lost — least of all the
     // failure itself, which still stops the save and still says so.
+    if (e instanceof LeavePayrollBusyError || e instanceof LeavePayrollClosedError) {
+      const payroll = await getTranslations('payrollLeaveFollowup');
+      fail(ENTITLEMENTS, new Error(payroll(e instanceof LeavePayrollBusyError ? 'busy' : 'closed')));
+    }
     const raw = e instanceof Error ? e.message : String(e);
     if (raw.startsWith('Failed query:')) {
       console.error('updateLeaveTypeAction — database error while saving a leave type:', e);

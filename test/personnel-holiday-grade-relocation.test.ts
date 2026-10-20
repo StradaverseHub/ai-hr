@@ -1,3 +1,4 @@
+import {saveHolidayCalendarAssignmentAction} from '../app/admin/personnel/[employmentId]/holiday-calendar-actions';
 /**
  * Item 52a30630 — Holiday Calendar + Grade relocation (Personnel admin detail page).
  *
@@ -7,10 +8,8 @@
  * NO LONGER writes either employment column.
  *
  * Guards:
- *  (1) setEmploymentHolidayCalendarAction persists a STATE selection (work_state set, holiday_group_id
- *      nulled) and fires the EXISTING employment.holiday-calendar.changed event — no new event type.
- *  (2) setEmploymentHolidayCalendarAction persists a GROUP selection (holiday_group_id set, work_state
- *      nulled) — the XOR the service enforces.
+ *  (1)-(2) Dated STATE/GROUP assignments persist immutable period history without changing the legacy
+ *      fallback columns. Old undated forms redirect to the canonical dated editor without writing.
  *  (3) r78c REPLACED the original guard here. It pinned setEmploymentGradeAction — the Leave tab's direct
  *      Job Grade save — persisting the grade and firing employment.grade.changed. That action is DELETED:
  *      it wrote a MOVEMENT_EVENT_TYPE with no movement tag, so a grade edit opened its own "Grade Change"
@@ -109,21 +108,21 @@ describe('Item 52a30630 — Holiday Calendar → Attendance, Grade → Leave', (
     await closeAll();
   });
 
-  it('(1) setEmploymentHolidayCalendarAction saves a STATE selection + fires the existing event', async () => {
+  it('(1) dated state assignment records its own history and preserves the undated fallback', async () => {
     const hire = await hireOne('Holiday State');
     const fd = new FormData();
     fd.set('employmentId', hire.employmentId);
-    fd.set('holidayCalendar', 'state:Selangor');
-    await expect(setEmploymentHolidayCalendarAction(fd)).rejects.toThrow('NEXT_REDIRECT');
-    expect(LAST_REDIRECT).toContain('toast=Saved');
+    fd.set('calendar','state:Selangor');fd.set('startDate','2026-01-01');
+    expect(await saveHolidayCalendarAssignmentAction(fd)).toMatchObject({ok:true});
 
     const row = await empRow(hire.employmentId);
-    expect(row.workState).toBe('Selangor');
-    expect(row.holidayGroupId).toBeNull();
-    expect(await eventTypesFor(base.tenantId, hire.employmentId)).toContain('employment.holiday-calendar.changed');
+    expect(row.workState).toBeNull();expect(row.holidayGroupId).toBeNull();
+    const [dated]=await owner.db.select().from(schema.employmentHolidayCalendar).where(eq(schema.employmentHolidayCalendar.employmentId,hire.employmentId));
+    expect(dated).toMatchObject({kind:'state',workState:'Selangor',holidayGroupId:null,validFrom:'2026-01-01'});
+    expect(await eventTypesFor(base.tenantId, hire.employmentId)).toContain('employment.holiday-calendar.assignment-recorded');
   });
 
-  it('(2) setEmploymentHolidayCalendarAction saves a GROUP selection (XOR: group set, state nulled)', async () => {
+  it('(2) dated group assignment retains group/state XOR without rewriting the fallback', async () => {
     const hire = await hireOne('Holiday Group');
     const group = await createHolidayGroup(adminCtx(base), {
       name: `Grp ${randomUUID().slice(0, 6)}`,
@@ -131,13 +130,19 @@ describe('Item 52a30630 — Holiday Calendar → Attendance, Grade → Leave', (
     });
     const fd = new FormData();
     fd.set('employmentId', hire.employmentId);
-    fd.set('holidayCalendar', `group:${group.id}`);
-    await expect(setEmploymentHolidayCalendarAction(fd)).rejects.toThrow('NEXT_REDIRECT');
-    expect(LAST_REDIRECT).toContain('toast=Saved');
+    fd.set('calendar',`group:${group.id}`);fd.set('startDate','2026-01-01');
+    expect(await saveHolidayCalendarAssignmentAction(fd)).toMatchObject({ok:true});
 
     const row = await empRow(hire.employmentId);
-    expect(row.holidayGroupId).toBe(group.id);
-    expect(row.workState).toBeNull();
+    expect(row.holidayGroupId).toBeNull();expect(row.workState).toBeNull();
+    const [dated]=await owner.db.select().from(schema.employmentHolidayCalendar).where(eq(schema.employmentHolidayCalendar.employmentId,hire.employmentId));
+    expect(dated).toMatchObject({kind:'group',workState:null,holidayGroupId:group.id});
+  });
+
+  it('old open forms redirect to the dated workflow without changing the fallback',async()=>{
+    const hire=await hireOne('Old calendar tab'),fd=new FormData();fd.set('employmentId',hire.employmentId);fd.set('holidayCalendar','state:Selangor');
+    await expect(setEmploymentHolidayCalendarAction(fd)).rejects.toThrow('NEXT_REDIRECT');
+    expect(LAST_REDIRECT).toContain('?tab=attendance#section-holiday-calendar');expect((await empRow(hire.employmentId)).workState).toBeNull();
   });
 
   it('(3) r78c — the Leave tab has NO grade writer left; the grade moves through Movement, tagged', async () => {
@@ -245,12 +250,13 @@ describe('Item 52a30630 — Holiday Calendar → Attendance, Grade → Leave', (
     // to third. Whatever a later round does about grouping, THIS card opens the tab.
     const attendance = panel('attendance', 'bankStatutory: (');
     const holiday = card(attendance, 'holidayCalendarCard');
-    expect(holiday, 'Holiday Calendar before Work Location').toBeLessThan(card(attendance, 'locationCard'));
-    expect(holiday, 'Holiday Calendar before Shift Arrangement').toBeLessThan(card(attendance, 'defaultShiftCard'));
+    expect(attendance).not.toContain('{locationCard}');expect(attendance).not.toContain('{defaultShiftCard}');
+    expect(holiday,'Holiday Calendar before Schedule Group').toBeLessThan(card(attendance,'scheduleGroupCard'));
     expect(holiday, 'Holiday Calendar before Clocking & Geofencing').toBeLessThan(card(attendance, 'clockingCard'));
 
     // Leave: the same decision's other half — Grade pinned above the balance card.
     const leave = panel('leave', 'documents: ');
-    expect(card(leave, 'gradeCard')).toBeLessThan(card(leave, 'leaveBalanceCard'));
+    expect(card(leave, 'gradeCard')).toBeLessThan(card(leave, 'benefitSchemeCard'));
+    expect(leave).not.toContain('{leaveBalanceCard}');
   });
 });

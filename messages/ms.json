@@ -264,7 +264,16 @@
     "breakScalarOnlyHint": "Rehat tanpa masa ditetapkan: {minutes} min, ditolak daripada mana-mana hari 6 jam atau lebih.",
     "breakStopUsingAllowance": "Syif ini menolak satu elaun {minutes} min untuk sepanjang hari.",
     "breakStopUsingTick": "Henti guna",
-    "breakStopUsingHint": "Tandakan ini, kemudian berikan setiap rehat minit Fleksibel tersendiri di bawah."
+    "breakStopUsingHint": "Tandakan ini, kemudian berikan setiap rehat minit Fleksibel tersendiri di bawah.",
+    "legendSearch": "Cari syif mengikut kod atau nama",
+    "legendEmpty": "Tiada syif sepadan",
+    "legendClose": "Tutup petunjuk syif",
+    "publicHoliday": "Cuti umum",
+    "replacementHoliday": "Cuti umum gantian",
+    "approvedLeave": "Cuti diluluskan",
+    "approvedPartLeave": "Cuti diluluskan (sebahagian hari)",
+    "dayContextHelp": "Label hari berasingan daripada penetapan syif. Butiran cuti kekal dalam Cuti.",
+    "colPosition": "Jawatan"
   },
   "common": {
     "appName": "AIHR",
@@ -284,27 +293,6 @@
     }
   },
   "nav": {
-    "workspaceOps": "Ops",
-    "workspaceStrata": "Strata",
-    "workspaceSwitch": "Ruang navigasi",
-    "modulePeople": "Kakitangan",
-    "moduleOnboarding": "Penyertaan & IT",
-    "moduleLeave": "Cuti",
-    "moduleAttendance": "Kehadiran",
-    "sectionMine": "Saya",
-    "sectionTeam": "Pasukan",
-    "sectionHR": "HR",
-    "sectionConfiguration": "Konfigurasi",
-    "talent": "Bakat",
-    "development": "Pembangunan",
-    "workforceInsights": "Cerapan Tenaga Kerja",
-    "systemConfiguration": "Konfigurasi Sistem",
-    "inbox": "Peti masuk",
-    "myPayslips": "Slip Gaji Saya",
-    "taxRelief": "Pelepasan cukai",
-    "reimbursementsDue": "Bayaran balik belum dibayar",
-    "workLocations": "Lokasi",
-    "sharedNavigation": "Navigasi bersama",
     "roster": "Roster",
     "dataPrivacy": "Privasi Data",
     "dashboard": "Papan pemuka",
@@ -445,7 +433,30 @@
     "onboardingGroups": "Kumpulan penugasan",
     "onboardingModuleAccess": "Akses modul",
     "controlTowerOpportunities": "Peluang",
-    "profileChanges": "Perubahan profil"
+    "workspaceOps": "Ops",
+    "workspaceStrata": "Strata",
+    "workspaceSwitch": "Ruang navigasi",
+    "modulePeople": "Kakitangan",
+    "moduleOnboarding": "Penyertaan & IT",
+    "moduleLeave": "Cuti",
+    "moduleAttendance": "Kehadiran",
+    "sectionMine": "Saya",
+    "sectionTeam": "Pasukan",
+    "sectionHR": "HR",
+    "sectionConfiguration": "Konfigurasi",
+    "talent": "Bakat",
+    "development": "Pembangunan",
+    "workforceInsights": "Cerapan Tenaga Kerja",
+    "systemConfiguration": "Konfigurasi Sistem",
+    "inbox": "Peti masuk",
+    "myPayslips": "Slip Gaji Saya",
+    "taxRelief": "Pelepasan cukai",
+    "reimbursementsDue": "Bayaran balik belum dibayar",
+    "workLocations": "Lokasi",
+    "sharedNavigation": "Navigasi bersama",
+    "profileChanges": "Perubahan profil",
+    "leaveSettings": "Tetapan",
+    "attendanceCalendar": "Kalendar Kehadiran"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -3772,7 +3783,7 @@
     "correctionRejected": "Pembetulan itu tidak dapat direkodkan.",
     "correctionPendingAnotherApprover": "Disimpan, tetapi memerlukan pelulus lain: anda tidak boleh meluluskan pembetulan kehadiran anda sendiri.",
     "correctionSaved": "Pembetulan disimpan dan digunakan.",
-    "myDayBack": "Kembali ke Ringkasan Kehadiran",
+    "myDayBack": "Kembali ke Kalendar Kehadiran",
     "myDayPending": "Menunggu kelulusan — pembetulan lain tidak boleh dihantar untuk tarikh ini.",
     "myDayFuture": "Tarikh akan datang tidak boleh dibetulkan.",
     "myDayBadTimes": "Waktu keluar mestilah selepas waktu masuk.",
@@ -3913,6 +3924,11 @@
       "capProgress": "{used} / {cap} minit",
       "recordedDuration": "Kerja lebih masa direkodkan",
       "summaryNote": "Jumlah kerja lebih masa menggunakan pengiraan yang direkodkan bagi setiap hari dan mengekalkan minit tepat. Hari yang tidak tersedia menjadikan jumlah tidak lengkap. Waktu kerja, ketidakhadiran dan penanda mingguan mengekalkan peraturan Kehadiran. Amaran bulanan menggunakan had sedia ada 104 jam."
+    },
+    "myCalendar": {
+      "title": "Kalendar Kehadiran",
+      "records": "Senarai rekod kehadiran",
+      "viewDate": "Lihat kehadiran untuk {date}"
     }
   },
   "org": {
@@ -21762,5 +21778,113 @@
     "invalidReview": "Semakan tamat tempoh atau berubah. Pratonton buku kerja ini semula sebelum menyimpan.",
     "scope": "Anda tiada akses mengurus penetapan kad ini. Segar semula pilihan syarikat.",
     "catalogueLimit": "Pilihan terlalu besar untuk dieksport atau terlalu banyak padanan. Pilih satu syarikat atau kecilkan pengecam pekerja."
+  },
+  "leaveSettingsHub": {
+    "title": "Tetapan Cuti",
+    "subtitle": "Konfigurasikan kelayakan, baki, akruan, kelulusan dan peraturan cuti syarikat.",
+    "open": "Buka",
+    "back": "Kembali ke Tetapan Cuti"
+  },
+  "leaveSplitReview": {
+    "title": "Semak pecahan cuti terdahulu",
+    "description": "Kemungkinan perbezaan pada baki hari yang diluluskan",
+    "uncertainty": "Ini ialah calon semakan, bukan kesilapan gaji yang terbukti. Nilai dibandingkan dengan rekod asal semasa; suntingan sah kemudian atau bukti yang tiada mungkin menjelaskan perbezaan. Tiada rekod diubah.",
+    "empty": "Tiada calon semakan dalam pilihan ini. Ini tidak mengesahkan gaji terdahulu.",
+    "employee": "Pekerja",
+    "leave": "Rujukan dan tarikh cuti",
+    "differences": "Fakta untuk disemak",
+    "evidence": "Bukti tersedia",
+    "root": "Rujukan asal: {reference}",
+    "unresolved": "Bukti asal tidak dapat dijejaki sepenuhnya.",
+    "candidate": "Semakan HR diperlukan; tiada pembetulan automatik.",
+    "charging": {
+      "charged": "Debit bersumber direkodkan",
+      "uncharged_import": "Diimport; tiada debit bersumber",
+      "no_debit_evidence": "Tiada debit bersumber ditemui"
+    },
+    "fields": {
+      "employeeRemark": "Catatan pekerja",
+      "consent": "Persetujuan cuti tanpa gaji",
+      "maternity": "Butiran bersalin",
+      "allowanceEligible": "Kelayakan elaun",
+      "unpaidDays": "Hari tanpa gaji",
+      "entitlementYear": "Tahun kelayakan",
+      "submission": "Butiran penyerahan asal",
+      "importedHistory": "Penanda sejarah import",
+      "reason": "Sebab permohonan",
+      "lineage": "Jejak tidak lengkap atau berkitar"
+    }
+  },
+  "payrollLeaveFollowup": {
+    "title": "Perubahan cuti selepas gaji ditutup",
+    "description": "Semak kesan dan simpan penyelesaiannya",
+    "noMoneyChange": "Slip gaji tertutup tidak berubah. Semakan ini tidak mencatat potongan atau membawa wang ke hadapan secara automatik.",
+    "error": "Penyelesaian tidak disimpan. Semak penjelasan dan larian pelarasan, kemudian cuba lagi atau muat semula jika sudah selesai.",
+    "dates": "Tarikh pengagihan terjejas",
+    "adjustmentReference": "Larian pelarasan tertutup",
+    "resolvedAt": "Diselesaikan pada",
+    "resolution": "Penyelesaian",
+    "chooseResolution": "Pilih penyelesaian",
+    "chooseAdjustment": "Tiada larian pelarasan dipilih",
+    "adjustmentHelp": "Untuk pelarasan, pilih larian pelarasan tertutup yang merangkumi pekerja ini. Jika tiada pelarasan, biarkan kosong dan jelaskan sebabnya.",
+    "explanation": "Penjelasan",
+    "resolve": "Rekod penyelesaian",
+    "states": {
+      "open": "Perlu semakan",
+      "resolved": "Selesai"
+    },
+    "outcomes": {
+      "adjustment": "Pelarasan direkodkan",
+      "no_adjustment": "Tiada pelarasan diperlukan"
+    },
+    "sources": {
+      "approval": "Cuti diluluskan",
+      "charged_import": "Sejarah cuti bercaj diimport"
+    },
+    "busy": "Gaji sedang dikemas kini. Cuba perubahan cuti ini sekali lagi selepas operasi itu selesai.",
+    "closed": "Perubahan cuti ini menjejaskan gaji tertutup dan memerlukan semakan HR Gaji.",
+    "explanationUnavailable": "Penjelasan tidak tersedia.",
+    "leaveReference": "Rujukan cuti",
+    "recordedBy": "Direkodkan oleh {name}",
+    "resolvedBy": "Diselesaikan oleh {name}",
+    "unknownActor": "Pelaku tidak tersedia"
+  },
+  "holidayCalendarAssignments": {
+    "title": "Kalendar Cuti",
+    "add": "Tambah kalendar",
+    "edit": "Edit penetapan",
+    "calendar": "Kalendar",
+    "start": "Tarikh Mula",
+    "end": "Tarikh Tamat",
+    "endHelp": "Tarikh terakhir yang disertakan. Biarkan kosong jika tiada tarikh tamat.",
+    "noEnd": "Tiada tarikh tamat",
+    "actions": "Tindakan",
+    "companyDefault": "Kalendar lalai syarikat",
+    "groups": "Kumpulan cuti",
+    "states": "Negeri kerja",
+    "inactive": "Tidak aktif",
+    "unavailableCalendar": "Kalendar tidak tersedia",
+    "fallback": "Kalendar tanpa tarikh: {calendar}. Digunakan hanya pada hari tanpa penetapan bertarikh.",
+    "empty": "Tiada penetapan bertarikh. Kalendar tanpa tarikh sedia ada kekal sebagai pilihan sandaran.",
+    "saved": "Kalendar disimpan. {count} rekod kehadiran lengkap dikira semula.",
+    "review": "{count} rekod kehadiran tidak lengkap perlu disemak:",
+    "saving": "Menyimpan…",
+    "save": "Simpan penetapan",
+    "cancel": "Batal",
+    "protection": "Gaji yang ditutup dan cuti gantian yang diperoleh dilindungi. Perubahan ini tidak boleh menulis semula rekod tersebut.",
+    "history": "Penetapan diganti ({count})",
+    "replaced": "Diganti",
+    "editNamed": "Edit {calendar}, bermula {date}",
+    "errors": {
+      "dates": "Pilih tarikh sah dalam tempoh pekerjaan. Tarikh Tamat tidak boleh sebelum Tarikh Mula.",
+      "overlap": "Tempoh ini bertindih dengan kalendar aktif lain. Edit atau pendekkan penetapan itu dahulu.",
+      "changed": "Penetapan ini telah berubah. Muat semula sebelum mengedit.",
+      "scope": "Anda tidak boleh mengurus kalendar pekerja ini.",
+      "calendar": "Pilih kumpulan cuti tersedia atau negeri kerja yang sah.",
+      "closedPayroll": "Perubahan ini menjejaskan gaji ditutup. Semak gaji sebelum menukar kalendar.",
+      "credit": "Perubahan ini menjejaskan cuti gantian diperoleh. Semak kredit sedia ada dahulu.",
+      "tooMany": "Sejarah atau tempoh tarikh melebihi saiz disokong. Kecilkan tempoh atau minta semakan.",
+      "failed": "Kalendar tidak dapat disimpan. Semak tarikh dan cuba lagi."
+    }
   }
 }

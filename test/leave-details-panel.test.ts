@@ -396,8 +396,8 @@ describe('Leave Details panel: both call sites feed the trimmed §1 summary + vi
 
   it('r303: only the HR call site switches the per-line sentences on; the employee dashboard never does', () => {
     expect(read('/components/leave/my-leave-dashboard.tsx')).not.toContain('hrExplanation');
-    // Personnel: only for an HR administrator (isAdmin(s), in ./leave-breakdowns.ts) — see test/r303-personnel-leave-explain.test.ts.
-    expect(read('/app/admin/personnel/[employmentId]/page.tsx')).toContain('hrExplanation={personnelHrExplanation(s, b.sharedBalance)}');
+    // 39306a9e: Personnel no longer mounts the duplicate balance/explanation card.
+    expect(read('/app/admin/personnel/[employmentId]/page.tsx')).not.toContain('<EntitlementBreakdown');
     expect(read('/app/leave/employee-balances/page.tsx')).toContain('hrExplanation={r.hrExplanation}');
   });
 

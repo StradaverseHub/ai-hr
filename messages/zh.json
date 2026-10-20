@@ -264,7 +264,16 @@
     "breakScalarOnlyHint": "无固定时间的休息：{minutes} 分钟，自任何 6 小时或以上的工作日中扣除。",
     "breakStopUsingAllowance": "此班次为全天扣除 {minutes} 分钟的津贴。",
     "breakStopUsingTick": "停止使用",
-    "breakStopUsingHint": "勾选此项，然后在下方为每个休息分别设定其弹性分钟数。"
+    "breakStopUsingHint": "勾选此项，然后在下方为每个休息分别设定其弹性分钟数。",
+    "legendSearch": "按代码或名称搜索班次",
+    "legendEmpty": "没有匹配班次",
+    "legendClose": "关闭班次图例",
+    "publicHoliday": "公共假期",
+    "replacementHoliday": "替代公共假期",
+    "approvedLeave": "已批准休假",
+    "approvedPartLeave": "已批准休假（部分时段）",
+    "dayContextHelp": "日期标签与排班分开。休假详情保留在休假模块中。",
+    "colPosition": "职位"
   },
   "common": {
     "appName": "AIHR",
@@ -284,27 +293,6 @@
     }
   },
   "nav": {
-    "workspaceOps": "运营",
-    "workspaceStrata": "战略",
-    "workspaceSwitch": "导航工作区",
-    "modulePeople": "人员",
-    "moduleOnboarding": "入职与 IT",
-    "moduleLeave": "休假",
-    "moduleAttendance": "考勤",
-    "sectionMine": "我的",
-    "sectionTeam": "团队",
-    "sectionHR": "人力资源",
-    "sectionConfiguration": "配置",
-    "talent": "人才",
-    "development": "发展",
-    "workforceInsights": "人力洞察",
-    "systemConfiguration": "系统配置",
-    "inbox": "收件箱",
-    "myPayslips": "我的工资单",
-    "taxRelief": "税务减免",
-    "reimbursementsDue": "待支付报销",
-    "workLocations": "地点",
-    "sharedNavigation": "通用导航",
     "roster": "排班",
     "dataPrivacy": "数据隐私",
     "dashboard": "仪表盘",
@@ -445,7 +433,30 @@
     "onboardingGroups": "分配小组",
     "onboardingModuleAccess": "模块权限",
     "controlTowerOpportunities": "机会",
-    "profileChanges": "个人资料变更"
+    "workspaceOps": "运营",
+    "workspaceStrata": "战略",
+    "workspaceSwitch": "导航工作区",
+    "modulePeople": "人员",
+    "moduleOnboarding": "入职与 IT",
+    "moduleLeave": "休假",
+    "moduleAttendance": "考勤",
+    "sectionMine": "我的",
+    "sectionTeam": "团队",
+    "sectionHR": "人力资源",
+    "sectionConfiguration": "配置",
+    "talent": "人才",
+    "development": "发展",
+    "workforceInsights": "人力洞察",
+    "systemConfiguration": "系统配置",
+    "inbox": "收件箱",
+    "myPayslips": "我的工资单",
+    "taxRelief": "税务减免",
+    "reimbursementsDue": "待支付报销",
+    "workLocations": "地点",
+    "sharedNavigation": "通用导航",
+    "profileChanges": "个人资料变更",
+    "leaveSettings": "设置",
+    "attendanceCalendar": "考勤日历"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -3772,7 +3783,7 @@
     "correctionRejected": "无法记录该更正。",
     "correctionPendingAnotherApprover": "已保存，但需另一位审批人：您不能审批自己的考勤更正。",
     "correctionSaved": "更正已保存并生效。",
-    "myDayBack": "返回考勤概览",
+    "myDayBack": "返回考勤日历",
     "myDayPending": "待审批 — 此日期无法再次提交更正。",
     "myDayFuture": "无法更正未来日期。",
     "myDayBadTimes": "签退时间必须晚于签到时间。",
@@ -3913,6 +3924,11 @@
       "capProgress": "{used} / {cap} 分钟",
       "recordedDuration": "已记录加班",
       "summaryNote": "加班总计使用每天已记录的计算结果，并保留精确分钟数。存在不可用的日期时，总计不完整。工时、缺勤及每周标记仍沿用考勤规则。每月提醒使用现有的 104 小时上限。"
+    },
+    "myCalendar": {
+      "title": "考勤日历",
+      "records": "考勤记录列表",
+      "viewDate": "查看 {date} 的考勤"
     }
   },
   "org": {
@@ -21762,5 +21778,113 @@
     "invalidReview": "审核已过期或变更。保存前请重新预览此工作簿。",
     "scope": "您无权管理这些卡号分配。请刷新公司选择。",
     "catalogueLimit": "所选范围过大或匹配过多。请选择单一公司或缩小员工编号范围。"
+  },
+  "leaveSettingsHub": {
+    "title": "休假设置",
+    "subtitle": "配置休假额度、余额、累计、审批及公司休假规则。",
+    "open": "打开",
+    "back": "返回休假设置"
+  },
+  "leaveSplitReview": {
+    "title": "检查以往的休假拆分",
+    "description": "剩余已批准日期上可能存在的差异",
+    "uncertainty": "这些仅为待审核项目，并非已证实的薪资错误。数值与当前原始记录比较；后续合法修改或缺失证据可能解释差异。不会更改任何记录。",
+    "empty": "当前范围没有待审核项目。这并不代表历史薪资已获确认。",
+    "employee": "员工",
+    "leave": "休假编号及日期",
+    "differences": "待审核事实",
+    "evidence": "现有证据",
+    "root": "原始编号：{reference}",
+    "unresolved": "无法完整追溯原始证据。",
+    "candidate": "需要人事审核；不会自动更正。",
+    "charging": {
+      "charged": "已记录关联扣账",
+      "uncharged_import": "导入记录；无关联扣账",
+      "no_debit_evidence": "未找到关联扣账"
+    },
+    "fields": {
+      "employeeRemark": "员工备注",
+      "consent": "无薪假同意记录",
+      "maternity": "产假详情",
+      "allowanceEligible": "津贴资格",
+      "unpaidDays": "无薪天数",
+      "entitlementYear": "额度所属年份",
+      "submission": "原始提交详情",
+      "importedHistory": "导入历史标记",
+      "reason": "申请原因",
+      "lineage": "追溯不完整或存在循环"
+    }
+  },
+  "payrollLeaveFollowup": {
+    "title": "薪资关闭后的休假变更",
+    "description": "检查影响并保留处理结果",
+    "noMoneyChange": "已关闭的工资单保持不变。此审核不会自动扣款或将金额结转到以后。",
+    "error": "处理结果未保存。请检查说明及所选调整批次后重试；如已处理，请刷新。",
+    "dates": "受影响的归属日期",
+    "adjustmentReference": "已关闭的调整批次",
+    "resolvedAt": "处理时间",
+    "resolution": "处理方式",
+    "chooseResolution": "选择处理方式",
+    "chooseAdjustment": "未选择调整批次",
+    "adjustmentHelp": "如需调整，请选择包含此员工的已关闭调整批次。如无需调整，请留空并说明原因。",
+    "explanation": "说明",
+    "resolve": "记录处理结果",
+    "states": {
+      "open": "待审核",
+      "resolved": "已处理"
+    },
+    "outcomes": {
+      "adjustment": "已记录调整",
+      "no_adjustment": "无需调整"
+    },
+    "sources": {
+      "approval": "休假已批准",
+      "charged_import": "已导入计扣休假历史"
+    },
+    "busy": "薪资正在更新。请在该操作完成后重试此休假变更。",
+    "closed": "此休假变更影响已关闭薪资，需要薪资人事审核。",
+    "explanationUnavailable": "说明不可用。",
+    "leaveReference": "休假编号",
+    "recordedBy": "记录人：{name}",
+    "resolvedBy": "处理人：{name}",
+    "unknownActor": "操作人信息不可用"
+  },
+  "holidayCalendarAssignments": {
+    "title": "假日日历",
+    "add": "添加日历",
+    "edit": "编辑分配",
+    "calendar": "日历",
+    "start": "开始日期",
+    "end": "结束日期",
+    "endHelp": "包含的最后一天。留空表示无结束日期。",
+    "noEnd": "无结束日期",
+    "actions": "操作",
+    "companyDefault": "公司默认日历",
+    "groups": "假日组",
+    "states": "工作州属",
+    "inactive": "停用",
+    "unavailableCalendar": "日历不可用",
+    "fallback": "无日期备用设置：{calendar}。仅用于没有日期分配的日期。",
+    "empty": "没有日期分配，现有无日期日历仍为备用设置。",
+    "saved": "日历已保存，已重新计算 {count} 条完整考勤记录。",
+    "review": "有 {count} 条不完整考勤记录需复核：",
+    "saving": "正在保存…",
+    "save": "保存分配",
+    "cancel": "取消",
+    "protection": "已关闭的薪资及已取得的补休受保护，此更改不能改写它们。",
+    "history": "已替换的分配（{count}）",
+    "replaced": "已替换",
+    "editNamed": "编辑从 {date} 开始的 {calendar}",
+    "errors": {
+      "dates": "请选择雇佣期间内的有效日期，结束日期不能早于开始日期。",
+      "overlap": "该期间与其他有效日历重叠，请先编辑或缩短该分配。",
+      "changed": "此分配已更改，请刷新后再编辑。",
+      "scope": "您无权管理此员工的日历。",
+      "calendar": "请选择可用假日组或有效工作州属。",
+      "closedPayroll": "此更改影响已关闭的薪资，请先复核薪资。",
+      "credit": "此更改影响已取得的补休，请先复核现有补休。",
+      "tooMany": "历史记录或日期范围超过支持大小，请缩小范围或申请复核。",
+      "failed": "无法保存日历，请检查日期后重试。"
+    }
   }
 }

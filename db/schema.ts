@@ -3861,6 +3861,19 @@ export const absenceReasonEnum = pgEnum('absence_reason', [
   'other',
 ]);
 
+/** Half-open calendar periods; edits supersede a version and retain its recorded facts. */
+export const employmentHolidayCalendar = pgTable('employment_holiday_calendar', {
+  id: id(), tenantId: tenantId(),
+  employmentId: uuid('employment_id').notNull().references(() => employment.id),
+  validFrom: date('valid_from').notNull(), validTo: date('valid_to'),
+  kind: text('kind').$type<'none' | 'state' | 'group'>().notNull(),
+  workState: text('work_state'), holidayGroupId: uuid('holiday_group_id').references(() => holidayGroup.id),
+  replacesId: uuid('replaces_id').unique().references((): AnyPgColumn => employmentHolidayCalendar.id),
+  recordedBy: uuid('recorded_by').notNull().references(() => appUser.id),
+  recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
+  supersededAt: timestamp('superseded_at', { withTimezone: true }),
+});
+
 // One row per employee per day. Absence is derived (no row); we store present/late/half_day.
 export const attendance = pgTable(
   'attendance',
@@ -10575,3 +10588,19 @@ export const lcOnboardingPrivateRevision=pgTable('lc_onboarding_private_revision
  caseId:uuid('case_id').notNull().references(()=>lcOnboardingCase.id),revision:integer('revision').notNull(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
  data:jsonb('data').$type<typeof lcOnboardingPrivate.$inferSelect.data>().notNull(),createdAt:createdAt(),
 },t=>[primaryKey({columns:[t.caseId,t.revision]})]);
+
+/** Closed-payroll leave follow-up, not a payroll input or automatic adjustment. */
+export const payrollLeaveException = pgTable('payroll_leave_exception', {
+  id: id(), tenantId: tenantId(), batchId: uuid('batch_id').notNull().references(() => payrollBatch.id),
+  employmentId: uuid('employment_id').notNull().references(() => employment.id),
+  leaveRequestId: uuid('leave_request_id').notNull().references(() => leaveRequest.id),
+  sourceAction: text('source_action').notNull().$type<'approval' | 'charged_import'>(),
+  sourceRevision: text('source_revision').notNull(),
+  affectedDates: jsonb('affected_dates').notNull().$type<string[]>(),
+  createdBy: uuid('created_by').notNull().references(() => appUser.id), createdAt: createdAt(),
+  status: text('status').notNull().default('open').$type<'open' | 'resolved'>(),
+  resolution: text('resolution').$type<'adjustment' | 'no_adjustment'>(),
+  adjustmentBatchId: uuid('adjustment_batch_id').references(() => payrollBatch.id),
+  explanation: text('explanation'), resolvedBy: uuid('resolved_by').references(() => appUser.id),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+}, t => [index('payroll_leave_exception_batch').on(t.tenantId, t.batchId, t.status, t.createdAt)]);

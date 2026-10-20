@@ -116,3 +116,9 @@ export async function lockPayrollForOwnAttendanceRemoval(tx:Tx,employmentId:stri
   const rows=await tx.execute(sql`select * from app.own_attendance_removal_payroll_protection(${employmentId}::uuid)`) as unknown as Parameters<typeof attendanceCoverage>[0];
   return attendanceCoverage(rows,date);
 }
+
+/** Calendar changes protect implicit absence days as well as stored Attendance rows. */
+export async function lockPayrollForHolidayCalendarTx(tx:Tx,employmentId:string) {
+  const rows=await tx.execute(sql`select * from app.attendance_payroll_protection(${employmentId}::uuid)`) as unknown as Parameters<typeof attendanceCoverage>[0];
+  return rows.map(row=>({batchId:row.batch_id,status:row.status,...cutOffWindowFor('attendance',row.policy_config,{attendanceCutOffDay:row.attendance_cutoff_day},row.pay_period)}));
+}

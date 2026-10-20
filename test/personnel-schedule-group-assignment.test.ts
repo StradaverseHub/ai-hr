@@ -161,14 +161,16 @@ beforeEach(async () => {
 describe('§1 the Schedule Group field on the Personnel Attendance tab', () => {
   it('(1) renders inside the tab save scope, under Holiday Calendar and above Clocking', () => {
     const page = PAGE();
-    const scope = page.slice(page.indexOf('tabKey="attendance"'), page.indexOf('</TabSaveScope>', page.indexOf('tabKey="attendance"')));
-    const holiday = scope.indexOf('{holidayCalendarCard}');
+    const panelStart=page.indexOf('attendance: ('),scopeStart=page.indexOf('tabKey="attendance"',panelStart),scopeEnd=page.indexOf('</TabSaveScope>',scopeStart);
+    expect(panelStart).toBeGreaterThan(-1);expect(scopeStart).toBeGreaterThan(panelStart);expect(scopeEnd).toBeGreaterThan(scopeStart);
+    const scope=page.slice(scopeStart,scopeEnd),holiday=page.indexOf('{holidayCalendarCard}',panelStart);
+    expect(holiday).toBeGreaterThan(panelStart);expect(holiday).toBeLessThan(scopeStart);expect(scope).not.toContain('{holidayCalendarCard}');
     const group = scope.indexOf('{scheduleGroupCard}');
     const clocking = scope.indexOf('{clockingCard}');
-    expect(holiday, 'Holiday Calendar is on this tab').toBeGreaterThan(-1);
+
     expect(group, 'the Schedule Group card is on this tab').toBeGreaterThan(-1);
     // Item 52a30630 pinned Holiday Calendar to the top of this tab; f513ec02 must not reverse that.
-    expect(holiday, 'Holiday Calendar stays first').toBeLessThan(group);
+    expect(scope.length).toBeGreaterThan(100);
     expect(group, 'Schedule Group sits above Clocking & Geofencing').toBeLessThan(clocking);
   });
 
@@ -183,7 +185,7 @@ describe('§1 the Schedule Group field on the Personnel Attendance tab', () => {
     const page = PAGE();
     const from = page.indexOf('const scheduleGroupCard');
     expect(from, 'the card exists').toBeGreaterThan(-1);
-    const end = page.indexOf('const locationCard', from);
+    const end = page.indexOf('const leaveRequestsCard', from);
     expect(end, 'the following card bounds this assertion').toBeGreaterThan(from);
     const card = page.slice(from, end);
     expect(card.length).toBeGreaterThan(100);
@@ -206,7 +208,7 @@ describe('§1 the Schedule Group field on the Personnel Attendance tab', () => {
     expect(page).toContain('data-save-section="schedule"');
     // `covers` prints the card names on the sticky bar; a card in the scope but not named is a bar that
     // owns more than it says (r255/r256 both had to correct that).
-    expect(page).toContain("attendance: [t('holidayCalendarCardTitle'), t('scheduleGroupCardTitle'), ...whenLive(tc('assignmentTitle')), ...whenLive(tc('webClockingTitle'))],");
+    expect(page).toContain("attendance: [t('scheduleGroupCardTitle'), ...whenLive(tc('assignmentTitle')), ...whenLive(tc('webClockingTitle'))],");
     expect(ACTIONS()).toContain('schedule: applyScheduleGroupSection,');
   });
 

@@ -3300,6 +3300,20 @@
       "breakpoints": true
     },
     {
+      "idx": 572,
+      "version": "7",
+      "when": 1791900000052,
+      "tag": "0572_leave_payroll_followup",
+      "breakpoints": true
+    },
+    {
+      "idx": 573,
+      "version": "7",
+      "when": 1791900000053,
+      "tag": "0573_employment_holiday_calendar",
+      "breakpoints": true
+    },
+    {
       "idx": 574,
       "version": "7",
       "when": 1791900000054,

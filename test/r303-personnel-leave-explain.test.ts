@@ -1,103 +1,65 @@
-/**
- * r303 (31492f74) — "FOR HR ONLY" ON THE PERSONNEL RECORD, DECIDED BY THE VIEWER'S OWN SESSION.
- *
- * The approved plan says the Leave Summary sentences are for HR only. The Personnel record already gates its
- * HR-only parts (pay, statutory, the benefit scheme view) on `isAdmin(s)` (lib/authz.ts), and the r303 mount
- * must use the same predicate: an HR administrator's breakdown carries the per-line working and the panel gets
- * the HR switch; anybody else — a manager looking at a report — gets exactly what the base gave them: no
- * working in the payload, no switch, so the panel keeps its icons and shows no sentences (the rendered
- * consequence of an absent switch is pinned byte for byte in test/r303-leave-summary-explain.dom.test.tsx).
- *
- * Driven through app/admin/personnel/[employmentId]/leave-breakdowns.ts with REAL sessions and RLS, not grepped.
- * // substrate: read-only, no event
- */
-import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { SessionContext } from '../db/client';
-import { hireEmployee, setReportingLine } from '../core/org';
-import { isAdmin } from '../lib/authz';
-import { personnelHrExplanation, personnelLeaveBreakdowns } from '../app/admin/personnel/[employmentId]/leave-breakdowns';
-import { adminCtx, closeAll, createAppUser, migrateTestDb, resetDb, seedBase, seedEntitlement, type Base } from './harness';
-
-let b: Base;
-
-beforeAll(async () => {
-  await migrateTestDb();
-});
-beforeEach(async () => {
-  await resetDb();
-  b = await seedBase();
-});
-afterAll(async () => {
-  await closeAll();
-});
-
-const AS_OF = '2026-06-30';
-
-const hire = (name: string, grant: boolean) =>
-  hireEmployee(adminCtx(b), {
-    person: { fullName: name, primaryEmail: `r303p_${randomUUID().slice(0, 8)}@t.local` },
-    companyId: b.companyId,
-    departmentId: b.deptA,
-    employmentType: 'full_time',
-    hiredOn: '2026-01-05',
-    grantLeaveTypes: grant ? [{ id: b.annualLeaveTypeId, code: 'ANNUAL' }] : [],
-  });
-
-async function reportAndManager() {
-  await seedEntitlement(adminCtx(b), { leaveTypeId: b.annualLeaveTypeId, annualDays: 12, validFrom: '2025-01-01' });
-  const report = await hire('Report', true);
-  const manager = await hire('Manager', false);
-  await setReportingLine(adminCtx(b), {
-    subordinateEmploymentId: report.employmentId,
-    managerEmploymentId: manager.employmentId,
-    lineType: 'administrative',
-    validFrom: '2026-01-05',
-  });
-  const mgrCtx: SessionContext = {
-    tenantId: b.tenantId,
-    userId: await createAppUser(b.tenantId, manager.personId, 'manager'),
-    personId: manager.personId,
-    roles: ['manager'],
-    entitlements: adminCtx(b).entitlements,
-  };
-  return { report, mgrCtx };
+/** 39306a9e supersedes the Personnel balance mount. Pin its removal and every retained capability. */
+import fs from 'node:fs';
+import path from 'node:path';
+import ts from 'typescript';
+import { describe, expect, it } from 'vitest';
+import type { PersonnelTabKey } from '../components/personnel-tabs';
+import { RETIRED_PERSONNEL_TABS } from '../lib/personnel-tab-sections';
+const read = (p: string) => fs.readFileSync(path.join(__dirname, '..', p), 'utf8');
+const source = read('app/admin/personnel/[employmentId]/page.tsx');
+const ast = ts.createSourceFile('page.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+function declaration(name: string) {
+  let found: ts.VariableDeclaration | undefined;
+  function visit(node: ts.Node) {
+    if (ts.isVariableDeclaration(node) && node.name.getText(ast) === name) found = node;
+    ts.forEachChild(node, visit);
+  }
+  visit(ast); return found;
 }
-
-describe('r303 — Personnel: HR sentences and working only for an HR administrator', () => {
-  it('a manager viewing a report gets the breakdown with NO derivation and NO HR switch; an HR admin gets both', async () => {
-    const { report, mgrCtx } = await reportAndManager();
-    const hr = adminCtx(b);
-    // Guard the guard: the two sessions really are on either side of the page's own predicate.
-    expect(isAdmin(mgrCtx)).toBe(false);
-    expect(isAdmin(hr)).toBe(true);
-
-    const [asManager] = await personnelLeaveBreakdowns(mgrCtx, report.employmentId, [b.annualLeaveTypeId], AS_OF);
-    const [asHr] = await personnelLeaveBreakdowns(hr, report.employmentId, [b.annualLeaveTypeId], AS_OF);
-    // Not vacuous: the manager DOES read the report's breakdown (RLS lets a line manager see it) …
-    expect(asManager, 'the manager reads the breakdown').not.toBeNull();
-    expect(asManager!.currentYearEntitlement).toBeGreaterThan(0);
-    // … with exactly the base's shape: no working in the payload …
-    expect(Object.keys(asManager!), 'manager payload carries no derivation').not.toContain('derivation');
-    // … and no HR switch, so the panel renders its icons and no sentences.
-    expect(personnelHrExplanation(mgrCtx, null), 'manager gets no HR switch').toBeUndefined();
-
-    // HR administrator: the working and the switch.
-    expect(asHr!.derivation, 'HR admin payload carries the derivation').toBeTruthy();
-    expect(personnelHrExplanation(hr, null)).toEqual({ sharedBalance: null });
-    // The figures themselves are the same for both viewers; only the explanation layer differs.
-    const { derivation: _d, ...hrFigures } = asHr!;
-    expect(hrFigures).toEqual(asManager);
+function panel(name: string) {
+  const panels = declaration('panels')?.initializer;
+  expect(panels && ts.isObjectLiteralExpression(panels)).toBe(true);
+  if (!panels || !ts.isObjectLiteralExpression(panels)) throw Error('Panel map missing');
+  return panels.properties.find(p => ts.isPropertyAssignment(p) && p.name.getText(ast) === name)?.getText(ast);
+}
+const selfServiceHistoryTab: PersonnelTabKey = 'others';
+describe('Personnel retains the Others capabilities at their new homes', () => {
+  it('removes only duplicated balance/history data loading and the Others tab', () => {
+    for (const name of ['leaveBalanceCard', 'recalcHistoryCard']) expect(declaration(name)).toBeUndefined();
+    expect(source).not.toContain('leaveBalances('); expect(source).not.toContain('listEntitlementRecalcAudit(');
+    expect(source).not.toContain('personnelLeaveBreakdowns'); expect(source).not.toContain('<EntitlementBreakdown');
+    expect(source).not.toContain("t('tabs.others')"); expect(panel('others')).toBeUndefined();
+    expect(source).toContain('leaveRequestsFor(s, employmentId)');
+    expect(source).toContain('benefitSchemeView(s, employmentId, schemeAsOf)');
   });
-
-  it('the page decides with the viewer’s own session, through the helpers — not with a literal switch', () => {
-    const page = readFileSync(join(process.cwd(), 'app/admin/personnel/[employmentId]/page.tsx'), 'utf8');
-    expect(page).toContain('const admin = isAdmin(s);');
-    expect(page).toContain('await personnelLeaveBreakdowns(s, employmentId, balances.map((b) => b.leaveTypeId), breakdownAsOf)');
-    expect(page).toContain('hrExplanation={personnelHrExplanation(s, b.sharedBalance)}');
-    // No second breakdown read on the page that could carry the working past the gate.
-    expect(page).not.toMatch(/leaveEntitlementBreakdown\(/);
+  it('keeps audit/privacy outside the Profile save scope, requests in Leave and reviews in Employment', () => {
+    expect(panel('profile')).toContain('{profilePanel}{changeHistoryCard}{dataPrivacyCard}');
+    expect(declaration('profilePanel')?.getText(ast)).not.toMatch(/changeHistoryCard|dataPrivacyCard/);
+    for (const name of ['gradeCard', 'benefitSchemeCard', 'leaveRequestsCard']) expect(panel('leave')).toContain(`{${name}}`);
+    expect(panel('job')).toContain('{reviewCard}');
+    for (const name of ['changeHistoryCard', 'dataPrivacyCard']) expect(declaration(name)?.getText(ast)).toMatch(/admin\s*\?/);
+    expect(declaration('reviewCard')?.getText(ast)).toMatch(/!emp\.terminatedOn && admin/);
+    expect(source).toContain('saveProfileTabAction'); expect(source).toContain('saveJobTabAction');
+  });
+  it('preserves the shared self-service history tab while retiring only the admin tab', () => {
+    expect(selfServiceHistoryTab).toBe('others');
+    const selfService = read('app/me/profile-editor.tsx');
+    expect(selfService).toContain("key==='others'");
+    expect(selfService).toContain("t('requestHistory')");
+  });
+  it('retains saved links and stable report/permission field IDs after relabelling their tab', () => {
+    expect(RETIRED_PERSONNEL_TABS.others).toBe('profile');
+    expect(source).toContain("rawSearchParams.tab === 'others'");
+    expect(source).toContain("query.set('tab', retiredDestination)");
+    expect(source).toContain('redirect(`/admin/personnel/${encodeURIComponent(employmentId)}?${query}`)');
+    const registry = read('lib/personnel-field-registry.ts');
+    const rows = registry.split('\n').filter(line => line.includes('"id":"others.'));
+    expect(rows.length).toBeGreaterThan(10);
+    for (const row of rows) {
+      if (row.includes('"id":"others.change_history.')) expect(row).toContain('"tab":"Profile"');
+      if (row.includes('"id":"others.leave_requests.')) expect(row).toContain('"tab":"Leave"');
+      expect(row).not.toContain('"tab":"Others"');
+    }
+    expect(read('app/leave/employee-balances/page.tsx')).toContain('hrExplanation={r.hrExplanation}');
   });
 });

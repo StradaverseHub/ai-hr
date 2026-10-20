@@ -264,7 +264,16 @@
     "breakScalarOnlyHint": "Giờ nghỉ không có thời gian cố định: {minutes} phút, bị trừ khỏi bất kỳ ngày nào từ 6 giờ trở lên.",
     "breakStopUsingAllowance": "Ca này trừ một khoản phụ cấp {minutes} phút cho cả ngày.",
     "breakStopUsingTick": "Ngừng sử dụng",
-    "breakStopUsingHint": "Đánh dấu ô này, sau đó cho mỗi giờ nghỉ số phút Linh hoạt riêng bên dưới."
+    "breakStopUsingHint": "Đánh dấu ô này, sau đó cho mỗi giờ nghỉ số phút Linh hoạt riêng bên dưới.",
+    "legendSearch": "Tìm ca theo mã hoặc tên",
+    "legendEmpty": "Không có ca phù hợp",
+    "legendClose": "Đóng chú giải ca",
+    "publicHoliday": "Ngày lễ",
+    "replacementHoliday": "Ngày nghỉ lễ bù",
+    "approvedLeave": "Nghỉ phép đã duyệt",
+    "approvedPartLeave": "Nghỉ phép đã duyệt (một phần ngày)",
+    "dayContextHelp": "Nhãn ngày tách biệt với phân ca. Chi tiết nghỉ phép nằm trong mục Nghỉ phép.",
+    "colPosition": "Chức vụ"
   },
   "common": {
     "appName": "AIHR",
@@ -284,27 +293,6 @@
     }
   },
   "nav": {
-    "workspaceOps": "Ops",
-    "workspaceStrata": "Strata",
-    "workspaceSwitch": "Không gian điều hướng",
-    "modulePeople": "Nhân sự",
-    "moduleOnboarding": "Hội nhập & IT",
-    "moduleLeave": "Nghỉ phép",
-    "moduleAttendance": "Chấm công",
-    "sectionMine": "Của tôi",
-    "sectionTeam": "Nhóm",
-    "sectionHR": "HR",
-    "sectionConfiguration": "Cấu hình",
-    "talent": "Nhân tài",
-    "development": "Phát triển",
-    "workforceInsights": "Phân tích nhân sự",
-    "systemConfiguration": "Cấu hình hệ thống",
-    "inbox": "Hộp thư công việc",
-    "myPayslips": "Phiếu lương của tôi",
-    "taxRelief": "Giảm trừ thuế",
-    "reimbursementsDue": "Khoản hoàn trả cần thanh toán",
-    "workLocations": "Địa điểm",
-    "sharedNavigation": "Điều hướng chung",
     "roster": "Lịch ca",
     "dataPrivacy": "Quyền riêng tư dữ liệu",
     "dashboard": "Bảng điều khiển",
@@ -445,7 +433,30 @@
     "onboardingGroups": "Nhóm phân công",
     "onboardingModuleAccess": "Quyền truy cập mô-đun",
     "controlTowerOpportunities": "Cơ hội",
-    "profileChanges": "Thay đổi hồ sơ"
+    "workspaceOps": "Ops",
+    "workspaceStrata": "Strata",
+    "workspaceSwitch": "Không gian điều hướng",
+    "modulePeople": "Nhân sự",
+    "moduleOnboarding": "Hội nhập & IT",
+    "moduleLeave": "Nghỉ phép",
+    "moduleAttendance": "Chấm công",
+    "sectionMine": "Của tôi",
+    "sectionTeam": "Nhóm",
+    "sectionHR": "HR",
+    "sectionConfiguration": "Cấu hình",
+    "talent": "Nhân tài",
+    "development": "Phát triển",
+    "workforceInsights": "Phân tích nhân sự",
+    "systemConfiguration": "Cấu hình hệ thống",
+    "inbox": "Hộp thư công việc",
+    "myPayslips": "Phiếu lương của tôi",
+    "taxRelief": "Giảm trừ thuế",
+    "reimbursementsDue": "Khoản hoàn trả cần thanh toán",
+    "workLocations": "Địa điểm",
+    "sharedNavigation": "Điều hướng chung",
+    "profileChanges": "Thay đổi hồ sơ",
+    "leaveSettings": "Cài đặt",
+    "attendanceCalendar": "Lịch chấm công"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -3772,7 +3783,7 @@
     "correctionRejected": "Không thể ghi nhận điều chỉnh này.",
     "correctionPendingAnotherApprover": "Đã lưu, nhưng cần người duyệt khác: bạn không thể duyệt điều chỉnh chấm công của chính mình.",
     "correctionSaved": "Đã lưu và áp dụng điều chỉnh.",
-    "myDayBack": "Quay lại tổng quan chấm công",
+    "myDayBack": "Quay lại Lịch chấm công",
     "myDayPending": "Đang chờ phê duyệt — không thể gửi thêm yêu cầu sửa cho ngày này.",
     "myDayFuture": "Không thể sửa ngày trong tương lai.",
     "myDayBadTimes": "Giờ ra phải sau giờ vào.",
@@ -3913,6 +3924,11 @@
       "capProgress": "{used} / {cap} phút",
       "recordedDuration": "Làm thêm đã ghi nhận",
       "summaryNote": "Tổng làm thêm dùng kết quả đã ghi nhận của từng ngày và giữ số phút chính xác. Ngày chưa có kết quả khiến tổng không đầy đủ. Giờ làm, vắng mặt và cờ tuần vẫn theo quy tắc Chấm công. Cảnh báo tháng dùng giới hạn hiện có là 104 giờ."
+    },
+    "myCalendar": {
+      "title": "Lịch chấm công",
+      "records": "Danh sách bản ghi chấm công",
+      "viewDate": "Xem chấm công ngày {date}"
     }
   },
   "org": {
@@ -21762,5 +21778,113 @@
     "invalidReview": "Lần kiểm tra đã hết hạn hoặc thay đổi. Xem trước sổ làm việc lại trước khi lưu.",
     "scope": "Bạn không có quyền quản lý các thẻ này. Làm mới lựa chọn công ty.",
     "catalogueLimit": "Phạm vi quá lớn để xuất hoặc có quá nhiều kết quả khớp. Chọn một công ty hoặc thu hẹp mã nhân viên."
+  },
+  "leaveSettingsHub": {
+    "title": "Cài đặt nghỉ phép",
+    "subtitle": "Thiết lập quyền lợi, số dư, tích lũy, phê duyệt và quy định nghỉ phép của công ty.",
+    "open": "Mở",
+    "back": "Quay lại Cài đặt nghỉ phép"
+  },
+  "leaveSplitReview": {
+    "title": "Rà soát các lần tách đơn nghỉ trước đây",
+    "description": "Chênh lệch có thể có trên những ngày còn lại đã duyệt",
+    "uncertainty": "Đây là các trường hợp cần rà soát, không phải lỗi lương đã được xác nhận. Giá trị được so với hồ sơ gốc hiện tại; thay đổi hợp lệ về sau hoặc bằng chứng thiếu có thể giải thích chênh lệch. Không thay đổi hồ sơ.",
+    "empty": "Không có trường hợp cần rà soát trong phạm vi này. Điều này không chứng nhận bảng lương trước đây.",
+    "employee": "Nhân viên",
+    "leave": "Mã đơn và ngày nghỉ",
+    "differences": "Thông tin cần rà soát",
+    "evidence": "Bằng chứng hiện có",
+    "root": "Mã gốc: {reference}",
+    "unresolved": "Không thể truy vết đầy đủ bằng chứng gốc.",
+    "candidate": "Cần nhân sự rà soát; không tự động sửa.",
+    "charging": {
+      "charged": "Có bút toán trừ liên kết",
+      "uncharged_import": "Đã nhập; không có bút toán trừ liên kết",
+      "no_debit_evidence": "Không tìm thấy bút toán trừ liên kết"
+    },
+    "fields": {
+      "employeeRemark": "Ghi chú nhân viên",
+      "consent": "Đồng ý nghỉ không lương",
+      "maternity": "Chi tiết thai sản",
+      "allowanceEligible": "Điều kiện hưởng trợ cấp",
+      "unpaidDays": "Ngày không lương",
+      "entitlementYear": "Năm hưởng phép",
+      "submission": "Chi tiết nộp ban đầu",
+      "importedHistory": "Dấu lịch sử nhập",
+      "reason": "Lý do xin nghỉ",
+      "lineage": "Chuỗi nguồn gốc thiếu hoặc có vòng lặp"
+    }
+  },
+  "payrollLeaveFollowup": {
+    "title": "Thay đổi nghỉ phép sau khi đóng lương",
+    "description": "Rà soát ảnh hưởng và lưu cách xử lý",
+    "noMoneyChange": "Phiếu lương đã đóng không thay đổi. Rà soát này không tự động khấu trừ hoặc chuyển tiền sang kỳ sau.",
+    "error": "Chưa lưu cách xử lý. Kiểm tra giải thích và đợt điều chỉnh rồi thử lại, hoặc làm mới nếu đã xử lý.",
+    "dates": "Ngày phân bổ bị ảnh hưởng",
+    "adjustmentReference": "Đợt điều chỉnh đã đóng",
+    "resolvedAt": "Thời điểm xử lý",
+    "resolution": "Cách xử lý",
+    "chooseResolution": "Chọn cách xử lý",
+    "chooseAdjustment": "Chưa chọn đợt điều chỉnh",
+    "adjustmentHelp": "Nếu điều chỉnh, chọn đợt đã đóng có nhân viên này. Nếu không cần điều chỉnh, để trống và giải thích lý do.",
+    "explanation": "Giải thích",
+    "resolve": "Ghi nhận cách xử lý",
+    "states": {
+      "open": "Cần rà soát",
+      "resolved": "Đã xử lý"
+    },
+    "outcomes": {
+      "adjustment": "Đã ghi nhận điều chỉnh",
+      "no_adjustment": "Không cần điều chỉnh"
+    },
+    "sources": {
+      "approval": "Đã duyệt nghỉ",
+      "charged_import": "Đã nhập lịch sử nghỉ có ghi trừ"
+    },
+    "busy": "Đang cập nhật bảng lương. Hãy thử lại thay đổi nghỉ phép sau khi thao tác đó hoàn tất.",
+    "closed": "Thay đổi nghỉ phép này ảnh hưởng lương đã đóng và cần nhân sự phụ trách lương rà soát.",
+    "explanationUnavailable": "Không có giải thích.",
+    "leaveReference": "Mã tham chiếu nghỉ phép",
+    "recordedBy": "Ghi nhận bởi {name}",
+    "resolvedBy": "Xử lý bởi {name}",
+    "unknownActor": "Không có thông tin người thực hiện"
+  },
+  "holidayCalendarAssignments": {
+    "title": "Lịch ngày nghỉ",
+    "add": "Thêm lịch",
+    "edit": "Sửa phân công",
+    "calendar": "Lịch",
+    "start": "Ngày bắt đầu",
+    "end": "Ngày kết thúc",
+    "endHelp": "Ngày cuối được tính. Để trống nếu không có ngày kết thúc.",
+    "noEnd": "Không có ngày kết thúc",
+    "actions": "Thao tác",
+    "companyDefault": "Lịch mặc định công ty",
+    "groups": "Nhóm ngày nghỉ",
+    "states": "Bang làm việc",
+    "inactive": "Không hoạt động",
+    "unavailableCalendar": "Lịch không khả dụng",
+    "fallback": "Dự phòng không có ngày: {calendar}. Chỉ dùng cho ngày không có phân công theo ngày.",
+    "empty": "Chưa có phân công theo ngày. Lịch không có ngày hiện tại vẫn là lịch dự phòng.",
+    "saved": "Đã lưu lịch. Đã tính lại {count} hồ sơ chấm công đầy đủ.",
+    "review": "{count} hồ sơ chấm công chưa đủ cần xem xét:",
+    "saving": "Đang lưu…",
+    "save": "Lưu phân công",
+    "cancel": "Hủy",
+    "protection": "Lương đã đóng và ngày nghỉ bù đã tích lũy được bảo vệ. Thay đổi này không thể viết lại chúng.",
+    "history": "Phân công đã thay thế ({count})",
+    "replaced": "Đã thay thế",
+    "editNamed": "Sửa {calendar}, bắt đầu {date}",
+    "errors": {
+      "dates": "Chọn ngày hợp lệ trong thời gian làm việc. Ngày kết thúc không được trước ngày bắt đầu.",
+      "overlap": "Khoảng này trùng với lịch đang hoạt động khác. Hãy sửa hoặc rút ngắn phân công đó trước.",
+      "changed": "Phân công đã thay đổi. Hãy tải lại trước khi sửa.",
+      "scope": "Bạn không thể quản lý lịch của nhân viên này.",
+      "calendar": "Chọn nhóm ngày nghỉ khả dụng hoặc bang làm việc hợp lệ.",
+      "closedPayroll": "Thay đổi ảnh hưởng lương đã đóng. Xem xét lương trước khi đổi lịch.",
+      "credit": "Thay đổi ảnh hưởng ngày nghỉ bù đã tích lũy. Xem xét khoản hiện có trước.",
+      "tooMany": "Lịch sử hoặc khoảng ngày vượt giới hạn. Thu hẹp ngày hoặc yêu cầu xem xét.",
+      "failed": "Không lưu được lịch. Kiểm tra ngày và thử lại."
+    }
   }
 }

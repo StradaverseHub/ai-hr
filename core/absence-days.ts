@@ -84,6 +84,7 @@ import {
   type PayrollPolicyConfig,
 } from '../db/schema';
 import { todayInKualaLumpur } from '../lib/hr-date';
+import {holidayCalendarPeriodsByEmploymentTx} from './holiday-calendar-read';
 import { originalHolidayDatesFor, holidayMemoKey } from './holidays';
 import {replacementHolidayDatesByEmployment} from './holiday-replacement-read';
 import {companySegmentsForPeriodBulk} from './employment-company';
@@ -262,6 +263,7 @@ export async function absenceBreakdownByEmployment(
   if (emps.length === 0) return out;
   const empIds = emps.map((e) => e.employmentId);
   const holidayCompanySegments=await companySegmentsForPeriodBulk(tx,empIds,periodStart,periodEnd,new Map(emps.map(e=>[e.employmentId,e.companyId])));
+  const holidayCalendarPeriods=await holidayCalendarPeriodsByEmploymentTx(tx,empIds,periodStart,periodEnd);
   const dateCorrections=await attendanceDateOverridesTx(tx,empIds,periodStart,lastCounted);
 
   const [rows, approved, partialLeave, policies, rosterRows, defaultShifts, scheduleGroups, groupWeeks] =
@@ -449,6 +451,7 @@ export async function absenceBreakdownByEmployment(
       workState: e.workState,
       holidayGroupId: e.holidayGroupId,
       companySegments:holidayCompanySegments.get(e.employmentId)??[],
+      calendarPeriods:holidayCalendarPeriods.get(e.employmentId)??[],
     });
   const holidayMemo = new Map<string, Set<string>>();
   const replacementDates=await replacementHolidayDatesByEmployment(tx,{employmentIds:empIds,startDate:periodStart,endDate:lastCounted});

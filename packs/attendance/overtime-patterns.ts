@@ -309,6 +309,13 @@ export async function lockOvertimeDayForAttendanceWriteTx(tx:Tx,p:{employmentId:
  uuid(p.employmentId);date(p.date);await tx.execute(sql`select id from attendance where tenant_id=app.current_tenant_id() and employment_id=${p.employmentId}::uuid and attendance_date=${p.date}::date order by id for update`);const rows=await tx.execute(sql`select id from attendance_overtime_source where tenant_id=app.current_tenant_id() and employment_id=${p.employmentId}::uuid and attendance_date=${p.date}::date order by id for update`) as unknown as {id:string}[];return {sourceId:rows[0]?.id??null};
 }
 
+/** Range writers take the existing Attendance -> OT-source row order once for this subject. */
+export async function lockOvertimeSubjectForAttendanceWriteTx(tx:Tx,employmentId:string){
+ uuid(employmentId);
+ await tx.execute(sql`select id from attendance where tenant_id=app.current_tenant_id() and employment_id=${employmentId}::uuid order by attendance_date,id for update`);
+ await tx.execute(sql`select id from attendance_overtime_source where tenant_id=app.current_tenant_id() and employment_id=${employmentId}::uuid order by attendance_date,id for update`);
+}
+
 /** Salary-free immutable duration owner read. Actual TOIL owner still decides credit/reversal. */
 export async function readOvertimeDurationDefinitionTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}){
  assertModuleGate(ctx,'toil');uuid(p.employmentId);date(p.date);const [source]=await tx.select().from(s.attendanceOvertimeSource).where(and(eq(s.attendanceOvertimeSource.tenantId,ctx.tenantId),eq(s.attendanceOvertimeSource.employmentId,p.employmentId),eq(s.attendanceOvertimeSource.attendanceDate,p.date))).limit(1);if(!source?.currentCalculationId)return null;

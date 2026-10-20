@@ -56,6 +56,7 @@ const ALL_TABLES = [
   'movement_event_type',
   'holiday', 'holiday_group_holiday', 'attendance', 'attendance_policy', 'travel_request',
   'payroll_batch', 'payslip', 'payroll_input', 'payroll_individual_txn', 'employee_cp38', 'company_statutory_my',
+  'payroll_leave_exception', 'employment_holiday_calendar',
   'payroll_policy',
   'statutory_ruleset', 'statutory_pack', 'statutory_signing_key', 'statutory_pack_sync_log',
   'claim_type', 'claim_policy', 'claim_request', 'claim_attachment',

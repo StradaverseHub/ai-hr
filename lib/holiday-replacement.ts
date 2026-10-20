@@ -12,14 +12,14 @@ export function replacementPolicyMatches(regime:ReplacementPolicy['regime'],coun
  const sabah=['SABAH','SBH','MY-12','12'].includes(value),sarawak=['SARAWAK','SWK','MY-13','13'].includes(value);
  return regime==='MY_SABAH_103'?sabah:!sabah&&!sarawak;
 }
-export function allocateReplacementHolidays(p:{sources:readonly OriginalHoliday[];policies:readonly ReplacementPolicy[];days:ReadonlyMap<string,ReplacementDayKind>;reserved:ReadonlySet<string>;existingDates?:ReadonlyMap<string,string>;retained?:ReadonlyMap<string,string|null>;companyCountry:string;state:string|null;knownState:boolean;companyContexts?:ReadonlyMap<string,{country:string;state:string|null;knownState:boolean}>;companyCoverage?:ReadonlyMap<string,{companyId:string|null;reason:string|null}>;scheduleUnknownReasons?:ReadonlyMap<string,string>;employmentFrom:string;employmentTo:string|null}):ReplacementDecision[]{
+export function allocateReplacementHolidays(p:{sources:readonly OriginalHoliday[];policies:readonly ReplacementPolicy[];days:ReadonlyMap<string,ReplacementDayKind>;reserved:ReadonlySet<string>;existingDates?:ReadonlyMap<string,string>;retained?:ReadonlyMap<string,string|null>;companyCountry:string;state:string|null;knownState:boolean;companyContexts?:ReadonlyMap<string,{country:string;state:string|null;knownState:boolean}>;sourceContexts?:ReadonlyMap<string,{country:string;state:string|null;knownState:boolean}>;companyCoverage?:ReadonlyMap<string,{companyId:string|null;reason:string|null}>;scheduleUnknownReasons?:ReadonlyMap<string,string>;employmentFrom:string;employmentTo:string|null}):ReplacementDecision[]{
  const originals=new Set(p.sources.map(h=>h.date)),occupied=new Set(p.reserved),assigned=new Set<string>(),out:ReplacementDecision[]=[];
  const publicSourcesByDate=new Map<string,Set<string>>();
  for(const source of p.sources)if(source.holidayType==='public'){const ids=publicSourcesByDate.get(source.date)??new Set<string>();ids.add(source.id);publicSourcesByDate.set(source.date,ids);}
  for(const source of [...p.sources].sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id))){
   if(source.holidayType!=='public'||source.date<p.employmentFrom||p.employmentTo&&source.date>p.employmentTo)continue;
   const policy=policyOn(p.policies,source.date,source.companyId),kind=p.days.get(source.date)??'unknown';
-  const context=source.companyId?p.companyContexts?.get(source.companyId):null;
+  const context=p.sourceContexts?.get(source.id)??(source.companyId?p.companyContexts?.get(source.companyId):null);
   const emit=(status:ReplacementDecision['status'],date:string|null,reason:string)=>out.push({source,policyId:policy?.id??null,status,date,reason});
   if(p.retained?.has(source.id)){const retained=p.retained.get(source.id)??null;if(retained){occupied.add(retained);assigned.add(retained);}emit(retained?'allocated':'not_required',retained,retained?'manual_retained':'manual_waived');continue;}
   if(kind==='full'||kind==='half'){emit('not_required',null,'original_working_day');continue;}

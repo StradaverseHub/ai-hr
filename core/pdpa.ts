@@ -172,6 +172,8 @@ export async function erasePersonPii(
     // on `status = 'rejected' → reason present` would abort the whole erasure transaction on any legacy
     // rejection that has no reason. The rule lives at the decision instead (core/profile.ts).
     await tx.execute(sql`select app.redact_profile_request_pii(${emp.personId}::uuid)`);
+    // Payroll keeps its outcome/reference; free-text follow-up explanations are erasable.
+    await tx.execute(sql`select app.redact_leave_payroll_explanations(${p.subjectEmploymentId}::uuid)`);
 
     // b4682879 — the profile photograph is biometric-adjacent personal data (identity scope). Delete it on
     // an identity/all erasure and report it in `erased`. Never statutory-locked (a face photo is not a

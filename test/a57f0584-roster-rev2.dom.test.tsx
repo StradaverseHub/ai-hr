@@ -199,7 +199,7 @@ describe('a57f0584 · one Employee cell, and two columns gone', () => {
     expect(screen.queryByRole('columnheader', { name: messages.roster.colCompany })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: messages.roster.colDepartment })).toBeNull();
     expect(screen.getByRole('columnheader', { name: messages.roster.colEmployee })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: messages.roster.colOccupation })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: messages.roster.colPosition })).toBeInTheDocument();
     // Employee No / Employee Name were the two that merged — neither heading survives on its own.
     expect(screen.queryByRole('columnheader', { name: messages.roster.colEmployeeNo })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: messages.roster.colEmployeeName })).toBeNull();

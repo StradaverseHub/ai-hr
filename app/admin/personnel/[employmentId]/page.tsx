@@ -1,6 +1,9 @@
 import {employmentTestRecord} from '@/core/employment-test-record';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import {HolidayCalendarAssignments} from './holiday-calendar-assignments';
+import {employmentHolidayCalendarHistory,holidayCalendarInclusiveEnd} from '@/core/holiday-calendar-assignment';
+import { notFound, redirect } from 'next/navigation';
+import { RETIRED_PERSONNEL_TABS } from '@/lib/personnel-tab-sections';
 import { getTranslations } from 'next-intl/server';
 import { isAdmin } from '@/lib/authz';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
@@ -15,7 +18,6 @@ import {
   employeeAudit,
   employeeDetail,
   employmentCompanyEditable,
-  leaveBalances,
   leaveRequestsFor,
   listDepartments,
   listEmployees,
@@ -28,23 +30,12 @@ import { Avatar, Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHea
 import { LocationAssignment } from '@/components/attendance/location-assignment';
 import { hasPersonPhoto } from '@/core/person-photo';
 import { PhotoLightbox } from './photo-lightbox';
-import { listEntitlementRecalcAudit } from '@/core/leave';
 // 4da751c6 — the DERIVED Benefit Scheme readout. Stores nothing; asks the entitlement engine what it
 // already decided. See core/entitlement-scheme-view.ts for why there is no table behind it.
 import { benefitSchemeView } from '@/core/entitlement-scheme-view';
 // 6aee1d91 fix pass (m3) — the card's two links to the Leave types screen resolve through the module's one
 // list of addresses, so a link whose job is "go and change the schemes" cannot disagree with the menu.
 import { leaveConfigScreenHref } from '@/components/leave-config-map';
-import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
-import { personnelHrExplanation, personnelLeaveBreakdowns } from './leave-breakdowns';
-import {
-  ENTITLEMENT_STATUS_LABEL_KEY,
-  ENTITLEMENT_STATUS_TIP_KEY,
-  entitlementStatusNeedsNotice,
-} from '@/lib/entitlement-status';
-// r209 — a borrowing leave type's card shows the POOL's figures, so it must show the pool's entitlement
-// story too. See lib/shared-leave-balance.ts for the contradiction this closes.
-import { balanceStoryTypeId } from '@/lib/shared-leave-balance';
 import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { DateField } from '@/components/ui/date-field';
@@ -84,8 +75,6 @@ import {
   setPaymentMethodAction,
   setEmploymentComponentAction,
   setEmploymentInfoAction,
-  setLocationAction,
-  setEmploymentHolidayCalendarAction,
   setEmploymentScheduleGroupAction,
   setPersonAction,
   setPersonPhotoAction,
@@ -169,11 +158,9 @@ import { PayrollPolicyField } from '@/components/payroll-policy-field';
 import { assignPolicyAction } from '@/app/admin/payroll-policy/actions';
 import { employmentScheduleGroupId, listShiftsForTenant } from '@/core/roster';
 // 18504ca6 — the dated Shift arrangement ladder behind the card's new Effective date + Shift history list.
-import { shiftArrangementHistory } from '@/core/shift-arrangement';
 import { EmployeeShiftFields } from '@/components/employee-shift-fields';
-import { setDefaultShiftAction } from './actions';
 import { listHolidayGroups, listPositions, listBusinessUnits, listCostCenters } from '@/core/admin';
-import { listLocations, resolveLocationForBranch, branchChangeDateFor } from '@/core/location';
+import { listLocations } from '@/core/location';
 // f513ec02 adds listAttendanceRules — the Schedule Group picker's options. The tenant's attendance_rule
 // library IS the Schedule Group library (870b79e2); there is no second table behind the name. Taken from
 // the PACK FACADE, not core/attendance-rule: the ADR-0080 D9 ratchet (test/attendance-pack-drift.test.ts)
@@ -271,7 +258,6 @@ export default async function EmployeePage({
   const tStatus = await getTranslations('people.employeeStatus');
   // 31e39d74 — the leave-balance card captions a not-yet-generated entitlement with the SAME words the two
   // balance grids use, rather than a third phrasing of the same fact.
-  const tBal = await getTranslations('me.leaveBalanceTable');
   const admin = isAdmin(s);
   /**
    * r298 (board ceb1c560) — DOES THIS TENANT HOLD PAYROLL? Asked ONCE, here, and every Payroll-owned
@@ -293,6 +279,13 @@ export default async function EmployeePage({
   // rebuild the CURRENT query string and preserve every param it does not own, rather than dropping the
   // reader back onto a bare tab.
   const rawSearchParams = await searchParams;
+  const retiredDestination = rawSearchParams.tab === 'others' ? RETIRED_PERSONNEL_TABS.others : undefined;
+  if (retiredDestination) {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(rawSearchParams)) if (value != null) query.set(key, value);
+    query.set('tab', retiredDestination);
+    redirect(`/admin/personnel/${encodeURIComponent(employmentId)}?${query}`);
+  }
   const {
     error,
     from,
@@ -363,17 +356,8 @@ export default async function EmployeePage({
   // The org-assignment dropdowns scope to the PENDING company when one is chosen, else the current company.
   const orgScopeCompanyId = pendingCompany?.id ?? emp.companyId;
 
-  const [history, balances, requests, departments, reporting, employees, grades, delegations, recalcAudit] = await Promise.all([
+  const [history, requests, departments, reporting, employees, grades, delegations] = await Promise.all([
     assignmentHistory(s, employmentId),
-    // 994a5287: an ADMIN read — `includeHidden` keeps leave types HR has hidden from employee self-service,
-    // which is a rule about what the EMPLOYEE sees and never about what HR may look up on this profile.
-    // ec991c2a: `includeArchived` is the same statement about an ARCHIVED type. The employee's own list
-    // stops offering a retired type; this profile must still show the balance standing under it.
-    // d272834b — `includeIneligible` joins the other two ADMIN flags for the same reason they are here:
-    // HR's own picture of an employee must not lose a balance the employee's screen has stopped showing.
-    // A wrongly-granted Maternity Leave balance on a male employment is exactly the row this screen has
-    // to keep, because HR is who reverses it.
-    leaveBalances(s, employmentId, undefined, { includeHidden: true, includeArchived: true, includeIneligible: true }),
     leaveRequestsFor(s, employmentId),
     // 570e3311 — departments scoped to THIS employee's company (origin ∪ shared-in ∪ global via the
     // System Labels resolver), matching the Position/BU/Location pickers. Feeds exactly two places:
@@ -383,19 +367,10 @@ export default async function EmployeePage({
     listEmployees(s),
     listJobGrades(s),
     delegationsFor(s, employmentId),
-    // R45 7527ea5f — profile-change entitlement recalculation history for the Leave tab.
-    listEntitlementRecalcAudit(s, employmentId),
   ]);
-  // Leave entitlement breakdown (read-only). HR reuses the same component as /me; one ?asOf= drives the
-  // whole leave card. RLS scopes every read, so a viewer who can't see this employment's ledger/policy
-  // gets a null breakdown (rendered as nothing) rather than a leak. Invalid/empty asOf falls back to today.
-  const breakdownAsOf = spAsOf && /^\d{4}-\d{2}-\d{2}$/.test(spAsOf) ? spAsOf : today;
-  // r303 (31492f74): the Leave card's Explain panel prints HR's per-line working (./leave-breakdowns.ts).
-  const breakdowns = await personnelLeaveBreakdowns(s, employmentId, balances.map((b) => b.leaveTypeId), breakdownAsOf);
-  const breakdownByType = new Map(breakdowns.filter((x) => x != null).map((x) => [x!.leaveTypeId, x!]));
-  // 4da751c6 — same asOf as the breakdowns, so the scheme and the days it explains can never be read at
-  // two different dates. Read-only and derived; no write, no column, no migration.
-  const scheme = admin ? await benefitSchemeView(s, employmentId, breakdownAsOf) : null;
+  // The retained Benefit Scheme readout keeps its dated source; balances are read in Leave Inquiry.
+  const schemeAsOf = spAsOf && /^\d{4}-\d{2}-\d{2}$/.test(spAsOf) ? spAsOf : today;
+  const scheme = admin ? await benefitSchemeView(s, employmentId, schemeAsOf) : null;
   // Pay + statutory (salary, IC, bank, tax) are HR-admin-only on this directory page — never load or
   // render them for a manager viewing a direct report (consultant feedback #5). Compensation reads are
   // also tightened to admin-or-self at the RLS layer (migration 0060); this avoids fetching them at all.
@@ -456,6 +431,7 @@ export default async function EmployeePage({
   const companyHrdfUnregistered = (companyHrdf?.hrdfStatus ?? 'not_registered') === 'not_registered';
   // HR-defined multi-state holiday groups — the second option-group of the unified Holiday calendar field.
   const holidayGroups = admin ? await listHolidayGroups(s) : [];
+  const holidayCalendarRows=admin?await employmentHolidayCalendarHistory(s,employmentId):[];
   /**
    * f513ec02 — THE SCHEDULE GROUP PICKER'S OPTIONS AND ITS CURRENT VALUE.
    *
@@ -489,12 +465,6 @@ export default async function EmployeePage({
   const orgPositions = pendingCompany ? await listPositions(s, { companyIds: [orgScopeCompanyId] }) : positions;
   const orgBusinessUnits = pendingCompany ? await listBusinessUnits(s, { companyIds: [orgScopeCompanyId] }) : businessUnits;
   const orgLocations = pendingCompany ? await listLocations(s, [orgScopeCompanyId]) : locations;
-  // Current selection of the unified field: a group wins, else a single state, else company default.
-  const holidayCalendarValue = emp.holidayGroupId
-    ? `group:${emp.holidayGroupId}`
-    : emp.workState
-      ? `state:${emp.workState}`
-      : '';
   // Typed pay components (Wave 3 #9) — recurring components for this employee + the catalog to add from.
   // r298 — Payroll-owned: not read at all for a tenant without Payroll (see `payrollOn`).
   const payComps = admin && payrollOn ? await listEmploymentPayComponents(s, employmentId) : [];
@@ -522,32 +492,6 @@ export default async function EmployeePage({
   // r79a (4fb8b75a step 3): read from `company.currency` (owned by Organization → General) instead of the
   // duplicate company_payroll_config.default_currency the pair collapsed into it (migration 0324).
   const defaultSalaryCurrency = admin ? await getCompanyCurrency(s, emp.companyId) : 'MYR';
-  // R46 79eb7151 — resolve the policy the payroll kernel will ACTUALLY use for this employee (direct
-  // assignment → company default → null ⇒ monthly default), so the Salary section can surface its Pay Mode
-  // and Payment Term read-only. Resolving rather than reading emp.payrollPolicyId matters: an employee with
-  // no direct assignment still computes under the company default, and an assigned-but-inactive policy
-  // silently falls back to monthly — both cases would be misreported by the raw column.
-  // ADR-0078 — the R46 resolvedPolicyForEmployment read is gone from this page: Pay Mode / Payment Term
-  // now live on the employee's own compensation rows (salaryHistory below carries them per revision).
-  // R33 f21d6eee — Default shift picker options: the SHARED tenant-wide shift library (a template may now be
-  // assigned to any employee regardless of company). Loaded WITH archived rows so a currently-assigned-but-
-  // later-archived shift still renders as the selected option (instead of silently showing "None"), then
-  // filtered to live shifts + the assigned one. New assignments of archived shifts are rejected by the service.
-  const libraryShifts = admin && !emp.terminatedOn ? await listShiftsForTenant(s, { includeArchived: true }) : [];
-  // 8cd601d0 (r329) — AND NARROWED TO THE EMPLOYEE'S SCHEDULE GROUP, for the same reason and by the same
-  // rule as the Attendance module's Shift arrangement page: with a group set, only that group's shifts are
-  // offered. The group is `shift.rule_id` read backwards, at render time — no group name and no membership
-  // list is written down, so 07ebd04d's split of "Standard" into three lands here unaided. The shift ON
-  // FILE is always kept, exactly as an archived-but-assigned one is: a select that cannot render what is
-  // stored shows a placeholder and silently re-poses the question. This is a COURTESY; the guarantee is
-  // core/roster.ts assertShiftsAllowedForEmploymentsTx, which the writer behind this card already calls.
-  // An employment in NO group (74 of 75 on production) sees the whole library, exactly as before.
-  const groupPool=scheduleGroupCurrentId?await getScheduleRotation(s,scheduleGroupCurrentId):null;
-  const assignableShifts=libraryShifts.filter(sh=>!sh.archivedAt||sh.id===emp.defaultShiftId);
-  // 18504ca6 — the dated periods behind the Shift history list, newest first, with the shift CODE and NAME
-  // already resolved. Deliberately NOT taken from the Others-tab Change History: that renders the audit
-  // payload through lib/audit-format.ts describePayload, which prints defaultShiftId as a raw uuid → uuid pair.
-  const shiftHistory = admin ? await shiftArrangementHistory(s, employmentId) : [];
   // ADR-0070 — Clocking Location & Geofencing: the picker's options + this employee's current assignment
   // (admin-only). r423 (83c0d3c8) REVERSES f9afd1ce's "every active site in the tenant": the picker offers
   // only the ACTIVE locations OPEN TO THIS EMPLOYEE'S COMPANY (clocking_location_company). The service
@@ -555,21 +499,6 @@ export default async function EmployeePage({
   const clockingLocations = admin ? await listClockingLocations(s, { companyId: emp.companyId }) : [];
   const assignedClockingLocations = admin ? await listEmployeeClockingLocations(s, employmentId) : [];
   const assignedClockingLocationIds = new Set(assignedClockingLocations.map((l) => l.id));
-
-  // ── 1fff489c PHASE 2 — the Branch proposes a work location, HR confirms it ──────────────────────────
-  // ONLY when the open assignment has none. An employee who already has a location is left alone: the
-  // suggestion is a first-fill aid, not a nag, and re-proposing over a deliberate manual pick is exactly
-  // the "it changed itself" behaviour spec section C forbids. NOTHING here writes — the Confirm button
-  // posts the same effective-dated setLocationAction a manual pick does.
-  const branchLocationSuggestion =
-    admin && !emp.terminatedOn && !emp.locationId
-      ? await resolveLocationForBranch(s, emp.companyId, emp.orgBranch)
-      : null;
-  // The effective date the suggestion offers: the date the Branch last changed, falling back to today.
-  // Pre-fill only — the field stays editable, because HR is the one who knows when the move really took
-  // effect for payroll.
-  const branchChangeDate = branchLocationSuggestion ? await branchChangeDateFor(s, employmentId) : null;
-  const suggestedEffectiveDate = branchChangeDate ?? today;
   /**
    * r272 (0e8cf366) — THE PRE-TICK IS GONE, AND ITS REMOVAL IS THE POINT OF THE ITEM.
    *
@@ -830,7 +759,7 @@ export default async function EmployeePage({
 
   // Tab labels (people.detail.tabs.*). Six tabs regrouping the existing sections below; the page still
   // loads all data once, so switching tabs is instant and keeps the viewer on the same employee.
-  const tabs: { key: 'profile' | 'family' | 'job' | 'careerMovement' | 'attendance' | 'bankStatutory' | 'payroll' | 'leave' | 'documents' | 'qualification' | 'others'; label: string }[] = [
+  const tabs: { key: 'profile' | 'family' | 'job' | 'careerMovement' | 'attendance' | 'bankStatutory' | 'payroll' | 'leave' | 'documents' | 'qualification'; label: string }[] = [
     { key: 'profile', label: t('tabs.profile') },
     { key: 'family', label: t('tabs.family') },
     { key: 'job', label: t('tabs.job') },
@@ -856,7 +785,6 @@ export default async function EmployeePage({
     // a list-and-dialog register mirroring the Family tab's table + dialogForm pattern. Placed after
     // Documents per the request's tab-order example.
     { key: 'qualification', label: t('tabs.qualification') },
-    { key: 'others', label: t('tabs.others') },
   ];
 
   // 9d13221c — Age beside Date of Birth: completed whole years from the stored DOB to today, recomputed on
@@ -1077,7 +1005,7 @@ export default async function EmployeePage({
     bankStatutory: [t('bankCardTitle'), t('statutoryMalaysia'), t('othersStatutoryTitle')],
     // r423 — the clocking card's heading is "Location assignment" (one merged section), so the bar names
     // it by that heading; `cardTitle` ("Clocking locations & geofencing") named the old two-form card.
-    attendance: [t('holidayCalendarCardTitle'), t('scheduleGroupCardTitle'), ...whenLive(tc('assignmentTitle')), ...whenLive(tc('webClockingTitle'))],
+    attendance: [t('scheduleGroupCardTitle'), ...whenLive(tc('assignmentTitle')), ...whenLive(tc('webClockingTitle'))],
     job: [t('employmentInfo.title')],
     // r256 — Payroll. The FIRST entry names a SUB-SECTION of a card rather than the card: Payment
     // Method is rendered inside Basic Salary, whose own headline control records an effective-dated
@@ -2349,86 +2277,6 @@ export default async function EmployeePage({
     </Card>
   ) : null;
 
-  // ec4cbf63 — Default shift: the shift this person NORMALLY works, set once here instead of painting every
-  // date on /roster. The attendance/OT engine uses it on any date WITHOUT a dated roster row (roster row →
-  // default shift → company policy), so /roster remains the surface for date-specific exceptions. Admin-only,
-  // mirrors the payroll-policy assignment card. (It was relocated OUT of the Employment tab onto the
-  // Attendance tab by 1fbe9891 — the note that used to say otherwise here was stale.)
-  //
-  // 18504ca6 — the card is now EFFECTIVE-DATED, matching the Location card directly above it. Saving adds a
-  // dated period instead of overwriting: the previous shift is kept and closed off the day before, and the
-  // Shift history list underneath says who moved the employee, from what, and from when.
-  const defaultShiftCard = admin && !emp.terminatedOn ? (
-    <Card id="section-default-shift">
-      <SectionHeader title={t('shiftTypeTitle')} />
-          <form action={setDefaultShiftAction} className="space-y-3 p-4">
-            <input type="hidden" name="employmentId" value={emp.employmentId} />
-            {/* R17 3e8350db — Shift Type (Fixed / Roster) with a conditionally-shown Default shift picker.
-                18504ca6 — plus the required Effective date, on the same row. */}
-            <EmployeeShiftFields
-              defaultType={emp.shiftType}
-              defaultShiftId={emp.defaultShiftId}
-              defaultEffectiveFrom={today}
-              dmyDisplay
-              allowedPool={groupPool?{baseShiftIds:groupPool.memberships.map(m=>m.shiftId),versions:groupPool.versions.map(v=>({effectiveFrom:v.effectiveFrom,allowedShiftIds:v.allowedShiftIds}))}:undefined}
-              shifts={assignableShifts.map((sh) => ({
-                archived:!!sh.archivedAt,
-                id: sh.id,
-                label: `${sh.code ?? '—'} — ${sh.name} (${(sh.startTime?.slice(0, 5)??'—')}–${(sh.endTime?.slice(0, 5)??'—')})`,
-              }))}
-            />
-            <button className={btnPrimary}>{t('defaultShiftSave')}</button>
-          </form>
-          <p className="px-4 pb-3 text-xs text-muted-foreground">{t('shiftTypeHint')}</p>
-          {/* 18504ca6 — Shift history: effective date, previous shift, new shift, who, when. The employee is
-              the profile already open, so there is no name column. LIVE periods only — a second save for the
-              same date REPLACES its entry rather than adding a line. */}
-          <section className="border-t border-border">
-            <div className="px-4 pt-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {t('shiftHistoryTitle')}
-            </div>
-            {shiftHistory.length === 0 ? (
-              <p className="px-4 pb-4 pt-2 text-sm text-muted-foreground">{t('shiftHistoryEmpty')}</p>
-            ) : (
-              <div className="overflow-x-auto px-4 pb-4 pt-2">
-                <table className="w-full min-w-[52rem] text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
-                      <th className="py-2 pr-3 font-medium">{t('shiftHistoryColEffective')}</th>
-                      <th className="py-2 pr-3 font-medium">{t('shiftHistoryColPrevious')}</th>
-                      <th className="py-2 pr-3 font-medium">{t('shiftHistoryColNew')}</th>
-                      <th className="py-2 pr-3 font-medium">{t('shiftHistoryColChangedBy')}</th>
-                      <th className="py-2 font-medium">{t('shiftHistoryColChangedOn')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {shiftHistory.map((h) => (
-                      <tr key={h.id} className="border-b border-border/60 align-top">
-                        <td className="py-2 pr-3 whitespace-nowrap text-foreground">{formatDmy(h.effectiveFrom)}</td>
-                        <td className="py-2 pr-3 text-muted-foreground">
-                          {h.previousShiftName
-                            ? `${h.previousShiftCode ?? '—'} — ${h.previousShiftName}`
-                            : '—'}
-                        </td>
-                        <td className="py-2 pr-3 text-foreground">
-                          {`${h.shiftCode ?? '—'} — ${h.shiftName}`}
-                        </td>
-                        <td className="py-2 pr-3 text-muted-foreground">{h.changedByName ?? '—'}</td>
-                        <td className="py-2 whitespace-nowrap text-muted-foreground">
-                          {h.recordedOnRelease
-                            ? t('shiftHistoryRecordedOnRelease')
-                            : formatDmy(h.changedAt)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-    </Card>
-  ) : null;
-
   // ── OTHERS ─────────────────────────────────────────────────────────────────
   // ADR-0070 — Clocking Location & Geofencing. Admin-only.
   // r423 (83c0d3c8) — ONE switch, "Use Geofencing for Clocking", and the locations it needs, as ONE section
@@ -2766,146 +2614,6 @@ export default async function EmployeePage({
           </>
         )}
       </div>
-    </Card>
-  ) : null;
-
-  const leaveBalanceCard = (
-    <Card id="section-leave-balance">
-      <SectionHeader title={t('leaveBalance')} />
-        <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-          {balances.map((b) => (
-            <div key={b.leaveTypeId} className="p-4">
-              <div className="text-xs text-muted-foreground">{b.leaveType}</div>
-              <div className="text-2xl font-semibold tabular-nums">
-                {b.accrued > 0 || b.balance > 0 ? (
-                  <>
-                    {b.available}
-                    <span className="text-sm font-normal text-muted-foreground"> {t('availableSuffix', { accrued: b.accrued })}</span>
-                  </>
-                ) : (
-                  <span className="text-muted-foreground">—</span>
-                )}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {b.pending > 0
-                  ? t('usedWithPending', { taken: b.taken, pending: b.pending })
-                  : t('used', { taken: b.taken })}
-              </div>
-              {/* 31e39d74 — "configured but not yet generated" on the HR-side record too. This card shows
-                  an em dash rather than 0.00 for an inactive type, which is not a silent zero but is also
-                  not an ANSWER: it cannot distinguish a type nobody configured from one whose table is
-                  written and waiting for Generate Entitlement. The caption is that distinction. */}
-              {(() => {
-                // r209 — the POOL's status for a borrower (balanceStoryTypeId): its own breakdown says
-                // "no entitlement table", which is true of the type and false of the figure beside it.
-                const st = breakdownByType.get(balanceStoryTypeId(b))?.entitlementStatus;
-                return st && entitlementStatusNeedsNotice(st) ? (
-                  <div
-                    className="mt-1 text-xs text-amber-700 dark:text-amber-500"
-                    title={tBal(ENTITLEMENT_STATUS_TIP_KEY[st]!)}
-                  >
-                    {tBal(ENTITLEMENT_STATUS_LABEL_KEY[st])}
-                  </div>
-                ) : null;
-              })()}
-              {breakdownByType.get(balanceStoryTypeId(b)) && (
-                <EntitlementBreakdown
-                  data={breakdownByType.get(balanceStoryTypeId(b))!}
-                  summary={{ available: b.available }}
-                  // §5 Upcoming Approved Leave removed from the panel (feedback 11876072).
-                  visual={{ color: b.color, icon: b.icon, code: b.code }}
-                  asOf={breakdownAsOf}
-                  action={`/admin/personnel/${employmentId}`}
-                  hiddenParams={from ? { from } : {}}
-                  // r303 (31492f74): HR's per-line sentences, naming the pool when this row's figures are one.
-                  hrExplanation={personnelHrExplanation(s, b.sharedBalance)}
-                  dmyDates
-                />
-              )}
-            </div>
-          ))}
-          {balances.length === 0 && <div className="p-4 text-sm text-muted-foreground">{t('noLeaveRecords')}</div>}
-        </div>
-    </Card>
-  );
-
-  // R45 7527ea5f — Automatic Leave Entitlement Recalculation history. When a profile change (grade /
-  // employment type / hire date / confirmation) moves the resolved entitlement, the engine posts a
-  // compensating adjustment and records it here: previous → new entitlement, the reason (which field
-  // moved), and the effective date. Admin-only, shown under the Leave tab beneath the balance card.
-  // The `reason` column is free text written by whatever triggered the recalc, so this is a COMPUTED key
-  // and i18n-coverage check C cannot see it — it only matches literal t('a.b') calls.
-  //
-  // The fallback here used to be `t(key) === key ? reason : label`, which NEVER FIRED: next-intl returns
-  // the FULLY-QUALIFIED path on a miss (people.detail.recalcReason.x) while `key` is relative, so the
-  // comparison could not match and the raw path was painted on screen. Measured on production 2026-08-10:
-  // 50 of 72 audit rows rendered a key path to the user (leave_type_rules 29, year_cycle_override 11,
-  // movement_recorded 9, movement_applied 1).
-  //
-  // `t.has` is the house idiom for a computed key — app/admin/scheduled-actions/page.tsx does the same.
-  // Degrading to the raw reason is deliberate: reasons are added by new code paths faster than labels, and
-  // an unlabelled reason must read as a plain word, never as a key path.
-  const recalcReasonLabel = (reason: string): string =>
-    t.has(`recalcReason.${reason}`) ? t(`recalcReason.${reason}`) : reason;
-  const recalcHistoryCard = admin ? (
-    <Card id="section-entitlement-recalc">
-      <SectionHeader title={t('recalcHistoryTitle')} count={recalcAudit.length} />
-      <p className="px-4 pt-3 text-xs text-muted-foreground">{t('recalcHistoryHelp')}</p>
-      {recalcAudit.length === 0 ? (
-        <div className="p-4 text-sm text-muted-foreground">{t('recalcHistoryEmpty')}</div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th className="px-4 py-2 font-medium">{t('recalcColEffective')}</th>
-                <th className="px-4 py-2 font-medium">{t('recalcColType')}</th>
-                {/* 9e2a89e9 — the reporter asked for "previous Job Grade, new Job Grade, previous
-                    entitlement, new entitlement, effective date, and reason". Three of the six were
-                    already here; this is the fourth, and the date column above now carries the date the
-                    change TOOK EFFECT rather than the date somebody typed it in. */}
-                <th className="px-4 py-2 font-medium">{t('recalcColGrade')}</th>
-                <th className="px-4 py-2 font-medium">{t('recalcColReason')}</th>
-                <th className="px-4 py-2 text-right font-medium">{t('recalcColPrevious')}</th>
-                <th className="px-4 py-2 text-right font-medium">{t('recalcColNew')}</th>
-                <th className="px-4 py-2 text-right font-medium">{t('recalcColChange')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recalcAudit.map((r) => (
-                <tr key={r.id} className="border-b border-border last:border-0">
-                  {/* `tookEffectOn` is the change's own effective date where the writer knew it, and the
-                      posting date otherwise — one column, never two dates fighting over one heading. */}
-                  <td className="px-4 py-2 tabular-nums">{formatDmy(r.tookEffectOn)}</td>
-                  <td className="px-4 py-2">{r.leaveTypeName}</td>
-                  {/* An em dash where no grade change was recorded, and where the grade has since left
-                      the catalogue: an absent value asserts nothing, a guessed one asserts something
-                      false. "From no grade to GRADE 16" is a real change and prints as "— → GRADE 16". */}
-                  <td className="px-4 py-2 text-xs">
-                    {r.gradeChanged ? (
-                      <span className="whitespace-nowrap">
-                        {r.previousGradeName ?? '—'} → {r.newGradeName ?? '—'}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">{t('recalcGradeUnchanged')}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2 text-muted-foreground">{recalcReasonLabel(r.reason)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{r.previousEntitlement}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{r.newEntitlement}</td>
-                  <td
-                    className={`px-4 py-2 text-right tabular-nums font-medium ${
-                      r.delta > 0 ? 'text-emerald-600 dark:text-emerald-400' : r.delta < 0 ? 'text-red-600 dark:text-red-400' : ''
-                    }`}
-                  >
-                    {r.delta > 0 ? `+${r.delta}` : r.delta}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </Card>
   ) : null;
 
@@ -4861,44 +4569,9 @@ export default async function EmployeePage({
     </Card>
   );
 
-  // Item 52a30630 — Holiday Calendar RELOCATED here from Profile > Personal Details. Its own dedicated form
-  // + thin server action (setEmploymentHolidayCalendarAction) so the unified state/group selector can no
-  // longer be wiped by a Personal Details save (which no longer touches these columns). Same select markup,
-  // options (holidayGroups + MY_STATES) and default (holidayCalendarValue) as before — pure relocation.
-  const holidayCalendarCard = admin ? (
-    <Card id="section-holiday-calendar">
-      <SectionHeader title={t('holidayCalendarCardTitle')} />
-      {/* 420ebab5 part two (r255) — Save button gone, `data-save-section` added; the Attendance tab's one
-          "Save Changes" covers it. Enter is not left dangling: the scope's capture-phase keydown guard
-          turns any Enter inside a marked section into the consolidated save, which matters most for the
-          Geofencing form below, whose radius box is the one field on this tab that can still trigger HTML's
-          implicit submission now that its button has gone. */}
-      <form action={setEmploymentHolidayCalendarAction} data-save-section="holiday" className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3">
-        <input type="hidden" name="employmentId" value={emp.employmentId} />
-        <PersonnelField fieldId="attendance.holiday_calendar_and_schedule.holidaygroupname" mode="edit">
-          <select {...personnelControl('attendance.holiday_calendar_and_schedule.holidaygroupname','edit')} defaultValue={holidayCalendarValue} className={inputCls}>
-            <option value="">{t('holidayCalendarDefault')}</option>
-            {holidayGroups.length > 0 && (
-              <optgroup label={t('holidayCalendarGroupOptgroup')}>
-                {holidayGroups.map((g) => (
-                  <option key={g.id} value={`group:${g.id}`}>
-                    {g.name}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-            <optgroup label={t('holidayCalendarStateOptgroup')}>
-              {stateOptions.map((st) => (
-                <option key={st} value={`state:${st}`}>
-                  {st}
-                </option>
-              ))}
-            </optgroup>
-          </select>
-        </PersonnelField>
-      </form>
-    </Card>
-  ) : null;
+  // Dated assignments own immutable period history. The existing undated choice is displayed as the
+  // fallback for uncovered dates; adding an assignment starts at Join Date for HR to confirm.
+  const holidayCalendarCard = admin ? <HolidayCalendarAssignments employmentId={emp.employmentId} joinDate={emp.joinDate ?? emp.hiredOn} employmentStartDate={emp.hiredOn} fallbackLabel={emp.holidayGroupId?holidayGroups.find(group=>group.id===emp.holidayGroupId)?.name??t('holidayCalendarDefault'):emp.workState??t('holidayCalendarDefault')} groups={holidayGroups.map(group=>({id:group.id,name:group.name,active:group.active}))} states={stateOptions} rows={holidayCalendarRows.map(row=>({id:row.id,startDate:row.validFrom,endDate:holidayCalendarInclusiveEnd(row.validTo),choice:row.kind==='group'?`group:${row.holidayGroupId}`:row.kind==='state'?`state:${row.workState}`:'',superseded:!!row.supersededAt}))}/> : null;
 
   /**
    * f513ec02 (r281) — THE BOX THAT PUTS A PERSON IN A SCHEDULE GROUP.
@@ -4912,8 +4585,8 @@ export default async function EmployeePage({
    * card, the same "blank means fall back" semantics, the same tab. The approved plan's own words are
    * "put a person in a group the same way you set their Holiday Group today", and Holiday Group is on THIS
    * tab (item 52a30630 relocated it here and pinned it first) — not on the Employment tab. A Schedule
-   * Group is attendance configuration: it decides lateness, early-out and overtime rules, and the Shift
-   * Arrangement its refusal is measured against is two cards below.
+   * Group is attendance configuration: it decides lateness, early-out and overtime rules. Its writer
+   * validates the canonical roster and dated shift assignments already recorded for this employee.
    *
    * ⚠️ BLANK IS A REAL OPTION AND IT MEANS SOMETHING. "No Schedule Group" ⇒ the column stays NULL ⇒ rules
    * resolve from the shift exactly as they do today. It is NOT an unset, NOT a placeholder, and the save
@@ -4927,8 +4600,7 @@ export default async function EmployeePage({
     <Card id="section-schedule-group">
       <SectionHeader title={t('scheduleGroupCardTitle')} />
       {/* No Save button and `data-save-section` present, like every other card inside this scope: the
-          Attendance tab's one "Save Changes" writes it (ATTENDANCE_TAB_SECTION_ORDER, second, which is
-          where it reads). The per-card action stays wired because it is where the writer is attached and
+          Attendance tab's one "Save Changes" writes it first in ATTENDANCE_TAB_SECTION_ORDER. The per-card action stays wired because it is where the writer is attached and
           because a <form> with no action would POST to the current URL. */}
       <form action={setEmploymentScheduleGroupAction} data-save-section="schedule" className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3">
         <input type="hidden" name="employmentId" value={emp.employmentId} />
@@ -4961,82 +4633,6 @@ export default async function EmployeePage({
           {t('scheduleGroupManage')}
         </Link>
       </div>
-    </Card>
-  ) : null;
-
-  const locationCard = admin ? (
-    <Card id="section-location">
-      <SectionHeader title={t('locationTitle')} />
-      <div className="px-4 pt-3 text-sm text-muted-foreground">
-        {t('locationCurrent', { location: emp.locationName ? `${emp.locationName} (${emp.locationCode})` : t('locationNone') })}
-      </div>
-
-      {/* 1fff489c PHASE 2 — the SUGGESTION. Pre-selected and dated, but it is still a form the admin has to
-          submit: spec section C is explicit that a work location moves payroll and OT history, so nothing
-          auto-commits. Confirm posts source=branch_derived; the manual form below posts source=manual, and
-          the two are told apart on the event stream afterwards (core/location.ts recordLocationSource). */}
-      {!emp.terminatedOn && branchLocationSuggestion && (
-        <form
-          action={setLocationAction}
-          className="mx-4 mt-3 grid grid-cols-1 items-end gap-3 rounded-lg border border-primary/40 bg-primary/5 p-3 sm:grid-cols-3"
-        >
-          <input type="hidden" name="employmentId" value={emp.employmentId} />
-          <input {...personnelCarry('attendance.work_location_and_shift_arrangement.locationid')} value={branchLocationSuggestion.id} />
-          <input type="hidden" name="source" value="branch_derived" />
-          <div className="sm:col-span-3 text-xs font-medium text-primary">
-            {t('locationSuggestedFromBranch', { branch: branchLocationSuggestion.branch })}
-          </div>
-          <PersonnelField fieldId="attendance.work_location_and_shift_arrangement.locationid" mode="record">
-            <div className={`${inputCls} bg-muted`}>
-              {branchLocationSuggestion.name} ({branchLocationSuggestion.code})
-            </div>
-          </PersonnelField>
-          <PersonnelField fieldId="attendance.work_location_and_shift_arrangement.locationeffectivefrom" mode="record">
-            <DateField {...personnelControl("attendance.work_location_and_shift_arrangement.locationeffectivefrom", 'record')}   defaultValue={suggestedEffectiveDate} className={inputCls} label={personnelLabel("attendance.work_location_and_shift_arrangement.locationeffectivefrom")} />
-          </PersonnelField>
-          <div>
-            <button className={btnPrimary}>{t('locationConfirm')}</button>
-          </div>
-          <p className="sm:col-span-3 text-xs text-muted-foreground">{t('locationSuggestionNote')}</p>
-        </form>
-      )}
-
-      {/* EMPTY STATE 2 of 4 (spec section E): the employee HAS a branch, but no live location in their own
-          company claims it. Today this reads as a bare "No location", which looks identical to the three
-          other reasons the field can be blank — naming the branch is what makes it fixable. */}
-      {!emp.terminatedOn && !emp.locationId && !branchLocationSuggestion && emp.orgBranch && (
-        <p className="px-4 pt-3 text-xs text-muted-foreground">
-          {t('locationBranchUnmapped', { branch: emp.orgBranch })}
-        </p>
-      )}
-      {!emp.terminatedOn && !emp.locationId && !emp.orgBranch && (
-        <p className="px-4 pt-3 text-xs text-muted-foreground">{t('locationNoBranch')}</p>
-      )}
-
-      {!emp.terminatedOn && (
-        <form action={setLocationAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3">
-          <input type="hidden" name="employmentId" value={emp.employmentId} />
-          {/* Anything picked here is a deliberate human choice — stamped `manual` so a later report can
-              tell a hand-set location from one taken off the Branch. */}
-          <input type="hidden" name="source" value="manual" />
-          <PersonnelField fieldId="attendance.work_location_and_shift_arrangement.locationid" mode="record">
-            <select {...personnelControl("attendance.work_location_and_shift_arrangement.locationid", 'record')}  defaultValue={emp.locationId ?? ''} className={inputCls}>
-              <option value="">{t('locationNone')}</option>
-              {locations.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name} ({l.code}){l.state ? ` · ${l.state}` : ''}
-                </option>
-              ))}
-            </select>
-          </PersonnelField>
-          <PersonnelField fieldId="attendance.work_location_and_shift_arrangement.locationeffectivefrom" mode="record">
-            <DateField {...personnelControl("attendance.work_location_and_shift_arrangement.locationeffectivefrom", 'record')}   defaultValue={today} className={inputCls} label={personnelLabel("attendance.work_location_and_shift_arrangement.locationeffectivefrom")} />
-          </PersonnelField>
-          <div>
-            <button className={btnPrimary}>{t('setLocation')}</button>
-          </div>
-        </form>
-      )}
     </Card>
   ) : null;
 
@@ -5085,7 +4681,7 @@ export default async function EmployeePage({
   const panels = {
     // Single-card tabs pass the node directly so a null (defensive; scopedAdmin guarantees non-null
     // here) falls through to the shell's empty-state rather than rendering a blank fragment.
-    profile: profilePanel,
+    profile: <>{profilePanel}{changeHistoryCard}{dataPrivacyCard}</>,
     family: familyPanel,
     // 420ebab5 part two (r255) — the Employment Information card is the tab's ONE bucket (a) form
     // (Employment Dates: probation / notice periods and lifecycle dates, overwritten in place), so it sits
@@ -5116,6 +4712,7 @@ export default async function EmployeePage({
         {dataClassificationCard}
         {directSuperiorCard}
         {delegationsCard}
+        {reviewCard}
       </>
     ),
     // Movement tab redesign (78853b97): ONE clean screen — the Employment History timeline (a
@@ -5132,29 +4729,11 @@ export default async function EmployeePage({
         {employmentHistoryCard}
       </>
     ),
-    // Attendance Information (feedback 1fbe9891): the four attendance-related section cards relocated
-    // WHOLE from Employment (locationCard, defaultShiftCard) and Others (clockingCard) into one tab.
-    // The const definitions (setLocationAction / setDefaultShiftAction and the clocking writer — since r423
-    // the single setClockingControlAction) were untouched by that move — only their render location moved.
-    // That relocation ordered them as a setup flow (Work Location → Shift Arrangement → Clocking &
-    // Geofencing); item 52a30630 then pinned Holiday Calendar above all three when it moved onto this tab.
-    //
-    // 420ebab5 part two (r255) — THE ORDER MOVED, AND IT MOVED FOR THE FENCE, NOT FOR TASTE. The tab's
-    // three bucket (a) forms are Holiday Calendar and the two in Clocking & Geofencing, and a tab-wide
-    // Save has to enclose a CONTIGUOUS run of cards — but Work Location and Shift Arrangement sat between
-    // them. Those two are bucket (b): each appends a DATED record (a transfer movement event; a shift
-    // period the service refuses to back-insert) rather than overwriting a value, so a Discard could not
-    // put anything back and they keep their own buttons. They therefore move OUT of the run.
-    //
-    // THEY MOVE BELOW IT, NOT ABOVE IT — corrected within r255. Putting them above the scope did put the
-    // Save/Discard pair at the foot of the tab, but it also pushed Holiday Calendar down to third and so
-    // silently reversed item 52a30630's "Holiday Calendar pinned first", a decision the reporter asked
-    // for on a screen they specified. The pinned reading order wins; the bar's honesty is bought instead
-    // by `covers`, which prints on the bar the names of the two cards it owns, so a bar that is not last
-    // on the tab still cannot read as covering what is under it. Guarded by
-    // test/personnel-holiday-grade-relocation.test.ts (5), so the next round cannot repeat the swap.
+    // Dated Calendar stays first and owns its versioned Save. Schedule Group and the modern clocking /
+    // Location Assignment controls share the field-edit Save below it; obsolete editors are removed.
     attendance: (
       <>
+        {holidayCalendarCard}
         {admin && (
           <TabSaveScope
             tabKey="attendance"
@@ -5162,8 +4741,6 @@ export default async function EmployeePage({
             saveAction={saveAttendanceTabAction}
             covers={tabSaveCovers.attendance}
           >
-            {/* Item 52a30630 — Holiday Calendar relocated from Profile onto this tab, pinned first. */}
-            {holidayCalendarCard}
             {/* f513ec02 — the Schedule Group assignment, directly under the Holiday Group it is modelled
                 on, and above Clocking so the two "which rules judge this person" cards read together. */}
             {scheduleGroupCard}
@@ -5173,8 +4750,6 @@ export default async function EmployeePage({
             {webClockingPhotoCard}
           </TabSaveScope>
         )}
-        {locationCard}
-        {defaultShiftCard}
       </>
     ),
     // Bank & Statutory (feedback 40ef71a0): the Statutory (Malaysia) card — the single
@@ -5265,31 +4840,20 @@ export default async function EmployeePage({
         {zakatSummaryCard}
       </>
     ),
-    // Leave Information (feedback d085c6fc): the Leave Balance card — including its entitlement
-    // breakdown drill-down — relocated out of Payroll into a dedicated leave-management tab. Same
-    // card, same data (loaded once for the page), just a different tab; no leave/payroll logic moved.
+    // 39306a9e: retain grade, scheme and requests. Balance and recalculation review live in Leave.
     leave: (
       <>
-        {/* Item 52a30630 — Grade relocated from Profile onto this tab, pinned above the balance card. */}
+        {/* Grade and Benefit Scheme keep their existing owners and actions. */}
         {gradeCard}
         {benefitSchemeCard}
-        {leaveBalanceCard}
-        {/* R45 7527ea5f — profile-change entitlement recalculation history. */}
-        {recalcHistoryCard}
+        {leaveRequestsCard}
       </>
     ),
     documents: documentsPanel,
     // Qualification (feedback a949184a): the academic/professional qualification register — a single card
     // mirroring the Family tab's list-and-dialog pattern (see qualificationPanel above).
     qualification: qualificationPanel,
-    others: (
-      <>
-        {changeHistoryCard}
-        {dataPrivacyCard}
-        {leaveRequestsCard}
-        {reviewCard}
-      </>
-    ),
+
   };
 
   return (

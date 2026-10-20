@@ -13,10 +13,12 @@
  *
  * Popover structure (trigger button + fixed click-catcher backdrop + absolute right-aligned panel
  * with starting:* enter transition) mirrors components/company-switcher.tsx for visual consistency.
+ * Assignment bulk opts into the modal portal so the sidebar and table cannot clip its controls.
  */
 
 import { useEffect, useState, type MouseEvent } from 'react';
 import Link from 'next/link';
+import * as Dialog from '@radix-ui/react-dialog';
 import { Filter, X } from 'lucide-react';
 import { Button, inputCls } from '@/components/ui';
 
@@ -62,7 +64,7 @@ export type FilterField =
 
 /** Normalise a value to a string[] (multi) — a single string becomes a 1-element array. */
 const asArray = (v: string | string[] | undefined): string[] =>
-  v == null ? [] : Array.isArray(v) ? v : [v];
+  (v == null ? [] : Array.isArray(v) ? v : [v]).filter(value => value !== '');
 
 export type FilterPanelLabels = {
   /** Button text, also the panel's dialog aria-label. */
@@ -100,6 +102,8 @@ export type FilterPanelProps = {
   hidden?: readonly (readonly [string, string])[];
   /** Optional onboarding-tour anchor placed on the trigger button. */
   dataTour?: string;
+  /** Opt in only on pages whose floating panel is clipped by surrounding content. */
+  dialog?: { closeLabel: string };
 };
 
 // A field counts as active once when it has any value (a multi field with ≥1 selected value counts once).
@@ -114,7 +118,7 @@ const baseHref = (action: string, hidden: FilterPanelProps['hidden']) => {
   return s ? `${action}?${s}` : action;
 };
 
-export function FilterPanel({ action, fields, values, labels, hidden, dataTour }: FilterPanelProps) {
+export function FilterPanel({ action, fields, values, labels, hidden, dataTour, dialog }: FilterPanelProps) {
   const [open, setOpen] = useState(false);
   const active = countActive(fields, values);
   const bulk = labels.selectAll && labels.deselectAll;
@@ -132,20 +136,116 @@ export function FilterPanel({ action, fields, values, labels, hidden, dataTour }
 
   // Close on Escape while open (backdrop click handles pointer dismissal).
   useEffect(() => {
-    if (!open) return;
+    if (!open || dialog) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [open]);
+  }, [open, dialog]);
 
-  return (
-    <div className="relative">
-      <button
+  const form = (
+    <form method="get" action={action} className="min-h-0 space-y-3 overflow-y-auto">
+      {(hidden ?? []).map(([k, v], i) => (
+        <input key={`${k}-${i}`} type="hidden" name={k} value={v} />
+      ))}
+      {fields.map((f) =>
+        f.kind === 'multi' ? (
+          // Checkbox group: one repeated GET param per checked value (no-JS friendly).
+          <fieldset key={f.name} className="flex flex-col gap-1.5" aria-label={f.ariaLabel}>
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-xs font-medium text-muted-foreground">{f.label}</span>
+              {bulk && (
+                <span className="flex items-center gap-1.5 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={(e) => setAll(e, true)}
+                    className="text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                  >
+                    {labels.selectAll}
+                  </button>
+                  <span aria-hidden className="text-muted-foreground/50">
+                    ·
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => setAll(e, false)}
+                    className="text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                  >
+                    {labels.deselectAll}
+                  </button>
+                </span>
+              )}
+            </div>
+            <div className="flex flex-col gap-1">
+              {f.options.map((o) => (
+                <label key={o.value} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    name={f.name}
+                    value={o.value}
+                    defaultChecked={asArray(values[f.name]).includes(o.value)}
+                    className="size-4 rounded border-border text-primary focus:ring-primary"
+                  />
+                  <span>{o.label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        ) : (
+          <label key={f.name} className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{f.label}</span>
+            {f.kind === 'search' ? (
+              <input
+                name={f.name}
+                defaultValue={asArray(values[f.name])[0] ?? ''}
+                placeholder={f.placeholder}
+                aria-label={f.ariaLabel}
+                className={inputCls}
+              />
+            ) : f.kind === 'date' ? (
+              <input
+                type="date"
+                name={f.name}
+                defaultValue={asArray(values[f.name])[0] ?? ''}
+                aria-label={f.ariaLabel}
+                className={inputCls}
+              />
+            ) : (
+              <select
+                name={f.name}
+                defaultValue={asArray(values[f.name])[0] ?? ''}
+                aria-label={f.ariaLabel}
+                className={inputCls}
+              >
+                <option value="">{f.allLabel}</option>
+                {f.options.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            )}
+          </label>
+        ),
+      )}
+      <div className="flex items-center justify-between gap-2 pt-1">
+        <Button type="submit" size="sm">
+          {labels.apply}
+        </Button>
+        {active > 0 && (
+          <Link href={baseHref(action, hidden)} className="text-sm text-muted-foreground hover:text-foreground">
+            {labels.clearAll}
+          </Link>
+        )}
+      </div>
+    </form>
+  );
+  const trigger = (
+    <button
         type="button"
         data-tour={dataTour}
-        onClick={() => setOpen((o) => !o)}
+        onClick={dialog ? undefined : () => setOpen((o) => !o)}
         aria-expanded={open}
         aria-haspopup="dialog"
         className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition duration-150 ease-snappy hover:bg-muted active:scale-[0.98]"
@@ -158,7 +258,25 @@ export function FilterPanel({ action, fields, values, labels, hidden, dataTour }
             <span className="sr-only">{labels.activeCount}</span>
           </span>
         )}
-      </button>
+    </button>
+  );
+  if (dialog) return <Dialog.Root open={open} onOpenChange={setOpen}>
+    <Dialog.Trigger asChild>{trigger}</Dialog.Trigger>
+    <Dialog.Portal>
+      <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
+      <Dialog.Content aria-describedby={undefined} className="fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100dvh_-_2rem)] w-[min(32rem,calc(100vw_-_2rem))] -translate-x-1/2 -translate-y-1/2 flex-col gap-4 rounded-lg border border-border bg-popover p-4 text-popover-foreground shadow-xl">
+        <div className="flex shrink-0 items-center justify-between gap-3">
+          <Dialog.Title className="font-semibold">{labels.filter}</Dialog.Title>
+          <Dialog.Close asChild><button type="button" aria-label={dialog.closeLabel} className="grid size-11 place-items-center rounded-md hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"><X className="size-4" aria-hidden /></button></Dialog.Close>
+        </div>
+        {form}
+      </Dialog.Content>
+    </Dialog.Portal>
+  </Dialog.Root>;
+
+  return (
+    <div className="relative">
+      {trigger}
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
@@ -167,101 +285,7 @@ export function FilterPanel({ action, fields, values, labels, hidden, dataTour }
             aria-label={labels.filter}
             className="absolute right-0 z-50 mt-1 w-[min(22rem,90vw)] origin-top-right scale-100 rounded-lg border border-border bg-popover p-4 text-popover-foreground opacity-100 shadow-lg transition duration-150 ease-snappy starting:scale-95 starting:opacity-0"
           >
-            <form method="get" action={action} className="max-h-[60vh] space-y-3 overflow-y-auto">
-              {(hidden ?? []).map(([k, v], i) => (
-                <input key={`${k}-${i}`} type="hidden" name={k} value={v} />
-              ))}
-              {fields.map((f) =>
-                f.kind === 'multi' ? (
-                  // Checkbox group: one repeated GET param per checked value (no-JS friendly).
-                  <fieldset key={f.name} className="flex flex-col gap-1.5" aria-label={f.ariaLabel}>
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-xs font-medium text-muted-foreground">{f.label}</span>
-                      {bulk && (
-                        <span className="flex items-center gap-1.5 text-[11px]">
-                          <button
-                            type="button"
-                            onClick={(e) => setAll(e, true)}
-                            className="text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                          >
-                            {labels.selectAll}
-                          </button>
-                          <span aria-hidden className="text-muted-foreground/50">
-                            ·
-                          </span>
-                          <button
-                            type="button"
-                            onClick={(e) => setAll(e, false)}
-                            className="text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                          >
-                            {labels.deselectAll}
-                          </button>
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      {f.options.map((o) => (
-                        <label key={o.value} className="flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            name={f.name}
-                            value={o.value}
-                            defaultChecked={asArray(values[f.name]).includes(o.value)}
-                            className="size-4 rounded border-border text-primary focus:ring-primary"
-                          />
-                          <span>{o.label}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </fieldset>
-                ) : (
-                  <label key={f.name} className="flex flex-col gap-1.5">
-                    <span className="text-xs font-medium text-muted-foreground">{f.label}</span>
-                    {f.kind === 'search' ? (
-                      <input
-                        name={f.name}
-                        defaultValue={asArray(values[f.name])[0] ?? ''}
-                        placeholder={f.placeholder}
-                        aria-label={f.ariaLabel}
-                        className={inputCls}
-                      />
-                    ) : f.kind === 'date' ? (
-                      <input
-                        type="date"
-                        name={f.name}
-                        defaultValue={asArray(values[f.name])[0] ?? ''}
-                        aria-label={f.ariaLabel}
-                        className={inputCls}
-                      />
-                    ) : (
-                      <select
-                        name={f.name}
-                        defaultValue={asArray(values[f.name])[0] ?? ''}
-                        aria-label={f.ariaLabel}
-                        className={inputCls}
-                      >
-                        <option value="">{f.allLabel}</option>
-                        {f.options.map((o) => (
-                          <option key={o.value} value={o.value}>
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </label>
-                ),
-              )}
-              <div className="flex items-center justify-between gap-2 pt-1">
-                <Button type="submit" size="sm">
-                  {labels.apply}
-                </Button>
-                {active > 0 && (
-                  <Link href={baseHref(action, hidden)} className="text-sm text-muted-foreground hover:text-foreground">
-                    {labels.clearAll}
-                  </Link>
-                )}
-              </div>
-            </form>
+            <div className="max-h-[60vh] overflow-y-auto">{form}</div>
           </div>
         </>
       )}
@@ -280,7 +304,7 @@ export function FilterChips({
   values,
   labels,
   hidden,
-}: Omit<FilterPanelProps, 'dataTour'>) {
+}: Omit<FilterPanelProps, 'dataTour' | 'dialog'>) {
   const active = fields.filter((f) => asArray(values[f.name]).length > 0);
   if (active.length === 0) return null;
 
