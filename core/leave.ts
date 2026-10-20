@@ -6902,6 +6902,15 @@ async function applyLeaveCancellationApprovalTx(
   // create new sibling rows for the rest, all sharing a fresh parent_group_id. The original carried ONE
   // debit over the whole span (finalizeLeaveApproval), so we first reverse that whole-span debit, then give
   // each segment its own debit — net zero for survivors, net +1×cancelled-days restored for cancelled ones.
+  // Keep PostgreSQL's full timestamp precision. The Date-valued request projection truncates
+  // microseconds; serializing it into a sibling silently changes recorded submission/consent facts.
+  const [originalTimestamps] = await tx.select({
+    createdAt: sql<string>`${leaveRequest.createdAt}::text`,
+    decidedAt: sql<string | null>`${leaveRequest.decidedAt}::text`,
+    unpaidConsentAt: sql<string | null>`${leaveRequest.unpaidConsentAt}::text`,
+  }).from(leaveRequest).where(eq(leaveRequest.id, req.id)).limit(1);
+  if (!originalTimestamps) throw new Error('leave request not found');
+
   const parentGroupId = randomUUID();
   // Balance Deduction Source (cdf9ca48): the reversal and the per-segment re-debits below must land on the
   // SAME ledger finalizeLeaveApproval debited, or a give-back would credit a balance that was never charged
@@ -6998,7 +7007,7 @@ async function applyLeaveCancellationApprovalTx(
           status: isCancelled ? 'cancelled' : 'approved',
           reason: req.reason,
           employeeRemark: req.employeeRemark,
-          unpaidConsentAt: req.unpaidConsentAt,
+          unpaidConsentAt: originalTimestamps.unpaidConsentAt === null ? null : sql`${originalTimestamps.unpaidConsentAt}::timestamptz`,
           unpaidConsentBy: req.unpaidConsentBy,
           survivingChildren: req.survivingChildren,
           confinementDate: req.confinementDate,
@@ -7007,12 +7016,12 @@ async function applyLeaveCancellationApprovalTx(
           entitlementYear: req.entitlementYear,
           submittedOn: req.submittedOn,
           importedHistory: req.importedHistory,
-          createdAt: req.createdAt,
+          createdAt: sql`${originalTimestamps.createdAt}::timestamptz`,
           // externalReference identifies ONE original application and is tenant-unique.
           // Siblings resolve its provenance through leave-request.split, never a copy.
           parentGroupId,
           decidedByEmploymentId: req.decidedByEmploymentId,
-          decidedAt: req.decidedAt,
+          decidedAt: originalTimestamps.decidedAt === null ? null : sql`${originalTimestamps.decidedAt}::timestamptz`,
         })
         .returning({ id: leaveRequest.id });
       rowId = created.id;

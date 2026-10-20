@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
@@ -119,6 +119,36 @@ describe('approved leave split preserves application facts', () => {
     expect(unpaid.get(subject.employmentId) ?? 0).toBe(charged ? 3 : 0);
     const splitEvents = await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType, 'leave-request.split'));
     expect(splitEvents.some(e => (e.payload as { splitFromRequestId?: string }).splitFromRequestId === survivor.id)).toBe(true);
+  });
+
+  it.each([false, true])('retains exact database timestamp precision and nullable facts through repeated splits (timestamps=%s)', async hasNullableTimestamps => {
+    const request = await original({ imported: true, charged: true });
+    // Deliberate historical stored facts: JS Date cannot represent these microseconds.
+    const created = `${addDays(today, -20)}T09:00:00.123456Z`;
+    const decided = hasNullableTimestamps ? `${addDays(today, -18)}T09:00:00.654321Z` : null;
+    const consent = hasNullableTimestamps ? `${addDays(today, -19)}T09:00:00.987654Z` : null;
+    await owner.db.execute(sql`update leave_request set created_at=${created}::timestamptz,
+      decided_at=${decided}::timestamptz, unpaid_consent_at=${consent}::timestamptz where id=${request.id}::uuid`);
+    const rawTimestamps = () => owner.db.select({
+      id: schema.leaveRequest.id,
+      created: sql<string>`${schema.leaveRequest.createdAt}::text`,
+      decided: sql<string | null>`${schema.leaveRequest.decidedAt}::text`,
+      consent: sql<string | null>`${schema.leaveRequest.unpaidConsentAt}::text`,
+    }).from(schema.leaveRequest).where(eq(schema.leaveRequest.employmentId, subject.employmentId)).orderBy(asc(schema.leaveRequest.id));
+    const before = await rawTimestamps();
+    expect(before).toHaveLength(1);
+    await cancel(request.id, dates[0]);
+    const survivor = (await requests()).find(row => row.status === 'approved');
+    expect(survivor).toBeDefined();
+    await cancel(survivor!.id, dates[2]);
+    const after = await rawTimestamps();
+    expect(after.length).toBeGreaterThan(2);
+    const {id: _originalId, ...expected} = before[0];
+    for (const {id: _id, ...actual} of after) expect(actual).toEqual(expected);
+    const stored = await requests();
+    const review = await leaveSplitReview(adminCtx(b));
+    expect(review.total).toBe(0);
+    expect(await requests()).toEqual(stored);
   });
 
   it('keeps the mixed paid/unpaid refusal without changing rows or ledger', async () => {
