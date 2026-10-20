@@ -2,12 +2,29 @@
  * 69 recorded days. Exercise public submission/approval/cancellation and both actual candidate reads. */
 import { and, asc, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { NextIntlClientProvider, type AbstractIntlMessages } from 'next-intl';
+import { readFileSync } from 'node:fs';
+
+// Supply the real catalogue outside a Next request; database reads and the shipping projection stay real.
+vi.mock('next-intl/server', async () => {
+  const {createTranslator}=await import('next-intl');
+  const {readFileSync}=await import('node:fs');
+  const catalogue=JSON.parse(readFileSync('messages/en.json','utf8')) as Record<string,AbstractIntlMessages>;
+  return {getLocale:async()=> 'en',getTranslations:async(namespace:string)=>{
+    const messages=catalogue[namespace];if(!messages)throw Error(`Unexpected namespace ${namespace}`);
+    return createTranslator({locale:'en',messages});
+  }};
+});
+vi.mock('../app/leave/actions',()=>({requestLeaveCancellationAction:vi.fn(),editLeaveAction:vi.fn(),cancelOwnLeaveAction:vi.fn()}));
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { decideLeave, decideLeaveCancellation, requestLeave, requestLeaveCancellation } from '../core/leave';
-import { leaveRequestsFor, listLeaveRequests, plannedAbsences } from '../core/read';
+import { leaveRequestsFor, listLeaveRequests, plannedAbsences, myEmployment, listLeaveTypes } from '../core/read';
+import { loadOwnLeaveHistory } from '../components/leave/own-leave-history';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase } from './harness';
@@ -84,6 +101,15 @@ describe('calendar-counted partial cancellation preserves the actual charged dat
       expect(row.parentGroupId).not.toBeNull();
       expect(history.find(item => item.id === row.id)?.isEmergencyGroup).toBe(false);
       expect(personal.find(item => item.id === row.id)?.isEmergencyGroup).toBe(false);
+    }
+    if (offset === 2) {
+      const me=await myEmployment(employee);if(!me)throw Error('Expected the authenticated fixture employment');
+      const leaveTypes=await listLeaveTypes(employee);
+      const projected=await loadOwnLeaveHistory({session:employee,me,sp:{hTab:'approved'},locale:'en',leaveTypes,eligibleTypeIds:new Set(leaveTypes.map(type=>type.id))});
+      const messages=JSON.parse(readFileSync('messages/en.json','utf8')) as AbstractIntlMessages;
+      const html=renderToStaticMarkup(createElement(NextIntlClientProvider,{locale:'en',messages,children:projected.history}));
+      expect(html).toContain('Maternity leave');
+      expect(html).not.toContain('Emergency Leave');
     }
     const afterLedger = await ledger();
     expect(net(afterLedger)).toBe(23);
