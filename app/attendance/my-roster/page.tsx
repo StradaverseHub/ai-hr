@@ -339,7 +339,7 @@ function MonthGrid({
             key={d.date}
             aria-current={d.selected ? 'date' : undefined}
             className={`min-h-24 space-y-1 border-b border-r border-border px-3 py-2 transition-colors hover:bg-muted/60 ${
-              isoWeekdayOf(d.date) >= 6 ? 'bg-amber-50/60 dark:bg-amber-500/5' : ''
+              d.selected ? 'bg-primary/5 ring-2 ring-inset ring-primary' : isoWeekdayOf(d.date) >= 6 ? 'bg-amber-50/60 dark:bg-amber-500/5' : ''
             }`}
           >
             <Link href={myRosterHref({ view: 'day', from: d.date, to: d.date, month: w.month, focus: d.date })} className="block min-h-8 text-xs text-muted-foreground hover:text-primary">
@@ -379,7 +379,7 @@ function WeekCards({
         <Card
           key={d.date}
           aria-current={d.selected ? 'date' : undefined}
-          className={`space-y-2 px-3 py-3 ${isoWeekdayOf(d.date) >= 6 ? 'bg-amber-50/60 dark:bg-amber-500/5' : ''}`}
+          className={`space-y-2 px-3 py-3 ${d.selected ? 'bg-primary/5 ring-2 ring-inset ring-primary' : isoWeekdayOf(d.date) >= 6 ? 'bg-amber-50/60 dark:bg-amber-500/5' : ''}`}
         >
           <div>
             <p className="text-xs uppercase tracking-wide text-muted-foreground">{fmtWeekday(d.date)}</p>
