@@ -84,9 +84,12 @@ describe('Atelier reaches the app only through its own scope', () => {
       }
     }
   });
-  it('globals.css imports it and defines the atelier: variant on the same attribute', () => {
+  it('the layout imports it as a module (never an @import a warm build cache can drop); the variant stays in globals', () => {
+    const layout = read('app/layout.tsx');
     const globals = read('app/globals.css');
-    expect(globals).toContain('@import "./atelier.css";');
+    expect(layout).toMatch(/^import '\.\/atelier\.css';$/m);
+    expect(layout.indexOf("import './atelier.css';")).toBeGreaterThan(layout.indexOf("import './globals.css';"));
+    expect(globals).not.toMatch(/@import\s+["']\.\/atelier\.css/);
     expect(globals).toContain("@custom-variant atelier (&:where([data-ui-theme='atelier'] *));");
   });
 });
