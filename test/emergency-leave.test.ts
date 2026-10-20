@@ -16,7 +16,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { listLeaveRequests, listLeaveRequestsPage, leaveRequestsFor } from '../core/read';
+import { listLeaveRequests, listLeaveRequestsPage, leaveRequestsFor, employeeCancelOffers } from '../core/read';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import {
   adminCancelLeave,
@@ -24,6 +24,7 @@ import {
   InsufficientLeaveBalanceError,
   LeaveDurationNotAllowedError,
   requestLeave,
+  requestLeaveCancellation,
   resolveEmergencyCascade,
   resolveEmergencyIllnessCascade,
   UnpaidConsentRequiredError,
@@ -31,6 +32,7 @@ import {
 import {
   adminCtx,
   closeAll,
+  createAppUser,
   latestEventPayload,
   ledgerBalance,
   migrateTestDb,
@@ -138,6 +140,26 @@ afterAll(async () => {
 });
 
 describe('recorded Emergency Leave provenance', () => {
+  it('keeps genuine EL partial cancellation blocked after HR cancels its unpaid sibling', async () => {
+    await grantAnnual('2.00');
+    await owner.db.update(schema.leaveType).set({employeeCancelApproved:true}).where(eq(schema.leaveType.id,annualId));
+    const [subject] = await owner.db.select({personId:schema.employment.personId}).from(schema.employment).where(eq(schema.employment.id,employmentId));
+    const self = {tenantId:b.tenantId,userId:await createAppUser(b.tenantId,subject.personId,'employee'),personId:subject.personId,roles:['employee'],entitlements:adminCtx(b).entitlements};
+    let start = new Date(Date.parse(`${todayInKualaLumpur()}T00:00:00Z`) + 35 * 86400000).toISOString().slice(0, 10);
+    while (new Date(`${start}T00:00:00Z`).getUTCDay() !== 1) start = new Date(Date.parse(`${start}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+    const end = new Date(Date.parse(`${start}T00:00:00Z`) + 2 * 86400000).toISOString().slice(0, 10);
+    const result = await requestLeave(adminCtx(b), {employmentId,leaveTypeId:emergencyId,startDate:start,endDate:end,unpaidConsent:true});
+    const annual=result.children.find(child=>child.code==='ANNUAL')!,unpaid=result.children.find(child=>child.code==='UNPAID')!;
+    expect(annual.days).toBe(2);expect(unpaid.days).toBe(1);
+    await decideLeave(adminCtx(b),{leaveRequestId:annual.id,decision:'approved'});
+    await adminCancelLeave(adminCtx(b),{leaveRequestId:unpaid.id,reason:'Fictional EL sibling cancellation'});
+    // Existing EL policy must not become ordinary split eligibility merely because a sibling is cancelled.
+    await expect(requestLeaveCancellation(self,{leaveRequestId:annual.id,cancelDates:[start],today:todayInKualaLumpur()})).rejects.toMatchObject({refusal:'grouped'});
+    const rows=await listLeaveRequests(self,[b.companyId]);
+    expect(rows.find(row=>row.id===annual.id)?.isEmergencyGroup).toBe(true);
+    expect((await employeeCancelOffers(self,rows,todayInKualaLumpur())).get(annual.id)).toBeNull();
+  });
+
   it('retains true EL labels on every read when an administrator cancels one child', async () => {
     await grantAnnual('1.00');
     let start = new Date(Date.parse(`${todayInKualaLumpur()}T00:00:00Z`) + 35 * 86400000).toISOString().slice(0, 10);
