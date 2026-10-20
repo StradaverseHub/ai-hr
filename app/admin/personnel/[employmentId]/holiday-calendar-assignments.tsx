@@ -16,7 +16,10 @@ export function HolidayCalendarAssignments({employmentId,joinDate,employmentStar
  const label=(choice:string)=>choice.startsWith('group:')?groups.find(g=>`group:${g.id}`===choice)?.name??t('unavailableCalendar'):choice.startsWith('state:')?choice.slice(6):t('companyDefault');
  const edit=(row?:Row)=>{setError(null);setNotice(null);setDraft(row?{id:row.id,startDate:row.startDate,endDate:row.endDate??'',choice:row.choice}:{id:null,startDate:joinDate,endDate:'',choice:''});};
  const submit=(event:FormEvent<HTMLFormElement>)=>{
-  event.preventDefault();const form=new FormData(event.currentTarget);setError(null);setNotice(null);
+  event.preventDefault();const form=new FormData(event.currentTarget);
+  // Preserve the values actually submitted, including native date edits/autofill, on a refusal.
+  setDraft({id:String(form.get('replacesId')??'')||null,startDate:String(form.get('startDate')??''),endDate:String(form.get('endDate')??''),choice:String(form.get('calendar')??'')});
+  setError(null);setNotice(null);
   startTransition(async()=>{
    try{
     const result=await saveHolidayCalendarAssignmentAction(form);
@@ -37,7 +40,7 @@ export function HolidayCalendarAssignments({employmentId,joinDate,employmentStar
     <p>{t('saved',{count:notice.updated})}</p>
     {notice.reviewDates.length>0&&<p className="mt-1">{t('review',{count:notice.reviewDates.length})} {notice.reviewDates.map(date).join(', ')}</p>}
    </div>}
-   {draft&&<form onSubmit={submit} className="grid gap-4 rounded-lg border border-border p-4 sm:grid-cols-3" aria-label={draft.id?t('edit'):t('add')}>
+   {draft&&<form data-tab-save-independent="true" onSubmit={submit} className="grid gap-4 rounded-lg border border-border p-4 sm:grid-cols-3" aria-label={draft.id?t('edit'):t('add')}>
     <input type="hidden" name="employmentId" value={employmentId}/><input type="hidden" name="replacesId" value={draft.id??''}/>
     <label htmlFor={`${formId}-calendar`} className="space-y-1 text-sm"><span>{t('calendar')}</span>
      <select id={`${formId}-calendar`} name="calendar" value={draft.choice} disabled={pending} onChange={e=>setDraft({...draft,choice:e.target.value})} className={inputCls}>
