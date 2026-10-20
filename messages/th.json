@@ -87,7 +87,7 @@
     "colEmployeeNo": "รหัสพนักงาน",
     "colEmployeeName": "ชื่อพนักงาน",
     "colDepartment": "แผนก",
-    "colOccupation": "ตำแหน่งงาน",
+    "colOccupation": "ตำแหน่ง",
     "colEdit": "แก้ไข",
     "prevMonth": "เดือนก่อนหน้า",
     "nextMonth": "เดือนถัดไป",
@@ -264,7 +264,15 @@
     "breakScalarOnlyHint": "พักโดยไม่กำหนดเวลา: {minutes} นาที หักออกจากวันที่ทำงาน 6 ชั่วโมงขึ้นไป",
     "breakStopUsingAllowance": "กะนี้หักเงินช่วยเหลือ {minutes} นาทีสำหรับทั้งวัน",
     "breakStopUsingTick": "เลิกใช้",
-    "breakStopUsingHint": "ติ๊กตัวเลือกนี้ แล้วกำหนดนาทียืดหยุ่นของแต่ละช่วงพักด้านล่างเอง"
+    "breakStopUsingHint": "ติ๊กตัวเลือกนี้ แล้วกำหนดนาทียืดหยุ่นของแต่ละช่วงพักด้านล่างเอง",
+    "legendSearch": "ค้นหากะด้วยรหัสหรือชื่อ",
+    "legendEmpty": "ไม่พบกะที่ตรงกัน",
+    "legendClose": "ปิดคำอธิบายกะ",
+    "publicHoliday": "วันหยุดนักขัตฤกษ์",
+    "replacementHoliday": "วันหยุดนักขัตฤกษ์ชดเชย",
+    "approvedLeave": "การลาที่อนุมัติแล้ว",
+    "approvedPartLeave": "การลาที่อนุมัติแล้ว (บางส่วนของวัน)",
+    "dayContextHelp": "ป้ายวันแยกจากการกำหนดกะ รายละเอียดการลาอยู่ในเมนูลา"
   },
   "common": {
     "appName": "AIHR",

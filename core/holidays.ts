@@ -542,13 +542,13 @@ export function holidayMemoKey(i: HolidayMemoInputs): string {
   return JSON.stringify(inputs);
 }
 
-export async function holidayDatesByEmployment(
+export async function holidayCalendarFactsByEmployment(
   tx: Tx,
   { employmentIds, startDate, endDate }: { employmentIds: readonly string[]; startDate: string; endDate: string },
-): Promise<Map<string, Set<string>>> {
+): Promise<{ holidays: Map<string, Set<string>>; replacements: Map<string, Set<string>> }> {
   const ids = [...new Set(employmentIds)];
   const out = new Map<string, Set<string>>();
-  if (ids.length === 0) return out;
+  if (ids.length === 0) return { holidays: out, replacements: new Map() };
 
   const emps = await tx
     .select({
@@ -585,8 +585,13 @@ export async function holidayDatesByEmployment(
     out.set(id, new Set(dates));
   }
   const replacements=await replacementHolidayDatesByEmployment(tx,{employmentIds:ids,startDate,endDate});
-  for(const [id,dates] of replacements){const effective=out.get(id);if(effective)for(const date of dates)effective.add(date);}
-  return out;
+  return { holidays: out, replacements };
+}
+
+/** Existing consumers need the union; display consumers can retain the two proven calendar facts. */
+export async function holidayDatesByEmployment(tx: Tx, p: { employmentIds: readonly string[]; startDate: string; endDate: string }): Promise<Map<string, Set<string>>> {
+  const facts = await holidayCalendarFactsByEmployment(tx, p);
+  return new Map([...facts.holidays].map(([id, dates]) => [id, new Set([...dates, ...(facts.replacements.get(id) ?? [])])]));
 }
 
 // ──────────────────────────────────────────────────────────────────────────────────────────────────

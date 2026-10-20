@@ -477,6 +477,7 @@ export default async function RosterPage({
               }))}
               shifts={view.shifts}
               initial={view.cells}
+              dayContext={view.dayContext}
               usual={view.usual}
               isAdmin={admin && (!teamScope || teamScope.canEditRoster)}
               today={todayIso}

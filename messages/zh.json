@@ -264,7 +264,15 @@
     "breakScalarOnlyHint": "无固定时间的休息：{minutes} 分钟，自任何 6 小时或以上的工作日中扣除。",
     "breakStopUsingAllowance": "此班次为全天扣除 {minutes} 分钟的津贴。",
     "breakStopUsingTick": "停止使用",
-    "breakStopUsingHint": "勾选此项，然后在下方为每个休息分别设定其弹性分钟数。"
+    "breakStopUsingHint": "勾选此项，然后在下方为每个休息分别设定其弹性分钟数。",
+    "legendSearch": "按代码或名称搜索班次",
+    "legendEmpty": "没有匹配班次",
+    "legendClose": "关闭班次图例",
+    "publicHoliday": "公共假期",
+    "replacementHoliday": "替代公共假期",
+    "approvedLeave": "已批准休假",
+    "approvedPartLeave": "已批准休假（部分时段）",
+    "dayContextHelp": "日期标签与排班分开。休假详情保留在休假模块中。"
   },
   "common": {
     "appName": "AIHR",

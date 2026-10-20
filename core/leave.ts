@@ -5842,6 +5842,7 @@ async function approvedLeaveDates(
   empIds: string[],
   from: string,
   to: string,
+  options?: { includePartial?: boolean },
 ): Promise<Map<string, Set<string>>> {
   const out = new Map<string, Set<string>>();
   if (empIds.length === 0) return out;
@@ -5859,7 +5860,7 @@ async function approvedLeaveDates(
     .where(
       and(
         inArray(leaveRequest.employmentId, empIds),
-        eq(leaveRequest.durationType, 'full_day'),
+        options?.includePartial ? undefined : eq(leaveRequest.durationType, 'full_day'),
         eq(leaveRequestDate.status, 'approved'),
         gte(leaveRequestDate.leaveDate, from),
         lte(leaveRequestDate.leaveDate, to),
@@ -5878,7 +5879,7 @@ async function approvedLeaveDates(
     .where(
       and(
         inArray(leaveRequest.employmentId, empIds),
-        eq(leaveRequest.durationType, 'full_day'),
+        options?.includePartial ? undefined : eq(leaveRequest.durationType, 'full_day'),
         eq(leaveRequest.status, 'approved'),
         lte(leaveRequest.startDate, to),
         gte(leaveRequest.endDate, from),
@@ -5891,6 +5892,17 @@ async function approvedLeaveDates(
     for (const d of eachDate(lo, hi)) add(r.employmentId, d);
   }
   return out;
+}
+
+/** Privacy-minimal calendar presence. Never returns a leave type, reason, consent or medical facts. */
+export async function approvedLeavePresenceByEmploymentTx(tx: Tx, employmentIds: string[], from: string, to: string) {
+  const [fullDays, allDays] = await Promise.all([
+    approvedLeaveDates(tx, employmentIds, from, to),
+    approvedLeaveDates(tx, employmentIds, from, to, { includePartial: true }),
+  ]);
+  return new Map([...allDays].map(([id, dates]) => [id,
+    new Map([...dates].map(date => [date, fullDays.get(id)?.has(date) ? 'full_day' as const : 'part_day' as const])),
+  ]));
 }
 
 /** ADR-0068 §4A (exported for the span consumers in attendance/roster/read). See approvedLeaveDates. */

@@ -87,7 +87,7 @@
     "colEmployeeNo": "Employee No",
     "colEmployeeName": "Employee Name",
     "colDepartment": "Department",
-    "colOccupation": "Occupation",
+    "colOccupation": "Position",
     "colEdit": "Edit",
     "prevMonth": "Previous month",
     "nextMonth": "Next month",
@@ -264,7 +264,15 @@
     "breakScalarOnlyHint": "Break without set times: {minutes} min, taken off any day of 6 hours or more.",
     "breakStopUsingAllowance": "This shift deducts one allowance of {minutes} min for the whole day.",
     "breakStopUsingTick": "Stop using it",
-    "breakStopUsingHint": "Tick this, then give each break its own Flexible minutes below."
+    "breakStopUsingHint": "Tick this, then give each break its own Flexible minutes below.",
+    "legendSearch": "Search shifts by code or name",
+    "legendEmpty": "No matching shifts",
+    "legendClose": "Close shift legend",
+    "publicHoliday": "Public holiday",
+    "replacementHoliday": "Replacement public holiday",
+    "approvedLeave": "Approved leave",
+    "approvedPartLeave": "Approved leave (part day)",
+    "dayContextHelp": "Day labels are separate from shift assignments. Leave details remain in Leave."
   },
   "common": {
     "appName": "AIHR",

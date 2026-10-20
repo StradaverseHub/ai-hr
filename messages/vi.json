@@ -87,7 +87,7 @@
     "colEmployeeNo": "Mã nhân viên",
     "colEmployeeName": "Tên nhân viên",
     "colDepartment": "Phòng ban",
-    "colOccupation": "Chức danh",
+    "colOccupation": "Chức vụ",
     "colEdit": "Sửa",
     "prevMonth": "Tháng trước",
     "nextMonth": "Tháng sau",
@@ -264,7 +264,15 @@
     "breakScalarOnlyHint": "Giờ nghỉ không có thời gian cố định: {minutes} phút, bị trừ khỏi bất kỳ ngày nào từ 6 giờ trở lên.",
     "breakStopUsingAllowance": "Ca này trừ một khoản phụ cấp {minutes} phút cho cả ngày.",
     "breakStopUsingTick": "Ngừng sử dụng",
-    "breakStopUsingHint": "Đánh dấu ô này, sau đó cho mỗi giờ nghỉ số phút Linh hoạt riêng bên dưới."
+    "breakStopUsingHint": "Đánh dấu ô này, sau đó cho mỗi giờ nghỉ số phút Linh hoạt riêng bên dưới.",
+    "legendSearch": "Tìm ca theo mã hoặc tên",
+    "legendEmpty": "Không có ca phù hợp",
+    "legendClose": "Đóng chú giải ca",
+    "publicHoliday": "Ngày lễ",
+    "replacementHoliday": "Ngày nghỉ lễ bù",
+    "approvedLeave": "Nghỉ phép đã duyệt",
+    "approvedPartLeave": "Nghỉ phép đã duyệt (một phần ngày)",
+    "dayContextHelp": "Nhãn ngày tách biệt với phân ca. Chi tiết nghỉ phép nằm trong mục Nghỉ phép."
   },
   "common": {
     "appName": "AIHR",

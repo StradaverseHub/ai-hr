@@ -264,7 +264,15 @@
     "breakScalarOnlyHint": "Rehat tanpa masa ditetapkan: {minutes} min, ditolak daripada mana-mana hari 6 jam atau lebih.",
     "breakStopUsingAllowance": "Syif ini menolak satu elaun {minutes} min untuk sepanjang hari.",
     "breakStopUsingTick": "Henti guna",
-    "breakStopUsingHint": "Tandakan ini, kemudian berikan setiap rehat minit Fleksibel tersendiri di bawah."
+    "breakStopUsingHint": "Tandakan ini, kemudian berikan setiap rehat minit Fleksibel tersendiri di bawah.",
+    "legendSearch": "Cari syif mengikut kod atau nama",
+    "legendEmpty": "Tiada syif sepadan",
+    "legendClose": "Tutup petunjuk syif",
+    "publicHoliday": "Cuti umum",
+    "replacementHoliday": "Cuti umum gantian",
+    "approvedLeave": "Cuti diluluskan",
+    "approvedPartLeave": "Cuti diluluskan (sebahagian hari)",
+    "dayContextHelp": "Label hari berasingan daripada penetapan syif. Butiran cuti kekal dalam Cuti."
   },
   "common": {
     "appName": "AIHR",
