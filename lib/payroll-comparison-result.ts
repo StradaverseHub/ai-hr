@@ -18,6 +18,7 @@ export type ComparisonSource = {
   /** null means the selected item cannot be established from this saved result. */
   amount: string | null;
   coverage: { from: string; to: string };
+  proratedCoverage?: { from:string; to:string };
 };
 export type ComparisonIdentity = {
   employmentId: string; companyId: string; employeeCode: string; employeeName: string;
@@ -145,6 +146,7 @@ export function comparePayrollResults(input: {
       previous: group.previous.amount, current: group.current.amount,
       previousCoverage: group.previous.sources.map(source => source.coverage),
       currentCoverage: group.current.sources.map(source => source.coverage),
+      proratedCoverage: group.current.sources.flatMap(source => source.proratedCoverage ? [source.proratedCoverage] : []),
       movements: identity.movements, verifiedTransferIds: identity.verifiedTransferIds };
     const verified = payrollComparisonReason(evidenceInput);
     const reason = input.definition.autoTag ? verified : payrollComparisonReason({ ...evidenceInput, autoTag: false });
@@ -156,8 +158,8 @@ export function comparePayrollResults(input: {
       m.effectiveDate === exit && exit >= input.previousFrom && exit <= input.currentTo);
     if (recordedExit && exit && (
       group.previous.sources.length && !group.current.sources.length &&
-        (exit >= input.currentFrom || group.previous.sources.some(source => source.coverage.to === exit)) ||
-      exit >= input.currentFrom && group.current.sources.some(source => source.coverage.to === exit && exit < input.currentTo)
+        (exit >= input.currentFrom || group.previous.sources.some(source => source.coverage.from <= exit && exit <= source.coverage.to)) ||
+      exit >= input.currentFrom && group.current.sources.some(source => source.coverage.from <= exit && exit <= source.coverage.to)
     )) leavers.add(group.employmentId);
     counts[reason.reason]++;
     const variance = group.currency ? payrollVariance(group.previous.amount, group.current.amount) : null;

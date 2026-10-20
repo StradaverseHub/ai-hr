@@ -5,7 +5,7 @@ import {
   type PayrollComparisonMovement,
 } from '../lib/payroll-period-comparison';
 import { comparePayrollResults, type ComparisonRun, type ComparisonSource, type ComparisonIdentity } from '../lib/payroll-comparison-result';
-import { recordedPayrollComparisonAmount, recordedPayrollComparisonCurrency } from '../lib/payroll-comparison-source';
+import { recordedPayrollComparisonAmount, recordedPayrollComparisonCurrency, recordedPayrollProrationCoverage } from '../lib/payroll-comparison-source';
 const definition = structuredClone(DEFAULT_PAYROLL_COMPARISON);
 const companyId = '00000000-0000-0000-0000-000000000001';
 const otherCompanyId = '00000000-0000-0000-0000-000000000002';
@@ -56,9 +56,22 @@ describe('saved result provenance', () => {
   });
   it('distinguishes recorded absence from unrecorded history and ignores bucket subtotals', () => {
     expect(recordedPayrollComparisonAmount('0', {}, 'ALLOWANCE')).toBeNull();
-    expect(recordedPayrollComparisonAmount('0', { componentLines: [] }, 'ALLOWANCE')).toBe('0.00');
+    expect(recordedPayrollComparisonAmount('0', { componentLines: [] }, 'ALLOWANCE',companyId)).toBeNull();
+    expect(recordedPayrollComparisonAmount('0',{componentLines:[],reportContext:{version:1,payingCompanyId:companyId,itemization:'complete'}},'ALLOWANCE',companyId)).toBe('0.00');
+    expect(recordedPayrollComparisonAmount('0',{componentLines:[{code:'OT',amount:'10.00'}],reportContext:{version:1,payingCompanyId:companyId,itemization:'partial'}},'ALLOWANCE',companyId)).toBeNull();
+    expect(recordedPayrollComparisonAmount('0',{componentLines:[],reportContext:{version:1,payingCompanyId:otherCompanyId,itemization:'complete'}},'ALLOWANCE',companyId)).toBeNull();
     expect(recordedPayrollComparisonAmount('0', { componentLines: [{ code: 'ALLOWANCE', amount: 10.1, buckets: [{ amount: 10.1 }] }, { code: 'ALLOWANCE', amount: -0.01 }] }, 'ALLOWANCE')).toBe('10.09');
     expect(recordedPayrollComparisonAmount('0', { componentLines: [{ code: 'ALLOWANCE', amount: 'broken' }] }, 'ALLOWANCE')).toBeNull();
+  });
+  it('does not mistake employer-owned dates for paid tenure, and requires an explicit monthly proration stamp',()=>{
+    const period={from:'2026-10-01',to:'2026-10-31'},proration={payMode:'monthly',from:'2026-10-15',to:null,factor:0.5};
+    const snapshot={reportContext:{version:1,payingCompanyId:companyId,currency:'MYR',proration}};
+    expect(recordedPayrollProrationCoverage(snapshot,companyId,period)).toEqual({from:'2026-10-15',to:'2026-10-31'});
+    for(const changed of [{factor:1},{factor:NaN},{payMode:'daily'},{from:'2026-10-00'}]){
+      expect(recordedPayrollProrationCoverage({reportContext:{...snapshot.reportContext,proration:{...proration,...changed}}},companyId,period)).toBeUndefined();
+    }
+    expect(recordedPayrollProrationCoverage(snapshot,otherCompanyId,period)).toBeUndefined();
+    expect(recordedPayrollProrationCoverage({salaryBasis:{payMode:'monthly'},daysWorked:16},companyId,period)).toBeUndefined();
   });
   it('does not substitute a live company currency or another employer stamp', () => {
     expect(recordedPayrollComparisonCurrency({ currency: 'MYR' }, companyId)).toBeNull();
@@ -88,6 +101,14 @@ describe('period availability and aggregation', () => {
     expect(result.rows.find(row => row.employmentId === 'zero-result')).toMatchObject({ previousPresent: false, currentPresent: true });
     expect(result.rows.find(row => row.employmentId === 'rehire-one')?.reason.reason).toBe('unexplained');
   });
+  it('counts recorded exits within owned coverage without mistaking ownership for paid tenure',()=>{
+    const previousExit=identity('priorExit',{exitDate:'2026-09-15',movements:[movement('exit','2026-09-15')]}),
+      currentExit=identity('currentExit',{exitDate:'2026-10-31',movements:[movement('exit','2026-10-31')]});
+    const result=compare([source('a','priorExit','previous','100'),source('b','currentExit','previous','100'),source('c','currentExit','current','100')],[previousExit,currentExit],{filters:{...filters,onlyVariances:false}});
+    expect(result.summary?.leavers).toBe(2);
+    expect(result.rows.find(row=>row.employmentId==='priorExit')?.reason.reason).toBe('resigned');
+    expect(result.rows.find(row=>row.employmentId==='currentExit')?.reason.prorated).toBe(false);
+  });
   it('sums only actual persisted earnings across selected runs and keeps summary before row filters', () => {
     const bonus: ComparisonRun = { ...runs[1], id: 'bonus', runType: 'bonus' };
     const result = compare([source('a', 'e', 'previous', '100'), source('b', 'e', 'current', '100'), source('c', 'e', 'bonus', '0.01')], [identity('e')], {
@@ -100,7 +121,7 @@ describe('period availability and aggregation', () => {
   it('groups salary changes without losing their labels and finds prorated hires through both chips', () => {
     const sources = [source('p1','increment','previous','100'),source('c1','increment','current','120'),
       source('p2','promotion','previous','100'),source('c2','promotion','current','130'),
-      source('c3','newHire','current','50',{coverage:{from:'2026-10-15',to:'2026-10-31'}}),
+      source('c3','newHire','current','50',{proratedCoverage:{from:'2026-10-15',to:'2026-10-31'}}),
       source('p4','demotion','previous','100'),source('c4','demotion','current','90')];
     const identities = [identity('increment',{movements:[movement('increment')]}),
       identity('promotion',{movements:[movement('promotion')]}),identity('newHire',{hireDate:'2026-10-15'}),
@@ -144,11 +165,13 @@ describe('recorded explanations', () => {
   });
   it('recognizes an applied exit at the previous coverage end, but not an unrelated old exit', () => {
     expect(payrollComparisonReason({ ...base, exitDate: '2026-09-30', movements: [movement('exit', '2026-09-30')] }).reason).toBe('resigned');
+    expect(payrollComparisonReason({...base,exitDate:'2026-09-15',movements:[movement('exit','2026-09-15')]}).reason).toBe('resigned');
     expect(payrollComparisonReason({ ...base, exitDate: '2025-09-30', movements: [movement('exit', '2025-09-30')] }).reason).toBe('unexplained');
   });
   it('requires saved coverage for prorated hire or exit and ignores pending/reversed changes', () => {
     const currentCoverage = [{ from: '2026-10-15', to: '2026-10-31' }];
-    expect(payrollComparisonReason({ ...base, hireDate: '2026-10-15', previous: BigInt('0'), current: BigInt('100'), currentCoverage })).toMatchObject({ reason: 'newHire', prorated: true });
+    expect(payrollComparisonReason({...base,hireDate:'2026-10-15',previous:BigInt('0'),current:BigInt('100'),currentCoverage})).toMatchObject({reason:'newHire',prorated:false});
+    expect(payrollComparisonReason({ ...base, hireDate: '2026-10-15', previous: BigInt('0'), current: BigInt('100'), currentCoverage, proratedCoverage:currentCoverage })).toMatchObject({ reason: 'newHire', prorated: true });
     for (const status of ['pending', 'reversed', 'superseded'] as const)
       expect(payrollComparisonReason({ ...base, movements: [movement('promotion', '2026-10-01', status)] }).reason).toBe('unexplained');
   });

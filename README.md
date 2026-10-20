@@ -126,14 +126,16 @@ replace saved settings or create a report for another user. No report is seeded 
 
 To add an Allowance comparison, create another Period comparison and change the selected pay item to
 its recorded code. BASIC uses saved paid basic, regardless of today's display classification. Other
-items require recorded component lines: a recorded empty list proves absence; legacy results without
-item provenance are unavailable. Previous runs must be closed; current runs may be processed and
+items require recorded component lines. An absent code is zero only with a saved complete-itemization
+stamp; a legacy or partial array cannot prove absence. Missing provenance is unavailable. Previous runs must be closed; current runs may be processed and
 provisional or closed. Stale and uncalculated runs must be resolved before comparison. The report
 reads results and applied Movement evidence; it does not calculate pay or approve payroll.
 
 Historical result currency stays with the paying employer. Missing historical currency is shown
 separately by employer with no asserted variance; today's currency is not substituted. Totals precede
-reason/minimum filters and pagination. Prorated hires remain New hire explanations and also appear in
+reason/minimum filters and pagination. Employer-owned coverage is distinct from paid tenure: only a
+recorded monthly proration snapshot supports a Prorated label; historical ownership dates alone do not.
+Prorated hires remain New hire explanations and also appear in
 the Prorated filter; Increment / Promotion groups those two evidence-backed explanations.
 
 PDF and native Excel exports use the same validated filters and include all matching rows, not just

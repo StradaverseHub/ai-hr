@@ -1,5 +1,5 @@
 import {payrollComparisonAvailability} from '../lib/payroll-comparison-result';
-import {recordedPayrollComparisonAmount, recordedPayrollComparisonCurrency} from '../lib/payroll-comparison-source';
+import {recordedPayrollComparisonAmount, recordedPayrollComparisonCurrency, recordedPayrollProrationCoverage} from '../lib/payroll-comparison-source';
 import {payPeriodBounds, payslipCoverage} from './payslip-segment';
 import { businessUnit, payslipInformationSetting } from '../db/schema';
 /**
@@ -3112,8 +3112,9 @@ export async function payrollComparisonSourcesTx(tx: Tx, ctx: SessionContext, p:
     if (!period) throw new Error('Saved payroll period is invalid.');
     return { id: slip.id, version: slip.version, runId: slip.runId, employmentId: slip.employmentId,
       companyId: batch.companyId, currency: recordedPayrollComparisonCurrency(slip.statutory, batch.companyId),
-      amount: recordedPayrollComparisonAmount(slip.basicSalary, slip.statutory, p.payItemCode),
-      coverage: payslipCoverage(slip, period) };
+      amount: recordedPayrollComparisonAmount(slip.basicSalary, slip.statutory, p.payItemCode,batch.companyId),
+      coverage: payslipCoverage(slip, period),
+      proratedCoverage: recordedPayrollProrationCoverage(slip.statutory,batch.companyId,period) };
   });
   return { runs, sources };
 }

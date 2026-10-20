@@ -7354,7 +7354,11 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           // than pricing a new period-effective slip from a future revision visible at processing.
           // No stamp is inferred or backfilled on any untouched historical payslip.
           // Recorded employer currency for comparisons. Old results remain explicitly unknown.
-          reportContext: { version: 1, payingCompanyId: batch.companyId, currency: co?.currency ?? null },
+          reportContext: { version: 1, payingCompanyId: batch.companyId, currency: co?.currency ?? null,
+            itemization:typedComponents?'complete':'partial',
+            // These are inputs/evidence from this calculation, not a reconstruction from later master data.
+            ...(!isAdditionalRun ? {proration:{payMode:e.payMode,from:segHiredOn(e),to:segTerminatedOn(e),factor}} : {}),
+          },
           salaryBasis: {
             version: 1,
             referenceDate: periodEnd,
