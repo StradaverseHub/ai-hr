@@ -8,6 +8,7 @@ import type { SessionContext } from '../db/client';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { decideLeave, decideLeaveCancellation, requestLeave, requestLeaveCancellation } from '../core/leave';
 import { listLeaveRequests, plannedAbsences } from '../core/read';
+import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase } from './harness';
 
@@ -32,6 +33,7 @@ beforeEach(async () => {
   await owner.db.update(schema.person).set({ gender: 'female' }).where(eq(schema.person.id, subject.personId));
   employee = { tenantId: b.tenantId, userId: await createAppUser(b.tenantId, subject.personId, 'employee'), personId: subject.personId, roles: ['employee'] };
   manager = { tenantId: b.tenantId, userId: await createAppUser(b.tenantId, boss.personId, 'manager'), personId: boss.personId, roles: ['manager'] };
+  await setLeaveApprovalPolicy(hr, { companyId: b.companyId, levels: ['direct_manager'] });
   await setReportingLine(hr, { subordinateEmploymentId: employmentId, managerEmploymentId: boss.employmentId, lineType: 'administrative', validFrom: add(today, -800) });
   const [type] = await owner.db.insert(schema.leaveType).values({ tenantId: b.tenantId, code: 'MATERNITY', name: 'Maternity', role: 'maternity', paid: true, counting: 'calendar_days', eligibility: { gender: 'female' }, employeeCancelApproved: true }).returning();
   leaveTypeId = type.id;
@@ -39,6 +41,9 @@ beforeEach(async () => {
   const submitted = await requestLeave(employee, { employmentId, leaveTypeId, startDate: start, endDate: add(start, 97), today, survivingChildren: 5, confinementDate: start, employeeRemark: 'Original maternity statement', reason: 'Fictional calendar-counted request' });
   requestId = submitted.leaveRequestId;
   await decideLeave(manager, { leaveRequestId: requestId, decision: 'approved' });
+  const [approved] = await owner.db.select().from(schema.leaveRequest).where(eq(schema.leaveRequest.id, requestId));
+  expect(approved).toMatchObject({ status: 'approved', days: '98.00' });
+  expect(net(await ledger())).toBe(22);
 });
 afterAll(closeAll);
 
