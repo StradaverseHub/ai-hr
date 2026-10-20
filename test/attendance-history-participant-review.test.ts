@@ -18,7 +18,7 @@ async function actor(name: string) {
   const hired = await hireEmployee(adminCtx(b), { person: { fullName: name, primaryEmail: `${randomUUID()}@history-review.test` }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: '2020-01-01' });
   const userId = await createAppUser(b.tenantId, hired.personId, 'employee');
   const ctx: SessionContext = { ...adminCtx(b), userId, personId: hired.personId, roles: ['employee'], grants: [{ role: 'employee', companyId: b.companyId }] };
-  return { ...hired, ctx };
+  return { ...hired, userId, ctx };
 }
 async function fixture(mode: 'sequential' | 'any_one' = 'sequential') {
   const root = adminCtx(b), worker = await actor('Fictional request employee'), first = await actor('Fictional first reviewer'), second = await actor('Fictional second reviewer');
@@ -54,7 +54,7 @@ describe('Request-bound history review and original Overview visibility', () => 
     await createAppUser(b.tenantId, f.first.personId, 'employee');
     let detail = await attendanceApplicationDetail(f.root, [b.companyId], f.id);
     expect(detail?.progress?.next.filter(actor => actor.eligible).map(actor => actor.name)).toEqual(['Fictional first reviewer', 'Fictional second reviewer']);
-    await owner.db.update(schema.appUser).set({ archivedAt: new Date() }).where(eq(schema.appUser.id, f.first.ctx.userId));
+    await owner.db.update(schema.appUser).set({ archivedAt: new Date() }).where(eq(schema.appUser.id, f.first.userId));
     detail = await attendanceApplicationDetail(f.root, [b.companyId], f.id);
     expect(detail?.progress?.next.find(actor => actor.name === 'Fictional first reviewer')?.eligible).toBe(false);
     expect(detail?.progress?.next.find(actor => actor.name === 'Fictional second reviewer')?.eligible).toBe(true);
@@ -69,7 +69,7 @@ describe('Request-bound history review and original Overview visibility', () => 
     expect(await projection(f.root, randomUUID())).toHaveLength(0);
     const [otherCompany] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Fictional other company scope' }).returning();
     const otherHr = await actor('Fictional other company HR');
-    await owner.db.update(schema.roleAssignment).set({ role: 'hr_admin', companyId: otherCompany.id }).where(eq(schema.roleAssignment.appUserId, otherHr.ctx.userId));
+    await owner.db.update(schema.roleAssignment).set({ role: 'hr_admin', companyId: otherCompany.id }).where(eq(schema.roleAssignment.appUserId, otherHr.userId));
     const otherScope: SessionContext = { ...otherHr.ctx, roles: ['hr_admin'], grants: [{ role: 'hr_admin', companyId: otherCompany.id }] };
     expect(await projection(otherScope, f.id)).toHaveLength(0);
     expect(await attendanceApplicationDetail(otherScope, [b.companyId], f.id)).toBeNull();
@@ -79,7 +79,7 @@ describe('Request-bound history review and original Overview visibility', () => 
   });
   it('does not advertise a revoked assignment as the next sequential actor or skip it', async () => {
     const f = await fixture();
-    await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId, f.first.ctx.userId));
+    await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId, f.first.userId));
     const detail = await attendanceApplicationDetail(f.root, [b.companyId], f.id);
     expect(detail?.progress).toMatchObject({ state: 'unresolved', next: [{ name: 'Fictional first reviewer', eligible: false }] });
     expect(detail?.progress?.next.some(actor => actor.name === 'Fictional second reviewer')).toBe(false);
@@ -87,7 +87,7 @@ describe('Request-bound history review and original Overview visibility', () => 
   });
   it('binds HR bulk decisions to the reviewed v3 participant as well as the level', async () => {
     const f = await fixture();
-    await owner.db.update(schema.roleAssignment).set({ role: 'hr_admin', companyId: b.companyId }).where(eq(schema.roleAssignment.appUserId, f.first.ctx.userId));
+    await owner.db.update(schema.roleAssignment).set({ role: 'hr_admin', companyId: b.companyId }).where(eq(schema.roleAssignment.appUserId, f.first.userId));
     const hr: SessionContext = { ...f.first.ctx, roles: ['hr_admin'], grants: [{ role: 'hr_admin', companyId: b.companyId }] };
     const listing = await listAttendanceApplicationHistory(hr, [b.companyId], { status: 'pending' });
     expect(listing.rows.find(row => row.id === f.id)).toMatchObject({ selectable: true, currentParticipantSlot: '0:0' });

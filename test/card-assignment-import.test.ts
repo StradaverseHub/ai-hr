@@ -15,7 +15,7 @@ afterAll(closeAll);
 beforeEach(async () => { await resetDb(); b = await seedBase(); });
 
 async function employee(code: string, cardId: string | null = null, companyId = b.companyId, tenantId = b.tenantId) {
-  const [p] = await owner.db.insert(schema.person).values({ tenantId, fullName: `Card fixture ${code}` }).returning();
+  const [p] = await owner.db.insert(schema.person).values({ tenantId, fullName: `Card fixture ${code}`, primaryEmail: `${randomUUID()}@card-import.test` }).returning();
   const [e] = await owner.db.insert(schema.employment).values({ tenantId, personId: p.id, companyId, employeeCode: code, cardId, hiredOn: '2020-01-01' }).returning();
   return e;
 }
