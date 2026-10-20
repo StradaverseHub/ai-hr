@@ -91,8 +91,19 @@ export function movementImportCellIssues(record:MovementImportRecord,behaviour:s
  * Display-only: neither this history nor these error strings are accepted by the write owner. */
 export function retainMovementExclusionReasons(employees:MovementImportEmployee[],previous:MovementImportEmployee[]):MovementImportEmployee[]{
  const prior=new Map(previous.flatMap(employee=>employee.rows.map(row=>[row.row,row] as const)));
- return employees.map(employee=>({...employee,rows:employee.rows.map(row=>{
-  const old=prior.get(row.row);
-  return row.status==='excluded'&&!row.errors.length&&old?.employeeCode===row.employeeCode&&old.eventType===row.eventType&&old.errors.length?{...row,errors:[...old.errors]}:row;
- })}));
+ return employees.map(employee=>{
+  // The write owner intentionally does not resolve an entirely unselected employee again.
+  // Retain only its already-visible preview name, never its employment ID or fingerprint.
+  // A fresh server refusal, changed sequence or unresolved preview must not revive identity.
+  const candidates=previous.filter(old=>old.employeeCode===employee.employeeCode);
+  const oldEmployee=candidates.length===1?candidates[0]:undefined;
+  const sameRow=(row:MovementImportRow,old:MovementImportRow)=>row.row===old.row&&row.employeeCode===employee.employeeCode&&row.employeeCode===old.employeeCode&&row.eventType===old.eventType&&row.effectiveDate===old.effectiveDate&&row.source?.sheet===old.source?.sheet&&row.source?.row===old.source?.row;
+  const retainName=employee.name===null&&employee.employmentId===null&&employee.fingerprint===null&&employee.rows.length>0&&
+   employee.rows.every(row=>row.status==='excluded'&&row.errors.length===0)&&oldEmployee?.employmentId&&oldEmployee.name&&
+   oldEmployee.rows.length===employee.rows.length&&employee.rows.every(row=>oldEmployee.rows.filter(old=>sameRow(row,old)).length===1);
+  return {...employee,name:retainName?oldEmployee?.name??employee.name:employee.name,rows:employee.rows.map(row=>{
+   const old=prior.get(row.row);
+   return row.status==='excluded'&&!row.errors.length&&old?.employeeCode===row.employeeCode&&old.eventType===row.eventType&&old.errors.length?{...row,errors:[...old.errors]}:row;
+  })};
+ });
 }

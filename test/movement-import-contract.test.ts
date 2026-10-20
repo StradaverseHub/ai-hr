@@ -45,3 +45,24 @@ it('keeps rejected row explanations in a narrower preview and final row download
  expect(retainMovementExclusionReasons(next,previous)[0].rows[0]).toMatchObject({status:'excluded',errors:['unknown_reference:event_type']});
  const different=[{...next[0],rows:[{...next[0].rows[0],employeeCode:'OTHER'}]}];expect(retainMovementExclusionReasons(different,previous)[0].rows[0].errors).toEqual([]);
 });
+
+
+it('retains only the visible preview name for an exactly matching entirely unselected sequence',async()=>{
+ const {retainMovementExclusionReasons}=await import('../lib/movement-import-contract');
+ const row={row:2,employeeCode:'EMP-1',eventType:'salary',effectiveDate:'2026-10-18',status:'invalid' as const,errors:['salary_refused'],source:{sheet:'Salary',row:17}};
+ const previous=[{employeeCode:'EMP-1',employmentId:'known-id',name:'Fictional Known',fingerprint:'preview-only',rows:[row]}];
+ const excluded={employeeCode:'EMP-1',employmentId:null,name:null,fingerprint:null,rows:[{...row,status:'excluded' as const,errors:[]}]};
+ const [result]=retainMovementExclusionReasons([excluded],previous);
+ expect(result).toMatchObject({name:'Fictional Known',employmentId:null,fingerprint:null});
+ expect(result.rows[0].errors).toEqual(['salary_refused']);
+ expect(excluded.name).toBeNull();expect(excluded.rows[0].errors).toEqual([]);
+ const refused={...excluded,rows:[{...excluded.rows[0],errors:['employee_unavailable']}]};
+ expect(retainMovementExclusionReasons([refused],previous)[0].name).toBeNull();
+ for(const changed of [{effectiveDate:'2026-10-19'},{eventType:'promotion'},{employeeCode:'EMP-2'},{source:{sheet:'Other',row:17}},{status:'failed' as const}]){
+  expect(retainMovementExclusionReasons([{...excluded,rows:[{...excluded.rows[0],...changed}]}],previous)[0].name).toBeNull();
+ }
+ expect(retainMovementExclusionReasons([excluded],[{...previous[0],employmentId:null}])[0].name).toBeNull();
+ expect(retainMovementExclusionReasons([excluded],[previous[0],previous[0]])[0].name).toBeNull();
+ expect(retainMovementExclusionReasons([{...excluded,name:'Current server name'}],previous)[0].name).toBe('Current server name');
+ expect(retainMovementExclusionReasons([{...excluded,employeeCode:'EMP-2'}],previous)[0].name).toBeNull();
+});
