@@ -2077,6 +2077,7 @@
       "exclusionsField": "Field",
       "exclusionsReason": "Why and where to go",
       "exclusionReasons": {
+      "testRecord": "HR manages test-record classification in Personnel. Employee imports cannot change it.",
         "managed": "This value is calculated, historical, or changed through its own Personnel action. Use its Personnel tab.",
         "file": "Files and on-screen actions are handled in Personnel; they are not spreadsheet values.",
         "confirmation": "Calculated from the confirmation date and approved probation extensions. Use Movement for extensions.",

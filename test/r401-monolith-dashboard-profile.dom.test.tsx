@@ -166,6 +166,7 @@ vi.mock('@/components/attendance-clock-button', () => ({
   AttendanceClockButton: ({ label }: { label: string }) => <button type="button">{label}</button>,
   LocationNotice: () => null,
 }));
+vi.mock('@/core/profile-edit-policy',async()=>{const {resolveEssVisibleIds}=await import('../lib/personnel-ess-visibility');return {readProfilePresentationPolicy:vi.fn(async()=>({ctx:{tenantId:'t',roles:[]},visible:resolveEssVisibleIds('all')}))};});
 vi.mock('@/core/profile-edit',()=>({readOwnProfileWorkspace:vi.fn(async()=>({employmentId:'e1',personId:'p1',country:'MY',values:{'profile.personal_details.fullname':'Aisyah Rahman','profile.personal_details.employeecode':'EMP0042'},baselines:{},registers:[],editable:[],legacyPrimaryEditable:[],addressReview:false,legacyAddress:{},statutoryAvailable:true}))}));
 vi.mock('@/core/profile-view',()=>({readOwnProfileFacts:vi.fn(async()=>({values:{},records:[],choices:{},service:{group:{years:5,months:7,days:19},company:{years:5,months:7,days:19}},header:{name:'Aisyah Rahman',employeeCode:'EMP0042',company:'Nusantara Holdings',department:'Finance',position:'Analyst',superior:null,status:'active',photo:false,service:{years:5,months:7,days:19}},modules:{payroll:true,leave:true,attendance:true}}))}));
 vi.mock('../app/me/profile-edit-actions',()=>({saveMyProfileEditAction:vi.fn(),readMyProfileMovementAction:vi.fn()}));

@@ -1143,7 +1143,7 @@ export function Sidebar({
       {moduleRows.length>0&&<nav aria-label={t(selectedWorkspace==='strata'?'workspaceStrata':'workspaceOps')} className="current-workspace-links">
         {moduleRows.map(currentRow)}
       </nav>}
-      {groups[2]&&<nav aria-label={t('systemConfiguration')} className="current-workspace-links">{groups[2].items.map(currentRow)}</nav>}
+      {groups[2]&&<div role="group" aria-label={t('systemConfiguration')} className="current-workspace-links">{groups[2].items.map(currentRow)}</div>}
       {currentNodes.map(item=>{
         const children=item.children.filter(canSeeChild);
         const currentHref=children.filter(isRowActive).sort((a,b)=>b.href.length-a.href.length)[0]?.href;

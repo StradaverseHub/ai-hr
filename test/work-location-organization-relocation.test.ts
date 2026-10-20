@@ -981,19 +981,20 @@ describe('639bf4a5 — the label is "Locations", in all six locales', () => {
     }
   });
 
-  it('the three retired nav keys are gone from all six, and nothing resolves any of them', () => {
+  it('the two retired names stay absent while the restored Work Locations destination remains admin-only', () => {
     for (const loc of LOCALES) {
       expect(catalog(loc).nav.clockingLocation, `${loc}: dead nav.clockingLocation (r336)`).toBeUndefined();
       expect(catalog(loc).nav.physicalWorkLocation, `${loc}: dead nav.physicalWorkLocation (r338)`).toBeUndefined();
-      // r428 (83c0d3c8 contest) — AND NOW `nav.workLocations` TOO, same reason: the row it labelled is
-      // retired, its function folded into a section of the row above rather than moved to a new one.
-      expect(catalog(loc).nav.workLocations, `${loc}: dead nav.workLocations (r428)`).toBeUndefined();
+      // Ops/Strata restores a separate configuration entry; the clocking pack still has no duplicate.
+      expect(typeof catalog(loc).nav.workLocations, `${loc}: restored Work Locations caption`).toBe('string');
     }
-    expect(SIDEBAR + PACK, 'no nav row still points at any retired key').not.toMatch(
-      /labelKey: '(clockingLocation|physicalWorkLocation|workLocations)'/,
+    expect(SIDEBAR).toContain("{href:'/admin/work-locations',labelKey:'workLocations',icon:Building2,adminOnly:true}");
+    expect(PACK).not.toContain("labelKey: 'workLocations'");
+    expect(SIDEBAR + PACK, 'no nav row still points at either retired key').not.toMatch(
+      /labelKey: '(clockingLocation|physicalWorkLocation)'/,
     );
     expect(read('lib/permissions.ts'), 'and neither does the access matrix').not.toMatch(
-      /'nav\.(clockingLocation|physicalWorkLocation|workLocations)'/,
+      /'nav\.(clockingLocation|physicalWorkLocation)'/,
     );
   });
 });

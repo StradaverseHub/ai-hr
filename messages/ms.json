@@ -2077,6 +2077,7 @@
       "exclusionsField": "Medan",
       "exclusionsReason": "Sebab dan tempat untuk menguruskannya",
       "exclusionReasons": {
+      "testRecord": "HR mengurus klasifikasi rekod ujian dalam Personnel. Import pekerja tidak boleh mengubahnya.",
         "managed": "Nilai ini dikira, merupakan sejarah, atau diubah melalui tindakan Personel tersendiri. Gunakan tab Personelnya.",
         "file": "Fail dan tindakan pada skrin diurus dalam Personel; ia bukan nilai hamparan.",
         "confirmation": "Dikira daripada tarikh pengesahan dan lanjutan percubaan yang diluluskan. Gunakan Pergerakan untuk lanjutan.",

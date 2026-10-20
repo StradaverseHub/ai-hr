@@ -940,7 +940,7 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     expect(registerAll, 'registers the pack (static side-effect import)').toContain(`import '@/packs/attendance'`);
     expect(sidebar, 'sidebar pulls in the shared pack wiring').toContain(`import '@/packs/register-all'`);
     expect(sidebar, 'resolves the node through the registry').toContain(`modulePackById('attendance')`);
-    for (const { href } of [...EXPECTED, ...ADDED_SINCE].filter((r) => !movedOutHrefs.includes(r.href))) {
+    for (const { href } of [...EXPECTED, ...ADDED_SINCE].filter((r) => !movedOutHrefs.includes(r.href) && !retiredHrefs.includes(r.href))) {
       expect(sidebar.includes(`'${href}'`), `${href} no longer hardcoded in sidebar.tsx`).toBe(false);
     }
     // …and the INVERSE for a row that has left the pack. 4509d2b8's Holidays row is hardcoded in
@@ -1144,13 +1144,8 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
       // left lying about. Its replacement is asserted present beside it — a deletion with nothing on the
       // other side would be a lost label, not a rename.
       expect(cat.nav.physicalWorkLocation, `${loc}: dead nav.physicalWorkLocation`).toBeUndefined();
-      // r428 (83c0d3c8 contest) — AND NOW `nav.workLocations` IS DEAD TOO, the SAME reason the two lines
-      // above kill their own keys: the row it labelled is retired (RETIRED above), its function folded
-      // into a SECTION of the row above it rather than moved to a different menu, so there is no new row
-      // anywhere for the key to label instead. The r338 precedent this round was built against, cited in
-      // the build notes: delete the nav key when nothing renders it, never leave it lying about as a live-
-      // looking label a future round could re-attach to a resurrected row.
-      expect(cat.nav.workLocations, `${loc}: dead nav.workLocations (r428)`).toBeUndefined();
+      // Ops/Strata explicitly restores the separate Work Locations configuration destination.
+      expect(typeof cat.nav.workLocations, `${loc}: Work Locations caption`).toBe('string');
       expect(typeof cat.nav.locations, `${loc}: nav.locations labels the row again`).toBe('string');
       expect(typeof cat.nav.attendance, `${loc}: nav.attendance is still used by the matrix`).toBe('string');
       // 0bade264 (r209) — AND IT MUST NOT SAY THE SAME THING AS THE MENU ABOVE IT, IN ANY LOCALE. This

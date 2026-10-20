@@ -13,7 +13,7 @@ import {movementCatalogAction} from './movement-actions';
 function download(data:BlobPart,type:string,name:string){const url=URL.createObjectURL(new Blob([data],{type}));const anchor=document.createElement('a');anchor.href=url;anchor.download=name;anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 export function MovementImport({companies,defaultCompanyId,onCommitPendingChange}:{companies:{id:string;name:string}[];defaultCompanyId:string;onCommitPendingChange?:(pending:boolean)=>void}){
  const t=useTranslations('people.import.movement'),labels=useTranslations();
- const word=(key:string,fallback:string)=>t.has('v2.'+key)?t('v2.'+key):fallback;
+ const word=(key:string,fallback:string)=>t.has(`v2.${key}`)?t(`v2.${key}`):fallback;
  const [companyId,setCompanyId]=useState(defaultCompanyId),[typeCode,setTypeCode]=useState(''),[mode,setMode]=useState<'one'|'all'>('one');
  const [catalog,setCatalog]=useState<MovementImportCatalog|null>(null),[filters,setFilters]=useState<MovementImportFilters>({});
  const [csv,setCsv]=useState(''),[file,setFile]=useState<File|null>(null),[preview,setPreview]=useState<MovementImportPreview|null>(null),[result,setResult]=useState<MovementImportResult|null>(null);

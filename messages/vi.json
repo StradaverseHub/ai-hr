@@ -2077,6 +2077,7 @@
       "exclusionsField": "Trường",
       "exclusionsReason": "Lý do và nơi xử lý",
       "exclusionReasons": {
+      "testRecord": "Nhân sự quản lý phân loại hồ sơ thử nghiệm trong mục Nhân sự. Nhập nhân viên không thể thay đổi phân loại này.",
         "managed": "Giá trị này được tính toán, thuộc lịch sử hoặc được thay đổi qua thao tác Nhân sự riêng. Hãy dùng thẻ Nhân sự tương ứng.",
         "file": "Tệp và thao tác trên màn hình được xử lý trong Nhân sự; chúng không phải giá trị bảng tính.",
         "confirmation": "Được tính từ ngày xác nhận và các lần gia hạn thử việc đã duyệt. Dùng Biến động nhân sự để gia hạn.",

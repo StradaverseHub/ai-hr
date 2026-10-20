@@ -249,7 +249,7 @@ describe('(D) the Employment tab has no writer for the fields it displays', () =
     // regression this item exists to prevent, and it would not show up as a failing behaviour test.
     const start = pageSrc.indexOf('const employmentInfoCard = admin ? (');
     expect(start).toBeGreaterThan(-1);
-    const end = pageSrc.indexOf('const directSuperiorCard', start);
+    const end = pageSrc.indexOf('const dataClassificationCard', start);
     expect(end).toBeGreaterThan(start);
     const card = pageSrc.slice(start, end);
 
@@ -271,7 +271,7 @@ describe('(D) the Employment tab has no writer for the fields it displays', () =
     // Probation / notice / resignation are lifecycle facts with no movement kind that owns them; silently
     // freezing them too would remove capability the item never asked to remove.
     const from = pageSrc.indexOf('const employmentInfoCard = admin ? (');
-    const end = pageSrc.indexOf('const directSuperiorCard', from);
+    const end = pageSrc.indexOf('const dataClassificationCard', from);
     expect(from).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(from);
     const card = pageSrc.slice(from, end);
