@@ -560,7 +560,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     // a stub is not a screen this grid can describe. THE SCREEN KEY IS NOT RENAMED: a key "may key stored
     // role configs" (see this file's head), so renaming `leaveConfig` would silently drop every tenant's
     // existing grant for the whole area. Only `href` and `routes` ever move.
-    href: '/admin/leave-config/types',
+    href: '/admin/leave-config/settings',
     labelKey: 'nav.leaveConfig',
     guard: 'requireAdmin',
     // R13 0d147b78: leave config split into route-based tabs (approval tab is scopedSession → own screen below).
