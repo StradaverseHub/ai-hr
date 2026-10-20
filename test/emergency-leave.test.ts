@@ -16,7 +16,10 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
+import { listLeaveRequests, listLeaveRequestsPage, leaveRequestsFor } from '../core/read';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import {
+  adminCancelLeave,
   decideLeave,
   InsufficientLeaveBalanceError,
   LeaveDurationNotAllowedError,
@@ -132,6 +135,33 @@ beforeEach(async () => {
 });
 afterAll(async () => {
   await closeAll();
+});
+
+describe('recorded Emergency Leave provenance', () => {
+  it('retains true EL labels on every read when an administrator cancels one child', async () => {
+    await grantAnnual('1.00');
+    let start = new Date(Date.parse(`${todayInKualaLumpur()}T00:00:00Z`) + 35 * 86400000).toISOString().slice(0, 10);
+    while (new Date(`${start}T00:00:00Z`).getUTCDay() !== 1) start = new Date(Date.parse(`${start}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+    const end = new Date(Date.parse(`${start}T00:00:00Z`) + 2 * 86400000).toISOString().slice(0, 10);
+    const result = await requestLeave(adminCtx(b), { employmentId, leaveTypeId: emergencyId, startDate: start, endDate: end, unpaidConsent: true });
+    expect(result.children).toHaveLength(2);
+    expect(await latestEventPayload(b.tenantId, result.parentGroupId!, 'leave-request.emergency.submitted')).not.toBeNull();
+    const annual = result.children.find(child => child.code === 'ANNUAL')!;
+    await adminCancelLeave(adminCtx(b), { leaveRequestId: annual.id, reason: 'Fictional provenance review' });
+    const flat = await listLeaveRequests(adminCtx(b), [b.companyId]);
+    const page = await listLeaveRequestsPage(adminCtx(b), { employmentIds: [employmentId], limit: 20, offset: 0 });
+    const personal = await leaveRequestsFor(adminCtx(b), employmentId);
+    for (const rows of [flat, page.rows, personal]) {
+      const children = rows.filter(row => row.parentGroupId === result.parentGroupId);
+      expect(children).toHaveLength(2);
+      expect(children.some(row => row.status === 'cancelled')).toBe(true);
+      for (const child of children) expect(child.isEmergencyGroup).toBe(true);
+    }
+    // A grouped historical row without a recorded EL origin must not acquire that purpose by inference.
+    const unknownGroup = randomUUID();
+    await owner.db.update(schema.leaveRequest).set({ parentGroupId: unknownGroup }).where(eq(schema.leaveRequest.id, annual.id));
+    expect((await leaveRequestsFor(adminCtx(b), employmentId)).find(row => row.id === annual.id)?.isEmergencyGroup).toBe(false);
+  });
 });
 
 describe('Emergency Leave — pure resolver', () => {

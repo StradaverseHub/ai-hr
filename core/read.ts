@@ -1269,6 +1269,16 @@ export function eligibleLeaveTypeIdsFor(
  * the /leave non-admin self-view) AND the paginated/filtered `listLeaveRequestsPage` (the /leave admin
  * search & filter surface, feedback 0773bda9). One selection object means the two reads can never drift.
  */
+// Group IDs are also assigned by partial cancellations. Only the recorded submission proves EL
+// origin; a cancelled sibling does not disprove a genuine EL application. Domain-event RLS applies.
+const emergencyGroupProvenance = sql<boolean>`exists (
+  select 1 from domain_event el_origin
+  where el_origin.tenant_id = ${leaveRequest.tenantId}
+    and el_origin.subject_employment_id = ${leaveRequest.employmentId}
+    and el_origin.aggregate_type = 'leave-request'
+    and el_origin.aggregate_id = ${leaveRequest.parentGroupId}
+    and el_origin.event_type = 'leave-request.emergency.submitted'
+)`;
 const leaveRequestSelection = {
   id: leaveRequest.id,
   employmentId: leaveRequest.employmentId,
@@ -1307,6 +1317,7 @@ const leaveRequestSelection = {
   // Emergency Leave (0106): the shared id linking an EL submission's ANNUAL + UNPAID children, so a
   // surface can group them as one logical absence. NULL for ordinary requests.
   parentGroupId: leaveRequest.parentGroupId,
+  isEmergencyGroup: emergencyGroupProvenance,
   // Phase-B #13 (ADR-0062): the EA s.37 maternity paid-allowance decision, so the approver sees whether
   // the paid ALLOWANCE was withheld (and why). allowanceEligible is the per-request override
   // (TRUE=paid, FALSE=withheld/unpaid, NULL=not a maternity decision or inputs unconfirmed); the reason
@@ -4891,6 +4902,7 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
         // Emergency Leave (0106): the shared id linking an EL submission's ANNUAL + UNPAID children, so the
         // /me history can group them under one EL heading. NULL for ordinary requests.
         parentGroupId: leaveRequest.parentGroupId,
+        isEmergencyGroup: emergencyGroupProvenance,
         hasDocument: sql<boolean>`exists (select 1 from leave_request_attachment lra where lra.leave_request_id = leave_request.id)`,
         currentStepKind: sql<string | null>`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
         currentStepIndex: sql<number | null>`(select step_index from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
