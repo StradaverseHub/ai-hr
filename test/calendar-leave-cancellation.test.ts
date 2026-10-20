@@ -7,7 +7,7 @@ import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { decideLeave, decideLeaveCancellation, requestLeave, requestLeaveCancellation } from '../core/leave';
-import { listLeaveRequests, plannedAbsences } from '../core/read';
+import { leaveRequestsFor, listLeaveRequests, plannedAbsences } from '../core/read';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase } from './harness';
@@ -53,9 +53,11 @@ const net = (entries: Awaited<ReturnType<typeof ledger>>) => entries.reduce((sum
 const facts = (row: Awaited<ReturnType<typeof rows>>[number]) => ({ employeeRemark: row.employeeRemark, reason: row.reason, survivingChildren: row.survivingChildren, confinementDate: row.confinementDate, allowanceEligible: row.allowanceEligible, entitlementYear: row.entitlementYear, submittedOn: row.submittedOn, createdAt: row.createdAt, decidedAt: row.decidedAt });
 
 describe('calendar-counted partial cancellation preserves the actual charged dates', () => {
-  it('offers all calendar dates in both request history and the calendar, including terminal weekends', async () => {
+  it('offers all calendar dates in request history, personnel history and the calendar, including terminal weekends', async () => {
     const history = await listLeaveRequests(employee, [companyId]);
     expect(history.find(row => row.id === requestId)?.workingDates).toEqual(dates);
+    const personnelHistory = await leaveRequestsFor(employee, employmentId);
+    expect(personnelHistory.find(row => row.id === requestId)?.workingDates).toEqual(dates);
     const calendar = await plannedAbsences(employee, [companyId], { from: start, to: add(start, 97) }, today);
     expect(calendar.flatMap(person => person.leaves).find(row => row.id === requestId)?.candidateCancelDates).toEqual(dates);
   });

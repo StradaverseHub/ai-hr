@@ -4871,6 +4871,8 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
         // list can gate + prefill the status-gated Edit dialog and resolve the approved give-back candidates.
         employmentId: leaveRequest.employmentId,
         leaveTypeId: leaveRequest.leaveTypeId,
+        leaveCounting: leaveType.counting,
+        leaveDayTypeInclusion: leaveType.dayTypeInclusion,
         leaveType: leaveType.name,
         i18n: leaveType.i18n,
         startDate: leaveRequest.startDate,
@@ -4905,8 +4907,8 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
       .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
       .where(eq(leaveRequest.employmentId, employmentId))
       .orderBy(desc(leaveRequest.startDate));
-    // Edit/cancel-by-status: resolve each approved full-day plain/split row's REAL working dates (the give-back
-    // candidate set), holiday-aware, exactly as the /leave page does — so the /me approved-cancel dialog offers
+    // Edit/cancel-by-status: resolve each approved full-day plain/split row's counted dates (the give-back
+    // candidate set), calendar or roster/inclusion aware, exactly as the /leave page does — so the /me approved-cancel dialog offers
     // the same dates the service will accept.
     const withDates = await resolveLeaveWorkingDates(tx, rows);
     return withDates.map(({ i18n, ...r }) => ({ ...r, leaveType: pickName(r.leaveType, i18n, locale) }));
