@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import * as XLSX from 'xlsx';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import * as schema from '../db/schema';
 import { setEmploymentCardId } from '../core/attendance-card';
 import { previewCardImport, commitCardImport, cardImportExisting } from '../core/attendance-card-import';
@@ -26,6 +26,13 @@ function workbook(rows: [string, string, string][]) {
 }
 async function card(id: string) { return (await owner.db.select().from(schema.employment).where(eq(schema.employment.id, id)))[0].cardId; }
 async function eventCount() { return (await owner.db.select().from(schema.domainEvent)).length; }
+async function shadowIdentifiers(tx: Tx, target: typeof schema.employment.$inferSelect) {
+  await tx.execute(sql`CREATE TEMP TABLE employment (id uuid, tenant_id uuid, person_id uuid, company_id uuid, card_id text, employee_code text, terminated_on date) ON COMMIT DROP`);
+  await tx.execute(sql`CREATE TEMP TABLE employee_statutory_my (tenant_id uuid, person_id uuid, ic_number text) ON COMMIT DROP`);
+  await tx.execute(sql`INSERT INTO pg_temp.employment (id,tenant_id,person_id,company_id,employee_code) VALUES (${target.id}::uuid,${target.tenantId}::uuid,${target.personId}::uuid,${target.companyId}::uuid,${target.employeeCode})`);
+  // Give the definer permission too: the regression must detect a false answer, not just an ACL error.
+  await tx.execute(sql`GRANT SELECT ON pg_temp.employment,pg_temp.employee_statutory_my TO PUBLIC`);
+}
 
 describe('Card Assignment import uses canonical assignments and audit', () => {
   it('preview and cancel are write-free; confirmed leading-zero assignments persist once', async () => {
@@ -107,6 +114,31 @@ describe('Card Assignment import uses canonical assignments and audit', () => {
     await expect(owner.db.update(schema.employment).set({ employeeCode: '900101015555' }).where(eq(schema.employment.id, c.id))).rejects.toThrow();
     await expect(owner.db.insert(schema.employeeStatutoryMy).values({ tenantId: b.tenantId, personId: c.personId, icNumber: '900101-01-5555' })).rejects.toThrow();
     expect(await card(a.id)).toBe('900101015555');
+  });
+  it.each(['code', 'ic'] as const)('temporary tables cannot hide a real %s conflict from the probe or trigger', async kind => {
+    const target = await employee('TARGET'), holder = await employee(kind === 'code' ? 'RESERVED' : 'HOLDER');
+    const wanted = kind === 'code' ? 'RESERVED' : '900101015555';
+    if (kind === 'ic') await owner.db.insert(schema.employeeStatutoryMy).values({ tenantId: b.tenantId, personId: holder.personId, icNumber: '900101-01-5555' });
+    const probe = await withTenant(adminCtx(b), async tx => {
+      await shadowIdentifiers(tx, target);
+      return tx.execute(sql`SELECT app.card_identifier_free(${target.id}::uuid,${wanted}) AS ok`);
+    });
+    expect(probe).toMatchObject([{ ok: false }]);
+    await expect(withTenant(adminCtx(b), async tx => {
+      await shadowIdentifiers(tx, target);
+      // A cross-column conflict is deliberately used: the older card-only unique index cannot catch it.
+      await tx.execute(sql`UPDATE public.employment SET card_id=${wanted} WHERE id=${target.id}::uuid`);
+    })).rejects.toThrow();
+    expect(await card(target.id)).toBeNull();
+  });
+  it('a temporary employment table cannot hide an assigned card from an IC write', async () => {
+    await employee('HOLDER', '900101015555');
+    const target = await employee('TARGET');
+    await expect(withTenant(adminCtx(b), async tx => {
+      await shadowIdentifiers(tx, target);
+      await tx.execute(sql`INSERT INTO public.employee_statutory_my (tenant_id,person_id,ic_number) VALUES (${b.tenantId}::uuid,${target.personId}::uuid,'900101-01-5555')`);
+    })).rejects.toThrow();
+    expect(await owner.db.select().from(schema.employeeStatutoryMy).where(eq(schema.employeeStatutoryMy.personId, target.personId))).toHaveLength(0);
   });
   it('detects hidden-company conflicts without returning its holder; other tenants are independent', async () => {
     const [other] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Hidden company', registrationNo: randomUUID() }).returning();
