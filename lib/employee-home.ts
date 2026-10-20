@@ -67,6 +67,29 @@ export function validateHomeQuickActions(raw:unknown):HomeQuickAction[]{
 export function visibleHomeQuickActions(configured:readonly HomeQuickAction[],allowed:ReadonlySet<HomeQuickAction>):HomeQuickAction[]{
  return validateHomeQuickActions(configured).filter(action=>allowed.has(action));
 }
+export type EmployeeHomePreferences={version:1;timeZone:string|null;weekStartsOn:number;hiddenCards:EmployeeHomeCard[];cardOrder:EmployeeHomeCard[]};
+export function defaultEmployeeHomePreferences():EmployeeHomePreferences{
+ return {version:1,timeZone:null,weekStartsOn:1,hiddenCards:[],cardOrder:[...EMPLOYEE_HOME_CARDS]};
+}
+/** Cosmetic settings only. They neither change the HR business-day clock nor grant access to cards. */
+export function validateEmployeeHomePreferences(raw:unknown):EmployeeHomePreferences{
+ const value=object(raw,'preferences');keys(value,['version','timeZone','weekStartsOn','hiddenCards','cardOrder'],'preferences');
+ if(value.version!==1||!Number.isInteger(value.weekStartsOn)||Number(value.weekStartsOn)<0||Number(value.weekStartsOn)>6)return refuse('preferences.weekStart');
+ let timeZone:string|null=null;
+ if(value.timeZone!==null){if(typeof value.timeZone!=='string')return refuse('preferences.timeZone');timeZone=homeDisplayClock(new Date(0),value.timeZone).timeZone;}
+ const cards=(raw:unknown,field:string):EmployeeHomeCard[]=>{
+  if(!Array.isArray(raw)||raw.length>EMPLOYEE_HOME_CARDS.length||new Set(raw).size!==raw.length||raw.some(key=>!EMPLOYEE_HOME_CARDS.includes(key)))return refuse(field);
+  return [...raw] as EmployeeHomeCard[];
+ };
+ const hiddenCards=cards(value.hiddenCards,'preferences.hiddenCards'),cardOrder=cards(value.cardOrder,'preferences.cardOrder');
+ if(hiddenCards.includes('summary')||cardOrder.length!==EMPLOYEE_HOME_CARDS.length)return refuse('preferences.cardOrder');
+ return {version:1,timeZone,weekStartsOn:value.weekStartsOn as number,hiddenCards,cardOrder};
+}
+/** An obsolete stored preference must not prevent Home from rendering. Reading this fallback never
+ * writes over the original value; an explicit validated Save is required to replace it. */
+export function readEmployeeHomePreferences(raw:unknown):EmployeeHomePreferences{
+ try{return validateEmployeeHomePreferences(raw);}catch{return defaultEmployeeHomePreferences();}
+}
 export function employeeHomeGreetingName(p:{preferredName?:string|null;firstName?:string|null;fullName?:string|null}):string|null{
  for(const value of [p.preferredName,p.firstName,p.fullName])if(value?.trim())return value.trim();
  return null;
