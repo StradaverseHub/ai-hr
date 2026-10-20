@@ -47,6 +47,28 @@ describe('evidenced Attendance policy interval arithmetic',()=>{
   expect(splitAttendancePolicyIntervalsAtMidnight([interval(1440,1500)],2880))
    .toEqual([{dayOffset:1,from:0,to:60,sourceFrom:1440,sourceTo:1500}]);
  });
+ it('keeps valid fragmented results consumable by later stages on the same bounded timeline',()=>{
+  const breaks=Array.from({length:1440},(_,index)=>interval(3*index+1,3*index+2));
+  const result=subtractAttendancePolicyIntervals([interval(0,4320)],breaks,4320);
+  expect(result.length).toBeGreaterThan(512);
+  expect(attendancePolicyIntervalMinutes(result,4320)).toBe(2880);
+  expect(offsetAttendancePolicyIntervals(result,1,4320).removedMinutes).toBe(1);
+ });
+ it('agrees with an independent minute-membership oracle for overlap, subtraction and intersection',()=>{
+  const cases=[
+   {actual:[interval(0,15),interval(10,30)],other:[interval(5,10),interval(20,25)]},
+   {actual:[interval(5,10),interval(15,20)],other:[interval(0,30)]},
+   {actual:[interval(0,5),interval(10,15),interval(20,30)],other:[interval(4,11),interval(14,21)]},
+  ];
+  for(const {actual,other} of cases){
+   const contains=(rows:{from:number;to:number}[],minute:number)=>rows.some(row=>row.from<=minute&&minute<row.to);
+   const minutes=Array.from({length:30},(_,minute)=>minute);
+   const common=minutes.filter(minute=>contains(actual,minute)&&contains(other,minute)).length;
+   const remaining=minutes.filter(minute=>contains(actual,minute)&&!contains(other,minute)).length;
+   expect(attendancePolicyIntervalMinutes(intersectAttendancePolicyIntervals(actual,other,30),30)).toBe(common);
+   expect(attendancePolicyIntervalMinutes(subtractAttendancePolicyIntervals(actual,other,30),30)).toBe(remaining);
+  }
+ });
  it('handles known-empty inputs and refuses malformed or unbounded evidence',()=>{
   expect(unionAttendancePolicyIntervals([],1440)).toEqual([]);
   expect(intersectAttendancePolicyIntervals([],[],1440)).toEqual([]);
