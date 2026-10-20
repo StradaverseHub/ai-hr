@@ -73,6 +73,43 @@ describe('leave decisions and payroll follow-up', () => {
     expect(JSON.stringify(coverage)).not.toContain('CONFIDENTIAL');
     expect(Object.keys(coverage[0])).not.toContain('net_pay');
   });
+  it('refuses coverage and decisions for unrelated readers and foreign tenants without exposing payroll', async () => {
+    const leaveId=await pending(),batchId=await processed();
+    const outsider=await hireEmployee(hr,{person:{fullName:'Unrelated employee',primaryEmail:`${randomUUID()}@outsider.invalid`},companyId:b.companyId,departmentId:b.deptB,employmentType:'full_time',hiredOn:addDays(today,-700)});
+    for(const role of ['employee','manager'] as const){
+      const userId=await createAppUser(b.tenantId,outsider.personId,role);
+      const ctx={tenantId:b.tenantId,userId,personId:outsider.personId,roles:[role],entitlements:harnessSnapshot(b.tenantId)};
+      await expect(withTenant(ctx,tx=>tx.execute(sql`select * from app.leave_payroll_coverage(ARRAY[${leaveId}::uuid])`))).rejects.toThrow();
+      await expect(decideLeave(ctx,{leaveRequestId:leaveId,decision:'approved'})).rejects.toThrow();
+      expect(await listPayrollLeaveExceptions(ctx,batchId)).toEqual([]);
+    }
+    const other=await seedBase(),foreign=adminCtx(other);
+    await expect(withTenant(foreign,tx=>tx.execute(sql`select * from app.leave_payroll_coverage(ARRAY[${leaveId}::uuid])`))).rejects.toThrow();
+    expect(await listPayrollLeaveExceptions(foreign,batchId)).toEqual([]);
+    expect((await request(leaveId)).status).toBe('pending');
+    expect((await batch(batchId)).needsRecalcAt).toBeNull();
+  });
+  it('a properly delegated manager can approve and mark pay without gaining salary visibility',async()=>{
+    const hire=(name:string)=>hireEmployee(hr,{person:{fullName:name,primaryEmail:`${randomUUID()}@delegate.invalid`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:addDays(today,-700)});
+    const stand=await hire('Same-level stand-in'),standReport=await hire('Stand-in report');
+    await setReportingLine(hr,{subordinateEmploymentId:standReport.employmentId,managerEmploymentId:stand.employmentId,lineType:'administrative',validFrom:addDays(today,-600)});
+    const [boss]=await owner.db.select({id:schema.employment.id}).from(schema.employment).where(eq(schema.employment.personId,manager.personId!));
+    await setReportingLine(manager,{subordinateEmploymentId:boss.id,managerEmploymentId:stand.employmentId,lineType:'delegate',validFrom:addDays(today,-1)});
+    const userId=await createAppUser(b.tenantId,stand.personId,'manager');
+    const delegate={tenantId:b.tenantId,userId,personId:stand.personId,roles:['manager'],entitlements:harnessSnapshot(b.tenantId)};
+    const leaveId=await pending(),batchId=await processed();
+    await decideLeave(delegate,{leaveRequestId:leaveId,decision:'approved'});
+    expect((await request(leaveId)).status).toBe('approved');
+    expect((await batch(batchId)).recalcEmploymentIds).toEqual([subject.employmentId]);
+    expect(await withTenant(delegate,tx=>tx.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId)))).toEqual([]);
+  });
+  it('an archived actor cannot use the bridge to alter a payroll marker',async()=>{
+    const leaveId=await pending(),batchId=await processed();
+    await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,manager.userId!));
+    await expect(withTenant(manager,tx=>tx.execute(sql`select * from app.leave_payroll_coverage(ARRAY[${leaveId}::uuid])`))).rejects.toThrow();
+    expect((await batch(batchId)).needsRecalcAt).toBeNull();
+  });
+
   it('a manager approval marks exactly the affected employee, blocks close, and reprocessing changes real pay and clears the mark', async () => {
     const leaveId = await pending(); const batchId = await processed(); const before = await slip(batchId);
     expect((await batch(batchId)).needsRecalcAt).toBeNull();
