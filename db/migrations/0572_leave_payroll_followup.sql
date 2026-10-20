@@ -61,7 +61,8 @@ BEGIN
  SELECT lr.id,lr.employment_id,b.id,b.company_id,b.status::text,b.pay_period::text,
    CASE WHEN policy.status='active' THEN jsonb_build_object('cutOff',policy.config->'cutOff','frequency',policy.config->'frequency',
      'leave',jsonb_build_object('deductAbsentDays',policy.config->'leave'->'deductAbsentDays')) ELSE NULL END,
-   cfg.unpaid_leave_cut_off_day,ps.coverage_from,ps.coverage_to,jsonb_build_object('segment',ps.statutory->'segment'),
+   cfg.unpaid_leave_cut_off_day,ps.coverage_from,ps.coverage_to,jsonb_build_object('segment',jsonb_build_object(
+    'companyId',ps.statutory->'segment'->'companyId','from',ps.statutory->'segment'->'from','to',ps.statutory->'segment'->'to')),
    cfg.cut_off_day,CASE WHEN run_policy.status='active' THEN jsonb_build_object('cutOff',run_policy.config->'cutOff','frequency',run_policy.config->'frequency') ELSE NULL END
  FROM leave_request lr JOIN payslip ps ON ps.employment_id=lr.employment_id AND ps.tenant_id=lr.tenant_id
  JOIN employment e ON e.id=lr.employment_id AND e.tenant_id=lr.tenant_id
