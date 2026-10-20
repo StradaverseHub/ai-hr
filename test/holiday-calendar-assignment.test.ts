@@ -8,7 +8,8 @@ import {createHolidayGroup} from '../core/admin';
 import {setCompensation} from '../core/comp';
 import {saveEmploymentHolidayCalendarAssignment,employmentHolidayCalendarHistory,holidayCalendarInclusiveEnd} from '../core/holiday-calendar-assignment';
 import {holidayDatesFor,holidayDatesByEmployment} from '../core/holidays';
-import {reconcileReplacementHolidaysTx,saveReplacementHolidayPolicy,listReplacementHolidays} from '../core/holiday-replacements';
+import {reconcileReplacementHolidaysTx,saveReplacementHolidayPolicy} from '../core/holiday-replacements';
+import {listReplacementHolidays} from '../core/holiday-replacement-read';
 import {workingDatesForSpan} from '../packs/leave/service';
 import {createShift,assignDefaultShift,checkIn,checkOut,setAttendancePolicy} from '../packs/attendance/service';
 import {createBatch,generatePayslips,closeBatch} from '../packs/payroll/service';
@@ -41,7 +42,7 @@ describe('dated calendar owner and shared consumers',()=>{
   expect(bulk.get(first.employmentId)).toEqual(individual);expect([...bulk.get(second.employmentId)!].sort()).toEqual([nextMonday,wednesday]);
   expect(await withTenant(ctx,tx=>workingDatesForSpan(tx,first.employmentId,tuesday,tuesday))).toEqual([]);
   expect(await withTenant(ctx,tx=>workingDatesForSpan(tx,second.employmentId,tuesday,tuesday))).toEqual([tuesday]);
-  const rows=await records(first.employmentId);expect(rows[0].validTo).toBe(tuesday);expect(holidayCalendarInclusiveEnd(rows[0].validTo)).toBe(nextMonday);
+  const rows=await records(first.employmentId),firstPeriod=rows.find(row=>row.validFrom===nextMonday);expect(firstPeriod).toBeDefined();expect(firstPeriod!.validTo).toBe(tuesday);expect(holidayCalendarInclusiveEnd(firstPeriod!.validTo)).toBe(nextMonday);
   const [employment]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,first.employmentId));
   expect(employment.workState).toBeNull();expect(employment.holidayGroupId).toBeNull();
  });
