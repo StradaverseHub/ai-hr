@@ -119,21 +119,39 @@ export type PayrollLeaveException = {
   source_action: 'approval' | 'charged_import'; affected_dates: string[]; created_at: Date;
   status: 'open' | 'resolved'; resolution: 'adjustment' | 'no_adjustment' | null;
   adjustment_batch_id: string | null; explanation: string | null; resolved_at: Date | null;
+  opened_by: string | null; resolved_by: string | null;
 };
 export function listPayrollLeaveExceptions(ctx: SessionContext, batchId: string) {
+  return payrollLeaveExceptionPage(ctx, batchId).then(page => page.rows);
+}
+export function payrollLeaveExceptionPage(ctx: SessionContext, batchId: string, p: { limit?: number; offset?: number } = {}) {
+  const limit = Math.min(2000, Math.max(1, Math.trunc(p.limit ?? 25)));
+  const offset = Math.max(0, Math.trunc(p.offset ?? 0));
   return withTenant(ctx, async tx => {
-    return await tx.execute(sql`select x.id,x.leave_request_id,x.employment_id,p.full_name as employee,e.employee_code as employee_no,
-      x.source_action,x.affected_dates,x.created_at,x.status,x.resolution,x.adjustment_batch_id,x.explanation,x.resolved_at
+    const [result] = await tx.execute(sql`with scoped as materialized (
+      select x.id,x.leave_request_id,x.employment_id,p.full_name as employee,e.employee_code as employee_no,
+        x.source_action,x.affected_dates,x.created_at,x.status,x.resolution,x.adjustment_batch_id,x.explanation,x.resolved_at,
+        opener.full_name as opened_by,resolver.full_name as resolved_by
       from payroll_leave_exception x join employment e on e.id=x.employment_id and e.tenant_id=x.tenant_id
       join person p on p.id=e.person_id and p.tenant_id=e.tenant_id
-      where x.batch_id=${batchId}::uuid and x.tenant_id=app.current_tenant_id() order by x.created_at,x.id`) as unknown as PayrollLeaveException[];
+      left join app_user ou on ou.id=x.created_by and ou.tenant_id=x.tenant_id
+      left join person opener on opener.id=ou.person_id and opener.tenant_id=x.tenant_id
+      left join app_user ru on ru.id=x.resolved_by and ru.tenant_id=x.tenant_id
+      left join person resolver on resolver.id=ru.person_id and resolver.tenant_id=x.tenant_id
+      where x.batch_id=${batchId}::uuid and x.tenant_id=app.current_tenant_id()
+    ), page as (select * from scoped order by created_at,id limit ${limit} offset ${offset})
+    select coalesce(jsonb_agg(to_jsonb(page) order by created_at,id),'[]'::jsonb) as rows,
+      (select count(*)::integer from scoped) as total from page`) as unknown as { rows: PayrollLeaveException[]; total: number }[];
+    return result ?? { rows: [], total: 0 };
   });
 }
-export function listPayrollLeaveExceptionAdjustments(ctx: SessionContext, batchId: string) {
+export function listPayrollLeaveExceptionAdjustments(ctx: SessionContext, batchId: string, exceptionIds: readonly string[]) {
+  if (!exceptionIds.length) return Promise.resolve([]);
   return withTenant(ctx, async tx => await tx.execute(sql`select distinct x.id as "exceptionId",b.id,b.pay_period as "payPeriod",b.batch_date::text as "batchDate",b.run_seq as "runSeq"
     from payroll_leave_exception x join payslip ps on ps.employment_id=x.employment_id and ps.tenant_id=x.tenant_id
     join payroll_batch b on b.id=ps.batch_id and b.tenant_id=x.tenant_id
     where x.batch_id=${batchId}::uuid and x.tenant_id=app.current_tenant_id() and x.status='open'
+      and x.id in (select jsonb_array_elements_text(${JSON.stringify(exceptionIds)}::jsonb)::uuid)
       and b.id<>x.batch_id and b.status='closed' and b.run_type='adjustment'
       and app.is_admin_for(b.company_id) and app.can_admin_payroll_for(b.company_id)
     order by "payPeriod","batchDate","runSeq",b.id,x.id`) as unknown as { exceptionId: string; id: string; payPeriod: string; batchDate: string; runSeq: number }[]);

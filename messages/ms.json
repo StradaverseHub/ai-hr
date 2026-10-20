@@ -21482,6 +21482,13 @@
     "sources": {
       "approval": "Cuti diluluskan",
       "charged_import": "Sejarah cuti bercaj diimport"
-    }
+    },
+    "busy": "Gaji sedang dikemas kini. Cuba perubahan cuti ini sekali lagi selepas operasi itu selesai.",
+    "closed": "Perubahan cuti ini menjejaskan gaji tertutup dan memerlukan semakan HR Gaji.",
+    "explanationUnavailable": "Penjelasan tidak tersedia.",
+    "leaveReference": "Rujukan cuti",
+    "recordedBy": "Direkodkan oleh {name}",
+    "resolvedBy": "Diselesaikan oleh {name}",
+    "unknownActor": "Pelaku tidak tersedia"
   }
 }

@@ -3,16 +3,18 @@ import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 
 export type LeaveSplitReviewRow = {
-  requestId: string; rootRequestId: string | null; employee: string; employeeNo: string | null;
+  requestId: string; employmentId: string; rootReference: string | null; rootRequestId: string | null; employee: string; employeeNo: string | null;
   startDate: string; endDate: string; differences: string[];
   charging: 'charged' | 'uncharged_import' | 'no_debit_evidence';
   lineage: 'current_root_comparison' | 'unresolved';
 };
 
-export async function leaveSplitReview(ctx: SessionContext, p: { limit?: number; offset?: number } = {}) {
-  if (!ctx.roles.some(role => role === 'hr_admin' || role === 'super_admin')) throw new Error('HR administrator required');
+export async function leaveSplitReview(ctx: SessionContext, p: { limit?: number; offset?: number; companyIds?: readonly string[] } = {}) {
+  if (!(ctx.roles ?? []).some(role => role === 'hr_admin' || role === 'super_admin')
+    && !(ctx.grants ?? []).some(grant => grant.role === 'hr_admin' || grant.role === 'super_admin')) throw new Error('HR administrator required');
   const limit = Math.min(2000, Math.max(1, Math.trunc(p.limit ?? 25)));
   const offset = Math.max(0, Math.trunc(p.offset ?? 0));
+  if (p.companyIds?.length === 0) return { rows: [], total: 0 };
   return withTenant(ctx, async tx => {
     const [result] = await tx.execute(sql`
       WITH RECURSIVE scoped AS MATERIALIZED (
@@ -21,6 +23,7 @@ export async function leaveSplitReview(ctx: SessionContext, p: { limit?: number;
         JOIN employment e ON e.id=lr.employment_id AND e.tenant_id=lr.tenant_id
         JOIN person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
         WHERE lr.tenant_id=app.current_tenant_id() AND app.is_admin_for(e.company_id)
+          ${p.companyIds ? sql`AND e.company_id IN (SELECT jsonb_array_elements_text(${JSON.stringify(p.companyIds)}::jsonb)::uuid)` : sql``}
       ), links AS MATERIALIZED (
         SELECT DISTINCT ON (ev.aggregate_id) ev.aggregate_id AS child,
           CASE WHEN ev.payload->>'splitFromRequestId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
@@ -40,7 +43,7 @@ export async function leaveSplitReview(ctx: SessionContext, p: { limit?: number;
       ), roots AS (
         SELECT DISTINCT ON (child) child,ancestor,depth,path FROM ancestry ORDER BY child,depth DESC
       ), findings AS (
-        SELECT child.id AS "requestId",CASE WHEN next_link.child IS NULL THEN root.id END AS "rootRequestId",
+        SELECT child.id AS "requestId",child.employment_id AS "employmentId",root.external_reference AS "rootReference",CASE WHEN next_link.child IS NULL THEN root.id END AS "rootRequestId",
           child.employee,child.employee_no AS "employeeNo",child.start_date::text AS "startDate",child.end_date::text AS "endDate",
           CASE WHEN next_link.child IS NOT NULL THEN ARRAY['lineage']::text[] ELSE array_remove(ARRAY[
             CASE WHEN child.reason IS DISTINCT FROM root.reason THEN 'reason' END,

@@ -1,14 +1,16 @@
-import { getTranslations } from 'next-intl/server';
+import Link from 'next/link';
+import { getFormatter, getTranslations } from 'next-intl/server';
 import type { SessionContext } from '@/db/client';
 import { leaveSplitReview } from '@/packs/leave/service';
 import { Card, EmployeeCode, SectionHeader } from '@/components/ui';
 import { Pager } from '@/components/pager';
 import { pageState, type PageQuery } from '@/lib/pagination';
-import { formatDate } from '@/lib/utils';
 
-export async function LeaveSplitReview({ session, query }: { session: SessionContext; query: PageQuery }) {
-  const t = await getTranslations('leaveSplitReview');
-  const result = await leaveSplitReview(session, query);
+export async function LeaveSplitReview({ session, query, companyIds }: { session: SessionContext; query: PageQuery; companyIds: readonly string[] }) {
+  const [t, format] = await Promise.all([getTranslations('leaveSplitReview'), getFormatter()]);
+  const date = (value: string) => format.dateTime(new Date(`${value}T00:00:00Z`), { dateStyle: 'medium', timeZone: 'Asia/Kuala_Lumpur' });
+  const recordHref = (employmentId: string, requestId: string) => `/leave/employee-records?${new URLSearchParams({ emp: employmentId, q: requestId.slice(0, 8) })}`;
+  const result = await leaveSplitReview(session, { ...query, companyIds });
   return (
     <Card>
       <SectionHeader title={t('title')} subtitle={t('description')} />
@@ -26,13 +28,13 @@ export async function LeaveSplitReview({ session, query }: { session: SessionCon
               <tr key={row.requestId} className="border-b align-top last:border-0">
                 <td className="p-3"><div>{row.employee}</div><EmployeeCode code={row.employeeNo} /></td>
                 <td className="p-3">
-                  <span className="font-mono">{row.requestId.slice(0, 8)}</span>
-                  <div className="mt-1 whitespace-nowrap text-xs text-muted-foreground">{formatDate(row.startDate)} – {formatDate(row.endDate)}</div>
+                  <Link href={recordHref(row.employmentId, row.requestId)} className="font-mono underline underline-offset-2">{row.requestId.slice(0, 8)}</Link>
+                  <div className="mt-1 whitespace-nowrap text-xs text-muted-foreground">{date(row.startDate)} – {date(row.endDate)}</div>
                 </td>
                 <td className="p-3"><ul className="space-y-1">{row.differences.map(field => <li key={field}>{t(`fields.${field}`)}</li>)}</ul></td>
                 <td className="p-3">
                   <div>{t(`charging.${row.charging}`)}</div>
-                  <p className="mt-1 text-xs text-muted-foreground">{row.rootRequestId ? t('root', { reference: row.rootRequestId.slice(0, 8) }) : t('unresolved')}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{row.rootRequestId ? <Link href={recordHref(row.employmentId, row.rootRequestId)} className="underline underline-offset-2">{t('root', { reference: row.rootReference ?? row.rootRequestId.slice(0, 8) })}</Link> : t('unresolved')}</p>
                   <p className="mt-1 text-xs text-muted-foreground">{t('candidate')}</p>
                 </td>
               </tr>

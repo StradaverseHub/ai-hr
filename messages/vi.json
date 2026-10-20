@@ -21482,6 +21482,13 @@
     "sources": {
       "approval": "Đã duyệt nghỉ",
       "charged_import": "Đã nhập lịch sử nghỉ có ghi trừ"
-    }
+    },
+    "busy": "Đang cập nhật bảng lương. Hãy thử lại thay đổi nghỉ phép sau khi thao tác đó hoàn tất.",
+    "closed": "Thay đổi nghỉ phép này ảnh hưởng lương đã đóng và cần nhân sự phụ trách lương rà soát.",
+    "explanationUnavailable": "Không có giải thích.",
+    "leaveReference": "Mã tham chiếu nghỉ phép",
+    "recordedBy": "Ghi nhận bởi {name}",
+    "resolvedBy": "Xử lý bởi {name}",
+    "unknownActor": "Không có thông tin người thực hiện"
   }
 }

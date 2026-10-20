@@ -21482,6 +21482,13 @@
     "sources": {
       "approval": "Leave approved",
       "charged_import": "Charged leave history imported"
-    }
+    },
+    "busy": "Payroll is being updated. Retry this leave change after that operation finishes.",
+    "closed": "This leave change affects closed pay and requires Payroll HR review.",
+    "explanationUnavailable": "The explanation is unavailable.",
+    "leaveReference": "Leave reference",
+    "recordedBy": "Recorded by {name}",
+    "resolvedBy": "Resolved by {name}",
+    "unknownActor": "Actor unavailable"
   }
 }

@@ -21482,6 +21482,13 @@
     "sources": {
       "approval": "休假已批准",
       "charged_import": "已导入计扣休假历史"
-    }
+    },
+    "busy": "薪资正在更新。请在该操作完成后重试此休假变更。",
+    "closed": "此休假变更影响已关闭薪资，需要薪资人事审核。",
+    "explanationUnavailable": "说明不可用。",
+    "leaveReference": "休假编号",
+    "recordedBy": "记录人：{name}",
+    "resolvedBy": "处理人：{name}",
+    "unknownActor": "操作人信息不可用"
   }
 }

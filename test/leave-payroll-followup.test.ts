@@ -9,6 +9,7 @@ import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
 import { adminCancelLeave, decideLeave, decideLeaveCancellation, requestLeave, requestLeaveCancellation, LeaveCancellationPeriodClosedError } from '../core/leave';
 import { updateLeaveType } from '../core/admin';
+import { erasePersonPii } from '../core/pdpa';
 import { commitLeaveHistoryImport } from '../core/leave-history-import';
 import { BatchNeedsRecalculationError, closeBatch, createBatch, generatePayslips } from '../core/payroll';
 import { LeavePayrollBusyError, LeavePayrollClosedError, listPayrollLeaveExceptions, resolvePayrollLeaveException } from '../core/payroll-leave';
@@ -90,6 +91,8 @@ describe('leave decisions and payroll follow-up', () => {
     expect(await slip(batchId)).toEqual(originalSlip);
     const history = await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId, exceptions[0].id)).orderBy(schema.domainEvent.sequence);
     expect(history.map(event => event.eventType)).toEqual(['payroll-leave-exception.opened', 'payroll-leave-exception.resolved']);
+    await erasePersonPii(hr, { subjectEmploymentId: subject.employmentId, scope: 'all', reason: 'Exercise the existing authorised erasure process', requestRef: `ERASE/${randomUUID()}` });
+    expect((await listPayrollLeaveExceptions(hr, batchId))[0]).toMatchObject({ status: 'resolved', explanation: null, resolution: 'no_adjustment' });
   });
 
   it('rechecks closed coverage under manager authority when a previously requested cancellation is decided', async () => {
@@ -127,6 +130,32 @@ describe('leave decisions and payroll follow-up', () => {
     expect(result.imported).toBe(1);
     expect(await listPayrollLeaveExceptions(hr, batchId)).toHaveLength(openingBalancesAreNet ? 0 : 1);
     expect(await slip(batchId)).toEqual(originalSlip);
+  });
+
+  it.each(['neither', 'original', 'survivor'] as const)('a first-day split tracks both cutoff windows and refuses either closed run (%s closed)', async closed => {
+    const cutoff = Number(tuesday.slice(8));
+    await owner.db.insert(schema.companyPayrollConfig).values({ tenantId: b.tenantId, companyId: b.companyId, unpaidLeaveCutOffDay: cutoff })
+      .onConflictDoUpdate({ target: schema.companyPayrollConfig.companyId, set: { unpaidLeaveCutOffDay: cutoff } });
+    const leaveId = await pending(); await decideLeave(manager, { leaveRequestId: leaveId, decision: 'approved' });
+    const original = await processed();
+    const nextPeriod = addDays(`${lastMonth}-28`, 5).slice(0, 7);
+    const survivor = await processed(nextPeriod);
+    const beforeOriginal = await slip(original), beforeSurvivor = await slip(survivor);
+    if (closed !== 'neither') {
+      await closeBatch(hr, { batchId: closed === 'original' ? original : survivor });
+      await expect(requestLeaveCancellation(employee, { leaveRequestId: leaveId, cancelDates: [monday], today: addDays(monday, -1) }))
+        .rejects.toBeInstanceOf(LeaveCancellationPeriodClosedError);
+      expect((await request(leaveId)).status).toBe('approved');
+      expect(await slip(original)).toEqual(beforeOriginal); expect(await slip(survivor)).toEqual(beforeSurvivor);
+    } else {
+      const { cancellationRequestId } = await requestLeaveCancellation(employee, { leaveRequestId: leaveId, cancelDates: [monday], today: addDays(monday, -1) });
+      await decideLeaveCancellation(manager, { cancellationRequestId, decision: 'approved' });
+      expect((await batch(original)).recalcEmploymentIds).toEqual([subject.employmentId]);
+      expect((await batch(survivor)).recalcEmploymentIds).toEqual([subject.employmentId]);
+      for (const batchId of [original, survivor]) await generatePayslips(hr, { batchId, reprocessSubset: { employmentIds: [subject.employmentId], reason: 'First-day cancellation moved the unpaid attribution' } });
+      expect(Number((await slip(original)).netPay)).toBeGreaterThan(Number(beforeOriginal.netPay));
+      expect(Number((await slip(survivor)).netPay)).toBeLessThan(Number(beforeSurvivor.netPay));
+    }
   });
 
   it('a busy payroll writer refuses and rolls back the leave decision instead of deadlocking', async () => {

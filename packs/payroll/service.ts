@@ -15,8 +15,8 @@
  * contracts, not this facade: claims' taxable-payout prefill already rides the
  * `PayrollInputContributor` contract (packs/contracts.ts + packs/claims/payroll.ts, rung 3), which
  * the batch action consumes by id. The leave→payroll effects (unpaid-leave reduction, encashment
- * advisory) stay INLINE in core/payroll.ts by risk choice — see the pack header; they produce no
- * `payroll_input` row so the contributor contract does not model them.
+ * advisory) remain in the payroll kernel. Leave decisions notify the payroll-owned follow-up service
+ * atomically; they create no contributor input and never rewrite closed pay.
  *
  * NOT re-exported here (audited spine / country, not payroll-module):
  *   - `core/comp.ts` — compensation is jurisdiction-neutral, effective-dated EMPLOYMENT-SPINE (set

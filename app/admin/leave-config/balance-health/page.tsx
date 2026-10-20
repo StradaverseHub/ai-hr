@@ -1,4 +1,4 @@
-import { requireAdmin } from '@/lib/authz';
+import { scopedAdmin } from '@/lib/scope';
 import { PageHeader } from '@/components/ui';
 import { LeaveConfigMap, leaveConfigPageHeader } from '@/components/leave-config-map';
 import { leaveConfigHealthAll } from '@/lib/leave-config-health';
@@ -57,7 +57,7 @@ import { parsePageQuery } from '@/lib/pagination';
  * test/server-client-boundary.test.ts).
  */
 export default async function LeaveConfigBalanceHealthPage({ searchParams }: { searchParams: Promise<{ page?: string; size?: string }> }) {
-  const s = await requireAdmin();
+  const { s, scopeIds } = await scopedAdmin();
   const query = parsePageQuery(await searchParams);
   const header = await leaveConfigPageHeader('balanceHealth');
   const data = await loadEntitlementTablesData(s);
@@ -82,7 +82,7 @@ export default async function LeaveConfigBalanceHealthPage({ searchParams }: { s
           the day this row gains a second screen, the strip appears without anybody remembering to add it. */}
       <LeaveConfigMap current="balanceHealth" />
       <LeaveConfigHealthCard rows={rows} />
-      <LeaveSplitReview session={s} query={query} />
+      <LeaveSplitReview session={s} query={query} companyIds={scopeIds} />
     </div>
   );
 }

@@ -62,6 +62,8 @@ export default async function BatchPage({
     page?: string;
     size?: string;
     leaveFollowupError?: string;
+    lfPage?: string;
+    lfSize?: string;
   }>;
 }) {
   const s = await requireAdmin();
@@ -529,7 +531,7 @@ export default async function BatchPage({
         </div>
       )}
 
-      <PayrollLeaveFollowup session={s} batchId={batch.id} failed={sp.leaveFollowupError === '1'} />
+      <PayrollLeaveFollowup session={s} batchId={batch.id} failed={sp.leaveFollowupError === '1'} query={parsePageQuery({ page: sp.lfPage, size: sp.lfSize })} params={{ from: sp.from, hw: sp.hw, page: sp.page, size: sp.size }} />
 
       {/* ef31d251 — the "hidden from employees" statement. Nothing on this screen has ever said that a
           calculated run's payslips are invisible until Close, which is why the step was skipped on all

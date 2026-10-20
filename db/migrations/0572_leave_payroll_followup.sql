@@ -15,12 +15,11 @@ CREATE TABLE payroll_leave_exception (
  explanation text, resolved_by uuid REFERENCES app_user(id), resolved_at timestamptz,
  UNIQUE(tenant_id,batch_id,leave_request_id,source_action),
  CHECK ((status='open' AND resolution IS NULL AND adjustment_batch_id IS NULL AND explanation IS NULL AND resolved_by IS NULL AND resolved_at IS NULL)
- OR (status='resolved' AND resolution IS NOT NULL AND length(btrim(explanation))>=10 AND resolved_by IS NOT NULL AND resolved_at IS NOT NULL
+ OR (status='resolved' AND resolution IS NOT NULL AND resolved_by IS NOT NULL AND resolved_at IS NOT NULL
      AND ((resolution='adjustment' AND adjustment_batch_id IS NOT NULL) OR (resolution='no_adjustment' AND adjustment_batch_id IS NULL))))
 );
 CREATE INDEX payroll_leave_exception_batch ON payroll_leave_exception(tenant_id,batch_id,status,created_at);
 ALTER TABLE payroll_leave_exception ENABLE ROW LEVEL SECURITY;
-ALTER TABLE payroll_leave_exception FORCE ROW LEVEL SECURITY;
 CREATE POLICY payroll_leave_exception_read ON payroll_leave_exception FOR SELECT USING (
  tenant_id=app.current_tenant_id() AND EXISTS (
   SELECT 1 FROM payroll_batch b WHERE b.id=batch_id AND b.tenant_id=payroll_leave_exception.tenant_id
@@ -148,3 +147,15 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.resolve_leave_payroll_exception(uuid,text,uuid,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.resolve_leave_payroll_exception(uuid,text,uuid,text) TO ai_hr_app;
+--> statement-breakpoint
+-- Free-text explanations are erasable personal context; the source, outcome and adjustment reference remain.
+CREATE FUNCTION app.redact_leave_payroll_explanations(subject_id uuid) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM employment e WHERE e.id=subject_id AND e.tenant_id=app.current_tenant_id() AND app.is_admin_for(e.company_id)) THEN
+   RAISE EXCEPTION 'HR erasure authority required';
+ END IF;
+ UPDATE payroll_leave_exception SET explanation=NULL WHERE tenant_id=app.current_tenant_id() AND employment_id=subject_id;
+END $$;
+REVOKE ALL ON FUNCTION app.redact_leave_payroll_explanations(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.redact_leave_payroll_explanations(uuid) TO ai_hr_app;
