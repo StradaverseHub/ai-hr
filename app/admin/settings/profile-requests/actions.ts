@@ -4,8 +4,8 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import {saveProfileEditPolicy} from '@/core/profile-edit-policy';
-import {essEditableFields} from '@/lib/personnel-ess-contract';
+import {saveProfileVisibilityPolicy} from '@/core/profile-edit-policy';
+import {essVisibleFields} from '@/lib/personnel-ess-contract';
 import {
   TenantSettingError,
   setTenantSetting,
@@ -45,15 +45,16 @@ export async function saveProfileRequestFieldsAction(formData: FormData) {
   const s = await getSession();
   const t = await getTranslations('profileRequestSettings');
 
-  const next:string[]=[];
-  for(const field of essEditableFields()){
-    const value=formData.get(`permission:${field.id}`);
-    if(value==='editable')next.push(field.id);
-    else if(value==='primaryOnly'&&field.ess.legacyPrimaryKey)next.push(field.ess.legacyPrimaryKey);
-    else if(value!=='viewOnly')await refuse(new TenantSettingError('wrong_type'));
+  const fields:Record<string,'editable'|'viewOnly'|'hide'>={};
+  for(const field of essVisibleFields()){
+    const posted=formData.getAll(`permission:${field.id}`);
+    if(posted.length!==1||!['editable','viewOnly','hide'].includes(String(posted[0])))await refuse(new TenantSettingError('wrong_type'));
+    fields[field.id]=posted[0] as 'editable'|'viewOnly'|'hide';
   }
+  const primaryOnly=formData.getAll('primaryOnly');
+  if(primaryOnly.some(id=>typeof id!=='string'))await refuse(new TenantSettingError('wrong_type'));
   let withdrawn=0;
-  try{({withdrawn}=await saveProfileEditPolicy(s,{keys:next,withdrawnReason:t('withdrawnReason')}));}
+  try{({withdrawn}=await saveProfileVisibilityPolicy(s,{policy:{version:3,fields,primaryOnly},withdrawnReason:t('withdrawnReason')}));}
   catch(e){await refuse(e);}
 
   revalidatePath(PAGE);
@@ -87,4 +88,31 @@ export async function saveProfileRequestApproverAction(formData: FormData) {
   revalidatePath(PAGE);
   revalidatePath('/approvals');
   redirect(`${PAGE}?toast=${encodeURIComponent(t('savedApprover'))}`);
+}
+
+export async function saveOwnPhotoSettingAction(formData:FormData){
+ const s=await getSession();
+ try{await setTenantSetting(s,{key:'ess.profile_photo_edit',value:formData.get('enabled')==='on'});}catch(e){await refuse(e);}
+ revalidatePath(PAGE);revalidatePath('/me');redirect(PAGE);
+}
+
+export async function saveNamedProfileRoutingAction(data:FormData){
+ const s=await getSession(),t=await getTranslations('essProfile');
+ try{
+  const raw=String(data.get('policy')??'');if(raw.length>512000)throw new Error('invalid');
+  const input=JSON.parse(raw) as {expectedRevision:string;enabled:boolean;rules:import('@/lib/profile-routing-policy').ProfileRouteRule[]};
+  const {saveProfileRoutingPolicy}=await import('@/core/profile-routing');
+  await saveProfileRoutingPolicy(s,input);
+ }catch{redirect(`${PAGE}?error=${encodeURIComponent(t('routingSaveFailed'))}`);}
+ revalidatePath(PAGE);revalidatePath('/admin/personnel/profile-changes');revalidatePath('/', 'layout');redirect(PAGE);
+}
+
+export async function previewNamedProfileRoutingAction(data:FormData):Promise<{ok:true;matched:number;missing:number;overlapping:number;ineligible:number}|{ok:false;error:string}>{
+ const s=await getSession(),t=await getTranslations('essProfile');
+ try{
+  const raw=String(data.get('policy')??'');if(raw.length>512000)throw new Error('invalid');
+  const parsed=JSON.parse(raw) as {enabled:boolean;rules:import('@/lib/profile-routing-policy').ProfileRouteRule[]};
+  const {previewProfileRoutingPolicy}=await import('@/core/profile-routing');
+  return {ok:true,...await previewProfileRoutingPolicy(s,{enabled:parsed.enabled,rules:parsed.rules})};
+ }catch{return {ok:false,error:t('routingSaveFailed')};}
 }

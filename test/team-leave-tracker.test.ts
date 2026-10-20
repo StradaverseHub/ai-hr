@@ -47,6 +47,7 @@ import { CARD_META } from '../lib/dashboard-cards';
 import { buildCalendarFocusHref } from '../lib/calendar-focus';
 import { REGISTERED_ROUTES, SCREENS } from '../lib/permissions';
 import { countQuoted } from './helpers/sidebar-source';
+import { navigationPlacement } from '../lib/navigation-workspaces';
 
 const root = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
@@ -56,7 +57,7 @@ const trackerPage = read('app/leave/tracker/page.tsx');
 const dashboard = read('app/page.tsx');
 const sidebar = read('components/sidebar.tsx');
 
-describe('the Manage row is ungated — the access the move must not remove', () => {
+describe('the Leave Team row stays ungated — the access the move must not remove', () => {
   it('the pack retains the ungated tracker beside the separately supervisor-gated My Team row', () => {
     const manage = (leavePack.navLinks ?? []).filter((l) => l.group === 'manage');
     expect(manage.map(row => row.href)).toEqual(['/leave/tracker', '/manage/my-team']);
@@ -70,9 +71,11 @@ describe('the Manage row is ungated — the access the move must not remove', ()
     expect(manage[0].adminOnly).toBeUndefined();
   });
 
-  it('the sidebar mounts it by reference into the Manage group and hardcodes no href', () => {
+  it('the sidebar retains its pack reference and places it under Leave Team without hardcoding its href', () => {
     expect(sidebar).toContain('const LEAVE_TRACKER_ROW');
     expect(sidebar).toContain('LEAVE_TRACKER_ROW,');
+    expect(navigationPlacement('/leave/tracker')).toEqual({area:'ops',module:'leave',section:'team'});
+    expect(navigationPlacement('/manage/my-team')).toEqual({area:'ops',module:'people',section:'team'});
     // Mounted from the pack, not re-declared: the same property test/leave-pack.test.ts asserts for /leave.
     expect(countQuoted(sidebar, '/leave/tracker')).toBe(0);
   });

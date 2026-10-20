@@ -1,4 +1,6 @@
 /** Own-only safe projections over canonical owners. No administrator row crosses this boundary. */
+import {projectEssVisible,essFactVisible} from '../lib/personnel-ess-visibility';
+import {freshProfileEditPolicyTx,type ProfilePresentationPolicy} from './profile-edit-policy';
 import {eq} from 'drizzle-orm';
 import {attendanceRule,shift} from '../db/schema';
 import type {SessionContext} from '../db/client';
@@ -26,8 +28,9 @@ function project(owner:string,row:Record<string,unknown>){
  }
  return values;
 }
-export async function readOwnProfileFacts(ctx:SessionContext,employmentId:string){
+export async function readOwnProfileFacts(ctx:SessionContext,employmentId:string,presentation?:ProfilePresentationPolicy){
  const subjects=await myOwnEmploymentSubjects(ctx);const subject=subjects.find(row=>row.employmentId===employmentId);if(!subject)throw new EssProfileError('permission');
+ const policy=presentation??await withTenant(ctx,tx=>freshProfileEditPolicyTx(tx,ctx));ctx=policy.ctx;const visible=policy.visible;
  const payrollOn=isModuleEnabled(ctx,'payroll'),leaveOn=isModuleEnabled(ctx,'leave'),attendanceOn=isModuleEnabled(ctx,'attendance');
  const today=todayInKualaLumpur();
  const [emp,assignments,salaries,lines,movements,catalog,photo,payItems,cp38,shifts,leave,requests]=await Promise.all([
@@ -101,16 +104,18 @@ export async function readOwnProfileFacts(ctx:SessionContext,employmentId:string
   const options=Object.entries(catalog).find(([key])=>key===category)?.[1]??[];
   choices[field.id]=options.map(option=>({value:option.value,label:option.label}));
  }
- return {values,records,choices,service:{group:serviceYearsMonthsDaysAt(emp.hiredOn,today),company:serviceYearsMonthsDaysAt(emp.joinDate??emp.hiredOn,today)},header:{name:subject.personName,employeeCode:subject.employeeCode,company:subject.company,department:current?.department??null,position:current?.position??null,superior:manager?.name??null,status:subject.status,photo,service:serviceYearsMonthsDaysAt(emp.hiredOn,today)},modules:{payroll:payrollOn,leave:leaveOn,attendance:attendanceOn}};
+ const may=(owner:string,field:string)=>essFactVisible(visible,owner,field);
+ return {values:projectEssVisible(values,visible),records:records.map(row=>({...row,values:projectEssVisible(row.values,visible)})).filter(row=>Object.keys(row.values).length>0),choices:projectEssVisible(choices,visible),service:{group:may('employment','hiredOn')&&may('employment','groupService')?serviceYearsMonthsDaysAt(emp.hiredOn,today):null,company:may('employment','joinDate')&&may('employment','companyService')?serviceYearsMonthsDaysAt(emp.joinDate??emp.hiredOn,today):null},header:{name:may('person','fullName')?subject.personName:'',employeeCode:may('employment','employeeCode')?subject.employeeCode:null,company:may('assignment','companyName')?subject.company:null,department:may('assignment','departmentName')?current?.department??null:null,position:may('assignment','positionName')?current?.position??null:null,superior:may('directSuperior','fullName')?manager?.name??null:null,status:may('employmentStatus','status')?subject.status:null,photo:may('person','photo')&&photo,service:may('employment','hiredOn')?serviceYearsMonthsDaysAt(emp.hiredOn,today):null},modules:{payroll:payrollOn,leave:leaveOn,attendance:attendanceOn}};
 }
 
 /** One selected immutable history event, loaded on demand instead of replaying every event per page. */
 export async function readOwnProfileMovementComparison(ctx:SessionContext,p:{employmentId:string;movementId:string}):Promise<EssReadRecord[]>{
  if(!(await myOwnEmploymentSubjects(ctx)).some(row=>row.employmentId===p.employmentId))throw new EssProfileError('permission');
+ const policy=await withTenant(ctx,tx=>freshProfileEditPolicyTx(tx,ctx));ctx=policy.ctx;
  const detail=await movementDetail(ctx,p.employmentId,p.movementId);if(!detail)throw new EssProfileError('unavailable');
  return (['before','after'] as const).flatMap(side=>{
   const snapshot=detail[side];if(!snapshot)return [];
   const comparison={companyName:snapshot.company,businessUnitName:snapshot.businessUnit,departmentName:snapshot.department,positionName:snapshot.position,gradeName:snapshot.grade,employmentType:snapshot.employmentType,...Object.fromEntries(detail.flatChanges.map(change=>[change.field,change[side]]))};
-  return [{key:`${p.movementId}:${side}`,tab:'Employment History',section:'Before Changes and After Changes',context:side,date:detail.row.effectiveDate,values:project('movementComparison',comparison)}];
+  return [{key:`${p.movementId}:${side}`,tab:'Employment History',section:'Before Changes and After Changes',context:side,...(essFactVisible(policy.visible,'movement','effectiveFrom')?{date:detail.row.effectiveDate}:{}),values:projectEssVisible(project('movementComparison',comparison),policy.visible)}];
  });
 }

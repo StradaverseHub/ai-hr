@@ -1,4 +1,5 @@
 'use server';
+import { attendanceWorkflowErrorMessage } from '@/lib/attendance-workflow-error-message';
 
 import { publicErrorMessage } from '@/lib/public-error';
 import { getTranslations } from 'next-intl/server';
@@ -18,11 +19,11 @@ export async function decideCorrectionAction(formData: FormData) {
       decision: String(formData.get('decision')) as 'approved' | 'rejected',
       rejectReason: String(formData.get('rejectReason') ?? ''),
       remarks: String(formData.get('remarks') ?? ''),
-      expectedStageIndex: formData.get('workflowStage') ? Number(formData.get('workflowStage')) : undefined,
+      expectedStageIndex: formData.get('workflowStage') ? Number(formData.get('workflowStage')) : undefined, expectedParticipantSlot: String(formData.get('workflowParticipant') ?? '') || undefined,
     });
     outcomeStatus = outcome.status;
   } catch (e) {
-    redirect(`${back}?error=${encodeURIComponent(e instanceof MissingAttendanceRejectReasonError ? (await getTranslations('attendance'))('rejectRequired') : publicErrorMessage(e))}`);
+    redirect(`${back}?error=${encodeURIComponent(e instanceof MissingAttendanceRejectReasonError ? (await getTranslations('attendance'))('rejectRequired') : await attendanceWorkflowErrorMessage(e))}`);
   }
   for (const path of ['/attendance', '/attendance/application-history', '/attendance/application-history/visible', '/approvals', '/attendance/request-status']) revalidatePath(path);
   revalidatePath('/attendance/application-history/[id]', 'page');

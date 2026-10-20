@@ -1,3 +1,4 @@
+import {employmentTestRecord} from '@/core/employment-test-record';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -76,6 +77,7 @@ import {
   endDelegationAction,
   setCompensationAction,
   setDirectSuperiorAction,
+  setTestRecordAction,
   setComplianceFieldsAction,
   setContactAddressAction,
   changeEmploymentCompanyAction,
@@ -109,6 +111,7 @@ import {
 import {
   movementHistory,
   movementDetail,
+  movementPendingEditInput,
   movementCurrentState,
   INTERCHANGEABLE_COMPARISON_KINDS,
   isComparisonKind,
@@ -333,6 +336,7 @@ export default async function EmployeePage({
 
   const emp = await employeeDetail(s, employmentId);
   if (!emp) notFound();
+  const classification = admin ? await employmentTestRecord(s, employmentId) : null;
   const today = todayInKualaLumpur();
   // Employee Status redesign (R43 c26c3ce5): Employee Status is SYSTEM-DERIVED read-time from the employment
   // lifecycle dates (+ the manual Blacklist override) — never a stored manual field. Computed once here and
@@ -4021,10 +4025,13 @@ export default async function EmployeePage({
   // corrected. `canEdit` comes from the service, so a row the service would refuse never renders a form.
   // Include the edited code's metadata even if inactive; the client needs its resolved behavior.
   const movementEditRow = spEditMovement ? movements.find((m) => m.id === spEditMovement && m.canEdit) : undefined;
+  const movementEditInput = movementEditRow && movementEditRow.status === 'pending'
+    ? await movementPendingEditInput(s, employmentId, movementEditRow.id) : null;
   const editEventCard = canCreateMovement && movementEditRow && movementFormProps ? (
     <Card id="section-movement-edit-event" className="overflow-hidden">
       <SectionHeader title={t('movement.editTitle')} />
       <MovementNewEvent
+        key={movementEditRow.id}
         {...movementFormProps}
         types={movementTypes
           .filter((r) => r.active || r.code === movementEditRow.kind)
@@ -4035,6 +4042,8 @@ export default async function EmployeePage({
           effectiveDate: movementEditRow.effectiveDate,
           endDate: movementEditRow.endDate,
           remarks: movementEditRow.remarks,
+          pendingInput: movementEditInput?.values,
+          pendingUnavailable: movementEditInput?.unavailable,
           // A correction may re-classify the movement within its own family (a Transfer that should have
           // been a Promotion), never across it — the service replays the same set of writers either way.
           // 476f23ed — the family is decided by the BEHAVIOUR, not by the code, so a correction of one of
@@ -4270,7 +4279,8 @@ export default async function EmployeePage({
   // the administrator lands on the form that actually performs the change rather than on a tab they must
   // then navigate. Tab-qualified so the panel is already selected.
   const newMovementHref = `/admin/personnel/${emp.employmentId}?tab=careerMovement&newEvent=1`;
-  const gradeName = emp.gradeId ? (grades.find((g) => g.id === emp.gradeId)?.name ?? null) : null;
+  const currentGrade=emp.gradeId?grades.find(g=>g.id===emp.gradeId):undefined;
+  const gradeName=currentGrade?.name?.trim() || currentGrade?.code || null;
   const employmentTypeLabel =
     current?.employmentType && EMPLOYMENT_TYPE_OPTIONS.includes(current.employmentType)
       ? t(`employmentInfo.employmentType_${current.employmentType}` as 'employmentInfo.employmentType_full_time')
@@ -4452,34 +4462,34 @@ export default async function EmployeePage({
         </div>
 
         {/* 8ebabbf2 — the eight flat organisation columns, likewise view-only. They were catalog-backed
-            ProfileOptionSelect dropdowns (1001ff61); the stored value is now displayed directly, which is
-            what those dropdowns rendered anyway for both catalog and legacy free-text values. Movement's
+            ProfileOptionSelect dropdowns (1001ff61); the current owner label is displayed with the canonical code as fallback,
+            including legacy free-text values that have no matching catalogue row. Movement's
             comparison form owns them now (core/movement.ts MOVEMENT_FLAT_FIELDS) and keeps the same
             catalog validation, because it writes through the same setEmploymentInfo. */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           <PersonnelField fieldId="employment.additional_organisation_labels.orgdivision" mode="edit">
-            {readOnlyValue("employment.additional_organisation_labels.orgdivision", emp.orgDivision)}
+            {readOnlyValue("employment.additional_organisation_labels.orgdivision", profileOptions.division.find(option=>option.value===emp.orgDivision)?.label?.trim() || emp.orgDivision)}
           </PersonnelField>
           <PersonnelField fieldId="employment.additional_organisation_labels.orgbranch" mode="edit">
-            {readOnlyValue("employment.additional_organisation_labels.orgbranch", emp.orgBranch)}
+            {readOnlyValue("employment.additional_organisation_labels.orgbranch", profileOptions.branch.find(option=>option.value===emp.orgBranch)?.label?.trim() || emp.orgBranch)}
           </PersonnelField>
           <PersonnelField fieldId="employment.additional_organisation_labels.orgregion" mode="edit">
-            {readOnlyValue("employment.additional_organisation_labels.orgregion", emp.orgRegion)}
+            {readOnlyValue("employment.additional_organisation_labels.orgregion", profileOptions.region.find(option=>option.value===emp.orgRegion)?.label?.trim() || emp.orgRegion)}
           </PersonnelField>
           <PersonnelField fieldId="employment.additional_organisation_labels.orgline" mode="edit">
-            {readOnlyValue("employment.additional_organisation_labels.orgline", emp.orgLine)}
+            {readOnlyValue("employment.additional_organisation_labels.orgline", profileOptions.line.find(option=>option.value===emp.orgLine)?.label?.trim() || emp.orgLine)}
           </PersonnelField>
           <PersonnelField fieldId="employment.additional_organisation_labels.orgsection" mode="edit">
-            {readOnlyValue("employment.additional_organisation_labels.orgsection", emp.orgSection)}
+            {readOnlyValue("employment.additional_organisation_labels.orgsection", profileOptions.section.find(option=>option.value===emp.orgSection)?.label?.trim() || emp.orgSection)}
           </PersonnelField>
           <PersonnelField fieldId="employment.additional_organisation_labels.orgteam" mode="edit">
-            {readOnlyValue("employment.additional_organisation_labels.orgteam", emp.orgTeam)}
+            {readOnlyValue("employment.additional_organisation_labels.orgteam", profileOptions.team.find(option=>option.value===emp.orgTeam)?.label?.trim() || emp.orgTeam)}
           </PersonnelField>
           <PersonnelField fieldId="employment.additional_organisation_labels.orgbase" mode="edit">
-            {readOnlyValue("employment.additional_organisation_labels.orgbase", emp.orgBase)}
+            {readOnlyValue("employment.additional_organisation_labels.orgbase", profileOptions.base.find(option=>option.value===emp.orgBase)?.label?.trim() || emp.orgBase)}
           </PersonnelField>
           <PersonnelField fieldId="employment.additional_organisation_labels.employmentcategory" mode="edit">
-            {readOnlyValue("employment.additional_organisation_labels.employmentcategory", emp.employmentCategory)}
+            {readOnlyValue("employment.additional_organisation_labels.employmentcategory", profileOptions.category.find(option=>option.value===emp.employmentCategory)?.label?.trim() || emp.employmentCategory)}
           </PersonnelField>
         </div>
 
@@ -4710,6 +4720,22 @@ export default async function EmployeePage({
      existing functional/project/dotted rows remain in the data (org chart still renders them — their
      retirement is a follow-up decision, not decided here). Prior superiors stay visible read-only in
      the compact history disclosure below the field. */
+  const dataClassificationCard = admin && classification ? (
+    <Card id="section-data-classification">
+      <SectionHeader title={t('dataClassification.title')}/>
+      <form action={setTestRecordAction} className="space-y-3 p-4">
+        <input type="hidden" name="employmentId" value={emp.employmentId}/>
+        <p className="text-sm text-muted-foreground">{t('dataClassification.help')}</p>
+        <PersonnelField fieldId="employment.data_classification.istestrecord" mode="edit">
+          <select {...personnelControl('employment.data_classification.istestrecord','edit')} className={inputCls} defaultValue={String(classification.isTestRecord)}>
+            <option value="false">{t('dataClassification.unmarked')}</option><option value="true">{t('dataClassification.marked')}</option>
+          </select>
+        </PersonnelField>
+        <button type="submit" className={btnPrimary}>{t('dataClassification.save')}</button>
+      </form>
+    </Card>
+  ) : null;
+
   const directSuperiorCard = (
     <Card id="section-direct-superior">
       <SectionHeader title={t('directSuperiorTitle')} />
@@ -5087,6 +5113,7 @@ export default async function EmployeePage({
             {employmentInfoCard}
           </TabSaveScope>
         )}
+        {dataClassificationCard}
         {directSuperiorCard}
         {delegationsCard}
       </>

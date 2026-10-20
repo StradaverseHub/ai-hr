@@ -110,7 +110,7 @@ describe('§1 r80 removal: the leave decide path exists ONLY under Approval Item
     expect(approvalsPage).toContain("const manager = (s.roles ?? []).includes('manager');");
     // Rewards unit membership can assign an employee a review without a global manager role.
     // Existing HR/manager admission remains; an ordinary employee needs a pending scoped reward.
-    expect(approvalsPage).toContain("if (!admin && !manager && !rewardReviews.length) redirect('/');");
+    expect(approvalsPage).toContain("if (!admin && !manager && !rewardReviews.length && !assignedAttendance) redirect('/');");
     expect(approvalsPage).toContain("isModuleEnabledOrFalse(s, 'rewards') ? await pendingRewardReviews(s, scopeIds) : []");
   });
 });

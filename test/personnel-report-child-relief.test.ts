@@ -10,7 +10,7 @@ describe('report statutory child relief grid facts',()=>{
   expect(keys.size).toBe(10);
  });
  it('never substitutes current grid counts into a historical report or permits their past-date condition',()=>{
-  const today='2026-10-15',descriptor={...PERSONNEL_FIELDS[0],id:'bank_statutory.income_tax_pcb.childrelieftable_under_18_full',owner:'statutory',ownerField:'childReliefTable',type:'number',history:'current',scope:'employment',childReliefCell:{category:'under_18',share:'full'}} as PersonnelFieldDescriptor;
+  const today='2026-10-15',descriptor={...PERSONNEL_FIELDS[0],id:'bank_statutory.income_tax_pcb.childrelieftable_under_18_full',owner:'statutory',ownerField:'childReliefTable',type:'number',history:'current',scope:'employment',report:{enabled:true,filter:true,sort:true,group:false,sum:true},childReliefCell:{category:'under_18',share:'full'}} as PersonnelFieldDescriptor;
   const company='11111111-1111-4111-8111-111111111111',spec:EmployeeMasterSpec={v:2,asAt:'2026-10-14',companyIds:[company],includeDrafts:false,columns:[defaultMasterColumn(descriptor)],expression:{id:'root',type:'group',logic:'and',children:[]},sorts:[],groups:[],pdf:{paper:'A4',orientation:'landscape',margins:'normal',logo:false,pageBreakGroups:false}};
   const result=runEmployeeMasterProjection(spec,[descriptor],[{id:'employment',kind:'employment',personId:'person',companyId:company,owners:{statutory:[{id:'statutory',values:{[descriptor.id]:{value:3}}}]}}],today);
   expect(result.sections[0].rows[0].cells[0]).toMatchObject({value:null,unavailable:'historical-unavailable'});

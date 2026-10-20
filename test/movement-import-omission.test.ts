@@ -2,7 +2,7 @@ import {describe,it,expect} from 'vitest';
 import {COMPARISON_KINDS} from '../core/movement-kinds';
 import {movementFormRequired} from '../lib/movement-form-contract';
 import {movementImportCellIssues,movementImportRequired,parseMovementImport} from '../lib/movement-import-contract';
-import {movementImportTemplate} from '../lib/movement-import-template';
+import {movementWorkbookLayout,movementWorkbookRequirements} from '../lib/movement-workbook-layout';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {toCsv} from '../lib/csv';
 
@@ -42,13 +42,9 @@ describe('Movement import omission preserves the existing comparison facts',()=>
   expect(movementImportCellIssues(row('secondment',{basic_salary:'3500'}),'secondment')).toEqual(['not_applicable:basicSalary']);
   expect(movementImportCellIssues(row('probationExtension',{end_date:'2026-02-30'}),'probationExtension')).toContain('invalid_date:endDate');
  });
- it('downloaded field guidance follows import omission while retaining explicit Entity Transfer destination guidance',()=>{
-  const template=movementImportTemplate({types:[{code:'promotion',label:null,behaviour:'promotion'},{code:'entityTransfer',label:null,behaviour:'entityTransfer'}],companies:[],fields:{}},(_key,fallback)=>fallback);
-  const promotion=template.instructions.find(values=>String(values[0]).startsWith('promotion ·'));
-  const transfer=template.instructions.find(values=>String(values[0]).startsWith('entityTransfer ·'));
-  expect(promotion).toBeDefined();expect(transfer).toBeDefined();
-  expect(promotion![2]).not.toContain('Department');expect(promotion![3]).toContain('Department');
-  expect(transfer![2]).toContain('Company');expect(transfer![2]).not.toContain('Department');
-  expect(template.instructions.flat()).toContain('Blank cells retain existing values. Only fields supported by that event type may contain values. Explicit clearing stays in Personnel.');
+ it('per-type guidance retains omission and explicit Entity Transfer destination rules',()=>{
+  const resolve=(_key:string,fallback:string)=>fallback,promotion={code:'promotion',label:null,behaviour:'promotion'},transfer={code:'entityTransfer',label:null,behaviour:'entityTransfer'};
+  const p=movementWorkbookRequirements(promotion,movementWorkbookLayout(promotion,resolve)),t=movementWorkbookRequirements(transfer,movementWorkbookLayout(transfer,resolve));
+  expect(p.required).not.toContain('Department');expect(p.optional).toContain('Department');expect(t.required).toContain('Company');expect(t.required).not.toContain('Department');
  });
 });

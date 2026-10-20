@@ -9,11 +9,11 @@ export const MOVEMENT_IMPORT_LIMITS={bytes:900000,rows:200,perEmployee:20,employ
 export const MOVEMENT_IMPORT_FIELDS=Object.keys(MOVEMENT_FORM_IDS).filter((key):key is MovementFormField=>key!=='reason');
 export const MOVEMENT_IMPORT_COLUMNS=['employee_code',...MOVEMENT_IMPORT_FIELDS.map(field=>field==='kind'?'event_type':field.replace(/[A-Z]/g,c=>'_'+c.toLowerCase()))];
 export const MOVEMENT_IMPORT_HEADERS=['Employee ID',...MOVEMENT_IMPORT_FIELDS.map(field=>field==='kind'?'EventType':field==='effectiveDate'?'EffectiveDate':field.replace(/([a-z])([A-Z])/g,'$1 $2').replace(/^./,c=>c.toUpperCase()))];
-export type MovementImportRecord={row:number;employeeCode:string;cells:Partial<Record<MovementFormField,string>>;errors:string[]};
-export type MovementImportRow={row:number;employeeCode:string;eventType:string;effectiveDate:string;status:'valid'|'invalid'|'excluded'|'imported'|'failed';errors:string[];before?:Record<string,string|null>;proposed?:Record<string,string|null>;scheduled?:boolean;payrollFlaggedPeriods?:string[]};
+export type MovementImportRecord={row:number;employeeCode:string;cells:Partial<Record<MovementFormField,string>>;errors:string[];incrementAmount?:string;importVersion?:2;source?:{sheet:string;row:number}};
+export type MovementImportRow={row:number;employeeCode:string;eventType:string;effectiveDate:string;status:'valid'|'invalid'|'excluded'|'imported'|'failed';errors:string[];warnings?:string[];source?:{sheet:string;row:number};baselineDate?:string;before?:Record<string,string|null>;proposed?:Record<string,string|null>;scheduled?:boolean;payrollFlaggedPeriods?:string[]};
 export type MovementImportEmployee={employeeCode:string;employmentId:string|null;name:string|null;rows:MovementImportRow[];fingerprint:string|null};
 export type MovementImportPreview={inputHash:string;selection:number[];fileErrors:string[];employees:MovementImportEmployee[];excluded:number;valid:number};
-export type MovementImportResult={employees:MovementImportEmployee[];imported:number;failed:number;excluded:number;byEventType:{eventType:string;imported:number;failed:number;excluded:number}[]};
+export type MovementImportResult={employees:MovementImportEmployee[];imported:number;failed:number;excluded:number;byEventType:{eventType:string;imported:number;failed:number;excluded:number}[];batchId?:string};
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 export function movementImportDate(raw:string):string|null{
  if(isCalendarDate(raw))return raw;
@@ -70,8 +70,15 @@ export function movementImportRequired(field:MovementFormField,behaviour:string)
  if(field==='companyId'&&behaviour==='entityTransfer')return true;
  return movementFormRequired(field,behaviour);
 }
+/** Import scaffolding is not an instruction to accept the manual blacklist default.
+ * An explicit status (including false), or remarks with the canonical default, records intent.
+ * Kind, generated date and grey snapshots alone never supply that intent. */
+export function movementImportHasBlacklistInput(cells:MovementImportRecord['cells']):boolean{
+ return !!(cells.blacklisted?.trim()||cells.remarks?.trim());
+}
 export function movementImportCellIssues(record:MovementImportRecord,behaviour:string):string[]{
  const issues=[...record.errors];const visible=new Set(movementFormFields(behaviour,record.cells.terminationReasonCode));
+ if(behaviour==='blacklist'&&!movementImportHasBlacklistInput(record.cells)&&!issues.includes('blacklist_input_required'))issues.push('blacklist_input_required');
  for(const field of MOVEMENT_IMPORT_FIELDS){
   const value=record.cells[field];
   // Every row carries a date. Blacklist is a current-day flag; the server verifies its date explicitly.
@@ -91,8 +98,19 @@ export function movementImportCellIssues(record:MovementImportRecord,behaviour:s
  * Display-only: neither this history nor these error strings are accepted by the write owner. */
 export function retainMovementExclusionReasons(employees:MovementImportEmployee[],previous:MovementImportEmployee[]):MovementImportEmployee[]{
  const prior=new Map(previous.flatMap(employee=>employee.rows.map(row=>[row.row,row] as const)));
- return employees.map(employee=>({...employee,rows:employee.rows.map(row=>{
-  const old=prior.get(row.row);
-  return row.status==='excluded'&&!row.errors.length&&old?.employeeCode===row.employeeCode&&old.eventType===row.eventType&&old.errors.length?{...row,errors:[...old.errors]}:row;
- })}));
+ return employees.map(employee=>{
+  // The write owner intentionally does not resolve an entirely unselected employee again.
+  // Retain only its already-visible preview name, never its employment ID or fingerprint.
+  // A fresh server refusal, changed sequence or unresolved preview must not revive identity.
+  const candidates=previous.filter(old=>old.employeeCode===employee.employeeCode);
+  const oldEmployee=candidates.length===1?candidates[0]:undefined;
+  const sameRow=(row:MovementImportRow,old:MovementImportRow)=>row.row===old.row&&row.employeeCode===employee.employeeCode&&row.employeeCode===old.employeeCode&&row.eventType===old.eventType&&row.effectiveDate===old.effectiveDate&&row.source?.sheet===old.source?.sheet&&row.source?.row===old.source?.row;
+  const retainName=employee.name===null&&employee.employmentId===null&&employee.fingerprint===null&&employee.rows.length>0&&
+   employee.rows.every(row=>row.status==='excluded'&&row.errors.length===0)&&oldEmployee?.employmentId&&oldEmployee.name&&
+   oldEmployee.rows.length===employee.rows.length&&employee.rows.every(row=>oldEmployee.rows.filter(old=>sameRow(row,old)).length===1);
+  return {...employee,name:retainName?oldEmployee?.name??employee.name:employee.name,rows:employee.rows.map(row=>{
+   const old=prior.get(row.row);
+   return row.status==='excluded'&&!row.errors.length&&old?.employeeCode===row.employeeCode&&old.eventType===row.eventType&&old.errors.length?{...row,errors:[...old.errors]}:row;
+  })};
+ });
 }

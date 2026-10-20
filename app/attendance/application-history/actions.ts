@@ -15,12 +15,12 @@ export async function attendanceHistoryAction(form: FormData) {
         if (action === 'approved' || action === 'rejected') {
             if (!detail.canDecide)
                 throw new Error('This application is not waiting for your decision.');
-            await decideAttendanceCorrection(s, { correctionId: id, decision: action, rejectReason: reason, remarks: reason, expectedStageIndex: form.get('workflowStage') ? Number(form.get('workflowStage')) : undefined });
+            await decideAttendanceCorrection(s, { correctionId: id, decision: action, rejectReason: reason, remarks: reason, expectedStageIndex: form.get('workflowStage') ? Number(form.get('workflowStage')) : undefined, expectedParticipantSlot: String(form.get('workflowParticipant') ?? '') || undefined });
         }
         else if (action === 'reassign_hr') {
             const stage = String(form.get('workflowStage') ?? '');
-            if (!detail.canReassign || detail.workflow?.routingVersion !== 2 || !/^\d+$/.test(stage)) throw new Error('This application has no pending level to reassign.');
-            await reassignAttendanceWorkflowStageToHr(s, { correctionId: id, expectedStageIndex: Number(stage), reason });
+            if (!detail.canReassign || (detail.workflow?.routingVersion !== 2 && detail.workflow?.routingVersion !== 3) || !/^\d+$/.test(stage)) throw new Error('This application has no pending level to reassign.');
+            await reassignAttendanceWorkflowStageToHr(s, { correctionId: id, expectedStageIndex: Number(stage), expectedParticipantSlot: String(form.get('workflowParticipant') ?? '') || undefined, reason });
         }
         else if (action === 'cancelled' || action === 'withdrawn') {
             if (!detail.canCancel)

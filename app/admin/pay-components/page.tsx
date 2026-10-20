@@ -179,7 +179,6 @@ export default async function PayComponentsPage({
             ))}
           </nav>
           <div className="ml-auto flex flex-wrap items-center gap-3">
-            <a href={`${PAGE}/template`} className="rounded-lg border border-border px-3 py-2 text-sm font-medium">{t('downloadTemplate')}</a>
             <ImportPayItems />
             <DownloadCsv columns={exportColumns} rows={exportRows} filename="pay-items.csv" />
           </div>

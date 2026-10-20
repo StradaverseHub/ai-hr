@@ -340,7 +340,7 @@ export function seedProfileOptions(
 
 export async function createProfileOption(
   ctx: SessionContext,
-  p: { category: string; value: string; label?: string | null; description?: string | null; sortOrder?: number | null },
+  p: { category: string; value: string; label?: string | null; description?: string | null; sortOrder?: number | null; isActive?: boolean },
   existingTx?: Tx,
 ): Promise<{ id: string }> {
   if (!isProfileOptionCategory(p.category)) throw new Error('Unknown option category');
@@ -359,7 +359,7 @@ export async function createProfileOption(
     if (dupe) throw new Error(`"${value}" already exists in this list`);
     const [row] = await tx
       .insert(profileOption)
-      .values({ tenantId: ctx.tenantId, category: p.category, value, label, description, sortOrder })
+      .values({ tenantId: ctx.tenantId, category: p.category, value, label, description, sortOrder, isActive: p.isActive ?? true })
       .returning({ id: profileOption.id });
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -367,7 +367,7 @@ export async function createProfileOption(
       aggregateId: row.id,
       eventType: 'profile-option.created',
       actor: actorOf(ctx),
-      payload: { category: p.category, value, label, description, sortOrder },
+      payload: { category: p.category, value, label, description, sortOrder, isActive: p.isActive ?? true },
     });
     return { id: row.id };
   });

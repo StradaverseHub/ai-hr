@@ -1,3 +1,4 @@
+import { parseAttendanceLevelProblemToken, attendanceLevelProblemMessageKey } from '@/lib/attendance-workflow-v3';
 import {FormulaOvertimeDuration} from '@/components/formula-overtime-record';
 import { AttendanceRequestHistory } from '@/components/attendance-request-history';
 import Link from 'next/link';
@@ -29,7 +30,7 @@ export default async function MyAttendanceDayPage({
   searchParams,
 }: {
   params: Promise<{ date: string }>;
-  searchParams: Promise<{ from?: string; to?: string; error?: string; corrected?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; error?: string; workflowProblem?: string; corrected?: string }>;
 }) {
   const t = await getTranslations('attendance');
   const locale = await getLocale();
@@ -37,6 +38,8 @@ export default async function MyAttendanceDayPage({
   const { s } = await scopedSession();
   const { date } = await params;
   const sp = await searchParams;
+  const workflowProblem = parseAttendanceLevelProblemToken(sp.workflowProblem);
+  const workflowText = await getTranslations('attendanceWorkflow');
 
   const dateRe = /^\d{4}-\d{2}-\d{2}$/;
   if (!dateRe.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date) {
@@ -125,6 +128,7 @@ export default async function MyAttendanceDayPage({
       </Link>
 
       {sp.error && CORRECTION_MESSAGES.includes(sp.error) && <ErrorBanner message={t(sp.error)} />}
+      {workflowProblem && <ErrorBanner message={`${workflowProblem.levelIndex == null ? '' : `${workflowText('stageNumber', { number: workflowProblem.levelIndex + 1 })}: `}${workflowText(`v3.${attendanceLevelProblemMessageKey(workflowProblem)}`)}`}/>}
       {sp.corrected === '1' && !sp.error && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300">
           {t('myDaySubmitted')}

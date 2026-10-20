@@ -30,6 +30,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { leavePack } from '../packs/leave';
+import { navigationPlacement } from '../lib/navigation-workspaces';
 import { LEAVE_CONFIG_MAP, LEAVE_CONFIG_RECORDS_HREF } from '../components/leave-config-map';
 import { REGISTERED_ROUTES, SCREENS } from '../lib/permissions';
 
@@ -603,16 +604,22 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     }
   });
 
-  it('the sidebar mounts it as a collapsible node, in its unchanged Admin-group position', () => {
+  it('retains the canonical authorized Leave descriptors while placing daily HR work separately from Configuration', () => {
     const sidebar = stripComments(read('components/sidebar.tsx'));
-    expect(sidebar).toContain('LEAVE_CONFIG_NODE');
+    expect(sidebar.split('\n').some(line=>line.trim()==='LEAVE_CONFIG_NODE,'), 'the source owner is actually mounted').toBe(true);
     expect(sidebar, 'the old flat row must be gone, not merely unused').not.toContain('LEAVE_CONFIG_ROW');
-    // a324a4b3 rev3 put Attendance literally between Leave config and Claims config on the reporter's
-    // instruction. Assert the order survives the conversion rather than trusting it did.
-    const order = ['SYSTEM_SETTINGS_NODE', 'LEAVE_CONFIG_NODE', 'ATTENDANCE_NODE', 'CLAIMS_CONFIG_ROW', 'PAYROLL_NODE'];
-    const positions = order.map((k) => sidebar.lastIndexOf(k));
-    expect(positions.every((p) => p > 0), 'every admin-group anchor must still be mounted').toBe(true);
-    expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+    // Ops/Strata supersedes the old between-Attendance-and-Claims position. Every existing leaf
+    // keeps its exact href/guard; only its module section changes. Exact membership is pinned above.
+    const dailyHr = new Set(['/admin/leave-config/balance-health','/admin/leave-config/adjustments',
+      '/admin/leave-config/data-import','/admin/leave-config/leave-credit','/admin/leave-config/generate',
+      '/admin/leave-config/earned-accrual','/leave/employee-balances']);
+    expect(NODE.children.length, 'the pack descriptor is not an empty placement sweep').toBe(EXPECTED_CHILDREN.length);
+    for (const child of NODE.children) {
+      expect(navigationPlacement(child.href), child.href).toEqual({area:'ops',module:'leave',section:dailyHr.has(child.href)?'hr':'config'});
+    }
+    for (const name of ['SYSTEM_SETTINGS_NODE','ATTENDANCE_NODE','CLAIMS_CONFIG_ROW','PAYROLL_NODE']) {
+      expect(sidebar.split('\n').some(line=>line.trim()===`${name},`), `${name}: no sibling source owner lost`).toBe(true);
+    }
   });
 
   it('every child label resolves in all six catalogs, and admin.leaveTabs is retired', () => {

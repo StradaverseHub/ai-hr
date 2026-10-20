@@ -436,6 +436,7 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/admin/organization/[companyId]/view',
     ],
   },
+  {screenKey:'profileChanges',href:'/admin/personnel/profile-changes',labelKey:'nav.profileChanges',guard:'requireAdmin',routes:['/admin/personnel/profile-changes'],hasScopeNote:true},
   {
     screenKey: 'personnelAdmin',
     href: '/admin/personnel',

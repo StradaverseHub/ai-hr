@@ -26,6 +26,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { countQuoted, nodeBlock } from './helpers/sidebar-source';
+import { navigationPlacement } from '../lib/navigation-workspaces';
 import { isHrefActive, isParentActive } from '../components/nav-flyout';
 import { attendancePack } from '../packs/attendance';
 import { MODULE_CATALOG } from '../packs/catalog';
@@ -54,6 +55,7 @@ describe('4509d2b8 — the Holidays row moved to System Settings', () => {
     const line = node!.split('\n').find((l) => l.includes(`'${HREF}'`));
     expect(line, `${HREF} is a child row of the System Settings node`).toBeDefined();
     expect(line, 'reuses nav.holidays — the move creates no new string').toContain(`labelKey: 'holidays'`);
+    expect(navigationPlacement(HREF)).toEqual({area:'system'});
     // CalendarDays is already imported by sidebar.tsx (REPORTS_NODE's Leave report uses it) and no OTHER
     // child of this node carries it, so the collapsed rail has no glyph collision. Pinned because the
     // fly-out and the collapsed rail render the glyph alone: two siblings sharing one are indistinguishable.
@@ -226,7 +228,7 @@ describe('4509d2b8 — the highlighting moved with the row', () => {
    * exports are imported rather than reimplemented; the ranking is inline in the `'use client'` sidebar,
    * so its expression is pinned against the source below so this copy cannot drift away from it.
    */
-  const SYSTEM_CHILDREN = childHrefs(SIDEBAR, 'SYSTEM_SETTINGS_NODE');
+  const SYSTEM_CHILDREN = childHrefs(SIDEBAR, 'SYSTEM_SETTINGS_NODE').filter(href=>navigationPlacement(href)?.area==='system');
   const ATTENDANCE_CHILDREN = childHrefs(PACK, 'ATTENDANCE_NAV');
 
   // components/sidebar.tsx `activeChildHref` — inside a panel the LONGEST matching path wins, so exactly
@@ -247,7 +249,7 @@ describe('4509d2b8 — the highlighting moved with the row', () => {
   });
 
   it.each(['/admin/holidays', '/admin/holidays/groups'])(
-    'on %s the System Settings parent lights and Attendance settings does not',
+    'on %s the System Configuration parent lights and Attendance settings does not',
     (pathname) => {
       expect(isParentActive(pathname, SYSTEM_CHILDREN), 'System Settings parent').toBe(true);
       expect(isParentActive(pathname, ATTENDANCE_CHILDREN), 'Attendance settings parent').toBe(false);
@@ -255,7 +257,7 @@ describe('4509d2b8 — the highlighting moved with the row', () => {
   );
 
   it.each(['/admin/holidays', '/admin/holidays/groups'])(
-    'on %s exactly one System Settings row is current, and it is Holidays',
+    'on %s exactly one System Configuration row is current, and it is Holidays',
     (pathname) => {
       // The Holiday Group tab is the case worth stating: isHrefActive is a segment-prefix match, so the
       // /admin/holidays row deliberately stays lit on /admin/holidays/groups (there is no row of its own

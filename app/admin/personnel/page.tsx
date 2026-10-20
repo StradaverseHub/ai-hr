@@ -1,7 +1,7 @@
-import {profileProposalReviewLines,type ProfileProposalCurrent} from '@/lib/profile-proposal-display';
 import Link from 'next/link';
 import { CurrentLedger } from '@/components/current-ledger';
 import { getTranslations } from 'next-intl/server';
+import { PROFILE_REQUEST_OPTION_NAMESPACE } from '@/lib/profile-requestable-fields';
 import { requireAdmin } from '@/lib/authz';
 import { scopedSession } from '@/lib/scope';
 import {
@@ -11,15 +11,9 @@ import {
   listEmployees,
   listEmployeesPage,
 } from '@/core/read';
-import { listProfileChangeRequests } from '@/core/profile';
 // r260 stage two (9583deac) — the shared approve/reject control whose Reject cannot be submitted
 // without a reason, and the declaration that names each proposed field the way both screens name it.
-import { ProfileChangeDecide } from '@/components/profile-change-decide';
-import {
-  PROFILE_REQUEST_OPTION_NAMESPACE,
-  formatProposedValue,
-  requestableField,
-} from '@/lib/profile-requestable-fields';
+
 import { listEmployeeDrafts } from '@/core/employee-draft';
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import { getEmployeeListColumns } from '@/core/employee-list-prefs';
@@ -33,7 +27,6 @@ import {
   employeeColumnText,
   type EmployeeColumnKey,
 } from '@/lib/employee-columns';
-import { decideProfileChangeAction } from './actions';
 import { resetEmployeeColumnsAction, saveEmployeeColumnsAction } from './column-actions';
 import { ColumnPicker } from './column-picker';
 import { DraftRow, draftRowHref } from './draft-row';
@@ -58,34 +51,6 @@ import { EmployeeSwitcher } from './employee-switcher';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
-/**
- * Render a proposed change bundle as human-readable "field → value" pairs.
- *
- * ── r260 STAGE TWO: NAMED FROM THE DECLARATION, NOT FROM AN `if` LADDER ─────────────────────────────
- * This used to test four field names by hand, so the widened set (lib/profile-requestable-fields.ts —
- * twenty-four fields across `person` and `employee_statutory_my`) would have arrived here as
- * "No changes": an approver being asked to approve a bundle the screen refused to describe. It now
- * walks the declaration, and each field is named by the SAME `people.detail.*` key the employee reads it
- * under on their own record — the property the plan asks for, that a request and a record can never call
- * one field two things. `tp` is that catalogue; `t` (people.list) stays for the empty case.
- *
- * ── AND THE VALUE IS RENDERED BY THE SHARED RENDERER, NOT BY THIS SCREEN ────────────────────────────
- * The first draft resolved a select option to `opt.value` — a no-op returning the string it had just
- * matched on — so this queue printed "Tax Category → 2" and "Gender → male" where the code it replaced
- * printed "PCB → Married · spouse working", while My Profile, in the same round, printed the label. An
- * approver deciding a pay-affecting PCB change was being shown an LHDN code, and the two screens
- * disagreed about one request, which is the exact opposite of what this round is for. `tMe` is the
- * namespace those option labels live in (PROFILE_REQUEST_OPTION_NAMESPACE) — the same words the employee
- * picked from. `mask: false`: an approver checks the proposed account number against a bank letter, and
- * already reads it unmasked on the Personnel card.
- *
- * It returns one string PER FIELD rather than one joined line, because resolving the labels made the old
- * ' · ' join ambiguous: "2 · Married, spouse not working" is ONE PCB label and read as two fields.
- */
-function describeProposed(p:unknown,review:ProfileProposalCurrent,t:Awaited<ReturnType<typeof getTranslations>>,labels:Awaited<ReturnType<typeof getTranslations>>):string[]{
- const lines=profileProposalReviewLines(p,review,(key,fallback)=>labels.has(key)?labels(key):fallback,{mask:false});
- return lines.length?lines.map(line=>`${line.recordLabel?line.recordLabel+' · ':''}${line.label} · ${labels('essProfile.currentValue',{value:line.currentValue})} · ${labels('essProfile.proposedValue',{value:line.value})}`):[t('noChanges')];
-}
 
 /** people.list message key per catalogue column — ONE map, read by the <th> row, the picker and the
  *  export route's header row, so a column cannot be called two different things on two surfaces. */
@@ -142,7 +107,6 @@ export default async function PeoplePage({
   // r260 — Personnel Management's own field labels, so a proposed profile change is named in this
   // queue exactly as the employee reads it on their record and HR reads it on the Personnel card.
   const tPeopleDetail = await getTranslations('people.detail');
-  const profileLabels=await getTranslations();
   // r260 — and the option WORDS (gender, marital status, PCB category) come from the namespace the
   // employee picked them in, so the approver reads the sentence they chose and not its stored code.
   const tMeOptions = await getTranslations(PROFILE_REQUEST_OPTION_NAMESPACE);
@@ -165,7 +129,6 @@ export default async function PeoplePage({
     headcount,
     companies,
     departments,
-    profileChanges,
     allDrafts,
     allEmployees,
     savedColumns,
@@ -184,9 +147,6 @@ export default async function PeoplePage({
     countEmployeesByStatus(session, { companyIds: scopeIds, ...headcountFilters(query) }),
     listCompanies(session),
     listDepartments(session),
-    isAdmin
-      ? listProfileChangeRequests(session, { companyIds: scopeIds, status: 'pending' })
-      : Promise.resolve([]),
     // b1b1879d — drafts follow the TOP-BAR company scope exactly as the employees above do. They used to
     // be read with no scope at all, so choosing one company still listed every company's drafts.
     isAdmin ? listEmployeeDrafts(session, draftListScope(scopeIds, allowedCount)) : Promise.resolve([]),
@@ -599,48 +559,7 @@ export default async function PeoplePage({
         </div>
       )}
 
-      {isAdmin && profileChanges.length > 0 && (
-        <Card className="overflow-hidden border-amber-200 dark:border-amber-500/30">
-          <div className="flex items-center gap-2 border-b border-border bg-amber-50/60 px-4 py-3 dark:bg-amber-500/10">
-            <h2 className="text-sm font-semibold">{t('profileChangeRequests')}</h2>
-            <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
-              {t('pendingCount', { count: profileChanges.length })}
-            </span>
-          </div>
-          <ul className="divide-y divide-border">
-            {profileChanges.map((r) => (
-              <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                <div className="min-w-0">
-                  <div className="text-sm font-medium">{r.employee}</div>
-                  {/* ONE FIELD PER LINE. The pairs used to be joined with ' · ', which was unambiguous
-                      only while the values were raw: the PCB labels the employee picks from are
-                      themselves "2 · Married, spouse not working", so a joined line read as two fields
-                      where there was one. An approver reads a pay-affecting bundle here. */}
-                  <div className="text-xs text-muted-foreground">
-                    {describeProposed(r.proposed, r.review, t, profileLabels).map((line) => (
-                      <div key={line}>{line}</div>
-                    ))}
-                  </div>
-                </div>
-                <ProfileChangeDecide
-                  action={decideProfileChangeAction}
-                  requestId={r.id}
-                  idFieldName="requestId"
-                  labels={{
-                    approve: t('approve'),
-                    reject: t('reject'),
-                    reasonPlaceholder: t('rejectReasonPlaceholder'),
-                    yourRequest: t('approve'),
-                  }}
-                />
-              </li>
-            ))}
-          </ul>
-          <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
-            {t('profileChangeHint')}
-          </p>
-        </Card>
-      )}
+
 
       <CurrentLedger footer={pager} tour="people-table" label={t('title')} records={[
         ...drafts.map((d) => ({

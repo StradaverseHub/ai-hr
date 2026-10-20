@@ -12,7 +12,6 @@ import {
   ScrollText,
   ShieldCheck,
   Timer,
-  UserRound,
   type LucideIcon,
 } from 'lucide-react';
 import { Card } from '@/components/ui';
@@ -43,7 +42,6 @@ const ICONS: Record<PanelCategory, LucideIcon> = {
   attendance: Clock,
   overtime: Timer,
   claim: Receipt,
-  profileChanges: UserRound,
   resignations: ScrollText,
   managerReviews: MessageSquareText,
   hrReviews: ShieldCheck,
@@ -58,7 +56,6 @@ const LABEL_KEY: Record<PanelCategory, string> = {
   attendance: 'attendanceCorrections',
   overtime: 'categoryOvertime',
   claim: 'claims',
-  profileChanges: 'profileChanges',
   resignations: 'resignations',
   managerReviews: 'managerReviews',
   hrReviews: 'hrReviews',
@@ -86,6 +83,7 @@ export async function CategoryPanel({
   counts,
   allCount,
   admin,
+  attendanceOnly = false,
 }: {
   /** The currently selected category (already parsed + admin-coerced by the page). */
   category: ApprovalCategory;
@@ -96,6 +94,7 @@ export async function CategoryPanel({
   /** Pending total for the All entry (= the page-header total on the unfiltered view). */
   allCount: number;
   admin: boolean;
+  attendanceOnly?: boolean;
 }) {
   const t = await getTranslations('approvals');
 
@@ -128,7 +127,7 @@ export async function CategoryPanel({
       <nav aria-label={t('title')} className="space-y-3">
         {item('all', t('categoryAll'), allCount, ListChecks)}
         {PANEL_GROUPS.map(({ group, categories }) => {
-          const visible = categories.filter((c) => admin || !ADMIN_ONLY_CATEGORIES.includes(c));
+          const visible = categories.filter((c) => (admin || !ADMIN_ONLY_CATEGORIES.includes(c)) && (!attendanceOnly || c === 'attendance' || c === 'overtime'));
           if (visible.length === 0) return null;
           return (
             <div key={group} className="space-y-0.5">
@@ -154,7 +153,7 @@ export async function CategoryPanel({
             No extra visibility gate: the whole panel only renders for someone who can already reach
             /approvals, and app/approvals/history has its own guard, so the link cannot grant access it
             would otherwise refuse. */}
-        <div className="border-t pt-2">
+        {!attendanceOnly && <div className="border-t pt-2">
           <Link
             href="/approvals/history"
             className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -162,7 +161,7 @@ export async function CategoryPanel({
             <History className="size-4 shrink-0" aria-hidden />
             <span className="min-w-0 flex-1 truncate">{t('approvalHistory')}</span>
           </Link>
-        </div>
+        </div>}
       </nav>
     </Card>
   );

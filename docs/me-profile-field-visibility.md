@@ -28,6 +28,7 @@ coordinated verification window. SQL0560 is the centrally reserved unapplied Pro
 
 | Stable Personnel field | Tab | ESS visibility | Update route | Reason |
 | --- | --- | --- | --- | --- |
+| `employment.data_classification.istestrecord` | Employment | Protected | specialist | HR-only data classification; never an employee input. |
 | `profile.personal_details.employeecode` | Profile | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
 | `profile.personal_details.salutation` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
 | `profile.personal_details.fullname` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |

@@ -77,3 +77,56 @@ The final decision identity and frozen OT method cannot be edited or reopened af
 landing may change only applied_at and approved_ot_minutes: it requires a freshly written same-day owner
 result, with a separate claim and an amount stamp equal to the fresh trace's approvedMinutes. Cancellation
 retains its existing applicant/scoped-HR owner path and never rewrites the original decision history.
+
+## Per-level participant model for routing version 3
+
+The approved Attendance follow-up (797ba70b, revision 2) requires a new explicit routing version, not a
+reinterpretation of legacy alternates. Each level has its own Sequential or Any One mode and either an
+explicit superior depth 1–5 from the applicant or an ordered group of named employees. Named groups have
+at most 20 participants per level, 100 per workflow, and workflows have 1–10 levels. Unknown fields,
+invalid identities and excessive selections refuse rather than being sanitized or truncated. Employment,
+person and login identity are separately frozen and checked for self/repeated assignments. Personnel
+continues to own hierarchy, lifecycle, company scope and login eligibility.
+
+A whole-level HR alternative must never silently satisfy a required named group. In v3 it is supported
+only for an explicitly configured single-superior source. A selected group combined with that alternative
+is refused explicitly. A reasoned reassignment of a named group operates on one outstanding participant
+slot; it retains the original route, completed participant decisions and the previous/replacement identity.
+It cannot replace the whole level or erase completed requirements. Existing v1/v2 alternatives remain
+unchanged. This preserves the requirement that every sequential participant is necessary.
+
+Participant decisions and level-completion decisions have distinct grains. The existing unique
+(request, stage) decision remains a completion record; it must not be weakened to accommodate individual
+participants. The future transaction owner must lock the request, check the exact current slot and live
+actor authority, write immutable participant evidence, and write/advance the unique completion record
+only when the mode is fulfilled or a participant rejects. Any One requires a first-writer decision under
+that same lock. Frozen request assignment grants no general Personnel or correction rights.
+
+V3 enters through a separate exact configuration boundary; the legacy validator retains v1/v2 semantics.
+The v3 owner integrates participant persistence, request-bound RLS, slot-grain reassignment, ordinary
+employee inbox access and final-effect guards together. The ordinary-employee inbox branch reads only
+assigned Attendance work and does not query the unrelated manager queues or grant a Manager role.
+The configured stage count still owns advancement; partial participant decisions do not advance it.
+
+Final effects require an actively written final level-completion decision and an actively written final
+participant decision by the same real actor. The exact subject/day/correction, canonical Attendance effect,
+payroll cutoff and TOIL owners remain unchanged. Neither partial participant approval nor a previously
+committed level decision establishes that capability. Released-savepoint evidence remains refused by the
+existing active-write predicate. Legacy identity substitution/delegation seams explicitly exclude v3;
+they cannot become a weaker path around the participant owner.
+
+Changing an existing v1/v2 template to per-level configuration is deliberate: the editor states that it
+starts a new route draft with one level, while keeping company, criteria and metadata. The saved template
+and all submitted applications remain untouched until a new immutable version is saved. No source model,
+unrun regression or migration draft establishes runtime or release verification.
+
+
+A terminal rejection of an OT-bearing correction changes the canonical approval digest, even when it
+applies no payable Attendance effect. The v3 owner therefore requires the existing scoped calculation
+visibility for that terminal mutation, just as for final approval. An ordinary assignee without it gets
+the finite HR-handoff response; the entire attempted participant decision rolls back. Scoped HR may
+record a reasoned reassignment of only that outstanding slot and then reject through the canonical
+owner, retaining earlier participant evidence and the real HR decision/reason. This condition reads
+requested_ot_minutes from the actual correction, including Irregularity applications carrying OT; it
+must not be inferred from the application's screen/type alone. Ordinary non-OT rejection remains
+supported. No cash-source predicate, Personnel visibility or financial role is widened.

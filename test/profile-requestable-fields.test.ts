@@ -47,7 +47,9 @@ const REQUEST_CARD = read('app/me/request-change-card.tsx');
 const ME_PAGE = read('app/me/page.tsx');
 const ESS_EDITOR=read('app/me/profile-editor.tsx'),ESS_OWNER=read('core/profile-edit.ts'),POLICY_OWNER=read('core/profile-edit-policy.ts'),PROPOSAL_DISPLAY=read('lib/profile-proposal-display.ts');
 // The two screens an APPROVER reads a proposed change on. Both are held to the same renderer as /me.
-const PERSONNEL_PAGE = read('app/admin/personnel/page.tsx');
+const PERSONNEL_PAGE = read('app/admin/personnel/profile-changes/page.tsx');
+const PERMISSION_MATRIX = read('app/admin/settings/profile-requests/permission-matrix.tsx');
+const ROUTING_MIGRATION = read('db/migrations/0571_ess_profile_policy_routes.sql');
 const APPROVALS_PAGE = read('app/approvals/page.tsx');
 // The two documents the REPORTER reads. They are prose, so nothing else in the build can notice when a
 // number in them stops being true.
@@ -203,10 +205,12 @@ describe('r260 — the requestable-field declaration', () => {
     );
     expect(MIGRATION_SQL, '0458 must add no CHECK — see the erasure-abort case in this file').not.toMatch(/\bCHECK\s*\(/i);
     // The OTHER writer of the table, named so a future constraint author meets it here.
-    expect(PDPA).toContain('.update(profileChangeRequest)');
+    expect(PDPA).toContain('app.redact_profile_request_pii(${emp.personId}::uuid)');
+    expect(ROUTING_MIGRATION).toContain('UPDATE profile_change_request r SET proposed=');
+    expect(ROUTING_MIGRATION).toContain('r.person_id=p_person AND app.can_admin_employment(r.employment_id)');
     // And the free-text reason is erased with the record — core/profile.ts keeps it out of the
     // append-only event log on exactly that promise.
-    expect(PDPA).toContain('decisionReason: null');
+    expect(ROUTING_MIGRATION).toContain("decision_reason=NULL,route_history='[]'::jsonb,route_context=NULL");
     // An ALTER on an existing table inherits its policies and grants — the migration must SAY so rather
     // than leave the next reader to re-derive it (AGENTS rule 5).
     expect(MIGRATION).toMatch(/NO RLS OR GRANT CHANGES/);
@@ -339,9 +343,12 @@ describe('r260 — the requestable-field declaration', () => {
     expect(formatProposedValue(requestableField('preferredName')!, '', t, { mask: false })).toBe('— cleared —');
     expect(formatProposedValue(requestableField('preferredName')!, null, t, { mask: false })).toBe('— cleared —');
 
-    for(const [name,src]of [['app/admin/personnel/page.tsx',PERSONNEL_PAGE],['app/approvals/page.tsx',APPROVALS_PAGE],['app/me/page.tsx',ME_PAGE]]){
+    for(const [name,src]of [['app/admin/personnel/profile-changes/page.tsx',PERSONNEL_PAGE],['app/me/page.tsx',ME_PAGE]]){
       expect(src,name).toContain(name==='app/me/page.tsx'?'profileProposalLines(':'profileProposalReviewLines(');expect(src,name).not.toMatch(/options\?\.find\([\s\S]{0,80}?\)\?\.value/);
     }
+    // The general inbox redirects old bookmarks; proposal values render only in the assigned queue.
+    expect(APPROVALS_PAGE).toContain("if(admin&&categoryParam==='profileChanges')redirect('/admin/personnel/profile-changes')");
+    expect(APPROVALS_PAGE).not.toContain('profileProposalReviewLines(');
     expect(PROPOSAL_DISPLAY).toContain('formatProposedValue(field,value,k=>resolve(`me.${k}`,k),opts)');expect(PROPOSAL_DISPLAY).toContain('descriptor?.ess.masked');expect(PROPOSAL_DISPLAY).toContain('personnelFieldChoices(field)');expect(PROPOSAL_DISPLAY).toContain('personnelFieldLabel(field,resolve)');
 
   });
@@ -428,16 +435,16 @@ describe('r261 — the two settings are catalogued, and catalogued the way they 
     // always been jsonb. Before r261 no TypeScript writer could express one, so a `json` catalog entry
     // was unreachable from the product. This is the conjunct that keeps the two in step.
     expect(CORE_TENANT_SETTINGS).toContain('settingValueType(p.value) !== entry.valueType');
-    expect(CORE_TENANT_SETTINGS).toContain("return Array.isArray(v)||isProfileEditPolicyValue(v) ? 'json' : typeof v;");
+    expect(CORE_TENANT_SETTINGS).toContain("return Array.isArray(v)||isProfileEditPolicyValue(v)||isProfileVisibilityPolicyValue(v)||isProfileRoutingPolicy(v) ? 'json' : typeof v;");
   });
 });
 
 describe('r261 — a switched-off field is ABSENT from the employee\'s screen, not disabled on it', () => {
   it('the actual editor keeps View Only visible and derives writable controls only from the fresh owner permission sets',()=>{
-    expect(ME_PAGE).toContain('readOwnProfileWorkspace(s,{employmentId})');expect(ESS_EDITOR).toContain('const editable=new Set(workspace.editable),primaryEditable=new Set(workspace.legacyPrimaryEditable)');
+    expect(ME_PAGE).toContain('readOwnProfileWorkspace(s,{employmentId},presentation)');expect(ESS_EDITOR).toContain('const editable=new Set(workspace.editable),primaryEditable=new Set(workspace.legacyPrimaryEditable)');
     expect(ESS_EDITOR).toContain('const allowed=applicable&&taxAvailable&&canEdit(field.id,row)');expect(ESS_EDITOR).toContain('{allowed?<div');expect(ESS_EDITOR).toContain('{displayValue}');
     expect(ESS_OWNER).toContain('freshProfileEditPolicyTx(tx,ctx)');expect(ESS_OWNER).toContain("throw new EssProfileError('fieldClosed',[field.id])");
-    expect(APPROVALS_PAGE).toContain("getSettingOrFallback<string>(s, 'ess.profile_change_approver', 'group_admin')");
+    expect(CORE_PROFILE).toContain("profileChangeApprover(ctx) === 'group_admin'");expect(CORE_PROFILE).toContain('await assertProfileRouteDecisionTx(tx,ctx,req)');
   });
 
   it('offers NO inert control — the request card contains no disabled attribute at all', () => {
@@ -494,13 +501,13 @@ describe('r261 — a switched-off field is ABSENT from the employee\'s screen, n
 
 describe('r261 — the settings screen speaks the declaration\'s own vocabulary', () => {
   it('renders every applicable shared descriptor with canonical labels and finite View Only/Editable options',()=>{
-    expect(SETTINGS_PAGE).toContain('essVisibleFields()');expect(SETTINGS_PAGE).toContain('personnelFieldLabel(field');expect(SETTINGS_PAGE).toContain('permission:${field.id}');expect(SETTINGS_PAGE).toContain('value="viewOnly"');expect(SETTINGS_PAGE).toContain('value="editable"');
+    expect(SETTINGS_PAGE).toContain('essVisibleFields()');expect(SETTINGS_PAGE).toContain('personnelFieldLabel(field');expect(SETTINGS_PAGE).toContain('<PermissionMatrix');expect(PERMISSION_MATRIX).toContain('permission:${row.id}');expect(PERMISSION_MATRIX).toContain("const permissions=['editable','viewOnly','hide'] as const");
     expect(SETTINGS_PAGE).not.toMatch(/t\(`field\./);
   });
 
-  it('writes a complete bounded v2 policy and withdraws locked pending requests in the SAME canonical transaction',()=>{
-    expect(SETTINGS_ACTIONS).toContain('for(const field of essEditableFields())');expect(SETTINGS_ACTIONS).toContain('formData.get(`permission:${field.id}`)');expect(SETTINGS_ACTIONS).not.toContain("formData.get('key')");expect(SETTINGS_ACTIONS).toContain('saveProfileEditPolicy(s,');
-    expect(POLICY_OWNER).toContain('const policy={version:2 as const,fields:p.keys}');expect(POLICY_OWNER).toContain("setTenantSetting(before.ctx,{key:'ess.profile_change_fields',value:policy},tx)");expect(POLICY_OWNER).toContain('withdrawProfileChangesForLockedFields(before.ctx,{lockedKeys:locked,reason:p.withdrawnReason},tx)');
+  it('writes a complete bounded v3 policy and withdraws locked pending requests in the SAME canonical transaction',()=>{
+    expect(SETTINGS_ACTIONS).toContain('for(const field of essVisibleFields())');expect(SETTINGS_ACTIONS).toContain('formData.getAll(`permission:${field.id}`)');expect(SETTINGS_ACTIONS).toContain("posted.length!==1||!['editable','viewOnly','hide'].includes(String(posted[0]))");expect(SETTINGS_ACTIONS).not.toContain("formData.get('key')");expect(SETTINGS_ACTIONS).toContain('saveProfileVisibilityPolicy(s,{policy:{version:3,fields,primaryOnly}');
+    expect(POLICY_OWNER).toContain('if(!isProfileVisibilityPolicyValue(p.policy))');expect(POLICY_OWNER).toContain('Object.keys(policy.fields).length!==ids.size');expect(POLICY_OWNER).toContain("setTenantSetting(before.ctx,{key:'ess.profile_change_fields',value:policy},tx)");expect(POLICY_OWNER).toContain('withdrawProfileChangesForLockedFields(before.ctx,{lockedKeys:locked,reason:p.withdrawnReason},tx)');
   });
 
   it('the withdrawal writes the request row and NOTHING else — no master table, ever', () => {

@@ -56,6 +56,25 @@ const correction = async (id: string) => (await owner.db.select().from(schema.at
 const decisions = async () => owner.db.select().from(schema.attendanceWorkflowDecision).orderBy(asc(schema.attendanceWorkflowDecision.stageIndex));
 const events = async (id: string, type: string) => owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId, id), eq(schema.domainEvent.eventType, type))).orderBy(asc(schema.domainEvent.sequence));
 describe('Attendance approval routing and exactly-once effects', () => {
+    it('previews ordered resolved names using the same route frozen on submission', async () => {
+        const { a, worker, manager } = await fixture();
+        const value = input(), saved = await enable(a, value);
+        const preview = await previewAttendanceWorkflow(a, value, saved.lineageId);
+        const resolved = preview.rows.find(row => row.employmentId === worker.employmentId)!;
+        expect(resolved.problem).toBeNull();
+        expect(resolved.resolvedStages[0].approvers).toEqual([{ kind: 'direct_manager', employmentId: manager.employmentId, name: 'Frozen manager' }]);
+        const id = await submit(a, worker.employmentId);
+        expect((await attendanceApplicationDetail(a, [b.companyId], id))?.workflow?.stages).toEqual(resolved.resolvedStages);
+    });
+    it('previews the real higher-priority workflow rather than the draft approvers', async () => {
+        const { a, worker } = await fixture();
+        await enable(a, input(['hr_admin'], { code: 'PRIORITY_WINNER', priority: 90 }));
+        const preview = await previewAttendanceWorkflow(a, input(['direct_manager'], { code: 'LOWER_DRAFT', priority: 150, active: false }));
+        const resolved = preview.rows.find(row => row.employmentId === worker.employmentId)!;
+        expect(resolved).toMatchObject({ selectedCode: 'PRIORITY_WINNER', problem: null, routingVersion: 1 });
+        expect(resolved.resolvedStages).toEqual([{ name: 'Review 1', approvers: [{ kind: 'hr_admin', employmentId: null, name: 'HR administrators' }] }]);
+    });
+
     it('persists multi-valued assignments, matches alternatives within each field and requires every filled field', async () => {
         const { a, worker, manager } = await fixture();
         const units = await owner.db.insert(schema.businessUnit).values(['A', 'B'].map(code => ({ tenantId: b.tenantId, companyId: b.companyId, code: `WF_${code}`, name: `Workflow unit ${code}` }))).returning();

@@ -6,10 +6,16 @@ import { describe, expect, it } from 'vitest';
 
 const packagePath = new URL('../mobile/package.json', import.meta.url);
 const nativeRequire = createRequire(packagePath);
+const webRequire = createRequire(new URL('../package.json', import.meta.url));
 const decode = nativeRequire('decode-uri-component') as (value: string) => string;
 const query = nativeRequire('query-string') as { parse: (value: string) => Record<string, string> };
 
 describe('native dependency fixes — actual installed callers', () => {
+  it('shares the web React type identity when native contracts enter the web test program', () => {
+    // Pure native contracts are imported by web tests. Two JSX type identities made tsc exhaust 6 GB.
+    expect(nativeRequire('@types/react/package.json').version).toBe(webRequire('@types/react/package.json').version);
+  });
+
   it('ships exactly the provenance-pinned upstream decoder with only its export converted', () => {
     const provenance = JSON.parse(readFileSync('mobile/vendor/decode-uri-component/provenance.json', 'utf8')) as {
       sourceSha256: string; commonJsSha256: string;

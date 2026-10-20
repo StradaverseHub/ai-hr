@@ -1,5 +1,7 @@
 'use server';
 
+import { AttendanceLevelError } from '@/lib/attendance-workflow-v3';
+import { attendanceWorkflowErrorMessage } from '@/lib/attendance-workflow-error-message';
 import { publicErrorMessage } from '@/lib/public-error';
 import { plannedOvertimeMinutes } from '@/lib/overtime-duration';
 import { revalidatePath } from 'next/cache';
@@ -588,7 +590,7 @@ export async function myRequestCorrection(formData: FormData) {
       });
     }
   } catch (e) {
-    redirect(`${REQUESTS_PAGE}?section=${section}&error=${encodeURIComponent(publicErrorMessage(e))}`);
+    redirect(`${REQUESTS_PAGE}?section=${section}&error=${encodeURIComponent(await attendanceWorkflowErrorMessage(e))}`);
   }
   revalidatePath(REQUESTS_PAGE);
   redirect(`${REQUESTS_PAGE}?section=${section}&toast=Attendance+request+submitted`);
@@ -657,6 +659,7 @@ const PLAN_OT_PAGE = '/attendance/plan-ot';
  * localizeLeaveError already use in this file.
  */
 async function localizeOvertimeRequestError(e: unknown): Promise<string> {
+  if (e instanceof AttendanceLevelError) return attendanceWorkflowErrorMessage(e);
   if (e instanceof OvertimePlanAlreadyApprovedError || e instanceof OvertimeAlreadyCountedError) {
     const t = await getTranslations('me');
     return e instanceof OvertimeAlreadyCountedError

@@ -78,18 +78,18 @@ describe('the write re-states the policy rather than leaning on it', () => {
     expect(c, 'customer-visible, which the policy does not check and the product must').toContain('!entry.customerVisible');
     // r261 widened the writer to the `json` value type the catalog and 0313's CHECK have always
     // carried (board item 9583deac stores a list of field keys), so the conjunct is now spelled through
-    // `settingValueType`. The approved ESS v2 policy also has one bounded object shape, validated by
-    // its canonical predicate and admitted ONLY for its exact key. The malformed/extra-key/version/
+    // `settingValueType`. Versioned ESS field visibility and named routing use bounded object shapes,
+    // each validated by its canonical predicate and admitted ONLY for its exact key. The malformed/extra-key/version/
     // duplicate-field matrix lives in personnel-ess-contract.test.ts; arbitrary objects remain refused.
     expect(c, 'and the declared value type').toContain('settingValueType(p.value) !== entry.valueType');
     expect(c, 'JSON is limited to lists and the canonical bounded ESS policy').toContain(
-      "return Array.isArray(v)||isProfileEditPolicyValue(v) ? 'json' : typeof v;",
+      "return Array.isArray(v)||isProfileEditPolicyValue(v)||isProfileVisibilityPolicyValue(v)||isProfileRoutingPolicy(v) ? 'json' : typeof v;",
     );
     expect(c, 'the object predicate comes from its canonical owner').toContain(
-      "import {isProfileEditPolicyValue,type ProfileEditPolicyValue} from '../lib/profile-edit-policy-value'",
+      "import {isProfileEditPolicyValue,isProfileVisibilityPolicyValue,type ProfileEditPolicyValue,type ProfileVisibilityPolicyValue} from '../lib/profile-edit-policy-value'",
     );
     expect(c, 'an object is refused outside the exact ESS key or without the bounded predicate').toContain(
-      "if(p.value!==null&&typeof p.value==='object'&&!Array.isArray(p.value)&&(p.key!=='ess.profile_change_fields'||!isProfileEditPolicyValue(p.value)))throw new TenantSettingError('wrong_type');",
+      "if(p.value!==null&&typeof p.value==='object'&&!Array.isArray(p.value)&&!(p.key==='ess.profile_change_fields'&&(isProfileEditPolicyValue(p.value)||isProfileVisibilityPolicyValue(p.value))||p.key===PROFILE_ROUTING_KEY&&isProfileRoutingPolicy(p.value)))throw new TenantSettingError('wrong_type');",
     );
   });
 

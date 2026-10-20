@@ -30,6 +30,12 @@ describe('Movement file is the New Event transport',()=>{
   const row=parseMovementImport('employee_code,event_type,effective_date,basic_salary\nEMP-1,secondment,18-Oct-2026,3500').records[0];
   expect(movementImportCellIssues(row,'secondment')).toContain('not_applicable:basicSalary');
  });
+ it('does not treat legacy CSV/Paste identity, kind and date as a blacklist instruction at authoritative import validation',()=>{
+  const csv='employee_code,event_type,effective_date,blacklisted,remarks\nEMP-1,blacklist,18-Oct-2026,,';
+  const row=parseMovementImport(csv).records[0];expect(row.errors).toEqual([]);expect(movementImportCellIssues(row,'blacklist')).toContain('blacklist_input_required');
+  for(const cells of [{blacklisted:'true'},{blacklisted:'false'},{remarks:'Deliberate fictional blacklist instruction'}])expect(movementImportCellIssues({...row,cells:{...row.cells,...cells}},'blacklist')).not.toContain('blacklist_input_required');
+  expect(movementImportCellIssues({...row,cells:{...row.cells,remarks:'  '}},'blacklist')).toContain('blacklist_input_required');
+ });
  it('bounds bytes, total rows and per-employee sequence length before opening any transaction',()=>{
   expect(parseMovementImport('x'.repeat(MOVEMENT_IMPORT_LIMITS.bytes+1)).fileErrors).toContain('file_too_large');
   const head='employee_code,event_type,effective_date\n';
@@ -44,4 +50,25 @@ it('keeps rejected row explanations in a narrower preview and final row download
  const next=[{...previous[0],fingerprint:'new',rows:[{...previous[0].rows[0],status:'excluded' as const,errors:[]}]}];
  expect(retainMovementExclusionReasons(next,previous)[0].rows[0]).toMatchObject({status:'excluded',errors:['unknown_reference:event_type']});
  const different=[{...next[0],rows:[{...next[0].rows[0],employeeCode:'OTHER'}]}];expect(retainMovementExclusionReasons(different,previous)[0].rows[0].errors).toEqual([]);
+});
+
+
+it('retains only the visible preview name for an exactly matching entirely unselected sequence',async()=>{
+ const {retainMovementExclusionReasons}=await import('../lib/movement-import-contract');
+ const row={row:2,employeeCode:'EMP-1',eventType:'salary',effectiveDate:'2026-10-18',status:'invalid' as const,errors:['salary_refused'],source:{sheet:'Salary',row:17}};
+ const previous=[{employeeCode:'EMP-1',employmentId:'known-id',name:'Fictional Known',fingerprint:'preview-only',rows:[row]}];
+ const excluded={employeeCode:'EMP-1',employmentId:null,name:null,fingerprint:null,rows:[{...row,status:'excluded' as const,errors:[]}]};
+ const [result]=retainMovementExclusionReasons([excluded],previous);
+ expect(result).toMatchObject({name:'Fictional Known',employmentId:null,fingerprint:null});
+ expect(result.rows[0].errors).toEqual(['salary_refused']);
+ expect(excluded.name).toBeNull();expect(excluded.rows[0].errors).toEqual([]);
+ const refused={...excluded,rows:[{...excluded.rows[0],errors:['employee_unavailable']}]};
+ expect(retainMovementExclusionReasons([refused],previous)[0].name).toBeNull();
+ for(const changed of [{effectiveDate:'2026-10-19'},{eventType:'promotion'},{employeeCode:'EMP-2'},{source:{sheet:'Other',row:17}},{status:'failed' as const}]){
+  expect(retainMovementExclusionReasons([{...excluded,rows:[{...excluded.rows[0],...changed}]}],previous)[0].name).toBeNull();
+ }
+ expect(retainMovementExclusionReasons([excluded],[{...previous[0],employmentId:null}])[0].name).toBeNull();
+ expect(retainMovementExclusionReasons([excluded],[previous[0],previous[0]])[0].name).toBeNull();
+ expect(retainMovementExclusionReasons([{...excluded,name:'Current server name'}],previous)[0].name).toBe('Current server name');
+ expect(retainMovementExclusionReasons([{...excluded,employeeCode:'EMP-2'}],previous)[0].name).toBeNull();
 });

@@ -31,7 +31,7 @@ describe('My Profile shared Personnel inventory and actual consumers',()=>{
   expect(PERSONNEL_FIELDS.filter(field=>field.owner==='document').every(field=>field.ess.visibility==='protected')).toBe(true);
  });
  it('shows canonical Permanent/Correspondence plus explicit retained legacy reconciliation, with no silent copy or legacy address mutation',()=>{
-  expect(owner).toContain('addressNeedsReview(master)');expect(owner).toContain('legacyAddress:legacyAddress(master)');expect(editor).toContain("t('legacyAddressHelp')");expect(editor).toContain('workspace.legacyAddress');
+  expect(owner).toContain('addressNeedsReview(master)');expect(owner).toContain('legacyAddress:addressVisible?legacyAddress(master):{}');expect(editor).toContain("t('legacyAddressHelp')");expect(editor).toContain('workspace.legacyAddress');
   for(const name of ['permanentAddressLine1','correspondenceAddressLine1'])expect(PERSONNEL_FIELDS.some(field=>field.ess.binding?.owner==='person'&&field.ess.binding.field===name)).toBe(true);
   expect(owner).not.toContain("addressLine1:text(");expect(page).not.toContain('myUpdateContact');
  });

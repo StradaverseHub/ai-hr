@@ -7,7 +7,7 @@ type Decision = { id?:string; stageIndex:number; decision:string; actualActorNam
 type ParticipantDecision = Decision & { participantSlot:string; assigned:{kind:string;name:string} };
 type Workflow = {
   templateCode:string; templateName:string; templateVersion:number; routingVersion:number; currentStage:number;
-  stages:AttendanceResolvedStage[]; effectiveStages?:AttendanceResolvedStage[]; decisions:Decision[];
+  currentParticipantSlot?:string|null; stages:AttendanceResolvedStage[]; effectiveStages?:AttendanceResolvedStage[]; decisions:Decision[];
   participantDecisions?:ParticipantDecision[];
   reassignments?:{id:string;stageIndex:number;actualActorName?:string|null;actualUserId:string;occurredAt:Date;reason:string}[];
   participantReassignments?:{id:string;stageIndex:number;previousAssigned:{name:string};assigned:{kind:string;name:string};actualActorName:string;occurredAt:Date;reason:string}[];
@@ -15,9 +15,9 @@ type Workflow = {
 export async function AttendanceWorkflowProgress({ workflow, status, progress, codes = {} }: {
   workflow:Workflow|null; status:string; progress?:AttendanceProgress; codes?:Record<string,string|null>;
 }) {
-  const t=await getTranslations('attendanceHistory'),locale=await getLocale();
+  const t=await getTranslations('attendanceHistory'),v3=await getTranslations('attendanceWorkflow.v3'),locale=await getLocale();
   const dt=(value:Date)=>new Intl.DateTimeFormat(locale,{timeZone:'Asia/Kuala_Lumpur',dateStyle:'medium',timeStyle:'short'}).format(value);
-  const names=(stage:AttendanceResolvedStage)=>stage.approvers.map(a=>a.kind==='hr_admin'?t('hrApprover'):`${a.name}${a.employmentId&&codes[a.employmentId]?` · ${codes[a.employmentId]}`:''}`).join(' / ');
+  const names=(stage:AttendanceResolvedStage)=>stage.approvers.map(a=>(a.kind==='hr_admin'?t('hrApprover'):`${a.name}${a.employmentId&&codes[a.employmentId]?` · ${codes[a.employmentId]}`:''}`)+(a.slot&&a.slot===workflow?.currentParticipantSlot?` · ${v3('pendingParticipant')}`:'')).join(' / ');
   if(!workflow)return <p className="text-sm text-muted-foreground">{status==='pending'?t('legacyHelp'):t('finalOutcome',{status:t(`statuses.${status}`)})}</p>;
   function actor(record:Decision){return <div className="space-y-1"><p>{t('actualActor')}: {record.actualActorName}{record.actualEmploymentId&&codes[record.actualEmploymentId]&&<span className="ml-2 text-xs text-muted-foreground">{t('currentEmployeeId')}: {codes[record.actualEmploymentId]}</span>}</p><p className="text-muted-foreground">{t(`modes.${record.actingMode}`)} · {dt(record.decidedAt)}</p>{record.remarks&&<p>{t('remarks')}: {record.remarks}</p>}</div>;}
   return <div className="space-y-4">
@@ -38,4 +38,5 @@ export async function AttendanceWorkflowProgress({ workflow, status, progress, c
     })}</ol>
     <details className="text-xs text-muted-foreground"><summary className="min-h-11 cursor-pointer py-3">{t('routingRecord')}</summary><p>{workflow.templateCode} · {workflow.templateName} · {t('version',{number:workflow.templateVersion})}</p></details>
   </div>;
+
 }

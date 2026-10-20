@@ -1,79 +1,32 @@
-/**
- * COLLAPSIBLE NAV SECTIONS — the rail has to FIT, with route defaults and explicit user control.
- *
- * ═══ THE MEASUREMENT THAT CAUSED THIS ═══
- *
- * A browser audit of the production build at 1440x900 found the rail's content was **1490px inside a
- * 746px column, on every one of 44 screens**: 34 entries, 16 reachable without scrolling, 18 below the
- * fold — and the 18 included Analytics, Audit trail, Data Privacy, Security & permissions and AI, which
- * is where an AI provider is configured. After sections became collapsible the same audit reports
- * ratio 1.0 and **zero** entries below the fold on all 45 screens.
- *
- * ⚠️ WHY A SOURCE-SHAPE TEST. The nav structure lives in module-private consts inside a `'use client'`
- * component, so this follows the established convention of test/sidebar-flyout.test.ts and
- * test/sidebar-attendance-group.test.ts rather than rendering. Acknowledged limit, stated there too:
- * greps prove presence, not wiring — the browser pass is the wiring check, and it is what produced the
- * numbers above.
- *
- * The properties pinned here are the ones whose loss would silently undo the fix:
- *  1. EVERY group is labelled. The first group had no label, which meant it could not collapse; at ten
- *     rows it alone is half the rail, and no amount of collapsing the other three could make it fit.
- *  2. The route opens its section by default; an explicit user collapse still works on the same route.
- *     Current-link highlighting remains independent of whether its section is open.
- *  3. A closed section renders NO items. If the items render and are merely hidden by CSS, the rail's
- *     scroll height is unchanged and the fix is cosmetic.
- */
+/** Source invariants only. Actual viewport measurement remains required before release. */
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
-
-const SIDEBAR = fs.readFileSync(path.resolve(__dirname, '../components/sidebar.tsx'), 'utf8');
-const EN = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../messages/en.json'), 'utf8'));
-
-describe('sidebar sections must keep the rail inside the viewport', () => {
-  it('every group carries a labelKey, so every group can collapse', () => {
-    // The unlabelled group was the reason the rail could not fit. A new group added without a label
-    // reintroduces exactly that, and would render with no heading and no way to close it.
-    const groupsBlock = SIDEBAR.slice(SIDEBAR.indexOf('const GROUPS: Group[] = ['));
-    const groupOpeners = [...groupsBlock.matchAll(/^ {2}\{$/gm)].length;
-    const labelKeys = [...groupsBlock.matchAll(/^ {4}labelKey: '/gm)].length;
-    expect(groupOpeners).toBeGreaterThan(0);
-    expect(labelKeys).toBe(groupOpeners);
-  });
-
-  it('names the first section, and the label exists in the catalogue', () => {
-    expect(SIDEBAR).toContain("labelKey: 'sectionHome'");
-    // A missing key here is a MISSING_MESSAGE that passes tsc, the suite and next build alike.
-    expect(EN.nav.sectionHome).toBeTruthy();
-  });
-
-  it('shares explicit section overrides across both themes and resets only the navigation destination', () => {
-    // The rendered/keyboard regression is sidebar-section-collapse.dom.test.tsx. This guard keeps
-    // both theme headers on that same state owner instead of restoring a force-open branch.
-    expect(SIDEBAR).toContain('key == null || (openSections[key] ?? key === activeSectionKey)');
-    expect(SIDEBAR).toContain('[key]: !(prev[key] ?? key === activeSectionKey)');
-    // Three theme headers (Classic, Monolith, Atelier) — every one on the same state owner.
-    expect(SIDEBAR.match(/onClick=\{\(\) => toggleSection\(group\.labelKey!\)\}/g)).toHaveLength(3);
-    expect(SIDEBAR).toContain('delete next[activeSectionKey]');
-    expect(SIDEBAR).toContain('}, [pathname, search, activeSectionKey]);');
-    expect(SIDEBAR).not.toContain('disabled={group.labelKey === activeSectionKey}');
-  });
-
-  it('does not RENDER the items of a closed section', () => {
-    // The load-bearing half. Hiding items with CSS leaves scrollHeight unchanged and the rail still
-    // overflows — the guard is that the map is gated behind the open check.
-    expect(SIDEBAR).toMatch(/\{\(collapsed \|\| sectionOpen\(group\.labelKey\)\) &&\s*\n\s*group\.items\.map\(/);
-  });
-
-  it('keeps every section open in the icon rail, where a heading cannot be shown', () => {
-    // Labels are hidden in the collapsed rail, so a chevron there would hide destinations behind a
-    // control with nothing to say what is inside. `collapsed ||` is what keeps them all rendered.
-    expect(SIDEBAR).toContain('(collapsed || sectionOpen(group.labelKey))');
-    expect(SIDEBAR).toContain('{!collapsed && group.labelKey && (');
-  });
-
-  it('points aria-controls at an element that exists', () => {
-    expect(SIDEBAR).toContain('aria-controls={`nav-section-${group.labelKey}`}');
-    expect(SIDEBAR).toContain('id={group.labelKey ? `nav-section-${group.labelKey}` : undefined}');
-  });
+import {describe,it,expect} from 'vitest';
+const source=fs.readFileSync(path.resolve(__dirname,'../components/sidebar.tsx'),'utf8');
+describe('workspace navigation keeps controls reachable',()=>{
+ it('limits workspace rows to the selected authorized workspace without removing shared destinations',()=>{
+  expect(source).toContain('module.workspace === selectedWorkspace');
+  expect(source).toContain("row.placement.area==='shared'");
+  expect(source).toContain("row.placement.area==='system'");
+  expect(source).toContain('availableWorkspaces.length > 1');
+ });
+ it('keeps scrolling inside the navigation and the Classic rail collapse outside that container',()=>{
+  expect(source).toContain('overflow-y-auto overflow-x-hidden');
+  const collapse=source.indexOf("aria-label={collapsed ? t('expand') : t('collapse')}");
+  expect(collapse).toBeGreaterThan(0);
+  const navClose=source.lastIndexOf('</nav>',collapse);
+  expect(navClose).toBeGreaterThan(source.indexOf('data-app-sidebar'));
+  expect(source.slice(navClose,collapse)).toContain('onClick={toggle}');
+ });
+ it('keeps workspace selection, module collapse and route ownership independent',()=>{
+  expect(source).toContain('setWorkspaceChoice(workspace)');
+  expect(source).toContain('navigationRouteOwner(pathname, search, destinations)');
+  expect(source).toContain('setRailKids({})');
+  expect(source).not.toContain('disabled={group.labelKey === activeSectionKey}');
+ });
+ it('renders named module triggers in the icon rail and restores keyboard focus from flyouts',()=>{
+  expect(source).toContain('collapsed={collapsed}');
+  expect(source).toContain('triggerRefs.current[openNode.labelKey]?.focus()');
+  expect(source).toContain('onEscape={() =>');
+ });
 });
