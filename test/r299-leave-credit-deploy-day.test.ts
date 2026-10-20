@@ -573,7 +573,7 @@ describe('D9 · Leave Balance Health, rendered', () => {
     expect(at, `${name} has a row`).toBeGreaterThan(-1);
     return html.slice(at, html.indexOf('</tr>', at));
   };
-  const render = async () => toMarkup(await settle(await BalanceHealthPage()));
+  const render = async () => toMarkup(await settle(await BalanceHealthPage({ searchParams: Promise.resolve({}) })));
   const tableOn = (rl: string) =>
     createEntitlementTemplate(adminCtx(b), {
       leaveTypeId: rl,

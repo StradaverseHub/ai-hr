@@ -29,7 +29,7 @@ import { firstDirtyGuard } from '@/lib/unsaved-changes';
 /** Window event a tour engine dispatches with a CSS selector to make the tab holding it visible. */
 export const TOUR_REVEAL_EVENT = 'tour:reveal';
 
-export type PersonnelTabKey = 'profile' | 'family' | 'job' | 'careerMovement' | 'attendance' | 'bankStatutory' | 'payroll' | 'leave' | 'documents' | 'qualification';
+export type PersonnelTabKey = 'profile' | 'family' | 'job' | 'careerMovement' | 'attendance' | 'bankStatutory' | 'payroll' | 'leave' | 'documents' | 'qualification' | 'others';
 
 export function ClientTabs<K extends string>({
   tabs,

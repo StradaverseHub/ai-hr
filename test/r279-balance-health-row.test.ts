@@ -385,7 +385,7 @@ afterAll(async () => {
 
 describe('r279 §C — the table is on the new page, in the real markup', () => {
   it('renders the row\'s heading and the health table itself', async () => {
-    const html = visible(toMarkup(await settle(await BalanceHealthPage())));
+    const html = visible(toMarkup(await settle(await BalanceHealthPage({ searchParams: Promise.resolve({}) }))));
     // The page is really this screen, headed by the menu row that opened it.
     expect(html).toContain(`<h1 class="text-xl font-semibold tracking-tight">${str('en', 'nav.leaveBalanceHealth')}</h1>`);
     // THE TABLE, not merely the words: the three column headers in a <th>, which only the card renders.

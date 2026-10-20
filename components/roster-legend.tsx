@@ -33,7 +33,7 @@ export function RosterLegend({ entries, active, onChoose }: { entries: RosterLeg
   }, [open]);
   const visible = entries.filter(entry => `${entry.code} ${entry.name} ${entry.hint}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   return <Dialog.Root modal={false} open={open} onOpenChange={next => { if (next) { locate(); setQuery(''); } setOpen(next); }}>
-    <Dialog.Trigger asChild><button ref={trigger} type="button" className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring">
+    <Dialog.Trigger asChild><button ref={trigger} type="button" aria-label={selected && onChoose ? `${t('brush')} ${selected.code}` : t('legend')} className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring">
       <span className="shrink-0 font-medium">{t(onChoose ? 'brush' : 'legend')}</span>
       {selected && onChoose && <span style={selected.style} className={`min-w-0 truncate rounded border px-2 py-0.5 text-xs ${selected.className}`}>{selected.code}</span>}
       <ChevronDown className="size-4 shrink-0" aria-hidden />
@@ -45,7 +45,7 @@ export function RosterLegend({ entries, active, onChoose }: { entries: RosterLeg
         {!visible.length && <p role="status" className="p-3 text-sm text-muted-foreground">{t('legendEmpty')}</p>}
         {visible.map(entry => {
           const content = <><span style={entry.style} className={`shrink-0 rounded border px-2 py-1 text-xs font-medium ${entry.className}`}>{entry.code}</span><span className="min-w-0 text-left text-sm"><span className="block break-words">{entry.name}</span><span className="block text-xs text-muted-foreground">{entry.hint}</span></span></>;
-          return entry.value != null && onChoose ? <button key={entry.value} type="button" aria-pressed={entry.value === active} className="flex min-h-11 w-full items-center gap-3 rounded p-2 hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring" onClick={() => { onChoose(entry.value!); setOpen(false); }}>{content}</button> : <div key={entry.value ?? 'off'} className="flex min-h-11 items-center gap-3 p-2">{content}</div>;
+          return entry.value != null && onChoose ? <button key={entry.value} type="button" aria-label={`${entry.code} ${entry.name} ${entry.hint}`.trim()} aria-pressed={entry.value === active} className="flex min-h-11 w-full items-center gap-3 rounded p-2 hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring" onClick={() => { onChoose(entry.value!); setOpen(false); }}>{content}</button> : <div key={entry.value ?? 'off'} className="flex min-h-11 items-center gap-3 p-2">{content}</div>;
         })}
       </div>
     </Dialog.Content></Dialog.Portal>
