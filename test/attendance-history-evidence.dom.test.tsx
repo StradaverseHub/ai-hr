@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { createTranslator } from 'next-intl';
 import en from '../messages/en.json';
 const { service } = vi.hoisted(() => ({ service: { attendanceApplicationDetail: vi.fn() } }));
@@ -32,6 +32,15 @@ it('identifies the recorded missing clock direction for Incomplete Entry', async
   await show(detail('incomplete_entry', { record: { checkInAt: null, checkOutAt: '17:00:00', status: 'present', workedMinutes: 0, underMinutes: null }, schedule: null, organisation: null }));
   expect(screen.getByText(en.attendanceHistory.clockInMissing)).toBeVisible();
   expect(screen.queryByText(en.attendanceHistory.shortfallDuration)).toBeNull();
+});
+it('keeps the original recorded attendance result distinct from the corrected current result', async () => {
+  await show({ ...detail('absent', { record: { checkInAt: '08:00:00', checkOutAt: '17:00:00', status: 'present' }, schedule: null, organisation: null }),
+    events: [{ eventType: 'attendance-correction.effect.recorded', payload: { before: { status: 'absent', checkInAt: null, checkOutAt: null } } }] });
+  const original = screen.getByRole('heading', { name: en.attendanceHistory.originalAttendance }).closest('section')!;
+  const current = screen.getByRole('heading', { name: en.attendanceHistory.currentAttendance }).closest('section')!;
+  expect(within(original).getByText(en.attendanceHistory.attendanceStates.absent)).toBeVisible();
+  expect(within(original).queryByText(en.attendanceHistory.attendanceStates.present)).toBeNull();
+  expect(within(current).getByText(en.attendanceHistory.attendanceStates.present)).toBeVisible();
 });
 it('keeps unavailable absence evidence distinct from a recorded zero or a newly created attendance row', async () => {
   await show(detail('absent', { record: null, schedule: null, organisation: null }));

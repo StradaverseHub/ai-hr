@@ -11,6 +11,7 @@ export function AttendanceApplicationSections({ detail, locale, t }: { detail: D
   const instant = (v: Date) => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' }).format(v);
   const duration = (v: number | null | undefined) => v == null ? t('notRecorded') : t('durationMinutes', { minutes: v });
   const clock = (v: string | null | undefined) => v ? v.slice(0, 5) : t('notRecorded');
+  const attendanceState = (v: string | null | undefined) => v && ['present', 'late', 'half_day', 'leave', 'absent'].includes(v) ? t(`attendanceStates.${v}`) : t('notRecorded');
   const anchoredClock = (v: number | null | undefined) => v == null ? t('notRecorded') : `${String(Math.floor(v / 60) % 24).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}${v >= 1440 ? ` (${t('nextDay')})` : ''}`;
   const fields = (values: [string, string][]) => <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">{values.map(([label, value]) => <div key={label} className="min-w-0 space-y-1"><dt className="text-sm text-muted-foreground">{label}</dt><dd className="break-words text-sm font-medium">{value}</dd></div>)}</dl>;
   const original = originalAttendanceReview(detail.events, a.originalClockSnapshot);
@@ -43,7 +44,7 @@ export function AttendanceApplicationSections({ detail, locale, t }: { detail: D
       <section className="space-y-3 border-t border-border pt-4"><h3 className="text-sm font-medium">{t('currentAttendance')}</h3>
         {record ? <>{fields([
           [t('checkIn'), clock(record.checkInAt)], [t('checkOut'), clock(record.checkOutAt)],
-          [t('recordedResult'), ['present', 'late', 'half_day', 'leave', 'absent'].includes(record.status) ? t(`attendanceStates.${record.status}`) : t('notRecorded')],
+          [t('recordedResult'), attendanceState(record.status)],
           ...(a.requestKind === 'short_hours' ? [[t('qualifyingDuration'), duration(record.workedMinutes)], [t('shortfallDuration'), duration(record.underMinutes)]] as [string, string][] : []),
         ])}{a.requestKind === 'incomplete_entry' && <p className="text-sm">{t(!record.checkInAt && !record.checkOutAt ? 'bothClocksMissing' : !record.checkInAt ? 'clockInMissing' : !record.checkOutAt ? 'clockOutMissing' : 'clockPairComplete')}</p>}</> : <p className="text-sm text-muted-foreground">{t('attendanceUnavailable')}</p>}
         <p className="text-xs text-muted-foreground">{t('currentEvidenceHelp')}</p>
@@ -51,6 +52,7 @@ export function AttendanceApplicationSections({ detail, locale, t }: { detail: D
       <section className="space-y-3 border-t border-border pt-4"><h3 className="text-sm font-medium">{t('originalAttendance')}</h3>
         {original === undefined ? <p className="text-sm text-muted-foreground">{t('originalUnavailable')}</p> : original === null ? <p className="text-sm text-muted-foreground">{t('noPriorRecord')}</p> : fields([
           [t('checkIn'), clock(original.checkIn)], [t('checkOut'), clock(original.checkOut)],
+          [t('recordedResult'), attendanceState(original.status)],
           ...(a.requestKind === 'short_hours' ? [[t('requiredDuration'), duration(original.required)], [t('qualifyingDuration'), duration(original.worked)], [t('shortfallDuration'), duration(original.shortfall)]] as [string, string][] : []),
         ])}
       </section>
