@@ -27,8 +27,8 @@ function metadata(run:Run):(string|number|null)[][]{
 }
 /** Excel preserves 15 significant decimal digits. Refuse a larger value instead of rounding paid money. */
 function excelNumber(text:string):number{
-  const minor=payrollAmountMinor(text),absolute=minor<0n?-minor:minor;
-  if(absolute>999999999999999n)throw new Error('An amount exceeds Excel’s exact 15-digit precision. Narrow this report or use PDF.');
+  const minor=payrollAmountMinor(text),absolute=minor<BigInt('0')?-minor:minor;
+  if(absolute>BigInt('999999999999999'))throw new Error('An amount exceeds Excel’s exact 15-digit precision. Narrow this report or use PDF.');
   return Number(text);
 }
 async function excel(run:Run):Promise<Uint8Array>{

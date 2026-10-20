@@ -33,10 +33,10 @@ const movement = (kind: PayrollComparisonMovement['kind'], date = '2026-10-01', 
 
 describe('payroll comparison exact arithmetic and validation', () => {
   it('keeps cents exact beyond JavaScript safe integer arithmetic and rounds percentage ties', () => {
-    expect(payrollAmountMinor('9999999999999999.99')).toBe(999999999999999999n);
-    expect(payrollVariance(20000n, 20001n)).toEqual({ difference: '0.01', percentage: '0.01' });
-    expect(payrollVariance(20000n, 19999n)).toEqual({ difference: '-0.01', percentage: '-0.01' });
-    expect(payrollVariance(0n, 500n).percentage).toBeNull();
+    expect(payrollAmountMinor('9999999999999999.99')).toBe(BigInt('999999999999999999'));
+    expect(payrollVariance(BigInt('20000'), BigInt('20001'))).toEqual({ difference: '0.01', percentage: '0.01' });
+    expect(payrollVariance(BigInt('20000'), BigInt('19999'))).toEqual({ difference: '-0.01', percentage: '-0.01' });
+    expect(payrollVariance(BigInt('0'), BigInt('500')).percentage).toBeNull();
   });
   it.each([NaN, Infinity, '1e3', '0.001', true, null])('rejects an unsupported amount %s', value => {
     expect(() => payrollAmountMinor(value)).toThrow();
@@ -117,7 +117,7 @@ describe('period availability and aggregation', () => {
 
 describe('recorded explanations', () => {
   const base = { autoTag: true, previousPeriodFrom: '2026-09-01', periodFrom: '2026-10-01', periodTo: '2026-10-31',
-    hireDate: '2025-01-01', exitDate: null, previous: 100n, current: 0n,
+    hireDate: '2025-01-01', exitDate: null, previous: BigInt('100'), current: BigInt('0'),
     previousCoverage: [{ from: '2026-09-01', to: '2026-09-30' }], currentCoverage: [], movements: [] };
   it('never treats missing pay alone as resignation', () => {
     expect(payrollComparisonReason(base).reason).toBe('unexplained');
@@ -129,7 +129,7 @@ describe('recorded explanations', () => {
   });
   it('requires saved coverage for prorated hire or exit and ignores pending/reversed changes', () => {
     const currentCoverage = [{ from: '2026-10-15', to: '2026-10-31' }];
-    expect(payrollComparisonReason({ ...base, hireDate: '2026-10-15', previous: 0n, current: 100n, currentCoverage })).toMatchObject({ reason: 'newHire', prorated: true });
+    expect(payrollComparisonReason({ ...base, hireDate: '2026-10-15', previous: BigInt('0'), current: BigInt('100'), currentCoverage })).toMatchObject({ reason: 'newHire', prorated: true });
     for (const status of ['pending', 'reversed', 'superseded'] as const)
       expect(payrollComparisonReason({ ...base, movements: [movement('promotion', '2026-10-01', status)] }).reason).toBe('unexplained');
   });

@@ -24,19 +24,19 @@ export function payrollAmountMinor(value:unknown):bigint{
  const text=String(value);
  if(!/^-?\d{1,16}(?:\.\d{1,2})?$/.test(text))fail('amount');
  const negative=text.startsWith('-'),[whole,fraction='']=text.replace(/^-/,'').split('.');
- const amount=BigInt(whole)*100n+BigInt(fraction.padEnd(2,'0'));return negative?-amount:amount;
+ const amount=BigInt(whole)*BigInt('100')+BigInt(fraction.padEnd(2,'0'));return negative?-amount:amount;
 }
 export function payrollMinorDecimal(value:bigint):string{
- const abs=value<0n?-value:value;return `${value<0n?'-':''}${abs/100n}.${String(abs%100n).padStart(2,'0')}`;
+ const abs=value<BigInt('0')?-value:value;return `${value<BigInt('0')?'-':''}${abs/BigInt('100')}.${String(abs%BigInt('100')).padStart(2,'0')}`;
 }
 const roundedRatio=(numerator:bigint,denominator:bigint)=>{
  if(!denominator)fail('zeroDenominator');
- const negative=(numerator<0n)!==(denominator<0n),a=numerator<0n?-numerator:numerator,b=denominator<0n?-denominator:denominator;
- const rounded=a/b+(a%b*2n>=b?1n:0n);return negative?-rounded:rounded;
+ const negative=(numerator<BigInt('0'))!==(denominator<BigInt('0')),a=numerator<BigInt('0')?-numerator:numerator,b=denominator<BigInt('0')?-denominator:denominator;
+ const rounded=a/b+(a%b*BigInt('2')>=b?BigInt('1'):BigInt('0'));return negative?-rounded:rounded;
 };
 export function payrollVariance(previous:bigint,current:bigint){
  const difference=current-previous;
- return {difference:payrollMinorDecimal(difference),percentage:previous===0n?null:payrollMinorDecimal(roundedRatio(difference*10000n,previous))};
+ return {difference:payrollMinorDecimal(difference),percentage:previous===BigInt('0')?null:payrollMinorDecimal(roundedRatio(difference*BigInt('10000'),previous))};
 }
 function exactKeys(value:Record<string,unknown>,allowed:readonly string[]){if(Object.keys(value).some(key=>!allowed.includes(key)))fail('unknownField');}
 function selected<T extends string>(value:unknown,allowed:readonly T[],code:string):T[]{
@@ -51,7 +51,7 @@ export function validatePayrollComparisonDefinition(value:unknown):PayrollCompar
  if(v.compareMode!=='previous'&&v.compareMode!=='specific')fail('compareMode');
  if(v.compareMode==='specific'?!isPayrollComparisonPeriod(v.previousPeriod):v.previousPeriod!==null)fail('previousPeriod');
  if(v.runType!=='regular'&&v.runType!=='all')fail('runType');
- const minimum=payrollAmountMinor(v.minVariance);if(minimum<0n||minimum>99999999999999n)fail('minVariance');
+ const minimum=payrollAmountMinor(v.minVariance);if(minimum<BigInt('0')||minimum>BigInt('99999999999999'))fail('minVariance');
  if(typeof v.autoTag!=='boolean'||typeof v.onlyVariances!=='boolean')fail('boolean');
  const columns=selected(v.columns,PAYROLL_COMPARISON_COLUMNS,'columns'),roles=selected(v.roles,['hr_admin','super_admin'] as const,'roles');if(!roles.length)fail('roles');
  return {version:1,payItemCode:v.payItemCode,compareMode:v.compareMode,previousPeriod:v.previousPeriod as string|null,runType:v.runType,
@@ -66,7 +66,7 @@ export function payrollComparisonFilters(values:Record<string,unknown>,definitio
  const currentPeriod=month(values.currentPeriod),previousPeriod=month(values.previousPeriod)??(definition.compareMode==='specific'?definition.previousPeriod:currentPeriod?previousPayrollComparisonPeriod(currentPeriod):null);
  if(currentPeriod&&previousPeriod&&previousPeriod>=currentPeriod)fail('periodOrder');
  const runType=values.runType??definition.runType;if(runType!=='all'&&runType!=='regular')fail('runType');
- const minimum=payrollAmountMinor(values.minVariance??definition.minVariance);if(minimum<0n||minimum>99999999999999n)fail('minVariance');
+ const minimum=payrollAmountMinor(values.minVariance??definition.minVariance);if(minimum<BigInt('0')||minimum>BigInt('99999999999999'))fail('minVariance');
  const only=values.onlyVariances??definition.onlyVariances;
  if(![true,false,'1','0'].includes(only as never))fail('boolean');
  const reason=values.reason==null||values.reason===''?null:PAYROLL_COMPARISON_REASONS.includes(values.reason as PayrollComparisonReason)?values.reason as PayrollComparisonReason:fail('reason');
@@ -85,10 +85,10 @@ export function payrollComparisonReason(p:{autoTag:boolean;periodFrom:string;per
  if(transfers.length)return result('transfer',transfers[0].effectiveDate,transfers.map(m=>m.id));
  const within=(date:string)=>date>=p.periodFrom&&date<=p.periodTo;
  const coveredHire=p.currentCoverage.some(coverage=>coverage.from===p.hireDate&&coverage.from>p.periodFrom);
- if(p.previous===0n&&p.current>0n&&within(p.hireDate))return result('newHire',p.hireDate,[],false,coveredHire);
+ if(p.previous===BigInt('0')&&p.current>BigInt('0')&&within(p.hireDate))return result('newHire',p.hireDate,[],false,coveredHire);
  const exits=p.movements.filter(m=>m.status==='applied'&&m.kind==='exit'&&m.effectiveDate===p.exitDate&&m.effectiveDate>=p.previousPeriodFrom&&m.effectiveDate<=p.periodTo);
- if(p.exitDate&&exits.length&&p.previous>0n&&p.current===0n&&(within(p.exitDate)||p.previousCoverage.some(coverage=>coverage.to===p.exitDate)))return result('resigned',p.exitDate,exits.map(m=>m.id));
- if(p.exitDate&&within(p.exitDate)&&p.current>0n&&exits.length&&p.currentCoverage.some(coverage=>coverage.to===p.exitDate&&coverage.to<p.periodTo))return result('proratedLeaving',p.exitDate,exits.map(m=>m.id),false,true);
+ if(p.exitDate&&exits.length&&p.previous>BigInt('0')&&p.current===BigInt('0')&&(within(p.exitDate)||p.previousCoverage.some(coverage=>coverage.to===p.exitDate)))return result('resigned',p.exitDate,exits.map(m=>m.id));
+ if(p.exitDate&&within(p.exitDate)&&p.current>BigInt('0')&&exits.length&&p.currentCoverage.some(coverage=>coverage.to===p.exitDate&&coverage.to<p.periodTo))return result('proratedLeaving',p.exitDate,exits.map(m=>m.id),false,true);
  const changes=applied.filter((m):m is PayrollComparisonMovement&{kind:'increment'|'promotion'|'demotion'}=>m.salaryChanged&&['increment','promotion','demotion'].includes(m.kind)).sort((a,b)=>b.effectiveDate.localeCompare(a.effectiveDate)||b.sequence-a.sequence);
  if(changes.length)return result(changes[0].kind,changes[0].effectiveDate,changes.map(m=>m.id),changes.length>1);
  return result('unexplained');

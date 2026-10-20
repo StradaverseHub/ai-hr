@@ -53,7 +53,7 @@ export type ComparisonResult = {
 };
 const key = (employmentId: string, companyId: string, currency: string | null) =>
   JSON.stringify([employmentId, companyId, currency]);
-const abs = (value: bigint) => value < 0n ? -value : value;
+const abs = (value: bigint) => value < BigInt('0') ? -value : value;
 const emptyCounts = () => Object.fromEntries(PAYROLL_COMPARISON_REASONS.map(reason => [reason, 0])) as Record<PayrollComparisonReason, number>;
 
 /** Period availability precedes missing-side arithmetic. A missing whole company-month is not zero. */
@@ -121,7 +121,7 @@ export function comparePayrollResults(input: {
     const groupKey = key(source.employmentId, source.companyId, source.currency);
     const group = groups.get(groupKey) ?? {
       employmentId: source.employmentId, companyId: source.companyId, currency: source.currency,
-      previous: { amount: 0n, sources: [] }, current: { amount: 0n, sources: [] },
+      previous: { amount: BigInt('0'), sources: [] }, current: { amount: BigInt('0'), sources: [] },
     };
     const side = run.period === filters.previousPeriod ? group.previous : group.current;
     side.amount += payrollAmountMinor(source.amount); side.sources.push(source); groups.set(groupKey, group);
@@ -168,7 +168,7 @@ export function comparePayrollResults(input: {
       sources: [...group.previous.sources, ...group.current.sources].map(({ id, version, runId }) => ({ id, version, runId })),
     });
     const totalKey = JSON.stringify([group.currency, group.currency ? null : group.companyId]);
-    const total = totals.get(totalKey) ?? { currency: group.currency, companyId: group.currency ? null : group.companyId, previous: 0n, current: 0n };
+    const total = totals.get(totalKey) ?? { currency: group.currency, companyId: group.currency ? null : group.companyId, previous: BigInt('0'), current: BigInt('0') };
     total.previous += group.previous.amount; total.current += group.current.amount; totals.set(totalKey, total);
   }
   result.available = true; result.comparisonRows = rows.length;
@@ -191,6 +191,6 @@ export function comparePayrollResults(input: {
   return result;
 }
 function compareMagnitude(a: string | null, b: string | null): number {
-  const left = a === null ? 0n : abs(payrollAmountMinor(a)), right = b === null ? 0n : abs(payrollAmountMinor(b));
+  const left = a === null ? BigInt('0') : abs(payrollAmountMinor(a)), right = b === null ? BigInt('0') : abs(payrollAmountMinor(b));
   return left === right ? 0 : left > right ? -1 : 1;
 }
