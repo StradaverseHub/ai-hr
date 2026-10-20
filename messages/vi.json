@@ -12102,7 +12102,18 @@
       "weekday5": "Thứ Sáu",
       "weekday6": "Thứ Bảy",
       "weekday7": "Chủ nhật",
-      "poolHint": "Danh sách theo ngày này xác định các ca dùng trong chu kỳ. Khi bỏ một ca, nhóm kế thừa của ca và các phiên bản trước vẫn được giữ."
+      "poolHint": "Danh sách theo ngày này xác định các ca dùng trong chu kỳ. Khi bỏ một ca, nhóm kế thừa của ca và các phiên bản trước vẫn được giữ.",
+      "poolSearch": "Tìm ca theo mã hoặc tên",
+      "poolCounts": "Đã chọn {selected} · Hiển thị {visible} trong {total} ca đang hoạt động",
+      "poolSelectResults": "Chọn tất cả kết quả tìm kiếm",
+      "poolClearAll": "Bỏ chọn tất cả các ca",
+      "poolActiveChoices": "Ca đang hoạt động có thể chọn",
+      "poolNoMatches": "Không có ca đang hoạt động nào khớp tìm kiếm.",
+      "poolNoneSelected": "Chưa chọn ca đang hoạt động.",
+      "poolHistorical": "Ca không còn khả dụng được giữ lại",
+      "poolHistoricalHelp": "Các tham chiếu đã lưu được giữ để xem lại. Hãy chủ động xóa hoặc thay thế trước khi lưu vòng ca mới; không thể chọn lại chúng.",
+      "poolRemoveNamed": "Xóa {shift} khỏi các ca đã chọn",
+      "poolRemove": "Xóa"
     }
   },
   "topbar": {

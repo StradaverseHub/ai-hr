@@ -12102,7 +12102,18 @@
       "weekday5": "Friday",
       "weekday6": "Saturday",
       "weekday7": "Sunday",
-      "poolHint": "This dated pool controls rotation choices. Removing a shift from it keeps the shift’s inherited group and earlier saved versions intact."
+      "poolHint": "This dated pool controls rotation choices. Removing a shift from it keeps the shift’s inherited group and earlier saved versions intact.",
+      "poolSearch": "Search shifts by code or name",
+      "poolCounts": "{selected} selected · {visible} of {total} active shifts shown",
+      "poolSelectResults": "Select all search results",
+      "poolClearAll": "Clear all selected shifts",
+      "poolActiveChoices": "Active shifts available for selection",
+      "poolNoMatches": "No active shifts match this search.",
+      "poolNoneSelected": "No active shifts selected.",
+      "poolHistorical": "Retained unavailable shifts",
+      "poolHistoricalHelp": "These saved references are kept for review. Remove or replace them explicitly before saving a new rotation; they cannot be selected again.",
+      "poolRemoveNamed": "Remove {shift} from selected shifts",
+      "poolRemove": "Remove"
     }
   },
   "topbar": {

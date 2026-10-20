@@ -12102,7 +12102,18 @@
       "weekday5": "Jumaat",
       "weekday6": "Sabtu",
       "weekday7": "Ahad",
-      "poolHint": "Senarai bertarikh ini menentukan pilihan putaran. Mengeluarkan syif daripadanya mengekalkan kumpulan yang diwarisi melalui syif serta versi terdahulu yang disimpan."
+      "poolHint": "Senarai bertarikh ini menentukan pilihan putaran. Mengeluarkan syif daripadanya mengekalkan kumpulan yang diwarisi melalui syif serta versi terdahulu yang disimpan.",
+      "poolSearch": "Cari syif mengikut kod atau nama",
+      "poolCounts": "{selected} dipilih · {visible} daripada {total} syif aktif dipaparkan",
+      "poolSelectResults": "Pilih semua hasil carian",
+      "poolClearAll": "Kosongkan semua syif terpilih",
+      "poolActiveChoices": "Syif aktif yang boleh dipilih",
+      "poolNoMatches": "Tiada syif aktif sepadan dengan carian ini.",
+      "poolNoneSelected": "Tiada syif aktif dipilih.",
+      "poolHistorical": "Syif tidak tersedia yang dikekalkan",
+      "poolHistoricalHelp": "Rujukan tersimpan ini dikekalkan untuk semakan. Buang atau gantikannya secara nyata sebelum menyimpan putaran baharu; ia tidak boleh dipilih semula.",
+      "poolRemoveNamed": "Buang {shift} daripada syif terpilih",
+      "poolRemove": "Buang"
     }
   },
   "topbar": {

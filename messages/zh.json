@@ -12102,7 +12102,18 @@
       "weekday5": "星期五",
       "weekday6": "星期六",
       "weekday7": "星期日",
-      "poolHint": "此日期版本的允许班次列表决定轮班选项。移除班次后，班次原有组别和历史版本仍保留。"
+      "poolHint": "此日期版本的允许班次列表决定轮班选项。移除班次后，班次原有组别和历史版本仍保留。",
+      "poolSearch": "按代码或名称搜索班次",
+      "poolCounts": "已选 {selected} 项 · 显示 {total} 个有效班次中的 {visible} 个",
+      "poolSelectResults": "选择全部搜索结果",
+      "poolClearAll": "清除所有已选班次",
+      "poolActiveChoices": "可供选择的有效班次",
+      "poolNoMatches": "没有符合搜索条件的有效班次。",
+      "poolNoneSelected": "尚未选择有效班次。",
+      "poolHistorical": "保留的不可用班次",
+      "poolHistoricalHelp": "这些已保存的引用保留供您查看。保存新轮班前，请明确移除或替换它们；移除后无法重新选择。",
+      "poolRemoveNamed": "从已选班次中移除 {shift}",
+      "poolRemove": "移除"
     }
   },
   "topbar": {
