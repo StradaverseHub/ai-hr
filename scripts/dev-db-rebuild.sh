@@ -104,26 +104,50 @@ remove_cluster() { if [ -L "$1" ]; then rm -f "$1"; else rm -rf "$1"; fi; }
 # stops with "exists but is not empty ... perhaps due to it being a mount point". So the volume is
 # mounted at <DATA>-ram, PGDATA is <DATA>-ram/data, and <DATA> is a SYMLINK to it — which keeps
 # /opt/homebrew/var/aihr-pg16 working verbatim for pnpm db:start, pg_ctl and every other caller.
+# ⚠️ 2026-10-20 — A REUSED RAM DISK LEAKS. Clearing in place removes only PGDATA, and two full gates went
+# red in their heaviest chunk with zero AssertionErrors: Postgres 53100 "No space left on device" on a
+# TRUNCATE, then a crash into recovery mode. The volume showed 4.0 GiB used with data/ at 1.1 GB; the
+# rest sat outside PGDATA (a root-owned .fseventsd held most of it; files deleted while still open are
+# the other candidate — neither is measurable without root, so the cure does not depend on which).
+# Whatever survives the clear is waste, so above RAMDISK_LEAK_MB the disk is detached and made again:
+# a new RAM disk costs about a second, and this script has already stopped the only process using it.
+RAMDISK_LEAK_MB="${AIHR_RAMDISK_LEAK_MB:-256}"
+mount_device() { mount | awk -v m="$MOUNT" '$2=="on" && $3==m {print $1; exit}'; }
+create_ramdisk() {
+  mkdir -p "$MOUNT"
+  BLOCKS=$((RAMDISK_GB * 1024 * 1024 * 2))     # 512-byte sectors
+  # awk, not `tr -d ' '`: hdiutil pads the device with TABS, and a mangled path fails inside
+  # newfs_hfs with a "No such file or directory" that looks like a missing disk.
+  DEV=$(hdiutil attach -nomount "ram://$BLOCKS" | awk '{print $1}')
+  [ -n "$DEV" ] || { echo "could not create a ${RAMDISK_GB}GB RAM disk"; exit 1; }
+  newfs_hfs -v aihr-pg16 "$DEV" >/dev/null || { hdiutil detach "$DEV" -force; exit 1; }
+  mount -t hfs "$DEV" "$MOUNT" || { hdiutil detach "$DEV" -force; exit 1; }
+  # Keep Spotlight off the volume, and ask fseventsd not to journal it. no_log only works if it lands
+  # before fseventsd creates its root-owned directory, so it is best-effort; the leak check is the cure.
+  touch "$MOUNT/.metadata_never_index" 2>/dev/null
+  mkdir "$MOUNT/.fseventsd" 2>/dev/null && touch "$MOUNT/.fseventsd/no_log" 2>/dev/null
+  echo "$DEV" > /tmp/aihr-ramdisk.dev
+  echo "▸ ${RAMDISK_GB}GB RAM disk $DEV mounted at $MOUNT"
+}
 if [ "$RAMDISK_GB" != "0" ]; then
   if is_mounted; then
     echo "▸ RAM disk already mounted at $MOUNT — clearing it"
     rm -rf "${REAL:?}"
+    LEFT_MB=$(( $(df -k "$MOUNT" | awk 'NR==2{print $3}') / 1024 ))
+    if [ "$LEFT_MB" -gt "$RAMDISK_LEAK_MB" ]; then
+      OLD_DEV=$(mount_device)
+      echo "▸ ${LEFT_MB} MB still used with no cluster on it (limit ${RAMDISK_LEAK_MB} MB) — recreating the RAM disk"
+      { umount "$MOUNT" 2>/dev/null || umount -f "$MOUNT"; } && hdiutil detach "${OLD_DEV:?}" -force >/dev/null \
+        || { echo "could not detach the leaking RAM disk $OLD_DEV at $MOUNT"; exit 1; }
+      create_ramdisk
+    fi
   else
     if [ -e "$DATA" ] && [ ! -L "$DATA" ]; then
       OLD="$DATA.predisk-$(date +%Y%m%d-%H%M%S)"
       mv "$DATA" "$OLD"
       echo "▸ old on-disk cluster moved to $OLD"
     fi
-    mkdir -p "$MOUNT"
-    BLOCKS=$((RAMDISK_GB * 1024 * 1024 * 2))     # 512-byte sectors
-    # awk, not `tr -d ' '`: hdiutil pads the device with TABS, and a mangled path fails inside
-    # newfs_hfs with a "No such file or directory" that looks like a missing disk.
-    DEV=$(hdiutil attach -nomount "ram://$BLOCKS" | awk '{print $1}')
-    [ -n "$DEV" ] || { echo "could not create a ${RAMDISK_GB}GB RAM disk"; exit 1; }
-    newfs_hfs -v aihr-pg16 "$DEV" >/dev/null || { hdiutil detach "$DEV" -force; exit 1; }
-    mount -t hfs "$DEV" "$MOUNT" || { hdiutil detach "$DEV" -force; exit 1; }
-    echo "$DEV" > /tmp/aihr-ramdisk.dev
-    echo "▸ ${RAMDISK_GB}GB RAM disk $DEV mounted at $MOUNT"
+    create_ramdisk
   fi
   mkdir -p "$REAL"
   rm -f "$DATA"
