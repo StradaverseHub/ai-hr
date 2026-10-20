@@ -74,7 +74,9 @@ describe('SMTP settings discovery and temporary demo testing',()=>{
   const host=screen.getByLabelText(messages.identityEmail.host),password=screen.getByLabelText(messages.identityEmail.password);
   fireEvent.change(screen.getByLabelText(messages.identityEmail.security),{target:{value:'starttls'}});expect(screen.getByLabelText(messages.identityEmail.port)).toHaveValue(587);
   fireEvent.change(host,{target:{value:'smtp.synthetic.example'}});fireEvent.change(password,{target:{value:'synthetic-secret'}});fireEvent.submit(host.closest('form')!);
-  await waitFor(()=>expect(screen.getByText(messages.identityEmail.demoErrors.authenticationFailed)).toBeVisible());expect(host).toHaveValue('smtp.synthetic.example');expect(password).toHaveValue('');expect(screen.getByRole('button',{name:messages.identityEmail.testConnection})).toBeEnabled();
+  await waitFor(()=>expect(screen.getByText(messages.identityEmail.demoErrors.authenticationFailed)).toBeVisible());expect(host).toHaveValue('smtp.synthetic.example');expect(password).toHaveValue('');// The label is "Testing connection…" until the pending state clears, which can land a tick AFTER the
+  // error renders; under load that gap is real (failed 2 of 3 full gates on 2026-10-20). Wait for it.
+  expect(await screen.findByRole('button',{name:messages.identityEmail.testConnection})).toBeEnabled();
  });
  it('explains enrollment to a real HR administrator without loading the installation relay',async()=>{
   m.demo.mockReturnValue(false);await page();expect(screen.getByText(messages.identityEmail.restrictedSetup)).toBeInTheDocument();expect(m.read).not.toHaveBeenCalled();expect(screen.getByLabelText(messages.identityEmail.host)).toBeDisabled();expect(screen.queryByRole('button',{name:messages.identityEmail.testConnection})).toBeNull();
