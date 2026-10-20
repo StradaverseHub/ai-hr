@@ -8,7 +8,7 @@ const { list, options, cookie } = vi.hoisted(() => ({ list: vi.fn(), options: vi
 vi.mock('next/link', () => ({ default: ({ children, ...props }: React.ComponentProps<'a'>) => <a {...props}>{children}</a> }));
 vi.mock('../lib/scope', () => ({ scopedAdmin: async () => ({ s: {}, scopeIds: ['company'] }) }));
 vi.mock('next/headers', () => ({ cookies: async () => ({ get: cookie }) }));
-vi.mock('next-intl/server', () => ({ getTranslations: async () => createTranslator({ locale: 'en', messages: en, namespace: 'attendanceHistory', onError: error => { throw error; } }) }));
+vi.mock('next-intl/server', () => ({ getTranslations: async () => createTranslator({ locale: 'en', messages: { attendanceHistory: en.attendanceHistory }, namespace: 'attendanceHistory', onError: error => { throw error; } }) }));
 vi.mock('../packs/attendance/service', () => ({ listAttendanceApplicationHistory: list, attendanceApplicationFilterOptions: options }));
 vi.mock('../components/attendance-history-table', () => ({ AttendanceHistoryTable: ({ returnTo }: { returnTo: string }) => <a href={`/detail?returnTo=${encodeURIComponent(returnTo)}`}>Saved context</a> }));
 import Page from '../app/attendance/application-history/page';

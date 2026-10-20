@@ -6,7 +6,7 @@ import en from '../messages/en.json';
 const { list, session } = vi.hoisted(() => ({ list: vi.fn(), session: { personId: 'viewer' } }));
 vi.mock('../lib/scope', () => ({ scopedSession: async () => ({ s: session, scopeIds: ['company'] }) }));
 vi.mock('../lib/authz', () => ({ requireModule: vi.fn() }));
-vi.mock('next-intl/server', () => ({ getLocale: async () => 'en', getTranslations: async () => createTranslator({ locale: 'en', messages: en, namespace: 'attendanceHistory', onError: error => { throw error; } }) }));
+vi.mock('next-intl/server', () => ({ getLocale: async () => 'en', getTranslations: async () => createTranslator({ locale: 'en', messages: { attendanceHistory: en.attendanceHistory }, namespace: 'attendanceHistory', onError: error => { throw error; } }) }));
 vi.mock('../packs/attendance/service', () => ({ listAttendanceCorrections: list, resolveApprovedOt: () => 0 }));
 vi.mock('../app/attendance/actions', () => ({ decideCorrectionAction: vi.fn() }));
 vi.mock('../components/attendance-workflow-progress', () => ({ AttendanceWorkflowProgress: () => <p>Saved request workflow</p> }));
