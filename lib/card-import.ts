@@ -35,7 +35,7 @@ export function validateCardImportRows(inputs: readonly CardImportInput[]): Card
     if ((cards.get(cardImportKey(row.cardId)) ?? 0) > 1) issues.push('duplicateCard');
     if (!['assign', 'replace', 'reset'].includes(row.operation)) issues.push('invalidOperation');
     if (row.invalidCell) issues.push('literalText');
-    if (row.employeeCode.length > 100 || row.cardId.length > 100 || /[\u0000-\u001f\u007f]/.test(row.employeeCode + row.cardId)) issues.push('invalidCard');
+    if (row.employeeCode.length > 1000 || row.cardId.length > 1000 || /[\u0000-\u001f\u007f]/.test(row.employeeCode + row.cardId)) issues.push('invalidCard');
     if (row.operation === 'reset' && row.cardId) issues.push('resetHasCard');
     return { ...row, issues, effect: issues.length ? 'failed' : 'unchanged' };
   });

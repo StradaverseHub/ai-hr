@@ -3284,6 +3284,13 @@
       "when": 1791900000054,
       "tag": "0574_card_assignment_import_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 575,
+      "version": "7",
+      "when": 1791900000055,
+      "tag": "0575_attendance_request_participant_review",
+      "breakpoints": true
     }
   ]
 }

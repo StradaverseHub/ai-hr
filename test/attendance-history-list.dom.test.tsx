@@ -1,0 +1,43 @@
+import React from 'react';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { createTranslator, NextIntlClientProvider } from 'next-intl';
+import en from '../messages/en.json';
+const { list, options, cookie } = vi.hoisted(() => ({ list: vi.fn(), options: vi.fn(), cookie: vi.fn() }));
+vi.mock('../lib/scope', () => ({ scopedAdmin: async () => ({ s: {}, scopeIds: ['company'] }) }));
+vi.mock('next/headers', () => ({ cookies: async () => ({ get: cookie }) }));
+vi.mock('next-intl/server', () => ({ getTranslations: async () => createTranslator({ locale: 'en', messages: en, namespace: 'attendanceHistory', onError: error => { throw error; } }) }));
+vi.mock('../packs/attendance/service', () => ({ listAttendanceApplicationHistory: list, attendanceApplicationFilterOptions: options }));
+vi.mock('../components/attendance-history-table', () => ({ AttendanceHistoryTable: ({ returnTo }: { returnTo: string }) => <a href={`/detail?returnTo=${encodeURIComponent(returnTo)}`}>Saved context</a> }));
+import Page from '../app/attendance/application-history/page';
+beforeEach(() => {
+  vi.clearAllMocks(); cookie.mockReturnValue(undefined);
+  list.mockResolvedValue({ rows: [], total: 3, page: 1, pageSize: 25, counts: { pending: 3, approved: 5, rejected: 2, cancelled: 1, withdrawn: 2, cancelledWithdrawn: 3, all: 13 } });
+  options.mockResolvedValue({ employees: [{ id: 'employee', name: 'Fictional worker', employeeCode: '0007' }], companies: [], departments: [], businessUnits: [], grades: [], divisions: [] });
+});
+afterEach(cleanup);
+async function show(query: Record<string, string> = {}) { render(<NextIntlClientProvider locale="en" messages={en}>{await Page({ searchParams: Promise.resolve(query) })}</NextIntlClientProvider>); }
+it('defaults to Pending and All Employees, with extra filters hidden and counts on every requested tab', async () => {
+  await show();
+  expect(list).toHaveBeenCalledWith({}, ['company'], expect.objectContaining({ status: 'pending' }));
+  expect(screen.getByRole('combobox', { name: en.attendanceHistory.selectEmployeeLabel })).toHaveValue('');
+  expect(screen.getByRole('link', { name: 'Pending 3' })).toHaveAttribute('aria-current', 'page');
+  expect(screen.getByRole('link', { name: 'Approved 5' })).toBeVisible();
+  expect(screen.getByRole('link', { name: 'Cancelled / Withdrawn 3' })).toBeVisible();
+  expect(screen.queryByRole('textbox', { name: en.attendanceHistory.search })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: en.attendanceHistory.showFilters }));
+  expect(screen.getByRole('textbox', { name: en.attendanceHistory.search })).toBeVisible();
+});
+it('collapsed filters remain in the submitted form, tabs and detail return context', async () => {
+  await show({ employmentId: 'employee', query: 'needle', departmentId: 'department', status: 'approved', submittedFrom: '2024-01-01', pageSize: '100' });
+  const form = document.querySelector('form')!;
+  expect(new FormData(form).get('query')).toBe('needle');
+  expect(new FormData(form).get('status')).toBe('approved');
+  const next = new URL(screen.getByRole('link', { name: 'Rejected 2' }).getAttribute('href')!, 'http://localhost');
+  expect(next.searchParams.get('employmentId')).toBe('employee'); expect(next.searchParams.get('query')).toBe('needle');
+  expect(next.searchParams.get('submittedFrom')).toBe('2024-01-01'); expect(next.searchParams.get('pageSize')).toBe('100');
+  expect(next.searchParams.get('page')).toBe('1');
+  const detail = new URL(screen.getByRole('link', { name: 'Saved context' }).getAttribute('href')!, 'http://localhost');
+  expect(detail.searchParams.get('returnTo')).toContain('status=approved');
+  expect(detail.searchParams.get('returnTo')).toContain('query=needle');
+});

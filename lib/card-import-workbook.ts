@@ -1,7 +1,7 @@
 /** Card-specific schema over the shared bounded OOXML admission owner. */
 import * as XLSX from 'xlsx';
 import { decodeSpreadsheetXml, readSpreadsheetArchive } from './spreadsheet-archive';
-import { CARD_IMPORT_HEADERS, CARD_IMPORT_MAX_BYTES, CARD_IMPORT_MAX_ROWS, CARD_IMPORT_VERSION, CardImportError, type CardImportInput, type CardImportResultRow, type CardImportRow } from './card-import';
+import { CARD_IMPORT_HEADERS, CARD_IMPORT_MAX_BYTES, CARD_IMPORT_MAX_ROWS, CARD_IMPORT_VERSION, CardImportError, type CardImportInput } from './card-import';
 
 export function readCardImportWorkbook(bytes: Buffer): CardImportInput[] {
   const archive = readSpreadsheetArchive(bytes, { maxBytes: CARD_IMPORT_MAX_BYTES, maxExpandedBytes: 12 * 1024 * 1024, maxEntries: 100 });
@@ -62,17 +62,5 @@ export function buildCardImportWorkbook(existing: readonly { employeeCode: strin
   XLSX.utils.book_append_sheet(wb, ws, 'Card Assignments');
   const help = XLSX.utils.aoa_to_sheet(instructions); help['!cols'] = [{ wch: 120 }];
   XLSX.utils.book_append_sheet(wb, help, 'Instructions');
-  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', compression: true });
-}
-
-/** Literal report cells cannot execute formulas. Original row numbers permit correction/retry. */
-export function buildCardImportErrorWorkbook(rows: readonly (CardImportRow | CardImportResultRow)[], label: (key: string) => string): Buffer {
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([
-    [label('row'), ...CARD_IMPORT_HEADERS, label('result'), label('reason')],
-    ...rows.map(row => [String(row.row), row.employeeCode, row.cardId, row.operation, label('result' in row ? row.result : row.issues.length ? 'failed' : row.effect), row.issues.map(label).join('; ')]),
-  ]);
-  ws['!cols'] = [{ wch: 8 }, { wch: 25 }, { wch: 25 }, { wch: 16 }, { wch: 18 }, { wch: 90 }];
-  XLSX.utils.book_append_sheet(wb, ws, 'Import Results');
   return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', compression: true });
 }

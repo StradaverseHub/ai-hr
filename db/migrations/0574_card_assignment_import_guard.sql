@@ -39,10 +39,17 @@ BEGIN
    SELECT 1 FROM employment e WHERE e.tenant_id=NEW.tenant_id AND e.id<>NEW.id
    AND e.terminated_on IS NULL AND lower(btrim(e.card_id))=lower(btrim(NEW.employee_code)))
   THEN RAISE EXCEPTION 'Employee identifier conflicts with an assigned card' USING ERRCODE='23505'; END IF;
+  IF changed_code AND NEW.terminated_on IS NULL AND EXISTS(
+   SELECT 1 FROM employee_statutory_my s JOIN employment e ON e.tenant_id=s.tenant_id
+   WHERE s.tenant_id=NEW.tenant_id AND s.person_id=NEW.person_id AND e.id<>NEW.id AND e.terminated_on IS NULL
+   AND regexp_replace(coalesce(s.ic_number,''),'[^0-9]','','g')<>''
+   AND regexp_replace(e.card_id,'[^0-9]','','g')=regexp_replace(s.ic_number,'[^0-9]','','g'))
+  THEN RAISE EXCEPTION 'Identity identifier conflicts with an assigned card' USING ERRCODE='23505'; END IF;
  ELSE
   IF TG_OP='UPDATE' AND NEW.ic_number IS NOT DISTINCT FROM OLD.ic_number THEN RETURN NEW; END IF;
   IF regexp_replace(coalesce(NEW.ic_number,''),'[^0-9]','','g')<>'' AND EXISTS(
-   SELECT 1 FROM employment e WHERE e.tenant_id=NEW.tenant_id AND e.person_id<>NEW.person_id
+   SELECT 1 FROM employment e WHERE e.tenant_id=NEW.tenant_id
+   AND (e.person_id<>NEW.person_id OR EXISTS(SELECT 1 FROM employment other WHERE other.tenant_id=NEW.tenant_id AND other.person_id=NEW.person_id AND other.id<>e.id AND other.terminated_on IS NULL))
    AND e.terminated_on IS NULL AND regexp_replace(e.card_id,'[^0-9]','','g')=regexp_replace(NEW.ic_number,'[^0-9]','','g'))
   THEN RAISE EXCEPTION 'Identity identifier conflicts with an assigned card' USING ERRCODE='23505'; END IF;
  END IF;

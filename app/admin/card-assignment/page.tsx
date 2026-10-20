@@ -1,5 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
+import { requireModule } from '@/lib/authz';
 import { listCompanies, listEmployees } from '@/core/read';
 import { resolveCardMatch } from '@/core/attendance-card';
 import { Button, Card, ErrorBanner, PageHeader, inputCls } from '@/components/ui';
@@ -35,6 +36,8 @@ export default async function CardAssignmentPage({
   searchParams: Promise<{ q?: string; company?: string; error?: string; saved?: string }>;
 }) {
   const t = await getTranslations('attendance');
+  const historyLabels = await getTranslations('attendanceHistory');
+  await requireModule('attendance');
   const { s, scopeIds } = await scopedAdmin();
   const sp = await searchParams;
 
@@ -73,7 +76,7 @@ export default async function CardAssignmentPage({
         </label>
         {visibleCompanies.length > 1 && (
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            &nbsp;
+            {historyLabels('company')}
             <select name="company" defaultValue={companyFilter ?? ''} className={inputCls}>
               <option value="">—</option>
               {visibleCompanies.map((c) => (
@@ -120,6 +123,7 @@ export default async function CardAssignmentPage({
                         <input type="hidden" name="company" value={companyFilter ?? ''} />
                         <input
                           name="cardId"
+                          aria-label={`${t('cardColCardId')} · ${e.name}`}
                           defaultValue={e.cardId ?? ''}
                           className={`${inputCls} w-40`}
                           // TEXT, never a number input: card numbers carry leading zeros, and a number

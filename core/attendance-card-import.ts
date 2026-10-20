@@ -32,7 +32,7 @@ function verify(token: string, ctx: SessionContext, scope: string[], fileHash: s
 }
 async function assertAuthority(tx: Tx, ctx: SessionContext, scope: readonly string[]) {
   assertModuleGate(ctx, 'attendance');
-  if (!isAdmin(ctx) || !ctx.userId || !scope.length || scope.length > 100 || scope.some(id => !/^[0-9a-f-]{36}$/i.test(id))) throw new CardImportError('scope');
+  if (!isAdmin(ctx) || !ctx.userId || !scope.length || scope.length > 100 || scope.some(id => !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id))) throw new CardImportError('scope');
   // Recheck the login, its person and actual grants; a stale preview/session cannot preserve access.
   const [p] = await tx.execute(sql`select p.tenant_id,p.person_id,p.grants,u.archived_at,app.login_blocked(u.id) as blocked from app.principal(${ctx.userId}::uuid) p join app_user u on u.id=${ctx.userId}::uuid`) as unknown as { tenant_id: string; person_id: string | null; grants: Grant[]; archived_at: Date | null; blocked: boolean }[];
   const canonical = (grants: readonly Grant[]) => JSON.stringify(grants.map(g => [g.role, g.companyId]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))));

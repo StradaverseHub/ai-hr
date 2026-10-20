@@ -171,7 +171,6 @@ export async function setEmploymentCardId(
       aggregateId: p.employmentId,
       eventType: next ? 'attendance.card.assigned' : 'attendance.card.cleared',
       actor: actorOf(ctx),
-      subjectEmploymentId: p.employmentId,
       payload: { from: before.cardId, to: next === '' ? null : next,
         ...(p.importSource ? { importSource: p.importSource } : {}) },
     });
