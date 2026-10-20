@@ -21484,6 +21484,7 @@
     "reasonFilters": "Lọc theo giải thích",
     "allReasons": "Tất cả",
     "prorated": "Theo tỷ lệ",
+    "incrementPromotion": "Tăng lương / Thăng chức",
     "rowCounts": "{displayed} dòng khớp · {total} dòng so sánh trước bộ lọc dòng",
     "noRows": "Không có dòng khớp bộ lọc.",
     "page": "Trang {page}",

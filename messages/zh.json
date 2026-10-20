@@ -21484,6 +21484,7 @@
     "reasonFilters": "按解释筛选",
     "allReasons": "全部",
     "prorated": "按比例",
+    "incrementPromotion": "加薪 / 晋升",
     "rowCounts": "匹配 {displayed} 行 · 行筛选前共 {total} 行对比记录",
     "noRows": "没有符合这些筛选条件的记录。",
     "page": "第 {page} 页",

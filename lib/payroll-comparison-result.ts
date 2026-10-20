@@ -2,9 +2,9 @@
  * This module neither reconstructs pay nor decides company access. */
 import {
   payrollAmountMinor, payrollMinorDecimal, payrollVariance, payrollComparisonReason,
-  PAYROLL_COMPARISON_REASONS, PayrollComparisonInputError,
+  PAYROLL_COMPARISON_REASONS, PAYROLL_COMPARISON_REASON_FILTERS, payrollReasonMatches, PayrollComparisonInputError,
   type PayrollComparisonFilters, type PayrollComparisonDefinition,
-  type PayrollComparisonMovement, type PayrollReasonEvidence, type PayrollComparisonReason,
+  type PayrollComparisonMovement, type PayrollReasonEvidence, type PayrollComparisonReason, type PayrollComparisonReasonFilter,
 } from './payroll-period-comparison';
 
 export type ComparisonRun = {
@@ -47,6 +47,7 @@ export type ComparisonResult = {
   available: boolean; issues: ComparisonIssue[]; provisional: boolean; runs: ComparisonRun[];
   rows: ComparisonRow[]; displayedRows: number; comparisonRows: number;
   reasonCounts: Record<PayrollComparisonReason, number>;
+  reasonFilterCounts: Record<PayrollComparisonReasonFilter, number>;
   summary: { previousHeadcount: number; currentHeadcount: number; joiners: number; leavers: number;
     unexplained: number; totals: ComparisonTotal[] } | null;
   page: number; pageSize: number;
@@ -99,7 +100,7 @@ export function comparePayrollResults(input: {
   const result: ComparisonResult = {
     available: false, issues: availability.issues, provisional: availability.runs.some(run => run.status === 'processed'),
     runs: availability.runs, rows: [], displayedRows: 0, comparisonRows: 0,
-    reasonCounts: counts, summary: null, page: filters.page, pageSize: filters.pageSize,
+    reasonCounts: counts, reasonFilterCounts: Object.fromEntries(PAYROLL_COMPARISON_REASON_FILTERS.map(reason=>[reason,0])) as Record<PayrollComparisonReasonFilter,number>, summary: null, page: filters.page, pageSize: filters.pageSize,
   };
   // Do not reveal partial totals while one selected run is unavailable.
   if (result.issues.length) return result;
@@ -179,8 +180,9 @@ export function comparePayrollResults(input: {
       variance: total.currency ? payrollVariance(total.previous, total.current).difference : null,
       variancePct: total.currency ? payrollVariance(total.previous, total.current).percentage : null,
     })).sort((a, b) => (a.currency ?? '').localeCompare(b.currency ?? '') || (a.companyId ?? '').localeCompare(b.companyId ?? '')) };
+  for (const filter of PAYROLL_COMPARISON_REASON_FILTERS) result.reasonFilterCounts[filter] = rows.filter(row => payrollReasonMatches(row.reason, filter)).length;
   const minimum = payrollAmountMinor(filters.minVariance);
-  const displayed = rows.filter(row => (!filters.reason || row.reason.reason === filters.reason) &&
+  const displayed = rows.filter(row => (!filters.reason || payrollReasonMatches(row.reason, filters.reason)) &&
     // Unknown currency rows stay visible: their difference cannot truthfully be tested against a monetary threshold.
     (!filters.onlyVariances || row.variance === null || abs(payrollAmountMinor(row.variance)) >= minimum));
   displayed.sort((a, b) => Number(b.reason.reason === 'unexplained') - Number(a.reason.reason === 'unexplained') ||

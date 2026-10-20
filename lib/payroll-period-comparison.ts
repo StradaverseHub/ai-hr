@@ -4,6 +4,8 @@ export const PAYROLL_COMPARISON_COLUMNS=['employeeCode','employeeName','departme
 export type PayrollComparisonColumn=typeof PAYROLL_COMPARISON_COLUMNS[number];
 export const PAYROLL_COMPARISON_REASONS=['unexplained','increment','promotion','demotion','newHire','resigned','proratedLeaving','transfer','unclassified'] as const;
 export type PayrollComparisonReason=typeof PAYROLL_COMPARISON_REASONS[number];
+export const PAYROLL_COMPARISON_REASON_FILTERS=[...PAYROLL_COMPARISON_REASONS,'incrementPromotion','prorated'] as const;
+export type PayrollComparisonReasonFilter=typeof PAYROLL_COMPARISON_REASON_FILTERS[number];
 export type PayrollComparisonDefinition={
  version:1;payItemCode:string;compareMode:'previous'|'specific';previousPeriod:string|null;
  runType:'regular'|'all';minVariance:string;autoTag:boolean;onlyVariances:boolean;
@@ -58,7 +60,7 @@ export function validatePayrollComparisonDefinition(value:unknown):PayrollCompar
   minVariance:payrollMinorDecimal(minimum),autoTag:v.autoTag,onlyVariances:v.onlyVariances,columns,roles};
 }
 export type PayrollComparisonFilters={currentPeriod:string|null;previousPeriod:string|null;companyId:string|null;departmentId:string|null;
- runType:'regular'|'all';minVariance:string;onlyVariances:boolean;reason:PayrollComparisonReason|null;page:number;pageSize:number};
+ runType:'regular'|'all';minVariance:string;onlyVariances:boolean;reason:PayrollComparisonReasonFilter|null;page:number;pageSize:number};
 const id=(value:unknown)=>value==null||value===''?null:typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)?value:fail('identity');
 export function payrollComparisonFilters(values:Record<string,unknown>,definition:PayrollComparisonDefinition):PayrollComparisonFilters{
  exactKeys(values,['currentPeriod','previousPeriod','companyId','departmentId','runType','minVariance','onlyVariances','reason','page','pageSize']);
@@ -69,13 +71,19 @@ export function payrollComparisonFilters(values:Record<string,unknown>,definitio
  const minimum=payrollAmountMinor(values.minVariance??definition.minVariance);if(minimum<BigInt('0')||minimum>BigInt('99999999999999'))fail('minVariance');
  const only=values.onlyVariances??definition.onlyVariances;
  if(![true,false,'1','0'].includes(only as never))fail('boolean');
- const reason=values.reason==null||values.reason===''?null:PAYROLL_COMPARISON_REASONS.includes(values.reason as PayrollComparisonReason)?values.reason as PayrollComparisonReason:fail('reason');
+ const reason=values.reason==null||values.reason===''?null:PAYROLL_COMPARISON_REASON_FILTERS.includes(values.reason as PayrollComparisonReasonFilter)?values.reason as PayrollComparisonReasonFilter:fail('reason');
  const integer=(value:unknown,fallback:number,max:number)=>{if(value==null||value==='')return fallback;if(typeof value!=='number'&&(typeof value!=='string'||!/^\d+$/.test(value)))fail('pagination');const n=Number(value);if(!Number.isSafeInteger(n)||n<1||n>max)fail('pagination');return n;};
  return {currentPeriod,previousPeriod,companyId:id(values.companyId),departmentId:id(values.departmentId),runType,minVariance:payrollMinorDecimal(minimum),onlyVariances:only===true||only==='1',reason,page:integer(values.page,1,1000000),pageSize:integer(values.pageSize,50,200)};
 }
 /** These are already projected, applied facts from Movement, never raw event-name guesses. */
 export type PayrollComparisonMovement={id:string;sequence:number;effectiveDate:string;kind:'increment'|'promotion'|'demotion'|'transfer'|'exit';salaryChanged:boolean;status:'applied'|'pending'|'superseded'|'reversed'};
 export type PayrollReasonEvidence={reason:PayrollComparisonReason;effectiveDate:string|null;evidenceIds:string[];multipleChanges:boolean;prorated:boolean};
+/** Filter groups retain the original explanation and its evidence; prorated hires belong to both chips. */
+export function payrollReasonMatches(evidence:PayrollReasonEvidence,filter:PayrollComparisonReasonFilter){
+ if(filter==='incrementPromotion')return evidence.reason==='increment'||evidence.reason==='promotion';
+ if(filter==='prorated')return evidence.prorated;
+ return evidence.reason===filter;
+}
 export function payrollComparisonReason(p:{autoTag:boolean;periodFrom:string;periodTo:string;hireDate:string;exitDate:string|null;
  previous:bigint;current:bigint;previousPeriodFrom:string;previousCoverage:{from:string;to:string}[];currentCoverage:{from:string;to:string}[];movements:readonly PayrollComparisonMovement[];verifiedTransferIds?:readonly string[]}):PayrollReasonEvidence{
  const result=(reason:PayrollComparisonReason,effectiveDate:string|null=null,evidenceIds:string[]=[],multipleChanges=false,prorated=false):PayrollReasonEvidence=>({reason,effectiveDate,evidenceIds,multipleChanges,prorated});

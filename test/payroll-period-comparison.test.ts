@@ -97,6 +97,25 @@ describe('period availability and aggregation', () => {
     expect(result.reasonCounts.unexplained).toBe(1);
     expect(result.summary?.totals[0]).toMatchObject({ previous: '100.00', current: '100.01', variance: '0.01' });
   });
+  it('groups salary changes without losing their labels and finds prorated hires through both chips', () => {
+    const sources = [source('p1','increment','previous','100'),source('c1','increment','current','120'),
+      source('p2','promotion','previous','100'),source('c2','promotion','current','130'),
+      source('c3','newHire','current','50',{coverage:{from:'2026-10-15',to:'2026-10-31'}}),
+      source('p4','demotion','previous','100'),source('c4','demotion','current','90')];
+    const identities = [identity('increment',{movements:[movement('increment')]}),
+      identity('promotion',{movements:[movement('promotion')]}),identity('newHire',{hireDate:'2026-10-15'}),
+      identity('demotion',{movements:[movement('demotion')]})];
+    const grouped = compare(sources,identities,{filters:payrollComparisonFilters({currentPeriod:'2026-10',reason:'incrementPromotion',pageSize:1},definition)});
+    expect(grouped.reasonFilterCounts).toMatchObject({incrementPromotion:2,prorated:1,newHire:1,demotion:1});
+    expect(grouped.displayedRows).toBe(2);expect(grouped.rows).toHaveLength(1);
+    expect(grouped.summary?.currentHeadcount).toBe(4);
+    const allGrouped = compare(sources,identities,{filters:{...filters,reason:'incrementPromotion'},paginate:false});
+    expect(allGrouped.rows.map(row=>row.reason.reason).sort()).toEqual(['increment','promotion']);
+    const prorated = compare(sources,identities,{filters:{...filters,reason:'prorated'}});
+    expect(prorated.rows.map(row=>row.employmentId)).toEqual(['newHire']);
+    expect(prorated.rows[0].reason).toMatchObject({reason:'newHire',prorated:true});
+    expect(() => payrollComparisonFilters({reason:'salaryChangeOrAnything'},definition)).toThrow();
+  });
   it('never merges unknown currencies from different employers or asserts their percentage', () => {
     const result = compare([source('a', 'e', 'current', '100', { currency: null }), source('b', 'f', 'other-current', '200', { companyId: otherCompanyId, currency: null })],
       [identity('e'), identity('f', { companyId: otherCompanyId })], { companyIds: [companyId, otherCompanyId],

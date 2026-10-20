@@ -21484,6 +21484,7 @@
     "reasonFilters": "Filter by explanation",
     "allReasons": "All",
     "prorated": "Prorated",
+    "incrementPromotion": "Increment / Promotion",
     "rowCounts": "{displayed} matching rows · {total} comparison rows before row filters",
     "noRows": "No rows match these filters.",
     "page": "Page {page}",

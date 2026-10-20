@@ -21,6 +21,7 @@ function metadata(run:Run):(string|number|null)[][]{
     ['Historical currency',run.result.summary?.totals.some(total=>!total.currency)?'Unknown currencies remain separate by employer. Variances are unavailable.':'Recorded payroll-result currencies'],
     ['Dated context',run.contextUnavailable?'Some historical placement or grade evidence is unavailable.': 'Dated assignment and Movement evidence'],
     ...run.result.runs.map(batch=>['Source run',`${batch.id} / ${batch.companyId} / ${batch.period} / ${batch.runType} / ${batch.status}${batch.stale?' / requires recalculation':''}`]),
+    ['Increment / Promotion',run.result.reasonFilterCounts.incrementPromotion],['Prorated',run.result.reasonFilterCounts.prorated],
     ...Object.entries(run.result.reasonCounts).map(([reason,count])=>[PAYROLL_REASON_LABELS[reason as keyof typeof PAYROLL_REASON_LABELS],count]),
     ['Basis',PAYROLL_COMPARISON_BASIS],
   ];
@@ -31,22 +32,27 @@ function excelNumber(text:string):number{
   if(absolute>BigInt('999999999999999'))throw new Error('An amount exceeds Excel’s exact 15-digit precision. Narrow this report or use PDF.');
   return Number(text);
 }
+/** Excel's cell limit is UTF-16 characters. Refuse rather than silently truncate recorded text. */
+function excelText(value:string){
+  if(value.length>32767)throw new Error('A recorded text value exceeds Excel’s 32,767-character cell limit. Narrow this report or use PDF.');
+  return value;
+}
 async function excel(run:Run):Promise<Uint8Array>{
   const columns=payrollComparisonColumns(run.definition),book=XLSX.utils.book_new();
-  const rows=metadata(run),summary=XLSX.utils.aoa_to_sheet(rows);
+  const rows=metadata(run).map(row=>row.map(value=>typeof value==='string'?excelText(value):value)),summary=XLSX.utils.aoa_to_sheet(rows);
   let at=rows.length+2;
   const headers=['Currency','Unknown-currency employer','Previous amount','Current amount','Variance','Variance %'];
   XLSX.utils.sheet_add_aoa(summary,[headers],{origin:at++});
   for(const total of run.result.summary?.totals??[]){
     const values=[total.currency??'Not recorded',total.companyId??'',total.previous,total.current,total.variance,total.variancePct];
-    values.forEach((value,index)=>summary[XLSX.utils.encode_cell({r:at,c:index})]=index>=2&&value!==null?{t:'n',v:excelNumber(value),z:index===5?'0.00"%"':total.currency?`"${total.currency==='MYR'?'RM':total.currency}" #,##0.00`:'0.00'}:{t:'s',v:value??'N/A'});at++;
+    values.forEach((value,index)=>summary[XLSX.utils.encode_cell({r:at,c:index})]=index>=2&&value!==null?{t:'n',v:excelNumber(value),z:index===5?'0.00"%"':total.currency?`"${total.currency==='MYR'?'RM':total.currency}" #,##0.00`:'0.00'}:{t:'s',v:excelText(value??'N/A')});at++;
   }
   summary['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:Math.max(at-1,rows.length-1),c:5}});
   summary['!cols']=[{wch:28},{wch:75},...Array.from({length:4},()=>({wch:22}))];
   const details=XLSX.utils.aoa_to_sheet([columns.map(column=>column.label)]);
   for(const [index,row] of run.result.rows.entries())for(const [columnIndex,column] of columns.entries()){
     const value=payrollComparisonCell(row,column.id),address=XLSX.utils.encode_cell({r:index+1,c:columnIndex});
-    details[address]=column.numeric&&value!==null?{t:'n',v:excelNumber(value),z:column.id==='variancePct'?'0.00"%"':row.currency?`"${row.currency==='MYR'?'RM':row.currency}" #,##0.00`:'0.00'}:{t:'s',v:value??'N/A'};
+    details[address]=column.numeric&&value!==null?{t:'n',v:excelNumber(value),z:column.id==='variancePct'?'0.00"%"':row.currency?`"${row.currency==='MYR'?'RM':row.currency}" #,##0.00`:'0.00'}:{t:'s',v:excelText(value??'N/A')};
   }
   details['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:run.result.rows.length,c:columns.length-1}});
   details['!cols']=columns.map(column=>({wch:column.id==='remarks'?70:column.id==='employeeName'?30:22}));

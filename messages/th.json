@@ -21484,6 +21484,7 @@
     "reasonFilters": "กรองตามคำอธิบาย",
     "allReasons": "ทั้งหมด",
     "prorated": "ตามสัดส่วน",
+    "incrementPromotion": "ปรับเงินเดือน / เลื่อนตำแหน่ง",
     "rowCounts": "ตรงกัน {displayed} แถว · เปรียบเทียบ {total} แถวก่อนกรองแถว",
     "noRows": "ไม่มีแถวที่ตรงกับตัวกรอง",
     "page": "หน้า {page}",
