@@ -148,7 +148,7 @@ function makeBox(envProduction = DEMO_ENV): Box {
   fs.mkdirSync(path.join(dir, 'node_modules')); // must exist but stay empty (the install branch)
   fs.mkdirSync(bin);
   fs.mkdirSync(stateDir);
-  for (const f of ['deploy.sh', 'deploy-customer.sh', 'deploy-state.sh']) {
+  for (const f of ['deploy.sh', 'deploy-customer.sh', 'deploy-state.sh', 'css-cache-guard.sh']) {
     fs.copyFileSync(path.join(REPO, 'deploy', f), path.join(dir, 'deploy', f));
     fs.chmodSync(path.join(dir, 'deploy', f), 0o755);
   }

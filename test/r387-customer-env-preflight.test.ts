@@ -36,7 +36,7 @@ function runDeploy(
   const bin = path.join(dir, 'bin');
   const trace = path.join(dir, 'trace');
   for (const subdir of [bin, path.join(dir, 'deploy'), path.join(dir, 'node_modules')]) fs.mkdirSync(subdir);
-  for (const file of ['deploy.sh', 'deploy-customer.sh', 'deploy-state.sh', 'check-customer-env.mjs']) {
+  for (const file of ['deploy.sh', 'deploy-customer.sh', 'deploy-state.sh', 'check-customer-env.mjs', 'css-cache-guard.sh']) {
     fs.copyFileSync(path.join(REPO, 'deploy', file), path.join(dir, 'deploy', file));
     fs.chmodSync(path.join(dir, 'deploy', file), 0o755);
   }
