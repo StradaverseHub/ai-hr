@@ -19,6 +19,13 @@ describe('Card Assignment workbook contract', () => {
   it('a blank template imports no illustrative employee', () => {
     expect(() => readCardImportWorkbook(buildCardImportWorkbook())).toThrow('emptyWorkbook');
   });
+  it('localizes human instructions while retaining the literal template schema and identifiers', () => {
+    const bytes = buildCardImportWorkbook([{ employeeCode: '0007', cardId: '0010' }], ['வழிமுறைகள்', 'assign: உரையாக உள்ளிடவும்']);
+    const wb = XLSX.read(bytes, { type: 'buffer' });
+    expect(wb.Sheets.Instructions.A1.v).toBe('வழிமுறைகள்');
+    expect(wb.Sheets['Card Assignments'].A2.v).toBe('Employee ID');
+    expect(readCardImportWorkbook(bytes)[0]).toMatchObject({ employeeCode: '0007', cardId: '0010', operation: 'assign' });
+  });
   it('numeric identifiers are refused rather than guessing their lost zeros', () => {
     const inputs = readCardImportWorkbook(workbook(ws => { ws.A3 = { t: 'n', v: 7 }; }));
     expect(validateCardImportRows(inputs)[0].issues).toContain('literalText');

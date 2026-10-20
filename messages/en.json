@@ -21777,7 +21777,11 @@
     "emptyWorkbook": "No data rows were found. Fill in Card Assignments and upload again.",
     "invalidReview": "The review expired or changed. Preview this workbook again before saving.",
     "scope": "You do not have access to manage these card assignments. Refresh your company selection.",
-    "catalogueLimit": "This selection is too large to export or contains too many matches. Select one company or narrow the employee identifiers."
+    "catalogueLimit": "This selection is too large to export or contains too many matches. Select one company or narrow the employee identifiers.",
+    "templateLayout": "Keep the version in row 1 and headers in row 2. Enter data from row 3 in Card Assignments. Keep operation values as assign, replace or reset.",
+    "assignHelp": "Assign only when no different card exists. A blank Card ID keeps the current value.",
+    "replaceHelp": "Replace an existing card after reviewing and confirming it. A blank Card ID keeps the current value.",
+    "resetHelp": "Leave Card ID blank to clear the assigned card and return to Employee ID / IC matching."
   },
   "leaveSettingsHub": {
     "title": "Leave Settings",

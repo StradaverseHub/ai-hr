@@ -16,7 +16,10 @@ export async function GET(request: Request) {
   if (company) { if (!scope.includes(company)) return Response.json({ error: t('scope') }, { status: 403, headers }); scope = [company]; }
   try {
     await assertCardImportAccess(ctx, scope);
-    const bytes = buildCardImportWorkbook(params.get('existing') === '1' ? await cardImportExisting(ctx, scope) : []);
+    const guidance = [t('bulkTitle'), t('templateLayout'), t('limits'), `assign: ${t('assignHelp')}`,
+      `replace: ${t('replaceHelp')}`, `reset: ${t('resetHelp')}`, t('confirmationRequired'),
+      t('duplicateEmployee'), t('duplicateCard'), t('reviewHelp')];
+    const bytes = buildCardImportWorkbook(params.get('existing') === '1' ? await cardImportExisting(ctx, scope) : [], guidance);
     return new Response(new Uint8Array(bytes), { headers: { ...headers, 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="Card_Assignments_${params.get('existing') === '1' ? 'Existing' : 'Template'}.xlsx"`, 'X-Content-Type-Options': 'nosniff' } });
   } catch (error) {
     if (!(error instanceof CardImportError)) publicErrorMessage(error);

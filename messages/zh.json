@@ -21777,7 +21777,11 @@
     "emptyWorkbook": "未找到数据行。请填写 Card Assignments 后重新上传。",
     "invalidReview": "审核已过期或变更。保存前请重新预览此工作簿。",
     "scope": "您无权管理这些卡号分配。请刷新公司选择。",
-    "catalogueLimit": "所选范围过大或匹配过多。请选择单一公司或缩小员工编号范围。"
+    "catalogueLimit": "所选范围过大或匹配过多。请选择单一公司或缩小员工编号范围。",
+    "templateLayout": "保留第1行的版本及第2行的表头。在 Card Assignments 工作表第3行起填写数据。操作值须保留为 assign、replace 或 reset。",
+    "assignHelp": "仅在没有其他现有卡号时分配。Card ID 留空会保留当前值。",
+    "replaceHelp": "审核并确认后替换现有卡号。Card ID 留空会保留当前值。",
+    "resetHelp": "将 Card ID 留空，以清除已分配卡号并恢复员工编号或身份证匹配。"
   },
   "leaveSettingsHub": {
     "title": "休假设置",

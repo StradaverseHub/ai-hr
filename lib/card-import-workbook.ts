@@ -64,7 +64,7 @@ const instructions = [
   ['Duplicate Employee IDs or Card IDs in the file are blocked. Ambiguous Employee IDs must be resolved in Personnel first.'],
   ['Preview makes no changes. Only selected valid rows are saved. Changed or inaccessible records must be reviewed again.'],
 ];
-export function buildCardImportWorkbook(existing: readonly { employeeCode: string; cardId: string | null }[] = []): Buffer {
+export function buildCardImportWorkbook(existing: readonly { employeeCode: string; cardId: string | null }[] = [], guidance?: readonly string[]): Buffer {
   if (existing.length > CARD_IMPORT_MAX_ROWS) throw new CardImportError('catalogueLimit');
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([[CARD_IMPORT_VERSION], [...CARD_IMPORT_HEADERS], ...existing.map(row => [row.employeeCode, row.cardId ?? '', 'assign'])]);
@@ -76,7 +76,7 @@ export function buildCardImportWorkbook(existing: readonly { employeeCode: strin
   ws['!cols'] = [{ wch: 28 }, { wch: 28 }, { wch: 20 }];
   ws['!autofilter'] = { ref: `A2:C${CARD_IMPORT_MAX_ROWS + 2}` };
   XLSX.utils.book_append_sheet(wb, ws, 'Card Assignments');
-  const help = XLSX.utils.aoa_to_sheet(instructions); help['!cols'] = [{ wch: 120 }];
+  const help = XLSX.utils.aoa_to_sheet(guidance ? guidance.map(text => [text]) : instructions); help['!cols'] = [{ wch: 120 }];
   XLSX.utils.book_append_sheet(wb, help, 'Instructions');
   return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', compression: true });
 }

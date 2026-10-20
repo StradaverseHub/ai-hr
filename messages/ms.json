@@ -21777,7 +21777,11 @@
     "emptyWorkbook": "Tiada baris data ditemui. Isi Card Assignments dan muat naik semula.",
     "invalidReview": "Semakan tamat tempoh atau berubah. Pratonton buku kerja ini semula sebelum menyimpan.",
     "scope": "Anda tiada akses mengurus penetapan kad ini. Segar semula pilihan syarikat.",
-    "catalogueLimit": "Pilihan terlalu besar untuk dieksport atau terlalu banyak padanan. Pilih satu syarikat atau kecilkan pengecam pekerja."
+    "catalogueLimit": "Pilihan terlalu besar untuk dieksport atau terlalu banyak padanan. Pilih satu syarikat atau kecilkan pengecam pekerja.",
+    "templateLayout": "Kekalkan versi pada baris 1 dan pengepala pada baris 2. Isi data mulai baris 3 dalam Card Assignments. Kekalkan nilai operasi sebagai assign, replace atau reset.",
+    "assignHelp": "Tetapkan hanya jika tiada kad lain sedia ada. Card ID kosong mengekalkan nilai semasa.",
+    "replaceHelp": "Gantikan kad sedia ada selepas menyemak dan mengesahkannya. Card ID kosong mengekalkan nilai semasa.",
+    "resetHelp": "Biarkan Card ID kosong untuk mengosongkan kad yang ditetapkan dan kembali kepada padanan ID Pekerja / IC."
   },
   "leaveSettingsHub": {
     "title": "Tetapan Cuti",

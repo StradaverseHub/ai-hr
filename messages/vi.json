@@ -21777,7 +21777,11 @@
     "emptyWorkbook": "Không tìm thấy dòng dữ liệu. Điền Card Assignments rồi tải lên lại.",
     "invalidReview": "Lần kiểm tra đã hết hạn hoặc thay đổi. Xem trước sổ làm việc lại trước khi lưu.",
     "scope": "Bạn không có quyền quản lý các thẻ này. Làm mới lựa chọn công ty.",
-    "catalogueLimit": "Phạm vi quá lớn để xuất hoặc có quá nhiều kết quả khớp. Chọn một công ty hoặc thu hẹp mã nhân viên."
+    "catalogueLimit": "Phạm vi quá lớn để xuất hoặc có quá nhiều kết quả khớp. Chọn một công ty hoặc thu hẹp mã nhân viên.",
+    "templateLayout": "Giữ phiên bản ở dòng 1 và tiêu đề ở dòng 2. Nhập dữ liệu từ dòng 3 trong Card Assignments. Giữ giá trị thao tác là assign, replace hoặc reset.",
+    "assignHelp": "Chỉ gán khi chưa có thẻ khác. Card ID trống sẽ giữ nguyên giá trị hiện tại.",
+    "replaceHelp": "Thay thẻ hiện tại sau khi kiểm tra và xác nhận. Card ID trống sẽ giữ nguyên giá trị hiện tại.",
+    "resetHelp": "Để Card ID trống để xóa thẻ đã gán và trở lại khớp theo mã nhân viên / IC."
   },
   "leaveSettingsHub": {
     "title": "Cài đặt nghỉ phép",
