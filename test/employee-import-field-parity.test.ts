@@ -160,6 +160,7 @@ const REGISTRY: Record<string, RegistryTable> = {
     sheet: 'employee',
     covered: {
       companyId: 'company',
+      gradeId: 'job_grade',
       employeeCode: 'employee_code',
       hiredOn: 'hired_on',
       // r253 — probation. `provisionalEndOn` IS the probation end date for a full-time hire (see the
@@ -174,6 +175,7 @@ const REGISTRY: Record<string, RegistryTable> = {
     },
     excluded: [
       { reason: PLUMBING, fields: ['id', 'tenantId', 'personId', 'createdAt'] },
+      { reason: 'HR-only guarded data classification is changed through setEmploymentTestRecord; workbooks and generic imports cannot change it.', fields: ['isTestRecord'] },
       {
         reason:
           'the employment-review workflow reads this column and nothing in the product writes it — an import must not be the only writer of a field HR cannot see or correct afterwards',
@@ -243,9 +245,8 @@ const REGISTRY: Record<string, RegistryTable> = {
       },
       {
         reason:
-          'operational configuration chosen per employee after hire (calendar, shift, payroll policy, geofencing, cost split, payment method, grade) — configuration, not employee information, and each has its own screen',
+          'operational configuration chosen per employee after hire (calendar, shift, payroll policy, geofencing, cost split, payment method) — configuration, not employee information, and each has its own screen',
         fields: [
-          'gradeId',
           'workState',
           'holidayGroupId',
           'payrollPolicyId',
@@ -289,6 +290,7 @@ const REGISTRY: Record<string, RegistryTable> = {
     sheet: 'employee',
     covered: {
       departmentId: 'department',
+      businessUnitId: 'business_unit',
       positionId: 'position',
       costCenterId: 'cost_center',
       employmentType: 'employment_type',
@@ -311,7 +313,7 @@ const REGISTRY: Record<string, RegistryTable> = {
       {
         reason:
           'placement dimensions the Organisation Assignment card maintains after hire; importable, but out of the approved scope for this round',
-        fields: ['businessUnitId', 'locationId'],
+        fields: ['locationId'],
       },
     ],
   },
