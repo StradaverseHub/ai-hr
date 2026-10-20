@@ -1,5 +1,6 @@
 /** Fictional Board 28 journeys. Refuses every database except its named disposable local one. */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 const destination = '/private/tmp/aihr-board28/fixture.json';
 for (const raw of [process.env.DATABASE_URL, process.env.MIGRATION_DATABASE_URL]) {
   const url = new URL(raw || '');
@@ -16,7 +17,7 @@ async function main() {
   const { hireEmployee } = await import('../core/org');
   const { setEmploymentTestRecord } = await import('../core/employment-test-record');
   const { createCompany, createDepartment } = await import('../core/admin');
-  const { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, cancelAttendanceApplication, saveAttendanceWorkflow, setAttendanceWorkflowEnabled, setEmploymentCardId } = await import('../packs/attendance/service');
+  const { checkIn, checkOut, requestAttendanceCorrection, addAttendanceCorrectionAttachment, decideAttendanceCorrection, cancelAttendanceApplication, saveAttendanceWorkflow, setAttendanceWorkflowEnabled, setEmploymentCardId } = await import('../packs/attendance/service');
   const { createShift, assignDefaultShift } = await import('../core/roster');
   const { resolveEntitlementsTx } = await import('../core/entitlements');
   const { todayInKualaLumpur } = await import('../lib/hr-date');
@@ -55,6 +56,7 @@ async function main() {
     const shift = await createShift(root, { companyId: b.companyId, code: 'BOARD28_DAY', name: 'Fictional Board 28 day shift', startTime: '08:00', endTime: '17:00', breakMinutes: 60, weeklyPattern: [0, 1, 2, 3, 4, 5, 6] });
     for (const key of ['Employee', 'SecondEmployee']) await assignDefaultShift(root, { employmentId: people[key].employmentId, shiftId: shift.id });
     const requests: Record<string, string> = {};
+    const supportingFiles: Record<string, { fileName: string; mimeType: string; bytes: number; sha256: string }> = {};
     // Preserve a pre-workflow request, then freeze two different modes for the newer journeys.
     for (const [key, offset, mode] of [['legacy', -3, null], ['sequential', -2, 'sequential'], ['anyOne', -1, 'any_one']] as const) {
       const on = new Date(Date.parse(`${date}T00:00:00Z`) + offset * 86_400_000).toISOString().slice(0, 10);
@@ -68,6 +70,12 @@ async function main() {
       await checkIn(root, { employmentId: people.Employee.employmentId, date: on, time: '08:00', manual: true });
       await checkOut(root, { employmentId: people.Employee.employmentId, date: on, time: '16:00', manual: true });
       requests[key] = (await requestAttendanceCorrection(contexts.Employee, { employmentId: people.Employee.employmentId, date: on, checkIn: '09:00', checkOut: '18:00', requestKind: 'short_hours', reason: `Fictional Board 28 ${key} correction` })).correctionId;
+      if (key === 'sequential') {
+        const content = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aTUkAAAAASUVORK5CYII=', 'base64');
+        const fileName = 'fictional-board28-support.png', mimeType = 'image/png';
+        await addAttendanceCorrectionAttachment(contexts.Employee, { correctionId: requests[key], fileName, mimeType, content });
+        supportingFiles[key] = { fileName, mimeType, bytes: content.length, sha256: createHash('sha256').update(content).digest('hex') };
+      }
     }
     for (const [index, key] of ['approved', 'rejected', 'cancelled', 'withdrawn', 'absent', 'incomplete_entry', 'self_overtime'].entries()) {
       const on = new Date(Date.parse(`${date}T00:00:00Z`) - (index + 4) * 86_400_000).toISOString().slice(0, 10);
@@ -82,7 +90,7 @@ async function main() {
     const [admin] = await owner.db.select().from(s.appUser).where(and(eq(s.appUser.id, b.adminUserId), eq(s.appUser.tenantId, b.tenantId)));
     await owner.db.update(s.appUser).set({ onboardedAt: new Date() }).where(eq(s.appUser.id, admin.id));
     await mkdir('/private/tmp/aihr-board28', { recursive: true, mode: 0o700 });
-    await writeFile(destination, JSON.stringify({ notice: 'Fictional disposable local records only.', tenantId: b.tenantId, companyId: b.companyId, foreignCompanyId: foreignCompany.id, adminUserId: admin.id, date, people, requests }, null, 2), { mode: 0o600, flag: 'wx' });
+    await writeFile(destination, JSON.stringify({ notice: 'Fictional disposable local records only.', tenantId: b.tenantId, companyId: b.companyId, foreignCompanyId: foreignCompany.id, adminUserId: admin.id, date, people, requests, supportingFiles }, null, 2), { mode: 0o600, flag: 'wx' });
     console.log('Created fictional Board 28 fixture; local identifiers saved privately.');
   } finally { await closeAll(); }
 }
