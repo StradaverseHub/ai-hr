@@ -1,6 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
 import { requireAdmin } from '@/lib/authz';
 import { publicErrorMessage } from '@/lib/public-error';
 import { resolvePayrollLeaveException } from '@/packs/payroll/service';
@@ -21,5 +22,6 @@ export async function resolveLeavePayrollExceptionAction(form: FormData) {
     console.error('Payroll leave follow-up resolution failed:', publicErrorMessage(error));
     failed = true;
   }
+  if (!failed) revalidatePath(`/payroll/${batchId}`);
   redirect(`/payroll/${batchId}${failed ? '?leaveFollowupError=1' : ''}#leave-followup`);
 }
