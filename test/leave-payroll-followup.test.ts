@@ -244,9 +244,17 @@ describe('leave decisions and payroll follow-up', () => {
     const [reviewerPerson]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional scoped reviewer',primaryEmail:`${randomUUID()}@reviewer.invalid`}).returning();
     const reviewer=await createAppUser(b.tenantId,reviewerPerson.id,'hr_admin');
     await owner.db.update(schema.roleAssignment).set({companyId:current.id}).where(eq(schema.roleAssignment.appUserId,reviewer));
-    const scoped={tenantId:b.tenantId,userId:reviewer,roles:['hr_admin'],entitlements:harnessSnapshot(b.tenantId)};
+    // A roles-only SessionContext intentionally means GROUP-WIDE in withTenant. Carry the saved
+    // company grants, as lib/session.ts does, so this actually exercises a new-company-only reviewer.
+    const grants = await owner.db.select({ role: schema.roleAssignment.role, companyId: schema.roleAssignment.companyId })
+      .from(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId, reviewer)).orderBy(schema.roleAssignment.id);
+    expect(grants).toEqual([{ role: 'hr_admin', companyId: current.id }]);
+    const scoped: SessionContext = { tenantId: b.tenantId, userId: reviewer, personId: reviewerPerson.id,
+      grants, roles: grants.map(grant => grant.role), entitlements: harnessSnapshot(b.tenantId) };
     expect(await listPayrollLeaveExceptions(scoped,batchId)).toEqual([]);
     await expect(resolvePayrollLeaveException(scoped,{id:exceptions[0].id,batchId,resolution:'no_adjustment',explanation:'This reviewer must not resolve another company payroll.'})).rejects.toThrow();
+    expect((await listPayrollLeaveExceptions(hr, batchId))[0]).toMatchObject({ id: exceptions[0].id, status: 'open', explanation: null });
+    expect(await slip(batchId)).toEqual(before);
   });
 
   it('pending HR cancellation creates no stale marker or closed exception', async () => {

@@ -390,7 +390,7 @@ describe('adminCancelLeave — closed payroll period', () => {
   it.each([true, false])('closed payroll blocks only a financially affected HR cancellation (paid=%s)', async (paid) => {
     const leaveTypeId = paid ? b.annualLeaveTypeId : (await owner.db.insert(schema.leaveType).values({
       tenantId: b.tenantId, code: 'UNPAID', name: 'Unpaid leave', paid: false,
-      counting: 'working_days', allowNegativeBalance: true, employeeCancelApproved: true,
+      counting: 'working_days', allowNegativeBalance: true, maxNegativeBalance: '30', employeeCancelApproved: true,
     }).returning({ id: schema.leaveType.id }))[0].id;
     const reqId = await approvedThreeDay(leaveTypeId); // 10–12 Aug 2026 → month 2026-08
     const [pp] = await owner.db
@@ -434,6 +434,7 @@ describe('adminCancelLeave — closed payroll period', () => {
     expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batch.id)).orderBy(schema.payslip.id)).toEqual(beforeSlip);
     expect((await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batch.id)))[0]).toEqual(beforeBatch);
     expect(await listPayrollLeaveExceptions(adminCtx(b), batch.id)).toEqual([]);
+    expect(await owner.db.select().from(schema.payrollLeaveException).where(eq(schema.payrollLeaveException.batchId, batch.id))).toHaveLength(0);
   });
 });
 
