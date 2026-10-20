@@ -75,6 +75,8 @@ import {
   serviceYearsAt,
   // 6e9a126e RELEASE TWO — the entitlement TEMPLATE overlay, for the balance breakdown's past-date read.
   policyForDatedReader,
+  emergencyLeaveGroupOriginSql,
+  cancellationSplitGroupSql,
   countedDatesForSpan,
   countedDatesForSpans,
   // r301 (83511d3b) — Cancel Approved Leave: the leave type's rule and THE button predicate, so the Team Leave
@@ -1267,16 +1269,6 @@ export function eligibleLeaveTypeIdsFor(
  * the /leave non-admin self-view) AND the paginated/filtered `listLeaveRequestsPage` (the /leave admin
  * search & filter surface, feedback 0773bda9). One selection object means the two reads can never drift.
  */
-// Group IDs are also assigned by partial cancellations. Only the recorded submission proves EL
-// origin; a cancelled sibling does not disprove a genuine EL application. Domain-event RLS applies.
-const emergencyGroupProvenance = sql<boolean>`exists (
-  select 1 from domain_event el_origin
-  where el_origin.tenant_id = ${leaveRequest.tenantId}
-    and el_origin.subject_employment_id = ${leaveRequest.employmentId}
-    and el_origin.aggregate_type = 'leave-request'
-    and el_origin.aggregate_id = ${leaveRequest.parentGroupId}
-    and el_origin.event_type = 'leave-request.emergency.submitted'
-)`;
 const leaveRequestSelection = {
   id: leaveRequest.id,
   employmentId: leaveRequest.employmentId,
@@ -1314,7 +1306,7 @@ const leaveRequestSelection = {
   status: leaveRequest.status,
   // Shared grouping ID for EL applications and partial-cancellation splits; it does not prove purpose.
   parentGroupId: leaveRequest.parentGroupId,
-  isEmergencyGroup: emergencyGroupProvenance,
+  isEmergencyGroup: emergencyLeaveGroupOriginSql,
   // Phase-B #13 (ADR-0062): the EA s.37 maternity paid-allowance decision, so the approver sees whether
   // the paid ALLOWANCE was withheld (and why). allowanceEligible is the per-request override
   // (TRUE=paid, FALSE=withheld/unpaid, NULL=not a maternity decision or inputs unconfirmed); the reason
@@ -1380,9 +1372,9 @@ const leaveRequestSelection = {
   pendingCancelDates: sql<string[] | null>`(select cancel_dates from leave_cancellation_request c where c.leave_request_id = leave_request.id and c.status = 'pending' order by c.created_at desc limit 1)`,
   // R5 Build #2 (iterative cancellation): TRUE when this row is a SURVIVOR of a prior cancellation split —
   // it carries a parent_group_id AND a sibling in the same group is 'cancelled'. Such a survivor is still
-  // cancellable (the employee can give back more days), so the Leave page shows the "Cancel dates" button
-  // for it too; a genuine EL / per-date child (parent group with NO 'cancelled' sibling) never matches.
-  isCancellationSplit: sql<boolean>`(leave_request.parent_group_id is not null and exists (select 1 from leave_request s where s.parent_group_id = leave_request.parent_group_id and s.status = 'cancelled'))`,
+  // cancellable (the employee can give back more days). Recorded EL origin excludes genuine EL children
+  // even if HR has cancelled a sibling.
+  isCancellationSplit: cancellationSplitGroupSql,
   // R17 600be8ac ask #1: the applicant's own words — the free-text `reason` and (for types that require it) the
   // mandatory `employeeRemark` — so the approver's summary shows WHY the leave was requested, not just the dates.
   reason: leaveRequest.reason,
@@ -1950,9 +1942,8 @@ export function plannedAbsences(
         // feature). pendingCancellationId: an open give-back request already on this row (suppress a 2nd click).
         pendingCancellationId: sql<string | null>`(select id from leave_cancellation_request c where c.leave_request_id = leave_request.id and c.status = 'pending' order by c.created_at desc limit 1)`,
         // isCancellationSplit: TRUE when this row is a SURVIVOR of a prior cancellation split (carries a
-        // parent_group_id AND a sibling in the group is 'cancelled') — still cancellable; a genuine EL / per-date
-        // child (parent group with NO 'cancelled' sibling) never matches.
-        isCancellationSplit: sql<boolean>`(leave_request.parent_group_id is not null and exists (select 1 from leave_request s where s.parent_group_id = leave_request.parent_group_id and s.status = 'cancelled'))`,
+        // parent_group_id AND a cancelled sibling, without recorded EL origin) — still cancellable.
+        isCancellationSplit: cancellationSplitGroupSql,
         // r301 (83511d3b) — what employeeCancellableDates needs beyond the row shape: the type's Cancel
         // Approved Leave rule (role + code so Emergency Leave reads today's behaviour) and the unpaid days.
         // Read for the candidate list below and NOT returned on the pill (stripped when the pills are built).
@@ -4898,7 +4889,7 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
         employeeRemark: leaveRequest.employeeRemark,
         // EL applications and partial cancellations both group rows; recorded origin identifies EL.
         parentGroupId: leaveRequest.parentGroupId,
-        isEmergencyGroup: emergencyGroupProvenance,
+        isEmergencyGroup: emergencyLeaveGroupOriginSql,
         hasDocument: sql<boolean>`exists (select 1 from leave_request_attachment lra where lra.leave_request_id = leave_request.id)`,
         currentStepKind: sql<string | null>`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
         currentStepIndex: sql<number | null>`(select step_index from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
@@ -4906,7 +4897,7 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
         // Edit/cancel-by-status: an open give-back already on this approved row suppresses a second cancel click.
         pendingCancellationId: sql<string | null>`(select id from leave_cancellation_request c where c.leave_request_id = leave_request.id and c.status = 'pending' order by c.created_at desc limit 1)`,
         // R5 Build #2: TRUE when this row is a SURVIVOR of a prior cancellation split (still cancellable).
-        isCancellationSplit: sql<boolean>`(leave_request.parent_group_id is not null and exists (select 1 from leave_request s where s.parent_group_id = leave_request.parent_group_id and s.status = 'cancelled'))`,
+        isCancellationSplit: cancellationSplitGroupSql,
         // R17 600be8ac ask #4: TRUE when this request has ≥1 REJECTED per-date sub-row → the /me + personnel
         // history renders the derived "Partially approved" badge instead of a flat "Approved" (no status enum).
         hasRejectedDates: sql<boolean>`exists (select 1 from leave_request_date d where d.leave_request_id = leave_request.id and d.status = 'rejected')`,

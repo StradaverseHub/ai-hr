@@ -6248,19 +6248,30 @@ export async function countedDatesForSpans(
   return out;
 }
 
-/** ADR-0065 (R5 Build #2 — iterative cancellation). True when the parent_group_id names a CANCELLATION-SPLIT
- *  group (produced by decideLeaveCancellation), as opposed to an Emergency-Leave / per-date-approval group.
- *  A cancellation split ALWAYS leaves ≥1 sibling row with status='cancelled' sharing the group; an EL /
- *  per-date group never has a 'cancelled' sibling. So a surviving cancellation-split row (which now carries a
- *  parentGroupId) can still be cancelled again — the reporter's "give back Wednesday now, Thursday later"
- *  scenario — while genuine EL children stay blocked by the same gate. No discriminator column, no migration. */
-async function isCancellationSplitGroup(tx: Tx, parentGroupId: string): Promise<boolean> {
-  const [sib] = await tx
-    .select({ id: leaveRequest.id })
-    .from(leaveRequest)
-    .where(and(eq(leaveRequest.parentGroupId, parentGroupId), eq(leaveRequest.status, 'cancelled')))
-    .limit(1);
-  return !!sib;
+/** Recorded purpose, shared by the cancellation guard and UI readers. A group ID alone does not
+ * distinguish an EL submission from a partial-cancellation split. Use with unaliased leave_request. */
+export const emergencyLeaveGroupOriginSql = sql<boolean>`exists (
+  select 1 from domain_event el_origin
+  where el_origin.tenant_id = ${leaveRequest.tenantId}
+    and el_origin.subject_employment_id = ${leaveRequest.employmentId}
+    and el_origin.aggregate_type = 'leave-request'
+    and el_origin.aggregate_id = ${leaveRequest.parentGroupId}
+    and el_origin.event_type = 'leave-request.emergency.submitted'
+)`;
+
+/** Ordinary repeated splits remain eligible. A genuine EL child can have a cancelled sibling after
+ * HR withdraws that sibling, so that state alone must never bypass the existing EL exclusion. */
+export const cancellationSplitGroupSql = sql<boolean>`(
+  ${leaveRequest.parentGroupId} is not null and not ${emergencyLeaveGroupOriginSql}
+  and exists (select 1 from leave_request s
+    where s.tenant_id = ${leaveRequest.tenantId} and s.employment_id = ${leaveRequest.employmentId}
+      and s.parent_group_id = ${leaveRequest.parentGroupId} and s.status = 'cancelled')
+)`;
+
+async function isCancellationSplitGroup(tx: Tx, parentGroupId: string, employmentId: string): Promise<boolean> {
+  const [row] = await tx.select({id:leaveRequest.id}).from(leaveRequest)
+    .where(and(eq(leaveRequest.parentGroupId,parentGroupId),eq(leaveRequest.employmentId,employmentId),cancellationSplitGroupSql)).limit(1);
+  return !!row;
 }
 
 /** Resolve the person behind an employment (for the subject-only assertion). */
@@ -6464,11 +6475,11 @@ export async function requestLeaveCancellation(
     if (req.durationType !== 'full_day') {
       throw new LeaveCancellationNotAllowedError('only full-day leave can be partially cancelled', 'not_full_day');
     }
-    if (req.parentGroupId != null && !(await isCancellationSplitGroup(tx, req.parentGroupId))) {
-      // Blocks Emergency-Leave / per-date-approval child rows (each already a single date under a group), but
+    if (req.parentGroupId != null && !(await isCancellationSplitGroup(tx, req.parentGroupId, req.employmentId))) {
+      // Blocks Emergency-Leave / per-date-approval child rows, but
       // ADMITS a surviving row of a prior CANCELLATION split so the employee can give back more days later
       // (R5 Build #2 — iterative cancellation; ADR-0065). A cancellation-split group is detected by a
-      // 'cancelled' sibling; an EL / per-date group never has one.
+      // 'cancelled' sibling AND absence of a recorded EL submission for this subject and group.
       throw new LeaveCancellationNotAllowedError('this leave cannot be partially cancelled', 'grouped');
     }
     const [lt] = await tx
@@ -6841,7 +6852,7 @@ async function applyLeaveCancellationApprovalTx(
   // a cancellation-split group here as well; only genuine EL / per-date children stay blocked.
   if (
     req.status !== 'approved' ||
-    (req.parentGroupId != null && !(await isCancellationSplitGroup(tx, req.parentGroupId)))
+    (req.parentGroupId != null && !(await isCancellationSplitGroup(tx, req.parentGroupId, req.employmentId)))
   ) {
     throw new LeaveCancellationNotAllowedError('the leave is no longer in a cancellable state', 'no_longer_cancellable');
   }
