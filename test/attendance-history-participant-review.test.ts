@@ -4,7 +4,7 @@ import { eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, listAttendanceCorrections } from '../core/attendance';
+import { checkIn, checkOut, requestAttendanceCorrection, addAttendanceCorrectionAttachment, decideAttendanceCorrection, listAttendanceCorrections } from '../core/attendance';
 import { saveAttendanceWorkflow, setAttendanceWorkflowEnabled } from '../core/attendance-workflow';
 import { attendanceApplicationDetail, listAttendanceApplicationHistory } from '../core/attendance-application-history';
 import { decideAttendanceHistorySelection } from '../packs/attendance/history-decisions';
@@ -35,10 +35,11 @@ const projection = (ctx: SessionContext, id: string) => withTenant(ctx, tx => tx
 describe('Request-bound history review and original Overview visibility', () => {
   it('keeps future participants readable but read-only and never grants general HR history', async () => {
     const f = await fixture(), unrelated = await actor('Fictional unrelated employee');
+    await addAttendanceCorrectionAttachment(f.worker.ctx, { correctionId: f.id, fileName: 'fictional-history-review.png', mimeType: 'image/png', content: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aTUkAAAAASUVORK5CYII=', 'base64') });
     const current = await listAttendanceCorrections(f.first.ctx, { companyIds: [b.companyId], status: 'pending' });
     const future = await listAttendanceCorrections(f.second.ctx, { companyIds: [b.companyId], status: 'pending' });
-    expect(current.find(row => row.id === f.id)).toMatchObject({ canDecide: true });
-    expect(future.find(row => row.id === f.id)).toMatchObject({ canDecide: false });
+    expect(current.find(row => row.id === f.id)).toMatchObject({ canDecide: true, hasAttachment: true });
+    expect(future.find(row => row.id === f.id)).toMatchObject({ canDecide: false, hasAttachment: true });
     expect((await listAttendanceCorrections(unrelated.ctx, { companyIds: [b.companyId], status: 'pending' })).map(row => row.id)).not.toContain(f.id);
     await expect(listAttendanceApplicationHistory(f.second.ctx, [b.companyId], { status: 'pending' })).rejects.toThrow();
     expect(await projection(f.second.ctx, f.id)).toHaveLength(0);

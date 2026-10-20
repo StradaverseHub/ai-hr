@@ -35,6 +35,7 @@ export default async function VisibleAttendanceApplications({ searchParams }: {
           <td className="px-4 py-3 tabular-nums">{attendanceHistoryDate(row.attendanceDate, locale)}</td>
           <td className="space-y-2 px-4 py-3"><p>{t(`subtypes.${row.requestKind ?? 'unknown'}`)}</p>{(row.proposedCheckIn || row.proposedCheckOut) && <p>{row.proposedCheckIn?.slice(0, 5) ?? t('notRecorded')} → {row.proposedCheckOut?.slice(0, 5) ?? t('notRecorded')}</p>}
             {row.requestedOtMinutes != null && <div className="space-y-1 text-xs"><p>{t('requestedOt')}: {minutes(row.requestedOtMinutes)}</p><p>{t('recordedOvertime')}: {minutes(row.systemOtMinutes)}</p><p>{t('previewOvertime')}: {minutes(previewOt)}</p></div>}
+            {row.hasAttachment && <a href={`/attendance/requests/attachment/${row.id}`} className="inline-flex min-h-11 items-center text-primary underline">{t('attachment')}</a>}
             {row.workflow && <details><summary className="min-h-11 cursor-pointer py-3 text-primary">{t('progress')}</summary><AttendanceWorkflowProgress workflow={row.workflow} status={row.status} /></details>}
           </td>
           <td className="max-w-sm whitespace-pre-wrap px-4 py-3">{row.reason ?? t('notRecorded')}</td>

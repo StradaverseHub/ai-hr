@@ -15,14 +15,15 @@ import Page from '../app/attendance/application-history/visible/page';
 beforeEach(() => vi.clearAllMocks()); afterEach(cleanup);
 it('uses the former Overview reader unchanged and keeps noncurrent rows visible without action forms', async () => {
   list.mockResolvedValue([
-    { id: 'current', employee: 'Fictional current request', personId: 'other', employeeCode: '0007', attendanceDate: '2026-10-20', status: 'pending', requestKind: 'absent', canDecide: true, workflow: { currentStage: 0, currentParticipantSlot: '0:0' } },
-    { id: 'future', employee: 'Fictional future request', personId: 'other', employeeCode: '0008', attendanceDate: '2026-10-20', status: 'pending', requestKind: 'absent', canDecide: false },
+    { id: 'current', employee: 'Fictional current request', personId: 'other', employeeCode: '0007', attendanceDate: '2026-10-20', status: 'pending', requestKind: 'absent', hasAttachment: true, canDecide: true, workflow: { currentStage: 0, currentParticipantSlot: '0:0' } },
+    { id: 'future', employee: 'Fictional future request', personId: 'other', employeeCode: '0008', attendanceDate: '2026-10-20', status: 'pending', requestKind: 'absent', hasAttachment: true, canDecide: false },
     { id: 'own', employee: 'Fictional own request', personId: 'viewer', employeeCode: '0009', attendanceDate: '2026-10-20', status: 'pending', requestKind: 'absent', canDecide: true },
   ]);
   render(<NextIntlClientProvider locale="en" messages={en}>{await Page({ searchParams: Promise.resolve({}) })}</NextIntlClientProvider>);
   expect(list).toHaveBeenCalledWith(session, { companyIds: ['company'], status: 'pending' });
   const current = screen.getByText('Fictional current request').closest('tr')!;
   expect(within(current).getByRole('button', { name: en.attendanceHistory.approve })).toBeVisible();
+  expect(within(current).getByRole('link', { name: en.attendanceHistory.attachment })).toHaveAttribute('href', '/attendance/requests/attachment/current');
   const form = current.querySelector('form')!;
   expect(new FormData(form).get('correctionId')).toBe('current');
   expect(new FormData(form).get('workflowParticipant')).toBe('0:0');
@@ -31,5 +32,6 @@ it('uses the former Overview reader unchanged and keeps noncurrent rows visible 
     const row = screen.getByText(name).closest('tr')!;
     expect(row.querySelector('form')).toBeNull();
     expect(within(row).getByText(en.attendanceHistory.notWaitingForYou)).toBeVisible();
+    if (name === 'Fictional future request') expect(within(row).getByRole('link', { name: en.attendanceHistory.attachment })).toHaveAttribute('href', '/attendance/requests/attachment/future');
   }
 });
