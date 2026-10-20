@@ -5,7 +5,7 @@ import { withAttendanceTenant as withTenant } from './module-gate';
 import { attendanceCorrection as correction, employment, person, company, department, businessUnit, jobGrade, profileOption, domainEvent, appUser, position } from '../db/schema';
 import { CATEGORY_EMPLOYMENT_COLUMN, EMPLOYMENT_PROFILE_CATEGORIES } from './profile-options';
 import type { AttendanceWorkflowCriteria } from '../lib/attendance-workflow';
-import { attendanceWorkflowForTx } from './attendance-workflow';
+import { attendanceWorkflowForTx, attendanceWorkflowsForTx } from './attendance-workflow';
 import { attendanceApplicationType, type AttendanceApplicationType } from '../lib/attendance-workflow';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { visibleLabelIdsCondition } from './system-labels';
@@ -26,6 +26,7 @@ export type AttendanceHistoryRow = {
     status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'withdrawn';
     applicationType: AttendanceApplicationType;
     currentStage: number | null;
+    currentParticipantSlot?: string | null;
     stages: {
         name: string;
         approvers: {
@@ -79,6 +80,14 @@ export async function listAttendanceApplicationHistory(ctx: SessionContext, comp
         if ((f.page - 1) * f.pageSize >= (counts[0]?.total ?? 0))
             return { rows: [] as AttendanceHistoryRow[], total: counts[0]?.total ?? 0, page: f.page, pageSize: f.pageSize };
         const rows = await tx.execute(sql `SELECT c.request_kind AS "requestKind",(c.status='pending' AND p.id IS DISTINCT FROM ${ctx.personId??null}::uuid) AS selectable,c.id,c.employment_id AS "employmentId",e.employee_code AS "employeeCode",p.full_name AS employee,e.company_id AS "companyId",co.legal_name AS company,c.attendance_date AS "attendanceDate",c.created_at AS "submittedAt",${statusSql} AS status,${typeSql} AS "applicationType",w.current_stage AS "currentStage",w.stages,w.template_name AS "templateName" ${from} ORDER BY c.created_at DESC,c.id DESC LIMIT ${f.pageSize} OFFSET ${(f.page - 1) * f.pageSize}`) as unknown as AttendanceHistoryRow[];
+        const workflows = await attendanceWorkflowsForTx(tx, rows.map(row => row.id));
+        for (const row of rows) {
+            const workflow = workflows.get(row.id);
+            if (workflow?.routingVersion === 3) {
+                row.currentParticipantSlot = workflow.currentParticipantSlot;
+                row.selectable = row.selectable && workflow.currentParticipantSlot != null;
+            }
+        }
         return { rows, total: counts[0]?.total ?? 0, page: f.page, pageSize: f.pageSize };
     });
 }
