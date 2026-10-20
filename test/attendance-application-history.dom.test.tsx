@@ -21,7 +21,10 @@ vi.mock('next-intl/server', () => ({
   getLocale: async () => language.current,
   getTranslations: async (namespace: string) => createTranslator({
     locale: language.current,
-    messages: catalogues[language.current],
+    messages: {
+      attendanceHistory: catalogues[language.current].attendanceHistory,
+      attendanceWorkflow: { v3: catalogues[language.current].attendanceWorkflow.v3 },
+    },
     namespace: namespace as 'attendanceHistory',
     onError: error => { throw error; },
   }),
