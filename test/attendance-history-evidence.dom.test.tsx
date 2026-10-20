@@ -4,6 +4,8 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import { createTranslator } from 'next-intl';
 import en from '../messages/en.json';
 const { service } = vi.hoisted(() => ({ service: { attendanceApplicationDetail: vi.fn() } }));
+// Server page markup is rendered outside Next's router; keep real anchor semantics.
+vi.mock('next/link', () => ({ default: ({ children, ...props }: React.ComponentProps<'a'>) => <a {...props}>{children}</a> }));
 vi.mock('../lib/scope', () => ({ scopedAdmin: async () => ({ s: {}, scopeIds: ['company'] }) }));
 vi.mock('../packs/attendance/service', () => service);
 vi.mock('next-intl/server', () => ({ getLocale: async () => 'en', getTranslations: async () => createTranslator({ locale: 'en', messages: en, namespace: 'attendanceHistory', onError: error => { throw error; } }) }));
@@ -26,7 +28,7 @@ it('presents recorded required work, qualifying work and shortfall without recal
     schedule: { startAbs: 480, endAbs: 1020, scheduledMinutes: 480, normalMinutesOverride: null, dayType: 'workday' }, currentShiftName: 'Fictional day shift', organisation: null }));
   for (const value of ['480 minutes', '420 minutes', '60 minutes', '08:00 → 17:00']) expect(screen.getByText(value)).toBeVisible();
   expect(screen.getByText(en.attendanceHistory.originalUnavailable)).toBeVisible();
-  expect(screen.getByRole('link', { name: en.attendanceHistory.back })).toHaveAttribute('href', '/attendance/application-history?status=pending&query=0007');
+  expect(screen.getByRole('link', { name: `← ${en.attendanceHistory.back}` })).toHaveAttribute('href', '/attendance/application-history?status=pending&query=0007');
 });
 it('identifies the recorded missing clock direction for Incomplete Entry', async () => {
   await show(detail('incomplete_entry', { record: { checkInAt: null, checkOutAt: '17:00:00', status: 'present', workedMinutes: 0, underMinutes: null }, schedule: null, organisation: null }));

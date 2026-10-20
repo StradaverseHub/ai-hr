@@ -25,7 +25,7 @@ async function fixture(mode: 'sequential' | 'any_one' = 'sequential') {
   const date = todayInKualaLumpur();
   await checkIn(root, { employmentId: worker.employmentId, date, time: '08:00', manual: true });
   await checkOut(root, { employmentId: worker.employmentId, date, time: '17:00', manual: true });
-  await saveAttendanceWorkflow(root, { companyId: b.companyId, routingVersion: 3, code: 'HISTORY_REVIEW', name: 'Saved history review route', applicationType: 'irregularity', priority: 100, criteria: { departmentIds: [b.deptA] }, active: true,
+  await saveAttendanceWorkflow(root, { companyId: b.companyId, routingVersion: 3, code: 'HISTORY_REVIEW', name: 'Saved history review route', applicationType: 'irregularity', priority: 100, criteria: { employeeIds: [worker.employmentId] }, active: true,
     stages: [{ name: 'Review', mode, source: { kind: 'specific_employee', employmentIds: [first.employmentId, second.employmentId] }, hrAlternative: false }] });
   await setAttendanceWorkflowEnabled(root, b.companyId, 'irregularity', true);
   const { correctionId: id } = await requestAttendanceCorrection(worker.ctx, { employmentId: worker.employmentId, date, checkIn: '09:00', checkOut: '18:00', reason: 'Fictional recorded evidence' });
