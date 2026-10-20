@@ -258,9 +258,15 @@ async function decideAttendanceParticipantTx(tx: Tx, ctx: SessionContext, flow: 
         return { routed: true, final: false, currentStage: flow.currentStage, actualDeciderEmploymentId: actualEmploymentId };
     }
     const final = fulfillment.decision === 'rejected' || flow.currentStage === flow.stages.length - 1;
-    if (final && fulfillment.decision === 'approved') {
-        const [visibility] = await tx.execute(sql`select app.can_see_employment(${flow.employmentId}::uuid) as ok`) as unknown as { ok: boolean }[];
-        if (!visibility?.ok) throw new AttendanceLevelError({ code: 'hr_handoff_required', levelIndex: flow.currentStage });
+    if (final) {
+        // Rejecting an OT-bearing correction changes its canonical approval digest too. Preserve
+        // ordinary non-OT rejection, but require the existing scoped calculation owner for that
+        // terminal OT mutation rather than failing later in the cash-source guard with generic42501.
+        const [visibility] = await tx.execute(sql`select app.can_see_employment(${flow.employmentId}::uuid) as ok,
+            (select c.requested_ot_minutes is not null from public.attendance_correction c
+             where c.id=${flow.correctionId}::uuid and c.tenant_id=app.current_tenant_id() and c.employment_id=${flow.employmentId}::uuid) as "otBearing"`) as unknown as { ok: boolean; otBearing: boolean | null }[];
+        if (!visibility?.ok && (fulfillment.decision === 'approved' || visibility?.otBearing !== false))
+            throw new AttendanceLevelError({ code: 'hr_handoff_required', levelIndex: flow.currentStage });
     }
 
     await tx.insert(decision).values({ tenantId: ctx.tenantId, requestId: flow.id, employmentId: flow.employmentId, stageIndex: flow.currentStage,

@@ -19442,7 +19442,7 @@
       "pendingParticipant": "Waiting for your decision",
       "reassignSlot": "Outstanding participant to reassign",
       "chooseSlot": "Choose an outstanding participant…",
-      "calculationHandoff": "This final approval needs scoped HR calculation access. Ask HR to record a reasoned reassignment of the outstanding participant; earlier approvals are retained.",
+      "calculationHandoff": "This final decision needs scoped HR calculation access. Ask HR to record a reasoned reassignment of the outstanding participant; earlier approvals are retained.",
       "identityUnavailable": "A required approver is inactive, has no unique usable login, or is outside the permitted company scope. Replace the selection or ask HR to correct their access."
     }
   },
