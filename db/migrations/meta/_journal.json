@@ -3277,6 +3277,13 @@
       "when": 1791900000048,
       "tag": "0568_ai_user_default_allowance",
       "breakpoints": true
+    },
+    {
+      "idx": 577,
+      "version": "7",
+      "when": 1791900000057,
+      "tag": "0577_employee_home_notice_integrity",
+      "breakpoints": true
     }
   ]
 }
