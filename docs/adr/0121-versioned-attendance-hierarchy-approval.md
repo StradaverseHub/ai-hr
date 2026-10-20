@@ -132,7 +132,7 @@ must not be inferred from the application's screen/type alone. Ordinary non-OT r
 supported. No cash-source predicate, Personnel visibility or financial role is widened.
 
 
-Supporting files are request consumers too. A live v3 assignee may read the supporting bytes on that
+Supporting files are request consumers too. A live v2/v3 assignee may read the supporting bytes on that
 exact request through the existing attachment route, while unrelated, revoked, reassigned-away and
 foreign-tenant actors remain refused. The worklist exposes only an RLS-scoped presence flag and the
 existing Approvals row links the file; file content is fetched on demand. This adds a SELECT policy,

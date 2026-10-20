@@ -3642,7 +3642,7 @@ export async function addAttendanceCorrectionAttachment(
 }
 
 /** Supporting file for the download route. RLS admits existing employment visibility or a live
- *  exact v3 request assignment; the latter never grants file writes or general Personnel visibility. */
+ *  exact v2/v3 request assignment; the latter never grants file writes or general Personnel visibility. */
 export function getAttendanceCorrectionAttachment(ctx: SessionContext, correctionId: string) {
   return withTenant(ctx, async (tx) => {
     const [row] = await tx

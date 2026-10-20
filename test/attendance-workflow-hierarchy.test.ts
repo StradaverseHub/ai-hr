@@ -4,7 +4,7 @@ import { and, asc, eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { hireEmployee, setReportingLine, editDelegation } from '../core/org';
-import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, listAttendanceCorrections } from '../core/attendance';
+import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, addAttendanceCorrectionAttachment, getAttendanceCorrectionAttachment, listAttendanceCorrections } from '../core/attendance';
 import { saveAttendanceWorkflow, setAttendanceWorkflowEnabled, reassignAttendanceWorkflowStageToHr, decideAttendanceWorkflowStageTx, previewAttendanceWorkflow, snapshotAttendanceWorkflowTx } from '../core/attendance-workflow';
 import { attendanceApplicationDetail } from '../core/attendance-application-history';
 import { createBatch, generatePayslips, closeBatch, unlockClosedBatch } from '../packs/payroll/service';
@@ -99,12 +99,18 @@ describe('797ba70b: explicit hierarchy routing and frozen accountable actors', (
   });
   it('freezes configuration and superior identity, retaining request visibility after a reporting change without expanding Personnel', async () => {
     const f = await fixture(), template = await enable(f.a), id = await submit(f.self, f.d.employmentId);
+    const supportingBytes = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
+    await addAttendanceCorrectionAttachment(f.self, { correctionId: id, fileName: 'frozen-superior-evidence.png', mimeType: 'image/png', content: supportingBytes });
     const replacement = await hire('Replacement manager'), replacementActor = await login(replacement.personId);
     await setReportingLine(f.a, { subordinateEmploymentId: f.d.employmentId, managerEmploymentId: replacement.employmentId, lineType: 'administrative', validFrom: '2020-01-01' });
     await saveAttendanceWorkflow(f.a, input({ name: 'New configuration', active: false, stages: [{ name: 'New', level: { kind: 'hr_admin', employmentId: null, alternates: [] } }] }), template.lineageId);
     await expect(decideAttendanceCorrection(replacementActor, { correctionId: id, decision: 'approved', expectedStageIndex: 0 })).rejects.toThrow();
     expect(await withTenant(f.actors[0], tx => tx.select().from(schema.employment).where(eq(schema.employment.id, f.d.employmentId)))).toHaveLength(0);
-    expect((await listAttendanceCorrections(f.actors[0], { status: 'pending' })).map(r => r.id)).toContain(id);
+    const supportingFile = await getAttendanceCorrectionAttachment(f.actors[0], id);
+    expect(supportingFile?.fileName).toBe('frozen-superior-evidence.png');
+    expect(Buffer.from(supportingFile!.content).equals(supportingBytes)).toBe(true);
+    await expect(addAttendanceCorrectionAttachment(f.actors[0], { correctionId: id, fileName: 'unassigned-write.png', mimeType: 'image/png', content: supportingBytes })).rejects.toThrow();
+    expect((await listAttendanceCorrections(f.actors[0], { status: 'pending' })).find(r => r.id === id)?.hasAttachment).toBe(true);
     await decideAttendanceCorrection(f.actors[0], { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
     expect((await attendanceApplicationDetail(f.a, [b.companyId], id))?.workflow?.templateVersion).toBe(1);
     // Final calculation access is a separate live boundary; it requires scoped HR handoff after a move.
