@@ -490,8 +490,8 @@ describe('0bb0e303 rev2 — Attendance Request is self-service, and stays that w
        * is asserted alongside exactly as it was. The row's gating is what this file is FOR, and r367 does
        * not touch it: an employee must still reach their own record with no gate at all.
        */
-      const href = '/attendance/my-roster';
-      const added = mine.children.find((c) => c.href === href)!;
+      const href = '/attendance/my-records';
+      const added = mine.children.find((c) => c.href === '/attendance/my-roster')!;
       expect({ adminOnly: added.adminOnly, managerUp: added.managerUp }, `${href} stays ungated`).toEqual({
         adminOnly: undefined,
         managerUp: undefined,
