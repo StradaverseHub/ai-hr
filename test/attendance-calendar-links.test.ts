@@ -19,6 +19,12 @@ describe('personal calendar detail and return navigation', () => {
     expect(calendarReturnParams(hostile)).toEqual({calendar:'1'});
     expect(attendanceCalendarBackHref(hostile,today)).toBe('/attendance/my-roster?view=month&month=2026-03&selected=2026-03-18');
   });
+  it.each(['2026-13-01', '2026-00-10', '2026-01-32', '2026-02-30', '2026-02-29'])('ignores impossible date %s without throwing', date => {
+    expect(calendarReturnParams({calendar:'1', calendarDate:date})).toEqual({calendar:'1'});
+    for (const view of ['day','week'] as const) {
+      expect(resolveMyRosterWindow({view,date,today})).toEqual(resolveMyRosterWindow({view,today}));
+    }
+  });
   it('maps an older daily bookmark to the same personal calendar month',()=>{
     expect(attendanceCalendarBackHref({},today)).toBe('/attendance/my-roster?view=month&month=2026-03&selected=2026-03-18');
   });
