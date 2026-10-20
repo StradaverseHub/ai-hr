@@ -116,6 +116,7 @@ describe('leave decisions and payroll follow-up', () => {
     await decideLeave(manager,{leaveRequestId:leaveId,decision:'approved'});
     const originalSlip=await slip(batchId),exceptions=await listPayrollLeaveExceptions(hr,batchId);
     expect(exceptions).toHaveLength(1);
+    expect(await listPayrollLeaveExceptions(hr,adjustmentId)).toHaveLength(1);
     const {markPayrollAfterLeaveApprovalTx}=await import('../core/payroll-leave');
     await withTenant(manager,tx=>markPayrollAfterLeaveApprovalTx(tx,leaveId));
     expect(await listPayrollLeaveExceptions(hr,batchId)).toHaveLength(1);
@@ -134,6 +135,24 @@ describe('leave decisions and payroll follow-up', () => {
       await generatePayslips(hr,{batchId,reprocessSubset:{employmentIds:[subject.employmentId],reason:'Approved paid leave relieves the absence deduction'}});
       expect(Number((await slip(batchId)).netPay)).toBeGreaterThan(Number(before.netPay));
     }
+  });
+  it('uses the former paying company cut-off and denies an HR reviewer scoped only to the new company',async()=>{
+    await owner.db.insert(schema.companyPayrollConfig).values({tenantId:b.tenantId,companyId:b.companyId,unpaidLeaveCutOffDay:Number(tuesday.slice(8))});
+    const leaveId=await pending(),batchId=await processed();await closeBatch(hr,{batchId});
+    const before=await slip(batchId);
+    const [current]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional new employing company'}).returning();
+    await owner.db.insert(schema.companyPayrollConfig).values({tenantId:b.tenantId,companyId:current.id,unpaidLeaveCutOffDay:Number(monday.slice(8))});
+    // A coverage fixture: retain the actual old payslip and assignment, while current employment differs.
+    await owner.db.update(schema.employment).set({companyId:current.id}).where(eq(schema.employment.id,subject.employmentId));
+    await decideLeave(manager,{leaveRequestId:leaveId,decision:'approved'});
+    const exceptions=await listPayrollLeaveExceptions(hr,batchId);expect(exceptions).toHaveLength(1);
+    expect(await slip(batchId)).toEqual(before);
+    const [reviewerPerson]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional scoped reviewer'}).returning();
+    const reviewer=await createAppUser(b.tenantId,reviewerPerson.id,'hr_admin');
+    await owner.db.update(schema.roleAssignment).set({companyId:current.id}).where(eq(schema.roleAssignment.appUserId,reviewer));
+    const scoped={tenantId:b.tenantId,userId:reviewer,roles:['hr_admin'],entitlements:harnessSnapshot(b.tenantId)};
+    expect(await listPayrollLeaveExceptions(scoped,batchId)).toEqual([]);
+    await expect(resolvePayrollLeaveException(scoped,{id:exceptions[0].id,batchId,resolution:'no_adjustment',explanation:'This reviewer must not resolve another company payroll.'})).rejects.toThrow();
   });
 
   it('pending HR cancellation creates no stale marker or closed exception', async () => {
