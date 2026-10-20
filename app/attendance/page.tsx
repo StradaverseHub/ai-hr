@@ -110,6 +110,10 @@ export default async function AttendancePage({
       </div>
       <AttendanceTabs active="overview" />
       <ErrorBanner message={sp.error} />
+      <div className="flex flex-wrap items-center gap-3">
+        <Link href="/attendance/application-history/visible" className="inline-flex min-h-11 items-center rounded-lg border border-border px-3 text-sm font-medium text-primary hover:bg-accent">{tHistory('visibleTitle')}</Link>
+        {isAdmin && <Link href="/attendance/application-history" className="inline-flex min-h-11 items-center px-3 text-sm text-primary underline">{tHistory('title')}</Link>}
+      </div>
 
       {corrections.length > 0 && (
         <Card className="overflow-hidden">

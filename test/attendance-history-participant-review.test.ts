@@ -100,4 +100,16 @@ describe('Request-bound history review and original Overview visibility', () => 
       .toMatchObject([{ id: f.id, status: 'pending' }]);
     expect((await attendanceApplicationDetail(f.root, [b.companyId], f.id))?.workflow?.participantDecisions).toHaveLength(1);
   });
+  it('retains a hybrid HR and employee participant request outside that person’s HR company scope', async () => {
+    const f = await fixture();
+    const [hrCompany] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Fictional separate HR company' }).returning();
+    await owner.db.update(schema.roleAssignment).set({ companyId: b.companyId }).where(eq(schema.roleAssignment.appUserId, f.first.ctx.userId));
+    await owner.db.insert(schema.roleAssignment).values({ tenantId: b.tenantId, appUserId: f.first.ctx.userId, role: 'hr_admin', companyId: hrCompany.id });
+    const hybrid: SessionContext = { ...f.first.ctx, roles: ['employee', 'hr_admin'], grants: [{ role: 'employee', companyId: b.companyId }, { role: 'hr_admin', companyId: hrCompany.id }] };
+    const pending = await listAttendanceCorrections(hybrid, { companyIds: [hrCompany.id], status: 'pending' });
+    expect(pending.find(row => row.id === f.id)).toMatchObject({ canDecide: true });
+    expect((await listAttendanceApplicationHistory(hybrid, [hrCompany.id], { status: 'pending' })).rows).toHaveLength(0);
+    expect(await projection(hybrid, f.id)).toHaveLength(0);
+    await expect(decideAttendanceCorrection(hybrid, { correctionId: f.id, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:0' })).resolves.toMatchObject({ status: 'pending' });
+  });
 });
