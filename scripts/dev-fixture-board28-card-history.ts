@@ -57,14 +57,17 @@ async function main() {
     for (const key of ['Employee', 'SecondEmployee']) await assignDefaultShift(root, { employmentId: people[key].employmentId, shiftId: shift.id });
     const requests: Record<string, string> = {};
     const supportingFiles: Record<string, { fileName: string; mimeType: string; bytes: number; sha256: string }> = {};
+    let templateLineage: string | undefined;
     // Preserve a pre-workflow request, then freeze two different modes for the newer journeys.
     for (const [key, offset, mode] of [['legacy', -3, null], ['sequential', -2, 'sequential'], ['anyOne', -1, 'any_one']] as const) {
       const on = new Date(Date.parse(`${date}T00:00:00Z`) + offset * 86_400_000).toISOString().slice(0, 10);
       if (mode) {
-        await saveAttendanceWorkflow(root, { companyId: b.companyId, routingVersion: 3, code: `BOARD28_${key}`, name: `Fictional Board 28 ${key}`, applicationType: 'irregularity', active: true,
-          priority: key === 'anyOne' ? 200 : 100, criteria: { employeeIds: [people.Employee.employmentId] },
+        const template = await saveAttendanceWorkflow(root, { companyId: b.companyId, routingVersion: 3, code: `BOARD28_${key}`, name: `Fictional Board 28 ${key}`, applicationType: 'irregularity', active: true,
+          priority: 100, criteria: { employeeIds: [people.Employee.employmentId] },
           stages: [{ name: 'Recorded first review', mode, source: { kind: 'specific_employee', employmentIds: [people.First.employmentId, people.Second.employmentId] }, hrAlternative: false },
-            { name: 'Recorded HR review', mode: 'sequential', source: { kind: 'specific_employee', employmentIds: [people.HR.employmentId] }, hrAlternative: false }] });
+            { name: 'Recorded HR review', mode: 'sequential', source: { kind: 'specific_employee', employmentIds: [people.HR.employmentId] }, hrAlternative: false }] }, templateLineage);
+        // Version the template so each new request freezes its intended mode.
+        templateLineage = template.lineageId;
         await setAttendanceWorkflowEnabled(root, b.companyId, 'irregularity', true);
       }
       await checkIn(root, { employmentId: people.Employee.employmentId, date: on, time: '08:00', manual: true });
