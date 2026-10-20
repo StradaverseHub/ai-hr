@@ -1,3 +1,4 @@
+import type {PayrollComparisonDefinition} from '../lib/payroll-period-comparison';
 import type { TestingCatalogueAppliedResult } from '../lib/system-testing/updates';
 import type { InstructionDefinition, PublishedInstruction, ExecutionStatus } from '../lib/system-testing/model';
 import {PERSONNEL_EMPLOYMENT_TYPES,PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS} from '../lib/personnel-choice-vocabulary';
@@ -7845,6 +7846,7 @@ export const aiProviderConfig = pgTable(
 // the spec only names dataset/field ids the registry exposes, and every underlying read enforces
 // tenant RLS + company scope. RLS + grants live in migration 0163.
 export type CustomReportSpec = {
+  payrollComparison?: PayrollComparisonDefinition;
   employeeMaster?: EmployeeMasterSpec;
   datasetId: string;
   columns: string[];

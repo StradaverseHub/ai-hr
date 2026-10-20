@@ -10,11 +10,16 @@ export type MasterReportCategory=typeof MASTER_REPORT_CATEGORIES[number];
 const CATEGORY:Record<PersonnelFieldSensitivity,MasterReportCategory>={personnel:'personnel',identity:'identity',bank:'bank',payroll:'compensation',statutory:'statutory',restricted:'confidential_hr',attendance:'personnel',leave:'personnel',documents:'confidential_hr'};
 const MODULE:Partial<Record<PersonnelFieldSensitivity,string>>={payroll:'payroll',statutory:'payroll',attendance:'attendance',leave:'leave'};
 export class MasterReportAccessError extends Error {constructor(){super('Report access or selected company/field is unavailable.');this.name='MasterReportAccessError';}}
-export async function masterReportFieldsTx(tx:Tx,ctx:SessionContext,companyIds:readonly string[]):Promise<PersonnelFieldDescriptor[]>{
-  if(!ctx.userId||!companyIds.length)return [];
+/** Current principal proof shared by financial report reads and definition access. */
+export async function assertReportPrincipalTx(tx:Tx,ctx:SessionContext):Promise<void>{
+  if(!ctx.userId)throw new MasterReportAccessError();
   const [principal]=await tx.execute(sql`select p.tenant_id,p.person_id,p.grants,u.archived_at,app.login_blocked(u.id) as blocked from app.principal(${ctx.userId}::uuid) p join app_user u on u.id=${ctx.userId}::uuid`) as unknown as {tenant_id:string;person_id:string|null;grants:Grant[];archived_at:Date|null;blocked:boolean}[];
   const normalized=(grants:readonly Grant[])=>JSON.stringify(grants.map(grant=>[grant.role,grant.companyId]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))));
   if(!principal||principal.tenant_id!==ctx.tenantId||principal.person_id!==(ctx.personId??null)||principal.archived_at||principal.blocked||normalized(principal.grants)!==normalized(ctx.grants??[]))throw new MasterReportAccessError();
+}
+export async function masterReportFieldsTx(tx:Tx,ctx:SessionContext,companyIds:readonly string[]):Promise<PersonnelFieldDescriptor[]>{
+  if(!ctx.userId||!companyIds.length)return [];
+  await assertReportPrincipalTx(tx,ctx);
   const access=new Map<string,Set<MasterReportCategory>>();
   for(const companyId of companyIds){
     const [scope]=await tx.execute(sql`select exists(select 1 from company where id=${companyId}::uuid and tenant_id=app.current_tenant_id()) as allowed`) as unknown as {allowed:boolean}[];

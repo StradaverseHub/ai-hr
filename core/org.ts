@@ -1186,6 +1186,18 @@ export async function setReportingLine(
   return outerTx ? run(outerTx) : withTenant(ctx, run);
 }
 
+/** Bounded dated assignment facts for caller-held report snapshots. Uses the same exclusive end and
+ * supersession rule as getAssignmentAsOf; callers never substitute today's placement. */
+export async function assignmentVersionsForReportTx(tx:Tx,employmentIds:readonly string[],from:string,to:string){
+  if(!employmentIds.length)return [];
+  if(employmentIds.length>10000)throw new Error('Assignment report scope exceeds 10000 employments.');
+  const rows=await tx.select().from(assignment).where(and(inArray(assignment.employmentId,[...employmentIds]),
+    isNull(assignment.supersededAt),lte(assignment.validFrom,to),or(isNull(assignment.validTo),gt(assignment.validTo,from))))
+    .orderBy(assignment.employmentId,assignment.validFrom,assignment.id).limit(20001);
+  if(rows.length>20000)throw new Error('Assignment report history exceeds 20000 revisions. Narrow the scope.');
+  return rows;
+}
+
 /** Reconstruct the assignment in force for an employment as of `asOf` (ADR-0001). */
 export async function getAssignmentAsOf(ctx: SessionContext, employmentId: string, asOf: string) {
   return withTenant(ctx, async (tx) => {

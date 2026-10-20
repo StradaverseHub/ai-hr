@@ -1472,7 +1472,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   },
   { screenKey: 'mySystemTesting', href: '/system-testing', labelKey: 'nav.mySystemTesting', guard: 'scopedSession', routes: ['/system-testing', '/system-testing/executions/[id]'], hasScopeNote: true },
   // Reports hub + custom report builder (c440b365). scopedAdmin — every report surface is admin-gated.
-  { screenKey: 'reports', href: '/reports', labelKey: 'nav.reports', guard: 'scopedAdmin', routes: ['/reports', '/reports/builder/[id]'] },
+  { screenKey: 'reports', href: '/reports', labelKey: 'nav.reports', guard: 'scopedAdmin', routes: ['/reports', '/reports/builder/[id]', '/reports/payroll-comparison/[id]'] },
 ] as const;
 
 /**
