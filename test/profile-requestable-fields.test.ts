@@ -343,9 +343,12 @@ describe('r260 — the requestable-field declaration', () => {
     expect(formatProposedValue(requestableField('preferredName')!, '', t, { mask: false })).toBe('— cleared —');
     expect(formatProposedValue(requestableField('preferredName')!, null, t, { mask: false })).toBe('— cleared —');
 
-    for(const [name,src]of [['app/admin/personnel/profile-changes/page.tsx',PERSONNEL_PAGE],['app/approvals/page.tsx',APPROVALS_PAGE],['app/me/page.tsx',ME_PAGE]]){
+    for(const [name,src]of [['app/admin/personnel/profile-changes/page.tsx',PERSONNEL_PAGE],['app/me/page.tsx',ME_PAGE]]){
       expect(src,name).toContain(name==='app/me/page.tsx'?'profileProposalLines(':'profileProposalReviewLines(');expect(src,name).not.toMatch(/options\?\.find\([\s\S]{0,80}?\)\?\.value/);
     }
+    // The general inbox redirects old bookmarks; proposal values render only in the assigned queue.
+    expect(APPROVALS_PAGE).toContain("if(admin&&categoryParam==='profileChanges')redirect('/admin/personnel/profile-changes')");
+    expect(APPROVALS_PAGE).not.toContain('profileProposalReviewLines(');
     expect(PROPOSAL_DISPLAY).toContain('formatProposedValue(field,value,k=>resolve(`me.${k}`,k),opts)');expect(PROPOSAL_DISPLAY).toContain('descriptor?.ess.masked');expect(PROPOSAL_DISPLAY).toContain('personnelFieldChoices(field)');expect(PROPOSAL_DISPLAY).toContain('personnelFieldLabel(field,resolve)');
 
   });
@@ -441,7 +444,7 @@ describe('r261 — a switched-off field is ABSENT from the employee\'s screen, n
     expect(ME_PAGE).toContain('readOwnProfileWorkspace(s,{employmentId},presentation)');expect(ESS_EDITOR).toContain('const editable=new Set(workspace.editable),primaryEditable=new Set(workspace.legacyPrimaryEditable)');
     expect(ESS_EDITOR).toContain('const allowed=applicable&&taxAvailable&&canEdit(field.id,row)');expect(ESS_EDITOR).toContain('{allowed?<div');expect(ESS_EDITOR).toContain('{displayValue}');
     expect(ESS_OWNER).toContain('freshProfileEditPolicyTx(tx,ctx)');expect(ESS_OWNER).toContain("throw new EssProfileError('fieldClosed',[field.id])");
-    expect(APPROVALS_PAGE).toContain("getSettingOrFallback<string>(s, 'ess.profile_change_approver', 'group_admin')");
+    expect(CORE_PROFILE).toContain("profileChangeApprover(ctx) === 'group_admin'");expect(CORE_PROFILE).toContain('await assertProfileRouteDecisionTx(tx,ctx,req)');
   });
 
   it('offers NO inert control — the request card contains no disabled attribute at all', () => {

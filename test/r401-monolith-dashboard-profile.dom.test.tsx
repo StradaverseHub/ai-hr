@@ -103,6 +103,7 @@ vi.mock('@/packs/performance/service', () => ({ myFeedbackRequests: vi.fn(async 
 vi.mock('@/core/entitlements', () => ({
   isModuleEnabledOrFalse: vi.fn(() => true),
   getSettingOrFallback: vi.fn(() => []),
+  getSetting: vi.fn(() => false),
 }));
 vi.mock('@/core/approvals-inbox', () => ({ pendingApprovalsCount: vi.fn(async () => 0) }));
 vi.mock('@/core/dashboard-prefs', () => ({
