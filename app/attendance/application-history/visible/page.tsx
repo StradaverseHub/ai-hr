@@ -41,7 +41,7 @@ export default async function VisibleAttendanceApplications({ searchParams }: {
           <td className="px-4 py-3">{canAct ? <div className="min-w-56 space-y-4">{(['approved', 'rejected'] as const).map(decision => <form key={decision} action={decideCorrectionAction} className="space-y-2">
             <input type="hidden" name="correctionId" value={row.id} /><input type="hidden" name="workflowStage" value={row.workflow?.currentStage ?? ''} />
             <input type="hidden" name="returnTo" value="/attendance/application-history/visible" /><input type="hidden" name="decision" value={decision} />
-            <input type="hidden" name="workflowParticipant" value={(row.workflow as typeof row.workflow & { currentParticipantSlot?: string | null })?.currentParticipantSlot ?? ''} />
+            <input type="hidden" name="workflowParticipant" value={row.workflow?.currentParticipantSlot ?? ''} />
             <label className="block text-xs">{t(decision === 'approved' ? 'remarks' : 'rejectionReason')}<textarea required={decision === 'rejected'} name={decision === 'approved' ? 'remarks' : 'rejectReason'} maxLength={1000} className={`${inputCls} w-full`} /></label>
             <Button type="submit" className="min-h-11" variant={decision === 'approved' ? 'default' : 'secondary'}>{t(decision === 'approved' ? 'approve' : 'reject')}</Button>
           </form>)}</div> : <p className="text-sm text-muted-foreground">{t('notWaitingForYou')}</p>}</td>

@@ -928,6 +928,8 @@ describe('§6 the Movement screen reaches the same refusal, and it is now legibl
     expect(tag.length).toBeGreaterThan(40);
     expect(tag).not.toMatch(/\b(min|required)\s*=/);
     expect(personnelWorkflowInput(BASIC_SALARY_FIELD, 'movement', 'edit')).toMatchObject({ name: 'basicSalary', min: 0, required: false });
-    expect(tag).toContain("defaultValue={current.basicSalary ?? ''}");
+    // New events inherit current values; pending edits retain their recorded target.
+    expect(mv).toContain("const after = {...current,...saved}");
+    expect(tag).toContain("defaultValue={after.basicSalary ?? ''}");
   });
 });

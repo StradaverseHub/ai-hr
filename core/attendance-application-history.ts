@@ -9,6 +9,7 @@ import { attendanceCorrection as correction, employment, person, company, depart
 import { CATEGORY_EMPLOYMENT_COLUMN, EMPLOYMENT_PROFILE_CATEGORIES } from './profile-options';
 import type { AttendanceWorkflowCriteria } from '../lib/attendance-workflow';
 import { attendanceWorkflowsForTx, attendanceWorkflowForTx } from './attendance-workflow';
+
 import { attendanceApplicationType, type AttendanceApplicationType } from '../lib/attendance-workflow';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { visibleLabelIdsCondition } from './system-labels';
@@ -35,6 +36,7 @@ export type AttendanceHistoryRow = {
     applicationType: AttendanceApplicationType;
     currentStage: number | null;
     stages: AttendanceResolvedStage[] | null;
+
     templateName: string | null;
 };
 function admin(ctx: SessionContext) {
@@ -97,13 +99,14 @@ export async function listAttendanceApplicationHistory(ctx: SessionContext, comp
           const flow=workflows.get(row.id)??null;
           row.stages=flow?.effectiveStages??flow?.stages??null;
           row.progress=await attendanceProgressTx(tx,flow,row.status);
-          row.currentParticipantSlot=(flow as typeof flow & {currentParticipantSlot?:string|null})?.currentParticipantSlot??null;
+          row.currentParticipantSlot=flow?.currentParticipantSlot??null;
           if(row.selectable&&flow?.routingVersion===2){
             const [authority]=await tx.execute(sql`select app.attendance_workflow_v2_decide(${row.id}::uuid) as ok`) as unknown as {ok:boolean}[];
             row.selectable=authority?.ok===true;
-          }else if(row.selectable&&flow&&(flow.routingVersion as number)===3)row.selectable=row.currentParticipantSlot!=null;
+          }else if(row.selectable&&flow?.routingVersion===3)row.selectable=row.currentParticipantSlot!=null;
         }
         return {rows,total:result?.total??0,counts:result?.counts??{...EMPTY_ATTENDANCE_HISTORY_COUNTS},page:f.page,pageSize:f.pageSize};
+
     });
 }
 export async function attendanceApplicationDetail(ctx: SessionContext, companyIds: string[], id: string) {
