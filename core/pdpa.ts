@@ -175,6 +175,9 @@ export async function erasePersonPii(
       .update(profileChangeRequest)
       .set({ proposed: { redacted: true }, decisionReason: null })
       .where(eq(profileChangeRequest.personId, emp.personId));
+    // Like profile decision reasons, payroll follow-up explanations are erasable free text.
+    // Payroll keeps its outcome/reference; this grants no direct table update or salary access.
+    await tx.execute(sql`select app.redact_leave_payroll_explanations(${p.subjectEmploymentId}::uuid)`);
 
     // b4682879 — the profile photograph is biometric-adjacent personal data (identity scope). Delete it on
     // an identity/all erasure and report it in `erased`. Never statutory-locked (a face photo is not a

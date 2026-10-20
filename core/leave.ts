@@ -232,11 +232,9 @@ import {
   leaveRequestAttachment,
   leaveRequestDate,
   leaveType,
-  payrollBatch,
   // 5206539f — the (key, role) override rows behind `leave.apply_on_behalf`. Its table name says "payroll"
   // for historical reasons only; see the note in lib/payroll-permissions.ts.
   payrollPermissionGrant,
-  payslip,
   person,
   reportingLine,
   rosterAssignment,
@@ -244,6 +242,7 @@ import {
   leaveSharedGroup,
   leaveSharedGroupMember,
 } from '../db/schema';
+import { applyLeavePayrollEffectsTx, lockPayrollForLeaveChangeTx, markPayrollAfterLeaveApprovalTx, LeavePayrollClosedError } from '../packs/payroll/service';
 
 /** ADR-0069: the set of "employmentId|leaveTypeId" keys with an ACTIVE frozen encashment snapshot, for the
  *  year-boundary sweeps (openLeaveYear, accrueEarnedLeave, expireCarriedLeave) to skip — the ad-hoc/festive
@@ -5583,6 +5582,7 @@ async function finalizeLeaveApproval(
     .update(leaveRequest)
     .set({ status: 'approved', decidedByEmploymentId: deciderEmploymentId ?? null, decidedAt: sql`now()` })
     .where(eq(leaveRequest.id, req.id));
+  await markPayrollAfterLeaveApprovalTx(tx, req.id);
   // Marriage Leave (72fca31d rule 3) — the approval that grants the leave also records the fact it is
   // granted FOR: Single becomes Married. Here, after the status flip, because migration 0485's writer
   // refuses on a request that is not approved — the row has to be true before the fact follows from it.
@@ -5636,10 +5636,8 @@ async function finalizeLeaveApproval(
       // the notification renderer emits a self-contained body listing the approved + rejected dates and the
       // rejection reason — the reporter's ask #5. Only spread when present ⇒ byte-identical for every other caller.
       ...(mixed && perDateOutcome ? { perDateOutcome } : {}),
-      // When the type opts in (sendToPayroll), attach an ADVISORY payroll-impact contract for a future
-      // payroll integration to consume. It is telemetry, NOT a deduction source: the authoritative deduction
-      // remains unpaidDaysByEmployment()'s live status='approved' re-query (which auto-corrects on any future
-      // cancellation/reversal). No payPeriod is emitted — the consumer derives it with its own cutoff rule.
+      // Optional advisory telemetry stays separate from Payroll's transactional stale/closed-run follow-up.
+      // Deductions still read the approved leave facts; this payload never supplies an amount.
       ...(lt?.sendToPayroll
         ? {
             payrollImpact: {
@@ -6216,26 +6214,18 @@ async function personIdForEmployment(tx: Tx, employmentId: string): Promise<stri
   return row?.personId ?? null;
 }
 
-/** True when the cancel date's payroll period (YYYY-MM by start date) has a CLOSED batch that already produced
- *  THIS employee's payslip — the deduction was finalised, so the day can't be retroactively given back
- *  (ADR-0065 §2). We join payroll_batch → payslip on the employee so the check works under the employee's own
- *  RLS session (an employee can see their own payslip, and therefore the batch it belongs to). Checking the
- *  employee's OWN finalised payslip is also more precise than "any closed batch in the period". */
-async function cancelDatePeriodClosed(tx: Tx, employmentId: string, cancelDate: string): Promise<boolean> {
-  const period = cancelDate.slice(0, 7); // YYYY-MM
-  const [closed] = await tx
-    .select({ id: payrollBatch.id })
-    .from(payrollBatch)
-    .innerJoin(payslip, eq(payslip.batchId, payrollBatch.id))
-    .where(
-      and(
-        eq(payrollBatch.payPeriod, period),
-        eq(payrollBatch.status, 'closed'),
-        eq(payslip.employmentId, employmentId),
-      ),
-    )
-    .limit(1);
-  return !!closed;
+/** Preserve the Leave error contract while Payroll resolves real cut-offs and private membership. */
+async function lockPayrollForLeaveCancellationTx(tx: Tx, requestId: string, date: string, survivorStarts: readonly string[], changedDates?: readonly string[]) {
+  try {
+    return await lockPayrollForLeaveChangeTx(tx, {
+      requestIds: [requestId], action: 'cancellation',
+      survivorStarts: new Map([[requestId, survivorStarts]]),
+      ...(changedDates ? { changedDates: new Map([[requestId, changedDates]]) } : {}),
+    });
+  } catch (error) {
+    if (error instanceof LeavePayrollClosedError) throw new LeaveCancellationPeriodClosedError(date);
+    throw error;
+  }
 }
 
 // ═════════════════════ Cancel Approved Leave — the leave type's own rule (r301, board 83511d3b) ═════════════════════
@@ -6488,8 +6478,10 @@ export async function requestLeaveCancellation(
       const refusal = cancelDateRefusal(d, today, setting.noticeDays);
       if (refusal === 'started') throw new LeaveCancellationTooLateError(d); // per-date future gate
       if (refusal === 'too_close') throw new LeaveCancellationTooCloseError(d, setting.noticeDays, typeName, typeI18n);
-      if (await cancelDatePeriodClosed(tx, req.employmentId, d)) throw new LeaveCancellationPeriodClosedError(d);
     }
+    const previewSplit = splitSpanForCancellation(workingDates, cancelDates);
+    await lockPayrollForLeaveCancellationTx(tx, req.id, req.startDate,
+      previewSplit.segments.filter((_, i) => !previewSplit.cancelledSegmentIndexes.includes(i)).map(segment => segment.from), cancelDates);
 
     // §3: ONE pending cancellation per leave row. r301 hand-fix (verifier defect 4): this used to refuse only
     // an OVERLAPPING second request. A non-overlapping one was accepted, and whichever was approved first split
@@ -6806,6 +6798,10 @@ async function applyLeaveCancellationApprovalTx(
   }
 
   const cancelDates = (cr.cancelDates as string[]) ?? [];
+  // Recheck the request-time contract for older pending cancellations as well.
+  if (req.durationType !== 'full_day' || req.hours != null || req.fromTime != null || req.toTime != null) {
+    throw new LeaveCancellationNotAllowedError('only full-day leave can be partially cancelled', 'not_full_day');
+  }
   const hols = await resolveHolidaySet(tx, req.employmentId, req.startDate, req.endDate);
   // Day Type Inclusion (feedback ef6d7146): resolve the type's re-inclusion vector so the give-back split
   // spans exactly the day types the original debit counted. Without this a re-included rest/PH date would be
@@ -6845,13 +6841,11 @@ async function applyLeaveCancellationApprovalTx(
   if (cancelDates.length === 0 || cancelDates.some((d) => !cancellableNow.has(d))) {
     throw new LeaveCancellationNotAllowedError('the leave is no longer in a cancellable state', 'no_longer_cancellable');
   }
-  // r301 hand-fix (verifier defect 3) — A CLOSED PAYROLL MONTH IS ASKED AT THE DECISION TOO. The request only
-  // checked it when the employee asked; with a chain of approvers the month can close in between, and the last
-  // approval then gave days back inside a payslip that is final. Same rule, same error as the request's.
-  for (const d of cancelDates) {
-    if (await cancelDatePeriodClosed(tx, req.employmentId, d)) throw new LeaveCancellationPeriodClosedError(d);
-  }
   const { segments, cancelledSegmentIndexes } = splitSpanForCancellation(workingDates, cancelDates);
+  // Both the original start and surviving starts can move the kernel's unpaid-day attribution.
+  // Payroll checks them under its own authority; a manager never needs payslip visibility.
+  const payrollHits = await lockPayrollForLeaveCancellationTx(tx, req.id, req.startDate,
+    segments.filter((_, i) => !cancelledSegmentIndexes.includes(i)).map(segment => segment.from), cancelDates);
 
   // Split-and-cancel. We REUSE the original row id for the first segment (preserving attachments / FKs) and
   // create new sibling rows for the rest, all sharing a fresh parent_group_id. The original carried ONE
@@ -6952,6 +6946,19 @@ async function applyLeaveCancellationApprovalTx(
           durationType: 'full_day',
           status: isCancelled ? 'cancelled' : 'approved',
           reason: req.reason,
+          employeeRemark: req.employeeRemark,
+          unpaidConsentAt: req.unpaidConsentAt,
+          unpaidConsentBy: req.unpaidConsentBy,
+          survivingChildren: req.survivingChildren,
+          confinementDate: req.confinementDate,
+          allowanceEligible: req.allowanceEligible,
+          unpaidDays: req.unpaidDays,
+          entitlementYear: req.entitlementYear,
+          submittedOn: req.submittedOn,
+          importedHistory: req.importedHistory,
+          createdAt: req.createdAt,
+          // externalReference identifies ONE original application and is tenant-unique.
+          // Siblings resolve its provenance through leave-request.split, never a copy.
           parentGroupId,
           decidedByEmploymentId: req.decidedByEmploymentId,
           decidedAt: req.decidedAt,
@@ -7128,6 +7135,7 @@ async function applyLeaveCancellationApprovalTx(
       ...(p.autoApproved ? { autoApproved: true, reason: 'auto-approved by leave type setting' } : {}),
     },
   });
+  await applyLeavePayrollEffectsTx(tx, payrollHits, 'cancellation');
   return { restoredDays, remainingDays, remainingDates };
 }
 
@@ -7190,15 +7198,9 @@ export async function adminCancelLeave(
     // how much came back. A PENDING one never consumed anything (restoredDays 0 ⇒ nothing to give back).
     const isReplacement = leaveTypeIs(lt, 'replacement');
 
-    // Closed-payroll gate: never retroactively alter a period whose payslip was finalised. For each DISTINCT
-    // month spanned by the leave, reject if that employee's batch is closed. (HR may cancel past/started leave —
-    // the admin override vs. the employee's future-only rule — but never a finalised payroll month.)
-    const months = [...new Set(eachDate(req.startDate, req.endDate).map((d) => d.slice(0, 7)))];
-    for (const m of months) {
-      if (await cancelDatePeriodClosed(tx, req.employmentId, `${m}-01`)) {
-        throw new LeaveCancellationPeriodClosedError(`${m}-01`);
-      }
-    }
+    // A pending withdrawal has never contributed approved leave to pay.
+    const payrollHits = previousStatus === 'approved'
+      ? await lockPayrollForLeaveCancellationTx(tx, req.id, req.startDate, []) : [];
 
     // ── Effect ──────────────────────────────────────────────────────────────────────────────────────────
     // 1) Restore the balance by reversing the NET ledger debit sourced to this request. Net-sum (not req.days)
@@ -7321,6 +7323,7 @@ export async function adminCancelLeave(
       },
     });
 
+    await applyLeavePayrollEffectsTx(tx, payrollHits, 'cancellation');
     return { previousStatus, restoredDays };
   });
 }

@@ -21442,5 +21442,69 @@
     "subtitle": "配置休假额度、余额、累计、审批及公司休假规则。",
     "open": "打开",
     "back": "返回休假设置"
+  },
+  "leaveSplitReview": {
+    "title": "检查以往的休假拆分",
+    "description": "剩余已批准日期上可能存在的差异",
+    "uncertainty": "这些仅为待审核项目，并非已证实的薪资错误。数值与当前原始记录比较；后续合法修改或缺失证据可能解释差异。不会更改任何记录。",
+    "empty": "当前范围没有待审核项目。这并不代表历史薪资已获确认。",
+    "employee": "员工",
+    "leave": "休假编号及日期",
+    "differences": "待审核事实",
+    "evidence": "现有证据",
+    "root": "原始编号：{reference}",
+    "unresolved": "无法完整追溯原始证据。",
+    "candidate": "需要人事审核；不会自动更正。",
+    "charging": {
+      "charged": "已记录关联扣账",
+      "uncharged_import": "导入记录；无关联扣账",
+      "no_debit_evidence": "未找到关联扣账"
+    },
+    "fields": {
+      "employeeRemark": "员工备注",
+      "consent": "无薪假同意记录",
+      "maternity": "产假详情",
+      "allowanceEligible": "津贴资格",
+      "unpaidDays": "无薪天数",
+      "entitlementYear": "额度所属年份",
+      "submission": "原始提交详情",
+      "importedHistory": "导入历史标记",
+      "reason": "申请原因",
+      "lineage": "追溯不完整或存在循环"
+    }
+  },
+  "payrollLeaveFollowup": {
+    "title": "薪资关闭后的休假变更",
+    "description": "检查影响并保留处理结果",
+    "noMoneyChange": "已关闭的工资单保持不变。此审核不会自动扣款或将金额结转到以后。",
+    "error": "处理结果未保存。请检查说明及所选调整批次后重试；如已处理，请刷新。",
+    "dates": "受影响的归属日期",
+    "adjustmentReference": "已关闭的调整批次",
+    "resolvedAt": "处理时间",
+    "resolution": "处理方式",
+    "chooseResolution": "选择处理方式",
+    "chooseAdjustment": "未选择调整批次",
+    "adjustmentHelp": "如需调整，请选择包含此员工的已关闭调整批次。如无需调整，请留空并说明原因。",
+    "explanation": "说明",
+    "resolve": "记录处理结果",
+    "states": {
+      "open": "待审核",
+      "resolved": "已处理"
+    },
+    "outcomes": {
+      "adjustment": "已记录调整",
+      "no_adjustment": "无需调整"
+    },
+    "sources": {
+      "approval": "休假已批准",
+      "charged_import": "已导入计扣休假历史"
+    },
+    "busy": "薪资正在更新。请在该操作完成后重试此休假变更。",
+    "closed": "此休假变更影响已关闭薪资，需要薪资人事审核。",
+    "explanationUnavailable": "说明不可用。",
+    "leaveReference": "休假编号",
+    "recordedBy": "记录人：{name}",
+    "resolvedBy": "处理人：{name}",
+    "unknownActor": "操作人信息不可用"
   }
 }

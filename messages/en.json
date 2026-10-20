@@ -21442,5 +21442,69 @@
     "subtitle": "Configure entitlements, balances, accruals, approvals and company leave rules.",
     "open": "Open",
     "back": "Back to Leave Settings"
+  },
+  "leaveSplitReview": {
+    "title": "Review older leave splits",
+    "description": "Possible differences on remaining approved days",
+    "uncertainty": "These are review candidates, not proven payroll errors. Values are compared with the current original record; later legitimate edits or missing evidence may explain a difference. No records are changed.",
+    "empty": "No review candidates in this selection. This does not certify historical payroll.",
+    "employee": "Employee",
+    "leave": "Leave reference and dates",
+    "differences": "Facts to review",
+    "evidence": "Available evidence",
+    "root": "Original reference: {reference}",
+    "unresolved": "Original evidence could not be fully traced.",
+    "candidate": "HR review required; no automatic correction.",
+    "charging": {
+      "charged": "Sourced debit recorded",
+      "uncharged_import": "Imported; no sourced debit",
+      "no_debit_evidence": "No sourced debit found"
+    },
+    "fields": {
+      "employeeRemark": "Employee remark",
+      "consent": "Unpaid-leave consent",
+      "maternity": "Maternity details",
+      "allowanceEligible": "Allowance eligibility",
+      "unpaidDays": "Unpaid days",
+      "entitlementYear": "Entitlement year",
+      "submission": "Original submission details",
+      "importedHistory": "Imported-history marker",
+      "reason": "Application reason",
+      "lineage": "Incomplete or cyclic lineage"
+    }
+  },
+  "payrollLeaveFollowup": {
+    "title": "Leave changes after payroll closed",
+    "description": "Review the effect and retain the resolution",
+    "noMoneyChange": "Closed payslips stay unchanged. This review never posts a deduction or carries money forward automatically.",
+    "error": "The resolution was not saved. Check the explanation and selected adjustment run, then retry or refresh if already resolved.",
+    "dates": "Affected attribution dates",
+    "adjustmentReference": "Closed adjustment run",
+    "resolvedAt": "Resolved on",
+    "resolution": "Resolution",
+    "chooseResolution": "Choose a resolution",
+    "chooseAdjustment": "No adjustment run selected",
+    "adjustmentHelp": "For an adjustment, choose a closed adjustment run containing this employee. For no adjustment, leave this blank and explain why.",
+    "explanation": "Explanation",
+    "resolve": "Record resolution",
+    "states": {
+      "open": "Needs review",
+      "resolved": "Resolved"
+    },
+    "outcomes": {
+      "adjustment": "Adjustment recorded",
+      "no_adjustment": "No adjustment needed"
+    },
+    "sources": {
+      "approval": "Leave approved",
+      "charged_import": "Charged leave history imported"
+    },
+    "busy": "Payroll is being updated. Retry this leave change after that operation finishes.",
+    "closed": "This leave change affects closed pay and requires Payroll HR review.",
+    "explanationUnavailable": "The explanation is unavailable.",
+    "leaveReference": "Leave reference",
+    "recordedBy": "Recorded by {name}",
+    "resolvedBy": "Resolved by {name}",
+    "unknownActor": "Actor unavailable"
   }
 }

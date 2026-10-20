@@ -1,9 +1,11 @@
-import { requireAdmin } from '@/lib/authz';
+import { scopedAdmin } from '@/lib/scope';
 import { PageHeader } from '@/components/ui';
 import { LeaveConfigMap, leaveConfigPageHeader } from '@/components/leave-config-map';
 import { leaveConfigHealthAll } from '@/lib/leave-config-health';
 import { LeaveConfigHealthCard } from '@/components/leave/leave-config-health';
 import { loadEntitlementTablesData } from '../../leave/entitlements/templates/entitlement-tables-block';
+import { LeaveSplitReview } from '@/components/leave/leave-split-review';
+import { parsePageQuery } from '@/lib/pagination';
 
 /**
  * r279 (3fbf7a02) — LEAVE BALANCE HEALTH GETS ITS OWN ADDRESS.
@@ -54,8 +56,9 @@ import { loadEntitlementTablesData } from '../../leave/entitlements/templates/en
  * (components/leave/leave-config-health.tsx's header says why that is worth writing down —
  * test/server-client-boundary.test.ts).
  */
-export default async function LeaveConfigBalanceHealthPage() {
-  const s = await requireAdmin();
+export default async function LeaveConfigBalanceHealthPage({ searchParams }: { searchParams: Promise<{ page?: string; size?: string }> }) {
+  const { s, scopeIds } = await scopedAdmin();
+  const query = parsePageQuery(await searchParams);
   const header = await leaveConfigPageHeader('balanceHealth');
   const data = await loadEntitlementTablesData(s);
   // Read, never recomputed: the same call the Leave types tab makes, over the same loaded data, so the
@@ -79,6 +82,7 @@ export default async function LeaveConfigBalanceHealthPage() {
           the day this row gains a second screen, the strip appears without anybody remembering to add it. */}
       <LeaveConfigMap current="balanceHealth" />
       <LeaveConfigHealthCard rows={rows} />
+      <LeaveSplitReview session={s} query={query} companyIds={scopeIds} />
     </div>
   );
 }
