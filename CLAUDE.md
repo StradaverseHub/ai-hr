@@ -13,8 +13,8 @@ Never agree because it was proposed. Loyalty order: correctness over agreement, 
 short-term convenience, evidence over assumption, coherence over feature count, user value over
 showcase, human accountability over AI autonomy.
 
-**Loop.** UNDERSTAND → MODEL → CHALLENGE → DESIGN → BUILD → TEST → BREAK → REVIEW → REFINE → REMODEL.
-The first implementation is never the final answer.
+**Loop.** UNDERSTAND → DEFINE ACCEPTANCE → DESIGN → BUILD → VERIFY THE EXPERIENCE → RELEASE GATE.
+Refine when review finds a concrete gap; finish when the agreed outcomes are demonstrated.
 
 **Graph engineering.** Model each requirement as nodes, relationships, rules, states, transitions,
 actors, permissions, events, dependencies and history before building. Unknown answers are written
@@ -49,7 +49,9 @@ when the direction is clear. Do not start coding first.
 
 **Done** means: requirement understood, graph impact understood, permissions defined, data integrity
 protected, edge and failure cases tested, security tested, auditability addressed, AI implications
-considered, architecture reviewed, documentation updated. A green happy path is not done.
+considered, architecture reviewed, documentation updated. Every required outcome is demonstrated.
+Unverified or incomplete required outcomes keep the task incomplete unless the owner changes scope;
+report them explicitly. Test counts alone do not establish completion. Follow §8 before the gate.
 
 **Identity.** USER (login) ≠ PERSON ≠ EMPLOYEE ≠ EMPLOYMENT ≠ ROLE ≠ PERMISSION ≠ SCOPE. Never
 collapse them; multiple employments, companies, roles, rehire and suspension must stay representable.
@@ -105,7 +107,9 @@ Minimize clicks, entry and searching; maximize context, defaults, visibility and
 
 ## 3. Read state from the source, never from a file
 
-Run these before planning anything. Each finds what the others cannot.
+Run these before planning implementation or release. Each finds what the others cannot. For a
+documentation-only review or edit, inspect the relevant files and Git state; production, board and
+migration checks are needed only when the task makes claims about or changes those systems.
 
     # 1. Does production run main? Zero lines = yes. Same excludes as scripts/improve/release.ts.
     cd ~/Projects/ai-hr/.claude/worktrees/mainwt && rsync -azi --delete --dry-run \
@@ -131,6 +135,14 @@ like no round; only check 1 sees it. What a round decided is in `docs/HANDOFF-HI
 Use the deterministic impact gate ([ADR-0114](docs/adr/0114-impact-aware-release-and-learning.md)).
 Complete the outcome walkthrough before the final gate. During development, run focused checks for the
 changed behavior and its consumers. Reuse valid evidence; a new commit calls for impact reassessment.
+
+Complete the acceptance and experience review in §8 before starting the final release gate. During
+development, run focused tests for the changed behaviour, its consumers and relevant cross-module
+contracts. Use the impact tier whenever the classifier permits it. Run the required release gate once
+on the final candidate; a later change needs a new valid receipt under the impact-aware release rules.
+Repeat or broaden development checks only for changed scope, a failure or a named unresolved risk.
+Documentation-only editing needs diff, link and consistency review; it does not require an application
+build, database rebuild or deployment. If publishing through the release workflow, its gate still applies.
 
     pnpm exec tsc --noEmit
     bash scripts/gate.sh > /tmp/aihr-gate-impact.log 2>&1
@@ -233,6 +245,26 @@ script the round depends on
 
 ## 8. Verification standards
 
+For feature work, bug fixes and interface changes, follow [ADR-0104](docs/adr/0104-outcome-based-verification.md).
+Scale the evidence to the change; a small fix needs a short checklist, not another review bureaucracy.
+
+1. **Before building:** map each requested outcome to its affected screens/roles, downstream behaviour
+   and verification method. Include explicit exclusions. Derive this from the request, approved plan
+   and attachments, then reconcile it with the implementation; an omitted requirement must stay visible.
+2. **For interface work:** review one representative screen with realistic data before propagating its
+   design. Use the approved reference and product conventions. Check hierarchy, information density,
+   clear actions, specific copy and useful interactions; remove generic filler and decoration without
+   purpose. Review directly without adding an approval stop unless a material decision is unresolved.
+3. **During implementation:** test observable behaviour and relevant contracts. A regression test must
+   detect the reported defect; tests that merely mirror the implementation cannot establish correctness.
+4. **Before the release gate:** walk the changed journey in the actual app using representative fixtures.
+   Cover relevant roles, populated/empty/error states and viewports, including saving and reopening when
+   persistence is involved. Inspect the rendered UI and runtime logs. Compare every acceptance item
+   with evidence, and resolve missing scope, broken interactions and design defects before the gate.
+5. **At completion:** report demonstrated outcomes, the evidence and environment, and anything unverified
+   or incomplete. Never silently defer required areas or describe partial coverage as complete. When a
+   defect escapes, identify the missed requirement, test, journey or visual check and improve that check.
+
 - **A 200 is not a render check.** `MISSING_MESSAGE`, `FORMATTING_ERROR` and server→client boundary
   bugs pass tsc, the suite and `next build`. Render on a dev server and read its log:
   `pnpm db:seed && PORT=3111 pnpm dev`, curl the route, read the log, kill the server in the same command.
@@ -240,8 +272,8 @@ script the round depends on
   a label proves nothing. Find the component that renders the key (`grep -rn "t('key')" app/ components/`)
   or strip `<script>` before counting. Resolve a `labelKey` against `messages/en.json` before describing
   what a screen says. Before deleting a key, grep the computed form too (`` t(`prefix.${x}`) ``).
-- **Guards only the full gate sees:** a new guarded `page.tsx` needs a `SCREENS` column in
-  `lib/permissions.ts` (`test/function-access.test.ts`); a `core/` file imports `packs/<pack>/service`,
+- **Cross-cutting guards (also selected by the affected tier where applicable):** a new guarded
+  `page.tsx` needs a `SCREENS` column in `lib/permissions.ts` (`test/function-access.test.ts`); a `core/` file imports `packs/<pack>/service`,
   never a pack's internals (the drift ratchet; `test/pack-drift-allowlist.json` only shrinks; the ratchet
   reads comments, so reword a quoted specifier); exact-set nav guards are updated, not loosened; a guard
   pinning a decision you are reversing is updated, not deleted.
@@ -251,10 +283,12 @@ script the round depends on
 - **A form field that is always submitted cannot be read by presence.** When a defect lives in the
   contract between two files, pin it across both.
 - **Adversarial verify is the load-bearing step.** Builders sincerely report green over real defects.
-  Brief the verifier to re-derive the builder's non-vacuity claim (revert the fix from a copy, watch the
-  named assertion fail), to run every guard that greps the directories touched, and to list the files it
-  ran; a guard named in a report but absent from the list is unrun. One fix pass, then hand-fix; anything
-  money-affecting is hand-fixed on the first pass. A green refusal test may be pinning RLS, not your guard.
+  Re-read the original acceptance criteria independently of the implementation and its tests. For a
+  bug fix, prove the regression test fails on the old behaviour where practical; prioritize this proof
+  for money, authorization and data-integrity changes. Use an isolated copy for deliberate regressions.
+  Run relevant source-reading guards and list the files actually tested. A green refusal test may be
+  pinning RLS, not the intended guard. Correct concrete findings, then repeat the affected checks; avoid
+  repeated critique rounds without a new finding.
 - **Statutory documents.** Never print a figure or assurance you cannot stand behind. An absent box
   asserts nothing; `0.00` asserts the money does not exist. A shared caption may say only what is true
   of every member and checkable from this repo. Test the row count the form is ruled for. When two PDF
@@ -272,8 +306,9 @@ script the round depends on
   threshold, though — that breaks on CJK.
 - **A red gate is not automatically yours.** Before debugging, check whether the round touched the file
   (`git diff --name-only main...HEAD -- <file>`) and whether the test and every source file it imports are
-  byte-identical to main. If they are, it fails on main too and the cause is the environment — often the
-  **calendar**. A test that seeds by calendar year against an anniversary cycle is a time bomb; one fired
+  byte-identical to main. Reproduce there when needed: identical files alone do not rule out changed
+  transitive dependencies, setup or configuration. Check the **calendar** too. A test that seeds by
+  calendar year against an anniversary cycle is a time bomb; one fired
   when the clock rolled to 1 October. Read the chunk log's `Start at`.
 - **A dev fixture must END, not just finish.** `db/client.ts` opens the app singleton pool AT IMPORT and
   caches pools by connection STRING, and `DATABASE_URL`/`MIGRATION_DATABASE_URL` are different strings for
@@ -317,7 +352,7 @@ which is a real case and used to be shipped by retyping `rsync --delete` against
 ## 10. Subagents and git
 
 - The parent creates worktrees (§2), allocates migration numbers, groups work so no two agents touch
-  the same files, gives each its own `TEST_DB_NAMESPACE`, and alone runs the single full gate. Agents
+  the same files, gives each its own `TEST_DB_NAMESPACE`, and alone runs the final gate selected by §4. Agents
   run only targeted tests and commit on their own branch: never amend, rebase or `git stash` (the
   stash is repo-global; another agent gets yours). Set work aside with a WIP commit.
 - Before merging and again immediately before the final gate: `git log --oneline main..<branch>` for
@@ -339,9 +374,9 @@ which is a real case and used to be shipped by retyping `rsync --delete` against
   through `~/.aihr-gate-state/testlock.sh <slot> -- <cmd>`. **The lock does NOT protect a
   running gate** — it has two slots, so it hands an agent one while the gate holds the other. And
   `gate-chunked.sh` calls `scripts/dev-db-rebuild.sh` **inside its per-chunk loop**, rebuilding the whole
-  cluster 16 times, which destroys any concurrent vitest's databases **whatever its
+  cluster once per DB chunk, which destroys any concurrent vitest's databases **whatever its
   `TEST_DB_NAMESPACE`** — a namespace separates agents from each other, never from a cluster rebuild. So
-  while the parent gates, agents run **NO vitest at all**: reading, `tsc` and committing only. Measured
+  while the parent gates, agents only read, write and commit in their own worktrees. Measured
   in r374 — a gate chunk came back `8 failed`, across eight unrelated suites, with **zero
   AssertionErrors** and 136 environment-shaped errors. Dispatch builders OR gate; never both.
   **Even `tsc` is too heavy**: measured in r374 at **1.19 GB RSS**, and a second run reached 2.4 GB — beside
