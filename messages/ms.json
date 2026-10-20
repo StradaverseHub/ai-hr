@@ -433,7 +433,8 @@
     "onboardingGroups": "Kumpulan penugasan",
     "onboardingModuleAccess": "Akses modul",
     "controlTowerOpportunities": "Peluang",
-    "leaveSettings": "Tetapan"
+    "leaveSettings": "Tetapan",
+    "attendanceCalendar": "Kalendar Kehadiran"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -3663,7 +3664,7 @@
     "correctionRejected": "Pembetulan itu tidak dapat direkodkan.",
     "correctionPendingAnotherApprover": "Disimpan, tetapi memerlukan pelulus lain: anda tidak boleh meluluskan pembetulan kehadiran anda sendiri.",
     "correctionSaved": "Pembetulan disimpan dan digunakan.",
-    "myDayBack": "Kembali ke Ringkasan Kehadiran",
+    "myDayBack": "Kembali ke Kalendar Kehadiran",
     "myDayPending": "Menunggu kelulusan — pembetulan lain tidak boleh dihantar untuk tarikh ini.",
     "myDayFuture": "Tarikh akan datang tidak boleh dibetulkan.",
     "myDayBadTimes": "Waktu keluar mestilah selepas waktu masuk.",
@@ -3804,6 +3805,11 @@
       "capProgress": "{used} / {cap} minit",
       "recordedDuration": "Kerja lebih masa direkodkan",
       "summaryNote": "Jumlah kerja lebih masa menggunakan pengiraan yang direkodkan bagi setiap hari dan mengekalkan minit tepat. Hari yang tidak tersedia menjadikan jumlah tidak lengkap. Waktu kerja, ketidakhadiran dan penanda mingguan mengekalkan peraturan Kehadiran. Amaran bulanan menggunakan had sedia ada 104 jam."
+    },
+    "myCalendar": {
+      "title": "Kalendar Kehadiran",
+      "records": "Senarai rekod kehadiran",
+      "viewDate": "Lihat kehadiran untuk {date}"
     }
   },
   "org": {

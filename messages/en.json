@@ -433,7 +433,8 @@
     "onboardingGroups": "Assignment groups",
     "onboardingModuleAccess": "Module access",
     "controlTowerOpportunities": "Opportunities",
-    "leaveSettings": "Settings"
+    "leaveSettings": "Settings",
+    "attendanceCalendar": "Attendance Calendar"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -3663,7 +3664,7 @@
     "correctionRejected": "That correction could not be recorded.",
     "correctionPendingAnotherApprover": "Saved, but it needs another approver: you cannot approve a correction to your own attendance.",
     "correctionSaved": "Correction saved and applied.",
-    "myDayBack": "Back to Attendance Overview",
+    "myDayBack": "Back to Attendance Calendar",
     "myDayPending": "Pending approval — another correction cannot be submitted for this date.",
     "myDayFuture": "Future dates cannot be corrected.",
     "myDayBadTimes": "Check-out must be later than check-in.",
@@ -3804,6 +3805,11 @@
       "capProgress": "{used} / {cap} minutes",
       "recordedDuration": "Recorded overtime",
       "summaryNote": "Overtime totals use each day’s recorded calculation and preserve exact minutes. Unavailable days make the total incomplete. Working hours, absence and weekly flags retain their Attendance rules. The monthly warning uses the existing 104-hour limit."
+    },
+    "myCalendar": {
+      "title": "Attendance Calendar",
+      "records": "Attendance records list",
+      "viewDate": "View attendance for {date}"
     }
   },
   "org": {

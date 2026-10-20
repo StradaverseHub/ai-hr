@@ -433,7 +433,8 @@
     "onboardingGroups": "分配小组",
     "onboardingModuleAccess": "模块权限",
     "controlTowerOpportunities": "机会",
-    "leaveSettings": "设置"
+    "leaveSettings": "设置",
+    "attendanceCalendar": "考勤日历"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -3663,7 +3664,7 @@
     "correctionRejected": "无法记录该更正。",
     "correctionPendingAnotherApprover": "已保存，但需另一位审批人：您不能审批自己的考勤更正。",
     "correctionSaved": "更正已保存并生效。",
-    "myDayBack": "返回考勤概览",
+    "myDayBack": "返回考勤日历",
     "myDayPending": "待审批 — 此日期无法再次提交更正。",
     "myDayFuture": "无法更正未来日期。",
     "myDayBadTimes": "签退时间必须晚于签到时间。",
@@ -3804,6 +3805,11 @@
       "capProgress": "{used} / {cap} 分钟",
       "recordedDuration": "已记录加班",
       "summaryNote": "加班总计使用每天已记录的计算结果，并保留精确分钟数。存在不可用的日期时，总计不完整。工时、缺勤及每周标记仍沿用考勤规则。每月提醒使用现有的 104 小时上限。"
+    },
+    "myCalendar": {
+      "title": "考勤日历",
+      "records": "考勤记录列表",
+      "viewDate": "查看 {date} 的考勤"
     }
   },
   "org": {

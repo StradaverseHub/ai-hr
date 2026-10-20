@@ -323,7 +323,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   {
     screenKey: 'myRoster',
     href: '/attendance/my-roster',
-    labelKey: 'nav.myRoster',
+    labelKey: 'nav.attendanceCalendar',
     guard: 'scopedSession',
     routes: ['/attendance/my-roster'],
     hasScopeNote: true,

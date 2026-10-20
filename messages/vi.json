@@ -433,7 +433,8 @@
     "onboardingGroups": "Nhóm phân công",
     "onboardingModuleAccess": "Quyền truy cập mô-đun",
     "controlTowerOpportunities": "Cơ hội",
-    "leaveSettings": "Cài đặt"
+    "leaveSettings": "Cài đặt",
+    "attendanceCalendar": "Lịch chấm công"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -3663,7 +3664,7 @@
     "correctionRejected": "Không thể ghi nhận điều chỉnh này.",
     "correctionPendingAnotherApprover": "Đã lưu, nhưng cần người duyệt khác: bạn không thể duyệt điều chỉnh chấm công của chính mình.",
     "correctionSaved": "Đã lưu và áp dụng điều chỉnh.",
-    "myDayBack": "Quay lại tổng quan chấm công",
+    "myDayBack": "Quay lại Lịch chấm công",
     "myDayPending": "Đang chờ phê duyệt — không thể gửi thêm yêu cầu sửa cho ngày này.",
     "myDayFuture": "Không thể sửa ngày trong tương lai.",
     "myDayBadTimes": "Giờ ra phải sau giờ vào.",
@@ -3804,6 +3805,11 @@
       "capProgress": "{used} / {cap} phút",
       "recordedDuration": "Làm thêm đã ghi nhận",
       "summaryNote": "Tổng làm thêm dùng kết quả đã ghi nhận của từng ngày và giữ số phút chính xác. Ngày chưa có kết quả khiến tổng không đầy đủ. Giờ làm, vắng mặt và cờ tuần vẫn theo quy tắc Chấm công. Cảnh báo tháng dùng giới hạn hiện có là 104 giờ."
+    },
+    "myCalendar": {
+      "title": "Lịch chấm công",
+      "records": "Danh sách bản ghi chấm công",
+      "viewDate": "Xem chấm công ngày {date}"
     }
   },
   "org": {
