@@ -180,9 +180,11 @@ describe('recorded Emergency Leave provenance', () => {
       for (const child of children) expect(child.isEmergencyGroup).toBe(true);
     }
     // A grouped historical row without a recorded EL origin must not acquire that purpose by inference.
-    const unknownGroup = randomUUID();
-    await owner.db.update(schema.leaveRequest).set({ parentGroupId: unknownGroup }).where(eq(schema.leaveRequest.id, annual.id));
-    expect((await leaveRequestsFor(adminCtx(b), employmentId)).find(row => row.id === annual.id)?.isEmergencyGroup).toBe(false);
+    const unknownDate=new Date(Date.parse(`${start}T00:00:00Z`)+7*86400000).toISOString().slice(0,10);
+    const [legacy]=await owner.db.insert(schema.leaveRequest).values({tenantId:b.tenantId,employmentId,
+      leaveTypeId:annualId,startDate:unknownDate,endDate:unknownDate,days:'1.00',durationType:'full_day',
+      status:'approved',parentGroupId:randomUUID()}).returning({id:schema.leaveRequest.id});
+    expect((await leaveRequestsFor(adminCtx(b), employmentId)).find(row => row.id === legacy.id)?.isEmergencyGroup).toBe(false);
   });
 });
 
