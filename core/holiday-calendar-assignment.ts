@@ -37,12 +37,14 @@ export async function saveEmploymentHolidayCalendarAssignment(ctx:SessionContext
   employmentId:string;replacesId?:string|null;startDate:string;endDate?:string|null;selection:HolidayCalendarSelection;
 }){
   if(!isAdmin(ctx))fail('scope');
+  const recordedBy=ctx.userId;
+  if(!recordedBy)throw new HolidayCalendarAssignmentError('scope');
   if(!validDate(p.startDate)||p.endDate&&(!validDate(p.endDate)||p.endDate<p.startDate))fail('dates');
   const validTo=p.endDate?add(p.endDate,1):null;
   if(!p.selection||!['none','state','group'].includes(p.selection.kind))fail('calendar');
   return withTenant(ctx,async tx=>{
     const [access]=await tx.execute(sql`select app.can_admin_employment(${p.employmentId}::uuid) as allowed`) as unknown as {allowed:boolean}[];
-    if(!access?.allowed||!ctx.userId)fail('scope');
+    if(!access?.allowed)fail('scope');
     // Same subject interlock as clocking, punch imports, corrections and the recompute owner.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+p.employmentId},0))`);
     const [subject]=await tx.select().from(employment).where(eq(employment.id,p.employmentId)).for('update');
@@ -87,7 +89,7 @@ export async function saveEmploymentHolidayCalendarAssignment(ctx:SessionContext
     const oldDates=await holidayDatesFor(tx,{employmentId:p.employmentId,startDate:readFrom,endDate:to});
     if(before)await tx.update(employmentHolidayCalendar).set({supersededAt:new Date()}).where(eq(employmentHolidayCalendar.id,before.id));
     const [saved]=await tx.insert(employmentHolidayCalendar).values({tenantId:ctx.tenantId,employmentId:p.employmentId,
-      validFrom:p.startDate,validTo,kind:p.selection.kind,workState,holidayGroupId:groupId,replacesId:before?.id??null,recordedBy:ctx.userId}).returning();
+      validFrom:p.startDate,validTo,kind:p.selection.kind,workState,holidayGroupId:groupId,replacesId:before?.id??null,recordedBy}).returning();
     await reconcileReplacementHolidaysTx(tx,ctx,p.employmentId,{sourceWindow:{from:readFrom,to:reconciliationEnd}});
     const nextDates=await holidayDatesFor(tx,{employmentId:p.employmentId,startDate:readFrom,endDate:to});
     const changedDates=[...new Set([...oldDates,...nextDates])].filter(date=>oldDates.has(date)!==nextDates.has(date)).sort();
