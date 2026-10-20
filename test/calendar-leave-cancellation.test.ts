@@ -107,8 +107,9 @@ describe('calendar-counted partial cancellation preserves the actual charged dat
       const leaveTypes=await listLeaveTypes(employee);
       const projected=await loadOwnLeaveHistory({session:employee,me,sp:{hTab:'approved'},locale:'en',leaveTypes,eligibleTypeIds:new Set(leaveTypes.map(type=>type.id))});
       const messages=JSON.parse(readFileSync('messages/en.json','utf8')) as AbstractIntlMessages;
-      const html=renderToStaticMarkup(createElement(NextIntlClientProvider,{locale:'en',messages,children:projected.history}));
-      expect(html).toContain('Maternity leave');
+      const html=renderToStaticMarkup(createElement(NextIntlClientProvider,{locale:'en',timeZone:'Asia/Kuala_Lumpur',messages,children:projected.history}));
+      const actualType=leaveTypes.find(type=>type.id===leaveTypeId);if(!actualType)throw Error('Expected the actual maternity fixture type');
+      expect(html).toContain(actualType.name);
       expect(html).not.toContain('Emergency Leave');
     }
     const afterLedger = await ledger();
