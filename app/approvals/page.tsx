@@ -1037,7 +1037,11 @@ export default async function ApprovalsPage({
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{c.reason ?? '—'}{c.workflow && <AttendanceWorkflowProgress workflow={c.workflow} status={c.status} />}</td>
+                  <td className="px-4 py-2.5 text-muted-foreground">
+                    {c.reason ?? '—'}
+                    {c.hasAttachment && <div className="mt-1"><LeaveAttachmentCell href={`/attendance/requests/attachment/${c.id}?inline=1`} label={t('attachment')} /></div>}
+                    {c.workflow && <AttendanceWorkflowProgress workflow={c.workflow} status={c.status} />}
+                  </td>
                   <td className="px-4 py-2.5">
                     <DecideButtons
                       workflowStage={c.workflow?.currentStage}

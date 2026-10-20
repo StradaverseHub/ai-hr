@@ -80,7 +80,8 @@ describe('579255c3 — the opt-in columns are read from information Personnel al
       .returning({ id: schema.jobGrade.id });
     const [bu] = await owner.db
       .insert(schema.businessUnit)
-      .values({ tenantId: b.tenantId, companyId: b.companyId, code: 'BU1', name: 'Construction' })
+      // Canonical Labels text owns display; a different legacy name must not win.
+      .values({ tenantId: b.tenantId, companyId: b.companyId, code: 'BU1', name: 'Legacy BU name', label: 'Construction' })
       .returning({ id: schema.businessUnit.id });
     const [loc] = await owner.db
       .insert(schema.location)

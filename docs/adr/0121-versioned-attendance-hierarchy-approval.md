@@ -130,3 +130,11 @@ owner, retaining earlier participant evidence and the real HR decision/reason. T
 requested_ot_minutes from the actual correction, including Irregularity applications carrying OT; it
 must not be inferred from the application's screen/type alone. Ordinary non-OT rejection remains
 supported. No cash-source predicate, Personnel visibility or financial role is widened.
+
+
+Supporting files are request consumers too. A live v3 assignee may read the supporting bytes on that
+exact request through the existing attachment route, while unrelated, revoked, reassigned-away and
+foreign-tenant actors remain refused. The worklist exposes only an RLS-scoped presence flag and the
+existing Approvals row links the file; file content is fetched on demand. This adds a SELECT policy,
+not an employment grant or an attachment-writing capability. Existing upload, update, delete and
+post-decision upload restrictions remain unchanged.
