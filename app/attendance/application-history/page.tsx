@@ -60,7 +60,7 @@ export default async function AttendanceApplicationHistoryPage({ searchParams }:
         <nav aria-label={t('statusNavigation')} className="flex flex-wrap gap-x-5 border-b border-border">
           {tabs.map(([value, label, count]) => {
             const active = status === value || value === 'cancelled_withdrawn' && (status === 'cancelled' || status === 'withdrawn');
-            return <Link key={value} href={url(1, value)} aria-current={active ? 'page' : undefined} className={`inline-flex min-h-11 items-center gap-2 border-b-2 px-1 text-sm ${active ? 'border-primary font-semibold text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}><span>{label}{' '}</span><span className="tabular-nums">{count}</span></Link>;
+            return <Link key={value} href={url(1, value)} aria-label={`${label} ${count}`} aria-current={active ? 'page' : undefined} className={`inline-flex min-h-11 items-center gap-2 border-b-2 px-1 text-sm ${active ? 'border-primary font-semibold text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}><span>{label}{' '}</span><span className="tabular-nums">{count}</span></Link>;
           })}
         </nav>
         <AttendanceHistoryTable key={returnTo} rows={data.rows} returnTo={returnTo} />
