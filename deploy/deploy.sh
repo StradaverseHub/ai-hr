@@ -339,6 +339,10 @@ dstate phase build
 # validator was byte-identical in size with and without them (3157 lines), so this is the tree's growth.
 # ⚠️ And a failed build leaves `.next` without a BUILD_ID: restarting the service then has NOTHING to start
 # (r394 took the app down that way, 12:05 MYT). After a failed build, redeploy; never restart.
+# atelier-css-fix — a warm Turbopack cache kept a stale CSS import graph and shipped no Atelier styles.
+# Clear it when the CSS inputs changed; record them only after the build below succeeds.
+. deploy/css-cache-guard.sh
+aihr_css_cache_guard
 if [ -n "$AIHR_SELECTED_TESTING_BUILD_RECORD" ]; then
   NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=6144" node --import tsx scripts/improve/system-testing-build-cli.ts build "$AIHR_SELECTED_DEPLOY_REF" "$AIHR_SELECTED_TESTING_BUILD_RECORD"
 else
@@ -349,6 +353,7 @@ else
   AIHR_SYSTEM_TESTING_SOURCE_HASH_RECORD='' AIHR_SYSTEM_TESTING_BUILD_CONTEXT='' \
   NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=6144" pnpm build
 fi
+aihr_css_cache_record
 # The build id this source produced, recorded the instant the build succeeded and nowhere else.
 # `deploy-state.sh status` compares it against the .next/BUILD_ID physically on disk, which is how a
 # later deploy that died before finishing its own build is distinguishable from a clean one.
