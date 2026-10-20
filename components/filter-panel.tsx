@@ -234,7 +234,7 @@ export function FilterPanel({ action, fields, values, labels, hidden, dataTour, 
           {labels.apply}
         </Button>
         {active > 0 && (
-          <Link href={baseHref(action, hidden)} className="text-sm text-muted-foreground hover:text-foreground">
+          <Link href={baseHref(action, hidden)} onClick={dialog ? () => setOpen(false) : undefined} className="text-sm text-muted-foreground hover:text-foreground">
             {labels.clearAll}
           </Link>
         )}
