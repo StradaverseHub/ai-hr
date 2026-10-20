@@ -94,14 +94,25 @@ describe('saved result provenance', () => {
     expect(recordedPayrollComparisonAmount('0', { componentLines: [{ code: 'ALLOWANCE', amount: 'broken' }] }, 'ALLOWANCE')).toBeNull();
   });
   it('does not mistake employer-owned dates for paid tenure, and requires an explicit monthly proration stamp',()=>{
-    const period={from:'2026-10-01',to:'2026-10-31'},proration={payMode:'monthly',from:'2026-10-15',to:null,factor:0.5};
+    const period={from:'2026-10-01',to:'2026-10-31'},proration={payMode:'monthly',from:'2026-10-15',to:null,factor:0.5,window:period};
     const snapshot={reportContext:{version:1,payingCompanyId:companyId,currency:'MYR',proration}};
-    expect(recordedPayrollProrationCoverage(snapshot,companyId,period)).toEqual({from:'2026-10-15',to:'2026-10-31'});
-    for(const changed of [{factor:1},{factor:NaN},{payMode:'daily'},{from:'2026-10-00'}]){
-      expect(recordedPayrollProrationCoverage({reportContext:{...snapshot.reportContext,proration:{...proration,...changed}}},companyId,period)).toBeUndefined();
+    expect(recordedPayrollProrationCoverage(snapshot,companyId,period,'BASIC')).toEqual({from:'2026-10-15',to:'2026-10-31',windowFrom:period.from,windowTo:period.to});
+    for(const changed of [{factor:1},{factor:NaN},{payMode:'daily'},{from:'2026-10-00'},{window:undefined}]){
+      expect(recordedPayrollProrationCoverage({reportContext:{...snapshot.reportContext,proration:{...proration,...changed}}},companyId,period,'BASIC')).toBeUndefined();
     }
-    expect(recordedPayrollProrationCoverage(snapshot,otherCompanyId,period)).toBeUndefined();
-    expect(recordedPayrollProrationCoverage({salaryBasis:{payMode:'monthly'},daysWorked:16},companyId,period)).toBeUndefined();
+    expect(recordedPayrollProrationCoverage(snapshot,otherCompanyId,period,'BASIC')).toBeUndefined();
+    expect(recordedPayrollProrationCoverage(snapshot,companyId,period,'ALLOWANCE')).toBeUndefined();
+    expect(recordedPayrollProrationCoverage({salaryBasis:{payMode:'monthly'},daysWorked:16},companyId,period,'BASIC')).toBeUndefined();
+  });
+  it('retains the actual cross-month salary cutoff for the Prorated filter without guessing a calendar-month hire',()=>{
+    const period={from:'2026-10-01',to:'2026-10-31'};
+    const recorded=recordedPayrollProrationCoverage({reportContext:{version:1,payingCompanyId:companyId,proration:{payMode:'monthly',from:'2026-09-30',to:null,factor:0.8,window:{from:'2026-09-26',to:'2026-10-25'}}}},companyId,period,'BASIC');
+    expect(recorded).toEqual({from:'2026-09-30',to:'2026-10-25',windowFrom:'2026-09-26',windowTo:'2026-10-25'});
+    const current=source('current','hire','current','2400',{proratedCoverage:recorded});
+    expect(payrollComparisonDatedSubjects([current],runs,'2026-09','2026-10')).toEqual([{employmentId:'hire',companyId,date:'2026-10-25'}]);
+    const result=compare([current],[identity('hire',{hireDate:'2026-09-30'})],{filters:{...filters,reason:'prorated'}});
+    expect(result.rows).toHaveLength(1);expect(result.rows[0].reason.prorated).toBe(true);
+    expect(result.reasonFilterCounts.prorated).toBe(1);
   });
   it('does not substitute a live company currency or another employer stamp', () => {
     expect(recordedPayrollComparisonCurrency({ currency: 'MYR' }, companyId)).toBeNull();

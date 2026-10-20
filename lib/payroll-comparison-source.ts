@@ -17,9 +17,14 @@ export function payrollComparisonDatedSubjects(sources:readonly Pick<ComparisonS
   if(!side||!isCalendarDate(source.coverage.from)||!isCalendarDate(source.coverage.to)||source.coverage.from>source.coverage.to||source.coverage.from.slice(0,7)!==period||source.coverage.to.slice(0,7)!==period)
    throw Error('Recorded payroll ownership dates are unavailable for this comparison.');
   const paid=source.proratedCoverage;
-  if(paid&&(!isCalendarDate(paid.from)||!isCalendarDate(paid.to)||paid.from>paid.to||paid.from<source.coverage.from||paid.to>source.coverage.to))
-   throw Error('Recorded paid-tenure dates disagree with payroll ownership.');
-  const key=source.employmentId+'|'+source.companyId,old=subjects.get(key),date=paid?.to??source.coverage.to;
+  if(paid){
+   const window=paid.windowFrom!==undefined||paid.windowTo!==undefined;
+   if(!isCalendarDate(paid.from)||!isCalendarDate(paid.to)||paid.from>paid.to||
+    (window?typeof paid.windowFrom!=='string'||typeof paid.windowTo!=='string'||!isCalendarDate(paid.windowFrom)||!isCalendarDate(paid.windowTo)||paid.windowFrom>paid.from||paid.to>paid.windowTo:
+     paid.from<source.coverage.from||paid.to>source.coverage.to))
+    throw Error('Recorded paid-tenure evidence is unavailable.');
+  }
+  const key=source.employmentId+'|'+source.companyId,old=subjects.get(key),date=paid&&paid.to>=source.coverage.from&&paid.to<source.coverage.to?paid.to:source.coverage.to;
   if(!old||side>old.side||side===old.side&&date>old.date)subjects.set(key,{employmentId:source.employmentId,companyId:source.companyId,date,side});
  }
  return [...subjects.values()].sort((a,b)=>a.employmentId.localeCompare(b.employmentId)||a.companyId.localeCompare(b.companyId)).map(({side,...subject})=>subject);
@@ -50,12 +55,15 @@ export function recordedPayrollComparisonAmount(basicSalary: string, statutory: 
 }
 
 /** Employer-owned coverage is not paid tenure. Read only the calculation's explicit monthly evidence. */
-export function recordedPayrollProrationCoverage(statutory:unknown,companyId:string,period:{from:string;to:string}):{from:string;to:string}|undefined{
-  const stamp=object(object(statutory)?.reportContext),proof=object(stamp?.proration);
-  if(stamp?.version!==1||stamp.payingCompanyId!==companyId||proof?.payMode!=='monthly'||typeof proof.factor!=='number'||!Number.isFinite(proof.factor)||proof.factor<0||proof.factor>=1)return;
-  const valid=(value:unknown):value is string=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value+'T00:00:00Z'))&&new Date(value+'T00:00:00Z').toISOString().slice(0,10)===value;
-  if(!valid(proof.from)||proof.to!==null&&!valid(proof.to))return;
-  const from=proof.from>period.from?proof.from:period.from,to=proof.to&&proof.to<period.to?proof.to:period.to;
-  if(from>to||from===period.from&&to===period.to)return;
-  return {from,to};
+export function recordedPayrollProrationCoverage(statutory:unknown,companyId:string,period:{from:string;to:string},payItemCode:string):{from:string;to:string;windowFrom:string;windowTo:string}|undefined{
+  if(payItemCode!=='BASIC')return;
+  const stamp=object(object(statutory)?.reportContext),proof=object(stamp?.proration),window=object(proof?.window);
+  if(stamp?.version!==1||stamp.payingCompanyId!==companyId||!proof||proof.payMode!=='monthly'||typeof proof.factor!=='number'||!Number.isFinite(proof.factor)||proof.factor<0||proof.factor>=1)return;
+  const valid=(value:unknown):value is string=>typeof value==='string'&&isCalendarDate(value);
+  if(!window||!valid(proof.from)||proof.to!==null&&!valid(proof.to)||!valid(window.from)||!valid(window.to))return;
+  const windowFrom=window.from,windowTo=window.to;
+  if(windowFrom>windowTo||windowTo<period.from||windowTo>period.to||(Date.parse(windowTo+'T00:00:00Z')-Date.parse(windowFrom+'T00:00:00Z'))/86400000>366)return;
+  const from=proof.from>windowFrom?proof.from:windowFrom,to=proof.to&&proof.to<windowTo?proof.to:windowTo;
+  if(from>to||from===windowFrom&&to===windowTo)return;
+  return {from,to,windowFrom,windowTo};
 }

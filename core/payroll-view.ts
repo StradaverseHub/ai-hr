@@ -3114,7 +3114,8 @@ export async function payrollComparisonSourcesTx(tx: Tx, ctx: SessionContext, p:
       companyId: batch.companyId, currency: recordedPayrollComparisonCurrency(slip.statutory, batch.companyId),
       amount: recordedPayrollComparisonAmount(slip.basicSalary, slip.statutory, p.payItemCode,batch.companyId),
       coverage: payslipCoverage(slip, period),
-      proratedCoverage: recordedPayrollProrationCoverage(slip.statutory,batch.companyId,period) };
+      // The recorded factor describes Basic. It cannot prove a different item's proration.
+      proratedCoverage: recordedPayrollProrationCoverage(slip.statutory,batch.companyId,period,p.payItemCode) };
   });
   return { runs, sources };
 }

@@ -85,18 +85,19 @@ export function payrollReasonMatches(evidence:PayrollReasonEvidence,filter:Payro
  return evidence.reason===filter;
 }
 export function payrollComparisonReason(p:{autoTag:boolean;periodFrom:string;periodTo:string;hireDate:string;exitDate:string|null;
- previous:bigint;current:bigint;previousPeriodFrom:string;previousCoverage:{from:string;to:string}[];currentCoverage:{from:string;to:string}[];proratedCoverage?:{from:string;to:string}[];movements:readonly PayrollComparisonMovement[];verifiedTransferIds?:readonly string[]}):PayrollReasonEvidence{
- const result=(reason:PayrollComparisonReason,effectiveDate:string|null=null,evidenceIds:string[]=[],multipleChanges=false,prorated=false):PayrollReasonEvidence=>({reason,effectiveDate,evidenceIds,multipleChanges,prorated});
- if(!p.autoTag)return result('unclassified');
+ previous:bigint;current:bigint;previousPeriodFrom:string;previousCoverage:{from:string;to:string}[];currentCoverage:{from:string;to:string}[];proratedCoverage?:{from:string;to:string;windowFrom?:string;windowTo?:string}[];movements:readonly PayrollComparisonMovement[];verifiedTransferIds?:readonly string[]}):PayrollReasonEvidence{
+ const recordedProration=(p.proratedCoverage??[]).some(coverage=>coverage.from>(coverage.windowFrom??p.periodFrom)||coverage.to<(coverage.windowTo??p.periodTo));
+ const result=(reason:PayrollComparisonReason,effectiveDate:string|null=null,evidenceIds:string[]=[],multipleChanges=false,prorated=recordedProration):PayrollReasonEvidence=>({reason,effectiveDate,evidenceIds,multipleChanges,prorated});
+ if(!p.autoTag)return result('unclassified',null,[],false,false);
  const applied=p.movements.filter(m=>m.status==='applied'&&m.effectiveDate>=p.periodFrom&&m.effectiveDate<=p.periodTo);
  const transfers=applied.filter(m=>m.kind==='transfer'&&p.verifiedTransferIds?.includes(m.id)).sort((a,b)=>b.effectiveDate.localeCompare(a.effectiveDate)||b.sequence-a.sequence);
  if(transfers.length)return result('transfer',transfers[0].effectiveDate,transfers.map(m=>m.id));
  const within=(date:string)=>date>=p.periodFrom&&date<=p.periodTo;
- const coveredHire=(p.proratedCoverage??[]).some(coverage=>coverage.from===p.hireDate&&coverage.from>p.periodFrom);
+ const coveredHire=(p.proratedCoverage??[]).some(coverage=>coverage.from===p.hireDate&&coverage.from>(coverage.windowFrom??p.periodFrom));
  if(p.previous===BigInt('0')&&p.current>BigInt('0')&&within(p.hireDate))return result('newHire',p.hireDate,[],false,coveredHire);
  const exits=p.movements.filter(m=>m.status==='applied'&&m.kind==='exit'&&m.effectiveDate===p.exitDate&&m.effectiveDate>=p.previousPeriodFrom&&m.effectiveDate<=p.periodTo);
  if(p.exitDate&&exits.length&&p.previous>BigInt('0')&&p.current===BigInt('0')&&(within(p.exitDate)||p.previousCoverage.some(coverage=>coverage.from<=p.exitDate!&&p.exitDate!<=coverage.to)))return result('resigned',p.exitDate,exits.map(m=>m.id));
- if(p.exitDate&&within(p.exitDate)&&p.current>BigInt('0')&&exits.length&&(p.proratedCoverage??[]).some(coverage=>coverage.to===p.exitDate&&coverage.to<p.periodTo))return result('proratedLeaving',p.exitDate,exits.map(m=>m.id),false,true);
+ if(p.exitDate&&within(p.exitDate)&&p.current>BigInt('0')&&exits.length&&(p.proratedCoverage??[]).some(coverage=>coverage.to===p.exitDate&&coverage.to<(coverage.windowTo??p.periodTo)))return result('proratedLeaving',p.exitDate,exits.map(m=>m.id),false,true);
  const changes=applied.filter((m):m is PayrollComparisonMovement&{kind:'increment'|'promotion'|'demotion'}=>m.salaryChanged&&['increment','promotion','demotion'].includes(m.kind)).sort((a,b)=>b.effectiveDate.localeCompare(a.effectiveDate)||b.sequence-a.sequence);
  if(changes.length)return result(changes[0].kind,changes[0].effectiveDate,changes.map(m=>m.id),changes.length>1);
  return result('unexplained');

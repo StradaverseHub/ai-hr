@@ -7357,7 +7357,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           reportContext: { version: 1, payingCompanyId: batch.companyId, currency: co?.currency ?? null,
             itemization:typedComponents?'complete':'partial',
             // These are inputs/evidence from this calculation, not a reconstruction from later master data.
-            ...(!isAdditionalRun ? {proration:{payMode:e.payMode,from:segHiredOn(e),to:segTerminatedOn(e),factor}} : {}),
+            ...(!isAdditionalRun ? {proration:{payMode:e.payMode,from:segHiredOn(e),to:segTerminatedOn(e),factor,
+              window:{from:prorationOptsByEmp.get(e.employmentId)?.window?.start??periodStart,to:prorationOptsByEmp.get(e.employmentId)?.window?.end??periodEnd}}} : {}),
           },
           salaryBasis: {
             version: 1,

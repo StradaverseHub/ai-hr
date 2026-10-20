@@ -18,7 +18,7 @@ export type ComparisonSource = {
   /** null means the selected item cannot be established from this saved result. */
   amount: string | null;
   coverage: { from: string; to: string };
-  proratedCoverage?: { from:string; to:string };
+  proratedCoverage?: { from:string; to:string; windowFrom?:string; windowTo?:string };
 };
 export type ComparisonIdentity = {
   employmentId: string; companyId: string; employeeCode: string; employeeName: string;

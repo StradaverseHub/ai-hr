@@ -134,7 +134,7 @@ reads results and applied Movement evidence; it does not calculate pay or approv
 Historical result currency stays with the paying employer. Missing historical currency is shown
 separately by employer with no asserted variance; today's currency is not substituted. Totals precede
 reason/minimum filters and pagination. Employer-owned coverage is distinct from paid tenure: only a
-recorded monthly proration snapshot supports a Prorated label; historical ownership dates alone do not.
+recorded monthly Basic proration snapshot, including its actual salary cutoff window, supports a Prorated label; historical ownership dates alone do not. A different selected item needs its own item-level evidence before this report can assert proration. The saved salary window may cross calendar months; the report does not reconstruct it from current settings.
 Prorated hires remain New hire explanations and also appear in
 the Prorated filter; Increment / Promotion groups those two evidence-backed explanations.
 
