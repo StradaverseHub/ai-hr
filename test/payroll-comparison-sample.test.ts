@@ -7,7 +7,7 @@ import {ensurePayrollBasicVarianceSample,getCustomReport,listCustomReports,updat
 import {payrollComparisonSpec} from '../core/report-payroll-comparison';
 import {DEFAULT_PAYROLL_COMPARISON} from '../lib/payroll-period-comparison';
 import {setPayrollPermissionGrant} from '../packs/payroll/service';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,ctx:SessionContext;
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'payroll','active');ctx={...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};});
@@ -48,7 +48,7 @@ describe('explicit Payroll Basic Variance example',()=>{
   await expect(ensurePayrollBasicVarianceSample({...ctx,userId:undefined},[b.companyId])).rejects.toThrow();
   await expect(ensurePayrollBasicVarianceSample({...ctx,roles:['super_admin']},[b.companyId])).rejects.toThrow();
   await setModule(b.tenantId,'payroll','disabled');
-  await expect(ensurePayrollBasicVarianceSample({...adminCtx(b),grants:ctx.grants},[b.companyId])).rejects.toThrow();
+  await expect(ensurePayrollBasicVarianceSample({...await entitledCtx(b),grants:ctx.grants},[b.companyId])).rejects.toThrow();
   await setModule(b.tenantId,'payroll','active');
   await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId,ctx.userId!));
   await expect(ensurePayrollBasicVarianceSample(ctx,[b.companyId])).rejects.toThrow();expect(await definitions()).toEqual([]);
