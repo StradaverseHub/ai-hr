@@ -77,7 +77,7 @@ function shimRepo(envProduction: string): { dir: string; trace: string } {
   // branch is the one a first deploy takes.
   fs.mkdirSync(path.join(dir, 'node_modules'));
   fs.mkdirSync(path.join(dir, 'bin'));
-  for (const f of ['deploy.sh', 'deploy-customer.sh']) {
+  for (const f of ['deploy.sh', 'deploy-customer.sh', 'css-cache-guard.sh']) {
     fs.copyFileSync(path.join(REPO, 'deploy', f), path.join(dir, 'deploy', f));
     fs.chmodSync(path.join(dir, 'deploy', f), 0o755);
   }
