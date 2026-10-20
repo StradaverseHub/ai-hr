@@ -5,7 +5,7 @@ import {
   type PayrollComparisonMovement,
 } from '../lib/payroll-period-comparison';
 import { comparePayrollResults, type ComparisonRun, type ComparisonSource, type ComparisonIdentity } from '../lib/payroll-comparison-result';
-import { recordedPayrollComparisonAmount, recordedPayrollComparisonCurrency, recordedPayrollProrationCoverage } from '../lib/payroll-comparison-source';
+import { recordedPayrollComparisonAmount, recordedPayrollComparisonCurrency, recordedPayrollProrationCoverage,payrollComparisonDatedSubjects } from '../lib/payroll-comparison-source';
 const definition = structuredClone(DEFAULT_PAYROLL_COMPARISON);
 const companyId = '00000000-0000-0000-0000-000000000001';
 const otherCompanyId = '00000000-0000-0000-0000-000000000002';
@@ -51,6 +51,30 @@ describe('payroll comparison exact arithmetic and validation', () => {
 });
 
 describe('saved result provenance', () => {
+  it('keeps the departing and receiving employer on their own recorded transfer-month dates',()=>{
+    const history=[...runs,{...runs[1],id:'receiving',companyId:otherCompanyId}];
+    const recorded=[source('before','worker','previous','3000'),
+      source('departing','worker','current','1400',{coverage:{from:'2026-10-01',to:'2026-10-14'}}),
+      source('receiving','worker','receiving','1600',{companyId:otherCompanyId,coverage:{from:'2026-10-15',to:'2026-10-31'}})];
+    expect(payrollComparisonDatedSubjects(recorded,history,'2026-09','2026-10')).toEqual([
+      {employmentId:'worker',companyId,date:'2026-10-14'},
+      {employmentId:'worker',companyId:otherCompanyId,date:'2026-10-31'},
+    ]);
+    expect(payrollComparisonDatedSubjects([...recorded].reverse(),history,'2026-09','2026-10')).toEqual(payrollComparisonDatedSubjects(recorded,history,'2026-09','2026-10'));
+  });
+  it('retains previous-only leavers and chooses the final recorded ownership day on the selected side',()=>{
+    const recorded=[source('leaver','leaver','previous','1000',{coverage:{from:'2026-09-01',to:'2026-09-14'}}),
+      source('earlier','worker','current','500',{coverage:{from:'2026-10-01',to:'2026-10-10'}}),
+      source('later','worker','current','500',{coverage:{from:'2026-10-11',to:'2026-10-20'}})];
+    expect(payrollComparisonDatedSubjects(recorded,runs,'2026-09','2026-10')).toEqual([
+      {employmentId:'leaver',companyId,date:'2026-09-14'},
+      {employmentId:'worker',companyId,date:'2026-10-20'},
+    ]);
+  });
+  it('refuses malformed or out-of-period payroll ownership dates instead of guessing placement',()=>{
+    for(const coverage of [{from:'2026-10-01',to:'2026-11-01'},{from:'2026-10-31',to:'2026-10-01'},{from:'2026-10-01',to:'2026-10-32'}])
+      expect(()=>payrollComparisonDatedSubjects([source('bad','worker','current','1000',{coverage})],runs,'2026-09','2026-10')).toThrow();
+  });
   it('reads paid basic independently of component display classification', () => {
     expect(recordedPayrollComparisonAmount('2500.17', { componentLines: [{ code: 'BASIC', amount: 9000 }] }, 'BASIC')).toBe('2500.17');
   });

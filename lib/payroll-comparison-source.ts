@@ -1,7 +1,26 @@
 /** Read recorded paid results. Today's pay-item catalogue and company settings are deliberately absent. */
 import { payrollAmountMinor, payrollMinorDecimal } from './payroll-period-comparison';
+import {isCalendarDate} from './calendar-date';
+import type {ComparisonSource,ComparisonRun} from './payroll-comparison-result';
 const object = (value: unknown): Record<string, unknown> | null =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+
+/** A transfer can create two employer rows in the same month. Each row's dated context belongs to
+ * its own last recorded payroll-ownership day, not automatically the selected month's final day.
+ * Prefer the current side where present, retaining previous-only leavers and exact employer identity. */
+export function payrollComparisonDatedSubjects(sources:readonly Pick<ComparisonSource,'employmentId'|'companyId'|'runId'|'coverage'>[],
+ runs:readonly Pick<ComparisonRun,'id'|'period'>[],previousPeriod:string,currentPeriod:string){
+ const periods=new Map(runs.map(run=>[run.id,run.period]));
+ const subjects=new Map<string,{employmentId:string;companyId:string;date:string;side:number}>();
+ for(const source of sources){
+  const period=periods.get(source.runId),side=period===currentPeriod?2:period===previousPeriod?1:0;
+  if(!side||!isCalendarDate(source.coverage.from)||!isCalendarDate(source.coverage.to)||source.coverage.from>source.coverage.to||source.coverage.from.slice(0,7)!==period||source.coverage.to.slice(0,7)!==period)
+   throw Error('Recorded payroll ownership dates are unavailable for this comparison.');
+  const key=source.employmentId+'|'+source.companyId,old=subjects.get(key),date=source.coverage.to;
+  if(!old||side>old.side||side===old.side&&date>old.date)subjects.set(key,{employmentId:source.employmentId,companyId:source.companyId,date,side});
+ }
+ return [...subjects.values()].sort((a,b)=>a.employmentId.localeCompare(b.employmentId)||a.companyId.localeCompare(b.companyId)).map(({side,...subject})=>subject);
+}
 
 export function recordedPayrollComparisonCurrency(statutory: unknown, companyId: string): string | null {
   const stamp = object(object(statutory)?.reportContext);

@@ -17,6 +17,7 @@ import {
   DEFAULT_PAYROLL_COMPARISON, PAYROLL_COMPARISON_DATASET, payrollComparisonFilters,
   validatePayrollComparisonDefinition, type PayrollComparisonMovement,
 } from '../lib/payroll-period-comparison';
+import {payrollComparisonDatedSubjects} from '../lib/payroll-comparison-source';
 import { comparePayrollResults, type ComparisonIdentity, type ComparisonResult } from '../lib/payroll-comparison-result';
 import { MasterReportAccessError } from './employee-master-access';
 const object=(value:unknown):Record<string,unknown>=>value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:{};
@@ -65,32 +66,29 @@ export async function executePayrollComparisonTx(tx:Tx,ctx:SessionContext,spec:C
     const employees=await tx.select({id:employment.id,employeeCode:employment.employeeCode,employeeName:person.fullName,hiredOn:employment.hiredOn})
       .from(employment).innerJoin(person,eq(person.id,employment.personId)).where(inArray(employment.id,employmentIds)).orderBy(asc(employment.id));
     const people=new Map(employees.map(row=>[row.id,row]));
-    const versions=await assignmentVersionsForReportTx(tx,employmentIds,previous.to,current.to);
-    const movementFacts=await movementReportFactsTx(tx,ctx.tenantId,employmentIds,[previous.to,current.to]);
+    const pairs=payrollComparisonDatedSubjects(sources,runs,filters.previousPeriod!,filters.currentPeriod!);
+    const versions=await assignmentVersionsForReportTx(tx,employmentIds,previous.from,current.to);
+    const movementFacts=await movementReportFactsTx(tx,ctx.tenantId,employmentIds,[...new Set(pairs.map(pair=>pair.date))]);
     const factsByEmployment=new Map(movementFacts.map(fact=>[fact.employmentId,fact]));
     const companyNames=new Map((await tx.select({id:company.id,name:company.legalName}).from(company).where(inArray(company.id,ids))).map(row=>[row.id,row.name]));
     const departmentNames=new Map((await tx.select({id:department.id,name:department.name}).from(department).where(visibleLabelIdsCondition(department,'department',ids))).map(row=>[row.id,row.name]));
     const centreNames=new Map((await tx.select({id:costCenter.id,name:costCenter.name}).from(costCenter).where(visibleLabelIdsCondition(costCenter,'cost_center',ids))).map(row=>[row.id,row.name]));
     const gradeIds=[...new Set(movementFacts.flatMap(fact=>fact.placements.flatMap(placement=>placement.gradeId?[placement.gradeId]:[])))];
     const gradeNames=new Map((gradeIds.length?await tx.select({id:jobGrade.id,name:jobGrade.name}).from(jobGrade).where(inArray(jobGrade.id,gradeIds)):[]).map(row=>[row.id,row.name]));
-    const pairs=new Map<string,{employmentId:string;companyId:string;currentPresent:boolean}>();
-    const runById=new Map(runs.map(run=>[run.id,run]));
     const sourcesByEmployment=new Map<string,typeof sources>();
     for(const source of sources){
-      const key=source.employmentId+'|'+source.companyId,old=pairs.get(key);
-      pairs.set(key,{employmentId:source.employmentId,companyId:source.companyId,currentPresent:!!old?.currentPresent||runById.get(source.runId)?.period===filters.currentPeriod});
       const group=sourcesByEmployment.get(source.employmentId)??[];group.push(source);sourcesByEmployment.set(source.employmentId,group);
     }
-    const dates=[...pairs.values()].map(pair=>({employmentId:pair.employmentId,date:pair.currentPresent?current.to:previous.to}));
+    const dates=pairs.map(pair=>({employmentId:pair.employmentId,date:pair.date}));
     const proofs=await provenCompanyDatesTx(tx,dates);
     const versionsByEmployment=new Map<string,typeof versions>();
     for(const version of versions){const group=versionsByEmployment.get(version.employmentId)??[];group.push(version);versionsByEmployment.set(version.employmentId,group);}
-    for(const pair of pairs.values()){
+    for(const pair of pairs){
       const employee=people.get(pair.employmentId),facts=factsByEmployment.get(pair.employmentId);
       if(!employee||!facts)throw new MasterReportAccessError();
-      const date=pair.currentPresent?current.to:previous.to;
+      const date=pair.date;
       const proof=proofs.get(pair.employmentId+'|'+date);
-      const placement=proof?.companyId&&ids.includes(proof.companyId)?(versionsByEmployment.get(pair.employmentId)??[]).find(version=>version.validFrom<=date&&(!version.validTo||version.validTo>date)):undefined;
+      const placement=proof?.companyId===pair.companyId?(versionsByEmployment.get(pair.employmentId)??[]).find(version=>version.validFrom<=date&&(!version.validTo||version.validTo>date)):undefined;
       const grade=facts.placements.find(value=>value.date===date);
       if(!placement||!grade?.gradeKnown)contextUnavailable=true;
       const movements:PayrollComparisonMovement[]=[],verifiedTransferIds:string[]=[];
