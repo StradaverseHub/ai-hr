@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { scopedSession } from '@/lib/scope';
 import { myEmployment } from '@/core/read';
+import { CALENDAR_RETURN_FIELDS, calendarReturnParams } from '../../my-roster/attendance-links';
 import {
   requestAttendanceCorrection,
   AttendanceCorrectionFutureDateError,
@@ -19,6 +20,8 @@ export async function requestOwnAttendanceDayAction(formData: FormData) {
     const value = String(formData.get(key) ?? '');
     if (/^\d{4}-\d{2}-\d{2}$/.test(value)) query.set(key, value);
   }
+  const calendar = calendarReturnParams(Object.fromEntries(CALENDAR_RETURN_FIELDS.map(key => [key, String(formData.get(key) ?? '')])));
+  for (const [key, value] of Object.entries(calendar)) query.set(key, value);
   const back = `/attendance/my-records/${encodeURIComponent(date)}?${query.toString()}`;
   const fail = (key: string): never => redirect(`${back}&error=${key}`);
   if (!me) fail('correctionForbidden');
@@ -44,6 +47,7 @@ export async function requestOwnAttendanceDayAction(formData: FormData) {
     fail('correctionRejected');
   }
   revalidatePath('/attendance/my-records');
+  revalidatePath('/attendance/my-roster');
   revalidatePath(`/attendance/my-records/${date}`);
   revalidatePath('/attendance/requests');
   redirect(`${back}&corrected=1`);

@@ -192,7 +192,8 @@ const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
      * It shares Clock with `/attendance/clock` exactly as it did before the split (that pair predates this
      * round and is unchanged by it).
      */
-    { href: '/attendance/my-records', labelKey: 'myRecords', icon: Clock },
+    // The former day list remains reachable from the calendar; one menu row owns both journeys.
+    { href: '/attendance/my-roster', labelKey: 'attendanceCalendar', icon: CalendarRange, ownedSubpaths: ['/attendance/my-records'] },
     // 0bb0e303 rev2 — the third self-service row the reporter listed. The attendance/overtime/travel
     // request forms existed already, but only as fold-outs on the employee's own My Profile page: you
     // had to know they were there. This row is the whole point of the item — the menu now reads Clock
@@ -274,7 +275,6 @@ const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
      *
      * ⚠️ ONE LEVEL ONLY, as the note above says: this is a sixth row beside the five, not a child of one.
      */
-    { href: '/attendance/my-roster', labelKey: 'myRoster', icon: CalendarRange },
   ],
 };
 

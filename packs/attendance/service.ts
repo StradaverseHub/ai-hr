@@ -12,6 +12,7 @@
  * client-safe declaration is `packs/attendance/index.ts`.
  */
 export * from '../../core/attendance';
+export * from './my-calendar';
 export * from '../../core/attendance-allowance';
 export * from '../../core/attendance-calc';
 export * from '../../core/attendance-derive';

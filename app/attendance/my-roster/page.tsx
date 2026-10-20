@@ -5,7 +5,10 @@ import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
-import { myRosterWindow, type MyRosterDay, type MyRosterView } from '@/core/roster';
+import type { MyRosterDay, MyRosterView } from '@/core/roster';
+import { myAttendanceCalendarWindow, type AttendanceStatus, type AttendanceFlag } from '@/packs/attendance/service';
+import { attendanceCalendarDetailHref } from './attendance-links';
+import { isIsoDate } from '@/lib/roster-month';
 import { Card, PageHeader, pageWideCls } from '@/components/ui';
 import { isoWeekdayOf, rosterDateLocale } from '@/lib/roster-month';
 import { shiftChipClass, shiftChipStyle } from '@/lib/shift-visual';
@@ -20,60 +23,13 @@ import {
   type MyRosterWindow,
 } from './view';
 
-/**
- * My Attendance › My Roster (feedback 6948727a, round one) — WHAT MY SUPERVISOR HAS ROSTERED ME FOR.
- *
- * ── WHAT THE REPORTER ASKED FOR ─────────────────────────────────────────────────────────────────────
- * Their own words on the ticket: "New sub menu – My Roster. This is for employee to view only the Roster
- * that assigned by their supervisor." The approved plan's picture is a month grid with a Daily / Weekly /
- * Monthly switch, four summary tiles, a shift-code legend and a read-only notice. This is that screen.
- *
- * ── THE DATA FENCE ──────────────────────────────────────────────────────────────────────────────────
- * `myRosterWindow` TAKES NO EMPLOYMENT ID. It resolves the caller's own employment from the session, so
- * this page is structurally incapable of showing another person's roster — there is no query string to
- * validate and no comparison to get wrong. That matters more here than on most self-service screens:
- * `roster_assignment`'s RLS policy is `app.can_see_employment`, which admits the recursive administrative
- * manager chain, so THE DATABASE WOULD ANSWER a supervisor asking for a subordinate's roster. The fence is
- * the service's, and test/my-roster.test.ts proves it by showing RLS handing the manager exactly the rows
- * this screen refuses to fetch for them.
- *
- * `scopedSession()` is called and its company scope deliberately unused: this screen answers no question
- * about other people, and `scopeIds` here would mean it had started to.
- *
- * ── ONE READ, THREE VIEWS ───────────────────────────────────────────────────────────────────────────
- * Daily, Weekly and Monthly differ ONLY in the pair of dates ./view.ts resolves; every cell is then
- * resolved by `resolveRosterCell`, the SAME function the supervisor's grid, the roster export and the
- * upload analyzer use. The plan's binding sentence is "Each date is worked out by the same rule the
- * supervisor's roster uses, so the two screens cannot disagree", and a view-specific rendition of a day
- * is exactly how that promise gets broken.
- *
- * ── NO CLIENT COMPONENT ─────────────────────────────────────────────────────────────────────────────
- * The view switch, the steppers and the date links are ORDINARY LINKS. A read-only calendar needs no
- * state, and a 'use client' island here would ship the whole window to the browser to re-render what the
- * server already drew.
- *
- * ── WHAT IS DELIBERATELY NOT HERE ───────────────────────────────────────────────────────────────────
- * 1. NO CREATE, EDIT, CLEAR OR IMPORT CONTROL, and not merely hidden ones: the plan says "this screen
- *    never gets one". No server action is imported, so there is no action id in this page's bundle to
- *    POST to. Changing a roster is `app/roster/**`, which is administrator-only in RLS and in the service
- *    (`assertRosterAdmin`).
- * 2. NO EXPORT CONTROL, no Excel file and no printed calendar page. The plan's own picture panels them
- *    off as "NOT DRAWN — ROUND TWO", to be built once the screen they must match exists.
- * 3. NO NAME AGAINST A DAY. The same panel: "the name of whoever last changed a day" is absent, because
- *    `roster_assignment` keeps the date of the change and not the person. `Last updated` is therefore a
- *    timestamp with nobody's name on it, and a day's SOURCE reads "Rostered by supervisor", not a person.
- *    ⚠️ THE SUPERVISOR'S OWN NAME is a different fact — it comes from the reporting line, not from the
- *    roster row — and the plan's picture does print it. It is rendered WHEN IT RESOLVES and omitted when
- *    it does not: `app.can_see_person` does not admit a plain employee to their own manager's row, so for
- *    most callers this sentence names no one. Widening RLS so it always could is a visibility decision
- *    for the reporter, not a detail to settle inside a read-only screen. Recorded, not silently dropped.
- * 4. NO CUSTOM FROM/TO RANGE. That is the supervisor roster's third view; this screen's third view is a
- *    single day, which is what the approved picture draws.
+/** Attendance Calendar composes the existing personal roster and attendance owners.
+ * No employment selection is accepted; all writes remain in the existing daily workflow.
  */
 export default async function MyRosterPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; month?: string; date?: string }>;
+  searchParams: Promise<{ view?: string; month?: string; date?: string; selected?: string }>;
 }) {
   const t = await getTranslations('attendance');
   const locale = await getLocale();
@@ -87,7 +43,7 @@ export default async function MyRosterPage({
 
   const today = todayInKualaLumpur();
   const w = resolveMyRosterWindow({ view: sp.view, month: sp.month, date: sp.date, today });
-  const view = await myRosterWindow(s, { from: w.from, to: w.to });
+  const view = await myAttendanceCalendarWindow(s, { from: w.from, to: w.to });
 
   if (!view) {
     /**
@@ -99,7 +55,7 @@ export default async function MyRosterPage({
      */
     return (
       <div className={pageWideCls}>
-        <PageHeader title={t('myRoster.title')} />
+        <PageHeader title={t('myCalendar.title')} />
         <div className="mx-auto max-w-md">
           <Card className="p-8 text-center">
             <p className="text-sm text-muted-foreground">{t('myRoster.notLinked')}</p>
@@ -111,7 +67,7 @@ export default async function MyRosterPage({
 
   const replacementT=await getTranslations('replacementHoliday');
   const [originals,replacements]=await Promise.all([withTenant(s,tx=>originalHolidayCalendarFor(tx,{employmentId:view.employmentId,startDate:w.from,endDate:w.to})),replacementHolidayCalendarNotes(s,{employmentId:view.employmentId,from:w.from,to:w.to})]);
-  view.days=view.days.map(day=>({...day,holidayNote:replacements.some(r=>r.replacementDate===day.date)?{label:replacementT('replacement'),name:replacements.find(r=>r.replacementDate===day.date)!.sourceName}:originals.some(h=>h.date===day.date)?{label:replacementT('original'),name:originals.filter(h=>h.date===day.date).map(h=>h.name).join(', ')}:undefined}));
+  view.days=view.days.map(day=>({...day,selected:isIsoDate(sp.selected??'')&&day.date===sp.selected,holidayNote:replacements.some(r=>r.replacementDate===day.date)?{label:replacementT('replacement'),name:replacements.find(r=>r.replacementDate===day.date)!.sourceName}:originals.some(h=>h.date===day.date)?{label:replacementT('original'),name:originals.filter(h=>h.date===day.date).map(h=>h.name).join(', ')}:undefined}));
   const dl = rosterDateLocale(locale);
   const fmtDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(dl, { day: '2-digit', month: 'short', year: 'numeric' });
   const fmtLongDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(dl, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -148,7 +104,8 @@ export default async function MyRosterPage({
 
   return (
     <div className={pageWideCls}>
-      <PageHeader title={t('myRoster.title')} description={subtitleParts.join(' · ')} />
+      <PageHeader title={t('myCalendar.title')} description={subtitleParts.join(' · ')} />
+      <Link href={`/attendance/my-records?${new URLSearchParams({from:w.from,to:w.to})}`} className="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">{t('myCalendar.records')}</Link>
       {replacements.length>0&&<Card className="space-y-2 p-4"><h2 className="text-sm font-medium">{replacementT('calendarHint')}</h2><p className="text-xs text-muted-foreground">{replacementT('originalKept')}</p><ul className="space-y-1 text-sm">{replacements.map(r=><li key={r.id}>{r.replacementDate} · {r.sourceName} ({r.sourceDate}){r.status==='review'&&` · ${replacementT('review')}`}</li>)}</ul></Card>}
 
       {/* View switch on the left, window stepper on the right — the approved picture's control row. */}
@@ -258,7 +215,7 @@ export default async function MyRosterPage({
 // ── Pieces ──────────────────────────────────────────────────────────────────────────────────────────
 
 type T = Awaited<ReturnType<typeof getTranslations<'attendance'>>>;
-type CalendarRosterDay=MyRosterDay&{holidayNote?:{label:string;name:string}};
+type CalendarRosterDay=MyRosterDay&{holidayNote?:{label:string;name:string};selected?:boolean;attendance?:{status:AttendanceStatus|null;flag:AttendanceFlag;checkInAt:string|null;checkOutAt:string|null}|null};
 type CalendarRosterView=Omit<MyRosterView,'days'>&{days:CalendarRosterDay[]};
 
 function Stat({ label, value, unit }: { label: string; value: string; unit?: string }) {
@@ -328,6 +285,18 @@ function DayBodyContent({ d, t, hhmm }: { d: MyRosterDay; t: T; hhmm: (v: string
   );
 }
 
+/** Status and flag stay independent; an incomplete punch never becomes an invented absence. */
+function AttendanceDayContext({ day, window, t }: { day: CalendarRosterDay; window: MyRosterWindow; t:T }) {
+  const statusKeys = { present:'statusPresent', absent:'statusAbsent', exempt:'statusExempt', rest:'statusRest', off:'statusOff', ph:'statusPh', on_leave:'statusOnLeave' } as const;
+  const flagKeys = { late:'flagLate', under:'flagUnder', odd:'flagOdd' } as const;
+  return <div className="space-y-1 border-t border-border pt-2">
+    {day.attendance?.status && <p className="text-xs font-medium">{t(statusKeys[day.attendance.status])}</p>}
+    {day.attendance?.flag && <p className="text-xs text-amber-700 dark:text-amber-400">{t(flagKeys[day.attendance.flag])}</p>}
+    {(day.attendance?.checkInAt || day.attendance?.checkOutAt) && <p className="text-xs tabular-nums text-muted-foreground">{t('colCheckIn')}: {day.attendance.checkInAt?.slice(0,5)??'—'} · {t('colCheckOut')}: {day.attendance.checkOutAt?.slice(0,5)??'—'}</p>}
+    <Link href={attendanceCalendarDetailHref(day.date, window)} aria-label={t('myCalendar.viewDate',{date:day.date})} className="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">{t('breakdownView')}</Link>
+  </div>;
+}
+
 const WEEKDAY_ANCHORS = ['2026-01-05', '2026-01-06', '2026-01-07', '2026-01-08', '2026-01-09', '2026-01-10', '2026-01-11'] as const;
 
 /**
@@ -366,20 +335,21 @@ function MonthGrid({
           <div key={`pad-${i}`} className="hidden border-b border-r border-border sm:block" />
         ))}
         {view.days.map((d) => (
-          <Link
+          <div
             key={d.date}
-            href={myRosterHref({ view: 'day', from: d.date, to: d.date, month: w.month, focus: d.date })}
+            aria-current={d.selected ? 'date' : undefined}
             className={`min-h-24 space-y-1 border-b border-r border-border px-3 py-2 transition-colors hover:bg-muted/60 ${
               isoWeekdayOf(d.date) >= 6 ? 'bg-amber-50/60 dark:bg-amber-500/5' : ''
             }`}
           >
-            <p className="text-xs text-muted-foreground">
+            <Link href={myRosterHref({ view: 'day', from: d.date, to: d.date, month: w.month, focus: d.date })} className="block min-h-8 text-xs text-muted-foreground hover:text-primary">
               <span className="tabular-nums">{d.date.slice(8)}</span>
               <span className="ml-1 sm:hidden">{fmtWeekday(d.date)}</span>
-            </p>
+            </Link>
             <DayBody d={d} t={t} hhmm={hhmm} />
             {d.note && <p className="truncate text-xs text-primary">• {t('myRoster.noteMarker')}</p>}
-          </Link>
+            <AttendanceDayContext day={d} window={w} t={t} />
+          </div>
         ))}
       </div>
       <p className="px-4 py-2.5 text-xs text-muted-foreground">{t('myRoster.clickDay')}</p>
@@ -408,6 +378,7 @@ function WeekCards({
       {view.days.map((d) => (
         <Card
           key={d.date}
+          aria-current={d.selected ? 'date' : undefined}
           className={`space-y-2 px-3 py-3 ${isoWeekdayOf(d.date) >= 6 ? 'bg-amber-50/60 dark:bg-amber-500/5' : ''}`}
         >
           <div>
@@ -415,6 +386,7 @@ function WeekCards({
             <p className="text-lg font-semibold tabular-nums">{d.date.slice(8)}</p>
           </div>
           <DayBody d={d} t={t} hhmm={hhmm} />
+          <AttendanceDayContext day={d} window={w} t={t} />
           {d.shift && (
             <p className="text-xs text-muted-foreground">
               {t('myRoster.hoursAndBreak', { hours: fmtHrs(d.shift.workingMinutes), minutes: d.shift.breakMinutes })}
@@ -508,6 +480,7 @@ function DayPanel({
           </p>
         )}
 
+        <AttendanceDayContext day={day} window={w} t={t} />
         {day.note && (
           <div className="border-l-2 border-primary pl-3">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">{t('colNote')}</p>
