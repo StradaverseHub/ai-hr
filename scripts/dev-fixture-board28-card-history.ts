@@ -80,6 +80,8 @@ async function main() {
         supportingFiles[key] = { fileName, mimeType, bytes: content.length, sha256: createHash('sha256').update(content).digest('hex') };
       }
     }
+    // Existing requests retain their frozen routes; the second employee's examples use legacy review.
+    await setAttendanceWorkflowEnabled(root, b.companyId, 'irregularity', false);
     for (const [index, key] of ['approved', 'rejected', 'cancelled', 'withdrawn', 'absent', 'incomplete_entry', 'self_overtime'].entries()) {
       const on = new Date(Date.parse(`${date}T00:00:00Z`) - (index + 4) * 86_400_000).toISOString().slice(0, 10);
       if (key !== 'absent') await checkIn(root, { employmentId: people.SecondEmployee.employmentId, date: on, time: '08:00', manual: true });
