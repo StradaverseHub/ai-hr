@@ -100,7 +100,13 @@ export function ClientTabs<K extends string>({
       const url = new URL(window.location.href);
       url.searchParams.set('tab', key);
       // Preserve every other param (from, asOf, …); replaceState avoids a server round-trip and scroll reset.
-      window.history.replaceState(window.history.state, '', url.toString());
+      // Forward application state (including the unsaved sentinel), but let Next add its own
+      // routing markers. Passing __NA/_N back makes Next treat this as an internal write and
+      // skip updating its canonical URL; a later router.refresh() then restores the previous tab.
+      const historyData: Record<string, unknown> = { ...(window.history.state ?? {}) };
+      delete historyData.__NA;
+      delete historyData._N;
+      window.history.replaceState(historyData, '', url.toString());
     }
   };
 
