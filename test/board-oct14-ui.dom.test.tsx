@@ -58,3 +58,12 @@ it('submits the stage observed when selected even if a refreshed row has advance
   fireEvent.click(screen.getByRole('button',{name:'Confirm'}));
   await waitFor(()=>expect(calls.bulk).toHaveBeenCalledWith({items:[{id:'a',stage:0}],decision:'approved',reason:''}));
 });
+
+it('submits the participant observed when selected even if a refreshed row changes within the same level',async()=>{
+  const ui=render(wrap(<AttendanceHistoryTable rows={[{...row('a'),currentParticipantSlot:'0:0'}]} returnTo="/attendance/application-history"/>));
+  fireEvent.click(screen.getByRole('checkbox',{name:en.attendanceHistory.selectPage}));
+  ui.rerender(wrap(<AttendanceHistoryTable rows={[{...row('a'),currentParticipantSlot:'0:1'}]} returnTo="/attendance/application-history"/>));
+  fireEvent.click(screen.getByRole('button',{name:en.attendanceHistory.approveSelected}));
+  fireEvent.click(screen.getByRole('button',{name:'Confirm'}));
+  await waitFor(()=>expect(calls.bulk).toHaveBeenCalledWith({items:[{id:'a',stage:0,participantSlot:'0:0'}],decision:'approved',reason:''}));
+});
