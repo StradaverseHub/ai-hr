@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import {HolidayCalendarAssignments} from './holiday-calendar-assignments';
+import {employmentHolidayCalendarHistory,holidayCalendarInclusiveEnd} from '@/core/holiday-calendar-assignment';
 import { notFound, redirect } from 'next/navigation';
 import { RETIRED_PERSONNEL_TABS } from '@/lib/personnel-tab-sections';
 import { getTranslations } from 'next-intl/server';
@@ -71,8 +73,6 @@ import {
   setPaymentMethodAction,
   setEmploymentComponentAction,
   setEmploymentInfoAction,
-  setLocationAction,
-  setEmploymentHolidayCalendarAction,
   setEmploymentScheduleGroupAction,
   setPersonAction,
   setPersonPhotoAction,
@@ -155,11 +155,9 @@ import { PayrollPolicyField } from '@/components/payroll-policy-field';
 import { assignPolicyAction } from '@/app/admin/payroll-policy/actions';
 import { employmentScheduleGroupId, listShiftsForTenant } from '@/core/roster';
 // 18504ca6 — the dated Shift arrangement ladder behind the card's new Effective date + Shift history list.
-import { shiftArrangementHistory } from '@/core/shift-arrangement';
 import { EmployeeShiftFields } from '@/components/employee-shift-fields';
-import { setDefaultShiftAction } from './actions';
 import { listHolidayGroups, listPositions, listBusinessUnits, listCostCenters } from '@/core/admin';
-import { listLocations, resolveLocationForBranch, branchChangeDateFor } from '@/core/location';
+import { listLocations } from '@/core/location';
 // f513ec02 adds listAttendanceRules — the Schedule Group picker's options. The tenant's attendance_rule
 // library IS the Schedule Group library (870b79e2); there is no second table behind the name. Taken from
 // the PACK FACADE, not core/attendance-rule: the ADR-0080 D9 ratchet (test/attendance-pack-drift.test.ts)
@@ -429,6 +427,7 @@ export default async function EmployeePage({
   const companyHrdfUnregistered = (companyHrdf?.hrdfStatus ?? 'not_registered') === 'not_registered';
   // HR-defined multi-state holiday groups — the second option-group of the unified Holiday calendar field.
   const holidayGroups = admin ? await listHolidayGroups(s) : [];
+  const holidayCalendarRows=admin?await employmentHolidayCalendarHistory(s,employmentId):[];
   /**
    * f513ec02 — THE SCHEDULE GROUP PICKER'S OPTIONS AND ITS CURRENT VALUE.
    *
@@ -495,32 +494,6 @@ export default async function EmployeePage({
   // r79a (4fb8b75a step 3): read from `company.currency` (owned by Organization → General) instead of the
   // duplicate company_payroll_config.default_currency the pair collapsed into it (migration 0324).
   const defaultSalaryCurrency = admin ? await getCompanyCurrency(s, emp.companyId) : 'MYR';
-  // R46 79eb7151 — resolve the policy the payroll kernel will ACTUALLY use for this employee (direct
-  // assignment → company default → null ⇒ monthly default), so the Salary section can surface its Pay Mode
-  // and Payment Term read-only. Resolving rather than reading emp.payrollPolicyId matters: an employee with
-  // no direct assignment still computes under the company default, and an assigned-but-inactive policy
-  // silently falls back to monthly — both cases would be misreported by the raw column.
-  // ADR-0078 — the R46 resolvedPolicyForEmployment read is gone from this page: Pay Mode / Payment Term
-  // now live on the employee's own compensation rows (salaryHistory below carries them per revision).
-  // R33 f21d6eee — Default shift picker options: the SHARED tenant-wide shift library (a template may now be
-  // assigned to any employee regardless of company). Loaded WITH archived rows so a currently-assigned-but-
-  // later-archived shift still renders as the selected option (instead of silently showing "None"), then
-  // filtered to live shifts + the assigned one. New assignments of archived shifts are rejected by the service.
-  const libraryShifts = admin && !emp.terminatedOn ? await listShiftsForTenant(s, { includeArchived: true }) : [];
-  // 8cd601d0 (r329) — AND NARROWED TO THE EMPLOYEE'S SCHEDULE GROUP, for the same reason and by the same
-  // rule as the Attendance module's Shift arrangement page: with a group set, only that group's shifts are
-  // offered. The group is `shift.rule_id` read backwards, at render time — no group name and no membership
-  // list is written down, so 07ebd04d's split of "Standard" into three lands here unaided. The shift ON
-  // FILE is always kept, exactly as an archived-but-assigned one is: a select that cannot render what is
-  // stored shows a placeholder and silently re-poses the question. This is a COURTESY; the guarantee is
-  // core/roster.ts assertShiftsAllowedForEmploymentsTx, which the writer behind this card already calls.
-  // An employment in NO group (74 of 75 on production) sees the whole library, exactly as before.
-  const groupPool=scheduleGroupCurrentId?await getScheduleRotation(s,scheduleGroupCurrentId):null;
-  const assignableShifts=libraryShifts.filter(sh=>!sh.archivedAt||sh.id===emp.defaultShiftId);
-  // 18504ca6 — the dated periods behind the Shift history list, newest first, with the shift CODE and NAME
-  // already resolved. Deliberately NOT taken from the Others-tab Change History: that renders the audit
-  // payload through lib/audit-format.ts describePayload, which prints defaultShiftId as a raw uuid → uuid pair.
-  const shiftHistory = admin ? await shiftArrangementHistory(s, employmentId) : [];
   // ADR-0070 — Clocking Location & Geofencing: the picker's options + this employee's current assignment
   // (admin-only). r423 (83c0d3c8) REVERSES f9afd1ce's "every active site in the tenant": the picker offers
   // only the ACTIVE locations OPEN TO THIS EMPLOYEE'S COMPANY (clocking_location_company). The service
@@ -528,21 +501,6 @@ export default async function EmployeePage({
   const clockingLocations = admin ? await listClockingLocations(s, { companyId: emp.companyId }) : [];
   const assignedClockingLocations = admin ? await listEmployeeClockingLocations(s, employmentId) : [];
   const assignedClockingLocationIds = new Set(assignedClockingLocations.map((l) => l.id));
-
-  // ── 1fff489c PHASE 2 — the Branch proposes a work location, HR confirms it ──────────────────────────
-  // ONLY when the open assignment has none. An employee who already has a location is left alone: the
-  // suggestion is a first-fill aid, not a nag, and re-proposing over a deliberate manual pick is exactly
-  // the "it changed itself" behaviour spec section C forbids. NOTHING here writes — the Confirm button
-  // posts the same effective-dated setLocationAction a manual pick does.
-  const branchLocationSuggestion =
-    admin && !emp.terminatedOn && !emp.locationId
-      ? await resolveLocationForBranch(s, emp.companyId, emp.orgBranch)
-      : null;
-  // The effective date the suggestion offers: the date the Branch last changed, falling back to today.
-  // Pre-fill only — the field stays editable, because HR is the one who knows when the move really took
-  // effect for payroll.
-  const branchChangeDate = branchLocationSuggestion ? await branchChangeDateFor(s, employmentId) : null;
-  const suggestedEffectiveDate = branchChangeDate ?? today;
   /**
    * r272 (0e8cf366) — THE PRE-TICK IS GONE, AND ITS REMOVAL IS THE POINT OF THE ITEM.
    *
@@ -1049,7 +1007,7 @@ export default async function EmployeePage({
     bankStatutory: [t('bankCardTitle'), t('statutoryMalaysia'), t('othersStatutoryTitle')],
     // r423 — the clocking card's heading is "Location assignment" (one merged section), so the bar names
     // it by that heading; `cardTitle` ("Clocking locations & geofencing") named the old two-form card.
-    attendance: [t('holidayCalendarCardTitle'), t('scheduleGroupCardTitle'), ...whenLive(tc('assignmentTitle')), ...whenLive(tc('webClockingTitle'))],
+    attendance: [t('scheduleGroupCardTitle'), ...whenLive(tc('assignmentTitle')), ...whenLive(tc('webClockingTitle'))],
     job: [t('employmentInfo.title')],
     // r256 — Payroll. The FIRST entry names a SUB-SECTION of a card rather than the card: Payment
     // Method is rendered inside Basic Salary, whose own headline control records an effective-dated
@@ -2318,86 +2276,6 @@ export default async function EmployeePage({
             <p className="px-4 pb-3 text-xs text-amber-600 dark:text-amber-400">{tp('assignInactiveNote')}</p>
           )}
           <p className="px-4 pb-4 text-xs text-muted-foreground">{tp('assignHint')}</p>
-    </Card>
-  ) : null;
-
-  // ec4cbf63 — Default shift: the shift this person NORMALLY works, set once here instead of painting every
-  // date on /roster. The attendance/OT engine uses it on any date WITHOUT a dated roster row (roster row →
-  // default shift → company policy), so /roster remains the surface for date-specific exceptions. Admin-only,
-  // mirrors the payroll-policy assignment card. (It was relocated OUT of the Employment tab onto the
-  // Attendance tab by 1fbe9891 — the note that used to say otherwise here was stale.)
-  //
-  // 18504ca6 — the card is now EFFECTIVE-DATED, matching the Location card directly above it. Saving adds a
-  // dated period instead of overwriting: the previous shift is kept and closed off the day before, and the
-  // Shift history list underneath says who moved the employee, from what, and from when.
-  const defaultShiftCard = admin && !emp.terminatedOn ? (
-    <Card id="section-default-shift">
-      <SectionHeader title={t('shiftTypeTitle')} />
-          <form action={setDefaultShiftAction} className="space-y-3 p-4">
-            <input type="hidden" name="employmentId" value={emp.employmentId} />
-            {/* R17 3e8350db — Shift Type (Fixed / Roster) with a conditionally-shown Default shift picker.
-                18504ca6 — plus the required Effective date, on the same row. */}
-            <EmployeeShiftFields
-              defaultType={emp.shiftType}
-              defaultShiftId={emp.defaultShiftId}
-              defaultEffectiveFrom={today}
-              dmyDisplay
-              allowedPool={groupPool?{baseShiftIds:groupPool.memberships.map(m=>m.shiftId),versions:groupPool.versions.map(v=>({effectiveFrom:v.effectiveFrom,allowedShiftIds:v.allowedShiftIds}))}:undefined}
-              shifts={assignableShifts.map((sh) => ({
-                archived:!!sh.archivedAt,
-                id: sh.id,
-                label: `${sh.code ?? '—'} — ${sh.name} (${(sh.startTime?.slice(0, 5)??'—')}–${(sh.endTime?.slice(0, 5)??'—')})`,
-              }))}
-            />
-            <button className={btnPrimary}>{t('defaultShiftSave')}</button>
-          </form>
-          <p className="px-4 pb-3 text-xs text-muted-foreground">{t('shiftTypeHint')}</p>
-          {/* 18504ca6 — Shift history: effective date, previous shift, new shift, who, when. The employee is
-              the profile already open, so there is no name column. LIVE periods only — a second save for the
-              same date REPLACES its entry rather than adding a line. */}
-          <section className="border-t border-border">
-            <div className="px-4 pt-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {t('shiftHistoryTitle')}
-            </div>
-            {shiftHistory.length === 0 ? (
-              <p className="px-4 pb-4 pt-2 text-sm text-muted-foreground">{t('shiftHistoryEmpty')}</p>
-            ) : (
-              <div className="overflow-x-auto px-4 pb-4 pt-2">
-                <table className="w-full min-w-[52rem] text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
-                      <th className="py-2 pr-3 font-medium">{t('shiftHistoryColEffective')}</th>
-                      <th className="py-2 pr-3 font-medium">{t('shiftHistoryColPrevious')}</th>
-                      <th className="py-2 pr-3 font-medium">{t('shiftHistoryColNew')}</th>
-                      <th className="py-2 pr-3 font-medium">{t('shiftHistoryColChangedBy')}</th>
-                      <th className="py-2 font-medium">{t('shiftHistoryColChangedOn')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {shiftHistory.map((h) => (
-                      <tr key={h.id} className="border-b border-border/60 align-top">
-                        <td className="py-2 pr-3 whitespace-nowrap text-foreground">{formatDmy(h.effectiveFrom)}</td>
-                        <td className="py-2 pr-3 text-muted-foreground">
-                          {h.previousShiftName
-                            ? `${h.previousShiftCode ?? '—'} — ${h.previousShiftName}`
-                            : '—'}
-                        </td>
-                        <td className="py-2 pr-3 text-foreground">
-                          {`${h.shiftCode ?? '—'} — ${h.shiftName}`}
-                        </td>
-                        <td className="py-2 pr-3 text-muted-foreground">{h.changedByName ?? '—'}</td>
-                        <td className="py-2 whitespace-nowrap text-muted-foreground">
-                          {h.recordedOnRelease
-                            ? t('shiftHistoryRecordedOnRelease')
-                            : formatDmy(h.changedAt)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
     </Card>
   ) : null;
 
@@ -4675,40 +4553,7 @@ export default async function EmployeePage({
   // + thin server action (setEmploymentHolidayCalendarAction) so the unified state/group selector can no
   // longer be wiped by a Personal Details save (which no longer touches these columns). Same select markup,
   // options (holidayGroups + MY_STATES) and default (holidayCalendarValue) as before — pure relocation.
-  const holidayCalendarCard = admin ? (
-    <Card id="section-holiday-calendar">
-      <SectionHeader title={t('holidayCalendarCardTitle')} />
-      {/* 420ebab5 part two (r255) — Save button gone, `data-save-section` added; the Attendance tab's one
-          "Save Changes" covers it. Enter is not left dangling: the scope's capture-phase keydown guard
-          turns any Enter inside a marked section into the consolidated save, which matters most for the
-          Geofencing form below, whose radius box is the one field on this tab that can still trigger HTML's
-          implicit submission now that its button has gone. */}
-      <form action={setEmploymentHolidayCalendarAction} data-save-section="holiday" className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3">
-        <input type="hidden" name="employmentId" value={emp.employmentId} />
-        <PersonnelField fieldId="attendance.holiday_calendar_and_schedule.holidaygroupname" mode="edit">
-          <select {...personnelControl('attendance.holiday_calendar_and_schedule.holidaygroupname','edit')} defaultValue={holidayCalendarValue} className={inputCls}>
-            <option value="">{t('holidayCalendarDefault')}</option>
-            {holidayGroups.length > 0 && (
-              <optgroup label={t('holidayCalendarGroupOptgroup')}>
-                {holidayGroups.map((g) => (
-                  <option key={g.id} value={`group:${g.id}`}>
-                    {g.name}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-            <optgroup label={t('holidayCalendarStateOptgroup')}>
-              {stateOptions.map((st) => (
-                <option key={st} value={`state:${st}`}>
-                  {st}
-                </option>
-              ))}
-            </optgroup>
-          </select>
-        </PersonnelField>
-      </form>
-    </Card>
-  ) : null;
+  const holidayCalendarCard = admin ? <HolidayCalendarAssignments employmentId={emp.employmentId} joinDate={emp.hiredOn} fallbackLabel={emp.holidayGroupId?holidayGroups.find(group=>group.id===emp.holidayGroupId)?.name??t('holidayCalendarDefault'):emp.workState??t('holidayCalendarDefault')} groups={holidayGroups.map(group=>({id:group.id,name:group.name,active:group.active}))} states={stateOptions} rows={holidayCalendarRows.map(row=>({id:row.id,startDate:row.validFrom,endDate:holidayCalendarInclusiveEnd(row.validTo),choice:row.kind==='group'?`group:${row.holidayGroupId}`:row.kind==='state'?`state:${row.workState}`:'',superseded:!!row.supersededAt}))}/> : null;
 
   /**
    * f513ec02 (r281) — THE BOX THAT PUTS A PERSON IN A SCHEDULE GROUP.
@@ -4771,82 +4616,6 @@ export default async function EmployeePage({
           {t('scheduleGroupManage')}
         </Link>
       </div>
-    </Card>
-  ) : null;
-
-  const locationCard = admin ? (
-    <Card id="section-location">
-      <SectionHeader title={t('locationTitle')} />
-      <div className="px-4 pt-3 text-sm text-muted-foreground">
-        {t('locationCurrent', { location: emp.locationName ? `${emp.locationName} (${emp.locationCode})` : t('locationNone') })}
-      </div>
-
-      {/* 1fff489c PHASE 2 — the SUGGESTION. Pre-selected and dated, but it is still a form the admin has to
-          submit: spec section C is explicit that a work location moves payroll and OT history, so nothing
-          auto-commits. Confirm posts source=branch_derived; the manual form below posts source=manual, and
-          the two are told apart on the event stream afterwards (core/location.ts recordLocationSource). */}
-      {!emp.terminatedOn && branchLocationSuggestion && (
-        <form
-          action={setLocationAction}
-          className="mx-4 mt-3 grid grid-cols-1 items-end gap-3 rounded-lg border border-primary/40 bg-primary/5 p-3 sm:grid-cols-3"
-        >
-          <input type="hidden" name="employmentId" value={emp.employmentId} />
-          <input {...personnelCarry('attendance.work_location_and_shift_arrangement.locationid')} value={branchLocationSuggestion.id} />
-          <input type="hidden" name="source" value="branch_derived" />
-          <div className="sm:col-span-3 text-xs font-medium text-primary">
-            {t('locationSuggestedFromBranch', { branch: branchLocationSuggestion.branch })}
-          </div>
-          <PersonnelField fieldId="attendance.work_location_and_shift_arrangement.locationid" mode="record">
-            <div className={`${inputCls} bg-muted`}>
-              {branchLocationSuggestion.name} ({branchLocationSuggestion.code})
-            </div>
-          </PersonnelField>
-          <PersonnelField fieldId="attendance.work_location_and_shift_arrangement.locationeffectivefrom" mode="record">
-            <DateField {...personnelControl("attendance.work_location_and_shift_arrangement.locationeffectivefrom", 'record')}   defaultValue={suggestedEffectiveDate} className={inputCls} label={personnelLabel("attendance.work_location_and_shift_arrangement.locationeffectivefrom")} />
-          </PersonnelField>
-          <div>
-            <button className={btnPrimary}>{t('locationConfirm')}</button>
-          </div>
-          <p className="sm:col-span-3 text-xs text-muted-foreground">{t('locationSuggestionNote')}</p>
-        </form>
-      )}
-
-      {/* EMPTY STATE 2 of 4 (spec section E): the employee HAS a branch, but no live location in their own
-          company claims it. Today this reads as a bare "No location", which looks identical to the three
-          other reasons the field can be blank — naming the branch is what makes it fixable. */}
-      {!emp.terminatedOn && !emp.locationId && !branchLocationSuggestion && emp.orgBranch && (
-        <p className="px-4 pt-3 text-xs text-muted-foreground">
-          {t('locationBranchUnmapped', { branch: emp.orgBranch })}
-        </p>
-      )}
-      {!emp.terminatedOn && !emp.locationId && !emp.orgBranch && (
-        <p className="px-4 pt-3 text-xs text-muted-foreground">{t('locationNoBranch')}</p>
-      )}
-
-      {!emp.terminatedOn && (
-        <form action={setLocationAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3">
-          <input type="hidden" name="employmentId" value={emp.employmentId} />
-          {/* Anything picked here is a deliberate human choice — stamped `manual` so a later report can
-              tell a hand-set location from one taken off the Branch. */}
-          <input type="hidden" name="source" value="manual" />
-          <PersonnelField fieldId="attendance.work_location_and_shift_arrangement.locationid" mode="record">
-            <select {...personnelControl("attendance.work_location_and_shift_arrangement.locationid", 'record')}  defaultValue={emp.locationId ?? ''} className={inputCls}>
-              <option value="">{t('locationNone')}</option>
-              {locations.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name} ({l.code}){l.state ? ` · ${l.state}` : ''}
-                </option>
-              ))}
-            </select>
-          </PersonnelField>
-          <PersonnelField fieldId="attendance.work_location_and_shift_arrangement.locationeffectivefrom" mode="record">
-            <DateField {...personnelControl("attendance.work_location_and_shift_arrangement.locationeffectivefrom", 'record')}   defaultValue={today} className={inputCls} label={personnelLabel("attendance.work_location_and_shift_arrangement.locationeffectivefrom")} />
-          </PersonnelField>
-          <div>
-            <button className={btnPrimary}>{t('setLocation')}</button>
-          </div>
-        </form>
-      )}
     </Card>
   ) : null;
 
@@ -4965,6 +4734,7 @@ export default async function EmployeePage({
     // test/personnel-holiday-grade-relocation.test.ts (5), so the next round cannot repeat the swap.
     attendance: (
       <>
+        {holidayCalendarCard}
         {admin && (
           <TabSaveScope
             tabKey="attendance"
@@ -4972,8 +4742,6 @@ export default async function EmployeePage({
             saveAction={saveAttendanceTabAction}
             covers={tabSaveCovers.attendance}
           >
-            {/* Item 52a30630 — Holiday Calendar relocated from Profile onto this tab, pinned first. */}
-            {holidayCalendarCard}
             {/* f513ec02 — the Schedule Group assignment, directly under the Holiday Group it is modelled
                 on, and above Clocking so the two "which rules judge this person" cards read together. */}
             {scheduleGroupCard}
@@ -4983,8 +4751,6 @@ export default async function EmployeePage({
             {webClockingPhotoCard}
           </TabSaveScope>
         )}
-        {locationCard}
-        {defaultShiftCard}
       </>
     ),
     // Bank & Statutory (feedback 40ef71a0): the Statutory (Malaysia) card — the single

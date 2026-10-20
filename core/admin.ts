@@ -116,6 +116,7 @@ import {
   employment,
   holiday,
   holidayGroup,
+  employmentHolidayCalendar,
   holidayGroupHoliday,
   leaveLedger,
   jobGrade,
@@ -2315,6 +2316,9 @@ export async function deleteHolidayGroup(ctx: SessionContext, p: { id: string })
         `This holiday group is still assigned to ${refs.length} employee${refs.length === 1 ? '' : 's'}. Reassign them before deleting it.`,
       );
     }
+    const [datedReference]=await tx.select({id:employmentHolidayCalendar.id}).from(employmentHolidayCalendar)
+      .where(eq(employmentHolidayCalendar.holidayGroupId,p.id)).limit(1);
+    if(datedReference)throw new InUseError('holiday group','This holiday group is retained in dated employee calendar history. Deactivate it to prevent new selections.');
     // ADR-0086 (item 0fe1ca2e, r331) — a SECOND guard sat here: delete was also blocked when a LOCATION
     // mapped to this calendar (ADR-0067 §(b)), so a mapped calendar could not be silently un-mapped from
     // every site that used it. Migration 0484 drops `location.holiday_group_id`, so there is no site

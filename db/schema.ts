@@ -3858,6 +3858,19 @@ export const absenceReasonEnum = pgEnum('absence_reason', [
   'other',
 ]);
 
+/** Half-open calendar periods; edits supersede a version and retain its recorded facts. */
+export const employmentHolidayCalendar = pgTable('employment_holiday_calendar', {
+  id: id(), tenantId: tenantId(),
+  employmentId: uuid('employment_id').notNull().references(() => employment.id),
+  validFrom: date('valid_from').notNull(), validTo: date('valid_to'),
+  kind: text('kind').$type<'none' | 'state' | 'group'>().notNull(),
+  workState: text('work_state'), holidayGroupId: uuid('holiday_group_id').references(() => holidayGroup.id),
+  replacesId: uuid('replaces_id').unique().references((): AnyPgColumn => employmentHolidayCalendar.id),
+  recordedBy: uuid('recorded_by').notNull().references(() => appUser.id),
+  recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
+  supersededAt: timestamp('superseded_at', { withTimezone: true }),
+});
+
 // One row per employee per day. Absence is derived (no row); we store present/late/half_day.
 export const attendance = pgTable(
   'attendance',

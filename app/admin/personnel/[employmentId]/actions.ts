@@ -1040,27 +1040,12 @@ export async function setPersonAction(formData: FormData) {
 /**
  * r255 420ebab5 — the WRITE half of the Holiday Calendar card (see `applyStatutorySection`).
  */
-async function applyHolidayCalendarSection(
-  s: Awaited<ReturnType<typeof requireAdmin>>,
-  formData: FormData,
-): Promise<void> {
-  const employmentId = String(formData.get('employmentId'));
-  await setEmploymentHolidayCalendar(s, {
-    employmentId,
-    selection: parseHolidayCalendar(formData.get('holidayCalendar')),
-  });
-}
 
+/** Old open tabs must use the dated workflow rather than changing the legacy fallback. */
 export async function setEmploymentHolidayCalendarAction(formData: FormData) {
-  const s = await requireAdmin();
-  const employmentId = String(formData.get('employmentId'));
-  try {
-    await applyHolidayCalendarSection(s, formData);
-  } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
-  }
-  revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+  await requireAdmin();
+  const id=encodeURIComponent(String(formData.get('employmentId')??''));
+  redirect(`/admin/personnel/${id}?tab=attendance#section-holiday-calendar`);
 }
 
 /**
@@ -1931,7 +1916,6 @@ export async function saveBankStatutoryTabAction(formData: FormData): Promise<Ta
 export async function saveAttendanceTabAction(formData: FormData): Promise<TabSaveResult> {
   const s = await requireAdmin();
   return runTabSave(s, formData, ATTENDANCE_TAB_SECTION_ORDER, {
-    holiday: applyHolidayCalendarSection,
     schedule: applyScheduleGroupSection,
     clocking: applyClockingControlSection,
     photo: applyAttendancePhotoSection,

@@ -242,6 +242,8 @@ import {
   leaveSharedGroup,
   leaveSharedGroupMember,
 } from '../db/schema';
+import { holidayCalendarPeriodsByEmploymentTx, holidayCalendarWindows } from './holiday-calendar-read';
+import { companySegmentsForPeriod } from './employment-company';
 import { applyLeavePayrollEffectsTx, lockPayrollForLeaveChangeTx, markPayrollAfterLeaveApprovalTx, LeavePayrollClosedError } from '../packs/payroll/service';
 
 /** ADR-0069: the set of "employmentId|leaveTypeId" keys with an ACTIVE frozen encashment snapshot, for the
@@ -4420,21 +4422,21 @@ async function warnLeaveHolidayCompleteness(
   endDate: string,
   leaveRequestId: string,
 ): Promise<HolidayCompletenessWarning[]> {
-  const eff = await effectiveHolidayState(tx, employmentId);
-  if (!eff) return [];
-  // ADR-0067: a Custom location-calendar deliberately ignores the public gazette, so the s.60D "<11" guard
-  // is false noise — suppress it entirely (no event, no returned warning) for those employees.
-  if (eff.skipCompleteness) return [];
-  return warnIfHolidaysIncomplete(tx, ctx, {
-    country: eff.country,
-    state: eff.state,
-    years: yearsSpanned(startDate, endDate),
-    module: 'leave',
-    aggregateType: 'leave-request',
-    aggregateId: leaveRequestId,
-    subjectEmploymentId: employmentId,
-    context: { leaveRequestId, startDate, endDate },
-  });
+  const periods=(await holidayCalendarPeriodsByEmploymentTx(tx,[employmentId],startDate,endDate)).get(employmentId)??[];
+  const segments=await companySegmentsForPeriod(tx,employmentId,startDate,endDate);
+  const warnings:HolidayCompletenessWarning[]=[],seen=new Set<string>();
+  for(const segment of segments)for(const window of holidayCalendarWindows(segment.from,segment.to,periods)){
+    const eff=await effectiveHolidayState(tx,employmentId,segment.companyId,window.from);
+    if(!eff||eff.skipCompleteness)continue;
+    const years=yearsSpanned(window.from,window.to).filter(year=>{
+      const key=JSON.stringify([eff.country,eff.state,year]);if(seen.has(key))return false;seen.add(key);return true;
+    });
+    warnings.push(...await warnIfHolidaysIncomplete(tx,ctx,{
+      country:eff.country,state:eff.state,years,module:'leave',aggregateType:'leave-request',aggregateId:leaveRequestId,
+      subjectEmploymentId:employmentId,context:{leaveRequestId,startDate:window.from,endDate:window.to},
+    }));
+  }
+  return warnings;
 }
 
 /**

@@ -125,7 +125,8 @@ export const BANK_STATUTORY_TAB_SECTION_ORDER = ['statutory', 'tax', 'bank', 'ot
 // overwritten with a value a Discard can put straight back, no dated record opened. Placed AFTER
 // `clocking` (it renders directly under it — both are "what does this employee's own clocking require"
 // cards) and BEFORE `card`, which stays LAST for the reason its own comment above gives.
-export const ATTENDANCE_TAB_SECTION_ORDER = ['holiday', 'schedule', 'clocking', 'photo', 'card'] as const;
+// Dated Holiday Calendar assignments use their own versioned save; they cannot be discarded as field edits.
+export const ATTENDANCE_TAB_SECTION_ORDER = [ 'schedule', 'clocking', 'photo', 'card'] as const;
 
 /**
  * Employment (the `job` tab). One section: the Employment Dates card.
