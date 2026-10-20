@@ -18,6 +18,43 @@
  */
 import type { DayType } from './attendance';
 import type { ResolvedAttendanceRule, ResolvedOtRow } from './attendance-rule';
+import type {AttendanceGroupPolicy,AttendancePolicyDayClass} from '../lib/attendance-group-policy';
+
+export type PolicyOvertimeDurationStep={kind:'disabled'|'belowMinimum'|'maximum'|'rounding'|'preApprovedLimit'|'periodLimit';before:number;after:number};
+/** The canonical day owner calls this ONCE per business-day classification after evidenced breaks,
+ * late offset and approval-method selection. This is duration arithmetic, never an approval or cash
+ * proof. New policies bypass legacy band rounding; central patterns retain separate money rounding. */
+export function finalizePolicyOvertimeDuration(input:{policy:AttendanceGroupPolicy['overtime'];dayClass:AttendancePolicyDayClass;
+ approvedEligibleMinutes:number|null;preApprovedLimitMinutes:number|null;periodMinutes:number}):
+ {status:'known';minutes:number;steps:PolicyOvertimeDurationStep[]}|{status:'unavailable';reason:'durationUnknown'}{
+ const {policy,dayClass,approvedEligibleMinutes:raw,preApprovedLimitMinutes:bound,periodMinutes}=input;
+ if(!Number.isSafeInteger(periodMinutes)||periodMinutes<1||periodMinutes>4320)throw Error('Invalid canonical attendance period.');
+ const valid=(value:number)=>Number.isSafeInteger(value)&&value>=0&&value<=periodMinutes;
+ if(raw!==null&&!valid(raw)||bound!==null&&!valid(bound))throw Error('Invalid evidenced overtime duration.');
+ const day=policy.days[dayClass];
+ if(!day||!valid(day.minimumMinutes)||day.maximumMinutes!==null&&(!valid(day.maximumMinutes)||day.maximumMinutes<day.minimumMinutes))throw Error('Invalid day-specific overtime thresholds.');
+ const {mode,step}=policy.rounding;
+ if(!['none','down','up','nearest'].includes(mode)||(mode==='none'?step!==null:!([5,10,15,30,60] as readonly unknown[]).includes(step)))throw Error('Invalid overtime rounding policy.');
+ if(raw===null)return {status:'unavailable',reason:'durationUnknown'};
+ const steps:PolicyOvertimeDurationStep[]=[];
+ let minutes=raw;
+ const apply=(kind:PolicyOvertimeDurationStep['kind'],after:number)=>{steps.push({kind,before:minutes,after});minutes=after;};
+ if(!policy.enabled){apply('disabled',0);return {status:'known',minutes,steps};}
+ // Threshold follows approval selection. A pre-approved ceiling cannot manufacture evidence.
+ if(bound!==null&&minutes>bound)apply('preApprovedLimit',bound);
+ if(minutes<day.minimumMinutes){apply('belowMinimum',0);return {status:'known',minutes,steps};}
+ if(day.maximumMinutes!==null&&minutes>day.maximumMinutes)apply('maximum',day.maximumMinutes);
+ if(mode!=='none'){
+  const whole=Math.floor(minutes/step!),remainder=minutes%step!;
+  const roundUp=mode==='up'&&remainder>0||mode==='nearest'&&2*remainder>=step!;
+  const rounded=(whole+(roundUp?1:0))*step!;
+  apply('rounding',rounded);
+ }
+ if(day.maximumMinutes!==null&&minutes>day.maximumMinutes)apply('maximum',day.maximumMinutes);
+ if(bound!==null&&minutes>bound)apply('preApprovedLimit',bound);
+ if(minutes>periodMinutes)apply('periodLimit',periodMinutes);
+ return {status:'known',minutes,steps};
+}
 
 /** The per-rate overtime buckets stored on the attendance row. OVERTIME ONLY — the "OT 1.0" COLUMN on the
  *  Records screens is normal-within-schedule hours, which stays derived (worked − ot), never stored. */
