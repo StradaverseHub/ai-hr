@@ -4,13 +4,12 @@ import { getTranslations } from 'next-intl/server';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { scopedSession } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
-import { attendanceMonthSummary, listAttendanceCorrections, resolveApprovedOt } from '@/core/attendance';
-import { Avatar, Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
+import { attendanceMonthSummary } from '@/core/attendance';
+import { Card, EmployeeName, ErrorBanner, PageHeader, pageWideCls } from '@/components/ui';
 import { OtReportExport } from '@/components/ot-report-export';
 import { AttendanceTabs } from '@/components/attendance-tabs';
 import { Pager } from '@/components/pager';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
-import { decideCorrectionAction } from './actions';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
@@ -22,7 +21,6 @@ function Pill({ label, cls }: { label: string; cls: string }) {
 
 const fmtMin = (m: number | null | undefined) =>
   m == null ? '—' : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
-const fmtOt = (m: number | null | undefined) => (!m ? '—' : fmtMin(m));
 
 const monthLabel = (month: string) =>
   new Date(`${month}-01T00:00:00Z`).toLocaleDateString('en-GB', {
@@ -38,7 +36,7 @@ const shiftMonth = (month: string, by: number) => {
 
 /**
  * Attendance > Records — Overview tab (314ea061). The month-summary dashboard (with OT-report export +
- * month stepper) plus the pending-corrections worklist. The single-day table moved to the Daily tab; the
+ * month stepper). Application review lives in the linked request lists. The single-day table moved to the Daily tab; the
  * admin-only Attendance Allowance panel was removed (it is configured under Shift Settings, per the request).
  */
 export default async function AttendancePage({
@@ -49,10 +47,6 @@ export default async function AttendancePage({
     month?: string;
     page?: string;
     size?: string;
-    // The pending-corrections worklist pages independently of the month summary below it, so paging one
-    // never sends the other back to its first page (the /leave `edPage` convention).
-    cPage?: string;
-    cSize?: string;
   }>;
 }) {
   const t = await getTranslations('attendance');
@@ -66,13 +60,8 @@ export default async function AttendancePage({
   const sp = await searchParams;
   const todayIso = todayInKualaLumpur();
   const month = sp.month && /^\d{4}-\d{2}$/.test(sp.month) ? sp.month : todayIso.slice(0, 7);
-  const [summary, corrections] = await Promise.all([
-    attendanceMonthSummary(s, { month, companyIds: scopeIds, today: todayIso }),
-    listAttendanceCorrections(s, { companyIds: scopeIds, status: 'pending' }),
-  ]);
+  const summary = await attendanceMonthSummary(s, { month, companyIds: scopeIds, today: todayIso });
   const monthHref = (m: string) => `/attendance?month=${m}`;
-  // fc776376 — both tables are genuine lists: corrections grow with requests, the summary with headcount.
-  const corrPage = paginateRows(corrections, parsePageQuery({ page: sp.cPage, size: sp.cSize }));
   const summaryPage = paginateRows(summary, parsePageQuery(sp));
   const isAdmin = (s.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
 
@@ -114,103 +103,6 @@ export default async function AttendancePage({
         <Link href="/attendance/application-history/visible" className="inline-flex min-h-11 items-center rounded-lg border border-border px-3 text-sm font-medium text-primary hover:bg-accent">{tHistory('visibleTitle')}</Link>
         {isAdmin && <Link href="/attendance/application-history" className="inline-flex min-h-11 items-center px-3 text-sm text-primary underline">{tHistory('title')}</Link>}
       </div>
-
-      {corrections.length > 0 && (
-        <Card className="overflow-hidden">
-          <SectionHeader title={t('correctionsTitle')} count={corrections.length} />
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
-                  <th className="px-4 py-2 font-medium">{t('colDate')}</th>
-                  <th className="px-4 py-2 font-medium">{t('colProposed')}</th>
-                  <th className="px-4 py-2 font-medium">{t('colReason')}</th>
-                  <th className="px-4 py-2 text-right font-medium">{t('colAction')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {corrPage.rows.map((c) => {
-                  // No self-approval (the service enforces it too — this just hides the buttons).
-                  const canAct = (s.personId == null || c.personId !== s.personId) && c.canDecide !== false;
-                  // R45 3707cba9 — surface the "Actual vs Approved" OT the decide path already computes:
-                  // Actual = the engine's system-calculated OT from the day's real clockings; Approved =
-                  // that + the request run through the company's OT-approval rule (previewed pre-decision).
-                  const previewApprovedOt =
-                    c.requestedOtMinutes != null
-                      ? resolveApprovedOt(c.requestedOtMinutes, c.systemOtMinutes, c.otApprovalCalculation ?? 'system_calculated')
-                      : null;
-                  return (
-                    <tr key={c.id}>
-                      <td className="px-4 py-2.5">
-                        <div className="flex items-center gap-2.5">
-                          <Avatar name={c.employee} className="size-7 text-[10px]" />
-                          <span className="font-medium">{c.employee}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{c.attendanceDate}</td>
-                      <td className="px-4 py-2.5 tabular-nums">
-                        {c.proposedCheckIn
-                          ? `${c.proposedCheckIn.slice(0, 5)}${c.proposedCheckOut ? ` → ${c.proposedCheckOut.slice(0, 5)}` : ''}`
-                          : ''}
-                        {c.requestedOtMinutes != null && (
-                          <div className="flex flex-col gap-0.5">
-                            <span>
-                              {c.proposedCheckIn ? '· ' : ''}
-                              {t('otHoursLabel')} {(c.requestedOtMinutes / 60).toFixed(1)}h
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {t('actualOt')} {fmtOt(c.systemOtMinutes)} · {t('approvedOt')} {fmtOt(previewApprovedOt)}
-                            </span>
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{c.reason ?? '—'}</td>
-                      <td className="px-4 py-2.5">
-                        {canAct ? (
-                          <div className="flex justify-end gap-2">
-                            <form action={decideCorrectionAction}>
-                              <input type="hidden" name="correctionId" value={c.id} />
-                              <input type="hidden" name="workflowStage" value={c.workflow?.currentStage ?? ''} />
-                              <input type="hidden" name="workflowParticipant" value={c.workflow?.currentParticipantSlot ?? ''} />
-                              <input type="hidden" name="decision" value="approved" />
-                              {(c.workflow?.routingVersion === 2 || c.workflow?.routingVersion === 3) && <label className="block text-xs">{tHistory('remarks')}<textarea name="remarks" maxLength={1000} className="block min-h-20 w-full rounded border border-border bg-background p-2" /></label>}
-                              <Button type="submit" size="sm">
-                                {t('approve')}
-                              </Button>
-                            </form>
-                            <form action={decideCorrectionAction}>
-                              <input type="hidden" name="correctionId" value={c.id} />
-                              <input type="hidden" name="workflowStage" value={c.workflow?.currentStage ?? ''} />
-                              <input type="hidden" name="workflowParticipant" value={c.workflow?.currentParticipantSlot ?? ''} />
-                              <input type="hidden" name="decision" value="rejected" />
-                              <label className="block text-xs">{t('rejectReasonLabel')}<textarea name="rejectReason" required maxLength={1000} className="block w-full rounded border border-border bg-background p-2" /></label>
-                              <Button type="submit" size="sm" variant="outline">
-                                {t('reject')}
-                              </Button>
-                            </form>
-                          </div>
-                        ) : (
-                          <span className="flex justify-end text-xs text-muted-foreground">{c.canDecide === false && c.personId !== s.personId ? tHistory('pendingStage') : t('yourRequest')}</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <Pager
-            basePath="/attendance"
-            params={{ month: sp.month, page: sp.page, size: sp.size }}
-            paramNames={{ page: 'cPage', size: 'cSize' }}
-            state={corrPage.state}
-          />
-          <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
-            {t('correctionsNote')}
-          </p>
-        </Card>
-      )}
 
       {/* `id` is the anchor /reports links "Overtime report" at — the OT export control lives in this
           card's header, and landing on the page top left the customer hunting for it. */}
@@ -310,7 +202,7 @@ export default async function AttendancePage({
         </div>
         <Pager
           basePath="/attendance"
-          params={{ month: sp.month, cPage: sp.cPage, cSize: sp.cSize }}
+          params={{ month: sp.month }}
           state={summaryPage.state}
         />
         <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">

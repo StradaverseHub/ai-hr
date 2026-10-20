@@ -21733,7 +21733,7 @@
     "downloadErrors": "Download Error Report (CSV)",
     "confirm": "Confirm Reviewed Changes",
     "totals": "Total {total} · Imported {imported} · Updated {updated} · Unchanged {unchanged} · Failed {failed} · Skipped {skipped}",
-    "previewCounts": "{total} rows · {selected} selected · {failed} need correction. No changes have been saved.",
+    "previewCounts": "{total, plural, one {# row} other {# rows}} · {selected} selected · {failed, plural, one {# needs correction} other {# need correction}}. No changes have been saved.",
     "select": "Select",
     "row": "Row",
     "employeeId": "Employee ID",
