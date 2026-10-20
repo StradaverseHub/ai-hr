@@ -91,24 +91,10 @@ export type ProfileTabSection = (typeof PROFILE_TAB_SECTION_ORDER)[number];
 export const BANK_STATUTORY_TAB_SECTION_ORDER = ['statutory', 'tax', 'bank', 'others'] as const;
 
 /**
- * Attendance. Two of the tab's four cards are bucket (b) — Work Location and Shift Arrangement both
- * append a DATED record (a transfer movement event, a shift period) rather than overwriting a value —
- * so they keep their own buttons and are rendered BELOW the save scope, outside it. (r255 first put them
- * above it, which moved Holiday Calendar off the top of the tab and quietly reversed item 52a30630's
- * "Holiday Calendar pinned first". The scope leads the tab instead, and the Save bar names the cards it
- * owns rather than relying on being last.)
- *
- * The four here are independent writers on the employment row with no shared column, so the order is
- * simply the reading order of the cards.
- *
- * f513ec02 (r281) ADDED `schedule` — the Schedule Group card, which puts an employee in an attendance_rule
- * (`employment.attendance_rule_id`). It is bucket (a) on the classification's own test: one column
- * overwritten with a value a Discard can put straight back, and no dated record opened. It is placed
- * SECOND because that is where it renders — directly under Holiday Calendar, which item 52a30630 pinned to
- * the top of this tab and which stays pinned there. Its writer is the one on this tab that can REFUSE
- * (the group must allow the shift the employee is already on), and `runTabSave` reports that per-section
- * rather than as one all-or-nothing error, so a refused Schedule Group leaves the Holiday Calendar saved
- * and says which card broke.
+ * Attendance's consolidated Save owns field edits: Schedule Group, clocking, photo and Card ID.
+ * Dated Holiday Calendar assignments append immutable history and keep their own Save above this scope.
+ * The obsolete Work Location and Shift Arrangement editors have been removed; modern Location Assignment
+ * remains in the clocking card. Each field writer commits independently in the declared reading order.
  */
 // 44bc1c33 (r306) — `card` is the Card / Clocking ID a physical terminal records for this employee. It is
 // the SAME `employment.card_id` the Attendance › Card Assignment screen edits, not a second field: the
@@ -126,7 +112,7 @@ export const BANK_STATUTORY_TAB_SECTION_ORDER = ['statutory', 'tax', 'bank', 'ot
 // `clocking` (it renders directly under it — both are "what does this employee's own clocking require"
 // cards) and BEFORE `card`, which stays LAST for the reason its own comment above gives.
 // Dated Holiday Calendar assignments use their own versioned save; they cannot be discarded as field edits.
-export const ATTENDANCE_TAB_SECTION_ORDER = [ 'schedule', 'clocking', 'photo', 'card'] as const;
+export const ATTENDANCE_TAB_SECTION_ORDER = ['schedule', 'clocking', 'photo', 'card'] as const;
 
 /**
  * Employment (the `job` tab). One section: the Employment Dates card.

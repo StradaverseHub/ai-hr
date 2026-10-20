@@ -48,8 +48,13 @@ export async function reconcileReplacementHolidaysTx(tx:Tx,ctx:SessionContext,em
  const today=todayInKualaLumpur(),tenureFrom=emp.hiredOn;
  const firstYear=`${today.slice(0,4)}-01-01`,prior=existing.reduce((date,row)=>row.sourceDate<date?row.sourceDate:date,firstYear);
  const recordedFrom=recorded.reduce((date,row)=>row.date<date?row.date:date,prior);
- const from=recordedFrom<tenureFrom?tenureFrom:recordedFrom;
- const requestedEnd=`${Number(today.slice(0,4))+1}-12-31`,to=emp.terminatedOn&&emp.terminatedOn<requestedEnd?emp.terminatedOn:requestedEnd;
+ const requestedFrom=options?.sourceWindow.from&&options.sourceWindow.from<recordedFrom?options.sourceWindow.from:recordedFrom;
+ const from=requestedFrom<tenureFrom?tenureFrom:requestedFrom;
+ const defaultEnd=`${Number(today.slice(0,4))+1}-12-31`;
+ const requestedEnd=options?.sourceWindow.to&&options.sourceWindow.to>defaultEnd?options.sourceWindow.to:defaultEnd;
+ const to=emp.terminatedOn&&emp.terminatedOn<requestedEnd?emp.terminatedOn:requestedEnd;
+ if(options?.sourceWindow&&(!isoDate(options.sourceWindow.from)||!isoDate(options.sourceWindow.to)||options.sourceWindow.to<options.sourceWindow.from))throw new Error('Choose a valid replacement reconciliation window.');
+ if((Date.parse(to+'T00:00:00Z')-Date.parse(from+'T00:00:00Z'))/86400000>36600)throw new Error('Replacement reconciliation exceeds the 100-year window limit. Narrow the assignment dates.');
  if(to<from)return {changed:0,review:0,calendarConflicts:[] as {date:string;recorded:string;holiday:boolean}[]};
  const horizon=addHolidayDays(to,366),rawFrom=addHolidayDays(from,-7);
  const sources=await originalHolidayCalendarFor(tx,{employmentId,startDate:from,endDate:horizon});

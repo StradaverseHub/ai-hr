@@ -21512,5 +21512,43 @@
     "recordedBy": "Recorded by {name}",
     "resolvedBy": "Resolved by {name}",
     "unknownActor": "Actor unavailable"
+  },
+  "holidayCalendarAssignments": {
+    "title": "Holiday Calendar",
+    "add": "Add calendar",
+    "edit": "Edit assignment",
+    "calendar": "Calendar",
+    "start": "Start Date",
+    "end": "End Date",
+    "endHelp": "Last included date. Leave blank for no end date.",
+    "noEnd": "No end date",
+    "actions": "Actions",
+    "companyDefault": "Company default calendar",
+    "groups": "Holiday groups",
+    "states": "Work states",
+    "inactive": "Inactive",
+    "unavailableCalendar": "Calendar unavailable",
+    "fallback": "Undated fallback: {calendar}. Used only on days without a dated assignment.",
+    "empty": "No dated assignments. The existing undated calendar remains the fallback.",
+    "saved": "Calendar saved. Recalculated {count} complete attendance records.",
+    "review": "{count} incomplete attendance records need review:",
+    "saving": "Saving…",
+    "save": "Save assignment",
+    "cancel": "Cancel",
+    "protection": "Closed payroll and earned time off are protected. This change cannot rewrite them.",
+    "history": "Replaced assignments ({count})",
+    "replaced": "Replaced",
+    "editNamed": "Edit {calendar}, starting {date}",
+    "errors": {
+      "dates": "Choose valid dates within employment. End Date cannot precede Start Date.",
+      "overlap": "This period overlaps another active calendar. Edit or shorten that assignment first.",
+      "changed": "This assignment changed. Reload before editing.",
+      "scope": "You cannot manage this employee’s calendar.",
+      "calendar": "Choose an available holiday group or valid work state.",
+      "closedPayroll": "This change affects closed payroll. Review the payroll before changing the calendar.",
+      "credit": "This change affects earned time off. Review the existing credit before changing the calendar.",
+      "tooMany": "The history or date window exceeds the supported size. Narrow the dates or request review.",
+      "failed": "The calendar could not be saved. Review the dates and try again."
+    }
   }
 }

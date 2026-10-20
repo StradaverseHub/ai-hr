@@ -21512,5 +21512,43 @@
     "recordedBy": "Direkodkan oleh {name}",
     "resolvedBy": "Diselesaikan oleh {name}",
     "unknownActor": "Pelaku tidak tersedia"
+  },
+  "holidayCalendarAssignments": {
+    "title": "Kalendar Cuti",
+    "add": "Tambah kalendar",
+    "edit": "Edit penetapan",
+    "calendar": "Kalendar",
+    "start": "Tarikh Mula",
+    "end": "Tarikh Tamat",
+    "endHelp": "Tarikh terakhir yang disertakan. Biarkan kosong jika tiada tarikh tamat.",
+    "noEnd": "Tiada tarikh tamat",
+    "actions": "Tindakan",
+    "companyDefault": "Kalendar lalai syarikat",
+    "groups": "Kumpulan cuti",
+    "states": "Negeri kerja",
+    "inactive": "Tidak aktif",
+    "unavailableCalendar": "Kalendar tidak tersedia",
+    "fallback": "Kalendar tanpa tarikh: {calendar}. Digunakan hanya pada hari tanpa penetapan bertarikh.",
+    "empty": "Tiada penetapan bertarikh. Kalendar tanpa tarikh sedia ada kekal sebagai pilihan sandaran.",
+    "saved": "Kalendar disimpan. {count} rekod kehadiran lengkap dikira semula.",
+    "review": "{count} rekod kehadiran tidak lengkap perlu disemak:",
+    "saving": "Menyimpan…",
+    "save": "Simpan penetapan",
+    "cancel": "Batal",
+    "protection": "Gaji yang ditutup dan cuti gantian yang diperoleh dilindungi. Perubahan ini tidak boleh menulis semula rekod tersebut.",
+    "history": "Penetapan diganti ({count})",
+    "replaced": "Diganti",
+    "editNamed": "Edit {calendar}, bermula {date}",
+    "errors": {
+      "dates": "Pilih tarikh sah dalam tempoh pekerjaan. Tarikh Tamat tidak boleh sebelum Tarikh Mula.",
+      "overlap": "Tempoh ini bertindih dengan kalendar aktif lain. Edit atau pendekkan penetapan itu dahulu.",
+      "changed": "Penetapan ini telah berubah. Muat semula sebelum mengedit.",
+      "scope": "Anda tidak boleh mengurus kalendar pekerja ini.",
+      "calendar": "Pilih kumpulan cuti tersedia atau negeri kerja yang sah.",
+      "closedPayroll": "Perubahan ini menjejaskan gaji ditutup. Semak gaji sebelum menukar kalendar.",
+      "credit": "Perubahan ini menjejaskan cuti gantian diperoleh. Semak kredit sedia ada dahulu.",
+      "tooMany": "Sejarah atau tempoh tarikh melebihi saiz disokong. Kecilkan tempoh atau minta semakan.",
+      "failed": "Kalendar tidak dapat disimpan. Semak tarikh dan cuba lagi."
+    }
   }
 }

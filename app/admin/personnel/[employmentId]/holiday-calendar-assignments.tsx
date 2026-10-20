@@ -6,8 +6,8 @@ import { Button, Card, inputCls } from '@/components/ui';
 import { saveHolidayCalendarAssignmentAction } from './holiday-calendar-actions';
 
 type Row={id:string;startDate:string;endDate:string|null;choice:string;superseded:boolean};
-type Props={employmentId:string;joinDate:string;fallbackLabel:string;groups:{id:string;name:string;active:boolean}[];states:string[];rows:Row[]};
-export function HolidayCalendarAssignments({employmentId,joinDate,fallbackLabel,groups,states,rows}:Props){
+type Props={employmentId:string;joinDate:string;employmentStartDate?:string;fallbackLabel:string;groups:{id:string;name:string;active:boolean}[];states:string[];rows:Row[]};
+export function HolidayCalendarAssignments({employmentId,joinDate,employmentStartDate=joinDate,fallbackLabel,groups,states,rows}:Props){
  const t=useTranslations('holidayCalendarAssignments'),locale=useLocale(),router=useRouter(),formId=useId();
  const [draft,setDraft]=useState<{id:string|null;startDate:string;endDate:string;choice:string}|null>(null);
  const [error,setError]=useState<string|null>(null),[notice,setNotice]=useState<{updated:number;reviewDates:string[]}|null>(null);
@@ -44,8 +44,8 @@ export function HolidayCalendarAssignments({employmentId,joinDate,fallbackLabel,
       <optgroup label={t('states')}>{states.map(state=><option key={state} value={`state:${state}`}>{state}</option>)}</optgroup>
      </select>
     </label>
-    <label htmlFor={`${formId}-start`} className="space-y-1 text-sm"><span>{t('start')}</span><input id={`${formId}-start`} type="date" name="startDate" min={joinDate} required value={draft.startDate} disabled={pending} onChange={e=>setDraft({...draft,startDate:e.target.value})} className={inputCls}/></label>
-    <label htmlFor={`${formId}-end`} className="space-y-1 text-sm"><span>{t('end')}</span><input id={`${formId}-end`} type="date" name="endDate" min={draft.startDate||joinDate} value={draft.endDate} disabled={pending} onChange={e=>setDraft({...draft,endDate:e.target.value})} className={inputCls}/><span className="block text-xs text-muted-foreground">{t('endHelp')}</span></label>
+    <label htmlFor={`${formId}-start`} className="space-y-1 text-sm"><span>{t('start')}</span><input id={`${formId}-start`} type="date" name="startDate" min={employmentStartDate} required value={draft.startDate} disabled={pending} onChange={e=>setDraft({...draft,startDate:e.target.value})} className={inputCls}/></label>
+    <label htmlFor={`${formId}-end`} className="space-y-1 text-sm"><span>{t('end')}</span><input id={`${formId}-end`} type="date" name="endDate" aria-label={t('end')} aria-describedby={`${formId}-end-help`} min={draft.startDate||joinDate} value={draft.endDate} disabled={pending} onChange={e=>setDraft({...draft,endDate:e.target.value})} className={inputCls}/><span id={`${formId}-end-help`} className="block text-xs text-muted-foreground">{t('endHelp')}</span></label>
     {error&&<p role="alert" className="text-sm text-destructive sm:col-span-3">{t(`errors.${error}`)}</p>}
     <div className="flex flex-wrap gap-2 sm:col-span-3"><Button type="submit" disabled={pending}>{t(pending?'saving':'save')}</Button><Button type="button" variant="secondary" disabled={pending} onClick={()=>{setDraft(null);setError(null);}}>{t('cancel')}</Button></div>
    </form>}

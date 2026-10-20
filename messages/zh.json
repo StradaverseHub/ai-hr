@@ -21512,5 +21512,43 @@
     "recordedBy": "记录人：{name}",
     "resolvedBy": "处理人：{name}",
     "unknownActor": "操作人信息不可用"
+  },
+  "holidayCalendarAssignments": {
+    "title": "假日日历",
+    "add": "添加日历",
+    "edit": "编辑分配",
+    "calendar": "日历",
+    "start": "开始日期",
+    "end": "结束日期",
+    "endHelp": "包含的最后一天。留空表示无结束日期。",
+    "noEnd": "无结束日期",
+    "actions": "操作",
+    "companyDefault": "公司默认日历",
+    "groups": "假日组",
+    "states": "工作州属",
+    "inactive": "停用",
+    "unavailableCalendar": "日历不可用",
+    "fallback": "无日期备用设置：{calendar}。仅用于没有日期分配的日期。",
+    "empty": "没有日期分配，现有无日期日历仍为备用设置。",
+    "saved": "日历已保存，已重新计算 {count} 条完整考勤记录。",
+    "review": "有 {count} 条不完整考勤记录需复核：",
+    "saving": "正在保存…",
+    "save": "保存分配",
+    "cancel": "取消",
+    "protection": "已关闭的薪资及已取得的补休受保护，此更改不能改写它们。",
+    "history": "已替换的分配（{count}）",
+    "replaced": "已替换",
+    "editNamed": "编辑从 {date} 开始的 {calendar}",
+    "errors": {
+      "dates": "请选择雇佣期间内的有效日期，结束日期不能早于开始日期。",
+      "overlap": "该期间与其他有效日历重叠，请先编辑或缩短该分配。",
+      "changed": "此分配已更改，请刷新后再编辑。",
+      "scope": "您无权管理此员工的日历。",
+      "calendar": "请选择可用假日组或有效工作州属。",
+      "closedPayroll": "此更改影响已关闭的薪资，请先复核薪资。",
+      "credit": "此更改影响已取得的补休，请先复核现有补休。",
+      "tooMany": "历史记录或日期范围超过支持大小，请缩小范围或申请复核。",
+      "failed": "无法保存日历，请检查日期后重试。"
+    }
   }
 }

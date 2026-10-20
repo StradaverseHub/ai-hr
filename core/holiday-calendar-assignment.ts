@@ -48,7 +48,8 @@ export async function saveEmploymentHolidayCalendarAssignment(ctx:SessionContext
     const [subject]=await tx.select().from(employment).where(eq(employment.id,p.employmentId)).for('update');
     if(!subject)fail('scope');
     if(p.startDate<subject.hiredOn||subject.terminatedOn&&(p.startDate>subject.terminatedOn||p.endDate&&p.endDate>subject.terminatedOn))fail('dates');
-    const versions=await tx.select().from(employmentHolidayCalendar).where(eq(employmentHolidayCalendar.employmentId,p.employmentId)).orderBy(asc(employmentHolidayCalendar.validFrom),asc(employmentHolidayCalendar.id));
+    const versions=await tx.select().from(employmentHolidayCalendar).where(eq(employmentHolidayCalendar.employmentId,p.employmentId)).orderBy(asc(employmentHolidayCalendar.validFrom),asc(employmentHolidayCalendar.id)).limit(2001);
+    if(versions.length>=2000)fail('tooMany');
     const before=p.replacesId?versions.find(row=>row.id===p.replacesId&&!row.supersededAt):undefined;
     if(p.replacesId&&!before)fail('changed');
     if(versions.some(row=>!row.supersededAt&&row.id!==before?.id&&(!row.validTo||row.validTo>p.startDate)&&(!validTo||row.validFrom<validTo)))fail('overlap');
@@ -57,7 +58,7 @@ export async function saveEmploymentHolidayCalendarAssignment(ctx:SessionContext
     if(p.selection.kind==='state'&&!workState||p.selection.kind==='group'&&!groupId)fail('calendar');
     const today=todayInKualaLumpur();
     const from=[p.startDate,before?.validFrom].filter((date):date is string=>!!date).sort()[0];
-    const sourceEnd=[p.endDate,before?.validTo?add(before.validTo,-1):null,`${Number(today.slice(0,4))+1}-12-31`,p.startDate].filter((date):date is string=>!!date).sort().at(-1)!;
+    const sourceEnd=[p.endDate,before?.validTo?add(before.validTo,-1):null,`${Math.max(Number(today.slice(0,4)),Number(p.startDate.slice(0,4)))+1}-12-31`,p.startDate].filter((date):date is string=>!!date).sort().at(-1)!;
     if(groupId){
       const [group]=await tx.select().from(holidayGroup).where(eq(holidayGroup.id,groupId));
       const onlyShortening=before?.holidayGroupId===groupId&&p.startDate>=before.validFrom&&(!before.validTo||!!validTo&&validTo<=before.validTo);
@@ -76,15 +77,18 @@ export async function saveEmploymentHolidayCalendarAssignment(ctx:SessionContext
       return {id:before.id,updated:0,reviewDates:[] as string[],changed:false};
     await lockOvertimeSubjectForAttendanceWriteTx(tx,p.employmentId);
     const payroll=await lockPayrollForHolidayCalendarTx(tx,p.employmentId);
-    const days=await tx.select().from(attendance).where(eq(attendance.employmentId,p.employmentId)).orderBy(asc(attendance.attendanceDate),asc(attendance.id));
-    const replacements=await tx.select().from(replacementHoliday).where(eq(replacementHoliday.employmentId,p.employmentId));
+    const days=await tx.select().from(attendance).where(eq(attendance.employmentId,p.employmentId)).orderBy(asc(attendance.attendanceDate),asc(attendance.id)).limit(20001);
+    const replacements=await tx.select().from(replacementHoliday).where(eq(replacementHoliday.employmentId,p.employmentId)).limit(20001);
+    if(days.length>20000||replacements.length>20000)fail('tooMany');
     const readFrom=add(from,-366);
-    const to=[add(sourceEnd,366),...payroll.map(run=>run.end),...days.map(row=>row.attendanceDate),...replacements.flatMap(row=>[row.sourceDate,row.replacementDate].filter((date):date is string=>!!date))].sort().at(-1)!;
+    const reconciliationEnd=[sourceEnd,...payroll.map(run=>run.end),...replacements.map(row=>row.sourceDate)].sort().at(-1)!;
+    const to=[add(reconciliationEnd,366),...days.map(row=>row.attendanceDate),...replacements.flatMap(row=>[row.sourceDate,row.replacementDate].filter((date):date is string=>!!date))].sort().at(-1)!;
+    if((Date.parse(to+'T00:00:00Z')-Date.parse(readFrom+'T00:00:00Z'))/86400000>36600)fail('tooMany');
     const oldDates=await holidayDatesFor(tx,{employmentId:p.employmentId,startDate:readFrom,endDate:to});
     if(before)await tx.update(employmentHolidayCalendar).set({supersededAt:new Date()}).where(eq(employmentHolidayCalendar.id,before.id));
     const [saved]=await tx.insert(employmentHolidayCalendar).values({tenantId:ctx.tenantId,employmentId:p.employmentId,
       validFrom:p.startDate,validTo,kind:p.selection.kind,workState,holidayGroupId:groupId,replacesId:before?.id??null,recordedBy:ctx.userId}).returning();
-    await reconcileReplacementHolidaysTx(tx,ctx,p.employmentId,{sourceWindow:{from:readFrom,to:sourceEnd}});
+    await reconcileReplacementHolidaysTx(tx,ctx,p.employmentId,{sourceWindow:{from:readFrom,to:reconciliationEnd}});
     const nextDates=await holidayDatesFor(tx,{employmentId:p.employmentId,startDate:readFrom,endDate:to});
     const changedDates=[...new Set([...oldDates,...nextDates])].filter(date=>oldDates.has(date)!==nextDates.has(date)).sort();
     const affected=payroll.filter(run=>changedDates.some(date=>date>=run.start&&date<=run.end));

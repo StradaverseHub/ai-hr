@@ -21512,5 +21512,43 @@
     "recordedBy": "Ghi nhận bởi {name}",
     "resolvedBy": "Xử lý bởi {name}",
     "unknownActor": "Không có thông tin người thực hiện"
+  },
+  "holidayCalendarAssignments": {
+    "title": "Lịch ngày nghỉ",
+    "add": "Thêm lịch",
+    "edit": "Sửa phân công",
+    "calendar": "Lịch",
+    "start": "Ngày bắt đầu",
+    "end": "Ngày kết thúc",
+    "endHelp": "Ngày cuối được tính. Để trống nếu không có ngày kết thúc.",
+    "noEnd": "Không có ngày kết thúc",
+    "actions": "Thao tác",
+    "companyDefault": "Lịch mặc định công ty",
+    "groups": "Nhóm ngày nghỉ",
+    "states": "Bang làm việc",
+    "inactive": "Không hoạt động",
+    "unavailableCalendar": "Lịch không khả dụng",
+    "fallback": "Dự phòng không có ngày: {calendar}. Chỉ dùng cho ngày không có phân công theo ngày.",
+    "empty": "Chưa có phân công theo ngày. Lịch không có ngày hiện tại vẫn là lịch dự phòng.",
+    "saved": "Đã lưu lịch. Đã tính lại {count} hồ sơ chấm công đầy đủ.",
+    "review": "{count} hồ sơ chấm công chưa đủ cần xem xét:",
+    "saving": "Đang lưu…",
+    "save": "Lưu phân công",
+    "cancel": "Hủy",
+    "protection": "Lương đã đóng và ngày nghỉ bù đã tích lũy được bảo vệ. Thay đổi này không thể viết lại chúng.",
+    "history": "Phân công đã thay thế ({count})",
+    "replaced": "Đã thay thế",
+    "editNamed": "Sửa {calendar}, bắt đầu {date}",
+    "errors": {
+      "dates": "Chọn ngày hợp lệ trong thời gian làm việc. Ngày kết thúc không được trước ngày bắt đầu.",
+      "overlap": "Khoảng này trùng với lịch đang hoạt động khác. Hãy sửa hoặc rút ngắn phân công đó trước.",
+      "changed": "Phân công đã thay đổi. Hãy tải lại trước khi sửa.",
+      "scope": "Bạn không thể quản lý lịch của nhân viên này.",
+      "calendar": "Chọn nhóm ngày nghỉ khả dụng hoặc bang làm việc hợp lệ.",
+      "closedPayroll": "Thay đổi ảnh hưởng lương đã đóng. Xem xét lương trước khi đổi lịch.",
+      "credit": "Thay đổi ảnh hưởng ngày nghỉ bù đã tích lũy. Xem xét khoản hiện có trước.",
+      "tooMany": "Lịch sử hoặc khoảng ngày vượt giới hạn. Thu hẹp ngày hoặc yêu cầu xem xét.",
+      "failed": "Không lưu được lịch. Kiểm tra ngày và thử lại."
+    }
   }
 }

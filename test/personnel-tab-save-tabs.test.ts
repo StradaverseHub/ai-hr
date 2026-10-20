@@ -414,13 +414,13 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
       return { siteA: await mk('Gate A', 3.1), siteB: await mk('Gate B', 3.2) };
     };
 
-    it('writes the holiday calendar and the clocking control in one request', async () => {
+    it('writes the Schedule Group and clocking control without changing the legacy calendar fallback', async () => {
       const { siteA } = await twoSites();
       const fd = payload(
-        ['holiday', 'clocking'],
+        ['schedule', 'clocking'],
         {
-          [key('holiday', 'employmentId')]: employmentId,
-          [key('holiday', 'holidayCalendar')]: 'state:Selangor',
+          [key('schedule', 'employmentId')]: employmentId,
+          [key('schedule', 'attendanceRuleId')]: '',
           [key('clocking', 'employmentId')]: employmentId,
           [key('clocking', 'geofencingEnabled')]: 'on',
           [key('clocking', 'clockingLocationIds')]: siteA.id,
@@ -431,12 +431,31 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
       const result = await saveAttendanceTabAction(fd);
 
       expect(result.ok).toBe(true);
-      expect(result.saved).toEqual(['holiday', 'clocking']);
+      expect(result.saved).toEqual(['schedule', 'clocking']);
       const emp = await readEmployment(employmentId);
-      expect(emp.workState).toBe('Selangor');
+      expect(emp.workState).toBeNull();
       expect(emp.holidayGroupId).toBeNull();
       expect(emp.geofencingEnabled).toBe(true);
       expect(await readClockingAssignments(employmentId)).toEqual([siteA.id]);
+    });
+
+    it('refuses a stale undated-calendar section before committing any clocking field', async () => {
+      const { siteA } = await twoSites();
+      const result = await saveAttendanceTabAction(payload(['holiday', 'clocking'], {
+        [key('holiday', 'employmentId')]: employmentId,
+        [key('holiday', 'holidayCalendar')]: 'state:Selangor',
+        [key('clocking', 'employmentId')]: employmentId,
+        [key('clocking', 'geofencingEnabled')]: 'on',
+        [key('clocking', 'clockingLocationIds')]: siteA.id,
+      }, employmentId, 'attendance'));
+      expect(result.ok).toBe(false);
+      expect(result.failedSection).toBe('holiday');
+      expect(result.saved).toEqual([]);
+      const emp = await readEmployment(employmentId);
+      expect(emp.workState).toBeNull();
+      expect(emp.holidayGroupId).toBeNull();
+      expect(emp.geofencingEnabled).toBe(false);
+      expect(await readClockingAssignments(employmentId)).toEqual([]);
     });
 
     it('an unticked switch means OFF, and OFF clears the assigned locations', async () => {
@@ -580,10 +599,10 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
       await seedStatutory();
       const result = await saveAttendanceTabAction(
         payload(
-          ['holiday', 'clocking'],
+          ['schedule', 'clocking'],
           {
-            [key('holiday', 'employmentId')]: employmentId,
-            [key('holiday', 'holidayCalendar')]: 'state:Selangor',
+            [key('schedule', 'employmentId')]: employmentId,
+            [key('schedule', 'attendanceRuleId')]: '',
             [key('clocking', 'employmentId')]: employmentId,
             // r423 — refused by the service: the switch ON with no location chosen.
             [key('clocking', 'geofencingEnabled')]: 'on',
@@ -597,9 +616,9 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
       // The translator is mocked to echo key names here; the key is the plan's sentence in en.json.
       expect(result.error).toBe('locationRequired');
       expect(result.saved, 'the card that DID commit is named so the client can mark it clean').toEqual([
-        'holiday',
+        'schedule',
       ]);
-      expect((await readEmployment(employmentId)).workState).toBe('Selangor');
+      expect((await readEmployment(employmentId)).workState).toBeNull();
     });
   });
 
@@ -628,28 +647,28 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
       expect(stripComments(read('components/bank-info-card.tsx'))).toContain('data-save-section="bank"');
     });
 
-    it('Attendance: Work Location and Shift Arrangement are OUTSIDE the scope, with their own buttons', () => {
+    it('Attendance: dated Calendar owns its save above the field-edit scope; current assignment controls remain', () => {
       const page = PAGE();
       const scope = scopeOf('attendance');
-      expect(scope).toContain('{holidayCalendarCard}');
+      expect(scope).not.toContain('{holidayCalendarCard}');
+      expect(scope).toContain('{scheduleGroupCard}');
       expect(scope).toContain('{clockingCard}');
-      // Both bucket (b): a transfer movement event, and a dated shift period the service refuses to
-      // back-insert. A tab-wide Discard must not appear to cover either.
-      expect(scope).not.toContain('{locationCard}');
-      expect(scope).not.toContain('{defaultShiftCard}');
-      const attendancePanel = page.slice(page.indexOf('attendance: ('), page.indexOf('bankStatutory: ('));
-      expect(attendancePanel).toContain('{locationCard}');
-      expect(attendancePanel).toContain('{defaultShiftCard}');
-      // …and they still submit on their own.
-      expect(page).toContain('action={setLocationAction}');
-      expect(page).toContain('action={setDefaultShiftAction}');
-      // The two (b) cards leave the contiguous run BELOW it, not above it. Above it reads better for the
-      // Save bar (the bar ends up last on the tab) and was tried first — but it pushes Holiday Calendar
-      // off the top and reverses item 52a30630. test/personnel-holiday-grade-relocation.test.ts (5) is
-      // the guard on the reading order itself; this one pins the structural half.
-      expect(attendancePanel.indexOf('{holidayCalendarCard}')).toBeLessThan(
-        attendancePanel.indexOf('{locationCard}'),
-      );
+      const from = page.indexOf('attendance: (');
+      const to = page.indexOf('bankStatutory: (', from);
+      expect(from).toBeGreaterThan(-1);
+      expect(to).toBeGreaterThan(from);
+      const attendancePanel = page.slice(from, to);
+      expect(attendancePanel.length).toBeGreaterThan(100);
+      const calendar = attendancePanel.indexOf('{holidayCalendarCard}');
+      const saveScope = attendancePanel.indexOf('<TabSaveScope');
+      expect(calendar).toBeGreaterThan(-1);
+      expect(saveScope).toBeGreaterThan(calendar);
+      expect(attendancePanel).not.toContain('{locationCard}');
+      expect(attendancePanel).not.toContain('{defaultShiftCard}');
+      const widget = stripComments(read('app/admin/personnel/[employmentId]/holiday-calendar-assignments.tsx'));
+      expect(widget).toContain('saveHolidayCalendarAssignmentAction');
+      expect(widget).toContain('<form');
+      expect(widget).not.toContain('data-save-section');
     });
 
     it('Employment: the company transfer sits inside the same card and keeps its OWN button and no marker', () => {
@@ -749,7 +768,7 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
 
     it('every scope NAMES the cards its Save owns, because on three tabs the bar is not the last thing', () => {
       // A tab Save encloses a CONTIGUOUS run, so on Profile, Attendance and Employment the sticky bar
-      // renders above cards it does not cover (emergency contacts; Work Location + Shift Arrangement;
+      // renders above cards it does not cover (emergency contacts; dated Holiday Calendar;
       // Direct Superior + delegations). A bar reading only "Save Changes" there is a control that appears
       // to do something it does not — edit the Direct Superior, press the Save above it, and it answers
       // "No unsaved changes". `covers` prints the owned card names on the bar. It is a required prop, so
@@ -760,11 +779,9 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
       // would truncate all three (see the note on `tabSaveCovers`).
       expect(page).toContain("profile: [t('personalDetails'), t('contactAddressTitle')]");
       expect(page).toContain("bankStatutory: [t('bankCardTitle'), t('statutoryMalaysia'), t('othersStatutoryTitle')]");
-      // f513ec02 (r281) — the Schedule Group card joined this scope, so the bar names it too. The entry is
-      // UPDATED rather than loosened: Holiday Calendar stays first (item 52a30630), and a bar that gained
-      // a card without gaining its name would be the same control-that-lies `covers` exists to prevent.
+      // Dated Calendar owns its versioned save; the tab bar names only the field edits it owns.
       expect(page).toContain(
-        "attendance: [t('holidayCalendarCardTitle'), t('scheduleGroupCardTitle'), ...whenLive(tc('assignmentTitle')), ...whenLive(tc('webClockingTitle'))]",
+        "attendance: [t('scheduleGroupCardTitle'), ...whenLive(tc('assignmentTitle')), ...whenLive(tc('webClockingTitle'))]",
       );
       expect(page).toContain("job: [t('employmentInfo.title')]");
       // r256 — Payroll's entry names a SUB-SECTION of a card, not the card. Payment Method is rendered
