@@ -223,7 +223,8 @@ describe('a6fe37fc R3 · the seven routes are registered, and the menu stays whe
     expect(leaveConfig.screenKey).toBe('leaveConfig');
     for (const k of KEYS) expect(leaveConfig.routes).toContain(SCREENS_BUILT[k].route);
     // The canonical href follows the leave TYPE screen, and moves in that screen's own commit.
-    expect(leaveConfig.href).toBe(CUTOVER.leaveTypes.cutOver ? '/admin/leave-config/types' : '/admin/leave/entitlements');
+    expect(leaveConfig.href).toBe('/admin/leave-config/settings');
+    expect(leaveConfig.routes).toContain('/admin/leave-config/types');
   });
 
   it('a cut-over screen has LEFT the route registry, in the same commit that emptied its page', () => {

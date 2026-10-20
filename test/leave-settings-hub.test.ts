@@ -29,6 +29,7 @@ describe('Leave Settings retains every destination with exactly one menu owner',
   });
   it('keeps the original route and permission owner for every card, and admin-only access to the hub', () => {
     const hub = SCREENS.find(screen => screen.routes.includes(LEAVE_SETTINGS_HREF))!;
+    expect(hub.href).toBe(LEAVE_SETTINGS_HREF);
     expect(hub.screenKey).toBe('leaveConfig'); expect(hub.guard).toBe('requireAdmin');
     expect(canReach('hr_admin', hub)).toBe(true); expect(canReach('super_admin', hub)).toBe(true);
     for (const role of ['employee', 'manager', 'payroll_partner'] as const) expect(canReach(role, hub)).toBe(false);

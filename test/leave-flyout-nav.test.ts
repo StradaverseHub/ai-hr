@@ -458,7 +458,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     const permissions = read('lib/permissions.ts');
     expect(permissions).not.toContain("'/admin/leave',");
     // The screen column survives, re-pointed at the page a reader can actually open.
-    expect(permissions).toContain("href: '/admin/leave-config/types'");
+    expect(permissions).toContain("href: '/admin/leave-config/settings'");
   });
 
   it('/admin/leave/entitlements survives as an UNGUARDED redirect stub to the new leave TYPE screen', () => {
