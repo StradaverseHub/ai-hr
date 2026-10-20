@@ -2,7 +2,7 @@
 import {redirect} from 'next/navigation';
 import {revalidatePath} from 'next/cache';
 import {scopedAdmin} from '@/lib/scope';
-import {saveCustomReport,updateCustomReport,getCustomReport} from '@/core/custom-reports';
+import {saveCustomReport,updateCustomReport,getCustomReport,ensurePayrollBasicVarianceSample} from '@/core/custom-reports';
 import {payrollComparisonSpec} from '@/core/report-payroll-comparison';
 import {validatePayrollComparisonDefinition} from '@/lib/payroll-period-comparison';
 import {publicErrorMessage} from '@/lib/public-error';
@@ -24,5 +24,15 @@ export async function savePayrollComparisonAction(form:FormData){
     else{const saved=await saveCustomReport(s,{name,datasetId:spec.datasetId,spec,companyIds:scopeIds});destination='/reports/payroll-comparison/'+saved.id;}
     revalidatePath('/reports');
   }catch(error){destination=(id?'/reports/payroll-comparison/'+id+'?edit=1&':'/reports?cat=payroll&')+'error='+encodeURIComponent(publicErrorMessage(error));}
+  redirect(destination);
+}
+
+/** Invoked only by an explicit signed-in user action; no GET or deployment-time impersonation. */
+export async function createPayrollComparisonSampleAction(){
+  const {s,scopeIds}=await scopedAdmin();let destination='/reports?cat=payroll';
+  try{
+    const saved=await ensurePayrollBasicVarianceSample(s,scopeIds);
+    revalidatePath('/reports');destination='/reports/payroll-comparison/'+saved.id;
+  }catch(error){destination+='&error='+encodeURIComponent(publicErrorMessage(error));}
   redirect(destination);
 }

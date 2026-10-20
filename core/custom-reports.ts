@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {executePayrollComparisonTx} from './report-payroll-comparison';
+import {executePayrollComparisonTx,payrollComparisonSpec} from './report-payroll-comparison';
 import {payrollComparisonAccessTx} from './report-payroll-access';
 import {MasterReportAccessError} from './employee-master-access';
 import {PAYROLL_COMPARISON_DATASET} from '../lib/payroll-period-comparison';
@@ -124,9 +124,10 @@ export function getCustomReport(ctx: SessionContext, id: string, scopeIds?:reado
 }
 
 /** Create a new report. Category is derived from the dataset (single source of truth). */
-export async function saveCustomReport(
-  ctx: SessionContext,
-  p: { name: string; datasetId: string; spec: CustomReportSpec; shared?: boolean; companyIds?:readonly string[] },
+type NewCustomReport = { name: string; datasetId: string; spec: CustomReportSpec; shared?: boolean; companyIds?:readonly string[] };
+async function saveCustomReportTx(
+  tx: Tx, ctx: SessionContext,
+  p: NewCustomReport,
 ): Promise<{ id: string }> {
   const name = p.name.trim();
   if (!name) throw new Error('Report name is required');
@@ -137,30 +138,52 @@ export async function saveCustomReport(
   // 'create' verb: a new report has no stored grid yet, so the INCOMING grid is checked — an author who
   // sets a grid that excludes their own role from Create is denied (self-consistent with the 7-verb model).
   enforceReportVerb(ctx, spec, 'create');
-  return withTenant(ctx, async (tx) => {
-    await comparisonAccess(tx,ctx,spec,'create',p.companyIds);
-    const [row] = await tx
-      .insert(customReport)
-      .values({
-        tenantId: ctx.tenantId,
-        name,
-        category: ds.category,
-        datasetId: p.datasetId,
-        spec,
-        shared: p.shared ?? false,
-        sharedRoleIds:legacySharedRoles(spec,p.shared??false),
-        createdByUserId: ctx.userId ?? null,
-      })
-      .returning({ id: customReport.id });
-    await appendEvent(tx, {
+  await comparisonAccess(tx,ctx,spec,'create',p.companyIds);
+  const [row] = await tx
+    .insert(customReport)
+    .values({
       tenantId: ctx.tenantId,
-      aggregateType: 'custom-report',
-      aggregateId: row.id,
-      eventType: 'custom-report.created',
-      actor: actorOf(ctx),
-      payload: { name, datasetId: p.datasetId, category: ds.category, columnCount: spec.columns.length },
-    });
-    return { id: row.id };
+      name,
+      category: ds.category,
+      datasetId: p.datasetId,
+      spec,
+      shared: p.shared ?? false,
+      sharedRoleIds:legacySharedRoles(spec,p.shared??false),
+      createdByUserId: ctx.userId ?? null,
+    })
+    .returning({ id: customReport.id });
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'custom-report',
+    aggregateId: row.id,
+    eventType: 'custom-report.created',
+    actor: actorOf(ctx),
+    payload: { name, datasetId: p.datasetId, category: ds.category, columnCount: spec.columns.length },
+  });
+  return { id: row.id };
+}
+
+/** Ordinary user-authored creation retains the canonical definition writer and audit. */
+export function saveCustomReport(ctx: SessionContext,p: NewCustomReport): Promise<{id:string}>{
+  return withTenant(ctx,tx=>saveCustomReportTx(tx,ctx,p));
+}
+
+/** Explicit, repeat-safe example owned by the authenticated caller. It never discovers another owner's report. */
+export function ensurePayrollBasicVarianceSample(ctx:SessionContext,companyIds:readonly string[]):Promise<{id:string}>{
+  const name='Payroll Basic Variance',spec=payrollComparisonSpec();
+  return withTenant(ctx,async tx=>{
+    if(!ctx.userId)throw new MasterReportAccessError();
+    await comparisonAccess(tx,ctx,spec,'create',companyIds);
+    enforceReportVerb(ctx,spec,'create');
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+ctx.userId+':payroll-basic-variance-sample'},0))`);
+    const [existing]=await tx.select({id:customReport.id,spec:customReport.spec}).from(customReport)
+      .where(and(eq(customReport.tenantId,ctx.tenantId),eq(customReport.createdByUserId,ctx.userId),eq(customReport.datasetId,PAYROLL_COMPARISON_DATASET),eq(customReport.name,name)))
+      .orderBy(customReport.createdAt,customReport.id).limit(1);
+    if(existing){
+      await comparisonAccess(tx,ctx,existing.spec,'view',companyIds);enforceReportVerb(ctx,existing.spec,'view');
+      return {id:existing.id};
+    }
+    return saveCustomReportTx(tx,ctx,{name,datasetId:PAYROLL_COMPARISON_DATASET,spec,companyIds,shared:false});
   });
 }
 

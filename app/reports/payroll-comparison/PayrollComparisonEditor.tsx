@@ -5,9 +5,10 @@ import * as Dialog from '@radix-ui/react-dialog';
 import {useTranslations} from 'next-intl';
 import Link from 'next/link';
 import {DEFAULT_PAYROLL_COMPARISON,PAYROLL_COMPARISON_COLUMNS,type PayrollComparisonDefinition} from '@/lib/payroll-period-comparison';
-import {savePayrollComparisonAction} from './actions';
+import {savePayrollComparisonAction,createPayrollComparisonSampleAction} from './actions';
 
 function Submit(){const {pending}=useFormStatus(),t=useTranslations('payrollComparison');return <button disabled={pending} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50" type="submit">{t('saveRun')}</button>;}
+function SampleSubmit(){const {pending}=useFormStatus(),t=useTranslations('payrollComparison');return <button type="submit" disabled={pending} className="rounded-lg border border-border px-3 py-2 text-sm font-medium disabled:opacity-50">{t(pending?'creatingSample':'createSample')}</button>;}
 
 type Props={payItems:{code:string;name:string}[];initial?:PayrollComparisonDefinition;id?:string;version?:number;name?:string;description?:string};
 export function PayrollComparisonEditor({payItems,initial=DEFAULT_PAYROLL_COMPARISON,id,version,name,description}:Props){
@@ -36,6 +37,6 @@ export function PayrollNewReportDialog({payItems}:{payItems:Props['payItems']}){
   return <Dialog.Root><Dialog.Trigger className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground">{t('newReport')}</Dialog.Trigger><Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-50 bg-black/40"/><Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[90dvh] w-[95vw] max-w-3xl -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-xl border border-border bg-card p-6 shadow-xl">
     <div className="flex items-start justify-between"><div><Dialog.Title className="text-lg font-semibold">{t('newReport')}</Dialog.Title><Dialog.Description className="mt-1 text-sm text-muted-foreground">{t('newHelp')}</Dialog.Description></div><Dialog.Close aria-label={t('cancel')} className="rounded px-2 py-1">×</Dialog.Close></div>
     <fieldset className="my-5 flex gap-3"><legend className="sr-only">{t('reportType')}</legend>{['list','comparison'].map(value=><label className="flex flex-1 items-center gap-2 rounded-xl border border-border p-3 text-sm" key={value}><input type="radio" name="reportType" value={value} checked={type===value} onChange={()=>setType(value)}/>{t(value==='list'?'listReport':'periodComparison')}</label>)}</fieldset>
-    {type==='list'?<Link href="/reports/builder/new?dataset=payroll_history" className="inline-block rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground">{t('openListBuilder')}</Link>:<PayrollComparisonEditor payItems={payItems}/>}
+    {type==='list'?<Link href="/reports/builder/new?dataset=payroll_history" className="inline-block rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground">{t('openListBuilder')}</Link>:<><PayrollComparisonEditor payItems={payItems}/><form action={createPayrollComparisonSampleAction} className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4"><p className="max-w-lg text-xs text-muted-foreground">{t('sampleHelp')}</p><SampleSubmit/></form></>}
   </Dialog.Content></Dialog.Portal></Dialog.Root>;
 }

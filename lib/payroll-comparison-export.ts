@@ -63,7 +63,7 @@ async function excel(run:Run):Promise<Uint8Array>{
 async function pdf(run:Run):Promise<Uint8Array>{
   const columns=payrollComparisonColumns(run.definition),data=run.result.rows.map(row=>Object.fromEntries(columns.map(column=>[column.id,payrollComparisonCell(row,column.id)??'N/A'])));
   const meta=metadata(run).map(row=>row.filter(value=>value!==null).join(': '));
-  const allStrings=[run.name,run.generatedBy,...meta,...data.flatMap(row=>Object.values(row)),...columns.map(column=>column.label)];
+  const allStrings=['→',run.name,run.generatedBy,...meta,...data.flatMap(row=>Object.values(row)),...columns.map(column=>column.label)];
   const doc=await PDFDocument.create(),regular=await doc.embedFont(StandardFonts.Helvetica),bold=await doc.embedFont(StandardFonts.HelveticaBold);
   const faces=await embedPayslipFaces(doc,payslipFaceScripts(allStrings));
   const segments=new Intl.Segmenter('en',{granularity:'grapheme'});
