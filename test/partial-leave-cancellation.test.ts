@@ -31,6 +31,7 @@ import {
   LeaveCancellationDateInvalidError,
   LeaveCancellationPeriodClosedError,
 } from '../core/leave';
+import { listPayrollLeaveExceptions } from '../core/payroll-leave';
 import { leaveBalances, leaveEntitlementBreakdown, listLeaveRequests, plannedAbsences } from '../core/read';
 import type { SessionContext } from '../db/client';
 import {
@@ -122,10 +123,10 @@ async function onLeave(employmentId: string, date: string) {
 }
 
 /** Submit + single-step approve a 10–12 Aug ANNUAL leave; returns the (single) approved row id. */
-async function approvedThreeDay() {
+async function approvedThreeDay(leaveTypeId = b.annualLeaveTypeId) {
   const res = await requestLeave(subjectCtx, {
     employmentId: subject.employmentId,
-    leaveTypeId: b.annualLeaveTypeId,
+    leaveTypeId,
     startDate: '2026-08-10',
     endDate: '2026-08-12',
   });
@@ -157,6 +158,8 @@ beforeAll(async () => {
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
+  // These cases exercise roster/holiday deduction; calendar-counted cancellation has its own regression.
+  await owner.db.update(schema.leaveType).set({ counting: 'working_days' }).where(eq(schema.leaveType.id, b.annualLeaveTypeId));
   // r79 0322 — single- vs multi-step approval is now decided by the company's resolved chain, not by
   // company.leave_multi_approval (which is gone). These cases are whole-request single-approver flows —
   // the shape the old opted-out default produced — so the company is put on an explicit ONE-step chain.
@@ -494,10 +497,14 @@ describe('Partial Leave Cancellation — gates', () => {
     expect(ok.cancellationRequestId).toBeTruthy();
   });
 
-  it('cannot cancel a date whose payroll period batch is closed (employee has a finalised payslip)', async () => {
-    const reqId = await approvedThreeDay();
+  it.each([true, false])('closed payroll blocks only a financially affected cancellation (paid=%s)', async (paid) => {
+    const leaveTypeId = paid ? b.annualLeaveTypeId : (await owner.db.insert(schema.leaveType).values({
+      tenantId: b.tenantId, code: 'UNPAID', name: 'Unpaid leave', paid: false,
+      counting: 'working_days', allowNegativeBalance: true, employeeCancelApproved: true,
+    }).returning({ id: schema.leaveType.id }))[0].id;
+    const reqId = await approvedThreeDay(leaveTypeId);
     // A closed payroll batch for Aug 2026 in the subject's company, WITH the subject's own payslip in it —
-    // mirrors a finalised period (the deduction was already taken; no reversal path).
+    // mirrors a finalised period. Only a change affecting its financial inputs must be refused.
     const [pp] = await owner.db
       .insert(schema.payPeriod)
       .values({ tenantId: b.tenantId, companyId: b.companyId, period: '2026-08', status: 'closed' })
@@ -524,9 +531,26 @@ describe('Partial Leave Cancellation — gates', () => {
       netPay: '4500.00',
       employerCost: '5600.00',
     });
-    await expect(
-      requestLeaveCancellation(subjectCtx, { today: '2026-08-01', leaveRequestId: reqId, cancelDates: ['2026-08-11'] }),
-    ).rejects.toBeInstanceOf(LeaveCancellationPeriodClosedError);
+    const beforeSlip = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batch.id)).orderBy(schema.payslip.id);
+    const [beforeBatch] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batch.id));
+    const beforeLedger = await owner.db.select().from(schema.leaveLedger).where(eq(schema.leaveLedger.employmentId, subject.employmentId)).orderBy(schema.leaveLedger.id);
+    const cancel = () => requestLeaveCancellation(subjectCtx, { today: '2026-08-01', leaveRequestId: reqId, cancelDates: ['2026-08-11'] });
+    if (paid) {
+      // Ordinary paid leave does not change this run's unpaid/absence deductions. It can be given back
+      // without inventing a payroll exception or altering the closed payslip.
+      const { cancellationRequestId } = await cancel();
+      const result = await decideLeaveCancellation(mgrCtx, { cancellationRequestId, decision: 'approved' });
+      expect(result).toMatchObject({ status: 'approved', restoredDays: 1, remainingDays: 2 });
+    } else {
+      await expect(cancel()).rejects.toBeInstanceOf(LeaveCancellationPeriodClosedError);
+      const [request] = await owner.db.select().from(schema.leaveRequest).where(eq(schema.leaveRequest.id, reqId));
+      expect(request).toMatchObject({ status: 'approved', days: '3.00' });
+      expect(await owner.db.select().from(schema.leaveCancellationRequest).where(eq(schema.leaveCancellationRequest.leaveRequestId, reqId))).toHaveLength(0);
+      expect(await owner.db.select().from(schema.leaveLedger).where(eq(schema.leaveLedger.employmentId, subject.employmentId)).orderBy(schema.leaveLedger.id)).toEqual(beforeLedger);
+    }
+    expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batch.id)).orderBy(schema.payslip.id)).toEqual(beforeSlip);
+    expect((await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batch.id)))[0]).toEqual(beforeBatch);
+    expect(await listPayrollLeaveExceptions(adminCtx(b), batch.id)).toEqual([]);
   });
 
   it('cannot cancel a date outside the span', async () => {

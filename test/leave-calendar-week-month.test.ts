@@ -29,6 +29,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
@@ -351,6 +352,8 @@ beforeAll(async () => {
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
+  // This parity oracle is the legacy WORKING-day path; choose that policy explicitly.
+  await owner.db.update(schema.leaveType).set({ counting: 'working_days' }).where(eq(schema.leaveType.id, b.annualLeaveTypeId));
   const mk = async (name: string) =>
     hireEmployee(adminCtx(b), {
       person: { fullName: name, primaryEmail: `wm_${randomUUID().slice(0, 8)}@t.local` },
