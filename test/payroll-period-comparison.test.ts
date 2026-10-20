@@ -71,6 +71,12 @@ describe('saved result provenance', () => {
       {employmentId:'worker',companyId,date:'2026-10-20'},
     ]);
   });
+  it('uses an explicitly recorded paid-tenure end for leavers without guessing from full-month employer coverage',()=>{
+    const recorded=source('leaver','leaver','previous','1000',{proratedCoverage:{from:'2026-09-01',to:'2026-09-14'}});
+    expect(payrollComparisonDatedSubjects([recorded],runs,'2026-09','2026-10')).toEqual([{employmentId:'leaver',companyId,date:'2026-09-14'}]);
+    expect(payrollComparisonDatedSubjects([{...recorded,proratedCoverage:undefined}],runs,'2026-09','2026-10')).toEqual([{employmentId:'leaver',companyId,date:'2026-09-30'}]);
+    expect(()=>payrollComparisonDatedSubjects([{...recorded,proratedCoverage:{from:'2026-09-01',to:'2026-10-01'}}],runs,'2026-09','2026-10')).toThrow();
+  });
   it('refuses malformed or out-of-period payroll ownership dates instead of guessing placement',()=>{
     for(const coverage of [{from:'2026-10-01',to:'2026-11-01'},{from:'2026-10-31',to:'2026-10-01'},{from:'2026-10-01',to:'2026-10-32'}])
       expect(()=>payrollComparisonDatedSubjects([source('bad','worker','current','1000',{coverage})],runs,'2026-09','2026-10')).toThrow();

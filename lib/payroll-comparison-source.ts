@@ -8,7 +8,7 @@ const object = (value: unknown): Record<string, unknown> | null =>
 /** A transfer can create two employer rows in the same month. Each row's dated context belongs to
  * its own last recorded payroll-ownership day, not automatically the selected month's final day.
  * Prefer the current side where present, retaining previous-only leavers and exact employer identity. */
-export function payrollComparisonDatedSubjects(sources:readonly Pick<ComparisonSource,'employmentId'|'companyId'|'runId'|'coverage'>[],
+export function payrollComparisonDatedSubjects(sources:readonly Pick<ComparisonSource,'employmentId'|'companyId'|'runId'|'coverage'|'proratedCoverage'>[],
  runs:readonly Pick<ComparisonRun,'id'|'period'>[],previousPeriod:string,currentPeriod:string){
  const periods=new Map(runs.map(run=>[run.id,run.period]));
  const subjects=new Map<string,{employmentId:string;companyId:string;date:string;side:number}>();
@@ -16,7 +16,10 @@ export function payrollComparisonDatedSubjects(sources:readonly Pick<ComparisonS
   const period=periods.get(source.runId),side=period===currentPeriod?2:period===previousPeriod?1:0;
   if(!side||!isCalendarDate(source.coverage.from)||!isCalendarDate(source.coverage.to)||source.coverage.from>source.coverage.to||source.coverage.from.slice(0,7)!==period||source.coverage.to.slice(0,7)!==period)
    throw Error('Recorded payroll ownership dates are unavailable for this comparison.');
-  const key=source.employmentId+'|'+source.companyId,old=subjects.get(key),date=source.coverage.to;
+  const paid=source.proratedCoverage;
+  if(paid&&(!isCalendarDate(paid.from)||!isCalendarDate(paid.to)||paid.from>paid.to||paid.from<source.coverage.from||paid.to>source.coverage.to))
+   throw Error('Recorded paid-tenure dates disagree with payroll ownership.');
+  const key=source.employmentId+'|'+source.companyId,old=subjects.get(key),date=paid?.to??source.coverage.to;
   if(!old||side>old.side||side===old.side&&date>old.date)subjects.set(key,{employmentId:source.employmentId,companyId:source.companyId,date,side});
  }
  return [...subjects.values()].sort((a,b)=>a.employmentId.localeCompare(b.employmentId)||a.companyId.localeCompare(b.companyId)).map(({side,...subject})=>subject);
