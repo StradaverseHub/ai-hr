@@ -11,10 +11,11 @@ import { adminCancelLeave, decideLeave, decideLeaveCancellation, requestLeave, r
 import { updateLeaveType } from '../core/admin';
 import { erasePersonPii } from '../core/pdpa';
 import { commitLeaveHistoryImport } from '../core/leave-history-import';
-import { BatchNeedsRecalculationError, closeBatch, createBatch, generatePayslips } from '../core/payroll';
+import { BatchNeedsRecalculationError, closeBatch, createBatch, createAdditionalRun, generatePayslips } from '../core/payroll';
+import { assignPolicy, createPolicy } from '../core/payroll-policy';
 import { LeavePayrollBusyError, LeavePayrollClosedError, listPayrollLeaveExceptions, resolvePayrollLeaveException } from '../core/payroll-leave';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { adminCtx, closeAll, createAppUser, harnessSnapshot, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, harnessSnapshot, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 const today = todayInKualaLumpur();
 const addDays = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
@@ -104,6 +105,54 @@ describe('leave decisions and payroll follow-up', () => {
     await closeBatch(hr, { batchId });
     await expect(decideLeaveCancellation(manager, { cancellationRequestId, decision: 'approved' })).rejects.toBeInstanceOf(LeaveCancellationPeriodClosedError);
     expect((await request(leaveId)).status).toBe('approved');
+  });
+  it('retains a real closed adjustment reference and deduplicates repeated source delivery', async () => {
+    await setModule(b.tenantId,'multi_cycle_payroll','active');
+    hr = {...hr,entitlements:harnessSnapshot(b.tenantId)};
+    const leaveId=await pending();const batchId=await processed();
+    const {batchId:adjustmentId}=await createAdditionalRun(hr,{companyId:b.companyId,payPeriod:lastMonth,runType:'adjustment',scope:{employmentIds:[subject.employmentId]}});
+    await generatePayslips(hr,{batchId:adjustmentId});
+    await closeBatch(hr,{batchId:adjustmentId});await closeBatch(hr,{batchId});
+    await decideLeave(manager,{leaveRequestId:leaveId,decision:'approved'});
+    const originalSlip=await slip(batchId),exceptions=await listPayrollLeaveExceptions(hr,batchId);
+    expect(exceptions).toHaveLength(1);
+    expect(await listPayrollLeaveExceptions(hr,adjustmentId)).toHaveLength(1);
+    const {markPayrollAfterLeaveApprovalTx}=await import('../core/payroll-leave');
+    await withTenant(manager,tx=>markPayrollAfterLeaveApprovalTx(tx,leaveId));
+    expect(await listPayrollLeaveExceptions(hr,batchId)).toHaveLength(1);
+    await resolvePayrollLeaveException(hr,{id:exceptions[0].id,batchId,resolution:'adjustment',adjustmentBatchId:adjustmentId,explanation:'Reviewed the existing closed adjustment for this employee and retained its canonical reference.'});
+    expect((await listPayrollLeaveExceptions(hr,batchId))[0]).toMatchObject({status:'resolved',resolution:'adjustment',adjustment_batch_id:adjustmentId});
+    expect(await slip(batchId)).toEqual(originalSlip);
+  });
+  it.each([true,false])('paid leave marks a processed run only when absence deductions are enabled (%s)',async deductAbsentDays=>{
+    await owner.db.update(schema.leaveType).set({paid:true}).where(eq(schema.leaveType.id,typeId));
+    const policy=await createPolicy(hr,{companyId:b.companyId,name:'Attendance absence policy',policyType:'monthly',config:{leave:{deductAbsentDays}}});
+    await assignPolicy(hr,{employmentId:subject.employmentId,policyId:policy.id});
+    const leaveId=await pending(),batchId=await processed(),before=await slip(batchId);
+    await decideLeave(manager,{leaveRequestId:leaveId,decision:'approved'});
+    expect((await batch(batchId)).recalcEmploymentIds??[]).toEqual(deductAbsentDays?[subject.employmentId]:[]);
+    if(deductAbsentDays){
+      await generatePayslips(hr,{batchId,reprocessSubset:{employmentIds:[subject.employmentId],reason:'Approved paid leave relieves the absence deduction'}});
+      expect(Number((await slip(batchId)).netPay)).toBeGreaterThan(Number(before.netPay));
+    }
+  });
+  it('uses the former paying company cut-off and denies an HR reviewer scoped only to the new company',async()=>{
+    await owner.db.insert(schema.companyPayrollConfig).values({tenantId:b.tenantId,companyId:b.companyId,unpaidLeaveCutOffDay:Number(tuesday.slice(8))});
+    const leaveId=await pending(),batchId=await processed();await closeBatch(hr,{batchId});
+    const before=await slip(batchId);
+    const [current]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional new employing company'}).returning();
+    await owner.db.insert(schema.companyPayrollConfig).values({tenantId:b.tenantId,companyId:current.id,unpaidLeaveCutOffDay:Number(monday.slice(8))});
+    // A coverage fixture: retain the actual old payslip and assignment, while current employment differs.
+    await owner.db.update(schema.employment).set({companyId:current.id}).where(eq(schema.employment.id,subject.employmentId));
+    await decideLeave(manager,{leaveRequestId:leaveId,decision:'approved'});
+    const exceptions=await listPayrollLeaveExceptions(hr,batchId);expect(exceptions).toHaveLength(1);
+    expect(await slip(batchId)).toEqual(before);
+    const [reviewerPerson]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional scoped reviewer'}).returning();
+    const reviewer=await createAppUser(b.tenantId,reviewerPerson.id,'hr_admin');
+    await owner.db.update(schema.roleAssignment).set({companyId:current.id}).where(eq(schema.roleAssignment.appUserId,reviewer));
+    const scoped={tenantId:b.tenantId,userId:reviewer,roles:['hr_admin'],entitlements:harnessSnapshot(b.tenantId)};
+    expect(await listPayrollLeaveExceptions(scoped,batchId)).toEqual([]);
+    await expect(resolvePayrollLeaveException(scoped,{id:exceptions[0].id,batchId,resolution:'no_adjustment',explanation:'This reviewer must not resolve another company payroll.'})).rejects.toThrow();
   });
 
   it('pending HR cancellation creates no stale marker or closed exception', async () => {
