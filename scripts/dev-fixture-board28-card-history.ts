@@ -14,6 +14,7 @@ async function main() {
   const s = await import('../db/schema');
   const { owner, seedBase, createAppUser, adminCtx, closeAll } = await import('../test/harness');
   const { hireEmployee } = await import('../core/org');
+  const { setEmploymentTestRecord } = await import('../core/employment-test-record');
   const { createCompany, createDepartment } = await import('../core/admin');
   const { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, cancelAttendanceApplication, saveAttendanceWorkflow, setAttendanceWorkflowEnabled, setEmploymentCardId } = await import('../packs/attendance/service');
   const { createShift, assignDefaultShift } = await import('../core/roster');
@@ -41,6 +42,7 @@ async function main() {
       const companyId = key === 'Foreign' ? foreignCompany.id : b.companyId;
       const hired = await hireEmployee(root, { person: { fullName: `Fictional Board 28 ${key}`, primaryEmail: `board28-${key.toLowerCase()}@example.test` }, companyId,
         departmentId: key === 'Foreign' ? foreignDepartment.id : b.deptA, employeeCode: code, employmentType: 'full_time', hiredOn: '2020-01-01' });
+      await setEmploymentTestRecord(root, { employmentId: hired.employmentId, isTestRecord: true });
       const userId = await createAppUser(b.tenantId, hired.personId, role);
       await owner.db.update(s.appUser).set({ onboardedAt: new Date() }).where(eq(s.appUser.id, userId));
       await owner.db.update(s.roleAssignment).set({ companyId }).where(eq(s.roleAssignment.appUserId, userId));
