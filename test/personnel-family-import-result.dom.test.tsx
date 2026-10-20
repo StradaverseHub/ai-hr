@@ -19,7 +19,7 @@ const familyPreview:SectionImportPreview={section:'family',total:2,updateCount:2
 async function apply(locale:Locale,preview:SectionImportPreview,text=familyCsv){
  mocks.read.mockResolvedValue({name:'records.csv',text,dependentsText:'',extraTexts:{}});mocks.validate.mockResolvedValue(preview);
  const result:SectionImportResult={section:preview.section,updated:preview.updateCount,skipped:0,failed:[],fileErrors:[],runId:null};mocks.commit.mockResolvedValue(result);
- const t=createTranslator({locale,messages:catalogs[locale],namespace:'people.import'});
+ const t=createTranslator({locale,messages:{people:{import:catalogs[locale].people.import}},namespace:'people.import'});
  render(<NextIntlClientProvider locale={locale} messages={catalogs[locale]}><SectionImport section={preview.section} reference={reference}/></NextIntlClientProvider>);
  const file=document.querySelector('input[type="file"]');expect(file).not.toBeNull();fireEvent.change(file!,{target:{files:[new File([text],'records.csv',{type:'text/csv'})]}});
  const button=await screen.findByRole('button',{name:t('sectionImportButton',{count:preview.updateCount})});await waitFor(()=>expect(button).toBeEnabled());fireEvent.click(button);
@@ -33,7 +33,7 @@ describe('Family import result cardinality',()=>{
  ];
  it.each(expected)('$locale names two saved Family records for one employee/name with distinct birth dates',async({locale,text})=>{
   await apply(locale,familyPreview);expect(await screen.findByRole('heading',{name:text})).toBeInTheDocument();
-  const t=createTranslator({locale,messages:catalogs[locale],namespace:'people.import'});expect(screen.queryByRole('heading',{name:t('sectionUpdatedCount',{count:2})})).toBeNull();
+  const t=createTranslator({locale,messages:{people:{import:catalogs[locale].people.import}},namespace:'people.import'});expect(screen.queryByRole('heading',{name:t('sectionUpdatedCount',{count:2})})).toBeNull();
  });
  it('retains ordinary Profile wording for one updated employee',async()=>{
   const profile:SectionImportPreview={...familyPreview,section:'profile',total:1,updateCount:1,rows:[{...familyPreview.rows[0],changes:['phone'],proposed:[{column:'phone',value:'000123'}]}]};
