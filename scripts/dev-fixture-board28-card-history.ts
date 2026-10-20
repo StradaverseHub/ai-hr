@@ -53,7 +53,7 @@ async function main() {
     }
     await setEmploymentCardId(root, { employmentId: people.SecondEmployee.employmentId, cardId: '00004560' });
     await setEmploymentCardId(root, { employmentId: people.Foreign.employmentId, cardId: '00009999' });
-    const shift = await createShift(root, { companyId: b.companyId, code: 'BOARD28_DAY', name: 'Fictional Board 28 day shift', startTime: '08:00', endTime: '17:00', breakMinutes: 60, weeklyPattern: [0, 1, 2, 3, 4, 5, 6] });
+    const shift = await createShift(root, { companyId: b.companyId, code: 'BOARD28_DAY', name: 'Fictional Board 28 day shift', startTime: '08:00', endTime: '17:00', breakMinutes: 60, weeklyPattern: [1, 2, 3, 4, 5, 6, 7] });
     for (const key of ['Employee', 'SecondEmployee']) await assignDefaultShift(root, { employmentId: people[key].employmentId, shiftId: shift.id });
     const requests: Record<string, string> = {};
     const supportingFiles: Record<string, { fileName: string; mimeType: string; bytes: number; sha256: string }> = {};
