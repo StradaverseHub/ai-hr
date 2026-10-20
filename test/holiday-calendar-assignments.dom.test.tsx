@@ -73,19 +73,24 @@ describe('dated holiday calendar input and history',()=>{
  });
  it('saves the independent calendar with an unrelated tab draft and still warns before leaving',async()=>{
   const tabSave=vi.fn();state.save.mockResolvedValue({ok:true,updated:0,reviewDates:[]});
-  render(<NextIntlClientProvider locale="en" messages={en}>
+  // Match Personnel Attendance: the independent calendar is a SIBLING before the tab scope.
+  const contents=(rows:React.ComponentProps<typeof HolidayCalendarAssignments>['rows']=[]) => <NextIntlClientProvider locale="en" messages={en}>
+   <HolidayCalendarAssignments {...base} rows={rows}/>
    <TabSaveScope tabKey="attendance" identity={{employmentId:base.employmentId}} saveAction={tabSave} covers={['Web Clocking']}>
     <form data-save-section="attendance-photo"><label>Photo requirement<input name="attendancePhotoSetting" defaultValue="required"/></label></form>
-    <HolidayCalendarAssignments {...base}/>
    </TabSaveScope>
    <a href="/admin/personnel">Leave personnel screen</a>
-  </NextIntlClientProvider>);
+  </NextIntlClientProvider>;
+  const view=render(contents());
   fireEvent.change(screen.getByLabelText('Photo requirement'),{target:{value:'optional'}});
   await waitFor(()=>expect(screen.getByRole('button',{name:'Save Changes'})).toBeEnabled());
   fireEvent.click(screen.getByRole('button',{name:'Add calendar'}));
   fireEvent.change(screen.getByLabelText('Calendar'),{target:{value:'state:Johor'}});
   fireEvent.submit(screen.getByRole('form',{name:'Add calendar'}));
   await waitFor(()=>expect(state.save).toHaveBeenCalledOnce());
+  await waitFor(()=>expect(state.refresh).toHaveBeenCalledOnce());
+  // A refreshed RSC payload supplies new server markup without discarding the unrelated dirty scope.
+  view.rerender(contents([{id:'saved',startDate:base.joinDate,endDate:null,choice:'state:Johor',superseded:false}]));
   expect(screen.queryByRole('dialog')).toBeNull();expect(tabSave).not.toHaveBeenCalled();
   expect(screen.getByLabelText('Photo requirement')).toHaveValue('optional');
   expect(screen.getByRole('button',{name:'Save Changes'})).toBeEnabled();
