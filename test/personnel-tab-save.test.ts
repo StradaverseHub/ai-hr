@@ -388,7 +388,10 @@ describe('420ebab5 part two — one Save per tab on Personnel → Profile', () =
       expect(tags).not.toContain('setDefaultShiftAction');
       expect(tags).not.toContain('setLocationAction');
       const widget = read('app/admin/personnel/[employmentId]/holiday-calendar-assignments.tsx');
-      expect(widget).toContain('<form onSubmit={submit}');
+      const forms=formTags(widget);
+      expect(forms).toHaveLength(1);
+      expect(forms[0]).toMatch(/\bonSubmit=\{submit\}/);
+      expect(forms[0]).toContain('data-tab-save-independent="true"');
       expect(widget).toContain('saveHolidayCalendarAssignmentAction(form)');
       expect(widget).not.toContain('data-save-section');
     });
