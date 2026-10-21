@@ -58,7 +58,7 @@ describe('Home Time Off consumes canonical own leave facts',()=>{
   expect((await calendarGET(new Request('http://localhost/api/home/calendar?employmentId='+other.employmentId))).status).toBe(403);
   for(const query of ['employmentId=x&employmentId=y','employmentId=x&companyId='+b.companyId,'employmentId=x&month=2026-13','employmentId=x&month=2026-01&month=2026-02','month=2026-01'])
    expect((await calendarGET(new Request('http://localhost/api/home/calendar?'+query))).status).toBe(400);
-  await expect(withTenant(own.ctx,tx=>leaveCalendarPresenceByEmploymentTx(tx,[own.employmentId],'2026-02-31','2026-03-01')))).rejects.toThrow('Invalid calendar window');
+  await expect(withTenant(own.ctx,tx=>leaveCalendarPresenceByEmploymentTx(tx,[own.employmentId],'2026-02-31','2026-03-01'))).rejects.toThrow('Invalid calendar window');
   await expect(withTenant(own.ctx,tx=>leaveCalendarPresenceByEmploymentTx(tx,[own.employmentId],today(),add(today(),62)))).rejects.toThrow('Invalid calendar window');
   await owner.db.update(appUser).set({archivedAt:new Date()}).where(eq(appUser.id,own.ctx.userId!));
   expect((await calendarGET(new Request('http://localhost/api/home/calendar?employmentId='+own.employmentId))).status).toBe(403);
