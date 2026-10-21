@@ -606,3 +606,14 @@ This does not grant company, Personnel or financial access. Normal bookmarks ret
 focused rows receive keyboard focus and reduced-motion scrolling. Profile focus keeps its independent
 typed-photo/current-review course. The native v1 vocabulary is unchanged. The source handoff and authored
 cap/foreign/revocation/arrival regressions still require fresh integrated execution and real app journeys.
+
+
+### Reserved journal preparation after released-ledger readback
+
+The coordinated candidate now journals the reserved ESS0578, Security0579 and Rewards0580 after the
+shared0576 foundation. This is source preparation only; none has been applied to production. The actual
+production readback contained475 tuples through0575, with the pinned earlier471 ID/hash/timestamp tuples
+unchanged. The old0180/0212 source-ledger differences and duplicate historical timestamp are retained;
+no applied source, tuple or ordering was rewritten. Both restricted runtime/owner roles still report
+NOSUPERUSER and NOBYPASSRLS. Actual fresh-schema/service/RLS checks, two independent populated-owner
+upgrades and the final release gate remain required. The three incomplete controls stay unsupported.
