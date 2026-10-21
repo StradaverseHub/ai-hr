@@ -15,6 +15,7 @@ import {personnelField} from '@/lib/personnel-field-registry';
 import {personnelFieldChoices} from '@/lib/personnel-import-contract';
 import {WORKFORCE_PROFILE_FIELDS} from '@/lib/workforce-record-fields';
 import {formatDmy} from '@/lib/date-display';
+import {dependentFieldApplies} from '@/lib/dependent-vocabulary';
 import {Button,Card, PageHeader, SectionHeader,inputCls} from '@/components/ui';
 import {EmployeeSwitcher} from '../employee-switcher';
 
@@ -99,7 +100,7 @@ export async function WorkforceScopedRecord({session, employmentId, scopeIds,fee
     {rows.map(row=><details key={row.id} className="border-t p-4">
      <summary className="cursor-pointer text-sm font-medium">{String(row.values[kind==='qualification'?'qualification':'fullName']??'—')}</summary>
      {canMaintain?<WorkforceValueForm employmentId={employmentId} kind={kind} row={row} values={row.values} editor={editor} root={root} access={access}/>:<dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {workforceMaintenanceFields(kind).map(({key,field})=>{
+      {workforceMaintenanceFields(kind).filter(({key})=>kind!=='dependent'||dependentFieldApplies(String(row.values.relationship??''),key)).map(({key,field})=>{
        const value=row.values[key],option=personnelFieldChoices(field).find(item=>item.value===String(value));
        const display=value==null||value===''?'—':option&&root.has(option.labelKey)?root(option.labelKey):field.type==='date'&&field.form?.widget!=='month'?formatDmy(String(value)):String(value);
        return <div key={key} className="min-w-0"><dt className="text-xs text-muted-foreground">{root.has(field.labelKey)?root(field.labelKey):field.label}</dt><dd className="mt-1 break-words text-sm">{display}</dd></div>;

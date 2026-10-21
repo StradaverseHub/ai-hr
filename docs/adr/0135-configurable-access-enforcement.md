@@ -131,6 +131,16 @@ The proof table and field-policy function remain private. This is source prepara
 and vault consumers must execute after the released-baseline reconciliation. No capability is
 activated and no migration has been applied by this source checkpoint.
 
+The bounded Family editor now applies the existing shared relationship-field predicate to its
+interactive form and read-only view. A small client island holds only relationship state; controls,
+labels and choices are server-rendered slots. Inapplicable controls are hidden and disabled, with
+finite blank placeholders preserving the action's exact field contract. The canonical normalizer
+still owns relationship changes and stale-field clearing. No form state is an authorization grant.
+Forms also reset uncontrolled values together with their actual row/Person revision, preventing a
+typed old value from inheriting a freshly rendered compare-and-swap token. A changed register set
+resets its completed Add form. Six-locale interaction, field-posting and revision-refresh regressions
+are drafted but unexecuted; actual permitted/denied/save-reopen journeys remain required.
+
 
 The Workforce listing, export, status counts and switcher now draft an explicit definer projection
 instead of borrowing raw person/employment SELECT. The projection names its fields and tenant-keyed
