@@ -3,7 +3,7 @@ import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
-import {createNotice,publishNotice,updateNotice,archiveNotice,getNotice,noticesForEmployment,markNoticeViewed,dismissNoticePopup,popupNoticeFor,noticeContentHistory,acknowledgeNotice,noticeAcknowledgementHistory,addNoticeAttachment,getNoticeAttachment,noticeAttachmentMetadata,type NoticeInput} from '../core/notice';
+import {createNotice,duplicateNotice,publishNotice,updateNotice,archiveNotice,getNotice,noticesForEmployment,markNoticeViewed,dismissNoticePopup,popupNoticeFor,noticeContentHistory,acknowledgeNotice,noticeAcknowledgementHistory,addNoticeAttachment,getNoticeAttachment,noticeAttachmentMetadata,type NoticeInput} from '../core/notice';
 import {hireEmployee} from '../core/org';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -102,6 +102,18 @@ describe('Retained Notice content and explicit recipient acknowledgement',()=>{
 
 
 describe('Immutable Notice-owned attachments',()=>{
+ it('duplicates the current selected files into a fresh draft without sharing mutable audience or file ownership',async()=>{
+  const n=await published(),original=await addNoticeAttachment(adminCtx(b),n.id,1,{uploadKey:randomUUID(),fileName:'Fictional duplicate.txt',content:Buffer.from('Fictional immutable copy')});
+  const copied=await duplicateNotice(adminCtx(b),n.id),draft=await getNotice(adminCtx(b),copied.id);
+  expect(draft?.contentVersion).toBe(0);expect(draft?.publishedAt).toBeNull();expect(draft?.attachmentIds).toHaveLength(1);
+  expect(draft!.attachmentIds[0]).not.toBe(original.id);
+  expect((await getNoticeAttachment(adminCtx(b),copied.id,draft!.attachmentIds[0]))?.content.equals(Buffer.from('Fictional immutable copy'))).toBe(true);
+  expect(await getNoticeAttachment(n.e.ctx,copied.id,draft!.attachmentIds[0])).toBeNull();expect(await noticeContentHistory(adminCtx(b),copied.id)).toEqual([]);
+  await publishNotice(adminCtx(b),copied.id);
+  expect((await getNoticeAttachment(n.e.ctx,copied.id,draft!.attachmentIds[0]))?.fileName).toBe('Fictional duplicate.txt');
+  expect((await getNotice(adminCtx(b),n.id))?.attachmentIds).toEqual([original.id]);
+ });
+
  it('allows staging a replacement when five files are already selected, then enforces five on save',async()=>{
   const n=await published();let version=1;const selected:string[]=[];
   for(let index=0;index<5;index++){const file=await addNoticeAttachment(adminCtx(b),n.id,version,{uploadKey:randomUUID(),fileName:'Fictional'+index+'.txt',content:Buffer.from('Fictional')});version=file.contentVersion;selected.push(file.id);}
