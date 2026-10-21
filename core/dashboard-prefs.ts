@@ -23,7 +23,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { EMPLOYEE_HOME_CARDS, defaultEmployeeHomePreferences, readEmployeeHomePreferences,
-  validateEmployeeHomePreferences, type EmployeeHomePreferences } from '../lib/employee-home';
+  validateEmployeeHomePreferences,employeeHomeLayoutInput, type EmployeeHomePreferences } from '../lib/employee-home';
 
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
@@ -118,7 +118,7 @@ export function getEmployeeHomePreferences(ctx: SessionContext, cards: readonly 
     const metadata=raw&&typeof raw==='object'&&!Array.isArray(raw)?(raw as Record<string,unknown>).homeDisplay:null;
     const defaults=defaultEmployeeHomePreferences();
     const display=readEmployeeHomePreferences({...defaults,...(metadata&&typeof metadata==='object'&&!Array.isArray(metadata)?metadata:{})});
-    const layout=normalizeDashboardLayout(extractRoleLayout(raw,'employee'),cards);
+    const layout=normalizeDashboardLayout(employeeHomeLayoutInput(extractRoleLayout(raw,'employee')),cards);
     const ordered=layout.order.filter((key):key is EmployeeHomePreferences['cardOrder'][number]=>EMPLOYEE_HOME_CARDS.some(card=>card===key));
     return {version:1,timeZone:display.timeZone,weekStartsOn:display.weekStartsOn,
       cardOrder:[...ordered,...EMPLOYEE_HOME_CARDS.filter(key=>!ordered.includes(key))],

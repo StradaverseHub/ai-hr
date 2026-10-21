@@ -285,6 +285,18 @@ async function rawLayout(ctx:SessionContext){
   return row.layout;
 }
 describe('Home cosmetic preferences share the canonical dashboard owner',()=>{
+  it('reads old corresponding visibility without losing new cards or rewriting the stored layout',async()=>{
+    const ctx=await newEmployeeCtx();
+    const legacyCards=['leaveBalance','nextHoliday','upcomingEvents','pendingTasks','noticeBoard'].map((cardKey,index)=>({cardKey,employeeSelectable:true,defaultDisplay:true,mandatory:false,displayOrder:index}));
+    await setDashboardLayout(ctx,{selected:['leaveBalance'],order:legacyCards.map(row=>row.cardKey)},legacyCards,'employee');
+    const before=await rawLayout(ctx),preferences=await getEmployeeHomePreferences(ctx,HOME_CARDS);
+    expect(preferences.cardOrder).toEqual([...EMPLOYEE_HOME_CARDS]);
+    expect(preferences.hiddenCards).toEqual(['calendar','notices','tasks']);
+    expect(preferences.hiddenCards).not.toContain('today');expect(preferences.hiddenCards).not.toContain('timeOff');
+    expect(await rawLayout(ctx)).toEqual(before);
+    await setEmployeeHomePreferences(ctx,preferences,HOME_CARDS);
+    expect(await getEmployeeHomePreferences(ctx,HOME_CARDS)).toEqual(preferences);
+  });
   it('persists/reopens choices once, keeps another role and login private, and resets only Home',async()=>{
     const ctx=await newEmployeeCtx(),other=await newEmployeeCtx();
     const managerCards=BUILTIN_ROLE_DASHBOARD_CARDS.manager;

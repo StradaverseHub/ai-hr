@@ -40,7 +40,7 @@ describe('Home slots reuse the canonical editable Dashboard Card Master',()=>{
  });
  it('saves actual catalog-backed own preferences and respects a fresh master change',async()=>{
   await seed();const a=adminCtx(b);
-  const [loginPerson]=await owner.db.insert(person).values({tenantId:b.tenantId,fullName:'Fictional preference owner'}).returning();
+  const [loginPerson]=await owner.db.insert(person).values({tenantId:b.tenantId,fullName:'Fictional preference owner',primaryEmail:'fictional-home-prefs@example.invalid'}).returning();
   const userId=await createAppUser(b.tenantId,loginPerson.id,'employee');
   const ctx:SessionContext={tenantId:b.tenantId,userId,personId:loginPerson.id,roles:['employee']};
   const cards=await listEmployeeHomeCards(ctx),prefs={...defaultEmployeeHomePreferences(),hiddenCards:['team' as const],cardOrder:[...EMPLOYEE_HOME_CARDS].reverse(),weekStartsOn:0,timeZone:'Asia/Tokyo'};
