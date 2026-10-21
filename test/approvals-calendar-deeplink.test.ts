@@ -263,9 +263,18 @@ describe('drift guards (source assertions)', () => {
     expect(src.match(/relative z-10 grid size-4/g)?.length).toBe(3);
   });
 
-  it('the approvals page stamps approvalRowDomId ids on the rows of BOTH tables', () => {
+  it('every supported approval queue gives its actual row a focusable stable anchor', () => {
     const src = read('app/approvals/page.tsx');
-    expect(src.match(/id=\{approvalRowDomId\(/g)?.length).toBe(2);
+    for(const [queue,row] of [['sortedLeave','r'],['sortedCancellations','c'],['sortedReplacement','r'],
+      ['sortedClaims','c'],['visibleCorrections','c'],['sortedResignations','r'],
+      ['sortedManagerReviews','r'],['sortedHrReviews','r']]){
+      const marker=`{${queue}.map((${row}) => (`;
+      const start=src.indexOf(marker);
+      expect(start,queue).toBeGreaterThanOrEqual(0);
+      const opening=src.slice(start+marker.length,start+marker.length+400);
+      expect(opening,queue).toContain(`id={approvalRowDomId(${row}.id)}`);
+      expect(opening,queue).toContain('tabIndex={-1}');
+    }
   });
 
   it('the arrival island parses the hash through the shared parser', () => {
