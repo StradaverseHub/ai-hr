@@ -632,6 +632,60 @@ export type EmployeeNoticeRow = {
   popupFrequency: NoticePopupFrequency;
 };
 
+/** One live recipient rule for lists, detail and Home. Authoring authority never creates a recipient. */
+function liveEmployeeNotice(employmentId:string,today:string){
+ return and(eq(noticeRecipient.employmentId,employmentId),eq(noticeRecipient.tenantId,notice.tenantId),
+  isNotNull(notice.publishedAt),isNull(notice.archivedAt),lte(notice.startOn,today),gte(notice.endOn,today));
+}
+function employeeNoticeFields(){return {
+ id:notice.id,title:notice.title,body:notice.body,summary:notice.summary,category:notice.category,pinned:notice.pinned,
+ requiresAcknowledgement:notice.requiresAcknowledgement,contentVersion:notice.contentVersion,attachmentIds:notice.attachmentIds,
+ startOn:notice.startOn,endOn:notice.endOn,showEndDate:notice.showEndDate,publishedAt:notice.publishedAt,
+ popupEnabled:notice.popupEnabled,popupFrequency:notice.popupFrequency,
+ acknowledgedAt:sql<Date|null>`(SELECT a.acknowledged_at FROM public.notice_acknowledgement a
+  WHERE a.recipient_id=notice_recipient.id AND a.tenant_id=notice_recipient.tenant_id AND a.notice_id=notice.id AND a.content_version=notice.content_version LIMIT 1)`,
+ firstViewedAt:noticeRecipient.firstViewedAt,popupDismissedAt:noticeRecipient.popupDismissedAt,
+ publishedBy:sql<string|null>`app.notice_sender_display_name(notice.id)`,
+};}
+
+/** Detail reads load one authorized body, rather than materializing every announcement. */
+export function employeeNoticeById(ctx:SessionContext,employmentId:string,id:string){
+ if(!uuidNotice(id)||!uuidNotice(employmentId))return Promise.resolve(null);
+ return withTenant(ctx,async tx=>{
+  const [row]=await tx.select(employeeNoticeFields()).from(noticeRecipient).innerJoin(notice,eq(notice.id,noticeRecipient.noticeId))
+   .where(and(liveEmployeeNotice(employmentId,todayInKualaLumpur()),eq(notice.id,id))).limit(1);
+  return row?{...row,popupFrequency:row.popupFrequency as NoticePopupFrequency}:null;
+ });
+}
+
+export type EmployeeNoticeSummary=Omit<EmployeeNoticeRow,'body'|'attachmentIds'|'popupEnabled'|'popupFrequency'|'popupDismissedAt'|'startOn'|'endOn'|'showEndDate'>;
+export type EmployeeNoticePage={items:EmployeeNoticeSummary[];total:number;unread:number;acknowledgementRequired:number;page:number;pageSize:number;pages:number};
+/** Bounded metadata transport; counts are aggregates over the full matching audience, never a slice.
+ * Search executes inside the authorized live-recipient query. It does not transport body text.
+ * Counts and the following page are independent current reads; concurrent edits may change the list.
+ */
+export function employeeNoticeBoard(ctx:SessionContext,employmentId:string,options:{query?:string;category?:string;page?:number;pageSize?:number}={}):Promise<EmployeeNoticePage>{
+ const query=(options.query??'').trim().slice(0,120),category=(options.category??'').trim().slice(0,80);
+ const size=Number.isSafeInteger(options.pageSize)?Math.max(1,Math.min(20,options.pageSize!)):20;
+ const requested=Number.isSafeInteger(options.page)&&options.page!>0?options.page!:1;
+ return withTenant(ctx,async tx=>{
+  const eligible=and(liveEmployeeNotice(employmentId,todayInKualaLumpur()),
+   query?sql`position(lower(${query}) in lower(${notice.title} || ' ' || ${notice.summary} || ' ' || ${notice.body})) > 0`:undefined,
+   category?eq(notice.category,category):undefined);
+  const fields=employeeNoticeFields();
+  const [counts]=await tx.select({total:sql<number>`count(*)::integer`,
+   unread:sql<number>`count(*) FILTER (WHERE ${noticeRecipient.firstViewedAt} IS NULL)::integer`,
+   acknowledgementRequired:sql<number>`count(*) FILTER (WHERE ${notice.requiresAcknowledgement} AND ${fields.acknowledgedAt} IS NULL)::integer`})
+   .from(noticeRecipient).innerJoin(notice,eq(notice.id,noticeRecipient.noticeId)).where(eligible);
+  const total=counts?.total??0,pages=Math.max(1,Math.ceil(total/size)),page=Math.min(requested,pages);
+  const {body:_body,attachmentIds:_files,popupEnabled:_popup,popupFrequency:_frequency,popupDismissedAt:_dismissed,
+   startOn:_start,endOn:_end,showEndDate:_show,...summaryFields}=fields;
+  const items=await tx.select(summaryFields).from(noticeRecipient).innerJoin(notice,eq(notice.id,noticeRecipient.noticeId))
+   .where(eligible).orderBy(desc(notice.pinned),desc(notice.publishedAt),asc(notice.id)).limit(size).offset((page-1)*size);
+  return {items,total,unread:counts?.unread??0,acknowledgementRequired:counts?.acknowledgementRequired??0,page,pageSize:size,pages};
+ });
+}
+
 /**
  * The notices ONE employment may currently see: published, unarchived, inside the window, and in this
  * notice's audience snapshot.
@@ -650,37 +704,10 @@ export async function noticesForEmployment(
   const today = opts.today ?? todayInKualaLumpur();
   return withTenant(ctx, async (tx) => {
     const rows = await tx
-      .select({
-        id: notice.id,
-        summary:notice.summary,category:notice.category,pinned:notice.pinned,requiresAcknowledgement:notice.requiresAcknowledgement,contentVersion:notice.contentVersion,attachmentIds:notice.attachmentIds,
-        title: notice.title,
-        body: notice.body,
-        startOn: notice.startOn,
-        endOn: notice.endOn,
-        showEndDate: notice.showEndDate,
-        publishedAt: notice.publishedAt,
-        popupEnabled: notice.popupEnabled,
-        popupFrequency: notice.popupFrequency,
-        acknowledgedAt:sql<Date|null>`(SELECT a.acknowledged_at FROM public.notice_acknowledgement a
-          WHERE a.recipient_id=notice_recipient.id AND a.tenant_id=notice_recipient.tenant_id AND a.notice_id=notice.id AND a.content_version=notice.content_version LIMIT 1)`,
-        firstViewedAt: noticeRecipient.firstViewedAt,
-        popupDismissedAt: noticeRecipient.popupDismissedAt,
-        // Fully qualified for the reason spelled out in `listNotices` above: Drizzle renders an
-        // interpolated column BARE inside a raw sql template, which a correlated subquery then resolves
-        // against its own scope.
-        publishedBy: sql<string | null>`app.notice_sender_display_name(notice.id)`,
-      })
+      .select(employeeNoticeFields())
       .from(noticeRecipient)
       .innerJoin(notice, eq(notice.id, noticeRecipient.noticeId))
-      .where(
-        and(
-          eq(noticeRecipient.employmentId, employmentId),
-          isNotNull(notice.publishedAt),
-          isNull(notice.archivedAt),
-          lte(notice.startOn, today),
-          gte(notice.endOn, today),
-        ),
-      )
+      .where(liveEmployeeNotice(employmentId,today))
       .orderBy(desc(notice.pinned),desc(notice.publishedAt),asc(notice.id));
     return rows.map((r) => ({ ...r, popupFrequency: r.popupFrequency as NoticePopupFrequency }));
   });
