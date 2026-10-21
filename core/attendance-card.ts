@@ -86,6 +86,13 @@ export function resolveCardMatch(row: { cardId: string | null; employeeCode: str
  * the clocking importer builds its lookup (core/attendance-clocking-import.ts): a value that collides there
  * makes the punch ambiguous at best, and this is the only place that can see it coming.
  */
+/** New-hire admission has a company scope but no existing employment to exclude. */
+export async function assertCardIdFreeForCompany(tx: Tx, companyId: string, cardId: string): Promise<void> {
+  const wanted=normalizeCardId(cardId);
+  const [availability]=await tx.execute(sql`select app.card_identifier_free_for_company(${companyId}::uuid,${wanted}) as ok`) as unknown as {ok:boolean}[];
+  if(!availability?.ok)throw new CardIdStateError('conflict');
+}
+
 export async function assertCardIdFree(tx: Tx, employmentId: string, cardId: string): Promise<void> {
   const wanted = normalizeCardId(cardId);
   // The database probe sees conflicts hidden by company RLS, and reveals only a boolean.

@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import * as schema from '../db/schema';
-import { setEmploymentCardId } from '../core/attendance-card';
+import { setEmploymentCardId, assertCardIdFreeForCompany } from '../core/attendance-card';
 import { previewCardImport, commitCardImport, cardImportExisting } from '../core/attendance-card-import';
 import { buildCardImportWorkbook } from '../lib/card-import-workbook';
 
@@ -35,6 +35,29 @@ async function shadowIdentifiers(tx: Tx, target: typeof schema.employment.$infer
 }
 
 describe('Card Assignment import uses canonical assignments and audit', () => {
+  it('checks a prospective hire in its authorized company without a fake employment ID or hidden-holder disclosure',async()=>{
+    const [hiddenCompany]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Private company'}).returning();
+    const holder=await employee('PRIVATE-CODE','private-card',hiddenCompany.id);
+    await owner.db.insert(schema.employeeStatutoryMy).values({tenantId:b.tenantId,personId:holder.personId,icNumber:'900101015201'});
+    const foreign=await seedBase();
+    const ctx={...adminCtx(b),grants:[{role:'hr_admin',companyId:b.companyId}]},before=await eventCount();
+    await expect(withTenant(ctx,tx=>assertCardIdFreeForCompany(tx,b.companyId,'00007'))).resolves.toBeUndefined();
+    for(const wanted of ['private-card','PRIVATE-CODE','900101-01-5201']){
+      const result=await withTenant(ctx,async tx=>{
+        await shadowIdentifiers(tx,holder);
+        return tx.execute(sql`select app.card_identifier_free_for_company(${b.companyId}::uuid,${wanted}) as ok`);
+      });
+      expect(result).toMatchObject([{ok:false}]);
+      await expect(withTenant(ctx,tx=>assertCardIdFreeForCompany(tx,b.companyId,wanted))).rejects.toMatchObject({code:'conflict'});
+    }
+    await expect(withTenant(ctx,tx=>assertCardIdFreeForCompany(tx,hiddenCompany.id,'free-card'))).rejects.toMatchObject({code:'conflict'});
+    await expect(withTenant(ctx,tx=>assertCardIdFreeForCompany(tx,foreign.companyId,'free-card'))).rejects.toMatchObject({code:'conflict'});
+    await expect(withTenant(adminCtx(foreign),tx=>assertCardIdFreeForCompany(tx,foreign.companyId,'private-card'))).resolves.toBeUndefined();
+    await expect(withTenant(ctx,tx=>tx.execute(sql`select app.card_identifier_conflicts(NULL,'free-card')`)))
+      .rejects.toMatchObject({cause:{code:'42501'}});
+    expect(await eventCount()).toBe(before);
+  });
+
   it('preview and cancel are write-free; confirmed leading-zero assignments persist once', async () => {
     const e = await employee('0007'); const ctx = adminCtx(b), scope = [b.companyId];
     const bytes = workbook([['0007', '0010', 'assign']]), before = await eventCount();

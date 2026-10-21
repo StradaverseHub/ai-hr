@@ -1,21 +1,39 @@
 -- Card IDs remain employment.card_id. The probe returns no hidden holder information.
 -- Serialize every identifier writer, not only the workbook: a concurrent Personnel edit must
 -- not introduce a card/code/IC collision between preview and confirmation.
+-- Both existing-employment edits and prospective hires share this private conflict predicate.
+CREATE FUNCTION app.card_identifier_conflicts(p_employment uuid, p_card text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.employment e
+   LEFT JOIN public.employee_statutory_my s ON s.person_id=e.person_id AND s.tenant_id=e.tenant_id
+   WHERE e.tenant_id=app.current_tenant_id() AND e.id IS DISTINCT FROM p_employment
+   AND (lower(btrim(e.card_id))=lower(btrim(p_card)) OR (e.terminated_on IS NULL AND
+    (lower(btrim(e.employee_code))=lower(btrim(p_card)) OR
+     (regexp_replace(p_card,'[^0-9]','','g')<>'' AND regexp_replace(coalesce(s.ic_number,''),'[^0-9]','','g')=regexp_replace(p_card,'[^0-9]','','g'))))))
+$$;
+REVOKE ALL ON FUNCTION app.card_identifier_conflicts(uuid,text) FROM PUBLIC;
+--> statement-breakpoint
 CREATE FUNCTION app.card_identifier_free(p_employment uuid, p_card text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM public.employment target
    WHERE target.id=p_employment AND target.tenant_id=app.current_tenant_id()
    AND app.is_admin_for(target.company_id))
- AND NOT EXISTS(SELECT 1 FROM public.employment e
-   LEFT JOIN public.employee_statutory_my s ON s.person_id=e.person_id AND s.tenant_id=e.tenant_id
-   WHERE e.tenant_id=app.current_tenant_id() AND e.id<>p_employment
-   AND (lower(btrim(e.card_id))=lower(btrim(p_card)) OR (e.terminated_on IS NULL AND
-    (lower(btrim(e.employee_code))=lower(btrim(p_card)) OR
-     (regexp_replace(p_card,'[^0-9]','','g')<>'' AND regexp_replace(coalesce(s.ic_number,''),'[^0-9]','','g')=regexp_replace(p_card,'[^0-9]','','g'))))))
+ AND NOT app.card_identifier_conflicts(p_employment,p_card)
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.card_identifier_free(uuid,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.card_identifier_free(uuid,text) TO ai_hr_app;
+--> statement-breakpoint
+-- A new-hire preview has no employment ID yet. Authorize its explicit destination company,
+-- exclude no existing holder, and return no holder identity through this pre-hire boundary.
+CREATE FUNCTION app.card_identifier_free_for_company(p_company uuid, p_card text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.company target
+   WHERE target.id=p_company AND target.tenant_id=app.current_tenant_id() AND app.is_admin_for(target.id))
+ AND NOT app.card_identifier_conflicts(NULL,p_card)
+$$;
+REVOKE ALL ON FUNCTION app.card_identifier_free_for_company(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.card_identifier_free_for_company(uuid,text) TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.guard_card_identifiers() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$

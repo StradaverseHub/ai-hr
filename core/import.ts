@@ -1,7 +1,7 @@
 import {PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS} from '../lib/personnel-choice-vocabulary';
 import { personnelOperationalValues,type PersonnelOperationalPatch } from '../lib/personnel-operational-import';
 import { applyPersonnelOperationalValuesTx } from './personnel-import-operations';
-import { assertCardIdFree } from './attendance-card';
+import { assertCardIdFreeForCompany } from './attendance-card';
 import { bankTransferLacksBank } from '../lib/payment-methods';
 import {PERSONNEL_REGISTER_KINDS,type PersonnelRegisterRecords} from '../lib/personnel-register-import';
 import {validateRegisterImport,writeRegisterRowsTx} from './personnel-register-import';
@@ -870,7 +870,7 @@ async function analyze(
 
   // Operational card assignments resolve against current canonical identities before any employee is written.
   for(const [index,row] of resolved.entries())if(row.result.ok && row.operations?.cardId) {
-    try {await withTenant(ctx,tx=>assertCardIdFree(tx,'00000000-0000-0000-0000-000000000000',row.operations!.cardId!));}
+    try {await withTenant(ctx,tx=>assertCardIdFreeForCompany(tx,row.hire.companyId,row.operations!.cardId!));}
     catch {row.result.errors.push('card_id already identifies another employee; choose an unused card ID.');row.result.ok=false;}
     const wanted=row.operations.cardId.toLowerCase(),digits=wanted.replace(/\D/g,'');
     if(resolved.some((other,otherIndex)=>otherIndex!==index && (other.operations?.cardId?.toLowerCase()===wanted || other.hire.employeeCode?.toLowerCase()===wanted || Boolean(digits && other.statutory.icNumber?.replace(/\D/g,'')===digits)))) {
