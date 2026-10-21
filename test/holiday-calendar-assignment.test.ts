@@ -4,7 +4,7 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
-import {createCompany,createHolidayGroup} from '../core/admin';
+import {createCompany,createDepartment,createHolidayGroup} from '../core/admin';
 import {setCompensation} from '../core/comp';
 import {saveEmploymentHolidayCalendarAssignment,employmentHolidayCalendarHistory,holidayCalendarInclusiveEnd} from '../core/holiday-calendar-assignment';
 import {holidayDatesFor,holidayDatesByEmployment} from '../core/holidays';
@@ -87,7 +87,8 @@ describe('dated calendar owner and shared consumers',()=>{
  });
  it('refuses missing and same-tenant out-of-company history targets instead of presenting empty history',async()=>{
   const company=await createCompany(ctx,{legalName:'Fictional separate calendar company'});
-  const subject=await hireEmployee(ctx,{person:{fullName:'Fictional separate-company employee',primaryEmail:randomUUID()+'@calendar.invalid'},companyId:company.id,employmentType:'full_time',hiredOn:add(today,-800)});
+  const department=await createDepartment(ctx,{companyId:company.id,name:'Fictional separate department'});
+  const subject=await hireEmployee(ctx,{person:{fullName:'Fictional separate-company employee',primaryEmail:randomUUID()+'@calendar.invalid'},companyId:company.id,departmentId:department.id,employmentType:'full_time',hiredOn:add(today,-800)});
   const assignment=await saveEmploymentHolidayCalendarAssignment(ctx,{employmentId:subject.employmentId,startDate:nextMonday,selection:{kind:'none'}});
   const scoped={...ctx,grants:[{role:'hr_admin',companyId:b.companyId}]},before=await events();
   await expect(employmentHolidayCalendarHistory(scoped,subject.employmentId)).rejects.toMatchObject({code:'scope'});

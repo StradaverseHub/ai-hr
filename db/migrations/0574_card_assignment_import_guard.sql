@@ -11,7 +11,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_te
     (lower(btrim(e.employee_code))=lower(btrim(p_card)) OR
      (regexp_replace(p_card,'[^0-9]','','g')<>'' AND regexp_replace(coalesce(s.ic_number,''),'[^0-9]','','g')=regexp_replace(p_card,'[^0-9]','','g'))))))
 $$;
-REVOKE ALL ON FUNCTION app.card_identifier_conflicts(uuid,text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION app.card_identifier_conflicts(uuid,text) FROM PUBLIC, ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.card_identifier_free(p_employment uuid, p_card text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$

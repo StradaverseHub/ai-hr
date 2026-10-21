@@ -333,19 +333,19 @@ describe('Leave Details panel: the inline expand is still a Radix right side-she
 
 describe('Leave Details panel: the employee and HR inquiry owners feed summary + visual', () => {
   const PAGES = [
-    ['/components/leave/my-leave-dashboard.tsx', 'visual={{'],
-    ['/app/leave/employee-balances/page.tsx', 'visual={r.visual}'],
+    ['/components/leave/my-leave-dashboard.tsx', 'LeaveDetailsPanel', 'visual={{', 'summary={{ available: selected.breakdown.totalAvailable }}'],
+    ['/app/leave/employee-balances/page.tsx', 'EntitlementBreakdown', 'visual={r.visual}', 'summary={{ available: r.available }}'],
   ] as const;
-  for (const [p, visual] of PAGES) {
+  for (const [p, component, visual, summary] of PAGES) {
     it(`${p} passes the authoritative summary and visual to the panel`, () => {
       const src = read(p);
-      const start = src.indexOf('<EntitlementBreakdown');
+      const start = src.indexOf(`<${component}`);
       const end = src.indexOf('/>', start);
       expect(start, 'real panel mount').toBeGreaterThan(-1);
       expect(end).toBeGreaterThan(start);
       const mount = src.slice(start, end);
       expect(mount.length).toBeGreaterThan(100);
-      expect(mount).toContain('summary={{');
+      expect(mount).toContain(summary);
       expect(mount).toContain(visual);
       expect(mount).not.toContain('upcoming={');
     });
@@ -411,7 +411,7 @@ describe('Leave Details panel: the employee and HR inquiry owners feed summary +
     // PanelSummary is down to `available`. A call site still passing taken/pending/ytdEntitled/balance would
     // be a type error today, but this pins the INTENT: those figures now come from the breakdown, whose
     // buckets are what make the column close.
-    for (const p of PAGES) {
+    for (const [p] of PAGES) {
       expect(read(p).includes('ytdEntitled: b.accrued'), `${p} still feeds the old summary shape`).toBe(false);
     }
   });

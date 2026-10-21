@@ -61,6 +61,7 @@ vi.mock('../lib/authz', async (importOriginal) => ({
 }));
 vi.mock('next/cache', () => ({ revalidatePath: () => {} }));
 vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn() }),
   redirect: () => {
     throw new Error('NEXT_REDIRECT');
   },
