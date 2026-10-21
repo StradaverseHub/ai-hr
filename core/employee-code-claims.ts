@@ -15,16 +15,13 @@
  * the point, because two that disagree would let an ID be issued twice, which is the exact fault the
  * reporter asked to make impossible.
  *
- * POSTGRES CANNOT DO THIS FOR US. There is no cross-table unique constraint, so this check is the
- * authority in TypeScript, with each table's own unique index as the race net on its own side
- * (`employment_employee_code_uq`, `employee_draft_reserved_code_uq` from migration 0415). Two writers
- * racing on the SAME table still serialize on its index; two racing across the two tables can in
- * principle both pass this check, and the loser is refused by whichever index it reaches — a clear
- * refusal, never a duplicate.
+ * The bounded SQL claim owner now answers this one question for all three courses, independently
+ * of visibility of another company's private record. It returns only the collision kind, never ids
+ * or payloads. Runtime callers join the tenant access/write lock; hire, draft reservation and code
+ * correction retain that lock through their writes. The two per-table indexes remain backstops.
  */
-import { and, eq, ne } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client';
-import { employeeDraft, employment } from '../db/schema';
 
 /** Which table is holding the code, so the caller can say WHY it is refused. */
 export type EmployeeCodeClaim = 'employment' | 'draft';
@@ -42,25 +39,7 @@ export async function findEmployeeCodeClaim(
   code: string,
   opts: { excludeEmploymentId?: string; excludeDraftId?: string } = {},
 ): Promise<EmployeeCodeClaim | null> {
-  const employments = await tx
-    .select({ id: employment.id })
-    .from(employment)
-    .where(and(eq(employment.tenantId, tenantId), eq(employment.employeeCode, code)))
-    .limit(2);
-  if (employments.some((r) => r.id !== opts.excludeEmploymentId)) return 'employment';
-
-  const drafts = await tx
-    .select({ id: employeeDraft.id })
-    .from(employeeDraft)
-    .where(
-      and(
-        eq(employeeDraft.tenantId, tenantId),
-        eq(employeeDraft.reservedEmployeeCode, code),
-        // The exclusion is expressed in SQL as well as in JS so the LIMIT cannot be filled by the very
-        // row we are meant to ignore and then hide a genuine second claimant behind it.
-        opts.excludeDraftId ? ne(employeeDraft.id, opts.excludeDraftId) : undefined,
-      ),
-    )
-    .limit(1);
-  return drafts.length > 0 ? 'draft' : null;
+  const [row]=await tx.execute<{claim:EmployeeCodeClaim|null}>(sql`select app.employee_code_claim(${tenantId}::uuid,${code},${opts.excludeEmploymentId??null}::uuid,${opts.excludeDraftId??null}::uuid) as claim`);
+  if(!row||row.claim!==null&&row.claim!=='employment'&&row.claim!=='draft')throw new Error('Employee ID claim lookup unavailable');
+  return row.claim;
 }

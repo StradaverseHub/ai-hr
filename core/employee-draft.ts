@@ -1,4 +1,5 @@
 import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {assertWorkforceCompanyTx} from './workforce-access';
 import {hireEmployee,setEmploymentInfo} from './workforce-commands';
 /**
  * Create New Employee — drafts (item 6d671f44, reshaped by 06f0cb8f).
@@ -538,6 +539,8 @@ export async function createEmployeeDraftWithReservedCode(
   }
 
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await assertWorkforceCompanyTx(tx,ctx,companyId,'maintain');
     let code: string;
     let configId: string | null = null;
     let number: number | null = null;

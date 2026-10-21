@@ -261,3 +261,35 @@ denial, explicit owner repair, removal of denial, document/draft identity retent
 posting, and pinned old-snapshot command/document/draft writes. They have NOT executed. New non-HR
 maintenance admission, shared-person partial/register SQL versus approved ESS composition, remaining
 related read contracts and full consumer/outcome verification still block catalogue activation.
+
+
+Positive non-HR maintenance now has a first fixed command in source: correct an Employee ID. A separate
+command-company predicate requires fresh actual principal, effective Workforce view and maintenance,
+and current company scope. It is not fed into shared employment/person visibility, HR-role checks,
+financial owners or the legacy generic writer predicate. The SQL command accepts only employment ID,
+canonical code and an optional old-code baseline; it locks current authority and the target, rechecks
+scope, checks uniqueness, updates only employee_code and appends the existing code-change event in one
+transaction. Existing service callers delegate to this owner and preserve their normalization/no-op
+contract. It does not authorize test classification or any other field. The server form sends a baseline,
+offers only that implemented edit, rereads the actual session and returns finite translated feedback.
+Its props contain the existing bounded projection; no private HR detail is loaded for this user.
+
+Hire, draft and correction now share one SQL employee-code claim owner returning only employment/draft
+collision kind. A collision in another company cannot disappear because raw visibility excludes that
+record. It returns no other record identity or payload. The public query checks actual current authority;
+the fixed correction command supplies its own exclusion. Draft number reservation acquires access before
+counter/data locks, matching canonical hiring and correction rather than adding a reversed lock order.
+
+Register identity guards prevent runtime retargeting of Family, Qualification and Emergency Contact rows.
+Canonical proposal edits retain their subject. Family/Qualification archive owners and direct SQL now
+join the access barrier and recheck maintenance; ordinary proposal highest-qualification edits do not
+archive. Emergency-contact archival is deliberately not generalized into that guard: the established
+own primary-contact clear can archive its row independently. Privacy value erasure and deletion remain
+with their existing owner. This is not a claim that every partial/register SQL mutation has been bound.
+
+New endpoint, six-locale DOM and actual restricted-runtime tests are authored for non-HR command success,
+no HR promotion/raw employment/salary grant, no-op, stale record, revoked view/maintenance, retained draft
+code, audit rollback and SQL register identity/archive refusals. None has executed. Other non-HR normal
+profile/register commands, shared partial-value SQL versus valid ESS decisions, relevant raw deletes and
+related read contracts still require completion. All three capability controls remain unsupported;
+0578/0579 remain unjournalled/unapplied until complete source, peer handover and required evidence.

@@ -18,12 +18,15 @@ import {setPersonPhoto} from '../core/person-photo';
 import {listEmployees,listWorkforcePickOptions,listEmployeesPage,countEmployeesByStatus,employeeDetail,type EmployeeListFilters} from '../core/read';
 import {workforceRecord} from '../core/workforce-record';
 import {WORKFORCE_PROFILE_FIELDS} from '../lib/workforce-record-fields';
-import {workforceCompanies,workforceViewScope,WorkforceAccessError} from '../core/workforce-access';
+import {workforceCompanies,workforceViewScope,workforceCommandAccess,WorkforceAccessError} from '../core/workforce-access';
+import {WorkforceRecordChangedError} from '../core/workforce-code';
 import {accessConfigurationStore} from '../core/access-configuration-store';
 import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {pgSqlState} from '../lib/db-error';
 import * as registers from '../core/workforce-registers';
+import {archiveDependent as archiveDependentOwner} from '../core/dependents';
+import {archiveQualification as archiveQualificationOwner} from '../core/qualifications';
 import {addEmployeeDocument,getEmployeeDocument,listEmployeeDocuments,updateEmployeeDocumentMeta,replaceEmployeeDocumentContent,deleteEmployeeDocument} from '../core/employee-documents';
 const routeSession=vi.hoisted(()=>({ctx:null as SessionContext|null}));
 vi.mock('../lib/session',()=>({getSession:async()=>{if(!routeSession.ctx)throw new Error('No fixture identity');return routeSession.ctx;}}));
@@ -255,6 +258,23 @@ describe('fresh Workforce-purpose record consumers',()=>{
   for(const attempt of attempts)await expect(attempt()).rejects.toBeInstanceOf(WorkforceAccessError);
   expect(await snapshot()).toEqual(before);
  });
+ it('keeps register subjects immutable and guards SQL/direct-owner archival',async()=>{
+  const subject=await hire('Fictional retained register owner'),other=await hire('Fictional different register owner');
+  const family=await registers.addDependent(admin(),{personId:subject.personId,fullName:'Fictional retained family',relationship:'parent'});
+  const qualification=await registers.addQualification(admin(),{employmentId:subject.employmentId,qualification:'Master',isHighest:true});
+  const contact=await registers.addEmergencyContact(admin(),{personId:subject.personId,fullName:'Fictional retained contact',priority:'primary'});
+  const snapshot=async()=>({family:await owner.db.select().from(employeeDependent).orderBy(employeeDependent.id),qualifications:await owner.db.select().from(employeeQualification).orderBy(employeeQualification.id),contacts:await owner.db.select().from(personEmergencyContact).orderBy(personEmergencyContact.id),events:await owner.db.select({id:domainEvent.id}).from(domainEvent).orderBy(domainEvent.id)});
+  const before=await snapshot();
+  await sqlRefusal(withTenant(admin(),tx=>tx.update(employeeDependent).set({personId:other.personId}).where(eq(employeeDependent.id,family.id))));
+  await sqlRefusal(withTenant(admin(),tx=>tx.update(employeeQualification).set({employmentId:other.employmentId}).where(eq(employeeQualification.id,qualification.id))));
+  await sqlRefusal(withTenant(admin(),tx=>tx.update(personEmergencyContact).set({personId:other.personId}).where(eq(personEmergencyContact.id,contact.id))));
+  await activate();await override(b.adminUserId,'workforce.maintain',b.companyId,'deny');
+  await sqlRefusal(withTenant(admin(),tx=>tx.update(employeeDependent).set({archivedAt:new Date()}).where(eq(employeeDependent.id,family.id))));
+  await sqlRefusal(withTenant(admin(),tx=>tx.update(employeeQualification).set({archivedAt:new Date()}).where(eq(employeeQualification.id,qualification.id))));
+  await expect(archiveDependentOwner(admin(),{id:family.id})).rejects.toBeInstanceOf(WorkforceAccessError);
+  await expect(archiveQualificationOwner(admin(),{id:qualification.id})).rejects.toBeInstanceOf(WorkforceAccessError);
+  expect(await snapshot()).toEqual(before);
+ });
  it('checks document services, raw CRUD and actual download routes while retaining independent self reads',async()=>{
   const subject=await hire('Fictional file owner'),other=await hire('Fictional unrelated subject');
   const userId=await createAppUser(b.tenantId,subject.personId,'employee');
@@ -313,6 +333,71 @@ describe('fresh Workforce-purpose record consumers',()=>{
   // The person's existing own-record source remains separate from the revoked Workforce grant.
   expect(await withTenant(ctx,tx=>tx.select({id:employment.id}).from(employment).where(eq(employment.id,self.employmentId)))).toEqual([{id:self.employmentId}]);
  });
+ it('admits a real non-HR identifier command with audit/CAS while keeping raw employee and salary rows private',async()=>{
+  const self=await hire('Fictional maintenance user'),colleague=await hire('Fictional maintenance target');
+  await setCompensation(admin(),{employmentId:colleague.employmentId,basicSalary:3000,effectiveFrom:todayInKualaLumpur()});
+  const salaryFixture=await owner.db.select({basicSalary:compensation.basicSalary}).from(compensation).where(eq(compensation.employmentId,colleague.employmentId));
+  expect(salaryFixture).toHaveLength(1);expect(Number(salaryFixture[0].basicSalary)).toBe(3000);
+  const userId=await createAppUser(b.tenantId,self.personId,'employee');
+  const ctx={...admin(),userId,personId:self.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]} satisfies SessionContext;
+  const [before]=await owner.db.select().from(employment).where(eq(employment.id,colleague.employmentId));
+  await activate();await override(userId,'workforce.view',b.companyId,'allow');await override(userId,'workforce.maintain',b.companyId,'allow');
+  expect(await workforceCommandAccess(ctx,colleague.employmentId)).toBe(true);
+  expect(await setEmployeeCode(ctx,{employmentId:colleague.employmentId,employeeCode:'wf-nonhr-code',expectedCode:before.employeeCode})).toEqual({id:colleague.employmentId,changed:true});
+  expect((await owner.db.select().from(employment).where(eq(employment.id,colleague.employmentId)))[0]).toEqual({...before,employeeCode:'WF-NONHR-CODE'});
+  const events=()=>owner.db.select().from(domainEvent).where(and(eq(domainEvent.aggregateId,colleague.employmentId),eq(domainEvent.eventType,'employment.employee-code.set'))).orderBy(domainEvent.id);
+  expect(await events()).toMatchObject([{actorType:'user',actorId:userId,subjectEmploymentId:colleague.employmentId,payload:{before:{employeeCode:before.employeeCode},after:{employeeCode:'WF-NONHR-CODE'}}}]);
+  expect(await setEmployeeCode(ctx,{employmentId:colleague.employmentId,employeeCode:'WF-NONHR-CODE',expectedCode:'WF-NONHR-CODE'})).toMatchObject({changed:false});
+  await expect(setEmployeeCode(ctx,{employmentId:colleague.employmentId,employeeCode:'WF-STALE',expectedCode:before.employeeCode})).rejects.toBeInstanceOf(WorkforceRecordChangedError);
+  expect(await events()).toHaveLength(1);
+  expect(await withTenant(ctx,tx=>tx.select({id:employment.id}).from(employment).where(eq(employment.id,colleague.employmentId)))).toEqual([]);
+  expect(await withTenant(ctx,tx=>tx.select({id:compensation.id}).from(compensation).where(eq(compensation.employmentId,colleague.employmentId)))).toEqual([]);
+  expect(await withTenant(ctx,tx=>tx.update(employment).set({employeeCode:'WF-RAW-FORBIDDEN',isTestRecord:true}).where(eq(employment.id,colleague.employmentId)).returning({id:employment.id}))).toEqual([]);
+  expect((await owner.db.select({role:roleAssignment.role}).from(roleAssignment).where(eq(roleAssignment.appUserId,userId))).map(row=>row.role)).toEqual(['employee']);
+  const forged={...ctx,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
+  await expect(setEmployeeCode(forged,{employmentId:colleague.employmentId,employeeCode:'WF-FORGED'})).rejects.toBeInstanceOf(WorkforceAccessError);
+  await override(userId,'workforce.view',b.companyId,'deny');
+  expect(await workforceCommandAccess(ctx,colleague.employmentId)).toBe(false);
+  await expect(setEmployeeCode(ctx,{employmentId:colleague.employmentId,employeeCode:'WF-NO-VIEW'})).rejects.toBeInstanceOf(WorkforceAccessError);
+  await override(userId,'workforce.view',b.companyId,'allow');await override(userId,'workforce.maintain',b.companyId,'deny');
+  await expect(setEmployeeCode(ctx,{employmentId:colleague.employmentId,employeeCode:'WF-REVOKED'})).rejects.toBeInstanceOf(WorkforceAccessError);
+  expect(await events()).toHaveLength(1);
+ });
+ it('enforces canonical identifier shape at the SQL command boundary without accepting another field assignment',async()=>{
+  const subject=await hire('Fictional SQL code shape');
+  const [before]=await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId));
+  for(const code of ['', 'wf-lowercase', 'WF SPACE','WF_UNDERSCORE','A'.repeat(31),'WF-CODE, is_test_record=true']){
+   await sqlRefusal(withTenant(admin(),tx=>tx.execute(sql`select app.access_workforce_set_employee_code(${subject.employmentId}::uuid,${code},NULL)`)),'23514');
+  }
+  expect((await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId)))[0]).toEqual(before);
+  const code='WF'+'A'.repeat(28);
+  await expect(setEmployeeCode(admin(),{employmentId:subject.employmentId,employeeCode:code})).resolves.toMatchObject({changed:true});
+  expect((await owner.db.select({code:employment.employeeCode}).from(employment).where(eq(employment.id,subject.employmentId)))[0]?.code).toBe(code);
+ });
+ it('uses the same employment/draft code claims and rolls back the bounded command if its audit fails',async()=>{
+  const subject=await hire('Fictional bounded code target');
+  await owner.db.insert(employeeDraft).values({tenantId:b.tenantId,companyId:b.companyId,reservedEmployeeCode:'WF-DRAFT-HELD',data:{},label:'Fictional held ID'});
+  const [before]=await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId));
+  await expect(setEmployeeCode(admin(),{employmentId:subject.employmentId,employeeCode:'WF-DRAFT-HELD'})).rejects.toThrow('reserved by a draft');
+  await owner.db.execute(sql.raw("CREATE FUNCTION app.test_workforce_code_audit_refusal() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type='employment.employee-code.set' THEN RAISE EXCEPTION 'Fictional code audit refusal' USING ERRCODE='P0001'; END IF; RETURN NEW; END $$"));
+  try{
+   await owner.db.execute(sql.raw('CREATE TRIGGER test_workforce_code_audit_refusal BEFORE INSERT ON domain_event FOR EACH ROW EXECUTE FUNCTION app.test_workforce_code_audit_refusal()'));
+   await sqlRefusal(setEmployeeCode(admin(),{employmentId:subject.employmentId,employeeCode:'WF-AUDIT-REFUSAL'}),'P0001');
+  }finally{
+   await owner.db.execute(sql.raw('DROP TRIGGER IF EXISTS test_workforce_code_audit_refusal ON domain_event'));
+   await owner.db.execute(sql.raw('DROP FUNCTION app.test_workforce_code_audit_refusal()'));
+  }
+  expect((await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId)))[0]).toEqual(before);
+  expect(await owner.db.select({id:domainEvent.id}).from(domainEvent).where(and(eq(domainEvent.aggregateId,subject.employmentId),eq(domainEvent.eventType,'employment.employee-code.set')))).toEqual([]);
+ });
+ it('commits only one competing identifier correction and one code-change event',async()=>{
+  const first=await hire('Fictional first competing ID'),second=await hire('Fictional second competing ID');
+  const results=await Promise.allSettled([setEmployeeCode(admin(),{employmentId:first.employmentId,employeeCode:'WF-COMPETING'}),setEmployeeCode(admin(),{employmentId:second.employmentId,employeeCode:'WF-COMPETING'})]);
+  expect(results.filter(result=>result.status==='fulfilled')).toHaveLength(1);
+  expect(results.filter(result=>result.status==='rejected')).toHaveLength(1);
+  const retained=await owner.db.select({id:employment.id}).from(employment).where(eq(employment.employeeCode,'WF-COMPETING')).orderBy(employment.id);expect(retained).toHaveLength(1);
+  expect(await owner.db.select({subject:domainEvent.subjectEmploymentId}).from(domainEvent).where(eq(domainEvent.eventType,'employment.employee-code.set')).orderBy(domainEvent.id)).toEqual([{subject:retained[0].id}]);
+ });
  it('rejects stale real role assignments and forged role/scope claims without treating a capability grant as HR',async()=>{
   const subject=await hire('Fictional scope subject');await activate();
   const userId=await createAppUser(b.tenantId,subject.personId,'employee');
@@ -331,6 +416,9 @@ describe('fresh Workforce-purpose record consumers',()=>{
   expect(await employeeDetail(admin(),subject.employmentId,'workforce')).toBeNull();
   const [row]=await withTenant(admin(),tx=>tx.execute<{allowed:boolean}>(sql`select app.access_workforce_employment(${subject.employmentId}::uuid,'workforce.view') as allowed`));expect(row.allowed).toBe(false);
   expect(await workforceCompanies(admin())).not.toContain(foreign.companyId);
+  const before=await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId));
+  await expect(setEmployeeCode(admin(),{employmentId:subject.employmentId,employeeCode:'WF-FOREIGN-FORBIDDEN'})).rejects.toBeInstanceOf(WorkforceAccessError);
+  expect(await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId))).toEqual(before);
  });
  it('retains an author’s independent draft read/discard source but lets an explicit denial override it',async()=>{
   const author=await hire('Fictional draft author'),userId=await createAppUser(b.tenantId,author.personId,'employee');

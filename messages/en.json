@@ -21999,6 +21999,15 @@
       "workforceMaintain": "Maintain employee records",
       "profileReview": "Review eligible profile changes"
     },
-    "workforceReadOnly": "You can view this employee record. Your current Workforce permission does not allow changes."
+    "workforceReadOnly": "You can view this employee record. Your current Workforce permission does not allow changes.",
+    "workforceCommandHint": "You can change the Employee ID. Other details on this page are view only.",
+    "workforceCode": {
+      "hint": "Letters, numbers and dashes; up to 30 characters. The ID must be available.",
+      "save": "Save Employee ID",
+      "saved": "Employee ID saved.",
+      "changed": "The employee record changed. Reopen it before saving.",
+      "denied": "Your permission changed. Reopen this record to check your access.",
+      "invalid": "Enter an available Employee ID using letters, numbers or dashes, up to 30 characters."
+    }
   }
 }

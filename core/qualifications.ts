@@ -28,6 +28,8 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { employeeQualification, profileOption } from '../db/schema';
 import { isCalendarDate } from '../lib/calendar-date';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {assertWorkforceEmploymentTx} from './workforce-access';
 
 /**
  * The profile_option category backing the Qualification dropdown (System Settings > System Labels >
@@ -368,10 +370,12 @@ export async function archiveQualification(
   outerTx?: Tx,
 ): Promise<{ id: string }> {
   const run = async (tx: Tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
     const existing = await loadQualification(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new QualificationValidationError('Qualification record not found.');
     }
+    await assertWorkforceEmploymentTx(tx,ctx,existing.employmentId,'maintain');
     await tx
       .update(employeeQualification)
       .set({ archivedAt: new Date(), updatedAt: new Date() })

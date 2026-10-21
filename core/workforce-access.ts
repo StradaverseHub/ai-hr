@@ -48,6 +48,15 @@ export function workforceEmploymentAccess(ctx:SessionContext,employmentId:string
  });
 }
 
+/** Availability of the implemented fixed-command lane; never a raw-row or legacy-role grant. */
+export function workforceCommandAccess(ctx:SessionContext,employmentId:string){
+ return withTenant(ctx,async tx=>{
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_command_allowed(${employmentId}::uuid) as allowed`);
+  return row?.allowed===true;
+ });
+}
+
 /** Page-scope metadata only. This does not widen the shared company switcher or other modules' scope. */
 export function workforceViewScope(ctx: SessionContext) {
  return withTenant(ctx,async tx=>{

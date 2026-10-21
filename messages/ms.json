@@ -21999,6 +21999,15 @@
       "workforceMaintain": "Selenggara rekod pekerja",
       "profileReview": "Semak perubahan profil yang layak"
     },
-    "workforceReadOnly": "Anda boleh melihat rekod pekerja ini. Kebenaran Tenaga Kerja semasa anda tidak membenarkan perubahan."
+    "workforceReadOnly": "Anda boleh melihat rekod pekerja ini. Kebenaran Tenaga Kerja semasa anda tidak membenarkan perubahan.",
+    "workforceCommandHint": "Anda boleh menukar ID Pekerja. Maklumat lain pada halaman ini hanya boleh dilihat.",
+    "workforceCode": {
+      "hint": "Huruf, nombor dan sempang; maksimum 30 aksara. ID mestilah belum digunakan.",
+      "save": "Simpan ID Pekerja",
+      "saved": "ID Pekerja disimpan.",
+      "changed": "Rekod pekerja telah berubah. Buka semula sebelum menyimpan.",
+      "denied": "Kebenaran anda telah berubah. Buka semula rekod ini untuk menyemak akses anda.",
+      "invalid": "Masukkan ID Pekerja yang belum digunakan dengan huruf, nombor atau sempang, maksimum 30 aksara."
+    }
   }
 }

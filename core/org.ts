@@ -1,4 +1,5 @@
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,assertWorkforcePersonTx} from './workforce-access';
+import {setWorkforceEmployeeCode} from './workforce-code';
 import {personnelField} from '../lib/personnel-field-registry';
 import {personnelScalarIssue} from '../lib/personnel-import-contract';
 import { isCalendarDate } from '../lib/calendar-date';
@@ -1559,38 +1560,8 @@ function isEmployeeCodeUniqueViolation(e: unknown): boolean {
  * the race net. No-ops when the value is unchanged so a Save that didn't touch the ID emits no event.
  * Substrate discipline: appends `employment.employee-code.set` with a before/after payload.
  */
-export async function setEmployeeCode(
-  ctx: SessionContext,
-  p: { employmentId: string; employeeCode: string },
-) {
-  return withTenant(ctx, async (tx) => {
-    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
-    const [before] = await tx
-      .select({ employeeCode: employment.employeeCode })
-      .from(employment)
-      .where(eq(employment.id, p.employmentId))
-      .limit(1);
-    if (!before) throw new Error('Employment not found');
-    const code = requireEmployeeCode(p.employeeCode);
-    if (before.employeeCode === code) return { id: p.employmentId, changed: false };
-    await assertEmployeeCodeUnique(tx, ctx.tenantId, code, p.employmentId);
-    try {
-      await tx.update(employment).set({ employeeCode: code }).where(eq(employment.id, p.employmentId));
-    } catch (e) {
-      if (isEmployeeCodeUniqueViolation(e)) throw new Error(`Employee ID "${code}" is already in use`);
-      throw e;
-    }
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'employment',
-      aggregateId: p.employmentId,
-      eventType: 'employment.employee-code.set',
-      actor: actorOf(ctx),
-      subjectEmploymentId: p.employmentId,
-      payload: { before: { employeeCode: before.employeeCode }, after: { employeeCode: code } },
-    });
-    return { id: p.employmentId, changed: true };
-  });
+export function setEmployeeCode(ctx:SessionContext,p:{employmentId:string;employeeCode:string;expectedCode?:string|null}){
+ return setWorkforceEmployeeCode(ctx,p);
 }
 
 /** ADR-0038 2C — set the state an employment works in (drives which state public holidays apply). Pass

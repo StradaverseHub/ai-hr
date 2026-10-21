@@ -1059,6 +1059,32 @@ REVOKE ALL ON FUNCTION app.access_workforce_projection_company(uuid) FROM PUBLIC
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.access_workforce_projection_company(uuid) TO ai_hr_app;
 --> statement-breakpoint
+-- Positive maintenance enters fixed commands, never the shared raw-row/write helper. Both view and
+-- maintenance must survive effective scope/denials; a capability does not manufacture an HR role.
+CREATE FUNCTION app.access_workforce_command_company(p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.access_workforce_owner_company(p_company) OR (
+  app.access_workforce_projection_company(p_company) AND app.principal_snapshot_current() AND EXISTS(
+   SELECT 1 FROM public.company co JOIN public.app_user u ON u.tenant_id=co.tenant_id
+   JOIN public.access_capability c ON c.id='workforce.maintain'
+   WHERE co.id=p_company AND co.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id()
+    AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+    AND CASE WHEN c.supported THEN app.access_allowed_for(u.id,c.id,co.id)
+     ELSE app.access_workforce_company(co.id,c.id) END));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_command_company(uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_command_allowed(p_employment uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=p_employment AND e.tenant_id=app.current_tenant_id()
+  AND app.access_workforce_command_company(e.company_id));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_command_allowed(uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_workforce_command_allowed(uuid) TO ai_hr_app;
+--> statement-breakpoint
 -- Explicit Workforce list projection. A scoped reader receives these declared display values, not
 -- person/employment row SELECT, raw blobs, salary, statutory, bank, classification or arbitrary fields.
 -- SQL status/filter/paging remain with the existing application query owners over this projection.
@@ -1203,9 +1229,15 @@ BEGIN
  -- Check the connection and SET ROLE owner, never current_user (this definer's owner). An explicit
  -- owner repair/restore retains its authority; ai_hr_app cannot acquire it by calling a definer.
  IF app.access_workforce_storage_owner() THEN RETURN NEW; END IF;
- IF OLD.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
-  OR NOT app.access_workforce_company(OLD.company_id,'workforce.maintain')
-  OR NOT app.access_workforce_company(NEW.company_id,'workforce.maintain') THEN
+ IF OLD.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id THEN
+  RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501';
+ END IF;
+ IF NEW.employee_code IS DISTINCT FROM OLD.employee_code AND
+  (NOT app.access_workforce_command_company(OLD.company_id) OR NOT app.access_workforce_command_company(NEW.company_id)) THEN
+  RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501';
+ END IF;
+ IF NEW.is_test_record IS DISTINCT FROM OLD.is_test_record AND
+  (NOT app.access_workforce_company(OLD.company_id,'workforce.maintain') OR NOT app.access_workforce_company(NEW.company_id,'workforce.maintain')) THEN
   RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501';
  END IF;
  RETURN NEW;
@@ -1322,3 +1354,133 @@ FOR EACH STATEMENT EXECUTE FUNCTION app.access_workforce_master_statement_lock()
 --> statement-breakpoint
 CREATE TRIGGER access_workforce_draft_write BEFORE INSERT OR UPDATE OR DELETE ON employee_draft
 FOR EACH ROW EXECUTE FUNCTION app.access_workforce_draft_write();
+
+--> statement-breakpoint
+-- One bounded claim owner for hire, draft and code correction. The result names only the kind of
+-- collision, never another employee/draft identity or its private payload. Tenant uniqueness is
+-- independent of which other company's records happen to be visible to this caller.
+CREATE FUNCTION app.employee_code_claim(p_tenant uuid,p_code text,p_exclude_employment uuid DEFAULT NULL,p_exclude_draft uuid DEFAULT NULL) RETURNS text
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.access_workforce_storage_owner() THEN
+  PERFORM app.access_workforce_write_lock();
+  IF p_tenant IS DISTINCT FROM app.current_tenant_id() OR NOT EXISTS(
+   SELECT 1 FROM public.company c WHERE c.tenant_id=p_tenant AND app.access_workforce_command_company(c.id)) THEN
+   RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501';
+  END IF;
+ END IF;
+ IF EXISTS(SELECT 1 FROM public.employment e WHERE e.tenant_id=p_tenant AND e.employee_code=p_code
+  AND e.id IS DISTINCT FROM p_exclude_employment) THEN RETURN 'employment'; END IF;
+ IF EXISTS(SELECT 1 FROM public.employee_draft d WHERE d.tenant_id=p_tenant AND d.reserved_employee_code=p_code
+  AND d.id IS DISTINCT FROM p_exclude_draft) THEN RETURN 'draft'; END IF;
+ RETURN NULL;
+END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.employee_code_claim(uuid,text,uuid,uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.employee_code_claim(uuid,text,uuid,uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_set_employee_code(p_employment uuid,p_code text,p_expected jsonb DEFAULT NULL) RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id(); subject public.employment%ROWTYPE; claimant text;
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO subject FROM public.employment e WHERE e.id=p_employment AND e.tenant_id=t FOR UPDATE;
+ IF NOT FOUND OR NOT app.access_workforce_command_company(subject.company_id) THEN
+  RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501';
+ END IF;
+ -- The public SQL command accepts canonical identifiers only; the shared TS format owner normalizes
+ -- ordinary forms. No arbitrary column, person id, company or actor is accepted by this seam.
+ IF p_code IS NULL OR p_code !~ '^[A-Z0-9-]{1,30}$' THEN RAISE EXCEPTION 'Employee ID invalid' USING ERRCODE='23514'; END IF;
+ IF p_expected IS NOT NULL AND (jsonb_typeof(p_expected) NOT IN ('string','null')
+  OR p_expected IS DISTINCT FROM coalesce(to_jsonb(subject.employee_code),'null'::jsonb)) THEN
+  RAISE EXCEPTION 'Employee record changed' USING ERRCODE='40001';
+ END IF;
+ IF subject.employee_code=p_code THEN RETURN false; END IF;
+ claimant:=app.employee_code_claim(t,p_code,p_employment,NULL);
+ IF claimant IS NOT NULL THEN
+  RAISE EXCEPTION '%','employee_code_claim_'||claimant USING ERRCODE='23505',CONSTRAINT='employee_code_claim_'||claimant;
+ END IF;
+ UPDATE public.employment SET employee_code=p_code WHERE id=p_employment AND tenant_id=t;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
+ VALUES(t,'employment',p_employment,'employment.employee-code.set',
+  CASE WHEN app.current_user_id() IS NULL THEN 'system'::public.actor_type ELSE 'user'::public.actor_type END,app.current_user_id(),p_employment,
+  jsonb_build_object('before',jsonb_build_object('employeeCode',subject.employee_code),'after',jsonb_build_object('employeeCode',p_code)));
+ RETURN true;
+END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_set_employee_code(uuid,text,jsonb) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_workforce_set_employee_code(uuid,text,jsonb) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Register edit/proposal commands never move a retained row to another subject. Privacy erasure
+-- updates/clears its existing values or deletes rows; explicit owner recovery remains separate.
+CREATE FUNCTION app.access_workforce_register_identity() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW; END IF;
+ IF NEW.id IS DISTINCT FROM OLD.id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id THEN
+  RAISE EXCEPTION 'Register subject cannot be reassigned' USING ERRCODE='42501';
+ END IF;
+ IF TG_TABLE_NAME='employee_qualification' THEN
+  IF NEW.employment_id IS DISTINCT FROM OLD.employment_id THEN
+   RAISE EXCEPTION 'Register subject cannot be reassigned' USING ERRCODE='42501';
+  END IF;
+ ELSE
+  IF NEW.person_id IS DISTINCT FROM OLD.person_id THEN
+   RAISE EXCEPTION 'Register subject cannot be reassigned' USING ERRCODE='42501';
+  END IF;
+ END IF;
+ RETURN NEW;
+END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_register_identity() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER access_workforce_register_identity BEFORE UPDATE OF id,tenant_id,employment_id ON employee_qualification
+FOR EACH ROW EXECUTE FUNCTION app.access_workforce_register_identity();
+--> statement-breakpoint
+CREATE TRIGGER access_workforce_register_identity BEFORE UPDATE OF id,tenant_id,person_id ON employee_dependent
+FOR EACH ROW EXECUTE FUNCTION app.access_workforce_register_identity();
+--> statement-breakpoint
+CREATE TRIGGER access_workforce_register_identity BEFORE UPDATE OF id,tenant_id,person_id ON person_emergency_contact
+FOR EACH ROW EXECUTE FUNCTION app.access_workforce_register_identity();
+--> statement-breakpoint
+-- Family and Qualification archival has no independent ESS approval course. Do not apply this to
+-- emergency contacts: clearing the legacy own primary contact archives it under that separate owner.
+CREATE FUNCTION app.access_workforce_register_archive() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.archived_at IS NOT DISTINCT FROM OLD.archived_at OR app.access_workforce_storage_owner() THEN RETURN NEW; END IF;
+ IF OLD.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id THEN
+  RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501';
+ END IF;
+ IF TG_TABLE_NAME='employee_qualification' THEN
+  IF NOT app.access_workforce_employment(OLD.employment_id,'workforce.maintain') THEN
+   RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501';
+  END IF;
+ ELSE
+  IF NOT app.access_workforce_person(OLD.person_id,'workforce.maintain') THEN
+   RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501';
+  END IF;
+ END IF;
+ RETURN NEW;
+END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_register_archive() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER access_workforce_register_archive_lock BEFORE UPDATE OF archived_at ON employee_qualification
+FOR EACH STATEMENT EXECUTE FUNCTION app.access_workforce_master_statement_lock();
+--> statement-breakpoint
+CREATE TRIGGER access_workforce_register_archive BEFORE UPDATE OF archived_at ON employee_qualification
+FOR EACH ROW EXECUTE FUNCTION app.access_workforce_register_archive();
+--> statement-breakpoint
+CREATE TRIGGER access_workforce_register_archive_lock BEFORE UPDATE OF archived_at ON employee_dependent
+FOR EACH STATEMENT EXECUTE FUNCTION app.access_workforce_master_statement_lock();
+--> statement-breakpoint
+CREATE TRIGGER access_workforce_register_archive BEFORE UPDATE OF archived_at ON employee_dependent
+FOR EACH ROW EXECUTE FUNCTION app.access_workforce_register_archive();

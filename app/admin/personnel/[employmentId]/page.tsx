@@ -11,7 +11,7 @@ import { isModuleEnabledOrFalse } from '@/core/entitlements';
 // Workforce scope is purpose-bound. New view-only grants enter the bounded read composition;
 // legacy HR detail and specialized private owners retain their existing role/scope floors.
 import {requireWorkforceAccess} from '@/lib/workforce-authz';
-import {WorkforceReadOnlyRecord} from './workforce-read-only';
+import {WorkforceScopedRecord} from './workforce-record';
 import {
   adminCompanies,
   assignmentHistory,
@@ -242,10 +242,11 @@ export default async function EmployeePage({
     // Nothing is committed until phase 2's Save (changeEmploymentCompanyAction).
     companyChange?: string;
     incentiveError?: string;
+    workforceCode?:string;
   }>;
 }) {
   const {s,scopeIds}=await requireWorkforceAccess();
-  if(!isAdmin(s))return <WorkforceReadOnlyRecord session={s} employmentId={(await params).employmentId} scopeIds={scopeIds}/>;
+  if(!isAdmin(s))return <WorkforceScopedRecord session={s} employmentId={(await params).employmentId} scopeIds={scopeIds} feedback={(await searchParams).workforceCode}/>;
   const t = await getTranslations('people.detail');
   const tPersonnel=await getTranslations();
   const personnelLabel=(id:string)=>personnelFormLabel(id,(key,fallback)=>tPersonnel.has(key)?tPersonnel(key):fallback);
@@ -331,7 +332,7 @@ export default async function EmployeePage({
   if (!UUID_RE.test(employmentId)) notFound();
 
   const emp = await employeeDetail(s,employmentId,'workforce');
-  if(!emp)return <WorkforceReadOnlyRecord session={s} employmentId={employmentId} scopeIds={scopeIds}/>;
+  if(!emp)return <WorkforceScopedRecord session={s} employmentId={employmentId} scopeIds={scopeIds} feedback={rawSearchParams.workforceCode}/>;
   const canMaintainWorkforce=await workforceEmploymentAccess(s,employmentId,'maintain');
   const tAccess=await getTranslations('accessConfiguration');
   const classification = admin ? await employmentTestRecord(s, employmentId) : null;

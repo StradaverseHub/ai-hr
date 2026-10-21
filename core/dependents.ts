@@ -1,4 +1,6 @@
 import {dependentFieldApplies} from '../lib/dependent-vocabulary';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {assertWorkforcePersonTx} from './workforce-access';
 import { dependentNaturalKey } from '../lib/dependent-identity';
 export { dependentNaturalKey } from '../lib/dependent-identity';
 /**
@@ -1157,10 +1159,12 @@ export async function archiveDependent(
   outerTx?: Tx,
 ): Promise<{ id: string; childReliefSync: ChildReliefSyncResult }> {
   const run = async (tx: Tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
     const existing = await loadDependent(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new DependentValidationError('Dependent record not found.');
     }
+    await assertWorkforcePersonTx(tx,ctx,existing.personId,'maintain');
     await tx
       .update(employeeDependent)
       .set({ archivedAt: new Date(), updatedAt: new Date() })
