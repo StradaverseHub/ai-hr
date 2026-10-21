@@ -4,10 +4,11 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {and,eq,sql} from 'drizzle-orm';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {withTenant,type SessionContext} from '../db/client';
-import {person,employment,employeeDraft,roleAssignment,appUser,jobGrade,domainEvent,employeeDependent,employeeQualification,personEmergencyContact,employeeDocument} from '../db/schema';
+import {person,employment,employeeDraft,roleAssignment,appUser,jobGrade,domainEvent,employeeDependent,employeeQualification,personEmergencyContact,employeeDocument,compensation} from '../db/schema';
 import {hireEmployee,setEmployeeCode,updatePerson,setEmploymentGrade} from '../core/org';
 import {hireEmployee as hireWorkforceEmployee,setEmploymentInfo as maintainInfo} from '../core/workforce-commands';
 import {createMovementEvent} from '../core/movement';
+import {setCompensation} from '../core/comp';
 import {setEmploymentTestRecord} from '../core/employment-test-record';
 import {setPersonPhoto} from '../core/person-photo';
 import {listEmployees,listWorkforcePickOptions,listEmployeesPage,countEmployeesByStatus,employeeDetail,type EmployeeListFilters} from '../core/read';
@@ -161,6 +162,24 @@ describe('fresh Workforce-purpose record consumers',()=>{
   expect((await download(admin())).status).toBe(404);
   expect(await withTenant(admin(),tx=>tx.select().from(employeeDocument).where(eq(employeeDocument.id,document.id)))).toEqual([]);
   expect(Buffer.from(await(await download(own)).arrayBuffer())).toEqual(content);
+ });
+ it('projects an authorized colleague for a real non-HR reader without granting raw personnel or financial rows',async()=>{
+  const self=await hire('Fictional scoped reader'),colleague=await hire('Fictional projected colleague');
+  await setCompensation(admin(),{employmentId:colleague.employmentId,basicSalary:3123.45,effectiveFrom:todayInKualaLumpur()});
+  expect(await owner.db.select({id:compensation.id}).from(compensation).where(eq(compensation.employmentId,colleague.employmentId))).toHaveLength(1);
+  const userId=await createAppUser(b.tenantId,self.personId,'employee');
+  const ctx={...admin(),userId,personId:self.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]} satisfies SessionContext;
+  await activate();expect((await page(ctx)).total).toBe(0);
+  await override(userId,'workforce.view',b.companyId,'allow');
+  expect((await page(ctx)).rows.map(row=>row.employmentId).sort()).toEqual([self.employmentId,colleague.employmentId].sort());
+  expect((await countEmployeesByStatus(ctx,{companyIds:[b.companyId]},'workforce')).total).toBe(2);
+  expect((await listWorkforcePickOptions(ctx,[b.companyId])).map(row=>row.employmentId).sort()).toEqual([self.employmentId,colleague.employmentId].sort());
+  expect(await withTenant(ctx,tx=>tx.select().from(employment).where(eq(employment.id,colleague.employmentId)))).toEqual([]);
+  expect(await withTenant(ctx,tx=>tx.select().from(person).where(eq(person.id,colleague.personId)))).toEqual([]);
+  expect(await withTenant(ctx,tx=>tx.execute(sql`select * from compensation where employment_id=${colleague.employmentId}::uuid`))).toEqual([]);
+  await override(userId,'workforce.view',b.companyId,'deny');expect((await page(ctx)).total).toBe(0);
+  // The person's existing own-record source remains separate from the revoked Workforce grant.
+  expect(await withTenant(ctx,tx=>tx.select({id:employment.id}).from(employment).where(eq(employment.id,self.employmentId)))).toEqual([{id:self.employmentId}]);
  });
  it('rejects stale real role assignments and forged role/scope claims without treating a capability grant as HR',async()=>{
   const subject=await hire('Fictional scope subject');await activate();

@@ -30,7 +30,8 @@ export async function assertWorkforcePersonTx(tx:Tx,ctx:SessionContext,personId:
 export function workforceCompanies(ctx:SessionContext,operation:WorkforceOperation='view'){
  return withTenant(ctx,async tx=>{
   await lockAccessConfigurationTx(tx,ctx.tenantId);
-  const rows=await tx.execute<{id:string}>(sql`select id from company where tenant_id=app.current_tenant_id() and app.access_workforce_company(id,${'workforce.'+operation}) order by id`);
+  const allowed=operation==='view'?sql`app.access_workforce_projection_company(id)`:sql`app.access_workforce_company(id,'workforce.maintain')`;
+  const rows=await tx.execute<{id:string}>(sql`select id from company where tenant_id=app.current_tenant_id() and ${allowed} order by id`);
   return rows.map(row=>row.id);
  });
 }

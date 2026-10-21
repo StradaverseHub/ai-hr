@@ -148,3 +148,12 @@ DOM regressions cover revoked direct maintenance, no partial rows/events, preser
 URL audit refusal and a separately authorized Highest-qualification approval after Workforce denial.
 All remain unrun. Complete related-register raw SQL/approval composition, roleless grant detail/write
 projections and the remaining downstream matrix are still required before catalogue activation.
+
+
+A positive view grant now enters a separate bounded projection-company owner, which delegates the
+permission decision to the same canonical effective-access resolver. The legacy raw-row/write helper
+is not widened. A prepared real non-HR principal case projects a colleague's declared list fields and
+counts, while populated compensation and raw colleague person/employment rows remain inaccessible;
+revocation removes the projection in the same context and retains the user's independent own record.
+This is a source seam, not a claim of a completed roleless screen: capability page/detail/read-only
+consumer integration and all execution evidence remain outstanding. The catalogue is still disabled.

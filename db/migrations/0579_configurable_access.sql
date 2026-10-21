@@ -1011,13 +1011,30 @@ CREATE POLICY access_workforce_draft_delete ON employee_draft AS RESTRICTIVE FOR
   OR CASE WHEN company_id IS NULL THEN app.access_workforce_unassigned('workforce.maintain') ELSE app.access_workforce_company(company_id,'workforce.maintain') END);
 
 --> statement-breakpoint
+-- Positive grants enter only a bounded purpose projection. They must not be fed back into the
+-- legacy raw-row helper above, whose callers include shared write/detail owners still being bound.
+CREATE FUNCTION app.access_workforce_projection_company(p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(
+  SELECT 1 FROM public.company co JOIN public.app_user u ON u.tenant_id=co.tenant_id
+  JOIN public.access_capability c ON c.id='workforce.view'
+  WHERE co.id=p_company AND co.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id()
+   AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+   AND CASE WHEN c.supported THEN app.access_allowed_for(u.id,c.id,co.id)
+    ELSE app.access_workforce_company(co.id,c.id) END);
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_projection_company(uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_workforce_projection_company(uuid) TO ai_hr_app;
+--> statement-breakpoint
 -- Explicit Workforce list projection. A scoped reader receives these declared display values, not
 -- person/employment row SELECT, raw blobs, salary, statutory, bank, classification or arbitrary fields.
 -- SQL status/filter/paging remain with the existing application query owners over this projection.
 CREATE FUNCTION app.access_workforce_list_rows() RETURNS SETOF jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  WITH permitted AS MATERIALIZED (
-  SELECT c.id FROM public.company c WHERE c.tenant_id=app.current_tenant_id() AND app.access_workforce_company(c.id,'workforce.view')
+  SELECT c.id FROM public.company c WHERE c.tenant_id=app.current_tenant_id() AND app.access_workforce_projection_company(c.id)
  )
  SELECT jsonb_build_object(
   'employmentId',e.id,'name',p.full_name,'email',p.primary_email,'employeeCode',e.employee_code,
