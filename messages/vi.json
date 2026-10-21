@@ -22094,6 +22094,25 @@
       "timeout": "Tìm kiếm mất quá nhiều thời gian. Hãy gửi lại tìm kiếm.",
       "invalid": "Nhập tối đa 120 ký tự, gồm ít nhất một chữ cái hoặc chữ số.",
       "descriptionFallback": "Mở tài liệu để xem chi tiết."
+    },
+    "timeOff": {
+      "title": "Nghỉ phép",
+      "loading": "Đang tải thông tin nghỉ phép của bạn…",
+      "failed": "Không thể tải thông tin nghỉ phép. Hãy thử lại thẻ này.",
+      "timeout": "Thông tin nghỉ phép tải quá lâu. Hãy thử lại thẻ này.",
+      "retry": "Thử lại",
+      "refresh": "Làm mới",
+      "empty": "Chưa có số dư nghỉ phép ở đây. Hãy hỏi bộ phận nhân sự về các lựa chọn nghỉ phép của bạn.",
+      "notShown": "Không hiển thị",
+      "available": "Số ngày có thể đăng ký nghỉ",
+      "pending": "Đang chờ duyệt: {days} ngày",
+      "moreTypes": "Có thêm {count} loại nghỉ phép tại mục Nghỉ phép của tôi.",
+      "next": "Ngày nghỉ đã duyệt tiếp theo: {date} · {duration}",
+      "noNext": "Không có ngày nghỉ đã duyệt sắp tới.",
+      "full_day": "Cả ngày",
+      "part_day": "Một phần ngày",
+      "asOf": "Tính đến {date}",
+      "plan": "Lên kế hoạch nghỉ"
     }
   }
 }

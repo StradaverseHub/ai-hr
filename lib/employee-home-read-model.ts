@@ -8,3 +8,8 @@ export type EmployeeHomeIdentity={
 };
 /** Presentation facts load with the greeting card, independently from employment selection. */
 export type EmployeeHomeGreetingIdentity={version:1;employmentId:string;name:string|null;photoHref:string|null};
+export type EmployeeHomeTimeOff={
+ version:1;employmentId:string;asOf:string;canApply:boolean;
+ balances:{id:string;name:string;annualLeave:boolean;available:number|null;pending:number|null}[];
+ nextApproved:{requestId:string;date:string;duration:'full_day'|'part_day'}|null;
+};

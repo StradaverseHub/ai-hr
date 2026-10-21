@@ -22094,6 +22094,25 @@
       "timeout": "Search took too long. Submit your search again.",
       "invalid": "Use up to 120 characters, including at least one letter or number.",
       "descriptionFallback": "Open the document for details."
+    },
+    "timeOff": {
+      "title": "Time Off",
+      "loading": "Loading your leave…",
+      "failed": "We could not load your leave. Retry this card.",
+      "timeout": "Your leave took too long to load. Retry this card.",
+      "retry": "Retry",
+      "refresh": "Refresh",
+      "empty": "No leave balances are available here. Ask HR about your leave options.",
+      "notShown": "Not shown",
+      "available": "Days available to apply for",
+      "pending": "Pending: {days} days",
+      "moreTypes": "{count} more leave types are available on My Leave.",
+      "next": "Next approved leave: {date} · {duration}",
+      "noNext": "No upcoming approved leave.",
+      "full_day": "Full day",
+      "part_day": "Part day",
+      "asOf": "As of {date}",
+      "plan": "Plan time off"
     }
   }
 }

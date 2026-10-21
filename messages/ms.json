@@ -22094,6 +22094,25 @@
       "timeout": "Carian mengambil masa terlalu lama. Hantar carian anda semula.",
       "invalid": "Gunakan sehingga 120 aksara, termasuk sekurang-kurangnya satu huruf atau nombor.",
       "descriptionFallback": "Buka dokumen untuk butiran lanjut."
+    },
+    "timeOff": {
+      "title": "Cuti",
+      "loading": "Memuatkan cuti anda…",
+      "failed": "Cuti anda tidak dapat dimuatkan. Cuba semula kad ini.",
+      "timeout": "Cuti anda mengambil masa terlalu lama untuk dimuatkan. Cuba semula kad ini.",
+      "retry": "Cuba semula",
+      "refresh": "Muat semula",
+      "empty": "Tiada baki cuti tersedia di sini. Tanya HR tentang pilihan cuti anda.",
+      "notShown": "Tidak dipaparkan",
+      "available": "Hari yang tersedia untuk dipohon",
+      "pending": "Menunggu kelulusan: {days} hari",
+      "moreTypes": "{count} lagi jenis cuti tersedia di Cuti Saya.",
+      "next": "Cuti diluluskan seterusnya: {date} · {duration}",
+      "noNext": "Tiada cuti diluluskan yang akan datang.",
+      "full_day": "Sehari penuh",
+      "part_day": "Sebahagian hari",
+      "asOf": "Setakat {date}",
+      "plan": "Rancang cuti"
     }
   }
 }

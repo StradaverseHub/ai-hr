@@ -11,7 +11,7 @@ export async function GET(request:Request){
   if([...query.keys()].some(key=>key!=='employmentId')||query.getAll('employmentId').length>1)
    return Response.json({error:'invalid'},{status:400,headers});
   const value=await readEmployeeHomeTimeOff(session,query.get('employmentId')??undefined,await getLocale());
-  return Response.json({version:value.version,employmentId:value.employmentId,asOf:value.asOf,
+  return Response.json({version:value.version,employmentId:value.employmentId,asOf:value.asOf,canApply:value.canApply,
    balances:value.balances.map(row=>({id:row.id,name:row.name,annualLeave:row.annualLeave,available:row.available,pending:row.pending})),
    nextApproved:value.nextApproved?{requestId:value.nextApproved.requestId,date:value.nextApproved.date,duration:value.nextApproved.duration}:null},{headers});
  }catch(error){

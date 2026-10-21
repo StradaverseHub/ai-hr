@@ -22094,6 +22094,25 @@
       "timeout": "搜索超时。请重新搜索。",
       "invalid": "请输入不超过 120 个字符，并包含至少一个字母、文字或数字。",
       "descriptionFallback": "打开文档查看详情。"
+    },
+    "timeOff": {
+      "title": "休假",
+      "loading": "正在加载您的休假…",
+      "failed": "无法加载您的休假。请重试此卡片。",
+      "timeout": "加载您的休假耗时过长。请重试此卡片。",
+      "retry": "重试",
+      "refresh": "刷新",
+      "empty": "此处暂无可用的休假余额。请向人力资源部了解您的休假选项。",
+      "notShown": "未显示",
+      "available": "可申请的天数",
+      "pending": "待批准：{days} 天",
+      "moreTypes": "“我的休假”中另有 {count} 种休假类型。",
+      "next": "下一次已批准的休假：{date} · {duration}",
+      "noNext": "暂无即将到来的已批准休假。",
+      "full_day": "全天",
+      "part_day": "部分时段",
+      "asOf": "截至 {date}",
+      "plan": "安排休假"
     }
   }
 }
