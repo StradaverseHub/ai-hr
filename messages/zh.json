@@ -10049,7 +10049,8 @@
         "onboardingRequisitions": "配置的履行组、审批组和系统添加组、模块用户及公司人事可查看申请。操作仍受当前团队、审批步骤或项目权限限制。仅被提及只能查看相应讨论。",
         "onboardingAcknowledgement": "只有与该次入职关联的本人可以确认已交付给自己的设备。重新入职及多重雇佣的记录分别保留。",
         "attendanceVisibleApplications": "仅显示现有员工、汇报、委托或已保存参与者范围内可见的出勤申请。此页不会授予人员浏览或更广泛的人事历史权限。",
-        "profileChanges": "查看在当前人事权限范围内分配给您的资料变更申请。"
+        "profileChanges": "查看在当前人事权限范围内分配给您的资料变更申请。",
+        "myCalendar": "仅限与本人账户关联的所选雇佣记录。发薪日期须有已记录的工资结果；不含同事或私人休假详情。"
       },
       "status": {
         "active": "启用",
@@ -22334,6 +22335,42 @@
       "welcome": "欢迎。"
     },
     "homeOptions": "主页选项",
-    "teamWorkbench": "团队工作台"
+    "teamWorkbench": "团队工作台",
+    "calendar": {
+      "title": "我的日历",
+      "loading": "正在加载日历…",
+      "failed": "无法加载日历。主页的其他卡片仍可使用。",
+      "timeout": "日历加载时间比预期长。",
+      "retry": "重试",
+      "refresh": "刷新",
+      "previous": "上一个月",
+      "today": "今天",
+      "next": "下一个月",
+      "view": "日历视图",
+      "month": "月",
+      "week": "周",
+      "list": "列表",
+      "legend": "日历图例",
+      "leave": "我的休假",
+      "pending": "待审批",
+      "approved": "已批准",
+      "holiday": "公共假期",
+      "payday": "发薪日",
+      "paymentNote": "发薪日是您雇佣记录所属工资批次中已记录的日期，不代表银行已入账。",
+      "full": "查看完整日历",
+      "previousWeek": "上一周",
+      "weekNumber": "第 {number} 周",
+      "nextWeek": "下一周",
+      "replacement": "补休假日",
+      "tentative": "暂定",
+      "full_day": "全天",
+      "part_day": "部分时间",
+      "details": "此日期已记录的个人事项。",
+      "emptyDay": "此日期没有已记录的事项。",
+      "empty": "本月没有已记录的事项。",
+      "requestLeave": "申请休假",
+      "close": "关闭",
+      "back": "返回主页"
+    }
   }
 }

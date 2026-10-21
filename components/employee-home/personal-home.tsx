@@ -11,7 +11,8 @@ import {HomeGreetingCard} from './greeting-card';
 import {HomeTimeOffCard} from './time-off-card';
 import {HomeTasksCard} from './tasks-card';
 import {HomeNoticesCard} from './notices-card';
-import type {EmployeeHomeCard} from '@/lib/employee-home';
+import {HomeCalendarCard} from './calendar-card';
+import {homeDisplayClock,type EmployeeHomeCard} from '@/lib/employee-home';
 
 /** Personal landing composition only. Every card retrieves its own authorized facts independently. */
 export async function EmployeePersonalHome({session,employmentId,teamWorkbench=false}:{session:SessionContext;employmentId?:string;teamWorkbench?:boolean}){
@@ -27,6 +28,7 @@ export async function EmployeePersonalHome({session,employmentId,teamWorkbench=f
   notices:<HomeNoticesCard employmentId={selected} timeZone={preferences.timeZone??'Asia/Kuala_Lumpur'}/>,
   tasks:<HomeTasksCard employmentId={selected}/>,
   timeOff:<HomeTimeOffCard employmentId={selected}/>,
+  calendar:<HomeCalendarCard employmentId={selected} initialMonth={homeDisplayClock(new Date(),preferences.timeZone??'Asia/Kuala_Lumpur').date.slice(0,7)}/>,
  }:{};
  const cards=Object.fromEntries(Object.entries(available).filter(([key])=>permitted.has(key)));
  return <div className="mx-auto max-w-7xl space-y-5">

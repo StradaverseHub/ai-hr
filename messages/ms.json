@@ -10049,7 +10049,8 @@
         "onboardingRequisitions": "Kumpulan penyediaan, kelulusan dan penambahan sistem yang ditetapkan, pengguna modul serta HR syarikat boleh membaca permintaan. Tindakan mengikut hak pasukan, langkah atau item semasa. Sebutan hanya memberi konteks perbincangannya.",
         "onboardingAcknowledgement": "Hanya individu yang dipautkan kepada pengambilan boleh mengakui peralatan sendiri selepas serahan. Kes pengambilan semula dan pekerjaan berbilang kekal berasingan.",
         "attendanceVisibleApplications": "Hanya permohonan kehadiran yang sudah kelihatan melalui skop pekerja, pelaporan, delegasi atau peserta disimpan semasa. Halaman ini tidak memberi akses Personnel atau sejarah HR lebih luas.",
-        "profileChanges": "Semak perubahan profil yang ditugaskan kepada anda dalam kuasa HR semasa."
+        "profileChanges": "Semak perubahan profil yang ditugaskan kepada anda dalam kuasa HR semasa.",
+        "myCalendar": "Hanya pekerjaan terpilih yang dipautkan kepada akaun anda sendiri. Tarikh gaji memerlukan hasil yang direkodkan; tiada butiran rakan sekerja atau cuti peribadi."
       },
       "status": {
         "active": "Aktif",
@@ -22334,6 +22335,42 @@
       "welcome": "Selamat datang."
     },
     "homeOptions": "Pilihan Laman Utama",
-    "teamWorkbench": "Ruang kerja pasukan"
+    "teamWorkbench": "Ruang kerja pasukan",
+    "calendar": {
+      "title": "Kalendar Saya",
+      "loading": "Memuatkan kalendar anda…",
+      "failed": "Kalendar anda tidak dapat dimuatkan. Kad Laman Utama lain masih tersedia.",
+      "timeout": "Kalendar anda mengambil masa lebih lama daripada biasa.",
+      "retry": "Cuba lagi",
+      "refresh": "Muat semula",
+      "previous": "Sebelumnya",
+      "today": "Hari ini",
+      "next": "Seterusnya",
+      "view": "Paparan kalendar",
+      "month": "Bulan",
+      "week": "Minggu",
+      "list": "Senarai",
+      "legend": "Petunjuk kalendar",
+      "leave": "Cuti saya",
+      "pending": "Menunggu",
+      "approved": "Diluluskan",
+      "holiday": "Cuti umum",
+      "payday": "Hari gaji",
+      "paymentNote": "Hari gaji menunjukkan tarikh kelompok gaji yang direkodkan untuk pekerjaan anda. Ini bukan pengesahan bayaran bank.",
+      "full": "Lihat kalendar penuh",
+      "previousWeek": "Minggu sebelumnya",
+      "weekNumber": "Minggu {number}",
+      "nextWeek": "Minggu seterusnya",
+      "replacement": "Cuti gantian",
+      "tentative": "Tentatif",
+      "full_day": "Sehari penuh",
+      "part_day": "Sebahagian hari",
+      "details": "Acara anda yang direkodkan untuk tarikh ini.",
+      "emptyDay": "Tiada acara direkodkan pada tarikh ini.",
+      "empty": "Tiada acara direkodkan pada bulan ini.",
+      "requestLeave": "Mohon cuti",
+      "close": "Tutup",
+      "back": "Kembali ke Laman Utama"
+    }
   }
 }

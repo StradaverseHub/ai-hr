@@ -2,13 +2,14 @@
  * A payment hint requires an actual generated result for this employment on a dated run; a company
  * cycle, draft scope or calendar-month end alone cannot establish that this person is being paid.
  */
-import {and,asc,desc,eq} from 'drizzle-orm';
+import {and,asc,desc,eq,gte,lte,isNull,ne} from 'drizzle-orm';
 import type {SessionContext} from '../db/client';
 import {payslip,payrollBatch} from '../db/schema';
 import {withPayrollTenant} from './module-gate';
 import {myOwnEmploymentSubjectsTx} from './read';
 import {payrollPublicationState} from '../lib/payroll-publication';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {calendarWindowDates} from '../lib/calendar-window';
 
 export class OwnPayrollSubjectUnavailableError extends Error{
  constructor(){super('The own payroll context is unavailable.');this.name='OwnPayrollSubjectUnavailableError';}
@@ -43,5 +44,22 @@ export function readOwnPayrollHomeMetadata(ctx:SessionContext,employmentId:strin
   const next=payments[0];
   return {version:1,employmentId,payslips:published.slice(0,12).map(row=>({id:row.id,period:row.period,runType:row.runType,runSequence:row.runSequence})),
    nextPayment:next?{date:next.paymentDate,period:next.period,runType:next.runType}:null};
+ });
+}
+
+/** Recorded run dates for a bounded own calendar. Actual result membership is required; a draft,
+ * stale calculation or company cycle alone supplies no payday. Never selects an amount or bank fact. */
+export function readOwnPayrollCalendarPayments(ctx:SessionContext,employmentId:string,from:string,to:string){
+ calendarWindowDates(from,to);
+ return withPayrollTenant(ctx,async tx=>{
+  if(!ctx.userId||!ctx.personId)throw new OwnPayrollSubjectUnavailableError();
+  const own=await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true});
+  if(!own.some(subject=>subject.employmentId===employmentId))throw new OwnPayrollSubjectUnavailableError();
+  const rows=await tx.selectDistinct({date:payrollBatch.batchDate})
+   .from(payslip).innerJoin(payrollBatch,and(eq(payrollBatch.id,payslip.batchId),eq(payrollBatch.tenantId,payslip.tenantId)))
+   .where(and(eq(payslip.tenantId,ctx.tenantId),eq(payslip.employmentId,employmentId),
+    ne(payrollBatch.status,'draft'),isNull(payrollBatch.needsRecalcAt),gte(payrollBatch.batchDate,from),lte(payrollBatch.batchDate,to)))
+   .orderBy(asc(payrollBatch.batchDate));
+  return rows.map(row=>row.date);
  });
 }

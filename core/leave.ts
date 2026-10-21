@@ -20,6 +20,7 @@ import { isAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/
 // is the same decision wrapped in a query: importing it would pull the whole payroll kernel into every
 // leave request path for fifteen lines of SELECT.
 import { decidePayrollPermission } from '../lib/payroll-permissions';
+import {calendarWindowDates} from '../lib/calendar-window';
 import {
   approversOf,
   resolveApprovalDecision,
@@ -5858,6 +5859,7 @@ async function approvedLeaveCalendarPresence(
   from: string,
   to: string,
   fullDayOnly: boolean,
+  status: 'approved' | 'pending' = 'approved',
 ): Promise<Map<string, Map<string, 'full_day' | 'part_day'>>> {
   const out = new Map<string, Map<string, 'full_day' | 'part_day'>>();
   if (empIds.length === 0) return out;
@@ -5876,7 +5878,7 @@ async function approvedLeaveCalendarPresence(
       and(
         inArray(leaveRequest.employmentId, empIds),
         fullDayOnly ? eq(leaveRequest.durationType, 'full_day') : undefined,
-        eq(leaveRequestDate.status, 'approved'),
+        eq(leaveRequestDate.status, status),
         gte(leaveRequestDate.leaveDate, from),
         lte(leaveRequestDate.leaveDate, to),
       ),
@@ -5896,7 +5898,7 @@ async function approvedLeaveCalendarPresence(
       and(
         inArray(leaveRequest.employmentId, empIds),
         fullDayOnly ? eq(leaveRequest.durationType, 'full_day') : undefined,
-        eq(leaveRequest.status, 'approved'),
+        eq(leaveRequest.status, status),
         lte(leaveRequest.startDate, to),
         gte(leaveRequest.endDate, from),
         sql`NOT EXISTS (SELECT 1 FROM leave_request_date x WHERE x.leave_request_id = ${leaveRequest.id})`,
@@ -5919,6 +5921,18 @@ async function approvedLeaveDates(tx: Tx, empIds: string[], from: string, to: st
 /** Privacy-minimal calendar presence, including partial days. No leave type, reason or medical facts. */
 export function approvedLeavePresenceByEmploymentTx(tx: Tx, employmentIds: string[], from: string, to: string) {
   return approvedLeaveCalendarPresence(tx, employmentIds, from, to, false);
+}
+
+/** Bounded calendar statuses through the same child-date/span semantics as approved absence.
+ * Pending dates never relieve absence. No reason, type, medical fact or approval body is selected.
+ * The caller must establish the permitted subjects before entering this transaction helper. */
+export async function leaveCalendarPresenceByEmploymentTx(tx:Tx,employmentIds:string[],from:string,to:string){
+ calendarWindowDates(from,to);
+ const [approved,pending]=await Promise.all([
+  approvedLeaveCalendarPresence(tx,employmentIds,from,to,false),
+  approvedLeaveCalendarPresence(tx,employmentIds,from,to,false,'pending'),
+ ]);
+ return {approved,pending};
 }
 
 /** Earliest approved presence from today, through the same per-date/whole-span distinction above.

@@ -7,13 +7,15 @@ import {appUser,leaveType,leaveLedger} from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {readEmployeeHomeTimeOff} from '../core/employee-home-time-off';
 import {requestLeave,decideLeave,decideLeaveDates,requestLeaveCancellation,decideLeaveCancellation,myLeaveDashboard,
- leaveTypeApplySummary,approvedLeavePresenceByEmploymentTx,setLeaveApprovalPolicy} from '../packs/leave/service';
+ leaveTypeApplySummary,approvedLeavePresenceByEmploymentTx,leaveCalendarPresenceByEmploymentTx,setLeaveApprovalPolicy} from '../packs/leave/service';
+import {readEmployeeHomeCalendar} from '../core/employee-home-calendar';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base,CALLER:SessionContext;
 vi.mock('../lib/session',()=>({getSession:async()=>CALLER}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en'}));
 const {GET}=await import('../app/api/home/time-off/route');
+const {GET:calendarGET}=await import('../app/api/home/calendar/route');
 const today=()=>todayInKualaLumpur(),add=(date:string,n:number)=>new Date(Date.parse(date+'T12:00:00Z')+n*86400000).toISOString().slice(0,10);
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();});
 async function worker(role:'employee'|'hr_admin'='employee'){
@@ -30,6 +32,37 @@ async function type(employmentId:string,partial:Partial<typeof leaveType.$inferI
  return row.id;
 }
 describe('Home Time Off consumes canonical own leave facts',()=>{
+ it('keeps mixed per-date pending, approved and rejected truth distinct in the own calendar',async()=>{
+  const own=await worker(),a=adminCtx(b);CALLER=own.ctx;
+  await setLeaveApprovalPolicy(a,{companyId:b.companyId,levels:['hr_admin']});
+  const typeId=await type(own.employmentId,{counting:'working_days',perDateApproval:true});
+  let monday=add(today(),1);while(new Date(monday+'T12:00:00Z').getUTCDay()!==1)monday=add(monday,1);
+  const request=await requestLeave(a,{employmentId:own.employmentId,leaveTypeId:typeId,startDate:monday,endDate:add(monday,2),today:today(),reason:'Private fictional leave detail'});
+  await decideLeaveDates(a,{leaveRequestId:request.leaveRequestId,decisions:[{leaveDate:monday,decision:'approved'},
+   {leaveDate:add(monday,1),decision:'rejected',rejectReason:'Private fictional rejected detail'}]});
+  const result=await readEmployeeHomeCalendar(own.ctx,own.employmentId,monday.slice(0,7));
+  expect(result.days.find(day=>day.date===monday)?.entries).toContainEqual({kind:'leave',date:monday,status:'approved',duration:'full_day'});
+  expect(result.days.find(day=>day.date===add(monday,1))?.entries.some(entry=>entry.kind==='leave')).toBe(false);
+  expect(result.days.find(day=>day.date===add(monday,2))?.entries).toContainEqual({kind:'leave',date:add(monday,2),status:'pending',duration:'full_day'});
+  expect(result.days.find(day=>day.date===monday)?.canRequestLeave).toBe(false);
+  expect(result.days.length%7).toBe(0);expect(result.days.length).toBeLessThanOrEqual(42);
+  const response=await calendarGET(new Request('http://localhost/api/home/calendar?'+new URLSearchParams({employmentId:own.employmentId,month:monday.slice(0,7)})));
+  expect(response.status).toBe(200);expect(await response.json()).toEqual(result);
+  expect(response.headers.get('cache-control')).toBe('private, no-store');
+  for(const field of ['Private fictional','reason','leaveTypeId','medical','personId','4321'])expect(JSON.stringify(result)).not.toContain(field);
+ });
+ it('refuses foreign and forged calendar subjects, scope injection and malformed or oversized windows',async()=>{
+  const own=await worker('hr_admin'),other=await worker();CALLER=own.ctx;
+  await expect(readEmployeeHomeCalendar(own.ctx,other.employmentId)).rejects.toMatchObject({code:'employmentUnavailable'});
+  await expect(readEmployeeHomeCalendar({...own.ctx,personId:other.personId},other.employmentId)).rejects.toMatchObject({code:'employmentUnavailable'});
+  expect((await calendarGET(new Request('http://localhost/api/home/calendar?employmentId='+other.employmentId))).status).toBe(403);
+  for(const query of ['employmentId=x&employmentId=y','employmentId=x&companyId='+b.companyId,'employmentId=x&month=2026-13','employmentId=x&month=2026-01&month=2026-02','month=2026-01'])
+   expect((await calendarGET(new Request('http://localhost/api/home/calendar?'+query))).status).toBe(400);
+  await expect(withTenant(own.ctx,tx=>leaveCalendarPresenceByEmploymentTx(tx,[own.employmentId],'2026-02-31','2026-03-01')))).rejects.toThrow('Invalid calendar window');
+  await expect(withTenant(own.ctx,tx=>leaveCalendarPresenceByEmploymentTx(tx,[own.employmentId],today(),add(today(),62)))).rejects.toThrow('Invalid calendar window');
+  await owner.db.update(appUser).set({archivedAt:new Date()}).where(eq(appUser.id,own.ctx.userId!));
+  expect((await calendarGET(new Request('http://localhost/api/home/calendar?employmentId='+own.employmentId))).status).toBe(403);
+ });
  it('uses the Apply form available figure once and returns only the selected own response',async()=>{
   const own=await worker(),other=await worker();CALLER=own.ctx;
   const typeId=await type(own.employmentId),a=adminCtx(b);

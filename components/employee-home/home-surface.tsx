@@ -12,9 +12,10 @@ export type HomeSurfaceLabels={
  * canonical actions. Preferences may hide/reorder supplied nodes, never authorize a missing card.
  * This component does not await a combined dashboard payload or infer facts from absent cards.
  */
-export function EmployeeHomeSurface({identity,preferences,cards,labels}:{
+export function EmployeeHomeSurface({identity,preferences,cards,labels,selectionPath='/',selectionMonth}:{
   identity:EmployeeHomeIdentity;preferences:unknown;
   cards:Partial<Record<EmployeeHomeCard,ReactNode>>;labels:HomeSurfaceLabels;
+  selectionPath?:'/'|'/me/calendar';selectionMonth?:string;
 }){
   const display=readEmployeeHomePreferences(preferences);
   const selected=identity.employments.find(item=>item.employmentId===identity.selectedEmploymentId);
@@ -30,7 +31,8 @@ export function EmployeeHomeSurface({identity,preferences,cards,labels}:{
     <PageHeader title={labels.title} description={ready?
       (identity.companyEstablished?selected.company:labels.companyUnavailable):undefined}/>
     {identity.employments.length>1&&<form key={`${identity.employmentState}:${identity.selectedEmploymentId??''}`}
-      action="/" method="get" className="flex flex-wrap items-end gap-3">
+      action={selectionPath} method="get" className="flex flex-wrap items-end gap-3">
+      {selectionMonth&&<input type="hidden" name="month" value={selectionMonth}/>}
       <label className="flex min-w-0 basis-full flex-1 flex-col gap-2 text-sm font-medium sm:basis-auto sm:max-w-md">
         {labels.employment}
         <select name="employmentId" required defaultValue={ready?selected.employmentId:''}

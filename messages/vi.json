@@ -10049,7 +10049,8 @@
         "onboardingRequisitions": "Các nhóm thực hiện, phê duyệt và thêm hệ thống đã cấu hình, người dùng mô-đun và HR công ty được đọc yêu cầu. Thao tác vẫn giới hạn theo nhóm, bước hoặc quyền mục hiện tại. Việc được nhắc đến chỉ cấp quyền xem cuộc thảo luận tương ứng.",
         "onboardingAcknowledgement": "Chỉ người được liên kết với lần tuyển dụng đó được xác nhận thiết bị của mình sau bàn giao. Hồ sơ tái tuyển dụng và nhiều quan hệ việc làm được giữ riêng.",
         "attendanceVisibleApplications": "Chỉ các đơn chấm công đã có quyền xem theo phạm vi nhân viên, tuyến báo cáo, ủy quyền hoặc người tham gia đã lưu hiện tại. Trang này không cấp quyền xem hồ sơ nhân sự hoặc lịch sử HR rộng hơn.",
-        "profileChanges": "Xem yêu cầu thay đổi hồ sơ được giao cho bạn trong phạm vi quyền HR hiện tại."
+        "profileChanges": "Xem yêu cầu thay đổi hồ sơ được giao cho bạn trong phạm vi quyền HR hiện tại.",
+        "myCalendar": "Chỉ công việc được chọn liên kết với tài khoản của bạn. Ngày trả lương phải có kết quả đã ghi nhận; không bao gồm đồng nghiệp hay chi tiết nghỉ phép riêng tư."
       },
       "status": {
         "active": "Đang hoạt động",
@@ -22334,6 +22335,42 @@
       "welcome": "Chào mừng."
     },
     "homeOptions": "Tùy chọn trang chủ",
-    "teamWorkbench": "Không gian làm việc nhóm"
+    "teamWorkbench": "Không gian làm việc nhóm",
+    "calendar": {
+      "title": "Lịch của tôi",
+      "loading": "Đang tải lịch của bạn…",
+      "failed": "Không thể tải lịch của bạn. Các thẻ Trang chủ khác vẫn dùng được.",
+      "timeout": "Lịch của bạn đang tải lâu hơn dự kiến.",
+      "retry": "Thử lại",
+      "refresh": "Làm mới",
+      "previous": "Trước",
+      "today": "Hôm nay",
+      "next": "Tiếp",
+      "view": "Chế độ xem lịch",
+      "month": "Tháng",
+      "week": "Tuần",
+      "list": "Danh sách",
+      "legend": "Chú giải lịch",
+      "leave": "Ngày nghỉ của tôi",
+      "pending": "Chờ duyệt",
+      "approved": "Đã duyệt",
+      "holiday": "Ngày lễ",
+      "payday": "Ngày trả lương",
+      "paymentNote": "Ngày trả lương là ngày đã ghi nhận trong kỳ lương của công việc này. Đây không phải xác nhận thanh toán ngân hàng.",
+      "full": "Xem toàn bộ lịch",
+      "previousWeek": "Tuần trước",
+      "weekNumber": "Tuần {number}",
+      "nextWeek": "Tuần tiếp theo",
+      "replacement": "Ngày nghỉ bù",
+      "tentative": "Dự kiến",
+      "full_day": "Cả ngày",
+      "part_day": "Một phần ngày",
+      "details": "Các sự kiện của bạn đã ghi nhận cho ngày này.",
+      "emptyDay": "Không có sự kiện nào được ghi nhận cho ngày này.",
+      "empty": "Không có sự kiện nào được ghi nhận trong tháng này.",
+      "requestLeave": "Xin nghỉ phép",
+      "close": "Đóng",
+      "back": "Về Trang chủ"
+    }
   }
 }

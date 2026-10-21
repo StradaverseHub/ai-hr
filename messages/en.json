@@ -10049,7 +10049,8 @@
         "onboardingRequisitions": "Operational fulfilment, approval and configured add-system groups, module users and company HR can read requisitions. Actions remain restricted to the current team, step or item rights. A mention alone grants only its discussion context.",
         "onboardingAcknowledgement": "Only the person linked to the hire can acknowledge their own handed-over equipment. Rehire and multiple-employment cases remain separate.",
         "attendanceVisibleApplications": "Only attendance requests already visible through the current employee, reporting, delegation or saved participant scope. This page grants no Personnel browsing or wider HR history access.",
-        "profileChanges": "Review profile changes assigned to you within your current HR authority. Old requests retain their recorded routing."
+        "profileChanges": "Review profile changes assigned to you within your current HR authority. Old requests retain their recorded routing.",
+        "myCalendar": "Only the selected employment linked to your own account. Payroll dates require a recorded result; no peer or private leave details are included."
       },
       "status": {
         "active": "Active",
@@ -22334,6 +22335,42 @@
       "welcome": "Welcome."
     },
     "homeOptions": "Home options",
-    "teamWorkbench": "Team workbench"
+    "teamWorkbench": "Team workbench",
+    "calendar": {
+      "title": "My Calendar",
+      "loading": "Loading your calendar…",
+      "failed": "Your calendar could not be loaded. Other Home cards are still available.",
+      "timeout": "Your calendar is taking longer than expected.",
+      "retry": "Retry",
+      "refresh": "Refresh",
+      "previous": "Previous",
+      "today": "Today",
+      "next": "Next",
+      "view": "Calendar view",
+      "month": "Month",
+      "week": "Week",
+      "list": "List",
+      "legend": "Calendar legend",
+      "leave": "My leave",
+      "pending": "Pending",
+      "approved": "Approved",
+      "holiday": "Public holiday",
+      "payday": "Payday",
+      "paymentNote": "Payday shows a recorded run date for your employment. It does not confirm a bank payment.",
+      "full": "View full calendar",
+      "previousWeek": "Previous week",
+      "weekNumber": "Week {number}",
+      "nextWeek": "Next week",
+      "replacement": "Replacement holiday",
+      "tentative": "Tentative",
+      "full_day": "Full day",
+      "part_day": "Part day",
+      "details": "Your recorded events for this date.",
+      "emptyDay": "No recorded events on this date.",
+      "empty": "No recorded events this month.",
+      "requestLeave": "Request leave",
+      "close": "Close",
+      "back": "Back to Home"
+    }
   }
 }
