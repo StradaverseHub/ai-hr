@@ -35,7 +35,8 @@ import { pooledEntitlementCaption, isPoolBorrower, otherContributors, poolBadges
 // point: an employee ringing HR about a missing button and the HR admin looking that person up must be
 // given ONE cause, not two descriptions of one configuration (8ebf77ae's lesson, third occurrence).
 import { isReplacementLeaveType } from '@/core/ess-view';
-import { replacementRequestAvailability } from '@/packs/leave/service';
+import { replacementRequestAvailability, listEntitlementRecalcAudit } from '@/packs/leave/service';
+import { EntitlementRecalcHistory } from '@/components/leave/entitlement-recalc-history';
 import { ReplacementAvailabilityNotice } from '@/components/leave/replacement-availability-notice';
 // r242 — the SAME read-only side-sheet /me and /admin/personnel/[id] already open. A client component that
 // imports no db client and no server action, so mounting it from this RSC crosses no boundary; every figure
@@ -155,10 +156,11 @@ export default async function EmployeeBalancesPage({
 
   const { asOf, q, typeIds, departmentIds, sort, dir, pq } = query;
   const today = todayInKualaLumpur();
-  const [result, leaveTypes, replacementRequest] = await Promise.all([
+  const [result, leaveTypes, replacementRequest, recalcAudit] = await Promise.all([
     inquiryBalancePage(session, inquiry, query, locale),
     listLeaveTypes(session, { locale }),
     selected ? replacementRequestAvailability(session, selected.employmentId, today) : Promise.resolve({ allowed: false } as const),
+    selected ? listEntitlementRecalcAudit(session, selected.employmentId) : Promise.resolve([]),
   ]);
   const { rows, total } = result;
   // Same scope as the employee's own page: a tenant with no replacement leave type in its catalogue has
@@ -798,6 +800,7 @@ export default async function EmployeeBalancesPage({
           )}
         </div>
       </CollapsibleEmployeePanel>
+      {selected ? <EntitlementRecalcHistory rows={recalcAudit} /> : null}
     </div>
   );
 }

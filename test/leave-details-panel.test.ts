@@ -331,17 +331,23 @@ describe('Leave Details panel: the inline expand is still a Radix right side-she
   });
 });
 
-describe('Leave Details panel: both call sites feed the trimmed §1 summary + visual', () => {
-  // UPDATED BY r302 (6c9802c9): the employee's side-sheet is opened by the My Leave dashboard island now (the
-  // page no longer renders a breakdown itself), so the call site moved from app/leave/page.tsx to it. The
-  // same three facts are asserted at the new site.
-  const PAGES = ['/components/leave/my-leave-dashboard.tsx', '/app/admin/personnel/[employmentId]/page.tsx'] as const;
-  for (const p of PAGES) {
-    const src = read(p);
-    it(`${p} passes summary + visual to the breakdown panel`, () => {
-      expect(src.includes('summary={{')).toBe(true);
-      expect(src.includes('visual={{')).toBe(true);
-      expect(src.includes('upcoming={')).toBe(false);
+describe('Leave Details panel: the employee and HR inquiry owners feed summary + visual', () => {
+  const PAGES = [
+    ['/components/leave/my-leave-dashboard.tsx', 'visual={{'],
+    ['/app/leave/employee-balances/page.tsx', 'visual={r.visual}'],
+  ] as const;
+  for (const [p, visual] of PAGES) {
+    it(`${p} passes the authoritative summary and visual to the panel`, () => {
+      const src = read(p);
+      const start = src.indexOf('<EntitlementBreakdown');
+      const end = src.indexOf('/>', start);
+      expect(start, 'real panel mount').toBeGreaterThan(-1);
+      expect(end).toBeGreaterThan(start);
+      const mount = src.slice(start, end);
+      expect(mount.length).toBeGreaterThan(100);
+      expect(mount).toContain('summary={{');
+      expect(mount).toContain(visual);
+      expect(mount).not.toContain('upcoming={');
     });
   }
 

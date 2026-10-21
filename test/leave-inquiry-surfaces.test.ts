@@ -280,15 +280,16 @@ describe('20c699f8: Employee Balances', () => {
     expect(balancesPage).toMatch(/<EntitlementBreakdown[\s\S]{0,400}?asOf=\{asOf\}/);
   });
 
-  it('THE ESS GATE DIFFERENCE SURVIVES THE PANEL — hiding a figure from self-service is not a rule about HR', () => {
-    // `essView: {}` (missing key ⇒ visible) is asserted above for the ROW. The panel has its own switch for
-    // the same decision, and it must be left off here for the same reason: /me passes `applyEssConfig` so an
-    // employee sees only the lines HR left visible; this screen and /admin/personnel/[id] do not, so HR sees
-    // the whole column. Passing it here would hide from HR exactly the lines HR is looking the figure up to
-    // explain — the ONE deliberate difference between this screen and the employee's, quietly undone.
-    const mount = balancesPage.slice(balancesPage.indexOf('<EntitlementBreakdown'));
-    expect(mount.slice(0, mount.indexOf('/>')), 'HR must not be ESS-gated').not.toContain('applyEssConfig');
-    expect(read('app/admin/personnel/[employmentId]/page.tsx')).toContain('<EntitlementBreakdown');
+  it('keeps the retained HR explanation free from ESS-only figure gates', () => {
+    const start = balancesPage.indexOf('<EntitlementBreakdown');
+    const end = balancesPage.indexOf('/>', start);
+    expect(start, 'the canonical HR panel is actually mounted').toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const mount = balancesPage.slice(start, end);
+    expect(mount.length).toBeGreaterThan(100);
+    expect(mount, 'HR must not be ESS-gated').not.toContain('applyEssConfig');
+    // 39306a9e retires the duplicate Personnel panel, retaining the Leave inquiry owner.
+    expect(read('app/admin/personnel/[employmentId]/page.tsx')).not.toContain('<EntitlementBreakdown');
   });
 
   /**

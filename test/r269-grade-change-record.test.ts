@@ -563,9 +563,12 @@ describe('§D · one criteria summariser, two Covers columns', () => {
     const profile = read('app/admin/personnel/[employmentId]/page.tsx');
     expect(profile).toContain("tScheme('unmatchedWarning'");
     expect(profile).toContain("tScheme('unmatchedNoGrade')");
-    expect(profile).toContain("t('recalcColGrade')");
-    // r422 — still the change's own effective date, drawn DD-MMM-YYYY (lib/date-display.ts).
-    expect(profile).toContain('{formatDmy(r.tookEffectOn)}');
+    const history = read('components/leave/entitlement-recalc-history.tsx');
+    expect(history).toContain("t('recalcColGrade')");
+    // 39306a9e retains this history under Leave inquiry after removing the Personnel duplicate.
+    expect(history).toContain('{formatDmy(r.tookEffectOn)}');
+    expect(read('app/leave/employee-balances/page.tsx')).toContain('<EntitlementRecalcHistory rows={recalcAudit} />');
+    expect(profile).not.toContain('recalcHistoryCard');
     // Rendered in BOTH states of the card: the one that matters most is "some types resolved, some did not".
     expect((profile.match(/\{schemeUnmatchedNotice\}/g) ?? []).length).toBe(2);
 

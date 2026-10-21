@@ -94,7 +94,8 @@ const IMPORT_ALIASES = {
   'app/admin/leave-config/history-import/page.tsx': 'history',
   'app/admin/leave-config/bf-import/page.tsx': 'bf',
 } as const;
-const PAGES = pages().filter((p) => p !== SUB_SCREEN && !STUBS.includes(p) && !(p in IMPORT_ALIASES));
+const SETTINGS_HUB = 'app/admin/leave-config/settings/page.tsx';
+const PAGES = pages().filter((p) => p !== SETTINGS_HUB && p !== SUB_SCREEN && !STUBS.includes(p) && !(p in IMPORT_ALIASES));
 const MAP_SRC = read('components/leave-config-map.tsx');
 const MAP_CODE = stripComments(MAP_SRC);
 const CHILDREN = LEAVE_ADMIN_DESTINATIONS.children;
@@ -233,6 +234,17 @@ describe('§A · the map is the submenu rows, in the submenu\'s order', () => {
 });
 
 describe('§B · no Leave Config page renders the nine-screen pill row', () => {
+  it('the Settings hub is the guarded card landing page, not a duplicate destination tab row', () => {
+    expect(pages()).toContain(SETTINGS_HUB);
+    const hub = stripComments(read(SETTINGS_HUB));
+    expect(hub).toContain('await requireAdmin()');
+    expect(hub).toContain('LEAVE_SETTINGS_DESTINATIONS.filter');
+    expect(hub).toContain('rolesForGuard(screen.guard)');
+    expect(hub).toContain("<PageHeader title={t('title')} description={t('subtitle')} />");
+    expect(hub).toContain('<Link href={card.href}');
+    expect(hub).not.toContain('<LeaveConfigMap');
+  });
+
   it('the component renders only the CURRENT row\'s tabs, and nothing for a single-screen row', () => {
     const render = MAP_CODE.slice(MAP_CODE.indexOf('export async function LeaveConfigMap('));
     // The render reads ONE group — the current screen's — never the whole list.

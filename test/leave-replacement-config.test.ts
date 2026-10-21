@@ -34,7 +34,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { leavePack } from '../packs/leave';
+import { leavePack, LEAVE_SETTINGS_DESTINATIONS } from '../packs/leave';
 
 import { REGISTERED_ROUTES } from '../lib/permissions';
 
@@ -93,45 +93,22 @@ describe('296fc027 · Replacement Leave configuration page', () => {
     expect(read(CREDIT_PAGE_REL)).toContain('const windDown = !moduleOn && summary.activeAccruals > 0;');
   });
 
-  it('the leave fly-out still carries the replacement entry, after Payroll Related', () => {
-    // 645e67c4 — this asserted against components/leave-tabs.tsx, now deleted: Leave config is a sidebar
-    // fly-out. The ORDER the reporter sees is unchanged and is still worth guarding, so the same promise
-    // is re-made against the pack node that actually renders it.
-    const node = leavePack.navNodes!.find((n) => n.group === 'admin')!;
-    const hrefs = node.children.map((c) => c.href);
-    // a6fe37fc Round 5 — the ROW is now Company rules, the screen that absorbed this one, and it keeps
-    // the position the reporter's team reads. The order promise is what was made and it is unchanged.
-    expect(hrefs).toContain('/admin/leave-config/company-rules');
-    const at = (href: string) => hrefs.indexOf(href);
-    // a6fe37fc Round 5 — the Payroll Related row this position was measured against is GONE (its two
-    // settings were never one subject and went to two different destinations). Measuring against a row
-    // that no longer exists would make this pass on `> -1` forever, so the anchor moves to the row that
-    // is now directly above: Approval chains. The promise — Company rules sits at the END of the leave
-    // config menu, where Replacement Leave was put — is what is asserted, and it is asserted twice.
-    expect(at('/admin/leave-config/company-rules')).toBeGreaterThan(at('/admin/leave-config/approval-chains'));
-    // 5ca446db (r269) — UPDATED, NOT LOOSENED. `toBe(hrefs.length - 1)` stood here and meant "Company rules
-    // is the END of the leave CONFIG menu, where Replacement Leave was put". A sixth child was added after
-    // it by a later, unrelated item — Employee Leave Inquiry, whose destination (/leave/employee-balances)
-    // is not a Leave Config screen at all — so the count-based spelling stopped expressing the promise. The
-    // promise itself is unchanged and is restated exactly: Company rules is the LAST of the rows that open
-    // a Leave Config screen. A new /admin/leave-config/* row placed after it still fails here.
-    // r281 (a73d1e14) — UPDATED, NOT LOOSENED, and for the same reason r269 updated it before. "Company
-    // rules is the END of the leave config menu, where Replacement Leave was put" was a spelling of a
-    // POSITION; a later, unrelated item added a row below it (Special Setting, holding the half-day card
-    // the reporter asked to take off Company rules), drawn at the very bottom of their sketch. What this
-    // case promises is where Replacement Leave's absorbing screen sits among the rows that existed when
-    // it was put there, so it is restated exactly: Company rules is the last config row of the cutover
-    // set, and the only row below it is the one r281 added.
-    const configHrefs = hrefs.filter((h) => h.startsWith('/admin/leave-config/'));
-    expect(configHrefs.at(-1)).toBe('/admin/leave-config/special-setting');
-    expect(configHrefs.at(-2)).toBe('/admin/leave-config/company-rules');
-    // …and nothing but the named inquiry row sits outside that set, so the filter cannot hide a regression.
-    expect(hrefs.filter((h) => !h.startsWith('/admin/leave-config/'))).toEqual(['/leave/employee-balances']);
-    // f1b994e3 — `expect(at('/admin/leave/audit')).toBeGreaterThan(at('/admin/leave/replacement'))`
-    // STOOD HERE. The Audit row is retired into the one central Audit Trail, so there is no longer an
-    // entry after Replacement for it to sit before; the position this item actually promised (after
-    // Payroll Related) is asserted above and is unchanged. test/leave-flyout-nav.test.ts owns the
-    // retirement itself, including that the route still resolves as a stub.
+  it('retains Company rules in the approved Settings destination set and leaves one menu owner', () => {
+    const node = leavePack.navNodes!.find(n => n.group === 'admin')!;
+    expect(node.children.map(c => c.href)).toEqual([
+      '/admin/leave-config/adjustments', '/admin/leave-config/data-import',
+      '/admin/leave-config/leave-credit', '/leave/employee-balances', '/admin/leave-config/settings',
+    ]);
+    expect(LEAVE_SETTINGS_DESTINATIONS.map(c => c.href)).toEqual([
+      '/admin/leave-config/types', '/admin/leave-config/balance-health',
+      '/admin/leave-config/generate', '/admin/leave-config/earned-accrual',
+      '/admin/leave-config/approval-chains', '/admin/leave-config/company-rules',
+      '/admin/leave-config/special-setting',
+    ]);
+    // The approved consolidation changes menu placement, keeping the existing guarded route.
+    expect(REGISTERED_ROUTES.has('/admin/leave-config/company-rules')).toBe(true);
+    expect(node.children.filter(c => c.ownedSubpaths?.includes('/admin/leave-config/company-rules')).map(c => c.href))
+      .toEqual(['/admin/leave-config/settings']);
   });
 
   it('the page no longer marks itself as an active tab — there is no strip to be active in', () => {

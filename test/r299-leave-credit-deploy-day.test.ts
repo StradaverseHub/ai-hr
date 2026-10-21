@@ -78,6 +78,7 @@ vi.mock('next-intl/server', async () => {
   const { fileURLToPath } = await import('node:url');
   const messages = JSON.parse(readFileSync(fileURLToPath(new URL('../messages/en.json', import.meta.url)), 'utf8'));
   return {
+    getLocale: async () => 'en',
     getTranslations: async (ns: string | { namespace?: string }) =>
       make({
         locale: 'en',
