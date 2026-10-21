@@ -862,3 +862,48 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  AND app.access_profile_review_for_user(u.id,s.id)
  AND (SELECT count(*) FROM app_user other WHERE other.tenant_id=a.tenant_id AND other.person_id=a.person_id AND other.archived_at IS NULL AND NOT app.login_blocked(other.id))=1;
 $$;
+
+--> statement-breakpoint
+-- Write-only profile-configuration consequence, separate from a decision on the merits. Existing
+-- group-admin settings authority can withdraw pending fields without gaining proposal reads or
+-- approval authority. Denying profile.review must not leave now-hidden proposal bytes pending.
+CREATE FUNCTION app.access_withdraw_profile_requests(p_keys jsonb,p_reason text) RETURNS integer
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();r record;affected integer:=0;keys text[];
+BEGIN
+ PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
+ PERFORM pg_advisory_xact_lock(hashtextextended('profile-edit-policy:'||t::text,0));
+ IF NOT app.access_legacy_role_authority(t,u,NULL,NULL,NULL) THEN
+  RAISE EXCEPTION 'profile configuration authority unavailable' USING ERRCODE='42501'; END IF;
+ IF p_keys IS NULL OR jsonb_typeof(p_keys)<>'array' OR jsonb_array_length(p_keys)>512
+  OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_keys) k WHERE jsonb_typeof(k)<>'string' OR length(k#>>'{}') NOT BETWEEN 1 AND 200)
+  OR p_reason IS NULL OR length(btrim(p_reason)) NOT BETWEEN 1 AND 2000 THEN
+  RAISE EXCEPTION 'profile withdrawal input invalid' USING ERRCODE='23514'; END IF;
+ SELECT COALESCE(array_agg(DISTINCT value ORDER BY value),'{}'::text[]) INTO keys FROM jsonb_array_elements_text(p_keys);
+ FOR r IN
+  UPDATE public.profile_change_request q SET status='rejected',decided_by_employment_id=NULL,decided_at=now(),decision_reason=btrim(p_reason)
+  WHERE q.tenant_id=t AND q.status='pending' AND (
+   q.proposed->>'fieldId'=ANY(keys) OR q.proposed ?| keys
+   OR EXISTS(SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(q.proposed->'fields')='array' THEN q.proposed->'fields' ELSE '[]'::jsonb END) f WHERE f->>'fieldId'=ANY(keys))
+   OR EXISTS(SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(q.proposed->'registers')='array' THEN q.proposed->'registers' ELSE '[]'::jsonb END) x,
+    LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(x->'fields')='array' THEN x->'fields' ELSE '[]'::jsonb END) f WHERE f->>'fieldId'=ANY(keys)))
+  RETURNING q.id,q.employment_id,q.proposed
+ LOOP
+  INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
+  VALUES(t,'profile-change',r.id,'profile-change.rejected','user',u,r.employment_id,
+   jsonb_build_object('decision','rejected','via','field-locked','reasonGiven',true,'fields',
+    (SELECT COALESCE(jsonb_agg(field ORDER BY field),'[]'::jsonb) FROM (
+     SELECT DISTINCT k AS field FROM unnest(keys) k WHERE r.proposed ? k OR r.proposed->>'fieldId'=k
+      OR EXISTS(SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(r.proposed->'fields')='array' THEN r.proposed->'fields' ELSE '[]'::jsonb END) f WHERE f->>'fieldId'=k)
+      OR EXISTS(SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(r.proposed->'registers')='array' THEN r.proposed->'registers' ELSE '[]'::jsonb END) x,
+       LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(x->'fields')='array' THEN x->'fields' ELSE '[]'::jsonb END) f WHERE f->>'fieldId'=k)
+    ) matching)));
+  affected:=affected+1;
+ END LOOP;
+ RETURN affected;
+END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_withdraw_profile_requests(jsonb,text) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_withdraw_profile_requests(jsonb,text) TO ai_hr_app;

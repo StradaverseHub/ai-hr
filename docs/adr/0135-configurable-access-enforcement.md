@@ -37,3 +37,21 @@ Company-scoped access history is a retained company reference, including retired
 Workforce bindings must not widen app.visible_employment_ids or app.visible_person_ids indiscriminately: 0515's shared sets feed payroll, statutory, leave and other sensitive consumers. Directory grants need explicit Workforce consumers and their own scope/policy integration; specialized financial and onboarding owners remain separate. This is a source-derived integration risk, not a reproduced executed failure.
 
 A draft profile-review adapter now narrows the existing request RLS and named-principal eligibility using actual live HR scope, separate from the configurable grant. Own active request history remains available, while a review grant cannot manufacture HR status, cross a named route or allow self-approval. Decisions and reasoned reassignment acquire the shared access lock before loading policy or proposal data. An individual review denial also removes maintenance-flag proposal reads; recovery uses another eligible reviewer or an explicit permission correction, rather than allowing a caller-set flag to defeat the denial. Existing privacy/retention definer paths remain separate. The catalogue keeps profile.review unsupported during source construction; an isolated DB fixture activates the adapter for prepared queue/raw-row/decision/own-history/self-approval cases only. Photo byte routes, named reassignment, closed-field/withdrawal/privacy, independent SQL policy oracle and concurrency consumers still require integration and execution before activation. This adapter has not run yet.
+
+
+The source integration now includes ESS0578 and its photo request/route consumer. Review denial
+must remove pending byte reads as well as queue/decision access; reasoned reassignment retains
+only the new named reviewer's access. All profile policy operations now take the access lock
+before their policy lock, matching decisions and permission changes.
+
+A source integration finding exposed a separate consequence boundary: restrictive review denial
+could prevent a configuration administrator from withdrawing now-closed fields. The draft
+write-only SQL consequence reuses the fresh legacy group-administration floor and explicit
+configuration-denial owner. It can only reject pending matching fields, purge decided photo
+bytes through the existing retention trigger, and append bounded field-name audit metadata in
+the same transaction. It returns only the affected count; it cannot grant review, reveal a
+proposal, apply a master value or change a route. The prior public withdrawal operation already
+permits an actual group administrator to refuse matching pending fields; that scope is retained.
+Prepared service/route/SQL cases cover denial in an existing session, reassignment, closure by
+a denied reviewer who retains configuration authority, forged-role refusal, permission/decision
+serialization and complete rollback if the consequence audit fails. These cases have not run.

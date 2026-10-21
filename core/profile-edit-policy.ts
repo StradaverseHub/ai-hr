@@ -2,10 +2,13 @@
 import {profileVisibilityFingerprint} from '../lib/profile-policy-fingerprint';
 import {resolveEssVisibleIds} from '../lib/personnel-ess-visibility';
 import {sql} from 'drizzle-orm';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
 import type {SessionContext,Tx} from '../db/client';
 import {getSetting,resolveEntitlementsTx} from './entitlements';
 import {resolveEssEditableIds,resolveEssPrimaryEditableIds} from '../lib/personnel-ess-contract';
 export async function lockProfileEditPolicyTx(tx:Tx,tenantId:string){
+ // Access changes and profile settings/decisions always take the same lock order.
+ await lockAccessConfigurationTx(tx,tenantId);
  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'profile-edit-policy:'+tenantId},0))`);
 }
 export async function freshProfileEditPolicyTx(tx:Tx,ctx:SessionContext){

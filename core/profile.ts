@@ -791,64 +791,12 @@ export async function withdrawProfileChangesForLockedFields(
   const lockedKeys = [...locked];
 
   const run=async (tx:Tx) => {
-    await tx.execute(sql`select set_config('app.profile_route_maintenance','on',true)`);
-    /**
-     * ⚠️ ONE STATEMENT, FILTERED IN SQL, WITH NO CAP — the fix a review forced (r261 fix pass).
-     *
-     * This used to read `SELECT … WHERE status = 'pending' LIMIT 1000` and sift the rows in TypeScript.
-     * Two things were wrong with that and the second is the serious one:
-     *   · the cap was on ALL pending rows rather than on the matching ones, so in a tenant with a
-     *     thousand unrelated requests waiting the matching row was simply never returned — proven on a
-     *     live cluster, where the request naming the bank account stayed `pending`, the toast said
-     *     "Fields saved" and an HR admin then approved it and moved the master account number;
-     *   · saving twice did not help, because nothing about the second save made the missed row any more
-     *     likely to be inside an unordered thousand.
-     * `?|` ("does this jsonb object have ANY of these keys?") does the matching in the database, so the
-     * statement touches exactly the rows it must refuse and converges by construction rather than by
-     * luck. RETURNING gives back the rows it actually changed, which is also what makes the count honest.
-     *
-     * status + reason + timestamp ONLY. No master table is touched anywhere in this function, which is
-     * the property test/me-profile-request-settings.test.ts reads the columns to prove.
-     */
-    const refused = await tx
-      .update(profileChangeRequest)
-      .set({ status: 'rejected', decidedByEmploymentId: null, decidedAt: sql`now()`, decisionReason: reason })
-      .where(
-        and(
-          eq(profileChangeRequest.status, 'pending'),
-          // ARRAY[$n, $n…], built with `sql.join` rather than by handing drizzle the JS array: a bare
-          // array parameter expands to a RECORD `($5, $6)`, which Postgres refuses to cast to text[]
-          // ("cannot cast type record to text[]"). Every key is still a bound parameter, never inlined.
-          sql`(${profileChangeRequest.proposed}->>'fieldId'=ANY(ARRAY[${sql.join(lockedKeys.map((k)=>sql`${k}`),sql`, `)}]::text[]) OR ${profileChangeRequest.proposed} ?| ARRAY[${sql.join(lockedKeys.map((k)=>sql`${k}`),sql`, `)}]::text[]
- OR EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(${profileChangeRequest.proposed}->'fields')='array' THEN ${profileChangeRequest.proposed}->'fields' ELSE '[]'::jsonb END) f WHERE f->>'fieldId'=ANY(ARRAY[${sql.join(lockedKeys.map((k)=>sql`${k}`),sql`, `)}]::text[]))
- OR EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(${profileChangeRequest.proposed}->'registers')='array' THEN ${profileChangeRequest.proposed}->'registers' ELSE '[]'::jsonb END) x,LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(x->'fields')='array' THEN x->'fields' ELSE '[]'::jsonb END) f WHERE f->>'fieldId'=ANY(ARRAY[${sql.join(lockedKeys.map((k)=>sql`${k}`),sql`, `)}]::text[])))`,
-        ),
-      )
-      .returning({
-        id: profileChangeRequest.id,
-        employmentId: profileChangeRequest.employmentId,
-        proposed: profileChangeRequest.proposed,
-      });
-
-    let withdrawn = 0;
-    for (const req of refused) {
-      const {profileProposalKeys}=await import('../lib/personnel-ess-contract');
-      const keys = profileProposalKeys(req.proposed);
-      const hit = keys.filter((k) => locked.has(k));
-      await appendEvent(tx, {
-        tenantId: ctx.tenantId,
-        aggregateType: 'profile-change',
-        aggregateId: req.id,
-        eventType: 'profile-change.rejected',
-        actor: actorOf(ctx),
-        subjectEmploymentId: req.employmentId,
-        // Field NAMES and a provenance marker, never values and never the reason sentence — the same
-        // rule decideProfileChange follows, and single-line so the event-payload PII guard can scan it.
-        payload: { decision: 'rejected', via: 'field-locked', fields: hit, reasonGiven: true },
-      });
-      withdrawn += 1;
-    }
-    return { withdrawn };
+    // A write-only configuration consequence, independent of merit-review permission. The SQL
+    // owner refreshes actual group administration and configuration denial, updates only pending
+    // matching requests, purges decided photo bytes via the retention trigger and audits atomically.
+    // It returns a count, never a proposal/route/reason, so a denied reviewer gains no row read.
+    const [row]=await tx.execute<{withdrawn:number}>(sql`select app.access_withdraw_profile_requests(${JSON.stringify(lockedKeys)}::jsonb,${reason}) as withdrawn`);
+    return {withdrawn:Number(row?.withdrawn??0)};
   };
   return outerTx?run(outerTx):withTenant(ctx,run);
 }
