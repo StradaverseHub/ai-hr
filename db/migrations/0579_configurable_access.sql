@@ -2588,7 +2588,7 @@ BEGIN
  after_values:=jsonb_build_object('numChildren',derived,'childReliefMode',stat.child_relief_mode,'childReliefTable',grid);
  UPDATE public.employee_statutory_my SET num_children=derived,child_relief_table=grid,updated_at=now() WHERE id=stat.id AND tenant_id=t;
  INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
-  VALUES(t,'employee-statutory',stat.id,'employee.tax.updated',CASE WHEN app.current_user_id() IS NULL THEN 'system' ELSE 'user' END,app.current_user_id(),subject,
+  VALUES(t,'employee-statutory',stat.id,'employee.tax.updated',CASE WHEN app.current_user_id() IS NULL THEN 'system'::public.actor_type ELSE 'user'::public.actor_type END,app.current_user_id(),subject,
    jsonb_build_object('personId',p_person,'before',before_values,'after',after_values,'auto',true,'provenance','auto_child_relief','derivedOn',as_of,'payrollAlert',CASE WHEN batches>0 THEN jsonb_build_object('period',period,'batches',batches) ELSE NULL END));
  RETURN jsonb_build_object('changed',true,'before',stat.num_children,'after',derived,'payrollAlert',CASE WHEN batches>0 THEN jsonb_build_object('period',period,'batches',batches) ELSE NULL END,'skipped',NULL);
 END; $$;
