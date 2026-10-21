@@ -469,8 +469,9 @@ export async function deleteNotice(ctx: SessionContext, id: string): Promise<voi
  *  never the publication: a copy that arrived pre-published would broadcast on the click of a button
  *  labelled Duplicate. */
 export async function duplicateNotice(ctx: SessionContext, id: string): Promise<{ id: string }> {
+  const actor=requireActor(ctx,'duplicated');
   return withTenant(ctx, async (tx) => {
-    const [row] = await tx.select().from(notice).where(authoringNotice(id)).limit(1);
+    const [row] = await tx.select().from(notice).where(authoringNotice(id)).limit(1).for('update');
     if (!row) throw new NoticeError('That notice could not be found.');
     const [copy] = await tx
       .insert(notice)
@@ -480,7 +481,7 @@ export async function duplicateNotice(ctx: SessionContext, id: string): Promise<
         title: `${row.title} (copy)`.slice(0, 200),
         body: row.body,
         summary:row.summary,category:row.category,pinned:row.pinned,requiresAcknowledgement:row.requiresAcknowledgement,
-        // A new announcement keeps content, never attachment IDs owned by its source.
+        // Copied bytes receive new IDs owned by the new draft; source history remains unchanged.
         attachmentIds:[],
         startOn: row.startOn,
         endOn: row.endOn,
@@ -490,16 +491,31 @@ export async function duplicateNotice(ctx: SessionContext, id: string): Promise<
         notifyOnPublish: row.notifyOnPublish,
         popupEnabled: row.popupEnabled,
         popupFrequency: row.popupFrequency,
-        createdByUserId: ctx.userId ?? null,
+        createdByUserId: actor,
       })
       .returning({ id: notice.id });
+
+    const copiedAttachments:string[]=[];
+    for(const sourceId of row.attachmentIds){
+      // Bound to at most five immutable source files. INSERT SELECT copies bytes inside PostgreSQL,
+      // without materializing up to50MiB in the web process or borrowing source ownership.
+      const [asset]=await tx.execute(sql`INSERT INTO public.notice_attachment
+        (tenant_id,notice_id,file_name,mime_type,byte_length,content,created_by_user_id)
+        SELECT ${ctx.tenantId}::uuid,${copy.id}::uuid,f.file_name,f.mime_type,f.byte_length,f.content,${actor}::uuid
+        FROM public.notice_attachment f WHERE f.id=${sourceId}::uuid AND f.notice_id=${row.id}::uuid AND f.tenant_id=${ctx.tenantId}::uuid
+        RETURNING id`) as unknown as {id:string}[];
+      if(!asset)throw new NoticeError('An attachment is no longer available; reload before duplicating.');
+      copiedAttachments.push(asset.id);
+    }
+    if(copiedAttachments.length)requireNoticeWrite(await tx.update(notice).set({attachmentIds:copiedAttachments})
+      .where(authoringNotice(copy.id)).returning({id:notice.id}));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'notice',
       aggregateId: copy.id,
       eventType: 'notice.created',
       actor: actorOf(ctx),
-      payload: { title: row.title, duplicatedFrom: id },
+      payload: { title: row.title, duplicatedFrom: id,attachments:copiedAttachments.length },
     });
     return { id: copy.id };
   });
