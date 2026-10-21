@@ -9,9 +9,32 @@ const primary='profile.emergency_contact.fullname';
 describe('explicit shared Personnel ESS contract',()=>{
  it('inventories every actual descriptor without deriving employee rights from import/report metadata',()=>{
   for(const field of PERSONNEL_FIELDS){expect(field.ess,field.id).toBeDefined();expect(field.ess.reason,field.id).toBeTruthy();if(field.ess.binding)expect(field.ess.visibility,field.id).toBe('visible');}
-  expect(new Set(PERSONNEL_FIELDS.map(field=>field.tab))).toEqual(new Set(ESS_PROFILE_TABS));
+  const populatedTabs=['Profile','Family','Employment','Employment History','Attendance','Bank & Statutory','Payroll','Leave','Documents','Qualification'];
+  const registryTabs=new Set(PERSONNEL_FIELDS.map(field=>field.tab));
+  expect(registryTabs).toEqual(new Set(populatedTabs));
+  expect(ESS_PROFILE_TABS).toEqual([...populatedTabs,'Others']);
+  expect(ESS_PROFILE_TABS.filter(tab=>!registryTabs.has(tab))).toEqual(['Others']);
   expect(personnelField('others.change_history.previousvalue')?.ess.visibility).toBe('protected');
   expect(personnelField('profile.personal_details.employeecode')?.ess.edit).toBe('viewOnly');
+ });
+ it('keeps stable review and dated-calendar IDs protected after their administrative rehome',()=>{
+  const reviewIds=['employmenttype','type','enddate','duedate','status','decision','documentkind','documentfilename','content'].map(key=>'others.probation_contract_internship_review.'+key);
+  const calendarIds=['calendar','startdate','enddate'].map(key=>'attendance.dated_holiday_calendar.'+key);
+  expect(PERSONNEL_FIELDS.filter(field=>field.id.startsWith('others.probation_contract_internship_review.')).map(field=>field.id)).toEqual(reviewIds);
+  expect(PERSONNEL_FIELDS.filter(field=>field.id.startsWith('attendance.dated_holiday_calendar.')).map(field=>field.id)).toEqual(calendarIds);
+  for(const [tab,ids]of [['Employment',reviewIds],['Attendance',calendarIds]]as const){
+   for(const id of ids){
+    const field=personnelField(id);
+    expect(field?.tab,id).toBe(tab);
+    expect(field?.ess,id).toMatchObject({visibility:'protected',edit:'specialist'});
+    expect(field?.ess.binding,id).toBeUndefined();
+    expect(essEditableFields().some(candidate=>candidate.id===id),id).toBe(false);
+    let refusal:unknown;
+    try{parseEssProfileProposal({v:2,fields:[{fieldId:id,before:null,value:'forged'}],registers:[]});}catch(error){refusal=error;}
+    expect(refusal,id).toMatchObject({code:'permission',fieldIds:[id]});
+   }
+  }
+  expect(resolveEssEditableIds({version:2,fields:[...reviewIds,...calendarIds]}).size).toBe(0);
  });
  it('keeps legacy all and request-only lists compatible without granting new fields',()=>{
   const defaults=resolveEssEditableIds('all');
