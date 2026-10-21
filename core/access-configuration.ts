@@ -7,7 +7,7 @@ import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {
   AccessPermissionError,previewEffectiveAccess,type AccessCapability,type AccessPreviewChange,
-  type AccessSnapshot,type CompanyScopeEvidence,
+  assertSystemAdministratorSurvives,type AccessSnapshot,type CompanyScopeEvidence,
 } from '../lib/access-permission-model';
 import {
   applyAccessConfigurationCommand,isAccessConfigurationCommand,type AccessConfigurationCommand,
@@ -21,6 +21,8 @@ export type CurrentAccessConfiguration={
   catalog:readonly AccessCapability[];
   evidence:CompanyScopeEvidence;
   scopeFingerprint:string;
+  /** Internal only: accounts that do not automatically expire under known lifecycle facts. */
+  recoveryUserIds:ReadonlySet<string>;
 };
 
 /**
@@ -52,6 +54,8 @@ async function currentTransition(tx:Tx,ctx:SessionContext,p:AccessConfigurationE
   const current=await owner.loadCurrent(tx,ctx);
   if(current.snapshot.tenantId!==ctx.tenantId||current.evidence.tenantId!==ctx.tenantId)throw new AccessPermissionError('invalid');
   const after=applyAccessConfigurationCommand(current.snapshot,current.catalog,ctx.userId,p.expectedRevision,p.command,current.evidence);
+  const recovery={...after,users:after.users.map(user=>({...user,active:user.active&&current.recoveryUserIds.has(user.id)}))};
+  assertSystemAdministratorSurvives(current.snapshot,recovery,current.catalog,current.evidence);
   const binding:AccessPreviewBinding={actorUserId:ctx.userId,snapshot:current.snapshot,catalog:current.catalog,command:p.command,scopeFingerprint:current.scopeFingerprint};
   return {current,after,binding,command:p.command};
 }

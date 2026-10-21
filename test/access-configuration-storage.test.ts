@@ -2,12 +2,14 @@
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {and,eq,sql} from 'drizzle-orm';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {withTenant,type SessionContext} from '../db/client';
-import {appUser,roleAssignment,company,accessGroup,accessConfiguration,domainEvent} from '../db/schema';
+import {appUser,roleAssignment,company,employment,accessGroup,accessConfiguration,domainEvent} from '../db/schema';
 import {accessConfigurationStore} from '../core/access-configuration-store';
 import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';
 import {revokeRole} from '../core/admin';
+import {hireEmployee} from '../core/org';
+import {todayInKualaLumpur} from '../lib/hr-date';
 import {pgSqlState} from '../lib/db-error';
 import type {AccessConfigurationCommand} from '../lib/access-configuration-command';
 let b:Base;
@@ -100,6 +102,21 @@ describe('canonical access storage under ai_hr_app',()=>{
   const failure=results.find(result=>result.status==='rejected');expect(failure?.status==='rejected'?pgSqlState(failure.reason):null).toBe('23514');
   const remaining=await owner.db.select({id:roleAssignment.id}).from(roleAssignment).where(and(eq(roleAssignment.tenantId,b.tenantId),eq(roleAssignment.role,'hr_admin'))).orderBy(roleAssignment.id);
   expect(remaining).toHaveLength(1);
+ });
+ it('refuses leaving only a currently active administrator whose known employment end will remove login access',async()=>{
+  const today=todayInKualaLumpur(),end=new Date(`${today}T00:00:00Z`);end.setUTCDate(end.getUTCDate()+2);
+  const endOn=end.toISOString().slice(0,10),afterEnd=new Date(end);afterEnd.setUTCDate(afterEnd.getUTCDate()+1);
+  const hired=await hireEmployee(admin(),{person:{fullName:'Fictional ending administrator'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:today});
+  const endingUser=await createAppUser(b.tenantId,hired.personId,'hr_admin');
+  await owner.db.update(employment).set({terminatedOn:endOn}).where(eq(employment.id,hired.employmentId));
+  const current=await state();expect(current.snapshot.users.find(user=>user.id===endingUser)?.active).toBe(true);
+  expect(current.recoveryUserIds.has(endingUser)).toBe(false);expect(current.recoveryUserIds.has(b.adminUserId)).toBe(true);
+  const [dates]=await owner.db.execute<{todayBlocked:boolean;endBlocked:boolean;afterBlocked:boolean}>(sql`select app.login_blocked(${endingUser}::uuid) as "todayBlocked",app.login_blocked_on(${endingUser}::uuid,${endOn}::date) as "endBlocked",app.login_blocked_on(${endingUser}::uuid,${afterEnd.toISOString().slice(0,10)}::date) as "afterBlocked"`);
+  expect(dates).toEqual({todayBlocked:false,endBlocked:false,afterBlocked:true});
+  await sqlRefusal(()=>withTenant(admin(),tx=>tx.execute(sql`select app.login_blocked_on(${endingUser}::uuid,current_date)`)),'42501');
+  const [firstGrant]=await owner.db.select({id:roleAssignment.id}).from(roleAssignment).where(and(eq(roleAssignment.tenantId,b.tenantId),eq(roleAssignment.appUserId,b.adminUserId),eq(roleAssignment.role,'hr_admin')));
+  await sqlRefusal(()=>revokeRole(admin(),{roleAssignmentId:firstGrant.id}),'23514');
+  const retained=await owner.db.select({id:roleAssignment.id}).from(roleAssignment).where(eq(roleAssignment.id,firstGrant.id));expect(retained).toHaveLength(1);
  });
  it('rolls the complete permission edit back when the actual audit insert fails',async()=>{
   const current=await state(),groupId=randomUUID(),command={kind:'createGroup' as const,groupId,name:'Audit refusal fixture'};

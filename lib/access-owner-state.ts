@@ -14,6 +14,7 @@ export function parseAccessOwnerState(raw:unknown,tenantId:string){
   if(s.tenantId!==tenantId||!uuid(s.revision)||!list(s.users,5000)||!list(s.groups,256)||!list(s.memberships,100000)||!list(s.overrides,100000))return refuse();
   if(!raw.companyIds.every(uuid)||!unique(raw.companyIds))return refuse();
   const companies=new Set(raw.companyIds),userIds=new Set<string>(),groupIds=new Set<string>(),capIds=new Set<string>();
+  if(!list(raw.recoveryUserIds,5000)||!raw.recoveryUserIds.every(uuid))return refuse();
   const validScope=(id:unknown)=>scope(id)&&(id===null||companies.has(id as string));
   for(const cap of raw.catalog){
     if(!object(cap)||!text(cap.id,200)||capIds.has(cap.id)||(cap.scope!=='tenant'&&cap.scope!=='company')||typeof cap.supported!=='boolean'||!list(cap.bindings,128))return refuse();
@@ -22,6 +23,7 @@ export function parseAccessOwnerState(raw:unknown,tenantId:string){
   }
   const validGrant=(v:unknown):v is CapabilityGrant=>object(v)&&typeof v.capabilityId==='string'&&capIds.has(v.capabilityId)&&validScope(v.companyId)&&!(v.companyId!==null&&catalog.some(c=>object(c)&&c.id===v.capabilityId&&c.scope==='tenant'));
   for(const user of s.users){if(!object(user)||!uuid(user.id)||userIds.has(user.id)||typeof user.active!=='boolean')return refuse();userIds.add(user.id);}
+  if(raw.recoveryUserIds.some(id=>!userIds.has(id))||!unique(raw.recoveryUserIds))return refuse();
   for(const group of s.groups){
     if(!object(group)||!uuid(group.id)||groupIds.has(group.id)||!text(group.name,100)||typeof group.retired!=='boolean'||typeof group.systemAdministrator!=='boolean'||!list(group.grants,256)||!group.grants.every(validGrant))return refuse();
     if(!unique(group.grants.map(g=>g.capabilityId+':'+g.companyId)))return refuse();groupIds.add(group.id);
@@ -40,5 +42,5 @@ export function parseAccessOwnerState(raw:unknown,tenantId:string){
     overrides:checked.overrides.map(o=>({userId:o.userId,capabilityId:o.capabilityId,companyId:o.companyId,effect:o.effect})),
   };
   const capabilities=(catalog as AccessCapability[]).map(c=>({id:c.id,scope:c.scope,supported:c.supported,bindings:c.bindings.map(b=>({owner:b.owner,operation:b.operation}))}));
-  return {snapshot,catalog:capabilities,evidence,scopeFingerprint:raw.scopeFingerprint};
+  return {snapshot,catalog:capabilities,evidence,scopeFingerprint:raw.scopeFingerprint,recoveryUserIds:new Set(raw.recoveryUserIds)};
 }

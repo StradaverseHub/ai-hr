@@ -22,15 +22,16 @@ function fixture(){
  ],memberships:[{userId:admin,groupId:system,companyId:null},{userId:worker,groupId:team,companyId:company}],overrides:[]};
  const evidence:CompanyScopeEvidence={tenantId:tenant,knownCompanyIds:new Set([company]),covers:()=>false};
  let scopeFingerprint='a'.repeat(64);
+ let recoveryUserIds=new Set([admin,worker]);
  const owner:AccessConfigurationOwner={
   loadCurrent:vi.fn(async(_tx:Tx,_ctx:SessionContext):Promise<CurrentAccessConfiguration>=>{
-   observed.calls.push('fresh-owner');return {snapshot,catalog,evidence,scopeFingerprint};
+   observed.calls.push('fresh-owner');return {snapshot,catalog,evidence,scopeFingerprint,recoveryUserIds};
   }),
   persist:vi.fn(async(_tx:Tx,_ctx:SessionContext,change)=>{
    observed.calls.push('persist');if(change.before.revision!==snapshot.revision)return false;snapshot=change.after;return true;
   }),
  };
- return {owner,get snapshot(){return snapshot;},set snapshot(value:AccessSnapshot){snapshot=value;},set scopeFingerprint(value:string){scopeFingerprint=value;}};
+ return {owner,get snapshot(){return snapshot;},set snapshot(value:AccessSnapshot){snapshot=value;},set scopeFingerprint(value:string){scopeFingerprint=value;},set recoveryUserIds(value:Set<string>){recoveryUserIds=value;}};
 }
 const ctx:SessionContext={tenantId:tenant,userId:admin,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
 const edit={expectedRevision:'revision-one',command:{kind:'setOverride',userId:worker,capabilityId:'workforce.view',companyId:company,effect:'deny'}};
@@ -65,6 +66,11 @@ describe('one fresh locked access transition for preview and commit',()=>{
   await saveAccessConfiguration(ctx,save,state.owner);
   await expect(saveAccessConfiguration(ctx,save,state.owner)).rejects.toMatchObject({code:'changed'});
   expect(state.owner.persist).toHaveBeenCalledTimes(1);
+ });
+ it('refuses a preview whose only currently active recovery administrator has a known future login expiry',async()=>{
+  const state=fixture();state.recoveryUserIds=new Set([worker]);
+  await expect(previewAccessConfiguration(ctx,edit,state.owner)).rejects.toMatchObject({code:'lastAdministrator'});
+  expect(state.owner.persist).not.toHaveBeenCalled();
  });
  it('propagates a refused CAS or atomic write/audit failure without reporting a successful save',async()=>{
   const state=fixture(),preview=await previewAccessConfiguration(ctx,edit,state.owner);

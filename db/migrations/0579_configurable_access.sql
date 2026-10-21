@@ -234,6 +234,39 @@ $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.access_can_delegate(text,uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
+-- Factor the existing 0279 login predicate through one dated owner. Current login behavior remains
+-- exactly its current_date course; the additional date parameter is private to recovery checks.
+CREATE FUNCTION app.login_blocked_on(p_user_id uuid,p_as_of date) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN p_as_of IS NULL THEN true ELSE EXISTS(
+  SELECT 1 FROM public.app_user u WHERE u.id=p_user_id AND (
+   u.archived_at IS NOT NULL OR (
+    u.person_id IS NOT NULL AND EXISTS(SELECT 1 FROM public.employment e WHERE e.person_id=u.person_id)
+    AND NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.person_id=u.person_id AND e.blacklisted_at IS NULL
+     AND (LEAST(e.resignation_date,e.last_working_date,e.terminated_on) IS NULL
+      OR p_as_of<=LEAST(e.resignation_date,e.last_working_date,e.terminated_on)))
+   )
+  )
+ ) END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.login_blocked_on(uuid,date) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.login_blocked(p_user_id uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.login_blocked_on(p_user_id,current_date);
+$$;
+--> statement-breakpoint
+CREATE FUNCTION app.access_recovery_available(p_user uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=p_user AND NOT app.login_blocked_on(u.id,
+  GREATEST(current_date,COALESCE((SELECT MAX(LEAST(e.resignation_date,e.last_working_date,e.terminated_on))+1
+   FROM public.employment e WHERE e.person_id=u.person_id
+    AND isfinite(LEAST(e.resignation_date,e.last_working_date,e.terminated_on))),current_date))));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_recovery_available(uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app.access_assert_administrator() RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
@@ -242,7 +275,8 @@ BEGIN
   WHERE g.tenant_id=app.current_tenant_id() AND g.system_administrator AND g.retired_at IS NULL
    AND m.company_id IS NULL
    AND app.access_allowed_for(m.user_id,'access.system_admin',NULL)
-   AND app.access_allowed_for(m.user_id,'access.configure',NULL)) THEN
+   AND app.access_allowed_for(m.user_id,'access.configure',NULL)
+   AND app.access_recovery_available(m.user_id)) THEN
   RAISE EXCEPTION 'access last administrator' USING ERRCODE='23514';
  END IF;
 END;
@@ -302,7 +336,7 @@ CREATE FUNCTION app.access_scope_fingerprint() RETURNS text
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT encode(sha256(convert_to(jsonb_build_object(
   'date',current_date,
-  'users',COALESCE((SELECT jsonb_agg(jsonb_build_array(u.id,u.archived_at,app.login_blocked(u.id)) ORDER BY u.id) FROM public.app_user u WHERE u.tenant_id=app.current_tenant_id()),'[]'::jsonb),
+  'users',COALESCE((SELECT jsonb_agg(jsonb_build_array(u.id,u.archived_at,app.login_blocked(u.id),app.access_recovery_available(u.id)) ORDER BY u.id) FROM public.app_user u WHERE u.tenant_id=app.current_tenant_id()),'[]'::jsonb),
   'companies',COALESCE((SELECT jsonb_agg(jsonb_build_array(c.id,c.parent_company_id) ORDER BY c.id) FROM public.company c WHERE c.tenant_id=app.current_tenant_id()),'[]'::jsonb),
   'roles',COALESCE((SELECT jsonb_agg(jsonb_build_array(r.id,r.app_user_id,r.role,r.company_id) ORDER BY r.id) FROM public.role_assignment r WHERE r.tenant_id=app.current_tenant_id()),'[]'::jsonb)
  )::text,'UTF8')),'hex');
@@ -327,6 +361,7 @@ BEGIN
   'catalog',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',c.id,'scope',c.scope,'supported',c.supported,'bindings',c.bindings) ORDER BY c.id) FROM public.access_capability c),'[]'::jsonb),
   'companyIds',COALESCE((SELECT jsonb_agg(c.id ORDER BY c.id) FROM public.company c WHERE c.tenant_id=t),'[]'::jsonb),
   'coverage',COALESCE((SELECT jsonb_agg(jsonb_build_object('ancestor',a.id,'company',c.id) ORDER BY a.id,c.id) FROM public.company a JOIN public.company c ON a.tenant_id=c.tenant_id WHERE a.tenant_id=t AND a.id<>c.id AND app.is_company_descendant(c.id,a.id)),'[]'::jsonb),
+  'recoveryUserIds',COALESCE((SELECT jsonb_agg(u.id ORDER BY u.id) FROM public.app_user u WHERE u.tenant_id=t AND app.access_recovery_available(u.id)),'[]'::jsonb),
   'scopeFingerprint',app.access_scope_fingerprint()
  ) INTO result FROM public.access_configuration s WHERE s.tenant_id=t AND s.initialized;
  IF result IS NULL THEN RAISE EXCEPTION 'access configuration unavailable' USING ERRCODE='42501'; END IF;
