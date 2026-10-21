@@ -254,7 +254,11 @@ BEGIN
   WHERE n.id=NEW.aggregate_id AND n.tenant_id=NEW.tenant_id;
  IF NOT FOUND THEN RAISE EXCEPTION 'Notice event parent is unavailable' USING ERRCODE='23514'; END IF;
  storage_owner:=app.notice_projection_connection_owner();
- IF NOT storage_owner AND NOT app.can_manage_notice(NEW.aggregate_id) THEN
+ IF NEW.event_type='notice.acknowledged' THEN
+  IF NEW.actor_type<>'user' OR NOT app.notice_ack_event_valid(NEW.id,NEW.aggregate_id,NEW.actor_id,NEW.subject_employment_id,NEW.payload) THEN
+   RAISE EXCEPTION 'Notice acknowledgement event requires its actual receipt' USING ERRCODE='42501';
+  END IF;
+ ELSIF NOT storage_owner AND NOT app.can_manage_notice(NEW.aggregate_id) THEN
   RAISE EXCEPTION 'Notice event is outside current authoring authority' USING ERRCODE='42501';
  END IF;
  IF NOT storage_owner AND (NEW.actor_type<>'user' OR NEW.actor_id IS DISTINCT FROM app.current_user_id()) THEN
@@ -325,3 +329,197 @@ $$;
 REVOKE ALL ON FUNCTION app.guard_notification_global_cursor() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER notification_global_cursor_guard BEFORE INSERT OR UPDATE OR DELETE ON public.notification_cursor
  FOR EACH ROW EXECUTE FUNCTION app.guard_notification_global_cursor();
+--> statement-breakpoint
+ALTER TABLE public.notice
+ ADD COLUMN summary text NOT NULL DEFAULT '',
+ ADD COLUMN category text CHECK(category IS NULL OR length(btrim(category)) BETWEEN 1 AND 80),
+ ADD COLUMN pinned boolean NOT NULL DEFAULT false,
+ ADD COLUMN requires_acknowledgement boolean NOT NULL DEFAULT false,
+ ADD COLUMN content_version integer NOT NULL DEFAULT 0 CHECK(content_version>=0),
+ ADD COLUMN attachment_ids uuid[] NOT NULL DEFAULT '{}';
+--> statement-breakpoint
+CREATE TABLE public.notice_attachment (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES public.tenant(id),
+ notice_id uuid NOT NULL REFERENCES public.notice(id) ON DELETE CASCADE,
+ file_name text NOT NULL CHECK(length(file_name) BETWEEN 1 AND 180 AND file_name !~ '[[:cntrl:]/\\]'),
+ mime_type text NOT NULL CHECK(mime_type IN ('application/pdf','image/png','image/jpeg','text/plain','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.openxmlformats-officedocument.presentationml.presentation')),
+ byte_length integer NOT NULL CHECK(byte_length>0 AND byte_length<=10485760),
+ content bytea NOT NULL CHECK(octet_length(content)=byte_length),
+ created_by_user_id uuid NOT NULL REFERENCES public.app_user(id),created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX notice_attachment_parent_idx ON public.notice_attachment(tenant_id,notice_id);
+--> statement-breakpoint
+CREATE TABLE public.notice_revision (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES public.tenant(id),
+ notice_id uuid NOT NULL REFERENCES public.notice(id),ordinal integer NOT NULL CHECK(ordinal>0),
+ title text NOT NULL,body text NOT NULL,summary text NOT NULL,start_on date NOT NULL,end_on date NOT NULL,
+ show_end_date boolean NOT NULL,requires_acknowledgement boolean NOT NULL,attachment_ids uuid[] NOT NULL,
+ origin text NOT NULL CHECK(origin IN ('rollout','publication','edit','maintenance')),
+ author_user_id uuid REFERENCES public.app_user(id),retained_at timestamptz NOT NULL DEFAULT now(),
+ CONSTRAINT notice_revision_author_check CHECK((origin IN ('rollout','maintenance') AND author_user_id IS NULL) OR (origin IN ('publication','edit') AND author_user_id IS NOT NULL)),
+ CONSTRAINT notice_revision_ordinal_uq UNIQUE(tenant_id,notice_id,ordinal)
+);
+--> statement-breakpoint
+CREATE TABLE public.notice_acknowledgement (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES public.tenant(id),
+ notice_id uuid NOT NULL REFERENCES public.notice(id),revision_id uuid NOT NULL REFERENCES public.notice_revision(id),content_version integer NOT NULL CHECK(content_version>0),
+ recipient_id uuid NOT NULL REFERENCES public.notice_recipient(id),employment_id uuid NOT NULL REFERENCES public.employment(id),
+ actor_user_id uuid NOT NULL REFERENCES public.app_user(id),acknowledged_at timestamptz NOT NULL DEFAULT now(),
+ source_event_id uuid NOT NULL UNIQUE,request_context jsonb NOT NULL DEFAULT '{}' CHECK(jsonb_typeof(request_context)='object' AND octet_length(request_context::text)<=1024),
+ recorded_xid xid8 NOT NULL DEFAULT pg_current_xact_id(),
+ CONSTRAINT notice_acknowledgement_once_uq UNIQUE(revision_id,recipient_id)
+);
+CREATE INDEX notice_acknowledgement_parent_idx ON public.notice_acknowledgement(tenant_id,notice_id);
+--> statement-breakpoint
+-- This retains today's content at rollout. It does not claim that this was the content originally sent,
+-- that a particular editor wrote it, or that any employee acknowledged it.
+UPDATE public.notice SET content_version=1 WHERE published_at IS NOT NULL;
+INSERT INTO public.notice_revision(tenant_id,notice_id,ordinal,title,body,summary,start_on,end_on,show_end_date,requires_acknowledgement,attachment_ids,origin)
+ SELECT tenant_id,id,1,title,body,summary,start_on,end_on,show_end_date,requires_acknowledgement,attachment_ids,'rollout'
+ FROM public.notice WHERE published_at IS NOT NULL;
+--> statement-breakpoint
+ALTER TABLE public.notice_revision ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notice_attachment ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notice_acknowledgement ENABLE ROW LEVEL SECURITY;
+CREATE POLICY notice_revision_author_read ON public.notice_revision FOR SELECT
+ USING(tenant_id=app.current_tenant_id() AND app.can_manage_notice(notice_id));
+CREATE POLICY notice_acknowledgement_read ON public.notice_acknowledgement FOR SELECT
+ USING(tenant_id=app.current_tenant_id() AND (SELECT app.principal_snapshot_current()) AND
+  (app.can_manage_notice(notice_id) OR EXISTS(SELECT 1 FROM public.employment e
+   WHERE e.id=employment_id AND e.tenant_id=notice_acknowledgement.tenant_id AND app.is_self_person(e.person_id))));
+CREATE POLICY notice_attachment_author ON public.notice_attachment FOR ALL
+ USING(tenant_id=app.current_tenant_id() AND app.can_manage_notice(notice_id))
+ WITH CHECK(tenant_id=app.current_tenant_id() AND app.can_manage_notice(notice_id) AND created_by_user_id=app.current_user_id());
+CREATE POLICY notice_attachment_recipient ON public.notice_attachment FOR SELECT
+ USING(tenant_id=app.current_tenant_id() AND (SELECT app.principal_snapshot_current()) AND EXISTS(
+  SELECT 1 FROM public.notice n JOIN public.notice_recipient nr ON nr.notice_id=n.id AND nr.tenant_id=n.tenant_id
+  JOIN public.employment e ON e.id=nr.employment_id AND e.tenant_id=nr.tenant_id
+  WHERE n.id=notice_attachment.notice_id AND n.tenant_id=notice_attachment.tenant_id
+   AND notice_attachment.id=ANY(n.attachment_ids) AND app.is_self_person(e.person_id)
+   AND n.published_at IS NOT NULL AND n.archived_at IS NULL
+   AND n.start_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND n.end_on>=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+ ));
+GRANT SELECT ON public.notice_revision,public.notice_acknowledgement TO ai_hr_app;
+GRANT SELECT,INSERT ON public.notice_attachment TO ai_hr_app;
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER ON public.notice_revision,public.notice_acknowledgement FROM PUBLIC,ai_hr_app;
+REVOKE UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER ON public.notice_attachment FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.guard_notice_retained_record() RETURNS trigger LANGUAGE plpgsql
+ SECURITY INVOKER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF TG_TABLE_NAME='notice_attachment' AND TG_OP='DELETE' AND NOT EXISTS(
+  SELECT 1 FROM public.notice_revision r WHERE r.notice_id=OLD.notice_id AND OLD.id=ANY(r.attachment_ids)
+ ) THEN RETURN OLD;END IF;
+ RAISE EXCEPTION 'Retain immutable Notice content and acknowledgement evidence' USING ERRCODE='23514';
+END;
+$$;
+REVOKE ALL ON FUNCTION app.guard_notice_retained_record() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER notice_revision_immutable BEFORE UPDATE OR DELETE ON public.notice_revision
+ FOR EACH ROW EXECUTE FUNCTION app.guard_notice_retained_record();
+CREATE TRIGGER notice_acknowledgement_immutable BEFORE UPDATE OR DELETE ON public.notice_acknowledgement
+ FOR EACH ROW EXECUTE FUNCTION app.guard_notice_retained_record();
+CREATE TRIGGER notice_attachment_immutable BEFORE UPDATE OR DELETE ON public.notice_attachment
+ FOR EACH ROW EXECUTE FUNCTION app.guard_notice_retained_record();
+--> statement-breakpoint
+CREATE FUNCTION app.prepare_notice_revision() RETURNS trigger LANGUAGE plpgsql
+ SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE changed boolean;
+BEGIN
+ IF cardinality(NEW.attachment_ids)>5 OR cardinality(NEW.attachment_ids)<>(SELECT count(DISTINCT a) FROM unnest(NEW.attachment_ids) a)
+  OR EXISTS(SELECT 1 FROM unnest(NEW.attachment_ids) a WHERE a IS NULL OR NOT EXISTS(
+   SELECT 1 FROM public.notice_attachment f WHERE f.id=a AND f.notice_id=NEW.id AND f.tenant_id=NEW.tenant_id)) THEN
+  RAISE EXCEPTION 'Choose at most five attachments owned by this Notice' USING ERRCODE='23514';
+ END IF;
+ IF TG_OP='INSERT' THEN
+  IF NEW.published_at IS NOT NULL AND NOT app.notice_projection_connection_owner() THEN
+   RAISE EXCEPTION 'Publish a saved Notice draft through the audience workflow' USING ERRCODE='23514';
+  END IF;
+  NEW.content_version:=CASE WHEN NEW.published_at IS NULL THEN 0 ELSE 1 END;RETURN NEW;
+ END IF;
+ changed:=ROW(NEW.title,NEW.body,NEW.summary,NEW.start_on,NEW.end_on,NEW.show_end_date,NEW.requires_acknowledgement,NEW.attachment_ids)
+  IS DISTINCT FROM ROW(OLD.title,OLD.body,OLD.summary,OLD.start_on,OLD.end_on,OLD.show_end_date,OLD.requires_acknowledgement,OLD.attachment_ids);
+ IF OLD.published_at IS NULL THEN NEW.content_version:=CASE WHEN NEW.published_at IS NULL THEN 0 ELSE 1 END;
+ ELSE NEW.content_version:=OLD.content_version+CASE WHEN changed THEN 1 ELSE 0 END;
+ END IF;
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.prepare_notice_revision() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER notice_revision_pointer BEFORE INSERT OR UPDATE ON public.notice
+ FOR EACH ROW EXECUTE FUNCTION app.prepare_notice_revision();
+--> statement-breakpoint
+CREATE FUNCTION app.capture_notice_revision() RETURNS trigger LANGUAGE plpgsql
+ SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE kind text; author uuid;
+BEGIN
+ IF NEW.published_at IS NULL OR (TG_OP='UPDATE' AND NEW.content_version=OLD.content_version) THEN RETURN NEW;END IF;
+ IF app.principal_snapshot_current() AND app.can_manage_notice(NEW.id) THEN
+  author:=app.current_user_id();kind:=CASE WHEN TG_OP='INSERT' OR OLD.published_at IS NULL THEN 'publication' ELSE 'edit' END;
+ ELSIF app.notice_projection_connection_owner() THEN kind:='maintenance';
+ ELSE RAISE EXCEPTION 'Current Notice authoring authority is required' USING ERRCODE='42501';END IF;
+ INSERT INTO public.notice_revision(tenant_id,notice_id,ordinal,title,body,summary,start_on,end_on,show_end_date,requires_acknowledgement,attachment_ids,origin,author_user_id)
+ VALUES(NEW.tenant_id,NEW.id,NEW.content_version,NEW.title,NEW.body,NEW.summary,NEW.start_on,NEW.end_on,NEW.show_end_date,NEW.requires_acknowledgement,NEW.attachment_ids,kind,author);
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.capture_notice_revision() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER notice_revision_capture AFTER INSERT OR UPDATE ON public.notice
+ FOR EACH ROW EXECUTE FUNCTION app.capture_notice_revision();
+--> statement-breakpoint
+-- A receipt can be created only by this purpose-bound command. It locks the same Notice parent as
+-- content edits, verifies the actual current principal and employment snapshot, and commits its event
+-- in the same transaction. No callback, proposed actor, timestamp or client-controlled privilege flag.
+CREATE FUNCTION app.acknowledge_notice(p_notice uuid,p_version integer,p_employment uuid,p_context jsonb DEFAULT '{}')
+ RETURNS TABLE(receipt_id uuid,content_version integer,acknowledged_at timestamptz) LANGUAGE plpgsql
+ SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE n public.notice%ROWTYPE;r public.notice_revision%ROWTYPE;recipient public.notice_recipient%ROWTYPE;
+ receipt public.notice_acknowledgement%ROWTYPE; event_id uuid:=gen_random_uuid();day date:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date;
+BEGIN
+ IF NOT app.principal_snapshot_current() OR NOT EXISTS(
+  SELECT 1 FROM public.employment e WHERE e.id=p_employment AND e.tenant_id=app.current_tenant_id() AND app.is_self_person(e.person_id)
+ ) THEN RAISE EXCEPTION 'Notice acknowledgement is unavailable' USING ERRCODE='42501';END IF;
+ SELECT * INTO n FROM public.notice WHERE id=p_notice AND tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Notice acknowledgement is unavailable' USING ERRCODE='42501';END IF;
+ SELECT * INTO recipient FROM public.notice_recipient WHERE notice_id=n.id AND tenant_id=n.tenant_id AND employment_id=p_employment;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Notice acknowledgement is unavailable' USING ERRCODE='42501';END IF;
+ SELECT * INTO r FROM public.notice_revision WHERE notice_id=n.id AND tenant_id=n.tenant_id AND ordinal=p_version;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Notice content changed; reload before acknowledging' USING ERRCODE='23514';END IF;
+ SELECT * INTO receipt FROM public.notice_acknowledgement WHERE revision_id=r.id AND recipient_id=recipient.id;
+ IF FOUND THEN RETURN QUERY SELECT receipt.id,r.ordinal,receipt.acknowledged_at;RETURN;END IF;
+ IF p_version IS DISTINCT FROM n.content_version OR NOT n.requires_acknowledgement OR n.published_at IS NULL OR n.archived_at IS NOT NULL
+  OR n.start_on>day OR n.end_on<day THEN
+  RAISE EXCEPTION 'Notice content changed or is no longer available; reload before acknowledging' USING ERRCODE='23514';
+ END IF;
+ IF p_context IS NULL OR jsonb_typeof(p_context)<>'object' OR octet_length(p_context::text)>1024
+  OR EXISTS(SELECT 1 FROM jsonb_object_keys(p_context) k WHERE k NOT IN ('reportedChannel','reportedUserAgent'))
+  OR EXISTS(SELECT 1 FROM jsonb_each(p_context) x WHERE jsonb_typeof(x.value)<>'string') THEN
+  RAISE EXCEPTION 'Notice acknowledgement request context is invalid' USING ERRCODE='23514';END IF;
+ INSERT INTO public.notice_acknowledgement(tenant_id,notice_id,revision_id,content_version,recipient_id,employment_id,actor_user_id,source_event_id,request_context)
+ VALUES(n.tenant_id,n.id,r.id,r.ordinal,recipient.id,p_employment,app.current_user_id(),event_id,p_context) RETURNING * INTO receipt;
+ INSERT INTO public.domain_event(id,tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
+ VALUES(event_id,n.tenant_id,'notice',n.id,'notice.acknowledged','user',app.current_user_id(),p_employment,
+  jsonb_build_object('receiptId',receipt.id,'contentVersion',r.ordinal));
+ RETURN QUERY SELECT receipt.id,r.ordinal,receipt.acknowledged_at;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.acknowledge_notice(uuid,integer,uuid,jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.acknowledge_notice(uuid,integer,uuid,jsonb) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.notice_ack_event_valid(p_event uuid,p_notice uuid,p_actor uuid,p_employment uuid,p_payload jsonb)
+ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND p_actor=app.current_user_id() AND EXISTS(
+  SELECT 1 FROM public.notice_acknowledgement a JOIN public.notice_revision r ON r.id=a.revision_id AND r.tenant_id=a.tenant_id
+  WHERE a.source_event_id=p_event AND a.notice_id=p_notice AND a.tenant_id=app.current_tenant_id()
+   AND a.actor_user_id=p_actor AND a.employment_id=p_employment AND a.recorded_xid=pg_current_xact_id()
+   AND p_payload->>'receiptId'=a.id::text AND p_payload->'contentVersion'=to_jsonb(r.ordinal)
+ );
+$$;
+REVOKE ALL ON FUNCTION app.notice_ack_event_valid(uuid,uuid,uuid,uuid,jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.notice_ack_event_valid(uuid,uuid,uuid,uuid,jsonb) TO ai_hr_app;
+--> statement-breakpoint
+ALTER POLICY notice_scoped_audit_read ON public.domain_event
+ USING(tenant_id=app.current_tenant_id() AND
+  ((aggregate_type<>'notice' AND event_type NOT LIKE 'notice.%') OR app.notice_event_readable(aggregate_id,payload)
+   OR (event_type='notice.acknowledged' AND (SELECT app.principal_snapshot_current()) AND EXISTS(
+    SELECT 1 FROM public.notice_acknowledgement a WHERE a.source_event_id=domain_event.id AND a.tenant_id=domain_event.tenant_id
+     AND a.actor_user_id=app.current_user_id()))));

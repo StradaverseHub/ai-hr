@@ -5514,6 +5514,12 @@ export const notice = pgTable(
     /** Markdown, rendered through components/markdown.tsx — the SAME renderer the Knowledge Base uses,
      *  which passes no raw HTML through (no rehype-raw) and therefore cannot carry stored XSS. */
     body: text('body').notNull(),
+    summary: text('summary').notNull().default(''),
+    category: text('category'),
+    pinned: boolean('pinned').notNull().default(false),
+    requiresAcknowledgement: boolean('requires_acknowledgement').notNull().default(false),
+    contentVersion: integer('content_version').notNull().default(0),
+    attachmentIds: uuid('attachment_ids').array().notNull().default(sql`'{}'::uuid[]`),
     /** Visibility window. Both required: an announcement with no end date is a permanent fixture nobody
      *  removes. `show_end_date` decides whether the employee is TOLD the end date, not whether one exists. */
     startOn: date('start_on').notNull(),
@@ -5554,9 +5560,8 @@ export const notice = pgTable(
  * The audience snapshot. One row per (notice, employment), written when the notice is PUBLISHED.
  *
  * `firstViewedAt` is a VIEW marker, not an acknowledgement — it is what makes the dashboard card's "3 new"
- * badge possible. `popupDismissedAt` is popup-frequency state and nothing else. Acknowledgement, when it
- * ships, is its own row with its own evidence (name typed, agreement text, timestamp); it must not be
- * conflated with either of these.
+ * badge possible. `popupDismissedAt` is popup-frequency state and nothing else. Explicit acknowledgement
+ * is an immutable receipt against a retained content revision; it must not be conflated with either.
  */
 export const noticeRecipient = pgTable(
   'notice_recipient',
@@ -5578,6 +5583,33 @@ export const noticeRecipient = pgTable(
     index('notice_recipient_employment_idx').on(t.tenantId, t.employmentId),
   ],
 );
+
+/** Exact retained published content; no acknowledgement or original editor is invented at rollout. */
+export const noticeRevision=pgTable('notice_revision',{
+ id:id(),tenantId:tenantId(),noticeId:uuid('notice_id').notNull().references(()=>notice.id),
+ ordinal:integer('ordinal').notNull(),title:text('title').notNull(),body:text('body').notNull(),summary:text('summary').notNull(),
+ startOn:date('start_on').notNull(),endOn:date('end_on').notNull(),showEndDate:boolean('show_end_date').notNull(),
+ requiresAcknowledgement:boolean('requires_acknowledgement').notNull(),attachmentIds:uuid('attachment_ids').array().notNull(),
+ origin:text('origin').notNull(),authorUserId:uuid('author_user_id').references(()=>appUser.id),retainedAt:timestamp('retained_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('notice_revision_ordinal_uq').on(t.tenantId,t.noticeId,t.ordinal)]);
+
+/** Bytes are never part of Notice list/Home DTOs. Published revisions retain their attachment IDs. */
+export const noticeAttachment=pgTable('notice_attachment',{
+ id:id(),tenantId:tenantId(),noticeId:uuid('notice_id').notNull().references(()=>notice.id,{onDelete:'cascade'}),
+ fileName:text('file_name').notNull(),mimeType:text('mime_type').notNull(),byteLength:integer('byte_length').notNull(),
+ content:bytea('content').notNull(),createdByUserId:uuid('created_by_user_id').notNull().references(()=>appUser.id),createdAt:createdAt(),
+},t=>[index('notice_attachment_parent_idx').on(t.tenantId,t.noticeId)]);
+
+/** Only the purpose-bound database acknowledgement command may insert; every receipt is immutable. */
+export const noticeAcknowledgement=pgTable('notice_acknowledgement',{
+ id:id(),tenantId:tenantId(),noticeId:uuid('notice_id').notNull().references(()=>notice.id),
+ revisionId:uuid('revision_id').notNull().references(()=>noticeRevision.id),contentVersion:integer('content_version').notNull(),
+ recipientId:uuid('recipient_id').notNull().references(()=>noticeRecipient.id),
+ employmentId:uuid('employment_id').notNull().references(()=>employment.id),
+ actorUserId:uuid('actor_user_id').notNull().references(()=>appUser.id),
+ acknowledgedAt:timestamp('acknowledged_at',{withTimezone:true}).notNull().defaultNow(),
+ sourceEventId:uuid('source_event_id').notNull().unique(),requestContext:jsonb('request_context').notNull().default({}),
+},t=>[uniqueIndex('notice_acknowledgement_once_uq').on(t.revisionId,t.recipientId),index('notice_acknowledgement_parent_idx').on(t.tenantId,t.noticeId)]);
 
 export const profileChangeStatusEnum = pgEnum('profile_change_status', [
   'pending',

@@ -82,7 +82,7 @@ const ALL_TABLES = [
   // ADR-0071 reason recorded further down: a table only ever cleared as a side effect is a table that
   // stops being cleared the day the cascade path changes. A surviving notice would also make a later
   // file's dashboard card or popup read a notice whose recipients belong to a deleted tenant.
-  'notice', 'notice_recipient',
+  'notice', 'notice_recipient', 'notice_revision','notice_attachment','notice_acknowledgement',
   // 6e9a126e — the entitlement redesign's three tables. Listed explicitly per the convention above: a
   // leaked template would trip the (tenant, leave_type, lower(name)) partial-unique index in a later test
   // file, and a leaked archive row would be counted by the listing/CSV assertions.
