@@ -67,7 +67,7 @@ import { customHolderGaps, IncompleteCustomHolderError } from '../lib/custom-hol
 // drift ratchet, test/payroll-pack-drift.test.ts): never the policy implementation module directly.
 import { assignPolicy, getPolicy } from '../packs/payroll/service';
 import { issueLegacyEmployeeCode, setCompensation } from './comp';
-import { setPersonComplianceFields } from './profile';
+import { setPersonComplianceFields } from './workforce-commands';
 import { listLeaveTypes } from './read';
 import { issueEmployeeCode, listConfigs, resolveEmployeeIdRule } from './employee-id-config';
 // 06f0cb8f — "is this Employee ID free?" spans employment AND employee_draft now. One definition, in its

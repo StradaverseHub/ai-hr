@@ -59,7 +59,7 @@ import {
   updateEmployeeDocumentMeta,
 } from '@/core/employee-documents';
 import { buildReviewLetterPdf } from '@/lib/review-letter-build';
-import { setPersonComplianceFields } from '@/core/profile';
+import { setPersonComplianceFields } from '@/core/workforce-commands';
 import { removePersonPhoto, setPersonPhoto } from '@/core/person-photo';
 import { packFor } from '@/localization/registry';
 // Item d64d0df4 — the five LHDN s.48 child-relief categories, in the canonical order the grid renders.

@@ -12,7 +12,7 @@ import { personnelBankValues, type PersonnelBankValues } from '../lib/personnel-
 import { personnelFamilyValues, personnelFamilyCatalogErrors } from '../lib/personnel-family-import';
 import { personnelImportProposedValues, PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS, personnelScalarIssue } from '../lib/personnel-import-contract';
 import { isCalendarDate } from '../lib/calendar-date';
-import { setPersonComplianceFields } from './profile';
+import { setPersonComplianceFields } from './workforce-commands';
 /**
  * Item 2983802f — THE PER-SECTION IMPORTER: update people who already exist, one subject area at a time.
  *

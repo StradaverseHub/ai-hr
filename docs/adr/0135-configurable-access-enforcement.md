@@ -157,3 +157,20 @@ counts, while populated compensation and raw colleague person/employment rows re
 revocation removes the projection in the same context and retains the user's independent own record.
 This is a source seam, not a claim of a completed roleless screen: capability page/detail/read-only
 consumer integration and all execution evidence remain outstanding. The catalogue is still disabled.
+
+
+Movement catalogue/template/preview/commit now take the access lock before Movement reference and
+catalogue locks, with the existing request/statement bounds established first. The selected company
+needs both read and maintenance; denied subjects never reach name/fingerprint projection. Destination
+choices and manager labels are similarly narrowed. This fixes a source-discovered lock-order inversion
+introduced by composing the new maintenance writer after the old Movement admission locks; no executed
+deadlock or passing concurrency claim is made.
+
+Employee import resolves only currently viewable/writable companies, narrows superior identifiers by
+current Workforce view, rechecks all valid row-company owners at the public validation response, and
+acquires the access lock before its enclosing write transaction. The direct compliance-field facade
+checks both employment and the shared person in the same transaction. Its admin forms, imports and
+draft activation use that facade; independently authorized ESS scalar/approval owners remain canonical.
+Prepared regressions reuse a genuinely valid Movement preview, revoke permission, then require its
+subsequent preview/download/commit to refuse without names/fingerprints or state/events. Full Employee
+validation/commit and direct compliance refusal are covered too. All are unexecuted source work.

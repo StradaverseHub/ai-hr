@@ -1,3 +1,5 @@
+import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {assertWorkforceCompanyTx,workforceEmploymentPredicate} from './workforce-access';
 /** Bounded canonical Movement rehearsals and per-employee atomic application.
  * Preview intentionally writes only inside a transaction that ALWAYS rolls back. It never dispatches
  * notifications, opens a detached writer transaction, or holds a lock while the user reviews the result.
@@ -32,19 +34,21 @@ function budget(deadline:number){if(Date.now()>deadline)throw new Error('movemen
 async function limits(tx:Tx){await tx.execute(sql`select set_config('lock_timeout',${MOVEMENT_IMPORT_LIMITS.lockMs+'ms'},true),set_config('statement_timeout',${MOVEMENT_IMPORT_LIMITS.statementMs+'ms'},true)`);}
 async function assertCompany(tx:Tx,ctx:SessionContext,id:string){
  if(!UUID.test(id))throw new Error('company_not_available');
+ await assertWorkforceCompanyTx(tx,ctx,id,'view');
+ await assertWorkforceCompanyTx(tx,ctx,id,'maintain');
  const [row]=await tx.select({id:company.id}).from(company).where(and(eq(company.tenantId,ctx.tenantId),eq(company.id,id),sql`app.is_admin_for(${company.id})`)).limit(1);
  if(!row)throw new Error('company_not_available');
 }
 async function catalogTx(tx:Tx,ctx:SessionContext,companyId:string):Promise<MovementImportCatalog>{
  await assertCompany(tx,ctx,companyId);
  const types=(await activeMovementEventTypeChoicesTx(tx,ctx.tenantId)).map(type=>({code:type.code,label:type.label,behaviour:type.behaviourKind}));
- const companies=await tx.select({value:company.id,label:company.legalName}).from(company).where(and(eq(company.tenantId,ctx.tenantId),isNull(company.archivedAt),sql`app.is_admin_for(${company.id})`)).orderBy(asc(company.legalName),asc(company.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
+ const companies=await tx.select({value:company.id,label:company.legalName}).from(company).where(and(eq(company.tenantId,ctx.tenantId),isNull(company.archivedAt),sql`app.is_admin_for(${company.id}) and app.access_workforce_company(${company.id},'workforce.view') and app.access_workforce_company(${company.id},'workforce.maintain')`)).orderBy(asc(company.legalName),asc(company.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
  const departments=await tx.select({value:department.id,label:department.name}).from(department).where(and(eq(department.tenantId,ctx.tenantId),isNull(department.archivedAt),visibleLabelIdsCondition(department,'department',[companyId]))).orderBy(asc(department.name),asc(department.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
  const positions=await tx.select({value:position.id,label:position.title}).from(position).where(and(eq(position.tenantId,ctx.tenantId),isNull(position.archivedAt),visibleLabelIdsCondition(position,'position',[companyId]))).orderBy(asc(position.title),asc(position.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
  const units=await tx.select({value:businessUnit.id,label:businessUnit.name}).from(businessUnit).where(and(eq(businessUnit.tenantId,ctx.tenantId),isNull(businessUnit.archivedAt),visibleLabelIdsCondition(businessUnit,'business_unit',[companyId]))).orderBy(asc(businessUnit.name),asc(businessUnit.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
  const locations=await tx.select({value:location.id,label:location.name}).from(location).where(and(eq(location.tenantId,ctx.tenantId),eq(location.companyId,companyId),isNull(location.archivedAt))).orderBy(asc(location.name),asc(location.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
  const grades=await tx.select({value:jobGrade.id,label:jobGrade.name,code:jobGrade.code}).from(jobGrade).where(and(eq(jobGrade.tenantId,ctx.tenantId),isNull(jobGrade.archivedAt))).orderBy(asc(jobGrade.code),asc(jobGrade.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
- const managers=await tx.select({value:employment.id,label:employment.employeeCode,name:person.fullName,companyId:employment.companyId,isTestRecord:employment.isTestRecord,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,lastWorkingDate:employment.lastWorkingDate,resignationDate:employment.resignationDate,blacklistedAt:employment.blacklistedAt}).from(employment).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).where(and(eq(employment.tenantId,ctx.tenantId),isNull(employment.terminatedOn))).orderBy(asc(employment.employeeCode),asc(employment.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
+ const managers=await tx.select({value:employment.id,label:employment.employeeCode,name:person.fullName,companyId:employment.companyId,isTestRecord:employment.isTestRecord,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,lastWorkingDate:employment.lastWorkingDate,resignationDate:employment.resignationDate,blacklistedAt:employment.blacklistedAt}).from(employment).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).where(and(eq(employment.tenantId,ctx.tenantId),isNull(employment.terminatedOn),workforceEmploymentPredicate(sql`${employment.id}`,'view'))).orderBy(asc(employment.employeeCode),asc(employment.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
  if([companies,departments,positions,units,locations,grades,managers].some(rows=>rows.length>MOVEMENT_IMPORT_LIMITS.referenceRows))throw new Error('movement_reference_catalog_too_large');
  const managerLabels=new Map(companies.map(c=>[c.value,c.label]));
  const fields:MovementImportCatalog['fields']={companyId:companies,departmentId:departments,positionId:positions,businessUnitId:units,locationId:locations,gradeId:grades.map(row=>({value:row.value,label:row.code+' · '+row.label,aliases:[row.code,row.label]})),managerEmploymentId:managers.map(row=>({value:row.value,label:(row.label??'')+' · '+row.name,aliases:[row.label??'',row.name,...(managerLabels.has(row.companyId)?[managerLabels.get(row.companyId)+' · '+(row.label??'')+' · '+row.name]:[])].filter(Boolean),companyId:row.companyId,isTestRecord:row.isTestRecord,eligible:row.hiredOn<=todayInKualaLumpur()&&!['resigned','blacklisted'].includes(deriveEmploymentStatus(row,todayInKualaLumpur()))}))};
@@ -57,7 +61,7 @@ async function catalogTx(tx:Tx,ctx:SessionContext,companyId:string):Promise<Move
  if(Object.values(fields).some(rows=>rows&&rows.length>MOVEMENT_IMPORT_LIMITS.referenceRows))throw new Error('movement_reference_catalog_too_large');
  return {types,companies,fields};
 }
-export function movementImportCatalog(ctx:SessionContext,companyId:string){assertAdmin(ctx);return withTenant(ctx,async tx=>{await limits(tx);return catalogTx(tx,ctx,companyId);},{readOnlySnapshot:true});}
+export function movementImportCatalog(ctx:SessionContext,companyId:string){assertAdmin(ctx);return withTenant(ctx,async tx=>{await limits(tx);await lockAccessConfigurationTx(tx,ctx.tenantId);return catalogTx(tx,ctx,companyId);});}
 function lookup(raw:string,options:MovementImportOption[],field:string):string{
  const exact=options.filter(option=>option.value===raw||`${option.value} · ${option.label}`===raw);
  if(exact.length===1)return exact[0].value;
@@ -201,7 +205,8 @@ export async function previewMovementImport(ctx:SessionContext,p:{companyId:stri
   budget(deadline);let employee:MovementImportEmployee={employeeCode:code,employmentId:null,name:null,rows:sortSequence(records).map(rowView),fingerprint:null};
   try{
    await withTenant(ctx,async tx=>{
-    const employeeDeadline=Math.min(deadline,Date.now()+MOVEMENT_IMPORT_LIMITS.employeeMs);await limits(tx);await lockMovementImportReferenceAdmissionTx(tx,ctx.tenantId);await lockMovementTypeCatalogueTx(tx,ctx.tenantId);await assertCompany(tx,ctx,p.companyId);if(p.catalogueHash&&digest({version:2,types:(await catalogTx(tx,ctx,p.companyId)).types})!==p.catalogueHash)throw new Error('workbook_catalogue_changed');
+    await limits(tx);await lockAccessConfigurationTx(tx,ctx.tenantId);
+    const employeeDeadline=Math.min(deadline,Date.now()+MOVEMENT_IMPORT_LIMITS.employeeMs);await lockMovementImportReferenceAdmissionTx(tx,ctx.tenantId);await lockMovementTypeCatalogueTx(tx,ctx.tenantId);await assertCompany(tx,ctx,p.companyId);if(p.catalogueHash&&digest({version:2,types:(await catalogTx(tx,ctx,p.companyId)).types})!==p.catalogueHash)throw new Error('workbook_catalogue_changed');
     const subject=await subjectTx(tx,ctx,p.companyId,code);employee={...employee,employmentId:subject.id,name:subject.name,fingerprint:await fingerprintTx(tx,ctx,subject.id,p.companyId,inputHash,selection,records,employeeDeadline)};
     const baseFingerprint=employee.fingerprint;const rows:MovementImportRow[]=[];const previous:RehearsedRow[]=[];
     for(const record of sortSequence(records)){
@@ -239,7 +244,8 @@ export async function commitMovementImport(ctx:SessionContext,p:{companyId:strin
   try{
    budget(deadline);
    employee=await withTenant(ctx,async tx=>{
-    const employeeDeadline=Math.min(deadline,Date.now()+MOVEMENT_IMPORT_LIMITS.employeeMs);await limits(tx);await lockMovementImportReferenceAdmissionTx(tx,ctx.tenantId);await lockMovementTypeCatalogueTx(tx,ctx.tenantId);await assertCompany(tx,ctx,p.companyId);if(p.catalogueHash&&digest({version:2,types:(await catalogTx(tx,ctx,p.companyId)).types})!==p.catalogueHash)throw new Error('workbook_catalogue_changed');const subject=await subjectTx(tx,ctx,p.companyId,code);
+    await limits(tx);await lockAccessConfigurationTx(tx,ctx.tenantId);
+    const employeeDeadline=Math.min(deadline,Date.now()+MOVEMENT_IMPORT_LIMITS.employeeMs);await lockMovementImportReferenceAdmissionTx(tx,ctx.tenantId);await lockMovementTypeCatalogueTx(tx,ctx.tenantId);await assertCompany(tx,ctx,p.companyId);if(p.catalogueHash&&digest({version:2,types:(await catalogTx(tx,ctx,p.companyId)).types})!==p.catalogueHash)throw new Error('workbook_catalogue_changed');const subject=await subjectTx(tx,ctx,p.companyId,code);
     employee={...employee,employmentId:subject.id,name:subject.name};
     const fingerprint=await fingerprintTx(tx,ctx,subject.id,p.companyId,inputHash,selection,records,employeeDeadline);
     const rehearsed=await rehearseSequenceTx(tx,ctx,records,subject.id,employeeDeadline);
@@ -268,7 +274,8 @@ export type MovementImportFilters={departmentIds?:string[];businessUnitIds?:stri
 /** Server-only download projection. Internal identities never leave this owner in workbook metadata. */
 export async function movementImportDownloadData(ctx:SessionContext,p:{companyId:string;typeCode?:string;filters?:MovementImportFilters}){
  assertAdmin(ctx);return withTenant(ctx,async tx=>{
-  await limits(tx);const catalog=await catalogTx(tx,ctx,p.companyId);
+  await limits(tx);await lockAccessConfigurationTx(tx,ctx.tenantId);
+  const catalog=await catalogTx(tx,ctx,p.companyId);
   const [selectedCompany]=await tx.select({name:company.legalName}).from(company).where(and(eq(company.id,p.companyId),isNull(company.archivedAt))).limit(1);
   if(!selectedCompany)throw new Error('company_not_available');
   const type=p.typeCode?catalog.types.find(t=>t.code===p.typeCode):undefined;
@@ -289,5 +296,5 @@ export async function movementImportDownloadData(ctx:SessionContext,p:{companyId
    if(descendants.length>MOVEMENT_IMPORT_LIMITS.referenceRows)throw new Error('movement_reference_catalog_too_large');
    subjects.push({employeeCode:emp.employeeCode??'',name,current:readable(values,catalog),managerExclusions:[emp.id,...descendants.map(row=>row.id)]});}
   return {catalog,companyName:selectedCompany.name,subjects,destinationCatalogs};
- },{readOnlySnapshot:true});
+ });
 }

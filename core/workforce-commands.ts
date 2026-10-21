@@ -4,6 +4,9 @@
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,assertWorkforcePersonTx} from './workforce-access';
 import * as org from './org';
+import {setPersonComplianceFields as writeComplianceFields} from './profile';
+import {employment} from '../db/schema';
+import {eq} from 'drizzle-orm';
 async function maintain<T>(ctx:SessionContext,employmentId:string,write:(tx:Tx)=>Promise<T>,outerTx?:Tx){
  const run=async(tx:Tx)=>{await assertWorkforceEmploymentTx(tx,ctx,employmentId,'maintain');return write(tx);};
  return outerTx?run(outerTx):withTenant(ctx,run);
@@ -25,4 +28,15 @@ export function setReportingLine(ctx:SessionContext,p:Parameters<typeof org.setR
  // Delegation is its own relationship owner; structural reporting is a Workforce mutation.
  if(p.lineType==='delegate')return org.setReportingLine(ctx,p,outerTx);
  return maintain(ctx,p.subordinateEmploymentId,tx=>org.setReportingLine(ctx,p,tx),outerTx);
+}
+
+/** Direct HR compliance edits are distinct from an approved ESS proposal. Check both the selected
+ * employment and the shared person before reusing the canonical validation/event writer. */
+export function setPersonComplianceFields(ctx:SessionContext,p:Parameters<typeof writeComplianceFields>[1],outerTx?:Tx){
+ return maintain(ctx,p.employmentId,async tx=>{
+  const [subject]=await tx.select({personId:employment.personId}).from(employment).where(eq(employment.id,p.employmentId)).limit(1);
+  if(!subject)throw new Error('Employment not found (or not visible).');
+  await assertWorkforcePersonTx(tx,ctx,subject.personId,'maintain');
+  return writeComplianceFields(ctx,p,tx);
+ },outerTx);
 }

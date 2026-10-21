@@ -1,3 +1,5 @@
+import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {workforceCompanies,workforceEmploymentPredicate,assertWorkforceCompanyTx,WorkforceAccessError} from './workforce-access';
 import {PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS} from '../lib/personnel-choice-vocabulary';
 import { personnelOperationalValues,type PersonnelOperationalPatch } from '../lib/personnel-operational-import';
 import { applyPersonnelOperationalValuesTx } from './personnel-import-operations';
@@ -37,13 +39,13 @@ import {
   appUser,
   profileOption,
 } from '../db/schema';
-import { and, desc, eq, isNotNull } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, sql } from 'drizzle-orm';
 import {updatePerson} from './org';
 import {hireEmployee,setEmploymentInfo,setReportingLine} from './workforce-commands';
 // r369 — `unpayableSalaryLeg` is the SAME predicate `setCompensation` refuses on, imported rather than
 // re-stated, so the dry run and the write can never disagree about which rows need a reason.
 import { setCompensation, unpayableSalaryLeg } from './comp';
-import { setPersonComplianceFields } from './profile';
+import { setPersonComplianceFields } from './workforce-commands';
 // Item 2983802f — the family sheet writes through the SAME service the Family card uses, so an imported
 // dependant is indistinguishable from a hand-entered one (events, child-relief resync, catalog rules).
 import { addDependentTx, syncChildReliefFromFamily, assertDependentsValid, type DependentInput, DEPENDENT_GENDERS, DEPENDENT_RELATIONSHIPS } from './dependents';
@@ -306,7 +308,12 @@ async function analyze(
   registerRecords:PersonnelRegisterRecords={},
 ): Promise<{ preview: ImportPreview; resolved: ResolvedRow[]; dependents: ResolvedDependent[]; registers:Awaited<ReturnType<typeof validateRegisterImport>>[] }> {
   if(Object.keys(registerRecords).some(key=>!(PERSONNEL_REGISTER_KINDS as readonly string[]).includes(key)))throw new Error('Unknown register sheet.');
-  const [allCompanies, leaveTypes] = await Promise.all([listCompanies(ctx,{adminOnly:true}), listLeaveTypes(ctx)]);
+  const [catalogCompanies, leaveTypes, maintainIds, viewIds] = await Promise.all([
+    listCompanies(ctx,{adminOnly:true}), listLeaveTypes(ctx), workforceCompanies(ctx,'maintain'), workforceCompanies(ctx,'view'),
+  ]);
+  const writable=new Set(maintainIds),readable=new Set(viewIds);
+  if(!writable.has(companyId)||!readable.has(companyId))throw new WorkforceAccessError();
+  const allCompanies=catalogCompanies.filter(company=>writable.has(company.id)&&readable.has(company.id));
   // d8471481 — company lookup keys. Legal name is what the reporter's template shows; company label
   // and registration number are accepted because those are what an HR spreadsheet usually carries.
   // The id is accepted too so a machine-generated file can be exact. All matched case-insensitively.
@@ -370,7 +377,8 @@ async function analyze(
     const superiorCandidates = await tx
       .select({ id: employment.id, code: employment.employeeCode, email: person.primaryEmail })
       .from(employment)
-      .innerJoin(person, eq(person.id, employment.personId));
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(workforceEmploymentPredicate(sql`${employment.id}`,'view'));
     // Item 2983802f — the catalog-governed vocabularies the new columns write into. Read ONCE here so a
     // typo in `state` / `country` / an emergency-contact or family relationship is a per-row error in the
     // DRY RUN, where a spreadsheet can still be fixed, instead of a failure at write with an employee
@@ -1138,7 +1146,15 @@ export async function validateEmployeeImport(
   ctx: SessionContext,
   p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[]; registerRecords?:PersonnelRegisterRecords },
 ): Promise<ImportPreview> {
-  const { preview } = await analyze(ctx, p.companyId, p.records, p.dependentRecords ?? [],p.registerRecords);
+  const { preview, resolved } = await analyze(ctx, p.companyId, p.records, p.dependentRecords ?? [],p.registerRecords);
+  await withTenant(ctx,async tx=>{
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await assertWorkforceCompanyTx(tx,ctx,p.companyId,'view');
+    await assertWorkforceCompanyTx(tx,ctx,p.companyId,'maintain');
+    for(const companyId of new Set(resolved.filter(row=>row.result.ok).map(row=>row.hire.companyId))){
+      await assertWorkforceCompanyTx(tx,ctx,companyId,'view');await assertWorkforceCompanyTx(tx,ctx,companyId,'maintain');
+    }
+  });
   return preview;
 }
 
@@ -1199,6 +1215,7 @@ export async function commitEmployeeImport(
   const writeWarnings:string[]=[];
   try {
     await withTenant(ctx,async tx=>{
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
   for (const [index, row] of resolved.entries()) {
     if (!row.result.ok) continue;
     // Per-ROW pack (d8471481): a file may span companies, and a company's statutory writer is its

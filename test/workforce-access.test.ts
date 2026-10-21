@@ -6,8 +6,11 @@ import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,typ
 import {withTenant,type SessionContext} from '../db/client';
 import {person,employment,employeeDraft,roleAssignment,appUser,jobGrade,domainEvent,employeeDependent,employeeQualification,personEmergencyContact,employeeDocument,compensation} from '../db/schema';
 import {hireEmployee,setEmployeeCode,updatePerson,setEmploymentGrade} from '../core/org';
-import {hireEmployee as hireWorkforceEmployee,setEmploymentInfo as maintainInfo} from '../core/workforce-commands';
+import {hireEmployee as hireWorkforceEmployee,setEmploymentInfo as maintainInfo,setPersonComplianceFields as maintainCompliance} from '../core/workforce-commands';
 import {createMovementEvent} from '../core/movement';
+import {previewMovementImport,commitMovementImport,movementImportCatalog,movementImportDownloadData} from '../core/movement-import';
+import {validateEmployeeImport,commitEmployeeImport} from '../core/import';
+import {toCsv} from '../lib/csv';
 import {setCompensation} from '../core/comp';
 import {setEmploymentTestRecord} from '../core/employment-test-record';
 import {setPersonPhoto} from '../core/person-photo';
@@ -93,6 +96,7 @@ describe('fresh Workforce-purpose record consumers',()=>{
   const events=await owner.db.select({id:domainEvent.id}).from(domainEvent).orderBy(domainEvent.id);
   await expect(updatePerson(admin(),{personId:subject.personId,fullName:'Not applied',primaryEmail:'not-applied@example.invalid',via:'employee-profile'})).rejects.toBeInstanceOf(WorkforceAccessError);
   await expect(setEmployeeCode(admin(),{employmentId:subject.employmentId,employeeCode:'NOT-APPLIED'})).rejects.toBeInstanceOf(WorkforceAccessError);
+  await expect(maintainCompliance(admin(),{employmentId:subject.employmentId,gender:'male'})).rejects.toBeInstanceOf(WorkforceAccessError);
   await expect(setEmploymentTestRecord(admin(),{employmentId:subject.employmentId,isTestRecord:true})).rejects.toBeInstanceOf(WorkforceAccessError);
   const bytes=Buffer.from([137,80,78,71,13,10,26,10,1]);
   await expect(setPersonPhoto(admin(),{personId:subject.personId,content:bytes,fileName:'not-applied.png',mimeType:'image/png',sizeBytes:bytes.length})).rejects.toBeInstanceOf(WorkforceAccessError);
@@ -112,6 +116,26 @@ describe('fresh Workforce-purpose record consumers',()=>{
   const [grade]=await owner.db.insert(jobGrade).values({tenantId:b.tenantId,code:'WF-INDEPENDENT',name:'Fictional independently approved grade'}).returning({id:jobGrade.id});
   await expect(setEmploymentGrade(admin(),{employmentId:subject.employmentId,gradeId:grade.id})).resolves.toMatchObject({changed:true});
   expect((await owner.db.select({gradeId:employment.gradeId}).from(employment).where(eq(employment.id,subject.employmentId)))[0]?.gradeId).toBe(grade.id);
+ });
+ it('rechecks permission before returning Movement preview names/fingerprints or applying a previous valid receipt',async()=>{
+  const subject=await hireEmployee(admin(),{person:{fullName:'Fictional import subject',primaryEmail:`${randomUUID()}@example.invalid`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur(new Date(Date.now()-60*86400000)),employeeCode:'WF-IMPORT'});
+  const future=todayInKualaLumpur(new Date(Date.now()+7*86400000));
+  const csv=toCsv([['employee_code','event_type','effective_date','department_id'],['WF-IMPORT','transfer',future,b.deptB]]);
+  const preview=await previewMovementImport(admin(),{companyId:b.companyId,csv});expect(preview.valid).toBe(1);
+  const fingerprints=Object.fromEntries(preview.employees.map(row=>[row.employeeCode,row.fingerprint!]));
+  await activate();await override(b.adminUserId,'workforce.maintain',b.companyId,'deny');
+  const before=await owner.db.select().from(domainEvent).orderBy(domainEvent.id);
+  await expect(movementImportCatalog(admin(),b.companyId)).rejects.toBeInstanceOf(WorkforceAccessError);
+  await expect(movementImportDownloadData(admin(),{companyId:b.companyId})).rejects.toBeInstanceOf(WorkforceAccessError);
+  const refused=await previewMovementImport(admin(),{companyId:b.companyId,csv});expect(refused.valid).toBe(0);
+  expect(refused.employees).toHaveLength(1);expect(refused.employees[0]).toMatchObject({employeeCode:'WF-IMPORT',employmentId:null,name:null,fingerprint:null});
+  const result=await commitMovementImport(admin(),{companyId:b.companyId,csv,selection:preview.selection,inputHash:preview.inputHash,fingerprints,acknowledgeExcluded:false});
+  expect(result.imported).toBe(0);expect(result.failed).toBe(1);expect(result.employees[0]).toMatchObject({employmentId:null,name:null,fingerprint:null});
+  expect(await owner.db.select().from(domainEvent).orderBy(domainEvent.id)).toEqual(before);
+  expect((await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId)))[0]?.companyId).toBe(b.companyId);
+  const records=[{employee_code:'WF-NEW',full_name:'Fictional never imported',email:'wf-new@example.invalid'}];
+  await expect(validateEmployeeImport(admin(),{companyId:b.companyId,records})).rejects.toBeInstanceOf(WorkforceAccessError);
+  await expect(commitEmployeeImport(admin(),{companyId:b.companyId,records})).rejects.toBeInstanceOf(WorkforceAccessError);
  });
  it('refuses direct register creation, edits and archives after maintenance denial without a partial event or state change',async()=>{
   const subject=await hire('Fictional register subject');
