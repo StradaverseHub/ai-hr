@@ -638,6 +638,25 @@ describe('structural SQL and fixed resignation consequences',()=>{
    .where(and(eq(domainEvent.subjectEmploymentId,subject.employmentId),sql`${domainEvent.eventType} in ('employment.terminated','resignation.accepted')`)).orderBy(domainEvent.eventType);
   expect(events).toEqual([{type:'employment.terminated',actor:b.adminUserId},{type:'resignation.accepted',actor:b.adminUserId}]);
  });
+ it('rolls back when the request reason drifts after its fixed consequence was prepared',async()=>{
+  const {subject,request}=await pending();const {decideResignation}=await import('../core/offboarding');
+  const before=await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId));
+  const beforeRequest=await owner.db.select().from(resignationRequest).where(eq(resignationRequest.id,request.requestId));
+  const beforeEvents=await owner.db.select().from(domainEvent).where(eq(domainEvent.subjectEmploymentId,subject.employmentId)).orderBy(domainEvent.id);
+  // Simulate another in-transaction writer changing the actual source after preparation. The decision
+  // still emits both ordinary events, so only the final source/consequence binding detects this drift.
+  await owner.db.execute(sql.raw("CREATE FUNCTION app.test_resignation_source_drift() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.status='accepted' THEN NEW.reason:='Fictional changed source after preparation'; END IF; RETURN NEW; END $$"));
+  try{
+   await owner.db.execute(sql.raw('CREATE TRIGGER test_resignation_source_drift BEFORE UPDATE ON resignation_request FOR EACH ROW EXECUTE FUNCTION app.test_resignation_source_drift()'));
+   await sqlRefusal(decideResignation(admin(),{requestId:request.requestId,decision:'accepted'}));
+  }finally{
+   await owner.db.execute(sql.raw('DROP TRIGGER IF EXISTS test_resignation_source_drift ON resignation_request'));
+   await owner.db.execute(sql.raw('DROP FUNCTION app.test_resignation_source_drift()'));
+  }
+  expect(await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId))).toEqual(before);
+  expect(await owner.db.select().from(resignationRequest).where(eq(resignationRequest.id,request.requestId))).toEqual(beforeRequest);
+  expect(await owner.db.select().from(domainEvent).where(eq(domainEvent.subjectEmploymentId,subject.employmentId)).orderBy(domainEvent.id)).toEqual(beforeEvents);
+ });
  it('refuses incomplete, self and replayed request evidence without a partial termination',async()=>{
   const {subject,request,own}=await pending();
   const before=await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId));

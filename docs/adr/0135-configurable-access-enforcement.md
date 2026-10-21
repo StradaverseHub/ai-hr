@@ -495,3 +495,11 @@ full atomic rollback and actual actor audit. Required execution also includes cr
 edge closure, revoked and real foreign request refusal, delegation, entity transfer/hire correction,
 scheduled sweep, default and independent grade posting, pinned-snapshot revocation and owner recovery.
 The source is not a claim that those outcomes or SQL syntax/ACL/trigger semantics have passed.
+
+
+A source review tightened the final resignation witness to recheck the actual request's Person and
+normalized reason as well as employment/date/status. Another writer in the same transaction must not
+change the source after preparation and still commit the old fixed termination effect. The authored
+regression injects such a request change while retaining the ordinary decision and both events, and
+expects the employment, request and events all to roll back. This is a source-derived correction and
+an UNRUN regression, not an observed runtime result.

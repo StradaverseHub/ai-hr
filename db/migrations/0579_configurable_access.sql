@@ -2766,8 +2766,11 @@ BEGIN
  IF NOT FOUND OR proof.termination_event IS NULL
   OR NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=proof.employment_id AND e.tenant_id=proof.tenant_id AND to_jsonb(e) @> proof.expected_patch)
   OR (proof.request_id IS NOT NULL AND (proof.resignation_event IS NULL OR NOT EXISTS(
-   SELECT 1 FROM public.resignation_request r WHERE r.id=proof.request_id AND r.tenant_id=proof.tenant_id AND r.employment_id=proof.employment_id
-    AND r.status='accepted' AND r.decided_at IS NOT NULL AND r.last_working_day=proof.termination_on))) THEN
+   SELECT 1 FROM public.resignation_request r JOIN public.employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+    WHERE r.id=proof.request_id AND r.tenant_id=proof.tenant_id AND r.employment_id=proof.employment_id AND r.person_id=e.person_id
+     AND r.status='accepted' AND r.decided_at IS NOT NULL AND r.last_working_day=proof.termination_on
+     AND (CASE WHEN r.reason IS NULL THEN 'Resignation' ELSE NULLIF(btrim(r.reason),'') END)
+      IS NOT DISTINCT FROM proof.expected_patch->>'termination_reason'))) THEN
   RAISE EXCEPTION 'Incomplete termination consequence' USING ERRCODE='42501'; END IF;
  RETURN NULL;
 END; $$;
