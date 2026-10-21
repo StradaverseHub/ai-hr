@@ -374,6 +374,15 @@ export function normalizeDashboardLayout(raw: unknown, cards: readonly Dashboard
 /** The dashboard roles a layout can be saved under — mirrors lib/dashboard-cards resolveDashboardRole. */
 export const DASHBOARD_LAYOUT_ROLES = ['employee', 'manager', 'hr_admin'] as const;
 export type DashboardLayoutRole = (typeof DASHBOARD_LAYOUT_ROLES)[number];
+/** Cosmetic Home clock/week settings share this envelope. Card choices remain exclusively in the
+ * employee layout slot; this metadata never owns a second card order or an access decision. */
+export type DashboardLayoutEnvelope = Partial<Record<DashboardLayoutRole, unknown>> & { homeDisplay?: unknown };
+
+function preservedHomeDisplay(raw: unknown): Pick<DashboardLayoutEnvelope, 'homeDisplay'> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || isLegacyFlatLayout(raw) || !Object.hasOwn(raw, 'homeDisplay')) return {};
+  return { homeDisplay: (raw as Record<string, unknown>).homeDisplay };
+}
+
 
 /** Is `raw` a LEGACY flat single-layout value (pre-9606c59f): an order array or `{ selected/order }`? */
 function isLegacyFlatLayout(raw: unknown): boolean {
@@ -408,8 +417,8 @@ export function mergeRoleLayout(
   raw: unknown,
   role: DashboardLayoutRole,
   layout: DashboardLayout,
-): Partial<Record<DashboardLayoutRole, unknown>> {
-  const out: Partial<Record<DashboardLayoutRole, unknown>> = {};
+): DashboardLayoutEnvelope {
+  const out: DashboardLayoutEnvelope = preservedHomeDisplay(raw);
   for (const r of DASHBOARD_LAYOUT_ROLES) {
     const slot = extractRoleLayout(raw, r);
     if (slot != null) out[r] = slot;
@@ -425,8 +434,8 @@ export function mergeRoleLayout(
 export function removeRoleLayout(
   raw: unknown,
   role: DashboardLayoutRole,
-): Partial<Record<DashboardLayoutRole, unknown>> | null {
-  const out: Partial<Record<DashboardLayoutRole, unknown>> = {};
+): DashboardLayoutEnvelope | null {
+  const out: DashboardLayoutEnvelope = preservedHomeDisplay(raw);
   for (const r of DASHBOARD_LAYOUT_ROLES) {
     if (r === role) continue;
     const slot = extractRoleLayout(raw, r);

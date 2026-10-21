@@ -16,6 +16,9 @@ import type { SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import {
   getDashboardLayout,
+  getEmployeeHomePreferences,
+  setEmployeeHomePreferences,
+  resetEmployeeHomePreferences,
   resetDashboardLayout,
   setDashboardLayout,
 } from '../core/dashboard-prefs';
@@ -271,3 +274,65 @@ async function withRawSeam(ctx: SessionContext, raw: unknown): Promise<void> {
     await tx.execute(sql`select app.dashboard_layout_set(${JSON.stringify(raw)}::jsonb)`);
   });
 }
+
+
+// Home persists card choices through this existing own-row owner, rather than a parallel preference table.
+import {EMPLOYEE_HOME_CARDS,defaultEmployeeHomePreferences} from '../lib/employee-home';
+const HOME_CARDS=EMPLOYEE_HOME_CARDS.map((cardKey,index)=>({cardKey,employeeSelectable:cardKey!=='summary',
+  defaultDisplay:true,mandatory:cardKey==='summary',displayOrder:index}));
+async function rawLayout(ctx:SessionContext){
+  const [row]=await owner.db.select({layout:schema.appUser.dashboardLayout}).from(schema.appUser).where(eq(schema.appUser.id,ctx.userId!));
+  return row.layout;
+}
+describe('Home cosmetic preferences share the canonical dashboard owner',()=>{
+  it('persists/reopens choices once, keeps another role and login private, and resets only Home',async()=>{
+    const ctx=await newEmployeeCtx(),other=await newEmployeeCtx();
+    const managerCards=BUILTIN_ROLE_DASHBOARD_CARDS.manager;
+    await setDashboardLayout(ctx,{selected:['teamAwayToday'],order:['teamAwayToday']},managerCards,'manager');
+    const preferences={...defaultEmployeeHomePreferences(),timeZone:'America/New_York',weekStartsOn:0,
+      hiddenCards:['tasks'] as const,cardOrder:['calendar',...EMPLOYEE_HOME_CARDS.filter(key=>key!=='calendar')]};
+    await setEmployeeHomePreferences(ctx,preferences,HOME_CARDS);
+    expect(await getEmployeeHomePreferences(ctx,HOME_CARDS)).toEqual(preferences);
+    const raw=await rawLayout(ctx) as Record<string,unknown>;
+    expect(raw.homeDisplay).toEqual({version:1,timeZone:'America/New_York',weekStartsOn:0});
+    expect(raw).not.toHaveProperty('hiddenCards');expect(raw).not.toHaveProperty('cardOrder');
+    expect((await getDashboardLayout(ctx,HOME_CARDS,'employee')).selected).not.toContain('tasks');
+    expect((await getDashboardLayout(ctx,managerCards,'manager')).selected).toEqual(['teamAwayToday']);
+    expect(await getEmployeeHomePreferences(other,HOME_CARDS)).toEqual(defaultEmployeeHomePreferences());
+    await resetEmployeeHomePreferences(ctx);
+    expect(await getEmployeeHomePreferences(ctx,HOME_CARDS)).toEqual(defaultEmployeeHomePreferences());
+    expect((await getDashboardLayout(ctx,managerCards,'manager')).selected).toEqual(['teamAwayToday']);
+  });
+  it('legacy role actions preserve display preferences and concurrent role/Home writes do not erase each other',async()=>{
+    const ctx=await newEmployeeCtx(),managerCards=BUILTIN_ROLE_DASHBOARD_CARDS.manager;
+    const preferences={...defaultEmployeeHomePreferences(),timeZone:'Asia/Tokyo',weekStartsOn:6};
+    await Promise.all([
+      setEmployeeHomePreferences(ctx,preferences,HOME_CARDS),
+      setDashboardLayout(ctx,{selected:['teamAwayToday'],order:['teamAwayToday']},managerCards,'manager'),
+    ]);
+    expect(await getEmployeeHomePreferences(ctx,HOME_CARDS)).toEqual(preferences);
+    expect((await getDashboardLayout(ctx,managerCards,'manager')).selected).toEqual(['teamAwayToday']);
+    await resetDashboardLayout(ctx,'manager');
+    expect(await getEmployeeHomePreferences(ctx,HOME_CARDS)).toEqual(preferences);
+    await setDashboardLayout(ctx,{selected:['summary','calendar'],order:['calendar','summary']},HOME_CARDS,'employee');
+    expect(await getEmployeeHomePreferences(ctx,HOME_CARDS)).toMatchObject({timeZone:'Asia/Tokyo',weekStartsOn:6});
+  });
+  it('does not grant a disabled card or save invalid timezone, mandatory-card removal or extra identity fields',async()=>{
+    const ctx=await newEmployeeCtx(),preferences=defaultEmployeeHomePreferences();
+    await setEmployeeHomePreferences(ctx,preferences,HOME_CARDS);
+    expect((await getEmployeeHomePreferences(ctx,HOME_CARDS.filter(card=>card.cardKey!=='notices'))).hiddenCards).toContain('notices');
+    const before=await rawLayout(ctx);
+    for(const input of [{...preferences,timeZone:'invalid/timezone'},{...preferences,hiddenCards:['summary']},
+      {...preferences,userId:randomUUID()},{...preferences,weekStartsOn:7}])
+      expect(()=>setEmployeeHomePreferences(ctx,input,HOME_CARDS)).toThrow();
+    expect(await rawLayout(ctx)).toEqual(before);
+  });
+  it('falls back on corrupt stored display data without overwriting it during read or another role save',async()=>{
+    const ctx=await newEmployeeCtx(),invalid={version:99,timeZone:'invalid/timezone',weekStartsOn:9};
+    await withRawSeam(ctx,{homeDisplay:invalid});
+    expect(await getEmployeeHomePreferences(ctx,HOME_CARDS)).toEqual(defaultEmployeeHomePreferences());
+    expect(await rawLayout(ctx)).toEqual({homeDisplay:invalid});
+    await setDashboardLayout(ctx,{selected:['teamAwayToday'],order:['teamAwayToday']},BUILTIN_ROLE_DASHBOARD_CARDS.manager,'manager');
+    expect((await rawLayout(ctx) as Record<string,unknown>).homeDisplay).toEqual(invalid);
+  });
+});

@@ -22013,5 +22013,27 @@
       "tooMany": "The history or date window exceeds the supported size. Narrow the dates or request review.",
       "failed": "The calendar could not be saved. Review the dates and try again."
     }
+  },
+  "employeeHome": {
+    "title": "Home",
+    "employment": "Employment",
+    "chooseEmployment": "Choose employment",
+    "chooseHelp": "Choose an employment to see your Home.",
+    "showEmployment": "Show Home",
+    "noEmployment": "No employment is linked to your account. Contact HR if you expected to see one.",
+    "companyUnavailable": "Company unavailable",
+    "employeeCodeUnavailable": "Employee ID unavailable",
+    "knowledgeSearch": {
+      "label": "Search policies and help",
+      "hint": "Search library documents available to your account.",
+      "submit": "Search",
+      "loading": "Searching…",
+      "results": "Library results",
+      "noMatch": "No matching library documents. Contact HR or browse your Notice Board.",
+      "failed": "Search could not load. Submit your search again.",
+      "timeout": "Search took too long. Submit your search again.",
+      "invalid": "Use up to 120 characters, including at least one letter or number.",
+      "descriptionFallback": "Open the document for details."
+    }
   }
 }

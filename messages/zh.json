@@ -22013,5 +22013,27 @@
       "tooMany": "历史记录或日期范围超过支持大小，请缩小范围或申请复核。",
       "failed": "无法保存日历，请检查日期后重试。"
     }
+  },
+  "employeeHome": {
+    "title": "主页",
+    "employment": "任职",
+    "chooseEmployment": "选择任职",
+    "chooseHelp": "请选择任职以查看您的主页。",
+    "showEmployment": "查看主页",
+    "noEmployment": "您的账户尚未关联任何任职。如有疑问，请联系 HR。",
+    "companyUnavailable": "公司信息暂不可用",
+    "employeeCodeUnavailable": "员工编号暂不可用",
+    "knowledgeSearch": {
+      "label": "搜索政策和帮助",
+      "hint": "搜索您的账户有权查看的资料库文档。",
+      "submit": "搜索",
+      "loading": "正在搜索…",
+      "results": "资料库搜索结果",
+      "noMatch": "没有匹配的资料库文档。请联系 HR 或浏览您的公告板。",
+      "failed": "无法加载搜索结果。请重新搜索。",
+      "timeout": "搜索超时。请重新搜索。",
+      "invalid": "请输入不超过 120 个字符，并包含至少一个字母、文字或数字。",
+      "descriptionFallback": "打开文档查看详情。"
+    }
   }
 }
