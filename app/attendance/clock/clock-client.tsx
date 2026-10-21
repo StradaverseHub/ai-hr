@@ -39,16 +39,19 @@ function newRequestId() {
  *    opens the camera immediately and retains Skip Photo; 'not_required' submits
  *    directly with no camera UI and the Attendance Photo card is not rendered at all.
  */
-export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:string|null}) {
+export function ClockPageClient(props:{initial:Today;shiftName:string|null;employmentId?:string}){
+  return <ClockFlow key={props.employmentId??'legacy'} {...props}/>;
+}
+function ClockFlow({initial,shiftName,employmentId}:{initial:Today;shiftName:string|null;employmentId?:string}) {
   const t=useTranslations('attendance.clock'), locale=useLocale();
   const [today,setToday]=React.useState(initial), [now,setNow]=React.useState<number|null>(null), [synced,setSynced]=React.useState(false);
   const [removing,setRemoving]=React.useState<Today['captures'][number]|null>(null),[removalReason,setRemovalReason]=React.useState(''),[removalError,setRemovalError]=React.useState(''),[removalBusy,setRemovalBusy]=React.useState(false);
   const removalSnapshot=React.useRef({baseline:initial.removalBaseline,clockContext:initial.clockContext});
-  const removalCommand=React.useRef<{punchId:string;requestId:string;baseline:string;reason:string;clockContext:string}|null>(null),removalFlight=React.useRef(false),removalTrigger=React.useRef<HTMLButtonElement|null>(null);
+  const removalCommand=React.useRef<{punchId:string;requestId:string;baseline:string;reason:string;clockContext:string;employmentId?:string}|null>(null),removalFlight=React.useRef(false),removalTrigger=React.useRef<HTMLButtonElement|null>(null);
   async function removeClock(){
     if(!removing?.punchId||removalFlight.current)return;
     removalFlight.current=true;setRemovalBusy(true);setRemovalError('');
-    removalCommand.current??={punchId:removing.punchId,requestId:newRequestId(),baseline:removalSnapshot.current.baseline,reason:removalReason,clockContext:removalSnapshot.current.clockContext};
+    removalCommand.current??={punchId:removing.punchId,requestId:newRequestId(),baseline:removalSnapshot.current.baseline,reason:removalReason,clockContext:removalSnapshot.current.clockContext,...(employmentId!==undefined?{employmentId}:{})};
     try{const result=await requestClockRemovalAction(removalCommand.current);if(!result.ok){removalCommand.current=null;setRemovalError(result.message);return;}removalCommand.current=null;setRemoving(null);setSuccess(t('removalRequested'));await refresh();}
     catch{setRemovalError(t('removalUnconfirmed'));}
     finally{removalFlight.current=false;setRemovalBusy(false);}
@@ -69,7 +72,9 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
   const refresh=React.useCallback(async(nextGeo?:Geo|null)=>{
     const sequence=++refreshSequence.current;
     const point=nextGeo===undefined?geo:nextGeo;
-    const params=point?'?'+new URLSearchParams({lat:String(point.lat),lng:String(point.lng),accuracy:String(point.accuracy)}):'';
+    const query=new URLSearchParams(point?{lat:String(point.lat),lng:String(point.lng),accuracy:String(point.accuracy)}:{});
+    if(employmentId!==undefined)query.set('employmentId',employmentId);
+    const params=query.size?'?'+query.toString():'';
     const response=await fetch('/api/attendance/today'+params,{cache:'no-store'});
     if(!response.ok) throw new Error(response.status===401?'authentication':'sync');
     const value:Today=await response.json();
@@ -78,7 +83,7 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
     const clockValue=await clock.json(),end=performance.now();
     if(sequence!==refreshSequence.current)return value;
     base.current={server:Date.parse(clockValue.serverNow)+(end-clockStart)/2,mono:end};setNow(base.current.server);setToday(value);setSynced(true);return value;
-  },[geo]);
+  },[geo,employmentId]);
   const refreshRef=React.useRef(refresh);refreshRef.current=refresh;
   const todayRef=React.useRef(today);todayRef.current=today;
   React.useEffect(()=>{
@@ -91,7 +96,7 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
     const poll=setInterval(sync,60000);
     window.addEventListener('focus',sync);window.addEventListener('online',sync);document.addEventListener('visibilitychange',focus);window.addEventListener('pagehide',hide);
     return()=>{live=false;epoch.current++;stop();clearInterval(tick);clearInterval(poll);window.removeEventListener('focus',sync);window.removeEventListener('online',sync);document.removeEventListener('visibilitychange',focus);window.removeEventListener('pagehide',hide);};
-  },[stop,t]);
+  },[stop,t,employmentId]);
   React.useEffect(()=>{if(camera&&video.current&&stream.current){video.current.srcObject=stream.current;void video.current.play().catch(()=>{stop();setCamera(false);setCameraProblem(true);setError(t('cameraFailed'));});}},[camera,t,stop]);
   React.useEffect(()=>{if(!photo){setPhotoUrl(null);return;}const url=URL.createObjectURL(photo);setPhotoUrl(url);return()=>URL.revokeObjectURL(url);},[photo]);
   async function openCamera(direction:'in'|'out') {
@@ -129,7 +134,9 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
       let receipt: {recordedAt:string;direction:'in'|'out'} | undefined;
       // A transport failure may follow a committed clocking. Check its own receipt before retrying.
       if(command.current){
-        const check=await fetch('/api/attendance/clock?requestId='+encodeURIComponent(command.current.requestId),{cache:'no-store'});
+        const receiptQuery=new URLSearchParams({requestId:command.current.requestId});
+        if(employmentId!==undefined)receiptQuery.set('employmentId',employmentId);
+        const check=await fetch('/api/attendance/clock?'+receiptQuery,{cache:'no-store'});
         if(check.status===401)throw new Error('authentication');
         if(check.ok) receipt=(await check.json()).receipt;
         else if(check.status!==404)throw new Error('unconfirmed');
@@ -146,6 +153,7 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
           if(!value.clockContext)throw new Error('sync');
           const requestId=newRequestId(),body=new FormData();
           body.set('clockContext',value.clockContext);body.set('locationStatus',locationStatus);
+          if(employmentId!==undefined)body.set('employmentId',employmentId);
           for(const [key,val] of Object.entries({action:direction,requestId,...(point??{})}))body.set(key,String(val));
           if(photo)body.set('photo',photo,'attendance.jpg');
           command.current={body,requestId,direction};setPending(true);

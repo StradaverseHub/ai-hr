@@ -111,7 +111,7 @@ describe('/me — tabbed My Workspace (311ad7ba)', () => {
     }
     for (const retired of ['myCheckIn', 'myCheckOut', 'AttendanceClockButton']) expect(me).not.toMatch(new RegExp(`\\b${retired}\\b`));
     expect(clockPage).toContain("import { ClockPageClient } from './clock-client'");
-    expect(clockPage).toContain('const initial=await ownClockToday(session)');
+    expect(clockPage).toContain('selector!==undefined?await ownClockToday(session,undefined,selector):await ownClockToday(session)');
     expect(clockPage).toContain('<ClockPageClient initial={initial}');
     for (const direction of ['in', 'out']) expect(clockClient).toContain(`onClick={()=>startClock('${direction}')}`);
     const start = clockClient.indexOf('function startClock('), end = clockClient.indexOf('const blocked=', start);

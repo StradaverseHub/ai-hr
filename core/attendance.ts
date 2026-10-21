@@ -7,7 +7,7 @@ import { exceptionRevisionOn } from '../lib/schedule-exception';
 import { lockPayrollForOwnAttendanceRemoval } from '../packs/payroll/service';
 import { captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx } from '../packs/attendance/service';
 import { clockCommandContext } from '../lib/clock-command-context';
-import { myEmployment } from './read';
+import {resolveOwnClockEmployment} from './attendance-clock-subject';
 import { removalPreservesSequence } from '../lib/attendance-removal';
 /**
  * Attendance — generic, jurisdiction-neutral time engine (ADR-0011).
@@ -6525,12 +6525,13 @@ async function insertAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,p:{
     return { correctionId: row.id };
 }
 
-/** Own web punch only. The caller never supplies a subject, day, or replacement clock set. */
-export async function requestOwnClockRemoval(ctx:SessionContext,p:{punchId:string;requestId:string;baseline:string;reason:string;clockContext:string}){
+/** Own web punch only. A selector must resolve to an own active employment; the caller cannot supply
+ * a trusted subject, attendance day or replacement clock set. */
+export async function requestOwnClockRemoval(ctx:SessionContext,p:{punchId:string;requestId:string;baseline:string;reason:string;clockContext:string;employmentId?:string}){
   const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
   const reason=typeof p.reason==='string'?p.reason.trim():'';
   if(!uuid.test(p.punchId)||!uuid.test(p.requestId)||!reason||reason.length>500||!/^[0-9a-f]{64}$/.test(p.baseline))throw new Error('Choose a clocking and enter a removal remark of at most 500 characters.');
-  const me=await myEmployment(ctx);if(!me)throw new Error('No active employee profile.');
+  const me=await resolveOwnClockEmployment(ctx,p.employmentId);if(!me)throw new Error('No active employee profile.');
   if(p.clockContext!==clockCommandContext(ctx.tenantId,ctx.userId,me.employmentId))throw new Error('Your employee account changed. Reopen Web Clocking.');
   return withTenant(ctx,async tx=>{
     // Same fence as captureEmployeeClock, including a day that has never had a correction.

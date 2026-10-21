@@ -6,6 +6,7 @@ import en from '../messages/en.json';
 import { todayInKualaLumpur } from '../lib/hr-date';
 const clockDate=todayInKualaLumpur();
 import { ClockPageClient } from '../app/attendance/clock/clock-client';
+import { requestClockRemovalAction } from '../app/attendance/clock/actions';
 vi.mock('../app/attendance/clock/actions',()=>({requestClockRemovalAction:vi.fn()}));
 vi.mock('next/link',()=>({default:({children,...props}:React.ComponentProps<'a'>)=><a {...props}>{children}</a>}));
 const initial={clockContext:'a'.repeat(64),date:clockDate,serverNow:clockDate+'T00:00:00Z',workedSeconds:0,clockedIn:false,openSince:null,locationValid:true,locationAvailable:true,geofencingRequired:false,attendancePhotoSetting:'optional',captures:[],legacy:[],shift:{code:'SF',start:'07:00',end:'20:00'}} as unknown as React.ComponentProps<typeof ClockPageClient>['initial'];
@@ -16,9 +17,9 @@ let post=vi.fn<(url:string,options?:RequestInit)=>Promise<Response>>();
 let lookup=vi.fn<(url:string,options?:RequestInit)=>Promise<Response>>();
 let getUserMedia=vi.fn<()=>Promise<MediaStream>>();
 const receipt={recordedAt:clockDate+'T01:00:00Z',direction:'in',id:'capture',date:clockDate};
-function mount(setting:'required'|'optional'|'not_required'='optional'){
+function mount(setting:'required'|'optional'|'not_required'='optional',employmentId?:string){
   selectedSetting=setting;
-  return render(<NextIntlClientProvider locale="en" messages={en}><ClockPageClient initial={{...initial,captures:captureRows,attendancePhotoSetting:setting}} shiftName="Semi Flexi"/></NextIntlClientProvider>);
+  return render(<NextIntlClientProvider locale="en" messages={en}><ClockPageClient initial={{...initial,captures:captureRows,attendancePhotoSetting:setting}} shiftName="Semi Flexi" employmentId={employmentId}/></NextIntlClientProvider>);
 }
 beforeEach(()=>{
   selectedSetting='optional';geofencingRequired=false;captureRows=[];
@@ -57,6 +58,22 @@ async function takeFrame(setting: 'required' | 'optional') {
   await screen.findByAltText(en.attendance.clock.photoReview);
 }
 describe('Web Clocking optional camera and uncertain commands',()=>{
+  it('preserves the selected employment through refresh, submission and uncertain receipt recovery',async()=>{
+    const employmentId='f554c043-bdd1-4ba4-a2aa-11ca98719828';
+    post.mockRejectedValueOnce(new TypeError('Response lost'));
+    mount('not_required',employmentId);await begin();
+    await screen.findByText(en.attendance.clock.pendingCommand);
+    const body=post.mock.calls[0][1]!.body as FormData;
+    expect(body.get('employmentId')).toBe(employmentId);expect(body.get('clockContext')).toBe(initial.clockContext);
+    const refreshes=vi.mocked(fetch).mock.calls.map(([url])=>String(url)).filter(url=>url.startsWith('/api/attendance/today'));
+    expect(refreshes.length).toBeGreaterThan(0);
+    for(const url of refreshes)expect(new URL(url,'http://localhost').searchParams.get('employmentId')).toBe(employmentId);
+    fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.checkSubmission}));
+    await waitFor(()=>expect(lookup).toHaveBeenCalledTimes(1));
+    const query=new URL(lookup.mock.calls[0][0],'http://localhost').searchParams;
+    expect(query.get('employmentId')).toBe(employmentId);expect(query.get('requestId')).toBe(body.get('requestId'));
+    await waitFor(()=>expect(screen.queryByText(en.attendance.clock.pendingCommand)).toBeNull());expect(post).toHaveBeenCalledTimes(1);
+  });
   it.each(['optional', 'not_required'] as const)('does not promise photo capture when the setting is %s', setting => {
     mount(setting);
     expect(screen.getByRole('status')).toHaveTextContent(en.attendance.clock.serverTimeNote);
@@ -198,4 +215,15 @@ it('blocks both clock intents while reviewing a removal and restores them on can
   expect(within(screen.getByRole('dialog')).getByRole('textbox')).toBeRequired();
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button',{name:en.attendance.clock.cancelPhoto}));
   expect(clockIn).toBeEnabled();expect(clockOut).toBeEnabled();expect(post).not.toHaveBeenCalled();
+});
+it('retains the selected employment in the canonical removal action',async()=>{
+  const employmentId='f554c043-bdd1-4ba4-a2aa-11ca98719828';
+  vi.mocked(requestClockRemovalAction).mockResolvedValueOnce({ok:true,correctionId:'fictional-request'});
+  captureRows=[captureRow()];mount('not_required',employmentId);
+  await waitFor(()=>expect(screen.getByRole('button',{name:en.attendance.clock.clockIn})).toBeEnabled());
+  fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.remove}));
+  const dialog=within(screen.getByRole('dialog'));
+  fireEvent.change(dialog.getByRole('textbox'),{target:{value:'Fictional removal remark'}});
+  fireEvent.click(dialog.getByRole('button',{name:en.attendance.clock.requestRemoval}));
+  await waitFor(()=>expect(requestClockRemovalAction).toHaveBeenCalledWith(expect.objectContaining({employmentId,punchId:'punch-a',clockContext:initial.clockContext,reason:'Fictional removal remark'})));
 });

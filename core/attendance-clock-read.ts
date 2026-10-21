@@ -4,20 +4,15 @@ import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm';
 import { attendance, attendancePunch, attendanceClockCapture, attendanceCorrection, clockingLocation, employment } from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { withAttendanceTenant as withTenant } from './module-gate';
-import { myEmployment, myOwnEmploymentSubjects } from './read';
+import {resolveOwnClockEmployment,OwnClockEmploymentUnavailableError} from './attendance-clock-subject';
 import { clockScheduleForTx, resolveGeofence } from './attendance';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { clockCommandContext } from '../lib/clock-command-context';
 
 // r430 — deviceToken is GONE (Web Clocking no longer registers or presents a device).
 export async function ownClockToday(ctx: SessionContext, geo?: { lat: number; lng: number; accuracy: number }, selectedEmploymentId?: string) {
-  // An explicit Home/native selector uses the salary-free own-subject owner and repeats active-login
-  // eligibility. Empty, foreign or stale selections refuse; they never fall back to another employer.
-  // The unselected legacy clock page retains its existing selection course.
-  const me = selectedEmploymentId!==undefined
-    ? (await myOwnEmploymentSubjects(ctx,{profileEdit:true})).find(e=>e.employmentId===selectedEmploymentId)
-    : await myEmployment(ctx);
-  if (!me) throw new Error('No active employee profile');
+  const me=await resolveOwnClockEmployment(ctx,selectedEmploymentId);
+  if(!me)throw new OwnClockEmploymentUnavailableError();
   return withTenant(ctx, async tx => {
     const now = new Date();
     let date = todayInKualaLumpur(now);
