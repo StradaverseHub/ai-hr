@@ -1,3 +1,4 @@
+import type {OvertimeBinding,OvertimeAssignmentBinding} from './overtime-pattern-binding';
 /** Client-safe OT contract. Storage, authorization, calendars and statutory policy have separate owners. */
 export const OVERTIME_LIMITS = { depth: 12, nodes: 512, definitions: 32, rates: 64, tiers: 64, deductions: 32, candidates: 500, sessions: 64, segments: 256, operations: 20000, jsonBytes: 262144, integerBits: 256, evidenceBytes: 2097152 } as const;
 export type OvertimeUnit = 'scalar' | 'minutes' | 'money' | 'moneyPerHour';
@@ -222,12 +223,11 @@ export type OvertimeResource = {
 };
 /** Actual inputs must be minted by the authorized canonical reader. This model does not authenticate
  * provenance strings or mode flags. A dayAggregate is one honest quantity slot, never a physical session. */
-export type OvertimeInput = {
+export type OvertimeInput<B extends OvertimeBinding=OvertimeAssignmentBinding> = {
     mode: 'preview' | 'actual';
     sessionGranularity: 'recorded' | 'dayAggregate';
     source: OvertimeSource;
     patternVersionId: string;
-    assignmentId: string;
     currency: OvertimeCurrency;
     facts: OvertimeFacts;
     resources: OvertimeResource[];
@@ -236,7 +236,7 @@ export type OvertimeInput = {
         minutes: OvertimeFact<string>;
         provenance: OvertimeProvenance;
     };
-} & ({
+} & B & ({
     layer: 'raw';
     segments: OvertimeRawSegment[];
 } | {
@@ -316,11 +316,10 @@ export type OvertimeLine = {
     adjusted: OvertimeExact;
     amountMinorUnits: string;
 };
-export type OvertimeEvaluation = {
+export type OvertimeEvaluation<B extends OvertimeBinding=OvertimeAssignmentBinding> = B & ({
     status: 'ready' | 'ineligible';
     source: OvertimeSource;
     patternVersionId: string;
-    assignmentId: string;
     transferable: boolean;
     currency: OvertimeCurrency;
     rawMinutes: OvertimeValue;
@@ -334,11 +333,10 @@ export type OvertimeEvaluation = {
     status: 'refused';
     source: OvertimeSource;
     patternVersionId: string;
-    assignmentId: string;
     transferable: false;
     issues: OvertimeIssue[];
     trace: OvertimeTrace[];
-};
+});
 /** Count attribution under an explicit pattern policy; never a human approved physical interval. */
 export type OvertimeDurationAllocation = {
     segmentId: string;
@@ -355,11 +353,10 @@ export type OvertimeDurationAllocation = {
 };
 /** Duration evidence is distinct from a cash result. A canonical TOIL owner still proves authority,
  * freshness, source exclusivity and actual mode before consumption. No pricing/salary access is implied. */
-export type OvertimeDurationEvaluation = {
+export type OvertimeDurationEvaluation<B extends OvertimeBinding=OvertimeAssignmentBinding> = B & ({
     status: 'ready' | 'ineligible';
     source: OvertimeSource;
     patternVersionId: string;
-    assignmentId: string;
     mode: 'preview' | 'actual';
     transferable: boolean;
     rawMinutes: OvertimeValue;
@@ -372,11 +369,10 @@ export type OvertimeDurationEvaluation = {
     status: 'refused';
     source: OvertimeSource;
     patternVersionId: string;
-    assignmentId: string;
     transferable: false;
     issues: OvertimeIssue[];
     trace: OvertimeTrace[];
-};
+});
 export type OvertimeAnalysis = {
     requiresClockPlacement: boolean;
     requiredFields: OvertimeField[];

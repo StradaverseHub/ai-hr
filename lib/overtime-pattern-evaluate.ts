@@ -1,3 +1,5 @@
+import {overtimeAssignmentBinding,overtimePolicyBinding,type OvertimeBinding,type OvertimePolicyBinding,type OvertimeBindingAdapter} from './overtime-pattern-binding';
+import {ATTENDANCE_POLICY_MONEY_DAY} from './attendance-policy-calendar';
 /** Deterministic OT arithmetic only. No database, current profile, jurisdiction or settlement mutation. */
 import { OVERTIME_LIMITS as L, OVERTIME_NUMERIC_FIELDS, OVERTIME_SELECTION_FIELDS, OVERTIME_INPUT_FACT_FIELDS, OvertimePatternError, type OvertimeCandidate, type OvertimeClockSpan, type OvertimeCondition, type OvertimeEvaluation, type OvertimeDurationEvaluation, type OvertimeDurationAllocation, type OvertimeExact, type OvertimeExpression, type OvertimeFact, type OvertimeFacts, type OvertimeInput, type OvertimeIssue, type OvertimeLine, type OvertimePattern, type OvertimeProvenance, type OvertimeRate, type OvertimeResolution, type OvertimeRoundingMode, type OvertimeSource, type OvertimeTrace, type OvertimeUnit, type OvertimeValue } from './overtime-pattern-model';
 import { overtimeCurrency, overtimeDate, overtimeDecimal, overtimeId, overtimeInteger, overtimeKeys, overtimeList, overtimeObject, overtimeRefuse as fail, overtimeUuid, overtimeSourceId, validateOvertimeAssignmentTarget, validateOvertimePattern } from './overtime-pattern-schema';
@@ -100,9 +102,16 @@ function parseFacts(raw: unknown, path: string): OvertimeFacts {
     return out;
 }
 /** Available to server input owners; validation confers no authorization or recorded-fact authority. */
-export function validateOvertimeInput(raw: unknown): OvertimeInput {
+export function validateOvertimeInput(raw:unknown):OvertimeInput{return validatedInput(raw,overtimeAssignmentBinding);}
+/** Policy identities enter explicitly; validation alone never proves a saved policy or approval. */
+export function validateOvertimePolicyInput(raw:unknown):OvertimeInput<OvertimePolicyBinding>{
+    const input=validatedInput(raw,overtimePolicyBinding);
+    if(input.layer!=='raw')fail('source','layer','A policy part requires canonical raw evidence, not a final legacy quantity.');
+    return input;
+}
+function validatedInput<B extends OvertimeBinding>(raw:unknown,adapter:OvertimeBindingAdapter<B>):OvertimeInput<B>{
     const r = overtimeObject(raw, 'input');
-    overtimeKeys(r, ['mode', 'sessionGranularity', 'source', 'patternVersionId', 'assignmentId', 'currency', 'facts', 'resources', 'approval', 'layer', 'segments'], 'input');
+    overtimeKeys(r, ['mode', 'sessionGranularity', 'source', 'patternVersionId', 'assignmentId', 'currency', 'facts', 'resources', 'approval', 'layer', 'segments',...adapter.keys], 'input');
     if (!['recorded', 'dayAggregate'].includes(r.sessionGranularity as string))
         fail('source', 'sessionGranularity', 'Declare recorded sessions or an honest day aggregate.');
     if (!['preview', 'actual'].includes(r.mode as string) || !['raw', 'finalLegacy'].includes(r.layer as string))
@@ -165,7 +174,7 @@ export function validateOvertimeInput(raw: unknown): OvertimeInput {
     const parsedFacts = parseFacts(submittedFacts, 'facts');
     if (['rawMinutes', 'eligibleMinutes', 'approvedMinutes', 'payableMinutes', 'resourceMinutes', 'resourceMoney'].some(k => Object.hasOwn(parsedFacts, k)))
         fail('source', 'facts', 'Calculation layers and resources must come from their explicit canonical input slots.');
-    const input = { mode: r.mode as 'preview' | 'actual', sessionGranularity: r.sessionGranularity as 'recorded' | 'dayAggregate', source, patternVersionId: overtimeUuid(r.patternVersionId, 'patternVersionId'), assignmentId: overtimeUuid(r.assignmentId, 'assignmentId'), currency: overtimeCurrency(r.currency, 'currency'), facts: parsedFacts, resources, approval: { status: approval.status as OvertimeInput['approval']['status'], minutes: fact(approval.minutes, 'approval.minutes', v => overtimeDecimal(v, 'approval.minutes', true)), provenance: provenance(approval.provenance, 'approval.provenance') }, layer: r.layer, segments } as OvertimeInput;
+    const input = { mode: r.mode as 'preview' | 'actual', sessionGranularity: r.sessionGranularity as 'recorded' | 'dayAggregate', source, patternVersionId: overtimeUuid(r.patternVersionId, 'patternVersionId'), ...adapter.read(r,source.date), currency: overtimeCurrency(r.currency, 'currency'), facts: parsedFacts, resources, approval: { status: approval.status as OvertimeInput['approval']['status'], minutes: fact(approval.minutes, 'approval.minutes', v => overtimeDecimal(v, 'approval.minutes', true)), provenance: provenance(approval.provenance, 'approval.provenance') }, layer: r.layer, segments } as OvertimeInput<B>;
     if (new TextEncoder().encode(JSON.stringify(input)).length > L.jsonBytes)
         fail('limit', 'input', 'Canonical input exceeds its serialized size limit.');
     return input;
@@ -397,10 +406,10 @@ function allocate(work: Work[], amount: Q, capacity: (w: Work) => Q, write: (w: 
     if (remaining.n > BigInt('0'))
         fail('source', 'allocation', 'Canonical allocation capacity is insufficient.');
 }
-function safeIdentity(input: OvertimeInput) {
+function safeIdentity<B extends OvertimeBinding>(input:OvertimeInput<B>,adapter:OvertimeBindingAdapter<B>) {
     const zero = '00000000-0000-0000-0000-000000000000', digest = '0'.repeat(64);
     const source: OvertimeSource = { tenantId: zero, employmentId: zero, attendanceId: zero, date: '1970-01-01', inputDigest: digest, approvalDigest: digest };
-    let patternVersionId = zero, assignmentId = zero;
+    let patternVersionId=zero,binding=adapter.fallback();
     try {
         const r = overtimeObject(input, 'input'), s = overtimeObject(r.source, 'source');
         for (const key of ['tenantId', 'employmentId', 'attendanceId'] as const)
@@ -410,18 +419,24 @@ function safeIdentity(input: OvertimeInput) {
             if (typeof s[key] === 'string' && /^[0-9a-f]{64}$/.test(s[key]))
                 source[key] = s[key];
         patternVersionId = overtimeUuid(r.patternVersionId, 'patternVersionId');
-        assignmentId = overtimeUuid(r.assignmentId, 'assignmentId');
+        binding=adapter.read(r,source.date);
     }
     catch { /* Invalid input cannot reflect arbitrary submitted values in a refusal. */ }
-    return { source, patternVersionId, assignmentId };
+    return {source,patternVersionId,...binding};
 }
 /** Output is a calculation proposal. Actual transfer still needs canonical auth, freshness and policy owners. */
 /** The single duration algorithm shared by cash and TOIL projections; never reads price-only fields. */
-function runDurationStage(rawPattern: OvertimePattern, rawInput: OvertimeInput, observe: (engine: Engine) => void) {
-    const pattern = validateOvertimePattern(rawPattern), input = validateOvertimeInput(rawInput);
+function runDurationStage<B extends OvertimeBinding>(rawPattern:OvertimePattern,rawInput:OvertimeInput<B>,observe:(engine:Engine)=>void,adapter:OvertimeBindingAdapter<B>) {
+    const pattern = validateOvertimePattern(rawPattern), input = validatedInput(rawInput,adapter);
     if (input.sessionGranularity === 'dayAggregate' && (pattern.eligibilityBasis === 'session' || pattern.deductions.some(d => d.unit === 'minutes' && d.basis === 'session')))
         fail('source', 'sessionGranularity', 'A day aggregate cannot establish actual session eligibility, accumulation, charges or deductions.');
-    const identity = { source: input.source, patternVersionId: input.patternVersionId, assignmentId: input.assignmentId };
+    if(Object.hasOwn(input,'policyBinding')&&input.layer!=='raw')fail('source','layer','A policy part requires canonical raw evidence.');
+    if(input.policyBinding){
+        const day=input.facts.dayType;
+        if(day?.state!=='known'||day.value!==ATTENDANCE_POLICY_MONEY_DAY[input.policyBinding.dayClass])
+            fail('source','policyBinding.dayClass','The recorded policy and money day classifications disagree.');
+    }
+    const identity={source:input.source,patternVersionId:input.patternVersionId,...adapter.read(input,input.source.date)};
     if (pattern.currency.code !== input.currency.code || pattern.currency.minorScale !== input.currency.minorScale)
         fail('currency', 'currency', 'Definition and canonical source currency must agree.');
     const e = new Engine(pattern, input.mode, input.facts, input.source.date);
@@ -619,13 +634,15 @@ export function intersectOvertimeDurationAfter(result: OvertimeDurationEvaluatio
     return known(div(seconds, SIXTY), 'minutes');
 }
 /** Duration evidence cannot be mistaken for a cash result: it has no rate, mapping or amount. */
-export function evaluateOvertimePatternDuration(pattern: OvertimePattern, rawInput: OvertimeInput): OvertimeDurationEvaluation {
+export function evaluateOvertimePatternDuration(pattern:OvertimePattern,input:OvertimeInput):OvertimeDurationEvaluation{return evaluateDuration(pattern,input,overtimeAssignmentBinding);}
+export function evaluateOvertimePolicyPartDuration(pattern:OvertimePattern,input:OvertimeInput<OvertimePolicyBinding>):OvertimeDurationEvaluation<OvertimePolicyBinding>{return evaluateDuration(pattern,input,overtimePolicyBinding);}
+function evaluateDuration<B extends OvertimeBinding>(pattern:OvertimePattern,rawInput:OvertimeInput<B>,adapter:OvertimeBindingAdapter<B>):OvertimeDurationEvaluation<B>{
     let engine: Engine | undefined;
-    const identity = safeIdentity(rawInput);
+    const identity = safeIdentity(rawInput,adapter);
     try {
-        const stage = runDurationStage(pattern, rawInput, e => { engine = e; }), { input, e, work, rawTotal, eligibleTotal, canonicalApproved } = stage;
+        const stage = runDurationStage(pattern,rawInput,e=>{engine=e;},adapter), { input, e, work, rawTotal, eligibleTotal, canonicalApproved } = stage;
         const payable = sum(work.map(w => w.payable));
-        const result: OvertimeDurationEvaluation = { status: payable.n > BigInt('0') ? 'ready' : 'ineligible', ...stage.identity, mode: input.mode, transferable: input.mode === 'actual' && payable.n > BigInt('0'), rawMinutes: rawTotal ? known(rawTotal, 'minutes') : unknown('unrecordedLegacyRaw'), eligibleMinutes: eligibleTotal ? known(eligibleTotal, 'minutes') : unknown('unrecordedLegacyEligibility'), approvedMinutes: known(canonicalApproved, 'minutes'), payableMinutes: exact(payable, 'minutes'), allocations: durationAllocations(stage), trace: e.trace };
+        const result:OvertimeDurationEvaluation<B> = { status: payable.n > BigInt('0') ? 'ready' : 'ineligible', ...stage.identity, mode: input.mode, transferable: input.mode === 'actual' && payable.n > BigInt('0'), rawMinutes: rawTotal ? known(rawTotal, 'minutes') : unknown('unrecordedLegacyRaw'), eligibleMinutes: eligibleTotal ? known(eligibleTotal, 'minutes') : unknown('unrecordedLegacyEligibility'), approvedMinutes: known(canonicalApproved, 'minutes'), payableMinutes: exact(payable, 'minutes'), allocations: durationAllocations(stage), trace: e.trace };
         if (new TextEncoder().encode(JSON.stringify(result)).length > L.evidenceBytes)
             fail('limit', 'evidence', 'Complete duration evidence exceeds its supported size.');
         return result;
@@ -634,11 +651,15 @@ export function evaluateOvertimePatternDuration(pattern: OvertimePattern, rawInp
         return { status: 'refused', ...identity, transferable: false, issues: [issueOf(error)], trace: engine?.trace ?? [] };
     }
 }
-export function evaluateOvertimePattern(rawPattern: OvertimePattern, rawInput: OvertimeInput): OvertimeEvaluation {
+export function evaluateOvertimePattern(pattern:OvertimePattern,input:OvertimeInput):OvertimeEvaluation{return evaluateMoney(pattern,input,overtimeAssignmentBinding);}
+/** Formula proposal only. Canonical Attendance/Payroll must validate the complete parent partition,
+ * policy duration pipeline and real approval before accepting any policy-bound result. */
+export function evaluateOvertimePolicyPart(pattern:OvertimePattern,input:OvertimeInput<OvertimePolicyBinding>):OvertimeEvaluation<OvertimePolicyBinding>{return evaluateMoney(pattern,input,overtimePolicyBinding);}
+function evaluateMoney<B extends OvertimeBinding>(rawPattern:OvertimePattern,rawInput:OvertimeInput<B>,adapter:OvertimeBindingAdapter<B>):OvertimeEvaluation<B>{
     let engine: Engine | undefined;
-    let identity = safeIdentity(rawInput);
+    let identity = safeIdentity(rawInput,adapter);
     try {
-        const stage = runDurationStage(rawPattern, rawInput, e => { engine = e; });
+        const stage = runDurationStage(rawPattern,rawInput,e=>{engine=e;},adapter);
         const { pattern, input, e, work, rawTotal, eligibleTotal, canonicalApproved, dayApproval, setComputed, deductions } = stage;
         identity = stage.identity;
         if (input.sessionGranularity === 'dayAggregate' && (pattern.deductions.some(d => d.unit === 'money' && d.basis === 'session') || pattern.rates.some(r => r.accumulation === 'session' || r.tiers.some(t => t.payment.method !== 'hourly' && t.payment.basis === 'session'))))
@@ -832,7 +853,7 @@ export function evaluateOvertimePattern(rawPattern: OvertimePattern, rawInput: O
         const payable = sum(work.map(w => w.payable));
         if (compare(payable, dayApproval) > 0)
             fail('approval', 'payableMinutes', 'Payable duration exceeds canonical day approval.');
-        const result: OvertimeEvaluation = { status: payable.n > BigInt('0') ? 'ready' : 'ineligible', ...identity, transferable: input.mode === 'actual' && payable.n > BigInt('0'), currency: input.currency, rawMinutes: rawTotal ? known(rawTotal, 'minutes') : unknown('unrecordedLegacyRaw'), eligibleMinutes: eligibleTotal ? known(eligibleTotal, 'minutes') : unknown('unrecordedLegacyEligibility'), approvedMinutes: known(canonicalApproved, 'minutes'), payableMinutes: exact(payable, 'minutes'), amountMinorUnits: total.toString(), lines, trace: e.trace };
+        const result:OvertimeEvaluation<B> = { status: payable.n > BigInt('0') ? 'ready' : 'ineligible', ...identity, transferable: input.mode === 'actual' && payable.n > BigInt('0'), currency: input.currency, rawMinutes: rawTotal ? known(rawTotal, 'minutes') : unknown('unrecordedLegacyRaw'), eligibleMinutes: eligibleTotal ? known(eligibleTotal, 'minutes') : unknown('unrecordedLegacyEligibility'), approvedMinutes: known(canonicalApproved, 'minutes'), payableMinutes: exact(payable, 'minutes'), amountMinorUnits: total.toString(), lines, trace: e.trace };
         if (new TextEncoder().encode(JSON.stringify(result)).length > L.evidenceBytes)
             fail('limit', 'evidence', 'Complete calculation evidence exceeds its supported size.');
         return result;

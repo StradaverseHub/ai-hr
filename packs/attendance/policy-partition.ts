@@ -3,6 +3,7 @@
  * calculate money, or create another Attendance/settlement identity. */
 import type {AttendancePolicyDayClass} from '../../lib/attendance-group-policy';
 import type {PolicyCalendarProof,PolicyMoneyDay} from '../../lib/attendance-policy-calendar';
+import {ATTENDANCE_POLICY_MONEY_DAY as MONEY_DAY} from '../../lib/attendance-policy-calendar';
 export type {PolicyCalendarProof} from '../../lib/attendance-policy-calendar';
 import {
   attendancePolicyIntervalMinutes,splitAttendancePolicyIntervalsAtMidnight,
@@ -18,9 +19,6 @@ export type AttendancePolicyPart={
 export type PolicyPartition={status:'ready';parts:AttendancePolicyPart[];minutes:number}|
   {status:'unavailable';date:string;reason:'calendarUnavailable'|'holidayDesignationUnavailable';parts:[]};
 
-const MONEY_DAY:Record<AttendancePolicyDayClass,PolicyMoneyDay>={
-  normal:'workday',off:'workday',rest:'rest_day',publicHoliday:'holiday',replacementHoliday:'holiday',
-};
 const dateOffset=(date:string,offset:number)=>new Date(Date.parse(date+'T00:00:00Z')+offset*86400000).toISOString().slice(0,10);
 
 /** Date offsets are calendar arithmetic over an already-established HR-local source date.
