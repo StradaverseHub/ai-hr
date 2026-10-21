@@ -3107,17 +3107,20 @@ export async function listPendingClaims(ctx: SessionContext): Promise<ClaimRow[]
 /** Minimal current-decision projection over already-visible inbox candidates. Uses the same gate and
  * delegation scope as decideClaim; no amount, receipt, reason or attachment is needed for this proof. */
 export function actionablePendingClaimIds(ctx:SessionContext,requestIds:readonly string[]){
- if(requestIds.length>1000)throw new ClaimError('Too many claim decision candidates');
  return withTenant(ctx,async tx=>{
   if(!requestIds.length)return [];
-  const rows=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId}).from(claimRequest)
-   .where(and(inArray(claimRequest.id,[...new Set(requestIds)]),eq(claimRequest.status,'pending'))).orderBy(claimRequest.id);
-  const result:string[]=[];
-  for(const row of rows){
-   try{await assertCanDecide(tx,ctx,row.employmentId,'claim',scopeOf('claims.claim'));result.push(row.id);}
-   catch(error){if(!isApprovalDecisionRefusal(error,'claim'))throw error;}
+  const result:string[]=[],ids=[...new Set(requestIds)];
+  // The existing inbox is not capped at 1,000 claims. Bound each SQL parameter batch without turning
+  // a valid large queue into an exception in the shared application header.
+  for(let offset=0;offset<ids.length;offset+=1000){
+   const rows=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId}).from(claimRequest)
+    .where(and(inArray(claimRequest.id,ids.slice(offset,offset+1000)),eq(claimRequest.status,'pending'))).orderBy(claimRequest.id);
+   for(const row of rows){
+    try{await assertCanDecide(tx,ctx,row.employmentId,'claim',scopeOf('claims.claim'));result.push(row.id);}
+    catch(error){if(!isApprovalDecisionRefusal(error,'claim'))throw error;}
+   }
   }
-  return result;
+  return result.sort();
  });
 }
 

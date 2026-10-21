@@ -11740,29 +11740,30 @@ export function actionableLeaveRequests(ctx:SessionContext,{employmentIds,reques
 /** Cancellation inbox eligibility follows the retained current step, including its independent
  * cancellation delegation scope. Viewing a pending cancellation is not authority to decide it. */
 export function actionableLeaveCancellationIds(ctx:SessionContext,requestIds:readonly string[]){
- if(requestIds.length>1000)throw Error('Too many cancellation decision candidates');
  return withTenant(ctx,async tx=>{
   if(!requestIds.length)return [];
-  const requests=await tx.select({id:leaveCancellationRequest.id,employmentId:leaveCancellationRequest.employmentId})
-   .from(leaveCancellationRequest).where(and(inArray(leaveCancellationRequest.id,[...new Set(requestIds)]),eq(leaveCancellationRequest.status,'pending')))
-   .orderBy(leaveCancellationRequest.id);
-  if(!requests.length)return [];
-  const steps=await tx.select().from(leaveCancellationStep).where(inArray(leaveCancellationStep.cancellationRequestId,requests.map(row=>row.id)))
-   .orderBy(asc(leaveCancellationStep.stepIndex),asc(leaveCancellationStep.id));
-  const result:string[]=[];
-  for(const row of requests){
-   const chain=steps.filter(step=>step.cancellationRequestId===row.id),current=chain.find(step=>step.status==='pending');
-   if(chain.length&&!current)continue;
-   try{
-    if(current)await assertCanDecideLeaveStep(tx,ctx,row.employmentId,current.approverKind,'leave cancellation',current.approverEmploymentId,current.approverAlternates,'leave.cancellation');
-    else await assertCanDecide(tx,ctx,row.employmentId,'leave cancellation',scopeOf('leave.cancellation'));
-    result.push(row.id);
-   }catch(error){
-    const normalized=error instanceof Error&&error.constructor===Error?new Error(error.message.replaceAll('leave cancellation','leave request')):error;
-    if(!isLeaveDecisionRefusal(normalized))throw error;
+  const result:string[]=[],ids=[...new Set(requestIds)];
+  for(let offset=0;offset<ids.length;offset+=1000){
+   const requests=await tx.select({id:leaveCancellationRequest.id,employmentId:leaveCancellationRequest.employmentId})
+    .from(leaveCancellationRequest).where(and(inArray(leaveCancellationRequest.id,ids.slice(offset,offset+1000)),eq(leaveCancellationRequest.status,'pending')))
+    .orderBy(leaveCancellationRequest.id);
+   if(!requests.length)continue;
+   const steps=await tx.select().from(leaveCancellationStep).where(inArray(leaveCancellationStep.cancellationRequestId,requests.map(row=>row.id)))
+    .orderBy(asc(leaveCancellationStep.stepIndex),asc(leaveCancellationStep.id));
+   for(const row of requests){
+    const chain=steps.filter(step=>step.cancellationRequestId===row.id),current=chain.find(step=>step.status==='pending');
+    if(chain.length&&!current)continue;
+    try{
+     if(current)await assertCanDecideLeaveStep(tx,ctx,row.employmentId,current.approverKind,'leave cancellation',current.approverEmploymentId,current.approverAlternates,'leave.cancellation');
+     else await assertCanDecide(tx,ctx,row.employmentId,'leave cancellation',scopeOf('leave.cancellation'));
+     result.push(row.id);
+    }catch(error){
+     const normalized=error instanceof Error&&error.constructor===Error?new Error(error.message.replaceAll('leave cancellation','leave request')):error;
+     if(!isLeaveDecisionRefusal(normalized))throw error;
+    }
    }
   }
-  return result;
+  return result.sort();
  });
 }
 

@@ -1,11 +1,12 @@
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq} from 'drizzle-orm';
-import {adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,closeAll,createAppUser,entitledCtx,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import type {SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee,setReportingLine} from '../core/org';
-import {requestLeave,decideLeave,requestLeaveCancellation,decideLeaveCancellation,setLeaveApprovalPolicy} from '../packs/leave/service';
+import {requestLeave,decideLeave,requestLeaveCancellation,decideLeaveCancellation,setLeaveApprovalPolicy,actionableLeaveCancellationIds} from '../packs/leave/service';
+import {createClaimType,submitClaim,decideClaim,actionablePendingClaimIds} from '../packs/claims/service';
 import {listPendingTasks} from '../core/approvals-inbox';
 import {readEmployeeHomeIdentity} from '../core/employee-home';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -57,5 +58,19 @@ describe('Home consumes actual assigned actions, not a manager-role shortcut',()
   await expect(readEmployeeHomeIdentity({...own.ctx,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]})).rejects.toMatchObject({code:'employmentUnavailable'});
   await owner.db.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,own.ctx.userId!));
   await expect(readEmployeeHomeIdentity(own.ctx)).rejects.toMatchObject({code:'employmentUnavailable'});
+ });
+ it('shows only claims the actual decider can decide, including a bounded SQL batch beyond one thousand candidate IDs',async()=>{
+  const {employee,manager}=await reportingPair();await setModule(b.tenantId,'claims','active');
+  const admin=await entitledCtx(b),entitlements=admin.entitlements;
+  const employeeCtx={...employee.ctx,entitlements},managerCtx={...manager.ctx,entitlements};
+  const type=await createClaimType(admin,{code:'HOME_TASK',name:'Fictional task expenses',requiresReceipt:false,defaultTaxable:false});
+  const claim=await submitClaim(employeeCtx,{employmentId:employee.employmentId,claimTypeId:type.id,amount:12,incurredOn:todayInKualaLumpur()});
+  const candidates=[...Array.from({length:1001},()=>randomUUID()),claim.id];
+  expect(await actionablePendingClaimIds(managerCtx,candidates)).toEqual([claim.id]);
+  expect(await actionablePendingClaimIds(employeeCtx,candidates)).toEqual([]);
+  expect((await listPendingTasks(managerCtx,undefined,{attendance:false,claims:true})).filter(row=>row.kind==='claim').map(row=>row.id)).toEqual([claim.id]);
+  await decideClaim(managerCtx,{claimRequestId:claim.id,decision:'approve'});
+  expect((await listPendingTasks(managerCtx,undefined,{attendance:false,claims:true})).filter(row=>row.kind==='claim')).toEqual([]);
+  expect(await actionableLeaveCancellationIds(managerCtx,candidates)).toEqual([]);
  });
 });
