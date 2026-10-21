@@ -16,6 +16,7 @@
  * today-covering plannedAbsences read — including when the strip itself shows a FUTURE week.
  */
 import { randomUUID } from 'node:crypto';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee, setReportingLine } from '../core/org';
@@ -221,6 +222,9 @@ describe('plannedAbsences personIds scope (eae550e9 step 1)', () => {
   });
 
   it('(d) query budget: round-trips are FIXED per distinct employment and independent of leave count', async () => {
+    // Calendar-day cancellation now correctly avoids schedule/calendar reads. This budget deliberately
+    // exercises the working-day policy whose per-employment batching it is intended to protect.
+    await owner.db.update(schema.leaveType).set({counting:'working_days'}).where(eq(schema.leaveType.id,b.annualLeaveTypeId));
     const ctxM = await subjectCtxFor(manager.personId);
     const ctxA = await subjectCtxFor(reportA.personId);
     const ctxB = await subjectCtxFor(reportB.personId);
@@ -236,22 +240,24 @@ describe('plannedAbsences personIds scope (eae550e9 step 1)', () => {
     // retains its 1 schedule + 3 original-calendar reads. ADR-0120 adds 3 dated-entity reads
     // (current company, assignment spine, tenure) and 1 replacement-ledger read. This fixture has
     // no replacement allocations, so no additional allocation-coverage proof is needed.
-    // Three employments therefore mean 4 + 3×8 = 28, still independent of the number of leaves.
+    // Dated calendar assignments add one period query per employment: 4 + 3×9 = 31,
+    // still independent of the number of leaves.
     const calendarReads = (statements: string[]) => ({
       assignmentHistory: statements.filter(s => /\bfrom\s+"assignment"/.test(s)).length,
       replacementLedger: statements.filter(s => /\bfrom\s+"replacement_holiday"/.test(s)).length,
+      datedCalendar: statements.filter(s => /\bfrom\s+"employment_holiday_calendar"/.test(s)).length,
     });
     const first = await countQueries(read);
-    expect(first.queries).toBe(28);
-    expect(calendarReads(first.statements)).toEqual({ assignmentHistory: 3, replacementLedger: 3 });
+    expect(first.queries).toBe(31);
+    expect(calendarReads(first.statements)).toEqual({ assignmentHistory: 3, replacementLedger: 3, datedCalendar: 3 });
 
     // MORE leaves for the same employments must NOT change the round-trip count (the old code paid
     // 2 round-trips per LEAVE; the fix pays per EMPLOYMENT).
     await approvedLeave(ctxA, reportA.employmentId, '2026-08-13', '2026-08-14');
-    await approvedLeave(ctxA, reportA.employmentId, '2026-08-16', '2026-08-16');
+    await approvedLeave(ctxA, reportA.employmentId, '2026-08-10', '2026-08-10');
     const second = await countQueries(read);
     expect(second.queries).toBe(first.queries);
-    expect(calendarReads(second.statements)).toEqual({ assignmentHistory: 3, replacementLedger: 3 });
+    expect(calendarReads(second.statements)).toEqual({ assignmentHistory: 3, replacementLedger: 3, datedCalendar: 3 });
     // Sanity: the extra leaves are really in the result (the equal count is not an empty-read artifact).
     expect(second.result.find((r) => r.id === reportA.personId)!.leaves.length).toBeGreaterThanOrEqual(3);
   });
