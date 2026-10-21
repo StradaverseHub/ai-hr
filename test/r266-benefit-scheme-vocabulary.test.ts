@@ -166,7 +166,7 @@ describe('§A · one vocabulary: the renamed strings say "benefit scheme", in si
     }
   });
 
-  it('M1 — the shared status label is impersonal: HR reads it about other people on three surfaces', () => {
+  it('M1 — the shared status label is impersonal on retained HR inquiry/export and employee surfaces', () => {
     // `me.leaveBalanceTable.statusNoEligibilityMatch` is rendered through ENTITLEMENT_STATUS_LABEL_KEY on
     // the HR balance page, the personnel Leave tab and the CSV export as well as the employee's own
     // table, so "covers you" would have HR reading "you" about somebody else. The hover TIP is HR-voiced
@@ -182,18 +182,21 @@ describe('§A · one vocabulary: the renamed strings say "benefit scheme", in si
       expect(v, `${loc} label`).not.toMatch(/covers you|\byou\b/i);
       if (loc !== 'en') expect(v, `${loc} label untranslated`).not.toBe(label);
     }
-    // The three HR surfaces and the employee table all read the SAME key through the shared map, so a
+    // The retained HR inquiry/export and employee table read the SAME key through the shared map, so a
     // second, personal label cannot reappear on one of them without leaving this map.
     for (const rel of [
       'app/leave/employee-balances/page.tsx',
       'app/leave/employee-balances/export/route.ts',
-      'app/admin/personnel/[employmentId]/page.tsx',
       'components/leave/leave-balance-table.tsx',
     ]) {
       const src = read(rel);
       expect(src, rel).toContain('ENTITLEMENT_STATUS_LABEL_KEY');
       expect(src, `${rel} carries a personal label`).not.toContain('covers you');
     }
+    // 39306a9e retires Personnel's duplicate balance panel; its status mapping must leave with it.
+    const personnel = read('app/admin/personnel/[employmentId]/page.tsx');
+    expect(personnel).not.toContain('ENTITLEMENT_STATUS_LABEL_KEY');
+    expect(personnel).not.toContain('<EntitlementBreakdown');
     // m2 — the no-table copy names the Leave types screen, not a path that no longer exists.
     for (const [loc, cat] of Object.entries(CATALOGUES)) {
       for (const key of ['leave.breakdown.statusNoEntitlementTableBody', 'me.leaveBalanceTable.statusNoEntitlementTableTip']) {
@@ -275,10 +278,12 @@ describe('§B · the mounts: one explainer key on both tables-block mounts, the 
     expect(src).toContain("tScheme('setUpSchemes')");
     // m3 — both links to the Leave types screen resolve through the module's one list of addresses.
     const start = src.indexOf('id="section-benefit-scheme"');
-    const end = src.indexOf('const salaryRows', start);
+    const end = src.indexOf('\n  ) : null;', start);
     expect(start).toBeGreaterThanOrEqual(0);
     expect(end).toBeGreaterThan(start + 300);
     const card = src.slice(start, end);
+    expect(card.length).toBeGreaterThan(300);
+    expect(src).toContain('{benefitSchemeCard}');
     expect((card.match(/href=\{leaveConfigScreenHref\('leaveTypes'\)\}/g) ?? []).length).toBe(2);
     expect(card).not.toContain('href="/admin/leave-config/types"');
     // Still read-only: no form, no action, no input on the card.
