@@ -57,14 +57,16 @@ describe('Payroll comparison creation',()=>{
     await user.clear(minimum);await user.type(minimum,'5.25');
     await user.click(editor().getByRole('checkbox',{name:labels.roles.hr_admin}));
     await user.click(editor().getByRole('checkbox',{name:labels.roles.super_admin}));
+    expect(editor().getByRole('checkbox',{name:labels.roles.hr_admin})).not.toBeChecked();
+    expect(editor().getByRole('checkbox',{name:labels.roles.super_admin})).not.toBeChecked();
     await user.click(editor().getByRole('button',{name:labels.saveRun}));
     await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent(labels.rolesRequired));
+    expect(save.mock.calls[0][0].getAll('roles')).toEqual([]);
     expect(name).toHaveValue('Fictional recoverable report');
     expect(editor().getByRole('textbox',{name:labels.description})).toHaveValue('Keep this description.');
     expect(minimum).toHaveValue(5.25);
     expect(editor().getByRole('checkbox',{name:labels.roles.hr_admin})).not.toBeChecked();
     expect(editor().getByRole('checkbox',{name:labels.roles.super_admin})).not.toBeChecked();
-    expect(save.mock.calls[0][0].getAll('roles')).toEqual([]);
     await user.click(editor().getByRole('checkbox',{name:labels.roles.hr_admin}));
     await user.click(editor().getByRole('button',{name:labels.saveRun}));
     await waitFor(()=>expect(save).toHaveBeenCalledTimes(2));
@@ -72,5 +74,15 @@ describe('Payroll comparison creation',()=>{
     expect(save.mock.calls[1][0].get('description')).toBe('Keep this description.');
     expect(save.mock.calls[1][0].get('minVariance')).toBe('5.25');
     expect(save.mock.calls[1][0].getAll('roles')).toEqual(['hr_admin']);
+  });
+  it('keeps the draft after a transport failure and gives a safe retry message',async()=>{
+    save.mockRejectedValueOnce(new Error('Fictional private transport detail'));
+    const user=mount();await user.click(screen.getByRole('button',{name:labels.newReport}));
+    const name=editor().getByRole('textbox',{name:labels.reportName});
+    await user.clear(name);await user.type(name,'Fictional network retry draft');
+    await user.click(editor().getByRole('button',{name:labels.saveRun}));
+    await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent(labels.saveFailed));
+    expect(name).toHaveValue('Fictional network retry draft');
+    expect(screen.queryByText('Fictional private transport detail')).not.toBeInTheDocument();
   });
 });

@@ -21732,6 +21732,7 @@
     "completedClosed": "已完成 {n} 个，{w} 个未经决定即关闭"
   },
   "payrollComparison": {
+    "saveFailed": "无法保存报表。草稿已保留，请重试。",
     "rolesRequired": "请至少选择一个获准运行此报表的角色。",
     "title": "薪资期间对比",
     "newReport": "新建报表",

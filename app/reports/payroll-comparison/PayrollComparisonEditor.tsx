@@ -1,26 +1,30 @@
 'use client';
-import {useActionState,useState} from 'react';
+import {useState,useTransition} from 'react';
 import {useFormStatus} from 'react-dom';
 import * as Dialog from '@radix-ui/react-dialog';
 import {useTranslations} from 'next-intl';
+import {unstable_rethrow} from 'next/navigation';
 import Link from 'next/link';
 import {DEFAULT_PAYROLL_COMPARISON,PAYROLL_COMPARISON_COLUMNS,type PayrollComparisonDefinition} from '@/lib/payroll-period-comparison';
 import {savePayrollComparisonAction,createPayrollComparisonSampleAction} from './actions';
 
-function Submit(){const {pending}=useFormStatus(),t=useTranslations('payrollComparison');return <button disabled={pending} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50" type="submit">{t('saveRun')}</button>;}
+function Submit({pending}:{pending:boolean}){const t=useTranslations('payrollComparison');return <button disabled={pending} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50" type="submit">{t('saveRun')}</button>;}
 function SampleSubmit(){const {pending}=useFormStatus(),t=useTranslations('payrollComparison');return <button type="submit" disabled={pending} className="rounded-lg border border-border px-3 py-2 text-sm font-medium disabled:opacity-50">{t(pending?'creatingSample':'createSample')}</button>;}
 
 type Props={payItems:{code:string;name:string}[];initial?:PayrollComparisonDefinition;id?:string;version?:number;name?:string;description?:string;onCancel?:()=>void};
 export function PayrollComparisonEditor({payItems,initial=DEFAULT_PAYROLL_COMPARISON,id,version,name,description,onCancel}:Props){
   const t=useTranslations('payrollComparison');
   const [draft,setDraft]=useState(()=>({...initial,name:name??'Payroll Basic Variance',description:description??''}));
-  const [saveState,saveAction]=useActionState(async(_previous:{error:string}|null,form:FormData)=>savePayrollComparisonAction(form),null);
+  const [saveState,setSaveState]=useState<{error:string}|null>(null),[pending,startSaving]=useTransition();
   const change=(value:Partial<typeof draft>)=>setDraft(current=>({...current,...value}));
   const field='mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm';
   const items=payItems.some(item=>item.code===initial.payItemCode)?payItems:[{code:initial.payItemCode,name:initial.payItemCode},...payItems];
-  // React resets forms after a resolved action, including a returned validation error.
-  // Success navigates away; a refused save must retain every current selection.
-  return <form action={saveAction} onReset={event=>event.preventDefault()} className="space-y-5">
+  // A rejected save must not invoke React's automatic successful-action form reset.
+  // The canonical server action still validates authority and redirects on success.
+  return <form onSubmit={event=>{
+    event.preventDefault();const form=new FormData(event.currentTarget);setSaveState(null);
+    startSaving(async()=>{try{setSaveState(await savePayrollComparisonAction(form));}catch(error){unstable_rethrow(error);setSaveState({error:t('saveFailed')});}});
+  }} className="space-y-5">
     <input type="hidden" name="id" value={id??''}/><input type="hidden" name="version" value={version??''}/>
     {saveState?.error&&<p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">{saveState.error}</p>}
     <div className="grid gap-4 sm:grid-cols-2">
@@ -35,7 +39,7 @@ export function PayrollComparisonEditor({payItems,initial=DEFAULT_PAYROLL_COMPAR
     <div className="space-y-2 text-sm"><label className="flex items-center gap-2"><input type="checkbox" name="autoTag" checked={draft.autoTag} onChange={event=>change({autoTag:event.target.checked})}/>{t('autoTag')}</label><label className="flex items-center gap-2"><input type="checkbox" name="onlyVariances" checked={draft.onlyVariances} onChange={event=>change({onlyVariances:event.target.checked})}/>{t('onlyVariances')}</label></div>
     <fieldset><legend className="text-sm font-semibold">{t('columnsTitle')}</legend><p className="mt-1 text-xs text-muted-foreground">{t('mandatory')}</p><div className="mt-3 grid gap-2 text-sm sm:grid-cols-3">{PAYROLL_COMPARISON_COLUMNS.map(column=><label key={column} className="flex items-center gap-2"><input type="checkbox" name="columns" value={column} checked={draft.columns.includes(column)} onChange={event=>change({columns:event.target.checked?[...draft.columns,column]:draft.columns.filter(value=>value!==column)})}/>{t('columns.'+column)}</label>)}</div></fieldset>
     <fieldset><legend className="text-sm font-semibold">{t('access')}</legend><p className="mt-1 text-xs text-muted-foreground">{t('accessHelp')}</p><div className="mt-3 flex gap-4 text-sm">{(['hr_admin','super_admin'] as const).map(role=><label key={role} className="flex items-center gap-2"><input type="checkbox" name="roles" value={role} checked={draft.roles.includes(role)} onChange={event=>change({roles:event.target.checked?[...draft.roles,role]:draft.roles.filter(value=>value!==role)})}/>{t('roles.'+role)}</label>)}</div></fieldset>
-    <div className="flex justify-end gap-3 border-t border-border pt-4">{onCancel?<button type="button" className="rounded-lg px-4 py-2 text-sm" onClick={onCancel}>{t('cancel')}</button>:<Link className="rounded-lg px-4 py-2 text-sm" href={id?'/reports/payroll-comparison/'+id:'/reports?cat=payroll'}>{t('cancel')}</Link>}<Submit/></div>
+    <div className="flex justify-end gap-3 border-t border-border pt-4">{onCancel?<button type="button" className="rounded-lg px-4 py-2 text-sm" onClick={onCancel}>{t('cancel')}</button>:<Link className="rounded-lg px-4 py-2 text-sm" href={id?'/reports/payroll-comparison/'+id:'/reports?cat=payroll'}>{t('cancel')}</Link>}<Submit pending={pending}/></div>
   </form>;
 }
 export function PayrollNewReportDialog({payItems}:{payItems:Props['payItems']}){

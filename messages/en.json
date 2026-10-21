@@ -21732,6 +21732,7 @@
     "completedClosed": "{n} completed, {w} closed without a decision"
   },
   "payrollComparison": {
+    "saveFailed": "Could not save the report. Your draft is kept. Try again.",
     "rolesRequired": "Select at least one role allowed to run this report.",
     "title": "Payroll period comparison",
     "newReport": "New report",
