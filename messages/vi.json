@@ -12364,7 +12364,7 @@
       "toggle": "Chuyển giao diện"
     },
     "uiTheme": {
-      "current": "Current",
+
       "label": "Giao diện",
       "monolith": "Monolith",
       "classic": "Cổ điển",
@@ -12372,13 +12372,6 @@
     },
     "drawer": {
       "close": "Đóng"
-    },
-    "current": {
-      "selectedRecord": "Bản ghi đã chọn",
-      "openRecord": "Mở bản ghi đầy đủ",
-      "view": "Chế độ xem bản ghi",
-      "ledger": "Sổ cái",
-      "table": "Bảng"
     }
   },
   "kb": {
@@ -13082,6 +13075,7 @@
     "task": {
       "leave": "Phê duyệt đơn xin nghỉ",
       "leaveCancellation": "Phê duyệt hủy nghỉ phép",
+      "replacementLeave": "Xem xét yêu cầu nghỉ bù",
       "attendance": "Xem xét điều chỉnh chấm công",
       "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]",
       "profile": "Xác minh thay đổi hồ sơ",

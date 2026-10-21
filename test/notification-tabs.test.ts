@@ -17,6 +17,8 @@ import { hireEmployee, setReportingLine } from '../core/org';
 import { requestLeave } from '../core/leave';
 import { listPendingTasks, pendingApprovalsCount } from '../core/approvals-inbox';
 import { listNotifications, markNotificationRead, unreadNotificationCount } from '../core/notifications';
+import { listPendingReplacementLeaveRequests, listPendingReplacementLeaveTasks } from '../packs/leave/service';
+import { todayInKualaLumpur } from '../lib/hr-date';
 
 let b: Base;
 const uniqEmail = () => `tabs_${randomUUID().slice(0, 8)}@t.local`;
@@ -74,6 +76,55 @@ describe('listPendingTasks (Task tab)', () => {
 
     // Count parity — the legacy badge figure is exactly the task list's length.
     expect(await pendingApprovalsCount(mgrCtx, undefined, { attendance: true, claims: true })).toBe(tasks.length);
+  });
+
+  it('includes both pending replacement claims once, matching the Approvals population and dropping decided claims', async () => {
+    const employee = await hire('Replacement applicant');
+    const reviewer = await hire('Replacement reviewer');
+    await setReportingLine(adminCtx(b), { subordinateEmploymentId: employee.employmentId, managerEmploymentId: reviewer.employmentId, lineType: 'administrative', validFrom: '2024-01-01' });
+    const userId = await createAppUser(b.tenantId, reviewer.personId, 'manager');
+    const reviewerCtx: SessionContext = { ...adminCtx(b), userId, personId: reviewer.personId, roles: ['manager'] };
+    const [first, second] = await owner.db.insert(schema.replacementLeaveRequest).values([1, 2].map(() => ({
+      tenantId: b.tenantId, employmentId: employee.employmentId, unit: 'day' as const,
+      totalDays: '1.00', submittedOn: todayInKualaLumpur(), status: 'pending' as const,
+    }))).returning({ id: schema.replacementLeaveRequest.id });
+    const opts = { companyIds: [b.companyId] };
+    const page = await listPendingReplacementLeaveRequests(reviewerCtx, opts);
+    expect(page.map(row => row.id).sort()).toEqual([first.id, second.id].sort());
+    const tasks = await listPendingTasks(reviewerCtx, opts.companyIds, { attendance: false, claims: false });
+    expect(tasks.filter(row => row.kind === 'replacementLeave').map(row => row.id).sort()).toEqual(page.map(row => row.id).sort());
+    expect(tasks).toHaveLength(2);
+    for (const row of tasks) {
+      expect(row.subjectName).toBe('Replacement applicant');
+      expect(row.linkPath).toBe('/approvals?category=replacementLeave');
+      expect(Number.isNaN(Date.parse(row.createdAt))).toBe(false);
+    }
+    expect(await pendingApprovalsCount(reviewerCtx, opts.companyIds, { attendance: false, claims: false })).toBe(2);
+    // Scope filtering and an unrelated employee must not gain a task from the new queue.
+    expect(await listPendingReplacementLeaveTasks(reviewerCtx, { companyIds: [randomUUID()] })).toEqual([]);
+    const unrelated = await hire('Unassigned employee');
+    const unrelatedUser = await createAppUser(b.tenantId, unrelated.personId, 'employee');
+    expect(await listPendingTasks({ ...adminCtx(b), userId: unrelatedUser, personId: unrelated.personId, roles: ['employee'] }, undefined, { attendance: false, claims: false })).toEqual([]);
+    // Header projection is deliberately small: review lines, money and reasons never reach the shell.
+    const heads = await listPendingReplacementLeaveTasks(reviewerCtx, opts);
+    expect(Object.keys(heads[0]).sort()).toEqual(['id', 'personId', 'employee', 'createdAt'].sort());
+    await owner.db.update(schema.replacementLeaveRequest).set({ status: 'rejected' }).where(eq(schema.replacementLeaveRequest.id, first.id));
+    const refreshed = await listPendingTasks(reviewerCtx, opts.companyIds, { attendance: false, claims: false });
+    expect(refreshed.map(row => row.id)).toEqual([second.id]);
+    expect(await pendingApprovalsCount(reviewerCtx, opts.companyIds, { attendance: false, claims: false })).toBe(1);
+  });
+
+  it('never turns an own or foreign-tenant replacement claim into a task', async () => {
+    const own = await hire('Self applicant');
+    const userId = await createAppUser(b.tenantId, own.personId, 'hr_admin');
+    const ownCtx: SessionContext = { ...adminCtx(b), userId, personId: own.personId };
+    const [ownRequest] = await owner.db.insert(schema.replacementLeaveRequest).values({ tenantId: b.tenantId, employmentId: own.employmentId, unit: 'day', submittedOn: todayInKualaLumpur() }).returning({ id: schema.replacementLeaveRequest.id });
+    const foreign = await seedBase();
+    const foreignEmployee = await hireEmployee(adminCtx(foreign), { person: { fullName: 'Foreign applicant', primaryEmail: uniqEmail() }, companyId: foreign.companyId, employmentType: 'full_time', hiredOn: '2024-01-01' });
+    const [foreignRequest] = await owner.db.insert(schema.replacementLeaveRequest).values({ tenantId: foreign.tenantId, employmentId: foreignEmployee.employmentId, unit: 'day', submittedOn: todayInKualaLumpur() }).returning({ id: schema.replacementLeaveRequest.id });
+    const tasks = await listPendingTasks(ownCtx, undefined, { attendance: false, claims: false });
+    expect(tasks.some(row => row.id === ownRequest.id || row.id === foreignRequest.id)).toBe(false);
+    expect(await listPendingReplacementLeaveTasks(ownCtx)).toHaveLength(1); // only own tenant's header is visible to HR
   });
 
   /**

@@ -12,7 +12,7 @@ const rail=(approvalCount:number,taskCount:number)=><NextIntlClientProvider loca
 </NextIntlClientProvider>;
 afterEach(()=>{cleanup();document.documentElement.removeAttribute('data-ui-theme');});
 
-describe.each(['classic','monolith','current'])('%s Inbox counts',theme=>{
+describe.each(['classic','monolith','atelier'])('%s Inbox counts',theme=>{
  it('announces each queue independently and removes both badges at zero',()=>{
   document.documentElement.setAttribute('data-ui-theme',theme);
   const view=render(rail(3,8));

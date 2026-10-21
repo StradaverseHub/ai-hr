@@ -8,7 +8,7 @@ vi.mock('../core/entitlements',()=>({isModuleEnabled:vi.fn()}));
 import {Sidebar} from '../components/sidebar';
 
 afterEach(()=>{cleanup();document.documentElement.removeAttribute('data-ui-theme');});
-describe.each(['classic','monolith','current'])('%s Profile Changes navigation',theme=>{
+describe.each(['classic','monolith','atelier'])('%s Profile Changes navigation',theme=>{
  it.each([
   {viewer:'HR administrator',rail:true,review:true,manager:false},
   {viewer:'payroll partner',rail:true,review:false,manager:false},

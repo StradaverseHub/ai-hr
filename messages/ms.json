@@ -12364,7 +12364,7 @@
       "toggle": "Tukar tema"
     },
     "uiTheme": {
-      "current": "Current",
+
       "label": "Tema",
       "monolith": "Monolith",
       "classic": "Klasik",
@@ -12372,13 +12372,6 @@
     },
     "drawer": {
       "close": "Tutup"
-    },
-    "current": {
-      "selectedRecord": "Rekod dipilih",
-      "openRecord": "Buka rekod penuh",
-      "view": "Paparan rekod",
-      "ledger": "Lejar",
-      "table": "Jadual"
     }
   },
   "kb": {
@@ -13082,6 +13075,7 @@
     "task": {
       "leave": "Luluskan permohonan cuti",
       "leaveCancellation": "Luluskan pembatalan cuti",
+      "replacementLeave": "Semak permohonan cuti gantian",
       "attendance": "Semak pembetulan kehadiran",
       "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]",
       "profile": "Sahkan perubahan profil",

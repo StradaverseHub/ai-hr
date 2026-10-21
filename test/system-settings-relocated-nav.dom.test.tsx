@@ -106,14 +106,14 @@ describe('existing admin destinations relocated into System Configuration', () =
     expect(trigger).toHaveFocus();
   });
 
-  it.each(['monolith', 'current'])('uses the same relocated destinations in the %s shell', theme => {
+  it.each(['monolith', 'classic', 'atelier'])('uses the same relocated destinations in the %s shell', theme => {
     document.documentElement.setAttribute('data-ui-theme', theme);
     mount();
-    openSettings();
+    const panel = openSettings();
     for (const [href, key] of relocated) expect(screen.getByRole('link', {name: en.nav[key]})).toHaveAttribute('href', href);
     expect(screen.getByRole('link', {name: en.nav.dataPrivacy})).toHaveAttribute('aria-current', 'page');
     const ai = screen.getByRole('link', {name: en.nav.aiConfig});
     expect(ai).toHaveAttribute('href', '/admin/ai');
-    expect(document.getElementById(theme === 'monolith' ? 'rail-kids-systemConfiguration' : 'current-module-systemConfiguration')?.contains(ai)).toBe(true);
+    expect(panel.contains(ai)).toBe(true);
   });
 });

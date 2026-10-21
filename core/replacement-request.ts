@@ -1194,12 +1194,10 @@ export type ReplacementClaimLineView = {
   eligibleMinutes: number | null;
 };
 
-export async function listPendingReplacementLeaveRequests(
-  ctx: SessionContext,
-  opts: { companyIds?: string[] } = {},
-): Promise<PendingReplacementRequestRow[]> {
-  const pending=await withTenant(ctx, async (tx) => {
-    const heads = await tx
+// One pending-head query for the review page and the shell inbox. The shell
+// only needs identity/date: reading its badge must not price every claim line.
+function pendingReplacementHeads(tx: Tx, opts: { companyIds?: string[] }) {
+  return tx
       .select({
         id: replacementLeaveRequest.id,
         employmentId: replacementLeaveRequest.employmentId,
@@ -1224,6 +1222,23 @@ export async function listPendingReplacementLeaveRequests(
       )
       .orderBy(desc(replacementLeaveRequest.createdAt))
       .limit(200);
+}
+
+export async function listPendingReplacementLeaveTasks(
+  ctx: SessionContext,
+  opts: { companyIds?: string[] } = {},
+) {
+  return withTenant(ctx, async tx => (await pendingReplacementHeads(tx, opts)).map(row => ({
+    id: row.id, personId: row.personId, employee: row.employee, createdAt: row.createdAt,
+  })));
+}
+
+export async function listPendingReplacementLeaveRequests(
+  ctx: SessionContext,
+  opts: { companyIds?: string[] } = {},
+): Promise<PendingReplacementRequestRow[]> {
+  const pending=await withTenant(ctx, async (tx) => {
+    const heads = await pendingReplacementHeads(tx, opts);
     if (heads.length === 0) return [];
     const lines = await tx
       .select()
