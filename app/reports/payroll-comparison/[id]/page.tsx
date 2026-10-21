@@ -16,7 +16,7 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
   const options=await payrollComparisonOptions(s,scopeIds);
   if(sp.edit==='1'){
     const report=await getCustomReport(s,id,scopeIds,'edit').catch(()=>null);if(!report?.spec.payrollComparison)notFound();
-    return <div className="space-y-5"><PageHeader title={t('editReport')} back={{href:'/reports/payroll-comparison/'+id,label:t('back')}}/>{sp.error&&<ErrorBanner message={sp.error}/>}<Card className="p-6"><PayrollComparisonEditor id={id} version={report.version} name={report.name} description={report.spec.layout?.description??''} initial={report.spec.payrollComparison} payItems={options.payItems}/></Card></div>;
+    return <div className="space-y-5"><PageHeader title={t('editReport')} back={{href:'/reports/payroll-comparison/'+id,label:t('back')}}/>{sp.error&&<ErrorBanner message={sp.error}/>}<Card className="p-6"><PayrollComparisonEditor key={id+':'+report.version} id={id} version={report.version} name={report.name} description={report.spec.layout?.description??''} initial={report.spec.payrollComparison} payItems={options.payItems}/></Card></div>;
   }
   const raw=Object.fromEntries(Object.entries(sp).filter(([key,value])=>key!=='error'&&key!=='edit'&&value!==undefined));
   let run:Awaited<ReturnType<typeof runPayrollComparisonReport>>;
@@ -35,7 +35,7 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
     {result.provisional&&<div role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:bg-amber-950 dark:text-amber-100">{t('provisional')}</div>}
     {!result.available&&<div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm"><p className="font-semibold">{t('unavailable')}</p><ul className="mt-2 list-inside list-disc">{result.issues.map((issue,index)=><li key={index}>{t('issues.'+issue.code)} · {issue.period} · {options.companies.find(company=>company.id===issue.companyId)?.name??issue.companyId}</li>)}</ul></div>}
     {run.contextUnavailable&&<p role="status" className="rounded-lg border border-border p-3 text-sm text-muted-foreground">{t('contextUnavailable')}</p>}
-    <Card className="p-5"><form className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" method="get">
+    <Card className="p-5"><form key={query()} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" method="get">
       <label className="text-sm font-medium">{t('company')}<select className={input} name="companyId" defaultValue={filters.companyId??''}><option value="">{t('allCompanies')}</option>{options.companies.map(company=><option key={company.id} value={company.id}>{company.name}</option>)}</select></label>
       <label className="text-sm font-medium">{t('previousPeriod')}<input className={input} type="month" name="previousPeriod" defaultValue={filters.previousPeriod??''} required/></label>
       <label className="text-sm font-medium">{t('currentPeriod')}<input className={input} type="month" name="currentPeriod" defaultValue={filters.currentPeriod??''} required/></label>

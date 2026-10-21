@@ -6,8 +6,11 @@ import {saveCustomReport,updateCustomReport,getCustomReport,ensurePayrollBasicVa
 import {payrollComparisonSpec} from '@/core/report-payroll-comparison';
 import {validatePayrollComparisonDefinition} from '@/lib/payroll-period-comparison';
 import {publicErrorMessage} from '@/lib/public-error';
-export async function savePayrollComparisonAction(form:FormData){
+import {getTranslations} from 'next-intl/server';
+import {PayrollComparisonInputError} from '@/lib/payroll-period-comparison';
+export async function savePayrollComparisonAction(form:FormData):Promise<{error:string}|null>{
   const {s,scopeIds}=await scopedAdmin(),id=String(form.get('id')??'');
+  const t=await getTranslations('payrollComparison');
   let destination='/reports?cat=payroll';
   try{
     const name=String(form.get('name')??'').trim(),description=String(form.get('description')??'').trim();
@@ -23,7 +26,7 @@ export async function savePayrollComparisonAction(form:FormData){
     if(id){await updateCustomReport(s,{id,name,spec,shared:previous!.shared,version:Number(form.get('version')),companyIds:scopeIds});destination='/reports/payroll-comparison/'+id;}
     else{const saved=await saveCustomReport(s,{name,datasetId:spec.datasetId,spec,companyIds:scopeIds});destination='/reports/payroll-comparison/'+saved.id;}
     revalidatePath('/reports');
-  }catch(error){destination=(id?'/reports/payroll-comparison/'+id+'?edit=1&':'/reports?cat=payroll&')+'error='+encodeURIComponent(publicErrorMessage(error));}
+  }catch(error){return {error:error instanceof PayrollComparisonInputError&&error.code==='roles'?t('rolesRequired'):publicErrorMessage(error)};}
   redirect(destination);
 }
 

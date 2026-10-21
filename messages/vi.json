@@ -21732,6 +21732,7 @@
     "completedClosed": "{n} đã hoàn tất, {w} đóng mà không có quyết định"
   },
   "payrollComparison": {
+    "rolesRequired": "Chọn ít nhất một vai trò được phép chạy báo cáo này.",
     "title": "So sánh kỳ lương",
     "newReport": "Báo cáo mới",
     "reportName": "Tên báo cáo",

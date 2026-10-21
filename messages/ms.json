@@ -21732,6 +21732,7 @@
     "completedClosed": "{n} selesai, {w} ditutup tanpa keputusan"
   },
   "payrollComparison": {
+    "rolesRequired": "Pilih sekurang-kurangnya satu peranan yang dibenarkan menjalankan laporan ini.",
     "title": "Perbandingan tempoh gaji",
     "newReport": "Laporan baharu",
     "reportName": "Nama laporan",
