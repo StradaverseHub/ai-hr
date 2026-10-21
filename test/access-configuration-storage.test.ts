@@ -47,6 +47,8 @@ async function sqlRefusal(run:()=>Promise<unknown>,code:string){
 describe('canonical access storage under ai_hr_app',()=>{
  it('creates defaults without rewriting roles and derives default membership from the live role owner',async()=>{
   const before=await owner.db.select().from(roleAssignment).where(eq(roleAssignment.tenantId,b.tenantId)).orderBy(roleAssignment.id);
+  // The first real administrator installs defaults at transaction end, before any page is opened.
+  const [automatic]=await owner.db.select().from(accessConfiguration).where(eq(accessConfiguration.tenantId,b.tenantId));expect(automatic?.initialized).toBe(true);
   const current=await state();
   expect(current.snapshot.groups).toHaveLength(6);
   expect(current.snapshot.memberships.filter(row=>row.userId===b.adminUserId)).toEqual(expect.arrayContaining([expect.objectContaining({derived:true,companyId:null})]));
@@ -59,6 +61,8 @@ describe('canonical access storage under ai_hr_app',()=>{
   await expect(state({...employee.ctx,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]})).rejects.toMatchObject({code:'ceiling'});
   await sqlRefusal(()=>withTenant(admin(),tx=>tx.execute(sql`delete from access_group where tenant_id=${b.tenantId}`)),'42501');
   await sqlRefusal(()=>withTenant(admin(),tx=>tx.execute(sql`select app.access_can_delegate('access.configure',NULL)`)),'42501');
+  await sqlRefusal(()=>withTenant(admin(),tx=>tx.execute(sql`select app.access_install_defaults(${b.tenantId}::uuid,${b.adminUserId}::uuid)`)),'42501');
+  await sqlRefusal(()=>withTenant(admin(),tx=>tx.execute(sql`select app.access_allowed_for_tenant(${b.tenantId}::uuid,${b.adminUserId}::uuid,'access.configure',NULL)`)),'42501');
   await sqlRefusal(()=>withTenant(employee.ctx,tx=>tx.execute(sql`select * from access_user_override`)),'42501');
  });
  it('saves/reopens a group and records exactly one bounded change event',async()=>{

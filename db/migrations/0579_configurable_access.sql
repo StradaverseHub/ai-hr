@@ -170,12 +170,12 @@ $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.access_scope_covers(uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
-CREATE FUNCTION app.access_allowed_for(p_user uuid,p_capability text,p_company uuid) RETURNS boolean
+CREATE FUNCTION app.access_allowed_for_tenant(p_tenant uuid,p_user uuid,p_capability text,p_company uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(
   SELECT 1 FROM public.app_user u JOIN public.access_configuration s ON s.tenant_id=u.tenant_id
   JOIN public.access_capability c ON c.id=p_capability
-  WHERE u.id=p_user AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL
+  WHERE u.id=p_user AND u.tenant_id=p_tenant AND u.archived_at IS NULL
    AND NOT app.login_blocked(u.id) AND s.initialized AND c.supported AND jsonb_array_length(c.bindings)>0
    AND ((c.scope='tenant' AND p_company IS NULL) OR (c.scope='company' AND p_company IS NOT NULL))
    AND NOT EXISTS(SELECT 1 FROM public.access_user_override o
@@ -194,6 +194,13 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
       AND app.access_scope_covers(a.company_id,p_company,u.tenant_id))
    )
  );
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_allowed_for_tenant(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_allowed_for(p_user uuid,p_capability text,p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.access_allowed_for_tenant(app.current_tenant_id(),p_user,p_capability,p_company);
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.access_allowed_for(uuid,text,uuid) FROM PUBLIC,ai_hr_app;
@@ -267,19 +274,26 @@ $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.access_recovery_available(uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
-CREATE FUNCTION app.access_assert_administrator() RETURNS void
+CREATE FUNCTION app.access_assert_administrator_for(p_tenant uuid) RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
- IF EXISTS(SELECT 1 FROM public.access_configuration s WHERE s.tenant_id=app.current_tenant_id() AND s.initialized)
+ IF EXISTS(SELECT 1 FROM public.access_configuration s WHERE s.tenant_id=p_tenant AND s.initialized)
  AND NOT EXISTS(SELECT 1 FROM public.access_group g JOIN public.access_effective_membership m ON m.group_id=g.id AND m.tenant_id=g.tenant_id
-  WHERE g.tenant_id=app.current_tenant_id() AND g.system_administrator AND g.retired_at IS NULL
+  WHERE g.tenant_id=p_tenant AND g.system_administrator AND g.retired_at IS NULL
    AND m.company_id IS NULL
-   AND app.access_allowed_for(m.user_id,'access.system_admin',NULL)
-   AND app.access_allowed_for(m.user_id,'access.configure',NULL)
+   AND app.access_allowed_for_tenant(p_tenant,m.user_id,'access.system_admin',NULL)
+   AND app.access_allowed_for_tenant(p_tenant,m.user_id,'access.configure',NULL)
    AND app.access_recovery_available(m.user_id)) THEN
   RAISE EXCEPTION 'access last administrator' USING ERRCODE='23514';
  END IF;
 END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_assert_administrator_for(uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_assert_administrator() RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN PERFORM app.access_assert_administrator_for(app.current_tenant_id()); END;
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.access_assert_administrator() FROM PUBLIC,ai_hr_app;
@@ -293,17 +307,17 @@ INSERT INTO access_capability(id,scope,supported,bindings) VALUES
  ('workforce.maintain','company',false,'[]'),
  ('profile.review','company',false,'[]');
 --> statement-breakpoint
-CREATE FUNCTION app.access_configuration_initialize() RETURNS boolean
+CREATE FUNCTION app.access_install_defaults(t uuid,u uuid) RETURNS boolean
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE t uuid:=app.current_tenant_id(); u uuid:=app.current_user_id(); root_group uuid; hr_group uuid;
+DECLARE root_group uuid; hr_group uuid;
 BEGIN
  PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
  IF EXISTS(SELECT 1 FROM public.access_configuration s WHERE s.tenant_id=t AND s.initialized) THEN RETURN false; END IF;
  -- Bootstrap is based on real role rows and current login availability, never GUC role text.
  IF NOT EXISTS(SELECT 1 FROM public.app_user a JOIN public.role_assignment r ON r.app_user_id=a.id AND r.tenant_id=a.tenant_id
-  WHERE a.id=u AND a.tenant_id=t AND a.archived_at IS NULL AND NOT app.login_blocked(a.id)
+  WHERE a.id=u AND a.tenant_id=t AND a.archived_at IS NULL AND NOT app.login_blocked(a.id) AND app.access_recovery_available(a.id)
    AND (r.role::text='super_admin' OR (r.role::text='hr_admin' AND r.company_id IS NULL))) THEN
-  RAISE EXCEPTION 'access configuration unavailable' USING ERRCODE='42501';
+  RETURN false;
  END IF;
  INSERT INTO public.access_configuration(tenant_id) VALUES(t) ON CONFLICT(tenant_id) DO NOTHING;
  INSERT INTO public.access_group(tenant_id,name,legacy_key,system_administrator) VALUES
@@ -319,10 +333,54 @@ BEGIN
  -- Role-derived memberships are a live view. Existing organizational-manager authority is not copied
  -- into a manager role or a new permission row; its actual owner remains the reporting graph.
  UPDATE public.access_configuration SET initialized=true,revision=gen_random_uuid(),updated_at=now() WHERE tenant_id=t;
- PERFORM app.access_assert_administrator();
+ PERFORM app.access_assert_administrator_for(t);
  INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
  VALUES(t,'access-configuration',t,'access-configuration.initialized','user',u::text,'{"defaultsCreated":true,"legacyRolesChanged":false}'::jsonb);
  RETURN true;
+END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_install_defaults(uuid,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- Existing customers receive defaults during the migration without a browser visit. A tenant with
+-- no actual durable customer administrator remains uninitialized; no identity or operator is minted.
+DO $$
+DECLARE root record;
+BEGIN
+ FOR root IN SELECT DISTINCT ON(u.tenant_id) u.tenant_id,u.id FROM public.app_user u
+  JOIN public.role_assignment r ON r.app_user_id=u.id AND r.tenant_id=u.tenant_id
+  WHERE u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND app.access_recovery_available(u.id)
+   AND (r.role::text='super_admin' OR (r.role::text='hr_admin' AND r.company_id IS NULL))
+  ORDER BY u.tenant_id,u.id
+ LOOP PERFORM app.access_install_defaults(root.tenant_id,root.id); END LOOP;
+END;
+$$;
+--> statement-breakpoint
+CREATE FUNCTION app.access_initialize_from_role() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ -- Deferred: the complete account/role transaction, including invitation activation, is visible.
+ IF NEW.role::text='super_admin' OR (NEW.role::text='hr_admin' AND NEW.company_id IS NULL) THEN
+  PERFORM app.access_install_defaults(NEW.tenant_id,NEW.app_user_id);
+ END IF;
+ RETURN NULL;
+END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_initialize_from_role() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE CONSTRAINT TRIGGER access_role_default_install AFTER INSERT OR UPDATE ON role_assignment
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.access_initialize_from_role();
+--> statement-breakpoint
+CREATE FUNCTION app.access_configuration_initialize() RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE installed boolean;
+BEGIN
+ installed:=app.access_install_defaults(app.current_tenant_id(),app.current_user_id());
+ IF NOT EXISTS(SELECT 1 FROM public.access_configuration s WHERE s.tenant_id=app.current_tenant_id() AND s.initialized) THEN
+  RAISE EXCEPTION 'access configuration unavailable' USING ERRCODE='42501';
+ END IF;
+ RETURN installed;
 END;
 $$;
 --> statement-breakpoint
