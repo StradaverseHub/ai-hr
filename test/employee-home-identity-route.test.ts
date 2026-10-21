@@ -10,13 +10,13 @@ import {HomeAccessError} from '@/core/employee-home';
 import {GET} from '../app/api/home/identity/route';
 
 const ctx={tenantId:'fictional-tenant',userId:'fictional-login',roles:['employee']};
-const identity={version:1,name:'Fictional viewer',photoHref:null,role:'employee',employmentState:'selected',
+const identity={version:1,role:'employee',employmentState:'selected',
  selectedEmploymentId:'own-employment',companyEstablished:true,
  employments:[{employmentId:'own-employment',employeeCode:'EMP-FICTIONAL',company:'Fictional company'}]};
 beforeEach(()=>{vi.clearAllMocks();state.session.mockResolvedValue(ctx);state.read.mockResolvedValue(identity);});
 describe('Home own-identity transport',()=>{
  it('takes only an employment selector and emits only the minimal identity contract under private no-store headers',async()=>{
-  state.read.mockResolvedValueOnce({...identity,salary:'Fictional private amount',birthYear:1900,
+  state.read.mockResolvedValueOnce({...identity,salary:'Fictional private amount',birthYear:1900,name:'Unrequested greeting',photoHref:'/unrequested-photo',
    employments:[{...identity.employments[0],medicalReason:'Fictional private reason'}]});
   const result=await GET(new Request('http://localhost/api/home/identity?employmentId=own-employment'));
   expect(state.read).toHaveBeenCalledWith(ctx,'own-employment');

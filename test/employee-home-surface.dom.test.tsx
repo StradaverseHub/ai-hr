@@ -8,7 +8,7 @@ import type {EmployeeHomeIdentity} from '../lib/employee-home-read-model';
 afterEach(cleanup);
 const labels={title:'Home',employment:'Employment',chooseEmployment:'Choose employment',chooseHelp:'Choose an employment to see your Home.',
   showEmployment:'Show Home',noEmployment:'No employment is linked to your account.',companyUnavailable:'Company unavailable',employeeCodeUnavailable:'Employee ID unavailable'};
-const identity:EmployeeHomeIdentity={version:1,name:'Fictional Alex',photoHref:null,role:'employee',employmentState:'selected',selectedEmploymentId:'own-one',companyEstablished:true,
+const identity:EmployeeHomeIdentity={version:1,role:'employee',employmentState:'selected',selectedEmploymentId:'own-one',companyEstablished:true,
   employments:[{employmentId:'own-one',employeeCode:'0007',company:'Fictional One'},{employmentId:'own-two',employeeCode:'0008',company:'Fictional Two'}]};
 const cards={summary:<p>Recorded update</p>,today:<p>Your Day</p>,calendar:<p>Calendar</p>,notices:<p>Notices</p>,tasks:<p>Assigned tasks</p>};
 const slots=(container:HTMLElement)=>[...container.querySelectorAll('[data-home-slot]')].map(node=>node.getAttribute('data-home-slot'));

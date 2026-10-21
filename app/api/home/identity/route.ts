@@ -9,7 +9,7 @@ export async function GET(request:Request){
   if([...query.keys()].some(key=>key!=='employmentId')||query.getAll('employmentId').length>1)
    return Response.json({error:'invalid'},{status:400,headers});
   const identity=await readEmployeeHomeIdentity(session,query.get('employmentId')??undefined);
-  return Response.json({version:identity.version,name:identity.name,photoHref:identity.photoHref,role:identity.role,
+  return Response.json({version:identity.version,role:identity.role,
    employmentState:identity.employmentState,selectedEmploymentId:identity.selectedEmploymentId,companyEstablished:identity.companyEstablished,
    employments:identity.employments.map(row=>({employmentId:row.employmentId,employeeCode:row.employeeCode,company:row.company}))},{headers});
  }catch(error){

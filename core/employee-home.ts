@@ -7,7 +7,7 @@ import {hasPersonPhoto} from './person-photo';
 import {isAdmin} from '../lib/authz-model';
 import {resolveDashboardRole} from '../lib/dashboard-cards';
 import {employeeHomeGreetingName} from '../lib/employee-home';
-import type {EmployeeHomeIdentity} from '../lib/employee-home-read-model';
+import type {EmployeeHomeIdentity,EmployeeHomeGreetingIdentity} from '../lib/employee-home-read-model';
 
 export class HomeAccessError extends Error{
  constructor(readonly code:'authentication'|'employmentUnavailable'|'chooseEmployment'){
@@ -45,19 +45,28 @@ export async function requireOwnHomeSubject(ctx:SessionContext,employmentId?:str
 
 export async function readEmployeeHomeIdentity(ctx:SessionContext,requestedEmploymentId?:string):Promise<EmployeeHomeIdentity>{
  const selection=await ownHomeSubjectSelection(ctx,requestedEmploymentId);
+ const lines=selection.subject?await reportingLinesFor(ctx,selection.subject.employmentId):null;
+ return {version:1,
+  role:resolveDashboardRole({admin:isAdmin(ctx),managerRole:(ctx.roles??[]).includes('manager'),hasDirectReports:(lines?.reports.length??0)>0}),
+  employmentState:selection.state,selectedEmploymentId:selection.subject?.employmentId??null,
+  companyEstablished:Boolean(selection.subject?.companyProof.companyId),
+  employments:selection.subjects.map(row=>({employmentId:row.employmentId,employeeCode:row.employeeCode,company:row.company}))};
+}
+
+/** A failure in greeting presentation belongs to that card, not to the selection/role context. The
+ * independent reader still repeats the own-employment proof before retrieving any presentation fact.
+ * Null means no recorded name/photo, never a swallowed read failure or a guessed fallback value.
+ */
+export async function readEmployeeHomeGreetingIdentity(ctx:SessionContext,requestedEmploymentId?:string):Promise<EmployeeHomeGreetingIdentity>{
+ const subject=await requireOwnHomeSubject(ctx,requestedEmploymentId);
  const personId=ctx.personId;
- const [name,photo,lines]=await Promise.all([
+ const [name,photo]=await Promise.all([
   personId?withTenant(ctx,async tx=>{
    const [row]=await tx.select({preferredName:person.preferredName,firstName:person.firstName,fullName:person.fullName})
     .from(person).where(and(eq(person.tenantId,ctx.tenantId),eq(person.id,personId))).limit(1);
    return row?employeeHomeGreetingName(row):null;
   }):Promise.resolve(null),
   personId?hasPersonPhoto(ctx,personId):Promise.resolve(false),
-  selection.subject?reportingLinesFor(ctx,selection.subject.employmentId):Promise.resolve(null),
  ]);
- return {version:1,name,photoHref:photo&&personId?`/personnel/photo/${encodeURIComponent(personId)}`:null,
-  role:resolveDashboardRole({admin:isAdmin(ctx),managerRole:(ctx.roles??[]).includes('manager'),hasDirectReports:(lines?.reports.length??0)>0}),
-  employmentState:selection.state,selectedEmploymentId:selection.subject?.employmentId??null,
-  companyEstablished:Boolean(selection.subject?.companyProof.companyId),
-  employments:selection.subjects.map(row=>({employmentId:row.employmentId,employeeCode:row.employeeCode,company:row.company}))};
+ return {version:1,employmentId:subject.employmentId,name,photoHref:photo&&personId?`/personnel/photo/${encodeURIComponent(personId)}`:null};
 }
