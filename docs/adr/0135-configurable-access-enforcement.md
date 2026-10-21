@@ -219,3 +219,15 @@ consumer and default/independent-owner equivalence. Missing profile-derived/phot
 contracts also require outcome reconciliation. The view/maintain/profile-review catalogue controls stay
 unsupported during construction; their public page/source scaffolding is not proof of a complete or
 shippable capability. No Board status has been advanced to Done or Deployed for this source work.
+
+
+Board1's committed but unreleased5b8dbeb2f shares profile decision eligibility with its task reader using
+a metadata-only request shape. Our ESS source also distinguishes photo from fields during routing.
+Integration must retain that distinction without loading proposal values into task metadata. The draft
+route subject accepts either the real writer row or an explicit stored request type; it exports a SQL
+classifier twin beside the existing JavaScript owner. Prepared adversarial vectors distinguish numeric
+version3 from string3, arrays, scalars and other versions. After verified peer handover, reconcile the
+new actionable reader by selecting only that SQL-derived request type and retaining the shared writer
+helper, fresh access/policy lock order, named routes, no-self and group-only checks. Do not overwrite the
+peer's canonical reader or resurrect the old independent bell count. This compatibility is source-only
+and unexecuted, and no Board1 feature has been merged into this branch yet.

@@ -2,7 +2,7 @@ import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {z} from 'zod';
 /** Named HR routing is an authority-narrowing adapter over the canonical organisation resolver. */
 import {createHash,randomUUID} from 'node:crypto';
-import {and,asc,eq,isNull,inArray,or,gt,gte,ilike,sql} from 'drizzle-orm';
+import {and,asc,eq,isNull,inArray,or,gt,gte,ilike,sql,type SQL} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {employment,assignment,profileChangeRequest,person} from '../db/schema';
 import {appendEvent,actorOf} from '../db/events';
@@ -85,14 +85,23 @@ export async function resolveProfileRouteTx(tx:Tx,ctx:SessionContext,subjectId:s
  const rule=matches[0],principal=await namedPrincipal(tx,rule.approverEmploymentId,subjectId);
  return {routeId:rule.id,routeRevision:policy.revision,routeApproverUserId:principal.user_id,routeApproverEmploymentId:principal.employment_id,routeContext};
 }
-export async function assertProfileRouteDecisionTx(tx:Tx,ctx:SessionContext,request:typeof profileChangeRequest.$inferSelect){
+type ProfileRouteDecisionBase=Pick<typeof profileChangeRequest.$inferSelect,'employmentId'|'routeId'|'routeRevision'|'routeApproverUserId'|'routeApproverEmploymentId'|'routeContext'>;
+/** Writers pass their real row; metadata-only eligibility readers must supply the actual stored type.
+ * A missing classifier must not silently route a photo request through the fields default. */
+export type ProfileRouteDecisionSubject=ProfileRouteDecisionBase&({proposed:unknown}|{requestType:ProfileRequestType});
+export async function assertProfileRouteDecisionTx(tx:Tx,ctx:SessionContext,request:ProfileRouteDecisionSubject){
  const policy=readProfileRoutingPolicy(ctx);
  if(!request.routeId){if(policy.enabled)throw new ProfileRoutingError('changed');return;}
- const current=await resolveProfileRouteTx(tx,ctx,request.employmentId,profileRequestType(request.proposed));
+ const requestType='proposed' in request?profileRequestType(request.proposed):request.requestType;
+ if(requestType!=='photo'&&requestType!=='fields')throw new ProfileRoutingError('changed');
+ const current=await resolveProfileRouteTx(tx,ctx,request.employmentId,requestType);
  if(!current||current.routeId!==request.routeId||current.routeRevision!==request.routeRevision||current.routeApproverUserId!==request.routeApproverUserId||current.routeApproverEmploymentId!==request.routeApproverEmploymentId||current.routeContext.fingerprint!==(request.routeContext as {fingerprint?:unknown}|null)?.fingerprint)throw new ProfileRoutingError('changed');
  if(ctx.userId!==current.routeApproverUserId)throw new ProfileRoutingError('unauthorized');
 }
 export function profileRequestType(proposed:unknown):ProfileRequestType{return proposed&&typeof proposed==='object'&&!Array.isArray(proposed)&&'v' in proposed&&proposed.v===3?'photo':'fields';}
+/** SQL twin for bounded queue metadata: never select the proposal values/byte reference just to route it. */
+export function profileRequestTypeSql(proposed:SQL):SQL<ProfileRequestType>{return sql<ProfileRequestType>`case when jsonb_typeof(${proposed})='object' and ${proposed}->'v'='3'::jsonb then 'photo' else 'fields' end`;}
+
 /** Used identically for queue, detail and decided counts; row RLS is an independent fence. */
 export function profileRouteReaderPredicate(ctx:SessionContext){
  return sql`app.profile_route_reader(${profileChangeRequest.employmentId},${profileChangeRequest.routeApproverUserId},${profileChangeRequest.routeApproverEmploymentId},${profileChangeRequest.status}::text)`;

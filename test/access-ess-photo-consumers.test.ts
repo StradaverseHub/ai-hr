@@ -10,7 +10,7 @@ import {accessConfigurationStore} from '../core/access-configuration-store';
 import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';
 import {setOwnPersonPhoto,getProfilePhotoProposal,getPersonPhoto,setPersonPhoto} from '../core/person-photo';
 import {decideProfileChange,myProfileChangeRequests} from '../core/profile';
-import {saveProfileRoutingPolicy,previewProfileRoutingPolicy,rerouteProfileRequest} from '../core/profile-routing';
+import {saveProfileRoutingPolicy,previewProfileRoutingPolicy,rerouteProfileRequest,profileRequestType,profileRequestTypeSql} from '../core/profile-routing';
 import {saveOwnPhotoSubmissionSetting} from '../core/profile-edit-policy';
 import {EMPTY_PROFILE_ROUTING,type ProfileRouteRule} from '../lib/profile-routing-policy';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -58,6 +58,14 @@ async function fixture(){
 }
 async function photo(ctx:SessionContext,requestId:string){routeSession.ctx=ctx;return GET(new Request(`http://localhost/me/photo-proposal/${requestId}`),{params:Promise.resolve({requestId})});}
 describe('effective Security review permission across pending ESS photo consumers',()=>{
+ it('classifies bounded queue metadata exactly like the route writer without reading proposal content',async()=>{
+  const values=[null,{},[],{v:2},{v:3},{v:'3'},{v:3,kind:'photo'},{v:4},'3',3,[{v:3}]];
+  for(const value of values){
+   const [row]=await withTenant(admin(),tx=>tx.execute<{kind:string}>(sql`select ${profileRequestTypeSql(sql`${JSON.stringify(value)}::jsonb`)} as kind`));
+   expect(row.kind).toBe(profileRequestType(value));
+  }
+ });
+
  it('revokes queue-side bytes, raw rows, real route and decision in an already signed-in reviewer context',async()=>{
   const {subject,reviewer,requestId}=await fixture();
   const before=await photo(reviewer.ctx,requestId);expect(before.status).toBe(200);expect(Buffer.from(await before.arrayBuffer())).toEqual(next);
