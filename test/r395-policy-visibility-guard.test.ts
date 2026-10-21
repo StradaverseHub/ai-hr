@@ -118,10 +118,12 @@ describe('r395 — per-row visibility functions are gone from every policy USING
   });
 });
 
-// The board's four SELECT policies added after 0515 must preserve their exact read graph.
+// The board's SELECT policies added after 0515 must preserve their exact read graph.
 // In particular, workflow-v2 participants can retain a request without Personnel visibility,
 // and payroll administrators have a separate overtime-assignment read arm.
 const boardPolicies = [
+  { table: 'employment_holiday_calendar', policy: 'employment_holiday_calendar_read', oldQual:
+    'tenant_id=app.current_tenant_id() AND app.can_see_employment(employment_id)' },
   { table: 'replacement_holiday', policy: 'replacement_holiday_read', oldQual:
     'tenant_id=app.current_tenant_id() AND app.can_see_employment(employment_id)' },
   { table: 'replacement_holiday_revision', policy: 'replacement_holiday_revision_read', oldQual:

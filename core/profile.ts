@@ -1,3 +1,6 @@
+import {resolveProfileRouteTx,assertProfileRouteDecisionTx,profileRouteReaderPredicate} from './profile-routing';
+import type {ProfilePresentationPolicy} from './profile-edit-policy';
+import {projectOwnProfileProposal,ownProfileProposalIsIntact} from '../lib/personnel-ess-visibility';
 import {freshProfileEditPolicyTx} from './profile-edit-policy';
 import {EssProfileError,type EssProfileProposal} from '../lib/personnel-ess-model';
 import {personnelField,PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
@@ -357,14 +360,15 @@ export async function requestProfileChange(
   const checked=await prepareProfileProposalTx(tx,ctx,p.employmentId,p.proposed);
   if(checked.immediateRegisters.length||checked.proposal.fields.some(field=>personnelField(field.fieldId)?.ess.edit!=='approval'))throw new EssProfileError('invalid');
   const proposed=checked.proposal;
+  const route=await resolveProfileRouteTx(tx,ctx,p.employmentId);
   if(!proposed.fields.length&&!proposed.registers.length)throw new EssProfileError('invalid');
   // Policy advisory serializes canonical submissions. Exact retry reuses one pending proposal.
   const matching=await tx.select({id:profileChangeRequest.id}).from(profileChangeRequest).where(and(eq(profileChangeRequest.personId,ctx.personId!),eq(profileChangeRequest.employmentId,p.employmentId),eq(profileChangeRequest.status,'pending'),sql`${profileChangeRequest.proposed}=${JSON.stringify(proposed)}::jsonb`)).orderBy(profileChangeRequest.createdAt,profileChangeRequest.id).limit(2);
   if(matching.length>1)throw new EssProfileError('unavailable');
   if(matching.length===1)return {requestId:matching[0].id};
-  const [row]=await tx.insert(profileChangeRequest).values({tenantId:ctx.tenantId,employmentId:p.employmentId,personId:ctx.personId!,proposed}).returning({id:profileChangeRequest.id});
+  const [row]=await tx.insert(profileChangeRequest).values({tenantId:ctx.tenantId,employmentId:p.employmentId,personId:ctx.personId!,proposed,...(route??{})}).returning({id:profileChangeRequest.id});
   const fields='v' in proposed&&proposed.v===2?[...proposed.fields.map(field=>field.fieldId),...proposed.registers.flatMap(record=>record.fields.map(field=>field.fieldId))]:Object.keys(proposed);
-  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'profile-change',aggregateId:row.id,eventType:'profile-change.requested',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,payload:{employmentId:p.employmentId,fields}});
+  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'profile-change',aggregateId:row.id,eventType:'profile-change.requested',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,payload:{employmentId:p.employmentId,fields,...(route?{approverEmploymentId:route.routeApproverEmploymentId,routeId:route.routeId,routeRevision:route.routeRevision}:{})}});
   return {requestId:row.id};
  };
  return outerTx?run(outerTx):withTenant(ctx,run);
@@ -432,6 +436,7 @@ export async function decideProfileChange(
      * 0560 restricts request rows to the own subject and scoped HR administrators. And it cannot widen
      * AUTHORITY in any configuration — both branches below only ever refuse.
      */
+    await assertProfileRouteDecisionTx(tx,ctx,req);
     if(req.personId===ctx.personId&&p.decision==='approved')throw new EssProfileError('permission');
     await assertCanDecide(tx, ctx, req.employmentId, 'profile change'); // bans self
     const roles = ctx.roles ?? [];
@@ -611,7 +616,7 @@ export async function setPersonComplianceFields(
 /** Admin inbox — RLS trims to scope. Recent first. */
 export function listProfileChangeRequests(
   ctx: SessionContext,
-  opts: { companyIds?: string[]; status?: 'pending' | 'approved' | 'rejected' } = {},
+  opts: { companyIds?: string[]; status?: 'pending' | 'approved' | 'rejected';requestId?:string;offset?:number;limit?:number } = {},
 ) {
   return withTenant(ctx, async (tx) => {
     const rows=await tx
@@ -632,14 +637,16 @@ export function listProfileChangeRequests(
       .innerJoin(person, eq(person.id, profileChangeRequest.personId))
       .where(
         and(
+          profileRouteReaderPredicate(ctx),
+          opts.requestId?eq(profileChangeRequest.id,opts.requestId):undefined,
           opts.status ? eq(profileChangeRequest.status, opts.status) : undefined,
           opts.companyIds && opts.companyIds.length
             ? inArray(employment.companyId, opts.companyIds)
             : undefined,
         ),
       )
-      .orderBy(desc(profileChangeRequest.createdAt))
-      .limit(100);
+      .orderBy(desc(profileChangeRequest.createdAt),desc(profileChangeRequest.id))
+      .limit(Math.max(1,Math.min(opts.limit??100,100))).offset(Math.max(0,Math.min(opts.offset??0,100000)));
     const {currentProfileRequestValuesTx}=await import('./profile-edit');
     return Promise.all(rows.map(async row=>({...row,review:await currentProfileRequestValuesTx(tx,ctx,row)})));
   });
@@ -662,11 +669,12 @@ export function listProfileChangeRequests(
  * status of your own requests: waiting, approved or rejected", and a rejection that scrolled off the
  * bottom after five newer requests is a promise not kept.
  */
-export function myProfileChangeRequests(ctx: SessionContext, limit = 50) {
+export function myProfileChangeRequests(ctx: SessionContext, limit = 50,presentation?:ProfilePresentationPolicy) {
   const personId = ctx.personId;
   if (!personId) return Promise.resolve([]);
-  return withTenant(ctx, (tx) =>
-    tx
+  return withTenant(ctx, async (tx) => {
+    const policy=presentation??await freshProfileEditPolicyTx(tx,ctx);
+    const rows=await tx
       .select({
         id: profileChangeRequest.id,
         proposed: profileChangeRequest.proposed,
@@ -677,9 +685,15 @@ export function myProfileChangeRequests(ctx: SessionContext, limit = 50) {
       })
       .from(profileChangeRequest)
       .where(eq(profileChangeRequest.personId, personId))
-      .orderBy(desc(profileChangeRequest.createdAt))
-      .limit(limit),
-  );
+      .orderBy(desc(profileChangeRequest.createdAt),desc(profileChangeRequest.id))
+      .limit(limit);
+    return rows.map(row=>{
+      const proposed=projectOwnProfileProposal(row.proposed,policy.visible);
+      // Free-form decision text can repeat a proposed private value; retain it only for an intact view.
+      const intact=ownProfileProposalIsIntact(row.proposed,policy.visible);
+      return {...row,proposed,decisionReason:intact?row.decisionReason:null};
+    });
+  });
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -769,6 +783,7 @@ export async function withdrawProfileChangesForLockedFields(
   const lockedKeys = [...locked];
 
   const run=async (tx:Tx) => {
+    await tx.execute(sql`select set_config('app.profile_route_maintenance','on',true)`);
     /**
      * ⚠️ ONE STATEMENT, FILTERED IN SQL, WITH NO CAP — the fix a review forced (r261 fix pass).
      *

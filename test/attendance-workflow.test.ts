@@ -1,3 +1,4 @@
+import {listPendingTasks} from '../core/approvals-inbox';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, asc, eq, sql } from 'drizzle-orm';
@@ -55,6 +56,25 @@ const correction = async (id: string) => (await owner.db.select().from(schema.at
 const decisions = async () => owner.db.select().from(schema.attendanceWorkflowDecision).orderBy(asc(schema.attendanceWorkflowDecision.stageIndex));
 const events = async (id: string, type: string) => owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId, id), eq(schema.domainEvent.eventType, type))).orderBy(asc(schema.domainEvent.sequence));
 describe('Attendance approval routing and exactly-once effects', () => {
+    it('previews ordered resolved names using the same route frozen on submission', async () => {
+        const { a, worker, manager } = await fixture();
+        const value = input(), saved = await enable(a, value);
+        const preview = await previewAttendanceWorkflow(a, value, saved.lineageId);
+        const resolved = preview.rows.find(row => row.employmentId === worker.employmentId)!;
+        expect(resolved.problem).toBeNull();
+        expect(resolved.resolvedStages[0].approvers).toEqual([{ kind: 'direct_manager', employmentId: manager.employmentId, name: 'Frozen manager' }]);
+        const id = await submit(a, worker.employmentId);
+        expect((await attendanceApplicationDetail(a, [b.companyId], id))?.workflow?.stages).toEqual(resolved.resolvedStages);
+    });
+    it('previews the real higher-priority workflow rather than the draft approvers', async () => {
+        const { a, worker } = await fixture();
+        await enable(a, input(['hr_admin'], { code: 'PRIORITY_WINNER', priority: 90 }));
+        const preview = await previewAttendanceWorkflow(a, input(['direct_manager'], { code: 'LOWER_DRAFT', priority: 150, active: false }));
+        const resolved = preview.rows.find(row => row.employmentId === worker.employmentId)!;
+        expect(resolved).toMatchObject({ selectedCode: 'PRIORITY_WINNER', problem: null, routingVersion: 1 });
+        expect(resolved.resolvedStages).toEqual([{ name: 'Review 1', approvers: [{ kind: 'hr_admin', employmentId: null, name: 'HR administrators' }] }]);
+    });
+
     it('persists multi-valued assignments, matches alternatives within each field and requires every filled field', async () => {
         const { a, worker, manager } = await fixture();
         const units = await owner.db.insert(schema.businessUnit).values(['A', 'B'].map(code => ({ tenantId: b.tenantId, companyId: b.companyId, code: `WF_${code}`, name: `Workflow unit ${code}` }))).returning();
@@ -833,4 +853,39 @@ describe('dated half-night rotation through staged approval and cancellation', (
             .toEqual({ shiftId: night.id, kind: 'half', scheduledMinutes: 240 });
         } finally { vi.useRealTimers(); }
     });
+});
+
+
+describe('Application History status counts and Overview migration parity', () => {
+  it('keeps intermediate approval Pending and updates all counts only at terminal completion', async () => {
+    const {a,worker,mgr}=await fixture(); await enable(a); const id=await submit(a,worker.employmentId);
+    const filter={query:id,status:'pending' as const};
+    let history=await listAttendanceApplicationHistory(a,[b.companyId],filter);
+    expect(history.counts).toMatchObject({pending:1,approved:0,all:1}); expect(history.total).toBe(1);
+    await decideAttendanceCorrection(mgr,{correctionId:id,decision:'approved',expectedStageIndex:0});
+    history=await listAttendanceApplicationHistory(a,[b.companyId],filter);
+    expect(history.rows.map(row=>row.id)).toEqual([id]); expect(history.counts).toMatchObject({pending:1,approved:0});
+    await decideAttendanceCorrection(a,{correctionId:id,decision:'approved',expectedStageIndex:1});
+    history=await listAttendanceApplicationHistory(a,[b.companyId],filter);
+    expect(history.rows).toEqual([]); expect(history.total).toBe(0); expect(history.counts).toMatchObject({pending:0,approved:1,all:1});
+    const approved=await listAttendanceApplicationHistory(a,[b.companyId],{query:id,status:'approved'});
+    expect(approved.rows.map(row=>row.id)).toEqual([id]);
+    expect((await listAttendanceApplicationHistory(a,[b.companyId],{query:'no matching request'})).counts.all).toBe(0);
+  });
+  it('every legacy Overview correction and permitted action survives through HR History or the manager inbox', async () => {
+    const {a,worker,mgr}=await fixture(); const id=await submit(a,worker.employmentId);
+    expect((await attendanceApplicationDetail(a,[b.companyId],id))?.workflow).toBeNull();
+    for(const ctx of [a,mgr]){
+      const overview=await listAttendanceCorrections(ctx,{companyIds:[b.companyId],status:'pending'});
+      const inbox=await listPendingTasks(ctx,[b.companyId],{attendance:true,claims:false});
+      expect(inbox.filter(row=>row.kind==='attendance').map(row=>row.id).sort()).toEqual(overview.map(row=>row.id).sort());
+    }
+    const overview=await listAttendanceCorrections(a,{companyIds:[b.companyId],status:'pending'});
+    const history=await listAttendanceApplicationHistory(a,[b.companyId],{status:'pending'});
+    expect(history.rows.map(row=>row.id).sort()).toEqual(overview.map(row=>row.id).sort());
+    const detail=await attendanceApplicationDetail(a,[b.companyId],id);
+    expect(detail?.canDecide).toBe(true);
+    await decideAttendanceCorrection(mgr,{correctionId:id,decision:'approved'});
+    expect((await listAttendanceApplicationHistory(a,[b.companyId],{status:'approved'})).rows.map(row=>row.id)).toEqual([id]);
+  });
 });

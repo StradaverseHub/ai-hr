@@ -51,7 +51,7 @@ import {
   leaveConfigPageHeader,
   type MappedLeaveConfigScreenId,
 } from '../components/leave-config-map';
-import { leavePack } from '../packs/leave';
+import { leavePack, LEAVE_ADMIN_DESTINATIONS } from '../packs/leave';
 import { REGISTERED_ROUTES, SCREENS } from '../lib/permissions';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -94,10 +94,11 @@ const IMPORT_ALIASES = {
   'app/admin/leave-config/history-import/page.tsx': 'history',
   'app/admin/leave-config/bf-import/page.tsx': 'bf',
 } as const;
-const PAGES = pages().filter((p) => p !== SUB_SCREEN && !STUBS.includes(p) && !(p in IMPORT_ALIASES));
+const SETTINGS_HUB = 'app/admin/leave-config/settings/page.tsx';
+const PAGES = pages().filter((p) => p !== SETTINGS_HUB && p !== SUB_SCREEN && !STUBS.includes(p) && !(p in IMPORT_ALIASES));
 const MAP_SRC = read('components/leave-config-map.tsx');
 const MAP_CODE = stripComments(MAP_SRC);
-const CHILDREN = leavePack.navNodes!.find((n) => n.group === 'admin')!.children;
+const CHILDREN = LEAVE_ADMIN_DESTINATIONS.children;
 /**
  * 5ca446db (r269) — the five CONFIGURATION rows, which is what this file has always been about.
  *
@@ -181,7 +182,7 @@ describe('§A · the map is the submenu rows, in the submenu\'s order', () => {
     // one row like every other route, and this loop needed no second exemption.
     expect(LEAVE_CONFIG_RECORDS_HREF).toBe('/admin/leave-config/records');
     for (const r of leaveConfig.routes) {
-      expect(onMap.filter((h) => h === r), r).toHaveLength(r === LEAVE_CONFIG_RECORDS_HREF || Object.keys(IMPORT_ALIASES).some((p) => p.replace(/^app/, '').replace(/\/page\.tsx$/, '') === r) ? 0 : 1);
+      expect(onMap.filter((h) => h === r), r).toHaveLength(r === '/admin/leave-config/settings' || r === LEAVE_CONFIG_RECORDS_HREF || Object.keys(IMPORT_ALIASES).some((p) => p.replace(/^app/, '').replace(/\/page\.tsx$/, '') === r) ? 0 : 1);
     }
     expect(leaveConfig.routes).toContain(LEAVE_CONFIG_RECORDS_HREF);
     expect(read('app/admin/leave-config/adjustments/page.tsx')).toContain('<Link href={LEAVE_CONFIG_RECORDS_HREF}');
@@ -233,11 +234,22 @@ describe('§A · the map is the submenu rows, in the submenu\'s order', () => {
 });
 
 describe('§B · no Leave Config page renders the nine-screen pill row', () => {
+  it('the Settings hub is the guarded card landing page, not a duplicate destination tab row', () => {
+    expect(pages()).toContain(SETTINGS_HUB);
+    const hub = stripComments(read(SETTINGS_HUB));
+    expect(hub).toContain('await requireAdmin()');
+    expect(hub).toContain('LEAVE_SETTINGS_DESTINATIONS.filter');
+    expect(hub).toContain('rolesForGuard(screen.guard)');
+    expect(hub).toContain("<PageHeader title={t('title')} description={t('subtitle')} />");
+    expect(hub).toContain('<Link href={card.href}');
+    expect(hub).not.toContain('<LeaveConfigMap');
+  });
+
   it('the component renders only the CURRENT row\'s tabs, and nothing for a single-screen row', () => {
     const render = MAP_CODE.slice(MAP_CODE.indexOf('export async function LeaveConfigMap('));
     // The render reads ONE group — the current screen's — never the whole list.
     expect(render).toContain('const group = leaveConfigGroupOf(current);');
-    expect(render).toContain('if (group.items.length < 2) return null;');
+    expect(render).toContain('if (group.items.length < 2) return back;');
     expect(render).toContain('{group.items.map((it, i) => (');
     expect(render).not.toContain('LEAVE_CONFIG_MAP.map(');
     // The group captions (Configure · Run · History) are gone with the groups they captioned.

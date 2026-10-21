@@ -76,6 +76,7 @@ import { ClientPager, useClientPageQuery } from '@/components/client-pager';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { assignCellAction, bulkAssignAction } from '@/app/roster/actions';
+import { RosterLegend } from '@/components/roster-legend';
 import { EmployeeCode } from '@/components/ui';
 import { shiftChipClass, shiftChipStyle } from '@/lib/shift-visual';
 import {
@@ -144,7 +145,7 @@ const VIEW_ORDER: PinnedKey[] = ['employee', 'occ'];
 /** a57f0584 rev 2 — wider than the 78 it was, because a date heading now reads "01 Sep" rather than
  *  "01/09", and in ta / th / vi the localised short month is longer again. */
 const DATE_W = 88;
-const HEAD_CLS = 'truncate bg-muted/50 px-2 py-2 text-left text-[11px] font-medium uppercase tracking-wide';
+const HEAD_CLS = 'truncate bg-muted px-2 py-2 text-left text-[11px] font-medium uppercase tracking-wide';
 const CELL_MUTED = 'truncate bg-background px-2 py-1.5 text-xs text-muted-foreground';
 
 /**
@@ -176,6 +177,7 @@ export function RosterGrid({
   employees,
   shifts,
   initial,
+  dayContext = {},
   usual,
   isAdmin,
   today,
@@ -185,6 +187,7 @@ export function RosterGrid({
   employees: GridEmployee[];
   shifts: ShiftLite[];
   initial: Record<string, AssignedCell>;
+  dayContext?: Record<string, { publicHoliday?: true; replacementHoliday?: true; approvedLeave?: 'full_day' | 'part_day' }>;
   /** employmentId → the person's usual (default) shift, for the grey ghost cells. */
   usual: Record<string, UsualShift>;
   /** HR administrator. THE ONLY ROLE THAT MAY CHANGE ANYTHING HERE — see the file header. False renders
@@ -298,48 +301,20 @@ export function RosterGrid({
   const editHref = (employmentId: string) =>
     `/roster/edit/${employmentId}${editQuery ? `?${editQuery}` : ''}`;
 
-  /** A chip is a BRUSH for an administrator and just the key-to-the-codes for everybody else — the
-   *  read-only grid keeps the legend (the codes still have to be readable) but not the palette. */
-  const legendChip = (value: Brush | null, label: string, hint: string, cls: string) => {
-    const content = (
-      <>
-        <span className="font-semibold">{label}</span>
-        {hint && <span className="ml-1 font-normal opacity-75">{hint}</span>}
-      </>
-    );
-    if (value == null || !canEdit)
-      return (
-        <span key={value ?? label} style={shiftChipStyle(value ? shiftById.get(value)?.color : null)} className={`rounded-full border px-2.5 py-1 text-xs ${cls}`}>
-          {content}
-        </span>
-      );
-    return (
-      <button
-        key={value}
-        style={shiftChipStyle(shiftById.get(value)?.color)}
-        type="button"
-        onClick={() => setBrush(value)}
-        className={`rounded-full border px-2.5 py-1 text-xs transition ${cls} ${
-          brush === value ? 'ring-2 ring-offset-1 ring-foreground/40' : 'opacity-80 hover:opacity-100'
-        }`}
-      >
-        {content}
-      </button>
-    );
-  };
+  const legendEntries = [
+    ...shifts.map(shift => ({ value: shift.id, code: shiftCodeOf(shift), name: shift.name, hint: `${hhmm(shift.startTime)}–${hhmm(shift.endTime)}`, className: shiftColor(shift.id), style: shiftChipStyle(shift.color) })),
+    { value: 'rest', code: t('rdCode'), name: t('restDay'), hint: '', className: 'bg-muted text-muted-foreground' },
+    { value: 'clear', code: t('clear'), name: t('clearHint'), hint: '', className: 'bg-background text-muted-foreground' },
+    { value: null, code: t('offCode'), name: t('offHint'), hint: '', className: 'bg-background text-muted-foreground border-dashed' },
+  ];
 
   const pinned = pinnedLayout(canEdit);
 
   return (
     <div className="space-y-3">
-      {/* Legend — for an administrator it doubles as the brush palette: the code you can read is the code
-          you paint with. Read-only, it is only the key. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('legend')}</span>
-        {shifts.map((s) => legendChip(s.id, shiftCodeOf(s), `${hhmm(s.startTime)}–${hhmm(s.endTime)}`, shiftColor(s.id)))}
-        {legendChip('rest', t('rdCode'), t('restDay'), 'bg-muted text-muted-foreground')}
-        {legendChip('clear', t('clear'), t('clearHint'), 'bg-background text-muted-foreground')}
-        {legendChip(null, t('offCode'), t('offHint'), 'bg-background text-muted-foreground/70 border-dashed')}
+      <div className="flex flex-wrap items-center gap-3">
+        <RosterLegend entries={legendEntries} active={brush} onChoose={canEdit ? setBrush : undefined} />
+        <p className="text-xs text-muted-foreground">{t('dayContextHelp')}</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -363,7 +338,14 @@ export function RosterGrid({
       </div>
 
       {/* Grid */}
-      <div className="overflow-x-auto rounded-lg border border-border">
+      {/* On compact views the identity block can be wider than the viewport. Let every column pan there;
+          retain the shared pinned geometry on desktop and expose the pan region to keyboard users. */}
+      <div
+        role="region"
+        aria-label={t('title')}
+        tabIndex={0}
+        className="overflow-x-auto rounded-lg border border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      >
         <table
           className="border-collapse text-sm"
           style={{ tableLayout: 'fixed', minWidth: pinned.width + dates.length * DATE_W }}
@@ -384,7 +366,7 @@ export function RosterGrid({
           <thead>
             <tr className="bg-muted/50">
               {canEdit && (
-                <th className={`sticky z-20 ${HEAD_CLS}`} style={pinned.col('check')}>
+                <th className={`sticky max-lg:static z-20 ${HEAD_CLS}`} style={pinned.col('check')}>
                   <input
                     type="checkbox"
                     aria-label={t('selectAll')}
@@ -393,14 +375,14 @@ export function RosterGrid({
                   />
                 </th>
               )}
-              <th className={`sticky z-20 ${HEAD_CLS}`} style={pinned.col('employee')}>
+              <th className={`sticky max-lg:static z-20 ${HEAD_CLS}`} style={pinned.col('employee')}>
                 {t('colEmployee')}
               </th>
-              <th className={`sticky z-20 ${HEAD_CLS} ${canEdit ? '' : 'border-r border-border'}`} style={pinned.col('occ')}>
-                {t('colOccupation')}
+              <th className={`sticky max-lg:static z-20 ${HEAD_CLS} ${canEdit ? '' : 'border-r border-border'}`} style={pinned.col('occ')}>
+                {t('colPosition')}
               </th>
               {canEdit && (
-                <th className={`sticky z-20 border-r border-border ${HEAD_CLS}`} style={pinned.col('edit')}>
+                <th className={`sticky max-lg:static z-20 border-r border-border ${HEAD_CLS}`} style={pinned.col('edit')}>
                   {t('colEdit')}
                 </th>
               )}
@@ -426,7 +408,7 @@ export function RosterGrid({
             {pageEmployees.map((e) => (
               <tr key={e.employmentId}>
                 {canEdit && (
-                  <td className="sticky z-10 truncate bg-background px-2 py-1.5" style={pinned.col('check')}>
+                  <td className="sticky max-lg:static z-10 truncate bg-background px-2 py-1.5" style={pinned.col('check')}>
                     <input
                       type="checkbox"
                       aria-label={e.name}
@@ -438,7 +420,7 @@ export function RosterGrid({
                 {/* ONE cell for the person: AARON AZIZ (X003). See note 2 in the file header for why the
                     code reads after the name here and not before it as EmployeeName has it elsewhere. */}
                 <td
-                  className="sticky z-10 truncate bg-background px-2 py-1.5 font-medium"
+                  className="sticky max-lg:static z-10 truncate bg-background px-2 py-1.5 font-medium"
                   style={pinned.col('employee')}
                   title={e.code ? `${e.name} (${e.code})` : e.name}
                 >
@@ -460,14 +442,14 @@ export function RosterGrid({
                   </span>
                 </td>
                 <td
-                  className={`sticky z-10 ${CELL_MUTED} ${canEdit ? '' : 'border-r border-border'}`}
+                  className={`sticky max-lg:static z-10 ${CELL_MUTED} ${canEdit ? '' : 'border-r border-border'}`}
                   style={pinned.col('occ')}
                   title={e.occupation ?? ''}
                 >
                   {e.occupation ?? '—'}
                 </td>
                 {canEdit && (
-                  <td className="sticky z-10 truncate border-r border-border bg-background px-2 py-1.5" style={pinned.col('edit')}>
+                  <td className="sticky max-lg:static z-10 truncate border-r border-border bg-background px-2 py-1.5" style={pinned.col('edit')}>
                     <Link
                       href={editHref(e.employmentId)}
                       className="text-xs font-medium text-primary underline-offset-2 hover:underline"
@@ -479,11 +461,18 @@ export function RosterGrid({
                 {dates.map((d) => {
                   const cell = resolve(e.employmentId, d.iso);
                   const weekend = isWeekendDate(d.iso);
+                  const context = dayContext[cellKey(e.employmentId, d.iso)];
+                  const notes = [
+                    ...(context?.publicHoliday ? [t('publicHoliday')] : []),
+                    ...(context?.replacementHoliday ? [t('replacementHoliday')] : []),
+                    ...(context?.approvedLeave ? [t(context.approvedLeave === 'full_day' ? 'approvedLeave' : 'approvedPartLeave')] : []),
+                  ];
                   const label = rosterCellLabel(cell, codeOf, t('rdCode'), t('offCode'));
                   const box = `min-h-[26px] w-full truncate rounded px-0.5 py-1 text-[11px] font-medium ${cellClass(cell, shiftColor)}`;
                   return (
                     <td
                       key={d.iso}
+                      title={notes.join(' · ')}
                       className={`p-0.5 text-center ${weekend ? 'bg-amber-50 dark:bg-amber-500/10' : ''}`}
                       style={{ width: DATE_W, minWidth: DATE_W, maxWidth: DATE_W }}
                     >
@@ -502,6 +491,7 @@ export function RosterGrid({
                         // says "not yet" where the truth is "not you".
                         <span style={cell.kind === 'shift' ? shiftChipStyle(shiftById.get(cell.shiftId)?.color) : undefined} className={`${box} block`}>{label}</span>
                       )}
+                      {notes.map(note => <span key={note} className="mt-0.5 block whitespace-normal rounded border border-border bg-card px-0.5 py-0.5 text-[10px] leading-tight text-foreground">{note}</span>)}
                     </td>
                   );
                 })}

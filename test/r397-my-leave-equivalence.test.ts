@@ -349,7 +349,13 @@ describe('r397 · the batched per-type reads answer what the single reads answer
 });
 
 describe('r397 · statement budget for one My Leave load', () => {
-  it('one load with canonical holiday context: 279 statements / 46 transactions before r397, 138 / 18 after', async () => {
+  it.each([
+    {counting:'calendar_days',beforeStatements:263,afterStatements:130,calendarReads:0},
+    {counting:'working_days',beforeStatements:281,afterStatements:139,calendarReads:2},
+  ] as const)('$counting: exact statement and transaction budgets retain batched calendar context', async budget => {
+    const [original]=await owner.db.select({counting:schema.leaveType.counting}).from(schema.leaveType).where(eq(schema.leaveType.id,types.annual));
+    await owner.db.update(schema.leaveType).set({counting:budget.counting}).where(eq(schema.leaveType.id,types.annual));
+    try {
     const p = await inputs(CASES[0]);
     const before = await captureQueries(() => loadMyLeaveBefore(p));
     const after = await captureQueries(() => loadMyLeave(p));
@@ -365,34 +371,23 @@ describe('r397 · statement budget for one My Leave load', () => {
       fs.writeFileSync(`${process.env.R397_PROFILE_OUT}/before.txt`, `${before.statements.length}\n${tally(before.statements)}\n`);
       fs.writeFileSync(`${process.env.R397_PROFILE_OUT}/after.txt`, `${after.statements.length}\n${tally(after.statements)}\n`);
     }
+    expect(after.result).toEqual(before.result);
     const txCount = (xs: string[]) => xs.filter((x) => x.startsWith("select set_config('app.tenant_id'")).length;
-    // PINNED, for the 'rich' employee (10 dashboard cards, Replacement Leave on, one shared group, 4 upcoming rows).
-    //
-    // BEFORE r397: 271 statements in 46 transactions, all sequential. The dashboard alone opened 2 transactions
-    // per card — leaveEntitlementBreakdown (type row + employment row + template resolver + 4 ledger reads) and
-    // leaveTypeApplySummary (6 statements) — and the page also ran the whole history card's reads it discarded.
-    //
-    // AFTER r397: 134 statements in 18 transactions, in four concurrent chains (app/leave/my-leave-data.ts):
-    //   catalogue 3 tx (listEmployees, listLeaveTypes, listEligibleLeaveTypesFor) → canApplyLeaveOnBehalf 1;
-    //   replacementRequestAvailability 1 → leaveCreditOfferForEmployment 1;
-    //   myLeaveDashboard 5 — leaveBalances, the employment/cycle read, offeredLeaveYears, ONE
-    //     leaveEntitlementBreakdowns (1 type read + 1 employment read + 1 resolver per distinct asOf + the 4
-    //     per-card ledger reads × 10 cards = the 40 statements that remain per card), ONE leaveTypeApplySummaries
-    //     (6 statements whatever the card count) → replacementLeaveLedger 1 ∥ listReplacementLeaveRequests 1;
-    //   sharedLeaveGroupBalances 2 (groups/members/usage, then leaveBalances);
-    //   loadOwnUpcomingLeave 3 (myEmploymentIdsAll, myUpcomingLeave's list + count, the Upcoming rows' trails).
-    // ADR-0120 adds four statements to each holiday calendar read: current company, assignment history,
-    // tenure, and the employee replacement-holiday ledger. The sequential fixture resolves its one
-    // approved request twice (history + Upcoming), while the optimized loader resolves it only once.
-    // No replacement rows exist here, so the ledger's date-coverage proof issues no further queries.
-    // These add eight/four statements to the historical 271/134 budgets, with no added transactions.
-    // A reintroduced per-card transaction or a history read still breaks these exact numbers.
+    // The rich fixture retains its ten dashboard cards, group, replacement ledger and Upcoming rows.
+    // Calendar-day requests need no schedule/holiday lookup for cancellable dates. Working-day
+    // requests use one canonical calendar read per historical/Upcoming pass (two before, one after).
+    // The new dated assignment contributes exactly one period read to each calendar resolution.
+    // Keep both paths exact, with unchanged transaction counts and deep-equal returned data.
     const replacementReads = (xs: string[]) => xs.filter(statement => /from "replacement_holiday"(?:\s|$)/.test(statement)).length;
-    expect(replacementReads(before.statements), 'history and Upcoming each resolve the canonical employee calendar').toBe(2);
-    expect(replacementReads(after.statements), 'Upcoming resolves the canonical employee calendar once').toBe(1);
+    expect(replacementReads(before.statements), 'history and Upcoming each resolve the canonical employee calendar').toBe(budget.calendarReads);
+    expect(replacementReads(after.statements), 'Upcoming resolves the canonical employee calendar once').toBe(budget.calendarReads/2);
+    const datedReads=(xs:string[])=>xs.filter(statement=>/from \"employment_holiday_calendar\"(?:\s|$)/.test(statement)).length;
+    expect(datedReads(before.statements)).toBe(budget.calendarReads);
+    expect(datedReads(after.statements)).toBe(budget.calendarReads/2);
     expect(txCount(before.statements)).toBe(46);
-    expect(before.statements.length).toBe(279);
+    expect(before.statements.length).toBe(budget.beforeStatements);
     expect(txCount(after.statements), 'transactions').toBe(18);
-    expect(after.statements.length, 'statements').toBe(138);
+    expect(after.statements.length, 'statements').toBe(budget.afterStatements);
+    } finally { await owner.db.update(schema.leaveType).set({counting:original.counting}).where(eq(schema.leaveType.id,types.annual)); }
   }, 60_000);
 });

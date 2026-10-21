@@ -46,7 +46,13 @@ describe('employee day render', () => {
     expect(state.requests).toHaveBeenCalledWith(expect.anything(), 'manager-own', { date: '2025-06-04', limit: 100 });
     expect(html).toContain('Own day');
     expect(html).not.toContain('report-employment');
-    expect(html).toContain('/attendance/my-records?from=2025-06-01&amp;to=2025-06-30');
+    expect(html).toContain('/attendance/my-roster?view=month&amp;month=2025-06&amp;selected=2025-06-04');
+  });
+  it('returns to the original weekly window and retains it through a correction form', async () => {
+    const html = await render({ calendar: '1', calendarView: 'week', calendarMonth: '2025-06', calendarDate: '2025-06-02' });
+    expect(html).toContain('/attendance/my-roster?view=week&amp;date=2025-06-02&amp;selected=2025-06-04');
+    expect(html).toContain('name="calendarView" value="week"');
+    expect(html).toContain('name="calendarDate" value="2025-06-02"');
   });
   it.each(['en', 'ms', 'zh', 'ta', 'th', 'vi'])('renders pending state and all five sections in %s', async (locale) => {
     state.locale = locale; state.requests.mockResolvedValue([{ id: 'pending', status: 'pending', createdAt: new Date('2025-06-04T01:00:00Z'), proposedCheckIn: '09:00', proposedCheckOut: '18:00', originalClockSnapshot: null, reason: 'Fixture correction', rejectReason: null, decidedAt: null }]);

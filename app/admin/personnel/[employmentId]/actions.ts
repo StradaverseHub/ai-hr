@@ -1,5 +1,6 @@
 'use server';
 
+import {setEmploymentTestRecord} from '@/core/employment-test-record';
 import { publicErrorMessage } from '@/lib/public-error';
 import {movementNeedsEntitlementReprojection} from '@/core/movement-kinds';
 import { randomUUID } from 'node:crypto';
@@ -8,7 +9,7 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { setEmploymentCardId } from '@/core/attendance-card';
 import { requireAdmin } from '@/lib/authz';
-import { changeEmploymentCompany, CompanyLockedError, DestinationCompanyNotAdministered, employmentGradeId, endReportingLine, setEmployeeCode, setEmploymentBlacklist, setEmploymentPaymentMethod, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, updatePerson, type EmploymentTypeValue, type HolidayCalendarSelection, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
+import { changeEmploymentCompany, CompanyLockedError, DestinationCompanyNotAdministered, employmentGradeId, endReportingLine, setEmployeeCode, setEmploymentBlacklist, setEmploymentPaymentMethod, setEmploymentInfo, setReportingLine, updatePerson, type EmploymentTypeValue, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
 import {
   NegativeSalaryAmountError,
   NonFiniteSalaryAmountError,
@@ -467,7 +468,7 @@ export async function setDefaultShiftAction(formData: FormData) {
  * alone), blank = HR cleared it. `orNull` collapses both to null, which would read as "clear the Work
  * Location" on an event type that never showed it — hence `optional` below.
  */
-function parseMovementForm(formData: FormData) {
+function parseMovementForm(formData: FormData, mode: 'create' | 'edit' = 'create') {
   const kindRaw = String(formData.get('kind') ?? '').trim();
   // 476f23ed — the type may be one of the ORGANISATION's own (Movement Settings), so this can no longer be
   // an allowlist of the built-in kinds. It is a shape check only; core/movement.ts resolves the code
@@ -515,7 +516,11 @@ function parseMovementForm(formData: FormData) {
     // form posts for classification: core/movement.ts validates it against the built-in catalogue and
     // derives `terminationType` from it, so the two can never be submitted in contradiction.
     terminationReasonCode: optional('terminationReasonCode'),
-    terminationNoticeDays: rawNoticeDays === '' ? undefined : Number(rawNoticeDays),
+    // Pending corrections retain omitted inputs. A present blank notice must therefore be an explicit
+    // nullable clear; New Event keeps its existing blank-as-unspecified parser contract.
+    terminationNoticeDays: rawNoticeDays === ''
+      ? mode === 'edit' && formData.has('terminationNoticeDays') ? null : undefined
+      : Number(rawNoticeDays),
     resignationDate: optional('resignationDate'),
     blacklisted: String(formData.get('blacklisted') ?? 'true') !== 'false',
   };
@@ -610,7 +615,7 @@ export async function editMovementEventAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
-    const p = parseMovementForm(formData);
+    const p = parseMovementForm(formData, 'edit');
     const gradeBefore = { gradeId: await employmentGradeId(s, employmentId) };
     const result=await editMovementEvent(s, {
       employmentId,
@@ -959,16 +964,6 @@ export async function supersedeCompensationAction(formData: FormData) {
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
-/** Parse the unified "Holiday calendar" selector value into a discriminated selection. The single field
- *  emits `""` (company default), `"state:<label>"` (a built-in state), or `"group:<id>"` (an HR group),
- *  so a save of unrelated fields re-submits the existing selection rather than nulling it (clobber closed). */
-function parseHolidayCalendar(raw: FormDataEntryValue | null): HolidayCalendarSelection {
-  const v = String(raw ?? '');
-  if (v.startsWith('group:')) return { kind: 'group', groupId: v.slice('group:'.length) };
-  if (v.startsWith('state:')) return { kind: 'state', state: v.slice('state:'.length) };
-  return { kind: 'none' };
-}
-
 /** Normalise a text form field to `string | null` (empty → null). */
 const orNull = (v: FormDataEntryValue | null): string | null => {
   const s = String(v ?? '').trim();
@@ -1030,37 +1025,11 @@ export async function setPersonAction(formData: FormData) {
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
-/**
- * Item 52a30630 — save ONLY the Holiday Calendar for an employment. The unified Holiday Calendar selector
- * was RELOCATED off the Profile > Personal Details form onto the Attendance tab (HTML forms can't span the
- * tab panels), so it needs its own thin partial-save action. Mirrors the write that previously lived inline
- * in setPersonAction: parse the unified value (state OR HR-defined group) and hand it to the audited service
- * (setEmploymentHolidayCalendar appends the DomainEvent). requireAdmin gates it like the profile actions.
- */
-/**
- * r255 420ebab5 — the WRITE half of the Holiday Calendar card (see `applyStatutorySection`).
- */
-async function applyHolidayCalendarSection(
-  s: Awaited<ReturnType<typeof requireAdmin>>,
-  formData: FormData,
-): Promise<void> {
-  const employmentId = String(formData.get('employmentId'));
-  await setEmploymentHolidayCalendar(s, {
-    employmentId,
-    selection: parseHolidayCalendar(formData.get('holidayCalendar')),
-  });
-}
-
+/** Old open tabs must use the dated workflow rather than changing the legacy fallback. */
 export async function setEmploymentHolidayCalendarAction(formData: FormData) {
-  const s = await requireAdmin();
-  const employmentId = String(formData.get('employmentId'));
-  try {
-    await applyHolidayCalendarSection(s, formData);
-  } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
-  }
-  revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+  await requireAdmin();
+  const id=encodeURIComponent(String(formData.get('employmentId')??''));
+  redirect(`/admin/personnel/${id}?tab=attendance#section-holiday-calendar`);
 }
 
 /**
@@ -1931,7 +1900,6 @@ export async function saveBankStatutoryTabAction(formData: FormData): Promise<Ta
 export async function saveAttendanceTabAction(formData: FormData): Promise<TabSaveResult> {
   const s = await requireAdmin();
   return runTabSave(s, formData, ATTENDANCE_TAB_SECTION_ORDER, {
-    holiday: applyHolidayCalendarSection,
     schedule: applyScheduleGroupSection,
     clocking: applyClockingControlSection,
     photo: applyAttendancePhotoSection,
@@ -2277,4 +2245,15 @@ async function applyAttendancePhotoSection(
     employmentId: String(formData.get('employmentId')),
     setting,
   });
+}
+
+/** Dedicated HR-only metadata command; generic tab saves and import/ESS never bind this field. */
+export async function setTestRecordAction(formData:FormData){
+ const ctx=await requireAdmin();const employmentId=String(formData.get('employmentId')??'');
+ const value=formData.get('isTestRecord');
+ if(value!=='true'&&value!=='false')throw new Error('classification_not_available');
+ try{await setEmploymentTestRecord(ctx,{employmentId,isTestRecord:value==='true'});}
+ catch{redirect(`/admin/personnel/${encodeURIComponent(employmentId)}?tab=job&error=classification_not_available`);}
+ revalidatePath(`/admin/personnel/${employmentId}`);
+ redirect(`/admin/personnel/${employmentId}?tab=job&toast=Saved`);
 }

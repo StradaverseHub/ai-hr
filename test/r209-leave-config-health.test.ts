@@ -856,18 +856,31 @@ describe('r209 · the shared pool reads as ONE figure, and refuses when it is sp
 
   it('every grid that captions a pooled balance looks its story up through the pool, not the row', () => {
     // AGENTS rule 17 — the defect lives in the CONTRACT between the pooling pass (core/read.ts) and each
-    // grid's breakdown lookup, so a unit test of either half passes throughout. The employee's own grid,
-    // HR's grid + its export, and the Personnel profile all show the pooled figure; all three must resolve
-    // the breakdown through `balanceStoryTypeId` or the contradiction comes back on the one that does not.
+    // grid's breakdown lookup, so a unit test of either half passes throughout. The employee's own grid
+    // and HR's grid + its export must resolve the breakdown through `balanceStoryTypeId` or the
+    // contradiction comes back. 39306a9e removes Personnel's duplicate balance presentation; pin its
+    // surviving HR home AND the absence of the removed copy rather than requiring it to return.
     for (const rel of [
       // r302 (6c9802c9): the employee's own balances are read per leave year in core/my-leave.ts, which is
       // where the pool lookup moved with them (the page no longer resolves any breakdown itself).
       'core/my-leave.ts',
       'app/leave/employee-balances/rows.ts',
-      'app/admin/personnel/[employmentId]/page.tsx',
     ]) {
       expect(read(rel), rel).toContain('balanceStoryTypeId(');
     }
+    expect(read('app/leave/employee-balances/inquiry-data.ts')).toContain('await employeeBalanceRows(ctx, employmentId, query.asOf,');
+    const inquiry = read('app/leave/employee-balances/page.tsx');
+    const panelStart = inquiry.indexOf('<EntitlementBreakdown');
+    const panelEnd = inquiry.indexOf('/>', panelStart);
+    expect(panelStart, 'HR inquiry retains the actual explanation panel').toBeGreaterThan(-1);
+    expect(panelEnd).toBeGreaterThan(panelStart);
+    const panel = inquiry.slice(panelStart, panelEnd);
+    expect(panel.length).toBeGreaterThan(200);
+    expect(panel).toContain('data={r.breakdown}');
+    expect(panel).toContain('summary={{ available: r.available }}');
+    const personnel = read('app/admin/personnel/[employmentId]/page.tsx');
+    expect(personnel).not.toContain('<EntitlementBreakdown');
+    expect(personnel).not.toMatch(/\bleaveBalances\(/);
     // …and it stays DB-free, so the client grids can keep sharing one definition of "whose figure is this".
     expect(read('lib/shared-leave-balance.ts')).not.toMatch(/from '(\.\.\/)?(db|core)\//);
   });

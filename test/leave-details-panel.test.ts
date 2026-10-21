@@ -331,17 +331,23 @@ describe('Leave Details panel: the inline expand is still a Radix right side-she
   });
 });
 
-describe('Leave Details panel: both call sites feed the trimmed §1 summary + visual', () => {
-  // UPDATED BY r302 (6c9802c9): the employee's side-sheet is opened by the My Leave dashboard island now (the
-  // page no longer renders a breakdown itself), so the call site moved from app/leave/page.tsx to it. The
-  // same three facts are asserted at the new site.
-  const PAGES = ['/components/leave/my-leave-dashboard.tsx', '/app/admin/personnel/[employmentId]/page.tsx'] as const;
-  for (const p of PAGES) {
-    const src = read(p);
-    it(`${p} passes summary + visual to the breakdown panel`, () => {
-      expect(src.includes('summary={{')).toBe(true);
-      expect(src.includes('visual={{')).toBe(true);
-      expect(src.includes('upcoming={')).toBe(false);
+describe('Leave Details panel: the employee and HR inquiry owners feed summary + visual', () => {
+  const PAGES = [
+    ['/components/leave/my-leave-dashboard.tsx', 'LeaveDetailsPanel', 'visual={{', 'summary={{ available: selected.breakdown.totalAvailable }}'],
+    ['/app/leave/employee-balances/page.tsx', 'EntitlementBreakdown', 'visual={r.visual}', 'summary={{ available: r.available }}'],
+  ] as const;
+  for (const [p, component, visual, summary] of PAGES) {
+    it(`${p} passes the authoritative summary and visual to the panel`, () => {
+      const src = read(p);
+      const start = src.indexOf(`<${component}`);
+      const end = src.indexOf('/>', start);
+      expect(start, 'real panel mount').toBeGreaterThan(-1);
+      expect(end).toBeGreaterThan(start);
+      const mount = src.slice(start, end);
+      expect(mount.length).toBeGreaterThan(100);
+      expect(mount).toContain(summary);
+      expect(mount).toContain(visual);
+      expect(mount).not.toContain('upcoming={');
     });
   }
 
@@ -396,8 +402,8 @@ describe('Leave Details panel: both call sites feed the trimmed §1 summary + vi
 
   it('r303: only the HR call site switches the per-line sentences on; the employee dashboard never does', () => {
     expect(read('/components/leave/my-leave-dashboard.tsx')).not.toContain('hrExplanation');
-    // Personnel: only for an HR administrator (isAdmin(s), in ./leave-breakdowns.ts) — see test/r303-personnel-leave-explain.test.ts.
-    expect(read('/app/admin/personnel/[employmentId]/page.tsx')).toContain('hrExplanation={personnelHrExplanation(s, b.sharedBalance)}');
+    // 39306a9e: Personnel no longer mounts the duplicate balance/explanation card.
+    expect(read('/app/admin/personnel/[employmentId]/page.tsx')).not.toContain('<EntitlementBreakdown');
     expect(read('/app/leave/employee-balances/page.tsx')).toContain('hrExplanation={r.hrExplanation}');
   });
 
@@ -405,7 +411,7 @@ describe('Leave Details panel: both call sites feed the trimmed §1 summary + vi
     // PanelSummary is down to `available`. A call site still passing taken/pending/ytdEntitled/balance would
     // be a type error today, but this pins the INTENT: those figures now come from the breakdown, whose
     // buckets are what make the column close.
-    for (const p of PAGES) {
+    for (const [p] of PAGES) {
       expect(read(p).includes('ytdEntitled: b.accrued'), `${p} still feeds the old summary shape`).toBe(false);
     }
   });

@@ -10,7 +10,7 @@ export type AttendanceHistoryFilter = {
     gradeId?: string;
     division?: string;
     applicationType?: AttendanceApplicationType;
-    status?: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'withdrawn';
+    status?: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'withdrawn' | 'cancelled_withdrawn' | 'all';
     submittedFrom?: string;
     submittedTo?: string;
     query?: string;
@@ -22,7 +22,7 @@ export function checkedAttendanceHistoryFilter(filter: AttendanceHistoryFilter) 
     if(filter.requestKind&&!['absent','short_hours','incomplete_entry','self_overtime','other','unknown'].includes(filter.requestKind))throw new Error('Invalid application subtype.');
     if (filter.applicationType && !['irregularity', 'self_overtime'].includes(filter.applicationType))
         throw new Error('Invalid application type.');
-    if (filter.status && !['pending', 'approved', 'rejected', 'cancelled', 'withdrawn'].includes(filter.status))
+    if (filter.status && !['pending', 'approved', 'rejected', 'cancelled', 'withdrawn', 'cancelled_withdrawn', 'all'].includes(filter.status))
         throw new Error('Invalid application status.');
     for (const value of [filter.employmentId, filter.companyId, filter.departmentId, filter.businessUnitId, filter.gradeId]) {
         if (value && !attendanceHistoryId(value))
@@ -49,7 +49,8 @@ export function attendanceHistoryReturn(raw: string | undefined | null): string 
   for(const [key,value] of query)if(allowed.has(key))safe.set(key,value);
   return base+'?'+safe.toString();
 }
-export function attendanceHistoryDate(date:string):string{
+export function attendanceHistoryDate(date:string,locale?:string):string{
+  if(locale&&!/^en(?:-|$)/i.test(locale)&&/^\d{4}-\d{2}-\d{2}$/.test(date))return new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeZone:'UTC'}).format(new Date(date+'T00:00:00Z'));
   const [year,month,day]=date.split('-');
   const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   return /^\d{4}-\d{2}-\d{2}$/.test(date)&&months[Number(month)-1]?`${day}-${months[Number(month)-1]}-${year}`:date;

@@ -763,10 +763,11 @@ describe('31e39d74: every surface that shows the figure also shows the reason', 
     expect(read('components/leave/entitlement-panel-config.ts')).not.toContain('entitlementStatus');
   });
 
-  it('the HR-side personnel record captions it too — an em dash is not an answer either', () => {
-    const src = read('app/admin/personnel/[employmentId]/page.tsx');
-    expect(src).toContain('entitlementStatusNeedsNotice(st)');
-    expect(src).toContain('ENTITLEMENT_STATUS_LABEL_KEY[st]');
+  it('the retained HR Leave inquiry captions configuration status after the Personnel duplicate is removed', () => {
+    const src = read('app/leave/employee-balances/page.tsx');
+    expect(src).toContain('entitlementStatusNeedsNotice(r.entitlementStatus)');
+    expect(src).toContain('ENTITLEMENT_STATUS_LABEL_KEY[r.entitlementStatus]');
+    expect(read('app/admin/personnel/[employmentId]/page.tsx')).not.toContain('personnelLeaveBreakdowns');
   });
 
   it('the derivation is DB-free and framework-free, so server and client share one definition', () => {

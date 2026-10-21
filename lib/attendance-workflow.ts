@@ -14,7 +14,8 @@ export type AttendanceWorkflowStage = {
     level: ApprovalLevel;
 };
 export type AttendanceResolvedApprover = {
-    kind: 'direct_manager' | 'hr_admin';
+    kind: 'direct_manager' | 'hr_admin' | 'specific_employee';
+    slot?: string;
     employmentId: string | null;
     /** Version 2 freezes distinct employment/person/login identities at submission. */
     personId?: string;
@@ -25,6 +26,9 @@ export type AttendanceResolvedApprover = {
 export type AttendanceResolvedStage = {
     name: string;
     approvers: AttendanceResolvedApprover[];
+    mode?: import('./attendance-workflow-v3').AttendanceLevelMode;
+    source?: import('./attendance-workflow-v3').AttendanceV3Source;
+    hrAlternative?: boolean;
 };
 export type AttendanceWorkflowCriteria = {
     departmentIds?: string[];
@@ -107,6 +111,7 @@ export type AttendanceWorkflowOptions = {
     divisions: { id: string; name: string }[];
     positions?: { id: string; name: string }[];
     employees?: { id: string; name: string; employeeCode?: string | null }[];
+    approverEmployees?: { id: string; name: string; employeeCode?: string | null }[];
     profileFields?: Partial<Record<keyof AttendanceWorkflowCriteria, { id: string; name: string }[]>>;
 };
 /** One presentation descriptor for form, company list and View/Edit; values remain Personnel-owned. */

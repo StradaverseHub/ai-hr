@@ -8,6 +8,8 @@ export type {PersonnelImportChoice} from './import-sections';
  * Unknown reasons remain visible verbatim; the exact coverage test requires their translation.
  */
 const REASON_KEYS:Readonly<Record<string,string>>={
+  'Dated calendar changes use the authorized assignment workflow; scalar employee imports cannot replace its history.':'datedCalendar',
+  'HR-only guarded Personnel classification action; workbook and generic imports cannot change this metadata.':'testRecord',
   'The displayed name follows the Direct Superior selected through the supported Employee ID or work email import; it is not a separate name entry.':'superiorName',
   'The Personnel record selector uses an internal employment identity. Imports select the same reporting relationship through the supported Employee ID or work email column.':'superiorRecord',
   "Derived/history field or specialist owner workflow; no section-import writer is declared.": "managed",

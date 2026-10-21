@@ -4,7 +4,7 @@
  * Rule: files outside the attendance pack surface never import the pack's implementation modules
  * (`core/attendance*`, `core/clocking-location`) directly — they import the facade,
  * `packs/attendance/service`. The always-allowed importers are the pack surface itself: the
- * `packs/attendance/` wiring + facade, the six implementation files (they import each other), and
+ * `packs/attendance/` wiring + facade, implementation files (they import each other), and
  * the pack's own routes (attendance screens + clock portal + its admin config screens). test/ is
  * never scanned — attendance tests exercise the implementation directly by design.
  *
@@ -15,7 +15,7 @@
  * the who/why table lives in packs/attendance/index.ts. A new importer outside the list fails; an
  * entry whose file stopped importing fails until the entry is removed.
  *
- * The pack has SIX boundary modules, not one directory (physical file moves are optional per
+ * The pack has multiple boundary modules, not one directory (physical file moves are optional per
  * D11), so the rung-1 helper runs once per module and the results are unioned against the single
  * shared allowlist.
  */
@@ -44,6 +44,9 @@ const BOUNDARIES = [
   'core/attendance-punch-change',
   'core/attendance-workflow',
   'core/attendance-application-history',
+  // Request evidence/progress and workbook confirmation are pack implementation, not kernel debt.
+  'core/attendance-application-review',
+  'core/attendance-card-import',
   'core/attendance-rule',
   'core/attendance-rotation',
   'core/clocking-location',
@@ -69,6 +72,8 @@ const ALWAYS_ALLOWED = [
   'core/attendance-punch-change.ts',
   'core/attendance-workflow.ts',
   'core/attendance-application-history.ts',
+  'core/attendance-application-review.ts',
+  'core/attendance-card-import.ts',
   'core/attendance-rule.ts',
   'core/attendance-rotation.ts',
   'core/clocking-location.ts',

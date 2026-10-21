@@ -61,6 +61,7 @@ vi.mock('../lib/authz', async (importOriginal) => ({
 }));
 vi.mock('next/cache', () => ({ revalidatePath: () => {} }));
 vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn() }),
   redirect: () => {
     throw new Error('NEXT_REDIRECT');
   },
@@ -78,6 +79,7 @@ vi.mock('next-intl/server', async () => {
   const { fileURLToPath } = await import('node:url');
   const messages = JSON.parse(readFileSync(fileURLToPath(new URL('../messages/en.json', import.meta.url)), 'utf8'));
   return {
+    getLocale: async () => 'en',
     getTranslations: async (ns: string | { namespace?: string }) =>
       make({
         locale: 'en',
@@ -573,7 +575,7 @@ describe('D9 · Leave Balance Health, rendered', () => {
     expect(at, `${name} has a row`).toBeGreaterThan(-1);
     return html.slice(at, html.indexOf('</tr>', at));
   };
-  const render = async () => toMarkup(await settle(await BalanceHealthPage()));
+  const render = async () => toMarkup(await settle(await BalanceHealthPage({ searchParams: Promise.resolve({}) })));
   const tableOn = (rl: string) =>
     createEntitlementTemplate(adminCtx(b), {
       leaveTypeId: rl,

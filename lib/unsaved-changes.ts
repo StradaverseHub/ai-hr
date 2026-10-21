@@ -33,6 +33,11 @@
 export const UNSAVED_GUARD_ATTR = 'data-unsaved-guard';
 export const UNSAVED_GUARD_IGNORE_SELECTOR = `[${UNSAVED_GUARD_ATTR}="ignore"]`;
 
+/** A form whose action stays on this screen and preserves surrounding drafts. Submit-only opt-in:
+ * links, tab changes, Back and beforeunload still use the ordinary dirty guard. Never use on a
+ * redirecting action, a consolidated section, or an action that remounts surrounding forms. */
+export const INDEPENDENT_SUBMIT_SELECTOR = 'form[data-tab-save-independent="true"]';
+
 export type UnsavedGuard = {
   /** True while the scope holds edits that have not been written. */
   isDirty: () => boolean;

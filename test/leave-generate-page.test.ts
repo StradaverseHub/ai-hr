@@ -16,7 +16,7 @@ import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { leavePack } from '../packs/leave';
+import { leavePack, LEAVE_ADMIN_DESTINATIONS } from '../packs/leave';
 
 import { SCREENS } from '../lib/permissions';
 
@@ -109,7 +109,7 @@ describe('4b0e76ae · the Generate Entitlement page is REACHABLE', () => {
     // 645e67c4 — the navigation half moved from the tab strip to the leave pack's fly-out node. The
     // promise is unchanged and is the whole point of this test: no permissions row and our own access
     // check refuses the page; no menu entry and nobody can find it.
-    const node = leavePack.navNodes!.find((n) => n.group === 'admin')!;
+    const node = LEAVE_ADMIN_DESTINATIONS;
     expect(node.children.map((c) => c.href)).toContain(GENERATE_ROUTE);
   });
 

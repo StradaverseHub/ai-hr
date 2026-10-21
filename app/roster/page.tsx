@@ -407,7 +407,7 @@ export default async function RosterPage({
           {win.kind === 'month' && (
             <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               {t('filterMonth')}
-              <input type="month" name="month" defaultValue={win.month} className={inputCls} />
+              <input key={win.month} type="month" name="month" defaultValue={win.month} className={inputCls} />
             </label>
           )}
           {win.kind === 'week' && (
@@ -416,18 +416,18 @@ export default async function RosterPage({
                calendar year at the turn of January — a defect nobody would ever reproduce on purpose. */
             <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               {t('filterWeekOf')}
-              <input type="date" name="from" defaultValue={win.from} className={inputCls} />
+              <input key={win.from} type="date" name="from" defaultValue={win.from} className={inputCls} />
             </label>
           )}
           {win.kind === 'custom' && (
             <>
               <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                 {t('filterFrom')}
-                <input type="date" name="from" defaultValue={win.from} className={inputCls} />
+                <input key={win.from} type="date" name="from" defaultValue={win.from} className={inputCls} />
               </label>
               <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                 {t('filterTo')}
-                <input type="date" name="to" defaultValue={win.to} className={inputCls} />
+                <input key={win.to} type="date" name="to" defaultValue={win.to} className={inputCls} />
               </label>
             </>
           )}
@@ -477,6 +477,7 @@ export default async function RosterPage({
               }))}
               shifts={view.shifts}
               initial={view.cells}
+              dayContext={view.dayContext}
               usual={view.usual}
               isAdmin={admin && (!teamScope || teamScope.canEditRoster)}
               today={todayIso}

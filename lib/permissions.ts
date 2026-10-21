@@ -105,6 +105,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'attendanceConfigurationDestinations',href:'/admin/attendance/settings/company-policy',labelKey:'attendanceSettingsHub.companyPolicy.title',guard:'scopedAdmin',routes:['/admin/attendance/settings/company-policy','/admin/attendance/settings/work-schedule-overtime','/admin/attendance/settings/registered-devices']},
   {screenKey:'attendanceApprovalWorkflow',href:'/admin/attendance/approval-workflow',labelKey:'nav.attendanceApprovalWorkflow',guard:'scopedAdmin',routes:['/admin/attendance/approval-workflow','/admin/attendance/approval-workflow/new','/admin/attendance/approval-workflow/[lineageId]','/admin/attendance/approval-workflow/[lineageId]/edit']},
   {screenKey:'attendanceApplicationHistory',href:'/attendance/application-history',labelKey:'nav.applicationHistory',guard:'scopedAdmin',routes:['/attendance/application-history','/attendance/application-history/[id]']},
+  {screenKey:'attendanceVisibleApplications',href:'/attendance/application-history/visible',labelKey:'attendanceHistory.visibleTitle',guard:'scopedSession',routes:['/attendance/application-history/visible'],hasScopeNote:true},
   {screenKey:'workflowEmail',href:'/admin/settings/notifications',labelKey:'nav.workflowEmail',guard:'scopedAdmin',routes:['/admin/settings/notifications'],hasScopeNote:true},
   {screenKey:'myEmailNotifications',href:'/me/notifications',labelKey:'workflowEmail.preferencesTitle',guard:'scopedSession',routes:['/me/notifications']},
   { screenKey: 'identityEmail', href: '/admin/settings/email', labelKey: 'nav.identityEmail', guard: 'scopedSession', routes: ['/admin/settings/email'], hasScopeNote: true },
@@ -323,7 +324,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   {
     screenKey: 'myRoster',
     href: '/attendance/my-roster',
-    labelKey: 'nav.myRoster',
+    labelKey: 'nav.attendanceCalendar',
     guard: 'scopedSession',
     routes: ['/attendance/my-roster'],
     hasScopeNote: true,
@@ -435,6 +436,7 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/admin/organization/[companyId]/view',
     ],
   },
+  {screenKey:'profileChanges',href:'/admin/personnel/profile-changes',labelKey:'nav.profileChanges',guard:'requireAdmin',routes:['/admin/personnel/profile-changes'],hasScopeNote:true},
   {
     screenKey: 'personnelAdmin',
     href: '/admin/personnel',
@@ -560,7 +562,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     // a stub is not a screen this grid can describe. THE SCREEN KEY IS NOT RENAMED: a key "may key stored
     // role configs" (see this file's head), so renaming `leaveConfig` would silently drop every tenant's
     // existing grant for the whole area. Only `href` and `routes` ever move.
-    href: '/admin/leave-config/types',
+    href: '/admin/leave-config/settings',
     labelKey: 'nav.leaveConfig',
     guard: 'requireAdmin',
     // R13 0d147b78: leave config split into route-based tabs (approval tab is scopedSession → own screen below).
@@ -578,6 +580,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     // the sweeps reachable when the `toil` entitlement lapses (a wind-down view), so the gating difference
     // this note defended is preserved on the one screen rather than by two.
     routes: [
+      '/admin/leave-config/settings',
       // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/import'` STOOD HERE and is DELIBERATELY GONE.
       // Import leave data is `/admin/leave-config/import` now; the old address is an unguarded redirect
       // stub (app/admin/leave/import/page.tsx), and a stub is not a screen this grid can describe, so it

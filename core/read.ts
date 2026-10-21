@@ -1,3 +1,4 @@
+import {emergencyLeaveGroupOriginSql,cancellationSplitGroupSql} from './leave-group-origin-sql';
 import {formulaOvertimeForRowsTx} from '../packs/attendance/service';
 /** Read queries for the UI. Each runs via withTenant, so RLS scopes every result. */
 import {
@@ -75,8 +76,8 @@ import {
   serviceYearsAt,
   // 6e9a126e RELEASE TWO — the entitlement TEMPLATE overlay, for the balance breakdown's past-date read.
   policyForDatedReader,
-  workingDatesForSpan,
-  workingDatesForSpans,
+  countedDatesForSpan,
+  countedDatesForSpans,
   // r301 (83511d3b) — Cancel Approved Leave: the leave type's rule and THE button predicate, so the Team Leave
   // Tracker (plannedAbsences) and /leave (employeeCancelOffers) offer exactly what the service accepts.
   cancelApprovedSettingOf,
@@ -452,9 +453,9 @@ export function listEmployeesPage(
         name: person.fullName,
         email: person.primaryEmail,
         employeeCode: employment.employeeCode,
-        department: department.name,
+        department: sql<string|null>`coalesce(nullif(trim(${department.label}), ''), ${department.name})`,
         departmentId: assignment.departmentId,
-        position: position.title,
+        position: sql<string|null>`coalesce(nullif(trim(${position.label}), ''), ${position.title})`,
         company: company.legalName,
         companyId: employment.companyId,
         hiredOn: employment.hiredOn,
@@ -474,7 +475,7 @@ export function listEmployeesPage(
         // the row count is unchanged and the count query below needs no edit at all.
         jobGrade: jobGrade.name,
         employmentType: assignment.employmentType,
-        businessUnit: businessUnit.name,
+        businessUnit: sql<string|null>`coalesce(nullif(trim(${businessUnit.label}), ''), ${businessUnit.code})`,
         costCenter: costCenter.name,
         workLocation: location.name,
         joinDate: employment.joinDate,
@@ -692,6 +693,8 @@ export function listDepartments(
       .select({
         id: department.id,
         name: department.name,
+        code: department.name,
+        label: department.label,
         companyId: department.companyId,
         // Business Unit link (ADR-0068) — feeds the cascading hire-form department filter + the org admin
         // BU dropdown. Null = unassigned (visible under every BU on the hire form).
@@ -1277,6 +1280,8 @@ const leaveRequestSelection = {
   // Edit/cancel-by-status (item c9a19e34): the type id so the /leave own-pending Edit dialog can prefill its
   // leave-type <select>.
   leaveTypeId: leaveRequest.leaveTypeId,
+  leaveCounting: leaveType.counting,
+  leaveDayTypeInclusion: leaveType.dayTypeInclusion,
   typeCode: leaveType.code,
   appliedOn: leaveRequest.createdAt,
   startDate: leaveRequest.startDate,
@@ -1300,9 +1305,9 @@ const leaveRequestSelection = {
   fromTime: leaveRequest.fromTime,
   toTime: leaveRequest.toTime,
   status: leaveRequest.status,
-  // Emergency Leave (0106): the shared id linking an EL submission's ANNUAL + UNPAID children, so a
-  // surface can group them as one logical absence. NULL for ordinary requests.
+  // Shared grouping ID for EL applications and partial-cancellation splits; it does not prove purpose.
   parentGroupId: leaveRequest.parentGroupId,
+  isEmergencyGroup: emergencyLeaveGroupOriginSql,
   // Phase-B #13 (ADR-0062): the EA s.37 maternity paid-allowance decision, so the approver sees whether
   // the paid ALLOWANCE was withheld (and why). allowanceEligible is the per-request override
   // (TRUE=paid, FALSE=withheld/unpaid, NULL=not a maternity decision or inputs unconfirmed); the reason
@@ -1368,9 +1373,9 @@ const leaveRequestSelection = {
   pendingCancelDates: sql<string[] | null>`(select cancel_dates from leave_cancellation_request c where c.leave_request_id = leave_request.id and c.status = 'pending' order by c.created_at desc limit 1)`,
   // R5 Build #2 (iterative cancellation): TRUE when this row is a SURVIVOR of a prior cancellation split —
   // it carries a parent_group_id AND a sibling in the same group is 'cancelled'. Such a survivor is still
-  // cancellable (the employee can give back more days), so the Leave page shows the "Cancel dates" button
-  // for it too; a genuine EL / per-date child (parent group with NO 'cancelled' sibling) never matches.
-  isCancellationSplit: sql<boolean>`(leave_request.parent_group_id is not null and exists (select 1 from leave_request s where s.parent_group_id = leave_request.parent_group_id and s.status = 'cancelled'))`,
+  // cancellable (the employee can give back more days). Recorded EL origin excludes genuine EL children
+  // even if HR has cancelled a sibling.
+  isCancellationSplit: cancellationSplitGroupSql,
   // R17 600be8ac ask #1: the applicant's own words — the free-text `reason` and (for types that require it) the
   // mandatory `employeeRemark` — so the approver's summary shows WHY the leave was requested, not just the dates.
   reason: leaveRequest.reason,
@@ -1382,7 +1387,7 @@ const leaveRequestSelection = {
 } as const;
 
 /** R5 Build #2 (Fix C — holiday/working-day-aware cancellable list): resolve each ELIGIBLE row's REAL
- *  working dates (roster + public-holiday aware, the SAME frame requestLeaveCancellation validates against)
+ *  counted dates (calendar or roster/inclusion aware, the SAME frame requestLeaveCancellation validates against)
  *  so the Leave page offers exactly the cancellable candidates — not a Mon–Fri heuristic. Only resolved for
  *  approved full-day rows that are either a plain request (parentGroupId null) or a cancellation-split
  *  survivor; others get []. Runs bounded to the passed page of rows (≤ page size). */
@@ -1393,6 +1398,8 @@ async function resolveLeaveWorkingDates<
     parentGroupId: string | null;
     isCancellationSplit: boolean;
     employmentId: string;
+    leaveCounting: string | null;
+    leaveDayTypeInclusion: unknown;
     startDate: string;
     endDate: string;
   },
@@ -1404,7 +1411,7 @@ async function resolveLeaveWorkingDates<
         r.durationType === 'full_day' &&
         (r.parentGroupId == null || r.isCancellationSplit);
       const workingDates = eligibleShape
-        ? await workingDatesForSpan(tx, r.employmentId, r.startDate, r.endDate)
+        ? await countedDatesForSpan(tx, r.employmentId, r.startDate, r.endDate, r.leaveCounting, r.leaveDayTypeInclusion)
         : [];
       return { ...r, workingDates };
     }),
@@ -1927,7 +1934,7 @@ export function plannedAbsences(
         // hourly pill's exact start/end in its hover tooltip. NULL for full/half-day rows (time cols unset).
         fromTime: leaveRequest.fromTime,
         toTime: leaveRequest.toTime,
-        // Emergency Leave (0106): the shared id linking an EL submission's children. NULL for ordinary rows.
+        // Shared grouping ID: EL applications and partial-cancellation splits both use this field.
         parentGroupId: leaveRequest.parentGroupId,
         // Partial Leave Cancellation from the calendar (ADR-0065): the same eligibility fields listLeaveRequests
         // surfaces, so the dashboard calendar can gate a "Cancel dates" affordance identically to the Leave page.
@@ -1936,9 +1943,8 @@ export function plannedAbsences(
         // feature). pendingCancellationId: an open give-back request already on this row (suppress a 2nd click).
         pendingCancellationId: sql<string | null>`(select id from leave_cancellation_request c where c.leave_request_id = leave_request.id and c.status = 'pending' order by c.created_at desc limit 1)`,
         // isCancellationSplit: TRUE when this row is a SURVIVOR of a prior cancellation split (carries a
-        // parent_group_id AND a sibling in the group is 'cancelled') — still cancellable; a genuine EL / per-date
-        // child (parent group with NO 'cancelled' sibling) never matches.
-        isCancellationSplit: sql<boolean>`(leave_request.parent_group_id is not null and exists (select 1 from leave_request s where s.parent_group_id = leave_request.parent_group_id and s.status = 'cancelled'))`,
+        // parent_group_id AND a cancelled sibling, without recorded EL origin) — still cancellable.
+        isCancellationSplit: cancellationSplitGroupSql,
         // r301 (83511d3b) — what employeeCancellableDates needs beyond the row shape: the type's Cancel
         // Approved Leave rule (role + code so Emergency Leave reads today's behaviour) and the unpaid days.
         // Read for the candidate list below and NOT returned on the pill (stripped when the pills are built).
@@ -1946,6 +1952,8 @@ export function plannedAbsences(
         cancelRuleAllowed: leaveType.employeeCancelApproved,
         cancelRuleNoticeDays: leaveType.cancelNoticeDays,
         cancelRuleUnpaidDays: leaveRequest.unpaidDays,
+        cancelRuleCounting: leaveType.counting,
+        cancelRuleDayTypeInclusion: leaveType.dayTypeInclusion,
       })
       .from(leaveRequest)
       .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
@@ -1965,7 +1973,7 @@ export function plannedAbsences(
       .orderBy(leaveRequest.startDate);
 
     type LeaveRow = (typeof leaves)[number];
-    type Leave = Omit<LeaveRow, 'cancelRuleRole' | 'cancelRuleAllowed' | 'cancelRuleNoticeDays' | 'cancelRuleUnpaidDays'> & {
+    type Leave = Omit<LeaveRow, 'cancelRuleRole' | 'cancelRuleAllowed' | 'cancelRuleNoticeDays' | 'cancelRuleUnpaidDays' | 'cancelRuleCounting' | 'cancelRuleDayTypeInclusion'> & {
       candidateCancelDates: string[];
     };
     // r301 (83511d3b) — the type's Cancel Approved Leave rule for one row, through the ONE resolver.
@@ -2004,7 +2012,7 @@ export function plannedAbsences(
     }
 
     // Partial Leave Cancellation from the calendar (ADR-0065): each approved row carries the exact cancellable
-    // candidate dates — its REAL working dates (roster + holiday aware, resolved via the SAME workingDatesForSpan
+    // candidate dates — its REAL counted dates (calendar or roster/inclusion aware, via countedDatesForSpan
     // the service validates against) strictly after `today` (MYT), AND — for a per-date-approval request — only
     // the interior dates that were actually APPROVED (mirrors requestLeaveCancellation core/leave.ts:2115-2118,
     // so an interior-REJECTED date never looks cancellable on the calendar but is rejected on submit). Computed
@@ -2018,10 +2026,10 @@ export function plannedAbsences(
       // ee55f5fe step 2 — the per-leave N+1 fix that makes Month View viable. The old loop resolved the
       // roster + holiday set PER LEAVE (2 sequential round-trips each — Promise.all does not parallelise
       // on one tx). Group the ELIGIBLE leaves by employment and resolve each employment's roster + union-
-      // range holiday set ONCE via workingDatesForSpans: round-trips scale with the number of employments
+      // range holiday set ONCE via countedDatesForSpans: round-trips scale with the number of employments
       // that have eligible leave, independent of leave count. Ineligible rows simply have no map entry —
-      // candidatesFor() already defaults them to []. Per-span results are byte-identical to the old
-      // workingDatesForSpan path; the per-date-approval filter + `d > today` cut apply after, unchanged.
+      // candidatesFor() already defaults them to []. Every request retains its counting/inclusion policy;
+      // the per-date-approval filter + `d > today` cut apply after, unchanged.
       // r301 (83511d3b): the row shape is now ONE predicate shared with /leave — employeeCancellableDates with
       // no dates answers "is this row offered at all" (approved full-day, plain or split survivor, nothing
       // pending, the type's switch on, no unpaid days) — so a switched-off type is never resolved here.
@@ -2041,13 +2049,19 @@ export function plannedAbsences(
         else byEmployment.set(l.employmentId, [l]);
       }
       for (const [employmentId, empLeaves] of byEmployment) {
-        const spanDates = await workingDatesForSpans(
+        const spanDates = await countedDatesForSpans(
           tx,
           employmentId,
-          empLeaves.map((l) => ({ start: l.startDate, end: l.endDate })),
+          empLeaves.map((l) => ({
+            key: l.id,
+            start: l.startDate,
+            end: l.endDate,
+            counting: l.cancelRuleCounting,
+            dayTypeInclusion: l.cancelRuleDayTypeInclusion,
+          })),
         );
         for (const l of empLeaves) {
-          let working = spanDates.get(`${l.startDate}|${l.endDate}`) ?? [];
+          let working = spanDates.get(l.id) ?? [];
           // Per-date-approval request (has date rows): restrict to the APPROVED interior dates only.
           if (hasDateRows.has(l.id)) {
             const approvedSet = new Set(approvedDatesByReq.get(l.id) ?? []);
@@ -2079,7 +2093,7 @@ export function plannedAbsences(
     const expandedLeaves: Leave[] = [];
     for (const row of leaves) {
       // r301 — the rule columns were read for the candidate list only; the pill carries no new fields.
-      const { cancelRuleRole: _r, cancelRuleAllowed: _a, cancelRuleNoticeDays: _n, cancelRuleUnpaidDays: _u, ...l } = row;
+      const { cancelRuleRole: _r, cancelRuleAllowed: _a, cancelRuleNoticeDays: _n, cancelRuleUnpaidDays: _u, cancelRuleCounting: _c, cancelRuleDayTypeInclusion: _i, ...l } = row;
       const candidateCancelDates = candidatesFor(l.id);
       // A per-date request that is APPROVED with per-date rows → emit one leave per contiguous approved run.
       if (hasDateRows.has(l.id) && l.status === 'approved') {
@@ -2595,15 +2609,15 @@ export function assignmentHistory(ctx: SessionContext, employmentId: string) {
     tx
       .select({
         id: assignment.id,
-        department: department.name,
+        department: sql<string>`coalesce(nullif(trim(${department.label}), ''), ${department.name})`,
         departmentId: assignment.departmentId,
-        position: position.title,
+        position: sql<string|null>`coalesce(nullif(trim(${position.label}), ''), ${position.title})`,
         positionId: assignment.positionId,
         // 1001ff61 — Business Unit on the assignment (nullable). Drives the Form A BU dropdown's default.
         businessUnitId: assignment.businessUnitId,
         // 570e3311 — BU display name (additive), so the detail page can label a pinned-current BU that is
         // no longer in the company-scoped option list (legacy / later-unshared data).
-        businessUnit: businessUnit.name,
+        businessUnit: sql<string|null>`coalesce(nullif(trim(${businessUnit.label}), ''), ${businessUnit.code})`,
         // R81 (9cbf5e0d): no `status` here any more — the column is dropped (migration 0331). This read
         // powers the dated org history (department / position / BU / type), which is what actually varies
         // per version; the Movement tab replaced the old status column in this table back at 78853b97, so
@@ -4857,6 +4871,8 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
         // list can gate + prefill the status-gated Edit dialog and resolve the approved give-back candidates.
         employmentId: leaveRequest.employmentId,
         leaveTypeId: leaveRequest.leaveTypeId,
+        leaveCounting: leaveType.counting,
+        leaveDayTypeInclusion: leaveType.dayTypeInclusion,
         leaveType: leaveType.name,
         i18n: leaveType.i18n,
         startDate: leaveRequest.startDate,
@@ -4872,9 +4888,9 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
         // Edit/cancel-by-status: the applicant's own words prefill the Edit dialog.
         reason: leaveRequest.reason,
         employeeRemark: leaveRequest.employeeRemark,
-        // Emergency Leave (0106): the shared id linking an EL submission's ANNUAL + UNPAID children, so the
-        // /me history can group them under one EL heading. NULL for ordinary requests.
+        // EL applications and partial cancellations both group rows; recorded origin identifies EL.
         parentGroupId: leaveRequest.parentGroupId,
+        isEmergencyGroup: emergencyLeaveGroupOriginSql,
         hasDocument: sql<boolean>`exists (select 1 from leave_request_attachment lra where lra.leave_request_id = leave_request.id)`,
         currentStepKind: sql<string | null>`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
         currentStepIndex: sql<number | null>`(select step_index from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
@@ -4882,7 +4898,7 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
         // Edit/cancel-by-status: an open give-back already on this approved row suppresses a second cancel click.
         pendingCancellationId: sql<string | null>`(select id from leave_cancellation_request c where c.leave_request_id = leave_request.id and c.status = 'pending' order by c.created_at desc limit 1)`,
         // R5 Build #2: TRUE when this row is a SURVIVOR of a prior cancellation split (still cancellable).
-        isCancellationSplit: sql<boolean>`(leave_request.parent_group_id is not null and exists (select 1 from leave_request s where s.parent_group_id = leave_request.parent_group_id and s.status = 'cancelled'))`,
+        isCancellationSplit: cancellationSplitGroupSql,
         // R17 600be8ac ask #4: TRUE when this request has ≥1 REJECTED per-date sub-row → the /me + personnel
         // history renders the derived "Partially approved" badge instead of a flat "Approved" (no status enum).
         hasRejectedDates: sql<boolean>`exists (select 1 from leave_request_date d where d.leave_request_id = leave_request.id and d.status = 'rejected')`,
@@ -4891,8 +4907,8 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
       .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
       .where(eq(leaveRequest.employmentId, employmentId))
       .orderBy(desc(leaveRequest.startDate));
-    // Edit/cancel-by-status: resolve each approved full-day plain/split row's REAL working dates (the give-back
-    // candidate set), holiday-aware, exactly as the /leave page does — so the /me approved-cancel dialog offers
+    // Edit/cancel-by-status: resolve each approved full-day plain/split row's counted dates (the give-back
+    // candidate set), calendar or roster/inclusion aware, exactly as the /leave page does — so the /me approved-cancel dialog offers
     // the same dates the service will accept.
     const withDates = await resolveLeaveWorkingDates(tx, rows);
     return withDates.map(({ i18n, ...r }) => ({ ...r, leaveType: pickName(r.leaveType, i18n, locale) }));

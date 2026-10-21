@@ -16,7 +16,12 @@ describe('Employee Master report contract',()=>{
     expect(PERSONNEL_FIELDS.map(field=>field.id)).toEqual(expect.arrayContaining(establishedPersonnelFieldIds));
     expect(PERSONNEL_FIELDS.map(field=>field.id)).toEqual(expect.arrayContaining(['profile.personal_details.fullname','employment.employment_dates_and_service.confirmationdate','employment.employment_dates_and_service.finalconfirmationdate']));
     expect(new Set(PERSONNEL_FIELDS.map(field=>field.id)).size).toBe(PERSONNEL_FIELDS.length);
-    expect(new Set(PERSONNEL_FIELDS.map(field=>field.tab)).size).toBe(11);
+    const tabs = new Set(PERSONNEL_FIELDS.map(field=>field.tab));
+    expect(tabs.size).toBe(10);
+    expect(tabs.has('Others')).toBe(false);
+    const reviews = PERSONNEL_FIELDS.filter(field=>field.id.startsWith('others.probation_contract_internship_review.'));
+    expect(reviews).toHaveLength(9);
+    expect(reviews.every(field=>field.tab==='Employment')).toBe(true);
     expect(PERSONNEL_FIELDS.filter(field=>!field.report.enabled).every(field=>!!field.report.disabledReason)).toBe(true);
     expect(PERSONNEL_FIELDS.filter(field=>field.scope==='draft')).toHaveLength(5);
   });

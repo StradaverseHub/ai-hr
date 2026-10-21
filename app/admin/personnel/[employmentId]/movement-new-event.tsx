@@ -14,7 +14,7 @@
 //
 // Every option list is pre-loaded and pre-translated by the server page; this island owns only the form
 // state. The tab shell injects the hidden `tab` field on submit, so the save lands back on the Movement tab.
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ProfileOptionSelect } from '@/components/profile-option-select';
 import { personnelWorkflowControl, personnelWorkflowInput, personnelFormLabel, personnelFormCatalog, personnelFormChoices } from '@/lib/personnel-form-contract';
@@ -26,6 +26,7 @@ import { createMovementEventAction, editMovementEventAction } from './actions';
 
 import {MOVEMENT_FORM_IDS, movementFormFields} from '@/lib/movement-form-contract';
 import {isComparisonKind} from '@/core/movement-kinds';
+import {MOVEMENT_PENDING_INPUT_FIELDS,type MovementPendingFormValues} from '@/lib/movement-pending-input';
 const movementField=(name:keyof typeof MOVEMENT_FORM_IDS)=>MOVEMENT_FORM_IDS[name];
 export type MovementOption = { id: string; name: string };
 /** b7b22514 — a Direct Superior candidate, carrying the company that decides whether an Entity Transfer
@@ -133,6 +134,9 @@ export type MovementEditTarget = {
   allowedKinds: string[];
   /** A processed (not yet closed) payroll run covered this period; payslips are never reprocessed. */
   payrollWarning: boolean;
+  /** Present only for an authorized pending intent; omission must not become today's default. */
+  pendingInput?: MovementPendingFormValues;
+  pendingUnavailable?: boolean;
 };
 
 export function MovementNewEvent({
@@ -207,6 +211,17 @@ export function MovementNewEvent({
   const behaviourOf = (k: string): string => byCode.get(k)?.behaviourKind ?? k;
   const [kind, setKind] = useState<string>(edit?.kind ?? catalog[0]?.code ?? 'transfer');
   const behaviour = behaviourOf(kind);
+  const saved = edit?.pendingInput;
+  const after = {...current,...saved};
+  const initialFields=useRef<Map<string,string>|null>(null);
+  const touched=useRef(new Set<string>());
+  const submitPendingCorrection=async(data:FormData)=>{
+    for(const key of MOVEMENT_PENDING_INPUT_FIELDS){
+      if(Object.prototype.hasOwnProperty.call(saved,key)||touched.current.has(key))continue;
+      if(String(data.get(key)??'')===(initialFields.current?.get(key)??''))data.delete(key);
+    }
+    await editMovementEventAction(data);
+  };
 
   // Static-key label map with a humanized fallback for future kinds — no dynamic t() keys, so a raw
   // key can never render in any locale.
@@ -250,7 +265,7 @@ export function MovementNewEvent({
    * shown, never a wider set.
    */
   const isEntityTransfer = behaviour === 'entityTransfer';
-  const [destCompanyId, setDestCompanyId] = useState<string>(current.companyId);
+  const [destCompanyId, setDestCompanyId] = useState<string>(saved?.companyId ?? current.companyId);
   const scopeCompanyId = isEntityTransfer ? destCompanyId : current.companyId;
   const scopeChanged = scopeCompanyId !== current.companyId;
   const scoped: MovementOrgScope = orgByCompany?.[scopeCompanyId] ?? {
@@ -270,7 +285,7 @@ export function MovementNewEvent({
   const showBlacklist = behaviour === 'blacklist';
   const showEndDate = movementFormFields(behaviour).includes('endDate');
   const showEffectiveDate = movementFormFields(behaviour).includes('effectiveDate');
-  const [terminationReason, setTerminationReason] = useState<string>('');
+  const [terminationReason, setTerminationReason] = useState<string>(saved?.terminationReasonCode ?? '');
   // "Resignation Date — mandatory for resignation cases" (the reporter's rule). Shown only for that reason,
   // because for a dismissal or a contract expiry there is no resignation to date.
   const showResignationDate = isTermination && terminationReason === 'resignation';
@@ -371,27 +386,27 @@ export function MovementNewEvent({
       ),
     ),
     row('businessUnit', label(movementField('businessUnitId')), nameOf(businessUnits, current.businessUnitId),
-      select('businessUnitId', current.businessUnitId, scoped.businessUnits, t('form.none'))),
-    row('orgDivision', label(movementField('orgDivision')), current.orgDivision, text('orgDivision', current.orgDivision)),
+      select('businessUnitId', after.businessUnitId, scoped.businessUnits, t('form.none'))),
+    row('orgDivision', label(movementField('orgDivision')), current.orgDivision, text('orgDivision', after.orgDivision)),
     row('department', label(movementField('departmentId')), nameOf(departments, current.departmentId),
-      select('departmentId', current.departmentId, scoped.departments, null)),
+      select('departmentId', after.departmentId, scoped.departments, null)),
     row('position', label(movementField('positionId')), nameOf(positions, current.positionId),
-      select('positionId', current.positionId, scoped.positions, t('form.none'))),
+      select('positionId', after.positionId, scoped.positions, t('form.none'))),
     row('grade', label(movementField('gradeId')), nameOf(grades, current.gradeId),
-      select('gradeId', current.gradeId, grades, t('form.none'))),
+      select('gradeId', after.gradeId, grades, t('form.none'))),
     row('category', label(movementField('employmentCategory')), current.employmentCategory,
-      text('employmentCategory', current.employmentCategory)),
-    row('orgRegion', label(movementField('orgRegion')), current.orgRegion, text('orgRegion', current.orgRegion)),
-    row('orgBranch', label(movementField('orgBranch')), current.orgBranch, text('orgBranch', current.orgBranch)),
-    row('orgTeam', label(movementField('orgTeam')), current.orgTeam, text('orgTeam', current.orgTeam)),
-    row('orgSection', label(movementField('orgSection')), current.orgSection, text('orgSection', current.orgSection)),
-    row('orgLine', label(movementField('orgLine')), current.orgLine, text('orgLine', current.orgLine)),
-    row('orgBase', label(movementField('orgBase')), current.orgBase, text('orgBase', current.orgBase)),
+      text('employmentCategory', after.employmentCategory)),
+    row('orgRegion', label(movementField('orgRegion')), current.orgRegion, text('orgRegion', after.orgRegion)),
+    row('orgBranch', label(movementField('orgBranch')), current.orgBranch, text('orgBranch', after.orgBranch)),
+    row('orgTeam', label(movementField('orgTeam')), current.orgTeam, text('orgTeam', after.orgTeam)),
+    row('orgSection', label(movementField('orgSection')), current.orgSection, text('orgSection', after.orgSection)),
+    row('orgLine', label(movementField('orgLine')), current.orgLine, text('orgLine', after.orgLine)),
+    row('orgBase', label(movementField('orgBase')), current.orgBase, text('orgBase', after.orgBase)),
     row('location', label(movementField('locationId')), nameOf(locations, current.locationId),
-      select('locationId', current.locationId, scoped.locations, t('form.none'))),
+      select('locationId', after.locationId, scoped.locations, t('form.none'))),
     row('employmentType', label(movementField('employmentType')),
       employmentTypes.find((o) => o.value === current.employmentType)?.label ?? null,
-      <select {...personnelWorkflowControl(movementField('employmentType'), 'movement', 'edit')} defaultValue={current.employmentType ?? ''} className={inputCls}>
+      <select {...personnelWorkflowControl(movementField('employmentType'), 'movement', 'edit')} defaultValue={after.employmentType ?? ''} className={inputCls}>
         {employmentTypes.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
@@ -399,19 +414,19 @@ export function MovementNewEvent({
         ))}
       </select>),
     row('manager', label(movementField('managerEmploymentId')), nameOf(managers, current.managerEmploymentId),
-      select('managerEmploymentId', current.managerEmploymentId, scopedManagers, t('form.none'))),
+      select('managerEmploymentId', after.managerEmploymentId, scopedManagers, t('form.none'))),
     row('basicSalary', label(movementField('basicSalary')), current.basicSalary,
       <input
         {...personnelWorkflowInput(movementField('basicSalary'), 'movement', 'edit')}
-        defaultValue={current.basicSalary ?? ''}
+        defaultValue={after.basicSalary ?? ''}
         className={inputCls}
       />),
     row('currency', label(movementField('currency')), current.currency,
-      <CurrencySelect name={personnelWorkflowControl(movementField('currency'), 'movement', 'edit').name} value={current.currency} />),
+      <CurrencySelect name={personnelWorkflowControl(movementField('currency'), 'movement', 'edit').name} value={after.currency} />),
     // Labels via the KNOWN option lists only — a stored value outside them falls back to itself rather
     // than rendering a raw i18n key (same rule as the event-type label map above).
     row('payMode', label(movementField('payMode')), payModeLabel(current.payMode),
-      <select {...personnelWorkflowControl(movementField('payMode'), 'movement', 'edit')} defaultValue={current.payMode ?? 'monthly'} className={inputCls}>
+      <select {...personnelWorkflowControl(movementField('payMode'), 'movement', 'edit')} defaultValue={after.payMode ?? 'monthly'} className={inputCls}>
         {PAY_MODE_OPTIONS.map((m) => (
           <option key={m} value={m}>
             {tPay(`payMode_${m}` as 'payMode_monthly')}
@@ -419,7 +434,7 @@ export function MovementNewEvent({
         ))}
       </select>),
     row('paymentTerm', label(movementField('paymentTerm')), paymentTermLabel(current.paymentTerm),
-      <select {...personnelWorkflowControl(movementField('paymentTerm'), 'movement', 'edit')} defaultValue={current.paymentTerm ?? 'monthly'} className={inputCls}>
+      <select {...personnelWorkflowControl(movementField('paymentTerm'), 'movement', 'edit')} defaultValue={after.paymentTerm ?? 'monthly'} className={inputCls}>
         {PAYMENT_TERM_OPTIONS.map((f) => (
           <option key={f} value={f}>
             {tPay(`paymentTerm_${f}` as 'paymentTerm_monthly')}
@@ -429,9 +444,31 @@ export function MovementNewEvent({
   ];
 
   const kindOptions: readonly string[] = edit ? edit.allowedKinds : catalog.map((c) => c.code);
+  const savedScope=isEntityTransfer?saved?.companyId??current.companyId:current.companyId;
+  const savedOrg=orgByCompany?.[savedScope]??{departments,positions,businessUnits,locations};
+  const referenceChoices={companyId:companies??[{id:current.companyId,name:current.companyName??''}],
+    departmentId:savedOrg.departments,positionId:savedOrg.positions,businessUnitId:savedOrg.businessUnits,
+    locationId:savedOrg.locations,gradeId:grades,managerEmploymentId:managers.filter(m=>savedScope===current.companyId||m.companyId===savedScope)};
+  const missingSavedReference=saved&&Object.entries(referenceChoices).some(([key,options])=>{
+    const value=Reflect.get(saved,key);return value!=null&&value!==''&&!options.some(option=>option.id===value);
+  });
+  const missingSavedScalar=saved&&((saved.employmentType!=null&&!employmentTypes.some(o=>o.value===saved.employmentType))||
+    (saved.terminationReasonCode!=null&&!terminationReasons.some(o=>o.code===saved.terminationReasonCode)));
+  if(edit?.pendingUnavailable||missingSavedReference||missingSavedScalar)return <div className="p-4">
+    <p role="alert" className="mb-3 text-sm text-destructive">{t('form.pendingTargetUnavailable')}</p>
+    <a href={cancelHref} className={btnGhost}>{t('form.cancel')}</a>
+  </div>;
 
   return (
-    <form action={edit ? editMovementEventAction : createMovementEventAction}>
+    <form action={saved ? submitPendingCorrection : edit ? editMovementEventAction : createMovementEventAction}
+      ref={form=>{if(saved&&form&&!initialFields.current)initialFields.current=new Map(Array.from(new FormData(form).entries()).filter((entry):entry is [string,string]=>typeof entry[1]==='string'));}}
+      onChangeCapture={event=>{
+        if (!saved) return;
+        const target: EventTarget = event.target;
+        if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) {
+          if (target.name) touched.current.add(target.name);
+        }
+      }}>
       <input type="hidden" name="employmentId" value={employmentId} />
       {edit && <input type="hidden" name="movementId" value={edit.movementId} />}
 
@@ -535,7 +572,7 @@ export function MovementNewEvent({
             {showResignationDate && (
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                 {label(movementField('resignationDate'))}
-                <DateField {...personnelWorkflowControl(movementField('resignationDate'), 'movement', 'record')} className={inputCls} label={label(movementField('resignationDate'))} />
+                <DateField {...personnelWorkflowControl(movementField('resignationDate'), 'movement', 'record')} defaultValue={saved?.resignationDate ?? ''} className={inputCls} label={label(movementField('resignationDate'))} />
               </label>
             )}
 
@@ -543,6 +580,7 @@ export function MovementNewEvent({
               {label(movementField('terminationNoticeDays'))}
               <input
                 {...personnelWorkflowInput(movementField('terminationNoticeDays'), 'movement', 'edit')}
+                defaultValue={saved?.terminationNoticeDays ?? ''}
                 className={inputCls}
               />
             </label>

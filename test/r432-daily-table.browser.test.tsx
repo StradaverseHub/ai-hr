@@ -1,6 +1,6 @@
 /**
  * r432 (e721a355) — THE DAILY ATTENDANCE LIST, MEASURED IN A REAL ENGINE at 390 and 1280. jsdom computes no
- * layout, so only Chromium with the app's compiled Tailwind can say whether a ten-column list with sticky
+ * layout, so only Chromium with the app's compiled Tailwind can say whether a eleven-column list with sticky
  * identity columns and a full-width clockings row stays inside the page. It mounts the REAL shared cells
  * (components/attendance-day-cells.tsx) in the same wrapper the page uses (`overflow-x-auto` around a
  * `w-max min-w-full` table, sticky Code + Name from lib/sticky-columns), with a long name, an Absent row and
@@ -8,6 +8,7 @@
  * wrapper; at 1280 it fits without scrolling; the trail row spans the table.
  */
 import { Fragment } from 'react';
+import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import '../app/globals.css';
@@ -36,8 +37,8 @@ function Screen() {
             <tr>
               <th className={stick(true)} style={STICKY[0].style}>{a.colEmployeeCode}</th>
               <th className={stick(true)} style={STICKY[1].style}>{a.colEmployeeName}</th>
-              {['colShiftCode', 'colCheckIn', 'colCheckOut', 'colShiftHours', 'colActualHours', 'colStatus', 'colFlag', 'colAction'].map((k) => (
-                <th key={k} className="px-3 py-2 font-medium">{a[k]}</th>
+              {['colShiftCode', 'colCheckIn', 'colCheckOut', 'colShiftHours', 'colActualHours', 'overtimeRecords.duration', 'colStatus', 'colFlag', 'colAction'].map((k) => (
+                <th key={k} className="px-3 py-2 font-medium">{k === 'overtimeRecords.duration' ? en.attendance.overtimeRecords.duration : a[k]}</th>
               ))}
             </tr>
           </thead>
@@ -58,7 +59,7 @@ function Screen() {
                   <AttendanceDayCells row={base} status={r.status} flag={r.flag} labels={labels} />
                   <td className="px-3 py-2.5"><a href="#x" className="font-medium text-primary">{a.dayViewEdit}</a></td>
                 </tr>
-                <AttendanceTrailRow punches={r.punches} colSpan={10} labels={labels} />
+                <AttendanceTrailRow punches={r.punches} colSpan={11} labels={labels} />
               </Fragment>
             ))}
           </tbody>
@@ -71,7 +72,7 @@ function Screen() {
 function mount(width: number) {
   document.body.style.margin = '0';
   document.body.style.width = `${width}px`;
-  render(<Screen />);
+  render(<NextIntlClientProvider locale="en" messages={en}><Screen /></NextIntlClientProvider>);
   return { page: screen.getByTestId('page'), wrap: screen.getByTestId('wrap') };
 }
 
@@ -85,12 +86,13 @@ for (const width of [390, 1280]) {
       expect(table.getBoundingClientRect().width, 'table is at least the wrapper (min-w-full)').toBeGreaterThanOrEqual(
         wrap.clientWidth - 1,
       );
-      if (width === 390) expect(wrap.scrollWidth, 'ten columns scroll inside the wrapper on a phone').toBeGreaterThan(wrap.clientWidth);
+      if (width === 390) expect(wrap.scrollWidth, 'eleven columns scroll inside the wrapper on a phone').toBeGreaterThan(wrap.clientWidth);
     });
 
-    it('has exactly ten header cells and the trail row spans the whole table', () => {
+    it('has exactly eleven header cells and the trail row spans the whole table', () => {
       const { wrap } = mount(width);
-      expect(wrap.querySelectorAll('thead th').length).toBe(10);
+      expect(wrap.querySelectorAll('thead th').length).toBe(11);
+      expect(wrap.querySelector('tbody tr')!.children.length).toBe(11);
       const trail = wrap.querySelector('[data-row="trail"] td')!;
       expect(trail).toBeTruthy();
       const table = wrap.querySelector('table')!;

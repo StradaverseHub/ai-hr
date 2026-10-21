@@ -6,6 +6,7 @@
 // `isNotNull` and `ne` left with the expireAgedLeave sweep (c459bff9) — it was the only caller of either.
 import { aliasedTable, and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
+import {cancellationSplitGroupSql} from './leave-group-origin-sql';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf, type Actor } from '../db/events';
 import { assertCanDecide } from './approvals';
@@ -232,11 +233,9 @@ import {
   leaveRequestAttachment,
   leaveRequestDate,
   leaveType,
-  payrollBatch,
   // 5206539f — the (key, role) override rows behind `leave.apply_on_behalf`. Its table name says "payroll"
   // for historical reasons only; see the note in lib/payroll-permissions.ts.
   payrollPermissionGrant,
-  payslip,
   person,
   reportingLine,
   rosterAssignment,
@@ -244,6 +243,9 @@ import {
   leaveSharedGroup,
   leaveSharedGroupMember,
 } from '../db/schema';
+import { holidayCalendarPeriodsByEmploymentTx, holidayCalendarWindows } from './holiday-calendar-read';
+import { companySegmentsForPeriod } from './employment-company';
+import { applyLeavePayrollEffectsTx, lockPayrollForLeaveChangeTx, markPayrollAfterLeaveApprovalTx, LeavePayrollClosedError } from '../packs/payroll/service';
 
 /** ADR-0069: the set of "employmentId|leaveTypeId" keys with an ACTIVE frozen encashment snapshot, for the
  *  year-boundary sweeps (openLeaveYear, accrueEarnedLeave, expireCarriedLeave) to skip — the ad-hoc/festive
@@ -2869,6 +2871,18 @@ function dayWeight(
   return inclusion.restDay || inclusion.offDay ? 1 : 0;
 }
 
+/** Calendar-counted leave charges every date at one day; working-counted leave keeps the canonical
+ * roster/holiday/inclusion weight. Cancellation must use the same distinction as submission. */
+function countedDayWeight(
+  date: string,
+  counting: string | null | undefined,
+  sched: LeaveResolvedSchedule,
+  holidays: Set<string>,
+  inclusion?: DayTypeInclusion,
+): number {
+  return counting === 'calendar_days' ? 1 : dayWeight(date, sched, holidays, inclusion);
+}
+
 /** True when `date` carries a non-zero leave DEDUCTION weight for the given schedule/holiday set and optional
  *  inclusion vector — i.e. it is a day this leave type actually deducts. When `inclusion` is undefined this is
  *  BYTE-IDENTICAL to isWorkingDay (a Full day weighs 1, a Half day 0.5 — both > 0 — and a holiday/rest day 0),
@@ -4421,21 +4435,21 @@ async function warnLeaveHolidayCompleteness(
   endDate: string,
   leaveRequestId: string,
 ): Promise<HolidayCompletenessWarning[]> {
-  const eff = await effectiveHolidayState(tx, employmentId);
-  if (!eff) return [];
-  // ADR-0067: a Custom location-calendar deliberately ignores the public gazette, so the s.60D "<11" guard
-  // is false noise — suppress it entirely (no event, no returned warning) for those employees.
-  if (eff.skipCompleteness) return [];
-  return warnIfHolidaysIncomplete(tx, ctx, {
-    country: eff.country,
-    state: eff.state,
-    years: yearsSpanned(startDate, endDate),
-    module: 'leave',
-    aggregateType: 'leave-request',
-    aggregateId: leaveRequestId,
-    subjectEmploymentId: employmentId,
-    context: { leaveRequestId, startDate, endDate },
-  });
+  const periods=(await holidayCalendarPeriodsByEmploymentTx(tx,[employmentId],startDate,endDate)).get(employmentId)??[];
+  const segments=await companySegmentsForPeriod(tx,employmentId,startDate,endDate);
+  const warnings:HolidayCompletenessWarning[]=[],seen=new Set<string>();
+  for(const segment of segments)for(const window of holidayCalendarWindows(segment.from,segment.to,periods)){
+    const eff=await effectiveHolidayState(tx,employmentId,segment.companyId,window.from);
+    if(!eff||eff.skipCompleteness)continue;
+    const years=yearsSpanned(window.from,window.to).filter(year=>{
+      const key=JSON.stringify([eff.country,eff.state,year]);if(seen.has(key))return false;seen.add(key);return true;
+    });
+    warnings.push(...await warnIfHolidaysIncomplete(tx,ctx,{
+      country:eff.country,state:eff.state,years,module:'leave',aggregateType:'leave-request',aggregateId:leaveRequestId,
+      subjectEmploymentId:employmentId,context:{leaveRequestId,startDate:window.from,endDate:window.to},
+    }));
+  }
+  return warnings;
 }
 
 /**
@@ -5452,6 +5466,7 @@ async function finalizeLeaveApproval(
   daysOverride?: number,
   mixed = false,
   perDateOutcome?: PerDateOutcome,
+  payrollChangedDates?: readonly string[],
 ) {
   // Unpaid-leave payroll-impact: fetch the type's code + payroll-signal gate once — plus (cdf9ca48) the
   // balance source, which the gate and the debit below both need. Both approval paths (multi-step final
@@ -5583,6 +5598,7 @@ async function finalizeLeaveApproval(
     .update(leaveRequest)
     .set({ status: 'approved', decidedByEmploymentId: deciderEmploymentId ?? null, decidedAt: sql`now()` })
     .where(eq(leaveRequest.id, req.id));
+  await markPayrollAfterLeaveApprovalTx(tx, req.id, 'approval', { changedDates:payrollChangedDates });
   // Marriage Leave (72fca31d rule 3) — the approval that grants the leave also records the fact it is
   // granted FOR: Single becomes Married. Here, after the status flip, because migration 0485's writer
   // refuses on a request that is not approved — the row has to be true before the fact follows from it.
@@ -5636,10 +5652,8 @@ async function finalizeLeaveApproval(
       // the notification renderer emits a self-contained body listing the approved + rejected dates and the
       // rejection reason — the reporter's ask #5. Only spread when present ⇒ byte-identical for every other caller.
       ...(mixed && perDateOutcome ? { perDateOutcome } : {}),
-      // When the type opts in (sendToPayroll), attach an ADVISORY payroll-impact contract for a future
-      // payroll integration to consume. It is telemetry, NOT a deduction source: the authoritative deduction
-      // remains unpaidDaysByEmployment()'s live status='approved' re-query (which auto-corrects on any future
-      // cancellation/reversal). No payPeriod is emitted — the consumer derives it with its own cutoff rule.
+      // Optional advisory telemetry stays separate from Payroll's transactional stale/closed-run follow-up.
+      // Deductions still read the approved leave facts; this payload never supplies an amount.
       ...(lt?.sendToPayroll
         ? {
             payrollImpact: {
@@ -5837,40 +5851,42 @@ export async function decideLeave(
  *  One SQL: LEFT JOIN leave_request_date and COALESCE(row status, request status). generate_series expands
  *  the whole-span (no-child) case to individual dates so the caller always gets a flat Set<date> per emp.
  *  full_day filter matches the consumers (half/hourly are worked partial days, never "on leave"). */
-async function approvedLeaveDates(
+async function approvedLeaveCalendarPresence(
   tx: Tx,
   empIds: string[],
   from: string,
   to: string,
-): Promise<Map<string, Set<string>>> {
-  const out = new Map<string, Set<string>>();
+  fullDayOnly: boolean,
+): Promise<Map<string, Map<string, 'full_day' | 'part_day'>>> {
+  const out = new Map<string, Map<string, 'full_day' | 'part_day'>>();
   if (empIds.length === 0) return out;
-  const add = (emp: string, d: string) => {
+  const add = (emp: string, d: string, duration: string | null) => {
     let s = out.get(emp);
-    if (!s) out.set(emp, (s = new Set()));
-    s.add(d);
+    if (!s) out.set(emp, (s = new Map()));
+    if (!s.has(d) || duration === 'full_day') s.set(d, duration === 'full_day' ? 'full_day' : 'part_day');
   };
 
   // (a) per-date requests: every APPROVED sub-row in the window is one on-leave date.
   const dateRows = await tx
-    .select({ employmentId: leaveRequest.employmentId, d: leaveRequestDate.leaveDate })
+    .select({ employmentId: leaveRequest.employmentId, d: leaveRequestDate.leaveDate, duration: leaveRequest.durationType })
     .from(leaveRequestDate)
     .innerJoin(leaveRequest, eq(leaveRequest.id, leaveRequestDate.leaveRequestId))
     .where(
       and(
         inArray(leaveRequest.employmentId, empIds),
-        eq(leaveRequest.durationType, 'full_day'),
+        fullDayOnly ? eq(leaveRequest.durationType, 'full_day') : undefined,
         eq(leaveRequestDate.status, 'approved'),
         gte(leaveRequestDate.leaveDate, from),
         lte(leaveRequestDate.leaveDate, to),
       ),
     );
-  for (const r of dateRows) add(r.employmentId, r.d);
+  for (const r of dateRows) add(r.employmentId, r.d, r.duration);
 
   // (b) whole-span requests (no per-date rows): expand [start,end] ∩ [from,to] where the REQUEST is approved.
   const spanRows = await tx
     .select({
       employmentId: leaveRequest.employmentId,
+      duration: leaveRequest.durationType,
       startDate: leaveRequest.startDate,
       endDate: leaveRequest.endDate,
     })
@@ -5878,7 +5894,7 @@ async function approvedLeaveDates(
     .where(
       and(
         inArray(leaveRequest.employmentId, empIds),
-        eq(leaveRequest.durationType, 'full_day'),
+        fullDayOnly ? eq(leaveRequest.durationType, 'full_day') : undefined,
         eq(leaveRequest.status, 'approved'),
         lte(leaveRequest.startDate, to),
         gte(leaveRequest.endDate, from),
@@ -5888,9 +5904,20 @@ async function approvedLeaveDates(
   for (const r of spanRows) {
     const lo = r.startDate < from ? from : r.startDate;
     const hi = r.endDate > to ? to : r.endDate;
-    for (const d of eachDate(lo, hi)) add(r.employmentId, d);
+    for (const d of eachDate(lo, hi)) add(r.employmentId, d, r.duration);
   }
   return out;
+}
+
+/** Existing Attendance/Payroll consumers exclude partial days from full-day absence relief. */
+async function approvedLeaveDates(tx: Tx, empIds: string[], from: string, to: string): Promise<Map<string, Set<string>>> {
+  const presence = await approvedLeaveCalendarPresence(tx, empIds, from, to, true);
+  return new Map([...presence].map(([id, dates]) => [id, new Set(dates.keys())]));
+}
+
+/** Privacy-minimal calendar presence, including partial days. No leave type, reason or medical facts. */
+export function approvedLeavePresenceByEmploymentTx(tx: Tx, employmentIds: string[], from: string, to: string) {
+  return approvedLeaveCalendarPresence(tx, employmentIds, from, to, false);
 }
 
 /** ADR-0068 §4A (exported for the span consumers in attendance/roster/read). See approvedLeaveDates. */
@@ -5950,7 +5977,7 @@ export async function decideLeaveDate(
     });
 
     // §4E finalization: only when NO pending dates remain (shared with the batch decideLeaveDates path).
-    return finalizePerDateIfComplete(tx, ctx, req, p.deciderEmploymentId);
+    return finalizePerDateIfComplete(tx, ctx, req, p.deciderEmploymentId, p.decision === 'approved' ? [p.leaveDate] : []);
   });
 }
 
@@ -5965,13 +5992,22 @@ async function finalizePerDateIfComplete(
   ctx: SessionContext,
   req: DecidableLeave,
   deciderEmploymentId?: string,
+  newlyApprovedDates: readonly string[] = [],
 ): Promise<{ status: 'pending' | 'approved' | 'rejected' }> {
   const remaining = await tx
     .select()
     .from(leaveRequestDate)
     .where(eq(leaveRequestDate.leaveRequestId, req.id));
   const stillPending = remaining.filter((d) => d.status === 'pending');
-  if (stillPending.length > 0) return { status: 'pending' as const };
+  if (stillPending.length > 0) {
+    // Approved child dates already relieve absence even while the parent awaits other decisions.
+    // Each decision group keeps its own follow-up identity, so later decisions cannot overwrite a
+    // payroll review and resolution recorded for an earlier group.
+    if (newlyApprovedDates.length) await markPayrollAfterLeaveApprovalTx(tx, req.id, 'approval', {
+      changedDates:newlyApprovedDates, sourceRevision:`dates:${[...newlyApprovedDates].sort().join(',')}`,
+    });
+    return { status: 'pending' as const };
+  }
 
   const approved = remaining.filter((d) => d.status === 'approved');
   const rejected = remaining.filter((d) => d.status === 'rejected');
@@ -5994,7 +6030,7 @@ async function finalizePerDateIfComplete(
         rejected: rejected.map((d) => ({ date: d.leaveDate, reason: d.rejectReason })),
       }
     : undefined;
-  await finalizeLeaveApproval(tx, ctx, req, deciderEmploymentId, approvedDays, mixed, perDateOutcome);
+  await finalizeLeaveApproval(tx, ctx, req, deciderEmploymentId, approvedDays, mixed, perDateOutcome, newlyApprovedDates);
   return { status: 'approved' as const };
 }
 
@@ -6065,7 +6101,7 @@ export async function decideLeaveDates(
         payload: { leaveDate: d.leaveDate, decision: d.decision, ...(d.rejectReason ? { rejectReason: d.rejectReason } : {}) },
       });
     }
-    return finalizePerDateIfComplete(tx, ctx, req, p.deciderEmploymentId);
+    return finalizePerDateIfComplete(tx, ctx, req, p.deciderEmploymentId, decisions.filter(d=>d.decision==='approved').map(d=>d.leaveDate));
   });
 }
 
@@ -6077,12 +6113,12 @@ export async function decideLeaveDates(
 // plannedAbsences) filters status='approved', a cancelled segment disappears from balance/calendar/payroll
 // for free — no read-layer span math. See ADR-0065.
 
-/** A working date paired with its leave-deduction weight (Feedback 31474452 4e) — 1 for a Full working day,
+/** A counted date paired with its leave-deduction weight — 1 for a calendar-counted date or Full working day,
  *  0.5/1.0 for a Half day per the company toggle. */
 export type WeightedDate = { date: string; weight: number };
 
 /** Pure date math (no DB) so the service and tests share one implementation. Given the request's full ordered
- *  list of WORKING dates (each optionally carrying its deduction WEIGHT — Feedback 31474452 4e) and the set of
+ *  list of counted dates (each optionally carrying its deduction WEIGHT — Feedback 31474452 4e) and the set of
  *  dates to cancel, partition the working dates into maximal contiguous runs such that every cancelled date
  *  sits in its own single-date segment. Returns the segments (each `{ from, to, days }`, days = the SUM of the
  *  run's weights — 1 per date when no weights are supplied, so callers passing a plain `string[]` see exactly
@@ -6155,42 +6191,68 @@ export async function workingDatesForSpan(
  * byte-identical to workingDatesForSpan(tx, employmentId, start, end) with no inclusion vector (holidays
  * inside a span are a subset of the union range's set), and the union range is the LEAVES' own spans —
  * never the visible calendar window — so a leave straddling the window edge is never clipped.
- * workingDatesForSpan itself is untouched: the service validation paths still call it per request.
+ * The counting-aware cancellation reads use countedDatesForSpans below with each request’s policy.
  */
 export async function workingDatesForSpans(
   tx: Tx,
   employmentId: string,
   spans: { start: string; end: string }[],
 ): Promise<Map<string, string[]>> {
+  return countedDatesForSpans(tx, employmentId, spans.map((span) => ({
+    ...span,
+    key: `${span.start}|${span.end}`,
+    counting: 'working_days',
+  })));
+}
+
+/** The leave type's counted dates, shared by cancellation validation and its actual UI reads. */
+export async function countedDatesForSpan(
+  tx: Tx,
+  employmentId: string,
+  start: string,
+  end: string,
+  counting: string | null | undefined,
+  dayTypeInclusion?: unknown,
+): Promise<string[]> {
+  if (counting === 'calendar_days') return eachDate(start, end);
+  return workingDatesForSpan(tx, employmentId, start, end, normalizeDayTypeInclusion(dayTypeInclusion));
+}
+
+/** Resolve once per employment while keeping each request's counting rule and inclusion vector.
+ * The caller's stable key prevents equal spans of different types sharing a policy result. */
+export async function countedDatesForSpans(
+  tx: Tx,
+  employmentId: string,
+  spans: readonly { key: string; start: string; end: string; counting?: string | null; dayTypeInclusion?: unknown }[],
+): Promise<Map<string, string[]>> {
   const out = new Map<string, string[]>();
-  if (spans.length === 0) return out;
-  let minStart = spans[0].start;
-  let maxEnd = spans[0].end;
-  for (const s of spans) {
-    if (s.start < minStart) minStart = s.start;
-    if (s.end > maxEnd) maxEnd = s.end;
+  const working = spans.filter((span) => span.counting !== 'calendar_days');
+  let calendar: { holidays: Set<string>; schedule: LeaveResolvedSchedule } | undefined;
+  if (working.length > 0) {
+    const from = working.reduce((date, span) => span.start < date ? span.start : date, working[0].start);
+    const to = working.reduce((date, span) => span.end > date ? span.end : date, working[0].end);
+    calendar = {
+      holidays: await resolveHolidaySet(tx, employmentId, from, to),
+      schedule: await resolveSchedule(tx, employmentId),
+    };
   }
-  const hols = await resolveHolidaySet(tx, employmentId, minStart, maxEnd);
-  const sched = await resolveSchedule(tx, employmentId);
-  for (const s of spans) {
-    out.set(`${s.start}|${s.end}`, eachDate(s.start, s.end).filter((d) => isDeductibleDay(d, sched, hols)));
+  for (const span of spans) {
+    let dates = eachDate(span.start, span.end);
+    if (span.counting !== 'calendar_days') {
+      if (!calendar) throw new Error('Working-day calendar was not resolved');
+      const { schedule, holidays } = calendar;
+      const inclusion = normalizeDayTypeInclusion(span.dayTypeInclusion);
+      dates = dates.filter((date) => isDeductibleDay(date, schedule, holidays, inclusion));
+    }
+    out.set(span.key, dates);
   }
   return out;
 }
 
-/** ADR-0065 (R5 Build #2 — iterative cancellation). True when the parent_group_id names a CANCELLATION-SPLIT
- *  group (produced by decideLeaveCancellation), as opposed to an Emergency-Leave / per-date-approval group.
- *  A cancellation split ALWAYS leaves ≥1 sibling row with status='cancelled' sharing the group; an EL /
- *  per-date group never has a 'cancelled' sibling. So a surviving cancellation-split row (which now carries a
- *  parentGroupId) can still be cancelled again — the reporter's "give back Wednesday now, Thursday later"
- *  scenario — while genuine EL children stay blocked by the same gate. No discriminator column, no migration. */
-async function isCancellationSplitGroup(tx: Tx, parentGroupId: string): Promise<boolean> {
-  const [sib] = await tx
-    .select({ id: leaveRequest.id })
-    .from(leaveRequest)
-    .where(and(eq(leaveRequest.parentGroupId, parentGroupId), eq(leaveRequest.status, 'cancelled')))
-    .limit(1);
-  return !!sib;
+async function isCancellationSplitGroup(tx: Tx, parentGroupId: string, employmentId: string): Promise<boolean> {
+  const [row] = await tx.select({id:leaveRequest.id}).from(leaveRequest)
+    .where(and(eq(leaveRequest.parentGroupId,parentGroupId),eq(leaveRequest.employmentId,employmentId),cancellationSplitGroupSql)).limit(1);
+  return !!row;
 }
 
 /** Resolve the person behind an employment (for the subject-only assertion). */
@@ -6203,26 +6265,18 @@ async function personIdForEmployment(tx: Tx, employmentId: string): Promise<stri
   return row?.personId ?? null;
 }
 
-/** True when the cancel date's payroll period (YYYY-MM by start date) has a CLOSED batch that already produced
- *  THIS employee's payslip — the deduction was finalised, so the day can't be retroactively given back
- *  (ADR-0065 §2). We join payroll_batch → payslip on the employee so the check works under the employee's own
- *  RLS session (an employee can see their own payslip, and therefore the batch it belongs to). Checking the
- *  employee's OWN finalised payslip is also more precise than "any closed batch in the period". */
-async function cancelDatePeriodClosed(tx: Tx, employmentId: string, cancelDate: string): Promise<boolean> {
-  const period = cancelDate.slice(0, 7); // YYYY-MM
-  const [closed] = await tx
-    .select({ id: payrollBatch.id })
-    .from(payrollBatch)
-    .innerJoin(payslip, eq(payslip.batchId, payrollBatch.id))
-    .where(
-      and(
-        eq(payrollBatch.payPeriod, period),
-        eq(payrollBatch.status, 'closed'),
-        eq(payslip.employmentId, employmentId),
-      ),
-    )
-    .limit(1);
-  return !!closed;
+/** Preserve the Leave error contract while Payroll resolves real cut-offs and private membership. */
+async function lockPayrollForLeaveCancellationTx(tx: Tx, requestId: string, date: string, survivorStarts: readonly string[], changedDates?: readonly string[]) {
+  try {
+    return await lockPayrollForLeaveChangeTx(tx, {
+      requestIds: [requestId], action: 'cancellation',
+      survivorStarts: new Map([[requestId, survivorStarts]]),
+      ...(changedDates ? { changedDates: new Map([[requestId, changedDates]]) } : {}),
+    });
+  } catch (error) {
+    if (error instanceof LeavePayrollClosedError) throw new LeaveCancellationPeriodClosedError(date);
+    throw error;
+  }
 }
 
 // ═════════════════════ Cancel Approved Leave — the leave type's own rule (r301, board 83511d3b) ═════════════════════
@@ -6402,17 +6456,18 @@ export async function requestLeaveCancellation(
     if (req.durationType !== 'full_day') {
       throw new LeaveCancellationNotAllowedError('only full-day leave can be partially cancelled', 'not_full_day');
     }
-    if (req.parentGroupId != null && !(await isCancellationSplitGroup(tx, req.parentGroupId))) {
-      // Blocks Emergency-Leave / per-date-approval child rows (each already a single date under a group), but
+    if (req.parentGroupId != null && !(await isCancellationSplitGroup(tx, req.parentGroupId, req.employmentId))) {
+      // Blocks Emergency-Leave / per-date-approval child rows, but
       // ADMITS a surviving row of a prior CANCELLATION split so the employee can give back more days later
       // (R5 Build #2 — iterative cancellation; ADR-0065). A cancellation-split group is detected by a
-      // 'cancelled' sibling; an EL / per-date group never has one.
+      // 'cancelled' sibling AND absence of a recorded EL submission for this subject and group.
       throw new LeaveCancellationNotAllowedError('this leave cannot be partially cancelled', 'grouped');
     }
     const [lt] = await tx
       .select({
         // Day Type Inclusion (feedback ef6d7146): the type's re-inclusion vector — cancellation must offer + give
         // back exactly the day types the original deduction counted, or the ledger reversal/re-debit drifts.
+        counting: leaveType.counting,
         dayTypeInclusion: leaveType.dayTypeInclusion,
         // 3fb1a611: `role` too — leaveTypeIs resolves the role first and only then falls back to the code.
         // r301: the Cancel Approved Leave card, name + translations for the refusal that names the type.
@@ -6450,9 +6505,9 @@ export async function requestLeaveCancellation(
     const isReplacement = leaveTypeIs(lt, 'replacement');
     const cancelIncl = normalizeDayTypeInclusion(lt?.dayTypeInclusion);
 
-    // The request's working dates (the only cancellable dates), in the tenant calendar frame. Shared helper so
+    // The request's counted dates (calendar days or roster/inclusion-aware days). Shared helper so
     // the read layer (UI candidate list) and this gate agree exactly (R5 Build #2 — Fix C, no Mon–Fri drift).
-    let workingDates = await workingDatesForSpan(tx, req.employmentId, req.startDate, req.endDate, cancelIncl);
+    let workingDates = await countedDatesForSpan(tx, req.employmentId, req.startDate, req.endDate, lt?.counting, cancelIncl);
     // ADR-0068 §6: a per-date-approval request is now a single parentGroupId=NULL row, so it reaches here.
     // Its interior REJECTED dates are NOT approved leave — exclude them from the cancellable set so an employee
     // can only give back a date that was actually approved (mirrors §4A's effectively-approved-dates rule).
@@ -6475,8 +6530,10 @@ export async function requestLeaveCancellation(
       const refusal = cancelDateRefusal(d, today, setting.noticeDays);
       if (refusal === 'started') throw new LeaveCancellationTooLateError(d); // per-date future gate
       if (refusal === 'too_close') throw new LeaveCancellationTooCloseError(d, setting.noticeDays, typeName, typeI18n);
-      if (await cancelDatePeriodClosed(tx, req.employmentId, d)) throw new LeaveCancellationPeriodClosedError(d);
     }
+    const previewSplit = splitSpanForCancellation(workingDates, cancelDates);
+    await lockPayrollForLeaveCancellationTx(tx, req.id, req.startDate,
+      previewSplit.segments.filter((_, i) => !previewSplit.cancelledSegmentIndexes.includes(i)).map(segment => segment.from), cancelDates);
 
     // §3: ONE pending cancellation per leave row. r301 hand-fix (verifier defect 4): this used to refuse only
     // an OVERLAPPING second request. A non-overlapping one was accepted, and whichever was approved first split
@@ -6498,14 +6555,14 @@ export async function requestLeaveCancellation(
       throw new LeaveCancellationNotAllowedError('a cancellation of this leave is already waiting for approval', 'already_pending');
     }
 
-    // requestedDays = the WEIGHTED total of the cancel dates (Feedback 31474452 4e) — each is a working date
-    // by the check above; a Half date contributes 0.5 (toggle OFF) or 1.0 (toggle ON) rather than always 1,
+    // requestedDays = the WEIGHTED total of the counted cancel dates. Calendar dates each count as 1;
+    // a working Half date contributes 0.5 (toggle OFF) or 1.0 (toggle ON),
     // so the manager's approval screen previews the real give-back amount decideLeaveCancellation will apply.
     const hols = await resolveHolidaySet(tx, req.employmentId, req.startDate, req.endDate);
     const sched = await resolveSchedule(tx, req.employmentId);
     // Day Type Inclusion (feedback ef6d7146): weigh each cancel date through the SAME vector the leave was
     // deducted under (cancelIncl above), so a re-included public-holiday/rest date previews its real weight.
-    const requestedDays = round2(cancelDates.reduce((s, d) => s + dayWeight(d, sched, hols, cancelIncl), 0));
+    const requestedDays = round2(cancelDates.reduce((s, d) => s + countedDayWeight(d, lt?.counting, sched, hols, cancelIncl), 0));
     // 3fb1a611 — CAN THE CREDIT COME BACK? Asked when the employee asks, so the refusal names the expired
     // credit on their own screen instead of stranding a pending card under the manager's approval button.
     // Read-only: nothing is restored until decideLeaveCancellation runs (and it asks again).
@@ -6776,7 +6833,7 @@ async function applyLeaveCancellationApprovalTx(
   // a cancellation-split group here as well; only genuine EL / per-date children stay blocked.
   if (
     req.status !== 'approved' ||
-    (req.parentGroupId != null && !(await isCancellationSplitGroup(tx, req.parentGroupId)))
+    (req.parentGroupId != null && !(await isCancellationSplitGroup(tx, req.parentGroupId, req.employmentId)))
   ) {
     throw new LeaveCancellationNotAllowedError('the leave is no longer in a cancellable state', 'no_longer_cancellable');
   }
@@ -6793,6 +6850,10 @@ async function applyLeaveCancellationApprovalTx(
   }
 
   const cancelDates = (cr.cancelDates as string[]) ?? [];
+  // Recheck the request-time contract for older pending cancellations as well.
+  if (req.durationType !== 'full_day' || req.hours != null || req.fromTime != null || req.toTime != null) {
+    throw new LeaveCancellationNotAllowedError('only full-day leave can be partially cancelled', 'not_full_day');
+  }
   const hols = await resolveHolidaySet(tx, req.employmentId, req.startDate, req.endDate);
   // Day Type Inclusion (feedback ef6d7146): resolve the type's re-inclusion vector so the give-back split
   // spans exactly the day types the original debit counted. Without this a re-included rest/PH date would be
@@ -6801,7 +6862,7 @@ async function applyLeaveCancellationApprovalTx(
   const [decLt] = await tx
     // 3fb1a611: role + code as well — the register give-back below is keyed on leaveTypeIs(decLt, 'replacement').
     // r301: name, for the employee's notification.
-    .select({ dayTypeInclusion: leaveType.dayTypeInclusion, role: leaveType.role, code: leaveType.code, name: leaveType.name })
+    .select({ counting: leaveType.counting, dayTypeInclusion: leaveType.dayTypeInclusion, role: leaveType.role, code: leaveType.code, name: leaveType.name })
     .from(leaveType)
     .where(eq(leaveType.id, req.leaveTypeId))
     .limit(1);
@@ -6821,9 +6882,8 @@ async function applyLeaveCancellationApprovalTx(
     .where(eq(leaveRequestDate.leaveRequestId, req.id));
   const approvedDateSet = dateRows.length > 0 ? new Set(dateRows.filter((d) => d.status === 'approved').map((d) => d.leaveDate)) : null;
   const workingDates = eachDate(req.startDate, req.endDate)
-    .filter((d) => isDeductibleDay(d, sched, hols, decIncl))
-    .filter((d) => !approvedDateSet || approvedDateSet.has(d))
-    .map((date) => ({ date, weight: dayWeight(date, sched, hols, decIncl) }));
+    .map((date) => ({ date, weight: countedDayWeight(date, decLt?.counting, sched, hols, decIncl) }))
+    .filter((day) => day.weight > 0 && (!approvedDateSet || approvedDateSet.has(day.date)));
   // r301 hand-fix (verifier defect 4) — EVERY DATE ASKED FOR MUST STILL BE ON THIS ROW. A cancellation decided
   // after another one split the row (a second pending request from before the one-pending rule, or the row
   // changed some other way) used to be approved with 0 days given back and a notification saying the leave was
@@ -6832,18 +6892,25 @@ async function applyLeaveCancellationApprovalTx(
   if (cancelDates.length === 0 || cancelDates.some((d) => !cancellableNow.has(d))) {
     throw new LeaveCancellationNotAllowedError('the leave is no longer in a cancellable state', 'no_longer_cancellable');
   }
-  // r301 hand-fix (verifier defect 3) — A CLOSED PAYROLL MONTH IS ASKED AT THE DECISION TOO. The request only
-  // checked it when the employee asked; with a chain of approvers the month can close in between, and the last
-  // approval then gave days back inside a payslip that is final. Same rule, same error as the request's.
-  for (const d of cancelDates) {
-    if (await cancelDatePeriodClosed(tx, req.employmentId, d)) throw new LeaveCancellationPeriodClosedError(d);
-  }
   const { segments, cancelledSegmentIndexes } = splitSpanForCancellation(workingDates, cancelDates);
+  // Both the original start and surviving starts can move the kernel's unpaid-day attribution.
+  // Payroll checks them under its own authority; a manager never needs payslip visibility.
+  const payrollHits = await lockPayrollForLeaveCancellationTx(tx, req.id, req.startDate,
+    segments.filter((_, i) => !cancelledSegmentIndexes.includes(i)).map(segment => segment.from), cancelDates);
 
   // Split-and-cancel. We REUSE the original row id for the first segment (preserving attachments / FKs) and
   // create new sibling rows for the rest, all sharing a fresh parent_group_id. The original carried ONE
   // debit over the whole span (finalizeLeaveApproval), so we first reverse that whole-span debit, then give
   // each segment its own debit — net zero for survivors, net +1×cancelled-days restored for cancelled ones.
+  // Keep PostgreSQL's full timestamp precision. The Date-valued request projection truncates
+  // microseconds; serializing it into a sibling silently changes recorded submission/consent facts.
+  const [originalTimestamps] = await tx.select({
+    createdAt: sql<string>`${leaveRequest.createdAt}::text`,
+    decidedAt: sql<string | null>`${leaveRequest.decidedAt}::text`,
+    unpaidConsentAt: sql<string | null>`${leaveRequest.unpaidConsentAt}::text`,
+  }).from(leaveRequest).where(eq(leaveRequest.id, req.id)).limit(1);
+  if (!originalTimestamps) throw new Error('leave request not found');
+
   const parentGroupId = randomUUID();
   // Balance Deduction Source (cdf9ca48): the reversal and the per-segment re-debits below must land on the
   // SAME ledger finalizeLeaveApproval debited, or a give-back would credit a balance that was never charged
@@ -6939,9 +7006,22 @@ async function applyLeaveCancellationApprovalTx(
           durationType: 'full_day',
           status: isCancelled ? 'cancelled' : 'approved',
           reason: req.reason,
+          employeeRemark: req.employeeRemark,
+          unpaidConsentAt: originalTimestamps.unpaidConsentAt === null ? null : sql`${originalTimestamps.unpaidConsentAt}::timestamptz`,
+          unpaidConsentBy: req.unpaidConsentBy,
+          survivingChildren: req.survivingChildren,
+          confinementDate: req.confinementDate,
+          allowanceEligible: req.allowanceEligible,
+          unpaidDays: req.unpaidDays,
+          entitlementYear: req.entitlementYear,
+          submittedOn: req.submittedOn,
+          importedHistory: req.importedHistory,
+          createdAt: sql`${originalTimestamps.createdAt}::timestamptz`,
+          // externalReference identifies ONE original application and is tenant-unique.
+          // Siblings resolve its provenance through leave-request.split, never a copy.
           parentGroupId,
           decidedByEmploymentId: req.decidedByEmploymentId,
-          decidedAt: req.decidedAt,
+          decidedAt: originalTimestamps.decidedAt === null ? null : sql`${originalTimestamps.decidedAt}::timestamptz`,
         })
         .returning({ id: leaveRequest.id });
       rowId = created.id;
@@ -7000,7 +7080,7 @@ async function applyLeaveCancellationApprovalTx(
           effectiveOn: seg.from,
         });
       }
-      remainingDates.push(...eachDate(seg.from, seg.to).filter((d) => isDeductibleDay(d, sched, hols, decIncl)));
+      remainingDates.push(...workingDates.filter((day) => day.date >= seg.from && day.date <= seg.to).map((day) => day.date));
       remainingDays += segDays;
       if (i > 0) survivingNewRowIds.push(rowId); // a survivor that is NOT the reused segment[0] row
     } else {
@@ -7115,6 +7195,7 @@ async function applyLeaveCancellationApprovalTx(
       ...(p.autoApproved ? { autoApproved: true, reason: 'auto-approved by leave type setting' } : {}),
     },
   });
+  await applyLeavePayrollEffectsTx(tx, payrollHits, 'cancellation');
   return { restoredDays, remainingDays, remainingDates };
 }
 
@@ -7177,15 +7258,9 @@ export async function adminCancelLeave(
     // how much came back. A PENDING one never consumed anything (restoredDays 0 ⇒ nothing to give back).
     const isReplacement = leaveTypeIs(lt, 'replacement');
 
-    // Closed-payroll gate: never retroactively alter a period whose payslip was finalised. For each DISTINCT
-    // month spanned by the leave, reject if that employee's batch is closed. (HR may cancel past/started leave —
-    // the admin override vs. the employee's future-only rule — but never a finalised payroll month.)
-    const months = [...new Set(eachDate(req.startDate, req.endDate).map((d) => d.slice(0, 7)))];
-    for (const m of months) {
-      if (await cancelDatePeriodClosed(tx, req.employmentId, `${m}-01`)) {
-        throw new LeaveCancellationPeriodClosedError(`${m}-01`);
-      }
-    }
+    // A pending withdrawal has never contributed approved leave to pay.
+    const payrollHits = previousStatus === 'approved'
+      ? await lockPayrollForLeaveCancellationTx(tx, req.id, req.startDate, []) : [];
 
     // ── Effect ──────────────────────────────────────────────────────────────────────────────────────────
     // 1) Restore the balance by reversing the NET ledger debit sourced to this request. Net-sum (not req.days)
@@ -7308,6 +7383,7 @@ export async function adminCancelLeave(
       },
     });
 
+    await applyLeavePayrollEffectsTx(tx, payrollHits, 'cancellation');
     return { previousStatus, restoredDays };
   });
 }

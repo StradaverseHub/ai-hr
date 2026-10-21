@@ -1,3 +1,4 @@
+import {EMPTY_PROFILE_ROUTING} from '../lib/profile-routing-policy';
 /**
  * The MODULE and SETTING catalogs — the code-side source of truth for what this installation can sell
  * and what can be configured per customer (ADR-0077; slice 1 of the platform program).
@@ -282,6 +283,8 @@ export const SETTING_CATALOG: SettingCatalogEntry[] = [
    * Both are `defaultOnInstall: null`: there is nothing to write at provisioning time, because the
    * absence of a row IS the default and the default is the shipped behaviour.
    */
+  {key:'ess.profile_change_routing',moduleCode:'ess',scope:'tenant',valueType:'json',defaultValue:EMPTY_PROFILE_ROUTING,defaultOnInstall:null,customerVisible:true,description:'Named HR approval rules for profile changes. Designation narrows existing HR authority and never grants access.',sortOrder:165},
+  {key:'ess.profile_photo_edit',moduleCode:'ess',scope:'tenant',valueType:'boolean',defaultValue:false,defaultOnInstall:null,customerVisible:true,description:'Whether an active employee may upload or replace their own profile photo. Does not grant photo deletion or other Personnel edits.',sortOrder:155},
   { key: 'ess.profile_change_fields', moduleCode: 'ess', scope: 'tenant', valueType: 'json', defaultValue: 'all', defaultOnInstall: null, customerVisible: true, description: 'Which fields of their own record an employee may ask to change. Legacy defaults retain the original request set and finite direct contacts. A saved complete policy explicitly lists employee-editable Personnel fields.', sortOrder: 150 },
   { key: 'ess.profile_change_approver', moduleCode: 'ess', scope: 'tenant', valueType: 'string', defaultValue: 'admin', defaultOnInstall: null, customerVisible: true, description: "Who decides an employee's request to change their own record: any HR administrator, or only a group administrator. One approver either way — never two levels, and never somebody deciding their own.", sortOrder: 160 },
 ];
@@ -465,6 +468,8 @@ export const LEGACY_SETTING_ENV_GATES: Readonly<Record<string, string | null>> =
   // could turn one on. Keeping them out of `legacyEnabledSettingsIn` is also the right outcome on its own
   // terms: a backfill must never decide, on a customer's behalf, which of their employees' fields are
   // open to change requests or who signs one off.
+  'ess.profile_photo_edit': null,
+  'ess.profile_change_routing': null,
   'ess.profile_change_fields': null,
   'ess.profile_change_approver': null,
 };

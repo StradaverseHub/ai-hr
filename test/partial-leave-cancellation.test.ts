@@ -31,6 +31,7 @@ import {
   LeaveCancellationDateInvalidError,
   LeaveCancellationPeriodClosedError,
 } from '../core/leave';
+import { listPayrollLeaveExceptions } from '../core/payroll-leave';
 import { leaveBalances, leaveEntitlementBreakdown, listLeaveRequests, plannedAbsences } from '../core/read';
 import type { SessionContext } from '../db/client';
 import {
@@ -122,10 +123,10 @@ async function onLeave(employmentId: string, date: string) {
 }
 
 /** Submit + single-step approve a 10–12 Aug ANNUAL leave; returns the (single) approved row id. */
-async function approvedThreeDay() {
+async function approvedThreeDay(leaveTypeId = b.annualLeaveTypeId) {
   const res = await requestLeave(subjectCtx, {
     employmentId: subject.employmentId,
-    leaveTypeId: b.annualLeaveTypeId,
+    leaveTypeId,
     startDate: '2026-08-10',
     endDate: '2026-08-12',
   });
@@ -157,6 +158,8 @@ beforeAll(async () => {
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
+  // These cases exercise roster/holiday deduction; calendar-counted cancellation has its own regression.
+  await owner.db.update(schema.leaveType).set({ counting: 'working_days' }).where(eq(schema.leaveType.id, b.annualLeaveTypeId));
   // r79 0322 — single- vs multi-step approval is now decided by the company's resolved chain, not by
   // company.leave_multi_approval (which is gone). These cases are whole-request single-approver flows —
   // the shape the old opted-out default produced — so the company is put on an explicit ONE-step chain.
@@ -494,10 +497,14 @@ describe('Partial Leave Cancellation — gates', () => {
     expect(ok.cancellationRequestId).toBeTruthy();
   });
 
-  it('cannot cancel a date whose payroll period batch is closed (employee has a finalised payslip)', async () => {
-    const reqId = await approvedThreeDay();
+  it.each([true, false])('closed payroll blocks only a financially affected cancellation (paid=%s)', async (paid) => {
+    const leaveTypeId = paid ? b.annualLeaveTypeId : (await owner.db.insert(schema.leaveType).values({
+      tenantId: b.tenantId, code: 'UNPAID', name: 'Unpaid leave', paid: false,
+      counting: 'working_days', allowNegativeBalance: true, maxNegativeBalance: '30', employeeCancelApproved: true,
+    }).returning({ id: schema.leaveType.id }))[0].id;
+    const reqId = await approvedThreeDay(leaveTypeId);
     // A closed payroll batch for Aug 2026 in the subject's company, WITH the subject's own payslip in it —
-    // mirrors a finalised period (the deduction was already taken; no reversal path).
+    // mirrors a finalised period. Only a change affecting its financial inputs must be refused.
     const [pp] = await owner.db
       .insert(schema.payPeriod)
       .values({ tenantId: b.tenantId, companyId: b.companyId, period: '2026-08', status: 'closed' })
@@ -524,9 +531,27 @@ describe('Partial Leave Cancellation — gates', () => {
       netPay: '4500.00',
       employerCost: '5600.00',
     });
-    await expect(
-      requestLeaveCancellation(subjectCtx, { today: '2026-08-01', leaveRequestId: reqId, cancelDates: ['2026-08-11'] }),
-    ).rejects.toBeInstanceOf(LeaveCancellationPeriodClosedError);
+    const beforeSlip = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batch.id)).orderBy(schema.payslip.id);
+    const [beforeBatch] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batch.id));
+    const beforeLedger = await owner.db.select().from(schema.leaveLedger).where(eq(schema.leaveLedger.employmentId, subject.employmentId)).orderBy(schema.leaveLedger.id);
+    const cancel = () => requestLeaveCancellation(subjectCtx, { today: '2026-08-01', leaveRequestId: reqId, cancelDates: ['2026-08-11'] });
+    if (paid) {
+      // Ordinary paid leave does not change this run's unpaid/absence deductions. It can be given back
+      // without inventing a payroll exception or altering the closed payslip.
+      const { cancellationRequestId } = await cancel();
+      const result = await decideLeaveCancellation(mgrCtx, { cancellationRequestId, decision: 'approved' });
+      expect(result).toMatchObject({ status: 'approved', restoredDays: 1, remainingDays: 2 });
+    } else {
+      await expect(cancel()).rejects.toBeInstanceOf(LeaveCancellationPeriodClosedError);
+      const [request] = await owner.db.select().from(schema.leaveRequest).where(eq(schema.leaveRequest.id, reqId));
+      expect(request).toMatchObject({ status: 'approved', days: '3.00' });
+      expect(await owner.db.select().from(schema.leaveCancellationRequest).where(eq(schema.leaveCancellationRequest.leaveRequestId, reqId))).toHaveLength(0);
+      expect(await owner.db.select().from(schema.leaveLedger).where(eq(schema.leaveLedger.employmentId, subject.employmentId)).orderBy(schema.leaveLedger.id)).toEqual(beforeLedger);
+    }
+    expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batch.id)).orderBy(schema.payslip.id)).toEqual(beforeSlip);
+    expect((await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batch.id)))[0]).toEqual(beforeBatch);
+    expect(await listPayrollLeaveExceptions(adminCtx(b), batch.id)).toEqual([]);
+    expect(await owner.db.select().from(schema.payrollLeaveException).where(eq(schema.payrollLeaveException.batchId, batch.id))).toHaveLength(0);
   });
 
   it('cannot cancel a date outside the span', async () => {
@@ -852,7 +877,7 @@ describe('R5 Build #2 — discoverable entry point (read-layer projection)', () 
 });
 
 describe('R5 Build #2 — attachment visibility on a non-first surviving segment', () => {
-  it('the MC stays visible on the survivor the user sees after cancelling the FIRST date', async () => {
+  it('the exact MC bytes and MIME survive cancelling the FIRST date and a repeated survivor split', async () => {
     // Attach an MC to a pending request, approve it, then cancel the FIRST date (10 Aug). Segment[0] (10 Aug)
     // reuses the original row id and is CANCELLED; the survivor (11–12) is a new sibling row. Assert the
     // attachment is still visible on that surviving row the employee actually holds.
@@ -863,11 +888,12 @@ describe('R5 Build #2 — attachment visibility on a non-first surviving segment
       endDate: '2026-08-12',
       hasDocument: true,
     });
+    const content = Buffer.from('%PDF-1.4 test');
     await addLeaveAttachment(subjectCtx, {
       leaveRequestId: res.leaveRequestId,
       fileName: 'mc.pdf',
       mimeType: 'application/pdf',
-      content: Buffer.from('%PDF-1.4 test'),
+      content,
     });
     await decideLeave(adminCtx(b), { leaveRequestId: res.leaveRequestId, decision: 'approved' });
 
@@ -884,7 +910,20 @@ describe('R5 Build #2 — attachment visibility on a non-first surviving segment
       .where(eq(schema.leaveRequest.id, res.leaveRequestId));
     const survivor = await approvedRowCovering(orig.parentGroupId!, '2026-08-11');
     const att = await getLeaveAttachment(subjectCtx, survivor.id);
-    expect(att?.fileName).toBe('mc.pdf');
+    expect(att).toEqual({ fileName: 'mc.pdf', mimeType: 'application/pdf', content });
+
+    // The first surviving row becomes the cancelled piece on this second give-back. Its new
+    // survivor must retain the actual document, not merely a copied filename or an empty attachment.
+    const next = await requestLeaveCancellation(subjectCtx, {
+      leaveRequestId: survivor.id, cancelDates: ['2026-08-11'], today: '2026-08-01',
+    });
+    await decideLeaveCancellation(mgrCtx, { cancellationRequestId: next.cancellationRequestId, decision: 'approved' });
+    const [splitAgain] = await owner.db.select({ parentGroupId: schema.leaveRequest.parentGroupId })
+      .from(schema.leaveRequest).where(eq(schema.leaveRequest.id, survivor.id));
+    const lastSurvivor = await approvedRowCovering(splitAgain.parentGroupId!, '2026-08-12');
+    expect(lastSurvivor.id).not.toBe(survivor.id);
+    expect(await getLeaveAttachment(subjectCtx, lastSurvivor.id))
+      .toEqual({ fileName: 'mc.pdf', mimeType: 'application/pdf', content });
   });
 });
 

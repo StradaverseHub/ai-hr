@@ -1,3 +1,5 @@
+/** 010fdbec: these historical checks now pin the preserved destination catalogue.
+ * The exact visible sidebar/card partition is pinned by leave-settings-hub.test.ts. */
 /**
  * 645e67c4 — Leave config moves from a horizontal tab strip to the sidebar fly-out.
  *
@@ -29,7 +31,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { leavePack } from '../packs/leave';
+import { leavePack, LEAVE_ADMIN_DESTINATIONS } from '../packs/leave';
+import { navigationPlacement } from '../lib/navigation-workspaces';
 import { LEAVE_CONFIG_MAP, LEAVE_CONFIG_RECORDS_HREF } from '../components/leave-config-map';
 import { REGISTERED_ROUTES, SCREENS } from '../lib/permissions';
 
@@ -45,7 +48,7 @@ const exists = (rel: string) => fs.existsSync(path.join(ROOT, rel));
 const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[^\n]*?\/\/[^\n]*$/gm, '');
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 
-const NODE = leavePack.navNodes!.find((n) => n.group === 'admin')!;
+const DESTINATIONS = LEAVE_ADMIN_DESTINATIONS;
 
 /**
  * The retired components/leave-tabs.tsx destinations, captured VERBATIM from the commit before this
@@ -191,11 +194,11 @@ const EXPECTED_CHILDREN: readonly { href: string; labelKey: string }[] = [
 ];
 
 /** The child r269 added, resolved from the node so a rename here cannot silently pass. */
-const INQUIRY_ROW = NODE.children.find((c) => c.labelKey === 'employeeLeaveInquiry')!;
+const INQUIRY_ROW = DESTINATIONS.children.find((c) => c.labelKey === 'employeeLeaveInquiry')!;
 /** The child r279 added, resolved the same way. */
-const BALANCE_HEALTH_ROW = NODE.children.find((c) => c.labelKey === 'leaveBalanceHealth')!;
+const BALANCE_HEALTH_ROW = DESTINATIONS.children.find((c) => c.labelKey === 'leaveBalanceHealth')!;
 /** The child r281 added, resolved the same way. */
-const EARNED_ACCRUAL_ROW = NODE.children.find((c) => c.labelKey === 'leaveEarnedAccrual')!;
+const EARNED_ACCRUAL_ROW = DESTINATIONS.children.find((c) => c.labelKey === 'leaveEarnedAccrual')!;
 
 /** href → the route file that must exist for it to be a live destination. */
 const routeFile = (href: string) => `app${href}/page.tsx`;
@@ -221,9 +224,9 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
       href: '/admin/leave-config/adjustments',
       labelKey: 'leaveAdjustments',
     });
-    expect(NODE.children.map((c) => ({ href: c.href, labelKey: c.labelKey }))).toEqual(EXPECTED_CHILDREN);
-    expect(NODE.labelKey).toBe('leaveConfig');
-    expect(NODE.group).toBe('admin');
+    expect(DESTINATIONS.children.map((c) => ({ href: c.href, labelKey: c.labelKey }))).toEqual(EXPECTED_CHILDREN);
+    expect(DESTINATIONS.labelKey).toBe('leaveConfig');
+    expect(DESTINATIONS.group).toBe('admin');
   });
 
   it('every destination is a real page AND registered on a NAMED permission screen — no dead entries', () => {
@@ -278,7 +281,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
       // which is a strictly wider power than stating an opening figure.
 
     };
-    for (const child of NODE.children) {
+    for (const child of DESTINATIONS.children) {
       expect(exists(routeFile(child.href)), `${child.href} has no route file`).toBe(true);
       // A row whose route is unregistered is invisible or refused by our own access check.
       expect(REGISTERED_ROUTES.has(child.href), `${child.href} is not a registered route`).toBe(true);
@@ -288,7 +291,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     }
     // Non-vacuity: the map above must describe exactly the children that exist, so a new row cannot be
     // added without deciding (and writing down) which permission column answers for it.
-    expect(Object.keys(OWNING_SCREEN).sort()).toEqual(NODE.children.map((c) => c.href).sort());
+    expect(Object.keys(OWNING_SCREEN).sort()).toEqual(DESTINATIONS.children.map((c) => c.href).sort());
   });
 
   /**
@@ -320,7 +323,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     expect(BALANCE_HEALTH_ROW.href).toBe('/admin/leave-config/balance-health');
     // THE POSITION IS THE ANSWER, so it is pinned as the PAIR rather than as an index: it answers the
     // question you ask about entitlements, and it is the tab it left that sits above it.
-    expect(NODE.children.map((c) => c.labelKey).slice(0, 2)).toEqual(['leaveEntitlements', 'leaveBalanceHealth']);
+    expect(DESTINATIONS.children.map((c) => c.labelKey).slice(0, 2)).toEqual(['leaveEntitlements', 'leaveBalanceHealth']);
     // A real page, guarded, with no tabs of its own to own.
     expect(exists('app/admin/leave-config/balance-health/page.tsx')).toBe(true);
     expect(BALANCE_HEALTH_ROW.ownedSubpaths ?? []).toEqual([]);
@@ -335,7 +338,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     expect(group, 'every Leave Config row is a group; this one must be too').toBeTruthy();
     expect(group.items.map((i) => i.href)).toEqual([BALANCE_HEALTH_ROW.href]);
     expect(LEAVE_CONFIG_MAP.find((g) => g.navKey === 'leaveEntitlements')!.items).toHaveLength(2);
-    expect(NODE.children.find((c) => c.labelKey === 'leaveEntitlements')!.ownedSubpaths).not.toContain(
+    expect(DESTINATIONS.children.find((c) => c.labelKey === 'leaveEntitlements')!.ownedSubpaths).not.toContain(
       BALANCE_HEALTH_ROW.href,
     );
   });
@@ -349,7 +352,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     // THE POSITION IS THE ANSWER, so it is pinned as the PAIR rather than as an index: the screen it was
     // filed inside is the one directly above it, and the two must read as neighbours rather than as one
     // containing the other.
-    const labels = NODE.children.map((c) => c.labelKey);
+    const labels = DESTINATIONS.children.map((c) => c.labelKey);
     expect(labels.slice(labels.indexOf('leaveGenerate'), labels.indexOf('leaveGenerate') + 2)).toEqual([
       'leaveGenerate',
       'leaveEarnedAccrual',
@@ -368,7 +371,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     expect(group, 'every Leave Config row is a group; this one must be too').toBeTruthy();
     expect(group.items.map((i) => i.href)).toEqual([EARNED_ACCRUAL_ROW.href]);
     expect(LEAVE_CONFIG_MAP.find((g) => g.navKey === 'leaveGenerate')!.items).toHaveLength(1);
-    expect(NODE.children.find((c) => c.labelKey === 'leaveGenerate')!.ownedSubpaths ?? []).not.toContain(
+    expect(DESTINATIONS.children.find((c) => c.labelKey === 'leaveGenerate')!.ownedSubpaths ?? []).not.toContain(
       EARNED_ACCRUAL_ROW.href,
     );
   });
@@ -411,7 +414,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     };
     const MAPLESS_ROWS: Record<string, string[]> = { employeeLeaveInquiry: ['/leave/employee-records'] };
     for (const group of LEAVE_CONFIG_MAP) {
-      const row = NODE.children.find((c) => c.labelKey === group.navKey)!;
+      const row = DESTINATIONS.children.find((c) => c.labelKey === group.navKey)!;
       expect(row, `${group.navKey} has no fly-out row`).toBeTruthy();
       const tabs = group.items.slice(1).map((i) => i.href);
       expect(row.ownedSubpaths ?? [], `${group.navKey} ownedSubpaths must be exactly its other tabs (plus its named sub-screen)`).toEqual([
@@ -420,17 +423,17 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
       ]);
     }
     const mapped = new Set(LEAVE_CONFIG_MAP.map((g) => g.navKey as string));
-    for (const row of NODE.children.filter((c) => !mapped.has(c.labelKey))) {
+    for (const row of DESTINATIONS.children.filter((c) => !mapped.has(c.labelKey))) {
       expect(MAPLESS_ROWS[row.labelKey], `${row.labelKey} is on no map group and is unpinned here`).toBeTruthy();
       expect(row.ownedSubpaths ?? [], `${row.labelKey} ownedSubpaths`).toEqual(MAPLESS_ROWS[row.labelKey]);
     }
-    expect(Object.keys(MAPLESS_ROWS)).toEqual(NODE.children.filter((c) => !mapped.has(c.labelKey)).map((c) => c.labelKey));
-    expect(NODE.children.find((c) => c.labelKey === 'leaveEntitlements')!.ownedSubpaths).not.toContain('/admin/leave-config/records/entitlement');
+    expect(Object.keys(MAPLESS_ROWS)).toEqual(DESTINATIONS.children.filter((c) => !mapped.has(c.labelKey)).map((c) => c.labelKey));
+    expect(DESTINATIONS.children.find((c) => c.labelKey === 'leaveEntitlements')!.ownedSubpaths).not.toContain('/admin/leave-config/records/entitlement');
     // Non-vacuity: two rows own two tabs each and the Leave Inquiry row owns the rail's other admin tab
     // (2 → 3 at r269), and the sidebar consults them all (components/sidebar.tsx).
     // 3fb1a611 (r299) — 3 → 4: Leave Credit owns its Rules tab.
     // r378 adds the consolidated importer owner for both legacy bookmark paths.
-    expect(NODE.children.filter((c) => (c.ownedSubpaths ?? []).length > 0)).toHaveLength(5);
+    expect(DESTINATIONS.children.filter((c) => (c.ownedSubpaths ?? []).length > 0)).toHaveLength(5);
     const sidebar = read('components/sidebar.tsx');
     expect(sidebar).toContain('const childPaths = (c: { href: string; ownedSubpaths?: string[] }) => [c.href, ...(c.ownedSubpaths ?? [])];');
     expect(sidebar).toContain('isParentActive(pathname, children.flatMap(childPaths))');
@@ -438,8 +441,8 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
   });
 
   it('the Summary row is gone and the leave TYPE screen is first', () => {
-    expect(NODE.children.map((c) => c.href)).not.toContain('/admin/leave');
-    expect(NODE.children[0].href).toBe('/admin/leave-config/types');
+    expect(DESTINATIONS.children.map((c) => c.href)).not.toContain('/admin/leave');
+    expect(DESTINATIONS.children[0].href).toBe('/admin/leave-config/types');
     expect(read('packs/leave/index.ts')).not.toContain("labelKey: 'leaveSummary'");
   });
 
@@ -456,7 +459,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     const permissions = read('lib/permissions.ts');
     expect(permissions).not.toContain("'/admin/leave',");
     // The screen column survives, re-pointed at the page a reader can actually open.
-    expect(permissions).toContain("href: '/admin/leave-config/types'");
+    expect(permissions).toContain("href: '/admin/leave-config/settings'");
   });
 
   it('/admin/leave/entitlements survives as an UNGUARDED redirect stub to the new leave TYPE screen', () => {
@@ -515,7 +518,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
   });
 
   it('the Audit row is gone, Company rules closes the ORIGINAL config rows, and the rows added since sit where they were asked for', () => {
-    expect(NODE.children.map((c) => c.href)).not.toContain('/admin/leave/audit');
+    expect(DESTINATIONS.children.map((c) => c.href)).not.toContain('/admin/leave/audit');
     // a6fe37fc Round 5 — the row that ABSORBED Replacement leave closes the five CONFIGURE rows. The
     // position the reporter's team reads is unchanged; only what sits in it moved.
     //
@@ -531,15 +534,15 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     // row, and the inquiry row immediately before the row r281 added. A row inserted anywhere between
     // them still fails, and a row appended below Special Setting must name itself here — the same
     // discipline the ADDED_SINCE list above applies.
-    expect(NODE.children.map((c) => c.labelKey).slice(-3)).toEqual([
+    expect(DESTINATIONS.children.map((c) => c.labelKey).slice(-3)).toEqual([
       'leaveCompanyRules',
       'employeeLeaveInquiry',
       'leaveSpecialSetting',
     ]);
-    expect(NODE.children.at(-1)!.href).toBe('/admin/leave-config/special-setting');
+    expect(DESTINATIONS.children.at(-1)!.href).toBe('/admin/leave-config/special-setting');
     // Company rules is still the last of the rows the a6fe37fc cutover left, which is what that round
     // promised: the only config row below it is the one r281 named above.
-    const CONFIG_ROWS = NODE.children.filter((c) => c.href.startsWith('/admin/leave-config/'));
+    const CONFIG_ROWS = DESTINATIONS.children.filter((c) => c.href.startsWith('/admin/leave-config/'));
     expect(CONFIG_ROWS.at(-2)!.href).toBe('/admin/leave-config/company-rules');
     expect(read('packs/leave/index.ts')).not.toContain("labelKey: 'leaveAudit'");
   });
@@ -603,22 +606,28 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     }
   });
 
-  it('the sidebar mounts it as a collapsible node, in its unchanged Admin-group position', () => {
+  it('retains the canonical authorized Leave descriptors while placing daily HR work separately from Configuration', () => {
     const sidebar = stripComments(read('components/sidebar.tsx'));
-    expect(sidebar).toContain('LEAVE_CONFIG_NODE');
+    expect(sidebar.split('\n').some(line=>line.trim()==='LEAVE_CONFIG_NODE,'), 'the source owner is actually mounted').toBe(true);
     expect(sidebar, 'the old flat row must be gone, not merely unused').not.toContain('LEAVE_CONFIG_ROW');
-    // a324a4b3 rev3 put Attendance literally between Leave config and Claims config on the reporter's
-    // instruction. Assert the order survives the conversion rather than trusting it did.
-    const order = ['SYSTEM_SETTINGS_NODE', 'LEAVE_CONFIG_NODE', 'ATTENDANCE_NODE', 'CLAIMS_CONFIG_ROW', 'PAYROLL_NODE'];
-    const positions = order.map((k) => sidebar.lastIndexOf(k));
-    expect(positions.every((p) => p > 0), 'every admin-group anchor must still be mounted').toBe(true);
-    expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+    // Ops/Strata supersedes the old between-Attendance-and-Claims position. Every existing leaf
+    // keeps its exact href/guard; only its module section changes. Exact membership is pinned above.
+    const dailyHr = new Set(['/admin/leave-config/balance-health','/admin/leave-config/adjustments',
+      '/admin/leave-config/data-import','/admin/leave-config/leave-credit','/admin/leave-config/generate',
+      '/admin/leave-config/earned-accrual','/leave/employee-balances']);
+    expect(DESTINATIONS.children.length, 'the pack descriptor is not an empty placement sweep').toBe(EXPECTED_CHILDREN.length);
+    for (const child of DESTINATIONS.children) {
+      expect(navigationPlacement(child.href), child.href).toEqual({area:'ops',module:'leave',section:dailyHr.has(child.href)?'hr':'config'});
+    }
+    for (const name of ['SYSTEM_SETTINGS_NODE','ATTENDANCE_NODE','CLAIMS_CONFIG_ROW','PAYROLL_NODE']) {
+      expect(sidebar.split('\n').some(line=>line.trim()===`${name},`), `${name}: no sibling source owner lost`).toBe(true);
+    }
   });
 
   it('every child label resolves in all six catalogs, and admin.leaveTabs is retired', () => {
     for (const loc of LOCALES) {
       const dict = JSON.parse(read(`messages/${loc}.json`));
-      for (const child of NODE.children) {
+      for (const child of DESTINATIONS.children) {
         const label = dict.nav?.[child.labelKey];
         expect(typeof label, `${loc}: nav.${child.labelKey}`).toBe('string');
         expect(String(label).trim().length, `${loc}: nav.${child.labelKey} is empty`).toBeGreaterThan(0);

@@ -1,3 +1,6 @@
+import type { AttendanceResolvedStage } from '../lib/attendance-workflow';
+import { attendanceApplicationReviewTx, attendanceProgressTx, attendanceApproverCodesTx } from './attendance-application-review';
+import type { AttendanceProgress } from '../lib/attendance-progress';
 /** One scoped read model over attendance_correction; no copied application records. */
 import { and, asc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import { type SessionContext } from '../db/client';
@@ -5,13 +8,17 @@ import { withAttendanceTenant as withTenant } from './module-gate';
 import { attendanceCorrection as correction, employment, person, company, department, businessUnit, jobGrade, profileOption, domainEvent, appUser, position } from '../db/schema';
 import { CATEGORY_EMPLOYMENT_COLUMN, EMPLOYMENT_PROFILE_CATEGORIES } from './profile-options';
 import type { AttendanceWorkflowCriteria } from '../lib/attendance-workflow';
-import { attendanceWorkflowForTx } from './attendance-workflow';
+import { attendanceWorkflowsForTx, attendanceWorkflowForTx } from './attendance-workflow';
+
 import { attendanceApplicationType, type AttendanceApplicationType } from '../lib/attendance-workflow';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { visibleLabelIdsCondition } from './system-labels';
 import { checkedAttendanceHistoryFilter, attendanceHistoryId, type AttendanceHistoryFilter } from '../lib/attendance-history-filter';
 import { hasGrantFor, withEffectiveGrants } from '../lib/authz-model';
 export type { AttendanceHistoryFilter } from '../lib/attendance-history-filter';
+export type AttendanceHistoryCounts = { pending:number; approved:number; rejected:number; cancelled:number; withdrawn:number; cancelledWithdrawn:number; all:number };
+export const EMPTY_ATTENDANCE_HISTORY_COUNTS: AttendanceHistoryCounts = { pending:0, approved:0, rejected:0, cancelled:0, withdrawn:0, cancelledWithdrawn:0, all:0 };
+
 export type AttendanceHistoryRow = {
     requestKind: string|null;
     selectable: boolean;
@@ -22,17 +29,14 @@ export type AttendanceHistoryRow = {
     companyId: string;
     company: string;
     attendanceDate: string;
-    submittedAt: Date;
+    submittedAt: Date | string;
+    progress?: AttendanceProgress;
+    currentParticipantSlot?: string | null;
     status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'withdrawn';
     applicationType: AttendanceApplicationType;
     currentStage: number | null;
-    stages: {
-        name: string;
-        approvers: {
-            kind: 'direct_manager' | 'hr_admin';
-            name: string;
-        }[];
-    }[] | null;
+    stages: AttendanceResolvedStage[] | null;
+
     templateName: string | null;
 };
 function admin(ctx: SessionContext) {
@@ -47,7 +51,7 @@ export async function listAttendanceApplicationHistory(ctx: SessionContext, comp
     const f = checkedAttendanceHistoryFilter(raw);
     return withTenant(ctx, async (tx) => {
         if (!companyIds.length || (f.companyId && !companyIds.includes(f.companyId)))
-            return { rows: [] as AttendanceHistoryRow[], total: 0, page: f.page, pageSize: f.pageSize };
+            return { rows: [] as AttendanceHistoryRow[], total: 0, counts: {...EMPTY_ATTENDANCE_HISTORY_COUNTS}, page: f.page, pageSize: f.pageSize };
         const companies = f.companyId ? [f.companyId] : companyIds;
         const conditions: SQL[] = [sql `e.company_id IN (${sql.join(companies.map(id => sql `${id}::uuid`), sql `,`)})`, sql `app.is_admin_for(e.company_id)`];
         if(f.employmentId)conditions.push(sql`e.id=${f.employmentId}::uuid`);
@@ -56,8 +60,6 @@ export async function listAttendanceApplicationHistory(ctx: SessionContext, comp
         if(f.attendanceTo)conditions.push(sql`c.attendance_date<=${f.attendanceTo}::date`);
         if (f.applicationType)
             conditions.push(sql `${typeSql}=${f.applicationType}`);
-        if (f.status)
-            conditions.push(sql `${statusSql}=${f.status}`);
         if (f.submittedFrom)
             conditions.push(sql `(c.created_at AT TIME ZONE 'Asia/Kuala_Lumpur')::date>=${f.submittedFrom}::date`);
         if (f.submittedTo)
@@ -73,13 +75,38 @@ export async function listAttendanceApplicationHistory(ctx: SessionContext, comp
             conditions.push(sql `(p.full_name ILIKE ${q} OR e.employee_code ILIKE ${q} OR c.id::text ILIKE ${q})`);
         }
         const from = sql `FROM attendance_correction c JOIN employment e ON e.id=c.employment_id JOIN person p ON p.id=e.person_id JOIN company co ON co.id=e.company_id LEFT JOIN attendance_workflow_request w ON w.correction_id=c.id WHERE ${sql.join(conditions, sql ` AND `)}`;
-        const counts = await tx.execute(sql `SELECT count(*)::int AS total ${from}`) as unknown as {
-            total: number;
-        }[];
-        if ((f.page - 1) * f.pageSize >= (counts[0]?.total ?? 0))
-            return { rows: [] as AttendanceHistoryRow[], total: counts[0]?.total ?? 0, page: f.page, pageSize: f.pageSize };
-        const rows = await tx.execute(sql `SELECT c.request_kind AS "requestKind",(c.status='pending' AND p.id IS DISTINCT FROM ${ctx.personId??null}::uuid) AS selectable,c.id,c.employment_id AS "employmentId",e.employee_code AS "employeeCode",p.full_name AS employee,e.company_id AS "companyId",co.legal_name AS company,c.attendance_date AS "attendanceDate",c.created_at AS "submittedAt",${statusSql} AS status,${typeSql} AS "applicationType",w.current_stage AS "currentStage",w.stages,w.template_name AS "templateName" ${from} ORDER BY c.created_at DESC,c.id DESC LIMIT ${f.pageSize} OFFSET ${(f.page - 1) * f.pageSize}`) as unknown as AttendanceHistoryRow[];
-        return { rows, total: counts[0]?.total ?? 0, page: f.page, pageSize: f.pageSize };
+        // Counts and page rows are selected from ONE authorized/filter-bound snapshot. Status alone
+        // is excluded from the tab counts; employee/company/search/date predicates are identical.
+        const statusCondition = !f.status || f.status === 'all' ? sql`true`
+            : f.status === 'cancelled_withdrawn' ? sql`status in ('cancelled','withdrawn')` : sql`status=${f.status}`;
+        const [result] = await tx.execute(sql`WITH filtered AS MATERIALIZED (
+          SELECT c.request_kind AS "requestKind",(c.status='pending' AND p.id IS DISTINCT FROM ${ctx.personId??null}::uuid) AS selectable,
+            c.id,c.employment_id AS "employmentId",e.employee_code AS "employeeCode",p.full_name AS employee,
+            e.company_id AS "companyId",co.legal_name AS company,c.attendance_date AS "attendanceDate",c.created_at AS "submittedAt",
+            ${statusSql} AS status,${typeSql} AS "applicationType",w.current_stage AS "currentStage",w.stages,w.template_name AS "templateName" ${from}
+        ), counted AS (
+          SELECT count(*) FILTER(WHERE ${statusCondition})::int AS total,
+            jsonb_build_object('pending',count(*) FILTER(WHERE status='pending'),'approved',count(*) FILTER(WHERE status='approved'),
+              'rejected',count(*) FILTER(WHERE status='rejected'),'cancelled',count(*) FILTER(WHERE status='cancelled'),
+              'withdrawn',count(*) FILTER(WHERE status='withdrawn'),'cancelledWithdrawn',count(*) FILTER(WHERE status IN ('cancelled','withdrawn')),'all',count(*)) AS counts
+          FROM filtered
+        ), selected AS (
+          SELECT * FROM filtered WHERE ${statusCondition} ORDER BY "submittedAt" DESC,id DESC LIMIT ${f.pageSize} OFFSET ${(f.page-1)*f.pageSize}
+        ) SELECT counted.*,coalesce((SELECT jsonb_agg(to_jsonb(selected) ORDER BY "submittedAt" DESC,id DESC) FROM selected),'[]'::jsonb) AS rows FROM counted`) as unknown as {total:number;counts:AttendanceHistoryCounts;rows:AttendanceHistoryRow[]}[];
+        const rows=result?.rows??[];
+        const workflows=await attendanceWorkflowsForTx(tx,rows.map(row=>row.id));
+        for(const row of rows){
+          const flow=workflows.get(row.id)??null;
+          row.stages=flow?.effectiveStages??flow?.stages??null;
+          row.progress=await attendanceProgressTx(tx,flow,row.status);
+          row.currentParticipantSlot=flow?.currentParticipantSlot??null;
+          if(row.selectable&&flow?.routingVersion===2){
+            const [authority]=await tx.execute(sql`select app.attendance_workflow_v2_decide(${row.id}::uuid) as ok`) as unknown as {ok:boolean}[];
+            row.selectable=authority?.ok===true;
+          }else if(row.selectable&&flow?.routingVersion===3)row.selectable=row.currentParticipantSlot!=null;
+        }
+        return {rows,total:result?.total??0,counts:result?.counts??{...EMPTY_ATTENDANCE_HISTORY_COUNTS},page:f.page,pageSize:f.pageSize};
+
     });
 }
 export async function attendanceApplicationDetail(ctx: SessionContext, companyIds: string[], id: string) {
@@ -95,8 +122,11 @@ export async function attendanceApplicationDetail(ctx: SessionContext, companyId
         const workflow = await attendanceWorkflowForTx(tx, id);
         const events = await tx.select({ id: domainEvent.id, eventType: domainEvent.eventType, actorId: domainEvent.actorId, actorType: domainEvent.actorType, actorName: person.fullName, occurredAt: domainEvent.occurredAt, payload: domainEvent.payload }).from(domainEvent).leftJoin(appUser, eq(appUser.id, domainEvent.actorId)).leftJoin(person, eq(person.id, appUser.personId)).where(and(eq(domainEvent.subjectEmploymentId, row.application.employmentId), sql `(${domainEvent.aggregateId}=${id} OR (${domainEvent.payload}->>'correctionId')=${id})`)).orderBy(asc(domainEvent.occurredAt), asc(domainEvent.sequence), asc(domainEvent.id));
         const self = !!ctx.personId && ctx.personId === row.personId;
-        const [v2Authority] = workflow?.routingVersion === 2 ? await tx.execute(sql`select app.attendance_workflow_v2_decide(${id}::uuid) as ok`) as unknown as { ok: boolean }[] : [];
-        return { ...row, applicationType: attendanceApplicationType(row.application), workflow, events, canReassign: !self && row.application.status === 'pending' && workflow?.routingVersion === 2 && workflow.currentStage < workflow.stages.length, canDecide: !self && row.application.status === 'pending' && (workflow?.routingVersion !== 2 || v2Authority?.ok === true), canCancel: !self && (row.application.status === 'pending' || row.application.status === 'approved') };
+        const [v2Authority] = workflow?.routingVersion === 3 ? [{ ok: workflow.currentParticipantSlot != null }] : workflow?.routingVersion === 2 ? await tx.execute(sql`select app.attendance_workflow_v2_decide(${id}::uuid) as ok`) as unknown as { ok: boolean }[] : [];
+        const review=await attendanceApplicationReviewTx(tx,{employmentId:row.application.employmentId,date:row.application.attendanceDate});
+        const progress=await attendanceProgressTx(tx,workflow,row.application.status);
+        const approverCodes=await attendanceApproverCodesTx(tx,[...([...(workflow?.stages??[]),...(workflow?.effectiveStages??[])].flatMap(stage=>stage.approvers.flatMap(actor=>actor.employmentId?[actor.employmentId]:[]))),...([...(workflow?.decisions??[]),...(workflow?.participantDecisions??[])].flatMap(record=>record.actualEmploymentId?[record.actualEmploymentId]:[]))]);
+        return { ...row, applicationType: attendanceApplicationType(row.application), workflow, events, review, progress, approverCodes, canReassign: !self && row.application.status === 'pending' && (workflow?.routingVersion === 2 || workflow?.routingVersion === 3) && workflow.currentStage < workflow.stages.length, canDecide: !self && row.application.status === 'pending' && ((workflow?.routingVersion !== 2 && workflow?.routingVersion !== 3) || v2Authority?.ok === true), canCancel: !self && (row.application.status === 'pending' || row.application.status === 'approved') };
     });
 }
 export function attendanceApplicationFilterOptions(ctx: SessionContext, companyIds: string[]) {
@@ -123,6 +153,7 @@ export function attendanceApplicationFilterOptions(ctx: SessionContext, companyI
             const values = profileFields[key] ?? []; values.push({ id: option.id, name: option.name }); profileFields[key] = values;
         }
         const employees=await tx.select({id:employment.id,name:person.fullName,employeeCode:employment.employeeCode}).from(employment).innerJoin(person,eq(person.id,employment.personId)).where(inArray(employment.companyId,companies.map(c=>c.id))).orderBy(asc(person.fullName),asc(employment.id));
-        return { companies, departments, businessUnits, grades, divisions, employees, positions, profileFields };
+        const approverEmployees = await tx.execute(sql`select id,name,employee_code as "employeeCode" from app.attendance_workflow_v3_approver_options(ARRAY[${sql.join(companies.map(row => sql`${row.id}::uuid`), sql`, `)}]::uuid[])`) as unknown as { id: string; name: string; employeeCode: string | null }[];
+        return { companies, departments, businessUnits, grades, divisions, employees, approverEmployees, positions, profileFields };
     });
 }

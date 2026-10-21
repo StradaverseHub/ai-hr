@@ -7,7 +7,7 @@
  * paymaster routing (§0.5), provenance/refresh vs manual-override (§0.4), non-destructive update (§targeted
  * .update), and closed-batch immutability (§0.3).
  */
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import type { Tp1LegacyCategories } from '../db/schema';
@@ -45,6 +45,57 @@ import {
 } from './harness';
 
 const YEAR = 2026;
+
+/** Inspect the complete persisted payload set without mistaking reference-ID digits for money.
+ * Only the real reference keys used by this fixture can exempt a complete UUID; a UUID-shaped
+ * note/amount remains confidential data, as do numeric values and amounts embedded in other text. */
+const EVENT_REFERENCE_KEYS = new Set([
+  'tp1ReliefId', 'employmentId', 'personId', 'companyId', 'departmentId',
+  'positionId', 'costCenterId', 'gradeId', 'selectionId',
+]);
+const EVENT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function cleartextAmountPaths(payloads: unknown, amounts: readonly number[]): string[] {
+  const found: string[] = [];
+  const walk = (value: unknown, path: string, key?: string): void => {
+    if (Array.isArray(value)) {
+      value.forEach((entry, index) => walk(entry, `${path}[${index}]`, key));
+    } else if (value !== null && typeof value === 'object') {
+      for (const [name, entry] of Object.entries(value)) {
+        // A secret used as an object key is still persisted cleartext.
+        if (amounts.some(amount => name.includes(String(amount)))) found.push(`${path}.${name} (key)`);
+        walk(entry, `${path}.${name}`, name);
+      }
+    } else if (typeof value === 'number' && amounts.includes(value)) {
+      found.push(path);
+    } else if (typeof value === 'string' && amounts.some(amount => value.includes(String(amount)))) {
+      if (!(key && EVENT_REFERENCE_KEYS.has(key) && EVENT_UUID.test(value))) found.push(path);
+    }
+  };
+  walk(payloads, '$');
+  return found;
+}
+
+describe('TP1 event privacy assertion detects values rather than incidental ID substrings', () => {
+  const collision = '77328b47-af53-40e8-878b-4b1895873732';
+  it('accepts the exact observed employment-ID collision without excluding the rest of its payload', () => {
+    expect(cleartextAmountPaths([{ employmentId: collision, fields: ['tp1Amount'] }], [4242, 7373])).toEqual([]);
+    expect(cleartextAmountPaths([{ employmentId: collision, nested: { amount: 7373 } }], [7373]))
+      .toEqual(['$[0].nested.amount']);
+  });
+  it.each([
+    { payload: { tp1Amount: 7373 }, path: '$.tp1Amount' },
+    { payload: { tp1Amount: '7373' }, path: '$.tp1Amount' },
+    { payload: { tp1Amount: '7373.00' }, path: '$.tp1Amount' },
+    { payload: { note: 'Relief amount is 7373 ringgit' }, path: '$.note' },
+    { payload: { note: collision }, path: '$.note' },
+    { payload: { employmentId: 'not-a-uuid-7373' }, path: '$.employmentId' },
+    { payload: { employmentId: 7373 }, path: '$.employmentId' },
+    { payload: { categories: [{ amount: 7373 }] }, path: '$.categories[0].amount' },
+    { payload: { '7373': 'redacted' }, path: '$.7373 (key)' },
+  ])('detects a persisted amount at $path', ({ payload, path }) => {
+    expect(cleartextAmountPaths(payload, [7373])).toContain(path);
+  });
+});
 
 describe('ADR-0050 — TP1 self-relief', () => {
   let base: Base;
@@ -387,14 +438,15 @@ describe('ADR-0050 — TP1 self-relief', () => {
     expect(await eventTypesFor(base.tenantId, draftId)).toContain('tp1.draft.saved');
     expect(await eventTypesFor(base.tenantId, subId)).toContain('tp1.submitted');
 
-    // PDPA Layer-0: the secret amounts must not appear anywhere in the persisted event payloads.
+    // PDPA Layer-0: retain the complete tenant payload set, including non-TP1 events.
+    // The b19 gate captured 7373 inside employmentId 77328b47-af53-40e8-878b-4b1895873732.
+    // Compare amounts/embedded text while allowing full UUIDs only at the known reference keys.
     const events = await owner.db
       .select({ payload: schema.domainEvent.payload })
       .from(schema.domainEvent)
-      .where(eq(schema.domainEvent.tenantId, base.tenantId));
-    const blob = JSON.stringify(events.map((r) => r.payload));
-    expect(blob).not.toContain('4242');
-    expect(blob).not.toContain('7373');
+      .where(eq(schema.domainEvent.tenantId, base.tenantId))
+      .orderBy(asc(schema.domainEvent.sequence));
+    expect(cleartextAmountPaths(events.map((r) => r.payload), [4242, 7373])).toEqual([]);
   });
 
   // helper: a raw cross-person insert under a session ctx, to prove the WITH CHECK clause blocks it.

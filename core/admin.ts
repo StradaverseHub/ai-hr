@@ -116,6 +116,7 @@ import {
   employment,
   holiday,
   holidayGroup,
+  employmentHolidayCalendar,
   holidayGroupHoliday,
   leaveLedger,
   jobGrade,
@@ -134,6 +135,7 @@ import {
 // FACADE, not `./payroll-cycle` directly (ADR-0080 D9, test/payroll-pack-drift.test.ts): this is a new
 // cross-module consumer, and the ratchet allowlist only ever shrinks.
 import { DEFAULT_PAYROLL_CYCLES, seedPayrollCycleCatalog } from '../packs/payroll/service';
+import { applyLeavePayrollEffectsTx, lockPayrollForLeavePaidSettingTx } from '../packs/payroll/service';
 
 /** The three holiday-calendar KINDS (ADR-0067). 'standard' = official gazette only (no resolver branch);
  *  'extended' = gazette ∪ company ad-hoc; 'custom' = company ad-hoc only (national NOT auto-added). */
@@ -836,7 +838,7 @@ export async function createJobGrade(
   ctx: SessionContext,
   // `description` (e3c733df): optional display-only detail, mirroring profile_option.description. Omitted
   // ⇒ NULL, so every existing caller is unchanged.
-  p: { code: string; name: string; rank?: number; description?: string | null },
+  p: { code: string; name: string; rank?: number; description?: string | null; active?: boolean },
   existingTx?: Tx,
 ) {
   const code = cleanName(p.code, 'Grade code').toUpperCase().replace(/ /g, '_');
@@ -887,7 +889,7 @@ export async function createJobGrade(
     }
     const [row] = await tx
       .insert(jobGrade)
-      .values({ tenantId: ctx.tenantId, code, name, rank, description })
+      .values({ tenantId: ctx.tenantId, code, name, rank, description, archivedAt: p.active === false ? sql`now()` : null })
       .returning({ id: jobGrade.id })
       .catch((e) => {
         // Grade Management (728a7db6): two partial-unique indexes now guard the row — map each to its own
@@ -904,7 +906,7 @@ export async function createJobGrade(
       aggregateId: row.id,
       eventType: 'job-grade.created',
       actor: actorOf(ctx),
-      payload: { code, name, rank },
+      payload: { code, name, rank, active: p.active ?? true },
     });
     return row;
   });
@@ -1340,6 +1342,8 @@ export function listPositions(
         id: position.id,
         companyId: position.companyId,
         title: position.title,
+        code: position.title,
+        label: position.label,
         jobFamily: position.jobFamily,
         // f1bbc572 — the "All Companies" flag travels WITH the row so a client-side narrowing to one
         // company can keep a global label instead of dropping it on origin (the resolver in the WHERE
@@ -1374,6 +1378,7 @@ export function listCostCenters(
         companyId: costCenter.companyId,
         code: costCenter.code,
         name: costCenter.name,
+        label: costCenter.label,
         // f1bbc572 — the "All Companies" flag travels WITH the row so a client-side narrowing to one
         // company can keep a global label instead of dropping it on origin (the resolver in the WHERE
         // above already admits it; a picker that re-filtered on company_id alone threw it away again).
@@ -1409,6 +1414,7 @@ export function listBusinessUnits(
         companyId: businessUnit.companyId,
         code: businessUnit.code,
         name: businessUnit.name,
+        label: businessUnit.label,
         // f1bbc572 — the "All Companies" flag travels WITH the row so a client-side narrowing to one
         // company can keep a global label instead of dropping it on origin (the resolver in the WHERE
         // above already admits it; a picker that re-filtered on company_id alone threw it away again).
@@ -2314,6 +2320,9 @@ export async function deleteHolidayGroup(ctx: SessionContext, p: { id: string })
         `This holiday group is still assigned to ${refs.length} employee${refs.length === 1 ? '' : 's'}. Reassign them before deleting it.`,
       );
     }
+    const [datedReference]=await tx.select({id:employmentHolidayCalendar.id}).from(employmentHolidayCalendar)
+      .where(eq(employmentHolidayCalendar.holidayGroupId,p.id)).limit(1);
+    if(datedReference)throw new InUseError('holiday group','This holiday group is retained in dated employee calendar history. Deactivate it to prevent new selections.');
     // ADR-0086 (item 0fe1ca2e, r331) — a SECOND guard sat here: delete was also blocked when a LOCATION
     // mapped to this calendar (ADR-0067 §(b)), so a mapped calendar could not be silently un-mapped from
     // every site that used it. Migration 0484 drops `location.holiday_group_id`, so there is no site
@@ -2532,6 +2541,7 @@ export async function updateDepartment(
   // description always overwrites (like name), stored null when blank — no tri-state.
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
     // businessUnitId + headEmploymentId are tri-state: undefined → leave the column untouched (a name-only
     // rename must NOT wipe them); null/'' → clear it; an id → set it (validated to the department's own
     // company). Fetch the department's company once when either is supplied.
@@ -2566,6 +2576,7 @@ export async function updateDepartment(
 }
 export function archiveDepartment(ctx: SessionContext, p: { id: string; archived: boolean }) {
   return withTenant(ctx, async (tx) => {
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
     await tx.update(department).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(department.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError('An active department with this name already exists — rename it before unarchiving.');
       throw e;
@@ -2575,6 +2586,7 @@ export function archiveDepartment(ctx: SessionContext, p: { id: string; archived
 }
 export async function deleteDepartment(ctx: SessionContext, p: { id: string }) {
   return withTenant(ctx, async (tx) => {
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
     const [u] = await tx.select({ n: sql<number>`count(*)::int` }).from(assignment).where(eq(assignment.departmentId, p.id));
     if ((u?.n ?? 0) > 0) throw new InUseError('department');
     await tx.delete(department).where(eq(department.id, p.id));
@@ -2586,6 +2598,7 @@ export async function updatePosition(ctx: SessionContext, p: { id: string; title
   const title = cleanName(p.title, 'Position title');
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
     await tx.update(position).set({ title, jobFamily: p.jobFamily?.trim() || null, description }).where(eq(position.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError(`A position titled “${title}” already exists in this company.`);
       throw e;
@@ -2595,6 +2608,7 @@ export async function updatePosition(ctx: SessionContext, p: { id: string; title
 }
 export function archivePosition(ctx: SessionContext, p: { id: string; archived: boolean }) {
   return withTenant(ctx, async (tx) => {
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
     await tx.update(position).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(position.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError('An active position with this title already exists — rename it before unarchiving.');
       throw e;
@@ -2604,6 +2618,7 @@ export function archivePosition(ctx: SessionContext, p: { id: string; archived: 
 }
 export async function deletePosition(ctx: SessionContext, p: { id: string }) {
   return withTenant(ctx, async (tx) => {
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
     const [u] = await tx.select({ n: sql<number>`count(*)::int` }).from(assignment).where(eq(assignment.positionId, p.id));
     if ((u?.n ?? 0) > 0) throw new InUseError('position');
     await tx.delete(position).where(eq(position.id, p.id));
@@ -2616,6 +2631,7 @@ export async function updateCostCenter(ctx: SessionContext, p: { id: string; cod
   const name = cleanName(p.name, 'Cost-center name');
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
     await tx.update(costCenter).set({ code, name, description }).where(eq(costCenter.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError(`A cost center with code “${code}” already exists in this company.`);
       throw e;
@@ -2625,6 +2641,7 @@ export async function updateCostCenter(ctx: SessionContext, p: { id: string; cod
 }
 export function archiveCostCenter(ctx: SessionContext, p: { id: string; archived: boolean }) {
   return withTenant(ctx, async (tx) => {
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
     await tx.update(costCenter).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(costCenter.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError('An active cost center with this code already exists — change it before unarchiving.');
       throw e;
@@ -2634,6 +2651,7 @@ export function archiveCostCenter(ctx: SessionContext, p: { id: string; archived
 }
 export async function deleteCostCenter(ctx: SessionContext, p: { id: string }) {
   return withTenant(ctx, async (tx) => {
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
     const [u] = await tx.select({ n: sql<number>`count(*)::int` }).from(assignment).where(eq(assignment.costCenterId, p.id));
     if ((u?.n ?? 0) > 0) throw new InUseError('cost center');
     await tx.delete(costCenter).where(eq(costCenter.id, p.id));
@@ -2649,6 +2667,7 @@ export async function updateBusinessUnit(
   const name = cleanName(p.name, 'Business-unit name');
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
     // headEmploymentId is tri-state (undefined ⇒ untouched; blank ⇒ clear; id ⇒ set, same-company-validated).
     const setValues: { code: string; name: string; description: string | null; headEmploymentId?: string | null } = {
       code,
@@ -2673,6 +2692,7 @@ export async function updateBusinessUnit(
 }
 export function archiveBusinessUnit(ctx: SessionContext, p: { id: string; archived: boolean }) {
   return withTenant(ctx, async (tx) => {
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
     await tx.update(businessUnit).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(businessUnit.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError('An active business unit with this code already exists — change it before unarchiving.');
       throw e;
@@ -2694,6 +2714,8 @@ export type LabelKindStr = 'department' | 'position' | 'cost_center' | 'business
 /** One new row to create. `key` is the client's row key, echoed back on any error for row highlighting. */
 export type LabelCreateInput = {
   companyIds?: string[];
+  /** Optional initial state; omitted preserves the Active default. */
+  archived?: boolean;
   key: string;
   companyId: string;
   isGlobal?: boolean;
@@ -2862,29 +2884,29 @@ export async function bulkSaveLabels(
           const headEmploymentId = await resolveHeadEmploymentId(tx, c.headEmploymentId, c.companyId);
           const [row] = await tx
             .insert(department)
-            .values({ tenantId: ctx.tenantId, companyId: c.companyId, name, businessUnitId, headEmploymentId, label: c.label?.trim() || null, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
+            .values({ tenantId: ctx.tenantId, companyId: c.companyId, name, businessUnitId, headEmploymentId, label: c.label?.trim() || null, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false, archivedAt: c.archived ? sql`now()` : null })
             .returning({ id: department.id });
           createdIds.push({ key: c.key, id: row.id });
-          await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'department.created', actor: actorOf(ctx), payload: { companyId: c.companyId, name, isGlobal: c.isGlobal ?? false } });
+          await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'department.created', actor: actorOf(ctx), payload: { companyId: c.companyId, name, isGlobal: c.isGlobal ?? false, archived: c.archived ?? false } });
         } else if (kind === 'position') {
           const title = clean(c.key, c.title, 'title', 'Position title', true);
           if (!title) continue;
           const [row] = await tx
             .insert(position)
-            .values({ tenantId: ctx.tenantId, companyId: c.companyId, title, jobFamily: c.jobFamily?.trim() || null, label: c.label?.trim() || null, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
+            .values({ tenantId: ctx.tenantId, companyId: c.companyId, title, jobFamily: c.jobFamily?.trim() || null, label: c.label?.trim() || null, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false, archivedAt: c.archived ? sql`now()` : null })
             .returning({ id: position.id });
           createdIds.push({ key: c.key, id: row.id });
-          await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'position.created', actor: actorOf(ctx), payload: { companyId: c.companyId, title, isGlobal: c.isGlobal ?? false } });
+          await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'position.created', actor: actorOf(ctx), payload: { companyId: c.companyId, title, isGlobal: c.isGlobal ?? false, archived: c.archived ?? false } });
         } else if (kind === 'cost_center') {
           const code = clean(c.key, c.code, 'code', 'Cost-center code', true);
           const name = clean(c.key, c.name, 'name', 'Cost-center name', true);
           if (!code || !name) continue;
           const [row] = await tx
             .insert(costCenter)
-            .values({ tenantId: ctx.tenantId, companyId: c.companyId, code, name, label: c.label?.trim() || null, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
+            .values({ tenantId: ctx.tenantId, companyId: c.companyId, code, name, label: c.label?.trim() || null, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false, archivedAt: c.archived ? sql`now()` : null })
             .returning({ id: costCenter.id });
           createdIds.push({ key: c.key, id: row.id });
-          await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'cost-center.created', actor: actorOf(ctx), payload: { companyId: c.companyId, code, isGlobal: c.isGlobal ?? false } });
+          await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'cost-center.created', actor: actorOf(ctx), payload: { companyId: c.companyId, code, isGlobal: c.isGlobal ?? false, archived: c.archived ?? false } });
         } else {
           const code = clean(c.key, c.code, 'code', 'Business-unit code', true);
           const name = clean(c.key, c.name, 'name', 'Business-unit name', true);
@@ -2893,10 +2915,10 @@ export async function bulkSaveLabels(
           const headEmploymentId = await resolveHeadEmploymentId(tx, c.headEmploymentId, c.companyId);
           const [row] = await tx
             .insert(businessUnit)
-            .values({ tenantId: ctx.tenantId, companyId: c.companyId, code, name, headEmploymentId, label: c.label?.trim() || null, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
+            .values({ tenantId: ctx.tenantId, companyId: c.companyId, code, name, headEmploymentId, label: c.label?.trim() || null, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false, archivedAt: c.archived ? sql`now()` : null })
             .returning({ id: businessUnit.id });
           createdIds.push({ key: c.key, id: row.id });
-          await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'business-unit.created', actor: actorOf(ctx), payload: { companyId: c.companyId, code, isGlobal: c.isGlobal ?? false } });
+          await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'business-unit.created', actor: actorOf(ctx), payload: { companyId: c.companyId, code, isGlobal: c.isGlobal ?? false, archived: c.archived ?? false } });
         }
         const savedId = createdIds.find(row => row.key === c.key)!.id;
         criteriaChanges.push({kind,labelId:savedId,isGlobal:c.isGlobal??false,companyIds:c.companyIds??[c.companyId]});savedIds.push(savedId);
@@ -3336,8 +3358,8 @@ export async function updateLeaveType(
     // truth (schema paid boolean notNull default true). OWN tri-state (undefined = paid column untouched),
     // mirroring perDateApproval — the identity/rename sub-form posts an `identity=1` marker and always forwards
     // a concrete boolean, so an unrelated sub-form save omits paid and the column stays untouched (no silent
-    // reset). Applies to FUTURE leave only (paid is read at request/payroll time); historical requests and the
-    // ledger are unaffected.
+    // reset). Payroll reads this type on existing approved requests too: real changes assess all affected
+    // runs, mark processed results stale and refuse closed effects atomically. Ledger days stay unchanged.
     paid?: boolean;
     // Duplicate Leave Application Restriction (feedback d5e51c34): the same-date double-booking policy for this
     // leave type. OWN tri-state (undefined = duplicate_application_policy column untouched), mirroring
@@ -4068,6 +4090,8 @@ export async function updateLeaveType(
         nextCustomMessages = Object.keys(merged).length === 0 ? null : merged;
       }
     }
+    const payrollHits = touchPaid && before && p.paid !== before.paid
+      ? await lockPayrollForLeavePaidSettingTx(tx, p.id, p.paid!) : [];
     await tx
       .update(leaveType)
       .set({
@@ -4119,6 +4143,7 @@ export async function updateLeaveType(
         }
         throw e;
       });
+    await applyLeavePayrollEffectsTx(tx, payrollHits, 'paid_setting');
     // Anniversary to Calendar (f3a64d90) — the BACKFILL. Unlike updateLeavePolicy, this service never
     // recalculated anything; a Leave Year Type save only rewrote a column, so employees already carrying a
     // figure computed under the OLD model kept it (the reporter's YTD 7.00 / balance −6.00). The moment the

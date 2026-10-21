@@ -621,7 +621,7 @@ describe('§3 the Schedule Assignment screens', () => {
    * they share the courtesy too — a picker that offers a different list at each door is how an
    * administrator learns to trust one screen and distrust the other.
    */
-  it('(19) BOTH doors pass the canonical dated pool into the same shared shift picker', async () => {
+  it('(19) the retained shift-assignment door uses the canonical dated pool; Personnel keeps Schedule Group only', async () => {
     const { a, group, allowed } = await scenario();
     const emp = await makeEmp('Ann');
     await assignDefaultShift(a, { employmentId: emp, shiftId: allowed.id });
@@ -629,7 +629,12 @@ describe('§3 the Schedule Assignment screens', () => {
     const card = read('app/admin/personnel/[employmentId]/page.tsx');
     const detail = read('app/admin/attendance/schedule-assignment/[employmentId]/page.tsx');
     const poolProjection = 'allowedPool={groupPool?{baseShiftIds:groupPool.memberships.map(m=>m.shiftId),versions:groupPool.versions.map(v=>({effectiveFrom:v.effectiveFrom,allowedShiftIds:v.allowedShiftIds}))}:undefined}';
-    for (const source of [card, detail]) {
+    // 7e4a9dd6 removes Personnel's obsolete Shift Arrangement editor. Preserve the canonical
+    // Schedule Assignment picker and group writer rather than requiring that duplicate to return.
+    expect(card).not.toContain('<EmployeeShiftFields');
+    expect(card).toContain('id="section-schedule-group"');
+    expect(card).toContain('action={setEmploymentScheduleGroupAction}');
+    for (const source of [detail]) {
       const start = source.indexOf('<EmployeeShiftFields');
       const end = source.indexOf('/>', start);
       expect(start, 'the shared picker is present').toBeGreaterThanOrEqual(0);
@@ -639,9 +644,7 @@ describe('§3 the Schedule Assignment screens', () => {
       expect(picker, 'both doors pass memberships and dated versions, not legacy shift.rule_id').toContain(poolProjection);
       expect(picker, 'the effective date selects the applicable pool').toMatch(/defaultEffectiveFrom=\{(?:typedEffectiveFrom \?\? )?today\}/);
     }
-    expect(card).toContain('getScheduleRotation(s,scheduleGroupCurrentId)');
     expect(detail).toContain('getScheduleRotation(s,groupId)');
-    expect(card).toContain('defaultShiftId={emp.defaultShiftId}');
     expect(detail).toContain('defaultShiftId={typedShiftId ?? row.shiftId}');
     const picker = read('components/employee-shift-fields.tsx');
     expect(picker).toContain('rotationVersionOn(allowedPool.versions,effectiveFrom)?.allowedShiftIds??allowedPool.baseShiftIds');

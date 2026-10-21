@@ -15,7 +15,7 @@
  * this catches rendering and interaction logic — not the sticky columns or the weekend tint.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
 import { RosterGrid, type GridEmployee, type ShiftLite } from '../components/roster-grid';
@@ -153,7 +153,8 @@ describe('monthly roster grid (23390097)', () => {
     expect(screen.queryByLabelText('Select all rows')).toBeNull();
     expect(screen.queryByRole('columnheader', { name: 'Edit' })).toBeNull();
     expect(screen.getByText('A supervisor views the roster; an HR Administrator changes it.')).toBeInTheDocument();
-    // The legend survives as text — the codes still have to be readable — but not as buttons.
+    // The compact legend remains searchable information, with no assignment buttons for supervisors.
+    fireEvent.click(screen.getByRole('button', { name: 'Legend' }));
     expect(screen.getByText('WFO-HQ-FWH')).toBeInTheDocument();
     expect(screen.queryAllByRole('button', { name: /MB28/ })).toHaveLength(0);
   });

@@ -44,6 +44,7 @@ export function AttentionOnArrival() {
 
     const run = () => {
       const hash = window.location.hash.replace(/^#/, '');
+      if(['profileChanges','profile-changes','approvals-profileChanges','approvals-profile-changes'].includes(hash)){window.location.replace('/admin/personnel/profile-changes');return;}
       const parsed = parseApprovalAttentionHash(hash);
       if (!parsed) return;
       const attempt = (retriesLeft: number) => {

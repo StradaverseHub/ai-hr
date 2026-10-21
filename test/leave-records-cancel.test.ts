@@ -163,7 +163,22 @@ describe('§2 canAdminCancelLeave mirrors adminCancelLeave’s gates', () => {
     expect(src).toContain('export async function adminCancelLeave');
     // The closed-payroll gate is a DB read and deliberately NOT mirrored in the pure helper: the
     // dialog surfaces that refusal as an error banner rather than hiding the button.
-    expect(src).toContain('cancelDatePeriodClosed');
+    const start = src.indexOf('export async function adminCancelLeave(');
+    const end = src.indexOf('await applyLeavePayrollEffectsTx(tx, payrollHits', start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    expect(src.slice(start, end)).toContain("previousStatus === 'approved'");
+    expect(src.slice(start, end)).toContain('await lockPayrollForLeaveCancellationTx(tx, req.id, req.startDate, [])');
+    const adapterStart = src.indexOf('async function lockPayrollForLeaveCancellationTx(');
+    const adapterEnd = src.indexOf('// ═', adapterStart);
+    expect(adapterStart).toBeGreaterThan(-1);
+    expect(adapterEnd).toBeGreaterThan(adapterStart);
+    const adapter = src.slice(adapterStart, adapterEnd);
+    expect(adapter).toContain('await lockPayrollForLeaveChangeTx(tx, {');
+    expect(adapter).toContain("action: 'cancellation'");
+    expect(adapter).toContain('error instanceof LeavePayrollClosedError');
+    expect(adapter).toContain('throw new LeaveCancellationPeriodClosedError(date)');
+    expect(read('core/payroll-leave.ts')).toContain("(p.action === 'cancellation' || p.action === 'paid_setting') && hits.some(hit => hit.status === 'closed')");
     expect(recordsPage).toContain('canAdminCancelLeave(r, session.personId)');
   });
 });

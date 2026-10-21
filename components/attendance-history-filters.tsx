@@ -1,13 +1,28 @@
-'use client';
-import { useState, type ReactNode } from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
+"use client";
+import { useId, useState, type ReactNode } from 'react';
+import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Button } from './ui';
-/** Same collapsible left column as Individual Attendance, with a drawer on small screens. */
-export function AttendanceHistoryFilters({panel,children,defaultOpen}:{panel:ReactNode;children:ReactNode;defaultOpen:boolean}){
-  const t=useTranslations('attendanceHistory'),[open,setOpen]=useState(false),[expanded,setExpanded]=useState(defaultOpen);
-  function toggle(){setExpanded(!expanded);document.cookie=`attendance-history-panel=${expanded?'0':'1'}; path=/; max-age=31536000; samesite=lax`;}
-  return <div className="space-y-4"><div className="hidden justify-end lg:flex"><Button type="button" variant="outline" aria-expanded={expanded} onClick={toggle}>{t(expanded?'hideFilters':'showFilters')}</Button></div>
-    <div className="lg:hidden"><Dialog.Root open={open} onOpenChange={setOpen}><Dialog.Trigger asChild><Button type="button" variant="outline">{t('showFilters')}</Button></Dialog.Trigger><Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-50 bg-black/50"/><Dialog.Content aria-describedby={undefined} className="fixed inset-y-0 left-0 z-50 w-[min(90vw,24rem)] overflow-y-auto border-r border-border bg-popover p-4 text-popover-foreground shadow-xl"><div className="mb-4 flex items-center justify-between gap-3"><Dialog.Title className="font-semibold">{t('showFilters')}</Dialog.Title><Dialog.Close asChild><Button type="button" variant="outline">{t('close')}</Button></Dialog.Close></div>{panel}</Dialog.Content></Dialog.Portal></Dialog.Root></div>
-    <div className={expanded?'grid gap-5 lg:grid-cols-[18rem_minmax(0,1fr)]':'min-w-0'}>{expanded&&<aside className="hidden lg:block">{panel}</aside>}<div className="min-w-0">{children}</div></div></div>;
+
+/** Employee selection stays visible; one mounted form retains every filter when collapsed. */
+export function AttendanceHistoryFilters({ panel, selection, children, defaultOpen }: {
+  panel: ReactNode; selection?: ReactNode; children: ReactNode; defaultOpen: boolean;
+}) {
+  const t = useTranslations('attendanceHistory'), id = useId(), [expanded, setExpanded] = useState(defaultOpen);
+  function toggle() {
+    setExpanded(!expanded);
+    document.cookie = `attendance-history-panel=${expanded ? '0' : '1'}; path=/; max-age=31536000; samesite=lax`;
+  }
+  return <div className="space-y-5">
+    <form method="get" className="space-y-4">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-0 flex-1 basis-64">{selection}</div>
+        <Button type="button" variant="secondary" className="min-h-11" aria-expanded={expanded} aria-controls={id} onClick={toggle}>{t(expanded ? 'hideFilters' : 'showFilters')}</Button>
+        <Button type="submit" className="min-h-11">{t('filter')}</Button>
+        <Link className="inline-flex min-h-11 items-center px-3 text-sm text-primary underline" href="/attendance/application-history">{t('clear')}</Link>
+      </div>
+      <div id={id} hidden={!expanded}>{panel}</div>
+    </form>
+    <div className="min-w-0">{children}</div>
+  </div>;
 }

@@ -16,11 +16,15 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
+import { listLeaveRequests, listLeaveRequestsPage, leaveRequestsFor, employeeCancelOffers } from '../core/read';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import {
+  adminCancelLeave,
   decideLeave,
   InsufficientLeaveBalanceError,
   LeaveDurationNotAllowedError,
   requestLeave,
+  requestLeaveCancellation,
   resolveEmergencyCascade,
   resolveEmergencyIllnessCascade,
   UnpaidConsentRequiredError,
@@ -28,6 +32,7 @@ import {
 import {
   adminCtx,
   closeAll,
+  createAppUser,
   latestEventPayload,
   ledgerBalance,
   migrateTestDb,
@@ -132,6 +137,55 @@ beforeEach(async () => {
 });
 afterAll(async () => {
   await closeAll();
+});
+
+describe('recorded Emergency Leave provenance', () => {
+  it('keeps genuine EL partial cancellation blocked after HR cancels its unpaid sibling', async () => {
+    await grantAnnual('2.00');
+    await owner.db.update(schema.leaveType).set({employeeCancelApproved:true}).where(eq(schema.leaveType.id,annualId));
+    const [subject] = await owner.db.select({personId:schema.employment.personId}).from(schema.employment).where(eq(schema.employment.id,employmentId));
+    const self = {tenantId:b.tenantId,userId:await createAppUser(b.tenantId,subject.personId,'employee'),personId:subject.personId,roles:['employee'],entitlements:adminCtx(b).entitlements};
+    let start = new Date(Date.parse(`${todayInKualaLumpur()}T00:00:00Z`) + 35 * 86400000).toISOString().slice(0, 10);
+    while (new Date(`${start}T00:00:00Z`).getUTCDay() !== 1) start = new Date(Date.parse(`${start}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+    const end = new Date(Date.parse(`${start}T00:00:00Z`) + 2 * 86400000).toISOString().slice(0, 10);
+    const result = await requestLeave(adminCtx(b), {employmentId,leaveTypeId:emergencyId,startDate:start,endDate:end,unpaidConsent:true});
+    const annual=result.children.find(child=>child.code==='ANNUAL')!,unpaid=result.children.find(child=>child.code==='UNPAID')!;
+    expect(annual.days).toBe(2);expect(unpaid.days).toBe(1);
+    await decideLeave(adminCtx(b),{leaveRequestId:annual.id,decision:'approved'});
+    await adminCancelLeave(adminCtx(b),{leaveRequestId:unpaid.id,reason:'Fictional EL sibling cancellation'});
+    // Existing EL policy must not become ordinary split eligibility merely because a sibling is cancelled.
+    await expect(requestLeaveCancellation(self,{leaveRequestId:annual.id,cancelDates:[start],today:todayInKualaLumpur()})).rejects.toMatchObject({refusal:'grouped'});
+    const rows=await listLeaveRequests(self,[b.companyId]);
+    expect(rows.find(row=>row.id===annual.id)?.isEmergencyGroup).toBe(true);
+    expect((await employeeCancelOffers(self,rows,todayInKualaLumpur())).get(annual.id)).toBeNull();
+  });
+
+  it('retains true EL labels on every read when an administrator cancels one child', async () => {
+    await grantAnnual('1.00');
+    let start = new Date(Date.parse(`${todayInKualaLumpur()}T00:00:00Z`) + 35 * 86400000).toISOString().slice(0, 10);
+    while (new Date(`${start}T00:00:00Z`).getUTCDay() !== 1) start = new Date(Date.parse(`${start}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+    const end = new Date(Date.parse(`${start}T00:00:00Z`) + 2 * 86400000).toISOString().slice(0, 10);
+    const result = await requestLeave(adminCtx(b), { employmentId, leaveTypeId: emergencyId, startDate: start, endDate: end, unpaidConsent: true });
+    expect(result.children).toHaveLength(2);
+    expect(await latestEventPayload(b.tenantId, result.parentGroupId!, 'leave-request.emergency.submitted')).not.toBeNull();
+    const annual = result.children.find(child => child.code === 'ANNUAL')!;
+    await adminCancelLeave(adminCtx(b), { leaveRequestId: annual.id, reason: 'Fictional provenance review' });
+    const flat = await listLeaveRequests(adminCtx(b), [b.companyId]);
+    const page = await listLeaveRequestsPage(adminCtx(b), { employmentIds: [employmentId], limit: 20, offset: 0 });
+    const personal = await leaveRequestsFor(adminCtx(b), employmentId);
+    for (const rows of [flat, page.rows, personal]) {
+      const children = rows.filter(row => row.parentGroupId === result.parentGroupId);
+      expect(children).toHaveLength(2);
+      expect(children.some(row => row.status === 'cancelled')).toBe(true);
+      for (const child of children) expect(child.isEmergencyGroup).toBe(true);
+    }
+    // A grouped historical row without a recorded EL origin must not acquire that purpose by inference.
+    const unknownDate=new Date(Date.parse(`${start}T00:00:00Z`)+7*86400000).toISOString().slice(0,10);
+    const [legacy]=await owner.db.insert(schema.leaveRequest).values({tenantId:b.tenantId,employmentId,
+      leaveTypeId:annualId,startDate:unknownDate,endDate:unknownDate,days:'1.00',durationType:'full_day',
+      status:'approved',parentGroupId:randomUUID()}).returning({id:schema.leaveRequest.id});
+    expect((await leaveRequestsFor(adminCtx(b), employmentId)).find(row => row.id === legacy.id)?.isEmergencyGroup).toBe(false);
+  });
 });
 
 describe('Emergency Leave — pure resolver', () => {

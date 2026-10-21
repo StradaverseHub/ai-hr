@@ -1,3 +1,4 @@
+/** Ops/Strata supersedes historical audience-position pins below; route, permission and source-inventory safeguards remain. */
 /**
  * Item 639bf4a5 — the work-site register's HOME, its LISTING and its dedicated screens.
  *
@@ -107,6 +108,8 @@ import {
 import { CLOCKING_LIST, CLOCKING_NEW_PAGE, LOCATIONS_LIST, clockingEditPage } from '../app/admin/work-locations/clocking/form-fields';
 import { LOCATION_NEW_PAGE, locationEditPage, locationViewPage } from '../app/admin/work-locations/location-fields';
 
+import { navigationPlacement, navigationRouteOwner } from '../lib/navigation-workspaces';
+
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
@@ -138,11 +141,14 @@ const countQuoted = (haystack: string, href: string) => haystack.split(`'${href}
  * test/attendance-pack.test.ts and test/sidebar-attendance-group.test.ts; this section keeps only the
  * claims unique to THIS file's subject — the OLD address's own fate.
  */
-describe('r428 (83c0d3c8 contest) (a) — Work Locations is gone from the rail; its old address is a guarded stub the Locations row owns', () => {
-  it('no row anywhere names the retired function, under either address', () => {
+describe('Ops/Strata — Work Locations returns once under Attendance Configuration; redirects and role guards remain intact', () => {
+  it('restores only the canonical destination and keeps the obsolete address out of the rail', () => {
     // `countQuoted` would also match the SAME quoted HREF inside `ownedSubpaths: […]` on the row above —
     // correct, since that is not a row of its own — so the row-specific shape `href: '…'` is counted.
-    expect((SIDEBAR + PACK).split(`href: '${HREF}'`).length - 1, `${HREF} must have no menu row anywhere`).toBe(0);
+    expect([...(SIDEBAR+PACK).matchAll(/\{\s*href:\s*'([^']+)'/g)].filter(match=>match[1]===HREF), 'exactly one restored canonical destination').toHaveLength(1);
+    expect(navigationPlacement(HREF)).toEqual({area:'ops',module:'attendance',section:'config'});
+    const restored=SIDEBAR.split('\n').find(line=>/href:\s*'\/admin\/work-locations'/.test(line));
+    expect(restored).toMatch(/adminOnly:\s*true/);
     expect(countQuoted(SIDEBAR + PACK, OLD_HREF), `${OLD_HREF} must have no menu row anywhere`).toBe(0);
     expect(SIDEBAR, 'and not under the r336 label either').not.toContain("labelKey: 'physicalWorkLocation'");
     expect(PACK, 'nor the retired label key').not.toContain("labelKey: 'workLocations'");
@@ -151,7 +157,7 @@ describe('r428 (83c0d3c8 contest) (a) — Work Locations is gone from the rail; 
     expect(countQuoted(SIDEBAR, '/admin/organization'), 'Organization keeps its own row').toBe(1);
   });
 
-  it('the Settings row owns the Locations screens and the retired address for highlighting, and a bookmark through the stub still lights it', () => {
+  it('the direct restored destination wins its own path while Settings retains the clocking screens', () => {
     // r431 (bdfe4968) — "Locations" is a card on the Attendance Settings page, no longer a row: the row that
     // stays lit on it (and on the retired address, which r428 handed to it) is the Settings row.
     const node = attendancePack.navNodes!.find((n) => n.labelKey === 'attendanceSettings')!;
@@ -163,8 +169,13 @@ describe('r428 (83c0d3c8 contest) (a) — Work Locations is gone from the rail; 
     expect(row, 'the Settings row is a child of the Attendance settings node').toBeTruthy();
     expect(row!.ownedSubpaths, 'and it owns the retired address').toContain(HREF);
     expect(row!.ownedSubpaths, 'and the clocking list').toContain(CLOCKING_LIST);
-    for (const sub of [HREF, `${HREF}/new`, `${HREF}/abc`, `${HREF}/abc/edit`, CLOCKING_LIST, `${CLOCKING_LIST}/x`]) {
-      expect(isNavRowActive(sub, '', row!), `${sub} keeps "Settings" lit via ownedSubpaths`).toBe(true);
+    const direct={href:HREF};
+    const destinations=[row!,direct];
+    for (const sub of [HREF, `${HREF}/new`, `${HREF}/abc`, `${HREF}/abc/edit`]) {
+      expect(navigationRouteOwner(sub,'',destinations)?.destination.href, `${sub}: an exact/direct path wins the equivalent legacy owned prefix`).toBe(HREF);
+    }
+    for (const sub of [CLOCKING_LIST, `${CLOCKING_LIST}/x`]) {
+      expect(navigationRouteOwner(sub,'',destinations)?.destination.href, `${sub}: specific clocking ownership survives`).toBe('/admin/attendance/settings');
     }
     // …and the Organization row does not light for it — ownership is the Settings row's alone.
     expect(isNavRowActive(HREF, '', { href: '/admin/organization' }), 'Organization does not light').toBe(false);
@@ -970,19 +981,20 @@ describe('639bf4a5 — the label is "Locations", in all six locales', () => {
     }
   });
 
-  it('the three retired nav keys are gone from all six, and nothing resolves any of them', () => {
+  it('the two retired names stay absent while the restored Work Locations destination remains admin-only', () => {
     for (const loc of LOCALES) {
       expect(catalog(loc).nav.clockingLocation, `${loc}: dead nav.clockingLocation (r336)`).toBeUndefined();
       expect(catalog(loc).nav.physicalWorkLocation, `${loc}: dead nav.physicalWorkLocation (r338)`).toBeUndefined();
-      // r428 (83c0d3c8 contest) — AND NOW `nav.workLocations` TOO, same reason: the row it labelled is
-      // retired, its function folded into a section of the row above rather than moved to a new one.
-      expect(catalog(loc).nav.workLocations, `${loc}: dead nav.workLocations (r428)`).toBeUndefined();
+      // Ops/Strata restores a separate configuration entry; the clocking pack still has no duplicate.
+      expect(typeof catalog(loc).nav.workLocations, `${loc}: restored Work Locations caption`).toBe('string');
     }
-    expect(SIDEBAR + PACK, 'no nav row still points at any retired key').not.toMatch(
-      /labelKey: '(clockingLocation|physicalWorkLocation|workLocations)'/,
+    expect(SIDEBAR).toContain("{href:'/admin/work-locations',labelKey:'workLocations',icon:Building2,adminOnly:true}");
+    expect(PACK).not.toContain("labelKey: 'workLocations'");
+    expect(SIDEBAR + PACK, 'no nav row still points at either retired key').not.toMatch(
+      /labelKey: '(clockingLocation|physicalWorkLocation)'/,
     );
     expect(read('lib/permissions.ts'), 'and neither does the access matrix').not.toMatch(
-      /'nav\.(clockingLocation|physicalWorkLocation|workLocations)'/,
+      /'nav\.(clockingLocation|physicalWorkLocation)'/,
     );
   });
 });

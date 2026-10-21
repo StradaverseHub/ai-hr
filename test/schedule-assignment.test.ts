@@ -1018,13 +1018,12 @@ describe('a485afa1 — ONE record, TWO doors: the row opens its own page, throug
     expect(list, 'each row carries the id the detail page returns to').toContain('id={`row-${r.employmentId}`}');
   });
 
-  it('the DETAIL page mounts the personnel card’s own control — the list mounts nothing', () => {
-    // THE PROMISE IN ONE ASSERTION. The reporter was told the two screens "cannot drift apart" because
-    // they are two doors onto one record. A forked field list is exactly how that sentence stops being
-    // true, so the three controls must be declared in ONE file and rendered by BOTH doors.
+  it('the retained DETAIL page mounts the canonical control — the list and Personnel mount no duplicate', () => {
+    // 7e4a9dd6 removes Personnel's obsolete Shift Arrangement editor. The retained Schedule
+    // Assignment door still mounts the single shared control and uses the existing dated writer.
     expect(detail, `${DETAIL} imports the shared control`).toContain("from '@/components/employee-shift-fields'");
     expect(detail, `${DETAIL} renders it`).toContain('<EmployeeShiftFields');
-    expect(card, `${CARD} still renders the same one`).toContain('<EmployeeShiftFields');
+    expect(card, `${CARD} no longer renders the obsolete duplicate`).not.toContain('<EmployeeShiftFields');
     // No second copy of the fields anywhere in this screen's own folder — and the list renders none.
     for (const field of ['shiftType', 'shiftId', 'effectiveFrom']) {
       for (const [name, src] of [
@@ -1056,11 +1055,11 @@ describe('a485afa1 — ONE record, TWO doors: the row opens its own page, throug
     }
   });
 
-  it('Personnel Management KEEPS its copy — the first door is untouched', () => {
-    // "You asked for a second entry point, not for the first one to be taken away." An HR administrator
-    // working through somebody's whole record must still find the schedule where it has always been.
-    expect(card, `${CARD} still has the Shift arrangement card`).toContain('id="section-default-shift"');
-    expect(card, `${CARD} still writes through the dated ladder writer`).toContain('setDefaultShiftAction');
+  it('Personnel keeps Schedule Group while the approved obsolete Shift Arrangement editor stays removed', () => {
+    expect(card).not.toContain('id="section-default-shift"');
+    expect(card).not.toContain('setDefaultShiftAction');
+    expect(card).toContain('id="section-schedule-group"');
+    expect(card).toContain('action={setEmploymentScheduleGroupAction}');
     expect(card).toContain("{ key: 'attendance', label: t('tabs.attendance') }");
   });
 

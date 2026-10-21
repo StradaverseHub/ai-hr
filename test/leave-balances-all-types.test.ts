@@ -159,16 +159,16 @@ describe('994a5287 — a type hidden from self-service still appears on the ADMI
     expect(row!.available).toBe(0);
   });
 
-  it('the two ADMIN surfaces both opt in, so they cannot tell different stories', () => {
-    // Employee Balances and the Personnel profile card are the screens HR uses to answer "what is this
-    // person entitled to". One passing includeHidden and the other not would be worse than neither.
+  it('the retained HR balance inquiry includes hidden types while self-service keeps its visibility rule', () => {
     const rows = readFileSync(new URL('../app/leave/employee-balances/rows.ts', import.meta.url), 'utf8');
     const personnel = readFileSync(
       new URL('../app/admin/personnel/[employmentId]/page.tsx', import.meta.url),
       'utf8',
     );
     expect(rows.includes('includeHidden: true')).toBe(true);
-    expect(personnel.includes('includeHidden: true')).toBe(true);
+    // 39306a9e removes the duplicate Personnel balance card, preserving the Leave inquiry owner.
+    expect(personnel.includes('personnelLeaveBreakdowns')).toBe(false);
+    expect(personnel.includes('leaveBalances(')).toBe(false);
     // …and the self-service page must NOT, or hiding a leave type would stop meaning anything.
     const leavePage = readFileSync(new URL('../app/leave/page.tsx', import.meta.url), 'utf8');
     expect(leavePage.includes('includeHidden')).toBe(false);

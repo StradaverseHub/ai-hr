@@ -41,7 +41,9 @@ const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 const stripComments = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 
-const page = stripComments(read('app/admin/personnel/[employmentId]/page.tsx'));
+const page = stripComments(read('components/leave/entitlement-recalc-history.tsx'));
+const inquiry = stripComments(read('app/leave/employee-balances/page.tsx'));
+const personnel = stripComments(read('app/admin/personnel/[employmentId]/page.tsx'));
 
 const block = (loc: string) =>
   JSON.parse(read(`messages/${loc}.json`)).people.detail.recalcReason as Record<string, string>;
@@ -57,10 +59,15 @@ const EMITTED_TODAY = [
 ] as const;
 
 describe('entitlement recalc reasons — the computed key that painted a key path on screen', () => {
-  it('the page resolves the computed key with t.has, so an unknown reason cannot render as a path', () => {
+  it('the retained Leave history resolves the computed key with t.has, so an unknown reason cannot render as a path', () => {
     expect(page).toMatch(/t\.has\(`recalcReason\.\$\{reason\}`\)/);
     // The broken shape must not come back: comparing the translated value against the RELATIVE key.
     expect(page).not.toMatch(/label === key/);
+    expect(page).toContain("getTranslations('people.detail')");
+    expect(inquiry).toContain('selected ? listEntitlementRecalcAudit(session, selected.employmentId) : Promise.resolve([])');
+    expect(inquiry).toContain('selected ? <EntitlementRecalcHistory rows={recalcAudit} /> : null');
+    expect(personnel).not.toContain('listEntitlementRecalcAudit');
+    expect(personnel).not.toContain('recalcHistoryCard');
   });
 
   it('every reason the current code emits has a label in ALL six catalogues', () => {

@@ -30,6 +30,15 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { employeeStatutoryMy, employment, person } from '../db/schema';
 
+export class CardIdStateError extends Error {
+  constructor(readonly code: 'scope' | 'stale' | 'conflict') {
+    super({ scope: 'This employee is unavailable or outside your card assignment access.',
+      stale: 'The card assignment changed. Review the latest value and try again.',
+      conflict: 'This card conflicts with another employee identifier. Review the card value.' }[code]);
+    this.name = 'CardIdStateError';
+  }
+}
+
 /** Thrown when a card id is already in use — as a card, OR as another employee's code or IC. */
 export class CardIdInUseError extends Error {
   constructor(
@@ -77,8 +86,18 @@ export function resolveCardMatch(row: { cardId: string | null; employeeCode: str
  * the clocking importer builds its lookup (core/attendance-clocking-import.ts): a value that collides there
  * makes the punch ambiguous at best, and this is the only place that can see it coming.
  */
+/** New-hire admission has a company scope but no existing employment to exclude. */
+export async function assertCardIdFreeForCompany(tx: Tx, companyId: string, cardId: string): Promise<void> {
+  const wanted=normalizeCardId(cardId);
+  const [availability]=await tx.execute(sql`select app.card_identifier_free_for_company(${companyId}::uuid,${wanted}) as ok`) as unknown as {ok:boolean}[];
+  if(!availability?.ok)throw new CardIdStateError('conflict');
+}
+
 export async function assertCardIdFree(tx: Tx, employmentId: string, cardId: string): Promise<void> {
   const wanted = normalizeCardId(cardId);
+  // The database probe sees conflicts hidden by company RLS, and reveals only a boolean.
+  // Visible-holder wording below remains available to existing authorized single-record editors.
+  const [availability] = await tx.execute(sql`select app.card_identifier_free(${employmentId}::uuid,${wanted}) as ok`) as unknown as { ok: boolean }[];
   const digits = wanted.replace(/\D/g, '');
 
   // ⚠️ THIS QUERY MIRRORS THE IMPORTER'S OWN KEYS, and has to: card, employee code and IC digits, the
@@ -115,7 +134,10 @@ export async function assertCardIdFree(tx: Tx, employmentId: string, cardId: str
     .limit(1);
 
   const clash = clashes[0];
-  if (!clash) return;
+  if (!clash) {
+    if (!availability?.ok) throw new CardIdStateError('conflict');
+    return;
+  }
 
   const kind: 'card' | 'employee_code' | 'ic' =
     clash.card && clash.card.toLowerCase() === wanted.toLowerCase()
@@ -132,18 +154,23 @@ export async function assertCardIdFree(tx: Tx, employmentId: string, cardId: str
  */
 export async function setEmploymentCardId(
   ctx: SessionContext,
-  p: { employmentId: string; cardId: string | null },
+  p: { employmentId: string; cardId: string | null;
+    expected?: { cardId: string | null; companyId: string; employeeCode: string };
+    importSource?: { fileName: string; fileHash: string; row: number } },
   outerTx?:Tx,
 ): Promise<void> {
   const run=async(tx:Tx)=>{
+    // Shared with database triggers on all card/code/IC writers. Lock BEFORE observing the row.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':card-identifiers'},0))`);
     const next = p.cardId == null ? null : normalizeCardId(p.cardId);
-    if (next !== null && next !== '') await assertCardIdFree(tx, p.employmentId, next);
-
     const [before] = await tx
-      .select({ cardId: employment.cardId })
+      .select({ cardId: employment.cardId, companyId: employment.companyId, employeeCode: employment.employeeCode })
       .from(employment)
-      .where(eq(employment.id, p.employmentId))
-      .limit(1);
+      .where(and(eq(employment.id, p.employmentId), sql`app.is_admin_for(${employment.companyId})`))
+      .limit(1).for('update');
+    if (!before) throw new CardIdStateError('scope');
+    if (p.expected && (before.cardId !== p.expected.cardId || before.companyId !== p.expected.companyId || before.employeeCode !== p.expected.employeeCode)) throw new CardIdStateError('stale');
+    if (next !== null && next !== '') await assertCardIdFree(tx, p.employmentId, next);
 
     await tx
       .update(employment)
@@ -156,7 +183,8 @@ export async function setEmploymentCardId(
       aggregateId: p.employmentId,
       eventType: next ? 'attendance.card.assigned' : 'attendance.card.cleared',
       actor: actorOf(ctx),
-      payload: { from: before?.cardId ?? null, to: next === '' ? null : next },
+      payload: { from: before.cardId, to: next === '' ? null : next,
+        ...(p.importSource ? { importSource: p.importSource } : {}) },
     });
   };
   await (outerTx?run(outerTx):withTenant(ctx,run));

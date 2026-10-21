@@ -182,9 +182,8 @@ describe('r423 — the routes exist, guard themselves, and sit on the locations 
     expect(stub, 'and lands on the Locations screen').toContain('CLOCKING_LIST');
     for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
       const m = JSON.parse(read(`messages/${loc}.json`)) as { nav: Record<string, string> };
-      // r428 — DELETED, not merely unrendered: a live-looking nav key nothing renders is how a retired
-      // row comes back (the r336/r338 clockingLocation/physicalWorkLocation precedent, in reverse).
-      expect(m.nav.workLocations, `${loc}: dead nav.workLocations`).toBeUndefined();
+      // The independent Ops/Strata configuration link is restored; it is not a second pack row.
+      expect(typeof m.nav.workLocations, `${loc}: restored Work Locations caption`).toBe('string');
     }
   });
 });

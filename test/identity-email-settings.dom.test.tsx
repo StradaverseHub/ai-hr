@@ -29,22 +29,21 @@ beforeEach(()=>{
  m.read.mockResolvedValue({active:{...defaultEmailConfig,host:'live.smtp.example.test',from:'live@example.test',hasPassword:true},draft:null,revision:'a'.repeat(64),testRecipient:'owner@example.test'});
 });
 describe('SMTP settings discovery and temporary demo testing',()=>{
- it('lets a demo administrator find Email delivery under System Settings without a paid module',()=>{
-  sidebar(true);fireEvent.click(screen.getByRole('button',{name:messages.nav.systemSettings}));
-  expect(within(screen.getByRole('navigation',{name:messages.nav.systemSettings})).getByRole('link',{name:messages.nav.identityEmail})).toHaveAttribute('href','/admin/settings/email');
+ it('lets a demo administrator find Email delivery under System Configuration without a paid module',()=>{
+  sidebar(true);fireEvent.click(screen.getByRole('button',{name:messages.nav.systemConfiguration}));
+  expect(within(screen.getByRole('navigation',{name:messages.nav.systemConfiguration})).getByRole('link',{name:messages.nav.identityEmail})).toHaveAttribute('href','/admin/settings/email');
  });
  it('keeps the enrolled installation operator navigation limited to Email delivery',()=>{
-  sidebar(false,true);fireEvent.click(screen.getByRole('button',{name:messages.nav.systemSettings}));
-  expect(within(screen.getByRole('navigation',{name:messages.nav.systemSettings})).getAllByRole('link').map(a=>a.getAttribute('href'))).toEqual(['/admin/settings/email']);
+  sidebar(false,true);fireEvent.click(screen.getByRole('button',{name:messages.nav.systemConfiguration}));
+  expect(within(screen.getByRole('navigation',{name:messages.nav.systemConfiguration})).getAllByRole('link').map(a=>a.getAttribute('href'))).toEqual(['/admin/settings/email']);
  });
  it('does not offer system setup to an ordinary employee',()=>{
-  sidebar(false);expect(screen.queryByRole('button',{name:messages.nav.systemSettings})).toBeNull();expect(screen.queryByRole('link',{name:messages.nav.identityEmail})).toBeNull();
+  sidebar(false);expect(screen.queryByRole('button',{name:messages.nav.systemConfiguration})).toBeNull();expect(screen.queryByRole('link',{name:messages.nav.identityEmail})).toBeNull();
  });
  it('does not advertise SMTP preview to a partner who only has the broader administration rail',()=>{
-  sidebar(true,false,false);const admin=screen.getByRole('button',{name:messages.nav.admin});
-  if(admin.getAttribute('aria-expanded')==='false')fireEvent.click(admin);
-  fireEvent.click(screen.getByRole('button',{name:messages.nav.systemSettings}));
-  expect(within(screen.getByRole('navigation',{name:messages.nav.systemSettings})).queryByRole('link',{name:messages.nav.identityEmail})).toBeNull();
+  sidebar(true,false,false);
+  fireEvent.click(screen.getByRole('button',{name:messages.nav.systemConfiguration}));
+  expect(within(screen.getByRole('navigation',{name:messages.nav.systemConfiguration})).queryByRole('link',{name:messages.nav.identityEmail})).toBeNull();
  });
  it.each(['hr_admin','super_admin'])('allows %s to edit temporary connection fields without reading or saving live settings',async role=>{
   m.session.mockResolvedValue({s:{userId:'admin',roles:[role]}});

@@ -7,7 +7,7 @@
  *   2. PER-DATE: a per-date-approved leave with a rejected day splits over its APPROVED dates; the rejected day
  *      never becomes approved leave, the give-back equals what was charged, and each date's approval record
  *      moves to the row that holds the date (approvedLeaveDates reads exactly the dates still on leave).
- *   3. CLOSED MONTH AT DECISION: the last approval of a chain is refused when the month closed after the request.
+ *   3. CLOSED MONTH AT DECISION: financially affecting unpaid changes refuse; paid/no-effect changes preserve saved pay.
  *   4. ONE PENDING PER LEAVE: a second request is refused while one waits; a second pending one that already
  *      exists (from before this rule) is refused at approval instead of "approved" with 0 days back.
  *   5. RLS: a cancellation's copied levels are readable exactly by who can read the cancellation — a delegate of
@@ -74,12 +74,12 @@ const ctxOf = async (emp: { personId: string }, role: 'employee' | 'manager' | '
 });
 const setRule = (p: { employeeCancelApproved?: boolean; cancelNoticeDays?: number; cancelAutoApprove?: boolean; cancelNotify?: boolean }) =>
   updateLeaveType(adminCtx(b), { id: b.annualLeaveTypeId, name: 'Annual Leave', ...p });
-const balance = () => ledgerBalance(subject.employmentId, b.annualLeaveTypeId);
+const balance = (leaveTypeId = b.annualLeaveTypeId) => ledgerBalance(subject.employmentId, leaveTypeId);
 
-async function approvedWeekTwoLevels() {
+async function approvedWeekTwoLevels(leaveTypeId = b.annualLeaveTypeId) {
   const res = await requestLeave(subjectCtx, {
     employmentId: subject.employmentId,
-    leaveTypeId: b.annualLeaveTypeId,
+    leaveTypeId,
     startDate: MON,
     endDate: FRI,
     today: TODAY,
@@ -231,26 +231,41 @@ describe('2 · PER-DATE — a rejected day never becomes approved leave', () => 
   });
 });
 
-describe('3 · CLOSED PAYROLL MONTH — asked again when the cancellation is decided', () => {
-  it('the last level is refused when the month closed after the request, and nothing is given back', async () => {
-    const id = await approvedWeekTwoLevels();
-    const c = await requestLeaveCancellation(subjectCtx, { leaveRequestId: id, cancelDates: [WED], today: TODAY });
-    await decideLeaveCancellation(mgrCtx, { cancellationRequestId: c.cancellationRequestId, decision: 'approved' });
-    const period = WED.slice(0, 7);
-    const [pp] = await owner.db.insert(schema.payPeriod).values({ tenantId: b.tenantId, companyId: b.companyId, period, status: 'closed' }).returning({ id: schema.payPeriod.id });
-    const [batch] = await owner.db
-      .insert(schema.payrollBatch)
-      .values({ tenantId: b.tenantId, companyId: b.companyId, payPeriodId: pp.id, payPeriod: period, batchDate: `${period}-28`, status: 'closed' })
-      .returning({ id: schema.payrollBatch.id });
-    await owner.db.insert(schema.payslip).values({
-      tenantId: b.tenantId, batchId: batch.id, employmentId: subject.employmentId, basicSalary: '5000.00', grossPay: '5000.00',
-      statutory: {}, totalDeductions: '500.00', netPay: '4500.00', employerCost: '5600.00',
-    });
-    const before = await balance();
-    await expect(decideLeaveCancellation(hrCtx, { cancellationRequestId: c.cancellationRequestId, decision: 'approved' })).rejects.toBeInstanceOf(LeaveCancellationPeriodClosedError);
-    expect(await balance()).toBeCloseTo(before, 2);
-    const [cr] = await owner.db.select({ status: schema.leaveCancellationRequest.status }).from(schema.leaveCancellationRequest).where(eq(schema.leaveCancellationRequest.id, c.cancellationRequestId));
-    expect(cr.status).toBe('pending');
+describe('3 · CLOSED PAYROLL MONTH — checked again at the final cancellation decision', () => {
+  it.each([true,false])('keeps saved pay unchanged and refuses only financially affecting cancellation (paid=%s)', async paid => {
+    const leaveTypeId=paid?b.annualLeaveTypeId:(await owner.db.insert(schema.leaveType).values({tenantId:b.tenantId,
+      code:'UNPAID',name:'Unpaid leave',paid:false,counting:'working_days',allowNegativeBalance:true,
+      maxNegativeBalance:'30',employeeCancelApproved:true}).returning({id:schema.leaveType.id}))[0].id;
+    await updateLeaveType(adminCtx(b),{id:leaveTypeId,name:paid?'Annual Leave':'Unpaid leave',employeeCancelApproved:true,cancelAutoApprove:false});
+    const id=await approvedWeekTwoLevels(leaveTypeId);
+    const [original]=await owner.db.select().from(schema.leaveRequest).where(eq(schema.leaveRequest.id,id));
+    expect(original.status).toBe('approved');expect(Number(original.days)).toBe(5);
+    const c=await requestLeaveCancellation(subjectCtx,{leaveRequestId:id,cancelDates:[WED],today:TODAY});
+    expect((await decideLeaveCancellation(mgrCtx,{cancellationRequestId:c.cancellationRequestId,decision:'approved'})).status).toBe('pending');
+    const period=WED.slice(0,7);
+    const [pp]=await owner.db.insert(schema.payPeriod).values({tenantId:b.tenantId,companyId:b.companyId,period,status:'closed'}).returning({id:schema.payPeriod.id});
+    const [batch]=await owner.db.insert(schema.payrollBatch).values({tenantId:b.tenantId,companyId:b.companyId,
+      payPeriodId:pp.id,payPeriod:period,batchDate:`${period}-28`,status:'closed'}).returning({id:schema.payrollBatch.id});
+    await owner.db.insert(schema.payslip).values({tenantId:b.tenantId,batchId:batch.id,employmentId:subject.employmentId,
+      basicSalary:'5000.00',grossPay:'5000.00',statutory:{},totalDeductions:'500.00',netPay:'4500.00',employerCost:'5600.00'});
+    const savedBatch=()=>owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,batch.id)).orderBy(schema.payrollBatch.id);
+    const savedPay=()=>owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batch.id)).orderBy(schema.payslip.id);
+    const ledger=()=>owner.db.select().from(schema.leaveLedger).where(eq(schema.leaveLedger.employmentId,subject.employmentId)).orderBy(schema.leaveLedger.id);
+    const cancellation=()=>owner.db.select().from(schema.leaveCancellationRequest).where(eq(schema.leaveCancellationRequest.id,c.cancellationRequestId)).orderBy(schema.leaveCancellationRequest.id);
+    const beforeBatch=await savedBatch(),beforePay=await savedPay(),beforeLedger=await ledger(),beforeRows=await leaveRows(),beforeCancellation=await cancellation(),beforeBalance=await balance(leaveTypeId);
+    if(paid){
+      expect(await decideLeaveCancellation(hrCtx,{cancellationRequestId:c.cancellationRequestId,decision:'approved'})).toMatchObject({status:'approved',restoredDays:1,remainingDays:4});
+      expect(await balance(leaveTypeId)).toBeCloseTo(beforeBalance+1,2);
+      expect((await leaveRows()).filter(row=>row.status==='approved').reduce((sum,row)=>sum+Number(row.days),0)).toBe(4);
+      expect((await cancellation())[0].status).toBe('approved');
+    }else{
+      await expect(decideLeaveCancellation(hrCtx,{cancellationRequestId:c.cancellationRequestId,decision:'approved'})).rejects.toBeInstanceOf(LeaveCancellationPeriodClosedError);
+      expect(await balance(leaveTypeId)).toBeCloseTo(beforeBalance,2);
+      expect(await ledger()).toEqual(beforeLedger);expect(await leaveRows()).toEqual(beforeRows);
+      expect(await cancellation()).toEqual(beforeCancellation);
+    }
+    expect(await savedBatch()).toEqual(beforeBatch);expect(await savedPay()).toEqual(beforePay);
+    expect(await owner.db.select().from(schema.payrollLeaveException).where(eq(schema.payrollLeaveException.batchId,batch.id)).orderBy(schema.payrollLeaveException.id)).toEqual([]);
   });
 });
 

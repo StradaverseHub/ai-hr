@@ -97,7 +97,7 @@ import {
   leaveConfigScreenTitle,
 } from '../components/leave-config-map';
 import { isNavRowActive, isParentActive } from '../components/nav-flyout';
-import { leavePack } from '../packs/leave';
+import { leavePack, LEAVE_ADMIN_DESTINATIONS } from '../packs/leave';
 
 const root = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
@@ -262,7 +262,7 @@ describe('7f69bd71 — the map: two tabs per row, the record ids excluded by typ
   });
 
   it('the Leave Adjustments row owns the sub-screen; Entitlements owns no record path', () => {
-    const rows = leavePack.navNodes!.find((n) => n.group === 'admin')!.children;
+    const rows = LEAVE_ADMIN_DESTINATIONS.children;
     expect(rows.find((r) => r.labelKey === 'leaveAdjustments')!.ownedSubpaths).toEqual(['/admin/leave-config/import', ROUTE]);
     expect(rows.find((r) => r.labelKey === 'leaveEntitlements')!.ownedSubpaths).toEqual(['/admin/leave-config/entitlement-tables']);
     // Not a row: the sub-screen is reached from a link at the foot of Adjust balances, never from the menu.
@@ -659,7 +659,7 @@ describe('7f69bd71 — the four stubs land on the right sub-tab with ?capture= k
 });
 
 describe('7f69bd71 — the sidebar predicate lights Leave Adjustments on the sub-screen, and on both stubs on the way through', () => {
-  const rows = leavePack.navNodes!.find((n) => n.group === 'admin')!.children;
+  const rows = LEAVE_ADMIN_DESTINATIONS.children;
   const adjustments = rows.find((r) => r.labelKey === 'leaveAdjustments')!;
   const entitlements = rows.find((r) => r.labelKey === 'leaveEntitlements')!;
 

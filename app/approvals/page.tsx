@@ -1,13 +1,13 @@
-import {profileProposalReviewLines} from '@/lib/profile-proposal-display';
 import {LeaveCreditClaimReviewNotice} from '@/components/leave/leave-credit-claim-review';
 import {leaveCreditClaimReviewBlocks} from '@/lib/leave-credit-claim-review';
+import { hasPendingAttendanceParticipantAssignment } from '@/packs/attendance/service';
 import { pendingRewardReviews } from '@/packs/rewards/service';
 import { formatMinutesToHM } from '@/lib/overtime-duration';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
-import { isAdmin, isGroupAdmin } from '@/lib/authz';
+import { isAdmin } from '@/lib/authz';
 import { listLeaveRequests, listPendingLeaveCancellations, leaveRequestDateBreakdown } from '@/core/read';
 // 1e9145d4 adds dayTypesForPairs to this EXISTING direct import. app/approvals/page.tsx is already an
 // audited kernel-contract entry on the attendance pack's drift allowlist (the approvals inbox is
@@ -15,14 +15,11 @@ import { listLeaveRequests, listPendingLeaveCancellations, leaveRequestDateBreak
 // allowlist and copies no new pattern.
 import { AttendanceWorkflowProgress } from '@/components/attendance-workflow-progress';
 import { dayTypesForPairs, listAttendanceCorrections, type PlanOtDayType } from '@/core/attendance';
-import { listProfileChangeRequests } from '@/core/profile';
 // r261 stage three — the tenant's answer to "who approves a profile change?" (ess.profile_change_approver),
 // read the quiet page way and resolved by the one shared interpretation.
-import { getSettingOrFallback, isModuleEnabledOrFalse } from '@/core/entitlements';
-import { resolveRequestApprover } from '@/lib/profile-requestable-fields';
+import { isModuleEnabledOrFalse } from '@/core/entitlements';
 // r260 stage two (9583deac) — the shared approve/reject control whose Reject cannot be submitted
 // without a reason, and the declaration that names each proposed field the way both screens name it.
-import { ProfileChangeDecide } from '@/components/profile-change-decide';
 import {
   PROFILE_REQUEST_OPTION_NAMESPACE,
   formatProposedValue,
@@ -42,7 +39,6 @@ import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, inp
 import {
   approveClaimAction,
   approveCorrectionAction,
-  approveProfileChangeAction,
   decideLeaveCancellationAction,
   decideResignationAction,
   submitManagerEvaluationAction,
@@ -107,6 +103,7 @@ function DecideButtons({
   nav,
   rejectReasonLabel,
   workflowStage,
+  workflowParticipant,
   remarksLabel,
 }: {
   action: (fd: FormData) => void | Promise<void>;
@@ -116,6 +113,7 @@ function DecideButtons({
   nav: NavParams;
   rejectReasonLabel?: string;
   workflowStage?: number;
+  workflowParticipant?: string | null;
   remarksLabel?: string;
 }) {
   if (disabled) {
@@ -126,6 +124,7 @@ function DecideButtons({
       <form action={action}>
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="workflowStage" value={workflowStage ?? ''} />
+        <input type="hidden" name="workflowParticipant" value={workflowParticipant ?? ''} />
         <input type="hidden" name="decision" value="approved" />
         <NavFields nav={nav} />
         {remarksLabel && <label className="block text-xs">{remarksLabel}<textarea name="remarks" maxLength={1000} className="block min-h-20 w-full rounded border border-border bg-background p-2" /></label>}
@@ -136,6 +135,7 @@ function DecideButtons({
       {rejectReasonLabel ? <details><summary className="cursor-pointer text-sm">{labels.reject}</summary>      <form action={action}>
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="workflowStage" value={workflowStage ?? ''} />
+        <input type="hidden" name="workflowParticipant" value={workflowParticipant ?? ''} />
         <input type="hidden" name="decision" value="rejected" />
         <NavFields nav={nav} />
         {rejectReasonLabel && <label className="block text-xs">{rejectReasonLabel}<textarea name="rejectReason" required maxLength={1000} className="block min-h-20 w-full rounded border border-border bg-background p-2" /></label>}
@@ -145,6 +145,7 @@ function DecideButtons({
       </form></details> :       <form action={action}>
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="workflowStage" value={workflowStage ?? ''} />
+        <input type="hidden" name="workflowParticipant" value={workflowParticipant ?? ''} />
         <input type="hidden" name="decision" value="rejected" />
         <NavFields nav={nav} />
         <Button type="submit" size="sm" variant="outline">
@@ -168,44 +169,18 @@ export default async function ApprovalsPage({
   const admin = isAdmin(s);
   const manager = (s.roles ?? []).includes('manager');
   const rewardReviews = isModuleEnabledOrFalse(s, 'rewards') ? await pendingRewardReviews(s, scopeIds) : [];
-  if (!admin && !manager && !rewardReviews.length) redirect('/');
-  /**
-   * r261 (board item 9583deac, stage three) — WHO carries the profile-change queue is now the tenant's
-   * own setting, and this is the ONE place the page asks.
-   *
-   * `admin` (the default and stage two's behaviour) keeps the queue exactly where it was: every HR
-   * administrator in scope. `group_admin` NARROWS it to a group administrator, so a company-scoped HR
-   * admin is no longer shown a queue they would be refused on — the "never tease an approver with items
-   * they cannot act on" rule this page already applies to delegation scope.
-   *
-   * ⚠️ IT CAN ONLY EVER NARROW. There is no configuration in which this hands the queue to somebody who
-   * did not already have it, because approving WRITES the master record and `person_rls` admits only an
-   * administrator. Every row still comes from `listProfileChangeRequests` under
-   * `profile_change_request_rls` (`app.can_see_employment`, 0029, untouched), and core/profile.ts remains
-   * the backstop for a raced decide.
-   *
-   * ⚠️ THE QUIET READER, AND THE NARROW FALLBACK (r261 fix pass). This first shipped as
-   * `profileChangeApprover(s)` — the throwing service form — and 500'd this whole inbox, leave and
-   * claims included, whenever the entitlement snapshot could not be resolved. A page read is a display
-   * decision (core/entitlements.ts), so it degrades; `core/profile.ts` keeps the loud form on the
-   * decision itself, which is where the authority is actually enforced.
-   *
-   * The degraded answer is `group_admin`, the NARROWER of the two: during an incident the queue is shown
-   * only to a group administrator — who may approve under either configuration — rather than teasing a
-   * company-scoped admin with items a service they cannot read the setting for might refuse.
-   */
-  const profileChangeApproverSetting = resolveRequestApprover(
-    getSettingOrFallback<string>(s, 'ess.profile_change_approver', 'group_admin'),
-  );
-  const profileChangeDecider =
-    admin && (profileChangeApproverSetting === 'admin' || isGroupAdmin(s));
+  const assignedAttendance = isModuleEnabledOrFalse(s, 'attendance') && await hasPendingAttendanceParticipantAssignment(s);
+  if (!admin && !manager && !rewardReviews.length && !assignedAttendance) redirect('/');
+  const attendanceOnly = !admin && !manager && !rewardReviews.length && assignedAttendance;
   const { error, sort: sortParam, category: categoryParam } = await searchParams;
+  if(admin&&categoryParam==='profileChanges')redirect('/admin/personnel/profile-changes');
   // Approvals sort (09cda965): display-only ordering, read from ?sort= so it survives reload + bulk
   // selection. Default (latest-first) matches every loader's existing desc(createdAt).
   const sort = parseApprovalSort(sortParam);
   // Category panel (2dec6406): the selected approval area. Unknown values AND admin-only categories for a
   // non-admin viewer coerce to 'all' (the full inbox — today's page, unchanged).
-  const category = parseApprovalCategory(categoryParam, { admin });
+  const parsedCategory = parseApprovalCategory(categoryParam, { admin });
+  const category = attendanceOnly && !['all','attendance','overtime'].includes(parsedCategory) ? 'all' : parsedCategory;
   const t = await getTranslations('approvals');
   const tCreditReview=await getTranslations('replacementRequest.formulaReview');
   const tClock = await getTranslations('attendance.clockData');
@@ -214,14 +189,13 @@ export default async function ApprovalsPage({
   // r260 — Personnel Management's own field labels, so a proposed profile change is named in the
   // approver's queue exactly as the employee reads it on their record and HR reads it on the card.
   const tPeople = await getTranslations('people.detail');
-  const profileLabels=await getTranslations();
   // r260 — the option WORDS behind a proposed select (gender, marital status, PCB category) live in the
   // namespace the employee picked them in. Resolved through the SHARED renderer so this queue and My
   // Profile cannot end up describing one request two ways.
   const tMeOptions = await getTranslations(PROFILE_REQUEST_OPTION_NAMESPACE);
   // fef49b9a — the tenant's own name for unpaid leave, resolved once for the whole page rather than per
   // row. Undefined when the tenant has no UNPAID type; leaveDisplaySplit then uses the translated label.
-  const unpaidTypeName = (await listLeaveTypes(s)).find((lt) => lt.code === 'UNPAID')?.name;
+  const unpaidTypeName = attendanceOnly ? undefined : (await listLeaveTypes(s)).find((lt) => lt.code === 'UNPAID')?.name;
   const decideLabels = {
     yourRequest: t('yourRequest'),
     approve: t('approve'),
@@ -248,14 +222,14 @@ export default async function ApprovalsPage({
   // b833a077 (r362) — `travel` stood between `corrections` and `profileChanges` in this destructuring and
   // `listTravelRequests` in the Promise.all below. My Travel was removed completely: no form can create a
   // travel request any more, so there is no queue to decide. The travel_request rows are kept for audit.
-  const [leave, leaveCancellations, replacementRequests, corrections, profileChanges, claims, resignations] = await Promise.all([
+  const [leave, leaveCancellations, replacementRequests, loadedCorrections, claims, resignations] = await Promise.all([
     // 8cb7b089 pre-fix: cap the 200-row limit over PENDING rows only. Without the status filter, a pending
     // request older than the 200 most recent rows of ANY status silently never reached this inbox — quietly
     // incomplete before, actively misleading once calendar pills deep-link straight to this section.
-    listLeaveRequests(s, scopeIds, 200, { status: 'pending' }),
-    listPendingLeaveCancellations(s, scopeIds),
+    attendanceOnly ? Promise.resolve([]) : listLeaveRequests(s, scopeIds, 200, { status: 'pending' }),
+    attendanceOnly ? Promise.resolve([]) : listPendingLeaveCancellations(s, scopeIds),
     // 5ff7daff: same reporting-line scope as every other queue on this page; RLS trims it further.
-    listPendingReplacementLeaveRequests(s, { companyIds: scopeIds }),
+    attendanceOnly ? Promise.resolve([]) : listPendingReplacementLeaveRequests(s, { companyIds: scopeIds }),
     // r292 — THE INBOX IS A CORE SCREEN AND MUST SURVIVE A TENANT THAT DECLINED THE OPTIONAL PACKS.
     // `listAttendanceCorrections` and `listPendingClaims` are now service-gated (core/module-gate.ts), so
     // calling them unconditionally would throw ModuleNotEnabledError here and take /approvals down for a
@@ -264,10 +238,10 @@ export default async function ApprovalsPage({
     // used rather than the throwing one for the reason its header gives — a resolver outage must degrade
     // one queue, not the whole inbox.
     attendanceOn ? listAttendanceCorrections(s, { companyIds: scopeIds, status: 'pending' }) : Promise.resolve([]),
-    profileChangeDecider ? listProfileChangeRequests(s, { companyIds: scopeIds, status: 'pending' }) : Promise.resolve([]),
-    claimsOn ? listPendingClaims(s) : Promise.resolve([]),
+    claimsOn && !attendanceOnly ? listPendingClaims(s) : Promise.resolve([]),
     admin ? listResignationRequests(s, { status: 'pending' }) : Promise.resolve([]),
   ]);
+  const corrections = attendanceOnly ? loadedCorrections.filter(row => row.workflow?.routingVersion === 3 && row.canDecide && row.personId !== s.personId) : loadedCorrections;
   // 1e9145d4 — the kind of day each OVERTIME row is asking for, so a rest-day or public-holiday plan is
   // impossible to miss while saying no is still cheap. Resolved through scheduleFor (the same resolver the
   // clocking path uses), and ONLY for overtime rows: a clock-time correction is about punches, not about
@@ -280,6 +254,7 @@ export default async function ApprovalsPage({
         s,
         corrections
           .filter(isOvertimeCorrection)
+          .filter(c => c.workflow?.routingVersion !== 3 || admin || manager)
           .map((c) => ({ employmentId: c.employmentId, date: c.attendanceDate })),
       )
     : new Map<string, PlanOtDayType>();
@@ -292,7 +267,7 @@ export default async function ApprovalsPage({
   const tReview = await getTranslations('review');
   const me = s.personId ? await myEmployment(s) : null;
   const [managerReviews, hrReviews] = await Promise.all([
-    me?.employmentId ? pendingManagerReviewsFor(s, me.employmentId) : Promise.resolve([]),
+    !attendanceOnly && me?.employmentId ? pendingManagerReviewsFor(s, me.employmentId) : Promise.resolve([]),
     admin ? listReviews(s, { status: 'pending_hr' }) : Promise.resolve([]),
   ]);
 
@@ -350,7 +325,6 @@ export default async function ApprovalsPage({
     attendance: corrections.filter((c) => !isOvertimeCorrection(c)).length,
     overtime: corrections.filter(isOvertimeCorrection).length,
     claim: claims.length,
-    profileChanges: profileChanges.length,
     resignations: resignations.length,
     managerReviews: managerReviews.length,
     hrReviews: hrReviews.length,
@@ -361,13 +335,13 @@ export default async function ApprovalsPage({
   const allPending = Object.values(pendingCounts).reduce((a, b) => a + b, 0);
 
   // Which sections render under the selected category; the corrections section additionally row-filters.
-  const visible = (section: ApprovalSection) => sectionVisible(category, section);
+  const visible = (section: ApprovalSection) => (!attendanceOnly || section === 'corrections') && sectionVisible(category, section);
   const rowFilter = correctionsRowFilter(category);
 
   // The three DECIDED buckets for the summary cards (approved / rejected / cancelled). Pending never comes
   // from SQL — it is the sum of the visible sections' in-memory counts below. null → the card shows a dash
   // (categories without that state, and both review queues which decide confirm/extend instead).
-  const decided = await decidedStatusCounts(s, scopeIds, category);
+  const decided = attendanceOnly ? { approved: null, rejected: null, cancelled: null } : await decidedStatusCounts(s, scopeIds, category);
 
   // Approvals sort (09cda965): order EACH per-type section's already-loaded rows in the render layer
   // (no loader ORDER BY rewrite). Sort is stable + keyed on request id, so counts/permissions/visible
@@ -378,7 +352,7 @@ export default async function ApprovalsPage({
   const sortedReplacement = sortApprovalRows(replacementRequests, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt.toISOString() });
   const sortedClaims = sortApprovalRows(claims, sort, { id: (r) => r.id, name: (r) => r.claimantName, createdAt: (r) => r.createdAt });
   const sortedCorrections = sortApprovalRows(corrections, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
-  const sortedProfileChanges = sortApprovalRows(profileChanges, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
+
   const sortedResignations = sortApprovalRows(resignations, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
   const sortedManagerReviews = sortApprovalRows(managerReviews, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
   const sortedHrReviews = sortApprovalRows(hrReviews, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
@@ -396,7 +370,6 @@ export default async function ApprovalsPage({
     (visible('replacementLeave') ? replacementRequests.length : 0) +
     (visible('claims') ? claims.length : 0) +
     (visible('corrections') ? visibleCorrections.length : 0) +
-    (visible('profileChanges') ? profileChanges.length : 0) +
     (visible('resignations') ? resignations.length : 0) +
     (visible('managerReviews') ? managerReviews.length : 0) +
     (visible('hrReviews') ? hrReviews.length : 0) +
@@ -432,7 +405,7 @@ export default async function ApprovalsPage({
           .map((c) => ({
             id: c.id,
             type: 'attendance' as const,
-            ...(c.workflow ? {expectedStageIndex:c.workflow.currentStage} : {}),
+            ...(c.workflow ? {expectedStageIndex:c.workflow.currentStage, ...(c.workflow.currentParticipantSlot ? { expectedParticipantSlot: c.workflow.currentParticipantSlot } : {})} : {}),
             category: (isOvertimeCorrection(c) ? 'overtime' : 'attendance') as BulkCategory,
           }))
       : []),
@@ -453,7 +426,7 @@ export default async function ApprovalsPage({
       {/* 2dec6406: internal approval-task panel — INSIDE the page, between the main sidebar and the content.
           Sticky + independently scrollable on lg; below lg the same markup stacks above the content. */}
       <aside className="w-full shrink-0 lg:sticky lg:top-0 lg:max-h-screen lg:w-60 lg:overflow-y-auto">
-        <CategoryPanel category={category} sort={sortParam} counts={pendingCounts} allCount={allPending} admin={admin} />
+        <CategoryPanel category={category} sort={sortParam} counts={pendingCounts} allCount={allPending} admin={admin} attendanceOnly={attendanceOnly} />
       </aside>
     <div className="min-w-0 flex-1 space-y-6">
       {/* 8cb7b089: on arrival at /approvals#approvals-leave(-cancellation) — the calendar pill deep-links —
@@ -555,7 +528,7 @@ export default async function ApprovalsPage({
                     <LeaveTypeCell
                       typeCode={r.typeCode}
                       typeName={r.leaveType}
-                      groupLabel={r.parentGroupId ? tLeave('emergency.groupLabel') : null}
+                      groupLabel={r.isEmergencyGroup ? tLeave('emergency.groupLabel') : null}
                     >
                       {/* Phase-B #13 (ADR-0062): the EA s.37 paid-allowance decision for a maternity request.
                           FALSE ⇒ the allowance was withheld → the 98-day leave is granted UNPAID (with a reason);
@@ -1064,15 +1037,20 @@ export default async function ApprovalsPage({
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{c.reason ?? '—'}{c.workflow && <AttendanceWorkflowProgress workflow={c.workflow} status={c.status} />}</td>
+                  <td className="px-4 py-2.5 text-muted-foreground">
+                    {c.reason ?? '—'}
+                    {c.hasAttachment && <div className="mt-1"><LeaveAttachmentCell href={`/attendance/requests/attachment/${c.id}?inline=1`} label={t('attachment')} /></div>}
+                    {c.workflow && <AttendanceWorkflowProgress workflow={c.workflow} status={c.status} />}
+                  </td>
                   <td className="px-4 py-2.5">
                     <DecideButtons
                       workflowStage={c.workflow?.currentStage}
+                      workflowParticipant={c.workflow?.currentParticipantSlot}
                       action={approveCorrectionAction}
                       rejectReasonLabel={t('rejectReasonPlaceholder')}
                       id={c.id}
                       disabled={mine(c.personId) || c.canDecide === false}
-                      remarksLabel={c.workflow?.routingVersion === 2 ? tHistory('remarks') : undefined}
+                      remarksLabel={(c.workflow?.routingVersion === 2 || c.workflow?.routingVersion === 3) ? tHistory('remarks') : undefined}
                       labels={c.canDecide === false && !mine(c.personId) ? {...decideLabels, yourRequest: tHistory('pendingStage')} : decideLabels}
                       nav={nav}
                     />
@@ -1086,54 +1064,6 @@ export default async function ApprovalsPage({
       </Card>
       )}
 
-
-      {profileChangeDecider && visible('profileChanges') && (
-        <Card className="overflow-hidden">
-          <SectionHeader title={t('profileChanges')} count={profileChanges.length} />
-          {profileChanges.length === 0 ? (
-            <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingChanges')}</p>
-          ) : (
-            <ul className="divide-y divide-border">
-              {sortedProfileChanges.map((r) => (
-                <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium">
-                      {/* Employee ID left-of-name (feedback 38668d9b) */}
-                      {r.employeeCode && <EmployeeCode code={r.employeeCode} className="mr-1.5" />}
-                      {r.employee}
-                    </div>
-                    {/* r260 stage two — each proposed field named by the SAME people.detail catalogue
-                        key the employee reads it under on their own record and HR reads it under on the
-                        Personnel card (lib/profile-requestable-fields.ts). It used to print the raw
-                        jsonb key: "bankAccountNo → 5566778899". With the widened field set that would
-                        have been twenty-four raw keys an approver had to translate in their head, and
-                        every select among them would have read as its stored code. */}
-                    {/* ONE FIELD PER LINE, for the same reason the Personnel approval queue is: the
-                        option labels an employee picks from contain ' · ' themselves ("2 · Married,
-                        spouse not working"), so joining the pairs with it made one field read as two.
-                        (The sibling screen is deliberately named in words here: test/personnel-links.test.ts
-                        scans this file's RAW SOURCE for the retired admin path, and a source-scanning
-                        guard does not strip comments — AGENTS 27.) */}
-                    <div className="text-xs text-muted-foreground">
-                      {profileProposalReviewLines(r.proposed,r.review,(key,fallback)=>profileLabels.has(key)?profileLabels(key):fallback,{mask:false}).map(line=>(
-                        <div key={line.key}>{line.recordLabel&&<p className="font-medium">{line.recordLabel}</p>}<p>{line.label}</p><p>{profileLabels('essProfile.currentValue',{value:line.currentValue})}</p><p>{profileLabels('essProfile.proposedValue',{value:line.value})}</p></div>
-                      ))}
-                    </div>
-                  </div>
-                  <ProfileChangeDecide
-                    action={approveProfileChangeAction}
-                    requestId={r.id}
-                    idFieldName="id"
-                    disabled={mine(r.personId)}
-                    labels={{ ...decideLabels, reasonPlaceholder: t('rejectReasonPlaceholder') }}
-                    hidden={<NavFields nav={nav} />}
-                  />
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      )}
 
       {admin && visible('resignations') && (
         <Card className="overflow-hidden">

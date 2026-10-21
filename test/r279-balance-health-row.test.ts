@@ -65,6 +65,7 @@ vi.mock('../lib/scope', async (importOriginal) => ({
 }));
 vi.mock('next/cache', () => ({ revalidatePath: () => {} }));
 vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn() }),
   redirect: (url: string) => {
     throw new Error(`NEXT_REDIRECT ${url}`);
   },
@@ -104,7 +105,7 @@ import LeaveTypesPage from '../app/admin/leave-config/types/page';
 import { LEAVE_CONFIG_MAP, leaveConfigPageHeader } from '../components/leave-config-map';
 import { isNavRowActive, isParentActive } from '../components/nav-flyout';
 import { REGISTERED_ROUTES, SCREENS } from '../lib/permissions';
-import { leavePack } from '../packs/leave';
+import { leavePack, LEAVE_SETTINGS_DESTINATIONS, LEAVE_SETTINGS_HREF } from '../packs/leave';
 import '../packs/register-all';
 import { listPacks, type NavChildDescriptor } from '../packs/registry';
 
@@ -137,7 +138,7 @@ const TYPES_PAGE = 'app/admin/leave-config/types/page.tsx';
 const BLOCK = 'app/admin/leave/entitlements/templates/entitlement-tables-block.tsx';
 
 const NODE = leavePack.navNodes!.find((n) => n.group === 'admin')!;
-const HEALTH_ROW = NODE.children.find((c) => c.href === HEALTH_HREF)!;
+const HEALTH_ROW = LEAVE_SETTINGS_DESTINATIONS.find((c) => c.href === HEALTH_HREF)!;
 /**
  * The strings only the CARD renders, and the list is SHORTER than the card's own string set on purpose.
  *
@@ -156,26 +157,21 @@ const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').repl
 // ────────────────────────────────── §A · SOURCE SHAPE ──────────────────────────────────
 
 describe('r279 §A — the row, the page, and the mount that moved', () => {
-  it('the row is the SECOND child, directly under Entitlements, and opens the new address', () => {
+  it('the Settings card follows Entitlements and keeps the existing destination', () => {
     expect(HEALTH_ROW, 'the Balance Health row is gone').toBeTruthy();
     expect(HEALTH_ROW.labelKey).toBe('leaveBalanceHealth');
     // "Directly under Entitlements" asserted as the PAIR, so the row cannot drift down the list while
     // still technically being second to something.
-    expect(NODE.children.map((c) => c.labelKey).slice(0, 2)).toEqual(['leaveEntitlements', 'leaveBalanceHealth']);
-    expect(NODE.children[0].href).toBe(TYPES_HREF);
-    // …and the row the reporter asked to sit after Company rules is still there (r269's promise).
-    // r281 — asserted as that PAIR rather than as `at(-1)`: Special Setting was appended below the
-    // inquiry row at the reporter's request, and "after Company rules" is what r269 actually promised.
-    expect(NODE.children.map((c) => c.labelKey).slice(-3)).toEqual([
-      'leaveCompanyRules',
-      'employeeLeaveInquiry',
-      'leaveSpecialSetting',
-    ]);
+    expect(LEAVE_SETTINGS_DESTINATIONS.map((c) => c.labelKey).slice(0, 2)).toEqual(['leaveEntitlements', 'leaveBalanceHealth']);
+    expect(LEAVE_SETTINGS_DESTINATIONS[0].href).toBe(TYPES_HREF);
+    expect(NODE.children.map(c => c.labelKey)).toEqual(['leaveAdjustments','leaveDataImport','leaveCredit','employeeLeaveInquiry','leaveSettings']);
+
   });
 
   it('it is a real guarded page on the EXISTING leaveConfig column — no new permission is invented', () => {
     expect(exists(HEALTH_PAGE)).toBe(true);
-    expect(read(HEALTH_PAGE)).toContain('requireAdmin()');
+    expect(read(HEALTH_PAGE)).toContain('await scopedAdmin()');
+    expect(read('lib/scope.ts')).toContain('await requireAdmin()');
     // Both halves or neither: test/function-access.test.ts fails on a guarded page with no column AND on
     // a registered route with no page.
     expect(REGISTERED_ROUTES.has(HEALTH_HREF)).toBe(true);
@@ -207,11 +203,11 @@ describe('r279 §A — the row, the page, and the mount that moved', () => {
     expect(group.items).toEqual([{ id: 'balanceHealth', href: HEALTH_HREF }]);
     expect(LEAVE_CONFIG_MAP.map((g) => g.navKey as string).indexOf('leaveBalanceHealth')).toBe(1);
     // A group of one draws NO tab row, so nothing new appears on screen (components/leave-config-map.tsx).
-    expect(read('components/leave-config-map.tsx')).toContain('if (group.items.length < 2) return null;');
+    expect(read('components/leave-config-map.tsx')).toContain('if (group.items.length < 2) return back;');
     //
     // Nothing owns its path: `ownedSubpaths` is highlighting only, and the Entitlements row claiming this
     // address would light the row above while the reader is on this one.
-    for (const c of NODE.children) expect(c.ownedSubpaths ?? [], `${c.labelKey} must not own it`).not.toContain(HEALTH_HREF);
+    for (const c of NODE.children.filter(row => row.href !== LEAVE_SETTINGS_HREF)) expect(c.ownedSubpaths ?? [], `${c.labelKey} must not own it`).not.toContain(HEALTH_HREF);
     expect(HEALTH_ROW.ownedSubpaths ?? [], 'it has no tabs and no sub-screen of its own').toEqual([]);
     // Highlighting is not a gate: the Administration group is gated wholesale and the page guards itself.
     expect(HEALTH_ROW.adminOnly).toBeUndefined();
@@ -328,17 +324,17 @@ describe('r279 §B — the sidebar lights the new row on its own screen, and lig
   it('the row set the predicate runs over is real, and contains the rows this block names', () => {
     // Non-vacuity for the table below: an empty or leave-only row set would make "exactly one" trivial.
     expect(ALL_ROWS.length).toBeGreaterThan(10);
-    for (const key of ['leave:leaveBalanceHealth', 'leave:leaveEntitlements', 'leave:employeeLeaveInquiry'])
+    for (const key of ['leave:leaveSettings', 'leave:employeeLeaveInquiry'])
       expect(ALL_ROWS.map((r) => r.key), key).toContain(key);
   });
 
   const TRUTH: ReadonlyArray<readonly [string, string]> = [
     // pathname                                    the ONE pack row that must light
-    [HEALTH_HREF, 'leave:leaveBalanceHealth'],
-    // …and the tab it left still lights ITS row, including on the tab Entitlements owns. A prefix match
-    // between two `/admin/leave-config/*` siblings is exactly the way this change could light two rows.
-    [TYPES_HREF, 'leave:leaveEntitlements'],
-    ['/admin/leave-config/entitlement-tables', 'leave:leaveEntitlements'],
+    // 010fdbec consolidates these destinations under Settings. They remain independently reachable
+    // cards, while exactly one owning sidebar row lights across the whole registered pack rail.
+    [HEALTH_HREF, 'leave:leaveSettings'],
+    [TYPES_HREF, 'leave:leaveSettings'],
+    ['/admin/leave-config/entitlement-tables', 'leave:leaveSettings'],
   ];
 
   it.each(TRUTH)('on %s exactly one pack nav row lights, and it is %s', (pathname, expected) => {
@@ -350,7 +346,7 @@ describe('r279 §B — the sidebar lights the new row on its own screen, and lig
     const childPaths = NODE.children.flatMap((c) => [c.href, ...(c.ownedSubpaths ?? [])]);
     expect(isParentActive(HEALTH_HREF, childPaths), 'the fly-out must open on its own row').toBe(true);
     const litChildren = NODE.children.filter((c) => isNavRowActive(HEALTH_HREF, '', c));
-    expect(litChildren.map((c) => c.labelKey)).toEqual(['leaveBalanceHealth']);
+    expect(litChildren.map((c) => c.labelKey)).toEqual(['leaveSettings']);
   });
 });
 
@@ -391,7 +387,7 @@ afterAll(async () => {
 
 describe('r279 §C — the table is on the new page, in the real markup', () => {
   it('renders the row\'s heading and the health table itself', async () => {
-    const html = visible(toMarkup(await settle(await BalanceHealthPage())));
+    const html = visible(toMarkup(await settle(await BalanceHealthPage({ searchParams: Promise.resolve({}) }))));
     // The page is really this screen, headed by the menu row that opened it.
     expect(html).toContain(`<h1 class="text-xl font-semibold tracking-tight">${str('en', 'nav.leaveBalanceHealth')}</h1>`);
     // THE TABLE, not merely the words: the three column headers in a <th>, which only the card renders.

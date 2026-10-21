@@ -155,40 +155,14 @@ const INQUIRY_ROW = NODE.children.find((c) => c.labelKey === 'employeeLeaveInqui
 
 describe('5ca446db — six rows in the Leave Config fly-out, the new one last', () => {
   it('the node carries every Leave Config child, in the order the reporter reads, with the inquiry row last', () => {
-    // r279 (3fbf7a02) — UPDATED, NOT LOOSENED. This was "SIX children"; it is seven, because Leave
-    // Balance Health took a row of its own directly under Entitlements (test/r279-balance-health-row
-    // .test.ts owns that decision). This file's property is unchanged and is still asserted exactly: the
-    // INQUIRY row is last, immediately after Company rules, which is where the reporter asked for it. The
-    // list stays an exact set — a deletion, a rename or a re-sort still fails it.
+    // 010fdbec consolidates configuration destinations into Settings. Keep the exact current menu
+    // and the inquiry's distinct owning row, rather than restoring retired sibling menu entries.
     expect(NODE.labelKey).toBe('leaveConfig');
     expect(NODE.group).toBe('admin');
-    // r281 — UPDATED, NOT LOOSENED, twice over. Run Earned Accrual joined directly after Generate
-    // Entitlement (it was a card filed INSIDE that page, beside the one operation it must not be confused
-    // with), and Special Setting joined at the very bottom, below this row, where the reporter drew it.
-    // The list stays an exact set — a deletion, a rename or a re-sort still fails it — and r269's own
-    // promise is restated exactly below: the inquiry row sits immediately after Company rules.
     expect(NODE.children.map((c) => c.labelKey)).toEqual([
-      'leaveEntitlements',
-      'leaveBalanceHealth',
-      'leaveAdjustments',
-      // r378 consolidates the import destinations behind one row; legacy routes remain aliases.
-      'leaveDataImport',
-      'leaveCredit',
-      'leaveGenerate',
-      'leaveEarnedAccrual',
-      'leaveApprovalWorkflow',
-      'leaveCompanyRules',
-      'employeeLeaveInquiry',
-      'leaveSpecialSetting',
+      'leaveAdjustments', 'leaveDataImport', 'leaveCredit', 'employeeLeaveInquiry', 'leaveSettings',
     ]);
-    // "At the bottom, after Company rules" — asserted as the PAIR, so the row cannot drift up the list
-    // while still technically being last of something. That pair is what r269 promised and it is intact;
-    // "last child of the node" never was the promise, and is no longer true of this row.
-    expect(NODE.children.map((c) => c.labelKey).slice(-3)).toEqual([
-      'leaveCompanyRules',
-      'employeeLeaveInquiry',
-      'leaveSpecialSetting',
-    ]);
+
   });
 
   it('the row opens the EXISTING Employee Balances screen — the route is unmoved, not re-created', () => {
@@ -304,7 +278,7 @@ describe('5ca446db — the sidebar lights the new row on both inquiry screens, a
     // one lights" trivially true.
     expect(ALL_ROWS.length).toBeGreaterThan(10);
     // r389 — `leave:leaveCreditHistory` joined the names: the My Leave node's third row, at /leave/credit.
-    for (const key of ['leave:employeeLeaveInquiry', 'leave:teamLeaveTracker', 'leave:leaveOverview', 'leave:leaveHistory', 'leave:leaveCreditHistory', 'leave:leaveDetails', 'leave:leaveEntitlements'])
+    for (const key of ['leave:employeeLeaveInquiry', 'leave:teamLeaveTracker', 'leave:leaveOverview', 'leave:leaveHistory', 'leave:leaveCreditHistory', 'leave:leaveDetails', 'leave:leaveSettings'])
       expect(ALL_ROWS.map((r) => r.key), key).toContain(key);
   });
 
@@ -326,7 +300,7 @@ describe('5ca446db — the sidebar lights the new row on both inquiry screens, a
     ['/leave/details', 'leave:leaveDetails'],
     // …and Entitlements is NOT lit by the new row: the row the reporter opened Leave Config on still wins
     // its own screen.
-    ['/admin/leave-config/types', 'leave:leaveEntitlements'],
+    ['/admin/leave-config/types', 'leave:leaveSettings'],
   ];
 
   it.each(TRUTH)('on %s exactly one pack nav row lights, and it is %s', (pathname, expected) => {

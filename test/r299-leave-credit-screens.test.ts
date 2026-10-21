@@ -21,7 +21,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { closeAll, entitledCtx, migrateTestDb, resetDb, seedBase, setModule, type Base } from './harness';
 import { REGISTERED_ROUTES, SCREENS } from '../lib/permissions';
 import { MODULE_CODES_WITH_NAV, visibleModuleCodes } from '../lib/nav-entitlements';
-import { leavePack } from '../packs/leave';
+import { leavePack, LEAVE_SETTINGS_DESTINATIONS } from '../packs/leave';
 import { attendancePack } from '../packs/attendance';
 import { LEAVE_CONFIG_MAP } from '../components/leave-config-map';
 import en from '../messages/en.json';
@@ -53,7 +53,8 @@ describe('Leave Config › Leave Credit — the row, the tabs, the registry', ()
     // Spelled as ORDER rather than as an index, so the next row inserted in this family does not have to
     // rewrite the claim — but a Leave Credit moved out of the family, or above Leave Adjustments, fails.
     const start = labels.indexOf('leaveAdjustments');
-    const end = labels.indexOf('leaveGenerate');
+    // 010fdbec moves Generate into Settings; the inquiry now bounds the adjustment family.
+    const end = labels.indexOf('employeeLeaveInquiry');
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
     const family = labels.slice(start, end);
@@ -65,6 +66,8 @@ describe('Leave Config › Leave Credit — the row, the tabs, the registry', ()
     // and still below Leave Adjustments. Adjacency was never its property; membership in order was.
     // r378 consolidates the import family into one row, retaining Leave Credit's order and gate.
     expect(family).toEqual(['leaveAdjustments', 'leaveDataImport', 'leaveCredit']);
+    expect(labels).toEqual(['leaveAdjustments', 'leaveDataImport', 'leaveCredit', 'employeeLeaveInquiry', 'leaveSettings']);
+    expect(LEAVE_SETTINGS_DESTINATIONS.find(row=>row.labelKey==='leaveGenerate')?.href).toBe('/admin/leave-config/generate');
     const row = node.children.find((c) => c.labelKey === 'leaveCredit')!;
     expect(row.href).toBe('/admin/leave-config/leave-credit');
     expect(row.ownedSubpaths).toEqual(['/admin/leave-config/leave-credit/rules']);

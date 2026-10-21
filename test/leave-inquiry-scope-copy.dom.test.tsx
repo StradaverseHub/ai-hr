@@ -1,4 +1,4 @@
-import type {ReactNode} from 'react';
+import {cloneElement,isValidElement,type ReactElement,type ReactNode} from 'react';
 import {expect,it,vi} from 'vitest';
 import {render,screen} from '@testing-library/react';
 import {createTranslator,NextIntlClientProvider} from 'next-intl';
@@ -10,6 +10,7 @@ import th from '../messages/th.json';
 import viMessages from '../messages/vi.json';
 
 const catalog=vi.hoisted(()=>({locale:'en',messages:{} as typeof en}));
+const historyReads=vi.hoisted(()=>vi.fn(async()=>[]));
 const people=vi.hoisted(()=>[
   {employmentId:'11111111-1111-4111-8111-111111111111',name:'Inquiry Alpha',employeeCode:'INQ-01',company:'Inquiry Company',companyId:'company',department:'People',departmentId:'department',businessUnit:null,businessUnitId:null,terminatedOn:null},
   {employmentId:'22222222-2222-4222-8222-222222222222',name:'Inquiry Beta',employeeCode:'INQ-02',company:'Inquiry Company',companyId:'company',department:'People',departmentId:'department',businessUnit:null,businessUnitId:null,terminatedOn:null},
@@ -28,6 +29,7 @@ vi.mock('../packs/leave/service',()=>({
   leaveInquiryContext:async(_session:unknown,_scope:unknown,query:{emp?:string})=>({employees:people,selected:people.find(person=>person.employmentId===query.emp),companies:[{id:'company',name:'Inquiry Company'}]}),
   leaveInquiryRecordsPage:async()=>({rows:[],total:0}),
   replacementRequestAvailability:async()=>({allowed:false}),
+  listEntitlementRecalcAudit:historyReads,
 }));
 vi.mock('../app/leave/employee-balances/inquiry-data',()=>({inquiryBalancePage:async()=>({rows:[],total:0})}));
 // These controls are outside the copy contract. The actual page, header, shell and picker render below.
@@ -41,6 +43,16 @@ vi.mock('../components/leave/admin-cancel-leave-dialog',()=>({AdminCancelLeaveDi
 vi.mock('../app/leave/actions',()=>({adminCancelLeaveAction:vi.fn()}));
 import BalancesPage from '../app/leave/employee-balances/page';
 import RecordsPage from '../app/leave/employee-records/page';
+
+// Resolve async server children before mounting the page in the client-only test renderer.
+async function settle(node:ReactNode):Promise<ReactNode>{
+  if(Array.isArray(node))return Promise.all(node.map(settle));
+  if(!isValidElement(node))return node;
+  const element=node as ReactElement<{children?:ReactNode}>;
+  if(typeof element.type==='function'&&element.type.constructor.name==='AsyncFunction')
+    return settle(await (element.type as (props:unknown)=>Promise<ReactNode>)(element.props));
+  return element.props.children===undefined?element:cloneElement(element,{children:await settle(element.props.children)});
+}
 
 const copy={
   en:{balances:'Leave balances by employee and leave type, as at the date you choose.',hint:'View all employees, or search by name or employee ID to select one.'},
@@ -59,13 +71,24 @@ const emptyBalances={
   vi:'Không có loại phép nào phù hợp với lựa chọn này.',
 };
 
+it('does not read history for an employee query outside the authorized selected context',async()=>{
+  catalog.locale='en';catalog.messages=en;historyReads.mockClear();
+  await BalancesPage({searchParams:Promise.resolve({emp:'33333333-3333-4333-8333-333333333333'})});
+  expect(historyReads).not.toHaveBeenCalled();
+});
+
 for(const [locale,messages] of [['en',en],['ms',ms],['zh',zh],['ta',ta],['th',th],['vi',viMessages]] as const){
   for(const [tab,Page] of [['balances',BalancesPage],['records',RecordsPage]] as const){
     for(const selection of ['all','single'] as const){
       it(`${locale}: ${tab} ${selection} renders scope-accurate guidance with the real employee picker`,async()=>{
         catalog.locale=locale;catalog.messages=messages as typeof en;
+        historyReads.mockClear();
         const params=selection==='single'?{emp:people[0].employmentId}:{};
-        render(<NextIntlClientProvider locale={locale} messages={messages} onError={error=>{throw error;}}>{await Page({searchParams:Promise.resolve(params)})}</NextIntlClientProvider>);
+        render(<NextIntlClientProvider locale={locale} messages={messages} onError={error=>{throw error;}}>{await settle(await Page({searchParams:Promise.resolve(params)}))}</NextIntlClientProvider>);
+        if(tab==='balances'&&selection==='single'){
+          expect(historyReads).toHaveBeenCalledExactlyOnceWith({},people[0].employmentId);
+          expect(screen.getByText(messages.people.detail.recalcHistoryEmpty)).toBeVisible();
+        }else expect(historyReads).not.toHaveBeenCalled();
         expect(screen.getByRole('heading',{level:1,name:messages.leave.inquiry[tab==='balances'?'balancesTitle':'recordsTitle']})).toBeVisible();
         expect(screen.getByText(tab==='balances'?copy[locale].balances:messages.leave.inquiry.recordsDescription)).toBeVisible();
         expect(screen.getByText(copy[locale].hint)).toBeVisible();
@@ -87,7 +110,7 @@ for(const [locale,messages] of [['en',en],['ms',ms],['zh',zh],['ta',ta],['th',th
       it(`${locale}: empty balances use scope-neutral copy for ${selection}, ${search?'unmatched search':'no eligible rows'}`,async()=>{
         catalog.locale=locale;catalog.messages=messages as typeof en;
         const params={...(selection==='single'?{emp:people[0].employmentId}:{}),...(search?{q:search}:{})};
-        render(<NextIntlClientProvider locale={locale} messages={messages} onError={error=>{throw error;}}>{await BalancesPage({searchParams:Promise.resolve(params)})}</NextIntlClientProvider>);
+        render(<NextIntlClientProvider locale={locale} messages={messages} onError={error=>{throw error;}}>{await settle(await BalancesPage({searchParams:Promise.resolve(params)}))}</NextIntlClientProvider>);
         expect(screen.getByRole('cell',{name:emptyBalances[locale]})).toBeVisible();
         expect(screen.getByPlaceholderText(messages.leave.inquiry.searchPlaceholder)).toHaveValue(search);
         const all=screen.getByText(messages.employeePanel.allEmployees).closest('button');

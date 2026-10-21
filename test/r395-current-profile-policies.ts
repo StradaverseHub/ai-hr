@@ -1,4 +1,5 @@
-/** Independent exact 0560 Profile scope; held constant during historical 0515 comparisons. */
+/** Independent exact current Profile scope (0560 insert/delete, 0571 routed read/update), held
+ * constant on both sides of historical 0515 comparisons; named routing is not legacy equivalence. */
 import {expect} from 'vitest';
 import {owner} from './harness';
 type Row=Record<string,unknown>;
@@ -10,7 +11,7 @@ const currentProfilePolicies:CurrentProfilePolicy[]=[
   {
     "policy": "profile_change_request_read",
     "cmd": "SELECT",
-    "qual": "tenant_id=app.current_tenant_id() AND EXISTS (SELECT 1 FROM employment e WHERE e.id=profile_change_request.employment_id AND e.person_id=profile_change_request.person_id AND e.tenant_id=profile_change_request.tenant_id AND (app.is_self_person(e.person_id) OR app.can_admin_employment(e.id)))",
+    "qual": "tenant_id=app.current_tenant_id() AND EXISTS (SELECT 1 FROM employment e WHERE e.id=profile_change_request.employment_id AND e.tenant_id=profile_change_request.tenant_id AND e.person_id=profile_change_request.person_id AND (app.is_self_person(e.person_id) OR app.profile_route_reader(e.id,profile_change_request.route_approver_user_id,profile_change_request.route_approver_employment_id,profile_change_request.status::text)))",
     "withCheck": null
   },
   {
@@ -22,8 +23,8 @@ const currentProfilePolicies:CurrentProfilePolicy[]=[
   {
     "policy": "profile_change_request_update",
     "cmd": "UPDATE",
-    "qual": "tenant_id=app.current_tenant_id() AND app.can_admin_employment(employment_id)",
-    "withCheck": "tenant_id=app.current_tenant_id() AND EXISTS (SELECT 1 FROM employment e WHERE e.id=profile_change_request.employment_id AND e.person_id=profile_change_request.person_id AND e.tenant_id=profile_change_request.tenant_id AND app.can_admin_employment(e.id))"
+    "qual": "tenant_id=app.current_tenant_id() AND app.profile_route_reader(employment_id,route_approver_user_id,route_approver_employment_id,status::text)",
+    "withCheck": "tenant_id=app.current_tenant_id() AND app.profile_route_reader(employment_id,route_approver_user_id,route_approver_employment_id,status::text)"
   },
   {
     "policy": "profile_change_request_delete",
@@ -40,7 +41,7 @@ export async function assertCurrentProfilePolicyGraph(){
   const snapshot=await currentProfilePolicySnapshot();
   expect(snapshot.map(r=>r.policyname),'exact current Profile policy set').toEqual(currentProfilePolicies.map(p=>p.policy).sort());
   expect(snapshot.some(r=>r.policyname==='profile_change_request_rls'),'retired Profile ALL policy is absent').toBe(false);
-  const rollback=new Error('0560 Profile policy normalization rollback');
+  const rollback=new Error('Current Profile policy normalization rollback');
   try{
     await owner.client.begin(async tx=>{
       for(const p of currentProfilePolicies){

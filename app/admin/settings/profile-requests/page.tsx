@@ -1,8 +1,16 @@
+import {readProfileRoutingPolicy,profileApproverCandidates} from '@/core/profile-routing';
+import {ProfileRoutingForm} from './routing-form';
+import {listCompanies,listDepartments,listJobGrades,listEmployees} from '@/core/read';
+import {listBusinessUnits,listCostCenters,listPositions} from '@/core/admin';
+import {listAllProfileOptions} from '@/core/profile-options';
+import {buildOrgCriteriaSections} from '@/core/org-criteria-form';
+import {PermissionMatrix} from './permission-matrix';
+import {resolveEssVisibleIds,linkedEssFieldIds} from '@/lib/personnel-ess-visibility';
 import { getTranslations } from 'next-intl/server';
 import { isGroupAdmin, requireAdmin } from '@/lib/authz';
 import {getSetting} from '@/core/entitlements';
 import {essVisibleFields,resolveEssEditableIds,resolveEssPrimaryEditableIds} from '@/lib/personnel-ess-contract';
-import {ESS_PROFILE_TABS} from '@/lib/personnel-ess-model';
+import {ESS_PROFILE_TABS,PERSONNEL_ESS_SECTION_LABEL_KEYS} from '@/lib/personnel-ess-model';
 import {personnelFieldLabel} from '@/lib/personnel-field-label';
 import { pendingProfileChangeCountsByKey } from '@/core/profile';
 import { profileChangeAllowedKeys, profileChangeApprover } from '@/core/tenant-settings';
@@ -12,7 +20,7 @@ import {
   type RequestableField,
 } from '@/lib/profile-requestable-fields';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, pageWideCls } from '@/components/ui';
-import { saveProfileRequestApproverAction, saveProfileRequestFieldsAction } from './actions';
+import { saveProfileRequestApproverAction, saveProfileRequestFieldsAction,saveOwnPhotoSettingAction,saveNamedProfileRoutingAction,previewNamedProfileRoutingAction } from './actions';
 
 /**
  * ── r261 · STAGE THREE OF BOARD ITEM 9583deac: THE TWO SETTINGS ─────────────────────────────────────
@@ -69,7 +77,7 @@ export default async function ProfileRequestSettingsPage({
    * an administrator and never by an employee.
    */
   const raw=getSetting(s,'ess.profile_change_fields');
-  const allowed=resolveEssEditableIds(raw),primaryAllowed=resolveEssPrimaryEditableIds(raw);
+  const allowed=resolveEssEditableIds(raw),primaryAllowed=resolveEssPrimaryEditableIds(raw),visible=resolveEssVisibleIds(raw);
   const legacyAllowed=profileChangeAllowedKeys(s);
   const te=await getTranslations('essProfile');
   const labels=await getTranslations();
@@ -77,6 +85,11 @@ export default async function ProfileRequestSettingsPage({
   const approver = profileChangeApprover(s);
   const pendingByKey = await pendingProfileChangeCountsByKey(s);
   const mayWrite = isGroupAdmin(s);
+  const [companies,departments,grades,positions,costCenters,businessUnits,profileOptions,employees]=await Promise.all([listCompanies(s),listDepartments(s),listJobGrades(s),listPositions(s),listCostCenters(s),listBusinessUnits(s),listAllProfileOptions(s),listEmployees(s)]);
+  const [crit,org,employmentType]=await Promise.all([getTranslations('admin.leave.adjustmentsCriteria'),getTranslations('admin.profileOptions.category'),getTranslations('people.wizard.employmentType')]);
+  const approverIds=new Set(await profileApproverCandidates(s));
+  const sections=buildOrgCriteriaSections({companies,departments,grades,positions,costCenters,businessUnits,profileOptions},{crit,org,employmentType});
+
 
 
   return (
@@ -91,6 +104,11 @@ export default async function ProfileRequestSettingsPage({
       ) : null}
 
       {!mayWrite && <Card className="p-4 text-sm text-muted-foreground">{t('readOnlyNotice')}</Card>}
+
+      <Card className="p-5"><SectionHeader title={te('photoEditSetting')}/><p className="mt-2 text-sm text-muted-foreground">{te('photoEditHelp')}</p><form action={saveOwnPhotoSettingAction} className="mt-4 space-y-3"><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="enabled" defaultChecked={getSetting(s,'ess.profile_photo_edit')===true} disabled={!mayWrite}/>{te('allowOwnPhoto')}</label>{mayWrite&&<button type="submit" className={btnPrimary}>{te('savePhotoPermission')}</button>}</form></Card>
+
+
+      <Card className="p-5"><SectionHeader title={te('namedRouting')}/><ProfileRoutingForm policy={readProfileRoutingPolicy(s)} sections={sections} employees={employees.map(employee=>({id:employee.employmentId,label:`${employee.employeeCode} · ${employee.name}`}))} approvers={employees.filter(employee=>approverIds.has(employee.employmentId)).map(employee=>({id:employee.employmentId,label:`${employee.employeeCode} · ${employee.name}`}))} disabled={!mayWrite} action={saveNamedProfileRoutingAction} previewAction={previewNamedProfileRoutingAction} labels={{enabled:te('routingEnabled'),help:te('routingHelp'),name:te('routingName'),approver:te('routingApprover'),choose:te('routingChoose'),employees:te('routingEmployees'),criteriaHelp:te('routingCriteriaHelp'),remove:te('routingRemove'),add:te('routingAdd'),save:te('routingSave'),preview:te('routingPreview'),previewFailed:te('routingSaveFailed'),matched:te('routingMatched'),missing:te('routingMissing'),overlapping:te('routingOverlapping'),ineligible:te('routingIneligible')}}/></Card>
 
       {/* ── WHO APPROVES ───────────────────────────────────────────────────────────────────────────
           Two options and no third, because the plan sold SINGLE-LEVEL approval and the reporter
@@ -138,26 +156,7 @@ export default async function ProfileRequestSettingsPage({
           {t('lockWithdrawsNotice')}
         </p>
         <form action={saveProfileRequestFieldsAction} className="mt-4 space-y-5">
-          {ESS_PROFILE_TABS.map((tab,index)=>(
-            <div key={tab}>
-              <h3 className="text-sm font-semibold">{tp(`tabs.${tabKeys[index]}`)}</h3>
-              <div className="mt-2 divide-y divide-border">
-              {essVisibleFields().filter(field=>field.tab===tab).map(field=>{
-                const editable=Boolean(field.ess.binding&&['immediate','approval'].includes(field.ess.edit));
-                const waiting=(pendingByKey.get(field.id)??0)+(field.ess.binding?.legacyKey?pendingByKey.get(field.ess.binding.legacyKey)??0:0);
-                return <div key={field.id} className="flex flex-wrap items-center gap-3 py-2">
-                  <label htmlFor={`permission-${field.id}`} className="min-w-0 flex-1 text-sm">{personnelFieldLabel(field,(key,fallback)=>labels.has(key)?labels(key):fallback)}</label>
-                  {waiting>0&&<span className="text-xs text-amber-700 dark:text-amber-300">{t('waitingCount',{count:waiting})}</span>}
-                  {editable?<select id={`permission-${field.id}`} name={`permission:${field.id}`} disabled={!mayWrite} defaultValue={allowed.has(field.id)?'editable':primaryAllowed.has(field.id)?'primaryOnly':'viewOnly'} className="rounded-md border border-border bg-background px-2 py-1 text-sm">
-                    <option value="viewOnly">{te('viewOnly')}</option>
-                    <option value="editable">{te('editable')}</option>
-                    {field.ess.legacyPrimaryKey&&<option value="primaryOnly">{te('primaryOnly')}</option>}
-                  </select>:<span className="text-xs text-muted-foreground">{field.ess.edit==='specialist'?te('workflowOnly'):te('viewOnly')}</span>}
-                </div>;
-              })}
-              </div>
-            </div>
-          ))}
+          <PermissionMatrix disabled={!mayWrite} rows={essVisibleFields().map(field=>({linked:linkedEssFieldIds(field.id),id:field.id,label:personnelFieldLabel(field,(key,fallback)=>labels.has(key)?labels(key):fallback),group:`${tp(`tabs.${tabKeys[ESS_PROFILE_TABS.indexOf(field.tab as typeof ESS_PROFILE_TABS[number])]}`)} · ${PERSONNEL_ESS_SECTION_LABEL_KEYS[field.section]?tp(PERSONNEL_ESS_SECTION_LABEL_KEYS[field.section]):field.section}`,canEdit:Boolean(field.ess.binding&&['immediate','approval'].includes(field.ess.edit)),permission:!visible.has(field.id)?'hide':allowed.has(field.id)?'editable':'viewOnly',primaryOnly:primaryAllowed.has(field.id),waiting:(pendingByKey.get(field.id)??0)+(field.ess.binding?.legacyKey?pendingByKey.get(field.ess.binding.legacyKey)??0:0)}))} labels={{editable:te('editable'),viewOnly:te('viewOnly'),hide:te('hide'),field:te('field'),all:te('selectAll'),primaryOnly:te('primaryOnly'),waiting:te('waiting')}}/>
           {mayWrite ? (
             <button type="submit" className={btnPrimary}>
               {t('saveFields')}

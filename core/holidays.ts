@@ -51,6 +51,7 @@
  */
 import { and, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
+import {holidayCalendarOnTx, holidayCalendarPeriodsByEmploymentTx, holidayCalendarWindows, type HolidayCalendarPeriod} from './holiday-calendar-read';
 import {replacementHolidayDatesByEmployment} from './holiday-replacement-read';
 import type {OriginalHoliday} from '../lib/holiday-replacement';
 import {companySegmentsForPeriod,companySegmentsForPeriodBulk,type CompanySegment} from './employment-company';
@@ -186,11 +187,14 @@ export async function effectiveHolidayState(
   tx: Tx,
   employmentId: string,
   companyId?: string,
+  onDate = todayInKualaLumpur(),
 ): Promise<{ country: string; state: string | null; skipCompleteness?: boolean; states?:string[] } | null> {
+  const calendar=await holidayCalendarOnTx(tx,employmentId,onDate);
+  const datedCompany=companyId??(await companySegmentsForPeriod(tx,employmentId,onDate,onDate))[0]?.companyId;
   const [emp] = await tx
     .select({
       country: company.country,
-      ws: employment.workState,
+      ws: calendar?sql<string|null>`${calendar.workState}::text`:employment.workState,
       cds: company.defaultWorkState,
       groupStates: holidayGroup.states,
       // ADR-0067 (direct-assign): the per-employee assigned group's archetype, so the s.60D guard mirrors
@@ -203,8 +207,8 @@ export async function effectiveHolidayState(
       empGroupParentStates: empGroupParent.states,
     })
     .from(employment)
-    .innerJoin(company, eq(company.id, companyId??employment.companyId))
-    .leftJoin(holidayGroup, eq(holidayGroup.id, employment.holidayGroupId))
+    .innerJoin(company, eq(company.id, datedCompany??employment.companyId))
+    .leftJoin(holidayGroup, eq(holidayGroup.id, calendar?sql`${calendar.holidayGroupId}::uuid`:employment.holidayGroupId))
     .leftJoin(empGroupParent, eq(empGroupParent.id, holidayGroup.parentGroupId))
     .where(eq(employment.id, employmentId))
     .limit(1);
@@ -294,13 +298,12 @@ function uniqueOriginalHolidays(rows:OriginalHoliday[]):OriginalHoliday[]{return
 /** Stable annual winner, preserving the canonical company > assigned/state/national precedence. */
 export async function originalHolidayCalendarFor(tx:Tx,p:HolidayWindow):Promise<OriginalHoliday[]>{
  const result:OriginalHoliday[]=[];
- // The canonical entity owner preserves its existing legacy fallback for original calendars. Each
- // dated company context chooses its own stable annual winner; group/work-state history is not invented.
  const segments=await companySegmentsForPeriod(tx,p.employmentId,p.startDate,p.endDate);
- for(const segment of segments)for(const year of yearsSpanned(segment.from,segment.to)){
-  const startDate=segment.from>`${year}-01-01`?segment.from:`${year}-01-01`;
-  const endDate=segment.to<`${year}-12-31`?segment.to:`${year}-12-31`;
-  result.push(...(await originalCalendarForYear(tx,{...p,startDate,endDate},segment.companyId)).map(h=>({...h,companyId:segment.companyId})));
+ const periods=(await holidayCalendarPeriodsByEmploymentTx(tx,[p.employmentId],p.startDate,p.endDate)).get(p.employmentId)??[];
+ for(const segment of segments)for(const window of holidayCalendarWindows(segment.from,segment.to,periods))for(const year of yearsSpanned(window.from,window.to)){
+  const startDate=window.from>`${year}-01-01`?window.from:`${year}-01-01`;
+  const endDate=window.to<`${year}-12-31`?window.to:`${year}-12-31`;
+  result.push(...(await originalCalendarForYear(tx,{...p,startDate,endDate},segment.companyId,window.calendar)).map(h=>({...h,companyId:segment.companyId})));
  }
  return uniqueOriginalHolidays(result);
 }
@@ -316,12 +319,13 @@ async function originalCalendarForYear(
   tx: Tx,
   { employmentId, startDate, endDate }: HolidayWindow,
   companyId: string,
+  calendar: HolidayCalendarPeriod | null = null,
 ): Promise<OriginalHoliday[]> {
   const [row] = await tx
     .select({
       companyId: company.id,
       country: company.country,
-      ws: employment.workState,
+      ws: calendar?sql<string|null>`${calendar.workState}::text`:employment.workState,
       cds: company.defaultWorkState,
       groupStates: holidayGroup.states,
       // ADR-0067 (direct-assign): the per-employee assigned group's archetype. When a custom/extended group
@@ -329,7 +333,7 @@ async function originalCalendarForYear(
       // this lets the resolver honour the hand-picked / extended semantic instead of degrading to a plain
       // state UNION. Reuses the existing holidayGroup join at line 250 — one extra 1:1 column, .limit(1)-safe.
       empGroupArchetype: holidayGroup.archetype,
-      empHolidayGroupId: employment.holidayGroupId,
+      empHolidayGroupId: calendar?sql<string|null>`${calendar.holidayGroupId}::uuid`:employment.holidayGroupId,
       // R18 a519a96e: the assigned group's PARENT (single level, strictly 1:1 self-join). When set, the
       // parent supplies the gazette source (archetype + states); the child adds only group-scoped extras.
       empGroupParentId: holidayGroup.parentGroupId,
@@ -338,7 +342,7 @@ async function originalCalendarForYear(
     })
     .from(employment)
     .innerJoin(company, eq(company.id, companyId))
-    .leftJoin(holidayGroup, eq(holidayGroup.id, employment.holidayGroupId))
+    .leftJoin(holidayGroup, eq(holidayGroup.id, calendar?sql`${calendar.holidayGroupId}::uuid`:employment.holidayGroupId))
     .leftJoin(empGroupParent, eq(empGroupParent.id, holidayGroup.parentGroupId))
     .where(eq(employment.id, employmentId))
     .limit(1);
@@ -516,6 +520,7 @@ export type HolidayMemoInputs = {
   workState: string | null;
   holidayGroupId: string | null;
   companySegments?: readonly CompanySegment[];
+  calendarPeriods?: readonly HolidayCalendarPeriod[];
 };
 
 /**
@@ -539,16 +544,17 @@ export type HolidayMemoInputs = {
 export function holidayMemoKey(i: HolidayMemoInputs): string {
   const inputs:unknown[]=[i.companyId,i.workState,i.holidayGroupId];
   if(i.companySegments)inputs.push(i.companySegments.map(segment=>[segment.companyId,segment.from,segment.to]));
+  if(i.calendarPeriods)inputs.push(i.calendarPeriods.map(p=>[p.validFrom,p.validTo,p.kind,p.workState,p.holidayGroupId]));
   return JSON.stringify(inputs);
 }
 
-export async function holidayDatesByEmployment(
+export async function holidayCalendarFactsByEmployment(
   tx: Tx,
   { employmentIds, startDate, endDate }: { employmentIds: readonly string[]; startDate: string; endDate: string },
-): Promise<Map<string, Set<string>>> {
+): Promise<{ holidays: Map<string, Set<string>>; replacements: Map<string, Set<string>> }> {
   const ids = [...new Set(employmentIds)];
   const out = new Map<string, Set<string>>();
-  if (ids.length === 0) return out;
+  if (ids.length === 0) return { holidays: out, replacements: new Map() };
 
   const emps = await tx
     .select({
@@ -561,6 +567,7 @@ export async function holidayDatesByEmployment(
     .where(inArray(employment.id, ids));
 
   const segments=await companySegmentsForPeriodBulk(tx,emps.map(e=>e.employmentId),startDate,endDate,new Map(emps.map(e=>[e.employmentId,e.companyId])));
+  const calendars=await holidayCalendarPeriodsByEmploymentTx(tx,emps.map(e=>e.employmentId),startDate,endDate);
   const empById = new Map(emps.map((e) => [e.employmentId, e]));
 
   const memo = new Map<string, Set<string>>();
@@ -576,6 +583,7 @@ export async function holidayDatesByEmployment(
       workState: e.workState,
       holidayGroupId: e.holidayGroupId,
       companySegments:segments.get(id)??[],
+      calendarPeriods:calendars.get(id)??[],
     });
     let dates = memo.get(key);
     if (!dates) {
@@ -585,8 +593,13 @@ export async function holidayDatesByEmployment(
     out.set(id, new Set(dates));
   }
   const replacements=await replacementHolidayDatesByEmployment(tx,{employmentIds:ids,startDate,endDate});
-  for(const [id,dates] of replacements){const effective=out.get(id);if(effective)for(const date of dates)effective.add(date);}
-  return out;
+  return { holidays: out, replacements };
+}
+
+/** Existing consumers need the union; display consumers can retain the two proven calendar facts. */
+export async function holidayDatesByEmployment(tx: Tx, p: { employmentIds: readonly string[]; startDate: string; endDate: string }): Promise<Map<string, Set<string>>> {
+  const facts = await holidayCalendarFactsByEmployment(tx, p);
+  return new Map([...facts.holidays].map(([id, dates]) => [id, new Set([...dates, ...(facts.replacements.get(id) ?? [])])]));
 }
 
 // ──────────────────────────────────────────────────────────────────────────────────────────────────

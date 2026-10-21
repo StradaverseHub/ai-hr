@@ -51,6 +51,7 @@ const BOUNDARIES = [
   // r424 (50ed39e1) — the closed-run read the clocking import refuses days on. Payroll implementation, kept
   // out of core/payroll.ts (pinned byte-identical by r415); listed here AND in ALWAYS_ALLOWED like back-pay.
   'core/payroll-closed-runs',
+  'core/payroll-leave',
   'core/payroll-attendance-allowance',
   // The approved formula-OT pricing/transfer implementation is exported by the Payroll facade.
   // BOTH declarations matter: authorize its sibling imports AND guard outsiders from importing it.
@@ -84,6 +85,7 @@ const ALWAYS_ALLOWED = [
   'core/payroll-overtime-pattern.ts',
   'core/back-pay.ts', // 2ef69d1e — Back Pay (Arrears); see the BOUNDARIES note above
   'core/payroll-closed-runs.ts', // r424 — see the BOUNDARIES note above
+  'core/payroll-leave.ts',
   'core/payroll-cycle.ts',
   'core/payroll-config.ts',
   'core/payroll-policy.ts',

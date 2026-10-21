@@ -1,8 +1,8 @@
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { getScopeIds } from '@/lib/scope';
-import { listCompanies, listDepartments } from '@/core/read';
-import { listCostCenters, listPositions } from '@/core/admin';
+import { listCompanies, listDepartments, listJobGrades } from '@/core/read';
+import { listCostCenters, listPositions, listBusinessUnits } from '@/core/admin';
 import { listAllProfileOptions } from '@/core/profile-options';
 import { personnelCatalogReferenceValues } from '@/lib/personnel-import-catalog';
 import { listEmployeeImportRuns } from '@/core/import';
@@ -28,7 +28,7 @@ export default async function ImportPage() {
     allProfileOptions,
     importRuns,
   ] = await Promise.all([
-    listCompanies(s),
+    listCompanies(s,{adminOnly:true}),
     listDepartments(s),
     listPositions(s),
     listCostCenters(s),
@@ -37,6 +37,13 @@ export default async function ImportPage() {
     // RLS-scoped; `commitImportAction` revalidates this path, so a finished import appears without a reload.
     listEmployeeImportRuns(s),
   ]);
+  // Company-specific guidance uses the same visibility owners as full-import validation.
+  // The Company cell can override Target company; preview is authoritative in that case.
+  const grades=await listJobGrades(s);
+  const organisationByCompany=Object.fromEntries(await Promise.all(companies.map(async co=>{
+    const [ds,ps,cs,bs]=await Promise.all([listDepartments(s,{companyIds:[co.id]}),listPositions(s,{companyIds:[co.id]}),listCostCenters(s,{companyIds:[co.id]}),listBusinessUnits(s,{companyIds:[co.id]})]);
+    return [co.id,{department:uniqSorted(ds.map(d=>d.label?.trim()||d.code||'')),position:uniqSorted(ps.map(p=>p.label?.trim()||p.code||'')),cost_center:uniqSorted(cs.map(c=>c.label?.trim()||c.code)),business_unit:uniqSorted(bs.map(b=>b.label?.trim()||b.code)),job_grade:uniqSorted(grades.map(g=>g.name?.trim()||g.code))}] as const;
+  })));
   const scopeIds = await getScopeIds(companies.map((c) => c.id));
   // Default to the active scope if it's a single company; otherwise the company with the most
   // departments — i.e. the operating entity people are actually hired into, not a holding shell.
@@ -71,6 +78,7 @@ export default async function ImportPage() {
             companies={companies.map((c) => ({ id: c.id, name: c.name }))}
             defaultCompanyId={defaultCompanyId}
             reference={{
+              organisationByCompany,
               // Sorted + de-duplicated: a shared label (62de487d) resolves for several companies and
               // would otherwise appear once per company in the reference list.
               departments: uniqSorted(departments.map((d) => d.name)),

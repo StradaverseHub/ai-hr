@@ -12,7 +12,7 @@
 import { eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
-import { employeeDependent, employeeStatutoryMy, employment, person, personEmergencyContact, personPhoto, profileChangeRequest } from '../db/schema';
+import { employeeDependent, employeeStatutoryMy, employment, person, personEmergencyContact, personPhoto } from '../db/schema';
 import { shredSubjectInTx } from './pii-vault';
 
 /** LHDN income-tax / EPF / SOCSO records must be kept ~7 years; statutory PII stays locked until then. */
@@ -171,10 +171,9 @@ export async function erasePersonPii(
     // plain nullable column and no CHECK: a rejected row is rewritten right here, and a table constraint
     // on `status = 'rejected' → reason present` would abort the whole erasure transaction on any legacy
     // rejection that has no reason. The rule lives at the decision instead (core/profile.ts).
-    await tx
-      .update(profileChangeRequest)
-      .set({ proposed: { redacted: true }, decisionReason: null })
-      .where(eq(profileChangeRequest.personId, emp.personId));
+    await tx.execute(sql`select app.redact_profile_request_pii(${emp.personId}::uuid)`);
+    // Payroll keeps its outcome/reference; free-text follow-up explanations are erasable.
+    await tx.execute(sql`select app.redact_leave_payroll_explanations(${p.subjectEmploymentId}::uuid)`);
 
     // b4682879 — the profile photograph is biometric-adjacent personal data (identity scope). Delete it on
     // an identity/all erasure and report it in `erased`. Never statutory-locked (a face photo is not a

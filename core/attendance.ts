@@ -3641,8 +3641,8 @@ export async function addAttendanceCorrectionAttachment(
   });
 }
 
-/** The supporting file on an attendance request, for the download route. RLS-fenced (subject + manager +
- *  admin via can_see_employment), so this needs no gate of its own — the policy IS the gate. */
+/** Supporting file for the download route. RLS admits existing employment visibility or a live
+ *  exact v2/v3 request assignment; the latter never grants file writes or general Personnel visibility. */
 export function getAttendanceCorrectionAttachment(ctx: SessionContext, correctionId: string) {
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
@@ -3818,7 +3818,7 @@ export class MissingAttendanceRejectReasonError extends Error {
 
 export async function decideAttendanceCorrection(
   ctx: SessionContext,
-  p: { correctionId: string; decision: 'approved' | 'rejected'; rejectReason?: string; remarks?: string; expectedStageIndex?: number; deciderEmploymentId?: string; today?: string },
+  p: { correctionId: string; decision: 'approved' | 'rejected'; rejectReason?: string; remarks?: string; expectedStageIndex?: number; expectedParticipantSlot?: string; deciderEmploymentId?: string; today?: string },
   existingTx?: Tx,
 ) {
   ctx = {...ctx, roles:ctx.roles ?? (ctx.grants ?? []).map(grant=>grant.role)};
@@ -3836,7 +3836,7 @@ export async function decideAttendanceCorrection(
     // Identity is resolved from the authenticated actor, never from a caller-supplied employment id.
     const [actualDecider] = ctx.personId ? await tx.select({ id: employment.id }).from(employment).where(eq(employment.personId, ctx.personId)).orderBy(asc(employment.id)).limit(1) : [];
     let actualDeciderEmploymentId:string|null = actualDecider?.id ?? null;
-    const workflowStage = await decideAttendanceWorkflowStageTx(tx, ctx, { correctionId: cor.id, employmentId: cor.employmentId, decision: p.decision, remarks: p.decision === 'rejected' ? rejectReason ?? undefined : p.remarks, expectedStageIndex: p.expectedStageIndex });
+    const workflowStage = await decideAttendanceWorkflowStageTx(tx, ctx, { correctionId: cor.id, employmentId: cor.employmentId, decision: p.decision, remarks: p.decision === 'rejected' ? rejectReason ?? undefined : p.remarks, expectedStageIndex: p.expectedStageIndex, expectedParticipantSlot: p.expectedParticipantSlot });
     if (workflowStage.actualDeciderEmploymentId !== undefined) actualDeciderEmploymentId = workflowStage.actualDeciderEmploymentId;
     if (!workflowStage.final) return { status: 'pending' as const, deferred: false };
 
@@ -4289,6 +4289,8 @@ export function listAttendanceCorrections(
         requestedOtMinutes: attendanceCorrection.requestedOtMinutes,
         approvedOtMinutes: attendanceCorrection.approvedOtMinutes,
         otApprovalMethod: attendanceCorrection.otApprovalMethod,
+        // The file stays behind the same RLS boundary; this list reads presence, never bytes.
+        hasAttachment: sql<boolean>`exists (select 1 from ${attendanceCorrectionAttachment} where ${attendanceCorrectionAttachment.attendanceCorrectionId} = ${attendanceCorrection.id})`,
         reason: attendanceCorrection.reason,
         rejectReason: attendanceCorrection.rejectReason,
         originalClockSnapshot: attendanceCorrection.originalClockSnapshot,
@@ -4316,7 +4318,7 @@ export function listAttendanceCorrections(
         and(
           opts.status ? eq(attendanceCorrection.status, opts.status) : undefined,
           opts.companyIds && opts.companyIds.length
-            ? sql`subject.company_id IN (${sql.join(opts.companyIds.map(id=>sql`${id}::uuid`),sql`,`)})`
+            ? sql`(subject.company_id IN (${sql.join(opts.companyIds.map(id=>sql`${id}::uuid`),sql`,`)}) OR app.attendance_workflow_v3_decision_slot(${attendanceCorrection.id}) IS NOT NULL)`
             : undefined,
         ),
       )
@@ -4327,10 +4329,11 @@ export function listAttendanceCorrections(
     const genericVisible = await filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId);
     // Frozen v2 routing grants request visibility only; it does not add Personnel scope.
     const v2Visible = rows.length ? await tx.execute(sql`select c.id,app.attendance_workflow_v2_decide(c.id) as "canDecide" from public.attendance_correction c where c.id in (${sql.join(rows.map(r => sql`${r.id}::uuid`), sql`,`)}) and app.attendance_workflow_v2_read(c.id)`) as unknown as { id: string; canDecide: boolean }[] : [];
-    const visibleIds = new Set([...genericVisible, ...v2Visible].map(r => r.id));
+    const v3Visible = rows.length ? await tx.execute(sql`select c.id,(app.attendance_workflow_v3_decision_slot(c.id) is not null) as "canDecide" from public.attendance_correction c where c.id in (${sql.join(rows.map(r => sql`${r.id}::uuid`), sql`,`)}) and app.attendance_workflow_v3_read(c.id)`) as unknown as { id: string; canDecide: boolean }[] : [];
+    const visibleIds = new Set([...genericVisible, ...v2Visible, ...v3Visible].map(r => r.id));
     const visible = rows.filter(r => visibleIds.has(r.id));
     const workflows = await attendanceWorkflowsForTx(tx, visible.map(r => r.id));
-    return visible.map(r => ({ ...r, workflow: workflows.get(r.id) ?? null, canDecide: workflows.get(r.id)?.routingVersion === 2 ? v2Visible.find(a => a.id === r.id)?.canDecide === true : true }));
+    return visible.map(r => ({ ...r, workflow: workflows.get(r.id) ?? null, canDecide: workflows.get(r.id)?.routingVersion === 3 ? v3Visible.find(a => a.id === r.id)?.canDecide === true : workflows.get(r.id)?.routingVersion === 2 ? v2Visible.find(a => a.id === r.id)?.canDecide === true : true }));
   });
 }
 

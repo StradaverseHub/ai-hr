@@ -29,7 +29,7 @@ import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { LEAVE_CONFIG_MAP } from '../components/leave-config-map';
 import { REGISTERED_ROUTES } from '../lib/permissions';
-import { leavePack } from '../packs/leave';
+import { leavePack, LEAVE_ADMIN_DESTINATIONS } from '../packs/leave';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (rel: string) => readFileSync(resolve(here, '..', rel), 'utf8');
@@ -606,7 +606,7 @@ describe('a6fe37fc R2 · nothing on the leave type screen was dropped in the mov
     // its card with nothing put in its place.
     const moved = read('app/admin/leave-config/balance-health/page.tsx');
     expect(moved).toContain('<LeaveConfigHealthCard');
-    expect(leavePack.navNodes!.find((n) => n.group === 'admin')!.children.map((c) => c.href)).toContain(
+    expect(LEAVE_ADMIN_DESTINATIONS.children.map((c) => c.href)).toContain(
       '/admin/leave-config/balance-health',
     );
   });
@@ -626,7 +626,7 @@ describe('a6fe37fc R2 · nothing on the leave type screen was dropped in the mov
     // appended Special Setting below it (the reporter drew it at the very bottom), so the row is resolved
     // BY NAME here and its position is pinned where positions belong — test/leave-flyout-nav.test.ts,
     // which owns the fly-out's exact order. F47's property is about there being a way in at all.
-    const ROW = leavePack.navNodes!.find((n) => n.group === 'admin')!.children.find(
+    const ROW = LEAVE_ADMIN_DESTINATIONS.children.find(
       (c) => c.labelKey === 'employeeLeaveInquiry',
     )!;
     expect(ROW, 'the way in F47 promised is gone from the menu').toBeTruthy();

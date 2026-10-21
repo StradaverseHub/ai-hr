@@ -32,11 +32,9 @@ function mount({admin = true, operator = false, manager = false, collapsed = fal
     <Sidebar isAdmin={admin} canApprove={manager} canConfigureIdentityEmail={operator}
       canPreviewIdentityEmail={admin} enabledModules={modules} defaultCollapsed={collapsed}/>
   </NextIntlClientProvider>);
-  const adminSection = screen.queryByRole('button', {name: catalogues[locale].nav.admin});
-  if (adminSection?.getAttribute('aria-expanded') === 'false') fireEvent.click(adminSection);
   return view;
 }
-function openSettings(label = en.nav.systemSettings) {
+function openSettings(label = en.nav.systemConfiguration) {
   const trigger = screen.getByRole('button', {name: label});
   if (trigger.getAttribute('aria-expanded') !== 'true') fireEvent.click(trigger);
   return screen.getByRole('navigation', {name: label});
@@ -48,19 +46,19 @@ beforeEach(() => {
   location.pathname = '/admin/privacy';
 });
 
-describe('existing admin destinations relocated into System Settings', () => {
+describe('existing admin destinations relocated into System Configuration', () => {
   it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('renders the existing labels and routes under one parent in %s', locale => {
     mount({locale});
     const nav = catalogues[locale].nav;
     // No relocated destination remains a flat Administration link before opening the node.
     for (const [, key] of relocated) expect(screen.queryByRole('link', {name: nav[key]})).toBeNull();
-    const panel = openSettings(nav.systemSettings);
+    const panel = openSettings(nav.systemConfiguration);
     for (const [href, key] of relocated) {
       expect(within(panel).getByRole('link', {name: nav[key]})).toHaveAttribute('href', href);
       expect(screen.getAllByRole('link', {name: nav[key]})).toHaveLength(1);
     }
-    expect(within(panel).queryByRole('link', {name: nav.aiConfig})).toBeNull();
-    expect(screen.getByRole('link', {name: nav.aiConfig})).toHaveAttribute('href', '/admin/ai');
+    expect(within(panel).getByRole('link', {name: nav.aiConfig})).toHaveAttribute('href', '/admin/ai');
+    expect(screen.getAllByRole('link', {name: nav.aiConfig})).toHaveLength(1);
   });
 
   it.each(relocated)('preserves active matching and reopen after a bookmarked %s load', (href, key) => {
@@ -93,18 +91,18 @@ describe('existing admin destinations relocated into System Settings', () => {
 
   it.each([false, true])('offers none of the relocated destinations to an employee/manager (manager=%s)', manager => {
     mount({admin: false, manager});
-    expect(screen.queryByRole('button', {name: en.nav.systemSettings})).toBeNull();
+    expect(screen.queryByRole('button', {name: en.nav.systemConfiguration})).toBeNull();
     for (const [, key] of relocated) expect(screen.queryByRole('link', {name: en.nav[key]})).toBeNull();
   });
 
   it('keeps collapsed rail access, keyboard dismissal and focus return', () => {
     mount({collapsed: true});
-    const trigger = screen.getByRole('button', {name: en.nav.systemSettings});
+    const trigger = screen.getByRole('button', {name: en.nav.systemConfiguration});
     const panel = openSettings();
     expect(within(panel).getByRole('link', {name: en.nav.dataPrivacy})).toHaveAttribute('aria-current', 'page');
     expect(within(panel).getAllByRole('link')[0]).toHaveFocus();
     fireEvent.keyDown(document, {key: 'Escape'});
-    expect(screen.queryByRole('navigation', {name: en.nav.systemSettings})).toBeNull();
+    expect(screen.queryByRole('navigation', {name: en.nav.systemConfiguration})).toBeNull();
     expect(trigger).toHaveFocus();
   });
 
@@ -116,6 +114,6 @@ describe('existing admin destinations relocated into System Settings', () => {
     expect(screen.getByRole('link', {name: en.nav.dataPrivacy})).toHaveAttribute('aria-current', 'page');
     const ai = screen.getByRole('link', {name: en.nav.aiConfig});
     expect(ai).toHaveAttribute('href', '/admin/ai');
-    expect(document.getElementById(theme === 'monolith' ? 'rail-kids-systemSettings' : 'current-module-systemSettings')?.contains(ai)).toBe(false);
+    expect(document.getElementById(theme === 'monolith' ? 'rail-kids-systemConfiguration' : 'current-module-systemConfiguration')?.contains(ai)).toBe(true);
   });
 });

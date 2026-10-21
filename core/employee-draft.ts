@@ -822,6 +822,8 @@ async function completeEmployeeDraftTx(tx:Tx,ctx:SessionContext,id:string):Promi
   const companyId = chosenCompanyId!;
   if(!UUID_RE.test(companyId))throw new DraftActivationValidationError('company_unavailable',[{tab:'job',field:'company'}]);
   if(draft.companyId && draft.companyId!==companyId)throw new DraftActivationValidationError('company_changed',[{tab:'job',field:'company'}]);
+  // Join the Criteria owner before company/reference locks; hireEmployee reuses this transaction.
+  await lockLabelCriteriaTx(tx,ctx.tenantId);
   const [companyRow]=await tx.select({country:company.country,archivedAt:company.archivedAt}).from(company)
     .where(and(eq(company.id,companyId),sql`app.is_admin_for(${company.id})`)).for('share');
   if(!companyRow || companyRow.archivedAt)throw new DraftActivationValidationError('company_unavailable',[{tab:'job',field:'company'}]);
@@ -863,20 +865,18 @@ async function completeEmployeeDraftTx(tx:Tx,ctx:SessionContext,id:string):Promi
   const employeeCodeToIssue = reservedCode ?? (decision.mode === 'manual' ? typedCode : undefined);
   if(employeeCodeToIssue)try{requireEmployeeCode(employeeCodeToIssue);}catch{throw new DraftActivationValidationError('employee_code_invalid',[{tab:'profile',field:'employeeCode'}]);}
 
-  // Use the Criteria owner's order before label row locks, including the later assignment trigger.
-  await lockLabelCriteriaTx(tx,ctx.tenantId);
   // Lock selected references; canonical shared-label eligibility remains the authority.
   const references=[['department',str(e.departmentId),department,'department'],['position',str(e.positionId),position,'position'],['cost_center',str(e.costCenterId),costCenter,'costCenter']] as const;
   for(const [kind,referenceId,table,field] of references) {
     if(!referenceId)continue;
     if(!UUID_RE.test(referenceId))throw new DraftActivationValidationError('reference_invalid',[{tab:'job',field}]);
-    const [reference]=await tx.select({id:table.id}).from(table).where(eq(table.id,referenceId)).for('share');
+    const [reference]=await tx.select({id:table.id}).from(table).where(and(eq(table.id,referenceId),eq(table.tenantId,ctx.tenantId),isNull(table.archivedAt))).for('share');
     if(!reference || !(await labelUsableByCompany(tx,ctx.tenantId,kind,referenceId,companyId)))throw new DraftActivationValidationError('reference_invalid',[{tab:'job',field}]);
   }
   const gradeId=str(e.gradeId),managerId=str(e.reportingManagerEmploymentId);
   if(gradeId) {
     if(!UUID_RE.test(gradeId))throw new DraftActivationValidationError('reference_invalid',[{tab:'job',field:'grade'}]);
-    const [grade]=await tx.select({id:jobGrade.id}).from(jobGrade).where(and(eq(jobGrade.id,gradeId),eq(jobGrade.tenantId,ctx.tenantId))).for('share');
+    const [grade]=await tx.select({id:jobGrade.id}).from(jobGrade).where(and(eq(jobGrade.id,gradeId),eq(jobGrade.tenantId,ctx.tenantId),isNull(jobGrade.archivedAt))).for('share');
     if(!grade)throw new DraftActivationValidationError('reference_invalid',[{tab:'job',field:'grade'}]);
   }
   if(managerId) {

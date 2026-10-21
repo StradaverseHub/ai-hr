@@ -17,6 +17,7 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import { navigationPlacement, NAVIGATION_MODULES } from '../lib/navigation-workspaces';
 import { CONTROL_DOMAINS, domainsFor } from '../core/control-domains';
 import { DETECTORS } from '../core/payroll-anomaly-detectors';
 
@@ -40,7 +41,10 @@ describe('r233 — the move out of the Payroll menu', () => {
 
   it('the section is admin-gated, while only payroll-specific actions need payroll', () => {
     const side = read('components/sidebar.tsx');
-    expect(side).toContain("labelKey: 'aiControlTower'");
+    expect(navigationPlacement('/control-tower')).toEqual({area:'ops',module:'controlTower',section:'hr'});
+    expect(NAVIGATION_MODULES.filter(module=>module.workspace==='ops')[0].id).toBe('controlTower');
+    const row=side.split('\n').find(line=>/href:\s*'\/control-tower'/.test(line));
+    expect(row).toMatch(/adminOnly:\s*true/);
     expect(side).toContain("href: '/control-tower'");
     expect(side).toContain("href: '/control-tower/how-it-works'");
     expect(side).not.toContain("['/control-tower', 'payroll'] as const");

@@ -35,21 +35,16 @@ async function state(id:string){return {
  audit:await owner.db.select().from(leaveEntitlementRecalcAudit).where(eq(leaveEntitlementRecalcAudit.employmentId,id)).orderBy(asc(leaveEntitlementRecalcAudit.id)),
 };}
 describe('Movement rollback-only preview and atomic confirmation',()=>{
- it('rehearses effective-date order, excludes an invalid type, and commits only the explicitly rechecked valid sequence',async()=>{
+ it('rejects the whole employee sequence when any event is invalid and cannot salvage selected rows',async()=>{
   const id=await hire(),before=await state(id),beforeEpoch=await epochs();
   const text=csv([['EMP-0004','transfer',day(-2),b.deptB,'','Later transfer'],['EMP-0004','hired',day(-3),'','','Not creatable'],['EMP-0004','promotion',day(-5),'','3500','Earlier promotion']]);
-  const initial=await ready(text);expect(initial.fileErrors).toEqual([]);expect(initial.valid).toBe(2);expect(initial.excluded).toBe(1);
+  const initial=await ready(text);expect(initial.fileErrors).toEqual([]);expect(initial.valid).toBe(0);expect(initial.excluded).toBe(3);
   expect(initial.employees[0].rows.map(row=>row.row)).toEqual([4,3,2]);expect(await state(id)).toEqual(before);expect(await epochs()).toEqual(beforeEpoch);
-  const preview=await ready(text,[2,4]);expect(preview.valid).toBe(2);expect(preview.employees[0].rows.find(row=>row.row===3)?.status).toBe('excluded');
-  await expect(commit(text,preview,false)).rejects.toThrow('confirm_excluded_rows');
-  expect((await commit(text,preview)).imported).toBe(2);expect(await movementCurrentState(adminCtx(b),id)).toMatchObject({departmentId:b.deptB,basicSalary:'3500.00'});
-  const history=await movementHistory(adminCtx(b),id);expect(history.filter(row=>row.kind==='promotion'||row.kind==='transfer')).toHaveLength(2);
+  const narrowed=await ready(text,[2,4]);await expect(commit(text,narrowed)).rejects.toThrow('whole_employee_selection_required');expect(await state(id)).toEqual(before);
  });
- it('never trusts an excluded predecessor when validating the remaining sequence',async()=>{
+ it('refuses selecting a successor without its predecessor before the first write',async()=>{
   const id=await hire();const text=csv([['EMP-0004','transfer',day(-5),b.deptB,'',''],['EMP-0004','transfer',day(-2),b.deptA,'','']]);
-  expect((await ready(text)).valid).toBe(2);
-  const selected=await ready(text,[3]);expect(selected.valid).toBe(0);expect(selected.employees[0].rows.find(row=>row.row===3)?.status).toBe('invalid');
-  const result=await commit(text,selected);expect(result.imported).toBe(0);expect(result.failed).toBe(1);expect((await movementCurrentState(adminCtx(b),id)).departmentId).toBe(b.deptA);
+  const selected=await ready(text,[3]);await expect(commit(text,selected)).rejects.toThrow('whole_employee_selection_required');expect((await movementCurrentState(adminCtx(b),id)).departmentId).toBe(b.deptA);
  });
  it('preserves future scheduled semantics and ordinary history View/Edit/Roll Back identities',async()=>{
   const id=await hire(),before=await state(id);const text=csv([['EMP-0004','transfer',day(7),b.deptB,'','Scheduled fictional movement']]);
@@ -86,8 +81,36 @@ describe('Movement rollback-only preview and atomic confirmation',()=>{
  });
  it('keeps unrelated employees independent while refusing nonexistent Employee IDs and non-admin callers',async()=>{
   const id=await hire();const text=csv([['EMP-0004','transfer',day(-2),b.deptB,'',''],['MISSING','promotion',day(-1),'','3500','']]);
-  const initial=await ready(text);expect(initial.valid).toBe(1);const preview=await ready(text,[2]);const result=await commit(text,preview);expect(result).toMatchObject({imported:1,excluded:1});expect((await movementCurrentState(adminCtx(b),id)).departmentId).toBe(b.deptB);
+  const preview=await ready(text);expect(preview.valid).toBe(1);
+  const result=await commitMovementImport(adminCtx(b),{companyId:b.companyId,csv:text,selection:[2],inputHash:preview.inputHash,fingerprints:fingerprints(preview),acknowledgeExcluded:true});
+  expect(result).toMatchObject({imported:1,failed:0,excluded:1});expect((await movementCurrentState(adminCtx(b),id)).departmentId).toBe(b.deptB);
   await expect(previewMovementImport({...adminCtx(b),roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]},{companyId:b.companyId,csv:text})).rejects.toThrow('Only an admin');
+ });
+
+ it('confirms an original mixed preview for a complete valid employee while excluding another employee’s invalid sequence',async()=>{
+  const good=await hire(),bad=await hire('EMP-0005'),beforeGood=await state(good),beforeBad=await state(bad);
+  const text=csv([['EMP-0004','secondment',day(-2),'','','Valid first event'],['EMP-0005','transfer',day(-1),'Missing department','','Invalid other employee'],['EMP-0004','actingPosition',day(-1),'','','Valid second event']]);
+  const preview=await ready(text);expect(preview).toMatchObject({valid:2,excluded:1});expect(await state(good)).toEqual(beforeGood);expect(await state(bad)).toEqual(beforeBad);
+  const payload={companyId:b.companyId,csv:text,selection:[2,4],inputHash:preview.inputHash,fingerprints:fingerprints(preview),acknowledgeExcluded:false};
+  await expect(commitMovementImport(adminCtx(b),payload)).rejects.toThrow('confirm_excluded_rows');
+  const result=await commitMovementImport(adminCtx(b),{...payload,acknowledgeExcluded:true});
+  expect(result).toMatchObject({imported:2,failed:0,excluded:1});expect(await state(bad)).toEqual(beforeBad);
+  const history=await movementHistory(adminCtx(b),good);
+  expect(history.filter(row=>['secondment','actingPosition'].includes(row.kind)).map(row=>row.kind).sort()).toEqual(['actingPosition','secondment']);
+  const audits=(await state(good)).events.filter(row=>row.eventType==='movement-import.employee.applied');
+  expect(audits).toHaveLength(1);expect(audits[0].payload).toMatchObject({eventCount:2,sourceRows:[{key:2,sheet:'CSV',row:2},{key:4,sheet:'CSV',row:4}]});
+ });
+
+ it('allows deselecting a complete valid employee but refuses adding an employee not rehearsed in the preview',async()=>{
+  const selected=await hire(),excluded=await hire('EMP-0005'),beforeExcluded=await state(excluded);
+  const text=csv([['EMP-0004','secondment',day(-2),'','','Selected employee'],['EMP-0005','actingPosition',day(-1),'','','Excluded employee']]);
+  const preview=await ready(text);expect(preview.valid).toBe(2);
+  const result=await commitMovementImport(adminCtx(b),{companyId:b.companyId,csv:text,selection:[2],inputHash:preview.inputHash,fingerprints:fingerprints(preview),acknowledgeExcluded:true});
+  expect(result).toMatchObject({imported:1,failed:0,excluded:1});expect(await state(excluded)).toEqual(beforeExcluded);
+  const narrowed=await ready(text,[2]);
+  const unpreviewed=await commitMovementImport(adminCtx(b),{companyId:b.companyId,csv:text,selection:[3],inputHash:narrowed.inputHash,fingerprints:fingerprints(narrowed),acknowledgeExcluded:true});
+  expect(unpreviewed).toMatchObject({imported:0,failed:1,excluded:1});expect(await state(excluded)).toEqual(beforeExcluded);
+  expect((await movementHistory(adminCtx(b),selected)).filter(row=>row.kind==='secondment')).toHaveLength(1);
  });
 
  it('validates a future Entity Transfer then a destination-scoped promotion without applying either early',async()=>{
@@ -96,7 +119,7 @@ describe('Movement rollback-only preview and atomic confirmation',()=>{
   await setLabelCriteriaBatch(ctx,[{kind:'department',labelId:department.id,isGlobal:false,companyIds:[destination.id]}]);
   const text=toCsv([['employee_code','event_type','effective_date','company_id','department_id','basic_salary'],['EMP-0004','entityTransfer',day(7),destination.id,department.id,''],['EMP-0004','promotion',day(14),'',department.id,'4200']]);
   const before=await state(id);const preview=await ready(text);expect(preview.valid).toBe(2);expect(await state(id)).toEqual(before);
-  expect(preview.employees[0].rows[1].before?.companyId).toContain(destination.id);expect(preview.employees[0].rows[1].proposed?.basicSalary).toBe('4200.00');
+  expect(preview.employees[0].rows[1].before?.companyId).toBe('Fictional Movement destination');expect(preview.employees[0].rows[1].proposed?.basicSalary).toBe('4200.00');
   const result=await commit(text,preview);expect(result.imported).toBe(2);expect((await movementCurrentState(ctx,id)).companyId).toBe(b.companyId);
   const after=await state(id);expect(after.employment).toEqual(before.employment);expect(after.assignments).toEqual(before.assignments);expect(after.compensation).toEqual(before.compensation);
   const intents=after.events.filter(row=>row.eventType==='employment.movement.scheduled'),pending=(await movementHistory(ctx,id)).filter(row=>row.status==='pending');
@@ -118,14 +141,14 @@ describe('Movement rollback-only preview and atomic confirmation',()=>{
  it('refuses pre-hire neutral events and conflicting same-date writes while retaining disjoint same-date changes',async()=>{
   const id=await hire(),before=await state(id);
   expect((await ready(csv([['EMP-0004','secondment',day(-61),'','','Before hire']]))).valid).toBe(0);
-  const conflict=csv([['EMP-0004','promotion',day(-2),'','3500',''],['EMP-0004','increment',day(-2),'','3700','']]);const preview=await ready(conflict);expect(preview.valid).toBe(1);expect(preview.employees[0].rows.find(row=>row.row===3)?.errors).toContain('same_date_conflicting_changes');
+  const conflict=csv([['EMP-0004','promotion',day(-2),'','3500',''],['EMP-0004','increment',day(-2),'','3700','']]);const preview=await ready(conflict);expect(preview.valid).toBe(0);expect(preview.employees[0].rows.find(row=>row.row===2)?.errors).toEqual(['employee_sequence_invalid']);expect(preview.employees[0].rows.find(row=>row.row===3)?.errors).toContain('same_date_conflicting_changes');
   expect(await state(id)).toEqual(before);
   const disjoint=csv([['EMP-0004','promotion',day(-2),'','3500',''],['EMP-0004','transfer',day(-2),b.deptB,'','']]);expect((await ready(disjoint)).valid).toBe(2);
  });
  it('refuses a selected ordinary successor after an earlier selected termination, with no retained preview effects',async()=>{
   const id=await hire(),before=await state(id);
   const text=toCsv([['employee_code','event_type','effective_date','end_date','termination_reason_code','remarks'],['EMP-0004','termination',day(-5),day(-5),'contract_expiry','Fictional end'],['EMP-0004','secondment',day(-2),'','','After end']]);
-  const preview=await ready(text);expect(preview.valid).toBe(1);expect(preview.employees[0].rows.find(row=>row.row===3)?.errors).toContain('event_after_exit');expect(await state(id)).toEqual(before);
+  const preview=await ready(text);expect(preview.valid).toBe(0);expect(preview.employees[0].rows.find(row=>row.row===2)?.errors).toEqual(['employee_sequence_invalid']);expect(preview.employees[0].rows.find(row=>row.row===3)?.errors).toContain('event_after_exit');expect(await state(id)).toEqual(before);
  });
 
 
@@ -182,7 +205,8 @@ describe('Movement rollback-only preview and atomic confirmation',()=>{
   await owner.db.execute(sql`create function public.b20_movement_preview_refusal() returns trigger language plpgsql as $$ begin raise exception 'fixture assignment refusal'; end $$`);
   await owner.db.execute(sql`create trigger b20_movement_preview_refusal before insert on assignment for each row execute function public.b20_movement_preview_refusal()`);
   try {const preview=await ready(text);expect(preview.employees[0].rows.some(row=>row.status==='invalid')).toBe(true);
-   for(const row of preview.employees[0].rows.filter(row=>row.status==='invalid')){expect(row.errors).toEqual(['change_refused']);expect(row.errors.join(' ')).not.toMatch(/insert into|fixture assignment refusal|params:/i);}
+   expect(preview.valid).toBe(0);expect(preview.employees[0].rows.find(row=>row.row===2)?.errors).toEqual(['employee_sequence_invalid']);expect(preview.employees[0].rows.find(row=>row.row===3)?.errors).toEqual(['change_refused']);
+   for(const row of preview.employees[0].rows.filter(row=>row.status==='invalid'))expect(row.errors.join(' ')).not.toMatch(/insert into|fixture assignment refusal|params:/i);
    expect(await state(id)).toEqual(before);}finally{await owner.db.execute(sql`drop trigger b20_movement_preview_refusal on assignment`);await owner.db.execute(sql`drop function public.b20_movement_preview_refusal()`);}
  });
 });

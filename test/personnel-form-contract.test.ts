@@ -1,13 +1,47 @@
 import {describe,expect,it} from 'vitest';
 import {readFileSync} from 'node:fs';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
-import {personnelControl,personnelInput,personnelFormChoices,personnelFormIssue,personnelFormName,personnelFormRequired,personnelFormMetadataIssue,personnelWorkflowControl,personnelWorkflowCarry,personnelDisplay} from '../lib/personnel-form-contract';
+import {personnelControl,personnelInput,personnelFormChoices,personnelFormIssue,personnelFormName,personnelFormRequired,personnelFormMetadataIssue,personnelFormWidget,personnelWorkflowControl,personnelWorkflowCarry,personnelDisplay} from '../lib/personnel-form-contract';
 import {personnelFieldChoices,personnelFieldLabel} from '../lib/personnel-import-contract';
 import {auditPersonnelFormSource} from './helpers/personnel-form-source';
 const birth='profile.personal_details.dateofbirth';
 const initial='employment.employment_dates_and_service.confirmationdate';
 const final='employment.employment_dates_and_service.finalconfirmationdate';
 describe('Personnel shared form contract',()=>{
+  it('binds dated calendar workflow fields without adding generic report/import or self-service writers',()=>{
+    const prefix='attendance.dated_holiday_calendar.';
+    for(const suffix of ['calendar','startdate','enddate']){
+      const field=PERSONNEL_FIELDS.find(row=>row.id===prefix+suffix)!;
+      expect(field).toBeDefined();expect(field.owner).toBe('employmentHolidayCalendar');
+      expect(field.report.enabled).toBe(false);expect(field.import.writer).toBeUndefined();
+      expect(field.import.column).toBeUndefined();expect(field.ess.binding).toBeUndefined();
+      expect(field.form?.workflowReason).toContain('Dated holiday calendar assignment owner');
+    }
+    expect(personnelControl(prefix+'calendar')).toMatchObject({name:'calendar',required:false});
+    expect(personnelInput(prefix+'startdate','edit',{employmentStartDate:'2024-02-29'}))
+      .toMatchObject({name:'startDate',type:'date',required:true,min:'2024-02-29'});
+    expect(personnelInput(prefix+'enddate','edit',{calendarAssignmentStartDate:'2024-03-01'}))
+      .toMatchObject({name:'endDate',type:'date',required:false,min:'2024-03-01'});
+    expect(()=>personnelInput(prefix+'startdate')).toThrow(/date minimum context/);
+    expect(()=>personnelInput(prefix+'enddate','edit',{calendarAssignmentStartDate:'2025-02-29'})).toThrow(/date minimum context/);
+    const changed=structuredClone(PERSONNEL_FIELDS.find(row=>row.id===prefix+'startdate')!);
+    changed.form!.widget='date';changed.type='text';
+    expect(personnelFormMetadataIssue(changed)).toContain('canonical type');
+    delete changed.form!.widget; // Isolate the minOwner rule from the earlier explicit-widget guard.
+    expect(personnelFormMetadataIssue(changed)).toContain('date minimum');
+    changed.type='date';changed.form!.min=0;expect(personnelFormMetadataIssue(changed)).toContain('date minimum');
+    // Other numeric/date widgets retain their existing metadata and never borrow this context.
+    expect(personnelInput(birth,'edit',{employmentStartDate:'2024-02-29'})).not.toHaveProperty('min');
+  });
+  it('supports an explicitly declared true/false choice presentation without changing the canonical boolean fact',()=>{
+    const id='employment.data_classification.istestrecord',field=PERSONNEL_FIELDS.find(f=>f.id===id)!;
+    expect(field).toMatchObject({type:'boolean',owner:'employment',ownerField:'isTestRecord',form:{name:'isTestRecord',widget:'choice'}});
+    expect(personnelFormMetadataIssue(field)).toBeNull();expect(personnelFormWidget(id)).toBe('choice');
+    expect(personnelControl(id,'edit')).toEqual({'data-personnel-field':id,name:'isTestRecord',required:false});
+    expect(()=>personnelInput(id,'edit')).toThrow(/specialized/); // Never silently turn the select into a checkbox.
+    const changed=structuredClone(field);changed.type='number';expect(personnelFormMetadataIssue(changed)).toContain('canonical type');
+    expect(field.import.column).toBeUndefined();expect(field.import.writer).toBeUndefined();expect(field.ess.binding).toBeUndefined();
+  });
   it('resolves the mounted read-only employment values without exposing a writable join-date field',()=>{
     for(const id of ['employment.organisation_assignment.gradename','employment.organisation_assignment.employmenttype','employment.employment_dates_and_service.hiredon','employment.employment_dates_and_service.joindate'])expect(personnelDisplay(id)).toEqual({'data-personnel-field':id});
     const join='employment.employment_dates_and_service.joindate';

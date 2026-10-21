@@ -3277,6 +3277,55 @@
       "when": 1791900000048,
       "tag": "0568_ai_user_default_allowance",
       "breakpoints": true
+    },
+    {
+      "idx": 569,
+      "version": "7",
+      "when": 1791900000049,
+      "tag": "0569_employment_test_record",
+      "breakpoints": true
+    },
+    {
+      "idx": 570,
+      "version": "7",
+      "when": 1791900000050,
+      "tag": "0570_attendance_participant_approval",
+      "breakpoints": true
+    },
+    {
+      "idx": 571,
+      "version": "7",
+      "when": 1791900000051,
+      "tag": "0571_ess_profile_policy_routes",
+      "breakpoints": true
+    },
+    {
+      "idx": 572,
+      "version": "7",
+      "when": 1791900000052,
+      "tag": "0572_leave_payroll_followup",
+      "breakpoints": true
+    },
+    {
+      "idx": 573,
+      "version": "7",
+      "when": 1791900000053,
+      "tag": "0573_employment_holiday_calendar",
+      "breakpoints": true
+    },
+    {
+      "idx": 574,
+      "version": "7",
+      "when": 1791900000054,
+      "tag": "0574_card_assignment_import_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 575,
+      "version": "7",
+      "when": 1791900000055,
+      "tag": "0575_attendance_request_participant_review",
+      "breakpoints": true
     }
   ]
 }

@@ -2,6 +2,14 @@
   "app/admin/personnel/[employmentId]/page.tsx": [
     {
       "tag": "input",
+      "context": "dataClassificationCard",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Subject pointer for dedicated setTestRecordAction → setEmploymentTestRecord; the owner rechecks current company administration and employment scope. This hidden ID does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
       "context": "emergencyDialogForm",
       "hidden": true,
       "occurrences": 1,
@@ -234,14 +242,6 @@
     },
     {
       "tag": "input",
-      "context": "defaultShiftCard",
-      "hidden": true,
-      "occurrences": 1,
-      "name": "employmentId",
-      "reason": "Guarded action record/subject pointer (employmentId) used by defaultShiftCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
-    },
-    {
-      "tag": "input",
       "context": "clockingCard",
       "hidden": true,
       "occurrences": 2,
@@ -394,35 +394,11 @@
     },
     {
       "tag": "input",
-      "context": "holidayCalendarCard",
-      "hidden": true,
-      "occurrences": 1,
-      "name": "employmentId",
-      "reason": "Guarded action record/subject pointer (employmentId) used by holidayCalendarCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
-    },
-    {
-      "tag": "input",
       "context": "scheduleGroupCard",
       "hidden": true,
       "occurrences": 1,
       "name": "employmentId",
       "reason": "Guarded action record/subject pointer (employmentId) used by scheduleGroupCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
-    },
-    {
-      "tag": "input",
-      "context": "locationCard",
-      "hidden": true,
-      "occurrences": 2,
-      "name": "employmentId",
-      "reason": "Guarded action record/subject pointer (employmentId) used by locationCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
-    },
-    {
-      "tag": "input",
-      "context": "locationCard",
-      "hidden": true,
-      "occurrences": 2,
-      "name": "source",
-      "reason": "Location-assignment provenance token (manual/branch), validated and audited by the Location owner; the location/date facts bind separately."
     },
     {
       "tag": "input",
@@ -439,32 +415,6 @@
       "occurrences": 2,
       "name": "personId",
       "reason": "Guarded action record/subject pointer (personId) used by EmployeePage; the server owner checks subject/record scope. This does not edit a Personnel fact."
-    }
-  ],
-  "components/leave/LeaveDetailsPanel.tsx": [
-    {
-      "tag": "input",
-      "context": "LeaveDetailsPanel",
-      "hidden": true,
-      "occurrences": 1,
-      "nameExpression": "k",
-      "reason": "Existing GET query-state carry for the read-only Leave as-of view; it is not a Personnel write."
-    },
-    {
-      "tag": "DateField",
-      "context": "LeaveDetailsPanel",
-      "hidden": false,
-      "occurrences": 1,
-      "name": "asOf",
-      "reason": "Read-only Leave as-of query date; navigation changes the view, never an employment/leave record."
-    },
-    {
-      "tag": "input",
-      "context": "LeaveDetailsPanel",
-      "hidden": false,
-      "occurrences": 1,
-      "name": "asOf",
-      "reason": "Read-only Leave as-of query date; navigation changes the view, never an employment/leave record."
     }
   ],
   "components/personnel-identity.tsx": [
@@ -778,6 +728,24 @@
       "occurrences": 1,
       "name": "employeeIdMode",
       "reason": "Employee-code reservation mode chooser, validated by resolveEmployeeIdMode; the held Employee ID fact is separately bound. This radio is an operation choice, not an independent employee value."
+    }
+  ],
+  "app/admin/personnel/[employmentId]/holiday-calendar-assignments.tsx": [
+    {
+      "tag": "input",
+      "context": "HolidayCalendarAssignments",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Dated calendar action transport pointer; saveEmploymentHolidayCalendarAssignment validates the current employment scope and replacement identity before any revision write. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "HolidayCalendarAssignments",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "replacesId",
+      "reason": "Dated calendar action transport pointer; saveEmploymentHolidayCalendarAssignment validates the current employment scope and replacement identity before any revision write. This does not edit a Personnel fact."
     }
   ]
 }

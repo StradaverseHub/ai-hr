@@ -35,8 +35,9 @@ const LOCALES = Object.keys(CATALOGUES) as Locale[];
 
 function deps(loc: Locale, errors: string[]): HistoryLineDeps {
   const onError = (e: unknown) => errors.push(`${loc}: ${String((e as Error).message ?? e)}`);
-  const t = createTranslator({ locale: loc, messages: CATALOGUES[loc], namespace: 'leave', onError });
-  const ta = createTranslator({ locale: loc, messages: CATALOGUES[loc], namespace: 'leaveApproval', onError });
+  // Exercise the actual shipping namespaces without instantiating unrelated catalogue key graphs.
+  const t = createTranslator({ locale: loc, messages: { leave: CATALOGUES[loc].leave }, namespace: 'leave', onError });
+  const ta = createTranslator({ locale: loc, messages: { leaveApproval: CATALOGUES[loc].leaveApproval }, namespace: 'leaveApproval', onError });
   return {
     t: (key, values) => (t as unknown as (k: string, v?: Record<string, string | number>) => string)(key, values),
     kindLabel: (kind) => {
