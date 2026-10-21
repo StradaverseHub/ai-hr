@@ -2,6 +2,7 @@
 
 import {sql} from 'drizzle-orm';
 import {revalidatePath} from 'next/cache';
+import {redirect,unstable_rethrow} from 'next/navigation';
 import {getSession} from '@/lib/session';
 import {withTenant} from '@/db/client';
 import {setLocale} from '@/app/i18n-actions';
@@ -10,7 +11,7 @@ import {setEmployeeHomePreferences,resetEmployeeHomePreferences} from '@/core/da
 import {HomeConfigurationError} from '@/lib/employee-home';
 import {parseHomePreferenceForm} from '@/lib/employee-home-preferences-form';
 
-export type HomePreferenceSaveState={error:null|'invalid'|'forbidden'|'failed';destination?:string};
+export type HomePreferenceSaveState={error:null|'invalid'|'forbidden'|'failed'};
 export async function saveHomePreferencesAction(_state:HomePreferenceSaveState,data:FormData):Promise<HomePreferenceSaveState>{
  let parsed:ReturnType<typeof parseHomePreferenceForm>;
  try{parsed=parseHomePreferenceForm(data);}catch{return {error:'invalid'};}
@@ -24,7 +25,9 @@ export async function saveHomePreferencesAction(_state:HomePreferenceSaveState,d
    await setEmployeeHomePreferences(s,parsed.preferences,await listEmployeeHomeCards(s));
    const locale=new FormData();locale.set('locale',parsed.locale);await setLocale(locale);
   }
- }catch(error){return {error:error instanceof HomeConfigurationError?'invalid':'failed'};}
+ }catch(error){unstable_rethrow(error);return {error:error instanceof HomeConfigurationError?'invalid':'failed'};}
  revalidatePath('/me/home');revalidatePath('/');
- return {error:null,destination:'/me/home?saved=1'};
+ // Cookie changes refresh the Server Component tree. The successful destination must travel with
+ // this action response, before a refreshed editor can replace client-side confirmation state.
+ redirect('/me/home?saved=1');
 }

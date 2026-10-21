@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import {useLocale,useTranslations} from 'next-intl';
-import {useRouter} from 'next/navigation';
+import {unstable_rethrow} from 'next/navigation';
 import {Button,inputCls} from '@/components/ui';
 import {localeNames,locales} from '@/i18n/config';
 import {EMPLOYEE_HOME_CARDS,EMPLOYEE_HOME_CARD_DEFAULTS,type EmployeeHomePreferences,type EmployeeHomeCard} from '@/lib/employee-home';
@@ -10,7 +10,7 @@ import type {DashboardCardChoice} from '@/lib/dashboard-layout';
 import {saveHomePreferencesAction,type HomePreferenceSaveState} from '@/app/me/home/actions';
 
 export function HomePreferencesEditor({initial,cards}:{initial:EmployeeHomePreferences;cards:readonly (DashboardCardChoice&{name?:string})[]}){
- const t=useTranslations('employeeHome.preferences'),names=useTranslations('employeeHome.cardNames'),locale=useLocale(),router=useRouter();
+ const t=useTranslations('employeeHome.preferences'),names=useTranslations('employeeHome.cardNames'),locale=useLocale();
  const [order,setOrder]=React.useState(initial.cardOrder),[hidden,setHidden]=React.useState(initial.hiddenCards);
  const [announcement,setAnnouncement]=React.useState('');
  const alert=React.useRef<HTMLParagraphElement|null>(null),inFlight=React.useRef(false);
@@ -18,12 +18,10 @@ export function HomePreferencesEditor({initial,cards}:{initial:EmployeeHomePrefe
  const moveFocus=React.useRef<string|null>(null);
  React.useLayoutEffect(()=>{if(moveFocus.current){moveButtons.current.get(moveFocus.current)?.focus();moveFocus.current=null;}},[order]);
  const submit=React.useCallback(async(state:HomePreferenceSaveState,data:FormData):Promise<HomePreferenceSaveState>=>{
-  try{const result=await saveHomePreferencesAction(state,data);inFlight.current=Boolean(result.destination);return result;}
-  catch{inFlight.current=false;return {error:'failed'};}
+  try{const result=await saveHomePreferencesAction(state,data);inFlight.current=false;return result;}
+  catch(error){unstable_rethrow(error);inFlight.current=false;return {error:'failed'};}
  },[]);
  const [state,dispatch,pending]=React.useActionState<HomePreferenceSaveState,FormData>(submit,{error:null});
- const navigated=React.useRef<HomePreferenceSaveState|null>(null);
- React.useEffect(()=>{if(state.destination&&navigated.current!==state){navigated.current=state;router.push(state.destination);router.refresh();}},[state,router]);
  React.useEffect(()=>{if(state.error)alert.current?.focus();},[state]);
  const cardByKey=new Map(cards.map(card=>[card.cardKey,card]));
  const label=(key:EmployeeHomeCard)=>{const name=cardByKey.get(key)?.name;return name&&name!==EMPLOYEE_HOME_CARD_DEFAULTS.find(card=>card.cardKey===key)?.name?name:names(key);};
@@ -34,14 +32,14 @@ export function HomePreferencesEditor({initial,cards}:{initial:EmployeeHomePrefe
   // Keep the moved row's action focused after DOM reordering. At an edge use its other enabled action.
   moveFocus.current=`${key}:${next===0?1:next===order.length-1?-1:delta}`;
  }
- function send(data:FormData){if(inFlight.current||state.destination)return;inFlight.current=true;React.startTransition(()=>dispatch(data));}
+ function send(data:FormData){if(inFlight.current)return;inFlight.current=true;React.startTransition(()=>dispatch(data));}
  return <form method="post" className="space-y-6" onSubmit={event=>{event.preventDefault();send(new FormData(event.currentTarget));}}>
   <input type="hidden" name="command" value="save"/>
   {order.map(key=><input key={key} type="hidden" name="cardOrder" value={key}/>)}
   {hidden.map(key=><input key={key} type="hidden" name="hiddenCard" value={key}/>)}
   {state.error&&<p ref={alert} role="alert" tabIndex={-1} className="rounded-md border border-destructive p-3 text-sm text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t(state.error)}</p>}
   <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
-  <fieldset disabled={pending||Boolean(state.destination)} className="space-y-6">
+  <fieldset disabled={pending} className="space-y-6">
    <div className="grid gap-4 sm:grid-cols-2">
     <label className="min-w-0 space-y-2 text-sm"><span className="block font-medium">{t('language')}</span><select name="locale" defaultValue={locale} className={inputCls+' min-h-11 w-full'}>{locales.map(language=><option key={language} value={language}>{localeNames[language]}</option>)}</select></label>
     <label className="min-w-0 space-y-2 text-sm"><span className="block font-medium">{t('weekStart')}</span><select name="weekStartsOn" defaultValue={initial.weekStartsOn} className={inputCls+' min-h-11 w-full'}>{[1,2,3,4,5,6,0].map(day=><option key={day} value={day}>{new Intl.DateTimeFormat(locale,{weekday:'long',timeZone:'UTC'}).format(new Date(Date.UTC(2024,0,7+day)))}</option>)}</select></label>

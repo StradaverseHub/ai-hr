@@ -13,6 +13,7 @@ const locale=vi.hoisted(()=>vi.fn());
 vi.mock('../lib/session',()=>({getSession:async()=>CALLER}));
 vi.mock('../app/i18n-actions',()=>({setLocale:locale}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
+vi.mock('next/navigation',()=>({redirect:(path:string)=>{throw new Error('confirmed-redirect:'+path);},unstable_rethrow:()=>{}}));
 const {saveHomePreferencesAction}=await import('../app/me/home/actions');
 async function login(){
  const [p]=await owner.db.insert(person).values({tenantId:b.tenantId,fullName:'Fictional Home preference owner',primaryEmail:randomUUID()+'@example.invalid'}).returning();
@@ -29,13 +30,13 @@ describe('Home preference form writes through the current own-account owner',()=
  it('saves and reopens the rendered choices without changing another login or another role',async()=>{
   const other=await login();
   await setDashboardLayout(CALLER,{selected:['teamAwayToday'],order:['teamAwayToday']},BUILTIN_ROLE_DASHBOARD_CARDS.manager,'manager');
-  expect(await saveHomePreferencesAction({error:null},form())).toEqual({error:null,destination:'/me/home?saved=1'});
+  await expect(saveHomePreferencesAction({error:null},form())).rejects.toThrow('confirmed-redirect:/me/home?saved=1');
   const cards=await listEmployeeHomeCards(CALLER);
   expect(await getEmployeeHomePreferences(CALLER,cards)).toEqual({...defaultEmployeeHomePreferences(),timeZone:'Asia/Tokyo',weekStartsOn:0,cardOrder:[...EMPLOYEE_HOME_CARDS].reverse(),hiddenCards:['team']});
   expect(await getEmployeeHomePreferences(other,cards)).toEqual(defaultEmployeeHomePreferences());
   expect((await getDashboardLayout(CALLER,BUILTIN_ROLE_DASHBOARD_CARDS.manager,'manager')).selected).toEqual(['teamAwayToday']);
   expect((locale.mock.calls[0][0] as FormData).get('locale')).toBe('ms');
-  const reset=new FormData();reset.set('command','reset');expect((await saveHomePreferencesAction({error:null},reset)).error).toBeNull();
+  const reset=new FormData();reset.set('command','reset');await expect(saveHomePreferencesAction({error:null},reset)).rejects.toThrow('confirmed-redirect:/me/home?saved=1');
   expect(await getEmployeeHomePreferences(CALLER,cards)).toEqual(defaultEmployeeHomePreferences());
   expect((await getDashboardLayout(CALLER,BUILTIN_ROLE_DASHBOARD_CARDS.manager,'manager')).selected).toEqual(['teamAwayToday']);
   expect(locale).toHaveBeenCalledOnce();
@@ -50,7 +51,7 @@ describe('Home preference form writes through the current own-account owner',()=
  it('reads HR card availability again after a form was rendered',async()=>{
   const rendered=form(),notices=(await listCards(adminCtx(b))).find(row=>row.cardKey==='notices')!;
   await setStatus(adminCtx(b),{id:notices.id,status:'inactive'});
-  expect((await saveHomePreferencesAction({error:null},rendered)).error).toBeNull();
+  await expect(saveHomePreferencesAction({error:null},rendered)).rejects.toThrow('confirmed-redirect:/me/home?saved=1');
   expect((await getEmployeeHomePreferences(CALLER,await listEmployeeHomeCards(CALLER))).hiddenCards).toContain('notices');
  });
  it('refuses an archived principal even when an earlier session still names Employee',async()=>{

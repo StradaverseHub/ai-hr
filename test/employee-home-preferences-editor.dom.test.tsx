@@ -11,9 +11,9 @@ import viWords from '../messages/vi.json';
 import {HomePreferencesEditor} from '../components/employee-home/preferences-editor';
 import {defaultEmployeeHomePreferences,EMPLOYEE_HOME_CARD_DEFAULTS} from '../lib/employee-home';
 import {parseHomePreferenceForm} from '../lib/employee-home-preferences-form';
-const state=vi.hoisted(()=>({save:vi.fn(),push:vi.fn(),refresh:vi.fn()}));
+const state=vi.hoisted(()=>({save:vi.fn()}));
 vi.mock('../app/me/home/actions',()=>({saveHomePreferencesAction:state.save}));
-vi.mock('next/navigation',()=>({useRouter:()=>({push:state.push,refresh:state.refresh})}));
+vi.mock('next/navigation',()=>({unstable_rethrow:()=>{}}));
 const catalogues={en,ms,zh,ta,th,vi:viWords};
 beforeEach(()=>{vi.clearAllMocks();state.save.mockReset();state.save.mockResolvedValue({error:'invalid'});});afterEach(cleanup);
 function mount(locale:keyof typeof catalogues='en',cards=EMPLOYEE_HOME_CARD_DEFAULTS){
@@ -45,13 +45,13 @@ describe('Home preference editing',()=>{
   let finish!:(value:{error:'forbidden'})=>void;state.save.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));mount();
   const zone=screen.getByRole('textbox',{name:en.employeeHome.preferences.timeZone});fireEvent.change(zone,{target:{value:'Asia/Tokyo'}});
   const target=form();fireEvent.submit(target);fireEvent.submit(target);await waitFor(()=>expect(state.save).toHaveBeenCalledOnce());finish({error:'forbidden'});
-  const alert=await screen.findByRole('alert');expect(alert).toHaveTextContent(en.employeeHome.preferences.forbidden);await waitFor(()=>expect(alert).toHaveFocus());expect(zone).toHaveValue('Asia/Tokyo');expect(state.push).not.toHaveBeenCalled();
+  const alert=await screen.findByRole('alert');expect(alert).toHaveTextContent(en.employeeHome.preferences.forbidden);await waitFor(()=>expect(alert).toHaveFocus());expect(zone).toHaveValue('Asia/Tokyo');
  });
- it('resets only after an explicit click and navigates only on confirmed success',async()=>{
-  state.save.mockResolvedValue({error:null,destination:'/me/home?saved=1'});mount();
+ it('requests a reset only after an explicit click, independently of unsaved invalid fields',async()=>{
+  mount();fireEvent.change(screen.getByRole('textbox',{name:en.employeeHome.preferences.timeZone}),{target:{value:'invalid/timezone'}});
   fireEvent.click(screen.getByRole('button',{name:en.employeeHome.preferences.reset}));
   await waitFor(()=>expect(state.save).toHaveBeenCalledOnce());expect(parseHomePreferenceForm(state.save.mock.calls[0][1])).toEqual({command:'reset'});
-  await waitFor(()=>expect(state.push).toHaveBeenCalledWith('/me/home?saved=1'));expect(state.refresh).toHaveBeenCalledOnce();
+  await screen.findByRole('alert');
  });
  it('retains the draft after an uncertain transport failure',async()=>{
   state.save.mockRejectedValue(new Error('Private transport diagnostic'));mount();fireEvent.submit(form());
