@@ -330,7 +330,7 @@ describe('r279 §B — the sidebar lights the new row on its own screen, and lig
 
   const TRUTH: ReadonlyArray<readonly [string, string]> = [
     // pathname                                    the ONE pack row that must light
-    // 7e4a9dd6 consolidates these destinations under Settings. They remain independently reachable
+    // 010fdbec consolidates these destinations under Settings. They remain independently reachable
     // cards, while exactly one owning sidebar row lights across the whole registered pack rail.
     [HEALTH_HREF, 'leave:leaveSettings'],
     [TYPES_HREF, 'leave:leaveSettings'],

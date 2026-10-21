@@ -53,7 +53,7 @@ describe('Leave Config › Leave Credit — the row, the tabs, the registry', ()
     // Spelled as ORDER rather than as an index, so the next row inserted in this family does not have to
     // rewrite the claim — but a Leave Credit moved out of the family, or above Leave Adjustments, fails.
     const start = labels.indexOf('leaveAdjustments');
-    // 7e4a9dd6 moves Generate into Settings; the inquiry now bounds the adjustment family.
+    // 010fdbec moves Generate into Settings; the inquiry now bounds the adjustment family.
     const end = labels.indexOf('employeeLeaveInquiry');
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
