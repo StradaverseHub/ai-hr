@@ -3,10 +3,15 @@ import {readFile,writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 
 const target=process.env.BOARD1_HOME_FIXTURE_TARGET??'home';
-if(target!=='home'&&target!=='notice')throw Error('Choose an explicit allowed fictional fixture target.');
-const name=target==='notice'?'ai_hr_board1_notice_acceptance':'ai_hr_board1_home_acceptance';
-const destination='/private/tmp/aihr-board1-remaining4-20261021/'+(target==='notice'?'notice-fixture.json':'home-fixture.json');
-const tenantName=target==='notice'?'Fictional Board 1 Notice Acceptance':'Fictional Board 1 Home Acceptance';
+const targets={
+ home:{database:'ai_hr_board1_home_acceptance',receipt:'home-fixture.json',tenant:'Fictional Board 1 Home Acceptance'},
+ notice:{database:'ai_hr_board1_notice_acceptance',receipt:'notice-fixture.json',tenant:'Fictional Board 1 Notice Acceptance'},
+ personal:{database:'ai_hr_board1_personal_home_acceptance',receipt:'personal-home-fixture.json',tenant:'Fictional Board 1 Personal Home Acceptance'},
+} as const;
+if(!Object.hasOwn(targets,target))throw Error('Choose an explicit allowed fictional fixture target.');
+const selected=targets[target as keyof typeof targets],name=selected.database;
+const destination='/private/tmp/aihr-board1-remaining4-20261021/'+selected.receipt;
+const tenantName=selected.tenant;
 for(const raw of [process.env.DATABASE_URL,process.env.MIGRATION_DATABASE_URL]){
  const url=new URL(raw??'');
  if(!['postgres:','postgresql:'].includes(url.protocol)||!['127.0.0.1','localhost'].includes(url.hostname)
