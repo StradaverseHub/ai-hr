@@ -117,9 +117,13 @@ describe('Monolith rail', () => {
     expect(within(rail).queryByRole('button', { name: messages.nav.collapse })).toBeNull();
   });
 
-  it('the active module lists its children INLINE, the current child aria-current in signal-text', () => {
+  it.each([
+    ['/admin/leave-config/settings', '/admin/leave-config/settings'],
+    ['/admin/leave-config/types', '/admin/leave-config/settings'],
+    ['/admin/leave-config/adjustments', '/admin/leave-config/adjustments'],
+  ])('the active module lists children INLINE and marks the owning child for %s', (route, owner) => {
     setTheme('monolith');
-    pathname = '/admin/leave-config/types';
+    pathname = route;
     adminRail();
     const rail = aside();
     const kids = within(rail).getByRole('navigation', { name: messages.nav.moduleLeave });
@@ -128,7 +132,7 @@ describe('Monolith rail', () => {
     expect(document.querySelector('[id^="nav-flyout-"]'), 'no flyout panel in Monolith').toBeNull();
     const current = within(kids).getAllByRole('link').filter((a) => a.getAttribute('aria-current') === 'page');
     expect(current, 'exactly one child is the current page').toHaveLength(1);
-    expect(current[0]).toHaveAttribute('href', '/admin/leave-config/types');
+    expect(current[0]).toHaveAttribute('href', owner);
     expect(current[0].className).toContain('text-signal-text');
   });
 
