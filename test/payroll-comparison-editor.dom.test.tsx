@@ -61,6 +61,7 @@ describe('Payroll comparison creation',()=>{
     expect(editor().getByRole('checkbox',{name:labels.roles.super_admin})).not.toBeChecked();
     await user.click(editor().getByRole('button',{name:labels.saveRun}));
     await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent(labels.rolesRequired));
+    expect(screen.getByRole('alert')).toHaveFocus();
     expect(save.mock.calls[0][0].getAll('roles')).toEqual([]);
     expect(name).toHaveValue('Fictional recoverable report');
     expect(editor().getByRole('textbox',{name:labels.description})).toHaveValue('Keep this description.');
@@ -82,6 +83,7 @@ describe('Payroll comparison creation',()=>{
     await user.clear(name);await user.type(name,'Fictional network retry draft');
     await user.click(editor().getByRole('button',{name:labels.saveRun}));
     await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent(labels.saveFailed));
+    expect(screen.getByRole('alert')).toHaveFocus();
     expect(name).toHaveValue('Fictional network retry draft');
     expect(screen.queryByText('Fictional private transport detail')).not.toBeInTheDocument();
   });

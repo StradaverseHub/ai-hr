@@ -1,5 +1,5 @@
 'use client';
-import {useState,useTransition} from 'react';
+import {useEffect,useRef,useState,useTransition} from 'react';
 import {useFormStatus} from 'react-dom';
 import * as Dialog from '@radix-ui/react-dialog';
 import {useTranslations} from 'next-intl';
@@ -16,6 +16,8 @@ export function PayrollComparisonEditor({payItems,initial=DEFAULT_PAYROLL_COMPAR
   const t=useTranslations('payrollComparison');
   const [draft,setDraft]=useState(()=>({...initial,name:name??'Payroll Basic Variance',description:description??''}));
   const [saveState,setSaveState]=useState<{error:string}|null>(null),[pending,startSaving]=useTransition();
+  const errorRef=useRef<HTMLParagraphElement>(null);
+  useEffect(()=>{if(saveState?.error)errorRef.current?.focus();},[saveState]);
   const change=(value:Partial<typeof draft>)=>setDraft(current=>({...current,...value}));
   const field='mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm';
   const items=payItems.some(item=>item.code===initial.payItemCode)?payItems:[{code:initial.payItemCode,name:initial.payItemCode},...payItems];
@@ -26,7 +28,6 @@ export function PayrollComparisonEditor({payItems,initial=DEFAULT_PAYROLL_COMPAR
     startSaving(async()=>{try{setSaveState(await savePayrollComparisonAction(form));}catch(error){unstable_rethrow(error);setSaveState({error:t('saveFailed')});}});
   }} className="space-y-5">
     <input type="hidden" name="id" value={id??''}/><input type="hidden" name="version" value={version??''}/>
-    {saveState?.error&&<p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">{saveState.error}</p>}
     <div className="grid gap-4 sm:grid-cols-2">
       <label className="text-sm font-medium">{t('reportName')}<input className={field} name="name" required maxLength={150} value={draft.name} onChange={event=>change({name:event.target.value})}/></label>
       <label className="text-sm font-medium">{t('payItem')}<select className={field} name="payItemCode" value={draft.payItemCode} onChange={event=>change({payItemCode:event.target.value})}>{items.map(item=><option key={item.code} value={item.code}>{item.code} · {item.name}</option>)}</select></label>
@@ -39,6 +40,7 @@ export function PayrollComparisonEditor({payItems,initial=DEFAULT_PAYROLL_COMPAR
     <div className="space-y-2 text-sm"><label className="flex items-center gap-2"><input type="checkbox" name="autoTag" checked={draft.autoTag} onChange={event=>change({autoTag:event.target.checked})}/>{t('autoTag')}</label><label className="flex items-center gap-2"><input type="checkbox" name="onlyVariances" checked={draft.onlyVariances} onChange={event=>change({onlyVariances:event.target.checked})}/>{t('onlyVariances')}</label></div>
     <fieldset><legend className="text-sm font-semibold">{t('columnsTitle')}</legend><p className="mt-1 text-xs text-muted-foreground">{t('mandatory')}</p><div className="mt-3 grid gap-2 text-sm sm:grid-cols-3">{PAYROLL_COMPARISON_COLUMNS.map(column=><label key={column} className="flex items-center gap-2"><input type="checkbox" name="columns" value={column} checked={draft.columns.includes(column)} onChange={event=>change({columns:event.target.checked?[...draft.columns,column]:draft.columns.filter(value=>value!==column)})}/>{t('columns.'+column)}</label>)}</div></fieldset>
     <fieldset><legend className="text-sm font-semibold">{t('access')}</legend><p className="mt-1 text-xs text-muted-foreground">{t('accessHelp')}</p><div className="mt-3 flex gap-4 text-sm">{(['hr_admin','super_admin'] as const).map(role=><label key={role} className="flex items-center gap-2"><input type="checkbox" name="roles" value={role} checked={draft.roles.includes(role)} onChange={event=>change({roles:event.target.checked?[...draft.roles,role]:draft.roles.filter(value=>value!==role)})}/>{t('roles.'+role)}</label>)}</div></fieldset>
+    {saveState?.error&&<p ref={errorRef} tabIndex={-1} role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm focus-visible:outline-2 focus-visible:outline-ring">{saveState.error}</p>}
     <div className="flex justify-end gap-3 border-t border-border pt-4">{onCancel?<button type="button" className="rounded-lg px-4 py-2 text-sm" onClick={onCancel}>{t('cancel')}</button>:<Link className="rounded-lg px-4 py-2 text-sm" href={id?'/reports/payroll-comparison/'+id:'/reports?cat=payroll'}>{t('cancel')}</Link>}<Submit pending={pending}/></div>
   </form>;
 }
