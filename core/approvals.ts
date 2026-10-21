@@ -11,6 +11,16 @@
 import { and, eq, isNull, lte, or, sql } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import { employment, reportingLine } from '../db/schema';
+import {AssignedWorkPrincipalUnavailableError} from '../lib/assigned-work';
+
+/** Task metadata is not an approval capability. Recheck actual login/claims and any JS person binding
+ * before asking the canonical current-decision guard; broader HR visibility is not an own identity.
+ */
+export async function assertAssignedWorkPrincipalTx(tx:Tx,ctx:SessionContext){
+ const [proof]=await tx.execute(sql`SELECT (app.principal_snapshot_current()
+  AND (${ctx.personId??null}::uuid IS NULL OR app.is_self_person(${ctx.personId??null}::uuid))) AS ok`) as unknown as {ok:boolean}[];
+ if(!ctx.userId||!proof?.ok)throw new AssignedWorkPrincipalUnavailableError();
+}
 
 /** Only this gate's explicit authority refusals may be omitted from an actionable read. Database,
  * configuration and unknown-subject failures must propagate rather than masquerading as no tasks. */

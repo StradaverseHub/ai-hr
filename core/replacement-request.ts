@@ -42,10 +42,10 @@
  * if that is ever wanted it is a different ticket with a different answer for what a partial approval of
  * a multi-date request would even mean.
  */
-import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne,sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { assertCanDecide } from './approvals';
+import { assertCanDecide,assertAssignedWorkPrincipalTx,isApprovalDecisionRefusal } from './approvals';
 import {
   company,
   compensation,
@@ -1193,6 +1193,31 @@ export type ReplacementClaimLineView = {
   actualClockOut: string | null;
   eligibleMinutes: number | null;
 };
+
+/** Exact assigned-work metadata. Preserve the existing public task DTO while reading no request
+ * reason/unit/amount/date lines and applying the same decision gate as the canonical writer.
+ * Rejection remains possible after module lapse; displaying a task never grants a credit.
+ */
+export function listPendingReplacementLeaveTasks(ctx:SessionContext,opts:{companyIds?:string[]}={}):Promise<{id:string;personId:string;employee:string|null;createdAt:Date}[]>{
+ return withTenant(ctx,async tx=>{
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  const candidates=await tx.select({id:replacementLeaveRequest.id,employmentId:replacementLeaveRequest.employmentId,
+   personId:employment.personId,employee:person.fullName,createdAt:replacementLeaveRequest.createdAt})
+   .from(replacementLeaveRequest).innerJoin(employment,and(eq(employment.id,replacementLeaveRequest.employmentId),eq(employment.tenantId,replacementLeaveRequest.tenantId)))
+   .leftJoin(person,eq(person.id,employment.personId))
+   .where(and(eq(replacementLeaveRequest.status,'pending'),eq(replacementLeaveRequest.tenantId,ctx.tenantId),
+    sql`NOT app.is_self_person(${employment.personId})`,
+    opts.companyIds===undefined?undefined:inArray(employment.companyId,opts.companyIds)))
+   .orderBy(desc(replacementLeaveRequest.createdAt),replacementLeaveRequest.id);
+  const result=[];
+  for(const row of candidates){
+   try{await assertCanDecide(tx,ctx,row.employmentId,'replacement leave request');}
+   catch(error){if(isApprovalDecisionRefusal(error,'replacement leave request'))continue;throw error;}
+   result.push({id:row.id,personId:row.personId,employee:row.employee,createdAt:row.createdAt});
+  }
+  return result;
+ });
+}
 
 export async function listPendingReplacementLeaveRequests(
   ctx: SessionContext,
