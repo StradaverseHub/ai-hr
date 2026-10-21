@@ -5,29 +5,39 @@ import Link from 'next/link';
 import {Button} from '@/components/ui';
 import type {Locale} from '@/i18n/config';
 import {deliverHomeCard} from '@/lib/employee-home-delivery';
-import {HOME_SEARCH_DEBOUNCE_MS,HOME_SEARCH_QUERY_MAX,HOME_SEARCH_RESULT_LIMIT,HOME_SEARCH_DESCRIPTION_MAX,homeKnowledgeHref,homeSearchWords} from '@/lib/employee-home-search';
+import {HOME_SEARCH_DEBOUNCE_MS,HOME_SEARCH_QUERY_MAX,HOME_SEARCH_RESULT_LIMIT,HOME_SEARCH_DESCRIPTION_MAX,homeKnowledgeHref,homeSearchWords,homeNavigationSearch} from '@/lib/employee-home-search';
+import {useNavIndex} from '@/components/nav-index-context';
 
 const KnowledgeDescription=React.lazy(()=>import('./knowledge-description'));
 type Item={id:string;title:string;descriptionMarkdown:string|null};
-type State={state:'idle'|'loading'}|{state:'ready';items:Item[]}|{state:'failed';reason:'timeout'|'unavailable'|'invalid'};
-export type HomeKnowledgeSearchLabels={label:string;hint:string;submit:string;loading:string;results:string;noMatch:string;failed:string;timeout:string;invalid:string;descriptionFallback:string};
+type State={state:'idle'|'loading'}|{state:'ready';items:Item[];navigationKey:string}|{state:'failed';reason:'timeout'|'unavailable'|'invalid'};
+export type HomeKnowledgeSearchLabels={label:string;hint:string;submit:string;loading:string;results:string;noMatch:string;failed:string;timeout:string;invalid:string;descriptionFallback:string;pageDescriptionFallback:string};
 
-/** Library facet only: forms/pages join through their own permission-filtered owner. Debounced
+/** Library documents and the rail owner's permitted destinations. Debounced
  * lexical reads never call a model, invent suggestions or store a query in personal preferences.
  */
-export function HomeKnowledgeSearch({locale,labels}:{locale:Locale;labels:HomeKnowledgeSearchLabels}){
-  return <KnowledgeSearch key={locale} locale={locale} labels={labels}/>;
+export function HomeKnowledgeSearch({locale,labels,contextKey='library'}:{locale:Locale;labels:HomeKnowledgeSearchLabels;contextKey?:string}){
+  return <KnowledgeSearch key={JSON.stringify([locale,contextKey])} locale={locale} labels={labels}/>;
 }
 function KnowledgeSearch({locale,labels}:{locale:Locale;labels:HomeKnowledgeSearchLabels}){
+  const {entries}=useNavIndex();
+  const navigationKey=JSON.stringify(entries);
   const inputId=React.useId(),hintId=React.useId(),resultsId=React.useId();
   const [query,setQuery]=React.useState(''),[view,setView]=React.useState<State>({state:'idle'});
   const [composing,setComposing]=React.useState(false);
+  const ready=view.state==='ready'&&view.navigationKey===navigationKey;
+  const documentItems=ready?view.items:[];
   const current=React.useRef<AbortController|null>(null);
   const pending=React.useRef<ReturnType<typeof setTimeout>|null>(null);
   const cancelDelay=React.useCallback(()=>{
     if(pending.current!==null){clearTimeout(pending.current);pending.current=null;}
   },[]);
   React.useEffect(()=>()=>{cancelDelay();current.current?.abort();},[cancelDelay]);
+  React.useEffect(()=>{cancelDelay();current.current?.abort();current.current=null;setView({state:'idle'});},[navigationKey,cancelDelay]);
+  const navigation=React.useMemo(()=>{
+    if(composing)return [];
+    try{return homeNavigationSearch(query,entries);}catch{return [];}
+  },[query,entries,composing]);
   const search=React.useCallback(async()=>{
     cancelDelay();current.current?.abort();current.current=null;
     try{if(!homeSearchWords(query).length){setView(query.trim()?{state:'failed',reason:'invalid'}:{state:'idle'});return;}}
@@ -53,8 +63,8 @@ function KnowledgeSearch({locale,labels}:{locale:Locale;labels:HomeKnowledgeSear
     },{signal:controller.signal,timeoutMs:2400}); // Leave room for the typing delay within the read budget.
     if(current.current!==controller||result.state==='cancelled')return;
     current.current=null;
-    setView(result.state==='ready'?{state:'ready',items:result.value}:{state:'failed',reason:result.reason});
-  },[query,locale,cancelDelay]);
+    setView(result.state==='ready'?{state:'ready',items:result.value,navigationKey}:{state:'failed',reason:result.reason});
+  },[query,locale,cancelDelay,navigationKey]);
   React.useEffect(()=>{
     if(!query.trim()||composing)return;
     pending.current=setTimeout(()=>{pending.current=null;void search();},HOME_SEARCH_DEBOUNCE_MS);
@@ -76,16 +86,20 @@ function KnowledgeSearch({locale,labels}:{locale:Locale;labels:HomeKnowledgeSear
     <div id={resultsId} aria-busy={view.state==='loading'}>
       {view.state==='loading'&&<p role="status" className="text-sm">{labels.loading}</p>}
       {view.state==='failed'&&<p role="alert" className="text-sm leading-relaxed">{view.reason==='timeout'?labels.timeout:view.reason==='invalid'?labels.invalid:labels.failed}</p>}
-      {view.state==='ready'&&(view.items.length===0?<p role="status" className="text-sm leading-relaxed">{labels.noMatch}</p>:
+      {ready&&documentItems.length===0&&navigation.length===0&&<p role="status" className="text-sm leading-relaxed">{labels.noMatch}</p>}
+      {(navigation.length>0||documentItems.length>0)&&
         <section aria-label={labels.results} className="space-y-2">
           <h3 className="text-sm font-semibold">{labels.results}</h3>
-          <ul className="divide-y divide-border">{view.items.map(item=><li key={item.id} className="pb-3">
+          <ul className="divide-y divide-border">{navigation.map(item=><li key={'page:'+item.href} className="pb-3">
+            <Link href={item.href} className="flex min-h-11 items-center rounded-md py-2 text-sm leading-relaxed underline underline-offset-4 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{item.label}</Link>
+            <p className="text-sm leading-relaxed text-muted-foreground">{[...new Set([item.parent,item.section].filter(value=>value&&value!==item.label))].join(' · ')||labels.pageDescriptionFallback}</p>
+          </li>)}{documentItems.slice(0,HOME_SEARCH_RESULT_LIMIT-navigation.length).map(item=><li key={'document:'+item.id} className="pb-3">
             <Link href={homeKnowledgeHref(item.id)} className="flex min-h-11 items-center rounded-md py-2 text-sm leading-relaxed underline underline-offset-4 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{item.title}</Link>
             {item.descriptionMarkdown?<React.Suspense fallback={<p className="text-sm leading-relaxed text-muted-foreground">{labels.descriptionFallback}</p>}>
               <KnowledgeDescription markdown={item.descriptionMarkdown}/>
             </React.Suspense>:<p className="text-sm leading-relaxed text-muted-foreground">{labels.descriptionFallback}</p>}
           </li>)}</ul>
-        </section>)}
+        </section>}
     </div>
   </div>;
 }

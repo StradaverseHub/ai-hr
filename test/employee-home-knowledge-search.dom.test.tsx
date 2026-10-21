@@ -3,10 +3,15 @@ import {afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {HomeKnowledgeSearch} from '../components/employee-home/knowledge-search';
 import en from '../messages/en.json';
+import {NavIndexProvider,usePublishNavIndex,type NavIndexEntry} from '../components/nav-index-context';
 
 const labels=en.employeeHome.knowledgeSearch;
 afterEach(()=>{cleanup();vi.useRealTimers();vi.unstubAllGlobals();vi.restoreAllMocks();});
 const submit=(query:string)=>{fireEvent.change(screen.getByRole('searchbox'),{target:{value:query}});fireEvent.submit(screen.getByRole('search'));};
+function PublishedSearch({entries,contextKey='fictional-viewer'}:{entries:NavIndexEntry[];contextKey?:string}){
+ usePublishNavIndex(entries,null);
+ return <HomeKnowledgeSearch locale="en" labels={labels} contextKey={contextKey}/>;
+}
 describe('Home library search facet',()=>{
   it('does not search on mount, accepts immediate submit and builds a safe internal result link',async()=>{
     const fetcher=vi.fn(async()=>Response.json({version:1,items:[{id:'document/one',title:'Recorded policy',descriptionMarkdown:'Recorded short explanation',href:'https://fictional.invalid/unsafe',body:'Private body'}]}));
@@ -75,5 +80,29 @@ describe('Home library search facet',()=>{
     await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent(labels.failed));
     expect(screen.queryByText(labels.noMatch)).not.toBeInTheDocument();
     expect(screen.queryByText('Fictional private body')).not.toBeInTheDocument();
+  });
+  it('includes the real navigation owner projection without replacing a library fault with no-match',async()=>{
+    vi.stubGlobal('fetch',vi.fn().mockRejectedValue(new Error('Fictional private failure')));
+    render(<NavIndexProvider><PublishedSearch entries={[{href:'/leave',label:'My Leave',section:'My HR',parent:'Leave'}]}/></NavIndexProvider>);
+    submit('leave');
+    await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent(labels.failed));
+    expect(screen.getByRole('link',{name:'My Leave'})).toHaveAttribute('href','/leave');
+    expect(screen.getByText('Leave · My HR')).toBeVisible();
+    expect(screen.queryByText(labels.noMatch)).not.toBeInTheDocument();
+    expect(screen.queryByText('Fictional private failure')).not.toBeInTheDocument();
+  });
+  it('removes revoked navigation immediately and discards library results from its old navigation context',async()=>{
+    let finish:((response:Response)=>void)|undefined;
+    const fetcher=vi.fn((_url:string,_options?:RequestInit)=>new Promise<Response>(resolve=>{finish=resolve;}));vi.stubGlobal('fetch',fetcher);
+    const {rerender}=render(<NavIndexProvider><PublishedSearch entries={[{href:'/leave',label:'My Leave',section:null,parent:null}]}/></NavIndexProvider>);
+    submit('leave');await waitFor(()=>expect(fetcher).toHaveBeenCalledTimes(1));
+    const signal=fetcher.mock.calls[0][1]?.signal;
+    expect(screen.getByRole('link',{name:'My Leave'})).toBeVisible();
+    rerender(<NavIndexProvider><PublishedSearch entries={[]}/></NavIndexProvider>);
+    await waitFor(()=>expect(signal?.aborted).toBe(true));expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    await React.act(async()=>{finish!(Response.json({version:1,items:[{id:'old',title:'Obsolete library result',descriptionMarkdown:null}]}));await Promise.resolve();});
+    expect(screen.queryByText('Obsolete library result')).not.toBeInTheDocument();
+    rerender(<NavIndexProvider><PublishedSearch entries={[]} contextKey="different-fictional-viewer"/></NavIndexProvider>);
+    expect(screen.getByRole('searchbox')).toHaveValue('');expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
 });

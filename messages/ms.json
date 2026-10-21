@@ -22084,16 +22084,17 @@
     "companyUnavailable": "Syarikat tidak tersedia",
     "employeeCodeUnavailable": "ID pekerja tidak tersedia",
     "knowledgeSearch": {
-      "label": "Cari polisi dan bantuan",
-      "hint": "Cari dokumen perpustakaan yang tersedia untuk akaun anda.",
+      "label": "Cari borang, polisi dan halaman",
+      "hint": "Cari perpustakaan dan halaman yang tersedia untuk akaun anda.",
       "submit": "Cari",
       "loading": "Sedang mencari…",
-      "results": "Hasil perpustakaan",
-      "noMatch": "Tiada dokumen perpustakaan yang sepadan. Hubungi HR atau layari Papan Kenyataan anda.",
+      "results": "Hasil carian",
+      "noMatch": "Tiada padanan. Hubungi HR atau layari Papan Kenyataan anda.",
       "failed": "Carian tidak dapat dimuatkan. Hantar carian anda semula.",
       "timeout": "Carian mengambil masa terlalu lama. Hantar carian anda semula.",
       "invalid": "Gunakan sehingga 120 aksara, termasuk sekurang-kurangnya satu huruf atau nombor.",
-      "descriptionFallback": "Buka dokumen untuk butiran lanjut."
+      "descriptionFallback": "Buka dokumen untuk butiran lanjut.",
+      "pageDescriptionFallback": "Buka halaman ini."
     },
     "timeOff": {
       "title": "Cuti",

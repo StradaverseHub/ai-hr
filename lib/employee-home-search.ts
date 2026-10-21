@@ -25,3 +25,18 @@ export function homeSearchWords(raw:unknown):string[]{
   const words=query.match(wordsPattern)??[];
   return [...new Set(words.filter(word=>significantPattern.test(word)))];
 }
+
+/** Consume the navigation owner's already-filtered result, never a second role/permission registry.
+ * The context is translated rail text. Each linked page still checks its own current authority. */
+export type HomeNavigationEntry={href:string;label:string;section:string|null;parent:string|null};
+export function homeNavigationSearch(query:string,entries:readonly HomeNavigationEntry[]):HomeNavigationEntry[]{
+ const words=homeSearchWords(query);if(!words.length)return [];
+ const seen=new Set<string>();
+ return entries.filter(entry=>{
+  // Links come from the rail, but keep the presentation contract internal even under malformed input.
+  if(!/^\/(?!\/)[A-Za-z0-9/_?&=%.#-]*$/.test(entry.href)||!entry.label.trim()||seen.has(entry.href))return false;
+  const hay=[entry.label,entry.parent??'',entry.section??''].join(' ').normalize('NFKC').toLowerCase();
+  if(!words.every(word=>hay.includes(word)))return false;
+  seen.add(entry.href);return true;
+ }).slice(0,HOME_SEARCH_RESULT_LIMIT);
+}

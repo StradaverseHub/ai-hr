@@ -22084,16 +22084,17 @@
     "companyUnavailable": "Chưa có thông tin công ty",
     "employeeCodeUnavailable": "Chưa có mã nhân viên",
     "knowledgeSearch": {
-      "label": "Tìm chính sách và trợ giúp",
-      "hint": "Tìm tài liệu thư viện mà tài khoản của bạn được phép xem.",
+      "label": "Tìm biểu mẫu, chính sách và trang",
+      "hint": "Tìm thư viện và các trang mà tài khoản của bạn được phép xem.",
       "submit": "Tìm kiếm",
       "loading": "Đang tìm…",
-      "results": "Kết quả thư viện",
-      "noMatch": "Không có tài liệu thư viện phù hợp. Hãy liên hệ HR hoặc xem Bảng thông báo của bạn.",
+      "results": "Kết quả tìm kiếm",
+      "noMatch": "Không có kết quả phù hợp. Hãy liên hệ HR hoặc xem Bảng thông báo của bạn.",
       "failed": "Không tải được kết quả. Hãy gửi lại tìm kiếm.",
       "timeout": "Tìm kiếm mất quá nhiều thời gian. Hãy gửi lại tìm kiếm.",
       "invalid": "Nhập tối đa 120 ký tự, gồm ít nhất một chữ cái hoặc chữ số.",
-      "descriptionFallback": "Mở tài liệu để xem chi tiết."
+      "descriptionFallback": "Mở tài liệu để xem chi tiết.",
+      "pageDescriptionFallback": "Mở trang này."
     },
     "timeOff": {
       "title": "Nghỉ phép",

@@ -22084,16 +22084,17 @@
     "companyUnavailable": "Company unavailable",
     "employeeCodeUnavailable": "Employee ID unavailable",
     "knowledgeSearch": {
-      "label": "Search policies and help",
-      "hint": "Search library documents available to your account.",
+      "label": "Search forms, policies and pages",
+      "hint": "Search the library and pages available to your account.",
       "submit": "Search",
       "loading": "Searching…",
-      "results": "Library results",
-      "noMatch": "No matching library documents. Contact HR or browse your Notice Board.",
+      "results": "Search results",
+      "noMatch": "No matches. Contact HR or browse your Notice Board.",
       "failed": "Search could not load. Submit your search again.",
       "timeout": "Search took too long. Submit your search again.",
       "invalid": "Use up to 120 characters, including at least one letter or number.",
-      "descriptionFallback": "Open the document for details."
+      "descriptionFallback": "Open the document for details.",
+      "pageDescriptionFallback": "Open this page."
     },
     "timeOff": {
       "title": "Time Off",
