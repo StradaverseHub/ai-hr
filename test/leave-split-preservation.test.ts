@@ -4,7 +4,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
 import { hireEmployee, setReportingLine } from '../core/org';
-import { decideLeaveCancellation, requestLeaveCancellation, LeaveCancellationNotAllowedError } from '../core/leave';
+import { adminCancelLeave, decideLeave, decideLeaveCancellation, leaveBalance, requestLeave, requestLeaveCancellation, LeaveCancellationNotAllowedError } from '../core/leave';
+import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
 import { unpaidDaysByEmployment } from '../core/payroll';
 import { leaveSplitReview } from '../core/leave-split-review';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -90,6 +91,46 @@ const preserved = (r: typeof schema.leaveRequest.$inferSelect) => ({
   createdAt: r.createdAt, decidedAt: r.decidedAt, decidedByEmploymentId: r.decidedByEmploymentId,
 });
 
+/** A native paid-type application, with any uncovered days measured by Leave's existing policy. */
+async function nativePaidRequest(grantedDays: number) {
+  await setLeaveApprovalPolicy(adminCtx(b), { companyId: b.companyId, levels: ['direct_manager'] });
+  const [type] = await owner.db.insert(schema.leaveType).values({
+    tenantId: b.tenantId, code: 'MIXED', name: 'Paid leave with unpaid overflow', paid: true,
+    counting: 'working_days', allowUnpaidLeave: true, employeeCancelApproved: true, cancelAutoApprove: false,
+  }).returning();
+  await owner.db.insert(schema.leaveLedger).values({
+    tenantId: b.tenantId, employmentId: subject.employmentId, leaveTypeId: type.id,
+    entryType: 'accrual', days: grantedDays.toFixed(2), effectiveOn: addDays(today, -30),
+  });
+  const { leaveRequestId } = await requestLeave(employee, {
+    employmentId: subject.employmentId, leaveTypeId: type.id,
+    startDate: monday, endDate: dates[4], today,
+  });
+  expect((await decideLeave(manager, { leaveRequestId, decision: 'approved' })).status).toBe('approved');
+  const [request] = await owner.db.select().from(schema.leaveRequest).where(eq(schema.leaveRequest.id, leaveRequestId));
+  expect(Number(request.days)).toBe(5);
+  expect(Number(request.unpaidDays ?? 0)).toBe(Math.max(0, 5 - grantedDays));
+  return request;
+}
+
+async function cancellationFacts(typeId: string) {
+  const ledger = await owner.db.select().from(schema.leaveLedger)
+    .where(eq(schema.leaveLedger.employmentId, subject.employmentId)).orderBy(asc(schema.leaveLedger.id));
+  const cancellations = await owner.db.select().from(schema.leaveCancellationRequest)
+    .where(eq(schema.leaveCancellationRequest.employmentId, subject.employmentId)).orderBy(asc(schema.leaveCancellationRequest.id));
+  const steps = await owner.db.select().from(schema.leaveCancellationStep)
+    .innerJoin(schema.leaveCancellationRequest, eq(schema.leaveCancellationRequest.id, schema.leaveCancellationStep.cancellationRequestId))
+    .where(eq(schema.leaveCancellationRequest.employmentId, subject.employmentId)).orderBy(asc(schema.leaveCancellationStep.id));
+  const dateDecisions = await owner.db.select().from(schema.leaveRequestDate)
+    .innerJoin(schema.leaveRequest, eq(schema.leaveRequest.id, schema.leaveRequestDate.leaveRequestId))
+    .where(eq(schema.leaveRequest.employmentId, subject.employmentId)).orderBy(asc(schema.leaveRequestDate.id));
+  const events = await owner.db.select().from(schema.domainEvent)
+    .where(eq(schema.domainEvent.subjectEmploymentId, subject.employmentId)).orderBy(asc(schema.domainEvent.sequence));
+  const balance = await withTenant(adminCtx(b), tx => leaveBalance(tx, subject.employmentId, typeId));
+  const unpaid = await withTenant(adminCtx(b), tx => unpaidDaysByEmployment(tx, monday, dates[4]));
+  return { requests: await requests(), ledger, cancellations, steps, dateDecisions, events, balance, unpaid: unpaid.get(subject.employmentId) ?? 0 };
+}
+
 describe('approved leave split preserves application facts', () => {
   it.each([0, 2, 4])('retains unpaid maternity facts after cancelling date index %i', async (index) => {
     const request = await original({ maternity: true, charged: true });
@@ -152,11 +193,51 @@ describe('approved leave split preserves application facts', () => {
   });
 
   it('keeps the mixed paid/unpaid refusal without changing rows or ledger', async () => {
-    const request = await original({ charged: true });
-    await owner.db.update(schema.leaveRequest).set({ unpaidDays: '2.00' }).where(eq(schema.leaveRequest.id, request.id));
+    const request = await nativePaidRequest(3);
+    const before = await cancellationFacts(request.leaveTypeId);
+    expect(before.balance).toBe(0);
+    expect(before.unpaid).toBe(2);
+    expect(before.cancellations).toEqual([]);
     await expect(cancel(request.id, dates[2])).rejects.toBeInstanceOf(LeaveCancellationNotAllowedError);
-    expect(await requests()).toHaveLength(1);
-    expect((await requests())[0].status).toBe('approved');
+    expect(await cancellationFacts(request.leaveTypeId)).toEqual(before);
+  });
+
+  it('refuses a legacy pending mixed cancellation at its final decision and rolls back every decision fact', async () => {
+    const request = await nativePaidRequest(5);
+    const { cancellationRequestId, status } = await requestLeaveCancellation(employee, {
+      leaveRequestId: request.id, cancelDates: [dates[2]], today,
+    });
+    expect(status).toBe('pending');
+    // Historical pending rows may predate the request-time mixed-unpaid guard. Arrange that stored
+    // shape while retaining the actual charged share; the public final decision must recheck it.
+    await owner.db.update(schema.leaveRequest).set({ unpaidDays: '2.00' }).where(eq(schema.leaveRequest.id, request.id));
+    await owner.db.update(schema.leaveLedger).set({ days: '-3.00' })
+      .where(and(eq(schema.leaveLedger.sourceRequestId, request.id), eq(schema.leaveLedger.entryType, 'debit')));
+    const before = await cancellationFacts(request.leaveTypeId);
+    expect(before.cancellations).toHaveLength(1);
+    expect(before.cancellations[0].status).toBe('pending');
+    expect(before.unpaid).toBe(2);
+    await expect(decideLeaveCancellation(manager, { cancellationRequestId, decision: 'approved' }))
+      .rejects.toMatchObject({ refusal: 'unpaid_days' });
+    expect(await cancellationFacts(request.leaveTypeId)).toEqual(before);
+  });
+
+  it('still cancels a whole mixed request and restores only its actual paid debit', async () => {
+    const request = await nativePaidRequest(3);
+    const before = await cancellationFacts(request.leaveTypeId);
+    expect(before.balance).toBe(0);
+    expect(before.unpaid).toBe(2);
+    expect(await adminCancelLeave(adminCtx(b), { leaveRequestId: request.id, reason: 'Cancel the entire mixed request' }))
+      .toMatchObject({ previousStatus: 'approved', restoredDays: 3 });
+    const after = await cancellationFacts(request.leaveTypeId);
+    expect(after.requests).toHaveLength(1);
+    expect(after.requests[0]).toMatchObject({ id: request.id, status: 'cancelled', unpaidDays: '2.00' });
+    expect(after.balance).toBe(3);
+    expect(after.unpaid).toBe(0);
+    const sourced = after.ledger.filter(row => row.sourceRequestId === request.id);
+    expect(sourced.map(row => Number(row.days)).sort((a, b) => a - b)).toEqual([-3, 3]);
+    expect(after.ledger.filter(row => row.entryType === 'accrual')).toEqual(before.ledger.filter(row => row.entryType === 'accrual'));
+    expect(after.cancellations).toEqual([]);
   });
 
   it('reports older lost import facts as uncertain candidates and never repairs the source', async () => {

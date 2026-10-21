@@ -877,7 +877,7 @@ describe('R5 Build #2 — discoverable entry point (read-layer projection)', () 
 });
 
 describe('R5 Build #2 — attachment visibility on a non-first surviving segment', () => {
-  it('the MC stays visible on the survivor the user sees after cancelling the FIRST date', async () => {
+  it('the exact MC bytes and MIME survive cancelling the FIRST date and a repeated survivor split', async () => {
     // Attach an MC to a pending request, approve it, then cancel the FIRST date (10 Aug). Segment[0] (10 Aug)
     // reuses the original row id and is CANCELLED; the survivor (11–12) is a new sibling row. Assert the
     // attachment is still visible on that surviving row the employee actually holds.
@@ -888,11 +888,12 @@ describe('R5 Build #2 — attachment visibility on a non-first surviving segment
       endDate: '2026-08-12',
       hasDocument: true,
     });
+    const content = Buffer.from('%PDF-1.4 test');
     await addLeaveAttachment(subjectCtx, {
       leaveRequestId: res.leaveRequestId,
       fileName: 'mc.pdf',
       mimeType: 'application/pdf',
-      content: Buffer.from('%PDF-1.4 test'),
+      content,
     });
     await decideLeave(adminCtx(b), { leaveRequestId: res.leaveRequestId, decision: 'approved' });
 
@@ -909,7 +910,20 @@ describe('R5 Build #2 — attachment visibility on a non-first surviving segment
       .where(eq(schema.leaveRequest.id, res.leaveRequestId));
     const survivor = await approvedRowCovering(orig.parentGroupId!, '2026-08-11');
     const att = await getLeaveAttachment(subjectCtx, survivor.id);
-    expect(att?.fileName).toBe('mc.pdf');
+    expect(att).toEqual({ fileName: 'mc.pdf', mimeType: 'application/pdf', content });
+
+    // The first surviving row becomes the cancelled piece on this second give-back. Its new
+    // survivor must retain the actual document, not merely a copied filename or an empty attachment.
+    const next = await requestLeaveCancellation(subjectCtx, {
+      leaveRequestId: survivor.id, cancelDates: ['2026-08-11'], today: '2026-08-01',
+    });
+    await decideLeaveCancellation(mgrCtx, { cancellationRequestId: next.cancellationRequestId, decision: 'approved' });
+    const [splitAgain] = await owner.db.select({ parentGroupId: schema.leaveRequest.parentGroupId })
+      .from(schema.leaveRequest).where(eq(schema.leaveRequest.id, survivor.id));
+    const lastSurvivor = await approvedRowCovering(splitAgain.parentGroupId!, '2026-08-12');
+    expect(lastSurvivor.id).not.toBe(survivor.id);
+    expect(await getLeaveAttachment(subjectCtx, lastSurvivor.id))
+      .toEqual({ fileName: 'mc.pdf', mimeType: 'application/pdf', content });
   });
 });
 
