@@ -21435,6 +21435,17 @@
     "showEmployment": "Show Home",
     "noEmployment": "No employment is linked to your account. Contact HR if you expected to see one.",
     "companyUnavailable": "Company unavailable",
-    "employeeCodeUnavailable": "Employee ID unavailable"
+    "employeeCodeUnavailable": "Employee ID unavailable",
+    "knowledgeSearch": {
+      "label": "Search policies and help",
+      "hint": "Search library documents available to your account.",
+      "submit": "Search",
+      "loading": "Searching…",
+      "results": "Library results",
+      "noMatch": "No matching library documents. Try different words.",
+      "failed": "Search could not load. Submit your search again.",
+      "timeout": "Search took too long. Submit your search again.",
+      "invalid": "Use up to 120 characters, including at least one letter or number."
+    }
   }
 }

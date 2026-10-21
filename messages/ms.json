@@ -21435,6 +21435,17 @@
     "showEmployment": "Lihat Laman Utama",
     "noEmployment": "Tiada pekerjaan dipautkan kepada akaun anda. Hubungi HR jika anda menjangkakan pekerjaan dipaparkan.",
     "companyUnavailable": "Syarikat tidak tersedia",
-    "employeeCodeUnavailable": "ID pekerja tidak tersedia"
+    "employeeCodeUnavailable": "ID pekerja tidak tersedia",
+    "knowledgeSearch": {
+      "label": "Cari polisi dan bantuan",
+      "hint": "Cari dokumen perpustakaan yang tersedia untuk akaun anda.",
+      "submit": "Cari",
+      "loading": "Sedang mencari…",
+      "results": "Hasil perpustakaan",
+      "noMatch": "Tiada dokumen perpustakaan yang sepadan. Cuba perkataan lain.",
+      "failed": "Carian tidak dapat dimuatkan. Hantar carian anda semula.",
+      "timeout": "Carian mengambil masa terlalu lama. Hantar carian anda semula.",
+      "invalid": "Gunakan sehingga 120 aksara, termasuk sekurang-kurangnya satu huruf atau nombor."
+    }
   }
 }

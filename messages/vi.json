@@ -21435,6 +21435,17 @@
     "showEmployment": "Xem Trang chủ",
     "noEmployment": "Chưa có công việc nào được liên kết với tài khoản của bạn. Hãy liên hệ HR nếu bạn cho rằng cần có thông tin này.",
     "companyUnavailable": "Chưa có thông tin công ty",
-    "employeeCodeUnavailable": "Chưa có mã nhân viên"
+    "employeeCodeUnavailable": "Chưa có mã nhân viên",
+    "knowledgeSearch": {
+      "label": "Tìm chính sách và trợ giúp",
+      "hint": "Tìm tài liệu thư viện mà tài khoản của bạn được phép xem.",
+      "submit": "Tìm kiếm",
+      "loading": "Đang tìm…",
+      "results": "Kết quả thư viện",
+      "noMatch": "Không có tài liệu thư viện phù hợp. Hãy thử từ khóa khác.",
+      "failed": "Không tải được kết quả. Hãy gửi lại tìm kiếm.",
+      "timeout": "Tìm kiếm mất quá nhiều thời gian. Hãy gửi lại tìm kiếm.",
+      "invalid": "Nhập tối đa 120 ký tự, gồm ít nhất một chữ cái hoặc chữ số."
+    }
   }
 }
