@@ -3331,14 +3331,21 @@
       "idx": 576,
       "version": "7",
       "when": 1791900000056,
-      "tag": "0576_attendance_group_policy",
+      "tag": "0576_principal_snapshot_current",
       "breakpoints": true
     },
     {
-      "idx": 577,
+      "idx": 581,
       "version": "7",
-      "when": 1791900000057,
-      "tag": "0577_employee_home_notice_integrity",
+      "when": 1791900000061,
+      "tag": "0581_attendance_group_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 582,
+      "version": "7",
+      "when": 1791900000062,
+      "tag": "0582_employee_home_notice_integrity",
       "breakpoints": true
     }
   ]

@@ -110,7 +110,9 @@ so committing acknowledgement evidence without its event is impossible through a
 
 ## Verification and rollout
 
-The unshipped Home migration is `0577`; do not alter an applied migration or consume another
+The unshipped Home migration is `0582` (moved from its unapplied `0577` allocation so Feedback
+Automation can release first); the shared current-principal proof is owned once by Security in `0576`.
+Do not alter an applied migration or consume another
 session's reserved numbers. A changed migration requires a new named fictional database/receipt,
 not replaying an edited hash into an earlier acceptance database. Preserve the original database as
 comparison evidence. Rehearse the actual populated baseline as well as the complete fresh journal.

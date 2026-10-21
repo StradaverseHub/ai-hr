@@ -199,7 +199,7 @@ describe('Notice audit scope and complete notification cursor authority',()=>{
   expect(notification.recipientEmploymentId).toBe(n.e.employmentId);
  });
  it('releases a partial DDL lock set while an existing event reader finishes through Notice',async()=>{
-  const source=readFileSync(new URL('../db/migrations/0577_employee_home_notice_integrity.sql',import.meta.url),'utf8');
+  const source=readFileSync(new URL('../db/migrations/0582_employee_home_notice_integrity.sql',import.meta.url),'utf8');
   const start=source.indexOf('DO $$'),end=source.indexOf('--> statement-breakpoint',start);
   expect(start).toBeGreaterThan(0);expect(end).toBeGreaterThan(start+300);
   const lockSql=source.slice(start,end);

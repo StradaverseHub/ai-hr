@@ -93,8 +93,10 @@ existing cutoff/ownership proof must refuse explicitly until canonical evidence 
 This is a financial-owner change and requires the classifier's full verification path, fresh migration
 checks, populated restricted-owner rehearsal and actual app journeys before release. It does not make
 the existing policy prototype complete. New storage belongs to the centrally reserved, still-unapplied
-0576 migration; applied production migrations remain unchanged. Home owns 0577, and other sessions'
-later reservations must follow in ascending order.
+0581 migration; applied production migrations remain unchanged. Home owns 0582. The original unshipped
+0576/0577 feature allocations were moved so Feedback Automation can release independently: Security
+owns the standalone shared current-principal proof in 0576, followed by its 0578–0580 reservations.
+Attendance and Home consume that one helper definition; they do not recreate it.
 
 UNKNOWN pending implementation investigation: complete planned-window placement for existing request
 types; exact cross-source coverage representation for ordinary and Full Flexi evidence; provenance

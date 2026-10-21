@@ -1,4 +1,4 @@
--- Centrally reserved 0576. No existing group, attendance, approval or paid result is changed.
+-- Centrally reserved 0581. Shared principal proof is installed by 0576. No existing group, attendance, approval or paid result is changed.
 -- The shift/group library stays tenant-wide. A dated execution policy is company-specific so that
 -- a shared group can reference that employer's currency-scoped central formula versions.
 CREATE TABLE public.attendance_group_policy_revision (
@@ -18,28 +18,6 @@ CREATE TABLE public.attendance_group_policy_revision (
 --> statement-breakpoint
 ALTER TABLE public.attendance_group_policy_revision ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.attendance_group_policy_revision FORCE ROW LEVEL SECURITY;
--- Bind this configuration owner to the current principal, not a stale or forged role snapshot.
--- principal/current_grants remain the identity and subtree-scope authorities; this is a bounded proof.
-CREATE FUNCTION app.principal_snapshot_current() RETURNS boolean
- LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT EXISTS(
-  SELECT 1 FROM app.principal(app.current_user_id()) p
-  JOIN public.app_user u ON u.id=app.current_user_id() AND u.tenant_id=p.tenant_id
-  WHERE p.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
-   AND NOT EXISTS(SELECT 1 FROM unnest(app.current_roles()) claimed(role)
-    WHERE NOT EXISTS(SELECT 1 FROM jsonb_array_elements(p.grants) actual
-     WHERE actual->>'role'=claimed.role))
-   AND NOT EXISTS(SELECT 1 FROM app.current_grants() claimed
-    WHERE NOT EXISTS(SELECT 1 FROM jsonb_array_elements(p.grants) actual
-     WHERE actual->>'role'=claimed.role AND
-      (nullif(actual->>'companyId','') IS NULL
-       OR nullif(actual->>'companyId','')::uuid=claimed.company_id
-       OR (claimed.company_id IS NOT NULL AND app.is_company_descendant(claimed.company_id,nullif(actual->>'companyId','')::uuid)))))
- );
-$$;
-REVOKE ALL ON FUNCTION app.principal_snapshot_current() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.principal_snapshot_current() TO ai_hr_app;
---> statement-breakpoint
 -- Keep the Attendance entry point while sharing its proof with other scoped configuration owners.
 CREATE FUNCTION app.attendance_policy_principal_current() RETURNS boolean
  LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,public,pg_temp AS $$
