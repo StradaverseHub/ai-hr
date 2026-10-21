@@ -127,6 +127,7 @@ export default async function NewNoticePage({
               fPopupFrequency: t('fPopupFrequency'),
               popupOnce: t('popupOnce'),
               popupUntilAcknowledged: t('popupUntilAcknowledged'),
+              popupUntilRevisionAcknowledged:t('popupUntilRevisionAcknowledged'),
               submit: t('saveDraft'),
             }}
           />

@@ -231,6 +231,7 @@ export default async function NoticeDetailPage({
               fPopupFrequency: t('fPopupFrequency'),
               popupOnce: t('popupOnce'),
               popupUntilAcknowledged: t('popupUntilAcknowledged'),
+              popupUntilRevisionAcknowledged:t('popupUntilRevisionAcknowledged'),
               submit: t('save'),
             }}
           />

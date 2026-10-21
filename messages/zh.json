@@ -15811,6 +15811,7 @@
     "scrollHint": "左右滑动表格以查看所有列。"
   },
   "notices": {
+    "popupUntilRevisionAcknowledged": "每次登录显示，直到确认此版本或通知到期",
     "attachmentTitle": "附件",
     "attachmentHelp": "最多五个文件，每个不超过10MiB。支持PDF、PNG、JPG、TXT、DOCX、XLSX或PPTX。添加文件后请保存通知。",
     "attachmentChoose": "选择文件",

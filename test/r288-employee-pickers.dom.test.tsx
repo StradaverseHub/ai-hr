@@ -83,6 +83,7 @@ function mountAdjustments() {
  * placeholder. (`test/r288-employee-pickers.test.ts` §C pins that the pages themselves pass them.)
  */
 const noticeLabels: NoticeFormLabels = {
+  popupUntilRevisionAcknowledged:'Until the current version is acknowledged or expires',
   attachmentLocale:'en',
   attachments:{title:'Attachments',help:'Up to5files,10MiB each',choose:'Choose file',add:'Add file',pending:'Uploading',remove:'Remove',saveFirst:'Save a draft first',saveHint:'Save to include files',file:'Check file',tooLarge:'Too large',changed:'Reload changed notice',limit:'Five files maximum',unavailable:'Unavailable',failed:'Upload failed'},
   category:'Category',summary:'Summary',pinned:'Pin notice',requiresAcknowledgement:'Require acknowledgement',acknowledgementHelp:'Each changed content version needs its own explicit acknowledgement.',
@@ -164,6 +165,16 @@ const searchBox = (placeholder: string) => screen.getByPlaceholderText(placehold
 const panelOf = (placeholder: string) => searchBox(placeholder).parentElement!;
 
 describe('Notice authoring company is separate from audience filters',()=>{
+ it('explains the actual popup stop condition when explicit acknowledgement is enabled',async()=>{
+  const user=userEvent.setup();const view=mountNotice();
+  expect(screen.getByRole('option',{name:noticeLabels.popupUntilAcknowledged})).toBeInTheDocument();
+  await user.click(screen.getByRole('checkbox',{name:noticeLabels.requiresAcknowledgement}));
+  expect(screen.getByRole('option',{name:noticeLabels.popupUntilRevisionAcknowledged})).toBeInTheDocument();
+  expect(new FormData(view.container.querySelector('form')!).get('requiresAcknowledgement')).toBe('on');
+  await user.click(screen.getByRole('checkbox',{name:noticeLabels.requiresAcknowledgement}));
+  expect(screen.getByRole('option',{name:noticeLabels.popupUntilAcknowledged})).toBeInTheDocument();
+ });
+
  it('offers only the actual scoped company and posts it as the authoring boundary',()=>{
   const view=mountNotice({authoring:{groupAllowed:false,companies:[{value:'c1',label:'Acme'}],owner:null}});
   const select=screen.getByRole('combobox',{name:N.authoringCompany});expect(select).toHaveValue('c1');

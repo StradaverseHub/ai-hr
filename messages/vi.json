@@ -15811,6 +15811,7 @@
     "scrollHint": "Vuốt bảng sang ngang để xem mọi cột."
   },
   "notices": {
+    "popupUntilRevisionAcknowledged": "Mỗi lần đăng nhập đến khi xác nhận phiên bản này hoặc hết hạn",
     "attachmentTitle": "Tệp đính kèm",
     "attachmentHelp": "Tối đa năm tệp,mỗi tệp10MiB. PDF,PNG,JPG,TXT,DOCX,XLSX hoặc PPTX. Thêm từng tệp rồi lưu thông báo.",
     "attachmentChoose": "Chọn tệp",

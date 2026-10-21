@@ -15811,6 +15811,7 @@
     "scrollHint": "เลื่อนตารางไปด้านข้างเพื่อดูทุกคอลัมน์"
   },
   "notices": {
+    "popupUntilRevisionAcknowledged": "แสดงทุกครั้งที่เข้าสู่ระบบจนกว่าจะยืนยันเวอร์ชันนี้หรือประกาศหมดอายุ",
     "attachmentTitle": "ไฟล์แนบ",
     "attachmentHelp": "สูงสุดห้าไฟล์ ไฟล์ละ10MiB รองรับPDF,PNG,JPG,TXT,DOCX,XLSX หรือPPTX เพิ่มไฟล์แล้วบันทึกประกาศ",
     "attachmentChoose": "เลือกไฟล์",

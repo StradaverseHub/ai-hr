@@ -15811,6 +15811,7 @@
     "scrollHint": "Leret jadual ke tepi untuk melihat setiap lajur."
   },
   "notices": {
+    "popupUntilRevisionAcknowledged": "Setiap log masuk sehingga versi ini diakui atau tamat tempoh",
     "attachmentTitle": "Lampiran",
     "attachmentHelp": "Maksimum lima fail, 10 MiB setiap satu. PDF,PNG,JPG,TXT,DOCX,XLSX atau PPTX. Tambah setiap fail, kemudian simpan notis.",
     "attachmentChoose": "Pilih fail",

@@ -88,6 +88,7 @@ export type NoticeFormLabels = {
   fPopupFrequency: string;
   popupOnce: string;
   popupUntilAcknowledged: string;
+  popupUntilRevisionAcknowledged:string;
   submit: string;
 };
 
@@ -144,6 +145,7 @@ export function NoticeForm({
 }) {
   const [tab, setTab] = useState<'write' | 'preview'>('write');
   const [body, setBody] = useState(values.body);
+  const [requiresAcknowledgement,setRequiresAcknowledgement]=useState(values.requiresAcknowledgement===true);
   const [attachmentIds,setAttachmentIds]=useState(values.attachmentIds??[]),[attachments,setAttachments]=useState(values.attachments??[]),[attachmentBusy,setAttachmentBusy]=useState(false);
   const [mode, setMode] = useState<'criteria' | 'individual'>(values.targetMode);
   const [anyCriteria, setAnyCriteria] = useState(
@@ -225,7 +227,7 @@ export function NoticeForm({
   const audienceBlocked = !targetingFrozen && mode === 'individual' && individualIds.length === 0;
 
   return (
-    <form action={action} className="space-y-6">
+    <form action={action} className="space-y-6 [&_input[type=text]]:min-h-11 [&_input[type=date]]:min-h-11 [&_select]:min-h-11 [&_button]:min-h-11 [&_label]:min-h-11">
       {idField && <input type="hidden" name="id" value={idField} />}
       {values.contentVersion!==undefined&&<input type="hidden" name="expectedContentVersion" value={values.contentVersion}/>}
       {attachmentIds.map(id=><input key={id} type="hidden" name="attachmentIds" value={id}/>)}
@@ -274,7 +276,7 @@ export function NoticeForm({
       </section>
 
       <section className="space-y-2">
-        <label className="flex min-h-11 items-center gap-2"><input type="checkbox" name="requiresAcknowledgement" defaultChecked={values.requiresAcknowledgement}/>{labels.requiresAcknowledgement}</label>
+        <label className="flex min-h-11 items-center gap-2"><input type="checkbox" name="requiresAcknowledgement" checked={requiresAcknowledgement} onChange={event=>setRequiresAcknowledgement(event.target.checked)}/>{labels.requiresAcknowledgement}</label>
         <p className="max-w-prose text-sm text-muted-foreground">{labels.acknowledgementHelp}</p>
       </section>
 
@@ -311,7 +313,7 @@ export function NoticeForm({
               required
               value={body}
               onChange={(e) => setBody(e.currentTarget.value)}
-              className={cn(inputCls, 'w-full font-mono text-xs')}
+              className={cn(inputCls, 'h-auto min-h-48 w-full resize-y py-3 font-mono text-xs')}
             />
           </Field>
           <p className="mt-1 text-xs text-muted-foreground">{labels.fBodyHelp}</p>
@@ -476,7 +478,7 @@ export function NoticeForm({
                     rows={3}
                     value={pastedRaw}
                     onChange={(e) => setPastedRaw(e.currentTarget.value)}
-                    className={cn(inputCls, 'w-full font-mono text-xs')}
+                    className={cn(inputCls, 'h-auto min-h-48 w-full resize-y py-3 font-mono text-xs')}
                   />
                   <p className="pt-1 text-[11px] text-muted-foreground">{labels.pasteAlternativeHelp}</p>
                   {/* r289 — WHAT WE COULD NOT READ, NAMED. Rendered only when there is something to say, so
@@ -525,7 +527,7 @@ export function NoticeForm({
             className={cn(inputCls, 'w-full')}
           >
             <option value="once">{labels.popupOnce}</option>
-            <option value="until_acknowledged">{labels.popupUntilAcknowledged}</option>
+            <option value="until_acknowledged">{requiresAcknowledgement?labels.popupUntilRevisionAcknowledged:labels.popupUntilAcknowledged}</option>
           </select>
         </Field>
       </section>
