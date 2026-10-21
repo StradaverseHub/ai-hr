@@ -4675,7 +4675,9 @@
     "originalNotRecorded": "Original times were not recorded",
     "originalNoRecord": "No attendance record existed when requested",
     "rewards": "Rewards",
-    "reviewRewards": "Review rewards"
+    "reviewRewards": "Review rewards",
+    "focusedDescription": "This request is currently assigned to you.",
+    "viewAllAssigned": "View all approvals"
   },
   "performance": {
     "list": {

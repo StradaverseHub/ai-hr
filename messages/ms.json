@@ -4675,7 +4675,9 @@
     "originalNotRecorded": "Masa asal tidak direkod",
     "originalNoRecord": "Tiada rekod kehadiran semasa permintaan",
     "rewards": "Ganjaran",
-    "reviewRewards": "Semak ganjaran"
+    "reviewRewards": "Semak ganjaran",
+    "focusedDescription": "Permohonan ini sedang ditugaskan kepada anda.",
+    "viewAllAssigned": "Lihat semua kelulusan"
   },
   "performance": {
     "list": {

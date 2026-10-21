@@ -1430,7 +1430,7 @@ export function listLeaveRequests(
   ctx: SessionContext,
   companyIds?: string[],
   limit = 200,
-  opts?: { status?: 'pending' | 'approved' | 'rejected' | 'cancelled' },
+  opts?: { status?: 'pending' | 'approved' | 'rejected' | 'cancelled'; requestId?:string },
 ) {
   return withTenant(ctx, async (tx) => {
     const rows = await tx
@@ -1443,6 +1443,7 @@ export function listLeaveRequests(
         and(
           companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
           opts?.status ? eq(leaveRequest.status, opts.status) : undefined,
+          opts?.requestId ? eq(leaveRequest.id,opts.requestId) : undefined,
         ),
       )
       .orderBy(desc(leaveRequest.createdAt))
@@ -1689,7 +1690,7 @@ export function leaveRequestDateBreakdown(ctx: SessionContext, leaveRequestId: s
  *  already scopes visibility (subject + manager + admin via can_see_employment); we additionally narrow to
  *  the company scope the inbox is viewing. The decide authorization (manager/admin, no self-approval) lives
  *  in decideLeaveCancellation. */
-export function listPendingLeaveCancellations(ctx: SessionContext, companyIds?: string[], locale?: string) {
+export function listPendingLeaveCancellations(ctx: SessionContext, companyIds?: string[], locale?: string,requestId?:string) {
   return withTenant(ctx, async (tx) => {
     const rows = await tx
       .select({
@@ -1723,6 +1724,7 @@ export function listPendingLeaveCancellations(ctx: SessionContext, companyIds?: 
       .where(
         and(
           eq(leaveCancellationRequest.status, 'pending'),
+          requestId?eq(leaveCancellationRequest.id,requestId):undefined,
           companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
         ),
       )

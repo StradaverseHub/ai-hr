@@ -186,7 +186,7 @@ export function pendingResignationTaskMetadata(ctx:SessionContext,companyIds?:st
 /** Admin inbox — pending resignations, RLS-scoped. Recent first. */
 export function listResignationRequests(
   ctx: SessionContext,
-  opts: { status?: 'pending' | 'accepted' | 'rejected' | 'withdrawn' } = {},
+  opts: { status?: 'pending' | 'accepted' | 'rejected' | 'withdrawn';requestId?:string } = {},
 ) {
   return withTenant(ctx, async (tx) => {
     const rows = await tx
@@ -204,7 +204,7 @@ export function listResignationRequests(
       .from(resignationRequest)
       .innerJoin(employment, eq(employment.id, resignationRequest.employmentId))
       .innerJoin(person, eq(person.id, resignationRequest.personId))
-      .where(opts.status ? eq(resignationRequest.status, opts.status) : undefined)
+      .where(and(opts.status ? eq(resignationRequest.status, opts.status) : undefined,opts.requestId?eq(resignationRequest.id,opts.requestId):undefined))
       .orderBy(desc(resignationRequest.createdAt))
       .limit(100);
     // #42cff598: batch-fetch each request's attachments (metadata only) in one query so the inbox can

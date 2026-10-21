@@ -1221,7 +1221,7 @@ export function listPendingReplacementLeaveTasks(ctx:SessionContext,opts:{compan
 
 export async function listPendingReplacementLeaveRequests(
   ctx: SessionContext,
-  opts: { companyIds?: string[] } = {},
+  opts: { companyIds?: string[];requestId?:string } = {},
 ): Promise<PendingReplacementRequestRow[]> {
   const pending=await withTenant(ctx, async (tx) => {
     const heads = await tx
@@ -1244,6 +1244,7 @@ export async function listPendingReplacementLeaveRequests(
       .where(
         and(
           eq(replacementLeaveRequest.status, 'pending'),
+          opts.requestId?eq(replacementLeaveRequest.id,opts.requestId):undefined,
           opts.companyIds && opts.companyIds.length ? inArray(employment.companyId, opts.companyIds) : undefined,
         ),
       )

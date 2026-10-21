@@ -9,6 +9,7 @@ import {onboardingAssignedTaskMetadata} from '../packs/lifecycle/service';
 import {isModuleEnabled} from './entitlements';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {projectHomeAssignedWork,type EmployeeHomeTasks} from '../lib/employee-home-tasks';
+import {ASSIGNED_APPROVAL_KINDS,assignedApprovalHref,type AssignedApprovalKind} from '../lib/assigned-approval-focus';
 
 export async function readEmployeeHomeTasks(ctx:SessionContext,employmentId?:string,page?:number):Promise<EmployeeHomeTasks>{
  const subject=await requireOwnHomeSubject(ctx,employmentId);
@@ -23,8 +24,9 @@ export async function readEmployeeHomeTasks(ctx:SessionContext,employmentId?:str
   isModuleEnabled(ctx,'lifecycle')?onboardingAssignedTaskMetadata(ctx):Promise.resolve([]),
  ]);
  return projectHomeAssignedWork([
-  ...inbox,
-  ...replacement.map(row=>({id:row.id,kind:'replacementLeave' as const,subjectName:row.employee,createdAt:row.createdAt.toISOString(),linkPath:'/approvals?category=replacementLeave'})),
+  ...inbox.map(row=>ASSIGNED_APPROVAL_KINDS.some(kind=>kind===row.kind)?{...row,linkPath:assignedApprovalHref({kind:row.kind as AssignedApprovalKind,id:row.id})}:
+   row.kind==='profile'?{...row,linkPath:`/admin/personnel/profile-changes?requestId=${row.id}&assigned=1#request-${row.id}`}:row),
+  ...replacement.map(row=>({id:row.id,kind:'replacementLeave' as const,subjectName:row.employee,createdAt:row.createdAt.toISOString(),linkPath:assignedApprovalHref({kind:'replacementLeave',id:row.id})})),
   ...[...standardFeedback,...onehrFeedback,...onboarding].map(row=>({id:row.id,kind:row.kind,subjectName:row.subjectName,createdAt:row.sourceUpdatedAt.toISOString(),linkPath:row.linkPath,...(row.dueDate?{dueDate:row.dueDate}:{})})),
  ],{employmentId:subject.employmentId,today:todayInKualaLumpur(),page,effortMinutes:configuration.configuration.effortMinutes});
 }
