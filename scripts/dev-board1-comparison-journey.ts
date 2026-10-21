@@ -21,7 +21,7 @@ async function main(){
  const {hireEmployee}=await import('../core/org');
  const {saveCustomReport,getCustomReport}=await import('../core/custom-reports');
  const {payrollComparisonSpec}=await import('../core/report-payroll-comparison');
- const {setPayrollPermissionGrant,createIndividualTxn,reprocessSelectedEmployees,createBatch}=await import('../packs/payroll/service');
+ const {setPayrollPermissionGrant,createIndividualTxn,reprocessSelectedEmployees,getReprocessJob,decodeReprocessEmployeeOutcomes,createBatch}=await import('../packs/payroll/service');
  const {todayInKualaLumpur}=await import('../lib/hr-date');
  try{
   const fixture=JSON.parse(await readFile(directory+'/payroll-fixture.json','utf8'));
@@ -57,7 +57,11 @@ async function main(){
    const reprocessCtx={...await entitledCtx(fixture),grants:[{role:'hr_admin',companyId:null}]};
    const result=await reprocessSelectedEmployees(reprocessCtx,{batchId:fixture.current.batchId,
     employmentIds:[fixture.people.increase.employmentId],reason:'Fictional Board 1 stale-result recovery'});
-   if(result.status!=='completed'||result.reprocessed!==1)throw Error('The fictional reprocess did not complete its selected result.');
+   if(result.status!=='completed')throw Error('The fictional reprocess did not complete its selected result.');
+   const job=await getReprocessJob(reprocessCtx,result.jobId);
+   const outcomes=decodeReprocessEmployeeOutcomes(job?.result,[fixture.people.increase.employmentId]);
+   if(!job||job.batchId!==fixture.current.batchId||job.status!=='completed'||outcomes?.length!==1||outcomes[0].status!=='reprocessed')
+    throw Error('The fictional reprocess has no complete canonical employee outcome.');
    console.log('Reprocessed the named fictional employee through the canonical Payroll job.');
   }
  }finally{await closeAll();}

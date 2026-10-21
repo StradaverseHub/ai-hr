@@ -4,7 +4,7 @@ import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendancePolicyDayClass} from '../li
 
 const day='2024-02-29',next='2024-03-01';
 const companyId='00000000-0000-4000-8000-000000000001';
-function proof(date:string,dayClass:AttendancePolicyDayClass):PolicyCalendarProof{
+function proof(date:string,dayClass:AttendancePolicyDayClass):Extract<PolicyCalendarProof,{state:'known'}>{
   return {date,state:'known',companyId,dayClass,moneyDay:dayClass==='normal'||dayClass==='off'?'workday':dayClass==='rest'?'rest_day':'holiday',references:['fictional-calendar-owner:'+date+':'+dayClass]};
 }
 const base=()=>({sourceDate:day,companyId,periodMinutes:2880,splitAtMidnight:true,intervals:[{from:1410,to:1500}],calendar:[proof(day,'normal'),proof(next,'rest')]});
