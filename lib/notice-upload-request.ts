@@ -1,3 +1,4 @@
+import {NOTICE_UPLOAD_MULTIPART_OVERHEAD_BYTES} from './notice-upload-policy';
 /** Bound request bytes before multipart parsing; the server-action default is below the Notice file cap. */
 export class NoticeUploadRequestError extends Error {
  constructor(readonly status:number,readonly reason:'file'|'tooLarge'|'unavailable'){super(reason);}
@@ -9,7 +10,7 @@ export function noticeUploadSameOrigin(request:Request):boolean{
  }catch{return false;}
 }
 export async function readNoticeUploadRequest(request:Request,maxFileBytes:number):Promise<FormData>{
- const maxBytes=maxFileBytes+65536,type=request.headers.get('content-type');
+ const maxBytes=maxFileBytes+NOTICE_UPLOAD_MULTIPART_OVERHEAD_BYTES,type=request.headers.get('content-type');
  if(!type?.toLowerCase().startsWith('multipart/form-data;')||!request.body)throw new NoticeUploadRequestError(400,'file');
  const length=request.headers.get('content-length');
  if(length&&(!/^\d+$/.test(length)||Number(length)>maxBytes))throw new NoticeUploadRequestError(413,'tooLarge');

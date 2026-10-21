@@ -24,6 +24,8 @@
  * The targeting engine is `core/org-criteria.ts`, shared with bulk leave adjustments rather than copied.
  */
 import {createHash} from 'node:crypto';
+import {NOTICE_ATTACHMENT_MAX_BYTES} from '../lib/notice-upload-policy';
+export {NOTICE_ATTACHMENT_MAX_BYTES};
 import {resolveDocumentUpload} from './employee-documents';
 import { and, asc, desc, eq, inArray, isNull, isNotNull, lte, gte, sql } from 'drizzle-orm';
 
@@ -783,7 +785,6 @@ export function noticeAcknowledgementHistory(ctx:SessionContext,id:string){
 export class NoticeAttachmentError extends NoticeError {
  constructor(readonly reason:'file'|'changed'|'limit'|'unavailable',message:string){super(message);this.name='NoticeAttachmentError';}
 }
-export const NOTICE_ATTACHMENT_MAX_BYTES=10*1024*1024;
 const noticeAttachmentMime=new Set(['application/pdf','image/png','image/jpeg','text/plain','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.openxmlformats-officedocument.presentationml.presentation']);
 /** Adds and selects immutable bytes in the same transaction as the content revision and audit event.
  * An intent key belongs to this author/Notice; a successful retry cannot manufacture another revision. */

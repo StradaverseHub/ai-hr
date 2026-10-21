@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next';
+import {NOTICE_UPLOAD_PROXY_MAX_BYTES} from './lib/notice-upload-policy';
 import createNextIntlPlugin from 'next-intl/plugin';
 import { systemTestingNextCompileEnvironment } from './scripts/improve/system-testing-next-config';
 
@@ -36,7 +37,12 @@ const nextConfig: NextConfig = {
    * data already calls revalidatePath, which clears it. `dynamic` stays at its default of 0: a page reached
    * WITHOUT a prefetch is always rendered fresh.
    */
-  experimental: { staleTimes: { static: 30 } },
+  experimental: {
+    staleTimes: { static: 30 },
+    // The Notice route still caps a file at10MiB and the whole multipart body at10MiB+64KiB.
+    // Clone one extra byte so its bounded reader can refuse excess rather than parse truncated data.
+    proxyClientMaxBodySize:NOTICE_UPLOAD_PROXY_MAX_BYTES,
+  },
 
   /**
    * Security (assessment 2026-09, findings M5/H3). Global response headers. Applied to every route so a

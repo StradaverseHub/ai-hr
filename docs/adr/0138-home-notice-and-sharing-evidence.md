@@ -85,6 +85,12 @@ Recheck connection authority on every read; a human context, APP connection, dow
 cloned capability cannot use it. Missing source/audience authority is an error, not ineligibility: retain
 queued delivery for the authorized sweep. No system GUC privilege exception or additional sender exists.
 
+The framework's proxy/middleware clone budget must cover the application multipart budget plus an
+excess-byte witness. A10MiB file remains the service limit; the bounded reader allows64KiB for multipart
+overhead and the framework clones one further byte. Thus an otherwise valid maximum-size file is not
+silently truncated, while a lying over-budget stream can still be positively refused before parsing.
+These shared technical constants live in a leaf module; build configuration never imports a DB service.
+
 An attachment upload may stage immutable private bytes without changing published content. The editor
 saves the selected attachment IDs together with its text under the displayed content-version check.
 An upload intent is bound to the author and Notice, and a retry must name the same bytes. Staged files

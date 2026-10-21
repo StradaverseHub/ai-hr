@@ -1,6 +1,7 @@
 'use client';
 import {useId,useRef,useState} from 'react';
 import {Button,inputCls} from '@/components/ui';
+import {NOTICE_ATTACHMENT_MAX_BYTES} from '@/lib/notice-upload-policy';
 export type NoticeAttachmentMetadata={id:string;fileName:string;mimeType:string;byteLength:number};
 export type NoticeAttachmentEditorLabels={title:string;help:string;choose:string;add:string;pending:string;remove:string;saveFirst:string;saveHint:string;file:string;tooLarge:string;changed:string;limit:string;unavailable:string;failed:string};
 export function NoticeAttachmentEditor({noticeId,contentVersion,items,onUploaded,onRemove,onBusyChange,labels,locale}:{
@@ -10,7 +11,7 @@ export function NoticeAttachmentEditor({noticeId,contentVersion,items,onUploaded
  const [file,setFile]=useState<File|null>(null),[intent,setIntent]=useState<string|null>(null),[pending,setPending]=useState(false),[error,setError]=useState<keyof Pick<NoticeAttachmentEditorLabels,'file'|'tooLarge'|'changed'|'limit'|'unavailable'|'failed'>|null>(null),[ready,setReady]=useState(false);
  async function upload(){
   if(inFlight.current||!file||!intent||!noticeId)return;
-  if(!file.size||file.size>10*1024*1024){setError('tooLarge');return;}
+  if(!file.size||file.size>NOTICE_ATTACHMENT_MAX_BYTES){setError('tooLarge');return;}
   inFlight.current=true;setPending(true);setError(null);
   try{
    const body=new FormData();body.set('file',file);body.set('uploadKey',intent);body.set('contentVersion',String(contentVersion));
