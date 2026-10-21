@@ -1,9 +1,9 @@
 import {describe,it,expect} from 'vitest';
 import {resolveAccessCapability,assertAccessGrantCeiling,assertSystemAdministratorSurvives,previewEffectiveAccess,type AccessSnapshot,type AccessCapability,type CompanyScopeEvidence} from '../lib/access-permission-model';
-const catalog:AccessCapability[]=[{id:'workforce.view',scope:'company',supported:true,bindings:[{owner:'fictional-test-owner',operation:'read'}]},{id:'access.system_admin',scope:'tenant',supported:true,bindings:[{owner:'fictional-test-owner',operation:'recover'}]},{id:'pending.edit',scope:'company',supported:false,bindings:[]}];
+const catalog:AccessCapability[]=[{id:'workforce.view',scope:'company',supported:true,bindings:[{owner:'fictional-test-owner',operation:'read'}]},{id:'access.system_admin',scope:'tenant',supported:true,bindings:[{owner:'fictional-test-owner',operation:'recover'}]},{id:'access.configure',scope:'tenant',supported:true,bindings:[{owner:'fictional-test-owner',operation:'configure'}]},{id:'pending.edit',scope:'company',supported:false,bindings:[]}];
 const evidence:CompanyScopeEvidence={tenantId:'tenant-a',knownCompanyIds:new Set(['parent','child','unrelated']),covers:(ancestor,company)=>ancestor==='parent'&&company==='child'};
 const target={tenantId:'tenant-a',companyId:'child'};
-const snapshot=():AccessSnapshot=>({tenantId:'tenant-a',revision:'revision-a',users:[{id:'admin',active:true},{id:'worker',active:true}],groups:[{id:'system',name:'System administrator',retired:false,systemAdministrator:true,grants:[{capabilityId:'access.system_admin',companyId:null}]},{id:'team-a',name:'Team A',retired:false,systemAdministrator:false,grants:[{capabilityId:'workforce.view',companyId:'parent'}]},{id:'team-b',name:'Team B',retired:false,systemAdministrator:false,grants:[{capabilityId:'workforce.view',companyId:'child'}]}],memberships:[{groupId:'system',userId:'admin'},{groupId:'team-a',userId:'worker'},{groupId:'team-b',userId:'worker'}],overrides:[]});
+const snapshot=():AccessSnapshot=>({tenantId:'tenant-a',revision:'revision-a',users:[{id:'admin',active:true},{id:'worker',active:true}],groups:[{id:'system',name:'System administrator',retired:false,systemAdministrator:true,grants:[{capabilityId:'access.system_admin',companyId:null},{capabilityId:'access.configure',companyId:null}]},{id:'team-a',name:'Team A',retired:false,systemAdministrator:false,grants:[{capabilityId:'workforce.view',companyId:'parent'}]},{id:'team-b',name:'Team B',retired:false,systemAdministrator:false,grants:[{capabilityId:'workforce.view',companyId:'child'}]}],memberships:[{groupId:'system',userId:'admin',companyId:null},{groupId:'team-a',userId:'worker',companyId:null},{groupId:'team-b',userId:'worker',companyId:null}],overrides:[]});
 describe('effective permission algebra for trusted owner snapshots',()=>{
  it('unions groups and explains continued access after one group grant is removed',()=>{
   const before=snapshot(),after={...before,memberships:before.memberships.filter(row=>row.groupId!=='team-a')};
@@ -49,4 +49,24 @@ it('only explicit unrestricted authority can delegate an all-company permission,
  expect(()=>assertAccessGrantCeiling(source,catalog,'worker',[{capabilityId:'workforce.view',companyId:null}],evidence)).not.toThrow();
  source.overrides=[...source.overrides,{userId:'worker',capabilityId:'workforce.view',companyId:'child',effect:'deny'}];
  expect(()=>assertAccessGrantCeiling(source,catalog,'worker',[{capabilityId:'workforce.view',companyId:null}],evidence)).toThrow(/ceiling/);
+});
+
+it('intersects each group permission with the membership scope so a tenant-wide default group cannot widen a company member',()=>{
+ const source=snapshot();source.groups=source.groups.map(group=>group.id==='team-a'?{...group,grants:[{capabilityId:'workforce.view',companyId:null}]}:group);
+ source.memberships=[{userId:'admin',groupId:'system',companyId:null},{userId:'worker',groupId:'team-a',companyId:'parent'}];
+ expect(resolveAccessCapability(source,catalog,'worker','workforce.view',target,evidence)).toMatchObject({allowed:true,sources:[{kind:'group',id:'team-a',companyId:null,membershipCompanyId:'parent'}]});
+ expect(resolveAccessCapability(source,catalog,'worker','workforce.view',{...target,companyId:'unrelated'},evidence).allowed).toBe(false);
+ expect(()=>assertAccessGrantCeiling(source,catalog,'worker',[{capabilityId:'workforce.view',companyId:null}],evidence)).toThrow(/ceiling/);
+});
+
+it('does not delegate an ancestor scope across an explicitly denied child subtree',()=>{
+ const source=snapshot();source.overrides=[{userId:'worker',capabilityId:'workforce.view',companyId:'child',effect:'deny'}];
+ // The parent itself remains readable, but granting its entire subtree would erase the denial.
+ expect(resolveAccessCapability(source,catalog,'worker','workforce.view',{...target,companyId:'parent'},evidence).allowed).toBe(true);
+ expect(()=>assertAccessGrantCeiling(source,catalog,'worker',[{capabilityId:'workforce.view',companyId:'parent'}],evidence)).toThrow(/ceiling/);
+});
+
+it('retains a recovery administrator who can actually open and save access configuration',()=>{
+ const before=snapshot(),after={...before,overrides:[{userId:'admin',capabilityId:'access.configure',companyId:null,effect:'deny' as const}]};
+ expect(()=>assertSystemAdministratorSurvives(before,after,catalog,evidence)).toThrow(/lastAdministrator/);
 });

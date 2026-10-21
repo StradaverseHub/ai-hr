@@ -6,11 +6,11 @@ export type AccessCapability={id:string;scope:'tenant'|'company';supported:boole
 export type CapabilityGrant={capabilityId:string;companyId:string|null};
 export type AccessGroup={id:string;name:string;retired:boolean;systemAdministrator:boolean;grants:readonly CapabilityGrant[]};
 export type UserCapabilityOverride=CapabilityGrant&{userId:string;effect:'allow'|'deny'};
-export type AccessMembership={userId:string;groupId:string};
+export type AccessMembership={userId:string;groupId:string;companyId:string|null};
 export type AccessUser={id:string;active:boolean};
 export type AccessSnapshot={tenantId:string;revision:string;users:readonly AccessUser[];groups:readonly AccessGroup[];memberships:readonly AccessMembership[];overrides:readonly UserCapabilityOverride[]};
 export type AccessTarget={tenantId:string;companyId:string|null};
-export type AccessSource={kind:'group'|'individual';id:string;effect:'allow'|'deny';companyId:string|null};
+export type AccessSource={kind:'group'|'individual';id:string;effect:'allow'|'deny';companyId:string|null;membershipCompanyId?:string|null};
 export type AccessResolution={allowed:boolean;reason:'allowed'|'denied'|'unassigned'|'unsupported'|'unavailable';sources:readonly AccessSource[]};
 export type CompanyScopeEvidence={tenantId:string;knownCompanyIds:ReadonlySet<string>;covers:(ancestor:string,company:string)=>boolean};
 export class AccessPermissionError extends Error{
@@ -28,14 +28,17 @@ export function resolveAccessCapability(snapshot:AccessSnapshot,catalog:readonly
  const definition=catalog.find(item=>item.id===capabilityId);
  if(!definition?.supported||!definition.bindings.length)return {allowed:false,reason:'unsupported',sources:[]};
  if(snapshot.tenantId!==target.tenantId||snapshot.tenantId!==evidence.tenantId||!snapshot.users.some(user=>user.id===userId&&user.active)||definition.scope==='company'&&target.companyId===null||definition.scope==='tenant'&&target.companyId!==null)return {allowed:false,reason:'unavailable',sources:[]};
- const membershipIds=new Set(snapshot.memberships.filter(row=>row.userId===userId).map(row=>row.groupId));
+ const memberships=snapshot.memberships.filter(row=>row.userId===userId);
  const sources:AccessSource[]=[];
  for(const group of snapshot.groups){
-  if(group.retired||!membershipIds.has(group.id))continue;
-  for(const grant of group.grants)if(grant.capabilityId===capabilityId&&covers(grant.companyId,target,evidence))sources.push({kind:'group',id:group.id,effect:'allow',companyId:grant.companyId});
+  if(group.retired)continue;
+  for(const membership of memberships.filter(row=>row.groupId===group.id)){
+   if(!covers(membership.companyId,target,evidence))continue;
+   for(const grant of group.grants)if(grant.capabilityId===capabilityId&&covers(grant.companyId,target,evidence))sources.push({kind:'group',id:group.id,effect:'allow',companyId:grant.companyId,membershipCompanyId:membership.companyId});
+  }
  }
  for(const override of snapshot.overrides)if(override.userId===userId&&override.capabilityId===capabilityId&&covers(override.companyId,target,evidence))sources.push({kind:'individual',id:userId,effect:override.effect,companyId:override.companyId});
- sources.sort((a,b)=>a.kind.localeCompare(b.kind)||a.id.localeCompare(b.id)||a.effect.localeCompare(b.effect)||(a.companyId??'').localeCompare(b.companyId??''));
+ sources.sort((a,b)=>a.kind.localeCompare(b.kind)||a.id.localeCompare(b.id)||a.effect.localeCompare(b.effect)||(a.companyId??'').localeCompare(b.companyId??'')||(a.membershipCompanyId??'').localeCompare(b.membershipCompanyId??''));
  if(sources.some(source=>source.effect==='deny'))return {allowed:false,reason:'denied',sources};
  return {allowed:sources.length>0,reason:sources.length?'allowed':'unassigned',sources};
 }
@@ -45,11 +48,16 @@ export function assertAccessGrantCeiling(snapshot:AccessSnapshot,catalog:readonl
   const capability=catalog.find(item=>item.id===grant.capabilityId);if(!capability?.supported||!capability.bindings.length)throw new AccessPermissionError('unsupported');
   if(capability.scope==='company'&&grant.companyId===null){
    // A global grant covers future companies too: enumeration of today's children cannot prove it.
-   const memberIds=new Set(snapshot.memberships.filter(row=>row.userId===actorUserId).map(row=>row.groupId));
+   const memberIds=new Set(snapshot.memberships.filter(row=>row.userId===actorUserId&&row.companyId===null).map(row=>row.groupId));
    const globalAllow=snapshot.groups.some(group=>!group.retired&&memberIds.has(group.id)&&group.grants.some(item=>item.capabilityId===grant.capabilityId&&item.companyId===null))||snapshot.overrides.some(item=>item.userId===actorUserId&&item.capabilityId===grant.capabilityId&&item.companyId===null&&item.effect==='allow');
    const denied=snapshot.overrides.some(item=>item.userId===actorUserId&&item.capabilityId===grant.capabilityId&&item.effect==='deny');
    if(snapshot.tenantId!==evidence.tenantId||!snapshot.users.some(user=>user.id===actorUserId&&user.active)||!globalAllow||denied)throw new AccessPermissionError('ceiling');
-  }else if(!resolveAccessCapability(snapshot,catalog,actorUserId,grant.capabilityId,{tenantId:snapshot.tenantId,companyId:grant.companyId},evidence).allowed)throw new AccessPermissionError('ceiling');
+  }else{
+   if(!resolveAccessCapability(snapshot,catalog,actorUserId,grant.capabilityId,{tenantId:snapshot.tenantId,companyId:grant.companyId},evidence).allowed)throw new AccessPermissionError('ceiling');
+   // A grant covers descendants too. Authority on the ancestor alone does not prove authority on
+   // a child with an explicit denial, including a future child under that denied subtree.
+   if(capability.scope==='company'&&snapshot.overrides.some(item=>item.userId===actorUserId&&item.capabilityId===grant.capabilityId&&item.effect==='deny'&&(item.companyId===null||grant.companyId===item.companyId||evidence.covers(grant.companyId!,item.companyId)||evidence.covers(item.companyId,grant.companyId!))))throw new AccessPermissionError('ceiling');
+  }
  }
 }
 /** Keep the bootstrap recovery authority explicit; an ordinary group cannot declare itself protected. */
@@ -59,7 +67,7 @@ export function assertSystemAdministratorSurvives(before:AccessSnapshot,after:Ac
  if(!protectedIds.size||after.groups.some(group=>group.systemAdministrator&&!protectedIds.has(group.id)))throw new AccessPermissionError('invalid');
  if([...protectedIds].some(id=>!after.groups.some(group=>group.id===id&&group.systemAdministrator&&!group.retired)))throw new AccessPermissionError('lastAdministrator');
  const target={tenantId:after.tenantId,companyId:null};
- const survives=after.users.some(user=>user.active&&after.memberships.some(membership=>membership.userId===user.id&&protectedIds.has(membership.groupId))&&resolveAccessCapability(after,catalog,user.id,'access.system_admin',target,evidence).allowed);
+ const survives=after.users.some(user=>user.active&&after.memberships.some(membership=>membership.userId===user.id&&membership.companyId===null&&protectedIds.has(membership.groupId))&&['access.system_admin','access.configure'].every(capabilityId=>resolveAccessCapability(after,catalog,user.id,capabilityId,target,evidence).allowed));
  if(!survives)throw new AccessPermissionError('lastAdministrator');
 }
 export type AccessPreviewChange={userId:string;capabilityId:string;companyId:string|null;before:AccessResolution;after:AccessResolution};
