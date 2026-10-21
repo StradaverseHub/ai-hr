@@ -5920,6 +5920,30 @@ export function approvedLeavePresenceByEmploymentTx(tx: Tx, employmentIds: strin
   return approvedLeaveCalendarPresence(tx, employmentIds, from, to, false);
 }
 
+/** Earliest approved presence from today, through the same per-date/whole-span distinction above.
+ * Do not expand an unbounded future span or publish private request/type/medical context. An approved
+ * cancellation removes its actual dates through the existing writer before this projection reads them.
+ */
+export async function nextApprovedLeavePresenceTx(tx:Tx,employmentId:string,today:string):Promise<{
+ requestId:string;date:string;duration:'full_day'|'part_day';
+}|null>{
+ const rows=await tx.execute(sql`
+  SELECT candidate."requestId",candidate.date,candidate.duration FROM (
+   SELECT ${leaveRequest.id} AS "requestId",${leaveRequestDate.leaveDate}::text AS date,
+    CASE WHEN ${leaveRequest.durationType}='full_day' THEN 'full_day' ELSE 'part_day' END AS duration
+   FROM ${leaveRequestDate} INNER JOIN ${leaveRequest} ON ${leaveRequest.id}=${leaveRequestDate.leaveRequestId}
+   WHERE ${leaveRequest.employmentId}=${employmentId}::uuid AND ${leaveRequestDate.status}='approved'
+    AND ${leaveRequestDate.leaveDate}>=${today}::date
+   UNION ALL
+   SELECT ${leaveRequest.id} AS "requestId",greatest(${leaveRequest.startDate},${today}::date)::text AS date,
+    CASE WHEN ${leaveRequest.durationType}='full_day' THEN 'full_day' ELSE 'part_day' END AS duration
+   FROM ${leaveRequest} WHERE ${leaveRequest.employmentId}=${employmentId}::uuid AND ${leaveRequest.status}='approved'
+    AND ${leaveRequest.endDate}>=${today}::date
+    AND NOT EXISTS(SELECT 1 FROM ${leaveRequestDate} WHERE ${leaveRequestDate.leaveRequestId}=${leaveRequest.id})
+  ) candidate ORDER BY candidate.date,candidate."requestId" LIMIT 1`);
+ return (rows as unknown as {requestId:string;date:string;duration:'full_day'|'part_day'}[])[0]??null;
+}
+
 /** ADR-0068 §4A (exported for the span consumers in attendance/roster/read). See approvedLeaveDates. */
 export { approvedLeaveDates };
 
