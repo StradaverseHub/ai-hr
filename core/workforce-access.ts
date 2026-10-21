@@ -34,3 +34,11 @@ export function workforceCompanies(ctx:SessionContext,operation:WorkforceOperati
   return rows.map(row=>row.id);
  });
 }
+
+export function workforceEmploymentAccess(ctx:SessionContext,employmentId:string,operation:WorkforceOperation){
+ return withTenant(ctx,async tx=>{
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_employment(${employmentId}::uuid,${'workforce.'+operation}) as allowed`);
+  return row?.allowed===true;
+ });
+}

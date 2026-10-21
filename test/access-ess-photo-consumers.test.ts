@@ -32,9 +32,9 @@ async function worker(name:string,role:'hr_admin'|'employee'){
  const userId=await createAppUser(b.tenantId,hired.personId,role);
  return {...hired,ctx:{...admin(),userId,personId:hired.personId,roles:[role],grants:[{role,companyId:null}]} satisfies SessionContext};
 }
-async function override(userId:string,effect:'allow'|'deny'|null){
+async function override(userId:string,effect:'allow'|'deny'|null,capabilityId='profile.review'){
  const current=await withTenant(admin(),tx=>accessConfigurationStore.loadCurrent(tx,admin()));
- const edit={expectedRevision:current.snapshot.revision,command:{kind:'setOverride' as const,userId,capabilityId:'profile.review',companyId:b.companyId,effect}};
+ const edit={expectedRevision:current.snapshot.revision,command:{kind:'setOverride' as const,userId,capabilityId,companyId:b.companyId,effect}};
  const preview=await previewAccessConfiguration(admin(),edit,accessConfigurationStore);
  return saveAccessConfiguration(admin(),{...edit,previewFingerprint:preview.fingerprint},accessConfigurationStore);
 }
@@ -72,6 +72,16 @@ describe('effective Security review permission across pending ESS photo consumer
   await rerouteProfileRequest(admin(),{requestId,reason:'Fictional named reviewer replacement'});
   expect((await photo(reviewer.ctx,requestId)).status).toBe(404);expect((await photo(other.ctx,requestId)).status).toBe(200);
   await expect(decideProfileChange(reviewer.ctx,{requestId,decision:'approved'})).rejects.toThrow();
+ });
+ it('keeps an eligible photo approval distinct from denied direct Workforce photo maintenance',async()=>{
+  const {subject,reviewer,requestId}=await fixture();
+  await owner.db.execute(sql`update access_capability set supported=true,bindings='[{"owner":"draft-workforce-consumer-fixture","operation":"maintain"}]'::jsonb where id='workforce.maintain'`);
+  await override(reviewer.ctx.userId!,'deny','workforce.maintain');
+  await expect(setPersonPhoto(reviewer.ctx,{personId:subject.personId,content:next,fileName:'direct.png',mimeType:'image/png',sizeBytes:next.length})).rejects.toThrow('Employee record or permission is unavailable.');
+  expect((await getPersonPhoto(subject.ctx,subject.personId))?.content).toEqual(old);
+  await decideProfileChange(reviewer.ctx,{requestId,decision:'approved'});
+  expect((await getPersonPhoto(subject.ctx,subject.personId))?.content).toEqual(next);
+  expect(await owner.db.select().from(profilePhotoProposal).where(eq(profilePhotoProposal.requestId,requestId))).toEqual([]);
  });
  it('retains a write-only privacy consequence for a configuration administrator denied merit review',async()=>{
   const {subject,reviewer,requestId}=await fixture();await override(b.adminUserId,'deny');

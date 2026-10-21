@@ -1,3 +1,4 @@
+import {workforceEmploymentAccess} from '@/core/workforce-access';
 import {employmentTestRecord} from '@/core/employment-test-record';
 import Link from 'next/link';
 import {HolidayCalendarAssignments} from './holiday-calendar-assignments';
@@ -329,6 +330,8 @@ export default async function EmployeePage({
 
   const emp = await employeeDetail(s,employmentId,'workforce');
   if (!emp) notFound();
+  const canMaintainWorkforce=await workforceEmploymentAccess(s,employmentId,'maintain');
+  const tAccess=await getTranslations('accessConfiguration');
   const classification = admin ? await employmentTestRecord(s, employmentId) : null;
   const today = todayInKualaLumpur();
   // Employee Status redesign (R43 c26c3ce5): Employee Status is SYSTEM-DERIVED read-time from the employment
@@ -3237,7 +3240,7 @@ export default async function EmployeePage({
 
   // New Event is hidden once terminated (the same gate that hid the old Transfer form); the history
   // itself stays viewable. Rehire is a future, separate piece.
-  const canCreateMovement = admin && !emp.terminatedOn;
+  const canCreateMovement=admin&&canMaintainWorkforce&&!emp.terminatedOn;
   /** c063eea9 — the caption of a hire-correction field, shared by the history row and the detail view. */
   const hireFieldIds = {
   "businessUnitId": "employment.organisation_assignment.businessunitname",
@@ -4681,7 +4684,7 @@ export default async function EmployeePage({
   const panels = {
     // Single-card tabs pass the node directly so a null (defensive; scopedAdmin guarantees non-null
     // here) falls through to the shell's empty-state rather than rendering a blank fragment.
-    profile: <>{profilePanel}{changeHistoryCard}{dataPrivacyCard}</>,
+    profile: <>{!canMaintainWorkforce&&<p role="status" className="text-sm text-muted-foreground">{tAccess('workforceReadOnly')}</p>}<fieldset disabled={!canMaintainWorkforce} className="min-w-0">{profilePanel}</fieldset>{changeHistoryCard}{dataPrivacyCard}</>,
     family: familyPanel,
     // 420ebab5 part two (r255) — the Employment Information card is the tab's ONE bucket (a) form
     // (Employment Dates: probation / notice periods and lifecycle dates, overwritten in place), so it sits
@@ -4700,6 +4703,8 @@ export default async function EmployeePage({
     job: (
       <>
         {admin && (
+          <fieldset disabled={!canMaintainWorkforce} className="min-w-0">
+          {!canMaintainWorkforce&&<p role="status" className="text-sm text-muted-foreground">{tAccess('workforceReadOnly')}</p>}
           <TabSaveScope
             tabKey="job"
             identity={{ employmentId: emp.employmentId }}
@@ -4707,10 +4712,9 @@ export default async function EmployeePage({
             covers={tabSaveCovers.job}
           >
             {employmentInfoCard}
-          </TabSaveScope>
+          </TabSaveScope></fieldset>
         )}
-        {dataClassificationCard}
-        {directSuperiorCard}
+        <fieldset disabled={!canMaintainWorkforce} className="min-w-0">{dataClassificationCard}{directSuperiorCard}</fieldset>
         {delegationsCard}
         {reviewCard}
       </>
@@ -4918,7 +4922,7 @@ export default async function EmployeePage({
                 alt={emp.name}
               />
             )}
-            {admin && (
+            {admin && canMaintainWorkforce && (
               // dc23d3b6 — photo controls are now hidden behind a pencil/Edit trigger (PhotoEditMenu, a
               // 'use client' island). The page still BUILDS both forms here (server actions bound as
               // before) and passes them in as children; the island only toggles their visibility, so the

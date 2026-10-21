@@ -21997,6 +21997,7 @@
       "workforceView": "Xem hồ sơ nhân viên",
       "workforceMaintain": "Duy trì hồ sơ nhân viên",
       "profileReview": "Xét duyệt thay đổi hồ sơ đủ điều kiện"
-    }
+    },
+    "workforceReadOnly": "Bạn có thể xem hồ sơ nhân viên này. Quyền nhân sự hiện tại của bạn không cho phép thay đổi."
   }
 }

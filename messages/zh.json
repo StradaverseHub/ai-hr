@@ -21997,6 +21997,7 @@
       "workforceView": "查看员工资料",
       "workforceMaintain": "维护员工资料",
       "profileReview": "审核符合条件的资料更改"
-    }
+    },
+    "workforceReadOnly": "您可以查看此员工记录。您当前的人事权限不允许修改。"
   }
 }

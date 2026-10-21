@@ -97,3 +97,18 @@ points now check the same permission. Entity change checks both source and desti
 Delegation remains its separate relationship owner. Resignation approval and approved Rewards
 posting retain their original termination/grade owners and independent decision authorization;
 a generic Workforce grant cannot replace those controls. All changes remain source-only.
+
+
+The direct HR master-photo controls and HR test-record classification now consume the maintenance
+adapter too. Pending photo approval calls a private in-transaction master writer only after the
+existing named-route/profile-review decision owner; that is a different authority from direct
+Workforce maintenance. A prepared consumer regression explicitly denies direct HR photo editing
+and still completes an eligible separately-authorized pending photo approval. Orphan person
+records retain the existing global HR course through the unassigned-scope owner.
+
+Personnel Profile and Employment forms have draft read-only states with all six locale captions;
+new Movement and direct-photo controls follow actual maintenance permission. Independent delegation,
+financial and privacy owners retain their own checks. The classification metadata reader uses a
+single default-isolation read with its fresh Workforce predicate, avoiding a stale repeatable-read
+snapshot for a permission decision. Actual rendering, keyboard/save behavior and source/SQL consumer
+refusals remain unexecuted requirements; these UI changes are not acceptance evidence.

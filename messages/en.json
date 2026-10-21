@@ -21997,6 +21997,7 @@
       "workforceView": "View employee records",
       "workforceMaintain": "Maintain employee records",
       "profileReview": "Review eligible profile changes"
-    }
+    },
+    "workforceReadOnly": "You can view this employee record. Your current Workforce permission does not allow changes."
   }
 }

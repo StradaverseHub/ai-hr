@@ -8,6 +8,8 @@ import {person,employment,employeeDraft,roleAssignment,appUser,jobGrade,domainEv
 import {hireEmployee,setEmployeeCode,updatePerson,setEmploymentGrade} from '../core/org';
 import {hireEmployee as hireWorkforceEmployee,setEmploymentInfo as maintainInfo} from '../core/workforce-commands';
 import {createMovementEvent} from '../core/movement';
+import {setEmploymentTestRecord} from '../core/employment-test-record';
+import {setPersonPhoto} from '../core/person-photo';
 import {listEmployees,listEmployeesPage,countEmployeesByStatus,employeeDetail} from '../core/read';
 import {workforceCompanies,WorkforceAccessError} from '../core/workforce-access';
 import {accessConfigurationStore} from '../core/access-configuration-store';
@@ -56,6 +58,9 @@ describe('fresh Workforce-purpose record consumers',()=>{
   const events=await owner.db.select({id:domainEvent.id}).from(domainEvent).orderBy(domainEvent.id);
   await expect(updatePerson(admin(),{personId:subject.personId,fullName:'Not applied',primaryEmail:'not-applied@example.invalid',via:'employee-profile'})).rejects.toBeInstanceOf(WorkforceAccessError);
   await expect(setEmployeeCode(admin(),{employmentId:subject.employmentId,employeeCode:'NOT-APPLIED'})).rejects.toBeInstanceOf(WorkforceAccessError);
+  await expect(setEmploymentTestRecord(admin(),{employmentId:subject.employmentId,isTestRecord:true})).rejects.toBeInstanceOf(WorkforceAccessError);
+  const bytes=Buffer.from([137,80,78,71,13,10,26,10,1]);
+  await expect(setPersonPhoto(admin(),{personId:subject.personId,content:bytes,fileName:'not-applied.png',mimeType:'image/png',sizeBytes:bytes.length})).rejects.toBeInstanceOf(WorkforceAccessError);
   expect(await owner.db.select().from(person).where(eq(person.id,subject.personId))).toEqual(before);
   expect(await owner.db.select({code:employment.employeeCode}).from(employment).where(eq(employment.id,subject.employmentId))).toEqual(codes);
   expect(await owner.db.select({id:domainEvent.id}).from(domainEvent).orderBy(domainEvent.id)).toEqual(events);

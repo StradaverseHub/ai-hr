@@ -954,23 +954,6 @@ REVOKE ALL ON FUNCTION app.access_workforce_not_denied(uuid,text) FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.access_workforce_not_denied(uuid,text) TO ai_hr_app;
 --> statement-breakpoint
-CREATE FUNCTION app.access_workforce_person(p_person uuid,p_capability text) RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT EXISTS(SELECT 1 FROM public.person p JOIN public.employment e ON e.person_id=p.id AND e.tenant_id=p.tenant_id
-  WHERE p.id=p_person AND p.tenant_id=app.current_tenant_id() AND app.access_workforce_company(e.company_id,p_capability))
-  -- Keep the existing any-administered-employment person owner. Changing that one shared fact
-  -- nevertheless cannot cross an explicit denial on another retained employment's company.
-  AND NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.person_id=p_person AND e.tenant_id=app.current_tenant_id()
-    AND NOT app.access_workforce_not_denied(e.company_id,p_capability));
-$$;
---> statement-breakpoint
-REVOKE ALL ON FUNCTION app.access_workforce_person(uuid,text) FROM PUBLIC;
---> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.access_workforce_person(uuid,text) TO ai_hr_app;
-
---> statement-breakpoint
--- Drafts are a distinct Workforce aggregate, not another module's shared employment read. Their
--- private data receives the same fresh read/write gate even if an old author session still exists.
 CREATE FUNCTION app.access_workforce_unassigned(p_capability text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT p_capability IN ('workforce.view','workforce.maintain') AND app.principal_snapshot_current()
@@ -985,6 +968,26 @@ REVOKE ALL ON FUNCTION app.access_workforce_unassigned(text) FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.access_workforce_unassigned(text) TO ai_hr_app;
 --> statement-breakpoint
+CREATE FUNCTION app.access_workforce_person(p_person uuid,p_capability text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT (EXISTS(SELECT 1 FROM public.person p JOIN public.employment e ON e.person_id=p.id AND e.tenant_id=p.tenant_id
+  WHERE p.id=p_person AND p.tenant_id=app.current_tenant_id() AND app.access_workforce_company(e.company_id,p_capability))
+  OR EXISTS(SELECT 1 FROM public.person p WHERE p.id=p_person AND p.tenant_id=app.current_tenant_id()
+   AND NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.person_id=p.id AND e.tenant_id=p.tenant_id)
+   AND app.access_workforce_unassigned(p_capability)))
+  -- Keep the existing any-administered-employment person owner. Changing that one shared fact
+  -- nevertheless cannot cross an explicit denial on another retained employment's company.
+  AND NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.person_id=p_person AND e.tenant_id=app.current_tenant_id()
+    AND NOT app.access_workforce_not_denied(e.company_id,p_capability));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_person(uuid,text) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_workforce_person(uuid,text) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Drafts are a distinct Workforce aggregate, not another module's shared employment read. Their
+-- private data receives the same fresh read/write gate even if an old author session still exists.
 -- 0510 deliberately preserves an author's read/discard course independently of an HR role. Keep
 -- that relationship source with actual own-person binding; an explicit applicable denial still wins.
 CREATE POLICY access_workforce_draft_read ON employee_draft AS RESTRICTIVE FOR SELECT TO ai_hr_app

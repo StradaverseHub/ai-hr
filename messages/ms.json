@@ -21997,6 +21997,7 @@
       "workforceView": "Lihat rekod pekerja",
       "workforceMaintain": "Selenggara rekod pekerja",
       "profileReview": "Semak perubahan profil yang layak"
-    }
+    },
+    "workforceReadOnly": "Anda boleh melihat rekod pekerja ini. Kebenaran Tenaga Kerja semasa anda tidak membenarkan perubahan."
   }
 }

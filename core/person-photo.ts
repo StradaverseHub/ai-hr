@@ -1,3 +1,4 @@
+import {assertWorkforcePersonTx} from './workforce-access';
 import {createHash} from 'node:crypto';
 import {isAdmin} from '../lib/authz-model';
 import {freshProfileEditPolicyTx,lockProfileEditPolicyTx} from './profile-edit-policy';
@@ -44,6 +45,7 @@ export async function setPersonPhoto(
   assertValidPhoto(p.mimeType, p.content);
   if(p.sizeBytes!==p.content.byteLength)throw new EssProfileError('invalid');
   return withTenant(ctx, async (tx) => {
+    await assertWorkforcePersonTx(tx,ctx,p.personId,'maintain');
     return setPersonPhotoTx(tx,ctx,p);
   });
 }
@@ -54,7 +56,7 @@ export function profilePhotoMime(content:Buffer):'image/png'|'image/jpeg'|null{
  if(content.length>=3&&content[0]===255&&content[1]===216&&content[2]===255)return 'image/jpeg';
  return null;
 }
-export async function setPersonPhotoTx(tx:Tx,ctx:SessionContext,p:{personId:string;content:Buffer;fileName:string;mimeType:string;sizeBytes:number}){
+async function setPersonPhotoTx(tx:Tx,ctx:SessionContext,p:{personId:string;content:Buffer;fileName:string;mimeType:string;sizeBytes:number}){
     await lockProfileEditPolicyTx(tx,ctx.tenantId);
     await lockPersonPhotoTx(tx,ctx,p.personId);
     await tx
@@ -152,6 +154,7 @@ export function getProfilePhotoProposal(ctx:SessionContext,requestId:string){
 export async function removePersonPhoto(ctx: SessionContext, p: { personId: string }) {
   if(!isAdmin(ctx))throw new EssProfileError('permission');
   return withTenant(ctx, async (tx) => {
+    await assertWorkforcePersonTx(tx,ctx,p.personId,'maintain');
     await lockProfileEditPolicyTx(tx,ctx.tenantId);
     await lockPersonPhotoTx(tx,ctx,p.personId);
     await tx.delete(personPhoto).where(eq(personPhoto.personId, p.personId));
