@@ -40,7 +40,7 @@
  * cross-module consumer that becomes a narrow KERNEL CONTRACT at a later rung. They are
  * allowlisted in the ratchet until that contract exists; the list only shrinks.
  *
- * - `app/approvals/{page,actions}.ts` + `core/approvals-inbox.ts` — the approvals inbox lists
+ * - `app/approvals/{page,actions}.ts` — the approvals inbox lists
  *   (`listPendingClaims`) and decides (`decideClaim`) claims. Cross-module approvals substrate is
  *   KERNEL (ADR-0080 open decision 6); needs an approvals contract, not the pack facade. Same
  *   disposition as the identical attendance-corrections entries at rung 2.
