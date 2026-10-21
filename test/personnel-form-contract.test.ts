@@ -8,6 +8,31 @@ const birth='profile.personal_details.dateofbirth';
 const initial='employment.employment_dates_and_service.confirmationdate';
 const final='employment.employment_dates_and_service.finalconfirmationdate';
 describe('Personnel shared form contract',()=>{
+  it('binds dated calendar workflow fields without adding generic report/import or self-service writers',()=>{
+    const prefix='attendance.dated_holiday_calendar.';
+    for(const suffix of ['calendar','startdate','enddate']){
+      const field=PERSONNEL_FIELDS.find(row=>row.id===prefix+suffix)!;
+      expect(field).toBeDefined();expect(field.owner).toBe('employmentHolidayCalendar');
+      expect(field.report.enabled).toBe(false);expect(field.import.writer).toBeUndefined();
+      expect(field.import.column).toBeUndefined();expect(field.ess.binding).toBeUndefined();
+      expect(field.form?.workflowReason).toContain('Dated holiday calendar assignment owner');
+    }
+    expect(personnelControl(prefix+'calendar')).toMatchObject({name:'calendar',required:false});
+    expect(personnelInput(prefix+'startdate','edit',{employmentStartDate:'2024-02-29'}))
+      .toMatchObject({name:'startDate',type:'date',required:true,min:'2024-02-29'});
+    expect(personnelInput(prefix+'enddate','edit',{calendarAssignmentStartDate:'2024-03-01'}))
+      .toMatchObject({name:'endDate',type:'date',required:false,min:'2024-03-01'});
+    expect(()=>personnelInput(prefix+'startdate')).toThrow(/date minimum context/);
+    expect(()=>personnelInput(prefix+'enddate','edit',{calendarAssignmentStartDate:'2025-02-29'})).toThrow(/date minimum context/);
+    const changed=structuredClone(PERSONNEL_FIELDS.find(row=>row.id===prefix+'startdate')!);
+    changed.form!.widget='date';changed.type='text';
+    expect(personnelFormMetadataIssue(changed)).toContain('canonical type');
+    delete changed.form!.widget; // Isolate the minOwner rule from the earlier explicit-widget guard.
+    expect(personnelFormMetadataIssue(changed)).toContain('date minimum');
+    changed.type='date';changed.form!.min=0;expect(personnelFormMetadataIssue(changed)).toContain('date minimum');
+    // Other numeric/date widgets retain their existing metadata and never borrow this context.
+    expect(personnelInput(birth,'edit',{employmentStartDate:'2024-02-29'})).not.toHaveProperty('min');
+  });
   it('supports an explicitly declared true/false choice presentation without changing the canonical boolean fact',()=>{
     const id='employment.data_classification.istestrecord',field=PERSONNEL_FIELDS.find(f=>f.id===id)!;
     expect(field).toMatchObject({type:'boolean',owner:'employment',ownerField:'isTestRecord',form:{name:'isTestRecord',widget:'choice'}});

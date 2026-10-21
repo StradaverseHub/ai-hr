@@ -13,10 +13,27 @@ afterEach(()=>{cleanup();__resetUnsavedGuards();});beforeEach(()=>{state.save.mo
 const base={employmentId:'employee',joinDate:'2025-04-05',employmentStartDate:'2025-04-01',fallbackLabel:'Selangor',groups:[{id:'group',name:'Recorded Calendar',active:true},{id:'old',name:'Inactive Calendar',active:false}],states:['Selangor','Johor'],rows:[]};
 const mount=(overrides:Partial<React.ComponentProps<typeof HolidayCalendarAssignments>>={})=>render(<NextIntlClientProvider locale="en" messages={en}><HolidayCalendarAssignments {...base} {...overrides}/></NextIntlClientProvider>);
 describe('dated holiday calendar input and history',()=>{
+ it('renders the declared workflow facts and updates the end minimum without changing posted names',()=>{
+  mount();fireEvent.click(screen.getByRole('button',{name:'Add calendar'}));
+  const calendar=screen.getByLabelText('Calendar'),start=screen.getByLabelText(/^Start Date/),end=screen.getByLabelText('End Date');
+  expect(calendar).toHaveAttribute('data-personnel-field','attendance.dated_holiday_calendar.calendar');
+  expect(calendar).toHaveAttribute('name','calendar');
+  expect(start).toHaveAttribute('data-personnel-field','attendance.dated_holiday_calendar.startdate');
+  expect(start).toHaveAttribute('name','startDate');expect(start).toHaveAttribute('type','date');
+  expect(start).toBeRequired();expect(start).toHaveAttribute('min',base.employmentStartDate);
+  expect(end).toHaveAttribute('data-personnel-field','attendance.dated_holiday_calendar.enddate');
+  expect(end).toHaveAttribute('name','endDate');expect(end).toHaveAttribute('type','date');
+  expect(end).not.toBeRequired();expect(end).toHaveAttribute('min',base.joinDate);
+  fireEvent.change(start,{target:{value:'2025-04-09'}});
+  expect(end).toHaveAttribute('min','2025-04-09');expect(end).toHaveValue('');
+  expect(start).toHaveAttribute('min',base.employmentStartDate);
+  expect(new FormData(screen.getByRole('form',{name:'Add calendar'}) as HTMLFormElement).get('startDate')).toBe('2025-04-09');
+  expect(state.save).not.toHaveBeenCalled();
+ });
  it('defaults to recorded Join Date, leaves an optional end blank, and cancel makes no call',()=>{
   mount();fireEvent.click(screen.getByRole('button',{name:'Add calendar'}));
-  expect(screen.getByLabelText('Start Date')).toHaveValue(base.joinDate);
-  expect(screen.getByLabelText('Start Date')).toHaveAttribute('min',base.employmentStartDate);
+  expect(screen.getByLabelText(/^Start Date/)).toHaveValue(base.joinDate);
+  expect(screen.getByLabelText(/^Start Date/)).toHaveAttribute('min',base.employmentStartDate);
   expect(screen.getByLabelText('End Date')).toHaveValue('');
   expect(screen.queryByRole('option',{name:/Inactive Calendar/})).toBeNull();
   fireEvent.click(screen.getByRole('button',{name:'Cancel'}));expect(state.save).not.toHaveBeenCalled();
@@ -57,11 +74,11 @@ describe('dated holiday calendar input and history',()=>{
   fireEvent.change(screen.getByLabelText('Calendar'),{target:{value:'state:Johor'}});
   // Native edits/autofill can reach FormData before React has observed a change callback.
   const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!;
-  setter.call(screen.getByLabelText('Start Date'),'2025-04-10');
+  setter.call(screen.getByLabelText(/^Start Date/),'2025-04-10');
   setter.call(screen.getByLabelText('End Date'),'2025-04-11');
   fireEvent.submit(screen.getByRole('form',{name:'Add calendar'}));
   await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent('overlaps'));
-  expect(screen.getByLabelText('Start Date')).toHaveValue('2025-04-10');
+  expect(screen.getByLabelText(/^Start Date/)).toHaveValue('2025-04-10');
   expect(screen.getByLabelText('End Date')).toHaveValue('2025-04-11');
   expect(screen.getByLabelText('Calendar')).toHaveValue('state:Johor');
   expect(state.refresh).not.toHaveBeenCalled();
