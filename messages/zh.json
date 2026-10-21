@@ -12240,7 +12240,18 @@
       "weekday5": "星期五",
       "weekday6": "星期六",
       "weekday7": "星期日",
-      "poolHint": "此日期版本的允许班次列表决定轮班选项。移除班次后，班次原有组别和历史版本仍保留。"
+      "poolHint": "此日期版本的允许班次列表决定轮班选项。移除班次后，班次原有组别和历史版本仍保留。",
+      "poolSearch": "按代码或名称搜索班次",
+      "poolCounts": "已选 {selected} 项 · 显示 {total} 个有效班次中的 {visible} 个",
+      "poolSelectResults": "选择全部搜索结果",
+      "poolClearAll": "清除所有已选班次",
+      "poolActiveChoices": "可供选择的有效班次",
+      "poolNoMatches": "没有符合搜索条件的有效班次。",
+      "poolNoneSelected": "尚未选择有效班次。",
+      "poolHistorical": "保留的不可用班次",
+      "poolHistoricalHelp": "这些已保存的引用保留供您查看。保存新轮班前，请明确移除或替换它们；移除后无法重新选择。",
+      "poolRemoveNamed": "从已选班次中移除 {shift}",
+      "poolRemove": "移除"
     }
   },
   "topbar": {
@@ -20783,7 +20794,10 @@
     "cashResult": "现金结果",
     "durationAuthorityHelp": "仅有时长证据并不授权现金支付或补休申请。",
     "transferStaleHelp": "已保存的加班输入与当前财务审核不再一致。请输入原因并使用“{action}”，然后审核新保存的计算并重新选择工资批次。读取选项不会重新计算。",
-    "transferConflictHelp": "当天已有不兼容的现金或补休结算。选择其他付款前，请审核现有结算。"
+    "transferConflictHelp": "当天已有不兼容的现金或补休结算。选择其他付款前，请审核现有结算。",
+    "standardStarters": "标准起始方案",
+    "prepareStarter": "准备草稿",
+    "starterHelp": "启用前请选择公司、币种、适用日、时薪基数和收入代码。这些起始方案尚未分配；费率名称不代表法定付款公式。"
   },
   "systemTestingWorkspace": {
     "title": "系统测试",

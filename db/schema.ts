@@ -5,6 +5,7 @@ import {PERSONNEL_EMPLOYMENT_TYPES,PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,P
 import type { PendingPayInputKind } from '../lib/pay-component-contract';
 import type { EmployeeMasterSpec } from '../lib/employee-master-report';
 import type { AttendanceAdminAmendment, AttendanceDayKindOverride, ManualOtRows } from '../lib/attendance-day-adjustment';
+import type {AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 /**
  * Slice 0 schema — "the spine".
  *
@@ -10435,6 +10436,16 @@ export const attendanceExceptionRevision = pgTable('attendance_exception_revisio
  id:id(),tenantId:tenantId(),ruleId:uuid('rule_id').notNull().references(()=>attendanceRule.id),
  effectiveFrom:date('effective_from').notNull(),enabled:boolean('enabled').notNull(),createdBy:text('created_by').notNull(),createdAt:createdAt(),
 },t=>[uniqueIndex('attendance_exception_revision_rule_date_uq').on(t.ruleId,t.effectiveFrom)]);
+
+/** Company execution policies do not split the tenant-wide Schedule Group/shift catalogue.
+ * Append-only starts partition the timeline; before the first version the group remains legacy. */
+export const attendanceGroupPolicyRevision=pgTable('attendance_group_policy_revision',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
+ ruleId:uuid('rule_id').notNull().references(()=>attendanceRule.id),ordinal:integer('ordinal').notNull(),
+ effectiveFrom:date('effective_from').notNull(),policy:jsonb('policy').$type<AttendanceGroupPolicy>().notNull(),
+ reason:text('reason').notNull(),createdByUserId:uuid('created_by_user_id').notNull().references(()=>appUser.id),createdAt:createdAt(),
+},t=>[uniqueIndex('attendance_group_policy_revision_ordinal_uq').on(t.tenantId,t.companyId,t.ruleId,t.ordinal),
+ uniqueIndex('attendance_group_policy_revision_date_uq').on(t.tenantId,t.companyId,t.ruleId,t.effectiveFrom)]);
 
 // ADR-0120: original holidays and employee-specific replacement allocations remain separate.
 export const replacementHolidayPolicy=pgTable('replacement_holiday_policy',{

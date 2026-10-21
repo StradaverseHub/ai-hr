@@ -39,6 +39,23 @@ function tab(key:keyof typeof words.sections) {fireEvent.click(screen.getByRole(
 beforeEach(()=>{cleanup();__resetUnsavedGuards();vi.clearAllMocks();mocks.save.mockResolvedValue({ok:true,value:{patternId,versionId,revision:8}});mocks.fork.mockResolvedValue({ok:true,value:{patternId,versionId,revision:1}});mocks.validate.mockResolvedValue({ok:true,value:{validationDigest:'fresh-digest',issues:[],requiredFields:[]}});mocks.activate.mockResolvedValue({ok:true,value:{versionId}});mocks.assign.mockResolvedValue({ok:true,value:{assignmentId:'assignment'}});mocks.choices.mockResolvedValue({ok:true,value:setup});});
 
 describe('typed Overtime Pattern editing',()=>{
+ it.each(['ot15','ot20','ot30','ot00'] as const)('prepares %s without saving or activating before explicit configuration',key=>{
+  wrap(<OvertimeWorkspace detail={null} setup={setup} starterKey={key}/>);
+  expect(screen.getByRole('button',{name:words.prepareDraft})).toBeDisabled();
+  expect(screen.getByText(words.starterHelp)).toBeVisible();
+  fireEvent.change(screen.getByLabelText(words.eligibilityBasis),{target:{value:'day'}});
+  fireEvent.change(screen.getByLabelText(words.durationAllocation),{target:{value:'earliest'}});
+  fireEvent.click(screen.getByRole('button',{name:words.prepareDraft}));
+  const basic=screen.getByRole('tabpanel',{name:words.sections.basic});
+  expect(within(basic).getByLabelText(words.name)).toHaveValue({ot15:'OT 1.5',ot20:'OT 2.0',ot30:'OT 3.0',ot00:'OT 0.0'}[key]);
+  expect(within(basic).getByLabelText(words.currency)).toHaveValue('');
+  const posted=JSON.parse((document.querySelector('input[name="overtimeDraft"]') as HTMLInputElement).value);
+  expect(posted.definition.rates[0].tiers[0].payment.multiplier.value).toBe({ot15:'1.5',ot20:'2',ot30:'3',ot00:'0'}[key]);
+  expect(posted.definition.rates[0].tiers[0].payment.rate.divisorMinutes.value).toBe('');
+  expect(posted.definition.rates[0].tiers[0].mapping.earningItemId).toBe('');
+  expect(mocks.save).not.toHaveBeenCalled();expect(mocks.activate).not.toHaveBeenCalled();expect(mocks.assign).not.toHaveBeenCalled();
+ });
+
  it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('shows all seven translated sections in %s',locale=>{
   const errors:unknown[]=[];
   render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]} onError={error=>errors.push(error)}><OvertimeWorkspace detail={null} setup={setup}/></NextIntlClientProvider>);

@@ -12240,7 +12240,18 @@
       "weekday5": "Friday",
       "weekday6": "Saturday",
       "weekday7": "Sunday",
-      "poolHint": "This dated pool controls rotation choices. Removing a shift from it keeps the shift’s inherited group and earlier saved versions intact."
+      "poolHint": "This dated pool controls rotation choices. Removing a shift from it keeps the shift’s inherited group and earlier saved versions intact.",
+      "poolSearch": "Search shifts by code or name",
+      "poolCounts": "{selected} selected · {visible} of {total} active shifts shown",
+      "poolSelectResults": "Select all search results",
+      "poolClearAll": "Clear all selected shifts",
+      "poolActiveChoices": "Active shifts available for selection",
+      "poolNoMatches": "No active shifts match this search.",
+      "poolNoneSelected": "No active shifts selected.",
+      "poolHistorical": "Retained unavailable shifts",
+      "poolHistoricalHelp": "These saved references are kept for review. Remove or replace them explicitly before saving a new rotation; they cannot be selected again.",
+      "poolRemoveNamed": "Remove {shift} from selected shifts",
+      "poolRemove": "Remove"
     }
   },
   "topbar": {
@@ -20783,7 +20794,10 @@
     "cashResult": "Cash result",
     "durationAuthorityHelp": "Duration evidence alone does not authorize a cash payment or a TOIL claim.",
     "transferStaleHelp": "The saved overtime inputs no longer match the current financial review. Enter a reason and use “{action}”, then review the new saved calculation and select the Payroll run again. Reading options does not recalculate it.",
-    "transferConflictHelp": "This day already has an incompatible cash or time off in lieu settlement. Review the existing settlement before choosing another payment."
+    "transferConflictHelp": "This day already has an incompatible cash or time off in lieu settlement. Review the existing settlement before choosing another payment.",
+    "standardStarters": "Standard starting patterns",
+    "prepareStarter": "Prepare draft",
+    "starterHelp": "Choose the company, currency, day eligibility, hourly basis and earning code before activation. These starters are unassigned; rate names do not establish a statutory payment formula."
   },
   "systemTestingWorkspace": {
     "title": "System Testing",
