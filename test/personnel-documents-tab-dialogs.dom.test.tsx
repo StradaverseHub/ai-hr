@@ -69,10 +69,11 @@ const DOCS: DocumentVM[] = [
   doc({ id: 'd2', title: 'Passport copy', category: 'Identity', fileName: 'passport.png', typeLabel: 'PNG', inlineViewable: true }),
 ];
 
-const mount = (docs: DocumentVM[] = DOCS) =>
+const mount = (docs: DocumentVM[] = DOCS, canMaintain = true) =>
   wrap(
     <DocumentsManager
       employmentId="emp-1"
+      canMaintain={canMaintain}
       docs={docs}
       categories={['Contract', 'Identity']}
       types={['PDF', 'PNG']}
@@ -80,6 +81,21 @@ const mount = (docs: DocumentVM[] = DOCS) =>
   );
 
 describe('0386b95d — Documents tab wears the Qualification shape', () => {
+  it('retains search/view/download but removes every mutation dialog for a read-only Workforce reader', async () => {
+    const user = userEvent.setup();
+    const { container } = mount(DOCS, false);
+    for (const name of ['Add document', 'Edit', 'Replace', 'Delete']) expect(screen.queryByRole('button', { name })).toBeNull();
+    expect(screen.getAllByRole('link', { name: 'Download' })).toHaveLength(2);
+    expect(screen.getAllByRole('link', { name: 'View' })).toHaveLength(2);
+    expect(container.querySelector('form')).toBeNull();
+    const search = container.querySelector('input[type="text"], input:not([type])') as HTMLInputElement;
+    expect(search).not.toBeNull();
+    await user.type(search, 'Passport');
+    expect(screen.getByText('Passport copy')).toBeInTheDocument();
+    expect(screen.queryByText('Signed contract')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
   it('offers Add Document as a button and no longer as a disclosure', async () => {
     const { container } = mount();
     // The reported control, gone: no <details>, no <summary>, anywhere on the tab.

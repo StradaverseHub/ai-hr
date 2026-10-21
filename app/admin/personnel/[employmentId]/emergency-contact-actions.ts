@@ -5,11 +5,9 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
 import {
-  addEmergencyContact,
-  updateEmergencyContact,
-  archiveEmergencyContact,
   EmergencyContactValidationError,
 } from '@/core/emergency-contacts';
+import {addEmergencyContact, updateEmergencyContact, archiveEmergencyContact} from '@/core/workforce-registers';
 
 // Personnel (Admin) — Emergency Contact register (feedback 23ad620e). Each action routes through the
 // event-logged service and revalidates the detail page. The record is PERSON-keyed (an emergency contact

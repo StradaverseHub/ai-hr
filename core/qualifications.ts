@@ -365,8 +365,9 @@ export async function updateQualification(
 export async function archiveQualification(
   ctx: SessionContext,
   p: { id: string },
+  outerTx?: Tx,
 ): Promise<{ id: string }> {
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx: Tx) => {
     const existing = await loadQualification(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new QualificationValidationError('Qualification record not found.');
@@ -385,5 +386,6 @@ export async function archiveQualification(
       payload: { qualification: existing.qualification, wasHighest: existing.isHighest },
     });
     return { id: p.id };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx, run);
 }

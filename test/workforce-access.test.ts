@@ -1,10 +1,10 @@
 /** Prepared Workforce consumer/RLS regressions; requires verified Board1 principal owner and all leases. */
 import {randomUUID} from 'node:crypto';
-import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
+import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {and,eq,sql} from 'drizzle-orm';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {withTenant,type SessionContext} from '../db/client';
-import {person,employment,employeeDraft,roleAssignment,appUser,jobGrade,domainEvent} from '../db/schema';
+import {person,employment,employeeDraft,roleAssignment,appUser,jobGrade,domainEvent,employeeDependent,employeeQualification,personEmergencyContact,employeeDocument} from '../db/schema';
 import {hireEmployee,setEmployeeCode,updatePerson,setEmploymentGrade} from '../core/org';
 import {hireEmployee as hireWorkforceEmployee,setEmploymentInfo as maintainInfo} from '../core/workforce-commands';
 import {createMovementEvent} from '../core/movement';
@@ -15,6 +15,12 @@ import {workforceCompanies,WorkforceAccessError} from '../core/workforce-access'
 import {accessConfigurationStore} from '../core/access-configuration-store';
 import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import * as registers from '../core/workforce-registers';
+import {addEmployeeDocument,getEmployeeDocument,listEmployeeDocuments,updateEmployeeDocumentMeta,replaceEmployeeDocumentContent,deleteEmployeeDocument} from '../core/employee-documents';
+const routeSession=vi.hoisted(()=>({ctx:null as SessionContext|null}));
+vi.mock('../lib/session',()=>({getSession:async()=>{if(!routeSession.ctx)throw new Error('No fixture identity');return routeSession.ctx;}}));
+import {GET as downloadDocument} from '../app/admin/personnel/[employmentId]/document/[docId]/route';
+
 let b:Base;
 const admin=()=>({...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]});
 beforeAll(migrateTestDb);
@@ -105,6 +111,56 @@ describe('fresh Workforce-purpose record consumers',()=>{
   const [grade]=await owner.db.insert(jobGrade).values({tenantId:b.tenantId,code:'WF-INDEPENDENT',name:'Fictional independently approved grade'}).returning({id:jobGrade.id});
   await expect(setEmploymentGrade(admin(),{employmentId:subject.employmentId,gradeId:grade.id})).resolves.toMatchObject({changed:true});
   expect((await owner.db.select({gradeId:employment.gradeId}).from(employment).where(eq(employment.id,subject.employmentId)))[0]?.gradeId).toBe(grade.id);
+ });
+ it('refuses direct register creation, edits and archives after maintenance denial without a partial event or state change',async()=>{
+  const subject=await hire('Fictional register subject');
+  const dependent=await registers.addDependent(admin(),{personId:subject.personId,fullName:'Fictional family member',relationship:'parent'});
+  const qualification=await registers.addQualification(admin(),{employmentId:subject.employmentId,qualification:'Master',isHighest:true});
+  const emergency=await registers.addEmergencyContact(admin(),{personId:subject.personId,fullName:'Fictional primary contact',priority:'primary'});
+  await activate();await override(b.adminUserId,'workforce.maintain',b.companyId,'deny');
+  const snapshot=async()=>({family:await owner.db.select().from(employeeDependent).orderBy(employeeDependent.id),
+   qualifications:await owner.db.select().from(employeeQualification).orderBy(employeeQualification.id),
+   contacts:await owner.db.select().from(personEmergencyContact).orderBy(personEmergencyContact.id),
+   events:await owner.db.select().from(domainEvent).orderBy(domainEvent.id)});
+  const before=await snapshot();
+  const attempts=[
+   ()=>registers.addDependent(admin(),{personId:subject.personId,fullName:'Not added',relationship:'parent'}),
+   ()=>registers.updateDependent(admin(),{id:dependent.id,fullName:'Not changed'}),()=>registers.archiveDependent(admin(),{id:dependent.id}),
+   ()=>registers.addQualification(admin(),{employmentId:subject.employmentId,qualification:'Bachelor'}),
+   ()=>registers.updateQualification(admin(),{id:qualification.id,isHighest:false}),()=>registers.archiveQualification(admin(),{id:qualification.id}),
+   ()=>registers.addEmergencyContact(admin(),{personId:subject.personId,fullName:'Not added',priority:'primary'}),
+   ()=>registers.updateEmergencyContact(admin(),{id:emergency.id,fullName:'Not changed'}),()=>registers.archiveEmergencyContact(admin(),{id:emergency.id})];
+  for(const attempt of attempts)await expect(attempt()).rejects.toBeInstanceOf(WorkforceAccessError);
+  expect(await snapshot()).toEqual(before);
+ });
+ it('checks document services, raw CRUD and actual download routes while retaining independent self reads',async()=>{
+  const subject=await hire('Fictional file owner'),other=await hire('Fictional unrelated subject');
+  const userId=await createAppUser(b.tenantId,subject.personId,'employee');
+  const own={...admin(),userId,personId:subject.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]} satisfies SessionContext;
+  const content=Buffer.from('Fictional Workforce supporting file');
+  const document=await addEmployeeDocument(admin(),{employmentId:subject.employmentId,title:'Fictional support',fileName:'fictional.txt',mimeType:'text/plain',content});
+  const download=async(ctx:SessionContext,id=subject.employmentId)=>{routeSession.ctx=ctx;return downloadDocument(new Request(`http://localhost/admin/personnel/${id}/document/${document.id}`),{params:Promise.resolve({employmentId:id,docId:document.id})});};
+  expect(Buffer.from(await(await download(admin())).arrayBuffer())).toEqual(content);
+  const eventsBeforeWrongUrl=await owner.db.select({id:domainEvent.id}).from(domainEvent).where(eq(domainEvent.eventType,'employee-document.downloaded')).orderBy(domainEvent.id);
+  expect((await download(admin(),other.employmentId)).status).toBe(404);
+  expect(await owner.db.select({id:domainEvent.id}).from(domainEvent).where(eq(domainEvent.eventType,'employee-document.downloaded')).orderBy(domainEvent.id)).toEqual(eventsBeforeWrongUrl);
+  await activate();await override(b.adminUserId,'workforce.maintain',b.companyId,'deny');
+  const before=await owner.db.select().from(employeeDocument).where(eq(employeeDocument.id,document.id));
+  await expect(updateEmployeeDocumentMeta(admin(),{documentId:document.id,title:'Not changed'})).rejects.toBeInstanceOf(WorkforceAccessError);
+  await expect(replaceEmployeeDocumentContent(admin(),{documentId:document.id,fileName:'not-changed.txt',mimeType:'text/plain',content:Buffer.from('Not changed')})).rejects.toBeInstanceOf(WorkforceAccessError);
+  await expect(deleteEmployeeDocument(admin(),{documentId:document.id})).rejects.toBeInstanceOf(WorkforceAccessError);
+  await expect(addEmployeeDocument(admin(),{employmentId:subject.employmentId,title:'Not added',fileName:'not-added.txt',mimeType:'text/plain',content})).rejects.toBeInstanceOf(WorkforceAccessError);
+  for(const ctx of [admin(),own]){
+   expect(await withTenant(ctx,tx=>tx.update(employeeDocument).set({title:'Not changed'}).where(eq(employeeDocument.id,document.id)).returning({id:employeeDocument.id}))).toEqual([]);
+   expect(await withTenant(ctx,tx=>tx.delete(employeeDocument).where(eq(employeeDocument.id,document.id)).returning({id:employeeDocument.id}))).toEqual([]);
+   await expect(withTenant(ctx,tx=>tx.insert(employeeDocument).values({tenantId:b.tenantId,employmentId:subject.employmentId,title:'Not added',fileName:'not-added.txt',mimeType:'text/plain',sizeBytes:content.length,content}))).rejects.toThrow();
+  }
+  expect(await owner.db.select().from(employeeDocument).where(eq(employeeDocument.id,document.id))).toEqual(before);
+  await override(b.adminUserId,'workforce.view',b.companyId,'deny');
+  expect(await listEmployeeDocuments(admin(),subject.employmentId)).toEqual([]);expect(await getEmployeeDocument(admin(),document.id)).toBeNull();
+  expect((await download(admin())).status).toBe(404);
+  expect(await withTenant(admin(),tx=>tx.select().from(employeeDocument).where(eq(employeeDocument.id,document.id)))).toEqual([]);
+  expect(Buffer.from(await(await download(own)).arrayBuffer())).toEqual(content);
  });
  it('rejects stale real role assignments and forged role/scope claims without treating a capability grant as HR',async()=>{
   const subject=await hire('Fictional scope subject');await activate();

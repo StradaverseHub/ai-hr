@@ -318,8 +318,9 @@ export async function updateEmergencyContact(
 export async function archiveEmergencyContact(
   ctx: SessionContext,
   p: { id: string },
+  outerTx?: Tx,
 ): Promise<{ id: string }> {
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx: Tx) => {
     const existing = await loadContact(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new EmergencyContactValidationError('Emergency contact not found.');
@@ -338,7 +339,8 @@ export async function archiveEmergencyContact(
       payload: { priority: existing.priority },
     });
     return { id: p.id };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx, run);
 }
 
 /**

@@ -1051,3 +1051,36 @@ $$;
 REVOKE ALL ON FUNCTION app.access_workforce_list_rows() FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.access_workforce_list_rows() TO ai_hr_app;
+
+
+--> statement-breakpoint
+-- Existing independent self/administrative-tree/HOD record reads remain relationship authority.
+-- Replace only the HR arm with the fresh Workforce check; a grant never fabricates a reporting edge.
+CREATE FUNCTION app.access_workforce_related_read(p_employment uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(
+  SELECT 1 FROM public.employment e WHERE e.id=p_employment AND e.tenant_id=app.current_tenant_id()
+   AND (app.access_workforce_company(e.company_id,'workforce.view') OR app.access_profile_request_own(e.person_id)
+    OR EXISTS(SELECT 1 FROM public.employment me JOIN public.app_user u ON u.person_id=me.person_id AND u.tenant_id=me.tenant_id
+     WHERE u.id=app.current_user_id() AND me.tenant_id=e.tenant_id AND me.terminated_on IS NULL
+      AND (app.is_admin_report_of(e.id,me.id) OR app.heads_department_of(e.id,me.id)))));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_related_read(uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_workforce_related_read(uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- General Personnel documents are not pending profile-proposal bytes. Preserve independent own/team
+-- reads, but every direct write/delete needs current Workforce maintenance in addition to legacy RLS.
+CREATE POLICY access_workforce_document_read ON employee_document AS RESTRICTIVE FOR SELECT TO ai_hr_app
+ USING(app.access_workforce_related_read(employment_id));
+--> statement-breakpoint
+CREATE POLICY access_workforce_document_insert ON employee_document AS RESTRICTIVE FOR INSERT TO ai_hr_app
+ WITH CHECK(app.access_workforce_employment(employment_id,'workforce.maintain'));
+--> statement-breakpoint
+CREATE POLICY access_workforce_document_update ON employee_document AS RESTRICTIVE FOR UPDATE TO ai_hr_app
+ USING(app.access_workforce_employment(employment_id,'workforce.maintain'))
+ WITH CHECK(app.access_workforce_employment(employment_id,'workforce.maintain'));
+--> statement-breakpoint
+CREATE POLICY access_workforce_document_delete ON employee_document AS RESTRICTIVE FOR DELETE TO ai_hr_app
+ USING(app.access_workforce_employment(employment_id,'workforce.maintain'));

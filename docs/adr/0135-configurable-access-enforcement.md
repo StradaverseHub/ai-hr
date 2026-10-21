@@ -124,3 +124,27 @@ independent payroll/attendance picker is unchanged. Prepared tests compare pagin
 results with the legacy owner and inspect the exact public projection and smaller picker shape.
 None has executed. This does not yet activate grants for new non-HR readers: page/detail purpose
 owners, complete maintenance and related-register/SQL bindings remain required source work.
+
+
+Direct Family, Qualification and Emergency Contact actions now compose a distinct Workforce register
+facade under the same access lock and transaction. Existing register IDs resolve their stored subject
+before checking authority; posted redirect/employee IDs do not retarget a record. Register section
+preview/export/commit use the same current read/maintenance gates and acquire the access lock before
+record locks. Existing canonical own-profile and approved-proposal calls retain their separate owners,
+without a request flag that could bypass a direct Workforce check. Archive services now accept the
+existing in-transaction composition pattern; Family child-relief propagation uses that transaction too.
+
+General employee document metadata/byte reads and writes join the access lock. Add/edit/replace/delete
+check the actual document's employment; additive restrictive SQL policies independently guard raw CRUD.
+The read predicate replaces the existing HR arm with Workforce view while preserving actual own-person,
+current administrative-tree and HOD authority through existing relationship helpers. It grants no new
+raw table visibility. The download route binds the employment URL before fetching bytes or appending a
+download event. Pending profile-proposal files remain a separate store and approval owner.
+
+Read-only related-register screens retain View controls; mutation dialogs and destructive forms are
+omitted. Documents retain search/filter/view/download. The client receives an explicit maintenance
+boolean; the server and RLS still authorize independently. Prepared service/raw-SQL/route and rendered
+DOM regressions cover revoked direct maintenance, no partial rows/events, preserved self reads, wrong
+URL audit refusal and a separately authorized Highest-qualification approval after Workforce denial.
+All remain unrun. Complete related-register raw SQL/approval composition, roleless grant detail/write
+projections and the remaining downstream matrix are still required before catalogue activation.

@@ -1154,8 +1154,9 @@ export async function updateDependent(
 export async function archiveDependent(
   ctx: SessionContext,
   p: { id: string },
+  outerTx?: Tx,
 ): Promise<{ id: string; childReliefSync: ChildReliefSyncResult }> {
-  const res = await withTenant(ctx, async (tx) => {
+  const run = async (tx: Tx) => {
     const existing = await loadDependent(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new DependentValidationError('Dependent record not found.');
@@ -1174,10 +1175,11 @@ export async function archiveDependent(
       payload: { relationship: existing.relationship },
     });
     return { id: p.id, personId: existing.personId };
-  });
+  };
+  const res = await (outerTx ? run(outerTx) : withTenant(ctx, run));
   // R46 47146ea3 — archiving a child removes it from the eligible count (eligibleChildReliefCount excludes
   // archivedAt rows), so the tax figure must come down with it.
-  const childReliefSync = await syncChildReliefFromFamily(ctx, res.personId);
+  const childReliefSync = await syncChildReliefFromFamily(ctx, res.personId, outerTx);
   return { id: res.id, childReliefSync };
 }
 

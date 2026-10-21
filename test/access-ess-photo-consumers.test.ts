@@ -14,6 +14,11 @@ import {saveProfileRoutingPolicy,previewProfileRoutingPolicy,rerouteProfileReque
 import {saveOwnPhotoSubmissionSetting} from '../core/profile-edit-policy';
 import {EMPTY_PROFILE_ROUTING,type ProfileRouteRule} from '../lib/profile-routing-policy';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {saveProfileEditPolicy} from '../core/profile-edit-policy';
+import {readOwnProfileWorkspace,submitOwnProfileEdit} from '../core/profile-edit';
+import {addQualification,listQualifications} from '../core/qualifications';
+import {updateQualification as directlyMaintainQualification} from '../core/workforce-registers';
+
 const routeSession=vi.hoisted(()=>({ctx:null as SessionContext|null}));
 vi.mock('../lib/session',()=>({getSession:async()=>{if(!routeSession.ctx)throw new Error('No fixture identity');return routeSession.ctx;}}));
 import {GET} from '../app/me/photo-proposal/[requestId]/route';
@@ -82,6 +87,22 @@ describe('effective Security review permission across pending ESS photo consumer
   await decideProfileChange(reviewer.ctx,{requestId,decision:'approved'});
   expect((await getPersonPhoto(subject.ctx,subject.personId))?.content).toEqual(next);
   expect(await owner.db.select().from(profilePhotoProposal).where(eq(profilePhotoProposal.requestId,requestId))).toEqual([]);
+ });
+ it('keeps canonical register approval separate from denied direct Workforce maintenance',async()=>{
+  const subject=await worker('Fictional qualification applicant','employee'),reviewer=await worker('Fictional qualification reviewer','hr_admin');
+  const first=await addQualification(admin(),{employmentId:subject.employmentId,qualification:'Bachelor',isHighest:true});
+  const second=await addQualification(admin(),{employmentId:subject.employmentId,qualification:'Master',isHighest:false});
+  const highest='qualification.academic_and_professional_qualifications.highest';
+  await saveProfileEditPolicy(admin(),{keys:[highest],withdrawnReason:'Fictional setup'});
+  const view=await readOwnProfileWorkspace(subject.ctx,{employmentId:subject.employmentId}),row=view.registers.find(item=>item.id===second.id)!;
+  const result=await submitOwnProfileEdit(subject.ctx,{employmentId:subject.employmentId,proposal:{v:2,fields:[],registers:[{kind:'qualification',id:second.id,clientId:second.id,fields:[{fieldId:highest,before:row.baselines[highest],value:true}]}]}});
+  expect(result.requestId).toBeTruthy();
+  await owner.db.execute(sql`update access_capability set supported=true,bindings='[{"owner":"draft-workforce-consumer-fixture","operation":"maintain"}]'::jsonb where id='workforce.maintain'`);
+  await override(reviewer.ctx.userId!,'deny','workforce.maintain');
+  await expect(directlyMaintainQualification(reviewer.ctx,{id:second.id,isHighest:true})).rejects.toThrow('Employee record or permission is unavailable.');
+  await decideProfileChange(reviewer.ctx,{requestId:result.requestId!,decision:'approved'});
+  const after=await listQualifications(subject.ctx,{employmentId:subject.employmentId});
+  expect(after.find(item=>item.id===first.id)?.isHighest).toBe(false);expect(after.find(item=>item.id===second.id)?.isHighest).toBe(true);
  });
  it('retains a write-only privacy consequence for a configuration administrator denied merit review',async()=>{
   const {subject,reviewer,requestId}=await fixture();await override(b.adminUserId,'deny');

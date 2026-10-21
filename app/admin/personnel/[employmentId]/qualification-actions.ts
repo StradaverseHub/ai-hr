@@ -5,11 +5,9 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
 import {
-  addQualification,
-  updateQualification,
-  archiveQualification,
   QualificationValidationError,
 } from '@/core/qualifications';
+import {addQualification, updateQualification, archiveQualification} from '@/core/workforce-registers';
 
 // Personnel (Admin) — Qualification tab (feedback a949184a). Each action is admin-only (requireAdmin →
 // RLS WITH CHECK is_admin()), routes through the event-logged service, and revalidates the detail page.

@@ -896,9 +896,9 @@ export default async function EmployeePage({
       <SectionHeader title={t('emergencyTitle')} count={emergencyContacts.length} />
       <section className="border-t border-border">
         <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
-          <FamilyFormDialog triggerLabel={t('emergency.add')} title={t('emergency.addTitle')}>
+          {canMaintainWorkforce ? <FamilyFormDialog triggerLabel={t('emergency.add')} title={t('emergency.addTitle')}>
             {emergencyDialogForm(null)}
-          </FamilyFormDialog>
+          </FamilyFormDialog> : null}
         </div>
         {emergencyContacts.length === 0 ? (
           <p className="px-4 pb-4 text-sm text-muted-foreground">{t('emergency.none')}</p>
@@ -938,7 +938,8 @@ export default async function EmployeePage({
                         >
                           {emergencyViewBody(c)}
                         </FamilyFormDialog>
-                        <FamilyFormDialog
+                        {canMaintainWorkforce ? <>
+<FamilyFormDialog
                           triggerLabel={t('emergency.edit')}
                           triggerVariant="outline"
                           title={t('emergency.editTitle')}
@@ -960,6 +961,7 @@ export default async function EmployeePage({
                             {t('emergency.delete')}
                           </ConfirmSubmit>
                         </form>
+</> : null}
                       </div>
                     </td>
                   </tr>
@@ -1031,7 +1033,7 @@ export default async function EmployeePage({
           alone. The action stays because it is still where each writer is wired to its card and because a
           <form> with no action would POST to the current URL. What each card loses is its own Save button,
           and it gains data-save-section so the scope can pack it. */}
-      <TabSaveScope
+      <fieldset disabled={!canMaintainWorkforce} className="min-w-0"><TabSaveScope
         tabKey="profile"
         identity={{ employmentId: emp.employmentId }}
         saveAction={saveProfileTabAction}
@@ -1239,7 +1241,7 @@ export default async function EmployeePage({
           </div>
         </form>
       </Card>
-      </TabSaveScope>
+      </TabSaveScope></fieldset>
 
       {/* Bucket (b): adding, editing or deleting an emergency contact is a record in a register — choosing a
           new Primary demotes the previous holder — so it keeps its own buttons and its own confirmations,
@@ -1988,9 +1990,9 @@ export default async function EmployeePage({
   const familyMembersSection = (
     <section className="border-t border-border">
       <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
-        <FamilyFormDialog triggerLabel={t('family.add')} title={t('family.addFamilyTitle')}>
+        {canMaintainWorkforce ? <FamilyFormDialog triggerLabel={t('family.add')} title={t('family.addFamilyTitle')}>
           {dialogForm(null)}
-        </FamilyFormDialog>
+        </FamilyFormDialog> : null}
       </div>
       {familyMembers.length === 0 ? (
         <p className="px-4 pb-4 text-sm text-muted-foreground">{t('family.none')}</p>
@@ -2046,7 +2048,8 @@ export default async function EmployeePage({
                       >
                         {viewDialogBody(d)}
                       </FamilyFormDialog>
-                      <FamilyFormDialog
+                      {canMaintainWorkforce ? <>
+<FamilyFormDialog
                         triggerLabel={t('family.edit')}
                         triggerVariant="outline"
                         title={t('family.editFamilyTitle')}
@@ -2069,6 +2072,7 @@ export default async function EmployeePage({
                           {t('family.delete')}
                         </ConfirmSubmit>
                       </form>
+</> : null}
                     </div>
                   </td>
                 </tr>
@@ -2188,9 +2192,9 @@ export default async function EmployeePage({
       <SectionHeader title={t('qualification.title')} count={qualifications.length} />
       <section className="border-t border-border">
         <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
-          <FamilyFormDialog triggerLabel={t('qualification.add')} title={t('qualification.addTitle')}>
+          {canMaintainWorkforce ? <FamilyFormDialog triggerLabel={t('qualification.add')} title={t('qualification.addTitle')}>
             {qualificationDialogForm(null)}
-          </FamilyFormDialog>
+          </FamilyFormDialog> : null}
         </div>
         {qualifications.length === 0 ? (
           <p className="px-4 pb-4 text-sm text-muted-foreground">{t('qualification.none')}</p>
@@ -2226,7 +2230,8 @@ export default async function EmployeePage({
                         >
                           {qualificationViewBody(q)}
                         </FamilyFormDialog>
-                        <FamilyFormDialog
+                        {canMaintainWorkforce ? <>
+<FamilyFormDialog
                           triggerLabel={t('qualification.edit')}
                           triggerVariant="outline"
                           title={t('qualification.editTitle')}
@@ -2248,6 +2253,7 @@ export default async function EmployeePage({
                             {t('qualification.delete')}
                           </ConfirmSubmit>
                         </form>
+</> : null}
                       </div>
                     </td>
                   </tr>
@@ -3217,7 +3223,7 @@ export default async function EmployeePage({
   // edit / replace / delete, searchable grid + full audit). The old read-only statutory summary is gone;
   // those identifiers stay editable on the Bank & Statutory tab (unchanged source of truth). The section
   // component RLS-loads its own data + owns its server actions (see documents-section.tsx).
-  const documentsPanel = admin ? <DocumentsSection s={s} employmentId={employmentId} /> : null;
+  const documentsPanel = admin ? <DocumentsSection s={s} employmentId={employmentId} canMaintain={canMaintainWorkforce} /> : null;
 
   // ── JOB / CAREER MOVEMENT ───────────────────────────────────────────────────
   // Cards defined here feed two tabs: reporting lines + approval delegations stay on the Employment
@@ -4684,7 +4690,7 @@ export default async function EmployeePage({
   const panels = {
     // Single-card tabs pass the node directly so a null (defensive; scopedAdmin guarantees non-null
     // here) falls through to the shell's empty-state rather than rendering a blank fragment.
-    profile: <>{!canMaintainWorkforce&&<p role="status" className="text-sm text-muted-foreground">{tAccess('workforceReadOnly')}</p>}<fieldset disabled={!canMaintainWorkforce} className="min-w-0">{profilePanel}</fieldset>{changeHistoryCard}{dataPrivacyCard}</>,
+    profile: <>{!canMaintainWorkforce&&<p role="status" className="text-sm text-muted-foreground">{tAccess('workforceReadOnly')}</p>}{profilePanel}{changeHistoryCard}{dataPrivacyCard}</>,
     family: familyPanel,
     // 420ebab5 part two (r255) — the Employment Information card is the tab's ONE bucket (a) form
     // (Employment Dates: probation / notice periods and lifecycle dates, overwritten in place), so it sits

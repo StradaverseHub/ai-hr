@@ -16,7 +16,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ employme
   if (!UUID.test(docId) || !UUID.test(employmentId)) return new Response('Not found', { status: 404 });
 
   const s = await getSession();
-  const doc = await getEmployeeDocument(s, docId); // RLS-gated: null → 404
+  const doc = await getEmployeeDocument(s, docId, employmentId); // RLS-gated: null → 404
   if (!doc || doc.employmentId !== employmentId) return new Response('Not found', { status: 404 });
 
   const safe = (name: string) => name.replace(/[^a-zA-Z0-9._ -]/g, '_').slice(0, 120) || 'document';
