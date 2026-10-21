@@ -828,6 +828,24 @@ REVOKE ALL ON FUNCTION app.access_profile_review_permitted(uuid) FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.access_profile_review_permitted(uuid) TO ai_hr_app;
 --> statement-breakpoint
+-- Task routing needs only the stored proposal kind, never proposal values or byte references.
+-- This definer explicitly repeats the runtime review/route/subject fences: a TO ai_hr_app
+-- restrictive policy alone would not constrain its storage-owner execution identity.
+CREATE FUNCTION app.profile_task_request_type(p_request uuid) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN jsonb_typeof(r.proposed)='object' AND r.proposed->'v'='3'::jsonb THEN 'photo' ELSE 'fields' END
+ FROM public.profile_change_request r
+ JOIN public.employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id AND e.person_id=r.person_id
+ WHERE r.id=p_request AND r.tenant_id=app.current_tenant_id() AND r.status='pending'
+  AND app.principal_snapshot_current() AND NOT app.is_self_person(r.person_id)
+  AND app.access_profile_review_permitted(r.employment_id)
+  AND app.profile_route_reader(r.employment_id,r.route_approver_user_id,r.route_approver_employment_id,r.status::text);
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.profile_task_request_type(uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.profile_task_request_type(uuid) TO ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app.access_profile_request_own(p_person uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT app.is_self_person(p_person) AND EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=app.current_user_id()

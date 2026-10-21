@@ -1,3 +1,4 @@
+import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 /**
  * Offboarding — employee-initiated resignation (ADR-0042, #29). The employee submits a resignation; HR
  * accepts it, which (atomically, in the same transaction) triggers the termination via
@@ -6,10 +7,10 @@
  */
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { employment, person, resignationRequest, resignationRequestAttachment } from '../db/schema';
-import { assertCanDecide } from './approvals';
+import { assertCanDecide, assertAssignedWorkPrincipalTx, isApprovalDecisionRefusal } from './approvals';
 import { freezeOnResignationApprovalTx } from './leave-encashment';
 import { validateLeaveDocument } from './leave';
 import { terminateEmploymentTx } from './org';
@@ -114,11 +115,7 @@ export async function decideResignation(
     const [req] = await tx.select().from(resignationRequest).where(eq(resignationRequest.id, p.requestId)).limit(1);
     if (!req) throw new ResignationError('Resignation not found (or not visible).');
     if (req.status !== 'pending') throw new ResignationError(`This resignation is already ${req.status}.`);
-    await assertCanDecide(tx, ctx, req.employmentId, 'resignation'); // bans self-decide
-    const roles = ctx.roles ?? [];
-    if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
-      throw new ResignationError('Only an admin can decide a resignation.');
-    }
+    await assertResignationDecisionAuthorityTx(tx,ctx,req.employmentId);
 
     if (p.decision === 'accepted') {
       // Prepare only the actual pending request's fixed consequence under fresh decision authority.
@@ -326,4 +323,38 @@ export async function getResignationAttachmentById(
       .limit(1);
     return row ? { content: row.content as Buffer, fileName: row.fileName, mimeType: row.mimeType } : null;
   });
+}
+
+
+export function pendingResignationTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
+  return withTenant(ctx,async tx=>{
+    await assertAssignedWorkPrincipalTx(tx,ctx);
+    const rows=await tx.select({id:resignationRequest.id,employmentId:resignationRequest.employmentId,
+      personId:resignationRequest.personId,employee:person.fullName,createdAt:resignationRequest.createdAt})
+      .from(resignationRequest)
+      .innerJoin(employment,and(eq(employment.id,resignationRequest.employmentId),eq(employment.tenantId,resignationRequest.tenantId)))
+      .leftJoin(person,and(eq(person.id,resignationRequest.personId),eq(person.tenantId,resignationRequest.tenantId)))
+      .where(and(eq(resignationRequest.tenantId,ctx.tenantId),eq(resignationRequest.status,'pending'),
+        sql`NOT app.is_self_person(${resignationRequest.personId})`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
+      .orderBy(desc(resignationRequest.createdAt),resignationRequest.id);
+    const result:AssignedApprovalMetadata[]=[];
+    for(const row of rows){
+      try{await assertResignationDecisionAuthorityTx(tx,ctx,row.employmentId);result.push(row);}
+      catch(error){
+        if(isApprovalDecisionRefusal(error,'resignation'))continue;
+        if(error instanceof ResignationError&&error.message==='Only an admin can decide a resignation.')continue;
+        throw error;
+      }
+    }
+    return result;
+  });
+}
+
+
+async function assertResignationDecisionAuthorityTx(tx:Tx,ctx:SessionContext,employmentId:string){
+  await assertCanDecide(tx,ctx,employmentId,'resignation');
+  const roles=ctx.roles??[];
+  if(!(roles.includes('super_admin')||roles.includes('hr_admin'))){
+    throw new ResignationError('Only an admin can decide a resignation.');
+  }
 }

@@ -580,3 +580,20 @@ the independent canonical `app.is_self_person` proof. The authored foundation re
 and narrowed scopes, forged/foreign/expanded/revoked/archived contexts, the separate Person boundary and
 the runtime-only execute seam. SQL, ACL, ownership, restricted-owner upgrades and those tests remain
 UNRUN; source extraction is not acceptance or a grant to enable the unsupported controls.
+
+
+### Shared assigned-work metadata and stored routing type — source only
+
+The shared owners expose uncapped request headers after the actual principal proof and the canonical
+current decision gates. They do not load reasons, financial values, proposals or supporting bytes merely
+to count tasks. Explicit empty company scope stays empty; infrastructure failures propagate. The legacy
+native v1 task vocabulary and the web replacement-leave kind remain separate contracts.
+
+Profile metadata retains this candidate's v2/photo route, exclusions, policy locks and Security review
+denial. The new private proposal-kind projection `app.profile_task_request_type(uuid)` in unshipped0579
+returns only fields/photo for a currently readable pending non-own subject under the actual current
+principal, review permission and route. It repeats those fences explicitly because a definer's storage
+identity is not covered by a restrictive policy limited to ai_hr_app. No proposal SELECT privilege is
+required by the metadata caller. The actual writer and eligibility reader share one authority helper;
+request classification never defaults a photo to fields. These integrations and all SQL/role/concurrency
+outcomes remain unexecuted until the coordinated verification window; controls remain unsupported.

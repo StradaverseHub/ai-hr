@@ -11,7 +11,7 @@ import {hireEmployee} from '../core/org';
 import {accessConfigurationStore} from '../core/access-configuration-store';
 import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';
 import {setOwnPersonPhoto,getProfilePhotoProposal,getPersonPhoto,setPersonPhoto} from '../core/person-photo';
-import {decideProfileChange,myProfileChangeRequests} from '../core/profile';
+import {decideProfileChange,myProfileChangeRequests,pendingProfileTaskMetadata} from '../core/profile';
 import {saveProfileRoutingPolicy,previewProfileRoutingPolicy,rerouteProfileRequest,profileRequestType,profileRequestTypeSql} from '../core/profile-routing';
 import {saveOwnPhotoSubmissionSetting} from '../core/profile-edit-policy';
 import {EMPTY_PROFILE_ROUTING,type ProfileRouteRule} from '../lib/profile-routing-policy';
@@ -88,6 +88,28 @@ describe('effective Security review permission across pending ESS photo consumer
    const [row]=await withTenant(admin(),tx=>tx.execute<{kind:string}>(sql`select ${profileRequestTypeSql(sql`${JSON.stringify(value)}::jsonb`)} as kind`));
    expect(row.kind).toBe(profileRequestType(value));
   }
+ });
+
+ it('routes photo task metadata through an actual type-only owner while private proposals stay unreadable',async()=>{
+  const {subject,reviewer,other,requestId}=await fixture(),foreign=await seedBase();
+  const kind=async(ctx:SessionContext,id=requestId)=>{
+   const [row]=await withTenant(ctx,tx=>tx.execute<{kind:string|null}>(sql`select app.profile_task_request_type(${id}::uuid) as kind`));return row.kind;
+  };
+  expect(await kind(reviewer.ctx)).toBe('photo');
+  expect(await kind(subject.ctx)).toBeNull();expect(await kind(other.ctx)).toBeNull();
+  expect(await kind(adminCtx(foreign))).toBeNull();expect(await kind(reviewer.ctx,randomUUID())).toBeNull();
+  await owner.db.execute(sql`REVOKE SELECT ON public.profile_change_request FROM ai_hr_app`);
+  await owner.db.execute(sql`GRANT SELECT(id,tenant_id,employment_id,person_id,status,created_at,route_id,route_revision,route_approver_user_id,route_approver_employment_id,route_context) ON public.profile_change_request TO ai_hr_app`);
+  try{
+   await refused(withTenant(reviewer.ctx,tx=>tx.select({proposal:profileChangeRequest.proposed}).from(profileChangeRequest)));
+   expect((await pendingProfileTaskMetadata(reviewer.ctx)).map(row=>row.id)).toEqual([requestId]);
+   expect(await kind(reviewer.ctx)).toBe('photo');
+  }finally{
+   await owner.db.execute(sql`GRANT SELECT ON public.profile_change_request TO ai_hr_app`);
+   await owner.db.execute(sql`REVOKE SELECT(id,tenant_id,employment_id,person_id,status,created_at,route_id,route_revision,route_approver_user_id,route_approver_employment_id,route_context) ON public.profile_change_request FROM ai_hr_app`);
+  }
+  await override(reviewer.ctx.userId!,'deny');
+  expect(await kind(reviewer.ctx)).toBeNull();expect(await pendingProfileTaskMetadata(reviewer.ctx)).toEqual([]);
  });
 
  it('revokes queue-side bytes, raw rows, real route and decision in an already signed-in reviewer context',async()=>{

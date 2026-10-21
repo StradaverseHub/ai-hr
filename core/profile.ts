@@ -1,8 +1,9 @@
+import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 import {pgSqlState} from '../lib/db-error';
 import {isOwnPersonTx,ownPersonPredicate} from './own-person';
 import {lockAccessConfigurationTx,lockProfileValueWritesTx} from './access-configuration-lock';
 import {isProfilePhotoProposal} from '../lib/profile-photo-proposal';
-import {resolveProfileRouteTx,assertProfileRouteDecisionTx,profileRouteReaderPredicate} from './profile-routing';
+import {resolveProfileRouteTx,assertProfileRouteDecisionTx,profileRouteReaderPredicate,ProfileRoutingError,type ProfileRouteDecisionSubject} from './profile-routing';
 import type {ProfilePresentationPolicy} from './profile-edit-policy';
 import {projectOwnProfileProposal,ownProfileProposalIsIntact} from '../lib/personnel-ess-visibility';
 import {freshProfileEditPolicyTx} from './profile-edit-policy';
@@ -40,7 +41,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { type Tx, withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
 import { employeeStatutoryMy, employment, person, profileChangeRequest,personPhoto } from '../db/schema';
-import { assertCanDecide } from './approvals';
+import { assertCanDecide, assertAssignedWorkPrincipalTx, isApprovalDecisionRefusal } from './approvals';
 // 9583deac stage two — the ONE declaration of which fields may be requested, what each is called on
 // both screens, and which table/column an approval writes it to. See the header of that file.
 import {
@@ -444,16 +445,7 @@ export async function decideProfileChange(
      * 0560 restricts request rows to the own subject and scoped HR administrators. And it cannot widen
      * AUTHORITY in any configuration — both branches below only ever refuse.
      */
-    await assertProfileRouteDecisionTx(tx,ctx,req);
-    if(req.personId===ctx.personId&&p.decision==='approved')throw new EssProfileError('permission');
-    await assertCanDecide(tx, ctx, req.employmentId, 'profile change'); // bans self
-    const roles = ctx.roles ?? [];
-    if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
-      throw new Error('Only an admin can approve a profile change');
-    }
-    if (profileChangeApprover(ctx) === 'group_admin' && !isGroupAdmin(ctx)) {
-      throw new Error('Only a group administrator can approve a profile change');
-    }
+    await assertProfileChangeDecisionAuthorityTx(tx,ctx,req,p.decision);
 
     if(p.decision==='approved'&&!isProfilePhotoProposal(req.proposed))await tx.execute(sql`select app.access_profile_value_begin(${req.id}::uuid)`);
     if(p.decision==='approved'&&isProfilePhotoProposal(req.proposed)){
@@ -812,4 +804,56 @@ export async function withdrawProfileChangesForLockedFields(
     return {withdrawn:Number(row?.withdrawn??0)};
   };
   return outerTx?run(outerTx):withTenant(ctx,run);
+}
+
+
+export async function pendingProfileTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
+ const candidates=await withTenant(ctx,async tx=>{
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  const current=(await freshProfileEditPolicyTx(tx,ctx)).ctx;
+  return tx.select({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,personId:profileChangeRequest.personId,
+   employee:person.fullName,createdAt:profileChangeRequest.createdAt}).from(profileChangeRequest)
+   .innerJoin(employment,and(eq(employment.id,profileChangeRequest.employmentId),eq(employment.tenantId,profileChangeRequest.tenantId)))
+   .leftJoin(person,and(eq(person.id,profileChangeRequest.personId),eq(person.tenantId,profileChangeRequest.tenantId)))
+   .where(and(eq(profileChangeRequest.tenantId,ctx.tenantId),eq(profileChangeRequest.status,'pending'),profileRouteReaderPredicate(current),
+    sql`NOT app.is_self_person(${profileChangeRequest.personId})`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
+   .orderBy(desc(profileChangeRequest.createdAt),profileChangeRequest.id);
+ });
+ const allowed=new Set(await actionableProfileChangeIds(ctx,candidates.map(row=>row.id)));
+ return candidates.filter(row=>allowed.has(row.id));
+}
+
+
+export function actionableProfileChangeIds(ctx:SessionContext,requestIds:readonly string[]){
+ return withTenant(ctx,async tx=>{
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  const current=(await freshProfileEditPolicyTx(tx,ctx)).ctx,result:string[]=[],ids=[...new Set(requestIds)];
+  for(let offset=0;offset<ids.length;offset+=1000){
+   const rows=await tx.select({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,personId:profileChangeRequest.personId,
+    routeId:profileChangeRequest.routeId,routeRevision:profileChangeRequest.routeRevision,routeApproverUserId:profileChangeRequest.routeApproverUserId,
+    routeApproverEmploymentId:profileChangeRequest.routeApproverEmploymentId,routeContext:profileChangeRequest.routeContext,requestType:sql<'fields'|'photo'|null>`app.profile_task_request_type(${profileChangeRequest.id})`}).from(profileChangeRequest)
+    .where(and(inArray(profileChangeRequest.id,ids.slice(offset,offset+1000)),eq(profileChangeRequest.status,'pending'),profileRouteReaderPredicate(current))).orderBy(profileChangeRequest.id);
+   for(const row of rows){
+    if(row.personId===current.personId||row.requestType===null)continue;
+    try{await assertProfileChangeDecisionAuthorityTx(tx,current,row,'rejected');result.push(row.id);}
+    catch(error){
+     if(isApprovalDecisionRefusal(error,'profile change'))continue;
+     if(error instanceof ProfileRoutingError&&['changed','unauthorized'].includes(error.code))continue;
+     if(error instanceof Error&&error.constructor===Error&&['Only an admin can approve a profile change','Only a group administrator can approve a profile change'].includes(error.message))continue;
+     throw error;
+    }
+   }
+  }
+  return result.sort();
+ });
+}
+
+
+async function assertProfileChangeDecisionAuthorityTx(tx:Tx,ctx:SessionContext,req:ProfileRouteDecisionSubject&{personId:string},decision:'approved'|'rejected'){
+ await assertProfileRouteDecisionTx(tx,ctx,req);
+ if(req.personId===ctx.personId&&decision==='approved')throw new EssProfileError('permission');
+ await assertCanDecide(tx,ctx,req.employmentId,'profile change');
+ const roles=ctx.roles??[];
+ if(!(roles.includes('super_admin')||roles.includes('hr_admin')))throw new Error('Only an admin can approve a profile change');
+ if(profileChangeApprover(ctx)==='group_admin'&&!isGroupAdmin(ctx))throw new Error('Only a group administrator can approve a profile change');
 }
