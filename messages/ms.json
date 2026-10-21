@@ -22001,6 +22001,18 @@
     },
     "workforceReadOnly": "Anda boleh melihat rekod pekerja ini. Kebenaran Tenaga Kerja semasa anda tidak membenarkan perubahan.",
     "workforceCommandHint": "Anda boleh menukar ID Pekerja. Maklumat lain pada halaman ini hanya boleh dilihat.",
+    "workforceEdit": {
+      "hint": "Anda boleh menyelenggara profil dan daftar yang dibenarkan oleh kebenaran rekod pekerja semasa anda.",
+      "save": "Simpan perubahan",
+      "saving": "Menyimpan…",
+      "archive": "Arkibkan rekod",
+      "archiveHint": "Rekod ini akan dikeluarkan daripada daftar aktif dan sejarah auditnya dikekalkan.",
+      "saved": "Perubahan disimpan.",
+      "changed": "Rekod ini telah berubah. Buka semula sebelum menyimpan.",
+      "denied": "Kebenaran anda telah berubah. Buka semula rekod ini untuk menyemak akses anda.",
+      "invalid": "Semak nilai yang dimasukkan dan susunan tarikh, kemudian cuba lagi.",
+      "emergencyTitle": "Kenalan kecemasan"
+    },
     "workforceCode": {
       "hint": "Huruf, nombor dan sempang; maksimum 30 aksara. ID mestilah belum digunakan.",
       "save": "Simpan ID Pekerja",

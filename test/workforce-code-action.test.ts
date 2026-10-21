@@ -9,6 +9,7 @@ vi.mock('next/navigation',()=>({redirect:(url:string)=>{throw new Error(`redirec
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
 vi.mock('../lib/workforce-authz',()=>({requireWorkforceAccess:vi.fn()}));
 vi.mock('../core/workforce-code',async original=>({...await original<typeof import('../core/workforce-code')>(),setWorkforceEmployeeCode:vi.fn()}));
+vi.mock('../core/workforce-maintenance',()=>({maintainWorkforceRecord:vi.fn(),WorkforceMaintenanceValidationError:class extends Error{}}));
 const id='11111111-1111-4111-8111-111111111111',actor='22222222-2222-4222-8222-222222222222';
 const ctx={tenantId:id,userId:actor,roles:['employee'],grants:[{role:'employee',companyId:null}]};
 const path=`/admin/personnel/${id}`;

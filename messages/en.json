@@ -22001,6 +22001,18 @@
     },
     "workforceReadOnly": "You can view this employee record. Your current Workforce permission does not allow changes.",
     "workforceCommandHint": "You can change the Employee ID. Other details on this page are view only.",
+    "workforceEdit": {
+      "hint": "You can maintain the profile and registers allowed by your current employee-record permissions.",
+      "save": "Save changes",
+      "saving": "Saving…",
+      "archive": "Archive record",
+      "archiveHint": "This removes the record from the active register and preserves its audit history.",
+      "saved": "Changes saved.",
+      "changed": "This record changed. Reopen it before saving.",
+      "denied": "Your permission changed. Reopen this record to check your access.",
+      "invalid": "Check the entered values and date order, then try again.",
+      "emergencyTitle": "Emergency contacts"
+    },
     "workforceCode": {
       "hint": "Letters, numbers and dashes; up to 30 characters. The ID must be available.",
       "save": "Save Employee ID",

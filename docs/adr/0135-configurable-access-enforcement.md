@@ -345,3 +345,41 @@ check/journal the reserved migration order, compile, execute focused runtime and
 repair actual failures, exercise real-app journeys, rehearse populated upgrades as restricted owner,
 then obtain the authentic final security/full gate and official Linux release/arrival proof. No new
 compiler, SQL, app, rehearsal, gate or deployment result exists for this checkpoint.
+
+### Positive profile, Qualification and Emergency editors — source only
+
+The next fixed maintenance command and server forms are drafted for the 31 normal Person/compliance
+fields, nine Qualification fields and six Emergency Contact fields. A bounded editor projection returns
+only those register values and opaque row revisions. Profile values and their revision are obtained in
+one SQL statement; independent page-summary reads cannot pair old form values with a newer CAS token.
+Qualification maintenance is employment-scoped. Shared Person/contact maintenance retains applicable
+explicit view/maintenance denials on every retained employment of the same Person. No role is fabricated,
+and raw Person/employment/register or financial visibility is not widened.
+
+The SQL command accepts a closed kind/operation/field vocabulary, takes the existing access/policy barrier
+before record locks, checks actual current authority and row version, normalizes only declared values,
+checks current catalogs and fixed scalar/date constraints, and performs the existing single Highest or
+Primary transfer. New catalog acceptance has one SQL owner shared with the existing profile validator;
+Qualification/Emergency cross-field validation continues through their existing kernel validators.
+Inactive stored relationships retain the Emergency Contact owner's existing tolerance. Each changed row
+has a private transaction/actor/subject/before/after digest witness, linked to the command's real immutable
+event. Runtime code cannot mint a witness, reuse it for a different value, or borrow raw row authority.
+Audit failure must roll back the target and any transferred marker. No submitted value is copied into
+the command's event payload. Archive is a separate explicit form with retained history.
+
+The six-locale forms reuse Personnel descriptors, current catalogs and retained choices, bound revision
+metadata, pending buttons, and finite durable saved/changed/denied/invalid feedback. Server actions choose
+the field set from a finite section/kind and ignore posted actor/company/role/permission or unrelated
+fields. These forms never contain private classifications, documents, bank/payroll/statutory values or
+internal Person identity. Authored regressions cover the actual non-HR command, minimal audit/no-op/CAS,
+Highest/Primary transfers, archives, legacy catalog tolerance, real foreign/revoked subjects, forged private
+intents, raw-followup refusal, audit rollback, request binding and six-locale rendering. All are UNRUN.
+
+Family positive maintenance is still incomplete. Its existing owner synchronizes automatic child-relief
+head count and grid through the jurisdiction's statutory writer, preserving every other tax fact and
+open-payroll alert. The new normal-value command deliberately does not admit Family: bypassing that
+coupling or granting a non-HR caller raw tax access would be incorrect. Complete the bounded composition
+through the canonical owners before offering it. Employment structural/specialist commands and the
+remaining domain/current-principal matrix also require reconciliation. All three capability controls
+remain unsupported; 0578/0579 are unjournalled/unapplied. This is a source checkpoint, not acceptance or
+release evidence. Board 1 still owns all three resource leases; no compiler/test/app/SQL/build ran here.

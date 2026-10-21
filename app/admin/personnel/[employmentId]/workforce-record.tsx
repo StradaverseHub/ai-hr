@@ -4,6 +4,9 @@ import {getTranslations} from 'next-intl/server';
 import type {SessionContext} from '@/db/client';
 import {workforceRecord} from '@/core/workforce-record';
 import {workforceCommandAccess} from '@/core/workforce-access';
+import {workforceEditor} from '@/core/workforce-maintenance';
+import {workforceMaintenanceFields} from '@/lib/workforce-maintenance-fields';
+import {WorkforceValueForm} from './workforce-value-form';
 import {saveWorkforceCodeAction} from './workforce-record-actions';
 import {EMPLOYEE_CODE_MAX_LEN} from '@/lib/employee-code';
 import {listWorkforcePickOptions} from '@/core/read';
@@ -19,18 +22,22 @@ const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FEEDBACK={saved:'workforceCode.saved',changed:'workforceCode.changed',denied:'workforceCode.denied',invalid:'workforceCode.invalid'} as const;
 /** A separate read composition, not the HR page with its buttons hidden. None of that page's
  * compensation, statutory, private classification, documents or approval reads run for this grant. */
-export async function WorkforceScopedRecord({session, employmentId, scopeIds,feedback}: {
- session: SessionContext; employmentId: string; scopeIds: string[]; feedback?:string;
+export async function WorkforceScopedRecord({session, employmentId, scopeIds,feedback,editFeedback}: {
+ session: SessionContext; employmentId: string; scopeIds: string[]; feedback?:string;editFeedback?:string;
 }) {
  if(!UUID.test(employmentId))notFound();
- const [record,employees,root,t,list,status,access,canMaintainCode]=await Promise.all([
+ const [record,employees,root,t,list,status,access,canMaintainCode,editor]=await Promise.all([
   workforceRecord(session,employmentId),listWorkforcePickOptions(session,scopeIds),getTranslations(),
   getTranslations('people.detail'),getTranslations('people.list'),getTranslations('people.employeeStatus'),
   getTranslations('accessConfiguration'),workforceCommandAccess(session,employmentId),
+  workforceEditor(session,employmentId),
  ]);
  if(!record)notFound();
  const feedbackKey=feedback&&Object.hasOwn(FEEDBACK,feedback)?FEEDBACK[feedback as keyof typeof FEEDBACK]:null;
+ const editKey=editFeedback&&Object.hasOwn(FEEDBACK,editFeedback)?`workforceEdit.${editFeedback}`:null;
  const employment=record.employment;
+ // Values and their CAS token come from the same SQL statement, never independent page reads.
+ const profile=editor?.profile??record.profile;
  const profileSections=[{key:'personal',title:t('personalDetails'),prefix:'profile.personal_details.'},
   {key:'contact',title:t('contactAddressTitle'),prefix:'profile.contact_and_permanent_address.'},
   {key:'correspondence',title:t('correspondenceAddressTitle'),prefix:'profile.correspondence_address.'}];
@@ -47,8 +54,9 @@ export async function WorkforceScopedRecord({session, employmentId, scopeIds,fee
  return <div className="space-y-6">
   <Link href="/admin/personnel" className="text-sm text-muted-foreground hover:underline">{t('backToPersonnelAdmin')}</Link>
   <PageHeader title={employment.name} actions={<EmployeeSwitcher employees={employees}/>}/>
-  <p role="status" className="text-sm text-muted-foreground">{access(canMaintainCode?'workforceCommandHint':'workforceReadOnly')}</p>
+  <p role="status" className="text-sm text-muted-foreground">{access(editor&&(editor.sharedMaintain||editor.employmentMaintain)?'workforceEdit.hint':canMaintainCode?'workforceCommandHint':'workforceReadOnly')}</p>
   {feedbackKey&&<p role={feedback==='saved'?'status':'alert'} className="text-sm">{access(feedbackKey)}</p>}
+  {editKey&&<p role={editFeedback==='saved'?'status':'alert'} className="text-sm">{access(editKey)}</p>}
   {canMaintainCode&&<Card><SectionHeader title={list('colCode')}/>
    <form action={saveWorkforceCodeAction} className="space-y-3 p-4">
     <input type="hidden" name="employmentId" value={employmentId}/>
@@ -61,15 +69,15 @@ export async function WorkforceScopedRecord({session, employmentId, scopeIds,fee
   </Card>}
   {profileSections.map(section=><Card key={section.key}>
    <SectionHeader title={section.title}/>
-   <dl className="grid gap-x-8 gap-y-4 p-4 sm:grid-cols-2 lg:grid-cols-3">
+   {editor?.sharedMaintain?<WorkforceValueForm employmentId={employmentId} kind="person" section={section.key} values={profile} editor={editor} root={root} access={access}/>:<dl className="grid gap-x-8 gap-y-4 p-4 sm:grid-cols-2 lg:grid-cols-3">
     {WORKFORCE_PROFILE_FIELDS.filter(field=>field.fieldId.startsWith(section.prefix)).map(({key,fieldId})=>{
      const field=personnelField(fieldId)!;
-     const value=record.profile[key],choice=personnelFieldChoices(field).find(option=>option.value===value);
+     const value=profile[key],choice=personnelFieldChoices(field).find(option=>option.value===value);
      const display=value==null||value===''?'—':field.type==='date'?formatDmy(value):choice&&root.has(choice.labelKey)?root(choice.labelKey):value;
      return <div key={fieldId} className="min-w-0"><dt className="text-xs text-muted-foreground">{root.has(field.labelKey)?root(field.labelKey):field.label}</dt>
       <dd className="mt-1 break-words text-sm text-foreground">{display}</dd></div>;
     })}
-   </dl>
+   </dl>}
   </Card>)}
   <Card>
    <SectionHeader title={t('employmentInfo.title')}/>
@@ -77,5 +85,26 @@ export async function WorkforceScopedRecord({session, employmentId, scopeIds,fee
     {employmentFields.map(([key,label,value])=><div key={key} className="min-w-0"><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 break-words text-sm text-foreground">{value||'—'}</dd></div>)}
    </dl>
   </Card>
+  {editor&&(['qualification','emergency'] as const).map(kind=>{
+   const rows=editor.registers.filter(row=>row.kind===kind);
+   const canMaintain=kind==='qualification'?editor.employmentMaintain:editor.sharedMaintain;
+   const title=kind==='qualification'?t('qualification.title'):access('workforceEdit.emergencyTitle');
+   return <Card key={kind}><SectionHeader title={title}/>
+    {!rows.length&&<p className="p-4 text-sm text-muted-foreground">{t(`${kind}.none`)}</p>}
+    {rows.map(row=><details key={row.id} className="border-t p-4">
+     <summary className="cursor-pointer text-sm font-medium">{String(row.values[kind==='qualification'?'qualification':'fullName']??'—')}</summary>
+     {canMaintain?<WorkforceValueForm employmentId={employmentId} kind={kind} row={row} values={row.values} editor={editor} root={root} access={access}/>:<dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {workforceMaintenanceFields(kind).map(({key,field})=>{
+       const value=row.values[key],option=personnelFieldChoices(field).find(item=>item.value===String(value));
+       const display=value==null||value===''?'—':option&&root.has(option.labelKey)?root(option.labelKey):field.type==='date'&&field.form?.widget!=='month'?formatDmy(String(value)):String(value);
+       return <div key={key} className="min-w-0"><dt className="text-xs text-muted-foreground">{root.has(field.labelKey)?root(field.labelKey):field.label}</dt><dd className="mt-1 break-words text-sm">{display}</dd></div>;
+      })}
+     </dl>}
+    </details>)}
+    {canMaintain&&<details className="border-t p-4"><summary className="cursor-pointer text-sm font-medium">{t(`${kind}.add`)}</summary>
+     <WorkforceValueForm employmentId={employmentId} kind={kind} values={kind==='emergency'?{priority:'other'}:{isHighest:false}} editor={editor} root={root} access={access}/>
+    </details>}
+   </Card>;
+  })}
  </div>;
 }

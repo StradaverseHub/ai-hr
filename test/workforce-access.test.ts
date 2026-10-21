@@ -4,7 +4,7 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {and,eq,sql} from 'drizzle-orm';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {db,withTenant,type SessionContext} from '../db/client';
-import {person,employment,employeeDraft,roleAssignment,appUser,jobGrade,domainEvent,employeeDependent,employeeQualification,personEmergencyContact,employeeDocument,compensation} from '../db/schema';
+import {person,employment,employeeDraft,roleAssignment,appUser,jobGrade,domainEvent,employeeDependent,employeeQualification,personEmergencyContact,employeeDocument,compensation,profileOption} from '../db/schema';
 import {hireEmployee,setEmployeeCode,updatePerson,setEmploymentGrade} from '../core/org';
 import {hireEmployee as hireWorkforceEmployee,setEmploymentInfo as maintainInfo,setPersonComplianceFields as maintainCompliance} from '../core/workforce-commands';
 import {createMovementEvent} from '../core/movement';
@@ -20,6 +20,7 @@ import {workforceRecord} from '../core/workforce-record';
 import {WORKFORCE_PROFILE_FIELDS} from '../lib/workforce-record-fields';
 import {workforceCompanies,workforceViewScope,workforceCommandAccess,WorkforceAccessError} from '../core/workforce-access';
 import {WorkforceRecordChangedError} from '../core/workforce-code';
+import {maintainWorkforceRecord,workforceEditor,WorkforceMaintenanceValidationError} from '../core/workforce-maintenance';
 import {accessConfigurationStore} from '../core/access-configuration-store';
 import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -467,5 +468,111 @@ describe('fresh Workforce-purpose record consumers',()=>{
   await override(b.adminUserId,'workforce.maintain',b.companyId,'deny');
   expect(await withTenant(admin(),tx=>tx.update(employeeDraft).set({label:'Not applied'}).where(eq(employeeDraft.id,draft.id)).returning({id:employeeDraft.id}))).toEqual([]);
   expect(await withTenant(admin(),tx=>tx.delete(employeeDraft).where(eq(employeeDraft.id,draft.id)).returning({id:employeeDraft.id}))).toEqual([]);
+ });
+});
+
+/** Positive maintenance never turns the grant into raw shared-row authority. */
+describe('purpose-bound non-HR profile and register maintenance',()=>{
+ async function fixture(){
+  const self=await hire('Fictional register maintainer'),subject=await hire('Fictional register target');
+  const userId=await createAppUser(b.tenantId,self.personId,'employee');
+  const ctx={...admin(),userId,personId:self.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]} satisfies SessionContext;
+  await activate();await override(userId,'workforce.view',b.companyId,'allow');await override(userId,'workforce.maintain',b.companyId,'allow');
+  return {ctx,subject,userId};
+ }
+ const events=(id:string)=>owner.db.select().from(domainEvent).where(eq(domainEvent.subjectEmploymentId,id)).orderBy(domainEvent.id);
+ it('saves normal profile fields with opaque CAS, minimal audit, no-op and retained private boundaries',async()=>{
+  const {ctx,subject,userId}=await fixture();const before=(await workforceEditor(ctx,subject.employmentId))!;
+  const patch={fullName:'Fictional revised colleague',gender:'female',permanentCity:'Fictional city',personalEmail:'revised@example.invalid'};
+  expect(before.sharedMaintain).toBe(true);
+  await expect(maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'person',rowId:null,operation:'update',expectedVersion:before.profileVersion,patch})).resolves.toMatchObject({changed:true});
+  const after=(await workforceEditor(ctx,subject.employmentId))!;
+  expect(after.profileVersion).not.toBe(before.profileVersion);
+  expect((await workforceRecord(ctx,subject.employmentId))!.profile).toMatchObject(patch);
+  const audit=(await events(subject.employmentId)).filter(row=>row.eventType==='person.updated');expect(audit).toHaveLength(1);
+  expect(audit[0]).toMatchObject({actorType:'user',actorId:userId,aggregateId:subject.personId});
+  for(const value of Object.values(patch))expect(JSON.stringify(audit[0].payload)).not.toContain(value);
+  await expect(maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'person',rowId:null,operation:'update',expectedVersion:after.profileVersion,patch})).resolves.toMatchObject({changed:false});
+  await expect(maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'person',rowId:null,operation:'update',expectedVersion:before.profileVersion,patch:{preferredName:'Stale write'}})).rejects.toBeInstanceOf(WorkforceRecordChangedError);
+  expect((await events(subject.employmentId)).filter(row=>row.eventType==='person.updated')).toHaveLength(1);
+  expect(await withTenant(ctx,tx=>tx.select().from(person).where(eq(person.id,subject.personId)))).toEqual([]);
+  expect(await withTenant(ctx,tx=>tx.select().from(employment).where(eq(employment.id,subject.employmentId)))).toEqual([]);
+  expect((await owner.db.select({role:roleAssignment.role}).from(roleAssignment).where(eq(roleAssignment.appUserId,userId))).map(row=>row.role)).toEqual(['employee']);
+ });
+ it('creates, transfers Highest, edits and archives Qualification without permitting a target-row swap',async()=>{
+  const {ctx,subject}=await fixture(),other=await hire('Fictional different qualification subject');
+  const add=(qualification:string)=>maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'qualification',rowId:null,operation:'add',expectedVersion:null,patch:{qualification,isHighest:true,fromYm:'2020-01',toYm:'2023-01',graduationDate:'2023-02-01'}});
+  const first=await add('Bachelor'),second=await add('Master');
+  let workspace=(await workforceEditor(ctx,subject.employmentId))!;
+  expect(workspace.registers.find(row=>row.id===first.id)?.values.isHighest).toBe(false);
+  const current=workspace.registers.find(row=>row.id===second.id)!;expect(current.values.isHighest).toBe(true);
+  await expect(maintainWorkforceRecord(ctx,{employmentId:other.employmentId,kind:'qualification',rowId:second.id,operation:'update',expectedVersion:current.version,patch:{institute:'Not retargeted'}})).rejects.toBeInstanceOf(WorkforceRecordChangedError);
+  await maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'qualification',rowId:second.id,operation:'update',expectedVersion:current.version,patch:{institute:'Fictional institute'}});
+  workspace=(await workforceEditor(ctx,subject.employmentId))!;const updated=workspace.registers.find(row=>row.id===second.id)!;
+  expect(updated.values.institute).toBe('Fictional institute');
+  await maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'qualification',rowId:second.id,operation:'archive',expectedVersion:updated.version,patch:{}});
+  expect((await workforceEditor(ctx,subject.employmentId))!.registers.find(row=>row.id===second.id)).toBeUndefined();
+  expect((await owner.db.select().from(employeeQualification).where(eq(employeeQualification.id,second.id)))[0].archivedAt).not.toBeNull();
+  expect(await withTenant(ctx,tx=>tx.select().from(employeeQualification).where(eq(employeeQualification.employmentId,subject.employmentId)))).toEqual([]);
+ });
+ it('transfers Emergency Primary in the same command, preserves inactive relationship and archives only its target',async()=>{
+  const {ctx,subject}=await fixture();
+  const first=await maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'emergency',rowId:null,operation:'add',expectedVersion:null,patch:{fullName:'Fictional first contact',priority:'primary'}});
+  const second=await maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'emergency',rowId:null,operation:'add',expectedVersion:null,patch:{fullName:'Fictional second contact',priority:'primary',mobilePhone:'0100000000'}});
+  let editor=(await workforceEditor(ctx,subject.employmentId))!;
+  expect(editor.registers.find(row=>row.id===first.id)?.values.priority).toBe('secondary');
+  const current=editor.registers.find(row=>row.id===second.id)!;expect(current.values.priority).toBe('primary');
+  await owner.db.insert(profileOption).values({tenantId:b.tenantId,category:'relationship',value:'WF-INACTIVE',label:'Fictional inactive relationship',isActive:false});
+  await owner.db.update(personEmergencyContact).set({relationship:'WF-INACTIVE'}).where(eq(personEmergencyContact.id,first.id));
+  await maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'emergency',rowId:second.id,operation:'update',expectedVersion:current.version,patch:{address:'Fictional revised address',relationship:'WF-INACTIVE'}});
+  editor=(await workforceEditor(ctx,subject.employmentId))!;
+  expect(editor.registers.find(row=>row.id===second.id)?.values.relationship).toBe('WF-INACTIVE');
+  await maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'emergency',rowId:second.id,operation:'archive',expectedVersion:editor.registers.find(row=>row.id===second.id)!.version,patch:{}});
+  expect((await workforceEditor(ctx,subject.employmentId))!.registers.filter(row=>row.kind==='emergency').map(row=>row.id)).toEqual([first.id]);
+  expect(await withTenant(ctx,tx=>tx.select().from(personEmergencyContact).where(eq(personEmergencyContact.personId,subject.personId)))).toEqual([]);
+ });
+ it('rejects unknown columns, bad date order and caller attempts to mint a private write intent',async()=>{
+  const {ctx,subject}=await fixture();const version=(await workforceEditor(ctx,subject.employmentId))!.profileVersion;
+  await expect(maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'person',rowId:null,operation:'update',expectedVersion:version,patch:{salary:50000}})).rejects.toBeInstanceOf(WorkforceMaintenanceValidationError);
+  await expect(maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'qualification',rowId:null,operation:'add',expectedVersion:null,patch:{qualification:'Master',fromYm:'2024-01',toYm:'2020-01'}})).rejects.toBeInstanceOf(WorkforceMaintenanceValidationError);
+  await sqlRefusal(withTenant(ctx,tx=>tx.execute(sql`insert into app.access_workforce_value_intent(xact_id,tenant_id,user_id,employment_id,kind,row_id,before_hash,after_hash,audit_root,event_type)
+   values(pg_current_xact_id(),${ctx.tenantId}::uuid,${ctx.userId}::uuid,${subject.employmentId}::uuid,'person',${subject.personId}::uuid,'forged','forged',${subject.personId}::uuid,'person.updated')`)));
+  await sqlRefusal(withTenant(ctx,tx=>tx.execute(sql`select app.access_workforce_maintain_record(${subject.employmentId}::uuid,'person',null,'update','{"isTestRecord":true}'::jsonb,${version})`)),'22023');
+  expect((await workforceEditor(ctx,subject.employmentId))!.profileVersion).toBe(version);
+ });
+ it('uses fresh revocation for an already-open form and refuses a real foreign-tenant subject',async()=>{
+  const {ctx,subject,userId}=await fixture();const version=(await workforceEditor(ctx,subject.employmentId))!.profileVersion;
+  const foreign=await seedBase();const outside=await hireEmployee({...adminCtx(foreign),grants:[{role:'hr_admin',companyId:null}]},{person:{fullName:'Fictional foreign editor target',primaryEmail:`${randomUUID()}@example.invalid`},companyId:foreign.companyId,departmentId:foreign.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+  expect(await workforceEditor(ctx,outside.employmentId)).toBeNull();
+  await expect(maintainWorkforceRecord(ctx,{employmentId:outside.employmentId,kind:'person',rowId:null,operation:'update',expectedVersion:version,patch:{fullName:'Not foreign'}})).rejects.toBeInstanceOf(WorkforceAccessError);
+  await override(userId,'workforce.maintain',b.companyId,'deny');
+  await expect(maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'person',rowId:null,operation:'update',expectedVersion:version,patch:{fullName:'Not after revocation'}})).rejects.toBeInstanceOf(WorkforceAccessError);
+  expect((await owner.db.select({fullName:person.fullName}).from(person).where(eq(person.id,subject.personId)))[0].fullName).toBe('Fictional register target');
+ });
+ it('rolls back both the target and former Primary when its immutable event cannot be written',async()=>{
+  const {ctx,subject}=await fixture();
+  await maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'emergency',rowId:null,operation:'add',expectedVersion:null,patch:{fullName:'Fictional original primary',priority:'primary'}});
+  const before=await owner.db.select().from(personEmergencyContact).where(eq(personEmergencyContact.personId,subject.personId));
+  const beforeEvents=await events(subject.employmentId);
+  await owner.db.execute(sql.raw("CREATE FUNCTION app.test_workforce_value_audit_refusal() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.payload->>'via'='workforce-maintenance' THEN RAISE EXCEPTION 'Fictional value audit refusal' USING ERRCODE='P0001'; END IF; RETURN NEW; END $$"));
+  try{
+   await owner.db.execute(sql.raw('CREATE TRIGGER test_workforce_value_audit_refusal BEFORE INSERT ON domain_event FOR EACH ROW EXECUTE FUNCTION app.test_workforce_value_audit_refusal()'));
+   const failure=await maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'emergency',rowId:null,operation:'add',expectedVersion:null,patch:{fullName:'Must roll back',priority:'primary'}}).then(()=>null,error=>error);
+   expect(pgSqlState(failure)).toBe('P0001');
+  }finally{
+   await owner.db.execute(sql.raw('DROP TRIGGER IF EXISTS test_workforce_value_audit_refusal ON domain_event'));
+   await owner.db.execute(sql.raw('DROP FUNCTION app.test_workforce_value_audit_refusal()'));
+  }
+  expect(await owner.db.select().from(personEmergencyContact).where(eq(personEmergencyContact.personId,subject.personId))).toEqual(before);
+  expect(await events(subject.employmentId)).toEqual(beforeEvents);
+ });
+ it('does not lend raw row authority after a successful fixed write in the same transaction',async()=>{
+  const {ctx,subject}=await fixture();const version=(await workforceEditor(ctx,subject.employmentId))!.profileVersion;
+  await withTenant(ctx,async tx=>{
+   await tx.execute(sql`select app.access_workforce_maintain_record(${subject.employmentId}::uuid,'person',null,'update','{"preferredName":"Fictional exact command"}'::jsonb,${version})`);
+   expect(await tx.update(person).set({firstName:'Must not borrow command authority'}).where(eq(person.id,subject.personId)).returning({id:person.id})).toEqual([]);
+   expect(await tx.select().from(person).where(eq(person.id,subject.personId))).toEqual([]);
+  });
+  expect((await workforceRecord(ctx,subject.employmentId))!.profile).toMatchObject({preferredName:'Fictional exact command',firstName:null});
  });
 });

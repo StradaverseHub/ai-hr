@@ -22001,6 +22001,18 @@
     },
     "workforceReadOnly": "Bạn có thể xem hồ sơ nhân viên này. Quyền nhân sự hiện tại của bạn không cho phép thay đổi.",
     "workforceCommandHint": "Bạn có thể đổi mã nhân viên. Các thông tin khác trên trang này chỉ được xem.",
+    "workforceEdit": {
+      "hint": "Bạn có thể cập nhật hồ sơ và các danh sách theo quyền truy cập hồ sơ nhân viên hiện tại.",
+      "save": "Lưu thay đổi",
+      "saving": "Đang lưu…",
+      "archive": "Lưu trữ bản ghi",
+      "archiveHint": "Bản ghi sẽ bị loại khỏi danh sách đang hoạt động và vẫn giữ lịch sử kiểm tra.",
+      "saved": "Đã lưu thay đổi.",
+      "changed": "Bản ghi đã thay đổi. Hãy mở lại trước khi lưu.",
+      "denied": "Quyền của bạn đã thay đổi. Hãy mở lại bản ghi để kiểm tra quyền truy cập.",
+      "invalid": "Kiểm tra các giá trị đã nhập và thứ tự ngày, rồi thử lại.",
+      "emergencyTitle": "Người liên hệ khẩn cấp"
+    },
     "workforceCode": {
       "hint": "Chữ cái, chữ số và dấu gạch nối; tối đa 30 ký tự. Mã phải chưa được sử dụng.",
       "save": "Lưu mã nhân viên",

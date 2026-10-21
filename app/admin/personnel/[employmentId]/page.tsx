@@ -243,10 +243,11 @@ export default async function EmployeePage({
     companyChange?: string;
     incentiveError?: string;
     workforceCode?:string;
+    workforceEdit?:string;
   }>;
 }) {
   const {s,scopeIds}=await requireWorkforceAccess();
-  if(!isAdmin(s))return <WorkforceScopedRecord session={s} employmentId={(await params).employmentId} scopeIds={scopeIds} feedback={(await searchParams).workforceCode}/>;
+  if(!isAdmin(s))return <WorkforceScopedRecord session={s} employmentId={(await params).employmentId} scopeIds={scopeIds} feedback={(await searchParams).workforceCode} editFeedback={(await searchParams).workforceEdit}/>;
   const t = await getTranslations('people.detail');
   const tPersonnel=await getTranslations();
   const personnelLabel=(id:string)=>personnelFormLabel(id,(key,fallback)=>tPersonnel.has(key)?tPersonnel(key):fallback);
@@ -332,7 +333,7 @@ export default async function EmployeePage({
   if (!UUID_RE.test(employmentId)) notFound();
 
   const emp = await employeeDetail(s,employmentId,'workforce');
-  if(!emp)return <WorkforceScopedRecord session={s} employmentId={employmentId} scopeIds={scopeIds} feedback={rawSearchParams.workforceCode}/>;
+  if(!emp)return <WorkforceScopedRecord session={s} employmentId={employmentId} scopeIds={scopeIds} feedback={rawSearchParams.workforceCode} editFeedback={rawSearchParams.workforceEdit}/>;
   const canMaintainWorkforce=await workforceEmploymentAccess(s,employmentId,'maintain');
   const tAccess=await getTranslations('accessConfiguration');
   const classification = admin ? await employmentTestRecord(s, employmentId) : null;
