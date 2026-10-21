@@ -801,3 +801,64 @@ $$;
 REVOKE ALL ON FUNCTION app.access_user_override_company_in_use(uuid) FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.access_user_override_company_in_use(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Draft profile-review adapter. The catalogue remains unavailable until all bindings and the
+-- actual consumer matrix pass. Its dormant flag preserves the existing eligible HR course; even
+-- that course must use an actual live HR principal instead of a stale role list from the caller.
+CREATE FUNCTION app.access_profile_review_for_user(p_user uuid,p_subject uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.employment e JOIN public.app_user u ON u.tenant_id=e.tenant_id
+  JOIN public.role_assignment r ON r.tenant_id=u.tenant_id AND r.app_user_id=u.id
+  JOIN public.access_capability c ON c.id='profile.review'
+  WHERE e.id=p_subject AND e.tenant_id=app.current_tenant_id() AND u.id=p_user
+   AND NOT app.login_blocked(u.id) AND u.person_id IS DISTINCT FROM e.person_id
+   AND r.role::text IN ('hr_admin','super_admin') AND app.access_scope_covers(r.company_id,e.company_id,e.tenant_id)
+   AND (NOT c.supported OR app.access_allowed_for(u.id,c.id,e.company_id)));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_profile_review_for_user(uuid,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_profile_review_permitted(p_subject uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.access_profile_review_for_user(app.current_user_id(),p_subject);
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_profile_review_permitted(uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_profile_review_permitted(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_profile_request_own(p_person uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.is_self_person(p_person) AND EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=app.current_user_id()
+  AND u.tenant_id=app.current_tenant_id() AND u.person_id=p_person AND NOT app.login_blocked(u.id));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_profile_request_own(uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_profile_request_own(uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- These policies only narrow the existing subject/named-route rules. Own request history and
+-- owner-only withdrawal/privacy retention remain separate, and no new Personnel/payroll row is exposed.
+CREATE POLICY access_profile_review_read ON profile_change_request AS RESTRICTIVE FOR SELECT TO ai_hr_app
+ USING(app.access_profile_request_own(person_id) OR app.access_profile_review_permitted(employment_id));
+--> statement-breakpoint
+CREATE POLICY access_profile_review_update ON profile_change_request AS RESTRICTIVE FOR UPDATE TO ai_hr_app
+ USING(app.access_profile_review_permitted(employment_id)) WITH CHECK(app.access_profile_review_permitted(employment_id));
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.profile_route_principal(p_approver uuid,p_subject uuid)
+RETURNS TABLE(user_id uuid,employment_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT u.id,a.id FROM employment a JOIN app_user u ON u.person_id=a.person_id AND u.tenant_id=a.tenant_id
+ JOIN employment s ON s.id=p_subject AND s.tenant_id=a.tenant_id
+ WHERE a.id=p_approver AND a.tenant_id=app.current_tenant_id() AND a.person_id<>s.person_id
+ AND (app.is_self_person(s.person_id) OR app.can_admin_employment(s.id))
+ AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND a.blacklisted_at IS NULL
+ AND a.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+ AND (LEAST(a.resignation_date,a.last_working_date,a.terminated_on) IS NULL OR LEAST(a.resignation_date,a.last_working_date,a.terminated_on)>=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+ AND EXISTS(SELECT 1 FROM role_assignment r WHERE r.tenant_id=a.tenant_id AND r.app_user_id=u.id AND r.role IN ('hr_admin','super_admin')
+  AND (r.company_id IS NULL OR r.company_id=s.company_id OR app.is_company_descendant(s.company_id,r.company_id)))
+ AND (NOT EXISTS(SELECT 1 FROM tenant_setting t WHERE t.tenant_id=a.tenant_id AND t.key='ess.profile_change_approver' AND t.value='"group_admin"'::jsonb) OR EXISTS(SELECT 1 FROM role_assignment g WHERE g.tenant_id=a.tenant_id AND g.app_user_id=u.id AND (g.role='super_admin' OR g.role='hr_admin' AND g.company_id IS NULL)))
+ AND app.access_profile_review_for_user(u.id,s.id)
+ AND (SELECT count(*) FROM app_user other WHERE other.tenant_id=a.tenant_id AND other.person_id=a.person_id AND other.archived_at IS NULL AND NOT app.login_blocked(other.id))=1;
+$$;

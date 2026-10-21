@@ -4,12 +4,14 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {and,eq,sql} from 'drizzle-orm';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {withTenant,type SessionContext} from '../db/client';
-import {appUser,appInvitation,roleAssignment,company,employment,accessGroup,accessConfiguration,domainEvent} from '../db/schema';
+import {appUser,appInvitation,roleAssignment,company,employment,person,profileChangeRequest,accessGroup,accessConfiguration,domainEvent} from '../db/schema';
 import {accessConfigurationStore} from '../core/access-configuration-store';
 import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';
 import {assignRole,revokeRole} from '../core/admin';
 import {hireEmployee} from '../core/org';
 import {readAccessConfigurationEditor} from '../core/access-configuration-editor';
+import {decideProfileChange,listProfileChangeRequests,myProfileChangeRequests} from '../core/profile';
+import {requestCurrentProfileChange} from './helpers/profile-requests';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {pgSqlState} from '../lib/db-error';
 import type {AccessConfigurationCommand} from '../lib/access-configuration-command';
@@ -163,5 +165,36 @@ describe('canonical access storage under ai_hr_app',()=>{
   finally{await owner.db.execute(sql.raw('DROP TRIGGER test_access_audit_refusal ON domain_event'));await owner.db.execute(sql.raw('DROP FUNCTION app.test_access_audit_refusal()'));}
   expect(await owner.db.select().from(accessGroup).where(eq(accessGroup.id,groupId))).toEqual([]);
   const [revision]=await owner.db.select({value:accessConfiguration.revision}).from(accessConfiguration).where(eq(accessConfiguration.tenantId,b.tenantId));expect(revision.value).toBe(current.snapshot.revision);
+ });
+ it('binds a profile-review denial to queue reads, raw records and the actual decision without blocking the subject’s own history',async()=>{
+  // Product activation remains unavailable until the complete consumer matrix passes. This isolated
+  // fixture activates only the actual profile adapter being exercised, not the unfinished Workforce.
+  await owner.db.execute(sql`update access_capability set supported=true,bindings='[{"owner":"app.access_profile_review_permitted","operation":"review"}]'::jsonb where id='profile.review'`);
+  const reviewer=await login('hr_admin');
+  const hired=await hireEmployee(admin(),{person:{fullName:'Fictional review subject',primaryEmail:'fictional-profile-review@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+  const employeeUser=await createAppUser(b.tenantId,hired.personId,'employee'),employeeCtx={...admin(),userId:employeeUser,personId:hired.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+  const request=await requestCurrentProfileChange(employeeCtx,{employmentId:hired.employmentId,proposed:{preferredName:'Fictional reviewed nickname'}});
+  expect((await listProfileChangeRequests(reviewer.ctx,{requestId:request.requestId})).map(row=>row.id)).toEqual([request.requestId]);
+  await change({kind:'setOverride',userId:reviewer.userId,capabilityId:'profile.review',companyId:b.companyId,effect:'deny'});
+  expect(await listProfileChangeRequests(reviewer.ctx,{requestId:request.requestId})).toEqual([]);
+  const raw=await withTenant(reviewer.ctx,async tx=>{
+   await tx.execute(sql`select set_config('app.profile_route_maintenance','on',true)`);
+   return tx.select({id:profileChangeRequest.id}).from(profileChangeRequest).where(eq(profileChangeRequest.id,request.requestId));
+  });expect(raw).toEqual([]);
+  const rawWrite=await withTenant(reviewer.ctx,tx=>tx.update(profileChangeRequest).set({status:'approved'}).where(eq(profileChangeRequest.id,request.requestId)).returning({id:profileChangeRequest.id}));expect(rawWrite).toEqual([]);
+  await expect(decideProfileChange(reviewer.ctx,{requestId:request.requestId,decision:'approved'})).rejects.toThrow();
+  const [unchanged]=await owner.db.select({nickname:person.preferredName}).from(person).where(eq(person.id,hired.personId));expect(unchanged.nickname).toBeNull();
+  expect((await myProfileChangeRequests(employeeCtx)).some(row=>row.id===request.requestId)).toBe(true);
+  await decideProfileChange(admin(),{requestId:request.requestId,decision:'approved'});
+  const [approved]=await owner.db.select({nickname:person.preferredName}).from(person).where(eq(person.id,hired.personId));expect(approved.nickname).toBe('Fictional reviewed nickname');
+ });
+ it('does not turn a profile-review allow into an HR role or a self-approval grant',async()=>{
+  await owner.db.execute(sql`update access_capability set supported=true,bindings='[{"owner":"app.access_profile_review_permitted","operation":"review"}]'::jsonb where id='profile.review'`);
+  const hired=await hireEmployee(admin(),{person:{fullName:'Fictional self approval subject',primaryEmail:'fictional-self-approval@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+  const user=await createAppUser(b.tenantId,hired.personId,'employee'),ctx={...admin(),userId:user,personId:hired.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+  await change({kind:'setOverride',userId:user,capabilityId:'profile.review',companyId:b.companyId,effect:'allow'});
+  const request=await requestCurrentProfileChange(ctx,{employmentId:hired.employmentId,proposed:{preferredName:'Must remain pending'}});
+  await expect(decideProfileChange(ctx,{requestId:request.requestId,decision:'approved'})).rejects.toThrow();
+  const [status]=await owner.db.select({status:profileChangeRequest.status}).from(profileChangeRequest).where(eq(profileChangeRequest.id,request.requestId));expect(status.status).toBe('pending');
  });
 });

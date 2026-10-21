@@ -1,3 +1,4 @@
+import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {resolveProfileRouteTx,assertProfileRouteDecisionTx,profileRouteReaderPredicate} from './profile-routing';
 import type {ProfilePresentationPolicy} from './profile-edit-policy';
 import {projectOwnProfileProposal,ownProfileProposalIsIntact} from '../lib/personnel-ess-visibility';
@@ -403,6 +404,8 @@ export async function decideProfileChange(
   const reason = clean(p.reason);
   if (p.decision === 'rejected' && reason === null) throw new ProfileChangeReasonRequiredError();
   return withTenant(ctx, async (tx) => {
+    // Serialize the decision with configuration revocation before loading any proposal or master data.
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
     ctx=(await freshProfileEditPolicyTx(tx,ctx)).ctx;
     const [req] = await tx
       .select()

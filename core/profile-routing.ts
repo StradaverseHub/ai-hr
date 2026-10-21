@@ -1,3 +1,4 @@
+import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {z} from 'zod';
 /** Named HR routing is an authority-narrowing adapter over the canonical organisation resolver. */
 import {createHash,randomUUID} from 'node:crypto';
@@ -113,6 +114,7 @@ export function saveProfileRoutingPolicy(ctx:SessionContext,p:{expectedRevision:
 export function rerouteProfileRequest(ctx:SessionContext,p:{requestId:string;reason:string}){
  if(!p.reason.trim()||p.reason.length>2000)throw new ProfileRoutingError('reasonRequired');
  return withTenant(ctx,async tx=>{
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
   if(!isGroupAdmin(ctx))throw new ProfileRoutingError('unauthorized');
   const fresh=await freshProfileEditPolicyTx(tx,ctx);
   await tx.execute(sql`select set_config('app.profile_route_maintenance','on',true)`);
