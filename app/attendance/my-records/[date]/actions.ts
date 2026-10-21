@@ -4,7 +4,7 @@ import { AttendanceLevelError, attendanceLevelProblemToken } from '@/lib/attenda
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { scopedSession } from '@/lib/scope';
-import { myEmployment } from '@/core/read';
+import { ownAttendanceRecordSubject } from '../subject';
 import { CALENDAR_RETURN_FIELDS, calendarReturnParams } from '../../my-roster/attendance-links';
 import {
   requestAttendanceCorrection,
@@ -14,7 +14,6 @@ import {
 
 export async function requestOwnAttendanceDayAction(formData: FormData) {
   const { s } = await scopedSession();
-  const me = await myEmployment(s);
   const date = String(formData.get('date') ?? '');
   const query = new URLSearchParams();
   for (const key of ['from', 'to']) {
@@ -23,8 +22,13 @@ export async function requestOwnAttendanceDayAction(formData: FormData) {
   }
   const calendar = calendarReturnParams(Object.fromEntries(CALENDAR_RETURN_FIELDS.map(key => [key, String(formData.get(key) ?? '')])));
   for (const [key, value] of Object.entries(calendar)) query.set(key, value);
+  const selectors=formData.getAll('employmentId');
+  const selector=selectors.length===0?undefined:selectors.length===1&&typeof selectors[0]==='string'?selectors[0]:[];
+  if(typeof selector==='string')query.set('employmentId',selector);
+  if(formData.get('home')==='1')query.set('home','1');
   const back = `/attendance/my-records/${encodeURIComponent(date)}?${query.toString()}`;
   const fail = (key: string): never => redirect(`${back}&error=${key}`);
+  const me=await ownAttendanceRecordSubject(s,selector);
   if (!me) fail('correctionForbidden');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date) fail('correctionBadDate');
   const checkIn = String(formData.get('checkIn') ?? '').trim();

@@ -58,6 +58,12 @@ async function takeFrame(setting: 'required' | 'optional') {
   await screen.findByAltText(en.attendance.clock.photoReview);
 }
 describe('Web Clocking optional camera and uncertain commands',()=>{
+  it('starts one embedded explicit intent and reports only the confirmed selected receipt',async()=>{
+    selectedSetting='not_required';const saved=vi.fn(),busy=vi.fn(),employmentId='f554c043-bdd1-4ba4-a2aa-11ca98719828';
+    render(<NextIntlClientProvider locale="en" messages={en}><ClockPageClient initial={{...initial,attendancePhotoSetting:'not_required'}} shiftName={null} employmentId={employmentId} embedded initialAction="in" onSaved={saved} onBusyChange={busy}/></NextIntlClientProvider>);
+    await waitFor(()=>expect(saved).toHaveBeenCalledWith({recordedAt:receipt.recordedAt,direction:'in'}));expect(post).toHaveBeenCalledTimes(1);
+    expect((post.mock.calls[0][1]!.body as FormData).get('employmentId')).toBe(employmentId);expect(screen.queryByRole('heading',{name:en.attendance.clock.todayLog})).toBeNull();expect(getUserMedia).not.toHaveBeenCalled();
+  });
   it('preserves the selected employment through refresh, submission and uncertain receipt recovery',async()=>{
     const employmentId='f554c043-bdd1-4ba4-a2aa-11ca98719828';
     post.mockRejectedValueOnce(new TypeError('Response lost'));

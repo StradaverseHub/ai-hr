@@ -4,14 +4,15 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTranslator, NextIntlClientProvider } from 'next-intl';
-const state = vi.hoisted(() => ({ locale: 'en', own: vi.fn(), rows: vi.fn(), punches: vi.fn(), requests: vi.fn() }));
+const state = vi.hoisted(() => ({ locale: 'en', own: vi.fn(), selected:vi.fn(), rows: vi.fn(), punches: vi.fn(), requests: vi.fn() }));
 vi.mock('next-intl/server', () => ({
   getLocale: async () => state.locale,
   getTranslations: async (namespace: string = 'attendance') => createTranslator({ locale: state.locale, namespace, messages: JSON.parse(readFileSync(new URL(`../messages/${state.locale}.json`, import.meta.url), 'utf8')) }),
 }));
-vi.mock('../lib/scope', () => ({ scopedSession: async () => ({ s: { personId: 'manager' } }) }));
+vi.mock('../lib/scope', () => ({ scopedSession: async () => ({ s: { personId: 'manager',userId:'user' } }) }));
+vi.mock('next/navigation',()=>({notFound:()=>{throw Error('notFound');}}));
 vi.mock('../lib/authz', () => ({ requireModule: async () => undefined }));
-vi.mock('../core/read', () => ({ myEmployment: state.own }));
+vi.mock('../core/read', () => ({ myEmployment: state.own,myOwnEmploymentSubjects:state.selected }));
 vi.mock('../app/attendance/my-records/[date]/actions', () => ({ requestOwnAttendanceDayAction: () => undefined }));
 vi.mock('../components/attendance-figure-cells', () => ({ AttendanceFigureCells: () => createElement('td', { colSpan: 8 }, 'figures') }));
 vi.mock('../packs/attendance/service', async () => ({
@@ -24,6 +25,7 @@ vi.mock('../packs/attendance/service', async () => ({
 import Page from '../app/attendance/my-records/[date]/page';
 beforeEach(() => {
   vi.clearAllMocks(); state.locale = 'en';
+  state.selected.mockResolvedValue([{employmentId:'8cfa58c2-dd92-4eb6-8f8c-ab19406115fd',personName:'Own second'}]);
   state.own.mockResolvedValue({ employmentId: 'manager-own', name: 'Own day' });
   state.rows.mockResolvedValue([{ date: '2025-06-04', attendanceId: 'own-row', status: 'present', context: null, dayType: 'workday', shiftCode: 'AM01', shiftStart: '09:00', shiftEnd: '18:00', scheduledMinutes: 480, workedMinutes: 480, checkInAt: '09:00', checkOutAt: '18:00', lateMinutes: 0, earlyOutMinutes: 0, otMinutes: 0, calcTrace: null }]);
   state.punches.mockResolvedValue(new Map()); state.requests.mockResolvedValue([]);
@@ -47,6 +49,14 @@ describe('employee day render', () => {
     expect(html).toContain('Own day');
     expect(html).not.toContain('report-employment');
     expect(html).toContain('/attendance/my-roster?view=month&amp;month=2025-06&amp;selected=2025-06-04');
+  });
+  it('retains the selected own subject in reads, Home return and correction form',async()=>{
+    const html=await render({employmentId:'8cfa58c2-dd92-4eb6-8f8c-ab19406115fd',home:'1'});
+    expect(state.rows).toHaveBeenCalledWith(expect.anything(),'8cfa58c2-dd92-4eb6-8f8c-ab19406115fd','2025-06-04','2025-06-04');expect(state.own).not.toHaveBeenCalled();
+    expect(html).toContain('/?employmentId=8cfa58c2-dd92-4eb6-8f8c-ab19406115fd');expect(html).toContain('name="employmentId" value="8cfa58c2-dd92-4eb6-8f8c-ab19406115fd"');
+  });
+  it.each(['', 'bfd90e63-c78c-4a10-8c51-56e878f42722', ['8cfa58c2-dd92-4eb6-8f8c-ab19406115fd']])('unavailable explicit selector is not a first-subject fallback: %s',async employmentId=>{
+    await expect(render({employmentId})).rejects.toThrow('notFound');expect(state.rows).not.toHaveBeenCalled();expect(state.own).not.toHaveBeenCalled();
   });
   it('returns to the original weekly window and retains it through a correction form', async () => {
     const html = await render({ calendar: '1', calendarView: 'week', calendarMonth: '2025-06', calendarDate: '2025-06-02' });

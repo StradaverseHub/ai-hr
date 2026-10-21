@@ -22376,6 +22376,39 @@
         "holiday": "Cuti umum",
         "payday": "Gaji"
       }
+    },
+    "today": {
+      "title": "Hari Anda",
+      "loading": "Memuatkan…",
+      "failed": "Hari Anda tidak dapat dimuatkan. Kad Utama lain masih tersedia.",
+      "timeout": "Hari Anda mengambil masa lebih lama. Sila cuba lagi.",
+      "retry": "Cuba lagi",
+      "refresh": "Muat semula",
+      "loadingClock": "Membuka catatan waktu…",
+      "close": "Tutup",
+      "clockFailed": "Catatan waktu tidak dapat dibuka. Tiada arahan catatan waktu dimulakan.",
+      "currentTime": "Waktu semasa",
+      "displayZone": "Dipaparkan dalam {zone}",
+      "shift": "Syif dijadualkan",
+      "noShift": "Tiada waktu syif direkodkan",
+      "overnight": "Syif ini berterusan selepas tengah malam.",
+      "locations": "Lokasi catatan waktu ditetapkan",
+      "noLocation": "Tiada lokasi catatan waktu yang boleh digunakan",
+      "moreLocations": "{count} lokasi lagi",
+      "clockedInAt": "Telah masuk · {time}",
+      "clockedTime": "Masa dicatat, sebelum peraturan kehadiran dan gaji",
+      "notClockedIn": "Anda belum mencatat masuk.",
+      "leaveDayOff": "Cuti sehari penuh diluluskan untuk hari ini.",
+      "holidayDayOff": "Hari ini cuti umum mengikut jadual kehadiran anda.",
+      "leaveRecorded": "Cuti diluluskan juga direkodkan hari ini.",
+      "partialLeave": "Cuti sebahagian hari diluluskan untuk hari ini.",
+      "correction": "Mohon pembetulan",
+      "openClock": "Buka catatan waktu",
+      "clockUnavailable": "Catatan waktu tidak diaktifkan.",
+      "paydayToday": "Tarikh gaji direkodkan: hari ini, {date}.",
+      "paydayTomorrow": "Tarikh gaji direkodkan: esok, {date}.",
+      "paydayIn": "Tarikh gaji direkodkan: {date}, dalam {days} hari.",
+      "noPayday": "Tiada tarikh gaji akan datang direkodkan."
     }
   }
 }

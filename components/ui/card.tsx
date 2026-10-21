@@ -15,7 +15,7 @@ const MONO_TITLE =
   'monolith:font-mono monolith:text-[11px] monolith:font-normal monolith:uppercase monolith:tracking-[0.12em] monolith:text-mid';
 const MONO_CONTENT = 'monolith:px-0';
 
-export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+export function Card({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-ui-card

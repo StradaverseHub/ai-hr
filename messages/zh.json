@@ -22376,6 +22376,39 @@
         "holiday": "假日",
         "payday": "发薪"
       }
+    },
+    "today": {
+      "title": "您的一天",
+      "loading": "正在加载…",
+      "failed": "无法加载您的一天。其他主页卡片仍可使用。",
+      "timeout": "加载时间较长，请重试。",
+      "retry": "重试",
+      "refresh": "刷新",
+      "loadingClock": "正在打开打卡…",
+      "close": "关闭",
+      "clockFailed": "无法打开打卡。尚未发起任何打卡指令。",
+      "currentTime": "当前时间",
+      "displayZone": "显示时区：{zone}",
+      "shift": "排定班次",
+      "noShift": "未记录定时班次",
+      "overnight": "此班次跨越午夜。",
+      "locations": "已分配打卡地点",
+      "noLocation": "未分配可用的打卡地点",
+      "moreLocations": "另有 {count} 个地点",
+      "clockedInAt": "已签到 · {time}",
+      "clockedTime": "打卡时长，尚未应用考勤及薪资规则",
+      "notClockedIn": "您尚未签到。",
+      "leaveDayOff": "今天已记录获批全天假期。",
+      "holidayDayOff": "根据您的考勤排班，今天为公共假日。",
+      "leaveRecorded": "今天也已记录获批假期。",
+      "partialLeave": "今天已记录获批部分时段假期。",
+      "correction": "申请更正",
+      "openClock": "打开打卡",
+      "clockUnavailable": "未启用打卡。",
+      "paydayToday": "已记录发薪日：今天，{date}。",
+      "paydayTomorrow": "已记录发薪日：明天，{date}。",
+      "paydayIn": "已记录发薪日：{date}，还有 {days} 天。",
+      "noPayday": "未记录即将到来的发薪日。"
     }
   }
 }

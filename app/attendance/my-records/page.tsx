@@ -1,9 +1,10 @@
 import {FormulaOvertimeDuration} from '@/components/formula-overtime-record';
 import Link from 'next/link';
+import {notFound} from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
-import { myEmployment } from '@/core/read';
+import {ownAttendanceRecordSubject} from './subject';
 import {
   ATTENDANCE_RANGE_MAX_DAYS,
   attendanceForEmploymentRange,
@@ -76,7 +77,7 @@ import { attendanceCalendarBackHref } from '../my-roster/attendance-links';
 export default async function MyAttendanceRecordsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; from?: string; to?: string; page?: string; size?: string }>;
+  searchParams: Promise<{ error?: string; from?: string; to?: string; page?: string; size?: string; employmentId?:string|string[] }>;
 }) {
   const t = await getTranslations('attendance');
   const locale = await getLocale();
@@ -88,7 +89,9 @@ export default async function MyAttendanceRecordsPage({
   // for this registered route). Only the session is taken: see the fence note in the header.
   const { s } = await scopedSession();
   const sp = await searchParams;
-  const me = await myEmployment(s);
+  const me = await ownAttendanceRecordSubject(s,sp.employmentId);
+  if(sp.employmentId!==undefined&&!me)notFound();
+  const selectedQuery:Record<string,string>=typeof sp.employmentId==='string'?{employmentId:sp.employmentId}:{};
 
   if (!me) {
     /**
@@ -199,7 +202,7 @@ export default async function MyAttendanceRecordsPage({
   return (
     <div className={pageWideCls}>
       <PageHeader title={t('myRecords.title')} />
-      <Link href={attendanceCalendarBackHref({}, from)} className="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">← {t('myDayBack')}</Link>
+      <Link href={selectedQuery.employmentId?'/?'+new URLSearchParams(selectedQuery):attendanceCalendarBackHref({}, from)} className="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">← {t('myDayBack')}</Link>
       <ErrorBanner message={sp.error} />
 
       <Card className="overflow-hidden">
@@ -212,6 +215,7 @@ export default async function MyAttendanceRecordsPage({
             picker: it navigates, it posts nothing, and it needs no client component. The dates ride the
             address so the pager keeps the filter and a copied link opens the same view. */}
         <form method="GET" className="flex flex-wrap items-end gap-3 border-b border-border px-4 py-3">
+          {selectedQuery.employmentId&&<input type="hidden" name="employmentId" value={selectedQuery.employmentId}/>}
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             {t('filters.dateFrom')}
             <input type="date" name="from" defaultValue={from} className={inputCls} />
@@ -287,7 +291,7 @@ export default async function MyAttendanceRecordsPage({
                         )}
                       </td>
                       <td className="sticky right-0 whitespace-nowrap bg-card px-3 py-2.5">
-                        <Link className="font-medium text-primary hover:underline" href={`/attendance/my-records/${r.date}?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`}>
+                        <Link className="font-medium text-primary hover:underline" href={`/attendance/my-records/${r.date}?${new URLSearchParams({from,to,...selectedQuery})}`}>
                           {t('breakdownView')}
                         </Link>
                       </td>
@@ -303,7 +307,7 @@ export default async function MyAttendanceRecordsPage({
                 )}
               </tbody>
             </table>
-            <Pager basePath="/attendance/my-records" params={{ from: sp.from, to: sp.to }} state={pgState} />
+            <Pager basePath="/attendance/my-records" params={{ from: sp.from, to: sp.to,...selectedQuery }} state={pgState} />
             {showsLeave && (
               <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
                 {t('myRecords.leaveTypeNote')}

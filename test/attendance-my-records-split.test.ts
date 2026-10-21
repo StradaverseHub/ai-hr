@@ -245,7 +245,7 @@ describe('f3e6c36e — the administrative affordances are ABSENT from the employ
      * test/attendance-menu-relocation.test.ts reads it off raw source). This file strips comments, so the
      * CALL is what is matched here — which is the stronger reading anyway: a comment cannot fence data.
      */
-    expect(src, 'the caller’s own employment is resolved server-side').toMatch(/myEmployment\(\s*s\s*\)/);
+    expect(src, 'the caller’s own employment is resolved server-side').toMatch(/ownAttendanceRecordSubject\(\s*s,\s*sp\.employmentId\)/);
     expect(src, 'and the range read is keyed on it, not on a company scope').toMatch(
       /attendanceForEmploymentRange\(\s*s,\s*me\.employmentId/,
     );

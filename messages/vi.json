@@ -22376,6 +22376,39 @@
         "holiday": "Lễ",
         "payday": "Lương"
       }
+    },
+    "today": {
+      "title": "Ngày của bạn",
+      "loading": "Đang tải…",
+      "failed": "Không tải được Ngày của bạn. Các thẻ Trang chủ khác vẫn dùng được.",
+      "timeout": "Thời gian tải lâu hơn dự kiến. Vui lòng thử lại.",
+      "retry": "Thử lại",
+      "refresh": "Làm mới",
+      "loadingClock": "Đang mở chấm công…",
+      "close": "Đóng",
+      "clockFailed": "Không mở được chấm công. Chưa bắt đầu lệnh chấm công nào.",
+      "currentTime": "Giờ hiện tại",
+      "displayZone": "Hiển thị theo múi giờ {zone}",
+      "shift": "Ca làm theo lịch",
+      "noShift": "Chưa ghi nhận giờ ca làm",
+      "overnight": "Ca này kéo dài qua nửa đêm.",
+      "locations": "Địa điểm chấm công được phân công",
+      "noLocation": "Chưa có địa điểm chấm công khả dụng",
+      "moreLocations": "Thêm {count} địa điểm",
+      "clockedInAt": "Đã chấm công vào · {time}",
+      "clockedTime": "Thời gian chấm công, trước khi áp dụng quy tắc công và lương",
+      "notClockedIn": "Bạn chưa chấm công vào.",
+      "leaveDayOff": "Hôm nay có nghỉ phép cả ngày đã duyệt.",
+      "holidayDayOff": "Hôm nay là ngày lễ theo lịch chấm công của bạn.",
+      "leaveRecorded": "Hôm nay cũng có nghỉ phép đã duyệt.",
+      "partialLeave": "Hôm nay có nghỉ phép một phần ngày đã duyệt.",
+      "correction": "Yêu cầu điều chỉnh",
+      "openClock": "Mở chấm công",
+      "clockUnavailable": "Chấm công chưa được bật.",
+      "paydayToday": "Ngày trả lương đã ghi nhận: hôm nay, {date}.",
+      "paydayTomorrow": "Ngày trả lương đã ghi nhận: ngày mai, {date}.",
+      "paydayIn": "Ngày trả lương đã ghi nhận: {date}, sau {days} ngày.",
+      "noPayday": "Chưa ghi nhận ngày trả lương sắp tới."
     }
   }
 }

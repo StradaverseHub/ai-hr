@@ -22376,6 +22376,39 @@
         "holiday": "Holiday",
         "payday": "Payday"
       }
+    },
+    "today": {
+      "title": "Your Day",
+      "loading": "Loading…",
+      "failed": "Your Day could not be loaded. Other Home cards remain available.",
+      "timeout": "Your Day is taking longer than expected. Please retry.",
+      "retry": "Retry",
+      "refresh": "Refresh",
+      "loadingClock": "Opening clocking…",
+      "close": "Close",
+      "clockFailed": "Clocking could not be opened. No clocking command has started.",
+      "currentTime": "Current time",
+      "displayZone": "Displayed in {zone}",
+      "shift": "Scheduled shift",
+      "noShift": "No timed shift recorded",
+      "overnight": "This shift continues past midnight.",
+      "locations": "Assigned clocking locations",
+      "noLocation": "No usable clocking location assigned",
+      "moreLocations": "{count} more locations",
+      "clockedInAt": "Clocked in · {time}",
+      "clockedTime": "Clocked time, before attendance and payroll rules",
+      "notClockedIn": "You are not clocked in.",
+      "leaveDayOff": "Approved full-day leave is recorded today.",
+      "holidayDayOff": "Today is a public holiday under your attendance schedule.",
+      "leaveRecorded": "Approved leave is also recorded today.",
+      "partialLeave": "Approved part-day leave is recorded today.",
+      "correction": "Request a correction",
+      "openClock": "Open clocking",
+      "clockUnavailable": "Clocking is not enabled.",
+      "paydayToday": "Recorded payday: today, {date}.",
+      "paydayTomorrow": "Recorded payday: tomorrow, {date}.",
+      "paydayIn": "Recorded payday: {date}, in {days} days.",
+      "noPayday": "No upcoming payday is recorded."
     }
   }
 }

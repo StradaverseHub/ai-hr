@@ -2,13 +2,14 @@ import { parseAttendanceLevelProblemToken, attendanceLevelProblemMessageKey } fr
 import {FormulaOvertimeDuration} from '@/components/formula-overtime-record';
 import { AttendanceRequestHistory } from '@/components/attendance-request-history';
 import Link from 'next/link';
+import {notFound} from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { requestOwnAttendanceDayAction } from './actions';
 import { attendanceForEmploymentRange, attendancePunchesForRange, myAttendanceCorrections, breakMinutesOf, otByRate, flagOf, statusOf, explainAttendanceDay, type AttendanceStatus, type AttendanceFlag } from '@/packs/attendance/service';
-import { myEmployment } from '@/core/read';
+import {ownAttendanceRecordSubject} from '../subject';
 import { Card, ErrorBanner, PageHeader, SectionHeader, Button, inputCls, pageWideCls } from '@/components/ui';
 import { AttendanceFigureCells } from '@/components/attendance-figure-cells';
 import { fmtMin, fmtDayDate } from '@/components/attendance-format';
@@ -31,7 +32,7 @@ export default async function MyAttendanceDayPage({
   searchParams,
 }: {
   params: Promise<{ date: string }>;
-  searchParams: Promise<{ from?: string; to?: string; error?: string; workflowProblem?: string; corrected?: string } & AttendanceCalendarReturn>;
+  searchParams: Promise<{ from?: string; to?: string; error?: string; workflowProblem?: string; corrected?: string; employmentId?:string|string[]; home?:string } & AttendanceCalendarReturn>;
 }) {
   const t = await getTranslations('attendance');
   const locale = await getLocale();
@@ -52,7 +53,8 @@ export default async function MyAttendanceDayPage({
     );
   }
 
-  const selected = await myEmployment(s);
+  const selected = await ownAttendanceRecordSubject(s,sp.employmentId);
+  if(sp.employmentId!==undefined&&!selected)notFound();
 
   if (!selected) {
     return (
@@ -74,7 +76,10 @@ export default async function MyAttendanceDayPage({
   // Keyed by attendance id, exactly as the list reads it — no second shape for one fact.
   const punches = row?.attendanceId ? punchesByAttendance.get(row.attendanceId) ?? [] : [];
 
-  const backHref = attendanceCalendarBackHref(sp, date);
+  const backHref = sp.home==='1'&&typeof sp.employmentId==='string'
+    ?'/?'+new URLSearchParams({employmentId:sp.employmentId})
+    :typeof sp.employmentId==='string'?'/attendance/my-records?'+new URLSearchParams({employmentId:sp.employmentId,...(sp.from?{from:sp.from}:{}),...(sp.to?{to:sp.to}:{})})
+    :attendanceCalendarBackHref(sp, date);
   const returnParams = calendarReturnParams(sp);
 
   if (!row) {
@@ -244,6 +249,8 @@ export default async function MyAttendanceDayPage({
           <input type="hidden" name="date" value={date} />
           <input type="hidden" name="from" value={sp.from ?? ''} />
           <input type="hidden" name="to" value={sp.to ?? ''} />
+          {typeof sp.employmentId==='string'&&<input type="hidden" name="employmentId" value={sp.employmentId}/>}
+          {sp.home==='1'&&<input type="hidden" name="home" value="1"/>}
           {Object.entries(returnParams).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
           <fieldset disabled={pending || future} className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-end disabled:opacity-60">
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">

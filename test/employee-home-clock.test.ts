@@ -5,7 +5,7 @@ import type {SessionContext} from '../db/client';
 import {appUser,employment,company,department,attendanceClockCapture,attendanceCorrection} from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {readEmployeeHomeClock} from '../core/employee-home';
-import {ownClockToday,captureEmployeeClock,ownClockReceipt,requestOwnClockRemoval,AttendancePhotoRequiredError,GeolocationRequiredError} from '../packs/attendance/service';
+import {ownClockToday,ownClockTodaySummary,captureEmployeeClock,ownClockReceipt,requestOwnClockRemoval,AttendancePhotoRequiredError,GeolocationRequiredError} from '../packs/attendance/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {clockCommandContext} from '../lib/clock-command-context';
 import {adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -44,6 +44,15 @@ describe('Home selected clock context',()=>{
   const [row]=await owner.db.select().from(attendanceCorrection).where(eq(attendanceCorrection.id,requested.correctionId));
   expect(row).toMatchObject({employmentId:second.employmentId,status:'pending'});
   expect((await ownClockToday(own.ctx,undefined,second.employmentId)).clockedIn).toBe(true);
+ });
+ it('summary agrees with the canonical live read without capture/removal payload or writes',async()=>{
+  const own=await worker();const full=await ownClockToday(own.ctx,undefined,own.employmentId);
+  await captureEmployeeClock(own.ctx,{employmentId:own.employmentId,clockContext:full.clockContext,action:'in',requestId:randomUUID(),lat:null,lng:null,accuracy:null});
+  const summary=await ownClockTodaySummary(own.ctx,own.employmentId),live=await ownClockToday(own.ctx,undefined,own.employmentId);
+  expect(summary).toMatchObject({date:live.date,clockedIn:live.clockedIn,openSince:live.openSince,shift:live.shift});
+  expect(Object.keys(summary).sort()).toEqual(['attendancePhotoSetting','clockedIn','crossesMidnight','date','geofencingRequired','locationAvailable','locationValid','openSince','serverNow','shift','workedSeconds'].sort());
+  expect((await owner.db.select().from(attendanceClockCapture))).toHaveLength(1);
+  await expect(ownClockTodaySummary(own.ctx,undefined as unknown as string)).rejects.toThrow('No active employee profile');
  });
  it('rechecks photo, location, login and own-subject eligibility on selected commands',async()=>{
   const own=await worker('hr_admin'),other=await worker();
