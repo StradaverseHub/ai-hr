@@ -17,11 +17,11 @@ if(!['prepare','revoke','restore','stale','reprocess'].includes(command))throw E
 async function main(){
  const {eq}=await import('drizzle-orm');
  const schema=await import('../db/schema');
- const {owner,entitledCtx,createAppUser,closeAll}=await import('../test/harness');
+ const {owner,entitledCtx,createAppUser,setModule,closeAll}=await import('../test/harness');
  const {hireEmployee}=await import('../core/org');
  const {saveCustomReport,getCustomReport}=await import('../core/custom-reports');
  const {payrollComparisonSpec}=await import('../core/report-payroll-comparison');
- const {setPayrollPermissionGrant,createIndividualTxn,generatePayslips,createBatch}=await import('../packs/payroll/service');
+ const {setPayrollPermissionGrant,createIndividualTxn,reprocessSelectedEmployees,createBatch}=await import('../packs/payroll/service');
  const {todayInKualaLumpur}=await import('../lib/hr-date');
  try{
   const fixture=JSON.parse(await readFile(directory+'/payroll-fixture.json','utf8'));
@@ -51,8 +51,14 @@ async function main(){
    await createIndividualTxn(ctx,{batchId:fixture.current.batchId,employmentId:fixture.people.increase.employmentId,kind:'earning',txnDate:fixture.currentPeriod+'-01',amount:1});
    console.log('Marked the named fictional processed run stale through its transaction owner.');
   }else{
-   await generatePayslips(ctx,{batchId:fixture.current.batchId});
-   console.log('Reprocessed the named fictional run through Payroll.');
+   // A processed run uses the existing selective reprocess workflow, not draft generation. Enable
+   // its actual module on this disposable fixture and resolve a fresh real entitlement snapshot.
+   await setModule(fixture.tenantId,'multi_cycle_payroll','active');
+   const reprocessCtx={...await entitledCtx(fixture),grants:[{role:'hr_admin',companyId:null}]};
+   const result=await reprocessSelectedEmployees(reprocessCtx,{batchId:fixture.current.batchId,
+    employmentIds:[fixture.people.increase.employmentId],reason:'Fictional Board 1 stale-result recovery'});
+   if(result.status!=='completed'||result.reprocessed!==1)throw Error('The fictional reprocess did not complete its selected result.');
+   console.log('Reprocessed the named fictional employee through the canonical Payroll job.');
   }
  }finally{await closeAll();}
 }
