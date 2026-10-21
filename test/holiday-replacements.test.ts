@@ -49,7 +49,7 @@ describe('employee replacement owner and shared calendar',()=>{
     {date:replacement,state:'known',dayClass:'replacementHoliday',moneyDay:'holiday'}]);
   const replacementFact=calendar.find(fact=>fact.date===replacement)!;
   expect(replacementFact.state==='known'&&replacementFact.references).toContain(`replacement-holiday:${row.id}`);
-  expect(partitionAttendancePolicyWork({sourceDate:replacement,periodMinutes:1440,splitAtMidnight:true,
+  expect(partitionAttendancePolicyWork({sourceDate:replacement,companyId:b.companyId,periodMinutes:1440,splitAtMidnight:true,
     intervals:[{from:540,to:600}],calendar})).toMatchObject({status:'ready',minutes:60,parts:[{date:replacement,dayClass:'replacementHoliday',minutes:60}]});
   expect(new Set([...provenance.originals.map(h=>h.date),...provenance.replacements.map(h=>h.replacementDate)]))
     .toEqual(await withTenant(f.ctx,tx=>holidayDatesFor(tx,{employmentId:f.e.employmentId,startDate:f.sourceDate,endDate:replacement})));

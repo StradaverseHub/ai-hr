@@ -6,6 +6,6 @@ export const ATTENDANCE_POLICY_MONEY_DAY:Record<AttendancePolicyDayClass,PolicyM
   normal:'workday',off:'workday',rest:'rest_day',publicHoliday:'holiday',replacementHoliday:'holiday',
 };
 export type PolicyCalendarProof={date:string}&({
-  state:'known';dayClass:AttendancePolicyDayClass;moneyDay:PolicyMoneyDay;
+  state:'known';companyId:string;dayClass:AttendancePolicyDayClass;moneyDay:PolicyMoneyDay;
   references:string[];
 }|{state:'unknown';reason:'calendarUnavailable'|'holidayDesignationUnavailable'});

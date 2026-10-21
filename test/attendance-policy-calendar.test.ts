@@ -27,7 +27,7 @@ describe('canonical policy calendar evidence',()=>{
     const e=await fixture(),facts=await read(e.employmentId,[day(),day(1),day(2)]);
     expect(facts).toMatchObject([{date:day(),state:'known',dayClass:'normal',moneyDay:'workday'},
       {date:day(1),state:'known',dayClass:'off',moneyDay:'workday'}, {date:day(2),state:'known',dayClass:'rest',moneyDay:'rest_day'}]);
-    expect(partitionAttendancePolicyWork({sourceDate:day(1),periodMinutes:2880,splitAtMidnight:true,intervals:[{from:1410,to:1500}],calendar:facts}))
+    expect(partitionAttendancePolicyWork({sourceDate:day(1),companyId:b.companyId,periodMinutes:2880,splitAtMidnight:true,intervals:[{from:1410,to:1500}],calendar:facts}))
       .toMatchObject({status:'ready',minutes:90,parts:[{date:day(1),dayClass:'off',minutes:30},{date:day(2),dayClass:'rest',minutes:60}]});
     for(const fact of facts)expect(await withTenant(ctx,tx=>workedDayKindForTx(tx,e.employmentId,fact.date)))
       .toBe(fact.state==='known'&&fact.dayClass==='off'?'off_day':fact.state==='known'&&fact.dayClass==='rest'?'rest_day':'workday');

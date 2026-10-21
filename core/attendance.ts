@@ -4510,7 +4510,7 @@ export async function attendancePolicyCalendarTx(tx:Tx,p:{employmentId:string;da
       ...(adjustment?[`attendance-day-adjustment:${adjustment.id}:${adjustment.version}`]:[])];
     const kind=workedDayKindForSchedule(schedule);
     if(kind!=='holiday'){
-      out.push({date,state:'known',dayClass:kind==='rest_day'?'rest':kind==='off_day'?'off':'normal',moneyDay:kind==='rest_day'?'rest_day':'workday',references});continue;
+      out.push({date,state:'known',companyId:company.companyId,dayClass:kind==='rest_day'?'rest':kind==='off_day'?'off':'normal',moneyDay:kind==='rest_day'?'rest_day':'workday',references});continue;
     }
     const originals=provenance.originals.filter(row=>row.date===date&&row.companyId===company.companyId);
     const replacements=provenance.replacements.filter(row=>row.replacementDate===date&&row.companyId===company.companyId);
@@ -4518,7 +4518,7 @@ export async function attendancePolicyCalendarTx(tx:Tx,p:{employmentId:string;da
     if((originals.length===0)===(replacements.length===0)){
       out.push({date,state:'unknown',reason:'holidayDesignationUnavailable'});continue;
     }
-    out.push({date,state:'known',dayClass:originals.length?'publicHoliday':'replacementHoliday',moneyDay:'holiday',
+    out.push({date,state:'known',companyId:company.companyId,dayClass:originals.length?'publicHoliday':'replacementHoliday',moneyDay:'holiday',
       references:[...references,...originals.map(row=>`holiday:${row.id}`),...replacements.map(row=>`replacement-holiday:${row.id}`)]});
   }
   return out;

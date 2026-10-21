@@ -3,16 +3,17 @@ import {partitionAttendancePolicyWork,type PolicyCalendarProof} from '../packs/a
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendancePolicyDayClass} from '../lib/attendance-group-policy';
 
 const day='2024-02-29',next='2024-03-01';
+const companyId='00000000-0000-4000-8000-000000000001';
 function proof(date:string,dayClass:AttendancePolicyDayClass):PolicyCalendarProof{
-  return {date,state:'known',dayClass,moneyDay:dayClass==='normal'||dayClass==='off'?'workday':dayClass==='rest'?'rest_day':'holiday',references:['fictional-calendar-owner:'+date+':'+dayClass]};
+  return {date,state:'known',companyId,dayClass,moneyDay:dayClass==='normal'||dayClass==='off'?'workday':dayClass==='rest'?'rest_day':'holiday',references:['fictional-calendar-owner:'+date+':'+dayClass]};
 }
-const base=()=>({sourceDate:day,periodMinutes:2880,splitAtMidnight:true,intervals:[{from:1410,to:1500}],calendar:[proof(day,'normal'),proof(next,'rest')]});
+const base=()=>({sourceDate:day,companyId,periodMinutes:2880,splitAtMidnight:true,intervals:[{from:1410,to:1500}],calendar:[proof(day,'normal'),proof(next,'rest')]});
 describe('one-source dated policy partition',()=>{
   it('partitions a leap-day overnight source by actual calendar date, retaining original offsets and the exact total',()=>{
     const input=base(),before=structuredClone(input),result=partitionAttendancePolicyWork(input);
     expect(result).toEqual({status:'ready',minutes:90,parts:[
-      {date:day,dayClass:'normal',moneyDay:'workday',calendarReferences:input.calendar[0].state==='known'?input.calendar[0].references:[],intervals:[{from:1410,to:1440}],minutes:30},
-      {date:next,dayClass:'rest',moneyDay:'rest_day',calendarReferences:input.calendar[1].state==='known'?input.calendar[1].references:[],intervals:[{from:1440,to:1500}],minutes:60},
+      {date:day,companyId,dayClass:'normal',moneyDay:'workday',calendarReferences:input.calendar[0].state==='known'?input.calendar[0].references:[],intervals:[{from:1410,to:1440}],minutes:30},
+      {date:next,companyId,dayClass:'rest',moneyDay:'rest_day',calendarReferences:input.calendar[1].state==='known'?input.calendar[1].references:[],intervals:[{from:1440,to:1500}],minutes:60},
     ]});
     expect(input).toEqual(before);
   });
@@ -41,7 +42,7 @@ describe('one-source dated policy partition',()=>{
   });
   it('does not treat an ordinary holiday money label as proof of a replacement holiday',()=>{
     expect(()=>partitionAttendancePolicyWork({...base(),calendar:[{...proof(day,'normal'),state:'known',dayClass:'off',moneyDay:'holiday',references:['fictional-mismatched-proof']}]})).toThrow('classification');
-    expect(()=>partitionAttendancePolicyWork({...base(),calendar:[{date:day,state:'known',dayClass:'replacementHoliday',moneyDay:'holiday',references:[]}]})).toThrow('classification');
+    expect(()=>partitionAttendancePolicyWork({...base(),calendar:[{date:day,state:'known',companyId,dayClass:'replacementHoliday',moneyDay:'holiday',references:[]}]})).toThrow('classification');
   });
   it('refuses ambiguous calendar facts and invalid source coordinates',()=>{
     expect(()=>partitionAttendancePolicyWork({...base(),calendar:[proof(day,'normal'),proof(day,'rest')]})).toThrow('Ambiguous');
@@ -50,5 +51,11 @@ describe('one-source dated policy partition',()=>{
   });
   it('keeps an explicitly known empty interval set empty and creates no dated child',()=>{
     expect(partitionAttendancePolicyWork({...base(),intervals:[],calendar:[]})).toEqual({status:'ready',minutes:0,parts:[]});
+  });
+  it('refuses the complete source if a midnight child belongs to a different employer',()=>{
+    const other=proof(next,'rest');if(other.state!=='known')throw Error('Expected explicit fixture proof');
+    other.companyId='00000000-0000-4000-8000-000000000002';
+    expect(partitionAttendancePolicyWork({...base(),calendar:[proof(day,'normal'),other]}))
+      .toEqual({status:'unavailable',date:next,reason:'calendarUnavailable',parts:[]});
   });
 });
