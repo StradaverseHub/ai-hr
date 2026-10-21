@@ -74,7 +74,9 @@ import {
   deductAbsentDaysByEmployment,
   type AbsenceBreakdown,
 } from './absence-days';
-import { holidayDatesByEmployment, holidayDatesFor } from './holidays';
+import { holidayDatesByEmployment, holidayDatesFor, holidayCalendarProvenanceFor } from './holidays';
+import type {PolicyCalendarProof} from '../lib/attendance-policy-calendar';
+import {overtimeUuid,overtimeDate} from '../lib/overtime-pattern-schema';
 import { approvedLeaveDates } from './leave';
 // cf21e554 stage 2 — the shift's own clock-time overtime windows. Pure, DB-free arithmetic in its own
 // module (see its header): this file reads the rows and hands them over, it does not restate the rule.
@@ -4468,12 +4470,56 @@ export function dayTypeFor(ctx: SessionContext, employmentId: string, date: stri
  * labelled, not what kind of day a date is — and this question is the latter.
  */
 export type WorkedDayKind = 'workday' | 'rest_day' | 'off_day' | 'holiday';
-export async function workedDayKindForTx(tx: Tx, employmentId: string, date: string): Promise<WorkedDayKind> {
-  const s = await scheduleFor(tx, employmentId, date);
+function workedDayKindForSchedule(s:ResolvedSchedule):WorkedDayKind {
   if (s.dayType === 'holiday') return 'holiday';
   if (s.dayType === 'rest_day') return 'rest_day';
   if (s.source === 'default-shift-rest') return 'off_day';
   return 'workday';
+}
+export async function workedDayKindForTx(tx: Tx, employmentId: string, date: string): Promise<WorkedDayKind> {
+  return workedDayKindForSchedule(await scheduleFor(tx, employmentId, date));
+}
+
+/** Bounded calendar evidence for one policy timeline. Uses the final Schedule owner, including day
+ * adjustments and the effective holiday overlay. The replacement allocator's raw schedule seam
+ * intentionally suppresses holidays and must never answer this question. No work is approved here. */
+export async function attendancePolicyCalendarTx(tx:Tx,p:{employmentId:string;dates:readonly string[]}):Promise<PolicyCalendarProof[]> {
+  overtimeUuid(p.employmentId,'employmentId');
+  if(p.dates.length>3||new Set(p.dates).size!==p.dates.length)throw Error('Choose at most three distinct policy calendar dates.');
+  for(const date of p.dates)overtimeDate(date,'calendar.date');
+  const dates=[...p.dates].sort();if(!dates.length)return [];
+  const from=dates[0],to=dates[dates.length-1];
+  if(Date.parse(to+'T00:00:00Z')-Date.parse(from+'T00:00:00Z')>2*86400000)throw Error('Policy calendar dates must belong to one three-day timeline.');
+  const [employee]=await tx.select({companyId:employment.companyId}).from(employment).where(eq(employment.id,p.employmentId)).limit(1);
+  const companies=await provenCompanyDatesTx(tx,dates.map(date=>({employmentId:p.employmentId,date})));
+  if(!employee)return dates.map(date=>({date,state:'unknown',reason:'calendarUnavailable'}));
+  const memo=await newScheduleMemo(tx,{employmentIds:[p.employmentId],from,to});
+  const provenance=await holidayCalendarProvenanceFor(tx,{employmentId:p.employmentId,startDate:from,endDate:to});
+  const out:PolicyCalendarProof[]=[];
+  for(const date of dates){
+    const company=companies.get(`${p.employmentId}|${date}`);
+    if(!company?.companyId||company.reason){out.push({date,state:'unknown',reason:'calendarUnavailable'});continue;}
+    const schedule=await scheduleFor(tx,p.employmentId,date,memo);
+    // Today's company policy cannot prove the outgoing employer's historical weekdays.
+    if(schedule.source==='policy'&&company.companyId!==employee.companyId){out.push({date,state:'unknown',reason:'calendarUnavailable'});continue;}
+    const adjustment=memo.adjustments?.get(`${p.employmentId}|${date}`);
+    const references=[`employment:${p.employmentId}`,`company:${company.companyId}`,`schedule:${date}:${schedule.source}`,
+      ...(schedule.displayShiftId?[`shift:${schedule.displayShiftId}`]:[]),...(schedule.rule?[`attendance-rule:${schedule.rule.id}`]:[]),
+      ...(adjustment?[`attendance-day-adjustment:${adjustment.id}:${adjustment.version}`]:[])];
+    const kind=workedDayKindForSchedule(schedule);
+    if(kind!=='holiday'){
+      out.push({date,state:'known',dayClass:kind==='rest_day'?'rest':kind==='off_day'?'off':'normal',moneyDay:kind==='rest_day'?'rest_day':'workday',references});continue;
+    }
+    const originals=provenance.originals.filter(row=>row.date===date&&row.companyId===company.companyId);
+    const replacements=provenance.replacements.filter(row=>row.replacementDate===date&&row.companyId===company.companyId);
+    // Generic manual holiday labels and collisions cannot invent which differentiated formula owns it.
+    if((originals.length===0)===(replacements.length===0)){
+      out.push({date,state:'unknown',reason:'holidayDesignationUnavailable'});continue;
+    }
+    out.push({date,state:'known',dayClass:originals.length?'publicHoliday':'replacementHoliday',moneyDay:'holiday',
+      references:[...references,...originals.map(row=>`holiday:${row.id}`),...replacements.map(row=>`replacement-holiday:${row.id}`)]});
+  }
+  return out;
 }
 
 /** Canonical date facts for attendance allowance previews. No measurement is recomputed here.

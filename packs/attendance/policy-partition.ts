@@ -2,27 +2,23 @@
  * This function validates shape and coverage; it does not establish authority, approve work,
  * calculate money, or create another Attendance/settlement identity. */
 import type {AttendancePolicyDayClass} from '../../lib/attendance-group-policy';
+import type {PolicyCalendarProof,PolicyMoneyDay} from '../../lib/attendance-policy-calendar';
+export type {PolicyCalendarProof} from '../../lib/attendance-policy-calendar';
 import {
   attendancePolicyIntervalMinutes,splitAttendancePolicyIntervalsAtMidnight,
   unionAttendancePolicyIntervals,type AttendancePolicyInterval,
 } from '../../lib/attendance-policy-intervals';
 import {overtimeDate} from '../../lib/overtime-pattern-schema';
 
-type MoneyDay='workday'|'rest_day'|'holiday';
-export type PolicyCalendarProof={date:string}&({
-  state:'known';dayClass:AttendancePolicyDayClass;moneyDay:MoneyDay;
-  /** References are canonical owner evidence, never names inferred from an enum label. */
-  references:string[];
-}|{state:'unknown';reason:'calendarUnavailable'|'holidayDesignationUnavailable'});
 export type AttendancePolicyPart={
-  date:string;dayClass:AttendancePolicyDayClass;moneyDay:MoneyDay;calendarReferences:string[];
+  date:string;dayClass:AttendancePolicyDayClass;moneyDay:PolicyMoneyDay;calendarReferences:string[];
   /** All intervals retain their absolute offsets on the PARENT source timeline. */
   intervals:AttendancePolicyInterval[];minutes:number;
 };
 export type PolicyPartition={status:'ready';parts:AttendancePolicyPart[];minutes:number}|
   {status:'unavailable';date:string;reason:'calendarUnavailable'|'holidayDesignationUnavailable';parts:[]};
 
-const MONEY_DAY:Record<AttendancePolicyDayClass,MoneyDay>={
+const MONEY_DAY:Record<AttendancePolicyDayClass,PolicyMoneyDay>={
   normal:'workday',off:'workday',rest:'rest_day',publicHoliday:'holiday',replacementHoliday:'holiday',
 };
 const dateOffset=(date:string,offset:number)=>new Date(Date.parse(date+'T00:00:00Z')+offset*86400000).toISOString().slice(0,10);
