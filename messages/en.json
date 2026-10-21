@@ -22314,6 +22314,15 @@
       "previous": "Previous",
       "next": "Next",
       "page": "{page} of {pages}"
+    },
+    "notices": {
+      "loading": "Loading your notices…",
+      "failed": "We could not load your notices. Retry this card.",
+      "timeout": "Your notices took too long to load. Retry this card.",
+      "retry": "Retry",
+      "refresh": "Refresh",
+      "reviewAcknowledge": "Review and acknowledge",
+      "seeAll": "See all notices"
     }
   }
 }

@@ -6,7 +6,7 @@ import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {listPendingTasks,pendingApprovalsCount} from '../core/approvals-inbox';
 import {ownHomeSubjectSelection} from '../core/employee-home';
-import {readOwnNotice,readOwnNoticeBoard} from '../core/employee-home-notices';
+import {readOwnNotice,readOwnNoticeBoard,readEmployeeHomeNotices} from '../core/employee-home-notices';
 import {createNotice,publishNotice,archiveNotice,markNoticeViewed,dismissNoticePopup,acknowledgeNotice,updateNotice,employeeNoticeBoard,employeeNoticeById,type NoticeInput} from '../core/notice';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -46,6 +46,13 @@ describe('Selected own Notice board and bounded metadata',()=>{
   const first=await readOwnNoticeBoard(e.ctx,e.employmentId,{pageSize:5});
   expect(first).toMatchObject({total:23,unread:22,acknowledgementRequired:11,page:1,pageSize:5,pages:5});
   expect(first.items).toHaveLength(5);expect(first.items[0].id).toBe(ids[0]);
+  const home=await readEmployeeHomeNotices(e.ctx,e.employmentId);
+  expect(home).toMatchObject({version:1,employmentId:e.employmentId,total:23,unread:22,acknowledgementRequired:11});
+  expect(home.items.map(row=>row.id)).toEqual(first.items.map(row=>row.id));
+  expect(home.items[0].acknowledgedAt).toEqual(first.items[0].acknowledgedAt!.toISOString());
+  expect(JSON.stringify(home)).not.toMatch(/untransported body|attachmentIds|contentVersion|popup/);
+  // Card reads have no viewing or acknowledgement side effect.
+  expect((await readOwnNoticeBoard(e.ctx,e.employmentId,{pageSize:5})).unread).toBe(22);
   const second=await readOwnNoticeBoard(e.ctx,e.employmentId,{pageSize:5,page:2});expect(second.total).toBe(23);
   expect(second.items.every(n=>!first.items.some(a=>a.id===n.id))).toBe(true);
   const last=await readOwnNoticeBoard(e.ctx,e.employmentId,{pageSize:5,page:999999});expect(last.page).toBe(5);expect(last.items).toHaveLength(3);

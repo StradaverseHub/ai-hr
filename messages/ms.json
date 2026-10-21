@@ -22314,6 +22314,15 @@
       "previous": "Sebelum",
       "next": "Seterusnya",
       "page": "{page} daripada {pages}"
+    },
+    "notices": {
+      "loading": "Memuatkan notis anda…",
+      "failed": "Notis anda tidak dapat dimuatkan. Cuba semula kad ini.",
+      "timeout": "Notis anda mengambil masa terlalu lama untuk dimuatkan. Cuba semula kad ini.",
+      "retry": "Cuba semula",
+      "refresh": "Muat semula",
+      "reviewAcknowledge": "Semak dan akui penerimaan",
+      "seeAll": "Lihat semua notis"
     }
   }
 }

@@ -22314,6 +22314,15 @@
       "previous": "Trước",
       "next": "Tiếp",
       "page": "{page} / {pages}"
+    },
+    "notices": {
+      "loading": "Đang tải thông báo của bạn…",
+      "failed": "Không thể tải thông báo của bạn. Hãy thử lại thẻ này.",
+      "timeout": "Tải thông báo mất quá nhiều thời gian. Hãy thử lại thẻ này.",
+      "retry": "Thử lại",
+      "refresh": "Làm mới",
+      "reviewAcknowledge": "Đọc và xác nhận",
+      "seeAll": "Xem tất cả thông báo"
     }
   }
 }
