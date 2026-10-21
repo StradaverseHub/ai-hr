@@ -10121,6 +10121,20 @@ export const rewardCycle = pgTable('reward_cycle', {
   id: id(), tenantId: tenantId(), name: text('name').notNull(), year: integer('year').notNull(),
   createdBy: uuid('created_by').notNull().references(() => appUser.id), createdAt: createdAt(),
 });
+// Immutable reusable configuration. Unit approvals, salary rosters and budgets retain their owner.
+export const rewardPolicyGroup = pgTable('reward_policy_group', {
+ id:id(),tenantId:tenantId(),name:text('name').notNull(),revision:integer('revision').notNull(),
+ currentVersionId:uuid('current_version_id').notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+});
+export const rewardPolicyGroupVersion = pgTable('reward_policy_group_version', {
+ id:id(),tenantId:tenantId(),groupId:uuid('group_id').notNull().references(()=>rewardPolicyGroup.id),
+ revision:integer('revision').notNull(),name:text('name').notNull(),policy:jsonb('policy').$type<import('../packs/rewards/model').RewardPolicy>().notNull(),
+ policyDigest:text('policy_digest').notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+});
+export const rewardPolicyGroupTarget = pgTable('reward_policy_group_target', {
+ tenantId:tenantId(),versionId:uuid('version_id').notNull().references(()=>rewardPolicyGroupVersion.id),
+ companyId:uuid('company_id').notNull().references(()=>company.id),businessUnitId:uuid('business_unit_id').notNull().references(()=>businessUnit.id),
+},t=>[primaryKey({columns:[t.versionId,t.companyId,t.businessUnitId]})]);
 export const rewardUnit = pgTable('reward_unit', {
   kind: text('kind').$type<import('../packs/rewards/offcycle').RewardKind>().notNull().default('annual'),
   parentUnitId: uuid('parent_unit_id'), createdBy: uuid('created_by').notNull(),
@@ -10131,6 +10145,7 @@ export const rewardUnit = pgTable('reward_unit', {
   companyId: uuid('company_id').notNull().references(() => company.id),
   businessUnitId: uuid('business_unit_id').notNull().references(() => businessUnit.id),
   policy: jsonb('policy').$type<import('../packs/rewards/model').RewardPolicy>().notNull(),
+  policyGroupVersionId:uuid('policy_group_version_id').references(()=>rewardPolicyGroupVersion.id),
   status: text('status').$type<import('../packs/rewards/model').RewardStage>().notNull().default('draft'),
   revision: integer('revision').notNull().default(1), snapshotDate: date('snapshot_date').notNull(),
   approvedDigest: text('approved_digest'), postedBatchId: uuid('posted_batch_id').references(() => payrollBatch.id),

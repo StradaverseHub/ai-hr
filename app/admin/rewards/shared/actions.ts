@@ -1,0 +1,24 @@
+'use server';
+import {revalidatePath} from 'next/cache';
+import {z,ZodError} from 'zod';
+import {getSession} from '@/lib/session';
+import {listRewardPolicyGroups,saveRewardPolicyGroup,RewardPolicyGroupError,defaultPolicy} from '@/packs/rewards/service';
+import {rewardPolicyFromForm,RewardPolicyInputError} from '@/app/rewards/policy-input';
+import type {SharedRewardSaveResult} from './editor';
+export async function saveSharedRewardPolicyAction(form:FormData):Promise<SharedRewardSaveResult>{
+ const session=await getSession();
+ try{
+  const groupId=String(form.get('groupId')??'')||null,expectedRevision=z.coerce.number().int().min(0).parse(form.get('revision'));
+  const year=z.coerce.number().int().min(2000).max(2200).parse(form.get('year'));
+  const current=groupId?(await listRewardPolicyGroups(session)).find(group=>group.groupId===groupId):null;
+  if(groupId&&(!current||current.revision!==expectedRevision))return {ok:false,code:'changed'};
+  const rawTargets=form.get('targets');if(typeof rawTargets!=='string'||rawTargets.length>100000)return {ok:false,code:'invalid'};
+  const base=current?.policy??defaultPolicy(year),policy=rewardPolicyFromForm(form,{...base,year});
+  const version=await saveRewardPolicyGroup(session,{groupId,expectedRevision,name:String(form.get('name')??''),policy,targets:JSON.parse(rawTargets)});
+  revalidatePath('/admin/rewards','layout');return {ok:true,value:{groupId:version.groupId,revision:version.revision}};
+ }catch(error){
+  if(error instanceof RewardPolicyGroupError)return {ok:false,code:error.code};
+  if(error instanceof ZodError||error instanceof SyntaxError||error instanceof RewardPolicyInputError)return {ok:false,code:'invalid'};
+  console.error('Shared rewards configuration failed',{name:error instanceof Error?error.name:'Unknown'});return {ok:false,code:'system'};
+ }
+}

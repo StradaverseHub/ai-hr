@@ -5,7 +5,7 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createBatch, setPayrollInput } from '../packs/payroll/service';
-import { getRewardConfiguration, rewardNotificationRecipients, createOffcycleReview, createRewardUnit, getRewardUnit, saveRewardEntry, saveRewardPolicy, setRewardMember, decideRewardUnit, postRewardUnit } from '../packs/rewards/service';
+import { getRewardSeniorMembership, previewRewardSeniorMembership, saveRewardSeniorMembership, getRewardConfiguration, rewardNotificationRecipients, createOffcycleReview, createRewardUnit, getRewardUnit, saveRewardEntry, saveRewardPolicy, setRewardMember, decideRewardUnit, postRewardUnit } from '../packs/rewards/service';
 import { emptyFacts, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { dispatchNotifications } from '../core/notifications';
@@ -46,6 +46,74 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     for (const role of ['bg', 'gr', 'ctro', 'ec'] as const) await decideRewardUnit(actors[role]!, unitId, rev, 'approve', 'Reviewed recommendations');
     return rev;
   }
+  it('previews and saves named membership without exposing pay or changing recommendations', async () => {
+    const before = await view();
+    const selection = { employmentIds: [employmentId], adoptLegacy: false };
+    const preview = await previewRewardSeniorMembership(admin, unitId, before.unit.revision, selection);
+    expect(preview.rows).toMatchObject([{ employmentId, member: false, nextMember: true }]);
+    for (const privateKey of ['basicCents', 'recommendation', 'compensationId', 'budget']) expect(JSON.stringify(preview)).not.toContain(privateKey);
+    await saveRewardSeniorMembership(admin, unitId, before.unit.revision, selection, preview.digest);
+    const reopened = await getRewardSeniorMembership(admin, unitId);
+    expect(reopened.mode).toBe('named-members');
+    expect(reopened.rows).toMatchObject([{ employmentId, member: true }]);
+    const after = await view();
+    expect(after.rows[0].bonusEligible).toBe(false);
+    expect(after.rows[0].incrementEligible).toBe(before.rows[0].incrementEligible);
+    expect(after.rows[0].recommendation).toEqual(before.rows[0].recommendation);
+    expect(after.rows[0].source).toEqual(before.rows[0].source);
+    expect(after.rows[0].facts.reviewed).toBe(false);
+    const deselect = { employmentIds: [], adoptLegacy: false };
+    const next = await previewRewardSeniorMembership(admin, unitId, after.unit.revision, deselect);
+    await saveRewardSeniorMembership(admin, unitId, after.unit.revision, deselect, next.digest);
+    expect((await getRewardSeniorMembership(admin, unitId)).rows[0].member).toBe(false);
+  });
+  it('refuses duplicate, unavailable, stale and altered-preview selections with no writes', async () => {
+    const before = await view(), rev = before.unit.revision;
+    await expect(previewRewardSeniorMembership(admin, unitId, rev, { employmentIds: [employmentId, employmentId], adoptLegacy: false })).rejects.toThrow(/once/);
+    await expect(previewRewardSeniorMembership(admin, unitId, rev, { employmentIds: ['00000000-0000-4000-8000-000000000099'], adoptLegacy: false })).rejects.toThrow(/visible review roster/);
+    const selected = { employmentIds: [employmentId], adoptLegacy: false };
+    const preview = await previewRewardSeniorMembership(admin, unitId, rev, selected);
+    await expect(saveRewardSeniorMembership(admin, unitId, rev, { employmentIds: [], adoptLegacy: false }, preview.digest)).rejects.toThrow(/preview.*again/i);
+    expect((await view()).unit.revision).toBe(rev);
+    await saveRewardEntry(admin, unitId, rev, before.rows[0].id, before.rows[0].recommendation);
+    await expect(saveRewardSeniorMembership(admin, unitId, rev, selected, preview.digest)).rejects.toThrow(/another session/);
+  });
+  it('requires explicit draft conversion and preserves an own-person hidden legacy membership', async () => {
+    const v = await view(), entry = v.rows[0];
+    const legacy = { ...v.unit.policy, seniorGrades: ['21'] }; delete legacy.seniorMembershipMode;
+    await owner.db.update(schema.rewardUnit).set({ policy: legacy }).where(eq(schema.rewardUnit.id, unitId));
+    await owner.db.update(schema.rewardEntry).set({ source: { ...entry.source, grade: '21' } }).where(eq(schema.rewardEntry.id, entry.id));
+    await expect(saveRewardPolicy(admin, unitId, v.unit.revision, { ...legacy, seniorMembershipMode: 'named-members' })).rejects.toThrow(/Preview and confirm/);
+    await expect(previewRewardSeniorMembership(admin, unitId, v.unit.revision, { employmentIds: [], adoptLegacy: false })).rejects.toThrow(/Confirm conversion/);
+    const userId = await createAppUser(b.tenantId, entry.source.personId, 'employee');
+    await setRewardMember(admin, unitId, v.unit.revision, userId, 'gr');
+    const own = { ...admin, userId, personId: entry.source.personId, roles: ['employee'] as SessionContext['roles'], grants: undefined };
+    const state = await getRewardSeniorMembership(own, unitId);
+    expect(state.rows).toEqual([]);
+    await expect(previewRewardSeniorMembership(own, unitId, state.revision, { employmentIds: [employmentId], adoptLegacy: true })).rejects.toThrow(/visible review roster/);
+    const selection = { employmentIds: [], adoptLegacy: true };
+    const preview = await previewRewardSeniorMembership(own, unitId, state.revision, selection);
+    expect(preview.rows).toEqual([]);
+    await saveRewardSeniorMembership(own, unitId, state.revision, selection, preview.digest);
+    const after = await view();
+    expect(after.rows[0].facts.seniorPlan).toBe(true);
+    expect(after.rows[0].bonusEligible).toBe(false);
+    expect(after.rows[0].facts.reviewed).toBe(entry.facts.reviewed);
+  });
+  it('refuses BU-only and revoked Group Rewards membership even when a preview was obtained earlier', async () => {
+    const v = await view();
+    await expect(getRewardSeniorMembership(actors.bu!, unitId)).rejects.toThrow(/Group Rewards/);
+    await expect(previewRewardSeniorMembership(actors.bu!, unitId, v.unit.revision, { employmentIds: [], adoptLegacy: false })).rejects.toThrow(/Group Rewards/);
+    const userId = actors.bu!.userId!;
+    await setRewardMember(admin, unitId, v.unit.revision, userId, 'gr');
+    const state = await getRewardSeniorMembership(actors.bu!, unitId);
+    const selection = { employmentIds: [employmentId], adoptLegacy: false };
+    const preview = await previewRewardSeniorMembership(actors.bu!, unitId, state.revision, selection);
+    await setRewardMember(admin, unitId, state.revision, userId, 'gr', true);
+    await expect(saveRewardSeniorMembership(actors.bu!, unitId, state.revision, selection, preview.digest)).rejects.toThrow();
+    expect((await view()).rows[0].facts.seniorPlan).toBe(false);
+  });
+
   it('snapshots real employment and compensation and rejects stale forms', async () => {
     const v = await view(); expect(v.rows[0].source.employmentId).toBe(employmentId); expect(v.rows[0].newBasicCents).toBe(522500);
     await saveRewardEntry(admin, unitId, v.unit.revision, v.rows[0].id, v.rows[0].recommendation);
@@ -56,6 +124,7 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     const userId = await createAppUser(b.tenantId, adminPerson.id, 'hr_admin');
     const otherAdmin = { ...admin, userId, personId: adminPerson.id, roles: ['hr_admin'] as SessionContext['roles'], grants: undefined };
     await expect(getRewardUnit(otherAdmin, unitId)).rejects.toThrow(/assign your/);
+    await expect(getRewardSeniorMembership(otherAdmin, unitId)).rejects.toThrow(/assign your/);
     const config = await getRewardConfiguration(otherAdmin, unitId);
     expect(config.canManageMembers).toBe(true);
     expect(config.canConfigure).toBe(false);

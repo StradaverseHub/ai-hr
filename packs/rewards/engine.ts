@@ -1,4 +1,4 @@
-import { type RewardEntry, type RewardPolicy, type Plan, type RewardFlag, performances, policySchema, factsSchema, recommendationSchema } from './model';
+import { type RewardEntry, type RewardPolicy, type Plan, type RewardFlag, performances, policySchema, factsSchema, recommendationSchema, isSeniorPlanMember } from './model';
 
 /** BigInt intermediates prevent precision loss while keeping JSON outputs as safe integers. */
 export function ratio(n: number, a: number, b: number, round: 'floor' | 'nearest' = 'floor'): number {
@@ -46,7 +46,7 @@ export function calculateRewards(entries: RewardEntry[], input: RewardPolicy) {
     if ((f.erCase && f.erDecision === 'pending') || (f.pipCase && f.pipDecision === 'pending')) add('block', 'ELIG-02', 'Record the BU CEO and PBP case decision.', e.id);
     if ((f.erCase && f.erDecision !== 'pending' || f.pipCase && f.pipDecision !== 'pending') && f.caseReason.length < 10) add('block', 'ELIG-02', 'Record the reason for the case decision.', e.id);
     const incrementEligible = !incrementReason;
-    const senior = f.seniorPlan || policy.seniorGrades.includes(s.grade);
+    const senior = isSeniorPlanMember(policy, f, s.grade);
     const bonusReason = senior ? 'Senior leadership plan' : s.notice ? 'Serving notice' : f.erCase ? 'ER case' : !s.confirmedOn || s.confirmedOn > policy.confirmedBy ? 'Not confirmed by the cutoff' : !f.performance ? 'No performance rating' : '';
     const bonusEligible = !bonusReason;
     const range = policy.ranges[r.promotionGrade ?? s.grade];
