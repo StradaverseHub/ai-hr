@@ -179,7 +179,10 @@ describe('listPendingTasks (Task tab)', () => {
     const adminTasks = await listPendingTasks(adminCtx(b), undefined, { attendance: true, claims: true });
     const task = adminTasks.find((t) => t.kind === 'leaveCancellation' && t.id === cancellation.id);
     expect(task).toBeDefined();
-    expect(task!.linkPath).toBe('/approvals#approvals-leave-cancellation');
+    const arrival = new URL(task!.linkPath, 'http://localhost');
+    expect(arrival.pathname).toBe('/approvals');
+    expect(Object.fromEntries(arrival.searchParams)).toEqual({category:'leaveCancellation',task:'leaveCancellation',requestId:cancellation.id});
+    expect(arrival.hash).toBe(`#approvals-leave-cancellation--${cancellation.id}`);
     expect(task!.subjectName).toBe('Self Mgr');
   });
 

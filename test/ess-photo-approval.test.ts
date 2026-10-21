@@ -47,7 +47,7 @@ describe('canonical photo request lifecycle and byte privacy',()=>{
   const atLimit=Buffer.alloc(PHOTO_MAX_BYTES);png.copy(atLimit);
   const {requestId}=await setOwnPersonPhoto(employee.ctx,{employmentId:employee.employmentId,content:atLimit,fileName:'bounded.png'});
   expect((await getProfilePhotoProposal(employee.ctx,requestId))?.content.byteLength).toBe(PHOTO_MAX_BYTES);
-  await expect(setOwnPersonPhoto(employee.ctx,{employmentId:employee.employmentId,content:Buffer.concat([atLimit,Buffer.from([0])]),fileName:'oversized.png'})).rejects.toThrow('Photo exceeds 2 MB');
+  await expect(Promise.resolve().then(()=>setOwnPersonPhoto(employee.ctx,{employmentId:employee.employmentId,content:Buffer.concat([atLimit,Buffer.from([0])]),fileName:'oversized.png'}))).rejects.toThrow('Photo exceeds 2 MB');
   expect((await getPersonPhoto(employee.ctx,employee.personId))?.content).toEqual(original);
   const requests=await owner.db.select({id:profileChangeRequest.id}).from(profileChangeRequest).where(and(eq(profileChangeRequest.personId,employee.personId),eq(profileChangeRequest.status,'pending'))).orderBy(profileChangeRequest.id);
   expect(requests).toEqual([{id:requestId}]);
