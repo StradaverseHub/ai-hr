@@ -59,7 +59,7 @@ export async function EntitlementRecalcHistory({ rows }: {
                   <td className="px-4 py-2 text-right tabular-nums">{r.newEntitlement}</td>
                   <td
                     className={`px-4 py-2 text-right tabular-nums font-medium ${
-                      r.delta > 0 ? 'text-emerald-600 dark:text-emerald-400' : r.delta < 0 ? 'text-red-600 dark:text-red-400' : ''
+                      r.delta > 0 ? 'text-emerald-700 dark:text-emerald-400' : r.delta < 0 ? 'text-red-700 dark:text-red-400' : ''
                     }`}
                   >
                     {r.delta > 0 ? `+${r.delta}` : r.delta}
