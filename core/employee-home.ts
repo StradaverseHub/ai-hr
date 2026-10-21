@@ -9,6 +9,7 @@ import {resolveDashboardRole} from '../lib/dashboard-cards';
 import {employeeHomeGreetingName} from '../lib/employee-home';
 import type {EmployeeHomeIdentity,EmployeeHomeGreetingIdentity} from '../lib/employee-home-read-model';
 import {readOwnPayrollHomeMetadata} from '../packs/payroll/service';
+import {ownClockToday} from '../packs/attendance/service';
 
 export class HomeAccessError extends Error{
  constructor(readonly code:'authentication'|'employmentUnavailable'|'chooseEmployment'){
@@ -77,4 +78,11 @@ export async function readEmployeeHomeGreetingIdentity(ctx:SessionContext,reques
 export async function readEmployeeHomePayHints(ctx:SessionContext,requestedEmploymentId?:string){
  const subject=await requireOwnHomeSubject(ctx,requestedEmploymentId);
  return readOwnPayrollHomeMetadata(ctx,subject.employmentId);
+}
+
+/** Canonical clock evidence and prerequisites. Commands still belong to the existing capture flow;
+ * displaying this state never clocks a person in or supplies location/photo evidence. */
+export async function readEmployeeHomeClock(ctx:SessionContext,requestedEmploymentId?:string){
+ const subject=await requireOwnHomeSubject(ctx,requestedEmploymentId);
+ return ownClockToday(ctx,undefined,subject.employmentId);
 }
