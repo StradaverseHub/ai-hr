@@ -633,9 +633,12 @@ export type EmployeeNoticeRow = {
 };
 
 /** One live recipient rule for lists, detail and Home. Authoring authority never creates a recipient. */
-function liveEmployeeNotice(employmentId:string,today:string){
+function liveEmployeeNotice(employmentId:string,today:string,ownOnly=false){
  return and(eq(noticeRecipient.employmentId,employmentId),eq(noticeRecipient.tenantId,notice.tenantId),
-  isNotNull(notice.publishedAt),isNull(notice.archivedAt),lte(notice.startOn,today),gte(notice.endOn,today));
+  isNotNull(notice.publishedAt),isNull(notice.archivedAt),lte(notice.startOn,today),gte(notice.endOn,today),
+  ownOnly?sql`EXISTS(SELECT 1 FROM public.employment self_employment
+   WHERE self_employment.id=notice_recipient.employment_id AND self_employment.tenant_id=notice_recipient.tenant_id
+    AND app.is_self_person(self_employment.person_id))`:undefined);
 }
 function employeeNoticeFields(){return {
  id:notice.id,title:notice.title,body:notice.body,summary:notice.summary,category:notice.category,pinned:notice.pinned,
@@ -653,7 +656,7 @@ export function employeeNoticeById(ctx:SessionContext,employmentId:string,id:str
  if(!uuidNotice(id)||!uuidNotice(employmentId))return Promise.resolve(null);
  return withTenant(ctx,async tx=>{
   const [row]=await tx.select(employeeNoticeFields()).from(noticeRecipient).innerJoin(notice,eq(notice.id,noticeRecipient.noticeId))
-   .where(and(liveEmployeeNotice(employmentId,todayInKualaLumpur()),eq(notice.id,id))).limit(1);
+   .where(and(liveEmployeeNotice(employmentId,todayInKualaLumpur(),true),eq(notice.id,id))).limit(1);
   return row?{...row,popupFrequency:row.popupFrequency as NoticePopupFrequency}:null;
  });
 }
@@ -669,7 +672,7 @@ export function employeeNoticeBoard(ctx:SessionContext,employmentId:string,optio
  const size=Number.isSafeInteger(options.pageSize)?Math.max(1,Math.min(20,options.pageSize!)):20;
  const requested=Number.isSafeInteger(options.page)&&options.page!>0?options.page!:1;
  return withTenant(ctx,async tx=>{
-  const eligible=and(liveEmployeeNotice(employmentId,todayInKualaLumpur()),
+  const eligible=and(liveEmployeeNotice(employmentId,todayInKualaLumpur(),true),
    query?sql`position(lower(${query}) in lower(${notice.title} || ' ' || ${notice.summary} || ' ' || ${notice.body})) > 0`:undefined,
    category?eq(notice.category,category):undefined);
   const fields=employeeNoticeFields();

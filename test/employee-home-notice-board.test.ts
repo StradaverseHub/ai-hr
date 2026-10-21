@@ -59,8 +59,10 @@ describe('Selected own Notice board and bounded metadata',()=>{
   await expect(readOwnNoticeBoard(own.ctx,own.employmentId)).rejects.toMatchObject({code:'employmentUnavailable'});
  });
  it('keeps separate own employments and their acknowledgements without choosing the first implicitly',async()=>{
-  const own=await employee(),other=await employee();
-  await owner.db.update(schema.employment).set({personId:own.personId}).where(eq(schema.employment.id,other.employmentId));
+  const own=await employee();
+  const [company]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional second Notice employer'}).returning();
+  const [department]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:company.id,name:'Fictional second Notice department'}).returning();
+  const other=await hireEmployee(adminCtx(b),{person:{id:own.personId},companyId:company.id,departmentId:department.id,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
   expect((await ownHomeSubjectSelection(own.ctx)).state).toBe('choose');
   const id=await publish([own.employmentId,other.employmentId],{requiresAcknowledgement:true});
   await acknowledgeNotice(own.ctx,id,own.employmentId,1);
