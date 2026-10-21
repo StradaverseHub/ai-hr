@@ -12,6 +12,8 @@ export const EMPLOYEE_HOME_CARD_DEFAULTS=EMPLOYEE_HOME_CARDS.map((cardKey,index)
 }));
 export const HOME_QUICK_ACTIONS=['leave','claim','payslip','profile','calendar','notices'] as const;
 export type HomeQuickAction=typeof HOME_QUICK_ACTIONS[number];
+export const HOME_TASK_KINDS=['leave','leaveCancellation','attendance','profile','claim','resignation','managerReview','hrReview','feedback','noticeAcknowledgement','replacementLeave'] as const;
+export type HomeTaskKind=typeof HOME_TASK_KINDS[number];
 export const DEFAULT_HOME_QUICK_ACTIONS:readonly HomeQuickAction[]=['leave','claim','payslip','profile'];
 export const HOME_TEMPLATE_FIELDS={
  greetingMorning:['name'],greetingAfternoon:['name'],greetingEvening:['name'],
@@ -72,6 +74,32 @@ export function validateHomeQuickActions(raw:unknown):HomeQuickAction[]{
 /** Visibility only. Each linked owner repeats authorization at its own read/write boundary. */
 export function visibleHomeQuickActions(configured:readonly HomeQuickAction[],allowed:ReadonlySet<HomeQuickAction>):HomeQuickAction[]{
  return validateHomeQuickActions(configured).filter(action=>allowed.has(action));
+}
+export type EmployeeHomeConfiguration={
+ version:1;templates:HomeTemplate[];quickActions:HomeQuickAction[];
+ effortMinutes:Partial<Record<HomeTaskKind,number>>;
+ teamVisibility:'off'|'direct'|'department';
+ celebrations:{enabled:boolean;scope:'direct'|'department'};
+};
+/** Versioned presentation and explicit sharing choices only. No arbitrary destinations, data selectors,
+ * authority grants or executable conditions are accepted as configuration. Missing effort is unknown. */
+export function validateEmployeeHomeConfiguration(raw:unknown):EmployeeHomeConfiguration{
+ const value=object(raw,'configuration');keys(value,['version','templates','quickActions','effortMinutes','teamVisibility','celebrations'],'configuration');
+ if(value.version!==1||!Array.isArray(value.templates)||value.templates.length!==Object.keys(HOME_TEMPLATE_FIELDS).length)return refuse('configuration.templates');
+ const templates=value.templates.map(validateHomeTemplate);
+ if(new Set(templates.map(row=>row.key)).size!==Object.keys(HOME_TEMPLATE_FIELDS).length)return refuse('configuration.templates');
+ const quickActions=validateHomeQuickActions(value.quickActions),effort=object(value.effortMinutes,'configuration.effortMinutes');
+ keys(effort,HOME_TASK_KINDS,'configuration.effortMinutes');
+ const effortMinutes:Partial<Record<HomeTaskKind,number>>={};
+ for(const [kind,minutes] of Object.entries(effort)){
+  if(typeof minutes!=='number'||!Number.isSafeInteger(minutes)||minutes<0||minutes>1440)return refuse('configuration.effortMinutes');
+  effortMinutes[kind as HomeTaskKind]=minutes;
+ }
+ if(!['off','direct','department'].includes(String(value.teamVisibility)))return refuse('configuration.teamVisibility');
+ const celebrations=object(value.celebrations,'configuration.celebrations');keys(celebrations,['enabled','scope'],'configuration.celebrations');
+ if(typeof celebrations.enabled!=='boolean'||!['direct','department'].includes(String(celebrations.scope)))return refuse('configuration.celebrations');
+ return {version:1,templates,quickActions,effortMinutes,teamVisibility:value.teamVisibility as EmployeeHomeConfiguration['teamVisibility'],
+  celebrations:{enabled:celebrations.enabled,scope:celebrations.scope as 'direct'|'department'}};
 }
 export type EmployeeHomePreferences={version:1;timeZone:string|null;weekStartsOn:number;hiddenCards:EmployeeHomeCard[];cardOrder:EmployeeHomeCard[]};
 export function defaultEmployeeHomePreferences():EmployeeHomePreferences{

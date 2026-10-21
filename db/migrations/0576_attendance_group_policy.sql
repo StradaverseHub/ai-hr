@@ -20,7 +20,7 @@ ALTER TABLE public.attendance_group_policy_revision ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.attendance_group_policy_revision FORCE ROW LEVEL SECURITY;
 -- Bind this configuration owner to the current principal, not a stale or forged role snapshot.
 -- principal/current_grants remain the identity and subtree-scope authorities; this is a bounded proof.
-CREATE FUNCTION app.attendance_policy_principal_current() RETURNS boolean
+CREATE FUNCTION app.principal_snapshot_current() RETURNS boolean
  LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(
   SELECT 1 FROM app.principal(app.current_user_id()) p
@@ -36,6 +36,14 @@ CREATE FUNCTION app.attendance_policy_principal_current() RETURNS boolean
        OR nullif(actual->>'companyId','')::uuid=claimed.company_id
        OR (claimed.company_id IS NOT NULL AND app.is_company_descendant(claimed.company_id,nullif(actual->>'companyId','')::uuid)))))
  );
+$$;
+REVOKE ALL ON FUNCTION app.principal_snapshot_current() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.principal_snapshot_current() TO ai_hr_app;
+--> statement-breakpoint
+-- Keep the Attendance entry point while sharing its proof with other scoped configuration owners.
+CREATE FUNCTION app.attendance_policy_principal_current() RETURNS boolean
+ LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current();
 $$;
 REVOKE ALL ON FUNCTION app.attendance_policy_principal_current() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.attendance_policy_principal_current() TO ai_hr_app;

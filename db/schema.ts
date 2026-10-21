@@ -6,6 +6,7 @@ import type { PendingPayInputKind } from '../lib/pay-component-contract';
 import type { EmployeeMasterSpec } from '../lib/employee-master-report';
 import type { AttendanceAdminAmendment, AttendanceDayKindOverride, ManualOtRows } from '../lib/attendance-day-adjustment';
 import type {AttendanceGroupPolicy} from '../lib/attendance-group-policy';
+import type {EmployeeHomeConfiguration} from '../lib/employee-home';
 /**
  * Slice 0 schema — "the spine".
  *
@@ -3134,6 +3135,20 @@ export const dashboardCardConfig = pgTable(
 );
 
 // ─────────────────────── Audit substrate (ADR-0006) ───────────────────────
+/** Immutable company/role presentation versions for employee Home. Business facts remain with their
+ * module owners; a configuration version cannot retrieve data or grant authority. */
+export const employeeHomeConfigurationRevision=pgTable('employee_home_configuration_revision',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
+ audienceRole:text('audience_role').notNull(),ordinal:integer('ordinal').notNull(),
+ configuration:jsonb('configuration').$type<EmployeeHomeConfiguration>().notNull(),
+ reason:text('reason').notNull(),createdByUserId:uuid('created_by_user_id').notNull().references(()=>appUser.id),createdAt:createdAt(),
+},t=>[
+ uniqueIndex('employee_home_configuration_ordinal_uq').on(t.tenantId,t.companyId,t.audienceRole,t.ordinal),
+ check('employee_home_configuration_role_check',sql`${t.audienceRole} IN ('employee','manager','hr_admin')`),
+ check('employee_home_configuration_ordinal_check',sql`${t.ordinal}>0`),
+ check('employee_home_configuration_shape_check',sql`jsonb_typeof(${t.configuration})='object' AND ${t.configuration}->'version'='1'::jsonb AND octet_length(${t.configuration}::text)<=262144`),
+]);
+
 // Append-only. No UPDATE/DELETE (enforced in the RLS/constraints migration).
 
 export const domainEvent = pgTable(
