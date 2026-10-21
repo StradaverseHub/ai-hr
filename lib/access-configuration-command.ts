@@ -74,6 +74,7 @@ export function applyAccessConfigurationCommand(
     after.groups=[...after.groups,{id:command.groupId,name:command.name,retired:false,systemAdministrator:false,grants:[]}];
   }else if(command.kind==='setOverride'){
     requireUser(command.userId);
+    if(command.capabilityId==='access.system_admin'&&command.effect==='allow')throw new AccessPermissionError('invalid');
     const grant={capabilityId:command.capabilityId,companyId:command.companyId};
     // Removing a deny can restore inherited access. Its scope needs the same grant ceiling as allow.
     ceiling([grant]);
@@ -84,6 +85,8 @@ export function applyAccessConfigurationCommand(
     if(!group||group.retired)throw new AccessPermissionError('invalid');
     if(command.kind==='setMembership'){
       requireUser(command.userId);
+      if(group.systemAdministrator)throw new AccessPermissionError('invalid');
+      if(before.memberships.some(row=>row.derived&&row.groupId===command.groupId&&row.userId===command.userId&&row.companyId===command.companyId))throw new AccessPermissionError('invalid');
       if(command.enabled&&!before.users.some(u=>u.id===command.userId&&u.active)||command.companyId!==null&&!evidence.knownCompanyIds.has(command.companyId))throw new AccessPermissionError('invalid');
       if(group.systemAdministrator&&command.companyId!==null)throw new AccessPermissionError('invalid');
       // Intersect the membership with every grant; do not require global authority for a scoped join.
@@ -93,6 +96,7 @@ export function applyAccessConfigurationCommand(
     }else{
       ceiling(group.grants);
       if(command.kind==='replaceGroupGrants'){
+        if(!group.systemAdministrator&&command.grants.some(grant=>grant.capabilityId==='access.system_admin'))throw new AccessPermissionError('invalid');
         ceiling(command.grants);
         after.groups=after.groups.map(g=>g.id===group.id?{...g,grants:command.grants.map(grant=>({...grant}))}:g);
       }else if(command.kind==='retireGroup'){

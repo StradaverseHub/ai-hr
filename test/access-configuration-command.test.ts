@@ -46,6 +46,10 @@ describe('bounded configuration commands against a fresh trusted snapshot',()=>{
   expect(after.memberships).toContainEqual({userId:worker,groupId:team,companyId:parent});
   for(const companyId of [null,unrelated])expect(()=>apply(before,{kind:'setMembership',userId:worker,groupId:team,companyId,enabled:true},delegate)).toThrow(/ceiling/);
  });
+ it('does not pretend to remove a membership still supplied by the canonical role owner',()=>{
+  const before=snapshot();before.memberships=[...before.memberships,{userId:worker,groupId:team,companyId:parent,derived:true}];
+  for(const enabled of [true,false])expect(()=>apply(before,{kind:'setMembership',userId:worker,groupId:team,companyId:parent,enabled})).toThrow(/invalid/);
+ });
  it('refuses foreign or inactive subjects and unknown companies before they enter the configuration',()=>{
   const before=snapshot();
   for(const patch of [{userId:id(99),companyId:parent},{userId:worker,companyId:id(98)}])expect(()=>apply(before,{kind:'setMembership',groupId:team,enabled:true,...patch})).toThrow(/invalid/);
@@ -60,10 +64,17 @@ describe('bounded configuration commands against a fresh trusted snapshot',()=>{
  it('protects the final system administrator, including a direct deny and membership removal',()=>{
   for(const command of [
    {kind:'retireGroup',groupId:system},
-   {kind:'setMembership',groupId:system,userId:admin,companyId:null,enabled:false},
    {kind:'setOverride',userId:admin,capabilityId:'access.system_admin',companyId:null,effect:'deny'},
    {kind:'setOverride',userId:admin,capabilityId:'access.configure',companyId:null,effect:'deny'},
   ])expect(()=>apply(snapshot(),command)).toThrow(/lastAdministrator/);
+ });
+ it('keeps protected System Administrator enrollment with the existing role owner',()=>{
+  for(const command of [
+   {kind:'setMembership',groupId:system,userId:worker,companyId:null,enabled:true},
+   {kind:'setMembership',groupId:system,userId:admin,companyId:null,enabled:false},
+   {kind:'setOverride',userId:worker,capabilityId:'access.system_admin',companyId:null,effect:'allow'},
+   {kind:'replaceGroupGrants',groupId:team,grants:[{capabilityId:'access.system_admin',companyId:null}]},
+  ])expect(()=>apply(snapshot(),command)).toThrow(/invalid/);
  });
  it('does not expose unsupported capabilities and does not rename into an existing group identity',()=>{
   expect(()=>apply(snapshot(),{kind:'replaceGroupGrants',groupId:team,grants:[{capabilityId:'installation.operator',companyId:null}]})).toThrow(/unsupported/);

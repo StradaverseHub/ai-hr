@@ -6,11 +6,11 @@ export type AccessCapability={id:string;scope:'tenant'|'company';supported:boole
 export type CapabilityGrant={capabilityId:string;companyId:string|null};
 export type AccessGroup={id:string;name:string;retired:boolean;systemAdministrator:boolean;grants:readonly CapabilityGrant[]};
 export type UserCapabilityOverride=CapabilityGrant&{userId:string;effect:'allow'|'deny'};
-export type AccessMembership={userId:string;groupId:string;companyId:string|null};
+export type AccessMembership={userId:string;groupId:string;companyId:string|null;derived?:boolean};
 export type AccessUser={id:string;active:boolean};
 export type AccessSnapshot={tenantId:string;revision:string;users:readonly AccessUser[];groups:readonly AccessGroup[];memberships:readonly AccessMembership[];overrides:readonly UserCapabilityOverride[]};
 export type AccessTarget={tenantId:string;companyId:string|null};
-export type AccessSource={kind:'group'|'individual';id:string;effect:'allow'|'deny';companyId:string|null;membershipCompanyId?:string|null};
+export type AccessSource={kind:'group'|'individual';id:string;effect:'allow'|'deny';companyId:string|null;membershipCompanyId?:string|null;membershipDerived?:boolean};
 export type AccessResolution={allowed:boolean;reason:'allowed'|'denied'|'unassigned'|'unsupported'|'unavailable';sources:readonly AccessSource[]};
 export type CompanyScopeEvidence={tenantId:string;knownCompanyIds:ReadonlySet<string>;covers:(ancestor:string,company:string)=>boolean};
 export class AccessPermissionError extends Error{
@@ -34,7 +34,7 @@ export function resolveAccessCapability(snapshot:AccessSnapshot,catalog:readonly
   if(group.retired)continue;
   for(const membership of memberships.filter(row=>row.groupId===group.id)){
    if(!covers(membership.companyId,target,evidence))continue;
-   for(const grant of group.grants)if(grant.capabilityId===capabilityId&&covers(grant.companyId,target,evidence))sources.push({kind:'group',id:group.id,effect:'allow',companyId:grant.companyId,membershipCompanyId:membership.companyId});
+   for(const grant of group.grants)if(grant.capabilityId===capabilityId&&covers(grant.companyId,target,evidence))sources.push({kind:'group',id:group.id,effect:'allow',companyId:grant.companyId,membershipCompanyId:membership.companyId,...(membership.derived?{membershipDerived:true}:{})});
   }
  }
  for(const override of snapshot.overrides)if(override.userId===userId&&override.capabilityId===capabilityId&&covers(override.companyId,target,evidence))sources.push({kind:'individual',id:userId,effect:override.effect,companyId:override.companyId});

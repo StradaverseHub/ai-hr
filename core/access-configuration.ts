@@ -4,7 +4,6 @@
  */
 import {randomUUID} from 'node:crypto';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {actorOf,appendEvent} from '../db/events';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {
   AccessPermissionError,previewEffectiveAccess,type AccessCapability,type AccessPreviewChange,
@@ -28,11 +27,12 @@ export type CurrentAccessConfiguration={
  * Server-owned dependency, never derived from a request. An adapter must re-read the actual login,
  * principal, configuration and dated scope under this transaction, without a session-grant fallback.
  * persist replaces only configuration rows, performs a revision CAS and preserves membership history.
+ * It must append the bounded audit atomically inside its database write seam, including raw SQL calls.
  * It must not write app_user activity or turn a group flag into an installation-operator grant.
  */
 export interface AccessConfigurationOwner{
   loadCurrent(tx:Tx,ctx:SessionContext):Promise<CurrentAccessConfiguration>;
-  persist(tx:Tx,ctx:SessionContext,change:{before:AccessSnapshot;after:AccessSnapshot;command:AccessConfigurationCommand}):Promise<boolean>;
+  persist(tx:Tx,ctx:SessionContext,change:{before:AccessSnapshot;after:AccessSnapshot;command:AccessConfigurationCommand;scopeFingerprint:string}):Promise<boolean>;
 }
 
 export type AccessConfigurationEdit={expectedRevision:string;command:unknown};
@@ -56,11 +56,20 @@ async function currentTransition(tx:Tx,ctx:SessionContext,p:AccessConfigurationE
   return {current,after,binding,command:p.command};
 }
 
-function previewTargets(current:CurrentAccessConfiguration){
+function previewTargets(current:CurrentAccessConfiguration,capabilityIds:ReadonlySet<string>){
   const companies=[...current.evidence.knownCompanyIds].sort();
-  return current.catalog.filter(capability=>capability.supported&&capability.bindings.length).flatMap(capability=>
+  return current.catalog.filter(capability=>capabilityIds.has(capability.id)&&capability.supported&&capability.bindings.length).flatMap(capability=>
     (capability.scope==='tenant'?[null]:companies).map(companyId=>({capabilityId:capability.id,target:{tenantId:current.snapshot.tenantId,companyId}})),
   );
+}
+
+function affectedPreview(current:CurrentAccessConfiguration,command:AccessConfigurationCommand){
+  if(command.kind==='setOverride')return {users:[command.userId],capabilities:new Set([command.capabilityId])};
+  if(command.kind==='createGroup'||command.kind==='renameGroup')return {users:[],capabilities:new Set<string>()};
+  const group=current.snapshot.groups.find(row=>row.id===command.groupId);
+  const grants=[...(group?.grants??[]),...(command.kind==='replaceGroupGrants'?command.grants:[])];
+  const users=command.kind==='setMembership'?[command.userId]:current.snapshot.memberships.filter(row=>row.groupId===command.groupId).map(row=>row.userId);
+  return {users:[...new Set(users)],capabilities:new Set(grants.map(grant=>grant.capabilityId))};
 }
 
 function unrestrictedScopeChanged(command:AccessConfigurationCommand,before:AccessSnapshot){
@@ -73,25 +82,14 @@ function unrestrictedScopeChanged(command:AccessConfigurationCommand,before:Acce
 export function previewAccessConfiguration(ctx:SessionContext,p:AccessConfigurationEdit,owner:AccessConfigurationOwner):Promise<AccessConfigurationPreview>{
   return withTenant(ctx,async tx=>{
     const {current,after,binding,command}=await currentTransition(tx,ctx,p,owner);
+    const affected=affectedPreview(current,command);
     return {
       revision:current.snapshot.revision,
       fingerprint:accessPreviewFingerprint(binding),
-      changes:previewEffectiveAccess(current.snapshot,after,current.catalog,current.snapshot.users.map(user=>user.id),previewTargets(current),current.evidence),
+      changes:previewEffectiveAccess(current.snapshot,after,current.catalog,affected.users,previewTargets(current,affected.capabilities),current.evidence),
       changesUnrestrictedScope:unrestrictedScopeChanged(command,current.snapshot),
     };
   });
-}
-
-/** Bounded audit identifiers and capability/scope changes; no user names, email, or free-text reason. */
-function auditChange(command:AccessConfigurationCommand,before:AccessSnapshot,after:AccessSnapshot){
-  const base={kind:command.kind,beforeRevision:before.revision,afterRevision:after.revision};
-  if(command.kind==='setOverride'){
-    const previous=before.overrides.find(row=>row.userId===command.userId&&row.capabilityId===command.capabilityId&&row.companyId===command.companyId);
-    return {...base,userId:command.userId,capabilityId:command.capabilityId,companyId:command.companyId,beforeEffect:previous?.effect??null,afterEffect:command.effect};
-  }
-  if(command.kind==='setMembership')return {...base,userId:command.userId,groupId:command.groupId,companyId:command.companyId,enabled:command.enabled};
-  if(command.kind==='replaceGroupGrants')return {...base,groupId:command.groupId,beforeGrants:before.groups.find(row=>row.id===command.groupId)?.grants??[],afterGrants:command.grants};
-  return {...base,groupId:command.groupId,...(command.kind==='renameGroup'?{nameChanged:true}:command.kind==='retireGroup'?{retired:true}:{created:true})};
 }
 
 /**
@@ -103,12 +101,7 @@ export function saveAccessConfiguration(ctx:SessionContext,p:AccessConfiguration
     const {current,after,binding,command}=await currentTransition(tx,ctx,p,owner);
     assertAccessPreviewCurrent(binding,p.previewFingerprint);
     const committed={...after,revision:randomUUID()};
-    if(!await owner.persist(tx,ctx,{before:current.snapshot,after:committed,command}))throw new AccessPermissionError('changed');
-    await appendEvent(tx,{
-      tenantId:ctx.tenantId,aggregateType:'access-configuration',aggregateId:ctx.tenantId,
-      eventType:'access-configuration.changed',actor:actorOf(ctx),
-      payload:auditChange(command,current.snapshot,committed),
-    });
+    if(!await owner.persist(tx,ctx,{before:current.snapshot,after:committed,command,scopeFingerprint:current.scopeFingerprint}))throw new AccessPermissionError('changed');
     return {revision:committed.revision};
   });
 }

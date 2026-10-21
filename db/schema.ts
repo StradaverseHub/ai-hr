@@ -10604,3 +10604,54 @@ export const payrollLeaveException = pgTable('payroll_leave_exception', {
   explanation: text('explanation'), resolvedBy: uuid('resolved_by').references(() => appUser.id),
   resolvedAt: timestamp('resolved_at', { withTimezone: true }),
 }, t => [index('payroll_leave_exception_batch').on(t.tenantId, t.batchId, t.status, t.createdAt)]);
+
+/** Installation-owned capability catalogue. Customer configuration cannot register a new authority. */
+export const accessCapability = pgTable('access_capability', {
+  id: text('id').primaryKey(), scope: text('scope').notNull().$type<'tenant'|'company'>(),
+  supported: boolean('supported').notNull().default(false),
+  bindings: jsonb('bindings').notNull().default(sql`'[]'::jsonb`).$type<{owner:string;operation:string}[]>(),
+});
+export const accessConfiguration = pgTable('access_configuration', {
+  tenantId: uuid('tenant_id').primaryKey().references(()=>tenant.id),
+  revision: uuid('revision').notNull().defaultRandom(), initialized: boolean('initialized').notNull().default(false),
+  updatedAt: timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+});
+export const accessGroup = pgTable('access_group', {
+  id:id(),tenantId:tenantId(),name:text('name').notNull(),legacyKey:text('legacy_key'),
+  systemAdministrator:boolean('system_administrator').notNull().default(false),
+  retiredAt:timestamp('retired_at',{withTimezone:true}),createdAt:createdAt(),
+},t=>[
+  uniqueIndex('access_group_tenant_id_uq').on(t.tenantId,t.id),
+  uniqueIndex('access_group_name_uq').on(t.tenantId,sql`lower(${t.name})`),
+  uniqueIndex('access_group_protected_uq').on(t.tenantId).where(sql`${t.systemAdministrator}`),
+  uniqueIndex('access_group_legacy_uq').on(t.tenantId,t.legacyKey).where(sql`${t.legacyKey} IS NOT NULL`),
+]);
+/** Historical grants close instead of disappearing. Only active rows contribute authority. */
+export const accessGroupGrant = pgTable('access_group_grant', {
+  id:id(),tenantId:tenantId(),groupId:uuid('group_id').notNull(),
+  capabilityId:text('capability_id').notNull().references(()=>accessCapability.id),companyId:uuid('company_id').references(()=>company.id),
+  retiredAt:timestamp('retired_at',{withTimezone:true}),createdAt:createdAt(),
+},t=>[
+  foreignKey({columns:[t.tenantId,t.groupId],foreignColumns:[accessGroup.tenantId,accessGroup.id]}),
+  uniqueIndex('access_group_grant_global_uq').on(t.tenantId,t.groupId,t.capabilityId).where(sql`${t.companyId} IS NULL AND ${t.retiredAt} IS NULL`),
+  uniqueIndex('access_group_grant_company_uq').on(t.tenantId,t.groupId,t.capabilityId,t.companyId).where(sql`${t.companyId} IS NOT NULL AND ${t.retiredAt} IS NULL`),
+]);
+/** Role-derived default memberships are a SQL view over role_assignment, never copied here. */
+export const accessMembership = pgTable('access_membership', {
+  id:id(),tenantId:tenantId(),groupId:uuid('group_id').notNull(),userId:uuid('user_id').notNull().references(()=>appUser.id),
+  companyId:uuid('company_id').references(()=>company.id),retiredAt:timestamp('retired_at',{withTimezone:true}),createdAt:createdAt(),
+},t=>[
+  foreignKey({columns:[t.tenantId,t.groupId],foreignColumns:[accessGroup.tenantId,accessGroup.id]}),
+  uniqueIndex('access_membership_global_uq').on(t.tenantId,t.groupId,t.userId).where(sql`${t.companyId} IS NULL AND ${t.retiredAt} IS NULL`),
+  uniqueIndex('access_membership_company_uq').on(t.tenantId,t.groupId,t.userId,t.companyId).where(sql`${t.companyId} IS NOT NULL AND ${t.retiredAt} IS NULL`),
+  index('access_membership_user_idx').on(t.tenantId,t.userId).where(sql`${t.retiredAt} IS NULL`),
+]);
+export const accessUserOverride = pgTable('access_user_override', {
+  id:id(),tenantId:tenantId(),userId:uuid('user_id').notNull().references(()=>appUser.id),
+  capabilityId:text('capability_id').notNull().references(()=>accessCapability.id),companyId:uuid('company_id').references(()=>company.id),
+  effect:text('effect').notNull().$type<'allow'|'deny'>(),retiredAt:timestamp('retired_at',{withTimezone:true}),createdAt:createdAt(),
+},t=>[
+  uniqueIndex('access_user_override_global_uq').on(t.tenantId,t.userId,t.capabilityId).where(sql`${t.companyId} IS NULL AND ${t.retiredAt} IS NULL`),
+  uniqueIndex('access_user_override_company_uq').on(t.tenantId,t.userId,t.capabilityId,t.companyId).where(sql`${t.companyId} IS NOT NULL AND ${t.retiredAt} IS NULL`),
+  index('access_user_override_user_idx').on(t.tenantId,t.userId).where(sql`${t.retiredAt} IS NULL`),
+]);
