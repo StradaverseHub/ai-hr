@@ -193,6 +193,10 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
   /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
   outerTx?: Tx) {
   const run = async (tx:Tx) => {
+    // Hiring is a Workforce command even when called without a page/import facade. Acquire fresh
+    // access before Criteria/data locks; reusing a person cannot cross their retained explicit deny.
+    await assertWorkforceCompanyTx(tx,ctx,p.companyId,'maintain');
+    if(p.person.id)await assertWorkforcePersonTx(tx,ctx,p.person.id,'maintain');
     // The same Criteria-before-row lock order as the canonical reference writers.
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     const [hireCompany]=await tx.select({id:company.id}).from(company).where(and(eq(company.tenantId,ctx.tenantId),eq(company.id,p.companyId),isNull(company.archivedAt),sql`app.is_admin_for(${company.id})`)).for('share');

@@ -231,3 +231,33 @@ new actionable reader by selecting only that SQL-derived request type and retain
 helper, fresh access/policy lock order, named routes, no-self and group-only checks. Do not overwrite the
 peer's canonical reader or resurrect the old independent bell count. This compatibility is source-only
 and unexecuted, and no Board1 feature has been merged into this branch yet.
+
+
+Canonical hiring now acquires Workforce maintenance authority before Criteria/data locks, including
+callers that do not use the page/import facade. Reusing a person also checks their shared record owner.
+The facade delegates to this one admission owner instead of repeating a second hire interpretation.
+An additional SQL INSERT guard refuses denied employment creation and a shared-person rehire; a
+failed hire rolls back its person, number, assignment and events in the enclosing transaction.
+
+Employee code and test-record classification updates now have bounded SQL guards. These facts have
+only direct Workforce writers; a blanket employment UPDATE restriction would incorrectly block
+independent approved grade, termination and scheduled work. The guard checks retained and destination
+companies and leaves unchanged values alone. Explicit owner repair/restore uses a private credential
+proof shared with the existing scheduled owner adapter: session_user AND the effective SET ROLE must
+hold the actual storage-owner role. A definer's current_user or a null claimed login is not that proof.
+
+Workforce maintenance admission also locks the actual access-configuration tuple after the tenant
+advisory lock. Prepared stale REPEATABLE READ cases require serialization refusal after committed
+revocation, rather than approval from an old snapshot. The logical permission revision/history is not
+changed by that lock. Employment INSERT/identifier/classification and document/draft SQL statements
+join this barrier before their target row locks. Document and draft row guards then recheck their
+canonical predicates; retained document subject and draft authorship cannot be reassigned by runtime
+SQL. New draft authorship must match the actual app_user's nullable person binding, not a supplied
+SessionContext personId. Draft RLS and row guards share one operation predicate, retaining0510's
+independent author read/discard and company admission rules. These locks do not add raw table grants.
+
+Prepared regressions include actual SQL refusals, transactional hire rollback, no state/events after
+denial, explicit owner repair, removal of denial, document/draft identity retention, independent grade
+posting, and pinned old-snapshot command/document/draft writes. They have NOT executed. New non-HR
+maintenance admission, shared-person partial/register SQL versus approved ESS composition, remaining
+related read contracts and full consumer/outcome verification still block catalogue activation.

@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {and,eq,sql} from 'drizzle-orm';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
-import {withTenant,type SessionContext} from '../db/client';
+import {db,withTenant,type SessionContext} from '../db/client';
 import {person,employment,employeeDraft,roleAssignment,appUser,jobGrade,domainEvent,employeeDependent,employeeQualification,personEmergencyContact,employeeDocument,compensation} from '../db/schema';
 import {hireEmployee,setEmployeeCode,updatePerson,setEmploymentGrade} from '../core/org';
 import {hireEmployee as hireWorkforceEmployee,setEmploymentInfo as maintainInfo,setPersonComplianceFields as maintainCompliance} from '../core/workforce-commands';
@@ -22,6 +22,7 @@ import {workforceCompanies,workforceViewScope,WorkforceAccessError} from '../cor
 import {accessConfigurationStore} from '../core/access-configuration-store';
 import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {pgSqlState} from '../lib/db-error';
 import * as registers from '../core/workforce-registers';
 import {addEmployeeDocument,getEmployeeDocument,listEmployeeDocuments,updateEmployeeDocumentMeta,replaceEmployeeDocumentContent,deleteEmployeeDocument} from '../core/employee-documents';
 const routeSession=vi.hoisted(()=>({ctx:null as SessionContext|null}));
@@ -41,6 +42,10 @@ async function override(userId:string,capabilityId:'workforce.view'|'workforce.m
 }
 const hire=(label:string)=>hireEmployee(admin(),{person:{fullName:label,primaryEmail:`${randomUUID()}@example.invalid`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
 const page=(ctx:SessionContext,companyIds=[b.companyId])=>listEmployeesPage(ctx,{companyIds,limit:25,offset:0},'workforce');
+async function sqlRefusal(work:Promise<unknown>,state='42501'){
+ const error=await work.then(()=>null,error=>error);
+ expect(error).not.toBeNull();expect(pgSqlState(error)).toBe(state);
+}
 describe('fresh Workforce-purpose record consumers',()=>{
  it('keeps dormant/default HR list, count and detail identical to the existing projection',async()=>{
   const subject=await hire('Fictional default record');
@@ -111,6 +116,7 @@ describe('fresh Workforce-purpose record consumers',()=>{
   const subject=await hire('Fictional guarded master');await activate();await override(b.adminUserId,'workforce.maintain',b.companyId,'deny');
   const before=await owner.db.select().from(employment).where(eq(employment.tenantId,b.tenantId)).orderBy(employment.id);
   await expect(hireWorkforceEmployee(admin(),{person:{fullName:'Never hired',primaryEmail:'not-hired@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()})).rejects.toBeInstanceOf(WorkforceAccessError);
+  await expect(hireEmployee(admin(),{person:{fullName:'No direct-owner bypass',primaryEmail:'not-hired-direct@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()})).rejects.toBeInstanceOf(WorkforceAccessError);
   await expect(maintainInfo(admin(),{employmentId:subject.employmentId,orgDivision:'Not applied'})).rejects.toBeInstanceOf(WorkforceAccessError);
   await expect(createMovementEvent(admin(),{employmentId:subject.employmentId,kind:'increment',effectiveDate:todayInKualaLumpur(),basicSalary:3025.13,remarks:'Fictional guarded movement'})).rejects.toBeInstanceOf(WorkforceAccessError);
   expect(await owner.db.select().from(employment).where(eq(employment.tenantId,b.tenantId)).orderBy(employment.id)).toEqual(before);
@@ -119,6 +125,77 @@ describe('fresh Workforce-purpose record consumers',()=>{
   const [grade]=await owner.db.insert(jobGrade).values({tenantId:b.tenantId,code:'WF-INDEPENDENT',name:'Fictional independently approved grade'}).returning({id:jobGrade.id});
   await expect(setEmploymentGrade(admin(),{employmentId:subject.employmentId,gradeId:grade.id})).resolves.toMatchObject({changed:true});
   expect((await owner.db.select({gradeId:employment.gradeId}).from(employment).where(eq(employment.id,subject.employmentId)))[0]?.gradeId).toBe(grade.id);
+ });
+ it('enforces identifier and test-classification updates in SQL without borrowing a definer owner',async()=>{
+  const subject=await hire('Fictional SQL master boundary');
+  // Dormant defaults preserve the canonical HR commands and their actual audit events.
+  await setEmployeeCode(admin(),{employmentId:subject.employmentId,employeeCode:'WF-SQL-BASE'});
+  expect(await setEmploymentTestRecord(admin(),{employmentId:subject.employmentId,isTestRecord:true})).toEqual({changed:true});
+  await activate();await override(b.adminUserId,'workforce.maintain',b.companyId,'deny');
+  const read=()=>owner.db.select().from(employment).where(eq(employment.id,subject.employmentId));
+  const before=await read(),events=await owner.db.select({id:domainEvent.id}).from(domainEvent).orderBy(domainEvent.id);
+  await sqlRefusal(withTenant(admin(),tx=>tx.update(employment).set({employeeCode:'WF-RAW-FORBIDDEN'}).where(eq(employment.id,subject.employmentId))));
+  await sqlRefusal(withTenant(admin(),tx=>tx.update(employment).set({isTestRecord:false}).where(eq(employment.id,subject.employmentId))));
+  // A deliberately callable definer demonstrates that its current_user cannot lend owner status
+  // to the restricted connection. Only this fictional test database receives the probe function.
+  await owner.db.execute(sql.raw("CREATE FUNCTION app.test_workforce_definer_update(subject uuid) RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ UPDATE public.employment SET employee_code='WF-DEFINER-FORBIDDEN' WHERE id=subject $$"));
+  try{
+   await owner.db.execute(sql.raw('REVOKE ALL ON FUNCTION app.test_workforce_definer_update(uuid) FROM PUBLIC'));
+   await owner.db.execute(sql.raw('GRANT EXECUTE ON FUNCTION app.test_workforce_definer_update(uuid) TO ai_hr_app'));
+   await sqlRefusal(withTenant(admin(),tx=>tx.execute(sql`select app.test_workforce_definer_update(${subject.employmentId}::uuid)`)));
+  }finally{await owner.db.execute(sql.raw('DROP FUNCTION app.test_workforce_definer_update(uuid)'));}
+  // Naming a protected column without changing its value is not a new master edit.
+  await withTenant(admin(),tx=>tx.update(employment).set({employeeCode:'WF-SQL-BASE',isTestRecord:true}).where(eq(employment.id,subject.employmentId)));
+  expect(await read()).toEqual(before);
+  expect(await owner.db.select({id:domainEvent.id}).from(domainEvent).orderBy(domainEvent.id)).toEqual(events);
+  await expect(withTenant(admin(),tx=>tx.execute(sql`select app.access_workforce_storage_owner()`))).rejects.toThrow();
+  // Real owner credentials remain an explicit maintenance/restore course, with no invented login.
+  await owner.db.update(employment).set({employeeCode:'WF-OWNER-REPAIR'}).where(eq(employment.id,subject.employmentId));
+  expect((await read())[0]?.employeeCode).toBe('WF-OWNER-REPAIR');
+  await override(b.adminUserId,'workforce.maintain',b.companyId,null);
+  await setEmployeeCode(admin(),{employmentId:subject.employmentId,employeeCode:'WF-SQL-RESTORED'});
+  expect(await setEmploymentTestRecord(admin(),{employmentId:subject.employmentId,isTestRecord:false})).toEqual({changed:true});
+  expect((await read())[0]).toMatchObject({employeeCode:'WF-SQL-RESTORED',isTestRecord:false});
+ });
+ it('refuses a raw hire after denial and rolls back its new person in the same transaction',async()=>{
+  await activate();await override(b.adminUserId,'workforce.maintain',b.companyId,'deny');
+  const personId=randomUUID(),employmentId=randomUUID();
+  const before=await owner.db.select({id:domainEvent.id}).from(domainEvent).orderBy(domainEvent.id);
+  await sqlRefusal(withTenant(admin(),async tx=>{
+   await tx.insert(person).values({id:personId,tenantId:b.tenantId,fullName:'Fictional never committed',primaryEmail:'wf-raw-hire@example.invalid'});
+   await tx.insert(employment).values({id:employmentId,tenantId:b.tenantId,personId,companyId:b.companyId,hiredOn:todayInKualaLumpur(),employeeCode:'WF-RAW-HIRE',isTestRecord:true});
+  }));
+  expect(await owner.db.select({id:person.id}).from(person).where(eq(person.id,personId))).toEqual([]);
+  expect(await owner.db.select({id:employment.id}).from(employment).where(eq(employment.id,employmentId))).toEqual([]);
+  expect(await owner.db.select({id:domainEvent.id}).from(domainEvent).orderBy(domainEvent.id)).toEqual(before);
+ });
+ it.each(['command','raw-document','raw-draft'] as const)('refuses %s maintenance from a pinned old snapshot after a completed permission revocation',async operation=>{
+  const subject=await hire('Fictional stale snapshot subject');await activate();
+  const document=await addEmployeeDocument(admin(),{employmentId:subject.employmentId,title:'Fictional retained snapshot file',fileName:'fictional.txt',mimeType:'text/plain',content:Buffer.from('Fictional evidence')});
+  const before=await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId));
+  const documents=await owner.db.select().from(employeeDocument).where(eq(employeeDocument.id,document.id));
+  const [draft]=await owner.db.insert(employeeDraft).values({tenantId:b.tenantId,companyId:b.companyId,label:'Fictional retained snapshot draft',data:{}}).returning({id:employeeDraft.id});
+  const drafts=await owner.db.select().from(employeeDraft).where(eq(employeeDraft.id,draft.id));
+  let signalPinned!:()=>void,resume!:()=>void,pinnedReached=false;
+  const pinned=new Promise<void>(resolve=>{signalPinned=resolve;}),changed=new Promise<void>(resolve=>{resume=resolve;});
+  // A deliberate raw runtime transaction tests SQL isolation, rather than changing withTenant's
+  // ordinary READ COMMITTED owner or pretending a mocked lock demonstrates concurrency.
+  const outcome=db.transaction(async tx=>{
+   const ctx=admin();
+   await tx.execute(sql`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id',${ctx.userId!},true),set_config('app.roles','hr_admin',true),set_config('app.grants',${JSON.stringify(ctx.grants)},true)`);
+   await tx.select({id:employment.id}).from(employment).where(eq(employment.id,subject.employmentId));
+   pinnedReached=true;signalPinned();await changed;
+   if(operation==='command')await maintainInfo(ctx,{employmentId:subject.employmentId,orgDivision:'Must not use old authority'},tx);
+   else if(operation==='raw-document')await tx.update(employeeDocument).set({title:'Must not use old authority'}).where(eq(employeeDocument.id,document.id));
+   else await tx.update(employeeDraft).set({label:'Must not use old authority'}).where(eq(employeeDraft.id,draft.id));
+  },{isolationLevel:'repeatable read'}).then(()=>null,error=>{signalPinned();return error;});
+  await pinned;
+  try{expect(pinnedReached).toBe(true);await override(b.adminUserId,'workforce.maintain',b.companyId,'deny');}
+  finally{resume();}
+  expect(pgSqlState(await outcome)).toBe('40001');
+  expect(await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId))).toEqual(before);
+  expect(await owner.db.select().from(employeeDocument).where(eq(employeeDocument.id,document.id))).toEqual(documents);
+  expect(await owner.db.select().from(employeeDraft).where(eq(employeeDraft.id,draft.id))).toEqual(drafts);
  });
  it('rechecks permission before returning Movement preview names/fingerprints or applying a previous valid receipt',async()=>{
   const subject=await hireEmployee(admin(),{person:{fullName:'Fictional import subject',primaryEmail:`${randomUUID()}@example.invalid`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur(new Date(Date.now()-60*86400000)),employeeCode:'WF-IMPORT'});
@@ -144,13 +221,15 @@ describe('fresh Workforce-purpose record consumers',()=>{
   const subject=await hireEmployee(admin(),{person:{fullName:'Fictional scheduled subject',primaryEmail:`${randomUUID()}@example.invalid`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur(new Date(Date.now()-60*86400000))});
   const future=todayInKualaLumpur(new Date(Date.now()+7*86400000));
   await createMovementEvent(admin(),{employmentId:subject.employmentId,kind:'transfer',effectiveDate:future,departmentId:b.deptB,remarks:'Fictional already-admitted intent'});
-  const system={...admin(),userId:null,personId:null} satisfies SessionContext;
+  const system={...admin(),userId:undefined,personId:null} satisfies SessionContext;
   const [forged]=await withTenant(system,tx=>tx.execute<{allowed:boolean}>(sql`select app.access_workforce_company(${b.companyId}::uuid,'workforce.maintain') as allowed`));expect(forged.allowed).toBe(false);
   await expect(withTenant(system,tx=>tx.execute(sql`select app.access_workforce_owner_company(${b.companyId}::uuid)`))).rejects.toThrow();
   const refused=await sweepDueMovements(system,{today:future});expect(refused).toMatchObject({applied:0,failed:1});
   // This is a pre-existing admitted dated intent. The owner job executes its ledger inputs; removing
   // its original author's later screen permission is not a cancellation of the recorded business event.
   const [actual]=await owner.withTenant(system,tx=>tx.execute<{allowed:boolean}>(sql`select app.access_workforce_company(${b.companyId}::uuid,'workforce.maintain') as allowed`));expect(actual.allowed).toBe(true);
+  const [actualPerson]=await owner.withTenant(system,tx=>tx.execute<{allowed:boolean}>(sql`select app.access_workforce_person(${subject.personId}::uuid,'workforce.maintain') as allowed`));expect(actualPerson.allowed).toBe(true);
+  const [fakePerson]=await withTenant(system,tx=>tx.execute<{allowed:boolean}>(sql`select app.access_workforce_person(${subject.personId}::uuid,'workforce.maintain') as allowed`));expect(fakePerson.allowed).toBe(false);
   expect(await sweepDueMovements(system,{today:future},owner.withTenant)).toMatchObject({applied:1,failed:0});
   expect(await sweepDueMovements(system,{today:future},owner.withTenant)).toMatchObject({applied:0,failed:0});
   const rows=await owner.db.select({id:domainEvent.id}).from(domainEvent).where(eq(domainEvent.eventType,'employment.movement.applied')).orderBy(domainEvent.id);expect(rows).toHaveLength(1);
@@ -182,6 +261,8 @@ describe('fresh Workforce-purpose record consumers',()=>{
   const own={...admin(),userId,personId:subject.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]} satisfies SessionContext;
   const content=Buffer.from('Fictional Workforce supporting file');
   const document=await addEmployeeDocument(admin(),{employmentId:subject.employmentId,title:'Fictional support',fileName:'fictional.txt',mimeType:'text/plain',content});
+  // Even access to both employments does not make the file's retained subject mutable.
+  await sqlRefusal(withTenant(admin(),tx=>tx.update(employeeDocument).set({employmentId:other.employmentId}).where(eq(employeeDocument.id,document.id))));
   const download=async(ctx:SessionContext,id=subject.employmentId)=>{routeSession.ctx=ctx;return downloadDocument(new Request(`http://localhost/admin/personnel/${id}/document/${document.id}`),{params:Promise.resolve({employmentId:id,docId:document.id})});};
   expect(Buffer.from(await(await download(admin())).arrayBuffer())).toEqual(content);
   const eventsBeforeWrongUrl=await owner.db.select({id:domainEvent.id}).from(domainEvent).where(eq(domainEvent.eventType,'employee-document.downloaded')).orderBy(domainEvent.id);
@@ -262,5 +343,15 @@ describe('fresh Workforce-purpose record consumers',()=>{
   expect(await withTenant(ctx,tx=>tx.delete(employeeDraft).where(eq(employeeDraft.id,draft.id)).returning({id:employeeDraft.id}))).toEqual([]);
   await override(userId,'workforce.maintain',b.companyId,null);
   expect(await withTenant(ctx,tx=>tx.delete(employeeDraft).where(eq(employeeDraft.id,draft.id)).returning({id:employeeDraft.id}))).toEqual([{id:draft.id}]);
+ });
+ it('binds draft authorship to the actual user and keeps that retained fact immutable',async()=>{
+  const subject=await hire('Fictional other possible author');await activate();
+  await sqlRefusal(withTenant(admin(),tx=>tx.insert(employeeDraft).values({tenantId:b.tenantId,companyId:b.companyId,createdByPersonId:subject.personId,label:'Forged author',data:{}})));
+  const [draft]=await withTenant(admin(),tx=>tx.insert(employeeDraft).values({tenantId:b.tenantId,companyId:b.companyId,createdByPersonId:null,label:'Actual personless administrator',data:{}}).returning({id:employeeDraft.id}));
+  await sqlRefusal(withTenant(admin(),tx=>tx.update(employeeDraft).set({createdByPersonId:subject.personId}).where(eq(employeeDraft.id,draft.id))));
+  expect((await owner.db.select({author:employeeDraft.createdByPersonId}).from(employeeDraft).where(eq(employeeDraft.id,draft.id)))[0]?.author).toBeNull();
+  await override(b.adminUserId,'workforce.maintain',b.companyId,'deny');
+  expect(await withTenant(admin(),tx=>tx.update(employeeDraft).set({label:'Not applied'}).where(eq(employeeDraft.id,draft.id)).returning({id:employeeDraft.id}))).toEqual([]);
+  expect(await withTenant(admin(),tx=>tx.delete(employeeDraft).where(eq(employeeDraft.id,draft.id)).returning({id:employeeDraft.id}))).toEqual([]);
  });
 });

@@ -2,7 +2,7 @@
  * Independent approval/posting services keep importing their existing owner, never a manufactured HR role.
  */
 import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,assertWorkforcePersonTx} from './workforce-access';
+import {assertWorkforceEmploymentTx,assertWorkforcePersonTx} from './workforce-access';
 import * as org from './org';
 import {setPersonComplianceFields as writeComplianceFields} from './profile';
 import {employment} from '../db/schema';
@@ -12,12 +12,8 @@ async function maintain<T>(ctx:SessionContext,employmentId:string,write:(tx:Tx)=
  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 export function hireEmployee(ctx:SessionContext,p:Parameters<typeof org.hireEmployee>[1],outerTx?:Tx){
- const run=async(tx:Tx)=>{
-  await assertWorkforceCompanyTx(tx,ctx,p.companyId,'maintain');
-  if(p.person.id)await assertWorkforcePersonTx(tx,ctx,p.person.id,'maintain');
-  return org.hireEmployee(ctx,p,tx);
- };
- return outerTx?run(outerTx):withTenant(ctx,run);
+ // The canonical hire owner now admits every caller before its first Criteria/data lock.
+ return org.hireEmployee(ctx,p,outerTx);
 }
 export function setEmploymentInfo(ctx:SessionContext,p:Parameters<typeof org.setEmploymentInfo>[1],outerTx?:Tx){return maintain(ctx,p.employmentId,tx=>org.setEmploymentInfo(ctx,p,tx),outerTx);}
 export function setEmploymentGrade(ctx:SessionContext,p:Parameters<typeof org.setEmploymentGrade>[1],outerTx?:Tx){return maintain(ctx,p.employmentId,tx=>org.setEmploymentGrade(ctx,p,tx),outerTx);}

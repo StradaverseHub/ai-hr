@@ -916,13 +916,20 @@ GRANT EXECUTE ON FUNCTION app.access_withdraw_profile_requests(jsonb,text) TO ai
 -- The pre-existing cron executes already-admitted dated intents as system, not as a synthetic login.
 -- session_user is essential: current_user inside a definer function is this function's owner, so an
 -- acting_as_owner() check here would accidentally bless every ai_hr_app caller. No runtime EXECUTE.
-CREATE FUNCTION app.access_workforce_owner_company(p_company uuid) RETURNS boolean
+CREATE FUNCTION app.access_workforce_storage_owner() RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.current_user_id() IS NULL AND pg_catalog.pg_has_role(
+ SELECT pg_catalog.pg_has_role(
   session_user,(SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid='public.app_user'::regclass),'USAGE')
   AND pg_catalog.pg_has_role(
    (CASE WHEN pg_catalog.current_setting('role')='none' THEN session_user::text ELSE pg_catalog.current_setting('role') END)::name,
-   (SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid='public.app_user'::regclass),'USAGE')
+   (SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid='public.app_user'::regclass),'USAGE');
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_storage_owner() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_owner_company(p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.current_user_id() IS NULL AND app.access_workforce_storage_owner()
   AND EXISTS(SELECT 1 FROM public.company c WHERE c.id=p_company AND c.tenant_id=app.current_tenant_id()
    AND (app.has_role_for('hr_admin',c.id) OR app.has_role_for('super_admin',c.id)));
 $$;
@@ -993,8 +1000,9 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
    AND app.access_workforce_unassigned(p_capability)))
   -- Keep the existing any-administered-employment person owner. Changing that one shared fact
   -- nevertheless cannot cross an explicit denial on another retained employment's company.
-  AND NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.person_id=p_person AND e.tenant_id=app.current_tenant_id()
-    AND NOT app.access_workforce_not_denied(e.company_id,p_capability));
+  AND ((app.current_user_id() IS NULL AND app.access_workforce_storage_owner())
+   OR NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.person_id=p_person AND e.tenant_id=app.current_tenant_id()
+    AND NOT app.access_workforce_not_denied(e.company_id,p_capability)));
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.access_workforce_person(uuid,text) FROM PUBLIC;
@@ -1006,25 +1014,32 @@ GRANT EXECUTE ON FUNCTION app.access_workforce_person(uuid,text) TO ai_hr_app;
 -- private data receives the same fresh read/write gate even if an old author session still exists.
 -- 0510 deliberately preserves an author's read/discard course independently of an HR role. Keep
 -- that relationship source with actual own-person binding; an explicit applicable denial still wins.
+CREATE FUNCTION app.access_workforce_draft(p_company uuid,p_author uuid,p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_operation IN ('read','edit','admit') AND (
+  (app.access_profile_request_own(p_author) AND (p_operation<>'admit' OR p_company IS NULL)
+   AND app.access_workforce_not_denied(p_company,CASE WHEN p_operation='read' THEN 'workforce.view' ELSE 'workforce.maintain' END))
+  OR CASE WHEN p_company IS NULL
+   THEN app.access_workforce_unassigned(CASE WHEN p_operation='read' THEN 'workforce.view' ELSE 'workforce.maintain' END)
+   ELSE app.access_workforce_company(p_company,CASE WHEN p_operation='read' THEN 'workforce.view' ELSE 'workforce.maintain' END) END);
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_draft(uuid,uuid,text) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_workforce_draft(uuid,uuid,text) TO ai_hr_app;
+--> statement-breakpoint
 CREATE POLICY access_workforce_draft_read ON employee_draft AS RESTRICTIVE FOR SELECT TO ai_hr_app
- USING((app.access_profile_request_own(created_by_person_id) AND app.access_workforce_not_denied(company_id,'workforce.view'))
-  OR CASE WHEN company_id IS NULL THEN app.access_workforce_unassigned('workforce.view') ELSE app.access_workforce_company(company_id,'workforce.view') END);
+ USING(app.access_workforce_draft(company_id,created_by_person_id,'read'));
 --> statement-breakpoint
 CREATE POLICY access_workforce_draft_insert ON employee_draft AS RESTRICTIVE FOR INSERT TO ai_hr_app
- WITH CHECK(CASE WHEN company_id IS NULL THEN app.access_workforce_unassigned('workforce.maintain')
-  OR app.access_profile_request_own(created_by_person_id) AND app.access_workforce_not_denied(NULL,'workforce.maintain')
-  ELSE app.access_workforce_company(company_id,'workforce.maintain') END);
+ WITH CHECK(app.access_workforce_draft(company_id,created_by_person_id,'admit'));
 --> statement-breakpoint
 CREATE POLICY access_workforce_draft_update ON employee_draft AS RESTRICTIVE FOR UPDATE TO ai_hr_app
- USING((app.access_profile_request_own(created_by_person_id) AND app.access_workforce_not_denied(company_id,'workforce.maintain'))
-  OR CASE WHEN company_id IS NULL THEN app.access_workforce_unassigned('workforce.maintain') ELSE app.access_workforce_company(company_id,'workforce.maintain') END)
- WITH CHECK(CASE WHEN company_id IS NULL THEN app.access_workforce_unassigned('workforce.maintain')
-  OR app.access_profile_request_own(created_by_person_id) AND app.access_workforce_not_denied(NULL,'workforce.maintain')
-  ELSE app.access_workforce_company(company_id,'workforce.maintain') END);
+ USING(app.access_workforce_draft(company_id,created_by_person_id,'edit'))
+ WITH CHECK(app.access_workforce_draft(company_id,created_by_person_id,'admit'));
 --> statement-breakpoint
 CREATE POLICY access_workforce_draft_delete ON employee_draft AS RESTRICTIVE FOR DELETE TO ai_hr_app
- USING((app.access_profile_request_own(created_by_person_id) AND app.access_workforce_not_denied(company_id,'workforce.maintain'))
-  OR CASE WHEN company_id IS NULL THEN app.access_workforce_unassigned('workforce.maintain') ELSE app.access_workforce_company(company_id,'workforce.maintain') END);
+ USING(app.access_workforce_draft(company_id,created_by_person_id,'edit'));
 
 --> statement-breakpoint
 -- Positive grants enter only a bounded purpose projection. They must not be fed back into the
@@ -1142,3 +1157,168 @@ $$;
 REVOKE ALL ON FUNCTION app.access_workforce_record(uuid) FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.access_workforce_record(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- These two employment facts have only direct Workforce writers. Do not put a blanket UPDATE
+-- restriction on employment: approved Rewards, resignation and scheduled owners also write that
+-- shared row. Lock at statement entry, before PostgreSQL locks a matching employment row, so direct
+-- runtime SQL follows the same access-before-data order as the canonical application command.
+CREATE FUNCTION app.access_workforce_write_lock() RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id();
+BEGIN
+ IF t IS NULL THEN RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501'; END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
+ -- Lock the real configuration tuple as well. A write from an already-pinned REPEATABLE READ
+ -- snapshot must serialize/refuse after revocation, rather than reuse the old permission snapshot.
+ -- This does not create a configuration edit or advance its logical revision/history.
+ PERFORM 1 FROM public.access_configuration WHERE tenant_id=t AND initialized FOR SHARE;
+END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_write_lock() FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_workforce_write_lock() TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_master_statement_lock() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.current_tenant_id() IS NOT NULL THEN
+  PERFORM app.access_workforce_write_lock();
+ END IF;
+ RETURN NULL;
+END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_master_statement_lock() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER access_workforce_master_lock BEFORE UPDATE OF employee_code,is_test_record ON employment
+FOR EACH STATEMENT EXECUTE FUNCTION app.access_workforce_master_statement_lock();
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_master_update() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.employee_code IS NOT DISTINCT FROM OLD.employee_code
+  AND NEW.is_test_record IS NOT DISTINCT FROM OLD.is_test_record THEN RETURN NEW; END IF;
+ -- Check the connection and SET ROLE owner, never current_user (this definer's owner). An explicit
+ -- owner repair/restore retains its authority; ai_hr_app cannot acquire it by calling a definer.
+ IF app.access_workforce_storage_owner() THEN RETURN NEW; END IF;
+ IF OLD.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+  OR NOT app.access_workforce_company(OLD.company_id,'workforce.maintain')
+  OR NOT app.access_workforce_company(NEW.company_id,'workforce.maintain') THEN
+  RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501';
+ END IF;
+ RETURN NEW;
+END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_master_update() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER access_workforce_master_update BEFORE UPDATE OF employee_code,is_test_record ON employment
+FOR EACH ROW EXECUTE FUNCTION app.access_workforce_master_update();
+
+--> statement-breakpoint
+-- The canonical hire owner is the only application INSERT writer for employment. Refuse a denied
+-- hire independently at SQL; related person/code/assignment/event writes roll back in that same Tx.
+-- A new person has no retained employments yet. Reusing one must respect their existing shared owner.
+CREATE FUNCTION app.access_workforce_hire_insert() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW; END IF;
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id()
+  OR NOT app.access_workforce_company(NEW.company_id,'workforce.maintain')
+  OR (EXISTS(SELECT 1 FROM public.employment e WHERE e.tenant_id=NEW.tenant_id AND e.person_id=NEW.person_id)
+   AND NOT app.access_workforce_person(NEW.person_id,'workforce.maintain')) THEN
+  RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501';
+ END IF;
+ RETURN NEW;
+END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_hire_insert() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER access_workforce_hire_lock BEFORE INSERT ON employment
+FOR EACH STATEMENT EXECUTE FUNCTION app.access_workforce_master_statement_lock();
+--> statement-breakpoint
+CREATE TRIGGER access_workforce_hire_insert BEFORE INSERT ON employment
+FOR EACH ROW EXECUTE FUNCTION app.access_workforce_hire_insert();
+
+--> statement-breakpoint
+-- Documents have no independent ESS proposal writer (photo proposals have their own table/owner).
+-- Keep the restrictive RLS above, and serialize direct SQL with configuration changes as well.
+CREATE FUNCTION app.access_workforce_document_write() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.access_workforce_storage_owner() THEN
+  IF TG_OP='UPDATE' THEN
+   IF NEW.id IS DISTINCT FROM OLD.id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+    OR NEW.employment_id IS DISTINCT FROM OLD.employment_id THEN
+    RAISE EXCEPTION 'Document subject cannot be reassigned' USING ERRCODE='42501';
+   END IF;
+  END IF;
+  IF TG_OP<>'INSERT' THEN
+   IF OLD.tenant_id IS DISTINCT FROM app.current_tenant_id()
+    OR NOT app.access_workforce_employment(OLD.employment_id,'workforce.maintain') THEN
+    RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501';
+   END IF;
+  END IF;
+  IF TG_OP<>'DELETE' THEN
+   IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id()
+    OR NOT app.access_workforce_employment(NEW.employment_id,'workforce.maintain') THEN
+    RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501';
+   END IF;
+  END IF;
+ END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_document_write() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER access_workforce_document_lock BEFORE INSERT OR UPDATE OR DELETE ON employee_document
+FOR EACH STATEMENT EXECUTE FUNCTION app.access_workforce_master_statement_lock();
+--> statement-breakpoint
+CREATE TRIGGER access_workforce_document_write BEFORE INSERT OR UPDATE OR DELETE ON employee_document
+FOR EACH ROW EXECUTE FUNCTION app.access_workforce_document_write();
+
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_draft_write() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.access_workforce_storage_owner() THEN
+  IF TG_OP='INSERT' THEN
+   IF NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=app.current_user_id()
+    AND u.tenant_id=app.current_tenant_id() AND u.person_id IS NOT DISTINCT FROM NEW.created_by_person_id) THEN
+    RAISE EXCEPTION 'Draft author must be the actual principal' USING ERRCODE='42501';
+   END IF;
+  END IF;
+  IF TG_OP='UPDATE' THEN
+   IF NEW.id IS DISTINCT FROM OLD.id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+    OR NEW.created_by_person_id IS DISTINCT FROM OLD.created_by_person_id THEN
+    RAISE EXCEPTION 'Draft authorship cannot be reassigned' USING ERRCODE='42501';
+   END IF;
+  END IF;
+  IF TG_OP<>'INSERT' THEN
+   IF OLD.tenant_id IS DISTINCT FROM app.current_tenant_id()
+    OR NOT app.access_workforce_draft(OLD.company_id,OLD.created_by_person_id,'edit') THEN
+    RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501';
+   END IF;
+  END IF;
+  IF TG_OP<>'DELETE' THEN
+   IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id()
+    OR NOT app.access_workforce_draft(NEW.company_id,NEW.created_by_person_id,'admit') THEN
+    RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501';
+   END IF;
+  END IF;
+ END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_draft_write() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER access_workforce_draft_lock BEFORE INSERT OR UPDATE OR DELETE ON employee_draft
+FOR EACH STATEMENT EXECUTE FUNCTION app.access_workforce_master_statement_lock();
+--> statement-breakpoint
+CREATE TRIGGER access_workforce_draft_write BEFORE INSERT OR UPDATE OR DELETE ON employee_draft
+FOR EACH ROW EXECUTE FUNCTION app.access_workforce_draft_write();

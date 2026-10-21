@@ -11,18 +11,22 @@ export function workforceEmploymentPredicate(subject:SQL,operation:WorkforceOper
  if(companyIds?.length===0)return sql`false`;
  return sql`app.access_workforce_employment(${subject},${'workforce.'+operation})`;
 }
+async function lockWorkforceOperationTx(tx:Tx,ctx:SessionContext,operation:WorkforceOperation){
+ if(operation==='maintain')await tx.execute(sql`select app.access_workforce_write_lock()`);
+ else await lockAccessConfigurationTx(tx,ctx.tenantId);
+}
 export async function assertWorkforceCompanyTx(tx:Tx,ctx:SessionContext,companyId:string,operation:WorkforceOperation){
- await lockAccessConfigurationTx(tx,ctx.tenantId);
+ await lockWorkforceOperationTx(tx,ctx,operation);
  const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_company(${companyId}::uuid,${'workforce.'+operation}) as allowed`);
  if(!row?.allowed)throw new WorkforceAccessError();
 }
 export async function assertWorkforceEmploymentTx(tx:Tx,ctx:SessionContext,employmentId:string,operation:WorkforceOperation){
- await lockAccessConfigurationTx(tx,ctx.tenantId);
+ await lockWorkforceOperationTx(tx,ctx,operation);
  const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_employment(${employmentId}::uuid,${'workforce.'+operation}) as allowed`);
  if(!row?.allowed)throw new WorkforceAccessError();
 }
 export async function assertWorkforcePersonTx(tx:Tx,ctx:SessionContext,personId:string,operation:WorkforceOperation){
- await lockAccessConfigurationTx(tx,ctx.tenantId);
+ await lockWorkforceOperationTx(tx,ctx,operation);
  const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_person(${personId}::uuid,${'workforce.'+operation}) as allowed`);
  if(!row?.allowed)throw new WorkforceAccessError();
 }
