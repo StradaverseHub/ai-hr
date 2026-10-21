@@ -9,7 +9,8 @@ import { randomUUID } from 'node:crypto';
 import {cancellationSplitGroupSql} from './leave-group-origin-sql';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf, type Actor } from '../db/events';
-import { assertCanDecide } from './approvals';
+import { assertCanDecide,assertAssignedWorkPrincipalTx } from './approvals';
+import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 import {assertMyTeamSubjectTx} from './my-team-scope';
 import type {MyTeamQuery} from '../lib/my-team-types';
 import { scopeOf } from '../lib/delegation-scope';
@@ -11705,6 +11706,54 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
 
 
 
+/** Uncapped assigned-work headers. Step identities and the writer gate establish authority;
+ * no application reason, leave amount, type, date span or decision comment is loaded for Home.
+ */
+export function pendingLeaveTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
+ return withTenant(ctx,async tx=>{
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  const candidates=await tx.select({id:leaveRequest.id,employmentId:leaveRequest.employmentId,personId:employment.personId,
+   employee:person.fullName,createdAt:leaveRequest.createdAt}).from(leaveRequest)
+   .innerJoin(employment,and(eq(employment.id,leaveRequest.employmentId),eq(employment.tenantId,leaveRequest.tenantId)))
+   .leftJoin(person,eq(person.id,employment.personId))
+   .where(and(eq(leaveRequest.tenantId,ctx.tenantId),eq(leaveRequest.status,'pending'),sql`NOT app.is_self_person(${employment.personId})`,
+    companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
+   .orderBy(desc(leaveRequest.createdAt),asc(leaveRequest.id));
+  const result:AssignedApprovalMetadata[]=[];
+  for(let offset=0;offset<candidates.length;offset+=1000){
+   const batch=candidates.slice(offset,offset+1000);
+   const steps=await tx.select({requestId:leaveApprovalStep.leaveRequestId,status:leaveApprovalStep.status,
+    kind:leaveApprovalStep.approverKind,approverEmploymentId:leaveApprovalStep.approverEmploymentId,alternates:leaveApprovalStep.approverAlternates})
+    .from(leaveApprovalStep).where(inArray(leaveApprovalStep.leaveRequestId,batch.map(row=>row.id))).orderBy(asc(leaveApprovalStep.stepIndex),asc(leaveApprovalStep.id));
+   const chains=new Map<string,typeof steps>();for(const step of steps){const chain=chains.get(step.requestId)??[];chain.push(step);chains.set(step.requestId,chain);}
+   for(const row of batch){
+    const chain=chains.get(row.id)??[],current=chain.find(step=>step.status==='pending');if(chain.length&&!current)continue;
+    try{
+     if(current)await assertCanDecideLeaveStep(tx,ctx,row.employmentId,current.kind,'leave request',current.approverEmploymentId,current.alternates);
+     else await assertCanDecide(tx,ctx,row.employmentId,'leave request',scopeOf('leave.application'));
+    }catch(error){if(isLeaveDecisionRefusal(error))continue;throw error;}
+    result.push(row);
+   }
+  }
+  return result;
+ });
+}
+
+export async function pendingLeaveCancellationTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
+ const candidates=await withTenant(ctx,async tx=>{
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  return tx.select({id:leaveCancellationRequest.id,employmentId:leaveCancellationRequest.employmentId,personId:employment.personId,
+   employee:person.fullName,createdAt:leaveCancellationRequest.createdAt}).from(leaveCancellationRequest)
+   .innerJoin(employment,and(eq(employment.id,leaveCancellationRequest.employmentId),eq(employment.tenantId,leaveCancellationRequest.tenantId)))
+   .leftJoin(person,eq(person.id,employment.personId))
+   .where(and(eq(leaveCancellationRequest.tenantId,ctx.tenantId),eq(leaveCancellationRequest.status,'pending'),sql`NOT app.is_self_person(${employment.personId})`,
+    companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
+   .orderBy(desc(leaveCancellationRequest.createdAt),asc(leaveCancellationRequest.id));
+ });
+ const allowed=new Set(await actionableLeaveCancellationIds(ctx,candidates.map(row=>row.id)));
+ return candidates.filter(row=>allowed.has(row.id));
+}
+
 /** Pending decisions the actual current-step writer allows, for an already authorized team subset. */
 export function actionableLeaveRequests(ctx:SessionContext,{employmentIds,requestIds}:{employmentIds:string[];requestIds?:readonly string[]}){
   if(requestIds&&requestIds.length>1000)throw Error('Too many leave decision candidates');
@@ -11742,13 +11791,14 @@ export function actionableLeaveRequests(ctx:SessionContext,{employmentIds,reques
 export function actionableLeaveCancellationIds(ctx:SessionContext,requestIds:readonly string[]){
  return withTenant(ctx,async tx=>{
   if(!requestIds.length)return [];
+  await assertAssignedWorkPrincipalTx(tx,ctx);
   const result:string[]=[],ids=[...new Set(requestIds)];
   for(let offset=0;offset<ids.length;offset+=1000){
    const requests=await tx.select({id:leaveCancellationRequest.id,employmentId:leaveCancellationRequest.employmentId})
     .from(leaveCancellationRequest).where(and(inArray(leaveCancellationRequest.id,ids.slice(offset,offset+1000)),eq(leaveCancellationRequest.status,'pending')))
     .orderBy(leaveCancellationRequest.id);
    if(!requests.length)continue;
-   const steps=await tx.select().from(leaveCancellationStep).where(inArray(leaveCancellationStep.cancellationRequestId,requests.map(row=>row.id)))
+   const steps=await tx.select({id:leaveCancellationStep.id,cancellationRequestId:leaveCancellationStep.cancellationRequestId,stepIndex:leaveCancellationStep.stepIndex,status:leaveCancellationStep.status,approverKind:leaveCancellationStep.approverKind,approverEmploymentId:leaveCancellationStep.approverEmploymentId,approverAlternates:leaveCancellationStep.approverAlternates}).from(leaveCancellationStep).where(inArray(leaveCancellationStep.cancellationRequestId,requests.map(row=>row.id)))
     .orderBy(asc(leaveCancellationStep.stepIndex),asc(leaveCancellationStep.id));
    for(const row of requests){
     const chain=steps.filter(step=>step.cancellationRequestId===row.id),current=chain.find(step=>step.status==='pending');

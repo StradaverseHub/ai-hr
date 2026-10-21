@@ -33,7 +33,8 @@ import {
 
 export type { ClaimMileageStamp, ClaimRateConfig };
 import { toCsv } from '../lib/csv';
-import { assertCanDecide, filterDelegationOrgScopeTx,isApprovalDecisionRefusal } from './approvals';
+import { assertCanDecide, filterDelegationOrgScopeTx,isApprovalDecisionRefusal,assertAssignedWorkPrincipalTx } from './approvals';
+import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 import { scopeOf } from '../lib/delegation-scope';
 import { resolveBatchScopeFilter, resolveBatchCutOffWindow, type BatchScope } from './payroll';
 import { calendarWindowFor } from './payroll-policy-config';
@@ -3104,11 +3105,29 @@ export async function listPendingClaims(ctx: SessionContext): Promise<ClaimRow[]
   });
 }
 
+/** Assigned-work metadata, independent of the full financial approval workspace projection. */
+export async function pendingClaimTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
+ const candidates=await withTenant(ctx,async tx=>{
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  const rows=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,personId:employment.personId,
+   employee:person.fullName,createdAt:claimRequest.createdAt}).from(claimRequest)
+   .innerJoin(employment,and(eq(employment.id,claimRequest.employmentId),eq(employment.tenantId,claimRequest.tenantId)))
+   .leftJoin(person,eq(person.id,employment.personId))
+   .where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),sql`NOT app.is_self_person(${employment.personId})`,
+    companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
+   .orderBy(desc(claimRequest.createdAt),claimRequest.id);
+  return filterDelegationOrgScopeTx(tx,ctx,rows,row=>row.employmentId);
+ });
+ const allowed=new Set(await actionablePendingClaimIds(ctx,candidates.map(row=>row.id)));
+ return candidates.filter(row=>allowed.has(row.id));
+}
+
 /** Minimal current-decision projection over already-visible inbox candidates. Uses the same gate and
  * delegation scope as decideClaim; no amount, receipt, reason or attachment is needed for this proof. */
 export function actionablePendingClaimIds(ctx:SessionContext,requestIds:readonly string[]){
  return withTenant(ctx,async tx=>{
   if(!requestIds.length)return [];
+  await assertAssignedWorkPrincipalTx(tx,ctx);
   const result:string[]=[],ids=[...new Set(requestIds)];
   // The existing inbox is not capped at 1,000 claims. Bound each SQL parameter batch without turning
   // a valid large queue into an exception in the shared application header.

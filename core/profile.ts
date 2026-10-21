@@ -34,9 +34,10 @@ import { isCalendarDate } from '../lib/calendar-date';
  */
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { type Tx, withTenant, type SessionContext } from '../db/client';
+import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
 import { employeeStatutoryMy, employment, person, profileChangeRequest } from '../db/schema';
-import { assertCanDecide,isApprovalDecisionRefusal } from './approvals';
+import { assertCanDecide,isApprovalDecisionRefusal,assertAssignedWorkPrincipalTx } from './approvals';
 // 9583deac stage two — the ONE declaration of which fields may be requested, what each is called on
 // both screens, and which table/column an approval writes it to. See the header of that file.
 import {
@@ -650,6 +651,23 @@ export function listProfileChangeRequests(
     const {currentProfileRequestValuesTx}=await import('./profile-edit');
     return Promise.all(rows.map(async row=>({...row,review:await currentProfileRequestValuesTx(tx,ctx,row)})));
   });
+}
+
+/** Uncapped proposal-free headers for the canonical assigned-work inbox. */
+export async function pendingProfileTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
+ const candidates=await withTenant(ctx,async tx=>{
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  const current=(await freshProfileEditPolicyTx(tx,ctx)).ctx;
+  return tx.select({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,personId:profileChangeRequest.personId,
+   employee:person.fullName,createdAt:profileChangeRequest.createdAt}).from(profileChangeRequest)
+   .innerJoin(employment,and(eq(employment.id,profileChangeRequest.employmentId),eq(employment.tenantId,profileChangeRequest.tenantId)))
+   .leftJoin(person,and(eq(person.id,profileChangeRequest.personId),eq(person.tenantId,profileChangeRequest.tenantId)))
+   .where(and(eq(profileChangeRequest.tenantId,ctx.tenantId),eq(profileChangeRequest.status,'pending'),profileRouteReaderPredicate(current),
+    sql`NOT app.is_self_person(${profileChangeRequest.personId})`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
+   .orderBy(desc(profileChangeRequest.createdAt),profileChangeRequest.id);
+ });
+ const allowed=new Set(await actionableProfileChangeIds(ctx,candidates.map(row=>row.id)));
+ return candidates.filter(row=>allowed.has(row.id));
 }
 
 /** Metadata-only task eligibility, sharing the actual writer's routing, self, role and setting gates.
