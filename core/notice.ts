@@ -774,7 +774,7 @@ export const NOTICE_ATTACHMENT_MAX_BYTES=10*1024*1024;
 const noticeAttachmentMime=new Set(['application/pdf','image/png','image/jpeg','text/plain','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.openxmlformats-officedocument.presentationml.presentation']);
 /** Adds and selects immutable bytes in the same transaction as the content revision and audit event.
  * An intent key belongs to this author/Notice; a successful retry cannot manufacture another revision. */
-export async function addNoticeAttachment(ctx:SessionContext,id:string,expectedContentVersion:number,p:{uploadKey:string;fileName:string;content:Buffer}):Promise<{id:string;contentVersion:number}>{
+export async function addNoticeAttachment(ctx:SessionContext,id:string,expectedContentVersion:number,p:{uploadKey:string;fileName:string;content:Buffer},options:{attach?:boolean}={}):Promise<{id:string;contentVersion:number;attachment:{id:string;fileName:string;mimeType:string;byteLength:number}}>{
  const actor=requireActor(ctx,'updated');
  if(!uuidNotice(id)||!uuidNotice(p.uploadKey)||!Number.isSafeInteger(expectedContentVersion)||expectedContentVersion<0)throw new NoticeError('Reload the notice before uploading.');
  const fileName=p.fileName.trim();
@@ -790,15 +790,20 @@ export async function addNoticeAttachment(ctx:SessionContext,id:string,expectedC
   const [prior]=await tx.select({id:noticeAttachment.id,fileName:noticeAttachment.fileName,mimeType:noticeAttachment.mimeType,digest:sql<string>`encode(sha256(${noticeAttachment.content}),'hex')`})
    .from(noticeAttachment).where(and(eq(noticeAttachment.noticeId,id),eq(noticeAttachment.tenantId,ctx.tenantId),eq(noticeAttachment.createdByUserId,actor),eq(noticeAttachment.uploadKey,p.uploadKey))).limit(1);
   if(prior){
-   if(prior.fileName!==fileName||prior.mimeType!==mimeType||prior.digest!==digest||!parent.attachmentIds.includes(prior.id))throw new NoticeError('This upload changed; reload before choosing the file again.');
-   return {id:prior.id,contentVersion:parent.contentVersion};
+   if(options.attach===false&&parent.contentVersion!==expectedContentVersion)throw new NoticeError('Notice content changed; reload before uploading.');
+   if(prior.fileName!==fileName||prior.mimeType!==mimeType||prior.digest!==digest||(options.attach!==false&&!parent.attachmentIds.includes(prior.id)))throw new NoticeError('This upload changed; reload before choosing the file again.');
+   return {id:prior.id,contentVersion:parent.contentVersion,attachment:{id:prior.id,fileName,mimeType,byteLength:content.byteLength}};
   }
   if(parent.contentVersion!==expectedContentVersion)throw new NoticeError('Notice content changed; reload before uploading.');
   if(parent.attachmentIds.length>=5)throw new NoticeError('A notice can contain at most five attachments.');
   const [asset]=await tx.insert(noticeAttachment).values({tenantId:ctx.tenantId,noticeId:id,uploadKey:p.uploadKey,fileName,mimeType,byteLength:content.byteLength,content,createdByUserId:actor}).returning({id:noticeAttachment.id});
+  if(options.attach===false){
+   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'notice',aggregateId:id,eventType:'notice.attachment-uploaded',actor:actorOf(ctx),payload:{attachmentId:asset.id,byteLength:content.byteLength,mimeType}});
+   return {id:asset.id,contentVersion:parent.contentVersion,attachment:{id:asset.id,fileName,mimeType,byteLength:content.byteLength}};
+  }
   const changed=await tx.update(notice).set({attachmentIds:[...parent.attachmentIds,asset.id],updatedAt:sql`now()`}).where(authoringNotice(id)).returning({id:notice.id,contentVersion:notice.contentVersion});requireNoticeWrite(changed);
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'notice',aggregateId:id,eventType:'notice.attachment-added',actor:actorOf(ctx),payload:{attachmentId:asset.id,byteLength:content.byteLength,mimeType,contentVersion:changed[0].contentVersion}});
-  return {id:asset.id,contentVersion:changed[0].contentVersion};
+  return {id:asset.id,contentVersion:changed[0].contentVersion,attachment:{id:asset.id,fileName,mimeType,byteLength:content.byteLength}};
  });
 }
 /** Only this by-ID read touches bytes. RLS admits actual authors or live snapshot recipients of a
@@ -814,4 +819,13 @@ export function noticeAttachmentMetadata(ctx:SessionContext,id:string){
  return withTenant(ctx,tx=>tx.select({id:noticeAttachment.id,fileName:noticeAttachment.fileName,mimeType:noticeAttachment.mimeType,byteLength:noticeAttachment.byteLength}).from(noticeAttachment)
   .where(and(eq(noticeAttachment.tenantId,ctx.tenantId),eq(noticeAttachment.noticeId,id),sql`${noticeAttachment.id}=ANY((SELECT n.attachment_ids FROM public.notice n WHERE n.id=${id}::uuid AND n.tenant_id=${ctx.tenantId}::uuid)::uuid[])`))
   .orderBy(asc(noticeAttachment.createdAt),asc(noticeAttachment.id)).limit(5));
+}
+
+/** The uploader admits only actual current authors before consuming a request body; the writer checks
+ * again under the parent lock after upload. No notice body or audience is needed for admission. */
+export function noticeAttachmentUploadState(ctx:SessionContext,id:string){
+ if(!uuidNotice(id))return Promise.resolve(null);
+ return withTenant(ctx,async tx=>{
+  const [row]=await tx.select({id:notice.id,contentVersion:notice.contentVersion}).from(notice).where(and(authoringNotice(id),isNull(notice.archivedAt))).limit(1);return row??null;
+ });
 }

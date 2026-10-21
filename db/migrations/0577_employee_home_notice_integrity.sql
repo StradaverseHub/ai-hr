@@ -539,3 +539,16 @@ ALTER TABLE public.notice_acknowledgement ADD CONSTRAINT notice_acknowledgement_
  FOREIGN KEY(recipient_id,notice_id,tenant_id,employment_id) REFERENCES public.notice_recipient(id,notice_id,tenant_id,employment_id);
 ALTER TABLE public.notice_acknowledgement ADD CONSTRAINT notice_acknowledgement_event_fk
  FOREIGN KEY(source_event_id) REFERENCES public.domain_event(id) DEFERRABLE INITIALLY DEFERRED;
+--> statement-breakpoint
+CREATE FUNCTION app.guard_notice_attachment_insert() RETURNS trigger LANGUAGE plpgsql
+ SECURITY INVOKER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.can_manage_notice(NEW.notice_id) OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id()
+  OR NEW.created_by_user_id IS DISTINCT FROM app.current_user_id() THEN
+  RAISE EXCEPTION 'Current Notice authoring authority is required for attachments' USING ERRCODE='42501';END IF;
+ NEW.created_at:=clock_timestamp();RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.guard_notice_attachment_insert() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER notice_attachment_insert_evidence BEFORE INSERT ON public.notice_attachment
+ FOR EACH ROW EXECUTE FUNCTION app.guard_notice_attachment_insert();

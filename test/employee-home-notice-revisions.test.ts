@@ -92,6 +92,16 @@ describe('Retained Notice content and explicit recipient acknowledgement',()=>{
 
 
 describe('Immutable Notice-owned attachments',()=>{
+ it('stages editor uploads without changing content or exposing bytes before the explicit save',async()=>{
+  const n=await published(),file={uploadKey:randomUUID(),fileName:'Fictional staged.txt',content:Buffer.from('Fictional staged content')};
+  const staged=await addNoticeAttachment(adminCtx(b),n.id,1,file,{attach:false});expect(staged.contentVersion).toBe(1);
+  expect(await addNoticeAttachment(adminCtx(b),n.id,1,file,{attach:false})).toEqual(staged);
+  expect((await getNotice(adminCtx(b),n.id))?.attachmentIds).toEqual([]);expect(await getNoticeAttachment(n.e.ctx,n.id,staged.id)).toBeNull();
+  await updateNotice(adminCtx(b),n.id,input({body:'Explicitly saved revised content.',attachmentIds:[staged.id],expectedContentVersion:1}));
+  expect((await getNotice(adminCtx(b),n.id))?.contentVersion).toBe(2);expect((await getNoticeAttachment(n.e.ctx,n.id,staged.id))?.content.equals(file.content)).toBe(true);
+  await expect(addNoticeAttachment(adminCtx(b),n.id,1,file,{attach:false})).rejects.toThrow(/changed/);
+ });
+
  it('attaches once per explicit upload intent, retains references in content and never returns bytes from metadata',async()=>{
   const n=await published(),upload={uploadKey:randomUUID(),fileName:'Fictional policy.txt',content:Buffer.from('Fictional reviewed attachment.')};
   const asset=await addNoticeAttachment(adminCtx(b),n.id,1,upload);expect(asset.contentVersion).toBe(2);

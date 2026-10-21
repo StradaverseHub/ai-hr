@@ -8,7 +8,7 @@ const base={noticeId:'notice',employmentId:'employment',contentVersion:2,acknowl
 afterEach(cleanup);
 describe('Explicit version acknowledgement controls',()=>{
  it('does not submit on viewing, posts the displayed identity/version and renders the persisted date',async()=>{
-  const action=vi.fn(async(_state,form:FormData)=>{expect(Object.fromEntries(form.entries())).toEqual({noticeId:'notice',employmentId:'employment',contentVersion:'2'});return {acknowledgedAt:'2026-10-21T12:00:00.000Z'};});
+  const action=vi.fn(async(_state:unknown,form:FormData)=>{expect(Object.fromEntries(form.entries())).toEqual({noticeId:'notice',employmentId:'employment',contentVersion:'2'});return {acknowledgedAt:'2026-10-21T12:00:00.000Z'};});
   render(<NoticeAcknowledgementForm {...base} action={action}/>);expect(action).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button',{name:labels.acknowledge}));
   await waitFor(()=>expect(screen.getByRole('status').textContent).toContain('Acknowledged on'));
