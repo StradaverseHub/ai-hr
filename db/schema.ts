@@ -5608,7 +5608,7 @@ export const noticeAcknowledgement=pgTable('notice_acknowledgement',{
  employmentId:uuid('employment_id').notNull().references(()=>employment.id),
  actorUserId:uuid('actor_user_id').notNull().references(()=>appUser.id),
  acknowledgedAt:timestamp('acknowledged_at',{withTimezone:true}).notNull().defaultNow(),
- sourceEventId:uuid('source_event_id').notNull().unique(),requestContext:jsonb('request_context').notNull().default({}),
+ sourceEventId:uuid('source_event_id').notNull().unique().references(()=>domainEvent.id),requestContext:jsonb('request_context').notNull().default({}),
 },t=>[uniqueIndex('notice_acknowledgement_once_uq').on(t.revisionId,t.recipientId),index('notice_acknowledgement_parent_idx').on(t.tenantId,t.noticeId)]);
 
 export const profileChangeStatusEnum = pgEnum('profile_change_status', [

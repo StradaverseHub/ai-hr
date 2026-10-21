@@ -54,6 +54,8 @@ async function inputFrom(s: SessionContext, fd: FormData): Promise<NoticeInput> 
     companyId:owner===undefined?undefined:owner==='group'?null:owner,
     title: String(fd.get('title') ?? ''),
     body: String(fd.get('body') ?? ''),
+    summary:String(fd.get('summary')??''),category:String(fd.get('category')??''),pinned:fd.get('pinned')==='on',requiresAcknowledgement:fd.get('requiresAcknowledgement')==='on',
+    attachmentIds:fd.getAll('attachmentIds').map(String),expectedContentVersion:fd.has('expectedContentVersion')?Number(fd.get('expectedContentVersion')):undefined,
     startOn: String(fd.get('startOn') ?? ''),
     endOn: String(fd.get('endOn') ?? ''),
     showEndDate: fd.get('showEndDate') === 'on',

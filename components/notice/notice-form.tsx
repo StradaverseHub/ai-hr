@@ -16,6 +16,7 @@ type Action = (fd: FormData) => void | Promise<void>;
 export type NoticeFormValues = {
   title: string;
   body: string;
+  summary?:string;category?:string|null;pinned?:boolean;requiresAcknowledgement?:boolean;contentVersion?:number;attachmentIds?:string[];
   startOn: string;
   endOn: string;
   showEndDate: boolean;
@@ -28,6 +29,7 @@ export type NoticeFormValues = {
 };
 
 export type NoticeFormLabels = {
+  category:string;summary:string;pinned:string;requiresAcknowledgement:string;acknowledgementHelp:string;
   authoringCompany:string;
   chooseAuthoringCompany:string;
   groupAuthoring:string;
@@ -103,8 +105,7 @@ export type NoticeFormLabels = {
  * publish button that uses it. A number computed by the browser from a half-filled form is not the number
  * the publish will use, and showing it there would be worse than showing none.
  *
- * NOT HERE, ON PURPOSE (release two): the acknowledgement section. No "require acknowledgement" checkbox,
- * no agreement text, no name fields. Half of an evidence feature is worse than none of it.
+ * Acknowledgement records are tied to the retained version, not to this checkbox or popup state.
  */
 export function NoticeForm({
   action,
@@ -223,6 +224,8 @@ export function NoticeForm({
   return (
     <form action={action} className="space-y-6">
       {idField && <input type="hidden" name="id" value={idField} />}
+      {values.contentVersion!==undefined&&<input type="hidden" name="expectedContentVersion" value={values.contentVersion}/>}
+      {values.attachmentIds?.map(id=><input key={id} type="hidden" name="attachmentIds" value={id}/>)}
       <section className="space-y-2 text-sm">
         {authoring.owner?<><h2 className="font-medium">{labels.authoringCompany}</h2><p>{authoring.owner.label}</p><input type="hidden" name="authoringCompany" value={authoring.owner.companyId??'group'}/></>:<label className="block space-y-2"><span className="block font-medium">{labels.authoringCompany}</span><select name="authoringCompany" required defaultValue={!authoring.groupAllowed&&authoring.companies.length===1?authoring.companies[0].value:''} className={cn(inputCls,'min-h-11 w-full')}><option value="" disabled>{labels.chooseAuthoringCompany}</option>{authoring.groupAllowed&&<option value="group">{labels.groupAuthoring}</option>}{authoring.companies.map(company=><option key={company.value} value={company.value}>{company.label}</option>)}</select></label>}
         <p className="max-w-prose text-muted-foreground">{labels.authoringCompanyHelp}</p>
@@ -244,6 +247,11 @@ export function NoticeForm({
           />
         </Field>
         <div className="grid gap-3 sm:grid-cols-2">
+          <Field label={labels.category}><input name="category" maxLength={80} defaultValue={values.category??''} className={cn(inputCls,'min-h-11 w-full')}/></Field>
+          <label className="flex min-h-11 items-center gap-2"><input type="checkbox" name="pinned" defaultChecked={values.pinned}/>{labels.pinned}</label>
+        </div>
+        <Field label={labels.summary}><input name="summary" maxLength={240} defaultValue={values.summary??''} className={cn(inputCls,'min-h-11 w-full')}/></Field>
+        <div className="grid gap-3 sm:grid-cols-2">
           <Field label={labels.fStartOn}>
             <input name="startOn" type="date" required defaultValue={values.startOn} className={cn(inputCls, 'w-full')} />
           </Field>
@@ -260,6 +268,11 @@ export function NoticeForm({
           />
           {labels.fShowEndDate}
         </label>
+      </section>
+
+      <section className="space-y-2">
+        <label className="flex min-h-11 items-center gap-2"><input type="checkbox" name="requiresAcknowledgement" defaultChecked={values.requiresAcknowledgement}/>{labels.requiresAcknowledgement}</label>
+        <p className="max-w-prose text-sm text-muted-foreground">{labels.acknowledgementHelp}</p>
       </section>
 
       {/* ── Section 2 — content ────────────────────────────────────────────────────────────────────── */}

@@ -152,7 +152,7 @@ function cleanNotice(p: NoticeInput): Required<Omit<NoticeInput, 'criteria' | 'e
   if (targetMode === 'individual' && employmentIds.length === 0) {
     throw new NoticeError('Choose at least one employee, or target by criteria instead.');
   }
-  const summary=(p.summary??body.replace(/<[^>]*>/g,'').replace(/!?\[([^\]]*)\]\([^)]*\)/g,'$1').replace(/[#*_`~>]/g,'')).replace(/\s+/g,' ').trim().slice(0,240);
+  const summary=(p.summary?.trim()||body.replace(/<[^>]*>/g,'').replace(/!?\[([^\]]*)\]\([^)]*\)/g,'$1').replace(/[#*_`~>]/g,'')).replace(/\s+/g,' ').trim().slice(0,240);
   const category=p.category?.trim()||null;
   if(category&&category.length>80)throw new NoticeError('A notice category must be at most 80 characters.');
   const attachmentIds=p.attachmentIds??[];

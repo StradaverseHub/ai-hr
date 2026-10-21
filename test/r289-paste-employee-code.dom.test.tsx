@@ -114,6 +114,7 @@ const mountAdjustments = () =>
  * plausible placeholder.
  */
 const noticeLabels: NoticeFormLabels = {
+  category:'Category',summary:'Summary',pinned:'Pin notice',requiresAcknowledgement:'Require acknowledgement',acknowledgementHelp:'Each changed content version needs its own explicit acknowledgement.',
   authoringCompany:N.authoringCompany,chooseAuthoringCompany:N.chooseAuthoringCompany,groupAuthoring:N.groupAuthoring,authoringCompanyHelp:N.authoringCompanyHelp,noAuthoringScope:N.noAuthoringScope,
   sectionBasics: N.sectionBasics,
   sectionContent: N.sectionContent,

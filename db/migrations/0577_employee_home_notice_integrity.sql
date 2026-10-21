@@ -523,3 +523,18 @@ ALTER POLICY notice_scoped_audit_read ON public.domain_event
    OR (event_type='notice.acknowledged' AND (SELECT app.principal_snapshot_current()) AND EXISTS(
     SELECT 1 FROM public.notice_acknowledgement a WHERE a.source_event_id=domain_event.id AND a.tenant_id=domain_event.tenant_id
      AND a.actor_user_id=app.current_user_id()))));
+--> statement-breakpoint
+-- Keep each new evidence relationship physically tenant/parent/version-consistent as well as
+-- purpose-bound at its writer. The receipt precedes its event inside one command, so only that FK
+-- is deferred until the transaction commits; interrupted commands cannot leave unaudited evidence.
+ALTER TABLE public.notice ADD CONSTRAINT notice_identity_tenant_uq UNIQUE(id,tenant_id);
+ALTER TABLE public.notice_recipient ADD CONSTRAINT notice_recipient_evidence_identity_uq UNIQUE(id,notice_id,tenant_id,employment_id);
+ALTER TABLE public.notice_revision ADD CONSTRAINT notice_revision_evidence_identity_uq UNIQUE(id,notice_id,tenant_id,ordinal);
+ALTER TABLE public.notice_revision ADD CONSTRAINT notice_revision_parent_tenant_fk FOREIGN KEY(notice_id,tenant_id) REFERENCES public.notice(id,tenant_id);
+ALTER TABLE public.notice_attachment ADD CONSTRAINT notice_attachment_parent_tenant_fk FOREIGN KEY(notice_id,tenant_id) REFERENCES public.notice(id,tenant_id) ON DELETE CASCADE;
+ALTER TABLE public.notice_acknowledgement ADD CONSTRAINT notice_acknowledgement_revision_identity_fk
+ FOREIGN KEY(revision_id,notice_id,tenant_id,content_version) REFERENCES public.notice_revision(id,notice_id,tenant_id,ordinal);
+ALTER TABLE public.notice_acknowledgement ADD CONSTRAINT notice_acknowledgement_recipient_identity_fk
+ FOREIGN KEY(recipient_id,notice_id,tenant_id,employment_id) REFERENCES public.notice_recipient(id,notice_id,tenant_id,employment_id);
+ALTER TABLE public.notice_acknowledgement ADD CONSTRAINT notice_acknowledgement_event_fk
+ FOREIGN KEY(source_event_id) REFERENCES public.domain_event(id) DEFERRABLE INITIALLY DEFERRED;

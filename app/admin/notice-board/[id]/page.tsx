@@ -152,6 +152,7 @@ export default async function NoticeDetailPage({
             action={updateNoticeAction}
             values={{
               title: n.title,
+              category:n.category,summary:n.summary,pinned:n.pinned,requiresAcknowledgement:n.requiresAcknowledgement,contentVersion:n.contentVersion,attachmentIds:n.attachmentIds,
               body: n.body,
               startOn: n.startOn,
               endOn: n.endOn,
@@ -173,6 +174,7 @@ export default async function NoticeDetailPage({
             employees={vocab.employees}
             targetingFrozen={published}
             labels={{
+              category:t('category'),summary:t('summary'),pinned:t('pinned'),requiresAcknowledgement:t('requiresAcknowledgement'),acknowledgementHelp:t('acknowledgementHelp'),
               authoringCompany:t('authoringCompany'),chooseAuthoringCompany:t('chooseAuthoringCompany'),groupAuthoring:t('groupAuthoring'),authoringCompanyHelp:t('authoringCompanyHelp'),noAuthoringScope:t('noAuthoringScope'),
               sectionBasics: t('sectionBasics'),
               sectionContent: t('sectionContent'),

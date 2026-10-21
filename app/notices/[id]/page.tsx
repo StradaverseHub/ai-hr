@@ -7,6 +7,8 @@ import { markNoticeViewed, noticesForEmployment } from '@/core/notice';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { Card, PageHeader, SectionHeader } from '@/components/ui';
 import { Markdown } from '@/components/markdown';
+import {NoticeAcknowledgementForm} from '@/components/notice/acknowledgement-form';
+import {acknowledgeNoticeAction} from '../actions';
 
 /**
  * 6e122302 — the employee's reading page for one notice.
@@ -42,17 +44,21 @@ export default async function NoticeReadPage({ params }: { params: Promise<{ id:
         description={t('publishedByOn', {
           // Both are derived from an INSTANT, so the displayed date goes through the tenant timezone.
           date: n.publishedAt ? todayInKualaLumpur(n.publishedAt) : '—',
-          by: n.publishedBy ?? '—',
+          by: n.publishedBy ?? t('senderUnavailable'),
         })}
         back={{ href: '/notices', label: t('backToMine') }}
       />
       <Card>
-        <SectionHeader title={t('noticeTitle')} />
+        <SectionHeader title={n.category??t('generalCategory')} />
         <div className="px-4 py-4">
           {/* Markdown, not raw HTML: react-markdown without rehype-raw cannot render an injected script,
               so a notice — the one piece of content in the product deliberately shown to every employee —
               can never become a stored-XSS delivery mechanism. */}
           <Markdown>{n.body}</Markdown>
+          <p className="mt-4 text-xs text-muted-foreground">{t('contentVersion',{version:n.contentVersion})}</p>
+          {n.requiresAcknowledgement&&<NoticeAcknowledgementForm key={n.contentVersion} noticeId={n.id} employmentId={me.employmentId} contentVersion={n.contentVersion} acknowledgedAt={n.acknowledgedAt?new Date(n.acknowledgedAt).toISOString():null} action={acknowledgeNoticeAction}
+            labels={{acknowledge:t('acknowledge'),pending:t('acknowledging'),acknowledgedOn:t('acknowledgedOn',{date:'{date}'}),unavailable:t('ackUnavailable'),changed:t('ackChanged'),failed:t('ackFailed')}}/>}
+
           {/* The reporter's "Display End Date on Notice" option. When it is off the expiry is simply not
               shown; the notice still stops being visible on that date. */}
           {n.showEndDate && (

@@ -71,6 +71,7 @@ export default async function NewNoticePage({
             employees={vocab.employees}
             targetingFrozen={false}
             labels={{
+              category:t('category'),summary:t('summary'),pinned:t('pinned'),requiresAcknowledgement:t('requiresAcknowledgement'),acknowledgementHelp:t('acknowledgementHelp'),
               authoringCompany:t('authoringCompany'),chooseAuthoringCompany:t('chooseAuthoringCompany'),groupAuthoring:t('groupAuthoring'),authoringCompanyHelp:t('authoringCompanyHelp'),noAuthoringScope:t('noAuthoringScope'),
               sectionBasics: t('sectionBasics'),
               sectionContent: t('sectionContent'),
