@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {eq} from 'drizzle-orm';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import type {SessionContext} from '../db/client';
-import {company,department,person} from '../db/schema';
+import {company,department,person,roleAssignment} from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {HomeAccessError,ownHomeSubjectSelection,readEmployeeHomeIdentity,readEmployeeHomeGreetingIdentity,requireOwnHomeSubject} from '../core/employee-home';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -65,6 +65,16 @@ describe('salary-free employee Home identity and selection',()=>{
    await expect(readEmployeeHomeIdentity(ctx,id)).rejects.toMatchObject({code:'employmentUnavailable'});
   for(const id of [report.employmentId,foreignEmployee.employmentId,randomUUID(),''])
    await expect(readEmployeeHomeGreetingIdentity(ctx,id)).rejects.toMatchObject({code:'employmentUnavailable'});
+ });
+ it('does not apply a flattened manager role to a second company outside its actual grant',async()=>{
+  const {employee,ctx}=await ownEmployee();
+  const [secondCompany]=await owner.db.insert(company).values({tenantId:b.tenantId,legalName:'Fictional scoped Home company'}).returning();
+  const [secondDepartment]=await owner.db.insert(department).values({tenantId:b.tenantId,companyId:secondCompany.id,name:'Fictional second department'}).returning();
+  const second=await hireEmployee(adminCtx(b),{person:{id:employee.personId},companyId:secondCompany.id,departmentId:secondDepartment.id,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+  await owner.db.insert(roleAssignment).values({tenantId:b.tenantId,appUserId:ctx.userId!,role:'manager',companyId:b.companyId});
+  const manager:SessionContext={...ctx,roles:['employee','manager'],grants:[{role:'employee',companyId:null},{role:'manager',companyId:b.companyId}]};
+  expect((await readEmployeeHomeIdentity(manager,employee.employmentId)).role).toBe('manager');
+  expect((await readEmployeeHomeIdentity(manager,second.employmentId)).role).toBe('employee');
  });
  it('keeps no-employment and unauthenticated states distinct',async()=>{
   const {ctx}=await ownEmployee();

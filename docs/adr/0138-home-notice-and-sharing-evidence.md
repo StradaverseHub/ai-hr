@@ -128,7 +128,8 @@ an employee's return. It never creates a clock capture, leave state or notificat
 
 The default employee/manager landing returns before the legacy first-employment read, which includes
 compensation, as well as before legacy aggregates and assistant composition. The selected salary-free
-Home identity determines the manager-workbench affordance. Its link retains that selected employment;
+Home identity determines the manager-workbench affordance. Its selected-company role uses the existing
+SQL grant/subtree predicates, because the flattened role list loses company scope. Its link retains that selected employment;
 an explicit workbench request must repeat the same own-identity and real management-authority proof.
 An organizational manager on a second employment is not replaced by the first employment. A real
 manager role without an own employment retains its separately authorized legacy workbench. Admin

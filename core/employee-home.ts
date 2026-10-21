@@ -53,8 +53,18 @@ export async function requireOwnHomeSubject(ctx:SessionContext,employmentId?:str
 export async function readEmployeeHomeIdentity(ctx:SessionContext,requestedEmploymentId?:string):Promise<EmployeeHomeIdentity>{
  const selection=await ownHomeSubjectSelection(ctx,requestedEmploymentId);
  const lines=selection.subject?await reportingLinesFor(ctx,selection.subject.employmentId):null;
+ // Flattened roles discard their company scope. For a selected employment use the canonical SQL
+ // grant/subtree predicates so a manager or HR grant elsewhere cannot choose this company's policy.
+ let admin=isAdmin(ctx),managerRole=(ctx.roles??[]).includes('manager');
+ if(selection.subject){
+  const companyId=selection.subject.companyProof.companyId;
+  const [proof]=await withTenant(ctx,tx=>tx.execute(sql`SELECT app.principal_snapshot_current() AS current,
+   app.is_admin_for(${companyId}::uuid) AS admin,app.has_role_for('manager',${companyId}::uuid) AS manager`)) as unknown as {current:boolean;admin:boolean;manager:boolean}[];
+  if(!proof?.current)throw new HomeAccessError('employmentUnavailable');
+  admin=proof.admin;managerRole=proof.manager;
+ }
  return {version:1,
-  role:resolveDashboardRole({admin:isAdmin(ctx),managerRole:(ctx.roles??[]).includes('manager'),hasDirectReports:(lines?.reports.length??0)>0}),
+  role:resolveDashboardRole({admin,managerRole,hasDirectReports:(lines?.reports.length??0)>0}),
   employmentState:selection.state,selectedEmploymentId:selection.subject?.employmentId??null,
   companyEstablished:Boolean(selection.subject?.companyProof.companyId),
   employments:selection.subjects.map(row=>({employmentId:row.employmentId,employeeCode:row.employeeCode,company:row.company}))};
