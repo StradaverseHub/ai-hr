@@ -31,6 +31,9 @@ describe('future attendance execution policy history',()=>{
   const visible=await withTenant(self,tx=>tx.select({companyId:s.attendanceGroupPolicyRevision.companyId}).from(s.attendanceGroupPolicyRevision).orderBy(asc(s.attendanceGroupPolicyRevision.companyId)));
   expect(visible).toEqual([{companyId:b.companyId}]);
   await expect(attendanceGroupPolicyHistory(self,{companyId:b.companyId,ruleId})).rejects.toThrow();
+  await expect(withTenant({...self,roles:['hr_admin']},tx=>tx.insert(s.attendanceGroupPolicyRevision).values({
+   tenantId:b.tenantId,companyId:b.companyId,ruleId,ordinal:2,effectiveFrom:plus(2),policy:policy(),
+   reason:'Fictional forged-role write',createdByUserId:userId}))).rejects.toThrow();
   await expect(scheduleAttendanceGroupPolicy({...self,roles:['hr_admin']},{...input(),expectedOrdinal:1,effectiveFrom:plus(2)})).rejects.toThrow();
   expect(await attendanceGroupPolicyHistory(ctx,{companyId:b.companyId,ruleId})).toHaveLength(1);
  });
@@ -108,6 +111,7 @@ describe('future attendance execution policy history',()=>{
   await expect(attendanceGroupPolicyHistory(await entitledCtx(b),{companyId:b.companyId,ruleId})).rejects.toThrow();
   await setModule(b.tenantId,'attendance','active');
   await owner.db.delete(s.roleAssignment).where(eq(s.roleAssignment.appUserId,ctx.userId!));
+  expect(await withTenant(ctx,tx=>tx.select({id:s.attendanceGroupPolicyRevision.id}).from(s.attendanceGroupPolicyRevision))).toEqual([]);
   await expect(attendanceGroupPolicyHistory(ctx,{companyId:b.companyId,ruleId})).rejects.toThrow();
   await expect(scheduleAttendanceGroupPolicy(ctx,{...input(),expectedOrdinal:1,effectiveFrom:plus(2)})).rejects.toThrow();
  });

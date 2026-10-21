@@ -18,8 +18,11 @@ describe('integrated allowed-shift and cycle editor',()=>{
   it('does not treat a shift search as an unsaved business edit',()=>{
     const confirm=vi.spyOn(window,'confirm').mockReturnValue(false);mount();
     fireEvent.change(screen.getByRole('searchbox'),{target:{value:'Night'}});
-    fireEvent.click(screen.getByRole('link',{name:'Back to settings'}));
-    expect(confirm).not.toHaveBeenCalled();expect(router.push).toHaveBeenCalledWith('/admin/attendance/settings');
+    const link=screen.getByRole('link',{name:'Back to settings'});let intercepted:boolean|null=null;
+    link.addEventListener('click',event=>{intercepted=event.defaultPrevented;event.preventDefault();},{once:true});
+    fireEvent.click(link);
+    expect(confirm).not.toHaveBeenCalled();expect(intercepted).toBe(false);
+    expect(link).toHaveAttribute('href','/admin/attendance/settings');expect(router.push).not.toHaveBeenCalled();
   });
   it('protects bulk-selected filtered shifts as unsaved edits and submits the complete hidden pool',()=>{
     const confirm=vi.spyOn(window,'confirm').mockReturnValue(false),{container}=mount();

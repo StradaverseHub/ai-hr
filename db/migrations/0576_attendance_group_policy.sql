@@ -18,19 +18,42 @@ CREATE TABLE public.attendance_group_policy_revision (
 --> statement-breakpoint
 ALTER TABLE public.attendance_group_policy_revision ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.attendance_group_policy_revision FORCE ROW LEVEL SECURITY;
+-- Bind this configuration owner to the current principal, not a stale or forged role snapshot.
+-- principal/current_grants remain the identity and subtree-scope authorities; this is a bounded proof.
+CREATE FUNCTION app.attendance_policy_principal_current() RETURNS boolean
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(
+  SELECT 1 FROM app.principal(app.current_user_id()) p
+  JOIN public.app_user u ON u.id=app.current_user_id() AND u.tenant_id=p.tenant_id
+  WHERE p.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+   AND NOT EXISTS(SELECT 1 FROM unnest(app.current_roles()) claimed(role)
+    WHERE NOT EXISTS(SELECT 1 FROM jsonb_array_elements(p.grants) actual
+     WHERE actual->>'role'=claimed.role))
+   AND NOT EXISTS(SELECT 1 FROM app.current_grants() claimed
+    WHERE NOT EXISTS(SELECT 1 FROM jsonb_array_elements(p.grants) actual
+     WHERE actual->>'role'=claimed.role AND
+      (nullif(actual->>'companyId','') IS NULL
+       OR nullif(actual->>'companyId','')::uuid=claimed.company_id
+       OR (claimed.company_id IS NOT NULL AND app.is_company_descendant(claimed.company_id,nullif(actual->>'companyId','')::uuid)))))
+ );
+$$;
+REVOKE ALL ON FUNCTION app.attendance_policy_principal_current() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.attendance_policy_principal_current() TO ai_hr_app;
+--> statement-breakpoint
 -- Configuration contains no salary or formula amounts. Canonical attendance can read the policy
 -- for a readable subject's current or recorded employer; screens separately require scoped admin.
 CREATE POLICY attendance_group_policy_read ON public.attendance_group_policy_revision FOR SELECT
- USING(tenant_id=app.current_tenant_id() AND (app.is_admin_for(company_id)
+ USING(tenant_id=app.current_tenant_id() AND (SELECT app.attendance_policy_principal_current()) AND (app.is_admin_for(company_id)
   OR EXISTS(SELECT 1 FROM public.employment e WHERE e.tenant_id=attendance_group_policy_revision.tenant_id
    AND e.company_id=attendance_group_policy_revision.company_id AND app.can_see_employment(e.id))
   OR EXISTS(SELECT 1 FROM public.assignment a WHERE a.tenant_id=attendance_group_policy_revision.tenant_id
    AND a.company_id=attendance_group_policy_revision.company_id AND a.superseded_at IS NULL
    AND app.can_see_employment(a.employment_id))));
 CREATE POLICY attendance_group_policy_insert ON public.attendance_group_policy_revision FOR INSERT
- WITH CHECK(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id)
+ WITH CHECK(tenant_id=app.current_tenant_id() AND (SELECT app.attendance_policy_principal_current()) AND app.is_admin_for(company_id)
   AND created_by_user_id=app.current_user_id());
 GRANT SELECT,INSERT ON public.attendance_group_policy_revision TO ai_hr_app;
+REVOKE UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER ON public.attendance_group_policy_revision FROM ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.guard_attendance_group_policy_revision() RETURNS trigger LANGUAGE plpgsql
  SET search_path=pg_catalog,public,pg_temp AS $$
@@ -39,7 +62,7 @@ DECLARE previous public.attendance_group_policy_revision;kind text;day jsonb;ref
 BEGIN
  IF TG_OP<>'INSERT' THEN RAISE EXCEPTION 'Retain immutable attendance policy history' USING ERRCODE='23514';END IF;
  PERFORM app.lock_overtime_configuration(NEW.tenant_id);
- IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT app.is_admin_for(NEW.company_id)
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT app.attendance_policy_principal_current() OR NOT app.is_admin_for(NEW.company_id)
   OR NEW.created_by_user_id IS DISTINCT FROM app.current_user_id() THEN
   RAISE EXCEPTION 'Attendance policy is outside company administrator scope' USING ERRCODE='42501';END IF;
  IF NOT EXISTS(SELECT 1 FROM public.company WHERE id=NEW.company_id AND tenant_id=NEW.tenant_id AND archived_at IS NULL)

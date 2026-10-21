@@ -65,7 +65,11 @@ async function pdf(run:Run):Promise<Uint8Array>{
   const meta=metadata(run).map(row=>row.filter(value=>value!==null).join(': '));
   const allStrings=['→',run.name,run.generatedBy,...meta,...data.flatMap(row=>Object.values(row)),...columns.map(column=>column.label)];
   const doc=await PDFDocument.create(),regular=await doc.embedFont(StandardFonts.Helvetica),bold=await doc.embedFont(StandardFonts.HelveticaBold);
-  const faces=await embedPayslipFaces(doc,payslipFaceScripts(allStrings));
+  const scripts=payslipFaceScripts(allStrings);
+  // The fixed period arrow is absent from the committed Latin face and present in the CJK face.
+  // Subset that existing face even for ASCII-only records; retain the shared payslip font behavior.
+  if(!scripts.includes('cjk'))scripts.push('cjk');
+  const faces=await embedPayslipFaces(doc,scripts);
   const segments=new Intl.Segmenter('en',{granularity:'grapheme'});
   const fontRuns=(text:string,strong=false)=>{
     const result:{text:string;font:PDFFont}[]=[];

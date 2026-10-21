@@ -14,7 +14,7 @@ export type AttendanceGroupPolicyVersion=typeof attendanceGroupPolicyRevision.$i
 export type ResolvedAttendanceGroupPolicy={id:string;companyId:string;ruleId:string;ordinal:number;effectiveFrom:string;policy:AttendanceGroupPolicy};
 async function adminCompany(tx:Tx,ctx:SessionContext,companyId:string):Promise<void>{
  overtimeUuid(companyId,'companyId');
- const [row]=await tx.select({allowed:sql<boolean>`app.is_admin_for(${company.id})`}).from(company)
+ const [row]=await tx.select({allowed:sql<boolean>`app.attendance_policy_principal_current() AND app.is_admin_for(${company.id})`}).from(company)
   .where(and(eq(company.id,companyId),eq(company.tenantId,ctx.tenantId))).limit(1);
  if(!row?.allowed)throw Error('This company policy is outside your administrator scope.');
 }
