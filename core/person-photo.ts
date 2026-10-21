@@ -93,7 +93,7 @@ async function setPersonPhotoTx(tx:Tx,ctx:SessionContext,p:{personId:string;cont
     return { personId: p.personId };
 }
 import {isProfilePhotoProposal,PROFILE_PHOTO_FIELD} from '../lib/profile-photo-proposal';
-import {isOwnPersonTx} from './own-person';
+import {isOwnPersonTx,ownPersonPredicate} from './own-person';
 import {isProfileVisibilityPolicyValue,profileGroupPermission} from '../lib/profile-edit-policy-value';
 import {personnelField} from '../lib/personnel-field-registry';
 import {resolveProfileRouteTx,assertProfileRouteDecisionTx} from './profile-routing';
@@ -148,7 +148,7 @@ export function getProfilePhotoProposal(ctx:SessionContext,requestId:string){
   const own=request.personId===ctx.personId&&await isOwnPersonTx(tx,policy.ctx);
   if(own&&!policy.visible.has(PROFILE_PHOTO_FIELD))return null;
   if(!own){try{await assertProfileRouteDecisionTx(tx,policy.ctx,request);}catch{return null;}}
-  const [row]=await tx.select({content:profilePhotoProposal.content,mimeType:profilePhotoProposal.mimeType}).from(profilePhotoProposal).where(eq(profilePhotoProposal.requestId,requestId)).limit(1);
+  const [row]=await tx.select({content:profilePhotoProposal.content,mimeType:profilePhotoProposal.mimeType}).from(profilePhotoProposal).where(and(eq(profilePhotoProposal.requestId,requestId),own?ownPersonPredicate(policy.ctx):undefined)).limit(1);
   return row??null;
  });
 }

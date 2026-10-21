@@ -44,7 +44,7 @@
  */
 import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import {isOwnPersonTx} from './own-person';
+import {isOwnPersonTx,ownPersonPredicate} from './own-person';
 import { actorOf, appendEvent } from '../db/events';
 import { assertCanDecide } from './approvals';
 import {
@@ -1071,7 +1071,7 @@ export async function cancelOwnReplacementLeaveRequest(
       .select({ id: replacementLeaveRequest.id, status: replacementLeaveRequest.status, employmentId: replacementLeaveRequest.employmentId })
       .from(replacementLeaveRequest)
       .innerJoin(employment, eq(employment.id, replacementLeaveRequest.employmentId))
-      .where(and(eq(replacementLeaveRequest.id, p.requestId), eq(employment.personId, personId)))
+      .where(and(ownPersonPredicate(ctx),eq(replacementLeaveRequest.id, p.requestId), eq(employment.personId, personId)))
       .limit(1);
     if (!req) throw notFound();
     if (req.status !== 'pending') {
@@ -1082,6 +1082,7 @@ export async function cancelOwnReplacementLeaveRequest(
       .set({ status: 'cancelled', updatedAt: new Date() })
       .where(
         and(
+          ownPersonPredicate(ctx),
           eq(replacementLeaveRequest.id, req.id),
           eq(replacementLeaveRequest.employmentId, req.employmentId),
           eq(replacementLeaveRequest.status, 'pending'),

@@ -14,6 +14,7 @@ import {readOwnProfileWorkspace} from '../core/profile-edit';
 import {submitResignation,withdrawResignation,myResignation,listResignationRequests} from '../core/offboarding';
 import {cancelOwnReplacementLeaveRequest} from '../core/replacement-request';
 import {person,profileChangeRequest,replacementLeaveRequest,resignationRequest} from '../db/schema';
+import {todayInKualaLumpur} from '../lib/hr-date';
 
 let b:Base;
 beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase();});afterAll(closeAll);
@@ -58,7 +59,7 @@ describe('own-only consumer identity is independent of broad HR row visibility',
  });
  it('refuses forged resignation submission/read/withdrawal and a real HR Person paired with another employment',async()=>{
   const {hr,other,forged}=await fixture();
-  const input={employmentId:other.employmentId,lastWorkingDay:'2040-12-31',reason:'Fictional own request'};
+  const input={employmentId:other.employmentId,lastWorkingDay:todayInKualaLumpur(new Date(Date.now()+30*86400_000)),reason:'Fictional own request'};
   await expect(submitResignation(forged,input)).rejects.toThrow('not linked');
   await expect(submitResignation(hr.ctx,input)).rejects.toThrow('selected employee profile');
   expect(await owner.db.select().from(resignationRequest)).toEqual([]);
@@ -71,8 +72,21 @@ describe('own-only consumer identity is independent of broad HR row visibility',
   await expect(withdrawResignation(forged,{requestId})).rejects.toThrow('Only the employee');
   expect((await myResignation(other.ctx,other.employmentId))?.status).toBe('pending');
   expect(await eventTypesFor(b.tenantId,requestId)).toEqual(events);
-  await withdrawResignation(other.ctx,{requestId});
+  const withdrawals=await Promise.allSettled([withdrawResignation(other.ctx,{requestId}),withdrawResignation(other.ctx,{requestId})]);
+  expect(withdrawals.filter(result=>result.status==='fulfilled')).toHaveLength(1);
+  expect(withdrawals.filter(result=>result.status==='rejected')).toHaveLength(1);
   expect((await myResignation(other.ctx,other.employmentId))?.status).toBe('withdrawn');
+  expect((await eventTypesFor(b.tenantId,requestId)).filter(type=>type==='resignation.withdrawn')).toHaveLength(1);
+ });
+ it('serializes concurrent own resignation submissions before the pending-request check',async()=>{
+  const {other}=await fixture();
+  const input={employmentId:other.employmentId,lastWorkingDay:todayInKualaLumpur(new Date(Date.now()+30*86400_000)),reason:'Fictional concurrent own request'};
+  const results=await Promise.allSettled([submitResignation(other.ctx,input),submitResignation(other.ctx,input)]);
+  expect(results.filter(result=>result.status==='fulfilled')).toHaveLength(1);
+  expect(results.filter(result=>result.status==='rejected')).toHaveLength(1);
+  const rows=await owner.db.select({id:resignationRequest.id}).from(resignationRequest).where(eq(resignationRequest.employmentId,other.employmentId));
+  expect(rows).toHaveLength(1);
+  expect((await eventTypesFor(b.tenantId,rows[0].id)).filter(type=>type==='resignation.submitted')).toHaveLength(1);
  });
  it('refuses forged own-credit cancellation without changing the populated pending request or audit',async()=>{
   const {other,forged}=await fixture();

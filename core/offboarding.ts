@@ -44,7 +44,7 @@ export async function submitResignation(
   const personId = ctx.personId;
   return withTenant(ctx, async (tx) => {
     if(!await isOwnPersonTx(tx,ctx))throw new ResignationError('This account is not linked to an employee profile.');
-    const [subject]=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.personId,personId))).limit(1);
+    const [subject]=await tx.select({id:employment.id}).from(employment).where(and(ownPersonPredicate(ctx),eq(employment.id,p.employmentId),eq(employment.personId,personId))).limit(1).for('update');
     if(!subject)throw new ResignationError('This account is not linked to the selected employee profile.');
     const [open] = await tx
       .select({ id: resignationRequest.id })
@@ -81,13 +81,16 @@ export async function submitResignation(
 export async function withdrawResignation(ctx: SessionContext, p: { requestId: string }) {
   return withTenant(ctx, async (tx) => {
     if(!await isOwnPersonTx(tx,ctx))throw new ResignationError('Only the employee can withdraw their own resignation.');
-    const [req] = await tx.select().from(resignationRequest).where(eq(resignationRequest.id, p.requestId)).limit(1);
+    const [req] = await tx.select().from(resignationRequest).where(and(ownPersonPredicate(ctx),eq(resignationRequest.id, p.requestId))).limit(1);
     if (!req) throw new ResignationError('Resignation not found (or not visible).');
     if (req.status !== 'pending') throw new ResignationError(`This resignation is already ${req.status}.`);
     if (!ctx.personId || req.personId !== ctx.personId) {
       throw new ResignationError('Only the employee can withdraw their own resignation.');
     }
-    await tx.update(resignationRequest).set({ status: 'withdrawn' }).where(eq(resignationRequest.id, req.id));
+    const changed=await tx.update(resignationRequest).set({status:'withdrawn'})
+      .where(and(ownPersonPredicate(ctx),eq(resignationRequest.id,req.id),eq(resignationRequest.personId,ctx.personId),eq(resignationRequest.status,'pending')))
+      .returning({id:resignationRequest.id});
+    if(changed.length!==1)throw new ResignationError('Only a pending resignation can be withdrawn.');
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'resignation',
