@@ -77,7 +77,8 @@ export async function resolveProfileRouteTx(tx:Tx,ctx:SessionContext,subjectId:s
  const rule=matches[0],principal=await namedPrincipal(tx,rule.approverEmploymentId,subjectId);
  return {routeId:rule.id,routeRevision:policy.revision,routeApproverUserId:principal.user_id,routeApproverEmploymentId:principal.employment_id,routeContext};
 }
-export async function assertProfileRouteDecisionTx(tx:Tx,ctx:SessionContext,request:typeof profileChangeRequest.$inferSelect){
+export type ProfileRouteDecisionSubject=Pick<typeof profileChangeRequest.$inferSelect,'employmentId'|'routeId'|'routeRevision'|'routeApproverUserId'|'routeApproverEmploymentId'|'routeContext'>;
+export async function assertProfileRouteDecisionTx(tx:Tx,ctx:SessionContext,request:ProfileRouteDecisionSubject){
  const policy=readProfileRoutingPolicy(ctx);
  if(!request.routeId){if(policy.enabled)throw new ProfileRoutingError('changed');return;}
  const current=await resolveProfileRouteTx(tx,ctx,request.employmentId);

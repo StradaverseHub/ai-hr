@@ -20,7 +20,7 @@ import { APPROVAL_SECTION_ID } from '../lib/approvals-focus';
 import type { SessionContext } from '../db/client';
 import { listLeaveRequests, listPendingLeaveCancellations } from './read';
 import { listAttendanceCorrections } from './attendance';
-import { listProfileChangeRequests } from './profile';
+import { listProfileChangeRequests,actionableProfileChangeIds } from './profile';
 import { listPendingClaims } from './claims';
 import { listResignationRequests } from './offboarding';
 import { listReviews, pendingManagerReviewsFor } from './employment-review';
@@ -114,12 +114,13 @@ export async function listPendingTasks(
   const cancellationCandidates = leaveCancellations.filter(
     (r) => ctx.personId == null || r.personId !== ctx.personId,
   );
-  const [leaveDecisions,cancellationDecisions,claimDecisions]=await Promise.all([
+  const [leaveDecisions,cancellationDecisions,claimDecisions,profileDecisions]=await Promise.all([
     actionableLeaveRequests(ctx,{employmentIds:[...new Set(leaveCandidates.map(row=>row.employmentId))],requestIds:leaveCandidates.map(row=>row.id)}),
     actionableLeaveCancellationIds(ctx,cancellationCandidates.map(row=>row.id)),
     modules.claims?actionablePendingClaimIds(ctx,claims.map(row=>row.id)):Promise.resolve([]),
+    profileChanges.length?actionableProfileChangeIds(ctx,profileChanges.map(row=>row.id)):Promise.resolve([]),
   ]);
-  const leaveIds=new Set(leaveDecisions.map(row=>row.requestId)),cancellationIds=new Set(cancellationDecisions),claimIds=new Set(claimDecisions);
+  const leaveIds=new Set(leaveDecisions.map(row=>row.requestId)),cancellationIds=new Set(cancellationDecisions),claimIds=new Set(claimDecisions),profileIds=new Set(profileDecisions);
   const actionableLeave=leaveCandidates.filter(row=>leaveIds.has(row.id));
   const actionableCancellations=cancellationCandidates.filter(row=>cancellationIds.has(row.id));
 
@@ -146,7 +147,7 @@ export async function listPendingTasks(
       createdAt: iso(r.createdAt),
       linkPath: '/approvals',
     })),
-    ...profileChanges.map((r) => ({
+    ...profileChanges.filter(r=>profileIds.has(r.id)).map((r) => ({
       id: r.id,
       kind: 'profile' as const,
       subjectName: r.employee,
@@ -160,7 +161,7 @@ export async function listPendingTasks(
       createdAt: iso(r.createdAt),
       linkPath: '/approvals',
     })),
-    ...resignations.map((r) => ({
+    ...resignations.filter(r=>ctx.personId==null||r.personId!==ctx.personId).map((r) => ({
       id: r.id,
       kind: 'resignation' as const,
       subjectName: r.employee,
@@ -175,7 +176,7 @@ export async function listPendingTasks(
       linkPath: '/approvals',
       dueDate:r.dueDate,
     })),
-    ...hrReviews.map((r) => ({
+    ...hrReviews.filter(r=>ctx.personId==null||r.personId!==ctx.personId).map((r) => ({
       id: r.id,
       kind: 'hrReview' as const,
       subjectName: r.employee,

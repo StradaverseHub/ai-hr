@@ -10,6 +10,9 @@ import {createClaimType,submitClaim,decideClaim,actionablePendingClaimIds} from 
 import {listPendingTasks} from '../core/approvals-inbox';
 import {readEmployeeHomeIdentity} from '../core/employee-home';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {seedStoredLegacyProfileRequest} from './helpers/profile-requests';
+import {setTenantSetting} from '../core/tenant-settings';
+import {decideProfileChange} from '../core/profile';
 
 let b:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();});
@@ -72,5 +75,19 @@ describe('Home consumes actual assigned actions, not a manager-role shortcut',()
   await decideClaim(managerCtx,{claimRequestId:claim.id,decision:'approve'});
   expect((await listPendingTasks(managerCtx,undefined,{attendance:false,claims:true})).filter(row=>row.kind==='claim')).toEqual([]);
   expect(await actionableLeaveCancellationIds(managerCtx,candidates)).toEqual([]);
+ });
+ it('keeps own profile requests out and repeats the current group-only profile decision setting',async()=>{
+  const employee=await worker('Fictional profile subject'),hr=await worker('Fictional scoped profile HR');
+  await owner.db.update(s.roleAssignment).set({role:'hr_admin',companyId:b.companyId}).where(eq(s.roleAssignment.appUserId,hr.ctx.userId!));
+  const scoped:SessionContext={...hr.ctx,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:b.companyId}]};
+  const group:SessionContext={...await entitledCtx(b),grants:[{role:'hr_admin',companyId:null}]};
+  const request=await seedStoredLegacyProfileRequest(employee.ctx,{employmentId:employee.employmentId,proposed:{preferredName:'Fictional stored proposal'}});
+  const own=await seedStoredLegacyProfileRequest(scoped,{employmentId:hr.employmentId,proposed:{preferredName:'Fictional own stored proposal'}});
+  expect((await tasks(scoped)).filter(row=>row.kind==='profile').map(row=>row.id)).toEqual([request.requestId]);
+  await setTenantSetting(group,{key:'ess.profile_change_approver',value:'group_admin'});
+  expect((await tasks(scoped)).filter(row=>row.kind==='profile')).toEqual([]);
+  expect(new Set((await tasks(group)).filter(row=>row.kind==='profile').map(row=>row.id))).toEqual(new Set([request.requestId,own.requestId]));
+  await decideProfileChange(group,{requestId:request.requestId,decision:'rejected',reason:'Fictional task completion review'});
+  expect((await tasks(group)).filter(row=>row.kind==='profile').map(row=>row.id)).toEqual([own.requestId]);
  });
 });
