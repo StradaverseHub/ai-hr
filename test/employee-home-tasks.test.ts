@@ -20,7 +20,7 @@ const {GET}=await import('../app/api/home/tasks/route');
 const today=()=>todayInKualaLumpur(),date=(offset:number)=>new Date(Date.parse(today()+'T12:00:00Z')+offset*86400000).toISOString().slice(0,10);
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();});
 async function employee(name:string,manager?:string){
- const hired=await hireEmployee(adminCtx(b),{person:{fullName:name,primaryEmail:randomUUID()+'@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:date(-300),reportingManagerEmploymentId:manager});
+ const hired=await hireEmployee(adminCtx(b),{person:{fullName:name,primaryEmail:randomUUID()+'@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:date(-800),reportingManagerEmploymentId:manager});
  const ctx:SessionContext={tenantId:b.tenantId,userId:await createAppUser(b.tenantId,hired.personId,'employee'),personId:hired.personId,roles:['employee'],entitlements:harnessSnapshot(b.tenantId)};
  return {...hired,ctx};
 }
@@ -76,7 +76,7 @@ describe('Home Waiting for You projects complete actual owner assignments',()=>{
   const [grade]=await owner.db.insert(s.jobGrade).values({tenantId:b.tenantId,code:'12',name:'Fictional grade'}).returning();
   for(const e of [manager,subject,peer])await owner.db.update(s.employment).set({gradeId:grade.id}).where(eq(s.employment.id,e.employmentId));
   const {cycleId}=await perf.createCycle(a,{name:'Fictional current 360',companyId:b.companyId,periodStart:date(-30),periodEnd:date(30)});
-  await perf.configureOnehrCycle(a,cycleId,null,defaultPolicy(framework));await perf.openCycle(a,{cycleId});
+  await perf.configureOnehrCycle(a,cycleId,null,defaultPolicy(framework));expect(await perf.openCycle(a,{cycleId})).toMatchObject({reviewsSpawned:3});
   const [review]=await owner.db.select({id:s.performanceReview.id}).from(s.performanceReview).where(and(eq(s.performanceReview.cycleId,cycleId),eq(s.performanceReview.employmentId,subject.employmentId)));
   const view=await perf.getOnehrReview(a,review.id);await perf.assignOnehrPanel(a,review.id,view!.revision,[{employmentId:peer.employmentId,relationship:'peer'}]);
   const assigned=await perf.pendingOnehrFeedbackTaskMetadata(peer.ctx);expect(assigned).toHaveLength(1);expect(assigned[0].linkPath).toBe('/performance/assessment/feedback/'+assigned[0].id);
