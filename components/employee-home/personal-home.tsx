@@ -15,7 +15,7 @@ import {HomeCalendarCard} from './calendar-card';
 import {homeDisplayClock,type EmployeeHomeCard} from '@/lib/employee-home';
 
 /** Personal landing composition only. Every card retrieves its own authorized facts independently. */
-export async function EmployeePersonalHome({session,employmentId,teamWorkbench=false}:{session:SessionContext;employmentId?:string;teamWorkbench?:boolean}){
+export async function EmployeePersonalHome({session,employmentId}:{session:SessionContext;employmentId?:string}){
  const ownIdentity=readEmployeeHomeIdentity(session,employmentId).catch(error=>{
   if(error instanceof HomeAccessError&&error.code==='employmentUnavailable')notFound();
   throw error;
@@ -33,7 +33,7 @@ export async function EmployeePersonalHome({session,employmentId,teamWorkbench=f
  const cards=Object.fromEntries(Object.entries(available).filter(([key])=>permitted.has(key)));
  return <div className="mx-auto max-w-7xl space-y-5">
   <nav className="flex flex-wrap justify-end gap-4" aria-label={t('homeOptions')}>
-   {teamWorkbench&&<Link href="/?workspace=team" className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('teamWorkbench')}</Link>}
+   {identity.role==='manager'&&<Link href={'/?'+new URLSearchParams({workspace:'team',...(selected?{employmentId:selected}:{})})} className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('teamWorkbench')}</Link>}
    <Link href="/me/home" className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('preferences.title')}</Link>
   </nav>
   <EmployeeHomeSurface identity={identity} preferences={preferences} cards={cards} labels={{title:t('title'),employment:t('employment'),chooseEmployment:t('chooseEmployment'),chooseHelp:t('chooseHelp'),showEmployment:t('showEmployment'),noEmployment:t('noEmployment'),companyUnavailable:t('companyUnavailable'),employeeCodeUnavailable:t('employeeCodeUnavailable')}}/>

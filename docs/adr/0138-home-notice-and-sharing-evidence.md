@@ -124,6 +124,16 @@ fourteen intervening dates, including ordinary rest days and actual holidays. If
 cannot be established within the bound, use the ordinary greeting; this does not assert attendance or
 an employee's return. It never creates a clock capture, leave state or notification.
 
+## Personal landing admission
+
+The default employee/manager landing returns before the legacy first-employment read, which includes
+compensation, as well as before legacy aggregates and assistant composition. The selected salary-free
+Home identity determines the manager-workbench affordance. Its link retains that selected employment;
+an explicit workbench request must repeat the same own-identity and real management-authority proof.
+An organizational manager on a second employment is not replaced by the first employment. A real
+manager role without an own employment retains its separately authorized legacy workbench. Admin
+workbench composition keeps its existing service-level permissions.
+
 ## Personal calendar projection
 
 Month, week and list are views over the same selected own employment and complete calendar weeks

@@ -1,4 +1,6 @@
 import {beforeEach,describe,expect,it,vi} from 'vitest';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {defaultEmployeeHomePreferences} from '../lib/employee-home';
 const m=vi.hoisted(()=>({identity:vi.fn(),cards:vi.fn(),preferences:vi.fn(),missing:vi.fn()}));
 vi.mock('@/core/employee-home',()=>({readEmployeeHomeIdentity:m.identity,HomeAccessError:class extends Error{constructor(readonly code:string){super('Private Home context');}}}));
 vi.mock('@/core/dashboard-card-config',()=>({listEmployeeHomeCards:m.cards}));
@@ -19,5 +21,16 @@ describe('personal Home selection refusal',()=>{
   const failure=new Error('Fictional service outage');m.identity.mockRejectedValueOnce(failure);
   await expect(EmployeePersonalHome({session:ctx,employmentId:'own'})).rejects.toBe(failure);
   expect(m.missing).not.toHaveBeenCalled();expect(m.preferences).not.toHaveBeenCalled();
+ });
+ it('derives the workbench link from the selected salary-free identity and retains its employment',async()=>{
+  m.preferences.mockResolvedValue(defaultEmployeeHomePreferences());
+  m.identity.mockResolvedValue({version:1,role:'manager',employmentState:'selected',selectedEmploymentId:'own-second',companyEstablished:true,
+   employments:[{employmentId:'own-first',employeeCode:'A',company:'Fictional A'},{employmentId:'own-second',employeeCode:'B',company:'Fictional B'}]});
+  const html=renderToStaticMarkup(await EmployeePersonalHome({session:ctx,employmentId:'own-second'}));
+  expect(html).toContain('workspace=team&amp;employmentId=own-second');
+  m.identity.mockResolvedValue({version:1,role:'employee',employmentState:'selected',selectedEmploymentId:'own-second',companyEstablished:true,
+   employments:[{employmentId:'own-second',employeeCode:'B',company:'Fictional B'}]});
+  const employeeHtml=renderToStaticMarkup(await EmployeePersonalHome({session:{...ctx,roles:['manager']},employmentId:'own-second'}));
+  expect(employeeHtml).not.toContain('workspace=team');
  });
 });
