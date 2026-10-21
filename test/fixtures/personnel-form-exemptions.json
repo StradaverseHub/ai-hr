@@ -6,7 +6,7 @@
       "hidden": true,
       "occurrences": 1,
       "name": "employmentId",
-      "reason": "Subject pointer for dedicated setTestRecordAction → setEmploymentTestRecord; the owner rechecks current company administration and employment scope. This hidden ID does not edit a Personnel fact."
+      "reason": "Subject pointer for dedicated setTestRecordAction \u2192 setEmploymentTestRecord; the owner rechecks current company administration and employment scope. This hidden ID does not edit a Personnel fact."
     },
     {
       "tag": "input",
@@ -239,14 +239,6 @@
       "occurrences": 1,
       "name": "employmentId",
       "reason": "Guarded action record/subject pointer (employmentId) used by payrollPolicyCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
-    },
-    {
-      "tag": "input",
-      "context": "defaultShiftCard",
-      "hidden": true,
-      "occurrences": 1,
-      "name": "employmentId",
-      "reason": "Guarded action record/subject pointer (employmentId) used by defaultShiftCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
     },
     {
       "tag": "input",

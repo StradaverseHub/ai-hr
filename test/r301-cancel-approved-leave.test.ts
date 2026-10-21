@@ -27,6 +27,7 @@ import { withTenant, type SessionContext } from '../db/client';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
 import { createLeaveType, updateLeaveType } from '../core/admin';
+import { createPolicy, assignPolicy } from '../core/payroll-policy';
 import {
   adminCancelLeave,
   cancelApprovedSettingOf,
@@ -339,6 +340,10 @@ describe('AUTO-APPROVE — cancelled and days back in the same request, as a sys
   it('a closed payroll month is still refused, and nothing is written', async () => {
     const id = await approvedWeek();
     await setRule({ employeeCancelApproved: true, cancelAutoApprove: true });
+    // This is paid Annual Leave. Cancellation affects closed pay only when its approved days
+    // relieve an absence deduction; a closed unrelated/financially unaffected run is not a fence.
+    const policy=await createPolicy(adminCtx(b),{companyId:b.companyId,name:'Closed annual-leave absence relief',policyType:'monthly',config:{leave:{deductAbsentDays:true}}});
+    await assignPolicy(adminCtx(b),{employmentId:subject.employmentId,policyId:policy.id});
     const period = WED.slice(0, 7);
     const [pp] = await owner.db
       .insert(schema.payPeriod)
@@ -360,12 +365,14 @@ describe('AUTO-APPROVE — cancelled and days back in the same request, as a sys
       employerCost: '5600.00',
     });
     const before = await ledgerBalance(subject.employmentId, b.annualLeaveTypeId);
+    const beforePayslips=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batch.id));
     await expect(
       requestLeaveCancellation(subjectCtx, { leaveRequestId: id, cancelDates: [WED], today: TODAY }),
     ).rejects.toBeInstanceOf(LeaveCancellationPeriodClosedError);
     expect(await cancellationRows(id)).toEqual([]);
     expect(await leaveStatus(id)).toBe('approved');
     expect(await ledgerBalance(subject.employmentId, b.annualLeaveTypeId)).toBeCloseTo(before, 2);
+    expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batch.id))).toEqual(beforePayslips);
   });
 });
 
