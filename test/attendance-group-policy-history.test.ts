@@ -105,6 +105,30 @@ describe('future attendance execution policy history',()=>{
   await expect(scheduleAttendanceGroupPolicy(ctx,{...input(),policy:invalid})).rejects.toThrow();
   expect(await attendanceGroupPolicyHistory(ctx,{companyId:b.companyId,ruleId})).toEqual([]);
  });
+ it('accepts a narrowed live company subtree and rejects forged global or foreign grants in raw SQL as well as the service',async()=>{
+  const [child]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional permitted policy child',parentCompanyId:b.companyId}).returning();
+  const [foreign]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional foreign policy root'}).returning();
+  for(const companyId of [b.companyId,child.id,foreign.id])await scheduleAttendanceGroupPolicy(ctx,{...input(),companyId});
+  const [admin]=await owner.db.insert(s.appUser).values({tenantId:b.tenantId,workosUserId:'policy-scoped-'+randomUUID()}).returning();
+  await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:admin.id,role:'hr_admin',companyId:b.companyId});
+  const full:SessionContext={...ctx,userId:admin.id,personId:null,grants:[{role:'hr_admin',companyId:b.companyId}]};
+  const narrow:SessionContext={...full,grants:[{role:'hr_admin',companyId:child.id}]};
+  const visible=(actor:SessionContext)=>withTenant(actor,tx=>tx.select({companyId:s.attendanceGroupPolicyRevision.companyId})
+   .from(s.attendanceGroupPolicyRevision).orderBy(asc(s.attendanceGroupPolicyRevision.companyId)));
+  expect(await visible(full)).toEqual([b.companyId,child.id].sort().map(companyId=>({companyId})));
+  expect(await visible(narrow)).toEqual([{companyId:child.id}]);
+  expect(await attendanceGroupPolicyHistory(narrow,{companyId:child.id,ruleId})).toHaveLength(1);
+  await expect(attendanceGroupPolicyHistory(narrow,{companyId:b.companyId,ruleId})).rejects.toThrow();
+  await scheduleAttendanceGroupPolicy(narrow,{...input(),companyId:child.id,expectedOrdinal:1,effectiveFrom:plus(2)});
+  for(const companyId of [null,foreign.id]){
+   const forged:SessionContext={...full,grants:[{role:'hr_admin',companyId}]};
+   expect(await visible(forged)).toEqual([]);
+   await expect(attendanceGroupPolicyHistory(forged,{companyId:foreign.id,ruleId})).rejects.toThrow();
+   await expect(withTenant(forged,tx=>tx.insert(s.attendanceGroupPolicyRevision).values({tenantId:b.tenantId,
+    companyId:foreign.id,ruleId,ordinal:2,effectiveFrom:plus(3),policy:policy(),reason:'Fictional widened-scope denial',createdByUserId:admin.id}))).rejects.toMatchObject({cause:{code:'42501'}});
+  }
+  expect(await attendanceGroupPolicyHistory(ctx,{companyId:foreign.id,ruleId})).toHaveLength(1);
+ });
  it('checks current grants and module status before returning history or writing new versions',async()=>{
   await scheduleAttendanceGroupPolicy(ctx,input());
   await setModule(b.tenantId,'attendance','disabled');
