@@ -646,7 +646,7 @@ function employeeNoticeFields(){return {
  startOn:notice.startOn,endOn:notice.endOn,showEndDate:notice.showEndDate,publishedAt:notice.publishedAt,
  popupEnabled:notice.popupEnabled,popupFrequency:notice.popupFrequency,
  acknowledgedAt:sql<Date|null>`(SELECT a.acknowledged_at FROM public.notice_acknowledgement a
-  WHERE a.recipient_id=notice_recipient.id AND a.tenant_id=notice_recipient.tenant_id AND a.notice_id=notice.id AND a.content_version=notice.content_version LIMIT 1)`,
+  WHERE a.recipient_id=notice_recipient.id AND a.tenant_id=notice_recipient.tenant_id AND a.notice_id=notice.id AND a.content_version=notice.content_version LIMIT 1)`.mapWith(noticeAcknowledgement.acknowledgedAt),
  firstViewedAt:noticeRecipient.firstViewedAt,popupDismissedAt:noticeRecipient.popupDismissedAt,
  publishedBy:sql<string|null>`app.notice_sender_display_name(notice.id)`,
 };}

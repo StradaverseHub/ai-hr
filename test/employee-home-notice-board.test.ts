@@ -46,6 +46,9 @@ describe('Selected own Notice board and bounded metadata',()=>{
   const first=await readOwnNoticeBoard(e.ctx,e.employmentId,{pageSize:5});
   expect(first).toMatchObject({total:23,unread:22,acknowledgementRequired:11,page:1,pageSize:5,pages:5});
   expect(first.items).toHaveLength(5);expect(first.items[0].id).toBe(ids[0]);
+  expect(first.items[0].acknowledgedAt).toBeInstanceOf(Date);
+  const detail=await readOwnNotice(e.ctx,e.employmentId,ids[0]);expect(detail!.acknowledgedAt).toBeInstanceOf(Date);
+  expect(detail!.acknowledgedAt!.toISOString()).toBe(first.items[0].acknowledgedAt!.toISOString());
   const home=await readEmployeeHomeNotices(e.ctx,e.employmentId);
   expect(home).toMatchObject({version:1,employmentId:e.employmentId,total:23,unread:22,acknowledgementRequired:11});
   expect(home.items.map(row=>row.id)).toEqual(first.items.map(row=>row.id));
