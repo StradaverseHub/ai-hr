@@ -1,5 +1,5 @@
 /** Same policy advisory key for every canonical settings writer and profile mutation. */
-import {createHash} from 'node:crypto';
+import {profileVisibilityFingerprint} from '../lib/profile-policy-fingerprint';
 import {resolveEssVisibleIds} from '../lib/personnel-ess-visibility';
 import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
@@ -82,6 +82,3 @@ export function saveOwnPhotoSubmissionSetting(ctx:SessionContext,p:{enabled:bool
   return withdrawProfileChangesForLockedFields(fresh.ctx,{lockedKeys:p.enabled?[]:['profile.personal_details.photo'],reason:p.withdrawnReason},tx);
  });
 }
-
-/** A stale settings form cannot overwrite a newer privacy decision. No personal values enter this token. */
-export function profileVisibilityFingerprint(raw:unknown){return createHash('sha256').update(JSON.stringify(raw??null)).digest('hex');}

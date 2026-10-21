@@ -28,9 +28,10 @@ REVOKE ALL ON profile_photo_proposal FROM PUBLIC,ai_hr_app;
 GRANT SELECT,INSERT ON profile_photo_proposal TO ai_hr_app;
 --> statement-breakpoint
 -- The owning retention trigger can purge decided bytes under FORCE RLS; runtime gets no DELETE.
-CREATE POLICY profile_photo_proposal_retention_read ON profile_photo_proposal FOR SELECT TO ai_hr_owner USING(tenant_id=app.current_tenant_id());
+-- Resolve the actual schema owner (postgres in the dev gate, ai_hr_owner in production/rehearsal).
+CREATE POLICY profile_photo_proposal_retention_read ON profile_photo_proposal FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.acting_as_owner());
 --> statement-breakpoint
-CREATE POLICY profile_photo_proposal_retention_delete ON profile_photo_proposal FOR DELETE TO ai_hr_owner USING(tenant_id=app.current_tenant_id());
+CREATE POLICY profile_photo_proposal_retention_delete ON profile_photo_proposal FOR DELETE USING(tenant_id=app.current_tenant_id() AND app.acting_as_owner());
 --> statement-breakpoint
 -- Exact photo disclosure/submission limits, including the v4 tab/section upper bound.
 CREATE FUNCTION app.profile_photo_proposal_allowed() RETURNS boolean

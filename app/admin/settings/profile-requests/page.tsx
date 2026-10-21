@@ -5,7 +5,7 @@ import {listBusinessUnits,listCostCenters,listPositions} from '@/core/admin';
 import {listAllProfileOptions} from '@/core/profile-options';
 import {buildOrgCriteriaSections} from '@/core/org-criteria-form';
 import {PermissionMatrix} from './permission-matrix';
-import {profileVisibilityFingerprint} from '@/core/profile-edit-policy';
+import {profileVisibilityFingerprint} from '@/lib/profile-policy-fingerprint';
 import {isProfileVisibilityPolicyValue} from '@/lib/profile-edit-policy-value';
 import {resolveEssVisibleIds,linkedEssFieldIds} from '@/lib/personnel-ess-visibility';
 import { getTranslations } from 'next-intl/server';
