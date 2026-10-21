@@ -1,8 +1,9 @@
 import type {ReactNode} from 'react';
 import Link from 'next/link';
+import {notFound} from 'next/navigation';
 import {getTranslations} from 'next-intl/server';
 import type {SessionContext} from '@/db/client';
-import {readEmployeeHomeIdentity} from '@/core/employee-home';
+import {HomeAccessError,readEmployeeHomeIdentity} from '@/core/employee-home';
 import {listEmployeeHomeCards} from '@/core/dashboard-card-config';
 import {getEmployeeHomePreferences} from '@/core/dashboard-prefs';
 import {EmployeeHomeSurface} from './home-surface';
@@ -14,7 +15,11 @@ import type {EmployeeHomeCard} from '@/lib/employee-home';
 
 /** Personal landing composition only. Every card retrieves its own authorized facts independently. */
 export async function EmployeePersonalHome({session,employmentId,teamWorkbench=false}:{session:SessionContext;employmentId?:string;teamWorkbench?:boolean}){
- const [identity,catalogue,t]=await Promise.all([readEmployeeHomeIdentity(session,employmentId),listEmployeeHomeCards(session),getTranslations('employeeHome')]);
+ const ownIdentity=readEmployeeHomeIdentity(session,employmentId).catch(error=>{
+  if(error instanceof HomeAccessError&&error.code==='employmentUnavailable')notFound();
+  throw error;
+ });
+ const [identity,catalogue,t]=await Promise.all([ownIdentity,listEmployeeHomeCards(session),getTranslations('employeeHome')]);
  const preferences=await getEmployeeHomePreferences(session,catalogue),selected=identity.selectedEmploymentId;
  const permitted=new Set(catalogue.map(card=>card.cardKey));
  const available:Partial<Record<EmployeeHomeCard,ReactNode>>=selected?{

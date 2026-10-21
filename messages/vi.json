@@ -22266,7 +22266,7 @@
       "language": "Ngôn ngữ",
       "weekStart": "Ngày đầu tuần",
       "timeZone": "Múi giờ hiển thị",
-      "timeZoneHelp": "Dùng múi giờ IANA như Asia/Kuala_Lumpur, hoặc để trống để dùng múi giờ thiết bị. Tùy chọn này chỉ đổi hiển thị, không đổi ngày chấm công hay tính lương của công ty.",
+      "timeZoneHelp": "Dùng múi giờ IANA như Asia/Tokyo, hoặc để trống để dùng múi giờ mặc định của hệ thống (Asia/Kuala_Lumpur). Thiết lập này chỉ đổi cách hiển thị, không đổi ngày chấm công hay trả lương của công ty.",
       "cards": "Thẻ trang chủ",
       "cardsHelp": "Chọn các thẻ tùy chọn cần hiển thị. Dùng nút mũi tên để sắp xếp.",
       "required": "HR yêu cầu hiển thị",

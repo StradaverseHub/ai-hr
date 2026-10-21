@@ -22266,7 +22266,7 @@
       "language": "Bahasa",
       "weekStart": "Hari pertama minggu",
       "timeZone": "Zon waktu paparan",
-      "timeZoneHelp": "Gunakan zon waktu IANA seperti Asia/Kuala_Lumpur, atau biarkan kosong untuk zon waktu peranti. Ini hanya mengubah paparan, bukan tarikh kehadiran atau gaji syarikat.",
+      "timeZoneHelp": "Gunakan zon waktu IANA seperti Asia/Tokyo, atau biarkan kosong untuk lalai sistem (Asia/Kuala_Lumpur). Ini mengubah paparan sahaja, bukan tarikh kehadiran atau gaji syarikat.",
       "cards": "Kad Home",
       "cardsHelp": "Pilih kad pilihan yang hendak dipaparkan. Gunakan butang anak panah untuk menyusunnya.",
       "required": "Diwajibkan oleh HR",

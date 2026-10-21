@@ -31,7 +31,7 @@ export function EmployeeHomeSurface({identity,preferences,cards,labels}:{
       (identity.companyEstablished?selected.company:labels.companyUnavailable):undefined}/>
     {identity.employments.length>1&&<form key={`${identity.employmentState}:${identity.selectedEmploymentId??''}`}
       action="/" method="get" className="flex flex-wrap items-end gap-3">
-      <label className="flex min-w-0 flex-1 flex-col gap-2 text-sm font-medium sm:max-w-md">
+      <label className="flex min-w-0 basis-full flex-1 flex-col gap-2 text-sm font-medium sm:basis-auto sm:max-w-md">
         {labels.employment}
         <select name="employmentId" required defaultValue={ready?selected.employmentId:''}
           aria-describedby={ready?undefined:'home-employment-help'}

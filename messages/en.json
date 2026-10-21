@@ -22266,7 +22266,7 @@
       "language": "Language",
       "weekStart": "First day of the week",
       "timeZone": "Display timezone",
-      "timeZoneHelp": "Use an IANA timezone such as Asia/Kuala_Lumpur, or leave blank for your device timezone. This changes the display, not company attendance or payroll dates.",
+      "timeZoneHelp": "Use an IANA timezone such as Asia/Tokyo, or leave blank for the system default (Asia/Kuala_Lumpur). This changes the display, not company attendance or payroll dates.",
       "cards": "Home cards",
       "cardsHelp": "Choose which optional cards to show. Use the arrow buttons to arrange them.",
       "required": "Required by HR",

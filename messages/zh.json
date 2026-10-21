@@ -22266,7 +22266,7 @@
       "language": "语言",
       "weekStart": "每周起始日",
       "timeZone": "显示时区",
-      "timeZoneHelp": "输入 IANA 时区，例如 Asia/Kuala_Lumpur，或留空以使用设备时区。这只影响显示，不会更改公司的考勤或薪资日期。",
+      "timeZoneHelp": "请输入 IANA 时区，例如 Asia/Tokyo；留空则使用系统默认时区（Asia/Kuala_Lumpur）。这只改变显示，不影响公司的考勤或发薪日期。",
       "cards": "首页卡片",
       "cardsHelp": "选择要显示的可选卡片，并使用箭头按钮调整顺序。",
       "required": "人力资源部门要求显示",
