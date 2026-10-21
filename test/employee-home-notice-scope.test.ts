@@ -62,7 +62,8 @@ describe('Notice authoring scope and immutable publication membership',()=>{
   const n=await published(b.companyId),extra=await employee(),a=adminCtx(b);
   expect(await code(withTenant(a,tx=>tx.update(s.notice).set({ownerCompanyId:null}).where(eq(s.notice.id,n.id))))).toBe('23514');
   expect(await code(withTenant(a,tx=>tx.update(s.notice).set({publishedAt:null,publishedByUserId:null}).where(eq(s.notice.id,n.id))))).toBe('23514');
-  expect(await code(withTenant(a,tx=>tx.insert(s.noticeRecipient).values({tenantId:b.tenantId,noticeId:n.id,employmentId:extra.employmentId}))))).toBe('23514');
+  const insertion=await code(withTenant(a,tx=>tx.insert(s.noticeRecipient).values({tenantId:b.tenantId,noticeId:n.id,employmentId:extra.employmentId})));
+  expect(insertion).toBe('23514');
   expect(await code(withTenant(a,tx=>tx.delete(s.noticeRecipient).where(eq(s.noticeRecipient.noticeId,n.id))))).toBe('23514');
   expect(await code(withTenant(a,tx=>tx.delete(s.notice).where(eq(s.notice.id,n.id))))).toBe('23514');
  });
