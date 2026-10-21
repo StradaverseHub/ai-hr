@@ -15,6 +15,7 @@ export * from '../../core/attendance';
 export * from './my-calendar';
 export * from '../../core/attendance-allowance';
 export * from '../../core/attendance-calc';
+export * from '../../core/attendance-group-policy';
 export * from '../../core/attendance-derive';
 export * from '../../core/attendance-device';
 export * from '../../core/attendance-rule';
