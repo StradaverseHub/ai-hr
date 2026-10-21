@@ -8,6 +8,7 @@ import {isAdmin} from '../lib/authz-model';
 import {resolveDashboardRole} from '../lib/dashboard-cards';
 import {employeeHomeGreetingName} from '../lib/employee-home';
 import type {EmployeeHomeIdentity,EmployeeHomeGreetingIdentity} from '../lib/employee-home-read-model';
+import {readOwnPayrollHomeMetadata} from '../packs/payroll/service';
 
 export class HomeAccessError extends Error{
  constructor(readonly code:'authentication'|'employmentUnavailable'|'chooseEmployment'){
@@ -69,4 +70,11 @@ export async function readEmployeeHomeGreetingIdentity(ctx:SessionContext,reques
   personId?hasPersonPhoto(ctx,personId):Promise.resolve(false),
  ]);
  return {version:1,employmentId:subject.employmentId,name,photoHref:photo&&personId?`/personnel/photo/${encodeURIComponent(personId)}`:null};
+}
+
+/** Independent pay hint reader. Payroll repeats own-active/login and publication enforcement and
+ * selects metadata only; Home never loads a monetary payslip and then removes its amounts. */
+export async function readEmployeeHomePayHints(ctx:SessionContext,requestedEmploymentId?:string){
+ const subject=await requireOwnHomeSubject(ctx,requestedEmploymentId);
+ return readOwnPayrollHomeMetadata(ctx,subject.employmentId);
 }

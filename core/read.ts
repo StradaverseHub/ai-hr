@@ -1,5 +1,6 @@
 import {emergencyLeaveGroupOriginSql,cancellationSplitGroupSql} from './leave-group-origin-sql';
 import {formulaOvertimeForRowsTx} from '../packs/attendance/service';
+import {payrollPublicationState} from '../lib/payroll-publication';
 /** Read queries for the UI. Each runs via withTenant, so RLS scopes every result. */
 import {
   and,
@@ -6250,10 +6251,10 @@ export function myPayslips(ctx: SessionContext, employmentIds: string[]) {
     // Step 6 — stamp a `released` flag per row: released once the batch is closed AND its release instant has
     // passed. Non-closed batches are never released. Legacy closed batches carry a backfilled releasedAt so
     // they stay visible. The ESS payslip section filters on `released`.
-    const now = Date.now();
+    const now = new Date();
     return rows.map((r) => ({
       ...r,
-      released: r.status === 'closed' && (r.releasedAt == null || r.releasedAt.getTime() <= now),
+      released: payrollPublicationState(r,now)==='published',
     }));
   });
 }
