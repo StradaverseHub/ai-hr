@@ -12271,7 +12271,8 @@
     "viewProfile": "Xem hồ sơ của tôi",
     "live": "Trực tiếp",
     "scope": "Phạm vi",
-    "breadcrumb": "Đường dẫn"
+    "breadcrumb": "Đường dẫn",
+    "homePreferences": "Tùy chọn trang chủ"
   },
   "components": {
     "plannedAbsences": {
@@ -22198,6 +22199,40 @@
       "profile": "Cập nhật thông tin của tôi",
       "calendar": "Lịch của tôi",
       "notices": "Bảng thông báo"
+    },
+    "preferences": {
+      "title": "Tùy chọn trang chủ",
+      "intro": "Chọn cách hiển thị trang chủ cho tài khoản của bạn. HR quản lý các thẻ có sẵn.",
+      "back": "Về trang chủ",
+      "saved": "Đã lưu tùy chọn trang chủ.",
+      "language": "Ngôn ngữ",
+      "weekStart": "Ngày đầu tuần",
+      "timeZone": "Múi giờ hiển thị",
+      "timeZoneHelp": "Dùng múi giờ IANA như Asia/Kuala_Lumpur, hoặc để trống để dùng múi giờ thiết bị. Tùy chọn này chỉ đổi hiển thị, không đổi ngày chấm công hay tính lương của công ty.",
+      "cards": "Thẻ trang chủ",
+      "cardsHelp": "Chọn các thẻ tùy chọn cần hiển thị. Dùng nút mũi tên để sắp xếp.",
+      "required": "HR yêu cầu hiển thị",
+      "managed": "HR quản lý hiển thị",
+      "unavailable": "Hiện không có sẵn",
+      "moveUp": "Chuyển {item} lên",
+      "moveDown": "Chuyển {item} xuống",
+      "moved": "Đã chuyển {item} đến vị trí {position}.",
+      "save": "Lưu tùy chọn",
+      "saving": "Đang lưu…",
+      "reset": "Đặt lại tùy chọn trang chủ",
+      "invalid": "Kiểm tra múi giờ, ngày đầu tuần và các thẻ đã chọn trước khi lưu.",
+      "forbidden": "Quyền truy cập đã thay đổi. Hãy đăng nhập lại trước khi lưu.",
+      "failed": "Chưa thể xác nhận việc lưu. Bản nháp vẫn được giữ. Tải lại để kiểm tra tùy chọn đã lưu trước khi thử lại."
+    },
+    "cardNames": {
+      "summary": "Ngày của tôi tổng quan",
+      "today": "Ngày của bạn",
+      "calendar": "Lịch của tôi",
+      "notices": "Bảng tin",
+      "tasks": "Đang chờ bạn",
+      "timeOff": "Nghỉ phép",
+      "team": "Ai đang ở đây",
+      "celebrations": "Khoảnh khắc nhỏ"
     }
   }
 }

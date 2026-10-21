@@ -186,6 +186,9 @@ export function UserMenu({
             >
               {t('viewProfile')}
             </Link>
+            <Link href="/me/home" role="menuitem" onClick={()=>setOpen(false)} className="flex min-h-11 w-full items-center rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted">
+              {t('homePreferences')}
+            </Link>
             {/* Moved out of the header (r256) so the corner has room to say who you are on a laptop. */}
             <TourLauncher variant="menu" onSelect={() => setOpen(false)} />
             {/* r396 — the UI theme (Monolith | Classic). Here, not in the header: the right cluster is a

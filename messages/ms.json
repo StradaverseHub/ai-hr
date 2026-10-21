@@ -12271,7 +12271,8 @@
     "viewProfile": "Lihat Profil Saya",
     "live": "Langsung",
     "scope": "Skop",
-    "breadcrumb": "Laluan navigasi"
+    "breadcrumb": "Laluan navigasi",
+    "homePreferences": "Keutamaan Home"
   },
   "components": {
     "plannedAbsences": {
@@ -22198,6 +22199,40 @@
       "profile": "Kemas kini maklumat saya",
       "calendar": "Kalendar saya",
       "notices": "Papan Notis"
+    },
+    "preferences": {
+      "title": "Keutamaan Home",
+      "intro": "Pilih paparan Home untuk akaun anda. HR mengawal kad yang tersedia.",
+      "back": "Kembali ke Home",
+      "saved": "Keutamaan Home disimpan.",
+      "language": "Bahasa",
+      "weekStart": "Hari pertama minggu",
+      "timeZone": "Zon waktu paparan",
+      "timeZoneHelp": "Gunakan zon waktu IANA seperti Asia/Kuala_Lumpur, atau biarkan kosong untuk zon waktu peranti. Ini hanya mengubah paparan, bukan tarikh kehadiran atau gaji syarikat.",
+      "cards": "Kad Home",
+      "cardsHelp": "Pilih kad pilihan yang hendak dipaparkan. Gunakan butang anak panah untuk menyusunnya.",
+      "required": "Diwajibkan oleh HR",
+      "managed": "Paparan diuruskan oleh HR",
+      "unavailable": "Tidak tersedia buat masa ini",
+      "moveUp": "Alih {item} ke atas",
+      "moveDown": "Alih {item} ke bawah",
+      "moved": "{item} dialihkan ke kedudukan {position}.",
+      "save": "Simpan keutamaan",
+      "saving": "Menyimpan…",
+      "reset": "Tetapkan semula keutamaan Home",
+      "invalid": "Semak zon waktu, hari pertama minggu dan pilihan kad sebelum menyimpan.",
+      "forbidden": "Akses anda telah berubah. Log masuk semula sebelum menyimpan.",
+      "failed": "Simpanan tidak dapat disahkan. Draf anda dikekalkan. Muat semula untuk menyemak keutamaan tersimpan sebelum mencuba lagi."
+    },
+    "cardNames": {
+      "summary": "Sepintas lalu hari saya",
+      "today": "Hari anda",
+      "calendar": "Kalendar saya",
+      "notices": "Papan notis",
+      "tasks": "Menunggu tindakan anda",
+      "timeOff": "Cuti",
+      "team": "Siapa yang ada",
+      "celebrations": "Detik istimewa"
     }
   }
 }

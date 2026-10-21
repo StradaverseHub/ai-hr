@@ -12271,7 +12271,8 @@
     "viewProfile": "View my profile",
     "live": "Live",
     "scope": "Scope",
-    "breadcrumb": "Breadcrumb"
+    "breadcrumb": "Breadcrumb",
+    "homePreferences": "Home preferences"
   },
   "components": {
     "plannedAbsences": {
@@ -22198,6 +22199,40 @@
       "profile": "Update my details",
       "calendar": "My calendar",
       "notices": "Notice Board"
+    },
+    "preferences": {
+      "title": "Home preferences",
+      "intro": "Choose how Home looks for your account. HR controls which cards are available.",
+      "back": "Back to Home",
+      "saved": "Home preferences saved.",
+      "language": "Language",
+      "weekStart": "First day of the week",
+      "timeZone": "Display timezone",
+      "timeZoneHelp": "Use an IANA timezone such as Asia/Kuala_Lumpur, or leave blank for your device timezone. This changes the display, not company attendance or payroll dates.",
+      "cards": "Home cards",
+      "cardsHelp": "Choose which optional cards to show. Use the arrow buttons to arrange them.",
+      "required": "Required by HR",
+      "managed": "Visibility managed by HR",
+      "unavailable": "Currently unavailable",
+      "moveUp": "Move {item} up",
+      "moveDown": "Move {item} down",
+      "moved": "{item} moved to position {position}.",
+      "save": "Save preferences",
+      "saving": "Saving…",
+      "reset": "Reset Home preferences",
+      "invalid": "Review the timezone, week start and card choices before saving.",
+      "forbidden": "Your access changed. Sign in again before saving.",
+      "failed": "The save could not be confirmed. Your draft is kept. Reload to check saved preferences before retrying."
+    },
+    "cardNames": {
+      "summary": "My Day at a Glance",
+      "today": "Your Day",
+      "calendar": "My Calendar",
+      "notices": "Notice Board",
+      "tasks": "Waiting for You",
+      "timeOff": "Time Off",
+      "team": "Who’s Around",
+      "celebrations": "Little Moments"
     }
   }
 }

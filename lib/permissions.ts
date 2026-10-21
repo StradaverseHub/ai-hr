@@ -108,6 +108,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'attendanceVisibleApplications',href:'/attendance/application-history/visible',labelKey:'attendanceHistory.visibleTitle',guard:'scopedSession',routes:['/attendance/application-history/visible'],hasScopeNote:true},
   {screenKey:'workflowEmail',href:'/admin/settings/notifications',labelKey:'nav.workflowEmail',guard:'scopedAdmin',routes:['/admin/settings/notifications'],hasScopeNote:true},
   {screenKey:'myEmailNotifications',href:'/me/notifications',labelKey:'workflowEmail.preferencesTitle',guard:'scopedSession',routes:['/me/notifications']},
+  {screenKey:'myHomePreferences',href:'/me/home',labelKey:'employeeHome.preferences.title',guard:'scopedSession',routes:['/me/home']},
   { screenKey: 'identityEmail', href: '/admin/settings/email', labelKey: 'nav.identityEmail', guard: 'scopedSession', routes: ['/admin/settings/email'], hasScopeNote: true },
   { screenKey: 'rewards', href: '/rewards', labelKey: 'nav.rewards', guard: 'scopedSession', routes: ['/rewards', '/rewards/[unitId]', '/rewards/[unitId]/people/[entryId]'] },
   { screenKey: 'rewardsAdmin', href: '/admin/rewards', labelKey: 'rewards.adminTitle', guard: 'scopedAdmin', routes: ['/admin/rewards'] },

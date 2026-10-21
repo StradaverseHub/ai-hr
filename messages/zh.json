@@ -12271,7 +12271,8 @@
     "viewProfile": "查看我的资料",
     "live": "实时",
     "scope": "范围",
-    "breadcrumb": "面包屑导航"
+    "breadcrumb": "面包屑导航",
+    "homePreferences": "首页偏好设置"
   },
   "components": {
     "plannedAbsences": {
@@ -22198,6 +22199,40 @@
       "profile": "更新我的资料",
       "calendar": "我的日历",
       "notices": "通知栏"
+    },
+    "preferences": {
+      "title": "首页偏好设置",
+      "intro": "为你的账户选择首页的显示方式。可用卡片由人力资源部门管理。",
+      "back": "返回首页",
+      "saved": "首页偏好设置已保存。",
+      "language": "语言",
+      "weekStart": "每周起始日",
+      "timeZone": "显示时区",
+      "timeZoneHelp": "输入 IANA 时区，例如 Asia/Kuala_Lumpur，或留空以使用设备时区。这只影响显示，不会更改公司的考勤或薪资日期。",
+      "cards": "首页卡片",
+      "cardsHelp": "选择要显示的可选卡片，并使用箭头按钮调整顺序。",
+      "required": "人力资源部门要求显示",
+      "managed": "显示设置由人力资源部门管理",
+      "unavailable": "目前不可用",
+      "moveUp": "将{item}上移",
+      "moveDown": "将{item}下移",
+      "moved": "{item}已移至第{position}位。",
+      "save": "保存偏好设置",
+      "saving": "正在保存…",
+      "reset": "重置首页偏好设置",
+      "invalid": "保存前请检查时区、每周起始日和卡片选项。",
+      "forbidden": "你的访问权限已更改。请重新登录后再保存。",
+      "failed": "无法确认是否保存成功。草稿已保留。重试前请重新加载以检查已保存的偏好设置。"
+    },
+    "cardNames": {
+      "summary": "今日概览",
+      "today": "你的一天",
+      "calendar": "我的日历",
+      "notices": "公告栏",
+      "tasks": "待你处理",
+      "timeOff": "休假",
+      "team": "团队动态",
+      "celebrations": "温馨时刻"
     }
   }
 }
