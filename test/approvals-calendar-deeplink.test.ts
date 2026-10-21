@@ -172,7 +172,15 @@ describe('drift guards (source assertions)', () => {
 
   it('the approvals page narrows listLeaveRequests to PENDING (the 200-row-cap pre-fix, step 1)', () => {
     const src = read('app/approvals/page.tsx');
-    expect(src).toMatch(/listLeaveRequests\(s,\s*scopeIds,\s*200,\s*\{\s*status:\s*'pending'\s*\}\)/);
+    // Focused Home arrival keeps the pending-only invariant and selects its proven record before
+    // the legacy queue ceiling. The ordinary inbox retains the active company UX filter and cap.
+    const call=src.match(/listLeaveRequests\(s, queueScope,[^\n]+/);
+    expect(call).not.toBeNull();
+    expect(call![0]).toContain("focus?1:200, { status: 'pending',requestId:focusedId('leave') }");
+    expect(src).toContain('const queueScope=focus?undefined:scopeIds;');
+    const admission=src.indexOf('if(focus&&!await isCurrentAssignedApproval');
+    expect(admission).toBeGreaterThanOrEqual(0);
+    expect(src.indexOf(call![0])).toBeGreaterThan(admission);
   });
 
   it('/leave keeps its own history read, self-narrowed (step 1 must not disturb it)', () => {
