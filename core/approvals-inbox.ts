@@ -18,15 +18,13 @@
 import { isAdmin } from '../lib/authz-model';
 import { APPROVAL_SECTION_ID } from '../lib/approvals-focus';
 import type { SessionContext } from '../db/client';
-import { listLeaveRequests, listPendingLeaveCancellations } from './read';
 import { listAttendanceCorrections } from './attendance';
-import { listProfileChangeRequests,actionableProfileChangeIds } from './profile';
-import { listPendingClaims } from './claims';
+import {pendingProfileTaskMetadata} from './profile';
 import { listResignationRequests } from './offboarding';
 import { listReviews, pendingManagerReviewsFor } from './employment-review';
 import { myOwnEmploymentSubjects } from './read';
-import {actionableLeaveRequests,actionableLeaveCancellationIds} from '../packs/leave/service';
-import {actionablePendingClaimIds} from '../packs/claims/service';
+import {pendingLeaveTaskMetadata,pendingLeaveCancellationTaskMetadata} from '../packs/leave/service';
+import {pendingClaimTaskMetadata} from '../packs/claims/service';
 import {pendingNoticeAcknowledgementTasks} from './notice';
 
 /** The per-module task vocabulary — each key maps to an i18n label (notifications.task.*). */
@@ -96,10 +94,10 @@ export async function listPendingTasks(
   const managerReviews=[...new Map(managerReviewRows.flat().map(row=>[row.id,row])).values()];
 
   const [leave, leaveCancellations, corrections, profileChanges, claims, resignations, hrReviews,noticeAcknowledgements] = await Promise.all([
-    listLeaveRequests(ctx, scopeIds, 200, { status: 'pending' }),
+    pendingLeaveTaskMetadata(ctx,scopeIds),
     // Partial Leave Cancellation (ADR-0065): pending cancellation requests need the same manager/admin
     // decision as a leave request, so they belong in the inbox — with the same self-exclusion below.
-    listPendingLeaveCancellations(ctx, scopeIds),
+    pendingLeaveCancellationTaskMetadata(ctx,scopeIds),
     // r292 — THE PENDING-TASK COUNT IS A CORE SURFACE (the dashboard tile and the header badge), so it
     // must survive a tenant that declined the optional packs. `listAttendanceCorrections` and
     // `listPendingClaims` are service-gated now (core/module-gate.ts) and would throw
@@ -107,8 +105,8 @@ export async function listPendingTasks(
     // Attendance has no corrections awaiting anyone. The `...OrFalse` form is used for the reason its
     // header gives — a resolver outage must cost one queue, not the whole inbox.
     modules.attendance ? listAttendanceCorrections(ctx, { companyIds: scopeIds, status: 'pending' }) : Promise.resolve([]),
-    admin ? listProfileChangeRequests(ctx, { companyIds: scopeIds, status: 'pending' }) : Promise.resolve([]),
-    modules.claims ? listPendingClaims(ctx) : Promise.resolve([]),
+    admin ? pendingProfileTaskMetadata(ctx,scopeIds) : Promise.resolve([]),
+    modules.claims ? pendingClaimTaskMetadata(ctx,scopeIds) : Promise.resolve([]),
     // Resignations are HR-decided (the service requires admin), so only admins carry them in the inbox.
     admin ? listResignationRequests(ctx, { status: 'pending' }) : Promise.resolve([]),
     // HR stage of reviews — admin-only decision.
@@ -116,23 +114,8 @@ export async function listPendingTasks(
     options.noticeAcknowledgements===false?Promise.resolve([]):pendingNoticeAcknowledgementTasks(ctx),
   ]);
 
-  const leaveCandidates = leave.filter(
-    (r) => r.status === 'pending' && (ctx.personId == null || r.personId !== ctx.personId),
-  );
-  // Self-exclusion: an employee's own cancellation request is not "awaiting your action".
-  const cancellationCandidates = leaveCancellations.filter(
-    (r) => ctx.personId == null || r.personId !== ctx.personId,
-  );
-  const [leaveDecisions,cancellationDecisions,claimDecisions,profileDecisions]=await Promise.all([
-    actionableLeaveRequests(ctx,{employmentIds:[...new Set(leaveCandidates.map(row=>row.employmentId))],requestIds:leaveCandidates.map(row=>row.id)}),
-    actionableLeaveCancellationIds(ctx,cancellationCandidates.map(row=>row.id)),
-    modules.claims?actionablePendingClaimIds(ctx,claims.map(row=>row.id)):Promise.resolve([]),
-    profileChanges.length?actionableProfileChangeIds(ctx,profileChanges.map(row=>row.id)):Promise.resolve([]),
-  ]);
-  const leaveIds=new Set(leaveDecisions.map(row=>row.requestId)),cancellationIds=new Set(cancellationDecisions),claimIds=new Set(claimDecisions),profileIds=new Set(profileDecisions);
-  const actionableLeave=leaveCandidates.filter(row=>leaveIds.has(row.id));
-  const actionableCancellations=cancellationCandidates.filter(row=>cancellationIds.has(row.id));
-
+  // The source owners have already applied current decision authority and actual self exclusion.
+  // Do not fetch full application records again to adjudicate this metadata projection.
   const iso = (d: Date | string) => (d instanceof Date ? d.toISOString() : new Date(d).toISOString());
   const items: PendingTaskItem[] = [
     ...noticeAcknowledgements.map(row=>({
@@ -140,14 +123,14 @@ export async function listPendingTasks(
       kind:'noticeAcknowledgement' as const,subjectName:row.title,createdAt:iso(row.sourceUpdatedAt),
       linkPath:`/notices/${row.noticeId}?employmentId=${row.employmentId}`,
     })),
-    ...actionableLeave.map((r) => ({
+    ...leave.map((r) => ({
       id: r.id,
       kind: 'leave' as const,
       subjectName: r.employee,
-      createdAt: iso(r.appliedOn),
+      createdAt: iso(r.createdAt),
       linkPath: `/approvals#${APPROVAL_SECTION_ID.leave}`,
     })),
-    ...actionableCancellations.map((r) => ({
+    ...leaveCancellations.map((r) => ({
       id: r.id,
       kind: 'leaveCancellation' as const,
       subjectName: r.employee,
@@ -161,17 +144,17 @@ export async function listPendingTasks(
       createdAt: iso(r.createdAt),
       linkPath: '/approvals',
     })),
-    ...profileChanges.filter(r=>profileIds.has(r.id)).map((r) => ({
+    ...profileChanges.map((r) => ({
       id: r.id,
       kind: 'profile' as const,
       subjectName: r.employee,
       createdAt: iso(r.createdAt),
       linkPath: `/admin/personnel/profile-changes#request-${r.id}`,
     })),
-    ...claims.filter(r=>claimIds.has(r.id)).map((r) => ({
+    ...claims.map((r) => ({
       id: r.id,
       kind: 'claim' as const,
-      subjectName: r.claimantName ?? null,
+      subjectName: r.employee,
       createdAt: iso(r.createdAt),
       linkPath: '/approvals',
     })),
