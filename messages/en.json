@@ -13091,6 +13091,7 @@
     "historySearch": "Search history",
     "ariaBell": "Notifications, {total} waiting: {unread} unread and {tasks} open tasks",
     "task": {
+      "noticeAcknowledgement": "Acknowledge notice",
       "leave": "Approve leave request",
       "leaveCancellation": "Approve leave cancellation",
       "attendance": "Review attendance correction",

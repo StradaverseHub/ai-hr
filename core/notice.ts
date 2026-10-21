@@ -689,6 +689,26 @@ export function employeeNoticeBoard(ctx:SessionContext,employmentId:string,optio
  });
 }
 
+/** Canonical assigned work, across the actual login's own recipient employments. Read/dismissed and
+ * notification delivery do not complete this work. No body, file, personnel or private request data.
+ * A Notice task's source time is its recorded update time, not an invented acknowledgement deadline.
+ */
+export function pendingNoticeAcknowledgementTasks(ctx:SessionContext){
+ const today=todayInKualaLumpur();
+ return withTenant(ctx,tx=>tx.select({noticeId:notice.id,employmentId:noticeRecipient.employmentId,
+  title:notice.title,contentVersion:notice.contentVersion,sourceUpdatedAt:notice.updatedAt})
+  .from(noticeRecipient).innerJoin(notice,eq(notice.id,noticeRecipient.noticeId))
+  .where(and(eq(noticeRecipient.tenantId,notice.tenantId),eq(notice.tenantId,ctx.tenantId),
+   sql`app.principal_snapshot_current()`,isNotNull(notice.publishedAt),isNull(notice.archivedAt),
+   lte(notice.startOn,today),gte(notice.endOn,today),eq(notice.requiresAcknowledgement,true),
+   sql`EXISTS(SELECT 1 FROM public.employment self_employment
+    WHERE self_employment.id=notice_recipient.employment_id AND self_employment.tenant_id=notice_recipient.tenant_id
+     AND app.is_self_person(self_employment.person_id))`,
+   sql`NOT EXISTS(SELECT 1 FROM public.notice_acknowledgement a
+    WHERE a.recipient_id=notice_recipient.id AND a.tenant_id=notice_recipient.tenant_id AND a.notice_id=notice.id AND a.content_version=notice.content_version)`))
+  .orderBy(desc(notice.updatedAt),asc(notice.id),asc(noticeRecipient.employmentId)));
+}
+
 /**
  * The notices ONE employment may currently see: published, unarchived, inside the window, and in this
  * notice's audience snapshot.

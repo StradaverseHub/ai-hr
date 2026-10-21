@@ -14,6 +14,7 @@ describe('Notice acknowledgement server boundary',()=>{
   expect(await acknowledgeNoticeAction({},form())).toEqual({acknowledgedAt:'2026-10-21T12:00:00.000Z'});
   expect(mocks.acknowledge).toHaveBeenCalledWith({tenantId:'tenant',userId:'actual-user'},'notice','selected-own-employment',2,{reportedChannel:'web',reportedUserAgent:'Fictional browser'});
   expect(mocks.revalidate).toHaveBeenCalledWith('/notices/notice');
+  expect(mocks.revalidate).toHaveBeenCalledWith('/tasks');
  });
  it('refuses duplicate identity/version fields and maps database refusals without leaking their text',async()=>{
   const f=form();f.append('contentVersion','3');expect(await acknowledgeNoticeAction({},f)).toEqual({error:'unavailable'});expect(mocks.acknowledge).not.toHaveBeenCalled();

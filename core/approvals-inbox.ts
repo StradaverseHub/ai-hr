@@ -27,6 +27,7 @@ import { listReviews, pendingManagerReviewsFor } from './employment-review';
 import { myOwnEmploymentSubjects } from './read';
 import {actionableLeaveRequests,actionableLeaveCancellationIds} from '../packs/leave/service';
 import {actionablePendingClaimIds} from '../packs/claims/service';
+import {pendingNoticeAcknowledgementTasks} from './notice';
 
 /** The per-module task vocabulary — each key maps to an i18n label (notifications.task.*). */
 export type PendingTaskKind =
@@ -37,14 +38,15 @@ export type PendingTaskKind =
   | 'claim'
   | 'resignation'
   | 'managerReview'
-  | 'hrReview';
+  | 'hrReview'
+  | 'noticeAcknowledgement';
 
 /** One item awaiting the viewer's decision — serializable (ISO date) so the client bell can render it. */
 export type PendingTaskItem = {
   id: string;
   kind: PendingTaskKind;
   subjectName: string | null;
-  /** ISO timestamp of when the request was filed (sorts the Task tab, newest first). */
+  /** ISO source timestamp for sorting. Notice acknowledgement work uses the Notice's last update. */
   createdAt: string;
   /** Where the user acts on it — the matching /approvals section where one exists. */
   linkPath: string;
@@ -78,6 +80,7 @@ export async function listPendingTasks(
   ctx: SessionContext,
   scopeIds: string[] | undefined,
   modules: InboxModules,
+  options:{noticeAcknowledgements?:boolean}={},
 ): Promise<PendingTaskItem[]> {
   const admin = isAdmin(ctx);
   // Assignment follows the actual reporting/approval graph, not a platform-role shortcut. A named
@@ -87,7 +90,7 @@ export async function listPendingTasks(
   const managerReviewRows=await Promise.all(own.map(subject=>pendingManagerReviewsFor(ctx,subject.employmentId)));
   const managerReviews=[...new Map(managerReviewRows.flat().map(row=>[row.id,row])).values()];
 
-  const [leave, leaveCancellations, corrections, profileChanges, claims, resignations, hrReviews] = await Promise.all([
+  const [leave, leaveCancellations, corrections, profileChanges, claims, resignations, hrReviews,noticeAcknowledgements] = await Promise.all([
     listLeaveRequests(ctx, scopeIds, 200, { status: 'pending' }),
     // Partial Leave Cancellation (ADR-0065): pending cancellation requests need the same manager/admin
     // decision as a leave request, so they belong in the inbox — with the same self-exclusion below.
@@ -105,6 +108,7 @@ export async function listPendingTasks(
     admin ? listResignationRequests(ctx, { status: 'pending' }) : Promise.resolve([]),
     // HR stage of reviews — admin-only decision.
     admin ? listReviews(ctx, { status: 'pending_hr' }) : Promise.resolve([]),
+    options.noticeAcknowledgements===false?Promise.resolve([]):pendingNoticeAcknowledgementTasks(ctx),
   ]);
 
   const leaveCandidates = leave.filter(
@@ -126,6 +130,11 @@ export async function listPendingTasks(
 
   const iso = (d: Date | string) => (d instanceof Date ? d.toISOString() : new Date(d).toISOString());
   const items: PendingTaskItem[] = [
+    ...noticeAcknowledgements.map(row=>({
+      id:`${row.noticeId}:${row.employmentId}:${row.contentVersion}`,
+      kind:'noticeAcknowledgement' as const,subjectName:row.title,createdAt:iso(row.sourceUpdatedAt),
+      linkPath:`/notices/${row.noticeId}?employmentId=${row.employmentId}`,
+    })),
     ...actionableLeave.map((r) => ({
       id: r.id,
       kind: 'leave' as const,

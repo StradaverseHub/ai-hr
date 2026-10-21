@@ -13091,6 +13091,7 @@
     "historySearch": "ค้นหาประวัติ",
     "ariaBell": "การแจ้งเตือน รอดำเนินการทั้งหมด {total} รายการ: {unread} รายการที่ยังไม่อ่าน และ {tasks} งานค้าง",
     "task": {
+      "noticeAcknowledgement": "รับทราบประกาศ",
       "leave": "อนุมัติคำขอลา",
       "leaveCancellation": "อนุมัติการยกเลิกการลา",
       "attendance": "ตรวจสอบการแก้ไขเวลาทำงาน",

@@ -61,6 +61,6 @@ export async function acknowledgeNoticeAction(_prior:import('@/lib/notice-acknow
   }
   return {error:error instanceof NoticeError?'unavailable':'failed'};
  }
- revalidatePath('/notices');revalidatePath('/notices/'+noticeId);revalidatePath('/');
+ revalidatePath('/notices');revalidatePath('/notices/'+noticeId);revalidatePath('/tasks');revalidatePath('/');
  return {acknowledgedAt:timestamp};
 }

@@ -13091,6 +13091,7 @@
     "historySearch": "Tìm kiếm lịch sử",
     "ariaBell": "Thông báo, {total} mục đang chờ: {unread} chưa đọc và {tasks} công việc đang chờ",
     "task": {
+      "noticeAcknowledgement": "Xác nhận thông báo",
       "leave": "Phê duyệt đơn xin nghỉ",
       "leaveCancellation": "Phê duyệt hủy nghỉ phép",
       "attendance": "Xem xét điều chỉnh chấm công",

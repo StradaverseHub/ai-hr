@@ -13091,6 +13091,7 @@
     "historySearch": "Cari sejarah",
     "ariaBell": "Pemberitahuan, {total} menunggu: {unread} belum dibaca dan {tasks} tugasan terbuka",
     "task": {
+      "noticeAcknowledgement": "Akui penerimaan notis",
       "leave": "Luluskan permohonan cuti",
       "leaveCancellation": "Luluskan pembatalan cuti",
       "attendance": "Semak pembetulan kehadiran",

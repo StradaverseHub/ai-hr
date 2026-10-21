@@ -819,8 +819,9 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
   'notice.published': {
     kind: 'notice.published',
     category: 'notice',
-    // 'info', not 'action': release one has no acknowledgement, so there is nothing the employee must DO.
-    // Severity 'action' would put it in the bell's Task tab and count toward a to-do list it cannot clear.
+    // Delivery stays informational. Required current-version acknowledgements are live assigned work
+    // from the Notice owner in the canonical inbox, so a historical notification cannot duplicate or
+    // outlive the actual acknowledgement task after completion, withdrawal or a content revision.
     render: (p, ev) => ({
       severity: 'info',
       title: 'New notice',
