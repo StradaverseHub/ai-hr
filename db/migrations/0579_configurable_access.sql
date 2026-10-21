@@ -687,17 +687,66 @@ GRANT EXECUTE ON FUNCTION app.access_configuration_not_denied() TO ai_hr_app;
 CREATE POLICY access_role_configuration_denial ON role_assignment AS RESTRICTIVE FOR ALL TO ai_hr_app
  USING(app.access_configuration_not_denied()) WITH CHECK(app.access_configuration_not_denied());
 --> statement-breakpoint
+-- Fresh legacy role floor. Group configuration may never manufacture an old customer/operator role.
+-- This private arbitrary-principal form is also used when an old invitation is consumed pre-auth.
+CREATE FUNCTION app.access_legacy_role_authority(t uuid,u uuid,p_role text,p_company uuid,p_person uuid DEFAULT NULL) RETURNS boolean
+LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.app_user a JOIN public.role_assignment r ON r.app_user_id=a.id AND r.tenant_id=a.tenant_id
+  WHERE a.id=u AND a.tenant_id=t AND NOT app.login_blocked(a.id) AND NOT app.access_configuration_denied_for(t,u)
+   AND (p_role IS NULL OR p_role IN ('employee','manager','hr_admin','super_admin','payroll_partner','performance_comp_partner'))
+   AND (p_role IS DISTINCT FROM 'super_admin' OR p_company IS NULL)
+   AND (r.role::text='super_admin' OR (r.role::text='hr_admin' AND r.company_id IS NULL)
+    OR (r.role::text='hr_admin' AND p_role='hr_admin' AND p_company IS NOT NULL
+     AND app.access_scope_covers(r.company_id,p_company,t)
+     AND (p_person IS NULL OR EXISTS(SELECT 1 FROM public.employment e WHERE e.tenant_id=t AND e.person_id=p_person
+      AND app.access_scope_covers(r.company_id,e.company_id,t)))))
+ );
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_legacy_role_authority(uuid,uuid,text,uuid,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_legacy_configuration_permitted(p_role text,p_company uuid,p_person uuid DEFAULT NULL) RETURNS boolean
+LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.access_legacy_role_authority(app.current_tenant_id(),app.current_user_id(),p_role,p_company,p_person);
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_legacy_configuration_permitted(text,uuid,uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_legacy_configuration_permitted(text,uuid,uuid) TO ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app.access_guard_legacy_configuration() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE t uuid; row_value jsonb;
+LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid; row_value jsonb; requested_role text; requested_company uuid; requested_person uuid;
 BEGIN
  IF TG_OP='DELETE' THEN t:=OLD.tenant_id; row_value:=to_jsonb(OLD); ELSE t:=NEW.tenant_id; row_value:=to_jsonb(NEW); END IF;
- IF app.access_configuration_denied_for(t,app.current_user_id()) THEN RAISE EXCEPTION 'access ceiling' USING ERRCODE='42501'; END IF;
- -- Pre-auth activation has no signed-in actor. Recheck the original inviter's current denial instead
- -- of allowing a previously issued invitation to restore access after the inviter was revoked.
- IF TG_TABLE_NAME='app_invitation' AND TG_OP='UPDATE' AND row_value->>'status'='accepted'
-  AND app.access_configuration_denied_for(t,(row_value->>'created_by')::uuid) THEN
-  RAISE EXCEPTION 'access ceiling' USING ERRCODE='42501';
+ IF app.acting_as_owner() THEN
+  -- Canonical manual enrollment already re-reads its actual role owner, but an explicit new denial
+  -- must still stop its definer write. Owner maintenance with no session remains an explicit act.
+  IF app.access_configuration_denied_for(t,app.current_user_id()) THEN RAISE EXCEPTION 'access ceiling' USING ERRCODE='42501'; END IF;
+  IF TG_TABLE_NAME='app_invitation' AND TG_OP='UPDATE' AND row_value->>'status'='accepted'
+   AND (row_value->>'created_by') IS NOT NULL AND NOT app.access_legacy_role_authority(t,(row_value->>'created_by')::uuid,
+    row_value->>'role',(row_value->>'company_id')::uuid,(row_value->>'person_id')::uuid) THEN
+   RAISE EXCEPTION 'access ceiling' USING ERRCODE='42501';
+  END IF;
+ ELSE
+  IF t IS DISTINCT FROM app.current_tenant_id() THEN RAISE EXCEPTION 'access ceiling' USING ERRCODE='42501'; END IF;
+  IF TG_TABLE_NAME='role_assignment' OR (TG_TABLE_NAME='app_invitation' AND TG_OP='INSERT') THEN
+   requested_role:=row_value->>'role';requested_company:=(row_value->>'company_id')::uuid;
+   IF TG_TABLE_NAME='app_invitation' THEN
+    requested_person:=(row_value->>'person_id')::uuid;
+    -- NULL creator is reserved for explicit owner-issued initial activation. A session cannot forge
+    -- that path or name a stronger inviter whose authority would later be checked on its behalf.
+    IF (row_value->>'created_by')::uuid IS DISTINCT FROM app.current_user_id() THEN RAISE EXCEPTION 'access ceiling' USING ERRCODE='42501'; END IF;
+   END IF;
+  END IF;
+  -- NULL role requires an actual group administrator for archive/delete and invitation revocation.
+  IF NOT app.access_legacy_configuration_permitted(requested_role,requested_company,requested_person) THEN
+   RAISE EXCEPTION 'access ceiling' USING ERRCODE='42501';
+  END IF;
+  IF TG_TABLE_NAME='role_assignment' AND TG_OP='UPDATE'
+   AND NOT app.access_legacy_configuration_permitted(to_jsonb(OLD)->>'role',(to_jsonb(OLD)->>'company_id')::uuid,NULL) THEN
+   RAISE EXCEPTION 'access ceiling' USING ERRCODE='42501';
+  END IF;
  END IF;
  IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
 END;

@@ -1,13 +1,13 @@
 /** Real restricted-runtime storage contracts. This does not claim unfinished Workforce consumers work. */
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {and,eq,sql} from 'drizzle-orm';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {withTenant,type SessionContext} from '../db/client';
-import {appUser,roleAssignment,company,employment,accessGroup,accessConfiguration,domainEvent} from '../db/schema';
+import {appUser,appInvitation,roleAssignment,company,employment,accessGroup,accessConfiguration,domainEvent} from '../db/schema';
 import {accessConfigurationStore} from '../core/access-configuration-store';
 import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';
-import {revokeRole} from '../core/admin';
+import {assignRole,revokeRole} from '../core/admin';
 import {hireEmployee} from '../core/org';
 import {readAccessConfigurationEditor} from '../core/access-configuration-editor';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -104,6 +104,31 @@ describe('canonical access storage under ai_hr_app',()=>{
   await expect(saveAccessConfiguration(second.ctx,{...edit,previewFingerprint:preview.fingerprint},accessConfigurationStore)).rejects.toMatchObject({code:'changed'});
   await revokeRole(admin(),{roleAssignmentId:second.grantId});
   await expect(state(second.ctx)).rejects.toMatchObject({code:'ceiling'});
+  await sqlRefusal(()=>assignRole(second.ctx,{appUserId:second.userId,role:'hr_admin'}),'42501');
+  expect(await owner.db.select({id:roleAssignment.id}).from(roleAssignment).where(eq(roleAssignment.appUserId,second.userId))).toEqual([]);
+ });
+ it('refuses a pending invitation after the real inviter was revoked and preserves the pending state on refusal',async()=>{
+  const second=await login('hr_admin'),token=`fictional_${randomUUID()}`,hash=createHash('sha256').update(token).digest('hex');
+  const [invitation]=await withTenant(second.ctx,tx=>tx.insert(appInvitation).values({tenantId:b.tenantId,email:'fictional-access-acceptance@example.invalid',role:'employee',tokenHash:hash,expiresAt:sql`now()+interval '1 hour'`,createdBy:second.userId}).returning({id:appInvitation.id}));
+  await revokeRole(admin(),{roleAssignmentId:second.grantId});
+  // The same public pre-auth definer used by the app, with no authenticated principal fallback.
+  await sqlRefusal(()=>withTenant({tenantId:b.tenantId,roles:[]},tx=>tx.execute(sql`select * from app.consume_invitation(${token},${`fictional_subject_${randomUUID()}`})`)),'42501');
+  const [retained]=await owner.db.select({status:appInvitation.status}).from(appInvitation).where(eq(appInvitation.id,invitation.id));expect(retained.status).toBe('pending');
+ });
+ it('still accepts a current administrator’s valid invitation through the same public definer',async()=>{
+  const token=`fictional_${randomUUID()}`,hash=createHash('sha256').update(token).digest('hex'),subject=`fictional_subject_${randomUUID()}`;
+  const [invitation]=await withTenant(admin(),tx=>tx.insert(appInvitation).values({tenantId:b.tenantId,email:'fictional-access-success@example.invalid',role:'employee',tokenHash:hash,expiresAt:sql`now()+interval '1 hour'`,createdBy:b.adminUserId}).returning({id:appInvitation.id}));
+  const rows=await withTenant({tenantId:b.tenantId,roles:[]},tx=>tx.execute<{app_user_id:string;tenant_id:string}>(sql`select * from app.consume_invitation(${token},${subject})`));
+  expect(rows).toHaveLength(1);expect(rows[0].tenant_id).toBe(b.tenantId);
+  const [accepted]=await owner.db.select({status:appInvitation.status}).from(appInvitation).where(eq(appInvitation.id,invitation.id));expect(accepted.status).toBe('accepted');
+  const grants=await owner.db.select({role:roleAssignment.role}).from(roleAssignment).where(eq(roleAssignment.appUserId,rows[0].app_user_id));expect(grants).toEqual([{role:'employee'}]);
+ });
+ it('refuses a forged inviter and an explicit configuration denial on the old role surface',async()=>{
+  const second=await login('hr_admin'),worker=await login('employee');
+  await sqlRefusal(()=>withTenant(second.ctx,tx=>tx.insert(appInvitation).values({tenantId:b.tenantId,email:'fictional-access-forgery@example.invalid',role:'employee',tokenHash:`fictional_${randomUUID()}`,expiresAt:sql`now()+interval '1 hour'`,createdBy:b.adminUserId})),'42501');
+  await change({kind:'setOverride',userId:second.userId,capabilityId:'access.configure',companyId:null,effect:'deny'});
+  await sqlRefusal(()=>assignRole(second.ctx,{appUserId:worker.userId,role:'manager'}),'42501');
+  expect(await owner.db.select({role:roleAssignment.role}).from(roleAssignment).where(eq(roleAssignment.appUserId,worker.userId))).toEqual([{role:'employee'}]);
  });
  it('does not commit two concurrent removals of the final real administrators through legacy role writers',async()=>{
   const second=await login('hr_admin');await state();
