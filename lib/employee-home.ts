@@ -4,6 +4,12 @@ import {locales,type Locale} from '../i18n/config';
 
 export const EMPLOYEE_HOME_CARDS=['summary','today','calendar','notices','tasks','timeOff','team','celebrations'] as const;
 export type EmployeeHomeCard=typeof EMPLOYEE_HOME_CARDS[number];
+/** Defaults for the existing Dashboard Card Master, not a second per-company card store. */
+export const EMPLOYEE_HOME_CARD_DEFAULTS=EMPLOYEE_HOME_CARDS.map((cardKey,index)=>({
+ cardKey,name:({summary:'My Day at a Glance',today:'Your Day',calendar:'My Calendar',notices:'Notice Board',tasks:'Waiting for You',timeOff:'Time Off',team:"Who’s Around",celebrations:'Little Moments'} as const)[cardKey],
+ cardType:cardKey==='tasks'?'action' as const:'information' as const,href:null,
+ employeeSelectable:cardKey!=='summary',defaultDisplay:true,mandatory:cardKey==='summary',displayOrder:index+1,
+}));
 export const HOME_QUICK_ACTIONS=['leave','claim','payslip','profile','calendar','notices'] as const;
 export type HomeQuickAction=typeof HOME_QUICK_ACTIONS[number];
 export const DEFAULT_HOME_QUICK_ACTIONS:readonly HomeQuickAction[]=['leave','claim','payslip','profile'];
