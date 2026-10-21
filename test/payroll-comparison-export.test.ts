@@ -20,7 +20,7 @@ function fixture(count=1):Run{
   {id:'c-'+identity.employmentId,employmentId:identity.employmentId,runId:'current',companyId,currency:'MYR',amount:'100.01',version:2,coverage:{from:'2026-10-01',to:'2026-10-31'}}]);
  const result=comparePayrollResults({definition,filters,companyIds:[companyId],runs,sources,identities,previousFrom:'2026-09-01',currentFrom:'2026-10-01',currentTo:'2026-10-31',paginate:false});
  return {definition,filters,result,companyIds:[companyId],sourceRevisions:sources.map(({id,version,runId})=>({id,version,runId})),contextUnavailable:false,
-  canEdit:true,reportId:'00000000-0000-0000-0000-000000000002',version:1,spec:{datasetId:'payroll_period_comparison',payrollComparison:definition,columns:[...definition.columns,'previous','current','variance','reason','currency']},
+  canEdit:true,canExport:true,reportId:'00000000-0000-0000-0000-000000000002',version:1,spec:{datasetId:'payroll_period_comparison',payrollComparison:definition,columns:[...definition.columns,'previous','current','variance','reason','currency']},
   name:'Payroll Basic Variance',description:'Fictional sign-off example',generatedAt:'2026-10-20T10:00:00.000Z',generatedBy:'Fictional preparer'};
 }
 describe('native payroll comparison outputs',()=>{

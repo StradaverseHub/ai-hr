@@ -154,7 +154,8 @@ describe('Payroll comparison consumes generated paid results under the saved rep
     const spec = structuredClone(saved!.spec);
     spec.layout = { ...spec.layout, permissions: { hr_admin: ['view', 'create', 'edit', 'delete', 'share'] } };
     await updateCustomReport(ctx, { id: saved!.id, name: saved!.name, version: saved!.version, shared: true, spec, companyIds: [b.companyId] });
-    expect((await run(f.report.id, 'view', peer)).result.available).toBe(true);
+    const sharedView=await run(f.report.id, 'view', peer);
+    expect(sharedView.result.available).toBe(true);expect(sharedView.canExport).toBe(false);
     await expect(run(f.report.id, 'export', peer)).rejects.toThrow();
     const before = await payrollSnapshot();
     await setPayrollPermissionGrant(ctx, { companyId: b.companyId, permissionKey: 'report.read.compensation', role: 'hr_admin', allowed: false });

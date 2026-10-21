@@ -413,8 +413,9 @@ export async function runPayrollComparisonReport(ctx:SessionContext,scopeIds:rea
     if(!saved)await comparisonAccess(tx,ctx,spec,'create',scopeIds);
     const execution=await executePayrollComparisonTx(tx,ctx,spec,scopeIds,p.filters??{},p.verb??'view');
     let canEdit=true;try{await comparisonAccess(tx,ctx,spec,'edit',execution.companyIds);}catch(error){if(error instanceof MasterReportAccessError)canEdit=false;else throw error;}
+    let canExport=true;try{await comparisonAccess(tx,ctx,spec,'export',execution.companyIds);}catch(error){if(error instanceof MasterReportAccessError)canExport=false;else throw error;}
     const [preparer]=ctx.personId?await tx.select({name:person.fullName}).from(person).where(eq(person.id,ctx.personId)).limit(1):[];
-    return {...execution,canEdit,reportId:saved?.id??null,version:saved?.version??null,spec,
+    return {...execution,canEdit,canExport,reportId:saved?.id??null,version:saved?.version??null,spec,
       name:saved?.name??'Payroll Basic Variance',description:saved?.description||spec.layout?.description||'',
       generatedAt:new Date().toISOString(),generatedBy:preparer?.name??ctx.userId!};
   },{readOnlySnapshot:true});
