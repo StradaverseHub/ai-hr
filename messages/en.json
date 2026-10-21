@@ -2088,6 +2088,7 @@
       "exclusionsField": "Field",
       "exclusionsReason": "Why and where to go",
       "exclusionReasons": {
+        "datedCalendar": "Set dated calendars in Personnel > Attendance > Holiday Calendar to keep prior assignment history. Employee imports cannot change the calendar or its dates.",
         "testRecord": "HR manages test-record classification in Personnel. Employee imports cannot change it.",
         "managed": "This value is calculated, historical, or changed through its own Personnel action. Use its Personnel tab.",
         "file": "Files and on-screen actions are handled in Personnel; they are not spreadsheet values.",

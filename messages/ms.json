@@ -2088,6 +2088,7 @@
       "exclusionsField": "Medan",
       "exclusionsReason": "Sebab dan tempat untuk menguruskannya",
       "exclusionReasons": {
+        "datedCalendar": "Tetapkan kalendar mengikut tarikh dalam Personel > Kehadiran > Kalendar Cuti supaya sejarah penetapan terdahulu dikekalkan. Import pekerja tidak boleh mengubah kalendar atau tarikhnya.",
         "testRecord": "HR mengurus klasifikasi rekod ujian dalam Personnel. Import pekerja tidak boleh mengubahnya.",
         "managed": "Nilai ini dikira, merupakan sejarah, atau diubah melalui tindakan Personel tersendiri. Gunakan tab Personelnya.",
         "file": "Fail dan tindakan pada skrin diurus dalam Personel; ia bukan nilai hamparan.",
