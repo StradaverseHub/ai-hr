@@ -62,6 +62,10 @@ vi.mock('@/lib/ui-theme-server', () => ({ currentUiTheme: vi.fn(async () => fx.t
 // This suite verifies the preserved administrator workbench. Personal Home has separate role/
 // no-assistant and actual-card coverage and must not load its backend graph into this DOM fixture.
 vi.mock('@/components/employee-home/personal-home',()=>({EmployeePersonalHome:()=>{throw Error('Administrator fixture unexpectedly entered personal Home');}}));
+vi.mock('@/core/employee-home',()=>({
+  readEmployeeHomeIdentity:()=>{throw Error('Administrator fixture unexpectedly resolved personal Home identity');},
+  HomeAccessError:class extends Error{constructor(readonly code:string){super(code);}},
+}));
 vi.mock('next-intl/server', async () => {
   const msgs = (await import('../messages/en.json')).default;
   const { createTranslator: ct } = await import('next-intl');
