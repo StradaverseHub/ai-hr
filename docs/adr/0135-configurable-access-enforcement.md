@@ -564,3 +564,19 @@ termination intent with no request cannot be relabelled as a request-bound resig
 regression checks the immediate conflict state rather than accepting a later generic incomplete-audit
 refusal. Family refresh comments now describe both retained standalone after-commit behavior and
 atomic enclosing-transaction failure correctly. These source changes remain UNRUN.
+
+### Independent shared-principal foundation
+
+Security owns the standalone `0576_principal_snapshot_current` allocation. Its function and execute
+grants are the exact reviewed shared block separated from Board 1's unshipped Attendance migration;
+it installs no Attendance or Home feature. Board 1's unshipped feature allocations move to 0581/0582
+and consume this same foundation, so either verified release can ship first without a lower-watermark
+skip. Applied migrations and their historical ledger remain unchanged. This foundation is journalled
+but unapplied here; the other prepared 0578/0579/0580 migrations remain unjournalled.
+
+The proof checks the actual active, unblocked principal and that claimed roles/company grants remain
+subsets of actual grants. It does not attest a JavaScript Person ID; own-person consumers still require
+the independent canonical `app.is_self_person` proof. The authored foundation regression covers current
+and narrowed scopes, forged/foreign/expanded/revoked/archived contexts, the separate Person boundary and
+the runtime-only execute seam. SQL, ACL, ownership, restricted-owner upgrades and those tests remain
+UNRUN; source extraction is not acceptance or a grant to enable the unsupported controls.
