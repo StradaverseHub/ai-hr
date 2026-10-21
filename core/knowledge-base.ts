@@ -12,6 +12,8 @@ import { actorOf, appendEvent } from '../db/events';
 import { kbDocument } from '../db/schema';
 import { isAdmin } from '../lib/authz-model';
 import { rankKnowledgeArticles,rankPerformanceArticles,rankPerformanceDashboardArticles } from '../lib/knowledge-search';
+import {homeSearchWords,homeKnowledgeHref,HOME_SEARCH_RESULT_LIMIT} from '../lib/employee-home-search';
+import {isLocale} from '../i18n/config';
 
 export const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB (ADR-0017 — Postgres bytea storage)
 
@@ -415,5 +417,28 @@ export async function searchKnowledgeArticles(ctx:SessionContext,query:string,ca
    .where(and(eq(kbDocument.kind,'article'),eq(kbDocument.category,category),isNull(kbDocument.archivedAt),inArray(kbDocument.audience,visibleAudiencesFor(ctx))))
    .orderBy(asc(kbDocument.createdAt),asc(kbDocument.id)).limit(100);
   return (category==='performance-faq'?(mode==='dashboard'?rankPerformanceDashboardArticles:rankPerformanceArticles)(query,rows.filter(r=>r.body)):rankKnowledgeArticles(query,rows.filter(r=>r.body))).map(r=>({id:r.id,title:r.title,body:r.body.slice(0,1400)}));
+ });
+}
+
+/** Home searches this existing library, not a second content index. Tenant RLS and the ordinary
+ * audience clearance fence matching/ranking; only minimal authorized metadata leaves this owner.
+ * Unlike contextual help, a genuine no-match returns no rows, never unrelated fallback articles.
+ */
+export async function searchHomeKnowledgeDocuments(ctx:SessionContext,query:string,locale='en'){
+ if(!ctx.userId)return [];
+ const words=homeSearchWords(query);
+ if(!words.length)return [];
+ const language=isLocale(locale)?locale:'en';
+ const title=language==='en'?kbDocument.title:
+  sql<string>`coalesce(${kbDocument.i18n} -> ${language} ->> 'title',${kbDocument.title})`;
+ const body=language==='en'?sql<string>`coalesce(${kbDocument.body},'')`:
+  sql<string>`coalesce(${kbDocument.i18n} -> ${language} ->> 'body',${kbDocument.body},'')`;
+ const matches=words.map(word=>or(sql`${title} ilike ${'%'+word+'%'}`,sql`${body} ilike ${'%'+word+'%'}`));
+ const score=sql.join(words.map(word=>sql`case when ${title} ilike ${'%'+word+'%'} then 3 else 0 end`),sql` + `);
+ return withTenant(ctx,async tx=>{
+  const rows=await tx.select({id:kbDocument.id,kind:kbDocument.kind,title,category:kbDocument.category}).from(kbDocument)
+   .where(and(isNull(kbDocument.archivedAt),inArray(kbDocument.audience,visibleAudiencesFor(ctx)),...matches))
+   .orderBy(desc(score),asc(title),asc(kbDocument.id)).limit(HOME_SEARCH_RESULT_LIMIT);
+  return rows.map(row=>({id:row.id,kind:row.kind,title:row.title,category:row.category,href:homeKnowledgeHref(row.id)}));
  });
 }
