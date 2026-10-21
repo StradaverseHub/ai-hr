@@ -4675,7 +4675,9 @@
     "originalNotRecorded": "Chưa ghi giờ gốc",
     "originalNoRecord": "Chưa có bản ghi chấm công khi yêu cầu",
     "rewards": "Khen thưởng",
-    "reviewRewards": "Xét duyệt khen thưởng"
+    "reviewRewards": "Xét duyệt khen thưởng",
+    "focusedDescription": "Yêu cầu này hiện được giao cho bạn xử lý.",
+    "viewAllAssigned": "Xem tất cả phê duyệt"
   },
   "performance": {
     "list": {

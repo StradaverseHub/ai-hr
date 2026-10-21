@@ -835,7 +835,7 @@ export function actionableProfileChangeIds(ctx:SessionContext,requestIds:readonl
     .where(and(inArray(profileChangeRequest.id,ids.slice(offset,offset+1000)),eq(profileChangeRequest.status,'pending'),profileRouteReaderPredicate(current))).orderBy(profileChangeRequest.id);
    for(const row of rows){
     if(row.personId===current.personId||row.requestType===null)continue;
-    try{await assertProfileChangeDecisionAuthorityTx(tx,current,row,'rejected');result.push(row.id);}
+    try{await assertProfileChangeDecisionAuthorityTx(tx,current,{...row,requestType:row.requestType},'rejected');result.push(row.id);}
     catch(error){
      if(isApprovalDecisionRefusal(error,'profile change'))continue;
      if(error instanceof ProfileRoutingError&&['changed','unauthorized'].includes(error.code))continue;

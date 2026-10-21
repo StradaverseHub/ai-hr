@@ -71,7 +71,9 @@ describe('listPendingTasks (Task tab)', () => {
     const leaveTasks = tasks.filter((t) => t.kind === 'leave');
     expect(leaveTasks).toHaveLength(1);
     expect(leaveTasks[0].subjectName).toBe('Task Emp');
-    expect(leaveTasks[0].linkPath).toBe('/approvals#approvals-leave');
+    const destination=new URL(leaveTasks[0].linkPath,'https://fictional.invalid');
+    expect(destination.pathname).toBe('/approvals');expect(destination.searchParams.get('task')).toBe('leave');
+    expect(destination.searchParams.get('requestId')).toBe(leaveTasks[0].id);expect(destination.hash).toContain(leaveTasks[0].id);
     expect(Number.isNaN(Date.parse(leaveTasks[0].createdAt))).toBe(false); // serializable ISO timestamp
 
     // Count parity — the legacy badge figure is exactly the task list's length.
@@ -96,7 +98,10 @@ describe('listPendingTasks (Task tab)', () => {
     expect(tasks).toHaveLength(2);
     for (const row of tasks) {
       expect(row.subjectName).toBe('Replacement applicant');
-      expect(row.linkPath).toBe('/approvals?category=replacementLeave');
+      const destination=new URL(row.linkPath,'https://fictional.invalid');
+      expect(destination.pathname).toBe('/approvals');expect(destination.searchParams.get('category')).toBe('replacementLeave');
+      expect(destination.searchParams.get('task')).toBe('replacementLeave');expect(destination.searchParams.get('requestId')).toBe(row.id);
+      expect(destination.hash).toBe('#approval-row-'+row.id);
       expect(Number.isNaN(Date.parse(row.createdAt))).toBe(false);
     }
     expect(await pendingApprovalsCount(reviewerCtx, opts.companyIds, { attendance: false, claims: false })).toBe(2);

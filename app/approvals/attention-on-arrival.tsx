@@ -45,7 +45,7 @@ export function AttentionOnArrival() {
     const run = () => {
       const hash = window.location.hash.replace(/^#/, '');
       if(['profileChanges','profile-changes','approvals-profileChanges','approvals-profile-changes'].includes(hash)){window.location.replace('/admin/personnel/profile-changes');return;}
-      const parsed = parseApprovalAttentionHash(hash);
+      const parsed = parseApprovalAttentionHash(hash) ?? (/^approval-row-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(hash)?{sectionId:hash,rowId:null}:null);
       if (!parsed) return;
       const attempt = (retriesLeft: number) => {
         raf = requestAnimationFrame(() => {
@@ -60,8 +60,9 @@ export function AttentionOnArrival() {
           // to section-only attention. No retries beyond the section's own rAF retry above.
           rowTarget = parsed.rowId ? document.getElementById(approvalRowDomId(parsed.rowId)) : null;
           const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-          el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
-          el.focus({ preventScroll: true });
+          const attentionTarget=rowTarget??el;
+          attentionTarget.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+          attentionTarget.focus({ preventScroll: true });
           el.classList.add('approvals-attention');
           rowTarget?.classList.add('approvals-row-attention');
           timer = window.setTimeout(() => {

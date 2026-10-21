@@ -387,7 +387,7 @@ export type ReviewListRow = {
 /** HR inbox — RLS-scoped, recent-first (mirror listResignationRequests). */
 export function listReviews(
   ctx: SessionContext,
-  opts: { status?: 'pending_manager' | 'pending_hr' | 'completed' | 'cancelled' } = {},
+  opts: { status?: 'pending_manager' | 'pending_hr' | 'completed' | 'cancelled';requestId?:string } = {},
 ): Promise<ReviewListRow[]> {
   return withTenant(ctx, (tx) =>
     tx
@@ -412,7 +412,7 @@ export function listReviews(
       .from(employmentReview)
       .innerJoin(employment, eq(employment.id, employmentReview.employmentId))
       .innerJoin(person, eq(person.id, employmentReview.personId))
-      .where(opts.status ? eq(employmentReview.status, opts.status) : undefined)
+      .where(and(opts.status ? eq(employmentReview.status, opts.status) : undefined,opts.requestId?eq(employmentReview.id,opts.requestId):undefined))
       .orderBy(desc(employmentReview.createdAt))
       .limit(200),
   ) as Promise<ReviewListRow[]>;

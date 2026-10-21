@@ -172,7 +172,15 @@ describe('drift guards (source assertions)', () => {
 
   it('the approvals page narrows listLeaveRequests to PENDING (the 200-row-cap pre-fix, step 1)', () => {
     const src = read('app/approvals/page.tsx');
-    expect(src).toMatch(/listLeaveRequests\(s,\s*scopeIds,\s*200,\s*\{\s*status:\s*'pending'\s*\}\)/);
+    // Focused Home arrival keeps the pending-only invariant and selects its proven record before
+    // the legacy queue ceiling. The ordinary inbox retains the active company UX filter and cap.
+    const call=src.match(/listLeaveRequests\(s, queueScope,[^\n]+/);
+    expect(call).not.toBeNull();
+    expect(call![0]).toContain("focus?1:200, { status: 'pending',requestId:focusedId('leave') }");
+    expect(src).toContain('const queueScope=focus?undefined:scopeIds;');
+    const admission=src.indexOf('if(focus&&!await isCurrentAssignedApproval');
+    expect(admission).toBeGreaterThanOrEqual(0);
+    expect(src.indexOf(call![0])).toBeGreaterThan(admission);
   });
 
   it('/leave keeps its own history read, self-narrowed (step 1 must not disturb it)', () => {
@@ -255,9 +263,18 @@ describe('drift guards (source assertions)', () => {
     expect(src.match(/relative z-10 grid size-4/g)?.length).toBe(3);
   });
 
-  it('the approvals page stamps approvalRowDomId ids on the rows of BOTH tables', () => {
+  it('every supported approval queue gives its actual row a focusable stable anchor', () => {
     const src = read('app/approvals/page.tsx');
-    expect(src.match(/id=\{approvalRowDomId\(/g)?.length).toBe(2);
+    for(const [queue,row] of [['sortedLeave','r'],['sortedCancellations','c'],['sortedReplacement','r'],
+      ['sortedClaims','c'],['visibleCorrections','c'],['sortedResignations','r'],
+      ['sortedManagerReviews','r'],['sortedHrReviews','r']]){
+      const marker=`{${queue}.map((${row}) => (`;
+      const start=src.indexOf(marker);
+      expect(start,queue).toBeGreaterThanOrEqual(0);
+      const opening=src.slice(start+marker.length,start+marker.length+400);
+      expect(opening,queue).toContain(`id={approvalRowDomId(${row}.id)}`);
+      expect(opening,queue).toContain('tabIndex={-1}');
+    }
   });
 
   it('the arrival island parses the hash through the shared parser', () => {

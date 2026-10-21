@@ -9,19 +9,28 @@ function section(from: string, to: string) {
     expect(result.length).toBeGreaterThan(100);
     return result;
 }
-describe('ordinary v3 admission does not query unrelated module queues', () => {
-    it('keeps general queue loading separate from the Attendance-only capability', () => {
-        const loaders = section('const [leave, leaveCancellations, replacementRequests, loadedCorrections', 'const corrections = attendanceOnly');
-        expect(loaders).toContain("attendanceOnly ? Promise.resolve([]) : listLeaveRequests");
-        expect(loaders).toContain('attendanceOnly ? Promise.resolve([]) : listPendingLeaveCancellations');
-        expect(loaders).toContain('attendanceOnly ? Promise.resolve([]) : listPendingReplacementLeaveRequests');
-        expect(loaders).toContain('claimsOn && !attendanceOnly ? listPendingClaims');
-        expect(page).toContain('!attendanceOnly && me?.employmentId ? pendingManagerReviewsFor');
+describe('ordinary v3 admission and exact assignment keep unrelated detail loaders separate', () => {
+    it('discovers real assignments without a role promotion and preserves Attendance-only detail loading', () => {
+        const admission=section('const [rewardReviews,assignedAttendance,assignedTasks]=',"const t = await getTranslations('approvals');");
+        expect(admission).toContain('await Promise.all([');
+        expect(admission).toContain('!focus&&!admin&&!manager?listPendingTasks(s,scopeIds,{attendance:attendanceOn,claims:claimsOn}):Promise.resolve([])');
+        expect(admission).toContain("assignedTasks.every(task=>task.kind==='attendance')");
+        const loaders=section('const [leave, leaveCancellations, replacementRequests, loadedCorrections','const corrections = attendanceOnly');
+        expect(loaders).toContain("attendanceOnly||!include('leave') ? Promise.resolve([]) : listLeaveRequests");
+        expect(loaders).toContain("attendanceOnly||!include('leaveCancellation') ? Promise.resolve([]) : listPendingLeaveCancellations");
+        expect(loaders).toContain("attendanceOnly||!include('replacementLeave') ? Promise.resolve([]) : listPendingReplacementLeaveRequests");
+        expect(loaders).toContain("claimsOn && !attendanceOnly&&include('claim') ? listPendingClaims");
+        expect(page).toContain('const own=!focus&&!attendanceOnly&&s.personId?await myOwnEmploymentSubjects');
     });
-    it('uses only actionable non-self frozen v3 requests and does not manufacture historical totals', () => {
-        const projection = section('const corrections = attendanceOnly', '// 1e9145d4 — the kind of day');
+    it('proves exact assignment before any focus bypass and keeps the ordinary narrow v3 presentation', () => {
+        const admission=page.indexOf('if(focus&&!await isCurrentAssignedApproval');
+        const scoped=page.indexOf('const queueScope=focus?undefined:scopeIds;');
+        expect(admission).toBeGreaterThanOrEqual(0);expect(scoped).toBeGreaterThan(admission);
+        const projection=section('const corrections = attendanceOnly','// 1e9145d4 — the kind of day');
+        expect(projection).toContain('attendanceOnly&&!focus');
         expect(projection).toContain('row.workflow?.routingVersion === 3 && row.canDecide && row.personId !== s.personId');
-        expect(page).toContain('const decided = attendanceOnly ? { approved: null, rejected: null, cancelled: null } : await decidedStatusCounts');
+        expect(page).toContain('const decided = attendanceOnly||focus ? { approved: null, rejected: null, cancelled: null } : await decidedStatusCounts');
         expect(page).toContain("(!attendanceOnly || section === 'corrections')");
+        expect(page).toContain('if(!focusedRows.some(row=>row.id===focus.id))notFound();');
     });
 });

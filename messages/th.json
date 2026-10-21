@@ -4675,7 +4675,9 @@
     "originalNotRecorded": "ไม่ได้บันทึกเวลาเดิม",
     "originalNoRecord": "ยังไม่มีบันทึกการเข้างานขณะส่งคำขอ",
     "rewards": "ค่าตอบแทนและรางวัล",
-    "reviewRewards": "ตรวจสอบค่าตอบแทนและรางวัล"
+    "reviewRewards": "ตรวจสอบค่าตอบแทนและรางวัล",
+    "focusedDescription": "คำขอนี้ได้รับมอบหมายให้คุณดำเนินการในขณะนี้",
+    "viewAllAssigned": "ดูการอนุมัติทั้งหมด"
   },
   "performance": {
     "list": {

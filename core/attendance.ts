@@ -24,7 +24,7 @@ import { rotationLookupTx, rotationScheduleRow } from './attendance-rotation';
 import { isDeepStrictEqual } from 'node:util';
 import { hasGrantFor, withEffectiveGrants } from '../lib/authz-model';
 import { snapshotAttendanceWorkflowTx, assertCanDecideAttendanceApplicationTx, decideAttendanceWorkflowStageTx, attendanceWorkflowsForTx } from './attendance-workflow';
-import { attendanceApplicationType } from '../lib/attendance-workflow';
+import { attendanceApplicationType, AttendanceWorkflowError } from '../lib/attendance-workflow';
 import { plannedOvertimeMinutes } from '../lib/overtime-duration';
 import { and, asc, desc, eq, gt, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
@@ -4272,7 +4272,7 @@ export async function decideAttendanceCorrection(
  *  their reports, employee their own). Recent first. */
 export function listAttendanceCorrections(
   ctx: SessionContext,
-  opts: { companyIds?: string[]; status?: 'pending' | 'approved' | 'rejected' } = {},
+  opts: { companyIds?: string[]; status?: 'pending' | 'approved' | 'rejected';requestId?:string } = {},
 ) {
   return withTenant(ctx, async (tx) => {
     const rows = await tx
@@ -4318,6 +4318,7 @@ export function listAttendanceCorrections(
       .where(
         and(
           opts.status ? eq(attendanceCorrection.status, opts.status) : undefined,
+          opts.requestId?eq(attendanceCorrection.id,opts.requestId):undefined,
           opts.companyIds && opts.companyIds.length
             ? sql`(subject.company_id IN (${sql.join(opts.companyIds.map(id=>sql`${id}::uuid`),sql`,`)}) OR app.attendance_workflow_v3_decision_slot(${attendanceCorrection.id}) IS NOT NULL)`
             : undefined,

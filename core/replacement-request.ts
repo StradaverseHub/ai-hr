@@ -1197,9 +1197,8 @@ export type ReplacementClaimLineView = {
   eligibleMinutes: number | null;
 };
 
-// One pending-head query for the review page and the shell inbox. The shell
-// only needs identity/date: reading its badge must not price every claim line.
-function pendingReplacementHeads(tx: Tx, opts: { companyIds?: string[] }) {
+// The full review page loads priced detail; assigned-work metadata has its own bounded projection.
+function pendingReplacementHeads(tx: Tx, opts: { companyIds?: string[];requestId?:string }) {
   return tx
       .select({
         id: replacementLeaveRequest.id,
@@ -1220,7 +1219,8 @@ function pendingReplacementHeads(tx: Tx, opts: { companyIds?: string[] }) {
       .where(
         and(
           eq(replacementLeaveRequest.status, 'pending'),
-          opts.companyIds && opts.companyIds.length ? inArray(employment.companyId, opts.companyIds) : undefined,
+          opts.requestId?eq(replacementLeaveRequest.id,opts.requestId):undefined,
+          opts.companyIds===undefined?undefined:inArray(employment.companyId,opts.companyIds),
         ),
       )
       .orderBy(desc(replacementLeaveRequest.createdAt))
@@ -1250,7 +1250,7 @@ export function listPendingReplacementLeaveTasks(ctx:SessionContext,opts:{compan
 
 export async function listPendingReplacementLeaveRequests(
   ctx: SessionContext,
-  opts: { companyIds?: string[] } = {},
+  opts: { companyIds?: string[];requestId?:string } = {},
 ): Promise<PendingReplacementRequestRow[]> {
   const pending=await withTenant(ctx, async (tx) => {
     const heads = await pendingReplacementHeads(tx, opts);

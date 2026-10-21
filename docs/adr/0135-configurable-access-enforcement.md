@@ -597,3 +597,12 @@ identity is not covered by a restrictive policy limited to ai_hr_app. No proposa
 required by the metadata caller. The actual writer and eligibility reader share one authority helper;
 request classification never defaults a photo to fields. These integrations and all SQL/role/concurrency
 outcomes remain unexecuted until the coordinated verification window; controls remain unsupported.
+
+
+Assigned-task links now carry the existing request UUID and its closed approval kind. The page proves
+current assignment before disregarding the active company UX filter, asks the existing owner for that
+exact row before its old queue limit and refuses if the row disappeared or is no longer actionable.
+This does not grant company, Personnel or financial access. Normal bookmarks retain section fallback;
+focused rows receive keyboard focus and reduced-motion scrolling. Profile focus keeps its independent
+typed-photo/current-review course. The native v1 vocabulary is unchanged. The source handoff and authored
+cap/foreign/revocation/arrival regressions still require fresh integrated execution and real app journeys.

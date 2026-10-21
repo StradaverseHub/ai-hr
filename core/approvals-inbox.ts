@@ -15,7 +15,7 @@
  * actual reporting assignments without a manager platform role and stored manager reviews across employments.
  * Broad row visibility and a role label alone do not create a task; private workspace rows are not selected.
  */
-import {APPROVAL_SECTION_ID} from '../lib/approvals-focus';
+import {assignedApprovalHref,type AssignedApprovalKind} from '../lib/assigned-approval-focus';
 import type {SessionContext} from '../db/client';
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 import {pendingLeaveTaskMetadata,pendingLeaveCancellationTaskMetadata,listPendingReplacementLeaveTasks} from '../packs/leave/service';
@@ -86,16 +86,16 @@ export async function listPendingTasks(
     pendingResignationTaskMetadata(ctx,scopeIds),pendingReviewTaskMetadata(ctx,'manager',scopeIds),pendingReviewTaskMetadata(ctx,'hr',scopeIds),
   ]);
   const iso=(value:Date|string)=>value instanceof Date?value.toISOString():new Date(value).toISOString();
-  const project=(rows:readonly Pick<AssignedApprovalMetadata,'id'|'employee'|'createdAt'>[],kind:PendingTaskKind,linkPath:string):PendingTaskItem[]=>
-    rows.map(row=>({id:row.id,kind,subjectName:row.employee,createdAt:iso(row.createdAt),linkPath}));
+  const project=(rows:readonly Pick<AssignedApprovalMetadata,'id'|'employee'|'createdAt'>[],kind:AssignedApprovalKind):PendingTaskItem[]=>
+    rows.map(row=>({id:row.id,kind,subjectName:row.employee,createdAt:iso(row.createdAt),linkPath:assignedApprovalHref({kind,id:row.id})}));
   const items=[
-    ...project(leave,'leave',`/approvals#${APPROVAL_SECTION_ID.leave}`),
-    ...project(cancellations,'leaveCancellation',`/approvals#${APPROVAL_SECTION_ID.leaveCancellation}`),
-    ...project(replacement,'replacementLeave','/approvals?category=replacementLeave'),
-    ...project(attendance,'attendance','/approvals'),
-    ...profile.map(row=>({id:row.id,kind:'profile' as const,subjectName:row.employee,createdAt:iso(row.createdAt),linkPath:`/admin/personnel/profile-changes#request-${row.id}`})),
-    ...project(claims,'claim','/approvals'),...project(resignations,'resignation','/approvals'),
-    ...project(managerReviews,'managerReview','/approvals'),...project(hrReviews,'hrReview','/approvals'),
+    ...project(leave,'leave'),
+    ...project(cancellations,'leaveCancellation'),
+    ...project(replacement,'replacementLeave'),
+    ...project(attendance,'attendance'),
+    ...profile.map(row=>({id:row.id,kind:'profile' as const,subjectName:row.employee,createdAt:iso(row.createdAt),linkPath:`/admin/personnel/profile-changes?assigned=1&requestId=${row.id}#request-${row.id}`})),
+    ...project(claims,'claim'),...project(resignations,'resignation'),
+    ...project(managerReviews,'managerReview'),...project(hrReviews,'hrReview'),
   ];
   return items.sort((a,b)=>a.createdAt<b.createdAt?1:a.createdAt>b.createdAt?-1:a.kind.localeCompare(b.kind)||a.id.localeCompare(b.id));
 }

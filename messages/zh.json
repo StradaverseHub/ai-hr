@@ -4675,7 +4675,9 @@
     "originalNotRecorded": "未记录原始时间",
     "originalNoRecord": "申请时没有考勤记录",
     "rewards": "薪酬奖励",
-    "reviewRewards": "审核薪酬奖励"
+    "reviewRewards": "审核薪酬奖励",
+    "focusedDescription": "此申请目前由您处理。",
+    "viewAllAssigned": "查看所有审批"
   },
   "performance": {
     "list": {

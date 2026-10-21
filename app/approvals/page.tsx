@@ -4,7 +4,9 @@ import { hasPendingAttendanceParticipantAssignment } from '@/packs/attendance/se
 import { pendingRewardReviews } from '@/packs/rewards/service';
 import { formatMinutesToHM } from '@/lib/overtime-duration';
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
+import { redirect,notFound } from 'next/navigation';
+import {parseAssignedApprovalFocus,assignedApprovalCategory,type AssignedApprovalFocus,type AssignedApprovalKind} from '@/lib/assigned-approval-focus';
+import {isCurrentAssignedApproval} from '@/core/assigned-approval-focus';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
@@ -34,7 +36,8 @@ import { listReviews, pendingManagerReviewsFor } from '@/core/employment-review'
 // section below is the caller they were missing, and the reason production held zero credits.
 import { listPendingReplacementLeaveRequests } from '@/packs/leave/service';
 import { decideReplacementLeaveRequestAction } from '@/app/leave/actions';
-import { myEmployment } from '@/core/read';
+import { myOwnEmploymentSubjects } from '@/core/read';
+import {listPendingTasks} from '@/core/approvals-inbox';
 import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import {
   approveClaimAction,
@@ -163,23 +166,34 @@ function DecideButtons({
 export default async function ApprovalsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; sort?: string; category?: string }>;
+  searchParams: Promise<{ error?: string; sort?: string; category?: string;task?:string|string[];requestId?:string|string[] }>;
 }) {
   const { s, scopeIds } = await scopedSession();
-  const admin = isAdmin(s);
-  const manager = (s.roles ?? []).includes('manager');
-  const rewardReviews = isModuleEnabledOrFalse(s, 'rewards') ? await pendingRewardReviews(s, scopeIds) : [];
-  const assignedAttendance = isModuleEnabledOrFalse(s, 'attendance') && await hasPendingAttendanceParticipantAssignment(s);
-  if (!admin && !manager && !rewardReviews.length && !assignedAttendance) redirect('/');
-  const attendanceOnly = !admin && !manager && !rewardReviews.length && assignedAttendance;
-  const { error, sort: sortParam, category: categoryParam } = await searchParams;
+  const admin=isAdmin(s),manager=(s.roles??[]).includes('manager');
+  const attendanceOn=isModuleEnabledOrFalse(s,'attendance'),claimsOn=isModuleEnabledOrFalse(s,'claims');
+  const {error,sort:sortParam,category:categoryParam,task,requestId}=await searchParams;
+  let focus:AssignedApprovalFocus|null;
+  try{focus=parseAssignedApprovalFocus(task,requestId);}catch{notFound();}
+  if(focus&&!await isCurrentAssignedApproval(s,focus,{attendance:attendanceOn,claims:claimsOn}))notFound();
+  const include=(kind:AssignedApprovalKind)=>focus===null||focus.kind===kind;
+  const focusedId=(kind:AssignedApprovalKind)=>focus?.kind===kind?focus.id:undefined;
+  // Exact current assignment may sit outside the selected company UX filter. RLS and the
+  // existing full reader remain authoritative; a URL cannot supply an assignment.
+  const queueScope=focus?undefined:scopeIds;
+  const [rewardReviews,assignedAttendance,assignedTasks]=await Promise.all([
+    !focus&&isModuleEnabledOrFalse(s,'rewards')?pendingRewardReviews(s,scopeIds):Promise.resolve([]),
+    focus?Promise.resolve(focus.kind==='attendance'):attendanceOn?hasPendingAttendanceParticipantAssignment(s):Promise.resolve(false),
+    !focus&&!admin&&!manager?listPendingTasks(s,scopeIds,{attendance:attendanceOn,claims:claimsOn}):Promise.resolve([]),
+  ]);
+  if(!focus&&!admin&&!manager&&!rewardReviews.length&&!assignedAttendance&&!assignedTasks.length)redirect('/');
+  const attendanceOnly=!admin&&!manager&&!rewardReviews.length&&assignedAttendance&&assignedTasks.every(task=>task.kind==='attendance');
   if(admin&&categoryParam==='profileChanges')redirect('/admin/personnel/profile-changes');
   // Approvals sort (09cda965): display-only ordering, read from ?sort= so it survives reload + bulk
   // selection. Default (latest-first) matches every loader's existing desc(createdAt).
   const sort = parseApprovalSort(sortParam);
   // Category panel (2dec6406): the selected approval area. Unknown values AND admin-only categories for a
   // non-admin viewer coerce to 'all' (the full inbox — today's page, unchanged).
-  const parsedCategory = parseApprovalCategory(categoryParam, { admin });
+  const parsedCategory = parseApprovalCategory(focus?assignedApprovalCategory(focus.kind):categoryParam, { admin });
   const category = attendanceOnly && !['all','attendance','overtime'].includes(parsedCategory) ? 'all' : parsedCategory;
   const t = await getTranslations('approvals');
   const tCreditReview=await getTranslations('replacementRequest.formulaReview');
@@ -216,8 +230,6 @@ export default async function ApprovalsPage({
     name_desc: t('sortNameDesc'),
   } satisfies { sortBy: string } & Record<ApprovalSort, string>;
 
-  const attendanceOn = isModuleEnabledOrFalse(s, 'attendance');
-  const claimsOn = isModuleEnabledOrFalse(s, 'claims');
 
   // b833a077 (r362) — `travel` stood between `corrections` and `profileChanges` in this destructuring and
   // `listTravelRequests` in the Promise.all below. My Travel was removed completely: no form can create a
@@ -226,10 +238,10 @@ export default async function ApprovalsPage({
     // 8cb7b089 pre-fix: cap the 200-row limit over PENDING rows only. Without the status filter, a pending
     // request older than the 200 most recent rows of ANY status silently never reached this inbox — quietly
     // incomplete before, actively misleading once calendar pills deep-link straight to this section.
-    attendanceOnly ? Promise.resolve([]) : listLeaveRequests(s, scopeIds, 200, { status: 'pending' }),
-    attendanceOnly ? Promise.resolve([]) : listPendingLeaveCancellations(s, scopeIds),
+    attendanceOnly||!include('leave') ? Promise.resolve([]) : listLeaveRequests(s, queueScope, focus?1:200, { status: 'pending',requestId:focusedId('leave') }),
+    attendanceOnly||!include('leaveCancellation') ? Promise.resolve([]) : listPendingLeaveCancellations(s, queueScope,undefined,focusedId('leaveCancellation')),
     // 5ff7daff: same reporting-line scope as every other queue on this page; RLS trims it further.
-    attendanceOnly ? Promise.resolve([]) : listPendingReplacementLeaveRequests(s, { companyIds: scopeIds }),
+    attendanceOnly||!include('replacementLeave') ? Promise.resolve([]) : listPendingReplacementLeaveRequests(s, { companyIds: queueScope,requestId:focusedId('replacementLeave') }),
     // r292 — THE INBOX IS A CORE SCREEN AND MUST SURVIVE A TENANT THAT DECLINED THE OPTIONAL PACKS.
     // `listAttendanceCorrections` and `listPendingClaims` are now service-gated (core/module-gate.ts), so
     // calling them unconditionally would throw ModuleNotEnabledError here and take /approvals down for a
@@ -237,11 +249,11 @@ export default async function ApprovalsPage({
     // customer who did not buy Claims has no claims to decide. `isModuleEnabledOrFalse` (the PAGE form) is
     // used rather than the throwing one for the reason its header gives — a resolver outage must degrade
     // one queue, not the whole inbox.
-    attendanceOn ? listAttendanceCorrections(s, { companyIds: scopeIds, status: 'pending' }) : Promise.resolve([]),
-    claimsOn && !attendanceOnly ? listPendingClaims(s) : Promise.resolve([]),
-    admin ? listResignationRequests(s, { status: 'pending' }) : Promise.resolve([]),
+    attendanceOn&&include('attendance') ? listAttendanceCorrections(s, { companyIds: queueScope, status: 'pending',requestId:focusedId('attendance') }) : Promise.resolve([]),
+    claimsOn && !attendanceOnly&&include('claim') ? listPendingClaims(s,{requestId:focusedId('claim')}) : Promise.resolve([]),
+    admin&&include('resignation') ? listResignationRequests(s, { status: 'pending',requestId:focusedId('resignation') }) : Promise.resolve([]),
   ]);
-  const corrections = attendanceOnly ? loadedCorrections.filter(row => row.workflow?.routingVersion === 3 && row.canDecide && row.personId !== s.personId) : loadedCorrections;
+  const corrections = attendanceOnly&&!focus ? loadedCorrections.filter(row => row.workflow?.routingVersion === 3 && row.canDecide && row.personId !== s.personId) : loadedCorrections;
   // 1e9145d4 — the kind of day each OVERTIME row is asking for, so a rest-day or public-holiday plan is
   // impossible to miss while saying no is still cheap. Resolved through scheduleFor (the same resolver the
   // clocking path uses), and ONLY for overtime rows: a clock-time correction is about punches, not about
@@ -265,10 +277,10 @@ export default async function ApprovalsPage({
   // Employment-review queues (0110): the manager stage (assigned to the caller's own employment, even
   // without the `manager` platform role) + the HR stage (admin-only).
   const tReview = await getTranslations('review');
-  const me = s.personId ? await myEmployment(s) : null;
-  const [managerReviews, hrReviews] = await Promise.all([
-    !attendanceOnly && me?.employmentId ? pendingManagerReviewsFor(s, me.employmentId) : Promise.resolve([]),
-    admin ? listReviews(s, { status: 'pending_hr' }) : Promise.resolve([]),
+  const own=!focus&&!attendanceOnly&&s.personId?await myOwnEmploymentSubjects(s,{profileEdit:true}):[];
+  const [managerReviews,hrReviews]=await Promise.all([
+    focus?.kind==='managerReview'?listReviews(s,{status:'pending_manager',requestId:focus.id}):Promise.all(own.map(subject=>pendingManagerReviewsFor(s,subject.employmentId))).then(rows=>[...new Map(rows.flat().map(row=>[row.id,row])).values()]),
+    admin&&include('hrReview')?listReviews(s,{status:'pending_hr',requestId:focusedId('hrReview')}):Promise.resolve([]),
   ]);
 
   const pendingLeave = leave.filter((r) => r.status === 'pending');
@@ -304,6 +316,11 @@ export default async function ApprovalsPage({
   const mine = (personId: string | null) => s.personId != null && personId === s.personId;
   // Partial Leave Cancellation (ADR-0065): exclude the viewer's OWN cancellation requests (self-approval ban).
   const pendingCancellations = leaveCancellations.filter((c) => !mine(c.personId));
+  if(focus){
+    const focusedRows={leave:pendingLeave,leaveCancellation:pendingCancellations,attendance:corrections,claim:claims,
+      resignation:resignations,managerReview:managerReviews,hrReview:hrReviews,replacementLeave:replacementRequests}[focus.kind];
+    if(!focusedRows.some(row=>row.id===focus.id))notFound();
+  }
   // 2B-1: a request may sit at a manager step or an HR step. A manager step is decidable by the
   // viewer the list already scoped to (manager/admin); an HR step only by an admin.
   // 6fadb036: a manager step reads "Manager review"; every other kind (HR, HR Manager, Payroll, Dept/BU
@@ -335,13 +352,14 @@ export default async function ApprovalsPage({
   const allPending = Object.values(pendingCounts).reduce((a, b) => a + b, 0);
 
   // Which sections render under the selected category; the corrections section additionally row-filters.
-  const visible = (section: ApprovalSection) => (!attendanceOnly || section === 'corrections') && sectionVisible(category, section);
+  const focusedSection=focus?({leave:'leave',leaveCancellation:'leaveCancellation',attendance:'corrections',claim:'claims',resignation:'resignations',managerReview:'managerReviews',hrReview:'hrReviews',replacementLeave:'replacementLeave'} as const)[focus.kind]:null;
+  const visible = (section: ApprovalSection) => focusedSection?section===focusedSection:(!attendanceOnly || section === 'corrections') && sectionVisible(category, section);
   const rowFilter = correctionsRowFilter(category);
 
   // The three DECIDED buckets for the summary cards (approved / rejected / cancelled). Pending never comes
   // from SQL — it is the sum of the visible sections' in-memory counts below. null → the card shows a dash
   // (categories without that state, and both review queues which decide confirm/extend instead).
-  const decided = attendanceOnly ? { approved: null, rejected: null, cancelled: null } : await decidedStatusCounts(s, scopeIds, category);
+  const decided = attendanceOnly||focus ? { approved: null, rejected: null, cancelled: null } : await decidedStatusCounts(s, scopeIds, category);
 
   // Approvals sort (09cda965): order EACH per-type section's already-loaded rows in the render layer
   // (no loader ORDER BY rewrite). Sort is stable + keyed on request id, so counts/permissions/visible
@@ -425,9 +443,9 @@ export default async function ApprovalsPage({
     <div className={`mx-auto flex max-w-7xl flex-col gap-6 lg:flex-row lg:items-start${bulkRows.length > 0 ? ' pb-24' : ''}`}>
       {/* 2dec6406: internal approval-task panel — INSIDE the page, between the main sidebar and the content.
           Sticky + independently scrollable on lg; below lg the same markup stacks above the content. */}
-      <aside className="w-full shrink-0 lg:sticky lg:top-0 lg:max-h-screen lg:w-60 lg:overflow-y-auto">
+      {!focus&&<aside className="w-full shrink-0 lg:sticky lg:top-0 lg:max-h-screen lg:w-60 lg:overflow-y-auto">
         <CategoryPanel category={category} sort={sortParam} counts={pendingCounts} allCount={allPending} admin={admin} attendanceOnly={attendanceOnly} />
-      </aside>
+      </aside>}
     <div className="min-w-0 flex-1 space-y-6">
       {/* 8cb7b089: on arrival at /approvals#approvals-leave(-cancellation) — the calendar pill deep-links —
           scroll to, focus, and briefly highlight the target section. Renders nothing itself. */}
@@ -437,7 +455,7 @@ export default async function ApprovalsPage({
       <div data-tour="approvals-intro">
         <PageHeader
           title={t('title')}
-          description={total === 0 ? t('emptyDescription') : t('pendingDescription', { total })}
+          description={focus?t('focusedDescription'):total === 0 ? t('emptyDescription') : t('pendingDescription', { total })}
           // Header actions row (09cda965): Sort dropdown sits top-right. The bulk-approval item (fb99474b)
           // drops its global "Select all" toggle INTO this same flex row, to the LEFT of the sort control.
           actions={
@@ -449,17 +467,18 @@ export default async function ApprovalsPage({
         />
       </div>
       <ErrorBanner message={error} />
+      {focus&&<Link href="/approvals" className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline">{t('viewAllAssigned')}</Link>}
 
       {/* 2dec6406: the four summary cards — Pending from the same in-memory lists as the badges/headings;
           Approved / Rejected / Cancelled from decidedStatusCounts, updating with the selected category. */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      {!focus&&<div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {summaryCards.map((c) => (
           <Card key={c.key} className="p-5">
             <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{c.label}</div>
             <div className="mt-2 text-3xl font-semibold tracking-tight tabular-nums">{c.value}</div>
           </Card>
         ))}
-      </div>
+      </div>}
 
       {/* 8cb7b089: stable section id (from the shared APPROVAL_SECTION_ID constant — the calendar pill href
           is built from the same source), scroll-mt for the floating shell, tabIndex so the arrival island
@@ -507,7 +526,7 @@ export default async function ApprovalsPage({
               {sortedLeave.map((r) => (
                 // a34eedde: stable per-row DOM id so the arrival island can flash the exact request
                 // a calendar pill deep-linked to (hash `approvals-leave--<id>`).
-                <tr key={r.id} id={approvalRowDomId(r.id)}>
+                <tr key={r.id} id={approvalRowDomId(r.id)} tabIndex={-1} className="scroll-mt-24">
                   <td className="px-4 py-2.5">{leaveBulkActionable(r) && <BulkRowCheckbox id={r.id} type="leave" />}</td>
                   <td className="px-4 py-2.5">
                     <EmployeeCode code={r.employeeCode} />
@@ -667,7 +686,7 @@ export default async function ApprovalsPage({
               {sortedCancellations.map((c) => (
                 // a34eedde: same per-row DOM id convention for cancellation rows (hash
                 // `approvals-leave-cancellation--<cancellationId>`).
-                <tr key={c.id} id={approvalRowDomId(c.id)}>
+                <tr key={c.id} id={approvalRowDomId(c.id)} tabIndex={-1} className="scroll-mt-24">
                   <td className="px-4 py-2.5">
                     <BulkRowCheckbox id={c.id} type="leaveCancellation" />
                   </td>
@@ -779,7 +798,7 @@ export default async function ApprovalsPage({
             </thead>
             <tbody className="divide-y divide-border">
               {sortedReplacement.map((r) => (
-                <tr key={r.id}>
+                <tr key={r.id} id={approvalRowDomId(r.id)} tabIndex={-1} className="scroll-mt-24">
                   <td className="px-4 py-2.5">
                     <EmployeeCode code={r.employeeCode} />
                   </td>
@@ -942,7 +961,7 @@ export default async function ApprovalsPage({
             </thead>
             <tbody className="divide-y divide-border">
               {sortedClaims.map((c) => (
-                <tr key={c.id}>
+                <tr key={c.id} id={approvalRowDomId(c.id)} tabIndex={-1} className="scroll-mt-24">
                   <td className="px-4 py-2.5">{!mine(c.personId) && <BulkRowCheckbox id={c.id} type="claim" />}</td>
                   <td className="px-4 py-2.5">
                     <EmployeeCode code={c.employeeCode} />
@@ -996,7 +1015,7 @@ export default async function ApprovalsPage({
             </thead>
             <tbody className="divide-y divide-border">
               {visibleCorrections.map((c) => (
-                <tr key={c.id}>
+                <tr key={c.id} id={approvalRowDomId(c.id)} tabIndex={-1} className="scroll-mt-24">
                   <td className="px-4 py-2.5">{!mine(c.personId) && <BulkRowCheckbox id={c.id} type="attendance" />}</td>
                   <td className="px-4 py-2.5">
                     <EmployeeCode code={c.employeeCode} />
@@ -1084,7 +1103,7 @@ export default async function ApprovalsPage({
               </thead>
               <tbody className="divide-y divide-border">
                 {sortedResignations.map((r) => (
-                  <tr key={r.id}>
+                  <tr key={r.id} id={approvalRowDomId(r.id)} tabIndex={-1} className="scroll-mt-24">
                     <td className="px-4 py-2.5">
                       <EmployeeCode code={r.employeeCode} />
                     </td>
@@ -1146,7 +1165,7 @@ export default async function ApprovalsPage({
         ) : (
           <ul className="divide-y divide-border">
             {sortedManagerReviews.map((r) => (
-              <li key={r.id} className="px-4 py-3">
+              <li key={r.id} id={approvalRowDomId(r.id)} tabIndex={-1} className="scroll-mt-24 px-4 py-3">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="flex items-center">
                     {/* Employee ID left-of-name (feedback 38668d9b) */}
@@ -1191,7 +1210,7 @@ export default async function ApprovalsPage({
           ) : (
             <ul className="divide-y divide-border">
               {sortedHrReviews.map((r) => (
-                <li key={r.id} className="px-4 py-3">
+                <li key={r.id} id={approvalRowDomId(r.id)} tabIndex={-1} className="scroll-mt-24 px-4 py-3">
                   <div className="mb-1 flex items-center justify-between">
                     <span className="flex items-center">
                       {/* Employee ID left-of-name (feedback 38668d9b) */}
