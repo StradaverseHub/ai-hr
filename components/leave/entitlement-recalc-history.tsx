@@ -17,7 +17,8 @@ export async function EntitlementRecalcHistory({ rows }: {
       {rows.length === 0 ? (
         <div className="p-4 text-sm text-muted-foreground">{t('recalcHistoryEmpty')}</div>
       ) : (
-        <div className="overflow-x-auto">
+        <div role="region" aria-label={t('recalcHistoryTitle')} tabIndex={0}
+          className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs text-muted-foreground">

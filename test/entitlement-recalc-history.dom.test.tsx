@@ -42,6 +42,8 @@ describe('retained read-only entitlement recalculation history', () => {
     expect(html).toContain('uncatalogued_historical_reason');
     expect(html).not.toContain('recalcReason.');
     expect(html).toContain('+2');
+    expect(html).toContain('role="region"');
+    expect(html).toContain('tabindex="0"');
     expect(html).not.toContain('<form');
   });
 });
