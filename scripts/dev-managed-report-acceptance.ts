@@ -3,6 +3,7 @@
  * No Auth/consent writes, provider mock, generated MFA, pasted recipient or alternate scheduler.
  */
 import fs from 'node:fs/promises';
+import {createManagedReportCaseRecorder} from './managed-report-case-evidence';
 import {constants,readFileSync} from 'node:fs';
 import {execFileSync,spawn,type ChildProcess} from 'node:child_process';
 import {createHash,randomBytes} from 'node:crypto';
@@ -454,7 +455,8 @@ async function main(){
  let sampling=false;memoryTimer=setInterval(()=>{if(sampling)return;sampling=true;void sampleMemory().catch(()=>{}).finally(()=>{sampling=false;});},100);
  await fs.writeFile(out+'/verification-started',marker.candidateSha+'\n',{mode:0o600,flag:'wx'});
  const receipt={version:2,candidate:marker.candidateSha,runId:marker.runId,database:DATABASE,environment:{vm:marker.vm,platform:process.platform,arch:process.arch,node:process.version},results:[] as {name:string;status:'VERIFIED';details:Record<string,unknown>}[],limitations:['Canonical state readback does not replace parent-observed human password/MFA/SMTP receipt/consent interactions.','Controlled fault copies are fixture evidence; only declared weekly/monthly reports were actually created in UI.','No production/x86 deployment or full release gate is established.','Exact pre-SMTP broker process/EOF timing and hidden process environment denial need dedicated runtime proof beyond post-call idle/peak checks.','Identity disable/rebind races, inactive-owner and relay-Apply races require the separately reviewed owner regressions/actual interaction receipts; not claimed here.']};
- const record=(test:string,details:Record<string,unknown>={})=>receipt.results.push({name:test,status:'VERIFIED',details});
+ const durableCase=createManagedReportCaseRecorder(out+'/verified-cases',{candidate:marker.candidateSha,runId:marker.runId});
+ const record=(test:string,details:Record<string,unknown>={})=>{const saved=durableCase(test,details);receipt.results.push({name:saved.name,status:'VERIFIED',details:saved.details});};
  stage='canonicalSchedulingHandoff';
  active();activationBaseline=await captureActivationBaseline(web);active();activationAttempted=true;await run(INTERNAL_NODE,[SCHEDULE,'--activate',marker.webUnit,inventoryBefore],16*60_000);
  const dispatch=internalReportDispatchMarker.parse(JSON.parse((await readTrustedDispatchFile(INTERNAL_REPORT_DISPATCH_MARKER,4096,0o644)).toString()));check(dispatch.state==='active'&&dispatch.runnerUid===legacyUid&&JSON.stringify(dispatch.sourcePins)===JSON.stringify(await readDispatchSourcePins()),'Actual canonical handoff not active.');scheduleInstallation=dispatch.installationId;managedUsed=true;
