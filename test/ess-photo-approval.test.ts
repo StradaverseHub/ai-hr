@@ -67,6 +67,36 @@ describe('canonical photo request lifecycle and byte privacy',()=>{
   expect(await getProfilePhotoProposal(hr.ctx,submitted.requestId)).toBeNull();
   expect((await myProfileChangeRequests(employee.ctx)).find(row=>row.id===submitted.requestId)?.status).toBe('approved');
  });
+ it('serializes identical concurrent submissions to one request and refuses competing pending bytes',async()=>{
+  const {employee}=await fixture();
+  const submit=(content:Buffer)=>setOwnPersonPhoto(employee.ctx,{employmentId:employee.employmentId,content,fileName:'race.png'});
+  const [first,second]=await Promise.all([submit(png),submit(png)]);
+  expect(first).toEqual(second);
+  const distinct=Buffer.concat([png,Buffer.from([7])]);
+  const attempts=await Promise.allSettled([submit(png),submit(distinct)]);
+  expect(attempts[0]).toMatchObject({status:'fulfilled',value:first});
+  expect(attempts[1]).toMatchObject({status:'rejected',reason:{code:'stale'}});
+  const rows=await owner.db.select({id:profileChangeRequest.id}).from(profileChangeRequest).where(and(eq(profileChangeRequest.personId,employee.personId),eq(profileChangeRequest.status,'pending'))).orderBy(profileChangeRequest.id);
+  expect(rows).toEqual([{id:first.requestId}]);
+  expect((await getProfilePhotoProposal(employee.ctx,first.requestId))?.content).toEqual(png);
+  expect((await getPersonPhoto(employee.ctx,employee.personId))?.content).toEqual(original);
+ });
+ it('keeps a concurrent permission closure and approval atomic, with no pending bytes left behind',async()=>{
+  const {employee,hr}=await fixture();const {requestId}=await setOwnPersonPhoto(employee.ctx,{employmentId:employee.employmentId,content:png,fileName:'race.png'});
+  const [decision,closure]=await Promise.allSettled([
+   decideProfileChange(hr.ctx,{requestId,decision:'approved'}),
+   saveOwnPhotoSubmissionSetting(group(),{enabled:false,withdrawnReason:'Fictional concurrent closure'}),
+  ]);
+  expect(closure.status).toBe('fulfilled');
+  const [request]=await owner.db.select({status:profileChangeRequest.status,decisionReason:profileChangeRequest.decisionReason}).from(profileChangeRequest).where(eq(profileChangeRequest.id,requestId));
+  if(decision.status==='fulfilled'){
+   expect(request.status).toBe('approved');expect(closure).toMatchObject({status:'fulfilled',value:{withdrawn:0}});expect((await getPersonPhoto(employee.ctx,employee.personId))?.content).toEqual(png);
+  }else{
+   expect(decision.reason).toBeInstanceOf(Error);expect(decision.reason.message).toBe('profile change request is already rejected');
+   expect(request).toMatchObject({status:'rejected',decisionReason:'Fictional concurrent closure'});expect(closure).toMatchObject({status:'fulfilled',value:{withdrawn:1}});expect((await getPersonPhoto(employee.ctx,employee.personId))?.content).toEqual(original);
+  }
+  expect(await owner.db.select().from(profilePhotoProposal).where(eq(profilePhotoProposal.requestId,requestId))).toEqual([]);
+ });
  it('requires a rejection reason, retains the original master and erases pending bytes while preserving the decision',async()=>{
   const {employee,hr}=await fixture();const {requestId}=await setOwnPersonPhoto(employee.ctx,{employmentId:employee.employmentId,content:png,fileName:'x.png'});
   await expect(decideProfileChange(hr.ctx,{requestId,decision:'rejected'})).rejects.toThrow();
