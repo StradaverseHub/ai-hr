@@ -25,6 +25,7 @@ describe('Home preference editing',()=>{
   mount(locale);const words=catalogues[locale].employeeHome.preferences;
   expect(screen.getByRole('combobox',{name:words.language})).toHaveValue(locale);
   expect(screen.getByRole('combobox',{name:words.weekStart})).toHaveValue('1');
+  expect(screen.getByRole('textbox',{name:words.timeZone})).toHaveAccessibleDescription(words.timeZoneHelp);
   expect(screen.getAllByRole('checkbox')).toHaveLength(8);expect(screen.getByRole('checkbox',{name:catalogues[locale].employeeHome.cardNames.summary})).toBeDisabled();
   expect(screen.getByRole('button',{name:words.save})).toBeEnabled();
  });
