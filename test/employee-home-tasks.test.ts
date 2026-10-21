@@ -82,7 +82,7 @@ describe('Home Waiting for You projects complete actual owner assignments',()=>{
   const assigned=await perf.pendingOnehrFeedbackTaskMetadata(peer.ctx);expect(assigned).toHaveLength(1);expect(assigned[0].linkPath).toBe('/performance/assessment/feedback/'+assigned[0].id);
   expect(await perf.pendingStandardFeedbackTaskMetadata(peer.ctx)).toEqual([]);expect(await perf.pendingOnehrFeedbackTaskMetadata(subject.ctx)).toEqual([]);
   let cycle=await perf.getOnehrCycle(a,cycleId);
-  await perf.updateOnehrWindows(a,cycleId,cycle!.revision,{f360:{opensAt:new Date(Date.now()+86400000).toISOString()}},'Fictional future work window');
+  await perf.updateOnehrWindows(a,cycleId,cycle!.revision,{f360:{opensAt:new Date(Date.now()+86400000).toISOString(),closesAt:new Date(Date.now()+172800000).toISOString()}},'Fictional future work window');
   expect(await perf.pendingOnehrFeedbackTaskMetadata(peer.ctx)).toEqual([]);
   cycle=await perf.getOnehrCycle(a,cycleId);await perf.updateOnehrWindows(a,cycleId,cycle!.revision,{},'Fictional open work window');
   expect(await perf.pendingOnehrFeedbackTaskMetadata(peer.ctx)).toHaveLength(1);
