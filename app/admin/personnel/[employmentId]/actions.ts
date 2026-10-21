@@ -1,5 +1,6 @@
 'use server';
 
+import {setEmploymentBlacklist,setEmploymentInfo,setReportingLine} from '@/core/workforce-commands';
 import {setEmploymentTestRecord} from '@/core/employment-test-record';
 import { publicErrorMessage } from '@/lib/public-error';
 import {movementNeedsEntitlementReprojection} from '@/core/movement-kinds';
@@ -9,7 +10,7 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { setEmploymentCardId } from '@/core/attendance-card';
 import { requireAdmin } from '@/lib/authz';
-import { changeEmploymentCompany, CompanyLockedError, DestinationCompanyNotAdministered, employmentGradeId, endReportingLine, setEmployeeCode, setEmploymentBlacklist, setEmploymentPaymentMethod, setEmploymentInfo, setReportingLine, updatePerson, type EmploymentTypeValue, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
+import { changeEmploymentCompany, CompanyLockedError, DestinationCompanyNotAdministered, employmentGradeId, endReportingLine, setEmployeeCode, setEmploymentPaymentMethod, updatePerson, type EmploymentTypeValue, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
 import {
   NegativeSalaryAmountError,
   NonFiniteSalaryAmountError,

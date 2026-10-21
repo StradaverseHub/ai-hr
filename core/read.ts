@@ -1,3 +1,5 @@
+import {workforceEmploymentPredicate} from './workforce-access';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {emergencyLeaveGroupOriginSql,cancellationSplitGroupSql} from './leave-group-origin-sql';
 import {formulaOvertimeForRowsTx} from '../packs/attendance/service';
 /** Read queries for the UI. Each runs via withTenant, so RLS scopes every result. */
@@ -176,10 +178,10 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 // Unpaginated — returns the whole employee set (transfer-target dropdowns, the payroll batch picker,
 // etc.). Do NOT swap in the paginated `listEmployeesPage`: the payroll picker needs every active
 // employee, not a page, or the checkbox set would silently drop people past the page boundary.
-export function listEmployees(ctx: SessionContext, companyIds?: string[]) {
-  return withTenant(ctx, tx => listEmployeesTx(tx, companyIds));
+export function listEmployees(ctx: SessionContext, companyIds?: string[],purpose?:'workforce') {
+  return withTenant(ctx,async tx=>{if(purpose)await lockAccessConfigurationTx(tx,ctx.tenantId);return listEmployeesTx(tx,companyIds,purpose);});
 }
-export function listEmployeesTx(tx: Tx, companyIds?: string[]) {
+export function listEmployeesTx(tx: Tx, companyIds?: string[],purpose?:'workforce') {
   return tx
       .select({
         employmentId: employment.id,
@@ -243,7 +245,7 @@ export function listEmployeesTx(tx: Tx, companyIds?: string[]) {
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(position, eq(position.id, assignment.positionId))
       .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId))
-      .where(companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined)
+      .where(and(companyIds&&companyIds.length?inArray(employment.companyId,companyIds):undefined,purpose?workforceEmploymentPredicate(sql`${employment.id}`,'view',companyIds):undefined))
       .orderBy(person.fullName);
 }
 
@@ -401,8 +403,10 @@ function employeeListWhere(p: EmployeeListFilters) {
 export function countEmployeesByStatus(
   ctx: SessionContext,
   p: EmployeeListFilters,
+  purpose?:'workforce',
 ): Promise<{ total: number; byStatus: Partial<Record<EmploymentStatus, number>> }> {
   return withTenant(ctx, async (tx) => {
+    if(purpose)await lockAccessConfigurationTx(tx,ctx.tenantId);
     const rows = (await tx
       .select({
         status: employmentStatusSql(),
@@ -413,7 +417,7 @@ export function countEmployeesByStatus(
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .leftJoin(assignment, currentAssignmentJoin())
-      .where(employeeListWhere(p))
+      .where(and(employeeListWhere(p),purpose?workforceEmploymentPredicate(sql`${employment.id}`,'view',p.companyIds):undefined))
       // GROUP BY 1 — the ORDINAL, not a second copy of the expression, and this is load-bearing rather
       // than terse. employmentStatusSql() carries the `today` value as a BIND PARAMETER, so rendering it
       // twice produces `$1`/`$2` in the SELECT and `$3`/`$4` in the GROUP BY. Postgres matches a grouped
@@ -443,10 +447,12 @@ export function listEmployeesPage(
     limit: number;
     offset: number;
   },
+  purpose?:'workforce',
 ): Promise<{ rows: EmployeeListRow[]; total: number }> {
   return withTenant(ctx, async (tx) => {
+    if(purpose)await lockAccessConfigurationTx(tx,ctx.tenantId);
     const currentAssignment = currentAssignmentJoin();
-    const where = employeeListWhere(p);
+    const where=and(employeeListWhere(p),purpose?workforceEmploymentPredicate(sql`${employment.id}`,'view',p.companyIds):undefined);
     const rows = (await tx
       .select({
         employmentId: employment.id,
@@ -2360,8 +2366,9 @@ export function employmentCompanyEditable(ctx: SessionContext, employmentId: str
   });
 }
 
-export function employeeDetail(ctx: SessionContext, employmentId: string) {
+export function employeeDetail(ctx: SessionContext, employmentId: string,purpose?:'workforce') {
   return withTenant(ctx, async (tx) => {
+    if(purpose)await lockAccessConfigurationTx(tx,ctx.tenantId);
     const [row] = await tx
       .select({
         employmentId: employment.id,
@@ -2522,7 +2529,7 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         ),
       )
       .leftJoin(location, eq(location.id, assignment.locationId))
-      .where(eq(employment.id, employmentId))
+      .where(and(eq(employment.id,employmentId),purpose?workforceEmploymentPredicate(sql`${employment.id}`):undefined))
       .limit(1);
     return row ?? null;
   });

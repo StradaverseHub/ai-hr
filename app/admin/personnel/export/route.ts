@@ -1,3 +1,4 @@
+import {workforceCompanies} from '@/core/workforce-access';
 /**
  * Personnel employee-listing export (feedback 579255c3, points 9 & 10) — the currently filtered list as
  * an Excel workbook.
@@ -60,8 +61,10 @@ const EMPLOYMENT_TYPE_KEY: Record<string, string> = {
 const ROW_CAP = 10_000;
 
 export async function GET(req: Request) {
-  const { s: session, scopeIds, allowedCount } = await scopedSession();
-  if (!isAdmin(session)) return new Response('Forbidden', { status: 403 });
+  const {s:session,scopeIds:selectedScope}=await scopedSession();
+  const workforceIds=new Set(await workforceCompanies(session));
+  const scopeIds=selectedScope.filter(id=>workforceIds.has(id)),allowedCount=workforceIds.size;
+  if(!isAdmin(session)||workforceIds.size===0)return new Response('Forbidden',{status:403});
 
   const url = new URL(req.url);
   const sp = url.searchParams;
@@ -96,7 +99,7 @@ export async function GET(req: Request) {
         ...query.filters,
         limit: ROW_CAP,
         offset: 0,
-      });
+      },'workforce');
   // b1b1879d — the SAME top-bar scope the employees above are read under, built by the same function the
   // screen uses. Without it a file exported while viewing one company carried every company's drafts.
   const drafts = query.draftOnly

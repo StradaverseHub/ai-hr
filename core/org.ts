@@ -1,3 +1,4 @@
+import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,assertWorkforcePersonTx} from './workforce-access';
 import {personnelField} from '../lib/personnel-field-registry';
 import {personnelScalarIssue} from '../lib/personnel-import-contract';
 import { isCalendarDate } from '../lib/calendar-date';
@@ -1216,6 +1217,8 @@ export async function endReportingLine(
   p: { reportingLineId: string; endDate: string },
 ) {
   return withTenant(ctx, async (tx) => {
+    const [line]=await tx.select({subject:reportingLine.subordinateEmploymentId,type:reportingLine.lineType}).from(reportingLine).where(eq(reportingLine.id,p.reportingLineId)).limit(1);
+    if(line&&line.type!=='delegate')await assertWorkforceEmploymentTx(tx,ctx,line.subject,'maintain');
     const [ended] = await tx
       .update(reportingLine)
       .set({ validTo: p.endDate })
@@ -1500,7 +1503,8 @@ async function writePersonProfile(
 
 /** Existing full form contract, including its established omitted-phone clear semantics. */
 export function updatePerson(ctx:SessionContext,p:{personId:string;fullName:string;primaryEmail:string;phone?:string|null;via?:string}&PersonProfileFields,outerTx?:Tx){
- return writePersonProfile(ctx,{...p,phone:p.phone??null},outerTx);
+ const run=async(tx:Tx)=>{await assertWorkforcePersonTx(tx,ctx,p.personId,'maintain');return writePersonProfile(ctx,{...p,phone:p.phone??null},tx);};
+ return outerTx?run(outerTx):withTenant(ctx,run);
 }
 /** Canonical partial profile adapter. Omitted trio values retain exact stored nullable data.
  * Required-name/email validation applies when supplied, rather than forcing an unrelated legacy repair. */
@@ -1556,6 +1560,7 @@ export async function setEmployeeCode(
   p: { employmentId: string; employeeCode: string },
 ) {
   return withTenant(ctx, async (tx) => {
+    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     const [before] = await tx
       .select({ employeeCode: employment.employeeCode })
       .from(employment)
@@ -2067,6 +2072,8 @@ export async function changeEmploymentCompany(
   },
 ) {
   return withTenant(ctx, async (tx) => {
+    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+    await assertWorkforceCompanyTx(tx,ctx,p.newCompanyId,'maintain');
     await lockEmploymentStatutoryOwnerTx(tx,p.employmentId);
     const [emp] = await tx
       .select({ companyId: employment.companyId, hiredOn: employment.hiredOn })
@@ -2275,6 +2282,8 @@ export async function transferEmploymentCompanyTx(
     movement: MovementTag;
   },
 ) {
+  await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+  await assertWorkforceCompanyTx(tx,ctx,p.newCompanyId,'maintain');
   await lockEmploymentStatutoryOwnerTx(tx,p.employmentId);
   const [emp] = await tx
     .select({ companyId: employment.companyId })

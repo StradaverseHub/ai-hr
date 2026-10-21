@@ -1,0 +1,36 @@
+/** Workforce-purpose adapter. Existing record, financial, self-service and approval owners remain independent. */
+import {sql,type SQL} from 'drizzle-orm';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
+export type WorkforceOperation='view'|'maintain';
+export class WorkforceAccessError extends Error{
+ constructor(){super('Employee record or permission is unavailable.');this.name='WorkforceAccessError';}
+}
+/** This predicate is evaluated inside the actual Workforce query, never cached in a session. */
+export function workforceEmploymentPredicate(subject:SQL,operation:WorkforceOperation='view',companyIds?:readonly string[]){
+ if(companyIds?.length===0)return sql`false`;
+ return sql`app.access_workforce_employment(${subject},${'workforce.'+operation})`;
+}
+export async function assertWorkforceCompanyTx(tx:Tx,ctx:SessionContext,companyId:string,operation:WorkforceOperation){
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_company(${companyId}::uuid,${'workforce.'+operation}) as allowed`);
+ if(!row?.allowed)throw new WorkforceAccessError();
+}
+export async function assertWorkforceEmploymentTx(tx:Tx,ctx:SessionContext,employmentId:string,operation:WorkforceOperation){
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_employment(${employmentId}::uuid,${'workforce.'+operation}) as allowed`);
+ if(!row?.allowed)throw new WorkforceAccessError();
+}
+export async function assertWorkforcePersonTx(tx:Tx,ctx:SessionContext,personId:string,operation:WorkforceOperation){
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_person(${personId}::uuid,${'workforce.'+operation}) as allowed`);
+ if(!row?.allowed)throw new WorkforceAccessError();
+}
+/** Scope metadata only. Actual reads/writes repeat their check under the same access lock. */
+export function workforceCompanies(ctx:SessionContext,operation:WorkforceOperation='view'){
+ return withTenant(ctx,async tx=>{
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  const rows=await tx.execute<{id:string}>(sql`select id from company where tenant_id=app.current_tenant_id() and app.access_workforce_company(id,${'workforce.'+operation}) order by id`);
+  return rows.map(row=>row.id);
+ });
+}

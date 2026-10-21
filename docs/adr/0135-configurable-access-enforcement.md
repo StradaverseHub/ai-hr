@@ -55,3 +55,45 @@ permits an actual group administrator to refuse matching pending fields; that sc
 Prepared service/route/SQL cases cover denial in an existing session, reassignment, closure by
 a denied reviewer who retains configuration authority, forged-role refusal, permission/decision
 serialization and complete rollback if the consequence audit fails. These cases have not run.
+
+
+The next draft Workforce adapter uses Board1's existing `app.principal_snapshot_current()` proof
+from reserved0576, followed by its own current HR scope and capability check. The proof is not a
+capability grant and does not attest caller-supplied person identity. The SQL source dependency is
+known, but remains unconsumed at runtime until Board1 releases its verified migration.
+
+Personnel-purpose list, status totals, switcher, detail and listing export now opt into one
+transaction-time predicate without modifying the shared visibility sets used by financial or
+team-directory consumers. Empty selected company scope remains empty. Full profile saves and
+Employee ID edits acquire the access lock and check current company/person authority in their
+write transaction. A shared-person mutation retains the existing any-administered-employment owner; changing
+a shared fact cannot cross an explicit denial on another retained employment's company.
+The existing partial-profile approval/self-service owner is separate and remains under its own
+binding requirements; an audit `via` string is never an authorization bypass.
+
+Drafts have their own restrictive read/create/update/delete policies, including fresh current
+principal and actual own-person binding. The pre-existing0510 author's read/discard relationship
+source is preserved independently of role membership; an applicable explicit denial takes
+precedence. Unassigned drafts require the existing global HR floor or that same author source,
+with no invented company. Default source equivalence and role-removal/individual-denial behavior
+need the existing draft-company-scope suite and the new adversarial cases, not just new test counts.
+
+These controls narrow existing HR record authority. They do not manufacture a legacy HR role,
+payroll authority, approval eligibility or operator status from a configurable grant. Workforce
+catalogue entries remain unsupported until the complete action/import/export/master/related-file
+consumer matrix and independent SQL bindings are complete. Remaining writes include lifecycle,
+organisation/reporting, shared-person partial owner integration and related registers/files.
+Prepared tests cover default projection equivalence, same-session denial across rows/counts/detail,
+empty scope, no-write/no-event refusals, stale real roles, forged scopes, real foreign records and
+author-retention versus explicit denial. None has executed while peer resources are held.
+
+
+Workforce-purpose command composition is now a separate facade over the existing hire,
+employment-info, grade/assignment, blacklist, transfer and structural-reporting writers. It holds
+one access lock and reuses the same enclosing transaction. Full imports and draft activation
+consume that facade; section imports gate the subject and shared person before locking or
+carrying forward values. User-facing Movement create/edit/rollback and hire-correction entry
+points now check the same permission. Entity change checks both source and destination scopes.
+Delegation remains its separate relationship owner. Resignation approval and approved Rewards
+posting retain their original termination/grade owners and independent decision authorization;
+a generic Workforce grant cannot replace those controls. All changes remain source-only.

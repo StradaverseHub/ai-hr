@@ -1,3 +1,4 @@
+import {assertWorkforceEmploymentTx} from './workforce-access';
 /**
  * c063eea9 — "Correct hire details" on the Hired movement event.
  *
@@ -706,6 +707,7 @@ export async function correctHireDetails(
   if (requested.departmentId === null) throw new HireCorrectionError('Department is required.');
 
   return withTenant(ctx, async (tx) => {
+    await assertWorkforceEmploymentTx(tx,ctx,input.employmentId,'maintain');
     // Same lock order as every movement writer: the person's statutory owner, then the employment row.
     // Holding the employment row for the whole correction serialises two corrections of one hire.
     await lockEmploymentStatutoryOwnerTx(tx, input.employmentId);

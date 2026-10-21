@@ -908,3 +908,101 @@ $$;
 REVOKE ALL ON FUNCTION app.access_withdraw_profile_requests(jsonb,text) FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.access_withdraw_profile_requests(jsonb,text) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Draft Workforce-purpose adapters. 0576 owns principal freshness; this migration must follow its
+-- verified release. These predicates narrow the existing HR record owner rather than manufacture
+-- HR, payroll or approval status from a group grant. Catalogue activation waits for all consumers.
+CREATE FUNCTION app.access_workforce_company(p_company uuid,p_capability text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_capability IN ('workforce.view','workforce.maintain') AND app.principal_snapshot_current()
+  AND EXISTS(SELECT 1 FROM public.company co JOIN public.app_user u ON u.tenant_id=co.tenant_id
+   JOIN public.role_assignment r ON r.tenant_id=u.tenant_id AND r.app_user_id=u.id
+   JOIN public.access_capability c ON c.id=p_capability
+   WHERE co.id=p_company AND co.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id()
+    AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+    AND r.role::text IN ('hr_admin','super_admin') AND app.has_role_for(r.role::text,co.id)
+    AND app.access_scope_covers(r.company_id,co.id,co.tenant_id)
+    AND (NOT c.supported OR app.access_allowed_for(u.id,c.id,co.id)));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_company(uuid,text) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_workforce_company(uuid,text) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_employment(p_employment uuid,p_capability text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=p_employment AND e.tenant_id=app.current_tenant_id()
+  AND app.access_workforce_company(e.company_id,p_capability));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_employment(uuid,text) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_workforce_employment(uuid,text) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_not_denied(p_company uuid,p_capability text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_capability IN ('workforce.view','workforce.maintain') AND app.principal_snapshot_current()
+  AND NOT EXISTS(SELECT 1 FROM public.access_configuration cfg JOIN public.access_user_override o ON o.tenant_id=cfg.tenant_id
+   JOIN public.access_capability c ON c.id=o.capability_id AND c.supported
+   WHERE cfg.tenant_id=app.current_tenant_id() AND cfg.initialized AND o.user_id=app.current_user_id()
+    AND o.capability_id=p_capability AND o.effect='deny' AND o.retired_at IS NULL
+    AND app.access_scope_covers(o.company_id,p_company,cfg.tenant_id));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_not_denied(uuid,text) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_workforce_not_denied(uuid,text) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_person(p_person uuid,p_capability text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.person p JOIN public.employment e ON e.person_id=p.id AND e.tenant_id=p.tenant_id
+  WHERE p.id=p_person AND p.tenant_id=app.current_tenant_id() AND app.access_workforce_company(e.company_id,p_capability))
+  -- Keep the existing any-administered-employment person owner. Changing that one shared fact
+  -- nevertheless cannot cross an explicit denial on another retained employment's company.
+  AND NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.person_id=p_person AND e.tenant_id=app.current_tenant_id()
+    AND NOT app.access_workforce_not_denied(e.company_id,p_capability));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_person(uuid,text) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_workforce_person(uuid,text) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Drafts are a distinct Workforce aggregate, not another module's shared employment read. Their
+-- private data receives the same fresh read/write gate even if an old author session still exists.
+CREATE FUNCTION app.access_workforce_unassigned(p_capability text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_capability IN ('workforce.view','workforce.maintain') AND app.principal_snapshot_current()
+  AND EXISTS(SELECT 1 FROM public.app_user u JOIN public.role_assignment r ON r.app_user_id=u.id AND r.tenant_id=u.tenant_id
+   JOIN public.access_capability c ON c.id=p_capability
+   WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+    AND r.company_id IS NULL AND r.role::text IN ('hr_admin','super_admin')
+    AND (NOT c.supported OR app.access_can_delegate(c.id,NULL)));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_unassigned(text) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_workforce_unassigned(text) TO ai_hr_app;
+--> statement-breakpoint
+-- 0510 deliberately preserves an author's read/discard course independently of an HR role. Keep
+-- that relationship source with actual own-person binding; an explicit applicable denial still wins.
+CREATE POLICY access_workforce_draft_read ON employee_draft AS RESTRICTIVE FOR SELECT TO ai_hr_app
+ USING((app.access_profile_request_own(created_by_person_id) AND app.access_workforce_not_denied(company_id,'workforce.view'))
+  OR CASE WHEN company_id IS NULL THEN app.access_workforce_unassigned('workforce.view') ELSE app.access_workforce_company(company_id,'workforce.view') END);
+--> statement-breakpoint
+CREATE POLICY access_workforce_draft_insert ON employee_draft AS RESTRICTIVE FOR INSERT TO ai_hr_app
+ WITH CHECK(CASE WHEN company_id IS NULL THEN app.access_workforce_unassigned('workforce.maintain')
+  OR app.access_profile_request_own(created_by_person_id) AND app.access_workforce_not_denied(NULL,'workforce.maintain')
+  ELSE app.access_workforce_company(company_id,'workforce.maintain') END);
+--> statement-breakpoint
+CREATE POLICY access_workforce_draft_update ON employee_draft AS RESTRICTIVE FOR UPDATE TO ai_hr_app
+ USING((app.access_profile_request_own(created_by_person_id) AND app.access_workforce_not_denied(company_id,'workforce.maintain'))
+  OR CASE WHEN company_id IS NULL THEN app.access_workforce_unassigned('workforce.maintain') ELSE app.access_workforce_company(company_id,'workforce.maintain') END)
+ WITH CHECK(CASE WHEN company_id IS NULL THEN app.access_workforce_unassigned('workforce.maintain')
+  OR app.access_profile_request_own(created_by_person_id) AND app.access_workforce_not_denied(NULL,'workforce.maintain')
+  ELSE app.access_workforce_company(company_id,'workforce.maintain') END);
+--> statement-breakpoint
+CREATE POLICY access_workforce_draft_delete ON employee_draft AS RESTRICTIVE FOR DELETE TO ai_hr_app
+ USING((app.access_profile_request_own(created_by_person_id) AND app.access_workforce_not_denied(company_id,'workforce.maintain'))
+  OR CASE WHEN company_id IS NULL THEN app.access_workforce_unassigned('workforce.maintain') ELSE app.access_workforce_company(company_id,'workforce.maintain') END);

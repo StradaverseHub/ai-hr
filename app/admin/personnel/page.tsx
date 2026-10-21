@@ -1,3 +1,4 @@
+import {workforceCompanies} from '@/core/workforce-access';
 import Link from 'next/link';
 import { CurrentLedger } from '@/components/current-ledger';
 import { getTranslations } from 'next-intl/server';
@@ -112,7 +113,9 @@ export default async function PeoplePage({
   const tMeOptions = await getTranslations(PROFILE_REQUEST_OPTION_NAMESPACE);
   // Employee Status redesign (R43 c26c3ce5): the People list shows the SYSTEM-DERIVED status (from each
   // employee's lifecycle dates + blacklist override), not the legacy stored assignment.status.
-  const { s: session, scopeIds, allowedCount } = await scopedSession();
+  const {s:session,scopeIds:selectedScope}=await scopedSession();
+  const workforceIds=new Set(await workforceCompanies(session));
+  const scopeIds=selectedScope.filter(id=>workforceIds.has(id)),allowedCount=workforceIds.size;
   const today = todayInKualaLumpur();
   const isAdmin = (session.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
   const sp = await searchParams;
@@ -139,12 +142,12 @@ export default async function PeoplePage({
       ...query.filters,
       limit: pq.limit,
       offset: pq.offset,
-    }),
+    },'workforce'),
     // Point 5 — the five headcount cards. Counted in SQL over the WHOLE filtered set, never over the
     // page: "40 employees" must keep meaning forty people, not twenty-five rows. The bucket narrowing is
     // stripped (headcountFilters) so the cards stay a facet of the current view — clicking one cannot
     // make the other four read zero.
-    countEmployeesByStatus(session, { companyIds: scopeIds, ...headcountFilters(query) }),
+    countEmployeesByStatus(session,{companyIds:scopeIds,...headcountFilters(query)},'workforce'),
     listCompanies(session),
     listDepartments(session),
     // b1b1879d — drafts follow the TOP-BAR company scope exactly as the employees above do. They used to
@@ -155,7 +158,7 @@ export default async function PeoplePage({
     // profile route already uses for its own pickers, narrowed here by the active company context
     // (`scopeIds`) so the box searches exactly what this screen is showing. It can only ever be NARROWER
     // than RLS — the profile route re-resolves whatever is picked and 404s on anything out of scope.
-    listEmployees(session, scopeIds),
+    listEmployees(session,scopeIds,'workforce'),
     // 579255c3 — this reader's own columns and their order. Per user (app_user.list_preferences through
     // the own-row seam), so one person's arrangement never changes what anybody else sees.
     getEmployeeListColumns(session),

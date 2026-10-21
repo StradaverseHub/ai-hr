@@ -38,7 +38,8 @@ import {
   profileOption,
 } from '../db/schema';
 import { and, desc, eq, isNotNull } from 'drizzle-orm';
-import { hireEmployee, setEmploymentInfo, setReportingLine, updatePerson } from './org';
+import {updatePerson} from './org';
+import {hireEmployee,setEmploymentInfo,setReportingLine} from './workforce-commands';
 // r369 — `unpayableSalaryLeg` is the SAME predicate `setCompensation` refuses on, imported rather than
 // re-stated, so the dry run and the write can never disagree about which rows need a reason.
 import { setCompensation, unpayableSalaryLeg } from './comp';
