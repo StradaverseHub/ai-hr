@@ -174,3 +174,22 @@ draft activation use that facade; independently authorized ESS scalar/approval o
 Prepared regressions reuse a genuinely valid Movement preview, revoke permission, then require its
 subsequent preview/download/commit to refuse without names/fingerprints or state/events. Full Employee
 validation/commit and direct compliance refusal are covered too. All are unexecuted source work.
+
+
+A source compatibility review found that existing due-Movement execution uses a null-user system
+context. The new direct owner checks cannot equate that caller-supplied context with authenticated HR.
+The nightly script therefore supplies its already-existing actual owner connection only to the fixed
+ledger-driven Movement sweep. Application callers retain the runtime connection and fresh subject
+maintenance checks. The write, pre-write grade read and summary event share the supplied transaction
+owner. Existing separately-owned leave reprojection remains unchanged after the committed application.
+
+The private system-company proof checks both session_user and the effective SET ROLE against the real
+app_user table owner, plus null-user identity and exact tenant/company scope. Checking current_user or
+acting_as_owner() inside a definer function would bless the function owner for every caller; this draft
+explicitly does not do that. ai_hr_app has no EXECUTE on the private proof and cannot manufacture owner
+credentials with GUC claims. Existing admitted dated intents retain their original durable-ledger
+semantics; revoking a screen permission does not silently cancel a recorded future business event.
+Cancellation/reversal remains the existing audited command. A user-driven replay checks that user's
+current authority. Prepared real-runtime/owner cases require fake system refusal, legitimate due-only
+application and repeated-run no-op. Restricted-owner and actual script lifecycle verification remain
+required and unrun; this is not evidence that background compatibility has passed.

@@ -99,7 +99,7 @@ async function main() {
       // 941c9dac — put every future-dated movement whose effective date has arrived into effect. Safe to
       // run twice on the same day: due-ness is read from the ledger, and applying appends the record that
       // removes the movement from the due set (migration 0329 makes that unique).
-      const { applied: movementsApplied, failed: movementsFailed } = await sweepDueMovements(ctx, { today });
+      const { applied: movementsApplied, failed: movementsFailed } = await sweepDueMovements(ctx, { today }, owner.withTenant);
       // ADR-0084 §2.5 — chase incomplete records. Runs BEFORE dispatch so the nudge events it appends
       // become notifications in this same pass rather than waiting a day for the next admin page load.
       // Returns `disabled` for a tenant that has not switched it on, which is the default and is not a

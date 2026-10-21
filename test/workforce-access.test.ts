@@ -8,6 +8,7 @@ import {person,employment,employeeDraft,roleAssignment,appUser,jobGrade,domainEv
 import {hireEmployee,setEmployeeCode,updatePerson,setEmploymentGrade} from '../core/org';
 import {hireEmployee as hireWorkforceEmployee,setEmploymentInfo as maintainInfo,setPersonComplianceFields as maintainCompliance} from '../core/workforce-commands';
 import {createMovementEvent} from '../core/movement';
+import {sweepDueMovements} from '../core/movement-apply';
 import {previewMovementImport,commitMovementImport,movementImportCatalog,movementImportDownloadData} from '../core/movement-import';
 import {validateEmployeeImport,commitEmployeeImport} from '../core/import';
 import {toCsv} from '../lib/csv';
@@ -136,6 +137,21 @@ describe('fresh Workforce-purpose record consumers',()=>{
   const records=[{employee_code:'WF-NEW',full_name:'Fictional never imported',email:'wf-new@example.invalid'}];
   await expect(validateEmployeeImport(admin(),{companyId:b.companyId,records})).rejects.toBeInstanceOf(WorkforceAccessError);
   await expect(commitEmployeeImport(admin(),{companyId:b.companyId,records})).rejects.toBeInstanceOf(WorkforceAccessError);
+ });
+ it('requires an actual owner connection for a system sweep, never an empty user ID and claimed HR role',async()=>{
+  const subject=await hireEmployee(admin(),{person:{fullName:'Fictional scheduled subject',primaryEmail:`${randomUUID()}@example.invalid`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur(new Date(Date.now()-60*86400000))});
+  const future=todayInKualaLumpur(new Date(Date.now()+7*86400000));
+  await createMovementEvent(admin(),{employmentId:subject.employmentId,kind:'transfer',effectiveDate:future,departmentId:b.deptB,remarks:'Fictional already-admitted intent'});
+  const system={...admin(),userId:null,personId:null} satisfies SessionContext;
+  const [forged]=await withTenant(system,tx=>tx.execute<{allowed:boolean}>(sql`select app.access_workforce_company(${b.companyId}::uuid,'workforce.maintain') as allowed`));expect(forged.allowed).toBe(false);
+  await expect(withTenant(system,tx=>tx.execute(sql`select app.access_workforce_owner_company(${b.companyId}::uuid)`))).rejects.toThrow();
+  const refused=await sweepDueMovements(system,{today:future});expect(refused).toMatchObject({applied:0,failed:1});
+  // This is a pre-existing admitted dated intent. The owner job executes its ledger inputs; removing
+  // its original author's later screen permission is not a cancellation of the recorded business event.
+  const [actual]=await owner.withTenant(system,tx=>tx.execute<{allowed:boolean}>(sql`select app.access_workforce_company(${b.companyId}::uuid,'workforce.maintain') as allowed`));expect(actual.allowed).toBe(true);
+  expect(await sweepDueMovements(system,{today:future},owner.withTenant)).toMatchObject({applied:1,failed:0});
+  expect(await sweepDueMovements(system,{today:future},owner.withTenant)).toMatchObject({applied:0,failed:0});
+  const rows=await owner.db.select({id:domainEvent.id}).from(domainEvent).where(eq(domainEvent.eventType,'employment.movement.applied')).orderBy(domainEvent.id);expect(rows).toHaveLength(1);
  });
  it('refuses direct register creation, edits and archives after maintenance denial without a partial event or state change',async()=>{
   const subject=await hire('Fictional register subject');

@@ -913,17 +913,33 @@ GRANT EXECUTE ON FUNCTION app.access_withdraw_profile_requests(jsonb,text) TO ai
 -- Draft Workforce-purpose adapters. 0576 owns principal freshness; this migration must follow its
 -- verified release. These predicates narrow the existing HR record owner rather than manufacture
 -- HR, payroll or approval status from a group grant. Catalogue activation waits for all consumers.
+-- The pre-existing cron executes already-admitted dated intents as system, not as a synthetic login.
+-- session_user is essential: current_user inside a definer function is this function's owner, so an
+-- acting_as_owner() check here would accidentally bless every ai_hr_app caller. No runtime EXECUTE.
+CREATE FUNCTION app.access_workforce_owner_company(p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.current_user_id() IS NULL AND pg_catalog.pg_has_role(
+  session_user,(SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid='public.app_user'::regclass),'USAGE')
+  AND pg_catalog.pg_has_role(
+   (CASE WHEN pg_catalog.current_setting('role')='none' THEN session_user::text ELSE pg_catalog.current_setting('role') END)::name,
+   (SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid='public.app_user'::regclass),'USAGE')
+  AND EXISTS(SELECT 1 FROM public.company c WHERE c.id=p_company AND c.tenant_id=app.current_tenant_id()
+   AND (app.has_role_for('hr_admin',c.id) OR app.has_role_for('super_admin',c.id)));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_owner_company(uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app.access_workforce_company(p_company uuid,p_capability text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT p_capability IN ('workforce.view','workforce.maintain') AND app.principal_snapshot_current()
-  AND EXISTS(SELECT 1 FROM public.company co JOIN public.app_user u ON u.tenant_id=co.tenant_id
+ SELECT p_capability IN ('workforce.view','workforce.maintain') AND (app.access_workforce_owner_company(p_company)
+  OR app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.company co JOIN public.app_user u ON u.tenant_id=co.tenant_id
    JOIN public.role_assignment r ON r.tenant_id=u.tenant_id AND r.app_user_id=u.id
    JOIN public.access_capability c ON c.id=p_capability
    WHERE co.id=p_company AND co.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id()
     AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
     AND r.role::text IN ('hr_admin','super_admin') AND app.has_role_for(r.role::text,co.id)
     AND app.access_scope_covers(r.company_id,co.id,co.tenant_id)
-    AND (NOT c.supported OR app.access_allowed_for(u.id,c.id,co.id)));
+    AND (NOT c.supported OR app.access_allowed_for(u.id,c.id,co.id))));
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.access_workforce_company(uuid,text) FROM PUBLIC;

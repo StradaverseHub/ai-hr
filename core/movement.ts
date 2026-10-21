@@ -2822,6 +2822,7 @@ export async function applyDueMovementsTx(
   employmentId: string,
   today: string,
 ): Promise<ApplyDueResult> {
+  await assertWorkforceEmploymentTx(tx,ctx,employmentId,'maintain');
   const { events, rows, statusOf } = await projectRows(tx, ctx.tenantId, employmentId, today);
   const due = rows
     .filter((r) => r.scheduled && r.effectiveDate <= today && statusOf(r) === 'pending')
