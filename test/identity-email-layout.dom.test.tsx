@@ -57,6 +57,7 @@ describe('root layout assigned Attendance inbox navigation',()=>{
   const props=sidebarProps(await Layout({children:null}));
   expect(m.tasks).toHaveBeenCalledTimes(1);
   expect(props!.hasAssignedAttendanceApproval).toBe(kind==='attendance');
+  expect(props!.hasAssignedApproval).toBe(true);
   expect(props!.canApprove).toBe(false);
   expect(props!.canAccessTeam).toBe(false);
   expect(props!.isAdmin).toBe(false);
@@ -75,6 +76,7 @@ describe('root layout assigned Attendance inbox navigation',()=>{
   expect(props!.taskCount).toBe(2);
   expect(props!.approvalCount).toBe(1);
   expect(props!.hasAssignedAttendanceApproval).toBe(false);
+  expect(props!.hasAssignedApproval).toBe(false);
   expect(props!.canApprove).toBe(false);
   expect(props!.isAdmin).toBe(true);
  });

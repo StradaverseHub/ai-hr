@@ -167,8 +167,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: isModuleEnabledOrFalse(session, 'claims'),
   });
-  // The canonical inbox admits ordinary employees only for an actionable, non-self v3 assignment.
-  // Reuse that result; do not promote the viewer to manager or query the assignment owner twice.
+  // Reuse actual non-self task assignments; they never promote the viewer to manager navigation.
   const hasAssignedAttendanceApproval = !canApprove && approvalTasks.some(task => task.kind === 'attendance');
   const onboardingNav=isModuleEnabledOrFalse(session,'lifecycle')?await onboardingNavigation(session):{module:false,master:false,requisitions:false,joiners:0,checklists:0};
   const onboardingAccess=onboardingNav.module;
@@ -176,6 +175,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // Profile Changes now has its own Personnel queue. Count only tasks this inbox actually opens;
   // My tasks and the bell still contain every canonical task, without another query.
   const legacyApprovalCount = approvalTasks.filter(task => task.linkPath.split(/[?#]/, 1)[0] === '/approvals').length;
+  const hasAssignedApproval = !canApprove && legacyApprovalCount>0;
   const pendingTasks:NotificationTaskItem[]=[...approvalTasks,...onboardingQueue.map(onboardingNotificationTask)];
   const onboardingNoticesEnabled=isModuleEnabledOrFalse(session,'lifecycle');
   const [onboardingUnread,onboardingRead]=onboardingNoticesEnabled?await Promise.all([onboardingNotices(session),onboardingNotices(session,true)]):[[],[]];
@@ -224,6 +224,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               isAdmin={isAdmin(session) || canManagePayroll(session) || canManagePerfComp(session)}
               canApprove={(session.roles ?? []).includes('manager')}
               hasAssignedAttendanceApproval={hasAssignedAttendanceApproval}
+              hasAssignedApproval={hasAssignedApproval}
               canReviewProfileChanges={isAdmin(session)}
               canAccessTeam={hasTeamAccess(session)}
               // Pending-approval badge on the "Approval Items" row (feedback 836118c4). Reuses the

@@ -9,14 +9,20 @@ function section(from: string, to: string) {
     expect(result.length).toBeGreaterThan(100);
     return result;
 }
-describe('ordinary v3 admission does not query unrelated module queues', () => {
-    it('keeps general queue loading separate from the Attendance-only capability', () => {
+describe('ordinary v3 presentation keeps unrelated detail loaders separate', () => {
+    it('discovers assignments through the canonical inbox and preserves Attendance-only detail loading', () => {
+        const admission=section('const assignedAttendance =','const { error, sort:');
+        expect(admission).toContain('await listPendingTasks(s,scopeIds,{attendance:attendanceOn,claims:claimsOn})');
+        expect(admission).toContain("assignedTasks.every(task=>task.kind==='attendance')");
+        expect(admission).not.toContain('listLeaveRequests(');
+        expect(admission).not.toContain('listPendingClaims(');
         const loaders = section('const [leave, leaveCancellations, replacementRequests, loadedCorrections', 'const corrections = attendanceOnly');
         expect(loaders).toContain("attendanceOnly ? Promise.resolve([]) : listLeaveRequests");
         expect(loaders).toContain('attendanceOnly ? Promise.resolve([]) : listPendingLeaveCancellations');
         expect(loaders).toContain('attendanceOnly ? Promise.resolve([]) : listPendingReplacementLeaveRequests');
         expect(loaders).toContain('claimsOn && !attendanceOnly ? listPendingClaims');
-        expect(page).toContain('!attendanceOnly && me?.employmentId ? pendingManagerReviewsFor');
+        expect(page).toContain('const own = !attendanceOnly && s.personId ? await myOwnEmploymentSubjects');
+        expect(page).toContain('own.map(subject=>pendingManagerReviewsFor(s,subject.employmentId))');
     });
     it('uses only actionable non-self frozen v3 requests and does not manufacture historical totals', () => {
         const projection = section('const corrections = attendanceOnly', '// 1e9145d4 — the kind of day');

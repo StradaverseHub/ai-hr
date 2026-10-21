@@ -34,7 +34,8 @@ import { listReviews, pendingManagerReviewsFor } from '@/core/employment-review'
 // section below is the caller they were missing, and the reason production held zero credits.
 import { listPendingReplacementLeaveRequests } from '@/packs/leave/service';
 import { decideReplacementLeaveRequestAction } from '@/app/leave/actions';
-import { myEmployment } from '@/core/read';
+import { myOwnEmploymentSubjects } from '@/core/read';
+import {listPendingTasks} from '@/core/approvals-inbox';
 import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import {
   approveClaimAction,
@@ -168,10 +169,16 @@ export default async function ApprovalsPage({
   const { s, scopeIds } = await scopedSession();
   const admin = isAdmin(s);
   const manager = (s.roles ?? []).includes('manager');
+  const attendanceOn = isModuleEnabledOrFalse(s, 'attendance');
+  const claimsOn = isModuleEnabledOrFalse(s, 'claims');
   const rewardReviews = isModuleEnabledOrFalse(s, 'rewards') ? await pendingRewardReviews(s, scopeIds) : [];
-  const assignedAttendance = isModuleEnabledOrFalse(s, 'attendance') && await hasPendingAttendanceParticipantAssignment(s);
-  if (!admin && !manager && !rewardReviews.length && !assignedAttendance) redirect('/');
-  const attendanceOnly = !admin && !manager && !rewardReviews.length && assignedAttendance;
+  const assignedAttendance = attendanceOn && await hasPendingAttendanceParticipantAssignment(s);
+  // Entry follows real current assignments. This never manufactures a Manager role or widens a queue;
+  // all reads and decisions below retain their own authority. Attendance-only participants keep their
+  // existing narrow presentation when they have no other kind of assigned action.
+  const assignedTasks = !admin && !manager ? await listPendingTasks(s,scopeIds,{attendance:attendanceOn,claims:claimsOn}) : [];
+  if (!admin && !manager && !rewardReviews.length && !assignedAttendance && !assignedTasks.length) redirect('/');
+  const attendanceOnly = !admin && !manager && !rewardReviews.length && assignedAttendance && assignedTasks.every(task=>task.kind==='attendance');
   const { error, sort: sortParam, category: categoryParam } = await searchParams;
   if(admin&&categoryParam==='profileChanges')redirect('/admin/personnel/profile-changes');
   // Approvals sort (09cda965): display-only ordering, read from ?sort= so it survives reload + bulk
@@ -215,9 +222,6 @@ export default async function ApprovalsPage({
     name_asc: t('sortNameAsc'),
     name_desc: t('sortNameDesc'),
   } satisfies { sortBy: string } & Record<ApprovalSort, string>;
-
-  const attendanceOn = isModuleEnabledOrFalse(s, 'attendance');
-  const claimsOn = isModuleEnabledOrFalse(s, 'claims');
 
   // b833a077 (r362) — `travel` stood between `corrections` and `profileChanges` in this destructuring and
   // `listTravelRequests` in the Promise.all below. My Travel was removed completely: no form can create a
@@ -265,9 +269,9 @@ export default async function ApprovalsPage({
   // Employment-review queues (0110): the manager stage (assigned to the caller's own employment, even
   // without the `manager` platform role) + the HR stage (admin-only).
   const tReview = await getTranslations('review');
-  const me = s.personId ? await myEmployment(s) : null;
+  const own = !attendanceOnly && s.personId ? await myOwnEmploymentSubjects(s,{profileEdit:true}) : [];
   const [managerReviews, hrReviews] = await Promise.all([
-    !attendanceOnly && me?.employmentId ? pendingManagerReviewsFor(s, me.employmentId) : Promise.resolve([]),
+    Promise.all(own.map(subject=>pendingManagerReviewsFor(s,subject.employmentId))).then(rows=>[...new Map(rows.flat().map(row=>[row.id,row])).values()]),
     admin ? listReviews(s, { status: 'pending_hr' }) : Promise.resolve([]),
   ]);
 

@@ -75,4 +75,15 @@ describe.each(['classic','monolith','atelier'] as const)('%s Ops/Strata navigati
   if(inbox.getAttribute('aria-expanded')!=='true')fireEvent.click(inbox);
   expect(screen.queryByRole('link',{name:messages.nav.approvals})).toBeNull();
  });
+ it('adds and removes only the approval destination for a current ordinary-user assignment',()=>{
+  document.documentElement.setAttribute('data-ui-theme',theme);
+  const props={isAdmin:false,canApprove:false,canAccessTeam:false,hasAssignedApproval:true,onboardingAccess:false,onboardingMaster:false,onboardingRequisitionsAccess:false,enabledModules:['leave']};
+  const view=render(ui(props));fireEvent.click(screen.getByRole('button',{name:messages.nav.inbox}));
+  expect(screen.getByRole('link',{name:messages.nav.approvals})).toHaveAttribute('href','/approvals');
+  expect(screen.queryByRole('link',{name:messages.nav.personnelAdmin})).toBeNull();
+  expect(screen.queryByRole('link',{name:messages.nav.myTeam})).toBeNull();
+  view.rerender(ui({...props,hasAssignedApproval:false}));
+  expect(screen.queryByRole('link',{name:messages.nav.approvals})).toBeNull();
+  expect(screen.getByRole('link',{name:messages.nav.myTasks})).toHaveAttribute('href','/tasks');
+ });
 });
