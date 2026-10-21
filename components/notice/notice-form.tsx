@@ -30,7 +30,7 @@ export type NoticeFormValues = {
 };
 
 export type NoticeFormLabels = {
-  attachments:NoticeAttachmentEditorLabels;
+  attachmentLocale:string;attachments:NoticeAttachmentEditorLabels;
   category:string;summary:string;pinned:string;requiresAcknowledgement:string;acknowledgementHelp:string;
   authoringCompany:string;
   chooseAuthoringCompany:string;
@@ -278,7 +278,7 @@ export function NoticeForm({
         <p className="max-w-prose text-sm text-muted-foreground">{labels.acknowledgementHelp}</p>
       </section>
 
-      <NoticeAttachmentEditor noticeId={idField} contentVersion={values.contentVersion??0} items={attachmentIds.map(id=>attachments.find(item=>item.id===id)??{id,fileName:labels.attachments.unavailable,mimeType:'application/octet-stream',byteLength:0})} labels={labels.attachments}
+      <NoticeAttachmentEditor locale={labels.attachmentLocale} noticeId={idField} contentVersion={values.contentVersion??0} items={attachmentIds.map(id=>attachments.find(item=>item.id===id)??{id,fileName:labels.attachments.unavailable,mimeType:'application/octet-stream',byteLength:0})} labels={labels.attachments}
         onBusyChange={setAttachmentBusy} onUploaded={item=>{setAttachments(prior=>[...prior.filter(row=>row.id!==item.id),item]);setAttachmentIds(prior=>prior.includes(item.id)?prior:[...prior,item.id]);}} onRemove={id=>setAttachmentIds(prior=>prior.filter(item=>item!==id))}/>
 
       {/* ── Section 2 — content ────────────────────────────────────────────────────────────────────── */}

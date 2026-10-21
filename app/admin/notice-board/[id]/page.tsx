@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { getTranslations } from 'next-intl/server';
+import { getTranslations,getLocale } from 'next-intl/server';
 
 import { requireAdmin } from '@/lib/authz';
 import { noticeAudiencePreview, getNotice,noticeAuthoringScope,noticeAttachmentMetadata } from '@/core/notice';
@@ -41,6 +41,7 @@ export default async function NoticeDetailPage({
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('notices');
+  const locale=await getLocale();
   const { id } = await params;
   const { error } = await searchParams;
 
@@ -175,6 +176,7 @@ export default async function NoticeDetailPage({
             employees={vocab.employees}
             targetingFrozen={published}
             labels={{
+              attachmentLocale:locale,
               attachments:{title:t('attachmentTitle'),help:t('attachmentHelp'),choose:t('attachmentChoose'),add:t('attachmentAdd'),pending:t('attachmentPending'),remove:t('attachmentRemove'),saveFirst:t('attachmentSaveFirst'),saveHint:t('attachmentSaveHint'),file:t('attachmentFile'),tooLarge:t('attachmentTooLarge'),changed:t('attachmentChanged'),limit:t('attachmentLimit'),unavailable:t('attachmentUnavailable'),failed:t('attachmentFailed')},
               category:t('category'),summary:t('summary'),pinned:t('pinned'),requiresAcknowledgement:t('requiresAcknowledgement'),acknowledgementHelp:t('acknowledgementHelp'),
               authoringCompany:t('authoringCompany'),chooseAuthoringCompany:t('chooseAuthoringCompany'),groupAuthoring:t('groupAuthoring'),authoringCompanyHelp:t('authoringCompanyHelp'),noAuthoringScope:t('noAuthoringScope'),

@@ -2,8 +2,11 @@
 import {readFile,writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 
-const name='ai_hr_board1_home_acceptance';
-const destination='/private/tmp/aihr-board1-remaining4-20261021/home-fixture.json';
+const target=process.env.BOARD1_HOME_FIXTURE_TARGET??'home';
+if(target!=='home'&&target!=='notice')throw Error('Choose an explicit allowed fictional fixture target.');
+const name=target==='notice'?'ai_hr_board1_notice_acceptance':'ai_hr_board1_home_acceptance';
+const destination='/private/tmp/aihr-board1-remaining4-20261021/'+(target==='notice'?'notice-fixture.json':'home-fixture.json');
+const tenantName=target==='notice'?'Fictional Board 1 Notice Acceptance':'Fictional Board 1 Home Acceptance';
 for(const raw of [process.env.DATABASE_URL,process.env.MIGRATION_DATABASE_URL]){
  const url=new URL(raw??'');
  if(!['postgres:','postgresql:'].includes(url.protocol)||!['127.0.0.1','localhost'].includes(url.hostname)
@@ -24,8 +27,8 @@ async function main(){
   const existing=await admin`SELECT 1 FROM pg_database WHERE datname=${name}`;
   if(existing.length&&!prior)throw Error('Named database already exists without its fixture receipt; refusing to adopt or reset it.');
   if(!existing.length&&prior)throw Error('Fixture receipt exists without its database; refusing to recreate identities.');
-  if(!existing.length)await admin.unsafe('CREATE DATABASE ai_hr_board1_home_acceptance');
-  await admin.unsafe('GRANT CONNECT ON DATABASE ai_hr_board1_home_acceptance TO ai_hr_app');
+  if(!existing.length)await admin.unsafe('CREATE DATABASE "'+name+'"');
+  await admin.unsafe('GRANT CONNECT ON DATABASE "'+name+'" TO ai_hr_app');
  }finally{await admin.end({timeout:5});}
  const {drizzle}=await import('drizzle-orm/postgres-js');
  const {migrate}=await import('drizzle-orm/postgres-js/migrator');
@@ -48,7 +51,7 @@ async function main(){
  try{
   if(prior){
    const [tenant]=await owner.db.select().from(s.tenant).where(eq(s.tenant.id,prior.tenantId));
-   if(tenant?.name!=='Fictional Board 1 Home Acceptance')throw Error('Fictional tenant receipt no longer matches.');
+   if(tenant?.name!==tenantName)throw Error('Fictional tenant receipt no longer matches.');
    for(const user of Object.values(prior.people) as {userId:string;personId:string;employmentId:string}[]){
     const [login]=await owner.db.select().from(s.appUser).where(and(eq(s.appUser.id,user.userId),eq(s.appUser.tenantId,tenant.id)));
     const [employment]=await owner.db.select().from(s.employment).where(and(eq(s.employment.id,user.employmentId),eq(s.employment.tenantId,tenant.id)));
@@ -57,7 +60,7 @@ async function main(){
    console.log('Existing fictional Home identities and migration fingerprint verified; saved settings preserved.');return;
   }
   const b=await seedBase();
-  await owner.db.update(s.tenant).set({name:'Fictional Board 1 Home Acceptance'}).where(eq(s.tenant.id,b.tenantId));
+  await owner.db.update(s.tenant).set({name:tenantName}).where(eq(s.tenant.id,b.tenantId));
   await owner.db.update(s.company).set({legalName:'Fictional Home Operations A'}).where(eq(s.company.id,b.companyId));
   const [other]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional Home Services B'}).returning();
   const [otherDept]=await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:other.id,name:'Fictional Services'}).returning();

@@ -22,6 +22,16 @@ async function published(extra:Partial<NoticeInput>={}){
 async function code(promise:Promise<unknown>){try{await promise;return null;}catch(error){let item=error as {code?:string;cause?:unknown};while(item){if(item.code)return item.code;item=item.cause as typeof item;}throw error;}}
 
 describe('Retained Notice content and explicit recipient acknowledgement',()=>{
+ it('resolves the recorded sender only through an authorized live Notice without widening identity reads',async()=>{
+  const publisher=await employee(),recipient=await employee(),other=await employee();
+  await owner.db.update(s.person).set({fullName:'Fictional recorded publisher'}).where(eq(s.person.id,publisher.personId));
+  await owner.db.update(s.appUser).set({personId:publisher.personId}).where(eq(s.appUser.id,b.adminUserId));
+  const n=await createNotice(adminCtx(b),input({targetMode:'individual',employmentIds:[recipient.employmentId]}));await publishNotice(adminCtx(b),n.id);
+  expect((await noticesForEmployment(recipient.ctx,recipient.employmentId))[0].publishedBy).toBe('Fictional recorded publisher');
+  const [hidden]=await withTenant(other.ctx,tx=>tx.execute(sql`select app.notice_sender_display_name(${n.id}::uuid) as name`));expect(hidden.name).toBeNull();
+  await archiveNotice(adminCtx(b),n.id);const [archived]=await withTenant(recipient.ctx,tx=>tx.execute(sql`select app.notice_sender_display_name(${n.id}::uuid) as name`));expect(archived.name).toBeNull();
+ });
+
  it('retains original and changed content without revising for category/pin changes',async()=>{
   const n=await published();
   expect((await getNotice(adminCtx(b),n.id))?.contentVersion).toBe(1);

@@ -1,13 +1,12 @@
 'use client';
 import {useId,useRef,useState} from 'react';
-import {useLocale} from 'next-intl';
 import {Button,inputCls} from '@/components/ui';
 export type NoticeAttachmentMetadata={id:string;fileName:string;mimeType:string;byteLength:number};
 export type NoticeAttachmentEditorLabels={title:string;help:string;choose:string;add:string;pending:string;remove:string;saveFirst:string;saveHint:string;file:string;tooLarge:string;changed:string;limit:string;unavailable:string;failed:string};
-export function NoticeAttachmentEditor({noticeId,contentVersion,items,onUploaded,onRemove,onBusyChange,labels}:{
- noticeId?:string;contentVersion:number;items:NoticeAttachmentMetadata[];onUploaded:(file:NoticeAttachmentMetadata)=>void;onRemove:(id:string)=>void;onBusyChange:(busy:boolean)=>void;labels:NoticeAttachmentEditorLabels;
+export function NoticeAttachmentEditor({noticeId,contentVersion,items,onUploaded,onRemove,onBusyChange,labels,locale}:{
+ locale:string;noticeId?:string;contentVersion:number;items:NoticeAttachmentMetadata[];onUploaded:(file:NoticeAttachmentMetadata)=>void;onRemove:(id:string)=>void;onBusyChange:(busy:boolean)=>void;labels:NoticeAttachmentEditorLabels;
 }){
- const inputId=useId(),locale=useLocale(),input=useRef<HTMLInputElement>(null),inFlight=useRef(false);
+ const inputId=useId(),input=useRef<HTMLInputElement>(null),inFlight=useRef(false);
  const [file,setFile]=useState<File|null>(null),[intent,setIntent]=useState<string|null>(null),[pending,setPending]=useState(false),[error,setError]=useState<keyof Pick<NoticeAttachmentEditorLabels,'file'|'tooLarge'|'changed'|'limit'|'unavailable'|'failed'>|null>(null),[ready,setReady]=useState(false);
  async function upload(){
   if(inFlight.current||!file||!intent||!noticeId)return;

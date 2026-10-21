@@ -2,9 +2,8 @@ import React from 'react';
 import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {NoticeAttachmentEditor,type NoticeAttachmentEditorLabels} from '../components/notice/attachment-editor';
-vi.mock('next-intl',()=>({useLocale:()=> 'en'}));
 const labels:NoticeAttachmentEditorLabels={title:'Attachments',help:'Up to five files',choose:'Choose file',add:'Add file',pending:'Uploading',remove:'Remove',saveFirst:'Save a draft first',saveHint:'Save the notice to include these files',file:'Check file type',tooLarge:'File is too large or empty',changed:'Reload the changed notice',limit:'Five files maximum',unavailable:'Notice unavailable',failed:'Please try again'};
-const props=()=>({noticeId:'notice',contentVersion:2,items:[],onUploaded:vi.fn(),onRemove:vi.fn(),onBusyChange:vi.fn(),labels});
+const props=()=>({locale:'en',noticeId:'notice',contentVersion:2,items:[],onUploaded:vi.fn(),onRemove:vi.fn(),onBusyChange:vi.fn(),labels});
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});beforeEach(()=>vi.stubGlobal('fetch',vi.fn()));
 describe('Notice editor staged file selection',()=>{
  it('keeps file bytes out of the parent save and blocks its save contract until upload or cancellation',()=>{
