@@ -64,7 +64,10 @@ describe('dated holiday calendar input and history',()=>{
   fireEvent.submit(screen.getByRole('form',{name:'Add calendar'}));
   await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent('could not be saved'));
   expect(screen.getByLabelText('Calendar')).toHaveValue('state:Johor');expect(screen.getByLabelText('End Date')).toHaveValue('2025-04-10');
-  expect(state.refresh).not.toHaveBeenCalled();expect(screen.getByRole('button',{name:'Save assignment'})).toBeEnabled();
+  expect(state.refresh).not.toHaveBeenCalled();
+  // The refusal renders before React finishes the async transition. Retry becomes available
+  // only after pending clears; observe that user-visible state instead of racing the render.
+  await waitFor(()=>expect(screen.getByRole('button',{name:'Save assignment'})).toBeEnabled());
   state.save.mockResolvedValueOnce({ok:true,updated:0,reviewDates:[]});fireEvent.submit(screen.getByRole('form',{name:'Add calendar'}));
   await waitFor(()=>expect(state.refresh).toHaveBeenCalledOnce());expect(state.save).toHaveBeenCalledTimes(2);
  });
@@ -83,6 +86,7 @@ describe('dated holiday calendar input and history',()=>{
   expect(screen.getByLabelText('Calendar')).toHaveValue('state:Johor');
   expect(state.refresh).not.toHaveBeenCalled();
   const submitted=Object.fromEntries(state.save.mock.calls[0][0]);
+  await waitFor(()=>expect(screen.getByRole('button',{name:'Save assignment'})).toBeEnabled());
   state.save.mockResolvedValueOnce({ok:true,updated:0,reviewDates:[]});
   fireEvent.submit(screen.getByRole('form',{name:'Add calendar'}));
   await waitFor(()=>expect(state.refresh).toHaveBeenCalledOnce());
