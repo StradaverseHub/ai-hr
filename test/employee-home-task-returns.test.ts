@@ -5,7 +5,7 @@ import type {SessionContext} from '../db/client';
 import {adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import * as s from '../db/schema';
 import {hireEmployee,setReportingLine} from '../core/org';
-import {requestLeave} from '../packs/leave/service';
+import {requestLeave,setLeaveApprovalPolicy} from '../packs/leave/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
 const session=vi.hoisted(()=>({current:null as SessionContext|null,companyId:''}));
 class DecisionRedirect extends Error{constructor(readonly url:string){super('Fictional Next redirect');}}
@@ -27,6 +27,8 @@ async function fixture(){
  const userId=await createAppUser(b.tenantId,manager.personId,'employee');
  session.current={tenantId:b.tenantId,userId,personId:manager.personId,roles:['employee'],entitlements:harnessSnapshot(b.tenantId)};
  await owner.db.insert(s.leaveLedger).values({tenantId:b.tenantId,employmentId:employee.employmentId,leaveTypeId:b.annualLeaveTypeId,entryType:'accrual',days:'20.00',effectiveOn:todayInKualaLumpur().slice(0,4)+'-01-01'});
+ // This case exercises a final workflow decision. The shipped fallback has a subsequent HR step.
+ await setLeaveApprovalPolicy(adminCtx(b),{companyId:b.companyId,levels:['direct_manager']});
  let date=add(todayInKualaLumpur(),3);while([0,6].includes(new Date(date+'T12:00:00Z').getUTCDay()))date=add(date,1);
  const request=await requestLeave(adminCtx(b),{employmentId:employee.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:date,endDate:date});
  const form=new FormData();form.set('id',request.leaveRequestId);form.set('decision','approved');form.set('category','leave');form.set('sort','oldest');

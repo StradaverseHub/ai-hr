@@ -171,12 +171,14 @@ export default async function ApprovalsPage({
   const manager = (s.roles ?? []).includes('manager');
   const attendanceOn = isModuleEnabledOrFalse(s, 'attendance');
   const claimsOn = isModuleEnabledOrFalse(s, 'claims');
-  const rewardReviews = isModuleEnabledOrFalse(s, 'rewards') ? await pendingRewardReviews(s, scopeIds) : [];
-  const assignedAttendance = attendanceOn && await hasPendingAttendanceParticipantAssignment(s);
   // Entry follows real current assignments. This never manufactures a Manager role or widens a queue;
   // all reads and decisions below retain their own authority. Attendance-only participants keep their
   // existing narrow presentation when they have no other kind of assigned action.
-  const assignedTasks = !admin && !manager ? await listPendingTasks(s,scopeIds,{attendance:attendanceOn,claims:claimsOn}) : [];
+  const [rewardReviews, assignedAttendance, assignedTasks] = await Promise.all([
+    isModuleEnabledOrFalse(s, 'rewards') ? pendingRewardReviews(s, scopeIds) : Promise.resolve([]),
+    attendanceOn ? hasPendingAttendanceParticipantAssignment(s) : Promise.resolve(false),
+    !admin && !manager ? listPendingTasks(s,scopeIds,{attendance:attendanceOn,claims:claimsOn}) : Promise.resolve([]),
+  ]);
   if (!admin && !manager && !rewardReviews.length && !assignedAttendance && !assignedTasks.length) redirect('/');
   const attendanceOnly = !admin && !manager && !rewardReviews.length && assignedAttendance && assignedTasks.every(task=>task.kind==='attendance');
   const { error, sort: sortParam, category: categoryParam } = await searchParams;
