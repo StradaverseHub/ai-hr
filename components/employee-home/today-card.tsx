@@ -33,7 +33,7 @@ export function HomeTodayCard({employmentId,employmentLabel,timeZone}:{employmen
   return()=>{clearInterval(timer);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};
  },[intent]);
  const complete=React.useCallback((receipt:ClockingConfirmation)=>{setConfirmed(receipt);setIntent(null);setRevision(value=>value+1);},[]);
- const dismiss=React.useCallback(()=>setIntent(null),[]);
+ const dismiss=React.useCallback(()=>{setIntent(null);setRevision(value=>value+1);},[]);
  const start=React.useCallback((direction:'in'|'out')=>{setConfirmed(null);setIntent(direction);},[]);
  const recorded=confirmed?new Intl.DateTimeFormat(locale,{timeZone,hour:'2-digit',minute:'2-digit'}).format(new Date(confirmed.recordedAt)):null;
  return <>

@@ -155,6 +155,9 @@ function ClockFlow({initial,shiftName,employmentId,embedded=false,initialAction,
           // Read current policy first. Optional location has a bounded best-effort read and can be
           // explicitly absent; a retained uncertain command never enters this branch or changes bytes.
           let value=await refresh(null),point:Geo|null=null,locationStatus:LocationCaptureStatus='recorded';
+          // Home offers a single next action. A stale card must not repeat a clock-in/out that
+          // another accepted record has already completed. Receipt recovery above remains first.
+          if(embedded&&((direction==='in'&&value.clockedIn)||(direction==='out'&&!value.clockedIn)))throw new Error('conflict');
           try{point=await locate(value.geofencingRequired?12000:2000);}catch(error){if(value.geofencingRequired)throw error;locationStatus=({locationDenied:'denied',locationTimeout:'timeout',locationUnsupported:'unsupported'} as const)[(error as Error).message as 'locationDenied']??'unavailable';}
           setGeo(point);
           if(point)value=await refresh(point);

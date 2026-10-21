@@ -58,6 +58,13 @@ async function takeFrame(setting: 'required' | 'optional') {
   await screen.findByAltText(en.attendance.clock.photoReview);
 }
 describe('Web Clocking optional camera and uncertain commands',()=>{
+  it('does not repeat a stale Home clock-in after the canonical read is already clocked in',async()=>{
+    selectedSetting='not_required';const saved=vi.fn();
+    const stale={...initial,attendancePhotoSetting:'not_required' as const,clockedIn:true,openSince:initial.serverNow};
+    vi.mocked(fetch).mockImplementation(async(url)=>String(url)==='/api/time'?Response.json({serverNow:initial.serverNow}):Response.json(stale));
+    render(<NextIntlClientProvider locale="en" messages={en}><ClockPageClient initial={{...initial,attendancePhotoSetting:'not_required'}} shiftName={null} employmentId="own" embedded initialAction="in" onSaved={saved}/></NextIntlClientProvider>);
+    await screen.findByText(en.attendance.clock.conflict);expect(post).not.toHaveBeenCalled();expect(saved).not.toHaveBeenCalled();
+  });
   it('starts one embedded explicit intent and reports only the confirmed selected receipt',async()=>{
     selectedSetting='not_required';const saved=vi.fn(),busy=vi.fn(),employmentId='f554c043-bdd1-4ba4-a2aa-11ca98719828';
     render(<NextIntlClientProvider locale="en" messages={en}><ClockPageClient initial={{...initial,attendancePhotoSetting:'not_required'}} shiftName={null} employmentId={employmentId} embedded initialAction="in" onSaved={saved} onBusyChange={busy}/></NextIntlClientProvider>);
