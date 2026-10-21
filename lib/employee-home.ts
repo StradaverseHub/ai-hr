@@ -81,7 +81,7 @@ export function defaultEmployeeHomePreferences():EmployeeHomePreferences{
  * corresponding card hidden; genuinely new Home cards use the live master's defaults. The different
  * old layout geometry cannot establish an ordering for the new eight-slot surface. No stored value is
  * rewritten here, and a saved Home layout is always handed back unchanged to the canonical normalizer. */
-export function employeeHomeLayoutInput(raw:unknown):unknown{
+export function employeeHomeLayoutInput(raw:unknown,defaultKeys:readonly string[]=EMPLOYEE_HOME_CARDS):unknown{
  if(raw==null)return raw;
  const value=raw&&typeof raw==='object'&&!Array.isArray(raw)?raw as Record<string,unknown>:null;
  const selected=value&&Array.isArray(value.selected)?value.selected.filter((key):key is string=>typeof key==='string'):null;
@@ -91,8 +91,12 @@ export function employeeHomeLayoutInput(raw:unknown):unknown{
  if(!Array.isArray(raw)&&!selected&&!order)return raw;
  const corresponding:Partial<Record<EmployeeHomeCard,readonly string[]>>={timeOff:['leaveBalance'],calendar:['nextHoliday','upcomingEvents'],tasks:['pendingTasks'],notices:['noticeBoard']};
  // An old order-only array meant all its cards were shown. An explicit selected array can preserve hiding.
- const hidden=selected?Object.entries(corresponding).flatMap(([card,previous])=>previous.some(key=>all.includes(key))&&!previous.some(key=>selected.includes(key))?[card]:[]):[];
- return {selected:EMPLOYEE_HOME_CARDS.filter(card=>!hidden.includes(card)),order:[...EMPLOYEE_HOME_CARDS]};
+ const shown=new Set(defaultKeys);
+ if(selected)for(const [card,previous] of Object.entries(corresponding)){
+  if(!previous.some(key=>all.includes(key)))continue;
+  if(previous.some(key=>selected.includes(key)))shown.add(card);else shown.delete(card);
+ }
+ return {selected:EMPLOYEE_HOME_CARDS.filter(card=>shown.has(card)),order:[...EMPLOYEE_HOME_CARDS]};
 }
 /** Cosmetic settings only. They neither change the HR business-day clock nor grant access to cards. */
 export function validateEmployeeHomePreferences(raw:unknown):EmployeeHomePreferences{

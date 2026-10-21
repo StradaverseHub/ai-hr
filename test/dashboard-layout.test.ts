@@ -293,6 +293,8 @@ describe('Home cosmetic preferences share the canonical dashboard owner',()=>{
     expect(preferences.cardOrder).toEqual([...EMPLOYEE_HOME_CARDS]);
     expect(preferences.hiddenCards).toEqual(['calendar','notices','tasks']);
     expect(preferences.hiddenCards).not.toContain('today');expect(preferences.hiddenCards).not.toContain('timeOff');
+    const notDefault=HOME_CARDS.map(card=>card.cardKey==='celebrations'?{...card,defaultDisplay:false}:card);
+    expect((await getEmployeeHomePreferences(ctx,notDefault)).hiddenCards).toEqual(['calendar','notices','tasks','celebrations']);
     expect(await rawLayout(ctx)).toEqual(before);
     await setEmployeeHomePreferences(ctx,preferences,HOME_CARDS);
     expect(await getEmployeeHomePreferences(ctx,HOME_CARDS)).toEqual(preferences);

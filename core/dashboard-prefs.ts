@@ -118,7 +118,7 @@ export function getEmployeeHomePreferences(ctx: SessionContext, cards: readonly 
     const metadata=raw&&typeof raw==='object'&&!Array.isArray(raw)?(raw as Record<string,unknown>).homeDisplay:null;
     const defaults=defaultEmployeeHomePreferences();
     const display=readEmployeeHomePreferences({...defaults,...(metadata&&typeof metadata==='object'&&!Array.isArray(metadata)?metadata:{})});
-    const layout=normalizeDashboardLayout(employeeHomeLayoutInput(extractRoleLayout(raw,'employee')),cards);
+    const layout=normalizeDashboardLayout(employeeHomeLayoutInput(extractRoleLayout(raw,'employee'),cards.filter(card=>card.mandatory||card.defaultDisplay).map(card=>card.cardKey)),cards);
     const ordered=layout.order.filter((key):key is EmployeeHomePreferences['cardOrder'][number]=>EMPLOYEE_HOME_CARDS.some(card=>card===key));
     return {version:1,timeZone:display.timeZone,weekStartsOn:display.weekStartsOn,
       cardOrder:[...ordered,...EMPLOYEE_HOME_CARDS.filter(key=>!ordered.includes(key))],
