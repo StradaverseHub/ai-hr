@@ -112,7 +112,8 @@ describe('app/leave/actions.ts: the preview is alive for self-service + one new 
     // Balance is passed through untouched on BOTH branches.
     expect(body.includes('balance: s.balance')).toBe(true);
     // The on-behalf escape hatch: no gating when the resolved employment is not the caller's own.
-    expect(body.includes('employmentId !== me.employmentId')).toBe(true);
+    expect(body).toContain('myOwnEmploymentSubjects(session,{profileEdit:true})');
+    expect(body).toContain('if (!ownSelected)');
   });
 });
 

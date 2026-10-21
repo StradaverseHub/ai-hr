@@ -1,7 +1,7 @@
 // r397 — the page's reads, started together (app/leave/my-leave-data.ts documents each one and the graph).
 import { loadMyLeave } from './my-leave-data';
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
+import { redirect,notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
@@ -9,6 +9,7 @@ import { viewerEmployment } from '@/lib/viewer';
 import {
   leaveRequestDateBreakdown,
   myEmploymentIdsAll,
+  myOwnEmploymentSubjects,
   listEmployees,
   listLeaveTypes,
   listLeaveRequestsPage,
@@ -174,6 +175,7 @@ export default async function LeavePage({
      */
     apply?: string;
     applyType?: string;
+    employmentId?:string|string[];
   }>;
 }) {
   const { s: session, scopeIds } = await scopedSession();
@@ -195,7 +197,10 @@ export default async function LeavePage({
   // r397 — through `viewerEmployment` (lib/viewer.ts), the React `cache()`d seam over THIS SAME read: the root
   // layout's notice slot asks it with the same per-request session object, so one request now pays for the
   // employment lookup once instead of twice. Same function, same argument, same row.
-  const me = await viewerEmployment(session);
+  const selection=sp.employmentId;
+  if(Array.isArray(selection))notFound();
+  const me=selection!==undefined?(await myOwnEmploymentSubjects(session,{profileEdit:true})).find(row=>row.employmentId===selection)??null:await viewerEmployment(session);
+  if(selection!==undefined&&!me)notFound();
 
   // ── The short page (feedback 388e53c2) ───────────────────────────────────────────────────────────────
   // TWO viewers get the heading and one sentence instead of the self-service surface, and NONE of the
@@ -643,6 +648,8 @@ export default async function LeavePage({
                   Replacement Leave button immediately below already gives (replacementRequest.allowed). */}
               {ess && requestLeaveTypeOptions.length > 0 && (
                 <RequestLeaveDialog
+                  key={me.employmentId}
+                  ownEmploymentId={me.employmentId}
                   types={requestLeaveTypeOptionsGrouped}
                   // 5206539f — the per-subject type map is NOT passed any more, and the dialog's optional
                   // prop is left unset rather than fed an empty object. It existed to re-draw the offer as a

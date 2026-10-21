@@ -127,6 +127,7 @@ export function LeaveDurationFields({
   layout = 'grid',
   showDocumentFields = false,
   employeeOptions,
+  ownEmploymentId,
   eligibleTypeIdsByEmployment,
   action: previewAction,
   summaryAction,
@@ -143,6 +144,7 @@ export function LeaveDurationFields({
    *  preview below can read the currently-selected employmentId reactively. /me omits this — the preview
    *  action there resolves the caller's own employment server-side. */
   employeeOptions?: { id: string; name: string }[];
+  ownEmploymentId?:string;
   /**
    * ad965821 — which leave types each selectable employment actually qualifies for, resolved server-side by
    * the ONE gate in core/read.ts (conditions + employee_can_apply + hidden placement). Present only on the
@@ -198,7 +200,7 @@ export function LeaveDurationFields({
   const [duration, setDuration] = useState<Duration>('full_day');
   const [start, setStart] = useState(startDefault ?? '');
   const [end, setEnd] = useState(startDefault ?? '');
-  const [employmentId, setEmploymentId] = useState(employeeOptions?.[0]?.id ?? '');
+  const [employmentId, setEmploymentId] = useState(employeeOptions?.[0]?.id ?? ownEmploymentId ?? '');
   // Hourly-leave time window (0129): the two time pickers are controlled so we can show a live "Total: Nh"
   // as the user picks. This client total is DISPLAY-ONLY — the server recomputes hours authoritatively from
   // the same window on submit (the `required` attributes + the service-boundary throw are the real gates).
@@ -349,6 +351,7 @@ export function LeaveDurationFields({
 
   return (
     <>
+      {!employeeOptions&&ownEmploymentId&&<input type="hidden" name="employmentId" value={ownEmploymentId}/>}
       {employeeOptions && (
         // /leave only: rendered here (not the parent form) so the preview effect above can read the current
         // selection reactively. Field name matches the parent form's original <select name="employmentId">.

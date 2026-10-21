@@ -22,7 +22,7 @@ import { requestLeaveCancellationAction, editLeaveAction, cancelOwnLeaveAction }
 export type HistorySearch = { warnHoliday?: string; hTab?: string; hType?: string | string[]; hFrom?: string; hTo?: string; leaveYear?: string; year?: string; state?: string; loaded?: string };
 
 type OwnSession = Awaited<ReturnType<typeof scopedSession>>['s'];
-type OwnMe = NonNullable<Awaited<ReturnType<typeof myEmployment>>>;
+type OwnMe = Pick<NonNullable<Awaited<ReturnType<typeof myEmployment>>>,'employmentId'>;
 type OwnRequestRow = Awaited<ReturnType<typeof myUpcomingLeave>>[number];
 
 /**
