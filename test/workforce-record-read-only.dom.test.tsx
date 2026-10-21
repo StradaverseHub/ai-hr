@@ -1,7 +1,7 @@
 /** Prepared rendered contract; actual role journeys still need the isolated app under all leases. */
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 import {render,screen} from '@testing-library/react';
-import {createTranslator,type AbstractIntlMessages} from 'next-intl';
+import {createTranslator} from 'next-intl';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
 import zh from '../messages/zh.json';
@@ -20,7 +20,8 @@ const language=vi.hoisted(()=>({current:'en'}));
 // The production composition looks up registry-provided strings, not a literal message-key union.
 // Keep all real catalogue bytes and runtime missing-key errors without expanding every locale's
 // nested key union at each dynamic lookup during the repository's strict type check.
-const catalogues:Record<'en'|'ms'|'zh'|'ta'|'th'|'vi',AbstractIntlMessages>={en,ms,zh,ta,th,vi:viMessages};
+type RuntimeMessages=NonNullable<Parameters<typeof createTranslator>[0]['messages']>;
+const catalogues:Record<'en'|'ms'|'zh'|'ta'|'th'|'vi',RuntimeMessages>={en,ms,zh,ta,th,vi:viMessages};
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace?:string)=>createTranslator({
  locale:language.current,messages:catalogues[language.current as keyof typeof catalogues],namespace,onError:error=>{throw error;},
 })}));

@@ -2,7 +2,7 @@
 import {describe,expect,it,vi} from 'vitest';
 import {render} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import {createTranslator,type AbstractIntlMessages} from 'next-intl';
+import {createTranslator} from 'next-intl';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
 import zh from '../messages/zh.json';
@@ -16,11 +16,12 @@ import {workforceMaintenanceFields} from '../lib/workforce-maintenance-fields';
 
 vi.mock('../app/admin/personnel/[employmentId]/workforce-record-actions',()=>({saveWorkforceRecordAction:vi.fn()}));
 const catalogues={en,ms,zh,ta,th,vi:viMessages};
+type RuntimeMessages=NonNullable<Parameters<typeof createTranslator>[0]['messages']>;
 const id='11111111-1111-4111-8111-111111111111';
 const profile=Object.fromEntries(WORKFORCE_PROFILE_FIELDS.map(({key})=>[key,null])) as WorkforceProfile;
 const child:WorkforceEditorRow={kind:'dependent',id,version:'1045',values:{relationship:'child',fullName:'Fictional child',schoolName:'Fictional school',childTaxRelief:null,isStudent:null,childReliefPercentage:50,isBeneficiary:false,isDeceased:false}};
 function props(locale:keyof typeof catalogues='en',row:WorkforceEditorRow|null=child){
- const messages:AbstractIntlMessages=catalogues[locale];
+ const messages:RuntimeMessages=catalogues[locale];
  const root=createTranslator({locale,messages,onError:error=>{throw error;}});
  const access=createTranslator({locale,messages,namespace:'accessConfiguration',onError:error=>{throw error;}});
  const editor:WorkforceEditor={profileVersion:'1042',profile,sharedMaintain:true,employmentMaintain:true,registers:row?[row]:[],options:[]};
