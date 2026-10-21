@@ -82,11 +82,23 @@ export function employeeHomeConfigurationHistory(ctx:SessionContext,p:{companyId
  if(p.beforeOrdinal!==undefined&&(!Number.isSafeInteger(p.beforeOrdinal)||p.beforeOrdinal<1))throw Error('Choose a valid configuration history page.');
  return withTenant(ctx,async tx=>{
   await assertAdminCompany(tx,ctx,p.companyId);
-  const rows=await tx.select().from(employeeHomeConfigurationRevision).where(and(eq(employeeHomeConfigurationRevision.tenantId,ctx.tenantId),
+  const rows=await tx.select({id:employeeHomeConfigurationRevision.id,ordinal:employeeHomeConfigurationRevision.ordinal,reason:employeeHomeConfigurationRevision.reason,
+   createdByUserId:employeeHomeConfigurationRevision.createdByUserId,createdAt:employeeHomeConfigurationRevision.createdAt}).from(employeeHomeConfigurationRevision).where(and(eq(employeeHomeConfigurationRevision.tenantId,ctx.tenantId),
    eq(employeeHomeConfigurationRevision.companyId,p.companyId),eq(employeeHomeConfigurationRevision.audienceRole,audienceRole),
    p.beforeOrdinal===undefined?undefined:lt(employeeHomeConfigurationRevision.ordinal,p.beforeOrdinal)))
    .orderBy(desc(employeeHomeConfigurationRevision.ordinal)).limit(51);
-  const items=rows.slice(0,50).map(row=>({...row,configuration:validateEmployeeHomeConfiguration(row.configuration),createdAt:row.createdAt.toISOString()}));
+  const items=rows.slice(0,50).map(row=>({...row,createdAt:row.createdAt.toISOString()}));
   return {items,nextBeforeOrdinal:rows.length>50?items.at(-1)!.ordinal:null};
+ });
+}
+/** One chosen historical body, not fifty copies transported with a metadata list. */
+export function readEmployeeHomeConfigurationVersion(ctx:SessionContext,p:{companyId:string;audienceRole:string;ordinal:number}){
+ const audienceRole=role(p.audienceRole);
+ if(!Number.isSafeInteger(p.ordinal)||p.ordinal<1)throw Error('Choose a saved configuration version.');
+ return withTenant(ctx,async tx=>{
+  await assertAdminCompany(tx,ctx,p.companyId);
+  const [row]=await tx.select().from(employeeHomeConfigurationRevision).where(and(eq(employeeHomeConfigurationRevision.tenantId,ctx.tenantId),
+   eq(employeeHomeConfigurationRevision.companyId,p.companyId),eq(employeeHomeConfigurationRevision.audienceRole,audienceRole),eq(employeeHomeConfigurationRevision.ordinal,p.ordinal))).limit(1);
+  return row?{...row,configuration:validateEmployeeHomeConfiguration(row.configuration),createdAt:row.createdAt.toISOString()}:null;
  });
 }

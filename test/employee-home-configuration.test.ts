@@ -8,7 +8,7 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {defaultEmployeeHomeConfiguration} from '../lib/employee-home-defaults';
 import {validateEmployeeHomeConfiguration,HOME_TEMPLATE_FIELDS,HOME_QUICK_ACTIONS} from '../lib/employee-home';
 import {employeeHomeConfigurationCompanies,readEmployeeHomeConfigurationEditor,readOwnEmployeeHomeConfiguration,
- saveEmployeeHomeConfiguration,employeeHomeConfigurationHistory} from '../core/employee-home-configuration';
+ saveEmployeeHomeConfiguration,employeeHomeConfigurationHistory,readEmployeeHomeConfigurationVersion} from '../core/employee-home-configuration';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();});
@@ -81,7 +81,9 @@ describe('scoped immutable company/role Home versions',()=>{
   const attempts=await Promise.allSettled([save(hr.ctx,changed,1),save(hr.ctx,{...changed,teamVisibility:'department'},1)]);
   expect(attempts.filter(row=>row.status==='fulfilled')).toHaveLength(1);expect(attempts.filter(row=>row.status==='rejected')).toHaveLength(1);
   const history=await employeeHomeConfigurationHistory(hr.ctx,{companyId:b.companyId,audienceRole:'employee'});
-  expect(history.items.map(row=>row.ordinal)).toEqual([2,1]);expect(history.items.find(row=>row.id===first.id)?.configuration).toEqual(configuration);
+  expect(history.items.map(row=>row.ordinal)).toEqual([2,1]);
+  expect(history.items[0]).not.toHaveProperty('configuration');
+  expect((await readEmployeeHomeConfigurationVersion(hr.ctx,{companyId:b.companyId,audienceRole:'employee',ordinal:1}))?.configuration).toEqual(configuration);
   await expect(withTenant(hr.ctx,tx=>tx.update(s.employeeHomeConfigurationRevision).set({reason:'Mutated'}).where(eq(s.employeeHomeConfigurationRevision.id,first.id)))).rejects.toMatchObject({cause:{code:'42501'}});
   await expect(owner.db.update(s.employeeHomeConfigurationRevision).set({reason:'Mutated by owner'}).where(eq(s.employeeHomeConfigurationRevision.id,first.id))).rejects.toMatchObject({cause:{code:'23514',message:expect.stringContaining('immutable')}});
   expect((await owner.db.select().from(s.employeeHomeConfigurationRevision).where(eq(s.employeeHomeConfigurationRevision.id,first.id)))[0].reason).toBe('Fictional scoped Home configuration review');

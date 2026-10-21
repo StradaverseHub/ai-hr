@@ -15,13 +15,14 @@ import { Pager } from '@/components/pager';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { createCardAction, updateCardAction, setStatusAction, deleteCardAction } from './actions';
+import {HomeConfigurationPanel} from '@/components/employee-home/configuration-panel';
 
 const PAGE = '/admin/settings/dashboard';
 
 // Dashboard Management IA (item c393827d): a left-nav split of the admin surface. The persisted, HR-owned
 // template entity from the reporter's full spec is DEFERRED (migration 0256, see the Templates section note) —
-// the fixed rows stay DERIVED at runtime per R44. This ships the admin information architecture: a searchable
-// Card Library, a Templates explainer of the derived layout, a Content placeholder, and a live Preview.
+// the fixed rows stay DERIVED at runtime per R44. Content now edits the versioned company/role Home
+// settings; the Card Library and legacy workbench layout sections retain their existing owners.
 const SECTIONS = ['library', 'templates', 'content', 'preview'] as const;
 type Section = (typeof SECTIONS)[number];
 const isSection = (v: string | undefined): v is Section => !!v && (SECTIONS as readonly string[]).includes(v);
@@ -42,6 +43,10 @@ export default async function DashboardCardConfigPage({
     status?: string;
     page?: string;
     size?: string;
+    homeCompanyId?:string|string[];
+    homeRole?:string|string[];
+    homeBeforeOrdinal?:string|string[];
+    homeVersion?:string|string[];
   }>;
 }) {
   // scopedAdmin also fences the RLS session to an admin — the guard the reverse-completeness test asserts.
@@ -524,21 +529,7 @@ export default async function DashboardCardConfigPage({
           )}
 
           {section === 'content' && (
-            <Card className="p-5 space-y-4">
-              <SectionHeader title={tm('contentTitle')} />
-              <p className="text-sm text-muted-foreground">{tm('contentIntro')}</p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                {[tm('contentAnnouncements'), tm('contentEvents'), tm('contentNews')].map((label) => (
-                  <div
-                    key={label}
-                    className="flex flex-col gap-2 rounded-lg border border-dashed border-border p-4"
-                  >
-                    <span className="text-sm font-medium">{label}</span>
-                    <Badge variant="default">{tm('comingSoon')}</Badge>
-                  </div>
-                ))}
-              </div>
-            </Card>
+            <HomeConfigurationPanel session={s} selection={{companyId:sp.homeCompanyId,role:sp.homeRole,before:sp.homeBeforeOrdinal,version:sp.homeVersion}}/>
           )}
 
           {section === 'preview' && (
