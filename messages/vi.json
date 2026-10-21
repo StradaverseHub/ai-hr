@@ -22002,6 +22002,12 @@
     "workforceReadOnly": "Bạn có thể xem hồ sơ nhân viên này. Quyền nhân sự hiện tại của bạn không cho phép thay đổi.",
     "workforceCommandHint": "Bạn có thể đổi mã nhân viên. Các thông tin khác trên trang này chỉ được xem.",
     "workforceEdit": {
+      "review": "Đã lưu. Hãy nhờ quản trị viên nhân sự có quyền xem lại dữ liệu tính lương liên quan.",
+      "undecidedClaim": "Chưa quyết định — giữ cách suy ra hiện tại",
+      "unspecified": "Chưa chỉ định",
+      "unavailable": "Không thể cập nhật bản ghi này tại đây. Hãy nhờ quản trị viên nhân sự có quyền xem lại thiết lập.",
+      "familyTitle": "Gia đình và người phụ thuộc",
+      "familyHint": "Chi tiết vợ/chồng và con chỉ áp dụng cho quan hệ đã chọn. Khi đổi quan hệ, các chi tiết không còn phù hợp sẽ được xóa. Giảm trừ con tự động được cập nhật theo bộ xử lý quy định quốc gia hiện có; các thiết lập thuế khác được giữ nguyên.",
       "hint": "Bạn có thể cập nhật hồ sơ và các danh sách theo quyền truy cập hồ sơ nhân viên hiện tại.",
       "save": "Lưu thay đổi",
       "saving": "Đang lưu…",

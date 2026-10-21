@@ -4,7 +4,7 @@ import {revalidatePath} from 'next/cache';
 import {requireWorkforceAccess} from '@/lib/workforce-authz';
 import {setWorkforceEmployeeCode,WorkforceCodeValidationError,WorkforceRecordChangedError} from '@/core/workforce-code';
 import {WorkforceAccessError} from '@/core/workforce-access';
-import {maintainWorkforceRecord,WorkforceMaintenanceValidationError} from '@/core/workforce-maintenance';
+import {maintainWorkforceRecord,WorkforceMaintenanceValidationError,WorkforceMaintenanceUnavailableError} from '@/core/workforce-maintenance';
 import {workforceMaintenanceFields,WORKFORCE_PROFILE_SECTIONS,type WorkforceMaintenanceKind,type WorkforceMaintenanceOperation} from '@/lib/workforce-maintenance-fields';
 
 /** Fixed command endpoint. Client identity, company, role and permission flags are never inputs. */
@@ -41,7 +41,7 @@ export async function saveWorkforceRecordAction(formData:FormData){
  try{
   const kind=formData.get('kind'),operation=formData.get('operation'),section=formData.get('section');
   const row=formData.get('rowId'),expected=formData.get('expectedVersion');
-  if(!['person','qualification','emergency'].includes(String(kind))||!['add','update','archive'].includes(String(operation))||
+  if(!['person','qualification','emergency','dependent'].includes(String(kind))||!['add','update','archive'].includes(String(operation))||
    typeof kind!=='string'||typeof operation!=='string'||formData.getAll('operation').length!==1)
    throw new WorkforceMaintenanceValidationError();
   if(kind==='person'&&(operation!=='update'||row!=null||!WORKFORCE_PROFILE_SECTIONS.some(item=>item.key===section)))throw new WorkforceMaintenanceValidationError();
@@ -52,15 +52,18 @@ export async function saveWorkforceRecordAction(formData:FormData){
    const value=formData.get(key);
    if(typeof value!=='string'||value.length>4000||formData.getAll(key).length!==1)throw new WorkforceMaintenanceValidationError();
    if(field.type==='boolean'){
+    if(kind==='dependent'&&['spouseWorking','isStudent','childTaxRelief'].includes(key)&&value===''){patch[key]=null;continue;}
     if(value!=='true'&&value!=='false')throw new WorkforceMaintenanceValidationError();patch[key]=value==='true';
    }else patch[key]=value;
   }
-  await maintainWorkforceRecord(s,{employmentId:id,kind:kind as WorkforceMaintenanceKind,operation:operation as WorkforceMaintenanceOperation,
+  const result=await maintainWorkforceRecord(s,{employmentId:id,kind:kind as WorkforceMaintenanceKind,operation:operation as WorkforceMaintenanceOperation,
    rowId:typeof row==='string'?row:null,expectedVersion:typeof expected==='string'?expected:null,patch});
+  if(result.payrollReviewRequired)outcome='review';
  }catch(error){
   if(error instanceof WorkforceAccessError)outcome='denied';
   else if(error instanceof WorkforceRecordChangedError)outcome='changed';
   else if(error instanceof WorkforceMaintenanceValidationError)outcome='invalid';
+  else if(error instanceof WorkforceMaintenanceUnavailableError)outcome='unavailable';
   else throw error;
  }
  revalidatePath(path);

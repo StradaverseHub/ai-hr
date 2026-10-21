@@ -22002,6 +22002,12 @@
     "workforceReadOnly": "You can view this employee record. Your current Workforce permission does not allow changes.",
     "workforceCommandHint": "You can change the Employee ID. Other details on this page are view only.",
     "workforceEdit": {
+      "review": "Saved. Ask an authorized HR administrator to review the related payroll inputs.",
+      "undecidedClaim": "Not decided — retain existing inference",
+      "unspecified": "Not specified",
+      "unavailable": "This record cannot be updated here. Ask an authorized HR administrator to review its setup.",
+      "familyTitle": "Family and dependents",
+      "familyHint": "Spouse and child details apply only to the selected relationship. Changing it clears details that no longer apply. Automatic child relief is refreshed through the existing country owner; other tax settings stay unchanged.",
       "hint": "You can maintain the profile and registers allowed by your current employee-record permissions.",
       "save": "Save changes",
       "saving": "Saving…",

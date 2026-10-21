@@ -22002,6 +22002,12 @@
     "workforceReadOnly": "Anda boleh melihat rekod pekerja ini. Kebenaran Tenaga Kerja semasa anda tidak membenarkan perubahan.",
     "workforceCommandHint": "Anda boleh menukar ID Pekerja. Maklumat lain pada halaman ini hanya boleh dilihat.",
     "workforceEdit": {
+      "review": "Disimpan. Minta pentadbir HR yang diberi kuasa menyemak input gaji berkaitan.",
+      "undecidedClaim": "Belum diputuskan — kekalkan inferens sedia ada",
+      "unspecified": "Tidak dinyatakan",
+      "unavailable": "Rekod ini tidak boleh dikemas kini di sini. Minta pentadbir HR yang diberi kuasa menyemak persediaannya.",
+      "familyTitle": "Keluarga dan tanggungan",
+      "familyHint": "Butiran pasangan dan anak hanya terpakai pada hubungan yang dipilih. Menukar hubungan akan mengosongkan butiran yang tidak lagi terpakai. Pelepasan anak automatik dikemas kini melalui pemilik peraturan negara sedia ada; tetapan cukai lain kekal.",
       "hint": "Anda boleh menyelenggara profil dan daftar yang dibenarkan oleh kebenaran rekod pekerja semasa anda.",
       "save": "Simpan perubahan",
       "saving": "Menyimpan…",

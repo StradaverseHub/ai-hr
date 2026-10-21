@@ -1,0 +1,80 @@
+{
+  "eligibility": {
+    "all": [
+      {
+        "eq": [
+          "relationship",
+          "child"
+        ]
+      },
+      {
+        "not": {
+          "truthy": "isDeceased"
+        }
+      },
+      {
+        "not": {
+          "truthy": "archivedAt"
+        }
+      },
+      {
+        "not": {
+          "eq": [
+            "childTaxRelief",
+            false
+          ]
+        }
+      },
+      {
+        "any": [
+          {
+            "truthy": "isStudent"
+          },
+          {
+            "ageBelow": [
+              "dateOfBirth",
+              18
+            ]
+          },
+          {
+            "all": [
+              {
+                "eq": [
+                  "childTaxRelief",
+                  true
+                ]
+              },
+              {
+                "in": [
+                  "childReliefCategory",
+                  [
+                    "study_preu",
+                    "study_tertiary",
+                    "disabled",
+                    "disabled_study"
+                  ]
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "completeGrid": {
+    "all": [
+      {
+        "equalFields": [
+          "eligible",
+          "categorised"
+        ]
+      },
+      {
+        "greater": [
+          "eligible",
+          0
+        ]
+      }
+    ]
+  }
+}

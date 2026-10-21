@@ -25,11 +25,15 @@ export function WorkforceValueForm(props:Props){
    <Identity {...props}/><input type="hidden" name="operation" value={row||kind==='person'?'update':'add'}/>
    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
     {workforceMaintenanceFields(kind,section).map(({key,field})=>{
-     const id=`${prefix}-${key}`,value=values[key]??(field.type==='boolean'?false:'');
+     const nullableBoolean=kind==='dependent'&&['spouseWorking','isStudent','childTaxRelief'].includes(key);
+     const id=`${prefix}-${key}`,value=values[key]??(field.type==='boolean'&&!nullableBoolean?false:'');
      const label=root.has(field.labelKey)?root(field.labelKey):field.label;
-     const category=field.allowedValuesOwner?.startsWith('profile_option:')?field.allowedValuesOwner.slice(15):null;
+     const category=kind==='dependent'&&key==='relationship'?'dependentRelationship':field.allowedValuesOwner?.startsWith('profile_option:')?field.allowedValuesOwner.slice(15):null;
+     const fixed=personnelFieldChoices(field).map(option=>({value:option.value,label:root.has(option.labelKey)?root(option.labelKey):option.value}));
      const options=category?editor.options.filter(option=>option.category===category).map(option=>({value:option.value,label:option.label})):
-      personnelFieldChoices(field).map(option=>({value:option.value,label:root.has(option.labelKey)?root(option.labelKey):option.value}));
+      fixed;
+     if(kind==='dependent'&&key==='relationship')for(const option of fixed)if(!options.some(item=>item.value===option.value))options.push(option);
+     if(field.type==='boolean'&&!options.length)options.push({value:'true',label:root('people.detail.family.yes')},{value:'false',label:root('people.detail.family.no')});
      // An inactive stored choice must remain editable without forcing an unrelated replacement.
      const current=String(value);
      if(options.length&&current&&!options.some(option=>option.value===current))options.unshift({value:current,label:current});
@@ -37,7 +41,7 @@ export function WorkforceValueForm(props:Props){
      return <div key={key} className="space-y-1">
       <label className="block text-sm" htmlFor={id}>{label}{required?' *':''}</label>
       {options.length?<select id={id} name={key} className={inputCls} defaultValue={current} required={required}>
-       {field.type!=='boolean'&&<option value="">—</option>}
+       {(field.type!=='boolean'||nullableBoolean)&&<option value="">{nullableBoolean?access(key==='childTaxRelief'?'workforceEdit.undecidedClaim':'workforceEdit.unspecified'):'—'}</option>}
        {options.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}
       </select>:<input id={id} name={key} className={inputCls} defaultValue={current} maxLength={4000} required={required}
        inputMode={field.form?.widget==='email'?'email':undefined}
@@ -47,6 +51,7 @@ export function WorkforceValueForm(props:Props){
    </div>
    {kind==='qualification'&&<p className="text-xs text-muted-foreground">{root('people.detail.qualification.highestHint')}</p>}
    {kind==='emergency'&&<p className="text-xs text-muted-foreground">{root('people.detail.emergency.primaryHint')}</p>}
+   {kind==='dependent'&&<p className="text-xs text-muted-foreground">{access('workforceEdit.familyHint')}</p>}
    <WorkforceSubmit label={access('workforceEdit.save')} pendingLabel={access('workforceEdit.saving')}/>
   </form>
   {row&&<details className="border-t pt-3">

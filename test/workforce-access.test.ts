@@ -4,7 +4,8 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {and,eq,sql} from 'drizzle-orm';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {db,withTenant,type SessionContext} from '../db/client';
-import {person,employment,employeeDraft,roleAssignment,appUser,jobGrade,domainEvent,employeeDependent,employeeQualification,personEmergencyContact,employeeDocument,compensation,profileOption} from '../db/schema';
+import {person,employment,employeeDraft,roleAssignment,appUser,jobGrade,domainEvent,employeeDependent,employeeQualification,personEmergencyContact,employeeDocument,compensation,profileOption,employeeStatutoryMy} from '../db/schema';
+import {setStatutoryProfileMY,setTaxProfileMY} from '../localization/my/statutory';
 import {hireEmployee,setEmployeeCode,updatePerson,setEmploymentGrade} from '../core/org';
 import {hireEmployee as hireWorkforceEmployee,setEmploymentInfo as maintainInfo,setPersonComplianceFields as maintainCompliance} from '../core/workforce-commands';
 import {createMovementEvent} from '../core/movement';
@@ -27,6 +28,8 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {pgSqlState} from '../lib/db-error';
 import * as registers from '../core/workforce-registers';
 import {archiveDependent as archiveDependentOwner} from '../core/dependents';
+import {syncChildReliefFromFamily} from '../core/dependents';
+import {createBatch} from '../packs/payroll/service';
 import {archiveQualification as archiveQualificationOwner} from '../core/qualifications';
 import {addEmployeeDocument,getEmployeeDocument,listEmployeeDocuments,updateEmployeeDocumentMeta,replaceEmployeeDocumentContent,deleteEmployeeDocument} from '../core/employee-documents';
 const routeSession=vi.hoisted(()=>({ctx:null as SessionContext|null}));
@@ -574,5 +577,105 @@ describe('purpose-bound non-HR profile and register maintenance',()=>{
    expect(await tx.select().from(person).where(eq(person.id,subject.personId))).toEqual([]);
   });
   expect((await workforceRecord(ctx,subject.employmentId))!.profile).toMatchObject({preferredName:'Fictional exact command',firstName:null});
+ });
+});
+
+describe('flat employment maintenance SQL boundary',()=>{
+ it('refuses canonical-direct and raw normal-info changes after denial while preserving no-op and real owner repair',async()=>{
+  const subject=await hire('Fictional flat info subject');await maintainInfo(admin(),{employmentId:subject.employmentId,contractRemark:'Fictional retained remark'});
+  await activate();await override(b.adminUserId,'workforce.maintain',b.companyId,'deny');
+  const before=await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId));
+  // Bypass the UI facade deliberately: the canonical owner itself must take the fresh barrier.
+  const {setEmploymentInfo}=await import('../core/org');
+  await expect(setEmploymentInfo(admin(),{employmentId:subject.employmentId,orgDivision:'Not applied'})).rejects.toBeInstanceOf(WorkforceAccessError);
+  await sqlRefusal(withTenant(admin(),tx=>tx.update(employment).set({orgDivision:'Not applied',contractRemark:'Not applied'}).where(eq(employment.id,subject.employmentId))));
+  await withTenant(admin(),tx=>tx.update(employment).set({contractRemark:'Fictional retained remark'}).where(eq(employment.id,subject.employmentId)));
+  expect(await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId))).toEqual(before);
+  await owner.db.update(employment).set({contractRemark:'Fictional credential-backed repair'}).where(eq(employment.id,subject.employmentId));
+  expect((await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId)))[0].contractRemark).toBe('Fictional credential-backed repair');
+ });
+});
+
+describe('Family bounded owner and automatic derived effect',()=>{
+ async function fixture(mode:'auto'|'manual'='auto'){
+  const self=await hire('Fictional Family maintainer'),userId=await createAppUser(b.tenantId,self.personId,'employee');
+  const subject=await hireEmployee(admin(),{person:{fullName:'Fictional Family target',primaryEmail:`${randomUUID()}@example.invalid`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur(),reportingManagerEmploymentId:self.employmentId});
+  await setStatutoryProfileMY(admin(),{personId:subject.personId,icNumber:'900101019888',numChildren:0});
+  await setTaxProfileMY(admin(),{personId:subject.personId,childReliefMode:mode,numChildren:0,taxNumber:'FICTIONAL-PRIVATE-TAX',taxCategory:2,taxResidency:'resident',disabledIndividual:true,disabledSpouse:true,employerBearsTax:true});
+  const ctx={...admin(),userId,personId:self.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]} satisfies SessionContext;
+  await activate();await override(userId,'workforce.view',b.companyId,'allow');await override(userId,'workforce.maintain',b.companyId,'allow');
+  return {ctx,subject};
+ }
+ const statutory=(id:string)=>owner.db.select().from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,id));
+ it('maintains and archives Family with automatic count/grid, while preserving every other tax column',async()=>{
+  const {ctx,subject}=await fixture();const before=(await statutory(subject.personId))[0];
+  const added=await maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'dependent',rowId:null,operation:'add',expectedVersion:null,
+   patch:{fullName:'Fictional eligible child',relationship:'child',dateOfBirth:'2018-01-01',childReliefCategory:'under_18',childTaxRelief:true,childReliefPercentage:50}});
+  expect(Object.keys(added).sort()).toEqual(['changed','id','payrollReviewRequired']);
+  const after=(await statutory(subject.personId))[0];expect(after.numChildren).toBe(1);expect(after.childReliefTable).toEqual({under_18:{full:0,half:1}});
+  const {numChildren:_bc,childReliefTable:_bg,updatedAt:_bt,...beforeOther}=before;
+  const {numChildren:_ac,childReliefTable:_ag,updatedAt:_at,...afterOther}=after;expect(afterOther).toEqual(beforeOther);
+  const editor=(await workforceEditor(ctx,subject.employmentId))!,row=editor.registers.find(item=>item.id===added.id)!;
+  expect(row.values).toMatchObject({relationship:'child',childTaxRelief:true,childReliefPercentage:50});
+  expect(JSON.stringify(editor)).not.toContain('FICTIONAL-PRIVATE-TAX');
+  expect(await withTenant(ctx,tx=>tx.select().from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,subject.personId)))).toEqual([]);
+  expect(await withTenant(ctx,tx=>tx.select().from(domainEvent).where(eq(domainEvent.eventType,'employee.tax.updated')))).toEqual([]);
+  // Same actor retains a normal manager relationship: tax audit must still be refused independently.
+  expect(await withTenant(ctx,tx=>tx.execute(sql`select app.can_see_employment(${subject.employmentId}::uuid) as visible`))).toEqual([{visible:true}]);
+  await maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'dependent',rowId:added.id,operation:'archive',expectedVersion:row.version,patch:{}});
+  expect((await statutory(subject.personId))[0]).toMatchObject({numChildren:0,childReliefTable:null});
+ });
+ it('keeps manual tax untouched and clears inapplicable child/spouse facts through the shared normalizer',async()=>{
+  const {ctx,subject}=await fixture('manual'),before=await statutory(subject.personId);
+  const added=await maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'dependent',rowId:null,operation:'add',expectedVersion:null,
+   patch:{fullName:'Fictional changing relationship',relationship:'child',dateOfBirth:'2018-01-01',childReliefCategory:'under_18',childTaxRelief:true,childReliefPercentage:100}});
+  const row=(await workforceEditor(ctx,subject.employmentId))!.registers.find(item=>item.id===added.id)!;
+  await maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'dependent',rowId:added.id,operation:'update',expectedVersion:row.version,patch:{relationship:'spouse',marriageStatus:'married',spouseWorking:false}});
+  const updated=(await workforceEditor(ctx,subject.employmentId))!.registers.find(item=>item.id===added.id)!;
+  expect(updated.values).toMatchObject({relationship:'spouse',marriageStatus:'married',spouseWorking:false,childTaxRelief:null,childReliefCategory:null,childReliefPercentage:null});
+  expect(await statutory(subject.personId)).toEqual(before);
+ });
+ it('returns only a bounded HR-review consequence while keeping open-payroll details inside the financial audit',async()=>{
+  const {ctx,subject}=await fixture();const [clock]=await owner.db.execute<{period:string}>(sql`select to_char(now() AT TIME ZONE 'UTC','YYYY-MM') as period`);
+  await createBatch(admin(),{companyId:b.companyId,payPeriod:clock.period});
+  const result=await maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'dependent',rowId:null,operation:'add',expectedVersion:null,patch:{fullName:'Fictional open-payroll child',relationship:'child',dateOfBirth:'2018-01-01'}});
+  expect(result).toMatchObject({changed:true,payrollReviewRequired:true});
+  expect(Object.keys(result).sort()).toEqual(['changed','id','payrollReviewRequired']);
+  expect(await withTenant(ctx,tx=>tx.select().from(domainEvent).where(eq(domainEvent.eventType,'employee.tax.updated')))).toEqual([]);
+ });
+ it('does not let a positive maintainer call the private relief owner or obtain the legacy tax summary',async()=>{
+  const {ctx,subject}=await fixture();
+  await sqlRefusal(withTenant(ctx,tx=>tx.execute(sql`select app.my_sync_family_child_relief(${subject.personId}::uuid)`)));
+  await sqlRefusal(withTenant(ctx,tx=>tx.execute(sql`select app.access_family_relief_sync(${subject.personId}::uuid)`)));
+  await sqlRefusal(withTenant(ctx,tx=>tx.execute(sql`select app.my_sync_family_child_relief(${subject.personId}::uuid,'2026-01-01'::timestamptz)`)));
+ });
+ it('uses real owner credentials for the nightly consequence instead of a null-user HR context on the app connection',async()=>{
+  const {ctx,subject}=await fixture();
+  await maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'dependent',rowId:null,operation:'add',expectedVersion:null,patch:{fullName:'Fictional nightly child',relationship:'child',dateOfBirth:'2018-01-01'}});
+  await owner.db.update(employeeStatutoryMy).set({numChildren:0}).where(eq(employeeStatutoryMy.personId,subject.personId));
+  const forged={...admin(),userId:null,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
+  expect(await syncChildReliefFromFamily(forged,subject.personId)).toMatchObject({changed:false,skipped:'error'});
+  expect((await statutory(subject.personId))[0].numChildren).toBe(0);
+  const system={...admin(),userId:null,roles:[],grants:[]};
+  const result=await owner.withTenant(system,tx=>syncChildReliefFromFamily(system,subject.personId,tx));
+  expect(result).toMatchObject({changed:true,before:0,after:1});
+  expect(await owner.withTenant(system,tx=>syncChildReliefFromFamily(system,subject.personId,tx))).toMatchObject({changed:false,skipped:'unchanged'});
+  const audit=await owner.db.select().from(domainEvent).where(and(eq(domainEvent.subjectEmploymentId,subject.employmentId),eq(domainEvent.eventType,'employee.tax.updated')));
+  expect(audit.some(event=>event.actorType==='system'&&event.actorId===null&&(event.payload as {provenance?:string}).provenance==='auto_child_relief')).toBe(true);
+ });
+ it('rolls back the Family row, derived values and immutable history if the tax event fails',async()=>{
+  const {ctx,subject}=await fixture(),before=await statutory(subject.personId);
+  const beforeEvents=await owner.db.select().from(domainEvent).where(eq(domainEvent.subjectEmploymentId,subject.employmentId)).orderBy(domainEvent.id);
+  await owner.db.execute(sql.raw("CREATE FUNCTION app.test_family_tax_audit_refusal() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type='employee.tax.updated' THEN RAISE EXCEPTION 'Fictional Family tax audit refusal' USING ERRCODE='P0001'; END IF; RETURN NEW; END $$"));
+  try{
+   await owner.db.execute(sql.raw('CREATE TRIGGER test_family_tax_audit_refusal BEFORE INSERT ON domain_event FOR EACH ROW EXECUTE FUNCTION app.test_family_tax_audit_refusal()'));
+   const failure=await maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'dependent',rowId:null,operation:'add',expectedVersion:null,patch:{fullName:'Must roll back',relationship:'child',dateOfBirth:'2018-01-01'}}).then(()=>null,error=>error);
+   expect(pgSqlState(failure)).toBe('P0001');
+  }finally{
+   await owner.db.execute(sql.raw('DROP TRIGGER IF EXISTS test_family_tax_audit_refusal ON domain_event'));
+   await owner.db.execute(sql.raw('DROP FUNCTION app.test_family_tax_audit_refusal()'));
+  }
+  expect((await workforceEditor(ctx,subject.employmentId))!.registers).toEqual([]);expect(await statutory(subject.personId)).toEqual(before);
+  expect(await owner.db.select().from(domainEvent).where(eq(domainEvent.subjectEmploymentId,subject.employmentId)).orderBy(domainEvent.id)).toEqual(beforeEvents);
  });
 });

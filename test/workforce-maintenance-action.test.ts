@@ -1,7 +1,7 @@
 /** Request boundary coverage. Actual writes/revocation/audit are exercised by workforce-access. */
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 import {requireWorkforceAccess} from '../lib/workforce-authz';
-import {maintainWorkforceRecord,WorkforceMaintenanceValidationError} from '../core/workforce-maintenance';
+import {maintainWorkforceRecord,WorkforceMaintenanceValidationError,WorkforceMaintenanceUnavailableError} from '../core/workforce-maintenance';
 import {WorkforceAccessError} from '../core/workforce-access';
 import {WorkforceRecordChangedError} from '../core/workforce-code';
 import {workforceMaintenanceFields} from '../lib/workforce-maintenance-fields';
@@ -9,7 +9,7 @@ import {saveWorkforceRecordAction} from '../app/admin/personnel/[employmentId]/w
 vi.mock('next/navigation',()=>({redirect:(url:string)=>{throw new Error(`redirect:${url}`);}}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
 vi.mock('../lib/workforce-authz',()=>({requireWorkforceAccess:vi.fn()}));
-vi.mock('../core/workforce-maintenance',()=>({maintainWorkforceRecord:vi.fn(),WorkforceMaintenanceValidationError:class extends Error{}}));
+vi.mock('../core/workforce-maintenance',()=>({maintainWorkforceRecord:vi.fn(),WorkforceMaintenanceValidationError:class extends Error{},WorkforceMaintenanceUnavailableError:class extends Error{}}));
 const id='11111111-1111-4111-8111-111111111111',row='22222222-2222-4222-8222-222222222222';
 const ctx={tenantId:id,userId:row,roles:['employee'],grants:[{role:'employee',companyId:null}]};
 const path=`/admin/personnel/${id}`;
@@ -51,7 +51,20 @@ describe('scoped Workforce value action',()=>{
   expect(vi.mocked(maintainWorkforceRecord).mock.calls[0][1]).toMatchObject({rowId:null,expectedVersion:null,patch:{qualification:'Master',isHighest:true}});
   f.set('rowId',row);await expect(saveWorkforceRecordAction(f)).rejects.toThrow(`redirect:${path}?workforceEdit=invalid`);
  });
- it.each([[new WorkforceAccessError(),'denied'],[new WorkforceRecordChangedError(),'changed'],[new WorkforceMaintenanceValidationError(),'invalid']] as const)('keeps failures finite for %s',async(error,outcome)=>{
+ it('retains a never-decided Family claim rather than coercing it into an explicit refusal',async()=>{
+  const f=new FormData();Object.entries({employmentId:id,kind:'dependent',operation:'add'}).forEach(([k,v])=>f.set(k,v));
+  for(const {key,field}of workforceMaintenanceFields('dependent'))f.set(key,field.type==='boolean'&&!['spouseWorking','isStudent','childTaxRelief'].includes(key)?'false':'');
+  f.set('fullName','Fictional child');f.set('relationship','child');f.set('taxNumber','not accepted');
+  await expect(saveWorkforceRecordAction(f)).rejects.toThrow(`redirect:${path}?workforceEdit=saved`);
+  const command=vi.mocked(maintainWorkforceRecord).mock.calls[0][1];
+  expect(command.patch).toMatchObject({childTaxRelief:null,isStudent:null,spouseWorking:null,isBeneficiary:false,isDeceased:false});
+  expect(command.patch).not.toHaveProperty('taxNumber');
+ });
+ it('keeps an actual downstream HR-review consequence in the redirect without serializing financial details',async()=>{
+  vi.mocked(maintainWorkforceRecord).mockResolvedValue({id,changed:true,payrollReviewRequired:true});
+  await expect(saveWorkforceRecordAction(form())).rejects.toThrow(`redirect:${path}?workforceEdit=review`);
+ });
+ it.each([[new WorkforceAccessError(),'denied'],[new WorkforceRecordChangedError(),'changed'],[new WorkforceMaintenanceValidationError(),'invalid'],[new WorkforceMaintenanceUnavailableError(),'unavailable']] as const)('keeps failures finite for %s',async(error,outcome)=>{
   vi.mocked(maintainWorkforceRecord).mockRejectedValue(error);await expect(saveWorkforceRecordAction(form())).rejects.toThrow(`redirect:${path}?workforceEdit=${outcome}`);
  });
  it('preserves infrastructure/audit failures rather than mislabelling them as invalid input',async()=>{

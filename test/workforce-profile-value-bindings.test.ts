@@ -2,8 +2,27 @@
 import {readFileSync} from 'node:fs';
 import {describe,expect,it} from 'vitest';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
+import {workforceMaintenanceFields} from '../lib/workforce-maintenance-fields';
 const migration=readFileSync(new URL('../db/migrations/0579_configurable_access.sql',import.meta.url),'utf8');
 describe('physical profile/register authorization declaration',()=>{
+ it('keeps Workforce field selection explicit and separate from self-service policy',()=>{
+  const body=migration.split('CREATE FUNCTION app.access_workforce_command_fields(')[1].split('$$;')[0];
+  for(const [kind,count]of [['person',31],['qualification',9],['emergency',6],['dependent',20]] as const){
+   const list=body.match(new RegExp(`WHEN '${kind}' THEN ARRAY\\[([^\\]]+)\\]`))![1];
+   const actual=[...list.matchAll(/'([^']+)'/g)].map(match=>match[1]).sort();
+   const declared=workforceMaintenanceFields(kind);expect(actual).toEqual(declared.map(field=>field.key).sort());
+   expect(actual).toHaveLength(count);for(const item of declared)expect(item.field).toBeDefined();
+   for(const forbidden of ['isTestRecord','salary','bankAccount','photo','remarks'])expect(actual).not.toContain(forbidden);
+  }
+  expect(migration).toContain('AND b.field_name=ANY(app.access_workforce_command_fields(p_kind))');
+ });
+ it('guards the declared additional organisation labels and plain contract remark without borrowing independent grade/payroll columns',()=>{
+  const body=migration.split('CREATE FUNCTION app.access_workforce_flat_info_columns()')[1].split('$$;')[0].split('AS $$')[1];
+  const actual=[...body.matchAll(/'([a-z_]+)'/g)].map(match=>match[1]).sort();
+  const expected=PERSONNEL_FIELDS.filter(field=>field.id.startsWith('employment.additional_organisation_labels.')||field.id==='employment.employment_dates_and_service.contractremark').map(field=>field.ownerField.replace(/[A-Z]/g,c=>'_'+c.toLowerCase())).sort();
+  expect(actual).toEqual(expected);expect(actual).toHaveLength(9);
+  for(const field of ['grade_id','hired_on','last_working_date','payroll_policy_id'])expect(actual).not.toContain(field);
+ });
  it('pins every physical ESS person/compliance/register binding to the canonical field registry',()=>{
   const body=migration.split('CREATE FUNCTION app.access_profile_value_bindings()')[1].split('; $$;')[0];
   const literal="(?:'((?:[^']|'')*)'|(NULL))";

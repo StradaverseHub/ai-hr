@@ -57,6 +57,7 @@ async function main() {
   let same = 0;
   let skippedTenants = 0;
   let alerts = 0;
+  let failed = 0;
 
   for (const t of tenants) {
     // Only 'auto' rows: rail (a) would refuse the rest anyway, and asking it about 71 'manual' employees
@@ -67,12 +68,11 @@ async function main() {
       .where(and(eq(employeeStatutoryMy.tenantId, t.id), eq(employeeStatutoryMy.childReliefMode, 'auto'), isNotNull(employeeStatutoryMy.personId)));
     if (people.length === 0) continue;
 
-    // SYSTEM CONTEXT, as scripts/anomaly-sweep.ts documents: a bare { tenantId } is correctly hidden by
-    // RLS and the run reports nothing for rows that plainly exist.
+    // Actual owner connection below authorizes this fixed consequence. No HR login/role is invented.
     let ctx: SessionContext;
     try {
       const entitlements = await owner.db.transaction((tx) => resolveEntitlementsTx(tx, t.id));
-      ctx = { tenantId: t.id, roles: ['hr_admin'], entitlements };
+      ctx = { tenantId: t.id,userId:null,roles:[],grants:[],entitlements };
     } catch (e) {
       console.log(`${t.name} (${t.id.slice(0, 8)}) — SKIPPED: ${e instanceof Error ? e.message : String(e)}`);
       skippedTenants += 1;
@@ -92,8 +92,9 @@ async function main() {
       // which on a different sort order would have resynced nothing at all.
       let res;
       try {
-        res = await syncChildReliefFromFamily(ctx, p.personId);
+        res = await owner.withTenant(ctx,tx=>syncChildReliefFromFamily(ctx,p.personId,tx));
       } catch (e) {
+        failed += 1;
         console.log(`    ${p.personId.slice(0, 8)}  ERROR: ${e instanceof Error ? e.message : String(e)}`);
         continue;
       }
@@ -115,10 +116,10 @@ async function main() {
   }
 
   console.log(
-    `${dryRun ? 'would examine' : 'moved'}: ${moved}   unchanged: ${same}   tenants skipped: ${skippedTenants}   payroll alerts: ${alerts}`,
+    `${dryRun ? 'would examine' : 'moved'}: ${moved}   unchanged: ${same}   failed: ${failed}   tenants skipped: ${skippedTenants}   payroll alerts: ${alerts}`,
   );
   if (dryRun) console.log('\nDRY RUN — nothing was written. Re-run without --dry-run to apply.');
-  process.exit(0);
+  process.exit(failed>0?1:0);
 }
 
 main().catch((e) => {

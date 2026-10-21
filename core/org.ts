@@ -2817,6 +2817,7 @@ export async function setEmploymentInfo(
   if (Object.keys(set).length === 0) throw new Error('Nothing to change.');
 
   const run = async (tx: Tx) => {
+    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     const [before] = await tx
       .select({
         hiredOn: employment.hiredOn,

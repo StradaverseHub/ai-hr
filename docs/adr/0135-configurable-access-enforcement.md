@@ -383,3 +383,69 @@ through the canonical owners before offering it. Employment structural/specialis
 remaining domain/current-principal matrix also require reconciliation. All three capability controls
 remain unsupported; 0578/0579 are unjournalled/unapplied. This is a source checkpoint, not acceptance or
 release evidence. Board 1 still owns all three resource leases; no compiler/test/app/SQL/build ran here.
+
+### Family command, derived consequence and remaining SQL bindings — source only
+
+Family maintenance is now drafted for its 20 explicitly selected normal register fields, alongside the
+existing normal profile, Qualification and Emergency editors. Workforce field selection is a closed
+permission binding, independent from ESS visibility/edit policy: adding a self-service field cannot
+silently admit it to the Workforce form, command or projection. Physical field meaning still comes from
+the Personnel registry. Internal remarks, private classifications, documents and general financial rows
+remain outside this consumer. The SQL command repeats the closed selection and rejects unknown columns.
+
+The Family add/update normalizer was extracted from the existing owner and is shared by ordinary HR,
+imports, approved ESS and the new purpose command. Built-in/custom/retained relationships, nullable
+undecided claims, and clearing relationship-inapplicable fields retain the existing rules. The new form
+does not coerce a never-decided claim into an explicit refusal. Add, update and soft archive use the same
+row version, actual subject/scope and immutable audit boundary as the other normal registers.
+
+Automatic Family relief now has one private Malaysia SQL write owner, reached by the existing kernel
+`syncChildReliefFromFamily` route and atomically by the bounded Family command. It accepts no proposed
+count, grid, tax patch or caller authorization flag. Current eligibility and positive-grid completeness
+are one declarative decision graph consumed by the existing JavaScript derivations and installed SQL;
+the SQL renderer lives on the country side, not in a browser import. No tax rates or monetary computation
+were copied. The retained r355 rule still requires justification for consent past 18; explicit refusal,
+unknown consent, student status, supported categories, birthdays and leap days remain separate cases.
+
+The private owner locks the actual Person/statutory row, honors manual mode/no-row/no-op, derives only
+the head count/grid from actual Family facts and updates just those two values plus the row timestamp.
+Every other tax/registration/selection value is left unchanged rather than copied through a full tax
+setter. Incomplete/empty grids retain null fallback. It preserves current open-payroll detection and
+records an audited automatic consequence. Its current clock is one database instant with KL eligibility
+date and the existing UTC payroll-period convention. Only real owner credentials can select a private
+deterministic replay instant; runtime/public/Workforce calls cannot select their clock. Birthday tests
+are adapted to that real owner seam without removing their before/on-birthday, KL-midnight, no-op or
+unchanged-Family assertions. Unsupported/ambiguous jurisdiction refuses instead of inventing policy.
+
+The ordinary kernel wrapper retains the legacy statutory read/write floor. A positive Workforce caller
+cannot execute either the private financial owner or obtain the legacy tax summary. Its fixed command
+returns only row identity, changed state and a bounded HR-review-required consequence; no tax amounts,
+before/after values, periods or payroll batch details reach the editor. The durable warning asks an
+authorized HR administrator to review related payroll inputs. Detailed tax audit follows the financial
+reader boundary; an ordinary reporting relationship alone is not a tax-audit grant. Failure to append
+either immutable event must roll back the Family and derived effects together.
+
+The nightly script now composes the same kernel function on its actual owner `withTenant` connection.
+It does not simulate an HR user on ai_hr_app. A real error is counted and produces nonzero exit while
+other tenants/people can continue. Read-only tenant treatment and resolved entitlement context remain
+in place. The actual sanitized CLI/app-role/system-owner/suspension outcomes still require execution.
+
+The canonical employment-info owner now takes fresh Workforce admission before data locks, covering
+direct imports/drafts/Movement callers as well as the UI facade. SQL independently guards the eight flat
+organisation labels and plain contract remark. Its field inventory is pinned to the Personnel registry;
+independent grade/compensation, financial, dated and resignation owners are not blanket-restricted.
+Remaining lifecycle/assignment/specialist exception consumers must be reconciled against Board 1's
+released baseline before catalogue activation, rather than guessed from role names or broad SQL flags.
+
+Authored but UNRUN: the shared rule/installed-SQL and independent policy expectations, age/leap-day/grid
+boundaries, Family value/relationship/manual-mode preservation, actual derived effects, current-session
+and foreign refusals, raw/private owner and clock refusal, manager tax-audit denial, real nightly owner
+versus a synthetic app context, idempotence, open-payroll bounded warning, full audit rollback, six-locale
+form and nullable-choice behavior, and canonical/raw flat-info denial. A bounded unavailable editor now
+keeps the ordinary record view available while unrelated infrastructure errors still propagate.
+
+Board 1 confirmed that the existing `app.is_self_person` resolves actual app_user/tenant identity in
+0029; db/client sets no app.person_id. The earlier speculative person-GUC finding was retracted after
+that source check. No change to their 0576 owner was requested. All three leases remain with Board 1;
+all new code, SQL, fixtures, app journeys, rehearsals and deployment remain UNRUN. The three capability
+controls stay unsupported and 0578/0579 remain unjournalled/unapplied.

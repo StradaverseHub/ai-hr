@@ -529,6 +529,7 @@ export async function assertProfileValueAllowed(
   if (newValue == null || newValue === '') return; // clearing is always allowed
   if (newValue === legacyValue) return; // unchanged legacy value is permitted (tolerance)
   const [result]=await tx.execute<{allowed:boolean}>(sql`select app.profile_option_value_allowed(${category},${newValue},${legacyValue}) as allowed`);
+  if(typeof result?.allowed!=='boolean')throw new Error('Profile option validation unavailable');
   if(result?.allowed===true)return;
   throw new ProfileOptionValueError(category,newValue);
 }

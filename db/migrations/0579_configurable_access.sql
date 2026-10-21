@@ -1461,6 +1461,7 @@ BEGIN
   RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501';
  END IF;
  IF TG_TABLE_NAME='employee_qualification' AND app.access_workforce_value_intent_allowed('qualification',to_jsonb(OLD),to_jsonb(NEW),false) THEN RETURN NEW; END IF;
+ IF TG_TABLE_NAME='employee_dependent' AND app.access_workforce_value_intent_allowed('dependent',to_jsonb(OLD),to_jsonb(NEW),false) THEN RETURN NEW; END IF;
  IF TG_TABLE_NAME='employee_qualification' THEN
   IF NOT app.access_workforce_employment(OLD.employment_id,'workforce.maintain') THEN
    RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501';
@@ -2300,6 +2301,15 @@ BEGIN
   SELECT jsonb_build_object('kind','emergency','id',c.id,'version',c.xmin::text,'values',jsonb_build_object(
    'fullName',c.full_name,'relationship',c.relationship,'mobilePhone',c.mobile_phone,'homePhone',c.home_phone,'address',c.address,'priority',c.priority))
    FROM public.person_emergency_contact c WHERE c.tenant_id=selected.tenant_id AND c.person_id=selected.person_id AND c.archived_at IS NULL
+  UNION ALL
+  SELECT jsonb_build_object('kind','dependent','id',d.id,'version',d.xmin::text,'values',jsonb_build_object(
+   'relationship',d.relationship,'fullName',d.full_name,'gender',d.gender,'dateOfBirth',d.date_of_birth,'phone',d.phone,
+   'icOrPassport',d.ic_or_passport,'passportNumber',d.passport_number,'residentialAddress',d.residential_address,
+   'marriageDate',d.marriage_date,'marriageStatus',d.marriage_status,'spouseWorking',d.spouse_working,
+   'isBeneficiary',d.is_beneficiary,'isDeceased',d.is_deceased,'isStudent',d.is_student,'schoolName',d.school_name,
+   'studyLevel',d.study_level,'studyCountry',d.study_country,'childReliefCategory',d.child_relief_category,
+   'childTaxRelief',d.child_tax_relief,'childReliefPercentage',d.child_relief_percentage))
+   FROM public.employee_dependent d WHERE d.tenant_id=selected.tenant_id AND d.person_id=selected.person_id AND d.archived_at IS NULL
   LIMIT 501
  ) rows;
  IF jsonb_array_length(registers)>500 THEN RAISE EXCEPTION 'Workforce editor record limit' USING ERRCODE='54000'; END IF;
@@ -2320,8 +2330,9 @@ BEGIN
   AND CASE WHEN p_kind='person' THEN b.owner IN ('person','compliance') ELSE b.owner=p_kind END;
  IF NOT FOUND THEN RETURN false; END IF;
  IF p_value IS NOT DISTINCT FROM p_previous THEN RETURN true; END IF;
- IF p_value='null'::jsonb THEN RETURN p_key NOT IN ('fullName','primaryEmail','qualification','isHighest','priority'); END IF;
- IF p_key='isHighest' THEN RETURN jsonb_typeof(p_value)='boolean'; END IF;
+ IF p_value='null'::jsonb THEN RETURN p_key NOT IN ('fullName','primaryEmail','qualification','isHighest','priority','relationship','isBeneficiary','isDeceased'); END IF;
+ IF p_key IN ('isHighest','isBeneficiary','isDeceased','isStudent','spouseWorking','childTaxRelief') THEN RETURN jsonb_typeof(p_value)='boolean'; END IF;
+ IF p_kind='dependent' AND p_key='childReliefPercentage' THEN RETURN p_value#>>'{}' IN ('50','100'); END IF;
  IF jsonb_typeof(p_value) IS DISTINCT FROM 'string' THEN RETURN false; END IF;
  value:=p_value#>>'{}';
  IF length(value)>4000 THEN RETURN false; END IF;
@@ -2330,7 +2341,12 @@ BEGIN
  IF p_key='gender' AND value NOT IN ('male','female','undisclosed') THEN RETURN false; END IF;
  IF p_key='maritalStatus' AND value NOT IN ('single','married','divorced','widowed','separated','other') THEN RETURN false; END IF;
  IF p_kind='emergency' AND p_key='priority' AND value NOT IN ('primary','secondary','other') THEN RETURN false; END IF;
- IF p_key IN ('dateOfBirth','graduationDate') THEN
+ IF p_kind='dependent' THEN
+  IF p_key='marriageStatus' AND value NOT IN ('married','divorced','widowed','separated') THEN RETURN false; END IF;
+  IF p_key='childReliefCategory' AND value NOT IN ('under_18','study_preu','study_tertiary','disabled','disabled_study') THEN RETURN false; END IF;
+  IF p_key='relationship' THEN RETURN value IN ('spouse','child','parent','sibling','other') OR EXISTS(SELECT 1 FROM public.profile_option o WHERE o.tenant_id=app.current_tenant_id() AND o.category='dependentRelationship' AND o.value=access_workforce_value_shape.value AND o.is_active); END IF;
+ END IF;
+ IF p_key IN ('dateOfBirth','graduationDate','marriageDate') THEN
   IF value !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN RETURN false; END IF;
   BEGIN parsed:=value::date;EXCEPTION WHEN invalid_datetime_format OR datetime_field_overflow THEN RETURN false;END;
   IF to_char(parsed,'YYYY-MM-DD')<>value THEN RETURN false; END IF;
@@ -2348,17 +2364,16 @@ END; $$;
 REVOKE ALL ON FUNCTION app.access_workforce_value_shape(text,text,jsonb,jsonb) FROM PUBLIC,ai_hr_app;
 
 --> statement-breakpoint
--- One bounded command for normal profile, Qualification and Emergency Contact facts. Family's
--- country-owned automatic child-relief coupling is not admitted here; its financial owner stays
--- separate. Neither table names nor physical column names are accepted from callers.
+-- One bounded command for normal profile and registers. Family effects call the private country
+-- owner atomically and return no tax values. No table/column names are accepted from callers.
 CREATE FUNCTION app.access_workforce_maintain_record(p_employment uuid,p_kind text,p_row uuid,p_operation text,p_patch jsonb,p_expected text) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE selected public.employment%ROWTYPE;before_row jsonb;after_row jsonb;normalized jsonb:='{}'::jsonb;
  version text;target_id uuid;table_name text;subject_column text;subject_id uuid;event_name text;aggregate_name text;
  assignments text;insert_columns text;insert_values text;field_names jsonb;pair record;binding record;value jsonb;
- previous record;previous_after jsonb;event_id uuid;instant timestamptz:=now();changed boolean;effect_id uuid;
+ previous record;previous_after jsonb;event_id uuid;instant timestamptz:=now();changed boolean;effect_id uuid;relationship text;relief_summary jsonb;
 BEGIN
- IF p_kind IS NULL OR p_operation IS NULL OR p_kind NOT IN ('person','qualification','emergency') OR p_operation NOT IN ('add','update','archive')
+ IF p_kind IS NULL OR p_operation IS NULL OR p_kind NOT IN ('person','qualification','emergency','dependent') OR p_operation NOT IN ('add','update','archive')
   OR jsonb_typeof(p_patch) IS DISTINCT FROM 'object' OR octet_length(p_patch::text)>128000 THEN
   RAISE EXCEPTION 'Workforce input invalid' USING ERRCODE='22023'; END IF;
  IF (SELECT count(*) FROM jsonb_object_keys(p_patch))>40 OR p_kind='person' AND (p_operation<>'update' OR p_row IS NOT NULL)
@@ -2369,11 +2384,11 @@ BEGIN
  IF NOT FOUND OR app.current_user_id() IS NULL OR NOT app.access_workforce_command_company(selected.company_id)
   OR p_kind<>'qualification' AND NOT app.access_workforce_command_person(selected.id) THEN
   RAISE EXCEPTION 'Workforce command unavailable' USING ERRCODE='42501'; END IF;
- table_name:=CASE p_kind WHEN 'person' THEN 'person' WHEN 'qualification' THEN 'employee_qualification' ELSE 'person_emergency_contact' END;
+ table_name:=CASE p_kind WHEN 'person' THEN 'person' WHEN 'qualification' THEN 'employee_qualification' WHEN 'dependent' THEN 'employee_dependent' ELSE 'person_emergency_contact' END;
  subject_column:=CASE WHEN p_kind='qualification' THEN 'employment_id' ELSE 'person_id' END;
  subject_id:=CASE WHEN p_kind='qualification' THEN selected.id ELSE selected.person_id END;
- aggregate_name:=CASE p_kind WHEN 'person' THEN 'person' WHEN 'qualification' THEN 'employee-qualification' ELSE 'person-emergency-contact' END;
- event_name:=CASE p_kind WHEN 'person' THEN 'person.updated' WHEN 'qualification' THEN 'qualification.' ELSE 'emergency-contact.' END;
+ aggregate_name:=CASE p_kind WHEN 'person' THEN 'person' WHEN 'qualification' THEN 'employee-qualification' WHEN 'dependent' THEN 'employee-dependent' ELSE 'person-emergency-contact' END;
+ event_name:=CASE p_kind WHEN 'person' THEN 'person.updated' WHEN 'qualification' THEN 'qualification.' WHEN 'dependent' THEN 'dependent.' ELSE 'emergency-contact.' END;
  IF p_kind<>'person' THEN event_name:=event_name||CASE p_operation WHEN 'add' THEN 'added' WHEN 'update' THEN 'updated' ELSE 'archived' END; END IF;
  IF p_kind='person' THEN
   SELECT to_jsonb(p),p.xmin::text INTO before_row,version FROM public.person p WHERE p.id=selected.person_id AND p.tenant_id=selected.tenant_id FOR UPDATE;
@@ -2400,10 +2415,14 @@ BEGIN
   IF p_patch<>'{}'::jsonb THEN RAISE EXCEPTION 'Workforce archive input invalid' USING ERRCODE='22023'; END IF;
   normalized:=jsonb_build_object('archived_at',instant,'updated_at',instant);
  ELSE
+  relationship:=COALESCE(NULLIF(app.access_profile_value_normalized(p_patch->'relationship')#>>'{}',''),before_row->>'relationship');
   FOR pair IN SELECT * FROM jsonb_each(p_patch) LOOP
    SELECT * INTO binding FROM app.access_profile_value_bindings() b WHERE b.field_name=pair.key
-    AND CASE WHEN p_kind='person' THEN b.owner IN ('person','compliance') ELSE b.owner=p_kind END;
+    AND CASE WHEN p_kind='person' THEN b.owner IN ('person','compliance') ELSE b.owner=p_kind END
+    AND b.field_name=ANY(app.access_workforce_command_fields(p_kind));
    IF NOT FOUND THEN RAISE EXCEPTION 'Workforce field unavailable' USING ERRCODE='22023'; END IF;
+   IF p_kind='dependent' AND ((relationship IS DISTINCT FROM 'spouse' AND pair.key IN ('marriageDate','marriageStatus','spouseWorking')) OR
+     (relationship IS DISTINCT FROM 'child' AND pair.key IN ('isStudent','schoolName','studyLevel','studyCountry','childReliefCategory','childTaxRelief','childReliefPercentage'))) THEN CONTINUE; END IF;
    value:=app.access_profile_value_normalized(pair.value);
    -- An unchanged, already-retained relationship on any live contact keeps the existing legacy
    -- tolerance. The public caller cannot supply a fake legacy value to the catalog owner.
@@ -2414,8 +2433,15 @@ BEGIN
    normalized:=normalized||jsonb_build_object(binding.column_name,value);
   END LOOP;
   IF p_operation='add' THEN
-   normalized:=CASE WHEN p_kind='qualification' THEN jsonb_build_object('is_highest',false) ELSE jsonb_build_object('priority','other') END||normalized;
+   normalized:=CASE WHEN p_kind='qualification' THEN jsonb_build_object('is_highest',false) WHEN p_kind='dependent' THEN jsonb_build_object('is_beneficiary',false,'is_deceased',false) ELSE jsonb_build_object('priority','other') END||normalized;
    IF COALESCE(normalized->>'qualification',normalized->>'full_name','')='' THEN RAISE EXCEPTION 'Workforce name required' USING ERRCODE='22023'; END IF;
+  END IF;
+  IF p_kind='dependent' THEN
+   IF relationship IS NULL THEN RAISE EXCEPTION 'Family relationship required' USING ERRCODE='22023'; END IF;
+   IF p_operation='add' OR relationship IS DISTINCT FROM before_row->>'relationship' THEN
+    IF relationship<>'spouse' THEN normalized:=normalized||jsonb_build_object('marriage_date',NULL,'marriage_status',NULL,'spouse_working',NULL,'company_name',NULL,'employer_address',NULL); END IF;
+    IF relationship<>'child' THEN normalized:=normalized||jsonb_build_object('is_student',NULL,'school_name',NULL,'study_level',NULL,'study_country',NULL,'child_relief_category',NULL,'child_tax_relief',NULL,'child_relief_percentage',NULL); END IF;
+   END IF;
   END IF;
   IF p_kind='qualification' THEN
    after_row:=before_row||normalized;
@@ -2424,7 +2450,9 @@ BEGIN
   END IF;
   IF p_kind='person' AND normalized ? 'marital_status' THEN normalized:=normalized||jsonb_build_object('marital_status_source_request_id',NULL); END IF;
   IF p_operation<>'add' AND NOT EXISTS(SELECT 1 FROM jsonb_each(normalized) d WHERE d.value IS DISTINCT FROM before_row->d.key) THEN
-   RETURN jsonb_build_object('id',target_id,'changed',false); END IF;
+   -- Existing Family saves refresh age-dependent facts even when the edited row itself is unchanged.
+   IF p_kind='dependent' THEN relief_summary:=app.my_sync_family_child_relief(selected.person_id); END IF;
+   RETURN jsonb_build_object('id',target_id,'changed',false,'payrollReviewRequired',COALESCE(relief_summary->'payrollAlert','null'::jsonb)<>'null'::jsonb); END IF;
   IF p_kind<>'person' THEN normalized:=normalized||jsonb_build_object('updated_at',instant); END IF;
  END IF;
  -- Transfer exactly one Primary/Highest using the same finite fields as the existing canonical owner.
@@ -2470,9 +2498,155 @@ BEGIN
    jsonb_build_object('fields',field_names,'via','workforce-maintenance','transferFromId',effect_id)) RETURNING id INTO event_id;
  UPDATE app.access_workforce_value_intent SET event_id=access_workforce_maintain_record.event_id
   WHERE xact_id=pg_current_xact_id() AND tenant_id=selected.tenant_id AND user_id=app.current_user_id() AND audit_root=target_id AND event_type=event_name;
- RETURN jsonb_build_object('id',target_id,'changed',true);
+ IF p_kind='dependent' THEN relief_summary:=app.my_sync_family_child_relief(selected.person_id); END IF;
+ RETURN jsonb_build_object('id',target_id,'changed',true,'payrollReviewRequired',COALESCE(relief_summary->'payrollAlert','null'::jsonb)<>'null'::jsonb);
 END; $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.access_workforce_maintain_record(uuid,text,uuid,text,jsonb,text) FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.access_workforce_maintain_record(uuid,text,uuid,text,jsonb,text) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Installed projection of lib/family-child-relief-rule.json. JS/SQL byte and executed outcome
+-- parity are mandatory. This derives facts only; rates/money remain in the country pack.
+CREATE FUNCTION app.my_family_child_relief_eligible(d public.employee_dependent,p_as_of date) RETURNS boolean
+LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,pg_temp AS $$
+ SELECT ((d.relationship IS NOT DISTINCT FROM 'child') AND (NOT COALESCE(d.is_deceased,false)) AND (NOT (d.archived_at IS NOT NULL)) AND (NOT (d.child_tax_relief IS NOT DISTINCT FROM false)) AND (COALESCE(d.is_student,false) OR (d.date_of_birth IS NOT NULL AND (extract(year FROM p_as_of)::int-extract(year FROM d.date_of_birth)::int-(to_char(p_as_of,'MM-DD')<to_char(d.date_of_birth,'MM-DD'))::int)<18) OR ((d.child_tax_relief IS NOT DISTINCT FROM true) AND COALESCE(d.child_relief_category IN ('study_preu','study_tertiary','disabled','disabled_study'),false))));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.my_family_child_relief_eligible(public.employee_dependent,date) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.my_family_grid_complete(p_eligible integer,p_categorised integer) RETURNS boolean
+LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,pg_temp AS $$
+ SELECT ((p_eligible IS NOT DISTINCT FROM p_categorised) AND COALESCE(p_eligible>0,false));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.my_family_grid_complete(integer,integer) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Private Malaysia automatic Family owner. No caller count/grid/tax patch, no general tax read
+-- grant. Manual mode and every unrelated statutory value remain byte-for-value unchanged.
+CREATE FUNCTION app.my_sync_family_child_relief(p_person uuid,p_at timestamptz DEFAULT now()) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id();stat public.employee_statutory_my%ROWTYPE;derived integer;categorised integer;grid jsonb;old_grid jsonb;
+ as_of date:=(p_at AT TIME ZONE 'Asia/Kuala_Lumpur')::date;period text:=to_char(p_at AT TIME ZONE 'UTC','YYYY-MM');batches integer;
+ subject uuid;country text;countries integer;before_values jsonb;after_values jsonb;
+ no_sync jsonb:=jsonb_build_object('changed',false,'before',NULL,'after',NULL,'payrollAlert',NULL);
+BEGIN
+ IF p_at IS NULL OR NOT isfinite(p_at) THEN RAISE EXCEPTION 'Family derivation clock invalid' USING ERRCODE='22023'; END IF;
+ PERFORM app.access_profile_policy_write_lock();
+ PERFORM 1 FROM public.person WHERE id=p_person AND tenant_id=t FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Family subject unavailable' USING ERRCODE='42501'; END IF;
+ SELECT * INTO stat FROM public.employee_statutory_my WHERE tenant_id=t AND person_id=p_person FOR UPDATE;
+ IF NOT FOUND THEN RETURN no_sync||jsonb_build_object('skipped','no_statutory_row'); END IF;
+ IF stat.child_relief_mode IS DISTINCT FROM 'auto' THEN RETURN no_sync||jsonb_build_object('skipped','manual_mode'); END IF;
+ SELECT count(*)::integer,count(*) FILTER(WHERE d.child_relief_category IN ('under_18','study_preu','study_tertiary','disabled','disabled_study'))::integer
+  INTO derived,categorised FROM public.employee_dependent d
+  WHERE d.tenant_id=t AND d.person_id=p_person AND app.my_family_child_relief_eligible(d,as_of);
+ SELECT COALESCE(jsonb_object_agg(category,jsonb_build_object('full',full_count,'half',half_count)),'{}'::jsonb) INTO grid FROM (
+  SELECT d.child_relief_category category,count(*) FILTER(WHERE d.child_relief_percentage IS DISTINCT FROM 50) full_count,
+   count(*) FILTER(WHERE d.child_relief_percentage=50) half_count FROM public.employee_dependent d
+  WHERE d.tenant_id=t AND d.person_id=p_person AND app.my_family_child_relief_eligible(d,as_of)
+   AND d.child_relief_category IN ('under_18','study_preu','study_tertiary','disabled','disabled_study') GROUP BY d.child_relief_category
+ ) counts;
+ IF NOT app.my_family_grid_complete(derived,categorised) THEN grid:=NULL; END IF;
+ -- Match the existing canonical grid comparison: absent/zero cells are equivalent, key order is not meaning.
+ SELECT COALESCE(jsonb_object_agg(key,jsonb_build_object('full',COALESCE(value->>'full','0')::numeric,'half',COALESCE(value->>'half','0')::numeric)),'{}'::jsonb)
+  INTO old_grid FROM jsonb_each(COALESCE(stat.child_relief_table,'{}'::jsonb))
+  WHERE COALESCE(value->>'full','0')::numeric<>0 OR COALESCE(value->>'half','0')::numeric<>0;
+ IF stat.num_children=derived AND old_grid=COALESCE(grid,'{}'::jsonb) THEN RETURN no_sync||jsonb_build_object('skipped','unchanged'); END IF;
+ SELECT count(DISTINCT c.country)::integer,min(c.country) INTO countries,country FROM public.employment e JOIN public.company c ON c.id=e.company_id AND c.tenant_id=e.tenant_id WHERE e.tenant_id=t AND e.person_id=p_person;
+ -- No invented jurisdiction when retained employments disagree. The ordinary non-enclosing caller
+ -- retains its established NO_SYNC(error); an enclosing activation/command rolls back on this refusal.
+ IF countries<>1 OR country IS DISTINCT FROM 'MY' OR EXISTS(SELECT 1 FROM public.employment e JOIN public.company c ON c.id=e.company_id AND c.tenant_id=e.tenant_id WHERE e.tenant_id=t AND e.person_id=p_person AND c.country IS NULL) THEN
+  RAISE EXCEPTION 'Family automatic relief jurisdiction unavailable' USING ERRCODE='0A000'; END IF;
+ SELECT e.id INTO subject FROM public.employment e WHERE e.tenant_id=t AND e.person_id=p_person ORDER BY (e.terminated_on IS NOT NULL),e.hired_on,e.id LIMIT 1;
+ SELECT count(*)::integer INTO batches FROM public.payroll_batch p WHERE p.tenant_id=t AND p.pay_period=period AND p.status<>'closed'
+  AND EXISTS(SELECT 1 FROM public.employment e WHERE e.tenant_id=t AND e.person_id=p_person AND e.company_id=p.company_id);
+ before_values:=jsonb_build_object('numChildren',stat.num_children,'childReliefMode',stat.child_relief_mode,'childReliefTable',stat.child_relief_table);
+ after_values:=jsonb_build_object('numChildren',derived,'childReliefMode',stat.child_relief_mode,'childReliefTable',grid);
+ UPDATE public.employee_statutory_my SET num_children=derived,child_relief_table=grid,updated_at=now() WHERE id=stat.id AND tenant_id=t;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
+  VALUES(t,'employee-statutory',stat.id,'employee.tax.updated',CASE WHEN app.current_user_id() IS NULL THEN 'system' ELSE 'user' END,app.current_user_id(),subject,
+   jsonb_build_object('personId',p_person,'before',before_values,'after',after_values,'auto',true,'provenance','auto_child_relief','derivedOn',as_of,'payrollAlert',CASE WHEN batches>0 THEN jsonb_build_object('period',period,'batches',batches) ELSE NULL END));
+ RETURN jsonb_build_object('changed',true,'before',stat.num_children,'after',derived,'payrollAlert',CASE WHEN batches>0 THEN jsonb_build_object('period',period,'batches',batches) ELSE NULL END,'skipped',NULL);
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.my_sync_family_child_relief(uuid,timestamptz) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Ordinary kernel caller retains the existing statutory setter's read AND write floor. A new
+-- Workforce maintainer reaches the private owner only as part of its exact Family command.
+CREATE FUNCTION app.access_family_relief_sync(p_person uuid) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.access_workforce_storage_owner() AND (NOT app.principal_snapshot_current() OR NOT app.is_admin() OR NOT app.can_see_person(p_person)) THEN
+  RAISE EXCEPTION 'Family automatic relief unavailable' USING ERRCODE='42501'; END IF;
+ RETURN app.my_sync_family_child_relief(p_person);
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_family_relief_sync(uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_family_relief_sync(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Tax audit payloads follow the same financial reader boundary as the underlying statutory row.
+-- A Workforce grant/ordinary reporting relationship alone cannot reveal a retained tax value.
+CREATE FUNCTION app.access_tax_audit_read(p_statutory uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND (app.is_admin() OR EXISTS(
+  SELECT 1 FROM public.employee_statutory_my s WHERE s.id=p_statutory AND s.tenant_id=app.current_tenant_id()
+   AND (app.is_self_person(s.person_id) OR EXISTS(SELECT 1 FROM public.employment e WHERE e.person_id=s.person_id AND e.tenant_id=s.tenant_id AND app.can_admin_payroll_for(e.company_id)))));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_tax_audit_read(uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_tax_audit_read(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE POLICY access_tax_audit_read ON public.domain_event AS RESTRICTIVE FOR SELECT TO ai_hr_app
+ USING(event_type<>'employee.tax.updated' OR app.access_tax_audit_read(aggregate_id));
+
+--> statement-breakpoint
+-- Ordinary flat Workforce facts only. Grade, compensation, statutory and resignation/dated
+-- consequences keep their own owners; this is not a blanket employment-row write permission.
+CREATE FUNCTION app.access_workforce_flat_info_columns() RETURNS text[]
+LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,pg_temp AS $$
+ SELECT ARRAY['org_branch','org_division','org_region','org_line','org_section','org_team','org_base','employment_category','contract_remark']::text[];
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_flat_info_columns() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_flat_info_update() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM jsonb_each(to_jsonb(NEW)) d WHERE d.key=ANY(app.access_workforce_flat_info_columns()) AND d.value IS DISTINCT FROM to_jsonb(OLD)->d.key)
+  OR app.access_workforce_storage_owner() THEN RETURN NEW; END IF;
+ IF OLD.id IS DISTINCT FROM NEW.id OR OLD.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+  OR NOT app.access_workforce_company(OLD.company_id,'workforce.maintain') OR NOT app.access_workforce_company(NEW.company_id,'workforce.maintain') THEN
+  RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501'; END IF;
+ RETURN NEW;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_flat_info_update() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER access_workforce_flat_info_lock BEFORE UPDATE OF org_branch,org_division,org_region,org_line,org_section,org_team,org_base,employment_category,contract_remark ON employment
+FOR EACH STATEMENT EXECUTE FUNCTION app.access_workforce_master_statement_lock();
+--> statement-breakpoint
+CREATE TRIGGER access_workforce_flat_info_update BEFORE UPDATE OF org_branch,org_division,org_region,org_line,org_section,org_team,org_base,employment_category,contract_remark ON employment
+FOR EACH ROW EXECUTE FUNCTION app.access_workforce_flat_info_update();
+
+--> statement-breakpoint
+-- Closed Workforce binding selection. Physical names/meaning still come from the Personnel
+-- projection; ESS visibility or a new self-service binding cannot grant a new Workforce field.
+CREATE FUNCTION app.access_workforce_command_fields(p_kind text) RETURNS text[]
+LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,pg_temp AS $$
+ SELECT CASE p_kind
+  WHEN 'person' THEN ARRAY['salutation','fullName','firstName','lastName','preferredName','nationality','religion','race','dateOfBirth','gender','maritalStatus','primaryEmail','phone','homePhone','personalEmail','permanentAddressLine1','permanentAddressLine2','permanentAddressLine3','permanentPostcode','permanentCity','permanentState','permanentCountry','correspondenceAddressLine1','correspondenceAddressLine2','correspondenceAddressLine3','correspondencePostcode','correspondenceCity','correspondenceState','correspondenceCountry','correspondenceMobilePhone','correspondenceHomePhone']
+  WHEN 'qualification' THEN ARRAY['qualification','institute','fromYm','toYm','graduationDate','major','result','description','isHighest']
+  WHEN 'emergency' THEN ARRAY['fullName','relationship','mobilePhone','homePhone','address','priority']
+  WHEN 'dependent' THEN ARRAY['relationship','fullName','gender','dateOfBirth','phone','icOrPassport','passportNumber','residentialAddress','marriageDate','marriageStatus','spouseWorking','isBeneficiary','isDeceased','isStudent','schoolName','studyLevel','studyCountry','childReliefCategory','childTaxRelief','childReliefPercentage']
+  ELSE ARRAY[]::text[] END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_command_fields(text) FROM PUBLIC,ai_hr_app;

@@ -10,7 +10,7 @@ import th from '../messages/th.json';
 import viMessages from '../messages/vi.json';
 import {WorkforceScopedRecord} from '../app/admin/personnel/[employmentId]/workforce-record';
 import {workforceCommandAccess} from '../core/workforce-access';
-import {workforceEditor,type WorkforceEditor} from '../core/workforce-maintenance';
+import {workforceEditor,WorkforceMaintenanceUnavailableError,type WorkforceEditor} from '../core/workforce-maintenance';
 import {workforceRecord,type WorkforceRecord} from '../core/workforce-record';
 import {listWorkforcePickOptions} from '../core/read';
 import {WORKFORCE_PROFILE_FIELDS,type WorkforceProfile} from '../lib/workforce-record-fields';
@@ -23,7 +23,7 @@ vi.mock('next-intl/server',()=>({getTranslations:async(namespace?:string)=>creat
 })}));
 vi.mock('next/navigation',()=>({notFound:()=>{throw new Error('not_found');}}));
 vi.mock('../core/workforce-access',()=>({workforceCommandAccess:vi.fn(async()=>false)}));
-vi.mock('../core/workforce-maintenance',()=>({workforceEditor:vi.fn(async()=>null)}));
+vi.mock('../core/workforce-maintenance',()=>({workforceEditor:vi.fn(async()=>null),WorkforceMaintenanceUnavailableError:class extends Error{}}));
 vi.mock('../app/admin/personnel/[employmentId]/workforce-record-actions',()=>({saveWorkforceCodeAction:vi.fn(),saveWorkforceRecordAction:vi.fn()}));
 vi.mock('../core/workforce-record',()=>({workforceRecord:vi.fn()}));
 vi.mock('../core/read',()=>({listWorkforcePickOptions:vi.fn()}));
@@ -77,6 +77,7 @@ describe('grant-based Workforce record view',()=>{
   const editor:WorkforceEditor={profileVersion:'1042',profile:detail.profile,sharedMaintain:true,employmentMaintain:true,options:[],registers:[
    {kind:'qualification',id,version:'1043',values:{qualification:'Legacy retained level',description:null,fromYm:'2020-01',toYm:'2023-01',institute:null,major:null,graduationDate:null,result:null,isHighest:true}},
    {kind:'emergency',id:'22222222-2222-4222-8222-222222222222',version:'1044',values:{fullName:'Fictional contact',relationship:null,mobilePhone:null,homePhone:null,address:null,priority:'primary'}},
+   {kind:'dependent',id:'33333333-3333-4333-8333-333333333333',version:'1045',values:{fullName:'Fictional child',relationship:'child',childTaxRelief:null,isStudent:null,childReliefPercentage:50}},
   ]};
   vi.mocked(workforceEditor).mockResolvedValue(editor);
   const {container}=render(await WorkforceScopedRecord({session:ctx,employmentId:id,scopeIds:[id],editFeedback:'saved'}));
@@ -87,6 +88,9 @@ describe('grant-based Workforce record view',()=>{
   expect(container.querySelector('[name="expectedVersion"][value="1043"]')).not.toBeNull();
   expect(container.querySelector('[name="expectedVersion"][value="1044"]')).not.toBeNull();
   expect(container.querySelector('[name="isHighest"]')).toHaveValue('true');
+  expect(container.querySelector('[name="childTaxRelief"]')).toHaveValue('');
+  expect(container.querySelector('[name="childReliefPercentage"]')).toHaveValue('50');
+  expect(container.querySelector('[name="expectedVersion"][value="1045"]')).not.toBeNull();
   for(const name of ['salary','bankAccount','personId','tenantId','companyId','role','remarks','isTestRecord'])expect(container.querySelector(`[name="${name}"]`)).toBeNull();
   expect(container.querySelector('input[type="file"]')).toBeNull();
  });
@@ -104,5 +108,12 @@ describe('grant-based Workforce record view',()=>{
   const {container}=render(await WorkforceScopedRecord({session:ctx,employmentId:id,scopeIds:[id]}));
   expect(container.querySelector('[name="fullName"]')).toHaveValue('Fictional coherent snapshot');
   expect(container.querySelector('[name="expectedVersion"]')).toHaveValue('1050');
+ });
+ it('keeps a bounded unavailable editor from crashing the ordinary record view',async()=>{
+  language.current='en';vi.mocked(workforceRecord).mockResolvedValue(detail);vi.mocked(listWorkforcePickOptions).mockResolvedValue([]);
+  vi.mocked(workforceEditor).mockRejectedValue(new WorkforceMaintenanceUnavailableError());
+  const {container}=render(await WorkforceScopedRecord({session:ctx,employmentId:id,scopeIds:[id]}));
+  expect(screen.getByRole('alert')).toHaveTextContent(en.accessConfiguration.workforceEdit.unavailable);
+  expect(screen.getByRole('heading',{name:detail.employment.name})).toBeInTheDocument();expect(container.querySelector('form')).toBeNull();
  });
 });
