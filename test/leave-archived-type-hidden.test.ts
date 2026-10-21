@@ -255,9 +255,12 @@ describe('ec991c2a — which surface asks for which answer, pinned across both f
    */
   const read = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8');
 
-  it('both ADMIN balance surfaces opt in, so they cannot tell different stories', () => {
+  it('the retained HR inquiry includes archived types without restoring the retired Personnel balance copy', () => {
     expect(read('../app/leave/employee-balances/rows.ts')).toContain('includeArchived: true');
-    expect(read('../app/admin/personnel/[employmentId]/page.tsx')).toContain('includeArchived: true');
+    expect(read('../app/leave/employee-balances/inquiry-data.ts')).toContain('await employeeBalanceRows(ctx, employmentId, query.asOf,');
+    const personnel = read('../app/admin/personnel/[employmentId]/page.tsx');
+    expect(personnel).not.toMatch(/\bleaveBalances\(/);
+    expect(personnel).not.toContain('<EntitlementBreakdown');
   });
 
   it('the employee-facing call sites are EXPLICIT, so the default can never silently change meaning', () => {
