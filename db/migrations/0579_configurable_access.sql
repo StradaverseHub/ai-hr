@@ -2651,3 +2651,222 @@ LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,pg_temp AS $$
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.access_workforce_command_fields(text) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Termination commands may close only their actual graph, including cross-scope incoming edges. An
+-- independent resignation decision can authorize only its fixed pending request consequence. This is
+-- private transaction evidence, never a role, caller-set mode or standing permission on a shared row.
+CREATE TABLE app.access_termination_intent (
+ xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,employment_id uuid NOT NULL,
+ request_id uuid,termination_on date NOT NULL,expected_patch jsonb NOT NULL,
+ termination_event uuid,resignation_event uuid,
+ PRIMARY KEY(xact_id,tenant_id,user_id,employment_id)
+);
+--> statement-breakpoint
+REVOKE ALL ON TABLE app.access_termination_intent FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+ALTER TABLE app.access_termination_intent ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
+CREATE FUNCTION app.access_prepare_resignation_termination(p_request uuid) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r public.resignation_request%ROWTYPE;e public.employment%ROWTYPE;patch jsonb;existing app.access_termination_intent%ROWTYPE;
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ IF NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Resignation decision unavailable' USING ERRCODE='42501'; END IF;
+ SELECT * INTO r FROM public.resignation_request WHERE id=p_request AND tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF NOT FOUND OR r.status<>'pending' THEN RAISE EXCEPTION 'Resignation decision unavailable' USING ERRCODE='42501'; END IF;
+ SELECT * INTO e FROM public.employment WHERE id=r.employment_id AND tenant_id=r.tenant_id AND person_id=r.person_id FOR UPDATE;
+ -- Retain the existing admin-for-subject decision floor and super-admin self-decision exception.
+ IF NOT FOUND OR NOT app.can_admin_employment(e.id)
+  OR (app.is_self_person(e.person_id) AND NOT app.has_role_for('super_admin',e.company_id)) THEN
+  RAISE EXCEPTION 'Resignation decision unavailable' USING ERRCODE='42501'; END IF;
+ patch:=jsonb_build_object('terminated_on',r.last_working_day,'termination_type','voluntary',
+  'termination_reason',CASE WHEN r.reason IS NULL THEN 'Resignation' ELSE NULLIF(btrim(r.reason),'') END);
+ SELECT * INTO existing FROM app.access_termination_intent WHERE xact_id=pg_current_xact_id()
+  AND tenant_id=r.tenant_id AND user_id=app.current_user_id() AND employment_id=e.id;
+ IF FOUND THEN
+  IF existing.request_id<>r.id OR existing.expected_patch<>patch THEN
+   RAISE EXCEPTION 'Resignation consequence changed' USING ERRCODE='40001'; END IF;
+  RETURN;
+ END IF;
+ INSERT INTO app.access_termination_intent(xact_id,tenant_id,user_id,employment_id,request_id,termination_on,expected_patch)
+ VALUES(pg_current_xact_id(),r.tenant_id,app.current_user_id(),e.id,r.id,r.last_working_day,patch);
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_prepare_resignation_termination(uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_prepare_resignation_termination(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_assert_termination(p_employment uuid,p_patch jsonb) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE existing app.access_termination_intent%ROWTYPE;termination_date date;
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ IF app.access_workforce_storage_owner() THEN RETURN; END IF;
+ IF jsonb_typeof(p_patch) IS DISTINCT FROM 'object' OR NOT p_patch ? 'terminated_on'
+  OR EXISTS(SELECT 1 FROM jsonb_object_keys(p_patch) key WHERE key NOT IN
+   ('terminated_on','termination_type','termination_reason','termination_reason_code','termination_notice_days')) THEN
+  RAISE EXCEPTION 'Invalid termination consequence' USING ERRCODE='22023'; END IF;
+ termination_date:=(p_patch->>'terminated_on')::date;
+ IF termination_date IS NULL OR NOT isfinite(termination_date) THEN
+  RAISE EXCEPTION 'Invalid termination consequence' USING ERRCODE='22023'; END IF;
+ SELECT * INTO existing FROM app.access_termination_intent WHERE xact_id=pg_current_xact_id()
+  AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND employment_id=p_employment;
+ IF FOUND THEN
+  IF existing.expected_patch<>p_patch THEN RAISE EXCEPTION 'Termination consequence changed' USING ERRCODE='40001'; END IF;
+  RETURN;
+ END IF;
+ IF NOT app.access_workforce_employment(p_employment,'workforce.maintain') THEN
+  RAISE EXCEPTION 'Termination consequence unavailable' USING ERRCODE='42501'; END IF;
+ -- Direct maintenance can also close incoming edges whose subordinate belongs to a different scope.
+ -- Its exact graph consequence still requires the real termination event before commit.
+ INSERT INTO app.access_termination_intent(xact_id,tenant_id,user_id,employment_id,termination_on,expected_patch)
+ VALUES(pg_current_xact_id(),app.current_tenant_id(),app.current_user_id(),p_employment,termination_date,p_patch);
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_assert_termination(uuid,jsonb) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_assert_termination(uuid,jsonb) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.access_termination_intent_audit() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.tenant_id=app.current_tenant_id() AND NEW.actor_type='user' AND NEW.actor_id=app.current_user_id() THEN
+  IF NEW.event_type='employment.terminated' THEN
+   UPDATE app.access_termination_intent proof SET termination_event=NEW.id
+    WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.user_id=NEW.actor_id
+     AND proof.employment_id=NEW.aggregate_id AND proof.employment_id=NEW.subject_employment_id
+     AND NEW.payload->>'terminationDate'=proof.termination_on::text
+     AND NEW.payload->>'terminationType' IS NOT DISTINCT FROM proof.expected_patch->>'termination_type'
+     AND NEW.payload->>'terminationReason' IS NOT DISTINCT FROM proof.expected_patch->>'termination_reason'
+     AND (NOT proof.expected_patch ? 'termination_reason_code' OR NEW.payload->'terminationReasonCode' IS NOT DISTINCT FROM proof.expected_patch->'termination_reason_code')
+     AND (NOT proof.expected_patch ? 'termination_notice_days' OR NEW.payload->'terminationNoticeDays' IS NOT DISTINCT FROM proof.expected_patch->'termination_notice_days');
+  ELSIF NEW.event_type='resignation.accepted' THEN
+   UPDATE app.access_termination_intent proof SET resignation_event=NEW.id
+    WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.user_id=NEW.actor_id
+     AND proof.request_id=NEW.aggregate_id AND proof.employment_id=NEW.subject_employment_id
+     AND NEW.payload->>'decision'='accepted' AND NEW.payload->>'lastWorkingDay'=proof.termination_on::text;
+  END IF;
+ END IF;
+ RETURN NULL;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_termination_intent_audit() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER access_termination_intent_audit AFTER INSERT ON domain_event
+FOR EACH ROW EXECUTE FUNCTION app.access_termination_intent_audit();
+--> statement-breakpoint
+CREATE FUNCTION app.access_termination_intent_complete() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE proof app.access_termination_intent%ROWTYPE;
+BEGIN
+ SELECT * INTO proof FROM app.access_termination_intent WHERE xact_id=NEW.xact_id AND tenant_id=NEW.tenant_id
+  AND user_id=NEW.user_id AND employment_id=NEW.employment_id;
+ IF NOT FOUND OR proof.termination_event IS NULL
+  OR NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=proof.employment_id AND e.tenant_id=proof.tenant_id AND to_jsonb(e) @> proof.expected_patch)
+  OR (proof.request_id IS NOT NULL AND (proof.resignation_event IS NULL OR NOT EXISTS(
+   SELECT 1 FROM public.resignation_request r WHERE r.id=proof.request_id AND r.tenant_id=proof.tenant_id AND r.employment_id=proof.employment_id
+    AND r.status='accepted' AND r.decided_at IS NOT NULL AND r.last_working_day=proof.termination_on))) THEN
+  RAISE EXCEPTION 'Incomplete termination consequence' USING ERRCODE='42501'; END IF;
+ RETURN NULL;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_termination_intent_complete() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE CONSTRAINT TRIGGER access_termination_intent_complete AFTER INSERT OR UPDATE ON app.access_termination_intent
+DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.access_termination_intent_complete();
+
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_lifecycle_update() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE delta jsonb;proof app.access_termination_intent%ROWTYPE;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW; END IF;
+ SELECT COALESCE(jsonb_object_agg(d.key,d.value),'{}'::jsonb) INTO delta FROM jsonb_each(to_jsonb(NEW)) d
+  WHERE d.key IN ('id','tenant_id','person_id','company_id','hired_on','join_date','resignation_date','last_working_date',
+   'terminated_on','termination_type','termination_reason','termination_reason_code','termination_notice_days','blacklisted_at','blacklist_reason')
+   AND d.value IS DISTINCT FROM to_jsonb(OLD)->d.key;
+ IF delta='{}'::jsonb THEN RETURN NEW; END IF;
+ IF OLD.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+  OR NEW.id IS DISTINCT FROM OLD.id OR NEW.person_id IS DISTINCT FROM OLD.person_id THEN
+  RAISE EXCEPTION 'Employment identity cannot be reassigned' USING ERRCODE='42501'; END IF;
+ IF app.access_workforce_company(OLD.company_id,'workforce.maintain') AND app.access_workforce_company(NEW.company_id,'workforce.maintain') THEN RETURN NEW; END IF;
+ SELECT * INTO proof FROM app.access_termination_intent WHERE xact_id=pg_current_xact_id()
+  AND tenant_id=OLD.tenant_id AND user_id=app.current_user_id() AND employment_id=OLD.id;
+ IF NOT FOUND OR NOT to_jsonb(NEW) @> proof.expected_patch OR EXISTS(
+  SELECT 1 FROM jsonb_each(delta) d WHERE NOT proof.expected_patch ? d.key OR d.value IS DISTINCT FROM proof.expected_patch->d.key) THEN
+  RAISE EXCEPTION 'Workforce lifecycle maintenance unavailable' USING ERRCODE='42501'; END IF;
+ RETURN NEW;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_lifecycle_update() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER access_workforce_lifecycle_lock BEFORE UPDATE OF id,tenant_id,person_id,company_id,hired_on,join_date,resignation_date,last_working_date,terminated_on,termination_type,termination_reason,termination_reason_code,termination_notice_days,blacklisted_at,blacklist_reason ON employment
+FOR EACH STATEMENT EXECUTE FUNCTION app.access_workforce_master_statement_lock();
+--> statement-breakpoint
+CREATE TRIGGER access_workforce_lifecycle_update BEFORE UPDATE OF id,tenant_id,person_id,company_id,hired_on,join_date,resignation_date,last_working_date,terminated_on,termination_type,termination_reason,termination_reason_code,termination_notice_days,blacklisted_at,blacklist_reason ON employment
+FOR EACH ROW EXECUTE FUNCTION app.access_workforce_lifecycle_update();
+
+--> statement-breakpoint
+-- All assignment writers are Workforce/hire/correction/scheduled owners, except the exact open
+-- closure performed by an admitted termination consequence. Delegate edges keep their own owner.
+CREATE FUNCTION app.access_workforce_structure_write() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE before_row jsonb;after_row jsonb;subject uuid;proof app.access_termination_intent%ROWTYPE;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN
+  IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+ END IF;
+ IF NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Structural principal unavailable' USING ERRCODE='42501'; END IF;
+ before_row:=CASE WHEN TG_OP='INSERT' THEN NULL ELSE to_jsonb(OLD) END;
+ after_row:=CASE WHEN TG_OP='DELETE' THEN NULL ELSE to_jsonb(NEW) END;
+ IF before_row=after_row THEN RETURN NEW; END IF;
+ IF (before_row IS NOT NULL AND before_row->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text)
+  OR (after_row IS NOT NULL AND after_row->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text) THEN
+  RAISE EXCEPTION 'Workforce structure unavailable' USING ERRCODE='42501'; END IF;
+ IF TG_OP='UPDATE' AND (NEW.id IS DISTINCT FROM OLD.id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+  OR before_row->'created_at' IS DISTINCT FROM after_row->'created_at'
+  OR before_row->'employment_id' IS DISTINCT FROM after_row->'employment_id'
+  OR before_row->'subordinate_employment_id' IS DISTINCT FROM after_row->'subordinate_employment_id') THEN
+  RAISE EXCEPTION 'Structural identity cannot be reassigned' USING ERRCODE='42501'; END IF;
+ IF TG_TABLE_NAME='reporting_line' AND (before_row IS NULL OR before_row->>'line_type'='delegate')
+  AND (after_row IS NULL OR after_row->>'line_type'='delegate') THEN
+  IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+ END IF;
+ subject:=COALESCE((before_row->>'employment_id')::uuid,(before_row->>'subordinate_employment_id')::uuid,
+  (after_row->>'employment_id')::uuid,(after_row->>'subordinate_employment_id')::uuid);
+ IF (before_row IS NULL OR app.access_workforce_employment(subject,'workforce.maintain'))
+  AND (after_row IS NULL OR app.access_workforce_employment(COALESCE((after_row->>'employment_id')::uuid,(after_row->>'subordinate_employment_id')::uuid),'workforce.maintain'))
+  AND (TG_TABLE_NAME<>'assignment' OR
+   (before_row->>'company_id' IS NULL OR app.access_workforce_company((before_row->>'company_id')::uuid,'workforce.maintain'))
+   AND (after_row->>'company_id' IS NULL OR app.access_workforce_company((after_row->>'company_id')::uuid,'workforce.maintain'))) THEN
+  IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+ END IF;
+ -- The exception can only close an unchanged open/current range involving the terminated subject.
+ IF TG_OP='UPDATE' AND before_row->>'valid_to' IS NULL AND before_row->>'superseded_at' IS NULL
+  AND (before_row-'valid_to')=(after_row-'valid_to') THEN
+  SELECT * INTO proof FROM app.access_termination_intent p WHERE p.xact_id=pg_current_xact_id()
+   AND p.tenant_id=app.current_tenant_id() AND p.user_id=app.current_user_id()
+   AND p.termination_on::text=after_row->>'valid_to' AND (
+    (TG_TABLE_NAME='assignment' AND p.employment_id=(before_row->>'employment_id')::uuid)
+    OR (TG_TABLE_NAME='reporting_line' AND before_row->>'line_type'='administrative'
+     AND p.employment_id IN ((before_row->>'subordinate_employment_id')::uuid,(before_row->>'manager_employment_id')::uuid)));
+  IF FOUND THEN RETURN NEW; END IF;
+ END IF;
+ RAISE EXCEPTION 'Workforce structure maintenance unavailable' USING ERRCODE='42501';
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_structure_write() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER access_workforce_assignment_lock BEFORE INSERT OR UPDATE OR DELETE ON assignment
+FOR EACH STATEMENT EXECUTE FUNCTION app.access_workforce_master_statement_lock();
+--> statement-breakpoint
+CREATE TRIGGER access_workforce_assignment_write BEFORE INSERT OR UPDATE OR DELETE ON assignment
+FOR EACH ROW EXECUTE FUNCTION app.access_workforce_structure_write();
+--> statement-breakpoint
+CREATE TRIGGER access_workforce_reporting_lock BEFORE INSERT OR UPDATE OR DELETE ON reporting_line
+FOR EACH STATEMENT EXECUTE FUNCTION app.access_workforce_master_statement_lock();
+--> statement-breakpoint
+CREATE TRIGGER access_workforce_reporting_write BEFORE INSERT OR UPDATE OR DELETE ON reporting_line
+FOR EACH ROW EXECUTE FUNCTION app.access_workforce_structure_write();

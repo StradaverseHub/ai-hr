@@ -113,6 +113,9 @@ export async function decideResignation(
     }
 
     if (p.decision === 'accepted') {
+      // Prepare only the actual pending request's fixed consequence under fresh decision authority.
+      // SQL requires acceptance and both immutable events in this same transaction before commit.
+      await tx.execute(sql`select app.access_prepare_resignation_termination(${req.id}::uuid)`);
       // A resignation is a voluntary termination — reuse the single termination path, same tx.
       await terminateEmploymentTx(tx, ctx, {
         employmentId: req.employmentId,

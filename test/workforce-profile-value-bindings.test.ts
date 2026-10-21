@@ -23,6 +23,22 @@ describe('physical profile/register authorization declaration',()=>{
   expect(actual).toEqual(expected);expect(actual).toHaveLength(9);
   for(const field of ['grade_id','hired_on','last_working_date','payroll_policy_id'])expect(actual).not.toContain(field);
  });
+ it('keeps structural and lifecycle permission bindings separate from independent financial owners',()=>{
+  const start=migration.indexOf('CREATE FUNCTION app.access_workforce_lifecycle_update()');
+  const end=migration.indexOf('CREATE FUNCTION app.access_workforce_structure_write()');
+  expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start);
+  const body=migration.slice(start,end);expect(body.length).toBeGreaterThan(1000);
+  for(const name of ['person_id','company_id','hired_on','join_date','resignation_date','last_working_date','terminated_on','blacklisted_at'])expect(body).toContain(name);
+  for(const name of ['grade_id','payroll_policy_id','probation_end_date','contract_end_date','card_id'])expect(body).not.toContain(name);
+  expect(migration).toContain('BEFORE INSERT OR UPDATE OR DELETE ON assignment');
+  expect(migration).toContain('BEFORE INSERT OR UPDATE OR DELETE ON reporting_line');
+  expect(migration).toContain('REVOKE ALL ON TABLE app.access_termination_intent FROM PUBLIC,ai_hr_app');
+  expect(migration).toContain('DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.access_termination_intent_complete()');
+  expect(migration).toContain("r.status='accepted' AND r.decided_at IS NOT NULL");
+  const core=readFileSync(new URL('../core/offboarding.ts',import.meta.url),'utf8');
+  const prepare=core.indexOf('app.access_prepare_resignation_termination('),apply=core.indexOf('await terminateEmploymentTx(');
+  expect(prepare).toBeGreaterThanOrEqual(0);expect(apply).toBeGreaterThan(prepare);
+ });
  it('pins every physical ESS person/compliance/register binding to the canonical field registry',()=>{
   const body=migration.split('CREATE FUNCTION app.access_profile_value_bindings()')[1].split('; $$;')[0];
   const literal="(?:'((?:[^']|'')*)'|(NULL))";

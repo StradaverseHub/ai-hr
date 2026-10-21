@@ -4,7 +4,7 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {and,eq,sql} from 'drizzle-orm';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {db,withTenant,type SessionContext} from '../db/client';
-import {person,employment,employeeDraft,roleAssignment,appUser,jobGrade,domainEvent,employeeDependent,employeeQualification,personEmergencyContact,employeeDocument,compensation,profileOption,employeeStatutoryMy} from '../db/schema';
+import {person,employment,employeeDraft,roleAssignment,appUser,jobGrade,domainEvent,employeeDependent,employeeQualification,personEmergencyContact,employeeDocument,compensation,profileOption,employeeStatutoryMy,assignment,reportingLine,resignationRequest} from '../db/schema';
 import {setStatutoryProfileMY,setTaxProfileMY} from '../localization/my/statutory';
 import {hireEmployee,setEmployeeCode,updatePerson,setEmploymentGrade} from '../core/org';
 import {hireEmployee as hireWorkforceEmployee,setEmploymentInfo as maintainInfo,setPersonComplianceFields as maintainCompliance} from '../core/workforce-commands';
@@ -577,6 +577,86 @@ describe('purpose-bound non-HR profile and register maintenance',()=>{
    expect(await tx.select().from(person).where(eq(person.id,subject.personId))).toEqual([]);
   });
   expect((await workforceRecord(ctx,subject.employmentId))!.profile).toMatchObject({preferredName:'Fictional exact command',firstName:null});
+ });
+});
+
+describe('canonical direct structural entry points',()=>{
+ it('checks fresh maintenance before direct assignment, transfer, reporting, blacklist or termination work',async()=>{
+  const subject=await hire('Fictional structural subject'),manager=await hire('Fictional structural manager');
+  const org=await import('../core/org');
+  const capture=async()=>({
+   employment:await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId)).orderBy(employment.id),
+   assignments:await owner.db.select().from(assignment).where(eq(assignment.employmentId,subject.employmentId)).orderBy(assignment.id),
+   reporting:await owner.db.select().from(reportingLine).where(eq(reportingLine.subordinateEmploymentId,subject.employmentId)).orderBy(reportingLine.id),
+   events:await owner.db.select().from(domainEvent).where(eq(domainEvent.subjectEmploymentId,subject.employmentId)).orderBy(domainEvent.id),
+  });
+  await activate();await override(b.adminUserId,'workforce.maintain',b.companyId,'deny');
+  const before=await capture(),today=todayInKualaLumpur();
+  // These deliberately import the canonical owner directly, rather than the UI/import facade.
+  for(const write of [
+   ()=>org.setEmploymentAssignment(admin(),{employmentId:subject.employmentId,effectiveDate:today,departmentId:b.deptB}),
+   ()=>org.transferEmployee(admin(),{employmentId:subject.employmentId,effectiveDate:today,departmentId:b.deptB}),
+   ()=>org.setReportingLine(admin(),{subordinateEmploymentId:subject.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:today}),
+   ()=>org.setEmploymentBlacklist(admin(),{employmentId:subject.employmentId,blacklisted:true,reason:'Fictional refused change'}),
+   ()=>org.terminateEmployment(admin(),{employmentId:subject.employmentId,terminationDate:today}),
+  ]){await expect(write()).rejects.toBeInstanceOf(WorkforceAccessError);expect(await capture()).toEqual(before);}
+  await override(b.adminUserId,'workforce.maintain',b.companyId,null);
+  await org.setReportingLine(admin(),{subordinateEmploymentId:subject.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:today});
+  expect(await owner.db.select().from(reportingLine).where(eq(reportingLine.subordinateEmploymentId,subject.employmentId))).toHaveLength(1);
+ });
+});
+
+describe('structural SQL and fixed resignation consequences',()=>{
+ async function pending(){
+  const subject=await hire('Fictional resignation subject');
+  const userId=await createAppUser(b.tenantId,subject.personId,'employee');
+  const own={...admin(),userId,personId:subject.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]} satisfies SessionContext;
+  const {submitResignation}=await import('../core/offboarding');
+  const request=await submitResignation(own,{employmentId:subject.employmentId,lastWorkingDay:todayInKualaLumpur(),reason:'Fictional independent resignation'});
+  await activate();await override(b.adminUserId,'workforce.maintain',b.companyId,'deny');
+  return {subject,request,own};
+ }
+ it('denies raw assignment, structural edge and lifecycle changes after maintenance revocation',async()=>{
+  const subject=await hire('Fictional raw structural subject'),manager=await hire('Fictional raw structural manager');
+  const {setReportingLine}=await import('../core/org');
+  const line=await setReportingLine(admin(),{subordinateEmploymentId:subject.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:todayInKualaLumpur()});
+  await activate();await override(b.adminUserId,'workforce.maintain',b.companyId,'deny');
+  const before=await owner.db.select().from(assignment).where(eq(assignment.employmentId,subject.employmentId)).orderBy(assignment.id);
+  await sqlRefusal(withTenant(admin(),tx=>tx.update(assignment).set({validTo:todayInKualaLumpur()}).where(eq(assignment.employmentId,subject.employmentId))));
+  await sqlRefusal(withTenant(admin(),tx=>tx.delete(assignment).where(eq(assignment.employmentId,subject.employmentId))));
+  await sqlRefusal(withTenant(admin(),tx=>tx.update(reportingLine).set({validTo:todayInKualaLumpur()}).where(eq(reportingLine.subordinateEmploymentId,subject.employmentId))));
+  await sqlRefusal(withTenant(admin(),tx=>tx.update(employment).set({terminatedOn:todayInKualaLumpur()}).where(eq(employment.id,subject.employmentId))));
+  expect(await owner.db.select().from(assignment).where(eq(assignment.employmentId,subject.employmentId)).orderBy(assignment.id)).toEqual(before);
+  expect(line).toBeDefined();
+ });
+ it('keeps a genuinely authorized resignation acceptance with its exact termination and audit when direct maintenance is denied',async()=>{
+  const {subject,request}=await pending();const {decideResignation}=await import('../core/offboarding');
+  await expect(decideResignation(admin(),{requestId:request.requestId,decision:'accepted'})).resolves.toEqual({status:'accepted'});
+  const [row]=await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId));
+  expect(row).toMatchObject({terminatedOn:todayInKualaLumpur(),terminationType:'voluntary',terminationReason:'Fictional independent resignation'});
+  const events=await owner.db.select({type:domainEvent.eventType,actor:domainEvent.actorId}).from(domainEvent)
+   .where(and(eq(domainEvent.subjectEmploymentId,subject.employmentId),sql`${domainEvent.eventType} in ('employment.terminated','resignation.accepted')`)).orderBy(domainEvent.eventType);
+  expect(events).toEqual([{type:'employment.terminated',actor:b.adminUserId},{type:'resignation.accepted',actor:b.adminUserId}]);
+ });
+ it('refuses incomplete, self and replayed request evidence without a partial termination',async()=>{
+  const {subject,request,own}=await pending();
+  const before=await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId));
+  // Even an eligible decision actor cannot commit a prepared intent without completing its decision.
+  await sqlRefusal(withTenant(admin(),tx=>tx.execute(sql`select app.access_prepare_resignation_termination(${request.requestId}::uuid)`)));
+  await sqlRefusal(withTenant(admin(),async tx=>{
+   await tx.execute(sql`select app.access_prepare_resignation_termination(${request.requestId}::uuid)`);
+   await tx.update(employment).set({terminatedOn:todayInKualaLumpur(),terminationType:'voluntary',terminationReason:'Fictional independent resignation'}).where(eq(employment.id,subject.employmentId));
+   await tx.update(resignationRequest).set({status:'accepted',decidedAt:new Date()}).where(eq(resignationRequest.id,request.requestId));
+   // Both rows alone are insufficient: missing immutable termination/decision events must roll back.
+  }));
+  await owner.db.insert(roleAssignment).values({tenantId:b.tenantId,appUserId:own.userId!,role:'hr_admin',companyId:null});
+  const ownHr={...own,roles:['employee','hr_admin'],grants:[{role:'employee',companyId:null},{role:'hr_admin',companyId:null}]};
+  await sqlRefusal(withTenant(ownHr,tx=>tx.execute(sql`select app.access_prepare_resignation_termination(${request.requestId}::uuid)`)));
+  await sqlRefusal(withTenant(admin(),tx=>tx.execute(sql`select app.access_assert_termination(${subject.employmentId}::uuid,${JSON.stringify({terminated_on:todayInKualaLumpur(),termination_type:'voluntary',termination_reason:'Fictional independent resignation'})}::jsonb)`)));
+  expect(await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId))).toEqual(before);
+  const {decideResignation}=await import('../core/offboarding');await decideResignation(admin(),{requestId:request.requestId,decision:'accepted'});
+  await sqlRefusal(withTenant(admin(),tx=>tx.execute(sql`select app.access_prepare_resignation_termination(${request.requestId}::uuid)`)));
+  await sqlRefusal(withTenant(admin(),tx=>tx.execute(sql`select * from app.access_termination_intent`)));
  });
 });
 

@@ -527,6 +527,7 @@ export async function transferEmployee(
   outerTx?: Tx,
 ) {
   const run = async (tx: Tx) => {
+    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     const [cur] = await tx
       .select()
       .from(assignment)
@@ -690,6 +691,14 @@ export async function terminateEmploymentTx(
   // code resolves to null and falls back to whatever the caller passed, so a tampered form can neither set
   // an arbitrary code (core/movement.ts validates before reaching here) nor silently blank the enum.
   const derivedType = terminationTypeForReason(p.terminationReasonCode);
+  const terminationPatch={terminated_on:p.terminationDate,termination_type:derivedType??p.terminationType??null,
+    termination_reason:p.terminationReason?.trim()||null,
+    ...(p.terminationReasonCode!==undefined?{termination_reason_code:p.terminationReasonCode||null}:{}),
+    ...(p.terminationNoticeDays!==undefined?{termination_notice_days:p.terminationNoticeDays}:{})};
+  // Canonical direct callers need maintenance. An independent accepted resignation can compose only
+  // its actual fixed request consequence, completed by status and immutable events before commit.
+  await tx.execute(sql`select app.access_assert_termination(${p.employmentId}::uuid,${JSON.stringify(terminationPatch)}::jsonb)`);
+
   await tx
     .update(employment)
     .set({
@@ -771,7 +780,12 @@ export async function terminateEmploymentTx(
 }
 
 export async function terminateEmployment(ctx: SessionContext, p: TerminateEmploymentInput) {
-  return withTenant(ctx, (tx) => terminateEmploymentTx(tx, ctx, p));
+  // Direct lifecycle maintenance is distinct from an independently authorized accepted resignation.
+  // The in-transaction termination owner remains shared with that decision; no caller flag bypasses it.
+  return withTenant(ctx, async (tx) => {
+    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+    return terminateEmploymentTx(tx, ctx, p);
+  });
 }
 
 /** Walk the administrative graph UP from `manager`; cycle if we reach `subordinate`.
@@ -1119,6 +1133,8 @@ export async function setReportingLine(
   outerTx?: Tx,
 ) {
   const run = async (tx: Tx) => {
+    // Delegation retains its independent relationship/decision owner. Structural edges do not.
+    if(p.lineType!=='delegate')await assertWorkforceEmploymentTx(tx,ctx,p.subordinateEmploymentId,'maintain');
     if (p.subordinateEmploymentId === p.managerEmploymentId) throw new ReportingCycleError();
     // Window guard (ADR-0052 Step 4 rule #3): valid_to may not precede valid_from. Applies to every
     // line type but is the load-bearing guard for a delegation window.
@@ -1788,6 +1804,8 @@ export async function setEmploymentAssignment(
   outerTx?: Tx,
 ) {
   const run = async (tx: Tx) => {
+    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+    if(p.companyId)await assertWorkforceCompanyTx(tx,ctx,p.companyId,'maintain');
     const [cur] = await tx
       .select()
       .from(assignment)
@@ -3104,6 +3122,7 @@ export async function setEmploymentBlacklist(
   const today = todayInKualaLumpur();
   const reason = p.reason == null ? null : String(p.reason).trim() || null;
   const run=async(tx:Tx)=>{
+    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     const [before] = await tx
       .select({ blacklistedAt: employment.blacklistedAt, blacklistReason: employment.blacklistReason })
       .from(employment)

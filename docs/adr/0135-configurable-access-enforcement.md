@@ -451,3 +451,47 @@ Board 1 confirmed that the existing `app.is_self_person` resolves actual app_use
 that source check. No change to their 0576 owner was requested. All three leases remain with Board 1;
 all new code, SQL, fixtures, app journeys, rehearsals and deployment remain UNRUN. The three capability
 controls stay unsupported and 0578/0579 remain unjournalled/unapplied.
+
+
+### Direct structural entry points — source only
+
+The canonical assignment, retained transfer, structural reporting and blacklist entry points now take
+fresh maintenance admission before subject/data locks, even when a caller bypasses the Workforce facade.
+An assignment's supplied company also requires current destination maintenance. Direct termination takes
+that same admission; the shared in-transaction termination writer remains the existing consequence of
+an independently authorized resignation. Delegation retains its own relationship owner. This change
+neither claims that an audit label is authority nor adds a caller flag for bypassing permission.
+
+A prepared regression bypasses the facade for all five direct operations, asserts every refusal leaves
+employment/assignment/reporting/event snapshots unchanged, then restores permission and writes a normal
+reporting edge. This remains UNRUN. The following draft SQL binds structural/lifecycle writes to their finite owners. Its consequence
+semantics and actual released peer baseline still require executed compatibility evidence before
+enabling the three draft capabilities. Specialist Attendance/payroll configuration retains its independent owner;
+a Workforce grant does not become a grant to those controls.
+
+
+The draft SQL now checks assignment insert/update/delete, structural reporting writes and the finite
+employment lifecycle/identity fields. Actual owner recovery and the independently authorized scheduled
+owner retain their real connection authority. A normal runtime caller needs current maintenance on
+both old/new subjects and any recorded assignment company. Structural row subjects and creation identity
+cannot be reassigned. Delegation edges retain their existing owner; neither a profile editor nor a
+Workforce group grant manufactures delegation/approval authority.
+
+Termination may close incoming administrative edges outside the terminated employee's company. The
+canonical writer therefore prepares a private transaction/actor/subject-bound intent, limited to the
+actual termination patch and open range closures, and must append its real immutable termination event.
+For an accepted resignation, the separate preparation function locks the actual pending request and
+subject, checks fresh current legacy decision authority and the existing self/super-admin rule, and
+derives only that request's fixed voluntary date/reason. It admits no caller-supplied termination patch.
+The completed transaction must contain the accepted status and both matching immutable events. Missing,
+replayed, unrelated or partial evidence refuses at commit and rolls the whole transaction back. Runtime
+code cannot select or write the private intent table. No mutable GUC, audit label or supplied role acts
+as a bypass. Rewards grade posting, payroll/statutory values and specialist Attendance configuration
+are deliberately outside the lifecycle field list and retain their own existing owners.
+
+Prepared but UNRUN regressions cover raw structural/lifecycle refusal, genuine separately authorized
+resignation acceptance under a direct-maintenance denial, incomplete/private/self/replayed evidence,
+full atomic rollback and actual actor audit. Required execution also includes cross-company incoming
+edge closure, revoked and real foreign request refusal, delegation, entity transfer/hire correction,
+scheduled sweep, default and independent grade posting, pinned-snapshot revocation and owner recovery.
+The source is not a claim that those outcomes or SQL syntax/ACL/trigger semantics have passed.
