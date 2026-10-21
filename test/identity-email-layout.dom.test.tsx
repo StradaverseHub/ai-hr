@@ -1,9 +1,9 @@
 import React, {isValidElement} from 'react';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),tasks:vi.fn()}));
+const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),tasks:vi.fn(),pathname:'/admin/settings/email',onboarded:true}));
 vi.mock('next/font/google',()=>{const font=()=>({variable:'fixture-font'});return {Plus_Jakarta_Sans:font,Geist_Mono:font,DM_Mono:font};});
 vi.mock('next/font/local',()=>({default:()=>({variable:'fixture-schibsted-font'})}));
-vi.mock('next/headers',()=>({headers:async()=>new Headers({'x-pathname':'/admin/settings/email'}),cookies:async()=>({get:()=>undefined})}));
+vi.mock('next/headers',()=>({headers:async()=>new Headers({'x-pathname':m.pathname}),cookies:async()=>({get:()=>undefined})}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en'}));
 vi.mock('../lib/session',()=>({getSession:m.session}));
 vi.mock('../lib/identity/email-settings',()=>({canConfigureIdentityEmail:m.operator}));
@@ -13,7 +13,9 @@ vi.mock('../lib/demo-mode',()=>({demoSwitcherEnabled:()=>true,isDemoDeployment:(
 vi.mock('../lib/scope',()=>({getScopeIds:async()=>[]}));
 vi.mock('../lib/ui-theme-server',()=>({currentUiTheme:async()=>'monolith'}));
 vi.mock('../core/read',()=>({allowedCompanies:async()=>[],listApprovalHistory:async()=>[]}));
-vi.mock('../core/onboarding',()=>({getOnboardingStatus:async()=>true}));
+vi.mock('../core/onboarding',()=>({getOnboardingStatus:async()=>m.onboarded}));
+vi.mock('../packs/lifecycle/service',()=>({onboardingTasks:async()=>[],onboardingUnreadNoticeCount:async()=>0,onboardingNotices:async()=>[],onboardingNavigation:async()=>({module:false,master:false,requisitions:false,joiners:0,checklists:0})}));
+vi.mock('../components/onboarding-tour',()=>({OnboardingTour:()=>null}));
 vi.mock('../core/approvals-inbox',()=>({listPendingTasks:m.tasks}));
 vi.mock('../core/notifications',()=>({dispatchNotifications:async()=>{},listNotifications:async()=>[],unreadNotificationCount:async()=>0}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:()=>false,isModuleEnabledOrFalse:()=>false}));
@@ -24,13 +26,17 @@ vi.mock('../components/dev-identity-switcher',()=>({DevIdentitySwitcher:()=>null
 vi.mock('../components/company-switcher',()=>({CompanySwitcher:()=>null}));
 import Layout from '../app/layout';
 import {Sidebar} from '../components/sidebar';
-beforeEach(()=>{m.tasks.mockReset();m.tasks.mockResolvedValue([]);});
-function sidebarProps(node:React.ReactNode):Record<string,unknown>|undefined{
- if(Array.isArray(node)){for(const child of node){const found=sidebarProps(child);if(found)return found;}return;}
+import {OnboardingTour} from '../components/onboarding-tour';
+import {NoticePopupSlot} from '../components/notice/notice-surfaces';
+import {WELCOME_TOUR_ID} from '../lib/onboarding-tour';
+beforeEach(()=>{m.tasks.mockReset();m.tasks.mockResolvedValue([]);m.pathname='/admin/settings/email';m.onboarded=true;});
+function propsOf(node:React.ReactNode,target:unknown):Record<string,unknown>|undefined{
+ if(Array.isArray(node)){for(const child of node){const found=propsOf(child,target);if(found)return found;}return;}
  if(!isValidElement<{children?:React.ReactNode}>(node))return;
- if(node.type===Sidebar)return node.props;
- return sidebarProps(node.props.children);
+ if(node.type===target)return node.props;
+ return propsOf(node.props.children,target);
 }
+const sidebarProps=(node:React.ReactNode)=>propsOf(node,Sidebar);
 describe('root layout SMTP preview authority',()=>{
  it.each([
   {roles:['hr_admin'],preview:true,rail:true},
@@ -79,5 +85,23 @@ describe('root layout assigned Attendance inbox navigation',()=>{
   expect(props!.hasAssignedApproval).toBe(false);
   expect(props!.canApprove).toBe(false);
   expect(props!.isAdmin).toBe(true);
+ });
+});
+
+
+describe('personal Home opens without automatic overlays',()=>{
+ it('suppresses the first-login tour and Notice popup on the employee landing path',async()=>{
+  m.session.mockResolvedValue({tenantId:'tenant',userId:'employee',roles:['employee'],grants:[]});m.operator.mockResolvedValue(false);
+  m.pathname='/';m.onboarded=false;
+  const tree=await Layout({children:<main>Personal Home</main>});
+  expect(propsOf(tree,OnboardingTour)?.autoStartTourId).toBeNull();expect(propsOf(tree,NoticePopupSlot)).toBeUndefined();
+ });
+ it('retains existing overlays on other routes and on the administrator workbench',async()=>{
+  for(const [pathname,roles] of [['/me',['employee']],['/',['hr_admin']]] as const){
+   m.session.mockResolvedValue({tenantId:'tenant',userId:'login',roles:[...roles],grants:[]});m.operator.mockResolvedValue(false);
+   m.pathname=pathname;m.onboarded=false;
+   const tree=await Layout({children:null});
+   expect(propsOf(tree,OnboardingTour)?.autoStartTourId).toBe(WELCOME_TOUR_ID);expect(propsOf(tree,NoticePopupSlot)).toBeDefined();
+  }
  });
 });
