@@ -25,7 +25,10 @@ type OwnSelection=
  */
 export async function ownHomeSubjectSelection(ctx:SessionContext,requestedEmploymentId?:string):Promise<OwnSelection>{
  if(!ctx.userId)throw new HomeAccessError('authentication');
- const [principal]=await withTenant(ctx,tx=>tx.execute(sql`SELECT app.principal_snapshot_current() AS ok`)) as unknown as {ok:boolean}[];
+ // The role/scope snapshot does not attest a caller's personId. Bind it independently through the
+ // canonical actual-login predicate before an HR principal can query the own-subject inventory.
+ const [principal]=await withTenant(ctx,tx=>tx.execute(sql`SELECT (app.principal_snapshot_current()
+  AND (${ctx.personId??null}::uuid IS NULL OR app.is_self_person(${ctx.personId??null}::uuid))) AS ok`)) as unknown as {ok:boolean}[];
  if(!principal?.ok)throw new HomeAccessError('employmentUnavailable');
  const subjects=await myOwnEmploymentSubjects(ctx);
  if(requestedEmploymentId!==undefined){
