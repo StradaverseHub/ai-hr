@@ -21732,6 +21732,7 @@
     "completedClosed": "{n} đã hoàn tất, {w} đóng mà không có quyết định"
   },
   "payrollComparison": {
+    "comparisonTable": "Kết quả so sánh",
     "saveFailed": "Không thể lưu báo cáo. Bản nháp được giữ lại. Vui lòng thử lại.",
     "rolesRequired": "Chọn ít nhất một vai trò được phép chạy báo cáo này.",
     "title": "So sánh kỳ lương",
@@ -21840,7 +21841,7 @@
       "stalePayroll": "Cần tính lại lương",
       "itemNotRecorded": "Kết quả lịch sử không ghi nhận khoản lương đã chọn"
     },
-    "basis": "Nguồn: kết quả lương đã trả được lưu. Thông tin tổ chức lấy tại ngày cuối kỳ hiện tại; chỉ dùng ngày cuối kỳ trước khi không có kết quả hiện tại. Hiển thị tên hiện tại theo quyền truy cập. Thứ tự bằng chứng đã có hiệu lực: chuyển đơn vị trả lương đã xác minh, tuyển mới, nghỉ việc đã ghi nhận, rồi lần tăng lương/thăng chức/giáng chức có thay đổi lương gần nhất; các dòng còn lại chưa được giải thích. Nhãn không chứng minh nguyên nhân của toàn bộ chênh lệch tiền.",
+    "basis": "Nguồn: kết quả lương đã trả được lưu. Thông tin tổ chức theo ngày thuộc đơn vị trả lương cuối cùng được ghi trong kết quả hiện tại; dùng kết quả kỳ trước khi không có kết quả hiện tại. Hiển thị tên hiện tại theo quyền truy cập. Thứ tự bằng chứng đã có hiệu lực: chuyển đơn vị trả lương đã xác minh, tuyển mới, nghỉ việc đã ghi nhận, rồi lần tăng lương/thăng chức/giáng chức có thay đổi lương gần nhất; các dòng còn lại chưa được giải thích. Nhãn không chứng minh nguyên nhân của toàn bộ chênh lệch tiền.",
     "remarks": {
       "disabled": "Đã tắt giải thích tự động.",
       "unexplained": "Không có bằng chứng đã có hiệu lực phù hợp; biến động có thể không giải thích toàn bộ chênh lệch.",

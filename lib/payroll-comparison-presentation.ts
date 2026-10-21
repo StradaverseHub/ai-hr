@@ -29,4 +29,4 @@ export function payrollComparisonCell(row:ComparisonRow,id:string,t?:PayrollComp
   if(id==='currency')return row.currency??(t?t('currencyUnknown'):'Not recorded');
   const value=row[id as keyof ComparisonRow];return typeof value==='string'?value:null;
 }
-export const PAYROLL_COMPARISON_BASIS='Source: saved paid payroll results. Organisation is dated at current period end, or previous period end only when no current result exists. Current authorised labels are shown. Applied evidence order: verified employer transfer, hire, recorded exit, then latest salary-changing increment/promotion/demotion; remaining rows are unexplained. Labels do not prove the cause of the entire monetary difference.';
+export const PAYROLL_COMPARISON_BASIS='Source: saved paid payroll results. Organisation follows the last recorded paying-employer date on the current side, or the previous side when no current result exists. Current authorised labels are shown. Applied evidence order: verified employer transfer, hire, recorded exit, then latest salary-changing increment/promotion/demotion; remaining rows are unexplained. Labels do not prove the cause of the entire monetary difference.';
