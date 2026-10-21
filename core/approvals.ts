@@ -12,6 +12,15 @@ import { and, eq, isNull, lte, or, sql } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import { employment, reportingLine } from '../db/schema';
 
+/** Only this gate's explicit authority refusals may be omitted from an actionable read. Database,
+ * configuration and unknown-subject failures must propagate rather than masquerading as no tasks. */
+export function isApprovalDecisionRefusal(error:unknown,label:string):boolean{
+ return error instanceof Error&&error.constructor===Error&&[
+  `You cannot decide your own ${label}`,
+  `Only an admin or the administrative manager can decide this ${label}`,
+ ].includes(error.message);
+}
+
 export async function assertCanDecide(
   tx: Tx,
   ctx: SessionContext,

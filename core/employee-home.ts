@@ -1,5 +1,5 @@
 /** Salary-free self identity for employee Home. This is a read projection, not another personnel owner. */
-import {and,eq} from 'drizzle-orm';
+import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {person} from '../db/schema';
 import {myOwnEmploymentSubjects,reportingLinesFor,type OwnEmploymentSubject} from './read';
@@ -25,6 +25,8 @@ type OwnSelection=
  */
 export async function ownHomeSubjectSelection(ctx:SessionContext,requestedEmploymentId?:string):Promise<OwnSelection>{
  if(!ctx.userId)throw new HomeAccessError('authentication');
+ const [principal]=await withTenant(ctx,tx=>tx.execute(sql`SELECT app.principal_snapshot_current() AS ok`)) as unknown as {ok:boolean}[];
+ if(!principal?.ok)throw new HomeAccessError('employmentUnavailable');
  const subjects=await myOwnEmploymentSubjects(ctx);
  if(requestedEmploymentId!==undefined){
   const subject=subjects.find(row=>row.employmentId===requestedEmploymentId);

@@ -11,22 +11,22 @@
  * existing caller keep their exact semantics. The viewer's own pending requests are excluded —
  * a task means "things needing your action", not "your own requests in flight".
  *
- * 0110 — a Direct Manager via reporting_line may NOT hold the `manager` platform role, so the old
- * `if (!admin && !manager) return 0` short-circuit hid their review queue. The gate also counts a
- * user who has at least one assigned pending_manager review (resolved via manager_employment_id = the
- * caller's own employment) even without the `manager` role — the exact population this feature targets.
+ * A platform role does not establish assignment: organizational managers, named approvers and workflow
+ * participants may hold Employee. Queue visibility and the canonical current-decision gates determine
+ * tasks; a visible request awaiting a different level is not the viewer's task.
  */
 import { isAdmin } from '../lib/authz-model';
 import { APPROVAL_SECTION_ID } from '../lib/approvals-focus';
 import type { SessionContext } from '../db/client';
 import { listLeaveRequests, listPendingLeaveCancellations } from './read';
-import { hasPendingAttendanceParticipantAssignment } from './attendance-workflow';
 import { listAttendanceCorrections } from './attendance';
 import { listProfileChangeRequests } from './profile';
 import { listPendingClaims } from './claims';
 import { listResignationRequests } from './offboarding';
 import { listReviews, pendingManagerReviewsFor } from './employment-review';
-import { myEmployment } from './read';
+import { myOwnEmploymentSubjects } from './read';
+import {actionableLeaveRequests,actionableLeaveCancellationIds} from '../packs/leave/service';
+import {actionablePendingClaimIds} from '../packs/claims/service';
 
 /** The per-module task vocabulary — each key maps to an i18n label (notifications.task.*). */
 export type PendingTaskKind =
@@ -48,6 +48,8 @@ export type PendingTaskItem = {
   createdAt: string;
   /** Where the user acts on it — the matching /approvals section where one exists. */
   linkPath: string;
+  /** Only a deadline actually recorded by its workflow owner. Missing means unknown. */
+  dueDate?: string;
 };
 
 /**
@@ -78,21 +80,12 @@ export async function listPendingTasks(
   modules: InboxModules,
 ): Promise<PendingTaskItem[]> {
   const admin = isAdmin(ctx);
-  const manager = (ctx.roles ?? []).includes('manager');
-
-  // Review queues — resolved first because a Direct Manager without the `manager` role still has one.
-  const me = ctx.personId ? await myEmployment(ctx) : null;
-  const managerReviews = me?.employmentId
-    ? await pendingManagerReviewsFor(ctx, me.employmentId)
-    : [];
-
-  if (!admin && !manager && managerReviews.length === 0) {
-    if (!modules.attendance || !await hasPendingAttendanceParticipantAssignment(ctx)) return [];
-    const corrections = await listAttendanceCorrections(ctx, { companyIds: scopeIds, status: 'pending' });
-    return corrections.filter(row => row.workflow?.routingVersion === 3 && row.canDecide && row.personId !== ctx.personId).map(row => ({
-      id: row.id, kind: 'attendance' as const, subjectName: row.employee, createdAt: row.createdAt.toISOString(), linkPath: '/approvals',
-    })).sort((a, b) => a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.id.localeCompare(b.id));
-  }
+  // Assignment follows the actual reporting/approval graph, not a platform-role shortcut. A named
+  // approver or organizational manager may hold only Employee. Every queue still owns its row scope
+  // and decision authority; this removes no service gate. Concurrent own employments remain distinct.
+  const own=ctx.personId?await myOwnEmploymentSubjects(ctx,{profileEdit:true}):[];
+  const managerReviewRows=await Promise.all(own.map(subject=>pendingManagerReviewsFor(ctx,subject.employmentId)));
+  const managerReviews=[...new Map(managerReviewRows.flat().map(row=>[row.id,row])).values()];
 
   const [leave, leaveCancellations, corrections, profileChanges, claims, resignations, hrReviews] = await Promise.all([
     listLeaveRequests(ctx, scopeIds, 200, { status: 'pending' }),
@@ -114,13 +107,21 @@ export async function listPendingTasks(
     admin ? listReviews(ctx, { status: 'pending_hr' }) : Promise.resolve([]),
   ]);
 
-  const actionableLeave = leave.filter(
+  const leaveCandidates = leave.filter(
     (r) => r.status === 'pending' && (ctx.personId == null || r.personId !== ctx.personId),
   );
   // Self-exclusion: an employee's own cancellation request is not "awaiting your action".
-  const actionableCancellations = leaveCancellations.filter(
+  const cancellationCandidates = leaveCancellations.filter(
     (r) => ctx.personId == null || r.personId !== ctx.personId,
   );
+  const [leaveDecisions,cancellationDecisions,claimDecisions]=await Promise.all([
+    actionableLeaveRequests(ctx,{employmentIds:[...new Set(leaveCandidates.map(row=>row.employmentId))],requestIds:leaveCandidates.map(row=>row.id)}),
+    actionableLeaveCancellationIds(ctx,cancellationCandidates.map(row=>row.id)),
+    modules.claims?actionablePendingClaimIds(ctx,claims.map(row=>row.id)):Promise.resolve([]),
+  ]);
+  const leaveIds=new Set(leaveDecisions.map(row=>row.requestId)),cancellationIds=new Set(cancellationDecisions),claimIds=new Set(claimDecisions);
+  const actionableLeave=leaveCandidates.filter(row=>leaveIds.has(row.id));
+  const actionableCancellations=cancellationCandidates.filter(row=>cancellationIds.has(row.id));
 
   const iso = (d: Date | string) => (d instanceof Date ? d.toISOString() : new Date(d).toISOString());
   const items: PendingTaskItem[] = [
@@ -152,7 +153,7 @@ export async function listPendingTasks(
       createdAt: iso(r.createdAt),
       linkPath: `/admin/personnel/profile-changes#request-${r.id}`,
     })),
-    ...claims.map((r) => ({
+    ...claims.filter(r=>claimIds.has(r.id)).map((r) => ({
       id: r.id,
       kind: 'claim' as const,
       subjectName: r.claimantName ?? null,
@@ -172,6 +173,7 @@ export async function listPendingTasks(
       subjectName: r.employee,
       createdAt: iso(r.createdAt),
       linkPath: '/approvals',
+      dueDate:r.dueDate,
     })),
     ...hrReviews.map((r) => ({
       id: r.id,
@@ -179,10 +181,11 @@ export async function listPendingTasks(
       subjectName: r.employee,
       createdAt: iso(r.createdAt),
       linkPath: '/approvals',
+      dueDate:r.dueDate,
     })),
   ];
   // Newest first — the Task tab shows the most recent request at the top.
-  return items.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
+  return items.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.id.localeCompare(b.id)));
 }
 
 export async function pendingApprovalsCount(

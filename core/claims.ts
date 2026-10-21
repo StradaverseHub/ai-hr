@@ -33,7 +33,7 @@ import {
 
 export type { ClaimMileageStamp, ClaimRateConfig };
 import { toCsv } from '../lib/csv';
-import { assertCanDecide, filterDelegationOrgScopeTx } from './approvals';
+import { assertCanDecide, filterDelegationOrgScopeTx,isApprovalDecisionRefusal } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';
 import { resolveBatchScopeFilter, resolveBatchCutOffWindow, type BatchScope } from './payroll';
 import { calendarWindowFor } from './payroll-policy-config';
@@ -3102,6 +3102,23 @@ export async function listPendingClaims(ctx: SessionContext): Promise<ClaimRow[]
     const atts = await attachmentsByClaim(tx, scoped.map((r) => r.id));
     return scoped.map((r) => toRow(r, atts));
   });
+}
+
+/** Minimal current-decision projection over already-visible inbox candidates. Uses the same gate and
+ * delegation scope as decideClaim; no amount, receipt, reason or attachment is needed for this proof. */
+export function actionablePendingClaimIds(ctx:SessionContext,requestIds:readonly string[]){
+ if(requestIds.length>1000)throw new ClaimError('Too many claim decision candidates');
+ return withTenant(ctx,async tx=>{
+  if(!requestIds.length)return [];
+  const rows=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId}).from(claimRequest)
+   .where(and(inArray(claimRequest.id,[...new Set(requestIds)]),eq(claimRequest.status,'pending'))).orderBy(claimRequest.id);
+  const result:string[]=[];
+  for(const row of rows){
+   try{await assertCanDecide(tx,ctx,row.employmentId,'claim',scopeOf('claims.claim'));result.push(row.id);}
+   catch(error){if(!isApprovalDecisionRefusal(error,'claim'))throw error;}
+  }
+  return result;
+ });
 }
 
 // ──────────────────────────── Payout (ADR-0021 §3, Slice 5) ────────────────────────────
