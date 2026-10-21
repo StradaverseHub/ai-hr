@@ -108,6 +108,22 @@ HR may still inspect retained historical attachments under the immutable Notice 
 Receipts have physical tenant/parent/revision/recipient relationships and a deferred event foreign key,
 so committing acknowledgement evidence without its event is impossible through an interrupted command.
 
+## Personal greeting decisions
+
+The deterministic self greeting uses the account's saved display timezone for time of day and
+birthday month/day, with the platform timezone as its default. Employment anniversaries and leave
+stay on the existing Kuala Lumpur business-date owner. Use recorded preferred name, then given name,
+then the complete recorded legal name; never split a name to guess its given part. A missing name
+leaves the personal sentence absent. February 29 does not acquire an invented February 28 or March 1
+birthday. HR's enabled-template priority resolves simultaneous events, with stable event ordering
+for ties. Birth date/year and leave reasons are not transported.
+
+A return greeting needs today's canonical scheduled work classification, no approved leave today,
+and approved full-day leave on the preceding scheduled work date. The reader checks through at most
+fourteen intervening dates, including ordinary rest days and actual holidays. If that positive evidence
+cannot be established within the bound, use the ordinary greeting; this does not assert attendance or
+an employee's return. It never creates a clock capture, leave state or notification.
+
 ## Verification and rollout
 
 The unshipped Home migration is `0582` (moved from its unapplied `0577` allocation so Feedback
