@@ -74,6 +74,8 @@ describe('shared reward configuration versions',()=>{
   await sqlRefusal(()=>withTenant(admin,tx=>tx.execute(sql`select * from reward_policy_group_version`)),'42501');
   await sqlRefusal(()=>owner.db.update(schema.rewardPolicyGroupVersion).set({name:'Forbidden rewrite'}).where(eq(schema.rewardPolicyGroupVersion.id,v.versionId)),'23514');
   await sqlRefusal(()=>withTenant(admin,tx=>tx.update(schema.rewardUnit).set({policyGroupVersionId:null}).where(eq(schema.rewardUnit.id,reviewId))),'23514');
+  await sqlRefusal(()=>withTenant(admin,tx=>tx.update(schema.rewardUnit).set({companyId:companyB,businessUnitId:buB}).where(eq(schema.rewardUnit.id,reviewId))),'23514');
+  await sqlRefusal(()=>withTenant(admin,tx=>tx.update(schema.rewardUnit).set({policy:{...policy,year:year+1}}).where(eq(schema.rewardUnit.id,reviewId))),'23514');
  });
  it('archives future assignment without rewriting old snapshots and refuses a stale pre-archive review',async()=>{
   const v=await createGroup(),reviewId=await unit(b.companyId,buA,v.versionId);

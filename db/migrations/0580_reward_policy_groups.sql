@@ -231,7 +231,11 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $
 DECLARE binding jsonb;
 BEGIN
  IF TG_OP='UPDATE' THEN
-  IF NEW.policy_group_version_id IS DISTINCT FROM OLD.policy_group_version_id THEN RAISE EXCEPTION 'reward policy lineage is immutable' USING ERRCODE='23514'; END IF;
+  IF NEW.policy_group_version_id IS DISTINCT FROM OLD.policy_group_version_id OR
+   (OLD.policy_group_version_id IS NOT NULL AND (NEW.company_id IS DISTINCT FROM OLD.company_id
+    OR NEW.business_unit_id IS DISTINCT FROM OLD.business_unit_id OR NEW.kind IS DISTINCT FROM OLD.kind
+    OR NEW.cycle_id IS DISTINCT FROM OLD.cycle_id OR NEW.policy->'year' IS DISTINCT FROM OLD.policy->'year')) THEN
+   RAISE EXCEPTION 'reward policy lineage is immutable' USING ERRCODE='23514'; END IF;
  ELSIF NEW.kind='annual' THEN
   IF COALESCE(NEW.policy->>'year','') !~ '^(20[0-9]{2}|21[0-9]{2}|2200)$' THEN RAISE EXCEPTION 'reward policy year is invalid' USING ERRCODE='23514'; END IF;
   binding:=app.reward_policy_for_review(NEW.policy_group_version_id,NEW.company_id,NEW.business_unit_id,(NEW.policy->>'year')::integer);

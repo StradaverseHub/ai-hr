@@ -16,7 +16,8 @@ It does not add currency conversion or share a company's monetary budget with an
 Each annual review consumes one immutable configuration version at creation and copies its
 policy into the existing review. Its roster, named senior membership, confidential membership,
 funding, verification, approvals and calculations remain owned by that review. Existing reviews
-never receive a later version automatically. Their immutable origin remains visible, with an
+never receive a later version automatically. Their company, business unit, annual kind, cycle and year cannot be reassigned under that lineage.
+Their immutable origin remains visible, with an
 indication when their own policy has subsequently been edited through the existing authorized
 review policy flow. Off-cycle review inheritance is unchanged.
 
