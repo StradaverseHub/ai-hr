@@ -32,7 +32,7 @@ export async function HomeConfigurationPanel({session,selection}:{session:Sessio
   <Card className="space-y-4 p-5"><h2 className="text-lg font-semibold">{t('title')}</h2><p className="max-w-prose text-sm text-muted-foreground">{t('intro')}</p>
    {companies.length===0?<p role="status" className="text-sm">{t('noCompanies')}</p>:<form action={PAGE} method="get" className="flex flex-wrap items-end gap-3">
     <input type="hidden" name="section" value="content"/>
-    <label className="min-w-0 flex-1 space-y-1 text-sm"><span className="block">{t('company')}</span><select className={inputCls+' min-h-11'} name="homeCompanyId" required defaultValue={companyId??''}><option value="" disabled>{t('chooseCompany')}</option>{companies.map(company=><option key={company.id} value={company.id}>{company.name}</option>)}</select></label>
+    <label className="w-full min-w-0 space-y-1 text-sm sm:w-auto sm:flex-1"><span className="block">{t('company')}</span><select className={inputCls+' min-h-11'} name="homeCompanyId" required defaultValue={companyId??''}><option value="" disabled>{t('chooseCompany')}</option>{companies.map(company=><option key={company.id} value={company.id}>{company.name}</option>)}</select></label>
     <label className="space-y-1 text-sm"><span className="block">{t('audience')}</span><select className={inputCls+' min-h-11'} name="homeRole" defaultValue={audienceRole}>{DASHBOARD_LAYOUT_ROLES.map(role=><option key={role} value={role}>{audience(role)}</option>)}</select></label>
     <Button type="submit" variant="outline" className="min-h-11">{t('show')}</Button>
    </form>}
