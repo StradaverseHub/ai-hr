@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { ChipMultiSelect } from '@/components/ui/chip-multi-select';
 import { MultiSelectPopover } from '@/components/ui/multi-select-popover';
 import { Markdown } from '@/components/markdown';
+import {NoticeAttachmentEditor,type NoticeAttachmentMetadata,type NoticeAttachmentEditorLabels} from './attachment-editor';
 import { Button, Field, inputCls } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { matchesEmployeeSearch } from '@/lib/employee-search';
@@ -16,7 +17,7 @@ type Action = (fd: FormData) => void | Promise<void>;
 export type NoticeFormValues = {
   title: string;
   body: string;
-  summary?:string;category?:string|null;pinned?:boolean;requiresAcknowledgement?:boolean;contentVersion?:number;attachmentIds?:string[];
+  summary?:string;category?:string|null;pinned?:boolean;requiresAcknowledgement?:boolean;contentVersion?:number;attachmentIds?:string[];attachments?:NoticeAttachmentMetadata[];
   startOn: string;
   endOn: string;
   showEndDate: boolean;
@@ -29,6 +30,7 @@ export type NoticeFormValues = {
 };
 
 export type NoticeFormLabels = {
+  attachments:NoticeAttachmentEditorLabels;
   category:string;summary:string;pinned:string;requiresAcknowledgement:string;acknowledgementHelp:string;
   authoringCompany:string;
   chooseAuthoringCompany:string;
@@ -142,6 +144,7 @@ export function NoticeForm({
 }) {
   const [tab, setTab] = useState<'write' | 'preview'>('write');
   const [body, setBody] = useState(values.body);
+  const [attachmentIds,setAttachmentIds]=useState(values.attachmentIds??[]),[attachments,setAttachments]=useState(values.attachments??[]),[attachmentBusy,setAttachmentBusy]=useState(false);
   const [mode, setMode] = useState<'criteria' | 'individual'>(values.targetMode);
   const [anyCriteria, setAnyCriteria] = useState(
     Object.values(values.criteria).some((v) => (v ?? []).length > 0),
@@ -225,7 +228,7 @@ export function NoticeForm({
     <form action={action} className="space-y-6">
       {idField && <input type="hidden" name="id" value={idField} />}
       {values.contentVersion!==undefined&&<input type="hidden" name="expectedContentVersion" value={values.contentVersion}/>}
-      {values.attachmentIds?.map(id=><input key={id} type="hidden" name="attachmentIds" value={id}/>)}
+      {attachmentIds.map(id=><input key={id} type="hidden" name="attachmentIds" value={id}/>)}
       <section className="space-y-2 text-sm">
         {authoring.owner?<><h2 className="font-medium">{labels.authoringCompany}</h2><p>{authoring.owner.label}</p><input type="hidden" name="authoringCompany" value={authoring.owner.companyId??'group'}/></>:<label className="block space-y-2"><span className="block font-medium">{labels.authoringCompany}</span><select name="authoringCompany" required defaultValue={!authoring.groupAllowed&&authoring.companies.length===1?authoring.companies[0].value:''} className={cn(inputCls,'min-h-11 w-full')}><option value="" disabled>{labels.chooseAuthoringCompany}</option>{authoring.groupAllowed&&<option value="group">{labels.groupAuthoring}</option>}{authoring.companies.map(company=><option key={company.value} value={company.value}>{company.label}</option>)}</select></label>}
         <p className="max-w-prose text-muted-foreground">{labels.authoringCompanyHelp}</p>
@@ -274,6 +277,9 @@ export function NoticeForm({
         <label className="flex min-h-11 items-center gap-2"><input type="checkbox" name="requiresAcknowledgement" defaultChecked={values.requiresAcknowledgement}/>{labels.requiresAcknowledgement}</label>
         <p className="max-w-prose text-sm text-muted-foreground">{labels.acknowledgementHelp}</p>
       </section>
+
+      <NoticeAttachmentEditor noticeId={idField} contentVersion={values.contentVersion??0} items={attachmentIds.map(id=>attachments.find(item=>item.id===id)??{id,fileName:labels.attachments.unavailable,mimeType:'application/octet-stream',byteLength:0})} labels={labels.attachments}
+        onBusyChange={setAttachmentBusy} onUploaded={item=>{setAttachments(prior=>[...prior.filter(row=>row.id!==item.id),item]);setAttachmentIds(prior=>prior.includes(item.id)?prior:[...prior,item.id]);}} onRemove={id=>setAttachmentIds(prior=>prior.filter(item=>item!==id))}/>
 
       {/* ── Section 2 — content ────────────────────────────────────────────────────────────────────── */}
       <section className="space-y-2">
@@ -528,7 +534,7 @@ export function NoticeForm({
           same thing server-side and stays the authority; this is the half that tells the operator before
           they have written the whole notice rather than after. */}
       <div className="flex items-center gap-2">
-        <Button type="submit" size="sm" disabled={audienceBlocked||(!authoring.owner&&!authoring.groupAllowed&&authoring.companies.length===0)}>
+        <Button type="submit" size="sm" disabled={attachmentBusy||audienceBlocked||(!authoring.owner&&!authoring.groupAllowed&&authoring.companies.length===0)}>
           {labels.submit}
         </Button>
         {audienceBlocked && (

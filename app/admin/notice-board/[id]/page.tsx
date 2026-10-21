@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 
 import { requireAdmin } from '@/lib/authz';
-import { noticeAudiencePreview, getNotice,noticeAuthoringScope } from '@/core/notice';
+import { noticeAudiencePreview, getNotice,noticeAuthoringScope,noticeAttachmentMetadata } from '@/core/notice';
 import { Card, ErrorBanner, PageHeader, SectionHeader, StatusBadge, btnGhost } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { NoticeForm } from '@/components/notice/notice-form';
@@ -50,6 +50,7 @@ export default async function NoticeDetailPage({
   const vocab = await criteriaVocabulary(s);
   const authoring=await noticeAuthoringScope(s);
   const published = n.publishedAt != null;
+  const attachments=await noticeAttachmentMetadata(s,n.id);
   // Only a draft needs a projection — a published notice HAS an audience, and re-resolving it would answer
   // a different question from the one the reader is asking.
   const projected = published
@@ -147,12 +148,12 @@ export default async function NoticeDetailPage({
       <Card>
         <SectionHeader title={t('setupTitle')} />
         <div className="px-4 pb-4 pt-3">
-          <NoticeForm
+          <NoticeForm key={n.contentVersion}
             authoring={{groupAllowed:authoring.groupAllowed,companies:authoring.companies.map(c=>({value:c.id,label:c.name})),owner:{companyId:n.ownerCompanyId,label:n.ownerCompanyId?(n.ownerCompanyName??t('authoringCompanyUnavailable')):t('groupAuthoring')}}}
             action={updateNoticeAction}
             values={{
               title: n.title,
-              category:n.category,summary:n.summary,pinned:n.pinned,requiresAcknowledgement:n.requiresAcknowledgement,contentVersion:n.contentVersion,attachmentIds:n.attachmentIds,
+              category:n.category,summary:n.summary,pinned:n.pinned,requiresAcknowledgement:n.requiresAcknowledgement,contentVersion:n.contentVersion,attachmentIds:n.attachmentIds,attachments,
               body: n.body,
               startOn: n.startOn,
               endOn: n.endOn,
@@ -174,6 +175,7 @@ export default async function NoticeDetailPage({
             employees={vocab.employees}
             targetingFrozen={published}
             labels={{
+              attachments:{title:t('attachmentTitle'),help:t('attachmentHelp'),choose:t('attachmentChoose'),add:t('attachmentAdd'),pending:t('attachmentPending'),remove:t('attachmentRemove'),saveFirst:t('attachmentSaveFirst'),saveHint:t('attachmentSaveHint'),file:t('attachmentFile'),tooLarge:t('attachmentTooLarge'),changed:t('attachmentChanged'),limit:t('attachmentLimit'),unavailable:t('attachmentUnavailable'),failed:t('attachmentFailed')},
               category:t('category'),summary:t('summary'),pinned:t('pinned'),requiresAcknowledgement:t('requiresAcknowledgement'),acknowledgementHelp:t('acknowledgementHelp'),
               authoringCompany:t('authoringCompany'),chooseAuthoringCompany:t('chooseAuthoringCompany'),groupAuthoring:t('groupAuthoring'),authoringCompanyHelp:t('authoringCompanyHelp'),noAuthoringScope:t('noAuthoringScope'),
               sectionBasics: t('sectionBasics'),

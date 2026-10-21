@@ -114,6 +114,7 @@ const mountAdjustments = () =>
  * plausible placeholder.
  */
 const noticeLabels: NoticeFormLabels = {
+  attachments:{title:'Attachments',help:'Up to5files,10MiB each',choose:'Choose file',add:'Add file',pending:'Uploading',remove:'Remove',saveFirst:'Save a draft first',saveHint:'Save to include files',file:'Check file',tooLarge:'Too large',changed:'Reload changed notice',limit:'Five files maximum',unavailable:'Unavailable',failed:'Upload failed'},
   category:'Category',summary:'Summary',pinned:'Pin notice',requiresAcknowledgement:'Require acknowledgement',acknowledgementHelp:'Each changed content version needs its own explicit acknowledgement.',
   authoringCompany:N.authoringCompany,chooseAuthoringCompany:N.chooseAuthoringCompany,groupAuthoring:N.groupAuthoring,authoringCompanyHelp:N.authoringCompanyHelp,noAuthoringScope:N.noAuthoringScope,
   sectionBasics: N.sectionBasics,

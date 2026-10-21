@@ -92,6 +92,16 @@ describe('Retained Notice content and explicit recipient acknowledgement',()=>{
 
 
 describe('Immutable Notice-owned attachments',()=>{
+ it('allows staging a replacement when five files are already selected, then enforces five on save',async()=>{
+  const n=await published();let version=1;const selected:string[]=[];
+  for(let index=0;index<5;index++){const file=await addNoticeAttachment(adminCtx(b),n.id,version,{uploadKey:randomUUID(),fileName:'Fictional'+index+'.txt',content:Buffer.from('Fictional')});version=file.contentVersion;selected.push(file.id);}
+  const replacement=await addNoticeAttachment(adminCtx(b),n.id,version,{uploadKey:randomUUID(),fileName:'Fictional replacement.txt',content:Buffer.from('Replacement')},{attach:false});
+  expect(replacement.contentVersion).toBe(version);
+  await expect(updateNotice(adminCtx(b),n.id,input({attachmentIds:[...selected,replacement.id],expectedContentVersion:version}))).rejects.toThrow(/five/);
+  await updateNotice(adminCtx(b),n.id,input({attachmentIds:[...selected.slice(1),replacement.id],expectedContentVersion:version}));
+  expect((await getNotice(adminCtx(b),n.id))?.contentVersion).toBe(version+1);
+ });
+
  it('stages editor uploads without changing content or exposing bytes before the explicit save',async()=>{
   const n=await published(),file={uploadKey:randomUUID(),fileName:'Fictional staged.txt',content:Buffer.from('Fictional staged content')};
   const staged=await addNoticeAttachment(adminCtx(b),n.id,1,file,{attach:false});expect(staged.contentVersion).toBe(1);

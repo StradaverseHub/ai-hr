@@ -552,3 +552,24 @@ $$;
 REVOKE ALL ON FUNCTION app.guard_notice_attachment_insert() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER notice_attachment_insert_evidence BEFORE INSERT ON public.notice_attachment
  FOR EACH ROW EXECUTE FUNCTION app.guard_notice_attachment_insert();
+--> statement-breakpoint
+-- The sender's display identity is Notice metadata. Do not widen app_user/person policies merely to
+-- display it to a live recipient. This function exposes only the named notice's actual publisher.
+CREATE FUNCTION app.notice_sender_display_name(p_notice uuid) RETURNS text LANGUAGE plpgsql STABLE
+ SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE result text;
+BEGIN
+ IF NOT app.principal_snapshot_current() THEN RETURN NULL;END IF;
+ SELECT p.full_name INTO result FROM public.notice n
+ JOIN public.app_user u ON u.id=n.published_by_user_id AND u.tenant_id=n.tenant_id
+ JOIN public.person p ON p.id=u.person_id AND p.tenant_id=n.tenant_id
+ WHERE n.id=p_notice AND n.tenant_id=app.current_tenant_id() AND (app.can_manage_notice(n.id) OR
+  (n.published_at IS NOT NULL AND n.archived_at IS NULL
+   AND n.start_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND n.end_on>=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+   AND EXISTS(SELECT 1 FROM public.notice_recipient nr JOIN public.employment e ON e.id=nr.employment_id AND e.tenant_id=nr.tenant_id
+    WHERE nr.notice_id=n.id AND nr.tenant_id=n.tenant_id AND app.is_self_person(e.person_id))));
+ RETURN result;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.notice_sender_display_name(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.notice_sender_display_name(uuid) TO ai_hr_app;

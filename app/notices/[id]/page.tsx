@@ -3,7 +3,7 @@ import { getTranslations } from 'next-intl/server';
 
 import { getSession } from '@/lib/session';
 import { myEmployment } from '@/core/read';
-import { markNoticeViewed, noticesForEmployment } from '@/core/notice';
+import { markNoticeViewed, noticesForEmployment,noticeAttachmentMetadata } from '@/core/notice';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { Card, PageHeader, SectionHeader } from '@/components/ui';
 import { Markdown } from '@/components/markdown';
@@ -34,6 +34,7 @@ export default async function NoticeReadPage({ params }: { params: Promise<{ id:
   const rows = await noticesForEmployment(s, me.employmentId);
   const n = rows.find((r) => r.id === id);
   if (!n) notFound();
+  const attachments=await noticeAttachmentMetadata(s,n.id);
 
   if (n.firstViewedAt == null) await markNoticeViewed(s, n.id, me.employmentId);
 
@@ -55,6 +56,7 @@ export default async function NoticeReadPage({ params }: { params: Promise<{ id:
               so a notice — the one piece of content in the product deliberately shown to every employee —
               can never become a stored-XSS delivery mechanism. */}
           <Markdown>{n.body}</Markdown>
+          {attachments.length>0&&<section className="mt-4 space-y-2"><h2 className="text-sm font-medium">{t('attachmentTitle')}</h2><ul className="space-y-1">{attachments.map(file=><li key={file.id}><a className="inline-flex min-h-11 items-center break-all text-sm text-primary underline underline-offset-2" href={`/notices/${n.id}/attachment/${file.id}`}>{file.fileName}</a></li>)}</ul></section>}
           <p className="mt-4 text-xs text-muted-foreground">{t('contentVersion',{version:n.contentVersion})}</p>
           {n.requiresAcknowledgement&&<NoticeAcknowledgementForm key={n.contentVersion} noticeId={n.id} employmentId={me.employmentId} contentVersion={n.contentVersion} acknowledgedAt={n.acknowledgedAt?new Date(n.acknowledgedAt).toISOString():null} action={acknowledgeNoticeAction}
             labels={{acknowledge:t('acknowledge'),pending:t('acknowledging'),acknowledgedOn:t('acknowledgedOn',{date:'{date}'}),unavailable:t('ackUnavailable'),changed:t('ackChanged'),failed:t('ackFailed')}}/>}

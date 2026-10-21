@@ -572,10 +572,7 @@ export async function listNotices(
         // answers a different question. (`"published_by_user_id"` happened to work only because app_user
         // and person have no such column, so Postgres fell back to the outer scope; one column rename away
         // from the same silent wrong.) Fully qualified, both are unambiguous.
-        publishedBy: sql<string | null>`(
-          select p.full_name from app_user au join person p on p.id = au.person_id
-          where au.id = notice.published_by_user_id
-        )`,
+        publishedBy: sql<string | null>`app.notice_sender_display_name(notice.id)`,
         recipientCount: sql<number>`(
           select count(*)::int from notice_recipient nr where nr.notice_id = notice.id
         )`,
@@ -653,10 +650,7 @@ export async function noticesForEmployment(
         // Fully qualified for the reason spelled out in `listNotices` above: Drizzle renders an
         // interpolated column BARE inside a raw sql template, which a correlated subquery then resolves
         // against its own scope.
-        publishedBy: sql<string | null>`(
-          select p.full_name from app_user au join person p on p.id = au.person_id
-          where au.id = notice.published_by_user_id
-        )`,
+        publishedBy: sql<string | null>`app.notice_sender_display_name(notice.id)`,
       })
       .from(noticeRecipient)
       .innerJoin(notice, eq(notice.id, noticeRecipient.noticeId))
@@ -770,32 +764,35 @@ export function noticeAcknowledgementHistory(ctx:SessionContext,id:string){
 }
 
 
+export class NoticeAttachmentError extends NoticeError {
+ constructor(readonly reason:'file'|'changed'|'limit'|'unavailable',message:string){super(message);this.name='NoticeAttachmentError';}
+}
 export const NOTICE_ATTACHMENT_MAX_BYTES=10*1024*1024;
 const noticeAttachmentMime=new Set(['application/pdf','image/png','image/jpeg','text/plain','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.openxmlformats-officedocument.presentationml.presentation']);
 /** Adds and selects immutable bytes in the same transaction as the content revision and audit event.
  * An intent key belongs to this author/Notice; a successful retry cannot manufacture another revision. */
 export async function addNoticeAttachment(ctx:SessionContext,id:string,expectedContentVersion:number,p:{uploadKey:string;fileName:string;content:Buffer},options:{attach?:boolean}={}):Promise<{id:string;contentVersion:number;attachment:{id:string;fileName:string;mimeType:string;byteLength:number}}>{
  const actor=requireActor(ctx,'updated');
- if(!uuidNotice(id)||!uuidNotice(p.uploadKey)||!Number.isSafeInteger(expectedContentVersion)||expectedContentVersion<0)throw new NoticeError('Reload the notice before uploading.');
+ if(!uuidNotice(id)||!uuidNotice(p.uploadKey)||!Number.isSafeInteger(expectedContentVersion)||expectedContentVersion<0)throw new NoticeAttachmentError('changed','Reload the notice before uploading.');
  const fileName=p.fileName.trim();
- if(!fileName||fileName.length>180||/[\x00-\x1f\x7f/\\]/.test(fileName))throw new NoticeError('Choose a file with a safe name of at most 180 characters.');
- if(!Buffer.isBuffer(p.content)||!p.content.length||p.content.length>NOTICE_ATTACHMENT_MAX_BYTES)throw new NoticeError('Choose a non-empty file of at most 10 MiB.');
+ if(!fileName||fileName.length>180||/[\x00-\x1f\x7f/\\]/.test(fileName))throw new NoticeAttachmentError('file','Choose a file with a safe name of at most 180 characters.');
+ if(!Buffer.isBuffer(p.content)||!p.content.length||p.content.length>NOTICE_ATTACHMENT_MAX_BYTES)throw new NoticeAttachmentError('file','Choose a non-empty file of at most 10 MiB.');
  const content=Buffer.from(p.content);let mimeType:string;
- try{mimeType=resolveDocumentUpload(fileName,content).mimeType;}catch{throw new NoticeError('The file contents or file type are not supported.');}
- if(!noticeAttachmentMime.has(mimeType))throw new NoticeError('The file type is not supported for notices.');
+ try{mimeType=resolveDocumentUpload(fileName,content).mimeType;}catch{throw new NoticeAttachmentError('file','The file contents or file type are not supported.');}
+ if(!noticeAttachmentMime.has(mimeType))throw new NoticeAttachmentError('file','The file type is not supported for notices.');
  const digest=createHash('sha256').update(content).digest('hex');
  return withTenant(ctx,async tx=>{
   const [parent]=await tx.select({id:notice.id,contentVersion:notice.contentVersion,attachmentIds:notice.attachmentIds,archivedAt:notice.archivedAt}).from(notice).where(authoringNotice(id)).limit(1).for('update');
-  if(!parent||parent.archivedAt)throw new NoticeError('That notice is no longer available for editing.');
+  if(!parent||parent.archivedAt)throw new NoticeAttachmentError('unavailable','That notice is no longer available for editing.');
   const [prior]=await tx.select({id:noticeAttachment.id,fileName:noticeAttachment.fileName,mimeType:noticeAttachment.mimeType,digest:sql<string>`encode(sha256(${noticeAttachment.content}),'hex')`})
    .from(noticeAttachment).where(and(eq(noticeAttachment.noticeId,id),eq(noticeAttachment.tenantId,ctx.tenantId),eq(noticeAttachment.createdByUserId,actor),eq(noticeAttachment.uploadKey,p.uploadKey))).limit(1);
   if(prior){
-   if(options.attach===false&&parent.contentVersion!==expectedContentVersion)throw new NoticeError('Notice content changed; reload before uploading.');
-   if(prior.fileName!==fileName||prior.mimeType!==mimeType||prior.digest!==digest||(options.attach!==false&&!parent.attachmentIds.includes(prior.id)))throw new NoticeError('This upload changed; reload before choosing the file again.');
+   if(options.attach===false&&parent.contentVersion!==expectedContentVersion)throw new NoticeAttachmentError('changed','Notice content changed; reload before uploading.');
+   if(prior.fileName!==fileName||prior.mimeType!==mimeType||prior.digest!==digest||(options.attach!==false&&!parent.attachmentIds.includes(prior.id)))throw new NoticeAttachmentError('changed','This upload changed; reload before choosing the file again.');
    return {id:prior.id,contentVersion:parent.contentVersion,attachment:{id:prior.id,fileName,mimeType,byteLength:content.byteLength}};
   }
-  if(parent.contentVersion!==expectedContentVersion)throw new NoticeError('Notice content changed; reload before uploading.');
-  if(parent.attachmentIds.length>=5)throw new NoticeError('A notice can contain at most five attachments.');
+  if(parent.contentVersion!==expectedContentVersion)throw new NoticeAttachmentError('changed','Notice content changed; reload before uploading.');
+  if(options.attach!==false&&parent.attachmentIds.length>=5)throw new NoticeAttachmentError('limit','A notice can contain at most five attachments.');
   const [asset]=await tx.insert(noticeAttachment).values({tenantId:ctx.tenantId,noticeId:id,uploadKey:p.uploadKey,fileName,mimeType,byteLength:content.byteLength,content,createdByUserId:actor}).returning({id:noticeAttachment.id});
   if(options.attach===false){
    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'notice',aggregateId:id,eventType:'notice.attachment-uploaded',actor:actorOf(ctx),payload:{attachmentId:asset.id,byteLength:content.byteLength,mimeType}});

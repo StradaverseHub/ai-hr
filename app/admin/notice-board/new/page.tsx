@@ -71,6 +71,7 @@ export default async function NewNoticePage({
             employees={vocab.employees}
             targetingFrozen={false}
             labels={{
+              attachments:{title:t('attachmentTitle'),help:t('attachmentHelp'),choose:t('attachmentChoose'),add:t('attachmentAdd'),pending:t('attachmentPending'),remove:t('attachmentRemove'),saveFirst:t('attachmentSaveFirst'),saveHint:t('attachmentSaveHint'),file:t('attachmentFile'),tooLarge:t('attachmentTooLarge'),changed:t('attachmentChanged'),limit:t('attachmentLimit'),unavailable:t('attachmentUnavailable'),failed:t('attachmentFailed')},
               category:t('category'),summary:t('summary'),pinned:t('pinned'),requiresAcknowledgement:t('requiresAcknowledgement'),acknowledgementHelp:t('acknowledgementHelp'),
               authoringCompany:t('authoringCompany'),chooseAuthoringCompany:t('chooseAuthoringCompany'),groupAuthoring:t('groupAuthoring'),authoringCompanyHelp:t('authoringCompanyHelp'),noAuthoringScope:t('noAuthoringScope'),
               sectionBasics: t('sectionBasics'),
