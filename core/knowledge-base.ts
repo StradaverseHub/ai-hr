@@ -12,7 +12,7 @@ import { actorOf, appendEvent } from '../db/events';
 import { kbDocument } from '../db/schema';
 import { isAdmin } from '../lib/authz-model';
 import { rankKnowledgeArticles,rankPerformanceArticles,rankPerformanceDashboardArticles } from '../lib/knowledge-search';
-import {homeSearchWords,homeKnowledgeHref,HOME_SEARCH_RESULT_LIMIT} from '../lib/employee-home-search';
+import {homeSearchWords,homeKnowledgeHref,homeKnowledgeExcerpt,HOME_SEARCH_RESULT_LIMIT} from '../lib/employee-home-search';
 import {isLocale} from '../i18n/config';
 
 export const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB (ADR-0017 — Postgres bytea storage)
@@ -421,7 +421,7 @@ export async function searchKnowledgeArticles(ctx:SessionContext,query:string,ca
 }
 
 /** Home searches this existing library, not a second content index. Tenant RLS and the ordinary
- * audience clearance fence matching/ranking; only minimal authorized metadata leaves this owner.
+ * audience clearance fence matching/ranking; only minimal metadata and a bounded literal excerpt leave this owner.
  * Unlike contextual help, a genuine no-match returns no rows, never unrelated fallback articles.
  */
 export async function searchHomeKnowledgeDocuments(ctx:SessionContext,query:string,locale='en'){
@@ -436,9 +436,11 @@ export async function searchHomeKnowledgeDocuments(ctx:SessionContext,query:stri
  const matches=words.map(word=>or(sql`${title} ilike ${'%'+word+'%'}`,sql`${body} ilike ${'%'+word+'%'}`));
  const score=sql.join(words.map(word=>sql`case when ${title} ilike ${'%'+word+'%'} then 3 else 0 end`),sql` + `);
  return withTenant(ctx,async tx=>{
-  const rows=await tx.select({id:kbDocument.id,kind:kbDocument.kind,title,category:kbDocument.category}).from(kbDocument)
+  const rows=await tx.select({id:kbDocument.id,kind:kbDocument.kind,title,category:kbDocument.category,
+   descriptionSource:sql<string>`left(${body},1000)`}).from(kbDocument)
    .where(and(isNull(kbDocument.archivedAt),inArray(kbDocument.audience,visibleAudiencesFor(ctx)),...matches))
    .orderBy(desc(score),asc(title),asc(kbDocument.id)).limit(HOME_SEARCH_RESULT_LIMIT);
-  return rows.map(row=>({id:row.id,kind:row.kind,title:row.title,category:row.category,href:homeKnowledgeHref(row.id)}));
+  return rows.map(row=>({id:row.id,kind:row.kind,title:row.title,category:row.category,
+   descriptionMarkdown:homeKnowledgeExcerpt(row.descriptionSource),href:homeKnowledgeHref(row.id)}));
  });
 }

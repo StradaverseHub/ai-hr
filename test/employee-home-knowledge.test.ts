@@ -37,8 +37,8 @@ describe('Home library search retains the canonical audience owner',()=>{
    expect(await searchHomeKnowledgeDocuments(employee,query)).toEqual([]);
   expect(await searchHomeKnowledgeDocuments({...employee,userId:undefined},'handbook')).toEqual([]);
  });
- it('matches localized title/body text in all six languages but returns no document body, bytes or author identity',async()=>{
-  const article=await createArticle(adminCtx(b),{title:'Leave guide',body:'Fictional private body marker',audience:'employee'});
+ it('matches localized title/body text in all six languages and exposes only metadata plus a bounded authored excerpt',async()=>{
+  const article=await createArticle(adminCtx(b),{title:'Leave guide',body:'Fictional published explanation',audience:'employee'});
   const translated={ms:{title:'Panduan cuti',body:'Cara memohon cuti'},zh:{title:'休假指南',body:'提交休假申请'},
    ta:{title:'விடுப்பு வழிகாட்டி',body:'கோரிக்கையை சமர்ப்பிக்கும் முறை'},th:{title:'คู่มือวันลา',body:'วิธียื่นคำขอลา'},
    vi:{title:'Hướng dẫn nghỉ phép',body:'Cách gửi đơn nghỉ phép'}};
@@ -48,9 +48,17 @@ describe('Home library search retains the canonical audience owner',()=>{
    ['ta','சமர்ப்பிக்கும்','விடுப்பு வழிகாட்டி'],['th','ยื่น','คู่มือวันลา'],['vi','gửi','Hướng dẫn nghỉ phép']]){
    const rows=await searchHomeKnowledgeDocuments(employee,query,locale);
    expect(rows,locale).toHaveLength(1);expect(rows[0].title,locale).toBe(title);
-   expect(Object.keys(rows[0]).sort(),locale).toEqual(['category','href','id','kind','title']);
+   expect(Object.keys(rows[0]).sort(),locale).toEqual(['category','descriptionMarkdown','href','id','kind','title']);
+   expect(rows[0].descriptionMarkdown,locale).toBe(locale==='en'?'Fictional published explanation':translated[locale as keyof typeof translated].body);
    expect(rows[0].href,locale).toBe(`/knowledge-base/${article.id}`);
   }
+ });
+ it('never returns the full article or internal source buffer beyond the bounded preview',async()=>{
+  await createArticle(adminCtx(b),{title:'Excerpt boundary',body:'a'.repeat(240)+' HIDDEN_AFTER_PREVIEW',audience:'employee'});
+  const rows=await searchHomeKnowledgeDocuments(await viewer('employee'),'boundary');
+  expect(rows).toHaveLength(1);expect(rows[0].descriptionMarkdown).toBe('a'.repeat(240)+'…');
+  expect(rows[0]).not.toHaveProperty('descriptionSource');expect(rows[0]).not.toHaveProperty('body');
+  expect(JSON.stringify(rows)).not.toContain('HIDDEN_AFTER_PREVIEW');
  });
  it('bounds results and gives equal-ranked documents a deterministic title/id order',async()=>{
   const titles=Array.from({length:HOME_SEARCH_RESULT_LIMIT+2},(_,index)=>`Guide ${String(index).padStart(2,'0')}`);

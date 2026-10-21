@@ -19,7 +19,8 @@ export async function GET(request:Request){
   if(suppliedLocale!==null&&!isLocale(suppliedLocale))return Response.json({error:'invalid'},{status:400,headers});
   const locale=suppliedLocale??await getLocale();
   const rows=await searchHomeKnowledgeDocuments(session,query.get('q')??'',locale);
-  const items=rows.map(row=>({id:row.id,kind:row.kind,title:row.title,category:row.category,href:homeKnowledgeHref(row.id)}));
+  const items=rows.map(row=>({id:row.id,kind:row.kind,title:row.title,category:row.category,
+   descriptionMarkdown:row.descriptionMarkdown,href:homeKnowledgeHref(row.id)}));
   return Response.json({version:1,items},{headers});
  }catch(error){
   const code=error instanceof AuthRequiredError?'authentication':error instanceof HomeSearchQueryError?'invalid':'unavailable';

@@ -9,10 +9,11 @@ afterEach(()=>{cleanup();vi.useRealTimers();vi.unstubAllGlobals();vi.restoreAllM
 const submit=(query:string)=>{fireEvent.change(screen.getByRole('searchbox'),{target:{value:query}});fireEvent.submit(screen.getByRole('search'));};
 describe('Home library search facet',()=>{
   it('does not search on mount, accepts immediate submit and builds a safe internal result link',async()=>{
-    const fetcher=vi.fn(async()=>Response.json({version:1,items:[{id:'document/one',title:'Recorded policy',href:'https://fictional.invalid/unsafe',body:'Private body'}]}));
+    const fetcher=vi.fn(async()=>Response.json({version:1,items:[{id:'document/one',title:'Recorded policy',descriptionMarkdown:'Recorded short explanation',href:'https://fictional.invalid/unsafe',body:'Private body'}]}));
     vi.stubGlobal('fetch',fetcher);render(<HomeKnowledgeSearch locale="en" labels={labels}/>);
     expect(fetcher).not.toHaveBeenCalled();submit('leave');
     await waitFor(()=>expect(screen.getByRole('link',{name:'Recorded policy'})).toHaveAttribute('href','/knowledge-base/document%2Fone'));
+    await waitFor(()=>expect(screen.getByText('Recorded short explanation')).toBeVisible());
     expect(screen.queryByText('Private body')).not.toBeInTheDocument();
     const [url,options]=fetcher.mock.calls[0] as unknown as [string,RequestInit];
     expect(url).toBe('/api/home/knowledge?q=leave&locale=en');expect(options.cache).toBe('no-store');
@@ -58,12 +59,12 @@ describe('Home library search facet',()=>{
     await waitFor(()=>expect(fetcher).toHaveBeenCalledTimes(1));
     const signal=fetcher.mock.calls[0][1]?.signal;
     fireEvent.change(screen.getByRole('searchbox'),{target:{value:'new'}});expect(signal?.aborted).toBe(true);
-    await React.act(async()=>{finish!(Response.json({version:1,items:[{id:'old',title:'Old query result'}]}));await Promise.resolve();});
+    await React.act(async()=>{finish!(Response.json({version:1,items:[{id:'old',title:'Old query result',descriptionMarkdown:null}]}));await Promise.resolve();});
     expect(screen.queryByText('Old query result')).not.toBeInTheDocument();
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
   it('clears old-language results on a locale switch and refuses malformed results as unavailable',async()=>{
-    const fetcher=vi.fn(async()=>Response.json({version:1,items:[{id:'one',title:'English policy'}]}));
+    const fetcher=vi.fn(async()=>Response.json({version:1,items:[{id:'one',title:'English policy',descriptionMarkdown:null}]}));
     vi.stubGlobal('fetch',fetcher);
     const {rerender}=render(<HomeKnowledgeSearch locale="en" labels={labels}/>);submit('leave');
     await waitFor(()=>expect(screen.getByRole('link',{name:'English policy'})).toBeVisible());

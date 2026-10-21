@@ -5,11 +5,12 @@ import Link from 'next/link';
 import {Button} from '@/components/ui';
 import type {Locale} from '@/i18n/config';
 import {deliverHomeCard} from '@/lib/employee-home-delivery';
-import {HOME_SEARCH_DEBOUNCE_MS,HOME_SEARCH_QUERY_MAX,HOME_SEARCH_RESULT_LIMIT,homeKnowledgeHref,homeSearchWords} from '@/lib/employee-home-search';
+import {HOME_SEARCH_DEBOUNCE_MS,HOME_SEARCH_QUERY_MAX,HOME_SEARCH_RESULT_LIMIT,HOME_SEARCH_DESCRIPTION_MAX,homeKnowledgeHref,homeSearchWords} from '@/lib/employee-home-search';
 
-type Item={id:string;title:string};
+const KnowledgeDescription=React.lazy(()=>import('./knowledge-description'));
+type Item={id:string;title:string;descriptionMarkdown:string|null};
 type State={state:'idle'|'loading'}|{state:'ready';items:Item[]}|{state:'failed';reason:'timeout'|'unavailable'|'invalid'};
-export type HomeKnowledgeSearchLabels={label:string;hint:string;submit:string;loading:string;results:string;noMatch:string;failed:string;timeout:string;invalid:string};
+export type HomeKnowledgeSearchLabels={label:string;hint:string;submit:string;loading:string;results:string;noMatch:string;failed:string;timeout:string;invalid:string;descriptionFallback:string};
 
 /** Library facet only: forms/pages join through their own permission-filtered owner. Debounced
  * lexical reads never call a model, invent suggestions or store a query in personal preferences.
@@ -42,7 +43,10 @@ function KnowledgeSearch({locale,labels}:{locale:Locale;labels:HomeKnowledgeSear
       const items=body.items.map((item:unknown):Item=>{
         if(!item||typeof item!=='object'||!('id' in item)||typeof item.id!=='string'||!item.id||!('title' in item)||typeof item.title!=='string'||!item.title.trim())
           throw new Error('Home search unavailable');
-        return {id:item.id,title:item.title}; // Ignore upstream bodies, authors, arbitrary hrefs and extra data.
+        if(!('descriptionMarkdown' in item)||(item.descriptionMarkdown!==null&&
+          (typeof item.descriptionMarkdown!=='string'||Array.from(item.descriptionMarkdown).length>HOME_SEARCH_DESCRIPTION_MAX+1)))
+          throw new Error('Home search unavailable');
+        return {id:item.id,title:item.title,descriptionMarkdown:item.descriptionMarkdown}; // No full body, author or arbitrary href.
       });
       if(new Set(items.map(item=>item.id)).size!==items.length)throw new Error('Home search unavailable');
       return items;
@@ -75,8 +79,11 @@ function KnowledgeSearch({locale,labels}:{locale:Locale;labels:HomeKnowledgeSear
       {view.state==='ready'&&(view.items.length===0?<p role="status" className="text-sm leading-relaxed">{labels.noMatch}</p>:
         <section aria-label={labels.results} className="space-y-2">
           <h3 className="text-sm font-semibold">{labels.results}</h3>
-          <ul className="divide-y divide-border">{view.items.map(item=><li key={item.id}>
+          <ul className="divide-y divide-border">{view.items.map(item=><li key={item.id} className="pb-3">
             <Link href={homeKnowledgeHref(item.id)} className="flex min-h-11 items-center rounded-md py-2 text-sm leading-relaxed underline underline-offset-4 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{item.title}</Link>
+            {item.descriptionMarkdown?<React.Suspense fallback={<p className="text-sm leading-relaxed text-muted-foreground">{labels.descriptionFallback}</p>}>
+              <KnowledgeDescription markdown={item.descriptionMarkdown}/>
+            </React.Suspense>:<p className="text-sm leading-relaxed text-muted-foreground">{labels.descriptionFallback}</p>}
           </li>)}</ul>
         </section>)}
     </div>

@@ -20,10 +20,10 @@ describe('Home knowledge endpoint identity and response boundary',()=>{
  });
  it('projects only the public metadata contract and builds the internal destination rather than forwarding extra fields',async()=>{
   const id='00000000-0000-0000-0000-000000000001';
-  state.search.mockResolvedValueOnce([{id,kind:'article',title:'Leave guide',category:'benefits',
-   href:'https://example.invalid/',body:'Fictional private body',createdByUserId:'fictional-author'}]);
+  state.search.mockResolvedValueOnce([{id,kind:'article',title:'Leave guide',category:'benefits',descriptionMarkdown:'Published **leave** guidance',
+   href:'https://example.invalid/',body:'Fictional private full body',descriptionSource:'Unrequested source buffer',createdByUserId:'fictional-author'}]);
   const result=await GET(new Request('http://localhost/api/home/knowledge?q=leave&locale=en'));
-  expect(await result.json()).toEqual({version:1,items:[{id,kind:'article',title:'Leave guide',category:'benefits',href:`/knowledge-base/${id}`}]});
+  expect(await result.json()).toEqual({version:1,items:[{id,kind:'article',title:'Leave guide',category:'benefits',descriptionMarkdown:'Published **leave** guidance',href:`/knowledge-base/${id}`}]});
  });
  it('refuses alternate identity selectors, duplicate inputs and unsupported locales before searching',async()=>{
   for(const suffix of ['?q=leave&tenantId=other','?q=leave&employmentId=other','?q=leave&companyId=other',
