@@ -1,7 +1,7 @@
 /** Pure formula proposals. No row, policy activation, approval, source reservation or payment. */
 import {describe,expect,it} from 'vitest';
 import {evaluateOvertimePattern,evaluateOvertimePatternDuration,evaluateOvertimePolicyPart,evaluateOvertimePolicyPartDuration,validateOvertimeInput,validateOvertimePolicyInput} from '../lib/overtime-pattern-evaluate';
-import {parseRecordedOvertimeEvaluation,parseRecordedOvertimeDurationEvaluation} from '../lib/overtime-pattern-result';
+import {parseRecordedOvertimeEvaluation,parseRecordedOvertimeDurationEvaluation,parseRecordedOvertimePolicyEvaluation,parseRecordedOvertimePolicyDurationEvaluation} from '../lib/overtime-pattern-result';
 import {overtimeSourceKey,type OvertimeFact,type OvertimeInput,type OvertimePattern} from '../lib/overtime-pattern-model';
 import type {OvertimePolicyBinding} from '../lib/overtime-pattern-binding';
 const uuid=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
@@ -26,6 +26,8 @@ describe('explicit formula binding adapters',()=>{
     expect(result.amountMinorUnits).toBe('3600');expect(result.amountMinorUnits).toBe(original.amountMinorUnits);expect(result.lines).toEqual(original.lines);
     expect(duration.payableMinutes).toEqual({unit:'minutes',numerator:'120',denominator:'1'});expect(duration.allocations).toEqual(originalDuration.allocations);
     expect(overtimeSourceKey(result.source)).toBe(overtimeSourceKey(original.source));expect(input).toEqual(before);
+    expect(parseRecordedOvertimePolicyEvaluation(result)).toEqual(result);expect(parseRecordedOvertimePolicyDurationEvaluation(duration)).toEqual(duration);
+    expect(parseRecordedOvertimePolicyEvaluation(original)).toBeNull();expect(parseRecordedOvertimePolicyDurationEvaluation(originalDuration)).toBeNull();
   });
   it('keeps the legacy validator and immutable readers closed to policy results',()=>{
     expect(()=>validateOvertimeInput(policy())).toThrow();expect(()=>validateOvertimePolicyInput(assigned())).toThrow();
@@ -53,5 +55,14 @@ describe('explicit formula binding adapters',()=>{
     const input=policy(),parsed=validateOvertimePolicyInput(input);parsed.policyBinding.dayClass='normal';expect(input.policyBinding.dayClass).toBe('off');
     const bad={...input,policyBinding:{...input.policyBinding,revisionId:'do_not_reflect_secret'}};
     const result=evaluateOvertimePolicyPart(definition(),bad as never);expect(result.status).toBe('refused');expect(JSON.stringify(result)).not.toContain('do_not_reflect_secret');
+  });
+  it('rejects mutated immutable policy identities and arithmetic rather than guessing a compatible assignment',()=>{
+    const cash=evaluateOvertimePolicyPart(definition(),policy()),duration=evaluateOvertimePolicyPartDuration(definition(),policy());
+    for(const patch of [{assignmentId:uuid(7)},{policyBinding:undefined},{policyBinding:{...policy().policyBinding,dayOffset:2}},{policyBinding:{...policy().policyBinding,revisionId:'not_a_revision'}},{extra:'unsupported'}]){
+      expect(parseRecordedOvertimePolicyEvaluation({...cash,...patch})).toBeNull();
+      expect(parseRecordedOvertimePolicyDurationEvaluation({...duration,...patch})).toBeNull();
+    }
+    expect(parseRecordedOvertimePolicyEvaluation({...cash,amountMinorUnits:'1'})).toBeNull();
+    expect(parseRecordedOvertimePolicyDurationEvaluation({...duration,payableMinutes:{unit:'minutes',numerator:'121',denominator:'1'}})).toBeNull();
   });
 });
