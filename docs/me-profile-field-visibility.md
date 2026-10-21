@@ -1,8 +1,14 @@
 # My Profile: shared Personnel visibility and update routes
 
-Approved cf588903 replaces the old six-tab/legacy-address/Today presentation. All eleven Personnel tabs
-remain in their canonical order: Profile, Family, Employment, Employment History, Attendance,
+Approved cf588903 replaces the old six-tab/legacy-address/Today presentation. My Profile retains eleven ESS tabs
+in their canonical order: Profile, Family, Employment, Employment History, Attendance,
 Bank & Statutory, Payroll, Leave, Documents, Qualification and Others.
+
+The shared field registry currently populates ten tabs. Administrative Personnel no longer has an Others
+tab: audit fields are recorded under Profile, leave-request fields under Leave, and the nine protected
+review fields under Employment. Their stable IDs are retained. The separate ESS Others tab remains,
+including its existing My Performance destination; it does not require its own registered field descriptors.
+Dated Holiday Calendar controls are HR-only specialist inputs under Attendance, with no ESS mutation binding.
 
 Each stable Personnel descriptor below has an explicit ESS disposition. Import/report eligibility does
 not grant employee access. Visible means an authorized own fact, not access to its administrative writer;
@@ -22,9 +28,9 @@ Canonical Permanent/Correspondence are shown and proposed through their owner. L
 addresses remain explicit read-only reconciliation evidence; no silent copy/drop. HR document repository
 metadata is protected; Documents retains only existing released own outputs, review and resignation routes.
 
-This is an implementation inventory, not evidence of verified UI or security acceptance. Types, tests,
-actual roles, six locales, themes, narrow viewport, keyboard, save/reopen and approval remain pending the
-coordinated verification window. SQL0560 is the centrally reserved unapplied Profile scope migration.
+This is an implementation inventory, not evidence of verified UI or security acceptance. Current release
+acceptance and live migration records determine verification and deployment status; this document does
+not allocate migrations or grant employee rights.
 
 | Stable Personnel field | Tab | ESS visibility | Update route | Reason |
 | --- | --- | --- | --- | --- |
@@ -369,32 +375,32 @@ coordinated verification window. SQL0560 is the centrally reserved unapplied Pro
 | `qualification.academic_and_professional_qualifications.result` | Qualification | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
 | `qualification.academic_and_professional_qualifications.description` | Qualification | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
 | `qualification.academic_and_professional_qualifications.highest` | Qualification | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
-| `others.change_history.eventtype` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
-| `others.change_history.action` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
-| `others.change_history.highimpact` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
-| `others.change_history.actortype` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
-| `others.change_history.actorname` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
-| `others.change_history.module` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
-| `others.change_history.aggregatetype` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
-| `others.change_history.occurredat` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
-| `others.change_history.sequence` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
-| `others.change_history.changedfield` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
-| `others.change_history.previousvalue` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
-| `others.change_history.newvalue` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
-| `others.leave_requests.leavetypename` | Others | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
-| `others.leave_requests.startdate` | Others | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
-| `others.leave_requests.enddate` | Others | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
-| `others.leave_requests.days` | Others | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
-| `others.leave_requests.status` | Others | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
-| `others.probation_contract_internship_review.employmenttype` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
-| `others.probation_contract_internship_review.type` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
-| `others.probation_contract_internship_review.enddate` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
-| `others.probation_contract_internship_review.duedate` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
-| `others.probation_contract_internship_review.status` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
-| `others.probation_contract_internship_review.decision` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
-| `others.probation_contract_internship_review.documentkind` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
-| `others.probation_contract_internship_review.documentfilename` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
-| `others.probation_contract_internship_review.content` | Others | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.change_history.eventtype` | Profile | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.change_history.action` | Profile | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.change_history.highimpact` | Profile | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.change_history.actortype` | Profile | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.change_history.actorname` | Profile | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.change_history.module` | Profile | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.change_history.aggregatetype` | Profile | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.change_history.occurredat` | Profile | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.change_history.sequence` | Profile | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.change_history.changedfield` | Profile | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.change_history.previousvalue` | Profile | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.change_history.newvalue` | Profile | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.leave_requests.leavetypename` | Leave | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `others.leave_requests.startdate` | Leave | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `others.leave_requests.enddate` | Leave | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `others.leave_requests.days` | Leave | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `others.leave_requests.status` | Leave | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `others.probation_contract_internship_review.employmenttype` | Employment | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.probation_contract_internship_review.type` | Employment | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.probation_contract_internship_review.enddate` | Employment | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.probation_contract_internship_review.duedate` | Employment | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.probation_contract_internship_review.status` | Employment | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.probation_contract_internship_review.decision` | Employment | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.probation_contract_internship_review.documentkind` | Employment | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.probation_contract_internship_review.documentfilename` | Employment | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `others.probation_contract_internship_review.content` | Employment | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
 | `employment_history.related_values_shown_during_hire_correction.companyname` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
 | `employment_history.related_values_shown_during_hire_correction.hiredon` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
 | `employment_history.related_values_shown_during_hire_correction.joindate` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
@@ -434,3 +440,6 @@ coordinated verification window. SQL0560 is the centrally reserved unapplied Pro
 | `bank_statutory.income_tax_pcb.childrelieftable_disabled_study_half` | Bank & Statutory | Visible | specialist | Country-pack selection or derived statutory fact; no generic employee writer. |
 | `employment_history.original_hire_details_and_corrections.costcenterid` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
 | `employment_history.event_information.terminationreasoncode` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
+| `attendance.dated_holiday_calendar.calendar` | Attendance | Protected | specialist | HR-only dated calendar assignment workflow; no employee self-service mutation binding. |
+| `attendance.dated_holiday_calendar.startdate` | Attendance | Protected | specialist | HR-only dated calendar assignment workflow; no employee self-service mutation binding. |
+| `attendance.dated_holiday_calendar.enddate` | Attendance | Protected | specialist | HR-only dated calendar assignment workflow; no employee self-service mutation binding. |

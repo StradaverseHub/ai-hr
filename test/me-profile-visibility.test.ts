@@ -11,12 +11,23 @@ describe('My Profile shared Personnel inventory and actual consumers',()=>{
  it('retains the exact eleven-tab order, canonical labels and a panel for every tab',()=>{
   expect([...ME_TABS]).toEqual(['profile','family','job','careerMovement','attendance','bankStatutory','payroll','leave','documents','qualification','others']);
   expect(ESS_PROFILE_TABS).toEqual(['Profile','Family','Employment','Employment History','Attendance','Bank & Statutory','Payroll','Leave','Documents','Qualification','Others']);
+  expect(page).toMatch(/others:\s*<Card\b[^>]*>\s*<Link\s+href="\/me\/performance"/);
   for(const key of ME_TABS)expect(ME_TAB_LABEL_KEY[key]).toBe(`tabs.${key}`);
   expect(page).toContain('<ProfileEditor');expect(editor).toContain('Object.fromEntries(keys.map((key,index)=>');expect(editor).toContain('panels={panels}');expect(editor).toContain('personnelFieldLabel(field,translate)');expect(editor).toContain('personnelFieldChoices(field)');
  });
  it('accounts for every stable actual Personnel descriptor, including protected/specialist fields, in the written inventory',()=>{
   expect(PERSONNEL_FIELDS.length).toBeGreaterThan(300);expect(new Set(PERSONNEL_FIELDS.map(field=>field.id)).size).toBe(PERSONNEL_FIELDS.length);
-  for(const field of PERSONNEL_FIELDS){expect(field.sourceEvidence,field.id).toBeTruthy();expect(field.ess.reason,field.id).toBeTruthy();expect(doc,field.id).toContain(`\`${field.id}\``);expect(doc,field.id).toContain(field.ess.visibility==='visible'?'Visible':'Protected');if(field.ess.binding)expect(field.ess.visibility,field.id).toBe('visible');}
+  const rows=doc.split('\n').filter(line=>line.startsWith('| `')).map(line=>line.split('|').slice(1,-1).map(cell=>cell.trim()));
+  const inventory=new Map<string,string[]>(rows.map(row=>[row[0].slice(1,-1),row]));
+  expect(inventory.size,'one inventory row per stable ID').toBe(rows.length);
+  expect(new Set(inventory.keys())).toEqual(new Set(PERSONNEL_FIELDS.map(field=>field.id)));
+  for(const field of PERSONNEL_FIELDS){
+   expect(field.sourceEvidence,field.id).toBeTruthy();expect(field.ess.reason,field.id).toBeTruthy();
+   const row=inventory.get(field.id);
+   expect(row?.slice(1,4),field.id).toEqual([field.tab,field.ess.visibility==='visible'?'Visible':'Protected',field.ess.edit]);
+   expect(row?.[4],field.id+': written reason').toBeTruthy();
+   if(field.ess.binding)expect(field.ess.visibility,field.id).toBe('visible');
+  }
   expect(ME_HIDDEN_FIELDS).toHaveLength(PERSONNEL_FIELDS.filter(field=>field.ess.visibility==='protected').length);
   for(const [index,key]of ME_TABS.entries())expect(ME_VISIBLE_FIELD_LABEL_KEYS[key]).toEqual([...new Set(PERSONNEL_FIELDS.filter(field=>field.tab===ESS_PROFILE_TABS[index]&&field.ess.visibility==='visible'&&field.labelKey.startsWith('people.detail.')).map(field=>field.labelKey.slice('people.detail.'.length)))]);
  });
