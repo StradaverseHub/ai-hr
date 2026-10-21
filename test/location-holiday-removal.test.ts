@@ -269,7 +269,15 @@ describe('ADR-0086 — the site register removed from holiday resolution', () =>
     // Only original calendars may be shared. A fresh per-employee Set receives replacement dates.
     expect(holidays).toContain('dates = await originalHolidayDatesFor(tx, one)');
     expect(holidays).toContain('out.set(id, new Set(dates))');
-    expect(holidays).toContain('const effective=out.get(id);if(effective)for(const date of dates)effective.add(date)');
+    const unionStart = holidays.indexOf('export async function holidayDatesByEmployment(');
+    const unionEnd = holidays.indexOf('\n}', unionStart);
+    expect(unionStart).toBeGreaterThan(-1);
+    expect(unionEnd).toBeGreaterThan(unionStart);
+    const union = holidays.slice(unionStart, unionEnd);
+    expect(union.length).toBeGreaterThan(180);
+    expect(union).toContain('await holidayCalendarFactsByEmployment(tx, p)');
+    expect(union).toContain('new Set([...dates, ...(facts.replacements.get(id) ?? [])])');
+    for (const source of [holidays, absence]) expect(source).toContain('calendarPeriods:');
     expect(absence).toContain('holidays = await originalHolidayDatesFor(tx, {');
     expect(absence).toContain('holidays=new Set([...holidays,...replacementDates.get(e.employmentId)??[]])');
   });
