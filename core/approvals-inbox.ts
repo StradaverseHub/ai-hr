@@ -7,8 +7,8 @@
  * b833a077 (r362) — TRAVEL LEFT THIS LIST. My Travel was removed completely, so no travel request can be
  * created and none can be decided; the `travel` PendingTaskKind, its queue, its self-exclusion and its
  * bell label went with it. The travel_request rows are kept for audit and are reachable from no screen.
- * `pendingApprovalsCount` stays as the length of that list, so the dashboard card and every
- * existing caller keep their exact semantics. The viewer's own pending requests are excluded —
+ * `pendingApprovalsCount` retains the approval-only subset for the legacy workbench. Web assigned-work
+ * surfaces additionally include live required Notice acknowledgements. Own pending applications are excluded —
  * a task means "things needing your action", not "your own requests in flight".
  *
  * A platform role does not establish assignment: organizational managers, named approvers and workflow
@@ -203,5 +203,5 @@ export async function pendingApprovalsCount(
   scopeIds: string[] | undefined,
   modules: InboxModules,
 ): Promise<number> {
-  return (await listPendingTasks(ctx, scopeIds, modules)).length;
+  return (await listPendingTasks(ctx, scopeIds, modules,{noticeAcknowledgements:false})).length;
 }

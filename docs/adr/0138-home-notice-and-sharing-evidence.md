@@ -85,6 +85,15 @@ Recheck connection authority on every read; a human context, APP connection, dow
 cloned capability cannot use it. Missing source/audience authority is an error, not ineligibility: retain
 queued delivery for the authorized sweep. No system GUC privilege exception or additional sender exists.
 
+Required Notice acknowledgement work is a live projection in the existing assigned-work inbox, across
+actual own recipient employments. Its identity binds Notice, employment and content version; completion
+comes only from the current version's immutable acknowledgement. Reading, popup dismissal, publication
+notification delivery and expiry do not create a receipt. Withdrawal or expiry removes current work;
+retained receipts remain. No separate task row or action-severity publication notification duplicates
+this state. The task links to its exact own-employment reader. The source timestamp is the Notice's
+recorded update time; an expiry date is not fabricated into a workflow due date. The legacy approval
+workbench and native v1 approval-only UUID/kind contract explicitly exclude this new web task kind.
+
 The framework's proxy/middleware clone budget must cover the application multipart budget plus an
 excess-byte witness. A10MiB file remains the service limit; the bounded reader allows64KiB for multipart
 overhead and the framework clones one further byte. Thus an otherwise valid maximum-size file is not

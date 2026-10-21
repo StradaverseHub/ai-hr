@@ -4,7 +4,7 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import type {SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
-import {listPendingTasks} from '../core/approvals-inbox';
+import {listPendingTasks,pendingApprovalsCount} from '../core/approvals-inbox';
 import {ownHomeSubjectSelection} from '../core/employee-home';
 import {readOwnNotice,readOwnNoticeBoard} from '../core/employee-home-notices';
 import {createNotice,publishNotice,archiveNotice,markNoticeViewed,dismissNoticePopup,acknowledgeNotice,updateNotice,employeeNoticeBoard,employeeNoticeById,type NoticeInput} from '../core/notice';
@@ -31,6 +31,7 @@ describe('Selected own Notice board and bounded metadata',()=>{
   expect(rows[0]).toMatchObject({id:`${id}:${e.employmentId}:1`,kind:'noticeAcknowledgement',subjectName:'Fictional visible announcement',linkPath:`/notices/${id}?employmentId=${e.employmentId}`});
   expect(rows[0]).not.toHaveProperty('dueDate');expect(JSON.stringify(rows)).not.toContain('untransported body');
   expect(await listPendingTasks(e.ctx,undefined,{attendance:false,claims:false},{noticeAcknowledgements:false})).toEqual([]);
+  expect(await pendingApprovalsCount(e.ctx,undefined,{attendance:false,claims:false})).toBe(0);
   expect(await listPendingTasks(other.ctx,undefined,{attendance:false,claims:false})).toEqual([]);
   await markNoticeViewed(e.ctx,id,e.employmentId);await dismissNoticePopup(e.ctx,id,e.employmentId);expect(await tasks()).toHaveLength(1);
   await acknowledgeNotice(e.ctx,id,e.employmentId,1);expect(await tasks()).toEqual([]);
