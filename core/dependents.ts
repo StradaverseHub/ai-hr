@@ -507,15 +507,12 @@ const NO_SYNC = (skipped: ChildReliefSyncResult['skipped']): ChildReliefSyncResu
  * addDependent / updateDependent / archiveDependent, so the tax figure cannot drift just because a record
  * was created through a different door.
  *
- * WHY IT RUNS AFTER THE DEPENDENT TRANSACTION COMMITS, not inside it: setTaxProfileMY opens its own
- * withTenant transaction, and nesting withTenant takes a SECOND pooled connection — a self-deadlock. Running
- * afterwards is also the behaviour we want for rail-safety: this function NEVER throws. A failure to sync
- * must not roll back or fail the family-record save the user actually asked for. The cost is that the two
- * writes are not atomic; that is acceptable because the sync is derived data that any later dependent write
- * (or a manual save) re-derives and self-heals.
- *
- * Rails (a) and (b) are enforced here; (c) is enforced by passing provenance to setTaxProfileMY; (d) is the
- * payrollAlert this returns.
+ * Ordinary standalone callers retain the after-commit, nonthrowing refresh result: a failed derived
+ * refresh does not undo their already-committed Family save and can be retried. An enclosing activation
+ * or approval supplies its existing transaction; that path propagates failure so all effects roll back.
+ * Neither path nests a second pooled connection inside the caller's transaction. The fixed country
+ * owner derives only the current count/grid and records automatic provenance and any open-payroll alert;
+ * it never receives a caller-supplied tax patch or copied private tax values.
  */
 export async function syncChildReliefFromFamily(
   ctx: SessionContext,
@@ -724,7 +721,7 @@ export async function addDependent(
   outerTx?:Tx,
 ): Promise<{ id: string; childReliefSync: ChildReliefSyncResult }> {
   const res = outerTx ? await addDependentTx(outerTx,ctx,p.personId,p) : await withTenant(ctx, (tx) => addDependentTx(tx, ctx, p.personId, p));
-  // R46 47146ea3 — refresh the PCB child count from the register. Runs after commit, never throws.
+  // Standalone refresh follows commit; an enclosing transaction keeps the consequence atomic.
   const childReliefSync = await syncChildReliefFromFamily(ctx, p.personId,outerTx);
   return { ...res, childReliefSync };
 }

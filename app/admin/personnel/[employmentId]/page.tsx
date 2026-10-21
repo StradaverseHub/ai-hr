@@ -4686,7 +4686,7 @@ export default async function EmployeePage({
   );
 
   // Probation / Contract / Internship review (0110). Admin/manager-managed; hidden once terminated.
-  const reviewCard = !emp.terminatedOn && admin ? <ReviewSection s={s} employmentId={employmentId} /> : null;
+  const reviewCard = !emp.terminatedOn && admin ? <ReviewSection s={s} employmentId={employmentId} canMaintain={canMaintainWorkforce} /> : null;
 
   // Distribute the pre-built section cards into the six tab panels (mapping per approved plan). Each
   // panel is a fragment of the existing <Card> blocks — nothing about the forms or server actions changed,

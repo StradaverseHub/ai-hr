@@ -503,3 +503,36 @@ change the source after preparation and still commit the old fixed termination e
 regression injects such a request change while retaining the ordinary decision and both events, and
 expects the employment, request and events all to roll back. This is a source-derived correction and
 an UNRUN regression, not an observed runtime result.
+
+
+### Direct service-date and period bindings — source only
+
+The remaining ordinary employment service/date inputs now have a draft SQL statement/row boundary:
+the canonical period/value/unit and normal date fields, derived confirmation dates and source review
+end dates. The inventory is tied to the actual org writer's declared input arrays; resignation/last-day
+fields remain in the lifecycle boundary. The existing review workflow explicitly records advisory
+outcomes on its own rows and never changes these source dates. Its separate `setReviewEndDate` function
+is therefore direct maintenance and now checks fresh Workforce authority before data locks. Advisory
+review decisions retain their existing owner and cannot mint maintenance authority.
+
+The added database guard permits unchanged-value no-ops and credential-backed owner repair, and refuses
+changed source values after maintenance denial. It adds no date, period, closed-payroll or pricing rules:
+those remain in the canonical owners. Grade, payroll policy, cost allocation, card and holiday calendar
+columns are excluded because they belong to independent specialist/approval owners. Authored UNRUN
+contracts pin the exact 22 fields and both trigger lists; the prepared service/SQL case checks default
+review-date writes, revoked service/raw period/date refusal, unchanged rows/events and restoration.
+Actual old-snapshot revocation, owner repair, existing end-date/Movement/import/derived-status and review
+consumer compatibility must pass under the leases before this is accepted or the catalogue enabled.
+
+
+The corresponding Personnel review card now receives the page's actual maintenance metadata, displays
+existing six-locale read-only feedback and omits only the source-date form when permission is absent.
+Start Review and existing advisory actions keep their separate authority. The core/SQL checks repeat
+at mutation time, so rendered metadata is not a write grant. A prepared DOM case covers permitted,
+read-only and independent-initiation states; actual app/locale/keyboard outcomes remain required.
+
+The request-preparation conflict check also uses SQL null-safe identity comparison: an existing direct
+termination intent with no request cannot be relabelled as a request-bound resignation intent. Its
+regression checks the immediate conflict state rather than accepting a later generic incomplete-audit
+refusal. Family refresh comments now describe both retained standalone after-commit behavior and
+atomic enclosing-transaction failure correctly. These source changes remain UNRUN.

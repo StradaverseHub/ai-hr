@@ -2685,7 +2685,7 @@ BEGIN
  SELECT * INTO existing FROM app.access_termination_intent WHERE xact_id=pg_current_xact_id()
   AND tenant_id=r.tenant_id AND user_id=app.current_user_id() AND employment_id=e.id;
  IF FOUND THEN
-  IF existing.request_id<>r.id OR existing.expected_patch<>patch THEN
+  IF existing.request_id IS DISTINCT FROM r.id OR existing.expected_patch IS DISTINCT FROM patch THEN
    RAISE EXCEPTION 'Resignation consequence changed' USING ERRCODE='40001'; END IF;
   RETURN;
  END IF;
@@ -2873,3 +2873,37 @@ FOR EACH STATEMENT EXECUTE FUNCTION app.access_workforce_master_statement_lock()
 --> statement-breakpoint
 CREATE TRIGGER access_workforce_reporting_write BEFORE INSERT OR UPDATE OR DELETE ON reporting_line
 FOR EACH ROW EXECUTE FUNCTION app.access_workforce_structure_write();
+
+
+--> statement-breakpoint
+-- Direct service dates and period values. Review decisions only record advisory outcomes on their
+-- own request rows; they do not write these source dates. Calendar/payroll/grade owners stay separate.
+CREATE FUNCTION app.access_workforce_service_info_columns() RETURNS text[]
+LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,pg_temp AS $$
+ SELECT ARRAY['confirmation_date','extended_confirmation_date','final_confirmation_date','tender_resignation_date',
+  'contract_start_date','contract_end_date','probation_end_date','internship_end_date',
+  'probation_months','probation_days','resignation_notice_months','resignation_notice_days','short_notice_months','short_notice_days',
+  'probation_value','probation_unit','extended_probation_value','extended_probation_unit',
+  'notice_before_confirmation_value','notice_before_confirmation_unit','notice_after_confirmation_value','notice_after_confirmation_unit']::text[];
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_service_info_columns() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_service_info_update() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM jsonb_each(to_jsonb(NEW)) d WHERE d.key=ANY(app.access_workforce_service_info_columns()) AND d.value IS DISTINCT FROM to_jsonb(OLD)->d.key)
+  OR app.access_workforce_storage_owner() THEN RETURN NEW; END IF;
+ IF OLD.id IS DISTINCT FROM NEW.id OR OLD.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+  OR NOT app.access_workforce_company(OLD.company_id,'workforce.maintain') OR NOT app.access_workforce_company(NEW.company_id,'workforce.maintain') THEN
+  RAISE EXCEPTION 'Workforce service information maintenance unavailable' USING ERRCODE='42501'; END IF;
+ RETURN NEW;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_service_info_update() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER access_workforce_service_info_lock BEFORE UPDATE OF confirmation_date,extended_confirmation_date,final_confirmation_date,tender_resignation_date,contract_start_date,contract_end_date,probation_end_date,internship_end_date,probation_months,probation_days,resignation_notice_months,resignation_notice_days,short_notice_months,short_notice_days,probation_value,probation_unit,extended_probation_value,extended_probation_unit,notice_before_confirmation_value,notice_before_confirmation_unit,notice_after_confirmation_value,notice_after_confirmation_unit ON employment
+FOR EACH STATEMENT EXECUTE FUNCTION app.access_workforce_master_statement_lock();
+--> statement-breakpoint
+CREATE TRIGGER access_workforce_service_info_update BEFORE UPDATE OF confirmation_date,extended_confirmation_date,final_confirmation_date,tender_resignation_date,contract_start_date,contract_end_date,probation_end_date,internship_end_date,probation_months,probation_days,resignation_notice_months,resignation_notice_days,short_notice_months,short_notice_days,probation_value,probation_unit,extended_probation_value,extended_probation_unit,notice_before_confirmation_value,notice_before_confirmation_unit,notice_after_confirmation_value,notice_after_confirmation_unit ON employment
+FOR EACH ROW EXECUTE FUNCTION app.access_workforce_service_info_update();

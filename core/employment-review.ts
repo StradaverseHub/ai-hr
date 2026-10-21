@@ -13,6 +13,7 @@
  */
 import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import {assertWorkforceEmploymentTx} from './workforce-access';
 import { actorOf, appendEvent } from '../db/events';
 import {
   assignment,
@@ -161,6 +162,8 @@ export async function setReviewEndDate(
   }
   const column = COLUMN_FOR[p.reviewType];
   return withTenant(ctx, async (tx) => {
+    // Setting a source review date is direct Workforce maintenance, not an advisory decision.
+    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     const updated = await tx
       .update(employment)
       .set({ [column]: endDate })

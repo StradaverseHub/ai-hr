@@ -39,6 +39,26 @@ describe('physical profile/register authorization declaration',()=>{
   const prepare=core.indexOf('app.access_prepare_resignation_termination('),apply=core.indexOf('await terminateEmploymentTx(');
   expect(prepare).toBeGreaterThanOrEqual(0);expect(apply).toBeGreaterThan(prepare);
  });
+ it('covers the canonical direct service-period/date inputs and review-date owner without claiming specialist columns',()=>{
+  const source=readFileSync(new URL('../core/org.ts',import.meta.url),'utf8');
+  const columns=(name:string)=>{
+   const begin=source.indexOf(`const ${name} = [`);expect(begin).toBeGreaterThanOrEqual(0);
+   const end=source.indexOf('] as const;',begin);expect(end).toBeGreaterThan(begin);
+   const body=source.slice(begin,end).replace(/\/\/[^\n]*/g,'');expect(body.length).toBeGreaterThan(40);
+   return [...body.matchAll(/'([A-Za-z]+)'/g)].map(match=>match[1].replace(/[A-Z]/g,c=>'_'+c.toLowerCase()));
+  };
+  const expected=[...columns('EMPLOYMENT_INFO_PERIOD_FIELDS'),...columns('EMPLOYMENT_INFO_UNIT_FIELDS'),
+   ...columns('EMPLOYMENT_INFO_DATE_FIELDS').filter(name=>!['resignation_date','last_working_date'].includes(name)),
+   'extended_confirmation_date','final_confirmation_date','probation_end_date','internship_end_date'].sort();
+  const start=migration.indexOf('CREATE FUNCTION app.access_workforce_service_info_columns()');expect(start).toBeGreaterThanOrEqual(0);
+  const end=migration.indexOf('$$;',start);expect(end).toBeGreaterThan(start);
+  const actual=[...migration.slice(start,end).matchAll(/'([a-z_]+)'/g)].map(match=>match[1]).sort();
+  expect(actual).toEqual(expected);expect(actual).toHaveLength(22);
+  const statement=migration.match(/CREATE TRIGGER access_workforce_service_info_lock BEFORE UPDATE OF ([a-z_,]+) ON employment/);
+  const row=migration.match(/CREATE TRIGGER access_workforce_service_info_update BEFORE UPDATE OF ([a-z_,]+) ON employment/);
+  expect(statement?.[1].split(',').sort()).toEqual(actual);expect(row?.[1].split(',').sort()).toEqual(actual);
+  for(const field of ['grade_id','payroll_policy_id','card_id','work_state','holiday_group_id','cost_allocation'])expect(actual).not.toContain(field);
+ });
  it('pins every physical ESS person/compliance/register binding to the canonical field registry',()=>{
   const body=migration.split('CREATE FUNCTION app.access_profile_value_bindings()')[1].split('; $$;')[0];
   const literal="(?:'((?:[^']|'')*)'|(NULL))";

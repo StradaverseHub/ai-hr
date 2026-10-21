@@ -638,6 +638,16 @@ describe('structural SQL and fixed resignation consequences',()=>{
    .where(and(eq(domainEvent.subjectEmploymentId,subject.employmentId),sql`${domainEvent.eventType} in ('employment.terminated','resignation.accepted')`)).orderBy(domainEvent.eventType);
   expect(events).toEqual([{type:'employment.terminated',actor:b.adminUserId},{type:'resignation.accepted',actor:b.adminUserId}]);
  });
+ it('cannot relabel a direct termination intent as a request-bound resignation intent',async()=>{
+  const {subject,request}=await pending();await override(b.adminUserId,'workforce.maintain',b.companyId,null);
+  const patch={terminated_on:todayInKualaLumpur(),termination_type:'voluntary',termination_reason:'Fictional independent resignation'};
+  const failure=await withTenant(admin(),async tx=>{
+   await tx.execute(sql`select app.access_assert_termination(${subject.employmentId}::uuid,${JSON.stringify(patch)}::jsonb)`);
+   await tx.execute(sql`select app.access_prepare_resignation_termination(${request.requestId}::uuid)`);
+  }).then(()=>null,error=>error);
+  expect(pgSqlState(failure)).toBe('40001');
+  expect((await owner.db.select().from(resignationRequest).where(eq(resignationRequest.id,request.requestId)))[0].status).toBe('pending');
+ });
  it('rolls back when the request reason drifts after its fixed consequence was prepared',async()=>{
   const {subject,request}=await pending();const {decideResignation}=await import('../core/offboarding');
   const before=await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId));
@@ -692,6 +702,25 @@ describe('flat employment maintenance SQL boundary',()=>{
   expect(await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId))).toEqual(before);
   await owner.db.update(employment).set({contractRemark:'Fictional credential-backed repair'}).where(eq(employment.id,subject.employmentId));
   expect((await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId)))[0].contractRemark).toBe('Fictional credential-backed repair');
+ });
+});
+
+describe('direct service information permission bindings',()=>{
+ it('checks the source review-date setter and raw period/date values without changing advisory decisions',async()=>{
+  const subject=await hire('Fictional service information target');const {setReviewEndDate}=await import('../core/employment-review');
+  const date=todayInKualaLumpur();await setReviewEndDate(admin(),{employmentId:subject.employmentId,reviewType:'contract',endDate:date});
+  await activate();await override(b.adminUserId,'workforce.maintain',b.companyId,'deny');
+  const before=await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId));
+  const events=await owner.db.select().from(domainEvent).where(eq(domainEvent.subjectEmploymentId,subject.employmentId)).orderBy(domainEvent.id);
+  await expect(setReviewEndDate(admin(),{employmentId:subject.employmentId,reviewType:'contract',endDate:null})).rejects.toBeInstanceOf(WorkforceAccessError);
+  await sqlRefusal(withTenant(admin(),tx=>tx.update(employment).set({probationValue:before[0].probationValue===7?8:7}).where(eq(employment.id,subject.employmentId))));
+  await sqlRefusal(withTenant(admin(),tx=>tx.update(employment).set({confirmationDate:before[0].confirmationDate===date?null:date}).where(eq(employment.id,subject.employmentId))));
+  await withTenant(admin(),tx=>tx.update(employment).set({contractEndDate:date}).where(eq(employment.id,subject.employmentId)));
+  expect(await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId))).toEqual(before);
+  expect(await owner.db.select().from(domainEvent).where(eq(domainEvent.subjectEmploymentId,subject.employmentId)).orderBy(domainEvent.id)).toEqual(events);
+  await override(b.adminUserId,'workforce.maintain',b.companyId,null);
+  await setReviewEndDate(admin(),{employmentId:subject.employmentId,reviewType:'contract',endDate:null});
+  expect((await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId)))[0].contractEndDate).toBeNull();
  });
 });
 
