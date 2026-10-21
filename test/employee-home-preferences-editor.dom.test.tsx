@@ -15,7 +15,7 @@ const state=vi.hoisted(()=>({save:vi.fn(),push:vi.fn(),refresh:vi.fn()}));
 vi.mock('../app/me/home/actions',()=>({saveHomePreferencesAction:state.save}));
 vi.mock('next/navigation',()=>({useRouter:()=>({push:state.push,refresh:state.refresh})}));
 const catalogues={en,ms,zh,ta,th,vi:viWords};
-beforeEach(()=>{vi.clearAllMocks();state.save.mockResolvedValue({error:'invalid'});});afterEach(cleanup);
+beforeEach(()=>{vi.clearAllMocks();state.save.mockReset();state.save.mockResolvedValue({error:'invalid'});});afterEach(cleanup);
 function mount(locale:keyof typeof catalogues='en',cards=EMPLOYEE_HOME_CARD_DEFAULTS){
  return render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]}><HomePreferencesEditor initial={defaultEmployeeHomePreferences()} cards={cards}/></NextIntlClientProvider>);
 }
@@ -44,7 +44,7 @@ describe('Home preference editing',()=>{
  it('keeps a refused draft and prevents double submission while the action is unresolved',async()=>{
   let finish!:(value:{error:'forbidden'})=>void;state.save.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));mount();
   const zone=screen.getByRole('textbox',{name:en.employeeHome.preferences.timeZone});fireEvent.change(zone,{target:{value:'Asia/Tokyo'}});
-  fireEvent.submit(form());fireEvent.submit(form());await waitFor(()=>expect(state.save).toHaveBeenCalledOnce());finish({error:'forbidden'});
+  const target=form();fireEvent.submit(target);fireEvent.submit(target);await waitFor(()=>expect(state.save).toHaveBeenCalledOnce());finish({error:'forbidden'});
   const alert=await screen.findByRole('alert');expect(alert).toHaveTextContent(en.employeeHome.preferences.forbidden);await waitFor(()=>expect(alert).toHaveFocus());expect(zone).toHaveValue('Asia/Tokyo');expect(state.push).not.toHaveBeenCalled();
  });
  it('resets only after an explicit click and navigates only on confirmed success',async()=>{
