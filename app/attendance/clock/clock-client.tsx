@@ -134,6 +134,9 @@ function ClockFlow({initial,shiftName,employmentId,embedded=false,initialAction,
    *  this component. */
   async function confirm(direction:'in'|'out'){
     if(inFlight.current)return;
+    // Tell an embedding dialog synchronously, before any async command work. It must not close
+    // between a command starting and React delivering the busy-state effect.
+    onBusyChange?.(true);
     const recovering=command.current!=null;
     inFlight.current=true;setBusy(true);setAction(direction);setError('');stop();
     try {

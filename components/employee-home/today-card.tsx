@@ -78,8 +78,9 @@ function TodayFacts({value,timeZone,onClock,actionRef}:{value:EmployeeHomeToday;
 
 function HomeClockDialog({employmentId,employmentLabel,intent,onSaved,onClose,onRestoreFocus}:{employmentId:string;employmentLabel:string;intent:'in'|'out';onSaved:(receipt:ClockingConfirmation)=>void;onClose:()=>void;onRestoreFocus:()=>void}){
  const t=useTranslations('employeeHome.today'),clockText=useTranslations('attendance.clock');
- const [attempt,setAttempt]=React.useState(0),[busy,setBusy]=React.useState(false);
- const [loaded,setLoaded]=React.useState<{state:'loading'|'failed'}|{state:'ready';value:ClockState}>({state:'loading'});
+ const [attempt,setAttempt]=React.useState(0),[busy,setBusy]=React.useState(false),busyRef=React.useRef(false);
+ const reportBusy=React.useCallback((value:boolean)=>{busyRef.current=value;setBusy(value);},[]);
+ const [loaded,setLoaded]=React.useState<{state:'loading'}|{state:'failed'}|{state:'ready';value:ClockState}>({state:'loading'});
  React.useEffect(()=>{
   const controller=new AbortController();let live=true;setLoaded({state:'loading'});
   const timeout=setTimeout(()=>{if(live){controller.abort();setLoaded({state:'failed'});}},15000);
@@ -93,13 +94,13 @@ function HomeClockDialog({employmentId,employmentLabel,intent,onSaved,onClose,on
   }).catch(()=>{if(!controller.signal.aborted){clearTimeout(timeout);setLoaded({state:'failed'});}});
   return()=>{live=false;clearTimeout(timeout);controller.abort();};
  },[employmentId,attempt]);
- return <Dialog.Root open onOpenChange={open=>{if(!open&&!busy)onClose();}}><Dialog.Portal>
+ return <Dialog.Root open onOpenChange={open=>{if(!open&&!busyRef.current)onClose();}}><Dialog.Portal>
   <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50"/>
   <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[90dvh] w-[calc(100%-2rem)] max-w-5xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border bg-background p-4 shadow-xl sm:p-6"
-   onCloseAutoFocus={event=>{event.preventDefault();onRestoreFocus();}} onEscapeKeyDown={event=>{if(busy)event.preventDefault();}} onPointerDownOutside={event=>{if(busy)event.preventDefault();}}>
+   onCloseAutoFocus={event=>{event.preventDefault();onRestoreFocus();}} onEscapeKeyDown={event=>{if(busyRef.current)event.preventDefault();}} onPointerDownOutside={event=>{if(busyRef.current)event.preventDefault();}}>
    <div className="mb-4 flex items-start justify-between gap-3"><div className="min-w-0"><Dialog.Title className="text-lg font-semibold">{clockText(intent==='in'?'clockIn':'clockOut')}</Dialog.Title><Dialog.Description className="mt-1 break-words text-sm text-muted-foreground">{employmentLabel}</Dialog.Description></div><Dialog.Close asChild><Button type="button" variant="outline" disabled={busy} className="min-h-11">{t('close')}</Button></Dialog.Close></div>
    {loaded.state==='loading'?<ClockLoading/>:loaded.state==='failed'?<div className="space-y-3"><p role="alert" className="text-sm">{t('clockFailed')}</p><Button type="button" variant="outline" className="min-h-11" onClick={()=>setAttempt(value=>value+1)}>{t('retry')}</Button></div>:
-    <CanonicalClockFlow initial={loaded.value} shiftName={null} employmentId={employmentId} embedded initialAction={intent} onSaved={onSaved} onBusyChange={setBusy}/>}
+    <CanonicalClockFlow initial={loaded.value} shiftName={null} employmentId={employmentId} embedded initialAction={intent} onSaved={onSaved} onBusyChange={reportBusy}/>}
   </Dialog.Content>
  </Dialog.Portal></Dialog.Root>;
 }
