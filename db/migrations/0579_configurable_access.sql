@@ -876,7 +876,8 @@ BEGIN
  IF NOT app.access_legacy_role_authority(t,u,NULL,NULL,NULL) THEN
   RAISE EXCEPTION 'profile configuration authority unavailable' USING ERRCODE='42501'; END IF;
  IF p_keys IS NULL OR jsonb_typeof(p_keys)<>'array' OR jsonb_array_length(p_keys)>512
-  OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_keys) k WHERE jsonb_typeof(k)<>'string' OR length(k#>>'{}') NOT BETWEEN 1 AND 200)
+  OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_keys) k WHERE jsonb_typeof(k)<>'string' OR length(k#>>'{}') NOT BETWEEN 1 AND 200
+   OR (k#>>'{}') IN ('v','kind','fieldId','fields','registers','baselineHash','redacted'))
   OR p_reason IS NULL OR length(btrim(p_reason)) NOT BETWEEN 1 AND 2000 THEN
   RAISE EXCEPTION 'profile withdrawal input invalid' USING ERRCODE='23514'; END IF;
  SELECT COALESCE(array_agg(DISTINCT value ORDER BY value),'{}'::text[]) INTO keys FROM jsonb_array_elements_text(p_keys);

@@ -108,6 +108,11 @@ describe('effective Security review permission across pending ESS photo consumer
   expect((await getPersonPhoto(subject.ctx,subject.personId))?.content).toEqual(old);
   expect(await setOwnPersonPhoto(subject.ctx,{employmentId:subject.employmentId,content:next,fileName:'retry.png'})).toEqual({requestId});
  });
+ it('does not treat proposal envelope keys as withdrawable personnel fields',async()=>{
+  const {subject,requestId}=await fixture();
+  await expect(withTenant(admin(),tx=>tx.execute(sql`select app.access_withdraw_profile_requests('["v"]'::jsonb,'Invalid envelope key')`))).rejects.toThrow();
+  expect((await photo(subject.ctx,requestId)).status).toBe(200);
+ });
  it('does not let an employee call the write-only withdrawal owner using forged role names',async()=>{
   const {subject,requestId}=await fixture();
   await expect(withTenant({...subject.ctx,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]},tx=>tx.execute(sql`select app.access_withdraw_profile_requests('["profile.personal_details.photo"]'::jsonb,'Forged configuration actor')`))).rejects.toThrow();
