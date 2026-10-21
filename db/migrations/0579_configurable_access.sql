@@ -1660,7 +1660,7 @@ BEGIN
  END IF;
  IF raw->'version' NOT IN ('3'::jsonb,'4'::jsonb) OR raw->'version' IS NULL
   OR jsonb_typeof(raw->'fields') IS DISTINCT FROM 'object' OR jsonb_typeof(raw->'primaryOnly') IS DISTINCT FROM 'array' THEN RETURN false; END IF;
- IF (SELECT count(*) FROM jsonb_object_keys(raw))<>CASE WHEN raw->'version'='3'::jsonb THEN 3 ELSE 4 END
+ IF (SELECT count(*) FROM jsonb_object_keys(raw))<>(CASE WHEN raw->'version'='3'::jsonb THEN 3 ELSE 4 END)
   OR (SELECT count(*) FROM jsonb_object_keys(raw->'fields'))>512 OR jsonb_array_length(raw->'primaryOnly')>512
   OR EXISTS(SELECT 1 FROM jsonb_each(raw->'fields') f WHERE length(f.key) NOT BETWEEN 1 AND 200 OR f.value NOT IN ('"editable"'::jsonb,'"viewOnly"'::jsonb,'"hide"'::jsonb))
   OR EXISTS(SELECT 1 FROM jsonb_array_elements(raw->'primaryOnly') v WHERE jsonb_typeof(v)<>'string' OR length(v#>>'{}') NOT BETWEEN 1 AND 200)
