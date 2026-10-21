@@ -13,7 +13,7 @@ import {EMPTY_PROFILE_ROUTING,editableProfileRoute,type ProfileRouteRule} from '
 import {setTenantSetting} from '../core/tenant-settings';
 import {essVisibleFields} from '../lib/personnel-ess-contract';
 import {saveProfileVisibilityPolicy,saveOwnPhotoSubmissionSetting} from '../core/profile-edit-policy';
-import {setOwnPersonPhoto,setPersonPhoto,getPersonPhoto,getProfilePhotoProposal} from '../core/person-photo';
+import {setOwnPersonPhoto,setPersonPhoto,getPersonPhoto,getProfilePhotoProposal,PHOTO_MAX_BYTES} from '../core/person-photo';
 import {person,profileChangeRequest,profilePhotoProposal,personPhoto,roleAssignment} from '../db/schema';
 const routeSession=vi.hoisted(()=>({current:null as SessionContext|null}));
 vi.mock('../lib/session',()=>({getSession:async()=>{if(!routeSession.current)throw new Error('No fixture identity');return routeSession.current;}}));
@@ -42,6 +42,16 @@ async function fixture(){
  return {employee,hr,other};
 }
 describe('canonical photo request lifecycle and byte privacy',()=>{
+ it('accepts the exact owner size boundary as pending bytes and refuses the next byte without changing the master or request',async()=>{
+  const {employee}=await fixture();
+  const atLimit=Buffer.alloc(PHOTO_MAX_BYTES);png.copy(atLimit);
+  const {requestId}=await setOwnPersonPhoto(employee.ctx,{employmentId:employee.employmentId,content:atLimit,fileName:'bounded.png'});
+  expect((await getProfilePhotoProposal(employee.ctx,requestId))?.content.byteLength).toBe(PHOTO_MAX_BYTES);
+  await expect(setOwnPersonPhoto(employee.ctx,{employmentId:employee.employmentId,content:Buffer.concat([atLimit,Buffer.from([0])]),fileName:'oversized.png'})).rejects.toThrow('Photo exceeds 2 MB');
+  expect((await getPersonPhoto(employee.ctx,employee.personId))?.content).toEqual(original);
+  const requests=await owner.db.select({id:profileChangeRequest.id}).from(profileChangeRequest).where(and(eq(profileChangeRequest.personId,employee.personId),eq(profileChangeRequest.status,'pending'))).orderBy(profileChangeRequest.id);
+  expect(requests).toEqual([{id:requestId}]);
+ });
  it('keeps the master unchanged until HR approves, reuses exact pending retries and purges proposal bytes after approval',async()=>{
   const {employee,hr}=await fixture();
   const submitted=await setOwnPersonPhoto(employee.ctx,{employmentId:employee.employmentId,content:png,fileName:'PRIVATE-FILENAME.png'});
@@ -126,7 +136,9 @@ describe('pending photo actual consumer and runtime privilege boundary',()=>{
  });
  it('cannot use the retired direct-own-photo GUC or change/delete pending bytes through ai_hr_app',async()=>{
   const {employee}=await fixture();const {requestId}=await setOwnPersonPhoto(employee.ctx,{employmentId:employee.employmentId,content:png,fileName:'x.png'});
-  const changed=await withTenant(employee.ctx,async tx=>{await tx.execute(sql`select set_config('app.profile_own_photo_write','on',true)`);return tx.update(personPhoto).set({content:png,sizeBytes:png.length}).where(eq(personPhoto.personId,employee.personId)).returning({id:personPhoto.id});});expect(changed).toEqual([]);
+  let refusal:unknown;
+  const changed=await withTenant(employee.ctx,async tx=>{await tx.execute(sql`select set_config('app.profile_own_photo_write','on',true)`);return tx.update(personPhoto).set({content:png,sizeBytes:png.length}).where(eq(personPhoto.personId,employee.personId)).returning({id:personPhoto.id});}).catch(error=>{refusal=error;return [];});expect(changed).toEqual([]);
+  if(refusal){const error=refusal as {code?:string;cause?:{code?:string}};expect(error.code??error.cause?.code).toBe('42501');}
   await expect(withTenant(employee.ctx,tx=>tx.update(profilePhotoProposal).set({content:original,sizeBytes:original.length}).where(eq(profilePhotoProposal.requestId,requestId)))).rejects.toThrow();
   await expect(withTenant(employee.ctx,tx=>tx.delete(profilePhotoProposal).where(eq(profilePhotoProposal.requestId,requestId)))).rejects.toThrow();
   expect((await getPersonPhoto(employee.ctx,employee.personId))?.content).toEqual(original);expect((await getProfilePhotoProposal(employee.ctx,requestId))?.content).toEqual(png);

@@ -20977,6 +20977,7 @@
     "updateRetestNote": "Semak perbezaan sebelum mengesahkan. Penerbitan arahan yang disemak menandakan tugasan terdahulu untuk ujian semula dan mengekalkan hasil yang disimpan."
   },
   "essProfile": {
+    "noVisibleSections": "Tiada bahagian profil tersedia dengan tetapan semasa anda.",
     "approvalAuthorityFloor": "Kuasa HR minimum sedia ada (dikekalkan)",
     "photoRouteUnavailable": "HR perlu menetapkan pelulus foto yang sah sebelum anda boleh menghantar.",
     "photoAlreadyPending": "Foto sudah menunggu semakan. Tunggu keputusan sebelum menghantar foto lain.",

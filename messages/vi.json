@@ -20977,6 +20977,7 @@
     "updateRetestNote": "Xem xét khác biệt trước khi xác nhận. Xuất bản hướng dẫn đã sửa sẽ đánh dấu các phân công trước đó cần kiểm thử lại và giữ nguyên kết quả đã lưu."
   },
   "essProfile": {
+    "noVisibleSections": "Không có phần hồ sơ nào khả dụng với thiết lập hiện tại.",
     "approvalAuthorityFloor": "Quyền HR tối thiểu hiện có (được giữ nguyên)",
     "photoRouteUnavailable": "HR cần thiết lập người duyệt ảnh hợp lệ trước khi bạn gửi.",
     "photoAlreadyPending": "Đã có ảnh đang chờ xem xét. Hãy đợi quyết định trước khi gửi ảnh khác.",

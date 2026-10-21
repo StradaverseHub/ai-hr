@@ -20977,6 +20977,7 @@
     "updateRetestNote": "Review differences before confirming. Publishing revised instructions marks earlier assignments for retesting and preserves their saved results."
   },
   "essProfile": {
+    "noVisibleSections": "No profile sections are available with your current settings.",
     "approvalAuthorityFloor": "Minimum existing HR authority (preserved)",
     "photoRouteUnavailable": "HR needs to configure a valid photo approver before you can submit.",
     "photoAlreadyPending": "A photo is already waiting for review. Wait for the decision before submitting another.",

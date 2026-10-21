@@ -22,7 +22,8 @@ import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
 import { employment, personPhoto, profileChangeRequest, profilePhotoProposal } from '../db/schema';
 
-export const PHOTO_MAX_BYTES = 2 * 1024 * 1024; // 2 MB, same cap the company logo uses
+import {PHOTO_MAX_BYTES} from '../lib/profile-photo-limits';
+export {PHOTO_MAX_BYTES} from '../lib/profile-photo-limits';
 export const ALLOWED_PHOTO_MIME = ['image/png', 'image/jpeg'] as const;
 
 /** Fail-closed photo validation (empty / oversized / disallowed MIME). */

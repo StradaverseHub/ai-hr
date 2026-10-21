@@ -1,4 +1,5 @@
-import {profileHiddenTabs} from '@/lib/profile-edit-policy-value';
+import {profileVisibilityFingerprint} from '@/lib/profile-policy-fingerprint';
+import {profileHiddenTabs,isProfileVisibilityPolicyValue,profileSectionPolicyKey} from '@/lib/profile-edit-policy-value';
 import {ownPhotoSubmissionAllowed} from '@/core/person-photo';
 import {saveOwnPhotoAction} from './own-photo-action';
 import {getSetting} from '@/core/entitlements';
@@ -55,8 +56,10 @@ export default async function MePage({
   const te=await getTranslations('essProfile'),allLabels=await getTranslations();
   const presentation=await readProfilePresentationPolicy(s);
   const visible=presentation.visible;
-  const hiddenTabs=new Set<string>(profileHiddenTabs(getSetting(presentation.ctx,'ess.profile_change_fields')));
+  const visibilityPolicy=getSetting(presentation.ctx,'ess.profile_change_fields');
+  const hiddenTabs=new Set<string>(profileHiddenTabs(visibilityPolicy));
   const tabVisible=(tab:string)=>!hiddenTabs.has(tab);
+  const sectionVisible=(tab:string,section:string)=>tabVisible(tab)&&(!isProfileVisibilityPolicyValue(visibilityPolicy)||visibilityPolicy.version!==4||visibilityPolicy.groups[profileSectionPolicyKey(tab,section)]!=='hide');
   const canSee=(owner:string,field:string)=>essFactVisible(visible,owner,field);
   const own=await myOwnEmploymentSubjects(s,{profileEdit:true});
   const selected=requestedEmploymentId?own.find(row=>row.employmentId===requestedEmploymentId):own.length===1?own[0]:null;
@@ -173,7 +176,7 @@ export default async function MePage({
       {/* The CURRENT salary only. The revision history is withheld — each past row carries HR's remark on
           why the increment was given, which is a conversation and not a field. See
           docs/me-profile-field-visibility.md. */}
-      <ReadCard id="section-compensation" title={tp('compensation')}>
+      {sectionVisible('Payroll','Basic Salary and salary history')&&<ReadCard id="section-compensation" title={tp('compensation')}>
         {/* WHOSE PAY, AND FOR WHICH EMPLOYMENT. This card is the compensation row of the employment /me
             resolved from the session; an employee holding two of them (ADR-0009) would otherwise read one
             unlabelled figure and have no way to tell which contract it belongs to. The other positions and
@@ -182,7 +185,6 @@ export default async function MePage({
         {canSee('compensation','basicSalary')&&<ReadField label={tp('basicSalaryMyr')} value={canSee('compensation','basicSalary')&&comp?Number(comp.basicSalary).toFixed(2):null} notSet={notSet} />}
         {canSee('compensation','currency')&&<ReadField label={tp('salaryCurrency')} value={canSee('compensation','currency')?comp?.currency??null:null} notSet={notSet} />}
         {canSee('compensation','validFrom')&&<ReadField label={tp('effectiveDate')} value={canSee('compensation','validFrom')&&comp?.validFrom?formatDmy(comp.validFrom):null} notSet={notSet} />}
-        {canSee('payrollProfile','paymentMethod')&&<ReadField label={tp('paymentMethod')} value={canSee('payrollProfile','paymentMethod')?paymentMethodLabel(record.paymentMethod):null} notSet={tp('paymentMethodNotSet')} />}
         {canSee('compensation','payMode')&&<ReadField label={tp('payMode')} value={canSee('compensation','payMode')?compensationChoice('paymode',comp?.payMode):null} notSet={notSet} />}
         {canSee('compensation','paymentTerm')&&<ReadField label={tp('paymentTerm')} value={canSee('compensation','paymentTerm')?compensationChoice('paymentterm',comp?.paymentTerm):null} notSet={notSet} />}
         {/* Daily / hourly staff are paid from the rate, not the basic — it was already projected in
@@ -190,7 +192,7 @@ export default async function MePage({
             field that is not recorded. */}
         {canSee('compensation','rateAmount')&&<ReadField label={tp('rateAmount')} value={canSee('compensation','rateAmount')?comp?.rateAmount??null:null} notSet={notSet} />}
         {canSee('compensation','status')&&<ReadField label={tp('status')} value={canSee('compensation','status')&&comp?tp('salaryStatusActive'):null} notSet={notSet} />}
-      </ReadCard>
+      </ReadCard>}
 
       {/* r298 — this card, TP1 and My loans are the Payroll pack's; absent (and unread) without Payroll. */}
       {payrollOn && (
@@ -490,6 +492,6 @@ export default async function MePage({
     {ownPhotoSubmissionAllowed(presentation)&&<Card className="p-4"><form action={saveOwnPhotoAction} className="flex flex-wrap items-end gap-3"><input type="hidden" name="employmentId" value={employmentId}/><Field label={te('ownPhoto')}><input type="file" name="photo" accept="image/png,image/jpeg" required className={inputCls}/></Field><Button type="submit" variant="outline">{te('submitPhoto')}</Button><p className="text-xs text-muted-foreground">{te('photoFormats')}</p></form></Card>}
     {visible.has('profile.personal_details.photo')&&profileRequests.filter(request=>request.status==='pending'&&request.proposed&&typeof request.proposed==='object'&&'kind' in request.proposed&&request.proposed.kind==='photo').map(request=><Card key={request.id} className="space-y-3 p-4"><h3 className="font-medium">{te('pendingPhoto')}</h3><p className="text-sm text-muted-foreground">{te('photoApprovalHelp')}</p><img src={`/me/photo-proposal/${request.id}`} alt={te('proposedPhoto')} className="size-24 rounded-md object-cover"/></Card>)}
     {!workspace.statutoryAvailable&&<Card className="p-4 text-sm text-muted-foreground">{te('countryUnavailable')}</Card>}
-    <ProfileEditor key={employmentId} workspace={workspace} facts={facts} defaultTab={activeTab} history={history} hiddenTabs={[...hiddenTabs]} extraPanels={{payroll:tabVisible('Payroll')?payrollPanel:null,documents:tabVisible('Documents')?documentsPanel:null,attendance:tabVisible('Attendance')&&facts.modules.attendance?attendancePanel:null,leave:tabVisible('Leave')&&facts.modules.leave?leavePanel:null,others:tabVisible('Others')?<Card className="p-4"><Link href="/me/performance" className="text-primary underline">{t('myPerformanceLink')}</Link></Card>:null}}/>
+    <ProfileEditor key={employmentId+':'+profileVisibilityFingerprint(visibilityPolicy)} workspace={workspace} facts={facts} defaultTab={activeTab} history={tabVisible('Others')?history:[]} hiddenTabs={[...hiddenTabs]} extraPanels={{payroll:tabVisible('Payroll')?payrollPanel:null,documents:sectionVisible('Documents','Employee documents')?documentsPanel:null,attendance:tabVisible('Attendance')&&facts.modules.attendance?attendancePanel:null,leave:tabVisible('Leave')&&facts.modules.leave?leavePanel:null,others:tabVisible('Others')?<Card className="p-4"><Link href="/me/performance" className="text-primary underline">{t('myPerformanceLink')}</Link></Card>:null}}/>
   </div>;
 }

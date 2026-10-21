@@ -20977,6 +20977,7 @@
     "updateRetestNote": "确认前请核对差异。发布修订后的说明会将先前的任务标为需要复测，并保留已保存的结果。"
   },
   "essProfile": {
+    "noVisibleSections": "当前设置下没有可查看的个人资料页签。",
     "approvalAuthorityFloor": "现有 HR 最低权限（保留）",
     "photoRouteUnavailable": "提交前，HR 需要配置有效的照片审批人。",
     "photoAlreadyPending": "已有照片等待审批。请等待决定后再提交。",
