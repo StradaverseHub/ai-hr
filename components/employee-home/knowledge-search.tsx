@@ -5,14 +5,14 @@ import Link from 'next/link';
 import {Button} from '@/components/ui';
 import type {Locale} from '@/i18n/config';
 import {deliverHomeCard} from '@/lib/employee-home-delivery';
-import {HOME_SEARCH_QUERY_MAX,HOME_SEARCH_RESULT_LIMIT,homeKnowledgeHref,homeSearchWords} from '@/lib/employee-home-search';
+import {HOME_SEARCH_DEBOUNCE_MS,HOME_SEARCH_QUERY_MAX,HOME_SEARCH_RESULT_LIMIT,homeKnowledgeHref,homeSearchWords} from '@/lib/employee-home-search';
 
 type Item={id:string;title:string};
 type State={state:'idle'|'loading'}|{state:'ready';items:Item[]}|{state:'failed';reason:'timeout'|'unavailable'|'invalid'};
 export type HomeKnowledgeSearchLabels={label:string;hint:string;submit:string;loading:string;results:string;noMatch:string;failed:string;timeout:string;invalid:string};
 
-/** Library facet only: forms/pages join through their own permission-filtered owner. Search is an
- * explicit read, never a model call, automatic suggestion or query stored in personal preferences.
+/** Library facet only: forms/pages join through their own permission-filtered owner. Debounced
+ * lexical reads never call a model, invent suggestions or store a query in personal preferences.
  */
 export function HomeKnowledgeSearch({locale,labels}:{locale:Locale;labels:HomeKnowledgeSearchLabels}){
   return <KnowledgeSearch key={locale} locale={locale} labels={labels}/>;
@@ -20,10 +20,15 @@ export function HomeKnowledgeSearch({locale,labels}:{locale:Locale;labels:HomeKn
 function KnowledgeSearch({locale,labels}:{locale:Locale;labels:HomeKnowledgeSearchLabels}){
   const inputId=React.useId(),hintId=React.useId(),resultsId=React.useId();
   const [query,setQuery]=React.useState(''),[view,setView]=React.useState<State>({state:'idle'});
+  const [composing,setComposing]=React.useState(false);
   const current=React.useRef<AbortController|null>(null);
-  React.useEffect(()=>()=>current.current?.abort(),[]);
-  async function search(event:React.FormEvent<HTMLFormElement>){
-    event.preventDefault();current.current?.abort();current.current=null;
+  const pending=React.useRef<ReturnType<typeof setTimeout>|null>(null);
+  const cancelDelay=React.useCallback(()=>{
+    if(pending.current!==null){clearTimeout(pending.current);pending.current=null;}
+  },[]);
+  React.useEffect(()=>()=>{cancelDelay();current.current?.abort();},[cancelDelay]);
+  const search=React.useCallback(async()=>{
+    cancelDelay();current.current?.abort();current.current=null;
     try{if(!homeSearchWords(query).length){setView(query.trim()?{state:'failed',reason:'invalid'}:{state:'idle'});return;}}
     catch{setView({state:'failed',reason:'invalid'});return;}
     const controller=new AbortController();current.current=controller;setView({state:'loading'});
@@ -41,18 +46,25 @@ function KnowledgeSearch({locale,labels}:{locale:Locale;labels:HomeKnowledgeSear
       });
       if(new Set(items.map(item=>item.id)).size!==items.length)throw new Error('Home search unavailable');
       return items;
-    },{signal:controller.signal});
+    },{signal:controller.signal,timeoutMs:2400}); // Leave room for the typing delay within the read budget.
     if(current.current!==controller||result.state==='cancelled')return;
     current.current=null;
     setView(result.state==='ready'?{state:'ready',items:result.value}:{state:'failed',reason:result.reason});
-  }
+  },[query,locale,cancelDelay]);
+  React.useEffect(()=>{
+    if(!query.trim()||composing)return;
+    pending.current=setTimeout(()=>{pending.current=null;void search();},HOME_SEARCH_DEBOUNCE_MS);
+    return cancelDelay;
+  },[query,composing,search,cancelDelay]);
   return <div className="space-y-3">
-    <form role="search" aria-label={labels.label} onSubmit={search} className="space-y-2">
+    <form role="search" aria-label={labels.label} onSubmit={event=>{event.preventDefault();if(!composing)void search();}} className="space-y-2">
       <label htmlFor={inputId} className="block text-sm font-medium">{labels.label}</label>
       <div className="flex flex-wrap gap-2">
         <input id={inputId} type="search" value={query} maxLength={HOME_SEARCH_QUERY_MAX} aria-describedby={hintId}
           aria-controls={resultsId} autoComplete="off" className="min-h-11 min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-2 text-base text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          onChange={event=>{current.current?.abort();current.current=null;setQuery(event.target.value);setView({state:'idle'});}}/>
+          onCompositionStart={()=>{cancelDelay();current.current?.abort();current.current=null;setComposing(true);setView({state:'idle'});}}
+          onCompositionEnd={()=>setComposing(false)}
+          onChange={event=>{cancelDelay();current.current?.abort();current.current=null;setQuery(event.target.value);setView({state:'idle'});}}/>
         <Button type="submit" variant="outline" className="min-h-11" disabled={view.state==='loading'||!query.trim()}>{labels.submit}</Button>
       </div>
       <p id={hintId} className="max-w-prose text-sm leading-relaxed text-muted-foreground">{labels.hint}</p>

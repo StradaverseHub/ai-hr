@@ -21442,7 +21442,7 @@
       "submit": "Search",
       "loading": "Searching…",
       "results": "Library results",
-      "noMatch": "No matching library documents. Try different words.",
+      "noMatch": "No matching library documents. Contact HR or browse your Notice Board.",
       "failed": "Search could not load. Submit your search again.",
       "timeout": "Search took too long. Submit your search again.",
       "invalid": "Use up to 120 characters, including at least one letter or number."

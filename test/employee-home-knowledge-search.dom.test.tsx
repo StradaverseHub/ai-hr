@@ -2,12 +2,13 @@ import * as React from 'react';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {HomeKnowledgeSearch} from '../components/employee-home/knowledge-search';
+import en from '../messages/en.json';
 
-const labels={label:'Search policies and help',hint:'Search the library.',submit:'Search',loading:'Searching',results:'Library results',noMatch:'No matching library documents.',failed:'Search could not load. Submit your search again.',timeout:'Search took too long. Submit your search again.',invalid:'Check your search text.'};
-afterEach(()=>{cleanup();vi.unstubAllGlobals();vi.restoreAllMocks();});
+const labels=en.employeeHome.knowledgeSearch;
+afterEach(()=>{cleanup();vi.useRealTimers();vi.unstubAllGlobals();vi.restoreAllMocks();});
 const submit=(query:string)=>{fireEvent.change(screen.getByRole('searchbox'),{target:{value:query}});fireEvent.submit(screen.getByRole('search'));};
 describe('Home library search facet',()=>{
-  it('performs only an explicit search and builds a safe internal result link',async()=>{
+  it('does not search on mount, accepts immediate submit and builds a safe internal result link',async()=>{
     const fetcher=vi.fn(async()=>Response.json({version:1,items:[{id:'document/one',title:'Recorded policy',href:'https://fictional.invalid/unsafe',body:'Private body'}]}));
     vi.stubGlobal('fetch',fetcher);render(<HomeKnowledgeSearch locale="en" labels={labels}/>);
     expect(fetcher).not.toHaveBeenCalled();submit('leave');
@@ -17,6 +18,29 @@ describe('Home library search facet',()=>{
     expect(url).toBe('/api/home/knowledge?q=leave&locale=en');expect(options.cache).toBe('no-store');
     expect(options.credentials).toBe('same-origin');expect(options.signal).toBeInstanceOf(AbortSignal);
   });
+  it('debounces typing and holds the read until input composition finishes',async()=>{
+    vi.useFakeTimers();
+    const fetcher=vi.fn(async()=>Response.json({version:1,items:[]}));
+    vi.stubGlobal('fetch',fetcher);render(<HomeKnowledgeSearch locale="zh" labels={labels}/>);
+    const input=screen.getByRole('searchbox');
+    fireEvent.change(input,{target:{value:'lea'}});
+    await React.act(async()=>{await vi.advanceTimersByTimeAsync(200);});expect(fetcher).not.toHaveBeenCalled();
+    fireEvent.change(input,{target:{value:'leave'}});
+    await React.act(async()=>{await vi.advanceTimersByTimeAsync(350);});
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]).toEqual(expect.arrayContaining(['/api/home/knowledge?q=leave&locale=zh']));
+    fireEvent.compositionStart(input);fireEvent.change(input,{target:{value:'休假'}});
+    await React.act(async()=>{await vi.advanceTimersByTimeAsync(500);});expect(fetcher).toHaveBeenCalledTimes(1);
+    fireEvent.compositionEnd(input);
+    await React.act(async()=>{await vi.advanceTimersByTimeAsync(350);});expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+  it('submits immediately without also sending the queued typing read',async()=>{
+    vi.useFakeTimers();
+    const fetcher=vi.fn(async()=>Response.json({version:1,items:[]}));
+    vi.stubGlobal('fetch',fetcher);render(<HomeKnowledgeSearch locale="en" labels={labels}/>);submit('leave');
+    await React.act(async()=>{await vi.advanceTimersByTimeAsync(350);});
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
   it('shows a true no-match without substitute suggestions and a recoverable read failure',async()=>{
     const fetcher=vi.fn(async()=>Response.json({version:1,items:[]})).mockRejectedValueOnce(new Error('Fictional private backend detail'));
     vi.stubGlobal('fetch',fetcher);render(<HomeKnowledgeSearch locale="en" labels={labels}/>);submit('leave');
@@ -24,6 +48,7 @@ describe('Home library search facet',()=>{
     expect(screen.queryByText('Fictional private backend detail')).not.toBeInTheDocument();
     fireEvent.submit(screen.getByRole('search'));
     await waitFor(()=>expect(screen.getByRole('status')).toHaveTextContent(labels.noMatch));
+    expect(screen.getByRole('status')).toHaveTextContent('Contact HR or browse your Notice Board.');
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
   it('aborts an obsolete query and ignores its late result',async()=>{
