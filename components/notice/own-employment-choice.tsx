@@ -7,7 +7,7 @@ export function OwnNoticeEmploymentChoice({subjects,selectedId,action,labels}:{
 }){
  if(subjects.length<2)return null;
  return <form action={action} method="get" className="flex flex-wrap items-end gap-3">
-  <label className="flex min-w-0 flex-1 flex-col gap-2 text-sm font-medium sm:max-w-md">
+  <label className="flex min-w-0 flex-1 basis-full flex-col gap-2 text-sm font-medium sm:max-w-md sm:basis-auto">
    {labels.employment}
    <select name="employmentId" required defaultValue={selectedId??''} className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-base text-foreground">
     <option value="" disabled>{labels.choose}</option>

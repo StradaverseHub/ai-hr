@@ -36,7 +36,7 @@ export default async function MyNoticesPage({searchParams}:{searchParams?:Promis
    <Card data-tour="notices-mine">
     <SectionHeader title={t('myListTitle')} count={result.total}/>
     <ul className="divide-y divide-border">
-     {result.items.length===0&&<li className="px-4 py-6 text-sm text-muted-foreground">{t('noMatchingNotices')}</li>}
+     {result.items.length===0&&<li className="px-4 py-6 text-sm text-muted-foreground">{query||category?t('noMatchingNotices'):t('myEmpty')}</li>}
      {result.items.map(n=><li key={n.id} className="px-4 py-4">
       <Link href={`/notices/${n.id}?employmentId=${me!.employmentId}`} className="block min-h-11 space-y-2 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
        <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
