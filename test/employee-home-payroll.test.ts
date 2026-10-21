@@ -11,7 +11,7 @@ import {requirePackFor} from '../localization/registry';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {dayAfter} from '../core/employment-company';
 import {previousPayrollComparisonPeriod} from '../lib/payroll-period-comparison';
-import {closeAll,createAppUser,entitledCtx,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {closeAll,createAppUser,entitledCtx,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 
 let b:Base,admin:SessionContext,period:string;
 let icSequence=1234;
@@ -38,7 +38,9 @@ describe('Home consumes own salary-free Payroll metadata',()=>{
   expect(published.payslips[0]).toEqual({id:expect.any(String),period:previousPayrollComparisonPeriod(period),runType:'regular',runSequence:1});
   expect(Object.keys(published).sort()).toEqual(['employmentId','nextPayment','payslips','version']);
   for(const field of ['4321','gross','deductions','net','statutory','basicSalary','bank'])expect(JSON.stringify(published)).not.toContain(field);
-  await unlockClosedBatch(admin,{batchId:batch.batchId,reason:'Fictional Home publication regression'});
+  await setSetting(b.tenantId,'payroll.unlock_enabled',true);
+  const unlockAdmin=await entitledCtx(b,['hr_admin','super_admin']);
+  await unlockClosedBatch(unlockAdmin,{batchId:batch.batchId,reason:'Fictional Home publication regression'});
   expect((await readOwnPayrollHomeMetadata(own.ctx,own.employmentId)).payslips).toEqual([]);
  });
  it('honours scheduled release through the same canonical publication rule',async()=>{
@@ -62,7 +64,7 @@ describe('Home consumes own salary-free Payroll metadata',()=>{
   await generatePayslips(admin,{batchId:batch.batchId});await closeBatch(admin,{batchId:batch.batchId});
   for(const id of [other.employmentId,randomUUID(),''])await expect(readOwnPayrollHomeMetadata(own.ctx,id)).rejects.toMatchObject({name:'OwnPayrollSubjectUnavailableError'});
   const foreign=await seedBase();
-  await expect(readOwnPayrollHomeMetadata({...own.ctx,tenantId:foreign.tenantId},own.employmentId)).rejects.toMatchObject({name:'OwnPayrollSubjectUnavailableError'});
+  await expect(readOwnPayrollHomeMetadata({...own.ctx,tenantId:foreign.tenantId},own.employmentId)).rejects.toMatchObject({name:'EntitlementsTenantMismatchError'});
   await expect(readOwnPayrollHomeMetadata({...own.ctx,personId:other.personId},other.employmentId)).rejects.toMatchObject({name:'OwnPayrollSubjectUnavailableError'});
   await owner.db.update(appUser).set({archivedAt:new Date()}).where(eq(appUser.id,own.ctx.userId!));
   await expect(readOwnPayrollHomeMetadata(own.ctx,own.employmentId)).rejects.toMatchObject({name:'OwnPayrollSubjectUnavailableError'});
