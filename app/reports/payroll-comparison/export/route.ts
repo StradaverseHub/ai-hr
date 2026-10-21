@@ -1,3 +1,4 @@
+import {getTranslations} from 'next-intl/server';
 import {getSession} from '@/lib/session';
 import {isAdmin} from '@/lib/authz';
 import {allowedCompanies} from '@/core/read';
@@ -14,7 +15,8 @@ export async function GET(request:Request){
   const filters=Object.fromEntries([...url.searchParams].filter(([key])=>key!=='id'&&key!=='format'));
   try{
     const run=await runPayrollComparisonReport(s,scope,{id,filters,verb:'export'});
-    const file=await serializePayrollComparison(run,format as 'pdf'|'xlsx');
+    const t=await getTranslations('payrollComparison');
+    const file=await serializePayrollComparison(run,format as 'pdf'|'xlsx',t);
     await recordPayrollComparisonRun(s,run,'export',format as 'pdf'|'xlsx');
     return new Response(new Uint8Array(file.bytes),{headers:{'Content-Type':file.contentType,'Content-Disposition':`attachment; filename="${file.filename}"`,'Cache-Control':'private, no-store'}});
   }catch(error){

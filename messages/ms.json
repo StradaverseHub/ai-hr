@@ -21839,6 +21839,63 @@
       "previousNotClosed": "Gaji sebelumnya mesti ditutup",
       "stalePayroll": "Gaji memerlukan pengiraan semula",
       "itemNotRecorded": "Item gaji dipilih tidak direkodkan dalam hasil terdahulu"
+    },
+    "basis": "Sumber: keputusan gaji dibayar yang disimpan. Organisasi mengikut tarikh akhir tempoh semasa, atau akhir tempoh terdahulu hanya jika tiada keputusan semasa. Label semasa yang dibenarkan dipaparkan. Keutamaan bukti berkuat kuasa: pertukaran majikan disahkan, pengambilan, penamatan direkodkan, kemudian kenaikan gaji/pangkat atau penurunan pangkat terkini yang mengubah gaji; baris lain belum dijelaskan. Label tidak membuktikan punca keseluruhan perbezaan wang.",
+    "remarks": {
+      "disabled": "Penjelasan automatik dimatikan.",
+      "unexplained": "Tiada bukti berkuat kuasa yang sepadan; pergerakan mungkin tidak menerangkan keseluruhan perbezaan.",
+      "prorated": "Liputan gaji tersimpan menyokong tempoh separa.",
+      "multipleChanges": "Beberapa perubahan gaji berkuat kuasa sepadan; yang terkini dipaparkan.",
+      "evidence": "Bukti: {references}",
+      "currencyUnknown": "Mata wang tidak direkodkan. Varians tidak tersedia."
+    },
+    "exports": {
+      "report": "Laporan",
+      "payItem": "Item gaji",
+      "generatedBy": "Disediakan oleh",
+      "generatedAt": "Dijana pada",
+      "runSelection": "Pilihan larian",
+      "companyIds": "ID syarikat",
+      "reasonFilter": "Penapis sebab",
+      "comparisonRows": "Baris perbandingan",
+      "displayedRows": "Baris dipaparkan",
+      "previousHeadcount": "Bilangan pekerja terdahulu",
+      "currentHeadcount": "Bilangan pekerja semasa",
+      "joiners": "Pekerja masuk disahkan",
+      "leavers": "Pekerja keluar disahkan",
+      "availability": "Ketersediaan",
+      "available": "Tersedia",
+      "provisional": "Sementara",
+      "historicalCurrency": "Mata wang sejarah",
+      "unknownCurrencies": "Mata wang yang tidak diketahui diasingkan mengikut majikan. Varians tidak tersedia.",
+      "recordedCurrencies": "Mata wang keputusan gaji yang direkodkan",
+      "datedContext": "Konteks bertarikh",
+      "datedEvidence": "Bukti penempatan dan pergerakan bertarikh",
+      "sourceRun": "Larian sumber",
+      "requiresRecalculation": "Perlu pengiraan semula",
+      "basis": "Asas",
+      "unknownEmployer": "Majikan dengan mata wang tidak diketahui",
+      "summary": "Ringkasan",
+      "details": "Butiran",
+      "summaryContinued": "Sambungan ringkasan",
+      "detailBand": "Butiran · kumpulan lajur {band}/{bands}",
+      "row": "Baris",
+      "provisionalPayroll": "Gaji sementara",
+      "footer": "Disediakan oleh {name} pada {at}",
+      "unavailableDetails": "Perbandingan tidak tersedia; lihat Ringkasan.",
+      "periodCaption": "Perbandingan tempoh gaji · {previous} → {current}",
+      "totalCaption": "{currency}: {previous} → {current}; varians {variance} ({percentage}%)"
+    },
+    "runTypes": {
+      "regular": "Biasa",
+      "off_cycle": "Luar kitaran",
+      "bonus": "Bonus",
+      "adjustment": "Pelarasan"
+    },
+    "runStates": {
+      "draft": "Draf",
+      "processed": "Diproses",
+      "closed": "Ditutup"
     }
   },
   "cardImport": {

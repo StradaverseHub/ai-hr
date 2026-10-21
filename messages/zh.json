@@ -21839,6 +21839,63 @@
       "previousNotClosed": "上一期间薪资必须关闭",
       "stalePayroll": "薪资需要重新计算",
       "itemNotRecorded": "历史结果中未记录所选薪资项目"
+    },
+    "basis": "来源：已保存的实付薪资结果。组织资料按当前期间末的日期确定；仅在没有当前结果时采用上一期间末的日期。名称采用当前获授权查看的标签。已生效证据的优先顺序为：已核实的雇主调动、入职、已记录的离职，以及最近一次改变薪资的加薪、晋升或降职；其余记录标为尚未解释。这些标签不能证明全部金额差异的原因。",
+    "remarks": {
+      "disabled": "自动解释已关闭。",
+      "unexplained": "没有匹配的已生效证据；异动未必能解释全部差额。",
+      "prorated": "已保存的薪资涵盖日期支持部分期间计薪。",
+      "multipleChanges": "匹配到多项已生效的薪资变动；此处显示最新一项。",
+      "evidence": "证据：{references}",
+      "currencyUnknown": "未记录币种，无法计算差额。"
+    },
+    "exports": {
+      "report": "报表",
+      "payItem": "薪资项目",
+      "generatedBy": "编制人",
+      "generatedAt": "生成时间",
+      "runSelection": "批次选择",
+      "companyIds": "公司编号",
+      "reasonFilter": "原因筛选",
+      "comparisonRows": "对比记录行数",
+      "displayedRows": "显示行数",
+      "previousHeadcount": "上一付薪人数",
+      "currentHeadcount": "当前付薪人数",
+      "joiners": "已核实入职人数",
+      "leavers": "已核实离职人数",
+      "availability": "可用状态",
+      "available": "可用",
+      "provisional": "暂定",
+      "historicalCurrency": "历史币种",
+      "unknownCurrencies": "未记录币种的金额按雇主分开列示，无法计算差额。",
+      "recordedCurrencies": "已记录的薪资结果币种",
+      "datedContext": "历史任职资料",
+      "datedEvidence": "按日期记录的任职及异动证据",
+      "sourceRun": "来源批次",
+      "requiresRecalculation": "需要重新计算",
+      "basis": "依据",
+      "unknownEmployer": "未记录币种的雇主",
+      "summary": "汇总",
+      "details": "明细",
+      "summaryContinued": "汇总（续）",
+      "detailBand": "明细 · 第 {band}/{bands} 组列",
+      "row": "行",
+      "provisionalPayroll": "暂定薪资",
+      "footer": "由 {name} 于 {at} 编制",
+      "unavailableDetails": "无法进行对比；请查看汇总。",
+      "periodCaption": "薪资期间对比 · {previous} → {current}",
+      "totalCaption": "{currency}：{previous} → {current}；差额 {variance}（{percentage}%）"
+    },
+    "runTypes": {
+      "regular": "常规",
+      "off_cycle": "非定期",
+      "bonus": "奖金",
+      "adjustment": "调整"
+    },
+    "runStates": {
+      "draft": "草稿",
+      "processed": "已处理",
+      "closed": "已关闭"
     }
   },
   "cardImport": {

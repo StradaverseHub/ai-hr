@@ -1,4 +1,7 @@
 import {describe,expect,it} from 'vitest';
+import {createTranslator} from 'next-intl';
+import {readFileSync} from 'node:fs';
+import {payrollComparisonRemarks} from '../lib/payroll-comparison-presentation';
 import * as XLSX from 'xlsx';
 import {PDFDocument} from 'pdf-lib';
 import {serializePayrollComparison} from '../lib/payroll-comparison-export';
@@ -21,6 +24,40 @@ function fixture(count=1):Run{
   name:'Payroll Basic Variance',description:'Fictional sign-off example',generatedAt:'2026-10-20T10:00:00.000Z',generatedBy:'Fictional preparer'};
 }
 describe('native payroll comparison outputs',()=>{
+ it.each(['en','zh','ms','ta','th','vi'])('keeps %s screen notes and exported headings, explanations and warnings in the same locale',async(locale)=>{
+  const messages=JSON.parse(readFileSync(new URL(`../messages/${locale}.json`,import.meta.url),'utf8'));
+  const t=createTranslator({locale,messages,namespace:'payrollComparison',onError:error=>{throw error;}});
+  const run=fixture(2),row=run.result.rows[0];
+  row.currency=null;row.reason.prorated=true;row.reason.multipleChanges=true;row.reason.evidenceIds=['retained-movement'];
+  const notes=payrollComparisonRemarks(row,t);
+  for(const key of ['unexplained','prorated','multipleChanges','currencyUnknown'])expect(notes).toContain(t('remarks.'+key));
+  expect(notes).toContain(t('remarks.evidence',{references:'retained-movement'}));
+  const file=await serializePayrollComparison(run,'xlsx',t),book=XLSX.read(file.bytes,{type:'array'});
+  const details=XLSX.utils.sheet_to_json<Record<string,unknown>>(book.Sheets.Details);
+  expect(details).toHaveLength(2);
+  const first=details.find(item=>item[t('columns.employeeCode')]===row.employeeCode)!;
+  expect(first[t('columns.employeeName')]).toBe(row.employeeName);
+  expect(first[t('columns.current')]).toBe(100.01);
+  expect(first[t('columns.remarks')]).toBe(notes);
+  expect(first[t('columns.reason')]).toBe(t('reasons.unexplained'));
+  const summary=XLSX.utils.sheet_to_json(book.Sheets.Summary,{header:1});
+  expect(summary).toContainEqual([t('exports.generatedBy'),'Fictional preparer']);
+  expect(summary).toContainEqual([t('exports.provisional'),t('provisional')]);
+  expect(summary).toContainEqual([t('exports.basis'),t('basis')]);
+  const sourceRows=summary.filter((value)=>Array.isArray(value)&&value[0]===t('exports.sourceRun')) as string[][];
+  expect(sourceRows).toHaveLength(2);
+  expect(sourceRows.some(value=>value[1].includes(t('runTypes.regular'))&&value[1].includes(t('runStates.processed')))).toBe(true);
+  row.reason.reason='unclassified';expect(payrollComparisonRemarks(row,t)).toBe(t('remarks.disabled'));
+ });
+ it('renders translated Chinese PDF labels, caveats and glyphs through the real serializer',async()=>{
+  const messages=JSON.parse(readFileSync(new URL('../messages/zh.json',import.meta.url),'utf8'));
+  const t=createTranslator({locale:'zh',messages,namespace:'payrollComparison',onError:error=>{throw error;}});
+  const run=fixture(5),file=await serializePayrollComparison(run,'pdf',t),text=(await extractedText(file.bytes)).replace(/\s/g,'');
+  for(const phrase of [t('columns.employeeName'),t('remarks.unexplained'),t('exports.provisionalPayroll'),t('exports.generatedBy')])expect(text).toContain(phrase.replace(/\s/g,''));
+  expect(text).toContain('100.01');expect(text).toContain('Fictionalpreparer');
+  for(const row of run.result.rows)expect(text).toContain(row.employeeCode!);
+ });
+
  it('writes complete native Summary/Details sheets with exact cents, text IDs and formula-looking multilingual names',async()=>{
   const run=fixture(65),file=await serializePayrollComparison(run,'xlsx');
   expect(Buffer.from(file.bytes).subarray(0,2).toString()).toBe('PK');

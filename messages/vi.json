@@ -21839,6 +21839,63 @@
       "previousNotClosed": "Phải đóng lương kỳ trước",
       "stalePayroll": "Cần tính lại lương",
       "itemNotRecorded": "Kết quả lịch sử không ghi nhận khoản lương đã chọn"
+    },
+    "basis": "Nguồn: kết quả lương đã trả được lưu. Thông tin tổ chức lấy tại ngày cuối kỳ hiện tại; chỉ dùng ngày cuối kỳ trước khi không có kết quả hiện tại. Hiển thị tên hiện tại theo quyền truy cập. Thứ tự bằng chứng đã có hiệu lực: chuyển đơn vị trả lương đã xác minh, tuyển mới, nghỉ việc đã ghi nhận, rồi lần tăng lương/thăng chức/giáng chức có thay đổi lương gần nhất; các dòng còn lại chưa được giải thích. Nhãn không chứng minh nguyên nhân của toàn bộ chênh lệch tiền.",
+    "remarks": {
+      "disabled": "Đã tắt giải thích tự động.",
+      "unexplained": "Không có bằng chứng đã có hiệu lực phù hợp; biến động có thể không giải thích toàn bộ chênh lệch.",
+      "prorated": "Phạm vi trả lương đã lưu xác nhận kỳ không đầy đủ.",
+      "multipleChanges": "Có nhiều thay đổi lương đã có hiệu lực phù hợp; hiển thị thay đổi mới nhất.",
+      "evidence": "Bằng chứng: {references}",
+      "currencyUnknown": "Chưa ghi nhận tiền tệ. Không thể tính chênh lệch."
+    },
+    "exports": {
+      "report": "Báo cáo",
+      "payItem": "Khoản lương",
+      "generatedBy": "Người lập",
+      "generatedAt": "Thời điểm tạo",
+      "runSelection": "Lựa chọn kỳ chạy",
+      "companyIds": "Mã công ty",
+      "reasonFilter": "Bộ lọc lý do",
+      "comparisonRows": "Số dòng so sánh",
+      "displayedRows": "Số dòng hiển thị",
+      "previousHeadcount": "Số người nhận lương kỳ trước",
+      "currentHeadcount": "Số người nhận lương kỳ này",
+      "joiners": "Người mới đã xác minh",
+      "leavers": "Người nghỉ đã xác minh",
+      "availability": "Tình trạng dữ liệu",
+      "available": "Có dữ liệu",
+      "provisional": "Tạm tính",
+      "historicalCurrency": "Tiền tệ lịch sử",
+      "unknownCurrencies": "Các khoản chưa rõ tiền tệ được tách theo đơn vị trả lương. Không thể tính chênh lệch.",
+      "recordedCurrencies": "Tiền tệ ghi trong kết quả lương",
+      "datedContext": "Thông tin theo ngày",
+      "datedEvidence": "Bằng chứng phân công và biến động theo ngày",
+      "sourceRun": "Kỳ chạy nguồn",
+      "requiresRecalculation": "Cần tính lại",
+      "basis": "Cơ sở",
+      "unknownEmployer": "Đơn vị chưa rõ tiền tệ",
+      "summary": "Tổng hợp",
+      "details": "Chi tiết",
+      "summaryContinued": "Tổng hợp (tiếp)",
+      "detailBand": "Chi tiết · nhóm cột {band}/{bands}",
+      "row": "Dòng",
+      "provisionalPayroll": "Lương tạm tính",
+      "footer": "Do {name} lập lúc {at}",
+      "unavailableDetails": "Không thể so sánh; xem Tổng hợp.",
+      "periodCaption": "So sánh kỳ lương · {previous} → {current}",
+      "totalCaption": "{currency}: {previous} → {current}; chênh lệch {variance} ({percentage}%)"
+    },
+    "runTypes": {
+      "regular": "Thông thường",
+      "off_cycle": "Ngoài kỳ",
+      "bonus": "Thưởng",
+      "adjustment": "Điều chỉnh"
+    },
+    "runStates": {
+      "draft": "Bản nháp",
+      "processed": "Đã xử lý",
+      "closed": "Đã đóng"
     }
   },
   "cardImport": {
