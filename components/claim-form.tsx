@@ -88,12 +88,14 @@ export function ClaimForm({
   submitAction,
   todayUtc,
   draft,
+  employmentId,
 }: {
   types: ClaimFormType[];
   submitAction: Action;
   todayUtc: string;
   /** Present ⇒ the form is EDITING this draft: Save updates it in place, Submit files that same row. */
   draft?: ClaimDraftPrefill;
+  employmentId?:string;
 }) {
   const t = useTranslations('claims');
   const [typeId, setTypeId] = useState(draft?.claimTypeId ?? types[0]?.id ?? '');
@@ -152,6 +154,7 @@ export function ClaimForm({
 
   return (
     <form action={formAction} className="grid gap-4 sm:grid-cols-2">
+      {employmentId!==undefined&&<input type="hidden" name="employmentId" value={employmentId}/>}
       {state.error && (
         <div className="sm:col-span-2">
           <ErrorBanner message={state.error} />

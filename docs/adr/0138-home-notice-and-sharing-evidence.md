@@ -160,6 +160,28 @@ is permission to open that form, not an approval or a promise that a request wil
 Home must not invent a prohibition on past dates: Leave owns configurable backdating, notice,
 blackouts, overlap, eligibility and balance validation at submission.
 
+## Your Day and self-service context
+
+Your Day reads a narrow projection from the existing clock owner. It uses the same corrected-punch,
+open overnight and elapsed-time calculation, while omitting capture GPS, photographs, removal data
+and command context. Assigned usable location names and an exact total come from the existing site
+owner. The read never captures a location or starts a command. Only an explicit own-subject button
+opens the canonical clock interaction, retaining its photo/geofence rules and uncertain-command
+receipt recovery. An in-flight or uncertain command prevents dialog dismissal; a confirmed receipt
+alone produces confirmation. Elapsed clock time is labelled separately from payable attendance.
+
+Attendance schedule and approved leave owners decide the current day's facts. Full approved leave
+or a public holiday suppresses an unnecessary clock-in shortcut; an existing open shift still offers
+clock-out. The full clocking route remains available for legitimate work. A recorded payroll date is
+metadata only and does not establish a bank payment.
+
+Correction and Claims links preserve an explicitly selected employment through reads, forms, writes
+and return navigation. Empty, repeated, foreign and no-longer-eligible selectors never fall back to
+another employment. Unselected legacy entry points retain their established subject selection. Draft
+edits must match the draft's actual employment before applying a different employment's policy or
+attachment context. Selected bulk submit, deletion and cancellation repeat that subject binding
+inside the existing row-locked owner transaction. No Home-specific claim or correction writer exists.
+
 ## Verification and rollout
 
 The unshipped Home migration is `0582` (moved from its unapplied `0577` allocation so Feedback

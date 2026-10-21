@@ -2526,7 +2526,7 @@ export async function decideClaim(
  * approve and a cancel racing on one claim resolve to exactly one of the two, and the loser is told the
  * claim is no longer pending instead of silently overwriting the winner.
  */
-export async function cancelClaim(ctx: SessionContext, claimRequestId: string): Promise<void> {
+export async function cancelClaim(ctx: SessionContext, claimRequestId: string,expectedEmploymentId?:string): Promise<void> {
   await withTenant(ctx, async (tx) => {
     // Row lock FIRST (no limit read here, so no advisory lock is needed — and taking one would invert the
     // advisory-before-row ordering decideClaim relies on).
@@ -2537,6 +2537,7 @@ export async function cancelClaim(ctx: SessionContext, claimRequestId: string): 
       .limit(1)
       .for('update');
     if (!locked) throw new ClaimError('Claim not found');
+    if(expectedEmploymentId!==undefined&&locked.employmentId!==expectedEmploymentId)throw new ClaimError('Claim does not belong to the selected employment');
     const [claim] = await tx
       .select({ id: claimRequest.id, status: claimRequest.status, employmentId: claimRequest.employmentId, personId: employment.personId })
       .from(claimRequest)
@@ -2681,6 +2682,7 @@ export async function saveClaimDraft(
         .limit(1)
         .for('update');
       if (!existing) throw new ClaimError('Claim not found');
+      if(existing.employmentId!==p.employmentId)throw new ClaimError('Draft does not belong to the selected employment');
       if (existing.status !== 'draft') throw new ClaimError('Only a draft claim can be edited');
       await assertDraftOwner(tx, ctx, existing.employmentId);
       await tx.update(claimRequest).set(values).where(eq(claimRequest.id, p.id));
@@ -2723,7 +2725,7 @@ export async function saveClaimDraft(
 /** Delete a draft the caller owns, with any receipt already attached to it. Hard delete, not a status
  *  change: an unsubmitted claim never entered any ledger, so there is nothing for a tombstone to explain —
  *  and a 'deleted' status would be a sixth thing every reader of the enum has to know about. */
-export async function deleteClaimDraft(ctx: SessionContext, claimRequestId: string): Promise<void> {
+export async function deleteClaimDraft(ctx: SessionContext, claimRequestId: string,expectedEmploymentId?:string): Promise<void> {
   await withTenant(ctx, async (tx) => {
     const [claim] = await tx
       .select({ id: claimRequest.id, status: claimRequest.status, employmentId: claimRequest.employmentId })
@@ -2732,6 +2734,7 @@ export async function deleteClaimDraft(ctx: SessionContext, claimRequestId: stri
       .limit(1)
       .for('update');
     if (!claim) throw new ClaimError('Claim not found');
+    if(expectedEmploymentId!==undefined&&claim.employmentId!==expectedEmploymentId)throw new ClaimError('Draft does not belong to the selected employment');
     if (claim.status !== 'draft') throw new ClaimError('Only a draft claim can be deleted');
     await assertDraftOwner(tx, ctx, claim.employmentId);
     await tx.delete(claimAttachment).where(eq(claimAttachment.claimRequestId, claim.id));
@@ -2767,7 +2770,7 @@ export async function deleteClaimDraft(ctx: SessionContext, claimRequestId: stri
  * claim, and the batch is sorted by claim type first) so two employees' batches — or one employee's two
  * tabs — can never hold each other's next lock.
  */
-export async function submitDraftClaims(ctx: SessionContext, p: { ids: string[] }): Promise<{ submitted: number }> {
+export async function submitDraftClaims(ctx: SessionContext, p: { ids: string[];employmentId?:string }): Promise<{ submitted: number }> {
   const ids = Array.from(new Set(p.ids.filter((s) => typeof s === 'string' && s.length > 0)));
   if (ids.length === 0) throw new ClaimError('Select at least one draft claim to submit');
   return withTenant(ctx, async (tx) => {
@@ -2796,6 +2799,7 @@ export async function submitDraftClaims(ctx: SessionContext, p: { ids: string[] 
       .orderBy(claimRequest.id)
       .for('update', { of: claimRequest });
     if (drafts.length !== ids.length) throw new ClaimError('One or more of those claims no longer exists');
+    if(p.employmentId!==undefined&&drafts.some(d=>d.employmentId!==p.employmentId))throw new ClaimError('Draft does not belong to the selected employment');
 
     // Deterministic lock order for the advisory locks priceAndCheckClaimTx will take — sorted by the LOCK
     // KEY itself, not by claim id. A batch holds several locks at once, so two batches acquiring the same

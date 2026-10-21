@@ -1,3 +1,4 @@
+import {todayInKualaLumpur} from '../lib/hr-date';
 /**
  * e7eb5d83 stage 1 — DRAFT claims + limit RESERVATION.
  *
@@ -131,6 +132,24 @@ describe('e7eb5d83 stage 1 — draft claims and limit reservation', () => {
   };
 
   // ─────────────────── The enum, and everyone who has to read it ───────────────────
+
+  it('binds draft edits, submission, deletion and cancellation to the selected own employment',async()=>{
+    const {a,E,me,typeId}=await setup();
+    const [company]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Fictional second claims employer'}).returning();
+    const [department]=await owner.db.insert(schema.department).values({tenantId:base.tenantId,companyId:company.id,name:'Fictional claims team'}).returning();
+    const second=await hireEmployee(a,{person:{id:E.personId},companyId:company.id,departmentId:department.id,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+    const input={employmentId:E.employmentId,claimTypeId:typeId,amount:10,incurredOn:todayInKualaLumpur()};
+    const draft=await saveClaimDraft(me,input);
+    await expect(saveClaimDraft(me,{...input,id:draft.id,employmentId:second.employmentId,amount:99})).rejects.toThrow('selected employment');
+    await expect(deleteClaimDraft(me,draft.id,second.employmentId)).rejects.toThrow('selected employment');
+    await expect(submitDraftClaims(me,{ids:[draft.id],employmentId:second.employmentId})).rejects.toThrow('selected employment');
+    expect((await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,draft.id)))[0]).toMatchObject({employmentId:E.employmentId,status:'draft',amount:'10.00'});
+    await submitDraftClaims(me,{ids:[draft.id],employmentId:E.employmentId});
+    await expect(cancelClaim(me,draft.id,second.employmentId)).rejects.toThrow('selected employment');
+    expect((await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,draft.id)))[0].status).toBe('pending');
+    await cancelClaim(me,draft.id,E.employmentId);
+    expect((await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,draft.id)))[0].status).toBe('cancelled');
+  });
 
   it('claim_status: the database, the app list and the classification all agree', async () => {
     const labels = await owner.db.execute<{ enumlabel: string; sortorder: number }>(sql`
