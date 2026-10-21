@@ -66,14 +66,32 @@ Viewing, popup dismissal and explicit acknowledgement remain separate facts.
     with the existing UI locale owner. Display timezone and week start cannot change Attendance's
     business date, Payroll's run identity, company scope or any business record.
 
-Notice projection and email revalidation share the existing notification registry. The installed minute
-sweep may provide a narrow, tenant-bound snapshot capability minted from its explicit maintenance
-connection. Check both authenticated session role and effective role when minting and on every read;
-an APP connection, a downgraded connection or a human request cannot acquire that capability. Its
-read-only transactions return recipient identifiers only. A scoped web projector lacking a complete
-audience must abort its transaction without advancing the tenant cursor. Missing authority during
-email revalidation is an error, not evidence that the recipient became ineligible. Keep the queued
-delivery pending for the authorized sweep. No system GUC exception or additional sender is introduced.
+Notice projection and email revalidation share the existing notification registry. A fresh actual group
+administrator may run complete global web projection. A company-scoped or user-less APP call cannot
+consume a partial global event stream: it leaves the global cursor untouched. Assessment-only scoped
+projection retains its separate cursor contract. A database trigger also rejects old APP callers that
+try to advance the global cursor without complete current authority during rollout.
+
+The installed sweep uses its existing explicit maintenance connection. Authenticate SESSION_USER and
+its explicit effective SET ROLE, excluding an intervening definer's current_user. Respect FORCE RLS
+when relying on table ownership. Inside one transaction, read a tenant-fenced bounded event batch and
+immutable Notice recipient IDs, then SET LOCAL ROLE ai_hr_app for every canonical recipient resolver,
+notification insert and outbox operation. Restore the authenticated role only to write the cursor. A
+failure rolls back the business writes and cursor together; no generic owner-write callback is exposed.
+
+Email revalidation receives a separate sealed read-only capability from that authenticated connection.
+It returns only tenant-bound Notice recipient IDs and an exact Notice source event's required metadata.
+Recheck connection authority on every read; a human context, APP connection, downgraded connection or
+cloned capability cannot use it. Missing source/audience authority is an error, not ineligibility: retain
+queued delivery for the authorized sweep. No system GUC privilege exception or additional sender exists.
+
+An attachment upload may stage immutable private bytes without changing published content. The editor
+saves the selected attachment IDs together with its text under the displayed content-version check.
+An upload intent is bound to the author and Notice, and a retry must name the same bytes. Staged files
+are not visible to recipients. Download checks current live membership and current selected references;
+HR may still inspect retained historical attachments under the immutable Notice authoring boundary.
+Receipts have physical tenant/parent/revision/recipient relationships and a deferred event foreign key,
+so committing acknowledgement evidence without its event is impossible through an interrupted command.
 
 ## Verification and rollout
 
