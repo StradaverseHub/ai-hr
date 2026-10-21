@@ -105,3 +105,95 @@ REVOKE ALL ON FUNCTION app.guard_employee_home_configuration_revision() FROM PUB
 --> statement-breakpoint
 CREATE TRIGGER employee_home_configuration_immutable_guard BEFORE INSERT OR UPDATE OR DELETE ON public.employee_home_configuration_revision
  FOR EACH ROW EXECUTE FUNCTION app.guard_employee_home_configuration_revision();
+--> statement-breakpoint
+-- Stable authoring scope, not a guess from a recipient's current employer. Existing announcements
+-- retain group ownership and their exact publication/audience/content. No acknowledgement is backfilled.
+ALTER TABLE public.notice ADD COLUMN owner_company_id uuid REFERENCES public.company(id);
+--> statement-breakpoint
+CREATE FUNCTION app.can_manage_notice(p_notice uuid) RETURNS boolean LANGUAGE sql STABLE
+ SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT (SELECT app.principal_snapshot_current()) AND EXISTS(
+  SELECT 1 FROM public.notice n WHERE n.id=p_notice AND n.tenant_id=app.current_tenant_id()
+   AND ((n.owner_company_id IS NULL AND app.is_group_admin())
+     OR (n.owner_company_id IS NOT NULL AND app.is_admin_for(n.owner_company_id)))
+ );
+$$;
+REVOKE ALL ON FUNCTION app.can_manage_notice(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.can_manage_notice(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.guard_notice_owner() RETURNS trigger LANGUAGE plpgsql
+ SECURITY INVOKER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF TG_OP='DELETE' THEN
+  IF OLD.published_at IS NOT NULL THEN
+   RAISE EXCEPTION 'Retain published notices; archive instead' USING ERRCODE='23514';
+  END IF;
+  RETURN OLD;
+ END IF;
+ IF TG_OP='UPDATE' AND ROW(NEW.id,NEW.tenant_id,NEW.owner_company_id)
+    IS DISTINCT FROM ROW(OLD.id,OLD.tenant_id,OLD.owner_company_id) THEN
+  RAISE EXCEPTION 'Notice identity and authoring company are immutable' USING ERRCODE='23514';
+ END IF;
+ IF TG_OP='UPDATE' AND OLD.published_at IS NOT NULL AND
+  ROW(NEW.published_at,NEW.published_by_user_id) IS DISTINCT FROM ROW(OLD.published_at,OLD.published_by_user_id) THEN
+  RAISE EXCEPTION 'Retain the original notice publication' USING ERRCODE='23514';
+ END IF;
+ IF NEW.owner_company_id IS NOT NULL AND NOT EXISTS(
+  SELECT 1 FROM public.company c WHERE c.id=NEW.owner_company_id AND c.tenant_id=NEW.tenant_id
+ ) THEN
+  RAISE EXCEPTION 'Notice authoring company is outside this tenant' USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.guard_notice_owner() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER notice_owner_guard BEFORE INSERT OR UPDATE OR DELETE ON public.notice
+ FOR EACH ROW EXECUTE FUNCTION app.guard_notice_owner();
+--> statement-breakpoint
+ALTER POLICY notice_admin_rls ON public.notice
+ USING(tenant_id=app.current_tenant_id() AND (SELECT app.principal_snapshot_current())
+  AND ((owner_company_id IS NULL AND app.is_group_admin())
+   OR (owner_company_id IS NOT NULL AND app.is_admin_for(owner_company_id))))
+ WITH CHECK(tenant_id=app.current_tenant_id() AND (SELECT app.principal_snapshot_current())
+  AND ((owner_company_id IS NULL AND app.is_group_admin())
+   OR (owner_company_id IS NOT NULL AND app.is_admin_for(owner_company_id))));
+--> statement-breakpoint
+-- The capability function reads only the parent boundary as its owner, avoiding policy recursion
+-- between notice's recipient SELECT and notice_recipient's administrator SELECT.
+ALTER POLICY notice_recipient_admin_rls ON public.notice_recipient
+ USING(tenant_id=app.current_tenant_id() AND app.can_manage_notice(notice_id))
+ WITH CHECK(tenant_id=app.current_tenant_id() AND app.can_manage_notice(notice_id));
+--> statement-breakpoint
+ALTER POLICY notice_recipient_read_rls ON public.notice
+ USING(tenant_id=app.current_tenant_id() AND (SELECT app.principal_snapshot_current())
+  AND published_at IS NOT NULL AND archived_at IS NULL
+  AND start_on-1<=current_date AND current_date<=end_on+1
+  AND EXISTS(SELECT 1 FROM public.notice_recipient nr JOIN public.employment e ON e.id=nr.employment_id
+   WHERE nr.notice_id=notice.id AND nr.tenant_id=app.current_tenant_id() AND app.is_self_person(e.person_id)));
+--> statement-breakpoint
+ALTER POLICY notice_recipient_self_rls ON public.notice_recipient
+ USING(tenant_id=app.current_tenant_id() AND (SELECT app.principal_snapshot_current())
+  AND EXISTS(SELECT 1 FROM public.employment e WHERE e.id=employment_id AND app.is_self_person(e.person_id)));
+ALTER POLICY notice_recipient_self_update_rls ON public.notice_recipient
+ USING(tenant_id=app.current_tenant_id() AND (SELECT app.principal_snapshot_current())
+  AND EXISTS(SELECT 1 FROM public.employment e WHERE e.id=employment_id AND app.is_self_person(e.person_id)))
+ WITH CHECK(tenant_id=app.current_tenant_id() AND (SELECT app.principal_snapshot_current())
+  AND EXISTS(SELECT 1 FROM public.employment e WHERE e.id=employment_id AND app.is_self_person(e.person_id)));
+--> statement-breakpoint
+CREATE FUNCTION app.guard_published_notice_membership() RETURNS trigger LANGUAGE plpgsql
+ SECURITY INVOKER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE parent_published timestamptz;
+BEGIN
+ -- Serialize membership changes with publication. Recipient marker updates retain their separate guard.
+ SELECT n.published_at INTO parent_published FROM public.notice n
+  WHERE n.id=CASE WHEN TG_OP='DELETE' THEN OLD.notice_id ELSE NEW.notice_id END FOR UPDATE;
+ IF parent_published IS NOT NULL THEN
+  RAISE EXCEPTION 'Retain the published notice audience snapshot' USING ERRCODE='23514';
+ END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD; END IF;
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.guard_published_notice_membership() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER published_notice_membership_guard BEFORE INSERT OR DELETE ON public.notice_recipient
+ FOR EACH ROW EXECUTE FUNCTION app.guard_published_notice_membership();

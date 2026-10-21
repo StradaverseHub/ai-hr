@@ -66,6 +66,15 @@ Viewing, popup dismissal and explicit acknowledgement remain separate facts.
     with the existing UI locale owner. Display timezone and week start cannot change Attendance's
     business date, Payroll's run identity, company scope or any business record.
 
+Notice projection and email revalidation share the existing notification registry. The installed minute
+sweep may provide a narrow, tenant-bound snapshot capability minted from its explicit maintenance
+connection. Check both authenticated session role and effective role when minting and on every read;
+an APP connection, a downgraded connection or a human request cannot acquire that capability. Its
+read-only transactions return recipient identifiers only. A scoped web projector lacking a complete
+audience must abort its transaction without advancing the tenant cursor. Missing authority during
+email revalidation is an error, not evidence that the recipient became ineligible. Keep the queued
+delivery pending for the authorized sweep. No system GUC exception or additional sender is introduced.
+
 ## Verification and rollout
 
 The unshipped Home migration is `0577`; do not alter an applied migration or consume another

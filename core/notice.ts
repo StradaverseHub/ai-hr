@@ -88,6 +88,8 @@ export function isNoticeLive(
 }
 
 export type NoticeInput = {
+  /** Stable authoring boundary. Null/absent requires group-wide administrator authority. */
+  companyId?: string | null;
   title: string;
   body: string;
   startOn: string;
@@ -131,6 +133,7 @@ function cleanNotice(p: NoticeInput): Required<Omit<NoticeInput, 'criteria' | 'e
   employmentIds: string[];
 } {
   const title = (p.title ?? '').trim();
+  if(p.companyId!=null&&!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(p.companyId))throw new NoticeError('Choose an available authoring company.');
   if (!title) throw new NoticeError('A notice needs a title — it is what people see in the listing.');
   if (title.length > 200) throw new NoticeError('The title is too long (200 characters maximum).');
   const body = (p.body ?? '').trim();
@@ -148,6 +151,7 @@ function cleanNotice(p: NoticeInput): Required<Omit<NoticeInput, 'criteria' | 'e
     p.popupFrequency === 'until_acknowledged' ? 'until_acknowledged' : 'once';
 
   return {
+    companyId: p.companyId ?? null,
     title,
     body,
     startOn: p.startOn,
@@ -169,6 +173,10 @@ function cleanNotice(p: NoticeInput): Required<Omit<NoticeInput, 'criteria' | 'e
  */
 type StoredCriteria = OrgCriteria & { employmentIds?: string[] };
 
+/** Being a recipient does not authorize the administrator editor or its writes. */
+const authoringNotice=(id:string)=>and(eq(notice.id,id),sql`app.can_manage_notice(${notice.id})`);
+function requireNoticeWrite(rows:readonly {id:string}[]){if(rows.length!==1)throw new NoticeError('That notice is no longer available in your authoring scope.');}
+
 export async function createNotice(ctx: SessionContext, p: NoticeInput): Promise<{ id: string }> {
   const c = cleanNotice(p);
   return withTenant(ctx, async (tx) => {
@@ -178,6 +186,7 @@ export async function createNotice(ctx: SessionContext, p: NoticeInput): Promise
       .insert(notice)
       .values({
         tenantId: ctx.tenantId,
+        ownerCompanyId: c.companyId,
         title: c.title,
         body: c.body,
         startOn: c.startOn,
@@ -213,15 +222,16 @@ export async function createNotice(ctx: SessionContext, p: NoticeInput): Promise
 export async function updateNotice(ctx: SessionContext, id: string, p: NoticeInput): Promise<void> {
   const c = cleanNotice(p);
   return withTenant(ctx, async (tx) => {
-    const [before] = await tx.select().from(notice).where(eq(notice.id, id)).limit(1);
+    const [before] = await tx.select().from(notice).where(authoringNotice(id)).limit(1).for('update');
     if (!before) throw new NoticeError('That notice could not be found.');
     if (before.archivedAt) throw new NoticeError('An archived notice cannot be edited — restore it first.');
+    if(p.companyId!==undefined&&c.companyId!==before.ownerCompanyId)throw new NoticeError('The authoring company is fixed. Create another notice for a different company.');
 
     const published = before.publishedAt != null;
     const stored: StoredCriteria =
       c.targetMode === 'individual' ? { employmentIds: c.employmentIds } : c.criteria;
 
-    await tx
+    const written=await tx
       .update(notice)
       .set({
         title: c.title,
@@ -239,7 +249,8 @@ export async function updateNotice(ctx: SessionContext, id: string, p: NoticeInp
         popupFrequency: c.popupFrequency,
         updatedAt: sql`now()`,
       })
-      .where(eq(notice.id, id));
+      .where(eq(notice.id, id)).returning({id:notice.id});
+    requireNoticeWrite(written);
 
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -271,7 +282,7 @@ export async function publishNotice(
   const asOf = opts.asOf && ISO_DATE.test(opts.asOf) ? opts.asOf : todayInKualaLumpur();
   const actorUserId = requireActor(ctx, 'published');
   return withTenant(ctx, async (tx) => {
-    const [row] = await tx.select().from(notice).where(eq(notice.id, id)).limit(1);
+    const [row] = await tx.select().from(notice).where(authoringNotice(id)).limit(1).for('update');
     if (!row) throw new NoticeError('That notice could not be found.');
     if (row.archivedAt) throw new NoticeError('An archived notice cannot be published.');
     if (row.publishedAt) throw new NoticeError('That notice has already been published.');
@@ -294,15 +305,17 @@ export async function publishNotice(
     if (targets.length === 0) {
       throw new NoticeError('No employees matched — this notice would reach nobody.');
     }
+    if(targets.some(target=>!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(target)))throw new NoticeError('Some employee references are unavailable. Review the audience before publishing.');
 
-    // Every target must be one this session can actually see. RLS decides that: an id from another tenant,
-    // or one an admin's company scope excludes, simply does not come back and is dropped here rather than
-    // being written into a snapshot the reader could never have produced.
+    // Every target must be inside current administration and the notice's recorded owner boundary.
+    // Refuse an incomplete audience rather than silently publishing to fewer people than requested.
     const visible = await tx
       .select({ id: employment.id })
       .from(employment)
-      .where(inArray(employment.id, targets));
+      .where(and(inArray(employment.id,targets),eq(employment.tenantId,ctx.tenantId),sql`app.is_admin_for(${employment.companyId})`,
+        row.ownerCompanyId?sql`(${employment.companyId}=${row.ownerCompanyId}::uuid OR app.is_company_descendant(${employment.companyId},${row.ownerCompanyId}::uuid))`:undefined));
     const recipientIds = visible.map((v) => v.id);
+    if(recipientIds.length!==targets.length)throw new NoticeError('Some employees are outside this notice’s authoring scope. Review the audience before publishing.');
     if (recipientIds.length === 0) {
       throw new NoticeError('No employees matched — this notice would reach nobody.');
     }
@@ -318,10 +331,11 @@ export async function publishNotice(
       )
       .onConflictDoNothing();
 
-    await tx
+    const written=await tx
       .update(notice)
       .set({ publishedAt: sql`now()`, publishedByUserId: actorUserId, updatedAt: sql`now()` })
-      .where(eq(notice.id, id));
+      .where(eq(notice.id, id)).returning({id:notice.id});
+    requireNoticeWrite(written);
 
     // The event core/notifications.ts turns into notifications for the snapshot audience. `notify` rides
     // in the payload so the registry can decide WITHOUT a second query, and so switching the flag off
@@ -348,13 +362,14 @@ export async function publishNotice(
 export async function archiveNotice(ctx: SessionContext, id: string): Promise<void> {
   const actorUserId = requireActor(ctx, 'archived');
   return withTenant(ctx, async (tx) => {
-    const [row] = await tx.select({ archivedAt: notice.archivedAt }).from(notice).where(eq(notice.id, id)).limit(1);
+    const [row] = await tx.select({ archivedAt: notice.archivedAt }).from(notice).where(authoringNotice(id)).limit(1);
     if (!row) throw new NoticeError('That notice could not be found.');
     if (row.archivedAt) throw new NoticeError('That notice is already archived.');
-    await tx
+    const written=await tx
       .update(notice)
       .set({ archivedAt: sql`now()`, archivedByUserId: actorUserId, updatedAt: sql`now()` })
-      .where(eq(notice.id, id));
+      .where(eq(notice.id, id)).returning({id:notice.id});
+    requireNoticeWrite(written);
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'notice',
@@ -368,13 +383,14 @@ export async function archiveNotice(ctx: SessionContext, id: string): Promise<vo
 
 export async function restoreNotice(ctx: SessionContext, id: string): Promise<void> {
   return withTenant(ctx, async (tx) => {
-    const [row] = await tx.select({ archivedAt: notice.archivedAt }).from(notice).where(eq(notice.id, id)).limit(1);
+    const [row] = await tx.select({ archivedAt: notice.archivedAt }).from(notice).where(authoringNotice(id)).limit(1);
     if (!row) throw new NoticeError('That notice could not be found.');
     if (!row.archivedAt) throw new NoticeError('That notice is not archived.');
-    await tx
+    const written=await tx
       .update(notice)
       .set({ archivedAt: null, archivedByUserId: null, updatedAt: sql`now()` })
-      .where(eq(notice.id, id));
+      .where(eq(notice.id, id)).returning({id:notice.id});
+    requireNoticeWrite(written);
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'notice',
@@ -395,12 +411,12 @@ export async function restoreNotice(ctx: SessionContext, id: string): Promise<vo
  */
 export async function deleteNotice(ctx: SessionContext, id: string): Promise<void> {
   return withTenant(ctx, async (tx) => {
-    const [row] = await tx.select({ publishedAt: notice.publishedAt }).from(notice).where(eq(notice.id, id)).limit(1);
+    const [row] = await tx.select({ publishedAt: notice.publishedAt }).from(notice).where(authoringNotice(id)).limit(1);
     if (!row) throw new NoticeError('That notice could not be found.');
     if (row.publishedAt) {
       throw new NoticeError('A published notice cannot be deleted — archive it instead, so the record of what was announced survives.');
     }
-    await tx.delete(notice).where(eq(notice.id, id));
+    requireNoticeWrite(await tx.delete(notice).where(eq(notice.id,id)).returning({id:notice.id}));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'notice',
@@ -417,12 +433,13 @@ export async function deleteNotice(ctx: SessionContext, id: string): Promise<voi
  *  labelled Duplicate. */
 export async function duplicateNotice(ctx: SessionContext, id: string): Promise<{ id: string }> {
   return withTenant(ctx, async (tx) => {
-    const [row] = await tx.select().from(notice).where(eq(notice.id, id)).limit(1);
+    const [row] = await tx.select().from(notice).where(authoringNotice(id)).limit(1);
     if (!row) throw new NoticeError('That notice could not be found.');
     const [copy] = await tx
       .insert(notice)
       .values({
         tenantId: ctx.tenantId,
+        ownerCompanyId: row.ownerCompanyId,
         title: `${row.title} (copy)`.slice(0, 200),
         body: row.body,
         startOn: row.startOn,
@@ -452,6 +469,7 @@ export async function duplicateNotice(ctx: SessionContext, id: string): Promise<
 
 export type NoticeRow = {
   id: string;
+  ownerCompanyId: string | null;
   title: string;
   body: string;
   startOn: string;
@@ -488,6 +506,7 @@ export async function listNotices(
     const rows = await tx
       .select({
         id: notice.id,
+        ownerCompanyId: notice.ownerCompanyId,
         title: notice.title,
         body: notice.body,
         startOn: notice.startOn,
@@ -518,8 +537,8 @@ export async function listNotices(
         )`,
       })
       .from(notice)
-      .where(opts.includeArchived ? undefined : isNull(notice.archivedAt))
-      .orderBy(desc(notice.createdAt));
+      .where(and(sql`app.can_manage_notice(${notice.id})`,opts.includeArchived ? undefined : isNull(notice.archivedAt)))
+      .orderBy(desc(notice.createdAt),asc(notice.id));
     return rows.map((r) => ({
       ...r,
       targetMode: r.targetMode as NoticeTargetMode,

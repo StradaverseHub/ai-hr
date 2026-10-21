@@ -5508,6 +5508,8 @@ export const notice = pgTable(
   {
     id: id(),
     tenantId: tenantId(),
+    /** Stable authoring boundary; null is group ownership, including retained legacy notices. */
+    ownerCompanyId: uuid('owner_company_id').references(() => company.id),
     title: text('title').notNull(),
     /** Markdown, rendered through components/markdown.tsx — the SAME renderer the Knowledge Base uses,
      *  which passes no raw HTML through (no rehype-raw) and therefore cannot carry stored XSS. */

@@ -78,3 +78,5 @@ See also: [Malaysia localization — spec mapping & gap closure](../architecture
 | [0131](0131-acting-hr-agent-and-process-assessment.md) | Typed action registry, three autonomy tiers, named agent principal, versioned harness; deterministic process assessment first | Direction accepted; Phase 1 implemented |
 
 | [0132](0132-module-navigation-workspaces.md) | Ops/Strata module navigation, existing audience boundaries and canonical deep-link ownership | Direction accepted; implementation and verification pending |
+| [0134](0134-shared-attendance-policy-execution.md) | Dated Attendance policies, immutable calculation parts and canonical Payroll replay | Direction accepted; implementation and acceptance incomplete |
+| [0138](0138-home-notice-and-sharing-evidence.md) | Retained notice actions, scoped audiences and minimal Home sharing | Direction accepted; implementation and acceptance incomplete |

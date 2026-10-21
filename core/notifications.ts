@@ -19,6 +19,7 @@ import { rewardNotificationRecipients } from '../packs/rewards/service';
  */
 import { randomUUID } from 'node:crypto';
 import { notificationEmailCategory, type NotificationEmailCategory } from '../lib/notification-email-model';
+import {noticeNotificationRecipientsTx,noticeSweepReader,type NoticeRecipientReader,type NoticeSweepAccess} from './notice-projection';
 import { and, asc, desc, eq, gt, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
@@ -30,7 +31,6 @@ import {
   leaveRequest,
   notification,
   notificationCursor,
-  noticeRecipient,
   payslip,
   peerFeedbackRequest,
   reportingLine,
@@ -218,7 +218,7 @@ type Spec = {
   /** Fan-out resolver. When present, recipients come from here (e.g. every employee in a closed payroll
    *  batch) instead of the event's single subjectEmploymentId. `payload` (R51 722904dc) is the event's
    *  payload — a two-parameter resolver is still assignable, so existing resolvers compile unchanged. */
-  recipients?: (tx: Tx, ev: EventRef, payload: Record<string, unknown> | null) => Promise<string[]>;
+  recipients?: (tx: Tx, ev: EventRef, payload: Record<string, unknown> | null,noticeReader?:NoticeRecipientReader) => Promise<string[]>;
 };
 
 // eventType → notification (or SEVERAL — 6522d26a: one event may fan out to different audiences with
@@ -827,18 +827,14 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
       body: String(p?.title ?? 'A new notice has been published.'),
       linkPath: `/notices/${ev.aggregateId}`,
     }),
-    recipients: async (tx, ev, payload) => {
+    recipients: async (tx, ev, payload,noticeReader) => {
       // The publisher's `notifyOnPublish` choice, snapshotted into the event. That checkbox reads "Notify
       // recipients when it is published" (`notices.fNotify`, components/notice/notice-form.tsx) — it is NOT
       // an unconditional email switch. Category permission and recipient consent still apply. Read from the PAYLOAD
       // rather than re-queried: switching the flag off after publication must not retroactively un-notify,
       // and re-reading the row would make it look as though it had.
       if (payload?.notify !== true) return [];
-      const rows = await tx
-        .select({ e: noticeRecipient.employmentId })
-        .from(noticeRecipient)
-        .where(eq(noticeRecipient.noticeId, ev.aggregateId));
-      return [...new Set(rows.map((r) => r.e))];
+      return noticeReader?noticeReader(ev.aggregateId):noticeNotificationRecipientsTx(tx,ev.aggregateId);
     },
   },
   // The batch event has no single subject — fan out to every employee with a payslip in the closed batch.
@@ -860,7 +856,8 @@ export type DispatchResult = { processed: number; created: number };
  * inserts for any recipient, both RLS-gated to is_admin). Keyset-paginated by (created_at, id) via the
  * per-tenant cursor; idempotent (only events after the cursor are processed). Gated ⇒ no-op.
  */
-export async function dispatchNotifications(ctx: SessionContext, opts: { limit?: number } = {}): Promise<DispatchResult> {
+export async function dispatchNotifications(ctx: SessionContext, opts: { limit?: number;noticeSweep?:NoticeSweepAccess } = {}): Promise<DispatchResult> {
+  const noticeReader=noticeSweepReader(ctx,opts.noticeSweep);
   const allCategories=enabled(ctx);
   const scopedReminders=(ctx.entitlements?.scopedModules.notifications??[]).some(companyId=>isModuleEnabled(ctx,'notifications',companyId));
   if(!allCategories&&!scopedReminders)return {processed:0,created:0};
@@ -893,7 +890,7 @@ export async function dispatchNotifications(ctx: SessionContext, opts: { limit?:
       for (const spec of Array.isArray(entry) ? entry : [entry]) {
         // Recipients: a fan-out resolver (e.g. all payslips in a batch), else the event's single subject.
         const recipients = spec.recipients
-          ? await spec.recipients(tx, evRef, (ev.payload as Record<string, unknown> | null) ?? null)
+          ? await spec.recipients(tx, evRef, (ev.payload as Record<string, unknown> | null) ?? null,noticeReader)
           : ev.subjectEmploymentId
             ? [ev.subjectEmploymentId]
             : [];
@@ -935,7 +932,7 @@ export async function dispatchNotifications(ctx: SessionContext, opts: { limit?:
 }
 
 /** Reauthorize queued mail with the same live recipient graph that created the in-app projection. */
-export async function notificationStillTargets(tx: Tx, eventId: string, kind: string, category: string, recipient: string): Promise<boolean> {
+export async function notificationStillTargets(tx: Tx, eventId: string, kind: string, category: string, recipient: string,noticeReader?:NoticeRecipientReader): Promise<boolean> {
   if (!notificationEmailCategory.safeParse(category).success) return false;
   const [ev] = await tx.select().from(domainEvent).where(eq(domainEvent.id,eventId)).limit(1);
   if (!ev) return false;
@@ -944,7 +941,7 @@ export async function notificationStillTargets(tx: Tx, eventId: string, kind: st
   const ref: EventRef = {aggregateId:ev.aggregateId,subjectEmploymentId:ev.subjectEmploymentId};
   for (const spec of Array.isArray(entry) ? entry : [entry]) {
     if (spec.kind !== kind || spec.category !== category) continue;
-    const recipients = spec.recipients ? await spec.recipients(tx,ref,(ev.payload as Record<string,unknown>|null)??null)
+    const recipients = spec.recipients ? await spec.recipients(tx,ref,(ev.payload as Record<string,unknown>|null)??null,noticeReader)
       : ev.subjectEmploymentId ? [ev.subjectEmploymentId] : [];
     if (recipients.includes(recipient)) return true;
   }
