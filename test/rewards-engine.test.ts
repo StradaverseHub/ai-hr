@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { calculateRewards } from '../packs/rewards/engine';
-import { defaultPolicy, emptyFacts, emptyRecommendation, transition, visibleEntry, type RewardEntry } from '../packs/rewards/model';
+import { defaultPolicy, policySchema, emptyFacts, emptyRecommendation, transition, visibleEntry, type RewardEntry } from '../packs/rewards/model';
 
 const policy = () => ({ ...defaultPolicy(2026), patActual: 100, patTarget: 100, ranges: { '12': [300000, 500000, 700000] as [number, number, number], H: [100000, 200000, 300000] as [number, number, number] } });
 const entry = (id = 'a'): RewardEntry => ({ id, source: { employmentId: id, personId: `person-${id}`, compensationId: `comp-${id}`, gradeId: null, employeeCode: id, name: id, grade: '12', basicCents: 500000, currency: 'MYR', payMode: 'monthly', hiredOn: '2020-01-01', confirmedOn: '2020-04-01', notice: false, lastPayChange: null, confirmationPayChange: false, performanceReviewId: null, performanceRating: null }, facts: { ...emptyFacts(), reviewed: true, talent: 'SCORE', performance: 'ME' }, recommendation: emptyRecommendation() });
@@ -64,6 +64,27 @@ describe('Reward Desk deterministic calculation and confidentiality', () => {
     const r = calculateRewards([entry(), a, h, hl], { ...policy(), multiplierBp: 10000 });
     expect(r.suggestedLumpCents).toBe(200000);
     expect(r.rows.filter(x => x.lumpEligible).map(x => x.lumpCents)).toEqual([200000, 200000]);
+  });
+  it('named Senior Plan membership does not exclude an unselected employee of the same grade', () => {
+    const selected = entry('selected'), ordinary = entry('ordinary');
+    for (const row of [selected, ordinary]) row.source.grade = '21';
+    selected.facts.seniorPlan = true;
+    const result = calculateRewards([selected, ordinary], { ...policy(), seniorMembershipMode: 'named-members', seniorGrades: ['21'] });
+    expect(result.rows[0].bonusEligible).toBe(false);
+    expect(result.rows[0].lumpEligible).toBe(false);
+    expect(result.rows[1].bonusEligible).toBe(true);
+    expect(result.rows[0].incrementEligible).toBe(true);
+    expect(result.rows[1].incrementEligible).toBe(true);
+  });
+  it('preserves a saved legacy grade rule until conversion is explicitly adopted', () => {
+    const row = entry('legacy'); row.source.grade = '21';
+    const saved = { ...policy(), seniorGrades: ['21'] }; delete saved.seniorMembershipMode;
+    expect(policySchema.parse(saved)).toEqual(saved);
+    expect(policySchema.parse(saved)).not.toHaveProperty('seniorMembershipMode');
+    const historical = calculateRewards([row], saved);
+    expect(historical.rows[0].bonusEligible).toBe(false);
+    expect(historical.rows[0].bonusReason).toBe('Senior leadership plan');
+    expect(calculateRewards([row], { ...saved, seniorMembershipMode: 'named-members' }).rows[0].bonusEligible).toBe(true);
   });
   it('keeps ER, senior leadership and EC out of the ordinary lump sum', () => {
     const er = entry('er'); er.facts.erCase = true;

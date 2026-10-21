@@ -17,6 +17,8 @@ export type RewardPolicy = {
   year: number; effectiveFrom: string; joinedBefore: string; confirmedBy: string; blockedFrom: string; blockedTo: string;
   standardPools: Three; hPools: Three; meritMatrix: Record<typeof talents[number], Three>;
   bonusMatrix: Record<string, Five>; ranges: Record<string, Three>; seniorGrades: string[];
+  // Absence means the persisted legacy grade rule. Never default old snapshots on parse.
+  seniorMembershipMode?: 'legacy-grades' | 'named-members';
   patActual: number; patTarget: number; targetMonthsBp: number; multiplierBp: number | null;
   bonusStructure: 'standard' | 'branch'; branchFactors: Record<string, Five>; branchRatings: Record<string, typeof performances[number]>;
   lumpStepCents: number; lumpShareBp: number; lumpCapCents: number | null; lumpUnitCents: number | null; exemptReason: string;
@@ -45,6 +47,7 @@ export const policySchema: z.ZodType<RewardPolicy> = z.object({
   bonusMatrix: z.record(z.string().min(1).max(30), five),
   ranges: z.record(z.string().min(1).max(30), z.tuple([centsSchema, centsSchema, centsSchema]).refine(v => v[0] > 0 && v[0] <= v[1] && v[1] <= v[2], 'Salary ranges must have 0 < minimum <= midpoint <= maximum')),
   seniorGrades: z.array(z.string()).max(50),
+  seniorMembershipMode: z.enum(['legacy-grades', 'named-members']).optional(),
   patActual: centsSchema,
   patTarget: centsSchema.refine(v => v > 0, 'PAT target must be positive'),
   targetMonthsBp: bpSchema,
@@ -104,10 +107,15 @@ export function defaultPolicy(year: number): RewardPolicy {
     blockedFrom: `${year}-10-01`, blockedTo: `${year + 1}-01-31`,
     standardPools: [500, 100, 100], hPools: [500, 100, 100],
     meritMatrix: { SSTAR: [1000, 800, 800], STAR: [800, 600, 600], SCORE: [600, 450, 300], IMPRO: [0, 0, 0], PIP: [0, 0, 0] },
-    bonusMatrix, ranges: {}, seniorGrades: ['21', '22', '23'], patActual: 0, patTarget: 100,
+    bonusMatrix, ranges: {}, seniorGrades: [], seniorMembershipMode: 'named-members', patActual: 0, patTarget: 100,
     targetMonthsBp: 20000, multiplierBp: null, bonusStructure: 'standard', branchFactors: {}, branchRatings: {},
     lumpStepCents: 5000, lumpShareBp: 10000, lumpCapCents: null, lumpUnitCents: null, exemptReason: '',
   };
+}
+
+/** Existing policy snapshots retain their historical grade rule until explicitly converted. */
+export function isSeniorPlanMember(policy: RewardPolicy, facts: RewardFacts, grade: string): boolean {
+  return facts.seniorPlan || policy.seniorMembershipMode !== 'named-members' && policy.seniorGrades.includes(grade);
 }
 
 export function visibleEntry(entry: RewardEntry, roles: readonly RewardRole[], personId?: string | null): boolean {

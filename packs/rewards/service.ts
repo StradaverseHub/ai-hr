@@ -12,7 +12,7 @@ import { setPayrollInput } from '../payroll/service';
 import { todayInKualaLumpur } from '../../lib/hr-date';
 import { calculateRewards } from './engine';
 import { onehrRewardResultTx } from '../performance/service';
-import { factsFromOnehr } from './model';
+import { factsFromOnehr, isSeniorPlanMember } from './model';
 import { calculateOffcycle, offcycleRoute, offcycleTransition, type Funding } from './offcycle';
 import { canEditStage, defaultPolicy, emptyFacts, emptyRecommendation, factsSchema, isoDateSchema, policySchema, recommendationSchema, rewardRoles, transition, visibleEntry, type RewardEntry, type RewardFacts, type RewardPolicy, type RewardRole, type RewardSource } from './model';
 
@@ -65,7 +65,7 @@ async function touch(tx: Tx, unitId: string) {
   await tx.update(rewardUnit).set({ revision: sql`${rewardUnit.revision}+1`, approvedDigest: null, updatedAt: new Date() }).where(eq(rewardUnit.id, unitId));
 }
 
-/** The only roster read crossing the service boundary. Never return internal entries or EC aggregates. */
+/** The full pay-bearing review projection. Never return hidden internal entries or EC aggregates. */
 export async function getRewardUnit(ctx: SessionContext, unitId: string) {
   return withRewardsTenant(ctx, async tx => {
     const { unit, roles, entries } = await load(tx, unitId);
@@ -186,8 +186,96 @@ export async function saveRewardPolicy(ctx: SessionContext, unitId: string, revi
     if (!roles.includes('gr')) throw new RewardError('Only Group Rewards may change policy.');
     if (unit.kind !== 'annual') throw new RewardError('Off-cycle reviews inherit their annual policy.');
     if (policy.year !== unit.policy.year) throw new RewardError('The reward year cannot change after the roster is created.');
+    if (policy.seniorMembershipMode !== unit.policy.seniorMembershipMode ||
+        policy.seniorMembershipMode !== 'named-members' && !isDeepStrictEqual(policy.seniorGrades, unit.policy.seniorGrades)) {
+      throw new RewardError('Preview and confirm named Senior Plan membership before changing the legacy eligibility rule.');
+    }
     await tx.update(rewardUnit).set({ policy }).where(eq(rewardUnit.id, unitId)); await touch(tx, unitId);
     await stamp(tx, ctx, unitId, 'policy-updated', { revision: unit.revision + 1 });
+  });
+}
+
+const seniorSelectionSchema = z.object({
+  employmentIds: z.array(idSchema).max(5000),
+  adoptLegacy: z.boolean(),
+}).strict();
+export type SeniorPlanSelection = z.infer<typeof seniorSelectionSchema>;
+type SeniorRosterEntry = RewardEntry & { employmentId: string };
+
+function seniorMembershipProjection(unit: typeof rewardUnit.$inferSelect, entries: SeniorRosterEntry[], roles: RewardRole[], ctx: SessionContext) {
+  return {
+    mode: unit.policy.seniorMembershipMode ?? ('legacy-grades' as const),
+    rows: entries.filter(entry => visibleEntry(entry, roles, ctx.personId)).map(entry => ({
+      employmentId: entry.employmentId, name: entry.source.name, employeeCode: entry.source.employeeCode,
+      member: isSeniorPlanMember(unit.policy, entry.facts, entry.source.grade),
+    })),
+  };
+}
+function assertSeniorSelectionAuthority(unit: typeof rewardUnit.$inferSelect, revision: number, roles: RewardRole[]) {
+  assertRevision(unit, revision); assertUnlocked(unit);
+  if (unit.kind !== 'annual' || !roles.includes('gr')) throw new RewardError('Only Group Rewards may configure Senior Plan membership in a draft annual review.');
+}
+
+/** A separate, intentionally pay-free projection; administrative role management never loads this roster. */
+export async function getRewardSeniorMembership(ctx: SessionContext, unitId: string) {
+  return withRewardsTenant(ctx, async tx => {
+    const { unit, roles, entries } = await load(tx, unitId);
+    if (!roles.includes('gr')) throw new RewardError('Group Rewards membership access is required.');
+    return { unitId, revision: unit.revision, canEdit: unit.kind === 'annual' && unit.status === 'draft', ...seniorMembershipProjection(unit, entries, roles, ctx) };
+  });
+}
+
+function prepareSeniorSelection(ctx: SessionContext, unit: typeof rewardUnit.$inferSelect, entries: SeniorRosterEntry[], roles: RewardRole[], raw: unknown) {
+  const input = seniorSelectionSchema.parse(raw);
+  const selected = new Set(input.employmentIds);
+  if (selected.size !== input.employmentIds.length) throw new RewardError('Select each employee only once.');
+  const visible = new Set(entries.filter(entry => visibleEntry(entry, roles, ctx.personId)).map(entry => entry.employmentId));
+  if (input.employmentIds.some(id => !visible.has(id))) throw new RewardError('A selected employee is not in your visible review roster. Reload the review.');
+  const legacy = unit.policy.seniorMembershipMode !== 'named-members';
+  if (legacy && !input.adoptLegacy) throw new RewardError('Confirm conversion from the saved grade rule to named membership.');
+  const updated = entries.map(entry => {
+    const before = isSeniorPlanMember(unit.policy, entry.facts, entry.source.grade);
+    // Preserve effective membership of own-person/otherwise hidden entries during conversion.
+    const after = visible.has(entry.employmentId) ? selected.has(entry.employmentId) : before;
+    return { ...entry, facts: { ...entry.facts, seniorPlan: after, reviewed: before === after ? entry.facts.reviewed : false } };
+  });
+  const token = createHash('sha256').update(JSON.stringify({
+    actor: { userId: ctx.userId, personId: ctx.personId }, unitId: unit.id, revision: unit.revision,
+    snapshot: digest(unit, entries), rosterIds: entries.map(entry => [entry.id, entry.employmentId]), selected: [...selected].sort(), adoptLegacy: input.adoptLegacy,
+  })).digest('hex');
+  const projection = seniorMembershipProjection(unit, entries, roles, ctx);
+  return { token, updated, projection, selected, legacy };
+}
+
+export async function previewRewardSeniorMembership(ctx: SessionContext, unitId: string, revision: number, raw: unknown) {
+  return withRewardsTenant(ctx, async tx => {
+    const { unit, roles, entries } = await load(tx, unitId);
+    assertSeniorSelectionAuthority(unit, revision, roles);
+    const prepared = prepareSeniorSelection(ctx, unit, entries, roles, raw);
+    return { unitId, revision, digest: prepared.token, convertingLegacy: prepared.legacy,
+      rows: prepared.projection.rows.map(row => ({ ...row, nextMember: prepared.selected.has(row.employmentId) })),
+    };
+  });
+}
+
+export async function saveRewardSeniorMembership(ctx: SessionContext, unitId: string, revision: number, raw: unknown, previewDigest: string) {
+  z.string().regex(/^[a-f0-9]{64}$/).parse(previewDigest);
+  return withRewardsTenant(ctx, async tx => {
+    const { unit, roles, entries } = await load(tx, unitId, true);
+    assertSeniorSelectionAuthority(unit, revision, roles);
+    const prepared = prepareSeniorSelection(ctx, unit, entries, roles, raw);
+    if (prepared.token !== previewDigest) throw new RewardError('Membership or the review changed. Preview it again before saving.');
+    const changedIds: string[] = [];
+    const previous = new Map(entries.map(entry => [entry.id, entry]));
+    for (const entry of prepared.updated) {
+      const old = previous.get(entry.id)!;
+      if (isDeepStrictEqual(old.facts, entry.facts)) continue;
+      await tx.update(rewardEntry).set({ facts: entry.facts, updatedAt: new Date() }).where(eq(rewardEntry.id, entry.id));
+      changedIds.push(entry.employmentId);
+    }
+    await tx.update(rewardUnit).set({ policy: { ...unit.policy, seniorMembershipMode: 'named-members' } }).where(eq(rewardUnit.id, unitId));
+    await touch(tx, unitId);
+    await stamp(tx, ctx, unitId, 'senior-membership-updated', { revision: unit.revision + 1, convertedLegacy: prepared.legacy, changedEmploymentIds: changedIds });
   });
 }
 

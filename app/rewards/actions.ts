@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { ZodError } from 'zod';
 import { getSession } from '@/lib/session';
 import { publicErrorMessage } from '@/lib/public-error';
-import { importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, importRewardFacts, postRewardUnit, refreshRewardSources, saveRewardEntry, saveRewardPolicy, setRewardMember, setRewardUnitLump } from '@/packs/rewards/service';
+import { previewRewardSeniorMembership, saveRewardSeniorMembership, importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, importRewardFacts, postRewardUnit, refreshRewardSources, saveRewardEntry, saveRewardPolicy, setRewardMember, setRewardUnitLump } from '@/packs/rewards/service';
 import { emptyFacts, performances, talents, type RewardPolicy, type RewardRole } from '@/packs/rewards/model';
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
@@ -82,7 +82,7 @@ export async function policyAction(f: FormData) {
       standardPools: [0, 1, 2].map(i => Math.round(number(f, `standard.${i}`) * 100)), hPools: [0, 1, 2].map(i => Math.round(number(f, `h.${i}`) * 100)),
       meritMatrix, ranges: matrix(str(f, 'ranges'), 4, 100), bonusMatrix: matrix(str(f, 'bonusMatrix'), 6, 10000), bonusStructure: str(f, 'bonusStructure'),
       branchFactors: matrix(str(f, 'branchFactors'), 6, 10000), branchRatings,
-      seniorGrades: str(f, 'seniorGrades').split(',').map(x => x.trim()).filter(Boolean),
+      seniorGrades: p.seniorGrades,
       lumpStepCents: scaled(f, 'lumpStep'), lumpShareBp: scaled(f, 'lumpShare'), lumpCapCents: scaled(f, 'lumpCap'), exemptReason: str(f, 'exemptReason'),
     };
     await saveRewardPolicy(s, id, rev, policy as RewardPolicy);
@@ -115,3 +115,15 @@ export async function offcycleAction(f: FormData) {
 }
 
 export async function importOnehrAction(f:FormData) { return change(f,(s,id,rev)=>importOnehrRewardResults(s,id,rev)); }
+
+export async function previewSeniorMembershipAction(unitId: string, revision: number, input: unknown) {
+  try { return { ok: true as const, preview: await previewRewardSeniorMembership(await getSession(), unitId, revision, input) }; }
+  catch (error) { return { ok: false as const, error: errorText(error) }; }
+}
+export async function saveSeniorMembershipAction(unitId: string, revision: number, input: unknown, previewDigest: string) {
+  try {
+    await saveRewardSeniorMembership(await getSession(), unitId, revision, input, previewDigest);
+    revalidatePath('/rewards', 'layout'); revalidatePath('/admin/rewards', 'layout');
+    return { ok: true as const };
+  } catch (error) { return { ok: false as const, error: errorText(error) }; }
+}

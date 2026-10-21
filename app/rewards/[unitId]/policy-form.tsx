@@ -14,7 +14,7 @@ export async function PolicyForm({ unitId, revision, policy: p, readOnly = false
     <p className="max-w-3xl text-sm text-muted-foreground">{t('configurationHelp')}</p>
     <fieldset className="space-y-3"><legend className="mb-3 font-semibold">{t('eligibility')}</legend><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {(['effectiveFrom', 'joinedBefore', 'confirmedBy', 'blockedFrom', 'blockedTo'] as const).map(key => <Field key={key} label={t(key)}><input type="date" name={key} defaultValue={p[key]} required className={inputCls} /></Field>)}
-      <Field label={t('seniorGrades')}><input name="seniorGrades" defaultValue={p.seniorGrades.join(', ')} className={inputCls} /></Field>
+      {p.seniorMembershipMode === 'named-members' ? <p className="text-sm text-muted-foreground">{t('seniorMembershipHelp')}</p> : <Field label={t('seniorGrades')}><input readOnly value={p.seniorGrades.join(', ')} className={inputCls} /></Field>}
     </div></fieldset>
     <fieldset className="space-y-3"><legend className="mb-3 font-semibold">{t('salaryBudgets')}</legend><div className="grid gap-4 sm:grid-cols-3">
       {(['standard', 'h'] as const).flatMap(plan => [0, 1, 2].map(i => <div key={`${plan}.${i}`}>{amount(`${plan}.${i}`, `${t(plan)} · ${t(['merit', 'promotion', 'special'][i])} (%)`, (plan === 'h' ? p.hPools : p.standardPools)[i])}</div>))}
