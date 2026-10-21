@@ -76,6 +76,8 @@ import {
 } from './absence-days';
 import { holidayDatesByEmployment, holidayDatesFor, holidayCalendarProvenanceFor } from './holidays';
 import type {PolicyCalendarProof} from '../lib/attendance-policy-calendar';
+import {attendanceGroupPolicyOnTx,type ResolvedAttendanceGroupPolicy} from './attendance-group-policy';
+import {HR_LOCAL_TZ} from '../lib/hr-date';
 import {overtimeUuid,overtimeDate} from '../lib/overtime-pattern-schema';
 import { approvedLeaveDates } from './leave';
 // cf21e554 stage 2 — the shift's own clock-time overtime windows. Pure, DB-free arithmetic in its own
@@ -4520,6 +4522,51 @@ export async function attendancePolicyCalendarTx(tx:Tx,p:{employmentId:string;da
       references:[...references,...originals.map(row=>`holiday:${row.id}`),...replacements.map(row=>`replacement-holiday:${row.id}`)]});
   }
   return out;
+}
+
+export type AttendancePolicyExecutionContext=
+  |{state:'legacy';reason:'noDatedPolicy'}
+  |{state:'unavailable';reason:'subjectUnavailable'|'companyUnavailable'|'principalUnavailable'|'scheduleUnavailable'}
+  |{state:'policy';employmentId:string;date:string;companyId:string;timeZone:typeof HR_LOCAL_TZ;
+    selected:ResolvedAttendanceGroupPolicy;
+    resolvedClock:ResolvedAttendanceGroupPolicy['policy']['clock'];
+    schedule:{source:ResolvedSchedule['source'];shiftId:string|null;ruleId:string;start:string|null;end:string|null;
+      crossesMidnight:boolean;dailyCutoffMinutes:number|null;durationOnly:boolean;flexiDuration:boolean;
+      normalMinutes:number;breakMinutes:number;breakPeriods:BreakPeriod[]|null;flexibleBreakMinutes:number|null};
+    calendar:PolicyCalendarProof[]};
+
+/** Selection seam for the canonical calculation writer. No form-supplied company/group/policy ID.
+ * This is live input, not final-effect authority or an immutable receipt: the writer must freeze its
+ * selected revision and complete facts before financial consumers can use the resulting calculation. */
+export async function attendancePolicyExecutionContextTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}):Promise<AttendancePolicyExecutionContext>{
+  overtimeUuid(p.employmentId,'employmentId');overtimeDate(p.date,'attendanceDate');
+  const [principal]=await tx.execute(sql`select app.attendance_policy_principal_current() as allowed`) as unknown as {allowed:boolean}[];
+  if(!principal?.allowed)return {state:'unavailable',reason:'principalUnavailable'};
+  const [subject]=await tx.select({id:employment.id,companyId:employment.companyId}).from(employment)
+    .where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1);
+  if(!subject)return {state:'unavailable',reason:'subjectUnavailable'};
+  const company=(await provenCompanyDatesTx(tx,[p])).get(`${p.employmentId}|${p.date}`);
+  if(!company?.companyId||company.reason)return {state:'unavailable',reason:'companyUnavailable'};
+  const schedule=await scheduleFor(tx,p.employmentId,p.date);
+  if(schedule.source==='policy'&&company.companyId!==subject.companyId)return {state:'unavailable',reason:'scheduleUnavailable'};
+  if(!schedule.rule)return {state:'legacy',reason:'noDatedPolicy'};
+  const selected=await attendanceGroupPolicyOnTx(tx,ctx,{companyId:company.companyId,ruleId:schedule.rule.id,date:p.date});
+  if(!selected)return {state:'legacy',reason:'noDatedPolicy'};
+  // An explicit shift grace remains authoritative. An absent override takes the new group value;
+  // fixed-clock penalties still do not apply to duration/flexi schedules under their existing owner.
+  const [overrides]=schedule.displayShiftId?await tx.select({late:shift.lateGraceMinutes,early:shift.earlyLeaveGraceMinutes})
+    .from(shift).where(eq(shift.id,schedule.displayShiftId)).limit(1):[];
+  const fixed=schedule.dayType==='workday'&&!schedule.flexiDuration&&!schedule.durationOnly;
+  const resolvedClock={...selected.policy.clock,
+    lateGraceMinutes:fixed?overrides?.late??selected.policy.clock.lateGraceMinutes:0,
+    earlyGraceMinutes:fixed?overrides?.early??selected.policy.clock.earlyGraceMinutes:0};
+  const dates=selected.policy.overtime.splitAtMidnight?[p.date,addDays(p.date,1),addDays(p.date,2)]:[p.date];
+  const calendar=await attendancePolicyCalendarTx(tx,{employmentId:p.employmentId,dates});
+  return {state:'policy',employmentId:p.employmentId,date:p.date,companyId:company.companyId,timeZone:HR_LOCAL_TZ,selected,resolvedClock,
+    schedule:{source:schedule.source,shiftId:schedule.displayShiftId??null,ruleId:schedule.rule.id,start:schedule.scheduledStart,end:schedule.scheduledEnd,
+      crossesMidnight:schedule.crossesMidnight,dailyCutoffMinutes:schedule.dailyCutoffMinutes,durationOnly:schedule.durationOnly===true,flexiDuration:schedule.flexiDuration,
+      normalMinutes:schedule.normalMinutesOverride??schedule.scheduledMinutes,breakMinutes:schedule.breakMinutes,
+      breakPeriods:schedule.breakPeriods?.map(row=>({...row}))??null,flexibleBreakMinutes:schedule.flexibleBreakMinutes},calendar};
 }
 
 /** Canonical date facts for attendance allowance previews. No measurement is recomputed here.
