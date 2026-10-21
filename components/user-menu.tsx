@@ -81,12 +81,15 @@ export function UserMenu({
   name,
   employeeCode,
   employed,
+  canConfigureAccess=false,
 }: {
   name: string | null;
   employeeCode: string | null;
   employed: boolean;
+  canConfigureAccess?:boolean;
 }) {
   const t = useTranslations('topbar');
+  const accessT=useTranslations('accessConfiguration');
   const [open, setOpen] = useState(false);
 
   // Escape closes, as it does for every other popover chrome in the header.
@@ -186,6 +189,8 @@ export function UserMenu({
             >
               {t('viewProfile')}
             </Link>
+            {canConfigureAccess&&<Link href="/admin/users/access" role="menuitem" onClick={()=>setOpen(false)}
+              className="flex w-full items-center rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted">{accessT('title')}</Link>}
             {/* Moved out of the header (r256) so the corner has room to say who you are on a laptop. */}
             <TourLauncher variant="menu" onSelect={() => setOpen(false)} />
             {/* r396 — the UI theme (Monolith | Classic). Here, not in the header: the right cluster is a

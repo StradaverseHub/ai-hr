@@ -1,6 +1,6 @@
 /**
- * Transactional access-edit orchestration. This is not yet wired to an application route.
- * The storage adapter and complete SQL/domain enforcement are still required before exposure.
+ * Transactional access-edit orchestration. Draft page/actions use the private SQL owner.
+ * Domain capabilities remain unavailable until their complete consumer bindings are implemented.
  */
 import {randomUUID} from 'node:crypto';
 import {withTenant,type SessionContext,type Tx} from '../db/client';

@@ -34,6 +34,7 @@ import { canManagePayroll, canManagePerfComp, hasTeamAccess, isAdmin } from '@/l
 import { listPrincipals } from '@/lib/principals';
 import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
 import { allowedCompanies } from '@/core/read';
+import {canConfigureAccess} from '@/core/access-configuration-editor';
 import { getScopeIds } from '@/lib/scope';
 import { getOnboardingStatus } from '@/core/onboarding';
 import { listPendingTasks } from '@/core/approvals-inbox';
@@ -141,6 +142,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // with no employment (an admin never hired, or a leaver), or a login attached to no person at all.
   // Memoised, so the NoticePopupSlot below shares the employment row rather than re-reading it.
   const viewer = await viewerIdentity(session);
+  const accessConfigurationAvailable=await canConfigureAccess(session);
   const onboarded = await getOnboardingStatus(session);
   const tours = toursForRoles(session.roles);
   const canApprove = isAdmin(session) || (session.roles ?? []).includes('manager');
@@ -387,7 +389,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                       extra click, and together they are what buys the corner room to say who you are on
                       a 1280px laptop. The tour launcher was also the control the cluster was already
                       squeezing: measured at 20px wide instead of 36, its icon clipped. */}
-                  <UserMenu name={viewer.name} employeeCode={viewer.employeeCode} employed={viewer.employed} />
+                  <UserMenu name={viewer.name} employeeCode={viewer.employeeCode} employed={viewer.employed} canConfigureAccess={accessConfigurationAvailable}/>
                 </div>
               </header>
               <IntentBar />

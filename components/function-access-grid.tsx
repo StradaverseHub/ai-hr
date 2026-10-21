@@ -1,4 +1,4 @@
-import { Check, Minus } from 'lucide-react';
+import { Check, Minus, CircleHelp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MATRIX_ROLES, SCREENS, canReach, type Role, type ScreenEntry } from '@/lib/permissions';
 
@@ -59,19 +59,21 @@ export function FunctionAccessGrid({
                 </th>
                 {MATRIX_ROLES.map((role) => {
                   const ok = canReach(role, screen);
+                  const conditional=screen.guard==='requireAccessConfiguration';
+                  const answer=conditional?(note??labels.notAccessible):ok?labels.accessible:labels.notAccessible;
                   return (
                     <td key={role} className="border-t border-border px-3 py-2.5 text-center align-top">
                       <span
-                        title={ok ? labels.accessible : labels.notAccessible}
+                        title={answer}
                         className={cn(
                           'inline-flex size-6 items-center justify-center rounded-full',
-                          ok
+                          ok&&!conditional
                             ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400'
                             : 'bg-muted text-muted-foreground/50',
                         )}
                       >
-                        {ok ? <Check className="size-3.5" strokeWidth={2.5} /> : <Minus className="size-3.5" />}
-                        <span className="sr-only">{ok ? labels.accessible : labels.notAccessible}</span>
+                        {conditional?<CircleHelp className="size-3.5"/>:ok ? <Check className="size-3.5" strokeWidth={2.5} /> : <Minus className="size-3.5" />}
+                        <span className="sr-only">{answer}</span>
                       </span>
                     </td>
                   );

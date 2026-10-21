@@ -302,7 +302,7 @@ REVOKE ALL ON FUNCTION app.access_assert_administrator() FROM PUBLIC,ai_hr_app;
 -- their page, action, read/export and SQL consumers are completed and verified in this source round.
 INSERT INTO access_capability(id,scope,supported,bindings) VALUES
  ('access.system_admin','tenant',true,'[{"owner":"app.access_assert_administrator","operation":"recovery-invariant"}]'),
- ('access.configure','tenant',true,'[{"owner":"app.access_configuration_state","operation":"read"},{"owner":"app.access_configuration_commit","operation":"write"}]'),
+ ('access.configure','tenant',true,'[{"owner":"app.access_configuration_state","operation":"read"},{"owner":"app.access_configuration_editor_metadata","operation":"read-labels-history"},{"owner":"app.access_configuration_commit","operation":"write"},{"owner":"app/admin/users/access/page.tsx","operation":"page"},{"owner":"app/admin/users/access/actions.ts","operation":"preview-save"}]'),
  ('workforce.view','company',false,'[]'),
  ('workforce.maintain','company',false,'[]'),
  ('profile.review','company',false,'[]');
@@ -335,7 +335,7 @@ BEGIN
  UPDATE public.access_configuration SET initialized=true,revision=gen_random_uuid(),updated_at=now() WHERE tenant_id=t;
  PERFORM app.access_assert_administrator_for(t);
  INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
- VALUES(t,'access-configuration',t,'access-configuration.initialized','user',u::text,'{"defaultsCreated":true,"legacyRolesChanged":false}'::jsonb);
+ VALUES(t,'access-configuration',t,'access-configuration.initialized','user',u,'{"defaultsCreated":true,"legacyRolesChanged":false}'::jsonb);
  RETURN true;
 END;
 $$;
@@ -430,6 +430,33 @@ $$;
 REVOKE ALL ON FUNCTION app.access_configuration_state() FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.access_configuration_state() TO ai_hr_app;
+--> statement-breakpoint
+-- The editor receives login labels and bounded permission history, never a personnel/payroll row.
+CREATE FUNCTION app.access_configuration_editor_metadata() RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id(); result jsonb;
+BEGIN
+ IF NOT app.access_allowed_for(app.current_user_id(),'access.configure',NULL) THEN
+  RAISE EXCEPTION 'access configuration unavailable' USING ERRCODE='42501';
+ END IF;
+ SELECT jsonb_build_object(
+  'users',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',u.id,'label',COALESCE(NULLIF(p.full_name,''),u.id::text)) ORDER BY u.id)
+   FROM public.app_user u LEFT JOIN public.person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE u.tenant_id=t),'[]'::jsonb),
+  'companies',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',c.id,'label',c.legal_name) ORDER BY c.id) FROM public.company c WHERE c.tenant_id=t),'[]'::jsonb),
+  'history',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',h.id,'at',h.occurred_at,'actorId',h.actor_id,
+    'operation',CASE WHEN h.event_type='access-configuration.initialized' THEN 'initialized' ELSE h.payload->>'kind' END) ORDER BY h.sequence DESC)
+   FROM (SELECT e.id,e.sequence,e.occurred_at,e.actor_id,e.event_type,e.payload FROM public.domain_event e
+    WHERE e.tenant_id=t AND e.aggregate_type='access-configuration' AND e.aggregate_id=t
+     AND e.event_type IN ('access-configuration.initialized','access-configuration.changed')
+    ORDER BY e.sequence DESC LIMIT 100) h),'[]'::jsonb)
+ ) INTO result;
+ RETURN result;
+END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_configuration_editor_metadata() FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_configuration_editor_metadata() TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.access_command_keys(v jsonb,keys text[]) RETURNS boolean
 LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,pg_temp AS $$
@@ -570,7 +597,7 @@ BEGIN
  UPDATE public.access_configuration SET revision=new_revision,updated_at=now() WHERE tenant_id=t AND revision=expected;
  IF NOT FOUND THEN RAISE EXCEPTION 'access changed' USING ERRCODE='40001'; END IF;
  INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
- VALUES(t,'access-configuration',t,'access-configuration.changed','user',actor::text,audit);
+ VALUES(t,'access-configuration',t,'access-configuration.changed','user',actor,audit);
  RETURN true;
 END;
 $$;
@@ -578,6 +605,21 @@ $$;
 REVOKE ALL ON FUNCTION app.access_configuration_commit(uuid,text,jsonb,uuid) FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.access_configuration_commit(uuid,text,jsonb,uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- Only the canonical definer owner may append access audit events. General runtime append authority
+-- must not manufacture editor history or impersonate a configuration change that never committed.
+CREATE FUNCTION app.access_guard_audit_append() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF (NEW.aggregate_type='access-configuration' OR NEW.event_type IN ('access-configuration.initialized','access-configuration.changed'))
+  AND NOT app.acting_as_owner() THEN RAISE EXCEPTION 'access audit owner required' USING ERRCODE='42501'; END IF;
+ RETURN NEW;
+END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_guard_audit_append() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER access_audit_append_owner BEFORE INSERT ON domain_event FOR EACH ROW EXECUTE FUNCTION app.access_guard_audit_append();
 --> statement-breakpoint
 -- Existing identity/role/lifecycle writers join the same tenant lock. Advancing the shared row also
 -- causes a stale repeatable-read writer to serialize/refuse instead of relying on an old admin count.

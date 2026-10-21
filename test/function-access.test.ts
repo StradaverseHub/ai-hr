@@ -29,7 +29,7 @@ import {
 import en from '../messages/en.json';
 
 const APP = path.resolve(__dirname, '../app');
-const GUARD_RE = /requireTeamAccess|requireAdmin|requirePayrollAccess|requirePerfCompAccess|scopedAdmin|scopedSession|onboarding(?:Context|Detail|MyAcknowledgements|Requisitions)\s*\(/;
+const GUARD_RE = /requireAccessConfiguration|requireTeamAccess|requireAdmin|requirePayrollAccess|requirePerfCompAccess|scopedAdmin|scopedSession|onboarding(?:Context|Detail|MyAcknowledgements|Requisitions)\s*\(/;
 
 /**
  * r362 — THIS USED TO TEST THE RAW SOURCE, SO A COMMENT COUNTED AS A GUARD.
@@ -136,7 +136,7 @@ describe('function-access registry (lib/permissions)', () => {
   // ADMIN counts stay pinned at 2, which is the assertion that matters: operator is NOT an admin role,
   // so the loop below now also proves an operator reaches no requireAdmin/scopedAdmin screen.
   it('access is guard-derived and honest: admin/scopedAdmin → 2 admin roles, scopedSession → all 7', () => {
-    const guardExpect: Record<Guard, number> = { requireAdmin: 2, scopedAdmin: 2, scopedSession: 7, requireTeamAccess: 3, onboardingAccess: 7, onboardingParticipant: 7, onboardingMaster: 2 };
+    const guardExpect: Record<Guard, number> = { requireAccessConfiguration: 7, requireAdmin: 2, scopedAdmin: 2, scopedSession: 7, requireTeamAccess: 3, onboardingAccess: 7, onboardingParticipant: 7, onboardingMaster: 2 };
     for (const g of Object.keys(guardExpect) as Guard[]) {
       expect(rolesForGuard(g).size, g).toBe(guardExpect[g]);
     }

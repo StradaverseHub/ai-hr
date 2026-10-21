@@ -10046,7 +10046,8 @@
         "onboardingRequisitions": "Các nhóm thực hiện, phê duyệt và thêm hệ thống đã cấu hình, người dùng mô-đun và HR công ty được đọc yêu cầu. Thao tác vẫn giới hạn theo nhóm, bước hoặc quyền mục hiện tại. Việc được nhắc đến chỉ cấp quyền xem cuộc thảo luận tương ứng.",
         "onboardingAcknowledgement": "Chỉ người được liên kết với lần tuyển dụng đó được xác nhận thiết bị của mình sau bàn giao. Hồ sơ tái tuyển dụng và nhiều quan hệ việc làm được giữ riêng.",
         "attendanceVisibleApplications": "Chỉ các đơn chấm công đã có quyền xem theo phạm vi nhân viên, tuyến báo cáo, ủy quyền hoặc người tham gia đã lưu hiện tại. Trang này không cấp quyền xem hồ sơ nhân sự hoặc lịch sử HR rộng hơn.",
-        "profileChanges": "Xem yêu cầu thay đổi hồ sơ được giao cho bạn trong phạm vi quyền HR hiện tại."
+        "profileChanges": "Xem yêu cầu thay đổi hồ sơ được giao cho bạn trong phạm vi quyền HR hiện tại.",
+        "accessConfiguration": "Chỉ mở khi có quyền Quản lý bảo mật và quyền đang có hiệu lực. Vai trò riêng lẻ không cấp quyền truy cập màn hình này."
       },
       "status": {
         "active": "Đang hoạt động",
@@ -21932,7 +21933,7 @@
     "reviewTitle": "Xem xét trước khi áp dụng",
     "safeguards": "Mỗi lần xác nhận chỉ áp dụng thay đổi được hiển thị. Phân tách phê duyệt, ranh giới công ty và hạn chế tự phê duyệt vẫn có hiệu lực.",
     "futureScope": "Phạm vi tất cả công ty cũng bao gồm các công ty trong tương lai. Xem xét phạm vi rộng này trước khi xác nhận.",
-    "noCurrentChanges": "Quyền người dùng hiện tại không thay đổi. Thay đổi nhóm hoặc thành viên hiển thị ở trên vẫn được lưu.",
+    "noCurrentChanges": "Quyền của người dùng hiện tại không thay đổi. Thay đổi hiển thị ở trên vẫn sẽ được lưu.",
     "before": "Trước",
     "after": "Sau",
     "confirm": "Xác nhận thay đổi quyền",
@@ -21949,7 +21950,8 @@
       "retireGroup": "Ngừng sử dụng nhóm",
       "replaceGroupGrants": "Đổi quyền nhóm",
       "setMembership": "Đổi thành viên nhóm",
-      "setOverride": "Đổi quyền cá nhân"
+      "setOverride": "Đổi quyền cá nhân",
+      "initialized": "Đã tạo nhóm mặc định"
     },
     "errors": {
       "invalid": "Thay đổi không hợp lệ hoặc không còn khả dụng. Tải lại và xem xét lại.",
@@ -21958,6 +21960,14 @@
       "ceiling": "Bạn không thể thực hiện thay đổi này trong phạm vi quyền hiện tại.",
       "lastAdministrator": "Phải giữ một Quản trị viên hệ thống đang hoạt động có thể quản lý quyền. Thêm người thay thế trước khi xóa quyền này.",
       "system": "Không thể hoàn tất thay đổi. Tải lại quyền trước khi thử lại."
+    },
+    "inactive": "Không hoạt động",
+    "capabilities": {
+      "systemAdministrator": "Quản trị viên hệ thống được bảo vệ",
+      "configure": "Quản lý bảo mật và quyền",
+      "workforceView": "Xem hồ sơ nhân viên",
+      "workforceMaintain": "Duy trì hồ sơ nhân viên",
+      "profileReview": "Xét duyệt thay đổi hồ sơ đủ điều kiện"
     }
   }
 }

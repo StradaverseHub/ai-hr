@@ -10046,7 +10046,8 @@
         "onboardingRequisitions": "Kumpulan penyediaan, kelulusan dan penambahan sistem yang ditetapkan, pengguna modul serta HR syarikat boleh membaca permintaan. Tindakan mengikut hak pasukan, langkah atau item semasa. Sebutan hanya memberi konteks perbincangannya.",
         "onboardingAcknowledgement": "Hanya individu yang dipautkan kepada pengambilan boleh mengakui peralatan sendiri selepas serahan. Kes pengambilan semula dan pekerjaan berbilang kekal berasingan.",
         "attendanceVisibleApplications": "Hanya permohonan kehadiran yang sudah kelihatan melalui skop pekerja, pelaporan, delegasi atau peserta disimpan semasa. Halaman ini tidak memberi akses Personnel atau sejarah HR lebih luas.",
-        "profileChanges": "Semak perubahan profil yang ditugaskan kepada anda dalam kuasa HR semasa."
+        "profileChanges": "Semak perubahan profil yang ditugaskan kepada anda dalam kuasa HR semasa.",
+        "accessConfiguration": "Hanya dibuka dengan kebenaran Urus keselamatan dan kebenaran yang berkuat kuasa. Peranan sahaja tidak memberikan akses."
       },
       "status": {
         "active": "Aktif",
@@ -21932,7 +21933,7 @@
     "reviewTitle": "Semak sebelum digunakan",
     "safeguards": "Setiap pengesahan hanya menggunakan perubahan yang dipaparkan. Pemisahan kelulusan, sempadan syarikat dan larangan kelulusan sendiri masih terpakai.",
     "futureScope": "Skop semua syarikat turut merangkumi syarikat baharu pada masa depan. Semak skop lebih luas ini sebelum mengesahkan.",
-    "noCurrentChanges": "Tiada perubahan kebenaran pengguna semasa. Perubahan kumpulan atau keahlian di atas tetap akan disimpan.",
+    "noCurrentChanges": "Tiada perubahan pada kebenaran pengguna semasa. Perubahan yang dipaparkan di atas tetap akan disimpan.",
     "before": "Sebelum",
     "after": "Selepas",
     "confirm": "Sahkan perubahan akses",
@@ -21949,7 +21950,8 @@
       "retireGroup": "Tamatkan kumpulan",
       "replaceGroupGrants": "Ubah kebenaran kumpulan",
       "setMembership": "Ubah keahlian kumpulan",
-      "setOverride": "Ubah kebenaran individu"
+      "setOverride": "Ubah kebenaran individu",
+      "initialized": "Kumpulan lalai dicipta"
     },
     "errors": {
       "invalid": "Perubahan tidak sah atau tidak lagi tersedia. Muat semula dan semak lagi.",
@@ -21958,6 +21960,14 @@
       "ceiling": "Anda tidak boleh membuat perubahan ini dalam skop kebenaran semasa.",
       "lastAdministrator": "Kekalkan Pentadbir Sistem aktif yang boleh mengurus akses. Tambah pengganti sebelum membuang akses ini.",
       "system": "Perubahan tidak dapat diselesaikan. Muat semula akses sebelum mencuba lagi."
+    },
+    "inactive": "Tidak aktif",
+    "capabilities": {
+      "systemAdministrator": "Pentadbir Sistem dilindungi",
+      "configure": "Urus keselamatan dan kebenaran",
+      "workforceView": "Lihat rekod pekerja",
+      "workforceMaintain": "Selenggara rekod pekerja",
+      "profileReview": "Semak perubahan profil yang layak"
     }
   }
 }

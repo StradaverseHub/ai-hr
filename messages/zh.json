@@ -10046,7 +10046,8 @@
         "onboardingRequisitions": "配置的履行组、审批组和系统添加组、模块用户及公司人事可查看申请。操作仍受当前团队、审批步骤或项目权限限制。仅被提及只能查看相应讨论。",
         "onboardingAcknowledgement": "只有与该次入职关联的本人可以确认已交付给自己的设备。重新入职及多重雇佣的记录分别保留。",
         "attendanceVisibleApplications": "仅显示现有员工、汇报、委托或已保存参与者范围内可见的出勤申请。此页不会授予人员浏览或更广泛的人事历史权限。",
-        "profileChanges": "查看在当前人事权限范围内分配给您的资料变更申请。"
+        "profileChanges": "查看在当前人事权限范围内分配给您的资料变更申请。",
+        "accessConfiguration": "仅限当前拥有“管理安全与权限”有效授权的用户。仅凭角色不能访问此页面。"
       },
       "status": {
         "active": "启用",
@@ -21932,7 +21933,7 @@
     "reviewTitle": "应用前确认",
     "safeguards": "每次确认仅应用所示更改。审批职责分离、公司边界和禁止自批规则仍然适用。",
     "futureScope": "所有公司范围也包括未来新增的公司。确认前请检查此较大范围。",
-    "noCurrentChanges": "当前用户权限没有变化。上方显示的群组或成员更改仍将保存。",
+    "noCurrentChanges": "当前用户权限不会改变，仍会保存上方显示的更改。",
     "before": "更改前",
     "after": "更改后",
     "confirm": "确认权限更改",
@@ -21949,7 +21950,8 @@
       "retireGroup": "停用群组",
       "replaceGroupGrants": "更改群组权限",
       "setMembership": "更改群组成员资格",
-      "setOverride": "更改个人权限"
+      "setOverride": "更改个人权限",
+      "initialized": "已创建默认用户组"
     },
     "errors": {
       "invalid": "更改无效或已不可用。请重新加载并检查。",
@@ -21958,6 +21960,14 @@
       "ceiling": "当前权限范围不允许您进行此更改。",
       "lastAdministrator": "必须保留一位能够管理访问权限的有效系统管理员。请先添加接替管理员，再移除此权限。",
       "system": "无法完成更改。请重新加载权限后再试。"
+    },
+    "inactive": "未启用",
+    "capabilities": {
+      "systemAdministrator": "受保护的系统管理员",
+      "configure": "管理安全与权限",
+      "workforceView": "查看员工资料",
+      "workforceMaintain": "维护员工资料",
+      "profileReview": "审核符合条件的资料更改"
     }
   }
 }

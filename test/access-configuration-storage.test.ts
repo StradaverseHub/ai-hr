@@ -9,6 +9,7 @@ import {accessConfigurationStore} from '../core/access-configuration-store';
 import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';
 import {revokeRole} from '../core/admin';
 import {hireEmployee} from '../core/org';
+import {readAccessConfigurationEditor} from '../core/access-configuration-editor';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {pgSqlState} from '../lib/db-error';
 import type {AccessConfigurationCommand} from '../lib/access-configuration-command';
@@ -71,6 +72,12 @@ describe('canonical access storage under ai_hr_app',()=>{
   const events=await owner.db.select({payload:domainEvent.payload}).from(domainEvent).where(and(eq(domainEvent.tenantId,b.tenantId),eq(domainEvent.eventType,'access-configuration.changed'))).orderBy(domainEvent.id);
   expect(events).toHaveLength(1);expect(events[0].payload).toMatchObject({kind:'createGroup',groupId,created:true});
   expect(JSON.stringify(events)).not.toContain('Fictional private group label');
+  const editor=await readAccessConfigurationEditor(admin());expect(editor.history.filter(event=>event.operation==='createGroup')).toHaveLength(1);
+  expect(editor).not.toHaveProperty('recoveryUserIds');expect(editor).not.toHaveProperty('evidence');
+  expect(editor.users.every(user=>Object.keys(user).sort().join(',')==='id,label')).toBe(true);
+  const employee=await login('employee');await expect(readAccessConfigurationEditor(employee.ctx)).rejects.toMatchObject({code:'ceiling'});
+  await sqlRefusal(()=>withTenant(employee.ctx,tx=>tx.execute(sql`select app.access_configuration_editor_metadata()`)),'42501');
+  await sqlRefusal(()=>withTenant(admin(),tx=>tx.execute(sql`insert into domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) values(${b.tenantId}::uuid,'access-configuration',${b.tenantId}::uuid,'access-configuration.changed','user',${b.adminUserId}::uuid,'{"kind":"retireGroup"}'::jsonb)`)),'42501');
  });
  it('keeps unsupported controls unavailable and independently rejects a foreign company in raw SQL',async()=>{
   const groupId=randomUUID();await change({kind:'createGroup',groupId,name:'Fictional scope fixture'});

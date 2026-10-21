@@ -10046,7 +10046,8 @@
         "onboardingRequisitions": "Operational fulfilment, approval and configured add-system groups, module users and company HR can read requisitions. Actions remain restricted to the current team, step or item rights. A mention alone grants only its discussion context.",
         "onboardingAcknowledgement": "Only the person linked to the hire can acknowledge their own handed-over equipment. Rehire and multiple-employment cases remain separate.",
         "attendanceVisibleApplications": "Only attendance requests already visible through the current employee, reporting, delegation or saved participant scope. This page grants no Personnel browsing or wider HR history access.",
-        "profileChanges": "Review profile changes assigned to you within your current HR authority. Old requests retain their recorded routing."
+        "profileChanges": "Review profile changes assigned to you within your current HR authority. Old requests retain their recorded routing.",
+        "accessConfiguration": "Opens only with the current effective Manage security and permissions grant. A role alone never grants this screen."
       },
       "status": {
         "active": "Active",
@@ -21932,7 +21933,7 @@
     "reviewTitle": "Review before applying",
     "safeguards": "Each confirmation applies only the change shown. Approval separation, company boundaries and self-approval restrictions still apply.",
     "futureScope": "An all-company scope also covers future companies. Review this wider scope before confirming.",
-    "noCurrentChanges": "No current user permissions change. The group or membership change shown above will still be saved.",
+    "noCurrentChanges": "No current user permissions change. The change shown above will still be saved.",
     "before": "Before",
     "after": "After",
     "confirm": "Confirm access change",
@@ -21949,7 +21950,8 @@
       "retireGroup": "Retire group",
       "replaceGroupGrants": "Change group permissions",
       "setMembership": "Change group membership",
-      "setOverride": "Change individual permission"
+      "setOverride": "Change individual permission",
+      "initialized": "Default groups created"
     },
     "errors": {
       "invalid": "The change is invalid or no longer available. Reload and review it again.",
@@ -21958,6 +21960,14 @@
       "ceiling": "You cannot make this change within your current permission scope.",
       "lastAdministrator": "Keep an active System Administrator who can manage access. Add a replacement before removing this access.",
       "system": "The change could not be completed. Reload access before trying again."
+    },
+    "inactive": "Inactive",
+    "capabilities": {
+      "systemAdministrator": "Protected System Administrator",
+      "configure": "Manage security and permissions",
+      "workforceView": "View employee records",
+      "workforceMaintain": "Maintain employee records",
+      "profileReview": "Review eligible profile changes"
     }
   }
 }

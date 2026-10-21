@@ -6,9 +6,9 @@ import {Button,Card,Field,inputCls} from '@/components/ui';
 import type {AccessCapability,AccessSnapshot,AccessResolution} from '@/lib/access-permission-model';
 import type {AccessConfigurationCommand} from '@/lib/access-configuration-command';
 import type {AccessConfigurationPreview} from '@/core/access-configuration';
+import type {AccessEditorFailure,AccessEditorResult} from '@/lib/access-editor-result';
+export type {AccessEditorFailure,AccessEditorResult} from '@/lib/access-editor-result';
 
-export type AccessEditorFailure='invalid'|'changed'|'unsupported'|'ceiling'|'lastAdministrator'|'system';
-export type AccessEditorResult<T>={ok:true;value:T}|{ok:false;code:AccessEditorFailure};
 export type AccessEditorCapability=Pick<AccessCapability,'id'|'scope'|'supported'>&{label:string};
 type Choice={id:string;label:string};
 export type AccessEditorProps={
