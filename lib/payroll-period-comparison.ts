@@ -14,7 +14,7 @@ export type PayrollComparisonDefinition={
 export const DEFAULT_PAYROLL_COMPARISON:PayrollComparisonDefinition={version:1,payItemCode:'BASIC',compareMode:'previous',previousPeriod:null,
  runType:'regular',minVariance:'0.01',autoTag:true,onlyVariances:true,columns:[...PAYROLL_COMPARISON_COLUMNS],roles:['hr_admin','super_admin']};
 export class PayrollComparisonInputError extends Error {constructor(readonly code:string){super(`Payroll comparison: ${code}`);this.name='PayrollComparisonInputError';}}
-const fail=(code:string):never=>{throw new PayrollComparisonInputError(code);};
+function fail(code:string):never{throw new PayrollComparisonInputError(code);}
 export const isPayrollComparisonPeriod=(value:unknown):value is string=>typeof value==='string'&&/^(?:19|20|21)\d{2}-(0[1-9]|1[0-2])$/.test(value);
 export function previousPayrollComparisonPeriod(current:string){
  if(!isPayrollComparisonPeriod(current))fail('period');

@@ -21,7 +21,7 @@ export type ComparisonSource = {
   proratedCoverage?: { from:string; to:string; windowFrom?:string; windowTo?:string };
 };
 export type ComparisonIdentity = {
-  employmentId: string; companyId: string; employeeCode: string; employeeName: string;
+  employmentId: string; companyId: string; employeeCode: string | null; employeeName: string;
   departmentId: string | null; department: string | null; grade: string | null;
   company: string; costCentre: string | null; hireDate: string; exitDate: string | null;
   movements: readonly PayrollComparisonMovement[];

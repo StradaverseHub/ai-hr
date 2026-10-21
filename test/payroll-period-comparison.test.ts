@@ -6,6 +6,7 @@ import {
 } from '../lib/payroll-period-comparison';
 import { comparePayrollResults, type ComparisonRun, type ComparisonSource, type ComparisonIdentity } from '../lib/payroll-comparison-result';
 import { recordedPayrollComparisonAmount, recordedPayrollComparisonCurrency, recordedPayrollProrationCoverage,payrollComparisonDatedSubjects } from '../lib/payroll-comparison-source';
+import {payrollComparisonCell} from '../lib/payroll-comparison-presentation';
 const definition = structuredClone(DEFAULT_PAYROLL_COMPARISON);
 const companyId = '00000000-0000-0000-0000-000000000001';
 const otherCompanyId = '00000000-0000-0000-0000-000000000002';
@@ -51,6 +52,13 @@ describe('payroll comparison exact arithmetic and validation', () => {
 });
 
 describe('saved result provenance', () => {
+  it('preserves an unavailable employee code instead of manufacturing an identifier or dropping paid results',()=>{
+    const result=compare([source('before','worker','previous','3000'),source('after','worker','current','3200')],
+      [identity('worker',{employeeCode:null})]);
+    expect(result.available).toBe(true);expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({employmentId:'worker',employeeCode:null,variance:'200.00'});
+    expect(payrollComparisonCell(result.rows[0],'employeeCode')).toBeNull();
+  });
   it('keeps the departing and receiving employer on their own recorded transfer-month dates',()=>{
     const history=[...runs,{...runs[1],id:'receiving',companyId:otherCompanyId}];
     const recorded=[source('before','worker','previous','3000'),
