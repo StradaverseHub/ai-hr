@@ -8693,6 +8693,7 @@
       "chainBroken": "Chain broken from event #{seq} — the log may have been altered.",
       "chainPartial": "{n} earlier events are outside the chain — they were recorded while hash chaining was off and cannot be verified.",
       "issueLine": "Event #{seq}: {problem}",
+      "chainScopeRequired": "Verifying the complete audit log requires current group-wide administrator access. Your company scope cannot provide a complete integrity result.",
       "integrityNote": "Each event is hash-linked to the previous one, so an inserted, deleted, reordered or mutated row is detectable.",
       "erasureTitle": "PDPA data erasure",
       "erasureNote": "Malaysia has no blanket erasure right — this destroys what it can and withholds anything under statutory retention (≈7 years for tax/EPF/SOCSO), reporting both.",

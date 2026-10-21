@@ -1,6 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { verifyTenantChain } from '@/core/audit-chain';
+import { verifyTenantChain,AuditChainScopeError,type ChainVerification } from '@/core/audit-chain';
 import { Card, PageHeader } from '@/components/ui';
 import { PdpaErasureForm } from '@/components/pdpa-erasure-form';
 
@@ -15,7 +15,8 @@ export default async function PrivacyPage({ searchParams }: { searchParams: Prom
   const t = await getTranslations('admin.privacy');
   const { subject } = await searchParams;
   const initialEmploymentId = subject && UUID.test(subject) ? subject : '';
-  const chain = await verifyTenantChain(s);
+  let chain:ChainVerification|null;
+  try{chain=await verifyTenantChain(s);}catch(error){if(error instanceof AuditChainScopeError)chain=null;else throw error;}
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -23,7 +24,9 @@ export default async function PrivacyPage({ searchParams }: { searchParams: Prom
 
       <Card className="space-y-2 p-4">
         <h2 className="text-sm font-semibold">{t('integrityTitle')}</h2>
-        {chain.checked === 0 ? (
+        {!chain ? (
+          <p className="text-sm text-muted-foreground">{t('chainScopeRequired')}</p>
+        ) : chain.checked === 0 ? (
           <p className="text-sm text-muted-foreground">{t('chainDisabled')}</p>
         ) : chain.valid ? (
           <p className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-400">
@@ -54,7 +57,7 @@ export default async function PrivacyPage({ searchParams }: { searchParams: Prom
           identical. `unchainedInsideChain` counts only events recorded AFTER the chain started, which
           is a hole and nothing else.
         */}
-        {chain.unchainedInsideChain > 0 && (
+        {chain && chain.unchainedInsideChain > 0 && (
           <p className="text-sm text-amber-700 dark:text-amber-400">
             {t('chainPartial', { n: chain.unchainedInsideChain })}
           </p>

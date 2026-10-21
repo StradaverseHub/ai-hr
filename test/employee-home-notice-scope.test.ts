@@ -149,7 +149,7 @@ describe('Notice audit scope and complete notification cursor authority',()=>{
   expect((actual.payload as {companyId:string}).companyId).toBe(b.companyId);
   expect(await code(withTenant(hr,tx=>tx.insert(s.domainEvent).values({...event,actorId:b.adminUserId})))).toBe('42501');
   expect(await code(withTenant(hr,tx=>tx.insert(s.domainEvent).values({...event,aggregateId:randomUUID()})))).toBe('23514');
-  const foreignTenant=randomUUID();await owner.db.insert(s.tenant).values({id:foreignTenant,name:'Fictional foreign tenant'});
+  const foreignTenant=randomUUID();await owner.db.insert(s.tenant).values({id:foreignTenant,workosOrgId:'fictional-'+foreignTenant,name:'Fictional foreign tenant'});
   expect(await code(owner.db.insert(s.domainEvent).values({...event,tenantId:foreignTenant}))).toBe('23514');
  });
  it('stamps payload before hashing and refuses verification through a partial scoped audit read',async()=>{

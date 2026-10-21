@@ -8693,6 +8693,7 @@
       "chainBroken": "Chuỗi bị đứt từ sự kiện #{seq} — nhật ký có thể đã bị thay đổi.",
       "chainPartial": "{n} sự kiện trước đó nằm ngoài chuỗi — chúng được ghi khi chuỗi băm đang tắt nên không thể xác minh.",
       "issueLine": "Sự kiện #{seq}: {problem}",
+      "chainScopeRequired": "Việc xác minh toàn bộ nhật ký kiểm toán yêu cầu quyền quản trị toàn tập đoàn hiện hành. Phạm vi công ty của bạn không thể cung cấp kết quả toàn vẹn đầy đủ.",
       "integrityNote": "Mỗi sự kiện được liên kết băm với sự kiện trước đó, vì vậy có thể phát hiện hàng được chèn, xóa, sắp xếp lại hoặc thay đổi.",
       "erasureTitle": "Xóa dữ liệu PDPA",
       "erasureNote": "Malaysia không có quyền xóa toàn diện — thao tác này hủy những gì có thể và giữ lại bất kỳ thứ gì thuộc diện lưu giữ theo luật (≈7 năm cho thuế/EPF/SOCSO), báo cáo cả hai.",
