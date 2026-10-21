@@ -23,7 +23,7 @@ import { rotationLookupTx, rotationScheduleRow } from './attendance-rotation';
 import { isDeepStrictEqual } from 'node:util';
 import { hasGrantFor, withEffectiveGrants } from '../lib/authz-model';
 import { snapshotAttendanceWorkflowTx, assertCanDecideAttendanceApplicationTx, decideAttendanceWorkflowStageTx, attendanceWorkflowsForTx } from './attendance-workflow';
-import { attendanceApplicationType } from '../lib/attendance-workflow';
+import { attendanceApplicationType, AttendanceWorkflowError } from '../lib/attendance-workflow';
 import { plannedOvertimeMinutes } from '../lib/overtime-duration';
 import { and, asc, desc, eq, gt, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
@@ -42,7 +42,8 @@ import { type SessionContext, type Tx } from '../db/client';
 import { withAttendanceTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent, appendEvents } from '../db/events';
 import { randomUUID } from 'node:crypto';
-import { filterDelegationOrgScopeTx } from './approvals';
+import { filterDelegationOrgScopeTx, assertAssignedWorkPrincipalTx, isApprovalDecisionRefusal } from './approvals';
+import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 import { scopeOf } from '../lib/delegation-scope';
 import { enforceDeviceGateTx } from './attendance-device';
 import { applyOtRuleRows, resolveRuleTx, type ResolvedAttendanceRule } from './attendance-rule';
@@ -4269,6 +4270,32 @@ export async function decideAttendanceCorrection(
     return { status: p.decision, deferred: deferredApproval };
   };
   return existingTx?decide(existingTx):withTenant(ctx,decide);
+}
+
+/** Uncapped assigned-work headers. Frozen workflow participants retain request-only visibility;
+ * no clock proposal, reason, attachment or employee-code projection is needed for a task. */
+export function pendingAttendanceTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
+  return withTenant(ctx,async tx=>{
+    await assertAssignedWorkPrincipalTx(tx,ctx);
+    const rows=await tx.select({id:attendanceCorrection.id,employmentId:attendanceCorrection.employmentId,
+      personId:sql<string>`subject.person_id`,employee:sql<string|null>`subject.employee`,createdAt:attendanceCorrection.createdAt})
+      .from(attendanceCorrection)
+      .innerJoin(sql`LATERAL app.attendance_application_subject(${attendanceCorrection.id}) AS subject`,sql`true`)
+      .where(and(eq(attendanceCorrection.tenantId,ctx.tenantId),eq(attendanceCorrection.status,'pending'),
+        sql`NOT app.is_self_person(subject.person_id)`,companyIds===undefined?undefined:companyIds.length===0?sql`false`:
+          sql`(subject.company_id IN (${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`,`)}) OR app.attendance_workflow_v3_decision_slot(${attendanceCorrection.id}) IS NOT NULL)`))
+      .orderBy(desc(attendanceCorrection.createdAt),attendanceCorrection.id);
+    const result:AssignedApprovalMetadata[]=[];
+    for(const row of rows){
+      try{await assertCanDecideAttendanceApplicationTx(tx,ctx,row.id,row.employmentId);result.push(row);}
+      catch(error){
+        if(error instanceof AttendanceWorkflowError&&error.code==='notApprover')continue;
+        if(isApprovalDecisionRefusal(error,'attendance application'))continue;
+        throw error;
+      }
+    }
+    return result;
+  });
 }
 
 /** Correction inbox — RLS trims to what the viewer may see (admin all in scope, manager

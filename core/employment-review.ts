@@ -11,7 +11,7 @@
  * RLS (employment_review, mirrors resignation_request) scopes who can read/write; stage authorization
  * (manager-only stage 1, admin-only stage 2, never-self) lives here.
  */
-import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
@@ -27,7 +27,8 @@ import {
 } from '../db/schema';
 
 type EmploymentType = (typeof employmentTypeEnum.enumValues)[number];
-import { assertCanDecide } from './approvals';
+import { assertCanDecide, assertAssignedWorkPrincipalTx, isApprovalDecisionRefusal } from './approvals';
+import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 import { currentAdminManager } from './performance';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -259,6 +260,19 @@ async function startReviewTx(
   return { reviewId: row.id, reviewType: window.reviewType, dueDate: window.dueDate };
 }
 
+async function assertManagerReviewAuthorityTx(tx:Tx,ctx:SessionContext,managerEmploymentId:string|null){
+  const roles=ctx.roles??[];
+  const admin=roles.includes('super_admin')||roles.includes('hr_admin');
+  const assigned=managerEmploymentId!=null&&ctx.personId!=null&&await isPersonOfEmployment(tx,managerEmploymentId,ctx.personId);
+  if(!admin&&!assigned)throw new ReviewError('Only the assigned manager or an admin can submit this evaluation.');
+}
+
+async function assertHrReviewAuthorityTx(tx:Tx,ctx:SessionContext,employmentId:string){
+  await assertCanDecide(tx,ctx,employmentId,'review');
+  const roles=ctx.roles??[];
+  if(!(roles.includes('super_admin')||roles.includes('hr_admin')))throw new ReviewError('Only an admin can decide a review.');
+}
+
 /** Stage 1 — the manager submits their evaluation; advances pending_manager → pending_hr. */
 export async function submitManagerEvaluation(
   ctx: SessionContext,
@@ -271,13 +285,7 @@ export async function submitManagerEvaluation(
 
     // Guard: the assigned manager's person, OR admin. Admin fallback covers the no-manager and
     // manager-is-subject deadlocks (§2.7). Never the subject unless admin.
-    const roles = ctx.roles ?? [];
-    const isAdminRole = roles.includes('super_admin') || roles.includes('hr_admin');
-    const isAssignedManager =
-      rev.managerEmploymentId != null && ctx.personId != null && (await isPersonOfEmployment(tx, rev.managerEmploymentId, ctx.personId));
-    if (!isAdminRole && !isAssignedManager) {
-      throw new ReviewError('Only the assigned manager or an admin can submit this evaluation.');
-    }
+    await assertManagerReviewAuthorityTx(tx,ctx,rev.managerEmploymentId);
 
     await tx
       .update(employmentReview)
@@ -320,11 +328,7 @@ export async function decideReview(
     const [rev] = await tx.select().from(employmentReview).where(eq(employmentReview.id, p.reviewId)).limit(1);
     if (!rev) throw new ReviewError('Review not found (or not visible).');
     if (rev.status !== 'pending_hr') throw new ReviewError('This review is not awaiting an HR decision.');
-    await assertCanDecide(tx, ctx, rev.employmentId, 'review'); // bans self-decide (super_admin escape honored)
-    const roles = ctx.roles ?? [];
-    if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
-      throw new ReviewError('Only an admin can decide a review.');
-    }
+    await assertHrReviewAuthorityTx(tx,ctx,rev.employmentId);
 
     let extendToDate: string | null = null;
     if (p.decision === 'extend') {
@@ -550,6 +554,39 @@ export function reviewProfile(ctx: SessionContext, employmentId: string): Promis
       dueDate: window?.dueDate ?? null,
       openReview,
     };
+  });
+}
+
+/** Current assigned review headers, without recommendations, comments or employment end-date facts.
+ * Manager assignment follows the stored manager's actual person across their employments. Admin
+ * fallback capability alone does not assign every manager's evaluation to every administrator. */
+export function pendingReviewTaskMetadata(ctx:SessionContext,stage:'manager'|'hr',companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
+  return withTenant(ctx,async tx=>{
+    await assertAssignedWorkPrincipalTx(tx,ctx);
+    const rows=await tx.select({id:employmentReview.id,employmentId:employmentReview.employmentId,personId:employmentReview.personId,
+      employee:person.fullName,createdAt:employmentReview.createdAt,dueDate:employmentReview.dueDate,managerEmploymentId:employmentReview.managerEmploymentId})
+      .from(employmentReview)
+      .innerJoin(employment,and(eq(employment.id,employmentReview.employmentId),eq(employment.tenantId,employmentReview.tenantId)))
+      .leftJoin(person,and(eq(person.id,employmentReview.personId),eq(person.tenantId,employmentReview.tenantId)))
+      .where(and(eq(employmentReview.tenantId,ctx.tenantId),eq(employmentReview.status,stage==='manager'?'pending_manager':'pending_hr'),
+        sql`NOT app.is_self_person(${employmentReview.personId})`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds),
+        stage==='manager'?sql`EXISTS (SELECT 1 FROM public.employment AS manager WHERE manager.id=${employmentReview.managerEmploymentId}
+          AND manager.tenant_id=${employmentReview.tenantId} AND app.is_self_person(manager.person_id))`:undefined))
+      .orderBy(desc(employmentReview.createdAt),employmentReview.id);
+    const result:AssignedApprovalMetadata[]=[];
+    for(const row of rows){
+      try{
+        if(stage==='manager')await assertManagerReviewAuthorityTx(tx,ctx,row.managerEmploymentId);
+        else await assertHrReviewAuthorityTx(tx,ctx,row.employmentId);
+        const {managerEmploymentId:_,...metadata}=row;
+        result.push(metadata);
+      }catch(error){
+        if(isApprovalDecisionRefusal(error,'review'))continue;
+        if(error instanceof ReviewError&&['Only an admin can decide a review.','Only the assigned manager or an admin can submit this evaluation.'].includes(error.message))continue;
+        throw error;
+      }
+    }
+    return result;
   });
 }
 

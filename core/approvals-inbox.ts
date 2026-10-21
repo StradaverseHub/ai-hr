@@ -18,11 +18,10 @@
 import { isAdmin } from '../lib/authz-model';
 import { APPROVAL_SECTION_ID } from '../lib/approvals-focus';
 import type { SessionContext } from '../db/client';
-import { listAttendanceCorrections } from './attendance';
+import { pendingAttendanceTaskMetadata } from '../packs/attendance/service';
 import {pendingProfileTaskMetadata} from './profile';
-import { listResignationRequests } from './offboarding';
-import { listReviews, pendingManagerReviewsFor } from './employment-review';
-import { myOwnEmploymentSubjects } from './read';
+import { pendingResignationTaskMetadata } from './offboarding';
+import { pendingReviewTaskMetadata } from './employment-review';
 import {pendingLeaveTaskMetadata,pendingLeaveCancellationTaskMetadata} from '../packs/leave/service';
 import {pendingClaimTaskMetadata} from '../packs/claims/service';
 import {pendingNoticeAcknowledgementTasks} from './notice';
@@ -86,14 +85,7 @@ export async function listPendingTasks(
   options:{noticeAcknowledgements?:boolean}={},
 ): Promise<PendingTaskItem[]> {
   const admin = isAdmin(ctx);
-  // Assignment follows the actual reporting/approval graph, not a platform-role shortcut. A named
-  // approver or organizational manager may hold only Employee. Every queue still owns its row scope
-  // and decision authority; this removes no service gate. Concurrent own employments remain distinct.
-  const own=ctx.personId?await myOwnEmploymentSubjects(ctx,{profileEdit:true}):[];
-  const managerReviewRows=await Promise.all(own.map(subject=>pendingManagerReviewsFor(ctx,subject.employmentId)));
-  const managerReviews=[...new Map(managerReviewRows.flat().map(row=>[row.id,row])).values()];
-
-  const [leave, leaveCancellations, corrections, profileChanges, claims, resignations, hrReviews,noticeAcknowledgements] = await Promise.all([
+  const [leave, leaveCancellations, corrections, profileChanges, claims, resignations, managerReviews,hrReviews,noticeAcknowledgements] = await Promise.all([
     pendingLeaveTaskMetadata(ctx,scopeIds),
     // Partial Leave Cancellation (ADR-0065): pending cancellation requests need the same manager/admin
     // decision as a leave request, so they belong in the inbox — with the same self-exclusion below.
@@ -104,13 +96,14 @@ export async function listPendingTasks(
     // ModuleNotEnabledError here. Skipping the queue is also the honest answer: a customer without
     // Attendance has no corrections awaiting anyone. The `...OrFalse` form is used for the reason its
     // header gives — a resolver outage must cost one queue, not the whole inbox.
-    modules.attendance ? listAttendanceCorrections(ctx, { companyIds: scopeIds, status: 'pending' }) : Promise.resolve([]),
+    modules.attendance ? pendingAttendanceTaskMetadata(ctx,scopeIds) : Promise.resolve([]),
     admin ? pendingProfileTaskMetadata(ctx,scopeIds) : Promise.resolve([]),
     modules.claims ? pendingClaimTaskMetadata(ctx,scopeIds) : Promise.resolve([]),
     // Resignations are HR-decided (the service requires admin), so only admins carry them in the inbox.
-    admin ? listResignationRequests(ctx, { status: 'pending' }) : Promise.resolve([]),
+    admin ? pendingResignationTaskMetadata(ctx,scopeIds) : Promise.resolve([]),
+    pendingReviewTaskMetadata(ctx,'manager',scopeIds),
     // HR stage of reviews — admin-only decision.
-    admin ? listReviews(ctx, { status: 'pending_hr' }) : Promise.resolve([]),
+    admin ? pendingReviewTaskMetadata(ctx,'hr',scopeIds) : Promise.resolve([]),
     options.noticeAcknowledgements===false?Promise.resolve([]):pendingNoticeAcknowledgementTasks(ctx),
   ]);
 
@@ -137,7 +130,7 @@ export async function listPendingTasks(
       createdAt: iso(r.createdAt),
       linkPath: `/approvals#${APPROVAL_SECTION_ID.leaveCancellation}`,
     })),
-    ...corrections.filter(r => r.canDecide !== false && r.personId !== ctx.personId).map((r) => ({
+    ...corrections.map((r) => ({
       id: r.id,
       kind: 'attendance' as const,
       subjectName: r.employee,
@@ -158,7 +151,7 @@ export async function listPendingTasks(
       createdAt: iso(r.createdAt),
       linkPath: '/approvals',
     })),
-    ...resignations.filter(r=>ctx.personId==null||r.personId!==ctx.personId).map((r) => ({
+    ...resignations.map((r) => ({
       id: r.id,
       kind: 'resignation' as const,
       subjectName: r.employee,
@@ -173,7 +166,7 @@ export async function listPendingTasks(
       linkPath: '/approvals',
       dueDate:r.dueDate,
     })),
-    ...hrReviews.filter(r=>ctx.personId==null||r.personId!==ctx.personId).map((r) => ({
+    ...hrReviews.map((r) => ({
       id: r.id,
       kind: 'hrReview' as const,
       subjectName: r.employee,

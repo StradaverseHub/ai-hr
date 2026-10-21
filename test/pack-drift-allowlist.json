@@ -61,7 +61,6 @@
     "app/approvals/actions.ts",
     "app/approvals/page.tsx",
     "app/payroll/actions.ts",
-    "core/approvals-inbox.ts",
     "core/leave.ts",
     "core/read.ts",
     "core/reporting.ts",
