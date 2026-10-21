@@ -12362,7 +12362,7 @@
       "toggle": "切换主题"
     },
     "uiTheme": {
-      "current": "Current",
+
       "label": "主题",
       "monolith": "Monolith",
       "classic": "经典",
@@ -12370,13 +12370,6 @@
     },
     "drawer": {
       "close": "关闭"
-    },
-    "current": {
-      "selectedRecord": "所选记录",
-      "openRecord": "打开完整记录",
-      "view": "记录视图",
-      "ledger": "分类账",
-      "table": "表格"
     }
   },
   "kb": {
@@ -13080,6 +13073,7 @@
     "task": {
       "leave": "审批请假申请",
       "leaveCancellation": "审批销假申请",
+      "replacementLeave": "审核补休申请",
       "attendance": "审核考勤更正",
       "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]",
       "profile": "核实资料变更",

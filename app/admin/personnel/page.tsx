@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { CurrentLedger } from '@/components/current-ledger';
 import { getTranslations } from 'next-intl/server';
 import { PROFILE_REQUEST_OPTION_NAMESPACE } from '@/lib/profile-requestable-fields';
 import { requireAdmin } from '@/lib/authz';
@@ -50,7 +49,6 @@ import {
 import { EmployeeSwitcher } from './employee-switcher';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
-
 
 /** people.list message key per catalogue column — ONE map, read by the <th> row, the picker and the
  *  export route's header row, so a column cannot be called two different things on two surfaces. */
@@ -559,23 +557,6 @@ export default async function PeoplePage({
         </div>
       )}
 
-
-
-      <CurrentLedger footer={pager} tour="people-table" label={t('title')} records={[
-        ...drafts.map((d) => ({
-          key: d.id, title: d.label || t('draftUntitled'),
-          subtitle: d.missing.length > 0 ? t('draftMissing', { count: d.missing.length }) : t('draftReady'),
-          reference: d.reservedEmployeeCode ?? '—', status: t('statusDraft'),
-          href: draftRowHref(d.id), actions: null,
-          fields: [{ label: t('colCompany'), value: d.companyName ?? t('draftNoCompany') }],
-        })),
-        ...employees.map((e) => ({
-          key: e.employmentId, title: e.name, subtitle: e.email ?? '',
-          reference: e.employeeCode ?? '—', status: tStatus(deriveEmploymentStatus(e, today)),
-          href: employeeRowHref(e.employmentId), actions: null,
-          fields: columns.map((key) => ({ label: t(COLUMN_LABEL_KEY[key]), value: textCell(e, key) })),
-        })),
-      ]}>
       <Card className="overflow-hidden" data-tour="people-table">
         {/* The table can now carry up to sixteen columns, so it scrolls INSIDE its card rather than
             pushing the page sideways — the same rule the full-width change (c002b3c3) was careful about. */}
@@ -657,7 +638,6 @@ export default async function PeoplePage({
         </div>
         {pager}
       </Card>
-      </CurrentLedger>
 
     </div>
   );

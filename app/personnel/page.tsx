@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { CurrentLedger } from '@/components/current-ledger';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { listCompanies, listDepartments, listEmployeesPage } from '@/core/read';
@@ -152,19 +151,6 @@ export default async function PersonnelPage({
 
       <FilterChips action="/personnel" fields={filterFields} values={filterValues} labels={filterLabels} />
 
-      <CurrentLedger footer={pager} label={t('title')}
-        records={employees.map((e) => ({
-          key: e.employmentId, title: e.name, subtitle: e.department ?? e.company,
-          reference: e.employeeCode ?? '—', status: tStatus(deriveEmploymentStatus(e, today)),
-          href: `/personnel/${e.employmentId}`, actions: null,
-          fields: [
-            { label: t('colDepartment'), value: e.department },
-            { label: t('colCompany'), value: e.company },
-            { label: t('colStatus'), value: tStatus(deriveEmploymentStatus(e, today)) },
-            { label: t('colHired'), value: e.hiredOn },
-            { label: t('colEmail'), value: e.email },
-          ],
-        }))}>
       <Card className="overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -222,7 +208,6 @@ export default async function PersonnelPage({
         </table>
         {pager}
       </Card>
-      </CurrentLedger>
 
     </div>
   );

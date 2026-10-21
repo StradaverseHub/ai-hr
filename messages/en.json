@@ -12362,7 +12362,7 @@
       "toggle": "Toggle theme"
     },
     "uiTheme": {
-      "current": "Current",
+
       "label": "Theme",
       "monolith": "Monolith",
       "classic": "Classic",
@@ -12370,13 +12370,6 @@
     },
     "drawer": {
       "close": "Close"
-    },
-    "current": {
-      "selectedRecord": "Selected record",
-      "openRecord": "Open full record",
-      "view": "View records",
-      "ledger": "Ledger",
-      "table": "Table"
     }
   },
   "kb": {
@@ -13080,6 +13073,7 @@
     "task": {
       "leave": "Approve leave request",
       "leaveCancellation": "Approve leave cancellation",
+      "replacementLeave": "Review replacement leave request",
       "attendance": "Review attendance correction",
       "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]",
       "profile": "Verify profile change",

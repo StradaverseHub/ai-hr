@@ -2,7 +2,7 @@
  * Pending-approvals inbox for the topbar notification bell. Originally a bare COUNT (consultant
  * feedback #11); feedback 1514d366 (3-tab bell) turned it into a LIST API — `listPendingTasks`
  * returns the individual items awaiting THIS user's decision (pending leave from others + leave
- * cancellations + attendance corrections + profile changes + claims + resignations +
+ * cancellations + replacement-leave claims + attendance corrections + profile changes + claims + resignations +
  * manager and HR employment reviews), each with a deep-link to the page where the user acts on it.
  * b833a077 (r362) — TRAVEL LEFT THIS LIST. My Travel was removed completely, so no travel request can be
  * created and none can be decided; the `travel` PendingTaskKind, its queue, its self-exclusion and its
@@ -27,11 +27,13 @@ import { listPendingClaims } from './claims';
 import { listResignationRequests } from './offboarding';
 import { listReviews, pendingManagerReviewsFor } from './employment-review';
 import { myEmployment } from './read';
+import { listPendingReplacementLeaveTasks } from '../packs/leave/service';
 
 /** The per-module task vocabulary — each key maps to an i18n label (notifications.task.*). */
 export type PendingTaskKind =
   | 'leave'
   | 'leaveCancellation'
+  | 'replacementLeave'
   | 'attendance'
   | 'profile'
   | 'claim'
@@ -94,11 +96,12 @@ export async function listPendingTasks(
     })).sort((a, b) => a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.id.localeCompare(b.id));
   }
 
-  const [leave, leaveCancellations, corrections, profileChanges, claims, resignations, hrReviews] = await Promise.all([
+  const [leave, leaveCancellations, replacementRequests, corrections, profileChanges, claims, resignations, hrReviews] = await Promise.all([
     listLeaveRequests(ctx, scopeIds, 200, { status: 'pending' }),
     // Partial Leave Cancellation (ADR-0065): pending cancellation requests need the same manager/admin
     // decision as a leave request, so they belong in the inbox — with the same self-exclusion below.
     listPendingLeaveCancellations(ctx, scopeIds),
+    listPendingReplacementLeaveTasks(ctx, { companyIds: scopeIds }),
     // r292 — THE PENDING-TASK COUNT IS A CORE SURFACE (the dashboard tile and the header badge), so it
     // must survive a tenant that declined the optional packs. `listAttendanceCorrections` and
     // `listPendingClaims` are service-gated now (core/module-gate.ts) and would throw
@@ -137,6 +140,13 @@ export async function listPendingTasks(
       subjectName: r.employee,
       createdAt: iso(r.createdAt),
       linkPath: `/approvals#${APPROVAL_SECTION_ID.leaveCancellation}`,
+    })),
+    ...replacementRequests.filter(r => ctx.personId == null || r.personId !== ctx.personId).map(r => ({
+      id: r.id,
+      kind: 'replacementLeave' as const,
+      subjectName: r.employee,
+      createdAt: iso(r.createdAt),
+      linkPath: '/approvals?category=replacementLeave',
     })),
     ...corrections.filter(r => r.canDecide !== false && r.personId !== ctx.personId).map((r) => ({
       id: r.id,

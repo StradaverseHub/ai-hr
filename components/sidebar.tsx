@@ -608,7 +608,6 @@ export function Sidebar({
   // on desktop"), so it offers no collapse and ignores the preference. Classic reads it exactly as before;
   // the `rail_collapsed` cookie is neither read differently nor written by Monolith.
   const monolith = useIsMonolith();
-  const current = useUiTheme() === 'current';
   const [workspaceChoice, setWorkspaceChoice] = useState<NavigationWorkspace | null>(null);
   const atelier = useUiTheme() === 'atelier';
   const tBar = useTranslations('commandBar');
@@ -1113,55 +1112,6 @@ export function Sidebar({
         </aside>
       </div>
     );
-  }
-
-  // Current uses the same authorized navigation graph, arranged as workspace tabs.
-  // Browsing another workspace never changes scope or grants access to a destination.
-  if (current) {
-    const currentRow = (item: Row) => {
-      if (!isCollapsible(item)) return <Link key={item.href} href={item.navigationHref ?? item.href}
-        data-tour={item.tour} aria-current={isRowActive(item) ? 'page' : undefined}>{t(item.labelKey)}</Link>;
-      const children=item.children.filter(canSeeChild);
-      return <div className="current-module" key={item.labelKey}>
-        <button type="button" data-tour={item.tour} aria-expanded={openKey===item.labelKey}
-          aria-controls={`current-module-${item.labelKey}`} data-active={children.some(isRowActive)||undefined}
-          onClick={()=>setOpenKey(openKey===item.labelKey?null:item.labelKey)}>
-          {t(item.labelKey)}<ChevronDown className="size-3.5" aria-hidden/>
-        </button>
-      </div>;
-    };
-    const currentNodes=groups.flatMap(group=>group.items).filter(isCollapsible).filter(item=>item.labelKey===openKey);
-    return <div data-current-navigation data-tour="nav" className="current-navigation">
-      <div className="current-workspaces">
-        <Link href="/" className="current-brand" aria-label={t('home')}>
-          <span data-brand-tile aria-hidden>AI</span>
-          <span>{tCommon('appName')}</span>
-        </Link>
-        <nav aria-label={t('sharedNavigation')} className="current-workspace-links">{groups[0].items.map(currentRow)}</nav>
-        {workspaceSwitch()}
-      </div>
-      {moduleRows.length>0&&<nav aria-label={t(selectedWorkspace==='strata'?'workspaceStrata':'workspaceOps')} className="current-workspace-links">
-        {moduleRows.map(currentRow)}
-      </nav>}
-      {groups[2]&&<div role="group" aria-label={t('systemConfiguration')} className="current-workspace-links">{groups[2].items.map(currentRow)}</div>}
-      {currentNodes.map(item=>{
-        const children=item.children.filter(canSeeChild);
-        const currentHref=children.filter(isRowActive).sort((a,b)=>b.href.length-a.href.length)[0]?.href;
-        return <nav key={item.labelKey} id={`current-module-${item.labelKey}`} aria-label={t(item.labelKey)}
-          className="current-module-links" onKeyDown={event=>{
-            if(event.key==='Escape'){setOpenKey(null);document.querySelector<HTMLButtonElement>(`[aria-controls="current-module-${item.labelKey}"]`)?.focus();}
-          }}>
-          {children.map((child,index)=>{
-            const heading=sectionLabel(child.href);
-            return <Fragment key={child.href}>
-              {heading&&heading!==sectionLabel(children[index-1]?.href??'')&&<p className="mb-0 mt-3 text-xs font-medium text-muted-foreground">{t(heading)}</p>}
-              <Link href={child.navigationHref??child.href} aria-current={child.href===currentHref?'page':undefined}
-                onClick={()=>setOpenKey(null)}>{childCaption(child)}</Link>
-            </Fragment>;
-          })}
-        </nav>;
-      })}
-    </div>;
   }
 
   return (

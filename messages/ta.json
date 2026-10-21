@@ -12362,7 +12362,7 @@
       "toggle": "தீம் மாற்று"
     },
     "uiTheme": {
-      "current": "Current",
+
       "label": "தீம்",
       "monolith": "Monolith",
       "classic": "கிளாசிக்",
@@ -12370,13 +12370,6 @@
     },
     "drawer": {
       "close": "மூடு"
-    },
-    "current": {
-      "selectedRecord": "தேர்ந்தெடுத்த பதிவு",
-      "openRecord": "முழுப் பதிவைத் திற",
-      "view": "பதிவுகளின் காட்சி",
-      "ledger": "பேரேடு",
-      "table": "அட்டவணை"
     }
   },
   "kb": {
@@ -13080,6 +13073,7 @@
     "task": {
       "leave": "விடுப்பு கோரிக்கையை அங்கீகரிக்கவும்",
       "leaveCancellation": "விடுப்பு ரத்தை அங்கீகரிக்கவும்",
+      "replacementLeave": "மாற்று விடுப்பு கோரிக்கையை மதிப்பாய்வு செய்யவும்",
       "attendance": "வருகை திருத்தத்தை மதிப்பாய்வு செய்யவும்",
       "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]",
       "profile": "சுயவிவர மாற்றத்தைச் சரிபார்க்கவும்",

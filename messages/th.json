@@ -12362,7 +12362,7 @@
       "toggle": "สลับธีม"
     },
     "uiTheme": {
-      "current": "Current",
+
       "label": "ธีม",
       "monolith": "Monolith",
       "classic": "คลาสสิก",
@@ -12370,13 +12370,6 @@
     },
     "drawer": {
       "close": "ปิด"
-    },
-    "current": {
-      "selectedRecord": "ระเบียนที่เลือก",
-      "openRecord": "เปิดระเบียนฉบับเต็ม",
-      "view": "มุมมองระเบียน",
-      "ledger": "บัญชีรายการ",
-      "table": "ตาราง"
     }
   },
   "kb": {
@@ -13080,6 +13073,7 @@
     "task": {
       "leave": "อนุมัติคำขอลา",
       "leaveCancellation": "อนุมัติการยกเลิกการลา",
+      "replacementLeave": "ตรวจสอบคำขอลาชดเชย",
       "attendance": "ตรวจสอบการแก้ไขเวลาทำงาน",
       "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]",
       "profile": "ตรวจสอบการเปลี่ยนแปลงโปรไฟล์",

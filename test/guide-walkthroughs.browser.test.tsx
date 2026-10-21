@@ -65,7 +65,7 @@ describe('guide walkthrough launch in Chromium', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it.each(['monolith', 'classic', 'current'])('keeps the controls in view for a tall spotlight in the %s theme', async theme => {
+  it.each(['monolith', 'classic', 'atelier'])('keeps the controls in view for a tall spotlight in the %s theme', async theme => {
     document.documentElement.setAttribute('data-ui-theme', theme);
     state.pathname = '/claims';
     render(<NextIntlClientProvider locale="en" messages={en}>
