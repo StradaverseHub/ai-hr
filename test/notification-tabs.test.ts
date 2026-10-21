@@ -124,7 +124,7 @@ describe('listPendingTasks (Task tab)', () => {
     const [foreignRequest] = await owner.db.insert(schema.replacementLeaveRequest).values({ tenantId: foreign.tenantId, employmentId: foreignEmployee.employmentId, unit: 'day', submittedOn: todayInKualaLumpur() }).returning({ id: schema.replacementLeaveRequest.id });
     const tasks = await listPendingTasks(ownCtx, undefined, { attendance: false, claims: false });
     expect(tasks.some(row => row.id === ownRequest.id || row.id === foreignRequest.id)).toBe(false);
-    expect(await listPendingReplacementLeaveTasks(ownCtx)).toHaveLength(1); // only own tenant's header is visible to HR
+    expect(await listPendingReplacementLeaveTasks(ownCtx)).toEqual([]); // own HR requests are visible to general readers, but never actionable tasks
   });
 
   /**
