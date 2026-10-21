@@ -22,7 +22,7 @@ CREATE TABLE employment_holiday_calendar (
 CREATE INDEX employment_holiday_calendar_dates ON employment_holiday_calendar(tenant_id,employment_id,valid_from) WHERE superseded_at IS NULL;
 ALTER TABLE employment_holiday_calendar ENABLE ROW LEVEL SECURITY;
 CREATE POLICY employment_holiday_calendar_read ON employment_holiday_calendar FOR SELECT USING (
- tenant_id=app.current_tenant_id() AND app.can_see_employment(employment_id)
+ tenant_id=app.current_tenant_id() AND employment_id=ANY((SELECT app.visible_employment_ids())::uuid[])
 );
 CREATE POLICY employment_holiday_calendar_insert ON employment_holiday_calendar FOR INSERT WITH CHECK (
  tenant_id=app.current_tenant_id() AND app.can_admin_employment(employment_id) AND recorded_by=app.current_user_id()
