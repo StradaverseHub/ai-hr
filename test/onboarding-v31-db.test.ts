@@ -4,7 +4,7 @@ import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { saveEmployeeDraft, discardEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft';
 import { hireEmployee } from '../core/org';
-import { onboardingSetup, onboardingContext, onboardingList, onboardingDetail, onboardingCommand, onboardingSaveConfig, onboardingSaveChecklistTasks, onboardingTasks, onboardingNote, sweepOnboarding, onboardingNotices, onboardingReadNotice, createOnboardingCase, caseHistory, refreshOnboardingPersonnel, onboardingSyncDraftTx, onboardingRequisitions, onboardingNavigation } from '../packs/lifecycle/service';
+import { onboardingSetup, onboardingContext, onboardingList, onboardingDetail, onboardingCommand, onboardingSaveConfig, onboardingSaveChecklistTasks, onboardingTasks, onboardingAssignedTaskMetadata, onboardingNote, sweepOnboarding, onboardingNotices, onboardingReadNotice, createOnboardingCase, caseHistory, refreshOnboardingPersonnel, onboardingSyncDraftTx, onboardingRequisitions, onboardingNavigation } from '../packs/lifecycle/service';
 import { appendEvent, actorOf } from '../db/events';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -40,6 +40,16 @@ describe('V3.1 onboarding database and authorization', () => {
         await onboardingCommand(admin, row!.case.id, row!.revision, { type: 'submit' });
         return (await onboardingList(admin))[0]!;
     }
+    it('projects only actual unlocked personal work for Home and removes a completed checklist task', async()=>{
+        const row=await prepared(),tasks=await onboardingTasks(tech),assigned=await onboardingAssignedTaskMetadata(tech);
+        const welcome=tasks.find(item=>item.caseId===row.case.id&&item.taskId==='welcome')!;
+        expect(assigned.find(item=>item.id===welcome.id)).toMatchObject({kind:'onboarding',dueDate:welcome.due,linkPath:'/tasks#'+encodeURIComponent('onboarding-'+welcome.id)});
+        expect(assigned.every(item=>tasks.some(task=>task.id===item.id&&task.assigned&&!task.locked))).toBe(true);
+        expect(await onboardingAssignedTaskMetadata(other)).toEqual([]);
+        expect(JSON.stringify(assigned)).not.toContain('PRIVATE-IC');
+        await onboardingCommand(tech,row.case.id,row.revision,{type:'task',taskId:'welcome',status:'done'});
+        expect((await onboardingAssignedTaskMetadata(tech)).some(item=>item.id===welcome.id)).toBe(false);
+    });
     it('counts the same visible joiners and checklists as the authorized module without leaking counts to task-only users', async()=>{
         await draft();
         expect(await onboardingNavigation(admin)).toMatchObject({module:true,joiners:1,checklists:1});

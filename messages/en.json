@@ -22245,7 +22245,8 @@
       "hrReview": "HR review",
       "feedback": "Peer feedback",
       "noticeAcknowledgement": "Notice acknowledgement",
-      "replacementLeave": "Replacement leave approval"
+      "replacementLeave": "Replacement leave approval",
+      "onboarding": "Onboarding work"
     },
     "quickActions": {
       "leave": "Apply leave",
@@ -22288,6 +22289,29 @@
       "timeOff": "Time Off",
       "team": "Who’s Around",
       "celebrations": "Little Moments"
+    },
+    "tasks": {
+      "title": "Waiting for You",
+      "loading": "Loading your assigned work…",
+      "failed": "Your assigned work is unavailable. Try again.",
+      "timeout": "Your assigned work is taking longer than expected. Try again.",
+      "retry": "Try again",
+      "refresh": "Refresh",
+      "accountScope": "Your assignments across all your employments.",
+      "empty": "Nothing waiting for you. You’re all caught up.",
+      "total": "{count, plural, one {# action waiting} other {# actions waiting}}",
+      "effort": "About {minutes} minutes for tasks with an estimate.",
+      "unestimated": "{count, plural, one {# task has no time estimate.} other {# tasks have no time estimate.}}",
+      "overdue": "Overdue · {date}",
+      "due": "Due {date}",
+      "acknowledge": "Read and acknowledge",
+      "feedback": "Give feedback",
+      "open": "Open task",
+      "review": "Review",
+      "pagination": "Assigned work pages",
+      "previous": "Previous",
+      "next": "Next",
+      "page": "{page} of {pages}"
     }
   }
 }

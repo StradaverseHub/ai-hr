@@ -22245,7 +22245,8 @@
       "hrReview": "Đánh giá của nhân sự",
       "feedback": "Phản hồi đồng nghiệp",
       "noticeAcknowledgement": "Xác nhận thông báo",
-      "replacementLeave": "Duyệt nghỉ bù"
+      "replacementLeave": "Duyệt nghỉ bù",
+      "onboarding": "Công việc hội nhập"
     },
     "quickActions": {
       "leave": "Đăng ký nghỉ phép",
@@ -22288,6 +22289,29 @@
       "timeOff": "Nghỉ phép",
       "team": "Ai đang ở đây",
       "celebrations": "Khoảnh khắc nhỏ"
+    },
+    "tasks": {
+      "title": "Đang chờ bạn",
+      "loading": "Đang tải công việc được giao…",
+      "failed": "Chưa thể tải công việc của bạn. Vui lòng thử lại.",
+      "timeout": "Việc tải công việc mất nhiều thời gian hơn dự kiến. Vui lòng thử lại.",
+      "retry": "Thử lại",
+      "refresh": "Làm mới",
+      "accountScope": "Công việc được giao trên tất cả quan hệ lao động của bạn.",
+      "empty": "Không có việc đang chờ. Bạn đã hoàn thành tất cả.",
+      "total": "{count} việc đang chờ",
+      "effort": "Khoảng {minutes} phút cho các việc đã có ước tính.",
+      "unestimated": "{count} việc chưa có ước tính thời gian.",
+      "overdue": "Quá hạn · {date}",
+      "due": "Hạn {date}",
+      "acknowledge": "Đọc và xác nhận",
+      "feedback": "Gửi phản hồi",
+      "open": "Mở công việc",
+      "review": "Xem xét",
+      "pagination": "Trang công việc được giao",
+      "previous": "Trước",
+      "next": "Tiếp",
+      "page": "{page} / {pages}"
     }
   }
 }

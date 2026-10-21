@@ -22245,7 +22245,8 @@
       "hrReview": "Semakan HR",
       "feedback": "Maklum balas rakan",
       "noticeAcknowledgement": "Pengesahan notis",
-      "replacementLeave": "Kelulusan cuti gantian"
+      "replacementLeave": "Kelulusan cuti gantian",
+      "onboarding": "Tugas penerimaan pekerja"
     },
     "quickActions": {
       "leave": "Mohon cuti",
@@ -22288,6 +22289,29 @@
       "timeOff": "Cuti",
       "team": "Siapa yang ada",
       "celebrations": "Detik istimewa"
+    },
+    "tasks": {
+      "title": "Menunggu Anda",
+      "loading": "Memuatkan tugasan anda…",
+      "failed": "Tugasan anda tidak tersedia. Cuba lagi.",
+      "timeout": "Tugasan anda mengambil masa lebih lama daripada biasa. Cuba lagi.",
+      "retry": "Cuba lagi",
+      "refresh": "Muat semula",
+      "accountScope": "Tugasan anda merentas semua hubungan pekerjaan anda.",
+      "empty": "Tiada perkara menunggu anda. Semuanya telah selesai.",
+      "total": "{count} tindakan menunggu",
+      "effort": "Kira-kira {minutes} minit untuk tugasan dengan anggaran.",
+      "unestimated": "{count} tugasan tiada anggaran masa.",
+      "overdue": "Lewat · {date}",
+      "due": "Tarikh akhir {date}",
+      "acknowledge": "Baca dan akui",
+      "feedback": "Beri maklum balas",
+      "open": "Buka tugasan",
+      "review": "Semak",
+      "pagination": "Halaman tugasan",
+      "previous": "Sebelum",
+      "next": "Seterusnya",
+      "page": "{page} daripada {pages}"
     }
   }
 }

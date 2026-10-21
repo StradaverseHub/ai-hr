@@ -22245,7 +22245,8 @@
       "hrReview": "人力资源审核",
       "feedback": "同事反馈",
       "noticeAcknowledgement": "通知确认",
-      "replacementLeave": "补假审批"
+      "replacementLeave": "补假审批",
+      "onboarding": "入职工作"
     },
     "quickActions": {
       "leave": "申请休假",
@@ -22288,6 +22289,29 @@
       "timeOff": "休假",
       "team": "团队动态",
       "celebrations": "温馨时刻"
+    },
+    "tasks": {
+      "title": "待您处理",
+      "loading": "正在加载分配给您的任务…",
+      "failed": "暂时无法获取您的任务，请重试。",
+      "timeout": "加载任务所需时间较长，请重试。",
+      "retry": "重试",
+      "refresh": "刷新",
+      "accountScope": "显示您所有任职关系中的任务。",
+      "empty": "目前没有待处理事项，您已全部完成。",
+      "total": "共有 {count} 项待处理事项",
+      "effort": "已设置预计时间的任务约需 {minutes} 分钟。",
+      "unestimated": "有 {count} 项任务尚未设置预计时间。",
+      "overdue": "已逾期 · {date}",
+      "due": "截止日期：{date}",
+      "acknowledge": "阅读并确认",
+      "feedback": "提供反馈",
+      "open": "打开任务",
+      "review": "审核",
+      "pagination": "待处理事项分页",
+      "previous": "上一页",
+      "next": "下一页",
+      "page": "第 {page} 页，共 {pages} 页"
     }
   }
 }

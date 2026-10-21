@@ -48,7 +48,8 @@ import type { EmploymentStatus } from './employment-status';
 import { employmentStatusSql } from './employment-status-sql';
 import { setCompensation } from './comp';
 import { setPayrollInput } from './payroll';
-import { assertCanDecide } from './approvals';
+import { assertCanDecide, assertAssignedWorkPrincipalTx } from './approvals';
+import type {AssignedPersonalTaskMetadata} from '../lib/assigned-work';
 import { generateDraft, redactPII } from '../lib/ai';
 import { resolveActiveAiConfig } from './ai-config';
 
@@ -2307,6 +2308,23 @@ export async function declinePeerFeedback(ctx: SessionContext, p: { requestId: s
 }
 
 export type FeedbackRequestRow = { requestId: string; subject: string; cycleName: string };
+
+/** Standard-cycle personal actions only. OneHR owns its different form and live work-window gate.
+ * The peer's frozen request name is used without loading the subject's performance review or ratings. */
+export function pendingStandardFeedbackTaskMetadata(ctx:SessionContext):Promise<AssignedPersonalTaskMetadata[]>{
+  return withTenant(ctx,async tx=>{
+    await assertAssignedWorkPrincipalTx(tx,ctx);
+    const rows=await tx.select({id:peerFeedbackRequest.id,subjectName:peerFeedbackRequest.subjectName,
+      sourceUpdatedAt:peerFeedbackRequest.createdAt}).from(peerFeedbackRequest)
+      .where(and(eq(peerFeedbackRequest.tenantId,ctx.tenantId),eq(peerFeedbackRequest.status,'pending'),
+        sql`EXISTS (SELECT 1 FROM public.employment peer WHERE peer.id=${peerFeedbackRequest.peerEmploymentId}
+          AND peer.tenant_id=${peerFeedbackRequest.tenantId} AND app.is_self_person(peer.person_id))`,
+        sql`NOT EXISTS (SELECT 1 FROM public.performance_onehr_panel panel WHERE panel.request_id=${peerFeedbackRequest.id})`,
+        sql`NOT EXISTS (SELECT 1 FROM public.performance_review review JOIN public.performance_onehr_cycle cycle ON cycle.cycle_id=review.cycle_id WHERE review.id=${peerFeedbackRequest.reviewId})`))
+      .orderBy(desc(peerFeedbackRequest.createdAt),peerFeedbackRequest.id);
+    return rows.map(row=>({...row,kind:'feedback' as const,linkPath:`/me/performance#feedback-${row.id}`}));
+  });
+}
 
 /** The signed-in peer's pending feedback requests — "give 360 feedback". */
 export function myFeedbackRequests(ctx: SessionContext): Promise<FeedbackRequestRow[]> {

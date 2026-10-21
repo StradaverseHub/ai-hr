@@ -7,6 +7,8 @@ import { appendEvent, actorOf } from '../../../db/events';
 import { lcOnboardingCaseRevision as revisions, lcOnboardingPrivateRevision as privateRevisions, lcOnboardingCase as cases, lcOnboardingConfig as configs, lcOnboardingPrivate as secrets, lcOnboardingNote as notes, lcOnboardingSeen as seen, employeeDraft, department, company, position, businessUnit, jobGrade, costCenter, employment, person, assignment, employmentTypeEnum } from '../../../db/schema';
 import { isModuleEnabled } from '../../../core/entitlements';
 import { todayInKualaLumpur } from '../../../lib/hr-date';
+import {assertAssignedWorkPrincipalTx} from '../../../core/approvals';
+import type {AssignedPersonalTaskMetadata} from '../../../lib/assigned-work';
 import { visibleLabelIdsCondition } from '../../../core/system-labels';
 import type { EmployeeDraftData } from '../../../lib/employee-draft-schema';
 import * as M from '../../../lib/onboarding-model';
@@ -888,6 +890,27 @@ export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTa
         return out.sort((a, b) => Number(b.overdue) - Number(a.overdue) || (a.due || '9999').localeCompare(b.due || '9999') || a.id.localeCompare(b.id));
     });
 }
+/** Reuse the canonical case/workflow interpreter. Home receives only actual unlocked assignments,
+ * with the case's recorded update timestamp; a case join date is never invented as a task deadline. */
+export async function onboardingAssignedTaskMetadata(ctx:SessionContext):Promise<AssignedPersonalTaskMetadata[]>{
+    const assigned=(await onboardingTasks(ctx)).filter(item=>item.assigned&&!item.locked);
+    return withTenant(ctx,async tx=>{
+        await assertAssignedWorkPrincipalTx(tx,ctx);
+        const ids=[...new Set(assigned.map(item=>item.caseId))],updated=new Map<string,Date>();
+        for(let start=0;start<ids.length;start+=1000){
+            const rows=await tx.select({id:cases.id,updatedAt:cases.updatedAt}).from(cases)
+                .where(and(eq(cases.tenantId,ctx.tenantId),inArray(cases.id,ids.slice(start,start+1000)))).orderBy(cases.id);
+            for(const row of rows)updated.set(row.id,row.updatedAt);
+        }
+        return assigned.flatMap(item=>{
+            const sourceUpdatedAt=updated.get(item.caseId);if(!sourceUpdatedAt)return [];
+            const dueDate=(item.kind==='checklist'||item.kind==='acknowledgement')&&M.validDate(item.due)?item.due:undefined;
+            return [{id:item.id,kind:'onboarding' as const,subjectName:item.title+' · '+item.joiner,sourceUpdatedAt,
+                linkPath:'/tasks#'+encodeURIComponent('onboarding-'+item.id),...(dueDate?{dueDate}:{})}];
+        });
+    });
+}
+
 export type OnboardingNotice = {
     id: string;
     title: string;
