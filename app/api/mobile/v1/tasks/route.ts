@@ -7,6 +7,6 @@ export const GET = mobileRoute(TasksResponse, async s => {
   const tasks = await listPendingTasks(s, undefined, { attendance: isModuleEnabled(s, 'attendance'), claims: isModuleEnabled(s, 'claims') });
   // Existing v1 clients validate a closed task-kind enum. Keep that published
   // vocabulary until a versioned mobile contract supports replacement leave.
-  const items = tasks.filter(item => item.kind !== 'replacementLeave');
-  return { total: items.length, items: items.slice(0, 50).map(item => ({ id: item.id, kind: item.kind, subject: item.subjectName })) };
+  const items = tasks.flatMap(item => item.kind === 'replacementLeave' ? [] : [{ id: item.id, kind: item.kind, subject: item.subjectName }]);
+  return { total: items.length, items: items.slice(0, 50) };
 });

@@ -29,7 +29,7 @@ export function parseAccessOwnerState(raw:unknown,tenantId:string){
     if(!unique(group.grants.map(g=>g.capabilityId+':'+g.companyId)))return refuse();groupIds.add(group.id);
   }
   for(const member of s.memberships)if(!object(member)||typeof member.userId!=='string'||!userIds.has(member.userId)||typeof member.groupId!=='string'||!groupIds.has(member.groupId)||!validScope(member.companyId)||member.derived!==undefined&&typeof member.derived!=='boolean')return refuse();
-  for(const override of s.overrides)if(!validGrant(override)||!object(override)||typeof override.userId!=='string'||!userIds.has(override.userId)||(override.effect!=='allow'&&override.effect!=='deny'))return refuse();
+  for(const override of s.overrides)if(!object(override)||typeof override.userId!=='string'||!userIds.has(override.userId)||(override.effect!=='allow'&&override.effect!=='deny')||!validGrant(override))return refuse();
   const coverage=new Set<string>();
   for(const row of raw.coverage){if(!object(row)||typeof row.ancestor!=='string'||typeof row.company!=='string'||!companies.has(row.ancestor)||!companies.has(row.company))return refuse();coverage.add(row.ancestor+':'+row.company);}
   const evidence:CompanyScopeEvidence={tenantId,knownCompanyIds:companies,covers:(ancestor,company)=>coverage.has(ancestor+':'+company)};

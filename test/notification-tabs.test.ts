@@ -120,7 +120,7 @@ describe('listPendingTasks (Task tab)', () => {
     const ownCtx: SessionContext = { ...adminCtx(b), userId, personId: own.personId };
     const [ownRequest] = await owner.db.insert(schema.replacementLeaveRequest).values({ tenantId: b.tenantId, employmentId: own.employmentId, unit: 'day', submittedOn: todayInKualaLumpur() }).returning({ id: schema.replacementLeaveRequest.id });
     const foreign = await seedBase();
-    const foreignEmployee = await hireEmployee(adminCtx(foreign), { person: { fullName: 'Foreign applicant', primaryEmail: uniqEmail() }, companyId: foreign.companyId, employmentType: 'full_time', hiredOn: '2024-01-01' });
+    const foreignEmployee = await hireEmployee(adminCtx(foreign), { person: { fullName: 'Foreign applicant', primaryEmail: uniqEmail() }, companyId: foreign.companyId, departmentId: foreign.deptA, employmentType: 'full_time', hiredOn: '2024-01-01' });
     const [foreignRequest] = await owner.db.insert(schema.replacementLeaveRequest).values({ tenantId: foreign.tenantId, employmentId: foreignEmployee.employmentId, unit: 'day', submittedOn: todayInKualaLumpur() }).returning({ id: schema.replacementLeaveRequest.id });
     const tasks = await listPendingTasks(ownCtx, undefined, { attendance: false, claims: false });
     expect(tasks.some(row => row.id === ownRequest.id || row.id === foreignRequest.id)).toBe(false);

@@ -1,4 +1,5 @@
 /** Shared foundation only: no unpublished Attendance/Home feature is required by this contract. */
+import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
@@ -8,7 +9,7 @@ let b:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{await resetDb();b=await seedBase();});
 async function principal(role:'employee'|'hr_admin'='employee'){
- const [subject]=await owner.db.insert(person).values({tenantId:b.tenantId,fullName:'Fictional principal proof subject'}).returning({id:person.id});
+ const [subject]=await owner.db.insert(person).values({tenantId:b.tenantId,fullName:'Fictional principal proof subject',primaryEmail:randomUUID()+'@example.invalid'}).returning({id:person.id});
  const userId=await createAppUser(b.tenantId,subject.id,role);
  if(role==='hr_admin')await owner.db.update(roleAssignment).set({companyId:b.companyId}).where(eq(roleAssignment.appUserId,userId));
  const ctx:SessionContext={tenantId:b.tenantId,userId,personId:subject.id,roles:[role],grants:[{role,companyId:role==='hr_admin'?b.companyId:null}]};

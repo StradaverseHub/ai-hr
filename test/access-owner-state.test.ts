@@ -19,6 +19,16 @@ describe('access database state boundary',()=>{
   ];
   for(const value of variants)expect(()=>parseAccessOwnerState(value,tenant)).toThrow(/invalid/);
  });
+ it('validates override identity and effect as well as the shared grant shape',()=>{
+  const override={userId:user,capabilityId:'workforce.view',companyId:company,effect:'deny'};
+  for(const effect of ['allow','deny'] as const){
+   const raw={...source(),snapshot:{...source().snapshot,overrides:[{...override,effect}]}};
+   expect(parseAccessOwnerState(raw,tenant).snapshot.overrides).toEqual([{...override,effect}]);
+  }
+  for(const invalid of [{...override,userId:id(99)},{...override,effect:'owner'},{...override,capabilityId:'unknown'},{...override,companyId:id(99)}]){
+   expect(()=>parseAccessOwnerState({...source(),snapshot:{...source().snapshot,overrides:[invalid]}},tenant)).toThrow(/invalid/);
+  }
+ });
  it('drops extra owner fields rather than passing an accidentally expanded HR projection to the editor',()=>{
   const raw={...source(),snapshot:{...source().snapshot,users:[{id:user,active:true,privateSalary:'DO-NOT-SERIALIZE'}],privatePayload:'DO-NOT-SERIALIZE'}};
   expect(JSON.stringify(parseAccessOwnerState(raw,tenant))).not.toContain('DO-NOT-SERIALIZE');
