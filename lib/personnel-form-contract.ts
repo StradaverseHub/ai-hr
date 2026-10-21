@@ -1,7 +1,8 @@
 /** Client-safe Personnel form presentation. Domain owners retain authorization and cross-field rules. */
 import { personnelField, type PersonnelFieldDescriptor } from './personnel-field-registry';
 import { personnelFieldChoices, personnelFieldLabel, personnelScalarIssue, type PersonnelLabelResolver } from './personnel-import-contract';
-export type PersonnelFormContext={localIdentity?:boolean;passportTrio?:boolean;payRate?:boolean;activeTaxSelection?:boolean;noBasicSalary?:boolean;manualEmployeeCode?:boolean;selectCompany?:boolean;movementEndDate?:boolean};
+import { isCalendarDate } from './calendar-date';
+export type PersonnelFormContext={localIdentity?:boolean;passportTrio?:boolean;payRate?:boolean;activeTaxSelection?:boolean;noBasicSalary?:boolean;manualEmployeeCode?:boolean;selectCompany?:boolean;movementEndDate?:boolean;employmentStartDate?:string;calendarAssignmentStartDate?:string};
 export type PersonnelFormMode = 'create' | 'edit' | 'draft' | 'record';
 export function personnelFormField(id:string):PersonnelFieldDescriptor {
   const field=personnelField(id);
@@ -25,7 +26,9 @@ export function personnelControl(id:string,mode:PersonnelFormMode='edit',context
 export function personnelInput(id:string,mode:PersonnelFormMode='edit',context:PersonnelFormContext={}) {
   const field=personnelFormField(id);const widget=personnelFormWidget(id);
   if(!widget || !['text','email','date','month','number','checkbox','file'].includes(widget))throw new Error(`Personnel field needs its specialized renderer: ${id}`);
-  return {...personnelControl(id,mode,context),type:widget, ...(field.form!.min==null?{}:{min:field.form!.min}), ...(field.form!.max==null?{}:{max:field.form!.max}), ...(field.form!.step==null?{}:{step:field.form!.step})};
+  const minimum=field.form!.minOwner?context[field.form!.minOwner]:field.form!.min;
+  if(field.form!.minOwner&&(typeof minimum!=='string'||!isCalendarDate(minimum)))throw new Error(`Personnel date minimum context is missing or invalid: ${id}`);
+  return {...personnelControl(id,mode,context),type:widget, ...(minimum==null?{}:{min:minimum}), ...(field.form!.max==null?{}:{max:field.form!.max}), ...(field.form!.step==null?{}:{step:field.form!.step})};
 }
 export function personnelFormChoices(id:string) {
   return personnelFieldChoices(personnelFormField(id));
@@ -62,6 +65,7 @@ export function personnelFormMetadataIssue(field:PersonnelFieldDescriptor):strin
   if(widget && widget!=='display' && widget!==expected && !(widget==='email'&&field.type==='text') && !(widget==='month'&&field.type==='date') && !(widget==='choice'&&field.type==='boolean'))return `Personnel widget contradicts canonical type: ${field.id}`;
   if(widget==='display'&&!field.form?.workflowReason)return `Personnel display field needs its derived/owner reason: ${field.id}`;
   if(field.form?.required?.create!=null||field.form?.required?.draft!=null)return `Personnel create requirement has a duplicate authority: ${field.id}`;
+  if(field.form?.minOwner&&(field.type!=='date'||widget&&widget!=='date'||field.form.min!=null))return `Personnel date minimum contradicts canonical metadata: ${field.id}`;
   return null;
 }
 

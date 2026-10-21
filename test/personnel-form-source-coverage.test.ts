@@ -46,6 +46,23 @@ describe('actual mounted Personnel form inventory',()=>{
       source.replace('fieldId={"profile.personal_details.fullname"}','fieldId={"profile.contact_and_permanent_address.primaryemail"}'),
     ])expect(auditPersonnelFormSource(file,changed,PERSONNEL_FIELDS).issues.length).toBeGreaterThan(0);
   });
+  it('discovers and audits all dated calendar facts while exempting only the two guarded record pointers',()=>{
+    const file='app/admin/personnel/[employmentId]/holiday-calendar-assignments.tsx';
+    const {files}=personnelFormSources(root),source=files.get(file);
+    expect(source,'the mounted calendar form must remain in the Personnel inventory').toBeDefined();
+    if(!source)throw new Error('Mounted calendar form missing');
+    const audit=(text:string)=>auditPersonnelFormSource(file,text,PERSONNEL_FIELDS,{exemptions:exemptions[file],resolveImportSource:personnelImportSourceReader(root)});
+    expect(audit(source)).toMatchObject({controls:5,issues:[]});
+    expect(exemptions[file].map(item=>({tag:item.tag,name:item.name,hidden:item.hidden,occurrences:item.occurrences})))
+      .toEqual(['employmentId','replacesId'].map(name=>({tag:'input',name,hidden:true,occurrences:1})));
+    const binding="personnelInput('attendance.dated_holiday_calendar.startdate'";
+    expect(source).toContain(binding);
+    const unknown=source.replace(binding,"personnelInput('unregistered.calendar.startdate'");
+    expect(audit(unknown).issues.some(issue=>issue.message.includes('Unknown Personnel form field'))).toBe(true);
+    const raw=source.replace(binding,"unregisteredCalendarInput('attendance.dated_holiday_calendar.startdate'");
+    expect(audit(raw).issues.some(issue=>issue.message.includes('Unbound Personnel control'))).toBe(true);
+    expect(exemptions).not.toHaveProperty('components/leave/LeaveDetailsPanel.tsx');
+  });
   it('resolves actual imported Movement descriptors and refuses altered keys/maps/imports with only existing plumbing exemptions',()=>{
     const file='app/admin/personnel/[employmentId]/movement-new-event.tsx',source=readFileSync(new URL('../'+file,import.meta.url),'utf8');
     const resolveImportSource=personnelImportSourceReader(root),audit=(text:string,reader=resolveImportSource)=>auditPersonnelFormSource(file,text,PERSONNEL_FIELDS,{exemptions:exemptions[file],resolveImportSource:reader});

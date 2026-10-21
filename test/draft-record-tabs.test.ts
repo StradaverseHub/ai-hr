@@ -2,7 +2,7 @@
  * A DRAFT IS THE SAME SCREEN AS THE EMPLOYEE IT BECOMES — item 759dfc7d, work item 2.
  *
  * THE REPORTER'S OBJECTION, IN THEIR OWN TERMS. Creating an employee opened a five-step form with its own
- * step names; the same person, once activated, opened a record with eleven tabs, different section names
+ * step names; the same person, once activated, opened a record with different tabs, section names
  * and a different layout. Two screens to learn for one employee. The plan's promise is narrow and
  * checkable: "the same tabs as an active employee, with the same section names, fields, dropdowns and
  * validation" — plus a Draft label on the record, save at any point, nothing validated until Activate,
@@ -11,7 +11,7 @@
  * WHY THIS FILE IS MOSTLY ABOUT WORDS. "The same section names" is the half of that promise that no
  * rendering test can hold on its own: a screen renders one locale, and this product ships six. A tab
  * label copied by hand into `people.wizard` would look right in English forever and drift the first time
- * somebody edits the record's Malay label. So each of the eleven strings the draft borrows is pinned
+ * somebody edits the record's Malay label. So each string the draft borrows is pinned
  * EQUAL, in all six locales, to the `people.detail` key the activated record reads. Editing one and not
  * the other fails here.
  *
@@ -45,16 +45,18 @@ describe('§1 a draft uses the ACTIVE RECORD\'S tab keys, and only the five it i
     // old key stops being "the same tab" and this fails.
     const record = read(RECORD);
     const recordTabs = [...record.matchAll(/\{ key: '(\w+)', label: t\('tabs\.(\w+)'\) \}/g)].map((m) => m[1]);
+    // 39306a9e retired Others and rehomed its cards, leaving ten active tabs. Keep the
+    // non-empty inventory guard and pin retirement without requiring the removed tab back.
     expect(recordTabs.length, 'the record\'s tab list could not be read — has its shape changed?')
-      .toBeGreaterThanOrEqual(11);
+      .toBe(10);
+    expect(recordTabs).not.toContain('others');
     for (const k of DRAFT_TABS) expect(recordTabs, `draft tab ${k}`).toContain(k);
   });
 
-  it('the six tabs a draft does NOT get are named, and named for a reason', () => {
+  it('the five post-activation tabs and the retired Others tab stay unavailable to a draft', () => {
     // Four of them describe things that have HAPPENED to an employment, and a draft deliberately has no
-    // employment for them to have happened to. Qualification and Others follow activation too — the plan
-    // says so and invites the reporter to reject it if they want Qualification earlier, so if that
-    // conversation happens this list is where the answer lands.
+    // employment for them to have happened to. Qualification follows activation too. Others was
+    // retired by 39306a9e on the active record, so it cannot become a draft-only destination.
     for (const absent of ['careerMovement', 'attendance', 'leave', 'documents', 'qualification', 'others']) {
       expect(DRAFT_TABS as readonly string[], absent).not.toContain(absent);
     }

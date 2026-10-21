@@ -3,6 +3,8 @@ import { useId, useState, useTransition, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { Button, Card, inputCls } from '@/components/ui';
+import { PersonnelField } from '@/components/personnel-field';
+import { personnelControl, personnelInput } from '@/lib/personnel-form-contract';
 import { saveHolidayCalendarAssignmentAction } from './holiday-calendar-actions';
 
 type Row={id:string;startDate:string;endDate:string|null;choice:string;superseded:boolean};
@@ -42,15 +44,15 @@ export function HolidayCalendarAssignments({employmentId,joinDate,employmentStar
    </div>}
    {draft&&<form data-tab-save-independent="true" onSubmit={submit} className="grid gap-4 rounded-lg border border-border p-4 sm:grid-cols-3" aria-label={draft.id?t('edit'):t('add')}>
     <input type="hidden" name="employmentId" value={employmentId}/><input type="hidden" name="replacesId" value={draft.id??''}/>
-    <label htmlFor={`${formId}-calendar`} className="space-y-1 text-sm"><span>{t('calendar')}</span>
-     <select id={`${formId}-calendar`} name="calendar" value={draft.choice} disabled={pending} onChange={e=>setDraft({...draft,choice:e.target.value})} className={inputCls}>
+    <PersonnelField fieldId="attendance.dated_holiday_calendar.calendar" className="space-y-1 text-sm">
+     <select {...personnelControl('attendance.dated_holiday_calendar.calendar')} id={`${formId}-calendar`} value={draft.choice} disabled={pending} onChange={e=>setDraft({...draft,choice:e.target.value})} className={inputCls}>
       <option value="">{t('companyDefault')}</option>
       <optgroup label={t('groups')}>{groups.filter(g=>g.active||draft.choice===`group:${g.id}`).map(g=><option key={g.id} value={`group:${g.id}`}>{g.name}{!g.active?` · ${t('inactive')}`:''}</option>)}</optgroup>
       <optgroup label={t('states')}>{states.map(state=><option key={state} value={`state:${state}`}>{state}</option>)}</optgroup>
      </select>
-    </label>
-    <label htmlFor={`${formId}-start`} className="space-y-1 text-sm"><span>{t('start')}</span><input id={`${formId}-start`} type="date" name="startDate" min={employmentStartDate} required value={draft.startDate} disabled={pending} onChange={e=>setDraft({...draft,startDate:e.target.value})} className={inputCls}/></label>
-    <label htmlFor={`${formId}-end`} className="space-y-1 text-sm"><span>{t('end')}</span><input id={`${formId}-end`} type="date" name="endDate" aria-label={t('end')} aria-describedby={`${formId}-end-help`} min={draft.startDate||joinDate} value={draft.endDate} disabled={pending} onChange={e=>setDraft({...draft,endDate:e.target.value})} className={inputCls}/><span id={`${formId}-end-help`} className="block text-xs text-muted-foreground">{t('endHelp')}</span></label>
+    </PersonnelField>
+    <PersonnelField fieldId="attendance.dated_holiday_calendar.startdate" className="space-y-1 text-sm"><input {...personnelInput('attendance.dated_holiday_calendar.startdate','edit',{employmentStartDate})} id={`${formId}-start`} value={draft.startDate} disabled={pending} onChange={e=>setDraft({...draft,startDate:e.target.value})} className={inputCls}/></PersonnelField>
+    <PersonnelField fieldId="attendance.dated_holiday_calendar.enddate" className="space-y-1 text-sm"><input {...personnelInput('attendance.dated_holiday_calendar.enddate','edit',{calendarAssignmentStartDate:draft.startDate||joinDate})} id={`${formId}-end`} aria-label={t('end')} aria-describedby={`${formId}-end-help`} value={draft.endDate} disabled={pending} onChange={e=>setDraft({...draft,endDate:e.target.value})} className={inputCls}/><span id={`${formId}-end-help`} className="block text-xs text-muted-foreground">{t('endHelp')}</span></PersonnelField>
     {error&&<p role="alert" className="text-sm text-destructive sm:col-span-3">{t(`errors.${error}`)}</p>}
     <div className="flex flex-wrap gap-2 sm:col-span-3"><Button type="submit" disabled={pending}>{t(pending?'saving':'save')}</Button><Button type="button" variant="secondary" disabled={pending} onClick={()=>{setDraft(null);setError(null);}}>{t('cancel')}</Button></div>
    </form>}

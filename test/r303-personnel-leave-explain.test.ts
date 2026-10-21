@@ -58,6 +58,7 @@ describe('Personnel retains the Others capabilities at their new homes', () => {
     for (const row of rows) {
       if (row.includes('"id":"others.change_history.')) expect(row).toContain('"tab":"Profile"');
       if (row.includes('"id":"others.leave_requests.')) expect(row).toContain('"tab":"Leave"');
+      if (row.includes('"id":"others.probation_contract_internship_review.')) expect(row).toContain('"tab":"Employment"');
       expect(row).not.toContain('"tab":"Others"');
     }
     expect(read('app/leave/employee-balances/page.tsx')).toContain('hrExplanation={r.hrExplanation}');
