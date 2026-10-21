@@ -734,10 +734,10 @@ describe('Family bounded owner and automatic derived effect',()=>{
   const {ctx,subject}=await fixture();
   await maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'dependent',rowId:null,operation:'add',expectedVersion:null,patch:{fullName:'Fictional nightly child',relationship:'child',dateOfBirth:'2018-01-01'}});
   await owner.db.update(employeeStatutoryMy).set({numChildren:0}).where(eq(employeeStatutoryMy.personId,subject.personId));
-  const forged={...admin(),userId:null,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
+  const forged={...admin(),userId:undefined,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
   expect(await syncChildReliefFromFamily(forged,subject.personId)).toMatchObject({changed:false,skipped:'error'});
   expect((await statutory(subject.personId))[0].numChildren).toBe(0);
-  const system={...admin(),userId:null,roles:[],grants:[]};
+  const system={...admin(),userId:undefined,roles:[],grants:[]};
   const result=await owner.withTenant(system,tx=>syncChildReliefFromFamily(system,subject.personId,tx));
   expect(result).toMatchObject({changed:true,before:0,after:1});
   expect(await owner.withTenant(system,tx=>syncChildReliefFromFamily(system,subject.personId,tx))).toMatchObject({changed:false,skipped:'unchanged'});

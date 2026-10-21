@@ -72,7 +72,7 @@ async function main() {
     let ctx: SessionContext;
     try {
       const entitlements = await owner.db.transaction((tx) => resolveEntitlementsTx(tx, t.id));
-      ctx = { tenantId: t.id,userId:null,roles:[],grants:[],entitlements };
+      ctx = { tenantId: t.id,userId:undefined,roles:[],grants:[],entitlements };
     } catch (e) {
       console.log(`${t.name} (${t.id.slice(0, 8)}) — SKIPPED: ${e instanceof Error ? e.message : String(e)}`);
       skippedTenants += 1;
