@@ -22002,7 +22002,7 @@
     "workforceReadOnly": "您可以查看此员工记录。您当前的人事权限不允许修改。",
     "workforceCommandHint": "您可以修改员工编号。此页的其他资料仅供查看。",
     "workforceEdit": {
-      "review": "已保存。请授权的人力资源管理员检查相关薪资输入。",
+      "review": "已保存。家庭资料更改可能影响薪资计算，人力资源部门可检查相关输入。",
       "undecidedClaim": "尚未决定 — 保留现有推定",
       "unspecified": "未指定",
       "unavailable": "无法在此更新这条记录。请授权的人力资源管理员检查其设置。",

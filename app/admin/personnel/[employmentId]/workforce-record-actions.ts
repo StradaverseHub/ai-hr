@@ -58,7 +58,7 @@ export async function saveWorkforceRecordAction(formData:FormData){
   }
   const result=await maintainWorkforceRecord(s,{employmentId:id,kind:kind as WorkforceMaintenanceKind,operation:operation as WorkforceMaintenanceOperation,
    rowId:typeof row==='string'?row:null,expectedVersion:typeof expected==='string'?expected:null,patch});
-  if(result.payrollReviewRequired)outcome='review';
+  if(result.hrReviewNotice)outcome='review';
  }catch(error){
   if(error instanceof WorkforceAccessError)outcome='denied';
   else if(error instanceof WorkforceRecordChangedError)outcome='changed';

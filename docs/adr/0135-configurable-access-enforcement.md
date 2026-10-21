@@ -375,11 +375,11 @@ internal Person identity. Authored regressions cover the actual non-HR command, 
 Highest/Primary transfers, archives, legacy catalog tolerance, real foreign/revoked subjects, forged private
 intents, raw-followup refusal, audit rollback, request binding and six-locale rendering. All are UNRUN.
 
-Family positive maintenance is still incomplete. Its existing owner synchronizes automatic child-relief
+At the preceding checkpoint, Family positive maintenance was still incomplete. Its existing owner synchronizes automatic child-relief
 head count and grid through the jurisdiction's statutory writer, preserving every other tax fact and
-open-payroll alert. The new normal-value command deliberately does not admit Family: bypassing that
-coupling or granting a non-HR caller raw tax access would be incorrect. Complete the bounded composition
-through the canonical owners before offering it. Employment structural/specialist commands and the
+open-payroll alert. That checkpoint did not admit Family: bypassing that
+coupling or granting a non-HR caller raw tax access would be incorrect. The following checkpoint drafts that bounded composition
+through the canonical owners; it is not yet verified for release. Employment structural/specialist commands and the
 remaining domain/current-principal matrix also require reconciliation. All three capability controls
 remain unsupported; 0578/0579 are unjournalled/unapplied. This is a source checkpoint, not acceptance or
 release evidence. Board 1 still owns all three resource leases; no compiler/test/app/SQL/build ran here.
@@ -419,9 +419,11 @@ unchanged-Family assertions. Unsupported/ambiguous jurisdiction refuses instead 
 
 The ordinary kernel wrapper retains the legacy statutory read/write floor. A positive Workforce caller
 cannot execute either the private financial owner or obtain the legacy tax summary. Its fixed command
-returns only row identity, changed state and a bounded HR-review-required consequence; no tax amounts,
-before/after values, periods or payroll batch details reach the editor. The durable warning asks an
-authorized HR administrator to review related payroll inputs. Detailed tax audit follows the financial
+returns only row identity, changed state and a generic Family-review notice; no tax amounts,
+before/after values, periods or payroll batch details reach the editor. The durable notice is constant
+for Family operations, not derived from hidden tax mode or another company's open-payroll state; it adds
+no approval step. Detailed open-payroll alerts remain with the financial owner/audit, while the notice
+lets HR review related inputs. Detailed tax audit follows the financial
 reader boundary; an ordinary reporting relationship alone is not a tax-audit grant. Failure to append
 either immutable event must roll back the Family and derived effects together.
 

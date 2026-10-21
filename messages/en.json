@@ -22002,7 +22002,7 @@
     "workforceReadOnly": "You can view this employee record. Your current Workforce permission does not allow changes.",
     "workforceCommandHint": "You can change the Employee ID. Other details on this page are view only.",
     "workforceEdit": {
-      "review": "Saved. Ask an authorized HR administrator to review the related payroll inputs.",
+      "review": "Saved. Family changes may affect payroll. HR can review the related inputs.",
       "undecidedClaim": "Not decided — retain existing inference",
       "unspecified": "Not specified",
       "unavailable": "This record cannot be updated here. Ask an authorized HR administrator to review its setup.",

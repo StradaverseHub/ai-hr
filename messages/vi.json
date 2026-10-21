@@ -22002,7 +22002,7 @@
     "workforceReadOnly": "Bạn có thể xem hồ sơ nhân viên này. Quyền nhân sự hiện tại của bạn không cho phép thay đổi.",
     "workforceCommandHint": "Bạn có thể đổi mã nhân viên. Các thông tin khác trên trang này chỉ được xem.",
     "workforceEdit": {
-      "review": "Đã lưu. Hãy nhờ quản trị viên nhân sự có quyền xem lại dữ liệu tính lương liên quan.",
+      "review": "Đã lưu. Thay đổi thông tin gia đình có thể ảnh hưởng đến tính lương. Nhân sự có thể xem lại dữ liệu liên quan.",
       "undecidedClaim": "Chưa quyết định — giữ cách suy ra hiện tại",
       "unspecified": "Chưa chỉ định",
       "unavailable": "Không thể cập nhật bản ghi này tại đây. Hãy nhờ quản trị viên nhân sự có quyền xem lại thiết lập.",

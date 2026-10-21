@@ -2371,7 +2371,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $
 DECLARE selected public.employment%ROWTYPE;before_row jsonb;after_row jsonb;normalized jsonb:='{}'::jsonb;
  version text;target_id uuid;table_name text;subject_column text;subject_id uuid;event_name text;aggregate_name text;
  assignments text;insert_columns text;insert_values text;field_names jsonb;pair record;binding record;value jsonb;
- previous record;previous_after jsonb;event_id uuid;instant timestamptz:=now();changed boolean;effect_id uuid;relationship text;relief_summary jsonb;
+ previous record;previous_after jsonb;event_id uuid;instant timestamptz:=now();changed boolean;effect_id uuid;relationship text;
 BEGIN
  IF p_kind IS NULL OR p_operation IS NULL OR p_kind NOT IN ('person','qualification','emergency','dependent') OR p_operation NOT IN ('add','update','archive')
   OR jsonb_typeof(p_patch) IS DISTINCT FROM 'object' OR octet_length(p_patch::text)>128000 THEN
@@ -2451,8 +2451,9 @@ BEGIN
   IF p_kind='person' AND normalized ? 'marital_status' THEN normalized:=normalized||jsonb_build_object('marital_status_source_request_id',NULL); END IF;
   IF p_operation<>'add' AND NOT EXISTS(SELECT 1 FROM jsonb_each(normalized) d WHERE d.value IS DISTINCT FROM before_row->d.key) THEN
    -- Existing Family saves refresh age-dependent facts even when the edited row itself is unchanged.
-   IF p_kind='dependent' THEN relief_summary:=app.my_sync_family_child_relief(selected.person_id); END IF;
-   RETURN jsonb_build_object('id',target_id,'changed',false,'payrollReviewRequired',COALESCE(relief_summary->'payrollAlert','null'::jsonb)<>'null'::jsonb); END IF;
+   IF p_kind='dependent' THEN PERFORM app.my_sync_family_child_relief(selected.person_id); END IF;
+   -- Generic Family notice is independent of private tax mode or other-company payroll state.
+   RETURN jsonb_build_object('id',target_id,'changed',false,'hrReviewNotice',p_kind='dependent'); END IF;
   IF p_kind<>'person' THEN normalized:=normalized||jsonb_build_object('updated_at',instant); END IF;
  END IF;
  -- Transfer exactly one Primary/Highest using the same finite fields as the existing canonical owner.
@@ -2498,8 +2499,8 @@ BEGIN
    jsonb_build_object('fields',field_names,'via','workforce-maintenance','transferFromId',effect_id)) RETURNING id INTO event_id;
  UPDATE app.access_workforce_value_intent SET event_id=access_workforce_maintain_record.event_id
   WHERE xact_id=pg_current_xact_id() AND tenant_id=selected.tenant_id AND user_id=app.current_user_id() AND audit_root=target_id AND event_type=event_name;
- IF p_kind='dependent' THEN relief_summary:=app.my_sync_family_child_relief(selected.person_id); END IF;
- RETURN jsonb_build_object('id',target_id,'changed',true,'payrollReviewRequired',COALESCE(relief_summary->'payrollAlert','null'::jsonb)<>'null'::jsonb);
+ IF p_kind='dependent' THEN PERFORM app.my_sync_family_child_relief(selected.person_id); END IF;
+ RETURN jsonb_build_object('id',target_id,'changed',true,'hrReviewNotice',p_kind='dependent');
 END; $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.access_workforce_maintain_record(uuid,text,uuid,text,jsonb,text) FROM PUBLIC;

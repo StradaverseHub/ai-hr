@@ -60,8 +60,8 @@ describe('scoped Workforce value action',()=>{
   expect(command.patch).toMatchObject({childTaxRelief:null,isStudent:null,spouseWorking:null,isBeneficiary:false,isDeceased:false});
   expect(command.patch).not.toHaveProperty('taxNumber');
  });
- it('keeps an actual downstream HR-review consequence in the redirect without serializing financial details',async()=>{
-  vi.mocked(maintainWorkforceRecord).mockResolvedValue({id,changed:true,payrollReviewRequired:true});
+ it('keeps the generic Family notice in the redirect without serializing financial details',async()=>{
+  vi.mocked(maintainWorkforceRecord).mockResolvedValue({id,changed:true,hrReviewNotice:true});
   await expect(saveWorkforceRecordAction(form())).rejects.toThrow(`redirect:${path}?workforceEdit=review`);
  });
  it.each([[new WorkforceAccessError(),'denied'],[new WorkforceRecordChangedError(),'changed'],[new WorkforceMaintenanceValidationError(),'invalid'],[new WorkforceMaintenanceUnavailableError(),'unavailable']] as const)('keeps failures finite for %s',async(error,outcome)=>{

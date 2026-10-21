@@ -611,7 +611,7 @@ describe('Family bounded owner and automatic derived effect',()=>{
   const {ctx,subject}=await fixture();const before=(await statutory(subject.personId))[0];
   const added=await maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'dependent',rowId:null,operation:'add',expectedVersion:null,
    patch:{fullName:'Fictional eligible child',relationship:'child',dateOfBirth:'2018-01-01',childReliefCategory:'under_18',childTaxRelief:true,childReliefPercentage:50}});
-  expect(Object.keys(added).sort()).toEqual(['changed','id','payrollReviewRequired']);
+  expect(Object.keys(added).sort()).toEqual(['changed','hrReviewNotice','id']);
   const after=(await statutory(subject.personId))[0];expect(after.numChildren).toBe(1);expect(after.childReliefTable).toEqual({under_18:{full:0,half:1}});
   const {numChildren:_bc,childReliefTable:_bg,updatedAt:_bt,...beforeOther}=before;
   const {numChildren:_ac,childReliefTable:_ag,updatedAt:_at,...afterOther}=after;expect(afterOther).toEqual(beforeOther);
@@ -634,13 +634,14 @@ describe('Family bounded owner and automatic derived effect',()=>{
   const updated=(await workforceEditor(ctx,subject.employmentId))!.registers.find(item=>item.id===added.id)!;
   expect(updated.values).toMatchObject({relationship:'spouse',marriageStatus:'married',spouseWorking:false,childTaxRelief:null,childReliefCategory:null,childReliefPercentage:null});
   expect(await statutory(subject.personId)).toEqual(before);
+  expect(added.hrReviewNotice).toBe(true); // Same notice in manual mode; it reveals no payroll state.
  });
- it('returns only a bounded HR-review consequence while keeping open-payroll details inside the financial audit',async()=>{
+ it('returns a generic Family notice while keeping open-payroll details inside the financial audit',async()=>{
   const {ctx,subject}=await fixture();const [clock]=await owner.db.execute<{period:string}>(sql`select to_char(now() AT TIME ZONE 'UTC','YYYY-MM') as period`);
   await createBatch(admin(),{companyId:b.companyId,payPeriod:clock.period});
   const result=await maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'dependent',rowId:null,operation:'add',expectedVersion:null,patch:{fullName:'Fictional open-payroll child',relationship:'child',dateOfBirth:'2018-01-01'}});
-  expect(result).toMatchObject({changed:true,payrollReviewRequired:true});
-  expect(Object.keys(result).sort()).toEqual(['changed','id','payrollReviewRequired']);
+  expect(result).toMatchObject({changed:true,hrReviewNotice:true});
+  expect(Object.keys(result).sort()).toEqual(['changed','hrReviewNotice','id']);
   expect(await withTenant(ctx,tx=>tx.select().from(domainEvent).where(eq(domainEvent.eventType,'employee.tax.updated')))).toEqual([]);
  });
  it('does not let a positive maintainer call the private relief owner or obtain the legacy tax summary',async()=>{

@@ -87,9 +87,9 @@ export async function maintainWorkforceRecord(ctx:SessionContext,p:{employmentId
    const normalized=await normaliseDependentPatchTx(tx,patch as Partial<DependentInput>,existing?{fullName:String(old.fullName),relationship:String(old.relationship)}:undefined);
    Object.assign(patch,Object.fromEntries(Object.entries(normalized).filter(([key])=>known.has(key))));
   }
-  const [result]=await tx.execute<{result:{id:string;changed:boolean;payrollReviewRequired?:boolean}}>(sql`select app.access_workforce_maintain_record(${p.employmentId}::uuid,${p.kind},${p.rowId}::uuid,${p.operation},${JSON.stringify(patch)}::jsonb,${p.expectedVersion}) as result`);
+  const [result]=await tx.execute<{result:{id:string;changed:boolean;hrReviewNotice?:boolean}}>(sql`select app.access_workforce_maintain_record(${p.employmentId}::uuid,${p.kind},${p.rowId}::uuid,${p.operation},${JSON.stringify(patch)}::jsonb,${p.expectedVersion}) as result`);
   if(!result?.result||typeof result.result.id!=='string'||typeof result.result.changed!=='boolean')throw new Error('Workforce command result unavailable');
-  if(result.result.payrollReviewRequired!==undefined&&typeof result.result.payrollReviewRequired!=='boolean')throw new Error('Workforce consequence result unavailable');
+  if(result.result.hrReviewNotice!==undefined&&typeof result.result.hrReviewNotice!=='boolean')throw new Error('Workforce consequence result unavailable');
   return result.result;
  });}catch(error){
   const state=pgSqlState(error);
