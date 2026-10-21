@@ -188,7 +188,7 @@ export default async function ApprovalsPage({
   const [rewardReviews, assignedAttendance, assignedTasks] = await Promise.all([
     !focus&&isModuleEnabledOrFalse(s, 'rewards') ? pendingRewardReviews(s, scopeIds) : Promise.resolve([]),
     focus?Promise.resolve(focus.kind==='attendance'):attendanceOn ? hasPendingAttendanceParticipantAssignment(s) : Promise.resolve(false),
-    !focus&&!admin && !manager ? listPendingTasks(s,scopeIds,{attendance:attendanceOn,claims:claimsOn}) : Promise.resolve([]),
+    !focus&&!admin && !manager ? listPendingTasks(s,scopeIds,{attendance:attendanceOn,claims:claimsOn},{noticeAcknowledgements:false}) : Promise.resolve([]),
   ]);
   if (!focus&&!admin && !manager && !rewardReviews.length && !assignedAttendance && !assignedTasks.length) redirect('/');
   const attendanceOnly = !admin && !manager && !rewardReviews.length && assignedAttendance && assignedTasks.every(task=>task.kind==='attendance');

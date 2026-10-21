@@ -13,7 +13,7 @@ describe('ordinary v3 presentation keeps unrelated detail loaders separate', () 
     it('discovers assignments through the canonical inbox and preserves Attendance-only detail loading', () => {
         const admission=section('const [rewardReviews, assignedAttendance, assignedTasks] =',"const t = await getTranslations('approvals');");
         expect(admission).toContain('await Promise.all([');
-        expect(admission).toContain('!focus&&!admin && !manager ? listPendingTasks(s,scopeIds,{attendance:attendanceOn,claims:claimsOn}) : Promise.resolve([])');
+        expect(admission).toContain('!focus&&!admin && !manager ? listPendingTasks(s,scopeIds,{attendance:attendanceOn,claims:claimsOn},{noticeAcknowledgements:false}) : Promise.resolve([])');
         expect(admission).toContain("assignedTasks.every(task=>task.kind==='attendance')");
         expect(admission).not.toContain('listLeaveRequests(');
         expect(admission).not.toContain('listPendingClaims(');
