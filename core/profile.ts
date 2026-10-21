@@ -1,4 +1,5 @@
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {pgSqlState} from '../lib/db-error';
+import {lockAccessConfigurationTx,lockProfileValueWritesTx} from './access-configuration-lock';
 import {isProfilePhotoProposal} from '../lib/profile-photo-proposal';
 import {resolveProfileRouteTx,assertProfileRouteDecisionTx,profileRouteReaderPredicate} from './profile-routing';
 import type {ProfilePresentationPolicy} from './profile-edit-policy';
@@ -451,6 +452,7 @@ export async function decideProfileChange(
       throw new Error('Only a group administrator can approve a profile change');
     }
 
+    if(p.decision==='approved'&&!isProfilePhotoProposal(req.proposed))await tx.execute(sql`select app.access_profile_value_begin(${req.id}::uuid)`);
     if(p.decision==='approved'&&isProfilePhotoProposal(req.proposed)){
       const {applyProfilePhotoProposalTx}=await import('./person-photo');await applyProfilePhotoProposalTx(tx,ctx,req);
     }else if(p.decision==='approved'&&req.proposed&&typeof req.proposed==='object'&&!Array.isArray(req.proposed)&&'v' in req.proposed&&req.proposed.v===2){
@@ -515,6 +517,13 @@ export async function decideProfileChange(
       payload: { decision: p.decision, deciderEmploymentId: p.deciderEmploymentId ?? null, reasonGiven: reason !== null },
     });
     return { status: p.decision };
+  }).catch(error=>{
+    // Deferred SQL refusal is still a finite permission/stale result at the public decision owner.
+    // Unknown storage/audit faults remain system failures and retain their original diagnostics.
+    const state=pgSqlState(error);
+    if(state!=='42501'&&state!=='40001')throw error;
+    const refusal=new EssProfileError(state==='40001'?'stale':'permission');
+    Object.defineProperty(refusal,'cause',{value:error});throw refusal;
   });
 }
 
@@ -573,6 +582,7 @@ export async function setPersonComplianceFields(
   if (Object.keys(personSet).length === 0) throw new Error('Nothing to change.');
 
   const run = async (tx:Tx) => {
+    await lockProfileValueWritesTx(tx,ctx.tenantId);
     // Resolve the person from the employment (RLS confines this select to admin scope).
     const [emp] = await tx
       .select({ personId: employment.personId })

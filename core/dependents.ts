@@ -1,5 +1,5 @@
 import {dependentFieldApplies} from '../lib/dependent-vocabulary';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockProfileValueWritesTx} from './access-configuration-lock';
 import {assertWorkforcePersonTx} from './workforce-access';
 import { dependentNaturalKey } from '../lib/dependent-identity';
 export { dependentNaturalKey } from '../lib/dependent-identity';
@@ -847,6 +847,7 @@ export async function addDependentTx(
   personId: string,
   p: DependentInput,
 ): Promise<{ id: string }> {
+  await lockProfileValueWritesTx(tx,ctx.tenantId);
   const fullName = (p.fullName ?? '').trim();
   if (fullName === '') throw new DependentValidationError('Dependent name is required.', 'fullName');
   // ea36b7fa — built-ins always valid; custom types must be ACTIVE dependentRelationship catalog options.
@@ -980,6 +981,7 @@ export async function materialiseDependents(
 ): Promise<{ created: string[]; skipped: number; childReliefSync: ChildReliefSyncResult }> {
   if (p.members.length === 0) return { created: [], skipped: 0, childReliefSync: NO_SYNC('unchanged') };
   const run=async(tx:Tx)=>{
+    await lockProfileValueWritesTx(tx,ctx.tenantId);
     const existing = await tx
       .select({
         fullName: employeeDependent.fullName,
@@ -1049,6 +1051,7 @@ export async function updateDependent(
   outerTx?:Tx,
 ): Promise<{ id: string; childReliefSync: ChildReliefSyncResult }> {
   const run=async(tx:Tx)=>{
+    await lockProfileValueWritesTx(tx,ctx.tenantId);
     const existing = await loadDependent(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new DependentValidationError('Dependent record not found.');
@@ -1159,7 +1162,7 @@ export async function archiveDependent(
   outerTx?: Tx,
 ): Promise<{ id: string; childReliefSync: ChildReliefSyncResult }> {
   const run = async (tx: Tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockProfileValueWritesTx(tx,ctx.tenantId);
     const existing = await loadDependent(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new DependentValidationError('Dependent record not found.');

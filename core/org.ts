@@ -1,3 +1,4 @@
+import {lockProfileValueWritesTx} from './access-configuration-lock';
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,assertWorkforcePersonTx} from './workforce-access';
 import {setWorkforceEmployeeCode} from './workforce-code';
 import {personnelField} from '../lib/personnel-field-registry';
@@ -1416,6 +1417,7 @@ async function writePersonProfile(
   outerTx?: Tx,
 ) {
   const run = async (tx:Tx) => {
+    await lockProfileValueWritesTx(tx,ctx.tenantId);
     const [before] = await tx
       .select({
         fullName: person.fullName,

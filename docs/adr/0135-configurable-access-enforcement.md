@@ -293,3 +293,55 @@ code, audit rollback and SQL register identity/archive refusals. None has execut
 profile/register commands, shared partial-value SQL versus valid ESS decisions, relevant raw deletes and
 related read contracts still require completion. All three capability controls remain unsupported;
 0578/0579 remain unjournalled/unapplied until complete source, peer handover and required evidence.
+
+### Profile/register physical value boundary — source checkpoint, not verification
+
+The draft now covers the remaining ordinary Person/compliance values, retained legacy address
+columns, and Family/Qualification/Emergency register value writes and removal. Direct maintenance
+still uses its current real-principal/company/shared-Person owner; positive non-HR maintenance is
+still limited to the separately implemented Employee ID command. The three catalogue controls
+remain unsupported. This section does not declare a completed general maintenance editor.
+
+An independently eligible ESS reviewer denied direct Workforce maintenance uses a different graph:
+actual pending request → fixed request-ID SQL preparation → canonical validators/owners → actual
+pending-to-approved transition → actual immutable decision audit → transaction completion. Preparation
+accepts no actor, company, table, column or proposed patch from its caller. Database-private evidence
+contains xid8, identities and digests, never proposal values. Only real transition/audit triggers mark
+it complete; the runtime cannot read or write those private tables. Deferred row guards require the
+same transaction/principal, the unchanged real approved proposal and route, current field/group policy,
+exact submitted values and retained register subject. A pending request, preparation alone, a prior
+transaction, a caller GUC, or an event without its matching transition grants nothing. Additional new
+register rows cannot reuse a submitted client identity. Private evidence is pruned on later writes and
+cascades with its tenant/request; it is not a second business record or an authorization cache.
+
+The route witness checks the existing subjectContext byte contract and locks its exact subject,
+Person and dated assignment projection before the first master mutation. It must not recompute the
+before snapshot after applying an approved gender/nationality change. Current route revision, actual
+named principal, no-self, group-only ceilings and review capability remain required. SQL/JavaScript
+witness equivalence, including Unicode/escapes/dates and retained pre-upgrade requests, needs executed
+coverage before release. Core remains the business-value/catalog/baseline validator; SQL provenance
+is not a claim that PostgreSQL attested execution of JavaScript validation.
+
+Finite side effects preserve the existing single Highest/Primary transfer, relationship-inapplicable
+Family clears, legacy own primary-contact edits/clear, and the independently callable 0485 Marriage
+Leave state transitions with their persisted cause/no-live-sibling reversal. No Personnel/financial
+row visibility is widened and no caller receives a manufactured HR role. The marital cause pointer
+cannot be manufactured by a runtime profile write. Applied 0485 is unchanged; the new guard recognizes
+only those already-existing fixed effects. The existing Marriage Leave consumer suite is required.
+
+All relevant core writers now join access/policy barriers before locking their subjects. A physical
+per-tenant generation is pre-created for existing and new tenants, advances only on real access or
+ESS policy writes, and is share-locked by writers. This covers REPEATABLE READ snapshots that cannot
+yet see a first settings/access-configuration insertion. Reads/barriers do not advance logical access
+revision or emit configuration history. Canonical decisions translate only known SQL permission/
+serialization refusals into finite ESS errors; unexpected storage/audit faults keep their diagnostics.
+
+Authored but UNRUN: binding-inventory parity; raw value/delete refusal and rollback; actual scalar
+approval while maintenance is denied; pending/prepared-only/no-audit/extra-field/wrong-value refusal;
+request fabrication/rewrite/reopen/replay refusal; real foreign request refusal; new-register one-time
+binding; a pinned old snapshot after a first policy insertion; existing Highest transfer and photo
+approval separation. Required next: integrate only Board 1's released principal/navigation baseline,
+check/journal the reserved migration order, compile, execute focused runtime and compatibility tests,
+repair actual failures, exercise real-app journeys, rehearse populated upgrades as restricted owner,
+then obtain the authentic final security/full gate and official Linux release/arrival proof. No new
+compiler, SQL, app, rehearsal, gate or deployment result exists for this checkpoint.

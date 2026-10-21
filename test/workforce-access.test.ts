@@ -275,6 +275,32 @@ describe('fresh Workforce-purpose record consumers',()=>{
   await expect(archiveQualificationOwner(admin(),{id:qualification.id})).rejects.toBeInstanceOf(WorkforceAccessError);
   expect(await snapshot()).toEqual(before);
  });
+ it('guards physical profile/register values and removal without treating a claimed bypass as permission',async()=>{
+  const subject=await hire('Fictional SQL value subject');
+  const family=await registers.addDependent(admin(),{personId:subject.personId,fullName:'Fictional retained parent',relationship:'parent'});
+  const qualification=await registers.addQualification(admin(),{employmentId:subject.employmentId,qualification:'Master'});
+  const contact=await registers.addEmergencyContact(admin(),{personId:subject.personId,fullName:'Fictional retained primary',priority:'primary'});
+  await activate();await override(b.adminUserId,'workforce.maintain',b.companyId,'deny');
+  const snapshot=async()=>({person:await owner.db.select().from(person).where(eq(person.id,subject.personId)),
+   family:await owner.db.select().from(employeeDependent),qualification:await owner.db.select().from(employeeQualification),
+   contact:await owner.db.select().from(personEmergencyContact),events:await owner.db.select({id:domainEvent.id}).from(domainEvent).orderBy(domainEvent.id)});
+  const before=await snapshot();
+  for(const operation of ['person','family','qualification','contact','delete-family','delete-qualification','delete-contact'] as const){
+   await sqlRefusal(withTenant(admin(),async tx=>{
+    await tx.execute(sql`select set_config('app.profile_route_maintenance','on',true),set_config('app.profile_write_approved','true',true)`);
+    if(operation==='person')await tx.update(person).set({firstName:'Must not persist',gender:'female'}).where(eq(person.id,subject.personId));
+    else if(operation==='family')await tx.update(employeeDependent).set({phone:'Must not persist'}).where(eq(employeeDependent.id,family.id));
+    else if(operation==='qualification')await tx.update(employeeQualification).set({institute:'Must not persist'}).where(eq(employeeQualification.id,qualification.id));
+    else if(operation==='contact')await tx.update(personEmergencyContact).set({mobilePhone:'Must not persist'}).where(eq(personEmergencyContact.id,contact.id));
+    else if(operation==='delete-family')await tx.delete(employeeDependent).where(eq(employeeDependent.id,family.id));
+    else if(operation==='delete-qualification')await tx.delete(employeeQualification).where(eq(employeeQualification.id,qualification.id));
+    else await tx.delete(personEmergencyContact).where(eq(personEmergencyContact.id,contact.id));
+   }));
+  }
+  await sqlRefusal(withTenant(admin(),tx=>tx.execute(sql`insert into app.access_profile_value_approval(xact_id,tenant_id,request_id,user_id,proposal_hash,route_hash,approved,audited)
+   values(pg_current_xact_id(),${b.tenantId}::uuid,${randomUUID()}::uuid,${b.adminUserId}::uuid,'forged','forged',true,true)`)));
+  expect(await snapshot()).toEqual(before);
+ });
  it('checks document services, raw CRUD and actual download routes while retaining independent self reads',async()=>{
   const subject=await hire('Fictional file owner'),other=await hire('Fictional unrelated subject');
   const userId=await createAppUser(b.tenantId,subject.personId,'employee');

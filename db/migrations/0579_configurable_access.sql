@@ -1198,6 +1198,8 @@ BEGIN
  -- Lock the real configuration tuple as well. A write from an already-pinned REPEATABLE READ
  -- snapshot must serialize/refuse after revocation, rather than reuse the old permission snapshot.
  -- This does not create a configuration edit or advance its logical revision/history.
+ PERFORM 1 FROM app.access_profile_write_generation WHERE tenant_id=t FOR SHARE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Workforce policy generation unavailable' USING ERRCODE='42501'; END IF;
  PERFORM 1 FROM public.access_configuration WHERE tenant_id=t AND initialized FOR SHARE;
 END;
 $$;
@@ -1422,7 +1424,7 @@ CREATE FUNCTION app.access_workforce_register_identity() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
  IF app.access_workforce_storage_owner() THEN RETURN NEW; END IF;
- IF NEW.id IS DISTINCT FROM OLD.id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id THEN
+ IF NEW.id IS DISTINCT FROM OLD.id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
   RAISE EXCEPTION 'Register subject cannot be reassigned' USING ERRCODE='42501';
  END IF;
  IF TG_TABLE_NAME='employee_qualification' THEN
@@ -1440,13 +1442,13 @@ $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.access_workforce_register_identity() FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
-CREATE TRIGGER access_workforce_register_identity BEFORE UPDATE OF id,tenant_id,employment_id ON employee_qualification
+CREATE TRIGGER access_workforce_register_identity BEFORE UPDATE OF id,tenant_id,created_at,employment_id ON employee_qualification
 FOR EACH ROW EXECUTE FUNCTION app.access_workforce_register_identity();
 --> statement-breakpoint
-CREATE TRIGGER access_workforce_register_identity BEFORE UPDATE OF id,tenant_id,person_id ON employee_dependent
+CREATE TRIGGER access_workforce_register_identity BEFORE UPDATE OF id,tenant_id,created_at,person_id ON employee_dependent
 FOR EACH ROW EXECUTE FUNCTION app.access_workforce_register_identity();
 --> statement-breakpoint
-CREATE TRIGGER access_workforce_register_identity BEFORE UPDATE OF id,tenant_id,person_id ON person_emergency_contact
+CREATE TRIGGER access_workforce_register_identity BEFORE UPDATE OF id,tenant_id,created_at,person_id ON person_emergency_contact
 FOR EACH ROW EXECUTE FUNCTION app.access_workforce_register_identity();
 --> statement-breakpoint
 -- Family and Qualification archival has no independent ESS approval course. Do not apply this to
@@ -1484,3 +1486,735 @@ FOR EACH STATEMENT EXECUTE FUNCTION app.access_workforce_master_statement_lock()
 --> statement-breakpoint
 CREATE TRIGGER access_workforce_register_archive BEFORE UPDATE OF archived_at ON employee_dependent
 FOR EACH ROW EXECUTE FUNCTION app.access_workforce_register_archive();
+
+--> statement-breakpoint
+-- Physical authorization projection of Personnel descriptors. Values/catalog validation remains in
+-- the canonical owners; this finite map cannot address arbitrary columns, financial rows or photos.
+-- Registry/SQL parity is a required contract. These are immutable bindings, not tenant settings.
+CREATE FUNCTION app.access_profile_value_bindings()
+RETURNS TABLE(field_id text,owner text,column_name text,field_name text,legacy_key text,immediate boolean,primary_key text,tab_name text,section_name text)
+LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,pg_temp AS $$ VALUES
+ ('profile.personal_details.salutation','person','salutation','salutation','salutation',false,NULL,'Profile','Personal details'),
+ ('profile.personal_details.fullname','person','full_name','fullName','fullName',false,NULL,'Profile','Personal details'),
+ ('profile.personal_details.firstname','person','first_name','firstName','firstName',false,NULL,'Profile','Personal details'),
+ ('profile.personal_details.lastname','person','last_name','lastName','lastName',false,NULL,'Profile','Personal details'),
+ ('profile.personal_details.preferredname','person','preferred_name','preferredName','preferredName',false,NULL,'Profile','Personal details'),
+ ('profile.personal_details.nationality','person','nationality','nationality','nationality',false,NULL,'Profile','Personal details'),
+ ('profile.personal_details.religion','person','religion','religion','religion',false,NULL,'Profile','Personal details'),
+ ('profile.personal_details.race','person','race','race','race',false,NULL,'Profile','Personal details'),
+ ('profile.personal_details.dateofbirth','compliance','date_of_birth','dateOfBirth','dateOfBirth',false,NULL,'Profile','Personal details'),
+ ('profile.personal_details.gender','compliance','gender','gender','gender',false,NULL,'Profile','Personal details'),
+ ('profile.personal_details.maritalstatus','compliance','marital_status','maritalStatus','maritalStatus',false,NULL,'Profile','Personal details'),
+ ('profile.contact_and_permanent_address.primaryemail','person','primary_email','primaryEmail',NULL,false,NULL,'Profile','Contact and permanent address'),
+ ('profile.contact_and_permanent_address.phone','person','phone','phone',NULL,true,NULL,'Profile','Contact and permanent address'),
+ ('profile.contact_and_permanent_address.homephone','person','home_phone','homePhone',NULL,false,NULL,'Profile','Contact and permanent address'),
+ ('profile.contact_and_permanent_address.personalemail','person','personal_email','personalEmail',NULL,true,NULL,'Profile','Contact and permanent address'),
+ ('profile.contact_and_permanent_address.permanentaddressline1','person','permanent_address_line1','permanentAddressLine1',NULL,false,NULL,'Profile','Contact and permanent address'),
+ ('profile.contact_and_permanent_address.permanentaddressline2','person','permanent_address_line2','permanentAddressLine2',NULL,false,NULL,'Profile','Contact and permanent address'),
+ ('profile.contact_and_permanent_address.permanentaddressline3','person','permanent_address_line3','permanentAddressLine3',NULL,false,NULL,'Profile','Contact and permanent address'),
+ ('profile.contact_and_permanent_address.permanentpostcode','person','permanent_postcode','permanentPostcode',NULL,false,NULL,'Profile','Contact and permanent address'),
+ ('profile.contact_and_permanent_address.permanentcity','person','permanent_city','permanentCity',NULL,false,NULL,'Profile','Contact and permanent address'),
+ ('profile.contact_and_permanent_address.permanentstate','person','permanent_state','permanentState',NULL,false,NULL,'Profile','Contact and permanent address'),
+ ('profile.contact_and_permanent_address.permanentcountry','person','permanent_country','permanentCountry',NULL,false,NULL,'Profile','Contact and permanent address'),
+ ('profile.correspondence_address.correspondenceaddressline1','person','correspondence_address_line1','correspondenceAddressLine1',NULL,false,NULL,'Profile','Correspondence address'),
+ ('profile.correspondence_address.correspondenceaddressline2','person','correspondence_address_line2','correspondenceAddressLine2',NULL,false,NULL,'Profile','Correspondence address'),
+ ('profile.correspondence_address.correspondenceaddressline3','person','correspondence_address_line3','correspondenceAddressLine3',NULL,false,NULL,'Profile','Correspondence address'),
+ ('profile.correspondence_address.correspondencepostcode','person','correspondence_postcode','correspondencePostcode',NULL,false,NULL,'Profile','Correspondence address'),
+ ('profile.correspondence_address.correspondencecity','person','correspondence_city','correspondenceCity',NULL,false,NULL,'Profile','Correspondence address'),
+ ('profile.correspondence_address.correspondencestate','person','correspondence_state','correspondenceState',NULL,false,NULL,'Profile','Correspondence address'),
+ ('profile.correspondence_address.correspondencecountry','person','correspondence_country','correspondenceCountry',NULL,false,NULL,'Profile','Correspondence address'),
+ ('profile.correspondence_address.correspondencemobilephone','person','correspondence_mobile_phone','correspondenceMobilePhone',NULL,false,NULL,'Profile','Correspondence address'),
+ ('profile.correspondence_address.correspondencehomephone','person','correspondence_home_phone','correspondenceHomePhone',NULL,false,NULL,'Profile','Correspondence address'),
+ ('profile.emergency_contact.fullname','emergency','full_name','fullName',NULL,false,'legacyPrimaryEmergency.fullName','Profile','Emergency contact'),
+ ('profile.emergency_contact.relationship','emergency','relationship','relationship',NULL,false,'legacyPrimaryEmergency.relationship','Profile','Emergency contact'),
+ ('profile.emergency_contact.mobilephone','emergency','mobile_phone','mobilePhone',NULL,false,'legacyPrimaryEmergency.mobilePhone','Profile','Emergency contact'),
+ ('profile.emergency_contact.homephone','emergency','home_phone','homePhone',NULL,false,'legacyPrimaryEmergency.homePhone','Profile','Emergency contact'),
+ ('profile.emergency_contact.priority','emergency','priority','priority',NULL,false,NULL,'Profile','Emergency contact'),
+ ('profile.emergency_contact.address','emergency','address','address',NULL,false,'legacyPrimaryEmergency.address','Profile','Emergency contact'),
+ ('family.family_and_dependents.relationship','dependent','relationship','relationship',NULL,false,NULL,'Family','Family and dependents'),
+ ('family.family_and_dependents.fullname','dependent','full_name','fullName',NULL,false,NULL,'Family','Family and dependents'),
+ ('family.family_and_dependents.gender','dependent','gender','gender',NULL,false,NULL,'Family','Family and dependents'),
+ ('family.family_and_dependents.dateofbirth','dependent','date_of_birth','dateOfBirth',NULL,false,NULL,'Family','Family and dependents'),
+ ('family.family_and_dependents.phone','dependent','phone','phone',NULL,false,NULL,'Family','Family and dependents'),
+ ('family.family_and_dependents.icorpassport','dependent','ic_or_passport','icOrPassport',NULL,false,NULL,'Family','Family and dependents'),
+ ('family.family_and_dependents.passportnumber','dependent','passport_number','passportNumber',NULL,false,NULL,'Family','Family and dependents'),
+ ('family.family_and_dependents.residentialaddress','dependent','residential_address','residentialAddress',NULL,false,NULL,'Family','Family and dependents'),
+ ('family.family_and_dependents.marriagedate','dependent','marriage_date','marriageDate',NULL,false,NULL,'Family','Family and dependents'),
+ ('family.family_and_dependents.marriagestatus','dependent','marriage_status','marriageStatus',NULL,false,NULL,'Family','Family and dependents'),
+ ('family.family_and_dependents.spouseworking','dependent','spouse_working','spouseWorking',NULL,false,NULL,'Family','Family and dependents'),
+ ('family.family_and_dependents.isbeneficiary','dependent','is_beneficiary','isBeneficiary',NULL,false,NULL,'Family','Family and dependents'),
+ ('family.family_and_dependents.isdeceased','dependent','is_deceased','isDeceased',NULL,false,NULL,'Family','Family and dependents'),
+ ('family.family_and_dependents.isstudent','dependent','is_student','isStudent',NULL,false,NULL,'Family','Family and dependents'),
+ ('family.family_and_dependents.schoolname','dependent','school_name','schoolName',NULL,false,NULL,'Family','Family and dependents'),
+ ('family.family_and_dependents.studylevel','dependent','study_level','studyLevel',NULL,false,NULL,'Family','Family and dependents'),
+ ('family.family_and_dependents.studycountry','dependent','study_country','studyCountry',NULL,false,NULL,'Family','Family and dependents'),
+ ('family.family_and_dependents.childreliefcategory','dependent','child_relief_category','childReliefCategory',NULL,false,NULL,'Family','Family and dependents'),
+ ('family.family_and_dependents.childtaxrelief','dependent','child_tax_relief','childTaxRelief',NULL,false,NULL,'Family','Family and dependents'),
+ ('family.family_and_dependents.childreliefpercentage','dependent','child_relief_percentage','childReliefPercentage',NULL,false,NULL,'Family','Family and dependents'),
+ ('qualification.academic_and_professional_qualifications.level','qualification','qualification','qualification',NULL,false,NULL,'Qualification','Academic and professional qualifications'),
+ ('qualification.academic_and_professional_qualifications.institute','qualification','institute','institute',NULL,false,NULL,'Qualification','Academic and professional qualifications'),
+ ('qualification.academic_and_professional_qualifications.fromym','qualification','from_ym','fromYm',NULL,false,NULL,'Qualification','Academic and professional qualifications'),
+ ('qualification.academic_and_professional_qualifications.toym','qualification','to_ym','toYm',NULL,false,NULL,'Qualification','Academic and professional qualifications'),
+ ('qualification.academic_and_professional_qualifications.graduationdate','qualification','graduation_date','graduationDate',NULL,false,NULL,'Qualification','Academic and professional qualifications'),
+ ('qualification.academic_and_professional_qualifications.major','qualification','major','major',NULL,false,NULL,'Qualification','Academic and professional qualifications'),
+ ('qualification.academic_and_professional_qualifications.result','qualification','result','result',NULL,false,NULL,'Qualification','Academic and professional qualifications'),
+ ('qualification.academic_and_professional_qualifications.description','qualification','description','description',NULL,false,NULL,'Qualification','Academic and professional qualifications'),
+ ('qualification.academic_and_professional_qualifications.highest','qualification','is_highest','isHighest',NULL,false,NULL,'Qualification','Academic and professional qualifications'); $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_profile_value_bindings() FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- A deny on direct maintenance must not cancel a legitimate, independently authorized ESS decision.
+-- Database-private transaction evidence is produced ONLY by a real pending -> approved transition.
+-- It contains identities/digests, never a second copy of proposal values or a caller-set bypass flag.
+CREATE TABLE app.access_profile_value_actor (
+ xact_id xid8 NOT NULL,tenant_id uuid NOT NULL REFERENCES public.tenant(id) ON DELETE CASCADE,user_id uuid NOT NULL,
+ PRIMARY KEY(xact_id,tenant_id)
+);
+--> statement-breakpoint
+CREATE TABLE app.access_profile_value_approval (
+ xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,request_id uuid NOT NULL REFERENCES public.profile_change_request(id) ON DELETE CASCADE,
+ user_id uuid NOT NULL,proposal_hash text NOT NULL,route_hash text NOT NULL,approved boolean NOT NULL DEFAULT false,audited boolean NOT NULL DEFAULT false,PRIMARY KEY(xact_id,request_id)
+);
+--> statement-breakpoint
+CREATE TABLE app.access_profile_register_application (
+ xact_id xid8 NOT NULL,request_id uuid NOT NULL REFERENCES public.profile_change_request(id) ON DELETE CASCADE,
+ kind text NOT NULL,client_id text NOT NULL,row_id uuid NOT NULL,
+ PRIMARY KEY(xact_id,request_id,kind,client_id),UNIQUE(xact_id,request_id,kind,row_id)
+);
+--> statement-breakpoint
+REVOKE ALL ON TABLE app.access_profile_value_actor,app.access_profile_value_approval,app.access_profile_register_application FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+ALTER TABLE app.access_profile_value_actor ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
+ALTER TABLE app.access_profile_value_approval ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
+ALTER TABLE app.access_profile_register_application ENABLE ROW LEVEL SECURITY;
+
+--> statement-breakpoint
+CREATE FUNCTION app.access_profile_value_statement_lock() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();previous_user uuid;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NULL; END IF;
+ PERFORM app.access_profile_policy_write_lock();
+ IF u IS NULL OR NOT app.principal_snapshot_current() THEN
+  RAISE EXCEPTION 'Profile write principal unavailable' USING ERRCODE='42501';
+ END IF;
+ -- Retained only until a later transaction in this tenant; xid8 is never a reusable 32-bit xid.
+ -- No values, raw proposal hashes exposed to the application, or lasting permission are stored here.
+ DELETE FROM app.access_profile_register_application a USING app.access_profile_value_approval p
+  WHERE a.xact_id=p.xact_id AND a.request_id=p.request_id AND p.tenant_id=t AND p.xact_id<>pg_current_xact_id();
+ DELETE FROM app.access_profile_value_approval WHERE tenant_id=t AND xact_id<>pg_current_xact_id();
+ DELETE FROM app.access_profile_value_actor WHERE tenant_id=t AND xact_id<>pg_current_xact_id();
+ INSERT INTO app.access_profile_value_actor VALUES(pg_current_xact_id(),t,u) ON CONFLICT DO NOTHING;
+ SELECT user_id INTO previous_user FROM app.access_profile_value_actor WHERE xact_id=pg_current_xact_id() AND tenant_id=t;
+ IF previous_user IS DISTINCT FROM u THEN RAISE EXCEPTION 'Profile write principal changed' USING ERRCODE='42501'; END IF;
+ RETURN NULL;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_profile_value_statement_lock() FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- SQL policy adapter for a declared bound field. Group ceilings and linked hidden name/DOB facts
+-- also narrow this adapter. Malformed/unknown policy generations never become legacy defaults.
+CREATE FUNCTION app.access_profile_value_editable(p_field text,p_primary boolean DEFAULT false) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE b record;raw jsonb;cap text;linked text;linked_ids text[];
+BEGIN
+ SELECT * INTO b FROM app.access_profile_value_bindings() WHERE field_id=p_field;
+ IF NOT FOUND THEN RETURN false; END IF;
+ SELECT value INTO raw FROM public.tenant_setting WHERE tenant_id=app.current_tenant_id() AND key='ess.profile_change_fields';
+ IF raw IS NULL OR raw='null'::jsonb OR raw='"all"'::jsonb OR jsonb_typeof(raw)='array' THEN
+  IF jsonb_typeof(raw)='array' AND EXISTS(SELECT 1 FROM jsonb_array_elements(raw) v WHERE jsonb_typeof(v)<>'string') THEN RETURN false; END IF;
+  IF p_primary THEN RETURN b.primary_key IS NOT NULL; END IF;
+  RETURN b.immediate OR b.legacy_key IS NOT NULL AND (raw IS NULL OR raw IN ('null'::jsonb,'"all"'::jsonb) OR raw ? b.legacy_key);
+ END IF;
+ IF jsonb_typeof(raw)<>'object' THEN RETURN false; END IF;
+ IF raw->'version'='2'::jsonb THEN
+  IF (SELECT count(*) FROM jsonb_object_keys(raw))<>2 OR jsonb_typeof(raw->'fields') IS DISTINCT FROM 'array' THEN RETURN false; END IF;
+  IF jsonb_array_length(raw->'fields')>512 OR EXISTS(SELECT 1 FROM jsonb_array_elements(raw->'fields') v WHERE jsonb_typeof(v)<>'string' OR length(v#>>'{}') NOT BETWEEN 1 AND 200)
+   OR (SELECT count(DISTINCT v) FROM jsonb_array_elements(raw->'fields') v)<>jsonb_array_length(raw->'fields') THEN RETURN false; END IF;
+  RETURN raw->'fields' ? CASE WHEN p_primary THEN b.primary_key ELSE b.field_id END;
+ END IF;
+ IF raw->'version' NOT IN ('3'::jsonb,'4'::jsonb) OR raw->'version' IS NULL
+  OR jsonb_typeof(raw->'fields') IS DISTINCT FROM 'object' OR jsonb_typeof(raw->'primaryOnly') IS DISTINCT FROM 'array' THEN RETURN false; END IF;
+ IF (SELECT count(*) FROM jsonb_object_keys(raw))<>CASE WHEN raw->'version'='3'::jsonb THEN 3 ELSE 4 END
+  OR (SELECT count(*) FROM jsonb_object_keys(raw->'fields'))>512 OR jsonb_array_length(raw->'primaryOnly')>512
+  OR EXISTS(SELECT 1 FROM jsonb_each(raw->'fields') f WHERE length(f.key) NOT BETWEEN 1 AND 200 OR f.value NOT IN ('"editable"'::jsonb,'"viewOnly"'::jsonb,'"hide"'::jsonb))
+  OR EXISTS(SELECT 1 FROM jsonb_array_elements(raw->'primaryOnly') v WHERE jsonb_typeof(v)<>'string' OR length(v#>>'{}') NOT BETWEEN 1 AND 200)
+  OR (SELECT count(DISTINCT v) FROM jsonb_array_elements(raw->'primaryOnly') v)<>jsonb_array_length(raw->'primaryOnly') THEN RETURN false; END IF;
+ IF raw->'version'='4'::jsonb THEN
+  IF jsonb_typeof(raw->'groups') IS DISTINCT FROM 'object' THEN RETURN false; END IF;
+  IF (SELECT count(*) FROM jsonb_object_keys(raw->'groups'))>128
+   OR EXISTS(SELECT 1 FROM jsonb_each(raw->'groups') g WHERE length(g.key) NOT BETWEEN 1 AND 200 OR g.value NOT IN ('"editable"'::jsonb,'"viewOnly"'::jsonb,'"hide"'::jsonb)) THEN RETURN false; END IF;
+ END IF;
+ cap:=raw->'fields'->>p_field;
+ IF cap IS NULL OR cap='hide' THEN RETURN false; END IF;
+ IF raw->'version'='4'::jsonb AND (COALESCE(raw->'groups'->>('tab:'||b.tab_name),'editable')<>'editable'
+  OR COALESCE(raw->'groups'->>('section:'||b.tab_name||'/'||b.section_name),'editable')<>'editable') THEN RETURN false; END IF;
+ linked_ids:=CASE
+  WHEN p_field IN ('profile.personal_details.fullname','profile.personal_details.firstname','profile.personal_details.lastname')
+   THEN ARRAY['profile.personal_details.fullname','profile.personal_details.firstname','profile.personal_details.lastname']
+  WHEN p_field='profile.personal_details.dateofbirth' THEN ARRAY['profile.personal_details.dateofbirth','profile.personal_details.age']
+  WHEN p_field='family.family_and_dependents.dateofbirth' THEN ARRAY['family.family_and_dependents.dateofbirth','family.family_and_dependents.age']
+  ELSE ARRAY[p_field] END;
+ FOREACH linked IN ARRAY linked_ids LOOP
+  IF COALESCE(raw->'fields'->>linked,'hide')='hide' THEN RETURN false; END IF;
+ END LOOP;
+ RETURN CASE WHEN p_primary THEN b.primary_key IS NOT NULL AND cap='viewOnly' AND raw->'primaryOnly' ? p_field ELSE cap='editable' END;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_profile_value_editable(text,boolean) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.access_profile_value_request_transition() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW; END IF;
+ IF TG_OP='INSERT' THEN
+  -- A reviewer denied Workforce maintenance cannot manufacture another person's pending proposal.
+  IF NOT app.access_workforce_employment(NEW.employment_id,'workforce.maintain') AND
+   (NOT app.access_profile_request_own(NEW.person_id) OR NEW.status<>'pending' OR NEW.decided_at IS NOT NULL OR NEW.decided_by_employment_id IS NOT NULL) THEN
+   RAISE EXCEPTION 'Profile request submission unavailable' USING ERRCODE='42501';
+  END IF;
+  RETURN NEW;
+ END IF;
+ IF NOT app.access_workforce_employment(OLD.employment_id,'workforce.maintain') AND
+  (NEW.id IS DISTINCT FROM OLD.id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.person_id IS DISTINCT FROM OLD.person_id
+   OR NEW.employment_id IS DISTINCT FROM OLD.employment_id OR NEW.proposed IS DISTINCT FROM OLD.proposed) THEN
+  RAISE EXCEPTION 'Profile request subject and values are immutable' USING ERRCODE='42501';
+ END IF;
+ IF OLD.status<>'pending' AND NOT app.access_workforce_employment(OLD.employment_id,'workforce.maintain') AND
+  (NEW.status IS DISTINCT FROM OLD.status OR NEW.decided_at IS DISTINCT FROM OLD.decided_at
+   OR NEW.decided_by_employment_id IS DISTINCT FROM OLD.decided_by_employment_id OR NEW.decision_reason IS DISTINCT FROM OLD.decision_reason) THEN
+  RAISE EXCEPTION 'Profile decision is terminal' USING ERRCODE='42501'; END IF;
+ IF OLD.status<>'pending' OR NEW.status<>'approved' OR NEW.proposed->'v'='3'::jsonb THEN RETURN NEW; END IF;
+ -- Legacy deployed callers need no approval-only admission when direct shared-Person maintenance
+ -- already permits the same write. In particular, migration-before-restart never changes that lane.
+ IF app.access_workforce_person(OLD.person_id,'workforce.maintain') THEN RETURN NEW; END IF;
+ -- Preparation verifies the route BEFORE any proposed master change. Completion below attests
+ -- the actual terminal transition in the same transaction; preparation by itself grants nothing.
+ IF NEW.proposed IS DISTINCT FROM OLD.proposed OR NEW.person_id IS DISTINCT FROM OLD.person_id
+  OR NEW.employment_id IS DISTINCT FROM OLD.employment_id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+  OR NEW.route_id IS DISTINCT FROM OLD.route_id OR NEW.route_revision IS DISTINCT FROM OLD.route_revision
+  OR NEW.route_approver_user_id IS DISTINCT FROM OLD.route_approver_user_id
+  OR NEW.route_approver_employment_id IS DISTINCT FROM OLD.route_approver_employment_id
+  OR NEW.route_context IS DISTINCT FROM OLD.route_context THEN
+  RAISE EXCEPTION 'Profile decision write unavailable' USING ERRCODE='42501'; END IF;
+ PERFORM app.access_profile_value_begin(OLD.id);
+ IF (NEW.decided_by_employment_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.employment e JOIN public.app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id
+  WHERE u.id=app.current_user_id() AND u.tenant_id=OLD.tenant_id AND e.id=NEW.decided_by_employment_id AND e.person_id<>OLD.person_id))
+  OR NEW.decided_at IS NULL THEN RAISE EXCEPTION 'Profile decision actor unavailable' USING ERRCODE='42501'; END IF;
+ UPDATE app.access_profile_value_approval SET approved=true WHERE xact_id=pg_current_xact_id() AND request_id=OLD.id
+  AND tenant_id=OLD.tenant_id AND user_id=app.current_user_id();
+ IF NOT FOUND THEN RAISE EXCEPTION 'Profile decision preparation unavailable' USING ERRCODE='42501'; END IF;
+ RETURN NEW;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_profile_value_request_transition() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER access_profile_request_value_lock BEFORE INSERT OR UPDATE ON profile_change_request
+FOR EACH STATEMENT EXECUTE FUNCTION app.access_profile_value_statement_lock();
+--> statement-breakpoint
+CREATE TRIGGER access_profile_request_value_transition BEFORE INSERT OR UPDATE ON profile_change_request
+FOR EACH ROW EXECUTE FUNCTION app.access_profile_value_request_transition();
+
+--> statement-breakpoint
+CREATE FUNCTION app.access_profile_value_normalized(p_value jsonb) RETURNS jsonb
+LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,pg_temp AS $$
+ SELECT CASE WHEN jsonb_typeof(p_value)='string' THEN COALESCE(to_jsonb(NULLIF(btrim(p_value#>>'{}',chr(9)||chr(10)||chr(11)||chr(12)||chr(13)||chr(32)||chr(160)||chr(5760)||chr(8192)||chr(8193)||chr(8194)||chr(8195)||chr(8196)||chr(8197)||chr(8198)||chr(8199)||chr(8200)||chr(8201)||chr(8202)||chr(8232)||chr(8233)||chr(8239)||chr(8287)||chr(12288)||chr(65279)),'')),'null'::jsonb) ELSE p_value END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_profile_value_normalized(jsonb) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.access_profile_value_delta_matches(p_owner text,p_delta jsonb,p_fields jsonb,p_insert boolean,p_relationship_changed boolean DEFAULT false) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE d record;b record;change jsonb;requested_relationship text;
+BEGIN
+ IF jsonb_typeof(p_fields) IS DISTINCT FROM 'array' OR jsonb_typeof(p_delta) IS DISTINCT FROM 'object' THEN RETURN false; END IF;
+ SELECT app.access_profile_value_normalized(f->'value')#>>'{}' INTO requested_relationship
+  FROM jsonb_array_elements(p_fields) f WHERE f->>'fieldId'='family.family_and_dependents.relationship';
+ FOR d IN SELECT * FROM jsonb_each(p_delta) LOOP
+  SELECT * INTO b FROM app.access_profile_value_bindings() WHERE owner=p_owner AND column_name=d.key;
+  change:=NULL;
+  IF FOUND THEN
+   -- A duplicated submitted identity cannot authorize two competing interpretations.
+   IF (SELECT count(*) FROM jsonb_array_elements(p_fields) f WHERE f->>'fieldId'=b.field_id)>1 THEN RETURN false; END IF;
+   SELECT f INTO change FROM jsonb_array_elements(p_fields) f WHERE f->>'fieldId'=b.field_id;
+   IF change IS NOT NULL AND change ? 'value' AND app.access_profile_value_editable(b.field_id)
+    AND app.access_profile_value_normalized(change->'value')=d.value THEN CONTINUE; END IF;
+  END IF;
+  -- The canonical add owners initialize these defaults, even when the employee omitted them.
+  IF p_insert AND (d.value='null'::jsonb OR d.key IN ('is_beneficiary','is_deceased','is_highest') AND d.value='false'::jsonb
+   OR p_owner='emergency' AND d.key='priority' AND d.value='"other"'::jsonb) THEN CONTINUE; END IF;
+  -- A relationship change atomically clears only fields that the existing Family owner says no
+  -- longer apply. This cannot set a different value, alter remarks/identity, or change a tax row.
+  IF p_owner='dependent' AND p_relationship_changed AND requested_relationship IS NOT NULL AND d.value='null'::jsonb
+   AND ((requested_relationship<>'spouse' AND d.key IN ('marriage_date','marriage_status','spouse_working','company_name','employer_address'))
+    OR (requested_relationship<>'child' AND d.key IN ('is_student','school_name','study_level','study_country','child_relief_category','child_tax_relief','child_relief_percentage')))
+   AND app.access_profile_value_editable('family.family_and_dependents.relationship') THEN CONTINUE; END IF;
+  RETURN false;
+ END LOOP;
+ RETURN true;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_profile_value_delta_matches(text,jsonb,jsonb,boolean,boolean) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- The constraint trigger runs at transaction completion: a pending request by itself grants nothing.
+-- It reads the actual approved row and private transition proof from THIS xid8 and THIS principal.
+-- Setting constraints immediate before completing a decision refuses; it cannot publish a half-write.
+CREATE FUNCTION app.access_profile_value_approved(p_owner text,p_person uuid,p_employment uuid,p_row uuid,p_delta jsonb,p_insert boolean,p_relationship_changed boolean DEFAULT false) RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE q record;entry jsonb;fields jsonb;bound_row uuid;promotion boolean;matched boolean;scalar_delta jsonb;current_marital jsonb;
+BEGIN
+ FOR q IN SELECT r.* FROM app.access_profile_value_approval proof JOIN public.profile_change_request r ON r.id=proof.request_id
+  WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id()
+   AND r.tenant_id=proof.tenant_id AND r.person_id=p_person AND (p_employment IS NULL OR r.employment_id=p_employment)
+   AND proof.approved AND proof.audited AND r.status='approved' AND proof.proposal_hash=encode(sha256(convert_to(r.proposed::text,'UTF8')),'hex')
+   AND proof.route_hash=encode(sha256(convert_to(jsonb_build_array(r.route_id,r.route_revision,r.route_approver_user_id,r.route_approver_employment_id,r.route_context)::text,'UTF8')),'hex')
+   AND app.access_profile_review_permitted(r.employment_id)
+ LOOP
+  IF p_owner='person' THEN
+   IF q.proposed->'v'='2'::jsonb THEN fields:=q.proposed->'fields';
+   ELSIF jsonb_typeof(q.proposed)='object' AND NOT q.proposed ? 'v' THEN
+    SELECT COALESCE(jsonb_agg(jsonb_build_object('fieldId',b.field_id,'value',v.value)),'[]'::jsonb) INTO fields
+     FROM jsonb_each(q.proposed) v JOIN app.access_profile_value_bindings() b ON b.legacy_key=v.key AND b.owner IN ('person','compliance');
+   ELSE CONTINUE; END IF;
+   scalar_delta:=p_delta;
+   IF scalar_delta ? 'marital_status_source_request_id' THEN
+    SELECT to_jsonb(marital_status) INTO current_marital FROM public.person WHERE id=p_person AND tenant_id=app.current_tenant_id();
+    IF scalar_delta->'marital_status_source_request_id'<>'null'::jsonb OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(fields) f
+     WHERE f->>'fieldId'='profile.personal_details.maritalstatus' AND app.access_profile_value_editable(f->>'fieldId')
+      AND app.access_profile_value_normalized(f->'value')=current_marital) THEN CONTINUE; END IF;
+    scalar_delta:=scalar_delta-'marital_status_source_request_id';
+   END IF;
+   -- Compliance and ordinary Person fields share one physical row, but retain their descriptor owner.
+   SELECT COALESCE(jsonb_agg(f),'[]'::jsonb) INTO fields FROM jsonb_array_elements(fields) f;
+   matched:=true;
+   FOR entry IN SELECT jsonb_build_object('owner',b.owner,'delta',jsonb_object_agg(d.key,d.value))
+    FROM jsonb_each(scalar_delta) d LEFT JOIN app.access_profile_value_bindings() b ON b.column_name=d.key AND b.owner IN ('person','compliance') GROUP BY b.owner
+   LOOP
+    IF entry->>'owner' IS NULL OR NOT app.access_profile_value_delta_matches(entry->>'owner',entry->'delta',fields,false) THEN matched:=false;EXIT;END IF;
+   END LOOP;
+   IF matched THEN RETURN true; END IF;
+  ELSIF q.proposed->'v'='2'::jsonb AND jsonb_typeof(q.proposed->'registers')='array' THEN
+   FOR entry IN SELECT v FROM jsonb_array_elements(q.proposed->'registers') v WHERE v->>'kind'=p_owner LOOP
+    fields:=entry->'fields';
+    IF (NOT p_insert AND entry->>'id'=p_row::text OR p_insert AND entry->'id'='null'::jsonb)
+     AND app.access_profile_value_delta_matches(p_owner,p_delta,fields,p_insert,p_relationship_changed) THEN
+     IF p_insert THEN
+      IF NULLIF(entry->>'clientId','') IS NULL THEN CONTINUE; END IF;
+      INSERT INTO app.access_profile_register_application VALUES(pg_current_xact_id(),q.id,p_owner,entry->>'clientId',p_row)
+       ON CONFLICT DO NOTHING;
+      SELECT row_id INTO bound_row FROM app.access_profile_register_application WHERE xact_id=pg_current_xact_id()
+       AND request_id=q.id AND kind=p_owner AND client_id=entry->>'clientId';
+      IF bound_row IS DISTINCT FROM p_row THEN CONTINUE; END IF;
+     END IF;
+     RETURN true;
+    END IF;
+    -- Exactly the canonical single-Highest / Primary transfer side effect. All other columns on
+    -- the former holder must be unchanged. Its replacement must really exist in this same subject.
+    promotion:=EXISTS(SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(fields)='array' THEN fields ELSE '[]'::jsonb END) f
+     WHERE p_owner='qualification' AND f->>'fieldId'='qualification.academic_and_professional_qualifications.highest' AND f->'value'='true'::jsonb
+      AND app.access_profile_value_editable(f->>'fieldId')
+      OR p_owner='emergency' AND f->>'fieldId'='profile.emergency_contact.priority' AND f->'value'='"primary"'::jsonb
+      AND app.access_profile_value_editable(f->>'fieldId'));
+    IF NOT p_insert AND promotion THEN
+     IF p_owner='qualification' AND p_delta='{"is_highest":false}'::jsonb AND EXISTS(SELECT 1 FROM public.employee_qualification other
+      WHERE other.tenant_id=q.tenant_id AND other.employment_id=q.employment_id AND other.id<>p_row AND other.archived_at IS NULL AND other.is_highest
+       AND (entry->'id'='null'::jsonb OR entry->>'id'=other.id::text)) THEN RETURN true; END IF;
+     IF p_owner='emergency' AND p_delta='{"priority":"secondary"}'::jsonb AND EXISTS(SELECT 1 FROM public.person_emergency_contact other
+      WHERE other.tenant_id=q.tenant_id AND other.person_id=q.person_id AND other.id<>p_row AND other.archived_at IS NULL AND other.priority='primary'
+       AND (entry->'id'='null'::jsonb OR entry->>'id'=other.id::text)) THEN RETURN true; END IF;
+    END IF;
+   END LOOP;
+  END IF;
+ END LOOP;
+ RETURN false;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_profile_value_approved(text,uuid,uuid,uuid,jsonb,boolean,boolean) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.access_profile_value_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE before_row jsonb;after_row jsonb;delta jsonb;subject_person uuid;subject_employment uuid;row_id uuid;kind text;direct_allowed boolean;
+ b record;own_contact boolean:=true;relationship_changed boolean:=false;marriage_allowed boolean:=false;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NULL; END IF;
+ IF NOT app.principal_snapshot_current() OR NOT EXISTS(SELECT 1 FROM app.access_profile_value_actor a
+  WHERE a.xact_id=pg_current_xact_id() AND a.tenant_id=app.current_tenant_id() AND a.user_id=app.current_user_id()) THEN
+  RAISE EXCEPTION 'Profile write principal unavailable' USING ERRCODE='42501'; END IF;
+ before_row:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_jsonb(OLD) END;
+ after_row:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
+ row_id:=COALESCE(after_row->>'id',before_row->>'id')::uuid;
+ IF COALESCE(after_row->>'tenant_id',before_row->>'tenant_id')::uuid IS DISTINCT FROM app.current_tenant_id() THEN
+  RAISE EXCEPTION 'Profile subject unavailable' USING ERRCODE='42501'; END IF;
+ IF TG_TABLE_NAME='person' THEN
+  subject_person:=row_id;kind:='person';direct_allowed:=app.access_workforce_person(subject_person,'workforce.maintain');
+  -- Only normal-profile/compliance columns belong to this guard. Photo bytes, PDPA, and country
+  -- financial/statutory owners retain their independent permissions and existing write restrictions.
+  SELECT COALESCE(jsonb_object_agg(d.key,d.value),'{}'::jsonb) INTO delta FROM jsonb_each(after_row) d
+   WHERE d.value IS DISTINCT FROM before_row->d.key AND (d.key IN (SELECT column_name FROM app.access_profile_value_bindings() WHERE owner IN ('person','compliance'))
+    OR d.key IN ('address','address_line1','address_line2','address_line3','postcode','city','state','country','marital_status_source_request_id'));
+ ELSE
+  kind:=CASE TG_TABLE_NAME WHEN 'employee_dependent' THEN 'dependent' WHEN 'employee_qualification' THEN 'qualification' WHEN 'person_emergency_contact' THEN 'emergency' END;
+  IF kind='qualification' THEN
+   subject_employment:=COALESCE(after_row->>'employment_id',before_row->>'employment_id')::uuid;
+   SELECT person_id INTO subject_person FROM public.employment WHERE id=subject_employment AND tenant_id=app.current_tenant_id();
+   direct_allowed:=app.access_workforce_employment(subject_employment,'workforce.maintain');
+  ELSE
+   subject_person:=COALESCE(after_row->>'person_id',before_row->>'person_id')::uuid;
+   direct_allowed:=app.access_workforce_person(subject_person,'workforce.maintain');
+  END IF;
+  SELECT COALESCE(jsonb_object_agg(d.key,d.value),'{}'::jsonb) INTO delta FROM jsonb_each(after_row) d
+   WHERE d.key NOT IN ('id','tenant_id','person_id','employment_id','created_at','updated_at') AND d.value IS DISTINCT FROM before_row->d.key;
+  relationship_changed:=TG_OP='UPDATE' AND after_row->'relationship' IS DISTINCT FROM before_row->'relationship';
+ END IF;
+ IF kind='person' AND TG_OP='UPDATE' THEN
+  marriage_allowed:=app.access_profile_marriage_delta(before_row,after_row,delta);
+  IF delta ? 'marital_status_source_request_id' AND after_row->'marital_status_source_request_id'<>'null'::jsonb AND NOT marriage_allowed THEN
+   RAISE EXCEPTION 'Marital status cause is reserved for its leave owner' USING ERRCODE='42501'; END IF;
+ END IF;
+ IF direct_allowed OR marriage_allowed THEN RETURN NULL; END IF;
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Profile register removal unavailable' USING ERRCODE='42501'; END IF;
+ IF TG_OP='UPDATE' AND delta='{}'::jsonb AND after_row->'updated_at' IS NOT DISTINCT FROM before_row->'updated_at' THEN RETURN NULL; END IF;
+ -- Immediate contact changes are a separate own-person course. No name, compliance value, new
+ -- register row or general Personnel grant can inherit it. Real current employment remains required.
+ IF app.access_profile_request_own(subject_person) AND EXISTS(SELECT 1 FROM public.employment e
+  WHERE e.person_id=subject_person AND e.tenant_id=app.current_tenant_id() AND e.blacklisted_at IS NULL
+   AND e.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+   AND (LEAST(e.resignation_date,e.last_working_date,e.terminated_on) IS NULL OR LEAST(e.resignation_date,e.last_working_date,e.terminated_on)>=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)) THEN
+  IF kind='person' AND TG_OP='UPDATE' THEN
+   FOR b IN SELECT * FROM jsonb_each(delta) LOOP
+    IF NOT EXISTS(SELECT 1 FROM app.access_profile_value_bindings() f WHERE f.owner='person' AND f.column_name=b.key AND f.immediate
+     AND app.access_profile_value_editable(f.field_id)) THEN own_contact:=false;EXIT;END IF;
+   END LOOP;
+   IF own_contact THEN RETURN NULL; END IF;
+  ELSIF kind='emergency' AND TG_OP='UPDATE' AND before_row->>'priority'='primary' AND before_row->'archived_at'='null'::jsonb THEN
+   own_contact:=NOT EXISTS(SELECT 1 FROM public.person_emergency_contact e WHERE e.tenant_id=app.current_tenant_id()
+    AND e.person_id=subject_person AND e.id<>row_id AND e.priority='primary' AND e.archived_at IS NULL);
+   FOR b IN SELECT * FROM jsonb_each(delta) LOOP
+    IF b.key='archived_at' AND b.value<>'null'::jsonb THEN
+     IF EXISTS(SELECT 1 FROM app.access_profile_value_bindings() f WHERE f.owner='emergency' AND f.primary_key IS NOT NULL
+      AND NOT app.access_profile_value_editable(f.field_id,true)) THEN own_contact:=false;EXIT;END IF;
+    ELSIF NOT EXISTS(SELECT 1 FROM app.access_profile_value_bindings() f WHERE f.owner='emergency' AND f.column_name=b.key
+     AND app.access_profile_value_editable(f.field_id,true)) THEN own_contact:=false;EXIT;END IF;
+   END LOOP;
+   IF own_contact THEN RETURN NULL; END IF;
+  END IF;
+ END IF;
+ IF TG_OP='INSERT' AND kind='person' THEN RAISE EXCEPTION 'Profile creation unavailable' USING ERRCODE='42501'; END IF;
+ IF app.access_profile_value_approved(kind,subject_person,subject_employment,row_id,delta,TG_OP='INSERT',relationship_changed) THEN RETURN NULL; END IF;
+ RAISE EXCEPTION 'Profile value write unavailable' USING ERRCODE='42501';
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_profile_value_guard() FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+CREATE TRIGGER access_profile_value_lock BEFORE INSERT OR UPDATE ON person
+FOR EACH STATEMENT EXECUTE FUNCTION app.access_profile_value_statement_lock();
+--> statement-breakpoint
+CREATE CONSTRAINT TRIGGER access_profile_value_guard AFTER INSERT OR UPDATE ON person
+DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.access_profile_value_guard();
+--> statement-breakpoint
+CREATE TRIGGER access_profile_value_lock BEFORE INSERT OR UPDATE OR DELETE ON employee_dependent
+FOR EACH STATEMENT EXECUTE FUNCTION app.access_profile_value_statement_lock();
+--> statement-breakpoint
+CREATE CONSTRAINT TRIGGER access_profile_value_guard AFTER INSERT OR UPDATE OR DELETE ON employee_dependent
+DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.access_profile_value_guard();
+--> statement-breakpoint
+CREATE TRIGGER access_profile_value_lock BEFORE INSERT OR UPDATE OR DELETE ON employee_qualification
+FOR EACH STATEMENT EXECUTE FUNCTION app.access_profile_value_statement_lock();
+--> statement-breakpoint
+CREATE CONSTRAINT TRIGGER access_profile_value_guard AFTER INSERT OR UPDATE OR DELETE ON employee_qualification
+DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.access_profile_value_guard();
+--> statement-breakpoint
+CREATE TRIGGER access_profile_value_lock BEFORE INSERT OR UPDATE OR DELETE ON person_emergency_contact
+FOR EACH STATEMENT EXECUTE FUNCTION app.access_profile_value_statement_lock();
+--> statement-breakpoint
+CREATE CONSTRAINT TRIGGER access_profile_value_guard AFTER INSERT OR UPDATE OR DELETE ON person_emergency_contact
+DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.access_profile_value_guard();
+
+--> statement-breakpoint
+-- Byte contract of JSON.stringify for the finite route-context projection below: insertion order is
+-- preserved by json (not jsonb); structural whitespace is removed without touching string contents.
+CREATE FUNCTION app.access_profile_route_json(p_value json) RETURNS text
+LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,pg_temp AS $$
+DECLARE result text;
+BEGIN
+ CASE json_typeof(p_value)
+ WHEN 'object' THEN SELECT '{'||COALESCE(string_agg(to_json(e.key)::text||':'||app.access_profile_route_json(e.value),',' ORDER BY e.n),'')||'}' INTO result
+  FROM json_each(p_value) WITH ORDINALITY e(key,value,n);
+ WHEN 'array' THEN SELECT '['||COALESCE(string_agg(app.access_profile_route_json(e.value),',' ORDER BY e.n),'')||']' INTO result
+  FROM json_array_elements(p_value) WITH ORDINALITY e(value,n);
+ ELSE result:=p_value::text;
+ END CASE;
+ RETURN result;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_profile_route_json(json) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Independent SQL witness for the existing subjectContext byte projection in core/profile-routing.
+-- Lock the same subject/person/current assignments before admitting a decision, including callers
+-- that use raw SQL. Merely matching a route UUID or setting route_maintenance is never sufficient.
+CREATE FUNCTION app.access_profile_route_fingerprint(p_subject uuid) RETURNS text
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE subject_row record;as_of date:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date;current_assignments json;projection json;
+BEGIN
+ PERFORM 1 FROM public.employment WHERE id=p_subject AND tenant_id=app.current_tenant_id() FOR UPDATE;
+ PERFORM 1 FROM public.person p JOIN public.employment e ON e.person_id=p.id AND e.tenant_id=p.tenant_id
+  WHERE e.id=p_subject AND e.tenant_id=app.current_tenant_id() FOR UPDATE OF p;
+ PERFORM 1 FROM public.assignment WHERE employment_id=p_subject AND tenant_id=app.current_tenant_id() AND superseded_at IS NULL
+  AND valid_from<=as_of AND (valid_to IS NULL OR valid_to>=as_of) ORDER BY id FOR UPDATE;
+ SELECT emp.*,p.gender,p.nationality,p.religion,p.race INTO subject_row FROM public.employment emp
+  JOIN public.person p ON p.id=emp.person_id AND p.tenant_id=emp.tenant_id WHERE emp.id=p_subject AND emp.tenant_id=app.current_tenant_id();
+ IF NOT FOUND THEN RETURN NULL; END IF;
+ SELECT COALESCE(json_agg(json_build_object('id',a.id,'companyId',a.company_id,'departmentId',a.department_id,
+  'businessUnitId',a.business_unit_id,'positionId',a.position_id,'costCenterId',a.cost_center_id,'employmentType',a.employment_type) ORDER BY a.id),'[]'::json)
+  INTO current_assignments FROM public.assignment a WHERE a.tenant_id=subject_row.tenant_id AND a.employment_id=subject_row.id AND a.superseded_at IS NULL
+   AND a.valid_from<=as_of AND (a.valid_to IS NULL OR a.valid_to>=as_of);
+ projection:=json_build_object('employment',json_build_object('companyId',subject_row.company_id,'gradeId',subject_row.grade_id,
+  'orgDivision',subject_row.org_division,'orgBranch',subject_row.org_branch,'orgRegion',subject_row.org_region,'orgLine',subject_row.org_line,'orgSection',subject_row.org_section,
+  'orgTeam',subject_row.org_team,'orgBase',subject_row.org_base,'employmentCategory',subject_row.employment_category,'hiredOn',subject_row.hired_on,
+  'confirmationDate',subject_row.confirmation_date,'finalConfirmationDate',subject_row.final_confirmation_date,'probationEndDate',subject_row.probation_end_date,
+  'provisionalEndOn',subject_row.provisional_end_on,'resignationDate',subject_row.resignation_date,'lastWorkingDate',subject_row.last_working_date,'terminatedOn',subject_row.terminated_on,
+  'blacklistedAt',subject_row.blacklisted_at,
+  'gender',subject_row.gender,'nationality',subject_row.nationality,'religion',subject_row.religion,'race',subject_row.race),'assignments',current_assignments);
+ RETURN encode(sha256(convert_to(app.access_profile_route_json(projection),'UTF8')),'hex');
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_profile_route_fingerprint(uuid) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.access_profile_person_identity() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.access_workforce_storage_owner() AND (NEW.id IS DISTINCT FROM OLD.id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.created_at IS DISTINCT FROM OLD.created_at) THEN
+  RAISE EXCEPTION 'Profile identity is immutable' USING ERRCODE='42501'; END IF;
+ RETURN NEW;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_profile_person_identity() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER access_profile_person_identity BEFORE UPDATE OF id,tenant_id,created_at ON person
+FOR EACH ROW EXECUTE FUNCTION app.access_profile_person_identity();
+
+--> statement-breakpoint
+-- Fixed request identity only: callers cannot supply fields, SQL names, a reviewer, scope or an actor.
+-- Preparing a real request does not authorize a persisted value change. The actual approval transition
+-- must complete in this xid8, and the deferred row guards compare every physical changed value.
+CREATE FUNCTION app.access_profile_value_begin(p_request uuid) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE q public.profile_change_request%ROWTYPE;r jsonb;route_enabled boolean;route_digest text;proposal_digest text;prepared boolean;actor uuid;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN; END IF;
+ PERFORM app.access_profile_policy_write_lock();
+ IF app.principal_snapshot_current() IS NOT TRUE OR app.current_user_id() IS NULL THEN
+  RAISE EXCEPTION 'Profile decision principal unavailable' USING ERRCODE='42501'; END IF;
+ SELECT * INTO q FROM public.profile_change_request WHERE id=p_request AND tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF NOT FOUND OR q.status<>'pending' OR q.proposed->'v'='3'::jsonb
+  OR app.access_profile_review_permitted(q.employment_id) IS NOT TRUE OR app.can_admin_employment(q.employment_id) IS NOT TRUE
+  OR NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=q.employment_id AND e.tenant_id=q.tenant_id AND e.person_id=q.person_id) THEN
+  RAISE EXCEPTION 'Profile decision write unavailable' USING ERRCODE='42501'; END IF;
+ SELECT value INTO r FROM public.tenant_setting WHERE tenant_id=q.tenant_id AND key='ess.profile_change_routing';
+ IF r IS NOT NULL AND r<>'null'::jsonb AND (jsonb_typeof(r) IS DISTINCT FROM 'object' OR r->'version' NOT IN ('1'::jsonb,'2'::jsonb)
+  OR r->'version' IS NULL OR jsonb_typeof(r->'enabled') IS DISTINCT FROM 'boolean') THEN
+  RAISE EXCEPTION 'Profile decision route unavailable' USING ERRCODE='42501'; END IF;
+ route_enabled:=COALESCE(r->'enabled'='true'::jsonb,false);
+ proposal_digest:=encode(sha256(convert_to(q.proposed::text,'UTF8')),'hex');
+ route_digest:=encode(sha256(convert_to(jsonb_build_array(q.route_id,q.route_revision,q.route_approver_user_id,q.route_approver_employment_id,q.route_context)::text,'UTF8')),'hex');
+ SELECT EXISTS(SELECT 1 FROM app.access_profile_value_approval p WHERE p.xact_id=pg_current_xact_id() AND p.request_id=q.id
+  AND p.tenant_id=q.tenant_id AND p.user_id=app.current_user_id() AND p.proposal_hash=proposal_digest AND p.route_hash=route_digest) INTO prepared;
+ IF q.route_id IS NOT NULL THEN
+  IF NOT route_enabled OR r->>'revision' IS DISTINCT FROM q.route_revision::text
+   OR q.route_approver_user_id IS DISTINCT FROM app.current_user_id()
+   OR NOT EXISTS(SELECT 1 FROM app.profile_route_principal(q.route_approver_employment_id,q.employment_id) p WHERE p.user_id=app.current_user_id()) THEN
+   RAISE EXCEPTION 'Profile decision route changed' USING ERRCODE='42501'; END IF;
+  -- The first preparation locks and validates the BEFORE snapshot. Revalidating after applying a
+  -- requested nationality/gender change would incorrectly invalidate its own authorized decision.
+  IF NOT prepared AND (q.route_context->>'asOf' IS DISTINCT FROM (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date::text
+   OR q.route_context->>'fingerprint' IS DISTINCT FROM app.access_profile_route_fingerprint(q.employment_id)) THEN
+   RAISE EXCEPTION 'Profile decision subject changed' USING ERRCODE='42501'; END IF;
+ ELSIF route_enabled OR q.route_approver_user_id IS NOT NULL OR q.route_approver_employment_id IS NOT NULL THEN
+  RAISE EXCEPTION 'Profile decision route changed' USING ERRCODE='42501';
+ END IF;
+ IF EXISTS(SELECT 1 FROM public.tenant_setting WHERE tenant_id=q.tenant_id AND key='ess.profile_change_approver' AND value='"group_admin"'::jsonb)
+  AND app.is_group_admin() IS NOT TRUE THEN RAISE EXCEPTION 'Profile decision group scope required' USING ERRCODE='42501'; END IF;
+ INSERT INTO app.access_profile_value_actor VALUES(pg_current_xact_id(),q.tenant_id,app.current_user_id()) ON CONFLICT DO NOTHING;
+ SELECT user_id INTO actor FROM app.access_profile_value_actor WHERE xact_id=pg_current_xact_id() AND tenant_id=q.tenant_id;
+ IF actor IS DISTINCT FROM app.current_user_id() THEN RAISE EXCEPTION 'Profile write principal changed' USING ERRCODE='42501'; END IF;
+ INSERT INTO app.access_profile_value_approval(xact_id,tenant_id,request_id,user_id,proposal_hash,route_hash)
+  VALUES(pg_current_xact_id(),q.tenant_id,q.id,app.current_user_id(),proposal_digest,route_digest) ON CONFLICT DO NOTHING;
+ IF NOT EXISTS(SELECT 1 FROM app.access_profile_value_approval p WHERE p.xact_id=pg_current_xact_id() AND p.request_id=q.id
+  AND p.tenant_id=q.tenant_id AND p.user_id=app.current_user_id() AND p.proposal_hash=proposal_digest AND p.route_hash=route_digest) THEN
+  RAISE EXCEPTION 'Profile decision preparation changed' USING ERRCODE='42501'; END IF;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_profile_value_begin(uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_profile_value_begin(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- A permitted ESS value write must complete with the canonical immutable decision event as well as
+-- its request transition. This trigger attests only the actual event insert, never a caller boolean.
+CREATE FUNCTION app.access_profile_value_audit() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.aggregate_type='profile-change' AND NEW.event_type='profile-change.approved'
+  AND NEW.actor_type='user' AND NEW.actor_id=app.current_user_id() AND NEW.tenant_id=app.current_tenant_id() THEN
+  UPDATE app.access_profile_value_approval proof SET audited=true
+   FROM public.profile_change_request r WHERE proof.xact_id=pg_current_xact_id() AND proof.request_id=NEW.aggregate_id
+    AND proof.tenant_id=NEW.tenant_id AND proof.user_id=NEW.actor_id AND proof.approved AND r.id=proof.request_id
+    AND r.tenant_id=proof.tenant_id AND r.status='approved' AND r.employment_id=NEW.subject_employment_id;
+ END IF;
+ RETURN NEW;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_profile_value_audit() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER access_profile_value_audit AFTER INSERT ON domain_event
+FOR EACH ROW WHEN (NEW.aggregate_type='profile-change' AND NEW.event_type='profile-change.approved') EXECUTE FUNCTION app.access_profile_value_audit();
+
+--> statement-breakpoint
+-- A stable physical policy anchor also fences a pre-pinned REPEATABLE READ snapshot when a formerly
+-- absent ESS setting is first inserted. Reads lock it; only real policy writes advance it. This is
+-- not a tenant policy edit, access revision, or user-visible history entry on a read operation.
+CREATE TABLE app.access_profile_write_generation (
+ tenant_id uuid PRIMARY KEY REFERENCES public.tenant(id) ON DELETE CASCADE,generation bigint NOT NULL DEFAULT 0
+);
+--> statement-breakpoint
+REVOKE ALL ON TABLE app.access_profile_write_generation FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+ALTER TABLE app.access_profile_write_generation ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
+INSERT INTO app.access_profile_write_generation(tenant_id) SELECT id FROM public.tenant;
+--> statement-breakpoint
+CREATE FUNCTION app.access_profile_write_tenant() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ INSERT INTO app.access_profile_write_generation(tenant_id) VALUES(NEW.id);
+ RETURN NEW;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_profile_write_tenant() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER access_profile_write_tenant AFTER INSERT ON tenant
+FOR EACH ROW EXECUTE FUNCTION app.access_profile_write_tenant();
+
+--> statement-breakpoint
+CREATE FUNCTION app.access_profile_policy_write_lock() RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ PERFORM pg_advisory_xact_lock(hashtextextended('profile-edit-policy:'||app.current_tenant_id()::text,0));
+ -- The Workforce barrier owns the common physical generation check.
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_profile_policy_write_lock() FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_profile_policy_write_lock() TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.access_profile_setting_statement_lock() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.access_workforce_storage_owner() THEN PERFORM app.access_profile_policy_write_lock(); END IF;
+ RETURN NULL;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_profile_setting_statement_lock() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER access_profile_setting_lock BEFORE INSERT OR UPDATE OR DELETE ON tenant_setting
+FOR EACH STATEMENT EXECUTE FUNCTION app.access_profile_setting_statement_lock();
+
+--> statement-breakpoint
+CREATE FUNCTION app.access_profile_setting_generation() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE before_row jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_jsonb(OLD) END;
+ after_row jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;t uuid;
+BEGIN
+ IF TG_OP='UPDATE' AND before_row=after_row THEN RETURN NULL; END IF;
+ FOR t IN SELECT DISTINCT (v->>'tenant_id')::uuid FROM (VALUES(before_row),(after_row)) entries(v)
+  WHERE v->>'key' IN ('ess.profile_change_fields','ess.profile_change_routing','ess.profile_change_approver','ess.profile_photo_edit') ORDER BY 1
+ LOOP
+  IF NOT app.access_workforce_storage_owner() AND t IS DISTINCT FROM app.current_tenant_id() THEN
+   RAISE EXCEPTION 'Profile policy tenant unavailable' USING ERRCODE='42501'; END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
+  PERFORM pg_advisory_xact_lock(hashtextextended('profile-edit-policy:'||t::text,0));
+  UPDATE app.access_profile_write_generation SET generation=generation+1 WHERE tenant_id=t;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Profile policy generation unavailable' USING ERRCODE='42501'; END IF;
+ END LOOP;
+ RETURN NULL;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_profile_setting_generation() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER access_profile_setting_generation AFTER INSERT OR UPDATE OR DELETE ON tenant_setting
+FOR EACH ROW EXECUTE FUNCTION app.access_profile_setting_generation();
+
+--> statement-breakpoint
+CREATE FUNCTION app.access_profile_setting_identity() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.access_workforce_storage_owner() AND (NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.key IS DISTINCT FROM OLD.key) THEN
+  RAISE EXCEPTION 'Setting identity is immutable' USING ERRCODE='42501'; END IF;
+ RETURN NEW;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_profile_setting_identity() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER access_profile_setting_identity BEFORE UPDATE OF tenant_id,key ON tenant_setting
+FOR EACH ROW EXECUTE FUNCTION app.access_profile_setting_identity();
+
+--> statement-breakpoint
+-- Compatibility with the independent, fixed 0485 Marriage Leave commands. These exact two effects
+-- were already callable without general Personnel maintenance; no other Person column inherits it.
+-- The persisted cause and absence of live siblings remain the reversal's authoritative facts.
+CREATE FUNCTION app.access_profile_marriage_delta(p_before jsonb,p_after jsonb,p_delta jsonb) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE source_id uuid;source_group uuid;source_person uuid;source_status text;marriage boolean;
+BEGIN
+ IF p_after->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text OR p_after->>'id' IS DISTINCT FROM p_before->>'id'
+  OR (p_delta-ARRAY['marital_status','marital_status_source_request_id'])<>'{}'::jsonb THEN RETURN false; END IF;
+ IF p_before->>'marital_status'='single' AND p_after->>'marital_status'='married' AND p_after->>'marital_status_source_request_id' IS NOT NULL THEN
+  source_id:=(p_after->>'marital_status_source_request_id')::uuid;
+ ELSIF p_before->>'marital_status'='married' AND p_after->>'marital_status'='single'
+  AND p_before->>'marital_status_source_request_id' IS NOT NULL AND p_after->>'marital_status_source_request_id' IS NULL THEN
+  source_id:=(p_before->>'marital_status_source_request_id')::uuid;
+ ELSE RETURN false; END IF;
+ SELECT e.person_id,r.parent_group_id,r.status::text,
+  CASE WHEN COALESCE(btrim(lt.role),'')<>'' THEN btrim(lt.role)='marriage' ELSE upper(btrim(lt.code))='MARRIAGE' END
+  INTO source_person,source_group,source_status,marriage FROM public.leave_request r
+  JOIN public.employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+  JOIN public.leave_type lt ON lt.id=r.leave_type_id AND lt.tenant_id=r.tenant_id
+  WHERE r.id=source_id AND r.tenant_id=app.current_tenant_id();
+ IF NOT FOUND OR marriage IS NOT TRUE OR source_person::text IS DISTINCT FROM p_after->>'id' THEN RETURN false; END IF;
+ IF p_after->>'marital_status'='married' THEN RETURN source_status='approved'; END IF;
+ RETURN NOT EXISTS(SELECT 1 FROM public.leave_request sibling WHERE sibling.tenant_id=app.current_tenant_id()
+  AND sibling.status='approved' AND (sibling.id=source_id OR source_group IS NOT NULL AND sibling.parent_group_id=source_group));
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_profile_marriage_delta(jsonb,jsonb,jsonb) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- First access initialization is also a permission generation change, even when an old snapshot
+-- cannot yet see its new access_configuration tuple. The pre-existing tenant anchor closes that gap.
+CREATE FUNCTION app.access_profile_access_generation() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=CASE WHEN TG_OP='DELETE' THEN OLD.tenant_id ELSE NEW.tenant_id END;
+BEGIN
+ PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
+ UPDATE app.access_profile_write_generation SET generation=generation+1 WHERE tenant_id=t;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Access policy generation unavailable' USING ERRCODE='42501'; END IF;
+ RETURN NULL;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_profile_access_generation() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER access_profile_access_generation AFTER INSERT OR UPDATE OR DELETE ON access_configuration
+FOR EACH ROW EXECUTE FUNCTION app.access_profile_access_generation();
