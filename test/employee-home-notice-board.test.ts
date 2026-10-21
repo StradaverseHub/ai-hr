@@ -6,7 +6,7 @@ import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {ownHomeSubjectSelection} from '../core/employee-home';
 import {readOwnNotice,readOwnNoticeBoard} from '../core/employee-home-notices';
-import {createNotice,publishNotice,archiveNotice,markNoticeViewed,acknowledgeNotice,updateNotice,type NoticeInput} from '../core/notice';
+import {createNotice,publishNotice,archiveNotice,markNoticeViewed,acknowledgeNotice,updateNotice,employeeNoticeBoard,employeeNoticeById,type NoticeInput} from '../core/notice';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base;
@@ -53,6 +53,8 @@ describe('Selected own Notice board and bounded metadata',()=>{
   await expect(readOwnNoticeBoard(own.ctx,other.employmentId)).rejects.toMatchObject({code:'employmentUnavailable'});
   await expect(readOwnNotice({...own.ctx,personId:other.personId},other.employmentId,id)).rejects.toMatchObject({code:'employmentUnavailable'});
   expect((await readOwnNoticeBoard(own.ctx,own.employmentId)).total).toBe(0);
+  expect((await employeeNoticeBoard(own.ctx,other.employmentId)).total).toBe(0);
+  expect(await employeeNoticeById(own.ctx,other.employmentId,id)).toBeNull();
   await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,own.ctx.userId!));
   await expect(readOwnNoticeBoard(own.ctx,own.employmentId)).rejects.toMatchObject({code:'employmentUnavailable'});
  });
