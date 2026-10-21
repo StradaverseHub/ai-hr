@@ -16,9 +16,9 @@ let b:Base;
 const admin=()=>({...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]});
 beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase();await owner.db.execute(sql`update access_capability set supported=false,bindings='[]'::jsonb where id in ('workforce.view','workforce.maintain')`);});
 afterAll(async()=>{try{await owner.db.execute(sql`update access_capability set supported=false,bindings='[]'::jsonb where id in ('workforce.view','workforce.maintain')`);}finally{await closeAll();}});
-async function override(userId:string,effect:'allow'|'deny'){
+async function override(userId:string,effect:'allow'|'deny',capabilityId:'workforce.view'|'workforce.maintain'='workforce.maintain'){
  const before=await withTenant(admin(),tx=>accessConfigurationStore.loadCurrent(tx,admin()));
- const edit={expectedRevision:before.snapshot.revision,command:{kind:'setOverride' as const,userId,capabilityId:'workforce.maintain',companyId:b.companyId,effect}};
+ const edit={expectedRevision:before.snapshot.revision,command:{kind:'setOverride' as const,userId,capabilityId,companyId:b.companyId,effect}};
  const preview=await previewAccessConfiguration(admin(),edit,accessConfigurationStore);
  await saveAccessConfiguration(admin(),{...edit,previewFingerprint:preview.fingerprint},accessConfigurationStore);
 }
@@ -84,9 +84,12 @@ describe('independent privacy owner and finite erasure witnesses',()=>{
  it('does not turn positive non-HR maintenance, a forged role snapshot or a definer into privacy authority',async()=>{
   const subject=await fixture(false);const userId=await createAppUser(b.tenantId,subject.personId,'employee');
   await override(userId,'allow');
+  await override(userId,'allow','workforce.view');
   const ctx:SessionContext={...admin(),userId,personId:subject.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
-  const [positive]=await withTenant(ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.access_workforce_employment(${subject.employmentId}::uuid,'workforce.maintain') as allowed`));
+  const [positive]=await withTenant(ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.access_workforce_command_allowed(${subject.employmentId}::uuid) as allowed`));
   expect(positive.allowed).toBe(true);
+  const [raw]=await withTenant(ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.access_workforce_employment(${subject.employmentId}::uuid,'workforce.maintain') as allowed`));
+  expect(raw.allowed).toBe(false);
   const before=await snapshot(subject.personId);
   for(const actor of [ctx,{...ctx,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]}])await refused(erasePersonPii(actor,input(subject.employmentId)));
   await owner.db.execute(sql`create function public.privacy_borrowed_owner(p uuid) returns timestamptz language sql security definer set search_path=pg_catalog,public as $$select app.access_privacy_erasure_begin(p,'contact','FICTIONAL-DPO-REFERENCE','Fictional privacy request')$$`);

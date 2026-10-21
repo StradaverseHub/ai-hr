@@ -42,10 +42,18 @@ beforeAll(migrateTestDb);
 beforeEach(async()=>{await resetDb();b=await seedBase();await owner.db.execute(sql`update access_capability set supported=false,bindings='[]'::jsonb where id in ('workforce.view','workforce.maintain','profile.review')`);});
 afterAll(async()=>{try{await owner.db.execute(sql`update access_capability set supported=false,bindings='[]'::jsonb where id in ('workforce.view','workforce.maintain','profile.review')`);}finally{await closeAll();}});
 async function activate(){await owner.db.execute(sql`update access_capability set supported=true,bindings='[{"owner":"draft-workforce-consumer-fixture","operation":"read-write"}]'::jsonb where id in ('workforce.view','workforce.maintain')`);}
-async function override(userId:string,capabilityId:'workforce.view'|'workforce.maintain',companyId:string|null,effect:'allow'|'deny'|null){
- const before=await withTenant(admin(),tx=>accessConfigurationStore.loadCurrent(tx,admin()));
+async function override(userId:string,capabilityId:'workforce.view'|'workforce.maintain',companyId:string|null,effect:'allow'|'deny'|null,actor:SessionContext=admin()){
+ const before=await withTenant(actor,tx=>accessConfigurationStore.loadCurrent(tx,actor));
  const edit={expectedRevision:before.snapshot.revision,command:{kind:'setOverride' as const,userId,capabilityId,companyId,effect}};
- const preview=await previewAccessConfiguration(admin(),edit,accessConfigurationStore);return saveAccessConfiguration(admin(),{...edit,previewFingerprint:preview.fingerprint},accessConfigurationStore);
+ const preview=await previewAccessConfiguration(actor,edit,accessConfigurationStore);return saveAccessConfiguration(actor,{...edit,previewFingerprint:preview.fingerprint},accessConfigurationStore);
+}
+async function recoverAdminOverride(capabilityId:'workforce.view'|'workforce.maintain'){
+ // A denied administrator cannot delegate the permission back to themselves. Recovery uses a
+ // different real, current group administrator, through the same preview/commit owner.
+ await expect(override(b.adminUserId,capabilityId,b.companyId,null)).rejects.toMatchObject({code:'ceiling'});
+ const [user]=await owner.db.insert(appUser).values({tenantId:b.tenantId,workosUserId:`fictional_recovery_${randomUUID()}`}).returning({id:appUser.id});
+ await owner.db.insert(roleAssignment).values({tenantId:b.tenantId,appUserId:user.id,role:'hr_admin',companyId:null});
+ await override(b.adminUserId,capabilityId,b.companyId,null,{...admin(),userId:user.id});
 }
 const hire=(label:string)=>hireEmployee(admin(),{person:{fullName:label,primaryEmail:`${randomUUID()}@example.invalid`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
 const page=(ctx:SessionContext,companyIds=[b.companyId])=>listEmployeesPage(ctx,{companyIds,limit:25,offset:0},'workforce');
@@ -97,7 +105,7 @@ describe('fresh Workforce-purpose record consumers',()=>{
   expect(await withTenant(admin(),tx=>tx.execute(sql`select * from app.access_workforce_list_rows()`))).toEqual([]);
   // Staff-directory relationship access remains independent; no financial grant or role is added.
   expect((await listEmployees(admin(),[b.companyId])).map(row=>row.employmentId)).toContain(subject.employmentId);
-  await override(b.adminUserId,'workforce.view',b.companyId,null);expect((await page(admin())).total).toBe(1);
+  await recoverAdminOverride('workforce.view');expect((await page(admin())).total).toBe(1);
  });
  it('does not widen an explicitly empty selected Workforce company scope',async()=>{
   await hire('Fictional retained record');await activate();
@@ -159,7 +167,7 @@ describe('fresh Workforce-purpose record consumers',()=>{
   // Real owner credentials remain an explicit maintenance/restore course, with no invented login.
   await owner.db.update(employment).set({employeeCode:'WF-OWNER-REPAIR'}).where(eq(employment.id,subject.employmentId));
   expect((await read())[0]?.employeeCode).toBe('WF-OWNER-REPAIR');
-  await override(b.adminUserId,'workforce.maintain',b.companyId,null);
+  await recoverAdminOverride('workforce.maintain');
   await setEmployeeCode(admin(),{employmentId:subject.employmentId,employeeCode:'WF-SQL-RESTORED'});
   expect(await setEmploymentTestRecord(admin(),{employmentId:subject.employmentId,isTestRecord:false})).toEqual({changed:true});
   expect((await read())[0]).toMatchObject({employeeCode:'WF-SQL-RESTORED',isTestRecord:false});
@@ -268,11 +276,14 @@ describe('fresh Workforce-purpose record consumers',()=>{
   const qualification=await registers.addQualification(admin(),{employmentId:subject.employmentId,qualification:'Master',isHighest:true});
   const contact=await registers.addEmergencyContact(admin(),{personId:subject.personId,fullName:'Fictional retained contact',priority:'primary'});
   const snapshot=async()=>({family:await owner.db.select().from(employeeDependent).orderBy(employeeDependent.id),qualifications:await owner.db.select().from(employeeQualification).orderBy(employeeQualification.id),contacts:await owner.db.select().from(personEmergencyContact).orderBy(personEmergencyContact.id),events:await owner.db.select({id:domainEvent.id}).from(domainEvent).orderBy(domainEvent.id)});
-  const before=await snapshot();
+  const immutableSubjects=await snapshot();
   await sqlRefusal(withTenant(admin(),tx=>tx.update(employeeDependent).set({personId:other.personId}).where(eq(employeeDependent.id,family.id))));
   await sqlRefusal(withTenant(admin(),tx=>tx.update(employeeQualification).set({employmentId:other.employmentId}).where(eq(employeeQualification.id,qualification.id))));
   await sqlRefusal(withTenant(admin(),tx=>tx.update(personEmergencyContact).set({personId:other.personId}).where(eq(personEmergencyContact.id,contact.id))));
+  expect(await snapshot()).toEqual(immutableSubjects);
   await activate();await override(b.adminUserId,'workforce.maintain',b.companyId,'deny');
+  // The committed permission edit has its own required event; denied register attempts add none.
+  const before=await snapshot();
   await sqlRefusal(withTenant(admin(),tx=>tx.update(employeeDependent).set({archivedAt:new Date()}).where(eq(employeeDependent.id,family.id))));
   await sqlRefusal(withTenant(admin(),tx=>tx.update(employeeQualification).set({archivedAt:new Date()}).where(eq(employeeQualification.id,qualification.id))));
   await expect(archiveDependentOwner(admin(),{id:family.id})).rejects.toBeInstanceOf(WorkforceAccessError);
@@ -600,7 +611,7 @@ describe('canonical direct structural entry points',()=>{
    ()=>org.setEmploymentBlacklist(admin(),{employmentId:subject.employmentId,blacklisted:true,reason:'Fictional refused change'}),
    ()=>org.terminateEmployment(admin(),{employmentId:subject.employmentId,terminationDate:today}),
   ]){await expect(write()).rejects.toBeInstanceOf(WorkforceAccessError);expect(await capture()).toEqual(before);}
-  await override(b.adminUserId,'workforce.maintain',b.companyId,null);
+  await recoverAdminOverride('workforce.maintain');
   await org.setReportingLine(admin(),{subordinateEmploymentId:subject.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:today});
   expect(await owner.db.select().from(reportingLine).where(eq(reportingLine.subordinateEmploymentId,subject.employmentId))).toHaveLength(1);
  });
@@ -639,7 +650,7 @@ describe('structural SQL and fixed resignation consequences',()=>{
   expect(events).toEqual([{type:'employment.terminated',actor:b.adminUserId},{type:'resignation.accepted',actor:b.adminUserId}]);
  });
  it('cannot relabel a direct termination intent as a request-bound resignation intent',async()=>{
-  const {subject,request}=await pending();await override(b.adminUserId,'workforce.maintain',b.companyId,null);
+  const {subject,request}=await pending();await recoverAdminOverride('workforce.maintain');
   const patch={terminated_on:todayInKualaLumpur(),termination_type:'voluntary',termination_reason:'Fictional independent resignation'};
   const failure=await withTenant(admin(),async tx=>{
    await tx.execute(sql`select app.access_assert_termination(${subject.employmentId}::uuid,${JSON.stringify(patch)}::jsonb)`);
@@ -718,7 +729,7 @@ describe('direct service information permission bindings',()=>{
   await withTenant(admin(),tx=>tx.update(employment).set({contractEndDate:date}).where(eq(employment.id,subject.employmentId)));
   expect(await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId))).toEqual(before);
   expect(await owner.db.select().from(domainEvent).where(eq(domainEvent.subjectEmploymentId,subject.employmentId)).orderBy(domainEvent.id)).toEqual(events);
-  await override(b.adminUserId,'workforce.maintain',b.companyId,null);
+  await recoverAdminOverride('workforce.maintain');
   await setReviewEndDate(admin(),{employmentId:subject.employmentId,reviewType:'contract',endDate:null});
   expect((await owner.db.select().from(employment).where(eq(employment.id,subject.employmentId)))[0].contractEndDate).toBeNull();
  });

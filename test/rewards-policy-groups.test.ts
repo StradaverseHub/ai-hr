@@ -15,11 +15,11 @@ beforeAll(migrateTestDb);
 beforeEach(async()=>{
  await resetDb();b=await seedBase();await setModule(b.tenantId,'rewards','active');admin=await entitledCtx(b);policy=defaultPolicy(year);
  const [c]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional reward company B'}).returning({id:schema.company.id});companyB=c.id;
- const units=await owner.db.insert(schema.businessUnit).values([
+ const units=await owner.withTenant({...admin,grants:[{role:'hr_admin',companyId:null}]},tx=>tx.insert(schema.businessUnit).values([
   {tenantId:b.tenantId,companyId:b.companyId,code:'B25-REWARD-A',label:'Fictional Unit A',name:'Different legacy A'},
   {tenantId:b.tenantId,companyId:companyB,code:'B25-REWARD-B',label:'Fictional Unit B',name:'Different legacy B'},
   {tenantId:b.tenantId,companyId:b.companyId,code:'B25-REWARD-GLOBAL',label:'Fictional global unit',name:'Different legacy global',isGlobal:true},
- ]).returning({id:schema.businessUnit.id,code:schema.businessUnit.code});
+ ]).returning({id:schema.businessUnit.id,code:schema.businessUnit.code}));
  buA=units.find(u=>u.code==='B25-REWARD-A')!.id;buB=units.find(u=>u.code==='B25-REWARD-B')!.id;globalBu=units.find(u=>u.code==='B25-REWARD-GLOBAL')!.id;
 });
 afterAll(closeAll);

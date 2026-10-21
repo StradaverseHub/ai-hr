@@ -144,7 +144,7 @@ describe('canonical access storage under ai_hr_app',()=>{
  it('refuses leaving only a currently active administrator whose known employment end will remove login access',async()=>{
   const today=todayInKualaLumpur(),end=new Date(`${today}T00:00:00Z`);end.setUTCDate(end.getUTCDate()+2);
   const endOn=end.toISOString().slice(0,10),afterEnd=new Date(end);afterEnd.setUTCDate(afterEnd.getUTCDate()+1);
-  const hired=await hireEmployee(admin(),{person:{fullName:'Fictional ending administrator'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:today});
+  const hired=await hireEmployee(admin(),{person:{fullName:'Fictional ending administrator',primaryEmail:'fictional-ending-admin@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:today});
   const endingUser=await createAppUser(b.tenantId,hired.personId,'hr_admin');
   await owner.db.update(employment).set({terminatedOn:endOn}).where(eq(employment.id,hired.employmentId));
   const current=await state();expect(current.snapshot.users.find(user=>user.id===endingUser)?.active).toBe(true);

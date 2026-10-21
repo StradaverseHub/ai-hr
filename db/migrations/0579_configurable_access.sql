@@ -2343,7 +2343,7 @@ GRANT EXECUTE ON FUNCTION app.access_workforce_editor(uuid) TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.access_workforce_value_shape(p_kind text,p_key text,p_value jsonb,p_previous jsonb) RETURNS boolean
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE field_binding record;value text;parsed date;category text;
+DECLARE field_binding record;input_text text;parsed date;category text;
 BEGIN
  SELECT * INTO field_binding FROM app.access_profile_value_bindings() b WHERE b.field_name=p_key
   AND CASE WHEN p_kind='person' THEN b.owner IN ('person','compliance') ELSE b.owner=p_kind END;
@@ -2353,30 +2353,30 @@ BEGIN
  IF p_key IN ('isHighest','isBeneficiary','isDeceased','isStudent','spouseWorking','childTaxRelief') THEN RETURN jsonb_typeof(p_value)='boolean'; END IF;
  IF p_kind='dependent' AND p_key='childReliefPercentage' THEN RETURN p_value#>>'{}' IN ('50','100'); END IF;
  IF jsonb_typeof(p_value) IS DISTINCT FROM 'string' THEN RETURN false; END IF;
- value:=p_value#>>'{}';
- IF length(value)>4000 THEN RETURN false; END IF;
- IF p_key IN ('fullName','primaryEmail','qualification') AND value='' THEN RETURN false; END IF;
- IF p_key IN ('primaryEmail','personalEmail') AND value<>'' AND value !~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$' THEN RETURN false; END IF;
- IF p_key='gender' AND value NOT IN ('male','female','undisclosed') THEN RETURN false; END IF;
- IF p_key='maritalStatus' AND value NOT IN ('single','married','divorced','widowed','separated','other') THEN RETURN false; END IF;
- IF p_kind='emergency' AND p_key='priority' AND value NOT IN ('primary','secondary','other') THEN RETURN false; END IF;
+ input_text:=p_value#>>'{}';
+ IF length(input_text)>4000 THEN RETURN false; END IF;
+ IF p_key IN ('fullName','primaryEmail','qualification') AND input_text='' THEN RETURN false; END IF;
+ IF p_key IN ('primaryEmail','personalEmail') AND input_text<>'' AND input_text !~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$' THEN RETURN false; END IF;
+ IF p_key='gender' AND input_text NOT IN ('male','female','undisclosed') THEN RETURN false; END IF;
+ IF p_key='maritalStatus' AND input_text NOT IN ('single','married','divorced','widowed','separated','other') THEN RETURN false; END IF;
+ IF p_kind='emergency' AND p_key='priority' AND input_text NOT IN ('primary','secondary','other') THEN RETURN false; END IF;
  IF p_kind='dependent' THEN
-  IF p_key='marriageStatus' AND value NOT IN ('married','divorced','widowed','separated') THEN RETURN false; END IF;
-  IF p_key='childReliefCategory' AND value NOT IN ('under_18','study_preu','study_tertiary','disabled','disabled_study') THEN RETURN false; END IF;
-  IF p_key='relationship' THEN RETURN value IN ('spouse','child','parent','sibling','other') OR EXISTS(SELECT 1 FROM public.profile_option o WHERE o.tenant_id=app.current_tenant_id() AND o.category='dependentRelationship' AND o.value=access_workforce_value_shape.value AND o.is_active); END IF;
+  IF p_key='marriageStatus' AND input_text NOT IN ('married','divorced','widowed','separated') THEN RETURN false; END IF;
+  IF p_key='childReliefCategory' AND input_text NOT IN ('under_18','study_preu','study_tertiary','disabled','disabled_study') THEN RETURN false; END IF;
+  IF p_key='relationship' THEN RETURN input_text IN ('spouse','child','parent','sibling','other') OR EXISTS(SELECT 1 FROM public.profile_option o WHERE o.tenant_id=app.current_tenant_id() AND o.category='dependentRelationship' AND o.value=input_text AND o.is_active); END IF;
  END IF;
  IF p_key IN ('dateOfBirth','graduationDate','marriageDate') THEN
-  IF value !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN RETURN false; END IF;
-  BEGIN parsed:=value::date;EXCEPTION WHEN invalid_datetime_format OR datetime_field_overflow THEN RETURN false;END;
-  IF to_char(parsed,'YYYY-MM-DD')<>value THEN RETURN false; END IF;
+  IF input_text !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN RETURN false; END IF;
+  BEGIN parsed:=input_text::date;EXCEPTION WHEN invalid_datetime_format OR datetime_field_overflow THEN RETURN false;END;
+  IF to_char(parsed,'YYYY-MM-DD')<>input_text THEN RETURN false; END IF;
  END IF;
- IF p_key IN ('fromYm','toYm') AND value !~ '^(?!0000)[0-9]{4}-(0[1-9]|1[0-2])$' THEN RETURN false; END IF;
+ IF p_key IN ('fromYm','toYm') AND input_text !~ '^(?!0000)[0-9]{4}-(0[1-9]|1[0-2])$' THEN RETURN false; END IF;
  category:=CASE WHEN p_key IN ('salutation','religion','race','nationality') THEN p_key
   WHEN p_key IN ('permanentState','correspondenceState') THEN 'state'
   WHEN p_key IN ('permanentCountry','correspondenceCountry') THEN 'country'
   WHEN p_kind='qualification' AND p_key='qualification' THEN 'qualificationLevel'
   WHEN p_kind='emergency' AND p_key='relationship' THEN 'relationship' END;
- IF category IS NOT NULL THEN RETURN app.profile_option_value_allowed(category,value,p_previous#>>'{}'); END IF;
+ IF category IS NOT NULL THEN RETURN app.profile_option_value_allowed(category,input_text,p_previous#>>'{}'); END IF;
  RETURN true;
 END; $$;
 --> statement-breakpoint
@@ -2390,7 +2390,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $
 DECLARE selected public.employment%ROWTYPE;before_row jsonb;after_row jsonb;normalized jsonb:='{}'::jsonb;
  version text;target_id uuid;table_name text;subject_column text;subject_id uuid;event_name text;aggregate_name text;
  assignments text;insert_columns text;insert_values text;field_names jsonb;pair record;binding record;value jsonb;
- previous record;previous_after jsonb;event_id uuid;instant timestamptz:=now();changed boolean;effect_id uuid;relationship text;
+ previous record;previous_after jsonb;written_event_id uuid;instant timestamptz:=now();changed boolean;effect_id uuid;relationship text;
 BEGIN
  IF p_kind IS NULL OR p_operation IS NULL OR p_kind NOT IN ('person','qualification','emergency','dependent') OR p_operation NOT IN ('add','update','archive')
   OR jsonb_typeof(p_patch) IS DISTINCT FROM 'object' OR octet_length(p_patch::text)>128000 THEN
@@ -2515,8 +2515,8 @@ BEGIN
  SELECT COALESCE(jsonb_agg(key ORDER BY key),'[]'::jsonb) INTO field_names FROM jsonb_object_keys(p_patch) key;
  INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
   VALUES(selected.tenant_id,aggregate_name,target_id,event_name,'user',app.current_user_id(),selected.id,
-   jsonb_build_object('fields',field_names,'via','workforce-maintenance','transferFromId',effect_id)) RETURNING id INTO event_id;
- UPDATE app.access_workforce_value_intent SET event_id=access_workforce_maintain_record.event_id
+   jsonb_build_object('fields',field_names,'via','workforce-maintenance','transferFromId',effect_id)) RETURNING id INTO written_event_id;
+ UPDATE app.access_workforce_value_intent SET event_id=written_event_id
   WHERE xact_id=pg_current_xact_id() AND tenant_id=selected.tenant_id AND user_id=app.current_user_id() AND audit_root=target_id AND event_type=event_name;
  IF p_kind='dependent' THEN PERFORM app.my_sync_family_child_relief(selected.person_id); END IF;
  RETURN jsonb_build_object('id',target_id,'changed',true,'hrReviewNotice',p_kind='dependent');
