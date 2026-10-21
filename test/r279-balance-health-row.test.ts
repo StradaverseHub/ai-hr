@@ -65,6 +65,7 @@ vi.mock('../lib/scope', async (importOriginal) => ({
 }));
 vi.mock('next/cache', () => ({ revalidatePath: () => {} }));
 vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn() }),
   redirect: (url: string) => {
     throw new Error(`NEXT_REDIRECT ${url}`);
   },
@@ -169,7 +170,8 @@ describe('r279 §A — the row, the page, and the mount that moved', () => {
 
   it('it is a real guarded page on the EXISTING leaveConfig column — no new permission is invented', () => {
     expect(exists(HEALTH_PAGE)).toBe(true);
-    expect(read(HEALTH_PAGE)).toContain('requireAdmin()');
+    expect(read(HEALTH_PAGE)).toContain('await scopedAdmin()');
+    expect(read('lib/scope.ts')).toContain('await requireAdmin()');
     // Both halves or neither: test/function-access.test.ts fails on a guarded page with no column AND on
     // a registered route with no page.
     expect(REGISTERED_ROUTES.has(HEALTH_HREF)).toBe(true);
@@ -322,17 +324,17 @@ describe('r279 §B — the sidebar lights the new row on its own screen, and lig
   it('the row set the predicate runs over is real, and contains the rows this block names', () => {
     // Non-vacuity for the table below: an empty or leave-only row set would make "exactly one" trivial.
     expect(ALL_ROWS.length).toBeGreaterThan(10);
-    for (const key of ['leave:leaveBalanceHealth', 'leave:leaveEntitlements', 'leave:employeeLeaveInquiry'])
+    for (const key of ['leave:leaveSettings', 'leave:employeeLeaveInquiry'])
       expect(ALL_ROWS.map((r) => r.key), key).toContain(key);
   });
 
   const TRUTH: ReadonlyArray<readonly [string, string]> = [
     // pathname                                    the ONE pack row that must light
-    [HEALTH_HREF, 'leave:leaveBalanceHealth'],
-    // …and the tab it left still lights ITS row, including on the tab Entitlements owns. A prefix match
-    // between two `/admin/leave-config/*` siblings is exactly the way this change could light two rows.
-    [TYPES_HREF, 'leave:leaveEntitlements'],
-    ['/admin/leave-config/entitlement-tables', 'leave:leaveEntitlements'],
+    // 7e4a9dd6 consolidates these destinations under Settings. They remain independently reachable
+    // cards, while exactly one owning sidebar row lights across the whole registered pack rail.
+    [HEALTH_HREF, 'leave:leaveSettings'],
+    [TYPES_HREF, 'leave:leaveSettings'],
+    ['/admin/leave-config/entitlement-tables', 'leave:leaveSettings'],
   ];
 
   it.each(TRUTH)('on %s exactly one pack nav row lights, and it is %s', (pathname, expected) => {

@@ -25,7 +25,10 @@ export const holidayCalendarInclusiveEnd=(exclusive:string|null)=>exclusive?add(
 export function employmentHolidayCalendarHistory(ctx:SessionContext,employmentId:string){
   if(!isAdmin(ctx))fail('scope');
   return withTenant(ctx,async tx=>{
-    const [access]=await tx.execute(sql`select app.can_admin_employment(${employmentId}::uuid) as allowed`) as unknown as {allowed:boolean}[];
+    // The legacy helper's group-admin arm is company-scoped, not a tenant existence check.
+    // Refuse a foreign/missing target explicitly rather than returning an apparently empty history.
+    const [access]=await tx.execute(sql`select exists(select 1 from employment e where e.id=${employmentId}::uuid
+      and e.tenant_id=${ctx.tenantId}::uuid and app.can_admin_employment(e.id)) as allowed`) as unknown as {allowed:boolean}[];
     if(!access?.allowed)fail('scope');
     const rows=await tx.select().from(employmentHolidayCalendar).where(eq(employmentHolidayCalendar.employmentId,employmentId))
       .orderBy(asc(employmentHolidayCalendar.validFrom),asc(employmentHolidayCalendar.recordedAt),asc(employmentHolidayCalendar.id)).limit(2001);

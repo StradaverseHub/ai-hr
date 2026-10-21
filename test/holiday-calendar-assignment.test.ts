@@ -54,7 +54,9 @@ describe('dated calendar owner and shared consumers',()=>{
   await expect(save(e.employmentId,nextMonday,nextMonday,'Johor',first.id)).rejects.toMatchObject({code:'changed'});
   const rows=await records(e.employmentId);expect(rows).toHaveLength(2);expect(rows.find(row=>row.id===first.id)?.supersededAt).not.toBeNull();
   expect(rows.find(row=>row.id===replacement.id)).toMatchObject({replacesId:first.id,validFrom:nextMonday,validTo:add(nextMonday,1)});
-  await expect(withTenant(ctx,tx=>tx.update(schema.employmentHolidayCalendar).set({workState:'Sabah'}).where(eq(schema.employmentHolidayCalendar.id,replacement.id)))).rejects.toThrow(/immutable/);
+  await expect(withTenant(ctx,tx=>tx.update(schema.employmentHolidayCalendar).set({workState:'Sabah'}).where(eq(schema.employmentHolidayCalendar.id,replacement.id))))
+   .rejects.toMatchObject({cause:{code:'P0001',message:expect.stringContaining('immutable')}});
+  expect(await records(e.employmentId)).toEqual(rows);
  });
  it('serializes simultaneous overlapping adds so exactly one assignment survives',async()=>{
   const e=await hire();const results=await Promise.allSettled([save(e.employmentId,nextMonday,null),save(e.employmentId,nextMonday,null,'Selangor')]);

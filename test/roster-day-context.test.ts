@@ -19,8 +19,10 @@ let b: Base, hr: SessionContext, manager: SessionContext, employee: { employment
 beforeAll(migrateTestDb); afterAll(closeAll);
 beforeEach(async () => {
   await resetDb(); b = await seedBase(); hr = adminCtx(b);
-  const hire = (name: string) => hireEmployee(hr, { person: { fullName: name, primaryEmail: `${randomUUID()}@roster-context.invalid` }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: add(today, -800) });
-  employee = await hire('Context employee'); const boss = await hire('Context manager'); unrelated = await hire('Unrelated employee');
+  const hire = (name: string, departmentId = b.deptA) => hireEmployee(hr, { person: { fullName: name, primaryEmail: `${randomUUID()}@roster-context.invalid` }, companyId: b.companyId, departmentId, employmentType: 'full_time', hiredOn: add(today, -800) });
+  // A manager with reports also has the established department visibility arm. Put the unrelated
+  // person in another department so this is an actual denial, not an invented narrower policy.
+  employee = await hire('Context employee'); const boss = await hire('Context manager'); unrelated = await hire('Unrelated employee', b.deptB);
   const userId = await createAppUser(b.tenantId, boss.personId, 'manager');
   manager = { tenantId: b.tenantId, userId, personId: boss.personId, roles: ['manager'], entitlements: harnessSnapshot(b.tenantId) };
   await setReportingLine(hr, { subordinateEmploymentId: employee.employmentId, managerEmploymentId: boss.employmentId, lineType: 'administrative', validFrom: add(today, -700) });
