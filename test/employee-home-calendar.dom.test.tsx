@@ -40,7 +40,7 @@ describe('personal Home calendar interactions',()=>{
  });
  it('changes month and opens a full calendar that retains subject and month',async()=>{
   render(view());await screen.findByRole('button',{name:/Monday, February 12, 2024/});
-  fireEvent.click(screen.getByRole('button',{name:'Next',exact:true}));
+  fireEvent.click(screen.getByRole('button',{name:'Next'}));
   await waitFor(()=>expect(screen.getByRole('heading',{name:'March 2024'})).toBeTruthy());
   const link=screen.getByRole('link',{name:'View full calendar'}),url=new URL(link.getAttribute('href')!,'http://localhost');
   expect(url.pathname).toBe('/me/calendar');expect(Object.fromEntries(url.searchParams)).toEqual({employmentId:'own',month:'2024-03'});
@@ -48,11 +48,11 @@ describe('personal Home calendar interactions',()=>{
  });
  it('offers real week and list views over the same authorized month facts',async()=>{
   render(view('own',true));await screen.findByRole('button',{name:/Monday, February 12, 2024/});
-  fireEvent.click(screen.getByRole('button',{name:'Week',exact:true}));
+  fireEvent.click(screen.getByRole('button',{name:'Week'}));
   expect(screen.getByText('Week 3')).toBeTruthy();
   expect(screen.queryByRole('button',{name:/Monday, January 29, 2024/})).toBeNull();
   fireEvent.click(screen.getByRole('button',{name:'Next week'}));expect(screen.getByText('Week 4')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button',{name:'List',exact:true}));
+  fireEvent.click(screen.getByRole('button',{name:'List'}));
   expect(screen.getByRole('button',{name:/Monday, February 12, 2024.*Pending/})).toBeTruthy();
   expect(screen.queryByRole('button',{name:'Wednesday, February 14, 2024'})).toBeNull();
   expect(fetcher).toHaveBeenCalledTimes(1);
