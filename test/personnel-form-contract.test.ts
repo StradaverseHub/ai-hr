@@ -25,7 +25,10 @@ describe('Personnel shared form contract',()=>{
     expect(()=>personnelInput(prefix+'startdate')).toThrow(/date minimum context/);
     expect(()=>personnelInput(prefix+'enddate','edit',{calendarAssignmentStartDate:'2025-02-29'})).toThrow(/date minimum context/);
     const changed=structuredClone(PERSONNEL_FIELDS.find(row=>row.id===prefix+'startdate')!);
-    changed.type='text';expect(personnelFormMetadataIssue(changed)).toContain('date minimum');
+    changed.form!.widget='date';changed.type='text';
+    expect(personnelFormMetadataIssue(changed)).toContain('canonical type');
+    delete changed.form!.widget; // Isolate the minOwner rule from the earlier explicit-widget guard.
+    expect(personnelFormMetadataIssue(changed)).toContain('date minimum');
     changed.type='date';changed.form!.min=0;expect(personnelFormMetadataIssue(changed)).toContain('date minimum');
     // Other numeric/date widgets retain their existing metadata and never borrow this context.
     expect(personnelInput(birth,'edit',{employmentStartDate:'2024-02-29'})).not.toHaveProperty('min');
