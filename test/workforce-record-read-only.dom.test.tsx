@@ -1,7 +1,7 @@
 /** Prepared rendered contract; actual role journeys still need the isolated app under all leases. */
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 import {render,screen} from '@testing-library/react';
-import {createTranslator} from 'next-intl';
+import {createTranslator,type AbstractIntlMessages} from 'next-intl';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
 import zh from '../messages/zh.json';
@@ -17,9 +17,12 @@ import {WORKFORCE_PROFILE_FIELDS,type WorkforceProfile} from '../lib/workforce-r
 import {personnelField} from '../lib/personnel-field-registry';
 import {todayInKualaLumpur} from '../lib/hr-date';
 const language=vi.hoisted(()=>({current:'en'}));
-const catalogues={en,ms,zh,ta,th,vi:viMessages};
+// The production composition looks up registry-provided strings, not a literal message-key union.
+// Keep all real catalogue bytes and runtime missing-key errors without expanding every locale's
+// nested key union at each dynamic lookup during the repository's strict type check.
+const catalogues:Record<'en'|'ms'|'zh'|'ta'|'th'|'vi',AbstractIntlMessages>={en,ms,zh,ta,th,vi:viMessages};
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace?:string)=>createTranslator({
- locale:language.current,messages:catalogues[language.current as keyof typeof catalogues],namespace:namespace as never,onError:error=>{throw error;},
+ locale:language.current,messages:catalogues[language.current as keyof typeof catalogues],namespace,onError:error=>{throw error;},
 })}));
 vi.mock('next/navigation',()=>({notFound:()=>{throw new Error('not_found');}}));
 vi.mock('../core/workforce-access',()=>({workforceCommandAccess:vi.fn(async()=>false)}));
