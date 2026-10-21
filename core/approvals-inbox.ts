@@ -76,6 +76,11 @@ export type PendingTaskItem = {
  */
 export type InboxModules = { attendance: boolean; claims: boolean };
 
+type ApprovalOnlyTaskItem=Omit<PendingTaskItem,'kind'>&{kind:Exclude<PendingTaskKind,'noticeAcknowledgement'>};
+export function listPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
+  options:{noticeAcknowledgements:false}):Promise<ApprovalOnlyTaskItem[]>;
+export function listPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
+  options?:{noticeAcknowledgements?:boolean}):Promise<PendingTaskItem[]>;
 export async function listPendingTasks(
   ctx: SessionContext,
   scopeIds: string[] | undefined,
