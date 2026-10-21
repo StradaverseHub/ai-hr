@@ -23,11 +23,13 @@
  *
  * The targeting engine is `core/org-criteria.ts`, shared with bulk leave adjustments rather than copied.
  */
+import {createHash} from 'node:crypto';
+import {resolveDocumentUpload} from './employee-documents';
 import { and, asc, desc, eq, inArray, isNull, isNotNull, lte, gte, sql } from 'drizzle-orm';
 
 import { withTenant, type SessionContext,type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { company,employment, notice, noticeRecipient,noticeRevision,noticeAcknowledgement } from '../db/schema';
+import { company,employment, notice, noticeRecipient,noticeRevision,noticeAcknowledgement,noticeAttachment } from '../db/schema';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import {
   isUnrestrictedOrgCriteria,
@@ -753,7 +755,7 @@ export function noticeContentHistory(ctx:SessionContext,id:string){
 export type NoticeAcknowledgementReceipt={id:string;contentVersion:number;acknowledgedAt:Date};
 /** A deliberate action, not a page-load or popup marker. The purpose-bound database command owns the
  * actual principal, immutable timestamp, same-transaction audit and replay/stale-version contract. */
-export function acknowledgeNotice(ctx:SessionContext,id:string,employmentId:string,contentVersion:number,context:{reportedChannel?:string;reportedUserAgent?:string}={}):Promise<NoticeAcknowledgementReceipt>{
+export async function acknowledgeNotice(ctx:SessionContext,id:string,employmentId:string,contentVersion:number,context:{reportedChannel?:string;reportedUserAgent?:string}={}):Promise<NoticeAcknowledgementReceipt>{
  if(!uuidNotice(id)||!uuidNotice(employmentId)||!Number.isSafeInteger(contentVersion)||contentVersion<1)throw new NoticeError('Notice acknowledgement is unavailable.');
  const requestContext={...(context.reportedChannel?{reportedChannel:context.reportedChannel.slice(0,32)}:{}),...(context.reportedUserAgent?{reportedUserAgent:context.reportedUserAgent.slice(0,256)}:{})};
  return withTenant(ctx,async tx=>{
@@ -765,4 +767,51 @@ export function acknowledgeNotice(ctx:SessionContext,id:string,employmentId:stri
 export function noticeAcknowledgementHistory(ctx:SessionContext,id:string){
  return withTenant(ctx,tx=>tx.select({id:noticeAcknowledgement.id,revisionId:noticeAcknowledgement.revisionId,contentVersion:noticeAcknowledgement.contentVersion,employmentId:noticeAcknowledgement.employmentId,actorUserId:noticeAcknowledgement.actorUserId,acknowledgedAt:noticeAcknowledgement.acknowledgedAt})
   .from(noticeAcknowledgement).where(and(eq(noticeAcknowledgement.noticeId,id),eq(noticeAcknowledgement.tenantId,ctx.tenantId))).orderBy(asc(noticeAcknowledgement.acknowledgedAt),asc(noticeAcknowledgement.id)));
+}
+
+
+export const NOTICE_ATTACHMENT_MAX_BYTES=10*1024*1024;
+const noticeAttachmentMime=new Set(['application/pdf','image/png','image/jpeg','text/plain','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.openxmlformats-officedocument.presentationml.presentation']);
+/** Adds and selects immutable bytes in the same transaction as the content revision and audit event.
+ * An intent key belongs to this author/Notice; a successful retry cannot manufacture another revision. */
+export async function addNoticeAttachment(ctx:SessionContext,id:string,expectedContentVersion:number,p:{uploadKey:string;fileName:string;content:Buffer}):Promise<{id:string;contentVersion:number}>{
+ const actor=requireActor(ctx,'updated');
+ if(!uuidNotice(id)||!uuidNotice(p.uploadKey)||!Number.isSafeInteger(expectedContentVersion)||expectedContentVersion<0)throw new NoticeError('Reload the notice before uploading.');
+ const fileName=p.fileName.trim();
+ if(!fileName||fileName.length>180||/[\x00-\x1f\x7f/\\]/.test(fileName))throw new NoticeError('Choose a file with a safe name of at most 180 characters.');
+ if(!Buffer.isBuffer(p.content)||!p.content.length||p.content.length>NOTICE_ATTACHMENT_MAX_BYTES)throw new NoticeError('Choose a non-empty file of at most 10 MiB.');
+ const content=Buffer.from(p.content);let mimeType:string;
+ try{mimeType=resolveDocumentUpload(fileName,content).mimeType;}catch{throw new NoticeError('The file contents or file type are not supported.');}
+ if(!noticeAttachmentMime.has(mimeType))throw new NoticeError('The file type is not supported for notices.');
+ const digest=createHash('sha256').update(content).digest('hex');
+ return withTenant(ctx,async tx=>{
+  const [parent]=await tx.select({id:notice.id,contentVersion:notice.contentVersion,attachmentIds:notice.attachmentIds,archivedAt:notice.archivedAt}).from(notice).where(authoringNotice(id)).limit(1).for('update');
+  if(!parent||parent.archivedAt)throw new NoticeError('That notice is no longer available for editing.');
+  const [prior]=await tx.select({id:noticeAttachment.id,fileName:noticeAttachment.fileName,mimeType:noticeAttachment.mimeType,digest:sql<string>`encode(sha256(${noticeAttachment.content}),'hex')`})
+   .from(noticeAttachment).where(and(eq(noticeAttachment.noticeId,id),eq(noticeAttachment.tenantId,ctx.tenantId),eq(noticeAttachment.createdByUserId,actor),eq(noticeAttachment.uploadKey,p.uploadKey))).limit(1);
+  if(prior){
+   if(prior.fileName!==fileName||prior.mimeType!==mimeType||prior.digest!==digest||!parent.attachmentIds.includes(prior.id))throw new NoticeError('This upload changed; reload before choosing the file again.');
+   return {id:prior.id,contentVersion:parent.contentVersion};
+  }
+  if(parent.contentVersion!==expectedContentVersion)throw new NoticeError('Notice content changed; reload before uploading.');
+  if(parent.attachmentIds.length>=5)throw new NoticeError('A notice can contain at most five attachments.');
+  const [asset]=await tx.insert(noticeAttachment).values({tenantId:ctx.tenantId,noticeId:id,uploadKey:p.uploadKey,fileName,mimeType,byteLength:content.byteLength,content,createdByUserId:actor}).returning({id:noticeAttachment.id});
+  const changed=await tx.update(notice).set({attachmentIds:[...parent.attachmentIds,asset.id],updatedAt:sql`now()`}).where(authoringNotice(id)).returning({id:notice.id,contentVersion:notice.contentVersion});requireNoticeWrite(changed);
+  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'notice',aggregateId:id,eventType:'notice.attachment-added',actor:actorOf(ctx),payload:{attachmentId:asset.id,byteLength:content.byteLength,mimeType,contentVersion:changed[0].contentVersion}});
+  return {id:asset.id,contentVersion:changed[0].contentVersion};
+ });
+}
+/** Only this by-ID read touches bytes. RLS admits actual authors or live snapshot recipients of a
+ * currently referenced attachment; a URL never enlarges a Knowledge Base document's audience. */
+export function getNoticeAttachment(ctx:SessionContext,id:string,attachmentId:string){
+ if(!uuidNotice(id)||!uuidNotice(attachmentId))return Promise.resolve(null);
+ return withTenant(ctx,async tx=>{
+  const [asset]=await tx.select({id:noticeAttachment.id,fileName:noticeAttachment.fileName,mimeType:noticeAttachment.mimeType,byteLength:noticeAttachment.byteLength,content:noticeAttachment.content}).from(noticeAttachment)
+   .where(and(eq(noticeAttachment.tenantId,ctx.tenantId),eq(noticeAttachment.noticeId,id),eq(noticeAttachment.id,attachmentId))).limit(1);return asset??null;
+ });
+}
+export function noticeAttachmentMetadata(ctx:SessionContext,id:string){
+ return withTenant(ctx,tx=>tx.select({id:noticeAttachment.id,fileName:noticeAttachment.fileName,mimeType:noticeAttachment.mimeType,byteLength:noticeAttachment.byteLength}).from(noticeAttachment)
+  .where(and(eq(noticeAttachment.tenantId,ctx.tenantId),eq(noticeAttachment.noticeId,id),sql`${noticeAttachment.id}=ANY((SELECT n.attachment_ids FROM public.notice n WHERE n.id=${id}::uuid AND n.tenant_id=${ctx.tenantId}::uuid)::uuid[])`))
+  .orderBy(asc(noticeAttachment.createdAt),asc(noticeAttachment.id)).limit(5));
 }

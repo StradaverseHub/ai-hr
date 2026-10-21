@@ -5596,9 +5596,9 @@ export const noticeRevision=pgTable('notice_revision',{
 /** Bytes are never part of Notice list/Home DTOs. Published revisions retain their attachment IDs. */
 export const noticeAttachment=pgTable('notice_attachment',{
  id:id(),tenantId:tenantId(),noticeId:uuid('notice_id').notNull().references(()=>notice.id,{onDelete:'cascade'}),
- fileName:text('file_name').notNull(),mimeType:text('mime_type').notNull(),byteLength:integer('byte_length').notNull(),
+ uploadKey:uuid('upload_key').notNull().defaultRandom(),fileName:text('file_name').notNull(),mimeType:text('mime_type').notNull(),byteLength:integer('byte_length').notNull(),
  content:bytea('content').notNull(),createdByUserId:uuid('created_by_user_id').notNull().references(()=>appUser.id),createdAt:createdAt(),
-},t=>[index('notice_attachment_parent_idx').on(t.tenantId,t.noticeId)]);
+},t=>[index('notice_attachment_parent_idx').on(t.tenantId,t.noticeId),uniqueIndex('notice_attachment_upload_once_uq').on(t.tenantId,t.noticeId,t.createdByUserId,t.uploadKey)]);
 
 /** Only the purpose-bound database acknowledgement command may insert; every receipt is immutable. */
 export const noticeAcknowledgement=pgTable('notice_acknowledgement',{

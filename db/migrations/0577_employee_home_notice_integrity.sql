@@ -340,7 +340,7 @@ ALTER TABLE public.notice
 --> statement-breakpoint
 CREATE TABLE public.notice_attachment (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES public.tenant(id),
- notice_id uuid NOT NULL REFERENCES public.notice(id) ON DELETE CASCADE,
+ notice_id uuid NOT NULL REFERENCES public.notice(id) ON DELETE CASCADE,upload_key uuid NOT NULL DEFAULT gen_random_uuid(),
  file_name text NOT NULL CHECK(length(file_name) BETWEEN 1 AND 180 AND file_name !~ '[[:cntrl:]/\\]'),
  mime_type text NOT NULL CHECK(mime_type IN ('application/pdf','image/png','image/jpeg','text/plain','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.openxmlformats-officedocument.presentationml.presentation')),
  byte_length integer NOT NULL CHECK(byte_length>0 AND byte_length<=10485760),
@@ -348,6 +348,7 @@ CREATE TABLE public.notice_attachment (
  created_by_user_id uuid NOT NULL REFERENCES public.app_user(id),created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX notice_attachment_parent_idx ON public.notice_attachment(tenant_id,notice_id);
+CREATE UNIQUE INDEX notice_attachment_upload_once_uq ON public.notice_attachment(tenant_id,notice_id,created_by_user_id,upload_key);
 --> statement-breakpoint
 CREATE TABLE public.notice_revision (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES public.tenant(id),

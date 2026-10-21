@@ -3,7 +3,7 @@ import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
-import {createNotice,publishNotice,updateNotice,archiveNotice,getNotice,noticesForEmployment,markNoticeViewed,dismissNoticePopup,popupNoticeFor,noticeContentHistory,acknowledgeNotice,noticeAcknowledgementHistory,type NoticeInput} from '../core/notice';
+import {createNotice,publishNotice,updateNotice,archiveNotice,getNotice,noticesForEmployment,markNoticeViewed,dismissNoticePopup,popupNoticeFor,noticeContentHistory,acknowledgeNotice,noticeAcknowledgementHistory,addNoticeAttachment,getNoticeAttachment,noticeAttachmentMetadata,type NoticeInput} from '../core/notice';
 import {hireEmployee} from '../core/org';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -87,5 +87,38 @@ describe('Retained Notice content and explicit recipient acknowledgement',()=>{
   expect(await code(acknowledgeNotice(e.ctx,ids[1],e.employmentId,1))).toBe('23514');
   await withTenant(adminCtx(b),tx=>tx.update(s.notice).set({contentVersion:999}).where(eq(s.notice.id,ids[1])));
   expect((await getNotice(adminCtx(b),ids[1]))?.contentVersion).toBe(1);
+ });
+});
+
+
+describe('Immutable Notice-owned attachments',()=>{
+ it('attaches once per explicit upload intent, retains references in content and never returns bytes from metadata',async()=>{
+  const n=await published(),upload={uploadKey:randomUUID(),fileName:'Fictional policy.txt',content:Buffer.from('Fictional reviewed attachment.')};
+  const asset=await addNoticeAttachment(adminCtx(b),n.id,1,upload);expect(asset.contentVersion).toBe(2);
+  expect(await addNoticeAttachment(adminCtx(b),n.id,1,upload)).toEqual(asset);
+  const revisions=await noticeContentHistory(adminCtx(b),n.id);expect(revisions.map(r=>r.attachmentIds)).toEqual([[asset.id],[]]);
+  const rows=await noticeAttachmentMetadata(n.e.ctx,n.id);expect(rows).toEqual([{id:asset.id,fileName:upload.fileName,mimeType:'text/plain',byteLength:upload.content.byteLength}]);
+  expect((await getNoticeAttachment(n.e.ctx,n.id,asset.id))?.content.equals(upload.content)).toBe(true);
+  expect(await code(owner.db.update(s.noticeAttachment).set({content:Buffer.from('Forged')}).where(eq(s.noticeAttachment.id,asset.id)))).toBe('23514');
+  await expect(addNoticeAttachment(adminCtx(b),n.id,2,{...upload,content:Buffer.from('Different bytes')})).rejects.toThrow(/upload changed/);
+ });
+ it('rechecks actual audience, revocation and the current revision at byte download',async()=>{
+  const n=await published(),other=await employee(),asset=await addNoticeAttachment(adminCtx(b),n.id,1,{uploadKey:randomUUID(),fileName:'Fictional policy.txt',content:Buffer.from('Fictional content')});
+  expect(await getNoticeAttachment(other.ctx,n.id,asset.id)).toBeNull();expect(await noticeAttachmentMetadata(other.ctx,n.id)).toEqual([]);
+  await updateNotice(adminCtx(b),n.id,input({attachmentIds:[]}));
+  expect(await getNoticeAttachment(n.e.ctx,n.id,asset.id)).toBeNull();
+  expect((await getNoticeAttachment(adminCtx(b),n.id,asset.id))?.id).toBe(asset.id);
+  const history=await noticeContentHistory(adminCtx(b),n.id);expect(history.some(r=>r.attachmentIds.includes(asset.id))).toBe(true);
+  expect(await code(owner.db.delete(s.noticeAttachment).where(eq(s.noticeAttachment.id,asset.id)))).toBe('23514');
+ });
+ it('refuses unsafe filenames, disguised types, foreign attachment references and stale uploads without side effects',async()=>{
+  const n=await published(),file={uploadKey:randomUUID(),fileName:'../fictional.txt',content:Buffer.from('Fictional')};
+  await expect(addNoticeAttachment(adminCtx(b),n.id,1,file)).rejects.toThrow(/safe name/);
+  await expect(addNoticeAttachment(adminCtx(b),n.id,1,{...file,fileName:'fictional.pdf'})).rejects.toThrow(/contents or file type/);
+  await expect(addNoticeAttachment(adminCtx(b),n.id,1,{...file,fileName:'fictional.html'})).rejects.toThrow(/contents or file type/);
+  await expect(addNoticeAttachment(adminCtx(b),n.id,0,{...file,fileName:'fictional.txt'})).rejects.toThrow(/changed/);
+  expect(await code(withTenant(adminCtx(b),tx=>tx.update(s.notice).set({attachmentIds:[randomUUID()]}).where(eq(s.notice.id,n.id))))).toBe('23514');
+  expect(await owner.db.select({id:s.noticeAttachment.id}).from(s.noticeAttachment).where(eq(s.noticeAttachment.noticeId,n.id))).toEqual([]);
+  expect((await getNotice(adminCtx(b),n.id))?.contentVersion).toBe(1);
  });
 });
