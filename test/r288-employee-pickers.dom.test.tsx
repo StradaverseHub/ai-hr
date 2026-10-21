@@ -83,6 +83,7 @@ function mountAdjustments() {
  * placeholder. (`test/r288-employee-pickers.test.ts` §C pins that the pages themselves pass them.)
  */
 const noticeLabels: NoticeFormLabels = {
+  authoringCompany:N.authoringCompany,chooseAuthoringCompany:N.chooseAuthoringCompany,groupAuthoring:N.groupAuthoring,authoringCompanyHelp:N.authoringCompanyHelp,noAuthoringScope:N.noAuthoringScope,
   sectionBasics: N.sectionBasics,
   sectionContent: N.sectionContent,
   sectionAudience: N.sectionAudience,
@@ -124,9 +125,11 @@ const noticeLabels: NoticeFormLabels = {
   submit: N.saveDraft,
 };
 
-function mountNotice(over: { employmentIds?: string[]; targetMode?: 'criteria' | 'individual' } = {}) {
+function mountNotice(over: { employmentIds?: string[]; targetMode?: 'criteria' | 'individual';authoring?:Parameters<typeof NoticeForm>[0]['authoring'];idField?:string } = {}) {
   return render(
     <NoticeForm
+      authoring={over.authoring??{groupAllowed:true,companies:[{value:'c1',label:'Acme'}],owner:null}}
+      idField={over.idField}
       action={() => {}}
       values={{
         title: 'Town hall',
@@ -156,6 +159,28 @@ function mountNotice(over: { employmentIds?: string[]; targetMode?: 'criteria' |
 
 const searchBox = (placeholder: string) => screen.getByPlaceholderText(placeholder) as HTMLInputElement;
 const panelOf = (placeholder: string) => searchBox(placeholder).parentElement!;
+
+describe('Notice authoring company is separate from audience filters',()=>{
+ it('offers only the actual scoped company and posts it as the authoring boundary',()=>{
+  const view=mountNotice({authoring:{groupAllowed:false,companies:[{value:'c1',label:'Acme'}],owner:null}});
+  const select=screen.getByRole('combobox',{name:N.authoringCompany});expect(select).toHaveValue('c1');
+  expect(screen.queryByRole('option',{name:N.groupAuthoring})).toBeNull();
+  expect(new FormData(view.container.querySelector('form')!).get('authoringCompany')).toBe('c1');
+ });
+ it('requires a deliberate group selection and freezes the saved owner independently of audience editing',async()=>{
+  const user=userEvent.setup(),view=mountNotice();
+  const select=screen.getByRole('combobox',{name:N.authoringCompany});expect(select).toBeRequired();expect(select).toHaveValue('');
+  await user.selectOptions(select,'group');expect(new FormData(view.container.querySelector('form')!).get('authoringCompany')).toBe('group');view.unmount();
+  const saved=mountNotice({idField:IRWIN,authoring:{groupAllowed:true,companies:[{value:'c1',label:'Acme'}],owner:{companyId:'c1',label:'Acme'}}});
+  expect(screen.queryByRole('combobox',{name:N.authoringCompany})).toBeNull();
+  expect(new FormData(saved.container.querySelector('form')!).get('authoringCompany')).toBe('c1');
+ });
+ it('explains unavailable authoring scope and disables saving',()=>{
+  mountNotice({authoring:{groupAllowed:false,companies:[],owner:null}});
+  expect(screen.getByRole('alert')).toHaveTextContent(N.noAuthoringScope);
+  expect(screen.getByRole('button',{name:N.saveDraft})).toBeDisabled();
+ });
+});
 
 /**
  * The option rows the popover is currently OFFERING. Every option stays mounted; the component narrows by

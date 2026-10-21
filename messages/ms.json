@@ -15868,7 +15868,7 @@
     "fPasteAlternative": "Atau tampal ID Pekerja",
     "fPasteAlternativeHelp": "Cara kedua, untuk senarai yang anda sudah ada: tampal ID Pekerja seperti EMP-0008, atau rujukan rekod pekerja, dipisahkan dengan ruang, koma atau baris baharu. Untuk memilih mengikut nama, gunakan carian di atas.",
     "fPasteUnmatched": "Tidak dikenali, jadi ini tidak akan sepadan dengan sesiapa: {list}",
-    "everyoneWarning": "Tiada kriteria ditetapkan, jadi notis ini akan sampai kepada setiap pekerja aktif. Semak jumlah di atas sebelum menerbitkan.",
+    "everyoneWarning": "Tanpa penapis penerima, semua orang dalam skop syarikat pengurus disertakan. Semak jumlah penerima draf sebelum menerbitkan.",
     "targetingFrozen": "Notis ini telah diterbitkan, jadi penerimanya tetap. Untuk sampai kepada orang lain, arkibkannya dan terbitkan notis baharu.",
     "fNotify": "Maklumkan penerima apabila ia diterbitkan",
     "fNotifyHelp": "Penerima melihat makluman dalam loceng aplikasi. E-mel juga memerlukan kategori dibenarkan, persetujuan penerima dan geganti SMTP aktif.",
@@ -15908,7 +15908,14 @@
     "cardNewCount": "{count} baharu",
     "cardUnreadWord": "Baharu",
     "popupRead": "Baca notis",
-    "popupDismiss": "Tutup"
+    "popupDismiss": "Tutup",
+    "authoringCompany": "Syarikat pengurus notis",
+    "chooseAuthoringCompany": "Pilih syarikat pengurus notis",
+    "groupAuthoring": "Notis seluruh kumpulan",
+    "authoringCompanyHelp": "Syarikat ini mengurus notis dan mengehadkan penerimanya. Syarikat pengurus kekal selepas draf disimpan.",
+    "noAuthoringScope": "Tiada syarikat pengurus notis tersedia dalam skop pentadbir anda.",
+    "authoringCompanyUnavailable": "Syarikat pengurus notis tidak tersedia",
+    "audienceIncomplete": "Sesetengah rujukan penerima tidak tersedia atau di luar skop syarikat pengurus. Semak sebelum menerbitkan."
   },
   "employeePanel": {
     "heading": "Pekerja",

@@ -27,9 +27,9 @@
  */
 import { and, asc, desc, eq, inArray, isNull, isNotNull, lte, gte, sql } from 'drizzle-orm';
 
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext,type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { employment, notice, noticeRecipient } from '../db/schema';
+import { company,employment, notice, noticeRecipient } from '../db/schema';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import {
   isUnrestrictedOrgCriteria,
@@ -177,6 +177,52 @@ type StoredCriteria = OrgCriteria & { employmentIds?: string[] };
 const authoringNotice=(id:string)=>and(eq(notice.id,id),sql`app.can_manage_notice(${notice.id})`);
 function requireNoticeWrite(rows:readonly {id:string}[]){if(rows.length!==1)throw new NoticeError('That notice is no longer available in your authoring scope.');}
 
+export function noticeAuthoringScope(ctx:SessionContext){
+ return withTenant(ctx,async tx=>{
+  const [group]=await tx.execute(sql`SELECT app.principal_snapshot_current() AND app.is_group_admin() AS allowed`) as unknown as {allowed:boolean}[];
+  const companies=await tx.select({id:company.id,name:company.legalName}).from(company)
+   .where(and(eq(company.tenantId,ctx.tenantId),isNull(company.archivedAt),sql`app.principal_snapshot_current() AND app.is_admin_for(${company.id})`))
+   .orderBy(asc(company.legalName),asc(company.id));
+  return {groupAllowed:group?.allowed===true,companies};
+ });
+}
+
+/** The preview and publisher use the same audience resolver and authoring boundary. Unresolved tokens
+ * stay in the draft; only real, authorized employments count, and an incomplete audience cannot publish.
+ * Resolution is as at publication/preview time, never a scheduled notice's future start date. */
+async function resolveNoticeAudienceTx(tx:Tx,ctx:SessionContext,row:Pick<typeof notice.$inferSelect,'criteria'|'targetMode'|'ownerCompanyId'>,asOf:string){
+ const stored=(row.criteria??{}) as StoredCriteria,criteria:OrgCriteria={...stored};delete (criteria as StoredCriteria).employmentIds;
+ let targets:string[],scopeMismatch=false;
+ if(row.targetMode==='individual')targets=Array.from(new Set((stored.employmentIds??[]).filter(Boolean).map(value=>/^[0-9a-f-]{36}$/i.test(value)?value.toLowerCase():value)));
+ else{
+  const companies=await tx.select({id:company.id}).from(company).where(and(eq(company.tenantId,ctx.tenantId),sql`app.is_admin_for(${company.id})`,
+   row.ownerCompanyId?sql`(${company.id}=${row.ownerCompanyId}::uuid OR app.is_company_descendant(${company.id},${row.ownerCompanyId}::uuid))`:undefined));
+  const allowed=new Set(companies.map(item=>item.id));
+  const requested=(criteria.companyIds??[]).filter(Boolean).map(value=>value.toLowerCase());
+  scopeMismatch=requested.some(id=>!allowed.has(id));
+  const bounded=requested.length?requested.filter(id=>allowed.has(id)):[...allowed];
+  // An empty company restriction means "all" to the shared criteria owner, so do not call it when
+  // the authoring intersection is empty. Other dated/active/department rules remain with that owner.
+  targets=bounded.length?await resolveOrgCriteriaTargets(tx,{criteria:{...criteria,companyIds:bounded},asOf}):[];
+ }
+ const valid=targets.filter(target=>/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(target));
+ const visible=valid.length?await tx.select({id:employment.id}).from(employment)
+  .where(and(inArray(employment.id,valid),eq(employment.tenantId,ctx.tenantId),sql`app.is_admin_for(${employment.companyId})`,
+   row.ownerCompanyId?sql`(${employment.companyId}=${row.ownerCompanyId}::uuid OR app.is_company_descendant(${employment.companyId},${row.ownerCompanyId}::uuid))`:undefined))
+  .orderBy(asc(employment.id)):[];
+ return {ids:visible.map(item=>item.id),invalid:valid.length!==targets.length,incomplete:scopeMismatch||visible.length!==targets.length,
+  unrestricted:row.ownerCompanyId===null&&row.targetMode==='criteria'&&isUnrestrictedOrgCriteria(criteria)};
+}
+
+export function noticeAudiencePreview(ctx:SessionContext,id:string){
+ return withTenant(ctx,async tx=>{
+  const [row]=await tx.select().from(notice).where(authoringNotice(id)).limit(1);
+  if(!row||row.publishedAt)throw new NoticeError('Choose an available draft notice to preview its audience.');
+  const result=await resolveNoticeAudienceTx(tx,ctx,row,todayInKualaLumpur());
+  return {count:result.ids.length,incomplete:result.incomplete,unrestricted:result.unrestricted};
+ });
+}
+
 export async function createNotice(ctx: SessionContext, p: NoticeInput): Promise<{ id: string }> {
   const c = cleanNotice(p);
   return withTenant(ctx, async (tx) => {
@@ -287,38 +333,11 @@ export async function publishNotice(
     if (row.archivedAt) throw new NoticeError('An archived notice cannot be published.');
     if (row.publishedAt) throw new NoticeError('That notice has already been published.');
 
-    const stored = (row.criteria ?? {}) as StoredCriteria;
-    let targets: string[];
-    if (row.targetMode === 'individual') {
-      targets = Array.from(new Set((stored.employmentIds ?? []).filter(Boolean)));
-    } else {
-      // ⚠️ The audience is resolved AS AT the publish date, not the notice's start date. A notice
-      // scheduled to open next month reaches the people who are here NOW, which is what an administrator
-      // pressing Publish today means — and it is the only reading under which the count they were shown
-      // before pressing the button is the count they get.
-      // Strip the reserved individual-targeting key before handing the object to the resolver: it lives on
-      // the same blob (one place for "who was asked for") and is not a criteria axis.
-      const criteria: OrgCriteria = { ...stored };
-      delete (criteria as StoredCriteria).employmentIds;
-      targets = await resolveOrgCriteriaTargets(tx, { criteria, asOf });
-    }
-    if (targets.length === 0) {
-      throw new NoticeError('No employees matched — this notice would reach nobody.');
-    }
-    if(targets.some(target=>!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(target)))throw new NoticeError('Some employee references are unavailable. Review the audience before publishing.');
-
-    // Every target must be inside current administration and the notice's recorded owner boundary.
-    // Refuse an incomplete audience rather than silently publishing to fewer people than requested.
-    const visible = await tx
-      .select({ id: employment.id })
-      .from(employment)
-      .where(and(inArray(employment.id,targets),eq(employment.tenantId,ctx.tenantId),sql`app.is_admin_for(${employment.companyId})`,
-        row.ownerCompanyId?sql`(${employment.companyId}=${row.ownerCompanyId}::uuid OR app.is_company_descendant(${employment.companyId},${row.ownerCompanyId}::uuid))`:undefined));
-    const recipientIds = visible.map((v) => v.id);
-    if(recipientIds.length!==targets.length)throw new NoticeError('Some employees are outside this notice’s authoring scope. Review the audience before publishing.');
-    if (recipientIds.length === 0) {
-      throw new NoticeError('No employees matched — this notice would reach nobody.');
-    }
+    const audience=await resolveNoticeAudienceTx(tx,ctx,row,asOf);
+    if(audience.invalid)throw new NoticeError('Some employee references are unavailable. Review the audience before publishing.');
+    if(audience.incomplete)throw new NoticeError('Some employees are outside this notice’s authoring scope. Review the audience before publishing.');
+    const recipientIds=audience.ids;
+    if(!recipientIds.length)throw new NoticeError('No employees matched — this notice would reach nobody.');
 
     await tx
       .insert(noticeRecipient)
@@ -470,6 +489,7 @@ export async function duplicateNotice(ctx: SessionContext, id: string): Promise<
 export type NoticeRow = {
   id: string;
   ownerCompanyId: string | null;
+  ownerCompanyName: string | null;
   title: string;
   body: string;
   startOn: string;
@@ -507,6 +527,7 @@ export async function listNotices(
       .select({
         id: notice.id,
         ownerCompanyId: notice.ownerCompanyId,
+        ownerCompanyName:sql<string|null>`(SELECT c.legal_name FROM public.company c WHERE c.id=notice.owner_company_id AND c.tenant_id=notice.tenant_id)`,
         title: notice.title,
         body: notice.body,
         startOn: notice.startOn,

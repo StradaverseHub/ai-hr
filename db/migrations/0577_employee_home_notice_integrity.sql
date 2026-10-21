@@ -140,8 +140,9 @@ BEGIN
  END IF;
  IF NEW.owner_company_id IS NOT NULL AND NOT EXISTS(
   SELECT 1 FROM public.company c WHERE c.id=NEW.owner_company_id AND c.tenant_id=NEW.tenant_id
+   AND (TG_OP<>'INSERT' OR c.archived_at IS NULL)
  ) THEN
-  RAISE EXCEPTION 'Notice authoring company is outside this tenant' USING ERRCODE='23514';
+  RAISE EXCEPTION 'Notice authoring company is unavailable in this tenant' USING ERRCODE='23514';
  END IF;
  RETURN NEW;
 END;

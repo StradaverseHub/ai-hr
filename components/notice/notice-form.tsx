@@ -28,6 +28,11 @@ export type NoticeFormValues = {
 };
 
 export type NoticeFormLabels = {
+  authoringCompany:string;
+  chooseAuthoringCompany:string;
+  groupAuthoring:string;
+  authoringCompanyHelp:string;
+  noAuthoringScope:string;
   sectionBasics: string;
   sectionContent: string;
   sectionAudience: string;
@@ -112,6 +117,7 @@ export function NoticeForm({
   employees,
   targetingFrozen,
   labels,
+  authoring,
 }: {
   action: Action;
   values: NoticeFormValues;
@@ -131,6 +137,7 @@ export function NoticeForm({
   /** True once the notice is published — the audience snapshot is fixed and the step is read-only. */
   targetingFrozen: boolean;
   labels: NoticeFormLabels;
+  authoring:{groupAllowed:boolean;companies:Opt[];owner:{companyId:string|null;label:string}|null};
 }) {
   const [tab, setTab] = useState<'write' | 'preview'>('write');
   const [body, setBody] = useState(values.body);
@@ -216,6 +223,11 @@ export function NoticeForm({
   return (
     <form action={action} className="space-y-6">
       {idField && <input type="hidden" name="id" value={idField} />}
+      <section className="space-y-2 text-sm">
+        {authoring.owner?<><h2 className="font-medium">{labels.authoringCompany}</h2><p>{authoring.owner.label}</p><input type="hidden" name="authoringCompany" value={authoring.owner.companyId??'group'}/></>:<label className="block space-y-2"><span className="block font-medium">{labels.authoringCompany}</span><select name="authoringCompany" required defaultValue={!authoring.groupAllowed&&authoring.companies.length===1?authoring.companies[0].value:''} className={cn(inputCls,'min-h-11 w-full')}><option value="" disabled>{labels.chooseAuthoringCompany}</option>{authoring.groupAllowed&&<option value="group">{labels.groupAuthoring}</option>}{authoring.companies.map(company=><option key={company.value} value={company.value}>{company.label}</option>)}</select></label>}
+        <p className="max-w-prose text-muted-foreground">{labels.authoringCompanyHelp}</p>
+        {!authoring.owner&&!authoring.groupAllowed&&authoring.companies.length===0&&<p role="alert">{labels.noAuthoringScope}</p>}
+      </section>
       {/* ── Section 1 — basic information ──────────────────────────────────────────────────────────── */}
       <section className="space-y-3">
         <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -322,9 +334,8 @@ export function NoticeForm({
 
             {mode === 'criteria' ? (
               <div className="space-y-3" onChange={() => setAnyCriteria(true)}>
-                {/* "Posting Company: All Companies / Selected Companies" IS this field — leaving it empty
-                    means every company. One vocabulary, so there is no second company-scope control that
-                    could disagree with the criteria. */}
+                {/* Audience filters narrow the recorded authoring boundary. Empty company filters
+                    include that boundary; they never expand a company-owned notice to the whole group. */}
                 <ChipMultiSelect
                   name="companyIds"
                   label={labels.companies}
@@ -504,7 +515,7 @@ export function NoticeForm({
           same thing server-side and stays the authority; this is the half that tells the operator before
           they have written the whole notice rather than after. */}
       <div className="flex items-center gap-2">
-        <Button type="submit" size="sm" disabled={audienceBlocked}>
+        <Button type="submit" size="sm" disabled={audienceBlocked||(!authoring.owner&&!authoring.groupAllowed&&authoring.companies.length===0)}>
           {labels.submit}
         </Button>
         {audienceBlocked && (

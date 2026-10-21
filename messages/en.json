@@ -15868,7 +15868,7 @@
     "fPasteAlternative": "Or paste Employee IDs",
     "fPasteAlternativeHelp": "A second way in, for a list you already have: paste Employee IDs such as EMP-0008, or employee record references, separated by spaces, commas or new lines. To choose people by name, use the search above.",
     "fPasteUnmatched": "Not recognised, so these will match nobody: {list}",
-    "everyoneWarning": "No criteria are set, so this notice will reach every active employee. Check the number above before publishing.",
+    "everyoneWarning": "Without audience filters, everyone in the authoring scope is included. Check the saved reach before publishing.",
     "targetingFrozen": "This notice is published, so its audience is fixed. To reach different people, archive it and publish a new one.",
     "fNotify": "Notify recipients when it is published",
     "fNotifyHelp": "Recipients see an alert in the in-app notification bell. Email also requires category permission, recipient consent and an active SMTP relay.",
@@ -15908,7 +15908,14 @@
     "cardNewCount": "{count} new",
     "cardUnreadWord": "New",
     "popupRead": "Read notice",
-    "popupDismiss": "Close"
+    "popupDismiss": "Close",
+    "authoringCompany": "Authoring company",
+    "chooseAuthoringCompany": "Choose authoring company",
+    "groupAuthoring": "Group-wide notice",
+    "authoringCompanyHelp": "This company manages the notice and limits its audience. The authoring company stays fixed after the draft is saved.",
+    "noAuthoringScope": "No authoring company is available in your current administrator scope.",
+    "authoringCompanyUnavailable": "Authoring company unavailable",
+    "audienceIncomplete": "Some audience references are unavailable or outside the authoring scope. Review them before publishing."
   },
   "employeePanel": {
     "heading": "Employees",

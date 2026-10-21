@@ -15868,7 +15868,7 @@
     "fPasteAlternative": "Hoặc dán Mã nhân viên",
     "fPasteAlternativeHelp": "Cách thứ hai, dành cho danh sách bạn đã có: dán Mã nhân viên như EMP-0008, hoặc mã tham chiếu hồ sơ nhân viên, phân tách bằng dấu cách, dấu phẩy hoặc dòng mới. Để chọn theo tên, hãy dùng ô tìm kiếm ở trên.",
     "fPasteUnmatched": "Không nhận ra, nên những mục này sẽ không khớp với ai: {list}",
-    "everyoneWarning": "Chưa đặt tiêu chí nào, nên thông báo này sẽ đến mọi nhân viên đang làm việc. Hãy kiểm tra số lượng ở trên trước khi đăng.",
+    "everyoneWarning": "Nếu không lọc đối tượng nhận, mọi người trong phạm vi quản lý đều được bao gồm. Kiểm tra số người nhận trong bản nháp trước khi đăng.",
     "targetingFrozen": "Thông báo này đã được đăng nên danh sách người nhận là cố định. Để gửi tới người khác, hãy lưu trữ nó và đăng một thông báo mới.",
     "fNotify": "Thông báo cho người nhận khi đăng",
     "fNotifyHelp": "Người nhận thấy thông báo trong chuông của ứng dụng. Email còn cần danh mục được cho phép, sự đồng ý của người nhận và SMTP đang hoạt động.",
@@ -15908,7 +15908,14 @@
     "cardNewCount": "{count} mới",
     "cardUnreadWord": "Mới",
     "popupRead": "Đọc thông báo",
-    "popupDismiss": "Đóng"
+    "popupDismiss": "Đóng",
+    "authoringCompany": "Công ty quản lý thông báo",
+    "chooseAuthoringCompany": "Chọn công ty quản lý thông báo",
+    "groupAuthoring": "Thông báo toàn tập đoàn",
+    "authoringCompanyHelp": "Công ty này quản lý thông báo và giới hạn đối tượng nhận. Công ty quản lý được giữ nguyên sau khi lưu bản nháp.",
+    "noAuthoringScope": "Không có công ty quản lý thông báo trong phạm vi quản trị hiện tại của bạn.",
+    "authoringCompanyUnavailable": "Không có thông tin công ty quản lý thông báo",
+    "audienceIncomplete": "Một số đối tượng nhận không có sẵn hoặc ngoài phạm vi công ty quản lý. Hãy kiểm tra trước khi đăng."
   },
   "employeePanel": {
     "heading": "Nhân viên",

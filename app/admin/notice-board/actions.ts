@@ -11,6 +11,7 @@ import {
   restoreNotice,
   updateNotice,
   type NoticeInput,
+  NoticeError,
 } from '@/core/notice';
 import { orgCriteriaFromFields } from '@/core/org-criteria';
 import { listEmployeePickOptions } from '@/core/read';
@@ -43,10 +44,14 @@ const detail = (id: string) => `${BOARD}/${id}`;
  * criteria notice names nobody by reference and must not pay for a list it will not look at.
  */
 async function inputFrom(s: SessionContext, fd: FormData): Promise<NoticeInput> {
+  const owners=fd.getAll('authoringCompany');
+  if(owners.length>1||owners.some(value=>typeof value!=='string'))throw new NoticeError('Choose one authoring company.');
+  const owner=owners[0] as string|undefined;
   const list = (name: string) => fd.getAll(name).map(String).filter(Boolean);
   const targetMode = fd.get('targetMode') === 'individual' ? 'individual' : 'criteria';
   const audience = targetMode === 'individual' ? await listEmployeePickOptions(s) : [];
   return {
+    companyId:owner===undefined?undefined:owner==='group'?null:owner,
     title: String(fd.get('title') ?? ''),
     body: String(fd.get('body') ?? ''),
     startOn: String(fd.get('startOn') ?? ''),

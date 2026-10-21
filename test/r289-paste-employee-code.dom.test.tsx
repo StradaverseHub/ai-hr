@@ -114,6 +114,7 @@ const mountAdjustments = () =>
  * plausible placeholder.
  */
 const noticeLabels: NoticeFormLabels = {
+  authoringCompany:N.authoringCompany,chooseAuthoringCompany:N.chooseAuthoringCompany,groupAuthoring:N.groupAuthoring,authoringCompanyHelp:N.authoringCompanyHelp,noAuthoringScope:N.noAuthoringScope,
   sectionBasics: N.sectionBasics,
   sectionContent: N.sectionContent,
   sectionAudience: N.sectionAudience,
@@ -157,6 +158,7 @@ const noticeLabels: NoticeFormLabels = {
 const mountNotice = () =>
   render(
     <NoticeForm
+      authoring={{groupAllowed:true,companies:[{value:'c1',label:'Acme'}],owner:null}}
       action={() => {}}
       values={{
         title: 'Town hall',
