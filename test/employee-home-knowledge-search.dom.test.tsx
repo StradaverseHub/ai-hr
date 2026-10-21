@@ -105,4 +105,12 @@ describe('Home library search facet',()=>{
     rerender(<NavIndexProvider><PublishedSearch entries={[]} contextKey="different-fictional-viewer"/></NavIndexProvider>);
     expect(screen.getByRole('searchbox')).toHaveValue('');expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
+  it('keeps both page and authored-document results when a broad query fills the eight-result budget',async()=>{
+    vi.stubGlobal('fetch',vi.fn(async()=>Response.json({version:1,items:Array.from({length:8},(_,i)=>({id:'doc-'+i,title:'Leave policy '+i,descriptionMarkdown:null}))})));
+    render(<NavIndexProvider><PublishedSearch entries={Array.from({length:8},(_,i)=>({href:'/leave/'+i,label:'Leave page '+i,parent:null,section:null}))}/></NavIndexProvider>);
+    submit('leave');await waitFor(()=>expect(screen.getByRole('link',{name:'Leave policy 0'})).toBeVisible());
+    expect(screen.getAllByRole('link')).toHaveLength(8);
+    expect(screen.getAllByRole('link').filter(link=>link.textContent?.startsWith('Leave page'))).toHaveLength(4);
+    expect(screen.queryByText('Leave policy 4')).not.toBeInTheDocument();
+  });
 });

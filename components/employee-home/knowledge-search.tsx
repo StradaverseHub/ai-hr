@@ -38,6 +38,8 @@ function KnowledgeSearch({locale,labels}:{locale:Locale;labels:HomeKnowledgeSear
     if(composing)return [];
     try{return homeNavigationSearch(query,entries);}catch{return [];}
   },[query,entries,composing]);
+  // A broad page match must not crowd every authored policy/form/help result out of the bounded list.
+  const visibleNavigation=documentItems.length?navigation.slice(0,HOME_SEARCH_RESULT_LIMIT/2):navigation;
   const search=React.useCallback(async()=>{
     cancelDelay();current.current?.abort();current.current=null;
     try{if(!homeSearchWords(query).length){setView(query.trim()?{state:'failed',reason:'invalid'}:{state:'idle'});return;}}
@@ -90,10 +92,10 @@ function KnowledgeSearch({locale,labels}:{locale:Locale;labels:HomeKnowledgeSear
       {(navigation.length>0||documentItems.length>0)&&
         <section aria-label={labels.results} className="space-y-2">
           <h3 className="text-sm font-semibold">{labels.results}</h3>
-          <ul className="divide-y divide-border">{navigation.map(item=><li key={'page:'+item.href} className="pb-3">
+          <ul className="divide-y divide-border">{visibleNavigation.map(item=><li key={'page:'+item.href} className="pb-3">
             <Link href={item.href} className="flex min-h-11 items-center rounded-md py-2 text-sm leading-relaxed underline underline-offset-4 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{item.label}</Link>
             <p className="text-sm leading-relaxed text-muted-foreground">{[...new Set([item.parent,item.section].filter(value=>value&&value!==item.label))].join(' · ')||labels.pageDescriptionFallback}</p>
-          </li>)}{documentItems.slice(0,HOME_SEARCH_RESULT_LIMIT-navigation.length).map(item=><li key={'document:'+item.id} className="pb-3">
+          </li>)}{documentItems.slice(0,HOME_SEARCH_RESULT_LIMIT-visibleNavigation.length).map(item=><li key={'document:'+item.id} className="pb-3">
             <Link href={homeKnowledgeHref(item.id)} className="flex min-h-11 items-center rounded-md py-2 text-sm leading-relaxed underline underline-offset-4 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{item.title}</Link>
             {item.descriptionMarkdown?<React.Suspense fallback={<p className="text-sm leading-relaxed text-muted-foreground">{labels.descriptionFallback}</p>}>
               <KnowledgeDescription markdown={item.descriptionMarkdown}/>
