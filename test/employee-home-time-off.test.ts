@@ -24,7 +24,7 @@ async function worker(role:'employee'|'hr_admin'='employee'){
  return {...hired,ctx};
 }
 async function type(employmentId:string,partial:Partial<typeof leaveType.$inferInsert>={}){
- const [row]=await owner.db.insert(leaveType).values({tenantId:b.tenantId,name:'Fictional annual Home leave',code:'HOME_'+randomUUID().slice(0,7),
+ const [row]=await owner.db.insert(leaveType).values({tenantId:b.tenantId,name:'Fictional annual Home leave',code:'HOME_'+randomUUID().slice(0,7).toUpperCase(),
   counting:'calendar_days',paid:true,visibleToEmployee:true,role:'annual',employeeCancelApproved:true,...partial}).returning();
  await owner.db.insert(leaveLedger).values({tenantId:b.tenantId,employmentId,leaveTypeId:row.id,entryType:'accrual',days:'20.00',effectiveOn:today().slice(0,4)+'-01-01'});
  return row.id;
