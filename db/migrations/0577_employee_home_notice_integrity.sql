@@ -3,6 +3,28 @@
 -- proves only employment ownership: without this guard an employee could redirect their own row
 -- to another notice and thereby satisfy that notice's recipient SELECT policy.
 -- No backfill or audience re-resolution: historical snapshot membership remains unchanged.
+-- Acquire the related DDL locks together without holding a partial set while a publisher,
+-- projector or email revalidator finishes in its own query order. A failed NOWAIT attempt rolls
+-- back this subtransaction's locks; existing work can finish before the next bounded attempt.
+DO $$
+DECLARE deadline timestamptz:=clock_timestamp()+interval '30 seconds';
+BEGIN
+ LOOP
+  BEGIN
+   LOCK TABLE public.notification_cursor,public.notice,public.notice_recipient,public.domain_event
+    IN ACCESS EXCLUSIVE MODE NOWAIT;
+   EXIT;
+  EXCEPTION WHEN lock_not_available THEN
+   IF clock_timestamp()>=deadline THEN
+    RAISE EXCEPTION 'Notice migration could not acquire its complete lock set; retry after active work finishes'
+     USING ERRCODE='55P03';
+   END IF;
+  END;
+  PERFORM pg_sleep(0.1);
+ END LOOP;
+END;
+$$;
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.guard_notice_recipient_identity()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -185,6 +207,11 @@ CREATE FUNCTION app.guard_published_notice_membership() RETURNS trigger LANGUAGE
  SECURITY INVOKER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE parent_published timestamptz;
 BEGIN
+ IF TG_OP='INSERT' AND NOT EXISTS(
+  SELECT 1 FROM public.employment e WHERE e.id=NEW.employment_id AND e.tenant_id=NEW.tenant_id
+ ) THEN
+  RAISE EXCEPTION 'Notice recipient employment is outside this tenant' USING ERRCODE='23514';
+ END IF;
  -- Serialize membership changes with publication. Recipient marker updates retain their separate guard.
  SELECT n.published_at INTO parent_published FROM public.notice n
   WHERE n.id=CASE WHEN TG_OP='DELETE' THEN OLD.notice_id ELSE NEW.notice_id END FOR UPDATE;
@@ -198,3 +225,103 @@ $$;
 REVOKE ALL ON FUNCTION app.guard_published_notice_membership() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER published_notice_membership_guard BEFORE INSERT OR DELETE ON public.notice_recipient
  FOR EACH ROW EXECUTE FUNCTION app.guard_published_notice_membership();
+--> statement-breakpoint
+-- Authentication and explicit SET ROLE are the connection authority. current_user alone could be
+-- the owner of an intervening SECURITY DEFINER function and cannot establish this capability.
+CREATE FUNCTION app.notice_projection_connection_owner() RETURNS boolean LANGUAGE sql STABLE
+ SECURITY INVOKER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH actor AS (
+  SELECT session_user::text AS login,
+   coalesce(nullif(nullif(current_setting('role',true),'none'),''),session_user::text) AS effective
+ )
+ SELECT login<>'ai_hr_app' AND effective<>'ai_hr_app' AND coalesce((
+  SELECT count(*)=3 AND bool_and(
+   (p.rolsuper OR p.rolbypassrls OR (NOT c.relforcerowsecurity AND pg_has_role(a.effective::name,c.relowner,'USAGE')))
+   AND (s.rolsuper OR s.rolbypassrls OR (NOT c.relforcerowsecurity AND pg_has_role(a.login::name,c.relowner,'USAGE'))))
+  FROM pg_catalog.pg_roles p CROSS JOIN pg_catalog.pg_roles s CROSS JOIN pg_catalog.pg_class c
+  WHERE p.rolname=a.effective::name AND s.rolname=a.login::name
+   AND c.oid IN ('public.notice_recipient'::regclass,'public.domain_event'::regclass,'public.notification_cursor'::regclass)
+ ),false) FROM actor a;
+$$;
+REVOKE ALL ON FUNCTION app.notice_projection_connection_owner() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.notice_projection_connection_owner() TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.guard_notice_event_scope() RETURNS trigger LANGUAGE plpgsql
+ SECURITY INVOKER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE owner_company uuid; storage_owner boolean;
+BEGIN
+ SELECT n.owner_company_id INTO owner_company FROM public.notice n
+  WHERE n.id=NEW.aggregate_id AND n.tenant_id=NEW.tenant_id;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Notice event parent is unavailable' USING ERRCODE='23514'; END IF;
+ storage_owner:=app.notice_projection_connection_owner();
+ IF NOT storage_owner AND NOT app.can_manage_notice(NEW.aggregate_id) THEN
+  RAISE EXCEPTION 'Notice event is outside current authoring authority' USING ERRCODE='42501';
+ END IF;
+ IF NOT storage_owner AND (NEW.actor_type<>'user' OR NEW.actor_id IS DISTINCT FROM app.current_user_id()) THEN
+  RAISE EXCEPTION 'Notice event must name the actual author' USING ERRCODE='42501';
+ END IF;
+ IF NEW.payload IS NOT NULL AND jsonb_typeof(NEW.payload)<>'object' THEN
+  RAISE EXCEPTION 'Notice event payload must be an object' USING ERRCODE='23514';
+ END IF;
+ NEW.payload:=coalesce(NEW.payload,'{}'::jsonb)||jsonb_build_object('companyId',owner_company);
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.guard_notice_event_scope() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER a_notice_event_scope_guard BEFORE INSERT ON public.domain_event
+ FOR EACH ROW WHEN(NEW.aggregate_type='notice' OR NEW.event_type LIKE 'notice.%')
+ EXECUTE FUNCTION app.guard_notice_event_scope();
+--> statement-breakpoint
+CREATE FUNCTION app.notice_event_readable(p_notice uuid,p_payload jsonb) RETURNS boolean LANGUAGE plpgsql STABLE
+ SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE parent_tenant uuid; owner_company uuid; encoded text;
+BEGIN
+ IF NOT app.principal_snapshot_current() THEN RETURN false; END IF;
+ SELECT n.tenant_id,n.owner_company_id INTO parent_tenant,owner_company FROM public.notice n WHERE n.id=p_notice;
+ IF FOUND THEN
+  IF parent_tenant IS DISTINCT FROM app.current_tenant_id() THEN RETURN false; END IF;
+  RETURN (owner_company IS NULL AND app.is_group_admin()) OR
+   (owner_company IS NOT NULL AND app.is_admin_for(owner_company));
+ END IF;
+ -- A new deleted draft has scope stamped from its real parent before deletion. An older orphan
+ -- without that evidence remains group-only; current employee placements cannot establish its history.
+ IF p_payload?'companyId' THEN
+  IF p_payload->'companyId'='null'::jsonb THEN RETURN app.is_group_admin(); END IF;
+  encoded:=p_payload->>'companyId';
+  IF encoded~*'^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$' THEN
+   RETURN EXISTS(SELECT 1 FROM public.company c WHERE c.id=encoded::uuid
+    AND c.tenant_id=app.current_tenant_id() AND app.is_admin_for(c.id));
+  END IF;
+  RETURN false;
+ END IF;
+ RETURN app.is_group_admin();
+END;
+$$;
+REVOKE ALL ON FUNCTION app.notice_event_readable(uuid,jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.notice_event_readable(uuid,jsonb) TO ai_hr_app;
+CREATE POLICY notice_scoped_audit_read ON public.domain_event AS RESTRICTIVE FOR SELECT
+ USING(tenant_id=app.current_tenant_id() AND
+  ((aggregate_type<>'notice' AND event_type NOT LIKE 'notice.%') OR app.notice_event_readable(aggregate_id,payload)));
+--> statement-breakpoint
+CREATE FUNCTION app.guard_notification_global_cursor() RETURNS trigger LANGUAGE plpgsql
+ SECURITY INVOKER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE changes_global boolean;
+BEGIN
+ IF TG_OP='UPDATE' AND ROW(NEW.id,NEW.tenant_id) IS DISTINCT FROM ROW(OLD.id,OLD.tenant_id) THEN
+  RAISE EXCEPTION 'Notification cursor identity is immutable' USING ERRCODE='23514';
+ END IF;
+ IF TG_OP='INSERT' THEN changes_global:=NEW.last_sequence IS NOT NULL;
+ ELSIF TG_OP='DELETE' THEN changes_global:=OLD.last_sequence IS NOT NULL;
+ ELSE changes_global:=NEW.last_sequence IS DISTINCT FROM OLD.last_sequence;
+ END IF;
+ IF changes_global AND NOT app.notice_projection_connection_owner()
+  AND NOT (app.principal_snapshot_current() AND app.is_group_admin()) THEN
+  RAISE EXCEPTION 'Complete tenant notification projection authority is required' USING ERRCODE='42501';
+ END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD; END IF;
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.guard_notification_global_cursor() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER notification_global_cursor_guard BEFORE INSERT OR UPDATE OR DELETE ON public.notification_cursor
+ FOR EACH ROW EXECUTE FUNCTION app.guard_notification_global_cursor();

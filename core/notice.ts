@@ -435,7 +435,6 @@ export async function deleteNotice(ctx: SessionContext, id: string): Promise<voi
     if (row.publishedAt) {
       throw new NoticeError('A published notice cannot be deleted — archive it instead, so the record of what was announced survives.');
     }
-    requireNoticeWrite(await tx.delete(notice).where(eq(notice.id,id)).returning({id:notice.id}));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'notice',
@@ -444,6 +443,7 @@ export async function deleteNotice(ctx: SessionContext, id: string): Promise<voi
       actor: actorOf(ctx),
       payload: {},
     });
+    requireNoticeWrite(await tx.delete(notice).where(eq(notice.id,id)).returning({id:notice.id}));
   });
 }
 

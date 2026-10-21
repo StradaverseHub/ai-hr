@@ -19,7 +19,7 @@ import { rewardNotificationRecipients } from '../packs/rewards/service';
  */
 import { randomUUID } from 'node:crypto';
 import { notificationEmailCategory, type NotificationEmailCategory } from '../lib/notification-email-model';
-import {noticeNotificationRecipientsTx,noticeSweepReader,type NoticeRecipientReader,type NoticeSweepAccess} from './notice-projection';
+import {assertNotificationSweepConnection,noticeNotificationRecipientsTx,noticeSnapshotIdsTx,type NoticeRecipientReader,type NoticeEventReader,type NotificationSweepConnection} from './notice-projection';
 import { and, asc, desc, eq, gt, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
@@ -851,18 +851,36 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
 
 export type DispatchResult = { processed: number; created: number };
 
-/**
- * Project new domain events into notifications (admin/system context — reads the whole tenant event log and
- * inserts for any recipient, both RLS-gated to is_admin). Keyset-paginated by (created_at, id) via the
- * per-tenant cursor; idempotent (only events after the cursor are processed). Gated ⇒ no-op.
- */
-export async function dispatchNotifications(ctx: SessionContext, opts: { limit?: number;noticeSweep?:NoticeSweepAccess } = {}): Promise<DispatchResult> {
-  const noticeReader=noticeSweepReader(ctx,opts.noticeSweep);
+/** Complete global projection is owned by a fresh group administrator or the authenticated sweep.
+ * A company-scoped web request cannot consume a partially visible global event stream. */
+export async function dispatchNotifications(ctx:SessionContext,opts:{limit?:number}={}):Promise<DispatchResult>{
   const allCategories=enabled(ctx);
-  const scopedReminders=(ctx.entitlements?.scopedModules.notifications??[]).some(companyId=>isModuleEnabled(ctx,'notifications',companyId));
-  if(!allCategories&&!scopedReminders)return {processed:0,created:0};
-  const limit = Math.min(Math.max(opts.limit ?? 1000, 1), 5000);
-  return withTenant(ctx, async (tx) => {
+  if(!allCategories&&!hasScopedReminders(ctx))return {processed:0,created:0};
+  return withTenant(ctx,async tx=>{
+    if(allCategories){
+      const [scope]=await tx.execute(sql`select app.principal_snapshot_current() AND app.is_group_admin() AS allowed`) as unknown as {allowed:boolean}[];
+      if(!scope?.allowed)return {processed:0,created:0};
+    }
+    return projectNotificationsTx(tx,ctx,allCategories,projectionLimit(opts.limit));
+  });
+}
+
+/** Cron already holds this explicit owner connection. Keep projection and cursor in one transaction;
+ * all registry reads and business writes are downgraded to APP before projection. */
+export async function dispatchNotificationsFromSweep(ctx:SessionContext,connection:NotificationSweepConnection,opts:{limit?:number}={}):Promise<DispatchResult>{
+  if(ctx.userId)throw Error('Notification sweep requires a maintenance context.');
+  const allCategories=enabled(ctx);
+  if(!allCategories&&!hasScopedReminders(ctx))return {processed:0,created:0};
+  return connection.withTenant(ctx,async tx=>{
+    const priorRole=await assertNotificationSweepConnection(tx);
+    const [scope]=await tx.execute(sql`select app.is_group_admin() AS allowed`) as unknown as {allowed:boolean}[];
+    if(!scope?.allowed)throw Error('Notification sweep requires the complete tenant scope.');
+    return projectNotificationsTx(tx,ctx,allCategories,projectionLimit(opts.limit),priorRole);
+  });
+}
+function hasScopedReminders(ctx:SessionContext){return (ctx.entitlements?.scopedModules.notifications??[]).some(companyId=>isModuleEnabled(ctx,'notifications',companyId));}
+function projectionLimit(value?:number){return Math.min(Math.max(value??1000,1),5000);}
+async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boolean,limit:number,priorRole?:string):Promise<DispatchResult>{
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`notification-cursor:${ctx.tenantId}`},0))`);
     const [cur] = await tx.select().from(notificationCursor).where(eq(notificationCursor.tenantId, ctx.tenantId)).limit(1);
     const cursor=allCategories?cur?.lastSequence:cur?.assessmentLastSequence;
@@ -877,10 +895,24 @@ export async function dispatchNotifications(ctx: SessionContext, opts: { limit?:
         sequence: domainEvent.sequence,
       })
       .from(domainEvent)
-      .where(and(after,allCategories?undefined:eq(domainEvent.eventType,'assessment.reminder-queued')))
+      .where(and(eq(domainEvent.tenantId,ctx.tenantId),after,allCategories?undefined:eq(domainEvent.eventType,'assessment.reminder-queued')))
       .orderBy(asc(domainEvent.sequence))
       .limit(limit);
     if (rows.length === 0) return { processed: 0, created: 0 };
+
+    let noticeReader:NoticeRecipientReader|undefined;
+    if(priorRole!==undefined){
+      const audiences=new Map<string,string[]>();
+      for(const ev of rows){
+        if(ev.eventType==='notice.published'&&(ev.payload as Record<string,unknown>|null)?.notify===true&&!audiences.has(ev.aggregateId)){
+          audiences.set(ev.aggregateId,await noticeSnapshotIdsTx(tx,ctx.tenantId,ev.aggregateId));
+        }
+      }
+      noticeReader=async id=>{const ids=audiences.get(id);if(!ids)throw Error('Complete Notice projection snapshot is unavailable.');return ids;};
+      // Every canonical resolver and notification/outbox write retains APP RLS. Only the bounded event
+      // batch, immutable Notice snapshots and final cursor use this explicit maintenance connection.
+      await tx.execute(sql`SET LOCAL ROLE ai_hr_app`);
+    }
 
     let created = 0;
     for (const ev of rows) {
@@ -918,6 +950,9 @@ export async function dispatchNotifications(ctx: SessionContext, opts: { limit?:
       }
     }
 
+    // On an error the transaction rolls back both writes and SET LOCAL ROLE. Do not attempt a role
+    // restore inside a failed transaction and obscure the original error. Restore only on success.
+    if(priorRole!==undefined)await tx.execute(sql`select set_config('role',${priorRole},true)`);
     const last = rows[rows.length - 1];
     if (cur) {
       await tx
@@ -928,13 +963,19 @@ export async function dispatchNotifications(ctx: SessionContext, opts: { limit?:
       await tx.insert(notificationCursor).values({tenantId:ctx.tenantId,...(allCategories?{lastSequence:last.sequence}:{assessmentLastSequence:last.sequence})});
     }
     return { processed: rows.length, created };
-  });
 }
 
 /** Reauthorize queued mail with the same live recipient graph that created the in-app projection. */
-export async function notificationStillTargets(tx: Tx, eventId: string, kind: string, category: string, recipient: string,noticeReader?:NoticeRecipientReader): Promise<boolean> {
+export async function notificationStillTargets(tx: Tx, eventId: string, kind: string, category: string, recipient: string,noticeReader?:NoticeRecipientReader,noticeEventReader?:NoticeEventReader): Promise<boolean> {
   if (!notificationEmailCategory.safeParse(category).success) return false;
-  const [ev] = await tx.select().from(domainEvent).where(eq(domainEvent.id,eventId)).limit(1);
+  const [visible] = await tx.select({id:domainEvent.id,aggregateId:domainEvent.aggregateId,eventType:domainEvent.eventType,subjectEmploymentId:domainEvent.subjectEmploymentId,payload:domainEvent.payload})
+    .from(domainEvent).where(and(eq(domainEvent.id,eventId),sql`${domainEvent.tenantId}=app.current_tenant_id()`)).limit(1);
+  let ev=visible;
+  if(!ev&&category==='notice'){
+    if(!noticeEventReader)throw Error('Notice projection requires the complete authorized audience and source event.');
+    ev=await noticeEventReader(eventId);
+    if(!ev)throw Error('Notice source event is unavailable; retain the queued delivery for investigation.');
+  }
   if (!ev) return false;
   const entry = REGISTRY[ev.eventType];
   if (!entry) return false;

@@ -1,13 +1,15 @@
+import {readFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
-import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
+import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {createDb,withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
-import {createNotice,duplicateNotice,getNotice,listNotices,noticesForEmployment,publishNotice,updateNotice,archiveNotice,noticeAudiencePreview,noticeAuthoringScope,type NoticeInput} from '../core/notice';
-import {createNoticeSweepAccess,noticeSweepReader} from '../core/notice-projection';
-import {dispatchNotifications,notificationStillTargets} from '../core/notifications';
+import {createNotice,duplicateNotice,getNotice,listNotices,noticesForEmployment,publishNotice,updateNotice,archiveNotice,deleteNotice,noticeAudiencePreview,noticeAuthoringScope,type NoticeInput} from '../core/notice';
+import {createNoticeSweepAccess,noticeSweepReader,noticeSweepEventReader} from '../core/notice-projection';
+import {dispatchNotifications,dispatchNotificationsFromSweep,notificationStillTargets} from '../core/notifications';
 import {deliverNotificationEmails,type NotificationEmailTransport} from '../core/notification-email-delivery';
 import {saveNotificationEmailPolicy,saveNotificationEmailPreferences} from '../core/notification-email';
+import {verifyTenantChain} from '../core/audit-chain';
 import {hireEmployee} from '../core/org';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -89,20 +91,21 @@ describe('A maintenance connection supplies only a tenant-bound notice audience 
   const connection:Parameters<typeof createNoticeSweepAccess>[1]={withTenant:(context,fn,options)=>owner.withTenant(context,async tx=>{if(downgrade)await tx.execute(sql`SET LOCAL ROLE ai_hr_app`);return fn(tx);},options)};
   const access=await createNoticeSweepAccess(ctx,connection);
   expect(()=>noticeSweepReader({...ctx,tenantId:randomUUID()},access)).toThrow(/match/);
+  expect(()=>noticeSweepReader(ctx,{...access,recipients:async()=>[]})).toThrow(/match/);
   downgrade=true;await expect(access.recipients(randomUUID())).rejects.toThrow(/privileged/);
   await expect(createNoticeSweepAccess(ctx,connection)).rejects.toThrow(/privileged/);
  });
- it('rolls back a partial scoped projection and lets the existing sweep deliver the frozen audience once',async()=>{
+ it('leaves the global cursor untouched for scoped humans and lets the sweep deliver once',async()=>{
   const n=await published(null,true),hr=await scoped(),system={...adminCtx(b),userId:undefined};
-  await expect(dispatchNotifications(hr)).rejects.toThrow(/complete authorized audience/);
+  expect(await dispatchNotifications(hr)).toEqual({processed:0,created:0});
   expect(await owner.db.select().from(s.notificationCursor).where(eq(s.notificationCursor.tenantId,b.tenantId))).toEqual([]);
   const noticeSweep=await createNoticeSweepAccess(system,owner);
   expect(await noticeSweep.recipients(n.id)).toEqual([n.e.employmentId]);
-  expect(await dispatchNotifications(system,{noticeSweep})).toMatchObject({created:1});
-  expect(await dispatchNotifications(system,{noticeSweep})).toMatchObject({created:0});
+  expect(await dispatchNotificationsFromSweep(system,owner)).toMatchObject({created:1});
+  expect(await dispatchNotificationsFromSweep(system,owner)).toMatchObject({created:0});
   const rows=await owner.db.select().from(s.notification).where(and(eq(s.notification.tenantId,b.tenantId),eq(s.notification.kind,'notice.published')));
   expect(rows).toHaveLength(1);expect(rows[0].recipientEmploymentId).toBe(n.e.employmentId);
-  expect(await withTenant(system,tx=>notificationStillTargets(tx,rows[0].sourceEventId!,'notice.published','notice',n.e.employmentId,noticeSweepReader(system,noticeSweep)))).toBe(true);
+  expect(await withTenant(system,tx=>notificationStillTargets(tx,rows[0].sourceEventId!,'notice.published','notice',n.e.employmentId,noticeSweepReader(system,noticeSweep),noticeSweepEventReader(system,noticeSweep)))).toBe(true);
   expect(await noticeSweep.recipients(randomUUID())).toEqual([]);
  });
  it('keeps a queued notice email pending on missing scoped authority rather than cancelling it',async()=>{
@@ -119,5 +122,95 @@ describe('A maintenance connection supplies only a tenant-bound notice audience 
   const system={...adminCtx(b),userId:undefined},noticeSweep=await createNoticeSweepAccess(system,owner);
   expect(await deliverNotificationEmails(system,offline,{noticeSweep})).toMatchObject({attempted:1,skipped:0,unavailable:true});
   const [final]=await owner.db.select().from(s.notificationDelivery).where(eq(s.notificationDelivery.id,pending.id));expect(final.lastError).toBe('relayUnavailable');
+ });
+});
+
+
+describe('Notice audit scope and complete notification cursor authority',()=>{
+ it('stamps the real company, retains deleted-draft scope and never exposes it to another company',async()=>{
+  const [other]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional event owner'}).returning();
+  const n=await createNotice(adminCtx(b),input({companyId:other.id})),hr=await scoped();
+  const before=await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.aggregateId,n.id));
+  expect(before.length).toBeGreaterThan(0);expect(before.every(ev=>(ev.payload as {companyId:string}).companyId===other.id)).toBe(true);
+  expect(await withTenant(hr,tx=>tx.select().from(s.domainEvent).where(eq(s.domainEvent.aggregateId,n.id)))).toEqual([]);
+  await deleteNotice(adminCtx(b),n.id);
+  const after=await withTenant(adminCtx(b),tx=>tx.select().from(s.domainEvent).where(eq(s.domainEvent.aggregateId,n.id)).orderBy(s.domainEvent.sequence));
+  expect(after.map(ev=>ev.eventType)).toContain('notice.deleted');
+  expect(after.every(ev=>(ev.payload as {companyId:string}).companyId===other.id)).toBe(true);
+  expect(await withTenant(hr,tx=>tx.select().from(s.domainEvent).where(eq(s.domainEvent.aggregateId,n.id)))).toEqual([]);
+  await owner.db.update(s.roleAssignment).set({companyId:other.id}).where(eq(s.roleAssignment.appUserId,hr.userId!));
+  const actual={...hr,grants:[{role:'hr_admin',companyId:other.id}]};
+  expect((await withTenant(actual,tx=>tx.select().from(s.domainEvent).where(eq(s.domainEvent.aggregateId,n.id)))).length).toBe(after.length);
+ });
+ it('refuses forged actor, missing/foreign parent and overwrites caller-supplied event scope',async()=>{
+  const hr=await scoped(),n=await createNotice(hr,input({companyId:b.companyId}));
+  const event={tenantId:b.tenantId,aggregateType:'notice',aggregateId:n.id,eventType:'notice.updated',actorType:'user' as const,actorId:hr.userId!,payload:{companyId:randomUUID()}};
+  const [actual]=await withTenant(hr,tx=>tx.insert(s.domainEvent).values(event).returning());
+  expect((actual.payload as {companyId:string}).companyId).toBe(b.companyId);
+  expect(await code(withTenant(hr,tx=>tx.insert(s.domainEvent).values({...event,actorId:b.adminUserId})))).toBe('42501');
+  expect(await code(withTenant(hr,tx=>tx.insert(s.domainEvent).values({...event,aggregateId:randomUUID()})))).toBe('23514');
+  const foreignTenant=randomUUID();await owner.db.insert(s.tenant).values({id:foreignTenant,name:'Fictional foreign tenant'});
+  expect(await code(owner.db.insert(s.domainEvent).values({...event,tenantId:foreignTenant}))).toBe('23514');
+ });
+ it('stamps payload before hashing and refuses verification through a partial scoped audit read',async()=>{
+  const n=await createNotice(adminCtx(b),input({companyId:b.companyId}));
+  await withTenant(adminCtx(b),async tx=>{
+   await tx.execute(sql`select set_config('app.audit_hash_chain','on',true)`);
+   await tx.insert(s.domainEvent).values({tenantId:b.tenantId,aggregateType:'notice',aggregateId:n.id,eventType:'notice.updated',actorType:'user',actorId:b.adminUserId,payload:{title:'Fictional changed title'}});
+  });
+  expect(await verifyTenantChain(adminCtx(b))).toMatchObject({valid:true,checked:1,issues:[]});
+  await expect(verifyTenantChain(await scoped())).rejects.toThrow(/Complete current tenant audit authority/);
+ });
+ it('blocks old nil-user and scoped APP global cursor writes while preserving the reminder cursor',async()=>{
+  const hr=await scoped(),system={...adminCtx(b),userId:undefined};
+  expect(await code(withTenant(system,tx=>tx.insert(s.notificationCursor).values({tenantId:b.tenantId,lastSequence:1})))).toBe('42501');
+  expect(await code(withTenant(hr,tx=>tx.insert(s.notificationCursor).values({tenantId:b.tenantId,lastSequence:1})))).toBe('42501');
+  await withTenant(hr,tx=>tx.insert(s.notificationCursor).values({tenantId:b.tenantId,assessmentLastSequence:1}));
+  await withTenant(adminCtx(b),tx=>tx.update(s.notificationCursor).set({lastSequence:2}).where(eq(s.notificationCursor.tenantId,b.tenantId)));
+  expect(await code(withTenant(system,tx=>tx.update(s.notificationCursor).set({lastSequence:3}).where(eq(s.notificationCursor.tenantId,b.tenantId))))).toBe('42501');
+  expect(await code(withTenant(hr,tx=>tx.delete(s.notificationCursor).where(eq(s.notificationCursor.tenantId,b.tenantId))))).toBe('42501');
+  await withTenant(hr,tx=>tx.update(s.notificationCursor).set({assessmentLastSequence:2}).where(eq(s.notificationCursor.tenantId,b.tenantId)));
+ });
+ it('does not borrow a definer current_user when the authenticated connection selected APP',async()=>{
+  await owner.db.transaction(async tx=>{
+   await tx.execute(sql`CREATE FUNCTION pg_temp.notice_owner_borrow_probe() RETURNS boolean LANGUAGE sql SECURITY DEFINER AS 'SELECT app.notice_projection_connection_owner()'`);
+   await tx.execute(sql`SET LOCAL ROLE ai_hr_app`);
+   const [row]=await tx.execute(sql`select pg_temp.notice_owner_borrow_probe() as allowed`) as unknown as {allowed:boolean}[];
+   expect(row.allowed).toBe(false);
+  });
+  await expect(dispatchNotificationsFromSweep({...adminCtx(b),userId:undefined},createDb(process.env.TEST_DATABASE_URL!))).rejects.toThrow(/privileged/);
+  await expect(dispatchNotificationsFromSweep({...adminCtx(b),userId:undefined,grants:[{role:'hr_admin',companyId:b.companyId}]},owner)).rejects.toThrow(/complete tenant scope/);
+  await expect(dispatchNotificationsFromSweep(adminCtx(b),owner)).rejects.toThrow(/maintenance context/);
+ });
+ it('rolls back business writes and cursor together on a failed canonical projection',async()=>{
+  const n=await published(null,true),system={...adminCtx(b),userId:undefined};
+  const rejector:Parameters<typeof dispatchNotificationsFromSweep>[1]={withTenant:(ctx,fn,options)=>owner.withTenant(ctx,async tx=>{
+   await tx.execute(sql`CREATE FUNCTION pg_temp.reject_board1_projection() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF current_user<>'ai_hr_app' THEN RAISE EXCEPTION 'projection bypassed APP'; END IF; RAISE EXCEPTION 'fictional projection refusal'; END; $$`);
+   await tx.execute(sql`CREATE TRIGGER board1_projection_refusal BEFORE INSERT ON notification FOR EACH ROW EXECUTE FUNCTION pg_temp.reject_board1_projection()`);
+   return fn(tx);
+  },options)};
+  const refusal=await dispatchNotificationsFromSweep(system,rejector).then(()=>null,error=>error);
+  const messages:string[]=[];for(let item=refusal;item;item=item.cause)messages.push(String(item.message));
+  expect(messages.join(' ')).toContain('fictional projection refusal');expect(messages.join(' ')).not.toContain('projection bypassed APP');
+  expect(await owner.db.select().from(s.notification).where(eq(s.notification.tenantId,b.tenantId))).toEqual([]);
+  expect(await owner.db.select().from(s.notificationCursor).where(eq(s.notificationCursor.tenantId,b.tenantId))).toEqual([]);
+  expect(await dispatchNotificationsFromSweep(system,owner)).toMatchObject({created:1});
+  const [notification]=await owner.db.select().from(s.notification).where(eq(s.notification.sourceEventId,(await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,n.id),eq(s.domainEvent.eventType,'notice.published'))))[0].id));
+  expect(notification.recipientEmploymentId).toBe(n.e.employmentId);
+ });
+ it('releases a partial DDL lock set while an existing event reader finishes through Notice',async()=>{
+  const source=readFileSync(new URL('../db/migrations/0577_employee_home_notice_integrity.sql',import.meta.url),'utf8');
+  const start=source.indexOf('DO $$'),end=source.indexOf('--> statement-breakpoint',start);
+  expect(start).toBeGreaterThan(0);expect(end).toBeGreaterThan(start+300);
+  const lockSql=source.slice(start,end);
+  let readerReady!:()=>void,releaseReader!:()=>void;
+  const ready=new Promise<void>(resolve=>{readerReady=resolve;}),release=new Promise<void>(resolve=>{releaseReader=resolve;});
+  const reader=owner.db.transaction(async tx=>{await tx.execute(sql`select 1 from domain_event limit 1`);readerReady();await release;await tx.execute(sql`select 1 from notice limit 1`);});
+  await ready;let migratorPid=0;
+  const migrator=owner.db.transaction(async tx=>{const [row]=await tx.execute(sql`select pg_backend_pid() as pid`) as unknown as {pid:number}[];migratorPid=row.pid;await tx.execute(sql`SET LOCAL statement_timeout='5s'`);await tx.execute(sql.raw(lockSql));});
+  try{
+   await vi.waitFor(async()=>{expect(migratorPid).toBeGreaterThan(0);const [state]=await owner.db.execute(sql`select wait_event from pg_stat_activity where pid=${migratorPid}`);expect(state?.wait_event).toBe('PgSleep');},{timeout:2000,interval:20});
+  }finally{releaseReader();}
+  await Promise.all([reader,migrator]);
  });
 });

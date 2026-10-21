@@ -4,7 +4,7 @@ import { loadSweepScope,describeSkips } from '../core/sweep-scope';
 import { resolveEntitlementsTx,isModuleEnabled } from '../core/entitlements';
 import { sweepOnboarding, refreshOnboardingPersonnel } from '../packs/lifecycle/service';
 import { sweepAssessmentReminders } from '../packs/performance/service';
-import { dispatchNotifications } from '../core/notifications';
+import { dispatchNotificationsFromSweep } from '../core/notifications';
 import { deliverNotificationEmails } from '../core/notification-email-delivery';
 import {createNoticeSweepAccess} from '../core/notice-projection';
 async function main(){
@@ -20,7 +20,7 @@ async function main(){
     if(!isModuleEnabled(ctx,'notifications')&&!(entitlements.scopedModules.notifications??[]).some(companyId=>isModuleEnabled(ctx,'notifications',companyId)))continue;
     await sweepAssessmentReminders(ctx);
     const noticeSweep=await createNoticeSweepAccess(ctx,owner);
-    const projected=await dispatchNotifications(ctx,{noticeSweep}),delivered=await deliverNotificationEmails(ctx,undefined,{noticeSweep});
+    const projected=await dispatchNotificationsFromSweep(ctx,owner),delivered=await deliverNotificationEmails(ctx,undefined,{noticeSweep});
     // Outcome details live in the delivery log. No addresses, frozen HR text, credentials or raw SMTP errors.
     console.log(JSON.stringify({tenantId:tenant.id,projected:projected.created,...delivered}));
    }catch{failed++;console.error('Workflow email sweep failed for tenant '+tenant.id);}

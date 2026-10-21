@@ -28,8 +28,7 @@ import { sweepLeaveApprovalEscalations } from '../core/leave-escalation';
 import { sweepDueMovements } from '../core/movement-apply';
 import { runHrOrchestrator } from '../core/hr-orchestrator';
 import { drainNotificationProjection } from '../core/orchestrator-harness';
-import { dispatchNotifications } from '../core/notifications';
-import {createNoticeSweepAccess} from '../core/notice-projection';
+import { dispatchNotificationsFromSweep } from '../core/notifications';
 import { todayInKualaLumpur } from '../core/leave';
 import { recordJobRun } from '../core/job-run';
 import { resolveEntitlementsTx } from '../core/entitlements';
@@ -117,8 +116,7 @@ async function main() {
 
       // Project the new started/reminder/escalation/nudge events into notifications now — gated on the
       // tenant's `notifications` entitlement, which the snapshot above makes this context answer truthfully.
-      const noticeSweep=await createNoticeSweepAccess(ctx,owner);
-      const projection = await drainNotificationProjection(limit => dispatchNotifications(ctx, { limit,noticeSweep }));
+      const projection = await drainNotificationProjection(limit => dispatchNotificationsFromSweep(ctx,owner,{limit}));
       notificationsCreated += projection.created;
       if (projection.cappedOut) {
         notificationCappedTenants++;
