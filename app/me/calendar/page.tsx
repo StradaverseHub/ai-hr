@@ -24,6 +24,6 @@ export default async function MyCalendarPage({searchParams}:{searchParams:Promis
  return <div className="mx-auto max-w-5xl space-y-5">
   <Link className="inline-flex min-h-11 items-center text-sm text-primary underline underline-offset-4" href={selected?'/?'+new URLSearchParams({employmentId:selected}):'/'}>{t('calendar.back')}</Link>
   <EmployeeHomeSurface identity={identity} preferences={preferences} cards={{}} labels={{title:t('calendar.title'),employment:t('employment'),chooseEmployment:t('chooseEmployment'),chooseHelp:t('chooseHelp'),showEmployment:t('showEmployment'),noEmployment:t('noEmployment'),companyUnavailable:t('companyUnavailable'),employeeCodeUnavailable:t('employeeCodeUnavailable')}} selectionPath="/me/calendar" selectionMonth={month}/>
-  {selected&&<HomeCalendarCard key={selected} employmentId={selected} initialMonth={month} full/>}
+  {selected&&<HomeCalendarCard key={JSON.stringify([selected,month,preferences.timeZone,preferences.weekStartsOn])} employmentId={selected} initialMonth={month} full/>}
  </div>;
 }

@@ -28,7 +28,7 @@ export async function EmployeePersonalHome({session,employmentId,teamWorkbench=f
   notices:<HomeNoticesCard employmentId={selected} timeZone={preferences.timeZone??'Asia/Kuala_Lumpur'}/>,
   tasks:<HomeTasksCard employmentId={selected}/>,
   timeOff:<HomeTimeOffCard employmentId={selected}/>,
-  calendar:<HomeCalendarCard employmentId={selected} initialMonth={homeDisplayClock(new Date(),preferences.timeZone??'Asia/Kuala_Lumpur').date.slice(0,7)}/>,
+  calendar:<HomeCalendarCard key={JSON.stringify([selected,preferences.timeZone,preferences.weekStartsOn])} employmentId={selected} initialMonth={homeDisplayClock(new Date(),preferences.timeZone??'Asia/Kuala_Lumpur').date.slice(0,7)}/>,
  }:{};
  const cards=Object.fromEntries(Object.entries(available).filter(([key])=>permitted.has(key)));
  return <div className="mx-auto max-w-7xl space-y-5">
