@@ -1,7 +1,7 @@
 import {overtimeAssignmentBinding,overtimePolicyBinding,type OvertimeBinding,type OvertimePolicyBinding,type OvertimeBindingAdapter} from './overtime-pattern-binding';
 import {ATTENDANCE_POLICY_MONEY_DAY} from './attendance-policy-calendar';
 /** Deterministic OT arithmetic only. No database, current profile, jurisdiction or settlement mutation. */
-import { OVERTIME_LIMITS as L, OVERTIME_NUMERIC_FIELDS, OVERTIME_SELECTION_FIELDS, OVERTIME_INPUT_FACT_FIELDS, OvertimePatternError, type OvertimeCandidate, type OvertimeClockSpan, type OvertimeCondition, type OvertimeEvaluation, type OvertimeDurationEvaluation, type OvertimeDurationAllocation, type OvertimeExact, type OvertimeExpression, type OvertimeFact, type OvertimeFacts, type OvertimeInput, type OvertimeIssue, type OvertimeLine, type OvertimePattern, type OvertimeProvenance, type OvertimeRate, type OvertimeResolution, type OvertimeRoundingMode, type OvertimeSource, type OvertimeTrace, type OvertimeUnit, type OvertimeValue } from './overtime-pattern-model';
+import { OVERTIME_LIMITS as L, OVERTIME_NUMERIC_FIELDS, OVERTIME_SELECTION_FIELDS, OVERTIME_INPUT_FACT_FIELDS, OvertimePatternError, type OvertimeCandidate, type OvertimeClockSpan, type OvertimeCondition, type OvertimeEvaluation, type OvertimeDurationEvaluation, type OvertimeDurationAllocation, type OvertimeExact, type OvertimeExpression, type OvertimeFact, type OvertimeFacts, type OvertimeInput, type OvertimeInputData, type OvertimeIssue, type OvertimeLine, type OvertimePattern, type OvertimeProvenance, type OvertimeRate, type OvertimeResolution, type OvertimeRoundingMode, type OvertimeSource, type OvertimeTrace, type OvertimeUnit, type OvertimeValue } from './overtime-pattern-model';
 import { overtimeCurrency, overtimeDate, overtimeDecimal, overtimeId, overtimeInteger, overtimeKeys, overtimeList, overtimeObject, overtimeRefuse as fail, overtimeUuid, overtimeSourceId, validateOvertimeAssignmentTarget, validateOvertimePattern } from './overtime-pattern-schema';
 type Q = {
     n: bigint;
@@ -174,7 +174,8 @@ function validatedInput<B extends OvertimeBinding>(raw:unknown,adapter:OvertimeB
     const parsedFacts = parseFacts(submittedFacts, 'facts');
     if (['rawMinutes', 'eligibleMinutes', 'approvedMinutes', 'payableMinutes', 'resourceMinutes', 'resourceMoney'].some(k => Object.hasOwn(parsedFacts, k)))
         fail('source', 'facts', 'Calculation layers and resources must come from their explicit canonical input slots.');
-    const input = { mode: r.mode as 'preview' | 'actual', sessionGranularity: r.sessionGranularity as 'recorded' | 'dayAggregate', source, patternVersionId: overtimeUuid(r.patternVersionId, 'patternVersionId'), ...adapter.read(r,source.date), currency: overtimeCurrency(r.currency, 'currency'), facts: parsedFacts, resources, approval: { status: approval.status as OvertimeInput['approval']['status'], minutes: fact(approval.minutes, 'approval.minutes', v => overtimeDecimal(v, 'approval.minutes', true)), provenance: provenance(approval.provenance, 'approval.provenance') }, layer: r.layer, segments } as OvertimeInput<B>;
+    const data = { mode: r.mode as 'preview' | 'actual', sessionGranularity: r.sessionGranularity as 'recorded' | 'dayAggregate', source, patternVersionId: overtimeUuid(r.patternVersionId, 'patternVersionId'), currency: overtimeCurrency(r.currency, 'currency'), facts: parsedFacts, resources, approval: { status: approval.status as OvertimeInput['approval']['status'], minutes: fact(approval.minutes, 'approval.minutes', v => overtimeDecimal(v, 'approval.minutes', true)), provenance: provenance(approval.provenance, 'approval.provenance') }, layer: r.layer, segments } as OvertimeInputData;
+    const input={...data,...adapter.read(r,source.date)};
     if (new TextEncoder().encode(JSON.stringify(input)).length > L.jsonBytes)
         fail('limit', 'input', 'Canonical input exceeds its serialized size limit.');
     return input;
@@ -606,7 +607,7 @@ function runDurationStage<B extends OvertimeBinding>(rawPattern:OvertimePattern,
     e.emit('duration', 'lineApprovalAllocation', { policy: 'payableBoundFirstThen' + pattern.durationAllocation + 'Remainder', physicalApproval: false, allocation: work.map(w => ({ segmentId: w.id, minutes: exact(w.approvalAllocated, 'minutes') })) });
     return { pattern, input, identity, e, work, rawTotal, eligibleTotal, canonicalApproved, dayApproval, setComputed, deductions };
 }
-function durationAllocations(stage: ReturnType<typeof runDurationStage>): OvertimeDurationAllocation[] {
+function durationAllocations(stage:{work:Work[];pattern:OvertimePattern;input:{layer:OvertimeInputData['layer']}}):OvertimeDurationAllocation[]{
     return stage.work.map(w => {
         let attribution: OvertimeDurationAllocation['attribution'] = null;
         if (w.clock.state === 'known' && (stage.input.layer === 'raw' || compare(w.payable, q(BigInt(w.clock.value.elapsedSeconds), BigInt('60'))) === 0)) {

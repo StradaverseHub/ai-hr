@@ -223,7 +223,7 @@ export type OvertimeResource = {
 };
 /** Actual inputs must be minted by the authorized canonical reader. This model does not authenticate
  * provenance strings or mode flags. A dayAggregate is one honest quantity slot, never a physical session. */
-export type OvertimeInput<B extends OvertimeBinding=OvertimeAssignmentBinding> = {
+export type OvertimeInputData = {
     mode: 'preview' | 'actual';
     sessionGranularity: 'recorded' | 'dayAggregate';
     source: OvertimeSource;
@@ -236,13 +236,14 @@ export type OvertimeInput<B extends OvertimeBinding=OvertimeAssignmentBinding> =
         minutes: OvertimeFact<string>;
         provenance: OvertimeProvenance;
     };
-} & B & ({
+} & ({
     layer: 'raw';
     segments: OvertimeRawSegment[];
 } | {
     layer: 'finalLegacy';
     segments: OvertimeFinalSegment[];
 });
+export type OvertimeInput<B extends OvertimeBinding=OvertimeAssignmentBinding> = OvertimeInputData & Pick<B,'assignmentId'|'policyBinding'>;
 export type OvertimeAssignmentTarget = {
     type: 'individual';
     employmentIds: string[];
@@ -316,7 +317,7 @@ export type OvertimeLine = {
     adjusted: OvertimeExact;
     amountMinorUnits: string;
 };
-export type OvertimeEvaluation<B extends OvertimeBinding=OvertimeAssignmentBinding> = B & ({
+export type OvertimeEvaluation<B extends OvertimeBinding=OvertimeAssignmentBinding> = Pick<B,'assignmentId'|'policyBinding'> & ({
     status: 'ready' | 'ineligible';
     source: OvertimeSource;
     patternVersionId: string;
@@ -353,7 +354,7 @@ export type OvertimeDurationAllocation = {
 };
 /** Duration evidence is distinct from a cash result. A canonical TOIL owner still proves authority,
  * freshness, source exclusivity and actual mode before consumption. No pricing/salary access is implied. */
-export type OvertimeDurationEvaluation<B extends OvertimeBinding=OvertimeAssignmentBinding> = B & ({
+export type OvertimeDurationEvaluation<B extends OvertimeBinding=OvertimeAssignmentBinding> = Pick<B,'assignmentId'|'policyBinding'> & ({
     status: 'ready' | 'ineligible';
     source: OvertimeSource;
     patternVersionId: string;
