@@ -4,7 +4,7 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
-import {createHolidayGroup} from '../core/admin';
+import {createCompany,createHolidayGroup} from '../core/admin';
 import {setCompensation} from '../core/comp';
 import {saveEmploymentHolidayCalendarAssignment,employmentHolidayCalendarHistory,holidayCalendarInclusiveEnd} from '../core/holiday-calendar-assignment';
 import {holidayDatesFor,holidayDatesByEmployment} from '../core/holidays';
@@ -84,6 +84,16 @@ describe('dated calendar owner and shared consumers',()=>{
   expect(await save(e.employmentId,nextMonday,null,'Johor',first.id)).toMatchObject({id:first.id,changed:false,updated:0});
   expect(await events()).toEqual(before);expect(await records(e.employmentId)).toHaveLength(1);
   await expect(save(e.employmentId,today.slice(0,4)+'-02-30',null)).rejects.toMatchObject({code:'dates'});
+ });
+ it('refuses missing and same-tenant out-of-company history targets instead of presenting empty history',async()=>{
+  const company=await createCompany(ctx,{legalName:'Fictional separate calendar company'});
+  const subject=await hireEmployee(ctx,{person:{fullName:'Fictional separate-company employee',primaryEmail:randomUUID()+'@calendar.invalid'},companyId:company.id,employmentType:'full_time',hiredOn:add(today,-800)});
+  const assignment=await saveEmploymentHolidayCalendarAssignment(ctx,{employmentId:subject.employmentId,startDate:nextMonday,selection:{kind:'none'}});
+  const scoped={...ctx,grants:[{role:'hr_admin',companyId:b.companyId}]},before=await events();
+  await expect(employmentHolidayCalendarHistory(scoped,subject.employmentId)).rejects.toMatchObject({code:'scope'});
+  await expect(employmentHolidayCalendarHistory(ctx,randomUUID())).rejects.toMatchObject({code:'scope'});
+  expect(await employmentHolidayCalendarHistory(ctx,subject.employmentId)).toEqual(expect.arrayContaining([expect.objectContaining({id:assignment.id})]));
+  expect(await events()).toEqual(before);
  });
  it('reconciles an explicitly requested future source outside the default horizon',async()=>{
   const e=await hire(),future=`${Number(today.slice(0,4))+2}-06-14`,dow=new Date(future+'T00:00:00Z').getUTCDay()||7;
