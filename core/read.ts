@@ -1,4 +1,5 @@
 import {workforceEmploymentPredicate} from './workforce-access';
+import {ownPersonPredicate} from './own-person';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {emergencyLeaveGroupOriginSql,cancellationSplitGroupSql} from './leave-group-origin-sql';
 import {formulaOvertimeForRowsTx} from '../packs/attendance/service';
@@ -6037,7 +6038,7 @@ export function employeeAudit(ctx: SessionContext, employmentId: string, limit =
 }
 
 // ─────────────────────────── Self-service portal (own data) ───────────────────────────
-// All scoped by RLS to the calling principal: an employee sees only themselves.
+// Own-person proof is independent of RLS: an HR login also has wider general visibility.
 
 /** The current principal's active employment + profile (resolved from their linked person). */
 export function myEmployment(ctx: SessionContext) {
@@ -6067,7 +6068,7 @@ export function myEmployment(ctx: SessionContext) {
       )
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(position, eq(position.id, assignment.positionId))
-      .where(and(eq(employment.personId, ctx.personId), isNull(employment.terminatedOn)))
+      .where(and(ownPersonPredicate(ctx),eq(employment.personId, ctx.personId), isNull(employment.terminatedOn)))
       .orderBy(employment.hiredOn)
       .limit(1);
     return row ?? null;
@@ -6104,7 +6105,7 @@ export async function myPersonName(ctx: SessionContext) {
     const [row] = await tx
       .select({ name: person.fullName })
       .from(person)
-      .where(eq(person.id, personId))
+      .where(and(ownPersonPredicate(ctx),eq(person.id, personId)))
       .limit(1);
     return row?.name ?? null;
   });
@@ -6192,7 +6193,7 @@ export async function myEmploymentsTx(tx:Tx,ctx:SessionContext,opts:{profileEdit
           isNull(compensation.supersededAt),
         ),
       )
-      .where(and(eq(employment.personId, ctx.personId), opts.profileEdit?profileEditEmploymentPredicate(ctx):isNull(employment.terminatedOn)))
+      .where(and(ownPersonPredicate(ctx),eq(employment.personId, ctx.personId), opts.profileEdit?profileEditEmploymentPredicate(ctx):isNull(employment.terminatedOn)))
       .orderBy(employment.hiredOn,employment.id);
 }
 
@@ -6205,7 +6206,7 @@ export async function myOwnEmploymentSubjectsTx(tx:Tx,ctx:SessionContext,opts:{p
   currentCompanyId:employment.companyId,company:company.legalName,country:company.country,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,
   resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate,blacklistedAt:employment.blacklistedAt,status:employmentStatusSql()})
   .from(employment).innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId))
-  .where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId),opts.profileEdit?profileEditEmploymentPredicate(ctx):undefined))
+  .where(and(ownPersonPredicate(ctx),eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId),opts.profileEdit?profileEditEmploymentPredicate(ctx):undefined))
   .orderBy(employment.hiredOn,employment.id);
  const {provenCompanyDatesTx}=await import('./employment-company');
  const proofs=await provenCompanyDatesTx(tx,rows.map(row=>({employmentId:row.employmentId,date})));
@@ -6230,7 +6231,7 @@ export function myEmploymentIdsAll(ctx: SessionContext) {
       .select({ employmentId: employment.id, company: company.legalName })
       .from(employment)
       .innerJoin(company, eq(company.id, employment.companyId))
-      .where(eq(employment.personId, ctx.personId))
+      .where(and(ownPersonPredicate(ctx),eq(employment.personId, ctx.personId)))
       .orderBy(employment.hiredOn);
   });
 }

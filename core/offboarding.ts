@@ -15,6 +15,7 @@ import { validateLeaveDocument } from './leave';
 import { terminateEmploymentTx } from './org';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
+import {isOwnPersonTx,ownPersonPredicate} from './own-person';
 
 // #42cff598: the file types the resignation ticket specifies (PDF / JPG / PNG) and a fixed 10 MB ceiling.
 // Resignation has no per-type config table like leave, so the allowed set + ceiling are constants here.
@@ -42,6 +43,9 @@ export async function submitResignation(
   if (lastWorkingDay < today) throw new ResignationError('The last working day cannot be in the past.');
   const personId = ctx.personId;
   return withTenant(ctx, async (tx) => {
+    if(!await isOwnPersonTx(tx,ctx))throw new ResignationError('This account is not linked to an employee profile.');
+    const [subject]=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.personId,personId))).limit(1);
+    if(!subject)throw new ResignationError('This account is not linked to the selected employee profile.');
     const [open] = await tx
       .select({ id: resignationRequest.id })
       .from(resignationRequest)
@@ -76,6 +80,7 @@ export async function submitResignation(
 /** The employee withdraws their own pending resignation. */
 export async function withdrawResignation(ctx: SessionContext, p: { requestId: string }) {
   return withTenant(ctx, async (tx) => {
+    if(!await isOwnPersonTx(tx,ctx))throw new ResignationError('Only the employee can withdraw their own resignation.');
     const [req] = await tx.select().from(resignationRequest).where(eq(resignationRequest.id, p.requestId)).limit(1);
     if (!req) throw new ResignationError('Resignation not found (or not visible).');
     if (req.status !== 'pending') throw new ResignationError(`This resignation is already ${req.status}.`);
@@ -209,6 +214,7 @@ export function listResignationRequests(
 /** The caller's own most-recent resignation (the /me status + withdraw control). */
 export function myResignation(ctx: SessionContext, employmentId: string) {
   return withTenant(ctx, async (tx) => {
+    if(!ctx.personId)return null;
     const [row] = await tx
       .select({
         id: resignationRequest.id,
@@ -218,7 +224,7 @@ export function myResignation(ctx: SessionContext, employmentId: string) {
         createdAt: resignationRequest.createdAt,
       })
       .from(resignationRequest)
-      .where(eq(resignationRequest.employmentId, employmentId))
+      .where(and(ownPersonPredicate(ctx),eq(resignationRequest.personId,ctx.personId),eq(resignationRequest.employmentId, employmentId)))
       .orderBy(desc(resignationRequest.createdAt))
       .limit(1);
     return row ?? null;

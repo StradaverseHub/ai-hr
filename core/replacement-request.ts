@@ -44,6 +44,7 @@
  */
 import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import {isOwnPersonTx} from './own-person';
 import { actorOf, appendEvent } from '../db/events';
 import { assertCanDecide } from './approvals';
 import {
@@ -1065,6 +1066,7 @@ export async function cancelOwnReplacementLeaveRequest(
   const personId = ctx.personId;
   if (!personId || !/^[0-9a-f-]{36}$/i.test(p.requestId)) throw notFound();
   return withTenant(ctx, async (tx) => {
+    if(!await isOwnPersonTx(tx,ctx))throw notFound();
     const [req] = await tx
       .select({ id: replacementLeaveRequest.id, status: replacementLeaveRequest.status, employmentId: replacementLeaveRequest.employmentId })
       .from(replacementLeaveRequest)

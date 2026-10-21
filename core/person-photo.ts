@@ -93,6 +93,7 @@ async function setPersonPhotoTx(tx:Tx,ctx:SessionContext,p:{personId:string;cont
     return { personId: p.personId };
 }
 import {isProfilePhotoProposal,PROFILE_PHOTO_FIELD} from '../lib/profile-photo-proposal';
+import {isOwnPersonTx} from './own-person';
 import {isProfileVisibilityPolicyValue,profileGroupPermission} from '../lib/profile-edit-policy-value';
 import {personnelField} from '../lib/personnel-field-registry';
 import {resolveProfileRouteTx,assertProfileRouteDecisionTx} from './profile-routing';
@@ -143,8 +144,10 @@ export function getProfilePhotoProposal(ctx:SessionContext,requestId:string){
  return withTenant(ctx,async tx=>{
   const policy=await freshProfileEditPolicyTx(tx,ctx);
   const [request]=await tx.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,requestId)).limit(1);
-  if(!request||request.status!=='pending'||!isProfilePhotoProposal(request.proposed)||request.personId===ctx.personId&&!policy.visible.has(PROFILE_PHOTO_FIELD))return null;
-  if(request.personId!==ctx.personId){try{await assertProfileRouteDecisionTx(tx,policy.ctx,request);}catch{return null;}}
+  if(!request||request.status!=='pending'||!isProfilePhotoProposal(request.proposed))return null;
+  const own=request.personId===ctx.personId&&await isOwnPersonTx(tx,policy.ctx);
+  if(own&&!policy.visible.has(PROFILE_PHOTO_FIELD))return null;
+  if(!own){try{await assertProfileRouteDecisionTx(tx,policy.ctx,request);}catch{return null;}}
   const [row]=await tx.select({content:profilePhotoProposal.content,mimeType:profilePhotoProposal.mimeType}).from(profilePhotoProposal).where(eq(profilePhotoProposal.requestId,requestId)).limit(1);
   return row??null;
  });

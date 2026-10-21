@@ -155,6 +155,9 @@ describe('pending photo actual consumer and runtime privilege boundary',()=>{
   const read=()=>photoGET(new Request(`http://localhost/me/photo-proposal/${requestId}`),{params:Promise.resolve({requestId})});
   routeSession.current=employee.ctx;const own=await read();expect(own.status).toBe(200);expect(Buffer.from(await own.arrayBuffer())).toEqual(png);expect(own.headers.get('Cache-Control')).toBe('private, no-store');expect(own.headers.get('X-Content-Type-Options')).toBe('nosniff');
   routeSession.current=other.ctx;expect((await read()).status).toBe(404);
+  const forged={...other.ctx,personId:employee.personId};
+  expect(await getProfilePhotoProposal(forged,requestId)).toBeNull();
+  routeSession.current=forged;expect((await read()).status).toBe(404);
   routeSession.current=hr.ctx;expect((await read()).status).toBe(200);
   await decideProfileChange(hr.ctx,{requestId,decision:'rejected',reason:'Fictional refusal'});expect((await read()).status).toBe(404);
  });

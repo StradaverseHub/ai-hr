@@ -1,4 +1,5 @@
 import {pgSqlState} from '../lib/db-error';
+import {isOwnPersonTx,ownPersonPredicate} from './own-person';
 import {lockAccessConfigurationTx,lockProfileValueWritesTx} from './access-configuration-lock';
 import {isProfilePhotoProposal} from '../lib/profile-photo-proposal';
 import {resolveProfileRouteTx,assertProfileRouteDecisionTx,profileRouteReaderPredicate} from './profile-routing';
@@ -262,7 +263,7 @@ export class ProfileChangeFieldClosedError extends Error {
  *  pay-affecting statutory fields (the employee sees their own). */
 export function myProfile(ctx: SessionContext) {
   return withTenant(ctx, async (tx) => {
-    if (!ctx.personId) return null;
+    if (!ctx.personId||!await isOwnPersonTx(tx,ctx)) return null;
     const [p] = await tx
       .select({
         fullName: person.fullName,
@@ -290,7 +291,7 @@ export function myProfile(ctx: SessionContext) {
         emergencyContactAddress: primaryEmergencyContactSql('address'),
       })
       .from(person)
-      .where(eq(person.id, ctx.personId))
+      .where(and(ownPersonPredicate(ctx),eq(person.id, ctx.personId)))
       .limit(1);
     const [stat] = await tx
       .select({
@@ -300,7 +301,7 @@ export function myProfile(ctx: SessionContext) {
         numChildren: employeeStatutoryMy.numChildren,
       })
       .from(employeeStatutoryMy)
-      .where(eq(employeeStatutoryMy.personId, ctx.personId))
+      .where(and(ownPersonPredicate(ctx),eq(employeeStatutoryMy.personId, ctx.personId)))
       .limit(1);
     return { person: p ?? null, statutory: stat ?? null };
   });
@@ -334,12 +335,14 @@ export async function updateOwnContact(
  if(!ctx.personId)throw new EssProfileError('permission');
  const run=async(tx:Tx)=>{
   const policy=await freshProfileEditPolicyTx(tx,ctx);ctx=policy.ctx;
+  if(!await isOwnPersonTx(tx,ctx))throw new EssProfileError('permission');
   if(Object.keys(p).some(key=>!['phone','personalEmail'].includes(key)&&p[key as keyof typeof p]!==undefined))throw new EssProfileError('addressReview');
   const patch:{phone?:string|null;personalEmail?:string|null}={};
   if(p.phone!==undefined){if(!policy.editable.has('profile.contact_and_permanent_address.phone'))throw new EssProfileError('fieldClosed');patch.phone=clean(p.phone);}
   if(p.personalEmail!==undefined){if(!policy.editable.has('profile.contact_and_permanent_address.personalemail'))throw new EssProfileError('fieldClosed');patch.personalEmail=clean(p.personalEmail);}
   if(!Object.keys(patch).length)return;
-  await tx.update(person).set(patch).where(eq(person.id,ctx.personId!));
+  const changed=await tx.update(person).set(patch).where(and(ownPersonPredicate(ctx),eq(person.id,ctx.personId!))).returning({id:person.id});
+  if(changed.length!==1)throw new EssProfileError('permission');
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'person',aggregateId:ctx.personId!,eventType:'person.self-updated',actor:actorOf(ctx),subjectEmploymentId:await subjectEmploymentForPerson(tx,ctx.tenantId,ctx.personId!),payload:{fields:Object.keys(patch)}});
  };
  return outerTx?run(outerTx):withTenant(ctx,run);
@@ -701,7 +704,7 @@ export function myProfileChangeRequests(ctx: SessionContext, limit = 50,presenta
         createdAt: profileChangeRequest.createdAt,
       })
       .from(profileChangeRequest)
-      .where(eq(profileChangeRequest.personId, personId))
+      .where(and(ownPersonPredicate(ctx),eq(profileChangeRequest.personId, personId)))
       .orderBy(desc(profileChangeRequest.createdAt),desc(profileChangeRequest.id))
       .limit(limit);
     return rows.map(row=>{
