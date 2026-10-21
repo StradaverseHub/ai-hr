@@ -2,7 +2,7 @@
  * Services supply already-authorized, minimal facts; templates cannot retrieve more data or run code. */
 import {locales,type Locale} from '../i18n/config';
 
-export const EMPLOYEE_HOME_CARDS=['summary','today','calendar','tasks','timeOff','notices','team','celebrations'] as const;
+export const EMPLOYEE_HOME_CARDS=['summary','today','calendar','notices','tasks','timeOff','team','celebrations'] as const;
 export type EmployeeHomeCard=typeof EMPLOYEE_HOME_CARDS[number];
 export const HOME_QUICK_ACTIONS=['leave','claim','payslip','profile','calendar','notices'] as const;
 export type HomeQuickAction=typeof HOME_QUICK_ACTIONS[number];

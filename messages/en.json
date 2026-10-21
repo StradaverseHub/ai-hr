@@ -21426,5 +21426,15 @@
     "minutesShort": "{n} min",
     "underMinute": "< 1 min",
     "completedClosed": "{n} completed, {w} closed without a decision"
+  },
+  "employeeHome": {
+    "title": "Home",
+    "employment": "Employment",
+    "chooseEmployment": "Choose employment",
+    "chooseHelp": "Choose an employment to see your Home.",
+    "showEmployment": "Show Home",
+    "noEmployment": "No employment is linked to your account. Contact HR if you expected to see one.",
+    "companyUnavailable": "Company unavailable",
+    "employeeCodeUnavailable": "Employee ID unavailable"
   }
 }

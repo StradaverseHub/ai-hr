@@ -21426,5 +21426,15 @@
     "minutesShort": "{n} min",
     "underMinute": "< 1 min",
     "completedClosed": "{n} selesai, {w} ditutup tanpa keputusan"
+  },
+  "employeeHome": {
+    "title": "Laman Utama",
+    "employment": "Pekerjaan",
+    "chooseEmployment": "Pilih pekerjaan",
+    "chooseHelp": "Pilih pekerjaan untuk melihat Laman Utama anda.",
+    "showEmployment": "Lihat Laman Utama",
+    "noEmployment": "Tiada pekerjaan dipautkan kepada akaun anda. Hubungi HR jika anda menjangkakan pekerjaan dipaparkan.",
+    "companyUnavailable": "Syarikat tidak tersedia",
+    "employeeCodeUnavailable": "ID pekerja tidak tersedia"
   }
 }

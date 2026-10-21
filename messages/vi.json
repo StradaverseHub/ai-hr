@@ -21426,5 +21426,15 @@
     "minutesShort": "{n} phút",
     "underMinute": "< 1 phút",
     "completedClosed": "{n} đã hoàn tất, {w} đóng mà không có quyết định"
+  },
+  "employeeHome": {
+    "title": "Trang chủ",
+    "employment": "Công việc",
+    "chooseEmployment": "Chọn công việc",
+    "chooseHelp": "Chọn một công việc để xem Trang chủ của bạn.",
+    "showEmployment": "Xem Trang chủ",
+    "noEmployment": "Chưa có công việc nào được liên kết với tài khoản của bạn. Hãy liên hệ HR nếu bạn cho rằng cần có thông tin này.",
+    "companyUnavailable": "Chưa có thông tin công ty",
+    "employeeCodeUnavailable": "Chưa có mã nhân viên"
   }
 }

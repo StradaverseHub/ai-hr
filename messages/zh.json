@@ -21426,5 +21426,15 @@
     "minutesShort": "{n} 分钟",
     "underMinute": "< 1 分钟",
     "completedClosed": "已完成 {n} 个，{w} 个未经决定即关闭"
+  },
+  "employeeHome": {
+    "title": "主页",
+    "employment": "任职",
+    "chooseEmployment": "选择任职",
+    "chooseHelp": "请选择任职以查看您的主页。",
+    "showEmployment": "查看主页",
+    "noEmployment": "您的账户尚未关联任何任职。如有疑问，请联系 HR。",
+    "companyUnavailable": "公司信息暂不可用",
+    "employeeCodeUnavailable": "员工编号暂不可用"
   }
 }

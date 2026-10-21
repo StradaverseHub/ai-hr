@@ -21426,5 +21426,15 @@
     "minutesShort": "{n} นาที",
     "underMinute": "< 1 นาที",
     "completedClosed": "เสร็จสิ้น {n} ปิดโดยไม่มีการตัดสิน {w}"
+  },
+  "employeeHome": {
+    "title": "หน้าหลัก",
+    "employment": "การจ้างงาน",
+    "chooseEmployment": "เลือกการจ้างงาน",
+    "chooseHelp": "เลือกการจ้างงานเพื่อดูหน้าหลักของคุณ",
+    "showEmployment": "ดูหน้าหลัก",
+    "noEmployment": "ยังไม่มีการจ้างงานที่เชื่อมกับบัญชีของคุณ หากควรมีข้อมูล โปรดติดต่อฝ่ายบุคคล",
+    "companyUnavailable": "ไม่พบข้อมูลบริษัท",
+    "employeeCodeUnavailable": "ไม่พบรหัสพนักงาน"
   }
 }
