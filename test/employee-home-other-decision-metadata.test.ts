@@ -14,7 +14,8 @@ import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,typ
 let b:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();});
 async function hire(name='Fictional task subject'){
- return hireEmployee(adminCtx(b),{person:{fullName:name,primaryEmail:randomUUID()+'@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+ const hired=new Date(todayInKualaLumpur()+'T00:00:00Z');hired.setUTCFullYear(hired.getUTCFullYear()-1);
+ return hireEmployee(adminCtx(b),{person:{fullName:name,primaryEmail:randomUUID()+'@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:hired.toISOString().slice(0,10)});
 }
 const columns=['id','tenant_id','employment_id','status','created_at'];
 async function onlyColumns(table:'attendance_correction'|'resignation_request'|'employment_review',extra:string[],privateColumn:string,read:()=>Promise<void>){
@@ -35,7 +36,10 @@ function noPrivate(rows:unknown[]){
 describe('Home other assigned-decision metadata owners',()=>{
  it('counts every attendance header without private proposal access, preserves scope and refuses a forged person',async()=>{
   const e=await hire(),ctx=adminCtx(b);
-  const heads=await owner.db.insert(s.attendanceCorrection).values(Array.from({length:211},()=>({tenantId:b.tenantId,employmentId:e.employmentId,attendanceDate:todayInKualaLumpur(),proposedCheckIn:'09:00',reason:'Fictional private correction reason'}))).returning({id:s.attendanceCorrection.id});
+  const heads=await owner.db.insert(s.attendanceCorrection).values(Array.from({length:211},(_,i)=>{
+   const date=new Date(todayInKualaLumpur()+'T00:00:00Z');date.setUTCDate(date.getUTCDate()-i);
+   return {tenantId:b.tenantId,employmentId:e.employmentId,attendanceDate:date.toISOString().slice(0,10),proposedCheckIn:'09:00',reason:'Fictional private correction reason'};
+  })).returning({id:s.attendanceCorrection.id});
   await onlyColumns('attendance_correction',[],'reason',async()=>{
    const rows=await pendingAttendanceTaskMetadata(ctx);expect(rows).toHaveLength(211);noPrivate(rows);
    expect(new Set(rows.map(r=>r.id))).toEqual(new Set(heads.map(r=>r.id)));
