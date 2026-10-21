@@ -338,7 +338,14 @@ export function RosterGrid({
       </div>
 
       {/* Grid */}
-      <div className="overflow-x-auto rounded-lg border border-border">
+      {/* On a phone the identity block is wider than the viewport. Let every column pan there;
+          retain the shared pinned geometry on desktop and expose the pan region to keyboard users. */}
+      <div
+        role="region"
+        aria-label={t('title')}
+        tabIndex={0}
+        className="overflow-x-auto rounded-lg border border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      >
         <table
           className="border-collapse text-sm"
           style={{ tableLayout: 'fixed', minWidth: pinned.width + dates.length * DATE_W }}
@@ -359,7 +366,7 @@ export function RosterGrid({
           <thead>
             <tr className="bg-muted/50">
               {canEdit && (
-                <th className={`sticky z-20 ${HEAD_CLS}`} style={pinned.col('check')}>
+                <th className={`sticky max-md:static z-20 ${HEAD_CLS}`} style={pinned.col('check')}>
                   <input
                     type="checkbox"
                     aria-label={t('selectAll')}
@@ -368,14 +375,14 @@ export function RosterGrid({
                   />
                 </th>
               )}
-              <th className={`sticky z-20 ${HEAD_CLS}`} style={pinned.col('employee')}>
+              <th className={`sticky max-md:static z-20 ${HEAD_CLS}`} style={pinned.col('employee')}>
                 {t('colEmployee')}
               </th>
-              <th className={`sticky z-20 ${HEAD_CLS} ${canEdit ? '' : 'border-r border-border'}`} style={pinned.col('occ')}>
+              <th className={`sticky max-md:static z-20 ${HEAD_CLS} ${canEdit ? '' : 'border-r border-border'}`} style={pinned.col('occ')}>
                 {t('colPosition')}
               </th>
               {canEdit && (
-                <th className={`sticky z-20 border-r border-border ${HEAD_CLS}`} style={pinned.col('edit')}>
+                <th className={`sticky max-md:static z-20 border-r border-border ${HEAD_CLS}`} style={pinned.col('edit')}>
                   {t('colEdit')}
                 </th>
               )}
@@ -401,7 +408,7 @@ export function RosterGrid({
             {pageEmployees.map((e) => (
               <tr key={e.employmentId}>
                 {canEdit && (
-                  <td className="sticky z-10 truncate bg-background px-2 py-1.5" style={pinned.col('check')}>
+                  <td className="sticky max-md:static z-10 truncate bg-background px-2 py-1.5" style={pinned.col('check')}>
                     <input
                       type="checkbox"
                       aria-label={e.name}
@@ -413,7 +420,7 @@ export function RosterGrid({
                 {/* ONE cell for the person: AARON AZIZ (X003). See note 2 in the file header for why the
                     code reads after the name here and not before it as EmployeeName has it elsewhere. */}
                 <td
-                  className="sticky z-10 truncate bg-background px-2 py-1.5 font-medium"
+                  className="sticky max-md:static z-10 truncate bg-background px-2 py-1.5 font-medium"
                   style={pinned.col('employee')}
                   title={e.code ? `${e.name} (${e.code})` : e.name}
                 >
@@ -435,14 +442,14 @@ export function RosterGrid({
                   </span>
                 </td>
                 <td
-                  className={`sticky z-10 ${CELL_MUTED} ${canEdit ? '' : 'border-r border-border'}`}
+                  className={`sticky max-md:static z-10 ${CELL_MUTED} ${canEdit ? '' : 'border-r border-border'}`}
                   style={pinned.col('occ')}
                   title={e.occupation ?? ''}
                 >
                   {e.occupation ?? '—'}
                 </td>
                 {canEdit && (
-                  <td className="sticky z-10 truncate border-r border-border bg-background px-2 py-1.5" style={pinned.col('edit')}>
+                  <td className="sticky max-md:static z-10 truncate border-r border-border bg-background px-2 py-1.5" style={pinned.col('edit')}>
                     <Link
                       href={editHref(e.employmentId)}
                       className="text-xs font-medium text-primary underline-offset-2 hover:underline"
