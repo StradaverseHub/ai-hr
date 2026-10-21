@@ -113,6 +113,24 @@ single default-isolation read with its fresh Workforce predicate, avoiding a sta
 snapshot for a permission decision. Actual rendering, keyboard/save behavior and source/SQL consumer
 refusals remain unexecuted requirements; these UI changes are not acceptance evidence.
 
+The shared-value writer review found a source compatibility gap in that privacy separation: a
+Workforce maintenance denial would also reject the existing privacy owner's nullable cleartext
+updates and emergency-contact deletion. The draft now gives that owner an independent finite
+transaction witness. Actual current HR visibility, the canonical erasure scope and the existing
+retention rule determine exact before/after hashes; callers cannot supply values, a clock, an owner
+flag or a claimed completion. The private proof is bound to the actual user, tenant, transaction,
+subject and canonical `pii.erased` audit metadata. Deferred checks require every captured effect and
+the real audit to finish together. Arbitrary values, held identity values, partial effects, missing
+or changed audit metadata and later-transaction replay cannot inherit that authority.
+
+The service and frozen SQL snapshot share `lib/pdpa-erasure-policy.json`, preserving the existing
+nullable field set and seven-year duration rather than creating another erasure policy. Both use
+one database admission timestamp; calendar-year rollover follows the existing UTC date semantics.
+The proof table and field-policy function remain private. This is source preparation only:
+`workforce-privacy-owner.test.ts`, the cross-owner policy contract and the existing full privacy
+and vault consumers must execute after the released-baseline reconciliation. No capability is
+activated and no migration has been applied by this source checkpoint.
+
 
 The Workforce listing, export, status counts and switcher now draft an explicit definer projection
 instead of borrowing raw person/employment SELECT. The projection names its fields and tenant-keyed

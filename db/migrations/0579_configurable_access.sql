@@ -1858,8 +1858,8 @@ BEGIN
   RAISE EXCEPTION 'Profile subject unavailable' USING ERRCODE='42501'; END IF;
  IF TG_TABLE_NAME='person' THEN
   subject_person:=row_id;kind:='person';direct_allowed:=app.access_workforce_person(subject_person,'workforce.maintain');
-  -- Only normal-profile/compliance columns belong to this guard. Photo bytes, PDPA, and country
-  -- financial/statutory owners retain their independent permissions and existing write restrictions.
+  -- Only normal-profile/compliance columns belong to this guard. Privacy erasure has an exact,
+  -- separately prepared null/delete witness below; it is never a general value-write exception.
   SELECT COALESCE(jsonb_object_agg(d.key,d.value),'{}'::jsonb) INTO delta FROM jsonb_each(after_row) d
    WHERE d.value IS DISTINCT FROM before_row->d.key AND (d.key IN (SELECT column_name FROM app.access_profile_value_bindings() WHERE owner IN ('person','compliance'))
     OR d.key IN ('address','address_line1','address_line2','address_line3','postcode','city','state','country','marital_status_source_request_id'));
@@ -1878,6 +1878,7 @@ BEGIN
   relationship_changed:=TG_OP='UPDATE' AND after_row->'relationship' IS DISTINCT FROM before_row->'relationship';
  END IF;
  IF app.access_workforce_value_intent_allowed(kind,before_row,after_row,true) THEN RETURN NULL; END IF;
+ IF app.access_privacy_value_intent_allowed(kind,before_row,after_row) THEN RETURN NULL; END IF;
  IF kind='person' AND TG_OP='UPDATE' THEN
   marriage_allowed:=app.access_profile_marriage_delta(before_row,after_row,delta);
   IF delta ? 'marital_status_source_request_id' AND after_row->'marital_status_source_request_id'<>'null'::jsonb AND NOT marriage_allowed THEN
@@ -2907,3 +2908,170 @@ FOR EACH STATEMENT EXECUTE FUNCTION app.access_workforce_master_statement_lock()
 --> statement-breakpoint
 CREATE TRIGGER access_workforce_service_info_update BEFORE UPDATE OF confirmation_date,extended_confirmation_date,final_confirmation_date,tender_resignation_date,contract_start_date,contract_end_date,probation_end_date,internship_end_date,probation_months,probation_days,resignation_notice_months,resignation_notice_days,short_notice_months,short_notice_days,probation_value,probation_unit,extended_probation_value,extended_probation_unit,notice_before_confirmation_value,notice_before_confirmation_unit,notice_after_confirmation_value,notice_after_confirmation_unit ON employment
 FOR EACH ROW EXECUTE FUNCTION app.access_workforce_service_info_update();
+
+--> statement-breakpoint
+-- Independent privacy owner: same nullable field/retention declaration as core/pdpa.ts.
+CREATE FUNCTION app.access_privacy_erasure_policy() RETURNS jsonb
+LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,pg_temp AS $$
+ SELECT '{"retentionYears":7,"fields":[{"key":"phone","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"address","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"personalEmail","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"addressLine1","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"addressLine2","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"addressLine3","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"postcode","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"city","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"state","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"country","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"permanentAddressLine1","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"permanentAddressLine2","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"permanentAddressLine3","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"permanentPostcode","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"permanentCity","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"permanentState","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"permanentCountry","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"correspondenceAddressLine1","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"correspondenceAddressLine2","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"correspondenceAddressLine3","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"correspondencePostcode","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"correspondenceCity","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"correspondenceState","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"correspondenceCountry","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"homePhone","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"correspondenceMobilePhone","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"correspondenceHomePhone","table":"person","statutoryLocked":false,"scopes":["contact"]},{"key":"firstName","table":"person","statutoryLocked":false,"scopes":["identity"]},{"key":"lastName","table":"person","statutoryLocked":false,"scopes":["identity"]},{"key":"preferredName","table":"person","statutoryLocked":false,"scopes":["identity"]},{"key":"religion","table":"person","statutoryLocked":false,"scopes":["identity"]},{"key":"race","table":"person","statutoryLocked":false,"scopes":["identity"]},{"key":"nationality","table":"person","statutoryLocked":false,"scopes":["identity"]},{"key":"dateOfBirth","table":"person","statutoryLocked":true,"scopes":["identity"]},{"key":"bankName","table":"statutory","statutoryLocked":true,"scopes":["financial"]},{"key":"bankAccountNo","table":"statutory","statutoryLocked":true,"scopes":["financial"]},{"key":"epfNumber","table":"statutory","statutoryLocked":true,"scopes":["statutory-ids"]},{"key":"socsoNumber","table":"statutory","statutoryLocked":true,"scopes":["statutory-ids"]},{"key":"taxNumber","table":"statutory","statutoryLocked":true,"scopes":["statutory-ids"]},{"key":"childReliefTable","table":"statutory","statutoryLocked":true,"scopes":["identity"]}],"dependentContact":["phone","residentialAddress","companyName","employerAddress"],"dependentIdentity":["icOrPassport","passportNumber"]}'::jsonb;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_privacy_erasure_policy() FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+CREATE TABLE app.access_privacy_value_intent (
+ xact_id xid8 NOT NULL,tenant_id uuid NOT NULL REFERENCES public.tenant(id) ON DELETE CASCADE,
+ user_id uuid NOT NULL,employment_id uuid NOT NULL,person_id uuid NOT NULL,
+ kind text NOT NULL CHECK(kind IN ('person','dependent','emergency')),row_id uuid NOT NULL,
+ before_hash text NOT NULL,after_hash text NOT NULL,scope text NOT NULL,request_ref_hash text NOT NULL,reason_hash text NOT NULL,
+ event_id uuid REFERENCES public.domain_event(id) ON DELETE SET NULL,
+ PRIMARY KEY(xact_id,tenant_id,user_id,kind,row_id)
+);
+--> statement-breakpoint
+REVOKE ALL ON TABLE app.access_privacy_value_intent FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+ALTER TABLE app.access_privacy_value_intent ENABLE ROW LEVEL SECURITY;
+
+--> statement-breakpoint
+-- This finite witness authorizes only the existing privacy owner's calculated NULLs/deletes.
+-- No caller supplies a row image, field patch, clock, principal, role or completed-audit flag.
+CREATE FUNCTION app.access_privacy_erasure_begin(p_employment uuid,p_scope text,p_request_ref text,p_reason text) RETURNS timestamptz
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE selected public.employment%ROWTYPE;policy jsonb:=app.access_privacy_erasure_policy();at_time timestamptz:=statement_timestamp();
+ lifted boolean:=false;lift_date date;original jsonb;expected jsonb;patch jsonb:='{}'::jsonb;field jsonb;column_name text;
+ saved record;before_digest text;after_digest text;
+BEGIN
+ PERFORM app.access_profile_policy_write_lock();
+ IF p_scope IS NULL OR p_scope NOT IN ('contact','financial','identity','statutory-ids','all')
+  OR p_request_ref IS NULL OR btrim(p_request_ref)='' OR length(p_request_ref)>4000 OR p_reason IS NULL OR length(p_reason)>4000 THEN
+  RAISE EXCEPTION 'Privacy erasure input unavailable' USING ERRCODE='22023'; END IF;
+ IF app.current_user_id() IS NULL OR NOT app.principal_snapshot_current() OR NOT app.is_admin() THEN
+  RAISE EXCEPTION 'Privacy erasure principal unavailable' USING ERRCODE='42501'; END IF;
+ SELECT * INTO selected FROM public.employment e WHERE e.id=p_employment AND e.tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF NOT FOUND OR NOT app.can_see_employment(selected.id) THEN
+  RAISE EXCEPTION 'Privacy erasure subject unavailable' USING ERRCODE='42501'; END IF;
+ -- Same calendar-year rollover as Date.setUTCFullYear: 29-Feb rolls to 1-Mar in a non-leap year.
+ -- Both owners use this admission's one actual timestamp and the one declared retention duration.
+ IF selected.terminated_on IS NOT NULL THEN
+  lift_date:=make_date(extract(year FROM selected.terminated_on)::integer+(policy->>'retentionYears')::integer,
+   extract(month FROM selected.terminated_on)::integer,1)+(extract(day FROM selected.terminated_on)::integer-1);
+  lifted:=(lift_date::timestamp AT TIME ZONE 'UTC')<=at_time;
+ END IF;
+ IF EXISTS(SELECT 1 FROM app.access_privacy_value_intent i WHERE i.xact_id=pg_current_xact_id()
+  AND i.tenant_id=selected.tenant_id AND i.user_id=app.current_user_id() AND i.person_id=selected.person_id) THEN
+  RAISE EXCEPTION 'Privacy erasure already prepared' USING ERRCODE='40001'; END IF;
+ DELETE FROM app.access_privacy_value_intent WHERE tenant_id=selected.tenant_id AND xact_id<>pg_current_xact_id();
+ SELECT to_jsonb(p) INTO original FROM public.person p WHERE p.id=selected.person_id AND p.tenant_id=selected.tenant_id FOR UPDATE;
+ IF original IS NULL THEN RAISE EXCEPTION 'Privacy erasure subject unavailable' USING ERRCODE='42501'; END IF;
+ FOR field IN SELECT value FROM jsonb_array_elements(policy->'fields') LOOP
+  IF field->>'table'='person' AND (p_scope='all' OR field->'scopes' ? p_scope)
+   AND (NOT (field->>'statutoryLocked')::boolean OR lifted) THEN
+   column_name:=lower(regexp_replace(field->>'key','([A-Z])','_\1','g'));
+   IF NOT original ? column_name THEN RAISE EXCEPTION 'Privacy erasure field unavailable' USING ERRCODE='55000'; END IF;
+   patch:=patch||jsonb_build_object(column_name,NULL);
+  END IF;
+ END LOOP;
+ expected:=original||patch;
+ before_digest:=encode(sha256(convert_to((original-'updated_at')::text,'UTF8')),'hex');
+ after_digest:=encode(sha256(convert_to((expected-'updated_at')::text,'UTF8')),'hex');
+ IF before_digest<>after_digest THEN
+  INSERT INTO app.access_privacy_value_intent VALUES(pg_current_xact_id(),selected.tenant_id,app.current_user_id(),selected.id,selected.person_id,
+   'person',selected.person_id,before_digest,after_digest,p_scope,encode(sha256(convert_to(p_request_ref,'UTF8')),'hex'),encode(sha256(convert_to(p_reason,'UTF8')),'hex'),NULL);
+ END IF;
+ patch:='{}'::jsonb;
+ IF p_scope IN ('contact','all') THEN
+  FOR column_name IN SELECT jsonb_array_elements_text(policy->'dependentContact') LOOP
+   patch:=patch||jsonb_build_object(lower(regexp_replace(column_name,'([A-Z])','_\1','g')),NULL);
+  END LOOP;
+ END IF;
+ IF p_scope IN ('identity','all') THEN
+  FOR column_name IN SELECT jsonb_array_elements_text(policy->'dependentIdentity') LOOP
+   patch:=patch||jsonb_build_object(lower(regexp_replace(column_name,'([A-Z])','_\1','g')),NULL);
+  END LOOP;
+ END IF;
+ IF patch<>'{}'::jsonb THEN
+  FOR saved IN SELECT to_jsonb(d) AS value FROM public.employee_dependent d WHERE d.tenant_id=selected.tenant_id AND d.person_id=selected.person_id ORDER BY d.id FOR UPDATE LOOP
+   original:=saved.value;expected:=original||patch;
+   before_digest:=encode(sha256(convert_to((original-'updated_at')::text,'UTF8')),'hex');
+   after_digest:=encode(sha256(convert_to((expected-'updated_at')::text,'UTF8')),'hex');
+   IF before_digest<>after_digest THEN
+    INSERT INTO app.access_privacy_value_intent VALUES(pg_current_xact_id(),selected.tenant_id,app.current_user_id(),selected.id,selected.person_id,
+     'dependent',(original->>'id')::uuid,before_digest,after_digest,p_scope,encode(sha256(convert_to(p_request_ref,'UTF8')),'hex'),encode(sha256(convert_to(p_reason,'UTF8')),'hex'),NULL);
+   END IF;
+  END LOOP;
+ END IF;
+ IF p_scope IN ('contact','all') THEN
+  FOR saved IN SELECT to_jsonb(c) AS value FROM public.person_emergency_contact c WHERE c.tenant_id=selected.tenant_id AND c.person_id=selected.person_id ORDER BY c.id FOR UPDATE LOOP
+   original:=saved.value;
+   INSERT INTO app.access_privacy_value_intent VALUES(pg_current_xact_id(),selected.tenant_id,app.current_user_id(),selected.id,selected.person_id,
+    'emergency',(original->>'id')::uuid,encode(sha256(convert_to((original-'updated_at')::text,'UTF8')),'hex'),
+    encode(sha256(convert_to('{}','UTF8')),'hex'),p_scope,encode(sha256(convert_to(p_request_ref,'UTF8')),'hex'),encode(sha256(convert_to(p_reason,'UTF8')),'hex'),NULL);
+  END LOOP;
+ END IF;
+ RETURN at_time;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_privacy_erasure_begin(uuid,text,text,text) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_privacy_erasure_begin(uuid,text,text,text) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.access_privacy_value_intent_allowed(p_kind text,p_before jsonb,p_after jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND app.is_admin() AND EXISTS(
+  SELECT 1 FROM app.access_privacy_value_intent i JOIN public.domain_event e ON e.id=i.event_id
+  WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=app.current_tenant_id() AND i.user_id=app.current_user_id()
+   AND app.can_see_employment(i.employment_id) AND i.kind=p_kind AND i.row_id=COALESCE(p_after->>'id',p_before->>'id')::uuid
+   AND i.before_hash=encode(sha256(convert_to((p_before-'updated_at')::text,'UTF8')),'hex')
+   AND i.after_hash=encode(sha256(convert_to((p_after-'updated_at')::text,'UTF8')),'hex')
+   AND e.tenant_id=i.tenant_id AND e.aggregate_type='person' AND e.aggregate_id=i.person_id AND e.subject_employment_id=i.employment_id
+   AND e.event_type='pii.erased' AND e.actor_type='user' AND e.actor_id=i.user_id AND e.payload->>'scope'=i.scope
+   AND encode(sha256(convert_to(e.payload->>'requestRef','UTF8')),'hex')=i.request_ref_hash
+   AND encode(sha256(convert_to(e.payload->>'reason','UTF8')),'hex')=i.reason_hash);
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_privacy_value_intent_allowed(text,jsonb,jsonb) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.access_privacy_value_audit() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.event_type='pii.erased' AND NEW.aggregate_type='person' AND NEW.actor_type='user' AND NEW.actor_id=app.current_user_id() THEN
+  UPDATE app.access_privacy_value_intent i SET event_id=NEW.id WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=NEW.tenant_id
+   AND i.user_id=NEW.actor_id AND i.person_id=NEW.aggregate_id AND i.employment_id=NEW.subject_employment_id AND i.scope=NEW.payload->>'scope'
+   AND i.request_ref_hash=encode(sha256(convert_to(NEW.payload->>'requestRef','UTF8')),'hex')
+   AND i.reason_hash=encode(sha256(convert_to(NEW.payload->>'reason','UTF8')),'hex') AND i.event_id IS NULL;
+ END IF;
+ RETURN NULL;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_privacy_value_audit() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER access_privacy_value_audit AFTER INSERT ON domain_event
+FOR EACH ROW EXECUTE FUNCTION app.access_privacy_value_audit();
+
+--> statement-breakpoint
+-- Preparation is not an authority token that can be abandoned or partially consumed. At commit,
+-- every captured nullable effect/delete and the actual canonical audit must have completed.
+CREATE FUNCTION app.access_privacy_value_complete() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE intent app.access_privacy_value_intent%ROWTYPE;actual jsonb;table_name text;
+BEGIN
+ SELECT * INTO intent FROM app.access_privacy_value_intent i WHERE i.xact_id=NEW.xact_id AND i.tenant_id=NEW.tenant_id
+  AND i.user_id=NEW.user_id AND i.kind=NEW.kind AND i.row_id=NEW.row_id;
+ IF NOT FOUND OR intent.event_id IS NULL OR intent.user_id IS DISTINCT FROM app.current_user_id()
+  OR intent.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT app.principal_snapshot_current() OR NOT app.is_admin()
+  OR NOT app.can_see_employment(intent.employment_id) THEN
+  RAISE EXCEPTION 'Privacy erasure incomplete' USING ERRCODE='42501'; END IF;
+ table_name:=CASE intent.kind WHEN 'person' THEN 'person' WHEN 'dependent' THEN 'employee_dependent' WHEN 'emergency' THEN 'person_emergency_contact' END;
+ EXECUTE format('SELECT to_jsonb(r) FROM public.%I r WHERE r.id=$1 AND r.tenant_id=$2',table_name) INTO actual USING intent.row_id,intent.tenant_id;
+ actual:=COALESCE(actual,'{}'::jsonb);
+ IF encode(sha256(convert_to((actual-'updated_at')::text,'UTF8')),'hex')<>intent.after_hash THEN
+  RAISE EXCEPTION 'Privacy erasure effects incomplete' USING ERRCODE='42501'; END IF;
+ RETURN NULL;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_privacy_value_complete() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE CONSTRAINT TRIGGER access_privacy_value_complete AFTER INSERT ON app.access_privacy_value_intent
+DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.access_privacy_value_complete();
