@@ -3,8 +3,7 @@ import Link from 'next/link';
 import { CurrentLedger } from '@/components/current-ledger';
 import { getTranslations } from 'next-intl/server';
 import { PROFILE_REQUEST_OPTION_NAMESPACE } from '@/lib/profile-requestable-fields';
-import { requireAdmin } from '@/lib/authz';
-import { scopedSession } from '@/lib/scope';
+import {requireWorkforceAccess} from '@/lib/workforce-authz';
 import {
   countEmployeesByStatus,
   listCompanies,
@@ -102,7 +101,7 @@ export default async function PeoplePage({
 }: {
   searchParams: Promise<PersonnelSearchParams>;
 }) {
-  await requireAdmin(); // Admin-only management surface (ADR: People→Personnel split). Non-admins redirect home.
+  const {s:session,scopeIds,companyIds,allowedCount}=await requireWorkforceAccess();
   const t = await getTranslations('people.list');
   const tStatus = await getTranslations('people.employeeStatus');
   // r260 — Personnel Management's own field labels, so a proposed profile change is named in this
@@ -113,11 +112,11 @@ export default async function PeoplePage({
   const tMeOptions = await getTranslations(PROFILE_REQUEST_OPTION_NAMESPACE);
   // Employee Status redesign (R43 c26c3ce5): the People list shows the SYSTEM-DERIVED status (from each
   // employee's lifecycle dates + blacklist override), not the legacy stored assignment.status.
-  const {s:session,scopeIds:selectedScope}=await scopedSession();
-  const workforceIds=new Set(await workforceCompanies(session));
-  const scopeIds=selectedScope.filter(id=>workforceIds.has(id)),allowedCount=workforceIds.size;
+  const workforceIds=new Set(companyIds);
+  const maintainIds=new Set(await workforceCompanies(session,'maintain'));
   const today = todayInKualaLumpur();
   const isAdmin = (session.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
+  const canCreate=isAdmin&&maintainIds.size>0;
   const sp = await searchParams;
   const { error } = sp;
   const pq = parsePageQuery(sp);
@@ -148,8 +147,8 @@ export default async function PeoplePage({
     // stripped (headcountFilters) so the cards stay a facet of the current view — clicking one cannot
     // make the other four read zero.
     countEmployeesByStatus(session,{companyIds:scopeIds,...headcountFilters(query)},'workforce'),
-    listCompanies(session),
-    listDepartments(session),
+    listCompanies(session).then(rows=>rows.filter(row=>workforceIds.has(row.id))),
+    scopeIds.length?listDepartments(session,{companyIds:scopeIds}):Promise.resolve([]),
     // b1b1879d — drafts follow the TOP-BAR company scope exactly as the employees above do. They used to
     // be read with no scope at all, so choosing one company still listed every company's drafts.
     isAdmin ? listEmployeeDrafts(session, draftListScope(scopeIds, allowedCount)) : Promise.resolve([]),
@@ -167,7 +166,7 @@ export default async function PeoplePage({
     // the Employee ID Auto Running Number Setup that applies to each of them. Resolved ONCE from a single
     // read here, exactly as app/admin/personnel/new/page.tsx does it, rather than a query per company as
     // the select is used. Admin-only, because the prompt itself is.
-    isAdmin ? listConfigs(session, scopeIds) : Promise.resolve([]),
+    canCreate ? listConfigs(session, scopeIds) : Promise.resolve([]),
   ]);
 
   const columns = savedColumns.selected;
@@ -402,7 +401,7 @@ export default async function PeoplePage({
           <div className="flex flex-wrap items-center justify-end gap-3">
             {/* 579255c3 — the bare "40 employees" count that stood here is GONE. It said one number with
                 no context; the five cards below say all five, and the pager still prints "1–25 of 30". */}
-            {isAdmin && (
+            {canCreate && (
               <Link
                 href="/admin/personnel/import"
                 data-tour="people-import"
@@ -506,10 +505,10 @@ export default async function PeoplePage({
                 the full screen. The markup, the `data-tour` anchor and the confirmation step live in
                 ./create-employee-dialog.tsx; the trigger's LABEL is resolved here so that file keeps to a
                 single message namespace. */}
-            {isAdmin && (
+            {canCreate && (
               <CreateEmployeeDialog
                 triggerLabel={t('createNewEmployee')}
-                companies={companies.map((c) => ({ id: c.id, label: c.name }))}
+                companies={companies.filter(c=>maintainIds.has(c.id)).map((c) => ({ id: c.id, label: c.name }))}
                 employeeIdRules={employeeIdRules}
               />
             )}

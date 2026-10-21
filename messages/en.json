@@ -10047,6 +10047,7 @@
         "onboardingAcknowledgement": "Only the person linked to the hire can acknowledge their own handed-over equipment. Rehire and multiple-employment cases remain separate.",
         "attendanceVisibleApplications": "Only attendance requests already visible through the current employee, reporting, delegation or saved participant scope. This page grants no Personnel browsing or wider HR history access.",
         "profileChanges": "Review profile changes assigned to you within your current HR authority. Old requests retain their recorded routing.",
+        "workforceRecords": "Requires effective Workforce view permission for the selected company. Does not grant payroll or approval access.",
         "accessConfiguration": "Opens only with the current effective Manage security and permissions grant. A role alone never grants this screen."
       },
       "status": {

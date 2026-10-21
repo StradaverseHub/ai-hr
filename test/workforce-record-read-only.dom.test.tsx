@@ -1,0 +1,56 @@
+/** Prepared rendered contract; actual role journeys still need the isolated app under all leases. */
+import {describe,expect,it,vi} from 'vitest';
+import {render,screen} from '@testing-library/react';
+import {createTranslator} from 'next-intl';
+import en from '../messages/en.json';
+import ms from '../messages/ms.json';
+import zh from '../messages/zh.json';
+import ta from '../messages/ta.json';
+import th from '../messages/th.json';
+import viMessages from '../messages/vi.json';
+import {WorkforceReadOnlyRecord} from '../app/admin/personnel/[employmentId]/workforce-read-only';
+import {workforceRecord,type WorkforceRecord} from '../core/workforce-record';
+import {listWorkforcePickOptions} from '../core/read';
+import {WORKFORCE_PROFILE_FIELDS,type WorkforceProfile} from '../lib/workforce-record-fields';
+import {personnelField} from '../lib/personnel-field-registry';
+import {todayInKualaLumpur} from '../lib/hr-date';
+const language=vi.hoisted(()=>({current:'en'}));
+const catalogues={en,ms,zh,ta,th,vi:viMessages};
+vi.mock('next-intl/server',()=>({getTranslations:async(namespace?:string)=>createTranslator({
+ locale:language.current,messages:catalogues[language.current as keyof typeof catalogues],namespace:namespace as never,onError:error=>{throw error;},
+})}));
+vi.mock('next/navigation',()=>({notFound:()=>{throw new Error('not_found');}}));
+vi.mock('../core/workforce-record',()=>({workforceRecord:vi.fn()}));
+vi.mock('../core/read',()=>({listWorkforcePickOptions:vi.fn()}));
+vi.mock('../app/admin/personnel/employee-switcher',()=>({EmployeeSwitcher:()=> <span>Fictional authorized picker</span>}));
+const id='11111111-1111-4111-8111-111111111111';
+const ctx={tenantId:id,userId:id,personId:id,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+const profile=Object.fromEntries(WORKFORCE_PROFILE_FIELDS.map(({key})=>[key,null])) as WorkforceProfile;
+const detail:WorkforceRecord={employment:{employmentId:id,name:'Fictional view-only colleague',email:'wf-profile@example.invalid',
+ employeeCode:'WF-RO',department:'Fictional department',departmentId:id,position:'Fictional position',company:'Fictional company',companyId:id,
+ hiredOn:todayInKualaLumpur(),terminatedOn:null,confirmationDate:null,finalConfirmationDate:null,resignationDate:null,lastWorkingDate:null,blacklistedAt:null,
+ jobGrade:null,employmentType:'full_time',reportingTo:null,businessUnit:null,costCenter:null,workLocation:null,joinDate:null},
+ profile:{...profile,fullName:'Fictional view-only colleague',primaryEmail:'wf-profile@example.invalid',gender:'female',permanentCity:'Fictional city'}};
+
+describe('grant-based Workforce record view',()=>{
+ it.each(Object.keys(catalogues))('renders the bounded profile in %s without a hidden maintenance form',async locale=>{
+  language.current=locale;
+  vi.mocked(workforceRecord).mockResolvedValue(detail);vi.mocked(listWorkforcePickOptions).mockResolvedValue([]);
+  const root=createTranslator({locale,messages:catalogues[locale as keyof typeof catalogues],onError:error=>{throw error;}});
+  for(const {fieldId}of WORKFORCE_PROFILE_FIELDS)expect(root.has(personnelField(fieldId)!.labelKey)).toBe(true);
+  const {container}=render(await WorkforceReadOnlyRecord({session:ctx,employmentId:id,scopeIds:[id]}));
+  expect(screen.getByRole('heading',{name:'Fictional view-only colleague'})).toBeInTheDocument();
+  expect(screen.getByText('wf-profile@example.invalid')).toBeInTheDocument();
+  expect(screen.getByText('Fictional company')).toBeInTheDocument();
+  expect(screen.getByRole('status')).toHaveTextContent(root('accessConfiguration.workforceReadOnly'));
+  expect(container.querySelector('form')).toBeNull();expect(container.querySelector('input[type="file"]')).toBeNull();
+  expect(container.querySelector('[name="fullName"]')).toBeNull();
+ });
+ it('refuses a revoked/missing projection and a malformed URL rather than rendering a partial record',async()=>{
+  vi.mocked(workforceRecord).mockResolvedValue(null);vi.mocked(listWorkforcePickOptions).mockResolvedValue([]);
+  await expect(WorkforceReadOnlyRecord({session:ctx,employmentId:id,scopeIds:[id]})).rejects.toThrow('not_found');
+  vi.mocked(workforceRecord).mockClear();
+  await expect(WorkforceReadOnlyRecord({session:ctx,employmentId:'not-an-id',scopeIds:[id]})).rejects.toThrow('not_found');
+  expect(workforceRecord).not.toHaveBeenCalled();
+ });
+});

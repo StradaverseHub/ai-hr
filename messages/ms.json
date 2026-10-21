@@ -10047,6 +10047,7 @@
         "onboardingAcknowledgement": "Hanya individu yang dipautkan kepada pengambilan boleh mengakui peralatan sendiri selepas serahan. Kes pengambilan semula dan pekerjaan berbilang kekal berasingan.",
         "attendanceVisibleApplications": "Hanya permohonan kehadiran yang sudah kelihatan melalui skop pekerja, pelaporan, delegasi atau peserta disimpan semasa. Halaman ini tidak memberi akses Personnel atau sejarah HR lebih luas.",
         "profileChanges": "Semak perubahan profil yang ditugaskan kepada anda dalam kuasa HR semasa.",
+        "workforceRecords": "Memerlukan kebenaran melihat rekod pekerja yang berkuat kuasa bagi syarikat dipilih. Tidak memberikan akses penggajian atau kelulusan.",
         "accessConfiguration": "Hanya dibuka dengan kebenaran Urus keselamatan dan kebenaran yang berkuat kuasa. Peranan sahaja tidak memberikan akses."
       },
       "status": {

@@ -10047,6 +10047,7 @@
         "onboardingAcknowledgement": "Chỉ người được liên kết với lần tuyển dụng đó được xác nhận thiết bị của mình sau bàn giao. Hồ sơ tái tuyển dụng và nhiều quan hệ việc làm được giữ riêng.",
         "attendanceVisibleApplications": "Chỉ các đơn chấm công đã có quyền xem theo phạm vi nhân viên, tuyến báo cáo, ủy quyền hoặc người tham gia đã lưu hiện tại. Trang này không cấp quyền xem hồ sơ nhân sự hoặc lịch sử HR rộng hơn.",
         "profileChanges": "Xem yêu cầu thay đổi hồ sơ được giao cho bạn trong phạm vi quyền HR hiện tại.",
+        "workforceRecords": "Cần có quyền xem hồ sơ nhân viên có hiệu lực cho công ty đã chọn. Không cấp quyền truy cập lương hoặc phê duyệt.",
         "accessConfiguration": "Chỉ mở khi có quyền Quản lý bảo mật và quyền đang có hiệu lực. Vai trò riêng lẻ không cấp quyền truy cập màn hình này."
       },
       "status": {

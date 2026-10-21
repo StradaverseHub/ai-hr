@@ -1117,3 +1117,28 @@ CREATE POLICY access_workforce_document_update ON employee_document AS RESTRICTI
 --> statement-breakpoint
 CREATE POLICY access_workforce_document_delete ON employee_document AS RESTRICTIVE FOR DELETE TO ai_hr_app
  USING(app.access_workforce_employment(employment_id,'workforce.maintain'));
+
+
+--> statement-breakpoint
+-- A positive Workforce view grant can open only this declared normal-profile/read-model contract.
+-- No raw person/employment grant, payroll-policy/financial fields, classification or file bytes.
+CREATE FUNCTION app.access_workforce_record(p_employment uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object('employment',listing.value,'profile',jsonb_build_object(
+  'salutation',p.salutation,'fullName',p.full_name,'firstName',p.first_name,'lastName',p.last_name,
+  'preferredName',p.preferred_name,'nationality',p.nationality,'religion',p.religion,'race',p.race,
+  'dateOfBirth',p.date_of_birth,'gender',p.gender,'maritalStatus',p.marital_status,'primaryEmail',p.primary_email,
+  'phone',p.phone,'homePhone',p.home_phone,'personalEmail',p.personal_email,'permanentAddressLine1',p.permanent_address_line1,
+  'permanentAddressLine2',p.permanent_address_line2,'permanentAddressLine3',p.permanent_address_line3,'permanentPostcode',p.permanent_postcode,'permanentCity',p.permanent_city,
+  'permanentState',p.permanent_state,'permanentCountry',p.permanent_country,'correspondenceAddressLine1',p.correspondence_address_line1,'correspondenceAddressLine2',p.correspondence_address_line2,
+  'correspondenceAddressLine3',p.correspondence_address_line3,'correspondencePostcode',p.correspondence_postcode,'correspondenceCity',p.correspondence_city,'correspondenceState',p.correspondence_state,
+  'correspondenceCountry',p.correspondence_country,'correspondenceMobilePhone',p.correspondence_mobile_phone,'correspondenceHomePhone',p.correspondence_home_phone))
+ FROM app.access_workforce_list_rows() AS listing(value)
+ JOIN public.employment e ON e.id=(listing.value->>'employmentId')::uuid AND e.tenant_id=app.current_tenant_id()
+ JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+ WHERE e.id=p_employment;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_record(uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_workforce_record(uuid) TO ai_hr_app;

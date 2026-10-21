@@ -193,3 +193,29 @@ Cancellation/reversal remains the existing audited command. A user-driven replay
 current authority. Prepared real-runtime/owner cases require fake system refusal, legitimate due-only
 application and repeated-run no-op. Restricted-owner and actual script lifecycle verification remain
 required and unrun; this is not evidence that background compatibility has passed.
+
+
+The next source read composition connects positive view grants to the listing, bounded record, export,
+user-owned column preferences and account-menu discovery. Workforce derives its own current company
+scope instead of widening the shared switcher for other modules. Read/import-create routes now have
+separate, accurately described guard columns; the grid marks effective permission as conditional for
+all roles. Six locale scope captions describe that boundary. Create/import controls still require the
+actual existing HR maintenance floor and permitted company choices.
+
+The bounded record declares 31 physical normal-profile fields from the canonical Personnel registry
+and the existing employment list projection. No salary, bank/statutory rows, paymaster link, private
+classification, arbitrary person/employment row or file bytes are returned. Non-HR view grants and HR
+read grants beyond their legacy scope enter this separate server composition before any HR-detail
+payload read. It renders personal/contact/correspondence and employment readouts using the existing
+field labels, choices and status/date owners; it has no master-update form. Its picker remains a smaller
+purpose DTO. Malformed/unreachable/revoked records refuse. Prepared six-language DOM and live-role DB
+cases include exact projection shape, populated salary refusal, same-session revocation and no hidden
+maintenance forms. All remain unrun; the actual app still requires representative role/RSC/viewport,
+keyboard/save/navigation/error reviews before this surface can be called verified.
+
+This is not yet full Workforce maintenance. A new positive maintenance grant still needs bounded
+canonical write admission, shared-person partial/register SQL composition, every affected downstream
+consumer and default/independent-owner equivalence. Missing profile-derived/photo/register read
+contracts also require outcome reconciliation. The view/maintain/profile-review catalogue controls stay
+unsupported during construction; their public page/source scaffolding is not proof of a complete or
+shippable capability. No Board status has been advanced to Done or Deployed for this source work.

@@ -8,9 +8,10 @@ import { RETIRED_PERSONNEL_TABS } from '@/lib/personnel-tab-sections';
 import { getTranslations } from 'next-intl/server';
 import { isAdmin } from '@/lib/authz';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
-// c002b3c3 — `scopedAdmin` is `requireAdmin` PLUS the active company context. Same admin gate as before
-// (it redirects non-admins identically); the scope ids are what the Search Employee box is narrowed to.
-import { scopedAdmin } from '@/lib/scope';
+// Workforce scope is purpose-bound. New view-only grants enter the bounded read composition;
+// legacy HR detail and specialized private owners retain their existing role/scope floors.
+import {requireWorkforceAccess} from '@/lib/workforce-authz';
+import {WorkforceReadOnlyRecord} from './workforce-read-only';
 import {
   adminCompanies,
   assignmentHistory,
@@ -243,7 +244,8 @@ export default async function EmployeePage({
     incentiveError?: string;
   }>;
 }) {
-  const { s, scopeIds } = await scopedAdmin(); // Admin-only management surface (People→Personnel split). Non-admins redirect home.
+  const {s,scopeIds}=await requireWorkforceAccess();
+  if(!isAdmin(s))return <WorkforceReadOnlyRecord session={s} employmentId={(await params).employmentId} scopeIds={scopeIds}/>;
   const t = await getTranslations('people.detail');
   const tPersonnel=await getTranslations();
   const personnelLabel=(id:string)=>personnelFormLabel(id,(key,fallback)=>tPersonnel.has(key)?tPersonnel(key):fallback);
@@ -329,7 +331,7 @@ export default async function EmployeePage({
   if (!UUID_RE.test(employmentId)) notFound();
 
   const emp = await employeeDetail(s,employmentId,'workforce');
-  if (!emp) notFound();
+  if(!emp)return <WorkforceReadOnlyRecord session={s} employmentId={employmentId} scopeIds={scopeIds}/>;
   const canMaintainWorkforce=await workforceEmploymentAccess(s,employmentId,'maintain');
   const tAccess=await getTranslations('accessConfiguration');
   const classification = admin ? await employmentTestRecord(s, employmentId) : null;

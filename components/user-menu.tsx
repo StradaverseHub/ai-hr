@@ -82,14 +82,17 @@ export function UserMenu({
   employeeCode,
   employed,
   canConfigureAccess=false,
+  canViewWorkforce=false,
 }: {
   name: string | null;
   employeeCode: string | null;
   employed: boolean;
   canConfigureAccess?:boolean;
+  canViewWorkforce?:boolean;
 }) {
   const t = useTranslations('topbar');
   const accessT=useTranslations('accessConfiguration');
+  const navT=useTranslations('nav');
   const [open, setOpen] = useState(false);
 
   // Escape closes, as it does for every other popover chrome in the header.
@@ -189,6 +192,8 @@ export function UserMenu({
             >
               {t('viewProfile')}
             </Link>
+            {canViewWorkforce&&<Link href="/admin/personnel" role="menuitem" onClick={()=>setOpen(false)}
+              className="flex w-full items-center rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted">{navT('personnelAdmin')}</Link>}
             {canConfigureAccess&&<Link href="/admin/users/access" role="menuitem" onClick={()=>setOpen(false)}
               className="flex w-full items-center rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted">{accessT('title')}</Link>}
             {/* Moved out of the header (r256) so the corner has room to say who you are on a laptop. */}

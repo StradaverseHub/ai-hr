@@ -10047,6 +10047,7 @@
         "onboardingAcknowledgement": "只有与该次入职关联的本人可以确认已交付给自己的设备。重新入职及多重雇佣的记录分别保留。",
         "attendanceVisibleApplications": "仅显示现有员工、汇报、委托或已保存参与者范围内可见的出勤申请。此页不会授予人员浏览或更广泛的人事历史权限。",
         "profileChanges": "查看在当前人事权限范围内分配给您的资料变更申请。",
+        "workforceRecords": "须具备所选公司的有效员工资料查看权限，不授予薪资或审批权限。",
         "accessConfiguration": "仅限当前拥有“管理安全与权限”有效授权的用户。仅凭角色不能访问此页面。"
       },
       "status": {

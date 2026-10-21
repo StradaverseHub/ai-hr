@@ -55,11 +55,11 @@ export const MATRIX_ROLES: readonly Role[] = [
 ] as const;
 
 /** The page guard each screen is gated by — the single source of the access truth for that screen. */
-export type Guard = 'requireAccessConfiguration' | 'requireAdmin' | 'scopedAdmin' | 'scopedSession' | 'requireTeamAccess' | 'onboardingAccess' | 'onboardingParticipant' | 'onboardingMaster';
+export type Guard = 'requireWorkforceAccess' | 'requireAccessConfiguration' | 'requireAdmin' | 'scopedAdmin' | 'scopedSession' | 'requireTeamAccess' | 'onboardingAccess' | 'onboardingParticipant' | 'onboardingMaster';
 
 /** Role eligibility. The effective-capability gate is rendered as conditional, never a role grant. */
 export function rolesForGuard(guard: Guard): ReadonlySet<Role> {
-  if(guard==='requireAccessConfiguration')return new Set<Role>(MATRIX_ROLES);
+  if(guard==='requireAccessConfiguration'||guard==='requireWorkforceAccess')return new Set<Role>(MATRIX_ROLES);
   if (guard === 'requireTeamAccess') return new Set<Role>(['manager', 'hr_admin', 'super_admin']);
   // requireAdmin & scopedAdmin both gate on isAdmin → hr_admin + super_admin only.
   if (guard === 'requireAdmin' || guard === 'scopedAdmin' || guard === 'onboardingMaster') {
@@ -440,21 +440,20 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/admin/organization/[companyId]/view',
     ],
   },
+  {screenKey:'workforceRecords',href:'/admin/personnel',labelKey:'accessConfiguration.capabilities.workforceView',guard:'requireWorkforceAccess',routes:['/admin/personnel','/admin/personnel/[employmentId]'],hasScopeNote:true},
   {screenKey:'profileChanges',href:'/admin/personnel/profile-changes',labelKey:'nav.profileChanges',guard:'requireAdmin',routes:['/admin/personnel/profile-changes'],hasScopeNote:true},
   {
     screenKey: 'personnelAdmin',
     href: '/admin/personnel',
     labelKey: 'nav.personnelAdmin',
     guard: 'requireAdmin',
+    // HR import/new maintenance retains its existing role floor; read routes are bound separately.
     // 6d671f44: /admin/personnel/new is the Create New Employee wizard, registered here because it is the
-    // same admin surface behind the same requireAdmin guard, and creating an employee is not a separate
-    // function-access right from managing them.
+    // same HR maintenance floor. Viewing employee records is represented by the purpose gate above.
     // 7b5f18c3: /admin/personnel/settings (Hiring Defaults) is GONE from this list. The screen moved to
     // System Settings (own column below) and the old address is now an unguarded redirect stub — so it is
     // no longer a guarded page on disk, and leaving it here would fail the "no stale routes" check.
     routes: [
-      '/admin/personnel',
-      '/admin/personnel/[employmentId]',
       '/admin/personnel/import',
       '/admin/personnel/new',
     ],
