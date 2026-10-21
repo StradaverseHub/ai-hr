@@ -22323,6 +22323,17 @@
       "refresh": "刷新",
       "reviewAcknowledge": "阅读并确认",
       "seeAll": "查看所有通知"
-    }
+    },
+    "greeting": {
+      "title": "我的一天概览",
+      "loading": "正在加载您的问候语…",
+      "failed": "无法加载您的问候语。请重试此卡片。",
+      "timeout": "问候语加载时间过长。请重试此卡片。",
+      "retry": "重试",
+      "refresh": "刷新",
+      "welcome": "欢迎。"
+    },
+    "homeOptions": "主页选项",
+    "teamWorkbench": "团队工作台"
   }
 }

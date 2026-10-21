@@ -22323,6 +22323,17 @@
       "refresh": "Muat semula",
       "reviewAcknowledge": "Semak dan akui penerimaan",
       "seeAll": "Lihat semua notis"
-    }
+    },
+    "greeting": {
+      "title": "Hari Saya Sepintas Lalu",
+      "loading": "Memuatkan ucapan anda…",
+      "failed": "Ucapan anda tidak dapat dimuatkan. Cuba semula kad ini.",
+      "timeout": "Ucapan anda mengambil masa terlalu lama untuk dimuatkan. Cuba semula kad ini.",
+      "retry": "Cuba semula",
+      "refresh": "Muat semula",
+      "welcome": "Selamat datang."
+    },
+    "homeOptions": "Pilihan Laman Utama",
+    "teamWorkbench": "Ruang kerja pasukan"
   }
 }

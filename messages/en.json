@@ -22323,6 +22323,17 @@
       "refresh": "Refresh",
       "reviewAcknowledge": "Review and acknowledge",
       "seeAll": "See all notices"
-    }
+    },
+    "greeting": {
+      "title": "My Day at a Glance",
+      "loading": "Loading your greeting…",
+      "failed": "We could not load your greeting. Retry this card.",
+      "timeout": "Your greeting took too long to load. Retry this card.",
+      "retry": "Retry",
+      "refresh": "Refresh",
+      "welcome": "Welcome."
+    },
+    "homeOptions": "Home options",
+    "teamWorkbench": "Team workbench"
   }
 }

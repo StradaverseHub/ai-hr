@@ -1,3 +1,5 @@
+import {EmployeePersonalHome} from '@/components/employee-home/personal-home';
+import {notFound} from 'next/navigation';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -145,11 +147,12 @@ function orderTree(rows: BreakdownRow[]) {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ moduleUnavailable?: string | string[] }>;
+  searchParams?: Promise<{ moduleUnavailable?: string | string[];employmentId?:string|string[];workspace?:string|string[] }>;
 }) {
   const t = await getTranslations('dashboard');
   const tModule = await getTranslations('moduleUnavailable');
-  const rawUnavailable = (await searchParams)?.moduleUnavailable;
+  const homeQuery=await searchParams;
+  const rawUnavailable = homeQuery?.moduleUnavailable;
   const unavailableCode = Array.isArray(rawUnavailable) ? rawUnavailable[0] : rawUnavailable;
   const unavailableModule = MODULE_CATALOG.find((m) => m.code === unavailableCode && !m.isCore) ?? null;
   // Employee Status sync (5afcda91): the Onboarding card badge shows the system-derived Employee Status
@@ -178,6 +181,15 @@ export default async function DashboardPage({
   const hasDirectReports = (reportingLines?.reports.length ?? 0) > 0;
   // A Direct Manager via a reporting_line edge may not hold the `manager` platform role (0110); OR it in.
   const role = resolveDashboardRole({ admin, managerRole, hasDirectReports });
+  // Personal Home returns before any legacy aggregate or assistant composition. A query string does
+  // not grant the manager workbench: its existing real-role/reporting resolver must admit the viewer.
+  if(!admin&&!(role==='manager'&&homeQuery?.workspace==='team')){
+    if(Array.isArray(homeQuery?.employmentId))notFound();
+    return <>
+      {unavailableModule&&<Card className="mb-5 border-warning/30 p-4"><h2 className="text-sm font-semibold">{tModule('title')}</h2><p className="mt-1 text-sm text-muted-foreground">{tModule('body',{module:unavailableModule.name})}</p></Card>}
+      <EmployeePersonalHome session={s} employmentId={homeQuery?.employmentId} teamWorkbench={role==='manager'}/>
+    </>;
+  }
   const wantStats = role === 'hr_admin' || role === 'manager'; // manager needs attendance breakdown
   const wantBreakdown = role === 'hr_admin';
 

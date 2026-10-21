@@ -22323,6 +22323,17 @@
       "refresh": "Làm mới",
       "reviewAcknowledge": "Đọc và xác nhận",
       "seeAll": "Xem tất cả thông báo"
-    }
+    },
+    "greeting": {
+      "title": "Tổng quan ngày của tôi",
+      "loading": "Đang tải lời chào của bạn…",
+      "failed": "Không thể tải lời chào của bạn. Hãy thử lại thẻ này.",
+      "timeout": "Tải lời chào mất quá nhiều thời gian. Hãy thử lại thẻ này.",
+      "retry": "Thử lại",
+      "refresh": "Làm mới",
+      "welcome": "Chào mừng."
+    },
+    "homeOptions": "Tùy chọn trang chủ",
+    "teamWorkbench": "Không gian làm việc nhóm"
   }
 }

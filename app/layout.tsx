@@ -403,12 +403,14 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             </div>
           </div>
           </NavIndexProvider>
-          <OnboardingTour tours={tours} autoStartTourId={onboarded ? null : WELCOME_TOUR_ID} />
+          <OnboardingTour tours={tours} autoStartTourId={onboarded || (pathname==='/'&&!isAdmin(session)) ? null : WELCOME_TOUR_ID} />
           {/* 6e122302 — the after-login notice popup, mounted beside the onboarding tour because that is
               the existing "show something once after login and remember the dismissal" surface. At most
               ONE notice, chosen server-side; the slot renders null when nothing is due, so this costs an
               already-cached employment lookup and nothing else on the overwhelming majority of loads. */}
-          <NoticePopupSlot s={session} />
+          {/* Personal Home opens directly; its Notice card, full reader and canonical assigned work
+              retain explicit acknowledgement. The path is set by trusted middleware. */}
+          {(pathname!=='/'||isAdmin(session))&&<NoticePopupSlot s={session} />}
           <Suspense fallback={null}>
             <ToastFromQuery />
           </Suspense>
