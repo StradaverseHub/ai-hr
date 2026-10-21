@@ -20977,6 +20977,34 @@
     "updateRetestNote": "确认前请核对差异。发布修订后的说明会将先前的任务标为需要复测，并保留已保存的结果。"
   },
   "essProfile": {
+    "approvalAuthorityFloor": "现有 HR 最低权限（保留）",
+    "photoRouteUnavailable": "提交前，HR 需要配置有效的照片审批人。",
+    "photoAlreadyPending": "已有照片等待审批。请等待决定后再提交。",
+    "routingTypeMatched": "匹配的员工／申请类型组合",
+    "routingTypeMissing": "缺少规则的员工／申请类型组合",
+
+    "submitPhoto": "提交照片审批",
+    "pendingPhoto": "待审批照片",
+    "photoApprovalHelp": "HR 批准前保留当前照片。可在“我的变更申请”查看决定。",
+    "currentPhoto": "当前照片",
+    "proposedPhoto": "拟用照片",
+    "photoProposed": "照片已提交 HR 审批",
+
+    "approvalRules": "HR 审批规则",
+    "requestTypes": "申请类型",
+    "fieldRequests": "资料字段",
+    "photoRequests": "个人照片",
+    "included": "包含",
+    "excluded": "排除",
+    "exclusionHelp": "排除优先。空的排除条件不会排除任何人。空的包含条件包括所有在职员工；保存前请预览。",
+    "unavailableSelection": "选项不可用，请移除或替换",
+    "noValidApprovers": "没有符合条件的 HR 审批人。请检查在职状态、登录和公司权限。",
+    "noMatches": "没有匹配的选项",
+
+    "tabPermission": "页签权限",
+    "sectionPermission": "分组权限",
+    "groupPermissionHelp": "页签和分组限制优先。可编辑遵循各字段设置；只读禁止修改；隐藏会从“我的资料”移除信息。",
+
     "requestEdit": "申请编辑",
     "save": "保存更改",
     "cancel": "取消",
@@ -21045,7 +21073,7 @@
     "selectAll": "全选",
     "waiting": "待审批",
     "photoEditSetting": "个人照片编辑",
-    "photoEditHelp": "照片编辑有独立设置。启用后，员工可上传或替换在“我的资料”中可见的本人照片。删除照片仍由人事处理。",
+    "photoEditHelp": "允许员工提交照片供 HR 审批。批准前保留当前照片。",
     "savePhotoPermission": "保存照片权限",
     "allowOwnPhoto": "允许员工上传或替换自己的照片",
     "ownPhoto": "个人照片",

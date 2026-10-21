@@ -93,10 +93,13 @@ describe('bounded private maintenance picker',()=>{
 describe('independent own photo and hidden payloads',()=>{
  const png=Buffer.from([137,80,78,71,13,10,26,10,1,2,3]);
  it('defaults photo editing off, enables only own upload, and keeps deletion as HR authority',async()=>{
-  const employee=await worker('Photo subject'),other=await worker('Other subject');
+  const employee=await worker('Photo subject'),other=await worker('Other subject'),hr=await worker('Photo HR','hr_admin');
   await expect(setOwnPersonPhoto(employee.ctx,{employmentId:employee.employmentId,content:png,fileName:'test.png'})).rejects.toThrow();
   await setTenantSetting(group(),{key:'ess.profile_photo_edit',value:true});
-  await setOwnPersonPhoto(employee.ctx,{employmentId:employee.employmentId,content:png,fileName:'test.png'});
+  await saveProfileRoutingPolicy(group(),{expectedRevision:EMPTY_PROFILE_ROUTING.revision,enabled:true,rules:[rule(employee.employmentId,hr.employmentId)]});
+  const submitted=await setOwnPersonPhoto(employee.ctx,{employmentId:employee.employmentId,content:png,fileName:'test.png'});
+  expect(await getPersonPhoto(employee.ctx,employee.personId)).toBeNull();
+  await decideProfileChange(hr.ctx,{requestId:submitted.requestId,decision:'approved'});
   expect((await getPersonPhoto(employee.ctx,employee.personId))?.content.equals(png)).toBe(true);
   await expect(setOwnPersonPhoto(employee.ctx,{employmentId:other.employmentId,content:png,fileName:'test.png'})).rejects.toThrow();
   await expect(Promise.resolve().then(()=>setOwnPersonPhoto(employee.ctx,{employmentId:employee.employmentId,content:Buffer.from('not a photo'),fileName:'test.png'}))).rejects.toThrow();

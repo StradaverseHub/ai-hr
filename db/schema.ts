@@ -5611,8 +5611,18 @@ export const profileChangeRequest = pgTable(
     decisionReason: text('decision_reason'),
     createdAt: createdAt(),
   },
-  (t) => [index('profile_change_request_employment_idx').on(t.employmentId, t.status)],
+  (t) => [index('profile_change_request_employment_idx').on(t.employmentId, t.status),uniqueIndex('profile_change_request_pending_photo_person_uq').on(t.tenantId,t.personId).where(sql`${t.status}='pending' AND ${t.proposed}->>'kind'='photo'`)],
 );
+
+/** Bytes are retained only while the canonical profile request is pending. */
+export const profilePhotoProposal=pgTable('profile_photo_proposal',{
+ requestId:uuid('request_id').primaryKey().references(()=>profileChangeRequest.id),
+ tenantId:tenantId(),
+ content:bytea('content').notNull(),
+ mimeType:text('mime_type').notNull(),
+ sizeBytes:integer('size_bytes').notNull(),
+ createdAt:createdAt(),
+});
 
 // ADR-0042 (#29): employee-initiated resignation. The employee submits one; HR accepts it, which triggers
 // terminateEmployment (a 'voluntary' termination). Same request→approve rails as profile_change_request.

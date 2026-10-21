@@ -20977,6 +20977,34 @@
     "updateRetestNote": "Review differences before confirming. Publishing revised instructions marks earlier assignments for retesting and preserves their saved results."
   },
   "essProfile": {
+    "approvalAuthorityFloor": "Minimum existing HR authority (preserved)",
+    "photoRouteUnavailable": "HR needs to configure a valid photo approver before you can submit.",
+    "photoAlreadyPending": "A photo is already waiting for review. Wait for the decision before submitting another.",
+    "routingTypeMatched": "Matched employee/request-type pairs",
+    "routingTypeMissing": "Missing employee/request-type pairs",
+
+    "submitPhoto": "Submit photo for approval",
+    "pendingPhoto": "Pending photo",
+    "photoApprovalHelp": "Your current photo remains until HR approves. You will see the decision in My change requests.",
+    "currentPhoto": "Current photo",
+    "proposedPhoto": "Proposed photo",
+    "photoProposed": "Photo submitted for HR approval",
+
+    "approvalRules": "HR Approval Rules",
+    "requestTypes": "Request types",
+    "fieldRequests": "Profile fields",
+    "photoRequests": "Profile photo",
+    "included": "Included",
+    "excluded": "Excluded",
+    "exclusionHelp": "Exclusions take priority. An empty exclusion excludes nobody. Empty inclusion criteria include all active employees; review the preview before saving.",
+    "unavailableSelection": "Unavailable selection — remove or replace",
+    "noValidApprovers": "No eligible HR approvers. Check active employment, login and company authority.",
+    "noMatches": "No matching options",
+
+    "tabPermission": "Tab access",
+    "sectionPermission": "Section access",
+    "groupPermissionHelp": "Tab and section limits take priority. Editable follows each field; View only prevents changes; Hide removes the information from My Profile.",
+
     "requestEdit": "Request to edit",
     "save": "Save changes",
     "cancel": "Cancel",
@@ -21045,7 +21073,7 @@
     "selectAll": "Select all",
     "waiting": "Waiting",
     "photoEditSetting": "Profile photo editing",
-    "photoEditHelp": "Photo editing has its own setting. When enabled, employees can upload or replace their photo if it is visible in My Profile. Removing photos remains an HR action.",
+    "photoEditHelp": "Allow employees to submit a photo for HR approval. The current photo is retained until approval.",
     "savePhotoPermission": "Save photo permission",
     "allowOwnPhoto": "Allow employees to upload or replace their own photo",
     "ownPhoto": "Profile photo",

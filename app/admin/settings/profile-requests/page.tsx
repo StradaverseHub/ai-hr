@@ -5,6 +5,8 @@ import {listBusinessUnits,listCostCenters,listPositions} from '@/core/admin';
 import {listAllProfileOptions} from '@/core/profile-options';
 import {buildOrgCriteriaSections} from '@/core/org-criteria-form';
 import {PermissionMatrix} from './permission-matrix';
+import {profileVisibilityFingerprint} from '@/core/profile-edit-policy';
+import {isProfileVisibilityPolicyValue} from '@/lib/profile-edit-policy-value';
 import {resolveEssVisibleIds,linkedEssFieldIds} from '@/lib/personnel-ess-visibility';
 import { getTranslations } from 'next-intl/server';
 import { isGroupAdmin, requireAdmin } from '@/lib/authz';
@@ -20,7 +22,7 @@ import {
   type RequestableField,
 } from '@/lib/profile-requestable-fields';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, pageWideCls } from '@/components/ui';
-import { saveProfileRequestApproverAction, saveProfileRequestFieldsAction,saveOwnPhotoSettingAction,saveNamedProfileRoutingAction,previewNamedProfileRoutingAction } from './actions';
+import { saveProfileRequestFieldsAction,saveOwnPhotoSettingAction,saveNamedProfileRoutingAction,previewNamedProfileRoutingAction } from './actions';
 
 /**
  * ── r261 · STAGE THREE OF BOARD ITEM 9583deac: THE TWO SETTINGS ─────────────────────────────────────
@@ -105,46 +107,11 @@ export default async function ProfileRequestSettingsPage({
 
       {!mayWrite && <Card className="p-4 text-sm text-muted-foreground">{t('readOnlyNotice')}</Card>}
 
-      <Card className="p-5"><SectionHeader title={te('photoEditSetting')}/><p className="mt-2 text-sm text-muted-foreground">{te('photoEditHelp')}</p><form action={saveOwnPhotoSettingAction} className="mt-4 space-y-3"><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="enabled" defaultChecked={getSetting(s,'ess.profile_photo_edit')===true} disabled={!mayWrite}/>{te('allowOwnPhoto')}</label>{mayWrite&&<button type="submit" className={btnPrimary}>{te('savePhotoPermission')}</button>}</form></Card>
+      <Card className="p-5"><SectionHeader title={te('approvalRules')}/><p className="mt-2 text-sm text-muted-foreground">{te('photoEditHelp')}</p><form action={saveOwnPhotoSettingAction} className="mt-4 space-y-3"><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="enabled" defaultChecked={getSetting(s,'ess.profile_photo_edit')===true} disabled={!mayWrite}/>{te('allowOwnPhoto')}</label>{mayWrite&&<button type="submit" className={btnPrimary}>{te('savePhotoPermission')}</button>}</form>
 
+      <div className="border-t border-border pt-5"><SectionHeader title={te('namedRouting')}/><ProfileRoutingForm policy={readProfileRoutingPolicy(s)} sections={sections} employees={employees.map(employee=>({id:employee.employmentId,label:`${employee.employeeCode} · ${employee.name}`}))} approvers={employees.filter(employee=>approverIds.has(employee.employmentId)).map(employee=>({id:employee.employmentId,label:`${employee.employeeCode} · ${employee.name}`}))} disabled={!mayWrite} action={saveNamedProfileRoutingAction} previewAction={previewNamedProfileRoutingAction} labels={{enabled:te('routingEnabled'),help:te('routingHelp'),name:te('routingName'),approver:te('routingApprover'),choose:te('routingChoose'),employees:te('routingEmployees'),criteriaHelp:te('routingCriteriaHelp'),remove:te('routingRemove'),add:te('routingAdd'),save:te('routingSave'),preview:te('routingPreview'),previewFailed:te('routingSaveFailed'),matched:te('routingTypeMatched'),missing:te('routingTypeMissing'),overlapping:te('routingOverlapping'),ineligible:te('routingIneligible'),requestTypes:te('requestTypes'),fields:te('fieldRequests'),photo:te('photoRequests'),included:te('included'),excluded:te('excluded'),exclusionHelp:te('exclusionHelp'),search:te('routingSearch'),unavailable:te('unavailableSelection'),noApprovers:te('noValidApprovers'),noMatches:te('noMatches')}}/></div>
 
-      <Card className="p-5"><SectionHeader title={te('namedRouting')}/><ProfileRoutingForm policy={readProfileRoutingPolicy(s)} sections={sections} employees={employees.map(employee=>({id:employee.employmentId,label:`${employee.employeeCode} · ${employee.name}`}))} approvers={employees.filter(employee=>approverIds.has(employee.employmentId)).map(employee=>({id:employee.employmentId,label:`${employee.employeeCode} · ${employee.name}`}))} disabled={!mayWrite} action={saveNamedProfileRoutingAction} previewAction={previewNamedProfileRoutingAction} labels={{enabled:te('routingEnabled'),help:te('routingHelp'),name:te('routingName'),approver:te('routingApprover'),choose:te('routingChoose'),employees:te('routingEmployees'),criteriaHelp:te('routingCriteriaHelp'),remove:te('routingRemove'),add:te('routingAdd'),save:te('routingSave'),preview:te('routingPreview'),previewFailed:te('routingSaveFailed'),matched:te('routingMatched'),missing:te('routingMissing'),overlapping:te('routingOverlapping'),ineligible:te('routingIneligible')}}/></Card>
-
-      {/* ── WHO APPROVES ───────────────────────────────────────────────────────────────────────────
-          Two options and no third, because the plan sold SINGLE-LEVEL approval and the reporter
-          approved it as written. Neither option lets anybody decide their own request, and neither
-          shows one employee another employee's request — both are properties of the services, not of
-          this form, and both are tested adversarially. */}
-      <Card className="p-5">
-        <SectionHeader title={t('approverHeading')} />
-        <p className="mt-1 text-xs text-muted-foreground">{t('approverHelp')}</p>
-        <form action={saveProfileRequestApproverAction} className="mt-4 space-y-3">
-          {PROFILE_REQUEST_APPROVERS.map((option) => (
-            <label key={option} className="flex items-start gap-3 rounded-md border border-border p-3 text-sm">
-              <input
-                type="radio"
-                name="approver"
-                value={option}
-                defaultChecked={approver === option}
-                disabled={!mayWrite}
-                className="mt-0.5"
-              />
-              <span className="min-w-0">
-                <span className="block font-medium">{t(`approverOption.${option}`)}</span>
-                <span className="mt-0.5 block text-xs text-muted-foreground">
-                  {t(`approverOptionHelp.${option}`)}
-                </span>
-              </span>
-            </label>
-          ))}
-          <p className="text-xs text-muted-foreground">{t('singleLevelNote')}</p>
-          {mayWrite ? (
-            <button type="submit" className={btnPrimary}>
-              {t('saveApprover')}
-            </button>
-          ) : null}
-        </form>
-      </Card>
+      <p className="border-t border-border pt-4 text-sm text-muted-foreground">{te('approvalAuthorityFloor')}: {t(`approverOption.${approver}`)}</p></Card>
 
       {/* ── WHICH FIELDS ───────────────────────────────────────────────────────────────────────────
           One checkbox per DECLARED field. A field left unticked renders no control at all on the
@@ -155,8 +122,8 @@ export default async function ProfileRequestSettingsPage({
         <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
           {t('lockWithdrawsNotice')}
         </p>
-        <form action={saveProfileRequestFieldsAction} className="mt-4 space-y-5">
-          <PermissionMatrix disabled={!mayWrite} rows={essVisibleFields().map(field=>({linked:linkedEssFieldIds(field.id),id:field.id,label:personnelFieldLabel(field,(key,fallback)=>labels.has(key)?labels(key):fallback),group:`${tp(`tabs.${tabKeys[ESS_PROFILE_TABS.indexOf(field.tab as typeof ESS_PROFILE_TABS[number])]}`)} · ${PERSONNEL_ESS_SECTION_LABEL_KEYS[field.section]?tp(PERSONNEL_ESS_SECTION_LABEL_KEYS[field.section]):field.section}`,canEdit:Boolean(field.ess.binding&&['immediate','approval'].includes(field.ess.edit)),permission:!visible.has(field.id)?'hide':allowed.has(field.id)?'editable':'viewOnly',primaryOnly:primaryAllowed.has(field.id),waiting:(pendingByKey.get(field.id)??0)+(field.ess.binding?.legacyKey?pendingByKey.get(field.ess.binding.legacyKey)??0:0)}))} labels={{editable:te('editable'),viewOnly:te('viewOnly'),hide:te('hide'),field:te('field'),all:te('selectAll'),primaryOnly:te('primaryOnly'),waiting:te('waiting')}}/>
+        <form action={saveProfileRequestFieldsAction} className="mt-4 space-y-5"><input type="hidden" name="policyFingerprint" value={profileVisibilityFingerprint(raw)}/>
+          <PermissionMatrix disabled={!mayWrite} groups={isProfileVisibilityPolicyValue(raw)&&raw.version===4?{...raw.groups}:{}} rows={essVisibleFields().map(field=>({linked:linkedEssFieldIds(field.id),id:field.id,tab:field.tab,section:field.section,tabLabel:tp(`tabs.${tabKeys[ESS_PROFILE_TABS.indexOf(field.tab as typeof ESS_PROFILE_TABS[number])]}`),label:personnelFieldLabel(field,(key,fallback)=>labels.has(key)?labels(key):fallback),group:`${tp(`tabs.${tabKeys[ESS_PROFILE_TABS.indexOf(field.tab as typeof ESS_PROFILE_TABS[number])]}`)} · ${PERSONNEL_ESS_SECTION_LABEL_KEYS[field.section]?tp(PERSONNEL_ESS_SECTION_LABEL_KEYS[field.section]):field.section}`,canEdit:Boolean(field.ess.binding&&['immediate','approval'].includes(field.ess.edit)),permission:isProfileVisibilityPolicyValue(raw)?raw.fields[field.id]??'hide':!visible.has(field.id)?'hide':allowed.has(field.id)?'editable':'viewOnly',primaryOnly:isProfileVisibilityPolicyValue(raw)?raw.primaryOnly.includes(field.id):primaryAllowed.has(field.id),waiting:(pendingByKey.get(field.id)??0)+(field.ess.binding?.legacyKey?pendingByKey.get(field.ess.binding.legacyKey)??0:0)}))} labels={{editable:te('editable'),viewOnly:te('viewOnly'),hide:te('hide'),field:te('field'),all:te('selectAll'),primaryOnly:te('primaryOnly'),waiting:te('waiting'),groupHelp:te('groupPermissionHelp'),tabPermission:te('tabPermission'),sectionPermission:te('sectionPermission')}}/>
           {mayWrite ? (
             <button type="submit" className={btnPrimary}>
               {t('saveFields')}

@@ -1,3 +1,5 @@
+import {profileHiddenTabs} from '@/lib/profile-edit-policy-value';
+import {ownPhotoSubmissionAllowed} from '@/core/person-photo';
 import {saveOwnPhotoAction} from './own-photo-action';
 import {getSetting} from '@/core/entitlements';
 import {readProfilePresentationPolicy} from '@/core/profile-edit-policy';
@@ -53,6 +55,8 @@ export default async function MePage({
   const te=await getTranslations('essProfile'),allLabels=await getTranslations();
   const presentation=await readProfilePresentationPolicy(s);
   const visible=presentation.visible;
+  const hiddenTabs=new Set<string>(profileHiddenTabs(getSetting(presentation.ctx,'ess.profile_change_fields')));
+  const tabVisible=(tab:string)=>!hiddenTabs.has(tab);
   const canSee=(owner:string,field:string)=>essFactVisible(visible,owner,field);
   const own=await myOwnEmploymentSubjects(s,{profileEdit:true});
   const selected=requestedEmploymentId?own.find(row=>row.employmentId===requestedEmploymentId):own.length===1?own[0]:null;
@@ -74,7 +78,7 @@ export default async function MePage({
   const employments = own;
   const [workspace,facts]=await Promise.all([readOwnProfileWorkspace(s,{employmentId},presentation),readOwnProfileFacts(s,employmentId,presentation)]);
 
-  const payrollOn = isModuleEnabledOrFalse(s, 'payroll');
+  const payrollOn = isModuleEnabledOrFalse(s, 'payroll')&&tabVisible('Payroll');
 
   const taxReliefEmploymentIds = payrollOn ? await myTaxReliefEmploymentIds(s) : [];
   const noTaxRelief: TaxReliefResult = { year: Number(todayInKualaLumpur().slice(0, 4)), rows: [], ytd: 0 };
@@ -83,7 +87,7 @@ export default async function MePage({
     payrollOn ? myPayslips(s, employments.map((e) => e.employmentId)) : [],
     payrollOn ? myTaxRelief(s, taxReliefEmploymentIds) : noTaxRelief,
     myProfileChangeRequests(s,50,presentation),
-    myResignation(s, employmentId),
+    tabVisible('Documents')?myResignation(s, employmentId):null,
 
     payrollOn ? listLoansForEmployment(s, employmentId) : [],
   ]);
@@ -95,8 +99,8 @@ export default async function MePage({
 
   const today = todayInKualaLumpur();
 
-  const eaEmployments = await myEmploymentIdsAll(s);
-  const eaPayslips = await myPayslips(s, eaEmployments.map((e) => e.employmentId));
+  const eaEmployments = tabVisible('Documents')?await myEmploymentIdsAll(s):[];
+  const eaPayslips = tabVisible('Documents')?await myPayslips(s, eaEmployments.map((e) => e.employmentId)):[];
   const ownHistoricalIds=new Set(eaEmployments.map(row=>row.employmentId));
   const eaRowMap = new Map<string, { employmentId: string; company: string; year: string }>();
   for (const ps of eaPayslips) {
@@ -483,8 +487,9 @@ export default async function MePage({
   return <div className="mx-auto max-w-[90rem] space-y-5">
     <PageHeader title={t('title')} description={facts.header.company}/><ErrorBanner message={error}/>
     <Card className="p-4 sm:p-6"><div className="flex flex-wrap items-start gap-4"><Avatar name={facts.header.name} src={facts.header.photo?`/personnel/photo/${workspace.personId}`:null} className="size-20"/><div className="min-w-0 flex-1"><p className="text-xs text-muted-foreground">{facts.header.employeeCode}</p><h2 className="mt-1 text-xl font-semibold">{facts.header.name}</h2><p className="mt-1 text-sm text-muted-foreground">{facts.header.company}</p><p className="mt-1 text-sm text-muted-foreground">{facts.header.department??'—'} · {facts.header.position??'—'}</p><div className="mt-3 flex flex-wrap items-center gap-3">{facts.header.status&&<Badge>{allLabels(`people.employeeStatus.${facts.header.status}`)}</Badge>}<span className="text-sm">{tp('directSuperiorTitle')}: {facts.header.superior??'—'}</span><span className="text-sm">{tp('employmentInfo.groupService')}: {canSee('employment','hiredOn')?fmtServiceYmd(emp.hiredOn):null}</span></div></div>{own.length>1&&<form method="get"><Field label={te('chooseEmployment')}><select name="employmentId" defaultValue={employmentId} className={inputCls}>{own.map(row=><option key={row.employmentId} value={row.employmentId}>{canSee('employment','employeeCode')?row.employeeCode:''} · {canSee('assignment','companyName')?row.company:''}</option>)}</select></Field><Button type="submit" variant="outline" size="sm" className="mt-2">{te('chooseEmployment')}</Button></form>}</div></Card>
-    {visible.has('profile.personal_details.photo')&&getSetting(presentation.ctx,'ess.profile_photo_edit')===true&&<Card className="p-4"><form action={saveOwnPhotoAction} className="flex flex-wrap items-end gap-3"><input type="hidden" name="employmentId" value={employmentId}/><Field label={te('ownPhoto')}><input type="file" name="photo" accept="image/png,image/jpeg" required className={inputCls}/></Field><Button type="submit" variant="outline">{te('uploadPhoto')}</Button><p className="text-xs text-muted-foreground">{te('photoFormats')}</p></form></Card>}
+    {ownPhotoSubmissionAllowed(presentation)&&<Card className="p-4"><form action={saveOwnPhotoAction} className="flex flex-wrap items-end gap-3"><input type="hidden" name="employmentId" value={employmentId}/><Field label={te('ownPhoto')}><input type="file" name="photo" accept="image/png,image/jpeg" required className={inputCls}/></Field><Button type="submit" variant="outline">{te('submitPhoto')}</Button><p className="text-xs text-muted-foreground">{te('photoFormats')}</p></form></Card>}
+    {visible.has('profile.personal_details.photo')&&profileRequests.filter(request=>request.status==='pending'&&request.proposed&&typeof request.proposed==='object'&&'kind' in request.proposed&&request.proposed.kind==='photo').map(request=><Card key={request.id} className="space-y-3 p-4"><h3 className="font-medium">{te('pendingPhoto')}</h3><p className="text-sm text-muted-foreground">{te('photoApprovalHelp')}</p><img src={`/me/photo-proposal/${request.id}`} alt={te('proposedPhoto')} className="size-24 rounded-md object-cover"/></Card>)}
     {!workspace.statutoryAvailable&&<Card className="p-4 text-sm text-muted-foreground">{te('countryUnavailable')}</Card>}
-    <ProfileEditor key={employmentId} workspace={workspace} facts={facts} defaultTab={activeTab} history={history} extraPanels={{payroll:payrollPanel,documents:documentsPanel,attendance:facts.modules.attendance?attendancePanel:null,leave:facts.modules.leave?leavePanel:null,others:<Card className="p-4"><Link href="/me/performance" className="text-primary underline">{t('myPerformanceLink')}</Link></Card>}}/>
+    <ProfileEditor key={employmentId} workspace={workspace} facts={facts} defaultTab={activeTab} history={history} hiddenTabs={[...hiddenTabs]} extraPanels={{payroll:tabVisible('Payroll')?payrollPanel:null,documents:tabVisible('Documents')?documentsPanel:null,attendance:tabVisible('Attendance')&&facts.modules.attendance?attendancePanel:null,leave:tabVisible('Leave')&&facts.modules.leave?leavePanel:null,others:tabVisible('Others')?<Card className="p-4"><Link href="/me/performance" className="text-primary underline">{t('myPerformanceLink')}</Link></Card>:null}}/>
   </div>;
 }
