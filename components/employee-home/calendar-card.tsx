@@ -3,18 +3,25 @@
 import * as React from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import Link from 'next/link';
+import {useSearchParams} from 'next/navigation';
 import {useLocale,useTranslations} from 'next-intl';
 import {Button} from '@/components/ui';
 import {IndependentHomeCard} from './home-card';
 import {addMonths} from '@/lib/roster-month';
-import {validateHomeCalendar,type EmployeeHomeCalendar,type HomeCalendarEntry} from '@/lib/employee-home-calendar';
+import {homeCalendarMonth,validateHomeCalendar,type EmployeeHomeCalendar,type HomeCalendarEntry} from '@/lib/employee-home-calendar';
 
 type View='month'|'week'|'list';
 const tones={leave:'border-primary/50 bg-primary/10 text-foreground',holiday:'border-amber-600/50 bg-amber-500/10 text-foreground',payday:'border-emerald-600/50 bg-emerald-500/10 text-foreground'};
 
 export function HomeCalendarCard({employmentId,initialMonth,full=false}:{employmentId:string;initialMonth:string;full?:boolean}){
  const t=useTranslations('employeeHome.calendar'),locale=useLocale();
- const [month,setMonth]=React.useState(initialMonth),[view,setView]=React.useState<View>('month');
+ const [localMonth,setMonth]=React.useState(initialMonth),[view,setView]=React.useState<View>('month');
+ const search=useSearchParams(),month=full?(search?.get('month')??localMonth):localMonth;
+ function changeMonth(next:string){
+  homeCalendarMonth(next);
+  if(full)window.history.pushState(null,'','/me/calendar?'+new URLSearchParams({employmentId,month:next}));
+  setMonth(next);
+ }
  const read=React.useCallback(async(signal:AbortSignal):Promise<EmployeeHomeCalendar>=>{
   const response=await fetch('/api/home/calendar?'+new URLSearchParams({employmentId,month}),{signal,cache:'no-store',credentials:'same-origin'});
   if(!response.ok)throw Error('Calendar unavailable.');
@@ -26,9 +33,9 @@ export function HomeCalendarCard({employmentId,initialMonth,full=false}:{employm
    <div className="flex flex-wrap items-center justify-between gap-2">
     <h3 aria-live="polite" className="font-semibold">{monthLabel}</h3>
     <div className="flex flex-wrap gap-1">
-     <Button type="button" variant="outline" className="min-h-11 px-3" onClick={()=>setMonth(addMonths(month,-1))}>{t('previous')}</Button>
-     <Button type="button" variant="outline" className="min-h-11 px-3" onClick={()=>setMonth(value.today.slice(0,7))}>{t('today')}</Button>
-     <Button type="button" variant="outline" className="min-h-11 px-3" onClick={()=>setMonth(addMonths(month,1))}>{t('next')}</Button>
+     <Button type="button" variant="outline" className="min-h-11 px-3" onClick={()=>changeMonth(addMonths(month,-1))}>{t('previous')}</Button>
+     <Button type="button" variant="outline" className="min-h-11 px-3" onClick={()=>changeMonth(value.today.slice(0,7))}>{t('today')}</Button>
+     <Button type="button" variant="outline" className="min-h-11 px-3" onClick={()=>changeMonth(addMonths(month,1))}>{t('next')}</Button>
     </div>
    </div>
    {full&&<div className="flex flex-wrap gap-2" role="group" aria-label={t('view')}>
@@ -71,12 +78,13 @@ function CalendarDays({value,view}:{value:EmployeeHomeCalendar;view:View}){
     {days.map(day=><Dialog.Root key={day.date}>
      <Dialog.Trigger asChild><button type="button" aria-label={fmtDate(day.date)+(day.entries.length?' · '+day.entries.map(entryLabel).join('; '):'')}
       aria-current={day.date===value.today?'date':undefined}
-      className={'min-w-0 rounded-md border p-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring '+(view==='list'?'flex min-h-14 flex-wrap items-center gap-3 p-3':'min-h-24')
+      className={'min-w-0 rounded-md border p-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-1 '+(view==='list'?'flex min-h-14 w-full flex-wrap items-center justify-between gap-3 p-3 sm:p-3':'min-h-24')
        +(day.date===value.today?' ring-2 ring-primary ring-offset-1 ring-offset-background':'')+(day.date.startsWith(value.month)?'':' bg-muted/40 text-muted-foreground')}>
       <span className="block text-sm font-medium tabular-nums">{view==='list'?fmtDate(day.date):Number(day.date.slice(-2))}</span>
       <span className="mt-1 block space-y-1">{day.entries.map((entry,index)=><span key={index}
-       className={'block break-words rounded border px-0.5 py-1 text-[10px] leading-tight '+tones[entry.kind]+(entry.kind==='leave'&&entry.status==='pending'?' border-dashed bg-transparent':'')}>
-       {view==='list'?entryLabel(entry):<>{t(entry.kind)}{entry.kind==='leave'&&entry.status==='pending'&&<span className="block">{t('pending')}</span>}</>}
+       className={'block rounded border px-0.5 py-1 leading-snug '+(view==='list'?'text-sm':'text-xs')+' '+tones[entry.kind]+(entry.kind==='leave'&&entry.status==='pending'?' border-dashed bg-transparent':'')}>
+       {view==='list'?entryLabel(entry):<><span className="block truncate sm:hidden">{t(`compact.${entry.kind}`)}</span><span className="hidden sm:inline">{t(entry.kind)}</span>
+        {entry.kind==='leave'&&entry.status==='pending'&&<span className="block truncate text-[11px] tracking-tighter sm:text-xs sm:tracking-normal">{t('pending')}</span>}</>}
       </span>)}</span>
      </button></Dialog.Trigger>
      <Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-50 bg-black/50"/>

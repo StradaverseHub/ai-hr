@@ -22370,7 +22370,12 @@
       "empty": "Tiada acara direkodkan pada bulan ini.",
       "requestLeave": "Mohon cuti",
       "close": "Tutup",
-      "back": "Kembali ke Laman Utama"
+      "back": "Kembali ke Laman Utama",
+      "compact": {
+        "leave": "Cuti",
+        "holiday": "Cuti umum",
+        "payday": "Gaji"
+      }
     }
   }
 }

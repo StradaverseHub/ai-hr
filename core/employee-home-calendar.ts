@@ -7,7 +7,6 @@ import {listEmployeeHomeCards} from './dashboard-card-config';
 import {getEmployeeHomePreferences} from './dashboard-prefs';
 import {homeDisplayClock} from '../lib/employee-home';
 import {homeCalendarGrid,type EmployeeHomeCalendar,type HomeCalendarEntry} from '../lib/employee-home-calendar';
-import {todayInKualaLumpur} from '../lib/hr-date';
 import {leaveCalendarPresenceByEmploymentTx} from '../packs/leave/service';
 import {readOwnPayrollCalendarPayments} from '../packs/payroll/service';
 import {isModuleEnabled} from './entitlements';
@@ -35,7 +34,7 @@ export async function readEmployeeHomeCalendar(ctx:SessionContext,employmentId:s
   payrollEnabled?readOwnPayrollCalendarPayments(ctx,subject.employmentId,from,to):Promise.resolve([]),
   listEligibleLeaveTypesFor(ctx,subject.employmentId),myOwnEmploymentSubjects(ctx,{profileEdit:true}),
  ]);
- const businessToday=todayInKualaLumpur(now),canApply=active.some(row=>row.employmentId===subject.employmentId)&&eligible.length>0;
+ const canApply=active.some(row=>row.employmentId===subject.employmentId)&&eligible.length>0;
  const payments=new Set(paymentDates);
  return {version:1,employmentId:subject.employmentId,month,today:display.date,weekStartsOn:preferences.weekStartsOn,payrollEnabled,
   days:dates.map(date=>{
@@ -48,6 +47,8 @@ export async function readEmployeeHomeCalendar(ctx:SessionContext,employmentId:s
    if(facts.replacements.some(row=>row.replacementDate===date))entries.push({kind:'holiday',date,name:null,replacement:true,tentative:false});
    if(payments.has(date))entries.push({kind:'payday',date});
    const proof=facts.coverage.get(subject.employmentId+'|'+date);
-   return {date,entries,canRequestLeave:canApply&&date>=businessToday&&Boolean(proof?.companyId&&!proof.reason)&&!entries.some(entry=>entry.kind==='leave')};
+   // This opens the existing form; only its owner can decide date/notice/blackout policy. In
+   // particular, Home must not override a company's configurable backdated-leave permission.
+   return {date,entries,canRequestLeave:canApply&&Boolean(proof?.companyId&&!proof.reason)&&!entries.some(entry=>entry.kind==='leave')};
   })};
 }

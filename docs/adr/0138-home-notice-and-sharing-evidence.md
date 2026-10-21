@@ -124,6 +124,31 @@ fourteen intervening dates, including ordinary rest days and actual holidays. If
 cannot be established within the bound, use the ordinary greeting; this does not assert attendance or
 an employee's return. It never creates a clock capture, leave state or notification.
 
+## Personal calendar projection
+
+Month, week and list are views over the same selected own employment and complete calendar weeks
+(at most 42 dates per month). Leave supplies approved and pending presence through its existing
+child-date versus whole-span distinction. Pending presence does not relieve an attendance absence.
+The canonical holiday and retained replacement owners supply holiday dates; tentative holidays stay
+explicitly tentative. Payroll supplies only recorded run dates with actual own result membership and
+no stale calculation. A recorded payday never asserts that a bank payment occurred.
+
+The transport contains dates, statuses and holiday labels, never leave reasons, medical facts,
+private types, payroll amounts, bank details or peer records. Team sharing requires its separate
+explicit policy and minimal disclosure owner; this own-calendar slice does not establish team
+calendar acceptance or introduce a WFH workflow. Calendar reads never allocate a replacement holiday.
+
+Employment, leave, holiday and payroll civil dates retain their owners' business meaning. The saved
+display timezone determines the current-date outline and initial month, not a shift of those civil
+dates. Week start follows the existing account preference (Monday by default). Full-calendar month
+navigation records the selected employment and month using Next's supported native History API so
+reload and back navigation retain the period.
+
+An empty covered day may open the existing Leave form with the selected employment and date. This
+is permission to open that form, not an approval or a promise that a request will pass its policies.
+Home must not invent a prohibition on past dates: Leave owns configurable backdating, notice,
+blackouts, overlap, eligibility and balance validation at submission.
+
 ## Verification and rollout
 
 The unshipped Home migration is `0582` (moved from its unapplied `0577` allocation so Feedback

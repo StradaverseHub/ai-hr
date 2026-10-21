@@ -22370,7 +22370,12 @@
       "empty": "Không có sự kiện nào được ghi nhận trong tháng này.",
       "requestLeave": "Xin nghỉ phép",
       "close": "Đóng",
-      "back": "Về Trang chủ"
+      "back": "Về Trang chủ",
+      "compact": {
+        "leave": "Nghỉ",
+        "holiday": "Lễ",
+        "payday": "Lương"
+      }
     }
   }
 }

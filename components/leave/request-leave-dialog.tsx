@@ -100,7 +100,6 @@ export function RequestLeaveDialog({
           <Dialog.Title className="text-base font-semibold">{t('requestLeave')}</Dialog.Title>
           <form
             action={submitAction}
-            encType="multipart/form-data"
             onSubmit={() => setOpen(false)}
             className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2"
           >

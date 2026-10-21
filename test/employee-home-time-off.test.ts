@@ -46,6 +46,9 @@ describe('Home Time Off consumes canonical own leave facts',()=>{
   expect(result.days.find(day=>day.date===add(monday,2))?.entries).toContainEqual({kind:'leave',date:add(monday,2),status:'pending',duration:'full_day'});
   expect(result.days.find(day=>day.date===monday)?.canRequestLeave).toBe(false);
   expect(result.days.length%7).toBe(0);expect(result.days.length).toBeLessThanOrEqual(42);
+  const previous=add(today(),-1);
+  const earlier=await readEmployeeHomeCalendar(own.ctx,own.employmentId,previous.slice(0,7));
+  expect(earlier.days.find(day=>day.date===previous)?.canRequestLeave).toBe(true);
   const response=await calendarGET(new Request('http://localhost/api/home/calendar?'+new URLSearchParams({employmentId:own.employmentId,month:monday.slice(0,7)})));
   expect(response.status).toBe(200);expect(await response.json()).toEqual(result);
   expect(response.headers.get('cache-control')).toBe('private, no-store');

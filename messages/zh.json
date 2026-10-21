@@ -22370,7 +22370,12 @@
       "empty": "本月没有已记录的事项。",
       "requestLeave": "申请休假",
       "close": "关闭",
-      "back": "返回主页"
+      "back": "返回主页",
+      "compact": {
+        "leave": "休假",
+        "holiday": "假日",
+        "payday": "发薪"
+      }
     }
   }
 }

@@ -22370,7 +22370,12 @@
       "empty": "No recorded events this month.",
       "requestLeave": "Request leave",
       "close": "Close",
-      "back": "Back to Home"
+      "back": "Back to Home",
+      "compact": {
+        "leave": "Leave",
+        "holiday": "Holiday",
+        "payday": "Payday"
+      }
     }
   }
 }
