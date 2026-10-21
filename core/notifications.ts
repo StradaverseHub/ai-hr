@@ -970,7 +970,7 @@ export async function notificationStillTargets(tx: Tx, eventId: string, kind: st
   if (!notificationEmailCategory.safeParse(category).success) return false;
   const [visible] = await tx.select({id:domainEvent.id,aggregateId:domainEvent.aggregateId,eventType:domainEvent.eventType,subjectEmploymentId:domainEvent.subjectEmploymentId,payload:domainEvent.payload})
     .from(domainEvent).where(and(eq(domainEvent.id,eventId),sql`${domainEvent.tenantId}=app.current_tenant_id()`)).limit(1);
-  let ev=visible;
+  let ev:Awaited<ReturnType<NoticeEventReader>>=visible;
   if(!ev&&category==='notice'){
     if(!noticeEventReader)throw Error('Notice projection requires the complete authorized audience and source event.');
     ev=await noticeEventReader(eventId);
