@@ -21,7 +21,7 @@ import {
   employmentCompanyEditable,
   leaveRequestsFor,
   listDepartments,
-  listEmployees,
+  listWorkforcePickOptions,
   listJobGrades,
   reportingLinesFor,
 } from '@/core/read';
@@ -367,7 +367,7 @@ export default async function EmployeePage({
     // the Organisation Assignment department select and the MovementNewEvent departments prop.
     listDepartments(s, { companyIds: [emp.companyId] }),
     reportingLinesFor(s, employmentId),
-    listEmployees(s,undefined,'workforce'),
+    listWorkforcePickOptions(s),
     listJobGrades(s),
     delegationsFor(s, employmentId),
   ]);
@@ -536,7 +536,7 @@ export default async function EmployeePage({
   const thisMonthStart = `${today.slice(0, 7)}-01`;
   const current = history.find((h) => !h.validTo) ?? history[0];
   const others = employees.filter((e) => e.employmentId !== employmentId && !e.terminatedOn);
-  // c002b3c3 — Search Employee. NO NEW READ: this is the `listEmployees(s,undefined,'workforce')` set already loaded above for
+  // c002b3c3 — Search Employee. NO NEW READ: this is the `listWorkforcePickOptions(s)` set already loaded above for
   // the Direct Superior picker, narrowed to the active company context. Two consequences worth stating.
   // (1) The search cannot be broader than what this page may already see, because it is literally the
   // same rows — there is no second, looser query to drift. (2) Picking a result only changes the URL;

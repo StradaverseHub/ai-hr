@@ -10,7 +10,7 @@ import {hireEmployee as hireWorkforceEmployee,setEmploymentInfo as maintainInfo}
 import {createMovementEvent} from '../core/movement';
 import {setEmploymentTestRecord} from '../core/employment-test-record';
 import {setPersonPhoto} from '../core/person-photo';
-import {listEmployees,listEmployeesPage,countEmployeesByStatus,employeeDetail} from '../core/read';
+import {listEmployees,listWorkforcePickOptions,listEmployeesPage,countEmployeesByStatus,employeeDetail,type EmployeeListFilters} from '../core/read';
 import {workforceCompanies,WorkforceAccessError} from '../core/workforce-access';
 import {accessConfigurationStore} from '../core/access-configuration-store';
 import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';
@@ -35,20 +35,48 @@ describe('fresh Workforce-purpose record consumers',()=>{
   expect(await employeeDetail(admin(),subject.employmentId,'workforce')).toEqual(await employeeDetail(admin(),subject.employmentId));
   expect(await countEmployeesByStatus(admin(),{companyIds:[b.companyId]},'workforce')).toEqual(await countEmployeesByStatus(admin(),{companyIds:[b.companyId]}));
  });
+ it('uses the same filters, status ladder, paging and column values through the bounded projection',async()=>{
+  const a=await hire('Fictional Alpha'),z=await hire('Fictional Zulu');
+  await owner.db.update(employment).set({employeeCode:'WF-ALPHA',finalConfirmationDate:todayInKualaLumpur()}).where(eq(employment.id,a.employmentId));
+  await owner.db.update(employment).set({employeeCode:'WF-ZULU',blacklistedAt:todayInKualaLumpur()}).where(eq(employment.id,z.employmentId));
+  const filters:EmployeeListFilters[]=[{}, {q:'wf-alpha'}, {q:'fictional zulu'}, {departmentId:b.deptA},
+   {departmentIds:[b.deptB]}, {companyId:b.companyId}, {filterCompanyIds:[b.companyId]},
+   {employmentType:'full_time'}, {employmentType:'contract'}, {status:'active'}, {status:'terminated'},
+   {employmentStatuses:['blacklisted']}, {employmentStatuses:['active','probation']}];
+  for(const filter of filters){
+   const scope={companyIds:[b.companyId],...filter};
+   for(const offset of [0,1]){
+    const params={...scope,limit:1,offset,sort:'company' as const};
+    expect(await listEmployeesPage(admin(),params,'workforce')).toEqual(await listEmployeesPage(admin(),params));
+   }
+   expect(await countEmployeesByStatus(admin(),scope,'workforce')).toEqual(await countEmployeesByStatus(admin(),scope));
+  }
+  const keys=['employmentId','name','email','employeeCode','department','departmentId','position','company','companyId',
+   'hiredOn','terminatedOn','confirmationDate','finalConfirmationDate','probationEndDate','provisionalEndOn',
+   'resignationDate','lastWorkingDate','blacklistedAt','jobGrade','employmentType','businessUnit','costCenter','workLocation','joinDate','reportingTo'].sort();
+  const rows=await withTenant(admin(),tx=>tx.execute<{value:Record<string,unknown>}>(sql`select value from app.access_workforce_list_rows() as r(value)`));
+  expect(rows).toHaveLength(2);
+  for(const {value}of rows)expect(Object.keys(value).sort()).toEqual(keys);
+  // Screen pickers receive fewer identifiers than the independent payroll/attendance picker.
+  const picker=await listWorkforcePickOptions(admin(),[b.companyId]);
+  expect(picker.map(row=>row.employmentId).sort()).toEqual([a.employmentId,z.employmentId].sort());
+  for(const row of picker)expect(Object.keys(row).sort()).toEqual(['employmentId','name','employeeCode','companyId','company','department','terminatedOn'].sort());
+ });
  it('applies a new read denial to the row, count, switcher and detail in the same signed-in context',async()=>{
   const subject=await hire('Fictional denied record');await activate();expect((await page(admin())).total).toBe(1);
   await override(b.adminUserId,'workforce.view',b.companyId,'deny');
   expect(await page(admin())).toEqual({rows:[],total:0});
   expect(await countEmployeesByStatus(admin(),{companyIds:[b.companyId]},'workforce')).toEqual({total:0,byStatus:{}});
-  expect(await listEmployees(admin(),[b.companyId],'workforce')).toEqual([]);expect(await employeeDetail(admin(),subject.employmentId,'workforce')).toBeNull();
+  expect(await listWorkforcePickOptions(admin(), [b.companyId])).toEqual([]);expect(await employeeDetail(admin(),subject.employmentId,'workforce')).toBeNull();
   expect(await workforceCompanies(admin())).not.toContain(b.companyId);
+  expect(await withTenant(admin(),tx=>tx.execute(sql`select * from app.access_workforce_list_rows()`))).toEqual([]);
   // Staff-directory relationship access remains independent; no financial grant or role is added.
   expect((await listEmployees(admin(),[b.companyId])).map(row=>row.employmentId)).toContain(subject.employmentId);
   await override(b.adminUserId,'workforce.view',b.companyId,null);expect((await page(admin())).total).toBe(1);
  });
  it('does not widen an explicitly empty selected Workforce company scope',async()=>{
   await hire('Fictional retained record');await activate();
-  expect(await page(admin(),[])).toEqual({rows:[],total:0});expect(await listEmployees(admin(),[],'workforce')).toEqual([]);
+  expect(await page(admin(),[])).toEqual({rows:[],total:0});expect(await listWorkforcePickOptions(admin(), [])).toEqual([]);
   expect(await countEmployeesByStatus(admin(),{companyIds:[]},'workforce')).toEqual({total:0,byStatus:{}});
  });
  it('refuses profile and code changes without modifying the master or emitting their events',async()=>{

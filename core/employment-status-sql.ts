@@ -39,8 +39,29 @@ import type { EmploymentStatus } from './employment-status';
  * is the older, narrower leave-eligibility rule and it is deliberately left alone — changing it would change
  * who qualifies for a confirmed_only leave type, which is not this item's business.
  */
-export function confirmationDateSql(): SQL<string | null> {
-  return sql<string | null>`coalesce(${employment.finalConfirmationDate}, ${employment.confirmationDate}, ${employment.probationEndDate}, ${employment.provisionalEndOn})`;
+/** Alternate typed projection columns let scoped readers reuse this same SQL status owner. */
+export type EmploymentStatusColumns = {
+  finalConfirmationDate: SQL;
+  confirmationDate: SQL;
+  probationEndDate: SQL;
+  provisionalEndOn: SQL;
+  resignationDate: SQL;
+  lastWorkingDate: SQL;
+  terminatedOn: SQL;
+  blacklistedAt: SQL;
+};
+const statusColumns: EmploymentStatusColumns = {
+  finalConfirmationDate: sql`${employment.finalConfirmationDate}`,
+  confirmationDate: sql`${employment.confirmationDate}`,
+  probationEndDate: sql`${employment.probationEndDate}`,
+  provisionalEndOn: sql`${employment.provisionalEndOn}`,
+  resignationDate: sql`${employment.resignationDate}`,
+  lastWorkingDate: sql`${employment.lastWorkingDate}`,
+  terminatedOn: sql`${employment.terminatedOn}`,
+  blacklistedAt: sql`${employment.blacklistedAt}`,
+};
+export function confirmationDateSql(columns: EmploymentStatusColumns = statusColumns): SQL<string | null> {
+  return sql<string | null>`coalesce(${columns.finalConfirmationDate}, ${columns.confirmationDate}, ${columns.probationEndDate}, ${columns.provisionalEndOn})`;
 }
 
 /** True when the employment is still WITHIN its probation as at `asOf` — the status ladder's rule 5, alone. */
@@ -49,11 +70,14 @@ export function onProbationSql(asOf: string): SQL<boolean> {
   return sql<boolean>`(${confirmation} is not null and ${asOf}::date < ${confirmation})`;
 }
 
-export function employmentStatusSql(today: string = todayInKualaLumpur()): SQL<EmploymentStatus> {
-  const ended = sql`least(${employment.resignationDate}, ${employment.lastWorkingDate}, ${employment.terminatedOn})`;
-  const confirmation = confirmationDateSql();
+export function employmentStatusSql(
+  today: string = todayInKualaLumpur(),
+  columns: EmploymentStatusColumns = statusColumns,
+): SQL<EmploymentStatus> {
+  const ended = sql`least(${columns.resignationDate}, ${columns.lastWorkingDate}, ${columns.terminatedOn})`;
+  const confirmation = confirmationDateSql(columns);
   return sql<EmploymentStatus>`case
-    when ${employment.blacklistedAt} is not null then 'blacklisted'
+    when ${columns.blacklistedAt} is not null then 'blacklisted'
     /* R81 'withhold' has NO branch here on purpose. The TypeScript twin reads emp.payrollHoldAt, an
        input that no column feeds (Payroll has no salary-hold setting yet), so the SQL twin has nothing
        to read and the branch would be a dead "when false then withhold". The two implementations

@@ -19,6 +19,7 @@ import {
   or,
   sql,
   type AnyColumn,
+  type SQL,
 } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
@@ -133,7 +134,6 @@ import {
   domainEvent,
   employeeStatutoryMy,
   employment,
-  employmentTypeEnum,
   holiday,
   holidayGroup,
   jobGrade,
@@ -171,7 +171,7 @@ import { resolveEssView, type ResolvedEssView } from './ess-view';
 import { resolveLeaveFormulaForCode, type LeaveFormulaEntry } from './leave-formula';
 import { resolvePlacement, resolveSharedGroupPlacement, type EssPlacement } from '../lib/leave-groups';
 import type { EmploymentStatus } from './employment-status';
-import { employmentStatusSql } from './employment-status-sql';
+import { employmentStatusSql, type EmploymentStatusColumns } from './employment-status-sql';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
 
@@ -361,30 +361,70 @@ const currentAssignmentJoin = () =>
 
 /** ONE WHERE for the employee listing: the rows, the pager count and the headcount cards all build it
  *  from here, so no two of them can be answering slightly different questions. */
-function employeeListWhere(p: EmployeeListFilters) {
+type EmployeeListColumns = {
+  companyId: SQL<string>; departmentId: SQL<string | null>; employmentType: SQL<string | null>;
+  terminatedOn: SQL<string | null>; name: SQL<string>; email: SQL<string>; employeeCode: SQL<string | null>;
+  status: SQL<EmploymentStatus>;
+};
+const employeeListColumns = (): EmployeeListColumns => ({
+  companyId: sql`${employment.companyId}`, departmentId: sql`${assignment.departmentId}`,
+  employmentType: sql`${assignment.employmentType}`, terminatedOn: sql`${employment.terminatedOn}`,
+  name: sql`${person.fullName}`, email: sql`${person.primaryEmail}`, employeeCode: sql`${employment.employeeCode}`,
+  status: employmentStatusSql(),
+});
+function employeeListWhere(p: EmployeeListFilters, c: EmployeeListColumns = employeeListColumns()) {
   const q = p.q?.trim();
   return and(
-    p.companyIds && p.companyIds.length ? inArray(employment.companyId, p.companyIds) : undefined,
-    p.companyId ? eq(employment.companyId, p.companyId) : undefined,
-    p.filterCompanyIds && p.filterCompanyIds.length
-      ? inArray(employment.companyId, p.filterCompanyIds)
-      : undefined,
-    p.departmentId ? eq(assignment.departmentId, p.departmentId) : undefined,
-    p.departmentIds && p.departmentIds.length ? inArray(assignment.departmentId, p.departmentIds) : undefined,
-    p.employmentStatuses && p.employmentStatuses.length
-      ? inArray(employmentStatusSql(), p.employmentStatuses)
-      : undefined,
-    p.status === 'terminated'
-      ? isNotNull(employment.terminatedOn)
-      : p.status === 'active'
-        ? isNull(employment.terminatedOn)
-        : undefined,
-    p.employmentType ? eq(assignment.employmentType, p.employmentType as (typeof employmentTypeEnum.enumValues)[number]) : undefined,
-    q
-      ? sql`(${person.fullName} ilike ${'%' + q + '%'} or ${person.primaryEmail} ilike ${'%' + q + '%'} or ${employment.employeeCode} ilike ${'%' + q + '%'})`
-      : undefined,
+    p.companyIds && p.companyIds.length ? inArray(c.companyId, p.companyIds) : undefined,
+    p.companyId ? eq(c.companyId, p.companyId) : undefined,
+    p.filterCompanyIds && p.filterCompanyIds.length ? inArray(c.companyId, p.filterCompanyIds) : undefined,
+    p.departmentId ? eq(c.departmentId, p.departmentId) : undefined,
+    p.departmentIds && p.departmentIds.length ? inArray(c.departmentId, p.departmentIds) : undefined,
+    p.employmentStatuses && p.employmentStatuses.length ? inArray(c.status, p.employmentStatuses) : undefined,
+    p.status === 'terminated' ? isNotNull(c.terminatedOn) : p.status === 'active' ? isNull(c.terminatedOn) : undefined,
+    p.employmentType ? eq(c.employmentType, p.employmentType) : undefined,
+    q ? sql`(${c.name} ilike ${'%' + q + '%'} or ${c.email} ilike ${'%' + q + '%'} or ${c.employeeCode} ilike ${'%' + q + '%'})` : undefined,
   );
 }
+
+/** The JSON owner declares every field. Query expressions are fixed server source, never a caller's
+ * field/table selector. Reuse the exact status/filter owner above; no second interpretation in SQL. */
+const workforceListSource = sql`app.access_workforce_list_rows() as workforce_row(value)`;
+const workforceListValue = <T>(key: string): SQL<T> => sql<T>`workforce_row.value ->> ${key}`;
+const workforceListDate = (key: string) => sql<string | null>`(${workforceListValue(key)})::date`;
+const workforceListUuid = (key: string) => sql<string>`(${workforceListValue(key)})::uuid`;
+function workforceListColumns(): EmployeeListColumns {
+  const status: EmploymentStatusColumns = {
+    finalConfirmationDate: workforceListDate('finalConfirmationDate'), confirmationDate: workforceListDate('confirmationDate'),
+    probationEndDate: workforceListDate('probationEndDate'), provisionalEndOn: workforceListDate('provisionalEndOn'),
+    resignationDate: workforceListDate('resignationDate'), lastWorkingDate: workforceListDate('lastWorkingDate'),
+    terminatedOn: workforceListDate('terminatedOn'), blacklistedAt: workforceListDate('blacklistedAt'),
+  };
+  return {
+    companyId: workforceListUuid('companyId'), departmentId: workforceListUuid('departmentId'),
+    employmentType: workforceListValue('employmentType'), terminatedOn: workforceListDate('terminatedOn'),
+    name: workforceListValue('name'), email: workforceListValue('email'), employeeCode: workforceListValue('employeeCode'),
+    status: employmentStatusSql(todayInKualaLumpur(), status),
+  };
+}
+const workforceListWhere = (p: EmployeeListFilters, columns: EmployeeListColumns) =>
+  and(p.companyIds?.length === 0 ? sql`false` : undefined, employeeListWhere(p, columns));
+
+/** Whole authorized Workforce picker population. Do not repurpose the independent payroll/clocking
+ * picker or transfer its person/card identifiers into a new grant's screen props. */
+export function listWorkforcePickOptions(ctx: SessionContext, companyIds?: string[]) {
+  return withTenant(ctx, async tx => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    return tx.select({
+      employmentId: workforceListUuid('employmentId'), name: workforceListValue<string>('name'),
+      employeeCode: workforceListValue<string | null>('employeeCode'), companyId: workforceListUuid('companyId'),
+      company: workforceListValue<string>('company'), department: workforceListValue<string | null>('department'),
+      terminatedOn: workforceListValue<string | null>('terminatedOn'),
+    }).from(workforceListSource).where(workforceListWhere({ companyIds }, workforceListColumns()))
+      .orderBy(workforceListValue('name'), workforceListUuid('employmentId'));
+  });
+}
+
 
 /**
  * Headcount by DERIVED Employee Status over the whole filtered set (feedback 579255c3, point 5) —
@@ -406,7 +446,16 @@ export function countEmployeesByStatus(
   purpose?:'workforce',
 ): Promise<{ total: number; byStatus: Partial<Record<EmploymentStatus, number>> }> {
   return withTenant(ctx, async (tx) => {
-    if(purpose)await lockAccessConfigurationTx(tx,ctx.tenantId);
+    if (purpose) {
+      await lockAccessConfigurationTx(tx, ctx.tenantId);
+      const columns = workforceListColumns();
+      const rows = await tx.select({ status: columns.status, count: sql<number>`count(distinct ${workforceListUuid('employmentId')})::int` })
+        .from(workforceListSource).where(workforceListWhere(p, columns)).groupBy(sql`1`);
+      const byStatus: Partial<Record<EmploymentStatus, number>> = {};
+      let total = 0;
+      for (const row of rows) { const count = Number(row.count); byStatus[row.status] = count; total += count; }
+      return { total, byStatus };
+    }
     const rows = (await tx
       .select({
         status: employmentStatusSql(),
@@ -417,7 +466,7 @@ export function countEmployeesByStatus(
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .leftJoin(assignment, currentAssignmentJoin())
-      .where(and(employeeListWhere(p),purpose?workforceEmploymentPredicate(sql`${employment.id}`,'view',p.companyIds):undefined))
+      .where(employeeListWhere(p))
       // GROUP BY 1 — the ORDINAL, not a second copy of the expression, and this is load-bearing rather
       // than terse. employmentStatusSql() carries the `today` value as a BIND PARAMETER, so rendering it
       // twice produces `$1`/`$2` in the SELECT and `$3`/`$4` in the GROUP BY. Postgres matches a grouped
@@ -450,9 +499,20 @@ export function listEmployeesPage(
   purpose?:'workforce',
 ): Promise<{ rows: EmployeeListRow[]; total: number }> {
   return withTenant(ctx, async (tx) => {
-    if(purpose)await lockAccessConfigurationTx(tx,ctx.tenantId);
+    if (purpose) {
+      await lockAccessConfigurationTx(tx, ctx.tenantId);
+      const columns = workforceListColumns();
+      const where = workforceListWhere(p, columns);
+      const rows = await tx.select({ row: sql<EmployeeListRow>`workforce_row.value` })
+        .from(workforceListSource).where(where)
+        .orderBy(...(p.sort === 'company' ? [sql`lower(${workforceListValue('company')})`, sql`lower(${columns.name})`] : [columns.name]))
+        .limit(p.limit).offset(p.offset);
+      const [count] = await tx.select({ count: sql<number>`count(distinct ${workforceListUuid('employmentId')})::int` })
+        .from(workforceListSource).where(where);
+      return { rows: rows.map(({ row }) => row), total: Number(count.count) };
+    }
     const currentAssignment = currentAssignmentJoin();
-    const where=and(employeeListWhere(p),purpose?workforceEmploymentPredicate(sql`${employment.id}`,'view',p.companyIds):undefined);
+    const where = employeeListWhere(p);
     const rows = (await tx
       .select({
         employmentId: employment.id,

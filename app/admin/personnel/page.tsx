@@ -9,7 +9,7 @@ import {
   countEmployeesByStatus,
   listCompanies,
   listDepartments,
-  listEmployees,
+  listWorkforcePickOptions,
   listEmployeesPage,
 } from '@/core/read';
 // r260 stage two (9583deac) — the shared approve/reject control whose Reject cannot be submitted
@@ -158,7 +158,7 @@ export default async function PeoplePage({
     // profile route already uses for its own pickers, narrowed here by the active company context
     // (`scopeIds`) so the box searches exactly what this screen is showing. It can only ever be NARROWER
     // than RLS — the profile route re-resolves whatever is picked and 404s on anything out of scope.
-    listEmployees(session,scopeIds,'workforce'),
+    listWorkforcePickOptions(session, scopeIds),
     // 579255c3 — this reader's own columns and their order. Per user (app_user.list_preferences through
     // the own-row seam), so one person's arrangement never changes what anybody else sees.
     getEmployeeListColumns(session),

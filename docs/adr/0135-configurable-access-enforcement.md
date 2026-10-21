@@ -112,3 +112,15 @@ financial and privacy owners retain their own checks. The classification metadat
 single default-isolation read with its fresh Workforce predicate, avoiding a stale repeatable-read
 snapshot for a permission decision. Actual rendering, keyboard/save behavior and source/SQL consumer
 refusals remain unexecuted requirements; these UI changes are not acceptance evidence.
+
+
+The Workforce listing, export, status counts and switcher now draft an explicit definer projection
+instead of borrowing raw person/employment SELECT. The projection names its fields and tenant-keyed
+joins; no arbitrary table/field selector, private classification, person/card identifier, salary,
+statutory/bank record or file bytes enter the listing contract. A manager name is projected only
+inside the same permitted-company set. The application reuses its existing filter and SQL status
+owners over that projection, so page rows, totals and buckets retain one interpretation; the
+independent payroll/attendance picker is unchanged. Prepared tests compare paging/filter/status
+results with the legacy owner and inspect the exact public projection and smaller picker shape.
+None has executed. This does not yet activate grants for new non-HR readers: page/detail purpose
+owners, complete maintenance and related-register/SQL bindings remain required source work.
