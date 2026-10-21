@@ -2945,10 +2945,10 @@ BEGIN
  IF p_scope IS NULL OR p_scope NOT IN ('contact','financial','identity','statutory-ids','all')
   OR p_request_ref IS NULL OR btrim(p_request_ref)='' OR length(p_request_ref)>4000 OR p_reason IS NULL OR length(p_reason)>4000 THEN
   RAISE EXCEPTION 'Privacy erasure input unavailable' USING ERRCODE='22023'; END IF;
- IF app.current_user_id() IS NULL OR NOT app.principal_snapshot_current() OR NOT app.is_admin() THEN
+ IF app.current_user_id() IS NULL OR app.principal_snapshot_current() IS NOT TRUE OR app.is_admin() IS NOT TRUE THEN
   RAISE EXCEPTION 'Privacy erasure principal unavailable' USING ERRCODE='42501'; END IF;
  SELECT * INTO selected FROM public.employment e WHERE e.id=p_employment AND e.tenant_id=app.current_tenant_id() FOR UPDATE;
- IF NOT FOUND OR NOT app.can_see_employment(selected.id) THEN
+ IF NOT FOUND OR app.can_see_employment(selected.id) IS NOT TRUE THEN
   RAISE EXCEPTION 'Privacy erasure subject unavailable' USING ERRCODE='42501'; END IF;
  -- Same calendar-year rollover as Date.setUTCFullYear: 29-Feb rolls to 1-Mar in a non-leap year.
  -- Both owners use this admission's one actual timestamp and the one declared retention duration.
@@ -3060,8 +3060,8 @@ BEGIN
  SELECT * INTO intent FROM app.access_privacy_value_intent i WHERE i.xact_id=NEW.xact_id AND i.tenant_id=NEW.tenant_id
   AND i.user_id=NEW.user_id AND i.kind=NEW.kind AND i.row_id=NEW.row_id;
  IF NOT FOUND OR intent.event_id IS NULL OR intent.user_id IS DISTINCT FROM app.current_user_id()
-  OR intent.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT app.principal_snapshot_current() OR NOT app.is_admin()
-  OR NOT app.can_see_employment(intent.employment_id) THEN
+  OR intent.tenant_id IS DISTINCT FROM app.current_tenant_id() OR app.principal_snapshot_current() IS NOT TRUE OR app.is_admin() IS NOT TRUE
+  OR app.can_see_employment(intent.employment_id) IS NOT TRUE THEN
   RAISE EXCEPTION 'Privacy erasure incomplete' USING ERRCODE='42501'; END IF;
  table_name:=CASE intent.kind WHEN 'person' THEN 'person' WHEN 'dependent' THEN 'employee_dependent' WHEN 'emergency' THEN 'person_emergency_contact' END;
  EXECUTE format('SELECT to_jsonb(r) FROM public.%I r WHERE r.id=$1 AND r.tenant_id=$2',table_name) INTO actual USING intent.row_id,intent.tenant_id;
