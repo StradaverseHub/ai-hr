@@ -1,4 +1,5 @@
 import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {isProfilePhotoProposal} from '../lib/profile-photo-proposal';
 import {resolveProfileRouteTx,assertProfileRouteDecisionTx,profileRouteReaderPredicate} from './profile-routing';
 import type {ProfilePresentationPolicy} from './profile-edit-policy';
 import {projectOwnProfileProposal,ownProfileProposalIsIntact} from '../lib/personnel-ess-visibility';
@@ -36,7 +37,7 @@ import { isCalendarDate } from '../lib/calendar-date';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { type Tx, withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
-import { employeeStatutoryMy, employment, person, profileChangeRequest } from '../db/schema';
+import { employeeStatutoryMy, employment, person, profileChangeRequest,personPhoto } from '../db/schema';
 import { assertCanDecide } from './approvals';
 // 9583deac stage two — the ONE declaration of which fields may be requested, what each is called on
 // both screens, and which table/column an approval writes it to. See the header of that file.
@@ -450,7 +451,9 @@ export async function decideProfileChange(
       throw new Error('Only a group administrator can approve a profile change');
     }
 
-    if(p.decision==='approved'&&req.proposed&&typeof req.proposed==='object'&&!Array.isArray(req.proposed)&&'v' in req.proposed&&req.proposed.v===2){
+    if(p.decision==='approved'&&isProfilePhotoProposal(req.proposed)){
+      const {applyProfilePhotoProposalTx}=await import('./person-photo');await applyProfilePhotoProposalTx(tx,ctx,req);
+    }else if(p.decision==='approved'&&req.proposed&&typeof req.proposed==='object'&&!Array.isArray(req.proposed)&&'v' in req.proposed&&req.proposed.v===2){
       const {applyProfileProposalTx}=await import('./profile-edit');
       await applyProfileProposalTx(tx,ctx,req.employmentId,req.proposed);
     }else if (p.decision === 'approved') {
@@ -630,6 +633,7 @@ export function listProfileChangeRequests(
         employee: person.fullName,
         employeeCode: employment.employeeCode,
         proposed: profileChangeRequest.proposed,
+        currentPhotoPresent:sql<boolean>`exists(select 1 from ${personPhoto} where ${personPhoto.personId}=${profileChangeRequest.personId})`,
         status: profileChangeRequest.status,
         decisionReason: profileChangeRequest.decisionReason,
         decidedAt: profileChangeRequest.decidedAt,
@@ -742,13 +746,14 @@ export async function pendingProfileChangeCountsByKey(ctx:SessionContext):Promis
  const rows=await withTenant(ctx,tx=>tx.execute(sql`
   SELECT keys.key,count(DISTINCT r.id)::int n FROM ${profileChangeRequest} r,
   LATERAL (
-   SELECT jsonb_object_keys(CASE WHEN r.proposed->>'v'='2' THEN '{}'::jsonb WHEN jsonb_typeof(r.proposed)='object' THEN r.proposed ELSE '{}'::jsonb END) key
+   SELECT r.proposed->>'fieldId' AS key WHERE r.proposed->>'kind'='photo'
+   UNION SELECT jsonb_object_keys(CASE WHEN r.proposed->>'v' IN ('2','3') THEN '{}'::jsonb WHEN jsonb_typeof(r.proposed)='object' THEN r.proposed ELSE '{}'::jsonb END) key
    UNION SELECT f->>'fieldId' FROM jsonb_array_elements(CASE WHEN jsonb_typeof(r.proposed->'fields')='array' THEN r.proposed->'fields' ELSE '[]'::jsonb END) f
    UNION SELECT f->>'fieldId' FROM jsonb_array_elements(CASE WHEN jsonb_typeof(r.proposed->'registers')='array' THEN r.proposed->'registers' ELSE '[]'::jsonb END) x,
     LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(x->'fields')='array' THEN x->'fields' ELSE '[]'::jsonb END) f
   ) keys WHERE r.status='pending' GROUP BY keys.key`));
  const out=new Map<string,number>();
- for(const row of rows as unknown as {key:string;n:number|string}[])if(requestableField(row.key)||personnelField(row.key)?.ess.binding)out.set(row.key,Number(row.n));
+ for(const row of rows as unknown as {key:string;n:number|string}[])if(requestableField(row.key)||personnelField(row.key)?.ess.binding||row.key==='profile.personal_details.photo')out.set(row.key,Number(row.n));
  return out;
 }
 
@@ -774,7 +779,7 @@ export async function withdrawProfileChangesForLockedFields(
   outerTx?:Tx,
 ): Promise<{ withdrawn: number }> {
   if (!isGroupAdmin(ctx)) throw new Error('Only a group administrator can change profile-request settings.');
-  const locked = new Set(p.lockedKeys.filter((k) => requestableField(k) != null||personnelField(k)?.ess.binding));
+  const locked = new Set(p.lockedKeys.filter((k) => requestableField(k) != null||personnelField(k)?.ess.binding||k==='profile.personal_details.photo'));
   const reason = clean(p.reason);
   if (locked.size === 0 || reason === null) return { withdrawn: 0 };
 
@@ -814,7 +819,7 @@ export async function withdrawProfileChangesForLockedFields(
           // ARRAY[$n, $n…], built with `sql.join` rather than by handing drizzle the JS array: a bare
           // array parameter expands to a RECORD `($5, $6)`, which Postgres refuses to cast to text[]
           // ("cannot cast type record to text[]"). Every key is still a bound parameter, never inlined.
-          sql`(${profileChangeRequest.proposed} ?| ARRAY[${sql.join(lockedKeys.map((k)=>sql`${k}`),sql`, `)}]::text[]
+          sql`(${profileChangeRequest.proposed}->>'fieldId'=ANY(ARRAY[${sql.join(lockedKeys.map((k)=>sql`${k}`),sql`, `)}]::text[]) OR ${profileChangeRequest.proposed} ?| ARRAY[${sql.join(lockedKeys.map((k)=>sql`${k}`),sql`, `)}]::text[]
  OR EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(${profileChangeRequest.proposed}->'fields')='array' THEN ${profileChangeRequest.proposed}->'fields' ELSE '[]'::jsonb END) f WHERE f->>'fieldId'=ANY(ARRAY[${sql.join(lockedKeys.map((k)=>sql`${k}`),sql`, `)}]::text[]))
  OR EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(${profileChangeRequest.proposed}->'registers')='array' THEN ${profileChangeRequest.proposed}->'registers' ELSE '[]'::jsonb END) x,LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(x->'fields')='array' THEN x->'fields' ELSE '[]'::jsonb END) f WHERE f->>'fieldId'=ANY(ARRAY[${sql.join(lockedKeys.map((k)=>sql`${k}`),sql`, `)}]::text[])))`,
         ),

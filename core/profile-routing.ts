@@ -13,14 +13,14 @@ import {isAdmin,isGroupAdmin} from '../lib/authz-model';
 import {PERSONNEL_EMPLOYMENT_TYPES} from '../lib/personnel-choice-vocabulary';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {resolveOrgCriteriaTargets,ORG_DATED_ASSIGNMENT_CRITERIA,ORG_EMPLOYMENT_COLUMN_CRITERIA,ORG_CRITERIA_FIELDS,ORG_CRITERIA_DATE_FIELDS,ORG_CRITERIA_NUMBER_FIELDS,type OrgCriteria} from './org-criteria';
-import {EMPTY_PROFILE_ROUTING,PROFILE_ROUTING_KEY,isProfileRoutingPolicy,type ProfileRoutingPolicy,type ProfileRouteRule} from '../lib/profile-routing-policy';
+import {EMPTY_PROFILE_ROUTING,PROFILE_ROUTING_KEY,isProfileRoutingPolicy,type ProfileRoutingPolicy,type ProfileRouteRule,type ProfileRequestType} from '../lib/profile-routing-policy';
 export class ProfileRoutingError extends Error{
  constructor(readonly code:'invalid'|'missing'|'overlap'|'unauthorized'|'changed'|'reasonRequired'){super(`Profile routing: ${code}`);this.name='ProfileRoutingError';}
 }
 export function readProfileRoutingPolicy(ctx:SessionContext):ProfileRoutingPolicy{
  const raw=getSetting(ctx,PROFILE_ROUTING_KEY);if(raw==null)return EMPTY_PROFILE_ROUTING;
  if(!isProfileRoutingPolicy(raw))throw new ProfileRoutingError('invalid');
- for(const rule of raw.rules)validateCriteria(rule.criteria);
+ for(const rule of raw.rules){validateCriteria(rule.criteria);if(rule.excludedCriteria)validateCriteria(rule.excludedCriteria);}
  return raw;
 }
 const uuidCriteriaAxes=new Set<string>(['companyIds','departmentIds',...ORG_DATED_ASSIGNMENT_CRITERIA.map(axis=>axis.key),...ORG_EMPLOYMENT_COLUMN_CRITERIA.map(axis=>axis.key)]);
@@ -41,7 +41,14 @@ function validateCriteria(criteria:ProfileRouteRule['criteria']){
 async function routeTargets(tx:Tx,rule:ProfileRouteRule,subjectId?:string,asOf=todayInKualaLumpur()){
  const ids=subjectId?[subjectId]:rule.employmentIds;
  if(subjectId&&rule.employmentIds.length&&!rule.employmentIds.includes(subjectId))return [];
- return resolveOrgCriteriaTargets(tx,{criteria:rule.criteria as OrgCriteria,asOf,...(ids.length?{employmentIds:ids}:{})});
+ const included=await resolveOrgCriteriaTargets(tx,{criteria:rule.criteria as OrgCriteria,asOf,...(ids.length?{employmentIds:ids}:{})});
+ const excluded=new Set(rule.excludedEmploymentIds??[]);
+ // An empty exclusion is no exclusion. Passing {} to the resolver would exclude everybody.
+ const criteria=rule.excludedCriteria??{};
+ if(Object.values(criteria).some(value=>Array.isArray(value)?value.length>0:typeof value==='string'?value.length>0:true)){
+  for(const id of await resolveOrgCriteriaTargets(tx,{criteria:criteria as OrgCriteria,asOf,employmentIds:included}))excluded.add(id);
+ }
+ return included.filter(id=>!excluded.has(id));
 }
 /** The SQL helper checks the candidate's current login, active employment and real company-tree grants. */
 async function namedPrincipal(tx:Tx,approverEmploymentId:string,subjectId:string){
@@ -67,13 +74,13 @@ async function subjectContext(tx:Tx,ctx:SessionContext,subjectId:string,asOf:str
  const rows=await tx.select({id:assignment.id,companyId:assignment.companyId,departmentId:assignment.departmentId,businessUnitId:assignment.businessUnitId,positionId:assignment.positionId,costCenterId:assignment.costCenterId,employmentType:assignment.employmentType}).from(assignment).where(and(eq(assignment.employmentId,subjectId),isNull(assignment.supersededAt),sql`${assignment.validFrom}<=${asOf}::date AND (${assignment.validTo} IS NULL OR ${assignment.validTo}>=${asOf}::date)`)).orderBy(asc(assignment.id)).for('update');
  return {asOf,companyId:e.companyId,fingerprint:createHash('sha256').update(JSON.stringify({employment:e,assignments:rows})).digest('hex')};
 }
-export async function resolveProfileRouteTx(tx:Tx,ctx:SessionContext,subjectId:string){
+export async function resolveProfileRouteTx(tx:Tx,ctx:SessionContext,subjectId:string,requestType:ProfileRequestType='fields'){
  const policy=readProfileRoutingPolicy(ctx);if(!policy.enabled)return null;
  const asOf=todayInKualaLumpur();
  // Acquire the snapshot before selecting any rule/principal, and retain its row locks until commit.
  const routeContext=await subjectContext(tx,ctx,subjectId,asOf);
  const matches:ProfileRouteRule[]=[];
- for(const rule of policy.rules)if((await routeTargets(tx,rule,subjectId,asOf)).includes(subjectId))matches.push(rule);
+ for(const rule of policy.rules)if((!rule.requestTypes||rule.requestTypes.includes(requestType))&&(await routeTargets(tx,rule,subjectId,asOf)).includes(subjectId))matches.push(rule);
  if(matches.length!==1)throw new ProfileRoutingError(matches.length?'overlap':'missing');
  const rule=matches[0],principal=await namedPrincipal(tx,rule.approverEmploymentId,subjectId);
  return {routeId:rule.id,routeRevision:policy.revision,routeApproverUserId:principal.user_id,routeApproverEmploymentId:principal.employment_id,routeContext};
@@ -81,27 +88,29 @@ export async function resolveProfileRouteTx(tx:Tx,ctx:SessionContext,subjectId:s
 export async function assertProfileRouteDecisionTx(tx:Tx,ctx:SessionContext,request:typeof profileChangeRequest.$inferSelect){
  const policy=readProfileRoutingPolicy(ctx);
  if(!request.routeId){if(policy.enabled)throw new ProfileRoutingError('changed');return;}
- const current=await resolveProfileRouteTx(tx,ctx,request.employmentId);
+ const current=await resolveProfileRouteTx(tx,ctx,request.employmentId,profileRequestType(request.proposed));
  if(!current||current.routeId!==request.routeId||current.routeRevision!==request.routeRevision||current.routeApproverUserId!==request.routeApproverUserId||current.routeApproverEmploymentId!==request.routeApproverEmploymentId||current.routeContext.fingerprint!==(request.routeContext as {fingerprint?:unknown}|null)?.fingerprint)throw new ProfileRoutingError('changed');
  if(ctx.userId!==current.routeApproverUserId)throw new ProfileRoutingError('unauthorized');
 }
+export function profileRequestType(proposed:unknown):ProfileRequestType{return proposed&&typeof proposed==='object'&&!Array.isArray(proposed)&&'v' in proposed&&proposed.v===3?'photo':'fields';}
 /** Used identically for queue, detail and decided counts; row RLS is an independent fence. */
 export function profileRouteReaderPredicate(ctx:SessionContext){
  return sql`app.profile_route_reader(${profileChangeRequest.employmentId},${profileChangeRequest.routeApproverUserId},${profileChangeRequest.routeApproverEmploymentId},${profileChangeRequest.status}::text)`;
 }
-export function saveProfileRoutingPolicy(ctx:SessionContext,p:{expectedRevision:string;enabled:boolean;rules:ProfileRouteRule[]}){
+export function saveProfileRoutingPolicy(ctx:SessionContext,p:{expectedRevision:string;enabled:boolean;rules:ProfileRouteRule[];version?:1|2;previewFingerprint?:string}){
  return withTenant(ctx,async tx=>{
   if(!isGroupAdmin(ctx))throw new ProfileRoutingError('unauthorized');
   const fresh=await freshProfileEditPolicyTx(tx,ctx),before=readProfileRoutingPolicy(fresh.ctx);
   if(before.revision!==p.expectedRevision||before.enabled&&!p.enabled)throw new ProfileRoutingError('changed');
-  const value={version:1 as const,enabled:p.enabled,revision:randomUUID(),rules:p.rules};
+  const value={version:p.version??1,enabled:p.enabled,revision:randomUUID(),rules:p.rules};
   if(!isProfileRoutingPolicy(value))throw new ProfileRoutingError('invalid');
+  if(value.version===2){const preview=await previewRoutingTx(tx,fresh.ctx,value);if(!p.previewFingerprint||p.previewFingerprint!==preview.fingerprint)throw new ProfileRoutingError('changed');}
   const candidates=await tx.execute(sql`select employment_id from app.profile_route_candidates()`);
   const candidateIds=new Set((candidates as unknown as {employment_id:string}[]).map(row=>row.employment_id));
   if(value.rules.some(rule=>!candidateIds.has(rule.approverEmploymentId)))throw new ProfileRoutingError('unauthorized');
   const covered=new Set<string>();
-  for(const rule of value.rules){validateCriteria(rule.criteria);const targets=await routeTargets(tx,rule);
-   for(const id of targets){if(covered.has(id))throw new ProfileRoutingError('overlap');covered.add(id);}
+  for(const rule of value.rules){validateCriteria(rule.criteria);if(rule.excludedCriteria)validateCriteria(rule.excludedCriteria);const targets=await routeTargets(tx,rule);
+   for(const type of rule.requestTypes??['fields'])for(const id of targets){const key=type+':'+id;if(covered.has(key))throw new ProfileRoutingError('overlap');covered.add(key);}
    if(await eligibleTargetCount(tx,rule.approverEmploymentId,targets)!==targets.length)throw new ProfileRoutingError('unauthorized');
   }
   if(value.enabled&&!value.rules.length)throw new ProfileRoutingError('missing');
@@ -118,9 +127,9 @@ export function rerouteProfileRequest(ctx:SessionContext,p:{requestId:string;rea
   if(!isGroupAdmin(ctx))throw new ProfileRoutingError('unauthorized');
   const fresh=await freshProfileEditPolicyTx(tx,ctx);
   await tx.execute(sql`select set_config('app.profile_route_maintenance','on',true)`);
-  const [row]=await tx.select({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,status:profileChangeRequest.status,routeId:profileChangeRequest.routeId,routeRevision:profileChangeRequest.routeRevision,routeApproverUserId:profileChangeRequest.routeApproverUserId,routeApproverEmploymentId:profileChangeRequest.routeApproverEmploymentId,routeContext:profileChangeRequest.routeContext,routeHistory:profileChangeRequest.routeHistory}).from(profileChangeRequest).where(eq(profileChangeRequest.id,p.requestId)).limit(1).for('update');
+  const [row]=await tx.select({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,status:profileChangeRequest.status,proposed:profileChangeRequest.proposed,routeId:profileChangeRequest.routeId,routeRevision:profileChangeRequest.routeRevision,routeApproverUserId:profileChangeRequest.routeApproverUserId,routeApproverEmploymentId:profileChangeRequest.routeApproverEmploymentId,routeContext:profileChangeRequest.routeContext,routeHistory:profileChangeRequest.routeHistory}).from(profileChangeRequest).where(eq(profileChangeRequest.id,p.requestId)).limit(1).for('update');
   if(!row||row.status!=='pending')throw new ProfileRoutingError('changed');
-  const route=await resolveProfileRouteTx(tx,fresh.ctx,row.employmentId)??{routeId:null,routeRevision:null,routeApproverUserId:null,routeApproverEmploymentId:null,routeContext:null};
+  const route=await resolveProfileRouteTx(tx,fresh.ctx,row.employmentId,profileRequestType(row.proposed))??{routeId:null,routeRevision:null,routeApproverUserId:null,routeApproverEmploymentId:null,routeContext:null};
   await tx.update(profileChangeRequest).set({...route,routeHistory:[...(Array.isArray(row.routeHistory)?row.routeHistory:[]),{before:{routeId:row.routeId,revision:row.routeRevision,approverUserId:row.routeApproverUserId,approverEmploymentId:row.routeApproverEmploymentId},after:route,reason:p.reason.trim(),changedAt:new Date().toISOString(),changedByUserId:ctx.userId}]}).where(eq(profileChangeRequest.id,row.id));
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'profile-change',aggregateId:row.id,eventType:'profile-change.rerouted',actor:actorOf(ctx),subjectEmploymentId:row.employmentId,payload:{before:{routeId:row.routeId,revision:row.routeRevision,approverUserId:row.routeApproverUserId,approverEmploymentId:row.routeApproverEmploymentId},after:{routeId:route.routeId,revision:route.routeRevision,approverUserId:route.routeApproverUserId,approverEmploymentId:route.routeApproverEmploymentId},reasonProvided:true}});
   return {requestId:row.id};
@@ -155,20 +164,28 @@ export function profileApproverCandidates(ctx:SessionContext){
  });
 }
 /** Configuration-only counts reuse the same target and authority owners; no profile values returned. */
-export function previewProfileRoutingPolicy(ctx:SessionContext,input:{enabled:boolean;rules:ProfileRouteRule[]}){
+export function previewProfileRoutingPolicy(ctx:SessionContext,input:{enabled:boolean;rules:ProfileRouteRule[];version?:1|2}){
  return withTenant(ctx,async tx=>{
   if(!isGroupAdmin(ctx))throw new ProfileRoutingError('unauthorized');
-  const value={version:1 as const,revision:EMPTY_PROFILE_ROUTING.revision,...input};
-  if(!isProfileRoutingPolicy(value))throw new ProfileRoutingError('invalid');
-  const matches=new Map<string,number>();let ineligible=0;
-  const candidateRows=await tx.execute(sql`select employment_id from app.profile_route_candidates()`);
-  const candidateIds=new Set((candidateRows as unknown as {employment_id:string}[]).map(row=>row.employment_id));
-  for(const rule of value.rules){validateCriteria(rule.criteria);const targets=await routeTargets(tx,rule);
-   if(!candidateIds.has(rule.approverEmploymentId))ineligible++;
-   for(const id of targets)matches.set(id,(matches.get(id)??0)+1);
-   ineligible+=targets.length-await eligibleTargetCount(tx,rule.approverEmploymentId,targets);
-  }
-  const population=await resolveOrgCriteriaTargets(tx,{criteria:{},asOf:todayInKualaLumpur()});
-  return {matched:matches.size,missing:population.filter(id=>!matches.has(id)).length,overlapping:[...matches.values()].filter(count=>count>1).length,ineligible};
+  const fresh=await freshProfileEditPolicyTx(tx,ctx);
+  return previewRoutingTx(tx,fresh.ctx,{version:input.version??1,revision:readProfileRoutingPolicy(fresh.ctx).revision,enabled:input.enabled,rules:input.rules});
  });
+}
+async function previewRoutingTx(tx:Tx,ctx:SessionContext,value:ProfileRoutingPolicy){
+ if(!isProfileRoutingPolicy(value))throw new ProfileRoutingError('invalid');
+ const matches=new Map<string,number>();let ineligible=0;
+ const candidateRows=await tx.execute(sql`select employment_id from app.profile_route_candidates()`);
+ const candidateIds=new Set((candidateRows as unknown as {employment_id:string}[]).map(row=>row.employment_id));
+ const snapshot:unknown[]=[];
+ for(const rule of value.rules){validateCriteria(rule.criteria);if(rule.excludedCriteria)validateCriteria(rule.excludedCriteria);const targets=await routeTargets(tx,rule);
+  if(!candidateIds.has(rule.approverEmploymentId))ineligible++;
+  for(const type of rule.requestTypes??['fields'])for(const id of targets){const key=type+':'+id;matches.set(key,(matches.get(key)??0)+1);}
+  const eligible=await eligibleTargetCount(tx,rule.approverEmploymentId,targets);ineligible+=targets.length-eligible;
+  snapshot.push({id:rule.id,targets:[...targets].sort(),eligible});
+ }
+ const population=await resolveOrgCriteriaTargets(tx,{criteria:{},asOf:todayInKualaLumpur()});
+ const requestTypes:ProfileRequestType[]=value.version===1?['fields']:['fields','photo'];
+ const counts={matched:matches.size,missing:requestTypes.reduce((n,type)=>n+population.filter(id=>!matches.has(type+':'+id)).length,0),overlapping:[...matches.values()].filter(count=>count>1).length,ineligible};
+ const fingerprint=createHash('sha256').update(JSON.stringify({actor:ctx.userId,tenant:ctx.tenantId,revision:readProfileRoutingPolicy(ctx).revision,asOf:todayInKualaLumpur(),version:value.version,enabled:value.enabled,rules:value.rules,population:[...population].sort(),snapshot,counts})).digest('hex');
+ return {...counts,fingerprint};
 }
