@@ -24,7 +24,12 @@ export function HomeConfigurationEditor({initial}:{initial:EmployeeHomeConfigura
  const [actions,setActions]=React.useState<HomeQuickAction[]>(initial.configuration.quickActions);
  const actionRows=[...actions,...HOME_QUICK_ACTIONS.filter(key=>!actions.includes(key))];
  function move(key:HomeQuickAction,delta:number){setActions(previous=>{const index=previous.indexOf(key),next=index+delta;if(index<0||next<0||next>=previous.length)return previous;const copy=[...previous];[copy[index],copy[next]]=[copy[next],copy[index]];return copy;});}
- return <form method="post" onInvalidCapture={event=>{if(event.target instanceof HTMLElement){const details=event.target.closest('details');if(details)details.open=true;}} onSubmit={event=>{event.preventDefault();if(inFlight.current||state.destination)return;const data=new FormData(event.currentTarget);inFlight.current=true;React.startTransition(()=>dispatch(data));}} className="space-y-6">
+ return <form method="post"
+  onInvalidCapture={event=>{
+   if(event.target instanceof HTMLElement){const details=event.target.closest('details');if(details)details.open=true;}
+  }}
+  onSubmit={event=>{event.preventDefault();if(inFlight.current||state.destination)return;const data=new FormData(event.currentTarget);inFlight.current=true;React.startTransition(()=>dispatch(data));}}
+  className="space-y-6">
   {/* Manual dispatch preserves native textarea/select drafts after a refused action; React's form-action
       auto-reset otherwise loses them. POST also keeps these fields out of a URL before hydration. */}
   <input type="hidden" name="companyId" value={initial.companyId}/><input type="hidden" name="audienceRole" value={initial.audienceRole}/><input type="hidden" name="expectedOrdinal" value={initial.ordinal}/>
