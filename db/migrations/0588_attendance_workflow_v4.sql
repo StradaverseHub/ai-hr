@@ -816,8 +816,13 @@ CREATE FUNCTION app.attendance_workflow_cc_claim(p_token uuid,p_companies uuid[]
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
  IF NOT app.is_admin() OR p_token IS NULL THEN RAISE EXCEPTION 'Notification dispatcher required'; END IF;
- UPDATE public.attendance_workflow_cc_delivery d SET status='uncertain',last_error='uncertain',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE d.tenant_id=app.current_tenant_id() AND d.status='pending' AND d.started_at IS NOT NULL AND d.lease_until<now();
- RETURN QUERY WITH due AS(SELECT d.id FROM public.attendance_workflow_cc_delivery d WHERE d.tenant_id=app.current_tenant_id() AND d.status='pending' AND d.started_at IS NULL AND d.attempts<5 AND d.next_attempt_at<=now() AND (d.lease_until IS NULL OR d.lease_until<now()) AND (p_companies IS NULL OR EXISTS(SELECT 1 FROM public.attendance_workflow_request w WHERE w.id=d.request_id AND w.tenant_id=d.tenant_id AND w.company_id=ANY(p_companies))) ORDER BY d.created_at,d.id LIMIT 50 FOR UPDATE SKIP LOCKED)
+ UPDATE public.attendance_workflow_cc_delivery d SET status='uncertain',last_error='uncertain',lease_token=NULL,lease_until=NULL,updated_at=now()
+ WHERE d.tenant_id=app.current_tenant_id() AND d.status='pending' AND d.started_at IS NOT NULL AND d.lease_until<now()
+ AND EXISTS(SELECT 1 FROM public.attendance_workflow_request w WHERE w.id=d.request_id AND w.tenant_id=d.tenant_id
+  AND app.is_admin_for(w.company_id) AND (p_companies IS NULL OR w.company_id=ANY(p_companies)));
+ RETURN QUERY WITH due AS(SELECT d.id FROM public.attendance_workflow_cc_delivery d WHERE d.tenant_id=app.current_tenant_id() AND d.status='pending' AND d.started_at IS NULL AND d.attempts<5 AND d.next_attempt_at<=now() AND (d.lease_until IS NULL OR d.lease_until<now())
+ AND EXISTS(SELECT 1 FROM public.attendance_workflow_request w WHERE w.id=d.request_id AND w.tenant_id=d.tenant_id
+  AND app.is_admin_for(w.company_id) AND (p_companies IS NULL OR w.company_id=ANY(p_companies))) ORDER BY d.created_at,d.id LIMIT 50 FOR UPDATE OF d SKIP LOCKED)
  UPDATE public.attendance_workflow_cc_delivery d SET lease_token=p_token,lease_until=now()+interval '60 seconds',updated_at=now() FROM due WHERE d.id=due.id RETURNING d.id;
 END $$;
 REVOKE ALL ON FUNCTION app.attendance_workflow_cc_claim(uuid,uuid[]) FROM PUBLIC;
@@ -830,7 +835,26 @@ BEGIN
  SELECT d.* INTO job FROM public.attendance_workflow_cc_delivery d JOIN public.tenant t ON t.id=d.tenant_id AND t.status IN('active','trial') WHERE d.id=p_id AND d.lease_token=p_token AND d.status='pending' AND d.started_at IS NULL AND d.attempts<5 AND d.lease_until>now() AND EXISTS(SELECT 1 FROM public.notification_email_policy policy WHERE policy.tenant_id=d.tenant_id AND policy.category='attendance' AND policy.enabled AND d.source_sequence>policy.after_sequence);
  IF NOT FOUND THEN RETURN NULL; END IF;
  IF job.recipient_kind='employee' THEN
-  SELECT u.id,i.subject,pref.email_locale INTO identity_user,identity_subject,locale FROM public.employment e JOIN public.app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id JOIN public.app_external_identity i ON i.app_user_id=u.id AND i.issuer=p_issuer AND i.revoked_at IS NULL JOIN public.notification_pref pref ON pref.tenant_id=e.tenant_id AND pref.recipient_employment_id=e.id AND pref.category='attendance' AND pref.channel='email' AND pref.enabled AND pref.email_consent_user_id=u.id AND pref.email_after_sequence IS NOT NULL AND job.source_sequence>pref.email_after_sequence WHERE e.id=job.recipient_employment_id AND e.tenant_id=job.tenant_id AND u.id=job.recipient_user_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND lower(p.primary_email)=job.address AND e.blacklisted_at IS NULL AND e.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (LEAST(e.terminated_on,e.resignation_date,e.last_working_date) IS NULL OR LEAST(e.terminated_on,e.resignation_date,e.last_working_date)>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date);
+  SELECT u.id,i.subject,pref.email_locale INTO identity_user,identity_subject,locale
+  FROM public.employment e
+  JOIN public.app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id
+  JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+  JOIN public.app_external_identity i ON i.app_user_id=u.id AND i.issuer=p_issuer AND i.revoked_at IS NULL
+  JOIN public.notification_pref pref ON pref.tenant_id=e.tenant_id AND pref.recipient_employment_id=e.id
+   AND pref.category='attendance' AND pref.channel='email' AND pref.enabled AND pref.email_consent_user_id=u.id
+   AND pref.email_after_sequence IS NOT NULL AND job.source_sequence>pref.email_after_sequence
+  JOIN public.attendance_workflow_request w ON w.id=job.request_id AND w.tenant_id=e.tenant_id
+  WHERE e.id=job.recipient_employment_id AND e.tenant_id=job.tenant_id AND u.id=job.recipient_user_id
+   AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND lower(p.primary_email)=job.address
+   AND e.blacklisted_at IS NULL AND e.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+   AND (LEAST(e.terminated_on,e.resignation_date,e.last_working_date) IS NULL OR LEAST(e.terminated_on,e.resignation_date,e.last_working_date)>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+   AND app.is_company_descendant(w.company_id,e.company_id)
+   AND EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.app_user_id=u.id AND r.tenant_id=w.tenant_id
+    AND r.role::text IN('employee','manager','hr_admin','super_admin')
+    AND (r.company_id IS NULL OR r.company_id=w.company_id OR app.is_company_descendant(w.company_id,r.company_id)))
+   AND EXISTS(SELECT 1 FROM jsonb_array_elements(w.cc) frozen
+    WHERE frozen->>'kind'='employee' AND frozen->>'address'=job.address
+     AND frozen->>'employmentId'=e.id::text AND frozen->>'personId'=e.person_id::text AND frozen->>'userId'=u.id::text);
   IF NOT FOUND THEN RETURN NULL; END IF;
  ELSE
   -- A custom destination cannot bypass an existing employee's consent/revocation. The configured

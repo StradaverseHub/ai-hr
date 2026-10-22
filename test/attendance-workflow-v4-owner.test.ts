@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
+import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {and,asc,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
@@ -7,9 +7,11 @@ import {hireEmployee,setReportingLine} from '../core/org';
 import {checkIn,checkOut,requestAttendanceCorrection,decideAttendanceCorrection,cancelAttendanceApplication,listAttendanceCorrections} from '../core/attendance';
 import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled,previewAttendanceWorkflow,retireAttendanceWorkflow,restoreAttendanceWorkflow,listAttendanceWorkflows,listRetiredAttendanceWorkflows} from '../core/attendance-workflow';
 import {attendanceApplicationDetail,attendanceApplicationFilterOptions} from '../core/attendance-application-history';
+import {saveNotificationEmailPolicy,saveNotificationEmailPreferences} from '../core/notification-email';
+import {createNotificationEmailService} from '../deploy/identity-email/notifications';
 import type {AttendanceV4WorkflowInput,AttendanceV4Mode} from '../lib/attendance-workflow-v4';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {adminCtx,createAppUser,owner,closeAll,migrateTestDb,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,createAppUser,owner,closeAll,migrateTestDb,resetDb,seedBase,setModule,type Base} from './harness';
 let base:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();base=await seedBase();});
 async function actor(name:string,role:'employee'|'hr_admin'='employee',departmentId=base.deptB) {
@@ -63,4 +65,127 @@ describe('CC outbox follows real committed actions only',()=>{
  it('queues each genuine participant action once per normalized recipient without including private remarks',async()=>{const f=await fixture('all_required','irregularity',true);expect((await owner.client`select count(*)::int n from attendance_workflow_cc_delivery`)[0].n).toBe(0);await decideAttendanceCorrection(f.first.ctx,{correctionId:f.id,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0',remarks:'Private medical and payroll detail must never leave the app'});let rows=await owner.client`select * from attendance_workflow_cc_delivery order by address,id`;expect(rows).toHaveLength(2);for(const row of rows){expect(row.message).toEqual({reference:f.id,applicant:'Fictional v4 applicant',level:1,action:'approved',actor:'Fictional v4 superior',occurredAt:expect.any(String)});expect(JSON.stringify(row.message)).not.toContain('Private medical');}await expect(decide(f,f.first,'0:0')).rejects.toThrow();expect((await owner.client`select count(*)::int n from attendance_workflow_cc_delivery`)[0].n).toBe(2);await decide(f,f.second,'0:1');rows=await owner.client`select * from attendance_workflow_cc_delivery order by created_at,id`;expect(rows).toHaveLength(4);});
  it.each(['cancelled','withdrawn'] as const)('queues the genuine configured %s action once and excludes its reason',async(kind)=>{const f=await fixture('all_required','irregularity',true);await cancelAttendanceApplication(f.root,{correctionId:f.id,kind,reason:'Private cancellation explanation'});const rows=await owner.client`select message from attendance_workflow_cc_delivery order by address,id`;expect(rows).toHaveLength(2);for(const row of rows){expect(row.message.action).toBe(kind);expect(JSON.stringify(row.message)).not.toContain('Private cancellation');}await expect(cancelAttendanceApplication(f.root,{correctionId:f.id,kind,reason:'Duplicate'})).rejects.toThrow();expect((await owner.client`select count(*)::int n from attendance_workflow_cc_delivery`)[0].n).toBe(2);});
  it('rolls back both participant evidence and queued mail on a rejected transaction',async()=>{const f=await fixture('all_required','irregularity',true);await owner.client`CREATE FUNCTION public.board2_refuse_cc_event() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type='attendance-workflow.participant.decided' THEN RAISE EXCEPTION 'Fictional rollback witness'; END IF; RETURN NEW; END $$`;await owner.client`CREATE TRIGGER board2_refuse_cc_event AFTER INSERT ON domain_event FOR EACH ROW EXECUTE FUNCTION public.board2_refuse_cc_event()`;try{await expect(decide(f,f.first,'0:0')).rejects.toThrow();expect((await detail(f)).workflow!.participantDecisions).toHaveLength(0);expect((await owner.client`select count(*)::int n from attendance_workflow_cc_delivery`)[0].n).toBe(0);}finally{await owner.client`DROP TRIGGER board2_refuse_cc_event ON domain_event`;await owner.client`DROP FUNCTION public.board2_refuse_cc_event()`;}});
+});
+
+/** Real SQL leases and private ports; SMTP is always a fictional capture. */
+const ccIssuer='https://fictional.example.invalid/identity/realms/ai-hr';
+async function deliveryFixture() {
+ await setModule(base.tenantId,'notifications','active');
+ const f=await fixture('all_required','irregularity',true);
+ const subject=randomUUID();
+ await owner.db.insert(schema.appExternalIdentity).values({issuer:ccIssuer,subject,appUserId:f.first.ctx.userId!});
+ await saveNotificationEmailPolicy(f.root,['attendance']);
+ await saveNotificationEmailPreferences(f.first.ctx,f.first.employmentId,['attendance'],'en',{
+  issuer:ccIssuer,subject,email:f.first.email,emailVerified:true,
+ });
+ await decide(f,f.first,'0:0');
+ return f;
+}
+async function claimCc(ctx:SessionContext,token=randomUUID(),companies:string[]|null=null) {
+ const ids=await withTenant(ctx,tx=>tx.execute(sql`select app.attendance_workflow_cc_claim(${token}::uuid,${companies===null?sql`null::uuid[]`:sql`ARRAY[${sql.join(companies.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`}) as id`)) as unknown as {id:string}[];
+ return{token,ids:ids.map(row=>row.id)};
+}
+async function ccRows() {return owner.client`select * from attendance_workflow_cc_delivery order by created_at,address,id`;}
+async function ccTarget(id:string,token:string) {
+ return(await owner.client`select identity_email.attendance_cc_target(${id}::uuid,${token}::uuid,${ccIssuer}) as target`)[0].target;
+}
+function capturedCcService(send=vi.fn(async()=>{})) {
+ return{send,service:createNotificationEmailService({
+  origin:'https://fictional.example.invalid',ready:async()=>true,target:async()=>null,
+  verifyRecipient:async()=> 'verified',start:async()=>false,finish:async()=>false,send,
+  cc:{target:ccTarget,
+   start:async(id,token,target)=>(await owner.client`select identity_email.start_attendance_cc(${id}::uuid,${token}::uuid,${ccIssuer},${owner.client.json(target)}::jsonb) as ok`)[0].ok,
+   finish:async(id,token,outcome,error)=>(await owner.client`select identity_email.finish_attendance_cc(${id}::uuid,${token}::uuid,${outcome},${error}) as ok`)[0].ok,
+  },
+ })};
+}
+describe('CC delivery rechecks canonical eligibility at the private database boundary',()=>{
+ it('captures internal and external destinations once, with the exact frozen decision and no attachments',async()=>{
+  const f=await deliveryFixture(),{token,ids}=await claimCc(f.root),{send,service}=capturedCcService();
+  expect(ids).toHaveLength(2);
+  for(const id of ids)expect(await service({op:'attendanceCcSend',deliveryId:id,leaseToken:token})).toEqual({outcome:'sent'});
+  expect(send).toHaveBeenCalledTimes(2);
+  for(const [recipient,mail] of send.mock.calls as unknown as [Record<string,unknown>,Record<string,unknown>][]) {
+   expect([f.first.email,'fictional-external@example.invalid']).toContain(recipient.email);
+   expect(mail.attendanceCc).toEqual({reference:f.id,applicant:'Fictional v4 applicant',level:1,action:'approved',actor:'Fictional v4 superior',occurredAt:expect.any(String)});
+   expect(mail).not.toHaveProperty('attachments');expect(mail).not.toHaveProperty('approvalToken');
+  }
+  expect((await ccRows()).map(row=>[row.status,row.attempts])).toEqual([['sent',1],['sent',1]]);
+  expect((await claimCc(f.root)).ids).toEqual([]);
+  for(const id of ids)await service({op:'attendanceCcSend',deliveryId:id,leaseToken:token});
+  expect(send).toHaveBeenCalledTimes(2);
+ });
+ it('does not let a scoped dispatcher claim or expire another company’s occurrences, even with a null filter',async()=>{
+  const f=await deliveryFixture();
+  const [foreign]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Fictional out-of-scope company',country:'MY'}).returning();
+  const scoped={...f.root,grants:[{role:'hr_admin' as const,companyId:foreign.id}]};
+  expect((await claimCc(scoped)).ids).toEqual([]);
+  expect((await claimCc(scoped,randomUUID(),[base.companyId])).ids).toEqual([]);
+  expect((await ccRows()).every(row=>row.lease_token===null&&row.started_at===null)).toBe(true);
+  const {token,ids}=await claimCc(f.root);
+  await owner.client`update attendance_workflow_cc_delivery set started_at=now(),attempts=1,lease_until=now()-interval '1 second' where id=${ids[0]}::uuid`;
+  await claimCc(scoped);
+  expect((await ccRows()).find(row=>row.id===ids[0])).toMatchObject({status:'pending',lease_token:token});
+  await claimCc(f.root);
+  expect((await ccRows()).find(row=>row.id===ids[0])).toMatchObject({status:'uncertain',lease_token:null,last_error:'uncertain'});
+ });
+ it.each(['role','identity','consent','policy','archive','address','employment'] as const)('refuses the frozen internal destination after %s changes without suppressing unrelated custom delivery',async(change)=>{
+  const f=await deliveryFixture(),{token}=await claimCc(f.root);
+  const rows=await ccRows(),internal=rows.find(row=>row.recipient_kind==='employee')!,external=rows.find(row=>row.recipient_kind==='custom_email')!;
+  expect(await ccTarget(internal.id,token)).toMatchObject({kind:'employee',userId:f.first.ctx.userId,email:f.first.email});
+  if(change==='role')await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId,f.first.ctx.userId!));
+  if(change==='identity')await owner.db.update(schema.appExternalIdentity).set({revokedAt:new Date()}).where(eq(schema.appExternalIdentity.appUserId,f.first.ctx.userId!));
+  if(change==='consent')await saveNotificationEmailPreferences(f.first.ctx,f.first.employmentId,[],'en',null);
+  if(change==='policy')await saveNotificationEmailPolicy(f.root,[]);
+  if(change==='archive')await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,f.first.ctx.userId!));
+  if(change==='address')await owner.db.update(schema.person).set({primaryEmail:'changed@example.invalid'}).where(eq(schema.person.id,f.first.personId));
+  if(change==='employment')await owner.db.update(schema.employment).set({blacklistedAt:todayInKualaLumpur()}).where(eq(schema.employment.id,f.first.employmentId));
+  expect(await ccTarget(internal.id,token)).toBeNull();
+  const {send,service}=capturedCcService();
+  expect(await service({op:'attendanceCcSend',deliveryId:internal.id,leaseToken:token})).toEqual({outcome:'skipped'});
+  expect(send).not.toHaveBeenCalled();
+  if(change==='policy')expect(await ccTarget(external.id,token)).toBeNull();
+  else expect(await ccTarget(external.id,token)).toMatchObject({kind:'custom_email',email:'fictional-external@example.invalid'});
+ });
+ it('does not reinterpret a custom address as an employee or bypass their consent after the route was frozen',async()=>{
+  const f=await deliveryFixture(),{token}=await claimCc(f.root),external=(await ccRows()).find(row=>row.recipient_kind==='custom_email')!;
+  expect(await ccTarget(external.id,token)).toMatchObject({kind:'custom_email'});
+  await hireEmployee(f.root,{person:{fullName:'Fictional newly linked destination',primaryEmail:external.address},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+  expect(await ccTarget(external.id,token)).toBeNull();
+  const {send,service}=capturedCcService();expect(await service({op:'attendanceCcSend',deliveryId:external.id,leaseToken:token})).toEqual({outcome:'skipped'});expect(send).not.toHaveBeenCalled();
+ });
+ it('rechecks a changed target at atomic start and admits only one concurrent start for an exact live lease',async()=>{
+  const f=await deliveryFixture(),{token}=await claimCc(f.root),internal=(await ccRows()).find(row=>row.recipient_kind==='employee')!,expected=await ccTarget(internal.id,token);
+  await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId,f.first.ctx.userId!));
+  expect((await owner.client`select identity_email.start_attendance_cc(${internal.id}::uuid,${token}::uuid,${ccIssuer},${owner.client.json(expected)}::jsonb) as ok`)[0].ok).toBe(false);
+  await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:f.first.ctx.userId!,role:'employee',companyId:base.companyId});
+  const start=()=>owner.client`select identity_email.start_attendance_cc(${internal.id}::uuid,${token}::uuid,${ccIssuer},${owner.client.json(expected)}::jsonb) as ok`;
+  expect((await Promise.all([start(),start()])).filter(rows=>rows[0].ok)).toHaveLength(1);
+  expect((await ccRows()).find(row=>row.id===internal.id)).toMatchObject({attempts:1,status:'pending'});
+ });
+ it('bounds explicit temporary SMTP retries at five and never retries an uncertain acknowledgement',async()=>{
+  const f=await deliveryFixture(),external=(await ccRows()).find(row=>row.recipient_kind==='custom_email')!;
+  const send=vi.fn(async()=>{throw{responseCode:451};}),{service}=capturedCcService(send);
+  for(let attempt=1;attempt<=5;attempt++) {
+   const {token,ids}=await claimCc(f.root);expect(ids).toContain(external.id);
+   expect(await service({op:'attendanceCcSend',deliveryId:external.id,leaseToken:token})).toEqual({outcome:'retry'});
+   expect((await ccRows()).find(row=>row.id===external.id)).toMatchObject({status:attempt===5?'failed':'pending',attempts:attempt,last_error:'smtpTemporary',lease_token:null});
+   if(attempt<5)await owner.client`update attendance_workflow_cc_delivery set next_attempt_at=now() where id=${external.id}::uuid`;
+  }
+  expect((await claimCc(f.root)).ids).not.toContain(external.id);expect(send).toHaveBeenCalledTimes(5);
+  await decide(f,f.second,'0:1');
+  const next=(await ccRows()).filter(row=>row.recipient_kind==='custom_email'&&row.id!==external.id);expect(next).toHaveLength(1);
+  const {token}=await claimCc(f.root),uncertain=vi.fn(async()=>{throw{code:'ECONNRESET'};});
+  expect(await capturedCcService(uncertain).service({op:'attendanceCcSend',deliveryId:next[0].id,leaseToken:token})).toEqual({outcome:'uncertain'});
+  expect((await ccRows()).find(row=>row.id===next[0].id)).toMatchObject({status:'uncertain',attempts:1});
+  expect((await claimCc(f.root)).ids).not.toContain(next[0].id);expect(uncertain).toHaveBeenCalledOnce();
+ });
+ it('exposes no private delivery functions or writable queue to the application role',async()=>{
+  const f=await deliveryFixture(),{token}=await claimCc(f.root),job=(await ccRows())[0];
+  await expect(withTenant(f.root,tx=>tx.execute(sql`select identity_email.attendance_cc_target(${job.id}::uuid,${token}::uuid,${ccIssuer})`))).rejects.toThrow();
+  await expect(withTenant(f.root,tx=>tx.execute(sql`update attendance_workflow_cc_delivery set status='sent' where id=${job.id}::uuid`))).rejects.toThrow();
+  await expect(withTenant(f.root,tx=>tx.execute(sql`delete from attendance_workflow_cc_delivery where id=${job.id}::uuid`))).rejects.toThrow();
+  const foreign=await seedBase();expect((await claimCc(adminCtx(foreign))).ids).toEqual([]);
+  expect(await withTenant(f.first.ctx,tx=>tx.execute(sql`select id from attendance_workflow_cc_delivery`))).toEqual([]);
+ });
 });
