@@ -22,7 +22,7 @@ describe('personal TP3 uses company Join Date with an explicit legacy fallback',
   expect(myTp3Eligibility(employment({terminatedOn:addDaysIso(today,-1)}),today).eligible).toBe(false);
   expect(myTp3Eligibility(employment({lastWorkingDate:addDaysIso(today,-1)}),today).eligible).toBe(false);
   expect(myTp3Eligibility(employment({resignationDate:addDaysIso(today,-1)}),today).eligible).toBe(false);
-  expect(myTp3Eligibility(employment({blacklistedAt:new Date()}),today).eligible).toBe(false);
+  expect(myTp3Eligibility(employment({blacklistedAt:today}),today).eligible).toBe(false);
  });
  it('re-evaluates eligibility after a year rollover without changing the recorded join year',()=>{
   expect(myTp3Eligibility(employment({joinDate:`${year}-12-31`}),`${year}-12-31`)).toMatchObject({eligible:true,year});

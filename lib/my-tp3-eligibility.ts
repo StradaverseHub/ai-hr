@@ -1,5 +1,5 @@
 import {todayInKualaLumpur} from './hr-date';
-export type MyTp3JoinDates={joinDate:string|null;hiredOn:string;terminatedOn:string|null;resignationDate:string|null;lastWorkingDate:string|null;blacklistedAt:Date|null};
+export type MyTp3JoinDates={joinDate:string|null;hiredOn:string;terminatedOn:string|null;resignationDate:string|null;lastWorkingDate:string|null;blacklistedAt:string|null};
 /** Eligibility describes the product gate; the database rechecks the same dated employment on every write. */
 export function myTp3Eligibility(row:MyTp3JoinDates|undefined,today=todayInKualaLumpur()):{eligible:boolean;joinDate:string|null;fallback:boolean;year:number|null} {
   const joinDate=row?.joinDate??row?.hiredOn??null;

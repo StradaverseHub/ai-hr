@@ -16,7 +16,7 @@ export class AttendanceCcError extends Error {
 }
 const object=(value:unknown):value is Record<string,unknown>=>!!value&&typeof value==='object'&&!Array.isArray(value);
 const exact=(value:Record<string,unknown>,keys:string[])=>Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
-const fail=(levelIndex:number|null,code:'invalid_route'|'invalid_level'|'invalid_mode'|'invalid_source'|'too_many_participants'|'duplicate_employment'|'duplicate_person'|'duplicate_login'='invalid_route'):never=>{throw new AttendanceLevelError({code,levelIndex});};
+function fail(levelIndex:number|null,code:'invalid_route'|'invalid_level'|'invalid_mode'|'invalid_source'|'too_many_participants'|'duplicate_employment'|'duplicate_person'|'duplicate_login'='invalid_route'):never {throw new AttendanceLevelError({code,levelIndex});}
 /** Same plain ASCII email contract as the private notification transport, with no header syntax. */
 export function attendanceCcAddress(raw:unknown):string {
  if(typeof raw!=='string'||!z.email().max(320).regex(/^[\x21-\x7e]+$/).safeParse(raw).success)throw new AttendanceCcError('invalidCc');

@@ -92,6 +92,7 @@ import {
   type Tp3PreviousEmployer,
 } from '../db/schema';
 import { countryPacks } from '../localization/registry';
+import type {MyTp3JoinDates} from '../lib/my-tp3-eligibility';
 
 /** Every refusal this service raises. Callers render `.message` — it is written to be read by HR. */
 export class Tp3Error extends Error {
@@ -1240,12 +1241,13 @@ export async function deleteTp3(ctx: SessionContext, p: { personId: string; asse
 }
 
 
-export type MyTp3Employment = {employmentId:string;company:string;employeeCode:string|null;joinDate:string|null;hiredOn:string;terminatedOn:string|null;resignationDate:string|null;lastWorkingDate:string|null;blacklistedAt:Date|null};
+export type MyTp3Employment = MyTp3JoinDates & {employmentId:string;company:string;employeeCode:string|null};
 export type MyTp3Draft = {id:string;employmentId:string;assessmentYear:number;revision:number;deductionMonth:number|null;previousEmployers:Tp3PreviousEmployer[];payload:Tp3Payload;declarationAccepted:boolean;submittedAt:Date|null;canonicalId:string|null;projectionOutcome:Exclude<Tp3SeedOutcome,{applied:true}>|{applied:true}|null;updatedAt:Date};
 const ownTp3=sql`app.principal_snapshot_current() AND app.is_self_person(${employment.personId})`;
 export function myTp3Employments(ctx:SessionContext):Promise<MyTp3Employment[]> {
-  if(!ctx.personId)return Promise.resolve([]);
-  return withTenant(ctx,tx=>tx.select({employmentId:employment.id,company:company.legalName,employeeCode:employment.employeeCode,joinDate:employment.joinDate,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate,blacklistedAt:employment.blacklistedAt}).from(employment).innerJoin(company,eq(company.id,employment.companyId)).where(and(eq(employment.personId,ctx.personId),ownTp3)).orderBy(desc(employment.hiredOn),employment.id));
+  const personId=ctx.personId;
+  if(!personId)return Promise.resolve([]);
+  return withTenant(ctx,tx=>tx.select({employmentId:employment.id,company:company.legalName,employeeCode:employment.employeeCode,joinDate:employment.joinDate,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate,blacklistedAt:employment.blacklistedAt}).from(employment).innerJoin(company,eq(company.id,employment.companyId)).where(and(eq(employment.personId,personId),ownTp3)).orderBy(desc(employment.hiredOn),employment.id));
 }
 export {myTp3Eligibility} from '../lib/my-tp3-eligibility';
 /** Both top-level and legacy payload notes are removed before this model leaves its owner. */
@@ -1256,10 +1258,11 @@ function personalTp3(row:Row):Tp3Record {
   return {...record,payload,remarks:null};
 }
 export function myTp3History(ctx:SessionContext):Promise<{records:Tp3Record[];drafts:MyTp3Draft[]}> {
-  if(!ctx.personId)return Promise.resolve({records:[],drafts:[]});
+  const personId=ctx.personId;
+  if(!personId)return Promise.resolve({records:[],drafts:[]});
   return withTenant(ctx,async tx=>{
-    const records=await tx.select().from(employeeTp3).where(and(eq(employeeTp3.personId,ctx.personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employeeTp3.personId})`)).orderBy(desc(employeeTp3.assessmentYear),employeeTp3.id);
-    const drafts=await tx.execute(sql`select id,employment_id as "employmentId",assessment_year as "assessmentYear",revision,deduction_month as "deductionMonth",previous_employers as "previousEmployers",payload,declaration_accepted as "declarationAccepted",submitted_at as "submittedAt",canonical_id as "canonicalId",projection_outcome as "projectionOutcome",updated_at as "updatedAt" from public.employee_tp3_draft where person_id=${ctx.personId}::uuid and app.principal_snapshot_current() and app.is_self_person(person_id) order by assessment_year desc,id`) as unknown as MyTp3Draft[];
+    const records=await tx.select().from(employeeTp3).where(and(eq(employeeTp3.personId,personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employeeTp3.personId})`)).orderBy(desc(employeeTp3.assessmentYear),employeeTp3.id);
+    const drafts=await tx.execute(sql`select id,employment_id as "employmentId",assessment_year as "assessmentYear",revision,deduction_month as "deductionMonth",previous_employers as "previousEmployers",payload,declaration_accepted as "declarationAccepted",submitted_at as "submittedAt",canonical_id as "canonicalId",projection_outcome as "projectionOutcome",updated_at as "updatedAt" from public.employee_tp3_draft where person_id=${personId}::uuid and app.principal_snapshot_current() and app.is_self_person(person_id) order by assessment_year desc,id`) as unknown as MyTp3Draft[];
     return {records:records.map(personalTp3),drafts};
   });
 }

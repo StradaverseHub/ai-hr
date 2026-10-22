@@ -19,7 +19,7 @@ async function fixture(role:'employee'|'manager'|'hr_admin'='employee',closed=tr
  const today=todayInKualaLumpur(),start=new Date(`${today.slice(0,7)}-01T12:00:00Z`);
  start.setUTCMonth(start.getUTCMonth()-1);
  const period=start.toISOString().slice(0,7),year=period.slice(0,4),hiredOn=`${Number(year)-1}-01-01`,root=adminCtx(base);
- const employees=[];
+ const employees:Awaited<ReturnType<typeof hireEmployee>>[]=[];
  for(const [i,name] of ['Fictional document owner','Fictional separate employee'].entries()) {
   const e=await hireEmployee(root,{person:{fullName:name,primaryEmail:`fictional-doc-${i}@example.invalid`},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn});
   await setCompensation(root,{employmentId:e.employmentId,basicSalary:i===0?5000:7900,effectiveFrom:hiredOn});

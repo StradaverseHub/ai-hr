@@ -81,7 +81,7 @@ export function AttendanceAllowanceEditor({options,components,policy,action,init
         <Field label={t('effectiveFrom')}><input name="effectiveFrom" type="date" required value={effectiveFrom} onChange={e=>setEffectiveFrom(e.target.value)} className={inputCls}/></Field>
       </div>
       {policy?.rules?.v===2&&rules.v===2&&<div className="space-y-2 rounded-xl bg-muted p-3 text-sm"><p>{v('versionNotice')}</p><button type="button" className="text-primary" onClick={()=>{if(rules.v===2)update(upgradeAllowanceRules(rules));}}>{v('upgrade')}</button></div>}
-      {rules.v!==4&&advanced&&<div className="space-y-2 rounded-xl bg-muted p-3 text-sm"><p>{v4('upgradeHelp')}</p><button type="button" className="min-h-11 text-primary" onClick={()=>{if(rules.v!==4)update(upgradeAllowanceEmployeeRules(rules));}}>{v4('upgrade')}</button></div>}
+      {rules.v!==4&&advanced&&<div className="space-y-2 rounded-xl bg-muted p-3 text-sm"><p>{v4('upgradeHelp')}</p><button type="button" className="min-h-11 text-primary" onClick={()=>update(upgradeAllowanceEmployeeRules(rules))}>{v4('upgrade')}</button></div>}
       {policy&&!policy.rules&&<div className="space-y-2 rounded-xl bg-muted p-3 text-sm"><p>{t('legacyNotice')}</p><label className="flex gap-2"><input type="checkbox" checked={advanced} onChange={e=>{setAdvanced(e.target.checked);if(!e.target.checked)setMethod('monthly');}}/>{t('convertLegacy')}</label></div>}
       <p className="text-sm text-muted-foreground">{(rules.v===3||rules.v===4)&&advanced?v('fixedRule'):t('fixedRule')}</p>
     </section>
