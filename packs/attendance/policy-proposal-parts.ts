@@ -1,3 +1,4 @@
+import {attendancePolicyCashReplay} from './policy-cash-replay';
 import {attendancePolicyPricingProposal} from './policy-pricing-proposal';
 import {attendancePolicyCoverageProposal} from './policy-coverage';
 /** Complete immutable proposal parts beneath ONE calculation. This does not grant approval,
@@ -46,7 +47,7 @@ export function materializeAttendancePolicyProposalParts(input:PolicyProposalPar
 
 
 type StoredPolicyParent=Pick<typeof attendanceOvertimeSource.$inferSelect,'id'|'tenantId'|'companyId'|'employmentId'|'attendanceDate'|'attendanceId'>;
-type StoredPolicyCalculation=Pick<typeof attendanceOvertimeCalculation.$inferSelect,'id'|'sourceId'|'tenantId'|'companyId'|'bindingKind'|'policyRevisionId'|'policyPartCount'|'inputDigest'|'approvalDigest'>;
+type StoredPolicyCalculation=Pick<typeof attendanceOvertimeCalculation.$inferSelect,'id'|'sourceId'|'tenantId'|'companyId'|'bindingKind'|'policyRevisionId'|'policyPartCount'|'inputDigest'|'approvalDigest'|'referenceDigest'>;
 type StoredPolicyPart=Omit<typeof attendanceOvertimePolicyPart.$inferSelect,'createdAt'>;
 /** Historical evidence replay only. This establishes neither current freshness nor financial authority.
  * Malformed JSON, any omitted part, and any changed business field refuse the entire parent. */
@@ -73,14 +74,15 @@ export function recordedAttendancePolicyProposalPartsMatch(source:StoredPolicyPa
    approvals:stored.policyApprovalInput as PolicyProposalPartSource['approvals'],
    proposal:stored.policyExecutionProposal as PolicyProposalPartSource['proposal']};
   if(!input.proposal||!input.policy||input.policy.id!==header.policyRevisionId||input.policy.companyId!==source.companyId)return false;
-  const replaySnapshot:CanonicalOvertimeSnapshot={input:inputs as unknown as CanonicalOvertimeSnapshot['input'],resolvedLegacyRuleId:null,referenceDigest:'',
+  const replaySnapshot:CanonicalOvertimeSnapshot={input:inputs as unknown as CanonicalOvertimeSnapshot['input'],resolvedLegacyRuleId:null,referenceDigest:header.referenceDigest,
    attendanceGroupPolicy:input.policy,policyExecutionContext:input.context,policyWorkInput:input.work,policyFormulaInput:input.formulas,
    policyApprovalInput:input.approvals,policyExecutionProposal:input.proposal,
    policyPricingFacts:stored.policyPricingFacts as CanonicalOvertimeSnapshot['policyPricingFacts'],
    policyClockSource:stored.policyClockSource as CanonicalOvertimeSnapshot['policyClockSource'],
    policyClockReview:stored.policyClockReview as CanonicalOvertimeSnapshot['policyClockReview'],
    policyClockMeasurements:stored.policyClockMeasurements as CanonicalOvertimeSnapshot['policyClockMeasurements']};
-  if(!isDeepStrictEqual(stored.policyDurationReplay,attendancePolicyDurationReplay(replaySnapshot))
+  if(!isDeepStrictEqual(stored.policyCashReplay,attendancePolicyCashReplay(replaySnapshot))
+   ||!isDeepStrictEqual(stored.policyDurationReplay,attendancePolicyDurationReplay(replaySnapshot))
    ||!isDeepStrictEqual(stored.policyPricingProposal,attendancePolicyPricingProposal(replaySnapshot)))return false;
   const coverage=attendancePolicyCoverageProposal({tenantId:source.tenantId,companyId:source.companyId,employmentId:source.employmentId,sourceId:source.id,calculationId:header.id,date:source.attendanceDate},input.proposal);
   if(!isDeepStrictEqual(stored.policyCoverage,coverage))return false;

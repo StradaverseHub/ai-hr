@@ -1,3 +1,4 @@
+import {attendancePolicyCashReplay} from '../packs/attendance/policy-cash-replay';
 import {attendancePolicyDurationReplay} from '../packs/attendance/policy-duration-replay';
 import {attendancePolicyPricingProposal} from '../packs/attendance/policy-pricing-proposal';
 import type {CanonicalOvertimeSnapshot} from '../packs/attendance/overtime-patterns';
@@ -151,7 +152,7 @@ describe('complete immutable proposal replay',()=>{
   const rows=materialize({source:{employmentId:source.employmentId,date},policy:f.context.selected,context:f.context,work:f.work,formulas:f.formulas,proposal});
   if(!rows)throw Error('Expected a complete source proposal');
   const header={id:id(10),sourceId:source.id,tenantId:source.tenantId,companyId:source.companyId,bindingKind:'attendanceGroupPolicy' as const,
-   policyRevisionId:f.context.selected.id,policyPartCount:rows.length,inputDigest:'a'.repeat(64),approvalDigest:'b'.repeat(64)};
+   policyRevisionId:f.context.selected.id,policyPartCount:rows.length,inputDigest:'a'.repeat(64),approvalDigest:'b'.repeat(64),referenceDigest:'c'.repeat(64)};
   const parts=rows.map(row=>({...row,calculationId:header.id,tenantId:source.tenantId,companyId:source.companyId,inputDigest:header.inputDigest}));
   const evidence={calculationId:header.id,tenantId:source.tenantId,companyId:source.companyId,
    inputs:{mode:'actual',assignmentId:null,patternVersionId:null,source:{tenantId:source.tenantId,employmentId:source.employmentId,
@@ -160,10 +161,10 @@ describe('complete immutable proposal replay',()=>{
     policyCoverage:attendancePolicyCoverageProposal({tenantId:source.tenantId,companyId:source.companyId,employmentId:source.employmentId,sourceId:source.id,calculationId:header.id,date:source.attendanceDate},proposal)}};
   // This arithmetic-only fixture has no captured-clock proof. Retain the canonical
   // explicit replay/pricing refusals, just as the immutable writer does for staging.
-  const snapshot={input:evidence.inputs,resolvedLegacyRuleId:null,referenceDigest:'',attendanceGroupPolicy:f.context.selected,
+  const snapshot={input:evidence.inputs,resolvedLegacyRuleId:null,referenceDigest:header.referenceDigest,attendanceGroupPolicy:f.context.selected,
    policyExecutionContext:f.context,policyWorkInput:f.work,policyFormulaInput:f.formulas,policyExecutionProposal:proposal} as unknown as CanonicalOvertimeSnapshot;
   const completeEvidence={...evidence,evidence:{...evidence.evidence,
-   policyDurationReplay:attendancePolicyDurationReplay(snapshot),policyPricingProposal:attendancePolicyPricingProposal(snapshot)}};
+   policyDurationReplay:attendancePolicyDurationReplay(snapshot),policyCashReplay:attendancePolicyCashReplay(snapshot),policyPricingProposal:attendancePolicyPricingProposal(snapshot)}};
   expect(completeEvidence.evidence.policyDurationReplay.state).toBe('unavailable');
   expect(completeEvidence.evidence.policyPricingProposal.state).toBe('unavailable');
   return {source,header,parts,evidence:completeEvidence};
@@ -175,7 +176,7 @@ describe('complete immutable proposal replay',()=>{
  it('rejects omission, reordering and every changed parent binding',()=>{
   const f=stored();expect(matches(f.source,f.header,f.evidence,f.parts.slice(0,1))).toBe(false);
   expect(matches(f.source,f.header,f.evidence,[...f.parts].reverse())).toBe(false);
-  for(const field of ['sourceId','tenantId','companyId','policyRevisionId','inputDigest','approvalDigest'] as const){
+  for(const field of ['sourceId','tenantId','companyId','policyRevisionId','inputDigest','approvalDigest','referenceDigest'] as const){
    expect(matches(f.source,{...f.header,[field]:id(11)},f.evidence,f.parts)).toBe(false);
   }
   expect(matches({...f.source,employmentId:id(11)},f.header,f.evidence,f.parts)).toBe(false);

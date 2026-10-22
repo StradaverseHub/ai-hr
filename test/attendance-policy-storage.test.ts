@@ -1,3 +1,4 @@
+import {attendancePolicyCashReplay,attendancePolicyCurrentCashMatches} from '../packs/attendance/policy-cash-replay';
 import {attendancePolicyPricingProposal} from '../packs/attendance/policy-pricing-proposal';
 import {attendancePolicyDurationReplay,attendancePolicyCurrentDurationMatches} from '../packs/attendance/policy-duration-replay';
 import {attendancePolicyDurationFormulaProjection} from '../packs/attendance/policy-formula-source';
@@ -198,7 +199,9 @@ describe('immutable non-payable policy part storage',()=>{
    {tenantId:b.tenantId,employmentId:f.employmentId,basicSalary:'8000',currency:'MYR',validFrom:day(3)},
   ]).returning();
   const p={employmentId:f.employmentId,date:day(2)},read=()=>withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,p));
-  const before=await read(),priced=attendancePolicyPricingProposal(before),duration=attendancePolicyDurationReplay(before);
+  const before=await read(),priced=attendancePolicyPricingProposal(before),duration=attendancePolicyDurationReplay(before),cash=attendancePolicyCashReplay(before);
+  expect(cash).toMatchObject({state:'known',minutes:20,amountMinorUnits:'37500'});
+  expect(attendancePolicyCurrentCashMatches(before,cash)).toBe(true);
   expect(before.policyPricingFacts?.[day(2)].basicSalary).toMatchObject({state:'known',value:'4000.00',provenance:{reference:first.id,asOf:day(2)}});
   expect(before.policyPricingFacts?.[day(3)].basicSalary).toMatchObject({state:'known',value:'8000.00',provenance:{reference:second.id,asOf:day(3)}});
   expect(priced).toMatchObject({state:'proposed',amountMinorUnits:'37500'});
@@ -208,6 +211,7 @@ describe('immutable non-payable policy part storage',()=>{
   const after=await read();expect(attendancePolicyPricingProposal(after)).toMatchObject({state:'proposed',amountMinorUnits:'40625'});
   expect(after.input.source.inputDigest).not.toBe(before.input.source.inputDigest);expect(after.referenceDigest).not.toBe(before.referenceDigest);
   expect(attendancePolicyDurationReplay(after)).toEqual(duration);
+  expect(attendancePolicyCurrentCashMatches(after,cash)).toBe(false);
  });
 
  it('records and replays exact central pricing for both dated parts without enabling payment',async()=>{
@@ -223,6 +227,17 @@ describe('immutable non-payable policy part storage',()=>{
   if(recorded.status!=='recorded')throw Error('Expected staged calculation');
   const reviewed=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
   expect(reviewed?.evidence?.evidence.policyPricingProposal).toEqual(pricing);
+  const cash=attendancePolicyCashReplay(snapshot);expect(cash).toMatchObject({state:'known',minutes:20,amountMinorUnits:'600'});
+  expect(reviewed?.evidence?.evidence.policyCashReplay).toEqual(cash);
+  expect(attendancePolicyCurrentCashMatches(snapshot,cash)).toBe(true);
+  const reordered=JSON.parse(JSON.stringify(snapshot,(_key,value:unknown)=>value&&typeof value==='object'&&!Array.isArray(value)
+   ?Object.fromEntries(Object.entries(value).reverse()):value)) as typeof snapshot;
+  expect(attendancePolicyCurrentCashMatches(reordered,cash)).toBe(true);
+  for(const field of ['inputDigest','approvalDigest'] as const){const changed=structuredClone(snapshot);changed.input.source[field]='9'.repeat(64);
+   expect(attendancePolicyCurrentCashMatches(changed,cash)).toBe(false);}
+  const changed=structuredClone(snapshot);changed.referenceDigest='8'.repeat(64);
+  expect(attendancePolicyPricingProposal(changed)).toEqual(pricing);
+  expect(attendancePolicyCurrentCashMatches(changed,cash)).toBe(false);
   expect(reviewed?.calculation).toMatchObject({outcome:'refused',durationOutcome:'refused',transferable:false});
   expect(reviewed?.lines).toEqual([]);
  });
