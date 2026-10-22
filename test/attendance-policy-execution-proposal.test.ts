@@ -1,3 +1,6 @@
+import {attendancePolicyDurationReplay} from '../packs/attendance/policy-duration-replay';
+import {attendancePolicyPricingProposal} from '../packs/attendance/policy-pricing-proposal';
+import type {CanonicalOvertimeSnapshot} from '../packs/attendance/overtime-patterns';
 import {attendancePolicyCoverageProposal} from '../packs/attendance/policy-coverage';
 import {materializeAttendancePolicyProposalParts as materialize,recordedAttendancePolicyProposalPartsMatch as matches} from '../packs/attendance/policy-proposal-parts';
 import {describe,expect,it} from 'vitest';
@@ -155,7 +158,15 @@ describe('complete immutable proposal replay',()=>{
     attendanceId:source.attendanceId,date,inputDigest:header.inputDigest,approvalDigest:header.approvalDigest}},
    evidence:{attendanceGroupPolicy:f.context.selected,policyExecutionContext:f.context,policyWorkInput:f.work,policyFormulaInput:f.formulas,policyExecutionProposal:proposal,
     policyCoverage:attendancePolicyCoverageProposal({tenantId:source.tenantId,companyId:source.companyId,employmentId:source.employmentId,sourceId:source.id,calculationId:header.id,date:source.attendanceDate},proposal)}};
-  return {source,header,parts,evidence};
+  // This arithmetic-only fixture has no captured-clock proof. Retain the canonical
+  // explicit replay/pricing refusals, just as the immutable writer does for staging.
+  const snapshot={input:evidence.inputs,resolvedLegacyRuleId:null,referenceDigest:'',attendanceGroupPolicy:f.context.selected,
+   policyExecutionContext:f.context,policyWorkInput:f.work,policyFormulaInput:f.formulas,policyExecutionProposal:proposal} as unknown as CanonicalOvertimeSnapshot;
+  const completeEvidence={...evidence,evidence:{...evidence.evidence,
+   policyDurationReplay:attendancePolicyDurationReplay(snapshot),policyPricingProposal:attendancePolicyPricingProposal(snapshot)}};
+  expect(completeEvidence.evidence.policyDurationReplay.state).toBe('unavailable');
+  expect(completeEvidence.evidence.policyPricingProposal.state).toBe('unavailable');
+  return {source,header,parts,evidence:completeEvidence};
  }
  it('accepts the entire exact historical proposal without mutating it or granting transfer authority',()=>{
   const f=stored(),before=structuredClone(f);expect(matches(f.source,f.header,f.evidence,f.parts)).toBe(true);expect(f).toEqual(before);
