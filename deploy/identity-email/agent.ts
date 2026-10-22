@@ -74,6 +74,11 @@ const notifications=createNotificationEmailService({
   const rows=await database<{required:boolean;summary:unknown}[]>`select * from identity_email.delivery_summary(${id}::uuid,${token}::uuid,${process.env.WORKFLOW_EMAIL_ISSUER||''})`;
   return rows.length===1&&!rows[0].required?undefined:rows[0]?.summary??null;
  },
+ cc:{
+  target:async(id,token)=>(await database`select identity_email.attendance_cc_target(${id}::uuid,${token}::uuid,${process.env.WORKFLOW_EMAIL_ISSUER||''}) as target`)[0]?.target,
+  start:async(id,token,target)=>(await database`select identity_email.start_attendance_cc(${id}::uuid,${token}::uuid,${process.env.WORKFLOW_EMAIL_ISSUER||''},${database.json(target)}::jsonb) as started`)[0]?.started===true,
+  finish:async(id,token,outcome,error)=>(await database`select identity_email.finish_attendance_cc(${id}::uuid,${token}::uuid,${outcome},${error}) as finished`)[0]?.finished===true,
+ },
  verifyRecipient:verifyWorkflowRecipient,
  start:async(id,token,target)=>(await database`select identity_email.start_delivery(${id}::uuid,${token}::uuid,${process.env.WORKFLOW_EMAIL_ISSUER||''},${database.json(target)}::jsonb) as started`)[0]?.started===true,
  finish:async(id,token,outcome,error)=>(await database`select identity_email.finish_delivery(${id}::uuid,${token}::uuid,${outcome},${error}) as finished`)[0]?.finished===true,

@@ -12,7 +12,7 @@ vi.mock('../app/attendance/my-roster/record-list',()=>({AttendanceRecordList:()=
 vi.mock('../packs/attendance/service',()=>({myAttendanceCalendarWindow:state.view}));
 vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,run:(tx:unknown)=>unknown)=>run({})}));
 vi.mock('../core/holidays',()=>({originalHolidayCalendarFor:async()=>[]}));
-vi.mock('../core/holiday-replacement-read',()=>({replacementHolidayCalendarNotes:async()=>[]}));
+vi.mock('../core/holiday-replacement-read',()=>({replacementHolidayCalendarContext:async()=>[]}));
 import Page from '../app/attendance/my-roster/page';
 const fixture=()=>({employmentId:'own',name:'Fictional employee',employeeCode:'CAL01',position:'Analyst',managerName:'Fictional manager',from:'2026-03-16',to:'2026-03-18',legend:[],workDays:2,rosteredDays:1,restDays:1,plannedMinutes:960,lastUpdatedAt:null,days:[
   {date:'2026-03-16',cell:{kind:'shift',shiftId:'day'},shift:{id:'day',code:'DAY',name:'Long daytime shift',startTime:'09:00',endTime:'18:00',breakMinutes:60,workingMinutes:480,color:null},note:null,plannedMinutes:480,attendance:{status:'present',flag:'odd',checkInAt:'09:00',checkOutAt:null}},

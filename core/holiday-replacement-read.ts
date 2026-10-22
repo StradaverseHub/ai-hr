@@ -37,3 +37,11 @@ export function replacementHolidayReviewRows(ctx:SessionContext,companyId:string
   return {rows:rows.map(row=>({...row,coverageReason:coverage.get(row.allocation.id)??null})),failures};
  });
 }
+/** Read context, including refused coverage, without treating an invalid retained date as a holiday. */
+export function replacementHolidayCalendarContext(ctx:SessionContext,p:{employmentId:string;from:string;to:string}) {
+ return withTenant(ctx,async tx=>{
+  const rows=await tx.select().from(replacementHoliday).where(and(eq(replacementHoliday.employmentId,p.employmentId),or(and(gte(replacementHoliday.sourceDate,p.from),lte(replacementHoliday.sourceDate,p.to)),and(gte(replacementHoliday.replacementDate,p.from),lte(replacementHoliday.replacementDate,p.to))))).orderBy(asc(replacementHoliday.sourceDate),asc(replacementHoliday.id));
+  const coverage=await replacementHolidayProjectionCoverageTx(tx,rows);
+  return rows.map(row=>({...row,coverageReason:coverage.get(row.id)??null}));
+ });
+}

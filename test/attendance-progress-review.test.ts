@@ -16,6 +16,12 @@ describe('Recorded approval progress', () => {
     f.participantDecisions = [{ stageIndex: 0, participantSlot: '0:0', decision: 'approved', actualPersonId: 'person-A' }];
     expect(recordedAttendanceProgress(f, 'pending', identities)).toMatchObject({ state: 'pending', level: 1, mode: 'sequential', next: [{ name: 'Frozen B', employeeCode: 'ID-B', eligible: true }] });
   });
+  it('v4 all-required exposes all unfinished slots and keeps remaining people visible after an out-of-order decision',()=>{
+    const f=flow();f.routingVersion=4;f.stages[0].mode='all_required';
+    expect(recordedAttendanceProgress(f,'pending',identities)).toMatchObject({state:'pending',mode:'all_required',next:[{name:'Frozen A'},{name:'Frozen B'}]});
+    f.participantDecisions=[{stageIndex:0,participantSlot:'0:1',decision:'approved',actualPersonId:'person-B'}];
+    expect(recordedAttendanceProgress(f,'pending',identities)).toMatchObject({state:'pending',mode:'all_required',level:1,next:[{name:'Frozen A'}]});
+  });
   it('any-one mode shows all saved eligible candidates; a later level is never shown early', () => {
     const p = recordedAttendanceProgress(flow('any_one'), 'pending', identities);
     expect(p.next.map(a => a.name)).toEqual(['Frozen A', 'Frozen B']); expect(p.level).toBe(1);

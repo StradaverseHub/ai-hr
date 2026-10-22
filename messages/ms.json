@@ -3940,7 +3940,10 @@
       "attendanceLegend": "Kehadiran dan amaran",
       "selectDay": "Pilih tarikh untuk menyemak butiran kehadiran.",
       "invalidRange": "Masukkan julat tarikh yang sah.",
-      "contextHelp": "Amaran berasingan daripada status kehadiran. Nama cuti dipaparkan pada tarikh berkenaan."
+      "contextHelp": "Amaran berasingan daripada status kehadiran. Nama cuti dipaparkan pada tarikh berkenaan.",
+      "loading": "Memuatkan kalendar kehadiran anda…",
+      "loadError": "Kalendar kehadiran anda tidak dapat dimuatkan. Cuba lagi.",
+      "retry": "Cuba lagi"
     }
   },
   "org": {
@@ -17786,7 +17789,22 @@
     "reportConsentHelp": "Lampiran laporan memerlukan persetujuan berasingan bagi setiap pekerjaan. Jika e-mel profil berubah, berikan persetujuan semula. Hanya laporan yang masih boleh anda akses boleh dihantar.",
     "reportPolicyHelp": "Lampiran Induk Pekerja dimatikan secara lalai dan memerlukan dasar ini serta persetujuan laporan yang jelas daripada setiap penerima.",
     "recipientCode": "Kod pekerja",
-    "deliveryReference": "Rujukan penghantaran"
+    "deliveryReference": "Rujukan penghantaran",
+    "attendanceCc": {
+      "reference": "Rujukan",
+      "applicant": "Pemohon",
+      "level": "Peringkat",
+      "action": "Tindakan",
+      "actor": "Pelulus yang membuat keputusan",
+      "when": "Tarikh/masa",
+      "notice": "Pemberitahuan sahaja. E-mel ini tidak memberi hak meluluskan atau akses permohonan.",
+      "actions": {
+        "approved": "Diluluskan",
+        "rejected": "Ditolak",
+        "cancelled": "Dibatalkan",
+        "withdrawn": "Ditarik balik"
+      }
+    }
   },
   "onehr": {
     "back": "Back",
@@ -19486,6 +19504,37 @@
       "chooseSlot": "Pilih peserta tertunggak…",
       "calculationHandoff": "Keputusan akhir ini memerlukan akses pengiraan HR berskop. Minta HR merekodkan penugasan semula bersebab bagi peserta tertunggak; kelulusan terdahulu dikekalkan.",
       "identityUnavailable": "Pelulus yang diperlukan tidak aktif, tiada satu akaun log masuk yang boleh digunakan, atau di luar skop syarikat yang dibenarkan. Ganti pilihan atau minta HR membetulkan aksesnya."
+    },
+    "v4": {
+      "allRequired": "Semua perlu meluluskan",
+      "allRequiredHelp": "Setiap orang yang disenaraikan mesti meluluskan, dalam sebarang urutan.",
+      "levelHelp": "Tambah sumber mengikut urutan paparan. Setiap aras penyelia bermula daripada pemohon.",
+      "sourceNumber": "Sumber {number}",
+      "addSource": "Tambah sumber pelulus",
+      "searchEmployees": "Cari ID atau nama pekerja",
+      "noEligible": "Tiada log masuk terpaut yang layak dalam syarikat ini atau syarikat induk yang dibenarkan. Minta HR menyemak tarikh pekerjaan, status log masuk dan peranan syarikat.",
+      "cc": "Penerima CC",
+      "ccHelp": "Untuk pemberitahuan sahaja. CC tidak memberi akses meluluskan atau melihat permohonan. Mesej tidak menyertakan sebab, gaji, maklumat perubatan atau lampiran.",
+      "customEmail": "Alamat e-mel tersuai",
+      "emailHelp": "Masukkan satu alamat setiap baris. Maksimum 50 penerima unik, tanpa nama paparan atau pengepala e-mel.",
+      "addCc": "Tambah sumber CC",
+      "conversionHelp": "Simpanan ini terpakai kepada permohonan akan datang. Permohonan yang telah dihantar mengekalkan laluan dan keputusan tersimpan.",
+      "convert": "Konfigurasi laluan pelbagai sumber",
+      "invalidCc": "Masukkan alamat e-mel sah tanpa nama atau pengepala.",
+      "unavailableCc": "Penerima CC tidak tersedia. Semak log masuk, e-mel dan hubungan penyelia sebelum menyimpan.",
+      "delete": "Padam",
+      "deleteTitle": "Padam {name}?",
+      "deleteImpact": "Keluarkan aliran kerja ini daripada penghalaan akan datang untuk {company}. Permohonan dan sejarah kekal. Penghalaan kekal aktif dan menolak permohonan tanpa templat sepadan.",
+      "deletePending": "Permohonan belum selesai masih menggunakan aliran kerja ini. Selesaikan atau batalkannya sebelum memadam.",
+      "deleteChanged": "Aliran kerja telah berubah. Muat semula sebelum memadam.",
+      "deleted": "Aliran kerja dipadam daripada konfigurasi akan datang.",
+      "retained": "Aliran kerja dipadam",
+      "restore": "Pulihkan konfigurasi",
+      "restoreHelp": "Pemulihan menghasilkan versi baharu selepas menyemak pekerja dan hubungan pelaporan semasa.",
+      "restored": "Aliran kerja dipulihkan sebagai versi baharu.",
+      "noEmployees": "Tiada rekod pekerjaan dalam syarikat ini atau syarikat induk yang dibenarkan.",
+      "noActiveEmployees": "Tiada pekerjaan yang memenuhi syarat tarikh dan status aktif semasa.",
+      "noLinkedLogin": "Pekerja tersedia tetapi tiada log masuk terpaut yang aktif. HR perlu menyemak pautan akaun sebelum mereka boleh meluluskan."
     }
   },
   "attendanceHistory": {
@@ -19696,7 +19745,8 @@
     "backToOverview": "Kembali ke Gambaran Keseluruhan",
     "notWaitingForYou": "Tiada tindakan menunggu anda pada peringkat ini.",
     "recordedOvertime": "Lebih masa sebenar direkodkan",
-    "previewOvertime": "Pratonton kelulusan"
+    "previewOvertime": "Pratonton kelulusan",
+    "modeAllRequired": "Semua perlu meluluskan"
   },
   "scheduleDrafts": {
     "staleLadder": "Julat masa atau kadar kerja lebih masa telah berubah dalam bahagian Umum. Draf anda masih ada di sini. Muat semula halaman ini sebelum menyimpan tetapan kerja lebih masa. Perubahan yang belum disimpan hanya dibuang selepas pengesahan.",

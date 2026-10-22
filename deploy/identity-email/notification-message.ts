@@ -5,12 +5,19 @@ import vi from '../../messages/vi.json';
 import ta from '../../messages/ta.json';
 import th from '../../messages/th.json';
 import type { WorkflowMail } from './notifications';
+import {attendanceCcMessage} from '../../lib/attendance-cc-mail';
 import {assessmentReminderMessage} from '../../lib/assessment-reminder-message';
 const catalogues={en:en.workflowEmail,ms:ms.workflowEmail,zh:zh.workflowEmail,vi:vi.workflowEmail,ta:ta.workflowEmail,th:th.workflowEmail};
 const escape=(s:string)=>s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 /** Fixed alerts or validated assessment summaries; the isolated service owns delivery. */
 export function workflowEmailMessage(mail:WorkflowMail) {
   const copy=catalogues[mail.locale],label=copy.categories[mail.category];
+  if(mail.attendanceCc){
+    const message=attendanceCcMessage.parse(mail.attendanceCc),labels=copy.attendanceCc;
+    const date=new Intl.DateTimeFormat(mail.locale,{timeZone:'Asia/Kuala_Lumpur',dateStyle:'medium',timeStyle:'short'}).format(new Date(message.occurredAt));
+    const lines=[`${labels.reference}: ${message.reference}`,`${labels.applicant}: ${message.applicant}`,`${labels.level}: ${message.level}`,`${labels.action}: ${labels.actions[message.action]}`,`${labels.actor}: ${message.actor}`,`${labels.when}: ${date}`,labels.notice];
+    return{subject:copy.subject.replace('{category}',label),text:lines.join('\n')+`\n\n${copy.openApp}: ${mail.link}\n`,html:`<!doctype html><html lang="${mail.locale}"><body>${lines.map(line=>`<p>${escape(line)}</p>`).join('')}<p><a href="${escape(mail.link)}">${escape(copy.openApp)}</a></p></body></html>`};
+  }
   if(mail.assessmentTasks){
     return assessmentReminderMessage({tasks:mail.assessmentTasks,words:mail.assessmentWords},mail.locale,mail.link);
   }

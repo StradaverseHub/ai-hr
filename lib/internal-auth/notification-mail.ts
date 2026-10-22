@@ -19,6 +19,11 @@ export async function internalNotificationEmailRequest<T>(input: NotificationEma
       const rows = await client`select * from app.internal_auth_notification_summary(${id}::uuid,${token}::uuid,${origin})`;
       return rows.length === 1 && !rows[0].required ? undefined : rows[0]?.summary ?? null;
     },
+    cc:{
+      target:async(id,token)=>(await client`select app.internal_auth_attendance_cc_target(${id}::uuid,${token}::uuid,${origin}) as target`)[0]?.target,
+      start:async(id,token,target)=>(await client`select app.internal_auth_start_attendance_cc(${id}::uuid,${token}::uuid,${origin},${JSON.stringify(target)}::jsonb) as started`)[0]?.started===true,
+      finish:async(id,token,outcome,error)=>(await client`select app.internal_auth_finish_attendance_cc(${id}::uuid,${token}::uuid,${outcome},${error}) as finished`)[0]?.finished===true,
+    },
     async verifyRecipient(target) {
       const c = await readRecord<Credential>(client, `credential:${target.subject}`);
       if (!c || c.issuer !== internalIssuer(c.tenantId) || c.email.toLowerCase() !== target.email.toLowerCase()) return 'changed';

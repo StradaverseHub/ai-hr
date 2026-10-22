@@ -3940,7 +3940,10 @@
       "attendanceLegend": "考勤与提醒",
       "selectDay": "选择日期以查看考勤详情。",
       "invalidRange": "请输入有效的日期范围。",
-      "contextHelp": "提醒与考勤状态分开显示。假日名称显示在对应日期。"
+      "contextHelp": "提醒与考勤状态分开显示。假日名称显示在对应日期。",
+      "loading": "正在加载您的考勤日历…",
+      "loadError": "无法加载您的考勤日历，请重试。",
+      "retry": "重试"
     }
   },
   "org": {
@@ -17786,7 +17789,22 @@
     "reportConsentHelp": "报表附件须按每份雇佣记录单独同意。更改个人档案邮箱后须重新同意。系统只会发送您当前有权访问的报表。",
     "reportPolicyHelp": "员工主档附件默认关闭，须同时启用此政策并取得每位收件人的明确报表邮件同意。",
     "recipientCode": "员工编号",
-    "deliveryReference": "发送记录编号"
+    "deliveryReference": "发送记录编号",
+    "attendanceCc": {
+      "reference": "参考编号",
+      "applicant": "申请人",
+      "level": "审批层级",
+      "action": "操作",
+      "actor": "决定人",
+      "when": "日期与时间",
+      "notice": "仅供通知。此邮件不授予审批或申请访问权限。",
+      "actions": {
+        "approved": "已批准",
+        "rejected": "已驳回",
+        "cancelled": "已取消",
+        "withdrawn": "已撤回"
+      }
+    }
   },
   "onehr": {
     "back": "Back",
@@ -19486,6 +19504,37 @@
       "chooseSlot": "请选择待处理参与者…",
       "calculationHandoff": "此最终决定需要具备相应范围计算权限的 HR。请 HR 对待处理参与者记录有理由的重新分配；此前审批会保留。",
       "identityUnavailable": "所需审批人未启用、没有唯一可用的登录账号，或不在允许的公司范围内。请更换人选，或让 HR 修正其访问权限。"
+    },
+    "v4": {
+      "allRequired": "所有人均须批准",
+      "allRequiredHelp": "每位列出的人员都必须批准，顺序不限。",
+      "levelHelp": "按显示顺序添加审批来源。每个上级层级均从申请人开始计算。",
+      "sourceNumber": "来源 {number}",
+      "addSource": "添加审批来源",
+      "searchEmployees": "搜索员工编号或姓名",
+      "noEligible": "本公司及获准的上级公司中没有符合条件的关联登录账号。请 HR 检查任职日期、登录状态和公司角色。",
+      "cc": "抄送收件人",
+      "ccHelp": "仅用于通知。抄送不授予审批或申请访问权限。邮件不含原因、薪资、医疗资料或附件。",
+      "customEmail": "自定义电子邮箱",
+      "emailHelp": "每行输入一个地址，最多 50 个唯一收件人；不接受显示名称或邮件标头。",
+      "addCc": "添加抄送来源",
+      "conversionHelp": "保存后仅影响以后的申请。已提交的申请保留原有流程和决定。",
+      "convert": "配置多来源流程",
+      "invalidCc": "请输入有效的邮箱地址，不含姓名或邮件标头。",
+      "unavailableCc": "抄送收件人不可用。保存前请检查员工账号、邮箱和上级关系。",
+      "delete": "删除",
+      "deleteTitle": "删除 {name}？",
+      "deleteImpact": "从 {company} 的未来流程中移除此工作流。现有申请和历史保留。流程仍启用，没有匹配模板的申请将被拒绝。",
+      "deletePending": "仍有待处理的申请依赖此工作流。请先完成或取消这些申请。",
+      "deleteChanged": "工作流已更改。删除前请重新加载。",
+      "deleted": "已从未来配置中删除工作流。",
+      "retained": "已删除的工作流",
+      "restore": "恢复配置",
+      "restoreHelp": "恢复时会检查当前员工和汇报关系，并创建新版本。",
+      "restored": "已恢复工作流并创建新版本。",
+      "noEmployees": "本公司及获准的上级公司中没有任职记录。",
+      "noActiveEmployees": "目前没有符合任职日期和有效状态要求的员工。",
+      "noLinkedLogin": "存在员工，但都没有有效的关联登录账号。请 HR 检查账号关联后再将他们设为审批人。"
     }
   },
   "attendanceHistory": {
@@ -19696,7 +19745,8 @@
     "backToOverview": "返回概览",
     "notWaitingForYou": "此阶段无需您操作。",
     "recordedOvertime": "已记录实际加班",
-    "previewOvertime": "审批预览"
+    "previewOvertime": "审批预览",
+    "modeAllRequired": "所有人均须批准"
   },
   "scheduleDrafts": {
     "staleLadder": "“常规”部分的加班时段或费率已更改。您的草稿仍保留在此。保存加班设置前，请重新加载此页面。只有在您确认后，未保存的更改才会被丢弃。",

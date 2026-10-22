@@ -3940,7 +3940,10 @@
       "attendanceLegend": "Chấm công và cảnh báo",
       "selectDay": "Chọn ngày để xem chi tiết chấm công.",
       "invalidRange": "Nhập khoảng ngày hợp lệ.",
-      "contextHelp": "Cảnh báo được hiển thị riêng với trạng thái chấm công. Tên ngày lễ xuất hiện vào ngày tương ứng."
+      "contextHelp": "Cảnh báo được hiển thị riêng với trạng thái chấm công. Tên ngày lễ xuất hiện vào ngày tương ứng.",
+      "loading": "Đang tải lịch chấm công của bạn…",
+      "loadError": "Không thể tải lịch chấm công. Vui lòng thử lại.",
+      "retry": "Thử lại"
     }
   },
   "org": {
@@ -17786,7 +17789,22 @@
     "reportConsentHelp": "Tệp báo cáo cần sự đồng ý riêng cho từng hồ sơ việc làm. Khi đổi email hồ sơ, bạn cần đồng ý lại. Chỉ gửi những báo cáo bạn hiện có quyền truy cập.",
     "reportPolicyHelp": "Tệp báo cáo Hồ sơ nhân viên mặc định tắt và cần chính sách này cùng sự đồng ý rõ ràng của từng người nhận.",
     "recipientCode": "Mã nhân viên",
-    "deliveryReference": "Mã lần gửi"
+    "deliveryReference": "Mã lần gửi",
+    "attendanceCc": {
+      "reference": "Mã tham chiếu",
+      "applicant": "Người nộp",
+      "level": "Cấp",
+      "action": "Thao tác",
+      "actor": "Người quyết định",
+      "when": "Ngày/giờ",
+      "notice": "Chỉ để thông báo. Email này không cấp quyền duyệt hoặc xem đơn.",
+      "actions": {
+        "approved": "Đã duyệt",
+        "rejected": "Bị từ chối",
+        "cancelled": "Đã hủy",
+        "withdrawn": "Đã rút lại"
+      }
+    }
   },
   "onehr": {
     "back": "Back",
@@ -19486,6 +19504,37 @@
       "chooseSlot": "Chọn người tham gia còn chờ…",
       "calculationHandoff": "Quyết định cuối này cần quyền tính toán HR đúng phạm vi. Nhờ HR ghi nhận phân công lại có lý do cho người tham gia còn chờ; các phê duyệt trước được giữ nguyên.",
       "identityUnavailable": "Một người phê duyệt bắt buộc không hoạt động, không có tài khoản hợp lệ duy nhất hoặc nằm ngoài phạm vi công ty được phép. Thay người được chọn hoặc nhờ HR sửa quyền truy cập."
+    },
+    "v4": {
+      "allRequired": "Mọi người đều phải duyệt",
+      "allRequiredHelp": "Mỗi người trong danh sách phải duyệt, không bắt buộc thứ tự.",
+      "levelHelp": "Thêm nguồn theo thứ tự hiển thị. Mỗi cấp quản lý đều tính từ người nộp.",
+      "sourceNumber": "Nguồn {number}",
+      "addSource": "Thêm nguồn người duyệt",
+      "searchEmployees": "Tìm mã hoặc tên nhân viên",
+      "noEligible": "Không có tài khoản liên kết đủ điều kiện trong công ty này hoặc công ty mẹ được phép. Nhờ HR kiểm tra ngày làm việc, trạng thái đăng nhập và vai trò công ty.",
+      "cc": "Người nhận CC",
+      "ccHelp": "Chỉ nhận thông báo. CC không cấp quyền duyệt hay xem đơn. Thư không chứa lý do, lương, thông tin y tế hoặc tệp đính kèm.",
+      "customEmail": "Địa chỉ email tùy chỉnh",
+      "emailHelp": "Mỗi dòng một địa chỉ. Tối đa 50 người nhận khác nhau, không kèm tên hiển thị hoặc tiêu đề thư.",
+      "addCc": "Thêm nguồn CC",
+      "conversionHelp": "Lưu cấu hình chỉ áp dụng cho đơn mới. Đơn đã nộp giữ nguyên luồng và quyết định đã lưu.",
+      "convert": "Cấu hình luồng nhiều nguồn",
+      "invalidCc": "Nhập địa chỉ email hợp lệ, không kèm tên hoặc tiêu đề thư.",
+      "unavailableCc": "Người nhận CC không khả dụng. Kiểm tra tài khoản, email và quan hệ quản lý trước khi lưu.",
+      "delete": "Xóa",
+      "deleteTitle": "Xóa {name}?",
+      "deleteImpact": "Loại luồng này khỏi cấu hình cho đơn mới tại {company}. Đơn và lịch sử được giữ lại. Định tuyến vẫn bật và từ chối đơn không có mẫu phù hợp.",
+      "deletePending": "Đơn đang chờ vẫn phụ thuộc vào luồng này. Hoàn tất hoặc hủy đơn trước khi xóa.",
+      "deleteChanged": "Luồng đã thay đổi. Tải lại trước khi xóa.",
+      "deleted": "Đã xóa luồng khỏi cấu hình cho đơn mới.",
+      "retained": "Luồng đã xóa",
+      "restore": "Khôi phục cấu hình",
+      "restoreHelp": "Khôi phục tạo phiên bản mới sau khi kiểm tra nhân viên và quan hệ báo cáo hiện tại.",
+      "restored": "Đã khôi phục luồng dưới dạng phiên bản mới.",
+      "noEmployees": "Không có hồ sơ làm việc trong công ty này hoặc công ty mẹ được phép.",
+      "noActiveEmployees": "Hiện không có nhân viên đáp ứng điều kiện ngày làm việc và trạng thái hoạt động.",
+      "noLinkedLogin": "Có nhân viên nhưng không ai có tài khoản liên kết đang hoạt động. HR cần kiểm tra liên kết tài khoản trước khi họ có thể duyệt."
     }
   },
   "attendanceHistory": {
@@ -19696,7 +19745,8 @@
     "backToOverview": "Về tổng quan",
     "notWaitingForYou": "Không có thao tác nào chờ bạn ở bước này.",
     "recordedOvertime": "Giờ tăng ca thực tế đã ghi nhận",
-    "previewOvertime": "Xem trước phê duyệt"
+    "previewOvertime": "Xem trước phê duyệt",
+    "modeAllRequired": "Mọi người đều phải duyệt"
   },
   "scheduleDrafts": {
     "staleLadder": "Các khoảng thời gian hoặc mức tính làm thêm giờ đã thay đổi trong phần Chung. Bản nháp của bạn vẫn còn ở đây. Hãy tải lại trang này trước khi lưu cài đặt làm thêm giờ. Các thay đổi chưa lưu chỉ bị bỏ sau khi bạn xác nhận.",

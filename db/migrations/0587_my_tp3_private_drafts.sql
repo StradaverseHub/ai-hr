@@ -6,7 +6,8 @@ CREATE TABLE public.employee_tp3_draft (
  assessment_year integer NOT NULL,baseline_revision text NOT NULL DEFAULT 'absent' CHECK(baseline_revision='absent'),
  revision integer NOT NULL DEFAULT 1 CHECK(revision>0),deduction_month smallint CHECK(deduction_month BETWEEN 1 AND 12),
  previous_employers jsonb NOT NULL,payload jsonb NOT NULL,declaration_accepted boolean NOT NULL DEFAULT false,
- canonical_id uuid, -- retained submission reference survives an authorized HR deletion of the mastersubmitted_at timestamptz,commit_xid xid8,
+ -- Retained submission reference survives an authorized HR deletion of the master.
+ canonical_id uuid,submitted_at timestamptz,commit_xid xid8,
  projection_finished boolean NOT NULL DEFAULT false,projection_outcome jsonb,
  created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),
  CONSTRAINT employee_tp3_draft_person_year_uq UNIQUE(tenant_id,person_id,assessment_year),

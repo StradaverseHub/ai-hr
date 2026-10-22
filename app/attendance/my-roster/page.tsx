@@ -1,6 +1,5 @@
-import {withTenant} from '@/db/client';
-import {originalHolidayCalendarFor} from '@/core/holidays';
-import {replacementHolidayCalendarNotes} from '@/core/holiday-replacement-read';
+import {personalCalendarHolidayContext} from './holiday-context';
+import {personalHolidayContext} from '@/lib/personal-holiday-context';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
@@ -75,12 +74,10 @@ export default async function MyRosterPage({
   </div>;
 
   const replacementT=await getTranslations('replacementHoliday');
-  const [originals,replacements]=await Promise.all([withTenant(s,tx=>originalHolidayCalendarFor(tx,{employmentId:loaded.employmentId,startDate:w.from,endDate:w.to})),replacementHolidayCalendarNotes(s,{employmentId:loaded.employmentId,from:w.from,to:w.to})]);
+  const {originals,replacements}=await personalCalendarHolidayContext(s,loaded.employmentId,w.from,w.to);
   const view:CalendarRosterView={...loaded,days:loaded.days.map(day=>({...day,
     selected:day.date===state.selected,isToday:day.date===today,navigation:state,
-    holidayNote:replacements.some(r=>r.replacementDate===day.date)
-      ?{label:replacementT('replacement'),name:replacements.filter(r=>r.replacementDate===day.date).map(r=>r.sourceName).join(', ')}
-      :originals.some(h=>h.date===day.date)?{label:replacementT('original'),name:originals.filter(h=>h.date===day.date).map(h=>h.name).join(', ')}:undefined,
+    holidayNotes:personalHolidayContext(day.date,originals,replacements,{original:replacementT('original'),replacement:replacementT('replacement'),review:replacementT('review')}),
   }))};
   const dl = rosterDateLocale(locale);
   const fmtDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(dl, { day: '2-digit', month: 'short', year: 'numeric' });
@@ -113,7 +110,7 @@ export default async function MyRosterPage({
     <div className={pageWideCls}>
       <PageHeader title={t('myCalendar.title')} description={subtitleParts.join(' · ')} />
       <PersonalAttendanceTabs state={state} t={t}/>
-      {replacements.length>0&&<Card className="space-y-2 p-4"><h2 className="text-sm font-medium">{replacementT('calendarHint')}</h2><p className="text-xs text-muted-foreground">{replacementT('originalKept')}</p><ul className="space-y-1 text-sm">{replacements.map(r=><li key={r.id}>{r.replacementDate} · {r.sourceName} ({r.sourceDate}){r.status==='review'&&` · ${replacementT('review')}`}</li>)}</ul></Card>}
+      {replacements.length>0&&<Card className="space-y-2 p-4"><h2 className="text-sm font-medium">{replacementT('calendarHint')}</h2><p className="text-xs text-muted-foreground">{replacementT('originalKept')}</p><ul className="space-y-1 text-sm">{replacements.map(r=><li key={r.id}>{r.replacementDate} · {r.sourceName} ({r.sourceDate}){(r.status==='review'||r.coverageReason)&&` · ${replacementT('review')}`}</li>)}</ul></Card>}
 
       {/* View switch on the left, window stepper on the right — the approved picture's control row. */}
       <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
@@ -230,7 +227,7 @@ export default async function MyRosterPage({
 
 const PERSONAL_STATUS_KEYS = {present:'statusPresent',absent:'statusAbsent',exempt:'statusExempt',rest:'statusRest',off:'statusOff',ph:'statusPh',on_leave:'statusOnLeave'} as const;
 type T = Awaited<ReturnType<typeof getTranslations<'attendance'>>>;
-type CalendarRosterDay=MyRosterDay&{holidayNote?:{label:string;name:string};selected:boolean;isToday:boolean;navigation:AttendanceCalendarState;attendance?:{status:AttendanceStatus|null;flag:AttendanceFlag;checkInAt:string|null;checkOutAt:string|null}|null};
+type CalendarRosterDay=MyRosterDay&{holidayNotes:string[];selected:boolean;isToday:boolean;navigation:AttendanceCalendarState;attendance?:{status:AttendanceStatus|null;flag:AttendanceFlag;checkInAt:string|null;checkOutAt:string|null}|null};
 type CalendarRosterView=Omit<MyRosterView,'days'>&{days:CalendarRosterDay[]};
 
 function Stat({ label, value, unit }: { label: string; value: string; unit?: string }) {
@@ -264,7 +261,7 @@ function sourceKey(d: MyRosterDay): 'sourceRostered' | 'sourceUsual' | 'sourceRe
  * says what that means — and a rostered day carries its shift's own colour token.
  */
 function DayBody({d,t,hhmm}:{d:CalendarRosterDay;t:T;hhmm:(v:string|null)=>string}) {
- return <div className="space-y-1">{d.holidayNote&&<span className="block text-xs font-medium text-foreground" title={d.holidayNote.name}>{d.holidayNote.label}: {d.holidayNote.name}</span>}<DayBodyContent d={d} t={t} hhmm={hhmm}/></div>;
+ return <div className="space-y-1">{d.holidayNotes.map(note=><span key={note} className="block text-xs font-medium text-foreground">{note}</span>)}<DayBodyContent d={d} t={t} hhmm={hhmm}/></div>;
 }
 
 function DayBodyContent({ d, t, hhmm }: { d: MyRosterDay; t: T; hhmm: (v: string | null) => string }) {
@@ -323,7 +320,7 @@ function MonthGrid({view,w,t,fmtWeekday,hhmm}:{view:CalendarRosterView;w:MyRoste
       <div className="grid grid-cols-7">
         {Array.from({length:pad},(_,i)=><div key={`pad-${i}`} className="border-b border-r border-border"/>)}
         {view.days.map(day=><div key={day.date} className={`min-w-0 border-b border-r border-border ${day.selected?'bg-primary/5 ring-2 ring-inset ring-primary':isoWeekdayOf(day.date)>=6?'bg-amber-50/60 dark:bg-amber-500/5':''}`}>
-          <Link href={attendanceCalendarHref({...day.navigation,selected:day.date})} aria-current={day.isToday?'date':undefined} aria-label={[day.date,day.isToday?t('myRoster.today'):null,day.attendance?.status?t(PERSONAL_STATUS_KEYS[day.attendance.status]):null,day.holidayNote?.name].filter(Boolean).join(' · ')} className="flex min-h-14 flex-col items-center justify-center gap-1 px-1 py-2 text-xs focus-visible:outline-2 focus-visible:outline-primary lg:min-h-11 lg:flex-row lg:justify-between lg:px-3">
+          <Link href={attendanceCalendarHref({...day.navigation,selected:day.date})} aria-current={day.isToday?'date':undefined} aria-label={[day.date,day.isToday?t('myRoster.today'):null,day.attendance?.status?t(PERSONAL_STATUS_KEYS[day.attendance.status]):null,day.holidayNotes.join(' · ')].filter(Boolean).join(' · ')} className="flex min-h-14 flex-col items-center justify-center gap-1 px-1 py-2 text-xs focus-visible:outline-2 focus-visible:outline-primary lg:min-h-11 lg:flex-row lg:justify-between lg:px-3">
             <span className={`tabular-nums ${day.isToday?'font-bold text-primary':''}`}>{day.date.slice(8)}</span>
             {day.isToday&&<span className="text-[10px] font-semibold text-primary">{t('myRoster.today')}</span>}
             <span aria-hidden className={`size-1.5 rounded-full lg:hidden ${day.attendance?.status==='absent'?'bg-rose-500':day.attendance?.flag?'bg-amber-500':day.attendance?.status==='present'?'bg-emerald-500':'bg-muted-foreground/50'}`}/>
@@ -429,7 +426,7 @@ function DayPanel({
         <div>
           <p className="text-sm text-muted-foreground">{t(`myRoster.${sourceKey(day)}`)}</p>
           <h2 className="text-lg font-semibold">{fmtLongDate(day.date)}</h2>
-          {day.holidayNote&&<p className="text-sm font-medium">{day.holidayNote.label}: {day.holidayNote.name}</p>}
+          {day.holidayNotes.map(note=><p key={note} className="text-sm font-medium">{note}</p>)}
           {day.shift && (
             <p className="text-sm text-muted-foreground">
               {day.shift.code} — {day.shift.name}

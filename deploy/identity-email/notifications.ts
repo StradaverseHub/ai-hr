@@ -1,12 +1,14 @@
 /** Private workflow transport orchestration. Unit-testable without giving the web process SMTP secrets. */
 import { z } from 'zod';
+import {deliverAttendanceCc,type AttendanceCcDeliveryPorts} from './attendance-cc';
+import type {AttendanceCcMessage} from '../../lib/attendance-cc-mail';
 import { notificationEmailRequest, notificationEmailCategory, notificationEmailLink, notificationSmtpFailure,
   type NotificationEmailCategory, type NotificationEmailLocale, type NotificationEmailOutcome, type NotificationEmailError } from '../../lib/notification-email-model';
 import { emailConfigSchema, type EmailConfig } from '../../lib/identity/email-model';
 import type { EmailState } from './service';
 import { assessmentReminderMailSchema,type AssessmentReminderTask,type AssessmentReminderWords } from '../../lib/assessment-reminder-mail';
 export type WorkflowMailTarget={user_id:string;subject:string;email:string;category:string;link_path:string|null;severity:string;locale:string};
-export type WorkflowMail={category:NotificationEmailCategory;locale:NotificationEmailLocale;link:string;action:boolean;messageId:string;assessmentTasks?:AssessmentReminderTask[];assessmentWords?:AssessmentReminderWords|null};
+export type WorkflowMail={category:NotificationEmailCategory;locale:NotificationEmailLocale;link:string;action:boolean;messageId:string;assessmentTasks?:AssessmentReminderTask[];assessmentWords?:AssessmentReminderWords|null;attendanceCc?:AttendanceCcMessage};
 export interface WorkflowEmailDependencies {
   ready():Promise<boolean>;
   target(id:string,token:string):Promise<WorkflowMailTarget|null>;
@@ -16,6 +18,7 @@ export interface WorkflowEmailDependencies {
   finish(id:string,token:string,outcome:NotificationEmailOutcome,error:NotificationEmailError|null):Promise<boolean>;
   send(target:WorkflowMailTarget,mail:WorkflowMail):Promise<void>;
   origin:string;
+  cc?:AttendanceCcDeliveryPorts;
 }
 /** Compare the secret reference as well as the public SMTP fields; a changed realm is not managed. */
 export function activeWorkflowRelay(state:EmailState,realm:{smtpServer?:Record<string,string>}):{config:EmailConfig;vaultKey:string|null}|null {
@@ -33,9 +36,10 @@ export function createNotificationEmailService(d:WorkflowEmailDependencies) {
     if(request.op==='status') {
       // Validate the configured origin even before there is a queued job.
       notificationEmailLink(d.origin,'/');
-      return {version:1 as const,ready:await d.ready(),assessmentReminders:!!d.assessmentTasks,assessmentReminderWords:!!d.assessmentTasks};
+      return {version:1 as const,ready:await d.ready(),assessmentReminders:!!d.assessmentTasks,assessmentReminderWords:!!d.assessmentTasks,attendanceCc:!!d.cc};
     }
     const {deliveryId:id,leaseToken:token}=request;
+    if(request.op==='attendanceCcSend')return d.cc?deliverAttendanceCc(id,token,{...d,cc:d.cc}):{outcome:'unavailable' as const};
     if(!await d.ready())return {outcome:'unavailable'};
     const target=await d.target(id,token);
     if(!target){await d.finish(id,token,'skipped','notEligible');return {outcome:'skipped'};}

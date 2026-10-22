@@ -3940,7 +3940,10 @@
       "attendanceLegend": "Attendance and warnings",
       "selectDay": "Select a date to review its attendance details.",
       "invalidRange": "Enter a valid date range.",
-      "contextHelp": "Warnings describe attendance separately from its status. Holiday names appear on the applicable dates."
+      "contextHelp": "Warnings describe attendance separately from its status. Holiday names appear on the applicable dates.",
+      "loading": "Loading your attendance calendar…",
+      "loadError": "Your attendance calendar could not be loaded. Try again.",
+      "retry": "Try again"
     }
   },
   "org": {
@@ -17786,7 +17789,22 @@
     "reportConsentHelp": "Report attachments need separate consent for each employment. Changing your profile email requires consent again. Only reports you can currently access may be sent.",
     "reportPolicyHelp": "Employee Master attachments are off by default and require both this policy and each recipient’s explicit report consent.",
     "recipientCode": "Employee code",
-    "deliveryReference": "Delivery reference"
+    "deliveryReference": "Delivery reference",
+    "attendanceCc": {
+      "reference": "Reference",
+      "applicant": "Applicant",
+      "level": "Level",
+      "action": "Action",
+      "actor": "Deciding approver",
+      "when": "Date/time",
+      "notice": "Notification only. This email grants no approval or application access.",
+      "actions": {
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "cancelled": "Cancelled",
+        "withdrawn": "Withdrawn"
+      }
+    }
   },
   "onehr": {
     "back": "Back",
@@ -19486,6 +19504,37 @@
       "chooseSlot": "Choose an outstanding participant…",
       "calculationHandoff": "This final decision needs scoped HR calculation access. Ask HR to record a reasoned reassignment of the outstanding participant; earlier approvals are retained.",
       "identityUnavailable": "A required approver is inactive, has no unique usable login, or is outside the permitted company scope. Replace the selection or ask HR to correct their access."
+    },
+    "v4": {
+      "allRequired": "Everyone needs to approve",
+      "allRequiredHelp": "Every listed person must approve; they may decide in any order.",
+      "levelHelp": "Add the sources in the order you want people shown. Each superior depth starts from the applicant.",
+      "sourceNumber": "Source {number}",
+      "addSource": "Add approver source",
+      "searchEmployees": "Search Employee ID or name",
+      "noEligible": "No eligible linked login is available in this company or its permitted parent companies. Ask HR to check employment dates, login status and company roles.",
+      "cc": "CC recipients",
+      "ccHelp": "Notification only. CC recipients gain no approval or application access. Messages exclude reasons, payroll, medical details and attachments.",
+      "customEmail": "Custom email addresses",
+      "emailHelp": "Enter one address per line. Up to 50 unique recipients; no display names or email headers.",
+      "addCc": "Add CC source",
+      "conversionHelp": "Saving the new configuration affects future applications. Submitted applications keep their saved route and decisions.",
+      "convert": "Configure mixed-source route",
+      "invalidCc": "Enter valid email addresses without names or headers.",
+      "unavailableCc": "A CC recipient is unavailable. Check the employee login, email and superior relationship before saving.",
+      "delete": "Delete",
+      "deleteTitle": "Delete {name}?",
+      "deleteImpact": "Remove this workflow from future routing for {company}. Recorded applications and history remain. Routing stays enabled and refuses applications without a matching template.",
+      "deletePending": "Pending applications still depend on this workflow. Complete or cancel them before deleting.",
+      "deleteChanged": "The workflow changed. Reload before deleting.",
+      "deleted": "Workflow deleted from future configuration.",
+      "retained": "Deleted workflows",
+      "restore": "Restore configuration",
+      "restoreHelp": "Restoring creates a new version after checking the current employees and reporting relationships.",
+      "restored": "Workflow restored as a new version.",
+      "noEmployees": "No employment records are available in this company or its permitted parent companies.",
+      "noActiveEmployees": "No employment currently meets the employment-date and active-status requirements.",
+      "noLinkedLogin": "Employees are available, but none has an active linked login. HR must review account links before these employees can approve."
     }
   },
   "attendanceHistory": {
@@ -19696,7 +19745,8 @@
     "backToOverview": "Back to Overview",
     "notWaitingForYou": "No action is waiting for you at this stage.",
     "recordedOvertime": "Recorded actual overtime",
-    "previewOvertime": "Approval preview"
+    "previewOvertime": "Approval preview",
+    "modeAllRequired": "Everyone needs to approve"
   },
   "scheduleDrafts": {
     "staleLadder": "The overtime bands or rates changed in General. Your draft is still here. Reload this page before saving overtime settings. Reloading discards unsaved changes only after confirmation.",

@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import {personalCalendarHolidayContext} from './holiday-context';
+import {personalHolidayContext} from '@/lib/personal-holiday-context';
 import { getLocale, getTranslations } from 'next-intl/server';
 import type { SessionContext } from '@/db/client';
 import { myEmployment } from '@/core/read';
@@ -18,6 +20,7 @@ import { attendanceCalendarDetailHref, attendanceCalendarQuery, type AttendanceC
 export async function AttendanceRecordList({ s, state, query }: {
   s: SessionContext; state: AttendanceCalendarState; query: AttendanceCalendarQuery;
 }) {
+  const holidayT=await getTranslations('replacementHoliday');
   const t=await getTranslations('attendance'), locale=await getLocale(), today=todayInKualaLumpur();
   const me=await myEmployment(s);
   if(!me) return <Card className="p-8 text-sm text-muted-foreground">{t('myRecords.notLinked')}</Card>;
@@ -25,8 +28,8 @@ export async function AttendanceRecordList({ s, state, query }: {
   const range=resolveMyAttendanceRange(sp,today,ATTENDANCE_RANGE_MAX_DAYS);
   const refusal=range.refusal==='too_long' ? t('myRecords.rangeTooLong',{days:range.days,max:ATTENDANCE_RANGE_MAX_DAYS})
     :range.refusal==='inverted' ? t('myRecords.rangeInverted') :range.refusal==='invalid' ? t('myCalendar.invalidRange') :undefined;
-  const result=range.refusal ? {rows:[],error:undefined} : await attendanceForEmploymentRange(s,me.employmentId,range.from,range.to)
-    .then(rows=>({rows,error:undefined})).catch(error=>({rows:[],error:publicErrorMessage(error)}));
+  const result=range.refusal?{rows:[],originals:[],replacements:[],error:undefined}:await Promise.all([attendanceForEmploymentRange(s,me.employmentId,range.from,range.to),personalCalendarHolidayContext(s,me.employmentId,range.from,range.to)]).then(([rows,context])=>({rows,...context,error:undefined})).catch(error=>({rows:[],originals:[],replacements:[],error:publicErrorMessage(error)}));
+  const holidayNotes=(date:string)=>personalHolidayContext(date,result.originals,result.replacements,{original:holidayT('original'),replacement:holidayT('replacement'),review:holidayT('review')});
   const {rows:days,state:paging}=paginateRows(result.rows,parsePageQuery(state));
   const statusText={present:t('statusPresent'),absent:t('statusAbsent'),exempt:t('statusExempt'),rest:t('statusRest'),off:t('statusOff'),ph:t('statusPh'),on_leave:t('statusOnLeave')};
   const flagText={late:t('flagLate'),under:t('myCalendar.shortHours'),odd:t('myCalendar.incompleteEntry')};
@@ -51,7 +54,7 @@ export async function AttendanceRecordList({ s, state, query }: {
             <td className="px-3 py-3 tabular-nums">{row.checkInAt?.slice(0,5)??'—'}</td><td className="px-3 py-3 tabular-nums">{row.checkOutAt?.slice(0,5)??'—'}</td><td className="px-3 py-3 tabular-nums">{fmtMin(row.scheduledMinutes)}</td><td className="px-3 py-3 tabular-nums">{fmtMin(row.workedMinutes)}</td>
             <td className="px-3 py-3 tabular-nums">{row.formulaOvertime?<FormulaOvertimeDuration record={row.formulaOvertime}/>:fmtHours2(row.otMinutes)}</td>
             <td className="px-3 py-3">{status?<PersonalAttendanceStatus status={status} label={statusText[status]}/>:'—'}</td>
-            <td className="px-3 py-3 text-xs text-amber-700 dark:text-amber-400">{flag?flagText[flag]:'—'}</td>
+            <td className="px-3 py-3 text-xs text-amber-700 dark:text-amber-400">{flag?flagText[flag]:holidayNotes(row.date).length?'':'—'}{holidayNotes(row.date).map(note=><span key={note} className="mt-1 block text-foreground">{note}</span>)}</td>
             <td className="px-3 py-3"><Link href={attendanceCalendarDetailHref(row.date,state.window,state)} className="inline-flex min-h-11 items-center font-medium text-primary hover:underline">{t('breakdownView')}</Link></td>
           </tr>;
         })}</tbody>
@@ -63,7 +66,7 @@ export async function AttendanceRecordList({ s, state, query }: {
           <dl className="grid grid-cols-2 gap-3 text-sm">
             {[[t('colShiftCode'),row.shiftCode??'—'],[t('colCheckIn'),row.checkInAt?.slice(0,5)??'—'],[t('colCheckOut'),row.checkOutAt?.slice(0,5)??'—'],[t('colShiftHours'),fmtMin(row.scheduledMinutes)],[t('colActualHours'),fmtMin(row.workedMinutes)]].map(([label,value])=><div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="tabular-nums">{value}</dd></div>)}
             <div><dt className="text-xs text-muted-foreground">{t('colOtTotal')}</dt><dd>{row.formulaOvertime?<FormulaOvertimeDuration record={row.formulaOvertime}/>:fmtHours2(row.otMinutes)}</dd></div>
-            <div><dt className="text-xs text-muted-foreground">{t('colStatus')}</dt><dd>{status?statusText[status]:'—'}</dd></div><div><dt className="text-xs text-muted-foreground">{t('colNote')}</dt><dd className="text-amber-700 dark:text-amber-400">{flag?flagText[flag]:'—'}</dd></div>
+            <div><dt className="text-xs text-muted-foreground">{t('colStatus')}</dt><dd>{status?statusText[status]:'—'}</dd></div><div><dt className="text-xs text-muted-foreground">{t('colNote')}</dt><dd className="text-amber-700 dark:text-amber-400">{flag?flagText[flag]:holidayNotes(row.date).length?'':'—'}{holidayNotes(row.date).map(note=><span key={note} className="mt-1 block text-foreground">{note}</span>)}</dd></div>
           </dl><Link className="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline" href={attendanceCalendarDetailHref(row.date,state.window,state)}>{t('breakdownView')}</Link>
         </article>;
       })}</div>

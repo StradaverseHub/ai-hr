@@ -4,12 +4,13 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import { createTranslator, NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 const companyId = '00000000-0000-0000-0000-000000000001', other = '00000000-0000-0000-0000-000000000002', lineageId = '00000000-0000-0000-0000-000000000003', departmentId = '00000000-0000-0000-0000-000000000004';
-const { service, scope, form, routing } = vi.hoisted(() => ({ service: { listAttendanceWorkflows: vi.fn(), listAttendanceWorkflowSettings: vi.fn(), attendanceApplicationFilterOptions: vi.fn(), getAttendanceWorkflow: vi.fn(), previewAttendanceWorkflow: vi.fn() }, scope: vi.fn(), form: vi.fn(), routing: vi.fn() }));
+const { service, scope, form, routing } = vi.hoisted(() => ({ service: { listAttendanceWorkflows: vi.fn(), listRetiredAttendanceWorkflows:vi.fn(), listAttendanceWorkflowSettings: vi.fn(), attendanceApplicationFilterOptions: vi.fn(), getAttendanceWorkflow: vi.fn(), previewAttendanceWorkflow: vi.fn() }, scope: vi.fn(), form: vi.fn(), routing: vi.fn() }));
 vi.mock('../lib/scope', () => ({ scopedAdmin: scope }));
 vi.mock('../packs/attendance/service', () => service);
 vi.mock('next-intl/server', () => ({ getTranslations: async (namespace: string) => createTranslator({ locale: 'en', messages: en, namespace: namespace as 'attendanceWorkflow' }) }));
-vi.mock('next/navigation', () => ({ notFound: () => { throw new Error('NOT_FOUND'); }, redirect: (href: string) => { throw new Error(`REDIRECT ${href}`); } }));
+vi.mock('next/navigation', () => ({ useRouter:()=>({push:vi.fn(),refresh:vi.fn()}), notFound: () => { throw new Error('NOT_FOUND'); }, redirect: (href: string) => { throw new Error(`REDIRECT ${href}`); } }));
 vi.mock('../app/admin/attendance/approval-workflow/workflow-form', () => ({ WorkflowForm: (props: unknown) => { form(props); return <div>Editor</div>; }, RoutingSwitch: (props: unknown) => { routing(props); return <div>Routing control</div>; } }));
+vi.mock('../app/admin/attendance/approval-workflow/actions',()=>({retireAttendanceWorkflowAction:vi.fn(),restoreAttendanceWorkflowAction:vi.fn()}));
 import Page from '../app/admin/attendance/approval-workflow/page';
 import NewPage from '../app/admin/attendance/approval-workflow/new/page';
 import EditPage from '../app/admin/attendance/approval-workflow/[lineageId]/edit/page';
@@ -17,7 +18,7 @@ import ViewPage from '../app/admin/attendance/approval-workflow/[lineageId]/page
 const options = { companies: [{ id: companyId, name: 'Company A' }, { id: other, name: 'Company B' }], departments: [{ id: departmentId, name: 'Finance' }], businessUnits: [], grades: [], divisions: [] };
 const row = { id: 'version', lineageId, companyId, version: 2, code: 'CLOCK', name: 'Clock review', description: '', applicationType: 'irregularity', criteria: { departmentIds: [departmentId] }, stages: [{ name: 'Manager review', level: { kind: 'direct_manager', employmentId: null, alternates: [{ kind: 'hr_admin', employmentId: null }] } }], active: true, priority: 100 };
 const show = (element: React.ReactNode) => render(<NextIntlClientProvider locale="en" messages={en}>{element}</NextIntlClientProvider>);
-beforeEach(() => { vi.clearAllMocks(); scope.mockResolvedValue({ s: { actor: 'scoped admin' }, scopeIds: [companyId, other] }); service.listAttendanceWorkflows.mockResolvedValue([row, { ...row, id: 'ot-version', code: 'OT', applicationType: 'self_overtime' }]); service.listAttendanceWorkflowSettings.mockResolvedValue([{ companyId, applicationType: 'irregularity', enabled: true }]); service.attendanceApplicationFilterOptions.mockImplementation(async (_, ids: string[]) => ({ ...options, companies: options.companies.filter(company => ids.includes(company.id)) })); service.getAttendanceWorkflow.mockResolvedValue(row); service.previewAttendanceWorkflow.mockResolvedValue({ total: 0, rows: [], truncated: false }); });
+beforeEach(() => { vi.clearAllMocks(); scope.mockResolvedValue({ s: { actor: 'scoped admin' }, scopeIds: [companyId, other] }); service.listAttendanceWorkflows.mockResolvedValue([row, { ...row, id: 'ot-version', code: 'OT', applicationType: 'self_overtime' }]); service.listRetiredAttendanceWorkflows.mockResolvedValue([]); service.listAttendanceWorkflowSettings.mockResolvedValue([{ companyId, applicationType: 'irregularity', enabled: true }]); service.attendanceApplicationFilterOptions.mockImplementation(async (_, ids: string[]) => ({ ...options, companies: options.companies.filter(company => ids.includes(company.id)) })); service.getAttendanceWorkflow.mockResolvedValue(row); service.previewAttendanceWorkflow.mockResolvedValue({ total: 0, rows: [], truncated: false }); });
 afterEach(cleanup);
 describe('workflow company navigation and scope', () => {
   it('lists each company once with counts, including a company without workflows', async () => {

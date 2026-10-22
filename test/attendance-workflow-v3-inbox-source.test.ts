@@ -9,7 +9,7 @@ function section(from: string, to: string) {
     expect(result.length).toBeGreaterThan(100);
     return result;
 }
-describe('ordinary v3 admission does not query unrelated module queues', () => {
+describe('ordinary participant admission does not query unrelated module queues', () => {
     it('keeps general queue loading separate from the Attendance-only capability', () => {
         const loaders = section('const [leave, leaveCancellations, replacementRequests, loadedCorrections', 'const corrections = attendanceOnly');
         expect(loaders).toContain("attendanceOnly ? Promise.resolve([]) : listLeaveRequests");
@@ -18,9 +18,9 @@ describe('ordinary v3 admission does not query unrelated module queues', () => {
         expect(loaders).toContain('claimsOn && !attendanceOnly ? listPendingClaims');
         expect(page).toContain('!attendanceOnly && me?.employmentId ? pendingManagerReviewsFor');
     });
-    it('uses only actionable non-self frozen v3 requests and does not manufacture historical totals', () => {
+    it('uses only actionable non-self frozen v3/v4 requests and does not manufacture historical totals', () => {
         const projection = section('const corrections = attendanceOnly', '// 1e9145d4 — the kind of day');
-        expect(projection).toContain('row.workflow?.routingVersion === 3 && row.canDecide && row.personId !== s.personId');
+        expect(projection).toContain('(row.workflow?.routingVersion === 3 || row.workflow?.routingVersion === 4) && row.canDecide && row.personId !== s.personId');
         expect(page).toContain('const decided = attendanceOnly ? { approved: null, rejected: null, cancelled: null } : await decidedStatusCounts');
         expect(page).toContain("(!attendanceOnly || section === 'corrections')");
     });

@@ -4333,7 +4333,7 @@ export function listAttendanceCorrections(
     const visibleIds = new Set([...genericVisible, ...v2Visible, ...v3Visible].map(r => r.id));
     const visible = rows.filter(r => visibleIds.has(r.id));
     const workflows = await attendanceWorkflowsForTx(tx, visible.map(r => r.id));
-    return visible.map(r => ({ ...r, workflow: workflows.get(r.id) ?? null, canDecide: workflows.get(r.id)?.routingVersion === 3 ? v3Visible.find(a => a.id === r.id)?.canDecide === true : workflows.get(r.id)?.routingVersion === 2 ? v2Visible.find(a => a.id === r.id)?.canDecide === true : true }));
+    return visible.map(r => ({ ...r, workflow: workflows.get(r.id) ?? null, canDecide: (workflows.get(r.id)?.routingVersion === 3 || workflows.get(r.id)?.routingVersion === 4) ? v3Visible.find(a => a.id === r.id)?.canDecide === true : workflows.get(r.id)?.routingVersion === 2 ? v2Visible.find(a => a.id === r.id)?.canDecide === true : true }));
   });
 }
 

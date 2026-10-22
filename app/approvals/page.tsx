@@ -241,7 +241,7 @@ export default async function ApprovalsPage({
     claimsOn && !attendanceOnly ? listPendingClaims(s) : Promise.resolve([]),
     admin ? listResignationRequests(s, { status: 'pending' }) : Promise.resolve([]),
   ]);
-  const corrections = attendanceOnly ? loadedCorrections.filter(row => row.workflow?.routingVersion === 3 && row.canDecide && row.personId !== s.personId) : loadedCorrections;
+  const corrections = attendanceOnly ? loadedCorrections.filter(row => (row.workflow?.routingVersion === 3 || row.workflow?.routingVersion === 4) && row.canDecide && row.personId !== s.personId) : loadedCorrections;
   // 1e9145d4 — the kind of day each OVERTIME row is asking for, so a rest-day or public-holiday plan is
   // impossible to miss while saying no is still cheap. Resolved through scheduleFor (the same resolver the
   // clocking path uses), and ONLY for overtime rows: a clock-time correction is about punches, not about
@@ -254,7 +254,7 @@ export default async function ApprovalsPage({
         s,
         corrections
           .filter(isOvertimeCorrection)
-          .filter(c => c.workflow?.routingVersion !== 3 || admin || manager)
+          .filter(c => (c.workflow?.routingVersion !== 3 && c.workflow?.routingVersion !== 4) || admin || manager)
           .map((c) => ({ employmentId: c.employmentId, date: c.attendanceDate })),
       )
     : new Map<string, PlanOtDayType>();
@@ -1050,7 +1050,7 @@ export default async function ApprovalsPage({
                       rejectReasonLabel={t('rejectReasonPlaceholder')}
                       id={c.id}
                       disabled={mine(c.personId) || c.canDecide === false}
-                      remarksLabel={(c.workflow?.routingVersion === 2 || c.workflow?.routingVersion === 3) ? tHistory('remarks') : undefined}
+                      remarksLabel={(c.workflow?.routingVersion === 2 || (c.workflow?.routingVersion === 3 || c.workflow?.routingVersion === 4)) ? tHistory('remarks') : undefined}
                       labels={c.canDecide === false && !mine(c.personId) ? {...decideLabels, yourRequest: tHistory('pendingStage')} : decideLabels}
                       nav={nav}
                     />

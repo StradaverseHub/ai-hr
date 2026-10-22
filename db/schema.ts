@@ -10302,9 +10302,11 @@ export const attendanceWorkflowTemplate = pgTable('attendance_workflow_template'
     id: id(), tenantId: tenantId(), companyId: uuid('company_id').notNull().references(() => company.id),
     code: text('code').notNull(), name: text('name').notNull(), description: text('description'),
     applicationType: text('application_type').notNull().$type<'irregularity' | 'self_overtime'>(),
-    routingVersion: integer('routing_version').notNull().default(1).$type<1 | 2 | 3>(),
+    routingVersion: integer('routing_version').notNull().default(1).$type<1 | 2 | 3 | 4>(),
     priority: integer('priority').notNull(), criteria: jsonb('criteria').notNull().$type<import('../lib/attendance-workflow').AttendanceWorkflowCriteria>(),
-    stages: jsonb('stages').notNull().$type<import('../lib/attendance-workflow').AttendanceWorkflowStage[] | import('../lib/attendance-workflow-v3').AttendanceV3Level[]>(),
+    stages: jsonb('stages').notNull().$type<import('../lib/attendance-workflow').AttendanceWorkflowStage[] | import('../lib/attendance-workflow-v3').AttendanceV3Level[] | import('../lib/attendance-workflow-v4').AttendanceV4Level[]>(),
+    cc: jsonb('cc').notNull().default([]).$type<import('../lib/attendance-workflow-v4').AttendanceCcSource[]>(),
+    retiredAt: timestamp('retired_at', { withTimezone: true }),
     version: integer('version').notNull(), active: boolean('active').notNull().default(false), lineageId: uuid('lineage_id').notNull(),
     supersededAt: timestamp('superseded_at', { withTimezone: true }), createdAt: createdAt(),
 }, t => [uniqueIndex('attendance_workflow_current_code').on(t.tenantId, t.companyId, t.code).where(sql `superseded_at IS NULL`), uniqueIndex('attendance_workflow_lineage_version').on(t.lineageId, t.version)]);
@@ -10319,7 +10321,8 @@ export const attendanceWorkflowRequest = pgTable('attendance_workflow_request', 
     templateId: uuid('template_id').notNull().references(() => attendanceWorkflowTemplate.id), templateCode: text('template_code').notNull(),
     templateName: text('template_name').notNull(), templateVersion: integer('template_version').notNull(),
     applicationType: text('application_type').notNull().$type<'irregularity' | 'self_overtime'>(),
-    routingVersion: integer('routing_version').notNull().default(1).$type<1 | 2 | 3>(),
+    routingVersion: integer('routing_version').notNull().default(1).$type<1 | 2 | 3 | 4>(),
+    cc: jsonb('cc').notNull().default([]).$type<import('../lib/attendance-workflow-v4').AttendanceCcRecipient[]>(),
     stages: jsonb('stages').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedStage[]>(), currentStage: integer('current_stage').notNull().default(0), createdAt: createdAt(),
 }, t => [uniqueIndex('attendance_workflow_request_correction').on(t.correctionId)]);
 export const attendanceWorkflowDecision = pgTable('attendance_workflow_decision', {
