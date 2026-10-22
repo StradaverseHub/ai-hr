@@ -12,7 +12,7 @@ import {createMovementEvent,editMovementEvent,reverseMovementEvent,movementHisto
 import {saveMovementEventType} from '../core/movement-type';
 import {
   getCustomReport, recordPayrollComparisonRun, runPayrollComparisonReport,
-  saveCustomReport, updateCustomReport,
+  saveCustomReport, updateCustomReport, listCustomReports, duplicateCustomReport, deleteCustomReport,
 } from '../core/custom-reports';
 import { payrollComparisonSpec } from '../core/report-payroll-comparison';
 import {
@@ -22,7 +22,7 @@ import {
 } from '../packs/payroll/service';
 import { requirePackFor } from '../localization/registry';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { previousPayrollComparisonPeriod } from '../lib/payroll-period-comparison';
+import { DEFAULT_PAYROLL_COMPARISON, previousPayrollComparisonPeriod } from '../lib/payroll-period-comparison';
 import { serializePayrollComparison } from '../lib/payroll-comparison-export';
 import {
   closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule,setSetting, type Base,
@@ -78,6 +78,40 @@ async function payrollSnapshot() {
 }
 
 describe('Payroll comparison consumes generated paid results under the saved report authority', () => {
+  it('retains saved comparison settings through edit/reopen, refuses stale edits, resets temporary filters and deletes only the selected definition',async()=>{
+    const f=await fixture();await closeBatch(ctx,{batchId:f.previous.batchId});await generatePayslips(ctx,{batchId:f.current.batchId});
+    const before=await payrollSnapshot(),initial=await getCustomReport(ctx,f.report.id,[b.companyId]);
+    expect(initial).toMatchObject({name:'Fictional Basic comparison',category:'payroll',datasetId:'payroll_period_comparison',shared:false,createdByUserId:ctx.userId,
+      spec:{payrollComparison:DEFAULT_PAYROLL_COMPARISON}});
+    const changed=payrollComparisonSpec({...DEFAULT_PAYROLL_COMPARISON,compareMode:'specific',previousPeriod,minVariance:'25.00',autoTag:false,onlyVariances:false,
+      columns:['employeeCode','employeeName','variancePct'],roles:['hr_admin']});
+    changed.layout={...changed.layout,description:'Fictional saved review description'};
+    await updateCustomReport(ctx,{id:f.report.id,name:'Saved review configuration',spec:changed,version:initial!.version,companyIds:[b.companyId]});
+    const reopened=await getCustomReport(ctx,f.report.id,[b.companyId]);
+    expect(reopened).toMatchObject({name:'Saved review configuration',spec:changed,shared:false,createdByUserId:ctx.userId});
+    expect(reopened!.version).toBeGreaterThan(initial!.version);
+    await expect(updateCustomReport(ctx,{id:f.report.id,name:'Stale tab must not overwrite',spec:payrollComparisonSpec(),version:initial!.version,companyIds:[b.companyId]})).rejects.toThrow('changed');
+    expect(await getCustomReport(ctx,f.report.id,[b.companyId])).toEqual(reopened);
+    const defaults=await runPayrollComparisonReport(ctx,[b.companyId],{id:f.report.id,verb:'view',filters:{currentPeriod}});
+    expect(defaults.filters).toMatchObject({currentPeriod,previousPeriod,minVariance:'25.00',onlyVariances:false});
+    expect(defaults.result.available).toBe(true);expect(defaults.result.rows).toHaveLength(1);
+    const temporary=await runPayrollComparisonReport(ctx,[b.companyId],{id:f.report.id,verb:'view',filters:{currentPeriod,previousPeriod,minVariance:'0.01',onlyVariances:'1'}});
+    expect(temporary.filters).toMatchObject({minVariance:'0.01',onlyVariances:true});expect(temporary.result.rows).toEqual([]);
+    const reset=await runPayrollComparisonReport(ctx,[b.companyId],{id:f.report.id,verb:'view',filters:{currentPeriod}});
+    expect(reset.filters).toEqual(defaults.filters);expect(reset.result.rows).toEqual(defaults.result.rows);
+    expect(await getCustomReport(ctx,f.report.id,[b.companyId])).toEqual(reopened);
+    const copy=await duplicateCustomReport(ctx,f.report.id,[b.companyId]);expect(copy?.id).not.toBe(f.report.id);expect(copy).not.toBeNull();
+    expect(await getCustomReport(ctx,copy!.id,[b.companyId])).toMatchObject({name:'Saved review configuration (copy)',spec:changed,shared:false,createdByUserId:ctx.userId});
+    expect((await listCustomReports(ctx,{category:'payroll',companyIds:[b.companyId]})).map(row=>row.id).sort()).toEqual([copy!.id,f.report.id].sort());
+    await deleteCustomReport(ctx,copy!.id,[b.companyId]);expect(await getCustomReport(ctx,copy!.id,[b.companyId])).toBeNull();
+    expect(await getCustomReport(ctx,f.report.id,[b.companyId])).toEqual(reopened);
+    expect((await listCustomReports(ctx,{category:'payroll',companyIds:[b.companyId]})).map(row=>row.id)).toEqual([f.report.id]);
+    expect(await payrollSnapshot()).toEqual(before);
+    const audits=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.tenantId,b.tenantId),eq(s.domainEvent.aggregateType,'custom-report'))).orderBy(asc(s.domainEvent.sequence));
+    expect(audits.map(event=>event.eventType)).toEqual(['custom-report.created','custom-report.updated','custom-report.duplicated','custom-report.deleted']);
+    for(const event of audits)expect(JSON.stringify(event.payload)).not.toMatch(/basicSalary|employeeName|COMPARE-001|3000/);
+  });
+
   it('uses canonical custom movement behavior, excludes corrected/reversed evidence and refuses stale paid output after rollback',async()=>{
     const f=await fixture();await closeBatch(ctx,{batchId:f.previous.batchId});
     await setModule(b.tenantId,'multi_cycle_payroll','active');ctx={...await entitledCtx(b),grants:[{role:'hr_admin',companyId:null}]};
