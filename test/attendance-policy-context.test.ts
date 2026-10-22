@@ -8,7 +8,7 @@ import {createCompany} from '../core/admin';
 import {createShift,assignDefaultShift,updateShift} from '../core/roster';
 import {ensureStandardRule} from '../core/attendance-rule';
 import {attendanceDayCalculationTx,recomputeDayFigures,attendancePolicyExecutionContextTx,scheduleAttendanceGroupPolicy,checkIn,checkOut,checkInTx,checkOutTx,canonicalOvertimeInputTx,canonicalOvertimePayrollInputTx,canonicalOvertimeToilInputTx,readOvertimeCalculationTx,createOvertimeCalculationOwner,calculateOvertimePatternDay,
- hasOvertimePatternForDayTx,hasRecordedAttendanceGroupPolicyTx,listCoveredOvertimeDaysTx,requestAttendanceCorrection,decideAttendanceCorrection} from '../packs/attendance/service';
+ hasOvertimePatternForDayTx,hasRecordedAttendanceGroupPolicyTx,listCoveredOvertimeDaysTx,requestAttendanceCorrection,decideAttendanceCorrection,cancelAttendanceApplication} from '../packs/attendance/service';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {HR_LOCAL_TZ,todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,entitledCtx,type Base} from './harness';
@@ -271,8 +271,8 @@ describe('dated-policy raw writer routing',()=>{
  async function clock(employmentId:string,date:string){
   await checkIn(ctx,{employmentId,date,time:'09:00'});await checkOut(ctx,{employmentId,date,time:'20:00'});
  }
- async function capturedClock(employmentId:string,date:string){
-  for(const [direction,time] of [['in','09:00:00'],['out','20:00:00']] as const){
+ async function capturedClock(employmentId:string,date:string,pairs:readonly (readonly ['in'|'out',string])[]=[['in','09:00:00'],['out','20:00:00']]){
+  for(const [direction,time] of pairs){
    const [capture]=await owner.db.insert(s.attendanceClockCapture).values({tenantId:b.tenantId,employmentId,attendanceDate:date,
     direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(date+'T'+time+'+08:00')}).returning();
    await (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId,date,time,clockCaptureId:capture.id,preciseOrder:true});
@@ -447,12 +447,16 @@ describe('dated-policy raw writer routing',()=>{
   expect(snapshot.attendanceGroupPolicy).toBeUndefined();expect(snapshot.input.approval.status).toBe('approved');
   expect(await owner.db.select().from(s.attendanceOvertimeCalculation)).toEqual([]);
  });
- it('does not let an older approval exempt a newer application from the dated policy contract',async()=>{
+ it('requires withdrawing the existing plan before a new policy application and preserves its approval history',async()=>{
   const f=await fixture();
   const old=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),requestedOtMinutes:120,
    reason:'Fictional original legacy plan',plannedStartTime:'18:00',plannedEndTime:'20:00',otReasonCategory:'project_deadline'});
   await decideAttendanceCorrection(ctx,{correctionId:old.correctionId,decision:'approved'});
   const revision=await f.save();
+  await expect(requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),requestedOtMinutes:60,
+   reason:'Fictional duplicate approved plan refusal',plannedStartTime:'18:00',plannedEndTime:'19:00',otReasonCategory:'project_deadline'})).rejects.toThrow('approved overtime plan');
+  const [originalDecision]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,old.correctionId));
+  await cancelAttendanceApplication(ctx,{correctionId:old.correctionId,kind:'withdrawn',reason:'Fictional explicit replacement after policy activation'});
   const next=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),requestedOtMinutes:60,
    reason:'Fictional new policy application',plannedStartTime:'18:00',plannedEndTime:'19:00',otReasonCategory:'project_deadline'});
   await decideAttendanceCorrection(ctx,{correctionId:next.correctionId,decision:'approved'});
@@ -461,7 +465,8 @@ describe('dated-policy raw writer routing',()=>{
   const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
   expect(snapshot.attendanceGroupPolicy?.id).toBe(revision.id);
   const [original]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,old.correctionId));
-  expect(original.status).toBe('approved');expect(original.appliedAt).toBeNull();
+  expect(original).toMatchObject({status:'cancelled',cancellationKind:'withdrawn',appliedAt:null,
+   approvedOtMinutes:originalDecision.approvedOtMinutes,decidedAt:originalDecision.decidedAt,decidedByEmploymentId:originalDecision.decidedByEmploymentId});
  });
  it('does not downgrade an application under an earlier new-policy revision into legacy mode',async()=>{
   const f=await fixture();await f.save();
@@ -483,8 +488,7 @@ describe('dated-policy raw writer routing',()=>{
   await capturedClock(f.employmentId,day(1));
   const [first]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,requested.correctionId)).limit(1);
   expect(first.appliedAt).toBeNull();
-  await checkIn(ctx,{employmentId:f.employmentId,date:day(1),time:'21:00'});
-  await checkOut(ctx,{employmentId:f.employmentId,date:day(1),time:'22:00'});
+  await capturedClock(f.employmentId,day(1),[['in','21:00:00'],['out','22:00:00']]);
   const [again]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,requested.correctionId)).limit(1);
   expect(again.appliedAt).toEqual(first.appliedAt);expect(again.approvedOtMinutes).toBe(first.approvedOtMinutes);
   const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
