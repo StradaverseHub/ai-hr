@@ -1,12 +1,14 @@
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
+import {and,desc,eq} from 'drizzle-orm';
 import type {SessionContext} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {saveMyTp1Draft,submitMyTp1,getMyTp1ById,listMyTp1Declarations,listMyTp1Versions,tp1Revision,
  getTp1ByIdForPerson,saveTp1DraftForPerson,submitTp1ForPerson,approveTp1ForPerson,rejectTp1ForPerson,
  getLatestApprovedTp1,Tp1ChangedError,type Tp1WriteInput} from '../packs/payroll/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {adminCtx,closeAll,createAppUser,migrateTestDb,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {domainEvent} from '../db/schema';
 let base:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();base=await seedBase();});
 async function employee(role:'employee'|'hr_admin'='employee') {
@@ -26,6 +28,11 @@ describe('monthly Mine TP1 shares canonical records, revisions and employer cons
   expect(await own(e,feb.id)).toMatchObject({id:feb.id,deductionMonth:2,tp1Amount:200});
   expect(await own(e,legacy.id)).toMatchObject({id:legacy.id,deductionMonth:null,tp1Amount:50});
   expect((await listMyTp1Declarations(e.ctx)).map(row=>[row.deductionMonth,row.tp1Amount,row.versions])).toEqual([[1,150,1],[2,200,1],[null,50,1]]);
+  const [savedEvent]=await owner.db.select({at:domainEvent.occurredAt}).from(domainEvent)
+   .where(and(eq(domainEvent.aggregateId,jan.id),eq(domainEvent.eventType,'tp1.draft.saved')))
+   .orderBy(desc(domainEvent.sequence)).limit(1);
+  expect(savedEvent).toBeDefined();
+  expect((await listMyTp1Declarations(e.ctx)).find(row=>row.id===jan.id)?.lastSavedAt).toEqual(savedEvent.at);
  });
  it('keeps Pending out of the feed and respects Payroll’s distinct effective month on the same transaction',async()=>{
   const e=await employee(),saved=await submitMyTp1(e.ctx,input(1));

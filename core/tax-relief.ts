@@ -1298,6 +1298,8 @@ export type Tp1MonthDeclaration = Tp1DeclarationSummary & {
   deductionMonth: number | null;
   approvedAt: Date | null;
   approvedMonth: number | null;
+  /** Latest saved draft event; old records without that evidence retain their creation timestamp. */
+  lastSavedAt?: Date;
 };
 
 /**
@@ -1342,6 +1344,10 @@ function listTp1MonthDeclarations(ctx: SessionContext, personId: string, assessm
         submittedAt: tp1Relief.submittedAt,
         createdAt: tp1Relief.createdAt,
         deductionMonth: tp1Relief.deductionMonth,
+        lastSavedAt:sql<Date>`coalesce((select max(ev.occurred_at) from public.domain_event ev
+          where ev.tenant_id=${tp1Relief.tenantId} and ev.aggregate_type='tp1-relief'
+            and ev.aggregate_id=${tp1Relief.id} and ev.event_type='tp1.draft.saved'),${tp1Relief.createdAt})`
+          .mapWith(tp1Relief.createdAt),
         approvedAt: tp1Relief.approvedAt,
         approvedMonth: tp1Relief.approvedMonth,
       })

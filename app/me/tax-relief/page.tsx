@@ -22,7 +22,7 @@ export default async function TaxReliefPage({searchParams}:{searchParams:Promise
   for(const key of ['dPage','dSize'] as const)if(sp[key]&&/^(?:\d{1,6}|all)$/.test(sp[key]!))historyParams.set(key,sp[key]!);
   const back='/me/tax-relief'+(historyParams.size?`?${historyParams}`:'');
   const rowHref=(id:string)=>`/me/tax-relief?${new URLSearchParams({...Object.fromEntries(historyParams),id})}`;
-  const rows:Tp1DeclarationListRow[]=declarations.map(row=>({id:row.id,assessmentYear:row.assessmentYear,deductionMonth:row.deductionMonth,monthLabel:monthName(row.deductionMonth),amount:row.tp1Amount.toFixed(2),status:row.status,versions:row.versions,lastSaved:savedAt(row.submittedAt??row.createdAt),href:rowHref(row.id),readOnly:!me||row.assessmentYear<currentYear,deleteHref:null}));
+  const rows:Tp1DeclarationListRow[]=declarations.map(row=>({id:row.id,assessmentYear:row.assessmentYear,deductionMonth:row.deductionMonth,monthLabel:monthName(row.deductionMonth),amount:row.tp1Amount.toFixed(2),status:row.status,versions:row.versions,lastSaved:savedAt(row.submittedAt??row.lastSavedAt??row.createdAt),href:rowHref(row.id),readOnly:!me||row.assessmentYear<currentYear,deleteHref:null}));
   if(sp.new==='1')return <div className={pageWideCls}>
     <PageHeader title={txn('addTitle')} back={{href:back,label:t('title')}} description={txn('addStepHint')}/>
     {!me?<Card className="p-6 text-sm text-muted-foreground">{t('notLinked')}</Card>:<Card className="p-5"><form method="GET" className="flex flex-wrap items-end gap-3">
