@@ -11,6 +11,8 @@ export type HomeGreetingCommand={
 export type HomeGreetingReceipt={
  version:1;employmentId:string;nonce:string;greetingId:string;state:'sent'|'erased';
 };
+export type HomeGreetingView={version:1;employmentId:string;greetingId:string;
+ kind:'birthday'|'anniversary';occurrenceDate:string;sentByMe:boolean;state:'sent'|'erased';message:string|null};
 export class HomeGreetingInputError extends Error{
  constructor(){super('The greeting request is invalid.');this.name='HomeGreetingInputError';}
 }
@@ -56,4 +58,14 @@ export function validateHomeGreetingReceipt(raw:unknown,expected:{employmentId:s
   greetingId:id(row.greetingId),state:row.state};
  if(receipt.employmentId!==id(expected.employmentId)||receipt.nonce!==id(expected.nonce))return invalid();
  return receipt;
+}
+export function validateHomeGreetingView(raw:unknown,expected:{employmentId:string;greetingId:string}):HomeGreetingView{
+ const row=object(raw,['version','employmentId','greetingId','kind','occurrenceDate','sentByMe','state','message']);
+ if(row.version!==1||row.kind!=='birthday'&&row.kind!=='anniversary'||typeof row.occurrenceDate!=='string'
+  ||!isCalendarDate(row.occurrenceDate)||typeof row.sentByMe!=='boolean'||row.state!=='sent'&&row.state!=='erased'
+  ||row.state==='erased'&&row.message!==null||row.state==='sent'&&homeGreetingMessage(row.message)!==row.message)return invalid();
+ const employmentId=id(row.employmentId),greetingId=id(row.greetingId);
+ if(employmentId!==id(expected.employmentId)||greetingId!==id(expected.greetingId))return invalid();
+ return {version:1,employmentId,greetingId,kind:row.kind,occurrenceDate:row.occurrenceDate,
+  sentByMe:row.sentByMe,state:row.state,message:row.message as string|null};
 }

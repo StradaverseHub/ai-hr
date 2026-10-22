@@ -97,7 +97,7 @@ const inScope = (f: PiiField, scope: ErasureScope) => scope === 'all' || f.scope
 
 function liftDate(terminatedOn: string): string {
   const d = new Date(terminatedOn);
-  d.setFullYear(d.getFullYear() + RETENTION_YEARS);
+  d.setUTCFullYear(d.getUTCFullYear() + RETENTION_YEARS);
   return d.toISOString().slice(0, 10);
 }
 /** Statutory hold lifts only RETENTION_YEARS after termination; while still employed it never lifts. */
@@ -117,6 +117,12 @@ export async function erasePersonPii(
   p: { subjectEmploymentId: string; scope: ErasureScope; reason: string; requestRef: string },
 ): Promise<ErasureReport> {
   return withTenant(ctx, async (tx) => {
+    // The canonical Access/privacy owner admits the original exact nullable effects first. Home's
+    // wrapper adds only private greeting content and binds even an otherwise empty erasure to its audit.
+    const [admission]=await tx.execute<{at:string}>(sql`select to_char(app.home_greeting_erasure_begin(${p.subjectEmploymentId}::uuid,${p.scope},${p.requestRef},${p.reason}) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as at`);
+    if(!admission?.at)throw new Error('Privacy erasure admission unavailable.');
+    const erasureAt=new Date(admission.at);
+    if(!Number.isFinite(erasureAt.getTime()))throw new Error('Privacy erasure admission unavailable.');
     const [emp] = await tx
       .select({ personId: employment.personId, terminatedOn: employment.terminatedOn })
       .from(employment)
@@ -125,7 +131,7 @@ export async function erasePersonPii(
     if (!emp) throw new Error(`No employment ${p.subjectEmploymentId} for PII erasure`);
 
     // (2) retention guard
-    const lifted = retentionLifted(emp.terminatedOn, new Date());
+    const lifted = retentionLifted(emp.terminatedOn, erasureAt);
     const erased: string[] = [];
     const withheld: { field: string; reason: string }[] = [];
     for (const f of PII_FIELDS) {
@@ -220,6 +226,10 @@ export async function erasePersonPii(
       const [consent] = await tx.execute(sql`select app.notification_email_revoke_contact(${p.subjectEmploymentId}::uuid) as revoked`) as unknown as {revoked:number}[];
       if (consent?.revoked) erased.push('workflowEmailConsent');
     }
+
+    const [greetings]=await tx.execute<{cleared:number}>(sql`select app.home_greeting_redact(${p.subjectEmploymentId}::uuid,${p.scope},${p.requestRef},${p.reason}) as cleared`);
+    if(!greetings||!Number.isSafeInteger(greetings.cleared)||greetings.cleared<0)throw new Error('Greeting erasure result unavailable.');
+    if(greetings.cleared>0)erased.push('homeGreetingMessages');
 
     // (5) audit record — no PII payload
     await appendEvent(tx, {

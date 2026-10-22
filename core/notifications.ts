@@ -211,7 +211,7 @@ type Rendered = { severity: NotificationSeverity; title: string; body: string; l
 type EventRef = { aggregateId: string; subjectEmploymentId: string | null };
 type Spec = {
   kind: string;
-  category: NotificationEmailCategory;
+  category: NotificationEmailCategory|null;
   /** `ev` is optional context (6522d26a) — most renders are payload-only; a spec may use the event ref
    *  for a recipient-specific deep-link (e.g. the HR issue-letter task links to the subject's profile). */
   render: (payload: Record<string, unknown> | null, ev: EventRef) => Rendered;
@@ -226,6 +226,13 @@ type Spec = {
 // Recipient defaults to the event's subjectEmploymentId. Keep titles/bodies short; deep-link into the
 // app where the full, gated detail lives.
 const REGISTRY: Record<string, Spec | Spec[]> = {
+  // This explicit command atomically point-projects its in-app notification. SQL refuses a forged
+  // event or a commit without that exact projection; the global cursor must not project it twice.
+  'employee-home.greeting.sent': {
+    kind:'employee-home.greeting',category:null,recipients:async()=>[],
+    render:(_payload,ev)=>({severity:'info',title:'employeeHome.greetingNotification.title',
+      body:'employeeHome.greetingNotification.body',linkPath:`/me/greetings/${ev.aggregateId}`}),
+  },
   'onboarding.digest': {
     kind:'onboarding.digest',category:'onboarding',
     recipients:async(tx,ev,payload)=>{
@@ -945,7 +952,7 @@ async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boo
             severity: r.severity,
             sourceEventId: ev.id,
           });
-          await tx.execute(sql`select app.notification_email_enqueue(${notificationId}::uuid,${spec.category},${ev.sequence}::bigint)`);
+          if(spec.category!==null)await tx.execute(sql`select app.notification_email_enqueue(${notificationId}::uuid,${spec.category},${ev.sequence}::bigint)`);
           created += 1;
         }
       }
@@ -988,6 +995,18 @@ export async function notificationStillTargets(tx: Tx, eventId: string, kind: st
     if (recipients.includes(recipient)) return true;
   }
   return false;
+}
+
+/** Explicit Home delivery uses the same registry/render owner, inside the originating command's
+ * transaction. A posted recipient/event cannot choose the projection target. No email is enqueued. */
+export async function projectHomeGreetingInTx(tx:Tx,greetingId:string):Promise<void>{
+ const [target]=await tx.execute<{source_event_id:string;recipient_employment_id:string}>(sql`SELECT * FROM app.home_greeting_projection_target(${greetingId}::uuid)`);
+ if(!target)return; // Already committed nonce: SQL supplied no new projection admission.
+ const spec=REGISTRY['employee-home.greeting.sent'];
+ if(!spec||Array.isArray(spec)||spec.category!==null)throw Error('Greeting projection unavailable');
+ const rendered=spec.render(null,{aggregateId:greetingId,subjectEmploymentId:target.recipient_employment_id});
+ await tx.insert(notification).values({id:randomUUID(),tenantId:sql`app.current_tenant_id()`,recipientEmploymentId:target.recipient_employment_id,
+  kind:spec.kind,title:rendered.title,body:rendered.body,linkPath:rendered.linkPath,severity:rendered.severity,sourceEventId:target.source_event_id});
 }
 
 // ─── recipient reads (RLS scopes every query to the caller's own notifications, across all the person's
