@@ -51,7 +51,7 @@ function approvedPlans(f:ReturnType<typeof fixture>,windows:{from:number;to:numb
    otApprovalMethod:'smaller_of',decidedByEmploymentId:id(9),decidedAt:new Date('2026-10-22T02:00:00.000Z'),
    appliedAt:null,cancelledAt:null,plannedStartTime:start,plannedEndTime:end,proposedCheckIn:null,proposedCheckOut:null,clockChanges:null});
   contracts.push({correctionId,tenantId:id(8),employmentId:f.context.employmentId,attendanceDate:f.context.date,
-   companyId:f.context.companyId,kind:'epoch',visibleEpoch:1,plannedWindow:plan,manualApprovalMethod:'smaller_of',recordedAt:new Date('2026-10-22T01:00:00.000Z')});
+   companyId:f.context.companyId,kind:'epoch',visibleEpoch:1,plannedWindow:plan,manualApprovalMethod:'smaller_of',policyBinding:null,recordedAt:new Date('2026-10-22T01:00:00.000Z')});
   receipts.push({correctionId,tenantId:id(8),employmentId:f.context.employmentId,attendanceDate:f.context.date,
    companyId:f.context.companyId,workflowRequestId:requestId,actorUserId:id(9),authority:'finalWorkflowDecisionOnly',submissionEpoch:1,
    requestEvidence:{requestedMinutes:minutes,approvedMinutes:minutes,method:'smaller_of',plannedStartLabel:start,plannedEndLabel:end,checkIn:null,checkOut:null,clockChanges:null},

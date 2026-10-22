@@ -76,6 +76,9 @@ describe('owner-issued final workflow receipt',()=>{
   await decideAttendanceCorrection(f.last.ctx,{correctionId:f.id,decision:'approved',expectedStageIndex:1,expectedParticipantSlot:'1:0'});
   const [receipt]=await owner.db.select().from(s.attendancePolicyFinalReceipt).where(eq(s.attendancePolicyFinalReceipt.correctionId,f.id));
   expect(receipt.rawEvidence).not.toBeNull();expect(receipt.workflowEvidence.routingVersion).toBe(3);
+  const [contract]=await owner.db.select().from(s.attendancePolicyRequestContract).where(eq(s.attendancePolicyRequestContract.correctionId,f.id));
+  expect(contract.policyBinding).toMatchObject({authority:'datedPolicyOnly',ruleId,employmentId:f.worker.employmentId,sourceDate:day(0),activation:{epoch:0}});
+  expect(receipt.workflowEvidence.submittedPolicy).toEqual(contract.policyBinding);
   const result=await withTenant(admin,async tx=>{
    const snapshot=await canonicalOvertimeInputTx(tx,admin,{employmentId:f.worker.employmentId,date:day(0)});
    const request=snapshot.policyApprovalInput?.requests.find(row=>row.id===f.id);

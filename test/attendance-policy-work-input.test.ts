@@ -240,7 +240,7 @@ describe('independent captured raw clock replay',()=>{
   const x=recorded([[540,1080]]),id='receipt-fixture',at='2026-10-23T12:00:00.000Z';
   const request:Parameters<typeof attendancePolicyFinalRawAgreement>[1]={id,status:'approved',cancelledAt:null,
    submissionContract:{state:'recorded',correctionId:id,tenantId:'tenant-fixture',employmentId:x.c.employmentId,
-    date:x.c.date,companyId:x.c.companyId,kind:'epoch',visibleEpoch:1,manualApprovalMethod:'requested',recordedAt:at},
+    date:x.c.date,companyId:x.c.companyId,kind:'epoch',visibleEpoch:1,manualApprovalMethod:'requested',policyBinding:attendancePolicyTraceBinding(x.c),recordedAt:at},
    finalReceipt:{state:'recorded',authority:'finalWorkflowDecisionOnly',correctionId:id,workflowRequestId:'workflow-fixture',
     actorUserId:'actor-fixture',submissionEpoch:1,recordedAt:at,request:{requestedMinutes:60,approvedMinutes:60,method:'requested',
      plannedStartLabel:null,plannedEndLabel:null,checkIn:null,checkOut:null,clockChanges:null},workflow:{},
@@ -278,7 +278,7 @@ describe('independent captured raw clock replay',()=>{
   }
   const cancelled=structuredClone(x.request);cancelled.cancelledAt='2026-10-23T13:00:00.000Z';
   expect(x.read(cancelled)).toMatchObject({state:'unavailable',reason:'finalReceiptUnavailable'});
-  x.c.selected.id='00000000-0000-4000-8000-000000000099';expect(x.read()).toMatchObject({state:'unavailable',reason:'rawEffectUnavailable'});
+  x.c.selected.id='00000000-0000-4000-8000-000000000099';expect(x.read()).toMatchObject({state:'unavailable',reason:'identityUnavailable'});
  });
  it('retains an epoch-zero raw policy identity without granting financial activation',()=>{
   const c=context();c.selected.activation.epoch=0;

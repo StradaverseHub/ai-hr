@@ -26,7 +26,7 @@ import type {EmployeeHomeConfiguration} from '../lib/employee-home';
 import { sql } from 'drizzle-orm';
 // TYPE-ONLY, and the only core/ import in this file. core/attendance-trace.ts is a deliberate LEAF with
 // no imports of its own, so this cannot close a cycle; `import type` is erased at runtime regardless.
-import type { AttendanceTraceV1 } from '../core/attendance-trace';
+import type { AttendanceTraceV1, TraceAttendancePolicyBinding } from '../core/attendance-trace';
 import {
   pgTable,
   foreignKey,
@@ -4534,7 +4534,7 @@ export const attendanceCorrection = pgTable(
     clockChanges: jsonb('clock_changes').$type<{ version: 1; baseline: string; entries: { id?: string; punchAt: string; direction: 'in' | 'out' }[] }>(),
     originalClockSnapshot: jsonb('original_clock_snapshot').$type<{
       version: 1; attendanceId: string | null; originalCheckIn: string | null;
-      originalCheckOut: string | null; capturedAt: string;
+      originalCheckOut: string | null; capturedAt: string; executionPolicy?: TraceAttendancePolicyBinding;
     }>(),
     status: attendanceCorrectionStatusEnum('status').notNull().default('pending'),
     decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
@@ -10520,6 +10520,7 @@ export const attendancePolicyRequestContract=pgTable('attendance_policy_request_
  kind:text('kind').notNull().$type<'epoch'|'unavailable'>(),visibleEpoch:bigint('visible_epoch',{mode:'number'}),
  plannedWindow:jsonb('planned_window').$type<Record<string,unknown>>(),
  manualApprovalMethod:text('manual_approval_method').$type<'requested'|'system_calculated'|'smaller_of'|'greater_of'>(),
+ policyBinding:jsonb('policy_binding').$type<TraceAttendancePolicyBinding>(),
  recordedAt:timestamp('recorded_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),
 });
 

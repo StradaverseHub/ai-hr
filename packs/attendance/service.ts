@@ -79,3 +79,5 @@ export {attendancePolicyRawFigures,type PolicyRawFigures} from './policy-raw-fig
 
 export {attendancePolicyRawDay,attendancePolicyUncapturedRawDay} from './policy-raw-day';
 export {lockAttendancePolicyImportTx,attendancePolicyImportRoutesTx} from './policy-import-input';
+
+export {attendancePolicyTraceBinding} from './policy-trace-binding';

@@ -206,6 +206,7 @@ CREATE TABLE public.attendance_policy_request_contract(
  kind text NOT NULL CHECK(kind IN('epoch','unavailable')),
  visible_epoch bigint CHECK(visible_epoch BETWEEN 0 AND 9007199254740991),
  planned_window jsonb CHECK(planned_window IS NULL OR jsonb_typeof(planned_window)='object'),
+ policy_binding jsonb CHECK(policy_binding IS NULL OR jsonb_typeof(policy_binding)='object'),
  manual_approval_method text CHECK(manual_approval_method IS NULL OR manual_approval_method IN('requested','system_calculated','smaller_of','greater_of')),
  recorded_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  CHECK((kind='epoch' AND company_id IS NOT NULL AND visible_epoch IS NOT NULL AND manual_approval_method IS NOT NULL)
@@ -253,6 +254,7 @@ CREATE FUNCTION app.capture_attendance_policy_request_contract() RETURNS trigger
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE v_count integer;v_company uuid;v_epoch bigint;v_kind text:='unavailable';
  plan jsonb;start_min integer;end_min integer;duration_min integer;manual_method text;
+ binding jsonb;bound public.attendance_group_policy_revision;
 BEGIN
  IF NEW.tenant_id=app.current_tenant_id() AND app.attendance_policy_principal_current() THEN
   SELECT count(*),min(a.company_id::text)::uuid INTO v_count,v_company
@@ -272,6 +274,25 @@ BEGIN
   END IF;
  END IF;
  IF v_kind='unavailable' THEN v_company:=NULL;v_epoch:=NULL;END IF;
+ -- The kernel's canonical resolver writes this identity into the existing immutable original
+ -- snapshot. A posted/GUC policy ID never selects a schedule here. Check its exact immutable
+ -- revision; future consumers must independently match the actual subject's current resolver.
+ binding:=NEW.original_clock_snapshot->'executionPolicy';
+ IF binding IS NOT NULL THEN
+  SELECT * INTO bound FROM public.attendance_group_policy_revision r
+   WHERE r.id=(binding->>'revisionId')::uuid AND r.tenant_id=NEW.tenant_id AND r.company_id=v_company;
+  IF v_kind<>'epoch' OR NOT FOUND OR bound.effective_from>NEW.attendance_date
+   OR bound.activation_epoch>v_epoch OR bound.created_at>clock_timestamp()
+   OR (binding->'activation'->>'recordedAt')::timestamptz IS DISTINCT FROM bound.created_at
+   OR binding IS DISTINCT FROM jsonb_build_object('authority','datedPolicyOnly','sourceDate',NEW.attendance_date,
+    'employmentId',NEW.employment_id,'companyId',v_company,'revisionId',bound.id,'ruleId',bound.rule_id,
+    'ordinal',bound.ordinal,'effectiveFrom',bound.effective_from,'pairing',bound.policy->'clock'->>'pairing',
+    'activation',jsonb_build_object('epoch',bound.activation_epoch,'actorUserId',bound.created_by_user_id,
+     'recordedAt',binding->'activation'->>'recordedAt')) THEN
+   RAISE EXCEPTION 'The submitted canonical policy identity is unavailable' USING ERRCODE='23514';
+  END IF;
+ END IF;
+
  -- Only newly submitted explicit minute windows acquire the dated plan contract. Historical
  -- labels, missing/equal/subminute endpoints and count-only requests cannot acquire one by replay.
  -- Reuse the existing Plan OT convention: date belongs to start; earlier end is the next day.
@@ -287,8 +308,8 @@ BEGIN
     'from',start_min,'to',start_min+duration_min,'requestedMinutes',duration_min);
   END IF;
  END IF;
- INSERT INTO public.attendance_policy_request_contract(correction_id,tenant_id,employment_id,attendance_date,company_id,kind,visible_epoch,planned_window,manual_approval_method)
-  VALUES(NEW.id,NEW.tenant_id,NEW.employment_id,NEW.attendance_date,v_company,v_kind,v_epoch,plan,manual_method);
+ INSERT INTO public.attendance_policy_request_contract(correction_id,tenant_id,employment_id,attendance_date,company_id,kind,visible_epoch,planned_window,manual_approval_method,policy_binding)
+  VALUES(NEW.id,NEW.tenant_id,NEW.employment_id,NEW.attendance_date,v_company,v_kind,v_epoch,plan,manual_method,binding);
  RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION app.capture_attendance_policy_request_contract() FROM PUBLIC,ai_hr_app;
@@ -490,7 +511,7 @@ BEGIN
    'plannedStartLabel',NEW.planned_start_time,'plannedEndLabel',NEW.planned_end_time,
    'checkIn',NEW.proposed_check_in,'checkOut',NEW.proposed_check_out,'clockChanges',NEW.clock_changes),
   jsonb_build_object('requestId',w.id,'routingVersion',w.routing_version,'stageCount',jsonb_array_length(w.stages),
-   'completion',to_jsonb(completion),'participants',participants,'submittedPlan',contract.planned_window,'submittedManualMethod',contract.manual_approval_method),raw);
+   'completion',to_jsonb(completion),'participants',participants,'submittedPlan',contract.planned_window,'submittedManualMethod',contract.manual_approval_method,'submittedPolicy',contract.policy_binding),raw);
  RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION app.capture_attendance_policy_final_receipt() FROM PUBLIC,ai_hr_app;

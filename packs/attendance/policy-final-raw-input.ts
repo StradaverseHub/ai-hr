@@ -25,17 +25,18 @@ export function attendancePolicyFinalRawAgreement(context:AttendancePolicyExecut
  const refuse=(reason:Extract<PolicyFinalRawAgreement,{state:'unavailable'}>['reason']):PolicyFinalRawAgreement=>
   ({state:'unavailable',authority:'retainedRawAgreementOnly',reason});
  if(context?.state!=='policy'||!tenantId||!current.attendanceId)return refuse('identityUnavailable');
- const submission=request.submissionContract,final=request.finalReceipt;
+ const submission=request.submissionContract,final=request.finalReceipt,binding=attendancePolicyTraceBinding(context);
  if(submission.state!=='recorded'||submission.kind!=='epoch'||submission.correctionId!==request.id
   ||submission.tenantId!==tenantId||submission.employmentId!==context.employmentId
-  ||submission.companyId!==context.companyId||submission.date!==context.date)return refuse('identityUnavailable');
+  ||submission.companyId!==context.companyId||submission.date!==context.date
+  ||!binding||!isDeepStrictEqual(submission.policyBinding,binding))return refuse('identityUnavailable');
  if(request.status!=='approved'||request.cancelledAt!==null||final.state!=='recorded'
   ||final.authority!=='finalWorkflowDecisionOnly'||final.correctionId!==request.id
   ||final.submissionEpoch!==submission.visibleEpoch)return refuse('finalReceiptUnavailable');
  // raw:null is the legitimate future-plan case and carries no worked-day proof.
  const raw=final.raw;
  if(!raw||typeof raw!=='object'||Array.isArray(raw))return refuse('rawEffectUnavailable');
- const binding=attendancePolicyTraceBinding(context),trace=current.trace;
+ const trace=current.trace;
  if(!binding||!trace||!isDeepStrictEqual(trace.executionPolicy,binding)
   ||raw.attendanceId!==current.attendanceId||raw.checkIn!==current.checkInAt||raw.checkOut!==current.checkOutAt
   ||raw.workedMinutes!==current.workedMinutes||raw.lateMinutes!==current.lateMinutes

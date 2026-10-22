@@ -8,7 +8,7 @@ import { provenCompanyDatesTx } from './employment-company';
 import { fullFlexiIntervals, fullFlexiBreakMinutes, type ClosedClockInterval } from '../lib/full-flexi-time';
 import { exceptionRevisionOn } from '../lib/schedule-exception';
 import { lockPayrollForOwnAttendanceRemoval } from '../packs/payroll/service';
-import { lockAttendancePolicyImportTx, attendancePolicyImportRoutesTx, attendancePolicyUncapturedRawDay, attendancePolicyRawInputTx, attendancePolicyRawDay, captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx, hasRecordedAttendanceGroupPolicyTx } from '../packs/attendance/service';
+import { attendancePolicyTraceBinding, lockAttendancePolicyImportTx, attendancePolicyImportRoutesTx, attendancePolicyUncapturedRawDay, attendancePolicyRawInputTx, attendancePolicyRawDay, captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx, hasRecordedAttendanceGroupPolicyTx } from '../packs/attendance/service';
 import { clockCommandContext } from '../lib/clock-command-context';
 import {resolveOwnClockEmployment} from './attendance-clock-subject';
 import { removalPreservesSequence } from '../lib/attendance-removal';
@@ -6601,13 +6601,28 @@ async function insertAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,p:{
   remark:string|null;requestKind:AttendanceRequestKind;
 }){
   const {clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind}=p;
+  // Freeze the server resolver's selected identity, never a form-supplied rule/revision. Use the
+  // existing configuration barrier BEFORE selection and the DB submission owner records/checks
+  // the immutable revision under the same transaction. This binding proves neither work nor pay.
+  let executionPolicy:ReturnType<typeof attendancePolicyTraceBinding>=null;
+  if(requestedOtMinutes!==null){
+    await tx.execute(sql`select app.lock_overtime_configuration(${ctx.tenantId}::uuid)`);
+    const context=await attendancePolicyExecutionContextTx(tx,ctx,{employmentId:p.employmentId,date:p.date});
+    if(context.state==='unavailable')throw Error('The submitted Attendance policy is unavailable.');
+    if(context.state==='policy'){
+      executionPolicy=attendancePolicyTraceBinding(context);
+      if(!executionPolicy)throw Error('The submitted Attendance policy identity is unavailable.');
+    }
+  }
+
     const [original] = clockChanges || checkIn || checkOut ? await tx.select({
       id: attendance.id, checkIn: attendance.checkInAt, checkOut: attendance.checkOutAt,
     }).from(attendance).where(and(eq(attendance.employmentId, p.employmentId), eq(attendance.attendanceDate, p.date))).limit(1) : [];
-    const originalClockSnapshot = clockChanges || checkIn || checkOut ? {
+    const originalClockSnapshot = clockChanges || checkIn || checkOut || executionPolicy ? {
       version: 1 as const, attendanceId: original?.id ?? null,
       originalCheckIn: original?.checkIn ?? null, originalCheckOut: original?.checkOut ?? null,
       capturedAt: new Date().toISOString(),
+      ...(executionPolicy?{executionPolicy}:{}),
     } : null;
     const [row] = await tx
       .insert(attendanceCorrection)

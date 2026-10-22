@@ -16,7 +16,7 @@ function submissionSource(policy:ResolvedAttendanceGroupPolicy,row:PolicyApprova
   :contract.kind!=='unavailable'||contract.companyId!==null||contract.visibleEpoch!==null)
   return {state:'unavailable' as const,reason:'invalidContract' as const};
  return {state:'recorded' as const,correctionId:contract.correctionId,tenantId:contract.tenantId,employmentId:contract.employmentId,
-  date:contract.attendanceDate,companyId:contract.companyId,kind:contract.kind,visibleEpoch:contract.visibleEpoch,manualApprovalMethod:contract.manualApprovalMethod,recordedAt:contract.recordedAt.toISOString()};
+  date:contract.attendanceDate,companyId:contract.companyId,kind:contract.kind,visibleEpoch:contract.visibleEpoch,manualApprovalMethod:contract.manualApprovalMethod,policyBinding:structuredClone(contract.policyBinding),recordedAt:contract.recordedAt.toISOString()};
 }
 /** Only the DB transition owner can mint this row. Its retained decision/effect is still not a
  * positioned plan, exception attestation, current physical replay or payable policy calculation. */
@@ -30,7 +30,8 @@ function finalReceiptSource(policy:ResolvedAttendanceGroupPolicy,row:PolicyAppro
   ||contract.employmentId!==row.employmentId||contract.attendanceDate!==row.attendanceDate||contract.companyId!==receipt.companyId
   ||contract.visibleEpoch!==receipt.submissionEpoch||!Number.isSafeInteger(receipt.submissionEpoch)||receipt.submissionEpoch<0
   ||receipt.authority!=='finalWorkflowDecisionOnly')return {state:'unavailable' as const,reason:'submissionMismatch' as const};
- if(contract.manualApprovalMethod!==row.otApprovalMethod||receipt.workflowEvidence?.submittedManualMethod!==contract.manualApprovalMethod)
+ if(contract.manualApprovalMethod!==row.otApprovalMethod||receipt.workflowEvidence?.submittedManualMethod!==contract.manualApprovalMethod
+  ||!isDeepStrictEqual(receipt.workflowEvidence?.submittedPolicy??null,contract.policyBinding))
   return {state:'unavailable' as const,reason:'submissionMismatch' as const};
  const request={requestedMinutes:row.requestedOtMinutes,approvedMinutes:row.approvedOtMinutes,method:row.otApprovalMethod,
   plannedStartLabel:row.plannedStartTime,plannedEndLabel:row.plannedEndTime,
