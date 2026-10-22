@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {deriveAttendancePolicyDurationProposal,type PolicyDurationProposalInput} from '../packs/attendance/policy-duration';
+import {deriveAttendancePolicyDurationProposal,deriveAttendancePolicyClockDurationProposal,type PolicyDurationProposalInput,type PolicyClockDurationProposalInput} from '../packs/attendance/policy-duration';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy,type AttendancePolicyDayClass} from '../lib/attendance-group-policy';
 import type {PolicyCalendarProof} from '../lib/attendance-policy-calendar';
 const companyId='00000000-0000-4000-8000-000000000001';
@@ -97,5 +97,52 @@ describe('shared dated-policy duration proposal',()=>{
   const f=fixture();f.eligibleActualIntervals=[{from:530,to:600}];expect(()=>deriveAttendancePolicyDurationProposal(f)).toThrow('worked coverage');
   f.eligibleActualIntervals=[];f.policy.overtime.enabled=false;const before=structuredClone(f);
   expect(calculated(f).payableMinutes).toBe(0);expect(f).toEqual(before);
+ });
+});
+
+describe('closed clock evidence into the shared duration proposal',()=>{
+ const raw=(id:string,minute:number,direction:'in'|'out',extraSeconds=0)=>({id,atSeconds:minute*60+extraSeconds,direction});
+ function input():PolicyClockDurationProposalInput{
+  // Deliberately retain the fixture's conflicting envelope fields in the spread. The capture entry
+  // point must derive its own coverage and cannot use them to fill the Auto lunch gap.
+  const rest=fixture();
+  return {...rest,clocks:[raw('a',540,'in'),raw('b',720,'out'),raw('c',780,'in'),raw('d',1140,'out')],actualEligibilityWindows:[{from:540,to:1140}],calendar:[calendar(sourceDate,'rest')]};
+ }
+ it('lets Auto count actual closed pairs while explicit First In Last Out counts its boundary envelope',()=>{
+  const f=input(),before=structuredClone(f),auto=deriveAttendancePolicyClockDurationProposal(f);
+  expect(auto.clockEvidence?.complete).toBe(true);expect(auto.duration).toMatchObject({status:'calculated',payableMinutes:540});
+  f.policy.clock.pairing='firstInLastOut';const outer=deriveAttendancePolicyClockDurationProposal(f);
+  expect(outer.duration).toMatchObject({status:'calculated',payableMinutes:600});
+  expect(before.clocks).toEqual(f.clocks);expect(outer.authority).toBe('proposalOnly');
+ });
+ it('prevents too-close boundary seconds from reaching duration finalization',()=>{
+  const f=input();f.policy.clock.minimumIntervalMinutes=1;f.clocks=[raw('a',540,'in',1),raw('b',541,'out')];
+  const rejected=deriveAttendancePolicyClockDurationProposal(f);
+  expect(rejected.clockEvidence?.flags).toEqual([{kind:'close',clockIds:['a','b']}]);
+  expect(rejected.duration).toEqual({status:'unavailable',reason:'workedEvidenceUnavailable',authority:'proposalOnly'});
+  f.clocks=[raw('a',540,'in',1),raw('b',541,'out',1)];
+  expect(deriveAttendancePolicyClockDurationProposal(f).duration).toMatchObject({status:'calculated',payableMinutes:1});
+ });
+ it('does not let an enabled unclocked setting attest its own missing worked evidence',()=>{
+  const f=input();f.policy.overtime.allowBackdatedWithoutClock=true;f.clocks=null;
+  expect(deriveAttendancePolicyClockDurationProposal(f)).toEqual({authority:'proposalOnly',clockEvidence:null,duration:{status:'unavailable',reason:'workedEvidenceUnavailable',authority:'proposalOnly'}});
+ });
+ it('keeps missing eligibility distinct from a known empty window and intersects windows with proved work',()=>{
+  const f=input();f.actualEligibilityWindows=null;
+  expect(deriveAttendancePolicyClockDurationProposal(f).duration).toMatchObject({status:'unavailable',reason:'eligibleEvidenceUnavailable'});
+  f.actualEligibilityWindows=[];expect(deriveAttendancePolicyClockDurationProposal(f).duration).toMatchObject({status:'calculated',payableMinutes:0});
+  f.actualEligibilityWindows=[{from:720,to:780}];expect(deriveAttendancePolicyClockDurationProposal(f).duration).toMatchObject({status:'calculated',payableMinutes:0});
+ });
+ it('retains unmatched output evidence for review without making it a worked interval',()=>{
+  const f=input();f.clocks=[raw('out-only',600,'out')];const result=deriveAttendancePolicyClockDurationProposal(f);
+  expect(result.clockEvidence).toMatchObject({complete:false,checkInSecond:null,checkOutSecond:36000,minuteIntervals:[]});
+  expect(result.duration).toMatchObject({status:'unavailable',reason:'workedEvidenceUnavailable'});
+ });
+ it('keeps explicit overnight second evidence and both actual-date calendar parts under one proposal',()=>{
+  const f=input();f.policy.overtime.splitAtMidnight=true;f.clocks=[{id:'a',atSeconds:86399,direction:'in'},{id:'b',atSeconds:86461,direction:'out'}];
+  f.actualEligibilityWindows=[{from:1439,to:1441}];f.calendar=[calendar(),calendar(nextDate,'rest')];
+  const result=deriveAttendancePolicyClockDurationProposal(f);
+  expect(result.clockEvidence?.intervals).toEqual([{inSecond:86399,outSecond:86461}]);
+  expect(result.duration).toMatchObject({status:'calculated',payableMinutes:2,parts:[{date:sourceDate,minutes:1},{date:nextDate,minutes:1}]});
  });
 });

@@ -69,4 +69,4 @@ export { previewCardImport, commitCardImport, cardImportExisting, assertCardImpo
 export { setEmploymentCardId } from '../../core/attendance-card';
 
 // Shared dated-policy arithmetic; proposals do not authorize approval, pricing or settlement.
-export {deriveAttendancePolicyDurationProposal,type PolicyDurationProposalInput,type PolicyDurationProposal} from './policy-duration';
+export {deriveAttendancePolicyDurationProposal,deriveAttendancePolicyClockDurationProposal,type PolicyDurationProposalInput,type PolicyDurationProposal,type PolicyClockDurationProposalInput,type PolicyClockDurationProposal} from './policy-duration';

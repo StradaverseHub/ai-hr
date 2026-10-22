@@ -6,6 +6,7 @@ import {attendancePolicyIntervalMinutes as minutes,unionAttendancePolicyInterval
  intersectAttendancePolicyIntervals as intersect,subtractAttendancePolicyIntervals as subtract,
  offsetAttendancePolicyIntervals as offset,type AttendancePolicyInterval} from '../../lib/attendance-policy-intervals';
 import {partitionAttendancePolicyWork,type AttendancePolicyPart,type PolicyCalendarProof} from './policy-partition';
+import {attendancePolicyClockSecondEvidence,type PolicyClockSecond,type PolicyClockSecondEvidence} from '../../lib/attendance-policy-clocks';
 import {overtimeDate,overtimeUuid} from '../../lib/overtime-pattern-schema';
 import {finalizePolicyOvertimeDuration,type PolicyOvertimeDurationStep} from '../../core/attendance-calc';
 
@@ -108,4 +109,23 @@ export function deriveAttendancePolicyDurationProposal(input:PolicyDurationPropo
  for(const part of parts)part.allocations.sort((a,b)=>a.from-b.from||a.to-b.to);
  return {status:'calculated',authority:'proposalOnly',intervalBasis:input.method==='preApproved'?'approvedPlan':'actual',lateOffsetMinutes:afterOffset.removedMinutes,
   selectionSteps,parts,classes,payableMinutes};
+}
+
+export type PolicyClockDurationProposalInput=Omit<PolicyDurationProposalInput,'workedIntervals'|'eligibleActualIntervals'>&{
+ /** Already resolved absolute source-day seconds. Missing placement never becomes a guessed clock. */
+ clocks:readonly PolicyClockSecond[]|null;
+ /** Resolved schedule eligibility windows, before intersecting with actual closed work and breaks. */
+ actualEligibilityWindows:readonly AttendancePolicyInterval[]|null;
+};
+export type PolicyClockDurationProposal={authority:'proposalOnly';clockEvidence:PolicyClockSecondEvidence|null;duration:PolicyDurationProposal};
+/** Entry point for captured-clock policy arithmetic. Closed work is derived from clock evidence;
+ * a caller cannot substitute a worked envelope while selecting Auto or suppress close-event flags.
+ * A missing-clock exception must use its separate attestation owner, not this capture adapter. */
+export function deriveAttendancePolicyClockDurationProposal(input:PolicyClockDurationProposalInput):PolicyClockDurationProposal{
+ const policy=validateAttendanceGroupPolicy(input.policy,input.periodMinutes);
+ const clockEvidence=input.clocks===null?null:attendancePolicyClockSecondEvidence(input.clocks,policy.clock,input.periodMinutes);
+ const workedIntervals=clockEvidence?.complete?clockEvidence.minuteIntervals.map(interval=>({from:interval.inAbs,to:interval.outAbs})):null;
+ const eligibleActualIntervals=workedIntervals===null||input.actualEligibilityWindows===null?null:
+  intersect(workedIntervals,input.actualEligibilityWindows,input.periodMinutes);
+ return {authority:'proposalOnly',clockEvidence,duration:deriveAttendancePolicyDurationProposal({...input,workedIntervals,eligibleActualIntervals})};
 }

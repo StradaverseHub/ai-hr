@@ -155,6 +155,11 @@ adapter cannot infer a date from a clock label. A 59-second gap across a minute 
 close under a one-minute rule. Distinct seconds in the same minute are not duplicate events. Complete
 sub-minute pairs remain in the exact evidence while contributing no invented minute interval. The old
 Full Flexi processor and existing minute adapter retain their established treatment.
+The captured-clock entry point derives worked coverage from this evidence and intersects it with the
+canonical schedule's eligibility windows before calling the shared duration coordinator. Flagged,
+unmatched or missing clock placement cannot be replaced by a posted worked envelope. Enabling the
+unclocked setting alone does not attest missing work. This remains proposal arithmetic; source writes,
+new approval receipts, immutable evidence and Payroll acceptance are still separate unfinished work.
 
 ## Required implementation and evidence
 
