@@ -373,6 +373,12 @@ pay. Positioned schedule/capture proofs, actual raw-writer integration and runti
 required. In particular scalar/flexible breaks and duration-only schedules are still unavailable in
 this positioned source branch; the projection never infers their ownership.
 
+The canonical schedule now supplies an independent fixed-clock boundary proof. A scalar/flexible
+break or count-adjusted overtime window can keep worked/OT placement unavailable without suppressing
+lateness measured from separately proved scheduled and captured boundaries. Complete placement reuses
+the same boundary owner; an explicit boundary refusal cannot fall back past that refusal. Duration-only
+schedules retain their separate owner. This remains source preparation, not raw-day execution or pay.
+
 ## Atomic proposal part materialization
 
 The existing transaction/principal-bound calculation owner can now persist a complete, non-payable

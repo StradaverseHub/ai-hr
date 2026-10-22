@@ -20,13 +20,26 @@ const clock=(value:string|null):number|null=>{
  if(value===null||!/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.0+)?)?$/.test(value))return null;
  return Number(value.slice(0,2))*60+Number(value.slice(3,5));
 };
+/** Clock-boundary proof is independent of unpaid-break and overtime-window attribution. */
+export type PolicyClockPlacement=
+ |{state:'unavailable';authority:'sourceOnly';reason:'durationOwner'|'scheduleBoundaryUnavailable'}
+ |{state:'known';authority:'sourceOnly';scheduled:AttendancePolicyInterval;fixedClock:boolean;
+   includeGraceInLateness:boolean;includeGraceInEarlyOut:boolean};
+export function attendancePolicyClockPlacement(s:Pick<PolicySchedulePlacementInput,'start'|'end'|'crossesMidnight'|'durationOnly'|'flexiDuration'|'dayType'|'includeGraceInLateness'|'includeGraceInEarlyOut'>):PolicyClockPlacement{
+ if(s.durationOnly||s.flexiDuration)return {state:'unavailable',authority:'sourceOnly',reason:'durationOwner'};
+ const start=clock(s.start),last=clock(s.end),end=last===null?null:last+(s.crossesMidnight?1440:0);
+ if(start===null||end===null||end<=start)return {state:'unavailable',authority:'sourceOnly',reason:'scheduleBoundaryUnavailable'};
+ return {state:'known',authority:'sourceOnly',scheduled:{from:start,to:end},fixedClock:s.dayType==='workday',
+  includeGraceInLateness:s.includeGraceInLateness,includeGraceInEarlyOut:s.includeGraceInEarlyOut};
+}
 /** A scalar allowance cannot be converted into a fictional break window. Retain that owner's
  * refusal until an explicit count-attribution contract can account for it through all consumers. */
 export function attendancePolicySchedulePlacement(s:PolicySchedulePlacementInput,policy:AttendanceGroupPolicy):PolicySchedulePlacement{
  const unavailable=(reason:Extract<PolicySchedulePlacement,{state:'unavailable'}>['reason']):PolicySchedulePlacement=>({state:'unavailable',authority:'sourceOnly',reason});
- if(s.durationOnly||s.flexiDuration)return unavailable('durationOwner');
- const start=clock(s.start),last=clock(s.end),end=last===null?null:last+(s.crossesMidnight?1440:0);
- if(start===null||end===null||end<=start||!Number.isSafeInteger(s.breakMinutes)||s.breakMinutes<0||s.breakMinutes>4320)
+ const boundary=attendancePolicyClockPlacement(s);
+ if(boundary.state!=='known')return boundary;
+ const {from:start,to:end}=boundary.scheduled;
+ if(!Number.isSafeInteger(s.breakMinutes)||s.breakMinutes<0||s.breakMinutes>4320)
   return unavailable('scheduleBoundaryUnavailable');
  if(s.flexibleBreakMinutes!==null||s.breakPeriods?.some(row=>!row.paid&&row.flexible&&row.flexibleMinutes!==undefined))
   return unavailable('unpositionedBreak');

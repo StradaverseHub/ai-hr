@@ -1,6 +1,6 @@
 /** Pure source geometry only, not real-capture, approval, Payroll or application acceptance. */
 import {describe,expect,it} from 'vitest';
-import {attendancePolicySchedulePlacement,type PolicySchedulePlacementInput} from '../core/attendance-policy-schedule';
+import {attendancePolicyClockPlacement,attendancePolicySchedulePlacement,type PolicySchedulePlacementInput} from '../core/attendance-policy-schedule';
 import {attendancePolicyWorkInput} from '../packs/attendance/policy-work-input';
 import {attendancePolicyClockMeasurements} from '../packs/attendance/policy-clock-measurements';
 import {attendancePolicyClockMillisecondEvidence} from '../lib/attendance-policy-clocks';
@@ -14,7 +14,7 @@ const schedule=():PolicySchedulePlacementInput=>({start:'09:00',end:'18:00',cros
 function context(s=schedule(),p=policy()):Extract<AttendancePolicyExecutionContext,{state:'policy'}>{return {
  state:'policy',employmentId:'00000000-0000-4000-8000-000000000001',date:'2026-10-23',companyId:'00000000-0000-4000-8000-000000000002',timeZone:'Asia/Kuala_Lumpur',
  selected:{id:'00000000-0000-4000-8000-000000000003',companyId:'00000000-0000-4000-8000-000000000002',ruleId:'00000000-0000-4000-8000-000000000004',ordinal:1,effectiveFrom:'2026-10-23',policy:p,activation:{epoch:1,actorUserId:'00000000-0000-4000-8000-000000000005',recordedAt:'2026-10-22T00:00:00.000Z',reason:'Fictional policy source'}},
- resolvedClock:p.clock,schedule:{...s,breakPeriods:s.breakPeriods?.map(row=>({...row}))??null,source:'default-shift',shiftId:null,ruleId:'00000000-0000-4000-8000-000000000004',normalMinutes:480},calendar:[],placement:attendancePolicySchedulePlacement(s,p)};}
+ resolvedClock:p.clock,schedule:{...s,breakPeriods:s.breakPeriods?.map(row=>({...row}))??null,source:'default-shift',shiftId:null,ruleId:'00000000-0000-4000-8000-000000000004',normalMinutes:480},calendar:[],clockPlacement:attendancePolicyClockPlacement(s),placement:attendancePolicySchedulePlacement(s,p)};}
 const clocks=(pairs:[number,number][],p=policy())=>attendancePolicyClockMillisecondEvidence(pairs.flatMap(([a,b],index)=>[
  {id:`in_${index}`,atMilliseconds:a*60000,direction:'in' as const},{id:`out_${index}`,atMilliseconds:b*60000,direction:'out' as const}]),p.clock,4320);
 describe('canonical policy schedule and work source projection',()=>{
@@ -67,6 +67,22 @@ describe('canonical policy schedule and work source projection',()=>{
   expect(attendancePolicyWorkInput(c,close)).toEqual({state:'unavailable',authority:'sourceOnly',reason:'incompleteClockEvidence'});
   expect(attendancePolicyWorkInput(c,undefined)).toMatchObject({state:'unavailable',reason:'clockEvidenceUnavailable'});
   expect(attendancePolicyWorkInput(undefined,clocks([[480,1200]]))).toMatchObject({state:'unavailable',reason:'scheduleUnavailable'});
+ });
+});
+
+describe('independent clock boundary and break ownership',()=>{
+ it('measures proved lateness without inventing scalar or flexible break placement',()=>{
+  for(const s of [{...schedule(),breakPeriods:null},{...schedule(),flexibleBreakMinutes:60}]){
+   const c=context(s),proof=clocks([[570,1050]]);
+   expect(attendancePolicyClockMeasurements(c,proof)).toMatchObject({state:'measured',lateIn:{state:'known',minutes:20},earlyOut:{state:'known',minutes:15}});
+   expect(attendancePolicyWorkInput(c,proof)).toMatchObject({state:'unavailable',reason:'positionedScheduleUnavailable'});
+  }
+ });
+ it('does not fall back past an explicitly unavailable boundary or guess a duration-only start',()=>{
+  const c=context();c.clockPlacement={state:'unavailable',authority:'sourceOnly',reason:'scheduleBoundaryUnavailable'};
+  expect(attendancePolicyClockMeasurements(c,clocks([[570,1050]]))).toMatchObject({state:'unavailable',reason:'positionedScheduleUnavailable'});
+  expect(attendancePolicyClockMeasurements(context({...schedule(),durationOnly:true}),clocks([[570,1050]])))
+   .toMatchObject({state:'unavailable',reason:'positionedScheduleUnavailable'});
  });
 });
 

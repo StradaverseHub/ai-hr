@@ -23,7 +23,9 @@ export function attendancePolicyClockMeasurements(context:AttendancePolicyExecut
  const unavailable=(reason:Extract<PolicyClockMeasurements,{state:'unavailable'}>['reason']):PolicyClockMeasurements=>({state:'unavailable',authority:'sourceOnly',reason});
  if(context?.state!=='policy')return unavailable('scheduleUnavailable');
  if(!clocks)return unavailable('clockEvidenceUnavailable');
- const placement=context.placement;
+ // Historical prepared contexts may carry only a positively known complete placement.
+ // A new canonical context always supplies the independent boundary proof, including refusals.
+ const placement=context.clockPlacement??context.placement;
  if(placement.state!=='known')return unavailable('positionedScheduleUnavailable');
  const complete=clocks.complete&&!clocks.requiresReview;
  if(!placement.fixedClock)return {state:'measured',authority:'sourceOnly',complete,requiresReview:clocks.requiresReview,
