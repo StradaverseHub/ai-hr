@@ -6,7 +6,7 @@ import {PermissionMatrix} from '../app/admin/settings/profile-requests/permissio
 import {essVisibleFields,resolveEssEditableIds,resolveEssPrimaryEditableIds} from '../lib/personnel-ess-contract';
 import {resolveEssVisibleIds,linkedEssFieldIds} from '../lib/personnel-ess-visibility';
 import {ESS_PROFILE_TABS,PERSONNEL_ESS_SECTION_LABEL_KEYS} from '../lib/personnel-ess-model';
-import {personnelFieldLabel} from '../lib/personnel-field-registry';
+import {personnelFieldLabel} from '../lib/personnel-field-label';
 import {profileTabPolicyKey,profileSectionPolicyKey} from '../lib/profile-edit-policy-value';
 const tabs=['profile','family','job','careerMovement','attendance','bankStatutory','payroll','leave','documents','qualification','others'];
 function text(source:unknown,path:string,fallback=path):string{
