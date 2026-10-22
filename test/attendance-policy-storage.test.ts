@@ -227,6 +227,8 @@ describe('immutable non-payable policy part storage',()=>{
   if(recorded.status!=='recorded')throw Error('Expected staged calculation');
   const reviewed=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
   expect(reviewed?.evidence?.evidence.policyPricingProposal).toEqual(pricing);
+  const [rawDay]=await owner.db.select().from(s.attendance).where(eq(s.attendance.employmentId,f.employmentId));
+  expect(rawDay.calcTrace?.executionPolicy).toMatchObject({revisionId:f.revisionId,employmentId:f.employmentId,sourceDate:p.date,companyId:b.companyId,authority:'datedPolicyOnly'});
   const cash=attendancePolicyCashReplay(snapshot);expect(cash).toMatchObject({state:'known',minutes:20,amountMinorUnits:'600'});
   expect(reviewed?.evidence?.evidence.policyCashReplay).toEqual(cash);
   expect(attendancePolicyCurrentCashMatches(snapshot,cash)).toBe(true);

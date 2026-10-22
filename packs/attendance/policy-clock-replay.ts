@@ -1,3 +1,4 @@
+import {attendancePolicyTraceBinding} from './policy-trace-binding';
 /** Independent captured-clock replay for canonical consumers; no approval, price or settlement. */
 import {isDeepStrictEqual} from 'node:util';
 import type {AttendancePolicyExecutionContext} from '../../core/attendance';
@@ -7,7 +8,7 @@ import {attendancePolicyClockMillisecondEvidence,type PolicyClockMillisecondEvid
 import {attendancePolicyRawWorkedMinutes} from './policy-work-input';
 import {attendancePolicyClockMeasurements} from './policy-clock-measurements';
 export type PolicyRawClockReplay=
- |{state:'unavailable';authority:'proposalOnly';reason:'sourceUnavailable'|'scheduleOwnerUnavailable'|'rawSourceMismatch'}
+ |{state:'unavailable';authority:'proposalOnly';reason:'sourceUnavailable'|'scheduleOwnerUnavailable'|'policyBindingUnavailable'|'rawSourceMismatch'}
  |{state:'known';authority:'proposalOnly';evidence:PolicyClockMillisecondEvidence};
 type RawDay={checkInAt:string|null;checkOutAt:string|null;workedMinutes:number|null;lateMinutes:number|null;
  earlyOutMinutes:number|null;underMinutes:number|null;dayType:'workday'|'rest_day'|'holiday'|null};
@@ -24,6 +25,8 @@ export function replayAttendancePolicyRawClocks(context:AttendancePolicyExecutio
  if(source?.state!=='known')return refuse('sourceUnavailable');
  if(context?.state!=='policy'||!trace||day.dayType===null||trace.schedule.ruleId!==context.schedule.ruleId||trace.schedule.dayType!==day.dayType)
   return refuse('scheduleOwnerUnavailable');
+ const binding=attendancePolicyTraceBinding(context);
+ if(!binding||!isDeepStrictEqual(trace.executionPolicy,binding))return refuse('policyBindingUnavailable');
  const evidence=attendancePolicyClockMillisecondEvidence(source.clocks,context.resolvedClock,4320);
  const first=evidence.checkInMillisecond,last=evidence.checkOutMillisecond;
  if(first===null)return refuse('rawSourceMismatch');

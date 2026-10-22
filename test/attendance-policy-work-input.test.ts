@@ -234,6 +234,20 @@ describe('independent captured raw clock replay',()=>{
     dayType:s.dayType,halfDayBefore:780,fallbackIn:null,fallbackOut:null});
   return {c,source,row:{...row,dayType:s.dayType},trace:row.calcTrace!};
  }
+ it('retains the resolved policy identity and refuses missing or substituted bindings',()=>{
+  const x=recorded([[540,1080]]);
+  expect(x.trace.executionPolicy).toMatchObject({authority:'datedPolicyOnly',revisionId:x.c.selected.id,
+   employmentId:x.c.employmentId,sourceDate:x.c.date,companyId:x.c.companyId,ruleId:x.c.schedule.ruleId,
+   activation:{epoch:x.c.selected.activation.epoch},pairing:x.c.resolvedClock.pairing});
+  const missing=structuredClone(x.trace);delete missing.executionPolicy;
+  expect(replayAttendancePolicyRawClocks(x.c,x.source,missing,x.row)).toMatchObject({state:'unavailable',reason:'policyBindingUnavailable'});
+  for(const field of ['revisionId','companyId','employmentId','sourceDate','ruleId'] as const){
+   const changed=structuredClone(x.trace);changed.executionPolicy![field]='substituted';
+   expect(replayAttendancePolicyRawClocks(x.c,x.source,changed,x.row)).toMatchObject({state:'unavailable',reason:'policyBindingUnavailable'});
+  }
+  const changed=structuredClone(x.trace);changed.executionPolicy!.activation.epoch++;
+  expect(replayAttendancePolicyRawClocks(x.c,x.source,changed,x.row)).toMatchObject({state:'unavailable',reason:'policyBindingUnavailable'});
+ });
  it('replays closed pairs rather than rejecting Auto or accepting their elapsed gap',()=>{
   const x=recorded([[540,720],[840,1080]]);
   expect(x.row.workedMinutes).toBe(420);
