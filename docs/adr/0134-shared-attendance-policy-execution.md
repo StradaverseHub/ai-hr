@@ -243,6 +243,22 @@ A 59.950-second gap across midnight remains close even where flooring both insta
 make it appear to be 60 seconds. Actual worked-result writes, Full Flexi owner integration, grace,
 positioned breaks, approval, policy parts and financial replay still remain unfinished. Retaining capture provenance establishes no payable effect.
 
+## Retained execution context
+
+The canonical policy snapshot now consumes the existing Attendance execution-context reader for dated
+schedule facts, resolved shift/group grace and all bounded actual-date calendar classifications. The
+same selected revision, employer, group, source, shift, cutoff, normal/break minutes, start/end and
+midnight mode must match the stored raw calculation. A changed or missing recorded schedule yields an
+unavailable context rather than borrowing current windows to explain old work. The complete source
+context participates in input freshness and immutable evidence; it cannot approve an effect. The
+identity/measure comparison does not prove historical break-window or grace inputs absent from the old
+trace; the execution writer must derive and retain those complete inputs before using them for a result.
+
+The millisecond review also requires the resolved context to identify an ordinary fixed-clock owner.
+Full Flexi/duration-only work remains explicitly excluded from that generic branch. Stored legacy
+snapshots are unchanged. Positioned break/eligibility execution, immutable approvals, part production
+and independent financial replay still remain required before release.
+
 ## Required implementation and evidence
 
 - [ ] Map each approved control to its stored owner, execution consumer, preview and immutable trace.

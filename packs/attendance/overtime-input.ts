@@ -9,6 +9,7 @@ import {assignment, attendance, attendanceCorrection, attendancePunch, company, 
 import {provenCompanyDatesTx} from '../../core/employment-company';
 import {compensationEffectiveOn} from '../../core/comp';
 import {isAttendanceTrace} from '../../core/attendance-trace';
+import {attendancePolicyExecutionContextTx} from '../../core/attendance';
 import {assertModuleGate} from '../../core/module-gate';
 import {currencyMinorScale, isCurrencyCode} from '../../lib/currencies';
 import {todayInKualaLumpur} from '../../lib/hr-date';
@@ -124,6 +125,23 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   const policyClockSource=selectedPolicy?await recordedPolicyClockSourceTx(tx,ctx,{attendanceId:day.id,employmentId:p.employmentId,date:p.date,punches}):undefined;
   const assigned = assignments[0], salary = salaries.length === 1 ? salaries[0] : null;
   const trace = isAttendanceTrace(day.calcTrace) ? day.calcTrace : null;
+  let policyExecutionContext:CanonicalOvertimeSnapshot['policyExecutionContext'];
+  if(selectedPolicy){
+    const resolved=await attendancePolicyExecutionContextTx(tx,ctx,p);
+    const clockMinute=(clock:string|null)=>clock===null?null:Number(clock.slice(0,2))*60+Number(clock.slice(3,5));
+    // Live configuration is a source input, not proof that an older raw result used it. Refuse a
+    // mismatched recorded schedule rather than grafting new windows onto a historical calculation.
+    if(resolved.state==='policy'&&trace&&resolved.selected.id===selectedPolicy.id&&resolved.companyId===selectedPolicy.companyId
+      &&resolved.schedule.ruleId===trace.schedule.ruleId&&resolved.schedule.source===trace.schedule.source
+      &&resolved.schedule.shiftId===trace.schedule.shiftId&&resolved.schedule.crossesMidnight===trace.schedule.crossesMidnight
+      &&resolved.schedule.dailyCutoffMinutes===trace.schedule.dailyCutoffMinutes
+      &&resolved.schedule.normalMinutes===(trace.schedule.normalMinutesOverride??trace.schedule.scheduledMinutes)
+      &&resolved.schedule.breakMinutes===trace.schedule.breakMinutes&&clockMinute(resolved.schedule.start)===trace.schedule.startAbs
+      &&(resolved.schedule.end===null?null:clockMinute(resolved.schedule.end)!+(resolved.schedule.crossesMidnight?1440:0))===trace.schedule.endAbs)
+      policyExecutionContext=resolved;
+    else policyExecutionContext={state:'unavailable',reason:'scheduleUnavailable'};
+  }
+
   const attendanceProvenance = (field: string): OvertimeProvenance => ({owner: 'attendance', reference: day.id + ':' + field, asOf: p.date, basis: 'recorded'});
   const assignmentProvenance = (field: string): OvertimeProvenance => ({owner: 'personnel', reference: assigned.id + ':' + field, asOf: p.date, basis: 'effectiveDated'});
   const facts: OvertimeFacts = {};
@@ -166,16 +184,17 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   let policyClockReview:CanonicalOvertimeSnapshot['policyClockReview'];
   if(selectedPolicy){
     if(policyClockSource?.state!=='known')policyClockReview={authority:'proposalOnly',state:'unavailable',reason:'sourceUnavailable'};
-    else if(trace?.schedule.fixedClockApplicable!==true||trace.punch.intervalSource!=='elapsedEnvelope')
+    else if(policyExecutionContext?.state!=='policy'||policyExecutionContext.schedule.durationOnly||policyExecutionContext.schedule.flexiDuration
+      ||trace?.schedule.fixedClockApplicable!==true||trace.punch.intervalSource!=='elapsedEnvelope')
       policyClockReview={authority:'proposalOnly',state:'unavailable',reason:'scheduleOwnerUnavailable'};
     else policyClockReview={authority:'proposalOnly',state:'known',
       evidence:attendancePolicyClockMillisecondEvidence(policyClockSource.clocks,selectedPolicy.policy.clock,4320)};
   }
   const inputDigest = fingerprint({day: {id: day.id, date: day.attendanceDate, checkIn: day.checkInAt, checkOut: day.checkOutAt, status: day.status, dayType: day.dayType, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, calculation: trace ? {v: trace.v, schedule: trace.schedule, punch: trace.punch, lateness: trace.lateness, legacyManualRows} : null}, assignment: assigned, salary, context, punches,
-    ...(selectedPolicy?{policyClockSource,policyClockReview}:{})});
+    ...(selectedPolicy?{policyExecutionContext,policyClockSource,policyClockReview}:{})});
   const source = {tenantId: ctx.tenantId, employmentId: p.employmentId, attendanceId: day.id, date: p.date, inputDigest, approvalDigest};
   return {
-    ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy,policyClockSource,policyClockReview}:{}),
+    ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy,policyExecutionContext,policyClockSource,policyClockReview}:{}),
     input: {source, currency: {code: entity.currency, minorScale: currencyMinorScale(entity.currency)}, facts,
       layer: 'raw', sessionGranularity: work.placement === 'recordedIntervals' ? 'recorded' : 'dayAggregate', approval: {status: approvalStatus, minutes: approvalMinutes, provenance: approvalProvenance},
       // This is a measurement ceiling per segment, not an invented approved physical interval. The

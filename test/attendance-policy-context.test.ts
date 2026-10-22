@@ -97,6 +97,8 @@ describe('dated-policy raw writer routing',()=>{
   expect(await covered(f.employmentId,day(1))).toMatchObject([{employmentId:f.employmentId,date:day(1),coverage:'calculation',outcome:'refused',calculationId:expect.any(String)}]);
   const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
   expect(snapshot.attendanceGroupPolicy).toMatchObject({id:configured.id,companyId:b.companyId,ruleId:f.ruleId,ordinal:1});
+  expect(snapshot.policyExecutionContext).toMatchObject({state:'policy',selected:{id:configured.id},resolvedClock:{lateGraceMinutes:10,earlyGraceMinutes:15},
+   schedule:{shiftId:f.shiftId,normalMinutes:480,breakMinutes:60,durationOnly:false},calendar:[{date:day(1),state:'known',dayClass:'normal'}]});
   // The manual fixture has no physical capture receipts. Labels and insertion dates cannot invent
   // absolute midnight placement or turn a scalar approval into captured work.
   expect(snapshot.policyClockSource).toEqual({state:'unavailable',authority:'sourceOnly',reason:'missingCapture'});
@@ -138,6 +140,18 @@ describe('dated-policy raw writer routing',()=>{
   expect(retained?.calculation).toEqual(before?.calculation);expect(retained?.evidence).toEqual(before?.evidence);
   expect(await owner.db.select().from(s.attendanceOvertimeLine)).toEqual([]);
   expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
+ });
+ it('refuses a changed live schedule context instead of attaching its new windows to the recorded raw result',async()=>{
+  const f=await fixture();await f.save();await clock(f.employmentId,day(1));
+  const before=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(before.policyExecutionContext?.state).toBe('policy');const rawBefore=await row(f.employmentId,day(1));
+  await updateShift(ctx,{shiftId:f.shiftId,...f.shiftInput,startTime:'10:00',endTime:'19:00'});
+  const after=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(after.policyExecutionContext).toEqual({state:'unavailable',reason:'scheduleUnavailable'});
+  expect(after.input.source.inputDigest).not.toBe(before.input.source.inputDigest);
+  const stored=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(stored?.evidence?.evidence).toMatchObject({policyExecutionContext:before.policyExecutionContext});
+  expect(await row(f.employmentId,day(1))).toEqual(rawBefore);
  });
  it('does not apply another employer policy merely because both employers share a Schedule Group',async()=>{
   const f=await fixture(),other=await createCompany(ctx,{legalName:'Fictional other policy employer',country:'MY',currency:'MYR'});
