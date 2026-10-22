@@ -1,3 +1,4 @@
+import {attendancePolicyCoverageProposal} from './policy-coverage';
 /** Complete immutable proposal parts beneath ONE calculation. This does not grant approval,
  * generate payment lines or settle cash/TOIL. Parent identities/digests are bound by the writer. */
 import {isDeepStrictEqual} from 'node:util';
@@ -69,6 +70,8 @@ export function recordedAttendancePolicyProposalPartsMatch(source:StoredPolicyPa
    approvals:stored.policyApprovalInput as PolicyProposalPartSource['approvals'],
    proposal:stored.policyExecutionProposal as PolicyProposalPartSource['proposal']};
   if(!input.proposal||!input.policy||input.policy.id!==header.policyRevisionId||input.policy.companyId!==source.companyId)return false;
+  const coverage=attendancePolicyCoverageProposal({tenantId:source.tenantId,companyId:source.companyId,employmentId:source.employmentId,sourceId:source.id,calculationId:header.id,date:source.attendanceDate},input.proposal);
+  if(!isDeepStrictEqual(stored.policyCoverage,coverage))return false;
   const expected=materializeAttendancePolicyProposalParts(input);
   if(expected===null||expected.length!==header.policyPartCount)return false;
   return rows.every((row,index)=>{

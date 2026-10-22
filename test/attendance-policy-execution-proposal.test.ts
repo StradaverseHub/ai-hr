@@ -1,3 +1,4 @@
+import {attendancePolicyCoverageProposal} from '../packs/attendance/policy-coverage';
 import {materializeAttendancePolicyProposalParts as materialize,recordedAttendancePolicyProposalPartsMatch as matches} from '../packs/attendance/policy-proposal-parts';
 import {describe,expect,it} from 'vitest';
 import {attendancePolicyPlanInput} from '../packs/attendance/policy-plan-input';
@@ -140,7 +141,8 @@ describe('complete immutable proposal replay',()=>{
   const evidence={calculationId:header.id,tenantId:source.tenantId,companyId:source.companyId,
    inputs:{mode:'actual',assignmentId:null,patternVersionId:null,source:{tenantId:source.tenantId,employmentId:source.employmentId,
     attendanceId:source.attendanceId,date,inputDigest:header.inputDigest,approvalDigest:header.approvalDigest}},
-   evidence:{attendanceGroupPolicy:f.context.selected,policyExecutionContext:f.context,policyWorkInput:f.work,policyFormulaInput:f.formulas,policyExecutionProposal:proposal}};
+   evidence:{attendanceGroupPolicy:f.context.selected,policyExecutionContext:f.context,policyWorkInput:f.work,policyFormulaInput:f.formulas,policyExecutionProposal:proposal,
+    policyCoverage:attendancePolicyCoverageProposal({tenantId:source.tenantId,companyId:source.companyId,employmentId:source.employmentId,sourceId:source.id,calculationId:header.id,date:source.attendanceDate},proposal)}};
   return {source,header,parts,evidence};
  }
  it('accepts the entire exact historical proposal without mutating it or granting transfer authority',()=>{
@@ -161,6 +163,10 @@ describe('complete immutable proposal replay',()=>{
    const changed={...row,[field]:typeof row[field]==='number'?999:Array.isArray(row[field])?[]:'substituted'};
    expect(matches(f.source,f.header,f.evidence,[changed,...f.parts.slice(1)] as typeof f.parts)).toBe(false);
   }
+ });
+ it('refuses absent or altered immutable physical coverage, including an unavailable rounded-count reason',()=>{
+  const f=stored();expect(matches(f.source,f.header,{...f.evidence,evidence:{...f.evidence.evidence,policyCoverage:undefined}},f.parts)).toBe(false);
+  expect(matches(f.source,f.header,{...f.evidence,evidence:{...f.evidence.evidence,policyCoverage:{state:'prepared',authority:'coverageProposalOnly',intervals:[]}}},f.parts)).toBe(false);
  });
  it('refuses inconsistent stored source evidence and malformed JSON as one unavailable parent',()=>{
   const f=stored();expect(matches(f.source,f.header,null,f.parts)).toBe(false);
