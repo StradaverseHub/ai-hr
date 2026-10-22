@@ -73,6 +73,20 @@ describe('canonical execution-policy selection',()=>{
 /** Safety staging only: these probes must not be counted as complete policy execution or Payroll
  * acceptance. The routing fence must be replaced by canonical receipts/parts before feature release. */
 describe('dated-policy raw writer routing',()=>{
+ it('writes fixed-shift scalar break raw counts while preserving unavailable positioned OT',async()=>{
+  const f=await fixture();await f.save();
+  for(const [direction,time] of [['in','09:30:00'],['out','18:00:00']] as const){
+   const [capture]=await owner.db.insert(s.attendanceClockCapture).values({tenantId:b.tenantId,employmentId:f.employmentId,
+    attendanceDate:day(1),direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(day(1)+'T'+time+'+08:00')}).returning();
+   await (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId:f.employmentId,date:day(1),time,clockCaptureId:capture.id,preciseOrder:true});
+  }
+  const [saved]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,day(1))));
+  expect(saved).toMatchObject({workedMinutes:450,underMinutes:30,status:'late',lateMinutes:20,earlyOutMinutes:0,otMinutes:null});
+  expect(saved.calcTrace?.punch).toMatchObject({spanMinutes:510,workedMinutes:450,workBasis:'fixedBreakCountOwner'});
+  const input=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(input.policyWorkInput).toMatchObject({state:'unavailable',reason:'positionedScheduleUnavailable'});
+  expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
+ });
  it('retains Semi Flexi duration, allowance and half-day owners without fixed-clock penalties',async()=>{
   const f=await fixture();const sh=await createShift(ctx,{...f.shiftInput,code:'SEMI_'+randomUUID().slice(0,6),type:'semi_flexi',
    startTime:'07:00',endTime:'20:00',normalMinutesOverride:480,breakMinutes:30,flexibleBreakEnabled:true,flexibleBreakMinutes:30});

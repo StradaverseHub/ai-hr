@@ -32,7 +32,8 @@ export function attendancePolicyRawDay(raw:Raw,p:{rule:ResolvedAttendanceRule|nu
    spanMinutes:complete?proof.minuteIntervals.reduce((sum,row)=>sum+row.outAbs-row.inAbs,0):null,
    workedMinutes:figures.workedMinutes,calculationIntervals:proof.minuteIntervals.map(row=>({...row})),
    ...(figures.workedMinutes===null?{}:{workBasis:raw.context.schedule.durationOnly?'fullFlexiDurationOwner' as const:
-    raw.context.schedule.flexiDuration&&raw.context.workPlacement?.state!=='known'?'semiFlexiDurationOwner' as const:'positionedUnpaidOverlap' as const}),
+    (raw.context.workPlacement??raw.context.placement).state==='known'?'positionedUnpaidOverlap' as const:
+    raw.context.schedule.flexiDuration?'semiFlexiDurationOwner' as const:'fixedBreakCountOwner' as const}),
    intervalSource:raw.context.resolvedClock.pairing==='auto'?'closedPunchPairs':'elapsedEnvelope'};
   trace.lateness=figures.lateMinutes===null||boundary.state!=='known'?null:{startAbs:boundary.scheduled.from,
    graceMinutes:raw.context.resolvedClock.lateGraceMinutes,thresholdAbs:boundary.scheduled.from+raw.context.resolvedClock.lateGraceMinutes,

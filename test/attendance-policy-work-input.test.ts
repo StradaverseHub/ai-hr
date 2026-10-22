@@ -71,6 +71,15 @@ describe('canonical policy schedule and work source projection',()=>{
 });
 
 describe('independent clock boundary and break ownership',()=>{
+ it('keeps fixed-shift scalar/whole allowance raw counts without inventing unpaid OT positions',()=>{
+  const fixed={...schedule(),breakPeriods:null},proof=clocks([[570,1050]]),c=context(fixed);
+  expect(attendancePolicyRawWorkedMinutes(c,proof)).toBe(420);
+  expect(attendancePolicyRawWorkedMinutes(context({...fixed,flexibleBreakMinutes:30}),proof)).toBe(450);
+  expect(attendancePolicyRawWorkedMinutes(c,clocks([[570,720]]))).toBe(150);
+  expect(attendancePolicyClockMeasurements(c,proof)).toMatchObject({lateIn:{state:'known',minutes:20},earlyOut:{state:'known',minutes:15}});
+  expect(attendancePolicyWorkInput(c,proof)).toMatchObject({state:'unavailable',reason:'positionedScheduleUnavailable'});
+  expect(attendancePolicyRawWorkedMinutes({...c,workPlacement:{state:'unavailable',authority:'sourceOnly',reason:'scheduleBoundaryUnavailable'}},proof)).toBeNull();
+ });
  it('uses Semi Flexi anchors for raw break overlap/counts without fixed penalties or fixed-window OT',()=>{
   const semi={...schedule(),flexiDuration:true},proof=clocks([[570,1050]]),c=context(semi);
   expect(c.clockPlacement).toMatchObject({state:'known',fixedClock:false});
@@ -102,7 +111,7 @@ describe('independent clock boundary and break ownership',()=>{
   expect(c.placement).toMatchObject({state:'unavailable',reason:'windowCountAttributionRequired'});
   expect(attendancePolicyWorkInput(c,proof)).toMatchObject({state:'unavailable',reason:'positionedScheduleUnavailable'});
   expect(attendancePolicyRawWorkedMinutes(c,proof)).toBe(660);
-  expect(attendancePolicyRawWorkedMinutes(context({...s,breakPeriods:null}),proof)).toBeNull();
+  expect(attendancePolicyRawWorkedMinutes(context({...s,breakPeriods:null}),proof)).toBe(660);
   expect(attendancePolicyRawWorkedMinutes({...c,workPlacement:{state:'unavailable',authority:'sourceOnly',reason:'unpositionedBreak'},placement:context().placement},proof)).toBeNull();
  });
  it('counts net physical work from closed pairs, subtracting only overlapping unpaid time once',()=>{

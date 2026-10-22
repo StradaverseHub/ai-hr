@@ -190,7 +190,7 @@ export type AttendanceTraceV1 = {
     calculationIntervals?: {inAbs: number; outAbs: number}[];
     intervalSource?: 'closedPunchPairs' | 'elapsedEnvelope';
     /** A duration-owner break allowance is a count, not an invented physical unpaid interval. */
-    workBasis?: 'positionedUnpaidOverlap' | 'fullFlexiDurationOwner' | 'semiFlexiDurationOwner';
+    workBasis?: 'positionedUnpaidOverlap' | 'fullFlexiDurationOwner' | 'semiFlexiDurationOwner' | 'fixedBreakCountOwner';
     inAbs: number;
     /** Null on an open day (checked in, not yet out) — worked and overtime are unknowable then. */
     outAbs: number | null;
