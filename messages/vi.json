@@ -22260,6 +22260,25 @@
       "calendar": "Lịch của tôi",
       "notices": "Bảng thông báo"
     },
+    "personPrivacy": {
+      "title": "Quyền riêng tư về dịp kỷ niệm",
+      "intro": "Chọn xem đồng nghiệp có thể thấy ngày sinh nhật và ngày kỷ niệm làm việc của bạn trong mục chúc mừng trên Trang chủ hay không. Các lựa chọn này áp dụng cho mọi quan hệ việc làm của bạn.",
+      "resetHelp": "Đặt lại tùy chọn Trang chủ không thay đổi các lựa chọn quyền riêng tư này.",
+      "policyHelp": "Cài đặt chia sẻ của công ty vẫn áp dụng. Không đánh dấu ô không có nghĩa là bật chia sẻ.",
+      "hideBirthday": "Ẩn ngày sinh nhật của tôi với đồng nghiệp",
+      "hideAnniversary": "Ẩn ngày kỷ niệm làm việc của tôi với đồng nghiệp",
+      "save": "Lưu quyền riêng tư về dịp kỷ niệm",
+      "saving": "Đang lưu…",
+      "saved": "Đã lưu quyền riêng tư về dịp kỷ niệm.",
+      "loading": "Đang tải quyền riêng tư về dịp kỷ niệm của bạn…",
+      "loadFailed": "Không thể tải các lựa chọn quyền riêng tư đã lưu. Hệ thống không giả định lựa chọn nào.",
+      "unlinked": "Tài khoản đăng nhập của bạn chưa được liên kết với hồ sơ cá nhân. Không thể thiết lập quyền riêng tư về dịp kỷ niệm.",
+      "reload": "Tải lại các lựa chọn đã lưu",
+      "invalid": "Kiểm tra các lựa chọn quyền riêng tư trước khi lưu.",
+      "forbidden": "Quyền truy cập của bạn đã thay đổi. Hãy đăng nhập lại trước khi lưu.",
+      "changed": "Các lựa chọn này đã được thay đổi trong phiên khác. Hãy tải lại các lựa chọn đã lưu trước khi chỉnh sửa tiếp.",
+      "failed": "Không thể xác nhận việc lưu. Bản nháp của bạn được giữ lại. Hãy tải lại để kiểm tra các lựa chọn đã lưu trước khi thử lại."
+    },
     "preferences": {
       "title": "Tùy chọn trang chủ",
       "intro": "Chọn cách hiển thị trang chủ cho tài khoản của bạn. HR quản lý các thẻ có sẵn.",

@@ -3149,6 +3149,17 @@ export const employeeHomeConfigurationRevision=pgTable('employee_home_configurat
  check('employee_home_configuration_shape_check',sql`jsonb_typeof(${t.configuration})='object' AND ${t.configuration}->'version'='1'::jsonb AND octet_length(${t.configuration}::text)<=262144`),
 ]);
 
+/** A person's explicit celebration opt-outs span every login and employment. Immutable revisions
+ * retain disclosure choices; hiding/resetting a cosmetic Home card cannot alter them. */
+export const employeeHomePersonPrivacyRevision=pgTable('employee_home_person_privacy_revision',{
+ id:id(),tenantId:tenantId(),personId:uuid('person_id').notNull().references(()=>person.id,{onDelete:'cascade'}),
+ ordinal:integer('ordinal').notNull(),hideBirthday:boolean('hide_birthday').notNull(),hideAnniversary:boolean('hide_anniversary').notNull(),
+ createdByUserId:uuid('created_by_user_id').notNull().references(()=>appUser.id),createdAt:createdAt(),
+},t=>[
+ uniqueIndex('employee_home_person_privacy_ordinal_uq').on(t.tenantId,t.personId,t.ordinal),
+ check('employee_home_person_privacy_ordinal_check',sql`${t.ordinal}>0`),
+]);
+
 // Append-only. No UPDATE/DELETE (enforced in the RLS/constraints migration).
 
 export const domainEvent = pgTable(

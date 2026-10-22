@@ -211,6 +211,17 @@ The Claims capability reads an active type ID only, never a balance, rate or rei
 
 ## Verification and rollout
 
+Person-wide celebration opt-outs have a separate immutable revision owner in `0583`. A current
+actual login can read and append choices only for its linked person, even when the login also has
+HR authority. Birthday and anniversary choices are separate. Both logins for one person see the
+same latest revision; an expected-ordinal check under a person-wide lock refuses a stale edit.
+Direct app inserts repeat identity, ordinal, actual actor and server-time checks. The shared audit
+contains only revision identity and ordinal, with neither personal dates nor disclosure values.
+Cosmetic Home preference reset does not write this owner. An absent revision means no personal
+opt-out; the independent default-off company sharing policy still controls disclosure. A failed read
+does not become the default choice. This owner and its editor alone do not establish the still
+incomplete peer celebration read/send boundaries or their acceptance.
+
 The unshipped Home migration is `0582` (moved from its unapplied `0577` allocation so Feedback
 Automation can release first); the shared current-principal proof is owned once by Security in `0576`.
 Do not alter an applied migration or consume another

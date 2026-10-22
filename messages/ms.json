@@ -22260,6 +22260,25 @@
       "calendar": "Kalendar saya",
       "notices": "Papan Notis"
     },
+    "personPrivacy": {
+      "title": "Privasi sambutan",
+      "intro": "Pilih sama ada rakan sekerja boleh melihat hari lahir dan ulang tahun kerja anda dalam sambutan di Laman Utama. Pilihan ini terpakai kepada semua pekerjaan anda.",
+      "resetHelp": "Menetapkan semula pilihan Laman Utama tidak mengubah pilihan privasi ini.",
+      "policyHelp": "Tetapan perkongsian syarikat masih terpakai. Kotak yang tidak ditandakan tidak mengaktifkan perkongsian.",
+      "hideBirthday": "Sembunyikan hari lahir saya daripada rakan sekerja",
+      "hideAnniversary": "Sembunyikan ulang tahun kerja saya daripada rakan sekerja",
+      "save": "Simpan privasi sambutan",
+      "saving": "Sedang menyimpan…",
+      "saved": "Privasi sambutan disimpan.",
+      "loading": "Memuatkan privasi sambutan anda…",
+      "loadFailed": "Pilihan privasi yang disimpan tidak dapat dimuatkan. Tiada pilihan diandaikan.",
+      "unlinked": "Log masuk anda tidak dipautkan kepada seseorang. Privasi sambutan tidak tersedia.",
+      "reload": "Muat semula pilihan yang disimpan",
+      "invalid": "Semak pilihan privasi anda sebelum menyimpan.",
+      "forbidden": "Akses anda telah berubah. Log masuk semula sebelum menyimpan.",
+      "changed": "Pilihan ini telah diubah dalam sesi lain. Muat semula pilihan yang disimpan sebelum mengedit lagi.",
+      "failed": "Simpanan tidak dapat disahkan. Draf anda dikekalkan. Muat semula untuk menyemak pilihan yang disimpan sebelum mencuba lagi."
+    },
     "preferences": {
       "title": "Keutamaan Home",
       "intro": "Pilih paparan Home untuk akaun anda. HR mengawal kad yang tersedia.",
