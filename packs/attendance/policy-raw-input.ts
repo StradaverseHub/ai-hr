@@ -15,7 +15,7 @@ import {assertModuleGate} from '../../core/module-gate';
  * its original owner. The complete effective punch set and original capture receipts remain intact.
  * Raw writers must still hold their ordinary Attendance/Payroll locks. This reader shares the
  * configuration epoch before rereading live policy; it grants no configuration mutation authority. */
-export async function attendancePolicyRawInputTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}){
+export async function attendancePolicyRawInputTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string;classification?:'stored'|'currentSchedule'}){
  assertModuleGate(ctx,'attendance');
  let context=await attendancePolicyExecutionContextTx(tx,ctx,p);
  if(context.state!=='policy')return context;

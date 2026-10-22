@@ -7,7 +7,7 @@ import {hireEmployee} from '../core/org';
 import {createCompany} from '../core/admin';
 import {createShift,assignDefaultShift,updateShift} from '../core/roster';
 import {ensureStandardRule} from '../core/attendance-rule';
-import {attendancePolicyExecutionContextTx,scheduleAttendanceGroupPolicy,checkIn,checkOut,checkInTx,checkOutTx,canonicalOvertimeInputTx,canonicalOvertimePayrollInputTx,canonicalOvertimeToilInputTx,readOvertimeCalculationTx,createOvertimeCalculationOwner,calculateOvertimePatternDay,
+import {attendanceDayCalculationTx,recomputeDayFigures,attendancePolicyExecutionContextTx,scheduleAttendanceGroupPolicy,checkIn,checkOut,checkInTx,checkOutTx,canonicalOvertimeInputTx,canonicalOvertimePayrollInputTx,canonicalOvertimeToilInputTx,readOvertimeCalculationTx,createOvertimeCalculationOwner,calculateOvertimePatternDay,
  hasOvertimePatternForDayTx,hasRecordedAttendanceGroupPolicyTx,listCoveredOvertimeDaysTx,requestAttendanceCorrection,decideAttendanceCorrection} from '../packs/attendance/service';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {HR_LOCAL_TZ,todayInKualaLumpur} from '../lib/hr-date';
@@ -73,6 +73,19 @@ describe('canonical execution-policy selection',()=>{
 /** Safety staging only: these probes must not be counted as complete policy execution or Payroll
  * acceptance. The routing fence must be replaced by canonical receipts/parts before feature release. */
 describe('dated-policy raw writer routing',()=>{
+ it('uses the same policy unknowns for range/calendar recompute and editor previews without mutating labels',async()=>{
+  const f=await fixture();await f.save();await checkIn(ctx,{employmentId:f.employmentId,date:day(1),time:'09:30'});
+  await checkOut(ctx,{employmentId:f.employmentId,date:day(1),time:'18:00'});
+  const read=async()=>{const [row]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,day(1))));return row;};
+  const before=await read();
+  const result=await withTenant(ctx,tx=>recomputeDayFigures(tx,ctx,{employmentId:f.employmentId,date:day(1),checkInAt:before.checkInAt!,
+   checkOutAt:before.checkOutAt,approvedOtMinutes:120}));
+  expect(result.columns).toMatchObject({workedMinutes:null,lateMinutes:null,earlyOutMinutes:null,lateDeductMinutes:null,otMinutes:null});
+  expect(result.otPreserved).toBe(false);expect(result.columns).not.toHaveProperty('checkInAt');expect(result.columns).not.toHaveProperty('checkOutAt');
+  const editor=await withTenant(ctx,tx=>attendanceDayCalculationTx(tx,ctx,f.employmentId,day(1)));
+  expect(editor).toMatchObject({policyRaw:true,approvedOtMinutes:null,rows:[],effectiveBaseRows:[],automatic:{workedMinutes:null,otMinutes:null}});
+  expect(await read()).toEqual(before);
+ });
  it('reconciles proposed-pair correction labels before storing its actual effect and event figures',async()=>{
   const f=await fixture();await f.save();
   const request=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),checkIn:'09:30',checkOut:'18:00',
