@@ -247,6 +247,29 @@ describe('immutable non-payable policy part storage',()=>{
   expect(reviewed?.lines).toEqual([]);
  });
 
+ it('retains canonical captured duration and immutable parts when a cash earning mapping is archived',async()=>{
+  const f=await fixture('auto','12'),p={employmentId:f.employmentId,date:day(2)};
+  const before=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,p));
+  expect(attendancePolicyCashReplay(before)).toMatchObject({state:'known',minutes:20,amountMinorUnits:'600'});
+  const formula=before.policyFormulaInput;
+  if(formula?.state!=='known'||formula.references[0]?.state!=='known')throw Error('Expected actual earning mapping');
+  const earningId=formula.references[0].definition.rates[0].tiers[0].mapping.earningItemId;
+  await owner.db.update(s.payComponent).set({archivedAt:new Date()}).where(eq(s.payComponent.id,earningId));
+  const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,p));
+  expect(snapshot.policyDurationFormulaInput).toMatchObject({state:'known'});
+  expect(attendancePolicyDurationReplay(snapshot)).toMatchObject({state:'known',minutes:20});
+  expect(attendancePolicyCashReplay(snapshot)).toMatchObject({state:'unavailable',reason:'pricingUnavailable'});
+  const calculator=createOvertimeCalculationOwner(canonicalOvertimeInputTx);
+  await withTenant(ctx,async tx=>{const prepared=await calculator.prepareTx(tx,ctx,p),source=await lockOvertimeSourceTx(tx,ctx,p);
+   await calculator.recordTx(tx,ctx,{prepared,expectedCurrentRevision:source.revision,reason:'Fictional independent duration after mapping archival'});});
+  const reviewed=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
+  expect(reviewed?.policyParts).toHaveLength(2);
+  expect(reviewed?.evidence?.evidence.policyDurationReplay).toEqual(attendancePolicyDurationReplay(snapshot));
+  expect(reviewed?.evidence?.evidence.policyCashReplay).toEqual(attendancePolicyCashReplay(snapshot));
+  expect(reviewed?.calculation).toMatchObject({outcome:'refused',durationOutcome:'refused',transferable:false});
+  expect(reviewed?.lines).toEqual([]);
+ });
+
  it('uses each dated child salary and binds next-day pay changes without changing duration',async()=>{
   const f=await fixture('auto');
   const [first,second]=await owner.db.insert(s.compensation).values([
