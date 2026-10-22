@@ -23,7 +23,7 @@ export type PolicyDurationProposalInput={
  calendar:readonly PolicyCalendarProof[];
  /** A manual workflow supplies its frozen method. Auto must match the selected policy version. */
  method:PolicyDurationMethod;approval:'approved'|'policyAuto'|'pending'|'rejected'|'unknown';
- allocationByClass:Record<AttendancePolicyDayClass,'earliest'|'latest'>;
+ allocationByClass:Partial<Record<AttendancePolicyDayClass,'earliest'|'latest'>>;
 };
 export type PolicyDurationSelectionStep=
  |{kind:'disabled';before:number;after:0}
@@ -31,7 +31,7 @@ export type PolicyDurationSelectionStep=
  |{kind:'lateOffset';before:number;after:number;requested:number;applied:number}
  |{kind:'method';method:PolicyDurationMethod;before:number;after:number};
 export type PolicyDurationProposal=
- |{status:'unavailable';reason:'workedEvidenceUnavailable'|'eligibleEvidenceUnavailable'|'approvalUnavailable'|'plannedEvidenceUnavailable'|'lateEvidenceUnavailable'|'calendarUnavailable'|'holidayDesignationUnavailable'|'durationLimitExceeded';date?:string;authority:'proposalOnly'}
+ |{status:'unavailable';reason:'workedEvidenceUnavailable'|'eligibleEvidenceUnavailable'|'approvalUnavailable'|'plannedEvidenceUnavailable'|'lateEvidenceUnavailable'|'calendarUnavailable'|'holidayDesignationUnavailable'|'durationLimitExceeded'|'formulaAllocationUnavailable';date?:string;authority:'proposalOnly'}
  |{status:'calculated';authority:'proposalOnly';intervalBasis:'actual'|'approvedPlan';lateOffsetMinutes:number;selectionSteps:PolicyDurationSelectionStep[];
    parts:(AttendancePolicyPart&{allocatedPayableMinutes:number;allocations:AttendancePolicyInterval[]})[];
    classes:{dayClass:AttendancePolicyDayClass;eligibleMinutes:number;payableMinutes:number;
@@ -87,6 +87,7 @@ export function deriveAttendancePolicyDurationProposal(input:PolicyDurationPropo
  const classes:Extract<PolicyDurationProposal,{status:'calculated'}>['classes']=[];
  for(const dayClass of [...new Set(parts.map(part=>part.dayClass))]){
   const direction=input.allocationByClass[dayClass];
+  if(direction===undefined)return refuse('formulaAllocationUnavailable');
   if(!['earliest','latest'].includes(direction))throw Error('The selected central version must supply explicit count allocation.');
   const indexes=parts.map((part,index)=>({part,index})).filter(row=>row.part.dayClass===dayClass);
   const eligibleMinutes=indexes.reduce((sum,row)=>sum+row.part.minutes,0);

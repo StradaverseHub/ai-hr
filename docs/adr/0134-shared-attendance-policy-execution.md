@@ -328,3 +328,20 @@ Receipt erasure follows deletion of its actual parent; other updates/deletes rem
 Attendance writers were reviewed: decision, landing, cancellation and day-adjustment writes update the
 parent's effect fields and never edit this submission receipt. A submission receipt is not a final-effect
 capability; execution, real approval/exception receipts and independent cash/TOIL replay remain required.
+
+
+## Canonical source composition
+
+The canonical snapshot now composes positioned work, selected policy and exact dated formula references
+through the shared duration coordinator. The proposal and its used formula identities are retained in
+the input digest and immutable refused evidence. Class allocation comes from those existing versions;
+a missing used class direction refuses rather than defaulting to earliest. A missing unused calendar
+or formula date does not invalidate otherwise complete used coverage. Every used part still requires
+its exact dated class/version reference. Rounded count beyond recorded coverage remains unplaced.
+
+Only the explicit Auto/Actual source branch currently reaches arithmetic preparation. A Manual policy
+requires its new final-effect receipt, and Pre-Approved/Intersect require immutable positioned plan
+proofs. Existing approval audit/scalar/labels cannot fill these gaps. Epoch-zero policy rows cannot
+establish a new activation proof. This composition does not make a proposal payable: the SQL staging
+fence, canonical record marker and independent Payroll/TOIL refusal remain until the receipt, complete
+part writer and financial replay implementation and verification are finished.
